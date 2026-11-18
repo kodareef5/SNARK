@@ -11,7 +11,7 @@ import { STAGES, growthStep, maturity, stageOf, youngScale } from "../../shared/
 import { sortU32 } from "../../shared/sort.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
 import { CHOOSE_DIED, CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
-import { MF_OUT, STAMINA_UNITS, type Body } from "../../shared/sim/character.ts";
+import { JET_CUIRASS, MF_OUT, STAMINA_UNITS, type Body } from "../../shared/sim/character.ts";
 import type { BoatSpec, HelicopterSpec, VehicleSpec } from "../../shared/sim/vehicle.ts";
 import { DEFAULT_DRIVETRAIN } from "../../shared/sim/vehicle-drivetrain.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
@@ -262,6 +262,10 @@ export class VehicleTelemetry {
 }
 
 export class HudModel {
+  jetGear = 0;
+  jetSpent = 0;
+  jetThrust = 0;
+  jetGrounded = false;
   vehicle: VehicleTelemetry | null = null;
   /** The microphone's state, or why it is off. "" for nothing. */
   voice = "";
@@ -465,6 +469,10 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   const world = session.world;
   if (!world) return;
   const b = session.own;
+  model.jetGear = session.sessionState === SESSION_ALIVE && session.driving < 0 && !b.seat && (b.jetGear & JET_CUIRASS) ? b.jetGear : 0;
+  model.jetSpent = b.jetSpent;
+  model.jetThrust = b.jetThrust;
+  model.jetGrounded = b.grounded;
   model.frames++;
   model.scale = scale;
   model.x = b.x;

@@ -14,7 +14,8 @@ import type { Tribes } from "../tribes.ts";
 import type { ServerWorld } from "../world.ts";
 import { STATE_ALIVE, STATE_AWAY, STATE_DEAD, STATE_OUT, STATE_SPECTATING, aggregate, logFolder, stateOf } from "./format.ts";
 import { LogRecorder, type Batch } from "./recorder.ts";
-import { LogStore, type LogChanges, type LogHolder, type LogHolding, type LogItem, type LogMarks, type LogPositions, type LogSpan, type LogSurvivor, type LogWorld } from "./store.ts";
+import type { LogChanges, LogHolder, LogHolding, LogItem, LogMarks, LogPositions, LogSpan, LogSurvivor } from "../../shared/survivor-log.ts";
+import { LogStore, type LogWorld } from "./store.ts";
 
 /** Five seconds: how often the tick thread hands what it gathered to the store, and so the most a crash loses. */
 export const FLUSH_TICKS = 5 * TICK_RATE;
@@ -46,7 +47,7 @@ export interface SurvivorLogSpan extends LogSpan {
   folder: string | null;
 }
 
-export type ReadName = "survivors" | "positions" | "track" | "heldAt" | "changes" | "holders" | "items" | "marks" | "wallAt" | "tickAt";
+export type ReadName = "survivors" | "positions" | "track" | "heldAt" | "changes" | "holders" | "items" | "marks" | "wallAt" | "wallsAt" | "tickAt";
 
 export type ToLog =
   | { op: "open"; folder: string; cap: number; world: LogWorld; closed: Int32Array }
@@ -386,6 +387,11 @@ export class SurvivorLog {
   /** The wall time of a tick, null when the log holds nothing at or before it. */
   wallAt(tick: number): Promise<number | null> {
     return this.read("wallAt", [tick], null);
+  }
+
+  /** The wall time of each of `ticks`, in one read. */
+  wallsAt(ticks: readonly number[]): Promise<(number | null)[]> {
+    return this.read("wallsAt", [ticks], ticks.map(() => null));
   }
 
   /** The tick at a wall time; while the server was down, the tick it stopped at. Null before the log begins. */

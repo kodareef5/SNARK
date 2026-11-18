@@ -1243,6 +1243,7 @@ export class App {
     }
     body.state.mode = session.own.mode;
     body.state.grounded = session.own.grounded;
+    body.state.jet = session.own.jetThrust !== 0;
     body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
     // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.

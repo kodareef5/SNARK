@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 44 classes: 31 built, 5 partly built, and 8 stubs that
-wait for a feature. The core pack holds 1350 definitions.
+wait for a feature. The core pack holds 1360 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -34,7 +34,7 @@ share a `tag`.
 | `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto` | 8 |
 | `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 4 |
 | `item/equipment` | item type Equipment | a group |  |  |  |
-| `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 20 |
+| `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 25 |
 | `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 9 |
 | `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 34 |
 | `item/vehicle` | a deployable vehicle assembly | built | `stack`, `deploys` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 2 |
@@ -72,7 +72,7 @@ Asset slots:
 - `item/weapon`: `#held` mesh, must, from `{weapon.mesh}`, else `none`; `#shot` mesh, may with `ammo`, from `{ammo.mesh}`, else `core:tracer`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/ammo`: `#shot` mesh, may, from `{ammo.mesh}`, else `core:tracer`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/attachment`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
-- `item/armor`: `#worn` mesh, must, from `{body}/armor/{wear.set}/{wear.slot}`, else `{body}/{wear.slot}`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/armor`: `#worn` mesh, must, from `{body}/armor/{wear.set}/{wear.slot}`, else `{body}/{wear.slot}`; `#vents` mesh, may, from `{body}/armor/{wear.set}/{wear.vents}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/saddle`: `#worn` mesh, may, from `{id}/worn`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/structure`: `#preview` mesh, may, from `{id}/preview`, else `#mesh`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/vehicle`: `#preview` mesh, may, from `{deploys}`, else `box`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
@@ -94,7 +94,7 @@ Packs may add to: `weapon`, `places`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 98 |
+| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 103 |
 
 - **`engram`** on shelf `engrams`. Learned with points at a level, for good. Its one item can then be made.
 
@@ -367,7 +367,7 @@ built.
 
 **`item/attachment`** (4): scope, silencer, flashlight, laser.
 
-**`item/armor`** (20): cloth_hat, cloth_shirt, cloth_gloves, cloth_pants, cloth_boots, hide_hat, hide_shirt, hide_gloves, hide_pants, hide_boots, chitin_hat, chitin_shirt, chitin_gloves, chitin_pants, chitin_boots, flak_hat, flak_shirt, flak_gloves, flak_pants, flak_boots.
+**`item/armor`** (25): cloth_hat, cloth_shirt, cloth_gloves, cloth_pants, cloth_boots, hide_hat, hide_shirt, hide_gloves, hide_pants, hide_boots, chitin_hat, chitin_shirt, chitin_gloves, chitin_pants, chitin_boots, flak_hat, flak_shirt, flak_gloves, flak_pants, flak_boots, meridian_hat, meridian_shirt, meridian_gloves, meridian_pants, meridian_boots.
 
 **`item/saddle`** (9): saddle_parasaur, saddle_pteranodon, saddle_raptor, saddle_trike, saddle_stego, saddle_carbonemys, saddle_rex, saddle_spino, saddle_brachio.
 
@@ -379,7 +379,7 @@ built.
 
 **`item/feces`** (4): feces_small, feces_medium, feces_large, feces_massive.
 
-**`engram`** (98): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_sleeping_bag, engram-piece_bed, engram-saddle_parasaur, engram-saddle_pteranodon, engram-saddle_raptor, engram-saddle_trike, engram-saddle_stego, engram-saddle_carbonemys, engram-saddle_rex, engram-saddle_spino, engram-saddle_brachio, engram-boat_assembly, engram-helicopter_assembly, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-piece_forge, engram-piece_smithy, engram-piece_fabricator, engram-piece_preserving_bin, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-shotgun, engram-flare_gun, engram-arrow_stone, engram-arrow_tranq, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-round_shotgun, engram-dart_tranq, engram-dart_shock, engram-scope, engram-silencer, engram-flashlight, engram-laser, engram-grenade, engram-bola, engram-grenade_smoke, engram-grenade_poison, engram-paste, engram-polymer, engram-electronics, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
+**`engram`** (103): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_sleeping_bag, engram-piece_bed, engram-saddle_parasaur, engram-saddle_pteranodon, engram-saddle_raptor, engram-saddle_trike, engram-saddle_stego, engram-saddle_carbonemys, engram-saddle_rex, engram-saddle_spino, engram-saddle_brachio, engram-boat_assembly, engram-helicopter_assembly, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-piece_forge, engram-piece_smithy, engram-piece_fabricator, engram-piece_preserving_bin, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-shotgun, engram-flare_gun, engram-arrow_stone, engram-arrow_tranq, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-round_shotgun, engram-dart_tranq, engram-dart_shock, engram-scope, engram-silencer, engram-flashlight, engram-laser, engram-grenade, engram-bola, engram-grenade_smoke, engram-grenade_poison, engram-paste, engram-polymer, engram-electronics, engram-meridian_hat, engram-meridian_shirt, engram-meridian_gloves, engram-meridian_pants, engram-meridian_boots, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
 
 **`levels`** (1): levels.
 
