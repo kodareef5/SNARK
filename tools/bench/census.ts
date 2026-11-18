@@ -3,7 +3,7 @@
 // triangles, and the whole frame's, at noon once nothing is left to make or put on the card. The near store holds the
 // 7 by 7 chunks round the camera's whole, as a client's does once the server has sent them (server/game.ts structRadius),
 // and the far city draws the rest from the map's statics. Trees, rocks and bushes are left out, and so is a landmark's
-// content, as tools/bench/city.ts leaves it. tests/unit/census.test.ts pins the views the Miami slice holds whole
+// content, as tools/bench/city.ts leaves it. tests/unit/census.slow.test.ts pins the views the Miami slice holds whole
 // (tests/fixtures/cityslice.ts), drawn with the grey boxes.
 //
 //   bun tools/bench/census.ts [file.snmap]         each view on a built map (var/maps/miami.snmap), with the core pack
