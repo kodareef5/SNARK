@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { DEV_CONFIG, startServer } from "../../server/main.ts";
 import { loadConfigFolder } from "../../server/settings/config.ts";
 interface ReviewCamera {
+  hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; holdPhase?: boolean; onFoot?: boolean;
   name: string; x: number; z: number; y?: number; up?: number; look: [number, number, number];
 }
 const cameras: { hour: number; views: ReviewCamera[] } = JSON.parse(readFileSync(resolve(import.meta.dir, "../../assets/source/maps/miami/look/tide-eye.json"), "utf8"));
@@ -26,12 +27,13 @@ const server = startServer({
     const y = view.y ?? ground(view.x, view.z) + (view.up ?? 1.7);
     const [x, z, h] = view.look;
     const look = [Math.atan2(x - view.x, z - view.z), Math.atan2(ground(x, z) + h - y, Math.hypot(x - view.x, z - view.z))];
-    const onFoot = view.name === "blue-deck";
     return Response.json({
-      run: ["enablecheats", onFoot ? "walk" : "fly", `tp ${view.x} ${y - 1.62} ${view.z}`, `settime ${cameras.hour}`],
+      run: ["enablecheats", view.onFoot ? "walk" : "fly", `tp ${view.x} ${y - 1.62} ${view.z}`, `settime ${view.hour ?? cameras.hour}`],
       look, holdLook: false,
-      ...(view.name === "bayfront-ignition" ? { eyeSeconds: 5, playEye: true } : {}),
+      ...(view.replayEyeSeconds !== undefined ? { eyeSeconds: view.replayEyeSeconds, playEye: true } : view.holdPhase ? { eyeSeconds: view.eyeSeconds } : {}),
     });
   },
 });
-console.log(`Tide Eye review at http://127.0.0.1:${server.port}/?quick&look=blue-crown`);
+for (const view of ["blue-instrument", "red-sextant", "red-ignition", "red-deck"]) {
+  console.log(`http://127.0.0.1:${server.port}/?quick&look=${view}`);
+}

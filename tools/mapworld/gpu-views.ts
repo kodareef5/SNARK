@@ -2,7 +2,7 @@
 // judged on the same views each time:
 //
 //   bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client> [--tiers high,medium]
-//                                   [--seconds 40] [--only name,name]
+//                                   [--seconds 40] [--only name,name] [--hide-hud]
 //
 // The client is one built apart (`bun run build -- --dist DIR`), never the checkout's client/dist. A server on the map
 // answers each view's /__look with its orders (cheats, the hour, the way to face) and holds the survivor there as a ghost,
@@ -19,9 +19,9 @@ import { MODE_GHOST } from "../../shared/sim/character.ts";
 import { loadConfigFolder } from "../../server/settings/config.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
-interface Camera { eyeSeconds?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
+interface Camera { hour?: number; eyeSeconds?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" } } });
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" } } });
 const [map, list, out] = positionals;
 if (!map || !list || !out || !values.dist) throw new Error("bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client>");
 if (!existsSync(join(values.dist, "main.js"))) throw new Error(`no built client in ${values.dist}`);
@@ -49,7 +49,7 @@ for (const v of views) {
     pitch = Math.atan2(ground(lx, lz) + lup - eye, Math.hypot(lx - v.x, lz - v.z));
   }
   // A body's place is its feet, 1.62 m under its eye.
-  orders.set(v.name, { eyeSeconds: v.eyeSeconds, run: ["enablecheats", `settime ${file.hour ?? 14}`], look: [yaw, pitch], at: [v.x, eye - 1.62, v.z] });
+  orders.set(v.name, { eyeSeconds: v.eyeSeconds, run: ["enablecheats", `settime ${v.hour ?? file.hour ?? 14}`], look: [yaw, pitch], at: [v.x, eye - 1.62, v.z] });
 }
 // Every survivor is held at the view being taken, still, as a ghost: a line typed on arrival would move it only after the
 // page had placed its camera.
@@ -106,11 +106,14 @@ try {
       // The first view fetches the map and the art as well.
       await Bun.sleep((first ? 2 : 1) * seconds * 1000);
       first = false;
+      if (values["hide-hud"]) {
+        await send("Runtime.evaluate", { expression: 'document.getElementById("ui").style.visibility = "hidden"' });
+      }
       const shot = await send("Page.captureScreenshot", { format: "png" });
       const name = `${v.name}-${tier}.png`;
       writeFileSync(join(out, name), Buffer.from(shot.data, "base64"));
       const gl = await send("Runtime.evaluate", { expression: "(() => { const c = document.querySelector('canvas'); const g = c && c.getContext('webgl2'); const i = g && g.getExtension('WEBGL_debug_renderer_info'); return JSON.stringify({ renderer: i ? g.getParameter(i.UNMASKED_RENDERER_WEBGL) : null }); })()", returnByValue: true });
-      report.push({ name, ...JSON.parse(gl.result.value), console: lines.slice(0, 8) });
+      report.push({ name, ...(v.hour !== undefined ? { hour: v.hour } : {}), ...JSON.parse(gl.result.value), console: lines.slice(0, 8) });
       console.log(`${name}${lines.length ? `\n  ${lines.slice(0, 8).join("\n  ")}` : ""}`);
     }
   }

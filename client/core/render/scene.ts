@@ -1,4 +1,4 @@
-import { CROWN_ORIGIN, DECK_RADIUS, EYE_COLLIDERS, EYE_DYE, LENS_HEIGHT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { CROWN_ORIGIN, DECK_RADIUS, EYE_COLLIDERS, EYE_DYE, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
 import { aperture, eyePhase, eyePower, writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
@@ -347,6 +347,7 @@ export class Scene {
   /** Seconds on the shared server clock, independent of the local frame clock. */
   eyeSeconds = 0;
   private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number };
+  private readonly sextantMesh: { frame: number; needle: number; indexLight: number; keelLight: number };
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
   plainSky = false;
   /** Loose meshes to draw: the stress scene's. */
@@ -595,6 +596,7 @@ export class Scene {
     const { table, bind } = this.assets;
     const eye = (part: string) => table.find("core:tide_eye/" + part);
     this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow") };
+    this.sextantMesh = { frame: eye("sextant"), needle: eye("needle"), indexLight: eye("index_light"), keelLight: eye("keel_light") };
     this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -1603,7 +1605,7 @@ export class Scene {
         const first = p.transientCount++;
         const distance = Math.max(1, Math.hypot(cx, cy, cz) - r);
         const errors = this.assets.table.error[mesh]!;
-        const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris);
+        const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris || mesh === this.sextantMesh.frame || mesh === this.sextantMesh.needle);
         const level = skyline ? Math.max(0, errors.length - 1) : this.assets.choose(errors, distance / Math.max(0.03, scale), -1);
         this.assets.wantTextured(mesh, level, distance);
         let flags = DRAW_PLAIN | (glow ? DRAW_EMISSIVE : 0) | (skyline ? DRAW_SKYLINE : 0);
@@ -1628,6 +1630,17 @@ export class Scene {
         this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, passes);
       };
       draw(this.eyeMesh.deck, 0, site.radius + 1, site.radius / DECK_RADIUS);
+      if (site.form === "sextant") {
+        // The index is authored hanging down. After lifting it sweeps the bow and locks on the upper mark.
+        const angle = -open * (1.82 + 0.13 * eyePower(phase) * Math.sin((phase - 9) * 0.64));
+        draw(this.sextantMesh.frame, CROWN_ORIGIN, 221, 1);
+        draw(this.sextantMesh.needle, SEXTANT_PIVOT, 157, 1, angle);
+        if (open > 0.3) {
+          draw(this.sextantMesh.keelLight, CROWN_ORIGIN, 202, 1, 0, -1, true);
+          draw(this.sextantMesh.indexLight, SEXTANT_PIVOT, 157, 1, angle, -1, true);
+        }
+        continue;
+      }
       draw(this.eyeMesh.crown, CROWN_ORIGIN, 211, 1);
       if (open < 0.998) {
         for (let i = 0; i < 12; i++) {

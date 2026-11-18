@@ -151,7 +151,7 @@ export function placeObelisks(ground: Ground, world: World, toSample: (lon: numb
       if (radius < 16) throw new Error(`no walkable transfer deck fits near ${o.name}`);
       const c = c0 + best % width - span, r = r0 + Math.floor(best / width) - span;
       const yaw = Math.round(Math.atan2(c - fc, r - fr) * 32768 / Math.PI) & 65535;
-      return { name: o.name, color: o.color, radius, yaw, x: x1 - c * 2, z: z1 - r * 2 };
+      return { name: o.name, color: o.color, ...(o.form ? { form: o.form } : {}), radius, yaw, x: x1 - c * 2, z: z1 - r * 2 };
     }
     for (let ring = 0; ring < 150; ring++) {
       let best: [number, number, number] | null = null;

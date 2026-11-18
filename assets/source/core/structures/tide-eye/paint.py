@@ -103,3 +103,18 @@ save("normal", (np.stack([-dx * nz, dy * nz, nz], axis=-1) * 0.5 + 0.5) * 255)
 save("height", height * 255)
 save("orm", orm * 255)
 save("regions", mask)
+
+# The red keel carries fired iron glaze. Chips reveal the same pale ceramic used by the bow.
+sl = slice(3 * strip, 4 * strip)
+vein = noise(10, 75) + 0.4 * noise(37, 170)
+glaze = np.broadcast_to(np.array([151.0, 36.0, 28.0]), (strip, size, 3)).copy()
+glaze += (48 * vein + 4 * rng.normal(0, 1, (strip, size)))[..., None]
+chips = np.clip((vein + 0.15 - np.minimum(v, strip - 1 - v) / 19) * 4, 0, 1)
+glaze = glaze * (1 - chips[..., None]) + np.array([207, 178, 126]) * chips[..., None]
+base[sl] = glaze
+orm[sl, :, 1] = np.clip(0.32 + 0.45 * chips + 0.12 * vein, 0.19, 0.87)
+orm[sl, :, 2] = 0.13
+base[:, -1] = base[:, 0]
+orm[:, -1] = orm[:, 0]
+save("sextant-base", base)
+save("sextant-orm", orm * 255)

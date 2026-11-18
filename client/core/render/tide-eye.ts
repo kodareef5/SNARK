@@ -28,7 +28,13 @@ export function writeEyeSky(frame: Float32Array, sites: readonly TideEyeSite[], 
     const phase = eyePhase(seconds, site), power = eyePower(phase), open = aperture(phase);
     if (!open || count === EYE_SLOTS) continue;
     const at = FRAME.eyes + 8 * count++;
-    frame[at] = site.x - x; frame[at + 1] = 3450 - y; frame[at + 2] = site.z - z; frame[at + 3] = phase;
+    // The phase column's second period identifies the Sextant without a larger uniform block.
+    const sextant = site.form === "sextant";
+    const yaw = site.yaw * Math.PI / 32768;
+    frame[at] = site.x - x + (sextant ? 19 * Math.cos(yaw) : 0);
+    frame[at + 1] = 3450 - y;
+    frame[at + 2] = site.z - z - (sextant ? 19 * Math.sin(yaw) : 0);
+    frame[at + 3] = phase + (sextant ? EYE_PERIOD : 0);
     frame.set(pigments[site.color], at + 4); frame[at + 7] = power;
   }
 }
@@ -39,7 +45,8 @@ export function eyeRadiance(frame: Float32Array, ray: ArrayLike<number>, out: Fl
   let transmission = 1;
   const dx = ray[0]!, dy = ray[1]!, dz = ray[2]!;
   for (let i = 0; i < EYE_SLOTS; i++) {
-    const at = FRAME.eyes + i * 8, phase = frame[at + 3]!;
+    const at = FRAME.eyes + i * 8, stamp = frame[at + 3]!;
+    const sextant = stamp >= EYE_PERIOD, phase = sextant ? stamp - EYE_PERIOD : stamp;
     if (!phase || dy <= 0.002) continue;
     const x = frame[at]!, sky = frame[at + 1]!, z = frame[at + 2]!, power = frame[at + 7]!;
     const den = Math.max(0.00001, dx*dx + dz*dz);
@@ -54,6 +61,20 @@ export function eyeRadiance(frame: Float32Array, ray: ArrayLike<number>, out: Fl
       if (dist <= 0) continue;
       const u = (dx*dist-x)/1000, v = (dz*dist-z)/1000;
       if (Math.abs(u)>2.8 || Math.abs(v)>2.8) continue;
+      if (sextant) {
+        const px = u - 0.10 * layer, pz = (v + 0.07 * layer) * 1.16;
+        const theta = Math.atan2(pz, px), head = 0.54 * (phase - 9) - layer * 0.68;
+        const lag = ((head - theta) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+        const radius = 0.43 + power * 0.66 + layer * 0.23 + 0.055 * Math.sin(2 * theta + layer);
+        const edge = Math.hypot(px, pz) - radius + 0.014 * Math.sin(9 * theta - phase * 0.64);
+        const trail = (1 - smooth((lag - 2.1) / 1.45)) * smooth(lag / 0.075);
+        const ticks = Math.pow(Math.max(0, Math.cos(24 * theta - layer * 0.62)), 12);
+        const core = Math.exp(-Math.abs(edge) / 0.023);
+        glow += power * trail * (1.55 * Math.exp(-Math.abs(edge) / 0.092) + core + 1.58 * ticks * Math.exp(-Math.abs(edge + 0.082) / 0.076));
+        const tip = Math.min(lag, 2 * Math.PI - lag);
+        white += power * (3.4 * Math.exp(-Math.hypot(tip * radius, edge) / 0.077) + 0.45 * core * trail);
+        continue;
+      }
       const theta = Math.atan2(v, u);
       const turn = theta + phase * (layer === 1 ? -0.18 : 0.13) + layer * 1.23;
       const radius = (0.18 + 0.94 * power) * (1 + 0.13 * layer + 0.08 * Math.sin(2 * turn) + 0.035 * Math.sin(3 * turn + layer));
@@ -81,6 +102,8 @@ vec4 eyeOptics(vec3 d) {
   for (int i=0; i<3; i++) {
     vec4 s = fEyes[i*2], tint = fEyes[i*2+1];
     if (s.w <= 0.) continue;
+    bool sextant = s.w >= 120.;
+    if (sextant) s.w -= 120.;
     float power = tint.w, glow=0., white=0.;
     float t=dot(d.xz,s.xz)/max(.00001,dot(d.xz,d.xz)), h=t*d.y-s.y;
     if (t>0. && h> -2800. && h<0.) {
@@ -91,6 +114,20 @@ vec4 eyeOptics(vec3 d) {
       float k=float(j), dist=(s.y+k*185.)/d.y;
       vec2 p=(d.xz*dist-s.xz)*.001;
       if (dist<=0. || max(abs(p.x),abs(p.y))>2.8) continue;
+      if (sextant) {
+        vec2 q=vec2(p.x-.10*k,(p.y+.07*k)*1.16);
+        float theta=atan(q.y,q.x+1.e-10), head=.54*(s.w-9.)-k*.68;
+        float lag=mod(head-theta,6.2831853);
+        float radius=.43+power*.66+k*.23+.055*sin(2.*theta+k);
+        float edge=length(q)-radius+.014*sin(9.*theta-s.w*.64);
+        float trail=(1.-smoothstep(2.1,3.55,lag))*smoothstep(0.,.075,lag);
+        float ticks=pow(max(0.,cos(24.*theta-k*.62)),12.);
+        float core=exp(-abs(edge)/.023);
+        glow+=power*trail*(1.55*exp(-abs(edge)/.092)+core+1.58*ticks*exp(-abs(edge+.082)/.076));
+        float tip=min(lag,6.2831853-lag);
+        white+=power*(3.4*exp(-length(vec2(tip*radius,edge))/.077)+.45*core*trail);
+        continue;
+      }
       float turn=atan(p.y,p.x+1.e-10)+s.w*(j==1 ? -.18:.13)+k*1.23;
       float radius=(.18+.94*power)*(1.+.13*k+.08*sin(2.*turn)+.035*sin(3.*turn+k));
       float edge=length(p)-radius;

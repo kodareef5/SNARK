@@ -402,7 +402,7 @@ function slotsOf(layer: NodeLayer, chunks: number): number {
 
 function validateEyes(eyes: readonly TideEyeSite[], dims: MapDims): void {
   if (eyes.length > 255 || eyes.some(e => !e.name || e.name.length > 64 || !EYE_COLORS.includes(e.color)
-    || !Number.isFinite(e.y) || !(e.x >= 0 && e.x <= dims.chunksX * CHUNK_SIZE && e.z >= 0 && e.z <= dims.chunksZ * CHUNK_SIZE)
+    || (e.form !== undefined && e.form !== "sextant") || !Number.isFinite(e.y) || !(e.x >= 0 && e.x <= dims.chunksX * CHUNK_SIZE && e.z >= 0 && e.z <= dims.chunksZ * CHUNK_SIZE)
     || !(e.radius > 0 && e.radius <= 70) || !Number.isInteger(e.yaw) || e.yaw < 0 || e.yaw > 65535)) throw new Error("map: invalid Tide Eye site");
 }
 
@@ -1024,6 +1024,8 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], st
       o.text(eye.name); o.f64(eye.x); o.f64(eye.y); o.f64(eye.z);
       o.u16(eye.yaw); o.u8(EYE_COLORS.indexOf(eye.color)); o.f64(eye.radius);
     }
+    // Older headers end after the radii. Only maps with a distinct instrument need the form column.
+    if (m.tideEyes!.some(eye => eye.form)) for (const eye of m.tideEyes!) o.u8(eye.form === "sextant" ? 1 : 0);
   });
   o.section("SPWN", () => {
     o.u8(m.spawns.length);
@@ -1291,6 +1293,14 @@ function readHeadSections(r: In, hash: number): MapHead {
         if (!color) throw new Error("map: invalid Tide Eye color");
         return { name, x, y, z, yaw, color, radius };
       });
+      if (s.at < s.bytes.length) {
+        if (s.bytes.length - s.at !== tideEyes.length) throw new Error("map: invalid obelisk form column");
+        tideEyes = tideEyes.map(eye => {
+          const form = s.u8();
+          if (form > 1) throw new Error("map: unknown obelisk form");
+          return form === 1 ? { ...eye, form: "sextant" } : eye;
+        });
+      }
       validateEyes(tideEyes, dims);
     } else if (tag === "SPWN") {
       for (let n = s.u8(); n > 0; n--) spawns.push({ name: s.text(), x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw: s.u16() });

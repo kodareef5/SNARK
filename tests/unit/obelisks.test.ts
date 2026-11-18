@@ -58,3 +58,38 @@ test("three observers share each site's ignition clock, and the sky optics follo
   writeEyeSky(frame, [blue], 2, 0, 0, 0);
   expect(frame.slice(FRAME.eyes).every(v => v === 0)).toBe(true);
 });
+
+test("a rebuilt Wynwood keeps its Sextant bow and transfer point, while an older red header keeps the fork", () => {
+  const old = { name: "Wynwood", color: "red", x: 192, y: 5, z: 192, yaw: 0, radius: 64 } as const;
+  const site = { ...old, form: "sextant" } as const;
+  const blue = { ...old, name: "Virginia Key", color: "blue", x: 32 } as const;
+  const bytes = writeMap(flatMap(8, { tideEyes: [blue, site] }));
+  expect(readHead(bytes).tideEyes).toEqual([blue, site]);
+  expect(parseMap(bytes).tideEyes).toEqual([blue, site]);
+  expect(readHead(writeMap(flatMap(8, { tideEyes: [old] }))).tideEyes).toEqual([old]);
+  const parts = obeliskStatics(reg, site, () => site.y);
+  const fork = obeliskStatics(reg, old, () => site.y);
+  expect(parts.at(-1)).toEqual(fork.at(-1));
+  // At the axle height only the far rim and the keel are solid. The middle is open sky.
+  const axle = parts.filter(p => Math.abs(p.y - (site.y + 496)) < 12);
+  expect(axle.some(p => p.x < site.x - 140)).toBe(true);
+  expect(axle.some(p => Math.abs(p.x - site.x) < 20)).toBe(true);
+  expect(axle.some(p => p.x < site.x - 45 && p.x > site.x - 125)).toBe(false);
+  expect(fork.some(p => p.x < site.x - 140)).toBe(false);
+});
+
+test("the Sextant's moving white index leads an open red arc above the player's flight ceiling", () => {
+  const site = { name: "Wynwood", form: "sextant", color: "red", x: 200, z: 340, y: 5, yaw: 0, radius: 64 } as const;
+  const frame = new Float32Array(FRAME_FLOATS);
+  writeEyeSky(frame, [site], 95.5, site.x + 19, 0, site.z);
+  expect([...frame.slice(FRAME.eyes, FRAME.eyes + 4)]).toEqual([0, 3450, 0, 135.5]);
+  const theta = 0.54 * (15.5 - 9);
+  const radius = 1.09 + 0.055 * Math.sin(2 * theta) - 0.014 * Math.sin(9 * theta - 15.5 * 0.64);
+  const x = 1000 * radius * Math.cos(theta), z = 1000 * radius * Math.sin(theta) / 1.16;
+  const length = Math.hypot(x, 3450, z);
+  const light = new Float64Array(3);
+  expect(eyeRadiance(frame, [x / length, 3450 / length, z / length], light)).toBe(1);
+  expect(light[2]!).toBeGreaterThan(2);
+  writeEyeSky(frame, [site], 85, site.x, 0, site.z);
+  expect(frame.slice(FRAME.eyes).every(v => v === 0)).toBe(true);
+});

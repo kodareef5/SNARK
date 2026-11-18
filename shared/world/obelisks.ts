@@ -17,6 +17,7 @@ export const OBELISK_PIECES = 3;
 export interface ObeliskPlace {
   readonly name: string;
   readonly color?: EyeColor;
+  readonly form?: TideEyeSite["form"];
   readonly radius?: number;
   readonly x: number;
   readonly z: number;
