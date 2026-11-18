@@ -326,6 +326,9 @@ aircraft and clear of both. `boatSites` in `tools/boat/sites.ts` chooses them by
   each of `condition` and `fuel` by their weights and a hash of the berth: a share
   hurt (a hull of 0.5 or more takes no water, so it floats and makes way), a share
   nearly whole, the rest between, and fuel mostly low. The server rolls both once a
-  world (`foundVehicle`).
+  world (`foundVehicle`). A berth whose vessel has gone, sunk or sailed off, gets
+  another of its kind, rolled again, `FoundBoatReturnDays` later, as a car's place
+  does (`server/car-return.ts`), once its wreck has gone and only while the berth
+  still has water 0.2 m deeper than the vessel's draught.
 - `reports/<ruins>/harbours.json` lists each vessel with its site, district and
   ranges.
