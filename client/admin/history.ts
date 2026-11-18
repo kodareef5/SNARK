@@ -11,6 +11,7 @@ import { changeText, heldAt, heldText, itemName, nearestChange } from "../core/a
 import { figures, frameAt, onlineCounts, playIn, rowsAt, sessionAt } from "../core/admin/past.ts";
 import { holdingAt } from "../core/admin/recall.ts";
 import { findSurvivors, placeText } from "../core/admin/table.ts";
+import { LaneList } from "../core/admin/lanes.ts";
 import { PRESETS, SPEEDS, localMoment, localText } from "../core/admin/timeline.ts";
 import { $, BAD, DIM, FACE, ICE, S, WARN, WELL, esc, fit, hooks, offset } from "./dom.ts";
 import { drawMap, lookAt } from "./map.ts";
@@ -19,13 +20,13 @@ const canvas = $<HTMLCanvasElement>("tlcanvas"), tip = $("tltip");
 /** The name column, and the rows of the timeline from the top, in CSS pixels. */
 const NAMES = 104;
 const AXIS = 18, ONLINE = 28, MARKS = 14, LANE = 14, BAND = 14;
-/** Lanes shown: those who played most in the window, and the chosen survivor always. */
-const LANES = 12;
+/** Where the lanes begin. */
+const LANES_TOP = AXIS + ONLINE + MARKS;
 const STATE_WORDS: Readonly<Record<number, string>> = { [DOT_DEAD]: "dead", [DOT_OUT]: "unconscious", [DOT_SPECTATING]: "spectating", [DOT_AWAY]: "away, body left" };
 const t = S.timeline;
 
-/** The lanes drawn now, top to bottom, for pointing at them. */
-let lanes: LogSurvivor[] = [];
+/** Every survivor's lane in the window, the chosen one pinned, the rest scrolling in a view of a dozen rows. */
+const lanes = new LaneList();
 
 /** Takes the log's state from the server's stats: its span, and what to say of it. */
 export function syncLog(): void {
@@ -129,11 +130,10 @@ export function showPastPeople(): boolean {
 
 function drawTimeline(): void {
   const w = S.recall.window;
-  const shown = w ? [...w.survivors].sort((a, b) => playIn(b, t.start, t.end, t.to) - playIn(a, t.start, t.end, t.to)).filter((s) => playIn(s, t.start, t.end, t.to) > 0) : [];
-  lanes = shown.slice(0, LANES);
-  const chosen = shown.find((s) => s.pid === S.chosen);
-  if (chosen && !lanes.includes(chosen)) lanes.push(chosen);
-  const height = AXIS + ONLINE + MARKS + lanes.length * LANE + BAND + 6;
+  lanes.set(w?.survivors ?? [], t.start, t.end, t.to, S.chosen);
+  const view = lanes.view();
+  const rows = lanes.pinned ? [lanes.pinned, ...view.shown] : view.shown;
+  const height = LANES_TOP + lanes.drawn * LANE + BAND + 6;
   canvas.style.height = `${height}px`;
   const g = fit(canvas), W = canvas.clientWidth, sw = W - NAMES;
   const x = (at: number): number => NAMES + t.x(at, sw);
@@ -156,14 +156,22 @@ function drawTimeline(): void {
     g.fillStyle = "rgba(169,214,242,0.35)";
     counts.forEach((c, i) => c > 0 && g.fillRect(NAMES + (i * sw) / n, y + ONLINE - 4 - (c / most) * (ONLINE - 8), sw / n + 0.5, (c / most) * (ONLINE - 8)));
     g.fillStyle = DIM;
-    g.fillText(`online, ${most} at most`, 4, y + ONLINE / 2 + 4);
+    g.fillText(`${lanes.count} online, ${most} at once`, 4, y + ONLINE / 2 + 4);
   }
   y += ONLINE;
   g.fillStyle = DIM;
   g.fillText("deaths, commands", 4, y + 11);
   for (const m of w?.marks ?? []) if (m.wall >= t.start && m.wall <= t.end) mark(g, x(m.wall), y + 3, m.kind === "death" ? BAD : ICE, m.kind === "death");
   y += MARKS;
-  for (const s of lanes) {
+  // Where more lanes lie above or below the view, a bar at its right edge says how much and where.
+  if (view.above + view.below > 0) {
+    const top = y + (lanes.pinned ? LANE : 0), all = lanes.rest.length, tall = view.shown.length * LANE;
+    g.fillStyle = "rgba(168,204,234,0.12)";
+    g.fillRect(W - 4, top, 3, tall);
+    g.fillStyle = "rgba(169,214,242,0.6)";
+    g.fillRect(W - 4, top + (view.above / all) * tall, 3, Math.max(6, (view.shown.length / all) * tall));
+  }
+  for (const s of rows) {
     const mine = s.pid === S.chosen;
     g.fillStyle = mine ? WELL : "#dbe8f3";
     g.fillText(s.name.length > 15 ? `${s.name.slice(0, 14)}…` : s.name, 4, y + 11);
@@ -174,6 +182,11 @@ function drawTimeline(): void {
     }
     for (const m of w?.marks ?? []) if (m.kind === "death" && m.pid === s.pid && m.wall >= t.start && m.wall <= t.end) mark(g, x(m.wall), y + 2, BAD, true);
     y += LANE;
+    // The pinned lane stands apart from the list that scrolls under it.
+    if (s === lanes.pinned && view.shown.length > 0) {
+      g.fillStyle = "rgba(168,204,234,0.22)";
+      g.fillRect(4, y - 0.5, W - 8, 1);
+    }
   }
   // The whole span below, the window on it.
   y += 4;
@@ -298,21 +311,26 @@ function seek(at: number): void {
 // ------------------------------------------------------------------ the timeline under the pointer
 
 let scrubbing = false;
+/** A drag of the names, which scrolls the lanes: where it began, the scroll then, and whether it has moved. */
+let names: { y: number; scroll: number; moved: boolean } | null = null;
+/** Wheel movement not yet a whole lane, in pixels. */
+let wheelRest = 0;
 const where = (e: MouseEvent): [number, number] => {
   const r = canvas.getBoundingClientRect();
   return [e.clientX - r.left, e.clientY - r.top];
 };
 /** The lane at a height, or null. */
-const laneAt = (y: number): LogSurvivor | null => lanes[Math.floor((y - AXIS - ONLINE - MARKS) / LANE)] ?? null;
-const bandTop = (): number => AXIS + ONLINE + MARKS + lanes.length * LANE + 4;
+const laneAt = (y: number): LogSurvivor | null => (y < LANES_TOP ? null : lanes.at(Math.floor((y - LANES_TOP) / LANE)));
+const bandTop = (): number => LANES_TOP + lanes.drawn * LANE + 4;
 
 canvas.addEventListener("pointerdown", (e) => {
   if (!t.known) return;
   const [x, y] = where(e);
   const sw = canvas.clientWidth - NAMES;
   if (x < NAMES) {
-    const s = laneAt(y);
-    if (s) hooks.chooseSurvivor(s.pid, true);
+    // A tap on a name chooses it; a drag scrolls the list.
+    canvas.setPointerCapture(e.pointerId);
+    names = { y, scroll: lanes.scroll, moved: false };
     return;
   }
   if (y >= bandTop()) {
@@ -337,6 +355,12 @@ canvas.addEventListener("pointermove", (e) => {
     refresh();
     return;
   }
+  if (names) {
+    names.moved ||= Math.abs(y - names.y) > 4;
+    lanes.scrollTo(names.scroll + Math.round((names.y - y) / LANE));
+    refresh();
+    return;
+  }
   // What is under the pointer: a mark, or a survivor's lane at that moment.
   const at = t.time(x - NAMES, sw);
   const w = S.recall.window;
@@ -356,7 +380,13 @@ canvas.addEventListener("pointermove", (e) => {
 });
 canvas.addEventListener("pointerleave", () => (tip.hidden = true));
 for (const end of ["pointerup", "pointercancel"]) {
-  canvas.addEventListener(end, () => {
+  canvas.addEventListener(end, (e) => {
+    const drag = names;
+    names = null;
+    if (drag && !drag.moved && e.type === "pointerup") {
+      const s = laneAt(drag.y);
+      if (s) hooks.chooseSurvivor(s.pid, true);
+    }
     if (!scrubbing) return;
     scrubbing = false;
     ensure();
@@ -367,8 +397,18 @@ canvas.addEventListener(
   (e) => {
     if (!t.known) return;
     e.preventDefault();
-    const [x] = where(e);
+    const [x, y] = where(e);
     const sw = canvas.clientWidth - NAMES;
+    // Over the names, or over the lanes when they are more than their view holds, the wheel scrolls them; elsewhere it zooms.
+    const list = y >= LANES_TOP && y < bandTop() - 4 && (x < NAMES || lanes.rest.length > lanes.rows);
+    if (list && !e.ctrlKey && !e.shiftKey && Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+      wheelRest += e.deltaY * (e.deltaMode === 1 ? LANE : 1);
+      const by = Math.trunc(wheelRest / LANE);
+      wheelRest -= by * LANE;
+      lanes.scrollBy(by);
+      refresh();
+      return;
+    }
     if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) t.pan(((e.deltaX || e.deltaY) / sw) * (t.end - t.start));
     else t.zoomAt(Math.exp(e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.002)), t.time(Math.max(0, x - NAMES), sw));
     refresh();

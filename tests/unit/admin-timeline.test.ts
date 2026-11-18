@@ -7,6 +7,7 @@ import { LOG_ALIVE, LOG_AWAY, LOG_DEAD, type LogChanges, type LogPositions, type
 import { dayText, momentText, tickText, timeStep } from "../../client/core/admin/chart.ts";
 import { DOT_AWAY, DOT_DEAD, DOT_ONLINE } from "../../client/core/admin/frame.ts";
 import { changeText, heldAt, heldText, itemName, nearestChange } from "../../client/core/admin/holding.ts";
+import { LANE_ROWS, LaneList } from "../../client/core/admin/lanes.ts";
 import { figures, frameAt, onlineCounts, placeAt, rowsAt, sampleBefore, sessionAt, tailOf } from "../../client/core/admin/past.ts";
 import { Recall, holdingAt } from "../../client/core/admin/recall.ts";
 import { POINTS, PRESETS, Timeline, WINDOW_LEAST, fetchSpan, localMoment, localText, serves, stepFor } from "../../client/core/admin/timeline.ts";
@@ -153,6 +154,38 @@ test("the map at a moment has only those online then, where they were, as they w
   const rows = rowsAt(T0 + 100_000, survivors, positions, [{ wall: T0 + 50_000, tick: 0, kind: "death", pid: 2, name: "s2", text: "fall", cache: 0 }], T0, end, end);
   expect(rows.map((r) => [r.pid, r.online, r.playMs, r.sessions, r.deaths])).toEqual([[1, true, 600_000, 1, 0], [2, true, 600_000, 1, 1], [3, true, 100_000, 1, 0], [4, false, 410_000, 2, 0]]);
   expect(Number.isNaN(rows[3]!.x)).toBe(true);
+});
+
+test("every survivor of the window has a lane, most play first, the chosen one pinned above a list that scrolls in a view of twelve", () => {
+  const end = T0 + 10 * H;
+  // 300 survivors, survivor i online for i minutes from T0; and one never online in the window.
+  const many = Array.from({ length: 300 }, (_, i) => survivor(i + 1, [[T0, T0 + (i + 1) * 60_000]]));
+  const lanes = new LaneList();
+  lanes.set([...many, survivor(999, [[end + H, null]])], T0, end, end, 0);
+  expect([lanes.count, lanes.rows, LANE_ROWS, lanes.pinned, lanes.drawn]).toEqual([300, 12, 12, null, 12]);
+  // Most play first.
+  expect(lanes.view().shown.map((s) => s.pid)).toEqual([300, 299, 298, 297, 296, 295, 294, 293, 292, 291, 290, 289]);
+  expect([lanes.view().above, lanes.view().below]).toEqual([0, 288]);
+  // Scrolled: the view moves down the list, and stops where it is full.
+  lanes.scrollBy(100);
+  expect([lanes.view().shown[0]!.pid, lanes.view().above, lanes.view().below, lanes.at(0)!.pid, lanes.at(11)!.pid, lanes.at(12)]).toEqual([200, 100, 188, 200, 189, null]);
+  lanes.scrollTo(1e9);
+  expect([lanes.scroll, lanes.view().shown.at(-1)!.pid, lanes.view().below]).toEqual([288, 1, 0]);
+  lanes.scrollBy(-1e9);
+  expect(lanes.scroll).toBe(0);
+  // The chosen one is pinned above the list wherever it falls in the order, and the list goes on without it.
+  lanes.scrollTo(50);
+  lanes.set(many, T0, end, end, 7);
+  expect([lanes.pinned!.pid, lanes.count, lanes.rest.length, lanes.drawn, lanes.at(0)!.pid, lanes.at(1)!.pid, lanes.scroll]).toEqual([7, 300, 299, 13, 7, 250, 50]);
+  expect(lanes.rest.some((s) => s.pid === 7)).toBe(false);
+  // A chosen survivor not online in the window has no lane to pin.
+  lanes.set(many, T0, end, end, 999);
+  expect([lanes.pinned, lanes.count]).toEqual([null, 300]);
+  // Equal play goes by name; a short list shows whole and does not scroll.
+  const few = new LaneList();
+  few.set([survivor(2, [[T0, T0 + H]]), survivor(1, [[T0, T0 + H]]), survivor(3, [[T0, T0 + 2 * H]])], T0, end, end, 0);
+  few.scrollBy(5);
+  expect([few.view().shown.map((s) => s.pid), few.scroll, few.drawn, few.at(3)]).toEqual([[3, 1, 2], 0, 3, null]);
 });
 
 test("the window's figures: online across it, the most at once, who played most, and deaths by cause", () => {
