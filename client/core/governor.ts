@@ -95,6 +95,7 @@ interface Knobs {
   details?: number;
   bodies?: number;
   own?: boolean;
+  bloom?: number;
 }
 
 /**
@@ -107,11 +108,15 @@ interface Knobs {
  * follow levels too, but where the frame's budget binds they take back what the rest gives, and there the leaves steps
  * give, each passed by where crowns near could give little (CROWNS). The farther cascade every other frame takes a sixth
  * to a quarter of what is cast. Then far trees, levels looser again, a cascade fewer and bodies' own levels, and only
- * then pixels, which a phone bound by triangles buys least with: first those ultra draws past the screen's own, then the
- * screen's own. Then what a fight shows, and the sun's shadows last. Shadows less far is no step: a nearer cascade's
- * finer texels ask finer casters, and it cast more.
+ * then pixels, which a phone bound by triangles buys least with: the screen's own. Then what a fight shows, and the sun's
+ * shadows last. Shadows less far is no step: a nearer cascade's finer texels ask finer casters, and it cast more. Before
+ * all of these a desktop gives back what it was given beyond a phone: first the pixels ultra draws past the screen's
+ * own, a quarter of its pixels on a screen of one device pixel to one, then the widest half of bloom's levels
+ * (render/post.ts), which no phone draws.
  */
 export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] = [
+  { name: "no more pixels than the screen's own", knobs: { own: true } },
+  { name: "bloom: the widest half of its levels given back", knobs: { bloom: 0.5 } },
   { name: "levels: half again the error", knobs: { levels: 1.5 } },
   { name: "the far city's levels to 70% as far", knobs: { city: 0.7 } },
   { name: "leaves: the frame's triangles to 75%", knobs: { leaves: 0.75 } },
@@ -122,7 +127,6 @@ export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] 
   { name: "levels: three times the error", knobs: { levels: 3 } },
   { name: "one cascade fewer", knobs: { fewerCascades: 1 } },
   { name: "bodies a level coarser", knobs: { bodies: 2 } },
-  { name: "no more pixels than the screen's own", knobs: { own: true } },
   { name: "85% of the pixels a side", knobs: { ratio: 0.85 } },
   { name: "70% of the pixels a side", knobs: { ratio: 0.7 } },
   { name: "small details: half the pool, of each burst and of the fill", knobs: { details: 0.5 } },
@@ -145,6 +149,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     budget: { ...base.budget, triangles: base.budget.triangles * (knobs.leaves ?? 1) },
     details: knobs.details ? { ...base.details, pool: Math.round(base.details.pool * knobs.details), share: base.details.share * knobs.details, fill: base.details.fill * knobs.details } : base.details,
     bodyError: base.bodyError * (knobs.bodies ?? 1),
+    post: base.post && knobs.bloom !== undefined ? { ...base.post, bloom: Math.min(base.post.bloom, knobs.bloom) } : base.post,
   };
 }
 
