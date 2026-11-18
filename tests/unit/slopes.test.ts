@@ -73,6 +73,17 @@ const SPEEDS = [
   { move: 127, buttons: BTN_SPRINT, said: "sprinting" },
 ] as const;
 
+/**
+ * Ground creatures spend their authored speed along the surface, so their horizontal pace can fall to slopeCos times
+ * that speed on a walkable face. Survivors and flyers keep their horizontal pace. Allow the original three seconds for
+ * acceleration and seams, and use walking pace even for a sprint so exhaustion does not change the course deadline.
+ */
+function courseTicks(p: MoveParams, speed: { move: number }, horizontalDistance: number): number {
+  const horizontalFraction = !p.lowStance && !p.flies ? p.slopeCos : 1;
+  const pace = p.walkSpeed * (speed.move / 127) * horizontalFraction * TICK_DT;
+  return Math.ceil(horizontalDistance / pace) + 90;
+}
+
 interface Walked {
   /** Ticks it was off its feet, it was higher than the surface by more than a hover, and it went less than half its pace. */
   air: number;
@@ -123,8 +134,9 @@ test("every species walks up and down every sloped piece it can stand on at ever
         // A dodo at a crawl takes too long to be worth the wait.
         if (p.walkSpeed * (speed.move / 127) < 0.3) continue;
         // From the ground before the foot to near the top, then from there back down to the ground.
-        const up = walk(w, p, bodyAt(w, p, 64, 64 - half - p.radius - 0.3, 0), 0, speed, (b) => b.z > 64 + half - p.radius - 0.4);
-        const down = walk(w, p, bodyAt(w, p, 64, 64 + half - p.radius - 0.5, 180), 180, speed, (b) => b.z < 64 - half - p.radius - 0.4);
+        const ticks = courseTicks(p, speed, 2 * half - 0.1);
+        const up = walk(w, p, bodyAt(w, p, 64, 64 - half - p.radius - 0.3, 0), 0, speed, (b) => b.z > 64 + half - p.radius - 0.4, ticks);
+        const down = walk(w, p, bodyAt(w, p, 64, 64 + half - p.radius - 0.5, 180), 180, speed, (b) => b.z < 64 - half - p.radius - 0.4, ticks);
         for (const [way, r] of [["up", up], ["down", down]] as const) {
           if (r.air || r.high || r.slow) wrong.push(`${id} ${way} ${name} ${speed.said}: ${r.air} ticks off its feet, ${r.high} above the surface (most ${r.gap.toFixed(4)}), ${r.slow} slowed`);
         }
@@ -132,6 +144,38 @@ test("every species walks up and down every sloped piece it can stand on at ever
     }
   }
   expect(wrong).toEqual([]);
+});
+
+test("ground creatures keep authored surface speed on actual ramp faces in both directions", () => {
+  for (const [name, gradient] of [["rubble", 1.5 / 4], ["stairs_solid", 3 / 3.6], ["slab30", Math.tan(Math.PI / 6)]] as const) {
+    const w = world();
+    piece(w, name);
+    const horizontalFraction = 1 / Math.hypot(1, gradient);
+    for (const id of WALKERS) {
+      const p = move(id);
+      if (p.lowStance || p.flies) continue;
+      for (const speed of SPEEDS) for (const deg of [0, 180]) {
+        const b = bodyAt(w, p, 64, 64, deg);
+        const pace = p.walkSpeed * (speed.move / 127) * (speed.buttons & BTN_SPRINT ? p.sprintMul : 1);
+        for (let tick = 0; tick < 3; tick++) stepBody(w, b, 0, 0, b.yaw, 0, 0, p, TICK_DT);
+        // Start at steady speed, well inside the real face. Geometry supplies the vertical displacement: this does not
+        // ask the footing helper for its normal or use its result to calculate the expected speed.
+        b.vz = (deg === 0 ? 1 : -1) * pace * horizontalFraction;
+        b.stamina = b.staminaMax * 1000;
+        for (let tick = 0; tick < 3; tick++) {
+          const { x, y, z } = b;
+          stepBody(w, b, 0, speed.move, b.yaw, 0, speed.buttons, p, TICK_DT);
+          expect(b.grounded).toBe(true);
+          expect(capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)).toBe(true);
+          const horizontal = Math.hypot(b.x - x, b.z - z);
+          expect(horizontal / horizontalFraction / TICK_DT).toBeCloseTo(pace, 3);
+          // Following down can retain GROUND_PROBE of clearance before the capsule settles. Account for that existing
+          // geometric band separately; it must not mask a slower horizontal advance or an incorrect surface pace.
+          expect(Math.abs((b.y - y) - (b.z - z) * gradient)).toBeLessThan(0.02 + 2 * SKIN);
+        }
+      }
+    }
+  }
 });
 
 test("a body standing still on a sloped piece, or turning on the spot there, does not creep", () => {
@@ -167,7 +211,7 @@ function across(w: TestWorld, what: string, z0: number, z1: number, headings: re
       if (pace < 0.3 * TICK_DT) continue;
       for (const turn of [0, ...headings]) {
         const slant = Math.tan((turn * Math.PI) / 180);
-        const ticks = Math.ceil((z1 - z0) / Math.cos((turn * Math.PI) / 180) / pace) + 90;
+        const ticks = courseTicks(p, speed, (z1 - z0) / Math.cos((turn * Math.PI) / 180));
         const there = walk(w, p, bodyAt(w, p, 64 - (slant * (z1 - z0)) / 2, z0, turn), turn, speed, (b) => b.z > z1, ticks);
         const back = walk(w, p, bodyAt(w, p, there.b.x, there.b.z, 180 + turn), 180 + turn, speed, (b) => b.z < z0, ticks);
         for (const [way, r] of [["there", there], ["back", back]] as const) {
