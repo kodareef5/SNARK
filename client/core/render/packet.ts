@@ -90,6 +90,11 @@ export const DETAIL_ROTOR = 32;
 export const DETAIL_LAMP = 64;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
+/** A self-lit optical surface in its instance dye. */
+export const DRAW_EMISSIVE = 16384;
+/** An elevated navigational landmark whose flat silhouette remains visible through the city's distance fade. */
+export const DRAW_SKYLINE = 32768;
+export const SKYLINE_MAX_FOG = 0.56;
 /** Faces of four corners that 16-bit indices reach. */
 export const QUAD_FACES = 16384;
 
@@ -195,6 +200,9 @@ export const TILE_CASTS = 4;
 export const SOURCE_MAP = 0;
 export const SOURCE_WINDOW = 1;
 
+/** Bodies the frame block holds for contact (contact.ts). */
+export const MAX_CONTACTS = 12;
+
 /**
  * Where each value of the frame block (`FramePacket.frame`) is, in floats. The block is what every lit program reads,
  * one uniform block of vec4s that FRAME_BLOCK declares, each named after its slot there. Directions are in the world
@@ -289,6 +297,8 @@ export const FRAME = {
   nearToZ: 39,
   /** fFacade: the height in the world of the city's flood line (facade.ts FACADE_FLOOD), and 1 where every facade atlas the tier reads has come. */
   facade: 152,
+  /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`). */
+  edgesOff: 154,
   /**
    * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
    * blue, and the saturation after it; then the power the toned light is raised to, bloom's share, the sharpen's
@@ -303,10 +313,10 @@ export const FRAME = {
   levels: 163,
   /** fContact: the bodies whose contact takes the sky's light down, two slots each (contact.ts). */
   contact: 164,
+  /** Three camera-relative sky lenses follow the contact bodies. */
+  eyes: 164 + MAX_CONTACTS * 8,
 } as const;
-/** Bodies the frame block holds for contact (contact.ts). */
-export const MAX_CONTACTS = 12;
-export const FRAME_FLOATS = FRAME.contact + MAX_CONTACTS * 8;
+export const FRAME_FLOATS = FRAME.eyes + 24;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -314,6 +324,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp mat4 fCascades[${MAX_CASCADES}];
   highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fFacade, fGrade, fFinish;
   highp vec4 fContact[${MAX_CONTACTS * 2}];
+  highp vec4 fEyes[6];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

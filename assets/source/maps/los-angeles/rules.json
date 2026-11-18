@@ -1,0 +1,98 @@
+{
+  "growth": {
+    "meaning": "Los Angeles from the plants the content has: chaparral as bushes with live oaks on the hills and in the canyons, oaks, young hardwoods and planted palms in the parks, palms along the streets; none of Miami subtropical kinds (banyan, fig, mangrove, palmetto, sea grape). The reservoir surface, drawn as marsh, takes low scrub. An ask for the art team names what is missing.",
+    "zones": {
+      "hammock": {
+        "bare": 6,
+        "kinds": {
+          "core:bush": 6,
+          "core:oak": 3,
+          "core:tree": 1
+        }
+      },
+      "old garden": {
+        "bare": 8,
+        "kinds": {
+          "core:bush": 4,
+          "core:oak": 2,
+          "core:tree": 2,
+          "core:palm": 1
+        }
+      },
+      "park": {
+        "kinds": {
+          "core:oak": 3,
+          "core:tree": 3,
+          "core:palm": 2,
+          "core:bush": 2
+        },
+        "bare": 18
+      },
+      "open ground": {
+        "kinds": {
+          "core:bush": 3,
+          "core:tree": 1,
+          "core:palm": 1,
+          "core:creeper": 1
+        }
+      },
+      "ruin": {
+        "kinds": {
+          "core:creeper": 3,
+          "core:bush": 2,
+          "core:tree": 1
+        }
+      },
+      "tower ruin": {
+        "kinds": {
+          "core:creeper": 2,
+          "core:bush": 1
+        }
+      },
+      "marsh": {
+        "bare": 30,
+        "kinds": {
+          "core:bush": 1
+        }
+      }
+    }
+  },
+  "sightlines": [
+    {
+      "place": "capitol-records",
+      "from": [
+        0,
+        -1
+      ],
+      "length": 150,
+      "width": 8
+    },
+    {
+      "place": "griffith-observatory",
+      "from": [
+        0,
+        -1
+      ],
+      "length": 160,
+      "width": 10
+    },
+    {
+      "place": "hollywood-bowl-shell",
+      "from": [
+        0.6,
+        -0.8
+      ],
+      "length": 120,
+      "width": 10
+    },
+    {
+      "place": "cinerama-dome",
+      "from": [
+        0,
+        -1
+      ],
+      "length": 80,
+      "width": 8
+    }
+  ]
+}

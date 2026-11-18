@@ -23,7 +23,10 @@ def keep(m, man, name, url, source, licence, params=None, data=None, accept=None
     if fresh:
         path.parent.mkdir(parents=True, exist_ok=True)
         r = get(url, params=params, data=data, accept=accept)
-        path.write_bytes(r.content)
+        # Whole or not there: a download is kept by its being there, so a write cut short was kept as it was for good.
+        part = path.with_name(path.name + '.part')
+        part.write_bytes(r.content)
+        part.replace(path)
     if fresh or name not in man.records:
         man.record(name, full, source, licence, path.read_bytes(), method or ('POST' if data is not None else 'GET'), data)
     return path
@@ -140,29 +143,103 @@ def bathymetry(m, man):
     print('bathymetry done', flush=True)
 
 
-def osm(m, man):
+def overpass(m, man, target, query):
+    """One Overpass query kept as `target`, asked of each server in turn until one answers whole."""
     o = m.city['osm']
+    if (m.raw / target).exists():
+        return
+    for server in o['servers']:
+        try:
+            keep(m, man, target, server, o['source'], o['licence'], data={'data': query},
+                 accept=lambda b: b.lstrip()[:1] == b'{' and b'"remark"' not in b[-400:])
+            return
+        except Exception as ex:
+            print(f'  {server} gave up: {str(ex)[:160]}', flush=True)
+    raise RuntimeError('no Overpass server answered ' + target)
+
+
+def bbox_of(s, w, n, e):
+    return f'{math.floor(s * 1e4) / 1e4},{math.floor(w * 1e4) / 1e4},{math.ceil(n * 1e4) / 1e4},{math.ceil(e * 1e4) / 1e4}'
+
+
+# The streets query asks for every highway with its shape: over a 16 km cut one answer runs to hundreds of megabytes
+# and the busy public servers time it out (Tampa's 8 km square: no answer in 25 minutes, 2026-11-18). Asked a tile of
+# about 4 km at a time, each answer is small, a refusal costs one tile, and the tiles kept make a run resumable.
+STREET_TILE_DEG = 0.036
+
+
+def osm_extract(m, man, names):
+    """Every OpenStreetMap file from the city's regional extract (osm_local.py), as the Overpass queries would give them."""
+    import datetime as dt
+    import osm_local
+    import hashlib
+    files = {name: m.raw / f"osm/{'all' if name == 'osm' else name}.json" for name in names}
+    o = m.city['osm']
+    pbf = osm_local.region_file(HERE.parents[1] / 'var/osm-extracts', o['extract'])
+    # The answers are the extract's and the queries': kept while both are the same, made again (seconds) when either
+    # changes, where a file being there kept an answer to a query since edited.
+    md5_file = Path(str(pbf) + '.md5')
+    stamp = hashlib.sha256(b''.join([(HERE / 'osm_local.py').read_bytes(), *[q.read_bytes() for q in sorted(HERE.glob('*.overpassql'))],
+                                     md5_file.read_bytes() if md5_file.exists() else str(pbf.stat().st_mtime).encode(), ' '.join(names).encode()])).hexdigest()
+    stamp_file = m.raw / 'osm/answers.key'
+    if all(f.exists() for f in files.values()) and stamp_file.exists() and stamp_file.read_text() == stamp:
+        return
+    area = m.raw / 'osm/area.osm.pbf'
+    area.parent.mkdir(parents=True, exist_ok=True)
+    osm_local.cut(pbf, m.lonlat_bounds(0.002), area)
+    answers = osm_local.answer(area, ['all' if n == 'osm' else n for n in names])
+    for name, path in files.items():
+        part = path.with_name(path.name + '.part')
+        part.write_text(json.dumps(answers['all' if name == 'osm' else name], separators=(',', ':')))
+        part.replace(path)
+        print('osm', name, len(answers['all' if name == 'osm' else name]['elements']), 'elements', flush=True)
+    stamp_file.write_text(stamp)
+    md5 = Path(str(pbf) + '.md5').read_text().split()[0] if Path(str(pbf) + '.md5').exists() else None
+    man.records['osm/extract'] = {'url': f"https://download.geofabrik.de/{o['extract']}-latest.osm.pbf", 'method': 'GET',
+                                  'source': o['source'] + ', through Geofabrik\'s regional extract', 'licence': o['licence'],
+                                  'bytes': pbf.stat().st_size, 'md5': md5,
+                                  'retrieved_utc': dt.datetime.fromtimestamp(pbf.stat().st_mtime, dt.timezone.utc).isoformat(),
+                                  'note': 'cut to the frame with osmium extract --strategy smart; raw/osm/*.json answered locally (osm_local.py)'}
+    man.path.write_text(json.dumps(man.records, indent=2, sort_keys=True) + '\n')
+
+
+def osm(m, man):
     w, s, e, n = m.lonlat_bounds()
-    bbox = f'{math.floor(s * 1e4) / 1e4},{math.floor(w * 1e4) / 1e4},{math.ceil(n * 1e4) / 1e4},{math.ceil(e * 1e4) / 1e4}'
+    bbox = bbox_of(s, w, n, e)
     # features: building parts, water standing above any sea, pools, fountains, runways and wheels, with their shapes.
     names = ['osm', 'ways'] + (['buildings'] if m.city['footprints'].get('split_by_osm') else []) + ['features']
+    (m.root / 'blocks').mkdir(exist_ok=True)
+    if m.city['osm'].get('extract'):
+        osm_extract(m, man, names + ['streets'])
+        return
     for name in names:
         query = (HERE / f'{name}.overpassql').read_text().replace('{bbox}', bbox)
-        (m.root / 'blocks').mkdir(exist_ok=True)
         (m.root / 'blocks' / f'{name}.overpassql').write_text(query)
-        target = f"osm/{'all' if name == 'osm' else name}.json"
-        if (m.raw / target).exists():
-            continue
-        for server in o['servers']:
-            try:
-                keep(m, man, target, server, o['source'], o['licence'], data={'data': query},
-                     accept=lambda b: b.lstrip()[:1] == b'{' and b'"remark"' not in b[-400:])
-                break
-            except Exception as ex:
-                print(f'  {server} gave up: {str(ex)[:160]}', flush=True)
-        else:
-            raise RuntimeError('no Overpass server answered ' + name)
+        overpass(m, man, f"osm/{'all' if name == 'osm' else name}.json", query)
         print('osm', name, 'done', flush=True)
+    # streets: every highway with its tags and shape, crossings, signals, entrances, lots, land use, parks, plazas and
+    # beaches, by tiles, then joined: a way that crosses a tile's edge comes whole in each tile's answer and is kept once.
+    merged = m.raw / 'osm/streets.json'
+    if merged.exists():
+        return
+    template = (HERE / 'streets.overpassql').read_text()
+    (m.root / 'blocks/streets.overpassql').write_text(template)
+    rows = max(1, math.ceil((n - s) / STREET_TILE_DEG))
+    cols = max(1, math.ceil((e - w) / (STREET_TILE_DEG / math.cos(math.radians((s + n) / 2)))))
+    seen, elements = set(), []
+    for r in range(rows):
+        for c in range(cols):
+            ts, tn = s + (n - s) * r / rows, s + (n - s) * (r + 1) / rows
+            tw, te = w + (e - w) * c / cols, w + (e - w) * (c + 1) / cols
+            target = f'osm/streets/{r}_{c}.json'
+            overpass(m, man, target, template.replace('{bbox}', bbox_of(ts, tw, tn, te)))
+            for el in json.loads((m.raw / target).read_text())['elements']:
+                if (el['type'], el['id']) not in seen:
+                    seen.add((el['type'], el['id']))
+                    elements.append(el)
+            print(f'osm streets tile {r * cols + c + 1} of {rows * cols}', flush=True)
+    merged.write_text(json.dumps({'elements': elements}, separators=(',', ':')))
+    print('osm streets done:', len(elements), 'elements', flush=True)
 
 
 JOBS = {'tiger': tiger, 'dem': dem, 'nlcd': nlcd, 'fema': fema, 'bathymetry': bathymetry, 'osm': osm}

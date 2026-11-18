@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
-import { rayVehicleCover, vehiclePoint, vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
+import { carMeetsCapsule } from "../../shared/world/vehicle.ts";
+import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
+import { rayVehicle, rayVehicleCover, vehiclePoint, vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
 import { unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -80,5 +82,17 @@ artTest("new fleet cover lies on the current rendered skin and the tested side w
     expect(worst, `${sample.id}: panel centre to rendered skin`).toBeLessThan(.04);
     const window = sample.window;
     expect(meshDistance(lod, [window[0] + 3, window[1], window[2]], [-1, 0, 0]), `${sample.id}: open side window`).toBeGreaterThan(3.05);
+  }
+});
+
+test("the semi's cab and rear deck meet the same bodies and rays as their visible heights", () => {
+  const def = ROAD_FLEET.find(model => model.id === "core:semi")!.vehicle!;
+  if (!isWheelVehicle(def)) throw Error("expected a road tractor");
+  const frame = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
+  for (const [z, y, solid] of [[-3, 1.6, false], [-3, .9, true], [.5, 1.6, true]] as const) {
+    const aim = [0, 0, 0, 0, 4, y, z, -1, 0, 0] as const;
+    expect(Number.isFinite(rayVehicleCover(def, ...aim, frame))).toBe(solid);
+    expect(Number.isFinite(rayVehicle(def, ...aim, def.spec.height, frame))).toBe(solid);
+    expect(carMeetsCapsule(def.spec, frame, 0, y, z, .1, .3) !== null).toBe(solid);
   }
 });

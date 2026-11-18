@@ -28,11 +28,16 @@ type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>
 type Region = { spawns: string; count: number; x: number; z: number; radius?: number; half?: [number, number] };
 type Water = { squares: string; bodies: { name: string; surface: number }[] };
 
-const toYaw = (degrees = 0): number => Math.round((degrees / 360) * YAW_UNITS) & (YAW_UNITS - 1);
+export const toYaw = (degrees = 0): number => Math.round((degrees / 360) * YAW_UNITS) & (YAW_UNITS - 1);
 const toDegrees = (yaw: number): number => (yaw * 360) / YAW_UNITS;
 
-/** Reads the folder into a map. Throws, naming the file, if a layer is missing or the wrong shape. */
-export function readLayers(folder: string): MapData {
+/**
+ * Reads the folder into a map. Throws, naming the file, if a layer is missing or the wrong shape. `statics`, where the
+ * caller holds them already (the build, which has just written statics.json), stand for that file: read back, a city's
+ * 7 to 13 M pieces were a second whole set of objects and a 1 GB string in memory at once. Every number in the file is
+ * the shortest that reads back as the same double, so the map is the same to the byte either way.
+ */
+export function readLayers(folder: string, statics?: readonly MapStatic[]): MapData {
   const file = (name: string): Uint8Array | null => (existsSync(join(folder, name)) ? new Uint8Array(readFileSync(join(folder, name))) : null);
   const need = <T>(found: T | null, name: string): T => {
     if (found === null) throw new Error(`${folder} has no ${name}`);
@@ -56,7 +61,7 @@ export function readLayers(folder: string): MapData {
     return (bits === 8 ? raw : Uint16Array.from({ length: width * height }, (_, i) => raw[i * 2]! | (raw[i * 2 + 1]! << 8))).reverse();
   };
 
-  const about = need(json<{ id: string; chunks: [number, number]; frame?: [number, number]; origin?: [number, number]; minY: number; stepY: number; seaLevel?: number | null }>("map.json"), "map.json");
+  const about = need(json<{ id: string; chunks: [number, number]; frame?: [number, number]; origin?: [number, number]; minY: number; stepY: number; tideEyes?: MapData["tideEyes"]; seaLevel?: number | null }>("map.json"), "map.json");
   const dims = framed({ chunksX: about.chunks[0], chunksZ: about.chunks[1], ...(about.frame ? { frameX: about.frame[0], frameZ: about.frame[1] } : {}), ...(about.origin ? { originX: about.origin[0], originZ: about.origin[1] } : {}) });
   const sizeX = dims.chunksX * CHUNK_SIZE;
   const sizeZ = dims.chunksZ * CHUNK_SIZE;
@@ -119,9 +124,12 @@ export function readLayers(folder: string): MapData {
     minY: about.minY,
     stepY: about.stepY,
     seaLevel: about.seaLevel ?? -Infinity,
+    ...(about.tideEyes?.length ? { tideEyes: about.tideEyes.map(e => ({ ...e, yaw: toYaw(e.yaw) })) } : {}),
     heights: heights as Uint16Array,
     tint: (picture("tint", 8, nx, nz) as Uint8Array | null) ?? new Uint8Array(nx * nz),
-    statics: (json<Piece[]>("statics.json") ?? []).map((s): MapStatic => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toYaw(s.yaw) })),
+    // The ground's class each two samples a side (MapData.ground), where the folder has one: every even sample's.
+    ...((g) => (g ? { ground: g as Uint8Array } : {}))(picture("ground", 8, (nx + 1) >> 1, (nz + 1) >> 1)),
+    statics: statics ?? (json<Piece[]>("statics.json") ?? []).map((s): MapStatic => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toYaw(s.yaw) })),
     nodes,
     spawns: need(json<Spawn[]>("spawns.json"), "spawns.json").map((s): MapSpawn => ({ name: s.name, x: s.x, z: s.z, yaw: toYaw(s.yaw) })),
     ...(regions ? { regions: regions.map((r): MapZone => ({ kind: "spawn", spawns: r.spawns, count: r.count, at: [r.x, r.z], ...(r.half ? { half: r.half } : { radius: r.radius ?? 0 }) })) } : {}),
@@ -146,10 +154,11 @@ export function writeLayers(map: MapData, folder: string): void {
   const put = (name: string, data: Uint8Array | string): void => writeFileSync(join(folder, name), data);
   /** One record a line, so that a change to one shows as one line. */
   const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
-  const about = { id: map.id, chunks: [chunksX, chunksZ], frame: [frameX, frameZ], origin: [originX, originZ], minY: map.minY, stepY: map.stepY, ...(map.seaLevel === -Infinity ? {} : { seaLevel: map.seaLevel }) };
+  const about = { id: map.id, chunks: [chunksX, chunksZ], frame: [frameX, frameZ], origin: [originX, originZ], minY: map.minY, stepY: map.stepY, ...(map.tideEyes?.length ? { tideEyes: map.tideEyes.map(e => ({ ...e, yaw: toDegrees(e.yaw) })) } : {}), ...(map.seaLevel === -Infinity ? {} : { seaLevel: map.seaLevel }) };
   put("map.json", `{\n${Object.entries(about).map(([key, value]) => `  ${JSON.stringify(key)}: ${JSON.stringify(value)}`).join(",\n")}\n}\n`);
   put("heights.png", writeGrey(nx, nz, map.heights.slice().reverse()));
   put("tint.png", writeGrey(nx, nz, map.tint.slice().reverse(), defaultPalette()));
+  if (map.ground) put("ground.png", writeGrey((nx + 1) >> 1, (nz + 1) >> 1, map.ground.slice().reverse()));
   if (map.statics.length > 0) put("statics.json", lines([...map.statics].map((s): Piece => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toDegrees(s.yaw) }))));
   put("spawns.json", lines(map.spawns.map((s): Spawn => ({ name: s.name, x: s.x, z: s.z, yaw: toDegrees(s.yaw) }))));
   if (map.vehicles && map.vehicles.length > 0) put("vehicles.json", lines(map.vehicles.map((v): Vehicle => ({ ...v, yaw: toDegrees(v.yaw) }))));

@@ -1,6 +1,7 @@
 // An obelisk as a map sets it down (content/terminals.ts): the obelisk standing on the ground at its place, and its terminal
 // on the ground a step in front of it along its facing, turned to face the way it does, so a survivor walks up to it there.
 
+import { eyeCollision, type EyeColor, type TideEyeSite } from "./tide-eye.ts";
 import type { Registry } from "../content/registry.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import type { MapStatic } from "./mapfile.ts";
@@ -15,6 +16,9 @@ export const OBELISK_PIECES = 3;
 /** Where an obelisk stands: a name for it, its place, and the way its terminal faces in 1/65,536 turns. */
 export interface ObeliskPlace {
   readonly name: string;
+  readonly color?: EyeColor;
+  readonly form?: TideEyeSite["form"];
+  readonly radius?: number;
   readonly x: number;
   readonly z: number;
   readonly yaw: number;
@@ -25,8 +29,12 @@ export function obeliskStatics(reg: Registry, at: ObeliskPlace, ground: (x: numb
   const obelisk = reg.index.get(OBELISK);
   const terminal = reg.index.get(TRAVEL_TERMINAL);
   if (obelisk === undefined || terminal === undefined) throw new Error(`an obelisk needs content "${OBELISK}" and "${TRAVEL_TERMINAL}"`);
+  if (at.color) {
+    const site = { ...at, color: at.color, radius: at.radius ?? 70, y: ground(at.x, at.z) } satisfies TideEyeSite;
+    return [...eyeCollision(site), { kind: TRAVEL_TERMINAL, x: site.x, y: site.y + reg.halfY[terminal]! + 0.085, z: site.z, yaw: site.yaw }];
+  }
   const a = ((at.yaw & 0xffff) / 65536) * TAU;
-  const away = reg.halfX[obelisk]! + STEP + reg.halfZ[terminal]!;
+  const away = reg.halfX[obelisk]! + STEP + 0.3;
   const tx = at.x + detSin(a) * away;
   const tz = at.z + detCos(a) * away;
   const foot = ground(at.x, at.z);

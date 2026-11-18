@@ -1,7 +1,7 @@
 // First original vehicle in the actual game's species registry. Presentation lives in its asset source.
 import { COMPACT_ART } from "./compact-art.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
-import type { WheelVehicleDefinition, VehicleSpec, VehicleSurface } from "../../shared/sim/vehicle.ts";
+import type { WheelVehicleDefinition, VehicleSpec } from "../../shared/sim/vehicle.ts";
 
 export const COMPACT: VehicleSpec = {
   halfWidth: 0.9, halfLength: 2, height: 1.5, clearance: 0.12,
@@ -22,9 +22,8 @@ export const COMPACT: VehicleSpec = {
   gravity: 18, airDrag: 0.035, dragScale: 0.25,
 };
 
-export const ASPHALT: VehicleSurface = { id: "asphalt", grip: 7, rolling: 0.15, drag: 0.009 };
-export const GRAVEL: VehicleSurface = { id: "gravel", grip: 3.5, rolling: 0.5, drag: 0.018 };
-export const MUD: VehicleSurface = { id: "mud", grip: 1.8, rolling: 1.1, drag: 0.035 };
+// The surfaces are the ground's as well as the road pieces': one table, shared/world/vehicle-surface.ts.
+export { ASPHALT, GRAVEL, MUD } from "../../shared/world/vehicle-surface.ts";
 
 // Doors, wheels and the steering wheel name the rig's bones; each seat's anchor is its rig socket's point
 // (assets/source/core/vehicles/compact/ref/DESIGN.md), and the anchor is what server and client both use.

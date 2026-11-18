@@ -1,0 +1,30 @@
+[
+  {
+    "id": "raymond-james-stadium",
+    "name": "Raymond James Stadium",
+    "layout": "arena",
+    "recipe": "arena",
+    "finish": "limestone",
+    "note": "The labels join named this footprint after the Pirate Ship, an OpenStreetMap feature inside the bowl; the stadium itself is mapped as a point with no footprint of its own. Reuses Miami's arena layout: oval rim, exposed bowl, tiered seats.",
+    "source": "OpenStreetMap leisure=stadium 'Raymond James Stadium', 22 m from this footprint's centre (blocks/places.json)",
+    "retain": 0.6,
+    "at": [
+      -82.502507,
+      27.975973
+    ]
+  },
+  {
+    "id": "convention-centre",
+    "name": "Tampa Convention Center",
+    "layout": "convention",
+    "recipe": "hall",
+    "finish": "limestone",
+    "note": "Long waterfront exhibition halls; reuses Miami's convention layout.",
+    "source": "blocks/labels.json",
+    "retain": 0.9,
+    "at": [
+      -82.45661,
+      27.941911
+    ]
+  }
+]

@@ -320,6 +320,14 @@ interface HullPart { x: number; y: number; z: number; radius: number; height: nu
 function hullParts(x: number, y: number, z: number, yaw: number, def: VehicleDefinition): HullPart[] {
   const spec = def.spec, sn = Math.sin(yaw), cs = Math.cos(yaw), parts: HullPart[] = [];
   const add = (lx: number, ly: number, lz: number, radius: number, height: number): void => { parts.push({ x: x + cs * lx + sn * lz, y: y + ly, z: z - sn * lx + cs * lz, radius, height }); };
+  if (isWheelVehicle(def) && def.spec.bodyBoxes) {
+    for (const b of def.spec.bodyBoxes) {
+      const radius = Math.min(b.half[0], b.half[2]), span = b.half[2] - radius;
+      const steps = Math.max(1, Math.ceil(span / radius));
+      for (let i = -steps; i <= steps; i++) add(b.at[0], b.at[1] - b.half[1], b.at[2] + span * i / steps, radius, b.half[1] * 2);
+    }
+    return parts;
+  }
   const along = Math.max(0, spec.halfLength - spec.halfWidth);
   for (let i = -2; i <= 2; i++) add(0, spec.clearance, i * along / 2, spec.halfWidth, spec.height - spec.clearance);
   if (isRotorVehicle(def)) {

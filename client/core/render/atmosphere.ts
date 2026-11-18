@@ -11,6 +11,7 @@
 // director's light.py proposes: light through it by its thickness, a slope toward the light from a coarse picture,
 // a bright rim toward the sun, the sky's light round it, and haze in front of it.
 
+import { EYE_SKY_GLSL } from "./tide-eye.ts";
 import { FRAME, FRAME_BLOCK, FRAME_FLOATS } from "./packet.ts";
 import { MOON_RADIUS, SKY_GLSL, SUN_RADIUS, domeLight, hazeColor, hourOfSun, luminance, skyFrame, sunHeight, trueSun, upCoord, type Sky } from "./sky.ts";
 import { LIGHT, skyFromGlsl } from "./surface.ts";
@@ -375,7 +376,8 @@ flat in float vRelief, vStars;
 flat in vec2 vTurn;
 uniform sampler2D uMoon, uLow, uHigh;
 out vec4 o;
-${LIGHT}${AIR}float hash(uvec3 v) {
+${LIGHT}${AIR}${EYE_SKY_GLSL}
+float hash(uvec3 v) {
   uint h = v.x * ${HASH[0]}u + v.y * ${HASH[1]}u + v.z * ${HASH[2]}u;
   h = (h ^ (h >> 15u)) * ${HASH[3]}u;
   h = (h ^ (h >> 13u)) * ${HASH[4]}u;
@@ -554,6 +556,7 @@ void main() {
     o = vec4(fogShown(), 1.0);
     return;
   }
+  vec4 optics = eyeOptics(d);
   vec3 behind = skyFrom(d) * fSunColor.w;
   vec3 c = behind;
   if (fHaze.w > 0.0) {
@@ -565,10 +568,12 @@ void main() {
       vec4 high = layer(uHigh, d, behind, vec4(${g(HIGH.height)}, ${g(HIGH.span)}, ${g(HIGH.depth)}, ${g(HIGH.step)}), fClouds.zw, false);
       c = mix(c, high.rgb, high.a);
     }
+    c = c * optics.a + optics.rgb;
     if (fHaze.w > 1.5 && textureSize(uLow, 0).x >= ${LAYER_SMALLEST}) {
       vec4 low = layer(uLow, d, behind, vec4(${g(LOW.height)}, ${g(LOW.span)}, ${g(LOW.depth)}, ${g(LOW.step)}), fClouds.xy, true);
-      c = mix(c, low.rgb, low.a);
+      c = mix(c, low.rgb + 0.16 * optics.rgb, low.a);
     }
   }
+  if (fHaze.w <= 0.) c = c * optics.a + optics.rgb;
   o = vec4(display(c) + (hash(uvec3(gl_FragCoord.xy, 3u)) - 0.5) * SHOWN_STEP * min(fHaze.w, 1.0), 1.0);
 }`;

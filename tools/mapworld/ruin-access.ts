@@ -4,6 +4,8 @@ import { binKey } from "./raster.ts";
 import type { Mason } from "./ruin-geometry.ts";
 import type { Site, StaticPiece } from "./statics.ts";
 
+/** The ground an approach to a door may start from. */
+const APPROACHED = new Set<number>([S.STREET, S.HIGHWAY, S.SIDEWALK, S.WALKWAY, S.PLAZA]);
 const streetLevel = (ground: number, base: number): number => Math.abs(ground - base) < .4 ? base : base - Math.round((base - ground) * 4) / 4;
 
 export interface Approach { street: { x: number; y: number; z: number }; door: { x: number; y: number; z: number }; core: { x: number; y: number; z: number }; ramp: number; }
@@ -27,7 +29,8 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
   const solids = index(infrastructure);
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
   for (let row = 2; row < nz - 2; row += 4) for (let col = 2; col < nx - 2; col += 4) {
-    const i = row * nx + col; if (surface[i] !== S.STREET && surface[i] !== S.HIGHWAY) continue;
+    // A door is reached from where people walk as well as from the street: the sidewalk, a walkway, a plaza.
+    const i = row * nx + col; if (!APPROACHED.has(surface[i]!)) continue;
     const x = x1 - col * 2; const z = z1 - row * 2; const k = `${Math.floor(x / 64)},${Math.floor(z / 64)}`;
     if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push({ x, z });
   }

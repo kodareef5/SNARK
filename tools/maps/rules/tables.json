@@ -1,0 +1,460 @@
+{
+  "_about": "The rule tables every city starts from, which each city's vocabulary used to copy from Miami's (tools/mapdata/vocabulary.py, rules_from): a city's rules.json replaces any of them, key by key. The rest of the library is tools/mapworld/rules/default.json.",
+  "version": 5,
+  "seed": 113901,
+  "recipes": {
+    "tower": {
+      "bay": 8,
+      "height": 48,
+      "retain": 0.72,
+      "holes": 0.15,
+      "wall": 0.18,
+      "accent": "blue",
+      "feature": "podium",
+      "play": "Two open ground approaches, stair refuge, broken upper decks and an exposed roof."
+    },
+    "hotel": {
+      "bay": 8,
+      "height": 12,
+      "retain": 0.85,
+      "holes": 0.12,
+      "wall": 0.4,
+      "accent": "rose",
+      "feature": "balconies",
+      "play": "Room partitions beside a common corridor, balconies and roof shelter."
+    },
+    "apartment": {
+      "bay": 8,
+      "height": 12,
+      "retain": 0.8,
+      "holes": 0.16,
+      "wall": 0.4,
+      "accent": "limestone",
+      "feature": "rooms",
+      "play": "Small defensible rooms open to a traversable common stair."
+    },
+    "house": {
+      "bay": 8,
+      "height": 4,
+      "retain": 1,
+      "holes": 0.12,
+      "wall": 0.6,
+      "accent": "clay",
+      "feature": "porch",
+      "play": "A small room, front porch, breached rear and a broken stepped roof."
+    },
+    "mall": {
+      "bay": 8,
+      "height": 12,
+      "retain": 0.8,
+      "holes": 0.18,
+      "wall": 0.28,
+      "accent": "limestone",
+      "feature": "atrium",
+      "play": "Shops flank an open central court; upper galleries expose crossing survivors."
+    },
+    "shop": {
+      "bay": 8,
+      "height": 4,
+      "retain": 1,
+      "holes": 0.16,
+      "wall": 0.4,
+      "accent": "rose",
+      "feature": "arcade",
+      "play": "Open storefronts and a repeating canopy along the public edge."
+    },
+    "shed": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.38,
+      "wall": 0.3,
+      "accent": "rust",
+      "feature": "trusses",
+      "play": "Long clear aisles, loading doors and roof fragments on structural frames."
+    },
+    "garage": {
+      "bay": 8,
+      "height": 16,
+      "retain": 0.75,
+      "holes": 0.12,
+      "wall": 0.05,
+      "accent": "concrete",
+      "feature": "decks",
+      "play": "Open decks with low cover and a stair in place of a tilted vehicle ramp."
+    },
+    "marina": {
+      "bay": 8,
+      "height": 4,
+      "retain": 1,
+      "holes": 0.1,
+      "wall": 0,
+      "accent": "rust",
+      "feature": "jetty",
+      "play": "A low quay shelter and exposed walkways; no invented seawall through open water."
+    },
+    "station": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.15,
+      "wall": 0.1,
+      "accent": "steel",
+      "feature": "platform",
+      "play": "An open lower passage and elevated waiting deck."
+    },
+    "bridge": {
+      "bay": 8,
+      "height": 4,
+      "retain": 1,
+      "holes": 0.1,
+      "wall": 0,
+      "accent": "concrete",
+      "feature": "infrastructure",
+      "play": "Existing causeway alignment gets parapet remnants. Authored water gaps stay open."
+    },
+    "park": {
+      "bay": 8,
+      "height": 0,
+      "retain": 1,
+      "holes": 0,
+      "wall": 0,
+      "accent": "limestone",
+      "feature": "garden",
+      "play": "Sparse benches and a low gathering plinth, leaving paths and vegetation open."
+    },
+    "monument": {
+      "bay": 4,
+      "height": 12,
+      "retain": 1,
+      "holes": 0,
+      "wall": 0.1,
+      "accent": "limestone",
+      "feature": "marker",
+      "play": "A visible stepped marker with cover at its foot."
+    },
+    "civic": {
+      "bay": 8,
+      "height": 12,
+      "retain": 0.9,
+      "holes": 0.12,
+      "wall": 0.45,
+      "accent": "limestone",
+      "feature": "colonnade",
+      "play": "A public colonnade, assembly room and protected upper refuge."
+    },
+    "theatre": {
+      "bay": 8,
+      "height": 16,
+      "retain": 0.85,
+      "holes": 0.3,
+      "wall": 0.5,
+      "accent": "rose",
+      "feature": "stage",
+      "play": "An open auditorium and raised stage watched from upper galleries."
+    },
+    "arena": {
+      "bay": 8,
+      "height": 32,
+      "retain": 0.85,
+      "holes": 0.4,
+      "wall": 0.1,
+      "accent": "limestone",
+      "feature": "bowl",
+      "play": "Open arena floor surrounded by stepped seating, concourse and broken roof rim."
+    },
+    "hall": {
+      "bay": 8,
+      "height": 20,
+      "retain": 0.85,
+      "holes": 0.4,
+      "wall": 0.15,
+      "accent": "limestone",
+      "feature": "trusses",
+      "play": "Very long hall sightlines interrupted by columns and debris islands."
+    },
+    "school": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.15,
+      "wall": 0.45,
+      "accent": "clay",
+      "feature": "court",
+      "play": "Classroom wings and an open court with several approaches."
+    },
+    "hospital": {
+      "bay": 8,
+      "height": 24,
+      "retain": 0.8,
+      "holes": 0.1,
+      "wall": 0.5,
+      "accent": "mint",
+      "feature": "rooms",
+      "play": "Wards and a broad entry canopy; corridors connect protected stair landings."
+    },
+    "service": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.1,
+      "wall": 0.55,
+      "accent": "clay",
+      "feature": "bays",
+      "play": "Large apparatus bays below a defended office gallery and observation stub."
+    },
+    "utility": {
+      "bay": 8,
+      "height": 8,
+      "retain": 1,
+      "holes": 0.2,
+      "wall": 0.1,
+      "accent": "rust",
+      "feature": "tanks",
+      "play": "Tank remnants and service yards with narrow approaches."
+    },
+    "fabric": {
+      "bay": 8,
+      "height": 8,
+      "retain": 0.8,
+      "holes": 0.2,
+      "wall": 0.35,
+      "accent": "concrete",
+      "feature": "rooms",
+      "play": "Unknown use: modest open shell and one climbable refuge, never a speculative landmark."
+    }
+  },
+  "categories": {
+    "tower_office": "tower",
+    "tower_residential": "tower",
+    "hotel": "hotel",
+    "apartment_block": "apartment",
+    "office": "apartment",
+    "bank": "apartment",
+    "house": "house",
+    "shopping_mall": "mall",
+    "market": "mall",
+    "shopping_street": "shop",
+    "nightlife": "shop",
+    "restaurant": "shop",
+    "warehouse": "shed",
+    "factory": "shed",
+    "port": "shed",
+    "parking_garage": "garage",
+    "marina": "marina",
+    "pier": "marina",
+    "rail_station": "station",
+    "transit_station": "station",
+    "bridge": "bridge",
+    "causeway": "bridge",
+    "parkway": "bridge",
+    "tunnel": "bridge",
+    "park": "park",
+    "plaza": "park",
+    "beach": "park",
+    "island": "park",
+    "golf_course": "park",
+    "cemetery": "park",
+    "monument": "monument",
+    "sculpture": "monument",
+    "fountain": "monument",
+    "lighthouse": "monument",
+    "museum": "civic",
+    "attraction": "civic",
+    "library": "civic",
+    "city_hall": "civic",
+    "courthouse": "civic",
+    "post_office": "civic",
+    "government": "civic",
+    "theatre": "theatre",
+    "place_of_worship": "theatre",
+    "stadium": "arena",
+    "arena": "arena",
+    "convention_center": "hall",
+    "school": "school",
+    "university": "school",
+    "hospital": "hospital",
+    "fire_station": "service",
+    "police_station": "service",
+    "military": "service",
+    "prison": "service",
+    "utility": "utility",
+    "other": "fabric",
+    "tower": "tower",
+    "station": "station",
+    "artwork": "monument",
+    "garden": "park",
+    "dog_park": "park",
+    "islet": "park",
+    "neighbourhood": "park",
+    "viewpoint": "monument",
+    "crane": "utility",
+    "storage_tank": "utility",
+    "wastewater_plant": "utility"
+  },
+  "styles": [
+    {
+      "match": "art deco|art moderne|streamline",
+      "accent": "rose",
+      "feature": "deco",
+      "retain": 0.9,
+      "meaning": "Pastel horizontal brows and a stepped central fin survive the facade."
+    },
+    {
+      "match": "mediterranean|spanish|mission|revival|neoclassical",
+      "accent": "limestone",
+      "feature": "colonnade",
+      "retain": 0.85,
+      "meaning": "Stone piers, deep entry and a clay stepped crown."
+    },
+    {
+      "match": "glass|international|contemporary|high.rise|modernist",
+      "accent": "blue",
+      "feature": "frame",
+      "retain": 0.72,
+      "meaning": "Exposed skeleton, sparse blue spandrels, broad missing glazing."
+    },
+    {
+      "match": "industrial|warehouse|utilitarian",
+      "accent": "rust",
+      "feature": "trusses",
+      "retain": 0.85,
+      "meaning": "Large clear bays and rusted roof frames."
+    },
+    {
+      "match": "bungalow|vernacular|wood.frame",
+      "accent": "clay",
+      "feature": "porch",
+      "retain": 0.7,
+      "meaning": "Low rooms with porch and fragmented stepped roof."
+    }
+  ],
+  "materials": [
+    {
+      "match": "reinforced concrete|concrete",
+      "finish": "concrete",
+      "meaning": "Strong large floor plates and exposed structural columns."
+    },
+    {
+      "match": "limestone|stone|stucco|masonry",
+      "finish": "limestone",
+      "meaning": "Heavy pale masonry facades and fragments."
+    },
+    {
+      "match": "brick|terracotta|tile",
+      "finish": "clay",
+      "meaning": "Warm masonry walls; stepped tiled roof fragments."
+    },
+    {
+      "match": "steel|metal|alumin",
+      "finish": "steel",
+      "meaning": "Dark framing and salvage."
+    },
+    {
+      "match": "glass",
+      "finish": "blue",
+      "meaning": "Most glazing gone; occasional opaque blue spandrel stand-ins."
+    },
+    {
+      "match": "wood|timber",
+      "finish": "clay",
+      "meaning": "Lower survival factor; masonry box stand-in until timber meshes."
+    }
+  ],
+  "eras": [
+    {
+      "before": 1930,
+      "retain": 0.85,
+      "feature": "colonnade",
+      "meaning": "Early masonry: stout entry and narrow bays."
+    },
+    {
+      "before": 1950,
+      "retain": 0.9,
+      "feature": "deco",
+      "meaning": "Interwar Deco: brows, pastel trim and a stepped roofline."
+    },
+    {
+      "before": 1980,
+      "retain": 0.8,
+      "feature": "frame",
+      "meaning": "Postwar concrete: open slabs and repeated balconies."
+    },
+    {
+      "before": 3000,
+      "retain": 0.72,
+      "feature": "frame",
+      "meaning": "Recent curtain wall: exposed frame after glazing loss."
+    }
+  ],
+  "character": [
+    {
+      "match": "deco|historic|heritage",
+      "feature": "deco",
+      "meaning": "Retain the characteristic facade rhythm."
+    },
+    {
+      "match": "industrial|port|logistics|warehouse",
+      "feature": "trusses",
+      "meaning": "Open working yards and long roof spans."
+    },
+    {
+      "match": "garden|park|green|tree|canopy",
+      "holes": 0.08,
+      "meaning": "More daylight gaps for succession."
+    },
+    {
+      "match": "waterfront|shore|bayfront|marina",
+      "holes": 0.04,
+      "meaning": "More breaches on exposed coastal structures."
+    },
+    {
+      "match": "retail|shopping|commercial|pedestrian",
+      "feature": "arcade",
+      "meaning": "A sheltered public edge with multiple entries."
+    },
+    {
+      "match": "high.rise|skyline|tower",
+      "feature": "frame",
+      "meaning": "Keep a visible structural stump above the playable floors."
+    }
+  ],
+  "periods": [
+    {
+      "match": "pioneer|18[0-9]{2}|19[01][0-9]",
+      "feature": "colonnade",
+      "retain": 0.85,
+      "meaning": "Early masonry when only an era is known."
+    },
+    {
+      "match": "prewar|interwar|19[234][0-9]",
+      "feature": "deco",
+      "retain": 0.9,
+      "meaning": "Interwar brows and facade rhythm, without pretending an exact year."
+    },
+    {
+      "match": "postwar|mid.century|19[567][0-9]",
+      "feature": "frame",
+      "retain": 0.8,
+      "meaning": "Concrete slabs and repeated balconies."
+    },
+    {
+      "match": "contemporary|recent|20[0-9]{2}",
+      "feature": "frame",
+      "retain": 0.72,
+      "meaning": "Recent curtain-wall skeleton."
+    }
+  ],
+  "event": {
+    "travel": [
+      1,
+      0.35
+    ]
+  },
+  "budgets": {
+    "maxChunk": 2000,
+    "maxCity": 1500000,
+    "maxPlayableFloors": 16,
+    "maxHeight": 208
+  }
+}

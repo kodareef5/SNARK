@@ -47,10 +47,12 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   expect(slots.split(",").length * 4).toBe(FRAME.spheres);
   expect([Number(spheres), Number(cascades)]).toEqual([MAX_CASCADES, MAX_CASCADES]);
   expect([FRAME.spheres + MAX_CASCADES * 4, FRAME.cascades + MAX_CASCADES * 16, FRAME.skySide + after.split(",").length * 4]).toEqual([FRAME.cascades, FRAME.skySide, FRAME.contact]);
-  // The bodies' contact last, two slots a body (contact.ts).
-  expect([Number(FRAME_BLOCK.match(/highp vec4 fContact\[(\d+)\]/)![1]), FRAME.contact + MAX_CONTACTS * 8]).toEqual([MAX_CONTACTS * 2, FRAME_FLOATS]);
+  // Each body takes two contact slots before the obelisk lenses (contact.ts).
+  expect([Number(FRAME_BLOCK.match(/highp vec4 fContact\[(\d+)\]/)![1]), FRAME.contact + MAX_CONTACTS * 8]).toEqual([MAX_CONTACTS * 2, FRAME.eyes]);
   expect(Math.max(...Object.values(FRAME))).toBeLessThan(FRAME_FLOATS);
 
+  expect(FRAME_BLOCK).toContain("highp vec4 fEyes[6]");
+  expect(FRAME.eyes + 6 * 4).toBe(FRAME_FLOATS);
   const p = new FramePacket();
   p.split = 384;
   p.cascades[0] = 2;
@@ -106,7 +108,7 @@ test("a tier's programs are every one its frames may draw with, each once, the s
       const tier = forTouch(base, touch);
       const names = tierPrograms(tier).map(named);
       expect(new Set(names).size).toBe(names.length);
-      if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "details"]);
+      if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "sky", "details", "skyline", "signal"]);
       else expect(names).toEqual(Object.keys(PROGRAMS).filter((n) => tier.post !== null || !["bloomDown", "bloomUp", "finish"].includes(n)));
       const texts = new Set(names.map((n) => JSON.stringify(PROGRAMS[n]!(tier, "astc"))));
       expect(texts.size).toBe(names.length);

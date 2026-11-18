@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import folder_arg  # noqa: E402
 
 PLACES = ('suburb', 'quarter', 'neighbourhood', 'island', 'islet')
+# The smallest piece of a proposed district kept beside drawn ones, in square metres: slivers where cells meet them.
+LEAST_DISTRICT_M2 = 2_000
 SPAWN_KINDS = {'park': 3, 'garden': 2, 'beach': 3, 'viewpoint': 1, 'marina': 1}
 
 
@@ -60,8 +62,12 @@ def main():
     else:
         cells.append(('City', frame))
     districts = []
+    # Each cell's labels by one query of an index, where each cell tested every label: 293 s on Tampa's 233 x 103 k.
+    from shapely.strtree import STRtree
+    label_rows = list(labels.values())
+    label_tree = STRtree([Point(v['e'], v['n']) for v in label_rows])
     for name, cell in sorted(cells):
-        inside = [v for v in labels.values() if cell.contains(Point(v['e'], v['n']))]
+        inside = [label_rows[i] for i in sorted(label_tree.query(cell, predicate='contains'))]
         area = sum(v['area_m2'] for v in inside) or 1
         tall = sum(v['area_m2'] for v in inside if (v['height_m'] or 0) >= 32) / area
         works = sum(v['area_m2'] for v in inside if v['kind'] in ('warehouse', 'utility', 'port')) / area
@@ -71,6 +77,35 @@ def main():
         districts.append({'name': name, 'style': style, 'tall': round(min(1, max(.1, tall * 3)), 2), 'ring': ring,
                           'at': [round(c, 5) for c in to_lonlat.transform(*seed)] if seed else None,
                           'footprints': len(inside), 'tall_share': round(tall, 3), 'works_share': round(works, 3)})
+
+    # What a person drew (the city's world.json, tools/maps/city.ts copies it to world/authored.json): its districts
+    # stand as drawn, and a proposed one keeps only the ground they leave, so a bigger cut grows new districts round
+    # the drawn ones rather than redrawing them. Tampa's eleven, Downtown concrete and The Port industrial among them,
+    # came back as 69 neighbourhoods nearly all residential when they were proposed again (2026-11-18).
+    authored_path = m.root / 'world/authored.json'
+    authored = json.loads(authored_path.read_text()) if authored_path.exists() else {}
+    if authored.get('districts'):
+        from shapely.geometry import Polygon
+        from shapely.ops import unary_union
+        drawn = []
+        for d in authored['districts']:
+            shape_m = Polygon([to_map.transform(*c) for c in d['ring']]).buffer(0).intersection(frame)
+            if not shape_m.is_empty:
+                drawn.append((d, shape_m))
+        taken = unary_union([s for _, s in drawn])
+        kept = [d for d, _ in drawn]
+        names = {d['name'] for d in kept}
+        for d in districts:
+            if d['name'] in names:
+                continue
+            left = Polygon([to_map.transform(*c) for c in d['ring']]).buffer(0).difference(taken)
+            parts = [left] if left.geom_type == 'Polygon' else list(getattr(left, 'geoms', []))
+            parts = [p for p in parts if p.geom_type == 'Polygon' and p.area >= LEAST_DISTRICT_M2]
+            if parts:
+                biggest = max(parts, key=lambda p: p.area)
+                d['ring'] = [[round(c, 5) for c in to_lonlat.transform(x, y)] for x, y in biggest.simplify(20).exterior.coords[:-1]]
+                kept.append(d)
+        districts = kept
 
     water = m.vectors('areawater')
     from shapely.strtree import STRtree
@@ -84,10 +119,23 @@ def main():
             continue
         candidates.append((SPAWN_KINDS[p['kind']], p))
     chosen, faces = [], {}
+    # Spawn points a person placed (the authored world's) come first and stay as placed, inside the cut.
+    placed = []
+    for s in authored.get('spawns', []):
+        e, n = to_map.transform(*s['at'])
+        if frame.buffer(-150).contains(Point(e, n)):
+            placed.append(s)
+            chosen.append({'name': s['name'], 'kind': 'placed', 'e': e, 'n': n})
+    # Ten for an 8 km square, more on a bigger map up to the sixteen a map file holds (shared/world/mapfile.ts) and
+    # a survivor's choosing list shows.
+    wanted = min(16, max(10, round(10 * frame.area / 8128 ** 2)))
     # Places a person named come first, facing what they name; then the best-ranked place nearest the middle, and each
     # next the farthest from those chosen, best kind first.
     for want in settings.get('spawn_places', []):
         name = want if isinstance(want, str) else want['name']
+        # One the authored world already places is that one: the same names in both made twenty of sixteen in LA.
+        if any(c['name'] == name for c in chosen):
+            continue
         found = next((p for p in json.loads((m.root / 'blocks/places.json').read_text()) if p.get('name') == name), None)
         if found is None and isinstance(want, dict) and want.get('at'):
             # A place a visitor knows that OpenStreetMap draws no point for, at the position given.
@@ -98,7 +146,7 @@ def main():
         chosen.append(found)
         if isinstance(want, dict) and want.get('face'):
             faces[name] = to_map.transform(*want['face'])
-    for _ in range(10 - len(chosen)):
+    for _ in range(wanted - len(chosen)):
         best, score = None, -1
         for rank, p in candidates:
             gap = min((math.hypot(p['e'] - c['e'], p['n'] - c['n']) for c in chosen), default=4000 - math.hypot(p['e'] - mx, p['n'] - my))
@@ -109,12 +157,16 @@ def main():
         if best is None:
             break
         chosen.append(best)
-    spawns = []
+    spawns = list(placed)
+    if len(chosen) > 16:
+        raise ValueError(f'{len(chosen)} spawn points, and a map file holds 16: take some out of world.json or spawn_places')
     # The survivor's choosing list carries each name in at most 48 bytes (MAX_PLACE_NAME_BYTES); the server cuts a longer one.
     long = [p['name'] for p in chosen if len(p['name'].encode()) > 48]
     if long:
         raise ValueError(f'spawn point names over 48 bytes: {long}; name them shorter in spawn_places with "at"')
     for p in chosen:
+        if p['kind'] == 'placed':
+            continue
         d = math.hypot(p['e'] - mx, p['n'] - my) or 1
         face = faces.get(p['name']) or (p['e'] - (p['e'] - mx) / d * 300, p['n'] - (p['n'] - my) / d * 300)
         spawns.append({'name': p['name'], 'at': [round(c, 4) for c in to_lonlat.transform(p['e'], p['n'])],
@@ -144,6 +196,10 @@ def main():
             world['dryGround'] = True
         if settings.get('obelisks'):
             world['obelisks'] = settings['obelisks']
+        # Set by hand, not proposed: the landmarks placed whole (a cruise ship, a sculpture) and the room a world keeps.
+        for key in ('landmarks', 'room'):
+            if key in settings:
+                world[key] = settings[key]
         path.write_text(json.dumps(world, indent=1, ensure_ascii=False) + '\n')
         print('world.json written from the proposal')
     print(len(districts), 'districts proposed:', collections.Counter(d['style'] for d in districts), '|', len(spawns), 'spawns:', [s['name'] for s in spawns])

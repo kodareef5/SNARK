@@ -1,3 +1,5 @@
+import { CROWN_ORIGIN, DECK_RADIUS, EYE_COLLIDERS, EYE_DYE, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { aperture, eyePhase, eyePower, shutterOpening, writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
@@ -46,7 +48,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
 import { WorldFinishes, citySurface } from "./world-surfaces.ts";
 import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
@@ -67,6 +69,7 @@ import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } fro
 export interface RenderWorld {
   /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
   readonly mapId?: string;
+  readonly tideEyes?: readonly TideEyeSite[];
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
@@ -377,6 +380,11 @@ export class Scene {
   alternate = false;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
   now = 0;
+  /** Seconds on the shared server clock, independent of the local frame clock. */
+  eyeSeconds = 0;
+  private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number };
+  private readonly lanternMesh: { frame: number; shutter: number; lip: number; light: number };
+  private readonly sextantMesh: { frame: number; needle: number; indexLight: number; keelLight: number };
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
   plainSky = false;
   /** Loose meshes to draw: the stress scene's. */
@@ -656,6 +664,10 @@ export class Scene {
     // The renderer holds the sky table on every tier.
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
+    const eye = (part: string) => table.find("core:tide_eye/" + part);
+    this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow") };
+    this.lanternMesh = { frame: eye("lantern"), shutter: eye("shutter"), lip: eye("shutter_light"), light: eye("well_light") };
+    this.sextantMesh = { frame: eye("sextant"), needle: eye("needle"), indexLight: eye("index_light"), keelLight: eye("keel_light") };
     this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -705,7 +717,7 @@ export class Scene {
     }
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
-    this.landmarkKinds = Uint8Array.from(reg.defs, (_, k) => (reg.own.has(k) ? 1 : 0));
+    this.landmarkKinds = Uint8Array.from(reg.defs, (def, k) => (reg.own.has(k) || (def && EYE_COLLIDERS.has(def.id)) ? 1 : 0));
     this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
@@ -858,6 +870,8 @@ export class Scene {
       contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);
     }
+    if (!p.lit) p.frame[FRAME.exposure] = 0;
+    writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z);
     this.fit(cam);
 
     // Under water, the sea's or a lake's where the camera is, the view is short and the fog is the water's colour, dimmed.
@@ -897,6 +911,7 @@ export class Scene {
       if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
     }
     // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
+    if (this.world.tideEyes) this.showTideEyes(cam, this.world.tideEyes);
     if (this.world.motion && this.motionReg) this.showMotion(cam, this.world.motion);
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
@@ -1940,6 +1955,104 @@ export class Scene {
       p.transientIds[at] = 0;
     }
     p.transientCount = total;
+  }
+
+  private showTideEyes(cam: Camera, sites: readonly TideEyeSite[]): void {
+    const p = this.packet;
+    for (const site of sites) {
+      const x = site.x - cam.x, y = site.y - cam.y, z = site.z - cam.z;
+      const yaw = site.yaw * Math.PI / 32768, cs = Math.cos(yaw), sn = Math.sin(yaw);
+      const phase = eyePhase(this.eyeSeconds, site), open = aperture(phase);
+      const dye = site.form === "lantern" && site.color === "green" ? 51 : EYE_DYE[site.color];
+      const draw = (mesh: number, h: number, r: number, scale: number, motion?: {
+        roll?: number; hinge?: number; glow?: boolean; shutter?: { depth: number; width: number }; tilt?: number;
+      }) => {
+        if (mesh < 0) return;
+        const { roll = 0, hinge = -1, glow = false, shutter } = motion ?? {};
+        const depth = shutter?.depth ?? 0;
+        const radial = hinge < 0 ? 0 : 33 * Math.cos(hinge);
+        const cx = x + radial * cs + depth * sn;
+        const cy = y + h + (hinge < 0 ? 0 : 33 * Math.sin(hinge));
+        const cz = z - radial * sn + depth * cs;
+        if (!cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r)) return;
+        if (p.transientCount >= p.transientIds.length || p.drawCount + this.doubled >= MAX_DRAWS) return;
+        const articulated = hinge >= 0 || roll !== 0 || shutter !== undefined || scale > 255 / SIZE_UNITS;
+        if (articulated && p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return;
+        const first = p.transientCount++;
+        const distance = Math.max(1, Math.hypot(cx, cy, cz) - r);
+        const errors = this.assets.table.error[mesh]!;
+        const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris || mesh === this.sextantMesh.frame || mesh === this.sextantMesh.needle || mesh === this.lanternMesh.frame || mesh === this.lanternMesh.shutter);
+        const level = skyline ? Math.max(0, errors.length - 1) : this.assets.choose(errors, distance / Math.max(0.03, scale), -1);
+        if (skyline || glow) this.assets.want(mesh, level, distance);
+        else this.assets.wantTextured(mesh, level, distance);
+        let flags = DRAW_PLAIN | (glow ? DRAW_EMISSIVE : 0) | (skyline ? DRAW_SKYLINE : 0);
+        if (articulated) {
+          const bone = p.boneCount++;
+          const pose = p.bones, row = bone * BONE_FLOATS;
+          if (shutter) {
+            // Turn about the spanwise axle, then turn the whole tower to its map heading.
+            const pitch = motion?.tilt ?? 0, c = Math.cos(pitch), s = Math.sin(pitch);
+            pose[row] = cs * shutter.width; pose[row + 1] = sn * s; pose[row + 2] = sn * c;
+            pose[row + 4] = 0; pose[row + 5] = c; pose[row + 6] = -s;
+            pose[row + 8] = -sn * shutter.width; pose[row + 9] = cs * s; pose[row + 10] = cs * c;
+          } else {
+            const a = Math.cos(roll) * scale, b = Math.sin(roll) * scale;
+            const depthScale = hinge >= 0 ? 1 : scale;
+            pose[row] = cs * a; pose[row + 1] = -cs * b; pose[row + 2] = sn * depthScale;
+            pose[row + 4] = b; pose[row + 5] = a; pose[row + 6] = 0;
+            pose[row + 8] = -sn * a; pose[row + 9] = sn * b; pose[row + 10] = cs * depthScale;
+          }
+          pose[row + 3] = cx; pose[row + 7] = cy; pose[row + 11] = cz;
+          this.transient.setSkinned(first, bone, dye);
+          flags |= DRAW_SKINNED;
+        } else {
+          this.transient.set(first, cx, cy, cz, site.yaw, dye);
+          if (scale !== 1) {
+            this.transient.size(first, Math.round(scale * SIZE_UNITS));
+            flags |= DRAW_SIZED;
+          }
+        }
+        p.transientIds[first] = 0;
+        const passes = cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
+        this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, passes);
+      };
+      draw(this.eyeMesh.deck, 0, site.radius + 1, site.radius / DECK_RADIUS);
+      if (site.form === "lantern") {
+        draw(this.lanternMesh.frame, CROWN_ORIGIN, 235, 1);
+        for (let i = 0; i < LANTERN_BANKS.length; i++) {
+          const bank = LANTERN_BANKS[i]!, opened = shutterOpening(phase, i);
+          for (let j = 0; j < bank.slats.length; j++) {
+            const shutter = bank.slats[j]!, reach = 52 * shutter.width + 15, tilt = -1.34 * opened;
+            draw(this.lanternMesh.shutter, shutter.h, reach, 1, { shutter, tilt });
+            if (opened > 0.2 && j % 2 === 0) draw(this.lanternMesh.lip, shutter.h, reach, 1, { shutter, tilt, glow: true });
+          }
+          if (opened > 0.10) {
+            const size = (bank.radius + 4) / 10 * opened;
+            draw(this.lanternMesh.light, bank.well, 12 * size, size, { glow: true });
+          }
+        }
+        continue;
+      }
+      if (site.form === "sextant") {
+        // The index is authored hanging down. After lifting it sweeps the bow and locks on the upper mark.
+        const angle = -open * (1.82 + 0.13 * eyePower(phase) * Math.sin((phase - 9) * 0.64));
+        draw(this.sextantMesh.frame, CROWN_ORIGIN, 221, 1);
+        draw(this.sextantMesh.needle, SEXTANT_PIVOT, 157, 1, { roll: angle });
+        if (open > 0.3) {
+          draw(this.sextantMesh.keelLight, CROWN_ORIGIN, 202, 1, { glow: true });
+          draw(this.sextantMesh.indexLight, SEXTANT_PIVOT, 157, 1, { roll: angle, glow: true });
+        }
+        continue;
+      }
+      draw(this.eyeMesh.crown, CROWN_ORIGIN, 211, 1);
+      if (open < 0.998) {
+        for (let i = 0; i < 12; i++) {
+          const bearing = i * Math.PI / 6;
+          draw(this.eyeMesh.iris, LENS_HEIGHT, 36, 1 - 0.94 * open, { roll: bearing + open * 0.88, hinge: bearing });
+        }
+      }
+      if (open > 0.3) draw(this.eyeMesh.glow, LENS_HEIGHT, 46, 1, { roll: phase * 0.045 + eyePower(phase) * 0.7, glow: true });
+    }
   }
 
   private showGhost(cam: Camera): void {
@@ -3082,7 +3195,7 @@ export class Scene {
    */
   private drawable(mesh: number, wanted: number, flags: number): number {
     const held = this.assets.level(mesh, wanted);
-    const textured = (flags & DRAW_BLEND) === 0 ? this.assets.texturedLevel(mesh, wanted, held) : -1;
+    const textured = (flags & (DRAW_BLEND | DRAW_SKYLINE | DRAW_EMISSIVE)) === 0 ? this.assets.texturedLevel(mesh, wanted, held) : -1;
     this.ready = textured >= 0;
     return this.ready ? textured : held;
   }

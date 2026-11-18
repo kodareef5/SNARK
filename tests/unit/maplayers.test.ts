@@ -33,7 +33,7 @@ test("a map unpacked into a folder of layers and built from it again is the same
     "not in the core content: test:elsewhere, test:hauler",
   ]);
   // Where it sits on the lattice and its display origin go into the folder's map.json, and come back.
-  const placed = writeMap({ ...busyMap(), dims: { chunksX: 2, chunksZ: 3, frameX: 3000, frameZ: 17, originX: 3008, originZ: 128 } });
+  const placed = writeMap({ ...busyMap(), tideEyes: [{ name: "The Lantern", x: 32, y: 4, z: 60, radius: 24, color: "green", form: "lantern", yaw: 61873 }], dims: { chunksX: 2, chunksZ: 3, frameX: 3000, frameZ: 17, originX: 3008, originZ: 128 } });
   writeLayers(parseMap(placed), join(dir, "placed"));
   expect(JSON.parse(readFileSync(join(dir, "placed", "map.json"), "utf8"))).toMatchObject({ chunks: [2, 3], frame: [3000, 17], origin: [3008, 128] });
   expect(writeMap(readLayers(join(dir, "placed")))).toEqual(placed);
