@@ -102,12 +102,14 @@ export function hurtStage(health: number, max: number): number {
   return health >= max * 0.5 ? 1 : health >= max * 0.25 ? 2 : 3;
 }
 
-/** Everything a pose depends on besides the tick, as whole numbers. */
+/** Packed pose state uses whole numbers; surfaceSpeed is derived locally from the support at that pose. */
 export class AnimState {
   mode = MODE_WALK;
   grounded = true;
   /** Horizontal speed in SPEED_STEP units, 0..SPEED_MAX. */
   speed = 0;
+  /** Derived from current real footing, never packed: surface metres per horizontal metre for ground-creature gaits. */
+  surfaceSpeed = 1;
   /** Direction of travel relative to facing, in sixteenths of a turn toward the body's left. */
   dir = 0;
   /** -PITCH_STEPS (down) to PITCH_STEPS (up). */
@@ -172,6 +174,7 @@ export class AnimState {
   }
 
   unpack(word: number, cue = 0): void {
+    this.surfaceSpeed = 1;
     this.unpackCue(cue);
     this.speed = word & 15;
     if (((word >>> 8) & 3) === ANIM_FLYING) {
@@ -197,6 +200,7 @@ export class AnimState {
 
   /** `yaw` and `pitch` are in radians. Set `mode` first: a flyer's speed counts `vy` too, which no other body's does. */
   setMotion(vx: number, vz: number, yaw: number, pitch: number, vy = 0): void {
+    this.surfaceSpeed = 1;
     const s = detSin(yaw);
     const c = detCos(yaw);
     const forward = vx * s + vz * c;

@@ -12,7 +12,7 @@ import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
-import { MountCameraPivot } from "./mount-camera.ts";
+import { MountCameraPivot, groundMountCameraHeight } from "./mount-camera.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
@@ -212,7 +212,7 @@ export class App {
     this.session = session;
     this.shown = reg;
     this.pack = pack;
-    this.seatedAim = new SeatedAim(reg, pack);
+    this.seatedAim = new SeatedAim(reg, pack, () => session.world);
     session.shotOrigin = (out, tick, yaw, pitch) => {
       if (!session.world || session.driving >= 0 || !session.own.seat) return false;
       session.sampleRemote(this.shotSample);
@@ -984,7 +984,7 @@ export class App {
     }
     if (this.shown !== session.registry) {
       this.shown = session.registry;
-      this.seatedAim = new SeatedAim(this.shown, this.pack);
+      this.seatedAim = new SeatedAim(this.shown, this.pack, () => session.world);
       this.ui.registry = this.shown;
       this.shots.reg = this.shown;
     }
@@ -1114,7 +1114,9 @@ export class App {
       // on a boom as long as the mount is big, and drawn in by whatever is in the way.
       const view = this.mountView(session.bodyKind, session.driving);
       const o = session.own;
-      const pivot = this.mountCamera.height(world, view.identity, bx, bz, by + (this.reg.move[session.bodyKind]?.height ?? 1) * .5, by + view.up, o.vx, o.vz, dt);
+      const move = this.reg.tamedMove[session.bodyKind]!;
+      const wanted = groundMountCameraHeight(world, move, bx, by, bz, o.yaw * TAU / 65536, o.grounded, o.mode, view.up);
+      const pivot = this.mountCamera.height(world, view.identity, bx, bz, by + move.height * .5, wanted, o.vx, o.vz, dt);
       this.view.placeVehicle(cam, world, bx, pivot, bz, lookYaw, lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: view.identity, boom: view.boom, anticipate: true, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY });
     } else if (passenger) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw, boom: number | undefined, chaseVx = 0, chaseVz = 0;
@@ -1136,6 +1138,8 @@ export class App {
           const view = vehicle ? null : this.mountView(r.kind[i]!, r.id[i]!);
           px = r.x[i]!; py = r.y[i]! + (view?.up ?? 1); pz = r.z[i]!;
           if (view) {
+            const ms = this.mountState; ms.unpack(r.anim[i]!, r.cue[i]!);
+            py = groundMountCameraHeight(world, this.reg.tamedMove[r.kind[i]!]!, px, r.y[i]!, pz, heading, ms.grounded, ms.mode, view.up);
             py = this.mountCamera.height(world, view.identity, px, pz, r.y[i]! + (this.reg.move[r.kind[i]!]?.height ?? 1) * .5, py, undefined, undefined, dt);
             chaseVx = this.mountCamera.vx; chaseVz = this.mountCamera.vz;
           }

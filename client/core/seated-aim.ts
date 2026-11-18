@@ -22,9 +22,11 @@ export class SeatedAim {
   private readonly saddle = new Float64Array(SEAT_FLOATS);
   private readonly st = new AnimState();
   private readonly hostState = new AnimState();
+  private readonly world: () => CollisionWorld | null;
 
-  constructor(reg: Registry, pack: Pack) {
+  constructor(reg: Registry, pack: Pack, world: () => CollisionWorld | null = () => null) {
     this.reg = reg;
+    this.world = world;
     this.human = new HumanAnim(pack.clips);
     const rigs = buildRigs(pack.header.rigs, pack.clips);
     this.creatures = creatureAnims(reg, d => rigs.get(d.mesh));
@@ -56,7 +58,7 @@ export class SeatedAim {
       const seat = saddleSeat(this.reg, r.gear[host * GEAR_COUNT + GEAR_WORN]!, slot);
       if (!seat) return false;
       const ms = this.hostState; ms.unpack(r.anim[host]!, r.cue[host]!); ms.seed = bodySeed(r.id[host]!);
-      seatOn(this.creatures[r.kind[host]!] ?? null, seat, ms, r.tick, r.x[host]!, r.y[host]!, r.z[host]!, r.yaw[host]!, this.saddle);
+      seatOn(this.creatures[r.kind[host]!] ?? null, seat, ms, r.tick, r.x[host]!, r.y[host]!, r.z[host]!, r.yaw[host]!, this.saddle, this.world() ?? undefined, this.reg.tamedMove[r.kind[host]!]);
       this.body.saddle(this.human, st, poseTick, this.saddle, seat.driver === true, yaw, rest);
     }
     return true;

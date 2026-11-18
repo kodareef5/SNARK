@@ -650,7 +650,7 @@ export class Scene {
     const t = this.packet.transient;
     this.transientF32 = new Float32Array(t.buffer, t.byteOffset, t.byteLength >> 2);
     this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
-    this.characters = new Characters(reg, pack, this.assets);
+    this.characters = new Characters(reg, pack, this.assets, world);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);

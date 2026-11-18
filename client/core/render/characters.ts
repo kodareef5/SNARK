@@ -17,9 +17,11 @@ import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX,
 import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
-import { MODE_FLYER, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
+import { MODE_FLYER, MODE_WALK, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
+import { groundMountMotion, groundMountPose } from "../../../shared/anim/ground-mount.ts";
+import { GroundMountFrame, groundMountFrame } from "../../../shared/world/ground-mount.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
 import { buildRig, buildRigs } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
@@ -31,7 +33,7 @@ import type { CorpseMotion } from "../../../shared/net/corpse.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
-import { anchorFrame, saddleSeat, seatFrame } from "../../../shared/anim/seat.ts";
+import { saddleSeat, seatFrame, seatOn } from "../../../shared/anim/seat.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
@@ -163,6 +165,8 @@ const MASKS = 16;
  * it gives, kept while it is the same, and its pose as last worked out, in frame `posedAt` as `form`, drawn until it is due.
  */
 class Stride extends Gait {
+  readonly footing = new GroundMountFrame();
+  surfaceSpeed = 1;
   seen = 0;
   moved = -1;
   look: Uint8Array | null = null;
@@ -222,6 +226,7 @@ export class Characters {
   private readonly mount = createMountMotion();
   private readonly rotation = new Float64Array(4);
   private readonly groundRotation = new Float64Array(4);
+  private readonly footing = new GroundMountFrame();
   private readonly wheel = new Float64Array(4);
   private readonly steer = new Float64Array(4);
   private readonly seatState = new AnimState();
@@ -300,10 +305,12 @@ export class Characters {
   private readonly socketAt = [0, 0, 0];
 
   private readonly reg: Registry;
+  private readonly world?: CollisionWorld;
 
-  constructor(reg: Registry, pack: Pack, assets: Assets) {
+  constructor(reg: Registry, pack: Pack, assets: Assets, world?: CollisionWorld) {
     const { table, bind } = assets;
     this.reg = reg;
+    this.world = world;
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
     this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
@@ -505,18 +512,37 @@ export class Characters {
     const socket = name !== undefined ? rig?.sockets.get(name) : undefined;
     if (!c || !rig || !socket) {
       if (!def) return false;
-      anchorFrame(def.anchor, x, y, z, yaw, out);
+      const cx = id >= 0 ? this.packet?.camX ?? 0 : 0, cy = id >= 0 ? this.packet?.camY ?? 0 : 0, cz = id >= 0 ? this.packet?.camZ ?? 0 : 0;
+      seatOn(null, def, st, tick, x + cx, y + cy, z + cz, yaw, out, this.world, this.reg.tamedMove[kind]);
+      out[0]! -= cx; out[1]! -= cy; out[2]! -= cz;
       return true;
     }
     let solved = rig.solved;
     if (rigid) solved = this.standIn(kind, 0, st, false).solved;
     else if (id >= 0) solved = this.creatureSolved(kind, c, id, x, y, z, yaw, st, tick, 1, false);
     else {
+      if (this.world && this.reg.tamedMove[kind]) groundMountMotion(st, this.world, this.reg.tamedMove[kind]!, x, y, z, yaw, this.footing);
+      else st.surfaceSpeed = 1;
       creaturePose(c.anim, st, tick, rig.a, null);
       solve(rig, rig.a, rig.solved);
     }
+    solved = this.groundSolved(kind, c, solved, x, y, z, yaw, st, id >= 0, id);
     seatFrame(solved, socket, x, y, z, yaw, out);
     return true;
+  }
+
+  /** Keep cached gait poses unmodified: the same current footing is applied once for the seat and once for drawing. */
+  private groundSolved(kind: number, c: Creature, solved: Solved, x: number, y: number, z: number, yaw: number, st: AnimState, relative: boolean, id = -1): Solved {
+    const move = this.reg.tamedMove[kind];
+    if (!this.world || !move || c.vehicle || move.flies || !st.grounded || st.mode !== MODE_WALK || st.out || st.held) return solved;
+    const g = id >= 0 ? this.gaitOf(id) : null;
+    const wx = x + (relative ? this.packet?.camX ?? 0 : 0), wy = y + (relative ? this.packet?.camY ?? 0 : 0), wz = z + (relative ? this.packet?.camZ ?? 0 : 0);
+    const footing = g?.moved === this.frame ? g.footing : this.footing;
+    if (footing === this.footing) groundMountFrame(this.world, move, wx, wy, wz, yaw, footing);
+    if (!footing.supported || (footing.rotation[0] === 0 && footing.rotation[2] === 0 && Math.abs(footing.lift) < 1e-6)) return solved;
+    c.oriented.pos.set(solved.pos); c.oriented.rot.set(solved.rot);
+    groundMountPose(c.oriented, st, this.world, move, wx, wy, wz, yaw, footing);
+    return c.oriented;
   }
 
   /**
@@ -528,8 +554,13 @@ export class Characters {
     const g = this.gaitOf(id);
     if (g.moved !== this.frame) {
       g.moved = this.frame;
+      if (this.world && this.reg.tamedMove[kind]) groundMountMotion(st, this.world, this.reg.tamedMove[kind]!,
+        x + (this.packet?.camX ?? 0), y + (this.packet?.camY ?? 0), z + (this.packet?.camZ ?? 0), yaw, g.footing);
+      else st.surfaceSpeed = 1;
+      g.surfaceSpeed = st.surfaceSpeed;
       advanceCreature(c.anim, g, st, tick, x + (this.packet?.camX ?? 0), z + (this.packet?.camZ ?? 0), yaw, size);
     }
+    st.surfaceSpeed = g.surfaceSpeed;
     const solved = this.kept(g, rig.bones);
     const aloft = st.mode === MODE_FLYER && !st.grounded;
     if (this.due(g, kind * 4, id, Math.sqrt(x * x + y * y + z * z) / size, unseen, aloft ? 0 : g.speed)) {
@@ -712,6 +743,11 @@ export class Characters {
       if (c.vehicle && vehicle?.qw !== undefined) {
         this.turn(vehicle, yaw, vehicle.pitch, vehicle.roll, this.rotation);
         writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size, this.rotation);
+      } else if (!c.vehicle && this.world && st.grounded && st.mode === MODE_WALK && !st.out && !st.held && !this.reg.move[kind]?.flies) {
+        groundMountFrame(this.world, this.reg.tamedMove[kind]!, p.camX + x, p.camY + y, p.camZ + z, yaw, this.footing);
+        quatAxis(this.rotation, 0, 0, 1, 0, yaw);
+        quatMul(this.rotation, 0, this.rotation, 0, this.footing.rotation, 0);
+        writeRigid(p.bones, first * BONE_FLOATS, x, y + this.footing.lift, z, yaw, size, this.rotation);
       } else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
     }
     else {
@@ -779,7 +815,10 @@ export class Characters {
             if (b >= 0) this.rotorBlur.add(p, first + b, id * 4 + r, v.def.rotors[r]!, vehicle?.rotorRpm ?? 0, this.rotation, x, y, z, size);
           }
         }
-      } else writeBones(p.bones, first * BONE_FLOATS, solved, rig.rest, null, x, y, z, yaw, size);
+      } else {
+        solved = this.groundSolved(kind, c, solved, x, y, z, yaw, st, true, id);
+        writeBones(p.bones, first * BONE_FLOATS, solved, rig.rest, null, x, y, z, yaw, size);
+      }
       this.posed++;
       if (!unseen) this.keepHead(c, solved, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
     }

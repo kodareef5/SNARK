@@ -1,5 +1,15 @@
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../shared/world/ray.ts";
+import { MODE_WALK, type MoveParams } from "../../shared/sim/character.ts";
+import { GroundMountFrame, groundMountFrame } from "../../shared/world/ground-mount.ts";
+
+const footing = new GroundMountFrame();
+/** The chase target follows the supported body height, while its horizon and safe capsule-centred boom stay upright. */
+export function groundMountCameraHeight(world: CollisionWorld, move: MoveParams, x: number, y: number, z: number, yaw: number, grounded: boolean, mode: number, up: number): number {
+  if (!grounded || mode !== MODE_WALK || move.flies) return y + up;
+  groundMountFrame(world, move, x, y, z, yaw, footing);
+  return y + footing.lift + up * footing.ny;
+}
 
 /** A permitted clipping rider must not start its chase boom above a roof. Cast upward from inside its mount's capsule. */
 export function mountCameraHeight(world: CollisionWorld | null, x: number, z: number, safeY: number, wantedY: number): number {

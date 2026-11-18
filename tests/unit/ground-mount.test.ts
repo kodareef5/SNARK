@@ -1,7 +1,8 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { CreatureAnim, creaturePose } from '../../shared/anim/creature.ts';
-import { groundMountPose } from '../../shared/anim/ground-mount.ts';
+import { CreatureAnim, creaturePose, advanceCreature } from '../../shared/anim/creature.ts';
+import { groundMountMotion, groundMountPose } from '../../shared/anim/ground-mount.ts';
+import { Gait } from '../../shared/anim/gait.ts';
 import { AnimState } from '../../shared/anim/pose.ts';
 import { buildRigs } from '../../shared/anim/rigs.ts';
 import { SEAT_FLOATS, seatFrame, seatOn } from '../../shared/anim/seat.ts';
@@ -12,6 +13,7 @@ import { Body, BTN_JUMP, BTN_SPRINT, MODE_FLYER, MODE_SWIM, stepBody } from '../
 import { groundUnder } from '../../shared/world/collide.ts';
 import { GroundMountFrame, groundMountFrame } from '../../shared/world/ground-mount.ts';
 import { flatWorld } from '../fixtures/world.ts';
+import { strider } from '../fixtures/strider.ts';
 
 function plane(degrees: number, across = false) {
   const w = flatWorld(4), slope = Math.tan(degrees * Math.PI / 180);
@@ -107,4 +109,24 @@ test('a ground mount still jumps off a slope and does not tilt its airborne pose
   const solved = new Solved(1), st = new AnimState(); solved.pos.set([0, 2, 1]); solved.rot.set([0, 0, 0, 1]); st.grounded = false;
   groundMountPose(solved, st, w, p, b.x, b.y, b.z, 0);
   expect([...solved.pos]).toEqual([0, 2, 1]); expect([...solved.rot]).toEqual([0, 0, 0, 1]);
+});
+
+test('the stride phase counts supported surface distance with the same cadence as level travel', () => {
+  for (const degrees of [20, 50]) {
+    const w = plane(degrees), { p } = body(w, 'core:raptor'), frame = new GroundMountFrame();
+    const st = new AnimState(), level = new AnimState(), slopeGait = new Gait(), levelGait = new Gait(), anim = new CreatureAnim(strider(), 4, 0);
+    st.speed = 4; let z = 128, flatZ = 128;
+    for (let sample = 0; sample < 120; sample++) {
+      const y = groundUnder(w.hf, 128, z, p.radius);
+      groundMountMotion(st, w, p, 128, y, z, 0, frame);
+      level.speed = st.speed * st.surfaceSpeed;
+      advanceCreature(anim, slopeGait, st, sample / 2, 128, z, 0, 1);
+      advanceCreature(anim, levelGait, level, sample / 2, 128, flatZ, 0, 1);
+      expect(slopeGait.phase).toBeCloseTo(levelGait.phase, 3);
+      z += .03; flatZ += .03 * st.surfaceSpeed;
+    }
+    expect(st.surfaceSpeed).toBeCloseTo(1 / Math.cos(degrees * Math.PI / 180), 2);
+    // The derived scale neither alters the packed animation contract nor survives an unrelated unpack.
+    const packed = st.pack(); st.unpack(packed); expect(st.surfaceSpeed).toBe(1);
+  }
 });

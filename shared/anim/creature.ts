@@ -16,7 +16,8 @@
 import type { SpeciesDef } from "../content/defs.ts";
 import type { MoveParams } from "../sim/character.ts";
 import type { CollisionWorld } from "../world/collide.ts";
-import { groundMountPose } from "./ground-mount.ts";
+import { groundMountMotion, groundMountPose } from "./ground-mount.ts";
+import { GroundMountFrame } from "../world/ground-mount.ts";
 import type { Registry } from "../content/registry.ts";
 import { TICK_RATE } from "../coords.ts";
 import { PI, TAU, detCos, detSin } from "../math/scalar.ts";
@@ -66,6 +67,7 @@ const single: GaitClip[] = [];
 const q = new Float64Array(4);
 const r = new Float64Array(4);
 const v = new Float64Array(3);
+const groundFrame = new GroundMountFrame();
 
 /** What one species plays on its rig: the clip of each name in RIG_CLIPS, its idles, and its gaits at its speeds. */
 export class CreatureAnim {
@@ -427,9 +429,9 @@ export function creatureStride(a: CreatureAnim, st: AnimState, speed: number): n
  */
 export function advanceCreature(a: CreatureAnim, g: Gait, st: AnimState, tick: number, x: number, z: number, yaw: number, size: number): void {
   const before = g.tick;
-  const metres = g.track(x, z, yaw, tick, st.speed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP), a.turn ? 0 : a.rig.turn, size);
+  const metres = g.track(x, z, yaw, tick, st.speed * st.surfaceSpeed * (st.mode === MODE_FLYER ? FLY_SPEED_STEP : SPEED_STEP), a.turn ? 0 : a.rig.turn, size);
   if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, creatureStride(a, st, g.speed));
-  else g.step(metres, creatureStride(a, st, g.speed));
+  else g.step(metres * st.surfaceSpeed, creatureStride(a, st, g.speed));
   // Out of the air they are kept as it last flew, for a landing to come in from.
   if (!aloft(a, st)) return;
   // A flyer's shares and roll come to what its state says over SHARE_EASE, so a step of what it is sent is no jump.
@@ -484,7 +486,7 @@ function idleAt(a: CreatureAnim, seed: number, t: number, out: Pose): void {
 /** Standing and moving on its gaits, by the tick `t` (seed added) or by `gait`, which also turns it on the spot. */
 function onFoot(a: CreatureAnim, st: AnimState, t: number, out: Pose, gait: Gait | null): void {
   const rig = a.rig;
-  const speed = gait ? gait.speed : st.speed * SPEED_STEP;
+  const speed = gait ? gait.speed : st.speed * SPEED_STEP * st.surfaceSpeed;
   const moves = speed > 0 ? movesAt(a, speed) : null;
   const clip = speed > 0 && !moves ? (speed >= a.runAt && a.run ? a.run : (a.walk ?? a.run)) : null;
   const stride = moves ? creatureStride(a, st, speed) : 0;
@@ -822,11 +824,12 @@ export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: nu
     zoneHit.t = maxT;
     return 0;
   }
+  const r = (yaw * TAU) / 65536;
+  if (world && move) groundMountMotion(st, world, move, bx, by, bz, r, groundFrame);
   creaturePose(a, st, tick, rig.a);
   solve(rig, rig.a, rig.solved);
   // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.
-  const r = (yaw * TAU) / 65536;
-  if (world && move) groundMountPose(rig.solved, st, world, move, bx, by, bz, r);
+  if (world && move) groundMountPose(rig.solved, st, world, move, bx, by, bz, r, groundFrame);
   const s = detSin(r);
   const c = detCos(r);
   const rx = ox - bx;
