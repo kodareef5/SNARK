@@ -55,14 +55,14 @@ test("the beach preserves the native species groups, chances, offsets and limits
 test("the spawn settings: override, then add, then subtract; one species for another or for none; a species' weight and limit by its tag", () => {
   const { beach, plain, made, lists } = tables([
     'ConfigOverrideNPCSpawnEntriesContainer=(NPCSpawnEntriesContainerClassString="core:spawns_proving_hunters",NPCSpawnEntries=((AnEntryName="Dodos",EntryWeight=1,NPCsToSpawnStrings=("dodo","dodo"),NPCsToSpawnPercentageChance=(1,0.25),NPCsSpawnOffsets=((X=0,Y=0,Z=0),(X=300,Y=-150,Z=0)))),NPCSpawnLimits=((NPCClassString="dodo",MaxPercentageOfDesiredNumToAllow=0.5)))',
-    'ConfigAddNPCSpawnEntriesContainer=(NPCSpawnEntriesContainerClassString="spawns_beach",NPCSpawnEntries=((AnEntryName="Raptors",EntryWeight=0.1,NPCsToSpawnStrings=("core:raptor","core:raptor","Spino_Character_BP_C"))),NPCSpawnLimits=((NPCClassString="core:raptor",MaxPercentageOfDesiredNumToAllow=0.1)))',
+    'ConfigAddNPCSpawnEntriesContainer=(NPCSpawnEntriesContainerClassString="spawns_beach",NPCSpawnEntries=((AnEntryName="Raptors",EntryWeight=0.1,NPCsToSpawnStrings=("core:raptor","core:raptor","Allo_Character_BP_C"))),NPCSpawnLimits=((NPCClassString="core:raptor",MaxPercentageOfDesiredNumToAllow=0.1)))',
     'ConfigSubtractNPCSpawnEntriesContainer=(NPCSpawnEntriesContainerClassString="core:spawns_beach",NPCSpawnEntries=((NPCsToSpawnStrings=("core:parasaur"))),NPCSpawnLimits=((NPCClassString="core:parasaur")))',
     'NPCReplacements=(FromClassName="core:raptor",ToClassName="core:grazer")',
     'NPCReplacements=(FromClassName="core:parasaur",ToClassName="")',
     "DinoSpawnWeightMultipliers=(DinoNameTag=Dodo,SpawnWeightMultiplier=2,OverrideSpawnLimitPercentage=True,SpawnLimitPercentage=0.3)",
-    "DinoSpawnWeightMultipliers=(DinoNameTag=Spino,SpawnWeightMultiplier=9)",
+    "DinoSpawnWeightMultipliers=(DinoNameTag=Allo,SpawnWeightMultiplier=9)",
   ]);
-  // The parasaur's entry and limit went from the beach; the raptors came, as grazers, without the spino this build lacks.
+  // The parasaur's entry and limit went from the beach; the raptors came, as grazers, without the allosaur this build lacks.
   expect(plain()).toEqual([
     [Array(5).fill("core:dodo"), [1, 0.7, 0.6, 0.25, 0.2], 0.85],
     [["core:pteranodon", "core:pteranodon"], [1, 0.5], 0.15],
@@ -77,6 +77,6 @@ test("the spawn settings: override, then add, then subtract; one species for ano
   expect(hunters.entries[0]!.offsets).toEqual([[0, 0], [3, -1.5]]);
   // The herd was all parasaurs, and none are spawned now.
   expect(made.tables.get(k("core:spawns_proving_herd"))!.entries).toEqual([]);
-  expect(lists.missing.map((m) => m.name)).toEqual(["Spino_Character_BP_C"]);
-  expect(made.passed).toEqual(['DinoSpawnWeightMultipliers: no creature here has the tag "spino"']);
+  expect(lists.missing.map((m) => m.name)).toEqual(["Allo_Character_BP_C"]);
+  expect(made.passed).toEqual(['DinoSpawnWeightMultipliers: no creature here has the tag "allo"']);
 });

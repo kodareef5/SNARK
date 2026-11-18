@@ -24,7 +24,8 @@ test("nothing reaches a sound whose cue waits, such as a car's tyres or horn, a 
     expect(ids).toContain(id);
     expect(heard.has(id)).toBe(false);
   }
-  expect([...heard].some((id) => id.startsWith("core:spino/") || id.startsWith("core:voices/"))).toBe(false);
+  expect([...heard].some((id) => id.startsWith("core:spino/"))).toBe(true);
+  expect([...heard].some((id) => id.startsWith("core:allosaur/") || id.startsWith("core:voices/"))).toBe(false);
   expect(heard.size).toBeLessThan(ids.length / 4);
 });
 

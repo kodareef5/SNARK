@@ -137,7 +137,7 @@ artTest("the boot file holds the survivor's clips, and the clip file each creatu
   const boot = parsePack(files[0]!.bytes);
   expect([...new Set(boot.header.clips.map((c) => c.id.slice(0, c.id.indexOf("/"))))]).toEqual(["human"]);
   expect(manifest.clips!.map((e) => [e.rig, e.file, e.clips.length])).toEqual([
-    ["core:carbonemys", 2, 19], ["core:dodo", 2, 21], ["core:parasaur", 2, 6], ["core:pteranodon", 2, 32], ["core:raptor", 2, 6], ["core:rex", 2, 19], ["core:stego", 2, 30], ["core:trike", 2, 22],
+    ["core:carbonemys", 2, 19], ["core:dodo", 2, 21], ["core:parasaur", 2, 6], ["core:pteranodon", 2, 32], ["core:raptor", 2, 6], ["core:rex", 2, 19], ["core:spino", 2, 17], ["core:stego", 2, 30], ["core:trike", 2, 22],
   ]);
   for (const e of manifest.clips!) expect(partHash(files[2]!.bytes.subarray(e.at, e.at + e.part.bytes))).toBe(e.part.hash);
   // Every clip comes back as it was, and so does the hash of them all, which the manifest gives the client to send.
