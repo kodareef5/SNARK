@@ -73,8 +73,10 @@ test("a creature's page has its stats by level, the wiki's taming table, its dro
 
 test("a vehicle's facts are its vehicle's, and a renamed command fails the wiki rather than printing a dead line", () => {
   const car = byId("core:compact");
-  expect(car.facts.map((f) => f.label)).toEqual(["Top speed", "Reverse", "Seats", "Doors", "Fuel tank", "Health", "Inventory", "Carries", "Mass"]);
-  expect(car.facts[0]!.value).toEqual(["122 km/h"]);
+  expect(car.facts.map((f) => f.label)).toEqual(["Top speed", "Seats", "Doors", "Fuel tank", "Health", "Inventory", "Carries", "Mass"]);
+  // Its top speed is the one it reaches, measured (wiki-handling.slow.test.ts), not the limit its specification states.
+  expect(car.facts[0]!.value).toEqual([`${Math.round(car.handling!.top * 3.6)} km/h`]);
+  expect(car.tables.map((t) => t.title)).toEqual(["How it drives"]);
   expect(() => buildCatalogue({ console: consoleLine(commands().filter((c) => c.name !== "spawn")) })).toThrow('the wiki gives "spawn" lines');
 });
 
@@ -99,7 +101,7 @@ test("a node, a status and a landmark added get their entries, and the links run
   const hut: Landmark = { name: "hut", defs: LANDMARKS[0]!.defs, pieces: [{ kind: piece.id, at: [0, 0, 0], yaw: 0 }], vehicles: [{ kind: "core:compact", id: "hut/car", at: [4, 0, 0], yaw: 0 }], ground: [] };
   const list = buildCatalogue({ defs: [...CORE_CONTENT, ...added], landmarks: [...LANDMARKS, hut] });
   const of = (id: string) => list.find((e) => e.id === id)!;
-  expect(of("wiki:cactus").tables[0]!.rows.map((r) => r.map((c) => (typeof c === "string" ? c : "rate" in c ? c.text : c.id)))).toEqual([["core:fiber", "1 to 2", "3 to 6"], ["core:wood", "", "3"]]);
+  expect(of("wiki:cactus").tables[0]!.rows.map((r) => r.map((c) => (typeof c === "string" ? c : Array.isArray(c) ? "" : "rate" in c ? c.text : c.id)))).toEqual([["core:fiber", "1 to 2", "3 to 6"], ["core:wood", "", "3"]]);
   expect(of("core:hatchet").related.find((r) => r.relation === "Works")!.refs).toContainEqual({ id: "wiki:cactus" });
   expect(of("core:fiber").related.find((r) => r.relation === "Gathered from")!.refs).toContainEqual({ id: "wiki:cactus" });
   expect(of("wiki:prickled").related).toContainEqual({ relation: "Given by", refs: [{ id: "wiki:needle" }] });
@@ -119,7 +121,7 @@ test("every class of definition is ruled on: each has its entry, is shown within
   }
   for (const l of LANDMARKS) expect(ids.has(l.name)).toBe(true);
   expect(leftOut(rulings).map((l) => l.why)).toEqual(["scenery", "form", "standIn", "target", "unmade", "remains", "flight", "noFile"]);
-  expect(leftOut(rulings).find((l) => l.why === "noFile")!.names).toEqual(["Tampa", "San Francisco", "Los Angeles"]);
+  expect(leftOut(rulings).find((l) => l.why === "noFile")!.names).toEqual(["Miami Coast", "Tampa", "San Francisco", "Los Angeles"]);
   expect(() => coverage({ defs: [{ type: "prop", class: "seat", id: "wiki:chair" } as unknown as Def], landmarks: [], has: () => true, maps: new Set() })).toThrow("no ruling on prop/seat");
 });
 
@@ -229,6 +231,12 @@ test("every page is whole HTML, names only what it has, and writes what the cont
     expect(pages.get("settings/")).toContain('<td data-setting="TamingSpeedMultiplier">1</td>');
     expect(pages.get("")).toContain("Not in the wiki: maps still being made: Tampa.");
     expect(pages.get("controls/")).toContain("get in or out of a seat");
+    // The vehicles' page sets them side by side under their cards, each name of a row a link to its page.
+    const fleet = pages.get("vehicles/")!;
+    expect([...fleet.matchAll(/<h2>([^<]+)<\/h2>/g)].map((m) => m[1])).toEqual(["On the road", "On the water", "In the air"]);
+    expect(fleet.indexOf('<div class="cards">')).toBeLessThan(fleet.indexOf("<h2>On the road</h2>"));
+    expect(fleet).toContain('<th><a href="/wiki/vehicles/helicopter/">Helicopter</a>, <a href="/wiki/vehicles/helicopter_police/">Helicopter police</a>, <a href="/wiki/vehicles/helicopter_rescue/">Helicopter rescue</a></th>');
+    expect(pages.get("vehicles/needle/")).toContain("<h2>How it handles</h2>");
     expect(() => checkLinks(new Map([["a/", '<a href="/wiki/b/">b</a>']]), dist)).toThrow("names /wiki/b/");
     // The site's own pages are answered by the server; any other page outside the wiki is not there.
     expect(pages.get("")).toContain('<a href="/source/">');

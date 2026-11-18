@@ -67,7 +67,9 @@ def main():
         works = sum(v['area_m2'] for v in inside if v['kind'] in ('warehouse', 'utility', 'port')) / area
         style = settings.get('styles', {}).get(name) or ('concrete' if tall >= .12 else 'industrial' if works >= .35 else 'residential')
         ring = [[round(c, 5) for c in to_lonlat.transform(x, y)] for x, y in cell.simplify(20).exterior.coords[:-1]]
+        seed = dict(points).get(name)
         districts.append({'name': name, 'style': style, 'tall': round(min(1, max(.1, tall * 3)), 2), 'ring': ring,
+                          'at': [round(c, 5) for c in to_lonlat.transform(*seed)] if seed else None,
                           'footprints': len(inside), 'tall_share': round(tall, 3), 'works_share': round(works, 3)})
 
     water = m.vectors('areawater')

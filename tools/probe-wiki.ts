@@ -21,6 +21,8 @@ const PAGES = [
   "/wiki/items/piece_foundation_wood/",
   "/wiki/items/pistol/",
   "/wiki/vehicles/compact/",
+  "/wiki/vehicles/needle/",
+  "/wiki/vehicles/",
   "/wiki/maps/miami/",
   "/wiki/maps/",
   "/wiki/items/",

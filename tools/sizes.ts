@@ -98,19 +98,26 @@ export function firstFrame(dist: string): { script: string[]; fetched: string[];
 
 /**
  * Each landmark's files (assets/landmarks), shown as the core's are, and what a client on a map that places it waits for
- * before its first frame, its manifest and boot file with the core's, held to the core's budget.
+ * before its first frame, its manifest and boot file with the core's, held to the core's budget. `maps` names the
+ * landmarks each map places, and a client on that map waits for all of theirs, so each map is held to it as well.
  */
-export function weighLandmarks(dist: string): boolean {
+export function weighLandmarks(dist: string, maps: ReadonlyMap<string, readonly string[]> = new Map()): boolean {
   const dir = join(dist, "assets/landmarks"), core = firstFrame(dist).first;
+  const budget = BUDGETS["everything before the first frame, Brotli"]!;
+  const owns = new Map<string, number>();
+  const shown = (n: number): string => (Math.abs(n) >= 10 * MB ? `${(n / MB).toFixed(1)} MB` : Math.abs(n) >= 10 * KB ? `${(n / KB).toFixed(0)} KB` : n.toFixed(0));
   let ok = true;
   for (const file of existsSync(dir) ? readdirSync(dir).filter((n) => n.endsWith(".json")).sort() : []) {
-    const name = file.slice(0, -5), m = JSON.parse(readFileSync(join(dir, file), "utf8")) as Manifest;
+    // As a tool sees it, every page read into it.
+    const name = file.slice(0, -5), m = parseManifest(readFileSync(join(dir, file), "utf8"));
+    readPages(m, (f) => new Uint8Array(readFileSync(join(dir, m.files[f]!.name))), (stored) => new Uint8Array(inflateRawSync(stored)));
     const own = statSync(join(dir, `${file}.br`)).size + statSync(join(dir, `${m.files[m.boot]!.name}.br`)).size;
+    owns.set(name, own);
     const fileOf = (role: string, format?: TextureFormat): number => m.files.filter((f) => f.role === role && (!format || f.format === format)).reduce((s, f) => s + f.bytes, 0);
-    const budget = BUDGETS["everything before the first frame, Brotli"]!;
     const rows: [string, number, number | undefined][] = [
       [`landmark ${name}: its manifest and boot file, Brotli`, own, undefined],
       [`landmark ${name}: everything before the first frame, Brotli`, core + own, budget],
+      [`landmark ${name}: page file`, fileOf("page"), undefined],
       [`landmark ${name}: mesh file`, fileOf("mesh"), undefined],
       [`landmark ${name}: textures to 1,024, astc`, texturesOf(m, "astc", 1024), undefined],
       [`landmark ${name}: texture file, rgba`, fileOf("tex", "rgba"), undefined],
@@ -119,11 +126,27 @@ export function weighLandmarks(dist: string): boolean {
     for (const [row, value, most] of rows) {
       const pass = most === undefined || value <= most;
       ok &&= pass;
-      const shown = (n: number): string => (Math.abs(n) >= 10 * MB ? `${(n / MB).toFixed(1)} MB` : Math.abs(n) >= 10 * KB ? `${(n / KB).toFixed(0)} KB` : n.toFixed(0));
       console.log(`  ${row.padEnd(52)} ${shown(value).padStart(10)}  ${most === undefined ? "" : `${pass ? "ok" : "MISS"} (budget ${shown(most)})`}`);
     }
   }
+  for (const [map, names] of maps) {
+    if (names.length === 0) continue;
+    const value = names.reduce((sum, name) => sum + (owns.get(name) ?? NaN), core);
+    const pass = value <= budget;
+    ok &&= pass;
+    console.log(`  ${`map ${map}: everything before the first frame, Brotli`.padEnd(52)} ${shown(value).padStart(10)}  ${pass ? "ok" : "MISS"} (budget ${shown(budget)})`);
+  }
   return ok;
+}
+
+/** The landmarks each map's source places (assets/source/maps/<map>/world/world.json), by map. */
+export function mapLandmarks(source: string): Map<string, string[]> {
+  const maps = join(source, "maps"), out = new Map<string, string[]>();
+  for (const map of existsSync(maps) ? readdirSync(maps).sort() : []) {
+    const world = join(maps, map, "world/world.json");
+    if (existsSync(world)) out.set(map, ((JSON.parse(readFileSync(world, "utf8")) as { landmarks?: { name: string }[] }).landmarks ?? []).map((l) => l.name));
+  }
+  return out;
 }
 
 /** Bytes of every step of a manifest's textures in `format` up to `widest` pixels across. */

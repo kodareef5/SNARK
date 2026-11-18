@@ -30,13 +30,15 @@ install and give byte-identical layers on 3.12. Run every Python tool with `-I`:
 | bathymetry | `bathy.py` | `base/bathymetry/<file>.tif` and `source.json` |
 | labels | `labels.py` | `blocks/labels.json`, `blocks/places.json`, `blocks/height-units.json` (OpenStreetMap's bare heights read as feet where a city's run near 3.28 times USA Structures') |
 | ways | `ways.py` | `blocks/ways.json` (with `bridge:structure`), `blocks/supports.json` (bridge towers mapped in three dimensions), `blocks/stairs.json`, `blocks/signs.json` (lines with an inscription of capitals and a height: letters standing on the ground) |
+| widen | `widen.py layers`, after ways; `widen.py world`, after world | For a map that widens another (`city.json`'s `widens`): the narrower map's base layers, footprints, labels, places and ways laid in where its frame is, the wider map's own kept outside it; then the narrower map's world with districts for the new ground and `city.json`'s `world.spawns` added |
 | world | `world.py [--accept]` | `world/proposed.json`: districts round OpenStreetMap's places and spawn points on named parks; `world/world.json` when there is none or with `--accept` |
 | vocabulary | `vocabulary.py` | `ruins/vocabulary.json`, extending `tools/mapworld/rules/default.json`: the city's districts, recipes, label tables and compositions, and budgets scaled to its footprints |
 | build | `bun tools/mapworld/build.ts <name>` | `var/maps/<name>.snmap` |
 
 The settings `city.json` holds, beyond the sources: `size_m` (a square round `centre`, 8,128 m unless given) or `bounds`
 (west, south, east and north in metres from `centre`, whole chunks: a rectangle, which need not be centred on it), `frame`
-(the lattice column and row of its south-east corner, 2048 and 2048 unless given), `height_zero_m` (the height height.png's zero stands for, -100 m
+(the lattice column and row of its south-east corner, 2048 and 2048 unless given), `widens` (the map whose frame this one
+widens: its layers stand inside, `widen.py`), `height_zero_m` (the height height.png's zero stands for, -100 m
 unless the ground stands over 555 m), `tiger.counties` (a frame may span counties), `dem.fill` (older lidar projects
 used only where the newest has no ground), `footprints.split_by_osm`, `split_cover` and `split_remainder_m2` (a
 footprint this large that OpenStreetMap only partly draws is cut into its buildings and the remainder),
