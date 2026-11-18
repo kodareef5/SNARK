@@ -8,7 +8,8 @@ height's range in millimetres. Here each is set in its place, a strip's gutters 
 step of the picture does not take in its neighbour; each normal is made from its own height at its own scale (a strip
 is 512 pixels a metre, a part its picture's width over its width in the world); and the packed map holds occlusion,
 roughness and metal in red, green and blue, at half the base colour's side. A part not painted yet is laid in one flat
-colour, so the meshes can be built and looked at before the pictures come.
+colour, so the meshes can be built and looked at before the pictures come. The opaque atlas's base colour has an alpha
+that says where it glows (asset.ts `emissive`): wholly over the parts named in GLOW, nowhere else.
 """
 
 import json
@@ -26,6 +27,9 @@ TEX = os.path.join(HERE, "tex")
 PARTS = os.path.join(TEX, "parts")
 LAYOUT = json.load(open(os.path.join(HERE, "layout.json")))
 SCALES = json.load(open(os.path.join(PARTS, "parts.json"))) if os.path.exists(os.path.join(PARTS, "parts.json")) else {}
+
+# The parts of the opaque atlas that glow: a working lamp's lens.
+GLOW = {"lens_lit"}
 
 # The colour a part is laid in until it is painted, as sRGB: the strips' means as their briefs give them.
 FLAT = {"galvanised": (138, 141, 140), "green": (88, 104, 90), "yellow": (178, 158, 92), "red": (150, 76, 64), "blue": (62, 84, 118),
@@ -113,13 +117,19 @@ def atlas(key, cut):
             arr[top + a["strip"] - g:top + a["strip"]] = arr[top + a["strip"] - g - 1]
     for name, (x, y, w, h) in a["parts"].items():
         put(x, y, part(name, w, h, cut), 1000 * a["metres"][name] / w, cut and name == "fence")
+    if not cut:
+        glow = np.zeros((side, side, 1), np.uint8)
+        for name in GLOW:
+            x, y, w, h = a["parts"][name]
+            glow[y:y + h, x:x + w] = 255
+        base = np.concatenate([base, glow], axis=2)
     return base, nrm, height, rough, metal, occl
 
 
 def save(prefix, layers, cut):
     base, nrm, height, rough, metal, occl = layers
     side = base.shape[0]
-    Image.fromarray(base, "RGBA" if cut else "RGB").save(os.path.join(TEX, f"{prefix}_base.png"))
+    Image.fromarray(base, "RGBA").save(os.path.join(TEX, f"{prefix}_base.png"))
     Image.fromarray(np.round((nrm * 0.5 + 0.5) * 255).astype(np.uint8)).save(os.path.join(TEX, f"{prefix}_normal.png"))
     span = max(1e-6, height.max() - height.min())
     Image.fromarray(np.round((height - height.min()) / span * 65535).astype(np.uint16)).save(os.path.join(TEX, f"{prefix}_height.png"))

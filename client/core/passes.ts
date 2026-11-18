@@ -219,7 +219,7 @@ export class BenchRun {
  * alone and its ground first, as they went before they went nearest first (render/scene.ts order). "edges" draws walls
  * with no worn edges (world-surfaces.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {

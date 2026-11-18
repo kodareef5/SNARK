@@ -146,7 +146,7 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
     if (dyed > 0 && lit > 0) grey = Math.round((lit / dyed) * 1e4) / 1e4;
   }
   const material: PackMaterial = {
-    id: m.id, base: place("base"), normal: place("normal"), mro: place("mro"), mask: place("mask"), mask2: place("mask2"), tint, grey, emissive: 0,
+    id: m.id, base: place("base"), normal: place("normal"), mro: place("mro"), mask: place("mask"), mask2: place("mask2"), tint, grey, emissive: m.spec.emissive ?? 0,
     flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
   };
   if (layered) material.layer = place("layer");

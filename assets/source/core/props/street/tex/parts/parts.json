@@ -53,6 +53,9 @@
  "lens": {
   "height_mm": 21
  },
+ "lens_lit": {
+  "height_mm": 21
+ },
  "louvre": {
   "height_mm": 30.580651
  },

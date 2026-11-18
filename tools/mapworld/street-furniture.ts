@@ -42,8 +42,9 @@ export interface Furniture {
   classes: Record<string, string>;
   forms: Record<string, Forms>;
   /** Metres between a lamp and the next along each class, which have them on both sides or one at a time. `set` and the
-   * others' are metres from the kerb's line to a post's middle. */
-  lamps: { spacing: Record<string, number>; both: string[]; set: number };
+   * others' are metres from the kerb's line to a post's middle. `lit`: the share of each class's standing lamps that still
+   * work, none in a district of a style `dark` names. */
+  lamps: { spacing: Record<string, number>; both: string[]; set: number; lit: Record<string, number>; dark: string[] };
   /** Metres from the kerbs to a signal's pole and a street-name sign at a corner, and to a stop sign's post; `past`, how much
    * further back along the street a stop sign or a corner's box goes where a walk's curb ramp stands in its place. */
   junctions: { major: string[]; minor: string[]; signalCross: number; signal: number; stop: number; name: number; stopBack: number; standing: number; past: number };
@@ -422,7 +423,9 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     if (nearJunction(x, z)) return;
     const h = hash3(line, k, seed + 1);
     for (const s of L.both.includes(cls) ? [1, -1] : [k % 2 === 0 ? 1 : -1]) {
-      putOut("lamps", form("lamp", hash3(h, s + 2, seed)), L.set, (set) => side(x, z, dx, dz, half + set, s));
+      let name = form("lamp", hash3(h, s + 2, seed));
+      if (name === "lamp" && chance(hash3(h, s + 5, seed), L.lit[cls] ?? 0) && !L.dark.includes(districtOf(x, z).style)) name = "lamp_lit";
+      putOut("lamps", name, L.set, (set) => side(x, z, dx, dz, half + set, s));
     }
   });
   // Utility poles down one side of the lesser streets of the districts that have them.

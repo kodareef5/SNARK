@@ -69,6 +69,30 @@ const LUMA = [0.2126, 0.7152, 0.0722] as const;
 type Numbers = ArrayLike<number>;
 type Out = number[] | Float32Array | Float64Array;
 
+/**
+ * Street lamps that still work light at dusk and go out at dawn: wholly on with the true sun (sky.ts `trueSun`) at the
+ * horizon or under it, wholly off from LAMPS_OFF up, between the two by smoothstep.
+ */
+export const LAMPS_OFF = 0.12;
+
+/** How much the lamps are on in this frame, 0 to 1. The twin of the GLSL `lampsOn`. */
+export function lampsOn(frame: Numbers): number {
+  // The true sun is the moon's direction turned round.
+  const t = Math.min(1, Math.max(0, (LAMPS_OFF + frame[FRAME.moon + 1]!) / LAMPS_OFF));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * The light a material's base colour gives out where its alpha marks it to glow, as the lamps are on: `emissive` the
+ * material's (shared/pack/pack.ts), `base` linear with its alpha. The twin of the textured text's `glow`.
+ */
+export function glow(out: Out, base: Numbers, emissive: number, on: number): void {
+  const k = emissive * on * base[3]!;
+  out[0] = base[0]! * k;
+  out[1] = base[1]! * k;
+  out[2] = base[2]! * k;
+}
+
 /** A display value as light, and light as a display value: the sRGB curve. */
 export function srgbToLinear(s: number): number {
   return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
@@ -566,12 +590,18 @@ in vec4 vTangent;
 in vec2 vUv;
 ${dyed ? "flat in mat3 vDye, vDye2;\n" : ""}uniform sampler2D uBase, uNormal, uMro${dyed ? ", uMask, uMask2" : ""};
 uniform vec3 uTint;
-uniform float uCutoff, uSheet, uSkin;
+uniform float uCutoff, uSheet, uSkin, uEmissive;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
 ${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
+}
+float lampsOn() {
+  return smoothstep(${f(LAMPS_OFF)}, 0.0, fTrueSun.y);
+}
+vec3 glow(vec4 base) {
+  return uEmissive > 0.0 ? base.rgb * (uEmissive * lampsOn() * base.a) : vec3(0.0);
 }
 void main() {
 ${drops ? "  if (handDrops()) discard;\n" : ""}  vec4 base = texture(uBase, vUv);
@@ -582,7 +612,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
   float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
-  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade), vRel), cover);
+  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade) + glow(base), vRel), cover);
 }`;
 }
 
