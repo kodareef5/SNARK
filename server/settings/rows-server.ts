@@ -145,7 +145,7 @@ s.under("Structures")
 
 s.under("PvP and PvE")
   .b("serverPVE", false, "Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away.", live({ public: true, live: true }))
-  .b("AllowThirdPersonPlayer", true, "The body may be looked at from behind.", live({ live: true, client: true }))
+  .b("AllowThirdPersonPlayer", true, "The body may be looked at from outside: over the shoulder (V) and in the orbit camera (K).", live({ live: true, client: true }))
   .b("ServerCrosshair", true, "A crosshair is shown.", live({ live: true, client: true }))
   .b("ShowMapPlayerLocation", true, "The map shows where its reader is.", live({ live: true, client: true }))
   .b("ServerHardcore", false, "A survivor who dies begins again at level 1.", plan("offline"))

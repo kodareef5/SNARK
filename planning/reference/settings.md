@@ -63,7 +63,7 @@ may change a setting without a restart.
 | `ForceAllStructureLocking` | False | Everything that can be locked is locked when it is built. | yes |
 | `PreventOutOfTribePinCodeUse` | False | A PIN opens nothing for those outside the tribe. | yes |
 | `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away. | yes |
-| `AllowThirdPersonPlayer` | True | The body may be looked at from behind. | yes; clients are told |
+| `AllowThirdPersonPlayer` | True | The body may be looked at from outside: over the shoulder (V) and in the orbit camera (K). | yes; clients are told |
 | `ServerCrosshair` | True | A crosshair is shown. | yes; clients are told |
 | `ShowMapPlayerLocation` | True | The map shows where its reader is. | yes; clients are told |
 | `PreventUploadSurvivors` | False | No survivor may leave this server for another of its cluster. | no |
