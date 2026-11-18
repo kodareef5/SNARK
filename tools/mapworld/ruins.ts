@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { BREAK_AT, RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
@@ -319,6 +319,18 @@ export function makeRuins(site: Site): StaticPiece[] {
   }
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
   const put = (name: string, value: unknown): void => writeFileSync(join(folder, name), `${JSON.stringify(value, null, 2)}\n`);
+  // A long list written a row at a time, the same bytes as put's: as one string a big city's buildings were 0.3 to 0.55 GB.
+  const putRows = (name: string, rows: readonly unknown[]): void => {
+    if (rows.length === 0) return put(name, rows);
+    const fd = openSync(join(folder, name), "w");
+    let chunk = "[\n  ";
+    rows.forEach((row, i) => {
+      chunk += `${i > 0 ? ",\n  " : ""}${JSON.stringify(row, null, 2).replace(/\n/g, "\n  ")}`;
+      if (chunk.length > 1 << 20) { writeSync(fd, chunk); chunk = ""; }
+    });
+    writeSync(fd, `${chunk}\n]\n`);
+    closeSync(fd);
+  };
   put("bridges.json", bridges.records);
   put("bridge-summary.json", { roadApproaches: bridges.records.reduce((n, r) => n + r.approaches, 0), railAccess: bridges.records.reduce((n, r) => n + r.access.length, 0), byKind: tally(bridges.records.map((r) => r.kind)), brokenWays: bridges.records.filter((r) => r.deck.some((d) => d.gap)).map((r) => ({ id: r.id, name: r.name, skippedDecks: r.deck.filter((d) => d.gap).length })), ways: bridges.records.length, built: bridges.records.filter((r) => r.status === "built").length, blocks: bridges.records.filter((r) => r.status === "built").reduce((n, r) => n + r.blocks, 0), outlines: bridges.outlines });
   const topChunks = [...counts.keys()].filter((i) => counts[i]! > 0).sort((a, b) => counts[b]! - counts[a]! || a - b).slice(0, 30).map((i) => ({ x: i % chunksX, z: Math.floor(i / chunksX), blocks: counts[i] }));
@@ -347,7 +359,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   put("parked.json", parked);
   const wrecks = pieces.filter((p) => wreckLook(p.kind));
   put("sightlines.json", sightlines);
-  put("buildings.json", records);
+  putRows("buildings.json", records);
   put("roof-gardens.json", records.flatMap((r) => {
     const p = pieces.slice(r.firstPiece, r.firstPiece + r.blocks).find((p) => p.kind.includes("_zshrub_"));
     return p ? [{ part: r.part, x: p.x, y: p.y, z: p.z, yaw: r.yaw, name: r.name }] : [];

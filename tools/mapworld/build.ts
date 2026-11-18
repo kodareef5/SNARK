@@ -6,7 +6,7 @@
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
 // bytes. Its copies for the wire take a few seconds; --release writes the tightest, as a map that ships has (tools/map/pack.ts).
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -14,7 +14,7 @@ import { SECTOR_CHUNKS, chunkCount, framed } from "../../shared/coords.ts";
 import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, resolveNodes, writeMap } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
-import { readLayers, waterLayer } from "../map/layers.ts";
+import { readLayers, toYaw, waterLayer } from "../map/layers.ts";
 import { partsTable, wireBytes, writeMapFile } from "../map/pack.ts";
 import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
@@ -39,7 +39,16 @@ const ROOT = resolve(import.meta.dir, "../..");
 
 export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps")): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
-  const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}`);
+  // Each step with the process's memory as it ends it and the most it has held: what a machine of 32 GB can build is
+  // read here (/proc, so Linux alone; elsewhere the time alone).
+  const memory = (): string => {
+    try {
+      const status = readFileSync("/proc/self/status", "utf8");
+      const gb = (key: string): string => (Number(new RegExp(`${key}:\\s+(\\d+)`).exec(status)?.[1] ?? 0) / 1048576).toFixed(1);
+      return `  [${gb("VmRSS")} GB, most ${gb("VmHWM")}]`;
+    } catch { return ""; }
+  };
+  const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}${memory()}`);
   const source = named.includes("/") ? resolve(named) : workFolder(named);
   const name = basename(source);
   const base = new Base(source);
@@ -57,11 +66,15 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const reg = compiled.registry;
 
   const ground = makeGround(base, world, lap);
+  // A step's own working arrays let go before the next takes its own: the ground's are some 26 full-frame arrays, the
+  // ruins' their whole city's plans, and without a collection between them the next step's peak was laid on theirs.
+  Bun.gc(true);
   lap("ground");
   const site = siteOf(world, ground, source);
   const layered: StaticPiece[] = [];
   for (const layer of STATIC_LAYERS) {
     const pieces = layer.make(site, layered);
+    Bun.gc(true);
     lap(`${pieces.length} static pieces of ${layer.name}`);
     for (const p of pieces) layered.push(p);
   }
@@ -176,7 +189,17 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const lines = <T,>(rows: readonly T[], turn: (row: T) => unknown = (row) => row): string => `[\n${rows.map((r) => `  ${JSON.stringify(turn(r))}`).join(",\n")}\n]\n`;
   put("spawns.json", lines(spawns, engine));
   put("regions.json", lines(regions, engine));
-  if (statics.length > 0) put("statics.json", lines(statics, engine));
+  // The statics as `lines` writes them, a megabyte at a time: as one string they were 0.8 to 1.5 GB.
+  if (statics.length > 0) {
+    const fd = openSync(join(layers, "statics.json"), "w");
+    let chunk = "[\n";
+    statics.forEach((p, i) => {
+      chunk += `${i > 0 ? ",\n" : ""}  ${JSON.stringify(engine(p))}`;
+      if (chunk.length > 1 << 20) { writeSync(fd, chunk); chunk = ""; }
+    });
+    writeSync(fd, `${chunk}\n]\n`);
+    closeSync(fd);
+  }
   if (vehicles.length > 0) put("vehicles.json", lines(vehicles, engine));
   // Lakes above the sea as bodies of water, in squares of a sample.
   if (ground.lakes) {
@@ -186,8 +209,14 @@ export async function buildMap(named: string, release = false, output = join(ROO
   }
   lap(`layers in ${layers}`);
 
-  let map = readLayers(layers);
+  // The statics from memory as statics.json says them (readLayers), not read back from it.
+  let map = readLayers(layers, statics.map((p) => ({ kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw) })));
   map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
+  // The map holds the statics in columns now; the pieces as objects, 7 to 13 M of them, are let go for the rest of the
+  // build, and only their count is kept for the numbers.
+  const staticTotal = statics.length;
+  statics.length = 0;
+  layered.length = 0;
   Bun.gc(true);
   // Whether each slot's node stands, and as what, is decided here once, and the file says so.
   const taken = { water: 0, slope: 0, footing: 0, other: 0 };
@@ -230,6 +259,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
   map = { ...map, tops: mapTops(map, reg) };
   lap(`the far feed's cells of ${map.tops!.chunks.length} chunks, for the overviews' tops`);
   const bytes = writeMap(map);
+  // The file is the map from here on (the numbers below read it back): the map as built is let go first.
+  map = undefined as unknown as typeof map;
+  Bun.gc(true);
   const file = join(output, `${name}.snmap`);
   const built = (performance.now() - t0) / 1000;
   const packed = await writeMapFile(file, bytes, release);
@@ -312,14 +344,14 @@ export async function buildMap(named: string, release = false, output = join(ROO
     buildSeconds: Number(built.toFixed(1)),
     totalSeconds: Number(((performance.now() - t0) / 1000).toFixed(2)),
     peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)),
-    staticTotal: statics.length,
+    staticTotal,
     staticMaxChunk: packedMax,
     staticMaxChunkBeforePacking: maxChunk,
     vehicles: vehicles.length,
     deepestWater: Number(deepest.toFixed(2)),
     bedHeldAtFloor: below,
     highestGround: Number(highest.toFixed(2)),
-    landmarks: statics.length === 0 ? landmarks : [],
+    landmarks: staticTotal === 0 ? landmarks : [],
     ruins: ground.heaps.ruins.length,
     landShareWalkable: Number((walkable / land).toFixed(4)),
     landSquareMetres: land * 4,

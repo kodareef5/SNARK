@@ -28,11 +28,16 @@ type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>
 type Region = { spawns: string; count: number; x: number; z: number; radius?: number; half?: [number, number] };
 type Water = { squares: string; bodies: { name: string; surface: number }[] };
 
-const toYaw = (degrees = 0): number => Math.round((degrees / 360) * YAW_UNITS) & (YAW_UNITS - 1);
+export const toYaw = (degrees = 0): number => Math.round((degrees / 360) * YAW_UNITS) & (YAW_UNITS - 1);
 const toDegrees = (yaw: number): number => (yaw * 360) / YAW_UNITS;
 
-/** Reads the folder into a map. Throws, naming the file, if a layer is missing or the wrong shape. */
-export function readLayers(folder: string): MapData {
+/**
+ * Reads the folder into a map. Throws, naming the file, if a layer is missing or the wrong shape. `statics`, where the
+ * caller holds them already (the build, which has just written statics.json), stand for that file: read back, a city's
+ * 7 to 13 M pieces were a second whole set of objects and a 1 GB string in memory at once. Every number in the file is
+ * the shortest that reads back as the same double, so the map is the same to the byte either way.
+ */
+export function readLayers(folder: string, statics?: readonly MapStatic[]): MapData {
   const file = (name: string): Uint8Array | null => (existsSync(join(folder, name)) ? new Uint8Array(readFileSync(join(folder, name))) : null);
   const need = <T>(found: T | null, name: string): T => {
     if (found === null) throw new Error(`${folder} has no ${name}`);
@@ -123,7 +128,7 @@ export function readLayers(folder: string): MapData {
     tint: (picture("tint", 8, nx, nz) as Uint8Array | null) ?? new Uint8Array(nx * nz),
     // The ground's class each two samples a side (MapData.ground), where the folder has one: every even sample's.
     ...((g) => (g ? { ground: g as Uint8Array } : {}))(picture("ground", 8, (nx + 1) >> 1, (nz + 1) >> 1)),
-    statics: (json<Piece[]>("statics.json") ?? []).map((s): MapStatic => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toYaw(s.yaw) })),
+    statics: statics ?? (json<Piece[]>("statics.json") ?? []).map((s): MapStatic => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toYaw(s.yaw) })),
     nodes,
     spawns: need(json<Spawn[]>("spawns.json"), "spawns.json").map((s): MapSpawn => ({ name: s.name, x: s.x, z: s.z, yaw: toYaw(s.yaw) })),
     ...(regions ? { regions: regions.map((r): MapZone => ({ kind: "spawn", spawns: r.spawns, count: r.count, at: [r.x, r.z], ...(r.half ? { half: r.half } : { radius: r.radius ?? 0 }) })) } : {}),
