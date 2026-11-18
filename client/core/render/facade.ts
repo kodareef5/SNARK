@@ -106,8 +106,8 @@ const ROOM_DEPTH = 0.7;
  * A room behind glass is lit by the sky's share at the top of its opening, ROOM_OUT metres out over the street, so a
  * canopy or a balcony over the front shades it only as far as it reaches, and never less than ROOM_OPEN_LEAST of it.
  */
-export const ROOM_OUT = 2;
-export const ROOM_OPEN_LEAST = 0.35;
+export const ROOM_OUT = 3;
+export const ROOM_OPEN_LEAST = 0.55;
 /** Dirty glass: the film's own albedo at its thickest, and how much of the room it hides there. */
 const FILM_ALBEDO = 0.35;
 const FILM_HIDES = 0.45;
