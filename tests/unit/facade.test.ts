@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES } from "../../content/ruins.ts";
-import { ELEMENTS, FACADE_COLOURS, FACADE_GLSL, FACADE_TIERS, FACADE_TOP, KIND, KINDS, MARKS, MARKS_PLACED, NO_FLOOD, PLACED, ROOM_MEANS, facadeDress, facadeFarColour, facadeFarVertex, facadeKind, facadeMarks, facadeOut, facadeRoomBox, facadeSeed, facadeSurface, facadeVertex, type FacadeSample } from "../../client/core/render/facade.ts";
+import { ELEMENTS, FACADE_COLOURS, FACADE_GLSL, FACADE_TIERS, FACADE_TOP, KIND, KINDS, MARKS, MARKS_PLACED, NO_FLOOD, PLACED, ROOM_MEANS, facadeDress, facadeFarColour, facadeShopGlass, facadeSign, facadeFarVertex, facadeKind, facadeMarks, facadeOut, facadeRoomBox, facadeSeed, facadeSurface, facadeVertex, type FacadeSample } from "../../client/core/render/facade.ts";
 import { FAR_MESH_VERTEX, FLAT_MESH_VERTEX } from "../../client/core/render/glsl.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { TIERS } from "../../client/core/assets/tiers.ts";
@@ -190,4 +190,34 @@ test("far off, where no part is drawn, a window and a curtain wall are their bay
   expect(PROGRAMS.far!(TIERS[2]!, "bc").vertex).toContain("if (i == 83u)");
   expect(PROGRAMS.far!(TIERS[0]!, "bc").vertex).not.toContain("if (i == 83u)");
   expect(PROGRAMS.flat!(TIERS[2]!, "bc").vertex).not.toContain("if (i == 83u)");
+});
+
+test("a shop's sign is its street's and its bay's: the next shops along a street wear others, and a band turned in its instance agrees", () => {
+  const count = ELEMENTS.find((e) => e[0] === "sign")![3];
+  for (const [rx, rz] of [[1, 0], [0, -1], [-0.6, 0.8]] as const) {
+    const at = (k: number): number => facadeSign([8 * k * rx + 0.4 * rx, 0, 8 * k * rz + 0.4 * rz + 3], [rx, 0, rz], rx, rz, 7.2, 0, 0, count);
+    for (let k = -40; k < 40; k++) {
+      for (let j = 1; j <= 3; j++) expect(at(k + j)).not.toBe(at(k));
+      // The same band in an instance turned a quarter, its place where the frame's origin was: one sign.
+      const c = [8 * k * rx + 0.4 * rx - 100, 0, 8 * k * rz + 0.4 * rz + 3 - 60];
+      expect(facadeSign([c[2]!, 0, -c[0]!], [rz, 0, -rx], rx, rz, 7.2, 400, 240, count)).toBe(at(k));
+    }
+  }
+  // Every sign is worn somewhere along a long street.
+  expect(new Set(Array.from({ length: 64 }, (_, k) => facadeSign([8 * k, 0, 0], [1, 0, 0], 1, 0, 7.2, 0, 0, count))).size).toBe(count);
+});
+
+test("what is left on a display's glass is at a place of its own on each: a vinyl on about half, posters on some", () => {
+  const all = Array.from({ length: 400 }, (_, k) => facadeShopGlass(facadeSeed(4 * k, 0, 0.5, 2, 0.3), 5));
+  const vinyls = all.flatMap((g) => g.filter((m) => MARKS_PLACED[m.m]!.name === "vinyl"));
+  expect(vinyls.length / all.length).toBeGreaterThan(0.4);
+  expect(vinyls.length / all.length).toBeLessThan(0.6);
+  expect(new Set(vinyls.map((m) => Math.round(m.x0 * 4))).size).toBeGreaterThan(10);
+  expect(new Set(vinyls.map((m) => m.m)).size).toBe(MARKS.find((q) => q[0] === "vinyl")![3]);
+  for (const g of all) for (const m of g) {
+    expect(m.x0).toBeGreaterThanOrEqual(0.15);
+    expect(m.x0 + m.dw).toBeLessThanOrEqual(5 - 0.1);
+    expect(m.y0 + m.dh).toBeLessThanOrEqual(2.0);
+  }
+  expect(new Set(all.flatMap((g) => g.filter((m) => MARKS_PLACED[m.m]!.name === "poster").map((m) => m.m))).size).toBe(MARKS.find((q) => q[0] === "poster")![3]);
 });

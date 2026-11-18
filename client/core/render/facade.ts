@@ -17,19 +17,19 @@ export const FACADE_TOP = 2048;
 export const DENSITY = 128;
 const GAP = 16;
 
-/** Each element: its name, its width and height in metres, how many painted variants. */
-export const ELEMENTS: readonly (readonly [string, number, number, number])[] = [
+/** Each element: its name, its width and height in metres, how many painted variants, and its pixels a metre where not DENSITY. */
+export const ELEMENTS: readonly (readonly [string, number, number, number, number?])[] = [
   ["window", 1.4, 2, 3], ["slider", 0.9, 2.2, 2], ["casement", 1.4, 1.4, 2], ["strip", 6.8, 0.8, 1], ["curtain", 2, 2.6, 2],
-  ["display", 5, 2.4, 2], ["shutter", 7.2, 2.9, 3], ["sign", 7.2, 0.9, 6], ["bar", 6.8, 0.25, 2], ["door", 1, 2.2, 3],
+  ["display", 5, 2.4, 2], ["shutter", 7.2, 2.9, 3], ["sign", 7.2, 0.9, 16, 80], ["bar", 6.8, 0.25, 2], ["door", 1, 2.2, 3],
   ["blind", 1, 1, 1], ["drape", 1, 2, 2], ["boards", 1.2, 2.4, 2], ["shards", 1.5, 1.5, 2],
 ];
 
 /** An element's variant in the atlas: pixels at FACADE_TOP, rows from the top. */
 export interface Placed { readonly name: string; readonly variant: number; readonly x: number; readonly y: number; readonly w: number; readonly h: number }
 
-/** Items laid into an atlas FACADE_TOP across at `density` pixels a metre: the largest first, each on the lowest run of columns it fits, GAP apart. */
-function lay(list: readonly (readonly [string, number, number, number])[], density: number): Placed[] {
-  const items = list.flatMap(([name, w, h, n]) => Array.from({ length: n }, (_, variant) => ({ name, variant, w: Math.ceil((w * density) / 8) * 8, h: Math.ceil((h * density) / 8) * 8 })));
+/** Items laid into an atlas FACADE_TOP across at `density` pixels a metre or their own: the largest first, each on the lowest run of columns it fits, GAP apart. */
+function lay(list: readonly (readonly [string, number, number, number, number?])[], density: number): Placed[] {
+  const items = list.flatMap(([name, w, h, n, d = density]) => Array.from({ length: n }, (_, variant) => ({ name, variant, w: Math.ceil((w * d) / 8) * 8, h: Math.ceil((h * d) / 8) * 8 })));
   const order = items.map((_, i) => i).sort((a, b) => items[b]!.w * items[b]!.h - items[a]!.w * items[a]!.h || a - b);
   const sky = new Int32Array(FACADE_TOP / 8).fill(GAP);
   const at = new Array<{ x: number; y: number }>(items.length);
@@ -54,11 +54,12 @@ function lay(list: readonly (readonly [string, number, number, number])[], densi
 export const PLACED: readonly Placed[] = lay(ELEMENTS, DENSITY);
 const first = (name: string): number => PLACED.findIndex((p) => p.name === name);
 
-/** The marks painted on walls: posters, sprayed tags, large pieces, a garage's stencils; laid at MARK_DENSITY pixels a metre into their own atlas. */
-export const MARKS: readonly (readonly [string, number, number, number])[] = [["poster", 0.6, 0.9, 6], ["tag", 1, 0.5, 8], ["piece", 3.2, 1.2, 2], ["stencil", 0.6, 0.8, 4]];
+/** The marks painted on walls: posters, sprayed tags, large pieces, a garage's stencils, and vinyl left on a shop's glass; laid at MARK_DENSITY pixels a metre into their own atlas. */
+export const MARKS: readonly (readonly [string, number, number, number])[] = [["poster", 0.6, 0.9, 14], ["tag", 1, 0.5, 8], ["piece", 3.2, 1.2, 7], ["stencil", 0.6, 0.8, 4], ["vinyl", 1.2, 0.8, 3]];
 const MARK_DENSITY = 256;
 export const MARKS_PLACED: readonly Placed[] = lay(MARKS, MARK_DENSITY);
 const mark = (name: string): number => MARKS_PLACED.findIndex((p) => p.name === name);
+const marks = (name: string): number => MARKS.find((q) => q[0] === name)![3];
 
 /** The rooms' atlas: 4 by 4 rooms, each four squares, back wall and side wall over floor and ceiling. */
 export const ROOMS = 16;
@@ -101,6 +102,8 @@ const NEAR = 0.04;
  */
 const ROOM_LIGHT = 0.55;
 const ROOM_DEPTH = 0.7;
+/** The least share of the sky's light a room behind glass has, where the top of its opening sees little sky (under a canopy or a balcony). */
+export const ROOM_OPEN_LEAST = 0.3;
 /** Dirty glass: the film's own albedo at its thickest, and how much of the room it hides there. */
 const FILM_ALBEDO = 0.35;
 const FILM_HIDES = 0.45;
@@ -132,8 +135,8 @@ export const NO_FLOOD = -1e4;
  * its cover (base alpha), its roughness; each mark's, linear red, green and blue where it covers, and its cover; and each
  * room's, linear red, green and blue. tools/facade/build.ts measures them from the atlases it makes.
  */
-export const ELEMENT_MEANS: readonly number[] = [0.5726, 0.567, 0.477, 0.2566, 0.2085, 0.1426, 0.109, 0.07729, 0.2566, 0.2077, 0.5379, 0.5212, 0.4229, 0.2566, 0.2651, 0.5907, 0.5848, 0.4916, 0.2535, 0.2023, 0.1575, 0.1224, 0.08767, 0.2535, 0.2031, 0.5515, 0.5461, 0.4589, 0.2158, 0.1881, 0.1449, 0.1119, 0.08002, 0.211, 0.1837, 0.5499, 0.5438, 0.4577, 0.207, 0.1753, 0.09125, 0.1097, 0.09978, 0.3799, 0.1181, 0.07765, 0.05798, 0.04474, 0.3799, 0.1171, 0.3531, 0.3658, 0.3331, 0.1306, 0.1646, 0.1463, 0.1145, 0.08198, 0.1332, 0.1666, 0.1593, 0.2302, 0.2598, 1, 0.7903, 0.3903, 0.4049, 0.3726, 0.9989, 0.6862, 0.4834, 0.4333, 0.2989, 1, 0.793, 0.3254, 0.377, 0.3086, 1, 0.8576, 0.5014, 0.454, 0.4004, 1, 0.8539, 0.492, 0.4303, 0.3225, 1, 0.8592, 0.3183, 0.3764, 0.387, 1, 0.8574, 0.2701, 0.2792, 0.2669, 1, 0.8511, 0.4228, 0.3023, 0.2659, 1, 0.8589, 0.3321, 0.2574, 0.0921, 1, 0.7832, 0.4679, 0.3507, 0.1155, 1, 0.7789, 0.3135, 0.3356, 0.2979, 0.5187, 0.4147, 0.1143, 0.2159, 0.1813, 0.9577, 0.7781, 0.2457, 0.1304, 0.09312, 1, 0.8017, 0.5906, 0.5515, 0.4119, 0.8226, 0.5917, 0.5793, 0.4899, 0.3497, 0.9647, 0.8438, 0.2261, 0.2843, 0.3053, 0.9627, 0.8438, 0.3105, 0.2664, 0.217, 0.9925, 0.8496, 0.2983, 0.2633, 0.2175, 0.5663, 0.8514, 0.4215, 0.4536, 0.3792, 0.1455, 0.07263, 0.4171, 0.4514, 0.3785, 0.1464, 0.07176];
-export const MARK_MEANS: readonly number[] = [0.4116, 0.3295, 0.1334, 0.8442, 0.5495, 0.459, 0.3242, 0.85, 0.5145, 0.4908, 0.4103, 0.7845, 0.4971, 0.3622, 0.2594, 0.8477, 0.5358, 0.5078, 0.418, 0.8251, 0.4526, 0.478, 0.4487, 0.8134, 0.04228, 0.04228, 0.03818, 0.1901, 0.4903, 0.2012, 0.2083, 0.2458, 0.1945, 0.3323, 0.4339, 0.1386, 0.3714, 0.3754, 0.3375, 0.3122, 0.6942, 0.687, 0.5909, 0.1893, 0.3055, 0.387, 0.2709, 0.1758, 0.5148, 0.2541, 0.1195, 0.2146, 0.3717, 0.2965, 0.4183, 0.1753, 0.3228, 0.3694, 0.33, 0.574, 0.3067, 0.3124, 0.2731, 0.5021, 0.4099, 0.4037, 0.3459, 0.2263, 0.3384, 0.2746, 0.1084, 0.2344, 0.7258, 0.7111, 0.6067, 0.1991, 0.304, 0.2488, 0.1025, 0.2356];
+export const ELEMENT_MEANS: readonly number[] = [0.5726, 0.567, 0.477, 0.2566, 0.2085, 0.1426, 0.109, 0.07729, 0.2566, 0.2077, 0.5379, 0.5212, 0.4229, 0.2566, 0.2651, 0.5907, 0.5848, 0.4916, 0.2535, 0.2023, 0.1575, 0.1224, 0.08767, 0.2535, 0.2031, 0.5515, 0.5461, 0.4589, 0.2158, 0.1881, 0.1449, 0.1119, 0.08002, 0.211, 0.1837, 0.5499, 0.5438, 0.4577, 0.207, 0.1753, 0.09125, 0.1097, 0.09978, 0.3799, 0.1181, 0.07765, 0.05798, 0.04474, 0.3799, 0.1171, 0.3531, 0.3658, 0.3331, 0.1306, 0.1646, 0.1392, 0.1075, 0.07665, 0.1306, 0.1649, 0.1593, 0.2302, 0.2598, 1, 0.7903, 0.3903, 0.4049, 0.3726, 0.9989, 0.6862, 0.4834, 0.4333, 0.2989, 1, 0.793, 0.3262, 0.3778, 0.3094, 1, 0.8576, 0.5013, 0.454, 0.4006, 1, 0.8539, 0.4916, 0.43, 0.3224, 1, 0.8594, 0.318, 0.3761, 0.3868, 1, 0.8574, 0.27, 0.2791, 0.2667, 1, 0.8511, 0.423, 0.3027, 0.2663, 1, 0.8589, 0.3688, 0.2813, 0.1739, 1, 0.8359, 0.2698, 0.2815, 0.2711, 1, 0.6855, 0.3499, 0.3035, 0.1827, 1, 0.7229, 0.4357, 0.3767, 0.3038, 1, 0.7407, 0.2534, 0.3098, 0.2801, 1, 0.834, 0.345, 0.3251, 0.3618, 1, 0.8399, 0.181, 0.1886, 0.1707, 1, 0.6779, 0.4902, 0.4755, 0.4222, 1, 0.8355, 0.2599, 0.1684, 0.1487, 1, 0.7179, 0.3893, 0.2746, 0.2265, 1, 0.7481, 0.3321, 0.2574, 0.0921, 1, 0.7832, 0.4679, 0.3507, 0.1155, 1, 0.7789, 0.3135, 0.3356, 0.2979, 0.5187, 0.4147, 0.1143, 0.2159, 0.1813, 0.9577, 0.7781, 0.2457, 0.1304, 0.09312, 1, 0.8017, 0.5906, 0.5515, 0.4119, 0.8226, 0.5917, 0.5793, 0.4899, 0.3497, 0.9647, 0.8438, 0.2261, 0.2843, 0.3053, 0.9627, 0.8438, 0.3105, 0.2664, 0.217, 0.9925, 0.8496, 0.2983, 0.2633, 0.2175, 0.5663, 0.8514, 0.4215, 0.4536, 0.3792, 0.1455, 0.07263, 0.4171, 0.4514, 0.3785, 0.1464, 0.07176];
+export const MARK_MEANS: readonly number[] = [0.4116, 0.3295, 0.1334, 0.8442, 0.5495, 0.459, 0.3242, 0.85, 0.5145, 0.4908, 0.4103, 0.7845, 0.4971, 0.3622, 0.2594, 0.8477, 0.5358, 0.5078, 0.418, 0.8251, 0.4526, 0.478, 0.4487, 0.8134, 0.6639, 0.3739, 0.3548, 0.8729, 0.5467, 0.3209, 0.2095, 0.8522, 0.5581, 0.4295, 0.307, 0.8537, 0.3422, 0.3693, 0.3043, 0.8682, 0.5777, 0.4284, 0.2307, 0.8599, 0.3081, 0.1138, 0.06147, 0.8572, 0.5668, 0.4167, 0.3356, 0.7955, 0.392, 0.3248, 0.2808, 0.8394, 0.04228, 0.04228, 0.03818, 0.1901, 0.4903, 0.2012, 0.2083, 0.2458, 0.1945, 0.3323, 0.4339, 0.1386, 0.3714, 0.3754, 0.3375, 0.3122, 0.6942, 0.687, 0.5909, 0.1893, 0.3055, 0.387, 0.2709, 0.1758, 0.5148, 0.2541, 0.1195, 0.2146, 0.3717, 0.2965, 0.4183, 0.1753, 0.3228, 0.3694, 0.33, 0.574, 0.3067, 0.3124, 0.2731, 0.5021, 0.273, 0.2735, 0.2742, 0.4449, 0.2162, 0.1766, 0.07111, 0.3749, 0.5102, 0.2035, 0.1324, 0.5592, 0.5536, 0.3367, 0.3393, 0.4949, 0.4769, 0.2652, 0.1761, 0.4901, 0.4099, 0.4037, 0.3459, 0.2263, 0.3384, 0.2746, 0.1084, 0.2344, 0.7258, 0.7111, 0.6067, 0.1991, 0.304, 0.2488, 0.1025, 0.2356, 0.7526, 0.7348, 0.6509, 0.1135, 0.6555, 0.6083, 0.4844, 0.05289, 0.5977, 0.6585, 0.6109, 0.1635];
 export const ROOM_MEANS: readonly number[] = [0.2983, 0.2752, 0.192, 0.2211, 0.2479, 0.233, 0.2763, 0.2707, 0.2117, 0.2314, 0.2265, 0.1938, 0.2664, 0.2406, 0.1757, 0.3243, 0.3099, 0.2531, 0.1549, 0.1495, 0.1317, 0.2371, 0.2168, 0.1959, 0.2354, 0.2187, 0.1953, 0.1742, 0.1609, 0.132, 0.2351, 0.2149, 0.1754, 0.2418, 0.2283, 0.1915, 0.2559, 0.2261, 0.2009, 0.247, 0.2757, 0.2113, 0.2402, 0.2221, 0.1803, 0.09239, 0.08356, 0.07712];
 
 const fract = (x: number): number => x - Math.floor(x);
@@ -191,9 +194,11 @@ export interface FacadeOut {
   farShare: number;
   /** Whether the pixel mirrors the sky as a picture. */
   sharp: boolean;
+  /** Metres up the face to the top of its opening, where the room's share of the sky is read (ROOM_OPEN_LEAST). */
+  roomUp: number;
 }
 export function facadeOut(): FacadeOut {
-  return { albedo: new Float64Array(3), orm: new Float64Array(3), normal: new Float64Array(3), room: new Float64Array(3), far: new Float64Array(3), farShare: 0, sharp: false };
+  return { albedo: new Float64Array(3), orm: new Float64Array(3), normal: new Float64Array(3), room: new Float64Array(3), far: new Float64Array(3), farShare: 0, sharp: false, roomUp: 0 };
 }
 
 
@@ -321,8 +326,9 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
   const seed = facadeSeed(px, pz, corner[0]! + right[0]! * cx, height - y + cy, corner[2]! + right[2]! * cx);
   const family = facadeFamily(px, pz);
   const count = ELEMENTS.find((q) => q[0] === d.element)?.[3] ?? 1;
-  const pick = kind === KIND.jamb ? 0 : Math.min(Math.floor((d.element === "sign" || d.element === "shutter" || d.element === "door" ? seed : family) * count), count - 1);
+  const pick = kind === KIND.jamb ? 0 : d.element === "sign" ? facadeSign(corner, right, rx, rz, w, px, pz, count) : Math.min(Math.floor((d.element === "shutter" || d.element === "door" ? seed : family) * count), count - 1);
   o.room.fill(0);
+  o.roomUp = h - y;
   far.fill(0);
   o.far.fill(0);
   o.farShare = 0;
@@ -407,8 +413,67 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
     o.farShare *= 1 - b;
     o.sharp &&= b < 0.5;
   }
+  if (kind === KIND.display && a < 1 && !boards) {
+    const c = shopGlass(gx, gy, w, seed, footprint, tier.marks, sample) * (1 - a);
+    if (c > 0) {
+      for (let k = 0; k < 3; k++) {
+        o.albedo[k] = o.albedo[k]! * (1 - c) + decal[k]! * c;
+        o.room[k]! *= 1 - c;
+      }
+      o.orm[0] = o.orm[0]! * (1 - c) + c;
+      o.orm[1] = o.orm[1]! * (1 - c) + 0.9 * c;
+      o.orm[2] = o.orm[2]! * (1 - c);
+      o.farShare *= 1 - c;
+      o.sharp &&= c < 0.5;
+    }
+  }
   const nl = Math.hypot(o.normal[0]!, o.normal[1]!, o.normal[2]!) || 1;
   for (let c = 0; c < 3; c++) o.normal[c]! /= nl;
+}
+
+/**
+ * The sign band a shop wears, of `count`: by its street and its 8 m bay along it, so a band split over faces agrees and
+ * the next shops along a street wear others. `corner` and `right` are the face's left foot and its way across in the
+ * instance's own frame, (rx, rz) that way in the world, and (px, pz) the instance's place in quarter metres.
+ */
+export function facadeSign(corner: Numbers, right: Numbers, rx: number, rz: number, w: number, px: number, pz: number, count: number): number {
+  const ol = Math.hypot(right[0]!, right[2]!) || 1, ox = right[0]! / ol, oz = right[2]! / ol;
+  const cs = ox * rx + oz * rz, sn = ox * rz - oz * rx;
+  const cx = corner[0]! + ox * w * 0.5, cz = corner[2]! + oz * w * 0.5;
+  const ax = px * 0.25 + cs * cx - sn * cz, az = pz * 0.25 + sn * cx + cs * cz;
+  const along = ax * rx + az * rz, across = ax * rz - az * rx;
+  const dir = Math.floor(Math.atan2(rz, rx) / 0.7853982 + 0.5) & 7;
+  const start = Math.floor(facadeHash(Math.floor(across / 6 + 0.37), dir, 23) * count);
+  const k = start + Math.floor(along / 8 + 0.37) * 5;
+  return k - count * Math.floor(k / count);
+}
+
+/** A mark on a shop's glass: which (into MARKS_PLACED), its left foot on the glass in metres, and its size. */
+export interface GlassMark { m: number; x0: number; y0: number; dw: number; dh: number }
+
+/** What is left on a display's glass `w` metres wide by its seed: at most one vinyl and two posters, each at a place of its own. */
+export function facadeShopGlass(seed: number, w: number): GlassMark[] {
+  const out: GlassMark[] = [];
+  if (fract(seed * 13.7) < 0.5) out.push({ m: mark("vinyl") + Math.min(Math.floor(fract(seed * 29.3) * marks("vinyl")), marks("vinyl") - 1), x0: 0.15 + fract(seed * 5.9) * (w - 1.5), y0: 0.35 + fract(seed * 7.3) * 0.7, dw: 1.2, dh: 0.8 });
+  for (let k = 0; k < 2; k++) {
+    if (fract(seed * (17.1 + k * 4.3)) >= 0.4) continue;
+    out.push({ m: mark("poster") + Math.min(Math.floor(fract(seed * (31.7 + k * 3.1)) * marks("poster")), marks("poster") - 1), x0: 0.15 + fract(seed * (8.9 + k * 2.7)) * (w - 0.9), y0: 0.5 + fract(seed * (6.1 + k)) * 0.6, dw: 0.6, dh: 0.9 });
+  }
+  return out;
+}
+
+/** The marks on a display's glass read at (gx, gy) on it, the front one's colour into `decal`. Returns its cover. */
+function shopGlass(gx: number, gy: number, w: number, seed: number, footprint: number, size: number, sample: FacadeSample): number {
+  let cover = 0;
+  const kept = [0, 0, 0, 0];
+  for (const g of facadeShopGlass(seed, w)) {
+    const c = markAt(g.m, gx, gy, g.x0, g.y0, g.dw, g.dh, footprint, size, sample);
+    if (c <= cover) continue;
+    cover = c;
+    for (let k = 0; k < 4; k++) kept[k] = decal[k]!;
+  }
+  for (let k = 0; k < 4; k++) decal[k] = kept[k]!;
+  return cover;
 }
 
 /** What the facades need of the textures' residency (assets/residency.ts). */
@@ -589,11 +654,11 @@ export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w:
     y0 = Math.max(sy0, bottom);
   };
   if (kind === KIND.none && foot < 2.5) {
-    if (r < 0.1 && sx1 - sx0 >= 3.4 && sy1 - sy0 >= 1.6) lie("piece", 2, 3.2, 1.2, sy0 + 0.4 - foot);
-    else if (r < 0.28 && sx1 - sx0 >= 0.8 && sy1 - sy0 >= 1.2) lie("poster", 6, 0.6, 0.9, sy0 + 1.1 + 0.5 * fract(slot * 8.3) - foot);
+    if (r < 0.1 && sx1 - sx0 >= 3.4 && sy1 - sy0 >= 1.6) lie("piece", marks("piece"), 3.2, 1.2, sy0 + 0.4 - foot);
+    else if (r < 0.28 && sx1 - sx0 >= 0.8 && sy1 - sy0 >= 1.2) lie("poster", marks("poster"), 0.6, 0.9, sy0 + 1.1 + 0.5 * fract(slot * 8.3) - foot);
     else if (r < 0.55 && sx1 - sx0 >= 1.2) lie("tag", 8, 1, 0.5, sy0 + 0.5 + 1.4 * fract(slot * 8.3) - foot);
   } else if (kind === KIND.shutter) {
-    if (r < 0.25) lie("piece", 2, 3.2, 1.2, 0.4);
+    if (r < 0.25) lie("piece", marks("piece"), 3.2, 1.2, 0.4);
     else if (r < 0.7) lie("tag", 8, 1, 0.5, 0.5 + 1.2 * fract(slot * 8.3));
   } else if (kind === KIND.door && r < 0.3) lie("tag", 8, 1, 0.5, 0.6 + fract(slot * 8.3));
   else if (kind === KIND.pier) {
@@ -631,7 +696,7 @@ const fl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n
 const vecs = (type: string, rows: readonly (readonly number[])[]): string => `${type}[${rows.length}](${rows.map((r) => `${type}(${r.map(fl).join(",")})`).join(",")})`;
 const ROOM_LIST = KINDS.flatMap((k) => k.room?.rooms ?? []);
 const roomFirst = (k: number): number => KINDS.slice(0, k).reduce((sum, q) => sum + (q.room?.rooms.length ?? 0), 0);
-const pickOf = (k: Kind, i: number): number => (i === KIND.jamb || i === KIND.pier ? 2 : k.element === "sign" || k.element === "shutter" || k.element === "door" ? 1 : 0);
+const pickOf = (k: Kind, i: number): number => (i === KIND.jamb || i === KIND.pier ? 2 : k.element === "sign" ? 3 : k.element === "shutter" || k.element === "door" ? 1 : 0);
 
 /**
  * facadeSurface's twin, with how a pixel finds its face: `facade` reads a fragment of a static of colour class `colour`
@@ -728,6 +793,40 @@ float facadeFar(out vec3 albedo, float gx, vec3 r, float over, float seed) {
   return clamp((tall - hy) / 1.5, 0.0, 1.0);
 }
 #endif
+int facadeSign(vec3 corner, vec3 right, vec3 side, float w, vec2 place, int count) {
+  vec2 o = normalize(right.xz), r = normalize(side.xz);
+  float cs = dot(o, r), sn = o.x * r.y - o.y * r.x;
+  vec2 c = corner.xz + o * (w * 0.5);
+  vec2 at = place * 0.25 + vec2(cs * c.x - sn * c.y, sn * c.x + cs * c.y);
+  float along = dot(at, r), across = at.x * r.y - at.y * r.x;
+  int dir = int(floor(atan(r.y, r.x) / 0.7853982 + 0.5)) & 7;
+  int k = int(floor(facadeHash(ivec3(int(floor(across / 6.0 + 0.37)), dir, 23)) * float(count))) + int(floor(along / 8.0 + 0.37)) * 5;
+  return k - count * int(floor(float(k) / float(count)));
+}
+vec4 fDecal;
+float facadeMark(int m, float x, float y, float x0, float y0, float dw, float dh, float footprint);
+float facadeShopGlass(vec2 g, float w, float seed, float footprint) {
+  float cover = 0.0;
+  vec4 kept = vec4(0.0);
+  if (fract(seed * 13.7) < 0.5) {
+    float c = facadeMark(${mark("vinyl")} + min(int(floor(fract(seed * 29.3) * ${fl(marks("vinyl"))})), ${marks("vinyl") - 1}), g.x, g.y, 0.15 + fract(seed * 5.9) * (w - 1.5), 0.35 + fract(seed * 7.3) * 0.7, 1.2, 0.8, footprint);
+    if (c > cover) {
+      cover = c;
+      kept = fDecal;
+    }
+  }
+  for (int k = 0; k < 2; k++) {
+    if (fract(seed * (17.1 + float(k) * 4.3)) >= 0.4) continue;
+    int m = ${mark("poster")} + min(int(floor(fract(seed * (31.7 + float(k) * 3.1)) * ${fl(marks("poster"))})), ${marks("poster") - 1});
+    float c = facadeMark(m, g.x, g.y, 0.15 + fract(seed * (8.9 + float(k) * 2.7)) * (w - 0.9), 0.5 + fract(seed * (6.1 + float(k))) * 0.6, 0.6, 0.9, footprint);
+    if (c > cover) {
+      cover = c;
+      kept = fDecal;
+    }
+  }
+  fDecal = kept;
+  return cover;
+}
 int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room, inout vec4 far, int kind, float x, float y, float w, float h, vec3 corner, vec3 right, vec3 nn, vec3 side, vec2 place, vec3 rel, float footprint, float height, float over) {
   vec3 v = -normalize(rel);
   float dist = length(rel);
@@ -741,7 +840,7 @@ int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room,
   vec3 middle = corner + right * mid.x;
   float seed = facadeSeed(place, vec3(middle.x, height - y + mid.y, middle.z));
   float family = facadeHash(ivec3(floor(place / 192.0), 7));
-  int pick = ke.z > 1.5 ? 0 : min(int(floor((ke.z > 0.5 ? seed : family) * ke.y)), int(ke.y) - 1);
+  int pick = ke.z > 2.5 ? facadeSign(corner, right, side, w, place, int(ke.y)) : ke.z > 1.5 ? 0 : min(int(floor((ke.z > 0.5 ? seed : family) * ke.y)), int(ke.y) - 1);
   float ex = kind == ${KIND.jamb} ? x - (w - 1.0) * 0.5 : 0.0;
   if (kind == ${KIND.pier} || (kind == ${KIND.jamb} && (ex < 0.0 || ex > 1.0 || y > 2.2))) {
     orm.r *= (0.55 + 0.45 * smoothstep(0.0, 0.5, h - y)) * (0.7 + 0.3 * smoothstep(0.0, 0.3, y));
@@ -811,6 +910,16 @@ int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room,
     far.a *= 1.0 - b;
     if (b >= 0.5) sharp = 1;
   }
+  if (kind == ${KIND.display} && a < 1.0 && !boards) {
+    float c = facadeShopGlass(g, w, seed, footprint) * (1.0 - a);
+    if (c > 0.0) {
+      albedo = mix(albedo, fDecal.rgb, c);
+      room *= 1.0 - c;
+      orm = vec3(orm.x * (1.0 - c) + c, orm.y * (1.0 - c) + 0.9 * c, orm.z * (1.0 - c));
+      far.a *= 1.0 - c;
+      if (c >= 0.5) sharp = 1;
+    }
+  }
   n = normalize(n);
   return sharp;
 }
@@ -818,7 +927,6 @@ float facadeNoise(float t, int seed) {
   float i = floor(t), f = t - i, s = f * f * (3.0 - 2.0 * f);
   return mix(facadeHash(ivec3(int(i), seed, 91)), facadeHash(ivec3(int(i) + 1, seed, 91)), s);
 }
-vec4 fDecal;
 float facadeMark(int m, float x, float y, float x0, float y0, float dw, float dh, float footprint) {
   float u = (x - x0) / dw, v = (y - y0) / dh;
   if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) return 0.0;
@@ -918,11 +1026,11 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
   int m = -1, m2 = -1;
   float dw = 0.0, dh = 0.0, bottom = 0.0;
   if (kind == 0 && foot < 2.5) {
-    if (r < 0.1 && sx1 - sx0 >= 3.4 && sy1 - sy0 >= 1.6) { m = ${mark("piece")} + min(int(floor(fract(slot * 19.7) * 2.0)), 1); dw = 3.2; dh = 1.2; bottom = sy0 + 0.4 - foot; }
-    else if (r < 0.28 && sx1 - sx0 >= 0.8 && sy1 - sy0 >= 1.2) { m = ${mark("poster")} + min(int(floor(fract(slot * 19.7) * 6.0)), 5); dw = 0.6; dh = 0.9; bottom = sy0 + 1.1 + 0.5 * fract(slot * 8.3) - foot; }
+    if (r < 0.1 && sx1 - sx0 >= 3.4 && sy1 - sy0 >= 1.6) { m = ${mark("piece")} + min(int(floor(fract(slot * 19.7) * ${fl(marks("piece"))})), ${marks("piece") - 1}); dw = 3.2; dh = 1.2; bottom = sy0 + 0.4 - foot; }
+    else if (r < 0.28 && sx1 - sx0 >= 0.8 && sy1 - sy0 >= 1.2) { m = ${mark("poster")} + min(int(floor(fract(slot * 19.7) * ${fl(marks("poster"))})), ${marks("poster") - 1}); dw = 0.6; dh = 0.9; bottom = sy0 + 1.1 + 0.5 * fract(slot * 8.3) - foot; }
     else if (r < 0.55 && sx1 - sx0 >= 1.2) { m = ${mark("tag")} + min(int(floor(fract(slot * 19.7) * 8.0)), 7); dw = 1.0; dh = 0.5; bottom = sy0 + 0.5 + 1.4 * fract(slot * 8.3) - foot; }
   } else if (kind == ${KIND.shutter}) {
-    if (r < 0.25) { m = ${mark("piece")} + min(int(floor(fract(slot * 19.7) * 2.0)), 1); dw = 3.2; dh = 1.2; bottom = 0.4; }
+    if (r < 0.25) { m = ${mark("piece")} + min(int(floor(fract(slot * 19.7) * ${fl(marks("piece"))})), ${marks("piece") - 1}); dw = 3.2; dh = 1.2; bottom = 0.4; }
     else if (r < 0.7) { m = ${mark("tag")} + min(int(floor(fract(slot * 19.7) * 8.0)), 7); dw = 1.0; dh = 0.5; bottom = 0.5 + 1.2 * fract(slot * 8.3); }
   } else if (kind == ${KIND.door} && r < 0.3) { m = ${mark("tag")} + min(int(floor(fract(slot * 19.7) * 8.0)), 7); dw = 1.0; dh = 0.5; bottom = 0.6 + fract(slot * 8.3); }
   else if (kind == ${KIND.pier}) {
@@ -932,7 +1040,7 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
   float x0 = sx0 + 0.05 + fract(slot * 4.1) * max(0.0, sx1 - sx0 - dw - 0.1), y0 = max(sy0, bottom), cover = 0.0;
   if (m >= 0 && x0 + dw <= sx1 - 0.04 && y0 + dh <= sy1) cover = facadeMark(m, x, y, x0, y0, dw, dh, fp);
   if (cover > 0.0) {
-    bool paper = m >= ${mark("poster")} && m < ${mark("poster") + 6};
+    bool paper = m >= ${mark("poster")} && m < ${mark("poster") + marks("poster")};
     albedo += (fDecal.rgb - albedo) * cover;
     orm.y += ((paper ? 0.95 : 0.65) - orm.y) * cover;
     orm.z *= 1.0 - cover;
@@ -948,9 +1056,10 @@ void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, floa
   vec2 bent = vec2(tx, ty) * 0.6 * crack + vec2(px2, py2) * 0.35 + (scar > 0 ? vec2(sxn, syn) : vec2(0.0));
   if (bent.x != 0.0 || bent.y != 0.0) n = normalize(n + side * bent.x + vec3(0.0, bent.y, 0.0));
 }
-int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out vec4 far, int colour, vec2 face, vec2 fx, vec2 fy, vec3 own, vec3 ox, vec3 oy, vec2 place, uint edges, vec3 rel, vec3 dpx, vec3 dpy, vec3 geometric, float height, float over) {
+int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out vec4 far, out vec4 roomAt, int colour, vec2 face, vec2 fx, vec2 fy, vec3 own, vec3 ox, vec3 oy, vec2 place, uint edges, vec3 rel, vec3 dpx, vec3 dpy, vec3 geometric, float height, float over) {
   room = vec3(0.0);
   far = vec4(0.0);
+  roomAt = vec4(rel, over);
   float det = fx.x * fy.y - fy.x * fx.y;
   if (abs(det) < 1e-12 || abs(geometric.y) > 0.5) return 0;
   vec3 pu = (dpx * fy.y - dpy * fx.y) / det, pv = (dpy * fx.x - dpx * fy.x) / det;
@@ -973,6 +1082,7 @@ int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out v
   float w = length(pu), h = length(pv);
   int kind = facadeKind(colour, w, h, nn.y);
   float x = face.x * w, y = face.y * h, footprint = max(length(dpx), length(dpy));
+  roomAt = vec4(rel + vec3(0.0, h - y, 0.0), over + h - y);
   vec3 corner = own - qu * face.x - qv * face.y, right = qu / max(length(qu), 1e-6);
   int part = kind == 0 ? 0 : facadePart(albedo, orm, n, room, far, kind, x, y, w, h, corner, right, nn, side, place, rel, footprint, height, over);
   if (kind == 0 || kind == ${KIND.shutter} || kind == ${KIND.door} || kind == ${KIND.pier}) facadeMarks(albedo, orm, n, kind, x, y, w, h, edges, nn, side, corner, right, place, height, over, footprint);

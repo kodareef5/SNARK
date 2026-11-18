@@ -187,12 +187,13 @@ function draw(view: View, w: number, h: number, tier: FacadeTier, tex: Texture[]
           const corner = left.map((q, a) => q - m.origin[a]!);
           const ax = (point[0]! - left[0]!) * right[0]! + (point[2]! - left[2]!) * right[2]!;
           const footprint = (t * pixel) / Math.max(Math.abs(d[axis]!), 0.05);
-          const place = [Math.round(m.origin[0]! * 4), Math.round(m.origin[2]! * 4)] as const;
+          // The module stands as an instance would: its own frame the scene's, its place in the world the views turn it into.
+          const origin = toWorld(m.origin), place = [Math.round(origin[0]! * 4), Math.round(origin[2]! * 4)] as const;
           o.albedo.set(albedo);
           o.orm.set(orm);
           o.normal.set(nw);
-          if (kind > 0) facadeSurface(o, kind, ax, point[1]! - b.lo[1]!, across, fh, nw, v, corner, toWorld(right), place[0], place[1], point[1]!, point[1]!, footprint, t, tier, sample3);
-          if (marked) facadeMarks(o, kind, ax, point[1]! - b.lo[1]!, across, fh, outer(b, axis, n, right, left, across, fh), nw, corner, toWorld(right), place[0], place[1], point[1]!, point[1]!, FLOOD, footprint, tier, sample3);
+          if (kind > 0) facadeSurface(o, kind, ax, point[1]! - b.lo[1]!, across, fh, nw, v, corner, right, place[0], place[1], point[1]!, point[1]!, footprint, t, tier, sample3);
+          if (marked) facadeMarks(o, kind, ax, point[1]! - b.lo[1]!, across, fh, outer(b, axis, n, right, left, across, fh), nw, corner, right, place[0], place[1], point[1]!, point[1]!, FLOOD, footprint, tier, sample3);
           albedo.splice(0, 3, ...o.albedo);
           orm.splice(0, 3, ...o.orm);
           normal = [...o.normal];
