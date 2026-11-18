@@ -3,7 +3,7 @@ import { AssetTable } from "../../client/core/assets/table.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { CLIP_ROOT_STEPS, PACK_VERSION, VERTEX_BYTES, lodIndices, lodVertices, parsePack, readIndices } from "../../shared/pack/pack.ts";
-import { HUMAN, LEGACY_HUMAN_BONES, SLOT_NAMES } from "../../shared/anim/human.ts";
+import { HUMAN, SLOT_NAMES } from "../../shared/anim/human.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { MISSING_MESH, buildCorePack, coreClips } from "../../tools/pack/build.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
@@ -107,7 +107,7 @@ artTest("the pack carries bodies cut into slots, each vertex on one bone, and th
   const clips = pack.clips;
   expect(clips.clips.length).toBeGreaterThanOrEqual(30);
   const jog = clips.clips[clips.index.get("human/jog")!]!;
-  expect([LEGACY_HUMAN_BONES, HUMAN.bones]).toContain(jog.bones);
+  expect(jog.bones).toBe(HUMAN.bones);
   expect([jog.frames, jog.loop]).toEqual([28, true]);
   for (let k = 0; k < jog.rot.length; k += 4) expect(Math.hypot(jog.rot[k]!, jog.rot[k + 1]!, jog.rot[k + 2]!, jog.rot[k + 3]!)).toBeCloseTo(1, 3);
   expect(clips.clips[clips.index.get("human/punch")!]!.loop).toBe(false);

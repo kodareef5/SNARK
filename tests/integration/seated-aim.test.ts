@@ -10,7 +10,7 @@ import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { buildPack } from "../../tools/pack/write.ts";
-import { B_HEAD, SOCKET_EYE, ZONE_HEAD } from "../../shared/anim/human.ts";
+import { B_HEAD, HUMAN_BONES, SOCKET_EYE, ZONE_HEAD } from "../../shared/anim/human.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { AnimState, bodySeed } from "../../shared/anim/pose.ts";
 import { SEAT_FLOATS } from "../../shared/anim/seat.ts";
@@ -55,7 +55,7 @@ function fixture(vehicle: string, slot = 2) {
       role: seat.pose, definition: seat, steer: 0, aimYaw: ents.yaw[actor]! * TAU / 65536 };
     packet.beginFrame(); chars.begin();
     expect(chars.add(packet, kind, 0, 0, 0, 0, st, tick, look, 0, new Uint8Array(6), 0, null, 0, actor, false, false, 1, false, false, null, 0, undefined, seated)).toBe(true);
-    expect(packet.boneCount).toBe(chars.bones(kind));
+    expect(packet.boneCount).toBe(HUMAN_BONES);
     // Read the actually emitted head transform, rather than asking the new collision helper for a target.
     const head = B_HEAD * BONE_FLOATS, local = [rest[B_HEAD * 3]! + SOCKET_EYE.x, rest[B_HEAD * 3 + 1]! + SOCKET_EYE.y, rest[B_HEAD * 3 + 2]! + SOCKET_EYE.z];
     for (let axis = 0; axis < 3; axis++) {
