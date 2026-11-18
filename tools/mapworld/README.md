@@ -69,9 +69,10 @@ break mask, and `map.bathymetry` names the coastal raster relative to `base/`
 CLI tools require a map argument. No city names or named compositions live in
 these modules.
 
-`statics.ts` is the seam. A `StaticLayer.make(site)` returns kind, centre and yaw
-for each box. The site exposes footprints, district data, ground samples and
-plant clearing masks. The ground builder leaves the footprints bare when
+`statics.ts` is the seam. A `StaticLayer.make(site, placed)` returns kind, centre
+and yaw for each box, given the pieces the layers before it set down: the ruins,
+then the street furniture (`street-furniture.ts`, planning/reference/maps.md). The
+site exposes footprints, district data, ground samples and plant clearing masks. The ground builder leaves the footprints bare when
 `world.heaps` is false. Resource nodes are placed after all static layers:
 whether each slot's node stands, and as what, is decided once on the finished
 ground (`resolveNodes`), then the growth takes out what would stand in a

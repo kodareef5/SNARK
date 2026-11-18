@@ -1,0 +1,461 @@
+// What stands in a city's streets besides its buildings and cars (content/street.ts): a static layer after the ruins,
+// set down by rules every map follows (rules/default.json "furniture", which a city's vocabulary may change), from the
+// roads' centre lines and classes (base/roads.geojson, as street-cars.ts reads them), the buildings' uses and the ground.
+// Every choice is a hash of where it is and the rules' seed, so a build repeats.
+//
+// - Junctions: where three ways meet, or two streets at a corner. Where the larger streets meet, a signal at the corner on
+//   the right of each approach, its arm over that approach's lanes; elsewhere a stop sign on the right of each approach of
+//   the lesser street, and a street-name sign at a corner. Corners of shops and offices get bins, mailboxes, newspaper boxes
+//   and bollards; others fewer.
+// - Along each street, on the verge side of the kerb line: lamps at a spacing by its class, on both sides or staggered;
+//   wooden utility poles down one side of the lesser streets of residential districts; hydrants; parking meters in runs
+//   before shops; bus shelters, or a bench and a bin, along the avenues; speed and evacuation route signs on the larger
+//   ways; guard rails where a highway's edge drops or meets water; chain-link fence along the street line of open lots
+//   and yards; billboards set back from the largest roads.
+//
+// None stands where a lane runs, on a reserved route (a way to a door, a room's walk, a stair, a car's door room), in a
+// ruin's piece or another of these, over water or a building's floor, or past a chunk's budget. Trees come after the
+// statics and are taken out where they would stand in one (ruin-growth.ts).
+
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { STREET_PIECES, streetKind } from "../../content/street.ts";
+import { hullPoint } from "../../shared/world/convex.ts";
+import { S } from "./ground.ts";
+import { binKey, hash3 } from "./raster.ts";
+import { meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
+import { vocabulary } from "./ruin-vocabulary.ts";
+import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
+import { roadIndex } from "./street-cars.ts";
+
+/** A rule's kinds by their names after "core:zzstreet_", with their weights. */
+type Forms = readonly (readonly [string, number])[];
+export interface Furniture {
+  seed: number;
+  /** The rules' name for each TIGER class (MTFCC) of street; a class not named has none of these. */
+  classes: Record<string, string>;
+  forms: Record<string, Forms>;
+  /** Metres between a lamp and the next along each class, which have them on both sides or one at a time. `set` and the
+   * others' are metres from the kerb's line to a post's middle. */
+  lamps: { spacing: Record<string, number>; both: string[]; set: number };
+  /** Metres from the kerbs to a signal's pole and a street-name sign at a corner, and to a stop sign's post. */
+  junctions: { major: string[]; minor: string[]; signalCross: number; signal: number; stop: number; name: number; stopBack: number; standing: number };
+  poles: { classes: string[]; styles: string[]; spacing: number; set: number };
+  hydrants: { classes: string[]; spacing: number; first: number; set: number };
+  /** Runs of `run` meters `every` metres apart, a block of `block` metres at a time, before buildings of `uses`. */
+  meters: { classes: string[]; uses: string[]; tall: number; block: number; chance: number; every: number; run: [number, number]; set: number };
+  /** A shelter's open front `set` metres from the kerb; a bench's middle `bench`. */
+  shelters: { classes: string[]; spacing: number; set: number; bench: number; shelter: number };
+  /** Chances a corner gets each, before buildings of `uses`, and as many times them before any other. */
+  corners: { uses: string[]; other: number; bin: number; mailbox: number; news: number; bollards: number; set: number };
+  signs: { classes: string[]; spacing: number; set: number };
+  rails: { classes: string[]; set: number; drop: number; water: number };
+  /** Fence along the street line of an open lot or a yard at least `least` metres long, a 3 m run at a time. */
+  fences: { classes: string[]; set: number; depth: number; least: number; yard: number; open: number; gap: number };
+  billboards: { classes: string[]; spacing: number; set: [number, number]; chance: number };
+  /** Metres kept clear: of a lane's edge, a reserved route's, any piece's; between two of these; of the map's edge. */
+  /** `inside` is how far inside a road's edge a post may stand where it fits nowhere else. */
+  clear: { road: number; inside: number; route: number; piece: number; between: number; edge: number; junction: number; rise: number };
+}
+
+/** What a layer makes, and why candidates were left out, by rule. */
+export interface FurnitureSummary { placed: Record<string, number>; byRule: Record<string, number>; refused: Record<string, Record<string, number>>; }
+
+interface Segment { ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number }
+interface Part { lo: [number, number, number]; hi: [number, number, number] }
+interface Arm { dx: number; dz: number; half: number; cls: string; line: number }
+interface Junction { x: number; z: number; arms: Arm[]; reach: number }
+
+const DEG = 180 / Math.PI;
+/** Metres up to which a piece is its foot: what a walker or a car meets. */
+const FOOT = 2.2;
+/** The yaw of a piece whose +Z looks along (dx, dz). */
+const yawOf = (dx: number, dz: number): number => ((Math.atan2(dx, dz) * DEG) % 360 + 360) % 360;
+const pick = (rows: Forms, h: number): string => {
+  const total = rows.reduce((n, r) => n + r[1], 0); let at = (h / 4294967296) * total;
+  for (const [name, weight] of rows) { if (at < weight) return name; at -= weight; }
+  return rows.at(-1)![0];
+};
+const chance = (h: number, p: number): boolean => h / 4294967296 < p;
+
+/** Each piece's parts as boxes in its own frame (a tilted part as the box round it), and the box round its parts within 2.2 m of the ground. */
+const PARTS = new Map(STREET_PIECES.map((p) => {
+  const parts: Part[] = p.boxes.map((b) => ({ lo: [b.at[0] - b.half[0], b.at[1] - b.half[1], b.at[2] - b.half[2]], hi: [b.at[0] + b.half[0], b.at[1] + b.half[1], b.at[2] + b.half[2]] }));
+  for (const h of p.hulls ?? []) {
+    const points = h.corners.map((c) => hullPoint(c, h.sixty === true));
+    parts.push({ lo: [0, 1, 2].map((a) => Math.min(...points.map((q) => q[a]!))) as Part["lo"], hi: [0, 1, 2].map((a) => Math.max(...points.map((q) => q[a]!))) as Part["hi"] });
+  }
+  // Its foot: what lies under 2.2 m, a tilted part cut there, as a body or a car meets it.
+  const points: number[][] = [];
+  for (const b of p.boxes) if (b.at[1] - b.half[1] < FOOT) for (const dx of [-1, 1]) for (const dz of [-1, 1]) points.push([b.at[0] + dx * b.half[0], Math.min(FOOT, b.at[1] + b.half[1]), b.at[2] + dz * b.half[2]]);
+  for (const h of p.hulls ?? []) {
+    const corners = h.corners.map((c) => hullPoint(c, h.sixty === true));
+    for (const c of corners) if (c[1] <= FOOT) points.push(c);
+    for (const a of corners) for (const b of corners) if (a[1] < FOOT && b[1] > FOOT) { const t = (FOOT - a[1]) / (b[1] - a[1]); points.push([a[0] + (b[0] - a[0]) * t, FOOT, a[2] + (b[2] - a[2]) * t]); }
+  }
+  const foot: Part = { lo: [Math.min(...points.map((q) => q[0]!)), 0, Math.min(...points.map((q) => q[2]!))], hi: [Math.max(...points.map((q) => q[0]!)), Math.max(...points.map((q) => q[1]!)), Math.max(...points.map((q) => q[2]!))] };
+  return [p.name, { parts, foot }];
+}));
+
+/** A part of a piece standing at (x, y, z) turned `yaw` as a box in the world. */
+const worldBox = (q: Part, x: number, y: number, z: number, yaw: number): Box => {
+  const a = yaw / DEG; const c = Math.cos(a); const s = Math.sin(a);
+  const mx = (q.lo[0] + q.hi[0]) / 2; const mz = (q.lo[2] + q.hi[2]) / 2;
+  return { x: x + mx * c + mz * s, y: y + (q.lo[1] + q.hi[1]) / 2, z: z - mx * s + mz * c, yaw, size: [q.hi[0] - q.lo[0], q.hi[1] - q.lo[1], q.hi[2] - q.lo[2]] };
+};
+/** The four corners of a box's footprint and its middle, in the world. */
+const footprint = (b: Box): [number, number][] => {
+  const a = b.yaw / DEG; const c = Math.cos(a); const s = Math.sin(a); const hx = b.size[0] / 2; const hz = b.size[2] / 2;
+  return [[-hx, -hz], [hx, -hz], [hx, hz], [-hx, hz], [0, 0]].map(([u, v]) => [b.x + u! * c + v! * s, b.z - u! * s + v! * c]);
+};
+
+/** Ground no piece of these stands on: water, a building's floor and walls, heaps, containers and decks. */
+const BARRED = new Set<number>([S.CHANNEL, S.DEEP, S.FLAT, S.SHALLOW, S.POOL, S.HEAP, S.SPILL, S.WALL, S.FLOOR, S.DECK, S.CONTAINER]);
+
+export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules: Furniture, maxChunk: number, uses: ReadonlyMap<number, string> = new Map()): { pieces: StaticPiece[]; summary: FurnitureSummary } {
+  const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid; const chunksX = ground.grid.sizeX / 64;
+  const sample = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
+  const { clear } = rules; const seed = rules.seed;
+  const roads = roadIndex(site);
+  const segments: Segment[] = roads.segments;
+  const classOf = (s: { mtfcc: string }): string | undefined => rules.classes[s.mtfcc];
+  // Every road's stretches in 16 m bins, to keep the lanes clear of every way, named or not.
+  const laneBins = new Map<number, Segment[]>();
+  for (const s of segments) {
+    const reach = s.half + 2; const lx = Math.min(s.ax, s.bx) - reach; const hx = Math.max(s.ax, s.bx) + reach; const lz = Math.min(s.az, s.bz) - reach; const hz = Math.max(s.az, s.bz) + reach;
+    for (let bz = Math.floor(lz / 16); bz <= Math.floor(hz / 16); bz++) for (let bx = Math.floor(lx / 16); bx <= Math.floor(hx / 16); bx++) {
+      const k = binKey(bx, bz); if (!laneBins.has(k)) laneBins.set(k, []); laneBins.get(k)!.push(s);
+    }
+  }
+  const inLane = (x: number, z: number, road: number): boolean => {
+    for (const s of laneBins.get(binKey(Math.floor(x / 16), Math.floor(z / 16))) ?? []) {
+      const ex = s.bx - s.ax; const ez = s.bz - s.az; const t = Math.max(0, Math.min(1, ((x - s.ax) * ex + (z - s.az) * ez) / (ex * ex + ez * ez)));
+      if (Math.hypot(x - s.ax - ex * t, z - s.az - ez * t) < s.half + road) return true;
+    }
+    return false;
+  };
+  // Reserved routes in 64 m bins, as street-cars.ts keeps a parked car off them.
+  const routes = site.growthRoutes.flatMap((r) => r.points.slice(1).map((b, i) => ({ a: r.points[i]!, b, width: r.width })));
+  const routeBins = new Map<number, typeof routes>();
+  for (const r of routes) for (let z = Math.floor((Math.min(r.a.z, r.b.z) - r.width) / 64); z <= Math.floor((Math.max(r.a.z, r.b.z) + r.width) / 64); z++) for (let x = Math.floor((Math.min(r.a.x, r.b.x) - r.width) / 64); x <= Math.floor((Math.max(r.a.x, r.b.x) + r.width) / 64); x++) {
+    const k = binKey(x, z); if (!routeBins.has(k)) routeBins.set(k, []); routeBins.get(k)!.push(r);
+  }
+  const onRoute = (b: Box): boolean => {
+    const reach = Math.hypot(b.size[0], b.size[2]) / 2 + 8; const near = new Set<(typeof routes)[number]>();
+    for (let bz = Math.floor((b.z - reach) / 64); bz <= Math.floor((b.z + reach) / 64); bz++) for (let bx = Math.floor((b.x - reach) / 64); bx <= Math.floor((b.x + reach) / 64); bx++) for (const r of routeBins.get(binKey(bx, bz)) ?? []) near.add(r);
+    const a = b.yaw / DEG; const c = Math.cos(a); const s = Math.sin(a);
+    for (const r of near) {
+      if (Math.min(r.a.y, r.b.y) - 0.5 > b.y + b.size[1] / 2 || Math.max(r.a.y, r.b.y) + 2.5 < b.y - b.size[1] / 2) continue;
+      // The route's stretch in the box's frame, the box grown by the route's half width: does the stretch cross it?
+      const local = (p: { x: number; z: number }): [number, number] => [(p.x - b.x) * c - (p.z - b.z) * s, (p.x - b.x) * s + (p.z - b.z) * c];
+      const p = local(r.a); const q = local(r.b); const half = [b.size[0] / 2 + r.width / 2 + clear.route, b.size[2] / 2 + r.width / 2 + clear.route];
+      let enter = 0; let leave = 1; let misses = false;
+      for (let axis = 0; axis < 2 && !misses; axis++) {
+        const delta = q[axis]! - p[axis]!;
+        if (Math.abs(delta) < 1e-8) misses = Math.abs(p[axis]!) >= half[axis]!;
+        else { const t0 = (-half[axis]! - p[axis]!) / delta; const t1 = (half[axis]! - p[axis]!) / delta; enter = Math.max(enter, Math.min(t0, t1)); leave = Math.min(leave, Math.max(t0, t1)); }
+      }
+      if (!misses && enter <= leave) return true;
+    }
+    return false;
+  };
+  const obstacles = obstacleIndex(placed);
+  const counts = new Uint32Array(chunksX * (ground.grid.sizeZ / 64));
+  const chunkOf = (x: number, z: number): number => Math.floor((z - z0) / 64) * chunksX + Math.floor((x - x0) / 64);
+  for (const p of placed) counts[chunkOf(p.x, p.z)]!++;
+  const mine = new Map<number, Box[]>();
+  const pieces: StaticPiece[] = [];
+  const summary: FurnitureSummary = { placed: {}, byRule: {}, refused: {} };
+  let quiet = false;
+  const refuse = (rule: string, why: string): false => { if (!quiet) { const r = (summary.refused[rule] ??= {}); r[why] = (r[why] ?? 0) + 1; } return false; };
+
+  /**
+   * Sets the piece down if every rule allows it, on the lowest ground under its foot; says whether it did. Its foot keeps
+   * `road` metres off every road's edge (less than none: that far inside it, where no lane runs).
+   */
+  const put = (rule: string, name: string, x: number, z: number, yaw: number, between = clear.between, road = clear.road): boolean => {
+    const shape = PARTS.get(name); if (!shape) throw new Error(`furniture.forms names ${name}, which is no street piece`);
+    const foot = worldBox(shape.foot, x, 0, z, yaw); const corners = footprint(foot);
+    if (corners.some(([px, pz]) => Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge)) return refuse(rule, "edge");
+    if (corners.some(([px, pz]) => inLane(px, pz, road))) return refuse(rule, "lane");
+    const heights = corners.map(([px, pz]) => site.groundAt(px, pz));
+    if (corners.some(([px, pz]) => BARRED.has(ground.surface[sample(px, pz)]!)) || Math.min(...heights) < 0.3) return refuse(rule, "ground");
+    if (Math.max(...heights) - Math.min(...heights) > clear.rise) return refuse(rule, "slope");
+    const y = Math.min(...heights);
+    const boxes = shape.parts.map((q) => worldBox(q, x, y, z, yaw));
+    if (boxes.some((b) => obstacles.hits(b, clear.piece))) return refuse(rule, "piece");
+    if (onRoute({ ...foot, y: y + foot.size[1] / 2 })) return refuse(rule, "route");
+    const near = new Set<Box>();
+    for (const b of boxes) for (let bz = Math.floor((b.z - 12) / 16); bz <= Math.floor((b.z + 12) / 16); bz++) for (let bx = Math.floor((b.x - 12) / 16); bx <= Math.floor((b.x + 12) / 16); bx++) for (const o of mine.get(binKey(bx, bz)) ?? []) near.add(o);
+    if (boxes.some((b) => [...near].some((o) => meets(b, o, between)))) return refuse(rule, "furniture");
+    const chunk = chunkOf(x, z); if (counts[chunk]! >= maxChunk) return refuse(rule, "budget");
+    counts[chunk]!++;
+    for (const b of boxes) { const k = binKey(Math.floor(b.x / 16), Math.floor(b.z / 16)); if (!mine.has(k)) mine.set(k, []); mine.get(k)!.push(b); }
+    const kind = streetKind(name);
+    pieces.push({ kind, x, y, z, yaw });
+    summary.placed[kind] = (summary.placed[kind] ?? 0) + 1; summary.byRule[rule] = (summary.byRule[rule] ?? 0) + 1;
+    return true;
+  };
+  /**
+   * A post or a box at the kerb: tried at its rule's setback, then nearer the kerb, and last just inside the road's edge
+   * where no lane runs, as downtown, where a building's face stands at the street's edge. `at` gives the place and yaw
+   * for a setback from the kerb's line.
+   */
+  const putOut = (rule: string, name: string, set: number, at: (set: number) => [number, number, number] | null): boolean => {
+    const tries: [number, number][] = [[set, clear.road], ...(set > 0.45 ? [[0.45, clear.road] as [number, number]] : []), [-0.1, -clear.inside]];
+    for (let k = 0; k < tries.length; k++) {
+      const p = at(tries[k]![0]); quiet = k < tries.length - 1;
+      const done = p !== null && put(rule, name, p[0], p[1], p[2], clear.between, tries[k]![1]);
+      quiet = false; if (done) return true;
+    }
+    return false;
+  };
+  const form = (rule: string, h: number): string => { const rows = rules.forms[rule]; if (!rows?.length) throw new Error(`furniture.forms has no ${rule}`); return pick(rows, h); };
+
+  // A building's use behind a point of the verge, looking `deep` metres along (nx, nz): its class as the attributes give it.
+  const useAt = (x: number, z: number, vx: number, vz: number, deep = 16): string => {
+    const owner = ground.heaps?.owner; if (!owner) return "";
+    for (let d = 2; d <= deep; d += 2) {
+      const o = owner[sample(x + vx * d, z + vz * d)]!;
+      if (o >= 0) return uses.get(Math.floor(ground.heaps.ruins[o]!.building.id / 4)) ?? "";
+    }
+    return "";
+  };
+  const districtOf = (x: number, z: number): { style: string; tall: number } => site.world.districts[ground.district[sample(x, z)]! - 1] ?? { style: "", tall: 0 };
+
+  // Junctions, from the stretches' ends: three ways or more, or two streets meeting at an angle.
+  const ends = new Map<number, { x: number; z: number; arms: Arm[] }>();
+  const keyOf = (x: number, z: number): number => (Math.round(x * 2) + 65536) * 131072 + Math.round(z * 2) + 65536;
+  for (const s of segments) {
+    const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const cls = classOf(s) ?? "";
+    for (const [x, z, dx, dz] of [[s.ax, s.az, (s.bx - s.ax) / length, (s.bz - s.az) / length], [s.bx, s.bz, (s.ax - s.bx) / length, (s.az - s.bz) / length]] as const) {
+      const k = keyOf(x, z); if (!ends.has(k)) ends.set(k, { x, z, arms: [] });
+      ends.get(k)!.arms.push({ dx, dz, half: s.half, cls, line: s.line });
+    }
+  }
+  const junctions: Junction[] = [];
+  for (const e of ends.values()) {
+    // A street the data draws twice (two names for one way) is one arm, the wider.
+    const arms: Arm[] = [];
+    for (const a of e.arms.filter((q) => q.cls !== "").sort((p, q) => q.half - p.half || p.line - q.line)) if (!arms.some((b) => a.dx * b.dx + a.dz * b.dz > 0.97)) arms.push(a);
+    arms.sort((a, b) => Math.atan2(a.dz, a.dx) - Math.atan2(b.dz, b.dx));
+    if (arms.length < 2) continue;
+    if (arms.length === 2 && (arms[0]!.line === arms[1]!.line || arms[0]!.dx * arms[1]!.dx + arms[0]!.dz * arms[1]!.dz < -0.87)) continue;
+    junctions.push({ x: e.x, z: e.z, arms, reach: Math.max(...arms.map((a) => a.half)) + clear.junction });
+  }
+  const junctionBins = new Map<number, Junction[]>();
+  for (const j of junctions) { const k = binKey(Math.floor(j.x / 32), Math.floor(j.z / 32)); if (!junctionBins.has(k)) junctionBins.set(k, []); junctionBins.get(k)!.push(j); }
+  const nearJunction = (x: number, z: number, more = 0): boolean => {
+    for (let bz = Math.floor(z / 32) - 1; bz <= Math.floor(z / 32) + 1; bz++) for (let bx = Math.floor(x / 32) - 1; bx <= Math.floor(x / 32) + 1; bx++) for (const j of junctionBins.get(binKey(bx, bz)) ?? []) if (Math.hypot(j.x - x, j.z - z) < j.reach + more) return true;
+    return false;
+  };
+
+  const J = rules.junctions;
+  const isMajor = (a: Arm): boolean => J.major.includes(a.cls);
+  const isMinor = (a: Arm): boolean => J.minor.includes(a.cls);
+  // The corner between arm a and the next arm b, turning from a toward b: where it is, set back from both kerbs.
+  const corner = (j: Junction, a: Arm, b: Arm, set: number): [number, number] | null => {
+    const sin = a.dx * b.dz - a.dz * b.dx; if (sin < 0.35) return null;
+    const da = a.half + set; const db = b.half + set;
+    return [j.x + (a.dx * db + b.dx * da) / sin, j.z + (a.dz * db + b.dz * da) / sin];
+  };
+  for (const j of junctions) {
+    const h = hash3(Math.round(j.x * 4), Math.round(j.z * 4), seed);
+    const n = j.arms.length; const major = j.arms.filter(isMajor).length; const minor = j.arms.filter(isMinor).length;
+    // The previous arm of each, turning the other way: the corner on the right of traffic coming in along it.
+    const prev = (i: number): Arm => j.arms[(i + n - 1) % n]!;
+    const signals = n >= 3 && major + minor === n && (major >= 3 || (major === 2 && minor === 2 && chance(hash3(h, 1, seed), J.signalCross)));
+    if (signals) {
+      j.arms.forEach((a, i) => {
+        // A mast arm spans the larger ways only; a lesser street's way in has none.
+        if (!isMajor(a) || !chance(hash3(h, 10 + i, seed), J.standing)) return;
+        // Its arm reaches across the approach's lanes, its heads facing the traffic that comes in along it.
+        putOut("signals", form("signal", hash3(h, 20 + i, seed)), J.signal, (set) => { const p = corner(j, prev(i), a, set); return p && [p[0], p[1], yawOf(-a.dz, a.dx)]; });
+      });
+    } else if (n >= 3 && minor > 0 && major + minor === n) {
+      // The lesser street stops: a T's stem, or of two streets crossing the one with fewer ways in, by a hash.
+      const lines = [...new Set(j.arms.map((a) => a.line))];
+      const stopped = major > 0 ? j.arms.filter(isMinor) : n === 3 ? j.arms.filter((a) => j.arms.filter((b) => b.line === a.line).length === 1) : j.arms.filter((a) => a.line === lines[hash3(h, 2, seed) % lines.length]);
+      for (const [i, a] of j.arms.entries()) {
+        if (!stopped.includes(a)) continue;
+        const across = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half));
+        const back = across + J.stopBack;
+        // On the right of traffic coming in, facing it.
+        putOut("stops", form("stop", hash3(h, 30 + i, seed)), J.stop, (set) => [j.x + a.dx * back + a.dz * (a.half + set), j.z + a.dz * back - a.dx * (a.half + set), yawOf(a.dx, a.dz)]);
+      }
+      const first = j.arms.findIndex((a) => stopped.includes(a));
+      if (first >= 0) putOut("names", "street_name", J.name, (set) => { const p = corner(j, prev(first), j.arms[first]!, set); return p && [p[0], p[1], yawOf(j.arms[first]!.dx, j.arms[first]!.dz)]; });
+    }
+    // Corner furniture, by the use of the building behind the corner.
+    const C = rules.corners;
+    if (major + minor !== n) continue;
+    j.arms.forEach((a, i) => {
+      const b = j.arms[(i + 1) % n]!; const p = corner(j, a, b, C.set); if (!p) return;
+      const vx = a.dx + b.dx; const vz = a.dz + b.dz; const vl = Math.hypot(vx, vz) || 1;
+      const busy = C.uses.includes(useAt(p[0], p[1], vx / vl, vz / vl)); const k = busy ? 1 : C.other;
+      const toRoad = yawOf(a.dz, -a.dx); const hc = (m: number): number => hash3(h, 100 + i * 16 + m, seed);
+      // `d` metres back along arm a (or b) from the corner set back `set` from both kerbs.
+      const back = (d: number, arm = a) => (set: number): [number, number, number] | null => { const q = corner(j, a, b, set); return q && [q[0] + arm.dx * d, q[1] + arm.dz * d, toRoad]; };
+      if (chance(hc(0), C.bin * k)) putOut("corners", form("bin", hc(1)), C.set, back(2.5));
+      if (chance(hc(2), C.mailbox * k)) putOut("corners", "mailbox", C.set, back(4.2));
+      if (chance(hc(3), C.news * k)) for (let m = 0; m < 1 + hc(4) % 3; m++) putOut("corners", "newsbox", C.set, back(5.6 + m * 0.62));
+      if (chance(hc(5), C.bollards * k)) for (const d of [0, 1.5, 3]) putOut("corners", "bollard", C.set, back(d, b));
+    });
+  }
+
+  // Each line of the named classes, walked from its first point: where the `d`th metre of it is, and which way it runs.
+  const lines = new Map<number, Segment[]>();
+  for (const s of segments) if (classOf(s) !== undefined) { if (!lines.has(s.line)) lines.set(s.line, []); lines.get(s.line)!.push(s); }
+  // A line that runs along another for most of its length is the same street drawn twice: the wider, or the first, keeps it.
+  const width = (line: number): number => lines.get(line)![0]!.half;
+  const order = [...lines.keys()].sort((a, b) => width(b) - width(a) || a - b);
+  const kept = new Set<number>();
+  for (const line of order) {
+    let near = 0; let all = 0;
+    for (const s of lines.get(line)!) {
+      const length = Math.hypot(s.bx - s.ax, s.bz - s.az);
+      for (let d = length / 2 % 10; d < length; d += 10) {
+        const x = s.ax + (s.bx - s.ax) * d / length; const z = s.az + (s.bz - s.az) * d / length; all++;
+        if ((laneBins.get(binKey(Math.floor(x / 16), Math.floor(z / 16))) ?? []).some((o) => o.line !== s.line && kept.has(o.line) && (() => {
+          const ex = o.bx - o.ax; const ez = o.bz - o.az; const t = Math.max(0, Math.min(1, ((x - o.ax) * ex + (z - o.az) * ez) / (ex * ex + ez * ez)));
+          return Math.hypot(x - o.ax - ex * t, z - o.az - ez * t) < 2 && Math.abs((ex * (s.bx - s.ax) + ez * (s.bz - s.az)) / Math.hypot(ex, ez) / length) > 0.95;
+        })())) near++;
+      }
+    }
+    if (all === 0 || near / all < 0.8) kept.add(line);
+  }
+  order.splice(0, order.length, ...[...kept].sort((a, b) => a - b));
+  /** Calls `at` for each station `spacing` metres apart along each line of `classes`, from a phase of the line's hash. */
+  const along = (classes: readonly string[], spacing: (cls: string) => number, salt: number, at: (x: number, z: number, dx: number, dz: number, half: number, k: number, line: number, cls: string) => void, phase?: (line: number, every: number) => number): void => {
+    for (const line of order) {
+      const run = lines.get(line)!; const cls = classOf(run[0]!)!; if (!classes.includes(cls)) continue;
+      const every = spacing(cls); if (!(every > 0)) continue;
+      let next = phase ? phase(line, every) : hash3(line, salt, seed) % Math.max(1, Math.floor(every)); let walked = 0; let k = 0;
+      for (const s of run) {
+        const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const dx = (s.bx - s.ax) / length; const dz = (s.bz - s.az) / length;
+        while (next <= walked + length) { const t = next - walked; at(s.ax + dx * t, s.az + dz * t, dx, dz, s.half, k++, line, cls); next += every; }
+        walked += length;
+      }
+    }
+  };
+  // The point `out` metres from a station on the right of the way the line runs (side 1) or its left (-1), and the yaw
+  // that faces the road from there.
+  const side = (x: number, z: number, dx: number, dz: number, out: number, s: number): [number, number, number] => [x - dz * out * s, z + dx * out * s, yawOf(dz * s, -dx * s)];
+
+  // Bus shelters, or a bench and a bin, along the avenues: on the right of each way in turn.
+  const B = rules.shelters;
+  along(B.classes, () => B.spacing, 7, (x, z, dx, dz, half, k, line) => {
+    if (nearJunction(x, z, 6)) return;
+    const s = k % 2 === 0 ? 1 : -1; const h = hash3(line, k, seed + 7);
+    if (chance(h, B.shelter)) { const [px, pz, yaw] = side(x, z, dx, dz, half + B.set + 0.8, s); if (put("shelters", form("shelter", hash3(h, 1, seed)), px, pz, yaw)) return; }
+    const [px, pz, yaw] = side(x, z, dx, dz, half + B.bench, s);
+    if (put("shelters", form("bench", hash3(h, 2, seed)), px, pz, yaw)) { const [bx, bz] = [px + dx * 1.6, pz + dz * 1.6]; put("shelters", form("bin", hash3(h, 3, seed)), bx, bz, yaw); }
+  });
+  // Lamps.
+  const L = rules.lamps;
+  along(Object.keys(L.spacing), (cls) => L.spacing[cls]!, 1, (x, z, dx, dz, half, k, line, cls) => {
+    if (nearJunction(x, z)) return;
+    const h = hash3(line, k, seed + 1);
+    for (const s of L.both.includes(cls) ? [1, -1] : [k % 2 === 0 ? 1 : -1]) {
+      putOut("lamps", form("lamp", hash3(h, s + 2, seed)), L.set, (set) => side(x, z, dx, dz, half + set, s));
+    }
+  });
+  // Utility poles down one side of the lesser streets of the districts that have them.
+  const P = rules.poles;
+  along(P.classes, () => P.spacing, 2, (x, z, dx, dz, half, k, line) => {
+    if (!P.styles.includes(districtOf(x, z).style) || nearJunction(x, z, -2)) return;
+    const s = hash3(line, 0, seed + 2) % 2 === 0 ? 1 : -1;
+    putOut("poles", form("pole", hash3(line, k, seed + 3)), P.set, (set) => side(x, z, dx, dz, half + set, s));
+  });
+  // Hydrants, the first a few metres in from where a line starts.
+  const H = rules.hydrants;
+  along(H.classes, () => H.spacing, 3, (x, z, dx, dz, half, k) => {
+    if (nearJunction(x, z, -4)) return;
+    putOut("hydrants", "hydrant", H.set, (set) => side(x, z, dx, dz, half + set, k % 2 === 0 ? 1 : -1));
+  }, (line, every) => H.first + hash3(line, 3, seed) % Math.max(1, Math.floor(every / 4)));
+  // Parking meters in runs, before shops and offices in the denser districts.
+  const M = rules.meters;
+  along(M.classes, () => M.block, 4, (x, z, dx, dz, half, k, line) => {
+    if (districtOf(x, z).tall < M.tall) return;
+    for (const s of [1, -1]) {
+      const h = hash3(line, k * 2 + (s > 0 ? 0 : 1), seed + 4); if (!chance(h, M.chance)) continue;
+      const [ux, uz] = side(x, z, dx, dz, half + 0.5, s);
+      if (!M.uses.includes(useAt(ux, uz, -dz * s, dx * s, 20))) continue;
+      const count = M.run[0] + hash3(h, 1, seed) % (M.run[1] - M.run[0] + 1);
+      for (let m = 0; m < count; m++) {
+        const [mx, mz] = [x + dx * m * M.every, z + dz * m * M.every];
+        if (nearJunction(mx, mz, -3)) break;
+        putOut("meters", form("meter", hash3(h, 10 + m, seed)), M.set, (set) => side(mx, mz, dx, dz, half + set, s));
+      }
+    }
+  });
+  // Speed and evacuation route signs on the right, facing the traffic.
+  const G = rules.signs;
+  along(G.classes, () => G.spacing, 5, (x, z, dx, dz, half, k, line) => {
+    if (nearJunction(x, z)) return;
+    putOut("signs", form("sign", hash3(line, k, seed + 5)), G.set, (set) => { const [px, pz] = side(x, z, dx, dz, half + set, 1); return [px, pz, yawOf(-dx, -dz)]; });
+  });
+  // Guard rail where a highway's edge drops or the water is near, a 4 m run at a time.
+  const R = rules.rails;
+  along(R.classes, () => 4, 6, (x, z, dx, dz, half, k, line) => {
+    for (const s of [1, -1]) {
+      const [ex, ez] = side(x, z, dx, dz, half + 0.5, s); const [fx, fz] = side(x, z, dx, dz, half + 4, s); const [wx, wz] = side(x, z, dx, dz, half + R.water, s);
+      const drop = site.groundAt(ex, ez) - site.groundAt(fx, fz) > R.drop; const water = site.groundAt(wx, wz) < 0.1 || site.groundAt(fx, fz) < 0.1;
+      if (!drop && !water) continue;
+      const [px, pz, yaw] = side(x + dx * 2, z + dz * 2, dx, dz, half + R.set, s); put("rails", form("rail", hash3(line, k * 2 + s, seed + 6)), px, pz, yaw, -0.05);
+    }
+  }, () => 0);
+  // Chain-link fence along the street line of open lots and yards: open ground from the fence line `depth` metres in, no
+  // building and no road, for `least` metres along.
+  const F = rules.fences;
+  const lot = (px: number, pz: number, ox: number, oz: number): number => {
+    let yard = 0;
+    for (let d = 0; d <= F.depth; d += 2) {
+      const i = sample(px + ox * d, pz + oz * d); const surface = ground.surface[i]!;
+      if (surface === S.YARD) yard++; else if (surface !== S.OPEN && surface !== S.GREEN && surface !== S.DESERT) return -1;
+      if (ground.heaps && ground.heaps.owner[i]! >= 0) return -1;
+    }
+    return yard;
+  };
+  along(F.classes, () => 3, 8, (x, z, dx, dz, half, k, line) => {
+    for (const s of [1, -1]) {
+      const [px, pz, yaw] = side(x + dx * 1.5, z + dz * 1.5, dx, dz, half + F.set, s);
+      const yards = [-F.least / 2, 0, F.least / 2].map((d) => lot(px + dx * d, pz + dz * d, -dz * s, dx * s));
+      if (yards.some((y) => y < 0)) continue;
+      // A lot is fenced or not as a whole: by the hash of its street's line and side, and of which 60 m of it this is.
+      const h = hash3(line, Math.floor(k / 20) * 2 + (s > 0 ? 0 : 1), seed + 8);
+      if (!chance(h, yards.some((y) => y > 0) ? F.yard : F.open) || chance(hash3(line, k * 2 + s, seed + 9), F.gap)) continue;
+      put("fences", form("fence", hash3(h, k, seed)), px, pz, yaw, -0.05);
+    }
+  }, () => 0);
+  // Billboards set back from the largest roads, facing them.
+  const W = rules.billboards;
+  along(W.classes, () => W.spacing, 10, (x, z, dx, dz, half, k, line) => {
+    const h = hash3(line, k, seed + 10); if (!chance(h, W.chance) || nearJunction(x, z, 20)) return;
+    const back = W.set[0] + (hash3(h, 1, seed) % 1000) / 1000 * (W.set[1] - W.set[0]);
+    const [px, pz, yaw] = side(x, z, dx, dz, half + back, h % 2 === 0 ? 1 : -1); put("billboards", form("billboard", hash3(h, 2, seed)), px, pz, yaw);
+  });
+  return { pieces, summary };
+}
+
+/** The buildings' uses by footprint (base/buildings_attributes.json): OCC_CLS by OBJECTID. */
+function readUses(source: string): Map<number, string> {
+  const file = join(source, "base/buildings_attributes.json"); if (!existsSync(file)) return new Map();
+  const facts = JSON.parse(readFileSync(file, "utf8")) as { fields: string[]; rows: (string | number | null)[][] };
+  const id = facts.fields.indexOf("OBJECTID"); const use = facts.fields.indexOf("OCC_CLS");
+  return new Map(facts.rows.map((row) => [Number(row[id]), String(row[use] ?? "")]));
+}
+
+export function makeFurniture(site: Site, placed: readonly StaticPiece[]): StaticPiece[] {
+  if (site.world.heaps !== false) return [];
+  const v = vocabulary(site.source) as ReturnType<typeof vocabulary> & { furniture?: Furniture };
+  if (!v.furniture) return [];
+  // Room is left in each chunk for the obelisks and the harbours' wrecks, which come after.
+  const { pieces, summary } = placeFurniture(site, placed, v.furniture, v.budgets.maxChunk - 8, readUses(site.source));
+  const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, "furniture.json"), `${JSON.stringify({ pieces: pieces.length, ...summary }, null, 2)}\n`);
+  console.log(`furniture: ${pieces.length} pieces, ${Object.entries(summary.byRule).map(([r, n]) => `${n} ${r}`).join(", ")}`);
+  return pieces;
+}
+
+export const STREET_FURNITURE: StaticLayer = { name: "street furniture", make: makeFurniture };
