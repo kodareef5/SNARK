@@ -13,7 +13,7 @@
 // card reads too long where a frame has many passes or the card is busy with the frame before; with shadows and the far
 // layers off in turn on medium at one and on ultra at two. The finish's light
 // target, its bloom and bodies' contact are each turned off every other frame on high and ultra at one, as the walls'
-// worn edges are on the street, on the page's clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
+// worn edges and the facades are on the street, on the page's clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
 // the turning view and other work on the card move little, and which a timer query on this card reads too long. A city
 // row's GL draws and triangles are of the frame its run ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
@@ -92,6 +92,8 @@ export function plan(): Run[] {
   }
   runs.push({ scene: "city", view: "street", tier: "high", scale: 1, off: "facades" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "edges" });
+  // The facades' parts and marks, off every other frame, read again whenever the atlases or a room's light change.
+  for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "facades" });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
   return runs;
 }
