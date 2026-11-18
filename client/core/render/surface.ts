@@ -69,6 +69,20 @@ const LUMA = [0.2126, 0.7152, 0.0722] as const;
 type Numbers = ArrayLike<number>;
 type Out = number[] | Float32Array | Float64Array;
 
+/**
+ * Street lamps that still work light at dusk and go out at dawn: wholly on with the true sun (sky.ts `trueSun`) at the
+ * horizon or under it, wholly off from LAMPS_OFF up, between the two by smoothstep. So does a material that glows only
+ * by night (shared/pack/pack.ts `MATERIAL_NIGHT`), its emissive scaled by this for the frame.
+ */
+export const LAMPS_OFF = 0.12;
+
+/** How much the lamps are on in this frame, 0 to 1. */
+export function lampsOn(frame: Numbers): number {
+  // The true sun is the moon's direction turned round.
+  const t = Math.min(1, Math.max(0, (LAMPS_OFF + frame[FRAME.moon + 1]!) / LAMPS_OFF));
+  return t * t * (3 - 2 * t);
+}
+
 /** A display value as light, and light as a display value: the sRGB curve. */
 export function srgbToLinear(s: number): number {
   return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);

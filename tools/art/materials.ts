@@ -6,7 +6,7 @@ import { HAS_FACADES, facadeMaterials, facadeMeshes } from "../facade/build.ts";
 import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, MATERIAL_NIGHT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
 import { REGION_BASE, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, STEP0_SIZE, stepOf, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
 import type { TextureSource } from "../pack/encode.ts";
@@ -146,8 +146,8 @@ export function describe(m: Material, top: number, palette: Uint8Array, layer = 
     if (dyed > 0 && lit > 0) grey = Math.round((lit / dyed) * 1e4) / 1e4;
   }
   const material: PackMaterial = {
-    id: m.id, base: place("base"), normal: place("normal"), mro: place("mro"), mask: place("mask"), mask2: place("mask2"), tint, grey, emissive: 0,
-    flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
+    id: m.id, base: place("base"), normal: place("normal"), mro: place("mro"), mask: place("mask"), mask2: place("mask2"), tint, grey, emissive: m.spec.emissive ?? 0,
+    flags: (m.spec.twoSided ? MATERIAL_TWO_SIDED : 0) | (cutout ? MATERIAL_CUTOUT : 0) | (m.spec.night ? MATERIAL_NIGHT : 0), cutoff: cutout ? (m.spec.cutout === true ? 0.5 : (m.spec.cutout as number)) : 0, span: m.spec.tiles ?? 0,
   };
   if (layered) material.layer = place("layer");
   if (m.spec.sheet) material.sheet = m.spec.sheet;

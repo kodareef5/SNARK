@@ -29,7 +29,7 @@ FLAT = {"galvanised": (138, 141, 140), "green": (88, 104, 90), "yellow": (178, 1
         "louvre": (138, 141, 140), "tank": (190, 186, 176), "solar": (44, 52, 70), "duct": (150, 152, 150), "door": (100, 110, 100),
         "spare": (138, 141, 140), "fence": (150, 150, 146), "billboard": (172, 162, 142), "glass": (170, 180, 182), "torn": (190, 185, 170),
         "oneway": (60, 58, 54), "oneway_left": (60, 58, 54), "noentry": (165, 72, 68), "crossing": (190, 172, 96), "deadend": (190, 172, 96),
-        "noparking": (205, 202, 190), "speed30": (205, 202, 190), "speed40": (205, 202, 190)}
+        "noparking": (205, 202, 190), "speed30": (205, 202, 190), "speed40": (205, 202, 190), "lens_lit": (250, 196, 128)}
 
 
 def srgb_linear(c):
@@ -52,6 +52,8 @@ def material(name, colour=None):
 
 def key_of(uv, mat):
     """What a texture coordinate lies on: a strip's or a part's name."""
+    if mat == "street_glow":
+        return "lens_lit"
     a = STREET if mat == "street" else CUT
     px, py = (uv[0] % 1.0) * a["side"], (1 - uv[1]) * a["side"]
     if mat == "street" and py < len(STREET["strips"]) * STREET["strip"]:

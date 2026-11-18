@@ -128,6 +128,10 @@ export interface MaterialSpec {
   readonly tiles?: number;
   /** A thin sheet's: how much of the light on one face its other face shows, 0 to 1 (shared/pack/finish.ts). */
   readonly sheet?: number;
+  /** How much the base colour glows, as light. Nothing glows where not given. */
+  readonly emissive?: number;
+  /** Whether it glows only from dusk to dawn, as a lamp's lens that still works (shared/pack/pack.ts `MATERIAL_NIGHT`). */
+  readonly night?: boolean;
   /** Multiplied over the base colour: linear, 0 to 1. Nothing is, where not given. */
   readonly tint?: readonly [number, number, number];
   /**
