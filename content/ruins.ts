@@ -29,22 +29,24 @@ type Part = readonly [number, number, number, number, number, number, number?];
 // Fixed colours of a module's parts: a dark opening, a pane, a rail, a pole or a shutter in painted steel, the faded coral of a
 // flat's recessed wall, a shop's pale sign band, a garage's weathered spandrel, a ground floor's base, a clearance bar.
 const DARK = 83, PANE = 92, METAL = 89, STEEL = 5, CORAL = 113, SIGN = 135, SPANDREL = 87, BASE = 88, MARK = 6;
+/** A balcony's front in pale render whatever the building's finish, so the coral wall behind it shows. */
+const FRONT = 104;
 const up = (y: number, parts: readonly Part[]): Part[] => parts.map(([a, b, c, d, e, f, g]) => [a, b, c + y, d + y, e, f, g]);
 const wall = (top: number, out = 0.25): Part => [-4, 4, 0, top, -0.25, out];
 /**
  * Two flats' balconies across the bay, 2 m deep behind a solid front, a divider between them; behind, a coral wall with a
  * door and a window to each flat, jambs at the columns and a band from the head down to the slab above.
  */
-const RETURNS: Part[] = [[-4, -3.9, 0, 1.05, 0.25, 1.82], [3.9, 4, 0, 1.05, 0.25, 1.82]];
+const RETURNS: Part[] = [[-4, -3.9, 0, 1.05, 0.25, 1.82, FRONT], [3.9, 4, 0, 1.05, 0.25, 1.82, FRONT]];
 const BALCONY: Part[] = [
-  [-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], ...RETURNS, [-0.1, 0.1, 0, 2.7, 0.25, 1.82], [-4, 4, 2.7, 4, -0.25, 0.25],
+  [-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2, FRONT], ...RETURNS, [-0.1, 0.1, 0, 2.7, 0.25, 1.82], [-4, 4, 2.7, 4, -0.25, 0.25],
   [-4, -3.6, 0, 2.7, -0.25, 0.25], [3.6, 4, 0, 2.7, -0.25, 0.25], [-3.6, 3.6, 0, 2.7, -0.35, -0.25, CORAL],
   ...[-2, 2].flatMap((c): Part[] => [[c - 1.5, c - 0.6, 0, 2.2, -0.25, -0.2, DARK], [c, c + 1.4, 0.9, 2.3, -0.25, -0.2, DARK]]),
 ];
 /** Walked, a balcony's front returns at the bay's ends, so it is reached only from the flat behind it. */
 const BALCONY_WALKED: Part[] = [[-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], ...RETURNS, wall(4)];
 /** The top flats' balconies roofed, and a guard standing above the roof at the roof's edge. */
-const BALCONY_CAP: Part[] = [[-4, 4, 3.6, 4, 0.25, 2], [-4, 4, 4, 4.8, 1.82, 2]];
+const BALCONY_CAP: Part[] = [[-4, 4, 3.6, 4, 0.25, 2], [-4, 4, 4, 4.8, 1.82, 2, FRONT]];
 /** A window to each 4 m room, sills standing out, a band from the head down to the slab above. */
 const WINDOWS: Part[] = [[-4, 4, 0, 1, -0.25, 0.25], [-4, 4, 3, 4, -0.25, 0.25], [-4, -2.6, 1, 3, -0.25, 0.25], [-1.2, 1.2, 1, 3, -0.25, 0.25], [2.6, 4, 1, 3, -0.25, 0.25], [-2.6, -1.2, 1, 3, -0.3, -0.15, DARK], [1.2, 2.6, 1, 3, -0.3, -0.15, DARK], [-2.75, -1.05, 0.88, 1, 0.25, 0.42], [1.05, 2.75, 0.88, 1, 0.25, 0.42]];
 /** A parapet over the roof's edge and its coping. */
@@ -102,7 +104,8 @@ export const RUIN_FACADES = Object.fromEntries(Object.entries(MODULES).map(([nam
   return [name, shape];
 })) as Record<FacadeModule, ShapeDef>;
 type Corner = readonly [number, number, number];
-const RUST = 179, AGGREGATE = 15;
+// A break's bars, and a spalled face's darker pockets of aggregate.
+const RUST = 179, POCKET = 97;
 /** A prism along x from x0 to x1 of the profile `yz`, corners round it in (y, z). */
 const prism = (x0: number, x1: number, yz: readonly (readonly [number, number])[]): Corner[] => [x0, x1].flatMap((x) => yz.map(([y, z]): Corner => [x, y, z]));
 /** Teeth of a break across a width: each its from and to along x and how far its point stands out, with its point's height. */
@@ -111,8 +114,8 @@ type Tooth = readonly [number, number, number, number];
 const slabTeeth = (teeth: readonly Tooth[]): HullDef[] => teeth.map(([a, b, out, y]) => ({ corners: [[a, -0.4, 0], [a, 0, 0], [b, -0.4, 0], [b, 0, 0], [(a + b) / 2, y - 0.12, out], [(a + b) / 2, y + 0.04, out]] }));
 /** Bent bars out of a break: each its place along x, its height, how far it runs out, and how far it then hangs down. */
 const bars = (list: readonly (readonly [number, number, number, number])[]): ShapeBox[] => list.flatMap(([x, y, out, drop]): ShapeBox[] => [
-  { at: [x, y, out / 2], half: [0.025, 0.025, out / 2], color: RUST },
-  ...(drop > 0 ? [{ at: [x, y - drop / 2, out] as const, half: [0.025, drop / 2, 0.025] as const, color: RUST }] : []),
+  { at: [x, y, out / 2], half: [0.035, 0.035, out / 2], color: RUST },
+  ...(drop > 0 ? [{ at: [x, y - drop / 2, out] as const, half: [0.035, drop / 2, 0.035] as const, color: RUST }] : []),
 ]);
 /** Turns a corner about x by `degrees`, its +z end rising, as `leaning` turns a box. */
 const lean = (degrees: number) => ([x, y, z]: Corner): Corner => { const a = (degrees * Math.PI) / 180; return [x, y * Math.cos(a) + z * Math.sin(a), z * Math.cos(a) - y * Math.sin(a)]; };
@@ -139,10 +142,14 @@ const headTeeth = (): HullDef[] => BREAK.map(([a, b, h]) => ({ corners: [[a, 2.6
  * held, fallen at its foot leaning on its low edge, broken along the same teeth.
  */
 export const RUIN_BREAKS = {
-  zendwhole: centred(shaped("zendwhole"), { boxes: [{ at: [0, -0.2, 0.03], half: [4, 0.2, 0.03] }] }, { hulls: [{ corners: prism(-4, 4, [[-0.4, 0], [-0.4, 0.07], [-0.05, 0.07], [0, 0.02], [0, 0]]) }] }),
+  // A pale nose standing 0.2 m out with a bevel to the sky, over a charcoal undercut on the slab's lower edge.
+  zendwhole: centred(shaped("zendwhole"), { boxes: [{ at: [0, -0.125, 0.1], half: [4, 0.125, 0.1] }] }, {
+    hulls: [{ corners: prism(-4, 4, [[-0.25, 0], [-0.25, 0.2], [-0.05, 0.2], [0, 0.15], [0, 0]]) }],
+    boxes: [{ at: [0, -0.325, 0.015], half: [4, 0.075, 0.015], color: DARK }],
+  }),
   // Its broken face stands 6 cm off the slab's edge and its aggregate 4 cm off that, so neither fights the edge for depth.
   zendspall: centred(shaped("zendspall"), { boxes: [{ at: [0, -0.2, 0.03], half: [4, 0.2, 0.03] }] }, {
-    boxes: [[-3.1, 1.4, -0.22, 0.14], [-0.2, 1.1, -0.27, 0.11], [2.4, 1.6, -0.18, 0.16]].map(([x, w, y, h]): ShapeBox => ({ at: [x!, y!, 0.08], half: [w! / 2, h!, 0.02], color: AGGREGATE })),
+    boxes: [[-3.1, 1.4, -0.22, 0.14], [-0.2, 1.1, -0.27, 0.11], [2.4, 1.6, -0.18, 0.16]].map(([x, w, y, h]): ShapeBox => ({ at: [x!, y!, 0.08], half: [w! / 2, h!, 0.02], color: POCKET })),
     hulls: [{ corners: prism(-4, 4, [[-0.4, 0], [-0.4, 0.06], [0, 0.06], [0, 0]]) }],
   }),
   zendsnap: centred(shaped("zendsnap"), { boxes: [{ at: [0, -0.2, 0.15], half: [4, 0.2, 0.15] }] }, {
@@ -213,7 +220,7 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
   zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
-  zendwhole: ["concrete"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
+  zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));

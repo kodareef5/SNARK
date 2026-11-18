@@ -117,7 +117,7 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { w
   const style = v.styles.find((s) => new RegExp(s.match, "i").test(p?.style ?? ""));
   if (style) apply(style, `style: ${style.match}`);
   if (!style && d.lowRiseFeature && facts.height <= (d.lowRiseBelow ?? 24)) feature = d.lowRiseFeature;
-  const height = name === "park" ? 0 : Math.min(v.budgets.maxHeight, Math.max(4, Math.floor(facts.height * retain / 4) * 4));
+  let height = name === "park" ? 0 : Math.min(v.budgets.maxHeight, Math.max(4, Math.floor(facts.height * retain / 4) * 4));
   let formName = "fabric"; let collapse = "shear";
   for (const choice of v.choices ?? []) {
     const w = choice.when;
@@ -133,6 +133,8 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { w
     if (choice.collapse) collapse = choice.collapse[Math.floor(rand3(f.building.id, v.seed, 91) * choice.collapse.length)]!;
     matched.push(choice.id);
   }
+  // A shop's storeys are rounded, not cut short: a 7 m frontage is a shop with rooms above.
+  if (v.forms?.[formName]?.facade?.ground === "zstore") height = Math.min(v.budgets.maxHeight, Math.max(4, Math.round(facts.height * retain / 4) * 4));
   return { recipe: name, height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, interiors: v.interiors, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
     provisional: facts.kindFrom !== "label" || !["osm", "usa_structures", "reviewed_source"].includes(facts.heightFrom) || !!p?.estimated?.length };
 }

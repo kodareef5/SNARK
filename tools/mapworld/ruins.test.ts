@@ -321,8 +321,9 @@ test("a facade module is walked as its few boxes and drawn with its parts in the
   expect(w.reg.parts.start[kind + 1]! - w.reg.parts.start[kind]!).toBe(5);
   const city = new CityStatics(w.dims, [{ kind: "core:zruin_zbalc_limestone", x: 96, y: 4, z: 96, yaw: 0 }], w.reg);
   const colours = new Set(boxPart(city, chunkAt(w.dims, 96, 96), w.hf, () => null).color);
-  // The building's limestone and its darker soffits, the coral wall behind the balconies and its dark openings.
-  expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 113]);
+  // The building's limestone and its darker soffits, the coral wall behind the balconies, its dark openings and the
+  // balconies' pale fronts.
+  expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 104, 113]);
 });
 
 test("a block of flats repeats its balcony bay on every whole floor, with a different ground floor, blank ends and a capped top", () => {

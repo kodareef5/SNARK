@@ -81,18 +81,19 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       const u = t.u + dx * bay / 2; const v = t.v + dz * bay / 2; const turn = dx === 0 ? 0 : 90;
       // A wall onto the street or a setback wears its kind's modules; one onto a fallen bay is its broken inside.
       const beside = byKey.get(tileKey(t.i + dx, t.j + dz));
-      const grammar = bay === 8 && !burnt && !(beside && damaged.has(beside)) ? form.facade : undefined;
+      const broken = !!beside && damaged.has(beside);
+      const grammar = bay === 8 && !burnt ? form.facade : undefined;
       // A slab of flats has blank short ends; a tower has flats on every side.
       const end = grammar?.ends && dx !== 0 && m.frame.width >= 1.5 * m.frame.depth && rule.recipe !== "tower";
       const capped = !damaged.has(t) && mode !== "lost-top";
       // Where the bay beside fell, this bay's slabs end at the break, whole, spalled or snapped, open to the gap; walls
       // stand only above the playable floors.
       let from = adjacent;
-      if (beside && damaged.has(beside) && !damaged.has(t) && !burnt && bay === 8 && opts.detail < 2) {
+      if (broken && !damaged.has(t) && !burnt && bay === 8 && opts.detail < 2) {
         for (let level = adjacent + 1; level <= Math.min(top, playable); level++) {
           if (!slab(t, level, top)) continue;
           const pick = hash3(opts.seed + 211, t.i * 4 + side, t.j * 64 + level) % 10;
-          facade(m, pick < 5 ? "zendsnap" : pick < 8 ? "zendspall" : "zendwhole", u, base + level * 4, v, side, pick < 8 ? "fracture" : "concrete");
+          facade(m, pick < 5 ? "zendsnap" : pick < 8 ? "zendspall" : "zendwhole", u, base + level * 4, v, side, "fracture");
         }
         from = Math.max(adjacent, playable);
       }
@@ -101,7 +102,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         const entry = level === 0 && (entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) && (t.i + t.j) % 2 === 0);
         const upper = level >= playable; const lookout = top > playable && level === playable;
         const party = rule.party?.includes(side) && adjacent === 0;
-        if (grammar && !party && !lookout) {
+        // Onto a fallen bay the playable floors' walls are its broken inside; the storeys above wear the facade's.
+        if (grammar && !party && !lookout && !(broken && level < playable)) {
           const last = capped && level === top - 1;
           if (upper && top - level >= 4) {
             const lid = capped && level + 4 === top;
@@ -184,7 +186,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     for (const [t, dir] of [[column[0]!, -1], [column.at(-1)!, 1]] as const) {
       const [x, z] = m.point(t.u, t.v + dir * bay / 2); const [coreX, coreZ] = m.point(core.u, core.v);
       m.entries.push({ x, y: m.base, z, yaw: m.frame.yaw, coreX, coreZ }); m.cover(t.u, t.v + dir * bay / 2, 16);
-      if (dir < 0 && bay === 8) assembly(m, rule, form.front, t.u, 0, t.v - bay / 2);
+      // A shop's front module is its own way in, sign band and door.
+      if (dir < 0 && bay === 8 && form.facade?.ground !== "zstore") assembly(m, rule, form.front, t.u, 0, t.v - bay / 2);
     }
   }
   if (base === 0) for (const core of cores) for (const row of [-1, 1]) {
@@ -232,9 +235,12 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       .sort((a, b) => hash3(opts.seed + 7, a.t.i * 4 + a.side, a.t.j) - hash3(opts.seed + 7, b.t.i * 4 + b.side, b.t.j))[0];
     if (edge) {
       const { t, side, dx, dz } = edge; const y = base + (tops.get(tileKey(t.i, t.j)) ?? 0) * 4;
-      const along = hash3(opts.seed, t.i, t.j) % 2 ? 2.5 : -2.5;
-      m.put("zstub", t.u + dx * 3.5 + dz * along, y + RUIN_SHAPES.zstub[1] / 2, t.v + dz * 3.5 + dx * along, "fracture", [180, 90, 0, 270][side]!);
-      m.put("zfallen", t.u + dx * 0.6 + dz * along, y + RUIN_SHAPES.zfallen[1] / 2, t.v + dz * 0.6 + dx * along, "concrete", [180, 90, 0, 270][side]!);
+      // The slab lies within its bay, clear of the walls round it, its low end in rubble so it does not read as a ramp.
+      const sign = hash3(opts.seed, t.i, t.j) % 2 ? 1 : -1;
+      const turn = [180, 90, 0, 270][side]!;
+      m.put("zstub", t.u + dx * 3.5 + dz * sign * 2.5, y + RUIN_SHAPES.zstub[1] / 2, t.v + dz * 3.5 + dx * sign * 2.5, "fracture", turn);
+      m.put("zfallen", t.u + dx * 0.9 + dz * sign * 1.5, y + RUIN_SHAPES.zfallen[1] / 2, t.v + dz * 0.9 + dx * sign * 1.5, "concrete", turn);
+      m.put("rubble", t.u - dx * 1.7 + dz * sign * 1.5, y + RUIN_SHAPES.rubble[1] / 2, t.v - dz * 1.7 + dx * sign * 1.5, "concrete", turn + 90);
     }
   }
 }
