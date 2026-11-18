@@ -497,14 +497,18 @@ pictures. `--check` reads and measures them.
 Every one of these passed the check on 2026-11-18 and was found by reading its
 numbers, not its verdict. Read the table it prints before calling a model done.
 
-- **Loose shells.** The `parts` column is the model's separate shells. The
-  levels after the finest are made by a simplifier that cannot merge two
-  shells, so a model of hundreds of them loses whole parts as it gets coarser,
-  its error jumps, and its cheap levels are first drawn far later: the
-  hand-made compact (7 parts) hands over to its flat level at 34 m on medium,
-  the patrol jeep (947 parts) at 140 m and still at 24,500 triangles, the
-  tanker (227 parts) at 312 m, eight pixels tall. Weld what touches, leave out
-  what is never seen, or make the far levels by hand (`<object>_LOD<n>`).
+- **Many parts, and the wrong ones going.** The `parts` column is the model's
+  separate shells. A model of hundreds of them cannot keep them all in its
+  flat levels, and left to itself the simplifier lets the large thin ones go
+  first (a wheel disc, a coil spring), so the level's error jumps and it is
+  first drawn far later: the hand-made compact (7 parts) hands over to its
+  flat level at 34 m on medium, the patrol jeep (947 parts) did at 140 m and
+  still at 24,500 triangles, the tanker (227 parts) at 312 m, eight pixels
+  tall. `holdParts: true` in the asset makes the small parts go first (the
+  jeep 101 m, the tanker 37 m). It is not hidden geometry: 24 of the jeep's
+  947 parts are never seen from outside, so welding shells or leaving out
+  interiors buys almost nothing. Hand-made far levels are measured like any
+  other: the tanker's were 8.9 cm out where the simplifier's are 1.1.
 - **A turned form lit as slabs.** A ring, a drum or a console made on a lathe
   is round only if its faces carry the surface's normals. A generator that
   gives each face its own flat normal draws a ring of 72 plates as 72 plates.
