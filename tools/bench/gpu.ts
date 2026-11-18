@@ -9,9 +9,11 @@
 // device probe's crowd, its thatch and a base of 1,024 pieces, the device probe's wood on the 8 km hills, and a flock of
 // hurt and dead dodos. The city is a built Miami (var/maps/miami.snmap, or the file CITY_MAP names) in a 1,920 by 1,080
 // window at one and two device pixels to one, on its street and over it, the survivor held there as a ghost: on medium,
-// high and ultra, with shadows and the far layers off in turn on medium at one and on ultra at two, and the finish's
-// light target, its bloom and bodies' contact off on high and ultra at one. A city row's GL
-// draws and triangles are of the frame its run ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
+// high and ultra, with shadows and the far layers off in turn on medium at one and on ultra at two. The finish's light
+// target, its bloom and bodies' contact are each turned off every other frame on high and ultra at one, on the page's
+// clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
+// the turning view and other work on the card move little, and which a timer query on this card reads too long. A city
+// row's GL draws and triangles are of the frame its run ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
 // process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
 // prints each row's range.
@@ -45,6 +47,8 @@ interface Run {
   tier: string;
   passes?: boolean;
   off?: Effect | "far";
+  /** An effect every other frame draws without, on the page's clock. */
+  ab?: Effect;
   view?: View;
   scale?: number;
 }
@@ -72,7 +76,7 @@ export function plan(): Run[] {
     for (const tier of ["medium", "high", "ultra"]) for (const scale of [1, 2]) runs.push({ scene: "city", view, tier, scale });
     for (const [tier, scale] of [["medium", 1], ["ultra", 2]] as const) for (const off of ["shadows", "far"] as const) runs.push({ scene: "city", view, tier, scale, off });
     // The finish (post.ts): the light target and its pass, and bloom by itself.
-    for (const tier of ["high", "ultra"]) for (const off of ["light", "bloom", "contact"] as const) runs.push({ scene: "city", view, tier, scale: 1, off });
+    for (const tier of ["high", "ultra"]) for (const ab of ["light", "bloom", "contact"] as const) runs.push({ scene: "city", view, tier, scale: 1, ab });
   }
   return runs;
 }
@@ -120,7 +124,7 @@ export function flock(server: ReturnType<typeof startServer>): number {
   return n;
 }
 
-const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}`;
+const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
 async function measure(runs: Run[], times: number, say: (line: string) => void): Promise<Map<string, Record<string, any>[]>> {
@@ -157,7 +161,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     const profile = mkdtempSync(join(tmpdir(), "snark-gpu-"));
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
-        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}`;
+        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}`;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), setTimeout(() => done(null), 150000)));
         const pixels = r.view ? ["--window-size=1920,1080", `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
@@ -166,7 +170,8 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         if (hold) clearInterval(hold);
         browser.kill();
         await browser.exited;
-        say(`${nameOf(r)}: ${result ? `${result.gpuMs?.frame?.median ?? "untimed"} ms on the GPU, ${result.frameMs.median} ms a frame, ${result.drawCalls} GL draws, ${result.triangles} triangles` : "no report"} (load ${loadavg()[0]!.toFixed(1)})`);
+        const ab = result?.alternate ? `${result.alternate.own} ms on the page's clock with it, ${result.alternate.other} without, a frame without it ${result.alternate.less} ms against those either side` : `${result?.gpuMs?.frame?.median ?? "untimed"} ms on the GPU`;
+        say(`${nameOf(r)}: ${result ? `${ab}, ${result.frameMs.median} ms a frame, our code ${result.buildAndSubmitMs.median} ms, ${result.drawCalls} GL draws, ${result.triangles} triangles` : "no report"} (load ${loadavg()[0]!.toFixed(1)})`);
         if (result) out.set(nameOf(r), [...(out.get(nameOf(r)) ?? []), result]);
       }
     }
@@ -217,6 +222,13 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
         record("GL draws, triangles", draws, `draws, ${(median(all.map((r) => r.triangles)) / 1e6).toFixed(2)} M triangles`);
         record("our code's time a frame, median", median(all.map((r) => r.buildAndSubmitMs.median)), "ms");
         for (const [name, list] of reports) if (name.startsWith(`${key}, `) && name.endsWith(" off")) record(`${name.slice(key.length + 2)}: what it costs`, gpu(all) - gpu(list), `ms, ${draws - median(list.map((r) => r.drawCalls))} GL draws`);
+      }
+      const head = `city ${view} ${tier} x1, `;
+      const alternating = [...reports].filter(([name, list]) => name.startsWith(head) && name.endsWith(" every other frame") && list[0]?.alternate);
+      if (alternating.length > 0) section(`On Miami, ${view}, ${tier}, 1 device pixel to one, effects off every other frame, on the page's clock (?sync=1&ab=)`);
+      for (const [name, list] of alternating) {
+        if (name.includes(", light off")) record("everything on, median", median(list.map((r) => r.alternate.own)), "ms");
+        record(`${name.slice(head.length, -" every other frame".length)}: what it costs, frame by frame`, -median(list.map((r) => r.alternate.less)), "ms");
       }
     }
   }

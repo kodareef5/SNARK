@@ -2,7 +2,10 @@
 // the whole frame, which `?bench=1` reports, or each pass the shell marks (client/shell/gl.ts), which `?bench=1&passes=1`
 // reports; `?off=` turns effects off for a before and after in a real scene. On an Apple GPU through ANGLE a query
 // between passes ends Metal's render pass, which a frame does not otherwise do, so what an effect costs is read off the
-// whole frame.
+// whole frame. There a query also counts the time of whatever runs on the card beside the frame's own work: a frame of
+// many passes, or one the card starts while the last is still drawing, reads long (a frame with the light target, by
+// half again to twice). `?sync=1` times the frame on the page's clock instead, each frame waiting for the card to finish
+// it, and `?ab=` draws every other frame with other effects off, so a before and after is read frame by frame in one run.
 
 import type { Tier } from "./assets/tiers.ts";
 import { HAND_NEAR } from "./render/hand.ts";
@@ -18,6 +21,8 @@ const TIME_ELAPSED = 0x88bf;
 const GPU_DISJOINT = 0x8fbb;
 const QUERY_RESULT = 0x8866;
 const QUERY_RESULT_AVAILABLE = 0x8867;
+const READ_FRAMEBUFFER = 0x8ca8;
+const READ_FRAMEBUFFER_BINDING = 0x8caa;
 /** Frames whose results may be awaited at once. Older ones are given up. */
 const WAITING_MOST = 8;
 
@@ -31,6 +36,8 @@ export interface QueryGl {
   beginQuery(target: number, q: Query): void;
   endQuery(target: number): void;
   getQueryParameter(q: Query, name: number): unknown;
+  bindFramebuffer(target: number, framebuffer: unknown): void;
+  readPixels(x: number, y: number, width: number, height: number, format: number, type: number, out: Uint8Array): void;
 }
 
 export class PassClock {
@@ -39,20 +46,31 @@ export class PassClock {
   private readonly gl: QueryGl;
   /** Each pass timed by itself, or the frame as one. */
   private readonly each: boolean;
+  /**
+   * The page's clock in ms where the frame is timed whole on it, from its first mark until a pixel of the canvas comes
+   * back: the read waits for everything the canvas's last pass depends on, which is the frame's every pass where it ends
+   * on the canvas, as a frame does. Passes are not timed so: one drawn into a target of the shell's would not be waited for.
+   */
+  private readonly sync: (() => number) | null;
   private open = false;
+  private began = 0;
   private frame: { pass: number; q: Query }[] = [];
   private readonly waiting: { pass: number; q: Query }[][] = [];
+  private readonly clocked: number[][] = [];
+  private readonly pixel = new Uint8Array(4);
 
-  constructor(gl: QueryGl, each: boolean) {
+  constructor(gl: QueryGl, each: boolean, sync: (() => number) | null = null) {
     this.gl = gl;
-    this.each = each;
-    this.on = gl.getExtension("EXT_disjoint_timer_query_webgl2") !== null;
+    this.each = each && !sync;
+    this.sync = sync;
+    this.on = sync !== null || gl.getExtension("EXT_disjoint_timer_query_webgl2") !== null;
   }
 
   /** Pass `pass` begins. Without `each` only the frame's first mark opens a query. */
   mark(pass: number): void {
     const gl = this.gl;
     if (!this.on || gl.isContextLost() || (this.open && !this.each)) return;
+    if (this.sync) return void ([this.open, this.began] = [true, this.sync()]);
     if (this.open) gl.endQuery(TIME_ELAPSED);
     const q = gl.createQuery();
     gl.beginQuery(TIME_ELAPSED, q);
@@ -65,6 +83,13 @@ export class PassClock {
     if (!this.open) return;
     this.open = false;
     if (this.gl.isContextLost()) return void (this.frame = []);
+    if (this.sync) {
+      const gl = this.gl, read = gl.getParameter(READ_FRAMEBUFFER_BINDING);
+      gl.bindFramebuffer(READ_FRAMEBUFFER, null);
+      gl.readPixels(0, 0, 1, 1, 0x1908, 0x1401, this.pixel);
+      gl.bindFramebuffer(READ_FRAMEBUFFER, read);
+      return void this.clocked.push([this.sync() - this.began]);
+    }
     this.gl.endQuery(TIME_ELAPSED);
     this.waiting.push(this.frame);
     this.frame = [];
@@ -75,6 +100,7 @@ export class PassClock {
   take(): number[][] {
     const gl = this.gl;
     const out: number[][] = [];
+    if (this.sync) return this.clocked.splice(0);
     if (!this.on) return out;
     // A lost context took the queries with it.
     if (gl.isContextLost()) return (this.reset(), out);
@@ -109,6 +135,19 @@ export function passSpread(frames: readonly number[][]): Record<string, { median
   return Object.fromEntries(columns.map(([name, list]) => [name, { median: at(list, 0.5), p95: at(list, 0.95) }]));
 }
 
+/**
+ * Of a run that drew every other frame with other effects off (`?ab=`), its frames' ms in order and which were the
+ * others: each kind's median, and the median of each other frame less the mean of its own frames either side, which a
+ * turning view and a card shared with other work change little; null where no frame was another's.
+ */
+export function alternateSpread(frames: readonly number[], other: readonly boolean[]): { own: number; other: number; less: number } | null {
+  const med = (list: number[]): number => Math.round(list.sort((a, b) => a - b)[(list.length - 1) >> 1]! * 1000) / 1000;
+  const less: number[] = [];
+  for (let i = 1; i + 1 < frames.length; i++) if (other[i] && !other[i - 1] && !other[i + 1]) less.push(frames[i]! - (frames[i - 1]! + frames[i + 1]!) / 2);
+  if (less.length === 0) return null;
+  return { own: med(frames.filter((_, i) => !other[i])), other: med(frames.filter((_, i) => other[i])), less: med(less) };
+}
+
 /** Frames a `?bench=1` run measures, once the scene has had nothing on its way for STILL frames, or after SETTLE_MS whatever. */
 export const BENCH_FRAMES = 900;
 /** The bench's view turns once round in the time 900 frames take at 60 a second (App.autopilot). */
@@ -121,6 +160,8 @@ export class BenchRun {
   private readonly intervals: number[] = [];
   private readonly ours: number[] = [];
   private readonly gpu: number[][] = [];
+  /** Whether each of `gpu` was drawn with the page's other effects (FramePacket.alternate), which only a clock that times the frame it is told of (`?sync=1`) knows. */
+  private readonly other: boolean[] = [];
   private first = -1;
   private started = -1;
   private previous = -1;
@@ -146,6 +187,7 @@ export class BenchRun {
     this.intervals.push(now - this.previous);
     this.ours.push(ours);
     this.gpu.push(...gpu);
+    for (const _ of gpu) this.other.push(p.alternate);
     this.previous = now;
     if (this.intervals.length < BENCH_FRAMES) return null;
     this.done = true;
@@ -159,6 +201,7 @@ export class BenchRun {
       gpuMs: passSpread(this.gpu),
       // Each frame's, in order, which the view's turn makes the same frame for frame from run to run.
       gpuFrames: this.gpu.map((f) => Math.round(f.reduce((a, b) => a + b, 0) * 100) / 100),
+      alternate: alternateSpread(this.gpu.map((f) => f.reduce((a, b) => a + b, 0)), this.other),
       triangles: p.triangles,
       ...drawn,
       tier: p.tier,

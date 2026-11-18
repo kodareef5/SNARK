@@ -346,6 +346,8 @@ export class Scene {
   canvasWidth = 1280;
   canvasHeight = 720;
   supersampled = false;
+  /** Whether this frame is drawn with the page's other effects off (FramePacket.alternate). */
+  alternate = false;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
   now = 0;
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
@@ -782,6 +784,7 @@ export class Scene {
     p.camZ = cam.z;
     // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
     p.light = flatLight(this.hour, p.sun);
+    p.alternate = this.alternate;
     [p.frame[FRAME.handFrom], p.frame[FRAME.handTo]] = this.assets.tier.nodes.band;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
     if (p.tier.lit) {
@@ -863,7 +866,7 @@ export class Scene {
     const c = this.cascades;
     const setup = p.tier.shadows;
     this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
-    this.assets.residency.reserve("light target", p.tier.post ? lightBytes(this.canvasWidth, this.canvasHeight, lightSamples(this.supersampled)) : 0);
+    if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(this.canvasWidth, this.canvasHeight, lightSamples(this.supersampled)) : 0);
     this.casting = false;
     this.characters.shadows = null;
     if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {

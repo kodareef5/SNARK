@@ -179,6 +179,9 @@ export class App {
   /** The screen's device pixels a CSS pixel, and effects the page's address turned off (passes.ts). */
   dpr = 1;
   off: ReadonlySet<Effect> = new Set();
+  /** What every other frame draws with off instead (`?ab=`, passes.ts), or null, and the frames drawn. */
+  private other: ReadonlySet<Effect> | null = null;
+  private drawnFrames = 0;
   private interval = 0;
   /** Whether the keys are a flyer's, and the last tick stepped before its wing was last wanted. */
   private flying = false;
@@ -898,6 +901,7 @@ export class App {
    */
   address(get: (name: string) => string | null, pinned: boolean, orders: ToolOrders | null = null): void {
     this.off = effectsOff(get("off"));
+    this.other = get("ab") === null ? null : effectsOff(get("ab"));
     this.script = pinned && Array.isArray(orders?.run) ? orders.run.filter((line): line is string => typeof line === "string") : [];
     const look = pinned && Array.isArray(orders?.look) ? orders.look : [];
     this.held = look.length === 2 && look.every((v) => typeof v === "number" && Number.isFinite(v)) ? [look[0] as number, look[1] as number] : null;
@@ -1309,7 +1313,9 @@ export class App {
     }
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
-    this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), this.off);
+    const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
+    this.scene.alternate = alternate;
+    this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), off);
     const ratio = canvasRatio(this.scene.assets.tier, this.dpr, width, height);
     [this.scene.canvasWidth, this.scene.canvasHeight] = [Math.floor(width * ratio), Math.floor(height * ratio)];
     this.scene.supersampled = ratio > ownRatio(this.scene.assets.tier, this.dpr);
@@ -1319,7 +1325,7 @@ export class App {
     this.scene.characters.corpseMotions = session.corpseMotions;
     const packet = this.scene.build(cam, this.remote);
     session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
-    packetWithout(packet, this.off);
+    packetWithout(packet, off);
     hud.minimapVisible = this.ui.settings.minimap && !this.ui.menu;
     if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
     updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);

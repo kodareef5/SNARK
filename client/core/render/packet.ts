@@ -384,6 +384,11 @@ export class FramePacket {
   skyAt = 0;
   /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
   lightSamples = 0;
+  /**
+   * Whether the frame is drawn with the page's other effects off (`?ab=`, passes.ts), every other frame for a before
+   * and after: the shell keeps what the frames between need, and the card's reservations stand as they set them.
+   */
+  alternate = false;
 
   readonly uploads: BufferUpload[] = [];
   readonly drops: number[] = [];

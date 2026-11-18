@@ -118,7 +118,7 @@ async function boot(): Promise<void> {
     arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
     json: (name) => fetchJson(fetch, name),
   };
-  const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes")) : null);
+  const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes"), params.has("sync") ? () => performance.now() : null) : null);
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.

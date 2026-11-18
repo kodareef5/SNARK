@@ -9,7 +9,7 @@ import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } 
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
-import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, drawsLight, levelShift, tapShift } from "../core/render/post.ts";
+import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, tapShift } from "../core/render/post.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
@@ -667,7 +667,8 @@ export class GlRenderer {
     this.worldReady = this.worldMaterial && this.textures.has(this.worldMaterial.base) ? 1 : 0;
     const finish = drawsLight(p.tier, this.light);
     const samples = Math.min(this.samples, p.lightSamples);
-    if (this.post.size !== (finish ? `${gl.drawingBufferWidth} ${gl.drawingBufferHeight} ${p.frame[FRAME.levels]} ${samples}` : "")) this.targets(finish ? gl.drawingBufferWidth : 0, gl.drawingBufferHeight, p.frame[FRAME.levels]!, samples);
+    // A frame drawn without it every other frame (FramePacket.alternate) leaves it for the frames either side.
+    if (this.post.size !== (finish ? `${gl.drawingBufferWidth} ${gl.drawingBufferHeight} ${samples}` : "") && (finish || !p.alternate)) this.targets(finish ? gl.drawingBufferWidth : 0, gl.drawingBufferHeight, samples);
     this.shadows(p, finish ? this.post.fbs[0]! : null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
@@ -817,15 +818,16 @@ export class GlRenderer {
   }
 
   /**
-   * The light target for a canvas `w` by `h`, bloom's `levels` and `samples` (post.ts), made again from nothing; none for
-   * `w` 0. With no samples the scene is drawn into its texture, `fbs[0]` and `fbs[1]` alike.
+   * The light target for a canvas `w` by `h` and `samples` (post.ts), with every level of bloom the canvas has, of which
+   * a frame draws as many as it says; made again from nothing, and none for `w` 0. With no samples the scene is drawn
+   * into its texture, `fbs[0]` and `fbs[1]` alike.
    */
-  private targets(w: number, h: number, levels: number, samples: number): void {
-    const gl = this.gl, t = this.post;
+  private targets(w: number, h: number, samples: number): void {
+    const gl = this.gl, t = this.post, levels = bloomLevels(h, 1);
     for (const f of new Set(t.fbs.splice(0))) gl.deleteFramebuffer(f);
     for (const x of t.tex.splice(0)) gl.deleteTexture(x);
     for (const b of t.bufs.splice(0)) gl.deleteRenderbuffer(b);
-    t.size = w > 0 ? `${w} ${h} ${levels} ${samples}` : "";
+    t.size = w > 0 ? `${w} ${h} ${samples}` : "";
     for (let k = samples > 0 ? -1 : 0; k <= levels && w > 0; k++) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, (t.fbs[k + 1] = gl.createFramebuffer()!));
       // The scene's colour and depth where it has samples, its depth alone where it is drawn into its texture.
@@ -846,7 +848,7 @@ export class GlRenderer {
 
   /** The finish (post.ts): the scene resolved, bloom's chain down and then up, adding, and the finish into the canvas. */
   private toCanvas(p: FramePacket): void {
-    const gl = this.gl, t = this.post, levels = t.tex.length - 1, w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    const gl = this.gl, t = this.post, levels = Math.min(p.frame[FRAME.levels]!, t.tex.length - 1), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
     this.passes?.mark(PASS_FINISH);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0]!);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbs[1]!);
