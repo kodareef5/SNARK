@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Play</title>
+<title>SNARK: Miami Devolved</title>
 <!-- MODULES -->
 <script>
+  const probeParams = new URLSearchParams(location.search);
+  if (["device","bench","selfcheck","look","trip"].some(key => probeParams.has(key))) document.documentElement.classList.add("probe");
   // What the first frame needs is asked for as the page is read. A device probe measures the link quiet first (client/core/device.ts).
   if (!new URLSearchParams(location.search).has("device")) for (const href of FETCHED) document.head.append(Object.assign(document.createElement("link"), { rel: "preload", as: "fetch", crossOrigin: "anonymous", href }));
 </script>
@@ -14,6 +16,11 @@
 <style>
   @font-face { font-family: Hud; src: HUD_FONT_SOURCE; font-style: normal; font-weight: 500; font-display: swap; }
   html, body { margin: 0; height: 100%; background: #111; overflow: hidden; }
+  #boot-splash { position:fixed; inset:0; z-index:2; pointer-events:none; display:flex; justify-content:flex-end; align-items:flex-start; flex-direction:column; padding:5vh max(6vw,env(safe-area-inset-left)) max(8vh,env(safe-area-inset-bottom)); background:linear-gradient(0deg,#08151df5,transparent 75%),url("title/miami-splash.webp") 58% center/cover,#122e3e; color:#f5f2e6; font-family:Hud,Arial,sans-serif; }
+  .probe #boot-splash { display:none; }
+  #boot-splash b { font-size:clamp(3.5rem,8vw,7rem); line-height:.92; letter-spacing:-.045em; }
+  #boot-splash small { margin-top:.5rem; color:#d1e2de; font-size:clamp(.8rem,1.4vw,1.15rem); text-transform:uppercase; letter-spacing:.27em; }
+  #boot-line { border-left:3px solid #74cebc; margin-top:clamp(1.5rem,4vh,3rem); padding:.2rem .8rem; font-size:clamp(.95rem,1.6vw,1.1rem); max-width:38em; overflow-wrap:anywhere; }
   #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   /* Every child is one interface node; client/shell/ui.ts sets where it goes and how it looks. */
   #ui { position: fixed; inset: 0; overflow: hidden; pointer-events: none; color: #e3f4fc; font: 500 13px Hud, Arial, sans-serif; font-kerning: none; user-select: none; }
@@ -33,7 +40,8 @@
 </head>
 <body>
 <canvas id="view"></canvas>
-<div id="ui">loading</div>
+<div id="boot-splash"><b>SNARK</b><small>Miami Devolved</small><span id="boot-line" role="status">Preparing world…</span></div>
+<div id="ui">Preparing world…</div><a id="entry-back" href="./?screen=roster" hidden style="position:fixed;z-index:3;top:3em;left:1em;color:#a7d8ff;font:16px sans-serif">Return to survivors</a>
 <script type="module" src="main.js"></script>
 </body>
 </html>

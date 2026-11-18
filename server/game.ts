@@ -13,7 +13,7 @@ import {
   C_INPUT,
   HELLO_LOOK,
   HELLO_SPECTATE,
-  HELLO_STATICS,
+  HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
   HELLO_TICKET,
   INPUT_HOLD_TICKS,
   VEHICLE_HOLD_TICKS,
@@ -229,6 +229,7 @@ export class Client {
   lingerUntil = 0;
   name = "";
   key: Uint8Array = new Uint8Array(KEY_BYTES);
+  createRequest:Uint8Array|null=null;
   /** Survivor record id, set by the host. 0 until the session has had a body. */
   pid = 0;
   state = SESSION_ALIVE;
@@ -425,6 +426,9 @@ export class GameServer {
    */
   onFault: ((c: Client, op: number, command: Uint8Array, err: unknown) => boolean) | null = null;
   /** May this device key use this name? Called before anything is created. */
+  nameAway: ((name:string)=>boolean)|null=null;
+  sameCreation: ((name:string,key:Uint8Array,request:Uint8Array)=>boolean)|null=null;
+  owns: ((name: string, key: Uint8Array) => boolean) | null = null;
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
   /**
    * A survivor arriving from another server of the cluster with a travel ticket, for this name and device key. Returns "" once
@@ -801,10 +805,12 @@ export class GameServer {
   }
 
   /** False if the session is not in the creator or there is no room. */
-  create(c: Client, look: Uint8Array): boolean {
+  create(c: Client, look: Uint8Array, spawn?: number): boolean {
     if (c.state !== SESSION_CREATING) return false;
+    const place = spawn === undefined ? undefined : this.world.spawns[spawn];
+    if (spawn !== undefined && !place) return false;
     c.look = look;
-    if (!this.spawnBody(c)) return false;
+    if (!this.spawnBody(c, place && { ...place, y: this.world.hf.heightAt(place.x, place.z) })) return false;
     c.ownDirty = true;
     return true;
   }
@@ -1134,6 +1140,7 @@ export class GameServer {
       for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
     }
     const password = r.string(MAX_PASSWORD_BYTES);
+    const request=(flags & HELLO_NEW) && r.remainingBits>=KEY_BYTES*8 ? Uint8Array.from({length:KEY_BYTES},()=>r.u8()):null;
     if (r.overflow) return false;
     if (look && !validLook(look)) return this.refuse(conn, REJECT_MALFORMED);
     const world = this.world;
@@ -1153,6 +1160,12 @@ export class GameServer {
     if (this.refusals.refused(refusedAs(key, conn.address), world.tick)) return this.refuse(conn, REJECT_DENIED);
     // A module may turn a login away, or a name nobody has had before. A survivor's name is who it is, so it is not reworded.
     const isNew = this.savedPosition?.(name) == null;
+    if(flags & HELLO_NEW){
+      if(ticket || this.nameAway?.(name))return this.refuse(conn,REJECT_NAME);
+      const active=this.clients.find(c=>c?.active && c.name===name);
+      const retry=request && (this.sameCreation?.(name,key,request) || (active?.createRequest && key.every((b,i)=>active.key[i]===b) && request.every((b,i)=>active.createRequest![i]===b)));
+      if(name.trim()!==name || (!isNew || active) && !retry)return this.refuse(conn,REJECT_NAME);
+    }
     if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(conn, REJECT_NAME);
     if (this.bus.before(SESSION_LOGIN, { name, address: conn.address ?? "", isNew }) !== "") return this.refuse(conn, REJECT_DENIED);
     // A survivor arriving takes nothing until there is room for its session, so a full server leaves its ticket unused.
@@ -1164,13 +1177,14 @@ export class GameServer {
       const why = this.away?.(name, key) ?? "";
       if (why !== "") return this.refuse(conn, REJECT_TRAVEL, why);
     }
+    if ((flags & HELLO_RESUME) && this.savedPosition?.(name) == null) return this.refuse(conn, REJECT_NAME);
     if (this.authorize && !this.authorize(name, key)) return this.refuse(conn, REJECT_DENIED);
     // One body per survivor. A second login with the session's own key is its device back, and takes over the body. Nothing
     // may have closed the connection that device lost, so one still open is dropped here as if it had closed.
     for (const other of this.clients) {
       if (!other?.active || other.name !== name) continue;
       if (!other.closed) {
-        if (!key.every((b, i) => b === other.key[i])) return this.refuse(conn, REJECT_NAME);
+        if (!key.every((b, i) => b === other.key[i]) && !this.owns?.(name,key)) return this.refuse(conn, REJECT_NAME);
         const old = other.conn;
         old.onMessage = null;
         this.close(old, REJECT_NAME);
@@ -1178,6 +1192,7 @@ export class GameServer {
         // It had no body to linger in, so the session ended and this is a login like any other.
         if (!other.active) break;
       }
+      other.key = key;
       other.relink(conn);
       other.statics = (flags & HELLO_STATICS) !== 0 && world.statics !== null;
       this.bind(other, conn);
@@ -1198,6 +1213,7 @@ export class GameServer {
     this.clients[slot] = c;
     this.bind(c, conn);
     c.name = name;
+    c.createRequest=request;
     c.key = key;
     c.look = look;
     c.statics = (flags & HELLO_STATICS) !== 0 && world.statics !== null;

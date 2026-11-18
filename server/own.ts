@@ -363,7 +363,9 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (r.overflow || !validLook(look)) return RESULT_INVALID;
     if (c.state !== SESSION_CREATING) return RESULT_DENIED;
     if (ctx.game.bus.before(SESSION_CREATE, { name: c.name }) !== "") return RESULT_DENIED;
-    return ctx.game.create(c, look) ? RESULT_OK : RESULT_FULL;
+    const spawn = r.remainingBits >= 8 ? r.u8() : undefined;
+    if (spawn !== undefined && !ctx.world.spawns[spawn]) return RESULT_INVALID;
+    return ctx.game.create(c, look, spawn) ? RESULT_OK : RESULT_FULL;
   });
   ctx.game.handle(CMD_CLOSE, (c: Client) => {
     ctx.closeOpen(c);

@@ -2,7 +2,7 @@
 // world (server/site.ts, server/front.ts).
 
 import { afterAll, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { clientAddress, closeCode, frontRoute, frontWorlds, sendDown, startFront, type Pipe } from "../../server/front.ts";
@@ -89,14 +89,14 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
   const said = { name: "Miami", map: "proving:1", settings: {} };
   expect([await (await get(`${at}/miami/settings.json`)).json(), await (await get(`${at}/settings.json`)).json()]).toEqual([said, said]);
   // The worlds running, as the start screen lists them, for the wiki's maps: with no cluster, this one alone.
-  const alone = [{ name: "Miami", map: "proving:1", mapId: "proving:1", address: `//127.0.0.1:${s.port}/miami/`, players: 0, max: 70 }];
+  const alone = [{ name: "Miami", map: "proving:1", mapId: "proving:1", address: "/miami/", players: 0, max: 70 }];
   expect([await (await get(`${at}/miami/worlds.json`)).json(), await (await get(`${at}/worlds.json`)).json()]).toEqual([alone, alone]);
   // Its sockets are under its path, and not at the root, which is the site's.
   expect([await opens(`ws://127.0.0.1:${s.port}/miami/ws`, null), await opens(`ws://127.0.0.1:${s.port}/ws`, null)]).toEqual([true, false]);
   // The site: the start screen with this world alone, at its port since the page came straight to it, the wiki at /wiki/, and
   // the page the source link goes to by default.
   const start = await (await get(`${at}/`)).text();
-  expect([start.includes(`href="//127.0.0.1:${s.port}/miami/"`), start.includes("0 of 70 online"), start.includes('href="https://wiki.example/snark"'), start.includes("Source code")]).toEqual([true, true, true, false]);
+  expect([start.includes('href="/miami/"'), start.includes("0 of 70 online"), start.includes('href="https://wiki.example/snark"'), start.includes("Source code")]).toEqual([true, true, true, false]);
   const wiki = await get(`${at}/wiki?x=1`);
   expect([wiki.status, wiki.headers.get("location"), await (await get(`${at}/wiki/`)).text()]).toEqual([308, "wiki/?x=1", "<!doctype html><title>the wiki</title>"]);
   expect([(await get(`${at}/source/`)).status, (await (await get(`${at}/source/`)).text()).includes("Coming soon")]).toEqual([200, true]);
@@ -115,6 +115,35 @@ test("a server at the root of its host is all world as before, and has the page 
   const at = `http://127.0.0.1:${s.port}`;
   expect([await (await get(`${at}/`)).text(), (await get(`${at}/source/`)).status]).toEqual(["<!doctype html><title>the game</title>", 200]);
   expect(await (await get(`${at}/links.json`)).json()).toEqual({ wiki: "/wiki/", repository: "/source/" });
+});
+
+test("a standalone title stays at the proxy origin and the game preloads its map at the play URL", async () => {
+  const built = mkdtempSync(join(tmpdir(), "snark-built-title-"));
+  try {
+    cpSync(join(dir, "assets"), join(built, "assets"), { recursive: true });
+    cpSync(join(dir, "index.html"), join(built, "index.html"));
+    writeFileSync(join(built, "entry.js"), "");
+    const s = startServer({ port: 0, clientDir: built, publicUrl: "https://play.example.org" });
+    try {
+      const at = `http://127.0.0.1:${s.port}`;
+      const proxy = { host: "play.example.org" };
+      const page = await get(at + "/?screen=roster", { headers: proxy });
+      expect(await page.text()).toContain("entry-root");
+      expect(page.headers.get("link")).toBeNull();
+      expect(await (await get(at + "/entry-worlds.json", { headers: proxy })).json()).toMatchObject([{ address: "/", password: false }]);
+      expect(await (await get(at + "/entry-world.json")).json()).toMatchObject({ spawns: expect.any(Array) });
+      const play = await get(at + "/play.html");
+      expect(await play.text()).toContain("<title>the game</title>");
+      expect(play.headers.get("link")).toContain("map/head.");
+      const roster = (origin: string, extra = "") => get(at + "/survivors", { method: "POST",
+        headers: { ...proxy, origin, "content-type": "application/json" },
+        body: JSON.stringify({ action: "roster", key: "11".repeat(16), extra }) });
+      expect((await roster("https://elsewhere.example")).status).toBe(403);
+      expect((await roster("https://play.example.org", "x".repeat(4096))).status).toBe(400);
+      for (let i = 0; i < 30; i++) expect(await (await roster("https://play.example.org")).json()).toEqual({ survivors: [] });
+      expect((await roster("https://play.example.org")).status).toBe(429);
+    } finally { s.stop(); }
+  } finally { rmSync(built, { recursive: true, force: true }); }
 });
 
 test("the front sends each path to its world and the site to the lowest world, sockets and all, and the page's origin is still asked", async () => {
@@ -139,6 +168,9 @@ test("the front sends each path to its world and the site to the lowest world, s
   const [m, t] = [await (await get(`${at}/miami/map.json`)).json(), await (await get(`${at}/tampa/map.json`)).json()];
   expect([miami.host.world.mapHash, tampa.host.world.mapHash]).toEqual([(m as { hash: number }).hash, (t as { hash: number }).hash]);
   expect((await get(`${at}/tampa`)).headers.get("location")).toBe("/tampa/");
+  const roster = await get(at + "/tampa/survivors", { method: "POST", headers: { origin: at, "content-type": "application/json" },
+    body: JSON.stringify({ action: "roster", key: "22".repeat(16) }) });
+  expect(await roster.json()).toEqual({ survivors: [] });
   // A range goes and comes back as the world answered it.
   const part = await get(`${at}/tampa/assets/manifest.json`, { headers: { range: "bytes=0-9" } });
   expect([part.status, (await part.arrayBuffer()).byteLength]).toEqual([206, 10]);

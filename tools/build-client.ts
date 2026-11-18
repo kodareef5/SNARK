@@ -5,6 +5,7 @@
 // flat one welded. What the first frame waits for holds the survivor's art and, of the rest of the catalogue, what the
 // session starts with alone: the definitions, the rigs and a line naming each mesh and clip.
 
+import { buildEntry } from "./build-entry.ts";
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
@@ -236,6 +237,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   writeFileSync(join(dist, "index.html"), html);
   const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
   for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
+  await buildEntry(dist);
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: packBytes + landmarks };
 }
 
