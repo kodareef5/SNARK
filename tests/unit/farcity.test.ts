@@ -728,6 +728,8 @@ test("a ramp against a deck, a slab leaning on a floor and rubble against a wall
     w.look(160, 2, 160, 150, view, 25);
     w.frame(true);
     w.frame(true);
+    // The sky's openness all on the card, so that the light is the same in both pictures.
+    while (!w.scene.farShadow!.open.whole) w.frame(true);
     const drawnFar = w.covered().far;
     const colours = w.raster.color.slice();
     expect(sum(drawnFar)).toBeGreaterThan(5000);

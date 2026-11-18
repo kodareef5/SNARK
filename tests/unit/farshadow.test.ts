@@ -10,6 +10,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { ThreadedCityMaker, cityKinds, type CityThread } from "../../client/core/render/citymake.ts";
 import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { OPEN_BYTES, openMeasure } from "../../client/core/render/skyopen.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
 import { CityStatics, cityTops, type Gone } from "../../shared/world/city.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -160,17 +161,22 @@ test("the map made twice from the same statics and sun is the same bytes, and th
   };
   const first = once();
   expect(Buffer.from(once().buffer).equals(Buffer.from(first.buffer))).toBe(true);
-  // A worker is sent the statics' columns and the ground, and makes the solid heights itself.
+  // A worker is sent the statics' columns and the ground, and makes the solid heights and the ground under them itself,
+  // and the sky's openness from them where asked.
   const kinds = cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] });
-  const job: SweepJob = { id: 1, solid: null, make: { first: city.first.slice(), kind: city.kind.slice(), yaw: city.yaw.slice(), x: city.x.slice(), y: city.y.slice(), z: city.z.slice(), gone: null, heights: hf.heights.slice() }, k: 1, size, sun };
+  const job: SweepJob = { id: 1, solid: null, ground: null, make: { first: city.first.slice(), kind: city.kind.slice(), yaw: city.yaw.slice(), x: city.x.slice(), y: city.y.slice(), z: city.z.slice(), gone: null, skip: null, heights: hf.heights.slice() }, bare: null, k: 1, size, sun, open: true };
   const there = doSweep(kinds, structuredClone(job));
-  expect(Buffer.from(there.map.buffer).equals(Buffer.from(first.buffer))).toBe(true);
-  expect(Buffer.from(there.solid.buffer).equals(Buffer.from(makeSolid(city, hf, () => null).buffer))).toBe(true);
-  // Coarser cells, as a layer half as wide has them, take each cell's highest of its four.
+  expect(Buffer.from(there.map!.buffer).equals(Buffer.from(first.buffer))).toBe(true);
+  const ground = new Uint16Array(128 * 128);
+  expect(Buffer.from(there.solid.buffer).equals(Buffer.from(makeSolid(city, hf, () => null, ground).buffer))).toBe(true);
+  expect(there.ground).toEqual(ground);
+  expect(there.open).toEqual(openMeasure(there.solid, ground, 128, 128, 1, TOP_CELL, UNIT));
+  // Coarser cells, as a layer half as wide has them, take each cell's highest of its four; with no sun there is no map.
   const coarse = new Uint16Array(64 * 64);
   sweep(there.solid, 128, 128, 2, 64, sun[0]!, sun[1]!, sun[2]!, coarse);
   expect(farCell(dims, 64)).toBe(2 * TOP_CELL);
-  expect(doSweep(kinds, { id: 2, solid: there.solid, make: null, k: 2, size: 64, sun }).map).toEqual(coarse);
+  expect(doSweep(kinds, { id: 2, solid: there.solid, ground, bare: null, make: null, k: 2, size: 64, sun, open: false }).map).toEqual(coarse);
+  expect(doSweep(kinds, { id: 3, solid: there.solid, ground, bare: null, make: null, k: 2, size: 64, sun: null, open: false }).map).toBe(null);
 });
 
 /** A frame's allowance, counting what it spends. */
@@ -195,8 +201,9 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 256 } };
   p.lit = true;
   const rowBytes = 256 * 2;
-  // An allowance of 100 rows a frame: the map goes up in three frames, and is looked up from the third.
-  let sun = sunAt(30, 120);
+  // An allowance of 100 rows a frame: the map goes up in three frames, and is looked up from the third; the sky's
+  // openness takes what is left of it. Until then the frame says where the camera is on the grid, the map not looked up.
+  let sun: number[] | null = sunAt(30, 120);
   const frame = (bytes = 100 * rowBytes) => {
     p.beginFrame();
     const budget = allowance(bytes);
@@ -204,10 +211,11 @@ test("the scene's part sweeps when the statics come and again when the tallest t
     return { rows: p.farRows, from: p.farRow, spent: budget.spent, scale: p.frame[FRAME.farScale]! };
   };
   expect([frame(), frame(), frame()]).toEqual([
-    { rows: 100, from: 0, spent: 100 * rowBytes, scale: 0 },
-    { rows: 100, from: 100, spent: 100 * rowBytes, scale: 0 },
-    { rows: 56, from: 200, spent: 56 * rowBytes, scale: 1 / TOP_CELL },
+    { rows: 100, from: 0, spent: 100 * rowBytes, scale: -1 / TOP_CELL },
+    { rows: 100, from: 100, spent: 100 * rowBytes, scale: -1 / TOP_CELL },
+    { rows: 56, from: 200, spent: 100 * rowBytes, scale: 1 / TOP_CELL },
   ]);
+  expect([p.openWidth, p.openRow, p.openRows]).toEqual([128, 0, (44 * rowBytes) / (128 * OPEN_BYTES)]);
   expect(shadow.stats.sweeps).toBe(1);
   expect(p.frame[FRAME.farAt]).toBe(300 / TOP_CELL);
   expect(p.frame[FRAME.farDepth]).toBeCloseTo((hf.minY + FAR_SPAN - 20) / FAR_SPAN, 7);
@@ -239,22 +247,25 @@ test("the scene's part sweeps when the statics come and again when the tallest t
   expect(shadow.stats.sweeps).toBe(3);
   // A lost context: the layer is empty, so nothing is looked up until the map is all on it again, unswept.
   shadow.reset();
-  expect(frame().scale).toBe(0);
+  expect(frame().scale).toBe(-1 / TOP_CELL);
   frame();
   expect(frame().scale).toBe(1 / TOP_CELL);
   expect(shadow.stats.sweeps).toBe(3);
   // A sun gone far from the map's, as the day's first is from last evening's: not looked up until the new one is all there.
   sun = sunAt(60, 200);
-  expect(frame().scale).toBe(0);
+  expect(frame().scale).toBe(-1 / TOP_CELL);
   // A layer of another side, as a touch tier's: swept again for it, though the cell is the same on a map this small.
   p.tier = { ...p.tier, shadows: { ...p.tier.shadows, size: 128 } };
   const before = shadow.stats.sweeps;
   expect(frame(1e9).rows).toBe(128);
   const next = frame();
   expect([shadow.stats.sweeps - before, p.farMap.length, next.scale]).toEqual([1, 0, 1 / TOP_CELL]);
-  // Low poly and the night look nothing up and send nothing.
+  // The night sweeps nothing and looks no map up, but keeps the grid; low poly looks nothing up and sends nothing.
+  sun = null;
+  expect(frame()).toEqual({ rows: 0, from: 0, spent: 0, scale: -1 / TOP_CELL });
   p.tier = tierOf("lowpoly");
   expect(frame()).toEqual({ rows: 0, from: 0, spent: 0, scale: 0 });
+  expect(p.openWidth).toBe(0);
 });
 
 test("a maker on other threads sweeps there, moving the solid heights and the map rather than copying them", async () => {

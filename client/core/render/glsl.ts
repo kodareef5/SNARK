@@ -9,6 +9,7 @@ import { ATLAS_REGION, ATLAS_WIDTH, BONES_PER_ROW, FRAME_BLOCK } from "./packet.
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
 import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
+import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { GROUND_GLSL, WORLD_GLSL } from "./world-surfaces.ts";
 
@@ -46,26 +47,31 @@ void main() {
   o = vec4(mix(vColor * light * shade, uSky, fog * fog), uAlpha);
 }`;
 
-/** Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. Its vertex text gives the colour as light (world-surfaces.ts `worldVertex`). */
+/**
+ * Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. Its vertex text gives the colour
+ * as light (world-surfaces.ts `worldVertex`). The sky's light is taken down where the sky is hidden and at the foot of
+ * what stands, but a body's (skyopen.ts).
+ */
 export const LIT_FRAGMENT = `#version 300 es
 precision highp float;
 precision highp int;
 in vec3 vRel;
 flat in vec3 vColor;
 flat in int vSurface;
-uniform float uSolid, uAlpha;
+uniform float uSolid, uAlpha, uSkin;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
   vec3 geometric = normalize(cross(dFdx(vRel), dFdy(vRel)));
   vec3 n = geometric;
   vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, vSurface);
+  float open = skyOpen(vRel, geometric, overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 v = -normalize(vRel);
   // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
-  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);
+  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);
 }`;
 
 /** `text` with `from` put as `to`, which it must hold. */
@@ -86,7 +92,7 @@ export const LIT_MESH_FRAGMENT = [
   ["  vec3 orm = vec3(1.0, 1.0, 0.0);\n", "  vec3 orm = vFinish.xyz;\n"],
   ["  vec3 v = -normalize(vRel);\n", "  vec3 v = -normalize(vRel);\n  if (vShare < 1.0) n = v;\n"],
   ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
-  ["  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm, n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade), vRel), uAlpha * vShare);"],
+  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade), vRel), uAlpha * vShare);"],
 ].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);
 
 /**
@@ -207,7 +213,8 @@ void main() {
  * growth takes, and putting the sun's shadow off the surface. Its cover is the tint of the four samples round the pixel
  * with most of their weight at a place moved by a wander of a fraction of a metre (world-surfaces.ts `groundCover`), so
  * an edge between two covers curves and wanders across a cell. It reads the picture its tile reads at that picture's
- * own samples, however coarse the tile, so it does not change as a tile splits.
+ * own samples, however coarse the tile, so it does not change as a tile splits. Its sky's light is taken down where
+ * the sky is hidden (skyopen.ts).
  */
 export const LIT_TERRAIN_FRAGMENT = `#version 300 es
 precision highp float;
@@ -219,7 +226,7 @@ uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}void main() {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   vec2 s = clamp(vAt + groundWander(vRel.xz + uWorldEye.xz, max(length(dx.xz), length(dy.xz))) / uField.z, vec2(0.0), uLast);
@@ -230,6 +237,7 @@ ${LIGHT}${SHADOW_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_
   vec3 n = normalize(vNormal);
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, groundSurface(tint));
+  orm.x *= skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0);
   vec3 v = -normalize(vRel);
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
