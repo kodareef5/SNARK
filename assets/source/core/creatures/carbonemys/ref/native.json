@@ -1,0 +1,316 @@
+{
+  "packSha256": "d818694702949d8b9a6ad5253b883ff5deaabeb2139e9bf062bf9f1e25766e4d",
+  "rig": "core:carbonemys",
+  "colors": [
+    128,
+    165,
+    227,
+    167,
+    95,
+    123
+  ],
+  "bodyLods": [
+    21300,
+    7200,
+    3000,
+    1250,
+    500,
+    320
+  ],
+  "attackMouthByTick": [
+    [
+      0.00035,
+      1.14808,
+      2.56754
+    ],
+    [
+      0.00215,
+      1.15759,
+      2.5663
+    ],
+    [
+      0.00733,
+      1.186,
+      2.56177
+    ],
+    [
+      0.01774,
+      1.25206,
+      2.54903
+    ],
+    [
+      0.03371,
+      1.36043,
+      2.5211
+    ],
+    [
+      0.05041,
+      1.4778,
+      2.48061
+    ],
+    [
+      0.0607,
+      1.53682,
+      2.4567
+    ],
+    [
+      0.06347,
+      1.48088,
+      2.4828
+    ],
+    [
+      0.05546,
+      1.30355,
+      2.54451
+    ],
+    [
+      0.03685,
+      1.06603,
+      2.58974
+    ],
+    [
+      0.01757,
+      0.85197,
+      2.59685
+    ],
+    [
+      0.00637,
+      0.71312,
+      2.58496
+    ],
+    [
+      0.00191,
+      0.65882,
+      2.57655
+    ],
+    [
+      0.00036,
+      0.67418,
+      2.57856
+    ],
+    [
+      0,
+      0.73826,
+      2.5862
+    ],
+    [
+      0,
+      0.83007,
+      2.59236
+    ],
+    [
+      0,
+      0.92493,
+      2.59236
+    ],
+    [
+      0,
+      1.00548,
+      2.58738
+    ],
+    [
+      0,
+      1.06522,
+      2.58082
+    ],
+    [
+      0,
+      1.10382,
+      2.57522
+    ],
+    [
+      0,
+      1.12657,
+      2.57142
+    ],
+    [
+      0,
+      1.13735,
+      2.56948
+    ],
+    [
+      0,
+      1.14219,
+      2.56856
+    ],
+    [
+      0,
+      1.14411,
+      2.56819
+    ],
+    [
+      0,
+      1.145,
+      2.568
+    ]
+  ],
+  "rows": [
+    {
+      "name": "quarter",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "e998ff2df076f82935748fb1a489fe5e7a8666b7219157444ce15814f34c00de"
+    },
+    {
+      "name": "profile",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "1cbb38e9d1d9b72a942b850654f23c310ddeb05f2cf03f4ce619bf051713636a"
+    },
+    {
+      "name": "shell",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "ee0abb1d48ebba294a9e24ec144533c05979b933470d6ec4fbb7739bcfab20e5"
+    },
+    {
+      "name": "head",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "25fe887a73727872d08229489419078ef0cbe357c3072a995a312f783c8ccf9e"
+    },
+    {
+      "name": "saddle",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "6c2582584217971d2389ad986d66df5a2fb4465d8aeb4e598bd2184756828bfb"
+    },
+    {
+      "name": "saddle-close",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "b3b41945304717fd93892ec72a9ffa05bc00299aa0d79292d202d7d24cb77b1f"
+    },
+    {
+      "name": "plastron",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "7c8a5d6bbfd8903ee70c711fb5b4ef9882c53b9e087e7227ef1e85f452b4a9e0"
+    },
+    {
+      "name": "walk",
+      "clip": "walk",
+      "frame": 7,
+      "sha256": "97ace56bf408548ef26d4cbc9948234169328a1e8e42e17fe8d3a1fcaac7368c"
+    },
+    {
+      "name": "run",
+      "clip": "run",
+      "frame": 5,
+      "sha256": "a99f84de0b9b6d3fb48d1439c467b6ebd233f251f47b857cff44a3496335908d"
+    },
+    {
+      "name": "swim",
+      "clip": "swim",
+      "frame": 7,
+      "sha256": "dfe39e444c8bd00764b7c036ab59a99de8e90e0d275fbeceb5526d19fb146510"
+    },
+    {
+      "name": "bite",
+      "clip": "attack",
+      "frame": 10,
+      "sha256": "47eb688a7e995e83bef017c8075bb96aef4813ceb8a0aed3f55d835733488a01"
+    },
+    {
+      "name": "guard",
+      "clip": "retract",
+      "frame": 18,
+      "sha256": "ef22d54a08d982507c424a2f5947060f72517344cfbfc3bb7de9f116cf5120de"
+    },
+    {
+      "name": "torpor",
+      "clip": "torpor_idle",
+      "frame": 18,
+      "sha256": "f2636ddd63c6bb402424aa032f5c4d05e7689532b86f634ad38b05c31f07a744"
+    },
+    {
+      "name": "death",
+      "clip": "death",
+      "frame": 43,
+      "sha256": "aa8f43a2d0654c54318868704a5e0f72f92ebfad051d7c8a9573dc8940546865"
+    },
+    {
+      "name": "dyed",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "327848d58cfe457c5d96549f2a3c1f74c9d6938eb8df99a6f7eb5cac19c0fba6"
+    },
+    {
+      "name": "hurt",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "f385d956edc8a4bd3bc965a77c920f40b0bd4a2b191fff9ff32e5d0c3b2fcdbb"
+    },
+    {
+      "name": "decay",
+      "clip": "death",
+      "frame": 43,
+      "sha256": "fb09456dd0ec838a1e7fa6b4b06ef046f13a206450e30e6f81bbd0fcd5a7b881"
+    }
+  ],
+  "saddleLods": [
+    4608,
+    1500,
+    600,
+    170
+  ],
+  "shellCoverage": [
+    {
+      "level": 0,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 1,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 2,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 3,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 4,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 5,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    }
+  ],
+  "sourceReferences": {
+    "specimen.pdf": "b150d77d8344691d471c6a69dc4176a00e560131e39b0ea42550d359e0c07cb6",
+    "dossier.jpg": "309e1b032b11d35489a948cd2df0a7f5aec11caec39a79053621bb99aa5c860e",
+    "reference-cc0.png": "e063fe0bf154003711af8d6bd3d97c6d099056187560cd59322776fa6b3cb34f"
+  },
+  "sheets": {
+    "native-review.png": "36edf937cecce21e6ae1f57beca1534b4ad3eb52dec0ba96a22c3367284290da",
+    "shell-levels.png": "f36d5200f3d99cab8ece500e319f6c5fbc8637d71dddec499c5f31c684ca436d"
+  }
+}
