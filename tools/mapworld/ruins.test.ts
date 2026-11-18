@@ -317,7 +317,8 @@ test("a crowded tower fallback keeps a reachable stump when its footprint centre
 test("a facade module is walked as its few boxes and drawn with its parts in their own colours", () => {
   const w = flatWorld(4);
   const kind = w.kind("core:zruin_zbalc_limestone");
-  expect(w.reg.parts.start[kind + 1]! - w.reg.parts.start[kind]!).toBe(3);
+  // Its balcony's slab, front and two end returns, and the wall behind.
+  expect(w.reg.parts.start[kind + 1]! - w.reg.parts.start[kind]!).toBe(5);
   const city = new CityStatics(w.dims, [{ kind: "core:zruin_zbalc_limestone", x: 96, y: 4, z: 96, yaw: 0 }], w.reg);
   const colours = new Set(boxPart(city, chunkAt(w.dims, 96, 96), w.hf, () => null).color);
   // The building's limestone and its darker soffits, the coral wall behind the balconies and its dark openings.

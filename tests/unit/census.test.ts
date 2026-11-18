@@ -182,9 +182,9 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // a building's bays came to wear their kind's facade modules (content/ruins.ts): the street on high was 41, 51 and
   // 67,608 near and 15 and 57,036 far, the roof 37, 46, 66,988, 19 and 77,014, the air 51, 45, 77,364, 13 and 73,184.
   expect(got).toEqual({
-    "street-300": { lowpoly: [44, 0, 124604, 12, 78042], "medium, touch": [17, 9, 61818, 10, 37714], medium: [44, 21, 124604, 15, 111530], high: [44, 51, 124604, 15, 111530], ultra: [44, 57, 124604, 15, 111530] },
-    "roof-300": { lowpoly: [40, 0, 129882, 12, 93478], "medium, touch": [24, 7, 77128, 14, 55230], medium: [40, 23, 129882, 19, 142474], high: [40, 48, 129882, 19, 144102], ultra: [40, 59, 129882, 19, 144102] },
-    "air-300": { lowpoly: [54, 0, 144268, 11, 91948], "medium, touch": [25, 2, 85578, 9, 41238], medium: [54, 7, 144268, 13, 139652], high: [54, 49, 144268, 13, 139652], ultra: [54, 57, 144268, 13, 139652] },
+    "street-300": { lowpoly: [44, 0, 126242, 12, 78928], "medium, touch": [17, 9, 62778, 10, 37804], medium: [44, 21, 126242, 15, 112772], high: [44, 51, 126242, 15, 112772], ultra: [44, 57, 126242, 15, 112772] },
+    "roof-300": { lowpoly: [40, 0, 131204, 12, 94536], "medium, touch": [24, 7, 78598, 14, 55476], medium: [40, 23, 131204, 19, 144226], high: [40, 48, 131204, 19, 145914], ultra: [40, 59, 131204, 19, 145914] },
+    "air-300": { lowpoly: [54, 0, 145540, 11, 92988], "medium, touch": [25, 2, 86920, 9, 41328], medium: [54, 7, 145540, 13, 141406], high: [54, 49, 145540, 13, 141406], ultra: [54, 57, 145540, 13, 141406] },
   });
 });
 

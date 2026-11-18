@@ -35,12 +35,14 @@ const wall = (top: number, out = 0.25): Part => [-4, 4, 0, top, -0.25, out];
  * Two flats' balconies across the bay, 2 m deep behind a solid front, a divider between them; behind, a coral wall with a
  * door and a window to each flat, jambs at the columns and a band from the head down to the slab above.
  */
+const RETURNS: Part[] = [[-4, -3.9, 0, 1.05, 0.25, 1.82], [3.9, 4, 0, 1.05, 0.25, 1.82]];
 const BALCONY: Part[] = [
-  [-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], [-0.1, 0.1, 0, 2.7, 0.25, 1.82], [-4, 4, 2.7, 4, -0.25, 0.25],
+  [-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], ...RETURNS, [-0.1, 0.1, 0, 2.7, 0.25, 1.82], [-4, 4, 2.7, 4, -0.25, 0.25],
   [-4, -3.6, 0, 2.7, -0.25, 0.25], [3.6, 4, 0, 2.7, -0.25, 0.25], [-3.6, 3.6, 0, 2.7, -0.35, -0.25, CORAL],
   ...[-2, 2].flatMap((c): Part[] => [[c - 1.5, c - 0.6, 0, 2.2, -0.25, -0.2, DARK], [c, c + 1.4, 0.9, 2.3, -0.25, -0.2, DARK]]),
 ];
-const BALCONY_WALKED: Part[] = [[-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], wall(4)];
+/** Walked, a balcony's front returns at the bay's ends, so it is reached only from the flat behind it. */
+const BALCONY_WALKED: Part[] = [[-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], ...RETURNS, wall(4)];
 /** The top flats' balconies roofed, and a guard standing above the roof at the roof's edge. */
 const BALCONY_CAP: Part[] = [[-4, 4, 3.6, 4, 0.25, 2], [-4, 4, 4, 4.8, 1.82, 2]];
 /** A window to each 4 m room, sills standing out, a band from the head down to the slab above. */
@@ -63,8 +65,8 @@ const DECK_CAP: Part[] = [[-4, 4, 3.6, 4.6, -0.1, 0.25, SPANDREL], [-0.08, 0.08,
 const MODULES = {
   zbalc: { look: BALCONY, walked: BALCONY_WALKED },
   zbalctop: { look: [...BALCONY, ...BALCONY_CAP], walked: [...BALCONY_WALKED, ...BALCONY_CAP] },
-  zbalc4: { look: [0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2)))] },
-  zbalc4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), ...up(12, BALCONY_CAP)], walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2))), ...up(12, BALCONY_CAP)] },
+  zbalc4: { look: [0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...BALCONY_WALKED.slice(0, 4), ...[4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2)))] },
+  zbalc4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), ...up(12, BALCONY_CAP)], walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...BALCONY_WALKED.slice(0, 4), ...[4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2))), ...up(12, BALCONY_CAP)] },
   /** A ground floor of flats: a solid darker base, a high window, the head band in the building's finish. */
   zlobby: { look: [[-4, 4, 0, 2.3, -0.25, 0.25, BASE], [-4, -3.4, 2.3, 3.1, -0.25, 0.25, BASE], [3.4, 4, 2.3, 3.1, -0.25, 0.25, BASE], [-3.4, 3.4, 2.3, 3.1, -0.3, -0.2, DARK], [-4, 4, 3.1, 4, -0.25, 0.25]], walked: [wall(4)] },
   zstore: { look: SHOP, walked: SHOP_WALKED },
