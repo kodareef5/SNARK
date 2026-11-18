@@ -1683,7 +1683,7 @@
       "parked": {
         "perKm": 0.4, "least": 2, "most": 4, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200"],
         "lots": { "classes": ["S1780"], "least": 2, "most": 4, "apart": 9, "perDistrict": 2 },
-        "kinds": { "core:compact": 40, "core:caravan": 24, "core:fastback": 18, "core:panel_van": 12, "core:veloce": 3, "core:berlinetta": 3 },
+        "kinds": { "core:compact": 40, "core:caravan": 24, "core:fastback": 18, "core:panel_van": 12, "core:veloce": 3, "core:berlinetta": 3, "core:patrol_sedan": 3, "core:patrol_jeep": 2 },
         "styles": {
           "industrial": { "core:tanker": 5, "core:panel_van": 45, "core:caravan": 10, "core:fastback": 6, "core:veloce": 0, "core:berlinetta": 0 },
           "mural": { "core:panel_van": 30 },

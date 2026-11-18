@@ -336,7 +336,10 @@ artTest("what hatches is nobody's and helpless until someone takes it; then it i
   // Each ray comes level from 4 m off on the side given and ends just past the body's middle. It ignores Ada.
   const cast = (who: number, up: number, ux: number, uz: number): number => h.host.combat.castBodies(h.ent(ada), ents.x[who]! + ux * 4, ents.y[who]! + up, ents.z[who]! + uz * 4, -ux, 0, -uz, 4.5);
   const [ux, uz] = [(first.x - ents.x[f.e]!) / off, (first.z - ents.z[f.e]!) / off];
-  expect([cast(m.e, 1.6, 1, 0), cast(e, 1.6, ux, uz), cast(e, 0.4, ux, uz)]).toEqual([m.e, -1, e]);
+  expect(cast(m.e, 1.6, 1, 0)).toBe(m.e);
+  // The high ray can reach the mother's flank behind her hatchling.
+  expect(cast(e, 1.6, ux, uz)).toBe(f.e);
+  expect(cast(e, 0.4, ux, uz)).toBe(e);
   expect(youngScale(reg.birthScale[baby.kind]!, baby.span, baby.grown, h.world.tick)).toBeLessThan(0.35);
   // Clients get span and grown, the two numbers they scale the drawn body by.
   const seen = new RemoteSample();

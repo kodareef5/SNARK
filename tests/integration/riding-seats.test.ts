@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import type { ClientSession } from "../../client/core/session.ts";
+import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { FLOOR_THICK } from "../../content/building.ts";
 import { Pose } from "../../shared/anim/clip.ts";
@@ -30,7 +30,8 @@ import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { Harness } from "../fixtures/net.ts";
-import { corePack } from "../fixtures/pack.ts";
+import { corePack, frozenPack } from "../fixtures/pack.ts";
+import type { Pack } from "../../shared/pack/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const core = coreRegistry();
@@ -55,9 +56,9 @@ function threeSeats(): Registry {
  * Survivors of one tribe on flat ground, the first 2.5 m west of a saddled `species` of theirs that faces north and
  * stays; each joins over `link`.
  */
-function yard(species: string, names: string[], opts: { reg?: Registry; link?: LinkOptions; dbPath?: string } = {}) {
+function yard(species: string, names: string[], opts: { reg?: Registry; link?: LinkOptions; dbPath?: string; pack?: Pack } = {}) {
   const reg = opts.reg ?? core;
-  const h = new Harness({}, 1, 60, { dev: true, ...(opts.dbPath ? { dbPath: opts.dbPath } : {}) }, reg);
+  const h = new Harness({}, 1, 60, { dev: true, dbPath: opts.dbPath, clips: opts.pack?.clips, rigs: opts.pack?.header.rigs }, reg);
   const sessions = names.map((n) => h.join(n, opts.link ?? {}));
   h.run(500);
   const g = flatGround(h, 40, 30);
@@ -390,6 +391,54 @@ test("seats are not saved: a rider when the server stops comes back standing bes
     expect([back.pid, again.host.riding.riding(back), ents.seat[back.ent]]).toEqual([pid, false, 0]);
     const ground = groundUnder(again.world.hf, ents.x[back.ent]!, ents.z[back.ent]!, 0.4);
     expect([Math.abs(ents.y[back.ent]! - ground) < 0.1, Math.hypot(ents.x[back.ent]! - ents.x[m]!, ents.z[back.ent]! - ents.z[m]!) > 1.4]).toEqual([true, true]);
+  } finally {
+    active?.host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+artTest("an existing saddled tame retains its genome and carries its rider on the replacement rig after a restart", () => {
+  const prior = compileContent(CORE_CONTENT.map((d) => d.type === "species" && d.id === "core:parasaur"
+    ? { ...d, skeleton: "dino", regions: undefined } : d)).registry!;
+  const species = "parasaur";
+  const dir = mkdtempSync(join(tmpdir(), "snark-ride-upgrade-")), dbPath = join(dir, "world.db");
+  let active: Harness | null = null;
+  try {
+    const old = yard(species, ["ada"], { reg: prior, pack: frozenPack(), dbPath });
+    active = old.h;
+    const { pid, team } = old.rec;
+    const dyes = [0, 9, 15, 3, 12, 0];
+    old.rec.genome!.colors.set(dyes);
+    old.h.host.records.dirty.add(pid);
+    old.h.host.shutdown();
+    active = null;
+
+    const h = active = new Harness({}, 1, 60, { dev: true, dbPath });
+    const rider = h.join("ada");
+    h.run(700);
+    const e = h.host.records.entOf.get(pid)!, rec = h.host.records.byPid.get(pid)!;
+    expect([rec.team, h.reg.ids[rec.saddle], ...rec.genome!.colors]).toEqual([team, `core:saddle_${species}`, ...dyes]);
+    const remote = new RemoteSample();
+    rider.sampleRemote(remote);
+    const n = remote.id.subarray(0, remote.count).indexOf(e);
+    expect(n).toBeGreaterThanOrEqual(0);
+    expect([...remote.colors.subarray(n * 6, n * 6 + 6)]).toEqual(dyes);
+    const anim = h.world.anims[rec.kind]!;
+    expect(anim.rig.sockets.has("seat")).toBe(true);
+    expect(anim.walkGait).not.toBeNull();
+    press(h, rider, e);
+    expect(rider.driving).toBe(e);
+    const pilot = h.pilots[0]!, ents = h.world.ents;
+    const x = ents.x[e]!, z = ents.z[e]!;
+    pilot.moveZ = 127;
+    h.run(1600);
+    pilot.moveZ = 0;
+    expect(Math.hypot(ents.x[e]! - x, ents.z[e]! - z)).toBeGreaterThan(2);
+    pilot.buttons = BTN_USE;
+    h.run(100);
+    pilot.buttons = 0;
+    h.run(300);
+    expect([rider.driving, ents.seat[h.ent(rider)], ents.stance[h.ent(rider)]]).toEqual([-1, 0, STANCE_STAND]);
   } finally {
     active?.host.shutdown();
     rmSync(dir, { recursive: true, force: true });

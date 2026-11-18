@@ -4,13 +4,13 @@ import { handleGen, handleIndex, makeHandle } from "../shared/ids.ts";
 import { CHUNK_SIZE, TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y } from "../shared/coords.ts";
 import { hashString } from "../shared/hash.ts";
 import { Rng } from "../shared/rng.ts";
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL } from "../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE, VEHICLE_DEPLOY, VEHICLE_INSPECT, VEHICLE_REFUEL, VEHICLE_REPAIR, VEHICLE_RECOVER, VEHICLE_FLIP, VEHICLE_PULL, VEHICLE_LIGHTS } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { VEHICLE_FUEL_PER_GASOLINE as FUEL_PER_ITEM, VEHICLE_REPAIR_STEP as REPAIR_STEP, VEHICLE_REPAIR_BILL as REPAIR_BILL } from "../shared/sim/vehicle-maintenance.ts";
-import { boatDrives, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
+import { PATROL_LIGHT_MODES, boatDrives, isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { boatPlacement, boatMeetsCapsule, boatMeetsVehicle } from "../shared/world/boat.ts";
@@ -66,6 +66,15 @@ export class VehicleService {
     }
     const handle = r.u32(), count = action === VEHICLE_REFUEL ? r.u8() : 0;
     if (r.overflow) return RESULT_INVALID;
+    if (action === VEHICLE_LIGHTS) {
+      const { world, urban } = this.ctx, ents = world.ents, e = handleIndex(handle);
+      if (e >= ents.cap || ents.gen[e] !== handleGen(handle) || (ents.flags[e]! & (F_ALIVE | F_PROP)) !== F_ALIVE) return RESULT_INVALID;
+      const def = world.reg.vehicle[ents.kind[e]!];
+      if (!def || !isWheelVehicle(def) || !def.emergencyLights) return RESULT_INVALID;
+      if (!this.actor(c) || c.drive !== e) return RESULT_DENIED;
+      urban.setLightMode(e, (ents.vehicleLightMode[ents.vrow[e]!]! + 1) % PATROL_LIGHT_MODES.length);
+      return RESULT_OK;
+    }
     if (action === VEHICLE_INSPECT) return this.inspect(c, handle);
     if (action === VEHICLE_REFUEL) return this.refuel(c, handle, count);
     if (action === VEHICLE_REPAIR) return this.repair(c, handle);

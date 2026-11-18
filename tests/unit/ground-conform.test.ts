@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test';
+import { corePack } from '../fixtures/pack.ts';
+import { artTest } from '../fixtures/needs-art.ts';
 import { NO_CLIPS } from '../../shared/anim/clip.ts';
 import { conformCreature, groundSpeedScale } from '../../shared/anim/ground-conform.ts';
 import { CreatureAnim, rayCreature, advanceCreature, creaturePose, poseCreatureOn, creatureFootfallDomain } from '../../shared/anim/creature.ts';
@@ -268,4 +270,22 @@ test('footfall occasions follow the visible gait and retain juvenile size instea
     }
   }
   expect(feet).toEqual([FOOT_R, FOOT_L]);
+});
+
+artTest("all four native Brachiosaurus soles follow longitudinal and lateral grades", () => {
+  const pack = corePack();
+  for (const heading of [0, Math.PI / 2]) {
+    const rig = buildRig(pack.header.rigs.find(r => r.id === "core:brachio")!, pack.clips)!;
+    expect(rig.ground!.legs).toHaveLength(4);
+    const world = slope(20, heading);
+    const y = groundUnder(world.hf, 64, 64, 2.15);
+    solve(rig, rig.a, rig.solved);
+    conformCreature(rig, new AnimState(), rig.a, rig.solved, world, 64, y, 64, 0, 1);
+    for (const { foot } of rig.ground!.legs) {
+      boneToModel(rig.solved, foot.bone, foot.x, foot.y, foot.z, point);
+      const ground = world.hf.heightAt(64 + point[0]!, 64 + point[2]!);
+      expect(Math.abs(y + point[1]! - ground)).toBeLessThan(0.055);
+    }
+    checkLengths(rig);
+  }
 });

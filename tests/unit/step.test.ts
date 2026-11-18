@@ -136,7 +136,9 @@ test("every species that walks steps onto a block a step high and is stopped by 
       const top = block(w, 64, 64, h);
       for (const deg of [0, 30, 60]) {
         for (const way of [{ move: 30 }, {}, { buttons: BTN_SPRINT }]) {
-          const { high, upon } = walk(w, p, 64, 63, deg, { ...way, from: 0.5 + p.radius, ticks: 300 });
+          const stride = p.walkSpeed * (way.move ?? 127) / 127 * TICK_DT;
+          const ticks = Math.max(300, Math.ceil((2 * p.radius + 2) / stride));
+          const { high, upon } = walk(w, p, 64, 63, deg, { ...way, from: 0.5 + p.radius, ticks });
           if (top <= STEP ? high < top - 0.01 : upon) wrong.push(`${id}: ${h} m at ${deg} degrees ${said(way)}: stood ${high.toFixed(3)} m up`);
         }
       }

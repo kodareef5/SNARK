@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { DRAW_ONE_BONE, DRAW_SKINNED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_ONE_BONE, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { creaturePose } from "../../shared/anim/creature.ts";
@@ -18,7 +18,7 @@ import { RiderGrips } from "../../shared/anim/rider-grips.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { SEAT_FLOATS, seatFrame } from "../../shared/anim/seat.ts";
 import { solve } from "../../shared/anim/skeleton.ts";
-import { parsePack, type Pack } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import type { Seat } from "../../shared/sim/seats.ts";
 import { STANCE_CROUCH } from "../../shared/sim/character.ts";
@@ -32,7 +32,7 @@ import type { CreatureAsset } from "../../tools/art/spec.ts";
 import { encodePng } from "../../tools/pack/image.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { buildPack, unpackMeshes } from "../../tools/pack/write.ts";
-import { frozenPack } from "../fixtures/pack.ts";
+import { corePack, frozenPack } from "../fixtures/pack.ts";
 import { RAPTOR, SADDLE, SADDLED, SADDLE_OBJECT, WORN, saddleAsset, saddleGlb, saddledFrozenPack, type Ways } from "../fixtures/saddles.ts";
 import { tubeGlb, tubePictures, writeGlb } from "../fixtures/textured.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -62,7 +62,7 @@ function convert(glb: Uint8Array, spec: CreatureAsset): Built {
 test("an asset names a worn saddle and a saddled model, and the build makes each a mesh of its own on the body's rig, with its own levels and colours", () => {
   const pack = frozenPack();
   const raptor = unpackMeshes(pack).find((m) => m.id === RAPTOR)!;
-  // Some of the raptor's own zones and its seat (assets/source/core/creatures/dino.ts), fitted to its trunk, which the saddle lies on.
+  // The frozen raptor's zones and its seat, fitted to its trunk, which the saddle lies on.
   const trunk = ["Body", "Back", "Hips", "Torso", "Shoulders"];
   const fitted: Partial<CreatureAsset> = {
     zones: [
@@ -170,9 +170,9 @@ function parseGlb(bytes: Uint8Array): { json: Record<string, unknown>; data: [Fl
 }
 
 /** A flat world with the raptor's saddles of `ways` in the pack, seen on `tier` from (32, 1.6, 20) along +z. */
-function stage(ways: Ways, tier = "medium", nativeHands = false) {
+function stage(ways: Ways | Pack, tier = "medium", nativeHands = false) {
   const reg = coreRegistry();
-  let pack = saddledFrozenPack(ways);
+  let pack = typeof ways === "string" ? saddledFrozenPack(ways) : ways;
   if (nativeHands) {
     const bodies = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk",import.meta.url))));
     const ids = new Set(bodies.header.meshes.map(m => m.id)), rigs = new Set(bodies.header.rigs.map(r => r.id));
@@ -483,5 +483,48 @@ artTest("actual glove, look and forearm alignment changes update seated draws an
     const p=w.frame(),visible=drawn(p,w.pack);expect(p.dropped).toBe(0);expect(p.boneCount).toBeLessThanOrEqual(budget);
     for(const seated of riders)expect(visible.has(w.remote.id[seated]!)).toBe(true);
     expect(riders.filter(i=>visible.get(w.remote.id[i]!)![0]!.rigid).length).toBeGreaterThan(1);
+  }
+});
+
+artTest("the native Parasaur saddle draws on its walking mount's rig, with a rest socket matching the model-less seat", () => {
+  const pack = corePack();
+  for (const tier of ["lowpoly", "medium"]) {
+    const name = "parasaur";
+    const w = stage(pack, tier);
+    // A whole pack has geometry but no streamed pictures. Exercise the finished surface and the flat path.
+    if (tier === "medium") w.scene.assets.textured = (mesh, lod) => w.scene.assets.table.sections[mesh]![lod]!.length > 0;
+    const bodyId = `core:${name}`, saddleId = `core:saddle_${name}`;
+    const mount = w.place(bodyId, 32, 26, saddleId, (s) => (s.speed = 4));
+    const anim = w.scene.characters.creature(w.kind(bodyId))!;
+    expect(anim.walkGait).not.toBeNull();
+    expect(anim.runGait).not.toBeNull();
+    const seat = w.reg.saddleSeats[w.kind(saddleId)]![0]!;
+    const socket = anim.rig.sockets.get(seat.socket!)!;
+    [socket.x, socket.y, socket.z].forEach((offset, axis) => {
+      expect(anim.rig.rest[socket.bone * 3 + axis]! + offset).toBeCloseTo(seat.anchor[axis]!, 2);
+    });
+    const id = w.remote.id[mount]!;
+    const saved = [0, 9, 0, 13, 0, 0];
+    w.remote.colors.set(saved, mount * 6);
+    const species = w.reg.defs[w.kind(bodyId)]!;
+    if (species.type !== "species") throw new Error(bodyId);
+    const flat = saved.map((c, q) => c || species.regions?.[q]?.colors[0]?.[0] || 0);
+    for (let tick = 0; tick < 30; tick++) {
+      w.remote.tick = tick;
+      w.remote.z[mount] = 26 + tick * 0.1;
+      const packet = w.frame();
+      const seen = drawn(packet, pack).get(id)!;
+      const draw = packet.drawMesh.subarray(0, packet.drawCount).indexOf(pack.meshIndex.get(bodyId)!);
+      const at = packet.drawFirst[draw]! * INSTANCE_BYTES + 14;
+      const textured = (packet.drawFlags[draw]! & DRAW_TEXTURED) !== 0;
+      expect(textured).toBe(tier === "medium");
+      expect([...packet.transient.subarray(at, at + 6)]).toEqual(textured ? saved : flat);
+      expect([...w.remote.colors.subarray(mount * 6, mount * 6 + 6)]).toEqual(saved);
+      const body = seen.find((m) => m.mesh === bodyId)!;
+      const saddle = seen.find((m) => m.mesh === `${saddleId}/worn`)!;
+      expect(saddle.bone).toBe(body.bone);
+    }
+    w.remote.gear[mount * GEAR_COUNT + GEAR_WORN] = 0;
+    expect(drawn(w.frame(), pack).get(id)!.map((m) => m.mesh)).toEqual([bodyId]);
   }
 });
