@@ -27,10 +27,10 @@ def leg(key,dz,lift,spread=0,blade=0):
     set_world(kind+'_upper_'+side,q1,Quaternion());set_world(kind+'_lower_'+side,q2,q1)
     q3=Quaternion((0,0,1),math.radians(sign*blade));set_world(kind+'_foot_'+side,q3,q2)
 def gait(t,run):
-    stride=1.26;duty=.56 if run else .62
+    stride=1.26;duty=.56 if run else .58
     for key in LEGS:
         front=key.startswith('fore');left=key.endswith('l')
-        phase=(t+(0 if left else .5)+(0 if front else (.52 if run else .66)))%1
+        phase=(t+(0 if left else .5)+(0 if front else (.52 if run else .55)))%1
         if phase<=duty:
             dz=stride*(duty/2-phase);lift=0
         else:
