@@ -4,6 +4,8 @@
 
 import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
 import type { TextureRole } from "../../shared/pack/texture.ts";
+import type { PackRig } from "../../shared/pack/pack.ts";
+import type { SourceMesh } from "../pack/write.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
 export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
@@ -428,6 +430,14 @@ export interface HumanClipsAsset {
 
 /** The modelled bodies cut by body slot, with hair, beards and armor sets fitted to each (tools/art/human.ts). */
 export interface HumanBodiesAsset {
+  /** Tailored outfits use the converted body's actual surface and rest joints. */
+  readonly tailored?: {
+    readonly material: string;
+    /** Optional second material section for self-lit indicator lenses, in linear light. */
+    readonly indicatorEmission?: number;
+    readonly make: (body: readonly SourceMesh[], rig: PackRig) => SourceMesh[];
+  };
+  readonly materials?: Readonly<Record<string, MaterialSpec>>;
   readonly kind: "human-bodies";
   /** A folder under assets/raw that the paths below are in. */
   readonly raw: string;

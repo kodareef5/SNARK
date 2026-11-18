@@ -69,6 +69,20 @@ const GEAR: Def[] = [
 
   { type: "item", class: "weapon", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
   ...ARMOR,
+  ...ARMOR_PIECES.flatMap((piece, i): Def[] => {
+    const item = id(`meridian_${piece.name}`);
+    const label = ["Meridian helmet", "Meridian flight cuirass", "Meridian gloves", "Meridian greaves", "Meridian boots"][i]!;
+    // A cosmetic refit of the corresponding flak piece. Protection, durability and mass stay at that tier.
+    return [
+      { type: "item", class: "armor", id: item, label, stack: 1, color: 93, weight: [4, 10, 2, 10, 4][i]!,
+        wear: { slot: piece.slot, set: "meridian", armor: 100, uses: 120, colors: [93, 82, 41], ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : {}) },
+        craft: { at: id("fabricator"), seconds: 5, xp: 0, needs: [
+          { item: id(`flak_${piece.name}`), count: 1 }, { item: id("crystal"), count: 2 }, { item: id("electronics"), count: 1 },
+        ] } },
+      { type: "engram", id: id(`engram-meridian_${piece.name}`), label, level: 56, cost: 0, item,
+        requires: [id(`engram-flak_${piece.name}`)] },
+    ];
+  }),
 ];
 
 type Needs = readonly (readonly [item: string, count: number])[];

@@ -52,10 +52,10 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "item/resource": 10,
     "item/consumable": 4,
     "item/weapon": 3,
-    "item/armor": 20,
+    "item/armor": 25,
     "item/structure": 29,
     "item/vehicle": 2,
-    engram: 55,
+    engram: 60,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
@@ -80,7 +80,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     spawns: 4,
     map: 6,
   });
-  expect(rest.length).toBe(241 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + HARBOUR_WRECKS.length + STREET.length);
+  expect(rest.length).toBe(251 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + HARBOUR_WRECKS.length + STREET.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

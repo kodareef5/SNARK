@@ -21,7 +21,9 @@ const KITS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
   clouds: [["grenade_smoke", 10], ["grenade_poison", 10]],
   flare: [["flare_gun", 3]],
 };
-const TIERS: readonly string[] = ["cloth", "hide", "chitin", "flak"];
+// The practice mannequin has its own fitted meshes. Meridian is cut for the survivor rigs.
+const TARGET_ARMOR: readonly string[] = ["cloth", "hide", "chitin", "flak"];
+const TIERS: readonly string[] = [...TARGET_ARMOR, "meridian"];
 const PIECES: readonly string[] = ["hat", "shirt", "gloves", "pants", "boots"];
 
 /** Mints one of the item and moves it to the armor slot it is worn in. False if the record has no such slot. */
@@ -39,7 +41,7 @@ export function addCombatCommands(con: Console): void {
   const commands: ConsoleCommand[] = [
     {
       name: "dummy",
-      usage: "[cloth|hide|chitin|flak]",
+      usage: `[${TARGET_ARMOR.join("|")}]`,
       examples: ["dummy cloth"],
       help: "Stand a target three metres in front of you, bare or in a full set of armor. It takes hits by zone as a survivor does.",
       admin: true,
@@ -49,7 +51,7 @@ export function addCombatCommands(con: Console): void {
         const host = ctx.host;
         const reg = host.world.reg;
         const tier = args[0];
-        if (tier !== undefined && !TIERS.includes(tier)) return `no armor "${tier}"; one of ${TIERS.join(", ")}`;
+        if (tier !== undefined && !TARGET_ARMOR.includes(tier)) return `no armor "${tier}"; one of ${TARGET_ARMOR.join(", ")}`;
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
         const e = host.spawnCreature("core:dummy", c.body.x + Math.sin(a) * 3, c.body.z + Math.cos(a) * 3, 1);
         if (e < 0) return "no room for it there";
@@ -65,7 +67,7 @@ export function addCombatCommands(con: Console): void {
     {
       name: "kit",
       usage: `<${[...Object.keys(KITS), ...TIERS].join("|")}>`,
-      examples: ["kit tools", "kit bow"],
+      examples: ["kit tools", "kit bow", "kit meridian"],
       help: "Give yourself a set of things: a weapon with what it fires, or five pieces of armor.",
       admin: true,
       run(ctx, args) {

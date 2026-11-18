@@ -114,17 +114,38 @@ artTest("the content hangs together: every engram can be reached, every thing th
     if (d.weapon!.ammo) expect(d.weapon!.ammo.some((a) => made.some((r) => r.id === a) || gathered.has(a))).toBe(true);
     expect(d.craft !== undefined, d.id).toBe(true);
   }
-  // Four tiers of five pieces.
+  // Five independently wearable sets.
   const worn = items.filter((d) => d.wear);
-  expect(worn.length).toBe(20);
+  expect(worn.length).toBe(25);
   const rating = (tier: string): number => worn.find((d) => d.id === `core:${tier}_shirt`)!.wear!.armor;
-  expect([rating("cloth"), rating("hide"), rating("chitin"), rating("flak")]).toEqual([10, 20, 50, 100]);
+  expect([rating("cloth"), rating("hide"), rating("chitin"), rating("flak"), rating("meridian")]).toEqual([10, 20, 50, 100, 100]);
   for (const d of worn) {
     for (const sex of ["m", "f"]) expect(pack.meshIndex.has(`core:human_${sex}/armor/${d.wear!.set}/${d.wear!.slot}`), `${d.id} on ${sex}`).toBe(true);
     expect(d.craft !== undefined, d.id).toBe(true);
   }
   for (const need of made.flatMap((r) => r.craft!.needs)) expect(reg.index.has(need.item), need.item).toBe(true);
   for (const mesh of ["core:arrow", "core:dart", "core:stone_shot"]) expect(pack.meshIndex.has(mesh)).toBe(true);
+});
+
+test("Meridian equips through inventory commands and a second survivor sees all five pieces", () => {
+  const { h, s, send, inv } = setup();
+  const observer = h.join("observer");
+  h.run(400);
+  h.say(s, "kit meridian");
+  h.run(150);
+  const names = ["hat", "shirt", "gloves", "pants", "boots"];
+  const items = names.map(name => id(`meridian_${name}`));
+  for (const item of items) {
+    const bagSlot = inv().item.indexOf(item);
+    expect(bagSlot).toBeGreaterThanOrEqual(0);
+    expect(send(CMD_USE, w => { w.u8(bagSlot); w.u16(item); })).toBe(RESULT_OK);
+  }
+  expect([...inv().item.slice(inv().armor, inv().armor + 5)]).toEqual(items);
+  const seen = new RemoteSample();
+  observer.sampleRemote(seen);
+  const remote = seen.id.subarray(0, seen.count).indexOf(h.ent(s));
+  expect(remote).toBeGreaterThanOrEqual(0);
+  expect([...seen.gear.slice(remote * GEAR_COUNT + GEAR_WORN, remote * GEAR_COUNT + GEAR_WORN + 5)]).toEqual(items);
 });
 
 test("a survivor takes things in hand and puts armor on, and everyone sees it", () => {
@@ -361,8 +382,8 @@ test("equipment survives death in the cache and a restart in the save: rounds lo
   expect(move(rifle, hot + 1, id("rifle"))).toBe(RESULT_OK);
   expect(send(CMD_ATTACH, (w) => (w.u8(hot + 1), w.u8(scope)))).toBe(RESULT_OK);
   items.load(rec, hot + 1, id("round_rifle"), 1);
-  const hat = give("flak_hat");
-  expect(send(CMD_USE, (w) => (w.u8(hat), w.u16(id("flak_hat"))))).toBe(RESULT_OK);
+  const hat = give("meridian_hat");
+  expect(send(CMD_USE, (w) => (w.u8(hat), w.u16(id("meridian_hat"))))).toBe(RESULT_OK);
   expect(send(CMD_SELECT, (w) => w.u8(1))).toBe(RESULT_OK);
   inv().setDur(hot + 1, 31);
   h.run(400);
@@ -377,13 +398,13 @@ test("equipment survives death in the cache and a restart in the save: rounds lo
   const inv2 = h2.host.items.inv(rec2);
   expect([inv2.cap, inv2.bag]).toEqual([55, 40]);
   expect([inv2.item[hot + 1], inv2.ammo[hot + 1], inv2.loaded[hot + 1], inv2.attach[hot + 1], inv2.dur[hot + 1]]).toEqual([id("rifle"), id("round_rifle"), 1, id("scope"), 31]);
-  expect(inv2.item[inv2.armor]).toBe(id("flak_hat"));
+  expect(inv2.item[inv2.armor]).toBe(id("meridian_hat"));
   expect(rec2.held).toBe(1);
   expect(h2.host.items.total(id("round_rifle"))).toBe(7);
   const again = h2.join("ada");
   h2.run(500);
   expect(again.held).toBe(1);
-  expect([...h2.world.ents.gears.get(h2.ent(again))!]).toEqual([id("rifle"), id("flak_hat"), 0, 0, 0, 0]);
+  expect([...h2.world.ents.gears.get(h2.ent(again))!]).toEqual([id("rifle"), id("meridian_hat"), 0, 0, 0, 0]);
   expect(again.inventory!.loaded[hot + 1]).toBe(1);
 
   h2.say(again, "enablecheats");
@@ -394,7 +415,7 @@ test("equipment survives death in the cache and a restart in the save: rounds lo
   const cache = [...h2.host.records.byPid.values()].find((r) => r.name.endsWith("cache"))!;
   const kept = cache.inv!;
   expect([kept.item[hot + 1], kept.loaded[hot + 1], kept.attach[hot + 1]]).toEqual([id("rifle"), 1, id("scope")]);
-  expect(kept.item[kept.armor]).toBe(id("flak_hat"));
+  expect(kept.item[kept.armor]).toBe(id("meridian_hat"));
   expect(h2.host.items.audit()).toEqual([]);
   h2.host.shutdown();
 });
@@ -593,6 +614,16 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
   });
   const others = [...seen!.drawMesh.subarray(0, seen!.drawCount)].filter((_, d) => (seen!.drawFlags[d]! & (DRAW_SKINNED | DRAW_NEAR)) === DRAW_SKINNED).map((m) => pack.header.meshes[m]!.id);
   expect(others.sort()).toEqual(["core:bow", "core:human_m/armor/hide/head", "core:human_m/armor/hide/torso", "core:human_m/feet", "core:human_m/hands", "core:human_m/head", "core:human_m/legs"]);
+
+  // Wear the complete suit from the inventory and inspect the first-person pass.
+  app.key("KeyI", true);
+  for (const name of ["hat", "shirt", "gloves", "pants", "boots"]) give("meridian_" + name);
+  run(200);
+  for (const name of ["hat", "shirt", "gloves", "pants", "boots"]) click(cell(slotOf("meridian_" + name)), 2);
+  app.key("KeyI", true);
+  run(180);
+  expect([...new Set(meshes())].sort()).toEqual(["core:bow", ...["feet", "hands", "legs", "torso"].map(slot => "core:human_m/armor/meridian/" + slot)]);
+
 });
 
 /** Fails if a node is off the canvas, a text is wider than its box, or two controls overlap. */

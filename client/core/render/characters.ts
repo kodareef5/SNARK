@@ -20,7 +20,7 @@ import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX,
 import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
-import { MODE_FLYER, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
+import { MODE_FLYER, MODE_SWIM, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose, creatureFootfallDomain, FOOTFALL_NONE, type FootfallGait } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
@@ -47,8 +47,8 @@ import { CameraBody } from "../camera-body.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
-/** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, and a held item. */
-const PARTS = SLOT_COUNT + 4;
+/** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents and a held item. */
+const PARTS = SLOT_COUNT + 5;
 const PLAIN = defaultLook();
 
 /** Warm a small area of the living hide while keeping its inherited colour visible.
@@ -141,9 +141,12 @@ interface BodySet {
   rest: Float32Array;
   /** Per armor set, indexed as Worn.set. The pack mesh worn in each body slot, -1 where the set has none. */
   armor: Int32Array[];
+  vents: Int32Array;
 }
 
 interface Worn {
+  sealed: boolean;
+  vented: boolean;
   slot: number;
   set: number;
   colors: readonly [number, number, number];
@@ -366,7 +369,7 @@ export class Characters {
     this.worn = reg.defs.map((d) => {
       if (d?.type !== "item" || !d.wear) return null;
       if (!sets.includes(d.wear.set)) sets.push(d.wear.set);
-      return { slot: SLOT_NAMES.indexOf(d.wear.slot), set: sets.indexOf(d.wear.set), colors: d.wear.colors };
+      return { sealed: d.wear.sealed === true, vented: !!d.wear.vents, slot: SLOT_NAMES.indexOf(d.wear.slot), set: sets.indexOf(d.wear.set), colors: d.wear.colors };
     });
     // Any item whose class gives it a held slot (shared/content/classes.ts) is drawn in the hand by its mesh there: a
     // weapon's code-made box, or a piece converted onto a prop bone (tools/art/build.ts, heldOn).
@@ -402,6 +405,7 @@ export class Characters {
         beard: Int32Array.from(BEARD_STYLES, (s) => human(bind.own(d.id, "beard", `${sex}/${s.id}`))),
         rest,
         // A missing piece is -1 here, and the body's own part is drawn in the piece's colours.
+        vents: Int32Array.from(sets, set => human(bind.own(piece(set, "torso"), "vents", body))),
         armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (part) => human(bind.own(piece(set, part), "worn", body)))),
       };
     };
@@ -1269,7 +1273,7 @@ export class Characters {
     part.rest = set.rest;
     const tint = view ? this.lookColor : colors;
     const tintAt = view ? 0 : colorAt;
-    let covered = false;
+    let covered = false, sealed = false;
     for (let slot = 0; slot < SLOT_COUNT; slot++) {
       const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + slot]!] : null;
       // A piece whose page has not come is asked for, and the body's own part stands in until it does.
@@ -1285,17 +1289,21 @@ export class Characters {
         c[REGION_SECOND - REGION_BASE] = worn!.colors[1];
         c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
         this.queuePart(piece, c, 0, -1, unseen || hidden);
-        if (slot === SLOT_HEAD) covered = true;
+        if (worn!.vented && !st.grounded && st.mode !== MODE_SWIM && !seat && !vehicleSeat && !st.dead && !st.out) {
+          const vents = set.vents[worn!.set]!;
+          if (vents >= 0 && this.assets.known(vents)) this.queuePart(vents, c, 0, -1, unseen || hidden);
+        }
+        if (slot === SLOT_HEAD) { covered = true; sealed = worn!.sealed; }
       }
-      // A worn piece replaces the body part under it, except on the head, where it goes over.
+      // Open headgear keeps the underlying face visible.
       const body = set.slots[slot]!;
-      if (body >= 0 && (piece < 0 || slot === SLOT_HEAD)) this.queuePart(body, tint, tintAt, -1, unseen || hidden);
+      if (body >= 0 && (piece < 0 || (slot === SLOT_HEAD && !sealed))) this.queuePart(body, tint, tintAt, -1, unseen || hidden);
     }
     if (view && (!headless || casts !== 0)) {
-      // A piece worn on the head hides hair but not a beard.
+      // Open headgear still shows the beard.
       const hair = covered ? -1 : (set.hair[view[LOOK_HAIR]!] ?? -1);
       if (hair >= 0) this.queuePart(hair, tint, tintAt, -1, unseen || headless);
-      const beard = set.beard[view[LOOK_BEARD]!] ?? -1;
+      const beard = sealed ? -1 : (set.beard[view[LOOK_BEARD]!] ?? -1);
       if (beard >= 0) this.queuePart(beard, tint, tintAt, -1, unseen || headless);
     }
     const inHand = gear && !impaled && vehicleSeat?.weapons !== false ? this.held[gear[gearAt + GEAR_HELD]!] : null;

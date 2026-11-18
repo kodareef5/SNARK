@@ -681,6 +681,10 @@ export interface AmmoFacet {
 }
 
 export interface WearFacet {
+  /** A closed helmet includes its own neck seal and conceals the face and beard while its mesh is loaded. */
+  readonly sealed?: boolean;
+  /** Optional artwork deployed by an airborne torso piece, under the same fitted model directory. */
+  readonly vents?: string;
   readonly slot: "head" | "torso" | "hands" | "legs" | "feet";
   /** Armor rating at primitive quality. Damage is multiplied by 100 / (100 + armor). */
   readonly armor: number;

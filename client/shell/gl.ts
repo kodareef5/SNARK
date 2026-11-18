@@ -38,7 +38,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, offset: 30 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, emissive: 30, offset: 31 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -178,8 +178,10 @@ export class GlRenderer {
   private readonly sky: PackMaterial | undefined;
   private readonly forced: string | null;
 
-  constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null) {
-    const gl = canvas.getContext("webgl2", { alpha: false, antialias: true, powerPreference: "high-performance" });
+  private readonly transparentStage: boolean;
+  constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null, transparentStage = false) {
+    this.transparentStage = transparentStage;
+    const gl = canvas.getContext("webgl2", { alpha: transparentStage, antialias: true, powerPreference: "high-performance" });
     if (!gl) throw new Error("WebGL2 is not available in this browser");
     this.gl = gl;
     this.pack = pack;
@@ -559,6 +561,7 @@ export class GlRenderer {
     this.uniform(prog, U.grey, mat.grey);
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
     this.uniform(prog, U.sheet, mat.sheet ?? 0);
+    this.uniform(prog, U.emissive, mat.emissive);
     if (last[U.uv] !== mesh) {
       last[U.uv] = mesh;
       gl.uniform4fv(at[U.uv]!, this.meshes[mesh]!.uv ?? WHOLE_UV);
@@ -707,7 +710,7 @@ export class GlRenderer {
     }
     this.shadows(p);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
+    gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, this.transparentStage ? 0 : 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     let step = -1;
     for (let d = 0; d < p.drawCount; d++) {
@@ -890,7 +893,7 @@ export class GlRenderer {
       gl.clear(gl.DEPTH_BUFFER_BIT);
     }
     // A lit frame's dome goes at the far end of the view, where the opaque steps left it.
-    if (s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes + 3]! > 0)) {
+    if (s === STEP_FAR_SEE && !this.transparentStage && (p.lit || p.frame[FRAME.eyes + 3]! > 0)) {
       this.use(PROGRAM.sky, p);
       if (p.lit) this.maps(this.sky, MAP_ROLES.length);
       this.set(false, false, false);
