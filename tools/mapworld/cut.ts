@@ -16,12 +16,11 @@ import type { World } from "./ground.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
-export function cutSource(name: string, folder: string, column: number, row: number, wide: number, deep: number): void {
-  const from = join(ROOT, "assets/source/maps", name);
+export function cutSource(from: string, folder: string, column: number, row: number, wide: number, deep: number): string {
   const base = new Base(from);
   const { grid, info } = base;
   const [frameX, frameZ] = info.frame;
-  if (column < frameX || row < frameZ || column + wide > frameX + info.chunks[0] || row + deep > frameZ + info.chunks[1]) throw new Error(`${wide} by ${deep} chunks at ${column}, ${row} is not within ${name}'s frame`);
+  if (column < frameX || row < frameZ || column + wide > frameX + info.chunks[0] || row + deep > frameZ + info.chunks[1]) throw new Error(`${wide} by ${deep} chunks at ${column}, ${row} is not within ${from}'s frame`);
   // Columns count west and rows north, as engine x and z do.
   const east = grid.east - (column - frameX) * CHUNK_SIZE;
   const south = grid.south + (row - frameZ) * CHUNK_SIZE;
@@ -62,22 +61,22 @@ export function cutSource(name: string, folder: string, column: number, row: num
   }
   for (const part of ["blocks", "ruins"]) if (existsSync(join(from, part))) cpSync(join(from, part), join(folder, part), { recursive: true });
 
-  // What the world names in the rectangle, 300 m in from its edges, where the build looks for each one's ground.
+  // What the world names in the rectangle; the build looks for each one's ground within it.
   const world = JSON.parse(readFileSync(join(from, "world/world.json"), "utf8")) as World;
   const within = ([lon, lat]: readonly [number, number]): boolean => {
     const [e, n] = base.tm.forward(lon, lat);
-    return e >= west + 300 && e <= east - 300 && n >= south + 300 && n <= north - 300;
+    return e >= west && e <= east && n >= south && n <= north;
   };
   const cut: World = { ...world, spawns: world.spawns.filter((s) => within(s.at)), obelisks: (world.obelisks ?? []).filter((o) => within(o.at)), landmarks: (world.landmarks ?? []).filter((l) => within(l.at)) };
   mkdirSync(join(folder, "world"), { recursive: true });
   writeFileSync(join(folder, "world/world.json"), `${JSON.stringify(cut, null, 2)}\n`);
   mkdirSync(join(folder, "reports", world.ruins?.report ?? "ruins"), { recursive: true });
-  console.log(`${wide} by ${deep} chunks of ${name} at ${column}, ${row} in ${folder}: ${cut.spawns.length} of ${world.spawns.length} spawn points, ${cut.obelisks?.length ?? 0} of ${world.obelisks?.length ?? 0} obelisks, ${cut.landmarks?.length ?? 0} of ${world.landmarks?.length ?? 0} landmarks`);
+  return `${wide} by ${deep} chunks at ${column}, ${row} in ${folder}: ${cut.spawns.length} of ${world.spawns.length} spawn points, ${cut.obelisks?.length ?? 0} of ${world.obelisks?.length ?? 0} obelisks, ${cut.landmarks?.length ?? 0} of ${world.landmarks?.length ?? 0} landmarks`;
 }
 
 if (import.meta.main) {
   const [name, folder, ...numbers] = process.argv.slice(2);
   const [column, row, wide, deep] = numbers.map(Number);
   if (!name || !folder || [column, row, wide, deep].some((v) => !Number.isInteger(v))) throw new Error("bun tools/mapworld/cut.ts <name> <folder> <column> <row> <wide> <deep>");
-  cutSource(name, resolve(folder), column!, row!, wide!, deep!);
+  console.log(cutSource(join(ROOT, "assets/source/maps", name), resolve(folder), column!, row!, wide!, deep!));
 }
