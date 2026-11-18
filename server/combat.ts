@@ -9,7 +9,7 @@ import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
 import { OccupantBody, clipSeatEye, createOccupantSeat, occupantSeat } from "../shared/anim/occupant.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { SEAT_FLOATS, saddleSeat, seatOn } from "../shared/anim/seat.ts";
-import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
+import { CreatureRayPose, rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { CreatureBite, creatureBite } from "../shared/anim/creature-attack.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import { rayVehicle, rayVehicleCover } from "../shared/sim/vehicle-frame.ts";
@@ -186,6 +186,10 @@ export class Combat {
   private readonly eyePast = new Past();
   private readonly eyeNow = new Past();
   private readonly jaws = new CreatureBite();
+  /** Reuse target poses only inside one synchronous bite. Nothing moves or takes damage between its nine rays. */
+  private mouthCasting = false;
+  private readonly mouthPoses = new Map<number, CreatureRayPose>();
+  private readonly mouthPosePool: CreatureRayPose[] = [];
   private readonly biteHit = { target: -1, zone: ZONE_NONE, what: HIT_NONE, ref: 0, t: 0, x: 0, y: 0, z: 0 };
   private readonly rolls: Roll[] = [];
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, silenced: false };
@@ -456,6 +460,8 @@ export class Combat {
   /** Nine jaw-width rays, each with its own body-to-jaw and forward obstruction check. One bite lands once. */
   private castMouth(e: number): void {
     const { world } = this.ctx, jaws = this.jaws, hit = this.biteHit, m = jaws.origin, d = jaws.direction, a = jaws.anchor;
+    this.mouthCasting = true;
+    this.mouthPoses.clear();
     hit.target = -1; hit.zone = ZONE_NONE; hit.what = HIT_NONE; hit.ref = 0; hit.t = jaws.reach;
     let best = Infinity, worldBest = Infinity;
     const flat = Math.hypot(d[0]!, d[2]!);
@@ -482,6 +488,22 @@ export class Combat {
       best = this.t; hit.target = target; hit.zone = this.zone; hit.t = best; hit.what = HIT_NONE;
       hit.x = ox + d[0]! * best; hit.y = oy + d[1]! * best; hit.z = oz + d[2]! * best;
     }
+    this.mouthCasting = false;
+  }
+
+  private mouthPose(e: number, bones: number): CreatureRayPose | undefined {
+    if (!this.mouthCasting) return undefined;
+    const found = this.mouthPoses.get(e);
+    if (found) return found;
+    const slot = this.mouthPoses.size;
+    // Overflow retains the ordinary exact query. A crowded bite cannot retain an unbounded pose pool.
+    if (slot >= MAX_NEAR) return undefined;
+    let pose = this.mouthPosePool[slot];
+    // A larger scratch pose serves a smaller rig too: mixed-species bites must not keep reallocating this slot.
+    if (!pose || pose.solved.pos.length < bones * 3) this.mouthPosePool[slot] = pose = new CreatureRayPose(bones);
+    pose.ready = false;
+    this.mouthPoses.set(e, pose);
+    return pose;
   }
 
   private reload(c: Client): void {
@@ -887,10 +909,11 @@ export class Combat {
         // A young creature is its kind's shape scaled down about its position. The ray is scaled up about that
         // point instead, and the hit distance is scaled back.
         const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
+        const pose = this.mouthPose(i, this.anims[kind]!.rig.bones);
         const zone =
           size === 1
-            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, world, reg.tamedMove[kind] ?? undefined)
-            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size, world, reg.tamedMove[kind] ?? undefined);
+            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, world, reg.tamedMove[kind] ?? undefined, pose)
+            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size, world, reg.tamedMove[kind] ?? undefined, pose);
         if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;

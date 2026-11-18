@@ -29,7 +29,7 @@ import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type 
 import { HUMAN } from "./human.ts";
 import { AnimState, BANK_STEPS, CLIMB_DIVE, CLIMB_DOWN, CUE_LAND, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, DIR_STEPS, FLY_SPEED_STEP, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, PITCH_STEPS, SPEED_STEP } from "./pose.ts";
 import type { Rig, RigClip } from "./rigs.ts";
-import { boneToModel, rayZones, solve, zoneHit } from "./skeleton.ts";
+import { Solved, boneToModel, rayZones, solve, zoneHit } from "./skeleton.ts";
 
 /** Below this speed, in metres per second, a walk with no stride is blended with the idle so that starting off is not a jump. */
 const EASE_IN = 1.2;
@@ -826,10 +826,23 @@ function gettingUp(a: CreatureAnim, st: AnimState, tick: number, out: Pose): voi
 }
 
 /**
+ * Scratch for several rays at one unchanged creature pose. The caller resets ready before changing the creature, tick,
+ * animation or supporting world. Bones are owned here, because another creature may use the same rig between rays.
+ */
+export class CreatureRayPose {
+  readonly solved: Solved;
+  ready = false;
+
+  constructor(bones: number) {
+    this.solved = new Solved(bones);
+  }
+}
+
+/**
  * Returns the zone a ray hits, or 0. The creature stands at (bx, by, bz) facing `yaw` (1/65536 turns). The ray starts at
  * (ox, oy, oz) and runs along the unit direction (dx, dy, dz) no farther than `maxT`. `zoneHit` holds the bone and the distance.
  */
-export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, world?: CollisionWorld, move?: MoveParams | null): number {
+export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: number, by: number, bz: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, world?: CollisionWorld, move?: MoveParams | null, cached?: CreatureRayPose): number {
   const rig = a.rig;
   // Most rays miss the bounding sphere, so test that first.
   const cx = bx - ox;
@@ -844,16 +857,20 @@ export function rayCreature(a: CreatureAnim, st: AnimState, tick: number, bx: nu
     return 0;
   }
   const r = (yaw * TAU) / 65536;
-  if (world && move) groundMountMotion(st, world, move, bx, by, bz, r, groundFrame);
-  creaturePose(a, st, tick, rig.a);
-  solve(rig, rig.a, rig.solved);
+  const solved = cached?.solved ?? rig.solved;
+  if (!cached?.ready) {
+    if (world && move) groundMountMotion(st, world, move, bx, by, bz, r, groundFrame);
+    creaturePose(a, st, tick, rig.a);
+    solve(rig, rig.a, solved);
+    if (world && move) groundMountPose(solved, st, world, move, bx, by, bz, r, groundFrame);
+    if (cached) cached.ready = true;
+  }
   // Move the ray into the body's space by undoing its position, then its yaw. Yaw is x' = c x + s z, z' = c z - s x.
-  if (world && move) groundMountPose(rig.solved, st, world, move, bx, by, bz, r, groundFrame);
   const s = detSin(r);
   const c = detCos(r);
   const rx = ox - bx;
   const rz = oz - bz;
-  return rayZones(rig, rig.solved, c * rx - s * rz, oy - by, s * rx + c * rz, c * dx - s * dz, dy, s * dx + c * dz, maxT);
+  return rayZones(rig, solved, c * rx - s * rz, oy - by, s * rx + c * rz, c * dx - s * dz, dy, s * dx + c * dz, maxT);
 }
 
 /** What each species of `reg` drawn on a rig of its own plays, by content index. `rigOf` finds a species' rig. */
