@@ -20,7 +20,7 @@ import { carPicker } from "./street-cars.ts";
 import { CityStatics, boxPart, cellPart } from "../../shared/world/city.ts";
 import { chunkAt } from "../../shared/coords.ts";
 
-const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
+const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").sort().map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
 const rule: Rule = { recipe: "tower", height: 24, finish: "concrete", feature: "frame", holes: .35, wall: .35, bay: 8, matched: [], provisional: true };
 const frame = (degrees: number): Frame => ({ x: 128, z: 128, yaw: degrees, c: Math.cos(degrees * Math.PI / 180), s: Math.sin(degrees * Math.PI / 180), width: 40, depth: 40, rings: [[[-20, -20], [20, -20], [20, 20], [-20, 20], [-20, -20]]] });
 

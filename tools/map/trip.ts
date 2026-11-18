@@ -21,6 +21,7 @@ import { groundUnder } from "../../shared/world/collide.ts";
 import { partsFolder, readHead, type MapHead } from "../../shared/world/mapfile.ts";
 import { firstFrameParts, handOverParts } from "../../client/core/mapload.ts";
 import type { TripMark } from "../../client/core/trip.ts";
+import { findChrome } from "../chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const value = (flag: string, otherwise: string): string => {
@@ -432,7 +433,8 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
 if (import.meta.main) {
   const map = resolve(value("--map", join(ROOT, "var/maps/miami.snmap")));
   const out = resolve(value("--out", join(ROOT, "var/trip")));
-  const chrome = value("--chrome", process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome");
+  const chrome = value("--chrome", findChrome() ?? "");
+  if (!chrome) throw new Error("no Chrome found: set CHROME or pass --chrome");
   if (!existsSync(map)) throw new Error(`${map} is missing: build it (bun tools/mapworld/build.ts <city>)`);
   mkdirSync(out, { recursive: true });
   const lines: string[] = [];

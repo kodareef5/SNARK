@@ -98,7 +98,7 @@ for (const [species, descent] of [
       expect(impacts).toHaveLength(species === "stego" ? 1 : 0);
       if (impacts.length) {
         expect(impacts[0]!.tick).toBe(firstDust);
-        expect(impacts[0]!.play.slice(4, 7)).toEqual([groundX, groundY, groundZ]);
+        expect(impacts[0]!.play.slice(4, 7)).toEqual([groundX, c.impact?.[1] ?? groundY, groundZ]);
         expect(impacts[0]!.play[3]).toBe(-1); // The sound stays at the contact while a body rolls on.
         expect(impacts[0]!.play[10]).toBe(0);
       }

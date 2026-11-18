@@ -28,8 +28,10 @@ const groups = new Map<string, Edge[]>();
 const seen = new Set<number>();
 const vertices = positions.length / 3;
 const witnessSource = [
-  { frame: 45, ends: [[.57503635,.87140918,.47824085],[.58743817,.86047852,.48717585]] },
-  { frame: 35, ends: [[1.03306317,1.45414972,-.23614155],[1.02775908,1.45570230,-.22790457]] },
+  { frame: 45, original: [[.57503635,.87140918,.47824085],[.58743817,.86047852,.48717585]],
+    fitted: [[.59422326,.88711989,.45785785],[.57089287,.89059782,.48061422]] },
+  { frame: 35, original: [[1.03306317,1.45414972,-.23614155],[1.02775908,1.45570230,-.22790457]],
+    fitted: [[.99220073,1.45489323,-.25498885],[.98431057,1.45961332,-.24256359]] },
 ];
 for (let t = 0; t < mesh.indices.length; t += 3) {
   for (let j = 0; j < 3; j++) {
@@ -56,8 +58,9 @@ const edges = [...groups.values()].flat();
 function at(vertex: number, point: number[]) {
   return Math.hypot(...point.map((n,axis)=>n-positions[vertex*3+axis]!)) < .0001;
 }
-const witnesses = (process.argv[3] === undefined ? witnessSource : []).map(({frame,ends}) => {
-  const match = edges.find(({a,b}) => at(a,ends[0]!) && at(b,ends[1]!) || at(a,ends[1]!) && at(b,ends[0]!));
+const witnesses = (process.argv[3] === undefined ? witnessSource : []).map(({frame,original,fitted}) => {
+  const match = edges.find(({a,b}) => [original,fitted].some(([p,q]) =>
+    at(a,p!) && at(b,q!) || at(a,q!) && at(b,p!)));
   if (!match) throw new Error(`Could not match historical triangle edge at walk ${frame}`);
   return {frame,...match};
 });

@@ -24,7 +24,7 @@ const bladeContacts: Record<string, Contact | undefined> = {
 // Keep convex tail sections on their own joints during the sweep. A single piece for each
 // narrow dorsal blade follows its rigid motion without including the open air on either side.
 const caudalSection = [2, 2, .35] as const;
-const dorsalBlade = [2, 2, 2] as const;
+const dorsalBlade = [2, .42, .32] as const;
 const tailCells = {
   ...Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`tail_${i + 1}`, caudalSection])),
   ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [`plate_${String(i + 8).padStart(2, "0")}`, dorsalBlade])),
@@ -39,9 +39,15 @@ const skin = (name: string) => ({
   base: `tex/${name}_base.png`, normal: `tex/${name}_normal.png`, packed: `tex/${name}_packed.png`, regions: name === "stego_saddle" ? `tex/${name}_regions.png` : { mask: `tex/${name}_mask.png`, mask2: `tex/${name}_mask2.png` }, height: `tex/${name}_height.png`, hurt: `tex/${name}_hurt.png`, decay: `tex/${name}_decay.png`,
 });
 
+function sculpt(name: string) {
+  const path = `tex/sculpt/${name}`;
+  return { ...skin(name), base: `${path}_base.png`, normal: `${path}_normal.png`, packed: `${path}_packed.png`,
+    regions: { mask: `${path}_mask.png`, mask2: `${path}_mask2.png` } };
+}
+
 export default {
   kind: "creature",
-  source: { scripts: ["rig.py", "model.py", "saddle.py", "clips.py"] },
+  source: { scripts: ["rig.py", "refit.py", "saddle.py", "clips.py"] },
   scale: 1,
   skeleton: { id: "stego", root: "pelvis", bones: 64 },
   regions: [
@@ -52,11 +58,11 @@ export default {
     { name: "Plate edge", material: "edge", sample: tone(0x493024) },
     { name: "Horn", material: "horn", sample: tone(0x998a5c) },
   ],
-  materials: { stego_skin: skin("stego_skin"), stego_horn: skin("stego_horn") },
+  materials: { stego_skin: sculpt("stego_skin"), stego_horn: sculpt("stego_horn") },
   zones: [
     // Measured finite capsule envelope, including the proximal pelvic mass.
-    // Source witnesses and coverage are recorded in ref/contact-fit.json.
-    { zone: "torso", on: "pelvis", a: [0, .095, .02], b: [0, -.045, .90], radius: 1.221 },
+    // The fitted pelvis and hip support the resting hide through the side roll.
+    { zone: "torso", on: "pelvis", a: [0, .20, .02], b: [0, .060, .90], radius: 1.09 },
     // Three tapered cervical sections prevent the broad shoulder envelope
     // from claiming torso hits in front of the visible face. The forward
     // section overlaps the head envelope; it does not enclose a second skull.
@@ -91,7 +97,7 @@ export default {
   hitSurfaces: [
     { zone: "torso", root: "tail_1", cells: tailCells,
       padding: { tail_3: .015, tail_4: .015, tail_6: .012, plate_08: .022, plate_09: .022, plate_10: .017, plate_11: .012 } },
-    ...["plate_05", "plate_06", "plate_07"].map(root => ({
+    ...Array.from({ length: 8 }, (_, i) => `plate_${String(i).padStart(2, "0")}`).map(root => ({
       zone: "torso" as const, root, cells: { [root]: dorsalBlade }, ...(root === "plate_07" ? { padding: { plate_07: .026 } } : {}),
     })),
   ],

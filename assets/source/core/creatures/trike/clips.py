@@ -10,8 +10,7 @@ import math
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
-from plan import BONES, FPS, GROUND, LEGS, STRIDES, hooves, pads, point_blender, to_animal, to_blender
-from parts import Part
+from plan import BONES, FPS, GROUND, LEGS, STRIDES, point_blender, to_animal, to_blender
 
 R=bpy.data.objects['trike']
 REST={n:(Vector(a),Vector(b)) for n,_,a,b in BONES}
@@ -111,21 +110,19 @@ def relaxed_support(end,side):
     Offline source IK follows the keyed knee direction. It does not hold a
     world-flat sole while twisting the limb beneath a rolling torso.
     """
-    if end not in PAD_POINTS:
-        points=[]
-        for _,centre,radii,sides,rings in pads(end):
-            points.extend(Part('support').ellipsoid(centre,radii,(0,0,1,1),sides,rings).points)
-        for _,sections in hooves(end):points.extend(p for section in sections for p in section)
-        origin=Vector(LEGS[end][-1])
-        PAD_POINTS[end]=[Vector((p[0],max(.065,p[1]),p[2]))-origin for p in points]
-    bpy.context.view_layer.update()
     ankle=f'{end}_foot_{side}';toes=f'{end}_toes_{side}'
+    if toes not in PAD_POINTS:
+        skin=bpy.data.objects['Triceratops']
+        group=skin.vertex_groups[toes].index
+        origin=R.data.bones[toes].head_local
+        PAD_POINTS[toes]=[v.co-origin for v in skin.data.vertices
+                          if v.co.z<.34 and any(g.group==group and g.weight>.5 for g in v.groups)]
+    bpy.context.view_layer.update()
     def orientation(name):
         return R.pose.bones[name].matrix.to_quaternion()@R.data.bones[name].matrix_local.to_quaternion().inverted()
     ankle_q=orientation(ankle);toe_q=orientation(toes)
     toe=R.pose.bones[toes].head.copy();knee=R.pose.bones[f'{end}_lower_{side}'].head.copy()
-    sign=1 if side=='l' else -1
-    low=min((toe+toe_q@to_blender((p.x*sign,p.y,p.z))).z for p in PAD_POINTS[end])
+    low=min((toe+toe_q@p).z for p in PAD_POINTS[toes])
     toe.z+=max(0,.001-low)
     target=to_animal(toe);target.y+=GROUND
     foot(end,side,target,orientation=ankle_q,toe_orientation=toe_q,pole_point=knee)
