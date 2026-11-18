@@ -136,6 +136,9 @@ const MODULES = {
   zcurt4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, CURTAIN)), ...up(12, CROWN)], walked: [[-4, 4, -0.4, 17.2, -0.4, 0.4]] },
   zplanttop: { look: [...PLANT, ...PARAPET], walked: [wall(4), ...PARAPET] },
   zscreen: { look: SCREEN, walked: [[-4, 4, 0, 3.75, -0.3, 0.3]] },
+  // A low building's roofline: an attic over a lobby's bay, and a parapet raised along a run of a long front's bays.
+  zattic: { look: up(-0.05, [[-4, 4, 0, 2.4, -0.32, 0.37], bevelX([-4, 4, 2.4, 2.55, -0.36, 0.42], 0.06, "uoui")]), walked: [[-4, 4, -0.05, 2.5, -0.32, 0.37]] },
+  zstepup: { look: up(-0.05, [[-4, 4, 0, 1.25, -0.32, 0.37], bevelX([-4, 4, 1.25, 1.4, -0.36, 0.42], 0.06, "uoui")]), walked: [[-4, 4, -0.05, 1.35, -0.32, 0.37]] },
   /** The shade of an open storey's inside, set back from a torn edge: what is seen between its slabs from afar. */
   zgloom: { look: [[-3.6, 3.6, 0.05, 3.55, -0.1, 0.1, LOUVRE]], walked: [[-3.6, 3.6, 0.05, 3.55, -0.1, 0.1]] },
   // Walked, its spandrel stands a little thicker than drawn, so its coarsest level is its look's within a hand.

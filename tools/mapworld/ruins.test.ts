@@ -346,8 +346,9 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
     expect([...floors.values()].every((n) => n === 11)).toBe(true);
     expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
-    // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub.
-    const chipped = on("zbalc").filter((p) => p.y > 20).length;
+    // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub, as it
+    // does beside the failure.
+    const chipped = [...on("zbalc"), ...on("zbalcrail")].filter((p) => p.y > 20).length;
     expect(on("zbalctop").length + chipped).toBe(11);
     expect(on("zbalctop").every((p) => p.y > 20)).toBe(true);
     expect(on("zcrown5").length + on("zcrown6").length).toBeGreaterThanOrEqual(chipped);
