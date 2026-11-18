@@ -2,11 +2,12 @@
 // judged on the same views each time:
 //
 //   bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client> [--tiers high,medium]
-//                                   [--seconds 40] [--only name,name]
+//                                   [--seconds 40] [--only name,name] [--off effect,effect]
 //
 // The client is one built apart (`bun run build -- --dist DIR`), never the checkout's client/dist. A server on the map
 // answers each view's /__look with its orders (cheats, the hour, the way to face) and holds the survivor there as a ghost,
-// and one headless Chrome, muted, opens each view on each tier and keeps a screenshot as <out>/<view>-<tier>.png. The cameras file is
+// and one headless Chrome, muted, opens each view on each tier and keeps a screenshot as <out>/<view>-<tier>.png, or with
+// effects off (client/core/passes.ts EFFECTS) as <out>/<view>-<tier>-off-<effects>.png. The cameras file is
 // { hour, views: [{ name, x, z, up | y, look: [x, z, metres over the ground] | yaw and pitch in degrees }] } in engine
 // metres, x west and z north (assets/source/maps/miami/look/route.json).
 
@@ -21,7 +22,7 @@ import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 interface Camera { name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" } } });
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" } } });
 const [map, list, out] = positionals;
 if (!map || !list || !out || !values.dist) throw new Error("bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client>");
 if (!existsSync(join(values.dist, "main.js"))) throw new Error(`no built client in ${values.dist}`);
@@ -102,12 +103,12 @@ try {
     for (const v of views) {
       lines.length = 0;
       at = orders.get(v.name)!.at;
-      await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}&tier=${tier}&look=${encodeURIComponent(v.name)}` });
+      await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.off ? `&off=${values.off}` : ""}` });
       // The first view fetches the map and the art as well.
       await Bun.sleep((first ? 2 : 1) * seconds * 1000);
       first = false;
       const shot = await send("Page.captureScreenshot", { format: "png" });
-      const name = `${v.name}-${tier}.png`;
+      const name = `${v.name}-${tier}${values.off ? `-off-${values.off.replaceAll(",", "-")}` : ""}.png`;
       writeFileSync(join(out, name), Buffer.from(shot.data, "base64"));
       const gl = await send("Runtime.evaluate", { expression: "(() => { const c = document.querySelector('canvas'); const g = c && c.getContext('webgl2'); const i = g && g.getExtension('WEBGL_debug_renderer_info'); return JSON.stringify({ renderer: i ? g.getParameter(i.UNMASKED_RENDERER_WEBGL) : null }); })()", returnByValue: true });
       report.push({ name, ...JSON.parse(gl.result.value), console: lines.slice(0, 8) });
