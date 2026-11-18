@@ -11,7 +11,7 @@ type Numbers = ArrayLike<number>;
 /** A finish this smooth or smoother, its wetness's share taken off, mirrors the sky table; a rougher one mirrors the sky's light in that direction. */
 export const WORLD_SHARP = 0.6;
 /** Each finish's painted roughness, its packed map's one-pixel mip, of 255: what the touch rule's light finish, which reads no packed map, is lit with. */
-export const WORLD_ROUGH = [220, 240, 240, 140, 230, 230, 215, 220, 225, 230, 215, 220, 150, 205, 225, 60] as const;
+export const WORLD_ROUGH = [225, 246, 245, 184, 237, 238, 225, 220, 225, 233, 218, 217, 161, 205, 221, 54] as const;
 /** Tiles across one cell of the noise that says where a finish's second copy shows, and the share of a tile's height over which the higher of two shows through the other. */
 export const WORLD_PATCH = 0.37;
 export const WORLD_BAND = 0.2;
@@ -244,7 +244,7 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   }
   finishMaps(index, u, v, spread, sample, light, tangent, depth);
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
-  const stain = light ? 0 : 0.6 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.4 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
+  const stain = light ? 0 : 0.75 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.25 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
   const weather = f.weather * city[4]!;
   const wet = clamp(f.wetness + city[5]!);
   const growth = clamp((f.growth + city[6]!) * clamp((macro - 0.42) * 3) * (ny > 0.2 ? 1 : 0.4));
@@ -492,7 +492,7 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   float stain = 0.0;
   bump = vec2(0.0);
 #else
-  float stain = 0.6*surfaceNoise(vec2(p.x/8.0+p.z/19.0,p.y/17.0+p.z/11.0))+0.4*surfaceNoise(vec2(p.x/2.9+p.z/7.3,p.y/4.1+p.z/3.7));
+  float stain = 0.75*surfaceNoise(vec2(p.x/8.0+p.z/19.0,p.y/17.0+p.z/11.0))+0.25*surfaceNoise(vec2(p.x/2.9+p.z/7.3,p.y/4.1+p.z/3.7));
 #endif
   float weather = w.x*uSurfaceCity[1].x;
   float wet = clamp(w.y+uSurfaceCity[1].y,0.0,1.0);

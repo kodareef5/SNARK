@@ -43,22 +43,22 @@ export interface SurfaceFinish {
 const finish = (group: SurfaceGroup, metres: number, palette: number, weather: number, patch: number, height: number, lift: number, module?: readonly [number, number]): SurfaceFinish =>
   ({ group, metres, bump: 1, rough: 1, metal: 1, palette, weather, patch, height, lift, ...(module ? { module } : {}) });
 export const SURFACE_FINISHES: Record<SurfaceName, SurfaceFinish> = {
-  grass: finish("living", 2, 0.18, 0.2, 0.3, 40, 6),
-  sand: finish("dry", 2.5, 0.12, 0.12, 0.12, 6, 6),
-  dirt: finish("dry", 2, 0.2, 0.24, 0.24, 12, 0),
-  mud: finish("wet", 2, 0.14, 0.3, 0.2, 15, -6),
-  rock: finish("mineral", 3, 0.3, 0.23, 0.2, 30, 0),
-  gravel: finish("dry", 1.5, 0.2, 0.2, 0.2, 30, 0),
-  asphalt: finish("mineral", 2.5, 0.1, 0.4, 0.3, 8, 0),
-  paving: finish("masonry", 2, 0.25, 0.32, 0.14, 20, 0, [0.25, 0.25]),
-  concrete: finish("masonry", 2.5, 0.46, 0.45, 0.22, 5, 2),
-  brick: finish("masonry", 1.92, 0.14, 0.4, 0.14, 12, 0, [0.125, 1 / 12]),
-  clay: finish("masonry", 2, 0.2, 0.28, 0.18, 60, 0, [0.25, 1 / 6]),
-  rust: finish("metal", 2, 0.18, 0.4, 0.2, 5, 0),
-  steel: finish("metal", 2, 0.4, 0.28, 0.12, 2, 0),
-  plaster: finish("paint", 2.5, 0.7, 0.35, 0.16, 3, 0),
-  wood: finish("timber", 2, 0.25, 0.26, 0.18, 10, 0, [0.5, 1 / 13]),
-  glass: finish("glass", 2, 0.35, 0.2, 0.06, 1, 0),
+  grass: finish("living", 2, 0.18, 0.2, 0.12, 40, 6),
+  sand: finish("dry", 2.5, 0.12, 0.12, 0.05, 6, 6),
+  dirt: finish("dry", 2, 0.2, 0.24, 0.1, 12, 0),
+  mud: finish("wet", 2, 0.14, 0.3, 0.08, 15, -6),
+  rock: finish("mineral", 3, 0.3, 0.23, 0.08, 30, 0),
+  gravel: finish("dry", 1.5, 0.2, 0.2, 0.08, 30, 0),
+  asphalt: finish("mineral", 2.5, 0.1, 0.4, 0.1, 8, 0),
+  paving: finish("masonry", 2, 0.25, 0.32, 0.06, 20, 0, [0.25, 0.25]),
+  concrete: finish("masonry", 2.5, 0.46, 0.45, 0.06, 5, 2),
+  brick: finish("masonry", 1.92, 0.14, 0.4, 0.06, 12, 0, [0.125, 1 / 12]),
+  clay: finish("masonry", 2, 0.2, 0.28, 0.08, 60, 0, [0.25, 1 / 6]),
+  rust: finish("metal", 2, 0.18, 0.4, 0.08, 5, 0),
+  steel: finish("metal", 2, 0.4, 0.28, 0.04, 2, 0),
+  plaster: finish("paint", 2.5, 0.7, 0.35, 0.05, 3, 0),
+  wood: finish("timber", 2, 0.25, 0.26, 0.08, 10, 0, [0.5, 1 / 13]),
+  glass: finish("glass", 2, 0.35, 0.2, 0.02, 1, 0),
 };
 
 /** City-wide art direction. The key is the map id's last component; unknown maps use default. */
