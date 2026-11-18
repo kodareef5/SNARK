@@ -1,5 +1,6 @@
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { leaning, pitchedRoof, slopeShape, slopedSlab, stairFlight, staticOf, wedge } from "../shared/content/slopes.ts";
+import type { HullDef } from "../shared/world/convex.ts";
 
 const shaped = (name: string): string => `core:${name.startsWith("floorroad") ? "zzruinshape" : "zruinshape"}_${name}`;
 const fallenFrame = [[0, -3.5, 4, .5], [0, 3.5, 4, .5], [-3.5, 0, .5, 3], [3.5, 0, .5, 3]].map(([x, z, w, d]) => ({
@@ -95,9 +96,64 @@ export const RUIN_FACADES = Object.fromEntries(Object.entries(MODULES).map(([nam
   const shape: ShapeDef = { type: "shape", id: shaped(name), role: "wall", boxes: m.walked.map((p) => boxOf([p[0], p[1], p[2], p[3], p[4], p[5]], at)), look: { boxes: m.look.map((p) => boxOf(p, at)) } };
   return [name, shape];
 })) as Record<FacadeModule, ShapeDef>;
-const slopeSizes = Object.fromEntries(Object.entries({ ...RUIN_SLOPES, ...RUIN_FACADES }).map(([name, shape]) => {
+type Corner = readonly [number, number, number];
+const RUST = 179, AGGREGATE = 15;
+/** A prism along x from x0 to x1 of the profile `yz`, corners round it in (y, z). */
+const prism = (x0: number, x1: number, yz: readonly (readonly [number, number])[]): Corner[] => [x0, x1].flatMap((x) => yz.map(([y, z]): Corner => [x, y, z]));
+/** Teeth of a break across a width: each its from and to along x and how far its point stands out, with its point's height. */
+type Tooth = readonly [number, number, number, number];
+/** A slab's end broken off along x at z = 0, its top at y = 0: teeth of the slab's thickness standing out into the gap. */
+const slabTeeth = (teeth: readonly Tooth[]): HullDef[] => teeth.map(([a, b, out, y]) => ({ corners: [[a, -0.4, 0], [a, 0, 0], [b, -0.4, 0], [b, 0, 0], [(a + b) / 2, y - 0.12, out], [(a + b) / 2, y + 0.04, out]] }));
+/** Bent bars out of a break: each its place along x, its height, how far it runs out, and how far it then hangs down. */
+const bars = (list: readonly (readonly [number, number, number, number])[]): ShapeBox[] => list.flatMap(([x, y, out, drop]): ShapeBox[] => [
+  { at: [x, y, out / 2], half: [0.025, 0.025, out / 2], color: RUST },
+  ...(drop > 0 ? [{ at: [x, y - drop / 2, out] as const, half: [0.025, drop / 2, 0.025] as const, color: RUST }] : []),
+]);
+/** Turns a corner about x by `degrees`, its +z end rising, as `leaning` turns a box. */
+const lean = (degrees: number) => ([x, y, z]: Corner): Corner => { const a = (degrees * Math.PI) / 180; return [x, y * Math.cos(a) + z * Math.sin(a), z * Math.cos(a) - y * Math.sin(a)]; };
+/** Each break piece's middle in the metres it was laid out in, which is its piece's origin, as FACADE_AT is a module's. */
+export const BREAK_AT: Partial<Record<string, readonly number[]>> = {};
+/** A shape of walked boxes and a look of boxes and convex parts, moved so the box that holds it all is centred on its origin. */
+function centred(id: string, walked: { boxes?: ShapeBox[]; hulls?: HullDef[] }, look: { boxes?: ShapeBox[]; hulls?: HullDef[] }): ShapeDef {
+  const points: Corner[] = [...[walked, look].flatMap((f) => (f.boxes ?? []).flatMap((b) => [[b.at[0] - b.half[0], b.at[1] - b.half[1], b.at[2] - b.half[2]], [b.at[0] + b.half[0], b.at[1] + b.half[1], b.at[2] + b.half[2]]] as Corner[])), ...[walked, look].flatMap((f) => (f.hulls ?? []).flatMap((h) => h.corners))];
+  const mid = [0, 1, 2].map((a) => (Math.min(...points.map((p) => p[a]!)) + Math.max(...points.map((p) => p[a]!))) / 2);
+  BREAK_AT[id.slice(id.indexOf("_") + 1)] = mid;
+  const box = (b: ShapeBox): ShapeBox => ({ ...b, at: [b.at[0] - mid[0]!, b.at[1] - mid[1]!, b.at[2] - mid[2]!] });
+  const hull = (h: HullDef): HullDef => ({ corners: h.corners.map((c) => [c[0] - mid[0]!, c[1] - mid[1]!, c[2] - mid[2]!] as const) });
+  return { type: "shape", id, role: "thing", boxes: (walked.boxes ?? []).map(box), hulls: (walked.hulls ?? []).map(hull), look: { boxes: (look.boxes ?? []).map(box), hulls: (look.hulls ?? []).map(hull) } };
+}
+// The column's broken head and the slab that fell from it break along the same teeth, so the one is seen to be the other's.
+const BREAK: readonly Tooth[] = [[-0.4, -0.1, 0.45, -0.1], [-0.1, 0.15, 0.2, -0.25], [0.15, 0.4, 0.55, -0.05]];
+const FALL = 25;
+/**
+ * The ends a bay's slab has where the bay beside it fell, laid along its edge (x along it, z out into the gap, its top at 0):
+ * whole, with a lip and a bevelled nose; spalled, its cover lost to the aggregate with two bars bared; snapped, teeth of
+ * the lost slab standing out and bars bent down out of them. Then a column's stump with its broken head, and the slab it
+ * held, fallen at its foot leaning on its low edge, broken along the same teeth.
+ */
+export const RUIN_BREAKS = {
+  zendwhole: centred(shaped("zendwhole"), { boxes: [{ at: [0, -0.2, 0.03], half: [4, 0.2, 0.03] }] }, { hulls: [{ corners: prism(-4, 4, [[-0.4, 0], [-0.4, 0.07], [-0.05, 0.07], [0, 0.02], [0, 0]]) }] }),
+  zendspall: centred(shaped("zendspall"), { boxes: [{ at: [0, -0.2, 0.015], half: [4, 0.2, 0.015] }] }, {
+    boxes: [[-3.1, 1.4, -0.22, 0.14], [-0.2, 1.1, -0.27, 0.11], [2.4, 1.6, -0.18, 0.16]].map(([x, w, y, h]): ShapeBox => ({ at: [x!, y!, 0.015], half: [w! / 2, h!, 0.015], color: AGGREGATE })),
+    hulls: [{ corners: prism(-4, 4, [[-0.4, 0], [-0.4, 0.01], [0, 0.01], [0, 0]]) }],
+  }),
+  zendsnap: centred(shaped("zendsnap"), { boxes: [{ at: [0, -0.2, 0.15], half: [4, 0.2, 0.15] }] }, {
+    hulls: slabTeeth([[-4, -2.7, 0.55, -0.15], [-2.7, -0.9, 0.25, -0.3], [-0.9, 1.4, 0.85, -0.1], [1.4, 4, 0.4, -0.25]]),
+    boxes: bars([[-3.3, -0.08, 0.9, 0], [-1.8, -0.32, 0.5, 0.55], [0.1, -0.08, 1.15, 0.35], [2.6, -0.32, 0.6, 0.7]]),
+  }),
+  zstub: centred(shaped("zstub"), { boxes: [{ at: [0, 1.3, 0], half: [0.4, 1.3, 0.4] }] }, {
+    boxes: [{ at: [0, 1.3, 0], half: [0.4, 1.3, 0.4], color: 100 }, { at: [-0.28, 3.05, 0.28], half: [0.025, 0.45, 0.025], color: RUST }, { at: [0.28, 3.15, -0.28], half: [0.025, 0.55, 0.025], color: RUST }, { at: [0.28, 3.68, -0.05], half: [0.025, 0.025, 0.25], color: RUST }],
+    hulls: BREAK.map(([a, b, h, y]) => ({ corners: [[a, 2.6, -0.4], [b, 2.6, -0.4], [a, 2.6, 0.4], [b, 2.6, 0.4], [(a + b) / 2, 2.6 + h, -0.3], [(a + b) / 2, 2.6 + h, 0.3]] })),
+  }),
+  zfallen: centred(shaped("zfallen"), { hulls: [leaning([1.6, 0.15, 2], FALL)] }, {
+    hulls: [leaning([1.6, 0.15, 2], FALL), ...BREAK.map(([a, b, out]) => ({ corners: ([[a * 4, -0.15, 2], [b * 4, -0.15, 2], [a * 4, 0.15, 2], [b * 4, 0.15, 2], [(a + b) * 2, -0.05, 2 + out], [(a + b) * 2, 0.05, 2 + out]] as const).map(lean(FALL)) }))],
+    boxes: bars([[-1.1, 0, 0.7, 0], [0.2, 0.05, 0.5, 0.3], [1.2, -0.05, 0.85, 0]]).map((b) => { const [x, y, z] = lean(FALL)([b.at[0], b.at[1], b.at[2] + 2]); return { ...b, at: [x, y, z] as const }; }),
+  }),
+} satisfies Record<string, ShapeDef>;
+export type BreakPiece = keyof typeof RUIN_BREAKS;
+const slopeSizes = Object.fromEntries(Object.entries({ ...RUIN_SLOPES, ...RUIN_FACADES, ...RUIN_BREAKS }).map(([name, shape]) => {
   const [x, y, z] = shapeHalf(shape.boxes, shape.hulls, shape.look); return [name, [x * 2, y * 2, z * 2] as const];
-})) as Record<keyof typeof RUIN_SLOPES | FacadeModule, readonly [number, number, number]>;
+})) as Record<keyof typeof RUIN_SLOPES | FacadeModule | BreakPiece, readonly [number, number, number]>;
 
 // Dimensions are full metres. Plants reuse the game's meshes; shaped entries use their convex parts, the rest are boxes.
 export const RUIN_SHAPES = {
@@ -126,15 +182,18 @@ export const RUIN_SHAPES = {
   seat: [8, 0.4, 1], plinth: [8, 1, 8], crown: [4, 4, 4],
 } as const;
 
+// Each finish's soffit, the colour its faces looking down are drawn in, is a darker one of its own. `fracture` is a break's
+// bared core and is no building's finish.
 export const RUIN_FINISHES = {
-  concrete: { color: 100, material: "core:mat_stone", hp: 16000 },
-  limestone: { color: 10, material: "core:mat_stone", hp: 12000 },
-  rose: { color: 81, material: "core:mat_stone", hp: 10000 },
-  mint: { color: 75, material: "core:mat_stone", hp: 10000 },
-  clay: { color: 183, material: "core:mat_stone", hp: 9000 },
-  steel: { color: 89, material: "core:mat_metal", hp: 20000 },
-  rust: { color: 179, material: "core:mat_metal", hp: 8000 },
-  blue: { color: 5, material: "core:mat_metal", hp: 9000 },
+  concrete: { color: 100, under: 97, material: "core:mat_stone", hp: 16000 },
+  limestone: { color: 10, under: 101, material: "core:mat_stone", hp: 12000 },
+  rose: { color: 81, under: 111, material: "core:mat_stone", hp: 10000 },
+  mint: { color: 75, under: 142, material: "core:mat_stone", hp: 10000 },
+  clay: { color: 183, under: 181, material: "core:mat_stone", hp: 9000 },
+  steel: { color: 89, under: 87, material: "core:mat_metal", hp: 20000 },
+  rust: { color: 179, under: 178, material: "core:mat_metal", hp: 8000 },
+  blue: { color: 5, under: 87, material: "core:mat_metal", hp: 9000 },
+  fracture: { color: 102, under: 97, material: "core:mat_stone", hp: 12000 },
 } as const;
 
 export type RuinShape = keyof typeof RUIN_SHAPES;
@@ -146,9 +205,10 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
   zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
+  zendwhole: ["concrete"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
-export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));
+export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));
 const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
   (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name as RuinShape, finish)).map((finish) => ({
     type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: name === "zshrub" ? "core:creeper_3" : name === "zrooftree" ? "core:tree_1" : "box",
@@ -156,8 +216,9 @@ const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([na
     ...RUIN_FINISHES[finish],
     ...(name in RUIN_SLOPES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_SLOPES[name as keyof typeof RUIN_SLOPES], RUIN_FINISHES[finish]) : {}),
     ...(name in RUIN_FACADES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_FACADES[name as FacadeModule], RUIN_FINISHES[finish]) : {}),
+    ...(name in RUIN_BREAKS ? staticOf(ruinKind(name as RuinShape, finish), RUIN_BREAKS[name as BreakPiece], RUIN_FINISHES[finish]) : {}),
     // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
     ...(name === "zshrub" || name === "zrooftree" ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
   })),
 );
-export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES), ...Object.values(RUIN_FACADES)];
+export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES), ...Object.values(RUIN_FACADES), ...Object.values(RUIN_BREAKS)];

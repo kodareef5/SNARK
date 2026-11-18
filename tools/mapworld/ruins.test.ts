@@ -10,7 +10,7 @@ import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { layout, stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
-import { RUIN_SHAPES } from "../../content/ruins.ts";
+import { RUIN_BREAKS, RUIN_SHAPES } from "../../content/ruins.ts";
 import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
 import { extentOf, meets, type Box } from "./ruin-obstacles.ts";
 import { carPicker } from "./street-cars.ts";
@@ -320,8 +320,8 @@ test("a facade module is walked as its few boxes and drawn with its parts in the
   expect(w.reg.parts.start[kind + 1]! - w.reg.parts.start[kind]!).toBe(3);
   const city = new CityStatics(w.dims, [{ kind: "core:zruin_zbalc_limestone", x: 96, y: 4, z: 96, yaw: 0 }], w.reg);
   const colours = new Set(boxPart(city, chunkAt(w.dims, 96, 96), w.hf, () => null).color);
-  // The building's limestone, the coral wall behind the balconies and its dark openings.
-  expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 113]);
+  // The building's limestone and its darker soffits, the coral wall behind the balconies and its dark openings.
+  expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 113]);
 });
 
 test("a block of flats repeats its balcony bay on every whole floor, with a different ground floor, blank ends and a capped top", () => {
@@ -345,4 +345,22 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     expect(on("zpaneltop").length).toBeGreaterThanOrEqual(4);
     expect(on("zbalcony")).toEqual([]);
   }
+});
+
+test("a failed corner is traced: slab ends at each floor beside it, and one column's broken head over the slab it held", () => {
+  const v = vocabulary(source);
+  const reg = flatWorld().reg;
+  const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
+  for (const collapse of ["shear", "pancake", "facade"]) {
+    const m = new Mason(f, 0);
+    layout(m, { ...rule, recipe: "apartment", height: 24, finish: "limestone", form: v.forms.apartment, formName: "apartment", collapse, damage: v.damage[collapse], assemblies: v.assemblies, interiors: v.interiors }, { seed: 3, playable: 8, detail: 0 });
+    const shapes = m.pieces.map((p) => p.kind.split("_")[1]!);
+    expect(m.pieces.filter((p) => !reg.index.has(p.kind))).toEqual([]);
+    expect(shapes.filter((s) => s.startsWith("zend")).length).toBeGreaterThan(2);
+    expect(shapes.filter((s) => s === "zstub").length).toBe(1);
+    expect(shapes.filter((s) => s === "zfallen").length).toBe(1);
+  }
+  // The head's teeth and the fallen slab's are one break: the same widths in the same order, the slab four times as wide.
+  const across = (shape: { look?: { hulls?: readonly { corners: readonly (readonly number[])[] }[] } }, from: number): number[] => shape.look!.hulls!.slice(from).map((h) => Math.max(...h.corners.map((c) => c[0]!)) - Math.min(...h.corners.map((c) => c[0]!)));
+  expect(across(RUIN_BREAKS.zfallen, 1).map((w) => Math.round(w * 100))).toEqual(across(RUIN_BREAKS.zstub, 0).map((w) => Math.round(w * 400)));
 });
