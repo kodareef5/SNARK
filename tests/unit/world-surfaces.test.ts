@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { SURFACE_FINISHES, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_FAR, WORLD_MRO, WorldFinishes, edgeOf, edged, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
-import { FramePacket } from "../../client/core/render/packet.ts";
+import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
 import type { PackMaterial, PackTexture } from "../../shared/pack/pack.ts";
 import { WORLD_ART, paintedOf, worldMaterials } from "../../tools/surfaces/build.ts";
@@ -180,7 +180,10 @@ test("a frame asks for every finish as wide as its tier keeps them, tells the ca
   finishes.frame(p, residency, tierOf("high"));
   expect([...p.worldLevel]).toEqual([0, 0, 0]);
   again.length = 0;
+  // A frame drawn without the edges (`?off=edges`) is followed by one with them.
+  p.frame[FRAME.edgesOff] = 1;
   finishes.frame(p, residency, tierOf("ultra"));
+  expect(p.frame[FRAME.edgesOff]).toBe(0);
   expect([[...p.worldSide], [...p.worldLevel], again.length]).toEqual([[2048, 2048, 1024], [-1, -1, -1], 48]);
   // The touch rule's light finish reads the base colour alone: only that is asked for and held, and the rest let go.
   held.fill(4); asked.length = 0; again.length = 0;

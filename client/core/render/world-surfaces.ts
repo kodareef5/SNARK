@@ -4,7 +4,7 @@ import { SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFAC
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
-import type { FramePacket } from "./packet.ts";
+import { FRAME, type FramePacket } from "./packet.ts";
 
 type Out = Float64Array;
 type Numbers = ArrayLike<number>;
@@ -125,6 +125,7 @@ export class WorldFinishes {
       p.worldLevel[r] = level;
     }
     worldPhase(p.worldPhase, p.camX, p.camY, p.camZ, p.surfaceCity);
+    p.frame[FRAME.edgesOff] = 0;
   }
 }
 
