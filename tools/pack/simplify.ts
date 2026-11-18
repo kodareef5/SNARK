@@ -578,5 +578,15 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
     }
     lods.push(lod);
   }
-  return { ...mesh, flat: surface.length, lods: lods.map((lod, level) => (level === 0 ? lod : { ...lod, error: surfaceError(fine, lod) })) };
+  let previousError = 0;
+  const measured = lods.map((lod, level) => {
+    if (level === 0) return lod;
+    const measuredError = surfaceError(fine, lod);
+    // A simpler hand-built shell can fit a few sampled surfaces better than its predecessor.
+    // Keep its screen-space switch beyond that predecessor, including after five-decimal packing.
+    const error = level >= lods.length - authored.length ? Math.max(measuredError, previousError + .0001) : measuredError;
+    previousError = error;
+    return { ...lod, error };
+  });
+  return { ...mesh, flat: surface.length, lods: measured };
 }
