@@ -513,10 +513,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1616556435 until the frozen human packs had the fingertips' two bones: a posed survivor's rows are 30, not 28,
   // and the frame's 70 bones pose and stand in the bodies its 66 did. The draws, triangles and uploads are as they were.
   // It was 3788414068 until the ruins' facade modules and breaks (content/ruins.ts) added their grey meshes ahead of the
-  // test meshes; without them it is that again.
-  // It was 1115872953 until the far wood was drawn after the near store, which its draws may be hidden behind (3853294449
-  // with that alone, and with `hide` off: nothing here is hidden), and an opaque step's draws went nearest first.
-  expect(hash).toBe(1641158479);
+  // test meshes; without them it is that again. It was 1115872953 until the street furniture (content/street.ts) added
+  // its grey meshes ahead of them (374367094), and the far wood was drawn after the near store, which its draws may be
+  // hidden behind, and an opaque step's draws went nearest first (1641158479 without the furniture).
+  expect(hash).toBe(3504877096);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -541,9 +541,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // their chunks' frame keys, as above.
   // It was 2005316451 until the road bridge meshes changed those same indices, as above, and 207021915 until the sea was
   // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above, and 3199521479
-  // until a survivor had 30 bones, as above, and 3920878120 until the ruins' facade modules and breaks, as above, and
-  // 2430603422 until the far wood was drawn after the near store and opaque draws went nearest first, as above.
-  expect(saddled.hash).toBe(1914749530);
+  // until a survivor had 30 bones, as above, and 3920878120 until the ruins' facade modules and breaks, as above.
+  // It was 2430603422 until the street furniture's grey meshes (3628556772), and the far wood drawn after the near store
+  // and opaque draws nearest first, as above (1914749530 without the furniture).
+  expect(saddled.hash).toBe(1885338744);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
