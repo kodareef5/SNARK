@@ -63,6 +63,24 @@ test("all ten boats float at their design waterline, reach their stated speed fl
   }
 });
 
+test("a yacht or the big catamaran comes half round from rest at full helm within three of its lengths of water", () => {
+  for (const id of ["solstice", "meridian", "belvedere", "sovereign", "lagoon"]) {
+    const { def } = of(id), p = def.spec, b = afloat(def);
+    // The width of water its hull sweeps, as the wiki measures it (tools/wiki/handling.ts, turnAbout).
+    let degrees = 0, last = b.yaw, left = 0, right = 0;
+    for (let tick = 0; tick < TICK_RATE * 120 && degrees < 180; tick++) {
+      stepBoat(b, { ...helm, steer: 1 }, def, sea);
+      degrees += Math.abs(((b.yaw - last + 3 * Math.PI) % (2 * Math.PI) - Math.PI) * 180 / Math.PI); last = b.yaw;
+      for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+        const x = b.x + u * p.halfWidth * Math.cos(b.yaw) + v * p.halfLength * Math.sin(b.yaw);
+        left = Math.min(left, x); right = Math.max(right, x);
+      }
+    }
+    expect(degrees, id).toBeGreaterThanOrEqual(180);
+    expect(right - left, id).toBeLessThan(3 * p.halfLength * 2);
+  }
+});
+
 test("each vessel drives as what it is: the order of their speed, pick-up, turning, lean, stopping and range", () => {
   // The offshore boats are the fastest things on the water; the jon boat the slowest.
   expect([...ids].sort((a, b) => of(b).flat - of(a).flat).slice(0, 2)).toEqual(["needle", "thunderbolt"]);
@@ -81,7 +99,7 @@ test("each vessel drives as what it is: the order of their speed, pick-up, turni
   // The jet ski turns tightest at speed and spins on the spot at rest; the jon boat skitters round inside every yacht.
   expect(least(s => s.radius)).toBe("riptide");
   expect(most(s => s.dock)).toBe("riptide");
-  expect(of("jon_boat").radius).toBeLessThan(Math.min(...yachts.map(y => of(y).radius)) / 5);
+  expect(of("jon_boat").radius).toBeLessThan(Math.min(...yachts.map(y => of(y).radius)) / 3);
   // Full helm flat out: the offshore boats heel furthest of anything but the jet ski, the needle over to its beam ends;
   // the catamarans stay flatter than any monohull of their speed, and the yachts barely lean.
   const lean = (id: string) => of(id).careless.lean;

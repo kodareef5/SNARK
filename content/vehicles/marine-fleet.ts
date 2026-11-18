@@ -30,14 +30,15 @@ const outfits: Record<string, Outfit> = {
   "core:jon_boat": { mass: 195, speed: 11, astern: 4, push: 5.5, lock: .35, helm: 1.8, grip: .5, steady: 4, bank: .55, plane: .62, lift: .4, spool: 3700, shift: .22, low: .1, fuel: 25, minutes: 55, slots: 16, payload: 290, hp: 540, aliases: ["jonboat", "reviewer_boat", "skiff"] },
   // Off the line before anything else, leans hard into a carve and spins on the spot; no throttle, no steering.
   "core:riptide": { mass: 390, speed: 29, astern: 4, push: 20, lock: .5, helm: 3.2, grip: 2, steady: 4.5, bank: .4, plane: .36, lift: .48, spool: 9000, shift: .15, low: .15, fuel: 58, minutes: 22, slots: 5, payload: 230, hp: 620, aliases: ["jetski", "jet_ski", "pwc"] },
-  // The yachts gather way slowly, carry it a long way and turn wide, more so the bigger they are.
-  "core:solstice": { mass: 6800, speed: 21, astern: 4, push: 2.6, lock: .55, helm: 1.4, grip: 1, steady: 3.2, bank: .55, plane: .36, lift: .32, spool: 3000, shift: .3, low: .1, fuel: 400, minutes: 45, slots: 32, payload: 1200, hp: 1850, aliases: ["day_yacht", "dayboat"] },
-  "core:meridian": { mass: 17500, speed: 17.5, astern: 3.2, push: 1.6, lock: .6, helm: .8, grip: .87, steady: 3.1, bank: .55, plane: .36, lift: .12, spool: 1100, shift: .48, low: .1, fuel: 720, minutes: 55, slots: 48, payload: 2100, hp: 2600, aliases: ["sport_yacht", "coupe_yacht"] },
-  "core:belvedere": { mass: 46500, speed: 14.5, astern: 3, push: 1, lock: .68, helm: .65, grip: .87, steady: 2.6, bank: .55, plane: .36, lift: .12, spool: 900, shift: .6, low: .1, fuel: 1250, minutes: 70, slots: 64, payload: 4200, hp: 3650, aliases: ["flybridge_yacht", "motor_yacht"] },
-  "core:sovereign": { mass: 126000, speed: 12, astern: 2.8, push: .62, lock: .78, helm: .5, grip: .87, steady: 2, bank: .55, plane: .36, lift: .12, spool: 700, shift: .8, low: .1, fuel: 2200, minutes: 90, slots: 80, payload: 8000, hp: 5000, aliases: ["superyacht", "flagship_yacht"] },
+  // The yachts gather way slowly, carry it a long way and turn wider the bigger they are, at full helm still coming round
+  // in a basin: their drives turn far over and their hulls let the stern swing.
+  "core:solstice": { mass: 6800, speed: 21, astern: 4, push: 2.6, lock: .8, helm: 1.4, grip: .8, steady: 2.2, bank: .55, plane: .36, lift: .32, spool: 3000, shift: .3, low: .1, fuel: 400, minutes: 45, slots: 32, payload: 1200, hp: 1850, aliases: ["day_yacht", "dayboat"] },
+  "core:meridian": { mass: 17500, speed: 17.5, astern: 3.2, push: 1.6, lock: .9, helm: .8, grip: .6, steady: 1.4, bank: .55, plane: .36, lift: .12, spool: 1100, shift: .48, low: .1, fuel: 720, minutes: 55, slots: 48, payload: 2100, hp: 2600, aliases: ["sport_yacht", "coupe_yacht"] },
+  "core:belvedere": { mass: 46500, speed: 14.5, astern: 3, push: 1.1, lock: .95, helm: .65, grip: .5, steady: 1, bank: .55, plane: .36, lift: .12, spool: 900, shift: .6, low: .1, fuel: 1250, minutes: 70, slots: 64, payload: 4200, hp: 3650, aliases: ["flybridge_yacht", "motor_yacht"] },
+  "core:sovereign": { mass: 126000, speed: 12, astern: 2.8, push: .75, lock: .95, helm: .5, grip: .42, steady: .8, bank: .55, plane: .36, lift: .12, spool: 700, shift: .8, low: .1, fuel: 2200, minutes: 90, slots: 80, payload: 8000, hp: 5000, aliases: ["superyacht", "flagship_yacht"] },
   // Two hulls far apart: they stay flat in a turn and hold their line.
   "core:manta": { mass: 4600, speed: 28, astern: 4, push: 5.8, lock: .6, helm: 1.5, grip: 1.2, steady: 4, bank: .24, plane: .36, lift: .48, spool: 3700, shift: .22, low: .1, fuel: 330, minutes: 34, slots: 24, payload: 850, hp: 1700, aliases: ["catamaran", "sport_powerboat"] },
-  "core:lagoon": { mass: 28800, speed: 13.5, astern: 3.2, push: 1.3, lock: .72, helm: .65, grip: 1.2, steady: 3, bank: .24, plane: .36, lift: .12, spool: 1100, shift: .48, low: .1, fuel: 920, minutes: 100, slots: 56, payload: 3200, hp: 3000, aliases: ["powercat", "catamaran_yacht"] },
+  "core:lagoon": { mass: 28800, speed: 13.5, astern: 3.2, push: 1.3, lock: .95, helm: .65, grip: .55, steady: 1.3, bank: .24, plane: .36, lift: .12, spool: 1100, shift: .48, low: .1, fuel: 920, minutes: 100, slots: 56, payload: 3200, hp: 3000, aliases: ["powercat", "catamaran_yacht"] },
 };
 
 function driveAt(at: MarinePoint, pivot: MarinePoint | undefined, radius: number, intake?: MarinePoint): BoatDrive {
