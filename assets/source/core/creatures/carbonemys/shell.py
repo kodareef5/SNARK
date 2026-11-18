@@ -1,6 +1,6 @@
 """An interlocking carapace, marginal lip, bridges and a separate ventral scute field."""
 import math
-from layout import SCUTES, carapace
+from layout import SCUTES, carapace, shell_parameters, smooth
 
 def clip(poly,nx,nz,k):
     out=[]
@@ -25,16 +25,33 @@ def make_cells():
         poly=[a for n,a in enumerate(poly) if math.dist(a,poly[n-1])>1e-7]
         if len(poly)<3:continue
         cx=sum(q[0] for q in poly)/len(poly);cz=sum(q[1] for q in poly)/len(poly)
-        center=(.65*x+.35*cx,.55*z+.45*cz-.034*(kind!='marginal'))
+        # Each scute grew from a displaced nucleus. The costal keels cant
+        # outward; the vertebral crest falls abruptly at its trailing end.
+        if kind=='spinal':
+            center=(.48*x+.52*cx+.023*math.sin(j*1.6),.50*z+.50*cz-.095)
+        elif kind=='costal':
+            center=(.51*x+.49*cx+.067*(1 if x>0 else -1),.52*z+.48*cz-.085)
+        else:
+            center=(.43*x+.57*cx,.43*z+.57*cz)
         cells.append((center,poly,kind,j))
     return cells
 CELLS=make_cells()
 
 def scute_raise(kind,j,t,x,z):
-    # Concentrate the oldest growth off centre, with a worn bevel around the foot.
-    peak=({'spinal':.211,'costal':.176,'marginal':.071}[kind])*(1+.18*math.sin(2.7*j+x*3))
-    if kind=='spinal' and j in [2,3]:peak*=.58 if j==2 else .81
-    return peak*(1-t)**1.18+.025*math.sin(math.pi*t)**.85
+    if kind=='spinal':
+        # The two forward keels taper before the saddle tree.
+        peak=[.255,.47,.355,.139,.146][j]
+        blade=(1-t)**1.12
+    elif kind=='costal':
+        peak=[.285,.410,.307,.235][j]*(1+.09*math.sin(j*2.1+4*x))
+        blade=(1-t)**1.36
+    else:
+        peak=.054+.146*smooth(.12,.88,-z)
+        blade=(1-t)**1.45
+    # Offset flutes soften the broad leading bevel, leaving the dorsal trailing
+    # ridge sharp. Boundaries meet without a moat between adjacent scutes.
+    flare=math.sin(math.pi*t)
+    return peak*blade+.025*flare*(1+.33*math.sin(12*x-8*z+j))
 
 def top_uv(x,z):return (.02+.48*(x+1),.52+.232*(z+1))
 def under_uv(x,z):return (.02+.48*(x+1),.015+.19*(z+1))
@@ -78,12 +95,12 @@ def build(s):
     old=[q[2] for q in exterior]
     # The rolled perimeter flares toward the trailing edge. It folds into a
     # thinner bridge above the feet, leaving the darker skin visible below.
-    for j,(rad,drop) in enumerate([(1.020,.036),(1.014,.078),(.982,.112),(.88,.145),(.73,.23),(.48,.31),(.18,.335)]):
+    for j,(rad,drop) in enumerate([(1.018,.029),(1.008,.062),(.964,.105),(.86,.151),(.70,.236),(.46,.304),(.18,.330)]):
         vs=[];uv=[]
         for x,z,_ in exterior:
             X,Y,Z=carapace(x,z)
             scallop=.011*math.cos(24*math.atan2(x,z))*(1-.27*z)
-            vs.append(s.v((X*rad,Y-drop+scallop*(j<3),-.075+(Z+.075)*rad),'plastron' if j>=3 else shell_weight(x)))
+            vs.append(s.v((X*rad,(Y-drop if j<3 else .79+.035*z-drop)+scallop*(j<3),-.075+(Z+.075)*rad),'plastron' if j>=3 else shell_weight(x)))
             uv.append(under_uv(x*rad,z*rad))
         for q in range(n):
             k=(q+1)%n
@@ -98,7 +115,7 @@ def build(s):
         k=(q+1)%n;s.f([old[k],old[q],center],[prev_uv[k],prev_uv[q],under_uv(0,0)],0)
 
 def roof(x,z):
-    nz=(z+.075)/1.70;nx=x/(1.245*(1-.083*nz-.04*nz*nz))
+    nx,nz=shell_parameters(x,z)
     X,Y,Z=carapace(nx,nz)
     for (cx,cz),poly,kind,j in CELLS:
         share=0.

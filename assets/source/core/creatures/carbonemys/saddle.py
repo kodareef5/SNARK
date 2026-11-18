@@ -2,6 +2,7 @@
 import math
 from mesh import Surface,tube,oval,uvbox
 from shell import roof as shell_roof
+from layout import width_at
 
 # A saddle on the forward slope leaves room below the actual survivor soles.
 FORWARD = .18
@@ -38,7 +39,7 @@ def pad(s):
     for i,(x,z) in enumerate(border):
         a,b=border[(i+1)%len(border)];quad([rings[0][z][x],rings[0][b][a],rings[1][b][a],rings[1][z][x]],[(0,0),(1,0),(1,1),(0,1)])
 def girth(s,z):
-    nz=(z+FORWARD+.075)/1.70;w=1.245*(1-.083*nz-.04*nz*nz)*math.sqrt(1-nz*nz)
+    nz=(z+FORWARD+.075)/1.70;w=width_at(nz)*math.sqrt(1-nz*nz)
     front=[]
     for sign in [1,-1]:
         side=[(sign*w*t,roof(sign*w*t,z)+.026,z)for t in [.04,.18,.32,.46,.58,.70,.81,.89,.95,.985]]

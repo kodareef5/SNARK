@@ -1,27 +1,51 @@
 """Original Carbonemys dimensions in native metres: x left, y up, z forward."""
-from math import pi, sqrt, sin, cos
+from math import pi, sqrt, sin, cos, exp, atan2
 
 # Adjacent scutes share clipped boundaries. Slightly different growth centres
 # give the medial and paired lateral keratin shields their own worn peaks.
 SCUTES = []
 for i, z in enumerate([-.79,-.415,-.02,.38,.76]):
-    SCUTES.append((.016*sin(i*2.1),z,'spinal',i))
+    SCUTES.append((.046*sin(i*2.1),z,'spinal',i))
 for side in [-1,1]:
     for i,z in enumerate([-.64,-.22,.22,.62]):
-        SCUTES.append((side*(.50+.095*(1-abs(z))),z+.012*side*sin(i),'costal',i))
+        SCUTES.append((side*(.48+.129*(1-abs(z))),z+.044*side*sin(i*1.63+.47),'costal',i))
 for i in range(24):
     a = 2*pi*(i+.5)/24
     SCUTES.append((.987*sin(a),.987*cos(a),'marginal',i))
 
-def carapace(x,z):
-    r=sqrt(x*x+z*z)
-    rim=.795+.068*z-.033*z*z
-    return (1.245*x*(1-.083*z-.040*z*z),rim+.945*max(0,1-r*r)**.64,-.075+1.70*z)
+def smooth(a,b,t):
+    q=max(0,min(1,(t-a)/(b-a)))
+    return q*q*(3-2*q)
 
-def height(x,z):
-    nz=(z+.075)/1.70
-    nx=x/(1.245*(1-.083*nz-.040*nz*nz))
-    return carapace(nx,nz)[1]
+def width_at(z):
+    return 1.265*(1-.077*z-.047*z*z+.075*exp(-((z+.43)/.34)**2)-.07*exp(-((z-.74)/.23)**2))
+
+def carapace(x,z):
+    ang=atan2(x,z);r=sqrt(x*x+z*z)
+    boundary=smooth(.70,.99,r)
+    # The anterior nuchal opening recedes between paired epiplastral shoulders.
+    notch=.255*smooth(.53,.94,z)*exp(-(x/.205)**2)
+    rear=smooth(.16,.88,-z)
+    # Irregular, swept posterior marginals. Scallops lift and flare with the
+    # keratin shields; the front rim remains rounded above the retracted neck.
+    scallop=(.5+.5*cos(24*ang+.66*sin(5*ang)+.33*sin(3*ang)))**2.2
+    skirt=boundary*(.018+.105*rear)*scallop
+    X=x*(width_at(z)+skirt)
+    Z=-.075+1.70*z-notch+z*skirt*(1+.46*rear)
+    arc=.14*exp(-((abs(x)-.69)/.25)**2-((z-.66)/.30)**2)
+    arc+=.075*exp(-((abs(x)-.82)/.28)**2-((z+.56)/.28)**2)
+    rim=.790+.065*z-.034*z*z+boundary*(arc-.13*rear*scallop)+.06*notch
+    oblong=max(0,1-r*r)
+    vault=(.848+.051*exp(-((z+.36)/.43)**2))*oblong**.66
+    return X,rim+vault,Z
+
+def shell_parameters(x,z):
+    nz=(z+.075)/1.7
+    for _ in range(5):
+        nx=x/width_at(nz)
+        X,Y,Z=carapace(nx,nz)
+        nz+=(z-Z)/1.7
+    return x/width_at(nz),nz
 
 BONES=[('shell',None,(0,.85,0),(0,.85,.5)),
        ('shell_l','shell',(.65,.97,-.10),(.65,.97,.38)),('shell_r','shell',(-.65,.97,-.10),(-.65,.97,.38)),
