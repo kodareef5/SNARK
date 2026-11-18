@@ -44,7 +44,8 @@ export interface RoadHandling {
   power: number;
   powerRpm: number;
   mass: number;
-  range60: number;
+  /** Null where it does not reach 60 km/h. */
+  range60: number | null;
   rangeTop: number;
 }
 
@@ -224,7 +225,7 @@ export function roadHandling(def: WheelVehicleDefinition, driver: number): RoadH
   return {
     movement: "wheeled", to100, reaches100, top: flat.top, toTop, topGear: flat.end.gear, gears: train.forwardRatios.length,
     reverse, braking, turning, circle: circleSpeed(p, car, flat.top), front: p.frontDriveShare ?? null, power, powerRpm,
-    mass: vehicleMass(p, { payloadMass: 0 }), range60: p.fuelCapacity / per60, rangeTop: p.fuelCapacity / flat.fuelPerMetre,
+    mass: vehicleMass(p, { payloadMass: 0 }), range60: flat.top >= 60 * KMH ? p.fuelCapacity / per60 : null, rangeTop: p.fuelCapacity / flat.fuelPerMetre,
   };
 }
 
