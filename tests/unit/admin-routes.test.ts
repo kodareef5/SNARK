@@ -17,6 +17,7 @@ import { gaugesOf } from "../../server/admin/stats.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { Rules, changedSettings } from "../../server/settings/rules.ts";
+import { SurvivorActivity } from "../../server/survivor-activity.ts";
 import { readBases } from "../../client/core/admin/bases.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -208,6 +209,32 @@ test("survivors are listed online or last seen, where they are, with their death
     expect([minutes.next, minutes.columns.at, minutes.columns.p50]).toEqual([0, [], []]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+    h.host.shutdown();
+  }
+});
+
+test("a survivor is last seen at its last checkpoint online, which is now while it is online and kept with its record", () => {
+  const h = new Harness();
+  try {
+    const rec = h.host.records.create(h.reg.index.get("core:survivor")!, "Kai");
+    let wall = 100_000;
+    let now = 0;
+    const activity = new SurvivorActivity(h.host.records, () => wall, () => now);
+    expect(activity.lastSeen(rec)).toBeNull();
+    activity.login(rec.pid);
+    wall += 5000;
+    expect(activity.lastSeen(rec)).toBe(105_000);
+    wall += 25_000;
+    now += 30_000;
+    activity.checkpointAll();
+    wall += 10_000;
+    now += 10_000;
+    activity.leave(rec.pid);
+    wall += 3_600_000;
+    // Another run of the server reads it from the record, and play time is as before.
+    const again = new SurvivorActivity(h.host.records, () => wall, () => now);
+    expect([again.lastSeen(rec), again.summary(rec)]).toEqual([140_000, { lastLogin: 100_000, playMs: 40_000 }]);
+  } finally {
     h.host.shutdown();
   }
 });
