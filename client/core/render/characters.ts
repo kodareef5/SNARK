@@ -13,7 +13,7 @@ import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import { isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
-import { SOCKET_EYE, HUMAN, HUMAN_BONES, LEGACY_HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES, humanRest } from "../../../shared/anim/human.ts";
+import { SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
@@ -127,8 +127,6 @@ export function seatScratch(): VehicleSeatPose {
 }
 
 interface BodySet {
-  /** Native meshes without distal finger geometry retain their original submitted row count. */
-  bones: number;
   soles: Map<number, readonly number[]>;
   neutralSoles: Map<number, Float64Array>;
   grips: Map<number, PackGrip>;
@@ -160,7 +158,6 @@ interface BodyKind {
   /** Indexed by sex, or a single set. */
   sets: BodySet[];
   color: number;
-  bones: number;
 }
 
 /**
@@ -389,7 +386,7 @@ export class Characters {
       const error = Array.from({ length: Math.min(...parts.map((e) => e.length)) }, (_, level) => parts.reduce((sum, e) => sum + e[level]!, 0) / parts.length);
       // Armor is cut for a body, and keyed by the body's name without its pack.
       const body = `${d.mesh}_${sex}`.replace(/^[^:]*:/, "");
-      const rest = rig < 0 ? HUMAN.rest : humanRest(pack.header.rigs[rig]!.rest);
+      const rest = rig < 0 ? HUMAN.rest : Float32Array.from(pack.header.rigs[rig]!.rest);
       const soles = new Map<number, readonly number[]>(), neutralSoles = new Map<number, Float64Array>();
       for (const support of pack.header.rigs[rig]?.soles ?? []) {
         const mesh = table.find(support.mesh), offsets = new Float64Array(6);
@@ -398,7 +395,6 @@ export class Characters {
       const grips = new Map<number, PackGrip>();
       for (const grip of pack.header.rigs[rig]?.grips ?? []) { const mesh = table.find(grip.mesh); if (mesh >= 0) grips.set(mesh, grip); }
       return {
-        bones: rig < 0 ? LEGACY_HUMAN_BONES : pack.header.rigs[rig]!.drawBones === LEGACY_HUMAN_BONES ? LEGACY_HUMAN_BONES : HUMAN_BONES,
         soles, neutralSoles, grips,
         slots,
         error,
@@ -437,7 +433,7 @@ export class Characters {
         const body = bodyOf(d, sex);
         if (body && !bodies.some((b) => b.slots.every((m, k) => m === body.slots[k]))) bodies.push(body);
       }
-      return bodies.length > 0 ? { sets: bodies, color: d.color, bones: Math.max(...bodies.map(b => b.bones)) } : null;
+      return bodies.length > 0 ? { sets: bodies, color: d.color } : null;
     });
     this.anims = this.creatures.map((c) => c?.anim ?? null);
     this.waiting = this.creatures.flatMap((c, kind) => (c && c.clips >= 0 ? [kind] : []));
@@ -565,7 +561,7 @@ export class Characters {
 
   /** The bones a body of this kind takes when it is posed. */
   bones(kind: number): number {
-    return this.creatures[kind]?.anim.rig.bones ?? this.kinds[kind]?.bones ?? HUMAN_BONES;
+    return this.creatures[kind]?.anim.rig.bones ?? HUMAN_BONES;
   }
 
   /**
@@ -707,9 +703,8 @@ export class Characters {
       }
       rest = body.rest;
     }
-    const bones = c ? solved.pos.length / 3 : this.kinds[kind]!.sets[set]!.bones;
-    const rows = new Float32Array(bones * BONE_FLOATS);
-    writeBones(rows, 0, solved, rest, null, 0, 0, 0, 0, 1, bones);
+    const rows = new Float32Array((solved.pos.length / 3) * BONE_FLOATS);
+    writeBones(rows, 0, solved, rest, null, 0, 0, 0, 0);
     s = { rows, solved, counted: -1, written: -1, first: 0 };
     if (rider?.profile) {
       if (!feet) this.riderStandIns.set(foot, feet = new Map());
@@ -746,7 +741,7 @@ export class Characters {
       if (!feet) this.riderCounted.set(foot, feet = new Map());
       if (!counted) feet.set(hand, counted = new Set());
       counted.add(key);
-      return k.sets[set]!.bones;
+      return HUMAN_BONES;
     }
     const s = this.standIn(kind, set, st, seated && k !== null, impaled);
     if (s.counted === this.frame || s.written === this.frame) return 0;
@@ -1195,7 +1190,7 @@ export class Characters {
     const foot = rider?.profile && (rider.targets[0]! & RIDER_SOLES) !== 0 ? this.partOf(set, gear, gearAt, SLOT_FEET) : -1;
     const hand = rider?.profile && (rider.targets[0]! & RIDER_GRIPS) !== 0 ? this.partOf(set, gear, gearAt, SLOT_HANDS) : -1;
     const stand = rigid ? this.standInAt(p, this.standIn(kind, at, st, seat !== null, impaled, rider, foot, hand)) : -1;
-    const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : set.bones, PARTS, !unseen);
+    const first = rigid && stand < 0 ? -1 : this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
     if (first < 0) {
       if (rigid && stand < 0 && !unseen) p.dropped++;
       return false;
@@ -1229,8 +1224,8 @@ export class Characters {
       if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined)) this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips);
       if (seat) {
         // A rider sits in its seat's whole frame, and leans, pitches and banks as the seat does.
-        writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, 0, 0, 0, 0, 1, set.bones);
-        inFrame(p.bones, first * BONE_FLOATS, set.bones, seat, seatAt, x, y, z);
+        writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, 0, 0, 0, 0);
+        inFrame(p.bones, first * BONE_FLOATS, HUMAN_BONES, seat, seatAt, x, y, z);
       } else if (vehicleSeat) {
         vehicleRotation(vehicleSeat, this.rotation);
         this.seatPlace[0] = vehicleSeat.x;
@@ -1239,8 +1234,8 @@ export class Characters {
         mountOrigin(solved, this.seatPlace, this.rotation, this.origin);
         orientSolved(solved, this.rotation, this.mounted);
         x = this.origin[0]!; y = this.origin[1]!; z = this.origin[2]!; yaw = 0;
-        writeBones(p.bones, first * BONE_FLOATS, this.mounted, set.rest, scales, x, y, z, 0, 1, set.bones);
-      } else writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, x, y, z, yaw, 1, set.bones);
+        writeBones(p.bones, first * BONE_FLOATS, this.mounted, set.rest, scales, x, y, z, 0);
+      } else writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, x, y, z, yaw);
       this.posed++;
       if (st.action >>> 3 === HOLD_CARRY) {
         // Where the palms are drawn, for the creature in them.
@@ -1559,11 +1554,12 @@ function orientSolved(source: Solved, rotation: Float64Array, out: Solved): void
  * turned and placed body. `scale` is each bone's stretch along its own axes, or null. `size` scales the whole body
  * about its origin.
  */
-export function writeBones(out: Float32Array, at: number, solved: Solved, rest: Float32Array, scale: Float32Array | null, x: number, y: number, z: number, yaw: number, size = 1, bones = solved.rot.length >> 2): void {
+export function writeBones(out: Float32Array, at: number, solved: Solved, rest: Float32Array, scale: Float32Array | null, x: number, y: number, z: number, yaw: number, size = 1): void {
   const s = Math.sin(yaw);
   const c = Math.cos(yaw);
   const rot = solved.rot;
   const pos = solved.pos;
+  const bones = rot.length >> 2;
   for (let b = 0; b < bones; b++) {
     const qx = rot[b * 4]!, qy = rot[b * 4 + 1]!, qz = rot[b * 4 + 2]!, qw = rot[b * 4 + 3]!;
     const sx = (scale ? scale[b * 3]! : 1) * size, sy = (scale ? scale[b * 3 + 1]! : 1) * size, sz = (scale ? scale[b * 3 + 2]! : 1) * size;

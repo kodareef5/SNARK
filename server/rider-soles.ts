@@ -1,6 +1,6 @@
 // Resolve native foot calibration by the same content slots as the renderer. Hit capsules retain canonical proportions;
 // only their seated ankle height follows the visible rider's actual look and footwear support correction.
-import { HUMAN, SLOT_FEET, humanRest } from "../shared/anim/human.ts";
+import { HUMAN, SLOT_FEET } from "../shared/anim/human.ts";
 import { LOOK_SEX, SEX_IDS } from "../shared/anim/look.ts";
 import { RiderSoles } from "../shared/anim/rider-soles.ts";
 import type { Registry } from "../shared/content/registry.ts";
@@ -19,7 +19,7 @@ export class SeatedSoles {
     const meshes = new Map<string, Foot>();
     for (const rig of rigs) {
       if (rig.skeleton !== HUMAN.id) continue;
-      const rest = humanRest(rig.rest);
+      const rest = Float32Array.from(rig.rest);
       for (const support of rig.soles ?? []) meshes.set(support.mesh, { rest, points: support.points });
     }
     if (meshes.size === 0) return;

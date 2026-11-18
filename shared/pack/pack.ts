@@ -36,7 +36,6 @@
 // A flat level stores no normals. The renderer derives the face normal for flat shading.
 
 import type { Clip, ClipSet } from "../anim/clip.ts";
-import { HUMAN, LEGACY_HUMAN_BONES, humanRest } from "../anim/human.ts";
 import { hashBytes, hashString } from "../hash.ts";
 import { ATLAS_MOST, CELL, atlasBytes, type PackDetails } from "./details.ts";
 import type { LandmarkFarRow } from "./far.ts";
@@ -172,13 +171,11 @@ export interface PackRig {
   id: string;
   skeleton: string;
   rest: number[];
-  /** Native joint rows used by a human mesh family, retained when legacy rest data is extended at load. */
-  drawBones?: number;
   /** Native rigid foot/toe sole witnesses, model-space xyz after quantization, keyed by the actual foot mesh.
    * Four samples in HUMAN foot.L, toe.L, foot.R, toe.R order; empty points mean the actual mesh lacks usable calibration.
    * Boot headers retain these without loading fine geometry. */
   soles?: { mesh: string; points: number[] }[];
-  /** Optional actual bare/gloved hand profiles; legacy packs keep ordinary marker fitting. */
+  /** Optional actual bare/gloved hand profiles; a body without them keeps ordinary marker fitting. */
   grips?: PackGrip[];
   /**
    * Present for a rig that is a whole skeleton (a creature's), absent for a body on a skeleton written in code (the humanoid's).
@@ -256,11 +253,6 @@ export function parsePack(file: Uint8Array): Pack {
   const jsonLength = view.getUint32(8, true);
   if (12 + jsonLength > file.length) throw new Error("pack: truncated header");
   const header = JSON.parse(decodeUtf8(file.subarray(12, 12 + jsonLength))) as PackHeader;
-  for (const rig of header.rigs ?? []) if (rig.skeleton === HUMAN.id && rig.rest.length === LEGACY_HUMAN_BONES * 3) {
-    rig.drawBones = LEGACY_HUMAN_BONES;
-    const tips = humanRest(rig.rest).subarray(LEGACY_HUMAN_BONES * 3);
-    rig.rest.push(...tips); // Keep the original header's joint values unchanged, including their serialized precision.
-  }
   const blob = file.subarray(12 + jsonLength);
   const meshIndex = new Map<string, number>();
   const textures = header.textures ?? [];

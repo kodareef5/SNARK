@@ -3,7 +3,7 @@ import {artTest,fromArt} from "../fixtures/needs-art.ts";
 import {readFileSync} from "node:fs";
 import {writeBones} from "../../client/core/render/characters.ts";
 import {Pose,sampleClip} from "../../shared/anim/clip.ts";
-import {B_FINGERS_L,B_FINGERS_R,B_FINGERTIPS_L,B_FINGERTIPS_R,HUMAN,HUMAN_BONES,LEGACY_HUMAN_BONES,SLOT_HANDS} from "../../shared/anim/human.ts";
+import {B_FINGERS_L,B_FINGERS_R,B_FINGERTIPS_L,B_FINGERTIPS_R,HUMAN,HUMAN_BONES,SLOT_HANDS} from "../../shared/anim/human.ts";
 import {defaultLook,lookScales,setRegion} from "../../shared/anim/look.ts";
 import {createMountMotion,mountPose} from "../../shared/anim/mount.ts";
 import {AnimState,HumanAnim,humanPose} from "../../shared/anim/pose.ts";
@@ -25,10 +25,10 @@ test("distal fingers append to the native source topology without changing old b
  for(const tip of [B_FINGERTIPS_L,B_FINGERTIPS_R]){expect(HUMAN.zone[tip]).toBe(0);expect(HUMAN.slot[tip]).toBe(SLOT_HANDS);}
 });
 
-artTest("authored distal finger rests preserve every legacy body rest",()=>{
+artTest("authored distal finger rests keep every other rest of the frozen bodies",()=>{
  for(const rig of fresh.header.rigs){
   const prior=old.header.rigs.find(r=>r.id===rig.id)!;
-  expect(rig.rest.slice(0,LEGACY_HUMAN_BONES*3)).toEqual(prior.rest.slice(0,LEGACY_HUMAN_BONES*3));
+  expect(rig.rest.slice(0,B_FINGERTIPS_L*3)).toEqual(prior.rest.slice(0,B_FINGERTIPS_L*3));
   for(const [tip,parent] of [[B_FINGERTIPS_L,B_FINGERS_L],[B_FINGERTIPS_R,B_FINGERS_R]]){
    const reach=Math.hypot(...[0,1,2].map(k=>rig.rest[tip!*3+k]!-rig.rest[parent!*3+k]!));
    expect(reach).toBeGreaterThan(.025);expect(reach).toBeLessThan(.045);
@@ -36,9 +36,9 @@ artTest("authored distal finger rests preserve every legacy body rest",()=>{
  }
 });
 
-test("legacy native clips and seated replacements clear a previous distal curl at integral and fractional frames",()=>{
+test("clips and seated replacements hold the fingertips straight at integral and fractional frames",()=>{
  const clip=clips.clips[clips.index.get("human/idle")!]!,pose=new Pose(HUMAN_BONES),anim=new HumanAnim(clips),st=new AnimState();
- expect(clip.bones).toBe(LEGACY_HUMAN_BONES);expect(anim.idle).toBe(clip);
+ expect(clip.bones).toBe(HUMAN_BONES);expect(anim.idle).toBe(clip);
  const clear=()=>{for(let b=28;b<30;b++)expect([...pose.rot.slice(b*4,b*4+4)]).toEqual([0,0,0,1]);};
  for(const frame of [0,3.5,clip.frames+1.5]){
   pose.rot.fill(.3,28*4);sampleClip(clip,frame,pose);clear();expect([...pose.rot,...pose.root].every(Number.isFinite)).toBe(true);
