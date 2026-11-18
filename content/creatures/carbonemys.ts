@@ -31,7 +31,7 @@ export const CARBONEMYS: readonly Def[] = [
   },
   ...eggs("carbonemys", "m", color, .09, .24, 12, 55),
   { type: "item", class: "saddle", id: "core:saddle_carbonemys", label: "Carbonemys saddle", color: 3, stack: 1, weight: 20,
-    saddle: { fits: "core:carbonemys", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 2.036, .55], entry: [1.65, 0, .55] }] } },
+    saddle: { fits: "core:carbonemys", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 2.036, .73], entry: [1.65, 0, .73] }] } },
   ...crafting("core:saddle_carbonemys", { needs: [{ item: "core:hide", count: 170 }, { item: "core:fiber", count: 95 }, { item: "core:paste", count: 10 }], seconds: 10, xp: 48 }),
   { type: "engram", id: "core:engram-saddle_carbonemys", label: "Carbonemys saddle", level: 10, cost: 12, item: "core:saddle_carbonemys" },
 ];
