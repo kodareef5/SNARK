@@ -22,7 +22,11 @@ import { provingView, settle } from "../snap.ts";
 import { gameFiles } from "../snap/files.ts";
 import { encodePng } from "../snap/png.ts";
 
+import { placeCamera } from "./obelisk-cameras.ts";
+
 interface View {
+  obelisk?: string; fromSpawn?: string;
+  eyeSeconds?: number;
   name: string;
   isolate?: { first: number; count: number; x: number; y: number; z: number; yaw: number };
   spawn?: string;
@@ -44,8 +48,9 @@ if (!path || !list || !folder) {
 }
 const started = performance.now();
 const map = parseMap(new Uint8Array(readFileSync(path)));
-const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => only === undefined || only.split(",").includes(v.name));
-const files = await gameFiles(resolve(SOURCE));
+const authored = JSON.parse(readFileSync(list, "utf8")) as View[] | { views: View[] };
+const views = (Array.isArray(authored) ? authored : authored.views).map(v => placeCamera(v, map)).filter((v) => only === undefined || only.split(",").includes(v.name));
+const files = await gameFiles(resolve(SOURCE), undefined, [], map.content?.landmarks);
 mkdirSync(folder, { recursive: true });
 let farCells: FarStore | null = null;
 let city: CityStatics | null = null;
@@ -91,12 +96,13 @@ for (const v of views) {
     });
   }
   const complete = (chunk: number): boolean => Math.abs(chunkCx(map.dims, chunk) - Math.floor(view.cam.x / 64)) <= 3 && Math.abs(chunkCz(map.dims, chunk) - Math.floor(view.cam.z / 64)) <= 3;
-  const scene = new Scene({ mapId: map.id, dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
+  const scene = new Scene({ mapId: map.id, tideEyes: map.tideEyes, dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
     far: { cells: farCells, complete },
     city: { statics: city, complete },
     farNodes: { nodes: view.nodes.source, held: (c) => view.nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(map.dims) }
   }, view.reg, view.pack, view.port ? { manifest: files.manifest, port: view.port } : undefined);
   view.scene = scene;
+  scene.eyeSeconds = v.eyeSeconds ?? 30;
   if (scene.city) scene.city.makeMs = Infinity;
   view.render = () => { const packet = scene.build(view.cam, view.remote); view.raster.render(packet); return packet; };
   view.scene.assets.tier = tierOf(tierName);

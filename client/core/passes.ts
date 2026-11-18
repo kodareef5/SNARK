@@ -257,7 +257,7 @@ export function sceneWithout(scene: { hide: boolean; nearFirst: boolean }, off: 
 /** The effects that live in a built frame: the haze, bodies' contact, the facades and the edges in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
-  if (off.has("contact")) p.frame.fill(0, FRAME.contact);
+  if (off.has("contact")) p.frame.fill(0, FRAME.contact, FRAME.eyes);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
   if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
   for (let d = 0; d < p.drawCount; d++) {

@@ -978,8 +978,8 @@ export class GlRenderer {
     const far = s === STEP_FAR || s === STEP_FAR_SEE;
     const half = p.split > 0 && s !== STEP_BODY;
     this.view = this.serial * 16 + s;
-    this.passes?.mark(s === STEP_FAR_SEE && p.lit ? PASS_DOME : PASS_OF_STEP[s]!);
-    this.matrix = s === STEP_BODY ? p.nearViewProj : far ? p.farViewProj : p.viewProj;
+    this.passes?.mark(s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes + 3]! > 0) ? PASS_DOME : PASS_OF_STEP[s]!);
+    this.matrix = s === STEP_BODY ? p.nearViewProj : far && half ? p.farViewProj : p.viewProj;
     this.matrixAt = 0;
     this.from = s === STEP_FAR_SEE ? p.split : 0;
     gl.depthRange(half && far ? 0.5 : 0, half && !far ? 0.5 : 1);
@@ -988,9 +988,9 @@ export class GlRenderer {
       gl.clear(gl.DEPTH_BUFFER_BIT);
     }
     // A lit frame's dome goes at the far end of the view, where the opaque steps left it.
-    if (s === STEP_FAR_SEE && p.lit) {
+    if (s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes + 3]! > 0)) {
       this.use(PROGRAM.sky, p);
-      this.maps(this.sky, MAP_ROLES.length);
+      if (p.lit) this.maps(this.sky, MAP_ROLES.length);
       this.set(false, false, false);
       this.vertexArray(null);
       gl.depthFunc(gl.LEQUAL);

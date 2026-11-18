@@ -71,8 +71,8 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     // And the street wrecks, a shape each look and a static each of its kinds (content/vehicles/wrecks.ts), and the
     // harbours', a shape each vessel and a static each of its hulk and forms (content/vehicles/harbour-wrecks.ts), and
     // the street furniture, a shape and a static each piece (content/street.ts).
-    "structure/static": 9 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length,
-    shape: 18 + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + TANKER_WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length,
+    "structure/static": 9 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.filter((d) => d.type === "structure").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length,
+    shape: 18 + TERMINALS.filter((d) => d.type === "shape").length + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + TANKER_WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length,
     material: 4,
     node: 14,
     "prop/container": 2,

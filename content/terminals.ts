@@ -1,11 +1,15 @@
-import type { StructureDef } from "../shared/content/defs.ts";
+import type { Def, ShapeDef, StructureDef } from "../shared/content/defs.ts";
+import { EYE_DYE, HULLS } from "../shared/world/tide-eye.ts";
 
-// Where a survivor leaves for another server of its cluster, as ARK's obelisks are: a tall obelisk seen from across the map,
-// and at its foot the terminal a survivor walks up to and uses (planning/architecture/transfers.md). A map sets both down
-// (shared/world/obelisks.ts); they belong to nobody, and with no material nothing harms them. Their meshes are stand-in boxes
-// until the art replaces them under the same ids. A piece's origin is the middle of its box. A piece is at most 32 m tall, so
-// the obelisk is three of its piece stacked, 90 m in all.
-export const TERMINALS: readonly StructureDef[] = [
+export const TERMINALS: readonly Def[] = [
+  // Older map packages place three of these above an offset travel terminal.
   { type: "structure", class: "static", id: "core:obelisk", mesh: "box", color: 11, half: [3, 15, 3], hp: 1000000 },
-  { type: "structure", class: "static", id: "core:travel_terminal", mesh: "box", color: 8, half: [0.6, 0.6, 0.3], hp: 1000000 },
+  { type: "structure", class: "static", id: "core:travel_terminal", mesh: "core:travel_terminal", color: EYE_DYE.blue, half: [0.6, 0.6, 0.6], hp: 1000000 },
+  ...Object.entries(HULLS).flatMap(([name, half]): [ShapeDef, StructureDef] => {
+    const id = "core:zztide_eye_" + name;
+    return [
+      { type: "shape", id: id + "_shape", role: "thing", boxes: [{ at: [0, 0, 0], half }] },
+      { type: "structure", class: "static", id, shape: id + "_shape", mesh: "none", color: 1, half, hp: 1000000 },
+    ];
+  }),
 ];

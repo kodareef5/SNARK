@@ -3,6 +3,8 @@
 // found from the ground: dodos and parasaurs on each stretch of beach, and the jungle's herds and hunters in the
 // hammocks, the gardens and the ruins.
 
+import { DECK_RADIUS } from "../../shared/world/tide-eye.ts";
+import { distanceField } from "./raster.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { ObeliskPlace } from "../../shared/world/obelisks.ts";
 import type { Grid } from "./base.ts";
@@ -28,6 +30,8 @@ export interface Region {
 
 const SAND = new Set<number>([S.BEACH, S.DUNE]);
 const OPEN = new Set<number>([S.OPEN, S.GREEN, S.COURT, S.STREET, S.YARD, S.DUNE, S.BEACH, S.CANOPY, S.DESERT, S.PAVED, S.SIDEWALK, S.WALKWAY, S.PLAZA, S.LOT]);
+// A transfer deck grades its whole footprint. Keep roadways, parking, paths and water intact.
+const DECK_GROUND = new Set<number>([S.OPEN, S.GREEN, S.COURT, S.YARD, S.DUNE, S.BEACH, S.CANOPY, S.DESERT, S.PLAZA]);
 // The beds of the sea and of lakes are under water, and a spawn point by a lake keeps clear of its shallows.
 const BLOCKING = new Set<number>([S.HEAP, S.WALL, S.POOL, S.FORD, S.DECK, S.MARSH, S.MANGROVE, S.SHALLOW, S.FLAT, S.DEEP, S.CHANNEL]);
 
@@ -129,6 +133,29 @@ export function placeObelisks(ground: Ground, world: World, toSample: (lon: numb
   return (world.obelisks ?? []).map((o) => {
     const [c0, r0] = toSample(o.at[0], o.at[1]).map(Math.round) as [number, number];
     const [fc, fr] = toSample(o.face[0], o.face[1]);
+    if (o.color) {
+      // Find a full walkable disc clear of mapped streets, ruins, water and trees' exclusions. Work on a
+      // local distance field so dense urban sites can search several blocks without rescanning each disc.
+      const span = 420, width = span * 2 + 1;
+      const clearance = distanceField(i => {
+        const x = c0 + i % width - span, z = r0 + Math.floor(i / width) - span;
+        const at = z * nx + x;
+        return x < 0 || z < 0 || x >= nx || z >= nz || !!cover[at] || !!ground.water[at] || !!ground.lakes?.body[at]
+          || height[at]! < 0.4 || !DECK_GROUND.has(surface[at]!);
+      }, width, width);
+      let best = -1, radius = 0, distance = Infinity;
+      for (let i = 0; i < clearance.length; i++) {
+        const dc = i % width - span, dr = Math.floor(i / width) - span;
+        if (Math.max(Math.abs(dc), Math.abs(dr)) > span - 45) continue;
+        const fit = Math.min(DECK_RADIUS, Math.floor((Math.sqrt(clearance[i]!) * 2 - 6) / 2) * 2);
+        const d = dc * dc + dr * dr;
+        if (fit > radius || (fit === radius && d < distance)) { best = i; radius = fit; distance = d; }
+      }
+      if (radius < 16) throw new Error(`no walkable transfer deck fits near ${o.name}`);
+      const c = c0 + best % width - span, r = r0 + Math.floor(best / width) - span;
+      const yaw = Math.round(Math.atan2(c - fc, r - fr) * 32768 / Math.PI) & 65535;
+      return { name: o.name, color: o.color, ...(o.form ? { form: o.form } : {}), radius, yaw, x: x1 - c * 2, z: z1 - r * 2 };
+    }
     for (let ring = 0; ring < 150; ring++) {
       let best: [number, number, number] | null = null;
       let near = Infinity;
@@ -188,4 +215,20 @@ export function placeRegions(ground: Ground, spawns: readonly Spawn[] = [], easy
   const easy = out.filter((r) => r.spawns === "core:spawns_beach");
   const placed = out.map((r) => (r.spawns === "core:spawns_jungle" && spawns.some((s) => Math.hypot(s.x - r.x, s.z - r.z) < easyWithin && !easy.some((b) => Math.hypot(s.x - b.x, s.z - b.z) < easyWithin)) ? { ...r, spawns: "core:spawns_beach" } : r));
   return placed.map((r) => ({ ...r, x: Math.round(r.x * 2) / 2, z: Math.round(r.z * 2) / 2 }));
+}
+
+/** Grade the physical heightfield into each disc, blending a short shoulder back into the surrounding terrain. */
+export function gradeTransferDecks(ground: Ground, places: readonly ObeliskPlace[], minY: number, stepY: number): void {
+  const { nx, nz, x1, z1, cell } = ground.grid;
+  for (const site of places) {
+    if (!site.color) continue;
+    const cx = Math.round((x1 - site.x) / cell), cz = Math.round((z1 - site.z) / cell);
+    const y = minY + Math.round((ground.height[cz * nx + cx]! - minY) / stepY) * stepY;
+    const radius = site.radius ?? DECK_RADIUS;
+    const span = Math.ceil((radius + 4) / cell);
+    for (let z = Math.max(0, cz - span); z <= Math.min(nz - 1, cz + span); z++) for (let x = Math.max(0, cx - span); x <= Math.min(nx - 1, cx + span); x++) {
+      const mix = Math.min(1, Math.max(0, (radius + 4 - cell * Math.hypot(x - cx, z - cz)) / 4));
+      if (mix) ground.height[z * nx + x]! += (y - ground.height[z * nx + x]!) * mix;
+    }
+  }
 }

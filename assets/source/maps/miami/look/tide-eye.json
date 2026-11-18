@@ -1,0 +1,23 @@
+{
+  "hour": 16,
+  "views": [
+    {"name": "blue-crown", "x": -360, "z": -342, "y": 94, "look": [0, 0, 269], "eyeSeconds": 32, "obelisk": "Virginia Key"},
+    {"name": "blue-instrument", "x": 246, "z": 224, "y": 442, "look": [0, 0, 455], "eyeSeconds": 32, "obelisk": "Virginia Key"},
+    {"name": "blue-iris", "x": -100, "z": -122, "y": 531, "look": [0, 0, 537], "eyeSeconds": 2, "obelisk": "Virginia Key"},
+    {"name": "blue-deck", "onFoot": true, "x": -1.7, "z": -2.2, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 35, "obelisk": "Virginia Key"},
+    {"name": "blue-platform", "x": -83, "z": -66, "y": 68, "look": [0, 0, 1], "eyeSeconds": 35, "obelisk": "Virginia Key"},
+    {"name": "bayfront-ignition", "replayEyeSeconds": 5, "x": 0, "z": 0, "y": 36, "look": [0, 0, 2050], "eyeSeconds": 15.5, "obelisk": "Virginia Key", "fromSpawn": "Bayfront Park"},
+    {"name": "red-sextant", "x": 324, "z": -148, "y": 452, "look": [37, 53, 460], "eyeSeconds": 112, "holdPhase": true, "obelisk": "Wynwood"},
+    {"name": "red-dormant", "x": 324, "z": -148, "y": 452, "look": [37, 53, 460], "eyeSeconds": 82, "holdPhase": true, "obelisk": "Wynwood"},
+    {"name": "red-bearing", "x": 100, "z": -52, "y": 512, "look": [12, 12, 500], "eyeSeconds": 112, "holdPhase": true, "obelisk": "Wynwood"},
+    {"name": "red-ignition", "hour": 18.25, "x": 0, "z": 0, "y": 54, "look": [0, 0, 2060], "eyeSeconds": 95.5, "replayEyeSeconds": 85, "obelisk": "Wynwood", "fromSpawn": "Bayfront Park"},
+    {"name": "red-deck", "onFoot": true, "x": -1.8, "z": 1.6, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 112, "obelisk": "Wynwood"},
+    {"name": "red-crown", "x": 370, "z": -258, "y": 72, "look": [0, 0, 318], "eyeSeconds": 112, "obelisk": "Wynwood"},
+    {"name": "green-lantern", "hour": 16.75, "x": -208, "z": -318, "y": 456, "look": [0, 0, 459], "eyeSeconds": 72, "holdPhase": true, "obelisk": "Miami Beach Golf Club"},
+    {"name": "green-dormant", "hour": 16.75, "x": -208, "z": -318, "y": 456, "look": [0, 0, 459], "eyeSeconds": 42, "holdPhase": true, "obelisk": "Miami Beach Golf Club"},
+    {"name": "green-shutters", "hour": 17.25, "x": 64, "z": -266, "y": 433, "look": [0, 0, 522], "eyeSeconds": 48.5, "replayEyeSeconds": 44, "replayDuration": 10, "obelisk": "Miami Beach Golf Club"},
+    {"name": "green-ignition", "hour": 18.35, "x": 0, "z": 0, "y": 52, "look": [0, 0, 1930], "eyeSeconds": 55.5, "replayEyeSeconds": 44, "obelisk": "Miami Beach Golf Club", "fromSpawn": "Bayfront Park"},
+    {"name": "green-deck", "onFoot": true, "x": -0.8, "z": -2.4, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 72, "obelisk": "Miami Beach Golf Club"},
+    {"name": "green-crown", "x": -112, "z": -458, "y": 72, "look": [0, 0, 318], "eyeSeconds": 72, "obelisk": "Miami Beach Golf Club"}
+  ]
+}
