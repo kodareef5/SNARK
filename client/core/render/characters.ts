@@ -1289,7 +1289,7 @@ export class Characters {
         c[REGION_SECOND - REGION_BASE] = worn!.colors[1];
         c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
         this.queuePart(piece, c, 0, -1, unseen || hidden);
-        if (worn!.vented && !st.grounded && st.mode !== MODE_SWIM && !seat && !vehicleSeat && !st.dead && !st.out) {
+        if (worn!.vented && st.jet && !st.grounded && st.mode !== MODE_SWIM && !seat && !vehicleSeat && !st.dead && !st.out) {
           const vents = set.vents[worn!.set]!;
           if (vents >= 0 && this.assets.known(vents)) this.queuePart(vents, c, 0, -1, unseen || hidden);
         }

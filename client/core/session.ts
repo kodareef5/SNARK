@@ -998,7 +998,7 @@ export class ClientSession {
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
     else if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, this.registry.tamedMove[this.own.kind] ?? this.move!, combat, TICK_DT, true, !pilot);
     else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
-    else this.own.yaw = inp.yaw[i]!;
+    else { this.own.yaw = inp.yaw[i]!; this.own.jetThrust = 0; }
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];

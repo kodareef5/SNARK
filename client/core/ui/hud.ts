@@ -1,3 +1,5 @@
+import { TICK_RATE } from "../../../shared/coords.ts";
+import { JET_CAPACITY, JET_FULL_SUIT, JET_HOVER } from "../../../shared/sim/character.ts";
 import { ACTION_DRAW, ACTION_NONE, MAX_MARKERS, MINIMAP_SIZE, type HudModel, type MarkerKind } from "../hud.ts";
 import type { Settings } from "../settings.ts";
 import { filledVital } from "./vitals.ts";
@@ -43,6 +45,7 @@ export const KEY_HOTBAR = 40;
 export const KEY_MARKER = 4000;
 /** Small driving instruments below the minimap, outside the chat and survivor's vitals. */
 export const KEY_VEHICLE = 3500;
+export const KEY_JET_FUEL = 3520;
 const DASH_W = 212;
 const DASH_H = 106;
 const HELI_W = 244;
@@ -183,6 +186,18 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     toggle.text = "◇";
     toggle.label = options.minimap ? "Hide minimap" : "Show minimap";
     toggle.interactive = true;
+  }
+  if (m.jetGear && !dash) {
+    const width = 210, x = W - MARGIN - width, y = dashY + (mapTools && !options.minimap ? 36 : 0);
+    const left = Math.max(0, JET_CAPACITY - m.jetSpent);
+    const status = m.jetThrust === JET_HOVER ? "Level flight" : m.jetThrust ? "Climbing" :
+      m.jetGrounded && m.jetSpent ? "Recharging" : !left ? "Empty · land to recharge" : options.touchFirst ? "Hold Jump + Sprint to hover" : "Hold Space · add Shift to hover";
+    const linked = m.jetGear === JET_FULL_SUIT;
+    glass(f, KEY_JET_FUEL, x, y, width, linked ? 83 : 63);
+    f.text(KEY_JET_FUEL + 1, x + 10, y + 6, width - 20, S_HUD_COUNT, `Jet fuel   ${(left / TICK_RATE).toFixed(1)} s`);
+    f.add(KEY_JET_FUEL + 2, K_BAR, x + 10, y + 29, width - 20, 6, left <= 2 * TICK_RATE ? S_WARNING : S_OXYGEN).value = left / JET_CAPACITY;
+    f.text(KEY_JET_FUEL + 3, x + 10, y + 39, width - 20, S_MENU_NOTE, status);
+    if (linked) f.text(KEY_JET_FUEL + 4, x + 10, y + 59, width - 20, S_MENU_NOTE, "Full suit · 2× recharge");
   }
   if (dash && !dash.rotor && !dash.boat) {
     const x = W - MARGIN - DASH_W, y = dashY;

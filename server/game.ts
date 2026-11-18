@@ -600,7 +600,7 @@ export class GameServer {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
           if (combat && driving) stepCreature(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, c.pressed, world.reg.tamedMove[b.kind]!, combat, TICK_DT, true, c.closed || T - c.inputAt > INPUT_HOLD_TICKS);
           else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
-        } else { b.yaw = c.heldYaw; stepOut.landSpeed = 0; }
+        } else { b.yaw = c.heldYaw; b.jetThrust = 0; stepOut.landSpeed = 0; }
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.
           const stowed = passenger && (ents.seatSlot[e] === IMPALE_SLOT || world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false);

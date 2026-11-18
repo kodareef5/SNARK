@@ -178,6 +178,8 @@ async function run() {
     actor.gear[GEAR_HELD] = grip.checked ? reg.index.get("core:pick")! : 0;
     anim.setAction(0, grip.checked ? HOLD_TOOL : 0, 0);
     anim.grounded = pose.value !== "air";
+    anim.jet = !anim.grounded;
+    actor.cue[0] = anim.packCue();
     actor.flags[0] = anim.grounded ? 1 : 0;
     anim.stance = pose.value === "crouch" || mounted ? STANCE_CROUCH : 0;
     anim.speed = pose.value === "run" ? 16 : 0;

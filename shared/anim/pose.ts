@@ -6,7 +6,7 @@ import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatAxis, quatMul, quatRotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
 import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
-import { B_CHEST, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, HUMAN, HUMAN_BONES } from "./human.ts";
+import { B_CHEST, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES } from "./human.ts";
 import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
@@ -89,6 +89,8 @@ export const CUE_HURT_SHIFT = 24;
 export const CUE_DECAY_SHIFT = 26;
 /** On a living creature only. A corpse uses these bits for its decay stage. */
 export const CUE_RIVALRY = 1 << CUE_DECAY_SHIFT;
+/** The second decay bit on living survivors marks active chest thrust. */
+export const CUE_JET = 1 << (CUE_DECAY_SHIFT + 1);
 export const CUE_MATING_SHIFT = 28;
 /** The worst hurt and decay stage. 0 is unhurt, or fresh. */
 export const STAGE_WORST = 3;
@@ -134,6 +136,7 @@ export class AnimState {
   /** 0 to STAGE_WORST. */
   hurt = 0;
   decay = 0;
+  jet = false;
   rivalry = false;
   /** 0, or 1 to MATING_STEPS. */
   mating = 0;
@@ -151,7 +154,7 @@ export class AnimState {
   packCue(): number {
     const cue = this.cue === CUE_NONE ? 0 : (this.cue << 1) | ((this.cueStart & 255) << 4);
     const layer = this.layer === LAYER_NONE ? 0 : (this.layer << 12) | ((this.layerStart & 255) << 14);
-    const condition = this.dead ? (this.decay & 3) << CUE_DECAY_SHIFT : this.rivalry ? CUE_RIVALRY : 0;
+    const condition = this.dead ? (this.decay & 3) << CUE_DECAY_SHIFT : (this.rivalry ? CUE_RIVALRY : 0) | (this.jet ? CUE_JET : 0);
     const lasting = (this.held ? CUE_HELD : 0) | (this.dead ? CUE_DEAD : 0) | ((this.hurt & 3) << CUE_HURT_SHIFT) | condition | ((this.mating & 7) << CUE_MATING_SHIFT);
     return ((this.out ? CUE_OUT : 0) | cue | layer | lasting) >>> 0;
   }
@@ -172,6 +175,7 @@ export class AnimState {
     this.dead = (cue & CUE_DEAD) !== 0;
     this.hurt = (cue >>> CUE_HURT_SHIFT) & 3;
     this.decay = this.dead ? (cue >>> CUE_DECAY_SHIFT) & 3 : 0;
+    this.jet = !this.dead && (cue & CUE_JET) !== 0;
     this.rivalry = !this.dead && (cue & CUE_RIVALRY) !== 0;
     this.mating = (cue >>> CUE_MATING_SHIFT) & 7;
   }
@@ -415,6 +419,16 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     out.root[1]! += SWIM_LIFT;
     // A swimmer's whole body tips toward its look, more the faster it goes.
     bodyPitch = pitch * k;
+    twistAngle = 0;
+  } else if (st.jet && !st.grounded) {
+    // Let the pack carry the weight. Leave the arms free for held tools and weapon poses.
+    loop(anim.idle, t, out);
+    const lean = Math.min(1, st.speed * SPEED_STEP / 10);
+    turn(out, B_SPINE, 1, 0, 0, 0.10 * lean);
+    turn(out, B_UPPER_LEG_L, 1, 0, 0, -0.16 + 0.18 * lean);
+    turn(out, B_UPPER_LEG_R, 1, 0, 0, 0.06 + 0.18 * lean);
+    turn(out, B_LOWER_LEG_L, 1, 0, 0, 0.32);
+    turn(out, B_LOWER_LEG_R, 1, 0, 0, 0.43);
     twistAngle = 0;
   } else if (!st.grounded) {
     loop(anim.fall, t, out);

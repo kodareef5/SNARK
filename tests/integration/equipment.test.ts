@@ -1,3 +1,4 @@
+import { BTN_JUMP } from "../../shared/sim/character.ts";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -370,6 +371,27 @@ test("what is dropped lies in a bag anyone can open, and is gone, on the books, 
   h.run(300);
   expect(rec.dead).toBe(true);
   expect(send(CMD_DROP, (w) => (w.u8(0), w.u16(0), w.u16(id("stone"))))).toBe(RESULT_DENIED);
+});
+
+test("a Meridian survivor rejoins a restarted server with the same reserve spent in midair", () => {
+  const dbPath = join(dir, "meridian-charge.db");
+  const { h, s, rec } = setup({ dbPath });
+  h.say(s, "armor meridian");
+  h.pilots[0]!.buttons = BTN_JUMP;
+  h.run(2200);
+  h.pilots[0]!.buttons = 0;
+  h.run(150);
+  const spent = h.world.ents.jetSpent[h.ent(s)]!;
+  expect(spent).toBeGreaterThan(50);
+  h.host.shutdown();
+
+  const again = new Harness({}, 1, 60, { dbPath, dev: true });
+  const survivor = again.join("ada");
+  again.run(200);
+  expect(again.host.records.byPid.get(rec.pid)!.jetSpent).toBe(spent);
+  expect(survivor.own.jetSpent).toBe(spent);
+  expect(survivor.own.jetGear).toBe(31);
+  again.host.shutdown();
 });
 
 test("equipment survives death in the cache and a restart in the save: rounds loaded, attachment fitted, armor worn, slot in hand", () => {
