@@ -34,11 +34,12 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // wholly hide was left out (render/hide.ts) the street on high was 35, 48 and 159,006 near and 15 and 139,120 far, the
   // roof 32, 41, 164,622, 19 and 183,432, the air 42, 42, 181,608, 14 and 177,982; each is that again with `hide` off.
   // Cut again on 2026-11-18 when the street's furniture came to stand on its walks (twice as many pieces in the slice:
-  // each kind of them is a draw of its own) and tall buildings came to have tops: with hiding the street on high was 24,
-  // 45, 129,666, 12 and 125,040, the roof 28, 41, 155,370, 19 and 183,432, the air 42, 42, 181,608, 14 and 177,982.
+  // each kind of them is a draw of its own), its signals to face their traffic and tall buildings to have tops: with
+  // hiding the street on high was 24, 45, 129,666, 12 and 125,040, the roof 28, 41, 155,370, 19 and 183,432, the air 42,
+  // 42, 181,608, 14 and 177,982.
   expect(got).toEqual({
-    "street-300": { lowpoly: [51, 0, 130946, 10, 91182], "medium, touch": [37, 18, 77090, 10, 45866], medium: [51, 51, 130946, 13, 130054], high: [51, 96, 130946, 13, 130054], ultra: [51, 113, 130946, 13, 130054] },
-    "roof-300": { lowpoly: [74, 0, 163512, 13, 121858], "medium, touch": [46, 10, 97366, 14, 69438], medium: [74, 46, 163512, 19, 183252], high: [74, 91, 163512, 19, 186102], ultra: [74, 104, 163512, 19, 186102] },
-    "air-300": { lowpoly: [111, 0, 183772, 11, 116586], "medium, touch": [46, 3, 113932, 9, 50026], medium: [111, 15, 183772, 14, 180304], high: [111, 103, 183772, 14, 180304], ultra: [111, 118, 183772, 14, 180304] },
+    "street-300": { lowpoly: [52, 0, 130970, 10, 91182], "medium, touch": [38, 18, 77114, 10, 45888], medium: [52, 52, 130970, 13, 130032], high: [52, 98, 130970, 13, 130032], ultra: [52, 116, 130970, 13, 130032] },
+    "roof-300": { lowpoly: [77, 0, 163572, 13, 121934], "medium, touch": [47, 10, 97390, 14, 69482], medium: [77, 48, 163572, 19, 183360], high: [77, 94, 163572, 19, 186210], ultra: [77, 108, 163572, 19, 186210] },
+    "air-300": { lowpoly: [115, 0, 183856, 11, 116606], "medium, touch": [47, 3, 113956, 9, 50048], medium: [115, 15, 183856, 14, 180302], high: [115, 107, 183856, 14, 180302], ultra: [115, 122, 183856, 14, 180302] },
   });
 });
