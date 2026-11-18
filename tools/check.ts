@@ -388,6 +388,8 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   }
   const junit = readFileSync(report, "utf8");
   keepTimes(times, junit);
+  // Each file's CPU-seconds beside its time, costliest first, for whoever looks for what the tier spends.
+  writeFileSync(join(ROOT, `.cache/${tier}-test-cpu.json`), JSON.stringify(Object.fromEntries(fileCpu(watch).map(([f, s]) => [f, Math.round(s * 10) / 10])), null, 1));
   const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
   tally.passed += parseInt(counts.find((c) => c.endsWith(" pass")) ?? "0");
   for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
