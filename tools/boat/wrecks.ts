@@ -3,7 +3,7 @@
 // showing (content/vehicles/harbour-wrecks.ts). Each is a static, set down before the found vessels, which keep clear of it.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { formMesh, hulkOf, type HarbourWreckForm } from "../../content/vehicles/harbour-wrecks.ts";
+import { formMesh, hulkOf, waterlineOf, type HarbourWreckForm, type Waterline } from "../../content/vehicles/harbour-wrecks.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { hashString } from "../../shared/hash.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -27,6 +27,12 @@ export interface WreckGround { waterAt(x: number, z: number): number; groundAt(x
 /** The meshes of the art under assets/source/core/vehicles, by id. */
 export function vehicleMeshes(): Set<string> {
   return new Set(filesUnder(join(SOURCE, "core/vehicles"), ".snpk").flatMap((f) => parsePack(new Uint8Array(readFileSync(f))).header.meshes.map((m) => m.id)));
+}
+
+/** The waterline each vessel's damaged form states (assets/source/core/vehicles/marine/forms.json), by vessel id. */
+export function formWaterlines(): Map<string, Waterline> {
+  const forms = JSON.parse(readFileSync(join(SOURCE, "core/vehicles/marine/forms.json"), "utf8")) as Record<string, { damaged?: { waterline?: Waterline } }>;
+  return new Map(Object.entries(forms).flatMap(([vessel, f]) => (f.damaged?.waterline ? [[`core:${vessel}`, f.damaged.waterline] as const] : [])));
 }
 
 /**
@@ -60,7 +66,7 @@ function pieceIndex(pieces: readonly StaticPiece[], reg: Registry): (box: Box) =
 }
 
 /** `sites` in the pieces' metres. A form whose mesh `made` does not have stands as its vessel's intact hull. */
-export function harbourWrecks(sites: readonly BoatSite[], rules: Harbours, reg: Registry, pieces: readonly StaticPiece[], ground: WreckGround, districtAt: DistrictAt, made: (mesh: string) => boolean): HarbourWreck[] {
+export function harbourWrecks(sites: readonly BoatSite[], rules: Harbours, reg: Registry, pieces: readonly StaticPiece[], ground: WreckGround, districtAt: DistrictAt, made: (mesh: string) => boolean, waterlines: ReadonlyMap<string, Waterline> = formWaterlines()): HarbourWreck[] {
   const w = rules.wrecks, hits = pieceIndex(pieces, reg), out: HarbourWreck[] = [];
   const defOf = (id: string): BoatVehicleDefinition => {
     const def = reg.vehicle[reg.index.get(id) ?? -1];
@@ -87,9 +93,9 @@ export function harbourWrecks(sites: readonly BoatSite[], rules: Harbours, reg: 
         const angle = start + side * Math.PI / 8, x = site.x + Math.sin(angle) * r, z = site.z + Math.cos(angle) * r;
         if (!ground.inside(x, z, spec.halfLength + 2) || !ground.room(x, z) || out.some((o) => Math.hypot(o.x - x, o.z - z) < w.apart)) continue;
         const water = ground.waterAt(x, z), bed = ground.groundAt(x, z), depth = water - bed;
-        // Afloat it rides low with water in it; sunk it sits on the bottom in water shallow enough that its upperworks show.
+        // Afloat it rides low with water in it, at its form's waterline; sunk it sits on the bottom in water shallow enough that its upperworks show.
         if (form === "damaged" ? depth < spec.draft + .2 : depth < spec.draft + .3 || depth > spec.height * .7) continue;
-        const y = form === "damaged" ? water - spec.draft * 1.25 : bed, yaw = ((angle + skew) * 180 / Math.PI % 360 + 360) % 360;
+        const y = form === "damaged" ? water - waterlineOf(spec.draft, def.beltline, kind === hulkOf(vessel, form) ? waterlines.get(vessel) : undefined) : bed, yaw = ((angle + skew) * 180 / Math.PI % 360 + 360) % 360;
         if (hits(footprint(def, x, y, z, yaw, 1)) || out.some((o) => meets(footprint(def, x, y, z, yaw, 1), footprint(defOf(o.vessel), o.x, o.y, o.z, o.yaw, 0)))) continue;
         out.push({ kind, x, y, z, yaw, vessel, form, site: site.id, district: district?.name ?? "", offshore: off });
         break search;

@@ -1,6 +1,12 @@
 import { POWER_CATS } from "../../../../../content/vehicles/power-cats.ts";
 import type { MarineModel, MarinePoint } from "../../../../../content/vehicles/marine-model.ts";
 import { shared, type CreatureAsset, type SocketSpec } from "../../../../../tools/art/spec.ts";
+import { pictures, sharedWreck, wrecked, type WreckForm } from "../performance_marine/spec.ts";
+
+// The laid teak both boats share, tiled (palette.py).
+const TEAK = shared(import.meta.dir, "core:power_cats/teak", { ...pictures("teak"), tiles: 2.4 });
+/** Each boat's own pictures and their sides, as palette.py OWN lays them out, laid out and baked by ../marine. */
+const OWN_SIZES: Record<string, Record<string, number>> = { manta: { hull: 2048 }, lagoon: { hull: 2048, house: 4096 } };
 
 export function catamaranAsset(name: "lagoon" | "manta"): CreatureAsset {
   const m: MarineModel = POWER_CATS.find(m => m.id === `core:${name}`)!;
@@ -28,11 +34,15 @@ export function catamaranAsset(name: "lagoon" | "manta"): CreatureAsset {
     sockets, zones: [], clips: [], feet: [], gaits: {}, preserveBones: bones.slice(1),
     regions: [{ name: "Hull", sample: m.paint }, { name: "Boot stripe", sample: m.trim![0] },
       { name: "Upholstery", sample: m.trim![1] }],
-    materials: { yacht: shared(import.meta.dir, "core:power_cats/yacht", {
-      base: "tex/base.png", normal: "tex/normal.png", height: "tex/height.png",
-      regions: "tex/regions.png", packed: "tex/finish.png", hurt: "tex/hurt.png", decay: "tex/decay.png", tiles: 4,
-    }) },
+    materials: { ...Object.fromEntries(Object.keys(OWN_SIZES[name]!).map(m => [m, pictures(m)])), teak: TEAK },
     flat: 2,
-    budgets: { triangles: [45000, 11000, 5400, 2300, 1100, 440], texture: { top: 512, megabytes: 4, layer: 256 } },
+    budgets: { triangles: [45000, 11000, 5400, 2300, 1100, 440], texture: { top: Math.max(...Object.values(OWN_SIZES[name]!)), megabytes: 96, layer: 2048 } },
   };
+}
+
+const TEAK_WRECK = { damaged: sharedWreck(import.meta.dir, "core:power_cats/teak", "teak", "worn", 2.4), sunk: sharedWreck(import.meta.dir, "core:power_cats/teak", "teak", "wrecked", 2.4) };
+
+/** A catamaran's wreck form (../marine/wreck.py): its rig and measures, drawn with the form's own pictures. */
+export function catamaranWreck(name: "lagoon" | "manta", form: WreckForm): CreatureAsset {
+  return { ...catamaranAsset(name), source: { scripts: ["model.py"] }, materials: { ...Object.fromEntries(Object.keys(OWN_SIZES[name]!).map(m => [m, wrecked(name, m)])), teak: TEAK_WRECK[form] } };
 }

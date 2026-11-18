@@ -176,7 +176,15 @@ creature's do, so a damaged car looks damaged and a dead one left to rot. A
 road vehicle's pictures hold every mark of its five wear stories, which hold
 them back by where they lie on the car (`client/core/render/wear.ts`): spread
 marks over the whole car, each region its own, and look at each story with
-`bun tools/art/wear.ts --out DIR <id>`.
+`bun tools/art/wear.ts --out DIR <id>`. A vessel's are the same with its own
+five stories; its own pictures are laid out and baked by
+`core/vehicles/marine/` (each texel one place on the vessel, painted from where
+it lies by each family's `paint.py`, `wear.py` and `wrecks.py`), its damaged and
+sunk forms are built on its rig and layout by `marine/wreck.py` (each form's
+pose, and a damaged one's waterline, in `marine/forms.json`), and
+`marine/look.ts`, `marine/review.ts` and `marine/gpu.ts` draw it dry, in the
+water through the whole client and on a GPU. Its bakes and those pictures are
+not kept: `marine/bake.py` and the three scripts make them again.
 
 `core/vehicles/compact/` is the first, and the pattern for the rest:
 
