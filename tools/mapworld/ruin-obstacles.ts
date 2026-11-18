@@ -73,7 +73,7 @@ export function meets(a: Box, b: Box, gap = 0): boolean {
   return true;
 }
 
-export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: StaticPiece) => void; blocked: (points: readonly Point[]) => boolean; hits: (box: Box, gap?: number) => boolean; count: (x: number, z: number, radius: number) => number } {
+export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: StaticPiece) => void; blocked: (points: readonly Point[]) => boolean; hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean; count: (x: number, z: number, radius: number) => number } {
   const bins = new Map<number, { p: StaticPiece; box: Box }[]>();
   const add = (p: StaticPiece): void => {
     const box = boxOf(p); const radius = Math.hypot(box.size[0], box.size[2]) / 2 + 1;
@@ -89,10 +89,10 @@ export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: Static
     return false;
   };
   /** Whether a piece already set down meets the box grown by `gap`. */
-  const hits = (box: Box, gap = 0): boolean => {
+  const hits = (box: Box, gap = 0, skip?: (p: StaticPiece) => boolean): boolean => {
     const radius = Math.hypot(box.size[0], box.size[2]) / 2 + gap;
     for (let z = Math.floor((box.z - radius) / 64); z <= Math.floor((box.z + radius) / 64); z++) for (let x = Math.floor((box.x - radius) / 64); x <= Math.floor((box.x + radius) / 64); x++) {
-      for (const q of bins.get(binKey(x, z)) ?? []) if (meets(box, q.box, gap)) return true;
+      for (const q of bins.get(binKey(x, z)) ?? []) if (meets(box, q.box, gap) && !skip?.(q.p)) return true;
     }
     return false;
   };

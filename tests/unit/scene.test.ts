@@ -516,9 +516,12 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // test meshes; without them it is that again. It was 1115872953 until the street furniture (content/street.ts) added
   // its grey meshes ahead of them; without those it is that again. It was 374367094 until a static's vertices said
   // their corner of their face and its outer borders in the byte a body's bone has (world-surfaces.ts ownVertex): only
-  // the uploads' vertex bytes moved, and low poly reads none of them. It was 1589639950 until the far wood was drawn
-  // after the near store, which its draws may be hidden behind, and an opaque step's draws went nearest first.
-  expect(hash).toBe(917489568);
+  // the uploads' vertex bytes moved, and low poly reads none of them. It was 1589639950 until the door-to-curb kit and
+  // the street's walks, curbs and drains, the ruins' broken wall tops, rubble, leaning pieces and vines and the broken
+  // parapets of whole tops (content/ruins.ts) added their grey meshes; without them it is that again. It was 3316382992
+  // until the far wood was drawn after the near store, which its draws may be hidden behind, and an opaque step's draws
+  // went nearest first.
+  expect(hash).toBe(4108479878);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -545,9 +548,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above, and 3199521479
   // until a survivor had 30 bones, as above, and 3920878120 until the ruins' facade modules and breaks, as above.
   // It was 2430603422 until the street furniture's grey meshes; without them it is that again. It was 3628556772 until
-  // a static's vertices said their faces' corners and outer borders, as the hash above, and 2281949996 until the far
-  // wood was drawn after the near store and opaque draws went nearest first, as above.
-  expect(saddled.hash).toBe(2627241200);
+  // a static's vertices said their faces' corners and outer borders, as the hash above, and 2281949996 until the ruins'
+  // kit, street pieces, broken tops, rubble, leaning pieces, vines and broken parapets, as above, and 1004296491 until
+  // the far wood was drawn after the near store and opaque draws went nearest first, as above.
+  expect(saddled.hash).toBe(697200331);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
