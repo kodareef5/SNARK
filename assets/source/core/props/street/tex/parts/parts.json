@@ -14,6 +14,9 @@
  "concrete": {
   "height_mm": 5.732521
  },
+ "crossing": {
+  "height_mm": 6
+ },
  "cut_billboard": {
   "height_mm": 33
  },
@@ -28,6 +31,9 @@
  },
  "cut_torn": {
   "height_mm": 11
+ },
+ "deadend": {
+  "height_mm": 6
  },
  "door": {
   "height_mm": 39.412709
@@ -71,6 +77,18 @@
  "newsbox": {
   "height_mm": 16
  },
+ "noentry": {
+  "height_mm": 6
+ },
+ "noparking": {
+  "height_mm": 6
+ },
+ "oneway": {
+  "height_mm": 6
+ },
+ "oneway_left": {
+  "height_mm": 6
+ },
  "poster": {
   "height_mm": 13
  },
@@ -90,6 +108,12 @@
   "height_mm": 8
  },
  "speed": {
+  "height_mm": 6
+ },
+ "speed30": {
+  "height_mm": 6
+ },
+ "speed40": {
   "height_mm": 6
  },
  "stop": {
