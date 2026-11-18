@@ -1,4 +1,4 @@
-"""Bake original pigments to the Blender UVs. Run from any directory after model.py."""
+"""Bake original pigments to the Blender UVs. Run from any directory after sculpt.py."""
 from pathlib import Path
 import sys
 import numpy as np
