@@ -58,8 +58,9 @@ test("four players stay grouped through real helicopter flight over delayed link
 
 test("a line that holds the pilot's inputs back neither throws a fast helicopter forward nor stops it in the air", () => {
   // A stream that loses a segment holds every input after it until the segment is sent again, while snapshots keep coming.
-  // Its inputs then come late, and the round trip they say grows: the input clock is not behind and must not jump, or the
+  // Its inputs then come late while the client goes on sending: the input clock is not behind and must not jump, or the
   // aircraft is drawn leaping ahead by the ticks it could not step and then standing still while the clock comes back.
+  // And the server flies on with the pilot's last input through it, rather than braking, so nothing is corrected.
   const h = new Harness({}, 3, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(16)) });
   try {
     const s = h.join("pilot", { tcp: true, latencyMs: 30 }); h.run(1200);
@@ -74,7 +75,7 @@ test("a line that holds the pilot's inputs back neither throws a fast helicopter
     expect(Math.hypot(s.own.vx, s.own.vz)).toBeGreaterThan(40);
     const end = h.ends[0]!, send = end.send.bind(end), held: [number, Uint8Array][] = [];
     const drawn = (): number => s.ownPrev.z + (s.own.z - s.ownPrev.z) * s.alpha + s.smoothZ;
-    const jumps = s.stats.clockJumps;
+    const jumps = s.stats.clockJumps, corrections = s.stats.corrections;
     let was = NaN, most = 0, least = Infinity;
     // Called before each frame's update, so the first call sees the frame before.
     const watch = (): void => { const z = drawn(); if (!Number.isNaN(was)) { most = Math.max(most, z - was); least = Math.min(least, z - was); } was = z; };
@@ -85,6 +86,7 @@ test("a line that holds the pilot's inputs back neither throws a fast helicopter
     for (const [channel, data] of held) send(channel, data);
     h.run(4000, watch);
     expect(s.stats.clockJumps - jumps).toBe(0);
+    expect(s.stats.corrections - corrections).toBe(0);
     // About 0.75 m a frame at 45 m/s.
     expect(most).toBeLessThan(1.5);
     expect(least).toBeGreaterThan(0.3);

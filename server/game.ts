@@ -15,6 +15,7 @@ import {
   HELLO_STATICS,
   HELLO_TICKET,
   INPUT_HOLD_TICKS,
+  VEHICLE_HOLD_TICKS,
   INPUT_KEPT,
   INPUT_WINDOW,
   InputBuffer,
@@ -257,7 +258,7 @@ export class Client {
   heldYaw = 0;
   heldPitch = 0;
   heldButtons = 0;
-  /** The tick its last input was for. Past INPUT_HOLD_TICKS without another, the body stops. */
+  /** The tick its last input was for. Past INPUT_HOLD_TICKS without another, the body stops; a vehicle driven, VEHICLE_HOLD_TICKS. */
   inputAt = 0;
   /** Buttons that went down this tick. */
   pressed = 0;
@@ -520,6 +521,11 @@ export class GameServer {
     this.handlers[op] = fn;
   }
 
+  /** How long a client's last input goes on when none comes: longer for a vehicle it drives or flies. */
+  private holdTicks(c: Client): number {
+    return c.drive >= 0 && this.world.reg.vehicle[this.world.ents.kind[c.drive]!] ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS;
+  }
+
   tick(): void {
     const world = this.world;
     const ents = world.ents;
@@ -548,7 +554,7 @@ export class GameServer {
       } else {
         this.stats.heldInputs++;
         // A client gone quiet, a hidden tab for one, stops where it is and keeps only its stance.
-        if (T - c.inputAt > INPUT_HOLD_TICKS) {
+        if (T - c.inputAt > this.holdTicks(c)) {
           c.heldX = c.heldZ = 0;
           c.heldButtons &= INPUT_KEPT;
         }
@@ -567,7 +573,7 @@ export class GameServer {
         // Who sits in a seat of a car or a saddle and does not steer it is held there; a carried body has no seat slot.
         const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 && ents.gen[parent] === ents.seatGen[e];
         if (vehicle) {
-          const quiet = c.closed || T - c.inputAt > INPUT_HOLD_TICKS;
+          const quiet = c.closed || T - c.inputAt > VEHICLE_HOLD_TICKS;
           stepVehicleBody(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.

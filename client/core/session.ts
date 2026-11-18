@@ -16,6 +16,7 @@ import {
   HELLO_SPECTATE,
   HELLO_STATICS,
   INPUT_HOLD_TICKS,
+  VEHICLE_HOLD_TICKS,
   INPUT_KEPT,
   INPUT_REDUNDANCY,
   InputBuffer,
@@ -264,7 +265,7 @@ const INITIAL_LEAD = 4;
  */
 const TARGET_MARGIN = 1;
 const MARGIN_CAP = 5;
-/** Ticks the round trip may grow over the window's least before late inputs say the line held them back. */
+/** Ticks more of its sent inputs than the window's least the server may lack before late inputs say the line held them back. */
 const STALL_TICKS = 4;
 const MARGIN_WINDOW = 90;
 const MAX_STEPS_PER_UPDATE = 8;
@@ -574,10 +575,13 @@ export class ClientSession {
   private readonly aheadAt = new Int32Array(8).fill(-1);
   /** A frame came late, and the render clock has not yet come back to the snapshots. */
   private hitch = false;
-  /** The margins reported, by their snapshot's tick, and the round trip each says (NaN where the margin is a bound). */
+  /**
+   * The margins reported, by their snapshot's tick, and how many inputs this client had sent past the newest the server had
+   * then, as each came (NaN where the margin is a bound).
+   */
   private readonly margins = new Int8Array(128);
   private readonly marginAt = new Uint32Array(128);
-  private readonly marginRtt = new Float32Array(128);
+  private readonly marginHeld = new Float32Array(128);
   private needFull = true;
   /** The newest input sent, and the snapshot it acknowledged. */
   private sentInput = 0;
@@ -1538,14 +1542,14 @@ export class ClientSession {
     if (margin !== MARGIN_UNKNOWN) {
       this.stats.margin = margin;
       // At either end of its range the margin is a bound, not a measurement.
-      const rtt = margin > -127 && margin < 127 ? this.simTick - tick - margin : NaN;
-      if (!Number.isNaN(rtt)) this.stats.rttTicks = rtt;
+      const bound = margin <= -127 || margin >= 127;
+      if (!bound) this.stats.rttTicks = this.simTick - tick - margin;
       if (this.simTick >= this.guardTick) {
         this.margins[tick & 127] = margin;
         this.marginAt[tick & 127] = tick;
-        this.marginRtt[tick & 127] = rtt;
-        // The least and most of the window, and of its last quarter second; the least round trip of the window, and the
-        // most of its last quarter second.
+        this.marginHeld[tick & 127] = bound ? NaN : this.sentInput - tick - margin;
+        // The least and most of the window, and of its last quarter second; the fewest inputs in flight of the window, and
+        // the most of its last quarter second.
         let lo = 127;
         let hi = -127;
         let nowLo = 127;
@@ -1558,17 +1562,18 @@ export class ClientSession {
           const m = this.margins[i]!;
           if (m < lo) lo = m;
           if (m > hi) hi = m;
-          if (this.marginRtt[i]! < least) least = this.marginRtt[i]!;
+          if (this.marginHeld[i]! < least) least = this.marginHeld[i]!;
           if (this.marginAt[i]! + 8 > tick) {
             if (m < nowLo) nowLo = m;
             if (m > nowHi) nowHi = m;
-            if (this.marginRtt[i]! > most) most = this.marginRtt[i]!;
+            if (this.marginHeld[i]! > most) most = this.marginHeld[i]!;
             n++;
           }
         }
         // Far off is every input late for a quarter second, or every one early. That moves the best of them, or the worst, to
-        // the target. A clock behind sends its inputs late and they arrive a round trip after they were sent; inputs the line
-        // held back arrive later than that, the round trip they say grown, and the clock is not the cause.
+        // the target. Late inputs the client did not send, a page stopped or a clock behind, are a reason to jump. Late
+        // inputs it sent that the line holds back are not: then the server lacks more of those sent than it did, as it
+        // never does while it lacks only those not sent.
         const behind = n >= 4 && nowHi < 0 && !(most > least + STALL_TICKS);
         if (behind || (n >= 4 && nowLo >= TARGET_MARGIN + 7)) {
           this.marginAt.fill(0);
@@ -1579,7 +1584,7 @@ export class ClientSession {
           // The next snapshot supplies the body. Short of that, the inputs already sent stand, and the server's margin is
           // the newest of them until one past them is sent on the new clock.
           const at = Math.floor(this.tickClock);
-          let from = Math.max(at, this.simTick);
+          let from = Math.max(at, this.sentInput);
           if (this.simTick - at > TICK_RATE) {
             this.simTick = from = at;
             this.bodyTick.fill(0);
@@ -1672,9 +1677,9 @@ export class ClientSession {
         gap = 0;
       } else if (last !== 0) {
         const i = last & this.inputs.mask;
-        const held = ++gap <= INPUT_HOLD_TICKS;
         // Past the hold the server stops a quiet car on its handbrake (server/game.ts); replay the same.
         const vehicle = this.registry.vehicle[this.own.kind];
+        const held = ++gap <= (vehicle && this.driving >= 0 ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS);
         const quiet = vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : this.inputs.buttons[i]! & INPUT_KEPT;
         pilot = held;
         this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, held ? this.inputs.buttons[i]! & BUTTON_MASK : quiet);
