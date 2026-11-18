@@ -32,7 +32,7 @@ import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./
 
 const ROOT = resolve(import.meta.dir, "../..");
 
-export async function buildMap(named: string, release = false): Promise<{ file: string; stats: Record<string, unknown> }> {
+export async function buildMap(named: string, release = false, output = join(ROOT, "var/maps")): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}`);
   const source = named.includes("/") ? resolve(named) : join(ROOT, "assets/source/maps", named);
@@ -105,7 +105,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
-  const layers = join(ROOT, "var/maps", name, "layers");
+  const layers = join(output, name, "layers");
   rmSync(layers, { recursive: true, force: true });
   mkdirSync(layers, { recursive: true });
   const put = (file: string, data: string | Uint8Array): void => writeFileSync(join(layers, file), data);
@@ -184,7 +184,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
   map = { ...map, tops: mapTops(map, reg) };
   lap(`the far feed's cells of ${map.tops!.chunks.length} chunks, for the overviews' tops`);
   const bytes = writeMap(map);
-  const file = join(ROOT, "var/maps", `${name}.snmap`);
+  const file = join(output, `${name}.snmap`);
   const built = (performance.now() - t0) / 1000;
   const packed = await writeMapFile(file, bytes, release);
   lap(`map file ${file} and its parts' files with their copies for the wire`);
@@ -281,7 +281,7 @@ export async function buildMap(named: string, release = false): Promise<{ file: 
     regions: { count: regions.length, creaturesAt1x: regions.reduce((a, r) => a + r.count, 0), beach: regions.filter((r) => r.spawns === "core:spawns_beach").reduce((a, r) => a + r.count, 0) },
     surfaceSquareMetres: surfaces,
   };
-  writeFileSync(join(ROOT, "var/maps", name, "stats.json"), `${JSON.stringify(stats, null, 2)}\n`);
+  writeFileSync(join(output, name, "stats.json"), `${JSON.stringify(stats, null, 2)}\n`);
   lap("numbers");
   return { file, stats };
 }

@@ -10,7 +10,7 @@ import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { chunkCount, chunkCx, chunkCz, TICK_RATE } from "../shared/coords.ts";
-import type { NodeField, NodeSpot } from "../shared/world/nodes.ts";
+import type { NodeField, NodeSpot, NodeSource } from "../shared/world/nodes.ts";
 import { HIT_NODE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { ROLE_FOUNDATION, ROLE_PILLAR } from "../shared/world/snap.ts";
 import { Found } from "../shared/world/structures.ts";
@@ -22,6 +22,7 @@ import type { Rules } from "./settings/rules.ts";
 import type { Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
+import { TreeClearance } from "./tree-clearance.ts";
 
 export const DEADLINE_NODE = 3;
 /** The chunk blobs that hold used-up nodes. */
@@ -42,8 +43,12 @@ const RETRY_TICKS = 30 * TICK_RATE;
  */
 export const NODES_TOLD = 6;
 
+const NODE_HARVESTED = 0, NODE_CRUSHED = 1;
+
 interface Touched {
   hits: number;
+  /** Physical breakage clears the stump as well; harvesting retains the authored depleted form. */
+  crushed: boolean;
   /** Tick it grows back, or 0 while it still stands. */
   respawnAt: number;
 }
@@ -77,9 +82,10 @@ export class Harvest {
   private readonly spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
   private readonly per: number;
   private readonly found = new Found();
+  private readonly clearance: TreeClearance;
 
   constructor(world: ServerWorld, game: GameServer, records: Records, items: Items, progression: Progression, deadlines: DeadlineHeap, seed: number) {
-    this.world = world;
+    this.world = world; this.clearance = new TreeClearance(world);
     this.game = game;
     this.records = records;
     this.items = items;
@@ -87,9 +93,12 @@ export class Harvest {
     this.deadlines = deadlines;
     this.field = world.nodeField!;
     this.per = this.field.source.perChunk;
-    this.version = new Uint32Array(chunkCount(world.dims));
+    // Send an explicit initial empty state too: an observer can then distinguish its first witnessed
+    // break from depletion that predated joining, and must not replay old break sounds or particles.
+    this.version = new Uint32Array(chunkCount(world.dims)).fill(1);
     this.rng = new Rng(seed);
     world.unloaded!.usedUp = (chunk, index) => this.regrowsAt(chunk, index) > 0;
+    world.unloaded!.crushed = (chunk, index) => this.crushed(chunk, index);
   }
 
   private key(chunk: number, index: number): number {
@@ -97,13 +106,15 @@ export class Harvest {
   }
 
   /** A focus entered (delta 1) or left (delta -1) the chunks within `radius` of `center`. */
-  retain(center: number, radius: number, delta: number): void {
+  retain(center: number, radius: number, delta: number, source?: NodeSource): void {
     this.field.retain(
       center,
       radius,
       delta,
       (chunk, index) => (this.touched.get(this.key(chunk, index))?.respawnAt ?? 0) > 0,
       (chunk, index) => this.touched.get(this.key(chunk, index))?.hits ?? -1,
+      (chunk, index) => this.crushed(chunk, index),
+      source,
     );
   }
 
@@ -139,6 +150,22 @@ export class Harvest {
   strike(c: Client, chunk: number, index: number): boolean {
     const kind = this.field.standing(chunk, index);
     return kind !== 0 && this.hit(c, chunk, index, (this.world.reg.defs[kind] as NodeDef).material === undefined);
+  }
+
+  /** Physical destruction uses the same depletion/save/regrowth feed, without items, XP or harvesting callbacks.
+   * The map source also identifies an untouched tree in a chunk that no survivor has loaded. */
+  breakTree(chunk: number, index: number): boolean {
+    if (!Number.isInteger(chunk) || chunk < 0 || chunk >= this.version.length || !Number.isInteger(index) || index < 0 || index >= this.per) return false;
+    const kind = this.field.kindAt(chunk, index), def = this.world.reg.defs[kind];
+    if (def?.type !== "node" || def.material !== "wood") return false;
+    const prior = this.touched.get(this.key(chunk, index));
+    if (prior?.respawnAt) {
+      this.field.source.at(chunk, index, this.spot);
+      if (prior.crushed || !this.field.forms.left[this.spot.form]) return false;
+      prior.crushed = true; this.field.set(chunk, index, false, true); this.dirty.add(chunk);
+      this.version[chunk] = this.version[chunk]! + 1; return true;
+    }
+    this.deplete(chunk, index, def, true); return true;
   }
 
   private hit(c: Client, chunk: number, index: number, byHand: boolean): boolean {
@@ -191,15 +218,21 @@ export class Harvest {
     this.dirty.add(chunk);
     if (left > 0) {
       table.hp[index] = left;
-      this.touched.set(k, { hits: left, respawnAt: 0 });
+      this.touched.set(k, { hits: left, respawnAt: 0, crushed: false });
       return true;
     }
-    const respawnAt = world.tick + Math.max(1, Math.round(def.respawnHours * GAME_HOUR_TICKS * (rules ? rules.num("ResourcesRespawnPeriodMultiplier") : 1)));
-    this.touched.set(k, { hits: 0, respawnAt });
-    this.field.set(chunk, index, false);
+    this.deplete(chunk, index, def);
+    return true;
+  }
+
+  private deplete(chunk: number, index: number, def: NodeDef, crushed = false): void {
+    const k = this.key(chunk, index);
+    const respawnAt = this.world.tick + Math.max(1, Math.round(def.respawnHours * GAME_HOUR_TICKS * (this.rules ? this.rules.num("ResourcesRespawnPeriodMultiplier") : 1)));
+    this.touched.set(k, { hits: 0, respawnAt, crushed });
+    this.dirty.add(chunk);
+    this.field.set(chunk, index, false, crushed);
     this.version[chunk] = this.version[chunk]! + 1;
     this.deadlines.push(respawnAt, DEADLINE_NODE, k, respawnAt);
-    return true;
   }
 
   /** A DEADLINE_NODE entry came due. */
@@ -209,7 +242,7 @@ export class Harvest {
     const chunk = key >> 8;
     const index = key & 255;
     this.field.source.at(chunk, index, this.spot);
-    if (this.held(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!)) {
+    if ((!t.crushed && this.held(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!)) || this.clearance.blocked(this.spot, t.crushed)) {
       t.respawnAt = this.world.tick + RETRY_TICKS;
       this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
       this.dirty.add(chunk);
@@ -256,7 +289,7 @@ export class Harvest {
     for (const key of this.touched.keys()) this.dirty.add(Math.floor(key / 256));
   }
 
-  /** A chunk's touched nodes for saving, or null if it has none. Layout: a count, then slot, hits and respawnAt for each. */
+  /** A chunk's touched nodes for saving, or null if it has none. Layout: count, then slot, remaining hits (or depletion mode) and respawnAt. */
   encode(chunk: number): Uint8Array | null {
     const slots: number[] = [];
     for (let i = 0; i < this.per; i++) if (this.touched.has(this.key(chunk, i))) slots.push(i);
@@ -266,7 +299,8 @@ export class Harvest {
     for (const i of slots) {
       const t = this.touched.get(this.key(chunk, i))!;
       w.u8(i);
-      w.varint(t.hits);
+      // While depleted this field stores the depletion mode; living rows keep remaining hits.
+      w.varint(t.respawnAt > 0 ? (t.crushed ? NODE_CRUSHED : NODE_HARVESTED) : t.hits);
       w.uint53(t.respawnAt);
     }
     return w.bytes().slice();
@@ -275,6 +309,10 @@ export class Harvest {
   /** 0 for a node that is not used up. */
   regrowsAt(chunk: number, index: number): number {
     return this.touched.get(this.key(chunk, index))?.respawnAt ?? 0;
+  }
+
+  crushed(chunk: number, index: number): boolean {
+    return this.touched.get(this.key(chunk, index))?.crushed ?? false;
   }
 
   /** The respawn multiplier was `was` when these nodes were used up. Rescales the time each has left to the current rule. */
@@ -294,10 +332,12 @@ export class Harvest {
     const r = new BitReader(data);
     for (let n = r.varint(); n > 0 && !r.overflow; n--) {
       const index = r.u8();
-      const hits = r.varint();
+      const value = r.varint();
       const respawnAt = r.uint53();
+      if (respawnAt > 0 && value !== NODE_HARVESTED && value !== NODE_CRUSHED) throw new Error("invalid saved node depletion mode");
+      const crushed = respawnAt > 0 && value === NODE_CRUSHED, hits = respawnAt > 0 ? 0 : value;
       if (r.overflow) return;
-      this.touched.set(this.key(chunk, index), { hits, respawnAt });
+      this.touched.set(this.key(chunk, index), { hits, respawnAt, crushed });
       if (respawnAt > 0) {
         this.version[chunk] = this.version[chunk]! + 1;
         this.deadlines.push(respawnAt, DEADLINE_NODE, this.key(chunk, index), respawnAt);
@@ -325,6 +365,7 @@ export class Harvest {
         for (let i = 0; i < this.per; i++) {
           if ((this.touched.get(this.key(chunk, i))?.respawnAt ?? 0) === 0) continue;
           w.u8(i);
+          w.bool(this.crushed(chunk, i));
           n++;
         }
         const end = w.pos;

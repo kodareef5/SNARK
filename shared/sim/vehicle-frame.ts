@@ -48,6 +48,43 @@ export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: numb
   return rayBox(cs * rx - sn * rz, oy - y, sn * rx + cs * rz, cs * dx - sn * dz, dy, sn * dx + cs * dz, -s.halfWidth, 0, -s.halfLength, s.halfWidth, top, s.halfLength);
 }
 
+/** A two-sided authored triangle, tested in chassis space so inversion needs no special case. */
+function panelTriangle(a: ArrayLike<number>, b: ArrayLike<number>, c: ArrayLike<number>): number {
+  const dx = rayDirection[0]!, dy = rayDirection[1]!, dz = rayDirection[2]!;
+  const ux = b[0]! - a[0]!, uy = b[1]! - a[1]!, uz = b[2]! - a[2]!;
+  const vx = c[0]! - a[0]!, vy = c[1]! - a[1]!, vz = c[2]! - a[2]!;
+  const px = dy * vz - dz * vy, py = dz * vx - dx * vz, pz = dx * vy - dy * vx;
+  const det = ux * px + uy * py + uz * pz;
+  if (Math.abs(det) < 1e-9) return Infinity;
+  const x = rayOrigin[0]! - a[0]!, y = rayOrigin[1]! - a[1]!, z = rayOrigin[2]! - a[2]!;
+  const u = (x * px + y * py + z * pz) / det;
+  if (u < 0 || u > 1) return Infinity;
+  const qx = y * uz - z * uy, qy = z * ux - x * uz, qz = x * uy - y * ux;
+  const v = (dx * qx + dy * qy + dz * qz) / det;
+  if (v < 0 || u + v > 1) return Infinity;
+  const t = (vx * qx + vy * qy + vz * qz) / det;
+  return t >= 0 ? t : Infinity;
+}
+
+/** Projectiles and aiming beams share the same cabin openings and historical attitude. */
+export function rayVehicleCover(def: VehicleDefinition, x: number, y: number, z: number, yaw: number,
+  ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, attitude: Omit<VehicleFrame, "x" | "y" | "z" | "yaw">): number {
+  let t = rayVehicle(def, x, y, z, yaw, ox, oy, oz, dx, dy, dz, def.beltline, attitude);
+  if (!def.shotPanels || t === 0) return t;
+  // The hull just prepared the local ray when given a quaternion. Also support callers with Euler attitude only.
+  if (attitude.qx === undefined || attitude.qy === undefined || attitude.qz === undefined || attitude.qw === undefined) {
+    vehicleRotation({ x, y, z, yaw, pitch: attitude.pitch, roll: attitude.roll }, rayRotation);
+    quatUnrotate(rayRotation, 0, ox - x, oy - y, oz - z, rayOrigin, 0);
+    quatUnrotate(rayRotation, 0, dx, dy, dz, rayDirection, 0);
+  }
+  const s = def.spec;
+  const near = rayBox(rayOrigin[0]!, rayOrigin[1]!, rayOrigin[2]!, rayDirection[0]!, rayDirection[1]!, rayDirection[2]!,
+    -s.halfWidth, def.beltline, -s.halfLength, s.halfWidth, s.height, s.halfLength);
+  if (near >= t) return t;
+  for (const [a,b,c,d] of def.shotPanels) t = Math.min(t, panelTriangle(a,b,c), panelTriangle(a,c,d));
+  return t;
+}
+
 export interface VehicleFrame { x: number; y: number; z: number; yaw: number; pitch: number; roll: number; qx?: number; qy?: number; qz?: number; qw?: number; steering?: number }
 const rayRotation = new Float64Array(4), rayOrigin = new Float64Array(3), rayDirection = new Float64Array(3);
 const yaw = new Float64Array(4), roll = new Float64Array(4), pitch = new Float64Array(4), rotation = new Float64Array(4);

@@ -5,15 +5,16 @@ import type { SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
 import { createMountMotion, mountOrigin, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
+import { occupantPose, type OccupantSeat } from "../../../shared/anim/occupant.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import type { VehicleDefinition } from "../../../shared/sim/vehicle.ts";
-import { quatAxis, quatMul, quatRotate, quatUnrotate } from "../../../shared/math/quat.ts";
-import { B_HEAD, B_NECK, B_SPINE, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
+import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
+import { SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
-import { AnimState, HumanAnim, PITCH_STEPS, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
+import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { MODE_FLYER, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
@@ -89,7 +90,7 @@ export interface VehicleRenderPose {
   doors?: number;
 }
 /** The pelvis target in camera-relative world space; the character's own rest proportions determine its origin. */
-export interface VehicleSeatPose extends VehicleRenderPose {
+export interface VehicleSeatPose extends VehicleRenderPose, OccupantSeat {
   x: number; y: number; z: number; yaw: number; driver: boolean; aimYaw?: number;
   /** The road wheels' steering as a share of the vehicle's most, -1 to 1, for the driver's arms. */
   steer: number;
@@ -223,9 +224,8 @@ export class Characters {
   private readonly groundRotation = new Float64Array(4);
   private readonly wheel = new Float64Array(4);
   private readonly steer = new Float64Array(4);
-  private readonly localLook = new Float64Array(3);
+  private readonly seatState = new AnimState();
   private readonly origin = new Float64Array(3);
-  private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly lookColor = new Uint8Array(6);
   /** Scratch: a body's look, a vehicle's frame for its turn, a seat's place and what a seated body is posed from. */
   private readonly lookView = new Uint8Array(LOOK_BYTES);
@@ -440,16 +440,14 @@ export class Characters {
     return out;
   }
 
-  /** Root on a seat, using the same body binding/proportions and pelvis solve as add(). Does not emit a draw. */
-  seatedOrigin(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: Float64Array | number[]): boolean {
+  /** Root on a seat, using the canonical proportions for the camera (D54). Does not emit a draw. */
+  seatedOrigin(kind: number, seat: VehicleSeatPose, out: Float64Array | number[], st = this.seatState, tick = 0): boolean {
     const k = this.kinds[kind];
     if (!k) return false;
-    const view = look ?? (k.sets.length > 1 ? PLAIN : null);
-    const set = k.sets[view && view[LOOK_SEX]! < k.sets.length ? view[LOOK_SEX]! : 0]!;
-    this.seatedPose(seat.role ?? (seat.driver ? "drive" : "passenger"), 0, seat.steer, undefined);
-    if (view) lookScales(view, this.scales);
-    solve(HUMAN, this.pose, this.solved, set.rest, view ? this.scales : null);
-    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, view ? this.scales : null, seat.definition, seat.steering);
+    const set = k.sets[0]!;
+    occupantPose(this.anim, st, tick, this.pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver);
+    solve(HUMAN, this.pose, this.solved, set.rest);
+    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, null, seat.definition, seat.steering);
     vehicleRotation(seat, this.rotation);
     this.seatPlace[0] = seat.x;
     this.seatPlace[1] = seat.y;
@@ -458,9 +456,9 @@ export class Characters {
     return true;
   }
 
-  /** Eye in the posed head, for enclosed seats where weapons are stowed. Scales with the survivor's actual proportions. */
-  seatedEye(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: Float64Array): boolean {
-    if (!this.seatedOrigin(kind, look, seat, out)) return false;
+  /** Eye in the posed head, for enclosed seats where weapons are stowed. */
+  seatedEye(kind: number, seat: VehicleSeatPose, out: Float64Array, st = this.seatState, tick = 0): boolean {
+    if (!this.seatedOrigin(kind, seat, out, st, tick)) return false;
     const x = out[0]!, y = out[1]!, z = out[2]!;
     boneToModel(this.solved, SOCKET_EYE.bone, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, out);
     quatRotate(this.rotation, 0, out[0]!, out[1]!, out[2]!, out, 0);
@@ -1144,38 +1142,8 @@ export class Characters {
    * vehicle's, aiming from there, and stretched by its look's `scales`.
    */
   private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved): void {
-    humanPose(this.anim, st, tick, this.pose, g);
-    const enclosed = vehicleSeat?.role === "pilot" || vehicleSeat?.role === "cabin";
-    if (vehicleSeat) this.seatedPose(vehicleSeat.role ?? (vehicleSeat.driver ? "drive" : "passenger"), tick, vehicleSeat.steer, !enclosed && !vehicleSeat.driver ? this.pose : undefined);
-    else if (seat) {
-      this.seatedPose("ride", 0, undefined, steers ? undefined : this.pose);
-      if (!steers) {
-        // A passenger turns at the waist toward where it looks, from the way its seat faces.
-        const facing = Math.atan2(seat[seatAt + 2]!, seat[seatAt + 8]!);
-        const turn = Math.atan2(Math.sin(yaw - facing), Math.cos(yaw - facing));
-        quatAxis(this.steer, 0, 0, 1, 0, Math.max(-1.2, Math.min(1.2, turn)));
-        quatMul(this.pose.rot, B_SPINE * 4, this.steer, 0, this.pose.rot, B_SPINE * 4);
-      }
-    }
-    if (vehicleSeat && (!vehicleSeat.driver || vehicleSeat.role === "pilot") && vehicleSeat.aimYaw !== undefined) {
-      let turn = Math.atan2(Math.sin(vehicleSeat.aimYaw - vehicleSeat.yaw), Math.cos(vehicleSeat.aimYaw - vehicleSeat.yaw));
-      if (enclosed) {
-        // Inputs/observer look are in world space. Only after unrotating by the complete cabin attitude may
-        // those angles turn a seated neck; subtracting world yaw reverses the gaze through a loop or bank.
-        const pitch = st.pitch / PITCH_STEPS * Math.PI / 2, cp = Math.cos(pitch);
-        vehicleRotation(vehicleSeat, this.rotation);
-        quatUnrotate(this.rotation, 0, Math.sin(vehicleSeat.aimYaw) * cp, Math.sin(pitch), Math.cos(vehicleSeat.aimYaw) * cp, this.localLook, 0);
-        turn = Math.atan2(this.localLook[0]!, this.localLook[2]!);
-        const tilt = Math.max(-.75, Math.min(.75, Math.atan2(this.localLook[1]!, Math.hypot(this.localLook[0]!, this.localLook[2]!))));
-        quatAxis(this.steer, 0, 1, 0, 0, -tilt * .35);
-        quatMul(this.pose.rot, B_NECK * 4, this.steer, 0, this.pose.rot, B_NECK * 4);
-        quatAxis(this.steer, 0, 1, 0, 0, -tilt * .65);
-        quatMul(this.pose.rot, B_HEAD * 4, this.steer, 0, this.pose.rot, B_HEAD * 4);
-      }
-      const joint = enclosed ? B_HEAD : B_SPINE, limit = enclosed ? .8 : 1.2;
-      quatAxis(this.steer, 0, 0, 1, 0, Math.max(-limit, Math.min(limit, turn)));
-      quatMul(this.pose.rot, joint * 4, this.steer, 0, this.pose.rot, joint * 4);
-    }
+    if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount);
+    else humanPose(this.anim, st, tick, this.pose, g);
     // Longer legs lift the hips, so the feet stay on the ground.
     if (scales && !seat && !vehicleSeat) this.pose.root[1]! += lookLift(scales, set.rest);
     solve(HUMAN, this.pose, solved, set.rest, scales);

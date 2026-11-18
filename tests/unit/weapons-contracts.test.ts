@@ -26,8 +26,8 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   // 14 is the cluster's, which took CMD_TRAVEL (31), 15 the beds', 16 the flyers' (tests/unit/contracts.test.ts), 17 the
   // stations wave's, for OWN_STATION's layout (tests/unit/stations-contracts.test.ts), and 18 the vehicles'
   // (tests/integration/vehicle-contracts.test.ts); 19 adds rotorcraft state and CMD_VEHICLE (32); 21 the compact chunk rows; 22 CMD_STATICS (33);
-  // 24 S_MOTION's states told a part at a time; 25 adds S_CORPSE and CMD_CORPSE (34); 26 adds car recovery actions.
-  expect(P.PROTOCOL_VERSION).toBe(26);
+  // 24 S_MOTION's states told a part at a time; 25 adds S_CORPSE and CMD_CORPSE (34); 26 adds car recovery actions; 27 added crushed nodes and contact facts; 28 limits those facts to public motion.
+  expect(P.PROTOCOL_VERSION).toBe(28);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([34, 16, 7, 10]);
@@ -35,9 +35,9 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   expect([P.SLOT_BLUEPRINT, P.SLOT_ON, FLAG_BLUEPRINT, FLAG_ON]).toEqual([1, 2, 1, 2]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
   expect(Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))).toBe(22);
-  // DEADLINE_ 14 is W5's if a cloud's end needs one; 12 and 13 stay the item program's, unused.
+  // DEADLINE_ 14 is W5's if a cloud's end needs one; 12 and 13 stay the item program's, unused; 15 is the found cars' return.
   const deadlines = readdirSync(join(root, "server")).filter((f) => f.endsWith(".ts")).flatMap((f) => [...readFileSync(join(root, "server", f), "utf8").matchAll(/export const DEADLINE_\w+ = (\d+);/g)].map((m) => Number(m[1])));
-  expect(deadlines.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  expect(deadlines.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15]);
 });
 
 test("a body's bloom and kick travel with it, and every body today has none", () => {
