@@ -75,7 +75,7 @@ export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "stop_bent", color: RED, hp: 300, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 0.5, -0.04, 0.04)], hulls: [tilted(box(-0.04, 0.04, 0.5, 2.9, -0.04, 0.04), -40, 0.5), tilted(box(-0.38, 0.38, 2.1, 2.86, 0.04, 0.08), -40, 0.5)] },
   { name: "street_name", color: GREEN, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 3.1, -0.04, 0.04), box(-0.46, 0.46, 2.75, 2.95, -0.02, 0.02), box(-0.02, 0.02, 2.97, 3.17, -0.46, 0.46)] },
   { name: "speed", color: WHITE, hp: 400, material: "core:mat_metal", boxes: [POST, box(-0.31, 0.31, 2.1, 2.86, 0.04, 0.08)] },
-  { name: "evacuation", color: BLUE, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 3.05, -0.04, 0.04), box(-0.38, 0.38, 1.92, 3.01, 0.04, 0.08)] },
+  { name: "evacuation", color: BLUE, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.7, -0.04, 0.04), box(-0.31, 0.31, 2.1, 2.71, 0.04, 0.08)] },
   { name: "pole", color: WOOD, hp: 2500, material: "core:mat_wood", boxes: [POLE, CROSSARM, TRANSFORMER] },
   // Leaning 12 degrees away from the road.
   { name: "pole_leaning", color: WOOD, hp: 2500, material: "core:mat_wood", boxes: [box(-0.2, 0.2, 0, 0.3, -0.2, 0.2)], hulls: [tilted(POLE, -12), tilted(CROSSARM, -12), tilted(TRANSFORMER, -12)] },

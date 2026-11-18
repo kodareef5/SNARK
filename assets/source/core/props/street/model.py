@@ -203,11 +203,10 @@ def speed():
 
 @piece("evacuation")
 def evacuation():
+    # EM-1, 24 inches square, its foot at 2.1 m.
     m = Mesh()
-    post(m, 2.98)
-    panel(m, (0, 2.63, 0.045), 0.76, 0.76, 0.012, "+z", ("street", "evacuation"))
-    panel(m, (0, 2.1, 0.045), 0.76, 0.19, 0.012, "+z", ("street", "arrow"))
-    return m
+    post(m, 2.68)
+    return panel(m, (0, 2.405, 0.045), 0.61, 0.61, 0.012, "+z", ("street", "evacuation"))
 
 
 # The wooden utility pole: a crossarm across the line (along z), three insulators, a transformer can on its back.
