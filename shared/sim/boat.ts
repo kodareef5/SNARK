@@ -191,7 +191,11 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
     quatRotate(q, 0, p.centerOfMass[0], p.centerOfMass[1], p.centerOfMass[2], point, 0);
     s.x += s.vx * dt + com[0]! - point[0]!; s.y += s.vy * dt + com[1]! - point[1]!; s.z += s.vz * dt + com[2]! - point[2]!;
     writeRotation(s);
-    resolveVehicleContacts(s, previous, p, contacts, dt, result);
+    if (resolveVehicleContacts(s, previous, p, contacts, dt, result)) {
+      // A beached hull cannot accumulate speed from force projected along a rejected terrain-plane remainder.
+      // Clear translation only after every bounded linear sweep failed; a clear sideways/reverse path keeps its impulse.
+      s.vx = s.vy = s.vz = 0;
+    }
     touching ||= s.grounded;
     s.vx = clamp(s.vx, -100, 100); s.vy = clamp(s.vy, -80, 80); s.vz = clamp(s.vz, -100, 100);
     s.pitchRate = clamp(s.pitchRate, -4, 4); s.yawRate = clamp(s.yawRate, -4, 4); s.rollRate = clamp(s.rollRate, -4, 4);

@@ -29,12 +29,13 @@ export function separateVehicleOverlap<S extends VehicleState>(s: S, w: VehicleC
   }
 }
 
-export function resolveVehicleContacts<S extends VehicleState, C extends VehicleContact>(s: S, prior: S, p: VehicleRigidSpec, w: VehicleContactQueries<S, C>, dt: number, result: VehicleContactStep): void {
+/** Returns true only when every bounded linear remainder sweep was obstructed. */
+export function resolveVehicleContacts<S extends VehicleState, C extends VehicleContact>(s: S, prior: S, p: VehicleRigidSpec, w: VehicleContactQueries<S, C>, dt: number, result: VehicleContactStep): boolean {
   let start = prior, remaining = dt;
   let nx = 0, ny = 0, nz = 0;
   for (let iteration = 0; iteration < 4; iteration++) {
     const raw = w.contact(start, s);
-    if (!raw) return;
+    if (!raw) return false;
     const hit = { ...raw }; let pointCount = 0;
     const savePoints = (contact: VehicleContact): void => {
       pointCount = Math.min(4, contact.points?.length ?? 0);
@@ -112,7 +113,7 @@ export function resolveVehicleContacts<S extends VehicleState, C extends Vehicle
   s.x = start.x; s.y = start.y; s.z = start.z; s.qx = start.qx; s.qy = start.qy; s.qz = start.qz; s.qw = start.qw;
   if (w.steeringJoint) s.steering = start.steering;
   const slide = { ...s, x: s.x + s.vx * remaining, y: s.y + s.vy * remaining, z: s.z + s.vz * remaining };
-  if (!w.contact(s, slide)) { s.x = slide.x; s.y = slide.y; s.z = slide.z; return; }
+  if (!w.contact(s, slide)) { s.x = slide.x; s.y = slide.y; s.z = slide.z; return false; }
   // The point may separate through rotation while the COM still enters the face. If that rotation was
   // rejected, the stored translation must obey the same constraint as the pose. Each additional face is
   // checked before accepting the tangent remainder; projections can only remove linear kinetic energy.
@@ -132,9 +133,12 @@ export function resolveVehicleContacts<S extends VehicleState, C extends Vehicle
       slide.x = s.x + s.vx * remaining; slide.y = s.y + s.vy * remaining; slide.z = s.z + s.vz * remaining;
     }
     const next = w.contact(s, slide);
-    if (!next) { s.x = slide.x; s.y = slide.y; s.z = slide.z; return; }
+    if (!next) { s.x = slide.x; s.y = slide.y; s.z = slide.z; return false; }
     nx = next.geometryNx ?? next.nx; ny = next.geometryNy ?? next.ny; nz = next.geometryNz ?? next.nz;
   }
+  // Every remaining linear direction was rejected by real geometry. Callers may retire that unexecuted
+  // translation rather than carrying it as momentum while a resting hull stays at the same pose.
+  return true;
 }
 
 const rows = new Float64Array(24);
