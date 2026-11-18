@@ -14,8 +14,12 @@
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
 // process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
 // prints each row's range.
+//
+// Miami's street on high is also run with the page's processor slowed four and six times by the browser's own
+// throttle, for our code's time. After a city run's report its GL calls are counted over COUNT_FRAMES frames by kind,
+// and with GPU_PROFILE naming a folder the page's processor is then profiled for PROFILE_MS into a file a run there.
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,7 +43,7 @@ type Row = (name: string, value: number, unit: string, budget?: number | null) =
 
 type Scene = "base" | "wood" | "flock" | "city";
 type View = "street" | "air";
-/** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off or the far layers. On the city, where and at how many device pixels to one. */
+/** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off or the far layers. On the city, where and at how many device pixels to one, and how many times slower the page's processor is made. */
 interface Run {
   scene: Scene;
   tier: string;
@@ -47,6 +51,7 @@ interface Run {
   off?: Effect | "far";
   view?: View;
   scale?: number;
+  cpu?: number;
 }
 const BASE_PIECES = 1024;
 
@@ -72,7 +77,96 @@ export function plan(): Run[] {
     for (const tier of ["medium", "high", "ultra"]) for (const scale of [1, 2]) runs.push({ scene: "city", view, tier, scale });
     for (const [tier, scale] of [["medium", 1], ["ultra", 2]] as const) for (const off of ["shadows", "far"] as const) runs.push({ scene: "city", view, tier, scale, off });
   }
+  for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
   return runs;
+}
+
+const COUNT_FRAMES = 30;
+const PROFILE_MS = 5000;
+/**
+ * Counts the page's GL calls over COUNT_FRAMES frames, by kind, a frame's on average: each method of the context and of
+ * its multi-draw extension wrapped from one frame's end to another's and put back. A call is said again where it sets a
+ * binding, a uniform, a pointer or a state to what the context holds. Of the draws, it counts those listed (a multi-draw
+ * call holds several), and those that could have gone in the call before them: with nothing but their run of indices
+ * changed in between, or with only a vertex array, its pointers and three-float uniforms (another level and offset).
+ */
+const COUNT_CALLS = `new Promise((done) => {
+  const kinds = [["draws", /^(multiD|d)raw(Arrays|Elements|RangeElements)/], ["uniforms", /^uniform[1-4M]/], ["binds", /^(bind|useProgram$|activeTexture$)/], ["pointers", /[vV]ertexAttrib/], ["state", /^(enable|disable|depth|cull|polygonOffset|blendFunc|viewport|clear|colorMask)/], ["other", /./]];
+  const calls = {}, again = {}, draws = { listed: 0, runs: 0, levels: 0 };
+  for (const [k] of kinds) calls[k] = again[k] = 0;
+  const ids = new WeakMap();
+  let made = 0;
+  const id = (o) => (o === null || typeof o !== "object" ? String(o) : ids.get(o) ?? (ids.set(o, "#" + ++made), ids.get(o)));
+  const text = (a) => a.map((v) => (ArrayBuffer.isView(v) ? Array.prototype.join.call(v) : id(v))).join("|");
+  const held = new Map();
+  let vao = null, unit = 0, shape = null, changed = 0, levelOnly = true;
+  const what = (name, a) => {
+    if (name === "useProgram") return ["program", id(a[0])];
+    if (name === "bindVertexArray") return ["vao", id(a[0])];
+    if (name === "activeTexture") return ["unit", String(a[0])];
+    if (name === "bindTexture") return ["texture " + unit + " " + a[0], id(a[1])];
+    if (name === "bindBuffer") return ["buffer " + a[0] + (a[0] === 0x8893 ? " " + id(vao) : ""), id(a[1])];
+    if (name === "bindFramebuffer") return ["framebuffer " + a[0], id(a[1])];
+    if (name === "enable" || name === "disable") return ["cap " + a[0], name];
+    if (/^uniform[1-4M]/.test(name)) return ["uniform " + id(a[0]), text(a.slice(1))];
+    if (/^vertexAttribI?Pointer$/.test(name)) return ["attribute " + id(vao) + " " + a[0], text(a.slice(1)) + " " + held.get("buffer 34962")];
+    if (/^(depthMask|depthFunc|depthRange|cullFace|polygonOffset|viewport|blendFuncSeparate|clearColor)$/.test(name)) return [name, text(a)];
+    return null;
+  };
+  const gl = document.querySelector("#view").getContext("webgl2");
+  const multi = gl.getExtension("WEBGL_multi_draw");
+  const saved = [];
+  for (const proto of [WebGL2RenderingContext.prototype, ...(multi ? [Object.getPrototypeOf(multi)] : [])]) for (const name of Object.getOwnPropertyNames(proto)) {
+    const d = Object.getOwnPropertyDescriptor(proto, name);
+    if (typeof d.value !== "function" || name === "constructor") continue;
+    const kind = kinds.find(([, r]) => r.test(name))[0], f = d.value;
+    saved.push([proto, name, d]);
+    proto[name] = function (...a) {
+      calls[kind]++;
+      const set = what(name, a), same = set !== null && held.get(set[0]) === set[1];
+      if (set) held.set(set[0], set[1]);
+      if (same) again[kind]++;
+      if (name === "bindVertexArray") vao = a[0];
+      if (name === "activeTexture") unit = a[0];
+      if (kind === "draws") {
+        const many = name === "multiDrawElementsInstancedWEBGL";
+        const now = name === "drawElementsInstanced" ? [a[0], a[2], a[4]].join() : many ? [a[0], a[3], a[6][a[7]]].join() : null;
+        draws.listed += many ? a[8] : 1;
+        if (now !== null && now === shape) { if (changed === 0) draws.runs++; else if (levelOnly) draws.levels++; }
+        [shape, changed, levelOnly] = [now, 0, true];
+      } else if (!same) {
+        changed++;
+        levelOnly &&= /^(bindVertexArray|bindBuffer|vertexAttribI?Pointer|uniform3f)$/.test(name);
+      }
+      return f.apply(this, a);
+    };
+  }
+  let n = 0;
+  const tick = () => {
+    if (n++ < ${COUNT_FRAMES}) return void requestAnimationFrame(tick);
+    for (const [proto, name, d] of saved) Object.defineProperty(proto, name, d);
+    const each = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v / ${COUNT_FRAMES})]));
+    done(JSON.stringify({ calls: each(calls), again: each(again), draws: each(draws) }));
+  };
+  requestAnimationFrame(tick);
+})`;
+
+/** The page of a Chrome started with a profile and a debugging port of its own: a call to it over the DevTools protocol. */
+async function devtools(profile: string): Promise<{ send: (method: string, params?: object) => Promise<any>; close: () => void }> {
+  const file = join(profile, "DevToolsActivePort");
+  for (let i = 0; i < 100 && !existsSync(file); i++) await Bun.sleep(100);
+  const port = Number(readFileSync(file, "utf8").split("\n")[0]);
+  const targets = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; webSocketDebuggerUrl: string }[];
+  const ws = new WebSocket(targets.find((t) => t.type === "page")!.webSocketDebuggerUrl);
+  await new Promise((open) => (ws.onopen = open));
+  const waiting = new Map<number, (result: any) => void>();
+  let id = 0;
+  ws.onmessage = (m) => {
+    const reply = JSON.parse(String(m.data));
+    waiting.get(reply.id)?.(reply.result);
+    waiting.delete(reply.id);
+  };
+  return { send: (method, params = {}) => new Promise((r) => (waiting.set(++id, r), ws.send(JSON.stringify({ id, method, params })))), close: () => ws.close() };
 }
 
 /** Holds every survivor on `server` at `p` as a ghost, still, from the moment it has a body. */
@@ -118,7 +212,7 @@ export function flock(server: ReturnType<typeof startServer>): number {
   return n;
 }
 
-const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}`;
+const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
 async function measure(runs: Run[], times: number, say: (line: string) => void): Promise<Map<string, Record<string, any>[]>> {
@@ -156,15 +250,32 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
         const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}`;
-        const report = new Promise<Record<string, any> | null>((done) => ((got = done), setTimeout(() => done(null), 150000)));
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), 150000 * (r.cpu ?? 1)))));
         const pixels = r.view ? ["--window-size=1920,1080", `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
-        const browser = Bun.spawn([CHROME!, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
+        rmSync(join(profile, "DevToolsActivePort"), { force: true });
+        const browser = Bun.spawn([CHROME!, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+        const page = await devtools(profile);
+        if (r.cpu) await page.send("Emulation.setCPUThrottlingRate", { rate: r.cpu });
+        await page.send("Page.navigate", { url: link });
         const result = await report;
+        clearTimeout(timer);
+        const counted = result && r.view ? await page.send("Runtime.evaluate", { expression: COUNT_CALLS, awaitPromise: true, returnByValue: true }) : null;
+        if (counted?.result?.value) result!.calls = JSON.parse(counted.result.value);
+        else if (counted) say(`${nameOf(r)}: the calls were not counted: ${counted.exceptionDetails?.exception?.description ?? "no answer"}`);
+        if (result && r.view && process.env.GPU_PROFILE) {
+          await page.send("Profiler.enable");
+          await page.send("Profiler.setSamplingInterval", { interval: 200 });
+          await page.send("Profiler.start");
+          await Bun.sleep(PROFILE_MS);
+          writeFileSync(join(process.env.GPU_PROFILE, `${nameOf(r)}.cpuprofile`), JSON.stringify((await page.send("Profiler.stop")).profile));
+        }
+        page.close();
         if (hold) clearInterval(hold);
         browser.kill();
         await browser.exited;
-        say(`${nameOf(r)}: ${result ? `${result.gpuMs?.frame?.median ?? "untimed"} ms on the GPU, ${result.frameMs.median} ms a frame, ${result.drawCalls} GL draws, ${result.triangles} triangles` : "no report"} (load ${loadavg()[0]!.toFixed(1)})`);
+        say(`${nameOf(r)}: ${result ? `${result.gpuMs?.frame?.median ?? "untimed"} ms on the GPU, ${result.frameMs.median} ms a frame, ${result.buildAndSubmitMs.median} ms ours, ${result.drawCalls} GL draws, ${result.triangles} triangles${result.calls ? `, a frame ${JSON.stringify(result.calls)}` : ""}` : "no report"} (load ${loadavg()[0]!.toFixed(1)})`);
         if (result) out.set(nameOf(r), [...(out.get(nameOf(r)) ?? []), result]);
       }
     }
@@ -214,7 +325,17 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
         record("the frame, timed whole, median", gpu(all), "ms");
         record("GL draws, triangles", draws, `draws, ${(median(all.map((r) => r.triangles)) / 1e6).toFixed(2)} M triangles`);
         record("our code's time a frame, median", median(all.map((r) => r.buildAndSubmitMs.median)), "ms");
+        const counted = all.at(-1)!.calls as Record<"calls" | "again" | "draws", Record<string, number>> | undefined;
+        const sum = (o: Record<string, number>): number => Object.values(o).reduce((a, b) => a + b, 0);
+        const kinds = (o: Record<string, number>): string => Object.entries(o).map(([k, v]) => `${v} ${k}`).join(", ");
+        if (counted) {
+          record("GL calls a frame", sum(counted.calls), `calls: ${kinds(counted.calls)}`);
+          record("of them, setting what the context holds", sum(counted.again), `calls: ${kinds(counted.again)}`);
+          record("draws listed a frame, in draw calls", counted.draws.listed!, `draws in ${counted.calls.draws} calls`);
+          record("draw calls that could go in the one before", counted.draws.runs!, `calls, but for their indices; ${counted.draws.levels} more but for their level and offset`);
+        }
         for (const [name, list] of reports) if (name.startsWith(`${key}, `) && name.endsWith(" off")) record(`${name.slice(key.length + 2)}: what it costs`, gpu(all) - gpu(list), `ms, ${draws - median(list.map((r) => r.drawCalls))} GL draws`);
+        for (const [name, list] of reports) if (name.startsWith(`${key}, processor`)) record(`our code's time a frame, ${name.slice(key.length + 2)}, median`, median(list.map((r) => r.buildAndSubmitMs.median)), "ms");
       }
     }
   }

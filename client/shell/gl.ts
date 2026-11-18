@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -32,6 +32,8 @@ interface Program {
    */
   at: (WebGLUniformLocation | null)[];
   last: Float64Array;
+  /** The bounds uCenter and uHalf were set from: a level's own or its mesh's. */
+  bounds: object | null;
 }
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
@@ -40,19 +42,24 @@ const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, l
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
+  /** The buffers it owns, its vertices' and then its indices', and the buffer of its indices, which levels of quads share. */
   buffers: WebGLBuffer[];
+  elements: WebGLBuffer;
   indexCount: number;
   /** UNSIGNED_SHORT, or UNSIGNED_INT for a level of more than 65,535 vertices, and the bytes of one index. */
   type: number;
   indexBytes: number;
   /** The bounds its vertices are stored within where they are not its mesh's. */
   bounds: AssetUpload["bounds"] | null;
-  /** Its surface and skin entries once they have come, and whether there are skin entries. */
+  /** Its surface and skin entries once they have come, whether there are skin entries, and the byte they begin at. */
   surface: WebGLBuffer | null;
   skin: boolean;
-  /** The buffer and first instance its instance attributes point at. */
+  skinAt: number;
+  /** The buffer and first instance the instance attributes of `vao` point at, for the frame's own instances. */
   buffer: WebGLBuffer | null;
   first: number;
+  /** A vertex array for each run of a kept buffer's instances it is drawn with, by the buffer's id and first instance. */
+  kept: Map<number, Map<number, WebGLVertexArrayObject>>;
 }
 
 /**
@@ -70,6 +77,7 @@ const FORMATS: Readonly<Record<string | number, readonly number[]>> = {
 };
 /** Frames that upload a frame that asks the card for an error: a want of memory is known within about 130 ms at 60 a second. */
 const ASK_EVERY = 8;
+const RUNS = Math.max(MAX_DRAWS, MAX_CASTERS);
 
 export class GlRenderer {
   readonly gl: WebGL2RenderingContext;
@@ -113,8 +121,13 @@ export class GlRenderer {
   /** The vertex array and the array buffer bound. */
   private vao: WebGLVertexArrayObject | null = null;
   private arrayBuffer: WebGLBuffer | null = null;
+  /** Where the browser draws many runs of indices in one call; and for a call, each run's indices, then their first bytes, then their instances, RUNS apart. */
+  private multi: WEBGL_multi_draw | null = null;
+  private readonly runs = new Int32Array(RUNS * 3);
   /** The levels the card holds, by slot. A frame packet says which to take on and which to let go. */
   private readonly levels = new Map<number, MeshLod>();
+  /** The levels that keep vertex arrays for a buffer's instances, by the buffer's id. */
+  private readonly keptBy = new Map<number, Set<MeshLod>>();
   /** The level of each surface the card holds, by the surface's slot. */
   private readonly surfaces = new Map<number, number>();
   /** The copy of each texture drawn with, by its index in the manifest, and a copy being filled. */
@@ -201,6 +214,7 @@ export class GlRenderer {
     this.current = this.warmed = this.mapped = this.vao = this.arrayBuffer = null;
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
     gl.getExtension("KHR_parallel_shader_compile");
+    this.multi = gl.getExtension("WEBGL_multi_draw");
     this.buffers.clear();
     this.quads.length = 0;
     this.textures.clear();
@@ -236,6 +250,7 @@ export class GlRenderer {
 
     // A lost context took every level with it. Core sends them again.
     this.levels.clear();
+    this.keptBy.clear();
     this.transient = gl.createBuffer()!;
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, (this.frame = gl.createBuffer()!));
     gl.bufferData(gl.UNIFORM_BUFFER, FRAME_FLOATS * 4, gl.DYNAMIC_DRAW);
@@ -309,24 +324,14 @@ export class GlRenderer {
     const at = u.at ?? 0, end = at + u.data.length, from = Math.max(at, vertices);
     let lod = this.levels.get(u.slot);
     if (at === 0) {
-      lod = { vao: gl.createVertexArray()!, buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, buffer: null, first: 0 };
+      const buffers = u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!];
+      lod = { vao: gl.createVertexArray()!, buffers, elements: u.quads ? (this.quads[u.indexBytes] ??= gl.createBuffer()!) : buffers[1]!, indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, skinAt: 0, buffer: null, first: 0, kept: new Map() };
       this.levels.set(u.slot, lod);
       this.vertexArray(lod.vao);
-      this.array(lod.buffers[0]!);
+      this.layout(lod);
       gl.bufferData(gl.ARRAY_BUFFER, (u.whole ?? end) - vertices, gl.STATIC_DRAW);
-      gl.enableVertexAttribArray(0);
-      gl.vertexAttribPointer(0, 3, gl.SHORT, true, VERTEX_BYTES, 0);
-      gl.enableVertexAttribArray(1);
-      gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
-      gl.enableVertexAttribArray(6);
-      gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, u.quads ? (this.quads[u.indexBytes] ??= gl.createBuffer()!) : lod.buffers[1]!);
       if (!u.quads) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBytes, gl.STATIC_DRAW);
       else if (gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE) < u.indexCount * u.indexBytes) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, quadIndices(u.indexCount, u.indexBytes), gl.STATIC_DRAW);
-      for (let a = 2; a <= 5; a++) {
-        gl.enableVertexAttribArray(a);
-        gl.vertexAttribDivisor(a, 1);
-      }
     } else if (!lod) return;
     this.vertexArray(lod.vao);
     if (at < indexBytes) gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, at, u.data, 0, Math.min(end, indexBytes) - at);
@@ -342,21 +347,15 @@ export class GlRenderer {
     if (!lod || (at > 0 && !lod.surface)) return;
     const gl = this.gl;
     if (at === 0) {
-      const whole = u.whole ?? u.data.length, skinAt = u.skinAt ?? whole;
+      const whole = u.whole ?? u.data.length;
       this.surfaces.set(u.slot, u.of!);
-      lod.surface = gl.createBuffer()!;
-      lod.skin = whole > skinAt;
-      this.vertexArray(lod.vao);
-      this.array(lod.surface);
+      this.unkeep(lod, null);
+      lod.skinAt = u.skinAt ?? whole;
+      lod.skin = whole > lod.skinAt;
+      this.array((lod.surface = gl.createBuffer()!));
       gl.bufferData(gl.ARRAY_BUFFER, whole, gl.STATIC_DRAW);
-      gl.vertexAttribPointer(7, 2, gl.UNSIGNED_SHORT, true, SURFACE_BYTES, 0);
-      gl.vertexAttribPointer(8, 4, gl.INT_2_10_10_10_REV, true, SURFACE_BYTES, 4);
-      gl.vertexAttribPointer(9, 4, gl.INT_2_10_10_10_REV, true, SURFACE_BYTES, 8);
-      if (lod.skin) {
-        gl.vertexAttribIPointer(10, 4, gl.UNSIGNED_BYTE, SKIN_BYTES, skinAt);
-        gl.vertexAttribPointer(11, 4, gl.UNSIGNED_BYTE, true, SKIN_BYTES, skinAt + 4);
-      }
-      for (let a = 7; a < (lod.skin ? 12 : 10); a++) gl.enableVertexAttribArray(a);
+      this.vertexArray(lod.vao);
+      this.layout(lod);
       this.vertexArray(null);
     }
     this.array(lod.surface);
@@ -370,6 +369,7 @@ export class GlRenderer {
     const lod = this.levels.get(of ?? slot);
     this.surfaces.delete(slot);
     if (!lod) return;
+    this.unkeep(lod, null);
     if (of !== undefined) {
       this.vertexArray(lod.vao);
       for (let a = 7; a < 12; a++) gl.disableVertexAttribArray(a);
@@ -382,6 +382,39 @@ export class GlRenderer {
     gl.deleteBuffer(lod.surface);
     lod.surface = null;
     lod.skin = false;
+  }
+
+  /**
+   * Points the bound vertex array at a level's indices and vertices, as attributes 0, 1 and 6, and once it has them its
+   * surface and skin entries, 7 to 11. Attributes 2 to 5 step once an instance and are pointed at a run of instances by `point`.
+   */
+  private layout(lod: MeshLod): void {
+    const gl = this.gl;
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lod.elements);
+    this.array(lod.buffers[0]!);
+    gl.vertexAttribPointer(0, 3, gl.SHORT, true, VERTEX_BYTES, 0);
+    gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 6);
+    gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
+    for (let a = 0; a < (lod.surface ? (lod.skin ? 12 : 10) : 7); a++) gl.enableVertexAttribArray(a);
+    for (let a = 2; a <= 5; a++) gl.vertexAttribDivisor(a, 1);
+    if (!lod.surface) return;
+    this.array(lod.surface);
+    gl.vertexAttribPointer(7, 2, gl.UNSIGNED_SHORT, true, SURFACE_BYTES, 0);
+    gl.vertexAttribPointer(8, 4, gl.INT_2_10_10_10_REV, true, SURFACE_BYTES, 4);
+    gl.vertexAttribPointer(9, 4, gl.INT_2_10_10_10_REV, true, SURFACE_BYTES, 8);
+    if (!lod.skin) return;
+    gl.vertexAttribIPointer(10, 4, gl.UNSIGNED_BYTE, SKIN_BYTES, lod.skinAt);
+    gl.vertexAttribPointer(11, 4, gl.UNSIGNED_BYTE, true, SKIN_BYTES, lod.skinAt + 4);
+  }
+
+  /** Lets go of the vertex arrays a level keeps for buffer `id`'s instances, or for every buffer's. */
+  private unkeep(lod: MeshLod, id: number | null): void {
+    this.vertexArray(null);
+    for (const b of id === null ? [...lod.kept.keys()] : [id]) {
+      for (const vao of lod.kept.get(b)?.values() ?? []) this.gl.deleteVertexArray(vao);
+      lod.kept.delete(b);
+      this.keptBy.get(b)?.delete(lod);
+    }
   }
 
   /**
@@ -615,6 +648,8 @@ export class GlRenderer {
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
 
     // Resource changes first, in order.
+    // A buffer's instances may lie elsewhere once it is sent again, and its id may name another buffer once it is let go.
+    for (const id of [...p.uploads.map((u) => u.buffer), ...p.drops]) for (const lod of this.keptBy.get(id) ?? []) this.unkeep(lod, id);
     for (const u of p.uploads) {
       let buffer = this.buffers.get(u.buffer);
       if (!buffer) this.buffers.set(u.buffer, (buffer = gl.createBuffer()!));
@@ -687,8 +722,8 @@ export class GlRenderer {
         this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
         this.uniform(prog, U.alpha, blend && this.finish.row[p.drawMesh[d]!] === 0 ? WATER_ALPHA : 1);
       }
-      this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d);
-      if (textured || (flags & DRAW_RANGED) !== 0) gl.drawElementsInstanced(gl.TRIANGLES, p.drawIndexCount[d]!, lod.type, p.drawFirstIndex[d]! * lod.indexBytes, p.drawInstances[d]!);
+      this.bind(prog, lod, p.drawBuffer[d]!, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d);
+      if (textured || (flags & DRAW_RANGED) !== 0) d = this.ranges(lod, p.drawFirstIndex, p.drawIndexCount, p.drawInstances[d]!, p.drawJoined, null, 0, d, p.drawCount);
       else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
       this.drawCalls++;
     }
@@ -704,18 +739,39 @@ export class GlRenderer {
     this.passes?.end();
   }
 
+  /**
+   * Draws run `d` of `lod`'s indices, `first` and `count` of them, and where the browser draws many in a call the runs
+   * after it that `joined` marks, those in cascade `bit` of `cascades` if it is given, in the same call. The last it drew.
+   */
+  private ranges(lod: MeshLod, first: Uint32Array, count: Uint32Array, instances: number, joined: Uint8Array, cascades: Uint8Array | null, bit: number, d: number, end: number): number {
+    const runs = this.runs;
+    let last = d, n = 0;
+    for (let e = d; this.multi && e < end && (e === d || joined[e] === 1); last = e++) {
+      if (cascades && (cascades[e]! & bit) === 0) continue;
+      runs[n] = count[e]!;
+      runs[RUNS + n] = first[e]! * lod.indexBytes;
+      runs[RUNS * 2 + n++] = instances;
+    }
+    if (n > 1) this.multi!.multiDrawElementsInstancedWEBGL(this.gl.TRIANGLES, runs, 0, lod.type, runs, RUNS, runs, RUNS * 2, n);
+    else this.gl.drawElementsInstanced(this.gl.TRIANGLES, count[d]!, lod.type, first[d]! * lod.indexBytes, instances);
+    return last;
+  }
+
   /** The buffer of instances a draw or caster names. */
   private instances(id: number): WebGLBuffer | undefined {
     return id === TRANSIENT_BUFFER ? this.transient : this.buffers.get(id);
   }
 
-  /** Binds a level and the instances from `first` of `buffer` for a program, with the offset at `offsets[i * 3]`, as far as they are not bound so. */
-  private bind(prog: Program, lod: MeshLod, buffer: WebGLBuffer, mesh: number, first: number, offsets: Float32Array, i: number): void {
+  /**
+   * Binds a level and the instances from `first` of buffer `id` for a program, with the offset at `offsets[i * 3]`, as
+   * far as they are not bound so: a kept buffer's run of instances by a vertex array of the level's kept for it, made
+   * the first time; the frame's own by pointing the level's own vertex array at them.
+   */
+  private bind(prog: Program, lod: MeshLod, id: number, buffer: WebGLBuffer, mesh: number, first: number, offsets: Float32Array, i: number): void {
     const gl = this.gl;
-    const u = prog.at, last = prog.last;
-    if ((lod.bounds || last[U.center] !== mesh) && u[U.center]) {
-      last[U.center] = lod.bounds ? NaN : mesh;
-      const info = lod.bounds ?? this.meshes[mesh]!;
+    const u = prog.at, last = prog.last, info = lod.bounds ?? this.meshes[mesh]!;
+    if (prog.bounds !== info && u[U.center]) {
+      prog.bounds = info;
       gl.uniform3f(u[U.center]!, info.center[0], info.center[1], info.center[2]);
       gl.uniform3f(u[U.half]!, info.half[0], info.half[1], info.half[2]);
     }
@@ -726,10 +782,28 @@ export class GlRenderer {
       last[U.offset + 2] = z;
       gl.uniform3f(u[U.offset]!, x, y, z);
     }
+    if (id !== TRANSIENT_BUFFER) {
+      let firsts = lod.kept.get(id), vao = firsts?.get(first);
+      if (!vao) {
+        if (!firsts) lod.kept.set(id, (firsts = new Map()));
+        (this.keptBy.get(id) ?? this.keptBy.set(id, new Set()).get(id)!).add(lod);
+        firsts.set(first, (vao = gl.createVertexArray()!));
+        this.vertexArray(vao);
+        this.layout(lod);
+        this.point(buffer, first);
+      }
+      return this.vertexArray(vao);
+    }
     this.vertexArray(lod.vao);
     if (lod.buffer === buffer && lod.first === first) return;
     lod.buffer = buffer;
     lod.first = first;
+    this.point(buffer, first);
+  }
+
+  /** Points the bound vertex array's instance attributes at the instances from `first` of `buffer`. */
+  private point(buffer: WebGLBuffer, first: number): void {
+    const gl = this.gl;
     this.array(buffer);
     // WebGL2 has no base instance, so the range is selected by offsetting the pointers.
     const at = first * INSTANCE_BYTES;
@@ -791,9 +865,9 @@ export class GlRenderer {
         this.uniform(prog, U.skin, skinMode(flags, lod.skin));
         // The cut-out caster's program reads the base colour alone.
         if (cutout) this.material(prog, p.casterMaterial[e]!, p.casterMesh[e]!, true, 0, 1);
-        this.bind(prog, lod, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e);
-        const run = (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0;
-        gl.drawElementsInstanced(gl.TRIANGLES, run ? p.casterIndexCount[e]! : lod.indexCount, lod.type, run ? p.casterFirstIndex[e]! * lod.indexBytes : 0, p.casterInstances[e]!);
+        this.bind(prog, lod, p.casterBuffer[e]!, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e);
+        if ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0) e = this.ranges(lod, p.casterFirstIndex, p.casterIndexCount, p.casterInstances[e]!, p.casterJoined, p.casterCascades, 1 << k, e, p.casterCount);
+        else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.casterInstances[e]!);
         this.drawCalls++;
       }
     }
@@ -897,6 +971,6 @@ export class GlRenderer {
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    return { program, text, at: [], last: new Float64Array(U.offset + 3).fill(NaN) };
+    return { program, text, at: [], last: new Float64Array(U.offset + 3).fill(NaN), bounds: null };
   }
 }

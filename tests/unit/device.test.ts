@@ -66,7 +66,7 @@ test("a graphics context is read for its limits by WebGL's own numbers, anisotro
   expect(g).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, textureUnits: 16, combinedUnits: 32, drawBuffers: 8, anisotropy: 16, uniformBytes: 16384, uniformBlocks: [12, 12], uniformBindings: 24, uniformAlign: 256, highp: true, antialias: true, depthBits: 24, extensions: phone, variant: "astc" });
   expect(gpuOf(context([], false), "Apple GPU")).toMatchObject({ vendor: "WebKit", anisotropy: 0, variant: "rgba" });
   // What lighting may count on: this phone draws to 32-bit float but cannot filter or blend it.
-  expect(limitsLine(g)).toBe("16-bit float targets yes, filtered yes; 32-bit float targets yes, filtered no, blended no; antialiasing up to 4x; 8 targets at once; 16 textures a draw, 16 in vertex shaders; textures to 16384 px; anisotropy 16; depth buffer 24 bits; reversed depth yes; GPU timers no; multi-draw yes; compressed astc etc2");
+  expect(limitsLine(g)).toBe("16-bit float targets yes, filtered yes; 32-bit float targets yes, filtered no, blended no; antialiasing up to 4x; 8 targets at once; 16 textures a draw, 16 in vertex shaders; textures to 16384 px; anisotropy 16; depth buffer 24 bits; reversed depth yes; GPU timers no; multi-draw yes; base vertex and instance no; compressed astc etc2");
 });
 
 test("a user agent is told as the device, the browser and the system, and every iOS browser as WebKit", () => {
