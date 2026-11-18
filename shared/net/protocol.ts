@@ -562,6 +562,11 @@ export const INPUT_WINDOW = 32;
  * body stops moving and lets go of every button but INPUT_KEPT, its stance.
  */
 export const INPUT_HOLD_TICKS = 8;
+/**
+ * The same for a vehicle someone drives or flies, a second: a stream that lost a segment holds the inputs behind it about
+ * that long, and a helicopter let go brakes and comes down. A driver who has truly gone drives on as long.
+ */
+export const VEHICLE_HOLD_TICKS = 30;
 export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;

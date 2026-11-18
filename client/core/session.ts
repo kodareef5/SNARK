@@ -16,6 +16,7 @@ import {
   HELLO_SPECTATE,
   HELLO_STATICS,
   INPUT_HOLD_TICKS,
+  VEHICLE_HOLD_TICKS,
   INPUT_KEPT,
   INPUT_REDUNDANCY,
   InputBuffer,
@@ -264,6 +265,8 @@ const INITIAL_LEAD = 4;
  */
 const TARGET_MARGIN = 1;
 const MARGIN_CAP = 5;
+/** Ticks more of its sent inputs than the window's least the server may lack before late inputs say the line held them back. */
+const STALL_TICKS = 4;
 const MARGIN_WINDOW = 90;
 const MAX_STEPS_PER_UPDATE = 8;
 /** Time constant of the fade that hides a correction, and the largest correction hidden, in metres. */
@@ -572,9 +575,13 @@ export class ClientSession {
   private readonly aheadAt = new Int32Array(8).fill(-1);
   /** A frame came late, and the render clock has not yet come back to the snapshots. */
   private hitch = false;
-  /** The margins reported, by their snapshot's tick. */
+  /**
+   * The margins reported, by their snapshot's tick, and how many inputs this client had sent past the newest the server had
+   * then, as each came (NaN where the margin is a bound).
+   */
   private readonly margins = new Int8Array(128);
   private readonly marginAt = new Uint32Array(128);
+  private readonly marginHeld = new Float32Array(128);
   private needFull = true;
   /** The newest input sent, and the snapshot it acknowledged. */
   private sentInput = 0;
@@ -1535,46 +1542,58 @@ export class ClientSession {
     if (margin !== MARGIN_UNKNOWN) {
       this.stats.margin = margin;
       // At either end of its range the margin is a bound, not a measurement.
-      if (margin > -127 && margin < 127) this.stats.rttTicks = this.simTick - tick - margin;
+      const bound = margin <= -127 || margin >= 127;
+      if (!bound) this.stats.rttTicks = this.simTick - tick - margin;
       if (this.simTick >= this.guardTick) {
         this.margins[tick & 127] = margin;
         this.marginAt[tick & 127] = tick;
-        // The least and most of the window, and of its last quarter second.
+        this.marginHeld[tick & 127] = bound ? NaN : this.sentInput - tick - margin;
+        // The least and most of the window, and of its last quarter second; the fewest inputs in flight of the window, and
+        // the most of its last quarter second.
         let lo = 127;
         let hi = -127;
         let nowLo = 127;
         let nowHi = -127;
         let n = 0;
+        let least = Infinity;
+        let most = -Infinity;
         for (let i = 0; i < 128; i++) {
           if (this.marginAt[i] === 0 || this.marginAt[i]! + MARGIN_WINDOW <= tick) continue;
           const m = this.margins[i]!;
           if (m < lo) lo = m;
           if (m > hi) hi = m;
+          if (this.marginHeld[i]! < least) least = this.marginHeld[i]!;
           if (this.marginAt[i]! + 8 > tick) {
             if (m < nowLo) nowLo = m;
             if (m > nowHi) nowHi = m;
+            if (this.marginHeld[i]! > most) most = this.marginHeld[i]!;
             n++;
           }
         }
-        // Far off is every input late for a quarter second, or every one early. That moves the best of them, or the worst, to the target.
-        const behind = n >= 4 && nowHi < 0;
+        // Far off is every input late for a quarter second, or every one early. That moves the best of them, or the worst, to
+        // the target. Late inputs the client did not send, a page stopped or a clock behind, are a reason to jump. Late
+        // inputs it sent that the line holds back are not: then the server lacks more of those sent than it did, as it
+        // never does while it lacks only those not sent.
+        const behind = n >= 4 && nowHi < 0 && !(most > least + STALL_TICKS);
         if (behind || (n >= 4 && nowLo >= TARGET_MARGIN + 7)) {
           this.marginAt.fill(0);
           this.tickClock += TARGET_MARGIN - (behind ? nowHi : nowLo);
           this.dilation = 1;
           this.stats.clockJumps++;
           // Simulated far past the new time. Waiting for the clock would freeze the player, so start again here.
-          // The next snapshot supplies the body.
+          // The next snapshot supplies the body. Short of that, the inputs already sent stand, and the server's margin is
+          // the newest of them until one past them is sent on the new clock.
           const at = Math.floor(this.tickClock);
+          let from = Math.max(at, this.sentInput);
           if (this.simTick - at > TICK_RATE) {
-            this.simTick = at;
+            this.simTick = from = at;
             this.bodyTick.fill(0);
             this.inputs.tick.fill(0);
           }
           // Ignore feedback until snapshots can reflect this jump. That is a round trip, capped at a second
           // because the estimate is unreliable just after a jump.
           const wait = Math.ceil(this.stats.rttTicks);
-          this.guardTick = Math.floor(this.tickClock) + (wait < 0 ? 0 : wait > TICK_RATE ? TICK_RATE : wait) + 2;
+          this.guardTick = from + (wait < 0 ? 0 : wait > TICK_RATE ? TICK_RATE : wait) + 2;
         } else {
           const e = Math.min(TARGET_MARGIN - lo, MARGIN_CAP - hi);
           this.dilation = 1 + (e > 2 ? 2 : e < -1 ? -1 : e) * 0.01;
@@ -1658,9 +1677,9 @@ export class ClientSession {
         gap = 0;
       } else if (last !== 0) {
         const i = last & this.inputs.mask;
-        const held = ++gap <= INPUT_HOLD_TICKS;
         // Past the hold the server stops a quiet car on its handbrake (server/game.ts); replay the same.
         const vehicle = this.registry.vehicle[this.own.kind];
+        const held = ++gap <= (vehicle && this.driving >= 0 ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS);
         const quiet = vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : this.inputs.buttons[i]! & INPUT_KEPT;
         pilot = held;
         this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, held ? this.inputs.buttons[i]! & BUTTON_MASK : quiet);
