@@ -91,7 +91,7 @@ test('stale and fixed target facts cannot keep driving speculative bodies', () =
   s.prediction.draw(s.draw, 0, 1, 11); expect(s.draw.z[0]).toBe(40);
   s.draw.z[0] = 70;
   s.prediction.draw(s.draw, 0, 1, 23); expect(s.draw.z[0]).toBe(40);
-  s.prediction.update(900); s.draw.z[0] = 70; s.prediction.draw(s.draw, 0, 1, 23); expect(s.draw.z[0]).toBe(70);
+  s.prediction.update(900); s.draw.tick = 23; s.draw.z[0] = 70; s.prediction.draw(s.draw, 0, 1, 23); expect(s.draw.z[0]).toBe(70);
   s.snapshot.epoch++;
   expect(s.prediction.accept(s.snapshot)).toBe(true);
   expect(s.prediction.accept(s.snapshot)).toBe(false);
@@ -165,4 +165,43 @@ test('replay preserves both interpolated endpoints and reentry preserves a parti
   s.snapshot.count = 1; s.snapshot.tick++; s.prediction.accept(s.snapshot);
   s.prediction.beginReplay(.25); s.prediction.finishReplay(.25);
   s.draw.z[0] = 36; s.prediction.draw(s.draw, 0, .25, 12); expect(s.draw.z[0]).toBeCloseTo(withdrawing, 5);
+});
+
+test('approaching vehicles converge visually before becoming physical candidates, without early replay', () => {
+  const s = setup(); s.snapshot.epoch++; s.snapshot.tick = 100;
+  s.target.x = 80; s.target.z = 60; s.target.vz = -15;
+  s.target.vehicleQy = 1; s.target.vehicleQw = 0; s.target.vehicleYaw = Math.PI;
+  s.own.x = 80; s.own.z = 10; s.own.vz = 20;
+  let seeded = 0, physical = false;
+  for (let i = 0; i < 30; i++) {
+    s.snapshot.tick = 100 + i;
+    s.target.z = Math.fround(60 - i * .5); s.own.z = Math.fround(10 + i * 20 / 30);
+    contactBody(s.target, s.p.state);
+    s.prediction.accept(s.snapshot, s.own, s.snapshot.tick + 8, 1);
+    if (s.prediction.needsReplay) { physical = true; break; }
+    s.draw.x[0] = 80; s.draw.z[0] = s.target.z + 1.5;
+    s.prediction.draw(s.draw, 0, 1, s.snapshot.tick + 8); s.prediction.update(1000 / 30); seeded++;
+  }
+  expect(seeded).toBeGreaterThan(15); expect(physical).toBe(true);
+  expect(s.prediction.stats.steps).toBe(0); expect(s.prediction.stats.replays).toBe(0); expect(s.prediction.stats.contacts).toBe(0);
+  // The prior displayed frame is already close to the approaching vehicle's current motion clock.
+  expect(Math.abs(s.draw.z[0]! - (s.target.z + .5 - 15 * 8 / 30))).toBeLessThan(.35);
+});
+
+test('expired vehicle motion holds its last display until the older ordinary view catches up', () => {
+  const s = setup(), before = new Body();
+  s.target.vz = 10; s.target.fuel = 0; contactBody(s.target, s.p.state);
+  s.prediction.accept(s.snapshot); s.prediction.beginReplay(); s.prediction.finishReplay();
+  s.prediction.draw(s.draw, 0, 1, 10);
+  for (let t = 11; t <= 22; t++) { s.prediction.step(t, before, s.own, COMPACT_VEHICLE); s.prediction.draw(s.draw, 0, 1, t); }
+  const shown = s.draw.z[0]!, steps = s.prediction.stats.steps;
+  for (let t = 23; t <= 29; t++) {
+    s.prediction.update(1000 / 30); s.prediction.step(t, before, s.own, COMPACT_VEHICLE);
+    s.draw.tick = 10; s.draw.z[0] = 40; s.prediction.draw(s.draw, 0, 1, t);
+    expect(s.draw.z[0]).toBe(shown);
+  }
+  expect(s.prediction.stats.steps).toBe(steps);
+  s.draw.tick = 30; s.draw.z[0] = 50; s.prediction.draw(s.draw, 0, 1, 30);
+  expect(s.draw.z[0]).toBe(shown);
+  s.prediction.update(900); s.draw.z[0] = 50; s.prediction.draw(s.draw, 0, 1, 30); expect(s.draw.z[0]).toBe(50);
 });

@@ -26,8 +26,8 @@ interface Proxy {
   sx: number; sy: number; sz: number;
   oldX: number; oldY: number; oldZ: number;
   correction: VehicleCorrection;
-  active: boolean; reenter: boolean; withdrawing: boolean; exit: number; lastContact: number;
-  dx: number; dy: number; dz: number; dq: Float64Array; exitQ: Float64Array;
+  active: boolean; physical: boolean; prepared: boolean; reenter: boolean; withdrawing: boolean; exit: number; lastContact: number;
+  dx: number; dy: number; dz: number; displayedTick: number; dq: Float64Array; exitQ: Float64Array;
   history: DynamicState[]; historyTick: Int32Array;
   trees?: PredictedTrees;
 }
@@ -51,6 +51,7 @@ export class VehiclePrediction {
   private readonly qa = new Float64Array(4);
   private readonly qb = new Float64Array(4);
   private readonly drawQ = new Float64Array(4);
+  private readonly presentation = dynamicState();
   private readonly used = new Set<number>();
   /** Replacing or withdrawing target facts can change already predicted inputs, even if the driver's baseline matches. */
   needsReplay = false;
@@ -73,7 +74,7 @@ export class VehiclePrediction {
   }
 
   /** Returns true for a qualified own-body discontinuity, including a teleport smaller than the fade limit. */
-  accept(snapshot: ContactSnapshot, own?: Body): boolean {
+  accept(snapshot: ContactSnapshot, own?: Body, tick = snapshot.tick, alpha = 1): boolean {
     const discontinuity = snapshot.owner !== this.owner || snapshot.epoch !== this.epoch;
     if (discontinuity) this.proxies.clear();
     this.owner = snapshot.owner; this.epoch = snapshot.epoch; this.snapshotTick = snapshot.tick;
@@ -82,7 +83,8 @@ export class VehiclePrediction {
     for (let i = 0; i < snapshot.count; i++) {
       const fact = snapshot.rows[i]!;
       if (!this.registry.move[fact.kind] || fact.vehicle !== !!this.registry.vehicle[fact.kind] ||
-          def && !contactRelevant(own!, fact, contactReach(def))) continue;
+          def && !contactRelevant(own!, fact, contactReach(def), fact.vehicle ? 1.5 : .5)) continue;
+      const physical = !def || contactRelevant(own!, fact, contactReach(def));
       let p = this.proxies.get(fact.handle);
       const fresh = !p, teleport = !!p && p.fact.epoch !== fact.epoch;
       if (!p) {
@@ -94,20 +96,24 @@ export class VehiclePrediction {
         p = {
           fact: contactProxy(), body: dynamicBody(), native: new Body(), tick: 0, seen: 0,
           visual: false, fadeIn: true, sx: 0, sy: 0, sz: 0, oldX: 0, oldY: 0, oldZ: 0,
-          correction: new VehicleCorrection(), active: true, reenter: false, withdrawing: false, exit: 0, lastContact: 0,
-          dx: 0, dy: 0, dz: 0, dq: new Float64Array([0, 0, 0, 1]), exitQ: new Float64Array(4),
+          correction: new VehicleCorrection(), active: true, physical, prepared: false, reenter: false, withdrawing: false, exit: 0, lastContact: 0,
+          dx: 0, dy: 0, dz: 0, displayedTick: 0, dq: new Float64Array([0, 0, 0, 1]), exitQ: new Float64Array(4),
           history: Array.from({ length: 16 }, dynamicState), historyTick: new Int32Array(16),
           trees: fact.vehicle ? this.treeFactory?.() : undefined,
         };
         this.proxies.set(fact.handle, p);
         if (p.trees) this.treeBodies.set(p.body, p.trees);
       }
+      const wasPhysical = p.physical;
+      if (p.visual && (!physical || !wasPhysical)) {
+        this.capturePresentation(p, alpha, tick); p.prepared = physical;
+      }
       const index = snapshot.tick & 15, known = p.historyTick[index] === snapshot.tick ? p.history[index]! : p.fact.state;
-      const changed = fresh || teleport || !p.active || p.withdrawing || p.fact.grounded !== fact.grounded || p.fact.kind !== fact.kind || p.fact.response !== fact.response || p.fact.radius !== fact.radius || p.fact.height !== fact.height ||
+      const changed = fresh || teleport || !p.active || p.withdrawing || physical !== wasPhysical || p.fact.grounded !== fact.grounded || p.fact.kind !== fact.kind || p.fact.response !== fact.response || p.fact.radius !== fact.radius || p.fact.height !== fact.height ||
         p.fact.mass !== fact.mass || p.fact.body.vehicleGroundPitch !== fact.body.vehicleGroundPitch ||
         p.fact.body.vehicleGroundRoll !== fact.body.vehicleGroundRoll || p.fact.body.vehicleRideOffset !== fact.body.vehicleRideOffset ||
         p.fact.body.vehicleRideVelocity !== fact.body.vehicleRideVelocity || !sameMotion(known, fact.state);
-      if (changed) this.needsReplay = true;
+      if (physical && changed || !physical && wasPhysical && p.lastContact > snapshot.tick) this.needsReplay = true;
       if (teleport) {
         p.visual = false; p.fadeIn = false; p.sx = p.sy = p.sz = 0; p.correction.reset(); p.historyTick.fill(0);
       } else if ((!p.active || p.withdrawing) && p.visual) {
@@ -118,8 +124,9 @@ export class VehiclePrediction {
       Object.assign(p.fact, fact); p.fact.state = state; p.fact.body = full;
       Object.assign(state, fact.state); full.copy(fact.body);
       p.body.response = fact.response; p.body.mass = fact.mass; p.body.spec = this.registry.vehicle[fact.kind]?.spec ?? null;
-      p.seen = snapshot.tick; p.active = true; p.withdrawing = false;
-      if (fresh || teleport) this.resetProxy(p);
+      p.seen = snapshot.tick; p.active = true; p.physical = physical; p.withdrawing = false;
+      if (fresh || teleport || !physical) this.resetProxy(p);
+      if (p.visual && !physical) { this.reconcilePresentation(p, alpha, tick); p.reenter = false; }
     }
     for (const p of this.proxies.values()) if (p.active && p.seen !== snapshot.tick) {
       // Only a withdrawn body that already caused a future impact can change an otherwise exact own replay.
@@ -135,7 +142,8 @@ export class VehiclePrediction {
   beginReplay(alpha = 1): void {
     this.replaying = true; this.stats.replays++;
     for (const p of this.proxies.values()) {
-      if (!p.active) continue;
+      if (!p.active || !p.physical) continue;
+      if (p.prepared) { p.prepared = p.reenter = false; this.resetProxy(p); continue; }
       const s = p.body.state, a = p.body.prior;
       p.oldX = a.x + (s.x - a.x) * alpha; p.oldY = a.y + (s.y - a.y) * alpha; p.oldZ = a.z + (s.z - a.z) * alpha;
       this.interpolateQ(p, alpha);
@@ -158,7 +166,7 @@ export class VehiclePrediction {
     if (!this.replaying) return;
     this.replaying = false;
     for (const p of this.proxies.values()) {
-      if (!p.visual || !p.active) continue;
+      if (!p.visual || !p.active || !p.physical) continue;
       const s = p.body.state, a = p.body.prior;
       const dx = p.oldX - (a.x + (s.x - a.x) * alpha), dy = p.oldY - (a.y + (s.y - a.y) * alpha), dz = p.oldZ - (a.z + (s.z - a.z) * alpha);
       const continuous = dx * dx + dy * dy + dz * dz < 144;
@@ -190,7 +198,7 @@ export class VehiclePrediction {
     own.spec = def.spec;
     own.mass = vehicleMassProperties(def.spec, own.state).mass;
     for (const p of this.proxies.values()) {
-      if (!this.live(p, tick)) continue;
+      if (!p.physical || !this.live(p, tick)) continue;
       const other = this.registry.vehicle[p.fact.kind] ?? undefined;
       this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height);
       while (p.tick < tick) { this.advance(p, other); p.tick++; }
@@ -199,7 +207,7 @@ export class VehiclePrediction {
     for (let iteration = 0; iteration < 4; iteration++) {
       let first: Proxy | undefined, firstTime = Infinity;
       for (const [target, p] of this.proxies) {
-        if (target === handle || this.used.has(target) || !this.live(p, tick)) continue;
+        if (target === handle || this.used.has(target) || !p.physical || !this.live(p, tick)) continue;
         const other = this.registry.vehicle[p.fact.kind] ?? undefined;
         this.pair.configure(own, p.body, def, other, p.fact.radius, p.fact.height);
         const hit = this.pair.sweep();
@@ -227,7 +235,7 @@ export class VehiclePrediction {
       this.stats.lastTick = tick;
       this.stats.lastTarget = target;
     }
-    for (const p of this.proxies.values()) if (this.live(p, tick)) {
+    for (const p of this.proxies.values()) if (p.physical && this.live(p, tick)) {
       const i = tick & 15; Object.assign(p.history[i]!, p.body.state); p.historyTick[i] = tick;
     }
     // Presence alone must never alter a kerb/ramp controller's grounded state.
@@ -272,6 +280,36 @@ export class VehiclePrediction {
     rounded(s);
   }
 
+  /** Far approaching vehicles share public-motion presentation before they are physical collision candidates. */
+  private presentationAt(p: Proxy, alpha: number, tick: number): DynamicState {
+    const out = this.presentation;
+    if (p.physical) {
+      const a = p.body.prior, b = p.body.state;
+      Object.assign(out, b);
+      out.x = a.x + (b.x - a.x) * alpha; out.y = a.y + (b.y - a.y) * alpha; out.z = a.z + (b.z - a.z) * alpha;
+      this.interpolateQ(p, alpha); out.qx = this.drawQ[0]!; out.qy = this.drawQ[1]!; out.qz = this.drawQ[2]!; out.qw = this.drawQ[3]!;
+    } else {
+      Object.assign(out, p.fact.state);
+      const dt = Math.max(0, Math.min(12, tick - 1 + alpha - p.seen)) * TICK_DT;
+      integrateVehiclePose(out, this.registry.vehicle[p.fact.kind]!.spec, dt);
+    }
+    return out;
+  }
+  private capturePresentation(p: Proxy, alpha: number, tick: number): void {
+    if (p.withdrawing || !p.active) {
+      p.oldX = p.dx; p.oldY = p.dy; p.oldZ = p.dz; p.sx = p.sy = p.sz = 0;
+      p.correction.reset(); p.correction.captureQuaternion(p.dq[0]!, p.dq[1]!, p.dq[2]!, p.dq[3]!);
+      return;
+    }
+    const s = this.presentationAt(p, alpha, tick);
+    p.oldX = s.x; p.oldY = s.y; p.oldZ = s.z;
+    p.correction.captureQuaternion(s.qx, s.qy, s.qz, s.qw);
+  }
+  private reconcilePresentation(p: Proxy, alpha: number, tick: number): void {
+    const s = this.presentationAt(p, alpha, tick);
+    p.sx += p.oldX - s.x; p.sy += p.oldY - s.y; p.sz += p.oldZ - s.z;
+    p.correction.reconcileQuaternion(s.qx, s.qy, s.qz, s.qw, true);
+  }
   private interpolateQ(p: Proxy, alpha: number): void {
     const a = p.body.prior, b = p.body.state;
     this.qa[0] = a.qx; this.qa[1] = a.qy; this.qa[2] = a.qz; this.qa[3] = a.qw;
@@ -289,6 +327,16 @@ export class VehiclePrediction {
     if (!this.live(p, tick)) {
       if (!p.visual) { if (!p.active) this.proxies.delete(handle); return; }
       if (!p.withdrawing) { p.withdrawing = true; p.exit = 1; p.oldX = p.dx; p.oldY = p.dy; p.oldZ = p.dz; p.exitQ.set(p.dq); }
+      // A stalled ordinary view is older than the last displayed prediction. Returning to it would rewind the car.
+      // Hold presentation (without extending physical prediction) until fresh facts or that view catch up.
+      if (p.active && out.tick < p.displayedTick) {
+        p.exit = 1;
+        out.x[index] = p.dx; out.y[index] = p.dy; out.z[index] = p.dz;
+        out.vehicleQx[index] = p.dq[0]!; out.vehicleQy[index] = p.dq[1]!;
+        out.vehicleQz[index] = p.dq[2]!; out.vehicleQw[index] = p.dq[3]!;
+        out.yaw[index] = Math.atan2(2 * (p.dq[0]! * p.dq[2]! + p.dq[3]! * p.dq[1]!), 1 - 2 * (p.dq[0]! * p.dq[0]! + p.dq[1]! * p.dq[1]!));
+        return;
+      }
       if (p.exit < .001) { p.visual = false; if (!p.active) this.proxies.delete(handle); return; }
       out.x[index] += (p.oldX - out.x[index]!) * p.exit;
       out.y[index] += (p.oldY - out.y[index]!) * p.exit;
@@ -296,8 +344,7 @@ export class VehiclePrediction {
       this.qa[0] = out.vehicleQx[index]!; this.qa[1] = out.vehicleQy[index]!; this.qa[2] = out.vehicleQz[index]!; this.qa[3] = out.vehicleQw[index]!;
       quatNlerp(this.drawQ, 0, this.qa, 0, p.exitQ, 0, p.exit);
     } else {
-      const a = p.body.prior, b = p.body.state;
-      const x = a.x + (b.x - a.x) * alpha, y = a.y + (b.y - a.y) * alpha, z = a.z + (b.z - a.z) * alpha;
+      const b = this.presentationAt(p, alpha, tick), x = b.x, y = b.y, z = b.z;
       if (!p.visual) {
         p.visual = true;
         if (p.fadeIn) { p.sx = out.x[index]! - x; p.sy = out.y[index]! - y; p.sz = out.z[index]! - z; }
@@ -305,7 +352,8 @@ export class VehiclePrediction {
         p.correction.reconcileQuaternion(b.qx, b.qy, b.qz, b.qw, p.fadeIn); p.fadeIn = true;
       }
       out.x[index] = x + p.sx; out.y[index] = y + p.sy; out.z[index] = z + p.sz;
-      this.interpolateQ(p, alpha); p.correction.apply(this.drawQ);
+      this.drawQ[0] = b.qx; this.drawQ[1] = b.qy; this.drawQ[2] = b.qz; this.drawQ[3] = b.qw; p.correction.apply(this.drawQ);
+      p.displayedTick = tick - 1 + alpha;
     }
     p.dx = out.x[index]!; p.dy = out.y[index]!; p.dz = out.z[index]!; p.dq.set(this.drawQ);
     const qx = this.drawQ[0]!, qy = this.drawQ[1]!, qz = this.drawQ[2]!, qw = this.drawQ[3]!;

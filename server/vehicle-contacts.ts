@@ -95,7 +95,7 @@ export class VehicleContacts {
     out.owner = makeHandle(car, ents.gen[car]!); out.epoch = world.history.motionEpoch(car);
     ents.loadBody(car, this.snapshotBody);
     const by = this.ctx.driverOf(car);
-    this.gather(car, this.snapshotBody, def.spec, 14 + Math.min(40, len3(ents.vx[car]!, 0, ents.vz[car]!) * .5));
+    this.gather(car, this.snapshotBody, def.spec, 14 + Math.min(60, len3(ents.vx[car]!, 0, ents.vz[car]!) * 1.5));
     // The nearest predicted approach gets the limited wire budget first, including bodies crossing the road.
     const distance = (e: number): number => {
       const x = ents.x[e]! - ents.x[car]!, z = ents.z[e]! - ents.z[car]!;
@@ -116,7 +116,7 @@ export class VehicleContacts {
       publicContactBody(this.publicBody, row.body);
       row.radius = other ? Math.max(move.radius, contactReach(other)) : move.radius * scale;
       row.height = stanceHeight(move, ents.stance[e]!) * scale;
-      if (!contactRelevant(this.snapshotBody, row, contactReach(def))) continue;
+      if (!contactRelevant(this.snapshotBody, row, contactReach(def), other ? 1.5 : .5)) continue;
       contactBody(row.body, row.state);
       row.mass = other ? vehicleMassProperties(other.spec, row.state).mass : Math.max(1, (world.reg.mass[kind]! || 80 * (move.radius / .4) * (move.radius / .4) * move.height / 1.8) * scale * scale * scale);
       const fixed = !other && definition?.type === 'species' && definition.still === true && row.grounded;

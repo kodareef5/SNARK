@@ -1622,7 +1622,7 @@ export class ClientSession {
       }
     }
 
-    const discontinuity = this.vehicleContacts?.accept(this.contactSnapshot, sb);
+    const discontinuity = this.vehicleContacts?.accept(this.contactSnapshot, sb, this.simTick, this.alpha);
     this.reconcile(tick, sb);
     if (discontinuity) {
       this.smoothX = this.smoothY = this.smoothZ = 0;

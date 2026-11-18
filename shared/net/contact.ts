@@ -42,9 +42,9 @@ export function contactReach(def: VehicleDefinition): number {
   return Math.max(Math.sqrt(x * x + z * z), def.movement === 'rotor' ? 7 : 0);
 }
 /** Conservative swept corridor. Off-road bystanders need no special packet or replay. */
-export function contactRelevant(a: Pick<Body, 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz'>, b: ContactProxy, reach: number): boolean {
+export function contactRelevant(a: Pick<Body, 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz'>, b: ContactProxy, reach: number, seconds = .5): boolean {
   const x = b.body.x - a.x, z = b.body.z - a.z, vx = b.body.vx - a.vx, vz = b.body.vz - a.vz;
-  const t = Math.max(0, Math.min(.5, -(x * vx + z * vz) / Math.max(.001, vx * vx + vz * vz)));
+  const t = Math.max(0, Math.min(seconds, -(x * vx + z * vz) / Math.max(.001, vx * vx + vz * vz)));
   const r = reach + b.radius + 2;
   return (x + vx * t) * (x + vx * t) + (z + vz * t) * (z + vz * t) <= r * r &&
     Math.abs(b.body.y - a.y + (b.body.vy - a.vy) * t) < b.height + reach + 2;
