@@ -67,6 +67,15 @@ def hide():
         for digit,dx in ((1,-.047),(2,.042)):
             pieces.append(loft(f'manus{digit}_{side}',[(.71+dx*.45,2.49,1.899,.034,.039),
               (.71+dx,2.464,1.98,.032,.034),(.715+dx*1.4,2.422,2.075+dx,.024,.027)],sign,sides=12))
+    # Coalescing low bosses in the supraorbital and nasal skin. Each sinks
+    # through the cranial surface, keeping an irregular blunt keratin margin.
+    for side,sg in [('l',1),('r',-1)]:
+        for i,(x,y,z,rx,ry,rz) in enumerate([
+            (.416,4.208,3.26,.099,.073,.145),(.465,4.206,3.43,.088,.085,.120),
+            (.457,4.178,3.56,.096,.062,.118),(.408,4.144,3.7,.090,.054,.121),
+            (.310,4.113,3.91,.095,.049,.147),(.273,4.086,4.06,.095,.047,.136),
+            (.240,4.060,4.23,.081,.045,.127),(.201,4.029,4.37,.080,.040,.113)]):
+            pieces.append(Part('rugose_'+side+str(i)).ellipsoid((sg*x,y,z),(rx,ry,rz),(0,0,1,1),16,8).object())
     obj=join(pieces,'rex_continuous_hide');activate(obj)
     obj.data.remesh_voxel_size=.031;obj.data.use_remesh_preserve_volume=True;bpy.ops.object.voxel_remesh()
     m=obj.modifiers.new('blend_anatomical_volumes','SMOOTH');m.factor=.48;m.iterations=3;bpy.ops.object.modifier_apply(modifier=m.name)
@@ -148,7 +157,7 @@ def soft_parts():
             def gum(z):
                 w=np.interp(z,stations[:,0],stations[:,1])
                 y=np.interp(z,stations[:,0],stations[:,lip_column])
-                return (.72*w*sg,y+(.042 if upper else -.031),z)
+                return ((.64 if upper else .70)*w*sg,y+(.042 if upper else -.031),z)
             gumline=[(*gum(z),.048,.032) for z in np.linspace(3.40,4.81,15)]
             out.append(detail(name+'_gingiva_'+side,bone,gumline,ORAL))
             locations=np.linspace(3.44,4.80,13 if upper else 12)+(.029 if not upper else 0)
@@ -160,13 +169,35 @@ def soft_parts():
                  (xx-.011*sg,yy+direction*h*.83,z-.030,r*.31,r*.42),(xx-.017*sg,yy+direction*h,z-.049,.0016,.0026)],TOOTH,9))
         ex,ey,ez=mirror(EYE,sg)
         eye=Part('recessed_eye_'+side,'rex_detail','eye_'+side).ellipsoid((ex,ey,ez),(.045,.048,.070),EYES,24,12).object();out.append(eye)
+        # A thin closed patch follows the ellipsoidal cornea at rest. Its
+        # lower margin rolls past the pupil with the upper lid bone.
+        cap=Part('upper_lid_surface_'+side,'rex_detail','lid_'+side)
+        sections=[]
+        for row in range(13):
+            longitudinal=(row/12*2-1)*.997
+            a=math.sqrt(1-longitudinal**2)
+            ring=[]
+            for deep in (False,True):
+                for j in range(8):
+                    phi=math.radians(40+j*13.86);thin=.003 if deep else 0
+                    ring.append(cap.point((ex+sg*(.050-thin)*math.cos(phi)*a,ey+(.051-thin)*math.sin(phi)*a,ez+.070*longitudinal)))
+            sections.append(ring)
+        for i in range(12):
+            for j in range(7):
+                for layer in (0,8):
+                    cap.face((sections[i][j+layer],sections[i+1][j+layer],sections[i+1][j+1+layer],sections[i][j+1+layer]),
+                             [(.72+.24*u/12,.52+.44*v/7) for u,v in ((i,j),(i+1,j),(i+1,j+1),(i,j+1))])
+            for j in (0,7):cap.face((sections[i][j],sections[i][8+j],sections[i+1][8+j],sections[i+1][j]))
+        for ring in (sections[0],sections[-1]):
+            for j in range(7):cap.face((ring[j],ring[j+1],ring[j+9],ring[j+8]))
+        out.append(cap.object())
         # The delicate orbital rims share the soft head paint; the mobile upper
         # lid rolls across the seated globe in the blink and torpor performances.
         for upper in (True,False):
             path=[]
             for i in range(13):
                 a=math.pi*i/12;u=math.cos(a);s=math.sin(a)
-                path.append(((.536+.015*s)*sg,ey+(.025 if upper else -.024)*s,ez+.072*u,.012+.007*s,.011+.013*s))
+                path.append(((.532+.023*s)*sg,ey+(.035 if upper else -.034)*s,ez+.074*u,.004+.008*s,.004+.007*s))
             out.append(detail(('upperlid' if upper else 'lowerlid')+side,'lid_'+side if upper else 'skull',path,LIDS,10))
         for digit,x,z in ((2,.393,.075),(3,.64,.30),(4,.875,.046)):
             dx=x-.64;x+=dx*.12

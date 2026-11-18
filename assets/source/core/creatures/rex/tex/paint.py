@@ -60,6 +60,21 @@ def maps(p,head):
  else:
   u=(z+.22*ax+.009*macro)/pitch;v=(arc+.37*y+.006*macro)/(pitch*.81)
  dome,tone=scales(u,v)
+ feature=np.zeros_like(x)
+ if head:
+  # Enlarged facial scutes gather on the bony brow, along the cutting margin
+  # and above the nostril. Smoothly varying regions retain the small scales
+  # in the cheek, around the pupil and across the underside.
+  roof=smooth(3.93,4.13,y)*smooth(2.97,3.32,z)
+  muzzle=np.exp(-((y-(3.54+.035*np.sin(z*4)))/.082)**2)*smooth(3.58,4.05,z)
+  nasal=np.exp(-((y-3.91)/.11)**2-((z-4.38)/.47)**2)
+  feature=np.maximum.reduce([roof,muzzle,nasal])*(.68+.25*noise(z*6,y*5,17))
+  plate,variation=scales((z+.025*macro)/.047,(y+.30*ax+.020*macro)/.033)
+  dome=dome*(1-feature)+plate*feature;tone=tone*(1-feature)+variation*feature
+ else:
+  feature=smooth(.22,1.12,theta)*(.6+.24*macro)
+  plate,variation=scales((z+.09*ax+.036*macro)/.069,(arc+.13*y+.024*macro)/.044)
+  dome=dome*(1-feature)+plate*feature;tone=tone*(1-feature)+variation*feature
  fold=np.zeros_like(x);lip=np.zeros_like(x)
  if head:
   for anchor,rise,reach in [(3.23,.40,1.0),(3.29,.24,.76),(3.34,.11,.72)]:
@@ -79,16 +94,21 @@ def maps(p,head):
   eye=np.exp(-((z-3.493)/.140)**2-((y-4.015)/.084)**2)
   naris=np.exp(-((z-4.49)/.082)**2-((y-3.858)/.044)**2)*(1-smooth(.29,.365,ax))
   brow=np.exp(-((y-4.105)/.093)**2-((z-3.49)/.43)**2)
-  ginger=.46+.40*smooth(-.09,.78,theta)+.09*macro
+  # The cheek strap, nasal bridge and long maxillary margin carry visibly
+  # different pigment. The orbital margins darken into the temple.
+  cheek=np.exp(-((y-(3.78+.13*np.cos((z-3.3)*3)))/.13)**2)*smooth(3.10,3.32,z)*(1-smooth(3.89,4.15,z))
+  ginger=.34+.44*smooth(-.09,.78,theta)+.21*macro-.17*cheek
+  band+=.62*cheek+.29*feature*smooth(.14,.50,tone+.21)
+  belly+=.29*(1-smooth(3.24,3.55,y))*smooth(3.03,3.41,z)
  else:eye=naris=brow=np.zeros_like(x);ginger=smooth(1.85,3.18,z)*.52
  ww=np.stack([np.ones_like(x),belly,nape*.37+band,ginger,limb+.26*band*(1-smooth(-3,-1.5,z)),brow*.40],axis=-1)
  ww[...,0]=np.maximum(.03,1-np.maximum.reduce([belly,band,limb,ginger*np.ones_like(x)]))
  ww/=ww.sum(-1)[...,None]
  hazy=smooth(.02,.62,noise(z*13,y*12,91))*smooth(.05,.66,noise(z*4,arc*5,72))
- lum=165+23*dome+12*tone+15*macro-16*hazy-20*fold-19*band-24*lip-38*eye
+ lum=157+29*dome+22*tone+23*macro-26*hazy-20*fold-19*band-24*lip-38*eye
  lum=np.maximum(24,lum*(1-.79*naris))
  color=np.repeat(np.clip(lum,0,255)[...,None],3,axis=-1)
- height=np.clip(.39+.12*dome+.036*tone+.025*macro-.07*fold-.05*lip,.14,.79)
+ height=np.clip(.39+.12*dome+.036*tone+.025*macro+.052*feature*dome-.07*fold-.05*lip,.14,.79)
  rough=np.clip(.78-.11*dome+.043*macro-.1*lip-.07*brow,.52,.94)
  ao=np.clip(185+58*dome-27*fold-25*eye-100*naris,65,249)
  wound=np.zeros_like(x)
@@ -153,7 +173,10 @@ def atlas(name,n):
   ec=rgb(42+iris*(129+19*lines),36+iris*(78+12*lines),30+iris*(20+5*lines))
   ec=ec*(1-pupil[...,None])+np.array([18,16,13])*pupil[...,None]
   color[eye]=ec[eye];rough[eye]=.16;h[eye]=.49
-  lids=(u>.70)&(v>.50);color[lids]=rgb(122+7*grain,130+9*grain,110+7*grain)[lids];ww[...,0]=lids
+  lids=(u>.70)&(v>.50);lv=(v-.52)/.46
+  ld,lt=scales(u*150+macro,v*92+.3*macro);bright=122+24*ld+15*lt+11*grain
+  color[lids]=rgb(bright,bright-4,bright-9)[lids];h[lids]=(.38+.10*ld+.03*grain)[lids]
+  ww[...,3]=lids*.73;ww[...,5]+=lids*.20;ww[...,2]=lids*.07
  save(name,color,h,rough,ao,ww,np.zeros_like(v),macro)
  if name=='rex_saddle':
   packed=np.asarray(Image.open(HERE/'rex_saddle_packed.png')).copy();packed[:,:,2]=np.where(packed[:,:,1]<120,155,0)
