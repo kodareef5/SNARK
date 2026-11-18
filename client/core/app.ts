@@ -768,7 +768,9 @@ export class App {
     if (s.driving >= 0) {
       const combat = this.reg.combat[s.bodyKind];
       if (combat) return `LMB attack   ${combat.charge ? "hold RMB charge" : combat.secondary ? "RMB impale" : ""}   E get off`;
-      return this.reg.vehicle[s.bodyKind] ? "E  exit vehicle" : "E  get off";
+      if (this.reg.vehicle[s.bodyKind]) return "E  exit vehicle";
+      const mount = this.reg.defs[s.bodyKind];
+      return mount?.type === "species" && mount.roar ? "RMB  roar    E  get off" : "E  get off";
     }
     // Seats in cars and saddles have a slot; a carried body has none. Who steers is handled above.
     if (s.own.seatSlot !== 0 && s.own.seat > 0) {

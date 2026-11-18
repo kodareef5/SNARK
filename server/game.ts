@@ -66,7 +66,7 @@ import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../s
 import { PassengerView } from "./passenger-view.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
-import { BTN_JUMP, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SECONDARY, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { stepVehicleBody, packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide } from "../shared/sim/vehicle-body.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
@@ -464,6 +464,8 @@ export class GameServer {
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
   onMountLand: ((e: number, speed: number) => void) | null = null;
+  /** A rising secondary input on the mounted body, after movement and its ordinary bite step. */
+  onMountSecondary: ((e: number) => void) | null = null;
   /** A driven flyer `e` took off, set down from flight or began a barrel roll this tick, as stepOut still says. */
   onMountFlight: ((e: number) => void) | null = null;
   /** Vehicle report is still current; authoritative damage consumes it immediately after the body is stored. */
@@ -626,6 +628,7 @@ export class GameServer {
         }
         ents.storeBody(e, b);
         if (combat) ents.hold[e] = creatureHold(b);
+        if (driving && !vehicle && (c.pressed & BTN_SECONDARY) !== 0 && b.act === ACT_NONE) this.onMountSecondary?.(e);
         if (vehicle) this.onVehicleStep?.(e);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);

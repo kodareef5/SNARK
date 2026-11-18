@@ -1,6 +1,7 @@
 // The pteranodon. Its design is ref/DESIGN.md, what it does is ref/FUNCTIONS.md, and rig.py holds the skeleton, the
 // sockets and the numbers the clips share.
 
+import { distanceLods } from "./distance.ts";
 import { PTERANODON_DYES } from "../../../../../content/creatures/pteranodon.ts";
 import type { CreatureAsset, ZoneSpec } from "../../../../../tools/art/spec.ts";
 
@@ -14,9 +15,8 @@ function pair(zone: "arm" | "hand" | "leg" | "foot", bone: string, x: number, y:
 
 export default {
   kind: "creature",
-  // rig.py makes the armature and a block-out; model.py drops the block-out for the animal in its two materials; saddle.py
-  // adds the worn saddle; each clips file adds the actions it owns. `bun run art -- core:pteranodon` builds it.
-  source: { scripts: ["rig.py", "model.py", "saddle.py", "clips_move.py", "clips_act.py", "clips_life.py"] },
+  modelCredit: "Pteranodon (Animated) by Chistodrako._. (https://sketchfab.com/3d-models/pteranodon-animated-7d7683df41d1405283f160e81a5dff1b), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Skin, materials and distance meshes adapted for SNARK. Rig and animations by SNARK",
+  source: { scripts: ["rig.py", "coastal.py", "saddle.py", "clips_move.py", "clips_act.py", "clips_life.py"] },
   scale: 1,
   // 42 deforming bones; the nine ctl_* bones are Blender controls baked into the others.
   skeleton: { id: "pteranodon", root: "pelvis", drop: /^ctl_/, bones: 42 },
@@ -67,27 +67,13 @@ export default {
     { name: "Wing Membrane", material: "wing_membrane", sample: PTERANODON_DYES[4]! },
     { name: "Body", material: "body", sample: PTERANODON_DYES[5]! },
   ],
-  // The body and the membrane (rig.py: MATERIALS), painted in tex/paint/ and put together by tex/paint/compose.py.
+  // The donor body and membranes share an atlas. ref/refit.py adapts it to the six native dyes.
   materials: {
-    pteranodon: {
-      base: "tex/pteranodon_base.png",
-      normal: "tex/pteranodon_normal.png",
-      packed: "tex/pteranodon_packed.png",
-      regions: "tex/pteranodon_regions.png",
-      height: "tex/pteranodon_height.png",
-      hurt: "tex/pteranodon_hurt.png",
-      decay: "tex/pteranodon_decay.png",
-    },
-    pteranodon_wing: {
-      base: "tex/pteranodon_wing_base.png",
-      normal: "tex/pteranodon_wing_normal.png",
-      packed: "tex/pteranodon_wing_packed.png",
-      regions: { mask: "tex/pteranodon_wing_mask.png", mask2: "tex/pteranodon_wing_mask2.png" },
-      height: "tex/pteranodon_wing_height.png",
-      hurt: "tex/pteranodon_wing_hurt.png",
-      decay: "tex/pteranodon_wing_decay.png",
-      // Its veins are soft: from 512 up no texel turns more than 2.8 degrees.
-      tops: { normal: 512 },
+    pteranodon_coastal: {
+      base: "tex/coastal_base.png", normal: "tex/coastal_normal.png", packed: "tex/coastal_packed.png",
+      regions: { mask: "tex/coastal_mask.png", mask2: "tex/coastal_mask2.png" },
+      hurt: "tex/coastal_hurt.png", decay: "tex/coastal_decay.png",
+      tops: { mask: 512, mask2: 512, mro: 512 },
     },
   },
   // Every clip rig.py's CLIPS lists, each from the action of its name.
@@ -137,15 +123,13 @@ export default {
     fly: { stride: 6, stated: "it flies, with no ground under it; played alone at its flying speed, 6 m/s" },
     fly_fast: { stride: 8, stated: "it flies, with no ground under it; played alone from its wild sprint as sent, 16 m/s" },
   },
+  distanceLods,
   budgets: {
-    // Only level 0 is the model's; the build makes the rest. Level 6 is the flat M seen from below.
-    triangles: [16000, 7000, 3200, 1400, 600, 240, 64],
-    // The body's and the membrane's maps at 2,048 with the saddle's at 1,024 (rig.py: TEXTURE_MEGABYTES); their hurt and
-    // decay layers at 256.
-    texture: { top: 2048, megabytes: 60, layer: 256 },
+    // Five textured levels preserve the folded wing skinning. The last two use dedicated silhouettes.
+    triangles: [14000, 7000, 3200, 1400, 600, 250, 112],
+    texture: { top: 2048, megabytes: 26, layer: 256 },
   },
-  // Judged by the span seen from below, not by the height `--check` prints (rig.py: FLAT_FROM).
-  flat: 3,
+  flat: 5,
   // clips_life.py: LIMP. Both death clips go limp at 24. The body, the head and the two upper arms, so the wings splay as
   // it falls (ref/FUNCTIONS.md, section 20); the neck, and each wing past its upper arm, stay as the clip left them. Each
   // upper arm carries its whole wing's weight. Measured on tests/unit/ragdoll.test.ts's slope, floor and ramp from 32 yaws,

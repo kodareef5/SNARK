@@ -130,7 +130,10 @@ export function convertModel(asset: Asset & { spec: CreatureAsset }, glb: string
       if (bone < 0) out.faults.push(`${asset.id}: preserved LOD bone "${name}" does not exist`);
       return bone;
     });
-    meshes[meshes.indexOf(t.mesh)] = withSurfaceLevels(t.mesh, { budgets: t.budgets, flat: t.flat ?? Math.max(1, t.budgets.length), maps: t.maps, palette, preserveBones });
+    const distanceLods = t.mesh.id === asset.id ? spec.distanceLods?.(made.rig.names!, palette) : undefined;
+    meshes[meshes.indexOf(t.mesh)] = withSurfaceLevels(t.mesh, {
+      budgets: t.budgets, flat: t.flat ?? Math.max(1, t.budgets.length), maps: t.maps, palette, preserveBones, distanceLods,
+    });
   }
   out.meshes.push(...meshes);
   out.rigs.push(made.rig);
@@ -398,7 +401,11 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
       if (index < 0) throw new Error(`${m.id}: preserved bone ${name} is absent from its rig`);
       return index;
     });
-    return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, { budgets, flat: plan.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}), palette, preserveBones });
+    const distanceLods = m.id === asset.id ? spec.distanceLods?.(names, palette) : undefined;
+    return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, {
+      budgets, flat: plan.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}),
+      palette, preserveBones, distanceLods,
+    });
   });
   // A creature's rig takes what its asset now says of how it moves and dies.
   const spec = asset?.spec;

@@ -15,6 +15,11 @@ import { DINOSAUR_COURSE, writeDinosaurCourse } from "./course.ts";
 
 const REVIEW_SPECIES = ["core:trike", "core:stego", "core:raptor"];
 
+const SINGLE_REVIEW: Record<string, { distance: number; yaw: number } | undefined> = {
+  "core:pteranodon": {distance: 6, yaw: 43500},
+  "core:spino": {distance: 14, yaw: 48500},
+};
+
 export async function buildDinosaurReviewClient(options: Parameters<typeof buildClientApart>[0]): Promise<void> {
   if (!ART) throw new Error("Building the dinosaur review requires assets/source. Use --built with a prepared full-art client.");
   await buildClientApart(options);
@@ -52,14 +57,16 @@ export function seedDinosaurPreview(host: Host, owner: EntityRecord, species: re
     let owned = false;
     for (const rec of records.byPid.values()) if (rec.kind === kind && rec.team === owner.team && !rec.dead && rec.corpse === null) { owned = true; break; }
     if (owned) continue;
-    const pad = DINOSAUR_COURSE.pads[index % DINOSAUR_COURSE.pads.length]!;
+    const single = SINGLE_REVIEW[id];
+    const pad = single ? {x: DINOSAUR_COURSE.spawn.x, z: DINOSAUR_COURSE.spawn.z + single.distance} : DINOSAUR_COURSE.pads[index % DINOSAUR_COURSE.pads.length]!;
     let e = -1;
     for (const offset of [0, 24, 48]) { e = host.spawnCreature(id, pad.x, pad.z + offset, 40, "admin"); if (e >= 0) break; }
     if (e < 0) throw new Error(`No clear review pad for ${id}`);
     const rec = records.byPid.get(world.ents.pid[e]!)!;
     if (!host.taming.give(rec, owner, 0, "forced")) throw new Error(`Preview tame refused for ${id}`);
     rec.name = `${id === "core:trike" ? "Trike" : id === "core:stego" ? "Stego" : id.slice(id.indexOf(":") + 1)} review`;
-    rec.yaw = 0; world.ents.yaw[e] = 0;
+    rec.yaw = single?.yaw ?? 0; world.ents.yaw[e] = rec.yaw;
+    if (single) host.creatures.mind.look[e] = rec.yaw;
     const saddle = reg.saddleFits.indexOf(kind);
     if (saddle > 0) rec.saddle = saddle; // Same out-of-ledger worn gear path as gmsummon.
     const food = reg.eats[kind]?.[0];
@@ -87,14 +94,17 @@ if (import.meta.main) {
   if (args.includes("--built")) {
     if (!existsSync(resolve(dist, "assets/manifest.json")) || !existsSync(resolve(dist, "main.js"))) throw new Error("No prepared client build. Run without --built first.");
   } else await buildDinosaurReviewClient({ quick: true, dist });
-  requireDinosaurReviewArt(dist);
+  const species = args.includes("--spino") ? ["core:spino"] : args.includes("--pteranodon") ? ["core:pteranodon"] : REVIEW_SPECIES;
+  requireDinosaurReviewArt(dist, species);
   const folder = value("--config") ?? DEV_CONFIG, { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const dbPath = resolve(value("--db") ?? resolve(root, "var/dinosaur-preview/world.db")); mkdirSync(dirname(dbPath), { recursive: true });
   const live = liveFileOf(folder), map = value("--map") ? resolve(value("--map")!) : writeDinosaurCourse(resolve(root, "var/dinosaur-preview/course.snmp"));
   const server = startServer({ dev: true, clientDir: dist, hostname: value("--host") ?? "127.0.0.1", port: Number(value("--port") ?? 8796), dbPath, config: rules, map, ...(live ? { live } : {}) });
-  installDinosaurPreview(server.host);
+  installDinosaurPreview(server.host, species);
   stopOnSignals(() => server.stop());
   console.log(`Dinosaur preview: http://localhost:${server.port}\nIsolated save: ${dbPath}`);
-  console.log("E mount/dismount · W/A/S/D travel · Shift run · mouse buttons abilities · R plate mode · F inventory");
+  if (args.includes("--pteranodon")) console.log("E mount/dismount · W/A/S/D travel · Space take off");
+  else if (args.includes("--spino")) console.log("E mount/dismount · W/A/S/D travel · Shift sprint · primary bite");
+  else console.log("E mount/dismount · W/A/S/D travel · Shift run · mouse buttons abilities · R plate mode · F inventory");
 }

@@ -122,6 +122,24 @@ test("a body set on ground too steep to stand on slides down it as one that fall
   expect(wrong.slice(0, 20)).toEqual([]);
 });
 
+test("a wide body sliding from a steep bank onto level ground carries its downward speed into that impact", () => {
+  const w = bank(75, ASPECTS[0]!);
+  const p = wild("core:rex");
+  const b = bodyAt(w, p, 128, 128 + 6 / tan(75));
+  b.grounded = false;
+  let fastest = 0;
+  for (let t = 0; t < 120 && !b.grounded; t++) {
+    fastest = Math.max(fastest, -b.vy);
+    stepBody(w, b, 0, 127, b.yaw, 0, BTN_JUMP, p, TICK_DT);
+  }
+  // It crosses more than its step height on the last tick. Its feet were above the flat,
+  // so this is a landing and its speed is what the server uses to assess fall damage.
+  expect(fastest * TICK_DT).toBeGreaterThan(p.stepUp);
+  expect([b.grounded, b.y]).toEqual([true, 0]);
+  expect(stepOut.landSpeed).toBeGreaterThanOrEqual(fastest);
+  expect(stepOut.landSpeed).toBeLessThanOrEqual(fastest + p.gravity * TICK_DT + 1e-5);
+});
+
 test("a tame walks up ground between ARK's two angles, 44.8 and 53.1 degrees, that stops the same species wild, from every side", () => {
   const wrong: string[] = [];
   for (const deg of [47, 52]) {

@@ -443,7 +443,9 @@ test("a young tree or an elder stops a body at its trunk alone, which a survivor
 test("on level ground every young tree and elder, at its least and largest size, holds a survivor and the tallest mount at its trunk alone, and a survivor against it looking level meets it, from every side", () => {
   const mounts = [...reg.saddleFits].filter((k) => k !== 0).map((k) => reg.ids[k]!);
   const tallest = mounts.reduce((a, b) => (reg.move[kind(b)]!.height > reg.move[kind(a)]!.height ? b : a));
-  expect([tallest, reg.move[kind(tallest)]!.height]).toEqual(["core:stego", 4.13]);
+  expect(mounts).toContain("core:rex");
+  expect([tallest, reg.move[kind(tallest)]!.height]).toEqual(["core:spino", 5.19]);
+  const tested = new Set(["core:parasaur", "core:rex", "core:stego", tallest]);
   const w = flatWorld(2);
   for (const id of ["core:tree", "core:oak"]) {
     const k = kind(id);
@@ -453,8 +455,11 @@ test("on level ground every young tree and elder, at its least and largest size,
         const form = forms.first[k]! + v * steps + step;
         const at = { kind: k, form, x: 32, y: 0, z: 32, yaw: 0 };
         const looks = walkInto(w, form, at, "core:survivor", 16, 7);
-        const mount = walkInto(w, form, at, tallest, 16, 7);
-        expect([forms.mesh[form], looks.short, looks.looked, mount.short]).toEqual([forms.mesh[form], expect.closeTo(0, 1), 16, expect.closeTo(0, 1)]);
+        expect([forms.mesh[form], looks.short, looks.looked]).toEqual([forms.mesh[form], expect.closeTo(0, 1), 16]);
+        for (const who of tested) {
+          const mount = walkInto(w, form, at, who, 16, 7);
+          expect([forms.mesh[form], who, mount.short]).toEqual([forms.mesh[form], who, expect.closeTo(0, 1)]);
+        }
       }
     }
   }
