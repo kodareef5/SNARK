@@ -102,6 +102,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   // columns at the bay's ends, each once.
   const opened = new Set<string>();
   const once = (key: string): boolean => !opened.has(key) && !!opened.add(key);
+  let drapes = 0;
   for (const t of tiles) {
     const top = tops.get(tileKey(t.i, t.j))!; if (!top) continue;
     const burnt = damaged.has(t) && mode === "burnt";
@@ -216,10 +217,11 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       const party = rule.party?.includes(side) && adjacent === 0;
       if (bay !== 8 || opts.detail >= 2 || burnt || party || top === 0) continue;
       if (open && top > openFrom) {
-        // The roof's edge over the gap breaks too; one slab in two hangs from it, and a column's stump stands on it.
+        // The roof's edge over the gap breaks too; from one in three, two at most a building and none from a core, a slab
+        // hangs, and a column's stump stands on it.
         facade(m, edgeOf(hash3(opts.seed + 197, t.i * 4 + side, t.j * 64 + top)), u, base + top * 4, v, side, "fracture");
         const pick = hash3(opts.seed + 199, t.i * 4 + side, t.j);
-        if (top - adjacent >= 2 && pick % 2 === 0) facade(m, "zdrape", u, base + top * 4, v, side, "concrete");
+        if (top - adjacent >= 2 && pick % 3 === 0 && !cores.includes(t) && !escape.includes(t) && drapes++ < 2) facade(m, "zdrape", u + dz * (pick % 2 ? 1 : -1), base + top * 4, v + dx * (pick % 2 ? 1 : -1), side, "concrete");
         if (pick % 3 === 0) m.put("zstub", u - dx * 0.4 + dz * (bay / 2 - 0.4), base + top * 4 + RUIN_SHAPES.zstub[1] / 2, v - dz * 0.4 + dx * (bay / 2 - 0.4), "fracture", turn);
         continue;
       }

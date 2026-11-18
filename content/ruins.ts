@@ -242,8 +242,11 @@ const skirt = (name: string, lumps: readonly (readonly [number, number, number, 
 /** A wall panel 3.8 m by 2.8 m hanging from one fixing at a slab's edge, its far end dropped 16 degrees, standing off the edge. */
 const HANG = 16 * Math.PI / 180;
 const hanging = (): Corner[] => [0.35, 0.55].flatMap((z) => ([[0, 0], [3.8, 0], [3.8, -2.8], [0, -2.8]] as const).map(([x, y]): Corner => [x * Math.cos(HANG) + y * Math.sin(HANG) - 1.45, -x * Math.sin(HANG) + y * Math.cos(HANG) - 0.45, z]));
-/** A slab 8 m by 7 m hinged at its top edge on the slab line (z = 0, y = 0) and hanging out and down. */
-const DRAPE: Corner[] = leaning([4, 0.175, 3.5], -62).corners.map(([x, y, z]) => [x, y - 3.5 * Math.sin(62 * Math.PI / 180) - 0.175, z + 3.5 * Math.cos(62 * Math.PI / 180)] as const);
+/**
+ * A slab 6 m wide torn from its bay and hanging from its top edge on the slab line (z = 0, y = 0), nearly sheer, out to
+ * 1.3 m at one end of its foot and 2 m at the other and 1 m lower there, so it is seen twisted and not as an eave.
+ */
+const DRAPE: Corner[] = [[-3, 0, 0], [3, 0, 0], [-2.3, -6.6, 1.3], [3.3, -5.6, 2]].flatMap(([x, y, z]): Corner[] => [[x!, y!, z!], [x!, y! - 0.08, z! - 0.34]]);
 /** A column out of plumb by 8 degrees, its head broken on a slant. */
 const LEAN_COLUMN: Corner[] = [[-0.3, 0, -0.3], [0.3, 0, -0.3], [-0.3, 0, 0.3], [0.3, 0, 0.3], [-0.3, 3.2, 0.15], [0.3, 2.9, 0.12], [-0.3, 3.05, 0.73], [0.3, 2.75, 0.69]];
 /** Strands of a vine hanging from a slab's edge, each its place along it, its length and colour, over a line of moss. */
@@ -295,8 +298,8 @@ export const RUIN_BREAKS = {
   // A slab-edge cornice round a whole tall building's roof, two corbelled steps standing 1.1 m out from its wall line.
   zcornice: centred(shaped("zcornice"), { boxes: [{ at: [0, -0.275, 0.675], half: [4, 0.275, 0.425] }] }, { boxes: [{ at: [0, -0.15, 0.675], half: [4, 0.15, 0.425] }, { at: [0, -0.425, 0.5], half: [4, 0.125, 0.25] }] }),
   zcrown1: crown("zcrown1", CROWNS[0]!), zcrown2: crown("zcrown2", CROWNS[1]!), zcrown3: crown("zcrown3", CROWNS[2]!), zcrown4: crown("zcrown4", CROWNS[3]!), zcrown5: crown("zcrown5", CROWNS[4]!), zcrown6: crown("zcrown6", CROWNS[5]!),
-  // A floor slab torn from a tower's top, hanging from its edge 62 degrees down over the gap, 7 m long, bars at the hinge.
-  zdrape: centred(shaped("zdrape"), { hulls: [{ corners: DRAPE }] }, { hulls: [{ corners: DRAPE }], boxes: bars([[-2.9, -0.2, 0.5, 0.6], [-0.6, -0.15, 0.35, 0], [1.7, -0.25, 0.6, 0.8], [3.4, -0.2, 0.4, 0.3]]) }),
+  // A floor slab torn from a tower's top, hanging from its edge over the gap, bars at the hinge.
+  zdrape: centred(shaped("zdrape"), { hulls: [{ corners: DRAPE }] }, { hulls: [{ corners: DRAPE }], boxes: bars([[-3.4, -0.2, 0.5, 0.6], [-0.6, -0.15, 0.35, 0], [1.7, -0.25, 0.6, 0.8], [3.6, -0.2, 0.4, 0.3]]) }),
   zhang: centred(shaped("zhang"), { hulls: [{ corners: hanging() }] }, { hulls: [{ corners: hanging() }], boxes: [{ at: [-1.45, -0.3, 0.45], half: [0.04, 0.2, 0.04], color: RUST }] }),
   zleancol: centred(shaped("zleancol"), { hulls: [{ corners: LEAN_COLUMN }] }, { hulls: [{ corners: LEAN_COLUMN }], boxes: [{ at: [-0.18, 3.25, 0.55], half: [0.025, 0.3, 0.025], color: RUST }, { at: [0.15, 3.0, 0.3], half: [0.025, 0.25, 0.025], color: RUST }] }),
   zvine: centred(shaped("zvine"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, {
