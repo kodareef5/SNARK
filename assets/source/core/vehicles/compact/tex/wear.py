@@ -4,11 +4,12 @@ All distances below are metres on the closed car. Colour is undyed sRGB.
 A mark keeps one colour for life, so the lips, core and surrounding debris
 of a wound have separate footprints and onset times.
 """
+import json
 from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
@@ -45,6 +46,8 @@ class Layers:
         self.mpt = s.mpt.ravel()[region]
         self.convex = s.convex[region]
         self.hurt, self.decay = s.hurt[region], s.decay[region]
+        if s.name == "cabin":
+            self.printed = s.printed[region]
         self.x, self.y, self.z = self.p.T
         self.ax = np.abs(self.x)
         self.cloud = field(self.p, 0.24, 101)
@@ -377,106 +380,154 @@ def shards(u, v, pitch, seed):
     return (d[:, 1]**2 - d[:, 0]**2) / (2 * spacing), tone[i[:, 0]], centre, glint
 
 
+def printed_glass(s):
+    """Intersect baked glass, the surviving L0 UV faces and the printed frit.
+
+    open-glass.py cuts by the original polygon's centre. The bakes store its
+    triangulation, which can have different centres. Read the retained UVs
+    from the actual pack to preserve that distinction, including at corners.
+    """
+    data = (Path(HERE).parent / "compact.snpk").read_bytes()
+    header_end = 12 + int.from_bytes(data[8:12], "little")
+    header = json.loads(data[12:header_end])
+    mesh = next(m for m in header["meshes"] if m["id"] == "core:compact")
+    material = next(i for i, m in enumerate(header["materials"]) if m["id"] == "core:compact/cabin")
+    lod = mesh["lods"][0]
+    blob = memoryview(data)[header_end:]
+    # shared/pack/pack.ts and tools/pack/surface.ts. Each surface vertex
+    # starts with two unsigned 16-bit UVs and occupies twelve bytes.
+    uv = np.ndarray((lod["vertexCount"], 2), "<u2", buffer=blob,
+                    offset=lod["surfaceOffset"], strides=(12, 2)).astype(np.float64)
+    rect = mesh.get("uv", (0, 0, 1, 1))
+    uv = (rect[:2] + uv / 65535 * rect[2:]) * s.size
+    indices = np.frombuffer(blob, dtype=f"<u{lod['indexBytes']}", count=lod["indexCount"],
+                            offset=lod["indexOffset"])
+    live = Image.new("L", (s.size, s.size))
+    draw = ImageDraw.Draw(live)
+    for mat, start, count in np.asarray(lod["sections"]).reshape(-1, 3):
+        if mat == material:
+            for triangle in indices[start:start + count].reshape(-1, 3):
+                draw.polygon([tuple(vertex) for vertex in uv[triangle]], fill=255)
+    alpha = np.asarray(Image.open(Path(HERE) / "cabin_base.png").getchannel("A"))
+    glass = s.where("glass").reshape(s.size, s.size)
+    printed = s.covered & glass & (np.asarray(live) > 0) & (alpha >= 128)
+    # Carry pigment a little beyond each printed pixel for the 512 mip.
+    return ndimage.maximum_filter(printed, size=7).ravel()
+
+
 def paint_glass(b, front):
-    mask = b.is_tag("glass") & ((b.z > 0) if front else (b.z < 0))
+    mask = b.printed & b.is_tag("glass") & ((b.z > 0) if front else (b.z < 0))
     if not mask.any():
         return
     p = b.p[mask]
-    # Project onto the measured slope. Positive v goes toward the roof on
-    # both panes. Using the length along the glass keeps the bullseye round.
     x, y, z = p.T
-    v = (.73 * (y - 1.056) - .68 * (z - .610) if front else
-         .56 * (y - 1.146) + .83 * (z + 1.168))
-    u = x - (.378 if front else -.296)
-    f, grit, dust = b.flake[mask], b.grit[mask], b.cloud[mask]
-    # The glass uses only ~93 source texels per metre. The 2x reduction
-    # takes the earliest of four samples, so a 5–7 mm stroke covers one to
-    # two 1024 texels. Broader strokes merge at the 512 game mip.
-    width = np.clip(.62 * b.mpt[mask], .0026, .0038)
-    wiggle = (f - .5) * .007
-    r = np.hypot(u, v)
+    ax = np.abs(x)
+    f, grit = b.flake[mask], b.grit[mask]
     hurt, decay = b.hurt[mask], b.decay[mask]
+    # Distances up the sloping pane from the roof and the cowl/deck.
+    from_top = (z - .247) * 1.46 if front else (-.705 - z) * 1.20
+    from_base = (.728 - z) * 1.46 if front else (z + 1.365) * 1.20
+    lower = from_base < from_top
+    width = np.interp(z, [.247, .43, .61, .728], [.551, .553, .575, .603]) if front else .509
+    across = np.maximum(0, width - ax)
+    side = across < np.minimum(from_top, from_base)
+    depth = np.maximum(0, np.minimum.reduce([from_top, from_base, across]))
+    along = np.where(side, np.sign(x) * from_base + .67, x)
+    jitter = (f - .5) * .005
+    # Short, diverging fissures on the opaque portions near the frame.
+    # The front roof print and the rear deck corners are most visible. The
+    # smaller front cowl hit gives a head-on impact an earlier point to show.
+    impacts = ([(.4372, .2535, .07), (.5995, .7100, .05), (-.5979, .7197, .20)] if front else
+               [(-.4927, -1.3550, .06), (.1528, -1.3568, .57), (.4900, -.7159, .50)])
+    impact_distance = np.full_like(x, 3.)
+    for i, (cx, cz, start) in enumerate(impacts):
+        u, v = x - cx, (z - cz) * (1.46 if front else 1.20)
+        r = np.hypot(u, v)
+        impact_distance = np.minimum(impact_distance, r)
+        d, delay = star(u + jitter * .55, v, 12 if front else 8,
+                        [.022, .052, .103, .184], 524 + i + 9 * front,
+                        (0, 1) if front else (), forks=front)
+        w = np.clip(.88 * b.mpt[mask], .0036, .0057)
+        grey = blend((140, 166, 173), (228, 235, 222), .30 + .53 * grit)
+        stamp(hurt, d < w, start + 6.65 * r + .28 * delay + .15 * d / w, grey)
+        stamp(hurt, r < .017, start + .25 * r / .017, (216, 227, 215))
+
+    # Serrations across the inner lip of the strip. A few teeth are
+    # missing all the way back to the frame. Elsewhere their fractured faces
+    # catch alternate amounts of light on either side of each diagonal cut.
+    rng = np.random.default_rng(311 if front else 319)
+    joins = np.r_[-1.5, -1.5 + np.cumsum(rng.uniform(.035, .104, 110))]
+    tooth = np.searchsorted(joins, along + .48 * depth + jitter) - 1
+    fraction = (along + .48 * depth + jitter - joins[tooth]) / (joins[tooth + 1] - joins[tooth])
+    tips = rng.uniform(.24, .78, len(joins))[tooth]
+    slope = np.where(fraction < tips, fraction / tips, (1 - fraction) / (1 - tips))
+    jag = .004 + (.016 + .044 * rng.random(len(joins))[tooth]) * slope
+    missing = rng.random(len(joins))[tooth] < .18
+    gap = (missing | (depth > jag)) & (impact_distance > .038)
+    # Leave narrow pockets in the two lower corners for sediment and leaves.
+    corner = (from_base < .065) & (across < .113)
+    pocket = corner & (np.abs(np.sin(92 * x + 43 * from_base)) < .73) & (impact_distance > .022)
+
+    # The head end of the passenger-side rail shares the rear-impact grid
+    # cell. Keep its first fractures toward the cowl, where the frontal
+    # stories can reveal them while the car is alive.
+    active = ~pocket
     if front:
-        d, delay = star(u + wiggle, v, 19, [.036, .077, .145, .254, .393, .61, .98],
-                        452, (0, 1, 2, 3, 4, 5), forks=True)
-        grey = blend((87, 103, 110), (174, 185, 183),
-                     .16 + .41 * smoothstep(width, 0, d) + .39 * grit)
-        t = .15 + .65 * (1 - np.exp(-r / .105)) + 1.69 * r + delay + .13 * d / width
-        stamp(hurt, d < width, t, grey)
-        # A dark fracture lip keeps the bright sliver narrow after the
-        # packer extends RGB under transparent neighbours at coarse mips.
-        lip = (d >= width) & (d < width + .010)
-        stamp(hurt, lip, t + .18, blend((26, 38, 48), (49, 64, 72), grit))
-        core = (np.abs(r - .0155 - wiggle) < width) | ((r < .010) & (grit > .33))
-        stamp(hurt, core, .10 + r * 7, blend((134, 149, 153), (198, 204, 194), grit))
-        lu, lv = x + .30, v + .082
-        ds, wait = star(lu, lv, 10, [.029, .067, .152, .27, .43], 376, (0, 1, 2), forks=True)
-        rr = np.hypot(lu, lv)
-        stamp(hurt, ds < width, 1.10 + 3.12 * rr + wait,
-              blend((88, 103, 112), (170, 182, 181), .22 + .68 * grit))
-        stamp(hurt, (ds >= width) & (ds < width + .008),
-              1.29 + 3.12 * rr + wait, blend((26, 38, 48), (49, 64, 72), grit))
-        far_corner = (x < -.29) & (z < .56 - .12 * (x + .29))
-        hurt[far_corner] = 0
+        active &= (x >= -.459) | lower
+    phase = np.clip(.95 + .39 * np.minimum(impact_distance / .43, 1) + .16 * f, 0, 1.60)
+    if front:
+        phase += .43 * (~lower) * smoothstep(-.21, -.37, x)
+    fault, tone, _, facing = shards(along, depth + jitter, .036 if front else .022, 701 + int(front))
+    craze = (fault < .0036 + .0015 * facing) | (np.abs(fraction - tips) < .11)
+    chilled = blend((170, 188, 193), (242, 246, 236), .13 + .50 * facing + .30 * tone)
+    stamp(hurt, active & ~gap & craze, phase + .15 * (1 - facing), chilled)
+    # A dimmer reflected face between bright fracture edges makes the
+    # whitening readable even where the outer frit is one game texel deep.
+    stamp(hurt, active & ~gap & (tone > .54), phase + .19 + .17 * (1 - tone),
+          blend((112, 142, 151), (191, 209, 203), tone))
+    stamp(hurt, active & ~gap & (depth < jag), 2.08 + .46 * (1 - slope),
+          blend((129, 155, 163), (238, 246, 235), .55 * slope + .45 * tone))
+    stamp(hurt, active & gap, 1.98 + .53 * tone,
+          blend((14, 22, 28), (40, 48, 48), .64 * f + .36 * grit))
+    edge = (~missing) & (np.abs(depth - jag) < .005) & (impact_distance > .04)
+    stamp(hurt, active & edge, 1.87 + .21 * tone, (201, 219, 214))
+
+    if front:
+        # At the upper passenger corner the spatial rear-hit delay goes
+        # from three stages at the centre to zero at x = -.504. Taper the
+        # upper-rail cracks out before this shared cell shows a windscreen
+        # hit on a car struck behind the passenger.
+        # Include a short guard for the shoulder of the filtered 512 mip.
+        onset_floor = 3 * sat((-.12 - x) / .24)
+        roof_print = ~lower & (x < -.12)
+        hurt[roof_print, 3] = np.minimum(hurt[roof_print, 3], reveal(onset_floor[roof_print]))
     else:
-        # Tempered pellets are 18 mm apart, about one sample on the game
-        # mip. Only the lit edge of a pellet glints, and groups open along
-        # larger faults. The original dark glass shows between the edges.
-        fine, tone, _, light = shards(u + wiggle * .32, v, .018, 714)
-        fault, group, _, facing = shards(u, v + wiggle, .084, 715)
-        # Two irregular bites, with jagged lips and dark interiors. Use
-        # smaller groups to set their outlines, independent of the bright
-        # fault network. Both bites connect to larger cracks near the seal.
-        _, _, chunk, _ = shards(u, v, .036, 716)
-        cu, cv = chunk.T
-        bit_a = np.minimum(np.hypot((cu - .35) / .212, (cv - .18) / .16),
-                           np.hypot((cu - .47) / .126, (cv - .30) / .16))
-        bit_b = np.hypot((cu + .154) / .12, (cv + .104 + cu * .17) / .084)
-        bite = np.minimum(bit_a, bit_b) + .17 * np.sin(23 * cu + 14 * cv)
-        gone = bite < 1
-        ds, wait = star(u, v, 8, [.026, .064, .134, .184], 712, (0,))
-        stamp(hurt, (ds < width) & ~gone, .14 + 6.6 * r + wait,
-              blend((98, 115, 119), (174, 187, 181), .25 + .64 * grit))
-        onset = 1.11 + 1.71 * r + .33 * group
-        # Large faults are thin and intermittently lighter where a face has
-        # tilted up. No pellet has a white fill.
-        stamp(hurt, (fault < width * 1.05) & ~gone, onset + .13 * fault / width,
-              blend((71, 87, 93), (159, 177, 174), .12 + .62 * facing + .23 * group))
-        lip = (fault >= width * 1.05) & (fault < width + .014) & ~gone
-        stamp(hurt, lip, onset + .21 + .2 * (1 - facing),
-              blend((23, 36, 44), (47, 61, 68), .50 * tone + .50 * group))
-        fine_edge = (fine < .00083) & (light + .35 * tone > .93)
-        stamp(hurt, fine_edge & ~gone, onset + .28 + .38 * (1 - light),
-              blend((55, 67, 76), (104, 119, 123), .59 * light + .40 * tone))
-        fine_lip = (fine >= .00083) & (fine < .0034) & (light + .35 * tone > .91)
-        stamp(hurt, fine_lip & ~gone, onset + .47,
-              blend((24, 36, 46), (43, 56, 64), tone))
-        dark = blend((14, 22, 29), (33, 41, 45), .67 * dust + .33 * f)
-        stamp(hurt, gone, 1.99 + .56 * np.maximum(bite, 0) + .19 * group, dark)
-        stamp(hurt, ~gone & (bite < 1.14) & (fine < .0029),
-              1.86 + .71 * r, blend((85, 105, 111), (157, 174, 163), grit))
-    # The lower seal retains leaf litter. Above it, narrow rain rivulets
-    # interrupt a mottled film that gets denser down the rake of the glass.
-    base = (.728 - z) * 1.46 if front else (z + 1.365) * 1.20
-    run = field(p, (.037, .71, .64), 180)
-    deposit = .46 * dust + .30 * f + .24 * run
-    lower = np.exp(-np.maximum(0, base) / .105)
-    t = 4.72 - 2.38 * deposit - .55 * run - 1.20 * lower
-    film = blend((73, 82, 85), (135, 143, 130), .45 * deposit + .27 * run + .28 * lower)
-    stamp(decay, (deposit > .55 - .23 * lower) | (run > .73), t, film)
-    rng = np.random.default_rng(822 if front else 823)
-    for i in range(22):
-        cx = rng.uniform(-.59, .59)
-        cy = rng.uniform(.002, .065)
-        long = rng.uniform(.016, .046)
-        short = long * rng.uniform(.32, .59)
+        # The driver's roof corner of the backlight is close to the middle
+        # grid plane. Delay that secondary hit past a living driver's-nose
+        # story, keeping the passenger-side deck strike early.
+        far_corner = (~lower) & (x > .28)
+        hurt[far_corner, 3] = np.minimum(hurt[far_corner, 3], reveal(2.04))
+
+    # Film adheres to the printed lip. Grit and small curled leaves lodge
+    # against the lower corner seals rather than floating in the opening.
+    run = field(p, (.033, .41, .29), 508)
+    base_dirt = np.exp(-np.maximum(from_base, 0) / .055)
+    gather = base_dirt * np.exp(-across / .15)
+    sediment = blend((83, 78, 62), (149, 139, 107), .54 * f + .46 * grit)
+    stamp(decay, lower, 3.18 - 1.49 * gather - .78 * run - .39 * grit, sediment)
+    stamp(decay, run > .55, 3.51 - .87 * run - .54 * base_dirt,
+          blend((81, 93, 96), (145, 150, 133), f))
+    for i in range(18):
+        side_sign = 1 if i % 2 else -1
+        cx = side_sign * ((.598 if front else .503) - rng.uniform(.002, .074))
+        cy = rng.uniform(.001, .035)
         angle = rng.uniform(-1.15, 1.15)
-        dx, dy = x - cx, base - cy
-        a = (dx * np.cos(angle) + dy * np.sin(angle)) / long
-        c = (-dx * np.sin(angle) + dy * np.cos(angle)) / short
-        leaf = np.abs(c + .16 * (a * a - 1)) + np.abs(a)**1.5
-        ochre = blend((93, 75, 41), (180, 138, 63), .4 * (i % 3) / 2 + .4 * grit + .2 * (c > 0))
-        stamp(decay, leaf < 1, .25 + (i % 5) * .29 + .37 * leaf, ochre)
+        dx, dy = x - cx, from_base - cy
+        a = (dx * np.cos(angle) + dy * np.sin(angle)) / rng.uniform(.016, .032)
+        c = (-dx * np.sin(angle) + dy * np.cos(angle)) / rng.uniform(.006, .014)
+        leaf = np.abs(c + .12 * (a * a - 1)) + np.abs(a)**1.35
+        ochre = blend((102, 75, 42), (184, 147, 79), .33 * (i % 3) / 2 + .30 * grit + .31 * (c > 0))
+        stamp(decay, leaf < 1, .27 + (i % 4) * .35 + .28 * leaf, ochre)
     b.hurt[mask], b.decay[mask] = hurt, decay
 
 
@@ -564,6 +615,8 @@ def save(s):
 def generate(name, painter):
     print(f"Reading {name} bake", flush=True)
     s = Surface(name)
+    if name == "cabin":
+        s.printed = printed_glass(s)
     print(f"Painting {name}", flush=True)
     for region in slices(s.n):
         painter(Layers(s, region))
