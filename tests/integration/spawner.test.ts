@@ -43,7 +43,7 @@ const near = (r: { x: number; z: number }, x: number, z: number): number => Math
 const kill = (host: Host, pid: number): void => host.survival.add(host.records.byPid.get(pid)!, V_HEALTH, -1e9);
 
 test("a new proving ground fills at once: the herd north of the plaza, raptors beyond it, and dodos round the pool on dry ground", () => {
-  const host = createHost(reg, { wild: true });
+  const host = createHost(reg, { wild: true, seed: 6 });
   ticks(host, 60);
   const sp = host.spawner!;
   const [herd, beach, hunters] = sp.regions;
@@ -51,12 +51,19 @@ test("a new proving ground fills at once: the herd north of the plaza, raptors b
   expect(herd!.count).toBeGreaterThanOrEqual(24);
   expect(hunters!.count).toBeGreaterThanOrEqual(4);
   // Parasaurs can also belong to the northern herd. Count beach members in their own region.
-  expect(beach!.count).toBe(12);
+  expect(beach!.count).toBe(13);
   expect(beach!.of).toEqual(new Map([
     [reg.index.get("core:dodo")!, 8],
-    [reg.index.get("core:parasaur")!, 3],
-    [reg.index.get("core:trike")!, 1],
+    [reg.index.get("core:parasaur")!, 2],
+    [reg.index.get("core:pteranodon")!, 1],
+    [reg.index.get("core:trike")!, 2],
   ]));
+  const flyers = of(host, "core:pteranodon");
+  expect(flyers.length).toBe(1);
+  for (const r of flyers) {
+    const e = host.records.entOf.get(r.pid)!;
+    expect([host.world.ents.mode[e], (host.world.ents.flags[e]! & F_GROUNDED) !== 0, r.y >= PROVING_SEA_LEVEL]).toEqual([MODE_WALK, true, true]);
+  }
   for (const r of [...of(host, "core:dodo"), ...of(host, "core:trike")]) {
     expect(near(r, PROVING_POOL.x, PROVING_POOL.z)).toBeLessThanOrEqual(50 + 6.8);
     expect(r.y).toBeGreaterThanOrEqual(PROVING_SEA_LEVEL);
@@ -67,17 +74,14 @@ test("a new proving ground fills at once: the herd north of the plaza, raptors b
   expect(wild(host).every((r) => r.genome!.level % 5 === 0 && r.genome!.level >= 5 && r.genome!.level <= 150)).toBe(true);
   // The same seed makes the same world; another makes another.
   const look = (h: Host) => wild(h).map((r) => [h.world.reg.ids[r.kind], Math.round(r.x * 100), Math.round(r.z * 100), r.genome!.level]);
-  const again = createHost(reg, { wild: true });
+  const again = createHost(reg, { wild: true, seed: 6 });
   ticks(again, 60);
   expect(look(again)).toEqual(look(host));
-  const other = createHost(reg, { wild: true, seed: 3 });
+  const other = createHost(reg, { wild: true, seed: 1 });
   ticks(other, 60);
-  const flyers = of(other, "core:pteranodon");
-  expect(flyers.length).toBe(2);
-  for (const r of flyers) {
-    const e = other.records.entOf.get(r.pid)!;
-    expect([other.world.ents.mode[e], (other.world.ents.flags[e]! & F_GROUNDED) !== 0, r.y >= PROVING_SEA_LEVEL]).toEqual([MODE_WALK, true, true]);
-  }
+  const turtles = of(other, "core:carbonemys");
+  expect(turtles.length).toBe(3);
+  for (const turtle of turtles) expect(near(turtle, PROVING_POOL.x, PROVING_POOL.z)).toBeLessThanOrEqual(50 + 6.8);
   expect(look(other)).not.toEqual(look(host));
 });
 

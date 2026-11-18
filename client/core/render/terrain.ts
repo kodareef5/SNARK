@@ -173,6 +173,9 @@ export class TerrainLod {
   readonly size: GroundSize;
   /** Tiles the last frame drew as they were, a level coarser, because the window drawn did not hold their children. */
   coarser = 0;
+  /** Per tile of the last frame's list, its lowest and highest sample, camera-relative. */
+  readonly low = new Float32Array(MAX_TILES);
+  readonly high = new Float32Array(MAX_TILES);
   private readonly hf: Heightfield;
   private readonly minY: Float32Array[] = [];
   private readonly maxY: Float32Array[] = [];
@@ -301,6 +304,14 @@ export class TerrainLod {
     return this.walk(cam, packet, viewDistance, casts, true);
   }
 
+  /** How far the ground anywhere on the map stands from height `y`, up or down, at most. */
+  farthestFrom(y: number): number {
+    const top = this.levels - 1;
+    let most = 0;
+    for (let k = 0; k < this.minY[top]!.length; k++) most = Math.max(most, y - this.minY[top]![k]!, this.maxY[top]![k]! - y);
+    return most;
+  }
+
   /** A bound under the ground in a rectangle of the world: the lowest of the nodes it touches, at the finest level where they are at most three a side. */
   lowest(x0: number, z0: number, x1: number, z1: number): number {
     let level = 0;
@@ -388,6 +399,8 @@ export class TerrainLod {
       src[n * 4 + 2] = coarse ? stride / COARSE : stride;
       src[n * 4 + 3] = coarse ? SOURCE_MAP : SOURCE_WINDOW;
       packet.tilePass[n] = (seen ? cam.passes(x0, skirt, z0, x0 + size, y1, z0 + size) : 0) | (bits * TILE_CASTS);
+      this.low[n] = y0;
+      this.high[n] = y1;
       packet.tileCount = n + 1;
       if (seen) packet.triangles += TILE_QUADS * TILE_QUADS * 2;
     }

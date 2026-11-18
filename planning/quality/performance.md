@@ -254,8 +254,8 @@ held whole and the far city drawing the rest, at noon (`bun tools/bench/census.t
 var/maps/miami.snmap`, C): the near city's draws, its draws into the sun's maps (a
 caster once a cascade), and the far city's draws and triangles. Medium with the touch
 rule is at the iPhone's 390 by 669, the others at 1,920 by 1,080; trees and rocks are
-left out. `tests/unit/census.test.ts` pins the first three views on a slice of these
-statics with grey boxes for meshes, whose near columns are the built map's.
+left out. `tests/unit/census.slow.test.ts` pins the first three views on a slice of
+these statics with grey boxes for meshes, whose near columns are the built map's.
 
 | View | Low poly | Medium, touch | Medium | High | Ultra |
 | --- | --- | --- | --- | --- | --- |
@@ -431,6 +431,26 @@ to 5.7 on high; 2.7 to 2.8 ms round forty hurt and dead dodos on medium and 4.7 
 5.1 on ultra. The device page's crowd casts sun shadows for 1.2 ms of GPU on medium,
 1.5 on high and 1.8 on ultra (run `bd71dda8`). The far fade keeps 50.0% of a wall
 halfway through it, as its rule says, on both devices.
+
+### What a timer query reads on this Mac
+
+Through ANGLE's Metal renderer a timer query counts the time of the card's work that overlaps the frame's, not the
+frame's own: a frame of many render passes, or one the card starts while the last is still drawing, reads long. A
+page of its own (one full-screen pass drawn n times, then the same split over render targets), each frame waiting for
+the card by reading a pixel back, showed it on 2026-11-18: one pass of 4.7 ms by query, four of them 42 ms by query and
+22 to 27 ms on the page's clock at 21.8 to 27.5 ms a frame, and forty small passes over two targets 34 ms by query
+against 19 ms on the clock and 19.5 ms a frame. A frame's time cannot pass the time between frames that the clock
+shows, so the query over-read by up to twice. In the game the light target's frame (high and ultra, its resolve,
+bloom's nine passes and the finish) read 13.7 ms by query on high at Miami's street and 11.4 to 11.8 ms on the page's
+clock, which counts the browser's encoding as well; bloom, five ms by query, cost 0.1 to 0.2 ms on the clock. Every
+figure taken by query before that day, of the light target above all, is the query's and reads high.
+
+`bun tools/bench/gpu.ts` therefore gives each city row on the page's clock as well (`?sync=1`: the frame from its
+first mark until a pixel of the canvas comes back, which waits for the card), and an effect's cost by turning it off
+every other frame (`?ab=`) and taking each such frame against the frames either side, which other work on the card and
+the turning view move little: two runs a minute apart on a shared machine read the same within 0.1 to 0.3 ms this way,
+and up to 15 ms apart by whole runs on ultra. A pass cannot be timed on the clock where it draws into a target of the
+shell's: the read waits only for what the canvas depends on.
 
 On the card on any device: terrain on 8 km 9.46 MB; the sky table 256 KB; the sun's
 shadow maps 16, 24 and 32 MB on medium, high and ultra, 4 and 6 MB on medium and high

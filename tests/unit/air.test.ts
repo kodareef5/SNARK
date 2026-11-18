@@ -9,7 +9,7 @@ import { LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
 import { FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { domeLight, hazeColor, hourOfSun, luminance, shownSky, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { shown, srgbToLinear } from "../../client/core/render/surface.ts";
+import { shown, skyShown, srgbToLinear } from "../../client/core/render/surface.ts";
 import { apart } from "../../tools/sky/fit.ts";
 import { packedMips, readPicture } from "../../tools/pack/image.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -216,6 +216,7 @@ test("the rasterizer's light is fogged under water only: above it, the air is th
   skyFrame(12, sky, p.frame);
   [p.fogStart, p.fogEnd] = [10, 20];
   p.sky.set([0, 0, 1]);
+  skyShown(p);
   const out = [0, 0, 0];
   p.frame[FRAME.eyeHeight] = 5;
   shown(out, [0.2, 0.2, 0.2], 1000, p);

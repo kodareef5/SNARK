@@ -144,7 +144,7 @@ may change a setting without a restart.
 | `HarvestResourceItemAmountClassMultipliers` | none | Yield of one resource: `(ClassName="core:thatch",Multiplier=2.0)`. | yes |
 | `ResourceNoReplenishRadiusPlayers` | 1 | How far from a survivor nodes will not grow back. Higher is further. | yes |
 | `ResourceNoReplenishRadiusStructures` | 1 | How far from a foundation or pillar nodes will not grow back. Higher is further. | yes |
-| `DinoHarvestingDamageMultiplier` | 3.2 | What a tamed creature's blow does to a tree, rock or plant. | yes |
+| `DinoHarvestingDamageMultiplier` | 3.2 | What a tamed creature's blow does to a tree, rock, plant or carcass. | yes |
 | `GlobalSpoilingTimeMultiplier` | 1 | How long things keep before they spoil. Higher is longer. *ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied.* | no |
 | `GlobalItemDecompositionTimeMultiplier` | 1 | How long a dropped bag lies. Higher is longer. | yes |
 | `GlobalCorpseDecompositionTimeMultiplier` | 1 | How long a creature's body and what a dead survivor leaves lie. Higher is longer. | yes |

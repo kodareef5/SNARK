@@ -151,7 +151,8 @@ export const PASS_FAR = 1;
 /**
  * The steps a frame is drawn in, in this order, which is the order of its draws: near opaque, far opaque, then the
  * dome (at `skyAt`), far see-through, near see-through, and the viewer's body over a depth clear. The opaque steps are
- * numbered as their ranges are. In an opaque step the draws with DRAW_CUTOUT come after the rest (scene.ts `cutouts`).
+ * numbered as their ranges are. In an opaque step the draws with DRAW_CUTOUT come after the rest (scene.ts `cutouts`),
+ * and the ground's tiles go where `groundAt` says.
  */
 export const STEP_NEAR = PASS_NEAR;
 export const STEP_FAR = PASS_FAR;
@@ -286,14 +287,31 @@ export const FRAME = {
   nearToZ: 39,
   /** fFacade: the height in the world of the city's flood line (facade.ts FACADE_FLOOD), and 1 where every facade atlas the tier reads has come. */
   facade: 152,
+  /**
+   * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
+   * blue, and the saturation after it; then the power the toned light is raised to, bloom's share, the sharpen's
+   * strength, and bloom's levels. A frame with a gamma of 0, as an unlit one, is not graded, and one with no light
+   * target has no bloom or sharpen.
+   */
+  grade: 156,
+  saturation: 159,
+  gamma: 160,
+  bloom: 161,
+  sharpen: 162,
+  levels: 163,
+  /** fContact: the bodies whose contact takes the sky's light down, two slots each (contact.ts). */
+  contact: 164,
 } as const;
-export const FRAME_FLOATS = FRAME.facade + 4;
+/** Bodies the frame block holds for contact (contact.ts). */
+export const MAX_CONTACTS = 12;
+export const FRAME_FLOATS = FRAME.contact + MAX_CONTACTS * 8;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
-  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fFacade;
+  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fFacade, fGrade, fFinish;
+  highp vec4 fContact[${MAX_CONTACTS * 2}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -356,6 +374,8 @@ export class FramePacket {
   readonly facadeSlots = new Int32Array(5).fill(-1);
   /** Linear 0..1 RGB. */
   readonly sky = new Float32Array(3);
+  /** The sky's colour as a frame drawn with no light target shows its fog (surface.ts skyShown): graded where the frame is. */
+  readonly skyShown = new Float32Array(3);
   /** Unit vector toward the sun. */
   readonly sun = new Float32Array(3);
   /** Daylight brightness, 0..1. Every lit colour is multiplied by it. */
@@ -399,6 +419,18 @@ export class FramePacket {
   openRows = 0;
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
+  /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
+  lightSamples = 0;
+  /**
+   * Whether the frame is drawn with the page's other effects off (`?ab=`, passes.ts), every other frame for a before
+   * and after: the shell keeps what the frames between need, and the card's reservations stand as they set them.
+   */
+  alternate = false;
+  /**
+   * Per opaque step, near then far: its terrain tiles are drawn before the first of its draws numbered this or more, or
+   * after its last where it has none such. 0, before its first, where nothing says otherwise.
+   */
+  readonly groundAt = new Int32Array(STEP_FAR + 1);
 
   readonly uploads: BufferUpload[] = [];
   readonly drops: number[] = [];
@@ -539,6 +571,7 @@ export class FramePacket {
     this.drawLayer.fill(0);
     this.drawWear.fill(0);
     this.drawCount = 0;
+    this.groundAt.fill(0);
     this.atlasRows = 0;
     this.tileCount = 0;
     this.groundWindow[3] = -1;

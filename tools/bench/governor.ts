@@ -214,7 +214,7 @@ export function sceneOf(soak: { load: SoakReport["load"]; wood: boolean }): Coun
 /** A kept soak replayed through the governor on its tier, each level leaving `left` of the GPU's time of the tier's. */
 export function replay(soak: { tier: string; points: number[] }, left: readonly number[]): { minutes: Minute[]; steps: readonly GovernorStep[] } {
   const warm = curve(soak.points);
-  const { minutes, governor } = run(10, (t, level) => ({ gpu: warm(t) * left[level]! }), { tier: soak.tier, dpr: PHONE_DPR });
+  const { minutes, governor } = run(10, (t, level) => ({ gpu: warm(t) * left[level]! }), { tier: soak.tier, touch: true, dpr: PHONE_DPR });
   return { minutes, steps: governor.steps };
 }
 
