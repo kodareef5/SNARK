@@ -30,7 +30,14 @@ def put(name,values):
     Image.fromarray(np.clip(np.rint(values*255),0,255).astype('uint8')).save(ROOT/name)
 def save(name,base,h,rough,occ,metal,w,meters):
     if base.ndim==2:base=np.repeat(base[...,None],3,-1)
-    # Base straight from linear reflectance; the instance dye is resolved in-game.
+    # The flat-mesh baker samples the base under mixed dyes. Give those texels
+    # an earthen value as well, while the runtime normalizes the dyes by their
+    # measured mean reflectance. Undyed eyes, horn and leather keep their own paint.
+    if w is not None:
+        earth = np.array([.224,.169,.132] if name=='carapace' else [.205,.188,.151])
+        dyed = np.clip(w.sum(axis=2),0,1)[...,None]
+        base = base * (1 - dyed + dyed * earth)
+
     put(name+'_base.png',srgb(base));put(name+'_packed.png',np.stack([occ,rough,metal],-1))
     dy,dx=np.gradient(h,meters/N);normal=np.stack([-dx,dy,np.ones_like(h)],-1);normal/=np.linalg.norm(normal,axis=-1,keepdims=True)
     put(name+'_normal.png',normal*.5+.5);put(name+'_height.png',(h-h.min())/max(.0001,h.max()-h.min()))
