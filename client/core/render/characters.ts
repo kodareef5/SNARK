@@ -11,7 +11,7 @@ import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
-import { isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
+import { isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
 import { SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
@@ -41,7 +41,7 @@ import { anchorFrame, riderTargets, saddleSeat, seatFrame } from "../../../share
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
-import { WEAR_KEY, wearOf } from "./wear.ts";
+import { MARINE_STORIES, ROAD_STORIES, WEAR_KEY, wearOf } from "./wear.ts";
 import { RotorBlur } from "./rotor-blur.ts";
 import { CameraBody } from "../camera-body.ts";
 
@@ -84,8 +84,8 @@ interface Creature {
   worn: ReadonlyMap<number, number>;
   /** A vehicle poses its rig from its definition, not from a gait; null for a creature. */
   vehicle: VehicleRig | null;
-  /** A road vehicle wears its layer as the story its colours give it (wear.ts). */
-  wear: boolean;
+  /** A road vehicle or a vessel wears its layer as the story its colours give it among its kind's: their first (wear.ts), 0 for none. */
+  wear: number;
   wreck: number;
   wreckError: readonly number[];
   oriented: Solved;
@@ -423,7 +423,7 @@ export class Characters {
         if (m >= 0) worn.set(item, m);
       });
       const wreck = bind.own(d.id, "wreck");
-      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: !!reg.vehicle[i] && isWheelVehicle(reg.vehicle[i]!), oriented: new Solved(rig.bones) };
+      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -1004,7 +1004,7 @@ export class Characters {
     const lod = this.levelOf(id, error, far);
     if (!unseen) this.assets.wantTextured(mesh, lod, far);
     if (!unseen && c.clips >= 0) this.assets.wantClips(c.clips);
-    const shown = layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer + (c.wear ? wearOf(colors, colorAt) * WEAR_KEY : 0) : 0;
+    const shown = layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer + (c.wear ? wearOf(colors, colorAt, c.wear) * WEAR_KEY : 0) : 0;
     const key = this.keyOf(mesh * this.levels + lod, shown, stand);
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = first;
@@ -1527,6 +1527,11 @@ function writeRigid(out: Float32Array, at: number, x: number, y: number, z: numb
   out[at + 8] = -s;
   out[at + 10] = c;
   out[at + 11] = z;
+}
+
+/** The first wear story of a vehicle's kind (wear.ts): a road vehicle's or a vessel's, and 0 for anything else. */
+function storiesOf(def: VehicleDefinition | null): number {
+  return !def ? 0 : isWheelVehicle(def) ? ROAD_STORIES : isBoatVehicle(def) ? MARINE_STORIES : 0;
 }
 
 function vehicleRig(def: VehicleDefinition | null, names: readonly string[]): VehicleRig | null {

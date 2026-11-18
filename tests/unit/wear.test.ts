@@ -7,8 +7,9 @@ import { Assets } from "../../client/core/assets/assets.ts";
 import { Characters } from "../../client/core/render/characters.ts";
 import { FramePacket, InstanceWriter } from "../../client/core/render/packet.ts";
 import { LAYER_LEVELS, LAYER_STAGES, SURFACE_ANY, surfaceFragment, surfaceVertex } from "../../client/core/render/surface.ts";
-import { WEAR, WEAR_KEY, WEAR_STORIES, wearAlpha, wearLate, wearOf } from "../../client/core/render/wear.ts";
+import { MARINE_STORIES, ROAD_STORIES, WEAR, WEAR_KEY, WEAR_STORIES, wearAlpha, wearLate, wearOf } from "../../client/core/render/wear.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
+import { MARINE_FLEET } from "../../content/vehicles/marine-fleet.ts";
 import { COMPACT_ART } from "../../content/vehicles/compact-art.ts";
 import { buildRig } from "../../shared/anim/rigs.ts";
 import { solve } from "../../shared/anim/skeleton.ts";
@@ -50,11 +51,21 @@ test("each kind of the road fleet spreads its colour rolls over all five stories
   }
 });
 
+test("each vessel takes a vessel's story, and its colour rolls give at least three of the five", () => {
+  for (const kind of MARINE_FLEET) {
+    const seen = new Set(rolls(kind.regions!).map((colors) => wearOf(colors, 0, MARINE_STORIES)));
+    for (const s of seen) expect(s >= MARINE_STORIES && s < MARINE_STORIES + WEAR_STORIES).toBe(true);
+    expect(seen.size).toBeGreaterThanOrEqual(3);
+  }
+});
+
 test("a story holds its value about each point of its grid and runs straight between, and story 0 holds nothing back", () => {
-  const cells = WEAR.length / WEAR_STORIES;
-  expect(cells).toBe(18);
+  // A road vehicle's stories, then a vessel's.
+  const cells = 18;
+  expect(WEAR.length).toBe(cells * 2 * WEAR_STORIES);
+  expect(MARINE_STORIES).toBe(ROAD_STORIES + WEAR_STORIES);
   const xs = [-0.8, 0, 0.8], ys = [-0.35, 0.45], zs = [-0.7, 0, 0.7];
-  for (let s = 1; s <= WEAR_STORIES; s++) {
+  for (let s = 1; s <= 2 * WEAR_STORIES; s++) {
     zs.forEach((z, iz) => ys.forEach((y, iy) => xs.forEach((x, ix) => {
       const want = WEAR[(s - 1) * cells + (iz * 2 + iy) * 3 + ix]!;
       expect(wearLate(s, x, y, z)).toBeCloseTo(want, 9);
@@ -98,6 +109,40 @@ function layeredCar() {
   const materials = tube.materials!.map((m, k) => ({ ...m, id: `core:compact/${k}`, ...(k === 0 ? { layer: textures.length - 1 } : {}) }));
   return parsePack(buildPack([{ ...tube, id: "core:compact", skeleton: "core:compact", rig: "core:compact", materials, textures }], defaultPalette(), [], [CAR_RIG]));
 }
+
+// The same tube as the Thunderbolt, on its rig: a vessel's hurt layer, to be drawn in a vessel's story.
+const BOAT_RIG: PackRig = {
+  id: "core:thunderbolt", skeleton: "core:thunderbolt",
+  names: ["chassis", "steering", "outboard", "propeller", "outboard_starboard", "propeller_starboard"],
+  parent: [-1, 0, 0, 2, 0, 4],
+  rest: [0, 0, 0, .64, 1.62, .01, .57, .64, -5.95, 0, -.49, -.43, -.57, .64, -5.95, 0, -.49, -.43],
+};
+function layeredBoat() {
+  const tube = tubeMesh();
+  const textures = [...tube.textures!, { id: "core:thunderbolt/layer", role: "layer" as const, top: TUBE_PIXELS }];
+  const materials = tube.materials!.map((m, k) => ({ ...m, id: `core:thunderbolt/${k}`, ...(k === 0 ? { layer: textures.length - 1 } : {}) }));
+  return parsePack(buildPack([{ ...tube, id: "core:thunderbolt", skeleton: "core:thunderbolt", rig: "core:thunderbolt", materials, textures }], defaultPalette(), [], [BOAT_RIG]));
+}
+
+test("a hurt vessel is drawn with a vessel's story, the one its colours give it", () => {
+  const reg = coreRegistry(), pack = layeredBoat(), boat = reg.index.get("core:thunderbolt")!;
+  const characters = new Characters(reg, pack, new Assets(reg, pack)), packet = new FramePacket();
+  characters.begin();
+  const kind = MARINE_FLEET.find((k) => k.id === "core:thunderbolt")!;
+  const all = rolls(kind.regions!), first = all[0]!, other = all.find((c) => wearOf(c, 0, MARINE_STORIES) !== wearOf(first, 0, MARINE_STORIES))!;
+  const colors = Uint8Array.from([...first, ...other]);
+  const hurt = new AnimState();
+  hurt.hurt = 3;
+  const frame = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
+  expect(characters.add(packet, boat, 0, 0, -9, 0, hurt, 5, null, 0, colors, 0, null, 0, 21, false, false, 1, false, false, null, 0, frame)).toBe(true);
+  expect(characters.add(packet, boat, 6, 0, -9, 0, hurt, 5, null, 0, colors, 6, null, 0, 22, false, false, 1, false, false, null, 0, frame)).toBe(true);
+  const drawn: number[] = [];
+  characters.flush(packet, new InstanceWriter(packet.transient), false, (mesh, _lod, _first, _count, _flags, layer) => {
+    if (pack.header.meshes[mesh]!.id === "core:thunderbolt") drawn.push(Math.floor(layer / WEAR_KEY));
+  });
+  expect(drawn.sort()).toEqual([wearOf(first, 0, MARINE_STORIES), wearOf(other, 0, MARINE_STORIES)].sort());
+  for (const s of drawn) expect(s).toBeGreaterThanOrEqual(MARINE_STORIES);
+});
 
 test("two hurt cars of a kind are drawn with the stories their colours give them, at the same level, and a creature with none", () => {
   const reg = coreRegistry(), pack = layeredCar(), compact = reg.index.get("core:compact")!;

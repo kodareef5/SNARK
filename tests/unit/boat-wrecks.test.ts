@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { MARINE_FLEET, MARINE_MODELS } from "../../content/vehicles/marine-fleet.ts";
-import { formMesh, HARBOUR_WRECK_FORMS, hulkOf } from "../../content/vehicles/harbour-wrecks.ts";
+import { formMesh, HARBOUR_WRECK_FORMS, hulkOf, waterlineOf, type Waterline } from "../../content/vehicles/harbour-wrecks.ts";
 import { fillSlot, slotsOf } from "../../shared/content/slots.ts";
 import { isBoatVehicle, type BoatSpec } from "../../shared/sim/vehicle.ts";
 import { HARBOURS, mappedBoatSites, type Harbours } from "../../tools/boat/sites.ts";
-import { harbourWrecks, type WreckGround } from "../../tools/boat/wrecks.ts";
+import { formWaterlines, harbourWrecks, type WreckGround } from "../../tools/boat/wrecks.ts";
 import { extentOf, meets } from "../../tools/mapworld/ruin-obstacles.ts";
 import type { StaticPiece } from "../../tools/mapworld/statics.ts";
 import type { PublicPlace } from "../../tools/mapworld/labels.ts";
@@ -51,6 +51,20 @@ test("a harbour's wrecks lie in its water, afloat and riding low or sunk with th
   const made = harbourWrecks(sites, rules, reg, wall, ground, () => null, (mesh) => mesh.endsWith("_sunk"));
   expect(made.map((w) => w.kind)).toEqual(wrecks.map((w) => w.form === "sunk" ? hulkOf(w.vessel, "sunk") : hulkOf(w.vessel)));
   expect(harbourWrecks(sites, { ...rules, wrecks: { ...rules.wrecks, marina: [0, 0], pier: [0, 0] } }, reg, wall, ground, () => null, () => false)).toEqual([]);
+});
+
+test("a damaged form stands at the waterline its art states, and 1.25 draughts up its keel where it states none or stands in", () => {
+  // The Belvedere's damaged form is painted with the water a draught and three tenths of its freeboard up its keel; the others at 1.25 draughts.
+  expect([...formWaterlines()]).toEqual([["core:belvedere", { draught: 1, freeboard: .3 }]]);
+  expect(waterlineOf(1.22, 2.96, { draught: 1, freeboard: .3 })).toBeCloseTo(1.742, 6);
+  expect(waterlineOf(1.22, 2.96)).toBeCloseTo(1.525, 6);
+  const said = new Map(MARINE_MODELS.map((m) => [m.id, { draught: 1, freeboard: .3 } satisfies Waterline]));
+  const beltline = (vessel: string): number => reg.vehicle[reg.index.get(vessel)!]!.beltline;
+  const afloat = harbourWrecks(sites, rules, reg, wall, ground, () => null, () => true, said).filter((w) => w.form === "damaged");
+  expect(afloat.length).toBeGreaterThan(3);
+  for (const w of afloat) expect(w.y).toBeCloseTo(3 - waterlineOf(specOf(w.vessel).draft, beltline(w.vessel), said.get(w.vessel)), 6);
+  // An intact hull standing in for a form the art has not made rides as a form that says nothing.
+  for (const w of harbourWrecks(sites, rules, reg, wall, ground, () => null, () => false, said)) if (w.form === "damaged") expect(w.y).toBeCloseTo(3 - specOf(w.vessel).draft * 1.25, 6);
 });
 
 test("every vessel has a hulk of its intact hull and its two forms as statics, and a destroyed one becomes its sunk form", () => {
