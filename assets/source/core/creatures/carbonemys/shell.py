@@ -37,21 +37,32 @@ def make_cells():
     return cells
 CELLS=make_cells()
 
+RIDGES={(kind,j,0 if kind!='costal' else (1 if p[0]>0 else -1)):p for p,_,kind,j in CELLS}
+
 def scute_raise(kind,j,t,x,z):
+    side=(1 if x>0 else -1) if kind=='costal' else 0
+    cx,cz=RIDGES[(kind,j,side)]
+    if kind=='marginal':
+        return (.035+.070*smooth(.1,.89,-z))*(1-t)**1.3
+    dz=z-cz
     if kind=='spinal':
-        # The two forward keels taper before the saddle tree.
-        peak=[.255,.47,.355,.139,.146][j]
-        blade=(1-t)**1.12
-    elif kind=='costal':
-        peak=[.285,.410,.307,.235][j]*(1+.09*math.sin(j*2.1+4*x))
-        blade=(1-t)**1.36
+        height=[.081,.126,.101,.062,.059][j]
+        skew=.15+.11*math.sin(j*2.12)
+        width=.154+.020*math.cos(j*1.73)
+        length=.252+.033*math.sin(j*1.57)
     else:
-        peak=.054+.146*smooth(.12,.88,-z)
-        blade=(1-t)**1.45
-    # Offset flutes soften the broad leading bevel, leaving the dorsal trailing
-    # ridge sharp. Boundaries meet without a moat between adjacent scutes.
-    flare=math.sin(math.pi*t)
-    return peak*blade+.025*flare*(1+.33*math.sin(12*x-8*z+j))
+        height=[.071,.097,.068,.049][j]*(1+.096*math.sin(j*2.26+3*side))
+        skew=-side*(.61+.23*math.sin(j*2.31))
+        width=.14+.015*math.cos(j+side)
+        length=.235
+    # The high shoulder carries along the shell, then fans into the neighbouring
+    # shields. A blunt, abraded crown merges gradually with its buttress.
+    cross=(x-cx)-skew*dz-.018*math.sin(dz*9)
+    shoulder=math.exp(-(abs(cross)/(width if cross>=0 else width*1.22))**2.1)
+    along=math.exp(-((dz-.014)/length)**4)
+    seat=1-smooth(.40,.92,t)
+    wear=.83+.17*math.sin(3.3*j+side+dz*9)**2
+    return .026*(1-t)**1.4 + height*shoulder*along*seat*wear+.012*math.sin(math.pi*t)
 
 def top_uv(x,z):return (.02+.48*(x+1),.52+.232*(z+1))
 def under_uv(x,z):return (.02+.48*(x+1),.015+.19*(z+1))
@@ -100,7 +111,13 @@ def build(s):
         for x,z,_ in exterior:
             X,Y,Z=carapace(x,z)
             scallop=.011*math.cos(24*math.atan2(x,z))*(1-.27*z)
-            vs.append(s.v((X*rad,(Y-drop if j<3 else .79+.035*z-drop)+scallop*(j<3),-.075+(Z+.075)*rad),'plastron' if j>=3 else shell_weight(x)))
+            neck=smooth(.64,.91,z)*math.exp(-(x/.39)**4)
+            # The raised dorsal rim turns inward above the neck. A lower gular
+            # lobe projects from the plastron with space between the lips.
+            front=[0,0,.035,.230,.395,.150,.018][j]*neck
+            gular=[0,0,0,0,0,.43,.23][j]*neck
+            py=(Y-drop if j<3 else .79+.035*z-drop)+scallop*(j<3)
+            vs.append(s.v((X*rad,py,-.075+(Z+.075)*rad-front+gular),'plastron' if j>=3 else shell_weight(x)))
             uv.append(under_uv(x*rad,z*rad))
         for q in range(n):
             k=(q+1)%n
