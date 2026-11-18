@@ -8,11 +8,12 @@ import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
 import { devtools } from "../map/trip.ts";
+import { findChrome } from "../chrome.ts";
 
 const course = process.argv[2];
 if (course !== "bridge" && course !== "tree") throw new Error("Choose tree or bridge followed by a built San Francisco map path.");
 const city = course === "bridge";
-const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find(p => p && existsSync(p));
+const chrome = findChrome();
 if (!chrome) throw new Error("Set CHROME to an installed Chromium executable.");
 const profile = mkdtempSync(join(tmpdir(), "snark-collision-"));
 let browser: ReturnType<typeof Bun.spawn> | undefined, server: ReturnType<typeof startServer> | undefined;

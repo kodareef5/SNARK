@@ -12,7 +12,7 @@
 // blows; SKY_TOP sets how large the layers are sent, 1,024 as medium has them or 2,048 as high.
 // Run: bun tools/probe-lit/sky.ts [folder] [hours]
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -34,6 +34,7 @@ import { Found } from "../../shared/world/structures.ts";
 import { EYE, KEYS } from "../sky/base.ts";
 import { provingView } from "../snap.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
+import { findChrome } from "../chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const SKY = join(ROOT, "assets/source/core/sky");
@@ -578,7 +579,7 @@ export const skyCheck: LitCheck = {
 };
 
 if (import.meta.main) {
-  const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find((p) => p && existsSync(p));
+  const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome found. Set CHROME to its path.");
   if (process.env.SKY_TIME) {
     const t = await timeSky(chrome);

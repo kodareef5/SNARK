@@ -1,26 +1,26 @@
-// `bun run check`, the one command every change must pass. It enforces the rules that keep this project fast to change.
-// Raising a budget or widening an allow-list is a decision. Record it in planning/decisions.md in the same change.
+// `bun run check`, the one command every commit must pass. It enforces the rules that keep this project fast to change.
+// Raising a size limit or widening an allow-list is a decision. Record it in planning/decisions.md in the same change.
 //
-//   bun run check                policy, types and the tests of the fast tier
-//   bun run check -- --slow      the same, then the slow tier (`*.slow.test.ts`): before a merge to main
+//   bun run check                policy, types and the tests of the fast tier: before a commit
+//   bun run check -- --changed   policy, types and the fast tests the change since main can reach: while working
+//   bun run check -- --slow      the same as the first, then the slow tier (`*.slow.test.ts`); CI runs it on main
 //   bun run slow                 the slow tier alone
+//   --workers=N or SNARK_CHECK_WORKERS=N caps the test workers; `taskset -c ...` pins the whole check to cores.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { cpus, loadavg, tmpdir } from "node:os";
+import { availableParallelism, cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
 import { ART } from "./art/source.ts";
 import { footprint } from "./memory.ts";
-import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
+import { dynamicLoads, IMPORT, madeArrays, stripComments } from "./policy.ts";
+import { affectedTests, changedFiles } from "./check-changed.ts";
+import { baselineFile, compare, history, machineKey, remember, RUNS_NEEDED } from "./check-baseline.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
-/**
- * CPU-seconds the fast tier's tests may take, theirs and their workers'. On the development machine they took about 260 on
- * a quiet day and up to 440 beside other teams' work, which competes for caches and memory. The clock is shown but not
- * held to a budget: on a busy machine it times the neighbours.
- */
-const TEST_CPU_BUDGET = 600;
+// The fast tier has no budget in CPU-seconds: each machine weighs it against its own last runs (D794,
+// tools/check-baseline.ts). One number for every machine held a Ryzen to what a Mac spent, and sent agents after it.
 /**
  * The memory, in bytes, a test worker's JavaScriptCore is told the machine has, as it sizes its heap. Told the machine's
  * own (24 GB here), it lets a file's garbage grow to what the file holds live before collecting it, and the heaviest
@@ -121,7 +121,6 @@ const OWN_TIMEOUT = /^\s*\}\s*,\s*(\d[\d_]*\s*\)|\{\s*timeout\b)|\b(setDefaultTi
 /** The one file that may load a file it is given the name of: an operator's modules. */
 const MAY_LOAD_BY_NAME = new Set(["server/main.ts"]);
 
-const IMPORT = /^[ \t]*(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|^[ \t]*import\s*['"]([^'"]+)['"]/gm;
 
 function checkPolicy(): void {
   const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
@@ -266,11 +265,24 @@ type Tier = "fast" | "slow";
 const SEED_TIMES = join(ROOT, "tools/test-times.json");
 
 const args = process.argv.slice(2);
-if (args.some((a) => a !== "--slow" && a !== "--slow-only")) {
-  console.error("usage: bun run check -- [--slow | --slow-only]");
+const WORKERS_ARG = /^--workers=([1-9]\d*)$/;
+const CHANGED_ARG = /^--changed(?:=(.+))?$/;
+const FLAGS = new Set(["--slow", "--slow-only", "--strict"]);
+if (args.some((a) => !FLAGS.has(a) && !WORKERS_ARG.test(a) && !CHANGED_ARG.test(a)) || !/^([1-9]\d*)?$/.test(process.env.SNARK_CHECK_WORKERS ?? "")) {
+  console.error("usage: bun run check -- [--changed[=<ref>]] [--slow | --slow-only] [--strict] [--workers=N]   (or SNARK_CHECK_WORKERS=N)");
   process.exit(2);
 }
 const slowOnly = args.includes("--slow-only");
+/** Only the fast tests a change since main (or <ref>) can reach: a look while working, not the gate (D794). */
+const changedOnly = args.map((a) => CHANGED_ARG.exec(a)).find(Boolean);
+/** A fast tier over this machine's baseline fails instead of only saying so: for a coordinator or CI that wants it. */
+const strict = args.includes("--strict");
+/**
+ * The most test workers to run, from --workers=N or SNARK_CHECK_WORKERS, else the cores this process may use. Those
+ * honour `taskset`, so `taskset -c 0-5 bun run check` keeps the whole check, its workers' own threads and the type
+ * check too, on six cores and leaves the rest quiet for benchmarks; a cap on workers alone does not.
+ */
+const maxWorkers = Number(args.map((a) => WORKERS_ARG.exec(a)?.[1]).find(Boolean) ?? (process.env.SNARK_CHECK_WORKERS || availableParallelism()));
 
 /** Each test file's milliseconds in the tier's last passing run, as `bun test --timings` reads them. */
 const timesOf = (tier: Tier): string => join(ROOT, `.cache/${tier === "fast" ? "test-times" : "slow-test-times"}.json`);
@@ -288,6 +300,26 @@ const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts")
 /** Tests passed, and those skipped in the files that mark tests as needing the art (tests/fixtures/needs-art.ts). */
 const tally = { passed: 0, unart: 0 };
 const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
+
+/** With --changed, the fast test files the change reaches; undefined for the whole fast tier. */
+const picked = ((): string[] | undefined => {
+  if (!changedOnly) return undefined;
+  const found = changedFiles(ROOT, changedOnly[1]);
+  if (!found) {
+    console.log("--changed: git cannot say what changed, so every fast test runs");
+    return undefined;
+  }
+  const fast = testFiles.filter((f) => !SLOW_TEST.test(f));
+  const since = `${found.changed.length} ${found.changed.length === 1 ? "file" : "files"} changed since ${found.base.slice(0, 10)}`;
+  const tests = affectedTests(found.changed, found.sources, fast.map(repoPath));
+  if (tests === "all") {
+    console.log(`--changed: ${since}, one of them read by tests no import names, so every fast test runs`);
+    return undefined;
+  }
+  console.log(`--changed: ${since} reach ${tests.length} of ${fast.length} fast test files. The whole check runs before a commit.`);
+  const reached = new Set(tests);
+  return fast.filter((f) => reached.has(repoPath(f)));
+})();
 
 /** The most the workers held together at one moment, and what each was running then, heaviest first. */
 interface Held {
@@ -356,18 +388,22 @@ function stopHung(dir: string, workers: number, most: Map<string, number>, stopp
 
 /** Runs the tests of `tier`, with `env` from sharedPack, leaving its reports in `dir`. */
 async function checkTests(tier: Tier, dir: string, env: Record<string, string>): Promise<void> {
-  const files = testFiles.filter((f) => SLOW_TEST.test(f) === (tier === "slow")).length;
-  if (files === 0) return;
+  const some = tier === "fast" ? picked : undefined;
+  const files = some?.length ?? testFiles.filter((f) => SLOW_TEST.test(f) === (tier === "slow")).length;
+  if (files === 0) {
+    if (some) console.log("  no fast test reaches this change");
+    return;
+  }
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
   // More JS heaps than sixteen contend for cache and memory on a machine of many threads, and time out files fast alone.
-  const workers = Math.min(16, cpus().length, files);
+  const workers = Math.min(16, maxWorkers, files);
   const report = join(dir, `${tier}.xml`);
   const watch = join(dir, `${tier}-watch`);
   mkdirSync(watch);
   const times = timesOf(tier);
   // The slowest files start first, by their times in the last run, or the last of them may start when the rest are done.
   const timed = existsSync(times) ? ["--timings", times] : tier === "fast" ? ["--timings", SEED_TIMES] : [];
-  const only = tier === "slow" ? [".slow.test.ts"] : ["--path-ignore-patterns=**/*.slow.test.ts"];
+  const only = some ? some.map((f) => `./${repoPath(f)}`) : tier === "slow" ? [".slow.test.ts"] : ["--path-ignore-patterns=**/*.slow.test.ts"];
   const stopped: string[] = [];
   const most = new Map<string, number>();
   const watching = setInterval(() => stopHung(watch, workers, most, stopped), 1000);
@@ -387,18 +423,43 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
     return;
   }
   const junit = readFileSync(report, "utf8");
-  keepTimes(times, junit);
-  // Each file's CPU-seconds beside its time, costliest first, for whoever looks for what the tier spends.
-  writeFileSync(join(ROOT, `.cache/${tier}-test-cpu.json`), JSON.stringify(Object.fromEntries(fileCpu(watch).map(([f, s]) => [f, Math.round(s * 10) / 10])), null, 1));
+  // A run of some files says nothing of the rest: their times and CPU-seconds stay as the last whole run left them.
+  if (!some) {
+    keepTimes(times, junit);
+    // Each file's CPU-seconds beside its time, costliest first, for whoever looks for what the tier spends.
+    writeFileSync(join(ROOT, `.cache/${tier}-test-cpu.json`), JSON.stringify(Object.fromEntries(fileCpu(watch).map(([f, s]) => [f, Math.round(s * 10) / 10])), null, 1));
+  }
   const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
   tally.passed += parseInt(counts.find((c) => c.endsWith(" pass")) ?? "0");
   for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
-  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds${tier === "fast" ? ` of ${TEST_CPU_BUDGET}` : ""}, ${weighed}`);
-  // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
-  if (tier === "fast" && r.cpu > TEST_CPU_BUDGET) {
-    const costliest = fileCpu(watch).slice(0, 5).map(([f, s]) => `${f} ${s.toFixed(1)}`);
-    fail(`the tests took ${r.cpu.toFixed(0)} CPU-seconds, over their budget of ${TEST_CPU_BUDGET}. The costliest files, in CPU-seconds: ${costliest.join(", ")}. Make them cheaper; a test that is slow by nature belongs in the slow tier (planning/quality/testing.md)`);
+  console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds, ${weighed}`);
+  if (tier === "fast" && !some) weighAgainstBaseline(r.cpu, fileCpu(watch), workers);
+}
+
+/**
+ * Sets this run of the whole fast tier beside this machine's last ones (tools/check-baseline.ts) and keeps it among them.
+ * Over the baseline it names the files that grew against their own runs, not the costliest, which are costly every day.
+ * It warns and does not fail: a busy machine raises CPU-seconds too, and a check that fails on the neighbours sends its
+ * author after tests that did not change. --strict fails it.
+ */
+function weighAgainstBaseline(cpu: number, files: [string, number][], workers: number): void {
+  const key = machineKey(workers);
+  const before = history(key);
+  const now = { cpu: Math.round(cpu), files: Object.fromEntries(files.map(([f, s]) => [f, Math.round(s * 10) / 10])) };
+  const c = compare(before, now);
+  if (c.baseline === null) {
+    console.log(`  baseline: learning this machine, run ${before.length + 1} of ${RUNS_NEEDED} (${baselineFile()})`);
+  } else {
+    const share = `${Math.round((cpu / c.baseline - 1) * 100)}%`;
+    if (!c.over) console.log(`  baseline: ${c.baseline.toFixed(0)} CPU-seconds on this machine, this run ${share.startsWith("-") ? share : `+${share}`}`);
+    else {
+      const grew = c.grew.map((g) => `${g.file} ${g.was.toFixed(1)} -> ${g.now.toFixed(1)}`).join(", ");
+      const says = `the fast tier took ${cpu.toFixed(0)} CPU-seconds, ${share} over this machine's baseline of ${c.baseline.toFixed(0)}, at load ${loadavg()[0]!.toFixed(0)}. Grew most against their own last runs: ${grew || "no one file"}`;
+      if (strict) fail(says);
+      else console.log(`  WARNING ${says}. A busy machine raises it too; this is not a failure (--strict makes it one)`);
+    }
   }
+  remember(key, now);
 }
 
 const t0 = performance.now();
