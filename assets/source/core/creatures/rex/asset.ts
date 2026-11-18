@@ -24,13 +24,13 @@ function limbs(): ZoneSpec[] {
   const result: ZoneSpec[] = [];
   for (const [suffix, region, sign] of [["l", "L", 1], ["r", "R", -1]] as const) {
     result.push(
-      capsule(`leg${region}`, `thigh_${suffix}`, [0, -.02, -.10], [.1 * sign, -.91, .67], .40),
+      capsule(`leg${region}`, `thigh_${suffix}`, [.040 * sign, -.02, -.10], [.136 * sign, -.91, .67], .455),
       capsule(`leg${region}`, `shank_${suffix}`, [0, -.12, -.11], [-.08 * sign, -.90, -.81], .228),
       capsule(`leg${region}`, `metatarsus_${suffix}`, [0, -.06, .03], [0, -.69, .37], .147),
-      capsule(`foot${region}`, `toes_${suffix}`, [0, .015, -.025], [.012 * sign, -.014, .61], .126),
+      capsule(`foot${region}`, `toes_${suffix}`, [0, .015, -.04], [.003 * sign, -.022, .81], .30),
       capsule(`arm${region}`, `humerus_${suffix}`, [0, 0, 0], [.12 * sign, -.34, -.18], .104),
-      capsule(`arm${region}`, `forearm_${suffix}`, [0, 0, 0], [.06 * sign, -.025, .40], .079),
-      capsule(`hand${region}`, `manus_${suffix}`, [0, 0, 0], [.02 * sign, -.09, .21], .054),
+      capsule(`arm${region}`, `forearm_${suffix}`, [0, 0, 0], [.075 * sign, -.055, .52], .09),
+      capsule(`hand${region}`, `manus_${suffix}`, [0, 0, 0], [.02 * sign, -.124, .221], .075),
     );
   }
   return result;
@@ -47,17 +47,18 @@ export default {
   scale: 1,
   skeleton: { id: "rex", root: "pelvis", bones: 29 },
   zones: [
-    capsule("torso", "pelvis", [0, .054, -.40], [0, .04, .81], .82),
+    // The ilia support the fallen hip across its width. Neighbouring tail and chest cover its longitudinal axis.
+    capsule("torso", "pelvis", [-.45, -.01, .26], [.45, -.01, .26], .72),
     capsule("torso", "chest", [0, -.06, -.04], [0, .015, .89], .76),
     capsule("torso", "neck_1", [0, .065, -.03], [0, .24, .70], .43),
     capsule("torso", "neck_2", [0, .06, -.08], [0, .27, .56], .415),
-    capsule("head", "skull", [0, .125, .13], [0, .061, 1.525], .409),
+    capsule("head", "skull", [0, .15, .08], [0, .068, 1.43], .47),
     capsule("head", "jaw", [0, -.125, .19], [0, -.075, 1.51], .235),
     capsule("torso", "tail_1", [0, .08, -.49], [0, -.09, -1.22], .535),
     capsule("torso", "tail_2", [0, .01, 0], [0, -.32, -1.17], .374),
-    capsule("torso", "tail_3", [0, -.005, -.03], [0, -.39, -1.17], .252),
+    capsule("torso", "tail_3", [0, -.005, -.03], [0, -.39, -1.17], .28),
     capsule("torso", "tail_4", [0, .02, 0], [0, -.33, -1.20], .157),
-    capsule("torso", "tail_5", [0, -.012, -.04], [0, -.21, -1.22], .072),
+    capsule("torso", "tail_5", [0, -.012, .02], [0, -.21, -1.178], .122),
     ...limbs(),
   ],
   sockets: [
@@ -84,8 +85,13 @@ export default {
   budgets: { triangles: [36000, 14500, 6200, 2600, 880, 260, 100], texture: { top: 2048, megabytes: 68, layer: 256 } },
   flat: 4,
   ragdoll: { limp: 50, bodies: [
-    { bone: "pelvis", mass: .62 }, { bone: "skull", mass: .18, swing: 90, twist: 50 },
-    { bone: "thigh_l", mass: .10, swing: 90, twist: 55 }, { bone: "thigh_r", mass: .10, swing: 90, twist: 55 },
+    { bone: "pelvis", mass: .4 }, { bone: "skull", mass: .10, swing: 45, twist: 40 },
+    { bone: "tail_3", mass: .05, swing: 50, twist: 32 }, { bone: "tail_5", mass: .032, swing: 40, twist: 25 },
+    ...(["l", "r"] as const).flatMap(side => [
+      { bone: `manus_${side}`, mass: .012, swing: 55, twist: 40 },
+      { bone: `shank_${side}`, mass: .12, swing: 85, twist: 60 },
+      { bone: `toes_${side}`, mass: .10, swing: 35, twist: 20 },
+    ]),
   ] },
   worn: [{ item: "core:saddle_rex", object: "saddle", materials: { rex_saddle: material("rex_saddle", false) },
     budgets: { triangles: [4800, 1600, 550, 160] }, flat: 2 }],
