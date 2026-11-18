@@ -5,6 +5,7 @@ import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
 import { SKIN, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
+import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
 import { Found } from "../world/structures.ts";
 
 export const BTN_JUMP = 1;
@@ -577,14 +578,17 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     // it. Ground too steep is met below as a part's face is.
     let h = groundUnder(hf, nx, nz, r);
     if (ny < h && groundStands(slope)) {
-      if (h - ny > p.stepUp) {
+      // A fast fall can cross a step's height in one substep. Measure the rise from the higher of
+      // its feet before and after that fall, so landing on lower ground never looks like climbing it.
+      const stepFrom = Math.max(y, ny);
+      if (h - stepFrom > p.stepUp) {
         const hx = groundUnder(hf, nx, z, r);
-        if (ny >= hx || (hx - ny <= p.stepUp && groundStands(slope))) {
+        if (ny >= hx || (hx - stepFrom <= p.stepUp && groundStands(slope))) {
           nz = z;
           h = hx;
         } else {
           const hz = groundUnder(hf, x, nz, r);
-          if (ny >= hz || (hz - ny <= p.stepUp && groundStands(slope))) {
+          if (ny >= hz || (hz - stepFrom <= p.stepUp && groundStands(slope))) {
             nx = x;
             h = hz;
           } else {
@@ -637,6 +641,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
           // Where it touches, both the way out and the surface must be level enough for it to stand.
           const stands = push.y > slope * push.depth && push.up > slope;
           let level = false;
+          let joined = false;
           if (push.y > 0 && (walking ? !(push.face && stands) : !stands && ny + push.y > rise && push.depth <= stride)) {
             // The piece meets the lower sphere `down` below its centre. Higher than a step, or too steep there to stand on, it is
             // a wall to a body on foot, which leaves it level and is not pushed up it: off a face as far as clears its plane, off an
@@ -645,17 +650,37 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
             const gap = r - push.depth;
             const down = (push.y * gap) / push.depth;
             const side = Math.sqrt(push.x * push.x + push.z * push.z);
-            if (side > 0 && (!walking || push.up <= slope || (push.depth < r && ny + r - down > top + SKIN))) {
-              const out = push.face ? (push.depth * push.depth) / (side * side) : (Math.sqrt(r * r - down * down) - (side * gap) / push.depth) / side;
-              nx += push.x * out;
-              nz += push.z * out;
+            const rimY = ny + r - down;
+            if (walking && !push.face && stands && side > 0 && push.depth < r && rimY > top + SKIN) {
+              // A wide foot first meets a ramp-to-deck seam high on its lower sphere.
+              // Check for walkable ground immediately outside that edge at the same height.
+              const edge = gap / push.depth - 0.02 / side;
+              const hit = castWorld(w, nx - push.x * edge, rimY + 0.02, nz - push.z * edge, 0, -1, 0, 0.05, true);
+              joined = hit !== HIT_NONE && rayHit.ny >= slope;
+            }
+            if (!joined && side > 0 && (!walking || push.up <= slope || (push.depth < r && rimY > top + SKIN))) {
+              const px = push.x, pz = push.z;
+              let out: number;
+              if (push.face) out = (push.depth * push.depth) / (side * side);
+              else {
+                const offset = (side * gap) / push.depth;
+                out = (Math.sqrt(r * r - down * down) - offset) / side;
+                if (walking && !stands && push.up > slope && ny - h > GROUND_PROBE) {
+                  // On level footing the capsule can approach the rim at its rounded width, just as groundAt tests.
+                  // Only clear it at full width when there is room below to follow the floor downhill beside it.
+                  const full = (r - offset) / side;
+                  if (capsuleFree(w, nx + px * full, ny - GROUND_PROBE, nz + pz * full, r, height)) out = full;
+                }
+              }
+              nx += px * out;
+              nz += pz * out;
               blocked = true;
               if (walking) continue;
               level = true;
             }
           }
           if (!level) {
-            if (push.hull && stands) {
+            if ((push.hull || joined) && stands) {
               // A sloped part it can stand on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
               ny += (push.depth * push.depth) / push.y;
             } else {
@@ -744,12 +769,13 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       }
     }
 
-    // Commit only a legal position reached by a bounded move. A body the last round found clear of every structure is
+    // Test the float32 position the body will publish when resolving a contact at the skin boundary.
+    // A body the last round found clear of every structure is
     // clear of them at capsuleFree's smaller reach too, so only the ground is asked again.
     const ddx = nx - x;
     const ddz = nz - z;
     const ddy = ny - y;
-    if (ddx * ddx + ddz * ddz > maxSide2 || ddy > maxRise || ddy < -maxRise || (clear ? nx < 0 || nz < 0 || nx > hf.sizeX || nz > hf.sizeZ || ny < h - SKIN : !capsuleFree(w, nx, ny, nz, r, height))) {
+    if (ddx * ddx + ddz * ddz > maxSide2 || ddy > maxRise || ddy < -maxRise || (clear ? nx < 0 || nz < 0 || nx > hf.sizeX || nz > hf.sizeZ || ny < h - SKIN : !capsuleFree(w, Math.fround(nx), Math.fround(ny), Math.fround(nz), r, height))) {
       vx = 0;
       vz = 0;
       if (vy > 0) vy = 0;

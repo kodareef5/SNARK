@@ -256,7 +256,7 @@ export class BodyCopies {
     out.colors.fill(0, to * 6, to * 6 + 6);
     out.gear.fill(0, to * GEAR_COUNT, (to + 1) * GEAR_COUNT);
     out.team[to] = out.seat[to] = out.seatSlot[to] = out.span[to] = out.grown[to] = 0;
-    for (const a of [out.vehiclePitch, out.vehicleRoll, out.steering, out.wheelAngle, out.vehicleGroundPitch, out.vehicleGroundRoll, out.vehicleRideOffset, out.vehicleDoors, out.vehicleGear, out.vehicleRpm, out.vehicleShifting, out.vehicleFlooding, out.vehicleRotorRpm, out.vehicleRotorPhase, out.vehicleEngineOn, out.vehicleQx, out.vehicleQy, out.vehicleQz]) a[to] = 0;
+    for (const a of [out.vehiclePitch, out.vehicleRoll, out.steering, out.wheelAngle, out.vehicleGroundPitch, out.vehicleGroundRoll, out.vehicleRideOffset, out.vehicleDoors, out.vehicleLightMode, out.vehicleGear, out.vehicleRpm, out.vehicleShifting, out.vehicleFlooding, out.vehicleRotorRpm, out.vehicleRotorPhase, out.vehicleEngineOn, out.vehicleQx, out.vehicleQy, out.vehicleQz]) a[to] = 0;
     for (const a of [out.vehicleGrounded, out.vehicleHullCondition, out.vehicleFuel, out.vehicleEngineCondition, out.vehicleRotorCondition, out.vehicleQw]) a[to] = 1;
     const movement = this.reg.vehicle[kind]?.movement;
     [out.vehicleRotorcraft[to], out.vehicleBoat[to]] = [movement === "rotor" ? 1 : 0, movement === "boat" ? 1 : 0];

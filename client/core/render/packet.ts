@@ -86,6 +86,8 @@ export const DETAIL_LIT = 8;
 export const DETAIL_PUFF = 16;
 /** Analytic rotor coverage instead of an atlas picture. Grey stores blade coverage at the tip; no extra asset or draw. */
 export const DETAIL_ROTOR = 32;
+/** Analytic emissive strip and halo of an active vehicle lens. */
+export const DETAIL_LAMP = 64;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /** Faces of four corners that 16-bit indices reach. */
@@ -151,7 +153,8 @@ export const PASS_FAR = 1;
 /**
  * The steps a frame is drawn in, in this order, which is the order of its draws: near opaque, far opaque, then the
  * dome (at `skyAt`), far see-through, near see-through, and the viewer's body over a depth clear. The opaque steps are
- * numbered as their ranges are. In an opaque step the draws with DRAW_CUTOUT come after the rest (scene.ts `cutouts`).
+ * numbered as their ranges are. In an opaque step the draws with DRAW_CUTOUT come after the rest (scene.ts `cutouts`),
+ * and the ground's tiles go where `groundAt` says.
  */
 export const STEP_NEAR = PASS_NEAR;
 export const STEP_FAR = PASS_FAR;
@@ -164,6 +167,27 @@ export function stepOf(p: FramePacket, d: number): number {
   const flags = p.drawFlags[d]!;
   if ((flags & DRAW_NEAR) !== 0) return STEP_BODY;
   return (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - p.drawPass[d]! : p.drawPass[d]!;
+}
+
+/**
+ * Marks, once the draws are in their order, each draw of a run of indices that is the draw before it but for its run
+ * (`drawJoined`), and each such caster that is the caster before it but for its run and its cascades (`casterJoined`):
+ * the same level, instances, offset, flags and all a renderer sets for it. A renderer that can may send a draw so marked
+ * in one call with those before it; drawn one by one they draw the same.
+ */
+export function markJoins(p: FramePacket): void {
+  const same = (o: Float32Array, a: number, b: number): boolean => o[a * 3] === o[b * 3] && o[a * 3 + 1] === o[b * 3 + 1] && o[a * 3 + 2] === o[b * 3 + 2];
+  for (let d = 0; d < p.drawCount; d++) {
+    const e = d - 1, flags = p.drawFlags[d]!;
+    const joined = d > 0 && (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 && flags === p.drawFlags[e] && p.drawSlot[d] === p.drawSlot[e] && p.drawMesh[d] === p.drawMesh[e] && p.drawBuffer[d] === p.drawBuffer[e] && p.drawFirst[d] === p.drawFirst[e] && p.drawInstances[d] === p.drawInstances[e] && p.drawPass[d] === p.drawPass[e] && p.drawFade[d] === p.drawFade[e] && p.drawHand[d] === p.drawHand[e] && same(p.drawOffset, d, e);
+    p.drawJoined[d] = joined && ((flags & DRAW_TEXTURED) === 0 || (p.drawMaterial[d] === p.drawMaterial[e] && p.drawLayer[d] === p.drawLayer[e] && p.drawWear[d] === p.drawWear[e])) ? 1 : 0;
+  }
+  // A caster's material is read only to cut it out.
+  for (let c = 0; c < p.casterCount; c++) {
+    const e = c - 1, flags = p.casterFlags[c]!;
+    const joined = c > 0 && (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 && flags === p.casterFlags[e] && p.casterSlot[c] === p.casterSlot[e] && p.casterMesh[c] === p.casterMesh[e] && p.casterBuffer[c] === p.casterBuffer[e] && p.casterFirst[c] === p.casterFirst[e] && p.casterInstances[c] === p.casterInstances[e] && same(p.casterOffset, c, e);
+    p.casterJoined[c] = joined && ((flags & DRAW_CUTOUT) === 0 || p.casterMaterial[c] === p.casterMaterial[e]) ? 1 : 0;
+  }
 }
 /** `tilePass` bits: 1 << PASS_NEAR for a tile drawn in the near range, 1 << PASS_FAR in the far, and TILE_CASTS << k casting into cascade k. */
 export const TILE_CASTS = 4;
@@ -263,14 +287,33 @@ export const FRAME = {
   nearFromZ: 15,
   nearToX: 23,
   nearToZ: 39,
+  /** fFacade: the height in the world of the city's flood line (facade.ts FACADE_FLOOD), and 1 where every facade atlas the tier reads has come. */
+  facade: 152,
+  /**
+   * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
+   * blue, and the saturation after it; then the power the toned light is raised to, bloom's share, the sharpen's
+   * strength, and bloom's levels. A frame with a gamma of 0, as an unlit one, is not graded, and one with no light
+   * target has no bloom or sharpen.
+   */
+  grade: 156,
+  saturation: 159,
+  gamma: 160,
+  bloom: 161,
+  sharpen: 162,
+  levels: 163,
+  /** fContact: the bodies whose contact takes the sky's light down, two slots each (contact.ts). */
+  contact: 164,
 } as const;
-export const FRAME_FLOATS = FRAME.look + 4;
+/** Bodies the frame block holds for contact (contact.ts). */
+export const MAX_CONTACTS = 12;
+export const FRAME_FLOATS = FRAME.contact + MAX_CONTACTS * 8;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
-  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook;
+  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fFacade, fGrade, fFinish;
+  highp vec4 fContact[${MAX_CONTACTS * 2}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -321,8 +364,20 @@ export class FramePacket {
   camZ = 0;
   /** World-surface city dials: tint/scale, weather/wetness/growth/desert. */
   readonly surfaceCity = Float32Array.from([1, 1, 1, 1, 1, 0, 0.08, 0, 1, 0, 0, 0]);
+  /**
+   * The world finishes' maps (world-surfaces.ts `WorldFinishes`), by role, base colour, normal and packed: the side of
+   * the array the card keeps each in, a layer a finish, 0 for none; the finest level of it every layer holds, -1 until
+   * every layer holds one; and where the eye is in each finish's tiles, less whole tiles, along x, y and z.
+   */
+  readonly worldSide = new Int32Array(3);
+  readonly worldLevel = new Int32Array(3).fill(-1);
+  readonly worldPhase = new Float32Array(48);
+  /** The textures the facades read, by their index in the manifest, -1 for none: the elements' base colour, normal and packed map, the rooms', the marks' (facade.ts FacadeAtlases). */
+  readonly facadeSlots = new Int32Array(5).fill(-1);
   /** Linear 0..1 RGB. */
   readonly sky = new Float32Array(3);
+  /** The sky's colour as a frame drawn with no light target shows its fog (surface.ts skyShown): graded where the frame is. */
+  readonly skyShown = new Float32Array(3);
   /** Unit vector toward the sun. */
   readonly sun = new Float32Array(3);
   /** Daylight brightness, 0..1. Every lit colour is multiplied by it. */
@@ -366,6 +421,18 @@ export class FramePacket {
   openRows = 0;
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
+  /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
+  lightSamples = 0;
+  /**
+   * Whether the frame is drawn with the page's other effects off (`?ab=`, passes.ts), every other frame for a before
+   * and after: the shell keeps what the frames between need, and the card's reservations stand as they set them.
+   */
+  alternate = false;
+  /**
+   * Per opaque step, near then far: its terrain tiles are drawn before the first of its draws numbered this or more, or
+   * after its last where it has none such. 0, before its first, where nothing says otherwise.
+   */
+  readonly groundAt = new Int32Array(STEP_FAR + 1);
 
   readonly uploads: BufferUpload[] = [];
   readonly drops: number[] = [];
@@ -411,6 +478,8 @@ export class FramePacket {
   readonly drawLayer = new Uint8Array(MAX_DRAWS);
   /** With a layer: the wear story its bodies take (wear.ts), 0 for none. */
   readonly drawWear = new Uint8Array(MAX_DRAWS);
+  /** 1 where a draw is the one before it but for its run of indices (markJoins), else 0. */
+  readonly drawJoined = new Uint8Array(MAX_DRAWS);
 
   tileCount = 0;
   /** Per tile: camera-relative x and z of its corner, metres per quad, sample stride. */
@@ -460,6 +529,8 @@ export class FramePacket {
   readonly casterFirstIndex = new Uint32Array(MAX_CASTERS);
   readonly casterIndexCount = new Uint32Array(MAX_CASTERS);
   readonly casterCascades = new Uint8Array(MAX_CASTERS);
+  /** 1 where a caster is the one before it but for its run of indices and its cascades (markJoins), else 0. */
+  readonly casterJoined = new Uint8Array(MAX_CASTERS);
   /** What the sun's maps take this frame, the ground's tiles among it, and which `triangles` leaves out: a caster's triangles once for each cascade it is drawn into, and its draws. */
   castTriangles = 0;
   castDraws = 0;
@@ -502,6 +573,7 @@ export class FramePacket {
     this.drawLayer.fill(0);
     this.drawWear.fill(0);
     this.drawCount = 0;
+    this.groundAt.fill(0);
     this.atlasRows = 0;
     this.tileCount = 0;
     this.groundWindow[3] = -1;

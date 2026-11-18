@@ -1,0 +1,424 @@
+{
+  "packSha256": "6e83e822926a517b7b34c858066498ed1881e88ab2c22682c41b9cb4a1592ea9",
+  "rig": "core:carbonemys",
+  "colors": [
+    128,
+    165,
+    227,
+    167,
+    95,
+    123
+  ],
+  "bodyLods": [
+    21312,
+    7200,
+    3000,
+    1250,
+    500,
+    400
+  ],
+  "attackMouthByTick": [
+    [
+      0.00035,
+      1.14808,
+      2.56754
+    ],
+    [
+      0.00215,
+      1.15759,
+      2.5663
+    ],
+    [
+      0.00733,
+      1.186,
+      2.56177
+    ],
+    [
+      0.01774,
+      1.25206,
+      2.54903
+    ],
+    [
+      0.03371,
+      1.36043,
+      2.5211
+    ],
+    [
+      0.05041,
+      1.4778,
+      2.48061
+    ],
+    [
+      0.0607,
+      1.53682,
+      2.4567
+    ],
+    [
+      0.06347,
+      1.48088,
+      2.4828
+    ],
+    [
+      0.05546,
+      1.30355,
+      2.54451
+    ],
+    [
+      0.03685,
+      1.06603,
+      2.58974
+    ],
+    [
+      0.01757,
+      0.85197,
+      2.59685
+    ],
+    [
+      0.00637,
+      0.71312,
+      2.58496
+    ],
+    [
+      0.00191,
+      0.65882,
+      2.57655
+    ],
+    [
+      0.00036,
+      0.67418,
+      2.57856
+    ],
+    [
+      0,
+      0.73826,
+      2.5862
+    ],
+    [
+      0,
+      0.83007,
+      2.59236
+    ],
+    [
+      0,
+      0.92493,
+      2.59236
+    ],
+    [
+      0,
+      1.00548,
+      2.58738
+    ],
+    [
+      0,
+      1.06522,
+      2.58082
+    ],
+    [
+      0,
+      1.10382,
+      2.57522
+    ],
+    [
+      0,
+      1.12657,
+      2.57142
+    ],
+    [
+      0,
+      1.13735,
+      2.56948
+    ],
+    [
+      0,
+      1.14219,
+      2.56856
+    ],
+    [
+      0,
+      1.14411,
+      2.56819
+    ],
+    [
+      0,
+      1.145,
+      2.568
+    ]
+  ],
+  "rows": [
+    {
+      "name": "quarter",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "82388b6c65c48e8d91dc901d3a4cad79c064636a6035fbb71478fbfc1d114bec"
+    },
+    {
+      "name": "profile",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "195024ea5df5f668bcfacb093b24501f544d284f808246fb30d0b3502614c7c2"
+    },
+    {
+      "name": "shell",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "28b6158051a89ae7088698717b741cb2e03d4788332c5a0550dd298113ed984e"
+    },
+    {
+      "name": "head",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "0a8b3459f914ce1ff30fb429f2b631ea1a5d6f0b21f46b46d8081a48bdc980f8"
+    },
+    {
+      "name": "saddle",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "bb184977fe53d0eb5ac15e7c8a3879b40edad07b5effa15018da5ab3a1b83a27"
+    },
+    {
+      "name": "saddle-close",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "77df73ac757b28426693ea43b606a099e8793692f66df34a539f74dd8787a7a3"
+    },
+    {
+      "name": "plastron",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "f1b57dcea75530450acaaf5cdfb426e04460b12444ae41d75fa3812cf091964d"
+    },
+    {
+      "name": "walk",
+      "clip": "walk",
+      "frame": 7,
+      "sha256": "d5b7979c95a252840352480ef86bbb7ea354d118dff583ac1652c4d89ba22bf5"
+    },
+    {
+      "name": "run",
+      "clip": "run",
+      "frame": 5,
+      "sha256": "686695f27cc93ce3700573454b0544e8d0db6676af06050111a183fc9297243b"
+    },
+    {
+      "name": "swim",
+      "clip": "swim",
+      "frame": 7,
+      "sha256": "ffd240fdbd3510601f428317cfea7bc12e6c0ac3e1c5bff3f4e3a7a1aea62797"
+    },
+    {
+      "name": "bite",
+      "clip": "attack",
+      "frame": 10,
+      "sha256": "33aee0c6e7441c1e8cb710a15460be7802dbb887549c8b8881beb867b0e787dd"
+    },
+    {
+      "name": "guard",
+      "clip": "retract",
+      "frame": 18,
+      "sha256": "9cd63b47829e8ea825a7befd5e8cf6f5902976b6bae2bf856fba9f427c15d1fa"
+    },
+    {
+      "name": "torpor",
+      "clip": "torpor_idle",
+      "frame": 18,
+      "sha256": "dc4069e0b75c7467592e20278cd80d034d1727682a56da9041bcea1c883e274d"
+    },
+    {
+      "name": "death",
+      "clip": "death",
+      "frame": 43,
+      "sha256": "1118812a14f20ea063ce6ef15105822d5c93adace3dbedc3473c397faddde6cf"
+    },
+    {
+      "name": "dyed",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "9a3311741f5e7c69f9126775dbb6db21ff8c0d1140ad017b56725ceba9e83e56"
+    },
+    {
+      "name": "hurt",
+      "clip": "idle",
+      "frame": 0,
+      "sha256": "db5f1bb28609a0891b12000b5218df38df9aee87088095a3eddc8ba6ce8ac428"
+    },
+    {
+      "name": "decay",
+      "clip": "death",
+      "frame": 43,
+      "sha256": "0ff6efa6d69802ccee878ca8964d009dc1ba4c832d878b617c3639435cdd08e9"
+    }
+  ],
+  "assetCommit": "fa8748d80310d44118c33a3c263ec8ba7400ab4c",
+  "saddleLods": [
+    4608,
+    1500,
+    600,
+    168
+  ],
+  "shellCoverage": [
+    {
+      "level": 0,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 1,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 2,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 3,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 4,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    },
+    {
+      "level": 5,
+      "angles": 40,
+      "rays": 255360,
+      "sky": 0,
+      "behind": 0,
+      "checks": []
+    }
+  ],
+  "sourceReferences": {
+    "specimen.pdf": "b150d77d8344691d471c6a69dc4176a00e560131e39b0ea42550d359e0c07cb6",
+    "dossier.jpg": "309e1b032b11d35489a948cd2df0a7f5aec11caec39a79053621bb99aa5c860e",
+    "reference-cc0.png": "e063fe0bf154003711af8d6bd3d97c6d099056187560cd59322776fa6b3cb34f",
+    "vienna.jpg": "644e6d3dfcd5ad0e1183ad31edb02682259c532e1e24aa0eaf63eeb5a67e8cc4"
+  },
+  "formComparison": {
+    "previousCommit": "f33d1a131bd41e467e116ed7d1cfa4235fcb8004",
+    "previous": {
+      "pack": "d818694702949d8b9a6ad5253b883ff5deaabeb2139e9bf062bf9f1e25766e4d",
+      "rows": [
+        {
+          "name": "clay-quarter",
+          "level": 0,
+          "sha256": "21f835f92a41644efe2b35c87742ea9b8238e6a8a3d09d7ba102cfca69f342c7"
+        },
+        {
+          "name": "clay-profile",
+          "level": 0,
+          "sha256": "28889704a817786366571408257fee990db383ee34e9ef0ccc6b66d601a0f4c5"
+        },
+        {
+          "name": "clay-head",
+          "level": 0,
+          "sha256": "f98fad6f39e9cbfe54da6a06bf1551acbba6f5c2dfa7c9ce83d053e7f0a7fb2b"
+        },
+        {
+          "name": "clay-limb",
+          "level": 0,
+          "sha256": "d508c76cf48b76eed7c23ba59958441d577982d21d79264a8c57c10e9a027eb3"
+        },
+        {
+          "name": "game-quarter",
+          "level": 0,
+          "sha256": "8c25acf9350d903a1260eb5d784f17d2d29bd5b80a31ad80ee4298ac723d4fbc"
+        },
+        {
+          "name": "game-lod2",
+          "level": 2,
+          "sha256": "7b92c2d1987402137a52248dc1857922b353b8bd61437a7717010c18272f3799"
+        },
+        {
+          "name": "shell",
+          "level": 1,
+          "sha256": "778c884f9d4e9b93a83aeefc94527cdf56b7aac5cd4e7c2c02a5dc7f43a2aa00"
+        },
+        {
+          "name": "face",
+          "level": 0,
+          "sha256": "88127b44bcb050e8ecd4f486b4348173b776f04fe568356248042f557e3cbbc8"
+        }
+      ]
+    },
+    "revised": {
+      "pack": "6e83e822926a517b7b34c858066498ed1881e88ab2c22682c41b9cb4a1592ea9",
+      "rows": [
+        {
+          "name": "clay-quarter",
+          "level": 0,
+          "sha256": "ae0fe44f6b5976a89d5b651e8dd04f173e9c660091ff230294921f0b79a75dc3"
+        },
+        {
+          "name": "clay-profile",
+          "level": 0,
+          "sha256": "77df4c3921b73117c85e278f6fcce975406f893e023d415c18efe224d9f2853b"
+        },
+        {
+          "name": "clay-head",
+          "level": 0,
+          "sha256": "bb1893a308ebf9ba831f18ece153bd223cd62b48bedd435c107fbe315a320f39"
+        },
+        {
+          "name": "clay-limb",
+          "level": 0,
+          "sha256": "5341bc759e4e496a1d42689c36b2f5ee7a5558c6730d471df504a8c5e8ecd8b5"
+        },
+        {
+          "name": "game-quarter",
+          "level": 0,
+          "sha256": "00a5f2a99c2886d73824319172b6e3081d3752aaf6ae56c51f27aaeeb9c21dcb"
+        },
+        {
+          "name": "game-lod2",
+          "level": 2,
+          "sha256": "4937d9386471fa328f3e421416142b60f93cd96d7072d8b7b1503e816cc2d7ed"
+        },
+        {
+          "name": "shell",
+          "level": 1,
+          "sha256": "faca97d63b75b793434eb300b24d07ef755c16b3d4ab066ebeaea8333ff1776e"
+        },
+        {
+          "name": "face",
+          "level": 0,
+          "sha256": "a6d7e5cded1faa42cc1519e2afaa419126c15a18ea677a3cc9244da481cfd4d2"
+        }
+      ]
+    }
+  },
+  "mountedDefaultBodies": {
+    "human_f": {
+      "handVertices": 636,
+      "footVertices": 330,
+      "verticesBelowCarapace": 0
+    },
+    "human_m": {
+      "handVertices": 678,
+      "footVertices": 342,
+      "verticesBelowCarapace": 0
+    }
+  },
+  "sheets": {
+    "native-review.png": "f5ae553ca6e7b045cedd7b135f5afa6240a7a92445886191ace42fd677b6200b",
+    "shell-levels.png": "ca0a34e5310bbd360a1dc8b51fcd82751973f269ccf15b5f677c36b550f6b51a",
+    "form-comparison.png": "3e1285a7d0b005e28c9603cf77404f836b7ccf28d6392bcfbba95daa6134d9b5"
+  }
+}

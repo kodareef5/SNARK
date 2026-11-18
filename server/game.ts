@@ -13,7 +13,7 @@ import {
   C_INPUT,
   HELLO_LOOK,
   HELLO_SPECTATE,
-  HELLO_STATICS,
+  HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
   HELLO_TICKET,
   INPUT_HOLD_TICKS,
   VEHICLE_HOLD_TICKS,
@@ -63,9 +63,10 @@ import {
   writeBody,
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
+import { PassengerView } from "./passenger-view.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
-import { BTN_JUMP, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SECONDARY, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { stepVehicleBody, packVehicleDrive, packVehiclePose, quantVehicleWheel, packVehicleRide } from "../shared/sim/vehicle-body.ts";
 import { packVehicleRotor, packVehicleSystems, packVehicleQuaternionPair, packBoatWater } from "../shared/sim/vehicle-presentation.ts";
 import { drivetrainShifting } from "../shared/sim/vehicle-drivetrain.ts";
@@ -228,6 +229,7 @@ export class Client {
   lingerUntil = 0;
   name = "";
   key: Uint8Array = new Uint8Array(KEY_BYTES);
+  createRequest:Uint8Array|null=null;
   /** Survivor record id, set by the host. 0 until the session has had a body. */
   pid = 0;
   state = SESSION_ALIVE;
@@ -254,6 +256,10 @@ export class Client {
   /** Centre of this session's interest. */
   chunk = 0;
   readonly inputs = new InputBuffer(INPUT_WINDOW);
+  /** First snapshot actually sent with the current urban seat. -1 from the authoritative board until send. */
+  vehicleSeatSnapshot = 0;
+  /** The snapshot acknowledged by the first packet accepted for each input. */
+  readonly inputAcks = new Uint32Array(INPUT_WINDOW);
   /** The tick on which each buffered input arrived, by its own tick: how far ahead the client really sent it. */
   readonly arrived = new Uint32Array(INPUT_WINDOW);
   heldX = 0;
@@ -272,8 +278,10 @@ export class Client {
   newestInput = 0;
   /** Newest snapshot the client says it decoded. */
   ackTick = 0;
+  /** High-water mark even while an ACK of zero requests a fresh full snapshot. */
+  highestAck = 0;
   lastSnapshot = 0;
-  readonly views = new ViewRing(() => new SentView());
+  readonly views = new ViewRing(() => new PassengerView());
   /** Structure table version the client holds, per chunk. */
   readonly known: Uint32Array;
   /** Version of each chunk's used-up nodes the client holds. */
@@ -356,8 +364,9 @@ export class Client {
     this.conn = conn;
     this.closed = false;
     this.inputs.tick.fill(0);
+    this.vehicleSeatSnapshot = this.vehicleSeatSnapshot === 0 ? 0 : -1;
     this.heldX = this.heldZ = this.heldButtons = 0;
-    this.newestInput = this.ackTick = this.lastSnapshot = 0;
+    this.newestInput = this.highestAck = this.ackTick = this.lastSnapshot = 0;
     this.views.clear();
     this.known.fill(0);
     this.nodesKnown.fill(0);
@@ -417,6 +426,9 @@ export class GameServer {
    */
   onFault: ((c: Client, op: number, command: Uint8Array, err: unknown) => boolean) | null = null;
   /** May this device key use this name? Called before anything is created. */
+  nameAway: ((name:string)=>boolean)|null=null;
+  sameCreation: ((name:string,key:Uint8Array,request:Uint8Array)=>boolean)|null=null;
+  owns: ((name: string, key: Uint8Array) => boolean) | null = null;
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
   /**
    * A survivor arriving from another server of the cluster with a travel ticket, for this name and device key. Returns "" once
@@ -452,6 +464,8 @@ export class GameServer {
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
   onMountLand: ((e: number, speed: number) => void) | null = null;
+  /** A rising secondary input on the mounted body, after movement and its ordinary bite step. */
+  onMountSecondary: ((e: number) => void) | null = null;
   /** A driven flyer `e` took off, set down from flight or began a barrel roll this tick, as stepOut still says. */
   onMountFlight: ((e: number) => void) | null = null;
   /** Vehicle report is still current; authoritative damage consumes it immediately after the body is stored. */
@@ -614,6 +628,7 @@ export class GameServer {
         }
         ents.storeBody(e, b);
         if (combat) ents.hold[e] = creatureHold(b);
+        if (driving && !vehicle && (c.pressed & BTN_SECONDARY) !== 0 && b.act === ACT_NONE) this.onMountSecondary?.(e);
         if (vehicle) this.onVehicleStep?.(e);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
@@ -793,10 +808,12 @@ export class GameServer {
   }
 
   /** False if the session is not in the creator or there is no room. */
-  create(c: Client, look: Uint8Array): boolean {
+  create(c: Client, look: Uint8Array, spawn?: number): boolean {
     if (c.state !== SESSION_CREATING) return false;
+    const place = spawn === undefined ? undefined : this.world.spawns[spawn];
+    if (spawn !== undefined && !place) return false;
     c.look = look;
-    if (!this.spawnBody(c)) return false;
+    if (!this.spawnBody(c, place && { ...place, y: this.world.hf.heightAt(place.x, place.z) })) return false;
     c.ownDirty = true;
     return true;
   }
@@ -1013,7 +1030,8 @@ export class GameServer {
   private input(c: Client, r: BitReader): boolean {
     const ack = r.u32();
     const behind = r.u8() / VIEW_STEPS;
-    const newest = readInputs(r, c.inputs, this.world.tick, ack, behind);
+    const validAck = ack >= c.highestAck && ack <= c.lastSnapshot && c.views.find(ack) ? ack : 0;
+    const newest = readInputs(r, c.inputs, this.world.tick, validAck, behind, c.inputAcks);
     if (newest === 0) return false;
     if (newest <= this.world.tick) this.stats.lateInputs++;
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
@@ -1028,7 +1046,7 @@ export class GameServer {
     // the view it acknowledged, so the next snapshot is whole. An input that arrives out of order may not say that.
     if (ack === 0) {
       if (fresh) c.ackTick = 0;
-    } else if (ack > c.ackTick && ack <= c.lastSnapshot) c.ackTick = ack;
+    } else if (validAck > c.ackTick) c.highestAck = c.ackTick = validAck;
     return true;
   }
 
@@ -1125,6 +1143,7 @@ export class GameServer {
       for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
     }
     const password = r.string(MAX_PASSWORD_BYTES);
+    const request=(flags & HELLO_NEW) && r.remainingBits>=KEY_BYTES*8 ? Uint8Array.from({length:KEY_BYTES},()=>r.u8()):null;
     if (r.overflow) return false;
     if (look && !validLook(look)) return this.refuse(conn, REJECT_MALFORMED);
     const world = this.world;
@@ -1144,6 +1163,12 @@ export class GameServer {
     if (this.refusals.refused(refusedAs(key, conn.address), world.tick)) return this.refuse(conn, REJECT_DENIED);
     // A module may turn a login away, or a name nobody has had before. A survivor's name is who it is, so it is not reworded.
     const isNew = this.savedPosition?.(name) == null;
+    if(flags & HELLO_NEW){
+      if(ticket || this.nameAway?.(name))return this.refuse(conn,REJECT_NAME);
+      const active=this.clients.find(c=>c?.active && c.name===name);
+      const retry=request && (this.sameCreation?.(name,key,request) || (active?.createRequest && key.every((b,i)=>active.key[i]===b) && request.every((b,i)=>active.createRequest![i]===b)));
+      if(name.trim()!==name || (!isNew || active) && !retry)return this.refuse(conn,REJECT_NAME);
+    }
     if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(conn, REJECT_NAME);
     if (this.bus.before(SESSION_LOGIN, { name, address: conn.address ?? "", isNew }) !== "") return this.refuse(conn, REJECT_DENIED);
     // A survivor arriving takes nothing until there is room for its session, so a full server leaves its ticket unused.
@@ -1155,13 +1180,14 @@ export class GameServer {
       const why = this.away?.(name, key) ?? "";
       if (why !== "") return this.refuse(conn, REJECT_TRAVEL, why);
     }
+    if ((flags & HELLO_RESUME) && this.savedPosition?.(name) == null) return this.refuse(conn, REJECT_NAME);
     if (this.authorize && !this.authorize(name, key)) return this.refuse(conn, REJECT_DENIED);
     // One body per survivor. A second login with the session's own key is its device back, and takes over the body. Nothing
     // may have closed the connection that device lost, so one still open is dropped here as if it had closed.
     for (const other of this.clients) {
       if (!other?.active || other.name !== name) continue;
       if (!other.closed) {
-        if (!key.every((b, i) => b === other.key[i])) return this.refuse(conn, REJECT_NAME);
+        if (!key.every((b, i) => b === other.key[i]) && !this.owns?.(name,key)) return this.refuse(conn, REJECT_NAME);
         const old = other.conn;
         old.onMessage = null;
         this.close(old, REJECT_NAME);
@@ -1169,6 +1195,7 @@ export class GameServer {
         // It had no body to linger in, so the session ended and this is a login like any other.
         if (!other.active) break;
       }
+      other.key = key;
       other.relink(conn);
       other.statics = (flags & HELLO_STATICS) !== 0 && world.statics !== null;
       this.bind(other, conn);
@@ -1189,6 +1216,7 @@ export class GameServer {
     this.clients[slot] = c;
     this.bind(c, conn);
     c.name = name;
+    c.createRequest=request;
     c.key = key;
     c.look = look;
     c.statics = (flags & HELLO_STATICS) !== 0 && world.statics !== null;
@@ -1345,7 +1373,7 @@ export class GameServer {
         vehicle ? packVehiclePose(ents.vehiclePitch[v]!, ents.vehicleRoll[v]!, ents.steering[v]!) : 0,
         vehicle ? quantVehicleWheel(ents.wheelAngle[v]!) : 0,
         vehicle ? packVehicleRide(ents.vehicleGroundPitch[v]!, ents.vehicleGroundRoll[v]!, ents.vehicleRideOffset[v]!, (ents.flags[i]! & F_GROUNDED) !== 0) : 0,
-        ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[v]!, ents.vehicleRpm[v]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain)) : 0,
+        ents.vehicleDoors[v]!, vehicle && !rotor ? packVehicleDrive(ents.vehicleGear[v]!, ents.vehicleRpm[v]!, vehicle.movement === "boat" ? ents.vehicleShiftTime[v]! > 0 : drivetrainShifting(ents.vehicleShiftTime[v]!, vehicle.spec.drivetrain), (ents.flags[i]! & F_PROP) === 0 ? ents.vehicleLightMode[v]! : 0) : 0,
         rotor ? packVehicleRotor(ents.vehicleRotorRpm[v]!, ents.vehicleRotorPhase[v]!) : 0,
         vehicle ? packVehicleSystems(ents.fuel[v]!, vehicle.spec.fuelCapacity, ents.vehicleEngineCondition[v]!, ents.vehicleRotorCondition[v]!, ents.vehicleEngineOn[v] !== 0) : 0,
         vehicle ? packVehicleQuaternionPair(ents.vehicleQx[v]!, ents.vehicleQy[v]!) : 0,
@@ -1407,7 +1435,9 @@ export class GameServer {
       next.tick = 0;
       return;
     }
+    next.recordSeat(this.world, c.ent, c.drive >= 0);
     c.lastSnapshot = T;
+    if (c.vehicleSeatSnapshot === -1) c.vehicleSeatSnapshot = T;
     c.conn.send(CH_UNRELIABLE, w.bytes());
     this.onSnapshot?.(c, next);
   }

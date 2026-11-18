@@ -17,7 +17,7 @@
 import type { ShapeLook } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
-import { TAU, detCos, detSin } from "../math/scalar.ts";
+import { TAU, detCos, detSin, len3 } from "../math/scalar.ts";
 import { MAX_CORNERS, hullPoint, hullTable, type HullDef, type HullTable } from "./convex.ts";
 import type { Heightfield } from "./heightfield.ts";
 import { MapStatics, type MapStatic } from "./mapfile.ts";
@@ -156,11 +156,20 @@ function lookForm(reg: Registry, walked: CityForm): CityForm {
 export interface CityPart {
   readonly pos: Float32Array;
   readonly color: Uint8Array;
+  /**
+   * Per face, which of its borders are outer edges, which the near city's material rounds and wears (world-surfaces.ts
+   * `edged`): bit 0 the border from its first corner to its last, bit 1 from its second to its third, bit 2 from its
+   * first to its second, bit 3 from its last to its third. A vertex stores it over its corner of the face (cornerByte).
+   */
+  readonly edges: Uint8Array;
   readonly faces: number;
   readonly box: readonly number[];
 }
 
-export const EMPTY_PART: CityPart = { pos: new Float32Array(0), color: new Uint8Array(0), faces: 0, box: [0, 0, 0, 0, 0, 0] };
+export const EMPTY_PART: CityPart = { pos: new Float32Array(0), color: new Uint8Array(0), edges: new Uint8Array(0), faces: 0, box: [0, 0, 0, 0, 0, 0] };
+
+/** The byte a static's vertex carries where a body's has its bone: its corner `k` of four round a face, across and up, and the face's outer borders (CityPart `edges`). */
+export const cornerByte = (k: number, edges: number): number => [0, 1, 3, 2][k]! | (edges << 2);
 
 /** Which pieces of a chunk are gone: a byte a piece in the chunk's order, 1 for gone. Null for none. */
 export type Gone = Uint8Array | null;
@@ -172,6 +181,7 @@ export type Ground = Pick<Heightfield, "heightAt">;
 class Out {
   pos = new Float32Array(12 * 1024);
   color = new Uint8Array(1024);
+  edges = new Uint8Array(1024);
   faces = 0;
   readonly box = new Float64Array(6);
   x0 = 0;
@@ -184,8 +194,8 @@ class Out {
     this.box.fill(Infinity, 0, 3).fill(-Infinity, 3, 6);
   }
 
-  /** A face of the world corners `c` at `at`, 12 numbers in order round it. */
-  quad(c: ArrayLike<number>, at: number, col: number): void {
+  /** A face of the world corners `c` at `at`, 12 numbers in order round it, with its outer borders (CityPart `edges`). */
+  quad(c: ArrayLike<number>, at: number, col: number, edges = 0): void {
     const f = this.faces++;
     if (f === this.color.length) {
       const pos = new Float32Array(this.pos.length * 2);
@@ -194,7 +204,11 @@ class Out {
       const color = new Uint8Array(this.color.length * 2);
       color.set(this.color);
       this.color = color;
+      const grown = new Uint8Array(this.edges.length * 2);
+      grown.set(this.edges);
+      this.edges = grown;
     }
+    this.edges[f] = edges;
     const p = this.pos;
     const b = this.box;
     for (let k = 0; k < 4; k++) {
@@ -233,7 +247,7 @@ class Out {
 
   part(): CityPart {
     if (this.faces === 0) return EMPTY_PART;
-    return { pos: this.pos.slice(0, this.faces * 12), color: this.color.slice(0, this.faces), faces: this.faces, box: Array.from(this.box) };
+    return { pos: this.pos.slice(0, this.faces * 12), color: this.color.slice(0, this.faces), edges: this.edges.slice(0, this.faces), faces: this.faces, box: Array.from(this.box) };
   }
 }
 
@@ -569,7 +583,7 @@ function faces(dims: MapDims, chunk: number, hf: Ground): CityPart {
           held = h !== q && (h < n ? holds(h, face[0]!, face[1]!, face[2]!) && holds(h, face[3]!, face[4]!, face[5]!) && holds(h, face[6]!, face[7]!, face[8]!) && holds(h, face[9]!, face[10]!, face[11]!) : hulls.holdsAll(h - n, face, 4));
         }
       }
-      if (!held) out.quad(face, 0, f === 3 ? boxes.under[q]! : boxes.color[q]!);
+      if (!held) out.quad(face, 0, f === 3 ? boxes.under[q]! : boxes.color[q]!, outerEdges(q, face, ground, gx0, gz0));
     }
   }
   for (let q = 0; q < hulls.n; q++) {
@@ -624,6 +638,39 @@ function heldWhole(q: number, c: Float64Array, count: number, mx: number, mz: nu
     if (h >= n ? hulls.holdsAll(h - n, c, count) : holdsAll(h, c, count)) return true;
   }
   return false;
+}
+
+const beyond = new Float64Array(3);
+/**
+ * Which borders of box `q`'s face of four world corners in `face` are outer edges (CityPart `edges`): not where a point
+ * 2 cm past the border's middle, across the face's plane, is held by another box or part, as a join or an inside corner
+ * is, nor a wall's foot on the `ground`.
+ */
+function outerEdges(q: number, face: Float64Array, ground: number, gx0: number, gz0: number): number {
+  let edges = 0;
+  const mx = (face[0]! + face[6]!) / 2, my = (face[1]! + face[7]!) / 2, mz = (face[2]! + face[8]!) / 2;
+  const n = boxes.n;
+  for (let k = 0; k < 4; k++) {
+    const [a, b] = [[0, 3], [1, 2], [0, 1], [3, 2]][k]!;
+    const bx = (face[a * 3]! + face[b * 3]!) / 2, by = (face[a * 3 + 1]! + face[b * 3 + 1]!) / 2, bz = (face[a * 3 + 2]! + face[b * 3 + 2]!) / 2;
+    const l = len3(bx - mx, by - my, bz - mz);
+    if (l <= 0) continue;
+    if (Math.max(face[a * 3 + 1]!, face[b * 3 + 1]!) <= ground + 0.1 && Math.abs(by - my) > 0.5 * l) continue;
+    beyond[0] = bx + ((bx - mx) / l) * 0.02;
+    beyond[1] = by + ((by - my) / l) * 0.02;
+    beyond[2] = bz + ((bz - mz) / l) * 0.02;
+    const gi = Math.floor((beyond[0] - gx0) / GRID), gj = Math.floor((beyond[2] - gz0) / GRID);
+    let held = false;
+    if (gi >= 0 && gj >= 0 && gi < GRID_SIDE && gj < GRID_SIDE) {
+      const cell = gj * GRID_SIDE + gi;
+      for (let e = gridCount[cell]!; e < gridCount[cell + 1]! && !held; e++) {
+        const h = gridList[e]!;
+        held = h !== q && (h < n ? holds(h, beyond[0], beyond[1], beyond[2]) : hulls.holdsAll(h - n, beyond, 1));
+      }
+    }
+    if (!held) edges |= 1 << k;
+  }
+  return edges;
 }
 
 /** Whether box `q` holds each of the `count` world points in `c`. */

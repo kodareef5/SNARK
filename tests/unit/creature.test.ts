@@ -88,6 +88,9 @@ test("a creature stands, walks, runs and strikes on its clips: its feet stay by 
     const rig = rigs.get(id)!;
     const a = new CreatureAnim(rig, 4, 0);
     const scale = rig.mid;
+    // A high browsing neck raises the overall midpoint without lengthening a leg.
+    const root = rig.names.indexOf(spec.skeleton.root);
+    const hipScale = Math.min(scale, Math.abs(rig.rest[root * 3 + 1]!) || scale);
     const feet = spec.feet.map((name) => rig.names.indexOf(name));
     const headZone = spec.zones.find((z) => z.zone === "head");
     const head = headZone ? rig.names.indexOf(headZone.on) : -1;
@@ -118,7 +121,7 @@ test("a creature stands, walks, runs and strikes on its clips: its feet stay by 
         expect(low, where).toBeGreaterThan(-0.25 * scale);
         expect(high, where).toBeLessThan(0.45 * scale);
       }
-      if (speed > 0 && feet.length > 1 && a.walk) expect(apart, where).toBeGreaterThan(0.3 * scale);
+      if (speed > 0 && feet.length > 1 && a.walk) expect(apart, where).toBeGreaterThan(0.3 * hipScale);
     }
     // Below walking speed the pose is a blend of standing and walking.
     if (!a.idle || !a.walk) continue;
@@ -167,7 +170,7 @@ test("a creature is hit where it is: its head from in front, every zone from som
     const h = middle(rig.names.indexOf(headZone.on));
     expect(ray(h[0]!, h[1]!, 40, 0, 0, -1)).toBe(ZONE_HEAD);
     expect(zoneHit.t).toBeLessThan(40 - h[2]!);
-    expect(ray(-30, h[1]!, h[2]! + rig.mid * 2, 1, 0, 0)).toBe(ZONE_NONE);
+    expect(ray(-30, h[1]!, rig.reach + 1, 1, 0, 0)).toBe(ZONE_NONE);
     // Turned a quarter and moved, it is hit by the same ray turned and moved with it, and not by the old ray.
     expect(ray(100 + 40, h[1]!, 50 - h[0]!, -1, 0, 0, 16384, 100, 50)).toBe(ZONE_HEAD);
     expect(ray(h[0]!, h[1]!, 40, 0, 0, -1, 16384, 100, 50)).toBe(ZONE_NONE);

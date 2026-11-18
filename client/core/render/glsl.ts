@@ -11,7 +11,8 @@ import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
-import { GROUND_GLSL, WORLD_GLSL } from "./world-surfaces.ts";
+import { FACADE_GLSL } from "./facade.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
@@ -58,20 +59,45 @@ precision highp int;
 in vec3 vRel;
 flat in vec3 vColor;
 flat in int vSurface;
+#ifdef WORLD_WEATHER
+in vec3 vOwn;
+flat in vec2 vPlace;
+in vec2 vFace;
+flat in uint vEdges;
+#endif
+#ifdef FACADE
+flat in int vFacade;
+#endif
 uniform float uSolid, uAlpha, uSkin;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}void main() {
-  vec3 geometric = normalize(cross(dFdx(vRel), dFdy(vRel)));
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}void main() {
+  vec3 dx = dFdx(vRel), dy = dFdy(vRel);
+  vec3 geometric = normalize(cross(dx, dy));
   vec3 n = geometric;
   vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
-  if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, vSurface);
-  float open = skyOpen(vRel, geometric, overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0);
+  float painted = 0.0;
+  if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
+  float over = overGround(vRel);
+  float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0);
+#ifdef WORLD_WEATHER
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) weathered(albedo, orm, vSurface, vOwn, vPlace, over, open, vRel, geometric, dx, dy);
+#endif
+#if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
+#endif
+  // A facade's part and the marks on a wall (facade.ts): the room behind glass lit by the face's daylight, and the street's far side it mirrors.
+  vec3 room = vec3(0.0);
+  vec4 far = vec4(0.0);
+#ifdef FACADE
+  if (uSolid < 1.5 && uSkin < 0.5 && fFacade.y > 0.5 && facade(albedo, orm, n, room, far, vFacade, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uWorldEye.y, over) == 2) worldSharp = true;
+#endif
   vec3 v = -normalize(vRel);
   // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
-  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);
+  mirrored = mix(mirrored, far.rgb * skyLight(-geometric), far.a);
+  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * open, vRel), uAlpha);
 }`;
 
 /** `text` with `from` put as `to`, which it must hold. */
@@ -92,7 +118,7 @@ export const LIT_MESH_FRAGMENT = [
   ["  vec3 orm = vec3(1.0, 1.0, 0.0);\n", "  vec3 orm = vFinish.xyz;\n"],
   ["  vec3 v = -normalize(vRel);\n", "  vec3 v = -normalize(vRel);\n  if (vShare < 1.0) n = v;\n"],
   ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
-  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)), vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade), vRel), uAlpha * vShare);"],
+  ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * open, vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade) + room * skyLight(geometric) * open, vRel), uAlpha * vShare);"],
 ].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);
 
 /**
@@ -212,9 +238,10 @@ void main() {
  * The lit tiers' ground: LIT lit by the ground's own normal, the face's still choosing the finish's projection and where
  * growth takes, and putting the sun's shadow off the surface. Its cover is the tint of the four samples round the pixel
  * with most of their weight at a place moved by a wander of a fraction of a metre (world-surfaces.ts `groundCover`), so
- * an edge between two covers curves and wanders across a cell. It reads the picture its tile reads at that picture's
- * own samples, however coarse the tile, so it does not change as a tile splits. Its sky's light is taken down where
- * the sky is hidden (skyopen.ts).
+ * an edge between two covers curves and wanders across a cell; where its finish meets another's, the higher of their
+ * painted heights shows through (`groundMeet`). It reads the picture its tile reads at that picture's own samples,
+ * however coarse the tile, so it does not change as a tile splits. Its sky's light is taken down where the sky is
+ * hidden (skyopen.ts).
  */
 export const LIT_TERRAIN_FRAGMENT = `#version 300 es
 precision highp float;
@@ -226,18 +253,34 @@ uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}void main() {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}vec3 groundColour(int tint) {
+  vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+}
+void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   vec2 s = clamp(vAt + groundWander(vRel.xz + uWorldEye.xz, max(length(dx.xz), length(dy.xz))) / uField.z, vec2(0.0), uLast);
   ivec2 i = min(ivec2(s), ivec2(uLast) - 1);
-  int tint = groundCover(ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r), s - vec2(i));
-  vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
-  vec3 albedo = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
-  vec3 n = normalize(vNormal);
+  ivec4 tints = ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r);
+  int tint = groundCover(tints, s - vec2(i));
+  vec3 albedo = groundColour(tint);
+  vec3 n = normalize(vNormal), level = n;
   vec3 orm = vec3(1.0, 1.0, 0.0);
-  if (uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, groundSurface(tint));
-  orm.x *= skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0);
+  if (uWorldReady > 0.5) {
+    float h = worldSurface(albedo, orm, n, geometric, groundSurface(tint), vRel, dx, dy), share;
+    // Where it meets another finish, the higher of the two shows through the other.
+    int other = groundMeet(tint, tints, s - vec2(i), share);
+    if (share > 0.0) {
+      vec3 albedo2 = groundColour(other), orm2, n2 = level;
+      float b = higher(h, worldSurface(albedo2, orm2, n2, geometric, groundSurface(other), vRel, dx, dy), share, ${f(GROUND_SCALE)}, ${f(GROUND_BAND)});
+      albedo = mix(albedo, albedo2, b);
+      orm = mix(orm, orm2, b);
+      n = normalize(mix(n, n2, b));
+      worldSharp = orm.y < ${f(WORLD_SHARP)};
+    }
+  }
+  orm.x *= skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0);
   vec3 v = -normalize(vRel);
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);

@@ -1,0 +1,42 @@
+# Tyrannosaurus rex
+
+[Striped adult, face and saddle](striped-rex.jpg) · [All seven game LODs](striped-rex-lods.jpg) · [Donor and rebuild instructions](SOURCES.md)
+
+The playable adult measures 12.25 m long and 4.56 m tall. Its first four levels retain textured skin at 33,936, 14,500, 6,200 and 2,600 triangles. At 1,000 triangles the engine switches to one palette draw. The authored 288- and 112-triangle silhouettes also use one draw and follow the bite and gait bones. All seven packed meshes close with zero open edges. The head and hide retain 2K base and normal maps. Broad dye and roughness masks stream to 512 px. The checker measures 38.7 MB for the largest complete texture variant, including the saddle.
+
+The articulated death and torpor poses stay within 6 mm of the floor. Across eight fall directions per surface, the deepest settled skin point is 5.1 cm below level ground, 4.9 cm below a 12% grade and 9.5 cm below a 35% grade. All 24 falls settled within 2.12 seconds. The pack measured for this refit is `cf5563db724566c3e1460c8143a7f2ab2086dc538e14f9974877cf0812a90355`.
+
+## Original sculpt and development studies
+
+The review images and measurements below record the earlier coastal adult on the Carbonemys and Rex branch.
+
+[Native model and saddle review sheet](native-review.png) · [Matched LOD2 profile, quarter and 128 px texture review](resculpt-comparison.png) · [Matched hip in neutral material and production colour](hip-comparison.png)
+
+The adult stands 4.56 m tall in the neutral rig. Its 12.25 m outline balances a broad temporal table and roughly 2.45 m cranial region against the long tapering tail. The outer thigh descends from a low iliac crest. Its rear edge slopes back to meet the caudofemoral mass under the tail root. The belly has space for the gastral basket, with the ribcage narrowing into the neck ahead of the shoulders. The Field Museum’s SUE mount and its documented gastralia informed those proportions. [SUE, FMNH PR 2081](https://www.fieldmuseum.org/collection-item-iconic/sue) · [The Field Museum on SUE’s remount](https://www.fieldmuseum.org/blog/fresh-science-makeover-sue)
+
+The textured hide carries small scales across the flanks and neck. The head adds larger coalescing scutes around the orbit and nostril. This is an original interpretation at game resolution. Bell and colleagues documented pebbly scales in preserved patches of adult tyrannosaur skin. The lip margins take their closed profile from the soft-tissue reconstruction discussed by Cullen and colleagues. The dentary angle drops behind the tooth arcade. The nasal vestibule is recessed into the oblique premaxillary face, and the mobile lower jaw pulls a cheek fold beneath the jugal. The broad posterior skull, narrowing nasals and orbit were compared with the museum cast. The game’s long roar opens the lower jaw to expose the tongue, palate and fifty tapering teeth carried by the two jaws. [Museum of the Earth skull cast, Digital Atlas of Ancient Life](https://sketchfab.com/3d-models/vertebrate-tyrannosaurus-rex-skull-mote-cf48487de55d454b8adc92dce2840a0d) · [Bell et al., 2017](https://pmc.ncbi.nlm.nih.gov/articles/PMC5493735/) · [Cullen et al., 2023](https://pubmed.ncbi.nlm.nih.gov/36996202/)
+
+Studio Wildcard’s original TLC comparison was the game-art reference for the muscular hip, raised brow and dominant head silhouette. Its Survival Ascended launch artwork also shows the shoulder-mounted rider above the body silhouette and the open jaws in a frontal encounter. The short arms have two separate clawed digits. Each load-bearing foot has three spread toes and a smaller elevated hallux. The nearby Quaternius CC0 comparison has 912 source vertices, no UV set and six actions. The sources here create every vertex, joint, animation and material map for this animal. [Wildcard’s original Rex comparison](https://steamcommunity.com/sharedfiles/filedetails/?id=1267375377) · [Wildcard’s Survival Ascended launch presentation](https://www.youtube.com/watch?v=0gLODoXanog) · [Quaternius Animated Dinosaur Pack](https://quaternius.com/packs/animateddinosaurs.html)
+
+## Native asset
+
+Build with `bun tools/art.ts core:rex --no-sheet`. The authoring pass writes the anatomical paint layout under `var/rex` before shaping the mesh at the hip. Those vertices carry their original UV coordinates through the final edit. To repaint, run `tex/paint.py` with NumPy, SciPy and Pillow after building, then rebuild the pack. Reproduce the pictured frames with `bun tools/rex/review.ts bc` and `bun tools/rex/review.ts astc`. The renderer decodes the production block encoders’ complete mip chains. The left face closeup on the sheet uses BC and the roaring face uses ASTC. The captures use the game’s noon lighting. For the matched sheet, retain the two BC LOD2 views and receipt of the earlier 5a990153 pack, then run the BC review once more with `--medium-mip` on the revised pack. The upper comparisons use identical cameras, crops and shrink factors within each column. The lower closeups show the muzzle with a 128 px ceiling. At that resolution the angled nasal opening, jaw hinge and brow remain legible. Much of the fine scaling and the shallower cheek folds blend into the surrounding colour. The eye-following closeups show the iris at idle frame 0 and full coverage at frame 69. At that magnification the lower fold has a dark, sharply defined free edge.
+
+The hip comparison pairs two renders of the same resting frame at 6,200 triangles. The neutral material shows the gradual turn over the upper rear thigh and the continuous lower edge into the tail. The colour views use identical BC texture bytes capped at 128 px. Capture the former geometry with `bun tools/rex/review.ts bc --medium-mip --hip --geometry=PATH_TO_D929BC98_PACK`, then repeat without the geometry argument to capture the current asset. `python tools/rex/sheets.py BEFORE_DIRECTORY` checks the receipts and composes all three sheets.
+
+| Feature | Native measurement or implementation |
+|---|---|
+| Geometry | 34,128 triangles at the finest level. Seven body and four worn-saddle levels. All eleven are closed, consistently oriented meshes. |
+| Rig | 30 bones, 26 hit capsules, 17 sockets and 19 clips at 30 Hz. The rigid upper arcade follows the maxilla. Its narrower contact capsule meets the broader posterior skull capsule. The commissure, palate, orbital rims, moving upper lid and tooth rows have their own surfaces. |
+| Pigment | Six dye channels over the two 2K main materials. The eyes, teeth, tongue and 1K saddle preserve their own colours. Separate 256-pixel hurt and decay pictures supply the combined damage texture. |
+| Motion | 3.36 m per walk cycle and 6.16 m per run cycle. At their authored 2.8 and 8.4 m/s rates, the native checker measures 2.7 cm and 0.2 cm of planted toe travel. The swim covers 3.8 m per cycle at 3 m/s. |
+| Bite | Frames 8–11 of 23 lower the upper bite socket from 2.77 m to 2.22 m. Its forward reach stays between 4.64 and 4.72 m from the animal origin. |
+| Riding | A leather pad follows vertical casts onto the actual back. Two girths follow radial skin samples. The saddle tree, grips and stirrup irons share the chest’s frame with the seat, hand and foot targets. A native ray through the seat centre meets its leather surface 3.7 mm above the socket. Across 52 samples of idle, walk, run, bite, call and swim, the fitted blanket underside clears the central hide by 9.7–22.8 mm. |
+
+## Ground contact
+
+The death animation hands off at frame 50. The torso, skull, two tail sections, hands, shanks and toes supply ten physical bodies. The transverse pelvis describes the combined support of the two hips. Across every frame of the five collapse, unconscious, eating, recovery and death clips, the finest skinned point stays between 6.0 mm below and 4.4 mm above the ground. In the unconscious idle it stays 0.7 mm above ground.
+
+Run `bun tools/rex/contact.ts` to measure the packed vertices after the native solver settles. The probe tests eight yaws at each grade and keeps the original 60 Hz simulation step. On a level floor the lowest skin point is 3.3 cm below the surface across those yaws. The corresponding worst point is 3.7 cm below at 12% grade and 5.0 cm below at 35% grade. All 24 falls sleep within 2.40 seconds. The body uses simple capsules, so individual scutes and toes can pass through terrain by the measured amounts.
+
+The complete native pack for these measurements has SHA-256 `36891e64d2bc61a11b77a9a2174aae35e738b332604ec7775ea5eb92ba1566ba`.

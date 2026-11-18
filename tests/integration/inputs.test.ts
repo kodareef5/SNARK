@@ -116,6 +116,32 @@ test("a client that acknowledges 0 is sent a whole snapshot next", () => {
   expect(age).toBeGreaterThan(0);
 });
 
+test("each buffered input keeps its first packet's local snapshot acknowledgement", () => {
+  const h = new Harness();
+  try {
+    const session = h.join("ada", {}, { manual: true });
+    h.run(500, now => session.update(now, 0, 0, 0, 0, 0));
+    const c = h.client(session)!, inputs = new InputBuffer(64), w = new BitWriter(256);
+    const tick = h.world.tick + 10, firstAck = c.lastSnapshot;
+    const send = (t: number, ack: number) => {
+      inputs.set(t, 0, 0, 0, 0, BTN_USE);
+      w.reset(); writeInputs(w, inputs, ack, t, 1, 4);
+      h.ends[0]!.send(CH_UNRELIABLE, w.bytes()); h.net.advance(h.now);
+    };
+    send(tick, firstAck);
+    h.run(100);
+    expect(c.lastSnapshot).toBeGreaterThan(firstAck);
+    send(tick, c.lastSnapshot);
+    expect(c.inputAcks[tick & c.inputs.mask]).toBe(firstAck);
+    expect(c.inputs.view[tick & c.inputs.mask]).toBe(firstAck - 4);
+    // A new input cannot backdate its view after a newer ACK, even across a full-snapshot request.
+    send(tick + 2, 0); send(tick + 3, firstAck);
+    expect(c.inputAcks[(tick + 3) & c.inputs.mask]).toBe(0);
+    send(tick + 1, c.lastSnapshot + 1);
+    expect(c.inputAcks[(tick + 1) & c.inputs.mask]).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
 test("a page that draws no frames still acknowledges, so the server goes on writing its snapshots against a view it has", () => {
   const h = new Harness();
   const s = h.join("ada", { latencyMs: 20 }, { manual: true });

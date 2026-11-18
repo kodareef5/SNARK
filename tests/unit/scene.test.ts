@@ -182,7 +182,7 @@ test("a step's cut-out draws come after all its opaque ones; as they were made, 
   expect(none.picture).not.toEqual(made.picture);
 });
 
-test("an opaque step's draws come by what they bind, a program, a material and a level at a time, so neighbours change less than as made; see-through draws keep their order, and the picture is the same", () => {
+test("an opaque step's draws come nearest first and in a bucket by what they bind, a program, a material and a level at a time, so neighbours change less than as made; see-through draws keep their order, and the picture is the same", () => {
   // Panels in two chunks, each a plank and a cut-out lattice, tubes and posts among them, each a hide and a horn, and a
   // see-through panel about to be built.
   const w = sceneWorld();
@@ -215,14 +215,26 @@ test("an opaque step's draws come by what they bind, a program, a material and a
     });
     return n;
   };
+  // By what they bind alone, as before they went nearest first: each state is drawn in one run of its step's part, its
+  // cut-outs or the rest.
+  w.scene.nearFirst = false;
   const [made, last] = [shot("made"), shot("last")];
-  // Each state is drawn in one run of its step's part, its cut-outs or the rest.
   const runs = last.draws.filter((d, i) => !d.see && (i === 0 || d.state !== last.draws[i - 1]!.state || d.step !== last.draws[i - 1]!.step));
   expect(new Set(runs.map((d) => `${d.step} ${d.cut} ${d.state}`)).size).toBe(runs.length);
   expect(changes(last.draws)).toBeLessThan(changes(made.draws));
   expect(last.draws.filter((d) => d.see).map((d) => d.what)).toEqual(made.draws.filter((d) => d.see).map((d) => d.what));
   expect(last.draws.map((d) => d.what).sort()).toEqual(made.draws.map((d) => d.what).sort());
   expect(last.picture).toEqual(made.picture);
+  // Nearest first: the planks of the row 70 m off after the tubes, the posts and the row 30 m off, which share a bucket
+  // and their states' runs; the same draws and the same picture.
+  w.scene.nearFirst = true;
+  const near = shot("last");
+  const rest = near.draws.filter((d) => !d.see && !d.cut);
+  const buffers = [...new Set(rest.map((d) => Number(d.what.split(",")[1])).filter((b) => b < 1 << 20))].sort((a, b) => a - b);
+  const farthest = rest.findIndex((d) => Number(d.what.split(",")[1]) === buffers.at(-1));
+  expect([buffers.length, rest.slice(farthest).every((d) => Number(d.what.split(",")[1]) === buffers.at(-1))]).toEqual([2, true]);
+  expect(near.draws.map((d) => d.what).sort()).toEqual(made.draws.map((d) => d.what).sort());
+  expect(near.picture).toEqual(made.picture);
 });
 
 test("a body drawn with its materials and the same body drawn flat agree in mean colour, as near as the palette and the two ways of lighting allow", () => {
@@ -501,8 +513,15 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1616556435 until the frozen human packs had the fingertips' two bones: a posed survivor's rows are 30, not 28,
   // and the frame's 70 bones pose and stand in the bodies its 66 did. The draws, triangles and uploads are as they were.
   // It was 3788414068 until the ruins' facade modules and breaks (content/ruins.ts) added their grey meshes ahead of the
-  // test meshes; without them it is that again.
-  expect(hash).toBe(1115872953);
+  // test meshes; without them it is that again. It was 1115872953 until the street furniture (content/street.ts) added
+  // its grey meshes ahead of them; without those it is that again. It was 374367094 until a static's vertices said
+  // their corner of their face and its outer borders in the byte a body's bone has (world-surfaces.ts ownVertex): only
+  // the uploads' vertex bytes moved, and low poly reads none of them. It was 1589639950 until the door-to-curb kit and
+  // the street's walks, curbs and drains, the ruins' broken wall tops, rubble, leaning pieces and vines and the broken
+  // parapets of whole tops (content/ruins.ts) added their grey meshes; without them it is that again. It was 3316382992
+  // until the far wood was drawn after the near store, which its draws may be hidden behind, and an opaque step's draws
+  // went nearest first.
+  expect(hash).toBe(4108479878);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -528,7 +547,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2005316451 until the road bridge meshes changed those same indices, as above, and 207021915 until the sea was
   // made ahead of the statics, as above, and 3258779310 until the harbours' wrecks' meshes, as above, and 3199521479
   // until a survivor had 30 bones, as above, and 3920878120 until the ruins' facade modules and breaks, as above.
-  expect(saddled.hash).toBe(2430603422);
+  // It was 2430603422 until the street furniture's grey meshes; without them it is that again. It was 3628556772 until
+  // a static's vertices said their faces' corners and outer borders, as the hash above, and 2281949996 until the ruins'
+  // kit, street pieces, broken tops, rubble, leaning pieces, vines and broken parapets, as above, and 1004296491 until
+  // the far wood was drawn after the near store and opaque draws went nearest first, as above.
+  expect(saddled.hash).toBe(697200331);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

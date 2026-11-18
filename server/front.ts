@@ -117,7 +117,7 @@ async function pass(req: Request, url: URL, to: FrontWorld, forwarded: string): 
   for (const h of HOP) headers.delete(h);
   headers.set("x-forwarded-for", forwarded);
   try {
-    const res = await fetch(`http://127.0.0.1:${to.port}${url.pathname}${url.search}`, { method: req.method, headers, redirect: "manual", decompress: false, signal: req.signal });
+    const res = await fetch(`http://127.0.0.1:${to.port}${url.pathname}${url.search}`, { method: req.method, headers, ...(req.method === "POST" ? { body:req.body } : {}), redirect: "manual", decompress: false, signal: req.signal });
     const back = new Headers(res.headers);
     for (const h of HOP) back.delete(h);
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers: back });
@@ -154,7 +154,7 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
     ...(hostname ? { hostname } : {}),
     async fetch(req, srv) {
       // The worlds take nothing but these from a page, outside a development server.
-      if (req.method !== "GET" && req.method !== "HEAD") return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
+      if (req.method !== "GET" && req.method !== "HEAD" && !((req.method === "POST" || req.method === "OPTIONS") && /\/(survivors|directory)$/.test(new URL(req.url).pathname))) return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
       const url = new URL(req.url);
       const to = frontRoute(worlds(), url.pathname);
       if (!to) return new Response("no world of this cluster is running", { status: 503, headers: { "retry-after": "10" } });

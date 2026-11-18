@@ -142,12 +142,12 @@ function clashes(a: Approach, x: number, z: number, level: number): boolean {
   return Math.abs(other - level) > .35;
 }
 
-export function gradeApproaches(site: Site, approaches: readonly Approach[], owner: number): void {
+export function gradeApproaches(site: Site, approaches: readonly Approach[], owner: number, protectedGround?: ReadonlySet<number>): void {
   const { height, water, heaps } = site.ground; const { nx, nz, x1, z1 } = site.ground.grid;
   for (const a of approaches) {
     const dx = a.door.x - a.street.x; const dz = a.door.z - a.street.z; const length = Math.hypot(dx, dz);
     for (let row = Math.max(0, Math.floor((z1 - Math.max(a.street.z, a.door.z) - 5) / 2)); row <= Math.min(nz - 1, Math.ceil((z1 - Math.min(a.street.z, a.door.z) + 5) / 2)); row++) for (let col = Math.max(0, Math.floor((x1 - Math.max(a.street.x, a.door.x) - 5) / 2)); col <= Math.min(nx - 1, Math.ceil((x1 - Math.min(a.street.x, a.door.x) + 5) / 2)); col++) {
-      const i = row * nx + col; if (water[i] || (owner >= 0 && heaps.owner[i]! >= 0 && heaps.owner[i] !== owner)) continue;
+      const i = row * nx + col; if (water[i] || protectedGround?.has(i) || (owner >= 0 && heaps.owner[i]! >= 0 && heaps.owner[i] !== owner)) continue;
       const x = x1 - col * 2; const z = z1 - row * 2;
       const t = Math.max(0, Math.min(1, ((x - a.street.x) * dx + (z - a.street.z) * dz) / (length * length)));
       const distance = Math.hypot(x - a.street.x - dx * t, z - a.street.z - dz * t); if (distance >= 5) continue;

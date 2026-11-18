@@ -6,9 +6,9 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 import { Icons } from "./assets/icons.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
-import { forTouch, tierOf } from "./assets/tiers.ts";
+import { canvasRatio, forTouch, ownRatio, tierOf } from "./assets/tiers.ts";
 import { Governor, PHONE_MS, workMs } from "./governor.ts";
-import { BENCH_TURN_MS, effectsOff, packetWithout, tierWithout, type Effect } from "./passes.ts";
+import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { VOLUME_MAX, keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -16,9 +16,10 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MountCameraPivot } from "./mount-camera.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
+import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -179,6 +180,9 @@ export class App {
   /** The screen's device pixels a CSS pixel, and effects the page's address turned off (passes.ts). */
   dpr = 1;
   off: ReadonlySet<Effect> = new Set();
+  /** What every other frame draws with off instead (`?ab=`, passes.ts), or null, and the frames drawn. */
+  private other: ReadonlySet<Effect> | null = null;
+  private drawnFrames = 0;
   private interval = 0;
   /** Whether the keys are a flyer's, and the last tick stepped before its wing was last wanted. */
   private flying = false;
@@ -228,6 +232,7 @@ export class App {
       get inMenu() { return !app.ui.wantsPointerLock; },
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
+      get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
       adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
       move: (x, z) => this.controls.padMove(x, z), look: (x, y) => this.look(x,y), used: () => { this.ui.inputDevice = 1; },
@@ -407,6 +412,14 @@ export class App {
       }
       if (this.useKept) {
         if (!down) this.useKept = false;
+        return true;
+      }
+    }
+    if (code === "KeyK" && this.session.driving >= 0) {
+      const def = this.reg.vehicle[this.session.bodyKind];
+      if (def && isWheelVehicle(def) && def.emergencyLights) {
+        const r = this.remote, i = r.id.subarray(0, r.count).indexOf(this.session.driving);
+        if (down && !repeat && i >= 0) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_LIGHTS); w.u32(makeHandle(this.session.driving, r.gen[i]!)); });
         return true;
       }
     }
@@ -765,7 +778,9 @@ export class App {
     if (s.driving >= 0) {
       const combat = this.reg.combat[s.bodyKind];
       if (combat) return `LMB attack   ${combat.charge ? "hold RMB charge" : combat.secondary ? "RMB impale" : ""}   E get off`;
-      return this.reg.vehicle[s.bodyKind] ? "E  exit vehicle" : "E  get off";
+      if (this.reg.vehicle[s.bodyKind]) return "E  exit vehicle";
+      const mount = this.reg.defs[s.bodyKind];
+      return mount?.type === "species" && mount.roar ? "RMB  roar    E  get off" : "E  get off";
     }
     // Seats in cars and saddles have a slot; a carried body has none. Who steers is handled above.
     if (s.own.seatSlot !== 0 && s.own.seat > 0) {
@@ -898,6 +913,7 @@ export class App {
    */
   address(get: (name: string) => string | null, pinned: boolean, orders: ToolOrders | null = null): void {
     this.off = effectsOff(get("off"));
+    this.other = get("ab") === null ? null : effectsOff(get("ab"));
     this.script = pinned && Array.isArray(orders?.run) ? orders.run.filter((line): line is string => typeof line === "string") : [];
     const look = pinned && Array.isArray(orders?.look) ? orders.look : [];
     this.held = look.length === 2 && look.every((v) => typeof v === "number" && Number.isFinite(v)) ? [look[0] as number, look[1] as number] : null;
@@ -923,7 +939,7 @@ export class App {
     // What follows is the uploads of all that was lost, or of what failed, which are no reason to step.
     this.governor.pause(this.nowMs);
     if (!this.scene?.assets.pressure()) return;
-    this.ui.settings.tier = this.scene.assets.tier.name;
+    [this.ui.settings.tier, this.ui.settings.chosen] = [this.scene.assets.tier.name, true];
     this.ui.chat.print(TEXT_NOTICE, `The graphics card keeps running out of memory, so the graphics setting is now ${this.ui.settings.tier}.`, this.session.serverTick);
   }
 
@@ -987,6 +1003,7 @@ export class App {
     }
 
     this.travel(nowMs);
+    if (this.ui.leftWorld) { this.ui.leftWorld=false; this.page?.go("./?screen=roster"); }
     if (this.ui.reconnectRequested) { this.ui.reconnectRequested = false; this.page?.reload?.(); }
     if (session.state === "closed") {
       this.vehicleTelemetry.stop();
@@ -1083,6 +1100,7 @@ export class App {
         this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, this.steer && (c.buttons & BTN_PRONE) !== 0);
       } else if (car.movement === "boat") this.vehicleTelemetry.updateBoat(session.driving, session.own, car.spec, this.steer && (c.buttons & BTN_SPRINT) !== 0);
       else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
+      this.vehicleTelemetry.lightMode = isWheelVehicle(car) && car.emergencyLights ? 0 : -1;
       hud.vehicle = this.vehicleTelemetry;
     } else this.vehicleTelemetry.stop();
     const carYaw = vehiclePose?.qw !== undefined ? Math.atan2(2 * (vehiclePose.qw * vehiclePose.qy! + vehiclePose.qx! * vehiclePose.qz!), 1 - 2 * (vehiclePose.qx! ** 2 + vehiclePose.qy! ** 2))
@@ -1200,7 +1218,11 @@ export class App {
       const r = this.remote;
       for (let i = 0; i < r.count; i++) {
         if (r.id[i] !== session.driving) continue;
-        if (body.vehicle) body.vehicle.doors = r.vehicleDoors[i]!;
+        if (body.vehicle) {
+          body.vehicle.doors = r.vehicleDoors[i]!;
+          body.vehicle.lightMode = r.vehicleLightMode[i]!;
+          if (this.vehicleTelemetry.lightMode >= 0) this.vehicleTelemetry.lightMode = body.vehicle.lightMode;
+        }
         body.generation = r.gen[i]!;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
         for (let k = 0; k < GEAR_COUNT; k++) body.gear[k] = r.gear[i * GEAR_COUNT + k]!;
@@ -1309,14 +1331,20 @@ export class App {
     }
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
-    this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), this.off);
+    const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
+    this.scene.alternate = alternate;
+    this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), off);
+    const ratio = canvasRatio(this.scene.assets.tier, this.dpr, width, height);
+    [this.scene.canvasWidth, this.scene.canvasHeight] = [Math.floor(width * ratio), Math.floor(height * ratio)];
+    this.scene.supersampled = ratio > ownRatio(this.scene.assets.tier, this.dpr);
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
     session.askFar(this.scene.assets.tier.reach.bases);
     session.holdNodes(this.scene.assets.tier.nodes.chunks);
     this.scene.characters.corpseMotions = session.corpseMotions;
+    sceneWithout(this.scene, this.off);
     const packet = this.scene.build(cam, this.remote);
     session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
-    packetWithout(packet, this.off);
+    packetWithout(packet, off);
     hud.minimapVisible = this.ui.settings.minimap && !this.ui.menu;
     if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
     updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);

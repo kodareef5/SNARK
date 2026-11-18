@@ -33,7 +33,7 @@ export const SADDLED_OBJECT = "Velociraptor_saddled";
 export type Ways = "worn" | "saddled" | "both";
 
 /**
- * The raptor's asset.ts as far as these need it (assets/source/core/creatures/raptor/asset.ts and dino.ts): its skeleton
+ * The frozen raptor's original authoring contract (tests/fixtures/art/raptor.snpk): its skeleton
  * as its pack has it, its colour regions by the materials that take them, and its triangle budgets.
  */
 const raptor = {

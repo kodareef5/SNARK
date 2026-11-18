@@ -21,6 +21,8 @@ export interface Device {
 /** What a check gets back: the pixels of a frame of a shot that was read, top row first, and the device. */
 export interface Readback {
   pixels(key: string, frame: number): Uint8Array | null;
+  /** Milliseconds a timed RawShot took to be drawn its `repeat` times more, as the page saw them; null if not timed. */
+  time(key: string): number | null;
   device: Device;
 }
 
@@ -28,6 +30,8 @@ export interface LitCheck {
   readonly name: string;
   /** Builds the shots in Bun. Called once, before the page asks for any. */
   shots(): Shot[] | Promise<Shot[]>;
+  /** Programs of its own the page draws once each, after every shot (RawShot). */
+  raws?(): RawShot[] | Promise<RawShot[]>;
   /** Whether what came back passes, and lines for the report. */
   judge(back: Readback): { ok: boolean; lines: string[] };
 }
@@ -144,4 +148,37 @@ export function topFirst(pixels: Uint8Array, width: number, height: number): Uin
   const row = width * 4;
   for (let y = 0; y < height; y++) out.set(pixels.subarray((height - 1 - y) * row, (height - y) * row), y * row);
   return out;
+}
+
+/** A texture of a RawShot: its sampler's name, its side, its levels from the finest down, RGBA or, with 2 channels, RG bytes; sRGB colour where `srgb`. */
+export interface RawTexture { name: string; size: number; channels: 2 | 4; srgb: boolean; levels: Uint8Array[] }
+
+/**
+ * A program a check draws by itself (tools/probe-lit.ts reads it back as frame 0 of its key): triangles of the named
+ * float attributes, interleaved, drawn with depth onto a canvas `width` by `height` cleared to black, with uniforms of 1
+ * to 4 floats or a matrix of 16, and textures on units in order. With `repeat` the page then draws it that many times
+ * more and tells how long they took (Readback `time`).
+ */
+export class RawShot {
+  readonly read = [0];
+  readonly key: string;
+  readonly width: number;
+  readonly height: number;
+  private readonly out = new Bytes();
+  private readonly shape: object;
+
+  constructor(key: string, width: number, height: number, vertex: string, fragment: string, attributes: readonly (readonly [string, number])[], data: Float32Array, uniforms: Readonly<Record<string, readonly number[]>>, textures: readonly RawTexture[], repeat = 0) {
+    [this.key, this.width, this.height] = [key, width, height];
+    const vertices = [this.out.add(data), data.byteLength];
+    const texts = textures.map((t) => ({ name: t.name, size: t.size, channels: t.channels, srgb: t.srgb, levels: t.levels.map((l) => [this.out.add(l), l.length]) }));
+    this.shape = { width, height, vertex, fragment, attributes, uniforms, vertices, textures: texts, repeat };
+  }
+
+  spec(): object {
+    return this.shape;
+  }
+
+  bytes(): Uint8Array {
+    return this.out.join();
+  }
 }

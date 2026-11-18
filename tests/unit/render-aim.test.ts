@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import { bodySeed } from "../../client/core/render/scene.ts";
-import { ZONE_COUNT, ZONE_HEAD, ZONE_NAMES } from "../../shared/anim/human.ts";
+import { HUMAN_ZONE_COUNT, ZONE_HEAD, ZONE_NAMES } from "../../shared/anim/human.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { rayBody, zoneOfBone } from "../../shared/anim/zones.ts";
 import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
@@ -21,8 +21,8 @@ test("aiming at what is drawn of a body hits it, in the zone drawn: in every pos
   const by = remote.y[0]!;
   const bz = remote.z[0]!;
   // drawn[z] counts pixels showing zone z, and agreed[z] those where a ray through the pixel finds zone z too.
-  const drawn = new Uint32Array(ZONE_COUNT);
-  const agreed = new Uint32Array(ZONE_COUNT);
+  const drawn = new Uint32Array(HUMAN_ZONE_COUNT);
+  const agreed = new Uint32Array(HUMAN_ZONE_COUNT);
   let phantom = 0;
   let empty = 0;
   let missed = 0;
@@ -81,7 +81,7 @@ test("aiming at what is drawn of a body hits it, in the zone drawn: in every pos
   }
   let all = 0;
   let allAgreed = 0;
-  for (let z = 1; z < ZONE_COUNT; z++) {
+  for (let z = 1; z < HUMAN_ZONE_COUNT; z++) {
     all += drawn[z]!;
     allAgreed += agreed[z]!;
     // Every zone is seen, and a ray through its pixels mostly finds it. Each bone has one generous capsule, and where two

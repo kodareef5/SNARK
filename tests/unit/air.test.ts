@@ -9,7 +9,7 @@ import { LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
 import { FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { domeLight, hazeColor, hourOfSun, luminance, shownSky, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { shown, srgbToLinear } from "../../client/core/render/surface.ts";
+import { shown, skyShown, srgbToLinear } from "../../client/core/render/surface.ts";
 import { apart } from "../../tools/sky/fit.ts";
 import { packedMips, readPicture } from "../../tools/pack/image.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -205,7 +205,7 @@ test("LIT, SURFACE and the dome read the air; the dome's text is written from th
   const medium = tierOf("medium");
   for (const name of ["flat", "terrain", "seeThrough", "far", "sky"]) expect(PROGRAMS[name]!(medium, "bc").fragment.includes(AIR)).toBe(true);
   expect(PROGRAMS.surface!(medium, "astc").fragment.includes(AIR)).toBe(true);
-  expect(LIT_FRAGMENT.includes("shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)), vRel)")).toBe(true);
+  expect(LIT_FRAGMENT.includes("shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * open, vRel)")).toBe(true);
   expect(SKY_FRAGMENT.includes(`* ${Math.cos(BREAK.turn)}`) || SKY_FRAGMENT.includes(String(Math.cos(BREAK.turn)))).toBe(true);
   for (const part of [SKY_FRAGMENT]) expect([part.split("{").length, part.split("(").length]).toEqual([part.split("}").length, part.split(")").length]);
 });
@@ -216,6 +216,7 @@ test("the rasterizer's light is fogged under water only: above it, the air is th
   skyFrame(12, sky, p.frame);
   [p.fogStart, p.fogEnd] = [10, 20];
   p.sky.set([0, 0, 1]);
+  skyShown(p);
   const out = [0, 0, 0];
   p.frame[FRAME.eyeHeight] = 5;
   shown(out, [0.2, 0.2, 0.2], 1000, p);

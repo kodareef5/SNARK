@@ -1,30 +1,29 @@
-// Encodes only the world atlas, measures its actual bytes, and leaves derived variants under var/.
-// bun tools/surfaces/cost.ts
-import { mkdirSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
-import { TIERS } from "../../client/core/assets/tiers.ts";
-import { blockOf, textureBytes, topIn } from "../../shared/pack/texture.ts";
-import { mipsOf } from "../art/materials.ts";
-import { encodeTextures } from "../pack/encode.ts";
-import { worldMaterial, worldSurfaceMesh } from "./build.ts";
+// The world finishes' bytes for each lit tier and texture variant, from a client build's manifest: what the card holds
+// (every layer of each role's array, mips and all) and what is fetched for it (the stored steps), and on a touch-first
+// device whose rule keeps the light finish, the base colour's alone.
+// bun tools/surfaces/cost.ts <dist>
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { inflateRawSync } from "node:zlib";
+import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
+import { SURFACE_PREFIX } from "../../content/surfaces.ts";
+import { parseManifest, readPages, storedStep } from "../../shared/pack/manifest.ts";
+import { TEXTURE_FORMATS, blockOf, stepOf, textureBytes, topIn } from "../../shared/pack/texture.ts";
 
-const material = worldMaterial(), textures = worldSurfaceMesh().textures!;
-const started = performance.now();
-const encoded = await encodeTextures(textures.map((t) => ({ ...t, mips: () => mipsOf(material, t.role, t.top) })), { workers: 2 });
-mkdirSync("var/surfaces/encoded", { recursive: true });
-const variants = encoded.variants.map((v) => {
-  writeFileSync(`var/surfaces/encoded/atlas.${v.format}.sntx`, v.bytes);
-  return { format: v.format, bytes: v.bytes.length, sha256: createHash("sha256").update(v.bytes).digest("hex"), tiers: TIERS.map((tier) => {
-    const largest = Math.max(...textures.map((t) => topIn(v.format, t.top)));
-    const maps = textures.map((t, i) => {
-      const top = topIn(v.format, t.top);
-      const side = tier.lit ? Math.min(tier.texture, largest) * top / largest : 0;
-      return { role: t.role, side, bytes: side ? textureBytes(v.format, t.role, side, blockOf(v.format, v.placed[i]!)) : 0 };
-    });
-    return { tier: tier.name, maps, bytes: maps.reduce((sum, m) => sum + m.bytes, 0), firstStepBytes: tier.lit ? textures.reduce((sum, t, i) => sum + textureBytes(v.format, t.role, 64, blockOf(v.format, v.placed[i]!)), 0) : 0, addedDraws: 0, addedTriangles: 0 };
-  }) };
-});
-const report = { seconds: (performance.now() - started) / 1000, encode: encoded.report, variants };
-mkdirSync("assets/source/surfaces/evidence", { recursive: true });
-writeFileSync("assets/source/surfaces/evidence/texture-cost.json", JSON.stringify(report, null, 2) + "\n");
-console.log(JSON.stringify(report, null, 2));
+const dist = process.argv[2] ?? "client/dist";
+const m = parseManifest(readFileSync(join(dist, "assets/manifest.json"), "utf8"));
+readPages(m, (f) => new Uint8Array(readFileSync(join(dist, "assets", m.files[f]!.name))), (stored) => new Uint8Array(inflateRawSync(stored)));
+const world = (m.materials ?? []).filter((x) => x.id.startsWith(SURFACE_PREFIX));
+const rows = TIERS.filter((t) => t.finishes > 0).flatMap((t) => [t, forTouch(t, true)].filter((v, k) => k === 0 || v.finish === "light")).flatMap((tier) => TEXTURE_FORMATS.map((format) => {
+  let card = 0, fetched = 0;
+  const roles = tier.finish === "light" ? 1 : 3;
+  for (const material of world) for (const [t, side] of ([[material.base, tier.finishes], [material.normal, tier.finishes], [material.mro, tier.finishes / 2]] as const).slice(0, roles)) {
+    const tex = m.textures![t]!, v = tex.in[format];
+    if (!v) continue;
+    const top = Math.min(side, topIn(format, tex.top));
+    card += textureBytes(format, tex.role, top, blockOf(format, v));
+    for (let s = 0; s <= stepOf(top); s++) fetched += storedStep(v, format, tex.role, s);
+  }
+  return { tier: tier.name + (roles === 1 ? " touch" : ""), side: tier.finishes, format, cardMB: +(card / 2 ** 20).toFixed(1), fetchedMB: +(fetched / 2 ** 20).toFixed(1) };
+}));
+console.log(JSON.stringify(rows, null, 1));

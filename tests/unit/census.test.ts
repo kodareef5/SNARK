@@ -1,5 +1,5 @@
 // What a frame and the HUD may hold: counts, which load cannot move. The frame on medium at the iPhone's view (D349,
-// D423), a real city's downtown on every tier (tools/bench/census.ts), the HUD in every mode it has.
+// D423) and the HUD in every mode it has; a real city's downtown on every tier is in census.slow.test.ts.
 
 import { expect, test } from "bun:test";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
@@ -12,12 +12,9 @@ import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { asTextured, boxBase } from "../../tools/bench/base.ts";
 import { SPOTS, VIEW, count, turn, wood, type Counted } from "../../tools/bench/budget.ts";
-import { SETUPS, SLICE_VIEWS, censusWorld } from "../../tools/bench/census.ts";
 import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { withContent } from "../../shared/content/registry.ts";
 import { mapHeightfield, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
-import { miamiSlice } from "../fixtures/cityslice.ts";
-import { farPack } from "../fixtures/farworld.ts";
 import { KORU_QUAY, koruMapFile, koruPack, koruPoint } from "../fixtures/koru.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -79,8 +76,8 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
   // 205,904 while a chunk cast all its instances into every cascade its box met; by its 16 m cells, each into the
   // cascades it reaches, it is this (the touch rule's one tap keeps the levels). It was 342,046 and 1,736,330 in the first
   // two until nodes were scattered by their chunks' frame keys (shared/coords.ts), which moves every tree, rock and bush.
-  // The feathered raptors add 21,888 and 21,520 shadow triangles in the two fights.
-  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([363948, 1842084, 138704]);
+  // The native Parasaur adds 29,528 shadow triangles to each woodland fight on top of the feathered Raptor.
+  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([393476, 1871612, 138704]);
 });
 
 artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {
@@ -160,33 +157,6 @@ artTest("Koru's sails, gaffs and rig are drawn as far as its far mesh, past medi
   // Medium draws moving parts to 1,200 m and the far city and the landmarks' far meshes to 2,048 m.
   expect([tierOf("medium").reach.parts, tierOf("medium").reach.city]).toEqual([1200, 2048]);
   expect(drawn).toEqual({ 1100: [21, 0], 1500: [21, 0], 1900: [21, 0], 2300: [0, 0] });
-});
-
-test("a real city's downtown at its three views on each tier: the near city's draws, casts and triangles, and the far city's draws and triangles", () => {
-  const slice = miamiSlice();
-  const w = censusWorld(slice.map, slice.centre, coreRegistry(), farPack());
-  const got = Object.fromEntries(SLICE_VIEWS.map((v) => [v.name, Object.fromEntries(SETUPS.map((s) => {
-    const c = w.count(v, s);
-    return [s.name, [c.near, c.cast, c.nearTriangles, c.far, c.farTriangles]];
-  }))]));
-  // Each view's near window lies whole in the slice, so the first three are what the built Miami draws there with the
-  // grey boxes (equal when it was cut on 2026-11-17); the far city's are of the slice's ring of chunks round it, in tiles
-  // of the slice's own from its corner. The near city's were 509, 742 and 104,248 at the street on high, 490, 673 and
-  // 109,168 on the roof and 574, 635 and 120,588 in the air while each piece was an instance; with a chunk's statics
-  // drawn flat as their form one mesh made in 16 m cells (client/core/render/nearcity.ts), what is left a draw is a
-  // chunk's run of cells in view and the wrecks, its casters runs of cells, and its triangles the every-box form's, faces
-  // held by another piece or the ground left out. The far city's were 15, 24, 11 and 14 draws and 48,382, 62,294, 62,790
-  // and 78,520 triangles on the lit tiers while a chunk was in view by its pieces' box and 8 m round it at every level; by
-  // the box its level's faces may reach, a box's their pieces' own, chunks at the view's edge drop out. Then they were
-  // 22, 17 and 27 draws on the lit tiers and 13, 14 and 18 for touch in tiles of 3 by 3 chunks; in tiles of 4 by 4 there
-  // are fewer runs, and the touch rule's every box ends short of more tiles' nearest points. Cut again on 2026-11-18 when
-  // a building's bays came to wear their kind's facade modules (content/ruins.ts): the street on high was 41, 51 and
-  // 67,608 near and 15 and 57,036 far, the roof 37, 46, 66,988, 19 and 77,014, the air 51, 45, 77,364, 13 and 73,184.
-  expect(got).toEqual({
-    "street-300": { lowpoly: [44, 0, 126242, 12, 78928], "medium, touch": [17, 9, 62778, 10, 37804], medium: [44, 21, 126242, 15, 112772], high: [44, 51, 126242, 15, 112772], ultra: [44, 57, 126242, 15, 112772] },
-    "roof-300": { lowpoly: [40, 0, 131204, 12, 94536], "medium, touch": [24, 7, 78598, 14, 55476], medium: [40, 23, 131204, 19, 144226], high: [40, 48, 131204, 19, 145914], ultra: [40, 59, 131204, 19, 145914] },
-    "air-300": { lowpoly: [54, 0, 145540, 11, 92988], "medium, touch": [25, 2, 86920, 9, 41328], medium: [54, 7, 145540, 13, 141406], high: [54, 49, 145540, 13, 141406], ultra: [54, 57, 145540, 13, 141406] },
-  });
 });
 
 test("the HUD holds at most 500 nodes in every mode, the vehicles' dashes and the menus among them, and grows none after warming up", () => {

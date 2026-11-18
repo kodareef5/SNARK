@@ -610,14 +610,15 @@ export class Residency {
   /**
    * Says a material is on screen this frame, a whole texture of it covering `pixels` pixels on something `distance`
    * metres off. Each of its textures is kept, and wanted at the first step that is as wide as it is shown: as far
-   * under the material's widest as it was authored, and no wider than the tier allows.
+   * under the material's widest as it was authored, and no wider than the tier allows. Only its first `roles` maps are
+   * wanted where fewer are read.
    */
-  material(m: number, pixels: number, distance: number): void {
+  material(m: number, pixels: number, distance: number, roles = MAPS): void {
     if (this.cap < 0) return;
     this.matSeen[m] = this.frame;
     const most = STEP0_SIZE << (this.matTop[m]! < this.cap ? this.matTop[m]! : this.cap);
     const shown = pixels < most ? pixels : most;
-    for (let r = 0; r < MAPS; r++) {
+    for (let r = 0; r < roles; r++) {
       const t = this.matTex[m * MAPS + r]!;
       if (t >= 0) this.texture(t, shown / (1 << this.matUnder[m * MAPS + r]!), WEIGHT[r]! / distance, r === 0 || r >= 3);
     }
@@ -641,6 +642,17 @@ export class Residency {
   layered(m: number): boolean {
     const t = this.matLayer[m]!;
     return t >= 0 && this.has[t]! >= 0;
+  }
+
+  /** The last step of texture `t` (its index in the manifest) the card holds, or -1 for none. */
+  holds(t: number): number {
+    return this.has[t]!;
+  }
+
+  /** The card is to let go of texture `t` whole, as of this frame, and take it again from its first step. */
+  again(t: number): void {
+    if (this.has[t]! >= 0 || this.gone[t]! > 0) this.late.push(t);
+    this.letGo(t);
   }
 
   /** A texture shown `px` pixels across. Its next step is as urgent as the pixels it adds, times `weight`. */

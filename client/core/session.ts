@@ -19,7 +19,7 @@ import {
   CMD_VIEW,
   BUTTON_MASK,
   HELLO_SPECTATE,
-  HELLO_STATICS,
+  HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
   INPUT_HOLD_TICKS,
   VEHICLE_HOLD_TICKS,
   INPUT_KEPT,
@@ -91,6 +91,7 @@ import {
   readBody,
   writeCommand,
   writeHello,
+  PASSENGER_VIEW_DELAY,
   writeInputs,
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
@@ -104,7 +105,7 @@ import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
-import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting } from "../../shared/sim/vehicle-body.ts";
+import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehicleLightMode } from "../../shared/sim/vehicle-body.ts";
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
@@ -126,6 +127,8 @@ import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
 export interface SessionOptions {
+  intent?: "create" | "resume";
+  createRequest?: Uint8Array;
   name: string;
   /** The device key that owns the name, 16 random bytes kept by this client. */
   key: Uint8Array;
@@ -210,6 +213,7 @@ export class RemoteSample {
   readonly vehicleDoors = new Uint32Array(MAX_VIEW);
   readonly vehicleGear = new Int8Array(MAX_VIEW);
   readonly vehicleRpm = new Float32Array(MAX_VIEW);
+  readonly vehicleLightMode = new Uint8Array(MAX_VIEW);
   readonly vehicleShifting = new Uint8Array(MAX_VIEW);
   readonly vehicleRotorcraft = new Uint8Array(MAX_VIEW);
   readonly vehicleBoat = new Uint8Array(MAX_VIEW);
@@ -629,7 +633,7 @@ export class ClientSession {
       this.welcomedNow();
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, (opts.spectate ? HELLO_SPECTATE : 0) | (opts.statics ? HELLO_STATICS : 0), opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, (opts.intent === "create" ? HELLO_NEW : opts.intent === "resume" ? HELLO_RESUME : 0) | (opts.spectate ? HELLO_SPECTATE : 0) | (opts.statics ? HELLO_STATICS : 0), opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null,opts.createRequest);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -683,9 +687,10 @@ export class ClientSession {
     this.farSeq = seq;
   }
 
-  create(look: Uint8Array): number {
+  create(look: Uint8Array, spawn?: number): number {
     return this.command(CMD_CREATE, (w) => {
       for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+      if (spawn !== undefined) w.u8(spawn);
     });
   }
 
@@ -794,7 +799,8 @@ export class ClientSession {
   sampleRemote(out: RemoteSample, delayTicks = this.remoteDelay): void {
     out.count = 0;
     out.died = this.died;
-    const at = this.renderClock - delayTicks;
+    const renderAt = this.renderClock - delayTicks;
+    const at = this.own.seat && this.driving < 0 ? Math.max(renderAt, this.latestSnapshot - PASSENGER_VIEW_DELAY) : renderAt;
     out.tick = at;
     this.shown = at;
     let a: EntityView | null = null;
@@ -898,6 +904,7 @@ export class ClientSession {
     out.vehicleGear[n] = unpackVehicleGear(drive);
     out.vehicleRpm[n] = unpackVehicleRpm(drive);
     out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
+    out.vehicleLightMode[n] = unpackVehicleLightMode(drive);
     if (a) {
       if (b.vehicleAttitudeA[j] || b.vehicleAttitudeB[j]) {
         unpackVehicleQuaternion(a.vehicleAttitudeA[i]!, a.vehicleAttitudeB[i]!, this.rotorQuatA);
@@ -1878,7 +1885,7 @@ function noVehicle(out: RemoteSample, n: number): void {
   out.vehicleDoors[n] = 0; out.vehicleRotorcraft[n] = 0; out.vehicleBoat[n] = 0;
   out.vehicleHullCondition[n] = 1; out.vehicleFlooding[n] = 0;
   out.vehicleRotorRpm[n] = 0; out.vehicleRotorPhase[n] = 0; out.vehicleFuel[n] = 0; out.vehicleEngineCondition[n] = 0; out.vehicleRotorCondition[n] = 0; out.vehicleEngineOn[n] = 0;
-  out.vehicleGear[n] = -1; out.vehicleRpm[n] = 0; out.vehicleShifting[n] = 0;
+  out.vehicleLightMode[n] = 0; out.vehicleGear[n] = -1; out.vehicleRpm[n] = 0; out.vehicleShifting[n] = 0;
   out.vehicleQx[n] = 0; out.vehicleQy[n] = 0; out.vehicleQz[n] = 0; out.vehicleQw[n] = 1;
 }
 

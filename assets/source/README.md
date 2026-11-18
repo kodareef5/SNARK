@@ -14,14 +14,13 @@ core/creatures/raptor/        core:raptor
   tex/                        source pictures at full size
   sound/                      sounds.json, the cue sheet `bun run build` reads (planning/architecture/sound.md);
                               takes/, the accepted takes as made; how each was made and its licence beside them
-core/creatures/dino.ts        shared by the two sample dinosaurs' specs
 core/humans/human-bodies/     core:human-bodies, the two modelled bodies with hair, beards and armor
 core/humans/human-clips/      core:human-clips, the humanoid's clips
 ```
 
-The raptor and the parasaur are converted from files kept unchanged in
-[raw](../raw/README.md), so they have no scripts of their own. They are
-stand-ins. A folder is an asset once it has an `asset.ts`: until then it may
+The feathered Raptor uses the existing dino rig. The Parasaur has a native model,
+skeleton, clips and fitted saddle in its own folder. The early Quaternius FBX files remain in [raw](../raw/README.md) for reference.
+A folder is an asset once it has an `asset.ts`. Until then it may
 hold a study in `ref/` and nothing else, and the command passes it by. An
 `asset.ts` may be committed before its pack: the asset is listed as not built
 yet, and neither the game nor a test reads it until the pack is there.
@@ -68,6 +67,14 @@ total weight across its three vertices. A descendant carrying a different
 zone starts a separate region. The original capsules continue to support
 ragdolls and mounted camera clearance. Trike's head and adjoining neck show
 how to author both sides of an armour boundary.
+
+### Reviewing the sculpt at playing distance
+
+A useful first comparison is an unpainted side and three-quarter view with the animal about 300 pixels wide. Choose one reference that shows the underlying skeleton and one living or reconstructed animal showing how the skin crosses the same landmarks. Follow the outline from the skull into the neck and down through a weight-bearing limb. A jaw hinge shifts the outline as the mouth opens. A planted thigh changes the contour from the pelvis to the knee. Those shapes should read in a single colour.
+
+Take a second look in mid-stride or swimming. Watch the shoulder enter the rib cage and the wrist carry weight into the foot. A circular seam across a moving joint is often easier to spot here than in the resting pose. Check the same outline on the LOD the player sees when approaching.
+
+For a revision, capture the old and new packs with the same camera, lighting, size, colours and saddle state. Inspect a normal browser frame after the requested geometry and material maps have arrived. The clay view shows where the form changed, and the game frame shows how much of that change survives on screen.
 
 ### Rest a chain with slack
 

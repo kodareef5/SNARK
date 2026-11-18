@@ -2,12 +2,13 @@ import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { binKey } from "./raster.ts";
 import type { RuinRecord } from "./ruins.ts";
 import type { StaticPiece } from "./statics.ts";
+import type { RoadEntrance } from "./bridge-earthwork.ts";
 
 interface Point { x: number; y: number; z: number; }
 interface Segment { a: Point; b: Point; street: boolean; }
 
 // Clearance is applied after all buildings, since a neighbouring facade can overhang an earlier route.
-export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], infrastructure: number, assemblies: readonly StaticPiece[][] = [], decks: readonly { deck: readonly (Point & { gap: boolean })[] }[] = []): Record<string, number> {
+export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], infrastructure: number, assemblies: readonly StaticPiece[][] = [], decks: readonly { deck: readonly (Point & { gap: boolean })[]; entrances?: readonly RoadEntrance[] }[] = []): Record<string, number> {
   const grid = new Map<number, Segment[]>();
   const add = (a: Point, b: Point, street: boolean): void => {
     const segment = { a, b, street };
@@ -16,6 +17,15 @@ export function clearCirculation(pieces: StaticPiece[], records: RuinRecord[], i
     }
   };
   for (const r of decks) for (let i = 1; i < r.deck.length; i++) if (!r.deck[i - 1]!.gap && !r.deck[i]!.gap) add(r.deck[i - 1]!, r.deck[i]!, false);
+  // Not every facade/post uses the layout's tile mask. Apply the existing vertical clearance to the actual dry
+  // road runout as well; retain piers below it and genuine lower passages. Parallel tracks cover the driving width.
+  for (const r of decks) for (const e of r.entrances ?? []) for (let i = 1; i < (e.runout?.length ?? 0); i++) {
+    const a = e.runout![i - 1]!, b = e.runout![i]!, length = Math.hypot(b.x - a.x, b.z - a.z);
+    for (let side = -e.width / 2; side <= e.width / 2; side++) {
+      const dx = -(b.z - a.z) / length * side, dz = (b.x - a.x) / length * side;
+      add({ x: a.x + dx, y: a.y, z: a.z + dz }, { x: b.x + dx, y: b.y, z: b.z + dz }, true);
+    }
+  }
   for (const r of records) {
     for (const a of r.approaches) {
       const end = { x: a.street.x + (a.door.x - a.street.x) * a.ramp, y: a.door.y, z: a.street.z + (a.door.z - a.street.z) * a.ramp };

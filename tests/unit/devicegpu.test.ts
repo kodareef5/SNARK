@@ -130,7 +130,7 @@ test("the fake context refuses the probe's SURFACE pass as the dome left it, and
   expect(link(SURFACE_VERTEX, sized)).toMatch(/^ERROR: 0:\d+: 'SHADOW_SIZE' : undeclared identifier$/);
   // A name the frame block does not have, a call with an argument too many, and a line before the version.
   expect(link(SKY_VERTEX.replace("fCloudSun.rgb", "fCloudLight.rgb"), LIT_FRAGMENT)).toMatch(/^ERROR: 0:\d+: 'fCloudLight' : undeclared identifier$/);
-  expect(link(worldVertex(FLAT_MESH_VERTEX), LIT_FRAGMENT.replace("sunShadow(vRel, geometric)), vRel)", "sunShadow(vRel, geometric), 1.0), vRel)"))).toMatch(/'lit' : no matching overloaded function found$/);
+  expect(link(worldVertex(FLAT_MESH_VERTEX), LIT_FRAGMENT.replace("sunShadow(vRel, geometric)) + room", "sunShadow(vRel, geometric), 1.0) + room"))).toMatch(/'lit' : no matching overloaded function found$/);
   expect(link(worldVertex(FLAT_MESH_VERTEX), withDefines(LIT_FRAGMENT, "#define SHADOWS 1\n"))).toBe("");
   expect(link(FLAT_MESH_VERTEX, "#define SHADOWS 1\n" + LIT_FRAGMENT)).toMatch(/'#version' : must be the text's first line/);
   // Linking: SURFACE's fragment behind FLAT's vertex text, which writes vRel but not the rest, and vColor flat where LIT reads it smooth.
@@ -201,7 +201,7 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect(per("flat")).toMatchObject({ slope: 0.03, timer: 0.03, k: 512 });
   expect(per("9 taps").slope).toBe(0.03);
   // The game's lit programs read noon's frame block: every draw of theirs had its buffer, or the fake would have drawn nothing.
-  expect(["lit", "lit world near", "lit world fade", "lit haze 3.5 km", "far", "surface undyed whole", "surface undyed", "surface whole", "surface", "surface layered", "sky table", "sky 2 layers", "water waves", "lit on the sea", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(15).fill(0.03));
+  expect(["lit", "lit world near", "lit world far", "lit haze 3.5 km", "far", "surface undyed whole", "surface undyed", "surface whole", "surface", "surface layered", "sky table", "sky 2 layers", "water waves", "lit on the sea", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(15).fill(0.03));
   expect(card.gl.invalid).toEqual([]);
   // A draw's cost is timed only through a renderer's executor, which this context has none of.
   expect(r.passes.some((p) => p.per === "draw")).toBe(false);

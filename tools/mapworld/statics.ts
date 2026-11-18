@@ -11,6 +11,7 @@
 import type { Building, Ruin } from "./heaps.ts";
 import type { District, Ground, World } from "./ground.ts";
 import { RUINS } from "./ruins.ts";
+import { STREET_FURNITURE } from "./street-furniture.ts";
 
 /** A piece as statics.json takes it: a content id, its centre in engine metres, and its turn in degrees from north toward +x. */
 export interface StaticPiece {
@@ -50,10 +51,11 @@ export interface Site {
 
 export interface StaticLayer {
   readonly name: string;
-  make(site: Site): StaticPiece[];
+  /** Its pieces, given those the layers before it set down. */
+  make(site: Site, placed: readonly StaticPiece[]): StaticPiece[];
 }
 
-export const STATIC_LAYERS: readonly StaticLayer[] = [RUINS];
+export const STATIC_LAYERS: readonly StaticLayer[] = [RUINS, STREET_FURNITURE];
 
 export function siteOf(world: World, ground: Ground, source: string): Site {
   const { nx, nz, x0, z0, x1, z1, east, south } = ground.grid;

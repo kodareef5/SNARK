@@ -1,0 +1,110 @@
+{
+ "arrow": {
+  "height_mm": 6
+ },
+ "bin": {
+  "height_mm": 14
+ },
+ "blue": {
+  "height_mm": 1.878953
+ },
+ "busstop": {
+  "height_mm": 6
+ },
+ "concrete": {
+  "height_mm": 5.732521
+ },
+ "cut_billboard": {
+  "height_mm": 33
+ },
+ "cut_fence": {
+  "height_mm": 9
+ },
+ "cut_glass": {
+  "height_mm": 8
+ },
+ "cut_spare": {
+  "height_mm": 0
+ },
+ "cut_torn": {
+  "height_mm": 11
+ },
+ "door": {
+  "height_mm": 39.412709
+ },
+ "duct": {
+  "height_mm": 29.36688
+ },
+ "evacuation": {
+  "height_mm": 6
+ },
+ "galvanised": {
+  "height_mm": 0.869984
+ },
+ "green": {
+  "height_mm": 1.635943
+ },
+ "lens": {
+  "height_mm": 21
+ },
+ "louvre": {
+  "height_mm": 30.580651
+ },
+ "mailbox": {
+  "height_mm": 20
+ },
+ "meter": {
+  "height_mm": 16
+ },
+ "name0": {
+  "height_mm": 6
+ },
+ "name1": {
+  "height_mm": 6
+ },
+ "name2": {
+  "height_mm": 6
+ },
+ "name3": {
+  "height_mm": 6
+ },
+ "newsbox": {
+  "height_mm": 16
+ },
+ "poster": {
+  "height_mm": 13
+ },
+ "red": {
+  "height_mm": 2.344926
+ },
+ "rust": {
+  "height_mm": 6.386709
+ },
+ "signal": {
+  "height_mm": 24
+ },
+ "solar": {
+  "height_mm": 6.950104
+ },
+ "spare": {
+  "height_mm": 8
+ },
+ "speed": {
+  "height_mm": 6
+ },
+ "stop": {
+  "height_mm": 6
+ },
+ "tank": {
+  "height_mm": 5.019673
+ },
+ "walk": {
+  "height_mm": 12
+ },
+ "wood": {
+  "height_mm": 4.005626
+ },
+ "yellow": {
+  "height_mm": 1.632373
+ }
+}

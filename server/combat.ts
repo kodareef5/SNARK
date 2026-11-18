@@ -21,7 +21,7 @@ import { quatRotate } from "../shared/math/quat.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { CreatureAttackDef, CreatureModeDef, SpeciesDef } from "../shared/content/defs.ts";
-import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
+import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, PASSENGER_VIEW_DELAY, SESSION_ALIVE, S_EVENT } from "../shared/net/protocol.ts";
 import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DAMAGE_TYPES, DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
@@ -469,9 +469,10 @@ export class Combat {
     const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, what === HIT_NONE ? reach : worldT, SWING_WIDTH * size);
     this.biting = false;
     this.spare = -1;
-    // A dead creature's body nearer than any living one and anything built. Only a survivor's swing harvests one yet.
+    // Only the nearest unobstructed body can receive the blow. Mounts gather into their own inventories.
+    const gathers = rider ? (reg.defs[kind] as SpeciesDef).bite?.harvest : undefined;
     const corpses = this.corpses;
-    const body = corpses && c ? corpses.cast(ox, oy, oz, d[0]!, d[1]!, d[2]!, target >= 0 ? this.t : what === HIT_NONE ? reach : worldT) : -1;
+    const body = corpses && (c || gathers === "carrion") ? corpses.cast(ox, oy, oz, d[0]!, d[1]!, d[2]!, target >= 0 ? this.t : what === HIT_NONE ? reach : worldT) : -1;
     const src = this.src;
     src.by = rec;
     src.x = ox;
@@ -489,14 +490,16 @@ export class Combat {
     const wears = item !== 0 && reg.uses[item]! > 0;
     if (body >= 0) {
       // Harvest damage is the blow's damage as the attacker's melee and the weapon's quality make it, times the server's rule.
-      corpses!.struck(rec, body, src.base * src.quality * src.attack * this.ctx.rules.num("PlayerHarvestingDamageMultiplier"), item);
+      corpses!.struck(rec, body, src.base * src.quality * src.attack * this.ctx.rules.num(c ? "PlayerHarvestingDamageMultiplier" : "DinoHarvestingDamageMultiplier"), item);
       if (wears) items.wear(rec, slot, 1);
     } else if (target >= 0) {
       const t = this.t;
       this.land(src, target, this.zone, ox + d[0]! * t, oy + d[1]! * t, oz + d[2]! * t, t);
       if (wears) items.wear(rec, slot, 1);
-    } else if (what === HIT_NODE && harvest && c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
-    else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
+    } else if (what === HIT_NODE && harvest) {
+      if (c) harvest.struck(c, Math.floor(ref / 65536), ref & 0xffff);
+      else if (gathers === "berries") harvest.browse(rec, Math.floor(ref / 65536), ref & 0xffff);
+    } else if (what === HIT_STRUCTURE && this.hitStructure(src, ref, ox + d[0]! * worldT, oy + d[1]! * worldT, oz + d[2]! * worldT) > 0 && wears) items.wear(rec, slot, 1);
   }
 
   private reload(c: Client): void {
@@ -591,12 +594,33 @@ export class Combat {
     return view;
   }
 
-  /** A passenger's muzzle may follow the rendered carrier only within the delay the host measured.
-   * Target rewind has additional jitter slack; that slack cannot relocate the shooter's own origin. */
-  originTick(c: Client, view: number): number {
-    const now = this.ctx.world.tick;
-    const committed = c.inputs.has(now) ? Math.max(0, now - c.arrived[now & c.inputs.mask]!) : 0;
-    return Math.max(view, now - Math.max(0, this.lag(c)) - committed - VIEW_BEHIND);
+  /** The first accepted input identifies the latest view available when the passenger fired. */
+  originTick(c: Client): number {
+    const now = this.ctx.world.tick, i = now & c.inputs.mask;
+    if (!c.inputs.has(now) || c.drive >= 0 || c.vehicleSeatSnapshot < 0) return now;
+    const ack = c.inputAcks[i]!, arrival = c.arrived[i]!;
+    const lag = this.lag(c);
+    if (!ack || !c.views.find(ack) || ack < c.vehicleSeatSnapshot || ack > arrival ||
+        arrival - ack > 2 * lag + VIEW_BEHIND || now - arrival > lag / 2 + REWIND_SLACK) return now;
+    // A loss stall can freeze the presentation at the last received snapshot. A packet's
+    // arbitrary "behind" field cannot extend this window back through the history ring.
+    return Math.max(1, ack - PASSENGER_VIEW_DELAY, Math.min(ack, c.inputs.view[i]!));
+  }
+
+  private sentSeat(c: Client, at: number, rider: Past, out: Past): boolean {
+    const { world } = this.ctx, ack = c.inputAcks[world.tick & c.inputs.mask]!;
+    let lo = Math.floor(at), hi = Math.ceil(at);
+    while (lo > 0 && lo >= ack - PASSENGER_VIEW_DELAY && !c.views.find(lo)) lo--;
+    while (hi < ack && !c.views.find(hi)) hi++;
+    if (lo <= 0 || lo < ack - PASSENGER_VIEW_DELAY || lo < c.vehicleSeatSnapshot) return false;
+    const before = c.views.find(lo), after = c.views.find(hi);
+    const epoch = world.history.motionEpoch(c.ent);
+    if (before?.riderEpoch !== epoch || after?.riderEpoch !== epoch) return false;
+    const a = before.passenger, b = after.passenger;
+    if (!a || !b || !rider.sameSeat(a) || !rider.sameSeat(b)) return false;
+    Object.assign(out, a);
+    if (hi !== lo) out.blendSeat(b, (at - lo) / (hi - lo));
+    return true;
   }
 
   /**
@@ -839,12 +863,12 @@ export class Combat {
    * Current own pose on the carrier the passenger saw. Only the same uninterrupted current attachment may rewind;
    * foot shots and a just-changed seat use current authority. Target hitboxes use their wholly historical pose instead.
    */
-  eye(e: number, out: Float64Array, at = this.ctx.world.tick, clip = true): boolean {
+  eye(e: number, out: Float64Array, at = this.ctx.world.tick, clip = true, viewer?: Client): boolean {
     const world = this.ctx.world, ents = world.ents, now = this.eyeNow, past = this.eyePast;
     out[0] = ents.x[e]!; out[1] = ents.y[e]! + stanceEye(world.reg.move[ents.kind[e]!]!, ents.stance[e]!); out[2] = ents.z[e]!;
     if (!this.where(e, world.tick, now) || !now.seat) return false;
     let pose = now, tick = world.tick;
-    if (at < world.tick && this.where(e, at, past) && now.sameSeat(past)) { pose = past; tick = at; }
+    if (at < world.tick && (viewer ? this.sentSeat(viewer, at, now, past) : this.where(e, at, past) && now.sameSeat(past))) { pose = past; tick = at; }
     pose.yaw = ents.yaw[e]!;
     this.st.unpack(ents.anim[e]!, ents.cue[e]!); this.st.seed = bodySeed(e);
     if (!this.seated(e, pose, tick, world.tick)) return false;
@@ -1101,7 +1125,7 @@ export class Combat {
     if (!present && !killed) return;
     const game = this.ctx.game;
     const shown = Math.min(65535, Math.max(taken > 0 ? 1 : 0, Math.round(taken)));
-    const ac = by ? this.clientOf(by.pid) : null;
+    const ac = by ? this.clientOf(by.pid) ?? this.controllingRider(by) : null;
     if (ac) {
       const w = game.begin(S_EVENT);
       w.u8(EVENT_HIT);
@@ -1170,7 +1194,7 @@ export class Combat {
     this.lastStructure.ref = ref;
     this.lastStructure.damage = done;
     this.lastStructure.left = left;
-    const ac = src.by ? this.clientOf(src.by.pid) : null;
+    const ac = src.by ? this.clientOf(src.by.pid) ?? this.controllingRider(src.by) : null;
     if (ac) {
       const w = game.begin(S_EVENT);
       w.u8(EVENT_HIT);
@@ -1329,7 +1353,17 @@ export class Combat {
     }
   }
 
+  /** Only the living session actually steering this generation of mount receives its attack feedback. */
+  private controllingRider(mount: EntityRecord): Client | null {
+    const { records, world } = this.ctx;
+    const e = records.entOf.get(mount.pid), rider = this.riderOf?.(mount);
+    if (e === undefined || world.ents.pid[e] !== mount.pid || mount.dead || mount.out || !rider || rider.dead || rider.out) return null;
+    const c = this.clientOf(rider.pid), ents = world.ents;
+    return c && c.state === SESSION_ALIVE && c.drive === e && c.driveGen === ents.gen[e] && c.ent >= 0 && (ents.flags[c.ent]! & F_ALIVE) !== 0 && ents.pid[c.ent] === rider.pid && ents.seat[c.ent] === e + 1 && ents.seatGen[c.ent] === ents.gen[e] ? c : null;
+  }
+
   private clientOf(pid: number): Client | null {
+    if (pid === 0) return null;
     for (const c of this.ctx.game.clients) if (c?.active && !c.closed && c.pid === pid) return c;
     return null;
   }

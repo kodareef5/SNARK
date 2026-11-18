@@ -1,0 +1,12 @@
+## This job: eight rooms behind homes
+
+Folders `room-00` to `room-05`, `room-13` and `room-14`. Metres are width (the back wall's), height, depth (the side wall's).
+
+- `room-00`, a flat's living room, 4.0 by 2.9 by 4.5 m: a low sofa against the back wall, its cushions slumped and mouldy; a doorway to a dark hall at the back wall's right; walls once pale yellow, peeling; a stained rug on a tiled floor; a ceiling fan's base and one blade hanging.
+- `room-01`, a flat's bedroom, 4.0 by 2.9 by 4.5 m: a bed frame with a bare stained mattress against the back wall; a wardrobe with one door open beside it; pale blue walls with mould blooming from the ceiling corner; a wood-look vinyl floor lifting at the seams; a bare ceiling light rose.
+- `room-02`, a flat's kitchen, 4.0 by 2.9 by 4.5 m: base cabinets and a counter along the back wall with wall cabinets above, one cabinet door hanging; a tiled backsplash with tiles missing; a gap where a fridge stood; chequered vinyl floor with grime; a strip light fitting on the ceiling.
+- `room-03`, a stripped flat, 4.0 by 2.9 by 4.5 m: bare grey plaster with patches of the concrete block behind; wires hanging from the ceiling; a bare doorway in the back wall; debris and a broken chair on a bare concrete floor.
+- `room-04`, a flooded flat, 4.0 by 2.9 by 4.5 m: a clear brown tide line round all the walls about 1.1 m up, the walls stained and swollen below it; a dresser against the back wall with its veneer peeling; silt and dried mud across the floor; ceiling water-stained.
+- `room-05`, an empty flat, 4.0 by 2.9 by 4.5 m: off-white walls with paler rectangles where pictures hung; a built-in bookshelf on the back wall, empty but for two fallen books; a timber parquet floor gone grey with a few blocks missing; a plain ceiling.
+- `room-13`, the ground-floor lobby of a block of flats, 8.0 by 3.5 by 6.0 m: a bank of small steel mailboxes on the back wall (doors hanging open, no names), a double door to a stairwell beside it; terrazzo floor dull and cracked; a suspended ceiling with some tiles fallen; pale green walls.
+- `room-14`, a corridor of a hotel or a block of flats, 4.0 by 2.9 by 8.0 m (deep): a door at the end of the corridor on the back wall; the side wall has two doors to rooms along it (plain, numbered only with small plain numbers, the same numbers would show mirrored on the other side, so use none); worn carpet runner on the floor; a row of square ceiling lights.

@@ -1,6 +1,25 @@
 # Pteranodon: our design
 
-The design every pteranodon task builds to. The modeller (PA2) builds from the orthographic views on the skeleton in
+## Playable coastal refit
+
+The playable flyer uses a 6.96 m span and a single skin atlas shared by its head, body and wings. The source sculpt and textures are *Pteranodon (Animated)* by Chistodrako._., adapted under CC BY 4.0. SNARK supplies the skeleton, motion, saddle, fitted wing geometry, dye and lifecycle maps, and distance versions. [Original model](https://sketchfab.com/3d-models/pteranodon-animated-7d7683df41d1405283f160e81a5dff1b) · [License](https://creativecommons.org/licenses/by/4.0/)
+
+The coastal paint follows the original seabird concept. An ivory cheek and throat meet the ochre bill, a narrow eye stripe runs back from the hazel iris, and a dark band crosses the warm crest. The slate-blue wings have pale outer bars. `seabird.py` paints these markings in model space, carries light grain from the donor maps, and sets separate roughness for the eye, horn, and membrane. The far meshes carry the same cream, slate, and ochre fields. [Original, first refit, and current paint](coastal-paint-comparison.jpg)
+
+The native wrist, fingers and membrane guides determine the span and the fold. The brow, crest, jaw, tongue and claws come from the donor. The fitted skin follows all 32 native clips and uses the existing seat, grips, footrests and carry socket. Five textured levels descend from 13,634 to 600 triangles. The final 246- and 110-triangle meshes retain the bill, crest and both wing bends. Their wing bindings are chosen against fourteen frames of grounded and airborne motion. [Saddle, head and flight poses](coastal-review.jpg) · [Spread and folded at every LOD](coastal-lods.jpg)
+
+Build normally with `bun tools/art.ts core:pteranodon` from the repo root. The build reads the checked-in `coastal.blend`, texture maps and `distance.json`. To edit the fit from the original download, extract its GLB and run these commands from the repo root. The external Python used by Blender needs NumPy, SciPy and Pillow.
+
+```sh
+blender -b --factory-startup --python-exit-code 1 -P assets/source/core/creatures/pteranodon/ref/prepare.py -- /path/to/original.glb
+bun tools/art.ts core:pteranodon --no-sheet
+python3 assets/source/core/creatures/pteranodon/ref/distance.py
+bun tools/art.ts core:pteranodon
+```
+
+## Original concept and rig study
+
+The sections below preserve the original concept, material budgets and maker instructions. The playable asset uses the build and LOD budgets in the coastal refit above. The modeller (PA2) builds from the orthographic views on the skeleton in
 [`../rig.py`](../rig.py), the animators (PA3a, PA3b, PA3c) work on that skeleton and its block-out, the texture maker
 (PA4) paints from the colours, markings and regions below, the content author (PA5) takes the numbers from `rig.py`,
 and FL4 and FL5 take the rig, the sockets and the saddle. It keeps what [TRAITS.md](TRAITS.md) says carries

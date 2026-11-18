@@ -1,5 +1,5 @@
 // Native self-check decisions and report assembly. The shell supplies platform observations only.
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
+import { SURFACE_PREFIX } from "../../content/surfaces.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
@@ -62,7 +62,7 @@ export function selfcheckReport(app: App, pack: Pack, manifest: Manifest, hf: He
   const rocks = app.marks.map((m) => ({ ...m, drawn: app.scene!.things[m.thing]!.level }));
   const at = [0, 0, 0];
   const stressed = rocks.flatMap((m): Probe[] => (app.cam.project(m.x, m.y, m.z, at) ? [{ name: `rock at level ${m.level}`, sx: at[0]!, sy: at[1]!, rgb: [0, 1, 2].map((c) => pack.palette[LEVEL_COLOURS[m.level]! * 4 + c]!) as Probe["rgb"], mode: "hue" }] : []));
-  const paletteOnly = !manifest.materials?.some((m) => m.id === SURFACE_MATERIAL);
+  const paletteOnly = !manifest.materials?.some((m) => m.id.startsWith(SURFACE_PREFIX));
   const survivor = reg.defs[reg.index.get("core:survivor") ?? 0];
   const mannequin = app.scene?.assets.bind.id("core:survivor", "body", "m/torso") === "core:mannequin/torso";
   const mannequinColor = mannequin && survivor?.type === "species" ? survivor.color : undefined;

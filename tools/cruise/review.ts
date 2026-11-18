@@ -5,7 +5,7 @@ import { inflateRawSync } from "node:zlib";
 import { App } from "../../client/core/app.ts";
 import { DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
+import { SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { CRUISE_COLLISION_INSTANCES, CRUISE_COLLISION_PROTOTYPES, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import { cruiseFootprintContains, type CruiseRoom } from "../../content/landmarks/cruise-layout.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -327,7 +327,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
     const capturedFallback = fallback as ColdFallback | null;
     if (shot.coldFallback && !capturedFallback) faults.push("requested nearby cold flat fallback was not observed while streaming at the intended floor");
     if (shot.coldFallback && images && (!capturedFallback?.file || !existsSync(resolve(out, capturedFallback.file)))) faults.push("requested cold fallback image was not saved");
-    const worldSurfaces = app.scene.assets.residency.textureState().filter(texture => texture.id.startsWith(`${SURFACE_MATERIAL}/`));
+    const worldSurfaces = app.scene.assets.residency.textureState().filter(texture => texture.id.startsWith(SURFACE_PREFIX));
     if (tier.lit && (worldSurfaces.length !== 3 || worldSurfaces.some(texture => texture.have < 0))) faults.push("native world-surface texture references are not resident");
     if (p.dropped || p.skipped || p.casterDropped) faults.push("native rendering dropped draws or shadow casters");
     if (cold.dropped || cold.skipped || cold.casterDropped) faults.push("native rendering dropped draws or shadow casters during cold streaming");

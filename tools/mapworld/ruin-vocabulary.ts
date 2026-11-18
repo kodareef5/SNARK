@@ -46,7 +46,7 @@ export interface Vocabulary {
   damage: Record<string, Damage>;
   compositions: Record<string, Composition>;
   forms: Record<string, Form>; choices: Choice[]; assemblies: Record<string, Assembly>;
-  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[]; cars: Cars };
+  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[]; cars: Cars; walks?: Walks };
   harbours: Harbours;
   version: number; seed: number; budgets: { maxChunk: number; maxCity: number; maxPlayableFloors: number; maxHeight: number };
   categories: Record<string, string>; recipes: Record<string, Recipe>;
@@ -54,6 +54,12 @@ export interface Vocabulary {
   eras: { before: number; retain: number; feature: string; meaning: string }[];
   districts: Record<string, { finish: RuinFinish[]; fallback: string; lowRiseFeature?: string; lowRiseBelow?: number; wall?: number; holes?: number; infill?: RuinFinish; }>;
 }
+/**
+ * A street's walk and curb (ruins.ts makeWalks): the road classes that have them, the walk's depth from the curb's face,
+ * one run of 32 m in `gutterEvery` with a gutter, how far the ground under a piece may rise or fall (m), how far past a
+ * road's half width a junction keeps its corners open, and one walk in `boxEvery` with a utility box at its back.
+ */
+export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; boxEvery: number; }
 export interface Rule {
   event?: { travel: [number, number]; exposure: number; shelter: number };
   party?: number[];
@@ -117,7 +123,7 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { w
   const style = v.styles.find((s) => new RegExp(s.match, "i").test(p?.style ?? ""));
   if (style) apply(style, `style: ${style.match}`);
   if (!style && d.lowRiseFeature && facts.height <= (d.lowRiseBelow ?? 24)) feature = d.lowRiseFeature;
-  const height = name === "park" ? 0 : Math.min(v.budgets.maxHeight, Math.max(4, Math.floor(facts.height * retain / 4) * 4));
+  let height = name === "park" ? 0 : Math.min(v.budgets.maxHeight, Math.max(4, Math.floor(facts.height * retain / 4) * 4));
   let formName = "fabric"; let collapse = "shear";
   for (const choice of v.choices ?? []) {
     const w = choice.when;
@@ -133,6 +139,8 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { w
     if (choice.collapse) collapse = choice.collapse[Math.floor(rand3(f.building.id, v.seed, 91) * choice.collapse.length)]!;
     matched.push(choice.id);
   }
+  // A shop's storeys are rounded, not cut short: a 7 m frontage is a shop with rooms above.
+  if (v.forms?.[formName]?.facade?.ground === "zstore") height = Math.min(v.budgets.maxHeight, Math.max(4, Math.round(facts.height * retain / 4) * 4));
   return { recipe: name, height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, interiors: v.interiors, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
     provisional: facts.kindFrom !== "label" || !["osm", "usa_structures", "reviewed_source"].includes(facts.heightFrom) || !!p?.estimated?.length };
 }

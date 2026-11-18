@@ -18,7 +18,7 @@ import { PROGRAMS, withDefines } from "./render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, skyFrame, theSky, trueSun } from "./render/sky.ts";
 import { groundSize } from "./render/terrain.ts";
 import { seaFrame } from "./render/water.ts";
-import { WORLD_CORE, citySurface } from "./render/world-surfaces.ts";
+import { citySurface } from "./render/world-surfaces.ts";
 import { SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES } from "../../content/surfaces.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TextureFormat } from "../../shared/pack/texture.ts";
@@ -142,8 +142,8 @@ export interface ScreenPass {
 export const SHADOWED_PASS: ScreenPass = { name: "lit shadowed", program: "flat", tier: "medium", wall: 12, layers: 0, plain: true, shadowed: true };
 
 /**
- * The full-screen passes. LIT plain, with the world's finish near and in its fade band with relief (5 reads a pixel each) and
- * the touch rule's light finish near (one read), and hazed
+ * The full-screen passes. LIT plain, with the world's finish near and far (where its second copy shows, up to 9 reads a
+ * pixel) and the touch rule's light finish near (one read), and hazed
  * at 500 m and 3.5 km, where haze costs most (D266); the far blocks' program has its fade's discard, against LIT; SURFACE
  * in each of the four texts drawProgram chooses among and with the hurt layer; the dome is timed with the table alone and with 0, 1 and 2 cloud layers (D265); the sea calm and with its waves, against
  * LIT drawn where it is (D270).
@@ -152,7 +152,7 @@ export const SCREEN_PASSES: readonly ScreenPass[] = [
   { name: "flat", program: "flat", tier: "lowpoly", wall: 12, layers: 0, plain: true },
   { name: "lit", program: "flat", tier: "medium", wall: 12, layers: 0, plain: true },
   { name: "lit world near", program: "flat", tier: "medium", world: -6, layers: 0, plain: true },
-  { name: "lit world fade", program: "flat", tier: "medium", world: -3.5, layers: 0, plain: true },
+  { name: "lit world far", program: "flat", tier: "medium", world: -1.5, layers: 0, plain: true },
   { name: "lit world light", program: "flat", tier: "medium", world: -6, layers: 0, plain: true, touch: true },
   { name: "lit haze 500 m", program: "flat", tier: "medium", wall: 500, layers: 0, plain: false },
   { name: "lit haze 3.5 km", program: "flat", tier: "medium", wall: 3500, layers: 0, plain: false },
@@ -332,7 +332,7 @@ citySurface(CITY, "default");
 /** How far off a wall of WALL_FINISH filling a target `w` by `h` is read at `spread`, as worldSurface works it out. */
 function worldWall(spread: number, w: number, h: number): number {
   const f = SURFACE_FINISHES[SURFACE_NAMES[WALL_FINISH]];
-  return (12 * 2 ** spread * Math.min(w, h) * f.metres * SURFACE_GROUPS[f.group].scale * CITY[3]!) / (16 * (WORLD_CORE / 4));
+  return (12 * 2 ** spread * Math.min(w, h) * f.metres * SURFACE_GROUPS[f.group].scale * CITY[3]!) / 16;
 }
 const COLOUR_FRAGMENT = `#version 300 es
 precision highp float;
@@ -1091,6 +1091,10 @@ void main() {}`);
     if (vertex && text.fragment.includes("flat in int vSurface;")) vertex = vertex.replace("void main() {", `flat out int vSurface;\nvoid main() {\n  vSurface = ${WALL_FINISH};`);
     // A flat mesh's fragment reads a landmark's finish (glsl.ts finishVertex): none, a surface that is fully rough.
     if (vertex && text.fragment.includes("flat in vec4 vFinish;")) vertex = vertex.replace("void main() {", "flat out vec4 vFinish;\nflat out float vShare;\nvoid main() {\n  vFinish = vec4(1.0, 1.0, 0.0, 0.0);\n  vShare = 1.0;");
+    // A near static's fragment weathers its wall by its own frame (world-surfaces.ts ownVertex): the wall's place, one instance, no edges known.
+    if (vertex && text.fragment.includes("in vec3 vOwn;")) vertex = vertex.replace("void main() {", "out vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nvoid main() {\n  vPlace = vec2(0.0);\n  vFace = vec2(0.5);\n  vEdges = 0u;").replace("  vRel = ", "  vOwn = vRel = ");
+    // Its facade's colour class (facade.ts facadeVertex): none, and a face with no size, which draws no part.
+    if (vertex && text.fragment.includes("flat in int vFacade;")) vertex = vertex.replace("void main() {", "flat out int vFacade;\nvoid main() {\n  vFacade = 0;");
     const prog = this.program(withDefines(vertex ?? text.vertex, text.defines), withDefines(text.fragment, text.defines));
     gl.useProgram(prog);
     const units: Record<string, number> = {};
@@ -1186,7 +1190,7 @@ void main() {}`);
 
   /**
    * The probe's textures for a program's samplers, by name, on the units `linked` gave them: the sky table, SURFACE's
-   * five maps and the first three of them as LIT's world maps, the sky's moon and cloud layers, the depth passes'
+   * five maps, LIT's world maps, the sky's moon and cloud layers, the depth passes'
    * largest array as the shadow maps, and the sea's ground and its waves, or with no `waves` a calm sea's black. A
    * function that binds each; a sampler the probe has nothing for reads what the renderer left there.
    */
@@ -1201,7 +1205,7 @@ void main() {}`);
       if (name === "uSkyTable") bound.push([unit, GL.TEXTURE_3D, this.table()]);
       else if (name === "uShadow") bound.push([unit, GL.TEXTURE_2D_ARRAY, this.depthMap(Math.max(...this.plan.depthSizes)).texture]);
       else if (surface.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.surfaceTextures()[surface.indexOf(name)]]);
-      else if (world.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.surfaceTextures()[world.indexOf(name)]]);
+      else if (world.includes(name)) bound.push([unit, GL.TEXTURE_2D_ARRAY, this.worldTextures()[world.indexOf(name)]]);
       else if (sky.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.skyMaps()[sky.indexOf(name)]]);
       else if (name === "uMapHeight" || name === "uWindowHeight") bound.push([unit, GL.TEXTURE_2D, this.seaFloor()]);
       else if (name === "uWaveLong" || name === "uWaveShort") bound.push([unit, GL.TEXTURE_2D, this.waveMaps()[waves ? (name === "uWaveLong" ? 1 : 2) : 0]]);
@@ -1284,6 +1288,25 @@ void main() { gl_Position = vec4(corner(), 0.0, 1.0); }`, CLOUD_FRAGMENT);
       for (let i = 0; i < data.length; i++) data[i] = (Math.imul(i + r * 7919, 2654435761) >>> 24) & 0xff;
       gl.texSubImage2D(GL.TEXTURE_2D, 0, 0, 0, 512, 512, GL.RGBA, GL.UNSIGNED_BYTE, data);
       gl.generateMipmap(GL.TEXTURE_2D);
+      return t;
+    }));
+  }
+
+  private worldMaps: Obj[] | null = null;
+
+  /** LIT's world finishes' three maps, a layer a finish, 256 square and mipmapped, of noise. */
+  private worldTextures(): Obj[] {
+    if (this.worldMaps) return this.worldMaps;
+    const gl = this.gl;
+    return (this.worldMaps = [0, 1, 2].map((r) => {
+      const t = this.keep("texture", this.create());
+      gl.bindTexture(GL.TEXTURE_2D_ARRAY, t);
+      gl.texStorage3D(GL.TEXTURE_2D_ARRAY, 9, r === 0 ? GL.SRGB8_ALPHA8 : GL.RGBA8, 256, 256, 16);
+      const data = new Uint8Array(256 * 256 * 16 * 4);
+      for (let i = 0; i < data.length; i++) data[i] = (Math.imul(i + r * 7919, 2654435761) >>> 24) & 0xff;
+      gl.texSubImage3D(GL.TEXTURE_2D_ARRAY, 0, 0, 0, 0, 256, 256, 16, GL.RGBA, GL.UNSIGNED_BYTE, data);
+      gl.texParameteri(GL.TEXTURE_2D_ARRAY, GL.TEXTURE_MIN_FILTER, GL.LINEAR_MIPMAP_LINEAR);
+      gl.generateMipmap(GL.TEXTURE_2D_ARRAY);
       return t;
     }));
   }

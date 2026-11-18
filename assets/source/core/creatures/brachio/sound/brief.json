@@ -1,0 +1,134 @@
+{
+  "asset": "core/creatures/brachio",
+  "review": "../ref/sound",
+  "about": "A colossal long-necked sauropod dinosaur.",
+  "notes": "v2 brief: a creature still to come; its sounds are found by id the day its definition exists.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.6,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "v2-7730",
+          "models": [
+            "moss"
+          ],
+          "seed": 7730,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A colossal long-necked sauropod dinosaur gives deep booming whale-like moans that echo, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 80,
+      "level": -16,
+      "vary": 0.5,
+      "want": "alarm",
+      "prompts": [
+        {
+          "id": "v2-7740",
+          "models": [
+            "moss"
+          ],
+          "seed": 7740,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A colossal long-necked sauropod dinosaur lets out a thunderous alarmed bellow, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "v2-7750",
+          "models": [
+            "moss"
+          ],
+          "seed": 7750,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A colossal long-necked sauropod dinosaur bellows deeply in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "death": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.3,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "v2-7760",
+          "models": [
+            "moss"
+          ],
+          "seed": 7760,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A colossal long-necked sauropod dinosaur gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 2
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 40,
+      "level": -16,
+      "vary": 0.5,
+      "want": "attack",
+      "prompts": [
+        {
+          "id": "v2-7770",
+          "models": [
+            "moss"
+          ],
+          "seed": 7770,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A colossal long-necked sauropod dinosaur: a colossal tail sweeps and slams the ground with a booming crash, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "step": {
+      "kind": "step",
+      "range": 30,
+      "level": -24,
+      "vary": 0.6,
+      "want": "footfalls or movement",
+      "prompts": [
+        {
+          "id": "v2-7780",
+          "models": [
+            "moss"
+          ],
+          "seed": 7780,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Enormous slow earth-shaking footsteps, deep booms far apart, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 6
+    }
+  }
+}

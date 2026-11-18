@@ -1,18 +1,19 @@
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
-import { decodeTexture, sample, sampleWorldTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { SURFACE_MATERIAL, surfaceIndex } from "../../content/surfaces.ts";
-import { worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
+import { SURFACE_NAMES, WEATHER_LAYER, WEATHER_MATERIAL, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { FACADE_COLOURS, FACADE_TIERS, KIND, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
+import { GROUND_BAND, GROUND_SCALE, edgeOf, edged, groundCover, groundMeet, groundWander, higher, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
-import { COARSE, groundNormal, groundSize, groundTint, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
+import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
-import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { MOST_LOD, detailKeeps, lampOf, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
@@ -142,6 +143,36 @@ const rgb = new Float64Array(3);
 const reflected = new Float64Array(3);
 const mirrored = new Float64Array(3);
 const smoothed = new Float64Array(3);
+const albedo2 = new Float64Array(3);
+const orm2 = new Float64Array(3);
+const normal2 = new Float64Array(3);
+const meet = new Float64Array(2);
+const ownNow = new Float32Array(4);
+/** What Rasterizer.facadeAt keeps of a pixel's face. */
+const FACADE_FLOATS = 15;
+/** facadeAt's kind for a pixel of the far program's, which draws a window as its bay's mean (facade.ts facadeFarVertex). */
+const FACADE_FAR = -2;
+const facadeNow = new Float32Array(FACADE_FLOATS);
+const edgeNow = new Float32Array(4);
+const wander = new Float64Array(2);
+
+/**
+ * The tint the lit tiers' ground takes at ground point (x, z) of a tile that reads picture `pic`, a pixel `footprint`
+ * metres wide, as LIT_TERRAIN_FRAGMENT chooses it from the picture's own samples (world-surfaces.ts `groundCover`), and
+ * into `out` the other finish's tint it meets there and how much of it is wanted (`groundMeet`).
+ */
+function groundPair(hf: Heightfield, pic: GroundPicture, x: number, z: number, footprint: number, desert: boolean, out: Float64Array): number {
+  groundWander(x, z, footprint, wander);
+  const metres = hf.cell * pic.step;
+  const s = Math.min(Math.max((x + wander[0]!) / metres - pic.i / pic.step, 0), pic.lastI);
+  const t = Math.min(Math.max((z + wander[1]!) / metres - pic.j / pic.step, 0), pic.lastJ);
+  const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1);
+  const at = (pic.j + j * pic.step) * hf.nx + pic.i + i * pic.step, down = pic.step * hf.nx;
+  const a = hf.tint[at]!, b = hf.tint[at + pic.step]!, c = hf.tint[at + down]!, d = hf.tint[at + down + pic.step]!;
+  const cover = groundCover(a, b, c, d, s - i, t - j);
+  groundMeet(cover, a, b, c, d, s - i, t - j, (tint) => surfaceIndex(tint, true, desert ? "las-vegas" : "default"), out);
+  return cover;
+}
 /** What LIT lights a flat draw as: no occlusion, fully rough, not metal. Its highlight mirrors nothing. */
 const ROUGH = [1, 1, 0];
 /** Occlusion, roughness and metalness with the sky's openness taken into the occlusion. */
@@ -150,13 +181,17 @@ const NOTHING = [0, 0, 0];
 
 /**
  * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it
- * is from the camera, and (nx, ny, nz) its face's normal. The ground is lit by its own normal, `smooth` (LIT_TERRAIN_FRAGMENT).
+ * is from the camera, and (nx, ny, nz) its face's normal. The ground is lit by its own normal, `smooth`, and where its
+ * finish meets another, `other` is that one's tint and `share` how much of it is wanted (LIT_TERRAIN_FRAGMENT).
  * A landmark's draw names its row of `finish` (shared/pack/finish.ts): a colour it states is lit as that finish, as LIT_MESH_FRAGMENT has it.
  * `open` is the share of the sky's light the sky's openness leaves it (skyopen.ts), which its sheet's light from behind keeps.
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
+  // Where no facade's part is drawn, a window is its bay's mean (facade.ts facadeFarVertex).
+  const bay = !ground && facade && facade[0] === FACADE_FAR && FACADE_TIERS[p.tier.name] ? facadeFarColour(colorIndex) : null;
+  if (bay) for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(bay[c]!);
   normal[0] = smooth ? smooth[0]! : nx;
   normal[1] = smooth ? smooth[1]! : ny;
   normal[2] = smooth ? smooth[2]! : nz;
@@ -178,20 +213,76 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     lit(light, albedo, opened, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);
     through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255);
   } else if (sample) {
-    const index = surfaceIndex(colorIndex, ground, p.surfaceCity[7] ? "las-vegas" : "default");
-    worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, p.tier.finish === "light", smooth);
+    const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light", index = surfaceIndex(colorIndex, ground, city);
+    const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null);
+    if (other >= 0 && share > 0) {
+      for (let c = 0; c < 3; c++) albedo2[c] = srgbToLinear(pal[other * 4 + c]! / 255);
+      const b = higher(h, worldSurface(albedo2, orm2, normal2, albedo2, surfaceIndex(other, true, city), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null), share, GROUND_SCALE, GROUND_BAND);
+      for (let c = 0; c < 3; c++) {
+        albedo[c] = albedo[c]! * (1 - b) + albedo2[c]! * b;
+        worldOrm[c] = worldOrm[c]! * (1 - b) + orm2[c]! * b;
+        normal[c] = normal[c]! * (1 - b) + normal2[c]! * b;
+      }
+      const l = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
+      for (let c = 0; c < 3; c++) normal[c]! /= l;
+    }
+    if (weather && weather[3]! >= 0 && !ground && !touch) {
+      weathered(albedo, worldOrm, index, weather[0]!, weather[2]!, weather[3]!, over, open, rx + p.camX, ry + p.camY, rz + p.camZ, Math.abs(nx) > Math.abs(nz), dist, footprint, p.surfaceCity, sample);
+      if (edge && edge[0]! >= 0 && p.tier.finishes <= 1024) edged(albedo, worldOrm, normal, index, edge[0]!, edge[1]!, edge[2]!, edge[3]!, h, rx + p.camX, ry + p.camY, rz + p.camZ, footprint, p.surfaceCity, p.tier.finishes < 1024);
+    }
+    // A facade's part and the marks on a wall, as LIT has them (facade.ts), where the frame reads them.
+    const tier = FACADE_TIERS[p.tier.name];
+    let glass = false;
+    facadeIO.room.fill(0);
+    facadeIO.farShare = 0;
+    if (facade && facade[0]! >= 0 && facadeSample && tier && p.frame[FRAME.facade + 1]! > 0.5) glass = facadeFlat(facade, nx, ny, nz, rx, ry, rz, dist, over, p.frame[FRAME.facade]!, tier, facadeSample);
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
-    const sharp = worldSharp(index, p.surfaceCity);
-    if (!sharp) skyLight(mirrored, p.frame, reflected);
+    const sharp = glass || worldSharp(worldOrm[1]!);
+    if (worldOrm[1]! >= 1) mirrored.fill(0);
+    else if (!sharp) skyLight(mirrored, p.frame, reflected);
     else if (look) skyFrom(mirrored, p.frame, reflected, look);
+    if (facadeIO.farShare > 0) {
+      facadeSky[0] = -nx; facadeSky[1] = -ny; facadeSky[2] = -nz;
+      skyLight(facadeLight, p.frame, facadeSky);
+      for (let c = 0; c < 3; c++) mirrored[c] = mirrored[c]! * (1 - facadeIO.farShare) + facadeIO.far[c]! * facadeLight[c]! * facadeIO.farShare;
+    }
     worldOrm[0]! *= open;
-    lit(light, albedo, worldOrm, normal, eye, p.frame, sharp && !look ? NOTHING : mirrored);
+    lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored);
+    if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
+      facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
+      skyLight(facadeLight, p.frame, facadeSky);
+      for (let c = 0; c < 3; c++) light[c]! += facadeIO.room[c]! * facadeLight[c]! * open;
+    }
   } else {
     opened.set([open, 1, 0]);
     lit(light, albedo, opened, normal, eye, p.frame, NOTHING);
   }
   shown(rgb, light, dist, p);
+}
+
+const facadeIO = facadeOut();
+const facadeSky = new Float64Array(3), facadeLight = new Float64Array(3);
+/**
+ * A pixel's facade part and marks into the scratch litFlat lights (albedo, worldOrm, normal), from `facade`, the face as
+ * Rasterizer.facadeAt keeps it. Returns whether the pixel mirrors the sky as a picture, as glass does.
+ */
+function facadeFlat(facade: ArrayLike<number>, nx: number, ny: number, nz: number, rx: number, ry: number, rz: number, dist: number, over: number, flood: number, tier: FacadeTier, sample: FacadeSample): boolean {
+  const kind = facade[0]!, x = facade[1]!, y = facade[2]!, w = facade[3]!, h = facade[4]!, footprint = facade[13]!;
+  const corner = [facade[6]!, facade[7]!, facade[8]!], right = [facade[9]!, 0, facade[10]!], height = ry + facade[14]!;
+  facadeIO.albedo.set(albedo);
+  facadeIO.orm.set(worldOrm);
+  facadeIO.normal.set(normal);
+  facadeIO.sharp = false;
+  facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
+  if (kind > 0) facadeSurface(facadeIO, kind, x, y, w, h, facadeSky, eye, corner, right, facade[11]!, facade[12]!, height, over, footprint, dist, tier, sample);
+  if (kind === KIND.none || kind === KIND.shutter || kind === KIND.door || kind === KIND.pier) facadeMarks(facadeIO, kind, x, y, w, h, facade[5]!, facadeSky, corner, right, facade[11]!, facade[12]!, height, over, flood, footprint, tier, sample);
+  albedo.set(facadeIO.albedo);
+  worldOrm.set(facadeIO.orm);
+  normal.set(facadeIO.normal);
+  void rx;
+  void rz;
+  return kind > 0 && facadeIO.sharp;
 }
 
 /** Vertices as the pack holds them, eight bytes each, within the bounds of their mesh. */
@@ -237,6 +328,13 @@ export class Rasterizer {
    */
   readonly cover: Float32Array;
   trianglesDrawn = 0;
+  /**
+   * Fragments of opaque draws and of the ground that passed the depth test as they came and were kept, which a GPU that
+   * tests depth before it shades shades: over the pixels covered, how many times a pixel is shaded.
+   */
+  fragments = 0;
+  /** The opaque step begun last has yet to draw its terrain tiles (packet.ts groundAt). */
+  private groundLeft = false;
   /** The sky table a lit frame reads, as the renderer holds it on its unit: the game's, or one a test sets. */
   skyTable: Uint8Array = theSky().table;
   /** The sky table's lookup, as `skyFrom` takes it. */
@@ -295,8 +393,14 @@ export class Rasterizer {
   private readonly cutScratch = new Float64Array(5 * (CARRIED + 4));
   private readonly textures = new Map<number, Texture>();
   /** Textures being made: their pictures as bytes, and how many bytes are still to come. */
-  private worldMaps: Texture[] | null = null;
-  private readonly worldSample: WorldSample = (role, u, v, spread, out) => sampleWorldTexture(this.worldMaps![role]!, u, v, spread, out);
+  /** Each world finish's base colour, normal and packed map, once all of them have come. */
+  private worldMaps: Texture[][] | null = null;
+  /** The weathering masks' packed map, which the finishes are not drawn without where the pack has them, or null. */
+  private weatherMap: Texture | null = null;
+  private readonly worldSample: WorldSample = (role, layer, u, v, spread, out) => {
+    if (layer === WEATHER_LAYER) return this.weatherMap ? sample(this.weatherMap, u, v, spread, out) : void out.fill(0);
+    sample(this.worldMaps![layer]![role]!, u, v, spread, out);
+  };
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();
   /** For a textured draw: each vertex's normal and tangent after its bones, a vertex's bones blended, and the instance's dyes. */
   private frames = new Float32Array(6 * 1024);
@@ -318,6 +422,30 @@ export class Rasterizer {
   private readonly deferredBody: Uint8Array;
   private readonly deferredAt: Float64Array;
   private readonly deferredNormal: Float64Array;
+  /** On the ground, the other finish's tint where two meet, or -1, and how much of it is wanted. */
+  private readonly deferredOther: Int16Array;
+  private readonly deferredShare: Float32Array;
+  /** On a weathered static (world-surfaces.ts `weathered`), its weatherFrame and its instance's seed, or a seed of -1. */
+  private readonly deferredOwn: Float32Array;
+  /** The instance being drawn, where the flat program weathers it: its yaw's cosine and sine, its origin from the eye, and its seed, or -1. */
+  private ownC = 1;
+  private ownS = 0;
+  private readonly ownAt = new Float64Array(3);
+  private ownSeed = -1;
+  /** On a weathered static's triangle that knows its face's borders: which are outer, a corner's place and its corner of the face, and the face's way across and up per unit of vFace. */
+  private edgeFlags = 0;
+  /** Whether the draw is the far program's (programs.ts drawProgram), whose windows are their bay's mean. */
+  private farProgram = false;
+  /** Whether the triangle being drawn knows its face's corners, and its outer borders, which facadeAt reads. */
+  private faceKnown = false;
+  private faceEdges = 0;
+  /** The facades' atlases as the frame names them (FramePacket facadeSlots), read as facade.ts reads them, or null where one it names has not come. */
+  private facadeSample: FacadeSample | null = null;
+  private readonly deferredFacade: Float32Array;
+  private readonly edgeAt = new Float64Array(5);
+  private readonly edgeU = new Float64Array(3);
+  private readonly edgeV = new Float64Array(3);
+  private readonly deferredEdge: Float32Array;
   /** On a lit frame, the tile being drawn: its vertices' normals (terrain.ts groundNormal), or null for any other draw. */
   private groundNormals: Float64Array | null = null;
   private readonly picture: GroundPicture = { i: 0, j: 0, step: 1, lastI: 0, lastJ: 0 };
@@ -346,6 +474,11 @@ export class Rasterizer {
     this.deferredBody = new Uint8Array(width * height);
     this.deferredAt = new Float64Array(width * height * 6);
     this.deferredNormal = new Float64Array(width * height * 3);
+    this.deferredOther = new Int16Array(width * height);
+    this.deferredShare = new Float32Array(width * height);
+    this.deferredOwn = new Float32Array(width * height * 4);
+    this.deferredEdge = new Float32Array(width * height * 4);
+    this.deferredFacade = new Float32Array(width * height * FACADE_FLOATS);
   }
 
   render(packet: FramePacket): void {
@@ -383,8 +516,14 @@ export class Rasterizer {
       this.making.delete(slot);
     }
     for (const u of packet.texUploads) this.texture(u);
-    const world = (this.manifest ?? this.pack.header)?.materials?.find((m) => m.id === SURFACE_MATERIAL);
-    this.worldMaps = packet.lit && world && this.textures.has(world.base) ? [this.textures.get(world.base)!, this.textures.get(world.normal) ?? NEUTRALS[1]!, this.textures.get(world.mro) ?? NEUTRALS[2]!] : null;
+    const materials = (this.manifest ?? this.pack.header)?.materials ?? [];
+    const finishes = SURFACE_NAMES.map((name) => materials.find((m) => m.id === surfaceMaterial(name)));
+    const maps = finishes.map((m) => (m ? [m.base, m.normal, m.mro].map((t) => this.textures.get(t)) : []));
+    const weather = materials.find((m) => m.id === WEATHER_MATERIAL);
+    this.weatherMap = weather ? (this.textures.get(weather.mro) ?? null) : null;
+    this.worldMaps = packet.lit && maps.every((roles) => roles.length === 3 && roles.every((t) => t)) && (!weather || this.weatherMap) ? (maps as Texture[][]) : null;
+    const facades = Array.from(packet.facadeSlots, (t) => (t >= 0 ? this.textures.get(t) ?? null : undefined));
+    this.facadeSample = packet.lit && facades.some((t) => t) && facades.every((t) => t !== null) ? (k, u, v, lod, out) => sample(facades[k]!, u, v, lod - (facades[k]!.pictures.length - 1), out) : null;
     if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
       [this.openWidth, this.openHeight] = [packet.openWidth, packet.openHeight];
       this.open = new Uint8Array(this.openWidth * this.openHeight * OPEN_BYTES);
@@ -410,6 +549,8 @@ export class Rasterizer {
     this.pickDraw.fill(-1);
     this.cover.fill(1);
     this.trianglesDrawn = 0;
+    this.fragments = 0;
+    this.groundLeft = false;
 
     this.depthSteps = (2 ** this.depthBits - 1) / 2;
     this.plain = false;
@@ -419,6 +560,7 @@ export class Rasterizer {
     for (let d = 0; d < packet.drawCount; d++) {
       const s = stepOf(packet, d);
       while (step < s) this.step(packet, ++step);
+      if (this.groundLeft && d >= packet.groundAt[step]!) this.step(packet, step, true);
       this.draw(packet, d);
     }
     while (step < STEP_FAR_SEE) this.step(packet, ++step);
@@ -435,10 +577,96 @@ export class Rasterizer {
       const ground = (this.deferred[at]! & DEFERRED_GROUND) !== 0;
       if (ground) smoothed.set(this.deferredNormal.subarray(at * 3, at * 3 + 3));
       const open = this.opened(s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, ground, this.deferredBody[at] === 0);
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open);
+      const own = this.deferredOwn.subarray(at * 4, at * 4 + 4), edge = this.deferredEdge.subarray(at * 4, at * 4 + 4);
+      const over = own[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, s[g6]!, s[g6 + 1]!, s[g6 + 2]!) : 0;
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
+  }
+
+  /**
+   * A static triangle's face as ownVertex reads it: its provoking corner's outer borders, and the face's way across and
+   * up per unit of its corners (from the three corners' places and their corners of the face), kept for `owned`.
+   * Returns the borders, 0 where the face says none.
+   */
+  private faceOf(pos: Float32Array, ia: number, ib: number, ic: number, bones: Uint8Array): number {
+    const edges = (bones[ic]! >> 2) & 15;
+    const u = [ia, ib, ic].map((v) => bones[v]! & 1), v = [ia, ib, ic].map((k) => (bones[k]! >> 1) & 1);
+    const du1 = u[1]! - u[0]!, dv1 = v[1]! - v[0]!, du2 = u[2]! - u[0]!, dv2 = v[2]! - v[0]!, det = du1 * dv2 - du2 * dv1;
+    // A face without outer borders still has its corners, which a facade's part is read from.
+    this.faceKnown = det !== 0;
+    this.faceEdges = edges;
+    if (det === 0) return 0;
+    for (let a = 0; a < 3; a++) {
+      const e1 = pos[ib * 3 + a]! - pos[ia * 3 + a]!, e2 = pos[ic * 3 + a]! - pos[ia * 3 + a]!;
+      this.edgeU[a] = (e1 * dv2 - e2 * dv1) / det;
+      this.edgeV[a] = (e2 * du1 - e1 * du2) / det;
+      this.edgeAt[a] = pos[ia * 3 + a]!;
+    }
+    this.edgeAt[3] = u[0]!;
+    this.edgeAt[4] = v[0]!;
+    return edges;
+  }
+
+  /**
+   * Into `out` the face of the pixel at (rx, ry, rz) as facade.ts reads it (litFlat's `facade`): its kind, where it is
+   * across and up the face as a reader facing it reads it, the face's width and height, its outer borders, its left foot
+   * and its right in the instance's own frame, the instance's place, `footprint`, and the eye's height. A kind of -1 where
+   * the pixel's static has no face known or is not weathered.
+   */
+  private facadeAt(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, colour: number, footprint: number, out: Float32Array): void {
+    out[0] = this.ownSeed < 0 && this.farProgram ? FACADE_FAR : -1;
+    if (!this.faceKnown || this.ownSeed < 0 || Math.abs(ny) > 0.5) return;
+    let pu = this.edgeU, pv = this.edgeV;
+    const dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
+    let a = pu[0]! * pu[0]! + pu[1]! * pu[1]! + pu[2]! * pu[2]!, c = pv[0]! * pv[0]! + pv[1]! * pv[1]! + pv[2]! * pv[2]!;
+    const b = pu[0]! * pv[0]! + pu[1]! * pv[1]! + pu[2]! * pv[2]!;
+    const e = pu[0]! * dx + pu[1]! * dy + pu[2]! * dz, f = pv[0]! * dx + pv[1]! * dy + pv[2]! * dz, det = a * c - b * b;
+    if (det <= 0) return;
+    let u = this.edgeAt[3]! + (c * e - b * f) / det, v = this.edgeAt[4]! + (a * f - b * e) / det, edges = this.faceEdges;
+    // A face whose corners run up before across is read the other way round, as the shader reads it.
+    if (Math.abs(pu[1]!) > Math.abs(pv[1]!)) {
+      const t = pu, s = u, q = a;
+      pu = pv;
+      pv = t;
+      u = v;
+      v = s;
+      a = c;
+      c = q;
+      edges = ((edges & 3) << 2) | ((edges & 12) >> 2);
+    }
+    const sl = Math.hypot(nz, nx) || 1, flipU = (pu[0]! * nz - pu[2]! * nx) / sl < 0, flipV = pv[1]! < 0;
+    if (flipU) {
+      u = 1 - u;
+      edges = (edges & 12) | ((edges & 1) << 1) | ((edges & 2) >> 1);
+    }
+    if (flipV) {
+      v = 1 - v;
+      edges = (edges & 3) | ((edges & 4) << 1) | ((edges & 8) >> 1);
+    }
+    const w = Math.sqrt(a), h = Math.sqrt(c), su = flipU ? -1 : 1, sv = flipV ? -1 : 1;
+    // The face's left foot from the camera, then in the instance's own frame, and the face's right there.
+    const cx = rx - pu[0]! * su * u - pv[0]! * sv * v, cy = ry - pu[1]! * su * u - pv[1]! * sv * v, cz = rz - pu[2]! * su * u - pv[2]! * sv * v;
+    const oc = this.ownC, os = this.ownS, ox = cx - this.ownAt[0]!, oz = cz - this.ownAt[2]!;
+    const place = staticPlace(this.ownAt[0]! + this.packet.camX, this.ownAt[2]! + this.packet.camZ);
+    out.set([facadeKind(FACADE_COLOURS[colour] ?? 0, w, h, ny), u * w, v * h, w, h, edges, oc * ox - os * oz, cy - this.ownAt[1]!, os * ox + oc * oz, (oc * pu[0]! - os * pu[2]!) * su / w, (os * pu[0]! + oc * pu[2]!) * su / w, place[0], place[1], footprint, this.packet.camY]);
+  }
+
+  /** Into `out`, the weatherFrame and seed of a point of the instance being drawn with that face's normal, or a seed of -1 where it is not weathered. */
+  private owned(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, out: Float32Array): void {
+    out[3] = this.ownSeed;
+    edgeNow[0] = -1;
+    if (this.ownSeed < 0) return;
+    if (this.edgeFlags !== 0) {
+      // The pixel's corner of its face from its place, as the face's way across and up give it.
+      const pu = this.edgeU, pv = this.edgeV, dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
+      const a = pu[0]! * pu[0]! + pu[1]! * pu[1]! + pu[2]! * pu[2]!, b = pu[0]! * pv[0]! + pu[1]! * pv[1]! + pu[2]! * pv[2]!, c = pv[0]! * pv[0]! + pv[1]! * pv[1]! + pv[2]! * pv[2]!;
+      const e = pu[0]! * dx + pu[1]! * dy + pu[2]! * dz, f = pv[0]! * dx + pv[1]! * dy + pv[2]! * dz, det = a * c - b * b;
+      if (det > 0) edgeOf(this.edgeAt[3]! + (c * e - b * f) / det, this.edgeAt[4]! + (a * f - b * e) / det, this.edgeFlags, pu, pv, edgeNow);
+    }
+    const c = this.ownC, s = this.ownS, dx = rx - this.ownAt[0]!, dz = rz - this.ownAt[2]!;
+    weatherFrame(c * dx - s * dz, ry - this.ownAt[1]!, s * dx + c * dz, c * nx - s * nz, ny, s * nx + c * nz, out);
   }
 
   /**
@@ -503,10 +731,14 @@ export class Rasterizer {
 
   /**
    * Begins a step of the frame as the shell does: its matrix, the view depths it clips to (from 0.05 m on the near side,
-   * nearer than the camera's own plane, as the rasterizer always has), its part of the depth buffer, and in an opaque
-   * step the terrain tiles in its range. The viewer's own body draws over everything so far, with its own near plane.
+   * nearer than the camera's own plane, as the rasterizer always has) and its part of the depth buffer, after the terrain
+   * tiles of the step before where it had not drawn them. The viewer's own body draws over everything so far, with its
+   * own near plane. With `tiles`, draws the step's terrain tiles in its range where `groundAt` puts them.
    */
-  private step(p: FramePacket, s: number): void {
+  private step(p: FramePacket, s: number, tiles = false): void {
+    if (this.groundLeft) this.terrain(p, tiles ? s : s - 1);
+    this.groundLeft = false;
+    if (tiles) return;
     const split = p.split > 0 && s !== STEP_BODY;
     const far = s === STEP_FAR || s === STEP_FAR_SEE;
     this.matrix = s === STEP_BODY ? p.nearViewProj : far ? p.farViewProj : p.viewProj;
@@ -521,7 +753,7 @@ export class Rasterizer {
       this.dome(p);
     }
     if (s === STEP_BODY) this.depth.fill(Infinity);
-    if (s <= STEP_FAR) this.terrain(p, s);
+    this.groundLeft = s <= STEP_FAR;
   }
 
   /** What a pixel at depth `z` after the projection keeps (`depth`). */
@@ -616,6 +848,8 @@ export class Rasterizer {
 
   private draw(p: FramePacket, d: number): void {
     this.drawing = d;
+    this.ownSeed = -1;
+    this.farProgram = p.drawFade[d] !== 0 || p.drawHand[d] !== 0;
     [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
     if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) return this.details(p, d);
     if ((p.drawFlags[d]! & DRAW_PULLED) !== 0) return this.pulled(p, d);
@@ -642,6 +876,7 @@ export class Rasterizer {
     this.fadeShare = p.frame[FRAME.fade]!;
     // Far blocks, the far city and a landmark's far mesh short of where their reach fades draw with no fade, and are far all the same.
     const far = this.fade !== 0 || p.drawBuffer[d] === FAR_BUFFER || p.drawBuffer[d] === CITY_BUFFER || p.drawBuffer[d] === LANDMARK_BUFFER;
+    const weathers = p.lit && p.tier.finish === "full" && !skinned && p.drawFade[d] === 0 && p.drawHand[d] === 0;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
@@ -670,6 +905,12 @@ export class Rasterizer {
         const iy = view.getFloat32(at + 4, true) + oy;
         const iz = view.getFloat32(at + 8, true) + oz;
         this.handAt = Math.hypot(ix, iy, iz);
+        // The flat program weathers a near static, which a far or handed-over draw's program does not (programs.ts drawProgram).
+        if (weathers) {
+          [this.ownC, this.ownS] = [c, s];
+          this.ownAt.set([ix, iy, iz]);
+          this.ownSeed = staticSeed(staticPlace(ix + p.camX, iz + p.camZ));
+        }
         const k = sized ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
         for (let v = 0; v < n; v++) {
           const lx = lod.positions[v * 3]! * k;
@@ -689,6 +930,7 @@ export class Rasterizer {
         let color = lod.colors[last]!;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
+        this.edgeFlags = this.ownSeed >= 0 ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0);
       }
     }
@@ -756,7 +998,7 @@ export class Rasterizer {
             if (z >= this.depth[at]!) continue;
             const [q0, q1, q2] = [e0 * poly[v0 + 7]!, e1 * poly[v1 + 7]!, e2 * poly[v2 + 7]!];
             const qs = 1 / (q0 + q1 + q2);
-            if (blend && (flags & DETAIL_ROTOR) !== 0 && qs < this.from) continue;
+            if (blend && (flags & (DETAIL_ROTOR | DETAIL_LAMP)) !== 0 && qs < this.from) continue;
             const carry = (j: number): number => (q0 * poly[v0 + j]! + q1 * poly[v1 + j]! + q2 * poly[v2 + j]!) * qs;
             const [rx, ry, rz, cx, cy] = [carry(0), carry(1), carry(2), carry(3), carry(4)];
             // The level the pixel's footprint in the picture asks for, from the corner a pixel right and a pixel down, as derivatives give it.
@@ -772,8 +1014,9 @@ export class Rasterizer {
             corner(fx, fy + 1, below);
             const footprint = (Math.max(Math.hypot(right[0]! - cx, right[1]! - cy), Math.hypot(below[0]! - cx, below[1]! - cy)) * CELL) / 2;
             const level = Math.min(MOST_LOD, Math.max(0, Math.log2(Math.max(footprint, 1e-6))));
-            if ((flags & DETAIL_ROTOR) !== 0) {
-              rotorOf(cx, cy, grey, shape);
+            if ((flags & (DETAIL_ROTOR | DETAIL_LAMP)) !== 0) {
+              if ((flags & DETAIL_LAMP) !== 0) lampOf(cx, cy, shape);
+              else rotorOf(cx, cy, grey, shape);
               [texel[0], texel[1], texel[2], texel[3]] = [shape[2]!, shape[1]!, 0, shape[0]!];
             }
             else if (p.lit) this.detailTexel(atlas, side, cells, cell, cx, cy, level, texel);
@@ -817,6 +1060,7 @@ export class Rasterizer {
             if (blend) for (let c = 0; c < 3; c++) this.color[o4 + c] = this.color[o4 + c]! + (rgb[c]! - this.color[o4 + c]!) * alpha;
             else {
               for (let c = 0; c < 3; c++) this.color[o4 + c] = rgb[c]!;
+              this.fragments++;
               this.depth[at] = z;
               this.deferred[at] = 0;
               this.pickKind[at] = PICK_ENTITY;
@@ -1142,6 +1386,7 @@ export class Rasterizer {
           if (this.fade !== 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
           if (this.hand !== 0 && nearKeeps(this.handAt, this.handFrom, this.handTo, px, H - 1 - py) !== this.hand > 0) continue;
           if (!blend) {
+            this.fragments++;
             this.depth[at] = z;
             this.pickKind[at] = pickKind;
             this.pickId[at] = pickId;
@@ -1180,7 +1425,14 @@ export class Rasterizer {
             // Only what ends in front is shaded, once the opaque draws are done (`resolve`). The ground's cover is chosen here.
             const s = this.deferredAt;
             const g6 = at * 6;
-            const tint = ground ? groundTint(this.hf, this.picture, rx + p.camX, rz + p.camZ, reach) : colorIndex;
+            const tint = ground ? groundPair(this.hf, this.picture, rx + p.camX, rz + p.camZ, reach, p.surfaceCity[7] !== 0, meet) : colorIndex;
+            this.deferredOther[at] = ground ? meet[0]! : -1;
+            this.deferredShare[at] = ground ? meet[1]! : 0;
+            this.owned(rx, ry, rz, nx, ny, nz, ownNow);
+            this.deferredOwn.set(ownNow, at * 4);
+            this.deferredEdge.set(edgeNow, at * 4);
+            this.facadeAt(rx, ry, rz, nx, ny, nz, colorIndex, footprint, facadeNow);
+            this.deferredFacade.set(facadeNow, at * FACADE_FLOATS);
             this.deferred[at] = (tint + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0) | (this.finishRow << DEFERRED_FINISH);
             this.deferredBody[at] = this.bone > 0 ? 1 : 0;
             this.deferredShade[at] = footprint;
@@ -1211,7 +1463,10 @@ export class Rasterizer {
           let cg = g * shade * (1 - fog) + p.sky[1]! * 255 * fog;
           let cb = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
           if (p.lit) {
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0));
+            this.owned(rx, ry, rz, nx, ny, nz, ownNow);
+            const over = ownNow[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz) : 0;
+            this.facadeAt(rx, ry, rz, nx, ny, nz, colorIndex, footprint, facadeNow);
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample);
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;
             cb = rgb[2]! * 255;
@@ -1321,6 +1576,7 @@ export class Rasterizer {
           const spread = Math.log2(Math.max(Math.hypot(ux, vx), Math.hypot(uy, vy)));
           sample(s.maps[0]!, u, v, spread, base);
           if (base[3]! < s.cutoff) continue;
+          this.fragments++;
           this.depth[at] = z;
           this.deferred[at] = 0;
           this.pickKind[at] = pickKind;

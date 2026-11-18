@@ -1,0 +1,143 @@
+// The frame's finish (client/core/render/post.ts): which frames are drawn as light, what the finishing pass is told, and
+// the rasterizer's twin of the grade.
+
+import { expect, test } from "bun:test";
+import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
+import { ladder } from "../../client/core/governor.ts";
+import { tierWithout } from "../../client/core/passes.ts";
+import { CONTACT_MOST, contactFrame, contactShare } from "../../client/core/render/contact.ts";
+import { FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
+import { RemoteSample } from "../../client/core/session.ts";
+import { CUE_DEAD } from "../../shared/anim/pose.ts";
+import { coreRegistry } from "../fixtures/world.ts";
+import { BLOOM, SHARPEN, bloomLevels, drawsLight, gradeAt, levelShift, lightBytes, lightSamples, postFrame, tapShift } from "../../client/core/render/post.ts";
+import { PROGRAMS } from "../../client/core/render/programs.ts";
+import { skyFrame, sunHeight, theSky } from "../../client/core/render/sky.ts";
+import { graded, shown, skyShown, tone, ungraded, untone } from "../../client/core/render/surface.ts";
+import { GRADE } from "../../content/grade.ts";
+
+/** The programs that show light, which a frame drawn as light draws with its light untoned. */
+const SHOWING = ["flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "surface", "surfaceWhole", "surfaceUndyed", "surfaceUndyedWhole", "surfaceLayer", "sky", "water", "details"];
+
+test("high and ultra draw as light where the device has a light target, with the same texts down the governor's steps but its step to none, whose are those the shell links beside them; medium and low poly draw no light", () => {
+  for (const tier of TIERS) {
+    expect([drawsLight(tier, 0x881a), drawsLight(tier, 0)]).toEqual([tier.name === "high" || tier.name === "ultra", false]);
+    for (const name of SHOWING) {
+      const [as, without] = [PROGRAMS[name]!(tier, "bc", false, true), PROGRAMS[name]!(tier, "bc", false, false)];
+      // Only the define differs, and only where the frame is drawn as light.
+      expect([as.vertex, as.fragment, as.samplers]).toEqual([without.vertex, without.fragment, without.samplers]);
+      expect(as.defines).toBe(without.defines + (drawsLight(tier, true) ? "#define LIGHT_TARGET\n" : ""));
+      if (!drawsLight(tier, true)) continue;
+      for (const touch of [false, true]) {
+        const top = forTouch(tier, touch);
+        const steps = [...ladder(top, 1).map((l) => l.tier), tierWithout(top, new Set(["bloom" as const]))];
+        for (const t of steps) expect(PROGRAMS[name]!(t, "bc", false, true)).toEqual(PROGRAMS[name]!(top, "bc", false, t.post !== null));
+      }
+    }
+  }
+  // A tier with its light target turned off for a before and after draws as medium does.
+  expect(drawsLight(tierWithout(tierOf("high"), new Set(["light" as const])), true)).toBe(false);
+});
+
+test("bloom's levels run from a quarter of the canvas down to a level no fewer than 16 pixels tall; the target takes no samples on a supersampled canvas, and its bytes", () => {
+  expect([720, 1080, 1440, 2160, 2880, 100000].map((h) => bloomLevels(h, 1))).toEqual([4, 5, 5, 6, 6, 7]);
+  expect([bloomLevels(1080, 0), bloomLevels(10, 1)]).toEqual([0, 1]);
+  // The scene, then each level two halvings and more down; the first level's taps at a half-size picture's texels, the finish's at the scene's.
+  expect([0, 1, 2, 5].map(levelShift)).toEqual([0, 2, 3, 6]);
+  expect([tapShift(0, 1), tapShift(1, 2), tapShift(2, 1), tapShift(0, -1)]).toEqual([1, 2, 3, 0]);
+  expect([lightSamples(false), lightSamples(true)]).toEqual([2, 0]);
+  expect([lightBytes(2560, 1440, 2), lightBytes(2560, 1440, 4), lightBytes(3840, 1986, 0)].map((b) => Math.round(b / 1e6))).toEqual([119, 207, 94]);
+});
+
+test("the grade is content's keys, blended by the sun's height, filled in on every lit tier, and bloom and the sharpen on a tier with a light target alone", () => {
+  for (let k = 1; k < GRADE.length; k++) expect(GRADE[k]!.sun).toBeGreaterThan(GRADE[k - 1]!.sun);
+  expect(gradeAt(GRADE[2]!.sun)).toEqual({ ...GRADE[2]! });
+  expect([gradeAt(-90), gradeAt(90)]).toEqual([GRADE[0]!, GRADE.at(-1)!]);
+  const [a, b] = [GRADE[3]!, GRADE[4]!];
+  const mid = gradeAt((a.sun + b.sun) / 2);
+  expect(mid.gain[0]).toBeCloseTo((a.gain[0] + b.gain[0]) / 2, 9);
+  expect(mid.gamma).toBeCloseTo((a.gamma + b.gamma) / 2, 9);
+
+  const frame = new Float32Array(FRAME.levels + 1).fill(7);
+  const noon = gradeAt(sunHeight(12));
+  const near = (list: number[]): number[] => list.map((v) => Math.round(Math.fround(v) * 1e4) / 1e4);
+  postFrame(frame, tierOf("lowpoly"), 12, 1080);
+  expect([...frame.subarray(FRAME.grade)]).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+  postFrame(frame, tierOf("medium"), 12, 1080);
+  expect(near([...frame.subarray(FRAME.grade)])).toEqual(near([...noon.gain, noon.saturation, noon.gamma, 0, 0, 0]));
+  postFrame(frame, tierOf("high"), 12, 1080);
+  expect(near([...frame.subarray(FRAME.grade)])).toEqual(near([...noon.gain, noon.saturation, noon.gamma, BLOOM, SHARPEN, 5]));
+});
+
+test("the rasterizer shows medium as a tier with a light target out of the fog, both taking the grade, and medium's fog as the sky's colour shown", () => {
+  const p = new FramePacket();
+  skyFrame(12, theSky(), p.frame);
+  const light = [0.2, 0.5, 3];
+  const [medium, high, plain] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  // Warmer light, less colour and the dark lifted against no grade at all: red up, blue down, and the grey channel lifted.
+  p.frame.set([1, 1, 1, 1, 1], FRAME.grade);
+  p.tier = tierOf("high");
+  shown(plain, light, 10, p);
+  p.frame.set([1.1, 1, 0.9, 0.5, 0.8], FRAME.grade);
+  shown(high, light, 10, p);
+  p.tier = tierOf("medium");
+  shown(medium, light, 10, p);
+  for (let c = 0; c < 3; c++) expect(medium[c]!).toBeCloseTo(high[c]!, 9);
+  expect([high[0]! > plain[0]!, high[2]! < plain[2]!, high[1]! > plain[1]!]).toEqual([true, true, true]);
+  // A colour the grade did not clamp is taken back to what it was.
+  const back = [0.1, 0.3, 0.6];
+  graded(back, p.frame);
+  ungraded(back, p.frame);
+  back.forEach((v, c) => expect(v).toBeCloseTo([0.1, 0.3, 0.6][c]!, 9));
+  // And light the tone curve took, over its knee or under it.
+  for (const light of [[0.2, 0.5, 0.7], [0.4, 1.1, 2.6]]) {
+    const t = [0, 0, 0];
+    tone(t, light);
+    untone(t, t);
+    t.forEach((v, c) => expect(v).toBeCloseTo(light[c]!, 9));
+  }
+  // Under water and far off, medium is the sky's colour as light, graded and shown; with no grade, as it is where the tone curve leaves it.
+  p.frame[FRAME.eyeHeight] = -1;
+  p.frame.set([1, 1, 1, 1, 1], FRAME.grade);
+  [p.fogStart, p.fogEnd, p.sky[0], p.sky[1], p.sky[2]] = [0, 1, 0.2, 0.4, 0.5];
+  skyShown(p);
+  shown(medium, light, 10, p);
+  for (let c = 0; c < 3; c++) expect(medium[c]!).toBeCloseTo(p.sky[c]!, 6);
+  // Graded, the fog is the sky's colour taken as light and shown as everything else is, warmer and lifted.
+  p.frame.set([1.1, 1, 0.9, 0.5, 0.8], FRAME.grade);
+  skyShown(p);
+  shown(medium, light, 10, p);
+  expect([p.skyShown[0]! > p.sky[0]!, ...[0, 1, 2].map((c) => Math.abs(medium[c]! - p.skyShown[c]!) < 1e-6)]).toEqual([true, true, true, true]);
+});
+
+test("contact: the bodies nearest the camera, a vehicle as its driving box, the ground under one taken down and its sides little, on a tier with a light target alone", () => {
+  const reg = coreRegistry();
+  const [car, survivor] = [reg.index.get("core:compact")!, reg.index.get("core:survivor")!];
+  const remote = new RemoteSample();
+  const put = (kind: number, x: number, z: number, yaw: number, cue = 0): void => {
+    const n = remote.count++;
+    [remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.cue[n]] = [kind, x, 0, z, yaw, cue];
+  };
+  put(survivor, 30, 0, 0);
+  put(car, 10, 0, Math.PI / 2);
+  put(survivor, 4, 4, 0, CUE_DEAD);
+  put(survivor, 500, 0, 0);
+  const frame = new Float32Array(FRAME_FLOATS);
+  const cam = { x: 0, y: 1.7, z: 0 };
+  contactFrame(frame, true, reg, remote, null, cam);
+  const spec = reg.vehicle[car]!.spec;
+  // The car first, nearest, as its box, then the living survivor; the dead and the far are left out, and the list ends.
+  expect([...frame.subarray(FRAME.contact + 4, FRAME.contact + 7)].map((v) => Math.round(v * 100) / 100)).toEqual([spec.halfWidth, spec.height / 2, spec.halfLength].map((v) => Math.round(Math.fround(v) * 100) / 100));
+  expect([frame[FRAME.contact]!, frame[FRAME.contact + 8]!, frame[FRAME.contact + 20]!]).toEqual([10, 30, 0]);
+  const up = [0, 1, 0];
+  const under = contactShare(frame, [10, -1.7, 0], up);
+  const beside = contactShare(frame, [10, -1.7, spec.halfWidth + 3], up);
+  expect(under).toBeCloseTo(1 - CONTACT_MOST, 3);
+  expect(beside).toBeGreaterThan(0.9);
+  expect(contactShare(frame, [60, -1.7, 0], up)).toBe(1);
+  // A face turned from the body takes none.
+  expect(contactShare(frame, [10, -1.7, spec.halfWidth + 0.5], [0, 0, 1])).toBe(1);
+  // Medium holds none.
+  contactFrame(frame, false, reg, remote, null, cam);
+  expect(contactShare(frame, [10, -1.7, 0], up)).toBe(1);
+});

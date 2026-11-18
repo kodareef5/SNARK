@@ -3,7 +3,7 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import type { DeviceReport, SoakReport } from "../../client/core/device.ts";
 import { Governor, TARGET_MS } from "../../client/core/governor.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -37,9 +37,9 @@ export interface Minute {
  * display's interval where `quantized`, as a display that shows only whole intervals gives them, else the larger of the
  * two; with a little jitter.
  */
-export function run(minutes: number, at: (t: number, level: number) => Frame, o: { tier?: string; dpr?: number; quantized?: boolean; seed?: number; governor?: Governor } = {}): { minutes: Minute[]; governor: Governor } {
+export function run(minutes: number, at: (t: number, level: number) => Frame, o: { tier?: string; touch?: boolean; dpr?: number; quantized?: boolean; seed?: number; governor?: Governor } = {}): { minutes: Minute[]; governor: Governor } {
   const g = o.governor ?? new Governor();
-  const tier = tierOf(o.tier ?? "high");
+  const tier = forTouch(tierOf(o.tier ?? "high"), o.touch ?? false);
   const dpr = o.dpr ?? 3;
   const rng = new Rng(o.seed ?? 1);
   const out: Minute[] = [];
