@@ -5,6 +5,7 @@
 import { CHEAT_GUESSES, WRONG_PASSWORD } from "../../../shared/console.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { TEXT_CONSOLE } from "../../../shared/net/protocol.ts";
+import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, K_SECRET, fitText, wrapText, type UiFrame } from "./nodes.ts";
 import { KEY_MENU_BACK, menuBackdrop, smallButton } from "./menu.ts";
@@ -28,7 +29,8 @@ export interface CreativeTool {
   readonly name: string;
   /** The node focused as the tool opens. */
   readonly first: number;
-  build(f: UiFrame, x: number, y: number, w: number, h: number, session: ClientSession, hour: number, focus: number): void;
+  /** `hud` has the hour the sky shows and the screen's scale. */
+  build(f: UiFrame, x: number, y: number, w: number, h: number, session: ClientSession, hud: HudModel, focus: number): void;
   /** `kind` 0 for a press, 1 for a release, 2 for a move. True if the event was the tool's. */
   pointer(kind: number, key: number, x: number, y: number, session: ClientSession): boolean;
   /** Arrow keys and the pad's left and right on the focused node; `coarse` with Shift. True if the tool used them. */
@@ -123,8 +125,8 @@ export class CreativeScreen {
     for (const t of this.tools) t.pump(session, open && t === this.tool && session.admin);
   }
 
-  /** A left-hand glass field, as the menu is, so the world and its sky stay in view beside it. `hour` is the hour the sky shows. */
-  build(f: UiFrame, session: ClientSession, hour: number, focus: number): void {
+  /** A left-hand glass field, as the menu is, so the world and its sky stay in view beside it. */
+  build(f: UiFrame, session: ClientSession, hud: HudModel, focus: number): void {
     menuBackdrop(f, 0.45);
     const x = Math.round(Math.max(24, f.width * 0.065)), w = Math.min(440, f.width - x * 2), y = 40, h = f.height - 80;
     f.add(KEY_CREATIVE_PANEL, K_PANEL, x, y, w, h, S_HUD_HIT);
@@ -135,7 +137,7 @@ export class CreativeScreen {
     this.tools.forEach((t, i) => smallButton(f, KEY_CREATIVE_TAB + i, x + 24 + i * tabW, y + 64, tabW - 8, 34, t.name, t.name, i === this.tab));
     f.add(KEY_CREATIVE_LINE + 15, K_PANEL, x + 24, y + 104, inner, 1, S_ICE).alpha = 0.18;
     const top = y + 120, room = y + h - 18 - top;
-    if (session.admin) this.tool.build(f, x + 24, top, inner, room, session, hour, focus);
+    if (session.admin) this.tool.build(f, x + 24, top, inner, room, session, hud, focus);
     else this.gate(f, x + 24, top, inner, focus);
   }
 

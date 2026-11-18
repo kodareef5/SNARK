@@ -323,6 +323,8 @@ export class HudModel {
   clock = "";
   /** Hours since midnight as the sky shows them (client/core/sky.ts), set by the app each frame. */
   hour = 12;
+  /** Device pixels to a CSS pixel, for a picture painted at the size it is shown. */
+  dpr = 1;
   /** Connection state, or "". */
   status = "";
   /** A word across the top such as "SPECTATING" or "DEAD", or "". */

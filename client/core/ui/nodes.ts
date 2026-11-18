@@ -66,6 +66,8 @@ export interface UiImage {
   data: Uint8ClampedArray;
   /** Changes when `data` does. */
   version: number;
+  /** Scaled smoothly, as a painting is, where a map's cells are kept square. */
+  smooth?: boolean;
   /**
    * A file the page fetches the picture from, for an image too large to hand over by its pixels: a sheet of inventory
    * pictures. `data` may then be empty, and is the same picture where a tool fills it.

@@ -4,7 +4,8 @@ import { SkyClock } from "../../client/core/sky.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { WorldSounds } from "../../client/core/sound/world.ts";
 import { K_DIAL, K_IMAGE, UiFrame } from "../../client/core/ui/nodes.ts";
-import { BAND_IN, BAND_OUT, DIAL_PIXELS, IMAGE_DIAL, KEY_SUNDIAL, KEY_SUNDIAL_PRESET, NUDGE_TICKS, NUMERAL_RADIUS, SEND_TICKS, SPRITE_LOW, SPRITE_MOON, SPRITE_PIXELS, SPRITE_SUN, SUN_RADIUS, Sundial, angleOfHour, elevation, hourOfAngle, paintDial, span, turnsOf } from "../../client/core/ui/sundial.ts";
+import { HudModel } from "../../client/core/hud.ts";
+import { BAND_IN, BAND_OUT, DIAL_LEAST, DIAL_MOST, IMAGE_DIAL, KEY_SUNDIAL, KEY_SUNDIAL_PRESET, NUDGE_TICKS, NUMERAL_RADIUS, SEND_TICKS, SPRITE_LOW, SPRITE_MOON, SPRITE_SUN, SUN_RADIUS, Sundial, angleOfHour, dialPixels, elevation, hourOfAngle, paintDial, span, spritePixels, turnsOf } from "../../client/core/ui/sundial.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CMD_CLOCK } from "../../shared/net/protocol.ts";
 import { CLOCK_HOUR_TICKS, CLOCK_SHARES, SUNRISE, SUNSET, UNIT_CLOCK, cycleTicks, dayTickOfHour, hourOfDay, hourOfShare, offsetForHour, shareOfHour, type ClockScales } from "../../shared/sim/clock.ts";
@@ -39,18 +40,22 @@ test("an hour and its place on the dial are one: noon up, midnight down, and eac
   expect([span(30), span(63), span(25 * 60), span(70 * 60), span(120 * 60)]).toEqual(["30 s", "1 min", "25 min", "1 h 10 min", "2 h"]);
 });
 
+/** The side the faces of these tests are painted at, and their markers'. */
+const SIDE = 640;
+const SPRITE = spritePixels(SIDE);
+
 /** The face's colour at an hour, in the middle of the band, as [red, green, blue, alpha]. */
 function bandAt(face: { width: number; data: Uint8ClampedArray }, hour: number, c: ClockScales): number[] {
   const t = angleOfHour(hour, c) * TAU, r = (BAND_IN + BAND_OUT) / 2;
-  const x = Math.floor((1 + r * Math.sin(t)) * DIAL_PIXELS / 2), y = Math.floor((1 - r * Math.cos(t)) * DIAL_PIXELS / 2);
+  const x = Math.floor((1 + r * Math.sin(t)) * SIDE / 2), y = Math.floor((1 - r * Math.cos(t)) * SIDE / 2);
   const at = (y * face.width + x) * 4;
   return [...face.data.slice(at, at + 4)];
 }
 const light = (p: number[]): number => p[0]! + p[1]! + p[2]!;
 
 test("the face is painted from the clock: day where the day falls, night where the night does, and the markers beneath", () => {
-  const unit = paintDial(UNIT_CLOCK), fast = paintDial(FAST);
-  expect([unit.width, unit.height]).toEqual([DIAL_PIXELS, DIAL_PIXELS + SPRITE_PIXELS]);
+  const unit = paintDial(UNIT_CLOCK, SIDE), fast = paintDial(FAST, SIDE);
+  expect([unit.width, unit.height, unit.smooth]).toEqual([SIDE, SIDE + SPRITE, true]);
   // Noon is bright and blue, midnight dark, and the hour after sunrise warm.
   const [noon, midnight, dawn] = [bandAt(unit, 12, UNIT_CLOCK), bandAt(unit, 0, UNIT_CLOCK), bandAt(unit, 6.25, UNIT_CLOCK)];
   expect(light(noon)).toBeGreaterThan(500);
@@ -63,17 +68,44 @@ test("the face is painted from the clock: day where the day falls, night where t
   expect([there > 16 && there < 17, light(bandAt(unit, there, UNIT_CLOCK)) > 400]).toEqual([true, true]);
   expect(light(bandAt(fast, hourOfAngle(0.2, FAST), FAST))).toBeLessThan(250);
   // Outside the rim nothing is painted; the middle is glass.
-  expect([unit.data[3], unit.data[((DIAL_PIXELS / 2) * DIAL_PIXELS + DIAL_PIXELS / 2) * 4 + 3]! > 100]).toEqual([0, true]);
+  expect([unit.data[3], unit.data[((SIDE / 2) * SIDE + SIDE / 2) * 4 + 3]! > 100]).toEqual([0, true]);
+  // Each hour's tick stands at that hour's angle on either clock, and the dial is dark between them; the longer ticks of
+  // midnight, sunrise, noon and sunset reach in further than the others.
+  const at = (face: typeof unit, turns: number, r: number): number => {
+    const x = Math.floor((1 + r * Math.sin(turns * TAU)) * SIDE / 2), y = Math.floor((1 - r * Math.cos(turns * TAU)) * SIDE / 2);
+    return light([...face.data.slice((y * face.width + x) * 4, (y * face.width + x) * 4 + 3)]);
+  };
+  for (const [face, c] of [[unit, UNIT_CLOCK], [fast, FAST]] as const) {
+    for (let hour = 0; hour < 24; hour++) {
+      expect([hour, at(face, angleOfHour(hour, c), 0.69) - at(face, angleOfHour(hour + 0.125, c), 0.69) > 150]).toEqual([hour, true]);
+      expect([hour, at(face, angleOfHour(hour, c), 0.65) > 400]).toEqual([hour, hour % 6 === 0]);
+    }
+    // Sunrise and sunset are warm on the band, whatever share of the dial the day has.
+    for (const hour of [SUNRISE, SUNSET]) {
+      const p = bandAt(face, hour, c);
+      expect(p[0]! - p[2]!).toBeGreaterThan(40);
+    }
+  }
   // The markers: each is lit in its middle and clear in its corners, the sun warm and the moon cool.
   const mid = (which: number): number[] => {
-    const at = ((DIAL_PIXELS + SPRITE_PIXELS / 2) * unit.width + which * SPRITE_PIXELS + SPRITE_PIXELS / 2) * 4;
+    const at = ((SIDE + SPRITE / 2) * unit.width + which * SPRITE + SPRITE / 2) * 4;
     return [...unit.data.slice(at, at + 4)];
   };
   expect(mid(SPRITE_SUN)[3]).toBe(255);
   expect(mid(SPRITE_SUN)[0]! - mid(SPRITE_SUN)[2]!).toBeGreaterThan(0);
   expect(mid(SPRITE_MOON)[2]! - mid(SPRITE_MOON)[0]!).toBeGreaterThan(-1);
-  expect(unit.data[(DIAL_PIXELS * unit.width + SPRITE_LOW * SPRITE_PIXELS) * 4 + 3]).toBe(0);
+  expect(unit.data[(SIDE * unit.width + SPRITE_LOW * SPRITE) * 4 + 3]).toBe(0);
+  // The face is painted at the size the screen shows it, in steps, within bounds.
+  expect([dialPixels(368, 1.5), dialPixels(368, 3), dialPixels(368, 0.5), dialPixels(368, 9)]).toEqual([576, DIAL_MOST, DIAL_LEAST, DIAL_MOST]);
 });
+
+/** A HUD model at an hour, for a screen 1,080 pixels high. */
+function hudAt(hour: number): HudModel {
+  const hud = new HudModel();
+  hud.hour = hour;
+  hud.scale = 1.5;
+  return hud;
+}
 
 /** A session as the sundial uses one: a clock, a tick, an offset, and the commands it sent, read back. */
 function fakeSession(c: ClockScales = UNIT_CLOCK) {
@@ -99,16 +131,17 @@ test("the dial is laid out on its own geometry: the sun on the band at the hour,
   for (const [c, hour] of [[UNIT_CLOCK, 17.5], [FAST, 17.5], [UNIT_CLOCK, 22.5]] as const) {
     const f = new UiFrame(), dial = new Sundial(), { session } = fakeSession(c);
     f.begin(16 / 9);
-    dial.build(f, 100, 120, 392, 500, session, hour, KEY_SUNDIAL);
+    dial.build(f, 100, 120, 392, 500, session, hudAt(hour), KEY_SUNDIAL);
     const { cx, cy, radius } = dial.box;
     const hit = f.find(KEY_SUNDIAL)!;
     expect([hit.kind, hit.interactive, hit.w, hit.h, hit.x + hit.w / 2, hit.y + hit.h / 2]).toEqual([K_DIAL, true, radius * 2, radius * 2, cx, cy]);
     const face = f.find(KEY_SUNDIAL + 1)!;
-    expect([face.kind, face.image, face.sw, f.images[IMAGE_DIAL]!.width]).toEqual([K_IMAGE, IMAGE_DIAL, DIAL_PIXELS, DIAL_PIXELS]);
+    const side = dialPixels(radius * 2, 1.5);
+    expect([face.kind, face.image, face.sw, f.images[IMAGE_DIAL]!.width, side >= radius * 2 * 1.5 && side < radius * 2 * 1.5 + 64]).toEqual([K_IMAGE, IMAGE_DIAL, side, side, true]);
     // The marker's middle lies on the band at the hour's angle, to a hundredth of a unit.
     const sun = f.find(KEY_SUNDIAL + 2)!, at = angleOfHour(hour, c) * TAU;
     expect(Math.hypot(sun.x + sun.w / 2 - (cx + radius * SUN_RADIUS * Math.sin(at)), sun.y + sun.h / 2 - (cy - radius * SUN_RADIUS * Math.cos(at)))).toBeLessThan(0.01);
-    expect(sun.sx).toBe((elevation(hour, c) >= 0.26 ? SPRITE_SUN : elevation(hour, c) >= 0 ? SPRITE_LOW : SPRITE_MOON) * SPRITE_PIXELS);
+    expect([sun.sx, sun.sy, sun.sw]).toEqual([(elevation(hour, c) >= 0.26 ? SPRITE_SUN : elevation(hour, c) >= 0 ? SPRITE_LOW : SPRITE_MOON) * spritePixels(side), side, spritePixels(side)]);
     // Each numeral is centred where its hour falls.
     for (let i = 0; i < 8; i++) {
       const n = f.find(7110 + i)!, a = angleOfHour(i * 3, c) * TAU;
@@ -128,7 +161,7 @@ test("the dial is laid out on its own geometry: the sun on the band at the hour,
   // Half a game hour before sunset on a plain clock is 63 real seconds; on the quick day, about three.
   const caption = (c: ClockScales, hour: number): string => {
     const f = new UiFrame(), dial = new Sundial();
-    dial.build(f, 0, 0, 392, 500, fakeSession(c).session, hour, 0);
+    dial.build(f, 0, 0, 392, 500, fakeSession(c).session, hudAt(hour), 0);
     return f.find(KEY_SUNDIAL + 4)!.text;
   };
   expect([caption(UNIT_CLOCK, 17.5), caption(FAST, 17.5), caption(UNIT_CLOCK, 22.5)]).toEqual(["sunset in 1 min", "sunset in 3 s", "sunrise in 16 min"]);
@@ -136,7 +169,7 @@ test("the dial is laid out on its own geometry: the sun on the band at the hour,
 
 test("a drag turns the hour under the hand at once, tells the server at most ten times a second, and ends with one last message", () => {
   const f = new UiFrame(), dial = new Sundial(), { s, session, sent } = fakeSession();
-  dial.build(f, 0, 0, 392, 500, session, 9, KEY_SUNDIAL);
+  dial.build(f, 0, 0, 392, 500, session, hudAt(9), KEY_SUNDIAL);
   const { cx, cy, radius } = dial.box;
   const point = (hour: number): [number, number] => {
     const a = angleOfHour(hour, UNIT_CLOCK) * TAU;
@@ -172,11 +205,19 @@ test("a drag turns the hour under the hand at once, tells the server at most ten
   s.serverTick += 61;
   dial.pump(session, true);
   expect(Number.isNaN(dial.held)).toBe(true);
+  // A screen shut mid-drag, by Escape or by the server's rule, ends the turn there.
+  dial.pointer(0, KEY_SUNDIAL, ...point(3), session);
+  dial.pump(session, true);
+  const before = sent.length;
+  dial.pump(session, false);
+  expect([sent.length - before, sent.at(-1)!.last, sent.at(-1)!.hour]).toEqual([1, true, 3]);
+  dial.pointer(1, KEY_SUNDIAL, ...point(4), session);
+  expect(sent.length - before).toBe(1);
 });
 
 test("keys and the pad nudge by quarter hours, or whole ones, and a run of nudges is one turn", () => {
   const f = new UiFrame(), dial = new Sundial(), { s, session, sent } = fakeSession();
-  dial.build(f, 0, 0, 392, 500, session, 17.4, KEY_SUNDIAL);
+  dial.build(f, 0, 0, 392, 500, session, hudAt(17.4), KEY_SUNDIAL);
   expect(dial.adjust(KEY_SUNDIAL + 1, 1, false)).toBe(false);
   for (const [by, coarse, want] of [[1, false, 17.5], [1, false, 17.75], [-1, true, 17], [-1, false, 16.75], [1, true, 17]] as const) {
     expect(dial.adjust(KEY_SUNDIAL, by, coarse)).toBe(true);

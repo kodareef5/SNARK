@@ -201,6 +201,11 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
     ui.openMenu();
     ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, ada);
     build();
+    // Enter and Space on the dial press its middle, where the hour is read, and turn nothing.
+    ui.key("Enter", true, false, ada);
+    ui.key("Space", true, false, ada);
+    build();
+    expect([ui.menuFocus, sent.length, Number.isNaN(ui.creativeScreen.sundial.held)]).toEqual([KEY_SUNDIAL, 0, true]);
     const box = ui.creativeScreen.sundial.box;
     const at = (hour: number): [number, number] => {
       const a = angleOfHour(hour, UNIT_CLOCK) * Math.PI * 2;

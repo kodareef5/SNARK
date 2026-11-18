@@ -6,15 +6,17 @@
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { CMD_CLOCK } from "../../../shared/net/protocol.ts";
 import { SUNRISE, SUNSET, cycleTicks, dayTickOfHour, formatHour, hourOfDay, shareOfHour, type ClockScales } from "../../../shared/sim/clock.ts";
+import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_DIAL, K_IMAGE, K_PANEL, lineHeight, wrapText, type UiFrame, type UiImage } from "./nodes.ts";
 import { S_DIAL_HOUR, S_HUD_HIT, S_ICE, S_KEY, S_KEY_SMALL, S_LABEL, S_MENU_NOTE } from "./style.ts";
 
 export const IMAGE_DIAL = 4;
-/** The face's side, in pixels: sharp at the dial's size on a screen 1,440 pixels high. */
-export const DIAL_PIXELS = 640;
-/** A marker's side on the sheet, under the face: the sun, the sun low in the sky, the moon. */
-export const SPRITE_PIXELS = 96;
+/** The face's side in pixels is the dial's on the screen, in steps of DIAL_STEP, from the least to the most here. */
+export const DIAL_STEP = 64;
+export const DIAL_LEAST = 256;
+export const DIAL_MOST = 1024;
+/** The markers on the sheet's last row, each a square MARKER of the face's side: the sun, the sun low in the sky, the moon. */
 export const SPRITE_SUN = 0;
 export const SPRITE_LOW = 1;
 export const SPRITE_MOON = 2;
@@ -32,7 +34,7 @@ const TICK_QUARTER = 0.7;
 export const NUMERAL_RADIUS = 0.548;
 export const INNER = 0.44;
 /** A marker's side, as a share of the dial's. */
-const MARKER = 0.21;
+export const MARKER = 0.21;
 /** Elevation of the sun below which it is drawn low and warm. */
 const LOW_SUN = 0.26;
 
@@ -93,7 +95,7 @@ export function span(seconds: number): string {
 }
 
 /** The band's colour at an elevation of the sun: midnight's blue, a violet dusk, the horizon's amber, then the day's ice. */
-const SKY: readonly (readonly [number, number])[] = [[-1, 0x0a1828], [-0.5, 0x12294a], [-0.13, 0x3a3d6e], [0, 0xe2946a], [0.11, 0xf0c38e], [0.34, 0x8ecde6], [1, 0xc4ecf8]];
+const SKY: readonly (readonly [number, number])[] = [[-1, 0x0f2546], [-0.5, 0x163563], [-0.13, 0x3d4277], [0, 0xe2946a], [0.11, 0xf0c38e], [0.34, 0x79bddb], [1, 0xa8dcf0]];
 
 function sky(e: number): number {
   let i = 1;
@@ -139,12 +141,20 @@ class Pen {
   }
 }
 
+/** The side of a marker on the sheet of a face `size` pixels square. */
+export const spritePixels = (size: number): number => Math.round(size * MARKER);
+
+/** The face's side in pixels for a dial `units` wide on a canvas shown `pixels` device pixels to a unit. */
+export function dialPixels(units: number, pixels: number): number {
+  return Math.max(DIAL_LEAST, Math.min(DIAL_MOST, Math.ceil((units * pixels) / DIAL_STEP) * DIAL_STEP));
+}
+
 /**
- * The face for a clock, `size` pixels square, and under it the three markers, SPRITE_PIXELS each. Rings, the band of the
- * sky, the hour ticks and the stars are measured from the clock, so they agree with angleOfHour to the pixel.
+ * The face for a clock, `size` pixels square, and under it the three markers. Rings, the band of the sky, the hour ticks
+ * and the stars are measured from the clock, so they agree with angleOfHour to the pixel.
  */
-export function paintDial(c: ClockScales, size = DIAL_PIXELS): UiImage {
-  const width = size, height = size + SPRITE_PIXELS;
+export function paintDial(c: ClockScales, size: number): UiImage {
+  const sprite = spritePixels(size), width = size, height = size + sprite;
   const data = new Uint8ClampedArray(width * height * 4);
   const pen = new Pen();
   const px = 2 / size;
@@ -198,10 +208,10 @@ export function paintDial(c: ClockScales, size = DIAL_PIXELS): UiImage {
     }
   }
   stars(data, width, size, c);
-  sprite(data, width, size, SPRITE_SUN, 0xfffbef, 0xffdf9c, 0xffcf86, 0.5);
-  sprite(data, width, size, SPRITE_LOW, 0xfff0d2, 0xffae6e, 0xff9358, 0.55);
-  sprite(data, width, size, SPRITE_MOON, 0xe8f2f8, 0xd2e3ee, 0x9fc6de, 0.26);
-  return { width, height, data, version: 1 };
+  marker(data, width, size, sprite, SPRITE_SUN, 0xfffbef, 0xffdf9c, 0xffcf86, 0.5);
+  marker(data, width, size, sprite, SPRITE_LOW, 0xfff0d2, 0xffae6e, 0xff9358, 0.55);
+  marker(data, width, size, sprite, SPRITE_MOON, 0xe8f2f8, 0xd2e3ee, 0x9fc6de, 0.26);
+  return { width, height, data, version: 1, smooth: true };
 }
 
 /** A few stars in the band where the night is deepest, the same each time for a clock. */
@@ -213,9 +223,9 @@ function stars(data: Uint8ClampedArray, width: number, size: number, c: ClockSca
     const e = elevation(hourOfAngle(turns, c), c);
     if (e > -0.3) continue;
     const sx = (1 + along * Math.sin(turns * TAU)) * size / 2, sy = (1 - along * Math.cos(turns * TAU)) * size / 2;
-    const glow = Math.min(1, (-e - 0.3) * 2.2) * (0.35 + 0.65 * bright);
-    for (let y = Math.floor(sy - 2); y <= sy + 2; y++) for (let x = Math.floor(sx - 2); x <= sx + 2; x++) {
-      const k = glow * clamp01(1.25 - Math.hypot(x + 0.5 - sx, y + 0.5 - sy) / (0.9 + bright * 0.5));
+    const glow = Math.min(1, (-e - 0.3) * 2.2) * (0.35 + 0.65 * bright), reach = (size / 640) * (0.9 + bright * 0.5);
+    for (let y = Math.floor(sy - 1 - reach); y <= sy + 1 + reach; y++) for (let x = Math.floor(sx - 1 - reach); x <= sx + 1 + reach; x++) {
+      const k = glow * clamp01(1.25 - Math.hypot(x + 0.5 - sx, y + 0.5 - sy) / reach);
       const at = (y * width + x) * 4;
       if (k <= 0 || data[at + 3] === 0) continue;
       for (let ch = 0; ch < 3; ch++) data[at + ch] = data[at + ch]! + (0xe8 + (ch === 2 ? 0x17 : 0) - data[at + ch]!) * k;
@@ -224,11 +234,11 @@ function stars(data: Uint8ClampedArray, width: number, size: number, c: ClockSca
 }
 
 /** A marker on the sheet's last row: a soft glow, the ring a hand grips, and a disc, the moon's a crescent over its dark side. */
-function sprite(data: Uint8ClampedArray, width: number, size: number, which: number, core: number, edge: number, glow: number, glowAlpha: number): void {
+function marker(data: Uint8ClampedArray, width: number, size: number, side: number, which: number, core: number, edge: number, glow: number, glowAlpha: number): void {
   const pen = new Pen();
-  const half = SPRITE_PIXELS / 2, px = 1 / half, moon = which === SPRITE_MOON;
-  for (let py = 0; py < SPRITE_PIXELS; py++) {
-    for (let pxl = 0; pxl < SPRITE_PIXELS; pxl++) {
+  const half = side / 2, px = 1 / half, moon = which === SPRITE_MOON;
+  for (let py = 0; py < side; py++) {
+    for (let pxl = 0; pxl < side; pxl++) {
       const x = (pxl + 0.5) / half - 1, y = (py + 0.5) / half - 1, q = Math.hypot(x, y);
       if (q > 1) continue;
       pen.clear();
@@ -240,17 +250,17 @@ function sprite(data: Uint8ClampedArray, width: number, size: number, which: num
         // The lit crescent: the disc less a disc set toward the upper right.
         pen.over(core, disc * (1 - ring(Math.hypot(x - 0.11, y + 0.07), -1, 0.22, px)));
       } else pen.over(mixColour(core, edge, clamp01(q / 0.27)), disc);
-      pen.put(data, ((size + py) * width + which * SPRITE_PIXELS + pxl) * 4);
+      pen.put(data, ((size + py) * width + which * side + pxl) * 4);
     }
   }
 }
 
-/** The face and markers of the clock last drawn, painted again only for another clock. */
+/** The face and markers last drawn, painted again only for another clock or another size on the screen. */
 let painted: { key: string; image: UiImage } | null = null;
 
-function faceFor(f: UiFrame, c: ClockScales): UiImage {
-  const key = `${c.cycle}/${c.day}/${c.night}`;
-  if (painted?.key !== key) painted = { key, image: paintDial(c) };
+function faceFor(f: UiFrame, c: ClockScales, size: number): UiImage {
+  const key = `${c.cycle}/${c.day}/${c.night}/${size}`;
+  if (painted?.key !== key) painted = { key, image: paintDial(c, size) };
   if (f.images[IMAGE_DIAL] !== painted.image) {
     painted.image.version = (f.images[IMAGE_DIAL]?.version ?? 0) + 1;
     f.images[IMAGE_DIAL] = painted.image;
@@ -375,12 +385,12 @@ export class Sundial {
 
   /**
    * Lays the dial out in the area at `x`, `y`, `w` wide and `h` high: the dial, the four hours a button sets, and two lines
-   * on what it does. `hour` is the hour the sky shows.
+   * on what it does. The face is painted at the size the screen shows it (hud.scale, hud.dpr), and the hour is the sky's.
    */
-  build(f: UiFrame, x: number, y: number, w: number, h: number, session: ClientSession, hour: number, focus: number): void {
+  build(f: UiFrame, x: number, y: number, w: number, h: number, session: ClientSession, hud: HudModel, focus: number): void {
     const c = session.clock;
     this.clock = { cycle: c.cycle, day: c.day, night: c.night };
-    const shown = Number.isNaN(this.held) ? hour : this.held;
+    const shown = Number.isNaN(this.held) ? hud.hour : this.held;
     this.shown = shown;
     const lines: string[] = [];
     const cycle = cycleTicks(c), day = dayTickOfHour(SUNSET, c) - dayTickOfHour(SUNRISE, c);
@@ -394,9 +404,10 @@ export class Sundial {
     this.box.radius = radius;
 
     const face = f.add(KEY_SUNDIAL_FACE, K_IMAGE, left, y, d, d, S_LABEL);
-    faceFor(f, c);
+    const size = dialPixels(d, hud.scale * hud.dpr), side = spritePixels(size);
+    faceFor(f, c, size);
     face.image = IMAGE_DIAL;
-    face.sw = face.sh = DIAL_PIXELS;
+    face.sw = face.sh = size;
     // The numerals, every three hours, those of midnight, sunrise, noon and sunset the larger.
     for (let i = 0; i < 8; i++) {
       const at = angleOfHour(i * 3, c), major = i % 2 === 0, style = major ? S_KEY : S_KEY_SMALL;
@@ -407,14 +418,14 @@ export class Sundial {
     const e = elevation(shown, c), at = angleOfHour(shown, c), m = Math.round(d * MARKER);
     const sun = f.add(KEY_SUNDIAL_SUN, K_IMAGE, cx + radius * SUN_RADIUS * Math.sin(at * TAU) - m / 2, cy - radius * SUN_RADIUS * Math.cos(at * TAU) - m / 2, m, m, S_LABEL);
     sun.image = IMAGE_DIAL;
-    sun.sx = (e >= LOW_SUN ? SPRITE_SUN : e >= 0 ? SPRITE_LOW : SPRITE_MOON) * SPRITE_PIXELS;
-    sun.sy = DIAL_PIXELS;
-    sun.sw = sun.sh = SPRITE_PIXELS;
+    sun.sx = (e >= LOW_SUN ? SPRITE_SUN : e >= 0 ? SPRITE_LOW : SPRITE_MOON) * side;
+    sun.sy = size;
+    sun.sw = sun.sh = side;
     // The hour as the game writes it, and how long, in real time, until the sun next rises or sets.
-    f.text(KEY_SUNDIAL_TIME, cx - radius * INNER, cy - 34, radius * INNER * 2, S_DIAL_HOUR, formatHour(shown));
+    f.text(KEY_SUNDIAL_TIME, cx - radius * INNER, cy - 40, radius * INNER * 2, S_DIAL_HOUR, formatHour(shown));
     const t = dayTickOfHour(shown, c), rise = dayTickOfHour(SUNRISE, c), set = dayTickOfHour(SUNSET, c), up = t >= rise && t < set;
     const next = up ? set - t : frac((rise - t) / cycle) * cycle;
-    f.text(KEY_SUNDIAL_NEXT, cx - radius * INNER, cy + 20, radius * INNER * 2, S_KEY, `${up ? "sunset" : "sunrise"} in ${span(next / TICK_RATE)}`).alpha = 0.8;
+    f.text(KEY_SUNDIAL_NEXT, cx - radius * INNER, cy + 12, radius * INNER * 2, S_KEY, `${up ? "sunset" : "sunrise"} in ${span(next / TICK_RATE)}`).alpha = 0.8;
     const hit = f.add(KEY_SUNDIAL, K_DIAL, left, y, d, d, S_HUD_HIT);
     hit.interactive = true;
     hit.label = `Time of day ${formatHour(shown)}. Drag the sun, or use the arrow keys.`;

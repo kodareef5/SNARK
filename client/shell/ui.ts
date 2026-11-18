@@ -138,6 +138,7 @@ export class UiView {
           b.version = image.version;
           b.src = crop;
           const canvas = b.el as HTMLCanvasElement;
+          s.imageRendering = image.smooth ? "auto" : "pixelated";
           if (canvas.width !== w) canvas.width = w;
           if (canvas.height !== h) canvas.height = h;
           // The part shown goes straight from the picture's own pixels onto the node.

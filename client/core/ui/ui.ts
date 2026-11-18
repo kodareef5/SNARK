@@ -130,7 +130,9 @@ export class Ui {
       }
       if (typing && down && !repeat && (code === "Enter" || code === "NumpadEnter")) { if (session) this.creativeScreen.submit(session); return true; }
       if (down && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) this.moveFocus(code === "ArrowUp" || (code === "Tab" && this.menuShift) ? -1 : 1);
-      if (down && !repeat && (code === "Enter" || code === "Space" || code === "NumpadEnter")) this.pointer(0, this.menuFocus, 0, 0, 0, session);
+      // A key presses the middle of what has the focus, as the pad does, so a dial is not turned to where the key never was.
+      const n = this.frame.find(this.menuFocus);
+      if (down && !repeat && (code === "Enter" || code === "Space" || code === "NumpadEnter")) this.pointer(0, this.menuFocus, n ? n.x + n.w / 2 : 0, n ? n.y + n.h / 2 : 0, 0, session);
       return true;
     }
     const con = this.console;
@@ -326,7 +328,7 @@ export class Ui {
           buildSettings(f, this.settings, hud.micLevel, this.menuFocus);
         } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus, this.helpGroup, this.settings.padGlyphs);
         else if (creative && session) {
-          this.creativeScreen.build(f, session, hud.hour, this.menuFocus);
+          this.creativeScreen.build(f, session, hud, this.menuFocus);
           // The password's field gives way to the tools once the server has given the role.
           if (!f.find(this.menuFocus)?.interactive && !this.focusNext) this.focusTo(this.creativeScreen.first(session));
         } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);

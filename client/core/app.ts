@@ -1337,6 +1337,7 @@ export class App {
     const beams = this.scene.beams;
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
+    hud.dpr = this.dpr;
     this.scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
     this.scene.viewHeight = height;
     this.scene.now = nowMs;
