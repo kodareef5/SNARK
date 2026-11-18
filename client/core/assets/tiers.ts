@@ -87,7 +87,10 @@ export interface Tier {
    * half that (render/world-surfaces.ts `WorldFinishes`). 0 for none.
    */
   readonly finishes: number;
-  /** Whether a finish near the eye is read where the view's ray meets its painted height, a few steps into it (render/world-surfaces.ts `relief`). */
+  /**
+   * Whether a finish near the eye is read where the view's ray meets its painted height, a few steps into it
+   * (render/world-surfaces.ts `relief`). No tier does: on ultra's street it cost more than the whole budget the finishes have there.
+   */
   readonly relief: boolean;
   /**
    * What a frame may spend (render/budget.ts): triangles, which crowns near give up for what stands above them in the
@@ -158,7 +161,7 @@ export const TIERS: readonly Tier[] = [
   },
   {
     name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 2, canvas: ULTRA_CANVAS, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
-    lit: true, split: 384, reach: { bases: 2048, city: 4096, trees: 3000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.1, city: { levels: [boxes(600), lattice(900), bare(1800), mass(2800, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: true, clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, city: 4096, trees: 3000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.1, city: { levels: [boxes(600), lattice(900), bare(1800), mass(2800, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: false, clouds: 2, water: "simple",
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096 }, bodyError: 1,
   },
 ];

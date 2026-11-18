@@ -15,8 +15,8 @@ export const WORLD_SHARP = 0.6;
  * afar, and the touch rule's light finish, which read no packed map, are lit with.
  */
 export const WORLD_MRO: readonly (readonly [number, number, number])[] = [
-  [240, 225, 0], [251, 246, 0], [244, 245, 0], [242, 184, 0], [217, 237, 0], [234, 238, 0], [233, 225, 0], [249, 220, 0],
-  [254, 225, 0], [239, 233, 0], [252, 218, 0], [249, 217, 0], [255, 161, 1], [254, 205, 0], [245, 221, 0], [255, 54, 0],
+  [240, 225, 0], [251, 246, 0], [183, 221, 0], [242, 184, 0], [217, 237, 0], [234, 238, 0], [233, 225, 0], [195, 225, 0],
+  [254, 225, 0], [239, 233, 0], [207, 192, 0], [249, 217, 0], [255, 161, 1], [254, 205, 0], [245, 221, 0], [255, 54, 0],
 ];
 /**
  * The base-two logarithm of the tiles a pixel crosses beyond which a finish begins to be read as from afar, and the
@@ -316,7 +316,7 @@ const EDGES: Record<string, readonly [number, number, number]> = {
 };
 const edgings = SURFACE_NAMES.map((name) => EDGES[name] ?? [0.6, 0.6, 0]);
 /** What runoff leaves, as a multiplier of the wall's light: grime, rust and salt. */
-const LEFT = { grime: [0.5, 0.48, 0.44], rust: [0.95, 0.5, 0.28], salt: [1.35, 1.33, 1.28] } as const;
+const LEFT = { grime: [0.38, 0.37, 0.34], rust: [0.95, 0.5, 0.28], salt: [1.35, 1.33, 1.28] } as const;
 const CONCRETE = SURFACE_NAMES.indexOf("concrete");
 const weatherings = SURFACE_NAMES.map((name) => SURFACE_WEATHERING[name]);
 const smooth = (a: number, b: number, x: number): number => {
@@ -346,7 +346,7 @@ export function weatherFrame(ox: number, oy: number, oz: number, nx: number, ny:
  * weatherFrame; `seed` is its instance's, from 0 to 1 (staticSeed); `over` the metres over the ground, whose storeys of
  * WEATHER_STOREY the masks keep to (a near chunk's frame is the chunk's, not a building's), and `open` the
  * sky's share there (skyopen.ts); (x, y, z) the world point, `facesX` whether its face looks more along x than z in
- * the world, `dist` metres from the eye and `footprint` metres a pixel covers. Every static face's value moves from bay to bay and across 10 m; on a wall, within WEATHER_GONE of the eye,
+ * the world, `dist` metres from the eye and `footprint` metres a pixel covers. Every static face's value moves from bay to bay and across 5 to 30 m; on a wall, within WEATHER_GONE of the eye,
  * the masks (content/surfaces.ts WEATHER_MATERIAL) put runoff below each slab line, more where the sky's rain falls on
  * it and in leaky bays, a damp foot with a ragged tide line and growth, paint let go to the concrete under it, and the
  * formwork's joints, each as much as the finish's SURFACE_WEATHERING says, and dirt within EDGE_DIRT over each floor.
@@ -354,7 +354,7 @@ export function weatherFrame(ox: number, oy: number, oz: number, nx: number, ny:
 export function weathered(albedo: Out, orm: Out, index: number, along: number, wall: number, seed: number, over: number, open: number,
   x: number, y: number, z: number, facesX: boolean, dist: number, footprint: number, city: Numbers, sample: WorldSample): void {
   const w = weatherings[index]!;
-  const value = 1 + w.value * ((surfaceNoise(x / 11 + y / 7, z / 11 - y / 5) - 0.5) * 0.44 + (fract(seed * 3.7) - 0.5) * 0.24);
+  const value = 1 + w.value * ((surfaceNoise(x / 7 + y / 5, z / 7 - y / 4) - 0.5) * 0.7 + (fract(seed * 3.7) - 0.5) * 0.3);
   for (let c = 0; c < 3; c++) albedo[c]! *= value;
   const fade = 1 - smooth(WEATHER_NEAR, WEATHER_GONE, dist);
   if (wall === 0 || fade <= 0) return;
@@ -372,14 +372,14 @@ export function weathered(albedo: Out, orm: Out, index: number, along: number, w
       albedo[c] = (faded * (1 - lost) + bare[c]! * city[c]! * 0.85 * lost) * (1 - 0.3 * rim);
     }
   }
-  const runs = mask[0]! * w.runs * leak * (0.35 + 0.65 * open) * fade, left = LEFT[w.left];
+  const runs = mask[0]! * w.runs * leak * (0.5 + 0.5 * open) * fade, left = LEFT[w.left], wash = 0.15 * w.runs * leak * fade;
   const edge = (0.35 + 0.65 * fract(seed * 5.31)) * (0.55 + 0.9 * mask[1]!), foot = (1 - smooth(edge - 0.06, edge, over)) * w.damp * fade;
   const growth = (1 - smooth(0.1, 0.45 * (0.6 + mask[1]!), over)) * foot * clamp(city[6]! * 2.5 + 0.2);
   const joints = mask[3]! * w.joints * fade;
   const floor = over - Math.floor(over / WEATHER_STOREY) * WEATHER_STOREY, dirt = (1 - smooth(0, EDGE_DIRT, floor)) * fade;
   const green = [0.55, 0.7, 0.42];
   for (let c = 0; c < 3; c++) {
-    albedo[c] = albedo[c]! * (1 + (left[c]! - 1) * runs) * (1 - 0.38 * foot) * (1 - 0.4 * joints) * (1 - 0.3 * dirt);
+    albedo[c] = albedo[c]! * (1 + (left[c]! - 1) * runs) * (1 - 0.38 * foot) * (1 - 0.4 * joints) * (1 - 0.3 * dirt) * (1 - wash);
     albedo[c] = albedo[c]! * (1 - growth + growth * green[c]!);
   }
   orm[1] = orm[1]! * (1 - 0.3 * foot);
@@ -718,7 +718,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, vec3 own, vec2 place, 
   int storey, bay;
   bool wall = staticWall(own, ln, place, over, along, sense, storey, bay, seed);
   vec3 p = rel + uWorldEye;
-  albedo *= 1.0 + WV[id] * ((surfaceNoise(vec2(p.x / 11.0 + p.y / 7.0, p.z / 11.0 - p.y / 5.0)) - 0.5) * 0.44 + (fract(seed * 3.7) - 0.5) * 0.24);
+  albedo *= 1.0 + WV[id] * ((surfaceNoise(vec2(p.x / 7.0 + p.y / 5.0, p.z / 7.0 - p.y / 4.0)) - 0.5) * 0.7 + (fract(seed * 3.7) - 0.5) * 0.3);
   float fade = 1.0 - smoothstep(${fl(WEATHER_NEAR)}, ${fl(WEATHER_GONE)}, length(rel));
   if (!wall || fade <= 0.0) return;
   float k = floor(seed * 8.0);
@@ -745,11 +745,11 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, vec3 own, vec2 place, 
     }
     albedo = (mix(albedo, vec3(grey * 1.1), chalk) * (1.0 - lost) + bare * uSurfaceCity[0].rgb * 0.85 * lost) * (1.0 - 0.3 * rim);
   }
-  float runs = m.r * x.x * leak * (0.35 + 0.65 * open) * fade;
+  float runs = m.r * x.x * leak * (0.5 + 0.5 * open) * fade;
   float edge = (0.35 + 0.65 * fract(seed * 5.31)) * (0.55 + 0.9 * m.g), foot = (1.0 - smoothstep(edge - 0.06, edge, over)) * x.y * fade;
   float growth = (1.0 - smoothstep(0.1, 0.45 * (0.6 + m.g), over)) * foot * clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0);
   float dirt = (1.0 - smoothstep(0.0, ${fl(EDGE_DIRT)}, over - floor(over / ${fl(WEATHER_STOREY)}) * ${fl(WEATHER_STOREY)})) * fade;
-  albedo *= (1.0 + (WL[id] - 1.0) * runs) * (1.0 - 0.38 * foot) * (1.0 - 0.4 * m.a * x.w * fade) * (1.0 - 0.3 * dirt);
+  albedo *= (1.0 + (WL[id] - 1.0) * runs) * (1.0 - 0.38 * foot) * (1.0 - 0.4 * m.a * x.w * fade) * (1.0 - 0.3 * dirt) * (1.0 - 0.15 * x.x * leak * fade);
   albedo *= mix(vec3(1.0), vec3(0.55, 0.7, 0.42), growth);
   orm.y *= 1.0 - 0.3 * foot;
   worldSharp = orm.y < ${fl(WORLD_SHARP)};
@@ -763,19 +763,22 @@ void edged(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec2 face, u
   vec2 fx = dFdx(face), fy = dFdy(face);
   float height = (painted - WM[id].w) / WM[id].z;
   float det = fx.x * fy.y - fy.x * fx.y;
-  if (edges == 0u || abs(det) < 1e-12) return;
-  vec3 pu = (dpx * fy.y - dpy * fx.y) / det, pv = (dpy * fx.x - dpx * fy.x) / det;
-  float w = length(pu), h = length(pv);
-  float far[4] = float[4](face.x * w, (1.0 - face.x) * w, face.y * h, (1.0 - face.y) * h);
-  float dist = -1.0;
-  vec3 o = vec3(0.0);
-  for (int k = 0; k < 4; k++) if ((edges & (1u << uint(k))) != 0u && (dist < 0.0 || far[k] < dist)) {
-    dist = far[k];
-    o = (k < 2 ? pu / w : pv / h) * (k == 0 || k == 2 ? -1.0 : 1.0);
-  }
-  if (dist < 0.0) return;
-  vec3 p = rel + uWorldEye, e = WE[id];
+  // Nothing of an edge shows on a pixel four of the widest arrises wide, nor three of them from the edge.
   float footprint = max(length(dpx), length(dpy));
+  if (edges == 0u || abs(det) < 1e-12 || footprint >= ${fl(EDGE_ROUND * 1.4 * 4)}) return;
+  vec3 pu = (dpx * fy.y - dpy * fx.y) / det, pv = (dpy * fx.x - dpx * fy.x) / det;
+  float w = length(pu), h = length(pv), dist = 1e9, d;
+  vec3 o = vec3(0.0);
+  d = face.x * w;
+  if ((edges & 1u) != 0u && d < dist) { dist = d; o = -pu / w; }
+  d = (1.0 - face.x) * w;
+  if ((edges & 2u) != 0u && d < dist) { dist = d; o = pu / w; }
+  d = face.y * h;
+  if ((edges & 4u) != 0u && d < dist) { dist = d; o = -pv / h; }
+  d = (1.0 - face.y) * h;
+  if ((edges & 8u) != 0u && d < dist) { dist = d; o = pv / h; }
+  if (dist > ${fl(EDGE_ROUND * 1.4 * 3)}) return;
+  vec3 p = rel + uWorldEye, e = WE[id];
   float arris = ${fl(EDGE_ROUND)} * (0.6 + 0.8 * surfaceNoise(vec2(p.x / 0.37 + p.z / 0.53, p.y / 0.41)));
   albedo *= 1.0 + 0.18 * (1.0 - smoothstep(0.0, arris * 2.5, dist)) * e.x * (1.0 - smoothstep(arris, arris * 4.0, footprint));
 #ifdef WORLD_EDGES

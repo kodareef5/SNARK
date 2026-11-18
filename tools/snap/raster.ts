@@ -219,7 +219,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     }
     if (weather && weather[3]! >= 0 && !ground && !touch) {
       weathered(albedo, worldOrm, index, weather[0]!, weather[2]!, weather[3]!, over, open, rx + p.camX, ry + p.camY, rz + p.camZ, Math.abs(nx) > Math.abs(nz), dist, footprint, p.surfaceCity, sample);
-      if (edge && edge[0]! >= 0) edged(albedo, worldOrm, normal, index, edge[0]!, edge[1]!, edge[2]!, edge[3]!, h, rx + p.camX, ry + p.camY, rz + p.camZ, footprint, p.surfaceCity, p.tier.finishes < 1024);
+      if (edge && edge[0]! >= 0 && p.tier.finishes <= 1024) edged(albedo, worldOrm, normal, index, edge[0]!, edge[1]!, edge[2]!, edge[3]!, h, rx + p.camX, ry + p.camY, rz + p.camZ, footprint, p.surfaceCity, p.tier.finishes < 1024);
     }
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;

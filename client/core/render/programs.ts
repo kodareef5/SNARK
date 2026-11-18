@@ -45,12 +45,13 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
  * the haze and looks the sun's shadow up. The ground has a vertex text of its own on a lit tier, `litVertex`. A near
  * static's program (`weather`) weathers its walls where the tier reads the finishes in full (world-surfaces.ts
- * `ownVertex`, `weathered`).
+ * `ownVertex`, `weathered`), and rounds its edges on high and draws their wear alone on medium (`edged`); ultra's
+ * street does not yet afford them beside its wider finishes.
  */
 function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>, litVertex?: string, weather = false): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
   const weathers = weather && tier.finish === "full";
-  return { vertex: litVertex ?? (weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex)), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + (weathers ? `#define WORLD_WEATHER\n#define ${tier.finishes >= 1024 ? "WORLD_EDGES" : "WORLD_EDGE_LINE"}\n` : "") + shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }) } };
+  return { vertex: litVertex ?? (weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex)), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + (weathers ? `#define WORLD_WEATHER\n${tier.finishes > 1024 ? "" : tier.finishes === 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }) } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */

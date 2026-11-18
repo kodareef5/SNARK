@@ -57,10 +57,10 @@ export const SURFACE_FINISHES: Record<SurfaceName, SurfaceFinish> = {
   rock: finish("mineral", 3, 0.3, 0.23, 0.08, 30, 0),
   gravel: finish("dry", 1.5, 0.2, 0.2, 0.08, 30, 0),
   asphalt: finish("mineral", 2.5, 0.1, 0.4, 0.1, 8, 0),
-  paving: finish("masonry", 2, 0.25, 0.32, 0.06, 20, 0, [0.25, 0.25]),
+  paving: finish("masonry", 3, 0.25, 0.32, 0.06, 25, 0, [1 / 3, 1 / 3]),
   concrete: finish("masonry", 2.5, 0.46, 0.45, 0.06, 5, 2),
   brick: finish("masonry", 1.92, 0.14, 0.4, 0.06, 12, 0, [0.125, 1 / 12]),
-  clay: finish("masonry", 2, 0.2, 0.28, 0.08, 60, 0, [0.25, 1 / 6]),
+  clay: finish("masonry", 2.9, 0.2, 0.28, 0.08, 60, 0, [1 / 19, 1 / 11]),
   rust: finish("metal", 2, 0.18, 0.4, 0.08, 5, 0),
   steel: finish("metal", 2, 0.4, 0.28, 0.04, 2, 0),
   plaster: finish("paint", 2.5, 0.7, 0.35, 0.05, 3, 0),
@@ -71,7 +71,7 @@ export const SURFACE_FINISHES: Record<SurfaceName, SurfaceFinish> = {
 /**
  * How each finish weathers on a wall (world-surfaces.ts `weathered`), each a share of the most: runoff below each slab
  * edge, a damp foot, paint letting go to the concrete under it, the formwork's joints, and its value from bay to bay
- * and across 10 m, which roofs keep too; and what its runoff leaves.
+ * and across 5 to 30 m, which roofs keep too; and what its runoff leaves, and a leaky bay's grime.
  */
 export interface SurfaceWeathering { runs: number; damp: number; peel: number; joints: number; value: number; left: "grime" | "rust" | "salt" }
 const weathers = (runs: number, damp: number, peel: number, joints: number, value: number, left: SurfaceWeathering["left"] = "grime"): SurfaceWeathering => ({ runs, damp, peel, joints, value, left });
@@ -105,7 +105,7 @@ export const GROUND_SURFACES: Partial<Record<SurfaceName, readonly number[]>> = 
 export const FALLBACK_SURFACES: Partial<Record<SurfaceName, readonly number[]>> = {
   // Architectural limestone uses fine mineral grain, not the ground's fractured bedrock.
   rock: [15], asphalt: [4, 84, 85, 86], paving: [1, 98], concrete: [2, 10, 88, 99, 100, 101, 102],
-  brick: [172, 180, 181, 183], clay: [205, 206], rust: [179], steel: [5, 6, 89, 90, 91],
+  brick: [172, 180, 181, 183], clay: [205, 206], rust: [96, 179], steel: [5, 6, 89, 90, 91],
   plaster: [75, 81, 103, 104, 112, 113, 114, 135], wood: [115, 116, 120], glass: [9, 92],
   grass: [137, 138, 139, 150, 151, 195, 196, 197],
 };
