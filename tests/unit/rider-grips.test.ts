@@ -53,14 +53,14 @@ function radial(poly:V[]):number{
 }
 
 test("native hand calibration survives repacking, ordering and a boot header without hand geometry",()=>{
- const profiles=source.header.rigs.flatMap(r=>r.grips??[]);expect(profiles.length).toBe(6);expect(profiles.every(validGrip)).toBe(true);
+ const profiles=source.header.rigs.flatMap(r=>r.grips??[]);expect(profiles.map(p=>p.mesh).sort()).toEqual(meshes.filter(m=>m.id.endsWith("/hands")).map(m=>m.id).sort());expect(profiles.every(validGrip)).toBe(true);
  const bytes=buildPack(meshes,source.palette,[],source.header.rigs),again=parsePack(bytes);
  expect(again.header.rigs).toEqual(source.header.rigs);
  const split=splitPack(orderPack(bytes),"hands",{boot:()=>false}),boot=parsePack(split.files.find(f=>f.role==="boot")!.bytes);
  expect(boot.header.meshes.length).toBe(0);expect(boot.header.rigs).toEqual(source.header.rigs);
 });
 
-test("dense native radius interpolation retains surface clearance and contact around all six hand meshes",()=>{
+test("dense native radius interpolation retains surface clearance and contact around all native hand meshes",()=>{
  let smallest=Infinity,largestGap=0,largestArc=0,count=0;
  for(const rig of source.header.rigs)for(const profile of rig.grips!)for(const side of [0,1]){
   const surface=new HandSurface(meshes.find(m=>m.id===profile.mesh)!,Float32Array.from(rig.rest),side===1),pose=new Float64Array(12);
@@ -70,7 +70,7 @@ test("dense native radius interpolation retains surface clearance and contact ar
    const result=surface.inspect(pose.subarray(side*6,side*6+6),radius);smallest=Math.min(smallest,result.clearance);largestGap=Math.max(largestGap,...result.contacts);largestArc=Math.max(largestArc,result.gap);count++;
   }
  }
- expect(count).toBe(12300);expect(smallest).toBeGreaterThanOrEqual(0);expect(largestGap).toBeLessThan(.002);expect(largestArc).toBeLessThan(4.4);
+ expect(count).toBe(16400);expect(smallest).toBeGreaterThanOrEqual(0);expect(largestGap).toBeLessThan(.002);expect(largestArc).toBeLessThan(4.4);
 });
 
 test("actual native male/female glove triangles clear finite bars across coupled proportions while the pelvis and limb lengths remain fixed",()=>{
@@ -98,7 +98,7 @@ test("actual native male/female glove triangles clear finite bars across coupled
    count++;
   }
  }
- expect(count).toBe(4008);expect(worstResidual).toBeLessThan(.00001);expect(lengthError).toBeLessThan(.000001);
+ expect(count).toBe(5344);expect(worstResidual).toBeLessThan(.00001);expect(lengthError).toBeLessThan(.000001);
  expect({smallest,worst}).toEqual({smallest:expect.any(Number),worst:expect.any(String)});
  if(smallest<-.000001)throw new Error(`Native hand enters the bar by ${-smallest}m: ${worst}`);
  expect(gap).toBeLessThan(.0003);

@@ -88,6 +88,8 @@ export const DETAIL_PUFF = 16;
 export const DETAIL_ROTOR = 32;
 /** Analytic emissive strip and halo of an active vehicle lens. */
 export const DETAIL_LAMP = 64;
+/** Analytic soft disc of a working street lamp's light: its pool on the ground, or its glow round the lens (street-lamps.ts). */
+export const DETAIL_POOL = 128;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /** A self-lit optical surface in its instance dye. */

@@ -47,7 +47,7 @@ function looks(): Uint8Array[] {
 
 test("native quantized sole witnesses survive repack, cache ordering and boot-only streaming without fine geometry", () => {
   const source = structuredClone(original.header.rigs);
-  expect(pack.header.rigs.flatMap(r => r.soles ?? []).length).toBe(6);
+  expect(pack.header.rigs.flatMap(r => r.soles ?? []).length).toBe(8);
   const twice = parsePack(buildPack(unpackMeshes(pack), pack.palette, [], pack.header.rigs));
   expect(twice.header.rigs).toEqual(pack.header.rigs);
   const split = splitPack(orderPack(bytes), "feet", { boot: () => false });
@@ -90,7 +90,7 @@ test("actual native barefoot and boot vertices contact finite saddle treads acro
       samples++;
     }
   }
-  expect(samples).toBe(1422); expect(worstResidual).toBeLessThan(.00001);
+  expect(samples).toBe(1896); expect(worstResidual).toBeLessThan(.00001);
   expect(lowest).toBeGreaterThan(-.00001); expect(gap).toBeLessThan(.00001); expect(outside).toBeLessThan(.00001);
 });
 

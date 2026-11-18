@@ -178,7 +178,7 @@ function contentNotes(m: Material, tops: Partial<Record<TextureRole, number>>, o
   for (const [role, top] of Object.entries(tops) as [TextureRole, number][]) {
     const all = mips[role];
     if (!all || all.length < Math.log2(top) + 1) continue;
-    const alpha = role === "layer" || (role === "base" && m.spec.cutout !== undefined && m.spec.cutout !== false);
+    const alpha = role === "layer" || (role === "base" && ((m.spec.cutout !== undefined && m.spec.cutout !== false) || (m.spec.emissive ?? 0) > 0));
     if (isNeutral(role, alpha, all.slice(0, Math.log2(top) + 1))) {
       neutral.add(role);
       notes.push(`${m.id}: its ${role} is everywhere what a material without one draws, and the build leaves it out`);

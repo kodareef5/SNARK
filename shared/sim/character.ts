@@ -1,12 +1,29 @@
 // One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
-import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
+import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
 import { SKIN, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
 import { Found } from "../world/structures.ts";
+
+// Bit positions match the five slots in worn inventory order. Only serviceable pieces count.
+export const JET_HELMET = 1 << 0;
+export const JET_CUIRASS = 1 << 1;
+export const JET_GREAVES = 1 << 3;
+export const JET_BOOTS = 1 << 4;
+export const JET_FULL_SUIT = 31;
+export const JET_CAPACITY = 10 * TICK_RATE;
+/**
+ * What the pieces add on the ground and in the water, as ARK's Tek suit does (ark.wiki.gg, Tek Armor and Tek
+ * Chestpiece, 2026-11-18): the leggings "allow powerful forward movement", and under water "the jetpack boosts
+ * swimming speed". The wiki gives no figures; these are ours. A sprint in the greaves still spends stamina.
+ */
+export const JET_STRIDE = 1.5;
+export const JET_SWIM = 1.5;
+export const JET_LIFT = 1;
+export const JET_HOVER = 2;
 
 export const BTN_JUMP = 1;
 export const BTN_SPRINT = 2;
@@ -233,6 +250,10 @@ export class Body {
    */
   bloom = 0;
   kick = 0;
+  jetGear = 0;
+  /** Ticks of thrust spent from this survivor's rechargeable reserve. */
+  jetSpent = 0;
+  jetThrust = 0;
   /**
    * Flight state (planning/reference/flyers-plan.md): the ticks before stamina may come back, held full in the air and
    * counted down on the ground and in water after it lands, and the ticks before it may roll again. Each is 0 for a body
@@ -306,6 +327,9 @@ export class Body {
     this.reloadTo = o.reloadTo;
     this.bloom = o.bloom;
     this.kick = o.kick;
+    this.jetGear = o.jetGear;
+    this.jetSpent = o.jetSpent;
+    this.jetThrust = o.jetThrust;
     this.regenWait = o.regenWait;
     this.rollWait = o.rollWait;
     this.creatureMode = o.creatureMode;
@@ -374,6 +398,7 @@ export class Body {
       this.reloadTo === o.reloadTo &&
       this.bloom === o.bloom &&
       this.kick === o.kick &&
+      this.jetGear === o.jetGear && this.jetSpent === o.jetSpent && this.jetThrust === o.jetThrust &&
       this.regenWait === o.regenWait &&
       this.creatureMode === o.creatureMode &&
       this.creatureCooldown === o.creatureCooldown &&
@@ -428,6 +453,7 @@ const found = new Found();
  */
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   stepOut.landSpeed = 0;
+  b.jetThrust = 0;
   stepOut.tookOff = false;
   stepOut.setDown = false;
   stepOut.rolled = false;
@@ -500,12 +526,21 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const a = yaw * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
-  const sprint = m2 > 0 && standing && canSprint(b, buttons);
+  const jetEquipped = (b.jetGear & JET_CUIRASS) !== 0 && !b.seat;
+  const jetReady = jetEquipped && standing && (flags & (MF_OUT | MF_ROOTED | MF_NO_JUMP)) === 0;
+  if (jetEquipped && b.grounded) b.jetSpent = Math.max(0, b.jetSpent - (b.jetGear === JET_FULL_SUIT ? 2 : 1));
+  if (jetReady && !b.grounded && b.jetSpent < JET_CAPACITY && (buttons & BTN_JUMP) !== 0) {
+    b.jetThrust = (buttons & BTN_SPRINT) !== 0 ? JET_HOVER : JET_LIFT;
+    b.jetSpent++;
+  }
+  const sprint = !b.jetThrust && m2 > 0 && standing && canSprint(b, buttons);
   let stamina = spendStamina(b, p, sprint, m2 > 0 ? p.staminaWalk : 0);
-  const speed = p.walkSpeed * (b.speedQ / 1000) * (sprint ? p.sprintMul : standing ? 1 : stance === STANCE_CROUCH ? p.crouchMul : p.proneMul);
+  const fastCruise = b.jetThrust === JET_HOVER && (b.jetGear & JET_GREAVES) !== 0 && !(flags & MF_NO_SPRINT);
+  const speed = b.jetThrust ? (fastCruise ? 10 : 6) :
+    p.walkSpeed * (b.speedQ / 1000) * (sprint ? p.sprintMul * ((b.jetGear & JET_GREAVES) !== 0 ? JET_STRIDE : 1) : standing ? 1 : stance === STANCE_CROUCH ? p.crouchMul : p.proneMul);
   let dvx = (s * mz - c * mx) * speed - b.vx;
   let dvz = (c * mz + s * mx) * speed - b.vz;
-  const maxDv = (b.grounded ? p.accelGround : p.accelAir) * dt;
+  const maxDv = (b.jetThrust ? 18 : b.grounded ? p.accelGround : p.accelAir) * dt;
   const dv2 = dvx * dvx + dvz * dvz;
   if (dv2 > maxDv * maxDv) {
     const k = maxDv / Math.sqrt(dv2);
@@ -527,7 +562,11 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       stamina -= p.staminaJump;
     } else vy = 0;
   }
-  if (!wasGrounded || jumped) {
+  if (b.jetThrust) {
+    const target = b.jetThrust === JET_HOVER ? 0 : 4;
+    const impulse = 24 * dt;
+    vy += Math.max(-impulse, Math.min(impulse, target - vy));
+  } else if (!wasGrounded || jumped) {
     vy -= p.gravity * dt;
     if (vy < -TERMINAL_SPEED) vy = -TERMINAL_SPEED;
   }
@@ -822,6 +861,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       vy = 0;
     }
   }
+  if (grounded) b.jetThrust = 0;
   if (grounded && !wasGrounded) stepOut.landSpeed = fall;
 
   // Deep enough to float, the body swims from the next tick, and a swimmer has no stance.
@@ -830,6 +870,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     b.mode = MODE_SWIM;
     stance = STANCE_STAND;
     grounded = false;
+    b.jetThrust = 0;
     stepOut.landSpeed = 0;
   }
 
@@ -899,7 +940,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   const cp = detCos(e);
   const sprint = m2 > 0 && canSprint(b, buttons);
   const stamina = spendStamina(b, p, sprint);
-  const speed = p.swimSpeed * (b.swimQ / 1000) * (sprint ? p.swimSprintMul : 1);
+  const speed = p.swimSpeed * (b.swimQ / 1000) * (sprint ? p.swimSprintMul : 1) * ((b.jetGear & JET_CUIRASS) !== 0 ? JET_SWIM : 1);
 
   // Water slows a body that arrives faster than 1.5 times its swim speed.
   let vx = b.vx;

@@ -8,7 +8,7 @@ import type { SpeciesDef } from "../shared/content/defs.ts";
 import { drainAt, torporAt } from "../shared/content/wild.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
+import { JET_HELMET, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { EntityStore } from "../shared/sim/entities.ts";
 import { STAT_NAMES, statValue, type Genome, type StatName } from "../shared/sim/genome.ts";
 import { GAME_HOUR_TICKS, MICRO } from "../shared/sim/lazy.ts";
@@ -368,7 +368,11 @@ export class Survival {
     this.records.dirty.add(rec.pid);
     const def = this.world.reg.defs[rec.kind] as SpeciesDef;
     const paused = this.suspended.has(rec.pid);
-    const under = this.submerged.has(rec.pid);
+    // A sealed helmet holds its own air: under water its wearer breathes as on land (ARK's Tek Helmet gives "infinite
+    // underwater oxygen", ark.wiki.gg Tek Armor, 2026-11-18). host.ts touches the record when the helmet goes on or off.
+    const ent = this.records.entOf.get(rec.pid);
+    const sealed = ent !== undefined && (this.world.ents.jetGear[ent]! & JET_HELMET) !== 0;
+    const under = this.submerged.has(rec.pid) && !sealed;
     const eats = v.max[V_FOOD]! > 0 && def.food !== undefined;
     const drinks = v.max[V_WATER]! > 0;
     const breathes = v.max[V_OXYGEN]! > 0;

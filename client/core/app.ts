@@ -1204,6 +1204,7 @@ export class App {
     }
     body.state.mode = session.own.mode;
     body.state.grounded = session.own.grounded;
+    body.state.jet = session.own.jetThrust !== 0;
     body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
     // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.
@@ -1359,6 +1360,8 @@ export class App {
     session.holdNodes(this.scene.assets.tier.nodes.chunks);
     this.scene.characters.corpseMotions = session.corpseMotions;
     sceneWithout(this.scene, this.off);
+    // The street lamps' light, which a bench turns off every other frame (`?ab=lamps`).
+    this.scene.streetLamps.on = !off.has("lamps");
     const packet = this.scene.build(cam, this.remote);
     session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
     packetWithout(packet, off);

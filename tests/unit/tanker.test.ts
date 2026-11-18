@@ -1,4 +1,4 @@
-import { BUS, SEMI } from "../../content/vehicles/heavy-road.ts";
+import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { TANKER_VEHICLE } from "../../content/vehicles/tanker.ts";
@@ -9,7 +9,7 @@ import { vehiclePlane } from "../fixtures/vehicle-plane.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 
-for (const vehicle of [TANKER_VEHICLE, BUS.species.vehicle!, SEMI.species.vehicle!]) test(vehicle.id + " drives on its authored axles, corners, stops and reverses", () => {
+for (const vehicle of ROAD_FLEET.map(model => model.vehicle!).filter(v => isWheelVehicle(v) && v.spec.axles)) test(vehicle.id + " drives on its authored axles, corners, stops and reverses", () => {
   if (!isWheelVehicle(vehicle)) throw new Error("expected wheel vehicle");
   const p = vehicle.spec,
     state = createVehicle(p, 0, 0, 0),
