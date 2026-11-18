@@ -61,15 +61,28 @@ const up = (y: number, parts: readonly Part[]): Part[] => parts.map((p) => {
   return q;
 });
 const wall = (top: number, out = 0.25): Part => [-4, 4, 0, top, -0.25, out];
+/** Parts turned end for end along the bay, their cut edges with them. */
+const mirror = (parts: readonly Part[]): Part[] => parts.map((p) => {
+  const [a, b, c, d, e, f, g] = p; const q: Part = [-b, -a, c, d, e, f, g];
+  const cut = BEVEL.get(p); if (cut) BEVEL.set(q, cut.map(([x, y, z]): Corner => [-x, y, z]));
+  return q;
+});
 /**
  * Two flats' balconies across the bay, 2 m deep behind a solid front, a divider between them; behind, a coral wall with a
  * door and a window to each flat, jambs at the columns and a band from the head down to the slab above.
  */
+/**
+ * A flat's recessed wall: jambs at the columns and the wall between them in faded coral, so a district's blue does not
+ * make them read as glass left blank, and a door and a window to each flat.
+ */
+const RECESS: Part[] = [
+  [-4, -3.6, 0, 2.7, -0.25, 0.25, CORAL], [3.6, 4, 0, 2.7, -0.25, 0.25, CORAL], [-3.6, 3.6, 0, 2.7, -0.35, -0.25, CORAL],
+  ...[-2, 2].flatMap((c): Part[] => [[c - 1.5, c - 0.6, 0, 2.2, -0.25, -0.2, DARK], [c, c + 1.4, 0.9, 2.3, -0.25, -0.2, DARK]]),
+];
 const RETURNS: Part[] = [[-4, -3.9, 0, 1.05, 0.25, 1.82, FRONT], [3.9, 4, 0, 1.05, 0.25, 1.82, FRONT]];
 const BALCONY: Part[] = [
-  bevelX([-4, 4, -0.25, 0, 0, 2], 0.12, "do"), [-4, 4, 0, 1.05, 1.82, 2, FRONT], ...RETURNS, [-0.1, 0.1, 0, 2.7, 0.25, 1.82], [-4, 4, 2.7, 4, -0.25, 0.25],
-  [-4, -3.6, 0, 2.7, -0.25, 0.25], [3.6, 4, 0, 2.7, -0.25, 0.25], [-3.6, 3.6, 0, 2.7, -0.35, -0.25, CORAL],
-  ...[-2, 2].flatMap((c): Part[] => [[c - 1.5, c - 0.6, 0, 2.2, -0.25, -0.2, DARK], [c, c + 1.4, 0.9, 2.3, -0.25, -0.2, DARK]]),
+  bevelX([-4, 4, -0.25, 0, 0, 2], 0.12, "do"), [-4, 4, 0, 1.05, 1.82, 2, FRONT], ...RETURNS, [-0.1, 0.1, 0, 2.7, 0.25, 1.82, CORAL], [-4, 4, 2.7, 4, -0.25, 0.25],
+  ...RECESS,
 ];
 /** Walked, a balcony's front returns at the bay's ends, so it is reached only from the flat behind it. */
 const BALCONY_WALKED: Part[] = [[-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], ...RETURNS, wall(4)];
@@ -90,6 +103,9 @@ const PLANT: Part[] = [[-4, -3.6, 0, 4, -0.25, 0.25], [3.6, 4, 0, 4, -0.25, 0.25
 const SCREEN: Part[] = [[-4, 4, 0, 3.6, -0.3, 0.3], bevelX([-4, 4, 3.6, 3.75, -0.35, 0.4], 0.06, "uoui")];
 /** A shop's front: half piers, a sign band standing proud of them, a dark display on a low riser and a 2 m door set back. */
 const SHOP: Part[] = [bevelY([-4, -3.6, 0, 4, -0.3, 0.3], 0.1, "+"), bevelY([3.6, 4, 0, 4, -0.3, 0.3], 0.1, "-"), [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 1.4, 0, 0.5, -0.25, 0.05], [-3.6, 1.4, 0.5, 2.9, -0.25, -0.15, DARK], [1.4, 1.6, 0, 2.9, -1.2, 0.05]];
+/** Beside a failure: the sign band and its head cut back different lengths and the pier at the break broken off. */
+const SHOP_CUT: Part[] = [SHOP[0]!, [3.6, 4, 0, 2.4, -0.3, 0.3], [-3.6, 0.9, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 2.2, 3.8, 4, -0.25, 0.25], SHOP[4]!, SHOP[5]!, SHOP[6]!];
+const SHOP_CUT_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 2.4, -0.3, 0.3], [-3.6, 0.9, 2.9, 3.8, -0.25, 0.4], [-3.6, 2.2, 3.8, 4, -0.25, 0.25], [-3.6, 1.6, 0, 2.9, -0.25, 0.05]];
 const SHOP_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 4, -0.3, 0.3], [-3.6, 3.6, 2.9, 4, -0.25, 0.4], [-3.6, 1.6, 0, 2.9, -0.25, 0.05]];
 /** The same front with a blue-grey shutter down over display and door. */
 const SHUTTER: Part[] = [SHOP[0]!, SHOP[1]!, [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 3.6, 0, 2.9, 0, 0.1, STEEL]];
@@ -110,6 +126,8 @@ const ENTRY: Part[] = [[-4, 4, 2.82, 3, -0.09, 0.09, METAL], [-3.2, 3.2, 3, 3.25
 const MODULES = {
   zbalc: { look: BALCONY, walked: BALCONY_WALKED },
   zbalctop: { look: [...BALCONY, ...BALCONY_CAP], walked: [...BALCONY_WALKED, ...BALCONY_CAP] },
+  /** Beside a failure a flat's balcony has fallen: its wall bare to the slab's broken end. */
+  zbalcbare: { look: [[-4, 4, 2.7, 4, -0.25, 0.25], ...RECESS], walked: [wall(4)] },
   zbalcrail: { look: RAILED, walked: [BALCONY_WALKED[0]!, [-4, 4, 0, 1.05, 1.85, 2], ...RAIL_ENDS, wall(4)] },
   zentry: { look: ENTRY, walked: [[-4, 4, 2.82, 3.45, -0.09, 2.1]] },
   /** A downpipe a storey long on a wall's face, with its clips, and its foot: a shoe and the stain the water left. */
@@ -125,6 +143,9 @@ const MODULES = {
    */
   zlobby: { look: [[-4, 4, 0, 2.3, -0.25, 0.25, BASE], [-0.5, 0.5, 0, 2.2, 0.25, 0.275, DARK], [-4, -3.4, 2.3, 3.1, -0.25, 0.25, BASE], [3.4, 4, 2.3, 3.1, -0.25, 0.25, BASE], [-3.4, 3.4, 2.3, 3.1, -0.3, -0.2, DARK], [-4, 4, 3.1, 4, -0.25, 0.25]], walked: [wall(4)] },
   zstore: { look: SHOP, walked: SHOP_WALKED },
+  // Its break toward +x, and toward -x.
+  zstorecut: { look: SHOP_CUT, walked: SHOP_CUT_WALKED },
+  zstorecutl: { look: mirror(SHOP_CUT), walked: mirror(SHOP_CUT_WALKED) },
   zshutter: { look: SHUTTER, walked: [...SHOP_WALKED.slice(0, 2), [-3.6, 3.6, 2.9, 4, -0.25, 0.3], [-3.6, 3.6, 0, 2.9, 0, 0.1]] },
   zwin: { look: WINDOWS, walked: [wall(4)] },
   zwintop: { look: [...WINDOWS, ...PARAPET], walked: [wall(4), ...PARAPET] },
@@ -237,13 +258,13 @@ const crown = (name: string, runs: readonly (readonly [number, number, number, n
 /** A lump of rubble along a wall's foot from a to b, h high against the wall and reaching `out` from it on the ground. */
 const lump = (a: number, b: number, h: number, out: number): HullDef => ({ corners: [[a, 0, 0.2], [b, 0, 0.2], [a + 0.3, 0, out * 0.85], [b - 0.2, 0, out], [a + 0.2, h, 0.2], [b - 0.3, h * 0.75, 0.2]] });
 /** What fell along a wall's foot: lumps of it against the wall, blocks loose on its slope and soil with weeds at its toe. */
-const skirt = (name: string, lumps: readonly (readonly [number, number, number, number])[], blocks: readonly (readonly [number, number, number, number])[], toe: number): ShapeDef => {
-  const hulls = lumps.map(([a, b, h, out]) => lump(a, b, h, out));
+const skirt = (name: string, lumps: readonly (readonly [number, number, number, number])[], blocks: readonly (readonly [number, number, number, number])[], toe: number, more: readonly HullDef[] = []): ShapeDef => {
+  const hulls = [...lumps.map(([a, b, h, out]) => lump(a, b, h, out)), ...more];
   const loose = blocks.map(([x, z, size, colour]): ShapeBox => ({ at: [x, size * 0.4, z], half: [size, size * 0.5, size * 0.8], color: colour }));
   return centred(shaped(name), { hulls }, { hulls, boxes: [...loose, { at: [0, 0.02, toe], half: [3.6, 0.02, 0.2], color: WEED }] });
 };
-/** A wall panel 3.8 m by 2.8 m hanging from one fixing at a slab's edge, its far end dropped 16 degrees, standing off the edge. */
-const HANG = 16 * Math.PI / 180;
+/** A wall panel 3.8 m by 2.8 m hanging from one fixing at a slab's edge, its far end dropped 34 degrees, standing off the edge. */
+const HANG = 34 * Math.PI / 180;
 const hanging = (): Corner[] => [0.35, 0.55].flatMap((z) => ([[0, 0], [3.8, 0], [3.8, -2.8], [0, -2.8]] as const).map(([x, y]): Corner => [x * Math.cos(HANG) + y * Math.sin(HANG) - 1.45, -x * Math.sin(HANG) + y * Math.cos(HANG) - 0.45, z]));
 /**
  * A slab 6 m wide torn from its bay and hanging from its top edge on the slab line (z = 0, y = 0), nearly sheer, out to
@@ -294,7 +315,8 @@ export const RUIN_BREAKS = {
     boxes: bars([[-2.5, -0.95, 0.35, 0.4], [-0.4, -0.95, 0.25, 0], [1.8, -0.95, 0.4, 0.55]]).map((b) => ({ ...b, at: [b.at[0], b.at[1], b.at[2] + 2.15] as const })),
   }),
   // The rubble at the foot of a failure, 8 m along the wall it fell from, up to 1.5 m high against it and 2.8 m out.
-  zwedge: skirt("zwedge", [[-3.9, -0.2, 1.3, 2.6], [-0.6, 3.9, 1.5, 2.8]], [[-2.8, 1.9, 0.3, 101], [-0.2, 1.5, 0.22, 99], [0.9, 2.3, 0.35, 102], [2.9, 2.1, 0.25, 101]], 2.75),
+  // A broad piece of the wall leans on it, its top against the wall 2.4 m up and its foot on the ground 1.8 m out.
+  zwedge: skirt("zwedge", [[-3.9, -0.2, 1.3, 2.6], [-0.6, 3.9, 1.5, 2.8]], [[-2.8, 1.9, 0.3, 101], [-0.2, 1.5, 0.22, 99], [0.9, 2.3, 0.35, 102], [2.9, 2.1, 0.25, 101]], 2.75, [{ corners: leaning([1.7, 0.14, 1.4], -58).corners.map(([x, y, z]) => [x - 1.6, y + 1.3, z + 1.05] as const) }]),
   // What fell from a standing wall along its foot, two runs of it.
   zskirt1: skirt("zskirt1", [[-3.7, -0.4, 0.5, 1.0], [-0.8, 3.6, 0.38, 1.1]], [[-2.6, 0.75, 0.2, 101], [1.6, 0.95, 0.24, 99], [-0.4, 0.7, 0.16, 102]], 1.15),
   zskirt2: skirt("zskirt2", [[-3.8, 0.2, 0.36, 0.95], [-0.2, 3.8, 0.55, 1.15]], [[-2.2, 0.8, 0.18, 99], [0.4, 1.0, 0.22, 101], [2.6, 0.7, 0.15, 102]], 1.2),

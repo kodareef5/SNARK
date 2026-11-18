@@ -131,7 +131,10 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       const notched = crown?.notch?.side === side && crown.notch.tiles.has(t);
       // A parapet breaks too where the wall beside it broke, and a garage's top deck loses its edge in one bay of three.
       const [ax, az] = SIDES[(side + 1) % 4]!;
-      const besideFall = [1, -1].some((k) => { const n = byKey.get(tileKey(t.i + ax * k, t.j + az * k)); return !!n && damaged.has(n); });
+      const fallen = (k: number): boolean => { const n = byKey.get(tileKey(t.i + ax * k, t.j + az * k)); return !!n && damaged.has(n); };
+      const besideFall = fallen(1) || fallen(-1);
+      // A balcony band ends a bay short of a failure, that bay's slab tipped into the gap.
+      const bandEnds = besideFall && grammar?.floor === "zbalc" && !end;
       const chipped = notched || !damaged.has(t) && mode !== "lost-top" && bay === 8 && opts.detail < 2 && crown?.kind !== "screen" && (besideFall || hash3(opts.seed + 113, t.i * 4 + side, t.j) % (deck ? 3 : 4) === 0);
       const capped = !damaged.has(t) && !bitten.has(t) && !torn.has(t) && mode !== "lost-top" && !chipped;
       // Over a torn neighbour the storeys above the refuge stand open.
@@ -176,7 +179,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         // Onto a fallen bay the playable floors' walls are its broken inside; the storeys above wear the facade's.
         if (grammar && !party && !lookout && !(broken && level < playable)) {
           const last = capped && level === top - 1;
-          if (upper && top - level >= 4 && !(plant && level + 4 === top)) {
+          if (upper && top - level >= 4 && !(plant && level + 4 === top) && !bandEnds) {
             const lid = capped && level + 4 === top;
             facade(m, end ? (lid ? "zshafttop" : "zshaft8") : lid ? grammar.stackTop : grammar.stack, u, h, v, side, rule.finish);
             level += 4; continue;
@@ -186,11 +189,15 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           const shut = grammar.shutter && !entry && hash3(opts.seed + 57, t.i * 4 + side, t.j) % 4 === 0 ? grammar.shutter : grammar.ground;
           // Beside a failure, a balcony's solid front may have fallen to its rail.
           const railed = grammar.floor === "zbalc" && nearFall && hash3(opts.seed + 83, t.i * 4 + side, t.j * 64 + level) % 3 === 0;
+          // A shop's sign band and its head are cut back where the wall beside broke, the module's +x toward fallen(-1).
+          const cut = shop && besideFall && !entry ? (fallen(-1) ? "zstorecut" : "zstorecutl") : null;
           const name = end ? (level === 0 && entry ? null : last ? "zpaneltop" : "zpanel8")
-            : level === 0 ? (entry && !shop ? grammar.gate ?? null : last ? grammar.groundTop ?? shut : shut)
+            : level === 0 ? (entry && !shop ? grammar.gate ?? null : cut ?? (last ? grammar.groundTop ?? shut : shut))
+            : bandEnds ? "zbalcbare"
             : last ? (plant ? "zplanttop" : grammar.top) : railed ? "zbalcrail" : grammar.floor;
           if (name) {
             facade(m, name, u, h, v, side, rule.finish);
+            if (name === "zbalcbare") facade(m, "zendsag", u, h, v, side, "fracture");
             // Beside a failure a vine hangs from one balcony in three.
             if (nearFall && (name === "zbalc" || name === "zbalcrail") && hash3(opts.seed + 89, t.i * 4 + side, t.j * 64 + level) % 3 === 0) facade(m, "zvine", u, h, v, side, "concrete", 2);
             if (level === 0 && last && !end && !grammar.groundTop) facade(m, "zparapet8", u, h + 4, v, side, rule.finish);

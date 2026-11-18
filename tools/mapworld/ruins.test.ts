@@ -340,15 +340,17 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     layout(m, { ...rule, recipe: "apartment", height: 24, finish: "limestone", form: v.forms.apartment, formName: "apartment", collapse: "shear", damage: v.damage.shear, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 8, detail: 0 });
     const on = (name: string): { y: number }[] => m.pieces.filter((p) => shape(p) === name);
     // Six storeys, the front and back six bays long, a corner failed: the same bay on the four floors between ground and
-    // top, all but the bay beside the failure whole on each.
+    // top, all but the bay beside the failure whole on each; there the balcony fell, its slab's end tipped into the gap.
     const floors = new Map<number, number>();
-    for (const p of [...on("zbalc"), ...on("zbalcrail")].filter((p) => p.y < 20)) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
+    for (const p of [...on("zbalc"), ...on("zbalcrail"), ...on("zbalcbare")].filter((p) => p.y < 20)) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
     expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
     expect([...floors.values()].every((n) => n === 11)).toBe(true);
+    expect(on("zbalcbare").length).toBeGreaterThan(0);
+    expect(on("zendsag").length).toBeGreaterThanOrEqual(on("zbalcbare").length);
     expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
     // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub, as it
     // does beside the failure.
-    const chipped = [...on("zbalc"), ...on("zbalcrail")].filter((p) => p.y > 20).length;
+    const chipped = [...on("zbalc"), ...on("zbalcrail"), ...on("zbalcbare")].filter((p) => p.y > 20).length;
     expect(on("zbalctop").length + chipped).toBe(11);
     expect(on("zbalctop").every((p) => p.y > 20)).toBe(true);
     expect(on("zcrown5").length + on("zcrown6").length).toBeGreaterThanOrEqual(chipped);
