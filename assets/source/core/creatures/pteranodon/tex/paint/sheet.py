@@ -1,6 +1,6 @@
 """Puts the pictures look.sh draws together into the review pages kept in tex/look/.
 
-    zsh tex/paint/look.sh OUT --maps && zsh tex/paint/look.sh OUT_STAGES --maps --stages
+    bash tex/paint/look.sh OUT --maps && bash tex/paint/look.sh OUT_STAGES --maps --stages
     python3 tex/paint/sheet.py OUT OUT_STAGES
 
 Writes tex/look/animal.jpg (the animal in its dyes, near and far), saddled.jpg (with its saddle, from the rider's seat

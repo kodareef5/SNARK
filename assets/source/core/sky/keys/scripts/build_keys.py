@@ -282,7 +282,7 @@ def perspective(im,heading,elevation=10,width=1280,height=720,hfov=100):
  h=np.degrees(np.arctan2(-d[...,0],d[...,2]));e=np.degrees(np.arcsin(d[...,1]))
  sx=((h-345+180)%360)/360*W-.5;sy=(90-e)/180*H-.5
  return np.stack([map_coordinates(im[...,c],[sy,sx],order=1,mode='grid-wrap') for c in range(3)],-1)
-def font(size):return ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf',size)
+def font(size):return ImageFont.truetype(next(p for p in ('/System/Library/Fonts/Supplemental/Arial.ttf','/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf') if Path(p).exists()),size)
 def contact(paths,output,tw=640,th=320,cols=2,subtitle='REGISTERED 360° PANORAMAS'):
  pad=24;cap=34;head=76;rows=math.ceil(len(paths)/cols)
  sheet=Image.new('RGB',(cols*(tw+pad)+pad,head+rows*(th+cap+pad)+pad),(12,22,33));d=ImageDraw.Draw(sheet)

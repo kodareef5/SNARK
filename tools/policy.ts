@@ -53,6 +53,9 @@ function regexEnd(src: string, i: number): number {
   return -1;
 }
 
+/** An import or export from a named file, a named `import()`, or a bare import: the name is the first group that matched. */
+export const IMPORT = /^[ \t]*(?:import|export)\s[^'"`;]*?from\s*['"]([^'"]+)['"]|\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)|^[ \t]*import\s*['"]([^'"]+)['"]/gm;
+
 /**
  * The source with its comments gone and its lines where they were. With `blank`, what strings, templates and regular
  * expressions hold is gone too, leaving their quotes, so that what is left is code and nothing a string could fake.

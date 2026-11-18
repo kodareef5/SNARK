@@ -12,7 +12,7 @@
 // blows; SKY_TOP sets how large the layers are sent, 1,024 as medium has them or 2,048 as high.
 // Run: bun tools/probe-lit/sky.ts [folder] [hours]
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -34,6 +34,7 @@ import { Found } from "../../shared/world/structures.ts";
 import { EYE, KEYS } from "../sky/base.ts";
 import { provingView } from "../snap.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
+import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const SKY = join(ROOT, "assets/source/core/sky");
@@ -313,7 +314,7 @@ export async function timeSky(chrome: string): Promise<Record<string, number | s
     },
   });
   const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
   const done = await Promise.race([finished, new Promise<Record<string, string>>((r) => setTimeout(() => r({ error: "the page sent nothing within five minutes" }), 300000))]);
   browser.kill();
   await browser.exited;
@@ -358,7 +359,7 @@ export async function drawSky(chrome: string, views: readonly View[], top = 1024
     },
   });
   const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
   const done = await Promise.race([finished, new Promise<{ error: string }>((r) => setTimeout(() => r({ error: "the page sent nothing within five minutes" }), 300000))]);
   browser.kill();
   await browser.exited;
@@ -578,7 +579,7 @@ export const skyCheck: LitCheck = {
 };
 
 if (import.meta.main) {
-  const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find((p) => p && existsSync(p));
+  const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome found. Set CHROME to its path.");
   if (process.env.SKY_TIME) {
     const t = await timeSky(chrome);

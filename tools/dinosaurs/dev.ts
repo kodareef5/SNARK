@@ -13,7 +13,7 @@ import { ART } from "../art/source.ts";
 import { buildClientApart } from "../build-client.ts";
 import { DINOSAUR_COURSE, writeDinosaurCourse } from "./course.ts";
 
-const REVIEW_SPECIES = ["core:trike", "core:stego"];
+const REVIEW_SPECIES = ["core:trike", "core:stego", "core:raptor"];
 
 export async function buildDinosaurReviewClient(options: Parameters<typeof buildClientApart>[0]): Promise<void> {
   if (!ART) throw new Error("Building the dinosaur review requires assets/source. Use --built with a prepared full-art client.");
@@ -31,8 +31,12 @@ export function requireDinosaurReviewArt(dist: string, species: readonly string[
     const rig = body?.rig === undefined ? undefined : boot.header.rigs[body.rig];
     const saddle = CORE_CONTENT.find(item => item.type === "item" && item.saddle?.fits === def.id);
     const worn = saddle && manifest.meshes.find(mesh => mesh.id === `${saddle.id}/worn`);
-    if (!rig?.names?.length || rig.id !== def.mesh || body?.skeleton !== rig.skeleton || !worn || worn.rig !== body.rig) {
-      throw new Error(`Dinosaur review requires the original ${def.id} body, rig and fitted saddle. Rebuild the client from assets/source or use a prepared full-art build.`);
+    if (!rig?.names?.length || rig.id !== def.mesh || body?.skeleton !== rig.skeleton || !rig.sockets?.some(socket => socket.name === "seat")) {
+      throw new Error(`Dinosaur review requires the ${def.id} body, rig and seat. Rebuild the client from assets/source or use a prepared full-art build.`);
+    }
+    // The raptor saddle uses its seat socket. Only the two fitted saddles have worn meshes.
+    if (def.id !== "core:raptor" && (!worn || worn.rig !== body.rig)) {
+      throw new Error(`Dinosaur review requires the fitted saddle for ${def.id}.`);
     }
   }
 }
@@ -58,7 +62,8 @@ export function seedDinosaurPreview(host: Host, owner: EntityRecord, species: re
     rec.yaw = 0; world.ents.yaw[e] = 0;
     const saddle = reg.saddleFits.indexOf(kind);
     if (saddle > 0) rec.saddle = saddle; // Same out-of-ledger worn gear path as gmsummon.
-    host.items.mint(rec, reg.index.get("core:berry")!, 100);
+    const food = reg.eats[kind]?.[0];
+    if (food !== undefined) host.items.mint(rec, food, 100);
     records.dirty.add(rec.pid); host.refreshBody(rec); made++;
   }
   return made;

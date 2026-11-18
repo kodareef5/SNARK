@@ -1,8 +1,7 @@
 """Original, deterministic skin paintings in the animal's physical coordinates.
 
-Run after model.py has emitted var/trike-art/layout.npz. Uses no photographs,
-third-party textures or ARK imagery. The atlas records a measured mesh; scale
-fields, pigment, keratin grain and injury strokes below are authored here.
+Run after model.py emits var/trike-art/layout.npz. The original pigment, relief
+and damage fields feed the separate donor-flank albedo pass for the body.
 """
 
 from pathlib import Path
@@ -388,6 +387,12 @@ def write(name,size):
         if side:img=img.resize((side,side),Image.Resampling.NEAREST if suffix=='regions' else Image.Resampling.LANCZOS)
         img.save(HERE/f'{name}_{suffix}.png',compress_level=9)
     save('base',np.clip(color,0,255).astype(np.uint8))
+    if name == 'trike_skin':
+        import sys
+        sys.path.insert(0, str(HERE.parents[1]))
+        from flank import flank_base
+        fitted = flank_base(HERE.parent, p, np.clip(color,0,255)/255)
+        save('flank', np.rint(fitted*255).astype(np.uint8))
     save('height',(np.clip(height,0,1)*65535).astype(np.uint16))
     save('normal',np.clip((normal*.5+.5)*255,0,255).astype(np.uint8))
     save('packed',np.clip(packed,0,255).astype(np.uint8),side=size//2)

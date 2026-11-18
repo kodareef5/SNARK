@@ -736,13 +736,13 @@ def fuse_anatomy(s):
  rig.bind(target,weights);bpy.data.objects.remove(source,do_unlink=True)
  return target
 
-def build():
+def build(paint=True):
  s=Surface('stego_skin_source');body(s);limbs(s);dermal_roots(s);anatomy=fuse_anatomy(s)
  detail=Surface('stego_features');plates(detail);face(detail);features=detail.mesh()
  bpy.ops.object.select_all(action='DESELECT');anatomy.select_set(True);features.select_set(True);bpy.context.view_layer.objects.active=anatomy;bpy.ops.object.join()
  anatomy.name='stego_body'
  from unwrap import unwrap_and_bake_fields
- unwrap_and_bake_fields(anatomy)
+ unwrap_and_bake_fields(anatomy, paint=paint)
  return anatomy
 
 if __name__=='__main__':build()

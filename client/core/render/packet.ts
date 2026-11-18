@@ -165,6 +165,27 @@ export function stepOf(p: FramePacket, d: number): number {
   if ((flags & DRAW_NEAR) !== 0) return STEP_BODY;
   return (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - p.drawPass[d]! : p.drawPass[d]!;
 }
+
+/**
+ * Marks, once the draws are in their order, each draw of a run of indices that is the draw before it but for its run
+ * (`drawJoined`), and each such caster that is the caster before it but for its run and its cascades (`casterJoined`):
+ * the same level, instances, offset, flags and all a renderer sets for it. A renderer that can may send a draw so marked
+ * in one call with those before it; drawn one by one they draw the same.
+ */
+export function markJoins(p: FramePacket): void {
+  const same = (o: Float32Array, a: number, b: number): boolean => o[a * 3] === o[b * 3] && o[a * 3 + 1] === o[b * 3 + 1] && o[a * 3 + 2] === o[b * 3 + 2];
+  for (let d = 0; d < p.drawCount; d++) {
+    const e = d - 1, flags = p.drawFlags[d]!;
+    const joined = d > 0 && (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 && flags === p.drawFlags[e] && p.drawSlot[d] === p.drawSlot[e] && p.drawMesh[d] === p.drawMesh[e] && p.drawBuffer[d] === p.drawBuffer[e] && p.drawFirst[d] === p.drawFirst[e] && p.drawInstances[d] === p.drawInstances[e] && p.drawPass[d] === p.drawPass[e] && p.drawFade[d] === p.drawFade[e] && p.drawHand[d] === p.drawHand[e] && same(p.drawOffset, d, e);
+    p.drawJoined[d] = joined && ((flags & DRAW_TEXTURED) === 0 || (p.drawMaterial[d] === p.drawMaterial[e] && p.drawLayer[d] === p.drawLayer[e] && p.drawWear[d] === p.drawWear[e])) ? 1 : 0;
+  }
+  // A caster's material is read only to cut it out.
+  for (let c = 0; c < p.casterCount; c++) {
+    const e = c - 1, flags = p.casterFlags[c]!;
+    const joined = c > 0 && (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 && flags === p.casterFlags[e] && p.casterSlot[c] === p.casterSlot[e] && p.casterMesh[c] === p.casterMesh[e] && p.casterBuffer[c] === p.casterBuffer[e] && p.casterFirst[c] === p.casterFirst[e] && p.casterInstances[c] === p.casterInstances[e] && same(p.casterOffset, c, e);
+    p.casterJoined[c] = joined && ((flags & DRAW_CUTOUT) === 0 || p.casterMaterial[c] === p.casterMaterial[e]) ? 1 : 0;
+  }
+}
 /** `tilePass` bits: 1 << PASS_NEAR for a tile drawn in the near range, 1 << PASS_FAR in the far, and TILE_CASTS << k casting into cascade k. */
 export const TILE_CASTS = 4;
 /** The pair of textures a tile reads its heights and tints from (`tileSource`): the whole map's, or the window's round the camera. */
@@ -434,6 +455,8 @@ export class FramePacket {
   readonly drawLayer = new Uint8Array(MAX_DRAWS);
   /** With a layer: the wear story its bodies take (wear.ts), 0 for none. */
   readonly drawWear = new Uint8Array(MAX_DRAWS);
+  /** 1 where a draw is the one before it but for its run of indices (markJoins), else 0. */
+  readonly drawJoined = new Uint8Array(MAX_DRAWS);
 
   tileCount = 0;
   /** Per tile: camera-relative x and z of its corner, metres per quad, sample stride. */
@@ -483,6 +506,8 @@ export class FramePacket {
   readonly casterFirstIndex = new Uint32Array(MAX_CASTERS);
   readonly casterIndexCount = new Uint32Array(MAX_CASTERS);
   readonly casterCascades = new Uint8Array(MAX_CASTERS);
+  /** 1 where a caster is the one before it but for its run of indices and its cascades (markJoins), else 0. */
+  readonly casterJoined = new Uint8Array(MAX_CASTERS);
   /** What the sun's maps take this frame, the ground's tiles among it, and which `triangles` leaves out: a caster's triangles once for each cascade it is drawn into, and its draws. */
   castTriangles = 0;
   castDraws = 0;

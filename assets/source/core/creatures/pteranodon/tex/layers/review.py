@@ -32,7 +32,7 @@ def main():
         temp=Path(temp)
         tree=temp/'tree'
         target=tree/'core/creatures/pteranodon'
-        shutil.copytree('/private/tmp/ptera-look/tree/core/creatures/pteranodon',target)
+        shutil.copytree('/tmp/ptera-look/tree/core/creatures/pteranodon',target)
         for src in (ASSET/'tex').glob('pteranodon*.png'):
             shutil.copy2(src,target/'tex'/src.name)
             input_hashes[src.name]=hashlib.sha256((target/'tex'/src.name).read_bytes()).hexdigest()

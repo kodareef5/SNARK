@@ -91,19 +91,4 @@ export function mouthOpens(rig: Rig, clip: Clip): number {
   return 0;
 }
 
-/** Seconds into `clip` at which the body meets the ground: where its root has come within a seventh of the way down. */
-export function bodyDown(rig: Rig, clip: Clip | null): number {
-  if (!clip) return 0;
-  const heights = new Float64Array(clip.frames);
-  for (let f = 0; f < clip.frames; f++) {
-    sampleClip(clip, f, rig.a);
-    solve(rig, rig.a, rig.solved);
-    heights[f] = rig.solved.pos[1]!;
-  }
-  let low = Infinity;
-  for (const h of heights) low = Math.min(low, h);
-  const fall = heights[0]! - low;
-  if (fall < 0.02) return 0;
-  for (let f = 0; f < clip.frames; f++) if (heights[f]! <= low + fall * 0.15) return f / TICK_RATE;
-  return 0;
-}
+export { bodyDown } from "../../../shared/anim/moments.ts";

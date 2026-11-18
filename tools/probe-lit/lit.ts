@@ -5,7 +5,7 @@
 // megapixel: the device probe's line for these programs, on this machine.
 // Run: bun tools/probe-lit/lit.ts
 
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { FRAME_FLOATS } from "../../client/core/render/packet.ts";
@@ -15,6 +15,7 @@ import { spread, type Spread } from "../probe-textured.ts";
 import { PICK_SKY } from "../snap/raster.ts";
 import { provingView } from "../snap.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
+import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const [W, H] = [640, 360];
@@ -236,7 +237,7 @@ export async function fullScreen(chrome: string): Promise<Record<string, number 
     },
   });
   const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdout: "ignore", stderr: "ignore" });
+  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdout: "ignore", stderr: "ignore" });
   const out = await Promise.race([finished, new Promise<null>((r) => setTimeout(() => r(null), 120000))]);
   browser.kill();
   await browser.exited;
@@ -246,7 +247,7 @@ export async function fullScreen(chrome: string): Promise<Record<string, number 
 }
 
 if (import.meta.main) {
-  const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/usr/bin/google-chrome", "/usr/bin/chromium"].find((p) => p && existsSync(p));
+  const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome found. Set CHROME to its path.");
   const t = await fullScreen(chrome);
   if (!t || t.error) {
