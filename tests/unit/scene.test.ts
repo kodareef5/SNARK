@@ -507,7 +507,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // the uploads' vertex bytes moved, and low poly reads none of them. It was 1589639950 until the door-to-curb kit and
   // the street's walks, curbs and drains, the ruins' broken wall tops, rubble, leaning pieces and vines and the broken
   // parapets of whole tops (content/ruins.ts) added their grey meshes; without them it is that again.
-  expect(hash).toBe(3316382992);
+  // The tanker scenery adds eight stand-in meshes before the fixture, shifting its packed mesh indices.
+  expect(hash).toBe(13564816);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -536,7 +537,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2430603422 until the street furniture's grey meshes; without them it is that again. It was 3628556772 until
   // a static's vertices said their faces' corners and outer borders, as the hash above, and 2281949996 until the ruins'
   // kit, street pieces, broken tops, rubble, leaning pieces, vines and broken parapets, as above.
-  expect(saddled.hash).toBe(1004296491);
+  expect(saddled.hash).toBe(350077579);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

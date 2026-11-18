@@ -39,7 +39,7 @@ test("the wiki is of what a player meets: no scenery, no target, no creature wit
   expect(entries.filter((e) => ["creatures", "vehicles", "characters"].includes(e.kind)).map((e) => e.id).sort()).toEqual([
     "core:belvedere", "core:berlinetta", "core:boat", "core:boat_police", "core:boat_rescue", "core:caravan", "core:civilian", "core:compact", "core:dodo", "core:fastback", "core:helicopter",
     "core:helicopter_police", "core:helicopter_rescue", "core:jon_boat", "core:lagoon", "core:manta", "core:meridian", "core:needle",
-    "core:panel_van", "core:parasaur", "core:pteranodon", "core:raptor", "core:riptide", "core:solstice", "core:sovereign", "core:stego", "core:survivor", "core:thunderbolt",
+    "core:panel_van", "core:parasaur", "core:pteranodon", "core:raptor", "core:riptide", "core:solstice", "core:sovereign", "core:stego", "core:survivor", "core:tanker", "core:thunderbolt",
     "core:trike", "core:veloce",
   ]);
   expect(entries.filter((e) => e.kind === "landmarks").map((e) => e.id).sort()).toEqual(LANDMARKS.map((l) => l.name).sort());

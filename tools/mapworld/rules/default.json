@@ -1685,7 +1685,7 @@
         "lots": { "classes": ["S1780"], "least": 2, "most": 4, "apart": 9, "perDistrict": 2 },
         "kinds": { "core:compact": 40, "core:caravan": 24, "core:fastback": 18, "core:panel_van": 12, "core:veloce": 3, "core:berlinetta": 3 },
         "styles": {
-          "industrial": { "core:panel_van": 45, "core:caravan": 10, "core:fastback": 6, "core:veloce": 0, "core:berlinetta": 0 },
+          "industrial": { "core:tanker": 5, "core:panel_van": 45, "core:caravan": 10, "core:fastback": 6, "core:veloce": 0, "core:berlinetta": 0 },
           "mural": { "core:panel_van": 30 },
           "concrete": { "core:panel_van": 22, "core:veloce": 5, "core:berlinetta": 5 },
           "terracotta": { "core:panel_van": 18 },
