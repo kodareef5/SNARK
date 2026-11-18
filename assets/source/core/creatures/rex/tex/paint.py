@@ -2,11 +2,15 @@
 
 from pathlib import Path
 import json
+import sys
 import numpy as np
 from PIL import Image
 from scipy.ndimage import distance_transform_edt, gaussian_filter
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from facial import cheek_folds, labials
+
 OUT = HERE.parents[5] / "var/rex"
 MESH = np.load(OUT / "layout.npz")
 MATS = json.loads((OUT / "layout.json").read_text())["materials"]
@@ -139,32 +143,39 @@ def maps(p, head):
         [0.07, 0.34, 0.58, 0.92, 1.0, 0.85, 0.74, 0.78, 0.48, 0.28],
     )
     skyward = (y - centre) / extent
-    nape = smooth(0.15, 0.88, skyward)
-    belly = (1 - smooth(-0.86, -0.30, skyward)) * (1 - 0.40 * smooth(2.70, 3.25, z))
-    # The dark dorsal strip breaks into long rearward or forward brushing
-    # fingers. Each stroke has its own angle, reach, width and interruption.
+    # The broad thorax has an uninterrupted side plane. Only the neck
+    # bears a short fan of marks, the far tail an interrupted succession;
+    # the hip carries a swept dorsal saddle with an irregular lower edge.
+    shoulder_window = smooth(0.75, 1.42, z) * (1 - smooth(2.75, 3.09, z))
+    tail_window = 1 - smooth(-2.45, -1.75, z)
+    undulation = (
+        0.14 * np.sin(z * 1.77 + 0.5) + 0.13 * noise(z * 2.5, arc * 3.1, 283) + 0.065 * noise(z * 7.5, arc * 6.4, 55)
+    )
+    nape = smooth(0.47 + undulation, 0.92 + undulation, skyward)
+    belly = (1 - smooth(-0.79, -0.25, skyward)) * (1 - 0.40 * smooth(2.70, 3.25, z))
     bars = np.zeros_like(x)
-    for anchor, tilt, width, depth in [
-        (-6.2, 0.30, 0.105, 0.16),
-        (-5.1, 0.37, 0.153, 0.10),
-        (-4.14, 0.39, 0.210, -0.01),
-        (-3.32, 0.39, 0.243, -0.22),
-        (-2.54, 0.66, 0.220, -0.27),
-        (-1.78, 0.80, 0.242, -0.29),
-        (-1.12, 0.74, 0.207, -0.45),
-        (-0.60, 0.68, 0.180, -0.33),
-        (0.14, -0.49, 0.207, -0.40),
-        (0.85, -0.51, 0.168, -0.26),
-        (1.47, -0.47, 0.173, -0.30),
-        (2.07, -0.44, 0.14, -0.11),
-        (2.50, -0.27, 0.12, 0.02),
+    for anchor, tilt, width, depth, amp in [
+        (-6.23, 0.20, 0.08, 0.04, 0.70),
+        (-5.32, 0.26, 0.126, 0.1, 0.77),
+        (-4.38, 0.30, 0.173, -0.11, 0.91),
+        (-3.60, 0.34, 0.174, 0.08, 0.68),
+        (-2.92, 0.34, 0.188, -0.03, 0.81),
+        (1.32, -0.20, 0.142, 0.05, 0.65),
+        (1.86, -0.25, 0.172, -0.11, 0.85),
+        (2.35, -0.14, 0.109, 0.13, 0.60),
     ]:
-        descending = np.clip(0.86 - skyward, 0, 1.5)
-        spine = anchor + tilt * descending + 0.12 * np.sin(descending * 3.25 + anchor * 2.2) + 0.075 * macro
-        thick = width * (0.42 + 0.58 * smooth(-0.18, 0.82, skyward))
-        stroke = np.exp(-(((z - spine) / thick) ** 2)) * smooth(depth, depth + 0.46, skyward)
-        bars = np.maximum(bars, stroke)
-    bars *= 0.76 + 0.24 * smooth(-0.2, 0.46, noise(z * 4.4, arc * 6, 88))
+        descending = np.clip(0.81 - skyward, 0, 1.43)
+        centre = anchor + tilt * descending + 0.046 * np.sin(descending * 4 + anchor * 2) + 0.071 * macro
+        thick = width * (0.24 + 0.76 * smooth(-0.1, 0.85, skyward))
+        mark = amp * np.exp(-(((z - centre) / thick) ** 2)) * smooth(depth, depth + 0.47, skyward)
+        bars = np.maximum(bars, mark)
+    bars *= np.maximum(shoulder_window, tail_window) * (
+        0.57 + 0.43 * smooth(-0.48, 0.45, noise(z * 4, arc * 7 + 0.8, 71))
+    )
+    loinmark = np.exp(-(((z + 1.31 + 0.34 * (skyward - 0.57)) / 0.745) ** 4)) * smooth(
+        0.37 + undulation, 0.81 + undulation, skyward
+    )
+    bars = np.clip(bars + 0.35 * loinmark, 0, 1)
     flank = np.exp(-(((skyward + 0.14) / 0.48) ** 2)) * smooth(-2.7, -1.30, z) * (1 - smooth(1.60, 2.46, z))
     loin = np.exp(-(((z + 1.23 - 0.58 * (y - 2.9)) / 0.27) ** 2) - ((y - 2.87) / 0.65) ** 2)
     shoulder = np.exp(-(((z - (1.18 - 0.62 * (y - 3.14))) / 0.149) ** 2) - ((y - 3.15) / 0.52) ** 2)
@@ -198,7 +209,22 @@ def maps(p, head):
     # The orbital patch is smaller than the jugal field beneath it. A lighter
     # stripe on the bony cheek carries visually from the mouth to the neck.
     eye = np.exp(-(((z - 3.448) / 0.210) ** 2) - ((y - 4.189) / 0.107) ** 2)
-    naris = np.exp(-(((z - 4.685) / 0.11) ** 2) - ((y - 3.918) / 0.071) ** 2) * (1 - smooth(0.34, 0.44, ax))
+    # Darken the sunken wall of the cut itself. The lateral sill remains
+    # skin-coloured even at the centre of the opening in a frontal view.
+    sill = 3.946 - 0.32 * (z - 4.69)
+    nasal_window = 1 - smooth(0.77, 1.03, ((z - 4.679) / 0.20) ** 2 + ((y - (sill - 0.012)) / 0.083) ** 2)
+    outside_x = np.interp(z, [4.488, 4.62, 4.71, 4.83], [0.450, 0.412, 0.39, 0.358])
+    naris = nasal_window * smooth(0.014, 0.086, outside_x - ax)
+    nose_rim = np.exp(-(((y - sill - 0.043) / 0.035) ** 2) - ((z - 4.675) / 0.155) ** 4)
+    labial, labial_groove = labials(z, y)
+    soft_ridge, soft_crease = cheek_folds(z, y)
+    sideface = smooth(0.32, 0.50, ax) * cranial
+    labial *= sideface
+    labial_groove *= sideface
+    soft_ridge *= sideface
+    soft_crease *= sideface
+    hood = np.exp(-(((y - (4.241 - 0.12 * (z - 3.45))) / 0.066) ** 2) - ((z - 3.438) / 0.192) ** 4)
+    lid_edge = np.exp(-(((y - (4.143 + 0.035 * (z - 3.44))) / 0.044) ** 2) - ((z - 3.447) / 0.099) ** 4)
     temporal = np.exp(-(((z - 3.115) / 0.18) ** 2) - ((y - 4.005) / 0.20) ** 2)
     hollow = np.exp(-(((z - 3.941) / 0.32) ** 2) - ((y - (3.967 - 0.15 * (z - 3.88))) / 0.150) ** 2)
     brow = np.exp(-(((y - (4.34 - 0.30 * (z - 3.38))) / 0.094) ** 2) - ((z - 3.40) / 0.39) ** 2)
@@ -239,6 +265,15 @@ def maps(p, head):
         + 15 * brow
     )
     lum = np.maximum(22, lum * (1 - 0.86 * naris))
+    lum += (
+        20 * labial
+        - 39 * labial_groove
+        + 18 * soft_ridge
+        - 36 * soft_crease
+        + 17 * nose_rim
+        - 28 * hood
+        - 11 * lid_edge
+    )
     color = np.stack([lum * (1 + 0.035 * facewash), lum, lum * (0.974 - 0.020 * facewash)], -1)
     height = np.clip(
         0.43
@@ -252,6 +287,11 @@ def maps(p, head):
         + 0.019 * shoulder,
         0.12,
         0.84,
+    )
+    height = np.clip(
+        height + 0.094 * labial - 0.097 * labial_groove + 0.075 * soft_ridge - 0.076 * soft_crease + 0.061 * nose_rim,
+        0.08,
+        0.89,
     )
     rough = np.clip(0.75 - 0.095 * dome + 0.05 * macro - 0.095 * lip - 0.115 * brow, 0.47, 0.94)
     ao = np.clip(193 + 48 * dome - 32 * fold - 30 * eye - 97 * naris - 8 * hollow, 58, 249)
@@ -377,6 +417,8 @@ def atlas(name, n):
         lines = np.sin(np.arctan2(ev - 0.5, np.sin(a)) * 34)
         ec = rgb(42 + iris * (129 + 19 * lines), 36 + iris * (78 + 12 * lines), 30 + iris * (20 + 5 * lines))
         ec = ec * (1 - pupil[..., None]) + np.array([18, 16, 13]) * pupil[..., None]
+        # The overhanging corneal margin breaks the uniform lit marble.
+        ec *= (0.86 - 0.22 * smooth(0.52, 0.92, ev))[..., None]
         color[eye] = ec[eye]
         rough[eye] = 0.16
         h[eye] = 0.49
