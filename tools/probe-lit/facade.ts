@@ -5,21 +5,27 @@
 // the normal, and occlusion, roughness and the far side's share.
 
 import { sample } from "../../client/core/render/cpu-texture.ts";
-import { FACADE_GLSL, FACADE_TIERS, KIND, facadeKind, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
+import { FACADE_FLOOD, FACADE_GLSL, FACADE_TIERS, KIND, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { facadeMaps } from "../facade/build.ts";
 import { spread } from "../probe-textured.ts";
 import { RawShot, type LitCheck, type Readback } from "./shot.ts";
 
 const [W, H] = [480, 270];
 const EYE_Y = 1.7;
-/** A face on the wall z = 0, looking +z: its class, its least corner's x and y, its width and height, and whether its corners are given right to left. */
-const FACES: readonly (readonly [number, number, number, number, number, boolean?])[] = [
+/**
+ * A face on the wall z = 0, looking +z: its class, its least corner's x and y, its width and height, whether its corners
+ * are given right to left, and its outer edges' bits (left, right, foot, head as a reader facing it sees them). The last
+ * are plain walls, which carry marks, and a garage's pier.
+ */
+const FACES: readonly (readonly [number, number, number, number, number, boolean?, number?])[] = [
   [1, 0, 1, 1.4, 2], [1, 2, 0, 0.9, 2.2, true], [1, 3.5, 0.9, 1.4, 1.4], [1, 6, 0.5, 5, 2.4], [2, 12, 1, 16, 2.6], [3, -8, 0, 7.2, 2.9],
   [4, -8, 3, 7.2, 0.9], [5, -8, 4.2, 6.8, 0.25], [1, 29, 0, 1, 2.2], [0, 31, 0, 1.25, 2.9], [1, 0, 5, 1.4, 2], [1, 2, 5, 0.9, 2.2], [1, 6, 4.5, 5, 2.4],
+  [0, -20, 0, 11.5, 4.1, false, 11], [0, -20, 4.3, 7.9, 3.4, true, 15], [0, 33, 0, 0.7, 3.6, false, 3], [0, 34, 0, 9, 2.6, false, 6],
 ];
+const FLOOD = FACADE_FLOOD.miami!;
 /** Where the world is from the eye's origin, and each view: the eye and the point it looks at, in the wall's metres. */
 const ORIGIN = [413.25, 0, 1207.5];
-const VIEWS = [{ eye: [5, EYE_Y, 4], at: [5.5, 2.2, 0] }, { eye: [9, EYE_Y, 15], at: [8, 2.5, 0] }];
+const VIEWS = [{ eye: [5, EYE_Y, 4], at: [5.5, 2.2, 0] }, { eye: [9, EYE_Y, 15], at: [8, 2.5, 0] }, { eye: [-14, EYE_Y, 5], at: [-14, 2.5, 0] }, { eye: [35, EYE_Y, 4], at: [36, 1.8, 0] }];
 const PASSES = 4;
 /** A display window filling a canvas of 1280 by 720 from 2 m, drawn this many times more to time it with the facade on high, on medium and without it. */
 const TIMED = { eye: [8.5, EYE_Y, 2], at: [8.5, EYE_Y, 0], repeat: 60, width: 1280, height: 720 };
@@ -52,13 +58,15 @@ function viewProj(eye: readonly number[], at: readonly number[], aspect = W / H)
 /** The faces as triangles: where each vertex is from the eye, its corner of its face, its own frame and its instance's place, its class. */
 function triangles(eye: readonly number[]): Float32Array {
   const out: number[] = [];
-  FACES.forEach(([cls, x, y, w, h, reversed], i) => {
+  FACES.forEach(([cls, x, y, w, h, reversed, edges = 15], i) => {
     const origin = [x + w / 2, y + h / 2, -0.2 - i * 0.01];
     const corners = [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]];
+    // The vertex's bits are its face's as stored: given right to left, its left and right borders change places.
+    const stored = reversed ? (edges & 12) | ((edges & 1) << 1) | ((edges & 2) >> 1) : edges;
     for (const [cu, cv] of corners) {
       const p = [x + cu! * w, y + cv! * h, 0];
       const face = [reversed ? 1 - cu! : cu!, cv!];
-      out.push(p[0]! - eye[0]!, p[1]! - eye[1]!, p[2]! - eye[2]!, ...face, p[0]! - origin[0]!, p[1]! - origin[1]!, p[2]! - origin[2]!, Math.round((origin[0]! + ORIGIN[0]!) * 4), Math.round((origin[2]! + ORIGIN[2]!) * 4), cls);
+      out.push(p[0]! - eye[0]!, p[1]! - eye[1]!, p[2]! - eye[2]!, ...face, p[0]! - origin[0]!, p[1]! - origin[1]!, p[2]! - origin[2]!, Math.round((origin[0]! + ORIGIN[0]!) * 4), Math.round((origin[2]! + ORIGIN[2]!) * 4), cls, stored);
     }
   });
   return Float32Array.from(out);
@@ -67,13 +75,15 @@ function triangles(eye: readonly number[]): Float32Array {
 const VERTEX = `#version 300 es
 in vec3 aRel, aOwn;
 in vec2 aFace, aPlace;
-in float aClass;
+in float aClass, aEdges;
 uniform mat4 uViewProj;
 out vec3 vRel, vOwn;
 out vec2 vFace;
 flat out vec2 vPlace;
 flat out int vClass;
+flat out uint vEdges;
 void main() {
+  vEdges = uint(aEdges + 0.5);
   vRel = aRel;
   vOwn = aOwn;
   vFace = aFace;
@@ -89,6 +99,7 @@ in vec3 vRel, vOwn;
 in vec2 vFace;
 flat in vec2 vPlace;
 flat in int vClass;
+flat in uint vEdges;
 uniform float uPass, uEyeY;
 out vec4 o;
 ${FACADE_GLSL.replaceAll("FACADE_NORMAL", "rg")}void main() {
@@ -97,14 +108,14 @@ ${FACADE_GLSL.replaceAll("FACADE_NORMAL", "rg")}void main() {
   vec3 albedo = vec3(0.5), orm = vec3(1.0), n = geometric, room;
   vec4 far;
 #ifdef FACADE
-  int k = facade(albedo, orm, n, room, far, vClass, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vRel, dx, dy, geometric, vRel.y + uEyeY, vRel.y + uEyeY);
+  int k = facade(albedo, orm, n, room, far, vClass, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uEyeY, vRel.y + uEyeY);
 #else
   int k = 1;
   room = vec3(0.0);
   far = vec4(0.0);
 #endif
   vec3 c = uPass < 0.5 ? sqrt(albedo) : uPass < 1.5 ? sqrt(room) : uPass < 2.5 ? n * 0.5 + 0.5 : vec3(orm.r, orm.g, far.a);
-  o = vec4(k == 0 ? vec3(1.0, 0.0, 1.0) : c, 1.0);
+  o = vec4(c, 1.0);
 }`;
 
 /** What the twin drew of a shot: each pixel's colour as the pass writes it, and the face under it (-1 none). */
@@ -131,13 +142,9 @@ function twin(view: (typeof VIEWS)[number], tier: FacadeTier, sampleAt: FacadeSa
     const i = FACES.findIndex(([, x, y, w, h]) => p[0]! >= x && p[0]! <= x + w && p[1]! >= y && p[1]! <= y + h);
     if (i < 0) continue;
     face[py * W + px] = i;
-    const [cls, x, y, w, h] = FACES[i]!;
+    const [cls, x, y, w, h, , edges = 15] = FACES[i]!;
     const kind = facadeKind(cls, w, h, 0);
     const at = py * W + px;
-    if (kind === KIND.none) {
-      for (const c of colors) c.set([255, 0, 255, 255], at * 4);
-      continue;
-    }
     const a = meet(px + 1, py)!, b = meet(px, py + 1)!;
     const rel = [0, 1, 2].map((k) => p[k]! - view.eye[k]!), dist = Math.hypot(...rel);
     const footprint = Math.max(Math.hypot(a[0]! - p[0]!, a[1]! - p[1]!), Math.hypot(b[0]! - p[0]!, b[1]! - p[1]!));
@@ -145,7 +152,11 @@ function twin(view: (typeof VIEWS)[number], tier: FacadeTier, sampleAt: FacadeSa
     o.albedo.fill(0.5);
     o.orm.fill(1);
     o.normal.set([0, 0, 1]);
-    facadeSurface(o, kind, p[0]! - x, p[1]! - y, w, h, [0, 0, 1], rel.map((q) => -q / dist), [x - origin[0]!, y - origin[1]!, -origin[2]!], [1, 0, 0], Math.round((origin[0]! + ORIGIN[0]!) * 4), Math.round((origin[2]! + ORIGIN[2]!) * 4), p[1]!, p[1]!, footprint, dist, tier, sampleAt);
+    const args = [[x - origin[0]!, y - origin[1]!, -origin[2]!], [1, 0, 0], Math.round((origin[0]! + ORIGIN[0]!) * 4), Math.round((origin[2]! + ORIGIN[2]!) * 4), p[1]!, p[1]!] as const;
+    o.room.fill(0);
+    o.farShare = 0;
+    if (kind !== KIND.none) facadeSurface(o, kind, p[0]! - x, p[1]! - y, w, h, [0, 0, 1], rel.map((q) => -q / dist), ...args, footprint, dist, tier, sampleAt);
+    if (kind === KIND.none || kind === KIND.shutter || kind === KIND.door || kind === KIND.pier) facadeMarks(o, kind, p[0]! - x, p[1]! - y, w, h, edges, [0, 0, 1], ...args, FLOOD, footprint, tier, sampleAt);
     const outs = [o.albedo.map(Math.sqrt), o.room.map(Math.sqrt), o.normal.map((q) => q * 0.5 + 0.5), [o.orm[0]!, o.orm[1]!, o.farShare]];
     outs.forEach((v, k) => colors[k]!.set([...[0, 1, 2].map((c) => Math.round(Math.min(1, Math.max(0, v[c]!)) * 255)), 255], at * 4));
   }
@@ -162,11 +173,11 @@ export const facadeCheck: LitCheck = {
       const tier = FACADE_TIERS[name]!;
       const { levels, textures } = facadeMaps(tier);
       const sampleAt: FacadeSample = (t, u, v, lod, out) => sample(textures[t]!, u, v, lod - (textures[t]!.pictures.length - 1), out);
-      const maps = levels.map((l, k) => ({ name: ["uFacadeBase", "uFacadeNormal", "uFacadeOrm", "uFacadeRooms"][k]!, size: Math.max(k < 3 ? tier.elements : tier.rooms, 64), channels: (k === 1 ? 2 : 4) as 2 | 4, srgb: k === 0 || k === 3, levels: l }));
+      const maps = levels.map((l, k) => ({ name: ["uFacadeBase", "uFacadeNormal", "uFacadeOrm", "uFacadeRooms", "uFacadeMarks"][k]!, size: Math.max(k < 3 ? tier.elements : k === 3 ? tier.rooms : tier.marks, 64), channels: (k === 1 ? 2 : 4) as 2 | 4, srgb: k === 0 || k === 3, levels: l }));
       const { width: tw, height: th, repeat } = TIMED;
       const timedData = triangles(TIMED.eye);
       for (const [key, label, text] of [[`facade-time-${name}`, `facade on ${name}`, fragment(tier.reflect)], ...(name === "high" ? [["facade-time-none", "no facade", fragment(false, false)]] : [])] as const) {
-        shots.push(new RawShot(key, tw, th, VERTEX, text, [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1]], timedData, { uViewProj: viewProj(TIMED.eye, TIMED.at, tw / th).m, uPass: [0], uEyeY: [EYE_Y] }, maps, repeat));
+        shots.push(new RawShot(key, tw, th, VERTEX, text, [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1], ["aEdges", 1]], timedData, { uViewProj: viewProj(TIMED.eye, TIMED.at, tw / th).m, uPass: [0], uEyeY: [EYE_Y], uFacadeFlood: [FLOOD] }, maps, repeat));
         timed.push({ key, label });
       }
       VIEWS.forEach((view, v) => {
@@ -174,7 +185,7 @@ export const facadeCheck: LitCheck = {
         const data = triangles(view.eye);
         for (let pass = 0; pass < PASSES; pass++) {
           const key = `facade-${name}-${v}-${pass}`;
-          shots.push(new RawShot(key, W, H, VERTEX, fragment(tier.reflect), [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1]], data, { uViewProj: viewProj(view.eye, view.at).m, uPass: [pass], uEyeY: [EYE_Y] }, maps));
+          shots.push(new RawShot(key, W, H, VERTEX, fragment(tier.reflect), [["aRel", 3], ["aFace", 2], ["aOwn", 3], ["aPlace", 2], ["aClass", 1], ["aEdges", 1]], data, { uViewProj: viewProj(view.eye, view.at).m, uPass: [pass], uEyeY: [EYE_Y], uFacadeFlood: [FLOOD] }, maps));
           pictures.push({ key, color: drawn.colors[pass]!, face: drawn.face });
         }
       });

@@ -16,15 +16,16 @@ const sources: { id: string; role: TextureRole; top: number; mips: () => Uint8Ar
   { id: "facade/elements/normal", role: "normal", top: 2048, mips: () => normal.pictures },
   { id: "facade/elements/mro", role: "mro", top: 2048, mips: () => packedMips(readPicture(`${FACADE_ART}/elements-orm.png`), normal.lengths) },
   { id: "facade/rooms/base", role: "base", top: 2048, mips: () => baseMips(readPicture(`${FACADE_ART}/rooms.png`)) },
+  { id: "facade/marks/base", role: "base", top: 2048, mips: () => baseMips(readPicture(`${FACADE_ART}/marks.png`)) },
 ];
-const encoded = await encodeTextures(sources, { workers: 2, alpha: new Set(["facade/elements/base"]) });
+const encoded = await encodeTextures(sources, { workers: 2, alpha: new Set(["facade/elements/base", "facade/marks/base"]) });
 const rows: object[] = [];
 for (const v of encoded.variants) {
   for (const [name, tier] of Object.entries(FACADE_TIERS)) {
     if (!tier) continue;
     let card = 0, fetched = 0;
     sources.forEach((s, i) => {
-      const want = i < 3 ? tier.elements : tier.rooms;
+      const want = i < 3 ? tier.elements : i === 3 ? tier.rooms : tier.marks;
       if (want === 0) return;
       const placed = v.placed[i]!, top = Math.min(want, topIn(v.format, s.top)), block = blockOf(v.format, placed);
       card += textureBytes(v.format, s.role, top, block);

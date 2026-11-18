@@ -23,9 +23,9 @@ export const ELEMENTS: readonly (readonly [string, number, number, number])[] = 
 /** An element's variant in the atlas: pixels at FACADE_TOP, rows from the top. */
 export interface Placed { readonly name: string; readonly variant: number; readonly x: number; readonly y: number; readonly w: number; readonly h: number }
 
-/** The elements laid into the atlas, in ELEMENTS order: the largest first, each on the lowest run of columns it fits, GAP apart. */
-export const PLACED: readonly Placed[] = (() => {
-  const items = ELEMENTS.flatMap(([name, w, h, n]) => Array.from({ length: n }, (_, variant) => ({ name, variant, w: Math.ceil((w * DENSITY) / 8) * 8, h: Math.ceil((h * DENSITY) / 8) * 8 })));
+/** Items laid into an atlas FACADE_TOP across at `density` pixels a metre: the largest first, each on the lowest run of columns it fits, GAP apart. */
+function lay(list: readonly (readonly [string, number, number, number])[], density: number): Placed[] {
+  const items = list.flatMap(([name, w, h, n]) => Array.from({ length: n }, (_, variant) => ({ name, variant, w: Math.ceil((w * density) / 8) * 8, h: Math.ceil((h * density) / 8) * 8 })));
   const order = items.map((_, i) => i).sort((a, b) => items[b]!.w * items[b]!.h - items[a]!.w * items[a]!.h || a - b);
   const sky = new Int32Array(FACADE_TOP / 8).fill(GAP);
   const at = new Array<{ x: number; y: number }>(items.length);
@@ -45,8 +45,16 @@ export const PLACED: readonly Placed[] = (() => {
     at[i] = { x: best * 8, y: low };
   }
   return items.map((it, i) => ({ ...it, ...at[i]! }));
-})();
+}
+/** The elements laid into their atlas, in ELEMENTS order. */
+export const PLACED: readonly Placed[] = lay(ELEMENTS, DENSITY);
 const first = (name: string): number => PLACED.findIndex((p) => p.name === name);
+
+/** The marks painted on walls: posters, sprayed tags, large pieces, a garage's stencils; laid at MARK_DENSITY pixels a metre into their own atlas. */
+export const MARKS: readonly (readonly [string, number, number, number])[] = [["poster", 0.6, 0.9, 6], ["tag", 1, 0.5, 8], ["piece", 3.2, 1.2, 2], ["stencil", 0.6, 0.8, 4]];
+const MARK_DENSITY = 256;
+export const MARKS_PLACED: readonly Placed[] = lay(MARKS, MARK_DENSITY);
+const mark = (name: string): number => MARKS_PLACED.findIndex((p) => p.name === name);
 
 /** The rooms' atlas: 4 by 4 rooms, each four squares, back wall and side wall over floor and ceiling. */
 export const ROOMS = 16;
@@ -92,20 +100,24 @@ const DRAPE_BACK = 0.12;
  * What each tier draws: the elements' atlas and the rooms' at their sides (0 for none), and whether glass shows its room
  * and the street's far side; without them glass is a dark recess. Low poly draws none of it.
  */
-export interface FacadeTier { readonly elements: number; readonly rooms: number; readonly reflect: boolean }
+export interface FacadeTier { readonly elements: number; readonly rooms: number; readonly marks: number; readonly reflect: boolean }
 export const FACADE_TIERS: Readonly<Record<string, FacadeTier | null>> = {
   lowpoly: null,
-  medium: { elements: 1024, rooms: 0, reflect: false },
-  high: { elements: 2048, rooms: 2048, reflect: true },
-  ultra: { elements: 2048, rooms: 2048, reflect: true },
+  medium: { elements: 1024, rooms: 0, marks: 1024, reflect: false },
+  high: { elements: 2048, rooms: 2048, marks: 2048, reflect: true },
+  ultra: { elements: 2048, rooms: 2048, marks: 2048, reflect: true },
 };
+/** The height in the world, in metres, of the line the last flood left on every wall, by city; none where a city has none. */
+export const FACADE_FLOOD: Readonly<Record<string, number>> = { miami: 1.6 };
+export const NO_FLOOD = -1e4;
 
 /**
  * Each placed element's mean at its finest, which it fades to far off: linear red, green and blue of its solid part,
- * its cover (base alpha), its roughness. Then each room's mean, linear red, green and blue. tools/facade/build.ts
- * measures both from the atlases it makes and a test holds them to it.
+ * its cover (base alpha), its roughness; each mark's, linear red, green and blue where it covers, and its cover; and each
+ * room's, linear red, green and blue. tools/facade/build.ts measures them from the atlases it makes.
  */
 export const ELEMENT_MEANS: readonly number[] = [0.5726, 0.567, 0.477, 0.2566, 0.2086, 0.1426, 0.109, 0.07729, 0.2566, 0.2077, 0.5379, 0.5212, 0.4229, 0.2566, 0.2651, 0.5907, 0.5848, 0.4916, 0.2535, 0.2024, 0.1575, 0.1224, 0.08767, 0.2535, 0.2031, 0.5515, 0.5461, 0.4589, 0.2158, 0.1882, 0.1449, 0.1119, 0.08002, 0.211, 0.1837, 0.5499, 0.5438, 0.4577, 0.207, 0.1753, 0.09125, 0.1097, 0.09978, 0.3799, 0.1182, 0.07765, 0.05798, 0.04474, 0.3799, 0.1171, 0.3531, 0.3658, 0.3331, 0.1306, 0.1647, 0.1463, 0.1145, 0.08198, 0.1332, 0.1667, 0.1593, 0.2302, 0.2598, 1, 0.7903, 0.3903, 0.4049, 0.3726, 0.9989, 0.6862, 0.4834, 0.4333, 0.2989, 1, 0.793, 0.3176, 0.404, 0.2948, 1, 0.7554, 0.5774, 0.4986, 0.4119, 1, 0.7516, 0.5707, 0.4681, 0.2915, 1, 0.7575, 0.3017, 0.4015, 0.426, 1, 0.755, 0.2482, 0.2648, 0.248, 1, 0.7481, 0.5, 0.2863, 0.2288, 1, 0.756, 0.3321, 0.2574, 0.0921, 1, 0.7832, 0.4679, 0.3507, 0.1155, 1, 0.7789, 0.3135, 0.3356, 0.2979, 0.5187, 0.4151, 0.1143, 0.2159, 0.1813, 0.9577, 0.7783, 0.2457, 0.1304, 0.09312, 1, 0.8017, 0.5906, 0.5515, 0.4119, 0.8226, 0.5917, 0.5793, 0.4899, 0.3497, 0.9647, 0.8438, 0.2261, 0.2843, 0.3053, 0.9627, 0.8438, 0.3105, 0.2664, 0.217, 0.9925, 0.8496, 0.2983, 0.2633, 0.2175, 0.5663, 0.8514, 0.4215, 0.4536, 0.3792, 0.1455, 0.07263, 0.4171, 0.4514, 0.3785, 0.1464, 0.07176];
+export const MARK_MEANS: readonly number[] = MARKS_PLACED.flatMap(() => [0.3, 0.3, 0.3, 0.5]);
 export const ROOM_MEANS: readonly number[] = [0.2983, 0.2752, 0.192, 0.2211, 0.2479, 0.233, 0.2763, 0.2707, 0.2117, 0.2314, 0.2265, 0.1938, 0.2664, 0.2406, 0.1757, 0.3243, 0.3099, 0.2531, 0.1549, 0.1495, 0.1317, 0.2371, 0.2168, 0.1959, 0.2354, 0.2187, 0.1953, 0.1742, 0.1609, 0.132, 0.2351, 0.2149, 0.1754, 0.2418, 0.2283, 0.1915, 0.2559, 0.2261, 0.2009, 0.247, 0.2757, 0.2113, 0.2402, 0.2221, 0.1803, 0.09239, 0.08356, 0.07712];
 
 const fract = (x: number): number => x - Math.floor(x);
@@ -148,7 +160,7 @@ export function facadeFamily(px: number, pz: number): number {
   return facadeHash(Math.floor(px / 192), Math.floor(pz / 192), 7);
 }
 
-/** What a tier draws and a texture read: `texture` 0 to 3 the elements' base, normal and packed maps and the rooms'; (u, v) from the top left; `lod` the level below the finest. */
+/** A texture read: `texture` 0 to 4 the elements' base, normal and packed maps, the rooms' and the marks'; (u, v) from the top left; `lod` the level below the finest. */
 export type FacadeSample = (texture: number, u: number, v: number, lod: number, out: Float64Array) => void;
 
 /** What facadeSurface gives: the element's surface, the room's light through the glass, the street's far side mirrored. */
@@ -383,6 +395,177 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
   for (let c = 0; c < 3; c++) o.normal[c]! /= nl;
 }
 
+/** A smooth noise along a line, 0 to 1, a value a metre where t is in metres. */
+function noise1(t: number, seed: number): number {
+  const i = Math.floor(t), f = t - i, s = f * f * (3 - 2 * f);
+  return facadeHash(i, seed, 91) * (1 - s) + facadeHash(i + 1, seed, 91) * s;
+}
+
+/** Slots of a wall face, in metres across and up, each of which may carry one painted or pasted mark. */
+const SLOT_W = 6;
+const SLOT_H = 4;
+const decal = new Float64Array(4);
+
+/**
+ * Mark `m` (an index into MARKS_PLACED) laid with its left foot at (x0, y0), `dw` by `dh` metres, read at (x, y) on its
+ * face at `footprint` metres a pixel from an atlas `size` across, into `decal`: its colour and cover. Past the coarsest
+ * level the atlas keeps it apart from its neighbours, its mean.
+ */
+function markAt(m: number, x: number, y: number, x0: number, y0: number, dw: number, dh: number, footprint: number, size: number, sample: FacadeSample): number {
+  const u = (x - x0) / dw, v = (y - y0) / dh;
+  if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
+  const p = MARKS_PLACED[m]!;
+  const lod = Math.log2(Math.max((footprint * p.w * size) / (dw * FACADE_TOP), 1e-6));
+  const most = Math.log2(size / 256);
+  const fade = clamp((lod - most) / 1.5);
+  const l = clamp(lod, 0, most), inset = (0.5 * 2 ** Math.ceil(l)) / size;
+  read.fill(0);
+  if (fade < 1) sample(4, clamp((p.x + u * p.w) / FACADE_TOP, p.x / FACADE_TOP + inset, (p.x + p.w) / FACADE_TOP - inset), clamp((p.y + (1 - v) * p.h) / FACADE_TOP, p.y / FACADE_TOP + inset, (p.y + p.h) / FACADE_TOP - inset), l, read);
+  for (let c = 0; c < 4; c++) decal[c] = read[c]! * (1 - fade) + MARK_MEANS[m * 4 + c]! * fade;
+  return decal[3]!;
+}
+
+/**
+ * The marks over a wall face, or over a shutter, a door or a garage's pier, into `o`'s albedo, occlusion, roughness and
+ * metal and normal as they stand: the flood's line at `flood` metres in the world (NO_FLOOD for none) with its silt below;
+ * cracks from the face's corners at its outer edges (`edges`, bits for its left, right, foot and head, as a reader facing
+ * it sees them); and in each slot of SLOT_W by SLOT_H metres by its seed, a patch of repair, a burst of bullet scars, and
+ * one of the marks' atlas: a poster, a tag or a large piece low on a wall, a tag or a piece on a shutter, a level's number
+ * and a striped foot on a pier. The face, its corner, its right, its place and the rest are as facadeSurface takes them.
+ */
+export function facadeMarks(o: FacadeOut, kind: number, x: number, y: number, w: number, h: number, edges: number, n: Numbers, corner: Numbers, right: Numbers, px: number, pz: number, height: number, over: number, flood: number, footprint: number, tier: FacadeTier, sample: FacadeSample): void {
+  if (w < 0.3 || h < 0.3) return;
+  const rl = Math.hypot(n[2]!, n[0]!) || 1, rx = n[2]! / rl, rz = -n[0]! / rl;
+  const seed = facadeSeed(px, pz, corner[0]! + right[0]! * w * 0.5, height - y + h * 0.5, corner[2]! + right[2]! * w * 0.5);
+  const fp = Math.max(footprint, 1e-4);
+  let tx = 0, ty = 0;
+  // The flood's line, wandering a centimetre, and silt fading over the 0.7 m below it.
+  if (flood > NO_FLOOD) {
+    const dh = height - flood + 0.012 * (noise1(x * 2.3, Math.floor(seed * 4096)) - 0.5);
+    if (dh < 0.02 && dh > -0.7) {
+      const line = 1 - smooth(0.004, 0.012 + fp * 0.5, Math.abs(dh));
+      const silt = dh < 0 ? (1 + dh / 0.7) * (1 + dh / 0.7) * 0.4 : 0;
+      for (let c = 0; c < 3; c++) o.albedo[c] = o.albedo[c]! * (1 - silt + silt * [0.82, 0.74, 0.6][c]!) * (1 - 0.5 * line);
+      o.orm[1] = o.orm[1]! + (1 - o.orm[1]!) * Math.max(line, silt);
+    }
+  }
+  // Cracks from the corners at an outer edge, three straight runs turning a little, narrowing from 4 mm to 1 mm.
+  let crack = 0;
+  if (Math.min(w, h) >= 0.4) {
+    for (let c = 0; c < 4; c++) {
+      const right1 = c & 1, top = c >> 1;
+      if ((edges & ((right1 ? 2 : 1) | (top ? 8 : 4))) === 0 || fract(seed * (7.13 + c * 3.31)) >= 0.35) continue;
+      const length = Math.min(0.3 + 0.7 * fract(seed * (5.1 + c * 1.7)), 0.7 * Math.min(w, h));
+      let ax = right1 ? w : 0, ay = top ? h : 0;
+      if (Math.hypot(x - ax, y - ay) > length + 0.05) continue;
+      const sx = right1 ? -1 : 1, sy = top ? -1 : 1;
+      let along = 0;
+      for (let k = 0; k < 3; k++) {
+        const angle = 0.5 + 0.5 * fract(seed * (3.7 + c)) + 0.35 * (fract(seed * (11.3 + c * 2.1 + k * 5.7)) - 0.5);
+        const bx = ax + sx * Math.cos(angle) * length / 3, by = ay + sy * Math.sin(angle) * length / 3;
+        const ex = bx - ax, ey = by - ay, t = clamp(((x - ax) * ex + (y - ay) * ey) / (ex * ex + ey * ey));
+        const qx = x - ax - ex * t, qy = y - ay - ey * t, d = Math.hypot(qx, qy);
+        const half = 0.0012 + 0.0028 * (1 - (along + t * length / 3) / length);
+        const cover = clamp((half + 0.5 * fp - d) / fp) * Math.min(1, (2 * half) / fp);
+        if (cover > crack) {
+          crack = cover;
+          tx = d > 1e-6 ? -qx / d : 0;
+          ty = d > 1e-6 ? -qy / d : 0;
+        }
+        along += length / 3;
+        ax = bx;
+        ay = by;
+      }
+    }
+  }
+  const slotX = Math.floor(x / SLOT_W), slotY = Math.floor(y / SLOT_H);
+  const sx0 = slotX * SLOT_W, sy0 = slotY * SLOT_H, sx1 = Math.min(sx0 + SLOT_W, w), sy1 = Math.min(sy0 + SLOT_H, h);
+  const slot = facadeHash(Math.floor(seed * 16777216), slotX, slotY);
+  const foot = over - y + sy0;
+  // A patch of repair: a rectangle of cement with a wandering edge, standing a little proud.
+  let patch = 0, px2 = 0, py2 = 0;
+  if (kind === KIND.none && fract(slot * 3.1) < 0.18 && sx1 - sx0 >= 1.2 && sy1 - sy0 >= 0.8) {
+    const pw = Math.min(0.6 + fract(slot * 5.3), sx1 - sx0 - 0.2), ph = Math.min(0.4 + 0.6 * fract(slot * 7.9), sy1 - sy0 - 0.2);
+    const cx = sx0 + 0.1 + pw / 2 + fract(slot * 9.7) * (sx1 - sx0 - pw - 0.2), cy = sy0 + 0.1 + ph / 2 + fract(slot * 2.9) * (sy1 - sy0 - ph - 0.2);
+    const ex = Math.abs(x - cx) - pw / 2, ey = Math.abs(y - cy) - ph / 2;
+    const sd = Math.max(ex, ey) + 0.03 * (noise1((x + y) * 6, Math.floor(slot * 4096)) - 0.5);
+    patch = clamp(0.5 - sd / fp);
+    const lip = (1 - smooth(0, 0.012, Math.abs(sd))) * Math.min(1, 0.012 / fp);
+    px2 = ex > ey ? Math.sign(x - cx) * lip : 0;
+    py2 = ex > ey ? 0 : Math.sign(y - cy) * lip;
+    const tone = 0.85 + 0.3 * fract(slot * 13.3);
+    for (let c = 0; c < 3; c++) o.albedo[c] = o.albedo[c]! + ([0.36, 0.35, 0.33][c]! * tone - o.albedo[c]!) * 0.7 * patch;
+    o.orm[1] = o.orm[1]! + (0.95 - o.orm[1]!) * patch;
+  }
+  // A burst of bullet scars, a dark hole in a pale broken ring, low enough to have been aimed at someone.
+  let scar = 0, sxn = 0, syn = 0;
+  if (kind === KIND.none && fract(slot * 11.9) < 0.07 && sx1 - sx0 >= 1.4 && sy1 - sy0 >= 1.4) {
+    const cx = sx0 + 0.7 + fract(slot * 4.7) * (sx1 - sx0 - 1.4), cy = clamp(0.8 + 1.6 * fract(slot * 6.1) - (over - y), sy0 + 0.7, sy1 - 0.7);
+    if (Math.hypot(x - cx, y - cy) < 0.65) {
+      for (let k = 0; k < 10; k++) {
+        const a = 6.2832 * fract(slot * (17.3 + k * 3.9)), r = 0.5 * Math.sqrt(fract(slot * (23.1 + k * 7.3)));
+        const hx = cx + Math.cos(a) * r, hy = cy + Math.sin(a) * r, rad = 0.012 + 0.014 * fract(slot * (31.7 + k * 2.3));
+        const d = Math.hypot(x - hx, y - hy);
+        if (d >= rad) continue;
+        scar = d < 0.45 * rad ? 2 : 1;
+        sxn = -(x - hx) / rad * 0.7;
+        syn = -(y - hy) / rad * 0.7;
+      }
+      if (scar > 0) {
+        for (let c = 0; c < 3; c++) o.albedo[c]! *= scar === 2 ? 0.35 : 1.25;
+        o.orm[1] = 1;
+      }
+    }
+  }
+  // One mark of the atlas in the slot, where it fits inside the slot and the face.
+  const r = fract(slot * 2.3);
+  let m = -1, dw = 0, dh = 0, x0 = 0, y0 = 0, m2 = -1;
+  const lie = (name: string, count: number, width: number, high: number, bottom: number): void => {
+    m = mark(name) + Math.min(Math.floor(fract(slot * 19.7) * count), count - 1);
+    dw = width;
+    dh = high;
+    x0 = sx0 + 0.05 + fract(slot * 4.1) * Math.max(0, sx1 - sx0 - width - 0.1);
+    y0 = Math.max(sy0, bottom);
+  };
+  if (kind === KIND.none && foot < 2.5) {
+    if (r < 0.1 && sx1 - sx0 >= 3.4 && sy1 - sy0 >= 1.6) lie("piece", 2, 3.2, 1.2, sy0 + 0.4 - foot);
+    else if (r < 0.28 && sx1 - sx0 >= 0.8 && sy1 - sy0 >= 1.2) lie("poster", 6, 0.6, 0.9, sy0 + 1.1 + 0.5 * fract(slot * 8.3) - foot);
+    else if (r < 0.55 && sx1 - sx0 >= 1.2) lie("tag", 8, 1, 0.5, sy0 + 0.5 + 1.4 * fract(slot * 8.3) - foot);
+  } else if (kind === KIND.shutter) {
+    if (r < 0.25) lie("piece", 2, 3.2, 1.2, 0.4);
+    else if (r < 0.7) lie("tag", 8, 1, 0.5, 0.5 + 1.2 * fract(slot * 8.3));
+  } else if (kind === KIND.door && r < 0.3) lie("tag", 8, 1, 0.5, 0.6 + fract(slot * 8.3));
+  else if (kind === KIND.pier) {
+    if (r < 0.75) lie("stencil", 3, 0.6, 0.8, 1.2);
+    if (fract(slot * 6.7) < 0.5) m2 = mark("stencil") + 3;
+  }
+  let cover = 0;
+  if (m >= 0 && x0 + dw <= sx1 - 0.04 && y0 + dh <= sy1) cover = markAt(m, x, y, x0, y0, dw, dh, fp, tier.marks, sample);
+  if (cover > 0) {
+    const paper = MARKS_PLACED[m]!.name === "poster";
+    for (let c = 0; c < 3; c++) o.albedo[c] = o.albedo[c]! + (decal[c]! - o.albedo[c]!) * cover;
+    o.orm[1] = o.orm[1]! + ((paper ? 0.95 : 0.65) - o.orm[1]!) * cover;
+    o.orm[2] = o.orm[2]! * (1 - cover);
+  }
+  if (m2 >= 0 && (cover = markAt(m2, x, y, (w - 0.6) / 2, 0, 0.6, 0.8, fp, tier.marks, sample)) > 0) {
+    for (let c = 0; c < 3; c++) o.albedo[c] = o.albedo[c]! + (decal[c]! - o.albedo[c]!) * cover;
+    o.orm[1] = o.orm[1]! + (0.65 - o.orm[1]!) * cover;
+  }
+  if (crack > 0) {
+    for (let c = 0; c < 3; c++) o.albedo[c]! *= 1 - 0.7 * crack;
+    o.orm[1] = o.orm[1]! + (1 - o.orm[1]!) * crack;
+  }
+  // The relief of a crack's sides, a patch's lip and a scar's crater, across the face (its right) and up.
+  const bx = tx * 0.6 * crack + px2 * 0.35 + (scar > 0 ? sxn : 0), by = ty * 0.6 * crack + py2 * 0.35 + (scar > 0 ? syn : 0);
+  if (bx !== 0 || by !== 0) {
+    o.normal[0] = o.normal[0]! + rx * bx;
+    o.normal[1] = o.normal[1]! + by;
+    o.normal[2] = o.normal[2]! + rz * bx;
+    const l = Math.hypot(o.normal[0]!, o.normal[1]!, o.normal[2]!);
+    for (let c = 0; c < 3; c++) o.normal[c]! /= l;
+  }
+}
+
 const fl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 const vecs = (type: string, rows: readonly (readonly number[])[]): string => `${type}[${rows.length}](${rows.map((r) => `${type}(${r.map(fl).join(",")})`).join(",")})`;
 const ROOM_LIST = KINDS.flatMap((k) => k.room?.rooms ?? []);
@@ -401,7 +584,10 @@ const pickOf = (k: Kind, i: number): number => (i === KIND.jamb || i === KIND.pi
  * FACADE_ROOMS glass is a dark recess.
  */
 export const FACADE_GLSL = `#ifdef FACADE
-uniform highp sampler2D uFacadeBase, uFacadeNormal, uFacadeOrm, uFacadeRooms;
+uniform highp sampler2D uFacadeBase, uFacadeNormal, uFacadeOrm, uFacadeRooms, uFacadeMarks;
+uniform float uFacadeFlood;
+const vec4 MP[${MARKS_PLACED.length}] = ${vecs("vec4", MARKS_PLACED.map((p) => [p.x, p.y, p.w, p.h]))};
+const vec4 MM[${MARKS_PLACED.length}] = ${vecs("vec4", MARKS_PLACED.map((_, m) => MARK_MEANS.slice(m * 4, m * 4 + 4)))};
 const vec4 FP[${PLACED.length}] = ${vecs("vec4", PLACED.map((p) => [p.x, p.y, p.w, p.h]))};
 const vec4 FM[${PLACED.length}] = ${vecs("vec4", PLACED.map((_, e) => ELEMENT_MEANS.slice(e * 5, e * 5 + 4)))};
 const float FR[${PLACED.length}] = float[${PLACED.length}](${PLACED.map((_, e) => fl(ELEMENT_MEANS[e * 5 + 4]!)).join(",")});
@@ -482,24 +668,9 @@ float facadeFar(out vec3 albedo, float gx, vec3 r, float over, float seed) {
   return clamp((tall - hy) / 1.5, 0.0, 1.0);
 }
 #endif
-int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out vec4 far, int colour, vec2 face, vec2 fx, vec2 fy, vec3 own, vec3 ox, vec3 oy, vec2 place, vec3 rel, vec3 dpx, vec3 dpy, vec3 geometric, float height, float over) {
-  room = vec3(0.0);
-  far = vec4(0.0);
-  float det = fx.x * fy.y - fy.x * fx.y;
-  if (abs(det) < 1e-12) return 0;
-  vec3 pu = (dpx * fy.y - dpy * fx.y) / det, pv = (dpy * fx.x - dpx * fy.x) / det;
-  vec3 qu = (ox * fy.y - oy * fx.y) / det, qv = (oy * fx.x - ox * fy.x) / det;
-  vec3 nn = geometric, side = normalize(vec3(nn.z, 0.0, -nn.x) + 1e-9);
-  // Across the face as a reader facing it reads, and up.
-  if (dot(pu, side) < 0.0) { face.x = 1.0 - face.x; pu = -pu; qu = -qu; }
-  if (pv.y < 0.0) { face.y = 1.0 - face.y; pv = -pv; qv = -qv; }
-  float w = length(pu), h = length(pv);
-  int kind = facadeKind(colour, w, h, nn.y);
-  if (kind == 0) return 0;
-  float x = face.x * w, y = face.y * h;
-  vec3 corner = own - qu * face.x - qv * face.y, right = qu / max(length(qu), 1e-6);
+int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room, inout vec4 far, int kind, float x, float y, float w, float h, vec3 corner, vec3 right, vec3 nn, vec3 side, vec2 place, vec3 rel, float footprint, float height, float over) {
   vec3 v = -normalize(rel);
-  float dist = length(rel), footprint = max(length(dpx), length(dpy));
+  float dist = length(rel);
   vec3 view = vec3(dot(v, side), v.y, max(dot(v, nn), 0.02));
   vec4 ks = KS[kind], ke = KE[kind], kr = KR[kind], kd = KD[kind];
   bool glassy = ks.w > 0.5;
@@ -582,6 +753,158 @@ int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out v
   }
   n = normalize(n);
   return sharp;
+}
+float facadeNoise(float t, int seed) {
+  float i = floor(t), f = t - i, s = f * f * (3.0 - 2.0 * f);
+  return mix(facadeHash(ivec3(int(i), seed, 91)), facadeHash(ivec3(int(i) + 1, seed, 91)), s);
+}
+vec4 fDecal;
+float facadeMark(int m, float x, float y, float x0, float y0, float dw, float dh, float footprint) {
+  float u = (x - x0) / dw, v = (y - y0) / dh;
+  if (u < 0.0 || u > 1.0 || v < 0.0 || v > 1.0) return 0.0;
+  vec4 p = MP[m];
+  float size = float(textureSize(uFacadeMarks, 0).x);
+  float lod = log2(max(footprint * p.z * size / (dw * ${fl(FACADE_TOP)}), 1e-6));
+  float most = log2(size / 256.0);
+  float fade = clamp((lod - most) / 1.5, 0.0, 1.0);
+  float l = clamp(lod, 0.0, most), inset = 0.5 * exp2(ceil(l)) / size;
+  vec2 at = clamp((p.xy + vec2(u, 1.0 - v) * p.zw) / ${fl(FACADE_TOP)}, p.xy / ${fl(FACADE_TOP)} + inset, (p.xy + p.zw) / ${fl(FACADE_TOP)} - inset);
+  fDecal = mix(fade < 1.0 ? textureLod(uFacadeMarks, at, l) : vec4(0.0), MM[m], fade);
+  return fDecal.a;
+}
+void facadeMarks(inout vec3 albedo, inout vec3 orm, inout vec3 n, int kind, float x, float y, float w, float h, uint edges, vec3 nn, vec3 side, vec3 corner, vec3 right, vec2 place, float height, float over, float footprint) {
+  if (w < 0.3 || h < 0.3) return;
+  float seed = facadeSeed(place, vec3(corner.x + right.x * w * 0.5, height - y + h * 0.5, corner.z + right.z * w * 0.5));
+  float fp = max(footprint, 1e-4), tx = 0.0, ty = 0.0;
+  if (uFacadeFlood > ${fl(NO_FLOOD)}) {
+    float dh = height - uFacadeFlood + 0.012 * (facadeNoise(x * 2.3, int(floor(seed * 4096.0))) - 0.5);
+    if (dh < 0.02 && dh > -0.7) {
+      float line = 1.0 - smoothstep(0.004, 0.012 + fp * 0.5, abs(dh));
+      float silt = dh < 0.0 ? (1.0 + dh / 0.7) * (1.0 + dh / 0.7) * 0.4 : 0.0;
+      albedo *= (1.0 - silt + silt * vec3(0.82, 0.74, 0.6)) * (1.0 - 0.5 * line);
+      orm.y += (1.0 - orm.y) * max(line, silt);
+    }
+  }
+  float crack = 0.0;
+  if (min(w, h) >= 0.4) {
+    for (int c = 0; c < 4; c++) {
+      int right1 = c & 1, top = c >> 1;
+      uint want = uint((right1 == 1 ? 2 : 1) | (top == 1 ? 8 : 4));
+      if ((edges & want) == 0u || fract(seed * (7.13 + float(c) * 3.31)) >= 0.35) continue;
+      float length1 = min(0.3 + 0.7 * fract(seed * (5.1 + float(c) * 1.7)), 0.7 * min(w, h));
+      vec2 a = vec2(right1 == 1 ? w : 0.0, top == 1 ? h : 0.0);
+      if (length(vec2(x, y) - a) > length1 + 0.05) continue;
+      vec2 sgn = vec2(right1 == 1 ? -1.0 : 1.0, top == 1 ? -1.0 : 1.0);
+      float along = 0.0;
+      for (int k = 0; k < 3; k++) {
+        float angle = 0.5 + 0.5 * fract(seed * (3.7 + float(c))) + 0.35 * (fract(seed * (11.3 + float(c) * 2.1 + float(k) * 5.7)) - 0.5);
+        vec2 b = a + sgn * vec2(cos(angle), sin(angle)) * length1 / 3.0;
+        vec2 e = b - a;
+        float t = clamp(dot(vec2(x, y) - a, e) / dot(e, e), 0.0, 1.0);
+        vec2 q = vec2(x, y) - a - e * t;
+        float d = length(q);
+        float half1 = 0.0012 + 0.0028 * (1.0 - (along + t * length1 / 3.0) / length1);
+        float cover = clamp((half1 + 0.5 * fp - d) / fp, 0.0, 1.0) * min(1.0, 2.0 * half1 / fp);
+        if (cover > crack) {
+          crack = cover;
+          tx = d > 1e-6 ? -q.x / d : 0.0;
+          ty = d > 1e-6 ? -q.y / d : 0.0;
+        }
+        along += length1 / 3.0;
+        a = b;
+      }
+    }
+  }
+  float slotX = floor(x / ${fl(SLOT_W)}), slotY = floor(y / ${fl(SLOT_H)});
+  float sx0 = slotX * ${fl(SLOT_W)}, sy0 = slotY * ${fl(SLOT_H)}, sx1 = min(sx0 + ${fl(SLOT_W)}, w), sy1 = min(sy0 + ${fl(SLOT_H)}, h);
+  float slot = facadeHash(ivec3(int(seed * 16777216.0), int(slotX), int(slotY)));
+  float foot = over - y + sy0;
+  float px2 = 0.0, py2 = 0.0;
+  if (kind == 0 && fract(slot * 3.1) < 0.18 && sx1 - sx0 >= 1.2 && sy1 - sy0 >= 0.8) {
+    float pw = min(0.6 + fract(slot * 5.3), sx1 - sx0 - 0.2), ph = min(0.4 + 0.6 * fract(slot * 7.9), sy1 - sy0 - 0.2);
+    float cx = sx0 + 0.1 + pw / 2.0 + fract(slot * 9.7) * (sx1 - sx0 - pw - 0.2), cy = sy0 + 0.1 + ph / 2.0 + fract(slot * 2.9) * (sy1 - sy0 - ph - 0.2);
+    float ex = abs(x - cx) - pw / 2.0, ey = abs(y - cy) - ph / 2.0;
+    float sd = max(ex, ey) + 0.03 * (facadeNoise((x + y) * 6.0, int(floor(slot * 4096.0))) - 0.5);
+    float patch = clamp(0.5 - sd / fp, 0.0, 1.0);
+    float lip = (1.0 - smoothstep(0.0, 0.012, abs(sd))) * min(1.0, 0.012 / fp);
+    px2 = ex > ey ? sign(x - cx) * lip : 0.0;
+    py2 = ex > ey ? 0.0 : sign(y - cy) * lip;
+    albedo += (vec3(0.36, 0.35, 0.33) * (0.85 + 0.3 * fract(slot * 13.3)) - albedo) * 0.7 * patch;
+    orm.y += (0.95 - orm.y) * patch;
+  }
+  int scar = 0;
+  float sxn = 0.0, syn = 0.0;
+  if (kind == 0 && fract(slot * 11.9) < 0.07 && sx1 - sx0 >= 1.4 && sy1 - sy0 >= 1.4) {
+    float cx = sx0 + 0.7 + fract(slot * 4.7) * (sx1 - sx0 - 1.4), cy = clamp(0.8 + 1.6 * fract(slot * 6.1) - (over - y), sy0 + 0.7, sy1 - 0.7);
+    if (length(vec2(x - cx, y - cy)) < 0.65) {
+      for (int k = 0; k < 10; k++) {
+        float a = 6.2832 * fract(slot * (17.3 + float(k) * 3.9)), r = 0.5 * sqrt(fract(slot * (23.1 + float(k) * 7.3)));
+        vec2 hole = vec2(cx + cos(a) * r, cy + sin(a) * r);
+        float rad = 0.012 + 0.014 * fract(slot * (31.7 + float(k) * 2.3));
+        float d = length(vec2(x, y) - hole);
+        if (d >= rad) continue;
+        scar = d < 0.45 * rad ? 2 : 1;
+        sxn = -(x - hole.x) / rad * 0.7;
+        syn = -(y - hole.y) / rad * 0.7;
+      }
+      if (scar > 0) {
+        albedo *= scar == 2 ? 0.35 : 1.25;
+        orm.y = 1.0;
+      }
+    }
+  }
+  float r = fract(slot * 2.3);
+  int m = -1, m2 = -1;
+  float dw = 0.0, dh = 0.0, bottom = 0.0;
+  if (kind == 0 && foot < 2.5) {
+    if (r < 0.1 && sx1 - sx0 >= 3.4 && sy1 - sy0 >= 1.6) { m = ${mark("piece")} + min(int(floor(fract(slot * 19.7) * 2.0)), 1); dw = 3.2; dh = 1.2; bottom = sy0 + 0.4 - foot; }
+    else if (r < 0.28 && sx1 - sx0 >= 0.8 && sy1 - sy0 >= 1.2) { m = ${mark("poster")} + min(int(floor(fract(slot * 19.7) * 6.0)), 5); dw = 0.6; dh = 0.9; bottom = sy0 + 1.1 + 0.5 * fract(slot * 8.3) - foot; }
+    else if (r < 0.55 && sx1 - sx0 >= 1.2) { m = ${mark("tag")} + min(int(floor(fract(slot * 19.7) * 8.0)), 7); dw = 1.0; dh = 0.5; bottom = sy0 + 0.5 + 1.4 * fract(slot * 8.3) - foot; }
+  } else if (kind == ${KIND.shutter}) {
+    if (r < 0.25) { m = ${mark("piece")} + min(int(floor(fract(slot * 19.7) * 2.0)), 1); dw = 3.2; dh = 1.2; bottom = 0.4; }
+    else if (r < 0.7) { m = ${mark("tag")} + min(int(floor(fract(slot * 19.7) * 8.0)), 7); dw = 1.0; dh = 0.5; bottom = 0.5 + 1.2 * fract(slot * 8.3); }
+  } else if (kind == ${KIND.door} && r < 0.3) { m = ${mark("tag")} + min(int(floor(fract(slot * 19.7) * 8.0)), 7); dw = 1.0; dh = 0.5; bottom = 0.6 + fract(slot * 8.3); }
+  else if (kind == ${KIND.pier}) {
+    if (r < 0.75) { m = ${mark("stencil")} + min(int(floor(fract(slot * 19.7) * 3.0)), 2); dw = 0.6; dh = 0.8; bottom = 1.2; }
+    if (fract(slot * 6.7) < 0.5) m2 = ${mark("stencil")} + 3;
+  }
+  float x0 = sx0 + 0.05 + fract(slot * 4.1) * max(0.0, sx1 - sx0 - dw - 0.1), y0 = max(sy0, bottom), cover = 0.0;
+  if (m >= 0 && x0 + dw <= sx1 - 0.04 && y0 + dh <= sy1) cover = facadeMark(m, x, y, x0, y0, dw, dh, fp);
+  if (cover > 0.0) {
+    bool paper = m >= ${mark("poster")} && m < ${mark("poster") + 6};
+    albedo += (fDecal.rgb - albedo) * cover;
+    orm.y += ((paper ? 0.95 : 0.65) - orm.y) * cover;
+    orm.z *= 1.0 - cover;
+  }
+  if (m2 >= 0 && (cover = facadeMark(m2, x, y, (w - 0.6) * 0.5, 0.0, 0.6, 0.8, fp)) > 0.0) {
+    albedo += (fDecal.rgb - albedo) * cover;
+    orm.y += (0.65 - orm.y) * cover;
+  }
+  if (crack > 0.0) {
+    albedo *= 1.0 - 0.7 * crack;
+    orm.y += (1.0 - orm.y) * crack;
+  }
+  vec2 bent = vec2(tx, ty) * 0.6 * crack + vec2(px2, py2) * 0.35 + (scar > 0 ? vec2(sxn, syn) : vec2(0.0));
+  if (bent.x != 0.0 || bent.y != 0.0) n = normalize(n + side * bent.x + vec3(0.0, bent.y, 0.0));
+}
+int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out vec4 far, int colour, vec2 face, vec2 fx, vec2 fy, vec3 own, vec3 ox, vec3 oy, vec2 place, uint edges, vec3 rel, vec3 dpx, vec3 dpy, vec3 geometric, float height, float over) {
+  room = vec3(0.0);
+  far = vec4(0.0);
+  float det = fx.x * fy.y - fy.x * fx.y;
+  if (abs(det) < 1e-12 || abs(geometric.y) > 0.5) return 0;
+  vec3 pu = (dpx * fy.y - dpy * fx.y) / det, pv = (dpy * fx.x - dpx * fy.x) / det;
+  vec3 qu = (ox * fy.y - oy * fx.y) / det, qv = (oy * fx.x - ox * fy.x) / det;
+  vec3 nn = geometric, side = normalize(vec3(nn.z, 0.0, -nn.x) + 1e-9);
+  // Across the face as a reader facing it reads, and up; its outer edges' bits follow.
+  if (dot(pu, side) < 0.0) { face.x = 1.0 - face.x; pu = -pu; qu = -qu; edges = (edges & 12u) | ((edges & 1u) << 1) | ((edges & 2u) >> 1); }
+  if (pv.y < 0.0) { face.y = 1.0 - face.y; pv = -pv; qv = -qv; edges = (edges & 3u) | ((edges & 4u) << 1) | ((edges & 8u) >> 1); }
+  float w = length(pu), h = length(pv);
+  int kind = facadeKind(colour, w, h, nn.y);
+  float x = face.x * w, y = face.y * h, footprint = max(length(dpx), length(dpy));
+  vec3 corner = own - qu * face.x - qv * face.y, right = qu / max(length(qu), 1e-6);
+  int part = kind == 0 ? 0 : facadePart(albedo, orm, n, room, far, kind, x, y, w, h, corner, right, nn, side, place, rel, footprint, height, over);
+  if (kind == 0 || kind == ${KIND.shutter} || kind == ${KIND.door} || kind == ${KIND.pier}) facadeMarks(albedo, orm, n, kind, x, y, w, h, edges, nn, side, corner, right, place, height, over, footprint);
+  return part;
 }
 #endif
 `;

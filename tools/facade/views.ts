@@ -8,7 +8,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES, type FacadeModule } from "../../content/ruins.ts";
 import { sample, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { FACADE_COLOURS, FACADE_TIERS, facadeKind, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
+import { FACADE_COLOURS, FACADE_FLOOD, FACADE_TIERS, KIND, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { domeLight, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { lit, shown, skyFrom, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
@@ -109,6 +109,26 @@ function cast(o: Numbers, d: Numbers, far: number, any = false): boolean {
 }
 type Numbers = ArrayLike<number>;
 
+/** The flood's line in the test street, in metres over its ground. */
+const FLOOD = FACADE_FLOOD.miami!;
+
+/**
+ * Which borders of box b's face are outer edges, as the pack and the city's chunks find them (bits for its left, right,
+ * foot and head as a reader facing it sees them): one is, unless a point 2 cm past its middle across the face's plane is in
+ * another box, or it is the face's foot on the ground.
+ */
+function outer(b: Box, axis: number, n: Numbers, right: Numbers, left: Numbers, w: number, h: number): number {
+  const plane = n[axis]! > 0 ? b.hi[axis]! : b.lo[axis]!;
+  let bits = 0;
+  [[-0.02, h / 2], [w + 0.02, h / 2], [w / 2, -0.02], [w / 2, h + 0.02]].forEach(([u, y], k) => {
+    if (k === 2 && b.lo[1]! <= 1e-3) return;
+    const p = [left[0]! + right[0]! * u!, b.lo[1]! + y!, left[2]! + right[2]! * u!];
+    p[axis] = plane - n[axis]! * 1e-3;
+    if (!boxes.some((o) => o !== b && [0, 1, 2].every((a) => p[a]! >= o.lo[a]! - 1e-4 && p[a]! <= o.hi[a]! + 1e-4))) bits |= 1 << k;
+  });
+  return bits;
+}
+
 interface View { name: string; eye: number[]; at: number[]; hour: number; shade: boolean }
 /** Draws a view into an RGBA picture w by h with a 70 degree lens. `shade` turns the street so its front faces away from the sun. */
 function draw(view: View, w: number, h: number, tier: FacadeTier, tex: Texture[]): Uint8Array {
@@ -158,7 +178,8 @@ function draw(view: View, w: number, h: number, tier: FacadeTier, tex: Texture[]
         // A part's face to the street, or a jamb's across the bay.
         const across = axis === 0 ? b.hi[2]! - b.lo[2]! : fw;
         const kind = axis !== 1 ? facadeKind(FACADE_COLOURS[b.colour] ?? 0, across, fh, 0) : 0;
-        if (kind > 0) {
+        const marked = axis !== 1 && (kind === KIND.none || kind === KIND.shutter || kind === KIND.door || kind === KIND.pier);
+        if (kind > 0 || marked) {
           const m = modules[b.module]!;
           // The face's left foot and its right, as a reader facing it sees them, and where the point is across it.
           const right = axis === 2 ? [n[2]!, 0, 0] : [0, 0, -n[0]!];
@@ -166,14 +187,16 @@ function draw(view: View, w: number, h: number, tier: FacadeTier, tex: Texture[]
           const corner = left.map((q, a) => q - m.origin[a]!);
           const ax = (point[0]! - left[0]!) * right[0]! + (point[2]! - left[2]!) * right[2]!;
           const footprint = (t * pixel) / Math.max(Math.abs(d[axis]!), 0.05);
+          const place = [Math.round(m.origin[0]! * 4), Math.round(m.origin[2]! * 4)] as const;
           o.albedo.set(albedo);
           o.orm.set(orm);
           o.normal.set(nw);
-          facadeSurface(o, kind, ax, point[1]! - b.lo[1]!, across, fh, nw, v, corner, toWorld(right), Math.round(m.origin[0]! * 4), Math.round(m.origin[2]! * 4), point[1]!, point[1]!, footprint, t, tier, sample3);
+          if (kind > 0) facadeSurface(o, kind, ax, point[1]! - b.lo[1]!, across, fh, nw, v, corner, toWorld(right), place[0], place[1], point[1]!, point[1]!, footprint, t, tier, sample3);
+          if (marked) facadeMarks(o, kind, ax, point[1]! - b.lo[1]!, across, fh, outer(b, axis, n, right, left, across, fh), nw, corner, toWorld(right), place[0], place[1], point[1]!, point[1]!, FLOOD, footprint, tier, sample3);
           albedo.splice(0, 3, ...o.albedo);
           orm.splice(0, 3, ...o.orm);
           normal = [...o.normal];
-          sharp = o.sharp;
+          sharp = kind > 0 && o.sharp;
         }
         const twice = 2 * (normal[0]! * v[0]! + normal[1]! * v[1]! + normal[2]! * v[2]!);
         const r = normal.map((q, a) => twice * q - v[a]!);

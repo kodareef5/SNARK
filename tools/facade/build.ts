@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { decodeTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { ELEMENTS, FACADE_TOP, PLACED, ROOMS, ROOM_FACES, type FacadeTier } from "../../client/core/render/facade.ts";
+import { ELEMENTS, FACADE_TOP, MARKS_PLACED, PLACED, ROOMS, ROOM_FACES, type FacadeTier } from "../../client/core/render/facade.ts";
 import type { Material } from "../art/materials.ts";
 import { baseMips, encodePng, normalMips, packedMips, readPicture, unpack, type Picture } from "../pack/image.ts";
 import type { SourceMesh } from "../pack/write.ts";
@@ -16,7 +16,7 @@ const ROOT = resolve(import.meta.dir, "../..");
 export const FACADE_SOURCE = resolve(ROOT, "assets/source/core/facades");
 export const FACADE_ART = resolve(ROOT, "var/facade/art");
 /** The atlases this writes, each FACADE_TOP across. */
-export const FACADE_MAPS = ["elements-base", "elements-normal", "elements-orm", "rooms"] as const;
+export const FACADE_MAPS = ["elements-base", "elements-normal", "elements-orm", "rooms", "marks"] as const;
 /** What an element's map reads where its source has none: no occlusion, rough, not metal, flat. */
 const MISSING: Readonly<Record<string, number>> = { roughness: 0.8, metal: 0, occlusion: 1 };
 
@@ -87,9 +87,9 @@ function key(source: string): string {
  * Builds the atlases from `source` into `out` unless they are there from the same sources, and returns each element's
  * and each room's mean (facade.ts ELEMENT_MEANS, ROOM_MEANS). An element or a room the sources lack is left grey.
  */
-export function buildFacadeArt(source = FACADE_SOURCE, out = FACADE_ART): { elements: number[]; rooms: number[] } {
+export function buildFacadeArt(source = FACADE_SOURCE, out = FACADE_ART): { elements: number[]; marks: number[]; rooms: number[] } {
   const stamp = join(out, "key"), means = join(out, "means.json"), k = key(source);
-  if (existsSync(stamp) && readFileSync(stamp, "utf8") === k && existsSync(means)) return JSON.parse(readFileSync(means, "utf8")) as { elements: number[]; rooms: number[] };
+  if (existsSync(stamp) && readFileSync(stamp, "utf8") === k && existsSync(means)) return JSON.parse(readFileSync(means, "utf8")) as { elements: number[]; marks: number[]; rooms: number[] };
   mkdirSync(out, { recursive: true });
   const size = FACADE_TOP * FACADE_TOP * 4;
   const base = new Float32Array(size).fill(0.2), normal = new Float32Array(size), orm = new Float32Array(size), rooms = new Float32Array(size).fill(0.08);
@@ -129,6 +129,20 @@ export function buildFacadeArt(source = FACADE_SOURCE, out = FACADE_ART): { elem
     const px = colour.length / 4;
     elements.push(...sum.map((s) => (cover > 0 ? s / cover : 0.2)), cover / px, r / px);
   }
+  // The marks: each one's colour where it covers and its cover, the rest of their atlas clear.
+  const marks = new Float32Array(size), markMeans: number[] = [];
+  for (const p of MARKS_PLACED) {
+    const file = join(source, "marks", `${p.name}-${p.variant}`, "base.png");
+    const px = existsSync(file) ? fitted(readPicture(file), p.w, p.h, toLinear) : new Float32Array(p.w * p.h * 4);
+    lay(marks, px, p.x, p.y, p.w, p.h, 16);
+    let cover = 0;
+    const sum = [0, 0, 0];
+    for (let i = 0; i < px.length; i += 4) {
+      for (let c = 0; c < 3; c++) sum[c]! += px[i + c]! * px[i + 3]!;
+      cover += px[i + 3]!;
+    }
+    markMeans.push(...sum.map((v) => (cover > 0 ? v / cover : 0)), cover / (px.length / 4));
+  }
   const roomMeans: number[] = [];
   const quarter = FACADE_TOP / 8;
   for (let k = 0; k < ROOMS; k++) {
@@ -149,19 +163,22 @@ export function buildFacadeArt(source = FACADE_SOURCE, out = FACADE_ART): { elem
   writeFileSync(join(out, "elements-normal.png"), encodePng(bytes(normal, false, 3)));
   writeFileSync(join(out, "elements-orm.png"), encodePng(bytes(orm, false)));
   writeFileSync(join(out, "rooms.png"), encodePng(bytes(rooms, true, 3)));
-  const result = { elements: elements.map((v) => Number(v.toPrecision(4))), rooms: roomMeans.map((v) => Number(v.toPrecision(4))) };
+  writeFileSync(join(out, "marks.png"), encodePng(bytes(marks, true)));
+  const four = (v: number): number => Number(v.toPrecision(4));
+  const result = { elements: elements.map(four), marks: markMeans.map(four), rooms: roomMeans.map(four) };
   writeFileSync(means, JSON.stringify(result));
   writeFileSync(stamp, k);
   return result;
 }
 
-/** The pack's materials of the atlases: the elements' base colour, normal and packed map, and the rooms' base colour. */
-export const FACADE_MATERIALS = ["core:facade_elements", "core:facade_rooms"] as const;
+/** The pack's materials of the atlases: the elements' base colour, normal and packed map, and the rooms' and the marks' base colours. */
+export const FACADE_MATERIALS = ["core:facade_elements", "core:facade_rooms", "core:facade_marks"] as const;
 export function facadeMaterials(): Material[] {
   buildFacadeArt();
   return [
     { name: "elements", id: FACADE_MATERIALS[0], dir: FACADE_ART, spec: { base: "elements-base.png", normal: "elements-normal.png", packed: "elements-orm.png" } },
     { name: "rooms", id: FACADE_MATERIALS[1], dir: FACADE_ART, spec: { base: "rooms.png" } },
+    { name: "marks", id: FACADE_MATERIALS[2], dir: FACADE_ART, spec: { base: "marks.png" } },
   ];
 }
 
@@ -177,7 +194,7 @@ export function facadeMeshes(): SourceMesh[] {
 
 /**
  * The atlases as the card holds them in the rgba variant at a tier's sides: each one's levels from the finest down (the
- * elements' base, normal as red and green, packed, and the rooms'), and the same as the software twin's textures.
+ * elements' base, normal as red and green, packed, the rooms' and the marks'), and the same as the software twin's textures.
  */
 export function facadeMaps(tier: FacadeTier, source = FACADE_SOURCE): { levels: Uint8Array[][]; textures: Texture[] } {
   buildFacadeArt(source);
@@ -188,7 +205,8 @@ export function facadeMaps(tier: FacadeTier, source = FACADE_SOURCE): { levels: 
     rg,
     packedMips(readPicture(join(FACADE_ART, "elements-orm.png")), normal.lengths),
     baseMips(readPicture(join(FACADE_ART, "rooms.png"))),
-  ].map((mips, k) => mips.slice(0, Math.log2(Math.max(k < 3 ? tier.elements : tier.rooms, 64)) + 1));
+    baseMips(readPicture(join(FACADE_ART, "marks.png"))),
+  ].map((mips, k) => mips.slice(0, Math.log2(Math.max(k < 3 ? tier.elements : k === 3 ? tier.rooms : tier.marks, 64)) + 1));
   return { levels: smallest.map((m) => [...m].reverse()), textures: smallest.map((m, k) => decodeTexture(k === 1 ? "normal" : k === 2 ? "mro" : "base", m)) };
 }
 
@@ -202,6 +220,7 @@ if (import.meta.main) {
     const file = resolve(ROOT, "client/core/render/facade.ts");
     const text = readFileSync(file, "utf8")
       .replace(/^export const ELEMENT_MEANS: readonly number\[\] = .*$/m, `export const ELEMENT_MEANS: readonly number[] = [${m.elements.join(", ")}];`)
+      .replace(/^export const MARK_MEANS: readonly number\[\] = .*$/m, `export const MARK_MEANS: readonly number[] = [${m.marks.join(", ")}];`)
       .replace(/^export const ROOM_MEANS: readonly number\[\] = .*$/m, `export const ROOM_MEANS: readonly number[] = [${m.rooms.join(", ")}];`);
     writeFileSync(file, text);
   }

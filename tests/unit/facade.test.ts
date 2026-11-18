@@ -1,19 +1,20 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES } from "../../content/ruins.ts";
-import { ELEMENTS, FACADE_COLOURS, FACADE_GLSL, FACADE_TIERS, FACADE_TOP, KIND, KINDS, PLACED, ROOM_MEANS, facadeDress, facadeKind, facadeOut, facadeRoomBox, facadeSeed, facadeSurface, facadeVertex, type FacadeSample } from "../../client/core/render/facade.ts";
+import { ELEMENTS, FACADE_COLOURS, FACADE_GLSL, FACADE_TIERS, FACADE_TOP, KIND, KINDS, MARKS, MARKS_PLACED, NO_FLOOD, PLACED, ROOM_MEANS, facadeDress, facadeKind, facadeMarks, facadeOut, facadeRoomBox, facadeSeed, facadeSurface, facadeVertex, type FacadeSample } from "../../client/core/render/facade.ts";
 import { FLAT_MESH_VERTEX } from "../../client/core/render/glsl.ts";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 
-test("each element's variants lie in the atlas, 16 pixels apart", () => {
+test("each element's and each mark's variants lie in their atlas, 16 pixels apart", () => {
   expect(PLACED.length).toBe(ELEMENTS.reduce((n, e) => n + e[3], 0));
-  for (const p of PLACED) {
+  expect(MARKS_PLACED.length).toBe(MARKS.reduce((n, e) => n + e[3], 0));
+  for (const atlas of [PLACED, MARKS_PLACED]) for (const p of atlas) {
     expect(p.x).toBeGreaterThanOrEqual(16);
     expect(p.y).toBeGreaterThanOrEqual(16);
     expect(p.x + p.w).toBeLessThanOrEqual(FACADE_TOP - 16);
     expect(p.y + p.h).toBeLessThanOrEqual(FACADE_TOP - 16);
   }
-  for (const a of PLACED) for (const b of PLACED) {
+  for (const atlas of [PLACED, MARKS_PLACED]) for (const a of atlas) for (const b of atlas) {
     if (a === b) continue;
     const apart = a.x + a.w + 16 <= b.x || b.x + b.w + 16 <= a.x || a.y + a.h + 16 <= b.y || b.y + b.h + 16 <= a.y;
     expect(apart).toBe(true);
@@ -138,4 +139,40 @@ test("every lit tier draws facades, low poly none, and the text holds every elem
   expect(text).toContain("flat out int vFacade;");
   expect(text).toContain("vFacade = FACADE_CLASS[int(i)];");
   expect(() => facadeVertex("void main() {}")).toThrow();
+});
+
+const plain: FacadeSample = (_texture, _u, _v, _lod, out) => out.fill(0);
+/** A plain wall's pixel after its marks: the albedo of a wall of 0.5 grey, at (x, y) on a face w by h with outer edges `edges`. */
+function marked(x: number, y: number, w: number, h: number, edges: number, place: number, flood = NO_FLOOD, height = y): number {
+  const o = facadeOut();
+  o.albedo.fill(0.5);
+  o.orm.set([1, 0.8, 0]);
+  o.normal.set([0, 0, 1]);
+  facadeMarks(o, KIND.none, x, y, w, h, edges, [0, 0, 1], [0, 0, 0], [1, 0, 0], place, 0, height, y, flood, 0.001, FACADE_TIERS.high!, plain);
+  return o.albedo[0]!;
+}
+
+test("cracks start only at a face's corners on an outer edge, and only some of them", () => {
+  let cracked = 0;
+  for (let place = 0; place < 400; place += 4) {
+    // Along the corner's bisector, inside the face, where a crack from the corner runs near.
+    let here = false;
+    for (let s = 0.01; s < 0.3 && !here; s += 0.002) for (const [x, y] of [[s, s], [1 - s, s], [s, 1 - s], [1 - s, 1 - s]]) {
+      expect(marked(x!, y!, 1, 1, 0, place)).toBe(0.5);
+      if (marked(x!, y!, 1, 1, 15, place) < 0.5) here = true;
+    }
+    if (here) cracked++;
+  }
+  expect(cracked).toBeGreaterThan(20);
+  expect(cracked).toBeLessThan(100);
+});
+
+test("the flood's line lies at one height across every face, with silt below it and nothing above", () => {
+  for (const place of [0, 36, 1000]) {
+    const at = (dh: number): number => marked(0.5, 1, 1, 1, 0, place, 2.4, 2.4 + dh);
+    expect(at(0)).toBeLessThan(0.3);
+    expect(at(-0.3)).toBeLessThan(0.5);
+    expect(at(-0.3)).toBeGreaterThan(at(0));
+    expect(at(0.05)).toBe(0.5);
+  }
 });
