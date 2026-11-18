@@ -18,6 +18,7 @@ import { quatRotate } from "../../shared/math/quat.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { STANCE_CROUCH } from "../../shared/sim/character.ts";
 import { F_PLAYER } from "../../shared/sim/entities.ts";
+import { quantX, quantY } from "../../shared/net/view.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { vehiclePoint, vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
@@ -296,15 +297,52 @@ test("the compact roof stops a shot and its clear windscreen admits one", () => 
   } finally { h.host.shutdown(); }
 });
 
-test("a passenger's origin stays within the measured delay while a target retains its rewind allowance", () => {
+test("passenger fire uses only this seat’s transmitted carrier and discards it after a discontinuity", () => {
+  const f = fixture("compact"), { h, car } = f;
+  try {
+    const s = h.join("viewer"); h.run(700);
+    const c = h.client(s)!, { world, combat } = h.host, { ents } = world;
+    const now = world.tick, ack = now - 1;
+    ents.seat[c.ent] = car + 1; ents.seatGen[c.ent] = ents.gen[car]!; ents.seatSlot[c.ent] = 2;
+    const view = c.views.alloc(ack), x = ents.x[car]!, y = ents.y[car]!, z = ents.z[car]!;
+    view.push(car, ents.gen[car]!, ents.kind[car]!, quantX(x), quantY(y), quantX(z), 0, ents.flags[car]!, 0);
+    view.recordSeat(world, c.ent, false);
+    c.inputs.set(now, 0, 0, 0, 0, 0);
+    const i = now & c.inputs.mask;
+    c.arrived[i] = now; c.inputAcks[i] = ack; c.inputs.view[i] = ack;
+    const shot = new Float64Array(3);
+    const shoot = () => {
+      expect(combat.eye(c.ent, shot, combat.originTick(c), false, c)).toBe(true);
+      return shot[0]!;
+    };
+    const oldX = shoot();
+    ents.setPosition(car, x + 10, y, z);
+    expect(shoot()).toBeCloseTo(oldX, 5);
+    world.history.discontinuity(car);
+    expect(shoot()).toBeCloseTo(oldX + 10, 1);
+    // Reusing the ring entry without the carrier must also clear the old seat sample.
+    view.count = 0;
+    view.recordSeat(world, c.ent, false);
+    expect(view.passenger?.seat).toBe(0);
+    expect(shoot()).toBeCloseTo(oldX + 10, 1);
+  } finally { h.host.shutdown(); }
+});
+
+test("the first input ACK bounds the passenger presentation clock", () => {
   const h = new Harness({}, 7, 60, { dev: true, map: writeMap(flatMap(2)) });
   try {
     const s = h.join("passenger-clock"); h.run(700);
     const c = h.client(s)!, now = h.world.tick;
     c.inputs.set(now, 0, 0, 0, 0, 0);
     c.arrived[now & c.inputs.mask] = now;
-    const oldest = h.host.combat.originTick(c, now - 15);
-    expect(oldest).toBe(now - h.host.combat.lag(c) - 2);
-    expect(h.host.combat.originTick(c, now)).toBe(now);
+    const i = now & c.inputs.mask, ack = c.lastSnapshot;
+    c.inputAcks[i] = ack; c.inputs.view[i] = ack - 2.25;
+    expect(h.host.combat.originTick(c)).toBe(ack - 2.25);
+    c.inputs.view[i] = now - 100;
+    expect(h.host.combat.originTick(c)).toBe(ack - 4);
+    c.vehicleSeatSnapshot = -1;
+    expect(h.host.combat.originTick(c)).toBe(now);
+    c.vehicleSeatSnapshot = 0; c.inputAcks[i] = 0;
+    expect(h.host.combat.originTick(c)).toBe(now);
   } finally { h.host.shutdown(); }
 });
