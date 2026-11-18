@@ -1,0 +1,52 @@
+{
+  "chassis": [
+    0,
+    0,
+    0
+  ],
+  "wheel_front_left": [
+    1.02,
+    0.52,
+    2.546
+  ],
+  "wheel_front_right": [
+    -1.02,
+    0.52,
+    2.546
+  ],
+  "wheel_middle_left": [
+    0.9,
+    0.52,
+    -1.954
+  ],
+  "wheel_middle_right": [
+    -0.9,
+    0.52,
+    -1.954
+  ],
+  "wheel_rear_left": [
+    0.9,
+    0.52,
+    -3.274
+  ],
+  "wheel_rear_right": [
+    -0.9,
+    0.52,
+    -3.274
+  ],
+  "door_left": [
+    1.06,
+    1.575,
+    1.99
+  ],
+  "door_right": [
+    -1.06,
+    1.575,
+    1.99
+  ],
+  "steering_wheel": [
+    0.49,
+    1.96,
+    1.665
+  ]
+}

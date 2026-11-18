@@ -129,6 +129,8 @@ export interface WheelVehicleDefinition extends VehicleDefinitionBase {
   /** Road chassis family shown in the catalogue. Older wheel definitions use the car family. */
   readonly frame?: "car" | "sports_car" | "van" | "off_road";
   readonly emergencyLights?: readonly EmergencyLamp[];
+  /** Local X of the aisle from a shared passenger entrance to its rows. */
+  readonly passengerAisle?: number;
   readonly spec: VehicleSpec;
 }
 
@@ -315,6 +317,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
     if (d.frame !== undefined && !["car", "sports_car", "van", "off_road"].includes(d.frame)) throw new Error("invalid road vehicle frame");
     validateVehicleSpec(d.spec);
+    if (d.passengerAisle !== undefined && (!Number.isFinite(d.passengerAisle) || Math.abs(d.passengerAisle) >= d.spec.halfWidth)) throw new Error("passenger aisle outside cabin");
   }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
   if (isWheelVehicle(d) && d.emergencyLights !== undefined && (!Array.isArray(d.emergencyLights) || d.emergencyLights.length < 1 || d.emergencyLights.length > 16 || !d.emergencyLights.every(lamp =>
