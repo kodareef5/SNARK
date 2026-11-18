@@ -126,3 +126,13 @@ const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
 }));
 export const STREET: readonly Def[] = [...SHAPES, ...STATICS];
+
+/**
+ * What a car knocks down (server/vehicle-trees.ts): a lamp or a wooden pole hit hard enough becomes its fallen form where it
+ * stood, for the joules its foot takes to give way, a trunk's account as the trees keep it (shared/sim/vehicle-tree.ts).
+ */
+export const STREET_TOPPLES: Readonly<Record<string, { into: string; work: number }>> = {
+  [streetKind("lamp")]: { into: streetKind("lamp_fallen"), work: 30000 },
+  [streetKind("lamp_leaning")]: { into: streetKind("lamp_fallen"), work: 15000 },
+  [streetKind("pole")]: { into: streetKind("pole_leaning"), work: 60000 },
+};
