@@ -199,22 +199,25 @@ def support_switches():
  body=bpy.data.objects['stego_body'];groups={g.index:g.name for g in body.vertex_groups}
  labels=np.array([groups[max(v.groups,key=lambda g:g.weight).group]for v in body.data.vertices])
  points=np.empty(len(body.data.vertices)*3,dtype=np.float32);result=[]
- for lo,hi,first,second in [(.33,.41,'hind_foot_r','fore_foot_r'),(.68,.76,'fore_foot_r','hind_upper_r'),(.94,1,'hind_upper_r','pelvis')]:
-  masks=[labels==first,labels==second]
-  def difference(amount):
-   reset();down_pose(amount);bpy.context.view_layer.update()
-   evaluated=body.evaluated_get(bpy.context.evaluated_depsgraph_get());evaluated.data.vertices.foreach_get('co',points)
-   heights=points.reshape(-1,3)[:,2]
-   return float(heights[masks[0]].min())-float(heights[masks[1]].min())
-  before,after=difference(lo),difference(hi)
-  # A revised anatomical mass may remain the lowest support through the end.
-  # An absent transfer must not become a duplicate endpoint animation knot.
-  if before*after>=0:continue
-  for _ in range(25):
-   middle=(lo+hi)/2
-   if difference(middle)*before>0:lo=middle
-   else:hi=middle
-  result.append((lo+hi)/2)
+ def heights(amount):
+  reset();down_pose(amount);bpy.context.view_layer.update()
+  evaluated=body.evaluated_get(bpy.context.evaluated_depsgraph_get())
+  evaluated.data.vertices.foreach_get('co',points)
+  return points.reshape(-1,3)[:,2]
+ # Discover support pairs on the fitted skin, including the transfer from
+ # the outer foot onto the hip. Their times change with the sculpt.
+ lo=.015
+ first=labels[heights(lo).argmin()]
+ for hi in np.linspace(lo,1,65)[1:]:
+  second=labels[heights(hi).argmin()]
+  if first!=second:
+   left,right=lo,hi
+   for _ in range(22):
+    mid=(left+right)/2;h=heights(mid)
+    if h[labels==first].min()<h[labels==second].min():left=mid
+    else:right=mid
+   result.append((left+right)/2)
+  first,lo=second,hi
  reset();print('COLLAPSE_SUPPORT_TRANSFERS',result,flush=True);return tuple(result)
 
 @lru_cache(None)
