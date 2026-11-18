@@ -308,6 +308,26 @@ test("an inverted enclosed passenger keeps a seated pelvis and stows held equipm
   expect(drawn).not.toContain("core:rifle"); expect(drawn).toContain("core:human_m/head");
 });
 
+test("a personal watercraft's driver and passenger stay braced and follow a look with the head; a car's passenger turns at the waist", () => {
+  const ski = reg.vehicle[reg.index.get("core:riptide")!]!;
+  const level = { ...seat, pitch: 0, roll: 0 };
+  const posed = (seated: VehicleSeatPose, aimYaw: number): { head: number[]; spine: number[] } => {
+    const f = fixture();
+    f.characters.add(f.packet, survivor, 0, 0, 0, aimYaw, new AnimState(), 3, defaultLook(), 0, colors, 0, null, 0, 7, false, false, 1, false, false, null, 0, undefined, { ...seated, aimYaw });
+    const bone = (b: number): number[] => Array.from(f.packet.bones.subarray(b * BONE_FLOATS, b * BONE_FLOATS + 12));
+    return { head: bone(B_HEAD), spine: bone(B_SPINE) };
+  };
+  for (const definition of ski.seats) {
+    const seated: VehicleSeatPose = { ...level, role: definition.pose, definition, driver: definition.driver === true, weapons: false };
+    const ahead = posed(seated, level.yaw), aside = posed(seated, level.yaw + .5);
+    expect(definition.pose).toBe("pwc");
+    expect(aside.spine).toEqual(ahead.spine);
+    expect(aside.head).not.toEqual(ahead.head);
+  }
+  const passenger: VehicleSeatPose = { ...level, role: "passenger", driver: false };
+  expect(posed(passenger, level.yaw + .5).spine).not.toEqual(posed(passenger, level.yaw).spine);
+});
+
 test("own and observed enclosed head look stays cabin-local through inversion and steep pitch without moving the torso", () => {
   const q = new Float64Array(4), direction = new Float64Array(3), local = new Float64Array(3);
   const localYaw = .3, localPitch = -.25;

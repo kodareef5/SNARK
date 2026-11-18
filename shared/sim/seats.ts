@@ -9,13 +9,13 @@ export interface Seat {
   /** The one seat whose occupant drives or steers the host. */
   readonly driver?: boolean;
   /** Interior-specific seated profile. Omitted uses the host's ordinary driver/passenger pose. */
-  readonly pose?: "drive" | "passenger" | "pilot" | "cabin";
+  readonly pose?: "drive" | "passenger" | "pilot" | "cabin" | "pwc";
   /** False stows hand weapons and disables their actions while seated in an enclosed cabin. */
   readonly weapons?: boolean;
   /** Pilot hand grips in the host's frame. Actual body proportions reach these without stretching. */
   readonly controls?: {
     readonly left: readonly [number, number, number]; readonly right: readonly [number, number, number];
-    readonly style?: "helicopter" | "helm";
+    readonly style?: "helicopter" | "helm" | "handlebar";
     /** A steering-driven control rotates its grips and grasp about this authored pivot. */
     readonly turn?: { readonly pivot: readonly [number, number, number]; readonly axis: readonly [number, number, number]; readonly ratio: number };
   };
@@ -50,10 +50,10 @@ export function validateSeats(seats: readonly Seat[], doors: number, what: strin
     if (!SEAT_ID.test(seat.id) || names.has(seat.id) || !vec(seat.anchor) || !vec(seat.entry) ||
       (seat.door !== undefined && !(Number.isInteger(seat.door) && seat.door >= 0 && seat.door < doors)) ||
       (seat.socket !== undefined && !(typeof seat.socket === "string" && seat.socket.length > 0 && seat.socket.length <= 64))) throw new Error(`invalid ${what} seat`);
-    if ((seat.pose !== undefined && !["drive", "passenger", "pilot", "cabin"].includes(seat.pose)) ||
+    if ((seat.pose !== undefined && !["drive", "passenger", "pilot", "cabin", "pwc"].includes(seat.pose)) ||
       (seat.weapons !== undefined && typeof seat.weapons !== "boolean")) throw new Error(`invalid ${what} seat profile`);
-    if (seat.controls && (seat.pose !== "pilot" || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
-    if (seat.controls?.style !== undefined && seat.controls.style !== "helicopter" && seat.controls.style !== "helm") throw new Error(`invalid ${what} control style`);
+    if (seat.controls && ((seat.pose !== "pilot" && seat.pose !== "pwc") || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
+    if (seat.controls?.style !== undefined && seat.controls.style !== "helicopter" && seat.controls.style !== "helm" && seat.controls.style !== "handlebar") throw new Error(`invalid ${what} control style`);
     const turn = seat.controls?.turn;
     if (turn && (!vec(turn.pivot) || !vec(turn.axis) || Math.abs(turn.axis.reduce((n: number, v: number) => n + v * v, 0) - 1) > 1e-6 || !Number.isFinite(turn.ratio) || Math.abs(turn.ratio) > 50)) throw new Error(`invalid ${what} moving controls`);
     names.add(seat.id);

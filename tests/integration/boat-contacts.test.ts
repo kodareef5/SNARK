@@ -180,3 +180,52 @@ test("native propeller engagement has its own cooldown and preserves protected s
     } finally { h.host.shutdown(); }
   }
 });
+
+test("Sovereign's bow displaces an actor on a level and a steeply pitched hull", () => {
+  for (const pitch of [0, -Math.PI / 3]) {
+    const { h, actor, ents, contacts, victim } = setup();
+    try {
+      const x = 98, z = 62, ship = h.host.spawnVehicle("core:sovereign", x, z, actor.team);
+      expect(ship).toBeGreaterThanOrEqual(0);
+      const v = ents.vrow[ship]!, y = 22;
+      ents.setPosition(ship, x, y, z);
+      ents.vehiclePitch[v] = pitch;
+      ents.vehicleQx[v] = Math.sin(pitch / 2);
+      ents.vehicleQw[v] = Math.cos(pitch / 2);
+      // The last segment of the stem is narrow. Start its port side clear of the actor and sweep across.
+      const bowZ = 15.3, bowY = 2.5;
+      const target = victim(x + 1.18, y + bowY * Math.cos(pitch) - bowZ * Math.sin(pitch),
+        z + bowY * Math.sin(pitch) + bowZ * Math.cos(pitch));
+      const count = contacts.contacts;
+      ents.vx[ship] = 24;
+      contacts.capture(ship);
+      ents.setPosition(ship, x + .8, y, z);
+      expect(contacts.step()).toContain(target);
+      expect(contacts.contacts).toBe(count + 1);
+      expect(ents.vx[target]!).toBeGreaterThan(1);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+test("a captured personal watercraft crossing a parked launch remains a swept target", () => {
+  const { h, actor, ents, boat, contacts } = setup();
+  try {
+    const ski = h.host.spawnVehicle("core:riptide", 53, 65, actor.team);
+    expect(ski).toBeGreaterThanOrEqual(0);
+    // The lower-handle launch initiates the pair. The whole jet ski crosses between two disjoint endpoint poses.
+    ents.setPosition(ski, 57.2, ents.y[boat]! + .5, 65);
+    ents.vx[ski] = 240;
+    const events: [number, number, number][] = [];
+    const pair = h.host.urban.collisionPair.bind(h.host.urban);
+    h.host.urban.collisionPair = event => {
+      events.push([event.a.entity, event.b.entity, event.impulse]);
+      pair(event);
+    };
+    contacts.capture(boat); contacts.capture(ski);
+    ents.setPosition(ski, 65.2, ents.y[ski]!, 65);
+    expect(contacts.step()).toContain(ski);
+    expect(events).toHaveLength(1);
+    expect(events[0]!.slice(0, 2)).toEqual([boat, ski]);
+    expect(events[0]![2]).toBeGreaterThan(0);
+  } finally { h.host.shutdown(); }
+});

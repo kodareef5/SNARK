@@ -1,0 +1,30 @@
+{
+  "solstice": {
+    "length": 11.4, "beam": 3.60, "draft": 0.65, "main": 1.19, "height": 3.64,
+    "sheer": 0.41, "terrace": 0.86, "stepBottom": -4.19, "stepTop": -3.24,
+    "railStart": 1.55, "portShaft": 0.65, "propZ": -4.91, "propY": 0.28,
+    "paint": 131, "stepX": 1.08, "ladderX": 1.05,
+    "seats": [[0.49,1.74,0.46],[-0.49,1.74,0.46],[0.48,1.74,-1.45],[-0.48,1.74,-1.45]]
+  },
+  "meridian": {
+    "length": 16.6, "beam": 4.50, "draft": 0.90, "main": 1.72, "height": 4.18,
+    "sheer": 0.50, "terrace": 1.15, "stepBottom": -6.70, "stepTop": -5.48,
+    "railStart": 2.65, "portShaft": 0.83, "propZ": -7.33, "propY": 0.38,
+    "paint": 98, "stepX": 1.46, "ladderX": 1.45,
+    "seats": [[0.64,2.27,1.68],[-0.64,2.27,1.68],[0.72,2.27,-4.24],[-0.72,2.27,-4.24]]
+  },
+  "belvedere": {
+    "length": 23.2, "beam": 5.85, "draft": 1.22, "main": 2.68, "height": 8.14,
+    "sheer": 0.64, "terrace": 1.47, "stepBottom": -9.39, "stepTop": -7.35,
+    "railStart": 3.72, "portShaft": 1.1, "propZ": -10.07, "propY": 0.50,
+    "paint": 93, "stepX": 1.94, "ladderX": 1.88,
+    "seats": [[0.76,5.57,1.94],[-0.76,5.57,1.94],[0.65,5.57,-1.49],[-0.65,5.57,-1.49],[0.85,3.23,-6.13],[-0.85,3.23,-6.13]]
+  },
+  "sovereign": {
+    "length": 32.4, "beam": 7.45, "draft": 1.60, "main": 3.09, "height": 11.54,
+    "sheer": 0.84, "terrace": 1.89, "stepBottom": -12.72, "stepTop": -10.48,
+    "railStart": 5.87, "portShaft": 1.40, "propZ": -14.16, "propY": 0.65,
+    "paint": 87, "stepX": 2.64, "ladderX": 2.37,
+    "seats": [[0.81,6.19,3.50],[-0.81,6.19,3.50],[0.83,6.19,-5.87],[-0.83,6.19,-5.87],[1.02,3.64,-8.47],[-1.02,3.64,-8.47]]
+  }
+}

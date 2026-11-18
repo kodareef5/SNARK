@@ -6,7 +6,7 @@ import { F_ALIVE } from "../shared/sim/entities.ts";
 import { isWheelVehicle, type WheelVehicleDefinition } from "../shared/sim/vehicle.ts";
 import { vehicleRotation } from "../shared/sim/vehicle-frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "../shared/world/ray.ts";
-import { boatOutboardFrame, boatShapes, carShapes, helicopterShapes } from "../shared/world/vehicle-shapes.ts";
+import { boatMounts, boatShapes, carShapes, helicopterShapes } from "../shared/world/vehicle-shapes.ts";
 import { bounds, makeSolid, solidContact, StaticVehicleSolids, sweep, tube, type ContactGeometry, type SolidFrame, type Swept } from "../shared/world/vehicle-solid.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -55,9 +55,9 @@ export function uprightCar(world: ServerWorld, e: number, def: WheelVehicleDefin
           const row = a.vrow[actor]!, at = recoveryFrame(world, actor);
           const parts = isWheelVehicle(vehicle) ? carShapes(vehicle.spec) : vehicle.movement === "boat" ? boatShapes(vehicle) : helicopterShapes(vehicle);
           const frame = { ...at, yaw: a.vehicleYaw[row]!, pitch: a.vehiclePitch[row]!, roll: a.vehicleRoll[row]!, steering: a.steering[row]! };
-          const mount = vehicle.movement === "boat" ? boatOutboardFrame(frame, vehicle.spec) : at;
+          const mounts = vehicle.movement === "boat" ? boatMounts(frame, vehicle.spec) : null;
           for (const part of parts) {
-            const pose = part.joint === undefined ? at : mount; sweep(part, pose, pose, other);
+            const pose = part.joint === undefined || !mounts ? at : mounts[part.joint]!; sweep(part, pose, pose, other);
             if (solidContact(swept.solid, other.solid, hit, -swept.pad)) return false;
           }
         } else {

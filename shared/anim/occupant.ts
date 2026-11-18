@@ -55,11 +55,12 @@ export function clipSeatEye(world: CollisionWorld, anchor: Float64Array, eye: Fl
 export function occupantPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose, vehicle: OccupantSeat | undefined,
   saddle: Float64Array | null, offset: number, yaw: number, driver: boolean, profile: MountMotionProfile = motion): void {
   const role = vehicle?.role ?? (vehicle ? vehicle.driver ? "drive" : "passenger" : "ride");
-  const enclosed = role === "pilot" || role === "cabin", steers = vehicle?.driver ?? driver;
-  const aim = vehicle ? vehicle.aimYaw : yaw;
+  // Cabins and a personal watercraft's saddle hold the torso still; only the neck and head follow a look.
+  const fixedTorso = role === "pilot" || role === "cabin" || role === "pwc", steers = vehicle?.driver ?? driver;
+  const aim = vehicle ? vehicle.aimYaw : yaw, looks = !steers || role === "pilot" || !!vehicle?.definition?.controls;
   state.unpack(st.pack(), st.packCue()); state.seed = st.seed;
   let localYaw = 0, localPitch = 0;
-  if ((!steers || role === "pilot") && aim !== undefined) {
+  if (looks && aim !== undefined) {
     const pitch = st.pitch / PITCH_STEPS * Math.PI / 2, cp = detCos(pitch);
     const x = detSin(aim) * cp, y = detSin(pitch), z = detCos(aim) * cp;
     if (vehicle) {
@@ -77,14 +78,14 @@ export function occupantPose(anim: HumanAnim, st: AnimState, tick: number, out: 
   }
   humanPose(anim, state, tick, out);
   mountPose(profile, { role, tick: vehicle ? tick : 0, startTick: 0, durationTicks: 1,
-    steering: vehicle?.steer, upper: !enclosed && !steers ? out : undefined }, out);
-  if ((!steers || role === "pilot") && aim !== undefined) {
-    if (enclosed) {
+    steering: vehicle?.steer, upper: !fixedTorso && !steers ? out : undefined }, out);
+  if (looks && aim !== undefined) {
+    if (fixedTorso) {
       const tilt = Math.max(-.75, Math.min(.75, localPitch));
       quatAxis(turn, 0, 1, 0, 0, -tilt * .35); quatMul(out.rot, B_NECK * 4, turn, 0, out.rot, B_NECK * 4);
       quatAxis(turn, 0, 1, 0, 0, -tilt * .65); quatMul(out.rot, B_HEAD * 4, turn, 0, out.rot, B_HEAD * 4);
     }
-    const joint = enclosed ? B_HEAD : B_SPINE, limit = enclosed ? .8 : 1.2;
+    const joint = fixedTorso ? B_HEAD : B_SPINE, limit = fixedTorso ? .8 : 1.2;
     quatAxis(turn, 0, 0, 1, 0, Math.max(-limit, Math.min(limit, localYaw)));
     quatMul(out.rot, joint * 4, turn, 0, out.rot, joint * 4);
   }

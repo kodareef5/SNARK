@@ -20,6 +20,8 @@ import type { Subject } from "./posters.ts";
 
 export { num, time };
 
+const marineGroups = { offshore: "Offshore speedboat", jon: "Jon boat", pwc: "Personal watercraft", yacht: "Motor yacht", catamaran: "Power catamaran" };
+
 export type Kind = "creatures" | "characters" | "vehicles" | "items" | "resources" | "statuses" | "landmarks";
 export const KINDS: readonly Kind[] = ["creatures", "items", "resources", "vehicles", "landmarks", "statuses", "characters"];
 
@@ -209,7 +211,8 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     // A species with no art of its own is a stand-in, and not in the wiki (coverage.ts).
     if (!picture.meshes.every(has)) continue;
     const vehicle = d.vehicle;
-    const group = vehicle ? sentence(vehicle.movement === "rotor" || vehicle.movement === "boat" ? vehicle.movement : (vehicle.frame ?? "car").replace("_", " "))
+    const group = vehicle?.movement === "boat" && vehicle.family ? marineGroups[vehicle.family]
+      : vehicle ? sentence(vehicle.movement === "rotor" || vehicle.movement === "boat" ? vehicle.movement : (vehicle.frame ?? "car").replace("_", " "))
       : creature ? (d.fly ? "Flyer" : "Creature") : "Human";
     const e = entry(d.id, kind, labelOf(d), group, picture, [d.id]);
     const fact = facts(e);
@@ -219,6 +222,10 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
       fact("Top speed", `${num(spec.maxForward! * 3.6, 0)} km/h`);
       if (spec.maxReverse) fact("Reverse", `${num(spec.maxReverse * 3.6, 0)} km/h`);
       if (spec.climbSpeed) fact("Climbs at", `${num(spec.climbSpeed, 1)} m/s`);
+      if (v.movement === "boat" && v.family) {
+        fact("Length", `${num(v.spec.halfLength * 2, 1)} m`); fact("Beam", `${num(v.spec.halfWidth * 2, 2)} m`);
+        fact("Draft", `${num(v.spec.draft, 2)} m`);
+      }
       fact("Seats", String(v.seats.length));
       if (v.doors.length) fact("Doors", String(v.doors.length));
       if (spec.fuelCapacity) fact("Fuel tank", `${num(spec.fuelCapacity)} units`, `, ${time(spec.fuelCapacity / spec.fuelPerSecond!)} at full throttle`);
