@@ -49,7 +49,7 @@ const fits = {
       maxRise: 0.5,
       maxDrop: 0.65,
       frontDriveShare: 0.46,
-      suspensionFrequency: 7.5,
+      suspensionFrequency: 8,
       suspensionTravel: 0.35,
       suspensionDamping: 0.94,
       frontGrip: 1.35,

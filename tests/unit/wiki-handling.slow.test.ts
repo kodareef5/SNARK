@@ -25,7 +25,9 @@ function sensible(def: VehicleDefinition, h: Handling): void {
     within(h.turning, length, 60, "turning circle");
     within(h.circle, 2, h.top, "round the circle");
     within(h.topGear, 0, h.gears + 1, "gear at the top");
-    within(h.range60 ?? 0, 1000, 1e8, "range at 60");
+    within(h.rangeSteady, 1000, 1e8, "range at 60");
+    // One that tops out under 60 km/h has its steady range at its own top speed, which is its range flat out.
+    expect([def.id, h.reaches60, h.reaches60 ? h.rangeSteady : h.rangeTop]).toEqual([def.id, h.top >= 60 * KMH, h.rangeSteady]);
     within(h.rangeTop, 1000, 1e8, "range flat out");
     within(h.power / h.mass, 10, 2000, "watts a kilogram");
   } else if (h.movement === "boat") {
@@ -81,7 +83,7 @@ test("a figure follows the definition it is measured from, so a retuned vehicle'
   expect(slow.facts.find((f) => f.label === "Top speed")!.value).toEqual(["72 km/h"]);
   const big = with_(tuned({ fuelCapacity: spec.fuelCapacity * 2 })).handling!;
   if (big.movement !== "wheeled") throw new Error("not measured as a road vehicle");
-  expect(big.range60! / base.range60!).toBeCloseTo(2, 6);
+  expect(big.rangeSteady / base.rangeSteady).toBeCloseTo(2, 6);
   expect(big.rangeTop / base.rangeTop).toBeCloseTo(2, 6);
   const soft = with_(tuned({ brake: spec.brake / 2 })).handling!;
   if (soft.movement !== "wheeled") throw new Error("not measured as a road vehicle");

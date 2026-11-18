@@ -41,7 +41,7 @@ export const TANKER_VEHICLE: WheelVehicleDefinition = {
     frontDriveShare: 0,
     brake: 8.4,
     maxForward: 24,
-    maxReverse: 4.5,
+    maxReverse: 4,
     maxSteer: 0.64,
     steerRate: 1.45,
     steerSpeed: 16,
