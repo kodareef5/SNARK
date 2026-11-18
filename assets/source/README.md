@@ -159,8 +159,12 @@ so it needs no hit capsules. Its rig, sockets and closed size are a measured
 contract the seats depend on, kept beside the asset (`content/vehicles/compact-art.ts` for the compact) and held to
 the built pack by a test. Its paint is colour region 0, which the species'
 colours dye as they dye a creature's hide, and its materials carry a hurt
-picture (dents, scrapes, cracked glass) and a decay picture (burnt, rusted)
-as a creature's do, so a damaged car looks damaged and a dead one burnt out.
+picture (dents, scrapes, cracked glass) and a decay picture (rust, grime) as a
+creature's do, so a damaged car looks damaged and a dead one left to rot. A
+road vehicle's pictures hold every mark of its five wear stories, which hold
+them back by where they lie on the car (`client/core/render/wear.ts`): spread
+marks over the whole car, each region its own, and look at each story with
+`bun tools/art/wear.ts --out DIR <id>`.
 
 `core/vehicles/compact/` is the first, and the pattern for the rest:
 
@@ -171,9 +175,9 @@ as a creature's do, so a damaged car looks damaged and a dead one burnt out.
   face tagged with what it is (paint, tread, glass, leather...) and laid out on
   the three materials' pictures by its own projection, so the layout depends
   on nothing Blender might change.
-- `tex/bake.py` and `tex/paint.py` make every picture from that layout: each
-  texel is placed on the car and painted by what it is and where
-  (`tex/PROVENANCE.md`). `model.py` stops a build whose layout is not the one
+- `tex/bake.py` and `tex/paint.py` make every picture from that layout, and
+  `tex/wear.py` the hurt and decay pictures: each texel is placed on the car
+  and painted by what it is and where (`tex/PROVENANCE.md`). `model.py` stops a build whose layout is not the one
   the pictures were painted for.
 - A glass pane is a closed slab whose inside face is cut out of the picture,
   so from within the cabin the glass is not there, and from outside it is.
