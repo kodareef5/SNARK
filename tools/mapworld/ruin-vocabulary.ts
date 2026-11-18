@@ -46,7 +46,7 @@ export interface Vocabulary {
   damage: Record<string, Damage>;
   compositions: Record<string, Composition>;
   forms: Record<string, Form>; choices: Choice[]; assemblies: Record<string, Assembly>;
-  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[]; cars: Cars };
+  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[]; cars: Cars; walks?: Walks };
   harbours: Harbours;
   version: number; seed: number; budgets: { maxChunk: number; maxCity: number; maxPlayableFloors: number; maxHeight: number };
   categories: Record<string, string>; recipes: Record<string, Recipe>;
@@ -54,6 +54,12 @@ export interface Vocabulary {
   eras: { before: number; retain: number; feature: string; meaning: string }[];
   districts: Record<string, { finish: RuinFinish[]; fallback: string; lowRiseFeature?: string; lowRiseBelow?: number; wall?: number; holes?: number; infill?: RuinFinish; }>;
 }
+/**
+ * A street's walk and curb (ruins.ts makeWalks): the road classes that have them, the walk's depth from the curb's face,
+ * one run of 32 m in `gutterEvery` with a gutter, how far the ground under a piece may rise or fall (m), and how far past
+ * a road's half width a junction keeps its corners open.
+ */
+export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; }
 export interface Rule {
   event?: { travel: [number, number]; exposure: number; shelter: number };
   party?: number[];

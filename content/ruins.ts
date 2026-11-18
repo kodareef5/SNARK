@@ -106,6 +106,8 @@ export const RUIN_FACADES = Object.fromEntries(Object.entries(MODULES).map(([nam
 type Corner = readonly [number, number, number];
 // A break's bars, and a spalled face's darker pockets of aggregate.
 const RUST = 179, POCKET = 97;
+// A curb's pale top, a walk's paving, a gutter's dark.
+const CURB = 102, WALK = 1, GUTTER = 84;
 /** A prism along x from x0 to x1 of the profile `yz`, corners round it in (y, z). */
 const prism = (x0: number, x1: number, yz: readonly (readonly [number, number])[]): Corner[] => [x0, x1].flatMap((x) => yz.map(([y, z]): Corner => [x, y, z]));
 /** Teeth of a break across a width: each its from and to along x and how far its point stands out, with its point's height. */
@@ -129,6 +131,20 @@ function centred(id: string, walked: { boxes?: ShapeBox[]; hulls?: HullDef[] }, 
   const box = (b: ShapeBox): ShapeBox => ({ ...b, at: [b.at[0] - mid[0]!, b.at[1] - mid[1]!, b.at[2] - mid[2]!] });
   const hull = (h: HullDef): HullDef => ({ corners: h.corners.map((c) => [c[0] - mid[0]!, c[1] - mid[1]!, c[2] - mid[2]!] as const) });
   return { type: "shape", id, role: "thing", boxes: (walked.boxes ?? []).map(box), hulls: (walked.hulls ?? []).map(hull), look: { boxes: (look.boxes ?? []).map(box), hulls: (look.hulls ?? []).map(hull) } };
+}
+/**
+ * The street's edge, 8 m along a road (x along it, z away from it, the curb's face at 0, the ground at 0): a 2.4 m walk at
+ * curb height, 0.15 m, its curb's 0.3 m top pale, and with a gutter, a dark strip 0.45 m wide on the road's edge. A body
+ * steps up it and a wheel rolls over it (tests/unit/vehicle-chassis-course.test.ts crosses such a kerb); the gutter is
+ * drawn only.
+ */
+function street(): Record<"zwalk8" | "zwalk8g", ShapeDef> {
+  const walked = { boxes: [{ at: [0, 0.075, 1.2], half: [4, 0.075, 1.2] }] as ShapeBox[] };
+  const walk: ShapeBox[] = [{ at: [0, 0.075, 0.15], half: [4, 0.075, 0.15], color: CURB }, { at: [0, 0.075, 1.35], half: [4, 0.075, 1.05], color: WALK }];
+  return {
+    zwalk8: centred(shaped("zwalk8"), walked, { boxes: walk }),
+    zwalk8g: centred(shaped("zwalk8g"), walked, { boxes: [...walk, { at: [0, 0.015, -0.225], half: [4, 0.015, 0.225], color: GUTTER }] }),
+  };
 }
 // The column's broken head and the slab that fell from it break along the same teeth, so the one is seen to be the other's.
 const BREAK: readonly Tooth[] = [[-0.4, -0.1, 0.45, -0.1], [-0.1, 0.15, 0.2, -0.25], [0.15, 0.4, 0.55, -0.05]];
@@ -164,6 +180,7 @@ export const RUIN_BREAKS = {
     hulls: [leaning([1.6, 0.15, 2], FALL), ...BREAK.map(([a, b, out]) => ({ corners: ([[a * 4, -0.15, 2], [b * 4, -0.15, 2], [a * 4, 0.15, 2], [b * 4, 0.15, 2], [(a + b) * 2, -0.05, 2 + out], [(a + b) * 2, 0.05, 2 + out]] as const).map(lean(FALL)) }))],
     boxes: bars([[-1.1, 0, 0.7, 0], [0.2, 0.05, 0.5, 0.3], [1.2, -0.05, 0.85, 0]]).map((b) => { const [x, y, z] = lean(FALL)([b.at[0], b.at[1], b.at[2] + 2]); return { ...b, at: [x, y, z] as const }; }),
   }),
+  ...street(),
 } satisfies Record<string, ShapeDef>;
 export type BreakPiece = keyof typeof RUIN_BREAKS;
 const slopeSizes = Object.fromEntries(Object.entries({ ...RUIN_SLOPES, ...RUIN_FACADES, ...RUIN_BREAKS }).map(([name, shape]) => {
@@ -220,7 +237,7 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
   zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
-  zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
+  zwalk8: ["concrete"], zwalk8g: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));

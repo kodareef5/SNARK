@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { BREAK_AT, RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { accessPlanner, gradeApproaches, type Approach } from "./ruin-access.ts";
@@ -269,6 +269,8 @@ export function makeRuins(site: Site): StaticPiece[] {
   const infrastructure = makeInfrastructure(site, acceptProp);
   const joinedFrontages = joinFrontages(records, v, acceptProp);
   const roads = roadIndex(site);
+  // The walks first, so the street's wrecks and furniture stand clear of them.
+  const walks = makeWalks(site, v, acceptProp, obstacles, roads);
   const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads);
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
   const signs = makeSigns(site, accept);
@@ -324,7 +326,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   }));
   put("generation.json", { version: v.version, seed: v.seed, labelsFingerprint: data.fingerprint, staticFingerprint: digest(pieces),
     blocks: pieces.length, buildings: records.length, footprints: site.footprints.length, rejected, keptAsGround, kinds: usedKinds, topChunks,
-    clearance, streets, cars: { pieces: wrecks.length, byLook: tally(wrecks.map((p) => wreckLook(p.kind)!.mesh)), byKind: tally(wrecks.map((p) => p.kind)), parked: parked.length }, event: { ...v.event, sheltered: records.filter((r) => (r.shelter ?? 0) > .1).length, exposure: tally(records.map((r) => (Math.floor((r.exposure ?? 0) * 10) / 10).toFixed(1))) }, frontage: { joined: joinedFrontages, buildings: records.filter((r) => r.party?.length).length, partyEdges: records.reduce((n, r) => n + (r.party?.length ?? 0), 0) }, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
+    clearance, streets, walks, cars: { pieces: wrecks.length, byLook: tally(wrecks.map((p) => wreckLook(p.kind)!.mesh)), byKind: tally(wrecks.map((p) => p.kind)), parked: parked.length }, event: { ...v.event, sheltered: records.filter((r) => (r.shelter ?? 0) > .1).length, exposure: tally(records.map((r) => (Math.floor((r.exposure ?? 0) * 10) / 10).toFixed(1))) }, frontage: { joined: joinedFrontages, buildings: records.filter((r) => r.party?.length).length, partyEdges: records.reduce((n, r) => n + (r.party?.length ?? 0), 0) }, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
     piecesByKind: Object.fromEntries([...new Set(records.map((r) => r.kind))].sort().map((kind) => { const rows = records.filter((r) => r.kind === kind); return [kind, { buildings: rows.length, pieces: rows.reduce((n, r) => n + r.blocks, 0), max: Math.max(...rows.map((r) => r.blocks)) }]; })),
     byRecipe: tally(records.map((r) => r.recipe)), byDistrict: tally(records.map((r) => r.district)),
     reduced: records.filter((r) => r.detail > 0).map((r) => ({ part: r.part, name: r.name, detail: r.detail })),
@@ -429,6 +431,46 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
     m.cover(0, 0, 6);
     if (accept(m)) { record.status = "built"; record.blocks = m.pieces.length; }
     else record.status = "budget or bounds";
+  }
+  return out;
+}
+
+/**
+ * A street's edges: along each road of the listed classes, on each side, an 8 m walk with its curb on the road's edge every
+ * 8 m, where the ground beside the road is open and level and nothing of the city stands, clear of junctions; a gutter on
+ * a run of them here and there. A way in to a building crosses no walk: the corridors the build keeps reject one there, so
+ * the curb is cut where a driveway or a door's path meets the road.
+ */
+function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>): Record<string, number> {
+  const rules = v.street.walks; const out: Record<string, number> = { placed: 0, gutters: 0 };
+  if (!rules) return out;
+  const { nx, x1, z1 } = site.ground.grid;
+  const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
+  const open = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT]);
+  for (const [index, s] of roads.segments.entries()) {
+    if (!rules.classes.includes(s.mtfcc)) continue;
+    const ex = s.bx - s.ax; const ez = s.bz - s.az; const length = Math.hypot(ex, ez);
+    const [ux, uz] = [ex / length, ez / length];
+    for (let d = 4; d + 4 <= length; d += 8) {
+      const fx = s.ax + ux * d; const fz = s.az + uz * d;
+      if (roads.junction(fx, fz, s.half + rules.fromJunction)) continue;
+      for (const side of [1, -1]) {
+        // Away from the road on this side, and the piece's turn that points its z there.
+        const [nxw, nzw] = [-uz * side, ux * side];
+        const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
+        const shape: RuinShape = gutter ? "zwalk8g" : "zwalk8";
+        const mid = BREAK_AT[shape]!;
+        const cx = fx + nxw * (s.half + mid[2]!); const cz = fz + nzw * (s.half + mid[2]!);
+        const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [fx + ux * a + nxw * (s.half + b), fz + uz * a + nzw * (s.half + b)] as const));
+        const y = site.groundAt(fx + nxw * (s.half + 0.3), fz + nzw * (s.half + 0.3));
+        if (y < 0.1 || corners.some(([x, z]) => !open.has(site.ground.surface[at(x, z)]!) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) continue;
+        const yaw = Math.atan2(nxw, nzw) * 180 / Math.PI;
+        const m = new Mason({ x: cx, z: cz, yaw, c: Math.cos(yaw * Math.PI / 180), s: Math.sin(yaw * Math.PI / 180), width: 8, depth: 3, rings: [] }, y);
+        m.put(shape, 0, mid[1]!, 0, "concrete");
+        if (obstacles.hits(boxOf(m.pieces[0]!), .1)) continue;
+        if (accept(m)) { out.placed!++; if (gutter) out.gutters!++; }
+      }
+    }
   }
   return out;
 }
