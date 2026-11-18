@@ -491,8 +491,9 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
         const [fx, fz] = [s.ax + ux * d, s.az + uz * d];
         const y = site.groundAt(...curb(d, 0.3)); ground.push(y);
         if (roads.junction(fx, fz, s.half + rules.fromJunction)) { slots.push("junction"); continue; }
-        const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => curb(d + a, b)));
-        if (y < 0.1 || corners.some(([x, z]) => !open.has(site.ground.surface[at(x, z)]!) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) { slots.push("bare"); continue; }
+        // The road's raster runs a sample or so past its edge, so the curb's corners may stand on street.
+        const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [...curb(d + a, b), b] as const));
+        if (y < 0.1 || corners.some(([x, z, b]) => !(open.has(site.ground.surface[at(x, z)]!) || b < 1 && site.ground.surface[at(x, z)] === S.STREET) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) { slots.push("bare"); continue; }
         const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
         const mid = BREAK_AT[gutter ? "zwalk8g" : "zwalk8"]!;
         const laid = put(gutter ? "zwalk8g" : "zwalk8", d, mid[2]!, y);
