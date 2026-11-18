@@ -51,8 +51,8 @@ export class CreativeScreen {
   wrong = 0;
   /** The server's answer to the password last sent from here, or "". */
   answer = "";
-  /** The log's length when a password was sent and its answer not yet come, or -1. */
-  private asked = -1;
+  /** A password was sent from here at the tick `askedAt` and its answer has not come. */
+  private waiting = false;
   private askedAt = 0;
   private seen = 0;
   private session: ClientSession | null = null;
@@ -70,7 +70,8 @@ export class CreativeScreen {
   absorb(session: ClientSession): void {
     if (session !== this.session) {
       this.session = session;
-      this.seen = this.asked = -1;
+      this.seen = -1;
+      this.waiting = false;
       this.wrong = 0;
       this.answer = "";
     }
@@ -79,14 +80,14 @@ export class CreativeScreen {
       const line = log[i]!;
       if (line.channel !== TEXT_CONSOLE) continue;
       if (line.text === WRONG_PASSWORD) this.wrong++;
-      if (this.asked >= 0) {
+      if (this.waiting) {
         this.answer = line.text;
-        this.asked = -1;
+        this.waiting = false;
       }
     }
     this.seen = session.logVersion;
     // An answer that never comes, as when the server was too busy for the line, frees the button again.
-    if (this.asked >= 0 && session.serverTick - this.askedAt > 2 * TICK_RATE) this.asked = -1;
+    if (this.waiting && session.serverTick - this.askedAt > 2 * TICK_RATE) this.waiting = false;
   }
 
   edit(value: string): void {
@@ -96,11 +97,11 @@ export class CreativeScreen {
   /** Sends the password as `enablecheats` would be typed, so the server judges and counts it as it does that command. */
   submit(session: ClientSession): void {
     this.absorb(session);
-    if (this.password === "" || this.asked >= 0 || session.admin) return;
+    if (this.password === "" || this.waiting || session.admin) return;
     if (session.text(`enablecheats "${this.password.replaceAll('"', "")}"`) === 0) return;
     this.password = "";
     this.answer = "";
-    this.asked = session.logVersion;
+    this.waiting = true;
     this.askedAt = session.serverTick;
   }
 
@@ -144,14 +145,14 @@ export class CreativeScreen {
   /** What anyone without the admin role is shown: why, the password, and how many wrong guesses are left before the server ends the connection. */
   private gate(f: UiFrame, x: number, y: number, w: number, focus: number): void {
     const lines: string[] = [];
-    wrapText("These tools change the world for everyone here, so they are the server's admins'. Its admin password opens them for as long as you stay.", w, S_MENU_NOTE, lines);
+    wrapText("These tools change the world for everyone here, so only the server's admins may use them. The admin password gives you that role until you leave.", w, S_MENU_NOTE, lines);
     lines.forEach((line, i) => f.text(KEY_CREATIVE_LINE + i, x, y + i * 18, w, S_MENU_NOTE, line));
     const fy = y + lines.length * 18 + 18;
     const field = f.add(KEY_CREATIVE_PASSWORD, K_SECRET, x, fy, w - 112, 36, S_INPUT);
     field.text = this.password;
     field.label = "Admin password";
     field.interactive = true;
-    const ready = this.password !== "" && this.asked < 0;
+    const ready = this.password !== "" && !this.waiting;
     const unlock = f.add(KEY_CREATIVE_UNLOCK, K_BUTTON, x + w - 100, fy, 100, 36, S_HUD_HIT);
     unlock.text = unlock.label = "Unlock";
     unlock.interactive = ready;

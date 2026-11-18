@@ -1,6 +1,6 @@
 // The Creative screen's sundial: a dial of the day on which an admin turns the sun, and the world's time of day with it.
 // Noon is at the top and midnight at the foot, and each hour sits as far round as the ticks it takes on this server's clock,
-// so a quick day takes less of the dial than a slow night (shared/sim/clock.ts). The face is painted here once for each clock;
+// so a quick day takes less of the dial than a slow night (shared/sim/clock.ts). The face is painted here for each clock and size;
 // the sun, the numerals and the time are nodes over it. A turn reaches the server as CMD_CLOCK at most every SEND_TICKS.
 
 import { TICK_RATE } from "../../../shared/coords.ts";
