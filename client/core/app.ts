@@ -91,8 +91,8 @@ const NAME_RANGE = 30;
 const VIEW_FLAG_PROP = 8;
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
-/** Metres the orbit's camera is from the eye before the body is drawn whole, its head and all. */
-const HEAD_CLEAR = .5;
+/** Metres the orbit's camera is behind the eye before the body is drawn whole; nearer than the near plane its head is not seen. */
+const HEAD_CLEAR = .1;
 
 /** Initial vertical field of view, in radians. AIM_FOV multiplies the player's setting while aiming. */
 const BASE_FOV = 1.2217;
