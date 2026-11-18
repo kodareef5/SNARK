@@ -11,6 +11,7 @@ import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
 import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
+import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { WEAR_GLSL, wearAlpha } from "./wear.ts";
@@ -413,7 +414,7 @@ vec3 encoded(vec3 c) {
  * is after exposure, for the finishing pass to tone and grade, and the fog's colour as light; `SHOWN_STEP` is a
  * display step, which a text dithering what it shows takes, and 0 there.
  */
-export const LIGHT = `${FRAME_BLOCK}uniform vec3 uSky;
+export const LIGHT = `${FRAME_BLOCK}${CONTACT_GLSL}uniform vec3 uSky;
 uniform vec2 uFog;
 vec3 skyShare(vec3 f0, float rough, float nv) {
   float a = rough * rough;
@@ -543,7 +544,7 @@ ${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2,
 ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n  if (cover == 0.0) discard;\n" : "  float cover = 1.0;\n"}  vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
   float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
-  float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0);
+  float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
   o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade), vRel), cover);
 }`;

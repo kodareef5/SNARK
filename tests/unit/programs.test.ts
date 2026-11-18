@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
 import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
@@ -45,7 +45,9 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   const [slots, spheres, cascades, after] = [/highp vec4 (f[^;]+);/, /highp vec4 fSpheres\[(\d+)\]/, /highp mat4 fCascades\[(\d+)\]/, /fCascades\[\d+\];\s+highp vec4 (f[^;]+);/].map((re) => FRAME_BLOCK.match(re)![1]!);
   expect(slots.split(",").length * 4).toBe(FRAME.spheres);
   expect([Number(spheres), Number(cascades)]).toEqual([MAX_CASCADES, MAX_CASCADES]);
-  expect([FRAME.spheres + MAX_CASCADES * 4, FRAME.cascades + MAX_CASCADES * 16, FRAME.skySide + after.split(",").length * 4]).toEqual([FRAME.cascades, FRAME.skySide, FRAME_FLOATS]);
+  expect([FRAME.spheres + MAX_CASCADES * 4, FRAME.cascades + MAX_CASCADES * 16, FRAME.skySide + after.split(",").length * 4]).toEqual([FRAME.cascades, FRAME.skySide, FRAME.contact]);
+  // The bodies' contact last, two slots a body (contact.ts).
+  expect([Number(FRAME_BLOCK.match(/highp vec4 fContact\[(\d+)\]/)![1]), FRAME.contact + MAX_CONTACTS * 8]).toEqual([MAX_CONTACTS * 2, FRAME_FLOATS]);
   expect(Math.max(...Object.values(FRAME))).toBeLessThan(FRAME_FLOATS);
 
   const p = new FramePacket();

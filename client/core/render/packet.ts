@@ -274,14 +274,19 @@ export const FRAME = {
   bloom: 157,
   sharpen: 158,
   levels: 159,
+  /** fContact: the bodies whose contact takes the sky's light down, two slots each (contact.ts). */
+  contact: 160,
 } as const;
-export const FRAME_FLOATS = FRAME.levels + 1;
+/** Bodies the frame block holds for contact (contact.ts). */
+export const MAX_CONTACTS = 12;
+export const FRAME_FLOATS = FRAME.contact + MAX_CONTACTS * 8;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
   highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fGrade, fFinish;
+  highp vec4 fContact[${MAX_CONTACTS * 2}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

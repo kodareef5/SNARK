@@ -51,6 +51,7 @@ import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
+import { contactFrame } from "./contact.ts";
 import { lightBytes, postFrame } from "./post.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
@@ -488,6 +489,8 @@ export class Scene {
   /** Per body this frame: 1 for one astride the seat that steers its creature, 2 for a passenger astride, else 0. */
   private readonly seated = new Uint8Array(MAX_VIEW);
   private readonly saddleSeats: Registry["saddleSeats"];
+  /** What contact reads of the registry: bodies' sizes and vehicles' (contact.ts). */
+  private readonly sizes: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">;
   private readonly seatTurn = new Float64Array(MAX_VIEW * 9);
   /**
    * The bodies in view this frame: which remote entity each is, its place (x, y, z, yaw), whether it gets only one bone,
@@ -596,6 +599,7 @@ export class Scene {
     this.pitched = Uint8Array.from(reg.defs, (d) => (d?.type === "prop" && d.pitched ? 1 : 0));
     this.birthScale = reg.birthScale;
     this.saddleSeats = reg.saddleSeats;
+    this.sizes = reg;
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
@@ -766,6 +770,7 @@ export class Scene {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
       postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
+      contactFrame(p.frame, p.tier.post !== null, this.sizes, remote, this.own, cam);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);
     }
     this.fit(cam);

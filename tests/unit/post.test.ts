@@ -5,7 +5,11 @@ import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { ladder } from "../../client/core/governor.ts";
 import { tierWithout } from "../../client/core/passes.ts";
-import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { CONTACT_MOST, contactFrame, contactShare } from "../../client/core/render/contact.ts";
+import { FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packet.ts";
+import { RemoteSample } from "../../client/core/session.ts";
+import { CUE_DEAD } from "../../shared/anim/pose.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 import { BLOOM, SHARPEN, bloomLevels, drawsLight, gradeAt, postFrame } from "../../client/core/render/post.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { skyFrame, sunHeight, theSky } from "../../client/core/render/sky.ts";
@@ -73,4 +77,36 @@ test("the rasterizer shows a tier with a light target as medium where its grade 
   const graded = [0, 0, 0];
   shown(graded, light, 10, p);
   expect([graded[0]! > high[0]!, graded[2]! < high[2]!, graded[1]! > high[1]!]).toEqual([true, true, true]);
+});
+
+test("contact: the bodies nearest the camera, a vehicle as its driving box, the ground under one taken down and its sides little, on a tier with a light target alone", () => {
+  const reg = coreRegistry();
+  const [car, survivor] = [reg.index.get("core:compact")!, reg.index.get("core:survivor")!];
+  const remote = new RemoteSample();
+  const put = (kind: number, x: number, z: number, yaw: number, cue = 0): void => {
+    const n = remote.count++;
+    [remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.cue[n]] = [kind, x, 0, z, yaw, cue];
+  };
+  put(survivor, 30, 0, 0);
+  put(car, 10, 0, Math.PI / 2);
+  put(survivor, 4, 4, 0, CUE_DEAD);
+  put(survivor, 500, 0, 0);
+  const frame = new Float32Array(FRAME_FLOATS);
+  const cam = { x: 0, y: 1.7, z: 0 };
+  contactFrame(frame, true, reg, remote, null, cam);
+  const spec = reg.vehicle[car]!.spec;
+  // The car first, nearest, as its box, then the living survivor; the dead and the far are left out, and the list ends.
+  expect([...frame.subarray(FRAME.contact + 4, FRAME.contact + 7)].map((v) => Math.round(v * 100) / 100)).toEqual([spec.halfWidth, spec.height / 2, spec.halfLength].map((v) => Math.round(Math.fround(v) * 100) / 100));
+  expect([frame[FRAME.contact]!, frame[FRAME.contact + 8]!, frame[FRAME.contact + 20]!]).toEqual([10, 30, 0]);
+  const up = [0, 1, 0];
+  const under = contactShare(frame, [10, -1.7, 0], up);
+  const beside = contactShare(frame, [10, -1.7, spec.halfWidth + 3], up);
+  expect(under).toBeCloseTo(1 - CONTACT_MOST, 3);
+  expect(beside).toBeGreaterThan(0.9);
+  expect(contactShare(frame, [60, -1.7, 0], up)).toBe(1);
+  // A face turned from the body takes none.
+  expect(contactShare(frame, [10, -1.7, spec.halfWidth + 0.5], [0, 0, 1])).toBe(1);
+  // Medium holds none.
+  contactFrame(frame, false, reg, remote, null, cam);
+  expect(contactShare(frame, [10, -1.7, 0], up)).toBe(1);
 });

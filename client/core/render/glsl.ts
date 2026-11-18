@@ -66,7 +66,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
   vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uSolid < 1.5 && uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, vSurface);
-  float open = skyOpen(vRel, geometric, overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0);
+  float open = skyOpen(vRel, geometric, overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0);
   vec3 v = -normalize(vRel);
   // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
   vec3 r = reflect(-v,n);
@@ -237,7 +237,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL",
   vec3 n = normalize(vNormal);
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uWorldReady > 0.5) worldSurface(albedo, orm, n, geometric, groundSurface(tint));
-  orm.x *= skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0);
+  orm.x *= skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0);
   vec3 v = -normalize(vRel);
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
