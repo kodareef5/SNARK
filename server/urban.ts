@@ -459,6 +459,12 @@ export class Urban {
     return !!push && !!host && world.tick < push.until && ents.vx[e]! * push.x + ents.vz[e]! * push.z > .12 && !this.occupied(pid, host);
   }
 
+  /** Public automatic parking brake. A driven car's held controls never enter a contact snapshot. */
+  parkingBrake(e: number): boolean {
+    const def = this.ctx.world.reg.vehicle[this.ctx.world.ents.kind[e]!];
+    return !!def && isWheelVehicle(def) && !this.drivers.has(e) && !this.recoveryCoasting(e);
+  }
+
   /** Empty parked vehicles keep their place when a protected foreign tribe hits them. */
   parked(e: number): boolean {
     const { world } = this.ctx, a = world.ents, v = a.vrow[e]!;
@@ -750,9 +756,8 @@ export class Urban {
       // A car nobody drives stops on its handbrake, and once at rest is looked at again only once a REST_TICKS, each on
       // its own tick of them, to see whether the ground under it went.
       const driven = this.drivers.has(e);
-      const push = this.pushes.get(pid);
       // Catch the car on its brake as the shove dies out, before gravity rolls it back downhill.
-      const pushed = push && world.tick < push.until && ents.vx[e]! * push.x + ents.vz[e]! * push.z > .12 && !this.occupied(pid, host);
+      const pushed = this.recoveryCoasting(e);
       if (!pushed) this.pushes.delete(pid);
       if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
