@@ -82,7 +82,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       // A wall onto the street or a setback wears its kind's modules; one onto a fallen bay is its broken inside.
       const beside = byKey.get(tileKey(t.i + dx, t.j + dz));
       const grammar = bay === 8 && !burnt && !(beside && damaged.has(beside)) ? form.facade : undefined;
-      const end = grammar?.ends && dx !== 0 && m.frame.width >= 1.5 * m.frame.depth;
+      // A slab of flats has blank short ends; a tower has flats on every side.
+      const end = grammar?.ends && dx !== 0 && m.frame.width >= 1.5 * m.frame.depth && rule.recipe !== "tower";
       const capped = !damaged.has(t) && mode !== "lost-top";
       // Where the bay beside fell, this bay's slabs end at the break, whole, spalled or snapped, open to the gap; walls
       // stand only above the playable floors.
@@ -462,7 +463,7 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
   }
   const hall = ["shed", "hall", "theatre", "service", "marina"].includes(rule.recipe);
   stack(m, tiles, bay, rule.height, rule, opts, 0, hall);
-  if (["service", "civic", "school", "hospital", "shop"].includes(rule.recipe)) {
+  if (["service", "civic", "school", "hospital", "shop"].includes(rule.recipe) && !rule.form?.facade) {
     const front = tiles.filter((t) => t.j === Math.min(...tiles.map((a) => a.j)));
     for (const t of front) m.put(bay === 8 ? "trim8" : "trim4", t.u, 3.2, t.v - bay / 2, rule.finish);
   }
