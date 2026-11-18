@@ -59,8 +59,9 @@ test("no room is shown where a player may pass: every glazed part stands before 
       const colour = b.color === undefined ? undefined : FACADE_COLOURS[b.color];
       const kind = colour === undefined ? 0 : facadeKind(colour, b.half[0] * 2, b.half[1] * 2, 0);
       if (!KINDS[kind]!.room) continue;
-      // The glass's face, a little inside each edge, is within a walked box from the face back.
-      const held = shape.boxes.some((w) => [0, 1].every((a) => w.at[a]! - w.half[a]! <= b.at[a]! - b.half[a]! + 0.01 && w.at[a]! + w.half[a]! >= b.at[a]! + b.half[a]! - 0.01) && w.at[2] - w.half[2] <= b.at[2] + b.half[2] && w.at[2] + w.half[2] >= b.at[2] - b.half[2]);
+      // The glass's face, a little inside each edge, is within a walked box from the face back, or on one's face: a door
+      // stands proud of its wall.
+      const held = shape.boxes.some((w) => [0, 1].every((a) => w.at[a]! - w.half[a]! <= b.at[a]! - b.half[a]! + 0.01 && w.at[a]! + w.half[a]! >= b.at[a]! + b.half[a]! - 0.01) && w.at[2] - w.half[2] <= b.at[2] + b.half[2] && w.at[2] + w.half[2] >= b.at[2] - b.half[2] - 0.01);
       expect(`${name} ${held}`).toBe(`${name} true`);
     }
   }
