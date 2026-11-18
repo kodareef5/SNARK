@@ -213,10 +213,10 @@ export class BenchRun {
  * Effects `?off=` names, comma separated, for a before and after. "band" draws the near nodes in the hand-over without
  * its discard, "layers" draws hurt and dead bodies with the plain surface program, in the draws they have, "light"
  * draws a tier with a light target without it, each shader toning and grading onto the canvas, "bloom" finishes it with
- * no bloom (render/post.ts), "contact" holds no body's contact (render/contact.ts), and "facades" draws no facade's part
- * or mark, as before their atlases come (facade.ts).
+ * no bloom (render/post.ts), "contact" holds no body's contact (render/contact.ts), "facades" draws no facade's part
+ * or mark, as before their atlases come (facade.ts), and "edges" draws walls with no worn edges (world-surfaces.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "edges"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -245,11 +245,12 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
   return copy;
 }
 
-/** The effects that live in a built frame: the haze, bodies' contact and the facades in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
+/** The effects that live in a built frame: the haze, bodies' contact, the facades and the edges in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
   if (off.has("contact")) p.frame.fill(0, FRAME.contact);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
+  if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
   for (let d = 0; d < p.drawCount; d++) {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;
