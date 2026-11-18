@@ -66,6 +66,7 @@ def hide():
     # dissolve into small cellular markings at the edge of the pale belly.
     phase=z*3.42+.56*(1-np.clip(d,-.1,1))**1.55+.09*a+.027*b
     bands=s((wave(phase)-.24-.14*wave(z*1.7))/.5)*s((d-.30+.08*a)/.26)*(1-face)
+    bands*=.84+.115*wave(z*1.82)+.045*b
     bands*=1-.68*s((z-.17)/.2)*s((.77-z)/.28)
     col=coat(col,[60,62,61],bands*.85)
     mantle=s((d-.74-.05*a)/.29)*(1-face)
@@ -80,7 +81,14 @@ def hide():
     mask=np.exp(-((y-ocular)/(.026+.012*np.exp(-((z-1.06)/.13)**2)))**2)*s((z-.822)/.17)*s((1.355-z)/.19)
     blush=np.exp(-((z-.975)/.108)**2-((y-1.435)/.069)**2)
     col=coat(col,[156,86,56],.72*blush)
-    col=coat(col,[49,52,49],mask*.95)
+    col=coat(col,[49,52,49],mask*.91)
+    cheek=np.exp(-((z-1.096)/.085)**2-((y-1.399-.17*(z-1.07))/.013)**2)
+    col=coat(col,[184,139,98],cheek*.62)
+    nasal=np.exp(-((z-1.293)/.150)**2-((y-1.428+.083*(z-1.28))/.011)**2)
+    col=coat(col,[119,78,62],nasal*.48)
+    # Pebbling is finer on the snout than the short fibres behind the orbit.
+    face_grain=(wave(z*156+.23*wave(y*136))*wave(y*122+z*37)+.7*c)
+    col+=(5*face_grain*face)[...,None]
     brow=np.exp(-((y-ocular-.043)/.011)**2)*s((z-.906)/.12)*s((1.202-z)/.11)
     col=coat(col,[225,201,147],brow*.92)
     col=coat(col,[111,91,67],exposed)
@@ -105,7 +113,7 @@ def hide():
     w[...,3]=bands*.66
     w[...,4]=face*(1-mask)*.54
     w[...,5]=stripe*.46
-    h=125+bodygrain*(8*line+4*wave(fx*3+fy))+exposed*15*scutes+grain*1.1-22*s(pits)
+    h=125+bodygrain*(8*line+4*wave(fx*3+fy))+exposed*15*scutes+grain*.86-22*s(pits)+10*face*face_grain
     wound=np.zeros((n,n))
     for zz,yy,dx,dy in ((-.14,.94,.13,.065),(.39,1.01,.093,.052),(1.02,1.405,.037,.02),(-1.20,1.05,.09,.03)):
         patch=np.exp(-((z-zz)/dx)**2-((y-yy-.11*(z-zz))/dy)**2)
@@ -117,13 +125,13 @@ def feather():
     u,v=field(n); strip=np.minimum(3,(u*4).astype(int)); x=(u*4)%1; a=noise(n,36); b=noise(n,168)
     radius=abs(x-.5)*2
     rachis=np.exp(-((x-.5)/(.014+.015*(1-v)))**2)
-    chevron=v+.12*radius**1.35+.014*a
-    bars=s((np.cos(TAU*(chevron*3.18+.16*strip))-.18)/.57)
+    chevron=v+.085*radius**1.35+.013*a
+    bars=s((np.cos(TAU*(chevron*2.56+.065*strip))-.18)/.57)
     bars*=s((v-.18)/.20)
     tip=s((chevron-.90-.018*wave(strip*.31))/.042)
     col=np.zeros((n,n,3))+[131,104,79]
     col=coat(col,[164,111,73],s((v-.32)/.2)*s((.77-v)/.2)*.60)
-    col=coat(col,[57,66,70],bars*.92)
+    col=coat(col,[63,70,70],bars*.82)
     col=coat(col,[208,189,152],tip*.93)
     # Lighter exterior edge and translucent, short diagonal runs of barbs.
     barb=wave(chevron*104+radius*8+strip*.19+.11*a)
@@ -142,13 +150,13 @@ def detail():
     col+=(a*4+b*2+2*salt+4*wave(x*13+v*2))[:,:,None]
     col=coat(col,[144,129,100],(strip==0)*s((v-.6)/.4)*.52)
     col=coat(col,[170,102,98],(strip==2)*s((v-.27)/.44)*(.5+.14*a))
-    xx=(x-.50)*1.86; yy=(v-.50)*1.39
+    xx=(x-.50)*1.79; yy=(v-.50)*8*1.48
     r=np.sqrt(xx*xx+yy*yy)
     theta=np.arctan2(yy,xx)
     eye=(strip==3)
     col=coat(col,[39,36,30],eye*s((r-.54)/.13))
     col+=((wave(theta*11+.3*a)*10+a*7)*eye*(1-s((r-.57)/.1)))[:,:,None]
-    col=coat(col,[21,23,22],eye*(1-s((r-.24)/.05)))
+    col=coat(col,[21,23,22],eye*(1-s((r-.28)/.052)))
     col=coat(col,[239,223,187],eye*np.exp(-((xx+.095)/.043)**2-((yy-.106)/.045)**2)*.89)
     col=coat(col,[23,26,24],(strip==4)*(1-s((r-.37)/.24)))
     w=np.zeros((n,n,6)); w[...,2]=.70*(strip==0); w[...,4]=.51*(strip==6)

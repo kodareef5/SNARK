@@ -64,7 +64,7 @@ export default {
   materials: { raptor_hide: surface("raptor_hide"), raptor_feather: surface("raptor_feather"), raptor_detail: surface("raptor_detail") },
   feet: ["toes_l","toes_r"],
   gaits: { walk: { stride: 1.92 }, run: { stride: 3.33 }, swim: { stride: 2.4, stated: "Alternating hindfoot strokes in water at three metres per second." } },
-  budgets: { triangles: [31000,10600,5000,2550,430,260,100], texture: { top: 1024, megabytes: 26, layer: 128 } },
+  budgets: { triangles: [38000,11200,5100,2800,430,260,100], texture: { top: 1024, megabytes: 26, layer: 128 } },
   flat: 4,
   ragdoll: { limp: 18, bodies: [
     { bone: "pelvis", mass: .55 }, { bone: "skull", mass: .08, swing: 105, twist: 65 },

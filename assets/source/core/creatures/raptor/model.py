@@ -124,6 +124,18 @@ def feather(p, start, end, width, cross, bone, variant):
             p.face((r[i],r[k],s[k],s[i]),[(left+(right-left)*us[h],.03+.94*v/12) for h,v in [(i,j),(k,j),(k,j+1),(i,j+1)]])
     for r in (rows[0],rows[-1]): p.face(r,[(left,.03)]*4)
 
+def section_width(y,z):
+    zs=[row[0] for row in AXIS]
+    w,lo,hi=[float(np.interp(z,zs,[row[i] for row in AXIS])) for i in (1,2,3)]
+    power=1-.38*min(1,max(0,(z-.835)/.22))
+    t=min(.999,abs((2*y-hi-lo)/(hi-lo)))
+    return w*(1-t**(2/power))**(power/2)*(1-.13*math.exp(-((z-1.16)/.082)**2-((y-1.436)/.032)**2))
+
+def crown(z,x):
+    zs=[row[0] for row in AXIS]
+    w,lo,hi=[float(np.interp(z,zs,[row[i] for row in AXIS])) for i in (1,2,3)]
+    return (lo+hi)/2+(hi-lo)/2*math.sqrt(max(0,1-(x/w)**2))
+
 def eye_patch(name, center, sg, ry,rz,protrude,rect,bone):
     """Convex lens in a closed navicular rim. Its UV iris stays circular through LOD."""
     p=Part(name,"raptor_detail",bone)
@@ -135,7 +147,9 @@ def eye_patch(name, center, sg, ry,rz,protrude,rect,bone):
         for i in range(24):
             th=math.tau*i/24
             h,v=math.cos(th)*radial,math.sin(th)*radial
-            pos=(sg*(center[0]+protrude*math.cos(a)-.32*rz*h),center[1]+ry*v+.13*rz*h,center[2]+rz*h)
+            y=center[1]+ry*v*(1-.23*abs(h))+.11*rz*h
+            z=center[2]+rz*h
+            pos=(sg*(section_width(y,z)-.0035+protrude*math.cos(a)),y,z)
             ring.append((p.point(pos),(.5+.48*h,.5+.48*v)))
         rows.append(ring)
     for row,nextrow in zip(rows,rows[1:]):
@@ -167,7 +181,7 @@ def build():
               (.205,1.000,.400,.061,.069),(.234,.914,.295,.048,.047),
               (.240,.886,.299,.046,.046),(.248,.870,.386,.044,.050),
               (.254,.855,.489,.034,.039),(.254,.845,.563,.025,.029),
-              (.250,.815,.627,.026,.030),(.241,.790,.688,.024,.031)]
+              (.250,.815,.627,.026,.030),(.241,.790,.681,.024,.031),(.245,.781,.696,.016,.016),(.246,.776,.702,.007,.008)]
         for name,rows in (("leg",thigh),("arm",fore)):
             muscles.append(path(name,mirrored(rows,sg),sides=24))
         # The third and fourth pedal digits support the animal. II folds back
@@ -188,74 +202,139 @@ def build():
                       (cx+spread+.003,.021,length*.76,.009,.010),(cx+spread+.004,.009,length*.83,.002,.003)]
             muscles.append(path("pedal digit",mirrored(rows,sg),sides=12))
             hard.append(path("ungual",mirrored(claw,sg),"raptor_detail",DETAIL["claw"],"toes_"+side))
-        for i in range(3):
-            x=.229+i*.013
-            row=[(x,.804,.641,.015,.017),(x+.012,.779,.694+i*.009,.014,.016),
-                 (x+.010,.753,.710+i*.029,.009,.011),(x+.004,.740,.706+i*.034,.006,.007)]
-            hard.append(path("manual digit",mirrored(row,sg),"raptor_detail",DETAIL["tarsus"],"manus_"+side,10))
-            hard.append(path("manual hook",mirrored([(row[-1][0],.744,row[-1][2],.008,.008),
-                      (x+.001,.725,.706+i*.036,.006,.006),(x-.003,.715,.699+i*.035,.001,.001)],sg),"raptor_detail",DETAIL["claw"],"manus_"+side,9))
+        for i,(x,reach,drop,spread) in enumerate(((.227,.714,.732,-.018),(.249,.785,.724,.004),(.266,.811,.738,.020))):
+            # Each digit starts under the continuous feathered hand, thins
+            # through its knuckles and carries the dark sheath on its tip.
+            row=[(x,.803,.650,.016,.016),
+                 (x+.003,.780,.685+.007*i,.016,.015),
+                 (x+spread*.55,drop+.020,reach-.024,.013,.012),
+                 (x+spread,drop+.004,reach-.006,.010,.010),
+                 (x+spread,drop,reach,.008,.008)]
+            hard.append(path("manual phalanges",mirrored(row,sg),"raptor_detail",DETAIL["tarsus"],"manus_"+side,12))
+            hard.append(path("manual hook",mirrored([(x+spread,drop+.003,reach-.004,.010,.010),
+                      (x+spread,drop-.007,reach+.006,.008,.009),
+                      (x+spread-.002,drop-.020,reach+.006,.004,.006),
+                      (x+spread-.003,drop-.027,reach-.001,.001,.001)],sg),
+                      "raptor_detail",DETAIL["claw"],"manus_"+side,10))
         # Primaries attach along digit II and secondaries along the ulna. Their
         # shafts sweep toward the hip and stack into one folded forewing.
-        for i in range(11):
-            t=i/10
-            a=(sg*(.248+.008*math.sin(t*math.pi)),.887-.085*t,.306+.362*t)
-            b=(sg*(.281+.034*t),.803-.165*t+.044*t*t,.136+.059*t-.185*t*t)
-            vane(a,b,.031+.011*t,(0,.91,.35),"forearm_"+side if i<7 else "manus_"+side,i%3)
+        for i in range(12):
+            t=i/11
+            a=(sg*(.250+.018*t),.886-.084*t,.306+.369*t)
+            # The long distal primaries lie outside the covert row. Their
+            # separation from the thigh survives a running silhouette.
+            b=(sg*(.319+.087*t+.012*math.sin(3*t)),.781-.153*t+.019*math.sin(4*t),
+               .14-.34*t+.015*math.sin(7*t))
+            vane(a,b,.038+.014*t,(sg*.24,.94,.27),"forearm_"+side if i<7 else "manus_"+side,0 if i<4 else 1)
+        for i in range(9):
+            t=i/8
+            a=(sg*(.262+.010*t),.906-.081*t,.302+.349*t)
+            b=(sg*(.327+.043*t),.827-.092*t,.166+.075*t)
+            vane(a,b,.039,(sg*.18,.96,.26),"forearm_"+side if i<7 else "manus_"+side,2)
+        for i in range(5):
+            t=i/4
+            vane((sg*(.250+.022*t),.916-.053*t,.300+.203*t),
+                 (sg*(.292+.024*t),.862-.061*t,.215+.160*t),
+                 .029,(sg*.41,.90,.19),"forearm_"+side,3)
+        # Rectrices open from a short distal fleshy shaft, with a gently
+        # upward arcing centre and dropped outer edges as in a folded fan.
+        for i in range(10):
+            t=i/9
+            a=(sg*(.018+.008*t),1.055+.036*t,-1.46-.45*t)
+            b=(sg*(.272*(1-t**1.85)+.037*t),1.015+.175*t,-1.95-.42*t-.048*math.sin(math.pi*t))
+            vane(a,b,.051-.012*t,(sg*.90,.42-.33*t,0),"tail_4" if i<4 else "tail_5",1 if i<4 else 2)
+        # Small overlapping dorsal coverts hide the transition from the
+        # fleshy tail shaft to the long rectrices.
         for i in range(8):
-            t=i/7
-            vane((sg*.251,.905-.086*t,.308+.317*t),(sg*(.280+.012*t),.830-.097*t,.202+.154*t),
-                 .031,(0,.94,.32),"forearm_"+side,i%3)
-        # Tapering outward rectrices remain nearly horizontal at the shaft.
-        for i in range(9):
-            t=i/8
-            a=(sg*(.014+.021*t),1.076,-1.43-.52*t)
-            b=(sg*(.174-.139*t),1.022+.102*t,-1.80-.55*t)
-            vane(a,b,.045-.017*t,(sg*.94,.33,0),"tail_4" if i<4 else "tail_5",i%3)
-        for i in range(9):
-            t=i/8
-            a=(sg*(.054+.026*t),1.381+.151*t,.717+.27*t)
-            b=(sg*(.072+.045*t),1.398+.212*t,.610+.232*t)
-            vane(a,b,.023+.008*t,(sg*.90,.44,0),"neck_2" if i<6 else "skull",3)
-        # Facial skin follows the slight yaw of the orbital rim and nasal slit.
-        hard.append(eye_patch("orbit",(.116,1.480,1.078),sg,.040,.054,.017,DETAIL["lip"],"skull"))
-        hard.append(eye_patch("eye",(.124,1.484,1.081),sg,.027,.038,.015,DETAIL["eye"],"skull"))
-        brow=[(.118,1.473,1.025,.008,.010),(.127,1.496,1.045,.010,.012),
-              (.127,1.510,1.076,.010,.014),(.117,1.512,1.101,.010,.013),(.102,1.498,1.132,.005,.007)]
-        hard.append(path("superciliary margin",mirrored(brow,sg),"raptor_detail",DETAIL["brow"],"skull",12))
-        hard.append(eye_patch("naris",(.064,1.428,1.414),sg,.009,.025,.004,DETAIL["naris"],"skull"))
-        for i in range(13):
-            z=1.052+i*.034
+            t=i/7; z=-1.43-.65*t
+            x=.018+.010*(1-t)
+            vane((sg*x,crown(z,x)-.005,z),(sg*(.116-.053*t),1.10+.078*t,z-.227-.070*t),
+                 .032+.007*math.sin(math.pi*t),(sg*.96,.19,0),"tail_4" if i<4 else "tail_5",3)
+        # The nape has two unequal, rear-lying rows which follow the contour
+        # down to the shoulder. The outer webs break the outline in groups.
+        for row,(zs,lengths) in enumerate([
+            ([.751,.791,.842,.891,.920,.949,.974],[.098,.147,.154,.183,.176,.141,.135]),
+            ([.769,.818,.860,.917,.957],[.092,.116,.132,.146,.117])]):
+            for i,(z,length) in enumerate(zip(zs,lengths)):
+                x=(.038 if row==0 else .067)+.009*math.sin(i*2.3)
+                tx=x+(.019 if row==0 else .026)
+                tip_z=z-length
+                rise=(.018 if row==0 else .004)+.015*math.sin(i*1.35)**2
+                vane((sg*x,crown(z,x)-.012,z),
+                     (sg*tx,crown(tip_z,tx)+rise,tip_z),
+                     (.025 if row==0 else .022)+.006*math.sin(i*1.86)**2,
+                     (sg*.73,.58,.35),"neck_2" if z<.88 else "skull",3)
+        # The coat itself forms the upper and lower orbit. Both lids close
+        # into the skin and enclose a shallow almond-shaped corneal surface.
+        eye_y,eye_z=1.482,1.075
+        eye_rect=(DETAIL["eye"][0],.4375,DETAIL["eye"][2],.5625)
+        hard.append(eye_patch("cornea",(0,eye_y,eye_z),sg,.022,.033,.014,eye_rect,"skull"))
+        for upper in (True,False):
+            rim=[]
+            for i in range(11):
+                t=i/10
+                z=eye_z-.037+.075*t
+                y=eye_y+.010*(t-.5)+(1 if upper else -1)*(.021 if upper else .017)*math.sin(math.pi*t)**.72
+                radius=.003+.006*math.sin(math.pi*t)**.67
+                rim.append((section_width(y,z)+.004,y,z,radius*.85,radius))
+            lid=path("orbital fold",mirrored(rim,sg),bone="skull",sides=12)
+            atlas_uv(lid);hard.append(lid)
+        hard.append(eye_patch("naris",(0,1.427,1.413),sg,.007,.022,.005,DETAIL["naris"],"skull"))
+        for i in range(16):
+            z=1.052+i*.0269+.0024*math.sin(i*2.43)
             w=float(np.interp(z,[r[0] for r in AXIS],[r[1] for r in AXIS]))
             low=float(np.interp(z,[r[0] for r in AXIS],[r[2] for r in AXIS]))
-            length=.019+.006*math.sin(i*.9)**2
-            pts=[(.77*w,low+.019,z,.005,.007),(.78*w,low+.002,z+.001,.004,.006),
-                 (.77*w,low+.011-length,z-.002,.0025,.003),(.74*w,low+.003-length,z-.005,.0008,.001)]
+            vital=.46+.54*(.5+.5*math.sin(i*2.13))
+            length=.010+.013*vital
+            width=.0033+.0015*vital
+            pts=[(.53*w,low+.014,z,width,.006),(.56*w,low+.004,z,width,.005),
+                 (.59*w,low-.004,z-.001,.003,.003),(.59*w,low-length,z-.005-.001*vital,.0007,.001)]
             hard.append(path("tooth",mirrored(pts,sg),"raptor_detail",DETAIL["tooth"],"skull",7,1))
+        # Moist flexible commissure at the back of the gape stretches
+        # between both rami as the animal opens its mouth.
+        web=path("commissure",mirrored([(.062,1.373,.984,.014,.025),(.079,1.376,1.017,.013,.037),
+                 (.083,1.380,1.056,.009,.032),(.076,1.383,1.093,.006,.023),
+                 (.069,1.384,1.114,.003,.009)],sg),"raptor_detail",DETAIL["mouth"],sides=12)
+        upper=web.vertex_groups.new(name="skull"); lower=web.vertex_groups.new(name="jaw")
+        for vertex in web.data.vertices:
+            t=min(1,max(0,(from_blender(vertex.co)[1]-1.355)/.048))
+            upper.add([vertex.index],t,"REPLACE");lower.add([vertex.index],1-t,"REPLACE")
+        hard.append(web)
+        # Small lower crowns sit behind the labial tissue at idle. The
+        # opposing tooth rows become visible at full gape.
+        for i in range(12):
+            z=1.084+i*.032+.002*math.sin(i)
+            w=float(np.interp(z,[r[0] for r in JAW],[r[1] for r in JAW]))
+            top=float(np.interp(z,[r[0] for r in JAW],[r[3] for r in JAW]))+.020
+            length=.009+.009*math.sin(i*1.51)**2
+            rows=[(.53*w,top-.006,z,.004,.005),(.54*w,top+.002,z+.001,.003,.004),
+                  (.56*w,top+length,z-.003,.0007,.001)]
+            hard.append(path("dentary tooth",mirrored(rows,sg),"raptor_detail",DETAIL["tooth"],"jaw",7,1))
     # One fusion pass makes groin, scapula and nape continuous with the trunk.
     body=join(muscles,"mantle")
     activate(body)
     body.data.remesh_voxel_size=.011
     bpy.ops.object.voxel_remesh()
-    sm=body.modifiers.new("Soften muscle insertions","SMOOTH"); sm.factor=.86; sm.iterations=5
+    sm=body.modifiers.new("Soften muscle insertions","SMOOTH"); sm.factor=.86; sm.iterations=9
     bpy.ops.object.modifier_apply(modifier=sm.name)
     body.data.calc_loop_triangles()
     dec=body.modifiers.new("Retain silhouette curvature","DECIMATE")
-    dec.ratio=min(1,12300/len(body.data.loop_triangles)); dec.use_collapse_triangulate=True
+    dec.ratio=min(1,11900/len(body.data.loop_triangles)); dec.use_collapse_triangulate=True
     bpy.ops.object.modifier_apply(modifier=dec.name)
     body.data.materials.clear(); body.data.materials.append(bpy.data.materials["raptor_hide"])
     atlas_uv(body)
     skin_weights(body)
-    jaw=axial("mandible",JAW,"jaw"); atlas_uv(jaw)
+    jaw_stations=[(z,w*1.055,low+.004,top+.024-.005*max(0,(1.12-z)/.27)) for z,w,low,top in JAW]
+    jaw=axial("mandible",jaw_stations,"jaw"); atlas_uv(jaw)
     # Dark oral cavity is visible under the palate on the open beat of a bite.
     palate=path("palate",[(0,1.373,.973,.049,.012),(0,1.378,1.067,.086,.014),
                  (0,1.378,1.22,.071,.012),(0,1.374,1.37,.045,.009),(0,1.394,1.475,.010,.008)],
                  "raptor_detail",DETAIL["mouth"],"skull",18)
-    tongue=path("tongue",[(0,1.380,.974,.045,.016),(0,1.378,1.046,.087,.013),
-                (0,1.372,1.160,.069,.014),(0,1.366,1.304,.050,.013),(0,1.365,1.438,.019,.009)],
+    tongue=path("tongue",[(0,1.389,.974,.039,.018),(0,1.399,1.046,.073,.019),
+                (0,1.397,1.160,.055,.015),(0,1.389,1.304,.040,.014),(0,1.387,1.438,.015,.009)],
                 "raptor_detail",DETAIL["mouth"],"jaw",16)
     for i in range(3):
-        vane(((i-1)*.012,1.083,-1.89),((i-1)*.034,1.107,-2.374+.018*abs(i-1)),.037,(1,.06,0),"tail_5",i)
+        vane(((i-1)*.016,1.081,-1.89),((i-1)*.036,1.182,-2.413+.018*abs(i-1)),.047,(1,.06,0),"tail_5",i)
     model=join([body,jaw,palate,tongue]+hard+[p.object() for p in feathers.values()],"raptor_model")
     # Triangulate before MikkTSpace tangent export. Reserve separate
     # quantised UVs across mirror boundaries, including the midline.
