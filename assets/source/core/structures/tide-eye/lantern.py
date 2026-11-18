@@ -124,6 +124,8 @@ def frame(m):
             ],
             12 if lod < 2 else 6,
             center=(0, h, 0),
+            # Cut in twelve facets on purpose: lit round it would read as a plain drum.
+            faceted=True,
         )
         for y, r in [
             (lower + 6, radius * 0.84),
