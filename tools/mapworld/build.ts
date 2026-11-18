@@ -18,6 +18,7 @@ import { partsTable, wireBytes, writeMapFile } from "../map/pack.ts";
 import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
+import type { BridgeRecord } from "./bridges.ts";
 import { makeGround, S, type World } from "./ground.ts";
 import { makeNodes, ZONE_CELL } from "./nodes.ts";
 import { placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
@@ -224,6 +225,11 @@ export async function buildMap(named: string, release = false, output = join(ROO
 
   // The numbers: nodes by kind, how much land is walkable, the deepest water and the tallest heap.
   const parsed = parseMap(bytes);
+  if (world.heaps === false) {
+    const bridges = JSON.parse(readFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "bridges.json"), "utf8")) as BridgeRecord[];
+    const entrances = bridges.flatMap(r => r.entrances.map(e => ({ ...engine(e), id: r.id, name: r.name, slabs: e.slabs.map(engine), runout: e.runout?.map(engine) })));
+    writeFileSync(file.replace(/\.snmap$/, ".entrances.json"), JSON.stringify({ mapHash: parsed.hash, entrances }, null, 2) + "\n");
+  }
   const packedMax = Math.max(...parsed.statics.first.slice(1).map((end, i) => end - parsed.statics.first[i]!));
   if (packedMax > budget) throw new Error(`Packed static chunk budget ${budget} exceeded: ${packedMax}`);
   const hf = mapHeightfield(parsed);

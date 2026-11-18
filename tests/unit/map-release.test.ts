@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { partsFolder, readHead, writeMap } from "../../shared/world/mapfile.ts";
 import { writeMapFile } from "../../tools/map/pack.ts";
-import { buildMapSet, verifyMapPackage } from "../../tools/mapworld/build-set.ts";
+import { buildMapSet, mapReleaseManifest, verifyMapPackage } from "../../tools/mapworld/build-set.ts";
 import { flatMap } from "../fixtures/map.ts";
 
 test("map releases verify the actual raw and compressed parts and refuse an existing destination", async () => {
@@ -13,8 +13,15 @@ test("map releases verify the actual raw and compressed parts and refuse an exis
     const file = join(root, "fixture.snmap"), bytes = writeMap(flatMap(1));
     await writeMapFile(file, bytes);
     const summary = verifyMapPackage(file), head = readHead(bytes);
+    expect(mapReleaseManifest([summary], true)).toEqual({ producer: "road-deck-4", release: true, maps: [summary] });
     expect(summary.hash).toBe(head.hash); expect(summary.id).toBe(head.id);
     expect(summary.parts).toBe(head.parts.length + 1); expect(summary.bytes).toBe(bytes.length);
+    const metadata = file.replace(/\.snmap$/, ".entrances.json");
+    writeFileSync(metadata, JSON.stringify({ mapHash: head.hash, entrances: [] }));
+    expect(verifyMapPackage(file).entrances?.count).toBe(0);
+    writeFileSync(metadata, JSON.stringify({ mapHash: head.hash ^ 1, entrances: [] }));
+    expect(() => verifyMapPackage(file)).toThrow("Entrance metadata belongs to another map");
+    writeFileSync(metadata, JSON.stringify({ mapHash: head.hash, entrances: [] }));
     await expect(buildMapSet(root, ["fixture"])).rejects.toThrow("Refusing to replace");
     expect(readFileSync(file).equals(bytes)).toBe(true);
     const part = join(partsFolder(file), head.parts[0]!.name);

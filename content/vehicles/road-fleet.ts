@@ -6,7 +6,7 @@ import { FASTBACK_ART } from "./fastback-art.ts";
 import { BERLINETTA_ART, VELOCE_ART } from "./sports-art.ts";
 import { CARAVAN_ART, PANEL_VAN_ART } from "./van-art.ts";
 
-// Each model supplies its own cabin geometry. Leave an absent field absent on the JSON wire as well.
+// Each enclosed body supplies its own metal cabin panels; the compact dimensions do not fit the fleet.
 const { shotPanels: _compactPanels, ...roadDefaults } = COMPACT_VEHICLE;
 
 type Point = readonly [number, number, number];
@@ -16,6 +16,7 @@ interface RoadModel {
   readonly bones: readonly string[];
   readonly pivots: readonly Point[];
   readonly wheelRadius: number;
+  readonly shotPanels: NonNullable<WheelVehicleDefinition["shotPanels"]>;
   readonly anchors: {
     readonly seat_driver: Point; readonly seat_front_passenger: Point;
     readonly approach_left: Point; readonly approach_right: Point;
@@ -71,7 +72,7 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
     track: front[0] - pivot("wheel_front_right")[0], wheelbase: front[2] - pivot("wheel_rear_left")[2],
   };
   const vehicle: WheelVehicleDefinition = {
-    ...roadDefaults, id: art.id, frame, spec, beltline: trim.beltline,
+    ...roadDefaults, id: art.id, frame, spec, beltline: trim.beltline, shotPanels: art.shotPanels,
     seats: [
       { id: "driver", driver: true, anchor: at.seat_driver, entry: at.approach_left, door: 0 },
       { id: "passenger", anchor: at.seat_front_passenger, entry: at.approach_right, door: 1 },
