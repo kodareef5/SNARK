@@ -26,8 +26,8 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   // 14 is the cluster's, which took CMD_TRAVEL (31), 15 the beds', 16 the flyers' (tests/unit/contracts.test.ts), 17 the
   // stations wave's, for OWN_STATION's layout (tests/unit/stations-contracts.test.ts), and 18 the vehicles'
   // (tests/integration/vehicle-contracts.test.ts); 19 adds rotorcraft state and CMD_VEHICLE (32); 21 the compact chunk rows; 22 CMD_STATICS (33);
-  // 24 S_MOTION's states told a part at a time; 25 adds S_CORPSE and CMD_CORPSE (34); 26 adds car recovery actions; 27 adds crushed resource nodes and contact motion facts.
-  expect(P.PROTOCOL_VERSION).toBe(27);
+  // 24 S_MOTION's states told a part at a time; 25 adds S_CORPSE and CMD_CORPSE (34); 26 adds car recovery actions; 27 added crushed nodes and contact facts; 28 limits those facts to public motion.
+  expect(P.PROTOCOL_VERSION).toBe(28);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([34, 16, 7, 10]);

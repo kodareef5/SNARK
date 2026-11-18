@@ -32,7 +32,7 @@ const id = (r: Registry, name: string): number => r.index.get(name.includes(":")
 
 test("protocol 17 and record format 7 are the stations wave's, and it took no command, own component, event, saved component or deadline", () => {
   // 16 is the flyers', and 18, after this wave's 17, the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([27, 16]);
+  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([28, 16]);
   // 19 adds rotorcraft state and CMD_VEHICLE (32), 22 CMD_STATICS (33), 25 CMD_CORPSE (34).
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));

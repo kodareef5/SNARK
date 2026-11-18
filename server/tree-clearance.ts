@@ -27,10 +27,10 @@ export class TreeClearance {
     this.actorReach = reach;
   }
 
-  blocked(spot: NodeSpot): boolean {
+  blocked(spot: NodeSpot, crushed: boolean): boolean {
     const world = this.world, field = world.nodeField!, forms = field.forms, parts = forms.parts, box = parts.box;
     const reach = field.store.spread[spot.form]!, structures = world.structs, placed = structures.parts;
-    const n = structures.query(spot.x - reach, spot.z - reach, spot.x + reach, spot.z + reach, this.found);
+    const n = crushed ? structures.query(spot.x - reach, spot.z - reach, spot.x + reach, spot.z + reach, this.found) : 0;
     frameOf(spot.yaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch;
     for (let i = parts.start[spot.form]! * 6, end = parts.start[spot.form + 1]! * 6; i < end; i += 6) {
       boxSolid(spot.x + (cs * box[i]! + sn * box[i + 2]!) * stretch, spot.y + box[i + 1]!, spot.z + (cs * box[i + 2]! - sn * box[i]!) * stretch,
@@ -63,7 +63,7 @@ export class TreeClearance {
           def.movement === "rotor" ? helicopterMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, def, pose) :
           carMeetsKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, def.spec, pose);
         if (blocked) return true;
-      } else if (move && capsuleKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, ents.x[e]!, ents.y[e]!, ents.z[e]!, move.radius, move.height, .002)) return true;
+      } else if (crushed && move && capsuleKind(parts, spot.form, spot.x, spot.y, spot.z, spot.yaw, ents.x[e]!, ents.y[e]!, ents.z[e]!, move.radius, move.height, .002)) return true;
     }
     return false;
   }

@@ -242,7 +242,7 @@ export class Harvest {
     const chunk = key >> 8;
     const index = key & 255;
     this.field.source.at(chunk, index, this.spot);
-    if ((!t.crushed && this.held(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!)) || this.clearance.blocked(this.spot)) {
+    if ((!t.crushed && this.held(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!)) || this.clearance.blocked(this.spot, t.crushed)) {
       t.respawnAt = this.world.tick + RETRY_TICKS;
       this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
       this.dirty.add(chunk);
