@@ -3,8 +3,7 @@ import { expect, test } from "bun:test";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { artTest } from "../fixtures/needs-art.ts";
-import { corePackBytes } from "../fixtures/pack.ts";
-import { CREATURE_ASSETS } from "../fixtures/assets.ts";
+import { corePack, frozenPack } from "../fixtures/pack.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { FEWEST, simplify, withLevels } from "../../tools/pack/simplify.ts";
 import { boxMesh, buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
@@ -95,7 +94,7 @@ test("a ball's levels lie further from it as they get coarser, by about what the
   }
 });
 
-artTest("a mesh with one level gets more only if it has the triangles for them, and a creature that brings one gets five", () => {
+test("a mesh with one level gets more only if it has the triangles for them", () => {
   const box = withLevels({ id: "t:box", lods: [boxMesh([1, 1, 1], 3)] });
   expect(box.lods.length).toBe(1);
   expect(withLevels({ id: "t:small", lods: [ball(8, 6)] }).lods.map(tris)).toEqual([80]);
@@ -111,28 +110,45 @@ artTest("a mesh with one level gets more only if it has the triangles for them, 
   const packed = parsePack(buildPack([round], defaultPalette())).header.meshes[0]!;
   expect(packed.lods.map((l) => l.indexCount / 3)).toEqual([960, 480, 240, 120, 60]);
   expect(packed.lods[4]!.error).toBeCloseTo(round.lods[4]!.error!, 4);
+});
 
-  // A creature converted from a model as it came has one level of its own, so the rest are ours.
-  const core = parsePack(corePackBytes());
-  for (const { id, spec } of CREATURE_ASSETS) {
-    if (!("raw" in spec.source)) continue;
-    const mesh = core.header.meshes[core.meshIndex.get(id)!]!;
+// These imported models were packed before the simplifier supported textured surfaces.
+const DINOSAURS = ["core:raptor", "core:parasaur"];
+test("the frozen flat dinosaurs reproduce their five original levels vertex for vertex", () => {
+  const pack = frozenPack();
+  const old = unpackMeshes(pack);
+  for (const id of DINOSAURS) {
+    const mesh = pack.header.meshes[pack.meshIndex.get(id)!]!;
     expect([id, mesh.lods.length]).toEqual([id, 5]);
     for (let l = 1; l < 5; l++) {
       expect(mesh.lods[l]!.indexCount).toBeLessThanOrEqual(mesh.lods[l - 1]!.indexCount * 0.51);
       expect(mesh.lods[l]!.error).toBeGreaterThan(mesh.lods[l - 1]!.error);
     }
-    // Half the triangles within a hundredth of the creature's length.
     expect(mesh.lods[1]!.error).toBeLessThan(mesh.half[2] * 2 * 0.01);
-  }
-  // The levels in the pack were made before the simplifier learned to keep a surface. It still makes those very levels
-  // of a mesh that has none, vertex for vertex.
-  const ours = CREATURE_ASSETS.filter(({ spec }) => "raw" in spec.source).map(({ id }) => id);
-  expect(ours.length).toBeGreaterThanOrEqual(2);
-  for (const mesh of unpackMeshes(core).filter((m) => ours.includes(m.id))) {
-    const again = simplify(mesh.lods[0]!, mesh.lods.slice(1).map(tris));
+    const levels = old[pack.meshIndex.get(id)!]!.lods;
+    const again = simplify(levels[0]!, levels.slice(1).map(tris));
+    expect(again.length).toBe(4);
     for (const [i, made] of again.entries()) {
-      for (const part of ["positions", "colors", "bones", "indices"] as const) expect([mesh.id, i, part, made.lod[part]]).toEqual([mesh.id, i, part, mesh.lods[i + 1]![part]]);
+      for (const part of ["positions", "colors", "bones", "indices"] as const) {
+        expect([id, i, part, made.lod[part]]).toEqual([id, i, part, levels[i + 1]![part]]);
+      }
     }
+  }
+});
+
+artTest("the native dinosaur packs retain seven levels, from textured surfaces to flat silhouettes", () => {
+  const pack = corePack();
+  for (const id of DINOSAURS) {
+    const mesh = pack.header.meshes[pack.meshIndex.get(id)!]!;
+    expect([id, mesh.lods.length]).toEqual([id, 7]);
+    expect(mesh.flat!).toBeGreaterThan(0);
+    expect(mesh.flat!).toBeLessThan(7);
+    mesh.lods.forEach((lod, i) => {
+      expect([id, i, (lod.sections?.length ?? 0) > 0]).toEqual([id, i, i < mesh.flat!]);
+      if (i > 0) {
+        expect(lod.indexCount).toBeLessThan(mesh.lods[i - 1]!.indexCount);
+        expect(lod.error).toBeGreaterThan(mesh.lods[i - 1]!.error);
+      }
+    });
   }
 });

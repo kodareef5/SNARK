@@ -1,4 +1,4 @@
-import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
+import { defaultPalette, nearestColour } from "../shared/pack/palette.ts";
 
 const palette = defaultPalette();
 

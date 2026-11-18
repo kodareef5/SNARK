@@ -1,6 +1,6 @@
 import type { Def } from "../../shared/content/defs.ts";
 import { crafting } from "../craft.ts";
-import { naturalRegion } from "./colours.ts";
+import { naturalRegion } from "../colours.ts";
 
 // Region positions are the six dye bytes carried by saved genomes.
 const REGIONS = [
