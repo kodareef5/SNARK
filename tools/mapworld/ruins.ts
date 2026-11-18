@@ -442,7 +442,7 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
  * the curb is cut where a driveway or a door's path meets the road.
  */
 function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>): Record<string, number> {
-  const rules = v.street.walks; const out: Record<string, number> = { placed: 0, gutters: 0 };
+  const rules = v.street.walks; const out: Record<string, number> = { placed: 0, gutters: 0, ramps: 0, drains: 0, boxes: 0 };
   if (!rules) return out;
   const { nx, x1, z1 } = site.ground.grid;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
@@ -451,24 +451,44 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, obs
     if (!rules.classes.includes(s.mtfcc)) continue;
     const ex = s.bx - s.ax; const ez = s.bz - s.az; const length = Math.hypot(ex, ez);
     const [ux, uz] = [ex / length, ez / length];
-    for (let d = 4; d + 4 <= length; d += 8) {
-      const fx = s.ax + ux * d; const fz = s.az + uz * d;
-      if (roads.junction(fx, fz, s.half + rules.fromJunction)) continue;
-      for (const side of [1, -1]) {
-        // Away from the road on this side, and the piece's turn that points its z there.
-        const [nxw, nzw] = [-uz * side, ux * side];
-        const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
-        const shape: RuinShape = gutter ? "zwalk8g" : "zwalk8";
-        const mid = BREAK_AT[shape]!;
-        const cx = fx + nxw * (s.half + mid[2]!); const cz = fz + nzw * (s.half + mid[2]!);
-        const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [fx + ux * a + nxw * (s.half + b), fz + uz * a + nzw * (s.half + b)] as const));
-        const y = site.groundAt(fx + nxw * (s.half + 0.3), fz + nzw * (s.half + 0.3));
-        if (y < 0.1 || corners.some(([x, z]) => !open.has(site.ground.surface[at(x, z)]!) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) continue;
-        const yaw = Math.atan2(nxw, nzw) * 180 / Math.PI;
-        const m = new Mason({ x: cx, z: cz, yaw, c: Math.cos(yaw * Math.PI / 180), s: Math.sin(yaw * Math.PI / 180), width: 8, depth: 3, rings: [] }, y);
+    for (const side of [1, -1]) {
+      // Away from the road on this side, the piece's turn that points its z there, and where its curb's face runs.
+      const [nxw, nzw] = [-uz * side, ux * side];
+      const yaw = Math.atan2(nxw, nzw) * 180 / Math.PI; const c = Math.cos(yaw * Math.PI / 180); const sn = Math.sin(yaw * Math.PI / 180);
+      const curb = (d: number, out: number): [number, number] => [s.ax + ux * d + nxw * (s.half + out), s.az + uz * d + nzw * (s.half + out)];
+      const put = (shape: RuinShape, d: number, out: number, y: number): boolean => {
+        const mid = BREAK_AT[shape]!; const [x, z] = curb(d, out);
+        // Its middle stands that far along its x, which runs with the road one way or the other, from where it is put.
+        const m = new Mason({ x: x + c * mid[0]!, z: z - sn * mid[0]!, yaw, c, s: sn, width: 8, depth: 3, rings: [] }, y);
         m.put(shape, 0, mid[1]!, 0, "concrete");
-        if (obstacles.hits(boxOf(m.pieces[0]!), .1)) continue;
-        if (accept(m)) { out.placed!++; if (gutter) out.gutters!++; }
+        return !obstacles.hits(boxOf(m.pieces[0]!), .1) && accept(m);
+      };
+      // Each slot of 8 m: walked, kept clear for a junction, or left bare.
+      const slots: ("walk" | "junction" | "bare")[] = []; const ground: number[] = [];
+      for (let d = 4; d + 4 <= length; d += 8) {
+        const [fx, fz] = [s.ax + ux * d, s.az + uz * d];
+        const y = site.groundAt(...curb(d, 0.3)); ground.push(y);
+        if (roads.junction(fx, fz, s.half + rules.fromJunction)) { slots.push("junction"); continue; }
+        const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => curb(d + a, b)));
+        if (y < 0.1 || corners.some(([x, z]) => !open.has(site.ground.surface[at(x, z)]!) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) { slots.push("bare"); continue; }
+        const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
+        const mid = BREAK_AT[gutter ? "zwalk8g" : "zwalk8"]!;
+        if (!put(gutter ? "zwalk8g" : "zwalk8", d, mid[2]!, y)) { slots.push("bare"); continue; }
+        slots.push("walk"); out.placed!++; if (gutter) out.gutters!++;
+        // A storm drain where the gutter runs lowest, and now and then a utility box at the walk's back.
+        const before = ground[ground.length - 2] ?? Infinity;
+        const after = d + 12 <= length ? site.groundAt(...curb(d + 8, 0.3)) : Infinity;
+        if (gutter && y <= before && y <= after && put("zdrain", d, BREAK_AT.zdrain![2]!, y)) out.drains!++;
+        if (hash3(index, Math.round(d), v.seed + 7 * side) % rules.boxEvery === 0 && put("zutility", d + 2, rules.width - 0.4, y)) out.boxes!++;
+      }
+      // A walk's run ends at a junction in a curb ramp down to the road.
+      for (let k = 0; k < slots.length; k++) {
+        if (slots[k] !== "walk") continue;
+        const d = 4 + k * 8; const y = ground[k]!;
+        // The ramp rises toward the walk it leads onto; a piece's +x runs with the road on one side and against it on the other.
+        const rising = (toward: number): RuinShape => (toward * side > 0 ? "zcurbramp" : "zcurbrampl");
+        if (slots[k - 1] === "junction" && put(rising(1), d - 4 - 0.6, 1.2, y)) out.ramps!++;
+        if (slots[k + 1] === "junction" && put(rising(-1), d + 4 + 0.6, 1.2, y)) out.ramps!++;
       }
     }
   }

@@ -56,10 +56,10 @@ export interface Vocabulary {
 }
 /**
  * A street's walk and curb (ruins.ts makeWalks): the road classes that have them, the walk's depth from the curb's face,
- * one run of 32 m in `gutterEvery` with a gutter, how far the ground under a piece may rise or fall (m), and how far past
- * a road's half width a junction keeps its corners open.
+ * one run of 32 m in `gutterEvery` with a gutter, how far the ground under a piece may rise or fall (m), how far past a
+ * road's half width a junction keeps its corners open, and one walk in `boxEvery` with a utility box at its back.
  */
-export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; }
+export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; boxEvery: number; }
 export interface Rule {
   event?: { travel: [number, number]; exposure: number; shelter: number };
   party?: number[];

@@ -107,7 +107,7 @@ type Corner = readonly [number, number, number];
 // A break's bars, and a spalled face's darker pockets of aggregate.
 const RUST = 179, POCKET = 97;
 // A curb's pale top, a walk's paving, a gutter's dark.
-const CURB = 102, WALK = 1, GUTTER = 84;
+const CURB = 102, WALK = 1, GUTTER = 84, GRATE = 11, BOX = 140;
 /** A prism along x from x0 to x1 of the profile `yz`, corners round it in (y, z). */
 const prism = (x0: number, x1: number, yz: readonly (readonly [number, number])[]): Corner[] => [x0, x1].flatMap((x) => yz.map(([y, z]): Corner => [x, y, z]));
 /** Teeth of a break across a width: each its from and to along x and how far its point stands out, with its point's height. */
@@ -138,12 +138,20 @@ function centred(id: string, walked: { boxes?: ShapeBox[]; hulls?: HullDef[] }, 
  * steps up it and a wheel rolls over it (tests/unit/vehicle-chassis-course.test.ts crosses such a kerb); the gutter is
  * drawn only.
  */
-function street(): Record<"zwalk8" | "zwalk8g", ShapeDef> {
+function street(): Record<"zwalk8" | "zwalk8g" | "zcurbramp" | "zcurbrampl" | "zdrain" | "zutility", ShapeDef> {
   const walked = { boxes: [{ at: [0, 0.075, 1.2], half: [4, 0.075, 1.2] }] as ShapeBox[] };
   const walk: ShapeBox[] = [{ at: [0, 0.075, 0.15], half: [4, 0.075, 0.15], color: CURB }, { at: [0, 0.075, 1.35], half: [4, 0.075, 1.05], color: WALK }];
+  // A curb ramp 1.2 m along the curb, down from the walk to the road toward a junction: rising to +x, or with `l` to -x.
+  const ramp = (l: boolean): HullDef => ({ corners: [0, 2.4].flatMap((z): Corner[] => [[-0.6, 0, z], [0.6, 0, z], [l ? -0.6 : 0.6, 0.15, z]]) });
   return {
     zwalk8: centred(shaped("zwalk8"), walked, { boxes: walk }),
     zwalk8g: centred(shaped("zwalk8g"), walked, { boxes: [...walk, { at: [0, 0.015, -0.225], half: [4, 0.015, 0.225], color: GUTTER }] }),
+    zcurbramp: centred(shaped("zcurbramp"), { hulls: [ramp(false)] }, { hulls: [ramp(false)] , boxes: [{ at: [0.55, 0.07, 1.2], half: [0.05, 0.07, 1.2], color: CURB }] }),
+    zcurbrampl: centred(shaped("zcurbrampl"), { hulls: [ramp(true)] }, { hulls: [ramp(true)], boxes: [{ at: [-0.55, 0.07, 1.2], half: [0.05, 0.07, 1.2], color: CURB }] }),
+    // A storm drain at a gutter's low point: its grate in the gutter and its inlet a dark mouth in the curb's face.
+    zdrain: centred(shaped("zdrain"), { boxes: [{ at: [0, 0.055, -0.25], half: [0.6, 0.055, 0.25] }] }, { boxes: [{ at: [0, 0.035, -0.225], half: [0.45, 0.005, 0.225], color: GRATE }, { at: [0, 0.07, -0.01], half: [0.6, 0.04, 0.01], color: GRATE }, { at: [0, 0.02, -0.225], half: [0.5, 0.015, 0.25], color: GUTTER }] }),
+    // A utility box at the back of a walk, on its plinth.
+    zutility: centred(shaped("zutility"), { boxes: [{ at: [0, 0.7, 0], half: [0.45, 0.55, 0.25] }] }, { boxes: [{ at: [0, 0.2, 0], half: [0.5, 0.05, 0.3], color: CURB }, { at: [0, 0.75, 0], half: [0.45, 0.5, 0.25], color: BOX }, { at: [0, 1.27, 0], half: [0.48, 0.02, 0.28], color: BOX }] }),
   };
 }
 // The column's broken head and the slab that fell from it break along the same teeth, so the one is seen to be the other's.
@@ -237,7 +245,7 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
   zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
-  zwalk8: ["concrete"], zwalk8g: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
+  zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));
