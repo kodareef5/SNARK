@@ -1,11 +1,12 @@
-// Puts a found car back in the place the map parked it, some days after its car went, destroyed or driven off: owned by
-// nobody, its condition and fuel rolled again in the map's ranges. Each place is checked on a deadline of its own, so a
-// world costs nothing between checks. The days are FoundCarReturnDays, of the game's clock; 0 brings none back.
+// Puts a found car or vessel back in the place the map parked or berthed it, some days after it went, destroyed or driven
+// off: owned by nobody, its condition and fuel rolled again in the map's ranges. Each place is checked on a deadline of its
+// own, so a world costs nothing between checks. The days are FoundCarReturnDays for a car and FoundBoatReturnDays for a
+// vessel, of the game's clock; 0 brings none back.
 
 import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
 import { cycleTicks } from "../shared/sim/clock.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
-import { isWheelVehicle } from "../shared/sim/vehicle.ts";
+import { isBoatVehicle, isWheelVehicle } from "../shared/sim/vehicle.ts";
 import type { MapVehicle } from "../shared/world/mapfile.ts";
 import type { GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
@@ -23,6 +24,8 @@ export const GONE_RANGE = 12;
 export const BASE_RANGE = 60;
 /** Metres round its body and the door room its seats need that another body keeps a car from coming back into. */
 const ROOM = 1;
+/** Metres of water under a vessel's keel at rest that its berth must still have. */
+const UNDER_KEEL = .2;
 
 export interface CarReturnContext {
   world: ServerWorld;
@@ -42,6 +45,8 @@ interface Place {
   /** Half its width and length with the door room and the margin, in metres. */
   readonly side: number;
   readonly end: number;
+  /** A vessel's draught, or -1 for a car. */
+  readonly draft: number;
   /** The records that came from it, the map's car and those that came back. */
   readonly pids: number[];
   /** The tick it was first found without its car, or -1 while its car is there. */
@@ -62,15 +67,15 @@ export class CarReturn {
   private readonly checkTicks = CAR_CHECK_SECONDS * TICK_RATE;
   private stamps = 0;
 
-  /** The map's parked vehicles: those on wheels the content has are places a car comes back to. */
+  /** The map's parked vehicles: those on wheels and the vessels the content has are places one comes back to. */
   constructor(ctx: CarReturnContext, placements: readonly MapVehicle[]) {
     this.ctx = ctx;
     const reg = ctx.world.reg;
     for (const at of placements) {
       const kind = reg.index.get(at.kind), def = kind === undefined ? undefined : reg.vehicle[kind];
-      if (!def || !isWheelVehicle(def)) continue;
+      if (!def || !(isWheelVehicle(def) || isBoatVehicle(def))) continue;
       const door = Math.max(def.spec.halfWidth, ...def.seats.map((s) => Math.abs(s.entry[0])));
-      this.places.push({ at, origin: foundVehicle(ctx.world.mapId, at, ctx.seed).origin!, side: door + ROOM, end: def.spec.halfLength + ROOM, pids: [], gone: -1, times: 0, due: 0 });
+      this.places.push({ at, origin: foundVehicle(ctx.world.mapId, at, ctx.seed).origin!, side: door + ROOM, end: def.spec.halfLength + ROOM, draft: isBoatVehicle(def) ? def.spec.draft : -1, pids: [], gone: -1, times: 0, due: 0 });
     }
   }
 
@@ -96,7 +101,7 @@ export class CarReturn {
     const p = this.places[i];
     if (!p || p.due !== stamp) return;
     this.checks++;
-    const { world, rules } = this.ctx, tick = world.tick, days = rules.num("FoundCarReturnDays");
+    const { world, rules } = this.ctx, tick = world.tick, days = rules.num(p.draft < 0 ? "FoundCarReturnDays" : "FoundBoatReturnDays");
     if (this.there(p)) {
       if (p.gone >= 0) { p.gone = -1; this.saved.dirty = true; }
     } else if (days > 0) {
@@ -119,9 +124,15 @@ export class CarReturn {
     return false;
   }
 
-  /** Whether a car may come back now: nobody is shown its chunk, nothing a tribe built is near, and no body is in its room. */
+  /** Whether one may come back now: nobody is shown its chunk, nothing a tribe built is near, no body is in its room, and a vessel's berth still floats it. */
   clear(p: Place): boolean {
-    return !this.seen(p) && !this.based(p) && !this.taken(p);
+    return !this.seen(p) && !this.based(p) && !this.taken(p) && this.afloat(p);
+  }
+
+  /** Whether a car's place, or water as deep as a vessel's draught and a margin under its keel, is there. */
+  afloat(p: Place): boolean {
+    const hf = this.ctx.world.hf;
+    return p.draft < 0 || hf.waterAt(p.at.x, p.at.z) - hf.heightAt(p.at.x, p.at.z) >= p.draft + UNDER_KEEL;
   }
 
   /** Whether a session is sent the bodies of the place's chunk, or of one beside it. */
