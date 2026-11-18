@@ -21,7 +21,7 @@ import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
 import { FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, hourOfSun, shownSky, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { KNEE, srgbToLinear } from "../../client/core/render/surface.ts";
+import { srgbToLinear, ungraded, untone } from "../../client/core/render/surface.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { RGBA_TOP } from "../../shared/pack/texture.ts";
@@ -376,6 +376,8 @@ const AT = { x: 64, z: 2304 };
 const CASTLES = [300, 1300, 2000];
 /** Steps of 255 the GPU may be from what the twins say: the table, the haze's formula, the dome at the view's end. */
 const NEAR = 4;
+/** The tone curve's top past which a colour is too near white to be taken back to light: a step of it there is a tenth of the light. */
+const TOP_KEPT = 0.95;
 /** Degrees from the sun and the moon inside which the dome is not held to the table: their discs and glows are the GPU's. */
 const CLEAR_OF = 12;
 
@@ -417,17 +419,23 @@ function rayOf(cam: Camera): (x: number, y: number) => number[] {
   };
 }
 
-/** A frame's light shown as the GPU shows it, from the rasterizer's colour at a pixel `rel` metres off: the colour back to light, the twin's air, and shown again. Null over the tone curve's knee. */
+/**
+ * A frame's light shown as the GPU shows it, from the rasterizer's colour at a pixel `rel` metres off: the colour back
+ * to light (its grade and the tone curve undone), the twin's air, and shown again. Null where the curve's top is too
+ * near white for a step of the colour to say the light: past TOP_KEPT.
+ */
 export function hazedShown(c: ArrayLike<number>, rel: number[], block: Float32Array): number[] | null {
-  const e = block[FRAME.exposure]!;
+  const e = block[FRAME.exposure]!, grading = block[FRAME.gamma]! > 0;
   const lin = [0, 1, 2].map((k) => srgbToLinear(c[k]! / 255));
-  if (Math.max(...lin) >= KNEE) return null;
+  if (grading) ungraded(lin, block);
+  if (Math.max(...lin) >= TOP_KEPT) return null;
+  untone(lin, lin);
   const sun = [0, 0, 0];
   trueSun(block, sun);
   const out = [0, 0, 0];
-  hazed(out, lin.map((v) => v / e), rel, block, theSky().table, sun);
+  hazed(out, lin.map((v, k) => v / e / (grading ? block[FRAME.grade + k]! : 1)), rel, block, theSky().table, sun);
   const shownOut = [0, 0, 0];
-  shownSky(out.map((v) => v * e), shownOut);
+  shownSky(out.map((v) => v * e), shownOut, block);
   return shownOut;
 }
 

@@ -258,6 +258,15 @@ export function tone(out: Out, c: Numbers): void {
   }
 }
 
+/** `tone` undone, for a toned colour whose brightest channel is under 1: that channel is the curve's top, which says the light's peak. */
+export function untone(out: Out, t: Numbers): void {
+  const top = Math.max(t[0]!, t[1]!, t[2]!);
+  const d = 1 - KNEE;
+  const peak = top <= KNEE ? top : (d * d) / (1 - top) - d + KNEE;
+  const white = top <= KNEE ? 0 : 1 - 1 / (WHITEN * (peak - top) + 1);
+  for (let k = 0; k < 3; k++) out[k] = top <= KNEE ? t[k]! : ((t[k]! - top * white) / (1 - white)) * (peak / top);
+}
+
 /**
  * The grade after the tone curve (content/grade.ts), from the frame block's finish: each colour kept `saturation` as far
  * from its grey, then raised to `gamma`. The twin of the GLSL `graded`.
@@ -266,6 +275,14 @@ export function graded(out: Out, frame: Numbers): void {
   const grey = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
   const saturation = frame[FRAME.saturation]!, gamma = frame[FRAME.gamma]!;
   for (let c = 0; c < 3; c++) out[c] = Math.pow(Math.max(grey + (out[c]! - grey) * saturation, 0), gamma);
+}
+
+/** `graded` undone, for a colour it did not clamp: the gamma taken back, then the colour as far from its grey as it was, which the grey keeps. */
+export function ungraded(out: Out, frame: Numbers): void {
+  const saturation = frame[FRAME.saturation]!, gamma = frame[FRAME.gamma]!;
+  for (let c = 0; c < 3; c++) out[c] = Math.pow(Math.max(out[c]!, 0), 1 / gamma);
+  const grey = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
+  for (let c = 0; c < 3; c++) out[c] = grey + (out[c]! - grey) / saturation;
 }
 
 /**

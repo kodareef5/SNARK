@@ -13,7 +13,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 import { BLOOM, SHARPEN, bloomLevels, drawsLight, gradeAt, levelShift, lightBytes, lightSamples, postFrame, tapShift } from "../../client/core/render/post.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { skyFrame, sunHeight, theSky } from "../../client/core/render/sky.ts";
-import { shown, skyShown } from "../../client/core/render/surface.ts";
+import { graded, shown, skyShown, tone, ungraded, untone } from "../../client/core/render/surface.ts";
 import { GRADE } from "../../content/grade.ts";
 
 /** The programs that show light, which a frame drawn as light draws with its light untoned. */
@@ -84,6 +84,18 @@ test("the rasterizer shows medium as a tier with a light target out of the fog, 
   shown(medium, light, 10, p);
   for (let c = 0; c < 3; c++) expect(medium[c]!).toBeCloseTo(high[c]!, 9);
   expect([high[0]! > plain[0]!, high[2]! < plain[2]!, high[1]! > plain[1]!]).toEqual([true, true, true]);
+  // A colour the grade did not clamp is taken back to what it was.
+  const back = [0.1, 0.3, 0.6];
+  graded(back, p.frame);
+  ungraded(back, p.frame);
+  back.forEach((v, c) => expect(v).toBeCloseTo([0.1, 0.3, 0.6][c]!, 9));
+  // And light the tone curve took, over its knee or under it.
+  for (const light of [[0.2, 0.5, 0.7], [0.4, 1.1, 2.6]]) {
+    const t = [0, 0, 0];
+    tone(t, light);
+    untone(t, t);
+    t.forEach((v, c) => expect(v).toBeCloseTo(light[c]!, 9));
+  }
   // Under water and far off, medium is the sky's colour as light, graded and shown; with no grade, as it is where the tone curve leaves it.
   p.frame[FRAME.eyeHeight] = -1;
   p.frame.set([1, 1, 1, 1, 1], FRAME.grade);
