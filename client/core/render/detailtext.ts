@@ -8,7 +8,7 @@
 import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
-import { DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR } from "./packet.ts";
+import { DETAIL_LAMP, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR } from "./packet.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
@@ -86,7 +86,7 @@ const SHAPES = `vec3 shapeOf(uint shape, vec2 c) {
 const KEEPS = `const float FADE_ORDER[16] = float[16](${FADE_ORDER.map((v) => v.toFixed(1)).join(", ")});
 uniform float uBlend, uFrom;
 float covers(float alpha) {
-  if ((vFlags & ${DETAIL_ROTOR}u) != 0u && uBlend > 0.5 && 1.0 / gl_FragCoord.w + 0.5 * fwidth(1.0 / gl_FragCoord.w) < uFrom) discard;
+  if ((vFlags & ${DETAIL_ROTOR | DETAIL_LAMP}u) != 0u && uBlend > 0.5 && 1.0 / gl_FragCoord.w + 0.5 * fwidth(1.0 / gl_FragCoord.w) < uFrom) discard;
   if (uBlend > 0.5) return alpha * vShows * ((vFlags & ${DETAIL_PUFF}u) != 0u ? clamp((vRel.y - vFloor) / (0.5 * vHalf), 0.0, 1.0) : 1.0);
   ivec2 q = ivec2(gl_FragCoord.xy) & 3;
   if (vShows * 16.0 <= FADE_ORDER[q.y * 4 + q.x] + 0.5) return 0.0;
@@ -114,14 +114,23 @@ const ROTOR_SHAPE = `vec3 rotorOf(vec2 c, float density) {
 }
 `;
 
+/** Alpha and hot-core share across the face of an LED strip and its halo. Twin of lampOf below. */
+const LAMP_SHAPE = `vec3 lampOf(vec2 c) {
+  float r = length(vec2(max(0.0, abs(c.x) - 0.28) / 0.72, c.y));
+  float halo = max(0.0, 1.0 - r);
+  return vec3(max(1.0 - smoothstep(0.055, 0.34, r), 0.82 * halo * halo * halo), 1.0 - smoothstep(0.025, 0.16, r), 1.0);
+}
+`;
+
 export const DETAIL_FLAT_FRAGMENT = `#version 300 es
 precision highp float;
 ${INS}uniform vec3 uSun, uSky;
 uniform vec2 uFog;
 uniform float uLight;
 out vec4 o;
-${SHAPES}${ROTOR_SHAPE}${KEEPS}void main() {
-  vec3 s = (vFlags & ${DETAIL_ROTOR}u) != 0u ? rotorOf(vCorner, vGrey) : shapeOf(vFlags & 7u, vCorner);
+${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${KEEPS}void main() {
+  vec3 s = (vFlags & ${DETAIL_LAMP}u) != 0u ? lampOf(vCorner)
+         : (vFlags & ${DETAIL_ROTOR}u) != 0u ? rotorOf(vCorner, vGrey) : shapeOf(vFlags & 7u, vCorner);
   float a = covers(s.x);
   if (a < 0.004) discard;
   vec3 n = facing(-normalize(vRel));
@@ -135,13 +144,17 @@ export const DETAIL_LIT_FRAGMENT = `#version 300 es
 precision highp float;
 ${INS}uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${ROTOR_SHAPE}${KEEPS}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${ROTOR_SHAPE}${LAMP_SHAPE}${KEEPS}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
   bool rotor = (vFlags & ${DETAIL_ROTOR}u) != 0u;
-  vec3 s = rotorOf(vCorner, vGrey);
-  vec4 t = rotor ? vec4(s.z, s.y, 0.0, s.x) : texture(uDetails, vUv);
+  bool lamp = (vFlags & ${DETAIL_LAMP}u) != 0u;
+  vec4 t;
+  if (lamp || rotor) {
+    vec3 s = lamp ? lampOf(vCorner) : rotorOf(vCorner, vGrey);
+    t = vec4(s.z, s.y, 0.0, s.x);
+  } else t = texture(uDetails, vUv);
   float a = covers(t.a);
   if (a < 0.004) discard;
   vec3 v = -normalize(vRel);
@@ -150,6 +163,17 @@ void main() {
   vec3 light = (vFlags & ${DETAIL_LIT}u) != 0u ? lit(albedo, vec3(1.0, 1.0, 0.0), n, v, vec3(0.0), sunShadow(vRel, n)) : albedo / fSunColor.w;
   o = vec4(shown(light, vRel), a);
 }`;
+
+/** Twin of the analytic lamp shape in both shader tiers. */
+export function lampOf(x: number, y: number, out: Float64Array | number[]): void {
+  const r = Math.hypot(Math.max(0, Math.abs(x) - .28) / .72, y);
+  const halo = Math.max(0, 1 - r);
+  const core = Math.min(1, Math.max(0, (r - .055) / (.34 - .055)));
+  const hot = Math.min(1, Math.max(0, (r - .025) / (.16 - .025)));
+  out[0] = Math.max(1 - core * core * (3 - 2 * core), .82 * halo ** 3);
+  out[1] = 1 - hot * hot * (3 - 2 * hot);
+  out[2] = 1;
+}
 
 /** `rotorOf`'s twin. The result is alpha, tip paint share, shade; it is independent of angular phase/display FPS. */
 export function rotorOf(x: number, y: number, density: number, out: Float64Array | number[]): void {

@@ -1,5 +1,16 @@
 import type { Def } from "../../shared/content/defs.ts";
 import { crafting } from "../craft.ts";
+import { naturalRegion } from "../colours.ts";
+
+// Region positions are the six dye bytes carried by saved genomes.
+const REGIONS = [
+  naturalRegion("back", 0x365653, 0x3c503c, 0x405d69, 0x574333),
+  naturalRegion("sides", 0x839266, 0x968159, 0x79887d, 0xa4a07b),
+  naturalRegion("belly", 0xc6b58a, 0xd8c9a6, 0xb5b99a, 0xd9bb91),
+  naturalRegion("crest", 0xbc6747, 0xbf944d, 0x9f493e, 0xd98868),
+];
+
+export const PARASAUR_DYES: readonly number[] = REGIONS.map((r) => r.colors[0]![0]);
 
 export const PARASAUR: readonly Def[] = [
   {
@@ -7,8 +18,9 @@ export const PARASAUR: readonly Def[] = [
     id: "core:parasaur",
     tag: "parasaur",
     mesh: "core:parasaur",
-    skeleton: "dino",
-    color: 9,
+    skeleton: "parasaur",
+    color: PARASAUR_DYES[0]!,
+    regions: [...REGIONS, null, null],
     radius: 1.1,
     height: 2.6,
     // Chosen physical kilograms for contact response, independent of inventory capacity.

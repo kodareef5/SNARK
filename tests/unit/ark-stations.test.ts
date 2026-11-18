@@ -138,8 +138,8 @@ const SMITHY: Readonly<Record<string, Made>> = {
 test("the smithy makes the guns, rounds, grenade, tranquilizer dart, scope and silencer, chitin and flak, and the metal pieces, at ARK's numbers", () => {
   expect(Object.keys(SMITHY).length).toBe(27);
   for (const name of Object.keys(SMITHY)) expect([name, made(name)]).toEqual([name, SMITHY[name]!]);
-  // What it makes is these and the fabricator and the Rex and Spino saddles.
-  expect(stationRecipes(reg, at("smithy")).map((k) => reg.ids[k]!.slice(5)).sort()).toEqual([...Object.keys(SMITHY), "piece_fabricator", "saddle_rex", "saddle_spino"].sort());
+  // What it makes is these and the fabricator and the Rex, Spino and Brachio saddles.
+  expect(stationRecipes(reg, at("smithy")).map((k) => reg.ids[k]!.slice(5)).sort()).toEqual([...Object.keys(SMITHY), "piece_fabricator", "saddle_brachio", "saddle_rex", "saddle_spino"].sort());
   // Each armor piece weighs what its page says (Chitin Helmet to Flak Boots); the metal pieces 4 (Metal Foundation to Metal Stairs).
   const weight = (name: string): number => item(name).weight!;
   expect(["hat", "shirt", "gloves", "pants", "boots"].map((p) => [weight(`chitin_${p}`), weight(`flak_${p}`)])).toEqual([[4, 4], [6, 10], [3, 2], [6, 10], [3, 4]]);

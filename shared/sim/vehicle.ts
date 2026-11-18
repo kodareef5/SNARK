@@ -113,11 +113,22 @@ interface VehicleDefinitionBase {
   readonly shotPanels?: readonly (readonly [VehiclePoint3, VehiclePoint3, VehiclePoint3, VehiclePoint3])[];
 }
 
+/** A lens surface in chassis-local metres. A lens with no facing is visible from every side. */
+export interface EmergencyLamp {
+  readonly at: VehiclePoint3;
+  readonly color: "red" | "blue";
+  /** Visible width of the emitting lens in metres. */
+  readonly width?: number;
+  readonly facing?: "front" | "rear";
+}
+export const PATROL_LIGHT_MODES = ["Off", "Patrol", "Response", "Pursuit"] as const;
+
 /** Existing packs omit movement; their controller remains the wheeled one. */
 export interface WheelVehicleDefinition extends VehicleDefinitionBase {
   readonly movement?: "wheeled";
   /** Road chassis family shown in the catalogue. Older wheel definitions use the car family. */
-  readonly frame?: "car" | "sports_car" | "van";
+  readonly frame?: "car" | "sports_car" | "van" | "off_road";
+  readonly emergencyLights?: readonly EmergencyLamp[];
   readonly spec: VehicleSpec;
 }
 
@@ -302,10 +313,12 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   }
   else {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
-    if (d.frame !== undefined && !["car", "sports_car", "van"].includes(d.frame)) throw new Error("invalid road vehicle frame");
+    if (d.frame !== undefined && !["car", "sports_car", "van", "off_road"].includes(d.frame)) throw new Error("invalid road vehicle frame");
     validateVehicleSpec(d.spec);
   }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  if (isWheelVehicle(d) && d.emergencyLights !== undefined && (!Array.isArray(d.emergencyLights) || d.emergencyLights.length < 1 || d.emergencyLights.length > 16 || !d.emergencyLights.every(lamp =>
+    lamp && vec(lamp.at) && (lamp.width === undefined || Number.isFinite(lamp.width) && lamp.width > 0 && lamp.width <= 2) && (lamp.color === "red" || lamp.color === "blue") && (lamp.facing === undefined || lamp.facing === "front" || lamp.facing === "rear")))) throw new Error("invalid emergency lamp layout");
   const bone = (n: unknown): boolean => typeof n === "string" && n.length > 0 && n.length <= 64;
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
   if (!Array.isArray(d.wheels) || d.wheels.length > 16 || !d.wheels.every((w) => bone(w.bone))) throw new Error("invalid vehicle wheels");

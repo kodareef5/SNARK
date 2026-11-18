@@ -10,6 +10,7 @@ export interface PadTarget {
   readonly inMenu: boolean;
   readonly inspecting: boolean;
   readonly flying: boolean;
+  readonly patrol: boolean;
   key(code: string, down: boolean): void;
   mouse(button: number, down: boolean): void;
   move(x: number, z: number): void;
@@ -43,6 +44,7 @@ export class GamepadInput {
   private repeatDirection=0;
   private menu=false;
   private flying=false;
+  private patrol=false;
   private selecting=false;
   private reload=false;
 
@@ -56,11 +58,11 @@ export class GamepadInput {
     const touchpad=pad.buttons.length>17 && /054c|DualSense|DualShock|Sony/i.test(pad.id??"");
     const down=(i:number):boolean=>{const b=pad.buttons[i===8 && touchpad?17:i];return !!b && (b.pressed || b.value>.55);};
     if(target.inMenu!==this.menu){this.release(target,target.inspecting);this.menu=target.inMenu;}
-    if(target.flying!==this.flying) {
-      // A press begun on foot must not become a roll or brake halfway through mounting.
+    if(target.flying!==this.flying || target.patrol!==this.patrol) {
+      // Mounted and on-foot right-stick actions start on a fresh press.
       this.pending[11]=0;
       const key=this.active.get(11);if(key){target.key(key,false);this.active.delete(11);}
-      this.flying=target.flying;
+      this.flying=target.flying; this.patrol=target.patrol;
     }
     const x=padAxis(pad.axes[0]??0),z=-padAxis(pad.axes[1]??0),yaw=padAxis(pad.axes[2]??0),pitch=padAxis(pad.axes[3]??0);
     if(x||z||yaw||pitch)target.used();
@@ -100,6 +102,7 @@ export class GamepadInput {
       if(i>=12 && i<=15){const slot=PAD_SLOTS[i]!+(modifier?4:0);this.pulse(`Digit${slot+1}`,target);}
       else if(modifier && (i===2 || i===3))this.pulse(i===2?"Digit9":"Digit0",target);
       else if(modifier && i===5)this.pulse("KeyV",target);
+      else if(i===11 && target.patrol)this.pulse("KeyK",target);
       else if(i===11 && target.flying)this.hold(i,modifier?"KeyX":"KeyC",target);
       else if(PAD_TAPS[i]){this.pending[i]=1;this.since[i]=now;}
       else if(i===6 || i===7){const mouse=i===6?2:0;this.mouse.add(mouse);target.mouse(mouse,true);}

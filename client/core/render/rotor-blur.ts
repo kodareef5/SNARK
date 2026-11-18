@@ -1,8 +1,8 @@
 // Rotor presentation only: two native cards per helicopter, independent of frame rate, with the real rotor plane/radius.
 import { quatRotate } from "../../../shared/math/quat.ts";
 import type { VehicleRotor } from "../../../shared/sim/vehicle.ts";
-import type { Camera } from "./camera.ts";
-import { BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_ROTOR, type FramePacket } from "./packet.ts";
+import { VehicleCards } from "./vehicle-cards.ts";
+import { BONE_FLOATS, DETAIL, DETAIL_LIT, DETAIL_ROTOR, type FramePacket } from "./packet.ts";
 
 /** A dense flight scene has a bounded cost. Beyond this, ordinary authored blades remain visible. */
 export const MAX_ROTOR_CARDS = 256;
@@ -14,17 +14,15 @@ export function rotorPassages(rotor: VehicleRotor, rpm: number): number {
   return rotor.blur ? Math.abs(rpm * rotor.ratio) * rotor.blur.blades / 60 : 0;
 }
 
-export class RotorBlur {
-  count = 0;
+export class RotorBlur extends VehicleCards {
   private frame = 0;
   private readonly previous = new Map<number, { frame: number; blurred: boolean }>();
-  private readonly cards = new Float32Array(MAX_ROTOR_CARDS * DETAIL_FLOATS);
-  private readonly words = new Uint32Array(this.cards.buffer);
-  private readonly order = new Uint16Array(MAX_ROTOR_CARDS);
   private readonly point = new Float64Array(3);
 
-  begin(): void {
-    this.count = 0;
+  constructor() { super(MAX_ROTOR_CARDS); }
+
+  override begin(): void {
+    super.begin();
     this.frame++;
     for (const id of this.previous.keys()) if (this.previous.get(id)!.frame < this.frame - 2) this.previous.delete(id);
   }
@@ -40,8 +38,7 @@ export class RotorBlur {
       previous.frame = this.frame;
       previous.blurred = blurred;
     } else this.previous.set(key, { frame: this.frame, blurred });
-    const n = this.count++, o = n * DETAIL_FLOATS;
-    this.order[n] = n;
+    const o = this.next();
     const out = this.cards, r = rotor.radius * size;
     quatRotate(q, 0, rotor.at[0] * size, rotor.at[1] * size, rotor.at[2] * size, this.point, 0);
     out[o] = this.point[0]! + x; out[o + 1] = this.point[1]! + y; out[o + 2] = this.point[2]! + z;
@@ -72,30 +69,5 @@ export class RotorBlur {
       }
     }
     return blurred;
-  }
-
-  /** The caller reserves `count` entries before cosmetic particles; cards are kept far to near. */
-  write(p: FramePacket): void {
-    if (this.count === 0) return;
-    const cards = this.cards, order = this.order.subarray(0, this.count);
-    const distance = (i: number) => { const o = i * DETAIL_FLOATS; return cards[o]! ** 2 + cards[o + 1]! ** 2 + cards[o + 2]! ** 2; };
-    order.sort((a, b) => distance(b) - distance(a));
-    // As words, so that every bit of the colours is kept.
-    for (const n of order) {
-      const from = n * DETAIL_FLOATS, to = p.detailCount++ * DETAIL_FLOATS;
-      for (let f = 0; f < DETAIL_FLOATS; f++) p.detailWords[to + f] = this.words[from + f]!;
-    }
-  }
-
-  /** Cards can be seen past the near depth range, including a rotor straddling the split. */
-  passes(cam: Camera): number {
-    let from = Infinity, to = -Infinity;
-    for (let n = 0; n < this.count; n++) {
-      const o = n * DETAIL_FLOATS, f = this.cards;
-      const d = cam.depth(f[o]!, f[o + 1]!, f[o + 2]!);
-      const reach = Math.abs(cam.depth(f[o + DETAIL.along]!, f[o + DETAIL.along + 1]!, f[o + DETAIL.along + 2]!)) + Math.abs(cam.depth(f[o + DETAIL.across]!, f[o + DETAIL.across + 1]!, f[o + DETAIL.across + 2]!));
-      from = Math.min(from, d - reach); to = Math.max(to, d + reach);
-    }
-    return cam.passesOf(from, to);
   }
 }

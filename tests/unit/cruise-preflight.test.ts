@@ -61,16 +61,17 @@ test("cruise preflight enforces exact native collision spread with lattice stret
     expect(made.errors).toEqual([]); return made.registry!;
   };
   const map = { ...flatMap(1), statics: [] }; // Even an unplaced state must not invalidate the global native route assumption.
-  const edge = make(14.99), native = new StructureStore(map.dims, edge.halfX, edge.halfY, edge.halfZ, null, edge.parts);
-  expect(Math.hypot(14.99, .1) + 1).toBeLessThan(ROUTE_MARGIN);
+  const halfAtLimit = ROUTE_MARGIN - 1;
+  const edge = make(halfAtLimit - .01), native = new StructureStore(map.dims, edge.halfX, edge.halfY, edge.halfZ, null, edge.parts);
+  expect(Math.hypot(halfAtLimit - .01, .1) + 1).toBeLessThan(ROUTE_MARGIN);
   expect(native.spread[edge.index.get("cruise:margin")!]! + 1).toBeGreaterThan(ROUTE_MARGIN);
   const report = cruiseMapPreflight(map, edge);
   expect(report.faults).toHaveLength(1);
   expect(report.faults[0]).toContain("native collision spread");
-  expect(report.faults[0]).toContain("route invalidation margin 16 m");
+  expect(report.faults[0]).toContain(`route invalidation margin ${ROUTE_MARGIN} m`);
   expect(cruiseMapPreflight(map, edge)).toEqual(report); // Cached registry validation preserves the same refusal.
-  expect(cruiseMapPreflight(map, make(14.96)).faults).toEqual([]);
-  expect(cruiseMapPreflight(map, make(14.96, 1.05)).faults).toHaveLength(1);
+  expect(cruiseMapPreflight(map, make(halfAtLimit - .04)).faults).toEqual([]);
+  expect(cruiseMapPreflight(map, make(halfAtLimit - .04, 1.05)).faults).toHaveLength(1);
   // A distant visual proxy does not enlarge actual collision or require a larger route invalidation region.
   expect(cruiseMapPreflight(map, make(.2, 1, true)).faults).toEqual([]);
 });

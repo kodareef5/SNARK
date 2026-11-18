@@ -153,19 +153,38 @@ test("fuzz: no input sequence leaves a sealed room or enters solid space", () =>
   }
 });
 
-test("fuzz: among sloped pieces in a closed room no body of any species leaves it or enters a piece", () => {
-  const w = flatWorld();
-  const add = (id: string, x: number, base: number, z: number, yaw = 0): number => w.structs.add(w.kind(id), x, base + w.reg.halfY[w.kind(id)]!, z, yaw, 0, 1);
-  // Walls two high round an 18 m square from (55, 55), and a roof over it.
+// Keep the original low enclosure for smaller species. Tall mounts get the same
+// slopes and wall layout with enough headroom to begin the collision exercise.
+function walkerRooms(): Map<number, string[]> {
+  const { reg, kind } = flatWorld(), rooms = new Map<number, string[]>();
+  for (const d of reg.defs) {
+    if (d?.type !== "species" || d.still) continue;
+    const k = kind(d.id), height = Math.max(reg.move[k]!.height, reg.tamedMove[k]!.height);
+    const ceiling = Math.max(6, 3 * Math.ceil((height + 0.6) / 3));
+    if (!rooms.has(ceiling)) rooms.set(ceiling, []);
+    rooms.get(ceiling)!.push(d.id);
+  }
+  return rooms;
+}
+
+function enclose(ceiling: number, add: (id: string, x: number, y: number, z: number, yaw?: number) => number): void {
   for (let i = 0; i < 6; i++) {
-    for (const y of [0, 3]) {
+    for (let y = 0; y < ceiling; y += 3) {
       add("core:wall", 56.5 + 3 * i, y, 55);
       add("core:wall", 56.5 + 3 * i, y, 73);
       add("core:wall", 55, y, 56.5 + 3 * i, 16384);
       add("core:wall", 73, y, 56.5 + 3 * i, 16384);
     }
   }
-  for (const x of [59, 67, 69]) for (const z of [59, 67, 69]) add("core:slab", x, 6, z);
+  for (const x of [59, 67, 69]) for (const z of [59, 67, 69]) add("core:slab", x, ceiling, z);
+}
+
+const roomCases = [...walkerRooms()];
+
+test.each(roomCases)("fuzz (roof at %i m): among sloped pieces in a closed room no body of any species leaves it or enters a piece", (ceiling, walkers) => {
+  const w = flatWorld();
+  const add = (id: string, x: number, base: number, z: number, yaw = 0): number => w.structs.add(w.kind(id), x, base + w.reg.halfY[w.kind(id)]!, z, yaw, 0, 1);
+  enclose(ceiling, add);
   // The thin edge of a wedge on the ground; the same with a crack of 3 cm under its foot, turned; a flight open below; a
   // solid flight at an odd turn; and a slab at 60 degrees leaning against the north wall.
   add(slopeKind("rubble"), 60, 0, 60);
@@ -173,13 +192,14 @@ test("fuzz: among sloped pieces in a closed room no body of any species leaves i
   add(slopeKind("stairs"), 59.5, 0, 67.5, 32768);
   add(slopeKind("stairs_solid"), 65, 0, 66, 5000);
   add(slopeKind("slab60"), 69, 0, 72.9 - w.reg.halfZ[w.kind(slopeKind("slab60"))]!);
-  const walkers = w.reg.defs.flatMap((d) => (d?.type === "species" && !d.still ? [d.id] : []));
   for (const seed of [5, 6, 7, 8, 9, 10, 11, 12]) {
     const rng = new Rng(seed);
     for (const id of walkers) {
       const p = w.reg.move[w.kind(id)]!;
       const b = new Body();
+      let attempts = 0;
       do {
+        if (++attempts > 4096) throw new Error(`No free start for ${id} under ${ceiling} m`);
         b.x = rng.range(56, 72);
         b.z = rng.range(56, 72);
       } while (!capsuleFree(w, b.x, 0, b.z, p.radius, p.height));
@@ -190,13 +210,13 @@ test("fuzz: among sloped pieces in a closed room no body of any species leaves i
         stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
         const height = stanceHeight(p, b.stance);
         if (!capsuleFree(w, b.x, b.y, b.z, p.radius, height)) throw new Error(`${id} in solid at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
-        if (b.x < 55.1 || b.x > 72.9 || b.z < 55.1 || b.z > 72.9 || b.y < -SKIN || b.y + height > 6 + SKIN) throw new Error(`${id} out of the room at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
+        if (b.x < 55.1 || b.x > 72.9 || b.z < 55.1 || b.z > 72.9 || b.y < -SKIN || b.y + height > ceiling + SKIN) throw new Error(`${id} out of the room at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
       }
     }
   }
 });
 
-test("fuzz: on ground too steep to stand on, among sloped pieces leaning on it, in a closed room, no body of any species leaves it or enters solid", () => {
+test.each(roomCases)("fuzz (roof at %i m): on ground too steep to stand on, among sloped pieces leaning on it, in a closed room, no body of any species leaves it or enters solid", (ceiling, walkers) => {
   const w = flatWorld();
   const tan = (deg: number): number => Math.tan((deg * Math.PI) / 180);
   // Inside the room of the fuzz above: a gully of 60 degrees along Z at x = 60 with a shelf 3 m up each side of it, a bank of
@@ -209,39 +229,32 @@ test("fuzz: on ground too steep to stand on, among sloped pieces leaning on it, 
   };
   for (let j = 0; j < w.hf.nz; j++) for (let i = 0; i < w.hf.nx; i++) w.hf.setSample(i, j, height(i * w.hf.cell, j * w.hf.cell));
   const add = (id: string, x: number, base: number, z: number, yaw = 0): number => w.structs.add(w.kind(id), x, base + w.reg.halfY[w.kind(id)]!, z, yaw, 0, 1);
-  for (let i = 0; i < 6; i++) {
-    for (const y of [0, 3]) {
-      add("core:wall", 56.5 + 3 * i, y, 55);
-      add("core:wall", 56.5 + 3 * i, y, 73);
-      add("core:wall", 55, y, 56.5 + 3 * i, 16384);
-      add("core:wall", 73, y, 56.5 + 3 * i, 16384);
-    }
-  }
-  for (const x of [59, 67, 69]) for (const z of [59, 67, 69]) add("core:slab", x, 6, z);
+  enclose(ceiling, add);
   // A slab at 60 degrees leaning on the bank, rubble against the mound, a flight up onto the gully's shelf, and a slab at 60
   // degrees leaning into the gully.
   add(slopeKind("slab60"), 66, 0.5, 66.5, 32768);
   add(slopeKind("rubble"), 68, 0, 64.5, 32768);
   add(slopeKind("stairs_solid"), 64.5, 0, 63, 49152);
   add(slopeKind("slab60"), 61, 0.2, 58, 16384);
-  const walkers = w.reg.defs.flatMap((d) => (d?.type === "species" && !d.still ? [d.id] : []));
   for (const seed of [21, 22, 23, 24, 25, 26, 27, 28]) {
     const rng = new Rng(seed);
     for (const id of walkers) {
       for (const p of [w.reg.move[w.kind(id)]!, w.reg.tamedMove[w.kind(id)]!]) {
         const b = new Body();
+        let attempts = 0;
         do {
+          if (++attempts > 4096) throw new Error(`No free start for ${id} under ${ceiling} m`);
           b.x = rng.range(56, 72);
           b.z = rng.range(56, 72);
           b.y = groundUnder(w.hf, b.x, b.z, p.radius) + rng.range(0, 1);
-        } while (!capsuleFree(w, b.x, b.y, b.z, p.radius, p.height) || b.y + p.height > 6);
+        } while (!capsuleFree(w, b.x, b.y, b.z, p.radius, p.height) || b.y + p.height > ceiling);
         let [moveX, moveZ, yaw, buttons] = [0, 127, rng.int(65536), 0];
         for (let i = 0; i < 3000; i++) {
           if (rng.int(15) === 0) [moveX, moveZ, yaw, buttons] = [rng.int(255) - 127, rng.int(255) - 127, rng.int(65536), rng.int(4) | (rng.int(6) === 0 ? BTN_CROUCH : 0) | (rng.int(9) === 0 ? BTN_PRONE : 0)];
           stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
           const height = stanceHeight(p, b.stance);
           if (!capsuleFree(w, b.x, b.y, b.z, p.radius, height)) throw new Error(`${id} in solid at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
-          if (b.x < 55.1 || b.x > 72.9 || b.z < 55.1 || b.z > 72.9 || b.y + height > 6 + SKIN) throw new Error(`${id} out of the room at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
+          if (b.x < 55.1 || b.x > 72.9 || b.z < 55.1 || b.z > 72.9 || b.y + height > ceiling + SKIN) throw new Error(`${id} out of the room at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
         }
       }
     }

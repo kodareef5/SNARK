@@ -652,11 +652,13 @@ artTest("a creature that came as a model is hit where its capsules are, in the p
   const st = new AnimState();
   st.unpack(h.world.ents.anim[e]!, h.world.ents.cue[e]!);
   st.seed = bodySeed(e);
-  // The middle of a bone's capsule, in model space. The creature faces +X, so model z runs along world +X.
-  const middle = (bone: string): number[] => {
+  // Aim at the widest capsule in the named zone. The creature faces +X, so model z runs along world +X.
+  const middle = (zone: number): number[] => {
     creaturePose(plays, st, h.world.tick, rig.a);
     solve(rig, rig.a, rig.solved);
-    const b = rig.names.indexOf(bone);
+    let b = -1;
+    for (let i = 0; i < rig.bones; i++) if (rig.zone[i] === zone && (b < 0 || rig.capR[i]! > rig.capR[b]!)) b = i;
+    expect(b).toBeGreaterThanOrEqual(0);
     const out = [0, 0, 0];
     boneToModel(rig.solved, b, (rig.capA[b * 3]! + rig.capB[b * 3]!) / 2, (rig.capA[b * 3 + 1]! + rig.capB[b * 3 + 1]!) / 2, (rig.capA[b * 3 + 2]! + rig.capB[b * 3 + 2]!) / 2, out);
     return out;
@@ -665,7 +667,7 @@ artTest("a creature that came as a model is hit where its capsules are, in the p
   const combat = h.host.combat;
   const health = (): number => h.host.survival.value(rec, V_HEALTH);
   const full = health();
-  const body = middle("Body");
+  const body = middle(ZONE_TORSO);
   aim(pilot, 30 - body[0]!, body[1]!, body[2]!);
   h.run(100);
   pull(h, pilot, 4800);
@@ -676,7 +678,7 @@ artTest("a creature that came as a model is hit where its capsules are, in the p
   expect(full - health()).toBeLessThanOrEqual(196);
   // The head is where the idle clip has it at this tick.
   st.unpack(h.world.ents.anim[e]!);
-  const head = middle("Head");
+  const head = middle(ZONE_HEAD);
   aim(pilot, 30 - head[0]!, head[1]!, head[2]!);
   h.run(100);
   pull(h, pilot, 4800);
