@@ -181,10 +181,13 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // are fewer runs, and the touch rule's every box ends short of more tiles' nearest points. Cut again on 2026-11-18 when
   // a building's bays came to wear their kind's facade modules (content/ruins.ts): the street on high was 41, 51 and
   // 67,608 near and 15 and 57,036 far, the roof 37, 46, 66,988, 19 and 77,014, the air 51, 45, 77,364, 13 and 73,184.
+  // Cut again the same day when the door-to-curb kit and the street's walks came (content/ruins.ts, makeWalks in
+  // tools/mapworld/ruins.ts): the street on high was 44, 51 and 126,242 near and 15 and 112,772 far, the roof 40, 48,
+  // 131,204, 19 and 145,914, the air 54, 49, 145,540, 13 and 141,406.
   expect(got).toEqual({
-    "street-300": { lowpoly: [44, 0, 126242, 12, 78928], "medium, touch": [17, 9, 62778, 10, 37804], medium: [44, 21, 126242, 15, 112772], high: [44, 51, 126242, 15, 112772], ultra: [44, 57, 126242, 15, 112772] },
-    "roof-300": { lowpoly: [40, 0, 131204, 12, 94536], "medium, touch": [24, 7, 78598, 14, 55476], medium: [40, 23, 131204, 19, 144226], high: [40, 48, 131204, 19, 145914], ultra: [40, 59, 131204, 19, 145914] },
-    "air-300": { lowpoly: [54, 0, 145540, 11, 92988], "medium, touch": [25, 2, 86920, 9, 41328], medium: [54, 7, 145540, 13, 141406], high: [54, 49, 145540, 13, 141406], ultra: [54, 57, 145540, 13, 141406] },
+    "street-300": { lowpoly: [36, 0, 132608, 12, 81406], "medium, touch": [16, 9, 66008, 10, 38654], medium: [36, 19, 132608, 15, 116234], high: [36, 44, 132608, 15, 116234], ultra: [36, 49, 132608, 15, 116234] },
+    "roof-300": { lowpoly: [34, 0, 139340, 13, 97850], "medium, touch": [21, 7, 85054, 14, 56842], medium: [34, 22, 139340, 19, 148654], high: [34, 42, 139340, 19, 150416], ultra: [34, 52, 139340, 19, 150416] },
+    "air-300": { lowpoly: [45, 0, 151792, 11, 96684], "medium, touch": [20, 2, 95514, 9, 42266], medium: [45, 6, 151792, 14, 149006], high: [45, 41, 151792, 14, 149006], ultra: [45, 48, 151792, 14, 149006] },
   });
 });
 
