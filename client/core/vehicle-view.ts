@@ -37,6 +37,7 @@ export function remoteVehiclePose(r: RemoteSample, i: number, out?: VehicleRende
   pose.pitch = r.vehiclePitch[i]!; pose.roll = r.vehicleRoll[i]!; pose.steering = r.steering[i]!; pose.wheelAngle = r.wheelAngle[i]!;
   pose.groundPitch = r.vehicleGroundPitch[i]!; pose.groundRoll = r.vehicleGroundRoll[i]!; pose.rideOffset = r.vehicleRideOffset[i]!; pose.grounded = r.vehicleGrounded[i] !== 0;
   pose.doors = r.vehicleDoors[i]!;
+  pose.lightMode = r.vehicleLightMode[i]!;
   if (r.vehicleQx[i] || r.vehicleQy[i] || r.vehicleQz[i] || r.vehicleQw[i]) {
     pose.qx = r.vehicleQx[i]!; pose.qy = r.vehicleQy[i]!; pose.qz = r.vehicleQz[i]!; pose.qw = r.vehicleQw[i]!;
     pose.engineRpm = r.vehicleRpm[i]!; pose.engineOn = r.vehicleEngineOn[i] !== 0;

@@ -26,7 +26,7 @@ function drive(spec: VehicleSpec, seconds: number, throttle = 1, initialSpeed = 
 }
 
 test("the sports frame loads its tyres with speed and both bodies outrun the compact and vans", () => {
-  expect(defs.map(d => d.frame)).toEqual(["car", "car", "sports_car", "sports_car", "van", "van"]);
+  expect(defs.map(d => d.frame)).toEqual(["car", "car", "sports_car", "sports_car", "van", "van", "car", "off_road"]);
   const speeds = defs.map(d => drive(d.spec, 4).vz);
   expect(speeds[0]).toBe(speeds[1]!);
   for (const i of [2, 3]) {
@@ -35,6 +35,25 @@ test("the sports frame loads its tyres with speed and both bodies outrun the com
     expect(drive(spec, 1, 0, 40).rideOffset).toBeLessThan(drive({ ...spec, downforce: 0 }, 1, 0, 40).rideOffset - .005);
   }
   for (const i of [4, 5]) expect(speeds[i]!).toBeLessThan(speeds[0]!);
+});
+
+test("the patrol 4×4 compresses and rebounds on landing while the lower cruiser settles sooner", () => {
+  const road = vehiclePlane(ASPHALT);
+  function land(id: string) {
+    const spec = defs.find(d => d.id === id)!.spec, state = createVehicle(spec, 0, .25, 0);
+    let lowest = 0, rebound = 0;
+    for (let tick = 0; tick < 3 * TICK_RATE; tick++) {
+      stepVehicle(state, { throttle: 0, steer: 0, brake: 0, handbrake: false }, spec, road);
+      lowest = Math.min(lowest, state.y);
+      if (lowest < -.001) rebound = Math.max(rebound, state.y);
+    }
+    expect(state.grounded).toBe(true);
+    expect(Math.abs(state.y)).toBeLessThan(.004);
+    return { lowest, rebound };
+  }
+  const jeep = land("core:patrol_jeep"), sedan = land("core:patrol_sedan");
+  expect(jeep.lowest).toBeLessThan(sedan.lowest - .045);
+  expect(jeep.rebound).toBeGreaterThan(sedan.rebound + .014);
 });
 
 artTest("every selectable body ships its own native geometry, rigid moving parts, seat sockets and distance levels", () => {
@@ -84,7 +103,7 @@ function checkSeats(def: WheelVehicleDefinition, sockets: readonly { name: strin
   }
 }
 
-artTest("all six cockpits retain a forward sightline when glass textures are unavailable", () => {
+artTest("all road cockpits retain a forward sightline when glass textures are unavailable", () => {
   for (const def of defs) {
     const name = def.id.split(":")[1]!;
     const file = join(import.meta.dir, "../../assets/source/core/vehicles", name, name + ".snpk");

@@ -162,8 +162,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // rows, not 28, which moves the frames' bone counts and the first bone of the draws after it, and nothing else.
   // They were 59fd3025 and 92c6c215 until an opaque step's draws went nearest first (scene.ts order): with `?off=order`
   // they are those again. Leaving out what is hidden (render/hide.ts) leaves out nothing here.
-  expect(beforePlain).toBe("df2f1d45");
-  expect(hash).toBe("ded2ac55");
+  // They were df2f1d45 and ded2ac55 until the Parasaur drew its authored colours on a flat body with an unset dye.
+  expect(beforePlain).toBe("1d078231");
+  expect(hash).toBe("d9e4bd01");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -185,8 +186,8 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // draws and 34,003,200 triangles, until nodes were scattered by their chunks' frame keys, as above, and 1536293d and
   // 706f11fd until the sea was made ahead of the statics, as above, and d44c5109 and 90b43a9 until the harbours' wrecks,
   // as above, and d14ab735 and dd8fdb95 until a survivor had 30 bones, as above, and 8c96b01d and 3cb6a7ed until the
-  // draws went nearest first, as above.
-  expect(saddled.beforePlain).toBe("186ca8fd");
-  expect(saddled.hash).toBe("8373e09d");
+  // draws went nearest first, as above, and 186ca8fd and 8373e09d until the Parasaur used its authored colours, as above.
+  expect(saddled.beforePlain).toBe("2e5ae961");
+  expect(saddled.hash).toBe("de62efa1");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

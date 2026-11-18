@@ -217,6 +217,7 @@ export class VehicleTelemetry {
   speed = 0;
   brake = 0;
   handbrake = false;
+  lightMode = -1;
   grounded = true;
   fuel = 0;
   gear = 1;
