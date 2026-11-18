@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER, WEATHER_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -880,8 +880,8 @@ export class GlRenderer {
     const far = s === STEP_FAR || s === STEP_FAR_SEE;
     const half = p.split > 0 && s !== STEP_BODY;
     this.view = this.serial * 16 + s;
-    this.passes?.mark(s === STEP_FAR_SEE && p.lit ? PASS_DOME : PASS_OF_STEP[s]!);
-    this.matrix = s === STEP_BODY ? p.nearViewProj : far ? p.farViewProj : p.viewProj;
+    this.passes?.mark(s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes + 3]! > 0) ? PASS_DOME : PASS_OF_STEP[s]!);
+    this.matrix = s === STEP_BODY ? p.nearViewProj : far && half ? p.farViewProj : p.viewProj;
     this.matrixAt = 0;
     this.from = s === STEP_FAR_SEE ? p.split : 0;
     gl.depthRange(half && far ? 0.5 : 0, half && !far ? 0.5 : 1);
@@ -890,9 +890,9 @@ export class GlRenderer {
       gl.clear(gl.DEPTH_BUFFER_BIT);
     }
     // A lit frame's dome goes at the far end of the view, where the opaque steps left it.
-    if (s === STEP_FAR_SEE && p.lit) {
+    if (s === STEP_FAR_SEE && (p.lit || p.frame[FRAME.eyes + 3]! > 0)) {
       this.use(PROGRAM.sky, p);
-      this.maps(this.sky, MAP_ROLES.length);
+      if (p.lit) this.maps(this.sky, MAP_ROLES.length);
       this.set(false, false, false);
       this.vertexArray(null);
       gl.depthFunc(gl.LEQUAL);

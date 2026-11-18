@@ -83,6 +83,7 @@ async function boot(): Promise<void> {
     resolveMap: (id, hash) => (id === head.id && hash === head.hash ? hf : null),
     nodes: (ground, content) => nodeLayers(head.dims, ground, content, nodes),
     cityMaker: new WorkerCityMaker(),
+    tideEyes: head.tideEyes,
     ...(land ? { landmarks: land.landmarks } : {}),
   });
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;

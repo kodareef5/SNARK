@@ -19,7 +19,7 @@ import { MODE_GHOST } from "../../shared/sim/character.ts";
 import { loadConfigFolder } from "../../server/settings/config.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
-interface Camera { name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
+interface Camera { eyeSeconds?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" } } });
 const [map, list, out] = positionals;
@@ -32,7 +32,7 @@ const views = file.views.filter((v) => !values.only || values.only.split(",").in
 const seconds = Number(values.seconds);
 mkdirSync(out, { recursive: true });
 
-const orders = new Map<string, { run: string[]; look: [number, number]; at: [number, number, number] }>();
+const orders = new Map<string, { eyeSeconds?: number; run: string[]; look: [number, number]; at: [number, number, number] }>();
 const work = mkdtempSync(join(tmpdir(), "snark-gpu-views-"));
 const server = startServer({
   dev: true, hostname: "127.0.0.1", port: 0, dbPath: join(work, "world.db"), config: loadConfigFolder(DEV_CONFIG, []).rules, map, clientDir: values.dist,
@@ -49,7 +49,7 @@ for (const v of views) {
     pitch = Math.atan2(ground(lx, lz) + lup - eye, Math.hypot(lx - v.x, lz - v.z));
   }
   // A body's place is its feet, 1.62 m under its eye.
-  orders.set(v.name, { run: ["enablecheats", `settime ${file.hour ?? 14}`], look: [yaw, pitch], at: [v.x, eye - 1.62, v.z] });
+  orders.set(v.name, { eyeSeconds: v.eyeSeconds, run: ["enablecheats", `settime ${file.hour ?? 14}`], look: [yaw, pitch], at: [v.x, eye - 1.62, v.z] });
 }
 // Every survivor is held at the view being taken, still, as a ghost: a line typed on arrival would move it only after the
 // page had placed its camera.

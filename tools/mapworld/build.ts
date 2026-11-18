@@ -21,7 +21,7 @@ import { Base } from "./base.ts";
 import type { BridgeRecord } from "./bridges.ts";
 import { makeGround, S, type World } from "./ground.ts";
 import { makeNodes, ZONE_CELL } from "./nodes.ts";
-import { placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
+import { gradeTransferDecks, placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf, type StaticPiece } from "./statics.ts";
 import { SPAWN_CLEAR, isFurniture } from "./street-furniture.ts";
 import { makeTint } from "./tint.ts";
@@ -84,6 +84,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
     }
   }
   const obelisks = placeObelisks(ground, world, toSample, occupied);
+  gradeTransferDecks(ground, obelisks, world.minY, world.stepY);
   // Then the landmarks, on the ground they ask for, so no piece before them changes its slot.
   const berths = layLandmarkGround(ground, sited, 0);
   const brought = placeLandmarks(sited, reg, 0);
@@ -125,11 +126,11 @@ export async function buildMap(named: string, release = false, output = join(ROO
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // A parked car stands well off where survivors arrive and where they leave, so neither's walk meets it.
   const apart = world.heaps === false ? vocabulary(source).street.cars.parked.fromSpawn : 0;
-  const vehicles = [...site.vehicles.filter((c) => ![...spawns, ...obelisks].some((s) => Math.hypot(s.x - c.x, s.z - c.z) < apart)), ...brought.vehicles.map((v) => ({ ...v, yaw: (v.yaw * 360) / 65536 }))];
+  const vehicles = [...site.vehicles.filter((c) => ![...spawns, ...obelisks].some((s) => Math.hypot(s.x - c.x, s.z - c.z) < Math.max(apart, "radius" in s ? Number(s.radius) + 2 : 0))), ...brought.vehicles.map((v) => ({ ...v, yaw: (v.yaw * 360) / 65536 }))];
   lap(`${vehicles.length} parked vehicles`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
   // so none stands in it or before its terminal, nor within 6 m of a parked car.
-  const clearings = [...spawns.map((s) => [(x1 - s.x) / 2, (z1 - s.z) / 2, 16] as const), ...obelisks.map((o) => [(x1 - o.x) / 2, (z1 - o.z) / 2, 49] as const), ...vehicles.map((c) => [(x1 - c.x) / 2, (z1 - c.z) / 2, 9] as const)];
+  const clearings = [...spawns.map((s) => [(x1 - s.x) / 2, (z1 - s.z) / 2, 16] as const), ...obelisks.map((o) => [(x1 - o.x) / 2, (z1 - o.z) / 2, o.color ? (o.radius! / 2 + 2) ** 2 : 49] as const), ...vehicles.map((c) => [(x1 - c.x) / 2, (z1 - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
   const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1) || berths[row * nx + col] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((nx - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
@@ -174,7 +175,8 @@ export async function buildMap(named: string, release = false, output = join(ROO
   lap(`layers in ${layers}`);
 
   let map = readLayers(layers);
-  map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
+  const tideEyes = obelisks.flatMap(o => o.color ? [{ ...engine(o), color: o.color, radius: o.radius!, y: site.groundAt(o.x, o.z) }] : []);
+  map = { ...map, ...(tideEyes.length ? { tideEyes } : {}), statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
   Bun.gc(true);
   // Whether each slot's node stands, and as what, is decided here once, and the file says so.
   const taken = { water: 0, slope: 0, footing: 0, other: 0 };

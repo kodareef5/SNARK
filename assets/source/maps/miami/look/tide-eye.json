@@ -1,0 +1,13 @@
+{
+  "hour": 16,
+  "views": [
+    { "name": "blue-crown", "x": 1900, "z": 840, "y": 94, "look": [2260, 1182, 269], "eyeSeconds": 32 },
+    { "name": "blue-instrument", "x": 2506, "z": 1406, "y": 442, "look": [2260, 1182, 455], "eyeSeconds": 32 },
+    { "name": "blue-iris", "x": 2160, "z": 1060, "y": 531, "look": [2260, 1182, 537], "eyeSeconds": 2 },
+    { "name": "blue-deck", "x": 2258.3, "z": 1179.8, "up": 1.7, "look": [2260, 1182, 0.95], "eyeSeconds": 35 },
+    { "name": "blue-platform", "x": 2177, "z": 1116, "y": 68, "look": [2260, 1182, 1], "eyeSeconds": 35 },
+    { "name": "bayfront-ignition", "x": 6100, "z": 3420, "y": 36, "look": [2260, 1182, 2050], "eyeSeconds": 15.5 },
+    { "name": "red-crown", "x": 7280, "z": 6590, "y": 72, "look": [6910, 6848, 318], "eyeSeconds": 112 },
+    { "name": "green-crown", "x": 1050, "z": 5740, "y": 72, "look": [1162, 6198, 318], "eyeSeconds": 72 }
+  ]
+}

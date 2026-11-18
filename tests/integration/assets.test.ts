@@ -160,8 +160,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // pack ahead of the test's: only the draws' mesh indices moved, and the draws, triangles and bytes are as they were.
   // They were 5efd151d and 212123bd until the frozen human packs had the fingertips' two bones: a survivor takes 30 bone
   // rows, not 28, which moves the frames' bone counts and the first bone of the draws after it, and nothing else.
-  expect(beforePlain).toBe("59fd3025");
-  expect(hash).toBe("92c6c215");
+  // The five authored Tide Eye meshes move the numeric mesh handles used in this fixture.
+  expect(beforePlain).toBe("fea7a2c5");
+  expect(hash).toBe("25d3850d");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -183,7 +184,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // draws and 34,003,200 triangles, until nodes were scattered by their chunks' frame keys, as above, and 1536293d and
   // 706f11fd until the sea was made ahead of the statics, as above, and d44c5109 and 90b43a9 until the harbours' wrecks,
   // as above, and d14ab735 and dd8fdb95 until a survivor had 30 bones, as above.
-  expect(saddled.beforePlain).toBe("8c96b01d");
-  expect(saddled.hash).toBe("3cb6a7ed");
+  expect(saddled.beforePlain).toBe("dd1e2b79");
+  expect(saddled.hash).toBe("2fbb23c1");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

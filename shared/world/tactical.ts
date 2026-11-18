@@ -3,6 +3,7 @@
 // cells, which draw bases on the horizon. Also the marks of friends far away. Their wire layouts are documented at
 // S_TACTICAL, S_FAR and S_MARKS in shared/net/protocol.ts.
 
+import { EYE_COLLIDERS } from "./tide-eye.ts";
 import type { Registry } from "../content/registry.ts";
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
@@ -136,7 +137,7 @@ export interface PieceShapes {
 /** The far feed shows pieces, defences and map statics, never a container, station or bed. */
 export function pieceShapes(reg: Registry): PieceShapes {
   const tint = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0));
-  const far = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && (d.class === "piece" || d.class === "defence" || d.class === "static") ? 1 : 0));
+  const far = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && !EYE_COLLIDERS.has(d.id) && (d.class === "piece" || d.class === "defence" || d.class === "static") ? 1 : 0));
   return { halfX: reg.halfX, halfY: reg.halfY, halfZ: reg.halfZ, tint, far };
 }
 

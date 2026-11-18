@@ -124,6 +124,9 @@ const UNIT_RADIANS = TAU / 65536;
 export interface ToolOrders {
   readonly run?: readonly unknown[];
   readonly look?: readonly unknown[];
+  readonly eyeSeconds?: number;
+  readonly playEye?: boolean;
+  readonly holdLook?: boolean;
 }
 
 export class App {
@@ -131,6 +134,9 @@ export class App {
   readonly controls = new Controls();
   readonly ui = new Ui();
   readonly cam = new Camera();
+  private artEyeTime: number | null = null;
+  private playEye = false;
+  private artEyeAt: number | null = null;
   readonly hud = new HudModel();
   /** The dash's readings of the vehicle driven. */
   readonly vehicleTelemetry = new VehicleTelemetry();
@@ -196,6 +202,7 @@ export class App {
   /** A tool's look at a place (`address`): the commands still to send, and the facing held. */
   private script: string[] = [];
   private held: [number, number] | null = null;
+  private releaseLook = false;
   private lineAt = 0;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
@@ -900,6 +907,10 @@ export class App {
     this.off = effectsOff(get("off"));
     this.script = pinned && Array.isArray(orders?.run) ? orders.run.filter((line): line is string => typeof line === "string") : [];
     const look = pinned && Array.isArray(orders?.look) ? orders.look : [];
+    this.releaseLook = orders?.holdLook === false;
+    this.playEye = pinned && orders?.playEye === true;
+    this.artEyeAt = null;
+    this.artEyeTime = pinned && Number.isFinite(orders?.eyeSeconds) ? orders!.eyeSeconds! : null;
     this.held = look.length === 2 && look.every((v) => typeof v === "number" && Number.isFinite(v)) ? [look[0] as number, look[1] as number] : null;
     if (!pinned) return;
     this.governor.held = Number(get("level") ?? 0);
@@ -1063,7 +1074,10 @@ export class App {
       session.text(this.script.shift()!);
       this.lineAt = nowMs + 500;
     }
-    if (this.held) [c.yaw, c.pitch] = this.held;
+    if (this.held) {
+      [c.yaw, c.pitch] = this.held;
+      if (alive && this.releaseLook && this.script.length === 0) this.held = null;
+    }
     const move = this.reg.move[session.bodyKind];
     // The eye eases toward the stance height, so crouching is a movement and not a cut.
     const eyeNow = alive && move ? stanceEye(move, session.own.stance) : 0;
@@ -1302,6 +1316,9 @@ export class App {
     this.scene.hour = hourOfDay(session.serverTick, session.dayOffset, session.clock);
     this.scene.viewHeight = height;
     this.scene.now = nowMs;
+    if (this.playEye && this.artEyeAt === null && alive && this.script.length === 0) this.artEyeAt = nowMs;
+    this.scene.eyeSeconds = this.artEyeTime === null ? session.renderClock / TICK_RATE
+      : this.artEyeTime + (this.artEyeAt === null ? 0 : (nowMs - this.artEyeAt) / 1000);
     const kept = this.scene.assets.residency.cache;
     if (this.ui.settings.download) {
       this.scene.assets.residency.download();

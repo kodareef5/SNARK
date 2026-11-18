@@ -88,6 +88,11 @@ export const DETAIL_PUFF = 16;
 export const DETAIL_ROTOR = 32;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
+/** A self-lit optical surface in its instance dye. */
+export const DRAW_EMISSIVE = 16384;
+/** An elevated navigational landmark whose flat silhouette remains visible through the city's distance fade. */
+export const DRAW_SKYLINE = 32768;
+export const SKYLINE_MAX_FOG = 0.56;
 /** Faces of four corners that 16-bit indices reach. */
 export const QUAD_FACES = 16384;
 
@@ -266,6 +271,8 @@ export const FRAME = {
   handTo: 143,
   /** fLook: what every lookup of the sky table shares this frame (sky.ts SKY_GLSL): fTrueSun's way on the ground, x and z of length 1, and its slice of the table as a texture coordinate. */
   look: 148,
+  /** Three camera-relative sky lenses, each with its phase and linear dye plus ignition strength. */
+  eyes: 152,
   /**
    * fFarAt, fFarScale and fFarDepth, in lanes the rest leave free (fSwell.zw, fLook.w, fSkyAlong.w): where the camera
    * is on the far shadow's map (farshadow.ts) in its texels, x and z; its texels a metre, negative while its map is not
@@ -285,13 +292,14 @@ export const FRAME = {
   nearToX: 23,
   nearToZ: 39,
 } as const;
-export const FRAME_FLOATS = FRAME.look + 4;
+export const FRAME_FLOATS = FRAME.eyes + 24;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
   highp vec4 fSkySide, fSkySun, fSkyAlong, fLook;
+  highp vec4 fEyes[6];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

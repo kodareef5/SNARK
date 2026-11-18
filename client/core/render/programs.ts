@@ -8,7 +8,8 @@ import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./detailtext.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, type FramePacket } from "./packet.ts";
+import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX } from "./tide-eye.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, type FramePacket } from "./packet.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
 import { ownVertex, worldVertex } from "./world-surfaces.ts";
@@ -92,7 +93,9 @@ const MAKE = {
   // The same for a body that is hurt or a corpse, which reads its layer too (packet.ts `drawLayer`). Only such a body is drawn with it.
   surfaceLayer: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, layered: true }),
   // The dome, and over it the sky material's pictures on its units as a material's: the moon as its base colour and the cloud layers as its two masks.
-  sky: () => ({ vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: "", samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }),
+  sky: (tier: Tier): ProgramText => tier.lit
+    ? { vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: "", samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }
+    : { vertex: EYE_DOME_VERTEX, fragment: EYE_DOME_FRAGMENT, defines: "", samplers: {} },
   // The sea seen from above on a lit tier: the flat mesh's tiles, the waves as a material's two masks, the ground's heights to know how deep it is, and the sun's shadow.
   water: (tier, _, hard = false) => ({
     vertex: FLAT_MESH_VERTEX,
@@ -109,6 +112,12 @@ const MAKE = {
   depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones } }),
   depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps } }),
   depthTerrain: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: GROUND }),
+  skyline: () => ({ vertex: FLAT_MESH_VERTEX, fragment: FLAT_FRAGMENT.replace("fog * fog", `min(fog * fog, ${SKYLINE_MAX_FOG})`), defines: "", samplers: MESH }),
+  signal: () => ({ vertex: FLAT_MESH_VERTEX, fragment: `#version 300 es
+precision highp float;
+flat in vec3 vColor;
+out vec4 o;
+void main() { o = vec4(min(vec3(1.), vColor*1.18+vec3(.12)), 1.); }`, defines: "", samplers: MESH }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),
 } satisfies Record<string, Make>;
 
@@ -122,7 +131,7 @@ export const PROGRAMS: Readonly<Record<string, Make>> = MAKE;
 export const PROGRAM = Object.fromEntries(Object.keys(MAKE).map((name, n) => [name, n])) as Readonly<Record<keyof typeof MAKE, number>>;
 
 /** The programs low poly draws with: no materials, dome, sea or shadows. */
-const UNLIT = ["flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details"];
+const UNLIT = ["skyline", "signal", "sky", "flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
 export function tierPrograms(tier: Tier): number[] {
@@ -139,6 +148,8 @@ const SURFACES = [PROGRAM.surfaceUndyedWhole, PROGRAM.surfaceUndyed, PROGRAM.sur
  */
 export function drawProgram(p: FramePacket, d: number, material: PackMaterial | undefined): number {
   const flags = p.drawFlags[d]!;
+  if (flags & DRAW_EMISSIVE) return PROGRAM.signal;
+  if (flags & DRAW_SKYLINE) return PROGRAM.skyline;
   const hand = p.drawHand[d]!;
   if ((flags & DRAW_TEXTURED) !== 0) {
     if (p.drawLayer[d]! > 0) return PROGRAM.surfaceLayer;

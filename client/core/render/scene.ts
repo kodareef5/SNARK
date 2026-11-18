@@ -1,3 +1,5 @@
+import { CROWN_ORIGIN, DECK_RADIUS, EYE_COLLIDERS, EYE_DYE, LENS_HEIGHT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { aperture, eyePhase, eyePower, writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
@@ -45,7 +47,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
 import { WorldFinishes, citySurface } from "./world-surfaces.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
@@ -62,6 +64,7 @@ import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } fro
 export interface RenderWorld {
   /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
   readonly mapId?: string;
+  readonly tideEyes?: readonly TideEyeSite[];
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
@@ -341,6 +344,9 @@ export class Scene {
   viewHeight = 720;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
   now = 0;
+  /** Seconds on the shared server clock, independent of the local frame clock. */
+  eyeSeconds = 0;
+  private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number };
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
   plainSky = false;
   /** Loose meshes to draw: the stress scene's. */
@@ -587,6 +593,8 @@ export class Scene {
     // The renderer holds the sky table on every tier.
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
+    const eye = (part: string) => table.find("core:tide_eye/" + part);
+    this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow") };
     this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -635,7 +643,7 @@ export class Scene {
     }
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
-    this.landmarkKinds = Uint8Array.from(reg.defs, (_, k) => (reg.own.has(k) ? 1 : 0));
+    this.landmarkKinds = Uint8Array.from(reg.defs, (def, k) => (reg.own.has(k) || (def && EYE_COLLIDERS.has(def.id)) ? 1 : 0));
     this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
@@ -775,6 +783,8 @@ export class Scene {
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);
     }
+    if (!p.lit) p.frame[FRAME.exposure] = 0;
+    writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z);
     this.fit(cam);
 
     // Under water, the sea's or a lake's where the camera is, the view is short and the fog is the water's colour, dimmed.
@@ -814,6 +824,7 @@ export class Scene {
       if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
     }
     // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
+    if (this.world.tideEyes) this.showTideEyes(cam, this.world.tideEyes);
     if (this.world.motion && this.motionReg) this.showMotion(cam, this.world.motion);
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
@@ -1569,6 +1580,63 @@ export class Scene {
       p.transientIds[at] = 0;
     }
     p.transientCount = total;
+  }
+
+  private showTideEyes(cam: Camera, sites: readonly TideEyeSite[]): void {
+    const p = this.packet;
+    for (const site of sites) {
+      const x = site.x - cam.x, y = site.y - cam.y, z = site.z - cam.z;
+      const yaw = site.yaw * Math.PI / 32768, cs = Math.cos(yaw), sn = Math.sin(yaw);
+      const phase = eyePhase(this.eyeSeconds, site), open = aperture(phase);
+      const dye = EYE_DYE[site.color];
+      // The rigid geometry can use the normal instance path. The leaves rotate about their individual rim
+      // bearings in the vertical lens plane and telescope into their pockets as the pupil opens.
+      const draw = (mesh: number, h: number, r: number, scale: number, roll = 0, hinge = -1, glow = false) => {
+        if (mesh < 0) return;
+        const cx = x + (hinge < 0 ? 0 : 33 * Math.cos(hinge) * cs);
+        const cy = y + h + (hinge < 0 ? 0 : 33 * Math.sin(hinge));
+        const cz = z - (hinge < 0 ? 0 : 33 * Math.cos(hinge) * sn);
+        if (!cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r)) return;
+        if (p.transientCount >= p.transientIds.length || p.drawCount + this.doubled >= MAX_DRAWS) return;
+        const articulated = hinge >= 0 || roll !== 0;
+        if (articulated && p.boneCount >= MAX_BONES) return;
+        const first = p.transientCount++;
+        const distance = Math.max(1, Math.hypot(cx, cy, cz) - r);
+        const errors = this.assets.table.error[mesh]!;
+        const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris);
+        const level = skyline ? Math.max(0, errors.length - 1) : this.assets.choose(errors, distance / Math.max(0.03, scale), -1);
+        this.assets.wantTextured(mesh, level, distance);
+        let flags = DRAW_PLAIN | (glow ? DRAW_EMISSIVE : 0) | (skyline ? DRAW_SKYLINE : 0);
+        if (articulated) {
+          const bone = p.boneCount++;
+          const a = Math.cos(roll) * scale, b = Math.sin(roll) * scale;
+          const pose = p.bones, row = bone * BONE_FLOATS;
+          pose[row] = cs * a; pose[row + 1] = -cs * b; pose[row + 2] = sn; pose[row + 3] = cx;
+          pose[row + 4] = b; pose[row + 5] = a; pose[row + 6] = 0; pose[row + 7] = cy;
+          pose[row + 8] = -sn * a; pose[row + 9] = sn * b; pose[row + 10] = cs; pose[row + 11] = cz;
+          this.transient.setSkinned(first, bone, dye);
+          flags |= DRAW_SKINNED;
+        } else {
+          this.transient.set(first, cx, cy, cz, site.yaw, dye);
+          if (scale !== 1) {
+            this.transient.size(first, Math.round(scale * SIZE_UNITS));
+            flags |= DRAW_SIZED;
+          }
+        }
+        p.transientIds[first] = 0;
+        const passes = cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
+        this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, passes);
+      };
+      draw(this.eyeMesh.deck, 0, site.radius + 1, site.radius / DECK_RADIUS);
+      draw(this.eyeMesh.crown, CROWN_ORIGIN, 211, 1);
+      if (open < 0.998) {
+        for (let i = 0; i < 12; i++) {
+          const bearing = i * Math.PI / 6;
+          draw(this.eyeMesh.iris, LENS_HEIGHT, 36, 1 - 0.94 * open, bearing + open * 0.88, bearing);
+        }
+      }
+      if (open > 0.3) draw(this.eyeMesh.glow, LENS_HEIGHT, 46, 1, phase * 0.045 + eyePower(phase) * 0.7, -1, true);
+    }
   }
 
   private showGhost(cam: Camera): void {
@@ -2625,7 +2693,7 @@ export class Scene {
     this.ready = false;
     if (lod < 0) return -1;
     const sections = this.assets.table.sections[mesh]!;
-    const solid = (flags & DRAW_BLEND) === 0;
+    const solid = (flags & (DRAW_BLEND | DRAW_SKYLINE)) === 0;
     this.ready = solid && this.assets.textured(mesh, lod);
     if (solid && !this.ready && sections[wanted < sections.length ? wanted : sections.length - 1]!.length > 0) {
       for (let l = lod - 1; l >= 0 && !this.ready; l--) if ((this.ready = this.assets.textured(mesh, l))) lod = l;

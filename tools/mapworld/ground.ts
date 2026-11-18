@@ -1,3 +1,4 @@
+import type { EyeColor } from "../../shared/world/tide-eye.ts";
 // The ground of a map from its base layers: the land of the elevation model, the bed of the coastal model under the water
 // the shoreline survey marks, water passages under mapped bridges, authored broken spans and drowned streets.
 // Footprints reserve the city floor; statics supply its ruins. Heights are metres above the sea.
@@ -66,7 +67,7 @@ export interface World {
   readonly districts: readonly District[];
   readonly spawns: readonly { name: string; at: [number, number]; face: [number, number]; ground: "sand" | "open" }[];
   /** Where survivors leave for another server: each obelisk near a place, its terminal turned toward another (places.ts). */
-  readonly obelisks?: readonly { name: string; at: [number, number]; face: [number, number] }[];
+  readonly obelisks?: readonly { name: string; color?: EyeColor; at: [number, number]; face: [number, number] }[];
   /** Metres round a spawn point with no beach region in reach within which the jungle's regions take the beach's table. */
   readonly easyAroundSpawns?: number;
   /** A dry city: its open ground and courts are tinted gravel and dust, its weeds dry (a desert's). */

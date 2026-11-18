@@ -80,6 +80,7 @@
 // A part's file is `<kind>.<column>-<row>.<hash>.part` (partName); the land's and the head's have no square.
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
 
+import { EYE_COLORS, type TideEyeSite } from "./tide-eye.ts";
 import type { Def, MapZone } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, FRAME_CHUNKS, MAX_CHUNKS_PER_AXIS, SECTOR_CHUNKS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkAt, chunkCount, chunkCx, chunkCz, frameKey, framed, type FramedDims, type MapDims } from "../coords.ts";
@@ -345,6 +346,7 @@ export interface MapData {
   readonly nodes: readonly NodeLayer[];
   /** At least one. The first is where a new survivor arrives. */
   readonly spawns: readonly MapSpawn[];
+  readonly tideEyes?: readonly TideEyeSite[];
   /** Spawn regions, each naming a `spawns` definition and the creatures it holds. They are added to those of the map's definition. */
   readonly regions?: readonly MapZone[];
   readonly vehicles?: readonly MapVehicle[];
@@ -398,6 +400,12 @@ function slotsOf(layer: NodeLayer, chunks: number): number {
   return most;
 }
 
+function validateEyes(eyes: readonly TideEyeSite[], dims: MapDims): void {
+  if (eyes.length > 255 || eyes.some(e => !e.name || e.name.length > 64 || !EYE_COLORS.includes(e.color)
+    || !Number.isFinite(e.y) || !(e.x >= 0 && e.x <= dims.chunksX * CHUNK_SIZE && e.z >= 0 && e.z <= dims.chunksZ * CHUNK_SIZE)
+    || !(e.radius > 0 && e.radius <= 70) || !Number.isInteger(e.yaw) || e.yaw < 0 || e.yaw > 65535)) throw new Error("map: invalid Tide Eye site");
+}
+
 function checkStatics(dims: MapDims, statics: MapStatics | readonly MapStatic[]): void {
   const [sizeX, sizeZ] = [dims.chunksX * CHUNK_SIZE, dims.chunksZ * CHUNK_SIZE];
   eachStatic(statics, (kind, x, y, z) => {
@@ -424,6 +432,7 @@ function check(m: MapData): void {
     return top;
   };
   if (!/^[\x21-\x7e]{1,64}$/.test(m.id)) fail("its id must be 1 to 64 characters of plain text with no space");
+  if (m.tideEyes) validateEyes(m.tideEyes, m.dims);
   const landmarks = (m.content?.landmarks ?? []).map((l) => l.name);
   if (landmarks.length > 255 || landmarks.some((n) => !/^[a-z][a-z0-9-]{0,31}$/.test(n)) || new Set(landmarks).size !== landmarks.length) fail("its landmarks are each named once, in lower case, at most 255 of them");
   if (m.content?.landmarks.some((l) => ![l.x, l.y, l.z].every(Number.isFinite) || !whole(l.yaw, 0, 65535))) fail("a landmark of it is not set down at a place and a yaw");
@@ -1009,6 +1018,13 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], st
       o.u8(layer.allowCell);
     });
   }
+  if (m.tideEyes?.length) o.section("TEYE", () => {
+    o.u8(m.tideEyes!.length);
+    for (const eye of m.tideEyes!) {
+      o.text(eye.name); o.f64(eye.x); o.f64(eye.y); o.f64(eye.z);
+      o.u16(eye.yaw); o.u8(EYE_COLORS.indexOf(eye.color)); o.f64(eye.radius);
+    }
+  });
   o.section("SPWN", () => {
     o.u8(m.spawns.length);
     for (const s of m.spawns) {
@@ -1185,6 +1201,7 @@ export interface MapHead {
   readonly stepY: number;
   readonly seaLevel: number;
   readonly spawns: readonly MapSpawn[];
+  readonly tideEyes?: readonly TideEyeSite[];
   readonly regions: readonly MapZone[];
   readonly vehicles: readonly MapVehicle[];
   /** Null where it has no LAND. */
@@ -1257,6 +1274,7 @@ function readHeadSections(r: In, hash: number): MapHead {
   const vehicles: MapVehicle[] = [];
   const vehicleExtras = new Map<number, Partial<MapVehicle>>();
   let water: MapHead["water"] = null;
+  let tideEyes: TideEyeSite[] | undefined;
   let landmarks: MapLandmark[] | null = null;
   let kinds: string[] = [];
   let counts: Uint16Array = new Uint16Array(chunkCount(dims));
@@ -1265,7 +1283,16 @@ function readHeadSections(r: In, hash: number): MapHead {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
     const s = new In(r.take(r.u32()));
     if (tag === "NODE") layers.push(readRule(s));
-    else if (tag === "SPWN") {
+    else if (tag === "TEYE") {
+      if (tideEyes) throw new Error("map: duplicate Tide Eye section");
+      tideEyes = Array.from({ length: s.u8() }, () => {
+        const name = s.text(), x = s.f64(), y = s.f64(), z = s.f64(), yaw = s.u16();
+        const color = EYE_COLORS[s.u8()], radius = s.f64();
+        if (!color) throw new Error("map: invalid Tide Eye color");
+        return { name, x, y, z, yaw, color, radius };
+      });
+      validateEyes(tideEyes, dims);
+    } else if (tag === "SPWN") {
       for (let n = s.u8(); n > 0; n--) spawns.push({ name: s.text(), x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw: s.u16() });
     } else if (tag === "WILD") {
       for (let n = s.u16(); n > 0; n--) {
@@ -1326,7 +1353,7 @@ function readHeadSections(r: In, hash: number): MapHead {
     if (!vehicles[index]) throw new Error("map: parked vehicle extension names a missing vehicle");
     vehicles[index] = { ...vehicles[index]!, ...extra };
   }
-  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, layers, water, kinds, counts, parts: parts ?? [] };
+  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, ...(tideEyes ? { tideEyes } : {}), layers, water, kinds, counts, parts: parts ?? [] };
   checkParts(head);
   return head;
 }
@@ -1723,7 +1750,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const mapWater = joinWater(head, water);
   const content = head.landmarks ? { content: { landmarks: head.landmarks, defs } } : {};
   const { id, minY, stepY, seaLevel, spawns, regions, vehicles, hash } = head;
-  return { id, dims, minY, stepY, seaLevel, heights, tint, statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
+  return { id, dims, minY, stepY, seaLevel, heights, tint, statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(head.tideEyes ? { tideEyes: head.tideEyes } : {}), ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
 }
 
 /** The water of a map's overviews (OverviewPiece.water) as the map's, every overview's given, or null where its head has no WATR. */
