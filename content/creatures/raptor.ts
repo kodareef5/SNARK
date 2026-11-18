@@ -1,5 +1,18 @@
 import type { Def } from "../../shared/content/defs.ts";
 import { crafting } from "../craft.ts";
+import { naturalRegion } from "./colours.ts";
+
+// Region positions are the six dye bytes carried by saved genomes.
+const REGIONS = [
+  naturalRegion("back", 0x7b664c, 0x6d7170, 0x865437, 0x687047, 0xa99272),
+  naturalRegion("belly", 0xd1bb96, 0xe9ddc0, 0xb5b5a8, 0xc5ac7e),
+  naturalRegion("claws", 0x393430, 0x564c3f, 0x6c6350),
+  naturalRegion("wing and tail bars", 0x41484b, 0x50402e, 0x6a6d6b),
+  naturalRegion("face", 0x9b5e3f, 0xae8146, 0xb37c74, 0x877c6e),
+  naturalRegion("feather tips", 0xdbc69b, 0xebe2cc, 0xb6a572, 0xb08c5a),
+];
+
+export const RAPTOR_DYES: readonly number[] = REGIONS.map((r) => r.colors[0]![0]);
 
 export const RAPTOR: readonly Def[] = [
   {
@@ -7,8 +20,9 @@ export const RAPTOR: readonly Def[] = [
     id: "core:raptor",
     tag: "raptor",
     mesh: "core:raptor",
-    skeleton: "dino",
-    color: 5,
+    skeleton: "raptor",
+    color: RAPTOR_DYES[0]!,
+    regions: REGIONS,
     radius: 0.6,
     height: 1.5,
     // Chosen physical kilograms, close to the former capsule-derived 150 kg fallback.
@@ -48,7 +62,7 @@ export const RAPTOR: readonly Def[] = [
   { type: "item", class: "egg", id: "core:raptor_egg", label: "raptor egg", color: 5, stack: 100, weight: 7, eat: { food: 35, health: 35 }, spoilHours: (8 * 3600) / 140, decomposeHours: (30 * 60) / 140 },
   { type: "item", class: "egg", id: "core:raptor_egg_fertile", label: "fertilised raptor egg", color: 5, stack: 1, weight: 7, eat: { food: 35, health: 35 }, spoilHours: (8 * 3600) / 140 },
   // One seat, ARK's: the rider's, on the rig's `seat` socket, got onto and off from its left.
-  { type: "item", class: "saddle", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 1.182, 0.326], entry: [1.2, 0, 0.326] }] } },
+  { type: "item", class: "saddle", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 1.374, 0.02], entry: [1.2, 0, 0.02] }] } },
   ...crafting("core:saddle_raptor", { needs: [{ item: "core:hide", count: 110 }, { item: "core:fiber", count: 65 }, { item: "core:wood", count: 20 }], seconds: 10, xp: 8 }),
   { type: "engram", id: "core:engram-saddle_raptor", label: "Raptor saddle", level: 18, cost: 9, item: "core:saddle_raptor" },
 ];

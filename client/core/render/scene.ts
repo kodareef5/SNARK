@@ -2596,16 +2596,10 @@ export class Scene {
    * is drawn flat. Sets `ready`.
    */
   private drawable(mesh: number, wanted: number, flags: number): number {
-    let lod = this.assets.level(mesh, wanted);
-    this.ready = false;
-    if (lod < 0) return -1;
-    const sections = this.assets.table.sections[mesh]!;
-    const solid = (flags & DRAW_BLEND) === 0;
-    this.ready = solid && this.assets.textured(mesh, lod);
-    if (solid && !this.ready && sections[wanted < sections.length ? wanted : sections.length - 1]!.length > 0) {
-      for (let l = lod - 1; l >= 0 && !this.ready; l--) if ((this.ready = this.assets.textured(mesh, l))) lod = l;
-    }
-    return lod;
+    const held = this.assets.level(mesh, wanted);
+    const textured = (flags & DRAW_BLEND) === 0 ? this.assets.texturedLevel(mesh, wanted, held) : -1;
+    this.ready = textured >= 0;
+    return this.ready ? textured : held;
   }
 
   /**

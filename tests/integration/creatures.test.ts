@@ -274,7 +274,9 @@ test("a hunter does not see through what is built; a parasaur runs from what hur
   const bites = mind.bites;
   h.host.creatures.provoke(para, ents.x[me]!, ents.z[me]!, me);
   expect(mind.mind[para]).toBe(MIND_FLEE);
-  h.run(4000);
+  // It takes fright on the spot before it runs. Give it four seconds on its feet after that clip.
+  const startle = h.world.anims[ents.kind[para]!]?.startled;
+  h.run(4000 + (startle?.frames ?? 0) * 1000 / 30);
   expect(ents.z[para]! - (z0 + 8)).toBeGreaterThan(12);
   expect(mind.bites).toBe(bites);
   h.run(2500);

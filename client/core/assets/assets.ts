@@ -234,4 +234,15 @@ export class Assets {
   textured(mesh: number, level: number): boolean {
     return this.residency.textured(mesh, level);
   }
+
+  /** The held level drawable with materials, or a finer textured level while its replacement loads; -1 for a flat draw. */
+  texturedLevel(mesh: number, wanted: number, held = this.level(mesh, wanted)): number {
+    if (held < 0) return -1;
+    if (this.textured(mesh, held)) return held;
+    const sections = this.table.sections[mesh]!;
+    if (sections[Math.min(wanted, sections.length - 1)]!.length > 0) {
+      for (let l = held - 1; l >= 0; l--) if (this.textured(mesh, l)) return l;
+    }
+    return -1;
+  }
 }

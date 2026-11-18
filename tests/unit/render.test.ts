@@ -435,7 +435,7 @@ artTest("a loose thing is drawn where it stands, at a level chosen for its dista
   // 400 m off, a raptor is drawn coarse, and the thing remembers the level for the next frame.
   expect(p.drawLod[draws[0]!]).toBeGreaterThanOrEqual(2);
   expect([ahead.level, behind.level]).toEqual([p.drawLod[draws[0]!]!, -1]);
-  ahead.z = cam.z + 8;
+  ahead.z = cam.z + 2;
   scene.build(cam, view.remote);
   expect(ahead.level).toBe(0);
 });

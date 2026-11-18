@@ -52,6 +52,8 @@ interface Creature {
   clips: number;
   mesh: number;
   color: number;
+  /** An unset gene on a palette-only draw takes its region's first colour. Null regions have no dye. */
+  flatColors: Uint8Array | null;
   /** How far each level of its mesh lies from the finest, in metres. */
   error: readonly number[];
   /**
@@ -359,7 +361,7 @@ export class Characters {
       const rig = rigs.get(id);
       const mesh = bind.own(d.id, "body");
       if (!rig || mesh < 0) return null;
-      // A saddle is drawn either way only on the rig it was made on: the sample dinosaurs share a skeleton and not a rest pose.
+      // A worn saddle must share the body’s specific rig and its rest pose.
       const on = (m: number): number => (m >= 0 && pack.header.rigs[table.rig[m]!]?.id === id ? m : -1);
       const saddled = on(bind.own(d.id, "saddled"));
       const worn = new Map<number, number>();
@@ -368,7 +370,8 @@ export class Characters {
         if (m >= 0) worn.set(item, m);
       });
       const wreck = bind.own(d.id, "wreck");
-      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: !!reg.vehicle[i] && isWheelVehicle(reg.vehicle[i]!), oriented: new Solved(rig.bones) };
+      const flatColors = d.class === "creature" && d.regions ? Uint8Array.from(d.regions, (r) => r?.colors[0]?.[0] ?? 0) : null;
+      return { flatColors, wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: !!reg.vehicle[i] && isWheelVehicle(reg.vehicle[i]!), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -788,7 +791,7 @@ export class Characters {
     if (carrier !== undefined) this.inArms.push(first, rigid ? 1 : rig.bones, x, y, z, yaw, size, carrier, kind, id);
     const layer = unseen || !this.assets.tier.lit ? 0 : this.layers.level(id, layerWanted(st), tick, this.last.has(id));
     const lod = saddled ? this.queueCreature(c, c.saddled, c.saddledError, first, x, y, z, colors, colorAt, id, size, stand, unseen, layer) : this.queueCreature(c, c.mesh, c.error, first, x, y, z, colors, colorAt, id, size, stand, unseen, layer);
-    if (worn >= 0) this.queueWorn(c, worn, lod, x, y, z, size, stand);
+    if (worn >= 0) this.queueWorn(c, worn, lod, x, y, z, size, stand, colors, colorAt);
     return true;
   }
 
@@ -862,8 +865,8 @@ export class Characters {
     const key = this.keyOf(mesh * this.levels + lod, shown, stand);
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = first;
-    this.region0[n] = c.color;
-    for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
+    this.region0[n] = c.flatColors?.[0] ? 0 : c.color;
+    this.bodyColors(n, c, mesh, lod, colors, colorAt);
     this.id[n] = id;
     this.near[n] = key < 0 ? NONE : unseen ? CASTS : SEEN;
     const s = this.shadows;
@@ -872,12 +875,26 @@ export class Characters {
     return lod;
   }
 
+  /** Zero is undyed in the surface shader. A flat region vertex needs a real palette index for the same gene. */
+  private bodyColors(n: number, c: Creature, mesh: number, lod: number, genome: Uint8Array, at: number): void {
+    const defaults = c.flatColors;
+    let missing = false;
+    for (let q = 0; q < 6; q++) {
+      const colour = genome[at + q]!;
+      this.colors[n * 6 + q] = colour;
+      if (colour === 0 && defaults?.[q]) missing = true;
+    }
+    if (missing && this.assets.texturedLevel(mesh, lod) < 0) {
+      for (let q = 0; q < 6; q++) this.colors[n * 6 + q] ||= defaults![q]!;
+    }
+  }
+
   /**
    * Queues the saddle `mesh` on the creature queued last, on its bones, in its colours and at its level `lod`, or the
    * saddle's coarsest where it has fewer. Nothing in ARK dyes a saddle, so the saddle is drawn in its own colours, but
    * where it names a colour region it takes the creature's.
    */
-  private queueWorn(c: Creature, mesh: number, lod: number, x: number, y: number, z: number, size: number, stand: number): void {
+  private queueWorn(c: Creature, mesh: number, lod: number, x: number, y: number, z: number, size: number, stand: number, colors: Uint8Array, colorAt: number): void {
     const body = this.count - 1;
     const n = this.count++;
     const level = Math.min(lod, this.assets.table.error[mesh]!.length - 1);
@@ -886,7 +903,7 @@ export class Characters {
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = this.firstBone[body]!;
     this.region0[n] = this.region0[body]!;
-    this.colors.copyWithin(n * 6, body * 6, body * 6 + 6);
+    this.bodyColors(n, c, mesh, level, colors, colorAt);
     this.id[n] = this.id[body]!;
     this.near[n] = key < 0 ? NONE : this.near[body]!;
     const s = this.shadows;

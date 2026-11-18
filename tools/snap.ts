@@ -72,7 +72,7 @@ import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
 import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from "./snap/ride.ts";
 import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
-import { saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
+import { saddleAsset, saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
 import { frozenPack } from "../tests/fixtures/pack.ts";
 
@@ -1229,7 +1229,8 @@ if (import.meta.main) {
     if (saddles) {
       // In the colours its asset is reviewed in.
       const own = (await findAssets(source)).find((a) => a.id === species)?.spec;
-      const colors = own?.kind === "creature" ? own.regions.map((region) => region.sample) : [];
+      const regions = sampleSaddle?.regions ?? (own?.kind === "creature" ? own.regions : []);
+      const colors = regions.map((region) => region.sample);
       sceneLabels.splice(0, sceneLabels.length, ...saddlesScene(view, species, saddleOf(view.reg), Number(arg("tick") ?? 200), args.includes("--close") || args.includes("--levels") ? (arg("close")?.startsWith("--") === false ? arg("close")! : "ridden, biting") : "", colors));
     }
     const used = arg("used")?.split(",").map(Number);
@@ -1246,11 +1247,14 @@ if (import.meta.main) {
   if (saddles !== undefined && !["worn", "saddled", "both", "own"].includes(saddles)) throw new Error(`--saddles takes worn, saddled, both or own, not "${saddles}"`);
   const species = arg("species") ?? "core:raptor";
   const saddleOf = (reg: Registry): string => reg.ids[reg.saddleFits.findIndex((fits) => fits === reg.index.get(species))] ?? "";
-  const extra = saddles === undefined || saddles === "own" ? [] : saddleMeshes(frozenPack(), saddles as Ways);
+  const sampleSaddle = saddles && saddles !== "own" ? saddleAsset(saddles as Ways) : null;
+  const extra = sampleSaddle ? saddleMeshes(frozenPack(), saddles as Ways) : [];
+  // The conversion examples are skinned to the historical fixture, whose joints differ from the production rig.
+  const modelSource = sampleSaddle ? resolve(import.meta.dir, "../tests/fixtures/art") : source;
   if (saddles !== undefined && args.includes("--levels")) {
     // The one near, ridden, at each level of its mesh in turn, side by side, on one tier.
     const tier = graphics ?? "medium";
-    const files = await gameFiles(source, undefined, extra);
+    const files = await gameFiles(modelSource, undefined, extra);
     // The saddled model where the pack has one, which is drawn in place of the body; else the body, with its worn saddle.
     const meshId = files.manifest.meshes.some((m) => m.id === `${species}/saddled`) ? `${species}/saddled` : species;
     const mesh = files.manifest.meshes.findIndex((m) => m.id === meshId);
@@ -1314,8 +1318,8 @@ if (import.meta.main) {
     const names = graphics === "all" ? TIERS.map((t) => t.name) : [graphics];
     for (const name of names) if (!TIERS.some((t) => t.name === name)) throw new Error(`--graphics takes ${TIERS.map((t) => t.name).join(", ")} or all, not "${name}"`);
     const t0 = performance.now();
-    const files = await gameFiles(source, undefined, extra, mapFile?.content?.landmarks);
-    console.log(`asset files from ${relative(process.cwd(), source) || "."}: ${files.manifest.textures?.length ?? 0} textures, ${(files.files.reduce((n, f) => n + f.length, 0) / 1048576).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms`);
+    const files = await gameFiles(modelSource, undefined, extra, mapFile?.content?.landmarks);
+    console.log(`asset files from ${relative(process.cwd(), modelSource) || "."}: ${files.manifest.textures?.length ?? 0} textures, ${(files.files.reduce((n, f) => n + f.length, 0) / 1048576).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms`);
     const across = names.length > 1 ? 2 : 1;
     const [W, H] = [w! * across, h! * Math.ceil(names.length / across)];
     const pixels = new Uint8ClampedArray(W * H * 4);

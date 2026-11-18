@@ -158,8 +158,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // triangles are as they were.
   // They were 6566450d and bc950e8d until the harbours' wrecks (content/vehicles/harbour-wrecks.ts) put thirty stand-in meshes in the
   // pack ahead of the test's: only the draws' mesh indices moved, and the draws, triangles and bytes are as they were.
-  expect(beforePlain).toBe("5efd151d");
-  expect(hash).toBe("212123bd");
+  // Wild raptors and parasaurs draw from their authored region palettes. With the old colours the hashes are
+  // 5efd151d and 212123bd (d14ab735 and dd8fdb95 when saddled), with the same counts below.
+  expect(beforePlain).toBe("f9455179");
+  expect(hash).toBe("ea586ee9");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -181,7 +183,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // draws and 34,003,200 triangles, until nodes were scattered by their chunks' frame keys, as above, and 1536293d and
   // 706f11fd until the sea was made ahead of the statics, as above, and d44c5109 and 90b43a9 until the harbours' wrecks,
   // as above.
-  expect(saddled.beforePlain).toBe("d14ab735");
-  expect(saddled.hash).toBe("dd8fdb95");
+  expect(saddled.beforePlain).toBe("c0bbcfa1");
+  expect(saddled.hash).toBe("39939711");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

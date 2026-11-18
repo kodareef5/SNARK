@@ -13,7 +13,7 @@ import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { ACT_SWING, HOLD_HANDS } from "../../shared/sim/weapon.ts";
 import { birdAnim } from "../fixtures/bird.ts";
 import { fromArt, test } from "../fixtures/needs-art.ts";
-import { corePack } from "../fixtures/pack.ts";
+import { corePack, frozenPack } from "../fixtures/pack.ts";
 import { strider } from "../fixtures/strider.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -25,8 +25,12 @@ const of = (id: string): CreatureAnim => {
 };
 const DODO = fromArt(() => of("core:dodo"));
 const BIRD = birdAnim();
-/** The stand-ins: a dinosaur from the pack, with idle, walk, run, attack, jump and death, and a rig with fewer. */
-const RAPTOR = fromArt(() => of("core:raptor"));
+/** The frozen six-clip dinosaur still exercises the fallback used by older packs. */
+const RAPTOR = fromArt(() => {
+  const pack = frozenPack();
+  const rig = buildRigs(pack.header.rigs, pack.clips).get("core:raptor")!;
+  return new CreatureAnim(rig, 4, 0);
+});
 const STRIDER = new CreatureAnim(strider(), 99, 0);
 const START = 1000;
 
