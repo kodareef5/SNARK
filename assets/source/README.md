@@ -479,6 +479,48 @@ than 4 levels. A test runs the check over every asset here, so a pack with a
 fault does not pass `bun run check`. That test reads only the sizes of the
 pictures. `--check` reads and measures them.
 
+### What the check passes and a player still pays for
+
+Every one of these passed the check on 2026-11-18 and was found by reading its
+numbers, not its verdict. Read the table it prints before calling a model done.
+
+- **Loose shells.** The `parts` column is the model's separate shells. The
+  levels after the finest are made by a simplifier that cannot merge two
+  shells, so a model of hundreds of them loses whole parts as it gets coarser,
+  its error jumps, and its cheap levels are first drawn far later: the
+  hand-made compact (7 parts) hands over to its flat level at 34 m on medium,
+  the patrol jeep (947 parts) at 140 m and still at 24,500 triangles, the
+  tanker (227 parts) at 312 m, eight pixels tall. Weld what touches, leave out
+  what is never seen, or make the far levels by hand (`<object>_LOD<n>`).
+- **A turned form lit as slabs.** A ring, a drum or a console made on a lathe
+  is round only if its faces carry the surface's normals. A generator that
+  gives each face its own flat normal draws a ring of 72 plates as 72 plates.
+  `core/structures/tide-eye/instrument.py` shows the way that keeps each
+  plate's own trim: `Mesh.face(..., normals=[...])`, set from the form, not
+  from Blender's smoothing, which would round the profile's corners too.
+- **A thin inlay made as a box.** A mark 2 cm high on a floor is a plate (its
+  top, and its underside back to back so no edge is open), not a box whose ten
+  other triangles are sides nobody sees.
+- **What a player stands at.** The check prints pixels a metre for each
+  material on each mesh. The piece a player uses at arm's length should not be
+  the one whose faces each show a twentieth of a tile.
+- **A variant's own pictures.** A damaged or sunk form with its own base,
+  packed and mask maps costs a whole set. Before thinking a wear layer could
+  stand in, compare roughness and metal as well as colour: the boats' damaged
+  hulls differ from the intact in a fifth of their colour and up to half of
+  their roughness, and a layer carries colour alone.
+- **Two vertices a triangle is not a fault** in a model built of boxes: each
+  corner of a box is three vertices, one for each face's normal and texture
+  coordinate. The client's build makes one of any that are the same in every
+  byte; do not bend a model to share more.
+- **What is worn against what wears it.** A full Meridian suit is about 24,500
+  triangles at its finest on a body of 4,400; `triangles.armor` does not hold
+  a tailored outfit to anything. Fifty of them in one view is more than a
+  million triangles before anything else is drawn.
+- **A stated error far under the measured one.** `errors` is for levels a
+  measure of points cannot judge. Stating a third of what is measured brings
+  a coarse level in three times sooner than its shape has earned.
+
 ## Looking at an asset
 
 Two commands draw an asset as the game draws it, with the software rasterizer
