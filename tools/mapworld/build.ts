@@ -25,7 +25,7 @@ import { STATIC_LAYERS, siteOf } from "./statics.ts";
 import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
-import { boatSites, mappedBoatSites } from "../boat/sites.ts";
+import { boatSites, HARBOURS, mappedBoatSites } from "../boat/sites.ts";
 import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
@@ -175,7 +175,18 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const aircraft = helicopterSites(map, reg, aircraftSites);
   const waterfrontPlaces = JSON.parse(readFileSync(join(source, "blocks/places.json"), "utf8")) as PublicPlace[];
   const waterfrontLabels = JSON.parse(readFileSync(join(source, "blocks/labels.json"), "utf8")) as Record<string, BuildingLabel>;
-  const boats = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, (e, n) => { const [x, z] = site.toLattice(e, n); return [x - x0, z - z0]; }));
+  // A harbour's district is the one its water looks onto: the nearest district within 200 m of the place.
+  const districtAt = (x: number, z: number): { name: string; style: string } | null => {
+    for (let r = 0; r <= 200; r += 10) for (let a = 0; a < (r ? 16 : 1); a++) {
+      const col = Math.round((x1 - x - x0 - Math.sin(a * Math.PI / 8) * r) / 2), row = Math.round((z1 - z - z0 - Math.cos(a * Math.PI / 8) * r) / 2);
+      const d = col >= 0 && row >= 0 && col < nx && row < nz ? world.districts[ground.district[row * nx + col]! - 1] : undefined;
+      if (d) return { name: d.name, style: d.style };
+    }
+    return null;
+  };
+  const berthed = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, (e, n) => { const [x, z] = site.toLattice(e, n); return [x - x0, z - z0]; }), world.heaps === false ? vocabulary(source).harbours : HARBOURS, districtAt);
+  const boats = berthed.map(({ site: _site, district: _district, ...v }) => v);
+  if (world.heaps === false) writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "harbours.json"), JSON.stringify(berthed.map(({ id, kind, site: at, district, x, z, condition, fuel }) => ({ id, kind, site: at, district, x: Math.round(x), z: Math.round(z), condition, fuel })), null, 1) + "\n");
   if (aircraft.length + boats.length > 0) {
     const all = [...parked, ...aircraft, ...boats];
     map = { ...map, vehicles: all };

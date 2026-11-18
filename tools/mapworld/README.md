@@ -298,3 +298,34 @@ by `street.cars.parked`:
 The kinds and their sizes come from the compiled content: a vehicle's
 `spec` (half width, half length, height, wheelbase, track, ground limit) and its
 `seats`, so a truck or a bus needs no new code.
+
+## Boats: found ones
+
+Vessels a survivor can take go in `vehicles.json` beside the cars, after the found
+aircraft and clear of both. `boatSites` in `tools/boat/sites.ts` chooses them by
+`harbours` in the rules file, at the marinas, piers and beaches of
+`blocks/places.json` and the police, fire and Coast Guard stations of
+`blocks/labels.json`:
+
+- A beach or a fire or Coast Guard station holds one rescue launch, a police
+  station one police launch, up to four of each, before any civilian site.
+- A marina holds `marina.least` to `marina.most` vessels within 120 m of its point;
+  then a share `pier.share` of piers hold one, of `pier.longest` metres or less,
+  within 48 m. Which vessel each berth gets is drawn by a hash from the weights of
+  `kinds.marina` or `kinds.pier`, changed by the style of the district its water
+  looks onto (the nearest within 200 m) in `styles` (launches and jon boats by the
+  port, yachts and offshore boats by the beaches and the towers, day boats and
+  catamarans among homes) and then by its name in `districts`; a weight of 0 takes
+  a kind out. A kind that finds no berth gives way to the civilian launch.
+- A berth is tested for its own vessel where it lies, nearest the place's point
+  first: water deeper than its draught by 0.2 m, a bank a swimmer can reach within
+  64 m, its hull clear of every static at one of four headings, its hull and
+  `room` metres round it clear of every other found vessel's hull, `apart` metres
+  from any other site's vessels and 16 m from any car or aircraft.
+- Every berth gives the ranges its condition and its fuel are rolled in, one band
+  each of `condition` and `fuel` by their weights and a hash of the berth: a share
+  hurt (a hull of 0.5 or more takes no water, so it floats and makes way), a share
+  nearly whole, the rest between, and fuel mostly low. The server rolls both once a
+  world (`foundVehicle`).
+- `reports/<ruins>/harbours.json` lists each vessel with its site, district and
+  ranges.
