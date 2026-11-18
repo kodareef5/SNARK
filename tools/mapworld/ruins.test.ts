@@ -205,7 +205,8 @@ test("a Deco treatment cannot turn a labelled low hotel into a speculative tower
     const m = new Mason(frame(0), 0);
     layout(m, { ...rule, recipe: "hotel", feature: "deco", height }, { seed: 45, playable: 3, detail: 0 });
     const top = Math.max(...m.pieces.map((p) => p.y + RUIN_SHAPES[p.kind.split("_")[1] as keyof typeof RUIN_SHAPES][1] / 2));
-    expect(top).toBeLessThanOrEqual(height + .2);
+    // What is left of a broken parapet, its bars, may stand over the roof; no storey does.
+    expect(top).toBeLessThanOrEqual(height + 1.5);
   }
 });
 

@@ -113,8 +113,11 @@ const MODULES = {
   zpipetop: { look: [[-0.075, 0.075, 0, 3.45, 0.25, 0.4, METAL], [-0.11, 0.11, 1, 1.12, 0.25, 0.43, METAL], [-0.2, 0.2, 3.45, 3.96, 0.25, 0.55, METAL]], walked: [[-0.075, 0.075, 0, 3.45, 0.25, 0.4], [-0.2, 0.2, 3.45, 3.96, 0.25, 0.55]] },
   zbalc4: { look: [0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...BALCONY_WALKED.slice(0, 4), ...[4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2)))] },
   zbalc4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), ...up(12, BALCONY_CAP)], walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...BALCONY_WALKED.slice(0, 4), ...[4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2))), ...up(12, BALCONY_CAP)] },
-  /** A ground floor of flats: a solid darker base, a high window, the head band in the building's finish. */
-  zlobby: { look: [[-4, 4, 0, 2.3, -0.25, 0.25, BASE], [-4, -3.4, 2.3, 3.1, -0.25, 0.25, BASE], [3.4, 4, 2.3, 3.1, -0.25, 0.25, BASE], [-3.4, 3.4, 2.3, 3.1, -0.3, -0.2, DARK], [-4, 4, 3.1, 4, -0.25, 0.25]], walked: [wall(4)] },
+  /**
+   * A ground floor of flats: a solid darker base with a door 1 m by 2.2 m standing proud of it (drawn as a block's door
+   * by the facade's material), a high window, the head band in the building's finish.
+   */
+  zlobby: { look: [[-4, 4, 0, 2.3, -0.25, 0.25, BASE], [-0.5, 0.5, 0, 2.2, 0.25, 0.275, DARK], [-4, -3.4, 2.3, 3.1, -0.25, 0.25, BASE], [3.4, 4, 2.3, 3.1, -0.25, 0.25, BASE], [-3.4, 3.4, 2.3, 3.1, -0.3, -0.2, DARK], [-4, 4, 3.1, 4, -0.25, 0.25]], walked: [wall(4)] },
   zstore: { look: SHOP, walked: SHOP_WALKED },
   zshutter: { look: SHUTTER, walked: [...SHOP_WALKED.slice(0, 2), [-3.6, 3.6, 2.9, 4, -0.25, 0.3], [-3.6, 3.6, 0, 2.9, 0, 0.1]] },
   zwin: { look: WINDOWS, walked: [wall(4)] },
@@ -324,7 +327,7 @@ export const RUIN_FINISHES = {
   limestone: { color: 10, under: 101, material: "core:mat_stone", hp: 12000 },
   rose: { color: 81, under: 111, material: "core:mat_stone", hp: 10000 },
   mint: { color: 75, under: 142, material: "core:mat_stone", hp: 10000 },
-  clay: { color: 183, under: 181, material: "core:mat_stone", hp: 9000 },
+  clay: { color: 183, under: 111, material: "core:mat_stone", hp: 9000 },
   steel: { color: 89, under: 87, material: "core:mat_metal", hp: 20000 },
   rust: { color: 179, under: 178, material: "core:mat_metal", hp: 8000 },
   blue: { color: 5, under: 87, material: "core:mat_metal", hp: 9000 },
