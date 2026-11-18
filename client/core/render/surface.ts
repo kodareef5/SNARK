@@ -12,6 +12,7 @@ import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
 import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
+import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { WEAR_GLSL, wearAlpha } from "./wear.ts";
 
 /** What a surface that is not metal reflects head on. */
@@ -471,7 +472,8 @@ vec3 skyFrom(vec3 r) {
  * cut-out draw and 0 for any other. A cut-out draw writes as alpha how much of the pixel lies on the solid side, for
  * alpha to coverage to take as samples. The rasterizer tests each pixel's middle, so the two differ only along a cut.
  * `air` is the sky table's lookup, which smooth surfaces mirror, and the air (atmosphere.ts AIR). The sun's shadow is
- * looked up off the surface along the mesh's normal, turned to the side seen. A node's draw first drops what its
+ * looked up off the surface along the mesh's normal, turned to the side seen, and so is the sky's openness, which with
+ * the foot of what stands but a body takes the sky's light down (skyopen.ts). A node's draw first drops what its
  * hand-over between the near store and the far one says (hand.ts). With `layered` it draws a body's hurt and decay
  * layer as `wounded` has it, at `uLevel`; without, its text is the one every unhurt body is drawn with. Undyed, the
  * albedo is the base colour under the tint, which is what `dyed` gives with no mask; one that never drops writes alpha 1.
@@ -486,9 +488,9 @@ in vec4 vTangent;
 in vec2 vUv;
 ${dyed ? "flat in mat3 vDye, vDye2;\n" : ""}uniform sampler2D uBase, uNormal, uMro${dyed ? ", uMask, uMask2" : ""};
 uniform vec3 uTint;
-uniform float uCutoff, uSheet;
+uniform float uCutoff, uSheet, uSkin;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${air}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -500,8 +502,9 @@ ${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2,
 ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n  if (cover == 0.0) discard;\n" : "  float cover = 1.0;\n"}  vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
   float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
+  float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
-  o = vec4(shown(lit(albedo, mro, n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade), vRel), cover);
+  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade), vRel), cover);
 }`;
 }
 

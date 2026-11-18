@@ -20,9 +20,10 @@ import { WATER_FRAGMENT } from "./water.ts";
  * and short waves on 7 and 8), which are materials. 9 holds the shadow maps, 10 the sky table, and 11 and 12 the
  * terrain window's heights and tints, 13 the far nodes' meshes (packet.ts `atlas`), 14 a body's hurt and decay layer.
  * 15 holds the details atlas for the details draws alone, and is free outside them: a program that does not read it may
- * bind something else there.
+ * bind something else there. 16, the first past the sixteen a program may read at most, holds the sky's openness
+ * (skyopen.ts); WebGL2 has 32 units at the least, and no program reads more than twelve.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -46,12 +47,12 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  */
 function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>, litVertex?: string): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
-  return { vertex: litVertex ?? worldVertex(vertex), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: shadowDefines(tier.shadows, hard) + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : ""), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
+  return { vertex: litVertex ?? worldVertex(vertex), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: shadowDefines(tier.shadows, hard) + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : ""), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }) } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
 function surface(tier: Tier, format: TextureFormat, hard: boolean, variant: SurfaceVariant): ProgramText {
-  const samplers: Record<string, number> = { uBones: UNIT.bones, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow };
+  const samplers: Record<string, number> = { uBones: UNIT.bones, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uGroundHeight: UNIT.heights };
   if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
   if (variant.layered) samplers.uLayer = UNIT.layer;
   return { vertex: surfaceVertex(variant), fragment: surfaceFragment(format, AIR, variant), defines: shadowDefines(tier.shadows, hard), samplers };

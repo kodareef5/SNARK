@@ -85,6 +85,8 @@ export class GlRenderer {
   shadowLookup = "";
   /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
+  /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
+  private open = { texture: null as WebGLTexture | null, size: 0 };
   private boneRows = 0;
   /**
    * Each tier's programs by number, as client/core/render/programs.ts numbers them, all begun when a frame of that tier
@@ -196,6 +198,7 @@ export class GlRenderer {
     this.format = this.formats.find((f) => f === this.forced) ?? this.formats[0]!;
     this.shadowLookup = comparedLookup(gl);
     this.shadow = { texture: null, targets: [], size: 0 };
+    this.open = { texture: null, size: 0 };
     this.programs.clear();
     this.linked.clear();
     this.neutral = [];
@@ -527,6 +530,7 @@ export class GlRenderer {
     this.uniform(prog, U.light, p.light);
     if (at[U.worldEye]) gl.uniform3f(at[U.worldEye], p.camX, p.camY, p.camZ);
     if (at[U.worldPhase]) gl.uniform3fv(at[U.worldPhase], p.worldPhase);
+    if (at[U.field]) gl.uniform4f(at[U.field], this.hf.minY, this.hf.stepY, this.ground.cell[SOURCE_MAP]!, p.camY);
     if (at[U.surfaceCity]) gl.uniform4fv(at[U.surfaceCity], p.surfaceCity);
     if (at[U.cascades] && last[U.cascades] !== p.cascadeCount) gl.uniform1i(at[U.cascades], (last[U.cascades] = p.cascadeCount));
     return prog;
@@ -665,6 +669,16 @@ export class GlRenderer {
       gl.activeTexture(gl.TEXTURE0 + UNIT.atlas);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS_WIDTH, p.atlasRows, gl.RGBA, gl.FLOAT, p.atlas);
     }
+    // The sky's openness on its unit, made again at a size it has not, let go while a frame has none, and its rows.
+    gl.activeTexture(gl.TEXTURE0 + UNIT.open);
+    const open = p.openWidth * 65536 + p.openHeight;
+    if (open !== this.open.size) {
+      gl.deleteTexture(this.open.texture);
+      gl.bindTexture(gl.TEXTURE_2D, (this.open = { texture: open > 0 ? gl.createTexture() : null, size: open }).texture);
+      if (open > 0) gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, p.openWidth, p.openHeight);
+      for (const q of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) if (open > 0) gl.texParameteri(gl.TEXTURE_2D, q[0], q[1]);
+    }
+    if (p.openRows > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, p.openRow, p.openWidth, p.openRows, gl.RGBA, gl.UNSIGNED_BYTE, p.openMap);
     gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
     if (boneRows(p.tier.bones) !== this.boneRows) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = boneRows(p.tier.bones)), 0, gl.RGBA, gl.FLOAT, null);
     if (p.boneCount > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, Math.ceil(p.boneCount / BONES_PER_ROW), gl.RGBA, gl.FLOAT, p.bones);
