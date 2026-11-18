@@ -18,12 +18,12 @@ import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_L
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
-import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lampsOn, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
-import { INSTANCE_BYTES, VERTEX_BYTES, detailsAtlas, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, MATERIAL_NIGHT, VERTEX_BYTES, detailsAtlas, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { MAP_ROLES, TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -1233,7 +1233,7 @@ export class Rasterizer {
     const wear = layer ? p.drawWear[d]! : 0;
     const { center, half } = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const box = wear === 0 ? null : lod.positions.map((x, i) => (x - center[i % 3]!) / half[i % 3]!);
-    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
