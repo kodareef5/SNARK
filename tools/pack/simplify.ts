@@ -22,6 +22,13 @@ export const STEP = 0.5;
 export const MOST_LEVELS = 5;
 /** How much more a plane that holds a border weighs than a plane of the surface. */
 const BORDER = 8;
+/** With parts held, an edge whose two faces' normals meet at a cosine under this, turned back more than 120 degrees, is held as a border. */
+const FOLD = -0.5;
+/**
+ * With parts held, points of one bone this close, in metres, are one: about a step of the pack's grid on a vehicle,
+ * which makes them one anyway. A model from Blender comes with seams a few hundredths of a millimetre apart.
+ */
+const TOUCH = 1e-4;
 /** A triangle may come to hold this many times the picture it held for its size, or one part in this many, and no more. */
 const STRETCH = 2;
 /** What the picture sliding a distance over the surface weighs, against the surface moving as far: it shows less. */
@@ -102,10 +109,11 @@ export interface Simplified {
 /**
  * `fine` with fewer triangles: one level for each of `targets`, which fall. A level stops short of its target where
  * nothing more can be collapsed without turning a triangle over. The levels are flat: what `fine` has of a surface is
- * left behind.
+ * left behind. With `holdParts`, each separate part keeps its extent and the edges of its sheets as a border is kept,
+ * so it shrinks or goes by what that costs (see collapsed()).
  */
-export function simplify(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = []): Simplified[] {
-  return collapsed(fine, targets, false, preserveBones);
+export function simplify(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = [], holdParts = false): Simplified[] {
+  return collapsed(fine, targets, false, preserveBones, holdParts);
 }
 
 /**
@@ -119,7 +127,7 @@ export function simplifySurface(fine: SourceLod, targets: readonly number[], pre
   return collapsed(fine, targets, true, preserveBones);
 }
 
-function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean, preserveBones: readonly number[]): Simplified[] {
+function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean, preserveBones: readonly number[], holdParts = false): Simplified[] {
   const { joints, weights, tangents } = fine;
   const uvs = fine.uvs ?? new Float32Array(0);
   const normals = fine.normals ?? new Float32Array(0);
@@ -130,12 +138,42 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   /** A vertex of `fine` at each point. */
   const origin: number[] = [];
   const place = textured ? placed(fine) : null;
+  /**
+   * Held, two points of one bone within TOUCH of each other are one. A model's seams can come with their two sides a
+   * rounding apart, which the pack's grid makes one point; collapsed one side at a time, as held parts are, those
+   * sides part, and packed they open a hole.
+   */
+  const cells = new Map<string, number[]>();
+  /** Each vertex's point once found, so its every corner is the same point whatever came near it after. */
+  const touched = new Map<number, string>();
+  const touching = (v: number): string => {
+    let key = touched.get(v);
+    if (key === undefined) touched.set(v, (key = nearest(v)));
+    return key;
+  };
+  const nearest = (v: number): string => {
+    const at = [0, 1, 2].map((a) => fine.positions[v * 3 + a]!);
+    const b = fine.bones ? fine.bones[v]! : 0;
+    const cell = at.map((x) => Math.round(x / TOUCH));
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      for (const u of cells.get(`${cell[0]! + dx},${cell[1]! + dy},${cell[2]! + dz}`) ?? []) {
+        if ((fine.bones ? fine.bones[u]! : 0) === b && Math.max(...at.map((x, a) => Math.abs(x - fine.positions[u * 3 + a]!))) <= TOUCH) return `held ${u}`;
+      }
+    }
+    const key = cell.join(",");
+    const list = cells.get(key);
+    if (list) list.push(v);
+    else cells.set(key, [v]);
+    return `held ${v}`;
+  };
   const weld = (v: number): number => {
     // With a surface, the two sides of a seam are one point however little apart, and two vertices that are weighted
     // differently are two, since they would part when a bone turns.
     const key = place
       ? `${place[v]},${fine.bones ? fine.bones[v] : 0},${joints && weights ? `${joints.subarray(v * 4, v * 4 + 4)},${weights.subarray(v * 4, v * 4 + 4)}` : ""}`
-      : `${fine.positions[v * 3]},${fine.positions[v * 3 + 1]},${fine.positions[v * 3 + 2]},${fine.bones ? fine.bones[v] : 0}`;
+      : holdParts
+        ? touching(v)
+        : `${fine.positions[v * 3]},${fine.positions[v * 3 + 1]},${fine.positions[v * 3 + 2]},${fine.bones ? fine.bones[v] : 0}`;
     let id = ids.get(key);
     if (id === undefined) {
       id = bone.length;
@@ -274,11 +312,39 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
       else onEdge.set(key, [f]);
     }
   }
+  // A plane's quadric cannot see a part shrink along itself: a thin plate or a sheet folded back on itself shrinks
+  // within its own plane for nothing, and a thin tube along its own length, so a coarse level made from hundreds of
+  // separate parts lets the larger thin ones vanish first and keeps the solid crumbs. Held, each part's six furthest
+  // points along the axes cost as much to move as a border does, so a part shrinks by what it is worth, and the edge
+  // of a sheet or fin is held as a border is.
+  if (holdParts) {
+    const ends = new Map<number, number[]>();
+    for (let v = 0; v < bone.length; v++) {
+      if (around[v]!.length === 0) continue;
+      let e = ends.get(component[v]!);
+      if (!e) ends.set(component[v]!, (e = [v, v, v, v, v, v]));
+      for (let axis = 0; axis < 3; axis++) {
+        if (pos[v * 3 + axis]! < pos[e[axis * 2]! * 3 + axis]!) e[axis * 2] = v;
+        if (pos[v * 3 + axis]! > pos[e[axis * 2 + 1]! * 3 + axis]!) e[axis * 2 + 1] = v;
+      }
+    }
+    for (const e of ends.values()) {
+      for (const v of new Set(e)) for (let axis = 0; axis < 3; axis++) addPlane(quadrics[v]!, axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0, -pos[v * 3 + axis]!, BORDER);
+    }
+  }
   /** Whether faces `f` and `g` are one piece across the edge they share at `point`: one colour, or with a surface one wedge. */
   const joined = (f: number, g: number, point: number): boolean => (textured ? wedges[f * 3 + cornerAt(f, point)] === wedges[g * 3 + cornerAt(g, point)] : colors[f] === colors[g]);
+  const other = [0, 0, 0];
+  /** Whether faces `f` and `g` turn back on each other further than FOLD, as at the edge of a sheet or a fin. */
+  const folded = (f: number, g: number): boolean => {
+    normal(f, n);
+    normal(g, other);
+    const size = len3(n[0]!, n[1]!, n[2]!) * len3(other[0]!, other[1]!, other[2]!);
+    return size > 0 && n[0]! * other[0]! + n[1]! * other[1]! + n[2]! * other[2]! < FOLD * size;
+  };
   for (const [key, list] of onEdge) {
     const [u, v] = [Math.floor(key / bone.length), key % bone.length];
-    if (list.length === 2 && joined(list[0]!, list[1]!, u) && joined(list[0]!, list[1]!, v)) continue;
+    if (list.length === 2 && joined(list[0]!, list[1]!, u) && joined(list[0]!, list[1]!, v) && !(holdParts && folded(list[0]!, list[1]!))) continue;
     const ex = pos[v * 3]! - pos[u * 3]!, ey = pos[v * 3 + 1]! - pos[u * 3 + 1]!, ez = pos[v * 3 + 2]! - pos[u * 3 + 2]!;
     for (const f of list) {
       // The plane through the edge that stands square to the face.
@@ -404,6 +470,35 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
     }
     return false;
   };
+  /**
+   * Whether moving `from` onto `to` would open the surface: leave more edges at `to` with more triangles running one way
+   * along them than the other (a hole, as the check counts one) than there were at the two before. Held parts are
+   * collapsed in an order that finds such moves, so they are tried for it.
+   */
+  const opens = (from: number, to: number): boolean => {
+    /** The edges from `v` in its live triangles, each by its other end: triangles along it one way less the other. */
+    const runs = (v: number, as: number, skip: (f: number) => boolean, into: Map<number, number>): void => {
+      for (const f of around[v]!) {
+        if (!alive[f] || skip(f)) continue;
+        const k = cornerAt(f, v);
+        const [next, last] = [corners[f * 3 + ((k + 1) % 3)]!, corners[f * 3 + ((k + 2) % 3)]!];
+        if (next !== as) into.set(next, (into.get(next) ?? 0) + 1);
+        if (last !== as) into.set(last, (into.get(last) ?? 0) - 1);
+      }
+    };
+    const unbalanced = (m: Map<number, number>): number => [...m.values()].filter((n) => n !== 0).length;
+    // Before, the edges at either end apart from the one between them, which goes.
+    const [was, wasTo] = [new Map<number, number>(), new Map<number, number>()];
+    runs(from, to, () => false, was);
+    runs(to, from, () => false, wasTo);
+    was.delete(to);
+    wasTo.delete(from);
+    // After, `to` has every triangle at either end but those on the edge between them, which go.
+    const now = new Map<number, number>();
+    runs(from, to, (f) => cornerAt(f, to) >= 0, now);
+    runs(to, from, (f) => cornerAt(f, from) >= 0, now);
+    return unbalanced(now) > unbalanced(was) + unbalanced(wasTo);
+  };
 
   const emit = (): SourceLod => {
     const positions: number[] = [];
@@ -467,7 +562,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
     while (left > target) {
       const m = heap.pop();
       if (!m) break;
-      if (m.stamp !== version[m.from]! + version[m.to]! || turns(m.from, m.to)) continue;
+      if (m.stamp !== version[m.from]! + version[m.to]! || turns(m.from, m.to) || (holdParts && opens(m.from, m.to))) continue;
       const part = component[m.from]!;
       const delta = closed[part] && initialVolume[part] !== 0 ? volumeChange(m.from, m.to) : 0;
       if (closed[part] && (volume[part]! + delta) * Math.sign(initialVolume[part]!) < -Math.abs(initialVolume[part]!) * 1e-12) continue;
@@ -537,6 +632,8 @@ export interface LevelPlan {
   palette: Uint8Array;
   /** Rigid bones whose small closed parts must retain their axis extremes at every level. */
   preserveBones?: readonly number[];
+  /** Whether the flat levels hold each part's extent and the edges of its sheets: simplify()'s `holdParts`. */
+  holdParts?: boolean;
   distanceLods?: readonly SourceLod[];
 }
 
@@ -567,7 +664,7 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
   const generated = budgets.length - authored.length;
   if (generated < 0) throw new Error(`${mesh.id}: more authored flat levels than distance budgets`);
   if (generated > 0) {
-    for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), budgets.slice(0, generated), plan.preserveBones)) {
+    for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), budgets.slice(0, generated), plan.preserveBones, plan.holdParts)) {
       if (!worth(made.lod, lods[lods.length - 1]!)) break;
       lods.push(made.lod);
     }

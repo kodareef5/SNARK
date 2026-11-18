@@ -283,6 +283,13 @@ export interface CreatureAsset {
   readonly flat?: number;
   /** Rigid bones whose thin parts define the silhouette, such as rotors. Their axis extremes survive every LOD. */
   readonly preserveBones?: readonly string[];
+  /**
+   * For a model built of many separate parts (a vehicle of hundreds of pressings, tubes and castings): its flat levels
+   * hold each part's extent and the edges of its thin sheets, so a part shrinks or goes by what that costs to its
+   * outline, and the small ones go first. Without it, a large thin part (a wheel disc, a coil spring) can vanish before
+   * the crumbs around it. Opt in where `--check` shows the first flat levels coming in closer.
+   */
+  readonly holdParts?: boolean;
   /** Artist-built final texture-free body levels, in decreasing detail. Earlier flat levels use the simplifier. */
   readonly distanceLods?: (bones: readonly string[], palette: Uint8Array) => readonly SourceLod[];
   /** What goes limp when it dies. Without it the death clip plays and its last frame stays. */

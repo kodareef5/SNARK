@@ -216,6 +216,19 @@ not kept: `marine/bake.py` and the three scripts make them again.
   static's colour. Their finest level is made from the model to 6,000 triangles,
   as a street holds many.
 
+A vehicle modelled as hundreds of separate closed parts (pressings, tubes, castings
+joined into one object) cannot keep all of them in its flat levels: a 6,400 triangle
+level of a 947-part jeep has under seven triangles a part. Which parts go is the
+simplifier's choice, and on its own it chooses badly: a large thin part (a wheel's
+disc, a coil spring, a gauge face) shrinks along its own plane or length for almost
+nothing, so it vanishes before the solid crumbs around it, and the level's error and
+the distance it waits for jump. `holdParts: true` in `asset.ts` holds each part's six
+furthest points along the axes and the edges of its sheets as firmly as a border,
+so a part goes by what that costs its outline, and the small ones go first. It is
+opt in, as `preserveBones` is: on a creature, or at the coarsest of levels where
+there is not a triangle left for every part, it can cost more than it saves. Set it
+where `--check` shows the flat levels coming in closer, and build the asset again.
+
 ## Rigid pieces
 
 `kind: "pieces"` is for structure pieces and other rigid meshes: one script
