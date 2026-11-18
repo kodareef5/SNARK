@@ -72,6 +72,7 @@ export function plan(): Run[] {
     for (const tier of ["medium", "high", "ultra"]) for (const scale of [1, 2]) runs.push({ scene: "city", view, tier, scale });
     for (const [tier, scale] of [["medium", 1], ["ultra", 2]] as const) for (const off of ["shadows", "far"] as const) runs.push({ scene: "city", view, tier, scale, off });
   }
+  runs.push({ scene: "city", view: "street", tier: "high", scale: 1, off: "facades" });
   return runs;
 }
 
