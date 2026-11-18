@@ -1,0 +1,8 @@
+{
+  "corners": [[-0.30, 0.16], [0.30, 0.16], [0, -0.34]],
+  "banks": [
+    { "first": 101, "pitch": 9, "count": 5 },
+    { "first": 194, "pitch": 10, "count": 6 },
+    { "first": 281, "pitch": 11, "count": 7 }
+  ]
+}

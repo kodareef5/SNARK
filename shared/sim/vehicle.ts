@@ -19,6 +19,8 @@ export interface VehicleHullSpec {
 }
 
 export interface VehicleSpec extends VehicleHullSpec {
+  /** Separate solid sections for an open chassis, in local metres and within the broadphase envelope. */
+  readonly bodyBoxes?: readonly VehicleCollisionBox[];
   readonly halfWidth: number;
   readonly halfLength: number;
   readonly height: number;
@@ -442,8 +444,15 @@ export function validateVehicleSpec(s: VehicleSpec): void {
     if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid vehicle ${key}`);
   }
   const zero = new Set(["yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
-  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && value !== undefined &&
+  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && key !== "axles" && key !== "bodyBoxes" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
+  if (s.bodyBoxes !== undefined) {
+    const limits = [s.halfWidth, s.height, s.halfLength];
+    if (!Array.isArray(s.bodyBoxes) || !s.bodyBoxes.length || s.bodyBoxes.length > 8 || !s.bodyBoxes.every(b =>
+      b && Array.isArray(b.at) && b.at.length === 3 && Array.isArray(b.half) && b.half.length === 3 &&
+      b.half.every((h: number, i: number) => h > 0 && Math.abs(b.at[i]!) + h <= limits[i]! + .0001) &&
+      b.at[1] - b.half[1] >= s.clearance - .0001)) throw new Error("invalid road chassis boxes");
+  }
   if (s.axles && (s.axles.length < 2 || s.axles.length > 8 ||
     s.axles.some((a,i) => !Number.isFinite(a.z) || Math.abs(a.z) >= s.halfLength || (i > 0 && a.z >= s.axles![i-1]!.z) ||
       !(a.track > 0 && a.track <= 2*s.halfWidth && a.loadShare > 0 && a.loadShare < 1)) ||

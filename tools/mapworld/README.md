@@ -269,26 +269,25 @@ by `street.cars.parked`:
 
 - Each place's kind is drawn by a hash from the weights of `kinds`, changed by the
   district's style in `styles` (vans where there are shops and works, and the
-  tanker, the semi, the monster pickup and a bus at its depot among the works;
-  caravans among homes; taxis and a bus at the kerb where the blocks are
-  concrete; sports cars few, most by the beaches) and then by the district's
+  tanker, the semi and the monster pickup among the works; caravans among homes;
+  buses among homes and where the blocks are concrete or terracotta, and taxis
+  where they are concrete; sports cars few, most by the beaches) and then by
+  the district's
   name in `districts`, which a city's vocabulary may add; a weight of 0 takes a
   kind out. The place is then tested for that kind alone.
 - At the kerb on the right of travel of a centreline of the listed classes (local
   and secondary streets), or of a car park's road (`lots.classes`), turned along
-  it, on street ground, its room inside the map. Where the streets stage drew a
-  car park's stalls (`base/stalls.json`), its cars stand in them instead, nose to
-  the aisle, each drawn among the kinds no longer than `lots.stall` (6 m): a bus
-  or a truck parks at a kerb, never in a stall.
+  it, on street ground, its room inside the map.
 - At least 15 m from a junction (a point two lines share, or a line's end).
 - Clear of every static's boxes, the wrecks' too, and of every reserved route, by
   the kind's envelope plus 1 m and plus the door room its seats need (the
   compact's X ±0.9, Y 0 to 1.5, Z ±2.0 with entries at X ±1.25; the panel van's
   X ±1.08, Y 0 to 2.52, Z ±2.82 with entries at X ±1.42); nothing grows on it.
   Neither of two parked cars' rooms meets the other's body.
-- On dry ground, its four wheels' heights giving a ground normal no steeper than
+- On dry ground, the heights across all its axles giving a ground normal no steeper than
   the kind's `minGroundNormal` (0.85 for the road fleet), with margin enough to
   drive off.
+- A marked stall draws only from vehicles whose bumpers can fit within half a metre of its ends. The full body and door clearances still apply. Buses and freight tractors use long kerbs. Detached trailers may stand on level industrial lots and yards.
 - A district takes its car parks first: up to `lots.perDistrict` of its car
   parks' roads, in an order by a hash, each holding `lots.least` to `lots.most`
   cars together along it, `lots.apart` metres from each other and `apart`

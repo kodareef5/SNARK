@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { parkFreightTrailers } from "../../tools/mapworld/freight.ts";
 import { gridAt } from "../../tools/mapworld/base.ts";
 import { S } from "../../tools/mapworld/ground.ts";
 import { boxOf, meets, type Box } from "../../tools/mapworld/ruin-obstacles.ts";
@@ -35,7 +36,7 @@ function fixture(roads: readonly Road[], routes: Site["growthRoutes"] = []): Sit
     }
   }
   return { source, world: { districts: [{ name: "Works", style: "industrial", tall: 0, ring: [] }, { name: "Homes", style: "residential", tall: 0, ring: [] }] },
-    ground: { grid: gridAt([-SIZE / 2, -SIZE / 2, SIZE / 2, SIZE / 2]), surface, district }, growthRoutes: routes, vehicles: [], toLattice: (e: number, n: number) => [e, n], groundAt: () => GROUND } as unknown as Site;
+    ground: { grid: gridAt([-SIZE / 2, -SIZE / 2, SIZE / 2, SIZE / 2]), surface, district }, growthRoutes: routes, vehicles: [], toLattice: (e: number, n: number) => [e, n], groundAt: () => GROUND, waterAt: () => 0 } as unknown as Site;
 }
 const streets = (from: number, to: number, every: number): Road[] => {
   const out: Road[] = [];
@@ -100,7 +101,7 @@ test("no two parked cars' envelopes cross, nor one's door room the other's body,
   const route = { points: [{ x: 700, y: GROUND, z: 585 }, { x: 700, y: GROUND, z: 615 }], width: 2 };
   const crate: StaticPiece = { kind: "core:crate", x: 200, y: GROUND, z: 302.7, yaw: 0 };
   const site = fixture([...streets(100, 900, 100), lot], [route]);
-  const tight = rules({ ...MANY, apart: 6, lots: { classes: ["S1780"], least: 2, most: 4, apart: 6, perDistrict: 1, stall: 6 } });
+  const tight = rules({ ...MANY, apart: 6, lots: { classes: ["S1780"], least: 2, most: 4, apart: 6, perDistrict: 1 } });
   const cars = park(site, tight, [crate]);
   expect(cars.length).toBeGreaterThan(150);
   const clear = tight.parked.clear;
@@ -124,25 +125,6 @@ test("no two parked cars' envelopes cross, nor one's door room the other's body,
   expect(xs.at(-1)! - xs[0]!).toBeLessThanOrEqual((parked.length - 1) * (6 + 4));
 });
 
-test("a car park's stalls draw among the kinds that fit a stall: a bus, a semi or a tanker parks at a kerb and leaves no stall empty", () => {
-  // A car park in Works: a row of stalls 2.7 m apart on the lot's ground, each nose to the aisle north of it.
-  const site = fixture(streets(100, 900, 100)), { surface, grid } = site.ground;
-  for (let x = 196; x <= 264; x += 2) for (let z = 548; z <= 558; z += 2) surface[((SIZE - z) / 2) * N + (SIZE - x) / 2] = S.LOT;
-  const stalls = [];
-  for (let x = 200; x <= 260; x += 2.7) stalls.push({ lot: "lot", e: grid.west + grid.x1 - x, n: grid.north - grid.z1 + 550, fe: grid.west + grid.x1 - x, fn: grid.north - grid.z1 + 552.5 });
-  writeFileSync(join(site.source, "base/stalls.json"), JSON.stringify(stalls));
-  const long = ["core:tanker", "core:bus", "core:semi"], trucks = { industrial: Object.fromEntries(long.map((id) => [id, 40])) };
-  const mix = { ...MANY, kinds: { "core:compact": 1 }, districts: {} }, lot = (cars: readonly Parked[]): Parked[] => cars.filter((p) => p.lot);
-  const plain = park(site, rules({ ...mix, styles: {} })), withTrucks = park(site, rules({ ...mix, styles: trucks }));
-  expect(lot(plain).length).toBeGreaterThanOrEqual(DEFAULTS.parked.lots.least);
-  expect(lot(withTrucks)).toEqual(lot(plain));
-  for (const p of lot(withTrucks)) expect(DEF.get(p.kind)!.spec.halfLength * 2).toBeLessThanOrEqual(DEFAULTS.parked.lots.stall);
-  expect(withTrucks.some((p) => !p.lot && long.includes(p.kind))).toBe(true);
-  // Drawn for stalls they do not fit, the trucks would leave the car park short of cars.
-  const unlimited = park(site, rules({ ...mix, styles: trucks, lots: { ...DEFAULTS.parked.lots, stall: 100 } }));
-  expect(lot(unlimited).length).toBeLessThan(lot(plain).length);
-});
-
 test("a share of the parked cars are hurt in a range they drive in, the rest whole, and every one's fuel is in a band, most of them low", () => {
   const site = fixture(streets(100, 900, 100)), cars = rules(MANY), parked = park(site, cars);
   const { hurt, fuel } = cars.parked;
@@ -158,4 +140,46 @@ test("a share of the parked cars are hurt in a range they drive in, the rest who
   expect(park(site, cars)).toEqual(parked);
   const full = park(site, rules({ ...MANY, hurt: { share: 0, condition: [.5, .5] }, fuel: [[1, 1, 1]] }));
   expect(full.every((p) => !p.condition && p.fuel[0] === 1)).toBe(true);
+});
+
+test("city parking puts buses on residential streets, semis in industrial districts, and neither in a five-metre stall", () => {
+  const site = fixture(streets(100, 900, 100));
+  const heavy = rules({ ...MANY, kinds: {}, styles: { industrial: { "core:semi": 1 }, residential: { "core:bus": 1 } }, districts: {} });
+  const cars = park(site, rules({ perKm: 100, most: 80, apart: 12 }));
+  expect(cars.some(p => p.kind === "core:semi")).toBe(true);
+  expect(cars.some(p => p.kind === "core:bus")).toBe(true);
+  for (const p of cars.filter(p => p.kind === "core:semi" || p.kind === "core:bus")) {
+    expect(p.kind).toBe(p.district === "Works" ? "core:semi" : "core:bus");
+  }
+  site.ground.surface.fill(S.LOT);
+  const cx = site.ground.grid.west + 200, cz = site.ground.grid.north - 200;
+  writeFileSync(join(site.source, "base/stalls.json"), JSON.stringify([0, 12, 24].map(d => ({ lot: "yard", e: cx + d, n: cz, fe: cx + d, fn: cz + 2.5 }))));
+  expect(park(site, heavy)).toEqual([]);
+  for (const id of ["core:compact", "core:caravan", "core:panel_van", "core:patrol_sedan"]) {
+    const fitting = park(site, rules({ kinds: { [id]: 1, "core:semi": 1000 }, styles: {}, districts: {} }));
+    expect(fitting.length).toBeGreaterThan(0);
+    expect(fitting.every(p => p.lot && p.kind === id)).toBe(true);
+  }
+});
+
+test("detached trailers use dry level industrial hardstanding and respect the district limit and existing obstacles", () => {
+  const site = fixture(streets(100, 400, 100));
+  const roads = roadIndex(site);
+  const pieces: StaticPiece[] = [];
+  const rules = { styles: ["industrial"], perDistrict: 2 };
+  const place = (blocked: boolean) => parkFreightTrailers(site, roads, rules, () => blocked, m => { pieces.push(...m.pieces); return true; });
+  place(false);
+  expect(pieces).toHaveLength(0);
+  site.ground.surface.fill(S.PAVED);
+  place(false);
+  expect(pieces).toHaveLength(0);
+  site.ground.surface.fill(S.YARD);
+  place(true);
+  expect(pieces).toHaveLength(0);
+  place(false);
+  expect(pieces).toHaveLength(2);
+  for (const p of pieces) {
+    expect(p.kind).toBe("core:box_trailer");
+    expect(p.x).toBeLessThan(SIZE / 2);
+  }
 });

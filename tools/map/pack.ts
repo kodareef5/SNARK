@@ -4,6 +4,7 @@
 // the page asks by (client/core/mapload.ts).
 
 import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants, gzip } from "node:zlib";
@@ -16,6 +17,8 @@ import { partsFolder, partsOf, readHead, type MapHead, type MapPart, type PartKi
  * tightest a map ships with and take about 25 s on Miami, made side by side, its landmarks' definitions the longest.
  */
 export const LEVELS = { everyday: { brotli: 9, gzip: 6 }, release: { brotli: 11, gzip: 9 } } as const;
+/** Parts compressed at once: each lane's encoders hold their state while it works, and no more lanes than cores help. */
+export const PACK_LANES = Math.max(2, Math.min(8, availableParallelism()));
 
 /**
  * Brotli bytes a part may be, by its kind: there to catch a mistake, with room over the most the cities measure (release
@@ -76,13 +79,20 @@ export const wireBytes = (packed: Packed, encoding: "br" | "gz"): number => pack
 export async function packMap(file: Uint8Array, release = false): Promise<Packed> {
   const level = release ? LEVELS.release : LEVELS.everyday;
   const [br, gz] = [promisify(brotliCompress), promisify(gzip)];
-  const parts = await Promise.all(
-    partsOf(file).map(async ({ name, part, bytes }): Promise<PackedPart> => {
-      const params = { [constants.BROTLI_PARAM_QUALITY]: level.brotli, [constants.BROTLI_PARAM_LGWIN]: 24, [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length };
-      const [b, z] = await Promise.all([br(bytes, { params }), gz(bytes, { level: level.gzip })]);
-      return { name, kind: part?.kind ?? "head", col: part?.col ?? 0, row: part?.row ?? 0, bytes, br: b, gz: z };
-    }),
-  );
+  const pack = async ({ name, part, bytes }: ReturnType<typeof partsOf>[number]): Promise<PackedPart> => {
+    const params = { [constants.BROTLI_PARAM_QUALITY]: level.brotli, [constants.BROTLI_PARAM_LGWIN]: 24, [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length };
+    const [b, z] = await Promise.all([br(bytes, { params }), gz(bytes, { level: level.gzip })]);
+    return { name, kind: part?.kind ?? "head", col: part?.col ?? 0, row: part?.row ?? 0, bytes, br: b, gz: z };
+  };
+  // A few parts at a time, each its own encoders' memory: asked for all at once, a big map's 500 to 630 parts each
+  // held a Brotli encoder's state together. The parts keep the map's order, so the copies are the same bytes.
+  const list = partsOf(file);
+  const parts: PackedPart[] = new Array(list.length);
+  let next = 0;
+  const lane = async (): Promise<void> => {
+    for (let k = next++; k < list.length; k = next++) parts[k] = await pack(list[k]!);
+  };
+  await Promise.all(Array.from({ length: Math.min(PACK_LANES, list.length) }, lane));
   return { parts, first: firstFrame(parts, readHead(file, false)), release };
 }
 

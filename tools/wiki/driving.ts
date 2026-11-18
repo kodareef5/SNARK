@@ -47,7 +47,7 @@ export function drivingTable(h: Handling): Table {
         ["Driven wheels", wheels(h, false)],
         ["Gears", `${h.gears} forward, changing by themselves; in ${ordinal(h.topGear)} at its top speed`],
         ["Power", `${num(h.power / 1000, 0)} kW at ${num(h.powerRpm)} rpm, ${num(h.power / h.mass, 0)} kW a tonne`],
-        ["Range at a steady 60 km/h", h.reaches60 ? km(h.rangeSteady) : `It does not reach 60 km/h: ${km(h.rangeSteady)} at its top speed`],
+        ["Range at a steady 60 km/h", h.range60 === null ? "It does not reach 60 km/h" : km(h.range60)],
         ["Range flat out", km(h.rangeTop)],
       ],
       note: [roadNote("it")],
@@ -107,7 +107,7 @@ export function fleetTables(entries: readonly Entry[]): Table[] {
     title: "On the road",
     head: ["", "Top speed", "0 to 100 km/h", "Braking from 100 km/h", "Turning circle", `Round a ${CIRCLE} m circle`, "Driven wheels", "Power to weight", "Range at 60 km/h"],
     rows: road.map(({ names, h }) => [names, kmh(h.top), h.reaches100 ? secs(h.to100) : "Not reached", h.reaches100 ? metres(h.braking) : `${metres(h.braking)} from ${kmh(h.top)}`,
-      metres(h.turning), kmh(h.circle), wheels(h, true), `${num(h.power / h.mass, 0)} kW a tonne`, h.reaches60 ? km(h.rangeSteady) : `${km(h.rangeSteady)} at its top speed`]),
+      metres(h.turning), kmh(h.circle), wheels(h, true), `${num(h.power / h.mass, 0)} kW a tonne`, h.range60 === null ? "Not reached" : km(h.range60)]),
     note: [roadNote("each")],
   });
   if (boats.length) tables.push({

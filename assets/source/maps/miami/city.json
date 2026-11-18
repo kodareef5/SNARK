@@ -145,6 +145,8 @@
     "obelisks": [
       {
         "name": "Wynwood",
+        "color": "red",
+        "form": "sextant",
         "at": [
           -80.199,
           25.804
@@ -156,6 +158,8 @@
       },
       {
         "name": "Miami Beach Golf Club",
+        "color": "green",
+        "form": "lantern",
         "at": [
           -80.135,
           25.803
@@ -167,6 +171,7 @@
       },
       {
         "name": "Virginia Key",
+        "color": "blue",
         "at": [
           -80.1502,
           25.7549

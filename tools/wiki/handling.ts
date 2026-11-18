@@ -45,9 +45,8 @@ export interface RoadHandling {
   power: number;
   powerRpm: number;
   mass: number;
-  reaches60: boolean;
-  /** Metres a tank takes it at a steady 60 km/h or, where it does not reach 60, at its own top speed: its range flat out. */
-  rangeSteady: number;
+  /** Null where it does not reach 60 km/h. */
+  range60: number | null;
   rangeTop: number;
 }
 
@@ -224,11 +223,10 @@ export function roadHandling(def: WheelVehicleDefinition, driver: number): RoadH
   const fuel = cruise.fuel, cx = cruise.x, cz = cruise.z;
   run(30, () => drive(hold(forwardOf(cruise)))(cruise));
   const per60 = (fuel - cruise.fuel) / Math.sqrt((cruise.x - cx) ** 2 + (cruise.z - cz) ** 2);
-  const reaches60 = flat.top >= 60 * KMH, rangeTop = p.fuelCapacity / flat.fuelPerMetre;
   return {
     movement: "wheeled", to100, reaches100, top: flat.top, toTop, topGear: flat.end.gear, gears: train.forwardRatios.length,
     reverse, braking, turning, circle: circleSpeed(p, car, flat.top), front: p.frontDriveShare ?? null, power, powerRpm,
-    mass: vehicleMass(p, { payloadMass: 0 }), reaches60, rangeSteady: reaches60 ? p.fuelCapacity / per60 : rangeTop, rangeTop,
+    mass: vehicleMass(p, { payloadMass: 0 }), range60: flat.top >= 60 * KMH ? p.fuelCapacity / per60 : null, rangeTop: p.fuelCapacity / flat.fuelPerMetre,
   };
 }
 

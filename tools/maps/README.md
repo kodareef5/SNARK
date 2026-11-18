@@ -87,6 +87,14 @@ to the build's code (`tools/mapworld`, `tools/map`, the shared world code) build
 reaches a stage reading the downloads (prepare to ways) makes `city.ts` fetch them first. A kit made at another commit
 still unpacks: the stages whose code differs run again. Make kits again after a change to a stage before the build.
 
+## Miami's transfer terminals
+
+Miami's `city.json` assigns the red Sextant to Wynwood, the green Louver Lantern to Miami Beach Golf Club and the blue Tide Eye to Virginia Key. The build finds dry ground near each site, grades the deck and places the travel terminal at its centre. The review cameras in `look/tide-eye.json` follow the sites stored in the generated map.
+
+## Vehicles in a fresh city
+
+The shared parking rules in `tools/mapworld/rules/default.json` mix district buses into residential, concrete and terracotta districts and freight tractors into industrial districts. Long vehicles need a kerb or bay that fits their body and leaves their doors clear. The generator checks every axle, including the tractor's tandem rears. Industrial yards can also hold up to two detached box trailers per district on level hardstanding. Trailers are static scenery. Buses and tractors enter the ordinary saved vehicle fleet.
+
 ## Before a city is published: its picture
 
 A map has one painted picture, from the top, as wide and deep as the map and north up, for the map screen (Miami's

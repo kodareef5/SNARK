@@ -48,7 +48,7 @@ import { NodeField, formOf, mix, type NodeSpot } from "../shared/world/nodes.ts"
 import { mapHeightfield, mapNodes, parseMap, placeStatics, type MapFile } from "../shared/world/mapfile.ts";
 import { NodeChanges } from "../client/core/render/farnodes.ts";
 import { chunkAt } from "../shared/coords.ts";
-import { PROVING_DIMS, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
+import { PROVING_DIMS, PROVING_OBELISK, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { findAssets } from "./art/assets.ts";
 import { corePackBytes } from "../tests/fixtures/pack.ts";
@@ -304,7 +304,8 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const states = new Map<number, MotionState>();
   if (map) for (const t of movingOf(reg, map.statics)) states.set(t.ref, { from: moved * MOTION_STEPS, to: moved as 0 | 1, at: 0 });
   const motion = map ? { motion: { states: () => states, tick: () => 0, statics: () => map.statics } } : {};
-  const scene = new Scene({ mapId: map?.id, dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  const tideEyes = map ? map.tideEyes : [{ ...PROVING_OBELISK, color: "blue" as const, radius: 14, y: hf.heightAt(PROVING_OBELISK.x, PROVING_OBELISK.z) }];
+  const scene = new Scene({ mapId: map?.id, tideEyes, dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
   cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;

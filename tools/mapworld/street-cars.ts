@@ -20,8 +20,8 @@ export interface Cars {
   looks: Record<string, [string, number][]>; paints: Record<string, number>;
   parked: {
     perKm: number; least: number; most: number; apart: number; junction: number; clear: number; fromSpawn: number; classes: string[];
-    /** `stall`: metres a body may be long to stand in a stall, which is 5 m deep before its aisle (tools/mapdata/streets.py). */
-    lots: { classes: string[]; least: number; most: number; apart: number; perDistrict: number; stall: number };
+    lots: { classes: string[]; least: number; most: number; apart: number; perDistrict: number };
+    trailers?: { styles: string[]; perDistrict: number };
     kinds: Mix; styles: Record<string, Mix>; districts: Record<string, Mix>;
     hurt: { share: number; condition: [number, number] };
     /** Bands of a tank's fraction as [from, to, weight]. */
@@ -169,21 +169,27 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
   const STREETS = new Set<number>([S.STREET, S.HIGHWAY]);
   // A lot's car stands in its stall, on the lot's ground or its aisle's.
   const LOT_GROUND = new Set<number>([S.LOT, S.STREET]);
-  /** A car of a kind drawn for its district at (x, z), nose along (dx, dz), among those no longer than `longest`, if every test passes there. */
-  const tryPlace = (x: number, z: number, dx: number, dz: number, lot: boolean, line: number, under: ReadonlySet<number>, chosen?: string, longest = Infinity): void => {
+  /** A car of a kind drawn for its district at (x, z), nose along (dx, dz), if every test passes there. */
+  const tryPlace = (x: number, z: number, dx: number, dz: number, lot: boolean, line: number, under: ReadonlySet<number>, chosen?: string, stallHalfLength = Infinity): void => {
     const index = ground.district[at(x, z)]!; const district = site.world.districts[index - 1]?.name ?? "";
     if (!district) return;
-    const mix = mixOf(index).filter(([v]) => v.def.spec.halfLength * 2 <= longest); if (mix.length === 0) return;
+    const districtMix = mixOf(index);
+    // The bumper can overhang the painted end by half a metre if the whole body and door room are clear.
+    const mix = Number.isFinite(stallHalfLength) ? districtMix.filter(([kind]) => kind.def.spec.halfLength <= stallHalfLength + .5) : districtMix;
+    if (mix.length === 0) return;
     const id = chosen ?? pick(mix, hash3(Math.round(z), Math.round(x), seed + 1207)).id; const room = rooms.get(id)!; const { spec } = room;
     if (Math.min(x - x0, z - z0, x1 - x, z1 - z) < room.reach) return;
     const yaw = Math.atan2(dx, dz); const c = Math.cos(yaw); const sn = Math.sin(yaw);
     const corner = (u: number, v: number): [number, number] => [x + u * c + v * sn, z - u * sn + v * c];
-    const wheels = [[spec.track / 2, spec.wheelbase / 2], [-spec.track / 2, spec.wheelbase / 2], [spec.track / 2, -spec.wheelbase / 2], [-spec.track / 2, -spec.wheelbase / 2]].map(([u, v]) => corner(u!, v!));
+    const axles = spec.axles ?? [{ z: spec.wheelbase / 2, track: spec.track }, { z: -spec.wheelbase / 2, track: spec.track }];
     const body = [[-spec.halfWidth, -spec.halfLength], [spec.halfWidth, -spec.halfLength], [spec.halfWidth, spec.halfLength], [-spec.halfWidth, spec.halfLength], [0, 0]].map(([u, v]) => corner(u!, v!));
-    if (body.some(([px, pz]) => !under.has(ground.surface[at(px, pz)]!) || site.groundAt(px, pz) < .3)) return;
-    const h = wheels.map(([px, pz]) => site.groundAt(px, pz)); const y = site.groundAt(x, z);
-    // The ground's normal under the four wheels, from its slope along and across.
-    const along = ((h[0]! + h[1]!) - (h[2]! + h[3]!)) / 2 / spec.wheelbase; const across = ((h[0]! + h[2]!) - (h[1]! + h[3]!)) / 2 / spec.track;
+    const wheels = axles.flatMap(a => [corner(a.track / 2, a.z), corner(-a.track / 2, a.z)]);
+    const dry = ([px, pz]: [number, number]) => under.has(ground.surface[at(px, pz)]!) && site.groundAt(px, pz) >= site.waterAt(px, pz) + .3;
+    if (!body.every(dry) || !wheels.every(dry)) return;
+    const h = wheels.map(([px, pz]) => site.groundAt(px, pz));
+    const y = site.groundAt(x, z), last = h.length - 2;
+    const along = (h[0]! + h[1]! - h[last]! - h[last + 1]!) / (2 * (axles[0]!.z - axles.at(-1)!.z));
+    const across = Math.max(...axles.map((a, i) => Math.abs(h[2 * i]! - h[2 * i + 1]!) / a.track));
     if (1 / Math.hypot(1, along, across) < spec.minGroundNormal + .1 || Math.max(...h) - Math.min(...h) > spec.maxRise) return;
     const degrees = yaw * 180 / Math.PI;
     if (obstacles.hits({ x, y: y + (spec.height + 1) / 2, z, yaw: degrees, size: [room.side * 2, spec.height + 1, room.end * 2] }) || crossesRoute(x, z, c, sn, y, room)) return;
@@ -200,7 +206,7 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
     const x = x1 - (st.e - west); const z = z1 - (north - st.n);
     const fx = x1 - (st.fe - west); const fz = z1 - (north - st.fn);
     const span = Math.hypot(fx - x, fz - z) || 1;
-    tryPlace(x, z, (fx - x) / span, (fz - z) / span, true, lotLine.get(st.lot)!, LOT_GROUND, undefined, rules.lots.stall);
+    tryPlace(x, z, (fx - x) / span, (fz - z) / span, true, lotLine.get(st.lot)!, LOT_GROUND, undefined, span);
   }
   for (const s of roads.segments) {
     const lot = rules.lots.classes.includes(s.mtfcc);

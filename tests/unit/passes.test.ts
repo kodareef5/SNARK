@@ -124,6 +124,9 @@ test("effects off from the address: those in the tier, one copy a tier, and thos
   [p.drawFlags[0], p.drawFlags[1], p.drawHand[0], p.drawHand[1]] = [DRAW_BLEND | DRAW_WATER, DRAW_BLEND, HAND_NEAR, -1];
   packetWithout(p, effectsOff("haze,water,band"));
   expect([p.frame[FRAME.haze], p.drawFlags[0], p.drawHand[0], p.drawHand[1], p.frame[FRAME.edgesOff]]).toEqual([0, DRAW_BLEND, 0, -1, 0]);
+  p.frame.fill(1, FRAME.contact);
+  packetWithout(p, effectsOff("contact"));
+  expect([p.frame[FRAME.eyes - 1], p.frame[FRAME.eyes]]).toEqual([0, 1]);
   packetWithout(p, effectsOff("edges"));
   expect(p.frame[FRAME.edgesOff]).toBe(1);
 });

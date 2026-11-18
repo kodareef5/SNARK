@@ -48,8 +48,12 @@ function solidFrame(at: VehicleFrame, out: typeof contactFrame): void {
 }
 function carContact(p: VehicleSpec, at: VehicleFrame, target: Solid, slack = 0): CarContact | null {
   carHit.otherRotor = carHit.otherPropeller = false;
-  solidFrame(at, contactFrame); sweep(carShapes(p)[0]!, contactFrame, contactFrame, carSweep);
-  return solidContact(carSweep.solid, target, carHit, slack) ? carHit : null;
+  solidFrame(at, contactFrame);
+  for (const part of carShapes(p)) {
+    sweep(part, contactFrame, contactFrame, carSweep);
+    if (solidContact(carSweep.solid, target, carHit, slack)) return carHit;
+  }
+  return null;
 }
 /** Full-attitude chamfered chassis; scratch normal points from the target toward the car, point is world x/y/z. */
 export function carMeetsCapsule(p: VehicleSpec, at: VehicleFrame, x: number, y: number, z: number, radius: number, height: number): ContactGeometry | null {
