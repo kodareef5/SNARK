@@ -5,7 +5,8 @@ import { join } from "node:path";
 import type { Grid } from "./base.ts";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";
 import type { Site, StaticPiece } from "./statics.ts";
-import { roadEntrances, type RoadEntrance } from "./bridge-earthwork.ts";
+import { roadEntrances, roadRunout, type RoadEntrance } from "./bridge-earthwork.ts";
+import { roadIndex } from "./street-cars.ts";
 import { pathsOf, readWays, type Path } from "./ways.ts";
 import { makeSuspension, SUSPENDED } from "./suspension.ts";
 
@@ -37,7 +38,9 @@ export function roadDeckSlab(deck: readonly DeckPoint[], index: number, terminal
   }
   // The outer end of a dry approach meets actual ground, not the terminal centre's clearance.
   // Otherwise a nominal quarter-metre deck leaves a square bumper-height lip before its first slope.
-  const groundedEnd = terminalGround !== undefined && Math.abs(d.y - terminalGround) <= .5 && (index === 0 || index === deck.length - 1);
+  // The outer foot can be farther from the centre on an ordinary uphill exit (Hollywood Freeway: .558 m).
+  // Include that grade rather than leaving a flat plate followed by the rising terrain; the slab rise stays capped.
+  const groundedEnd = terminalGround !== undefined && Math.abs(d.y - terminalGround) <= .75 && (index === 0 || index === deck.length - 1);
   if (groundedEnd) {
     if (index === 0) low = terminalGround;
     else high = terminalGround;
@@ -52,6 +55,7 @@ export function roadDeckSlab(deck: readonly DeckPoint[], index: number, terminal
 export function makeBridges(site: Site, accept: (m: Mason) => boolean): { records: BridgeRecord[]; corridors: Corridor[]; outlines: { id: number; status: string }[] } {
   const grid = site.ground.grid; const { nx, nz, x0, z0, x1, z1 } = grid;
   const { paths, outlines } = pathsOf(readWays(site.source), grid);
+  const roads = roadIndex(site);
   const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   // The sea's water or a lake's, which an approach or a ramp does not go down into.
   const wetAt = (i: number): boolean => site.ground.water[i] !== 0 || (site.ground.lakes?.body[i] ?? 0) !== 0;
@@ -315,8 +319,16 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
         record.entrances = roadEntrances(site, deck, rows, p.width);
         // Buildings are laid out and their ground levelled after bridges. Reserve each real dry abutment too:
         // protecting only the deck centre lets a neighbouring floor excavate the last metre below its outer edge.
-        for (const e of record.entrances) corridors.push({ a: [e.x - e.dx * 8, e.z - e.dz * 8], b: [e.x + e.dx * 2, e.z + e.dz * 2],
-          width: e.width + 4, low: e.y - .5, high: e.y + 3.5 });
+        for (const e of record.entrances) {
+          roadRunout(site, e, roads);
+          corridors.push({ a: [e.x - e.dx * 4, e.z - e.dz * 4], b: [e.x + e.dx * 2, e.z + e.dz * 2],
+            width: e.width + 4, low: e.y - .5, high: e.y + 3.5 });
+          for (let i = 1; i < (e.runout?.length ?? 0); i++) {
+            const a = e.runout![i - 1]!, b = e.runout![i]!;
+            corridors.push({ a: [a.x, a.z], b: [b.x, b.z], width: e.width + 4,
+              low: Math.min(a.y, b.y) - .5, high: Math.max(a.y, b.y) + 3.5 });
+          }
+        }
       }
       record.swim = swims.get(p) ?? [];
       record.access = access.get(p) ?? [];

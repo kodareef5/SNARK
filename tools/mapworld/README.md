@@ -25,7 +25,7 @@ bun run check
 To refresh several maps without changing an existing world, build a new directory:
 
 ```sh
-bun tools/mapworld/build-set.ts var/maps/road-deck-3 <map-name> <another-map-name>
+bun tools/mapworld/build-set.ts var/maps/road-deck-3 <map-name> <another-map-name> --release
 bun tools/mapworld/bridge-entrances.ts var/maps/road-deck-3/<map-name>.snmap
 bun tools/mapworld/bridge-drive.ts var/maps/road-deck-3/san-francisco.snmap 1489.6 1155
 bun server/main.ts --map var/maps/road-deck-3/<map-name>.snmap --db var/worlds/<new-world>.db
@@ -36,6 +36,11 @@ It verifies every raw, Brotli and gzip part against the packed map, then writes
 `release.json` with producer revision, map IDs, hashes and SHA-256 digests. Copy
 both `<name>.snmap` and `<name>.parts/` together when distributing a release;
 the normal server `/map.json` and `/map/` routes serve this package.
+Keep `<name>.entrances.json` with the release for reproducible geometry checks.
+It records actual emitted road ends and their continuing source-road runouts,
+not inferred clusters of structures. The entrance audit samples three tracks;
+the native car course continues beyond the first slab before declaring a
+crossing complete. Check mapped turns and structure-to-structure junctions separately.
 
 Use a fresh database for changed map bytes. An existing save still requires its
 original map ID and hash; startup refuses a mismatch. Keep the old map package
