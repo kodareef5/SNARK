@@ -23,10 +23,12 @@ const at = new Float64Array(MAX_CONTACTS * 8);
 /**
  * Fills the frame block's contact (packet.ts fContact) with the MAX_CONTACTS bodies of `remote` nearest the camera
  * at `cam`, and `own`, the viewer's own body, where it stands; none on a tier with no light target, or with `on` false.
+ * `long` gives a kind's half length along its way, where its mesh says, so a long creature (a trike is 8 m nose to
+ * tail on a body of 1.25 m radius) is as long as it is.
  * Each is two slots: its middle, camera-relative, and the cosine of its yaw; then its half extents across, up and
  * along, and the sine of its yaw. A list shorter than the slots ends at a half extent of 0.
  */
-export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">, remote: RemoteSample | null, own: { kind: number; x: number; y: number; z: number; yaw: number } | null, cam: { x: number; y: number; z: number }): void {
+export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">, remote: RemoteSample | null, own: { kind: number; x: number; y: number; z: number; yaw: number } | null, cam: { x: number; y: number; z: number }, long: (kind: number) => number = () => 0): void {
   frame.fill(0, FRAME.contact, FRAME.contact + MAX_CONTACTS * 8);
   if (!on) return;
   near.length = 0;
@@ -44,9 +46,10 @@ export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registr
   for (let k = 0; k < Math.min(count, MAX_CONTACTS); k++) {
     const i = near[order[k]! * 2 + 1]!;
     const body = i < n ? { kind: remote!.kind[i]!, x: remote!.x[i]!, y: remote!.y[i]!, z: remote!.z[i]!, yaw: remote!.yaw[i]! } : own!;
-    // A vehicle is the box its driving numbers give, a creature or a player its upright body.
+    // A vehicle is the box its driving numbers give, a creature or a player its upright body as long as its mesh.
     const spec = reg.vehicle[body.kind]?.spec;
-    const [across, up, along] = spec ? [spec.halfWidth, spec.height / 2, spec.halfLength] : [reg.bodyRadius[body.kind]!, reg.bodyHeight[body.kind]! / 2, reg.bodyRadius[body.kind]!];
+    const r = reg.bodyRadius[body.kind]!;
+    const [across, up, along] = spec ? [spec.halfWidth, spec.height / 2, spec.halfLength] : [r, reg.bodyHeight[body.kind]! / 2, Math.max(r, long(body.kind))];
     const o = k * 8;
     [at[o], at[o + 1], at[o + 2], at[o + 3]] = [body.x - cam.x, body.y + up - cam.y, body.z - cam.z, Math.cos(body.yaw)];
     [at[o + 4], at[o + 5], at[o + 6], at[o + 7]] = [across, up, along, Math.sin(body.yaw)];

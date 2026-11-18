@@ -169,9 +169,10 @@ export class BenchRun {
 /**
  * Effects `?off=` names, comma separated, for a before and after. "band" draws the near nodes in the hand-over without
  * its discard, and "layers" draws hurt and dead bodies with the plain surface program, in the draws they have. "light"
- * draws a tier with a light target as medium draws, each shader toning onto the canvas, and "bloom" finishes it with no bloom (render/post.ts).
+ * draws a tier with a light target as medium draws, each shader toning onto the canvas, "bloom" finishes it with no bloom
+ * (render/post.ts), and "contact" holds no body's contact (render/contact.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -200,9 +201,10 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
   return copy;
 }
 
-/** The effects that live in a built frame: the haze in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
+/** The effects that live in a built frame: the haze and bodies' contact in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
+  if (off.has("contact")) p.frame.fill(0, FRAME.contact);
   for (let d = 0; d < p.drawCount; d++) {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;

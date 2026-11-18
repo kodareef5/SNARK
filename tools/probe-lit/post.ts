@@ -1,17 +1,17 @@
 // The finish (client/core/render/post.ts), a check of tools/probe-lit.ts: the proving ground from its spawn point on high,
-// drawn as light into the shell's light target and finished in one pass, at noon, an hour before sunset and at night.
-// Without bloom it is held to the software rasterizer, which takes the same tone curve and grade, as the lit check holds
-// medium (its points and tolerance); the sharpen moves nothing on a smooth surface and the dither a step at most. Bloom
-// is the GPU's alone: with it, the picture's mean is held to the one without it, since bloom keeps the light's energy,
-// and 999 pixels in 1,000 to it within BLOOM_MOST. These frames hold no body. Contact (contact.ts) is the GPU's alone
-// too: with the proving ground's survivor and grazer standing in view at noon, CONTACT_PIXELS more pixels at least than
-// in the same frame without them must be darker than the rasterizer's by CONTACT_LEAST levels or more in every
-// channel, the ground round their feet, and no more than CONTACT_SHARE of the picture.
+// drawn as light into the shell's light target and finished in one pass. Without bloom, at noon, an hour before sunset
+// and at night, with the plain sky and no body in view, it is held to the software rasterizer, which takes the same
+// tone curve and grade, as the lit check holds medium (its points and tolerance); the sharpen moves nothing on a smooth
+// surface and the dither a step at most. Bloom is the GPU's alone: an hour before sunset, facing the sun with its disc
+// drawn, the picture with bloom is held to the one without it, its mean within BLOOM_MEAN (bloom moves light and makes
+// none) and BLOOM_PIXELS pixels at least moved by 2 levels or more, the glow round the disc. Contact (contact.ts) is
+// the GPU's alone too: with the proving ground's survivor and grazer standing a few metres ahead at noon, CONTACT_PIXELS
+// more pixels at least than in the same frame without them must be darker than the rasterizer's by CONTACT_LEAST levels
+// or more in every channel, the ground round their feet, and no more than CONTACT_SHARE of the picture.
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { tierWithout } from "../../client/core/passes.ts";
 import { buildCorePack } from "../pack/build.ts";
-import { spread } from "../probe-textured.ts";
 import { provingView } from "../snap.ts";
 import { judge, type Picture } from "./lit.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
@@ -19,14 +19,14 @@ import { Shot, type LitCheck, type Readback } from "./shot.ts";
 const [W, H] = [640, 360];
 /** Noon, an hour before sunset, and the middle of the night. */
 const HOURS = [12, 17, 0];
-/** Levels of 255 bloom may move the picture's mean, any channel, and 999 pixels in 1,000. */
 const BLOOM_MEAN = 1;
-const BLOOM_MOST = 8;
+const BLOOM_PIXELS = 200;
 const CONTACT_LEAST = 4;
 const CONTACT_PIXELS = 100;
 const CONTACT_SHARE = 0.02;
 
-const pictures: (Picture & { bloomed: number })[] = [];
+const pictures: Picture[] = [];
+let bloom: { plain: number; bloomed: number } | null = null;
 let contacted: { frame: number; color: Uint8ClampedArray } | null = null;
 
 export const postCheck: LitCheck = {
@@ -37,56 +37,66 @@ export const postCheck: LitCheck = {
     view.cam.pitch = 0;
     view.scene.plainSky = true;
     view.scene.canvasHeight = H;
-    const high = tierOf("high");
+    const [high, plain] = [tierOf("high"), tierWithout(tierOf("high"), new Set(["bloom"]))];
     const shot = new Shot("post", W, H, view.hf, buildCorePack());
     const bodies = view.remote.count;
     view.remote.count = 0;
+    view.scene.assets.tier = plain;
     for (const hour of HOURS) {
       view.scene.hour = hour;
-      view.scene.assets.tier = tierWithout(high, new Set(["bloom"]));
       for (let f = 0; f < 3; f++) shot.add(view.render(), f === 2);
       const r = view.raster;
-      const frame = shot.read.at(-1)!;
-      view.scene.assets.tier = high;
-      shot.add(view.render(), true);
-      pictures.push({ hour, frame, bloomed: shot.read.at(-1)!, color: r.color.slice(), depth: r.depth.slice(), pickKind: r.pickKind.slice(), pickId: r.pickId.slice() });
+      pictures.push({ hour, frame: shot.read.at(-1)!, color: r.color.slice(), depth: r.depth.slice(), pickKind: r.pickKind.slice(), pickId: r.pickId.slice() });
     }
+    // Toward the sun an hour before sunset, its disc drawn: without bloom, then with it.
+    const [yaw, pitch] = [view.cam.yaw, view.cam.pitch];
+    [view.scene.hour, view.scene.plainSky, view.cam.yaw, view.cam.pitch] = [17, false, Math.PI / 2, 0.2];
+    for (let f = 0; f < 3; f++) shot.add(view.render(), f === 2);
+    const before = shot.read.at(-1)!;
+    view.scene.assets.tier = high;
+    for (let f = 0; f < 2; f++) shot.add(view.render(), f === 1);
+    bloom = { plain: before, bloomed: shot.read.at(-1)! };
+    // The bodies a few metres ahead at noon, with the plain sky again.
+    [view.scene.hour, view.scene.plainSky, view.cam.yaw, view.cam.pitch] = [12, true, yaw, pitch];
+    view.scene.assets.tier = plain;
     view.remote.count = bodies;
-    view.scene.hour = 12;
-    view.scene.assets.tier = tierWithout(high, new Set(["bloom"]));
+    for (let i = 0; i < bodies; i++) [view.remote.x[i], view.remote.z[i]] = [view.cam.x - 1 + 2.5 * i, view.cam.z + 5 + i];
+    for (let i = 0; i < bodies; i++) view.remote.y[i] = view.hf.heightAt(view.remote.x[i]!, view.remote.z[i]!);
     for (let f = 0; f < 3; f++) shot.add(view.render(), f === 2);
     contacted = { frame: shot.read.at(-1)!, color: view.raster.color.slice() };
     return [shot];
   },
 
   judge(back: Readback): { ok: boolean; lines: string[] } {
-    const lines = [`the proving ground on high, finished without bloom, against the rasterizer as the lit check holds medium; with bloom, its mean within ${BLOOM_MEAN} of that and 999 pixels in 1,000 within ${BLOOM_MOST}`];
+    const lines = [`the proving ground on high, finished without bloom, against the rasterizer as the lit check holds medium`];
     let ok = true;
     for (const pic of pictures) {
-      const [gpu, bloomed] = [back.pixels("post", pic.frame), back.pixels("post", pic.bloomed)];
-      if (!gpu || !bloomed) {
+      const gpu = back.pixels("post", pic.frame);
+      if (!gpu) {
         lines.push(`${String(pic.hour).padStart(5)} h: NO PICTURE`);
         ok = false;
         continue;
       }
       const j = judge(pic, gpu);
-      const sums = [0, 0, 0];
-      const moved: number[] = [];
-      for (let i = 0; i < W * H; i++) {
-        let most = 0;
-        for (let c = 0; c < 3; c++) {
-          sums[c]! += bloomed[i * 4 + c]! - gpu[i * 4 + c]!;
-          most = Math.max(most, Math.abs(bloomed[i * 4 + c]! - gpu[i * 4 + c]!));
-        }
-        moved.push(most);
-      }
-      const mean = Math.max(...sums.map((s) => Math.abs(s / (W * H))));
-      const m = spread(moved);
-      const p999 = moved.sort((a, b) => a - b)[Math.floor(moved.length * 0.999)]!;
-      const fine = j.ok && mean <= BLOOM_MEAN && p999 <= BLOOM_MOST;
-      ok &&= fine;
-      lines.push(`${String(pic.hour).padStart(5)} h: ${j.pixel.points} points: pixels mean ${j.pixel.mean.toFixed(2)}, 99 in 100 within ${j.pixel.p99}, worst ${j.pixel.worst}; means worst ${j.mean.worst.toFixed(2)}; bloom moves the mean ${mean.toFixed(2)}, pixels by ${m.mean.toFixed(2)} on average, 999 in 1,000 within ${p999}, worst ${m.worst}  ${fine ? "ok" : "FAIL"}`);
+      ok &&= j.ok;
+      lines.push(`${String(pic.hour).padStart(5)} h: ${j.pixel.points} points: pixels mean ${j.pixel.mean.toFixed(2)}, 99 in 100 within ${j.pixel.p99}, worst ${j.pixel.worst}; means worst ${j.mean.worst.toFixed(2)}  ${j.ok ? "ok" : "FAIL"}`);
     }
+    const [plain, bloomed] = [back.pixels("post", bloom!.plain), back.pixels("post", bloom!.bloomed)];
+    if (!plain || !bloomed) return { ok: false, lines: [...lines, "bloom: NO PICTURE"] };
+    const sums = [0, 0, 0];
+    let [moved, most] = [0, 0];
+    for (let i = 0; i < W * H; i++) {
+      let far = 0;
+      for (let c = 0; c < 3; c++) {
+        sums[c]! += bloomed[i * 4 + c]! - plain[i * 4 + c]!;
+        far = Math.max(far, Math.abs(bloomed[i * 4 + c]! - plain[i * 4 + c]!));
+      }
+      if (far >= 2) moved++;
+      most = Math.max(most, far);
+    }
+    const mean = Math.max(...sums.map((s) => Math.abs(s / (W * H))));
+    const glows = mean <= BLOOM_MEAN && moved >= BLOOM_PIXELS;
+    lines.push(`bloom, toward the sun at 17 h: the mean moved ${mean.toFixed(2)} (within ${BLOOM_MEAN}), ${moved} pixels moved by 2 levels or more (${BLOOM_PIXELS} at least), the most ${most}  ${glows ? "ok" : "FAIL"}`);
     const [gpu, bare] = [contacted && back.pixels("post", contacted.frame), back.pixels("post", pictures[0]!.frame)];
     if (!gpu || !bare) return { ok: false, lines: [...lines, "contact: NO PICTURE"] };
     const darker = (got: Uint8Array, want: ArrayLike<number>): number => {
@@ -96,7 +106,7 @@ export const postCheck: LitCheck = {
     };
     const more = darker(gpu, contacted!.color) - darker(bare, pictures[0]!.color);
     const fine = more >= CONTACT_PIXELS && more <= W * H * CONTACT_SHARE;
-    lines.push(`contact: with the survivor and the grazer at noon, ${more} more pixels (${((more / (W * H)) * 100).toFixed(2)}%) than without them ${CONTACT_LEAST} levels or more darker than the rasterizer  ${fine ? "ok" : "FAIL"}`);
-    return { ok: ok && fine, lines };
+    lines.push(`contact: with the survivor and the grazer a few metres ahead at noon, ${more} more pixels (${((more / (W * H)) * 100).toFixed(2)}%) than without them ${CONTACT_LEAST} levels or more darker than the rasterizer  ${fine ? "ok" : "FAIL"}`);
+    return { ok: ok && glows && fine, lines };
   },
 };
