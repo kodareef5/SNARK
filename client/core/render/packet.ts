@@ -262,14 +262,25 @@ export const FRAME = {
   nearFromZ: 15,
   nearToX: 23,
   nearToZ: 39,
+  /**
+   * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
+   * blue, and the saturation after it; then the power the toned light is raised to, bloom's share, the sharpen's
+   * strength, and bloom's levels. A frame with no light target leaves them 0 and is not graded.
+   */
+  grade: 152,
+  saturation: 155,
+  gamma: 156,
+  bloom: 157,
+  sharpen: 158,
+  levels: 159,
 } as const;
-export const FRAME_FLOATS = FRAME.look + 4;
+export const FRAME_FLOATS = FRAME.levels + 1;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
-  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook;
+  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fGrade, fFinish;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

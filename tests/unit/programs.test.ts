@@ -29,10 +29,11 @@ test("low poly's programs are the pinned flat texts, and every sampler a program
     }
   }
   // The material's five maps and the rest each have a unit, the layer the last but one, and the details atlas the last,
-  // which only the details program reads and which is free outside its draws.
+  // which only the details program reads and which is free outside its draws, where the finish's passes, after every
+  // draw, read their sources there (post.ts).
   const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint, UNIT.atlas, UNIT.layer, UNIT.details];
   expect([new Set(units).size, Math.max(...units)]).toEqual([16, 15]);
-  expect(Object.entries(PROGRAMS).filter(([, make]) => Object.values(make(TIERS[1]!, "bc").samplers).includes(UNIT.details)).map(([name]) => name)).toEqual(["details"]);
+  expect(Object.entries(PROGRAMS).filter(([, make]) => Object.values(make(TIERS[1]!, "bc").samplers).includes(UNIT.details)).map(([name]) => name)).toEqual(["details", "bloomDown", "bloomUp", "finish"]);
 });
 
 test("the frame block: each value inside its slot, a GLSL slot for every four floats, and the packet's views of it", () => {
@@ -101,7 +102,7 @@ test("a tier's programs are every one its frames may draw with, each once, the s
       const names = tierPrograms(tier).map(named);
       expect(new Set(names).size).toBe(names.length);
       if (!tier.lit) expect(names).toEqual(["flat", "terrain", "terrainWindow", "far", "pulled", "details"]);
-      else expect(names).toEqual(Object.keys(PROGRAMS));
+      else expect(names).toEqual(Object.keys(PROGRAMS).filter((n) => tier.post !== null || !["bloomDown", "bloomUp", "finish"].includes(n)));
       const texts = new Set(names.map((n) => JSON.stringify(PROGRAMS[n]!(tier, "astc"))));
       expect(texts.size).toBe(names.length);
     }

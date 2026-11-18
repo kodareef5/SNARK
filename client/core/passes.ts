@@ -8,9 +8,9 @@ import type { Tier } from "./assets/tiers.ts";
 import { HAND_NEAR } from "./render/hand.ts";
 import { DRAW_WATER, FRAME, type FramePacket } from "./render/packet.ts";
 
-/** A frame's passes in the order the shell draws them. The dome is drawn at the start of the far see-through step. */
-export const PASSES = ["uploads", "casters", "near", "far", "dome", "far see-through", "near see-through", "body"] as const;
-export const [PASS_UPLOADS, PASS_CASTERS, PASS_NEAR, PASS_FAR, PASS_DOME, PASS_FAR_SEE, PASS_NEAR_SEE, PASS_BODY] = [0, 1, 2, 3, 4, 5, 6, 7];
+/** A frame's passes in the order the shell draws them. The dome is drawn at the start of the far see-through step; the finish (render/post.ts) last, where a frame has one. */
+export const PASSES = ["uploads", "casters", "near", "far", "dome", "far see-through", "near see-through", "body", "finish"] as const;
+export const [PASS_UPLOADS, PASS_CASTERS, PASS_NEAR, PASS_FAR, PASS_DOME, PASS_FAR_SEE, PASS_NEAR_SEE, PASS_BODY, PASS_FINISH] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 /** The pass each of the frame's steps (packet.ts STEP_) begins. */
 export const PASS_OF_STEP: readonly number[] = [PASS_NEAR, PASS_FAR, PASS_FAR_SEE, PASS_NEAR_SEE, PASS_BODY];
 
@@ -168,9 +168,10 @@ export class BenchRun {
 
 /**
  * Effects `?off=` names, comma separated, for a before and after. "band" draws the near nodes in the hand-over without
- * its discard, and "layers" draws hurt and dead bodies with the plain surface program, in the draws they have.
+ * its discard, and "layers" draws hurt and dead bodies with the plain surface program, in the draws they have. "light"
+ * draws a tier with a light target as medium draws, each shader toning onto the canvas, and "bloom" finishes it with no bloom (render/post.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -192,6 +193,8 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
     if (off.has("farblocks")) copy = { ...copy, reach: { ...copy.reach, bases: 0 } };
     if (off.has("farnodes")) copy = { ...copy, reach: { ...copy.reach, trees: 0, rocks: 0, bushes: 0 } };
     if (off.has("farcity")) copy = { ...copy, reach: { ...copy.reach, city: 0 } };
+    if (off.has("light")) copy = { ...copy, post: null };
+    if (off.has("bloom") && copy.post) copy = { ...copy, post: { ...copy.post, bloom: 0 } };
     mine.set(key, copy);
   }
   return copy;

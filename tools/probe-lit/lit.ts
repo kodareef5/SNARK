@@ -27,7 +27,7 @@ const SMOOTH = 3;
 const TOLERANCE = { mean: 3, pixelP99: 3 };
 
 /** The rasterizer's picture of a frame read back, and what is under each pixel. */
-interface Picture {
+export interface Picture {
   hour: number;
   frame: number;
   color: Uint8ClampedArray;
@@ -39,7 +39,7 @@ interface Picture {
 const pictures: Picture[] = [];
 
 /** The GPU's picture, top row first, against the rasterizer's at points away from edges: the worst channel of the pixel, and of the 5 by 5 mean about it. */
-function judge(pic: Picture, gpu: Uint8Array): { pixel: Spread; mean: Spread; dome: number; ok: boolean } {
+export function judge(pic: Picture, gpu: Uint8Array): { pixel: Spread; mean: Spread; dome: number; ok: boolean } {
   const { color, depth, pickKind, pickId } = pic;
   const flat = (i: number): boolean => {
     const sky = pickKind[i] === PICK_SKY;

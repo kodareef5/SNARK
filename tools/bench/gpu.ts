@@ -9,7 +9,8 @@
 // device probe's crowd, its thatch and a base of 1,024 pieces, the device probe's wood on the 8 km hills, and a flock of
 // hurt and dead dodos. The city is a built Miami (var/maps/miami.snmap, or the file CITY_MAP names) in a 1,920 by 1,080
 // window at one and two device pixels to one, on its street and over it, the survivor held there as a ghost: on medium,
-// high and ultra, with shadows and the far layers off in turn on medium at one and on ultra at two. A city row's GL
+// high and ultra, with shadows and the far layers off in turn on medium at one and on ultra at two, and the finish's
+// light target and its bloom off on high and ultra at one. A city row's GL
 // draws and triangles are of the frame its run ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
 // process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
@@ -70,6 +71,8 @@ export function plan(): Run[] {
   for (const view of ["street", "air"] as View[]) {
     for (const tier of ["medium", "high", "ultra"]) for (const scale of [1, 2]) runs.push({ scene: "city", view, tier, scale });
     for (const [tier, scale] of [["medium", 1], ["ultra", 2]] as const) for (const off of ["shadows", "far"] as const) runs.push({ scene: "city", view, tier, scale, off });
+    // The finish (post.ts): the light target and its pass, and bloom by itself.
+    for (const tier of ["high", "ultra"]) for (const off of ["light", "bloom"] as const) runs.push({ scene: "city", view, tier, scale: 1, off });
   }
   return runs;
 }

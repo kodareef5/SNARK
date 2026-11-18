@@ -257,17 +257,30 @@ export function tone(out: Out, c: Numbers): void {
 }
 
 /**
+ * The grade after the tone curve (content/grade.ts), from the frame block's finish: each colour kept `saturation` as far
+ * from its grey, then raised to `gamma`. The twin of the GLSL `graded`.
+ */
+export function graded(out: Out, frame: Numbers): void {
+  const grey = out[0]! * LUMA[0] + out[1]! * LUMA[1] + out[2]! * LUMA[2];
+  const saturation = frame[FRAME.saturation]!, gamma = frame[FRAME.gamma]!;
+  for (let c = 0; c < 3; c++) out[c] = Math.pow(Math.max(grey + (out[c]! - grey) * saturation, 0), gamma);
+}
+
+/**
  * What is drawn: light times the frame's exposure, through the tone curve, clamped and shown as display values. Under
  * water it is then in the fog `dist` metres off, the flat renderer's. Above water the GLSL puts the air in first
- * (atmosphere.ts `hazed`), which the rasterizer leaves out (D264).
+ * (atmosphere.ts `hazed`), which the rasterizer leaves out (D264). A tier with a light target (post.ts) mixes the fog
+ * in as light, then takes the frame's grade about the tone curve, as its finishing pass does; its bloom, sharpen and
+ * dither are the GPU's alone.
  */
 export function shown(out: Out, light: Numbers, dist: number, p: FramePacket): void {
-  const exposure = p.frame[FRAME.exposure]!;
-  for (let c = 0; c < 3; c++) out[c] = light[c]! * exposure;
-  tone(out, out);
-  let fog = p.frame[FRAME.eyeHeight]! >= 0 ? 0 : (dist - p.fogStart) / (p.fogEnd - p.fogStart);
+  const f = p.frame, exposure = f[FRAME.exposure]!, post = p.tier.post !== null;
+  let fog = f[FRAME.eyeHeight]! >= 0 ? 0 : (dist - p.fogStart) / (p.fogEnd - p.fogStart);
   fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
-  for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(out[c]!, 0), 1)) * (1 - fog) + p.sky[c]! * fog;
+  for (let c = 0; c < 3; c++) out[c] = post ? (light[c]! * exposure * (1 - fog) + srgbToLinear(p.sky[c]!) * fog) * f[FRAME.grade + c]! : light[c]! * exposure;
+  tone(out, out);
+  if (post) graded(out, f);
+  for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(out[c]!, 0), 1)) * (post ? 1 : 1 - fog) + (post ? 0 : p.sky[c]! * fog);
 }
 
 /**
@@ -370,11 +383,34 @@ const DYE = `vec3 dye(uint i) {
 
 export const SURFACE_VERTEX = surfaceVertex(SURFACE_ANY);
 
+/** `graded` as GLSL, after the frame block. */
+export const GRADED = `vec3 graded(vec3 c) {
+  float grey = dot(c, vec3(${LUMA.map(f).join(", ")}));
+  return pow(max(mix(vec3(grey), c, fGrade.a), 0.0), vec3(fFinish.x));
+}
+`;
+
+/** `tone` as GLSL, and `encoded`, light as a display value on the sRGB curve: what LIGHT shows by, and the finishing pass (post.ts). */
+export const TONE = `vec3 tone(vec3 c) {
+  float peak = max(c.r, max(c.g, c.b));
+  if (peak <= ${f(KNEE)}) return c;
+  float d = 1.0 - ${f(KNEE)};
+  float top = 1.0 - d * d / (peak + d - ${f(KNEE)});
+  float white = 1.0 - 1.0 / (${f(WHITEN)} * (peak - top) + 1.0);
+  return mix(c * (top / peak), vec3(top), white);
+}
+vec3 encoded(vec3 c) {
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+`;
+
 /**
  * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
  * `skyShare`, `skyOn`, `skyLight`, `direct`, `lit`, `tone` and `shown`. `shown` takes where the point is from the eye, and the air
  * between (atmosphere.ts `hazed`, which a program defines after this) above water; under water, today's fog. What
- * lights includes SHADOW_GLSL after it, for `lit`'s shade.
+ * lights includes SHADOW_GLSL after it, for `lit`'s shade. With LIGHT_TARGET defined (post.ts) it shows light as it
+ * is after exposure, for the finishing pass to tone and grade, and the fog's colour as light; `SHOWN_STEP` is a
+ * display step, which a text dithering what it shows takes, and 0 there.
  */
 export const LIGHT = `${FRAME_BLOCK}uniform vec3 uSky;
 uniform vec2 uFog;
@@ -412,23 +448,28 @@ vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   vec3 light = mro.r * (sky * albedo * (1.0 - mro.b) + skyShare(f0, rough, nv) * mix(mirrored, sky, a));
   return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) * shade + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv);
 }
-vec3 tone(vec3 c) {
-  float peak = max(c.r, max(c.g, c.b));
-  if (peak <= ${f(KNEE)}) return c;
-  float d = 1.0 - ${f(KNEE)};
-  float top = 1.0 - d * d / (peak + d - ${f(KNEE)});
-  float white = 1.0 - 1.0 / (${f(WHITEN)} * (peak - top) + 1.0);
-  return mix(c * (top / peak), vec3(top), white);
-}
+${TONE}#ifdef LIGHT_TARGET
 vec3 display(vec3 c) {
-  c = clamp(tone(c), 0.0, 1.0);
-  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+  return c;
 }
+vec3 fogShown() {
+  return mix(uSky / 12.92, pow((uSky + 0.055) / 1.055, vec3(2.4)), step(0.04045, uSky));
+}
+const float SHOWN_STEP = 0.0;
+#else
+vec3 display(vec3 c) {
+  return encoded(clamp(tone(c), 0.0, 1.0));
+}
+vec3 fogShown() {
+  return uSky;
+}
+const float SHOWN_STEP = ${f(1 / 255)};
+#endif
 vec3 hazed(vec3 light, vec3 rel);
 vec3 shown(vec3 light, vec3 rel) {
   if (fHaze.z >= 0.0) return display(hazed(light, rel) * fSunColor.w);
   float fog = clamp((length(rel) - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-  return mix(display(light * fSunColor.w), uSky, fog * fog);
+  return mix(display(light * fSunColor.w), fogShown(), fog * fog);
 }
 `;
 

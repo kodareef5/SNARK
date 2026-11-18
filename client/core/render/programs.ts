@@ -9,6 +9,7 @@ import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./detailtext.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, type FramePacket } from "./packet.ts";
+import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
 import { worldVertex } from "./world-surfaces.ts";
@@ -40,71 +41,82 @@ const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
 const GROUND = { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint };
 const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
 
+/** What a lit program defines where its frame is drawn into the light target (post.ts): it shows light, which the finish tones. */
+const out = (tier: Tier, light: boolean): string => (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
+
 /**
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
  * the haze and looks the sun's shadow up. The ground has a vertex text of its own on a lit tier, `litVertex`.
  */
-function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>, litVertex?: string): ProgramText {
+function flatOr(tier: Tier, format: TextureFormat, hard: boolean, light: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>, litVertex?: string): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
-  return { vertex: litVertex ?? worldVertex(vertex), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: shadowDefines(tier.shadows, hard) + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : ""), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
+  return { vertex: litVertex ?? worldVertex(vertex), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: shadowDefines(tier.shadows, hard) + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : "") + out(tier, light), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
-function surface(tier: Tier, format: TextureFormat, hard: boolean, variant: SurfaceVariant): ProgramText {
+function surface(tier: Tier, format: TextureFormat, hard: boolean, light: boolean, variant: SurfaceVariant): ProgramText {
   const samplers: Record<string, number> = { uBones: UNIT.bones, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow };
   if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
   if (variant.layered) samplers.uLayer = UNIT.layer;
-  return { vertex: surfaceVertex(variant), fragment: surfaceFragment(format, AIR, variant), defines: shadowDefines(tier.shadows, hard), samplers };
+  return { vertex: surfaceVertex(variant), fragment: surfaceFragment(format, AIR, variant), defines: shadowDefines(tier.shadows, hard) + out(tier, light), samplers };
 }
 
-type Make = (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText;
+/** `tier`, the texture variant, whether compared lookups come back hard, and whether the device has a light target (post.ts). */
+type Make = (tier: Tier, format: TextureFormat, hard?: boolean, light?: boolean) => ProgramText;
+
+/** A pass of the finish (post.ts), its source on the details' unit, which is free outside their draws, and bloom's on the layer's. */
+const post = (fragment: string, samplers: Record<string, number>): ProgramText => ({ vertex: POST_VERTEX, fragment, defines: "", samplers });
 
 /** A flat mesh program, whose vertices on a lit tier take their landmark's finishes (glsl.ts `finishVertex`). */
 const mesh = (tier: Tier, made: ProgramText): ProgramText => (tier.lit ? { ...made, vertex: finishVertex(made.vertex) } : made);
 
 const MAKE = {
-  flat: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH)),
-  terrain: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX),
+  flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH)),
+  terrain: (tier, format, hard = false, light = false) => flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX),
   // The same, for the tiles that read the window round the camera (terrain.ts).
-  terrainWindow: (tier, format, hard): ProgramText => {
-    const t = MAKE.terrain(tier, format, hard);
+  terrainWindow: (tier, format, hard, light): ProgramText => {
+    const t = MAKE.terrain(tier, format, hard, light);
     return { ...t, samplers: { ...t.samplers, ...WINDOW } };
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
-  seeThrough: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH)),
+  seeThrough: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH)),
   // Far blocks (far.ts), which fade out over the last of their reach, and nodes in the hand-over between the near store
   // and the far one (hand.ts). A program of their own keeps the discard out of the rest.
-  far: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH)),
+  far: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH)),
   // Far nodes of every mesh in one draw (packet.ts DRAW_PULLED), their vertices read from the atlas.
-  pulled: (tier, format, hard = false) => mesh(tier, flatOr(tier, format, hard, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas })),
+  pulled: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas })),
   // A textured draw (surface.ts), dyed and able to drop fragments; and the same undyed, never dropping, or both, which
   // `drawProgram` takes where a draw allows (SurfaceVariant).
-  surface: (tier, format, hard = false) => surface(tier, format, hard, SURFACE_ANY),
-  surfaceWhole: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, drops: false }),
-  surfaceUndyed: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, dyed: false }),
-  surfaceUndyedWhole: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, dyed: false, drops: false }),
+  surface: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, SURFACE_ANY),
+  surfaceWhole: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, drops: false }),
+  surfaceUndyed: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, dyed: false }),
+  surfaceUndyedWhole: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, dyed: false, drops: false }),
   // The same for a body that is hurt or a corpse, which reads its layer too (packet.ts `drawLayer`). Only such a body is drawn with it.
-  surfaceLayer: (tier, format, hard = false) => surface(tier, format, hard, { ...SURFACE_ANY, layered: true }),
+  surfaceLayer: (tier, format, hard = false, light = false) => surface(tier, format, hard, light, { ...SURFACE_ANY, layered: true }),
   // The dome, and over it the sky material's pictures on its units as a material's: the moon as its base colour and the cloud layers as its two masks.
-  sky: () => ({ vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: "", samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }),
+  sky: (tier, _, __, light = false) => ({ vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: out(tier, light), samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }),
   // The sea seen from above on a lit tier: the flat mesh's tiles, the waves as a material's two masks, the ground's heights to know how deep it is, and the sun's shadow.
-  water: (tier, _, hard = false) => ({
+  water: (tier, _, hard = false, light = false) => ({
     vertex: FLAT_MESH_VERTEX,
     fragment: WATER_FRAGMENT,
-    defines: shadowDefines(tier.shadows, hard),
+    defines: shadowDefines(tier.shadows, hard) + out(tier, light),
     samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
   }),
   // Small details (packet.ts DRAW_DETAILS): on a lit tier their pictures, lit and in the sun's shadow; on low poly their flat shapes.
-  details: (tier, _, hard = false): ProgramText =>
+  details: (tier, _, hard = false, light = false): ProgramText =>
     tier.lit
-      ? { vertex: DETAIL_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: shadowDefines(tier.shadows, hard), samplers: { uDetails: UNIT.details, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
+      ? { vertex: DETAIL_VERTEX, fragment: DETAIL_LIT_FRAGMENT, defines: shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { uDetails: UNIT.details, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } }
       : { vertex: DETAIL_VERTEX, fragment: DETAIL_FLAT_FRAGMENT, defines: "", samplers: {} },
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
   depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones } }),
   depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps } }),
   depthTerrain: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: GROUND }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),
+  // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
+  bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),
+  bloomUp: () => post(BLOOM_UP, { uSource: UNIT.details }),
+  finish: () => post(FINISH, { uScene: UNIT.details, uBloom: UNIT.layer }),
 } satisfies Record<string, Make>;
 
 /**
@@ -116,12 +128,13 @@ export const PROGRAMS: Readonly<Record<string, Make>> = MAKE;
 /** Each program's number, its place in PROGRAMS: how a frame's draws name the one they are drawn with, and how a shell keeps them. */
 export const PROGRAM = Object.fromEntries(Object.keys(MAKE).map((name, n) => [name, n])) as Readonly<Record<keyof typeof MAKE, number>>;
 
-/** The programs low poly draws with: no materials, dome, sea or shadows. */
+/** The programs low poly draws with: no materials, dome, sea or shadows; and the finish's, which a tier with a light target draws with alone. */
 const UNLIT = ["flat", "terrain", "terrainWindow", "seeThrough", "far", "pulled", "details"];
+const POST = ["bloomDown", "bloomUp", "finish"];
 
 /** The programs a frame of `tier` may ask for, by number, which a shell may begin making before one does. */
 export function tierPrograms(tier: Tier): number[] {
-  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) ? [n] : []));
+  return Object.keys(MAKE).flatMap((name, n) => ((tier.lit || UNLIT.includes(name)) && (name !== "seeThrough" || tier.split > 0) && (!name.startsWith("depth") || tier.shadows.size > 0) && (!POST.includes(name) || tier.post !== null) ? [n] : []));
 }
 
 /** The SURFACE programs by whether a draw is dyed, twice, and may drop fragments, once. */

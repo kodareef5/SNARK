@@ -18,6 +18,7 @@ import { farShadowCheck } from "./probe-lit/farshadow.ts";
 import { layersCheck } from "./probe-lit/layers.ts";
 import { litCheck } from "./probe-lit/lit.ts";
 import { nodesCheck } from "./probe-lit/nodes.ts";
+import { postCheck } from "./probe-lit/post.ts";
 import { seamsCheck } from "./probe-lit/seams.ts";
 import { shadowCheck } from "./probe-lit/shadow.ts";
 import { topFirst, type Device, type LitCheck, type Readback, type Shot } from "./probe-lit/shot.ts";
@@ -29,7 +30,7 @@ import { waterCheck } from "./probe-lit/water.ts";
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck, cityCheck, skyCheck, shadowCheck, farShadowCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, rotorCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, skyCheck, shadowCheck, farShadowCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, rotorCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
