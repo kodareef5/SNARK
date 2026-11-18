@@ -56,7 +56,7 @@ export function readLayers(folder: string): MapData {
     return (bits === 8 ? raw : Uint16Array.from({ length: width * height }, (_, i) => raw[i * 2]! | (raw[i * 2 + 1]! << 8))).reverse();
   };
 
-  const about = need(json<{ id: string; chunks: [number, number]; frame?: [number, number]; origin?: [number, number]; minY: number; stepY: number; seaLevel?: number | null }>("map.json"), "map.json");
+  const about = need(json<{ id: string; chunks: [number, number]; frame?: [number, number]; origin?: [number, number]; minY: number; stepY: number; tideEyes?: MapData["tideEyes"]; seaLevel?: number | null }>("map.json"), "map.json");
   const dims = framed({ chunksX: about.chunks[0], chunksZ: about.chunks[1], ...(about.frame ? { frameX: about.frame[0], frameZ: about.frame[1] } : {}), ...(about.origin ? { originX: about.origin[0], originZ: about.origin[1] } : {}) });
   const sizeX = dims.chunksX * CHUNK_SIZE;
   const sizeZ = dims.chunksZ * CHUNK_SIZE;
@@ -119,6 +119,7 @@ export function readLayers(folder: string): MapData {
     minY: about.minY,
     stepY: about.stepY,
     seaLevel: about.seaLevel ?? -Infinity,
+    ...(about.tideEyes?.length ? { tideEyes: about.tideEyes.map(e => ({ ...e, yaw: toYaw(e.yaw) })) } : {}),
     heights: heights as Uint16Array,
     tint: (picture("tint", 8, nx, nz) as Uint8Array | null) ?? new Uint8Array(nx * nz),
     // The ground's class each two samples a side (MapData.ground), where the folder has one: every even sample's.
@@ -148,7 +149,7 @@ export function writeLayers(map: MapData, folder: string): void {
   const put = (name: string, data: Uint8Array | string): void => writeFileSync(join(folder, name), data);
   /** One record a line, so that a change to one shows as one line. */
   const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
-  const about = { id: map.id, chunks: [chunksX, chunksZ], frame: [frameX, frameZ], origin: [originX, originZ], minY: map.minY, stepY: map.stepY, ...(map.seaLevel === -Infinity ? {} : { seaLevel: map.seaLevel }) };
+  const about = { id: map.id, chunks: [chunksX, chunksZ], frame: [frameX, frameZ], origin: [originX, originZ], minY: map.minY, stepY: map.stepY, ...(map.tideEyes?.length ? { tideEyes: map.tideEyes.map(e => ({ ...e, yaw: toDegrees(e.yaw) })) } : {}), ...(map.seaLevel === -Infinity ? {} : { seaLevel: map.seaLevel }) };
   put("map.json", `{\n${Object.entries(about).map(([key, value]) => `  ${JSON.stringify(key)}: ${JSON.stringify(value)}`).join(",\n")}\n}\n`);
   put("heights.png", writeGrey(nx, nz, map.heights.slice().reverse()));
   put("tint.png", writeGrey(nx, nz, map.tint.slice().reverse(), defaultPalette()));

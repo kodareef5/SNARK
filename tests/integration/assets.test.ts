@@ -166,8 +166,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // (1d078231 and d9e4bd01 with that alone).
   // The eight tanker salvage meshes shift the mesh indices used by this fixture (eddf2985 and bb408c85 with those alone).
   // They were 58bad411 and 3b6b9b91 until the parked trailer added its mesh to the pack.
-  expect(beforePlain).toBe("53ded435");
-  expect(hash).toBe("67280175");
+  // The obelisk meshes change the fixture's mesh numbers.
+  expect(beforePlain).toBe("e1a058b1");
+  expect(hash).toBe("a90344f1");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -192,7 +193,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // draws went nearest first, as above, and 186ca8fd and 8373e09d until the Parasaur used its authored colours, as above
   // (2e5ae961 and de62efa1 with that alone), and the tanker salvage meshes, as above (8a46cd9d and 9db5f46d with those alone).
   // They were 71084b01 and 79c43231 until the same trailer mesh.
-  expect(saddled.beforePlain).toBe("20ccf441");
-  expect(saddled.hash).toBe("44267111");
+  expect(saddled.beforePlain).toBe("c8dc6d21");
+  expect(saddled.hash).toBe("eb1a0e91");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });
