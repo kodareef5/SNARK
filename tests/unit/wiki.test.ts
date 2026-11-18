@@ -73,8 +73,10 @@ test("a creature's page has its stats by level, the wiki's taming table, its dro
 
 test("a vehicle's facts are its vehicle's, and a renamed command fails the wiki rather than printing a dead line", () => {
   const car = byId("core:compact");
-  expect(car.facts.map((f) => f.label)).toEqual(["Top speed", "Reverse", "Seats", "Doors", "Fuel tank", "Health", "Inventory", "Carries", "Mass"]);
-  expect(car.facts[0]!.value).toEqual(["122 km/h"]);
+  expect(car.facts.map((f) => f.label)).toEqual(["Top speed", "Seats", "Doors", "Fuel tank", "Health", "Inventory", "Carries", "Mass"]);
+  // Its top speed is the one it reaches, measured (wiki-handling.test.ts), not the limit its specification states.
+  expect(car.facts[0]!.value).toEqual([`${Math.round(car.handling!.top * 3.6)} km/h`]);
+  expect(car.tables.map((t) => t.title)).toEqual(["How it drives"]);
   expect(() => buildCatalogue({ console: consoleLine(commands().filter((c) => c.name !== "spawn")) })).toThrow('the wiki gives "spawn" lines');
 });
 
@@ -99,7 +101,7 @@ test("a node, a status and a landmark added get their entries, and the links run
   const hut: Landmark = { name: "hut", defs: LANDMARKS[0]!.defs, pieces: [{ kind: piece.id, at: [0, 0, 0], yaw: 0 }], vehicles: [{ kind: "core:compact", id: "hut/car", at: [4, 0, 0], yaw: 0 }], ground: [] };
   const list = buildCatalogue({ defs: [...CORE_CONTENT, ...added], landmarks: [...LANDMARKS, hut] });
   const of = (id: string) => list.find((e) => e.id === id)!;
-  expect(of("wiki:cactus").tables[0]!.rows.map((r) => r.map((c) => (typeof c === "string" ? c : "rate" in c ? c.text : c.id)))).toEqual([["core:fiber", "1 to 2", "3 to 6"], ["core:wood", "", "3"]]);
+  expect(of("wiki:cactus").tables[0]!.rows.map((r) => r.map((c) => (typeof c === "string" ? c : Array.isArray(c) ? "" : "rate" in c ? c.text : c.id)))).toEqual([["core:fiber", "1 to 2", "3 to 6"], ["core:wood", "", "3"]]);
   expect(of("core:hatchet").related.find((r) => r.relation === "Works")!.refs).toContainEqual({ id: "wiki:cactus" });
   expect(of("core:fiber").related.find((r) => r.relation === "Gathered from")!.refs).toContainEqual({ id: "wiki:cactus" });
   expect(of("wiki:prickled").related).toContainEqual({ relation: "Given by", refs: [{ id: "wiki:needle" }] });
