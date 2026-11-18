@@ -1,12 +1,12 @@
-# Paints the compact's pictures from tex/bakes (tex/bake.py): every map of its three materials, and the hurt and decay
-# pictures the game lays over them. Everything is worked out from where each texel lies on the car, which way it
+# Paints the compact's pictures from tex/bakes (tex/bake.py): every map of its three materials, and from its own hurt
+# and decay the wrecks' pictures. The hurt and decay pictures the game lays over the car are tex/wear.py's. Everything
+# is worked out from where each texel lies on the car, which way it
 # faces, what it is (its tag, parts.py TAGS) and how much light reaches it, by seeded noise and measured shapes, so a
 # picture is the same on every run and its charts meet without seams.
 #
 #   python3 -B tex/paint.py            (NumPy, SciPy, Pillow)
 #
-# Writes tex/<material>_{base,normal,packed,mask,height,hurt,decay}.png and tex/maps.json, and tex/review/*.png, each
-# map seen whole.
+# Writes tex/<material>_{base,normal,packed,mask,height}.png and tex/maps.json, and tex/review/*.png, each map seen whole.
 
 import ast
 import json
@@ -222,7 +222,7 @@ class Surface:
         n /= np.linalg.norm(n, axis=-1, keepdims=True)
         return n
 
-    def save(self, cutout=False, layer_scale=2):
+    def save(self, cutout=False):
         S = self.size
         out = lambda suffix: os.path.join(HERE, f"{self.name}_{suffix}.png")
         base = np.clip(self.base, 0, 1).reshape(S, S, 3)
@@ -238,23 +238,6 @@ class Surface:
         h = self.height.reshape(S, S)
         lo, hi = float(h.min()), float(h.max())
         Image.fromarray(np.round((h - lo) / max(hi - lo, 1e-9) * 65535).astype(np.uint16)).save(out("height"))
-        # The layers at a size under the base colour's: colour weighed by how soon it shows, alpha the soonest of four.
-        hurt_alpha = None
-        for kind, layer in (("hurt", self.hurt), ("decay", self.decay)):
-            L = layer.reshape(S, S, 4)
-            k = layer_scale
-            blocks = L.reshape(S // k, k, S // k, k, 4)
-            a = blocks[..., 3]
-            w = a[..., None] + 1e-6
-            colour = (blocks[..., :3] * w).sum((1, 3)) / w.sum((1, 3))
-            amax = np.round(a.max((1, 3)) * 255) / 255
-            # Where any of the hurt shows, the decay is passed over: none of it may lie under the hurt.
-            if hurt_alpha is None:
-                hurt_alpha = amax
-            else:
-                amax = np.where(hurt_alpha > 0, 0, amax)
-            img = np.concatenate([np.clip(colour, 0, 1), amax[..., None]], -1)
-            Image.fromarray(np.round(img * 255).astype(np.uint8)).save(out(kind), optimize=True)
         return hi - lo
 
 

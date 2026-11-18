@@ -1,4 +1,4 @@
-"""Draw the fastback's finish maps and its registered panel damage with Pillow and NumPy."""
+"""Draw the fastback's finish maps with Pillow and NumPy. Its hurt and decay pictures are wear.py's."""
 
 from pathlib import Path
 import sys
@@ -34,8 +34,6 @@ maps = {
         ("detail", "RGBA", (42, 43, 44, 255)),
         ("detail_orm", "RGB", (255, 128, 0)),
         ("detail_mask", "RGB", (0, 0, 0)),
-        ("detail_hurt", "RGBA", (0, 0, 0, 0)),
-        ("detail_decay", "RGBA", (0, 0, 0, 0)),
     ]
 }
 Y, X = np.indices((T, T))
@@ -85,49 +83,5 @@ for i, (name, (base, rough, metal)) in enumerate(FINISH.items()):
     maps["detail_orm"].paste((255, rough, metal), (*pos, pos[0] + T, pos[1] + T))
     if name in ("seat", "weave", "alloy"):
         maps["detail_mask"].paste((0, 0, 255) if name == "alloy" else (0, 255, 0), (*pos, pos[0] + T, pos[1] + T))
-    if name not in ("invisible", "glass"):
-        grime = Image.fromarray(np.dstack([color((54, 47, 41), grain * 1.5), np.clip(89 + grain * 4, 0, 255).astype("uint8")]))
-        maps["detail_decay"].paste(grime, pos)
-    if name in ("headlight", "taillight", "glass", "projector"):
-        scratch = Image.new("RGBA", (T, T))
-        d = ImageDraw.Draw(scratch)
-        for j in range(6):
-            a = j * 1.05 + 0.11
-            line = [
-                (58, 61),
-                (58 + 18 * math.cos(a), 61 + 18 * math.sin(a)),
-                (58 + 46 * math.cos(a + 0.18), 61 + 46 * math.sin(a + 0.18)),
-            ]
-            d.line(line, fill=(134, 151, 156, 90 + j * 18), width=1)
-        maps["detail_hurt"].paste(scratch, pos)
 for name, im in maps.items():
     im.save(HERE / (name + ".png"))
-for mode in ("hurt", "decay"):
-    side = 512
-    im = Image.new("RGBA", (side, side))
-    d = ImageDraw.Draw(im)
-    if mode == "hurt":
-        for _ in range(18):
-            x, y = rng.integers(9, side - 10, 2)
-            angle = rng.uniform(-0.35, 0.35)
-            length = rng.uniform(10, 60)
-            for j in range(int(rng.integers(3, 10))):
-                dx = rng.uniform(0, 22)
-                dy = rng.normal(0, 3)
-                l = length * rng.uniform(0.18, 1)
-                d.line((x + dx, y + dy, x + dx + l, y + dy + l * angle), fill=(135, 140, 135, int(rng.uniform(87, 253))), width=1)
-    else:
-        scatter = rng.normal(0, 10, (side, side))
-        Y, X = np.indices((side, side))
-        cloud = np.sin(X * 0.031 + np.cos(Y * 0.046)) * 0.24 + np.cos(Y * 0.047 + np.sin(X * 0.026)) * 0.20 + 0.5
-        im = Image.fromarray(
-            np.dstack([color((67, 55, 46), cloud * 20 + scatter), np.clip(cloud * 160 + 60 + scatter, 5, 255).astype("uint8")])
-        )
-    im.save(HERE / f"enamel_{mode}.png")
-
-# A texel belongs to exactly one of the two native damage layers.
-for group in ("enamel", "detail"):
-    hurt = np.array(Image.open(HERE / f"{group}_hurt.png"))
-    decay = np.array(Image.open(HERE / f"{group}_decay.png"))
-    decay[:, :, 3][hurt[:, :, 3] > 0] = 0
-    Image.fromarray(decay).save(HERE / f"{group}_decay.png")

@@ -42,6 +42,7 @@ import { PROGRAM, drawProgram } from "./programs.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
+import { WEAR_KEY } from "./wear.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndexCount } from "./packet.ts";
 import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
 import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
@@ -2486,7 +2487,7 @@ export class Scene {
    * Draws `count` instances of a mesh at the level the card has nearest to `wanted`: one draw for each of the level's
    * sections when the card has everything its materials take, and otherwise one flat draw of the whole of it. `passes`
    * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two. A section whose
-   * material has its layer on the card draws it at `layer`. A tree's crown may be drawn at a level of its own, `crown`,
+   * material has its layer on the card draws it at `layer`, which holds its wear story too (wear.ts WEAR_KEY). A tree's crown may be drawn at a level of its own, `crown`,
    * and its cut-out leaves at a share, the first of them (tools/pack/sprays.ts): its bark from the level wanted and the
    * rest from the crown's, while both are drawn with their materials, else all of it at the crown's.
    */
@@ -2543,7 +2544,8 @@ export class Scene {
       p.drawOffset[d * 3 + 2] = oz;
       p.drawFlags[d] = flags | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
-      p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer : 0;
+      p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
+      p.drawWear[d] = p.drawLayer[d]! > 0 ? Math.floor(layer / WEAR_KEY) : 0;
       const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;
       tris += made;
       if (material < 0 || this.barkOf[material] === 0) crowns += made;

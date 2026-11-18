@@ -1,4 +1,4 @@
-"""Paint the three van atlases. Run with Python, Pillow and NumPy from any directory."""
+"""Paint the three van atlases but for their hurt and decay pictures, which are wear.py's. Run with Python, Pillow and NumPy from any directory."""
 
 import math
 from pathlib import Path
@@ -80,8 +80,6 @@ for mat, tags in TAGS.items():
             "mask": "RGB",
             "height": "L",
             "normal": "RGB",
-            "hurt": "RGBA",
-            "decay": "RGBA",
         }.items()
     }
     for i, tag in enumerate(tags):
@@ -170,35 +168,12 @@ for mat, tags in TAGS.items():
         gy, gx = np.gradient(h)
         norm = np.stack((-gx * 0.06, gy * 0.06, np.ones_like(h)), axis=2)
         norm /= np.linalg.norm(norm, axis=2)[:, :, None]
-        hurt, decay = Image.new("RGBA", (S, S)), Image.new("RGBA", (S, S))
-        if tag in PAINT | METAL | {"sill", "step", "rubstrip"}:
-            for _ in range(11):
-                x, y = rng.integers(2, 121, 2)
-                length = int(rng.integers(3, 18))
-                ImageDraw.Draw(hurt).line(
-                    (x, y, x + length, y - int(rng.integers(1, 5))), fill=(94, 87, 73, int(rng.integers(48, 218))), width=1
-                )
-            for _ in range(80):
-                x, y = int(rng.integers(0, 128)), int(127 - abs(rng.normal(0, 17))) % 128
-                ImageDraw.Draw(decay).ellipse(
-                    (x, y, x + rng.integers(1, 5), y + rng.integers(1, 4)), fill=(107, 73, 50, int(rng.integers(40, 225)))
-                )
-        elif tag in LENSES | {"glass"}:
-            for k in range(5):
-                ImageDraw.Draw(hurt).line(
-                    [(75, 81), (64 + k * 7, 53 - k * 2), (50 + k * 12, 37 - k * 4)], fill=(145, 153, 149, 105), width=1
-                )
-        decay_array = np.array(decay)
-        decay_array[np.array(hurt)[:, :, 3] > 0, 3] = 0
-        decay = Image.fromarray(decay_array)
         maps = {
             "base": base,
             "packed": Image.fromarray(packed),
             "mask": Image.new("RGB", (S, S), mask),
             "height": Image.fromarray(np.uint8(h)),
             "normal": Image.fromarray(np.uint8((norm * 0.5 + 0.5) * 255 + 0.5)),
-            "hurt": hurt,
-            "decay": decay,
         }
         for r, picture in maps.items():
             atlas[r].paste(picture, ((i % 4) * S, (i // 4) * S))

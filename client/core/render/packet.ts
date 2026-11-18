@@ -397,6 +397,8 @@ export class FramePacket {
    * is drawn at, in LAYER_LEVELS of the whole (surface.ts `wounded`). 0 for any other, which reads no layer.
    */
   readonly drawLayer = new Uint8Array(MAX_DRAWS);
+  /** With a layer: the wear story its bodies take (wear.ts), 0 for none. */
+  readonly drawWear = new Uint8Array(MAX_DRAWS);
 
   tileCount = 0;
   /** Per tile: camera-relative x and z of its corner, metres per quad, sample stride. */
@@ -486,6 +488,7 @@ export class FramePacket {
     this.drawFade.fill(0);
     this.drawHand.fill(0);
     this.drawLayer.fill(0);
+    this.drawWear.fill(0);
     this.drawCount = 0;
     this.atlasRows = 0;
     this.tileCount = 0;

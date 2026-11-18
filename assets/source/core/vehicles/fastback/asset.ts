@@ -14,5 +14,5 @@ export default {
   },
   clips: [], feet: [], gaits: {}, flat: 2,
   preserveBones: A.bones.slice(1),
-  budgets: { triangles: [53000, 14000, 6000, 2400, 1100, 720], texture: { top: 1024, megabytes: 15, layer: 256 } },
+  budgets: { triangles: [53000, 14000, 6000, 2400, 1100, 720], texture: { top: 1024, megabytes: 15, layer: 512 } },
 } satisfies CreatureAsset;
