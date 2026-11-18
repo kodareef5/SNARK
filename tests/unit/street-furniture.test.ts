@@ -19,7 +19,7 @@ afterAll(() => { for (const f of folders) rmSync(f, { recursive: true, force: tr
 // A flat square of 1,024 m on 2 m samples, the ground 1 m up, one district of shops and flats. Roads in engine metres: a
 // grid of streets 100 m apart, two of them avenues, which cross at (500, 500).
 const N = 513, SIZE = (N - 1) * 2, GROUND = 1;
-interface Road { mtfcc: string; width: number; from: [number, number]; to: [number, number] }
+interface Road { mtfcc: string; width: number; from: [number, number]; to: [number, number]; name?: string }
 const GRID: Road[] = [];
 for (let at = 100; at <= 900; at += 100) {
   const avenue = at === 500;
@@ -32,7 +32,7 @@ function fixture(roads: readonly Road[], routes: Site["growthRoutes"] = []): Sit
   const cuts = (r: Road): number[] => [...new Set([0, ...roads.filter((o) => o !== r && (o.from[0] === o.to[0]) !== (r.from[0] === r.to[0])).map((o) => (r.from[0] === r.to[0] ? o.from[1] - r.from[1] : o.from[0] - r.from[0]) / (r.from[0] === r.to[0] ? r.to[1] - r.from[1] : r.to[0] - r.from[0])).filter((t) => t > 0 && t < 1), 1])].sort((a, b) => a - b);
   const features = roads.flatMap((r) => cuts(r).slice(1).map((t, i, all) => {
     const t0 = i === 0 ? 0 : all[i - 1]!; const at = (u: number): [number, number] => [r.from[0] + (r.to[0] - r.from[0]) * u, r.from[1] + (r.to[1] - r.from[1]) * u];
-    return { type: "Feature", geometry: { type: "LineString", coordinates: [at(t0), at(t)] }, properties: { mtfcc: r.mtfcc, width_m: r.width } };
+    return { type: "Feature", geometry: { type: "LineString", coordinates: [at(t0), at(t)] }, properties: { mtfcc: r.mtfcc, width_m: r.width, name: r.name ?? null } };
   }));
   writeFileSync(join(source, "base/roads.geojson"), JSON.stringify({ type: "FeatureCollection", features }));
   const surface = new Uint8Array(N * N).fill(S.OPEN), district = new Uint8Array(N * N).fill(1);
@@ -80,6 +80,9 @@ test("a city's streets get their furniture by its rules, the same each time it i
     // The arm's tip is over the avenue's lanes.
     const a = p.yaw * Math.PI / 180, tx = p.x + Math.sin(a) * 6, tz = p.z + Math.cos(a) * 6;
     expect(Math.min(Math.abs(tx - 500), Math.abs(tz - 500))).toBeLessThan(7);
+    // Its heads look along its +x, at the traffic coming in: the pole stands across the junction from that traffic.
+    const fx = Math.cos(a), fz = -Math.sin(a);
+    expect((p.x - jx) * fx + (p.z - jz) * fz).toBeLessThan(0);
   }
   // Streets that cross stop one of the two ways, each sign on the right of the traffic it faces, before the crossing.
   const stops = pieces.filter((p) => p.kind.startsWith(streetKind("stop")));
@@ -174,6 +177,52 @@ test("a stop sign whose place a walk's curb ramp takes stands further back along
     expect(Math.abs(kerb(GRID, now!.x, now!.z) - kerb(GRID, was.x, was.z))).toBeLessThan(0.05);
     expect(Math.hypot(now!.x - r.x, now!.z - r.z)).toBeCloseTo(RULES.junctions.past, 1);
   }
+});
+
+test("each class posts its own speed limit", () => {
+  const { pieces } = place(fixture(GRID));
+  const near = (p: StaticPiece, at: number): boolean => Math.min(Math.abs(p.x - at), Math.abs(p.z - at)) < 12;
+  const limits = pieces.filter((p) => /zzstreet_speed/.test(p.kind));
+  expect(limits.some((p) => p.kind === streetKind("speed40"))).toBe(true);
+  expect(limits.some((p) => p.kind === streetKind("speed30"))).toBe(true);
+  // The avenues are at 500; no highway here posts 55.
+  for (const p of limits) expect([p.kind, near(p, 500)]).toEqual([p.kind, p.kind === streetKind("speed40")]);
+});
+
+test("a street drawn as two one-way carriageways gets ONE WAY beside the way out and DO NOT ENTER on the way in", () => {
+  // An avenue of a name drawn twice, 30 m apart, crossed by two streets; its traffic keeps the other way on its left.
+  const roads: Road[] = [
+    { mtfcc: "S1200", width: 12, from: [485, 60], to: [485, 964], name: "Bay Blvd" },
+    { mtfcc: "S1200", width: 12, from: [515, 60], to: [515, 964], name: "Bay Blvd" },
+    { mtfcc: "S1400", width: 8, from: [60, 300], to: [964, 300] },
+    { mtfcc: "S1400", width: 8, from: [60, 700], to: [964, 700] },
+  ];
+  // Every sign whole, none a bare post.
+  const { pieces } = place(fixture(roads), [], { ...RULES, forms: { ...RULES.forms, oneway: [["oneway", 1]], noentry: [["noentry", 1]] } });
+  const at = (kind: string, x: number): StaticPiece[] => pieces.filter((p) => p.kind === streetKind(kind) && Math.abs(p.x - x) < 15);
+  // The west way runs north (+z): its arrows point +z, its DO NOT ENTER stands south of each crossing, facing north.
+  const west = at("oneway", 485), east = at("oneway", 515);
+  expect(west.length).toBeGreaterThan(0); expect(east.length).toBeGreaterThan(0);
+  const arrow = (p: StaticPiece): number => Math.round(-Math.sin(p.yaw * Math.PI / 180)); // local +x is (cos yaw, -sin yaw)
+  for (const p of west) expect(arrow(p)).toBe(1);
+  for (const p of east) expect(arrow(p)).toBe(-1);
+  // Each way's DO NOT ENTER stands on the side of a crossing its traffic comes from, facing the crossing.
+  const side = (p: StaticPiece): number => Math.sign(p.z - (Math.abs(p.z - 300) < Math.abs(p.z - 700) ? 300 : 700));
+  const facing = (p: StaticPiece): number => Math.round(Math.cos(p.yaw * Math.PI / 180));
+  expect(at("noentry", 485).length).toBeGreaterThan(0); expect(at("noentry", 515).length).toBeGreaterThan(0);
+  for (const p of at("noentry", 485)) expect([side(p), facing(p)]).toEqual([-1, 1]);
+  for (const p of at("noentry", 515)) expect([side(p), facing(p)]).toEqual([1, -1]);
+});
+
+test("a street that ends without meeting another gets a DEAD END sign at its mouth, facing traffic turning in", () => {
+  const roads: Road[] = [...GRID, { mtfcc: "S1400", width: 8, from: [250, 300], to: [250, 370] }];
+  const { pieces } = place(fixture(roads), [], { ...RULES, forms: { ...RULES.forms, deadend: [["deadend", 1]] } });
+  const dead = pieces.filter((p) => p.kind === streetKind("deadend") && Math.hypot(p.x - 250, p.z - 300) < 30);
+  expect(dead.length).toBe(1);
+  const p = dead[0]!;
+  expect(Math.abs(p.x - 250)).toBeLessThan(6); expect(p.z).toBeGreaterThan(300); expect(p.z).toBeLessThan(320);
+  // Its face looks back down the street, -z.
+  expect(Math.round(Math.cos(p.yaw * Math.PI / 180))).toBe(-1);
 });
 
 test("a rule that names a piece the set lacks stops the build", () => {

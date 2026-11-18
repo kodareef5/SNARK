@@ -27,7 +27,9 @@ FLAT = {"galvanised": (138, 141, 140), "green": (88, 104, 90), "yellow": (178, 1
         "mailbox": (62, 84, 118), "newsbox": (62, 84, 118), "meter": (120, 125, 128), "lens": (190, 190, 180), "name0": (72, 100, 82),
         "name1": (72, 100, 82), "name2": (72, 100, 82), "name3": (72, 100, 82), "bin": (88, 104, 90), "poster": (150, 150, 140),
         "louvre": (138, 141, 140), "tank": (190, 186, 176), "solar": (44, 52, 70), "duct": (150, 152, 150), "door": (100, 110, 100),
-        "spare": (138, 141, 140), "fence": (150, 150, 146), "billboard": (172, 162, 142), "glass": (170, 180, 182), "torn": (190, 185, 170)}
+        "spare": (138, 141, 140), "fence": (150, 150, 146), "billboard": (172, 162, 142), "glass": (170, 180, 182), "torn": (190, 185, 170),
+        "oneway": (60, 58, 54), "oneway_left": (60, 58, 54), "noentry": (165, 72, 68), "crossing": (190, 172, 96), "deadend": (190, 172, 96),
+        "noparking": (205, 202, 190), "speed30": (205, 202, 190), "speed40": (205, 202, 190)}
 
 
 def srgb_linear(c):
@@ -340,16 +342,23 @@ def panel(m, centre, width, height, thick, normal_axis, front, back_strip="galva
 
 def octagon(m, centre, across, thick, front, back_strip="galvanised", move=None):
     """The stop sign's octagon in the x-y plane, its front looking +z, laid on `front`'s square."""
-    r = across / 2 / math.cos(math.pi / 8)
-    pts = [(math.cos(math.pi / 8 + k * math.pi / 4) * r, math.sin(math.pi / 8 + k * math.pi / 4) * r) for k in range(8)]
+    return polygon(m, centre, across, thick, front, 8, math.pi / 8, back_strip, move)
+
+
+def polygon(m, centre, across, thick, front, sides, start, back_strip="galvanised", move=None):
+    """A flat sign of `sides` corners in the x-y plane, the first `start` radians round from +x, `across` wide and tall,
+    its front looking +z and laid on `front`'s square: a disc (many sides), a diamond (four, from 0), an octagon."""
+    reach = max(abs(math.cos(start + k * 2 * math.pi / sides)) for k in range(sides))
+    r = across / 2 / reach
+    pts = [(math.cos(start + k * 2 * math.pi / sides) * r, math.sin(start + k * 2 * math.pi / sides) * r) for k in range(sides)]
     mv = move or (lambda p: p)
     zf, zb = centre[2] + thick / 2, centre[2] - thick / 2
     fx = lambda x: (x / across) + 0.5
     fy = lambda y: 0.5 - (y / across)
     m.face([m.vert(mv((centre[0] + x, centre[1] + y, zf))) for x, y in pts], [part_uv(*front, fx(x), fy(y)) for x, y in pts], "street")
     m.face([m.vert(mv((centre[0] + x, centre[1] + y, zb))) for x, y in pts[::-1]], [strip_uv(back_strip, x + 0.5, fy(y)) for x, y in pts[::-1]], "street")
-    for k in range(8):
-        (x0, y0), (x1, y1) = pts[k], pts[(k + 1) % 8]
+    for k in range(sides):
+        (x0, y0), (x1, y1) = pts[k], pts[(k + 1) % sides]
         m.quad([mv((centre[0] + x1, centre[1] + y1, zf)), mv((centre[0] + x0, centre[1] + y0, zf)), mv((centre[0] + x0, centre[1] + y0, zb)), mv((centre[0] + x1, centre[1] + y1, zb))],
                [strip_uv(back_strip, k * 0.3, 0.2), strip_uv(back_strip, k * 0.3 + 0.3, 0.2), strip_uv(back_strip, k * 0.3 + 0.3, 0.3), strip_uv(back_strip, k * 0.3, 0.3)], "street")
     return m

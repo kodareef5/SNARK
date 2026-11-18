@@ -521,7 +521,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // parapets of whole tops (content/ruins.ts) added their grey meshes; without them it is that again. It was 3316382992
   // until the far wood was drawn after the near store, which its draws may be hidden behind, and an opaque step's draws
   // went nearest first.
-  expect(hash).toBe(4108479878);
+  // The eight tanker salvage meshes shift the mesh indices used by this fixture. It was 1887476422 until the street's
+  // new signs (one way, do not enter, no parking, the speed limits, crossing, dead end and a bare post, content/street.ts)
+  // added their grey meshes; without those it is that again. It was 2381528838 until a tall building's cornice added its
+  // grey mesh; without it it is that again.
+  expect(hash).toBe(1469328006);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -550,8 +554,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2430603422 until the street furniture's grey meshes; without them it is that again. It was 3628556772 until
   // a static's vertices said their faces' corners and outer borders, as the hash above, and 2281949996 until the ruins'
   // kit, street pieces, broken tops, rubble, leaning pieces, vines and broken parapets, as above, and 1004296491 until
-  // the far wood was drawn after the near store and opaque draws went nearest first, as above.
-  expect(saddled.hash).toBe(697200331);
+  // the far wood was drawn after the near store and opaque draws went nearest first, as above, 3205222107 until the
+  // street's new signs, as above, and 1872585659 until a tall building's cornice, as above.
+  expect(saddled.hash).toBe(1672489163);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

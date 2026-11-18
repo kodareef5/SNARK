@@ -444,8 +444,8 @@ test("on level ground every young tree and elder, at its least and largest size,
   const mounts = [...reg.saddleFits].filter((k) => k !== 0).map((k) => reg.ids[k]!);
   const tallest = mounts.reduce((a, b) => (reg.move[kind(b)]!.height > reg.move[kind(a)]!.height ? b : a));
   expect(mounts).toContain("core:rex");
-  expect([tallest, reg.move[kind(tallest)]!.height]).toEqual(["core:spino", 5.19]);
-  const tested = new Set(["core:parasaur", "core:rex", "core:stego", tallest]);
+  expect([tallest, reg.move[kind(tallest)]!.height]).toEqual(["core:brachio", 11.97]);
+  const tested = new Set(["core:parasaur", "core:rex", "core:stego", "core:spino", tallest]);
   const w = flatWorld(2);
   for (const id of ["core:tree", "core:oak"]) {
     const k = kind(id);

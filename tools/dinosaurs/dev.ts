@@ -17,6 +17,7 @@ const REVIEW_SPECIES = ["core:trike", "core:stego", "core:raptor"];
 
 const SINGLE_REVIEW: Record<string, { distance: number; yaw: number } | undefined> = {
   "core:pteranodon": {distance: 6, yaw: 43500},
+  "core:brachio": {distance: 21, yaw: 48500},
   "core:spino": {distance: 14, yaw: 48500},
 };
 
@@ -94,7 +95,7 @@ if (import.meta.main) {
   if (args.includes("--built")) {
     if (!existsSync(resolve(dist, "assets/manifest.json")) || !existsSync(resolve(dist, "main.js"))) throw new Error("No prepared client build. Run without --built first.");
   } else await buildDinosaurReviewClient({ quick: true, dist });
-  const species = args.includes("--spino") ? ["core:spino"] : args.includes("--pteranodon") ? ["core:pteranodon"] : REVIEW_SPECIES;
+  const species = args.includes("--brachio") ? ["core:brachio"] : args.includes("--spino") ? ["core:spino"] : args.includes("--pteranodon") ? ["core:pteranodon"] : REVIEW_SPECIES;
   requireDinosaurReviewArt(dist, species);
   const folder = value("--config") ?? DEV_CONFIG, { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
@@ -105,6 +106,7 @@ if (import.meta.main) {
   stopOnSignals(() => server.stop());
   console.log(`Dinosaur preview: http://localhost:${server.port}\nIsolated save: ${dbPath}`);
   if (args.includes("--pteranodon")) console.log("E mount/dismount · W/A/S/D travel · Space take off");
+  else if (args.includes("--brachio")) console.log("E mount/dismount · W/A/S/D travel · Shift stride · primary stomp");
   else if (args.includes("--spino")) console.log("E mount/dismount · W/A/S/D travel · Shift sprint · primary bite");
   else console.log("E mount/dismount · W/A/S/D travel · Shift run · mouse buttons abilities · R plate mode · F inventory");
 }

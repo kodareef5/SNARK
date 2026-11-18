@@ -73,9 +73,19 @@ export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "stop", color: RED, hp: 400, material: "core:mat_metal", boxes: [POST, box(-0.38, 0.38, 2.1, 2.86, 0.04, 0.08)] },
   // The post bent back 40 degrees at 0.5 m, as a car leaves it.
   { name: "stop_bent", color: RED, hp: 300, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 0.5, -0.04, 0.04)], hulls: [tilted(box(-0.04, 0.04, 0.5, 2.9, -0.04, 0.04), -40, 0.5), tilted(box(-0.38, 0.38, 2.1, 2.86, 0.04, 0.08), -40, 0.5)] },
-  { name: "street_name", color: GREEN, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 3.1, -0.04, 0.04), box(-0.46, 0.46, 2.75, 2.95, -0.02, 0.02), box(-0.02, 0.02, 2.97, 3.17, -0.46, 0.46)] },
+  { name: "street_name", color: GREEN, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.75, -0.04, 0.04), box(-0.46, 0.46, 2.75, 2.95, -0.02, 0.02), box(-0.02, 0.02, 2.95, 3.17, -0.46, 0.46)] },
   { name: "speed", color: WHITE, hp: 400, material: "core:mat_metal", boxes: [POST, box(-0.31, 0.31, 2.1, 2.86, 0.04, 0.08)] },
   { name: "evacuation", color: BLUE, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.7, -0.04, 0.04), box(-0.31, 0.31, 2.1, 2.71, 0.04, 0.08)] },
+  { name: "speed40", color: WHITE, hp: 400, material: "core:mat_metal", boxes: [POST, box(-0.31, 0.31, 2.1, 2.86, 0.04, 0.08)] },
+  { name: "speed30", color: WHITE, hp: 400, material: "core:mat_metal", boxes: [POST, box(-0.31, 0.31, 2.1, 2.86, 0.04, 0.08)] },
+  { name: "noentry", color: RED, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.8, -0.04, 0.04), box(-0.38, 0.38, 2.12, 2.88, 0.04, 0.06)] },
+  // Its plate parallel to the one-way street, in front of the post.
+  { name: "oneway", color: GALV, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.42, -0.04, 0.04), box(-0.46, 0.46, 2.12, 2.39, 0.03, 0.05)] },
+  { name: "noparking", color: WHITE, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.62, -0.04, 0.04), box(-0.15, 0.15, 2.13, 2.59, 0.04, 0.06)] },
+  { name: "crossing", color: YELLOW, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 3.05, -0.04, 0.04), box(-0.54, 0.54, 2.1, 3.18, 0.04, 0.06)] },
+  { name: "deadend", color: YELLOW, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 3.05, -0.04, 0.04), box(-0.54, 0.54, 2.1, 3.18, 0.04, 0.06)] },
+  // A sign's post whose plate is gone.
+  { name: "post_bare", color: GALV, hp: 300, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.7, -0.04, 0.06)] },
   { name: "pole", color: WOOD, hp: 2500, material: "core:mat_wood", boxes: [POLE, CROSSARM, TRANSFORMER] },
   // Leaning 12 degrees away from the road.
   { name: "pole_leaning", color: WOOD, hp: 2500, material: "core:mat_wood", boxes: [box(-0.2, 0.2, 0, 0.3, -0.2, 0.2)], hulls: [tilted(POLE, -12), tilted(CROSSARM, -12), tilted(TRANSFORMER, -12)] },
@@ -112,5 +122,7 @@ const SHAPES: readonly ShapeDef[] = STREET_PIECES.map((p) => ({ type: "shape", i
 const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   type: "structure", class: "static", id: streetKind(p.name), mesh: streetKind(p.name), shape: shapeId(p.name), half: shapeHalf(p.boxes, p.hulls),
   color: p.color, hp: p.hp, material: p.material,
+  // Drawn near only: left out of the far city's lattice and mass, where a lamp would take a whole cell. A billboard is seen from afar.
+  ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
 }));
 export const STREET: readonly Def[] = [...SHAPES, ...STATICS];

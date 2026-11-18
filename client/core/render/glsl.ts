@@ -84,7 +84,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
   if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) weathered(albedo, orm, vSurface, vOwn, vPlace, over, open, vRel, geometric, dx, dy);
 #endif
 #if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
-  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && fFacade.z < 0.5) edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
 #endif
   // A facade's part and the marks on a wall (facade.ts): the room behind glass lit by the face's daylight, and the street's far side it mirrors.
   vec3 room = vec3(0.0);

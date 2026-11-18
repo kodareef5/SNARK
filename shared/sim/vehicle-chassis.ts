@@ -1,4 +1,4 @@
-// Four fixed substeps, four unilateral wheel springs, and one freely rotating rigid chassis.
+// Four fixed substeps, unilateral wheel springs, and one freely rotating rigid chassis.
 import { TICK_DT } from "../coords.ts";
 import { quatRotate } from "../math/quat.ts";
 import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
@@ -24,7 +24,10 @@ function wheelSupports(s: VehicleState, p: VehicleSpec, w: VehicleWorld, mass: n
   if (up[1]! < .15) return;
   const travel = p.suspensionTravel ?? .18, mount = p.wheelRadius + travel, gravity = p.gravity ?? 18;
   const frequency = (p.suspensionFrequency ?? 10) * Math.sqrt((p.mass ?? 1100) / mass), damping = p.suspensionDamping ?? .85;
-  for (const z of [p.wheelbase / 2, -p.wheelbase / 2]) for (const x of [-p.track / 2, p.track / 2]) {
+  const axleCount = p.axles?.length ?? 2;
+  for (let i = 0; i < axleCount; i++) for (let side = -1; side <= 1; side += 2) {
+    const axle = p.axles?.[i], z = axle?.z ?? (i === 0 ? .5 : -.5) * p.wheelbase;
+    const x = side * (axle?.track ?? p.track) / 2;
     quatRotate(q, 0, x, mount, z, local, 0);
     const ox = s.x + local[0]!, oy = s.y + local[1]!, oz = s.z + local[2]!;
     let hit = w.wheelRay(ox, oy, oz, -up[0]!, -up[1]!, -up[2]!, mount + travel, p);
@@ -39,9 +42,9 @@ function wheelSupports(s: VehicleState, p: VehicleSpec, w: VehicleWorld, mass: n
     const compression = mount - distance, speed = pointV[0]! * hit.nx + pointV[1]! * hit.ny + pointV[2]! * hit.nz;
     // Preload holds the authored resting wheel height; neither springs nor dampers may pull on the road.
     const stop = Math.max(0, compression - Math.min(travel * .65, p.clearance * .65));
-    const load = mass / 4 * clamp(gravity + frequency * frequency * compression - 2 * damping * frequency * speed + stop * 2400, 0, gravity * 16);
+    const load = mass * (axle?.loadShare ?? .5) / 2 * clamp(gravity + frequency * frequency * compression - 2 * damping * frequency * speed + stop * 2400, 0, gravity * 16);
     wheels.push({ x: px, y: py, z: pz, nx: hit.nx, ny: hit.ny, nz: hit.nz, load, offset: -compression,
-      closing: Math.max(0, -speed), front: z > 0, surface: hit.surface });
+      closing: Math.max(0, -speed), front: i === 0, surface: hit.surface });
   }
 }
 
@@ -142,7 +145,11 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
       const side = pointV[0]! * sx + pointV[1]! * sy + pointV[2]! * sz;
       const share = wheel.load / Math.max(totalLoad, 1), grip = wheel.load / gravity * wheel.surface.grip * (wheel.front ? p.frontGrip ?? 1.08 : p.rearGrip ?? 1.05);
       const resistance = wheel.surface.rolling * mass + wheel.surface.drag * along * along * mass * (p.dragScale ?? 1) + mechanical.engineDrag;
-      const torqueShare = p.frontDriveShare === undefined ? share : (wheel.front ? p.frontDriveShare : 1 - p.frontDriveShare) / 2;
+      let torqueShare = share;
+      if (p.frontDriveShare !== undefined) {
+        const rearWheels = 2 * ((p.axles?.length ?? 2) - 1);
+        torqueShare = wheel.front ? p.frontDriveShare / 2 : (1 - p.frontDriveShare) / rearWheels;
+      }
       let drive = s.engineOn ? mechanical.drive * (p.drivetrain ? 1 : p.acceleration / 8) * torqueShare : 0;
       drive = clamp(drive, -grip * .95, grip * .95);
       if (drive > 0) drive = Math.min(drive, Math.max(0, resistance * share + (p.maxForward - forward) / dt * mass * share));

@@ -86,6 +86,8 @@ export const DETAIL_LIT = 8;
 export const DETAIL_PUFF = 16;
 /** Analytic rotor coverage instead of an atlas picture. Grey stores blade coverage at the tip; no extra asset or draw. */
 export const DETAIL_ROTOR = 32;
+/** Analytic emissive strip and halo of an active vehicle lens. */
+export const DETAIL_LAMP = 64;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /** Faces of four corners that 16-bit indices reach. */
@@ -287,6 +289,8 @@ export const FRAME = {
   nearToZ: 39,
   /** fFacade: the height in the world of the city's flood line (facade.ts FACADE_FLOOD), and 1 where every facade atlas the tier reads has come. */
   facade: 152,
+  /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`). */
+  edgesOff: 154,
   /**
    * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
    * blue, and the saturation after it; then the power the toned light is raised to, bloom's share, the sharpen's

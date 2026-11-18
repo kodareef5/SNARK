@@ -1,5 +1,6 @@
-// An intentionally tiny synthetic rig isolates geometry from either dinosaur's authored art.
+// Synthetic contacts isolate the geometry. The native Brachiosaurus exercises it at full scale.
 import { expect, test } from "bun:test";
+import { artTest } from "../fixtures/needs-art.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { CreatureContacts } from "../../server/creature-combat.ts";
 import type { Clip, ClipSet } from "../../shared/anim/clip.ts";
@@ -15,7 +16,7 @@ import { Harness } from "../fixtures/net.ts";
 
 const spec: CreatureCombatFacet = { primary: { name: "sweep", clip: "attack", socket: "contact", radius: .4, reach: 4, damage: 30, type: "melee", ticks: 24, lands: 6, through: 18, stamina: 5 } };
 const rig: PackRig = { id: "test:sweeper", skeleton: "test:sweeper", names: ["body", "tail"], parent: [-1, 0], rest: [0, 1, 0, 0, 1, 0], caps: [0, ZONE_TORSO, 0, -.5, 0, 0, .5, 0, .6], sockets: [{ name: "contact", bone: 1, x: 0, y: 0, z: 2.4 }] };
-interface ContactStudy { readonly socket?: readonly [number, number, number]; readonly radius?: number; readonly travelZ?: number; readonly convex?: boolean }
+interface ContactStudy { readonly socket?: readonly [number, number, number]; readonly radius?: number; readonly travelZ?: number; readonly convex?: boolean; readonly brachio?: boolean }
 function clips(study: ContactStudy): ClipSet {
   const rot = new Float32Array(25 * 2 * 4), root = new Float32Array(25 * 3);
   for (let f = 0; f < 25; f++) {
@@ -37,9 +38,10 @@ function setup(node = false, study: ContactStudy = {}) {
   if (!built.registry) throw new Error(built.errors.join("\n"));
   const first = new Uint32Array(17); first.fill(1, 6);
   const map = flatMap(4, { nodes: node ? [{ kinds: ["core:tree"], first, kind: new Uint8Array(1), x: Uint16Array.of(56 * 1024), z: Uint16Array.of(Math.round(58.4 * 1024)), yaw: new Uint16Array(1) }] : [] });
-  const h = new Harness({}, 1, 30, { map: writeMap(map), clips: clips(study), rigs: [nativeRig] }, built.registry);
+  const art = study.brachio ? {} : { clips: clips(study), rigs: [nativeRig] };
+  const h = new Harness({}, 1, 30, { map: writeMap(map), ...art }, built.registry);
   if (node) h.host.harvest!.field.retain(5, 0, 1, () => false);
-  const e = h.host.spawnCreature("core:parasaur", 120, 120, 1); expect(e).toBeGreaterThanOrEqual(0);
+  const e = h.host.spawnCreature(study.brachio ? "core:brachio" : "core:parasaur", 120, 120, 1); expect(e).toBeGreaterThanOrEqual(0);
   const ents = h.world.ents, actor = h.host.records.byPid.get(ents.pid[e]!)!;
   actor.genome!.wild.fill(0); actor.genome!.tamed.fill(0); ents.yaw[e] = 0; ents.driven[e] = 1;
   const victims: number[] = [];
@@ -176,5 +178,21 @@ test("a moving sphere advances past a false expanded-box corner to its actual sw
     f.step(); expect(points.length).toBe(1);
     expect(points[0]![0]).toBeCloseTo(121.5, 4); expect(points[0]![2]).toBeCloseTo(front, 4);
     for (let i = 7; i <= 24; i++) f.step(); expect(points.length).toBe(1);
+  }
+});
+
+artTest("a ridden Brachiosaurus can stomp an exposed survivor but a standard wall shelters that same position", () => {
+  for (const wall of [false, true]) {
+    const f = setup(false, { brachio: true });
+    try {
+      const victim = f.target(121.04, 122.98);
+      const before = victim.hp();
+      if (wall) f.h.world.structs.add(f.h.reg.index.get("core:wall")!, 120.8, 1.5, 122.25, 0, 0, 10000);
+      for (let frame = 0; frame <= 30; frame++) f.step();
+      if (wall) expect(victim.hp()).toBe(before);
+      else expect(victim.hp()).toBeLessThan(before);
+    } finally {
+      f.h.host.shutdown();
+    }
   }
 });

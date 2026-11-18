@@ -119,9 +119,10 @@ export function withVehicleDoor(packed: number, door: number, open: number): num
 }
 
 /** Observer engine state is presentation data; the driver's prediction receives the full mechanical Body. */
-export function packVehicleDrive(gear: number, rpm: number, shifting: boolean): number {
-  return ((Math.round(clamp(gear, -1, 12)) + 1) | (Math.round(clamp(rpm, 0, 32767)) << 4) | (shifting ? 1 << 19 : 0)) >>> 0;
+export function packVehicleDrive(gear: number, rpm: number, shifting: boolean, lightMode = 0): number {
+  return ((Math.round(clamp(gear, -1, 12)) + 1) | (Math.round(clamp(rpm, 0, 32767)) << 4) | (shifting ? 1 << 19 : 0) | ((lightMode & 3) << 20)) >>> 0;
 }
 export const unpackVehicleGear = (n: number): number => (n & 15) - 1;
 export const unpackVehicleRpm = (n: number): number => (n >>> 4) & 32767;
+export const unpackVehicleLightMode = (n: number): number => (n >>> 20) & 3;
 export const vehicleShifting = (n: number): boolean => (n & (1 << 19)) !== 0;

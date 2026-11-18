@@ -5,7 +5,6 @@
 // None is named for its mesh, so a destroyed vessel draws its intact hull until the pack has its sunk form.
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../../shared/content/defs.ts";
 import { MAX_SHAPE_BOXES, MAX_STRUCTURE_HALF } from "../../shared/content/registry.ts";
-import { ROUTE_MARGIN } from "../../shared/world/path.ts";
 import { MARINE_MODELS } from "./marine-fleet.ts";
 
 export const HARBOUR_WRECK_FORMS = ["damaged", "sunk"] as const;
@@ -34,7 +33,7 @@ const volume = (b: ShapeBox): number => b.half[0]! * b.half[1]! * b.half[2]! * 8
  * Metres a hulk's boxes reach across from its origin at most, so a creature's way past one is found again within
  * ROUTE_MARGIN of it, the widest walker's radius and a margin with it: the 32 m yacht's ends lie outside its shape.
  */
-const REACH = ROUTE_MARGIN - 1.5;
+const REACH = 14.5;
 
 /** A hull's boxes as a static's shape takes them: within REACH of the origin, and joined two at a time where they grow least till few enough. */
 export function hulkBoxes(boxes: readonly ShapeBox[]): ShapeBox[] {
