@@ -171,7 +171,7 @@ function pictures(shot: Shot, tier: string, W: number, H: number): [Picture, Pic
     for (let f = 0; f < 60; f++) {
       scene.now += 1000 / 60;
       const p = scene.build(cam, null);
-      const done = f > 1 && p.uploads.length + p.assetUploads.length === 0 && scene.city!.stats.behind === 0 && scene.near!.stats.waiting === 0;
+      const done = f > 1 && p.uploads.length + p.assetUploads.length === 0 && scene.city!.stats.behind === 0 && scene.near!.stats.waiting === 0 && (!p.lit || scene.farShadow!.open.whole);
       // A raster of its own sees every level the card has, as it is put there.
       if (!done) p.drawCount = p.tileCount = 0;
       raster.render(p);
