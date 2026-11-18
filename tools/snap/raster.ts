@@ -14,6 +14,7 @@ import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/rende
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
+import { wearLate } from "../../client/core/render/wear.ts";
 import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -63,6 +64,9 @@ interface Surfaced {
   maps: Texture[];
   layer: Texture | null;
   level: number;
+  /** The wear story its layer is drawn with (wear.ts), and where its vertices lie in its mesh's bounds, -1 to 1: null for none. */
+  wear: number;
+  box: Float32Array | null;
   tint: readonly number[];
   /** 0 for a draw that is not cut out. */
   cutoff: number;
@@ -118,7 +122,7 @@ function standing(bones: Float32Array, stand: number, bone: number, place: numbe
 }
 const stood = new Float64Array(BONE_FLOATS);
 
-const CARRIED = 12;
+const CARRIED = 15;
 /** A deferred pixel of the ground, which keeps the normal it is lit by. */
 const DEFERRED_GROUND = 2048;
 /** The bits from which a deferred pixel names its landmark's row of finishes (shared/pack/finish.ts), 0 for none. */
@@ -928,7 +932,10 @@ export class Rasterizer {
     const level = p.drawLayer[d]!;
     const layer = level > 0 ? (this.textures.get(material.layer ?? -1) ?? null) : null;
     if (level > 0 && !layer) throw new Error(`draw ${d} draws the layer of ${material.id}, which is not on the graphics card`);
-    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const wear = layer ? p.drawWear[d]! : 0;
+    const { center, half } = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
+    const box = wear === 0 ? null : lod.positions.map((x, i) => (x - center[i % 3]!) / half[i % 3]!);
+    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1216,6 +1223,7 @@ export class Rasterizer {
       src[o + 4] = s.uvs[v * 2 + 1]!;
       for (let i = 0; i < 6; i++) src[o + 5 + i] = this.frames[v * 6 + i]!;
       src[o + 11] = s.tangents[v * 4 + 3]!;
+      for (let i = 0; i < 3; i++) src[o + 12 + i] = s.box ? s.box[v * 3 + i]! : 0;
     });
 
     // Clip as `triangle` does, with everything a corner carries.
@@ -1295,7 +1303,7 @@ export class Rasterizer {
           dyed(albedo, base, s.tint, this.dyes, mask, mask2);
           if (s.layer) {
             sample(s.layer, u, v, spread, layer);
-            wounded(albedo, mro, layer, s.level);
+            wounded(albedo, mro, layer, s.level, wearLate(s.wear, carried[12]!, carried[13]!, carried[14]!));
           }
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
           const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);

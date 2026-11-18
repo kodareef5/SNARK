@@ -9,7 +9,7 @@ import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
-import type { VehicleDefinition } from "../../../shared/sim/vehicle.ts";
+import { isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate, quatUnrotate } from "../../../shared/math/quat.ts";
 import { B_HEAD, B_NECK, B_SPINE, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
@@ -34,6 +34,7 @@ import { anchorFrame, saddleSeat, seatFrame } from "../../../shared/anim/seat.ts
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
+import { WEAR_KEY, wearOf } from "./wear.ts";
 import { RotorBlur } from "./rotor-blur.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
@@ -62,6 +63,8 @@ interface Creature {
   worn: ReadonlyMap<number, number>;
   /** A vehicle poses its rig from its definition, not from a gait; null for a creature. */
   vehicle: VehicleRig | null;
+  /** A road vehicle wears its layer as the story its colours give it (wear.ts). */
+  wear: boolean;
   wreck: number;
   wreckError: readonly number[];
   oriented: Solved;
@@ -135,8 +138,8 @@ interface BodyKind {
 }
 
 /**
- * `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none. `standIn`, on a DRAW_ONE_BONE draw, is
- * the first bone of the pose its bodies stand in.
+ * `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none, and their wear story with it
+ * (wear.ts WEAR_KEY). `standIn`, on a DRAW_ONE_BONE draw, is the first bone of the pose its bodies stand in.
  */
 export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number) => void;
 /** Puts instances into the shadow caster list for `cascades`, a bit each. `lod` is the level the view would draw them at. */
@@ -366,7 +369,7 @@ export class Characters {
         if (m >= 0) worn.set(item, m);
       });
       const wreck = bind.own(d.id, "wreck");
-      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), oriented: new Solved(rig.bones) };
+      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: !!reg.vehicle[i] && isWheelVehicle(reg.vehicle[i]!), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -847,7 +850,8 @@ export class Characters {
 
   /**
    * Queues a creature's `mesh`, whose levels lie `error` from its finest, on the bones from `first`, at the level its
-   * distance and size call for, and with its layer at `layer` where that level is drawn with materials. One `unseen`
+   * distance and size call for, and with its layer at `layer` where that level is drawn with materials, worn as its
+   * colours say where it is a road vehicle. One `unseen`
    * only casts, and asks for nothing. `stand` is the first bone of the pose it stands in on one bone, or -1. Returns the level.
    */
   private queueCreature(c: Creature, mesh: number, error: readonly number[], first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, stand: number, unseen: boolean, layer = 0): number {
@@ -857,7 +861,8 @@ export class Characters {
     const lod = this.levelOf(id, error, far);
     if (!unseen) this.assets.wantTextured(mesh, lod, far);
     if (!unseen && c.clips >= 0) this.assets.wantClips(c.clips);
-    const key = this.keyOf(mesh * this.levels + lod, layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer : 0, stand);
+    const shown = layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer + (c.wear ? wearOf(colors, colorAt) * WEAR_KEY : 0) : 0;
+    const key = this.keyOf(mesh * this.levels + lod, shown, stand);
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = first;
     this.region0[n] = c.color;
@@ -919,7 +924,7 @@ export class Characters {
   }
 
   /**
-   * The key of `key`'s bodies whose layer is at `layer` and that stand in the pose at bone `stand` (-1 for none). With no
+   * The key of `key`'s bodies whose layer is at `layer`, with its wear story, and that stand in the pose at bone `stand` (-1 for none). With no
    * key left those with a layer are drawn as `key`'s, without it, and those standing in a pose not at all: -1, counted dropped.
    */
   private keyOf(key: number, layer: number, stand: number): number {

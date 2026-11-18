@@ -237,11 +237,13 @@ uniform vec2 uSize;
 out vec3 vRel, vNormal;
 out vec4 vTangent;
 out vec2 vUv;
+out vec3 vBox;
 flat out mat3 vDye, vDye2;
 flat out float vAt;
 void main() {
   vec2 c = corner();
   vAt = 0.0;
+  vBox = vec3(c, 0.0);
   vRel = vec3(c * 8.0, -12.0);
   vNormal = normalize(vec3(c * 0.3, 1.0));
   vTangent = vec4(1.0, 0.0, 0.0, 1.0);
@@ -320,7 +322,7 @@ const DRAW_KINDS: readonly DrawKind[] = [
 ];
 const NONE_OF_THEM = DRAW_DETAILS | DRAW_WATER | DRAW_BLEND | DRAW_NEAR;
 /** A draw's and a caster's rows in a packet, but for their offsets and instances. */
-const DRAW_ROWS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount", "drawPass", "drawFade", "drawHand", "drawLayer"] as const;
+const DRAW_ROWS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount", "drawPass", "drawFade", "drawHand", "drawLayer", "drawWear"] as const;
 const CASTER_ROWS = ["casterMesh", "casterLod", "casterSlot", "casterBuffer", "casterFirst", "casterFlags", "casterMaterial", "casterFirstIndex", "casterIndexCount"] as const;
 
 /** The finish of the probe's walls (linked's vSurface, concrete) and the default city's dials, which LIT's finishes read. */
@@ -1131,6 +1133,7 @@ void main() {}`);
       gl.uniform3f(at("uTint"), 1, 1, 1);
       gl.uniform1f(at("uCutoff"), 0);
       gl.uniform1f(at("uLevel"), 0.75);
+      gl.uniform1f(at("uWear"), 1);
       gl.uniform1i(at("uCascades"), spec.shadowed ? tier.shadows.cascades : 0);
       gl.uniform1f(at("uWorldReady"), spec.world === undefined ? 0 : 1);
       gl.uniform4fv(at("uSurfaceCity"), CITY);
