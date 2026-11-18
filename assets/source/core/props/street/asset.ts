@@ -52,6 +52,16 @@ const PIECES: Readonly<Record<string, readonly number[]>> = {
   billboard: [320, 32],
   billboard_bare: [308, 68],
   newsbox: [48, 12],
+  roof_ac: [48, 36],
+  roof_ac_tipped: [48, 36],
+  roof_rtu: [124, 24],
+  roof_vent: [64, 36, 24, 16],
+  roof_duct: [60],
+  roof_tank: [180, 108],
+  roof_solar: [96, 48],
+  roof_solar_broken: [96, 48],
+  roof_bulkhead: [36],
+  roof_dish: [76, 52, 36, 28],
 };
 
 export default {
