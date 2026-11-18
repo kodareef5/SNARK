@@ -340,7 +340,7 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     // Six storeys, the front and back six bays long, a corner failed: the same bay on the four floors between ground and
     // top, all but the bay beside the failure whole on each.
     const floors = new Map<number, number>();
-    for (const p of on("zbalc")) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
+    for (const p of [...on("zbalc"), ...on("zbalcrail")]) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
     expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
     expect([...floors.values()].every((n) => n === 11)).toBe(true);
     expect(on("zlobby").length).toBeGreaterThanOrEqual(8);

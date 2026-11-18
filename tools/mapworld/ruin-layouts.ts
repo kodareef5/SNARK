@@ -86,6 +86,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       // A slab of flats has blank short ends; a tower has flats on every side.
       const end = grammar?.ends && dx !== 0 && m.frame.width >= 1.5 * m.frame.depth && rule.recipe !== "tower";
       const capped = !damaged.has(t) && mode !== "lost-top";
+      const nearFall = SIDES.some(([a, b]) => { const n = byKey.get(tileKey(t.i + a, t.j + b)); return !!n && damaged.has(n); });
       // Where the bay beside fell, this bay's slabs end at the break, whole, spalled or snapped, open to the gap; walls
       // stand only above the playable floors.
       let from = adjacent;
@@ -94,6 +95,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           if (!slab(t, level, top)) continue;
           const pick = hash3(opts.seed + 211, t.i * 4 + side, t.j * 64 + level) % 10;
           facade(m, pick < 5 ? "zendsnap" : pick < 8 ? "zendspall" : "zendwhole", u, base + level * 4, v, side, "fracture");
+          // What the first floor's snapped slab shed lies wedged at the wall's foot below it.
+          if (pick < 5 && adjacent === 0 && level === 1) facade(m, "zwedge", u, base, v, side, "fracture");
         }
         from = Math.max(adjacent, playable);
       }
@@ -113,9 +116,11 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           // A shop's front has its own door; any other ground floor keeps an open bay where the way in is.
           const open = grammar.ground === "zstore";
           const shut = grammar.shutter && !entry && hash3(opts.seed + 57, t.i * 4 + side, t.j) % 4 === 0 ? grammar.shutter : grammar.ground;
+          // Beside a failure, a balcony's solid front may have fallen to its rail.
+          const railed = grammar.floor === "zbalc" && nearFall && hash3(opts.seed + 83, t.i * 4 + side, t.j * 64 + level) % 2 === 0;
           const name = end ? (level === 0 && entry ? null : last ? "zpaneltop" : "zpanel8")
             : level === 0 ? (entry && !open ? grammar.gate ?? null : last ? grammar.groundTop ?? shut : shut)
-            : last ? grammar.top : grammar.floor;
+            : last ? grammar.top : railed ? "zbalcrail" : grammar.floor;
           if (name) {
             facade(m, name, u, h, v, side, rule.finish);
             if (level === 0 && last && !end && !grammar.groundTop) facade(m, "zparapet8", u, h + 4, v, side, rule.finish);
@@ -125,6 +130,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         if (upper && bay === 8 && top - level >= 4 && !burnt && !lookout) {
           m.put("zshaft8", u, h + 8, v, form.shell === "curtain" ? (rule.infill ?? "blue") : rule.finish, turn); level += 4; continue;
         }
+        // A lobby's way in has its frame, step and canopy.
+        if (grammar?.ground === "zlobby" && level === 0 && entry && !broken && !party) facade(m, "zentry", u, h, v, side, rule.finish);
         const opening = !party && (lookout || form.shell === "open" || (t.i + t.j + side + level) % form.windowEvery === 0);
         if (burnt) {
           m.put(bay === 8 ? "beam8" : "beam4", u, h + 3.7, v, "concrete", turn);
@@ -228,6 +235,12 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     m.put("fin4", t.u, base + height + 2, t.v, "steel"); m.put("rubble4", t.u + 1.5, base + height + .55, t.v, "concrete", 19);
   }
   for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay, !has(keys, t, 0, -1) ? -1 : !has(keys, t, 0, 1) ? 1 : 0);
+  // A downpipe runs down the front corner of the end wall of a low building with a facade, its foot stained.
+  const corner = [...tiles].sort((a, b) => a.j - b.j || a.i - b.i)[0];
+  if (corner && form.facade && bay === 8 && base === 0 && opts.detail < 2 && !has(keys, corner, -1, 0) && !damaged.has(corner) && hash3(opts.seed + 19, 3, 5) % 2 === 0) {
+    const top = Math.min(tops.get(tileKey(corner.i, corner.j)) ?? 0, 6);
+    for (let level = 0; level < top; level++) facade(m, level === 0 ? "zpipefoot" : "zpipe4", corner.u - bay / 2, level * 4, corner.v - bay / 2 + 0.7, 3, "concrete");
+  }
   // One column of the failure stands at its edge with its broken head, the slab it held fallen at its foot.
   if (bay === 8 && base === 0 && opts.detail < 2 && mode !== "burnt") {
     const edge = [...damaged].filter((t) => !entryLane(t)).flatMap((t) => SIDES.map(([dx, dz], side) => ({ t, side, dx, dz, n: byKey.get(tileKey(t.i + dx, t.j + dz)) })))
