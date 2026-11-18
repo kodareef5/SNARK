@@ -41,10 +41,19 @@ def build():
     tube(s,saddle,['shell']*len(saddle),0,LEATHER,28,'z',.75)
     band(s,[(-.205,2.010,.28),(-.190,2.113,.249),(-.100,2.157,.238),(0,2.163,.231),(.100,2.157,.238),(.190,2.113,.249),(.205,2.010,.28)],.030,.027,WOOD)
     for sign in [1,-1]:
-        band(s,[(sign*.10,1.99,.75),(sign*.142,2.14,.803),(sign*.198,2.185,.846),(sign*.225,2.17,.898),(sign*.236,1.95,.869)],.016,.018,WOOD)
+        # The tree bars rise from the fitted blanket into both ends of the
+        # seat; the forward grip has two anchored feet on this structure.
+        points=[]
+        for z,top in [(.21,1.985),(.32,1.974),(.51,1.966),(.68,1.969),(.81,1.997)]:
+            x=sign*.102;bottom=roof(x,z)+.042
+            points.append(((x,(top+bottom)*.5,z),.068,(top-bottom)*.50))
+        tube(s,points,['shell']*len(points),0,WOOD,16,'z',.72)
+        band(s,[(sign*.10,1.99,.75),(sign*.142,2.14,.803),(sign*.198,2.185,.846),(sign*.225,2.17,.898),(sign*.226,1.952,.859),(sign*.209,roof(sign*.209,.837)+.029,.837)],.016,.018,WOOD)
         for dz in [-.073,.073]:
             band(s,[(sign*.18,1.99,.65),(sign*.255,1.80,.780),(sign*.324,1.67,.89),(sign*.361,1.537,1.052+dz)],.018,.010)
         band(s,[(sign*.361,1.536,.971),(sign*.361,1.536,1.133)],.027,.023,BRASS)
-        band(s,[(sign*.27,1.85,.44),(sign*.40,1.71,.51),(sign*.66,1.63,.49),(sign*.99,1.43,.47)],.028,.014)
+        # A leather keeper joins the pad's rolled edge and the forward girth.
+        path=[(sign*x,roof(sign*x,z)+.031,z) for x,z in [(.25,.44),(.36,.48),(.48,.51),(.65,.49),(.85,.43),(.98,.39)]]
+        band(s,path,.027,.010)
     s.done()
 if __name__=='__main__':build()
