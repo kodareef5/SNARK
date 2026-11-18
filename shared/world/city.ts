@@ -45,6 +45,8 @@ export class CityStatics {
   readonly under?: Uint8Array;
   /** Per content index: 1 for a kind that is one box of its half extents, 0 for one with a shape, drawn by `walked` and `look`. */
   readonly plain: Uint8Array;
+  /** 1 for a kind drawn near only: left out of the far city's lattice and mass (`StructureDef.near`). */
+  readonly near: Uint8Array;
   /** Every kind's boxes and convex parts as walked (the registry's parts), and as drawn near. */
   readonly walked: CityForm;
   readonly look: CityForm;
@@ -96,6 +98,7 @@ export class CityStatics {
     this.color = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0));
     this.under = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.under ?? d.color : 0));
     this.plain = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.shape !== undefined ? 0 : 1));
+    this.near = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.near ? 1 : 0));
     this.walked = { start: reg.parts.start, box: reg.parts.box, color: null, hulls: reg.parts.hulls ?? null };
     this.look = lookForm(reg, this.walked);
   }
@@ -446,7 +449,7 @@ const ring = new Float64Array(3 * MAX_CORNERS);
  * Puts the standing pieces of the chunks round `chunk` that reach within MARGIN of it in `boxes` and `hulls`, as `form`
  * has them, and with `own` its own.
  */
-function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm): void {
+function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm, far = false): void {
   const { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const under = city.under ?? color;
   const cx = chunkCx(dims, chunk);
@@ -462,6 +465,7 @@ function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone,
       for (let i = first[c]!; i < first[c + 1]!; i++) {
         if (g && g[i - first[c]!] === 1) continue;
         const k = kind[i]!;
+        if (far && city.near[k] === 1) continue;
         const r = Math.max(halfX[k]!, halfZ[k]!) * 1.5;
         if (x[i]! + r < x0 - MARGIN || x[i]! - r > x0 + CHUNK_SIZE + MARGIN || z[i]! + r < z0 - MARGIN || z[i]! - r > z0 + CHUNK_SIZE + MARGIN) continue;
         const a = (yaw[i]! / YAW_UNITS) * TAU;
@@ -701,13 +705,14 @@ function framesOf(city: CityStatics, chunk: number, g: Gone): number[] {
  * Puts the standing pieces of `chunk` turned by `f` short of a quarter in `framed`, in the frame turned by (c, s), by their
  * boxes as `form` has them; with `parts`, their convex parts in `hulls` too, placed in the frame. Returns how many boxes.
  */
-function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean): number {
+function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean, far = false): number {
   const { first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const from = first[chunk]!;
   let nb = 0;
   for (let i = from; i < first[chunk + 1]!; i++) {
     if ((g && g[i - from] === 1) || yaw[i]! % QUARTER !== f) continue;
     const k = kind[i]!;
+    if (far && city.near[k] === 1) continue;
     const quarter = Math.floor(yaw[i]! / QUARTER) % 4;
     const odd = quarter % 2 === 1;
     // The world to the frame: the inverse of the turn a piece's vertices are given.
@@ -758,14 +763,14 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
   const form = least > 0 ? city.walked : city.look;
   boxes.n = 0;
   hulls.n = 0;
-  gather(city, chunk, gone, gap < 0 && least <= 0, form);
+  gather(city, chunk, gone, gap < 0 && least <= 0, form, least > 0);
   if (gap >= 0 || least > 0) {
     const g = gone(chunk);
     for (const f of framesOf(city, chunk, g)) {
       const a = (f / YAW_UNITS) * TAU;
       const c = detCos(a);
       const s = detSin(a);
-      let nb = frameBoxes(city, chunk, g, f, c, s, form, false);
+      let nb = frameBoxes(city, chunk, g, f, c, s, form, false, least > 0);
       if (gap >= 0) nb = merge(nb, gap);
       for (let b = 0; b < nb; b++) {
         const o = b * 7;
@@ -1235,7 +1240,9 @@ export function cellPart(city: CityStatics, chunk: number, hf: Ground, gone: Gon
     const c = detCos(a);
     const s = detSin(a);
     hulls.n = 0;
-    const nb = frameBoxes(city, chunk, gone, f, c, s, city.walked, true);
+    const nb = frameBoxes(city, chunk, gone, f, c, s, city.walked, true, true);
+    // A turn whose pieces are all drawn near only has no mass.
+    if (nb === 0 && hulls.n === 0) continue;
     const lo = [Infinity, Infinity, Infinity];
     const hi = [-Infinity, -Infinity, -Infinity];
     for (let b = 0; b < nb; b++) {

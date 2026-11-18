@@ -49,7 +49,7 @@ test("a map.json must say the same in its bounds, sizes, chunks and samples", ()
 });
 
 test("a place in a smaller cut of a city and in a wider one has the same lattice metres to the bit, the same sample and the same noise", () => {
-  // What lets anchors and recorded places survive a new cut (D809): each cut is its own source round the same centre.
+  // What lets anchors and recorded places survive a new cut (D810): each cut is its own source round the same centre.
   const [a, b] = [new Base(source(WHOLE)), new Base(source(CUT))];
   const site = (base: Base) => siteOf({ id: "test", label: "test", seaNavd88: 0, minY: 0, stepY: 1, districts: [], spawns: [] }, { grid: base.grid, height: new Float32Array(base.samples), lakes: null, heaps: { ruins: [] } } as unknown as Ground, base.folder);
   const [sa, sb] = [site(a), site(b)];

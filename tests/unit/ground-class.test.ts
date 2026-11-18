@@ -1,4 +1,4 @@
-// The ground's classes a wheel feels (MapData.ground, D810): carried a cell each two samples a side through a map's ground
+// The ground's classes a wheel feels (MapData.ground, D811): carried a cell each two samples a side through a map's ground
 // parts and back, read where a wheel stands, and plain ground on a map that gives none.
 
 import { expect, test } from "bun:test";

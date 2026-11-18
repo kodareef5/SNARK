@@ -79,7 +79,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "prop/projectile": 2,
     buff: 7,
     spawns: 4,
-    map: 5, // miami-coast became Miami (D809)
+    map: 5, // miami-coast became Miami (D810)
   });
   expect(rest.length).toBe(240 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
