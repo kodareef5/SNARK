@@ -1,13 +1,16 @@
 import { expect } from "bun:test";
 import { readFileSync } from "node:fs";
+import { MARINE_FLEET } from "../../content/vehicles/marine-fleet.ts";
 import { Pose } from "../../shared/anim/clip.ts";
-import { B_HAND_L, B_HAND_R, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_PROP_L, B_PROP_R, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_PROP_L, B_PROP_R, B_UPPER_ARM_L, B_UPPER_ARM_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { defaultLook, REGION_COUNT, lookScales, setRegion } from "../../shared/anim/look.ts";
 import { fitPilotControls } from "../../shared/anim/mount-controls.ts";
 import { createMountMotion, mountPose } from "../../shared/anim/mount.ts";
+import { fitSeatControls } from "../../shared/anim/seat-controls.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { quatAxis, quatRotate } from "../../shared/math/quat.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { isBoatVehicle } from "../../shared/sim/vehicle.ts";
 import { fromArt, test } from "../fixtures/needs-art.ts";
 
 const pack = fromArt(() => parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk", import.meta.url)))));
@@ -80,4 +83,30 @@ test("the helm reaches its full steering arc with mirrored inward palms and unch
     }
   }
   expect(worst).toBeLessThan(.001);
+});
+
+test("PWC occupants straddle the footwells and both palms stay on the handlebars throughout steering", () => {
+  const boat = MARINE_FLEET.find(s => s.id === "core:riptide")!.vehicle!;
+  if (!isBoatVehicle(boat)) throw new Error("Riptide needs its boat definition");
+  const pilot = boat.seats[0]!, palm = new Float32Array(3), motion = createMountMotion();
+  expect(boat.seats.every(s => s.pose === "pwc")).toBe(true);
+  for (const body of pack.header.rigs) for (const size of [-1, 0, 1]) {
+    const rest = Float32Array.from(body.rest);
+    const { pose, solved, scale } = fixture(rest, new Array<number>(REGION_COUNT).fill(size));
+    for (const fraction of [-1, -.5, 0, .5, 1]) {
+      mountPose(motion, { role: pilot.pose!, tick: 0, startTick: 0, durationTicks: 1 }, pose);
+      solve(HUMAN, pose, solved, rest, scale);
+      expect(fitSeatControls(pose, solved, rest, scale, pilot, fraction * boat.spec.maxSteer)).toBeLessThan(.001);
+      for (const [foot, hand, side] of [[B_FOOT_L, B_HAND_L, 1], [B_FOOT_R, B_HAND_R, -1]] as const) {
+        const x = side * (solved.pos[foot * 3]! - solved.pos[B_HIPS * 3]!);
+        const y = pilot.anchor[1] + solved.pos[foot * 3 + 1]! - solved.pos[B_HIPS * 3 + 1]!;
+        expect(x).toBeGreaterThan(.20);
+        expect(x).toBeLessThan(.5);
+        expect(y).toBeGreaterThan(.38);
+        expect(y).toBeLessThan(.60);
+        quatRotate(solved.rot, hand * 4, 0, -1, 0, palm, 0);
+        expect(palm[1]).toBeCloseTo(-1, 5);
+      }
+    }
+  }
 });

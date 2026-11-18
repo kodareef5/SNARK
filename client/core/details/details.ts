@@ -132,7 +132,9 @@ export class Details {
     this.reg = reg;
     this.animOf = animOf;
     const listens = new Uint16Array(reg.defs.length);
-    this.sheets = reg.defs.map((d) => (d?.type === "species" ? (details?.sheets.find((s) => s.owner === d.id) ?? null) : null));
+    const boatEffects = details?.sheets.find(s => s.owner === "core:boat");
+    this.sheets = reg.defs.map((d, kind) => d?.type === "species"
+      ? details?.sheets.find(s => s.owner === d.id) ?? (this.boatKinds[kind] ? boatEffects : null) ?? null : null);
     this.books = reg.defs.map((_, kind) => {
       const anim = this.sheets[kind] ? animOf(kind) : null;
       return anim ? this.bookOf(kind, anim) : null;
@@ -256,7 +258,7 @@ export class Details {
       const beat = Math.floor(r.tick / (TICK_RATE / 8));
       vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
       const water = hf.waterAt(frame.x, frame.z), draft = water - frame.y;
-      if (beat !== seen.wash && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < .95 && water > hf.heightAt(frame.x, frame.z) + .15) {
+      if (beat !== seen.wash && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < (book.vehicle?.movement === "boat" ? book.vehicle.spec.draft + .6 : .95) && water > hf.heightAt(frame.x, frame.z) + .15) {
         seen.wash = beat;
         for (const wake of WAKES) {
           if (seen.speed < wake.speed) continue;

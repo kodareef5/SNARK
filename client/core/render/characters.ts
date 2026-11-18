@@ -79,8 +79,7 @@ interface VehicleRig {
   doors: Int16Array;
   slideOffsets?: Float32Array;
   steer: number;
-  outboard: number;
-  propeller: number;
+  drives: { bone: number; axis: readonly [number, number, number]; ratio: number; spin: boolean }[];
 }
 
 export interface VehicleRenderPose {
@@ -739,10 +738,9 @@ export class Characters {
             if (b >= 0) quatAxis(rig.a.rot, b * 4, rotor.axis[0], rotor.axis[1], rotor.axis[2], (vehicle?.rotorPhase ?? 0) * rotor.ratio);
           }
         }
-        if (v.def.movement === "boat") {
-          const motor = v.def.outboard, prop = v.def.propeller;
-          if (motor && v.outboard >= 0) quatAxis(rig.a.rot, v.outboard * 4, motor.axis[0], motor.axis[1], motor.axis[2], steering * motor.ratio);
-          if (prop && v.propeller >= 0) quatAxis(rig.a.rot, v.propeller * 4, prop.axis[0], prop.axis[1], prop.axis[2], (vehicle?.wheelAngle ?? 0) * prop.ratio);
+        for (const part of v.drives) {
+          const angle = part.spin ? vehicle?.wheelAngle ?? 0 : steering;
+          quatAxis(rig.a.rot, part.bone * 4, part.axis[0], part.axis[1], part.axis[2], angle * part.ratio);
         }
         quatAxis(this.wheel, 0, 1, 0, 0, vehicle?.wheelAngle ?? 0);
         for (let w = 0; w < v.def.wheels.length; w++) {
@@ -1367,7 +1365,14 @@ function writeRigid(out: Float32Array, at: number, x: number, y: number, z: numb
 function vehicleRig(def: VehicleDefinition | null, names: readonly string[]): VehicleRig | null {
   if (!def) return null;
   const bone = (name: string): number => names.indexOf(name);
-  return { def, ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), outboard: def.movement === "boat" && def.outboard ? bone(def.outboard.bone) : -1, propeller: def.movement === "boat" && def.propeller ? bone(def.propeller.bone) : -1, rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
+  const drives: VehicleRig["drives"] = [];
+  if (def.movement === "boat") for (const drive of [def, def.secondDrive]) {
+    for (const kind of ["outboard", "propeller"] as const) {
+      const joint = drive?.[kind];
+      if (joint && bone(joint.bone) >= 0) drives.push({ ...joint, bone: bone(joint.bone), spin: kind === "propeller" });
+    }
+  }
+  return { def, drives, ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
 }
 
 function orientSolved(source: Solved, rotation: Float64Array, out: Solved): void {

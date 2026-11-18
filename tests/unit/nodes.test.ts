@@ -666,7 +666,9 @@ test("a creature's way is found again when anything within the reach of the wide
   const pieces = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const widest = Math.max(...nodes.spread, ...pieces.spread);
   expect(widest).toBeGreaterThan(12); // a banyan's outer trunks
-  expect(widest + Math.max(...reg.bodyRadius)).toBeLessThanOrEqual(ROUTE_MARGIN);
+  // Only walking bodies request these paths. Vehicles use their own controller and collision geometry.
+  const walkingRadii = reg.bodyRadius.filter((_, kind) => !reg.vehicle[kind]);
+  expect(widest + Math.max(...walkingRadii)).toBeLessThanOrEqual(ROUTE_MARGIN);
 });
 
 test("fuzz: bodies wandering among trees and rocks are always in free space", () => {

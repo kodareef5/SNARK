@@ -1,4 +1,5 @@
 // Found boats belong to mapped waterfront places. Search the finished geometry; never carve a berth or move the sea.
+import { MARINE_MODELS } from "../../content/vehicles/marine-fleet.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { hashString } from "../../shared/hash.ts";
@@ -11,8 +12,11 @@ import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { BuildingLabel, PublicPlace } from "../mapworld/labels.ts";
 
-export interface BoatSite { id: string; kind: "civilian" | "rescue" | "police"; x: number; z: number; radius: number }
+export interface BoatSite { id: string; kind: "civilian" | "rescue" | "police"; x: number; z: number; radius: number; waterfront?: "marina" | "pier" }
 const TYPES = { civilian: "core:boat", rescue: "core:boat_rescue", police: "core:boat_police" } as const;
+
+const marinaTypes = [TYPES.civilian, ...MARINE_MODELS.map(m => m.id)];
+const pierTypes = [TYPES.civilian, ...MARINE_MODELS.filter(m => m.length <= 12).map(m => m.id)];
 
 /** Only direct source labels enter this list. A Coast Guard station is an authored rescue site, not a guessed POI API. */
 export function mappedBoatSites(places: readonly PublicPlace[], labels: Readonly<Record<string, BuildingLabel>>, toEngine: (e: number, n: number) => [number, number]): BoatSite[] {
@@ -25,7 +29,7 @@ export function mappedBoatSites(places: readonly PublicPlace[], labels: Readonly
     // it; the name gives way to the place, which keeps it unique.
     const head = `place/${p.kind}/`, at = `@${p.e},${p.n}`;
     const name = (p.name ?? "unnamed").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x21-\x7e]+/g, "_").slice(0, Math.max(0, 80 - "boat/".length - head.length - at.length));
-    result.push({ id: `${head}${name}${at}`, kind, x, z, radius: p.kind === "marina" ? 120 : 48 });
+    result.push({ id: `${head}${name}${at}`, kind, x, z, radius: p.kind === "marina" ? 120 : 48, ...(p.kind === "pier" || p.kind === "marina" ? { waterfront: p.kind } : {}) });
   }
   for (const [id, p] of Object.entries(labels)) {
     const kind = p.kind === "police_station" ? "police" : p.kind === "fire_station" || /coast guard station/i.test(p.name ?? "") ? "rescue" : null;
@@ -66,29 +70,33 @@ export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[
   for (const site of order) {
     if (found.length >= limit) break;
     if (counts[site.kind] >= (site.kind === "civilian" ? 10 : 4)) continue;
-    const kind = TYPES[site.kind], def = reg.vehicle[reg.index.get(kind)!];
-    if (!def || !isBoatVehicle(def)) continue;
+    const pool = site.waterfront === "marina" ? marinaTypes : pierTypes;
+    const preferred = site.kind === "civilian" && site.waterfront ? pool[hashString(site.id, 193) % pool.length]! : TYPES[site.kind];
     const candidates: [number, number, number][] = [[site.x, site.z, (hashString(site.id, 414) & 7) * Math.PI / 4]];
     for (let radius = 8; radius <= site.radius; radius += 8) for (let side = 0; side < 16; side++) {
       const angle = side * Math.PI / 8;
       candidates.push([site.x + Math.sin(angle) * radius, site.z + Math.cos(angle) * radius, angle]);
     }
-    for (const [x, z, heading] of candidates) {
-      if (x < 8 || z < 8 || x > hf.sizeX - 8 || z > hf.sizeZ - 8 || found.some(v => Math.hypot(v.x - x, v.z - z) < 180) ||
-        (map.vehicles ?? []).some(v => Math.hypot(v.x - x, v.z - z) < 16)) continue;
-      const water = hf.waterAt(x, z);
-      if (!Number.isFinite(water) || water - hf.heightAt(x, z) < def.spec.draft + .2) continue;
-      const chunk = chunkAt(map.dims, x, z); nodes?.retain(chunk, 1, 1, () => false);
-      try {
-        const y = boatRestY(def.spec, water);
-        if (!shoreAccess(world, x, z)) continue;
-        for (const yaw of [heading, heading + Math.PI / 2, heading + Math.PI, heading - Math.PI / 2]) {
-          if (!vehicleFitsWorld(world, x, y, z, yaw, def)) continue;
-          found.push({ id: `boat/${site.id}`, kind, x, y, z, yaw: Math.round(yaw * 65536 / (Math.PI * 2)) & 65535, condition: [.58, .88], fuel: [.04, .42] });
-          counts[site.kind]++; break;
-        }
-      } finally { nodes?.retain(chunk, 1, -1, () => false); }
-      if (found.at(-1)?.id === `boat/${site.id}`) break;
+    const fallback = TYPES[site.kind];
+    search: for (const kind of preferred === fallback ? [preferred] : [preferred, fallback]) {
+      const def = reg.vehicle[reg.index.get(kind)!];
+      if (!def || !isBoatVehicle(def)) continue;
+      for (const [x, z, heading] of candidates) {
+        if (x < 8 || z < 8 || x > hf.sizeX - 8 || z > hf.sizeZ - 8 || found.some(v => Math.hypot(v.x - x, v.z - z) < 180) ||
+          (map.vehicles ?? []).some(v => Math.hypot(v.x - x, v.z - z) < 16)) continue;
+        const water = hf.waterAt(x, z);
+        if (!Number.isFinite(water) || water - hf.heightAt(x, z) < def.spec.draft + .2) continue;
+        const chunk = chunkAt(map.dims, x, z); nodes?.retain(chunk, 1, 1, () => false);
+        try {
+          const y = boatRestY(def.spec, water);
+          if (!shoreAccess(world, x, z)) continue;
+          for (const yaw of [heading, heading + Math.PI / 2, heading + Math.PI, heading - Math.PI / 2]) {
+            if (!vehicleFitsWorld(world, x, y, z, yaw, def)) continue;
+            found.push({ id: `boat/${site.id}`, kind, x, y, z, yaw: Math.round(yaw * 65536 / (Math.PI * 2)) & 65535, condition: [.58, .88], fuel: [.04, .42] });
+            counts[site.kind]++; break search;
+          }
+        } finally { nodes?.retain(chunk, 1, -1, () => false); }
+      }
     }
   }
   return found;

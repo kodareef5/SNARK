@@ -4,7 +4,7 @@ import { TICK_DT } from "../coords.ts";
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
 import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
 import { resolveVehicleContacts, separateVehicleOverlap, type VehicleContactQueries } from "./vehicle-contact.ts";
-import { validateBoatSpec, type BoatSpec, type BoatVehicleDefinition, type VehicleContact, type VehicleState } from "./vehicle.ts";
+import { boatDrives, validateBoatSpec, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type VehicleContact, type VehicleState } from "./vehicle.ts";
 
 export interface BoatState extends VehicleState {
   qx: number; qy: number; qz: number; qw: number;
@@ -37,7 +37,7 @@ const approach = (n: number, target: number, by: number): number => n < target ?
 const square = (n: number): number => n * n;
 
 /** Physical propeller centre in the keel frame, including the steering joint used by the rendered outboard. */
-export function boatPropellerPoint(p: BoatSpec, steering: number, out: Float64Array | number[]): void {
+export function boatPropellerPoint(p: BoatDrive, steering: number, out: Float64Array | number[]): void {
   const at = p.propeller.at, pivot = p.outboard?.pivot;
   if (!pivot) { out[0] = at[0]; out[1] = at[1]; out[2] = at[2]; return; }
   const sn = detSin(-steering), cs = detCos(-steering), x = at[0] - pivot[0], z = at[2] - pivot[2];
@@ -120,9 +120,14 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
   s.hullCondition = clamp(s.hullCondition, 0, 1); s.engineCondition = clamp(s.engineCondition, 0, 1); s.flooding = clamp(s.flooding, 0, 1);
   s.payloadMass = clamp(s.payloadMass, 0, 100000); s.rideOffset = s.rideVelocity = 0;
   rotation(s); writeRotation(s);
-  boatPropellerPoint(p, s.steering, propellerPoint);
-  quatRotate(q, 0, propellerPoint[0]!, propellerPoint[1]!, propellerPoint[2]!, point, 0);
-  const propWet = immersion(world, s.x + point[0]!, s.y + point[1]!, s.z + point[2]!, p.propeller.radius * 2);
+  const drives = boatDrives(p);
+  let propWet = 0;
+  for (const drive of drives) {
+    boatPropellerPoint(drive, s.steering, propellerPoint);
+    const intake = drive.propeller.intake ?? propellerPoint;
+    quatRotate(q, 0, intake[0]!, intake[1]!, intake[2]!, point, 0);
+    propWet += immersion(world, s.x + point[0]!, s.y + point[1]!, s.z + point[2]!, drive.propeller.radius * 2) / drives.length;
+  }
   const capsize = up[1]! < .15;
   motor(s, input, p, propWet, capsize);
   const wantedSteering = s.steering; s.steering = beforeSteering;
@@ -166,16 +171,19 @@ export function stepBoat(s: BoatState, input: Readonly<BoatInput>, def: BoatVehi
     // Dynamic pressure supports part of the hull, with a small forward centre of pressure giving genuine bow trim.
     const lift = p.mass * p.gravity * p.planingLift * plane;
     addForce(0, -.20, p.planingTrim * 4, 0, lift, 0);
-    torque[2] -= s.yawRate * Math.max(0, along) * mass * .55 * plane;
-    boatPropellerPoint(p, s.steering, propellerPoint);
-    quatRotate(q, 0, propellerPoint[0]!, propellerPoint[1]!, propellerPoint[2]!, point, 0);
-    const px = s.x + point[0]!, py = s.y + point[1]!, pz = s.z + point[2]!;
-    const prop = immersion(world, px, py, pz, p.propeller.radius * 2);
-    // Shallow water may surround the hull while the propeller touches bottom: no usable thrust there.
-    const clearance = clamp((py - world.groundAt(px, pz) - p.propeller.radius * .6) / p.propeller.radius, 0, 1);
+    torque[2] -= s.yawRate * Math.max(0, along) * mass * (p.planingBankArm ?? .55) * plane;
     const demand = clamp((s.engineRpm - p.idleRpm) / (p.maxRpm - p.idleRpm), 0, 1);
-    const thrust = s.engineOn && up[1]! > .15 ? s.gear * (s.gear > 0 ? p.thrust : p.reverseThrust) * demand * (.25 + .75 * s.engineCondition) * prop * clearance : 0;
-    addForce(propellerPoint[0]! - p.centerOfMass[0], propellerPoint[1]! - p.centerOfMass[1], propellerPoint[2]! - p.centerOfMass[2], -detSin(s.steering) * thrust, 0, detCos(s.steering) * thrust);
+    const available = s.engineOn && up[1]! > .15 ? s.gear * (s.gear > 0 ? p.thrust : p.reverseThrust) * demand * (.25 + .75 * s.engineCondition) / drives.length : 0;
+    for (const drive of drives) {
+      boatPropellerPoint(drive, s.steering, propellerPoint);
+      const intake = drive.propeller.intake ?? propellerPoint;
+      quatRotate(q, 0, intake[0]!, intake[1]!, intake[2]!, point, 0);
+      const px = s.x + point[0]!, py = s.y + point[1]!, pz = s.z + point[2]!, radius = drive.propeller.radius;
+      const wet = immersion(world, px, py, pz, radius * 2);
+      const clearance = clamp((py - world.groundAt(px, pz) - radius * .6) / radius, 0, 1);
+      const thrust = available * wet * clearance;
+      addForce(propellerPoint[0]! - p.centerOfMass[0], propellerPoint[1]! - p.centerOfMass[1], propellerPoint[2]! - p.centerOfMass[2], -detSin(s.steering) * thrust, 0, detCos(s.steering) * thrust);
+    }
     const angularDamp = .1 + p.angularDrag * waterShare;
     torque[0] -= wx * ix * angularDamp; torque[1] -= wy * iy * angularDamp * .25; torque[2] -= wz * iz * angularDamp;
     s.pitchRate = clamp(s.pitchRate - torque[0]! / ix * dt, -4, 4);
