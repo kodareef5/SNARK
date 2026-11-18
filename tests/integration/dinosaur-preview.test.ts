@@ -23,7 +23,7 @@ test("the independent dinosaur course preserves survivor setup and grants real o
     expect(pets).toHaveLength(1);
     const pet = pets[0]!;
     expect(pet.team).toBe(owner.team); expect(h.reg.saddleFits[pet.saddle]).toBe(raptor);
-    expect(h.host.items.inv(pet).total(h.reg.index.get("core:berry")!)).toBeGreaterThan(90);
+    expect(h.host.items.inv(pet).total(h.reg.index.get("core:meat")!)).toBeGreaterThan(90);
     expect(seedDinosaurPreview(h.host, owner, ["core:raptor"])).toBe(0);
     expect(h.host.items.audit()).toEqual([]);
     const hf = h.world.hf, { spawn, slope, pool } = DINOSAUR_COURSE;

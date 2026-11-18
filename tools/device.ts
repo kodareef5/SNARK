@@ -46,6 +46,7 @@ import type { ServerWorld } from "../server/world.ts";
 import { flock } from "./bench/gpu.ts";
 import { benchHills } from "./bench/terrain.ts";
 import { buildClientApart } from "./build-client.ts";
+import { findChrome } from "./chrome.ts";
 
 /** A report larger than this is refused, and so is any post past these counts. A ladder posts after each of a hundred or so rungs. */
 export const REPORT_BYTES = 64 * 1024;
@@ -111,7 +112,9 @@ export function filesChanged(before: Map<string, string>, now: Map<string, strin
   const gone = [...before.keys()].filter((name) => !now.has(name));
   const added = [...now.keys()].filter((name) => !before.has(name));
   const rewritten = [...before.keys()].filter((name) => now.has(name) && now.get(name) !== before.get(name));
-  const list = (names: string[], how: string): string => (names.length === 0 ? "" : `${names.length} ${how} (${names.slice(0, 3).join(", ")}${names.length > 3 ? ", ..." : ""})`);
+  // Sorted: a folder's names come in the order its file system keeps them (by name on a Mac, by hash on Linux's ext4),
+  // and the first few named should not hang on that. These lists are what differs, so they are short.
+  const list = (names: string[], how: string): string => (names.length === 0 ? "" : `${names.length} ${how} (${names.sort().slice(0, 3).join(", ")}${names.length > 3 ? ", ..." : ""})`);
   return [list(gone, "gone"), list(rewritten, "rewritten"), list(added, "new")].filter((x) => x !== "").join(", ");
 }
 
@@ -356,7 +359,7 @@ if (import.meta.main) {
   const texfmt = /^[a-z0-9]{1,8}$/.exec(value("--texfmt") ?? "")?.[0];
   const assetnet = /^[\d.]+(,[\d.]+){0,2}$/.exec(value("--assetnet") ?? "")?.[0];
   const terrain = mode === "terrain" || mode === "trees" || process.argv.includes("--terrain");
-  const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find((p) => p && existsSync(p));
+  const chrome = findChrome();
   const cloudflared = process.env.CLOUDFLARED ?? Bun.which("cloudflared") ?? "/opt/homebrew/bin/cloudflared";
   if (self && !chrome) {
     console.error("device: no Chrome found. Set CHROME to its path.");

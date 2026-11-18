@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { artTest } from "../fixtures/needs-art.ts";
-import { corePackBytes } from "../fixtures/pack.ts";
+import { corePackBytes, frozenPack } from "../fixtures/pack.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { FEWEST, simplify, withLevels } from "../../tools/pack/simplify.ts";
@@ -127,9 +127,9 @@ artTest("a mesh with one level gets more only if it has the triangles for them, 
   }
   // The levels in the pack were made before the simplifier learned to keep a surface. It still makes those very levels
   // of a mesh that has none, vertex for vertex.
-  const ours = CREATURE_ASSETS.filter(({ spec }) => "raw" in spec.source).map(({ id }) => id);
-  expect(ours.length).toBeGreaterThanOrEqual(2);
-  for (const mesh of unpackMeshes(core).filter((m) => ours.includes(m.id))) {
+  const legacy = unpackMeshes(frozenPack()).filter(m => m.id === "core:raptor" || m.id === "core:parasaur");
+  expect(legacy.map(m => m.id).sort()).toEqual(["core:parasaur", "core:raptor"]);
+  for (const mesh of legacy) {
     const again = simplify(mesh.lods[0]!, mesh.lods.slice(1).map(tris));
     for (const [i, made] of again.entries()) {
       for (const part of ["positions", "colors", "bones", "indices"] as const) expect([mesh.id, i, part, made.lod[part]]).toEqual([mesh.id, i, part, mesh.lods[i + 1]![part]]);

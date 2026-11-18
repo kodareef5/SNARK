@@ -242,7 +242,7 @@ def stabilize_uv_precision(mesh):
     (Path.cwd()/'var/stego-review/uv-precision.json').write_text(json.dumps(report,indent=2))
 
 
-def unwrap_and_bake_fields(obj):
+def unwrap_and_bake_fields(obj, paint=True):
     mesh = obj.data
     existing_seams(mesh)
     old = np.array([tuple(q.uv) for q in mesh.uv_layers.active.data], dtype=np.float32)
@@ -270,6 +270,8 @@ def unwrap_and_bake_fields(obj):
     out = Path.cwd() / 'var/stego-review'
     out.mkdir(parents=True, exist_ok=True)
     stabilize_uv_precision(mesh)
+    if not paint:
+        return
     mesh.calc_loop_triangles()
     mesh.calc_tangents(uvmap=mesh.uv_layers.active.name)
     size = 2048

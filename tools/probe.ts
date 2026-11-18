@@ -26,6 +26,7 @@ import { dinosaurCourse } from "./dinosaurs/course.ts";
 import { buildDinosaurReviewClient, installDinosaurPreview, requireDinosaurReviewArt } from "./dinosaurs/dev.ts";
 import { writeMap } from "../shared/world/mapfile.ts";
 import { prepareDriveProbe } from "./probe-drive.ts";
+import { findChrome } from "./chrome.ts";
 
 // --drive puts a car with a seated civilian by the spawn and has the page drive it with the real player controls, on
 // the ordinary build: the car is in the core pack. --medium draws it on the medium tier rather than low poly.
@@ -49,15 +50,7 @@ if (hardware && process.argv.includes("--software")) throw new Error("Choose --h
 const software = !hardware && (drive || !!dinosaur || process.argv.includes("--software"));
 const diagnostics = software || hardware;
 const driveTier = process.argv.includes("--medium") ? "medium" : "lowpoly";
-const CANDIDATES = [
-  process.env.CHROME,
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  "/Applications/Chromium.app/Contents/MacOS/Chromium",
-  "/usr/bin/google-chrome",
-  "/usr/bin/chromium",
-  "/usr/bin/chromium-browser",
-];
-const chrome = CANDIDATES.find((p) => p && existsSync(p));
+const chrome = findChrome();
 if (!chrome) {
   console.error("probe: no Chrome found. Set CHROME to its path.");
   process.exit(2);

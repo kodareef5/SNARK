@@ -71,7 +71,7 @@ export const TRIKE: readonly Def[] = [
   { type: "item", class: "egg", id: "core:trike_egg", label: "trike egg", color: tone(0xc7bc9d), stack: 100, weight: 7, eat: { food: 35, health: 35 }, spoilHours: (8 * 3600) / 140, decomposeHours: (30 * 60) / 140 },
   { type: "item", class: "egg", id: "core:trike_egg_fertile", label: "fertilised trike egg", color: tone(0xc7bc9d), stack: 1, weight: 7, eat: { food: 35, health: 35 }, spoilHours: (8 * 3600) / 140 },
   { type: "item", class: "saddle", id: "core:saddle_trike", stack: 1, weight: 20, label: "trike saddle", color: tone(0x6d472b),
-    saddle: { fits: "core:trike", armor: 20, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 2.975, -.25], entry: [1.75, 0, -.25],
+    saddle: { fits: "core:trike", armor: 20, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 3.575, -.25], entry: [1.75, 0, -.25],
       rider: { hands: ["grip_l", "grip_r"], feet: ["rest_l", "rest_r"], knees: ["knee_l", "knee_r"],
         soles: { sockets: ["sole_l", "sole_r"], half: [.15, .13] }, grips: { radius: .017, span: [-.12, .13], forearmAlignment: 75 } } }] } },
   ...crafting("core:saddle_trike", { needs: [{ item: "core:hide", count: 140 }, { item: "core:fiber", count: 80 }, { item: "core:wood", count: 25 }], seconds: 10, xp: 22.2 }),
