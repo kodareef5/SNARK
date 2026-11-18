@@ -1,7 +1,9 @@
-// What a frame's finishing pass is told. On a tier with a light target (Tier.post) the scene is drawn as light, exposed
-// but not toned, into a multisampled float target of the shell's, which is resolved and finished in one pass: bloom,
-// the tone curve, the grade, a slight sharpen and dither. Any other tier, or a device with no such target, draws as
-// medium always has, each shader toning its own light onto the canvas.
+// What a frame's finishing pass is told, and the grade every lit tier takes. Each lit shader shows its light through
+// the grade's gain, the tone curve and the grade's saturation and gamma, by the sun's height (content/grade.ts). On a
+// tier with a light target (Tier.post) the scene is drawn as light instead, exposed but not toned, into a multisampled
+// float target of the shell's, which is resolved and finished in one pass for what needs a pass: bloom, then the same
+// gain, tone curve and grade over light that bloom has moved, a slight sharpen and dither. The governor gives the
+// target back first of all (governor.ts), and the frame keeps its grade.
 //
 // Bloom spreads what is truly bright: the part of a pixel's light past BLOOM_FROM, which grows from nothing there, so
 // no line is drawn where it starts. It is a chain of targets, each half the one before from a quarter of the canvas
@@ -22,10 +24,11 @@ import { GRADED, TONE } from "./surface.ts";
  */
 export const LIGHT_FORMATS: readonly number[] = [0x881a, 0x8c3a];
 /**
- * The samples the light target is drawn with, as the canvas's own antialiasing is, or as many as the device has under
- * that; none on a canvas drawn at more pixels than the screen's own (ultra's), whose supersample is its antialiasing.
+ * The samples the light target is drawn with, or as many as the device has under that; none on a canvas drawn at more
+ * pixels than the screen's own, whose supersample is its antialiasing. Two: at play distance palm fronds, rails, a
+ * tower's edge on the sky and far rooflines show as with four, and the frame on an M5 is about a millisecond quicker.
  */
-export const LIGHT_SAMPLES = 4;
+export const LIGHT_SAMPLES = 2;
 export const lightSamples = (supersampled: boolean): number => (supersampled ? 0 : LIGHT_SAMPLES);
 /**
  * Bloom's levels are R11F_G11F_B10F, half the bytes of the scene's float, and the first is a quarter of the canvas a
@@ -53,8 +56,7 @@ const BRIGHTEST = 256;
 /**
  * Bytes the light target takes on the card for a canvas `width` by `height` drawn with `samples` (Tier.post), in its
  * larger format: each sample's colour and depth, the resolved scene (with depth of its own where there are no samples),
- * and bloom's levels, a fifteenth of a pixel of four bytes. On ultra's canvas, held to 5,120 by 2,880 and drawn with no
- * samples, that is 181 MB at most; on high at 1,440p, with four, 207 MB.
+ * and bloom's levels, a fifteenth of a pixel of four bytes: on high and ultra at 1,440p, with two, 119 MB.
  */
 export const lightBytes = (width: number, height: number, samples: number): number => Math.ceil(width * height * ((samples > 0 ? samples * 12 + 8 : 12) + 4 / 15));
 
@@ -77,14 +79,19 @@ export function gradeAt(height: number): GradeKey {
   return { sun: height, gain: [mix(a.gain[0], b.gain[0]), mix(a.gain[1], b.gain[1]), mix(a.gain[2], b.gain[2])], saturation: mix(a.saturation, b.saturation), gamma: mix(a.gamma, b.gamma) };
 }
 
-/** Fills the frame block's finish (packet.ts fGrade, fFinish) for a frame of `tier` at `hour` on a canvas `height` pixels tall: none without a light target. */
+/**
+ * Fills the frame block's finish (packet.ts fGrade, fFinish) for a frame of `tier` at `hour` on a canvas `height` pixels
+ * tall: the grade on every lit tier, which each shader takes where there is no light target and the finish where there
+ * is, and bloom and the sharpen with a light target alone.
+ */
 export function postFrame(frame: Float32Array, tier: Tier, hour: number, height: number): void {
   frame.fill(0, FRAME.grade, FRAME.levels + 1);
-  if (!tier.post) return;
+  if (!tier.lit) return;
   const k = gradeAt(sunHeight(hour));
   frame.set(k.gain, FRAME.grade);
   frame[FRAME.saturation] = k.saturation;
   frame[FRAME.gamma] = k.gamma;
+  if (!tier.post) return;
   frame[FRAME.bloom] = BLOOM;
   frame[FRAME.sharpen] = SHARPEN;
   frame[FRAME.levels] = bloomLevels(height, tier.post.bloom);

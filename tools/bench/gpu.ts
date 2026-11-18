@@ -9,7 +9,9 @@
 // device probe's crowd, its thatch and a base of 1,024 pieces, the device probe's wood on the 8 km hills, and a flock of
 // hurt and dead dodos. The city is a built Miami (var/maps/miami.snmap, or the file CITY_MAP names) in a 1,920 by 1,080
 // window at one and two device pixels to one, on its street and over it, the survivor held there as a ghost: on medium,
-// high and ultra, with shadows and the far layers off in turn on medium at one and on ultra at two. The finish's light
+// high and ultra, each also on the page's clock (`?sync=1`, every frame waiting for the card), which a timer query on this
+// card reads too long where a frame has many passes or the card is busy with the frame before; with shadows and the far
+// layers off in turn on medium at one and on ultra at two. The finish's light
 // target, its bloom and bodies' contact are each turned off every other frame on high and ultra at one, on the page's
 // clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
 // the turning view and other work on the card move little, and which a timer query on this card reads too long. A city
@@ -54,6 +56,8 @@ interface Run {
   off?: Effect | "far";
   /** An effect every other frame draws without, on the page's clock. */
   ab?: Effect;
+  /** Whether the frame is timed on the page's clock and not by query. */
+  clock?: boolean;
   view?: View;
   scale?: number;
   cpu?: number;
@@ -79,7 +83,7 @@ export function plan(): Run[] {
   }
   for (const tier of ["medium", "ultra"]) runs.push({ scene: "flock", tier }, { scene: "flock", tier, off: "layers" });
   for (const view of ["street", "air"] as View[]) {
-    for (const tier of ["medium", "high", "ultra"]) for (const scale of [1, 2]) runs.push({ scene: "city", view, tier, scale });
+    for (const tier of ["medium", "high", "ultra"]) for (const scale of [1, 2]) runs.push({ scene: "city", view, tier, scale }, { scene: "city", view, tier, scale, clock: true });
     for (const [tier, scale] of [["medium", 1], ["ultra", 2]] as const) for (const off of ["shadows", "far"] as const) runs.push({ scene: "city", view, tier, scale, off });
     // The finish (post.ts): the light target and its pass, bloom, and bodies' contact, each off every other frame.
     for (const tier of ["high", "ultra"]) for (const ab of ["light", "bloom", "contact"] as const) runs.push({ scene: "city", view, tier, scale: 1, ab });
@@ -219,7 +223,7 @@ export function flock(server: ReturnType<typeof startServer>): number {
   return n;
 }
 
-const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}`;
+const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
 async function measure(runs: Run[], times: number, say: (line: string) => void): Promise<Map<string, Record<string, any>[]>> {
@@ -256,7 +260,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     const profile = mkdtempSync(join(tmpdir(), "snark-gpu-"));
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
-        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}`;
+        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}`;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), 150000 * (r.cpu ?? 1)))));
         const pixels = r.view ? ["--window-size=1920,1080", `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
@@ -282,7 +286,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         if (hold) clearInterval(hold);
         browser.kill();
         await browser.exited;
-        const ab = result?.alternate ? `${result.alternate.own} ms on the page's clock with it, ${result.alternate.other} without, a frame without it ${result.alternate.less} ms against those either side` : `${result?.gpuMs?.frame?.median ?? "untimed"} ms on the GPU`;
+        const ab = result?.alternate ? `${result.alternate.own} ms on the page's clock with it, ${result.alternate.other} without, a frame without it ${result.alternate.less} ms against those either side` : `${result?.gpuMs?.frame?.median ?? "untimed"} ms ${r.clock ? "on the page's clock" : "on the GPU"}`;
         say(`${nameOf(r)}: ${result ? `${ab}, ${result.frameMs.median} ms a frame, ${result.buildAndSubmitMs.median} ms ours, ${result.drawCalls} GL draws, ${result.triangles} triangles${result.calls ? `, a frame ${JSON.stringify(result.calls)}` : ""}` : "no report"} (load ${loadavg()[0]!.toFixed(1)})`);
         if (result) out.set(nameOf(r), [...(out.get(nameOf(r)) ?? []), result]);
       }
@@ -331,6 +335,8 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
         const draws = median(all.map((r) => r.drawCalls));
         section(`GPU on Miami, ${view}, ${tier}, ${scale} device pixel${scale > 1 ? "s" : ""} to one (headless Chrome, ${all[0]!.canvas.join(" by ")} pixels, ${all[0]!.renderer})`);
         record("the frame, timed whole, median", gpu(all), "ms");
+        const clocked = reports.get(`${key}, on the page's clock`);
+        if (clocked) record("the frame on the page's clock, waiting for the card, median", gpu(clocked), "ms");
         record("GL draws, triangles", draws, `draws, ${(median(all.map((r) => r.triangles)) / 1e6).toFixed(2)} M triangles`);
         record("our code's time a frame, median", median(all.map((r) => r.buildAndSubmitMs.median)), "ms");
         const counted = all.at(-1)!.calls as Record<"calls" | "again" | "draws", Record<string, number>> | undefined;

@@ -43,10 +43,10 @@ const GROUND = { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint
 const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
 
 /**
- * What a lit program defines on a tier with a light target: the contact of bodies (contact.ts), and where its frame is
- * drawn into the light target (post.ts), that it shows light, which the finish tones.
+ * What a lit program defines: on a tier with contact, the contact of bodies (contact.ts), and where its frame is drawn
+ * into the light target (post.ts), that it shows light, which the finish tones and grades.
  */
-const out = (tier: Tier, light: boolean): string => (tier.post ? "#define CONTACT\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
+const out = (tier: Tier, light: boolean): string => (tier.contact ? "#define CONTACT\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
 
 /**
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for

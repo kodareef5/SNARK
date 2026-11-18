@@ -269,20 +269,36 @@ export function graded(out: Out, frame: Numbers): void {
 }
 
 /**
- * What is drawn: light times the frame's exposure, through the tone curve, clamped and shown as display values. Under
- * water it is then in the fog `dist` metres off, the flat renderer's. Above water the GLSL puts the air in first
- * (atmosphere.ts `hazed`), which the rasterizer leaves out (D264). A tier with a light target (post.ts) mixes the fog
- * in as light, then takes the frame's grade about the tone curve, as its finishing pass does; its bloom, sharpen and
- * dither are the GPU's alone.
+ * What is drawn: light times the frame's exposure and the grade's gain, through the tone curve, graded (post.ts), clamped
+ * and shown as display values; a frame with no grade (a gamma of 0) is not graded. Under water it is then in the fog
+ * `dist` metres off, the frame's `skyShown`. Above water the GLSL puts the air in first (atmosphere.ts `hazed`), which the rasterizer leaves
+ * out (D264). A tier with a light target (post.ts) mixes the fog in as light before the tone curve, as its finishing
+ * pass does; its bloom, sharpen and dither are the GPU's alone.
  */
 export function shown(out: Out, light: Numbers, dist: number, p: FramePacket): void {
-  const f = p.frame, exposure = f[FRAME.exposure]!, post = p.tier.post !== null;
+  const f = p.frame, exposure = f[FRAME.exposure]!, post = p.tier.post !== null, grading = f[FRAME.gamma]! > 0;
   let fog = f[FRAME.eyeHeight]! >= 0 ? 0 : (dist - p.fogStart) / (p.fogEnd - p.fogStart);
   fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
-  for (let c = 0; c < 3; c++) out[c] = post ? (light[c]! * exposure * (1 - fog) + srgbToLinear(p.sky[c]!) * fog) * f[FRAME.grade + c]! : light[c]! * exposure;
+  const air = [0, 0, 0];
+  for (let c = 0; c < 3; c++) air[c] = srgbToLinear(p.sky[c]!) * (grading ? f[FRAME.grade + c]! : 1);
+  for (let c = 0; c < 3; c++) out[c] = light[c]! * exposure * (grading ? f[FRAME.grade + c]! : 1) * (post ? 1 - fog : 1) + (post ? air[c]! * fog : 0);
   tone(out, out);
-  if (post) graded(out, f);
-  for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(out[c]!, 0), 1)) * (post ? 1 : 1 - fog) + (post ? 0 : p.sky[c]! * fog);
+  if (grading) graded(out, f);
+  for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(out[c]!, 0), 1)) * (post ? 1 : 1 - fog) + (post ? 0 : p.skyShown[c]! * fog);
+}
+
+/**
+ * The fog's colour of a frame drawn with no light target, `skyShown`: the sky's colour taken as light, graded and shown
+ * as everything else is where the frame is graded, and the sky's colour itself where it is not. Once a frame, so a
+ * shader is told it (uSky) and does not grade it again each fragment.
+ */
+export function skyShown(p: FramePacket): void {
+  const f = p.frame, out = p.skyShown;
+  if (!(f[FRAME.gamma]! > 0)) return void out.set(p.sky);
+  for (let c = 0; c < 3; c++) out[c] = srgbToLinear(p.sky[c]!) * f[FRAME.grade + c]!;
+  tone(out, out);
+  graded(out, f);
+  for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(out[c]!, 0), 1));
 }
 
 /**
@@ -450,17 +466,20 @@ vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   vec3 light = mro.r * (sky * albedo * (1.0 - mro.b) + skyShare(f0, rough, nv) * mix(mirrored, sky, a));
   return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) * shade + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv);
 }
-${TONE}#ifdef LIGHT_TARGET
+${TONE}${GRADED}vec3 skyAsLight() {
+  return mix(uSky / 12.92, pow((uSky + 0.055) / 1.055, vec3(2.4)), step(0.04045, uSky));
+}
+#ifdef LIGHT_TARGET
 vec3 display(vec3 c) {
   return c;
 }
 vec3 fogShown() {
-  return mix(uSky / 12.92, pow((uSky + 0.055) / 1.055, vec3(2.4)), step(0.04045, uSky));
+  return skyAsLight();
 }
 const float SHOWN_STEP = 0.0;
 #else
 vec3 display(vec3 c) {
-  return encoded(clamp(tone(c), 0.0, 1.0));
+  return encoded(clamp(fFinish.x > 0.0 ? graded(tone(c * fGrade.rgb)) : tone(c), 0.0, 1.0));
 }
 vec3 fogShown() {
   return uSky;

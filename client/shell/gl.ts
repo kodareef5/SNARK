@@ -439,10 +439,11 @@ export class GlRenderer {
   }
 
   /** Program `n` of the frame's tier, begun the first time it is asked for. */
-  private program(n: number): Program {
-    const text = Object.values(PROGRAMS)[n]!(this.warmed!, this.format, this.shadowLookup === "hard", this.light > 0);
+  private program(n: number, light = this.light > 0): Program {
+    const text = Object.values(PROGRAMS)[n]!(this.warmed!, this.format, this.shadowLookup === "hard", light);
     const key = n + text.defines + text.vertex + text.fragment;
-    return (this.made[n] = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!);
+    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!;
+    return light === this.light > 0 ? (this.made[n] = made) : made;
   }
 
   /** Binds a vertex array unless it is bound. */
@@ -515,7 +516,7 @@ export class GlRenderer {
     if (last[U.sun] === this.serial) return prog;
     last[U.sun] = this.serial;
     if (at[U.sun]) gl.uniform3fv(at[U.sun], p.sun);
-    if (at[U.sky]) gl.uniform3fv(at[U.sky], p.sky);
+    if (at[U.sky]) gl.uniform3fv(at[U.sky], drawsLight(p.tier, this.light) ? p.sky : p.skyShown);
     if (at[U.fog]) gl.uniform2f(at[U.fog], p.fogStart, p.fogEnd);
     // Checker parity repeats every 16 m, so a small remainder keeps float precision.
     if (at[U.camMod]) gl.uniform3f(at[U.camMod], p.camX % 16, p.camY % 16, p.camZ % 16);
@@ -589,6 +590,8 @@ export class GlRenderer {
       this.made = this.programs.get(p.tier) ?? [];
       this.programs.set((this.warmed = p.tier), this.made);
       for (const n of tierPrograms(p.tier)) if (!this.made[n]) this.program(n);
+      // The governor's step to no light target draws the same tier with these, which a step should not wait to link.
+      if (drawsLight(p.tier, this.light)) for (const n of tierPrograms(p.tier)) this.program(n, false);
     }
     this.passes?.mark(PASS_UPLOADS);
     for (const slot of p.assetDrops) this.drop(slot);
@@ -678,7 +681,8 @@ export class GlRenderer {
     if (this.post.size !== (finish ? `${gl.drawingBufferWidth} ${gl.drawingBufferHeight} ${samples}` : "") && (finish || !p.alternate)) this.targets(finish ? gl.drawingBufferWidth : 0, gl.drawingBufferHeight, samples);
     this.shadows(p, finish ? this.post.fbs[0]! : null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
+    const sky = finish ? p.sky : p.skyShown;
+    gl.clearColor(sky[0]!, sky[1]!, sky[2]!, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     let step = -1;
     for (let d = 0; d < p.drawCount; d++) {

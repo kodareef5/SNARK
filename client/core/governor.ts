@@ -95,7 +95,7 @@ interface Knobs {
   details?: number;
   bodies?: number;
   own?: boolean;
-  bloom?: number;
+  noLightTarget?: boolean;
 }
 
 /**
@@ -111,11 +111,12 @@ interface Knobs {
  * then pixels, which a phone bound by triangles buys least with: the screen's own. Then what a fight shows, and the sun's
  * shadows last. Shadows less far is no step: a nearer cascade's finer texels ask finer casters, and it cast more. Before
  * all of these a desktop gives back what it was given beyond a phone: first the pixels ultra draws past the screen's
- * own, a quarter of its pixels on a screen of one device pixel to one, then bloom (render/post.ts), which no phone draws.
+ * own, a quarter of its pixels on a screen of one device pixel to one, then the light target (render/post.ts), which no
+ * phone draws: the frame keeps its grade and contact and loses bloom and the sharpen, and 3 to 4 ms of a desktop's card.
  */
 export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] = [
   { name: "no more pixels than the screen's own", knobs: { own: true } },
-  { name: "no bloom", knobs: { bloom: 0 } },
+  { name: "no light target", knobs: { noLightTarget: true } },
   { name: "levels: half again the error", knobs: { levels: 1.5 } },
   { name: "the far city's levels to 70% as far", knobs: { city: 0.7 } },
   { name: "leaves: the frame's triangles to 75%", knobs: { leaves: 0.75 } },
@@ -148,7 +149,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     budget: { ...base.budget, triangles: base.budget.triangles * (knobs.leaves ?? 1) },
     details: knobs.details ? { ...base.details, pool: Math.round(base.details.pool * knobs.details), share: base.details.share * knobs.details, fill: base.details.fill * knobs.details } : base.details,
     bodyError: base.bodyError * (knobs.bodies ?? 1),
-    post: base.post && knobs.bloom !== undefined ? { ...base.post, bloom: Math.min(base.post.bloom, knobs.bloom) } : base.post,
+    post: knobs.noLightTarget ? null : base.post,
   };
 }
 

@@ -105,6 +105,8 @@ export interface Tier {
    * light onto the canvas as medium has always drawn.
    */
   readonly post: { readonly bloom: number } | null;
+  /** Whether bodies that move take the sky's light from what is under them (render/contact.ts). */
+  readonly contact: boolean;
 }
 
 const MB = 1024 * 1024;
@@ -135,9 +137,8 @@ const HIGH_CITY = [boxes(500), lattice(800), bare(1300), mass(2000, 4), mass(Inf
 // in the census's views of downtown Miami (tools/bench/census.ts).
 const PHONE_HIGH_CARD = 1024 * MB;
 const PHONE_CITY = 0.7;
-// Ultra draws twice the pixels a side of a screen of one or one and a half device pixels a CSS pixel, which the browser
-// halves cleanly; on a 1x 1440p screen that is a 5K screen's pixels, which no card for ultra is asked more than.
-const ULTRA_CANVAS = 5120 * 2880;
+// Ultra draws the screen's own pixels: drawn twice a side, a light target of its size cost 10 ms more than ultra's whole
+// frame on an M5 (planning/architecture/rendering.md), and its multisampling is the light target's.
 
 export const TIERS: readonly Tier[] = [
   {
@@ -145,24 +146,28 @@ export const TIERS: readonly Tier[] = [
     lit: false, split: 0, reach: { bases: 1024, city: 2048, trees: 500, rocks: 0, bushes: 0, parts: 500 }, fade: 0.1, city: { levels: [boxes(340), lattice(600), mass(Infinity, 8)] }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, finish: "full", clouds: 0, water: "flat",
     details: { pool: 384, share: 0.5, reach: 0.6, fill: 0.5 }, budget: { triangles: 2e6, draws: 2048 }, bodyError: 1,
     post: null,
+    contact: false,
   },
   {
     name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, fewest: 0, canvas: 0, anisotropy: 1, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
     lit: true, split: 384, reach: { bases: 2048, city: 2048, trees: 1200, rocks: 600, bushes: 300, parts: 1200 }, fade: 0.1, city: { levels: MEDIUM_CITY }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light", city: { levels: nearer(MEDIUM_CITY, PHONE_CITY) } }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 1536, share: 1, reach: 1, fill: 1 }, budget: { triangles: 2e6, draws: 1024 }, bodyError: 1,
     post: null,
+    contact: false,
   },
   {
     name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
     lit: true, split: 384, reach: { bases: 2048, city: 3072, trees: 2000, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.1, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1 }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 4e6, draws: 2048 }, bodyError: 1,
     post: { bloom: 1 },
+    contact: true,
   },
   {
-    name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 2, canvas: ULTRA_CANVAS, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
+    name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
     lit: true, split: 384, reach: { bases: 2048, city: 4096, trees: 3000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.1, city: { levels: [boxes(600), lattice(900), bare(1800), mass(2800, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", clouds: 2, water: "simple",
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096 }, bodyError: 1,
     post: { bloom: 1 },
+    contact: true,
   },
 ];
 
@@ -224,7 +229,7 @@ export function forTouch(tier: Tier, touchFirst: boolean): Tier {
   const had = touched.get(tier);
   if (had) return had;
   const { offered: _, ...values } = tier.touch;
-  return touched.set(tier, { ...tier, ...values, post: null }).get(tier)!;
+  return touched.set(tier, { ...tier, ...values, post: null, contact: false }).get(tier)!;
 }
 
 /** The tiers the settings offer: on a touch-first device, those whose touch rule does not leave them out. */

@@ -55,6 +55,7 @@ import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { contactFrame } from "./contact.ts";
 import { lightBytes, lightSamples, postFrame } from "./post.ts";
+import { skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
@@ -793,7 +794,7 @@ export class Scene {
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
       postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
       p.lightSamples = lightSamples(this.supersampled);
-      contactFrame(p.frame, p.tier.post !== null, this.sizes, remote, this.own, cam, this.halfLength);
+      contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);
     }
     this.fit(cam);
@@ -813,6 +814,7 @@ export class Scene {
       p.fogStart = this.viewDistance * 0.45;
       p.fogEnd = this.viewDistance;
     }
+    skyShown(p);
 
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.castBox : undefined);
     // The selection stops at a full list, so a full list has left tiles out.

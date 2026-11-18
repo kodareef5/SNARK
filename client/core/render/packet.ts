@@ -287,7 +287,8 @@ export const FRAME = {
   /**
    * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
    * blue, and the saturation after it; then the power the toned light is raised to, bloom's share, the sharpen's
-   * strength, and bloom's levels. A frame with no light target leaves them 0 and is not graded.
+   * strength, and bloom's levels. A frame with a gamma of 0, as an unlit one, is not graded, and one with no light
+   * target has no bloom or sharpen.
    */
   grade: 152,
   saturation: 155,
@@ -360,6 +361,8 @@ export class FramePacket {
   readonly surfaceCity = Float32Array.from([1, 1, 1, 1, 1, 0, 0.08, 0, 1, 0, 0, 0]);
   /** Linear 0..1 RGB. */
   readonly sky = new Float32Array(3);
+  /** The sky's colour as a frame drawn with no light target shows its fog (surface.ts skyShown): graded where the frame is. */
+  readonly skyShown = new Float32Array(3);
   /** Unit vector toward the sun. */
   readonly sun = new Float32Array(3);
   /** Daylight brightness, 0..1. Every lit colour is multiplied by it. */
