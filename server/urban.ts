@@ -1,6 +1,6 @@
 // Vehicle seats in the normal game world. The surviving actor, its record, inventory,
 // team and connection stay the same; only the body its inputs drive changes.
-import { BOAT_ART } from '../content/vehicles/boat-art.ts';
+import { LAUNCH_BOARDING } from '../content/vehicles/boat-art.ts';
 import { Pose } from '../shared/anim/clip.ts';
 import { HUMAN, HUMAN_BONES, SOCKET_EYE } from '../shared/anim/human.ts';
 import { defaultLook, lookScales, LOOK_SEX, SEX_IDS } from '../shared/anim/look.ts';
@@ -17,7 +17,7 @@ import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STAN
 import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
-import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
+import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { capsuleFree, groundUnder, stepOnto } from '../shared/world/collide.ts';
 import { boatMeetsCapsule } from '../shared/world/boat.ts';
@@ -51,6 +51,10 @@ interface UrbanContext {
   /** Physical collision harm uses the opposing qualified body/driver and ordinary PvE rules. */
   collisionDamage?(record: EntityRecord, points: number, by: EntityRecord): number;
 }
+function boatRouteLength(def: BoatVehicleDefinition): number | undefined {
+  return def.boarding ? Math.hypot(2 * def.spec.halfLength, def.spec.height, 2 * def.spec.halfWidth) : undefined;
+}
+
 interface HostSeat { entity: number; handle: number; definition: VehicleDefinition; last: Point & { vx: number; vy: number; vz: number } }
 interface Scope { epoch: number; request: number; connection: Connection | null }
 export interface UrbanIncident { action: number; tick: number; offender: number; victim: number; vehicle: number }
@@ -301,9 +305,9 @@ export class Urban {
       const actor = ents.pid[e]!, pid = ents.pid[host.entity]!, ignored = [actor, ...host.definition.seats.map(s => this.occupancy.occupant(pid, s.id))];
       const from = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]! };
       const w = spec.halfWidth + p.radius + .15, l = spec.halfLength + p.radius + .4;
-      for (const local of [BOAT_ART.anchors.boarding_water, [w, 0, 0], [-w, 0, 0], [w, 0, -l], [-w, 0, -l], [w, 0, l], [-w, 0, l]]) {
+      for (const local of [(host.definition.boarding ?? LAUNCH_BOARDING).water, [w, 0, 0], [-w, 0, 0], [w, 0, -l], [-w, 0, -l], [w, 0, l], [-w, 0, l]]) {
         const point = this.boatPoint(e, host, local);
-        if (!this.seating.free(point, actor, ignored) || !this.seating.corridor(from, point, actor, ignored, pid)) continue;
+        if (!this.seating.free(point, actor, ignored) || !this.seating.corridor(from, point, actor, ignored, pid, undefined, boatRouteLength(host.definition))) continue;
         ents.setPosition(e, point.x, point.y, point.z); ents.stance[e] = STANCE_STAND; this.waterExit(e); return true;
       }
       ents.stance[e] = STANCE_CROUCH;
@@ -578,7 +582,7 @@ export class Urban {
     const pid = ents.pid[e]!, host = this.hosts.get(pid)!;
     const state = this.state(e);
     if (isBoatVehicle(host.definition)) {
-      const ladder = [0, 0, 0]; vehiclePoint(state, BOAT_ART.anchors.boarding_water, ladder);
+      const ladder = [0, 0, 0]; vehiclePoint(state, (host.definition.boarding ?? LAUNCH_BOARDING).water, ladder);
       if (Math.hypot(ents.x[c.ent]! - ladder[0]!, ents.z[c.ent]! - ladder[2]!) > 2) return RESULT_FAR;
       if (!this.allowed(c.pid, pid, 0)) return RESULT_NOT_YOURS;
       // One ladder serves the whole crew. A second press must find a free passenger seat, not displace the pilot.
@@ -871,7 +875,7 @@ export class Urban {
     return { ok: false, reason: 'landing-blocked' };
   }
 
-  /** The stern ladder has one reachable water approach for all four seats. Terrain still wins in shallow water. */
+  /** Resolve the swimmer's approach at the hull's stern. Terrain still wins in shallow water. */
   private boatPoint(e: number, host: HostSeat, local: readonly number[]): Point {
     const { world } = this.ctx, ents = world.ents, move = world.reg.move[ents.kind[e]!]!, out = [0, 0, 0];
     vehiclePoint(this.state(host.entity), local, out);
@@ -890,9 +894,11 @@ export class Urban {
     if (Math.hypot(state.vx, state.vy, state.vz) > .55 || Math.hypot(state.yawRate, state.pitchRate, state.rollRate) > .2 ||
       tilted || flooded) return { ok: false, reason: 'boat-moving' };
     const seat = host.definition.seats.find(s => s.id === action.seat)!;
-    const entry = this.boatPoint(ae, host, BOAT_ART.anchors.boarding_water), point = [0, 0, 0];
+    if (!isBoatVehicle(host.definition)) return { ok: false, reason: 'missing' };
+    const route = host.definition.boarding ?? LAUNCH_BOARDING;
+    const entry = this.boatPoint(ae, host, route.water), point = [0, 0, 0];
     const at = (anchor: readonly number[]): Point => { vehiclePoint(state, anchor, point); return { x: point[0]!, y: point[1]!, z: point[2]! }; };
-    const ladder = at(BOAT_ART.anchors.boarding_ladder), deck = at(BOAT_ART.anchors.boarding_deck);
+    const ladder = at(route.ladder), deck = at(route.deck);
     const occupied = host.definition.seats.map(s => this.occupancy.occupant(action.host, s.id));
     const ignored = [action.actor, ...occupied];
     const start = { x: ents.x[ae]!, y: ents.y[ae]!, z: ents.z[ae]! };
@@ -912,13 +918,13 @@ export class Urban {
       if (action.kind !== 'exit' && !this.seating.corridor(start, entry, action.actor, ignored)) return { ok: false, reason: 'corridor-blocked' };
       if (!this.seating.corridor(entry, ladder, action.actor, ignored, action.host)) return { ok: false, reason: 'ladder-blocked' };
     }
-    const seatFoot = at([seat.anchor[0], BOAT_ART.deck.height, seat.anchor[2]]);
+    const seatFoot = at([seat.anchor[0], host.definition.boarding ? seat.anchor[1] - .55 : route.deck[1], seat.anchor[2]]);
     if (!this.seating.corridor(ladder, deck, action.actor, ignored, action.host) ||
-      !this.seating.corridor(deck, seatFoot, action.actor, ignored, action.host)) return { ok: false, reason: 'ladder-blocked' };
+      !this.seating.corridor(deck, seatFoot, action.actor, ignored, action.host, undefined, boatRouteLength(host.definition))) return { ok: false, reason: 'ladder-blocked' };
     if (action.kind === 'enter') return { ok: true };
     const landed = action.victim || action.actor;
     for (const offset of [0, .8, -.8, 1.4, -1.4]) {
-      const anchor = BOAT_ART.anchors.boarding_water;
+      const anchor = route.water;
       const landing = this.boatPoint(ae, host, [anchor[0] + offset, anchor[1], anchor[2] - .25]);
       if (this.seating.free(landing, landed, [landed]) && this.seating.corridor(entry, landing, landed, ignored, action.host)) return { ok: true, landing: { ...landing, yaw: state.yaw } };
     }
@@ -967,7 +973,7 @@ export class Urban {
       // Seating's ordinary chassis envelope is upright. Check this tilted boat's actual hull and steered motor instead.
       if (!this.seating.free(landing, action.actor, ignored, action.host) ||
         boatMeetsCapsule(host.definition, state, landing.x, landing.y, landing.z, move.radius, move.height) ||
-        !this.seating.corridor(start, landing, action.actor, ignored, action.host)) continue;
+        !this.seating.corridor(start, landing, action.actor, ignored, action.host, undefined, boatRouteLength(host.definition))) continue;
       return { ok: true, landing: { ...landing, yaw: state.yaw } };
     }
     return { ok: false, reason: 'landing-blocked' };

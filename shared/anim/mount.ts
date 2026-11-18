@@ -13,7 +13,7 @@ import {
 import type { Solved } from "./skeleton.ts";
 
 /** `ride` sits astride a saddle (shared/anim/seat.ts): its rider's hands on the grips, a passenger's upper body its own. */
-export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin"] as const;
+export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin", "pwc"] as const;
 export type MountMotionRole = typeof MOUNT_MOTION_ROLES[number];
 
 export interface MountMotionProfile {
@@ -97,11 +97,11 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
     for (let i = B_SPINE * 4; i < B_UPPER_LEG_L * 4; i++) sampled.rot[i] = input.upper.rot[i]!;
     for (let i = B_FINGERS_L * 4; i < HUMAN_BONES * 4; i++) sampled.rot[i] = input.upper.rot[i]!;
   }
-  // Enclosed cabins keep arms and torso in their authored seat pose; only the head and neck follow a look.
-  if ((input.role === "pilot" || input.role === "cabin") && input.upper) {
+  // Riders using fixed controls keep their arms and torso braced while their head and neck follow a look.
+  if ((input.role === "pilot" || input.role === "cabin" || input.role === "pwc") && input.upper) {
     for (const bone of [B_NECK, B_HEAD]) for (let k = 0; k < 4; k++) sampled.rot[bone * 4 + k] = input.upper.rot[bone * 4 + k]!;
   }
-  const mirror = input.side === -1 && input.role !== "drive" && input.role !== "passenger" && input.role !== "ride" && input.role !== "pilot" && input.role !== "cabin";
+  const mirror = input.side === -1 && (input.role === "enter" || input.role === "exit" || input.role === "carjack" || input.role === "displaced");
   for (let b = 0; b < HUMAN_BONES; b++) {
     const src = (mirror ? mirrors[b]! : b) * 4;
     out.rot[b * 4] = sampled.rot[src]!;
@@ -172,13 +172,20 @@ function cabinSeat(pilot: boolean): Pose {
  * degrees forward, thighs forward and down either side, shins hanging, hands forward on the grips. These are the joints
  * the pteranodon's rig was fitted to (RIDER in assets/source/core/creatures/pteranodon/rig.py).
  */
-function astride(): Pose {
+function astride(watercraft = false): Pose {
   const b = new PoseBuilder().hips(0, 0.65, 0).turn(B_SPINE, 6);
   for (const side of [1, -1] as const) {
     const left = side === 1;
-    b.aim(left ? B_UPPER_LEG_L : B_UPPER_LEG_R, side * 0.155, -0.2, 0.34);
-    b.aim(left ? B_LOWER_LEG_L : B_LOWER_LEG_R, side * 0.01, -0.42, 0.1);
-    b.level(left ? B_FOOT_L : B_FOOT_R).turn(left ? B_FOOT_L : B_FOOT_R, 25);
+    // The PWC's trays are beside the saddle. Its riders brace on level feet, knees ahead of their ankles.
+    if (watercraft) {
+      b.aim(left ? B_UPPER_LEG_L : B_UPPER_LEG_R, side * .18, .103, .30);
+      b.aim(left ? B_LOWER_LEG_L : B_LOWER_LEG_R, side * .012, -.4, -.16);
+      b.level(left ? B_FOOT_L : B_FOOT_R);
+    } else {
+      b.aim(left ? B_UPPER_LEG_L : B_UPPER_LEG_R, side * .155, -.2, .34);
+      b.aim(left ? B_LOWER_LEG_L : B_LOWER_LEG_R, side * .01, -.42, .1);
+      b.level(left ? B_FOOT_L : B_FOOT_R).turn(left ? B_FOOT_L : B_FOOT_R, 25);
+    }
     b.aim(left ? B_UPPER_ARM_L : B_UPPER_ARM_R, side * 0.05, -0.228, 0.09);
     b.aim(left ? B_LOWER_ARM_L : B_LOWER_ARM_R, -side * 0.08, -0.19, 0.22);
     b.level(left ? B_HAND_L : B_HAND_R);
@@ -224,7 +231,7 @@ function fallbacks(): Fallbacks {
       enter: keyframes("enter", [stand, touch, duck, sit]), exit: keyframes("exit", [sit, duck, touch, stand]),
       carjack: keyframes("carjack", [stand, touch, grab, grab]),
       displaced: keyframes("displaced", [sit, recoil, duck, stand]),
-      ride: keyframes("ride", [astride()]),
+      ride: keyframes("ride", [astride()]), pwc: keyframes("pwc", [astride(true)]),
       pilot: keyframes("pilot", [cabinSeat(true)]), cabin: keyframes("cabin", [cabinSeat(false)]),
     },
     left: seated(true, -1), right: seated(true, 1),

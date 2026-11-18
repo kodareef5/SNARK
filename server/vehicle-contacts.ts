@@ -17,7 +17,7 @@ import { carMeetsCapsule, carMeetsVehicle } from '../shared/world/vehicle.ts';
 import { boatMeetsCapsule, boatMeetsVehicle } from '../shared/world/boat.ts';
 import { helicopterMeetsCapsule, helicopterMeetsVehicle } from '../shared/world/helicopter.ts';
 import { capsuleFree, ground, groundUnder, push, SKIN } from '../shared/world/collide.ts';
-import { boatOutboardFrame, boatShapes, carShapes, helicopterShapes } from '../shared/world/vehicle-shapes.ts';
+import { boatJoints, boatShapes, carShapes, helicopterShapes } from '../shared/world/vehicle-shapes.ts';
 import { StaticVehicleSolids } from '../shared/world/vehicle-solid.ts';
 import type { Combat, Source } from './combat.ts';
 import { Past } from './history.ts';
@@ -296,7 +296,7 @@ export class VehicleContacts {
     const to = body.state, def = body === this.a ? this.defA : this.defB;
     if (def) {
       const shapes = isWheelVehicle(def) ? carShapes(def.spec) : isBoatVehicle(def) ? boatShapes(def) : helicopterShapes(def);
-      const hit = this.solids.blocked(from, to, shapes, isBoatVehicle(def) ? [{ from: boatOutboardFrame(from, def.spec), to: boatOutboardFrame(to, def.spec) }] : undefined, true);
+      const hit = this.solids.blocked(from, to, shapes, isBoatVehicle(def) ? boatJoints(from, to, def.spec) : undefined, true);
       if (!hit) return true;
       blocker[0] = hit.nx; blocker[1] = hit.ny; blocker[2] = hit.nz; blocker[3] = hit.x; blocker[4] = hit.y; blocker[5] = hit.z;
       return false;

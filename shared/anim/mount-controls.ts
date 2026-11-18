@@ -40,7 +40,7 @@ function toward(ax: number, ay: number, az: number, bx: number, by: number, bz: 
  * helm hands grasp opposite upright sides of a wheel, with their palms facing inward and fingers forward.
  * Returns the greatest remaining grip distance, in metres, so unreachable content can be diagnosed explicitly.
  */
-export function fitPilotControls(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, left: MountControl, right: MountControl, style: "helicopter" | "helm" = "helicopter"): number {
+export function fitPilotControls(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, left: MountControl, right: MountControl, style: "helicopter" | "helm" | "handlebar" = "helicopter"): number {
   const scales = scale ?? UNIT_SCALE;
   for (let side = 0; side < 2; side++) {
     const [upper, lower, wrist, prop, , , sign] = ARMS[side]!;
@@ -48,7 +48,10 @@ export function fitPilotControls(pose: Pose, solved: Solved, rest: Float32Array,
     // At a helm both palms face the wheel's centre and their fingers curl around its upright rim. Mirroring the
     // grasp (rather than reusing the collective pose) also keeps both wrists behind the wheel through steering.
     quatIdentity(hand, 0);
-    if (style === "helm" || side === 1) {
+    if (style === "handlebar") {
+      // Both palms rest on top of the transverse bar; fingers curl forward round its axis.
+      quatAxis(hand, 0, 0, 1, 0, -sign * TAU / 4);
+    } else if (style === "helm" || side === 1) {
       const turn = style === "helm" ? -sign * TAU / 4 : TAU / 4;
       quatAxis(hand, 0, 0, 1, 0, turn);
       quatAxis(q, 0, 0, 0, 1, turn);

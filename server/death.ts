@@ -60,6 +60,8 @@ export class Death {
   canOpen: ((c: Client, rec: EntityRecord) => boolean) | null = null;
   /** Whether a session that has the built container at `ref` open may go on using it. */
   keepsBuilt: ((c: Client, ref: number) => boolean) | null = null;
+  /** Reach and authorization for a live hull or a salvage hull opened at its stern. */
+  keepsBoatCargo: ((c: Client, e: number) => boolean) | null = null;
   /** Riding hooks. onRide gets the entity the use button was pressed on and returns a result code, or -1 if it does not take the press. */
   riding: ((c: Client) => boolean) | null = null;
   offMount: ((c: Client) => void) | null = null;
@@ -496,8 +498,14 @@ export class Death {
   private allowed(c: Client, box: EntityRecord): boolean {
     if (box.at >= 0) return this.keepsBuilt?.(c, box.at) ?? true;
     const e = this.ctx.records.entOf.get(box.pid);
+    if (e !== undefined && this.isBoat(e)) return this.keepsBoatCargo?.(c, e) ?? false;
     if (e === undefined || (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 || box.out) return true;
     return this.canOpen?.(c, box) ?? false;
+  }
+
+  private isBoat(e: number): boolean {
+    const { world } = this.ctx;
+    return world.reg.vehicle[world.ents.kind[e]!]?.movement === "boat";
   }
 
   close(c: Client): void {
@@ -525,7 +533,7 @@ export class Death {
         else if ((ents.flags[e]! & F_PROP) !== 0 && box.kind !== this.corpse && items.inv(box).used() === 0) this.remove(box);
         // A creature that woke up closes unless canOpen allows it.
         else if (!this.allowed(c, box)) this.close(c);
-        else {
+        else if (!this.isBoat(e)) {
           const dx = ents.x[e]! - ents.x[c.ent]!;
           const dy = ents.y[e]! - ents.y[c.ent]!;
           const dz = ents.z[e]! - ents.z[c.ent]!;

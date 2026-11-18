@@ -172,8 +172,14 @@ export interface RotorVehicleDefinition extends VehicleDefinitionBase {
 /** A weighted float volume. Its centre and the common buoyancyHeight describe its vertical extent. */
 export interface BoatFloat { readonly at: readonly [number, number, number]; readonly weight: number }
 
-/** Utility motorboat tuning in metres, kilograms, seconds and radians. Water geometry comes from the world. */
-export interface BoatSpec extends VehicleHullSpec {
+export interface BoatDrive {
+  /** Steerable housing and skeg in chassis coordinates at zero steering. */
+  readonly outboard?: { readonly pivot: readonly [number, number, number]; readonly boxes: readonly VehicleCollisionBox[] };
+  readonly propeller: { readonly at: readonly [number, number, number]; readonly radius: number; readonly enclosed?: boolean; readonly intake?: readonly [number, number, number] };
+}
+
+/** Boat tuning in metres, kilograms, seconds and radians. Water geometry comes from the world. */
+export interface BoatSpec extends VehicleHullSpec, BoatDrive {
   readonly mass: number;
   /** Maximum kilograms of water displaced by the intact dry hull, never an unlimited height servo. */
   readonly displacement: number;
@@ -184,9 +190,8 @@ export interface BoatSpec extends VehicleHullSpec {
   readonly centerOfMass: readonly [number, number, number];
   readonly buoyancyPoints: readonly BoatFloat[];
   readonly hullBoxes: readonly VehicleCollisionBox[];
-  /** Steerable engine housing and skeg. These boxes are in the chassis frame at zero steering. */
-  readonly outboard?: { readonly pivot: readonly [number, number, number]; readonly boxes: readonly VehicleCollisionBox[] };
-  readonly propeller: { readonly at: readonly [number, number, number]; readonly radius: number };
+  /** A second independently immersed drive shares available engine thrust with the first. */
+  readonly secondDrive?: BoatDrive;
   readonly thrust: number;
   readonly reverseThrust: number;
   readonly idleRpm: number;
@@ -199,17 +204,37 @@ export interface BoatSpec extends VehicleHullSpec {
   /** Maximum fraction of unloaded weight supported by dynamic lift. */
   readonly planingLift: number;
   readonly planingTrim: number;
+  /** Effective roll lever of dynamic lift in a turn, in metres. The utility launch uses .55. */
+  readonly planingBankArm?: number;
   /** Hydrodynamic resistance coefficients; forward/side forces include linear and quadratic terms. */
   readonly forwardDrag: number;
   readonly sideDrag: number;
   readonly angularDrag: number;
   readonly gravity: number;
 }
-export interface BoatVehicleDefinition extends VehicleDefinitionBase {
-  readonly movement: "boat";
-  readonly spec: BoatSpec;
+export interface BoatDriveRig {
   readonly propeller?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
   readonly outboard?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
+}
+
+export interface BoatBoarding {
+  readonly water: readonly [number, number, number];
+  readonly ladder: readonly [number, number, number];
+  readonly deck: readonly [number, number, number];
+}
+export interface BoatVehicleDefinition extends VehicleDefinitionBase, BoatDriveRig {
+  readonly movement: "boat";
+  readonly spec: BoatSpec;
+  readonly secondDrive?: BoatDriveRig;
+  readonly boarding?: BoatBoarding;
+  readonly family?: "offshore" | "jon" | "pwc" | "yacht" | "catamaran";
+}
+
+const driveSets = new WeakMap<BoatSpec, readonly BoatDrive[]>();
+export function boatDrives(p: BoatSpec): readonly BoatDrive[] {
+  let drives = driveSets.get(p);
+  if (!drives) { drives = p.secondDrive ? [p, p.secondDrive] : [p]; driveSets.set(p, drives); }
+  return drives;
 }
 
 export type VehicleDefinition = WheelVehicleDefinition | RotorVehicleDefinition | BoatVehicleDefinition;
@@ -226,17 +251,22 @@ export function validateBoatSpec(s: BoatSpec): void {
   if (!Number.isFinite(s.clearance) || s.clearance < 0 || s.clearance >= s.height || s.mass < 50 || s.mass > 1000000 ||
     s.displacement <= s.mass || s.displacement > s.mass * 8 || s.draft >= s.height || s.buoyancyHeight > s.height ||
     s.maxRpm <= s.idleRpm || s.maxRpm > 20000 || s.maxSteer > .95 || s.maxForward > 70 || s.maxReverse > 15 ||
-    s.planingLift > .85 || s.planingTrim > .35 || !vec(s.centerOfMass) ||
+    s.planingLift > .85 || s.planingTrim > .35 || (s.planingBankArm !== undefined && (!Number.isFinite(s.planingBankArm) || s.planingBankArm < 0 || s.planingBankArm > 2)) || !vec(s.centerOfMass) ||
     !Array.isArray(s.buoyancyPoints) || s.buoyancyPoints.length < 4 || s.buoyancyPoints.length > 12 ||
     !s.buoyancyPoints.every(v => vec(v.at) && Number.isFinite(v.weight) && v.weight > 0 && Math.abs(v.at[0]) <= s.halfWidth && Math.abs(v.at[2]) <= s.halfLength) ||
     Math.abs(s.buoyancyPoints.reduce((sum, v) => sum + v.weight, 0) - 1) > 1e-6 ||
-    !Array.isArray(s.hullBoxes) || s.hullBoxes.length < 1 || s.hullBoxes.length > 16 ||
+    !Array.isArray(s.hullBoxes) || s.hullBoxes.length < 1 || s.hullBoxes.length > 24 ||
     !s.hullBoxes.every(b => b && vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 12)) ||
-    !s.propeller || !vec(s.propeller.at) || !Number.isFinite(s.propeller.radius) || s.propeller.radius <= 0 || s.propeller.radius > 1) throw new Error("inconsistent boat specification");
+    !s.propeller) throw new Error("inconsistent boat specification");
   const submerged = s.buoyancyPoints.reduce((sum, v) => sum + v.weight * clamp((s.draft - v.at[1]) / s.buoyancyHeight + .5, 0, 1), 0);
   if (Math.abs(submerged * s.displacement - s.mass) > s.mass * .025) throw new Error("boat draft disagrees with float volume");
-  if (s.outboard && (!vec(s.outboard.pivot) || !Array.isArray(s.outboard.boxes) || s.outboard.boxes.length > 8 ||
-    !s.outboard.boxes.every(b => vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 4)))) throw new Error("invalid boat outboard geometry");
+  for (const drive of boatDrives(s)) {
+    const prop = drive.propeller, motor = drive.outboard;
+    if (!prop || !vec(prop.at) || !Number.isFinite(prop.radius) || prop.radius <= 0 || prop.radius > 1 ||
+      (prop.enclosed !== undefined && typeof prop.enclosed !== "boolean") || (prop.intake !== undefined && (!prop.enclosed || !vec(prop.intake)))) throw new Error("invalid boat propeller");
+    if (motor && (!vec(motor.pivot) || !Array.isArray(motor.boxes) || motor.boxes.length > 8 ||
+      !motor.boxes.every(b => vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 4)))) throw new Error("invalid boat outboard geometry");
+  }
 }
 
 export function validateHelicopterSpec(s: HelicopterSpec): void {
@@ -261,7 +291,10 @@ export function validateHelicopterSpec(s: HelicopterSpec): void {
 /** Content checks beyond the spec's, so a definition that compiles always registers and draws. Throws on the first fault. */
 export function validateVehicleDefinition(d: VehicleDefinition): void {
   if (d.movement === "rotor") validateHelicopterSpec(d.spec);
-  else if (d.movement === "boat") validateBoatSpec(d.spec);
+  else if (d.movement === "boat") {
+    validateBoatSpec(d.spec);
+    if (d.family !== undefined && !["offshore", "jon", "pwc", "yacht", "catamaran"].includes(d.family)) throw new Error("invalid boat family");
+  }
   else {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
     if (d.frame !== undefined && !["car", "sports_car", "van"].includes(d.frame)) throw new Error("invalid road vehicle frame");
@@ -291,7 +324,9 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   }
   if (d.movement === "boat") {
     if (d.wheels.length) throw new Error("invalid boat rig");
-    for (const p of [d.propeller, d.outboard]) if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
+    if (d.boarding && ![d.boarding.water, d.boarding.ladder, d.boarding.deck].every(vec)) throw new Error("invalid boat boarding route");
+    if (d.secondDrive && !d.spec.secondDrive) throw new Error("second boat drive rig has no physical drive");
+    for (const p of [d.propeller, d.outboard, d.secondDrive?.propeller, d.secondDrive?.outboard]) if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
       !Number.isFinite(p.ratio) || p.ratio === 0 || Math.abs(p.ratio) > 16)) throw new Error("invalid boat propulsion rig");
   }
   if (d.cargoDoor !== undefined && (!Number.isInteger(d.cargoDoor) || d.cargoDoor < 0 || d.cargoDoor >= d.doors.length)) throw new Error("invalid vehicle cargo door");

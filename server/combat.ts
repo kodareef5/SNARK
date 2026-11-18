@@ -9,6 +9,7 @@ import { BODY_REACH, BODY_REACH_Y, rayBody, raySeated } from "../shared/anim/zon
 import { SEAT_FLOATS, saddleSeat, seatOn } from "../shared/anim/seat.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
+import { boatDrives } from "../shared/sim/vehicle.ts";
 import { rayVehicle } from "../shared/sim/vehicle-frame.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
@@ -221,8 +222,9 @@ export class Combat {
       const spec = vehicle.spec, h = reg.bodyHeight[kind]!;
       if (vehicle.movement !== "boat") return Math.hypot(spec.halfWidth, spec.halfLength, h);
       const marine = vehicle.spec;
-      const reach = Math.max(marine.halfLength, Math.abs(marine.propeller.at[2]) + marine.propeller.radius,
-        ...(marine.outboard?.boxes ?? []).map(box => Math.abs(box.at[2]) + box.half[2]));
+      const reach = Math.max(marine.halfLength, ...boatDrives(marine).flatMap(drive => [
+        Math.abs(drive.propeller.at[2]) + drive.propeller.radius, ...(drive.outboard?.boxes ?? []).map(box => Math.abs(box.at[2]) + box.half[2]),
+      ]));
       return Math.hypot(marine.halfWidth + .5, reach + .5, h);
     });
     this.targetReach = Math.max(BODY_REACH + BODY_REACH_Y, ...this.vehicleReach,
