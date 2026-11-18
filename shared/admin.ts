@@ -1,5 +1,8 @@
 // What a server tells its admin page (server/admin/routes.ts), as JSON: the shapes both sides are written against.
-// Times are wall ms since 1970, places the world's metres (shared/world/coords.ts), durations ms.
+// Times are wall ms since 1970, places the world's metres (shared/world/coords.ts), durations ms. The survivor log's
+// answers are shaped in shared/survivor-log.ts.
+
+import type { LogSpan } from "./survivor-log.ts";
 
 /** A second of the loop: its start, ticks run, the median and worst tick, the latest start, and ticks given up. */
 export const SECOND_FIELDS = ["at", "ticks", "p50", "worst", "late", "dropped"] as const;
@@ -67,6 +70,12 @@ export interface ChangedSetting {
   status: string;
 }
 
+/** The survivor log: its span, whether it is on and why not. /admin/log/span.json adds `now`, the server's time. */
+export interface LogState extends LogSpan {
+  on: boolean;
+  why: string;
+}
+
 /** /admin/stats.json. */
 export interface Stats {
   at: number;
@@ -78,6 +87,7 @@ export interface Stats {
   bodies: Bodies;
   memory: { rss: number; heapUsed: number; heapTotal: number };
   save: SaveState | null;
+  log: LogState;
   settings: ChangedSetting[];
   modules: ModuleCost[];
 }

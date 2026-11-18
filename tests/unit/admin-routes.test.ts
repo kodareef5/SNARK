@@ -31,9 +31,9 @@ function pageDir(): string {
 
 /** Asks `pages` for `path` as a browser at 1.2.3.4 would, giving `password` at its sign-in if one is given. */
 function asker(pages: AdminPages) {
-  return (gate: AdminGate, path: string, password?: string): Response | null => {
+  return async (gate: AdminGate, path: string, password?: string): Promise<Response | null> => {
     const req = new Request(`http://localhost${path}`, password === undefined ? {} : { headers: { authorization: `Basic ${btoa(`admin:${password}`)}` } });
-    return pages.answer(req, "1.2.3.4", gate, new URL(req.url).pathname);
+    return await pages.answer(req, "1.2.3.4", gate, new URL(req.url).pathname);
   };
 }
 
@@ -49,34 +49,38 @@ test("every admin route answers only past the gate, in any spelling of its path,
     const spellings = ["/Admin/Stats.json", "/ADMIN/", "//admin/survivors.json", "/admin//bases.bin", "/%61dmin/stats.json", "/admin/%73tats.json", "/admin/./stats.json", "/admin/source/../sounds.html", "/admin/source/core%2f..%2f..%2fsecret.txt"];
     // A server with neither --dev nor a password keeps every one shut.
     const shut: AdminGate = { dev: false, password: null, guesses: new Guesses(), tick: () => 0 };
-    for (const path of [...paths, ...spellings]) expect([path, ask(shut, path)?.status]).toEqual([path, 404]);
+    for (const path of [...paths, ...spellings]) expect([path, (await ask(shut, path))?.status]).toEqual([path, 404]);
     // Every spelling is the admin pages' (D702), so the site in front of several worlds refuses them all too.
     for (const path of [...paths, ...spellings, "/sounds.html", "/admin/sounds.json"]) expect([path, adminAsked(path)]).toEqual([path, true]);
     for (const path of ["/", "/index.html", "/adminx", "/administrator/", "/map.json"]) expect([path, adminAsked(path)]).toEqual([path, false]);
     // What is not an admin page, and the sound board's own, are not answered here.
-    for (const path of ["/index.html", "/adminx", "/admin/../index.html", "/sounds.html", "/admin/sounds.json", "/admin/source/core/x/sound/brief.json"]) expect([path, ask(shut, path)]).toEqual([path, null]);
+    for (const path of ["/index.html", "/adminx", "/admin/../index.html", "/sounds.html", "/admin/sounds.json", "/admin/source/core/x/sound/brief.json"]) expect([path, await ask(shut, path)]).toEqual([path, null]);
 
     const gate: AdminGate = { dev: false, password: "kiwi", guesses: new Guesses(), tick: () => 0 };
-    for (const path of [...paths, ...spellings]) {
-      const no = ask(gate, path)!;
+    for (const path of [...paths, ...spellings, "/admin/content.json", "/admin/log/span.json"]) {
+      const no = (await ask(gate, path))!;
       expect([path, no.status, no.headers.get("www-authenticate")]).toEqual([path, 401, 'Basic realm="SNARK admin", charset="UTF-8"']);
     }
-    expect(ask(gate, "/admin/", "kiwi")!.status).toBe(200);
-    expect(await ask(gate, "/admin/index.html", "kiwi")!.text()).toBe("<!doctype html><title>admin</title>");
-    expect(ask(gate, "/admin/admin.js", "kiwi")!.headers.get("content-type")).toBe("text/javascript");
-    expect([ask(gate, "/admin", "kiwi")!.status, ask(gate, "/admin?x=1", "kiwi")!.headers.get("location")]).toEqual([308, "admin/?x=1"]);
-    for (const path of ["/admin/stats.json", "/Admin/Stats.json", "/admin/survivors.json", "/admin/minutes.json"]) expect([path, ask(gate, path, "kiwi")!.headers.get("content-type")]).toEqual([path, "application/json"]);
-    expect([ask(gate, "/admin/nothing", "kiwi")!.status, ask(gate, "/admin/bases.bin?level=7", "kiwi")!.status, ask(gate, "/admin/bases.bin?level=2", "kiwi")!.status]).toEqual([404, 400, 200]);
+    const right = async (path: string): Promise<Response> => (await ask(gate, path, "kiwi"))!;
+    expect((await right("/admin/")).status).toBe(200);
+    expect(await (await right("/admin/index.html")).text()).toBe("<!doctype html><title>admin</title>");
+    expect((await right("/admin/admin.js")).headers.get("content-type")).toBe("text/javascript");
+    expect([(await right("/admin")).status, (await right("/admin?x=1")).headers.get("location")]).toEqual([308, "admin/?x=1"]);
+    for (const path of ["/admin/stats.json", "/Admin/Stats.json", "/admin/survivors.json", "/admin/minutes.json", "/admin/content.json", "/admin/log/span.json"]) expect([path, (await right(path)).headers.get("content-type")]).toEqual([path, "application/json"]);
+    expect([(await right("/admin/nothing")).status, (await right("/admin/bases.bin?level=7")).status, (await right("/admin/bases.bin?level=2")).status]).toEqual([404, 400, 200]);
+    // The content's names, for the page to write items and what was ridden as the game does.
+    const labels = ((await (await right("/admin/content.json")).json()) as { labels: Record<string, string> }).labels;
+    expect(Object.keys(labels).length).toBeGreaterThan(0);
     // A sign-in that is not base64 is asked again, not a fault.
-    expect(pages.answer(new Request("http://localhost/admin/", { headers: { authorization: "Basic %%%" } }), "1.2.3.4", gate, "/admin/")!.status).toBe(401);
+    expect((await pages.answer(new Request("http://localhost/admin/", { headers: { authorization: "Basic %%%" } }), "1.2.3.4", gate, "/admin/"))!.status).toBe(401);
     // As enablecheats counts them: after three wrong guesses even the right one waits, and the count is the sound board's too.
-    for (let k = 0; k < 3; k++) expect(ask(gate, "/admin/stats.json", "pear")!.status).toBe(401);
-    expect(ask(gate, "/admin/stats.json", "kiwi")!.status).toBe(429);
+    for (let k = 0; k < 3; k++) expect((await ask(gate, "/admin/stats.json", "pear"))!.status).toBe(401);
+    expect((await right("/admin/stats.json")).status).toBe(429);
     // A development server opens them to whoever it lets in.
-    expect(ask({ ...shut, dev: true }, "/admin/survivors.json")!.status).toBe(200);
+    expect((await ask({ ...shut, dev: true }, "/admin/survivors.json"))!.status).toBe(200);
     // Not built yet: said so.
     rmSync(join(dir, "index.html"));
-    expect(await ask({ ...shut, dev: true }, "/admin/")!.text()).toBe("build the client first");
+    expect(await (await ask({ ...shut, dev: true }, "/admin/"))!.text()).toBe("build the client first");
   } finally {
     rmSync(dir, { recursive: true, force: true });
     h.host.shutdown();
@@ -92,7 +96,7 @@ test("no password leaves in any answer: a password setting says only that it is 
     const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir, start: { tick: 0, wall: Date.now() } });
     const ask = asker(pages);
     const dev: AdminGate = { dev: true, password: null, guesses: new Guesses(), tick: () => 0 };
-    const answers = await Promise.all(["/admin/stats.json", "/admin/survivors.json", "/admin/minutes.json", "/admin/bases.bin?level=0"].map((p) => ask(dev, p)!.text()));
+    const answers = await Promise.all(["/admin/stats.json", "/admin/survivors.json", "/admin/minutes.json", "/admin/bases.bin?level=0", "/admin/content.json", "/admin/log/span.json"].map(async (p) => (await ask(dev, p))!.text()));
     for (const secret of ["hunter2", "kiwi-in-the-file", "only-watching", "kiwi-given"]) for (const a of answers) expect(a.includes(secret)).toBe(false);
     const stats = JSON.parse(answers[0]!) as Stats;
     expect(stats.world.name).toBe("Isla Admin");
@@ -182,7 +186,7 @@ test("survivors are listed online or last seen, where they are, with their death
     // A death before this run began has no time, its ticks spanning time the server was down; one six ticks ago has.
     rec.markers.push({ kind: MARKER_DEATH, x: 10, y: 0, z: 20, tick: start.tick - 1 }, { kind: MARKER_DEATH, x: 30, y: 0, z: 40, tick: h.world.tick - 6 });
     const dev: AdminGate = { dev: true, password: null, guesses: new Guesses(), tick: () => 0 };
-    const answer = async <T>(path: string): Promise<T> => JSON.parse(await asker(pages)(dev, path)!.text()) as T;
+    const answer = async <T>(path: string): Promise<T> => JSON.parse(await (await asker(pages)(dev, path))!.text()) as T;
     const got = await answer<Survivors>("/admin/survivors.json");
     expect(got.survivors.map((r) => [r.name, r.online])).toEqual([["Ann", true], ["Bo", false]]);
     const a = got.survivors[0]!;

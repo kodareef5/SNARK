@@ -42,18 +42,48 @@ export function valueAxis(most: number, floor: number, count = 3): { top: number
 }
 
 const MINUTE = 60_000;
-const TIME_STEPS = [15_000, 30_000, MINUTE, 5 * MINUTE, 10 * MINUTE, 15 * MINUTE, 30 * MINUTE, 60 * MINUTE, 120 * MINUTE, 180 * MINUTE, 360 * MINUTE];
+const DAY = 1440 * MINUTE;
+const TIME_STEPS = [1000, 5000, 10_000, 15_000, 30_000, MINUTE, 5 * MINUTE, 10 * MINUTE, 15 * MINUTE, 30 * MINUTE, 60 * MINUTE, 120 * MINUTE, 180 * MINUTE, 360 * MINUTE, 720 * MINUTE, DAY, 2 * DAY, 7 * DAY];
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A day as the reader's calendar has it: "Tue 18 Nov". `offset` is minutes behind UTC. */
+export function dayText(t: number, offset: number): string {
+  const local = new Date(t - offset * MINUTE);
+  return `${DAYS[local.getUTCDay()]} ${local.getUTCDate()} ${MONTHS[local.getUTCMonth()]}`;
+}
+
+/** A moment to the second: "Tue 18 Nov 21:04:32". */
+export function momentText(t: number, offset: number): string {
+  return `${dayText(t, offset)} ${clockText(t, offset, true)}`;
+}
+
+/** Whether `t` falls on midnight of the reader's day. */
+export function isMidnight(t: number, offset: number): boolean {
+  return (t - offset * MINUTE) % DAY === 0;
+}
 
 /**
  * Round times between t0 and t1, at most `count` of them, on the reader's clock: `offset` is minutes behind UTC, as
  * Date.getTimezoneOffset gives it, so an hour's mark falls on the hour where the reader is.
  */
 export function timeTicks(t0: number, t1: number, count: number, offset: number): number[] {
-  const step = TIME_STEPS.find((s) => (t1 - t0) / s <= count) ?? TIME_STEPS.at(-1)!;
+  const step = timeStep(t0, t1, count);
   const shift = -offset * MINUTE;
   const out: number[] = [];
   for (let t = Math.ceil((t0 + shift) / step) * step - shift; t <= t1; t += step) out.push(t);
   return out;
+}
+
+/** The round step timeTicks marks t0 to t1 by. */
+export function timeStep(t0: number, t1: number, count: number): number {
+  return TIME_STEPS.find((s) => (t1 - t0) / s <= count) ?? TIME_STEPS.at(-1)!;
+}
+
+/** A mark of a time axis marked every `step`: the day where marks are days apart or at midnight, else the clock, to the second below a minute. */
+export function tickText(t: number, step: number, offset: number): string {
+  if (step >= DAY || isMidnight(t, offset)) return dayText(t, offset);
+  return clockText(t, offset, step < MINUTE);
 }
 
 /** A time as the reader's clock shows it, hours and minutes, and seconds where the step needs them. */

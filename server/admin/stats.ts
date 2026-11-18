@@ -4,7 +4,7 @@
 
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
-import type { Backup, Bodies, ModuleCost, SaveState, Stats } from "../../shared/admin.ts";
+import type { Backup, Bodies, LogState, ModuleCost, SaveState, Stats } from "../../shared/admin.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../../shared/sim/entities.ts";
 import { mapLabel } from "../cluster/cluster.ts";
@@ -104,6 +104,12 @@ export function modulesOf(host: Host): ModuleCost[] {
   return [...out.values()];
 }
 
+/** The survivor log's span and whether it is on, without its folder. */
+export function logOf(host: Host): LogState {
+  const { folder: _, ...span } = host.survivorLog.span();
+  return span;
+}
+
 /** What a minute keeps besides its ticks (meter.ts). */
 export function gaugesOf(host: Host): Gauges {
   const mem = process.memoryUsage();
@@ -123,6 +129,7 @@ export function statsOf(host: Host, meter: TickMeter, bodies: Bodies, backups: B
     bodies,
     memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal },
     save: saveOf(host, backups),
+    log: logOf(host),
     settings: changedSettings(rules),
     modules: modulesOf(host),
   };
