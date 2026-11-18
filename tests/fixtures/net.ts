@@ -60,6 +60,8 @@ export function forcedLink(spec: string): LinkOptions {
 const FORCED = forcedLink(process.env.SNARK_NET ?? "");
 
 export interface JoinOptions {
+  intent?: "create"|"resume";
+  createRequest?: Uint8Array;
   /** Defaults to testKey(name). */
   key?: Uint8Array;
   spectate?: boolean;
@@ -134,6 +136,7 @@ export class Harness {
     const session = new ClientSession(conn, {
       name,
       key: opts.key ?? testKey(name),
+      intent:opts.intent, createRequest:opts.createRequest,
       spectate: opts.spectate ?? false,
       registry: opts.registry ?? this.reg,
       ...(opts.password !== undefined ? { password: opts.password } : {}),

@@ -284,14 +284,16 @@ export const FRAME = {
   nearFromZ: 15,
   nearToX: 23,
   nearToZ: 39,
+  /** fFacade: the height in the world of the city's flood line (facade.ts FACADE_FLOOD), and 1 where every facade atlas the tier reads has come. */
+  facade: 152,
 } as const;
-export const FRAME_FLOATS = FRAME.look + 4;
+export const FRAME_FLOATS = FRAME.facade + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
-  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook;
+  highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fFacade;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -350,6 +352,8 @@ export class FramePacket {
   readonly worldSide = new Int32Array(3);
   readonly worldLevel = new Int32Array(3).fill(-1);
   readonly worldPhase = new Float32Array(48);
+  /** The textures the facades read, by their index in the manifest, -1 for none: the elements' base colour, normal and packed map, the rooms', the marks' (facade.ts FacadeAtlases). */
+  readonly facadeSlots = new Int32Array(5).fill(-1);
   /** Linear 0..1 RGB. */
   readonly sky = new Float32Array(3);
   /** Unit vector toward the sun. */

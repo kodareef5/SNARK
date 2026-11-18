@@ -54,6 +54,7 @@ export class Ui {
   inputDevice = 0;
   inspect = false;
   reconnectRequested = false;
+  leftWorld = false;
   /** The links the menu shows, as the page's server names them (links.json), and what opens one beside the game. */
   links: readonly SiteLink[] = [];
   openLink: ((url: string) => void) | null = null;
@@ -227,7 +228,7 @@ export class Ui {
         else if (key === KEY_MENU_SETTINGS) { this.options = true; this.focusTo(KEY_MENU_BACK); }
         else if (key === KEY_MENU_CONTROLS) { this.help = true; this.helpDevice = this.inputDevice; this.focusTo(KEY_MENU_BACK); }
         else if (key === KEY_MENU_BACK) { this.options = this.help = false; this.focusTo(KEY_MENU_RESUME); }
-        else if (key === KEY_MENU_LEAVE) { session?.close(); this.focusTo(KEY_MENU_RESUME); }
+        else if (key === KEY_MENU_LEAVE) { session?.close(); this.leftWorld=true; this.focusTo(KEY_MENU_RESUME); }
         else if (!this.options && !this.help) { const url = menuLink(key, this.links); if (url !== null) this.openLink?.(url); }
         else if (this.help && (key === KEY_CONTROLS_DEVICE || key === KEY_CONTROLS_DEVICE + 1)) this.helpDevice = key - KEY_CONTROLS_DEVICE;
         else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;

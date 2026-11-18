@@ -14,6 +14,7 @@
     "dev": "bun --watch tools/dev.ts",
     "agent": "bun agent/main.ts",
     "build": "bun tools/build-client.ts",
+    "title:retake": "bun tools/title/retake.ts",
     "snap": "bun tools/snap.ts",
     "icons": "bun tools/icons.ts",
     "probe": "bun tools/probe.ts",

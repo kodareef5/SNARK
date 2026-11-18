@@ -1093,6 +1093,8 @@ void main() {}`);
     if (vertex && text.fragment.includes("flat in vec4 vFinish;")) vertex = vertex.replace("void main() {", "flat out vec4 vFinish;\nflat out float vShare;\nvoid main() {\n  vFinish = vec4(1.0, 1.0, 0.0, 0.0);\n  vShare = 1.0;");
     // A near static's fragment weathers its wall by its own frame (world-surfaces.ts ownVertex): the wall's place, one instance, no edges known.
     if (vertex && text.fragment.includes("in vec3 vOwn;")) vertex = vertex.replace("void main() {", "out vec3 vOwn;\nflat out vec2 vPlace;\nout vec2 vFace;\nflat out uint vEdges;\nvoid main() {\n  vPlace = vec2(0.0);\n  vFace = vec2(0.5);\n  vEdges = 0u;").replace("  vRel = ", "  vOwn = vRel = ");
+    // Its facade's colour class (facade.ts facadeVertex): none, and a face with no size, which draws no part.
+    if (vertex && text.fragment.includes("flat in int vFacade;")) vertex = vertex.replace("void main() {", "flat out int vFacade;\nvoid main() {\n  vFacade = 0;");
     const prog = this.program(withDefines(vertex ?? text.vertex, text.defines), withDefines(text.fragment, text.defines));
     gl.useProgram(prog);
     const units: Record<string, number> = {};

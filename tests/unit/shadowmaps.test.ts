@@ -4,6 +4,7 @@
 // budget, the rasterizer lights as if in the sun, and the game asks the device what its compared lookups give and
 // leaves the context as it was.
 import { expect, test } from "bun:test";
+import { FACADE_TIERS } from "../../client/core/render/facade.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { GL } from "../../client/core/devicegpu.ts";
@@ -67,7 +68,9 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
       const relief = tier.relief && name !== "surface" ? "#define WORLD_RELIEF\n" : "";
       // A near static's walls are weathered where the finishes are read in full.
       const weather = name === "flat" || name === "seeThrough" ? `#define WORLD_WEATHER\n${tier.finishes > 1024 ? "" : tier.finishes === 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "";
-      expect(p.defines).toBe(`${relief}${weather}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n`);
+      // Its facades' parts and marks where it weathers, with rooms behind glass where the tier draws them (facade.ts).
+      const facades = weather && FACADE_TIERS[tier.name] ? `#define FACADE\n${FACADE_TIERS[tier.name]!.reflect ? "#define FACADE_ROOMS\n" : ""}` : "";
+      expect(p.defines).toBe(`${relief}${weather}${facades}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n`);
       expect(p.samplers.uShadow).toBe(UNIT.shadow);
       expect(PROGRAMS[name]!(tier, "rgba", true).defines).toEndWith("#define SHADOW_HARD\n");
       // One cascade fewer, none, or shadows turned off: the lookup stops at the frame's cascades, and nothing is compiled again.
