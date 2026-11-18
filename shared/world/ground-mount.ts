@@ -32,7 +32,10 @@ export function groundMountFrame(w: CollisionWorld, p: MoveParams, x: number, y:
     if (sample === 0) {
       // A roof above the current feet is not this body's support. Near an edge the capsule can overhang a lower floor.
       if (at > y + .025 || y - at > p.radius * .7 + .1) return;
-      out.lift = at - y; out.nx = rayHit.nx; out.ny = rayHit.ny; out.nz = rayHit.nz; out.supported = true;
+      // A rounded capsule stands r * (1 / cos(slope) - 1) above the plane at its centre.
+      // Remove that geometric gap while preserving any real upward displacement from a contact.
+      out.lift = Math.max(at - y, -p.radius * (1 / rayHit.ny - 1));
+      out.nx = rayHit.nx; out.ny = rayHit.ny; out.nz = rayHit.nz; out.supported = true;
     }
     heights[sample] = at;
   }

@@ -748,9 +748,13 @@ export class Characters {
         writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size, this.rotation);
       } else if (!c.vehicle && this.world && st.grounded && st.mode === MODE_WALK && !st.out && !st.held && !this.reg.move[kind]?.flies) {
         groundMountFrame(this.world, this.reg.tamedMove[kind]!, p.camX + x, p.camY + y, p.camZ + z, yaw, this.footing);
-        quatAxis(this.rotation, 0, 0, 1, 0, yaw);
-        quatMul(this.rotation, 0, this.rotation, 0, this.footing.rotation, 0);
-        writeRigid(p.bones, first * BONE_FLOATS, x, y + this.footing.lift, z, yaw, size, this.rotation);
+        if (this.footing.rotation[0] === 0 && this.footing.rotation[2] === 0) {
+          writeRigid(p.bones, first * BONE_FLOATS, x, y + this.footing.lift, z, yaw, size);
+        } else {
+          quatAxis(this.rotation, 0, 0, 1, 0, yaw);
+          quatMul(this.rotation, 0, this.rotation, 0, this.footing.rotation, 0);
+          writeRigid(p.bones, first * BONE_FLOATS, x, y + this.footing.lift, z, yaw, size, this.rotation);
+        }
       } else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
     }
     else {
