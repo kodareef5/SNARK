@@ -146,7 +146,7 @@ const COUNT_CALLS = `new Promise((done) => {
     if (n++ < ${COUNT_FRAMES}) return void requestAnimationFrame(tick);
     for (const [proto, name, d] of saved) Object.defineProperty(proto, name, d);
     const each = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v / ${COUNT_FRAMES})]));
-    done(JSON.stringify({ calls: each(calls), again: each(again), draws: each(draws) }));
+    done(JSON.stringify({ calls: each(calls), again: each(again), draws: each(draws), offers: gl.getSupportedExtensions().filter((e) => /multi_draw|base_vertex/.test(e)) }));
   };
   requestAnimationFrame(tick);
 })`;
