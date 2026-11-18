@@ -18,7 +18,7 @@ import { quatRotate } from "../shared/math/quat.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
-import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
+import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, SESSION_ALIVE, S_EVENT } from "../shared/net/protocol.ts";
 import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
@@ -165,6 +165,7 @@ export class Combat {
   /** A second entity the cast in progress skips: the rider of the creature that is biting. -1 for none. */
   private spare = -1;
   private biting = false;
+  private nearBite = false;
   private readonly human: Uint8Array;
   /** Vehicle origins can be in an adjacent chunk even when their hull touches a ray. */
   private readonly vehicleReach: Float32Array;
@@ -421,7 +422,7 @@ export class Combat {
     this.spare = rider ? (this.ctx.records.entOf.get(rider.pid) ?? -1) : -1;
     this.biting = c === null;
     this.st.unpack(ents.anim[e]!, ents.cue[e]!); this.st.seed = bodySeed(e);
-    const mouth = c === null && !this.anims[kind]?.flies && creatureBite(this.anims[kind] ?? null, this.st, world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, ents.yaw[e]! * TAU / 65536, reach, this.jaws, world, reg.tamedMove[kind] ?? undefined);
+    const mouth = c === null && this.controllingRider(rec) !== null && !this.anims[kind]?.flies && creatureBite(this.anims[kind] ?? null, this.st, world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, ents.yaw[e]! * TAU / 65536, reach, this.jaws, world, reg.tamedMove[kind] ?? undefined);
     const ox = mouth ? this.jaws.mouth[0]! : this.eyeAt[0]!, oy = mouth ? this.jaws.mouth[1]! : this.eyeAt[1]!, oz = mouth ? this.jaws.mouth[2]! : this.eyeAt[2]!;
     const what = mouth ? (this.castMouth(e), this.biteHit.what) : castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
     const ref = mouth ? this.biteHit.ref : rayHit.ref;
@@ -474,21 +475,28 @@ export class Combat {
       const up = k === 3 ? jaws.radius : k === 4 ? -jaws.radius : k >= 5 ? jaws.radius * Math.SQRT1_2 * (k < 7 ? 1 : -1) : 0;
       const ox = m[0]! + rx * side + ux * up, oy = m[1]! + uy * up, oz = m[2]! + rz * side + uz * up;
       const ax = ox - a[0]!, ay = oy - a[1]!, az = oz - a[2]!, length = Math.hypot(ax, ay, az);
-      const blocked = length > 1e-6 && castWorld(world, a[0]!, a[1]!, a[2]!, ax / length, ay / length, az / length, length) !== HIT_NONE;
-      const what = blocked ? rayHit.kind : castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, jaws.reach);
-      const ref = rayHit.ref, t = rayHit.t;
-      if (what !== HIT_NONE && hit.target < 0 && (blocked ? t : length + t) < worldBest) {
-        worldBest = blocked ? t : length + t;
-        hit.what = what; hit.ref = ref; hit.t = t;
-        hit.x = blocked ? a[0]! + ax * t / length : ox + d[0]! * t;
-        hit.y = blocked ? a[1]! + ay * t / length : oy + d[1]! * t;
-        hit.z = blocked ? a[2]! + az * t / length : oz + d[2]! * t;
+      // A target hugging the chest can be behind the rear of the skull. The same jaw fan covers the finite neck
+      // segment too; every segment is clipped by solids, so this never starts a bite on the far side of a wall.
+      for (let part = 0; part < 2; part++) {
+        const near = part === 0, offset = near ? 0 : length, reach = near ? length : jaws.reach;
+        if (reach < 1e-6 || best <= offset) continue;
+        const px = near ? a[0]! : ox, py = near ? a[1]! : oy, pz = near ? a[2]! : oz;
+        const dx = near ? ax / length : d[0]!, dy = near ? ay / length : d[1]!, dz = near ? az / length : d[2]!;
+        const what = castWorld(world, px, py, pz, dx, dy, dz, reach), ref = rayHit.ref, t = rayHit.t;
+        if (what !== HIT_NONE && hit.target < 0 && offset + t < worldBest) {
+          worldBest = offset + t;
+          hit.what = what; hit.ref = ref; hit.t = worldBest;
+          hit.x = px + dx * t; hit.y = py + dy * t; hit.z = pz + dz * t;
+        }
+        this.nearBite = near;
+        const target = this.castBodies(e, px, py, pz, dx, dy, dz, Math.min(best - offset, what === HIT_NONE ? reach : t));
+        this.nearBite = false;
+        if (target >= 0 && offset + this.t < best) {
+          best = offset + this.t; hit.target = target; hit.zone = this.zone; hit.t = best; hit.what = HIT_NONE;
+          hit.x = px + dx * this.t; hit.y = py + dy * this.t; hit.z = pz + dz * this.t;
+        }
+        if (near && what !== HIT_NONE) break;
       }
-      if (blocked) continue;
-      const target = this.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, Math.min(best, what === HIT_NONE ? jaws.reach : t));
-      if (target < 0 || this.t >= best) continue;
-      best = this.t; hit.target = target; hit.zone = this.zone; hit.t = best; hit.what = HIT_NONE;
-      hit.x = ox + d[0]! * best; hit.y = oy + d[1]! * best; hit.z = oz + d[2]! * best;
     }
     this.mouthCasting = false;
   }
@@ -673,6 +681,13 @@ export class Combat {
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
           if (i === self || i === this.spare || i === carrier || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
           const kind = ents.kind[i]!;
+          // The neck segment closes only the contact-distance hole behind the jaw. A distant body's protruding
+          // head cannot turn this segment into a second attack through a wall in front of the mount.
+          if (this.nearBite) {
+            const close = reg.bodyRadius[ents.kind[self]!]! + reg.bodyRadius[kind]! + SWING_WIDTH;
+            const nx = ents.x[i]! - ents.x[self]!, nz = ents.z[i]! - ents.z[self]!;
+            if (nx * nx + nz * nz > close * close) continue;
+          }
           const h = reg.bodyHeight[kind]!;
           const rig = this.anims[kind]?.rig;
           const car = reg.vehicle[kind];
@@ -1096,7 +1111,7 @@ export class Combat {
 
     const game = this.ctx.game;
     const shown = Math.min(65535, Math.max(taken > 0 ? 1 : 0, Math.round(taken)));
-    const ac = by ? this.clientOf(by.pid) ?? this.clientOf(this.riderOf?.(by)?.pid ?? 0) : null;
+    const ac = by ? this.clientOf(by.pid) ?? this.controllingRider(by) : null;
     if (ac) {
       const w = game.begin(S_EVENT);
       w.u8(EVENT_HIT);
@@ -1165,7 +1180,7 @@ export class Combat {
     this.lastStructure.ref = ref;
     this.lastStructure.damage = done;
     this.lastStructure.left = left;
-    const ac = src.by ? this.clientOf(src.by.pid) ?? this.clientOf(this.riderOf?.(src.by)?.pid ?? 0) : null;
+    const ac = src.by ? this.clientOf(src.by.pid) ?? this.controllingRider(src.by) : null;
     if (ac) {
       const w = game.begin(S_EVENT);
       w.u8(EVENT_HIT);
@@ -1324,7 +1339,17 @@ export class Combat {
     }
   }
 
+  /** Only the living session actually steering this generation of mount receives its attack feedback. */
+  private controllingRider(mount: EntityRecord): Client | null {
+    const { records, world } = this.ctx;
+    const e = records.entOf.get(mount.pid), rider = this.riderOf?.(mount);
+    if (e === undefined || world.ents.pid[e] !== mount.pid || mount.dead || mount.out || !rider || rider.dead || rider.out) return null;
+    const c = this.clientOf(rider.pid), ents = world.ents;
+    return c && c.state === SESSION_ALIVE && c.drive === e && c.driveGen === ents.gen[e] && c.ent >= 0 && (ents.flags[c.ent]! & F_ALIVE) !== 0 && ents.pid[c.ent] === rider.pid && ents.seat[c.ent] === e + 1 && ents.seatGen[c.ent] === ents.gen[e] ? c : null;
+  }
+
   private clientOf(pid: number): Client | null {
+    if (pid === 0) return null;
     for (const c of this.ctx.game.clients) if (c?.active && !c.closed && c.pid === pid) return c;
     return null;
   }

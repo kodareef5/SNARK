@@ -29,6 +29,8 @@ export const SPEED_MAX = 15;
 export const DIR_STEPS = 16;
 /** Steps of `AnimState.pitch` from level to straight up. */
 export const PITCH_STEPS = 31;
+/** Unused signed six-bit look value: an unmounted ground attack keeps its authored neck pose, without camera aim. */
+export const PITCH_AUTHORED = -32;
 
 /**
  * A creature in its own flight (MODE_FLYER), with the flyers' contracts (planning/reference/flyers-plan.md, FL0), has
@@ -104,6 +106,10 @@ export function hurtStage(health: number, max: number): number {
 
 /** Packed pose state uses whole numbers; surfaceSpeed is derived locally from the support at that pose. */
 export class AnimState {
+  /** Derived local bite direction after footing; never packed. NaN asks a flat pose to derive it from pitch. */
+  biteX = NaN;
+  biteY = 0;
+  biteZ = 1;
   mode = MODE_WALK;
   grounded = true;
   /** Horizontal speed in SPEED_STEP units, 0..SPEED_MAX. */
@@ -174,6 +180,7 @@ export class AnimState {
   }
 
   unpack(word: number, cue = 0): void {
+    this.biteX = NaN;
     this.surfaceSpeed = 1;
     this.unpackCue(cue);
     this.speed = word & 15;
@@ -200,6 +207,7 @@ export class AnimState {
 
   /** `yaw` and `pitch` are in radians. Set `mode` first: a flyer's speed counts `vy` too, which no other body's does. */
   setMotion(vx: number, vz: number, yaw: number, pitch: number, vy = 0): void {
+    this.biteX = NaN;
     this.surfaceSpeed = 1;
     const s = detSin(yaw);
     const c = detCos(yaw);

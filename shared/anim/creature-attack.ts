@@ -1,10 +1,11 @@
-import { PI, detCos, detSin } from "../math/scalar.ts";
+import { detCos, detSin } from "../math/scalar.ts";
 import { quatRotate } from "../math/quat.ts";
 import type { MoveParams } from "../sim/character.ts";
 import type { CollisionWorld } from "../world/collide.ts";
-import { BITE_AIM, creaturePose, type CreatureAnim } from "./creature.ts";
+import { creaturePose, type CreatureAnim } from "./creature.ts";
+import { prepareBiteAim } from "./bite-aim.ts";
 import { groundMountMotion, groundMountPose } from "./ground-mount.ts";
-import { PITCH_STEPS, type AnimState } from "./pose.ts";
+import type { AnimState } from "./pose.ts";
 import { boneToModel, solve } from "./skeleton.ts";
 import { GroundMountFrame } from "../world/ground-mount.ts";
 
@@ -26,6 +27,7 @@ export function creatureBite(a: CreatureAnim | null, st: AnimState, tick: number
   const rig = a.rig, pose = rig.solved;
   frame.supported = false; st.surfaceSpeed = 1;
   if (world && move) groundMountMotion(st, world, move, x, y, z, yaw, frame);
+  prepareBiteAim(st, frame.supported ? frame.rotation : undefined);
   creaturePose(a, st, tick, rig.a); solve(rig, rig.a, pose);
   if (world && move) groundMountPose(pose, st, world, move, x, y, z, yaw, frame);
   boneToModel(pose, socket.bone, socket.x, socket.y, socket.z, out.mouth);
@@ -33,9 +35,8 @@ export function creatureBite(a: CreatureAnim | null, st: AnimState, tick: number
   boneToModel(pose, socket.bone, cap[socket.bone * 3]!, cap[socket.bone * 3 + 1]!, cap[socket.bone * 3 + 2]!, out.origin);
   // The neck's bounded aim defines the forward attack; the head's capsule supplies its volume. Skull rest axes can
   // point up while the bite thrusts forward, so they must not add a second look angle to the attack.
-  const pitch = Math.max(-BITE_AIM, Math.min(BITE_AIM, st.pitch * (PI / 2) / PITCH_STEPS));
-  out.direction[0] = 0; out.direction[1] = detSin(pitch); out.direction[2] = detCos(pitch);
-  if (frame.supported) quatRotate(frame.rotation, 0, 0, out.direction[1]!, out.direction[2]!, out.direction, 0);
+  out.direction[0] = st.biteX; out.direction[1] = st.biteY; out.direction[2] = st.biteZ;
+  if (frame.supported) quatRotate(frame.rotation, 0, out.direction[0]!, out.direction[1]!, out.direction[2]!, out.direction, 0);
   const c = detCos(yaw), s = detSin(yaw), m = out.mouth, d = out.direction, o = out.origin, anchor = out.anchor;
   out.reach = Math.max(0, reach - Math.sqrt(o[0]! * o[0]! + o[2]! * o[2]!));
   // The existing melee ray's .14 m aim tolerance, around this species' authored head width.

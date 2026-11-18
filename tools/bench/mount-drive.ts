@@ -8,6 +8,7 @@ import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { LOOK_SPEED } from "../../client/core/controls.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
 import { drivingBrowser, until } from "./driving-browser.ts";
 
@@ -91,12 +92,23 @@ try {
   host.creatures.mind.stay(victim, 0xffffffff);
   const record = host.records.byPid.get(ents.pid[victim]!)!, health = host.survival.value(record, V_HEALTH);
   const targetYaw = ents.yaw[victim]! * 360 / 65536;
+  // Look at the target's upper body through ordinary pointer-locked mouse input. Camera pitch is world-space;
+  // a level view on a descent is no longer an implicit request to bite along the ground's slope.
+  const eye = new Float64Array(3);
+  if (!host.riding.eye(client.ent, eye)) throw new Error("Rider eye unavailable.");
+  const aimPitch = Math.atan2(ents.y[victim]! + world.reg.bodyHeight[record.kind]! * .8 - eye[1]!,
+    Math.hypot(ents.x[victim]! - eye[0]!, ents.z[victim]! - eye[2]!));
+  const beforeAim = client.newestInput;
+  const previousPitch = ents.pitch[mount]! * Math.PI / 32768;
+  await tab.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 260, y: 180 - (aimPitch - previousPitch) / LOOK_SPEED });
+  await until(() => client.newestInput > beforeAim && Math.abs(ents.pitch[mount]! * Math.PI / 32768 - aimPitch) < .02, "World-space mouse aim");
+  const sentPitch = ents.pitch[mount]! * Math.PI / 32768;
   const requested = world.tick;
   await mouse(true);
   try { await until(() => world.tick >= requested + 25, "Attack interval"); }
   finally { await mouse(false); }
   const damage = health - host.survival.value(record, V_HEALTH);
-  const result = { species, targetYaw, travel: ents.z[mount]! - startZ, elapsedTicks: world.tick - begin, climbTicks, groundedTicks: grounded, sampledTicks: ticks,
+  const result = { species, targetYaw, aimPitch, sentPitch, aimError: Math.abs(sentPitch - aimPitch), travel: ents.z[mount]! - startZ, elapsedTicks: world.tick - begin, climbTicks, groundedTicks: grounded, sampledTicks: ticks,
     peakHeight, lateralDrift: largestLateral, seatHeightOnHill: seatHeight, damage, credited: host.combat.last.by === animal.pid && host.combat.last.victim === record.pid, seated: client.drive === mount, observer: w.active && !w.closed };
   console.log(JSON.stringify(result));
   if (!result.seated || !result.observer || result.travel < 41 || peakHeight < 11 || largestLateral > 2 || grounded < ticks * .9 || !damage || !result.credited) throw new Error("Mounted hillside course failed.");

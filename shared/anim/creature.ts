@@ -17,6 +17,7 @@ import type { SpeciesDef } from "../content/defs.ts";
 import type { MoveParams } from "../sim/character.ts";
 import type { CollisionWorld } from "../world/collide.ts";
 import { groundMountMotion, groundMountPose } from "./ground-mount.ts";
+import { biteAimRotation } from "./bite-aim.ts";
 import { GroundMountFrame } from "../world/ground-mount.ts";
 import type { Registry } from "../content/registry.ts";
 import { TICK_RATE } from "../coords.ts";
@@ -37,8 +38,7 @@ const EASE_IN = 1.2;
 export const FADE = 6;
 /** Ticks a species with no clip to get up by takes to rise from lying. */
 const GET_UP = 30;
-/** The jaws can aim within a quarter turn in all, relative to their supported body. */
-export const BITE_AIM = PI / 4;
+export { BITE_AIM } from "./bite-aim.ts";
 /** A turn on the spot is a quarter turn to its left, its body turning as a smooth step over the clip. */
 const QUARTER = PI / 2;
 /** Metres a second at which its fly and its fly_fast play alone, where its asset gives neither a stride. */
@@ -667,10 +667,9 @@ function strike(a: CreatureAnim, st: AnimState, tick: number, out: Pose): boolea
   sampleClip(a.attack, s, out);
   // The same bounded look turns the visible jaws and their authoritative attack, never just an invisible eye ray.
   // Flyers already aim their whole body. Fade over the clip ends to avoid a neck snap when the button changes.
-  if (!a.flies && a.biteAimBone > 0 && st.pitch !== 0) {
-    const pitch = Math.max(-BITE_AIM, Math.min(BITE_AIM, st.pitch * (PI / 2) / PITCH_STEPS));
+  if (!a.flies && a.biteAimBone > 0) {
     const weight = Math.min(1, s / 3, (a.attack.frames - 1 - s) / 3);
-    quatAxis(q, 0, 1, 0, 0, -pitch * weight);
+    biteAimRotation(st, weight, q);
     quatMul(out.rot, a.biteAimBone * 4, q, 0, out.rot, a.biteAimBone * 4);
   }
   return true;

@@ -69,8 +69,8 @@ function renderedMouth(f: ReturnType<typeof fixture>, st: AnimState, tick: numbe
 function ordinary(pack = frozenPack()) {
   for (const [kind, prey, distance, pitch, grade, across] of [
     ["raptor", "parasaur", 2.5, 0, 0, 0], ["parasaur", "raptor", 3.5, -.55, 0, 0],
-    ["raptor", "parasaur", 2.4, 0, -Math.tan(Math.PI / 9), .15], ["parasaur", "parasaur", 3.65, 0, -Math.tan(Math.PI / 9), .15],
-    ["raptor", "parasaur", 2.4, 0, Math.tan(Math.PI / 9), -.15], ["parasaur", "parasaur", 3.65, 0, Math.tan(Math.PI / 9), -.15],
+    ["raptor", "parasaur", 2.4, 0, -Math.tan(Math.PI / 9), .15], ["parasaur", "parasaur", 3.65, -Math.PI / 9, -Math.tan(Math.PI / 9), .15],
+    ["raptor", "parasaur", 2.4, 0, Math.tan(Math.PI / 9), -.15], ["parasaur", "parasaur", 3.65, Math.PI / 9, Math.tan(Math.PI / 9), -.15],
   ] as const) {
     const f = fixture(kind, grade, across, pack), { h, mount } = f;
     try {
@@ -184,6 +184,108 @@ test("the normal whole client predicts mounted attack animation and receives one
       expect(shown).toBeGreaterThan(12); expect(h.host.combat.last.victim).toBe(ents.pid[target]);
       expect(feedback).toBe(1); expect(app.session.stats.corrections - corrections).toBe(0);
       expect(app.session.driving).toBe(mount);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+function hugging(pack = frozenPack()) {
+  for (const [kind, distance, pitch] of [["raptor", 1.05, 0], ["parasaur", 1.5, -.6]] as const) {
+    const f = fixture(kind, 0, 0, pack), { h } = f;
+    try {
+      const target = h.join("close survivor"); h.run(500);
+      const c = h.client(target)!, rec = h.host.records.byPid.get(c.pid)!;
+      h.world.ents.setPosition(c.ent, 128, 0, 70 + distance);
+      const hp = h.host.survival.value(rec, V_HEALTH), result = f.attack(pitch);
+      expect({kind, hits:result.hits}).toEqual({kind, hits:1}); expect(h.host.combat.last.victim).toBe(rec.pid);
+      expect(h.host.survival.value(rec, V_HEALTH)).toBeLessThan(hp);
+      expect(result.landed).toBe(11); expect(result.feedback.length).toBe(1);
+    } finally { h.host.shutdown(); }
+  }
+}
+test("a ridden bite covers the contact-distance neck gap without harming its own rider", () => hugging());
+artTest("current shipped mounts bite a survivor pressed against the chest", () => hugging(corePack()));
+
+test("wild and unmounted tame hits never send a marker to character creation or spectators", () => {
+  for (const owned of [false, true]) {
+    const pack = frozenPack(), h = new Harness({ spectators: "anyone" }, 5, 60, { dev: true, clips: pack.clips, rigs: pack.header.rigs, map: writeMap(flatMap(4)) });
+    try {
+      const creator = h.join("creator", {}, { look: null }), watcher = h.join("watcher", {}, { spectate: true }), survivor = h.join("survivor"); h.run(1000);
+      const c = h.client(survivor)!, ents = h.world.ents;
+      expect([h.client(creator)!.pid, h.client(watcher)!.pid]).toEqual([0, 0]);
+      ents.setPosition(c.ent, 128, 0, 128);
+      const e = h.host.spawnCreature(owned ? "core:parasaur" : "core:raptor", 128, 140, 1), rec = h.host.records.byPid.get(ents.pid[e]!)!;
+      if (owned) { rec.team = h.host.records.byPid.get(c.pid)!.team + 1; ents.setTeam(e, rec.team); h.host.refreshBody(rec); h.host.creatures.claimed(e); h.host.creatures.mind.attack(e, c.ent); }
+      for (let tick = 0; tick < 300 && h.host.combat.hits === 0; tick++) h.run(1000 / 30);
+      expect(h.host.combat.last.victim).toBe(c.pid); h.run(100);
+      for (const s of [creator, watcher, survivor]) expect(s.events.filter(e => e.kind === EVENT_HIT)).toEqual([]);
+      // The native structure hit path has the same recipient policy; a real thatch wall takes damage.
+      ents.setPosition(c.ent, 160, 0, 128); h.host.creatures.mind.stay(e, 0xffffffff);
+      ents.setPosition(e, 128, 0, 128); ents.yaw[e] = 0; ents.pitch[e] = 0; ents.act[e] = ACT_SWING; ents.actTicks[e] = 11; ents.pose(e, h.world.tick);
+      h.world.structs.add(h.reg.index.get("core:wall_thatch")!, 128, 1.5, 129.5, 0, 0, 10000);
+      const before = h.host.combat.structureHits; h.host.combat.bite(e); h.run(100);
+      expect(h.host.combat.structureHits).toBeGreaterThan(before);
+      for (const s of [creator, watcher, survivor]) expect(s.events.filter(e => e.kind === EVENT_HIT)).toEqual([]);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+test("a rider looking toward the downhill target's upper body lands a world-aimed bite", () => {
+  for (const kind of ["raptor", "parasaur"]) {
+    const f = fixture(kind, -Math.tan(Math.PI / 9), .15), { h } = f;
+    try {
+      const target = f.target("parasaur", kind === "raptor" ? 2.4 : 3.65), e = h.host.records.entOf.get(target.pid)!, eye = new Float64Array(3);
+      expect(h.host.riding.eye(f.c.ent, eye)).toBe(true);
+      const dx = h.world.ents.x[e]! - eye[0]!, dz = h.world.ents.z[e]! - eye[2]!;
+      const pitch = Math.atan2(h.world.ents.y[e]! + h.reg.bodyHeight[target.kind]! * .8 - eye[1]!, Math.hypot(dx, dz));
+      const result = f.attack(pitch);
+      expect({kind, hits:result.hits}).toEqual({kind, hits:1}); expect(h.host.combat.last.victim).toBe(target.pid);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+test("forward bite reach stays bounded by the species reach, including when aiming downward", () => {
+  for (const [kind, pitch] of [["raptor", 0], ["parasaur", -.3]] as const) {
+    const f = fixture(kind), { h } = f;
+    try {
+      const target = h.join("beyond reach"); h.run(500);
+      const c = h.client(target)!, rec = h.host.records.byPid.get(c.pid)!;
+      const distance = h.reg.reach[f.rec.kind]! + .6;
+      h.world.ents.setPosition(c.ent, 128, 0, 70 + distance);
+      const hp = h.host.survival.value(rec, V_HEALTH); f.attack(pitch);
+      expect(h.host.survival.value(rec, V_HEALTH)).toBeGreaterThanOrEqual(hp);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+test("a mount's former rider receives no attack marker after normal dismount", () => {
+  const f = fixture("raptor"), { h } = f;
+  try {
+    const target = f.target("parasaur", 2.5), e = h.host.records.entOf.get(target.pid)!;
+    expect(f.attack().feedback.length).toBe(1);
+    h.host.riding.dismount(f.c); h.run(500); expect(f.c.drive).toBe(-1);
+    f.rider.events.length = 0;
+    h.host.creatures.mind.attack(f.mount, e); const before = h.host.combat.hits;
+    for (let tick = 0; tick < 150 && h.host.combat.hits === before; tick++) { h.host.creatures.mind.stay(e, 0xffffffff); h.run(1000 / 30); }
+    expect(h.host.combat.hits).toBeGreaterThan(before); expect(h.host.combat.last.by).toBe(f.rec.pid);
+    h.run(100); expect(f.rider.events.filter(e => e.kind === EVENT_HIT)).toEqual([]);
+  } finally { h.host.shutdown(); }
+});
+
+test("compound-slope rendered mouths remain inside the world-aimed bite volume", () => {
+  for (const kind of ["raptor", "parasaur"]) for (const grade of [-Math.tan(Math.PI / 9), Math.tan(Math.PI / 9)]) {
+    const f = fixture(kind, grade, .15), { h, mount } = f;
+    try {
+      const k = h.world.ents.kind[mount]!, a = h.world.anims[k]!, st = new AnimState(), bite = new CreatureBite();
+      st.grounded = true; st.setAction(ACT_SWING, 0, 0);
+      for (const yaw of [0, Math.PI / 2]) for (const pitch of [-6, 0, 6]) {
+        st.pitch = pitch;
+        expect(creatureBite(a, st, 11, 128, 0, 70, yaw, h.reg.reach[k]!, bite, h.world, h.reg.tamedMove[k]!)).toBe(true);
+        const drawn = renderedMouth(f, st, 11, 128, 0, 70, yaw), delta = drawn.mouth.map((v, axis) => v - bite.origin[axis]!);
+        const along = delta.reduce((sum, v, axis) => sum + v * bite.direction[axis]!, 0);
+        expect(Math.hypot(...delta.map((v, axis) => v - along * bite.direction[axis]!))).toBeLessThan(bite.radius + .05);
+        expect(Math.hypot(...drawn.mouth.map((v, axis) => v - bite.mouth[axis]!))).toBeLessThan(.0001);
+        expect(bite.direction[1]).toBeCloseTo(Math.sin(pitch * Math.PI / 62), 6);
+      }
     } finally { h.host.shutdown(); }
   }
 });

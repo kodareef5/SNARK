@@ -2,10 +2,10 @@
 // Creatures in sleeping chunks are not stepped or iterated. Slow quantities such as hunger are lazy and belong to server/survival.ts.
 
 import type { BodyContacts } from "./body-contacts.ts";
-import { AnimState, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
+import { AnimState, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, PITCH_AUTHORED, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
 import { TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
-import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
+import { ACT_NONE, ACT_SWING, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { Behavior } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
@@ -364,6 +364,9 @@ export class Creatures {
       const crossed = ents.storeBody(e, b);
       ents.pitch[e] = mind.pitch[e]!;
       ents.pose(e, tick);
+      // Unridden ground bites keep their authored clip and existing world-space AI eye ray. Only the mounted Game
+      // controller poses an aimed neck; preserve the AI's pitch column for its ordinary hit query.
+      if (!p.flies && ents.act[e] === ACT_SWING) ents.anim[e] = ((ents.anim[e]! & ~(((1 << ANIM_LOOK_BITS) - 1) << ANIM_LOOK_SHIFT)) | ((PITCH_AUTHORED & 63) << ANIM_LOOK_SHIFT)) >>> 0;
       if (struck) this.onStrike?.(e);
       this.breathe(e, p);
       // The landing may kill it, which takes it out of the world.
