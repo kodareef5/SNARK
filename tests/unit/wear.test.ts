@@ -67,11 +67,11 @@ test("a story holds its value about each point of its grid and runs straight bet
     expect(wearLate(s, 0, 0.45, 0.35)).toBeCloseTo((mid + nose) / 2, 9);
   }
   expect(wearLate(0, 0.9, 0.9, 0.9)).toBe(0);
-  // A hurt mark held back a stage shows a stage later, and however long it is held back it is whole by the first decay
+  // A hurt mark held back a stage shows a stage later, and however long it is held back it is whole by the last decay
   // stage; a decay mark is held back two stages at most.
   expect(wearAlpha(0.8, 1, LAYER_STAGES)).toBeCloseTo(0.8 - 1 / 6, 9);
-  expect(((LAYER_STAGES / 2 + 1) / LAYER_STAGES - 1 + wearAlpha(0.6, 9, LAYER_STAGES)) * 26).toBeGreaterThanOrEqual(1 - 1e-9);
-  expect(((LAYER_STAGES / 2) / LAYER_STAGES - 1 + wearAlpha(0.6, 9, LAYER_STAGES)) * 26).toBeLessThanOrEqual(0);
+  expect((1 - 1 + wearAlpha(0.6, 9, LAYER_STAGES)) * 26).toBeGreaterThanOrEqual(1 - 1e-9);
+  expect(((LAYER_STAGES - 1) / LAYER_STAGES - 1 + wearAlpha(0.6, 9, LAYER_STAGES)) * 26).toBeLessThanOrEqual(0);
   expect(wearAlpha(0.3, 9, LAYER_STAGES)).toBeCloseTo(0.3 - 2 / 6, 9);
 });
 

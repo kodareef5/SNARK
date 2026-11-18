@@ -7,17 +7,17 @@
 export const WEAR_STORIES = 5;
 /** A body's layer level and its story as one number, as characters.ts keys and draws them: the level, plus the story times this, which is more than LAYER_LEVELS. */
 export const WEAR_KEY = 128;
-/** Stages a mark is held back where a story never shows it while the car lives: a hurt mark then shows as its wreck first rusts. */
+/** Stages a mark is held back where a story never shows it while the car lives: a hurt mark then shows as its wreck has rusted. */
 const NEVER = 9;
 /** A decay mark is held back no more than this, so a wreck rusts all over, and soonest where it was struck. */
 const DECAY_MOST = 2;
 /** A layer texel of this alpha or more is a hurt mark, and under it a decay mark (tools/pack/image.ts `layerPicture`). */
 const HURT_ALPHA = 0.5;
 /**
- * The least alpha a held back hurt mark keeps: whole by the first decay stage (surface.ts LAYER_EDGE is 26). No decay
- * mark lies under a hurt one, so a mark held back longer would leave clean paint in the rust of a wreck.
+ * The least alpha a held back hurt mark keeps: whole by the last decay stage (surface.ts LAYER_EDGE is 26). No decay
+ * mark lies under a hurt one, so a mark never shown would leave clean paint in the rust of a wreck.
  */
-const HURT_LAST = 1 / 3 + 1 / 26;
+const HURT_LAST = 1 / 26;
 /**
  * The grid's first point and its step on each axis of the box, -1 to 1 across the mesh's bounds: x right, middle and
  * left (+X is the driver's side), y below and above the waist, z rear, middle and nose.
