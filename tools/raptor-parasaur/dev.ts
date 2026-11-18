@@ -1,6 +1,7 @@
 // An isolated local game with a saddled pair per survivor team. All riding and animation go through the ordinary host.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { serveFile } from "../../server/files.ts";
 import type { Host } from "../../server/host.ts";
 import { startServer } from "../../server/main.ts";
 import { stopOnSignals } from "../../server/signals.ts";
@@ -86,7 +87,12 @@ if (import.meta.main) {
   }
   const map = resolve(folder, "paddock.snmp");
   writeFileSync(map, writeMap(paddock()));
-  const server = startServer({ hostname: "127.0.0.1", port: Number(process.env.PORT ?? 8797), dev: true, clientDir: dist, map, dbPath: resolve(folder, "review.db") });
+  const evidence = resolve(import.meta.dir, "../../planning/evidence/raptor-parasaur");
+  const server = startServer({
+    hostname: "127.0.0.1", port: Number(process.env.PORT ?? 8797), dev: true,
+    clientDir: dist, map, dbPath: resolve(folder, "review.db"),
+    routes: (req, url) => url.pathname === "/review.png" ? serveFile(evidence, req, "/playing-distance.png") : null,
+  });
   const world = server.host.world;
   world.dayOffset = offsetForHour(world.tick, 15, world.clock);
   welcome(server.host);
