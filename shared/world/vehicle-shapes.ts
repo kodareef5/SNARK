@@ -2,7 +2,7 @@
 import { quatMul, quatRotate } from "../math/quat.ts";
 import { detCos, detSin, len3 } from "../math/scalar.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
-import { boatDrives, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type RotorVehicleDefinition, type VehicleSpec } from "../sim/vehicle.ts";
+import { boatDrives, type VehicleDefinition, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type RotorVehicleDefinition, type VehicleSpec } from "../sim/vehicle.ts";
 import { box, makeSolid, shape, tube, type Shape, type SolidFrame, type SolidJoint } from "./vehicle-solid.ts";
 export interface BoatFrame extends VehicleFrame { steering?: number }
 const q = new Float64Array(4), jointQ = new Float64Array(4), point = new Float64Array(3);
@@ -90,4 +90,21 @@ export function helicopterShapes(def: RotorVehicleDefinition): Shape[] {
   parts.push(shape(tube(p.tail.from, p.tail.to, [1, 0, 0], [0, 1, 0], p.tail.radius, p.tail.tipRadius ?? p.tail.radius, 8)));
   for (const part of p.tail.boxes ?? []) parts.push(box(part.at, part.half));
   helicopters.set(def, parts); return parts;
+}
+
+const solidRadii = new WeakMap<VehicleDefinition, number>();
+
+/** Maximum reach from the rigid origin in any attitude, including an outboard turned about its own offset pivot. */
+export function vehicleSolidRadius(def: VehicleDefinition): number {
+  const cached = solidRadii.get(def);
+  if (cached !== undefined) return cached;
+  const parts = def.movement === "boat" ? boatShapes(def) : def.movement === "rotor" ? helicopterShapes(def) : carShapes(def.spec);
+  const drives = def.movement === "boat" ? boatDrives(def.spec) : undefined;
+  let radius = 0;
+  for (const part of parts) {
+    const pivot = part.joint === undefined ? undefined : drives?.[part.joint]?.outboard?.pivot;
+    radius = Math.max(radius, part.radius + (pivot ? len3(...pivot) : 0));
+  }
+  solidRadii.set(def, radius);
+  return radius;
 }

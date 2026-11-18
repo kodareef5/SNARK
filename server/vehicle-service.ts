@@ -18,6 +18,7 @@ import { capsuleFree, groundUnder, type CollisionWorld } from "../shared/world/c
 import { helicopterPlacement, helicopterMeetsCapsule, helicopterMeetsVehicle } from "../shared/world/helicopter.ts";
 import type { MapVehicle } from "../shared/world/mapfile.ts";
 import { castWorld, HIT_NONE, rayHit } from "../shared/world/ray.ts";
+import { vehicleSolidRadius } from "../shared/world/vehicle-shapes.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -345,6 +346,11 @@ export function vehicleFitsWorld(world: CollisionWorld & { readonly unloaded?: S
     if (!helicopterPlacement(world, x, y, z, yaw, def)) return false;
   } else if (isBoatVehicle(def)) {
     if (!boatPlacement(world, x, y, z, yaw, def)) return false;
+    // The compound hull already cleared terrain and loaded solids, including the waterway between sponsons.
+    // Unloaded resource nodes expose only a capsule query.
+    const unloaded = world.unloaded;
+    return !unloaded || !hullParts(x, y, z, yaw, def).some(part =>
+      part.height > .2 && unloaded.meets(part.x, part.y, part.z, part.radius, part.height));
   } else if (Math.abs(y - groundUnder(world.hf, x, z, def.spec.halfWidth)) > .2) return false;
   const unloaded = world.unloaded ?? null, sn = Math.sin(yaw), cs = Math.cos(yaw);
   if (isRotorVehicle(def) && unloaded) {
@@ -363,13 +369,25 @@ export function vehicleFitsWorld(world: CollisionWorld & { readonly unloaded?: S
   return true;
 }
 
+const parkedRadii = new WeakMap<ServerWorld["reg"], number>();
+function largestParkedRadius(reg: ServerWorld["reg"]): number {
+  const cached = parkedRadii.get(reg);
+  if (cached !== undefined) return cached;
+  let radius = 0;
+  for (const [kind, vehicle] of reg.vehicle.entries()) {
+    radius = Math.max(radius, vehicle ? vehicleSolidRadius(vehicle) : reg.bodyRadius[kind]!);
+  }
+  parkedRadii.set(reg, radius);
+  return radius;
+}
+
 /** Shared by authored parking and deployment: the world itself (vehicleFitsWorld), then the bodies standing there. */
 export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: number, yaw: number, def: VehicleDefinition): boolean {
   if (!vehicleFitsWorld(world, x, y, z, yaw, def)) return false;
-  const ents = world.ents;
+  const ents = world.ents, parkedRadius = largestParkedRadius(world.reg);
   if (isRotorVehicle(def) || isBoatVehicle(def)) {
     // The whole rigid vehicle against each body near, by its exact shape, adjacent rotor discs included.
-    const posed = { x, y, z, yaw, pitch: 0, roll: 0 }, pad = 15;
+    const posed = { x, y, z, yaw, pitch: 0, roll: 0 }, pad = vehicleSolidRadius(def) + parkedRadius;
     for (let cz = Math.max(0, Math.floor((z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((z + pad) / CHUNK_SIZE)); cz++) {
       for (let cx = Math.max(0, Math.floor((x - pad) / CHUNK_SIZE)); cx <= Math.min(world.dims.chunksX - 1, Math.floor((x + pad) / CHUNK_SIZE)); cx++) {
         for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
@@ -390,7 +408,7 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
   }
   // A car's bodies against the bodies near, which are apart from the static world: nearby chunks and vertical overlap.
   for (const part of hullParts(x, y, z, yaw, def)) {
-    const pad = part.radius + 8;
+    const pad = part.radius + parkedRadius;
     for (let cz = Math.max(0, Math.floor((part.z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((part.z + pad) / CHUNK_SIZE)); cz++) {
       for (let cx = Math.max(0, Math.floor((part.x - pad) / CHUNK_SIZE)); cx <= Math.min(world.dims.chunksX - 1, Math.floor((part.x + pad) / CHUNK_SIZE)); cx++) {
         for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {

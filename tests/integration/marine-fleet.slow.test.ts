@@ -60,6 +60,24 @@ for (const m of MARINE_MODELS) test(`${m.label} boards and exits from its assign
   } finally { h.host.shutdown(); }
 });
 
+test("a returning swimmer in Lagoon's open tunnel keeps their position, and a swimmer inside its keel is moved clear", () => {
+  const map = fleetMarina(), m = MARINE_MODELS.find(m => m.id === "core:lagoon")!;
+  const h = new Harness({}, 1, 30, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap({ ...map, vehicles: map.vehicles!.filter(v => v.kind === m.id) }) });
+  try {
+    const session = h.join("returning-swimmer"); h.run(300);
+    const actor = h.client(session)!.ent, ents = h.world.ents;
+    const rec = [...h.host.records.byPid.values()].find(r => h.reg.ids[r.kind] === m.id)!;
+    const e = h.host.records.entOf.get(rec.pid)!, cx = ents.x[e]!, cz = ents.z[e]!;
+    ents.setPosition(actor, cx, -1.35, cz);
+    h.host.urban.settle(actor);
+    expect([ents.x[actor], ents.z[actor]]).toEqual([cx, cz]);
+    const keel = cx + m.sponsonX!;
+    ents.setPosition(actor, keel, -1.35, cz);
+    h.host.urban.settle(actor);
+    expect(Math.hypot(ents.x[actor]! - keel, ents.z[actor]! - cz)).toBeGreaterThan(1);
+  } finally { h.host.shutdown(); }
+});
+
 test("a destroyed flagship releases its pilot to water from the raised helm and retains its hull and cargo as salvage", () => {
   const map = fleetMarina(), m = MARINE_MODELS.find(m => m.id === "core:sovereign")!;
   const h = new Harness({}, 1, 30, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap({ ...map, vehicles: map.vehicles!.filter(v => v.kind === m.id) }) });

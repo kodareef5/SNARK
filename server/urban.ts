@@ -375,10 +375,14 @@ export class Urban {
     for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let car = ents.chunkHead[cz * world.dims.chunksX + cx]!; car >= 0; car = ents.next[car]!) {
       const host = this.hosts.get(ents.pid[car]!);
       if (!host || host.entity !== car || car === e) continue;
-      const spec = host.definition.spec, a = ents.vehicleYaw[ents.vrow[car]!]!, dx = ents.x[e]! - ents.x[car]!, dz = ents.z[e]! - ents.z[car]!;
-      const x = Math.abs(Math.cos(a) * dx - Math.sin(a) * dz) - spec.halfWidth, z = Math.abs(Math.sin(a) * dx + Math.cos(a) * dz) - spec.halfLength;
-      const outside = Math.max(0, x) ** 2 + Math.max(0, z) ** 2 >= p.radius * p.radius;
-      if (outside || ents.y[e]! >= ents.y[car]! + spec.height || ents.y[e]! + p.height <= ents.y[car]! - spec.height) continue;
+      if (isBoatVehicle(host.definition) && host.definition.boarding) {
+        if (!boatMeetsCapsule(host.definition, this.state(car), ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)) continue;
+      } else {
+        const spec = host.definition.spec, a = ents.vehicleYaw[ents.vrow[car]!]!, dx = ents.x[e]! - ents.x[car]!, dz = ents.z[e]! - ents.z[car]!;
+        const x = Math.abs(Math.cos(a) * dx - Math.sin(a) * dz) - spec.halfWidth, z = Math.abs(Math.sin(a) * dx + Math.cos(a) * dz) - spec.halfLength;
+        const outside = Math.max(0, x) ** 2 + Math.max(0, z) ** 2 >= p.radius * p.radius;
+        if (outside || ents.y[e]! >= ents.y[car]! + spec.height || ents.y[e]! + p.height <= ents.y[car]! - spec.height) continue;
+      }
       this.standBeside(e, host);
       ents.pose(e, world.tick);
       records.dirty.add(ents.pid[e]!);
