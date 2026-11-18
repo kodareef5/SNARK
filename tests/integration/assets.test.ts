@@ -162,8 +162,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // rows, not 28, which moves the frames' bone counts and the first bone of the draws after it, and nothing else.
   // They were 59fd3025 and 92c6c215 until an opaque step's draws went nearest first (scene.ts order): with `?off=order`
   // they are those again. Leaving out what is hidden (render/hide.ts) leaves out nothing here.
-  expect(beforePlain).toBe("df2f1d45");
-  expect(hash).toBe("ded2ac55");
+  // The eight tanker salvage meshes shift the mesh indices used by this fixture.
+  expect(beforePlain).toBe("eddf2985");
+  expect(hash).toBe("bb408c85");
   // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
   // and leaves the frames as they were leaves these.
   expect(counts).toEqual([34500, 32934000, 0]);
@@ -186,7 +187,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // 706f11fd until the sea was made ahead of the statics, as above, and d44c5109 and 90b43a9 until the harbours' wrecks,
   // as above, and d14ab735 and dd8fdb95 until a survivor had 30 bones, as above, and 8c96b01d and 3cb6a7ed until the
   // draws went nearest first, as above.
-  expect(saddled.beforePlain).toBe("186ca8fd");
-  expect(saddled.hash).toBe("8373e09d");
+  expect(saddled.beforePlain).toBe("8a46cd9d");
+  expect(saddled.hash).toBe("9db5f46d");
   expect(saddled.counts).toEqual([34800, 32952000, 0]);
 });

@@ -1,3 +1,4 @@
+import { TANKER_WRECKS } from "./vehicles/tanker-wrecks.ts";
 // Colours are palette indices. See shared/pack/palette.ts.
 
 import type { Def, NodeDef, NodeVariant } from "../shared/content/defs.ts";
@@ -393,6 +394,7 @@ const ALL: readonly Def[] = [
   ...HELICOPTER_ITEMS,
   ...ROADS,
   ...WRECKS,
+  ...TANKER_WRECKS,
   ...HARBOUR_WRECKS,
   ...STREET,
   CIVILIAN,

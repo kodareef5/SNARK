@@ -1,3 +1,4 @@
+import { TANKER_WRECKS } from "../../content/vehicles/tanker-wrecks.ts";
 // The class table: sound in itself, and true of the content that exists.
 import { expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -60,7 +61,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "species/survivor": 1,
     "species/target": 1,
     // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts).
-    "species/vehicle": 12 + MARINE_FLEET.length,
+    "species/vehicle": 13 + MARINE_FLEET.length,
     "species/civilian": 1,
     // And three road surfaces to drive on, on a paving shape of their own.
     "structure/piece": 36,
@@ -70,8 +71,8 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     // And the street wrecks, a shape each look and a static each of its kinds (content/vehicles/wrecks.ts), and the
     // harbours', a shape each vessel and a static each of its hulk and forms (content/vehicles/harbour-wrecks.ts), and
     // the street furniture, a shape and a static each piece (content/street.ts).
-    "structure/static": 8 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length,
-    shape: 17 + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length,
+    "structure/static": 8 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + TANKER_WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length + STREET.filter((d) => d.type === "structure").length,
+    shape: 17 + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + TANKER_WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length + STREET.filter((d) => d.type === "shape").length,
     material: 4,
     node: 14,
     "prop/container": 2,
@@ -80,7 +81,7 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     spawns: 4,
     map: 6,
   });
-  expect(rest.length).toBe(241 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + HARBOUR_WRECKS.length + STREET.length);
+  expect(rest.length).toBe(241 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + TANKER_WRECKS.length + HARBOUR_WRECKS.length + STREET.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
