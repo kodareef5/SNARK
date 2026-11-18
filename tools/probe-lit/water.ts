@@ -41,7 +41,7 @@ import { encodePng } from "../snap/png.ts";
 import { provingView } from "../snap.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
 import { hazedShown, sendPictures } from "./sky.ts";
-import { findChrome } from "../chrome.ts";
+import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const [W, H] = [640, 360];
@@ -554,7 +554,7 @@ async function timeWater(chrome: string): Promise<Record<string, number | string
     },
   });
   const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
-  const browser = Bun.spawn([chrome, "--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+  const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--user-data-dir=${profile}`, `http://localhost:${server.port}/`], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
   const done = await Promise.race([finished, new Promise<Record<string, string>>((r) => setTimeout(() => r({ error: "the page sent nothing within five minutes" }), 300000))]);
   browser.kill();
   await browser.exited;
