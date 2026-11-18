@@ -127,7 +127,8 @@ export function gridLines(d: FramedDims, w: MapWindow): { lon: GridLine[]; lat: 
   const unit = COORD_UNIT * w.scale;
   const step = unit >= UNIT_PIXELS ? 1 : SECTOR_UNITS;
   const every = unit >= UNIT_NUMBERED ? 1 : SECTOR_UNITS * (SECTOR_UNITS * unit < SECTOR_NUMBERED ? 2 : 1);
-  const line = (k: number, at: number): GridLine => ({ k, at, sector: k % SECTOR_UNITS === 0, numbered: k % every === 0 });
+  // A line at 0 found by rounding up from just below it is -0, which is written 0 alike but compares otherwise.
+  const line = (k: number, at: number): GridLine => ({ k: k || 0, at, sector: k % SECTOR_UNITS === 0, numbered: k % every === 0 });
   const lon: GridLine[] = [];
   const lat: GridLine[] = [];
   // Longitude grows east, as x falls; latitude grows south, as z falls.

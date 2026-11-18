@@ -33,7 +33,7 @@ test("the board opens on a development server, and elsewhere only to the admin p
     // Only the files of a sound folder are served, and nothing outside the sources.
     expect(ask(dev, "/admin/source/secret.txt")!.status).toBe(404);
     // The URL resolves dots before the board sees them: these are /admin/sounds.html and /package.json, not the board's.
-    // The first is the admin pages', which answer it behind the same gate (admin-pages.test.ts).
+    // The first is the admin pages', which answer it behind the same gate (admin-routes.test.ts).
     expect(ask(dev, "/admin/source/../sounds.html")).toBeNull();
     expect(ask(dev, "/admin/source/%2e%2e/%2e%2e/package.json")).toBeNull();
     // Escaped slashes are decoded as the board matches the path, and climb out of the sources: not the board's either.
