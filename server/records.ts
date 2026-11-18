@@ -107,6 +107,7 @@ export class EntityRecord {
   mealDue = 0;
   /** Content index of its saddle, or 0. */
   saddle = 0;
+  jetSpent = 0;
   /** Selected ground-combat plate mode; transient attacks are never saved. */
   creatureMode = 0;
   /**

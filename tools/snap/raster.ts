@@ -75,6 +75,7 @@ interface Surfaced {
   cutoff: number;
   /** The material's sheet (shared/pack/finish.ts), 0 for none. */
   sheet: number;
+  emissive: number;
   twoSided: boolean;
   uvs: Float32Array;
   tangents: Float32Array;
@@ -1232,7 +1233,7 @@ export class Rasterizer {
     const wear = layer ? p.drawWear[d]! : 0;
     const { center, half } = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const box = wear === 0 ? null : lod.positions.map((x, i) => (x - center[i % 3]!) / half[i % 3]!);
-    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1636,6 +1637,7 @@ export class Rasterizer {
           opened.set([mro[0]! * open, mro[1]!, mro[2]!]);
           lit(light, albedo, opened, normal, eye, p.frame, mirrored);
           through(light, albedo, mro, normal, p.frame, s.sheet);
+          if (s.emissive) for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * s.emissive;
           shown(rgb, light, dist, p);
           this.color[at * 4] = rgb[0]! * 255;
           this.color[at * 4 + 1] = rgb[1]! * 255;

@@ -1,4 +1,4 @@
-import { writeTankerYard } from "./tanker-yard.ts";
+import { writeVehicleYard } from "./tanker-yard.ts";
 // The ordinary game with a local test drive near spawn. --fleet parks the road fleet in their own save.
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -37,22 +37,28 @@ if(import.meta.main){
   const args=process.argv.slice(2);
   const value=(key:string):string|undefined=>{const at=args.indexOf(key);return at>=0?args[at+1]:undefined;};
   const root=resolve(import.meta.dir,"../..");
-  const fleet = args.includes("--fleet"), tanker=args.includes("--tanker"), freight=args.includes("--freight");
+  const fleet = args.includes("--fleet"), tanker=args.includes("--tanker"), freight=args.includes("--freight"), cars=args.includes("--cars");
   const clientDir=resolve(value("--dist")??resolve(root,"client/dist"));
   if (!args.includes("--built")) console.log(JSON.stringify(await buildClient({quick:true,dist:clientDir})));
   else if (!existsSync(resolve(clientDir, "assets/manifest.json"))) throw new Error("Run without --built to prepare the client.");
   const folder=value("--config")??DEV_CONFIG,{rules,report}=loadConfigFolder(folder,args);
   for(const line of formatReport(report,rules))console.log(line);
-  const dbPath=resolve(value("--db")??resolve(root,freight?"var/freight-yard/world.db":tanker?"var/tanker-yard/world.db":fleet?"var/road-fleet/world.db":"var/urban-v1/world.db"));mkdirSync(dirname(dbPath),{recursive:true});
-  const live=liveFileOf(folder),map=value("--map")??(freight?writeTankerYard(resolve(root,"var/freight-yard/course.snmp"),true):tanker?writeTankerYard(resolve(root,"var/tanker-yard/course.snmp")):undefined);
+  const layout = cars ? "cars" : freight ? "freight" : tanker ? "tanker" : undefined;
+  const yard = cars ? "street-yard" : freight ? "freight-yard" : tanker ? "tanker-yard" : fleet ? "road-fleet" : "urban-v1";
+  const dbPath = resolve(value("--db") ?? resolve(root, "var", yard, "world.db"));
+  mkdirSync(dirname(dbPath), { recursive: true });
+  const live = liveFileOf(folder);
+  const map = value("--map") ?? (layout ? writeVehicleYard(resolve(root, "var", yard, "course.snmp"), layout) : undefined);
   const server=startServer({clientDir,dev:true,hostname:value("--host")??"127.0.0.1",port:Number(value("--port")??process.env.PORT??8787),dbPath,config:rules,...(live?{live}:{}),...(map?{map:resolve(map)}:{})});
   try {
-    if (freight) {
+    if (freight || cars) {
       const {world,records}=server.host;
-      for (const [id,dx,dz] of [["core:bus",-3.3,4],["core:semi",4.5,6]] as const) {
+      const bays = cars ? [["core:monster_truck",-5,5],["core:muscle_car",0,7],["core:taxi",5,5]] as const :
+        [["core:bus",-3.3,4],["core:semi",4.5,6]] as const;
+      for (const [id,dx,dz] of bays) {
         if (![...records.byPid.values()].some(r=>r.kind===world.reg.index.get(id)) &&
             server.host.spawnVehicle(id,world.spawn.x+dx,world.spawn.z+dz,0,0)<0)
-          throw new Error("Could not park "+id+" in the freight yard");
+          throw new Error("Could not park "+id+" in the test yard");
       }
     } else if (tanker) {
       const {world,records}=server.host, kind=world.reg.index.get("core:tanker");
