@@ -3,8 +3,11 @@
 import json, math
 from pathlib import Path
 import bmesh, bpy, numpy as np
+from mathutils import Vector
+from mathutils.bvhtree import BVHTree
+from facial import cheek_folds, labials
 from parts import Part, activate, join, smooth_rows
-from plan import BODY, BONES, EYE, NARIS, JAW, SKULL, mirror, to_animal
+from plan import BODY, BONES, EYE, NARIS, JAW, SKULL, mirror, to_animal, to_blender
 import rig
 
 OUT = Path(__file__).resolve().parents[5] / "var/rex"
@@ -100,7 +103,7 @@ def shell(stations, upper):
     contour = upper_contour if upper else lower_contour
     contour = contour + [(-x, y) for x, y in reversed(contour[1:-1])]
     rows = []
-    for z, w, a, b in smooth_rows(stations, 4):
+    for z, w, a, b in smooth_rows(stations, 6 if upper else 4):
         low, high = (a, b) if upper else (b, a)
         row = []
         for unit, v in contour:
@@ -116,6 +119,14 @@ def shell(stations, upper):
             else:
                 flare = 0.087 * bump(h - (3.249 + 0.40 * (z - 3.13)), 0.145) * bump(z - 3.15, 0.306)
                 flare -= 0.030 * bump(h - 3.241, 0.091) * bump(z - 3.76, 0.45)
+            ridged, furrow = cheek_folds(z, h)
+            flare += 0.038 * ridged - 0.032 * furrow
+            if upper:
+                plate, margin = labials(z, h)
+                flare += 0.028 * plate - 0.016 * margin
+                sill = 3.946 - 0.32 * (z - 4.69)
+                flare += 0.052 * bump(h - sill, 0.046) * bump(z - 4.690, 0.153)
+                flare += 0.072 * bump(h - (4.102 - 0.14 * (z - 3.45)), 0.093) * bump(z - 3.453, 0.204)
             width = (max(0.008, w) + flare * abs(unit) ** 2.5) * unit
             row.append((width, h, z))
         rows.append(row)
@@ -279,7 +290,26 @@ def hide():
             ("orbit", (EYE[0] + 0.044, EYE[1] + 0.002, EYE[2]), (0.146, 0.086, 0.140)),
             ("naris", NARIS, (0.125, 0.067, 0.123)),
         ]:
-            cut = Part(name).ellipsoid(mirror(centre, sign), radii, (0, 0, 1, 1), 24, 12).object()
+            if name == "naris":
+                # The blind posterior pocket narrows beneath the nasal sill;
+                # the fleshy rostral entrance opens obliquely out and forward.
+                cut = loft(
+                    "nasal_vestibule",
+                    [
+                        (0.388, 3.995, 4.489, 0.024, 0.015),
+                        (0.399, 3.977, 4.542, 0.091, 0.042),
+                        (0.401, 3.947, 4.621, 0.138, 0.060),
+                        (0.401, 3.921, 4.708, 0.144, 0.066),
+                        (0.393, 3.892, 4.783, 0.117, 0.062),
+                        (0.366, 3.879, 4.826, 0.061, 0.038),
+                        (0.346, 3.878, 4.848, 0.011, 0.012),
+                    ],
+                    sign,
+                    power=0.85,
+                    sides=22,
+                )
+            else:
+                cut = Part(name).ellipsoid(mirror(centre, sign), radii, (0, 0, 1, 1), 24, 12).object()
             activate(obj)
             m = obj.modifiers.new(name + side, "BOOLEAN")
             m.operation = "DIFFERENCE"
@@ -424,7 +454,7 @@ def soft_parts():
         out.append(
             detail(
                 "palatal_ridges" if upper else "mobile_tongue",
-                "skull" if upper else "jaw",
+                "maxilla" if upper else "jaw",
                 rows,
                 ORAL if upper else TONGUE,
                 24,
@@ -433,7 +463,7 @@ def soft_parts():
     for side, sg in [("l", 1), ("r", -1)]:
         for upper, st in [(True, SKULL), (False, JAW)]:
             name = "upper" if upper else "lower"
-            bone = "skull" if upper else "jaw"
+            bone = "maxilla" if upper else "jaw"
             stations = np.array(st)
             lip_column = 2
 
@@ -521,7 +551,7 @@ def soft_parts():
         out.append(cap.object())
         # The delicate orbital rims share the soft head paint; the mobile upper
         # lid rolls across the seated globe in the blink and torpor performances.
-        for upper in (True, False):
+        for upper in (True,):
             path = []
             for i in range(13):
                 a = math.pi * i / 12
@@ -591,6 +621,41 @@ def soft_parts():
     return out
 
 
+def lower_lid(body, side, sign):
+    # The lower lid grows out of the actual suborbital surface. The broad outer
+    # row dives into the cheek and the narrow inner edge touches the globe.
+    casting = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    p = Part("lower_orbital_fold_" + side, "rex_head", "skull")
+    ex, ey, ez = EYE
+    columns = []
+    for u in np.linspace(-1, 1, 19):
+        arch = max(0, 1 - u * u) ** 0.63
+        inner_y = ey - 0.028 * arch + 0.004 * u
+        z = ez + 0.101 * u
+        outer_y = inner_y - (0.051 * arch + 0.011)
+        hit = casting.ray_cast(to_blender((sign * 1.5, outer_y, z)), Vector((-sign, 0, 0)))[0]
+        if hit is None:
+            raise RuntimeError("lower eyelid missed the suborbital surface")
+        base = abs(hit.x) - 0.010
+        lip_x = ex + 0.042 * arch - 0.015 * abs(u)
+        row = []
+        for hidden in (False, True):
+            for v in np.linspace(0, 1, 6):
+                x = (1 - v) * lip_x + v * base + 0.012 * arch * np.sin(v * np.pi)
+                row.append(p.point((sign * (x - (0.020 if hidden else 0)), inner_y + (outer_y - inner_y) * v, z)))
+        columns.append(row)
+    for a, b in zip(columns, columns[1:]):
+        for j in range(5):
+            for off in (0, 6):
+                p.face((a[j + off], a[j + off + 1], b[j + off + 1], b[j + off]))
+        for j in (0, 5):
+            p.face((a[j], a[j + 6], b[j + 6], b[j]))
+    for row in (columns[0], columns[-1]):
+        for j in range(5):
+            p.face((row[j], row[j + 1], row[j + 7], row[j + 6]))
+    return p.object()
+
+
 def commissure(side, sign):
     # The mouth corner is an elastic fold behind the tooth arcade. Its
     # lower edge travels with the rotating dentary, the upper with the jugal.
@@ -635,7 +700,18 @@ def commissure(side, sign):
 
 
 def build():
-    obj = join([hide(), shell(JAW, False), commissure("l", 1), commissure("r", -1)], "rex_skin")
+    body = hide()
+    obj = join(
+        [
+            body,
+            shell(JAW, False),
+            commissure("l", 1),
+            commissure("r", -1),
+            lower_lid(body, "l", 1),
+            lower_lid(body, "r", -1),
+        ],
+        "rex_skin",
+    )
     unwrap_skin(obj)
     obj = join([obj, *soft_parts()], "rex_model")
     mesh = obj.data
