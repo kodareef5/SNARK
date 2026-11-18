@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { DeviceProbe, RUNGS, newReport, spread, type DeviceReport, type RungReport } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
 import { DRAW_PULLED, DRAW_SIZED, FRAME } from "../../client/core/render/packet.ts";
-import { decodeTexture, sampleWorldTexture } from "../../client/core/render/cpu-texture.ts";
+import { decodeTexture, sample } from "../../client/core/render/cpu-texture.ts";
 import { selfcheckReport } from "../../client/core/selfcheck-report.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, filesChanged, lacking, servedFiles } from "../../tools/device.ts";
 import { writeTextureFile } from "../../tools/pack/texture.ts";
@@ -67,7 +67,7 @@ test("a page shows which device it is on and the tests, starts nothing until one
   // with materials or bones, since the harness fetches no textures and stands no body in view.
   const q = r.gpuTests!;
   expect([q.lostDuring, q.passes.filter((p) => p.note !== "").map((p) => `${p.name}: ${p.note}`), typeof q.seam]).toEqual([null, ["draw textured: none in the frame", "draw skinned: none in the frame"], "object"]);
-  expect(["lit", "lit world near", "lit world fade"].map((n) => q.passes.find((p) => p.name === n)?.slope)).toEqual([0.135, 0.135, 0.135]);
+  expect(["lit", "lit world near", "lit world far"].map((n) => q.passes.find((p) => p.name === n)?.slope)).toEqual([0.135, 0.135, 0.135]);
   // The executor took 0.1 ms a draw, a caster each: 100 µs, through packets of the frame's own draws of each kind.
   expect(q.passes.filter((p) => p.per === "draw" && p.note === "").map((p) => [p.name, p.slope, p.k])).toEqual([["draw far", 100, 128], ["draw flat", 100, 128], ["draw caster", 100, 128]]);
   expect([...card.kinds].sort((a, b) => a - b)).toEqual([DRAW_SIZED, DRAW_PULLED]);
@@ -101,12 +101,12 @@ test("a page shows which device it is on and the tests, starts nothing until one
 
 test("the page holds the lit ground and statics to what the plain self-check expects of the same frame, by the world surfaces' reference through the game's port", async () => {
   const pack = corePack();
-  const { manifest, material } = referenceManifest(pack);
+  const { manifest, materials } = referenceManifest(pack);
   const roles = ["base", "normal", "mro"] as const;
   const pictures = roles.map((role) => Array.from({ length: 7 }, (_, k) => new Uint8Array(4 ** k * (role === "normal" ? 2 : 4)).fill(128)));
   const encoded = writeTextureFile("rgba", roles.map((role, k) => ({ role, block: 1, pictures: pictures[k]! })));
   manifest.files.push({ name: "reference", bytes: encoded.bytes.length, role: "tex", format: "rgba" });
-  roles.forEach((role, k) => void (manifest.textures![material[role]] = { id: `reference/${role}`, role, top: 64, in: { rgba: { file: 1, ...encoded.placed[k]! } } }));
+  for (const material of materials) roles.forEach((role, k) => void (manifest.textures![material[role]] = { id: `${material.id}/${role}`, role, top: 64, in: { rgba: { file: 1, ...encoded.placed[k]! } } }));
   const port = new FakeNet([new Uint8Array(0), encoded.bytes]);
   const { h, app, expected } = client({ manifest, port });
   const { b } = browser({ clock: () => h.now, expected, mode: "quick" });
@@ -116,7 +116,7 @@ test("the page holds the lit ground and statics to what the plain self-check exp
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
   // The plain probe's own report of the frame the page reads, from the same pictures decoded apart from the page's.
   const maps = roles.map((role, k) => decodeTexture(role, pictures[k]!));
-  const surfaces = { sample: (role: number, u: number, v: number, spread: number, out: Float64Array) => sampleWorldTexture(maps[role]!, u, v, spread, out), state: { ready: true, format: "rgba" as const, error: null, fetched: 0, cached: 0 } };
+  const surfaces = { sample: (role: number, _layer: number, u: number, v: number, spread: number, out: Float64Array) => sample(maps[role]!, u, v, spread, out), state: { ready: true, format: "rgba" as const, error: null, fetched: 0, cached: 0 } };
   let plain: ReturnType<typeof selfcheckReport> | null = null;
   card.r.readPixel = () => {
     const [width, height] = [card.gl.drawingBufferWidth, card.gl.drawingBufferHeight];
@@ -128,7 +128,7 @@ test("the page holds the lit ground and statics to what the plain self-check exp
   expect([r.probes?.map((p) => p.name), r.surfaceReference?.ready, r.surfaceReference?.error, r.surfaceReference!.fetched > 0]).toEqual([["sky", "plaza", "block", "creature"], true, null, true]);
   const twins = new Map(plain!.probes.map((p) => [p.name, p.expected]));
   for (const p of r.probes!) expect([p.name, p.expected]).toEqual([p.name, twins.get(p.name)!]);
-  expect(deviceTable(r).some((line) => /^ {10}ground and statics held to the world surfaces' rgba reference, 0\.1 MB fetched, 0\.0 MB from disk$/.test(line))).toBe(true);
+  expect(deviceTable(r).some((line) => /^ {10}ground and statics held to the world surfaces' rgba reference, 0\.9 MB fetched, 0\.0 MB from disk$/.test(line))).toBe(true);
 });
 
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {

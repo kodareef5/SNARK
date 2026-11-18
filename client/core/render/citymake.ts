@@ -5,7 +5,7 @@
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
-import { cellPart, mergedPart, type CityForm, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { cellPart, cornerByte, mergedPart, type CityForm, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
 import { sweepBuffers, type SweepJob, type SweepMade } from "./farshadow.ts";
 import { quadBytes } from "./packet.ts";
@@ -221,7 +221,7 @@ export class LevelMaking {
       const dz = chunkCz(k.dims, chunk) * CHUNK_SIZE - job.oz;
       first[r] = (v / 4) * 6;
       count[r] = part.faces * 6;
-      const { pos, color } = part;
+      const { pos, color, edges } = part;
       for (let f = 0; f < part.faces; f++, v += 4) {
         for (let e = 0; e < 4; e++) {
           const o = (v + e) * VERTEX_BYTES;
@@ -230,6 +230,7 @@ export class LevelMaking {
           view.setInt16(o + 2, q(pos[p + 1]! - job.oy, 1), true);
           view.setInt16(o + 4, q(pos[p + 2]! + dz, 2), true);
           data[o + 6] = color[f]!;
+          data[o + 7] = cornerByte(e, edges[f]!);
         }
       }
     });
