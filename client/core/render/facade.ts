@@ -99,8 +99,11 @@ const NEAR = 0.04;
  * A room's light behind glass as a share of the daylight on the face it looks out of, and how much of that is gone at
  * its back wall: a room lit by its window is darker than the street, and darker deeper in.
  */
-const ROOM_LIGHT = 0.4;
+const ROOM_LIGHT = 0.55;
 const ROOM_DEPTH = 0.7;
+/** Dirty glass: the film's own albedo at its thickest, and how much of the room it hides there. */
+const FILM_ALBEDO = 0.35;
+const FILM_HIDES = 0.45;
 /** How far the glass stands behind the face of its frame, and a blind and a curtain behind the glass, in metres. */
 const SET_BACK = 0.04;
 const BLIND_BACK = 0.08;
@@ -373,9 +376,9 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
     }
     filmed = clamp((rough - 0.05) / 0.45);
     const fresnel = 0.04 + 0.96 * (1 - vz) ** 5;
-    const through = ((1 - fresnel) * (1 - 0.6 * filmed) * shard + (1 - shard)) * (broken ? 0.5 : 1);
+    const through = ((1 - fresnel) * (1 - FILM_HIDES * filmed) * shard + (1 - shard)) * (broken ? 0.5 : 1);
     for (let c = 0; c < 3; c++) o.room[c] = glassRoom[c]! * through * (1 - a);
-    ga = 0.6 * filmed * shard;
+    ga = FILM_ALBEDO * filmed * shard;
     gr = shard >= 0.5 ? rough : 1;
     // The ray mirrored keeps its way across and up the face and turns back out of it.
     if (shard >= 0.5) share = farSide(far, gx, -vx, -vy, vz, over + gy - y, fract(family * 7.7 + seed * 0.1)) * (1 - a);
@@ -784,9 +787,9 @@ int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room,
       }
     }
     float filmed = clamp((rough - 0.05) / 0.45, 0.0, 1.0);
-    float through = ((1.0 - (0.04 + 0.96 * pow(1.0 - view.z, 5.0))) * (1.0 - 0.6 * filmed) * shard + (1.0 - shard)) * (broken ? 0.5 : 1.0);
+    float through = ((1.0 - (0.04 + 0.96 * pow(1.0 - view.z, 5.0))) * (1.0 - ${fl(FILM_HIDES)} * filmed) * shard + (1.0 - shard)) * (broken ? 0.5 : 1.0);
     room = seen * through * (1.0 - a);
-    ga = 0.6 * filmed * shard;
+    ga = ${fl(FILM_ALBEDO)} * filmed * shard;
     gr = shard >= 0.5 ? rough : 1.0;
     if (shard >= 0.5) share = facadeFar(far3, g.x, vec3(-view.x, -view.y, view.z), over + g.y - y, fract(family * 7.7 + seed * 0.1)) * (1.0 - a);
     sharp = shard >= 0.5 && a < 0.5 ? 2 : 1;
