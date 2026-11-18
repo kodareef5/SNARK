@@ -628,7 +628,10 @@ export class Urban {
     return this.begin(c.pid, pid, nearest.id, occupant ? 'carjack' : 'enter');
   }
 
-  dismount(c: Client): void {
+  dismount(c: Client, fromUse = false): void {
+    // E is both board and exit. An input sent while the driver or passenger still saw an
+    // empty local seat cannot start or cancel an exit after the server commits boarding.
+    if (fromUse && (c.vehicleSeatSnapshot <= 0 || c.inputAcks[c.inputAt & c.inputs.mask]! < c.vehicleSeatSnapshot)) return;
     for (const effect of this.occupancy.cancel(c.pid, this.ctx.world.tick)) this.apply(effect);
     const seat = this.occupancy.seatOf(c.pid);
     if (!seat) return;
@@ -1032,7 +1035,7 @@ export class Urban {
     }
     if (effect.type === 'detach') {
       const c = this.client(effect.actor);
-      if (c) game.release(c);
+      if (c) { c.vehicleSeatSnapshot = 0; game.release(c); }
       const e = this.entity(effect.actor);
       if (e >= 0 && makeHandle(e, ents.gen[e]!) === effect.actorHandle) { ents.setSeat(e, -1); ents.driven[e] = 0; }
       const host = this.hosts.get(effect.host), rec = records.byPid.get(effect.host);
@@ -1043,7 +1046,7 @@ export class Urban {
     const removed = action.kind === 'exit' ? action.actor : action.victim;
     if (removed) {
       const c = this.client(removed);
-      if (c) { game.release(c); c.ownDirty = true; }
+      if (c) { c.vehicleSeatSnapshot = 0; game.release(c); c.ownDirty = true; }
       const e = this.entity(removed), expected = action.kind === 'exit' ? action.actorHandle : action.victimHandle;
       if (e >= 0 && makeHandle(e, ents.gen[e]!) === expected && effect.landing) {
         ents.setSeat(e, -1); ents.driven[e] = 0; ents.stance[e] = STANCE_STAND;
@@ -1070,7 +1073,7 @@ export class Urban {
       ents.setSeat(e, host.entity, slot + 1); ents.stance[e] = STANCE_CROUCH;
       ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
       if (!c) ents.driven[e] = 3;
-      if (c) { c.open = 0; c.ownDirty = true; }
+      if (c) { c.vehicleSeatSnapshot = -1; c.open = 0; c.ownDirty = true; }
       this.pin(e, host.entity, seat.anchor, !!seat.driver);
     }
     if (action.kind === 'carjack') {

@@ -758,7 +758,7 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
  * Call after reading `ack` and `behind` (in ticks). Keeps only ticks in (serverTick, serverTick + INPUT_WINDOW) not already
  * present. Returns the newest tick named, or 0 if the message was malformed.
  */
-export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number, ack = 0, behind = 0): number {
+export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number, ack = 0, behind = 0, ackHistory?: Uint32Array): number {
   const newest = r.u32();
   const count = r.bits(3) + 1;
   let moveX = 0;
@@ -779,6 +779,9 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
       inputs.set(tick, moveX, moveZ, yaw, pitch, buttons);
       // `ack - behind` is when the newest input was sampled. Each older input was sampled one tick earlier.
       inputs.view[tick & inputs.mask] = ack - behind - k;
+      // Preserve the packet acknowledgement separately from the interpolated view. Redundant
+      // copies received later cannot replace the acknowledgement of the first accepted copy.
+      if (ackHistory) ackHistory[tick & inputs.mask] = ack;
     }
   }
   return r.overflow ? 0 : newest;

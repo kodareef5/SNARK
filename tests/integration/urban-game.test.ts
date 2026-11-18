@@ -73,6 +73,25 @@ test('normal use/input/snapshot path drives a real vehicle with a real passenger
   } finally { h.host.shutdown(); }
 });
 
+test("a passenger's first use after seeing the seat exits a submerged compact", () => {
+  const { h, bob, other, car } = setup();
+  try {
+    expect(h.host.urban.mount(other, car)).toBe(RESULT_OK);
+    for (let frame = 0; frame < 120 && bob.own.seatSlot === 0; frame++) h.run(16);
+    expect(bob.own.seatSlot).toBe(2);
+    expect(bob.driving).toBe(-1);
+    const ents = h.world.ents;
+    h.world.hf.seaLevel = ents.y[car]! + 8;
+    expect(h.world.hf.waterAt(ents.x[car]!, ents.z[car]!)).toBeGreaterThan(ents.y[car]! + 2);
+    const pilot = h.pilots[1]!;
+    pilot.buttons = BTN_USE; h.run(100); pilot.buttons = 0;
+    expect(h.host.urban.occupancy.pending(other.pid)?.kind).toBe("exit");
+    h.run(800);
+    expect(bob.own.seatSlot).toBe(0);
+    expect(h.host.urban.riding(other)).toBe(false);
+  } finally { h.host.shutdown(); }
+});
+
 test('real NPC seats are session-independent; carjack transfers only control and disconnect releases safely', () => {
   const { h, me, car, x, z, owner } = setup();
   try {
