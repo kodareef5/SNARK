@@ -289,3 +289,25 @@ test("compound-slope rendered mouths remain inside the world-aimed bite volume",
     } finally { h.host.shutdown(); }
   }
 });
+
+test("a second mounted bite finds the same contact on a fresh target after biting a different creature", () => {
+  function secondContact(firstInReach: boolean) {
+    const f = fixture("raptor"), { h } = f;
+    try {
+      const first = f.target("parasaur", 2.5, firstInReach ? 128 : 145);
+      expect(f.attack().hits).toBe(firstInReach ? 1 : 0);
+      const firstEntity = h.host.records.entOf.get(first.pid)!;
+      h.world.ents.setPosition(firstEntity, 180, 0, 180); h.world.history.discontinuity(firstEntity);
+      h.run(1000);
+      const next = f.target("raptor", 2.6);
+      f.rider.events.length = 0;
+      const result = f.attack(-.15);
+      expect(result.hits).toBe(1);
+      expect(h.host.combat.last.victim).toBe(next.pid);
+      expect(result.feedback.length).toBe(1);
+      const { x, y, z, zone } = result.feedback[0]!;
+      return { x, y, z, zone };
+    } finally { h.host.shutdown(); }
+  }
+  expect(secondContact(true)).toEqual(secondContact(false));
+});

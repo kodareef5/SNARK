@@ -271,3 +271,26 @@ test("a hunting raptor's attack pauses do not become blockers while a delayed su
     expect(bites).toBeGreaterThan(5); expect(s.stats.corrections - corrections).toBe(0); expect(pull).toBe(0);
   } finally { h.host.shutdown(); }
 });
+
+test("a delayed survivor can walk through a stationary survivor or occupied mount without a prediction pull", () => {
+  for (const riding of [false, true]) {
+    const { h, s, c, a, creature, place } = yard(150);
+    try {
+      const other = h.join("other"); h.run(1000);
+      const otherClient = h.client(other)!;
+      let target = otherClient.ent;
+      if (riding) {
+        target = creature("parasaur", 100, 106, a.team[otherClient.ent]!);
+        place(otherClient.ent, 98, 106);
+        expect(h.host.riding.mount(otherClient, target)).toBe(RESULT_OK);
+      } else place(target, 100, 106);
+      h.run(1200);
+      expect(sent(h, s, target)).toBe(true);
+      const fixed = position(h, target), corrections = s.stats.corrections;
+      h.pilots[0]!.moveZ = 1; h.run(5500);
+      expect(a.z[c.ent]!).toBeGreaterThan(112);
+      expect(position(h, target)).toEqual(fixed);
+      expect(s.stats.corrections).toBe(corrections);
+    } finally { h.host.shutdown(); }
+  }
+});
