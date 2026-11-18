@@ -146,7 +146,9 @@ function respond<S extends VehicleState>(s: S, p: VehicleRigidSpec, hit: Vehicle
   // an overturned chassis and a boat retain hull-on-ground grip for resting support.
   const uprightCar = p.wheelbase !== undefined && 1 - 2 * (q[0]! * q[0]! + q[2]! * q[2]!) > .5;
   quatUnrotate(q, 0, (hit.x ?? s.x) - s.x, (hit.y ?? s.y) - s.y, (hit.z ?? s.z) - s.z, localPoint, 0);
-  const pitchPatch = uprightCar && hit.ny > .7 &&
+  // Road pitch damping cannot hold a car up on its bumper: outside an ordinary driving attitude,
+  // its real off-centre support must remain free to tip the chassis under gravity.
+  const pitchPatch = uprightCar && 1 - 2 * (q[0]! * q[0]! + q[2]! * q[2]!) > .8 && hit.ny > .7 &&
     Math.abs(localPoint[0]!) < p.halfWidth * .25 && Math.abs(s.rollRate) < .2;
   const friction = hit.ny > .4 ? uprightCar ? pitchPatch ? .04 : .12 : .45 : .12;
   for (let i = 0; i < count; i++) {

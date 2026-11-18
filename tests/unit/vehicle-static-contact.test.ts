@@ -154,3 +154,22 @@ test('high-speed legacy stepped decks dissipate supported pitch without overturn
     expect(minimum / speed).toBeGreaterThan(.35); expect(Math.abs(car.x - 64)).toBeLessThan(.1);
   }
 });
+
+test('splitting a coplanar deck across the bumper preserves its contact centre and straight crossing', () => {
+  const contacts: number[][] = [], outcomes: number[][] = [];
+  for (const split of [false, true]) {
+    const { world: w, structs } = world(() => 0, [split ? 2 : 4, .15, 10]);
+    if (split) {
+      structs.add(1, 62.6, .15, 80, 0, 0, 100); structs.add(1, 66.6, .15, 80, 0, 0, 100);
+    } else structs.add(1, 64.6, .15, 80, 0, 0, 100);
+    const start = createVehicle(COMPACT, 64, 0, 68), hit = w.contact(start, { ...start, z: 68.4 }, COMPACT);
+    expect(hit).not.toBeNull(); contacts.push([hit!.x!, hit!.y!, hit!.z!, hit!.nx, hit!.ny, hit!.nz]);
+    const car = createVehicle(COMPACT, 64, 0, 58); car.vz = 20;
+    let minUp = 1;
+    for (let tick = 0; tick < 60; tick++) { stepVehicle(car, { ...coast, throttle: 1, neutral: false }, COMPACT, w); minUp = Math.min(minUp, 1 - 2 * (car.qx! ** 2 + car.qz! ** 2)); }
+    expect(minUp).toBeGreaterThan(.8); expect(Math.abs(car.x - 64)).toBeLessThan(.05);
+    outcomes.push([car.x, car.y, car.z]);
+  }
+  contacts[0]!.forEach((value, i) => expect(contacts[1]![i]).toBeCloseTo(value, 3));
+  outcomes[0]!.forEach((value, i) => expect(outcomes[1]![i]).toBeCloseTo(value, 1));
+});

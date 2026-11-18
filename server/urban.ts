@@ -20,7 +20,8 @@ import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../s
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
 import { V_HEALTH } from '../shared/sim/vitals.ts';
-import { capsuleFree, groundUnder, stepOnto } from '../shared/world/collide.ts';
+import { Found } from '../shared/world/structures.ts';
+import { capsuleBox, capsuleFree, groundUnder, push, stepOnto } from '../shared/world/collide.ts';
 import { boatMeetsCapsule } from '../shared/world/boat.ts';
 import { helicopterMeetsCapsule } from '../shared/world/helicopter.ts';
 import { carMeetsCapsule } from '../shared/world/vehicle.ts';
@@ -96,6 +97,7 @@ export class Urban {
   private readonly saved = new Body();
   private readonly pose = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
+  private readonly exitFound = new Found();
   private readonly seatAt = new Float64Array(3);
   private readonly seatRotation = new Float64Array(4);
   private readonly seatOrigin = new Float64Array(3);
@@ -943,9 +945,33 @@ export class Urban {
     // Seated animation origins may sit just below the ground when the hull rests on its belly.
     // Begin the exit at local standing support; every horizontal sample still checks terrain and overhead solids.
     const start = { x: ents.x[ae]!, y: Math.max(ents.y[ae]!, groundUnder(world.hf, ents.x[ae]!, ents.z[ae]!, move.radius) + .05), z: ents.z[ae]! }, out = [0, 0, 0];
+    if (!capsuleFree(world, start.x, start.y, start.z, move.radius, move.height)) {
+      // A clipped seated body can straddle a deck's side. Existing horizontal ceiling/floor penetration is not
+      // permission to pass through that surface: only side contacts may raise the start to their nearby top.
+      let side = false, vertical = false;
+      for (const store of [world.structs, world.nodes]) {
+        if (!store) continue;
+        const count = store.query(start.x - move.radius, start.z - move.radius, start.x + move.radius, start.z + move.radius,
+          this.exitFound, start.y, start.y + move.height);
+        for (let i = 0; i < count; i++) if (capsuleBox(store, this.exitFound.refs[i]!, start.x, start.y, start.z, move.radius, move.height, .002)) {
+          side = true; vertical ||= Math.abs(push.y) > push.depth * .2;
+        }
+      }
+      if (side && !vertical) {
+        const floor = stepOnto(world, start.x, start.z, start.y, start.y + move.height - .1, move.radius, move.height, move.slopeCos);
+        if (!Number.isNaN(floor)) start.y = floor + .05;
+      }
+    }
     const w = spec.halfWidth + move.radius + .3, l = spec.halfLength + move.radius + .3;
-    for (const local of [[w, 0, seat.anchor[2]], [-w, 0, seat.anchor[2]], [w, 0, 0], [-w, 0, 0], [w, 0, l], [-w, 0, l], [w, 0, -l], [-w, 0, -l]]) {
-      vehiclePoint(state, local, out);
+    const locals = [[w, 0, seat.anchor[2]], [-w, 0, seat.anchor[2]], [w, 0, 0], [-w, 0, 0], [w, 0, l], [-w, 0, l], [w, 0, -l], [-w, 0, -l]];
+    for (let i = 0; i < locals.length + 8; i++) {
+      if (i < locals.length) vehiclePoint(state, locals[i]!, out);
+      else {
+        // A near-vertical chassis collapses its local door plane. Ground-plane candidates still leave through
+        // a checked local corridor, and cannot cross another vehicle, wall or the opposite side of a sealed room.
+        const angle = (i - locals.length) * Math.PI / 4;
+        out[0] = state.x + Math.cos(angle) * l; out[1] = start.y; out[2] = state.z + Math.sin(angle) * l;
+      }
       const ground = groundUnder(world.hf, out[0]!, out[2]!, move.radius), water = world.hf.waterAt(out[0]!, out[2]!);
       // Never lift a deeply submerged crew to the surface. The corridor also bounds distance and checks overhead solids.
       const wet = Number.isFinite(water) && state.y + spec.clearance < water;
