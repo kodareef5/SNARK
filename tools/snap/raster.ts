@@ -9,7 +9,8 @@ import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.t
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
-import { groundNormal, groundSize, groundTint, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
+import { COARSE, groundNormal, groundSize, groundTint, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
+import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { MOST_LOD, detailKeeps, rotorOf, shapeOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -143,14 +144,17 @@ const mirrored = new Float64Array(3);
 const smoothed = new Float64Array(3);
 /** What LIT lights a flat draw as: no occlusion, fully rough, not metal. Its highlight mirrors nothing. */
 const ROUGH = [1, 1, 0];
+/** Occlusion, roughness and metalness with the sky's openness taken into the occlusion. */
+const opened = new Float64Array(3);
 const NOTHING = [0, 0, 0];
 
 /**
  * A palette draw on a lit frame into `rgb`, with world-projected finishes and SURFACE lighting. (rx, ry, rz) is where it
  * is from the camera, and (nx, ny, nz) its face's normal. The ground is lit by its own normal, `smooth` (LIT_TERRAIN_FRAGMENT).
  * A landmark's draw names its row of `finish` (shared/pack/finish.ts): a colour it states is lit as that finish, as LIT_MESH_FRAGMENT has it.
+ * `open` is the share of the sky's light the sky's openness leaves it (skyopen.ts), which its sheet's light from behind keeps.
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
   normal[0] = smooth ? smooth[0]! : nx;
@@ -170,7 +174,8 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
     if (worldOrm[1]! < 1 && look) skyFrom(mirrored, p.frame, reflected, look);
-    lit(light, albedo, worldOrm, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);
+    opened.set([worldOrm[0]! * open, worldOrm[1]!, worldOrm[2]!]);
+    lit(light, albedo, opened, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);
     through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255);
   } else if (sample) {
     const index = surfaceIndex(colorIndex, ground, p.surfaceCity[7] ? "las-vegas" : "default");
@@ -180,8 +185,12 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const sharp = worldSharp(index, p.surfaceCity);
     if (!sharp) skyLight(mirrored, p.frame, reflected);
     else if (look) skyFrom(mirrored, p.frame, reflected, look);
+    worldOrm[0]! *= open;
     lit(light, albedo, worldOrm, normal, eye, p.frame, sharp && !look ? NOTHING : mirrored);
-  } else lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
+  } else {
+    opened.set([open, 1, 0]);
+    lit(light, albedo, opened, normal, eye, p.frame, NOTHING);
+  }
   shown(rgb, light, dist, p);
 }
 
@@ -275,6 +284,10 @@ export class Rasterizer {
   private handAt = 0;
   /** The far nodes' meshes as the card holds them (packet.ts `atlas`). */
   private atlas = new Float32Array(0);
+  /** The sky's openness as the card holds it (packet.ts `openMap`), its cells across and down. */
+  private open = new Uint8Array(0);
+  private openWidth = 0;
+  private openHeight = 0;
   private scratch = new Float32Array(3 * 1024);
   // Clip scratch: a triangle, then up to 5 vertices of (camera-relative x, y, z, screen x, y, 1/w, NDC depth), and room between clips.
   private readonly tri = new Float64Array(3 * 7);
@@ -301,6 +314,8 @@ export class Rasterizer {
    */
   private readonly deferred: Uint16Array;
   private readonly deferredShade: Float64Array;
+  /** 1 for a deferred pixel of a body, whose foot the sky's openness leaves alone (skyopen.ts). */
+  private readonly deferredBody: Uint8Array;
   private readonly deferredAt: Float64Array;
   private readonly deferredNormal: Float64Array;
   /** On a lit frame, the tile being drawn: its vertices' normals (terrain.ts groundNormal), or null for any other draw. */
@@ -328,6 +343,7 @@ export class Rasterizer {
     this.cover = new Float32Array(width * height);
     this.deferred = new Uint16Array(width * height);
     this.deferredShade = new Float64Array(width * height);
+    this.deferredBody = new Uint8Array(width * height);
     this.deferredAt = new Float64Array(width * height * 6);
     this.deferredNormal = new Float64Array(width * height * 3);
   }
@@ -369,6 +385,11 @@ export class Rasterizer {
     for (const u of packet.texUploads) this.texture(u);
     const world = (this.manifest ?? this.pack.header)?.materials?.find((m) => m.id === SURFACE_MATERIAL);
     this.worldMaps = packet.lit && world && this.textures.has(world.base) ? [this.textures.get(world.base)!, this.textures.get(world.normal) ?? NEUTRALS[1]!, this.textures.get(world.mro) ?? NEUTRALS[2]!] : null;
+    if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
+      [this.openWidth, this.openHeight] = [packet.openWidth, packet.openHeight];
+      this.open = new Uint8Array(this.openWidth * this.openHeight * OPEN_BYTES);
+    }
+    if (packet.openRows > 0) this.open.set(packet.openMap, packet.openRow * this.openWidth * OPEN_BYTES);
     if (packet.atlasRows > 0) {
       const rows = packet.atlas.subarray(0, packet.atlasRows * ATLAS_WIDTH * 4);
       if (this.atlas.length < rows.length) this.atlas = new Float32Array(rows.length);
@@ -413,10 +434,22 @@ export class Rasterizer {
       const g6 = at * 6;
       const ground = (this.deferred[at]! & DEFERRED_GROUND) !== 0;
       if (ground) smoothed.set(this.deferredNormal.subarray(at * 3, at * 3 + 3));
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH);
+      const open = this.opened(s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, ground, this.deferredBody[at] === 0);
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
+  }
+
+  /**
+   * The share of the sky's light the sky's openness leaves a camera-relative point with that face's normal, as the lit
+   * programs take it (skyopen.ts): the ground's as the ground's, else at its height over the ground, with its foot
+   * taken down where it `stands`.
+   */
+  private opened(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, ground: boolean, stands: boolean): number {
+    const p = this.packet;
+    if (ground) return skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0);
+    return skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, nx, ny, nz, overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz), stands ? 1 : 0);
   }
 
   /**
@@ -1149,6 +1182,7 @@ export class Rasterizer {
             const g6 = at * 6;
             const tint = ground ? groundTint(this.hf, this.picture, rx + p.camX, rz + p.camZ, reach) : colorIndex;
             this.deferred[at] = (tint + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0) | (this.finishRow << DEFERRED_FINISH);
+            this.deferredBody[at] = this.bone > 0 ? 1 : 0;
             this.deferredShade[at] = footprint;
             s[g6] = rx;
             s[g6 + 1] = ry;
@@ -1177,7 +1211,7 @@ export class Rasterizer {
           let cg = g * shade * (1 - fog) + p.sky[1]! * 255 * fog;
           let cb = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
           if (p.lit) {
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow);
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0));
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;
             cb = rgb[2]! * 255;
@@ -1309,7 +1343,10 @@ export class Rasterizer {
           const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
           for (let i = 0; i < 3; i++) reflected[i] = twice * normal[i]! - eye[i]!;
           skyFrom(mirrored, p.frame, reflected, this.look);
-          lit(light, albedo, mro, normal, eye, p.frame, mirrored);
+          const nl = (back ? -1 : 1) / Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
+          const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
+          opened.set([mro[0]! * open, mro[1]!, mro[2]!]);
+          lit(light, albedo, opened, normal, eye, p.frame, mirrored);
           through(light, albedo, mro, normal, p.frame, s.sheet);
           shown(rgb, light, dist, p);
           this.color[at * 4] = rgb[0]! * 255;
