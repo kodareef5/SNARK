@@ -62,6 +62,23 @@ again only when its inputs, its own code or a stage before it changed (`stages.j
 The downloads are a build's: keep them on a machine that does map work and fetch them again elsewhere. A 16 km cut
 holds several gigabytes of them; `du -sh var/mapdata/*` says what each city keeps, and an old cut's folder can go.
 
+## Building a city without its downloads: kits
+
+A machine that works on what the build makes of a city (buildings, furniture, the look) needs the prepared layers, not
+the downloads. The machine that holds the downloads packs each city; another unpacks it and builds:
+
+```sh
+bun tools/maps/kit.ts pack all                         # var/kits/<city>-<cut>.tar.gz and its .json, 0.2 to 0.4 GB each
+bun tools/maps/kit.ts unpack var/kits/miami-<cut>.tar.gz
+bun tools/maps/city.ts miami                           # every stage but the build unchanged; the build makes the map
+```
+
+A kit is the cut's work folder less `raw/` and `reports/`, with `raw/osm/all.json` kept for the world stage, and the
+stages' keys. Keys are inputs and code, never paths, so at the kit's commit every stage but the build is done; an edit
+to the build's code (`tools/mapworld`, `tools/map`, the shared world code) builds again from the kit alone. An edit that
+reaches a stage reading the downloads (prepare to ways) makes `city.ts` fetch them first. A kit made at another commit
+still unpacks: the stages whose code differs run again. Make kits again after a change to a stage before the build.
+
 ## Before a city is published: its picture
 
 A map has one painted picture, from the top, as wide and deep as the map and north up, for the map screen (Miami's

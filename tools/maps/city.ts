@@ -214,6 +214,14 @@ function main(): void {
       console.log(`== ${stage.name}: unchanged`);
       continue;
     }
+    // A kit's work folder (tools/maps/kit.ts) has no downloads: a stage that reads them runs after fetch makes them.
+    const kitted = join(work, "raw/KIT");
+    if (existsSync(kitted) && i >= names.indexOf("prepare") && i <= names.indexOf("ways")) {
+      console.log(`== ${stage.name} reads the downloads a kit leaves out: fetching them first`);
+      const fetched = Bun.spawnSync(STAGES[names.indexOf("fetch")]!.run(work, name), { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+      if (fetched.exitCode !== 0) throw new Error(`${name}: fetch failed with ${fetched.exitCode}`);
+      unlinkSync(kitted);
+    }
     const t0 = performance.now();
     console.log(`== ${stage.name}`);
     // This stage and every one after it are out of date from now until each runs again: a run that dies half way must

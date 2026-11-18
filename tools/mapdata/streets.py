@@ -120,9 +120,16 @@ def roads(m, elements, tiger_roads):
     # TIGER where OpenStreetMap draws no road along it: a line less than a third of which lies near an OpenStreetMap road.
     kept_tiger = []
     if tiger_roads and out:
-        near = unary_union([g.buffer(max(10, p['width_m'])) for g, p in out])
+        # Each TIGER line against the union of the OpenStreetMap roads' reaches that touch it, found by an index: against
+        # the union of every one (a single shape of some 100,000 parts) it was 780 of Las Vegas's 1,200 s of prepare.
+        reach = [g.buffer(max(10, p['width_m'])) for g, p in out]
+        reach_tree = STRtree(reach)
         for g, p in tiger_roads:
-            if g.length and g.intersection(near).length / g.length < 1 / 3:
+            if not g.length:
+                continue
+            touching = [reach[i] for i in reach_tree.query(g, predicate='intersects')]
+            covered = g.intersection(unary_union(touching)).length if touching else 0.0
+            if covered / g.length < 1 / 3:
                 kept_tiger.append((g, {**p, 'tiger_name': p.get('name')}))
     lines = [g for g, _ in out + kept_tiger for g in getattr(g, 'geoms', [g]) if g.geom_type == 'LineString']
     stats = {'osm_ways': len(ways), 'road_pieces': len(out), 'straightened': straightened, 'tiger_kept': len(kept_tiger),
