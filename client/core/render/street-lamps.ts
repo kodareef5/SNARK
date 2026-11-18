@@ -17,11 +17,11 @@ export const MAX_LIT_LAMPS = 48;
 const REACH = 140, FADE_FROM = 100;
 /** Where a lamp's lens is in the lamp's own frame (its head over the road, +z), and the radius of its pool and its glow. */
 const LENS = [0, 8.85, 2.9] as const;
-const POOL = 7, GLOW = 1.1;
+const POOL = 9, GLOW = 0.6;
 /** The light's colours (RGBA bytes, least significant first): a high-pressure sodium lamp's warm white. */
-const POOL_COLOUR = 0xff6aa8ff, GLOW_COLOUR = 0xff86c4ff;
+const POOL_COLOUR = 0xff5096ff, GLOW_COLOUR = 0xff64aaff;
 /** How much of each shows at its strongest, of 255. */
-const POOL_SHOWS = 150, GLOW_SHOWS = 210;
+const POOL_SHOWS = 210, GLOW_SHOWS = 110;
 
 export class StreetLamps extends VehicleCards {
   private readonly kind: number;
