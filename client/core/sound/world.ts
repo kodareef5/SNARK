@@ -47,8 +47,11 @@ export class WorldSounds {
   private recheckMs = 0;
   private sea = 0;
 
-  /** One frame at the ear (x, y, z), `hour` of the day; `trees(x, z, r)` counts trees within r metres. */
-  update(nowMs: number, hf: Heightfield, x: number, y: number, z: number, hour: number, trees: (x: number, z: number, r: number) => number, loop: Loop, once: (key: number) => void): void {
+  /**
+   * One frame at the ear (x, y, z), `hour` of the day; `trees(x, z, r)` counts trees within r metres. An hour `turned` by a
+   * setting or the sundial crosses sunrise or sunset without its stinger, however often it is swept across.
+   */
+  update(nowMs: number, hf: Heightfield, x: number, y: number, z: number, hour: number, trees: (x: number, z: number, r: number) => number, loop: Loop, once: (key: number) => void, turned = false): void {
     if (nowMs >= this.recheckMs) {
       this.recheckMs = nowMs + 1000;
       let wet = 0;
@@ -72,7 +75,7 @@ export class WorldSounds {
     const above = y - Math.max(hf.heightAt(x, z), hf.waterAt(x, z));
     loop(WORLD_LOOPS + 13, K.windLight, Math.min(1, (above - WIND_LIGHT) / WIND_LIGHT), !under && above > WIND_LIGHT && above <= WIND_STRONG);
     loop(WORLD_LOOPS + 14, K.windStrong, 1, !under && above > WIND_STRONG);
-    if (this.hour >= 0 && !under) {
+    if (this.hour >= 0 && !under && !turned) {
       if (this.hour < SUNRISE && hour >= SUNRISE && hour < SUNRISE + 1) once(K.dawn);
       if (this.hour < SUNSET && hour >= SUNSET && hour < SUNSET + 1) once(K.dusk);
     }

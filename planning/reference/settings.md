@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 528 of them: 153 take effect,
-180 wait for a feature that is not built yet, and 195 have no meaning in this
+is listed here, 529 of them: 155 take effect,
+179 wait for a feature that is not built yet, and 195 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -109,6 +109,7 @@ may change a setting without a restart.
 | `AllowedOrigins` | none | The web sites whose pages may connect besides the server's own, as origins such as https://play.example.com, separated by commas or spaces. * is any site. A server whose page is served from elsewhere, or behind a proxy that does not pass the Host on, names that site here. A program that is not a browser is not asked. *Ours. ARK has no key.* | yes |
 | `WikiUrl` | `/wiki/` | Where the wiki link of the game's menu and of the start screen goes: an http or https address, or a path of the site the page came from. /wiki/ is the wiki `bun run wiki` builds, which the server serves. Empty hides the link. *Ours. ARK has no key.* | yes |
 | `RepositoryUrl` | `/source/` | Where the source code link of the game's menu and of the start screen goes: an http or https address, or a path of the site the page came from. /source/ is a page the server writes, saying the code is coming. Empty hides the link. *Ours. ARK has no key.* | yes |
+| `CreativeForAll` | False | While bShowCreativeMode is on, every survivor who joins has the admin role without the password, as enablecheats gives it: for a server of friends. Switched on while the server runs, those already in get it too; switched off, nobody loses it before leaving. *Ours. ARK has no key; off is its behaviour. Each grant is told to modules as session.admin, and who shows it.* | yes |
 | `HeadMultipliers` | True | Where a hit lands matters: a head counts for more. Off, every part counts once. *Ours. ARK has no key; this is its behaviour.* | yes |
 | `SelfDamageMultiplier` | 1 | What a survivor's own blast does to them. *Ours. ARK has no key; 1 is its behaviour.* | yes |
 | `FullFriendlyFire` | False | Members of a tribe can hurt each other, their tames and what they built with anything, not only with blasts. *Ours. ARK has no key; off is its behaviour as far as the research could tell.* | yes |
@@ -184,6 +185,7 @@ may change a setting without a restart.
 | `IncreasePvPRespawnIntervalCheckPeriod` | 300 | Seconds within which a death counts as again. | yes |
 | `IncreasePvPRespawnIntervalMultiplier` | 2 | What it is multiplied by each time. | yes |
 | `bUseSingleplayerSettings` | False | ARK's single-player factors are put on top of what the files and the command line give: taming x2.5, hatching x9, growing up x35, the wait to mate x0.15, a tame's health per level x2.125 and its melee x2.3529; and what the dead leave lies six times as long. A value set afterwards, at the console or from the live file, is that value outright. | no |
+| `bShowCreativeMode` | False | The game's menu has a Creative entry: the admin's tools, the first a sundial that turns the time of day for everyone. One without the admin role is asked there for the admin password, as enablecheats asks it. *ARK's creative mode also makes crafting free and lifts the weight a survivor carries; neither is here yet. The tools are admin actions the server checks, so a session with the role but no menu entry may still use the console.* | yes; clients are told |
 
 ### Command line
 
@@ -448,7 +450,6 @@ what is built next.
 | `-GBUsageToForceRestart=` | none | Who may join, what is logged, and how the process is kept. | Command line |
 | `-MaxConnectionsPerIP=` | none | Who may join, what is logged, and how the process is kept. | Command line |
 | `-AltSaveDirectoryName=` | none | Who may join, what is logged, and how the process is kept. | Command line |
-| `bShowCreativeMode` | False | A button for creative mode. | Game.ini |
 | `CheatTeleportLocations` | none | Named places an admin may go to. | Game.ini |
 
 ### Small behaviours of things already built

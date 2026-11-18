@@ -24,6 +24,11 @@ export function tokenize(line: string): string[] {
   return out;
 }
 
+/** Wrong `enablecheats` passwords one connection may give: the last of them ends it. */
+export const CHEAT_GUESSES = 3;
+/** What `enablecheats` answers a wrong password, word for word. The Creative screen counts these answers. */
+export const WRONG_PASSWORD = "wrong password";
+
 /** Returns NaN unless the word is a plain decimal such as "12" or "-3.5". */
 export function parseNumber(word: string | undefined): number {
   if (word === undefined || !/^-?\d+(\.\d+)?$/.test(word)) return NaN;

@@ -25,7 +25,6 @@ import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, ra
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { structName } from "./ui/structure.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
-import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls, LOOK_SPEED } from "./controls.ts";
 import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
@@ -64,6 +63,7 @@ import { Sounds } from "./sound/sounds.ts";
 import type { SoundDecoder } from "./sound/library.ts";
 import type { MusicTrack } from "./sound/music.ts";
 import { hearSession, soundView } from "./sound/view.ts";
+import { SkyClock } from "./sky.ts";
 import { cueKey } from "../../shared/sound/cues.ts";
 import { soundCommand } from "./sound/command.ts";
 import { SplitPort } from "./sound/split.ts";
@@ -139,6 +139,8 @@ export class App {
   private playEye = false;
   private artEyeAt: number | null = null;
   readonly hud = new HudModel();
+  /** The hour the sky shows: the server's, swept when it is set, or the one in an admin's hand on the sundial. */
+  readonly sky = new SkyClock();
   /** The dash's readings of the vehicle driven. */
   readonly vehicleTelemetry = new VehicleTelemetry();
   readonly feedback = new Feedback();
@@ -677,7 +679,7 @@ export class App {
     const { hud, cam, session, lasers, sightAt: at } = this;
     const r = this.remote;
     const d = this.aim;
-    const day = daylight(hourOfDay(session.serverTick, session.dayOffset, session.clock));
+    const day = daylight(this.sky.hour);
     lookDirection((at.yaw / TAU) * 65536, (at.pitch / (PI / 2)) * 16384, d);
     lasers.clear();
     if (at.laser) lasers.cast(this.reg, world, r, at.x, at.y, at.z, d[0]!, d[1]!, d[2]!, day, 0, handleIndex(session.ownHandle), this.seatedAim, session.own.seat - 1, session.own.seatGen);
@@ -1335,7 +1337,7 @@ export class App {
     const beams = this.scene.beams;
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
-    this.scene.hour = hourOfDay(session.serverTick, session.dayOffset, session.clock);
+    this.scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
     this.scene.viewHeight = height;
     this.scene.now = nowMs;
     if (this.playEye && this.artEyeAt === null && alive && this.script.length === 0) this.artEyeAt = nowMs;
@@ -1378,7 +1380,7 @@ export class App {
     const vol = this.ui.settings;
     if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);
     if (this.sounds) this.sounds.assetsIdle = this.scene.assets.residency.flying === 0 && this.scene.assets.residency.waiting === 0;
-    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session), this.scene.characters.fallen);
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session, this.sky), this.scene.characters.fallen);
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder, v = this.vehiclePlacement;

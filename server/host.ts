@@ -31,7 +31,8 @@ import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
 import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
-import { CMD_CORPSE } from "../shared/net/protocol.ts";
+import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
+import { Creative } from "./creative.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
 import { DEADLINE_FECES, Feces } from "./feces.ts";
@@ -1049,9 +1050,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       records.entOf.delete(c.pid);
     }
   };
+  const creative = new Creative(world, game, rules, bus, persistence);
   game.onEnter = (c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
+    creative.enter(c);
     focus.set(c.id, c.chunk);
     moved(-1, c.chunk);
     c.entered = true;
@@ -1085,6 +1088,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); };
   const seatedHead = new Float64Array(3);
   game.onStep = (tick) => {
+    creative.step(tick);
     for (const c of game.clients) {
       if (!c?.active) continue;
       const was = focus.get(c.id)!;
@@ -1221,9 +1225,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     return false;
   };
-  // An unconscious survivor can talk, use the console, shut what it had open and say how far off it is sent bases. Its client
+  // An unconscious survivor can talk, use the console and the sundial, shut what it had open and say how far off it is sent bases. Its client
   // can make it do nothing else.
-  game.allows = (c, op) => op === CMD_TEXT || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out;
+  game.allows = (c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out;
   game.onLand = (c, speed) => {
     const rec = records.byPid.get(c.pid);
     if (rec) survival.landed(rec, speed);
@@ -1465,6 +1469,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
   };
   game.handle(CMD_VEHICLE, (c, r) => vehicles.command(c, r));
+  game.handle(CMD_CLOCK, (c, r) => creative.turn(c, r));
   game.handle(CMD_PLACE, (c, r) => build.place(c, r));
   game.handle(CMD_STRUCT, (c, r) => build.act(c, r));
   game.handle(CMD_FEED, (c, r) => taming.feed(c, r));

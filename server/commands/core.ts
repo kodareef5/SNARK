@@ -1,17 +1,14 @@
 // Session, server and clock commands.
 
-import { parseNumber } from "../../shared/console.ts";
+import { CHEAT_GUESSES, WRONG_PASSWORD, parseNumber } from "../../shared/console.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { REJECT_DENIED, REJECT_KICKED, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
 import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
-import { event } from "../events/bus.ts";
-
-const SESSION_ADMIN = event("session.admin");
+import { admit } from "../creative.ts";
 
 const STATE_NAMES: Record<number, string> = { [SESSION_ALIVE]: "alive", [SESSION_DEAD]: "dead", [SESSION_SPECTATING]: "spectating" };
-const MAX_PASSWORD_ATTEMPTS = 3;
 
 const needsSession = "this command needs a session";
 
@@ -103,13 +100,11 @@ export function addCoreCommands(con: Console): void {
         if (wait > 0) return `too many wrong passwords: wait ${Math.ceil(wait / TICK_RATE)} s`;
         if (password !== null && !sameSecret(args[0] ?? "", password)) {
           guesses.wrong(who, tick);
-          if (++c.cheatAttempts >= MAX_PASSWORD_ATTEMPTS) ctx.host.game.reject(c, REJECT_DENIED);
-          return "wrong password";
+          if (++c.cheatAttempts >= CHEAT_GUESSES) ctx.host.game.reject(c, REJECT_DENIED);
+          return WRONG_PASSWORD;
         }
         guesses.right(who);
-        c.admin = true;
-        c.ownDirty = true;
-        ctx.host.bus.after(SESSION_ADMIN, { pid: c.pid });
+        admit(ctx.host.bus, c);
         return "cheats enabled";
       },
     },

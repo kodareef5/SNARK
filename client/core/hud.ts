@@ -321,6 +321,8 @@ export class HudModel {
   readonly readout: string[] = ["", "", ""];
   /** Time of day, "06:30". */
   clock = "";
+  /** Hours since midnight as the sky shows them (client/core/sky.ts), set by the app each frame. */
+  hour = 12;
   /** Connection state, or "". */
   status = "";
   /** A word across the top such as "SPECTATING" or "DEAD", or "". */

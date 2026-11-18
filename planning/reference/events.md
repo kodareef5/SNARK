@@ -48,7 +48,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | `command.ran` | after | `byPid`, `name`, `line`, `source` |  |  | `server/console.ts` | wired |
 
 - **`command`.** A console command is about to run.
-- **`command.ran`.** A console command ran. This is the audit trail.
+- **`command.ran`.** A console command ran. This is the audit trail. A turn of the Creative screen's sundial is told once, as the `settime` it ended on.
 
 ## Sessions
 
@@ -61,7 +61,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | `session.create` | before | `name` |  | the create-character request | `server/own.ts` | wired |
 | `session.spawn` | after | `pid`, `first`, `why` |  | the first spawn, and taking a body | `server/host.ts` | wired |
 | `session.respawn` | before | `pid`, `bed`, `wait` | `wait` | the respawn-at-point request | `server/beds.ts` | wired |
-| `session.admin` | after | `pid` |  | the admin-detected notice | `server/commands/core.ts` | wired |
+| `session.admin` | after | `pid` |  | the admin-detected notice | `server/creative.ts` | wired |
 
 - **`session.login`.** Someone is asking to join. No body exists yet.
 - **`session.join`.** A session has a survivor.
@@ -70,7 +70,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 - **`session.create`.** A survivor is about to be made.
 - **`session.spawn`.** A survivor's body entered the world.
 - **`session.respawn`.** A dead survivor is about to come back.
-- **`session.admin`.** A session enabled cheats.
+- **`session.admin`.** A session was given the admin role: by `enablecheats`, or as it entered while CreativeForAll was on.
 
 ## Zones
 

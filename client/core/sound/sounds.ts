@@ -73,6 +73,8 @@ export interface SoundView {
   body: OwnBody | null;
   own: OwnState;
   hour: number;
+  /** The hour moved since the last frame by a setting or a turn of the sundial, not by the clock. */
+  turned?: boolean;
   /** Trees within `r` metres of (x, z), for the beds. */
   trees: (x: number, z: number, r: number) => number;
   /** The structures that burn near (x, z), for their crackle. */
@@ -268,7 +270,7 @@ export class Sounds {
       if (view.own.alive) this.actions.ahead(view.own, this.ui, this.survivor, this.ahead);
       this.bodies.update(dt, remote, hf, ear.x, ear.y, ear.z, view.ownId, view.body, view.own.female, this.survivor, this.isSurvivor, this.hear);
       this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
-      this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true));
+      this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true), view.turned ?? false);
     }
     this.actions.nowMs = nowMs;
     this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);

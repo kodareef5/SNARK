@@ -1,7 +1,7 @@
 // Draws the interface: one element per node, placed where client/core says, with no layout or state here.
 // Text is always set as text, never as markup, so nothing a player types or is named can become HTML.
 
-import { K_BAR, K_BUTTON, K_IMAGE, K_INPUT, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
+import { K_BAR, K_BUTTON, K_DIAL, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
 import { bindTextInput, type UiEvents } from "../core/ui/events.ts";
 import { STYLES } from "../core/ui/style.ts";
 
@@ -43,12 +43,18 @@ export class UiView {
     this.events = events;
     root.textContent = "";
     const forward = (kind: number) => (e: PointerEvent) => {
-      const key = Number((e.target as HTMLElement).closest<HTMLElement>("[data-k]")?.dataset.k ?? 0);
-      if (key !== 0 && this.scale > 0) events.pointer(kind, key, e.clientX / this.scale, e.clientY / this.scale, e.button);
+      const el = (e.target as HTMLElement).closest<HTMLElement>("[data-k]");
+      const key = Number(el?.dataset.k ?? 0);
+      // A dial keeps the pointer from its press to its release, wherever it goes, and a cancelled touch lets go of it.
+      const dial = this.bound.get(key)?.kind === K_DIAL;
+      if (kind === 0 && dial) el!.setPointerCapture(e.pointerId);
+      if (kind === 3 && !dial) return;
+      if (key !== 0 && this.scale > 0) events.pointer(kind === 3 ? 1 : kind, key, e.clientX / this.scale, e.clientY / this.scale, e.button);
     };
     root.addEventListener("pointerdown", forward(0));
     root.addEventListener("pointerup", forward(1));
     root.addEventListener("pointermove", forward(2));
+    root.addEventListener("pointercancel", forward(3));
     root.addEventListener("click", (e) => {
       const key = Number((e.target as HTMLElement).dataset?.k ?? 0);
       if (e.detail === 0 && key) events.pointer(0, key, 0, 0, 0);
@@ -99,7 +105,7 @@ export class UiView {
         b.alpha = n.alpha;
         s.opacity = String(n.alpha);
       }
-      if (n.kind === K_INPUT || n.kind === K_SLIDER) {
+      if (n.kind === K_INPUT || n.kind === K_SECRET || n.kind === K_SLIDER) {
         const field = b.el as HTMLInputElement;
         // Integer native steps keep both endpoints reachable, including fractions such as sensitivity's 1/28.
         const value = n.kind === K_SLIDER ? String(Math.round(n.value/n.step)) : n.text;
@@ -172,20 +178,23 @@ export class UiView {
   }
 
   private create(n: UiNode): Bound {
-    const el = document.createElement(n.kind === K_INPUT || n.kind === K_SLIDER ? "input" : n.kind === K_IMAGE ? "canvas" : n.kind === K_BUTTON ? "button" : "div");
+    const typed = n.kind === K_INPUT || n.kind === K_SECRET || n.kind === K_SLIDER;
+    const el = document.createElement(typed ? "input" : n.kind === K_IMAGE ? "canvas" : n.kind === K_BUTTON ? "button" : "div");
     if (n.kind === K_BUTTON) { (el as HTMLButtonElement).type = "button"; el.tabIndex = -1; }
     let fill: HTMLElement | null = null;
     if (n.kind === K_BAR) {
       fill = document.createElement("div");
       fill.style.height = "100%";
       el.append(fill);
-    } else if (n.kind === K_INPUT || n.kind === K_SLIDER) {
+    } else if (typed) {
       const field = el as HTMLInputElement;
       if (n.kind === K_SLIDER) { field.type = "range"; field.min = "0"; field.step = "1"; }
+      if (n.kind === K_SECRET) field.type = "password";
       field.spellcheck = false;
       field.autocomplete = "off";
       field.addEventListener("input", bindTextInput(n, field, this.events));
     } else if (n.kind === K_IMAGE) el.style.imageRendering = "pixelated";
+    else if (n.kind === K_DIAL) { el.style.touchAction = "none"; el.style.cursor = "grab"; }
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";
     this.root.append(el);
