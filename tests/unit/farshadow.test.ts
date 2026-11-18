@@ -164,7 +164,7 @@ test("the map made twice from the same statics and sun is the same bytes, and th
   // A worker is sent the statics' columns and the ground, and makes the solid heights and the ground under them itself,
   // and the sky's openness from them where asked.
   const kinds = cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] });
-  const job: SweepJob = { id: 1, solid: null, ground: null, make: { first: city.first.slice(), kind: city.kind.slice(), yaw: city.yaw.slice(), x: city.x.slice(), y: city.y.slice(), z: city.z.slice(), gone: null, heights: hf.heights.slice() }, k: 1, size, sun, open: true };
+  const job: SweepJob = { id: 1, solid: null, ground: null, make: { first: city.first.slice(), kind: city.kind.slice(), yaw: city.yaw.slice(), x: city.x.slice(), y: city.y.slice(), z: city.z.slice(), gone: null, skip: null, heights: hf.heights.slice() }, bare: null, k: 1, size, sun, open: true };
   const there = doSweep(kinds, structuredClone(job));
   expect(Buffer.from(there.map!.buffer).equals(Buffer.from(first.buffer))).toBe(true);
   const ground = new Uint16Array(128 * 128);
@@ -175,8 +175,8 @@ test("the map made twice from the same statics and sun is the same bytes, and th
   const coarse = new Uint16Array(64 * 64);
   sweep(there.solid, 128, 128, 2, 64, sun[0]!, sun[1]!, sun[2]!, coarse);
   expect(farCell(dims, 64)).toBe(2 * TOP_CELL);
-  expect(doSweep(kinds, { id: 2, solid: there.solid, ground, make: null, k: 2, size: 64, sun, open: false }).map).toEqual(coarse);
-  expect(doSweep(kinds, { id: 3, solid: there.solid, ground, make: null, k: 2, size: 64, sun: null, open: false }).map).toBe(null);
+  expect(doSweep(kinds, { id: 2, solid: there.solid, ground, bare: null, make: null, k: 2, size: 64, sun, open: false }).map).toEqual(coarse);
+  expect(doSweep(kinds, { id: 3, solid: there.solid, ground, bare: null, make: null, k: 2, size: 64, sun: null, open: false }).map).toBe(null);
 });
 
 /** A frame's allowance, counting what it spends. */

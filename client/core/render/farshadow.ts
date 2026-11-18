@@ -76,11 +76,31 @@ export function chunkSolid(out: Uint16Array, dims: MapDims, floor: number, chunk
   }
 }
 
-/** A map's solid heights: every chunk's, its pieces gone as `gone` says left out; and its ground into `under`, where given. */
-export function makeSolid(city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, under?: Uint16Array): Uint16Array {
+/**
+ * A map's solid heights: every chunk's, its pieces gone as `gone` says left out; its ground into `under`, where given;
+ * and into `bare` the same with the pieces `skip` names left out too, a byte a piece of the map, 1 for one that hides no
+ * sky (a landmark's: a ship's masts are not a building's walls).
+ */
+export function makeSolid(city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, under?: Uint16Array, bare?: Uint16Array, skip?: Uint8Array): Uint16Array {
   const out = new Uint16Array(city.dims.chunksX * city.dims.chunksZ * SIDE * SIDE);
-  for (let c = 0; c < chunkCount(city.dims); c++) chunkSolid(out, city.dims, hf.minY, c, city.in(c) > 0 ? cityTops(city, c, hf, gone(c)) : null, hf, under);
+  for (let c = 0; c < chunkCount(city.dims); c++) {
+    const tops = city.in(c) > 0 ? cityTops(city, c, hf, gone(c)) : null;
+    chunkSolid(out, city.dims, hf.minY, c, tops, hf, under);
+    if (bare && skip) chunkSolid(bare, city.dims, hf.minY, c, skipping(city, c, skip) ? cityTops(city, c, hf, leftOut(city, c, gone(c), skip)) : tops, hf);
+  }
   return out;
+}
+
+/** Whether a piece of `chunk` is one `skip` names. */
+function skipping(city: CityStatics, chunk: number, skip: Uint8Array): boolean {
+  for (let i = city.first[chunk]!; i < city.first[chunk + 1]!; i++) if (skip[i] === 1) return true;
+  return false;
+}
+
+/** The pieces of `chunk` gone or named by `skip`, a byte each. */
+export function leftOut(city: CityStatics, chunk: number, gone: Gone, skip: Uint8Array): Uint8Array {
+  const from = city.first[chunk]!;
+  return Uint8Array.from(skip.subarray(from, city.first[chunk + 1]!), (k, i) => (k === 1 || gone?.[i] === 1 ? 1 : 0));
 }
 
 /** Scratch for a sweep over cells coarser than TOP_CELL, and its lines. */
@@ -197,9 +217,13 @@ export function farBeyondLookup(map: Uint16Array, size: number, frame: Float32Ar
 /** A sweep asked of where levels are made. */
 export interface SweepJob {
   readonly id: number;
-  /** The map's solid heights and its ground, or null to make them first from `make`. */
+  /**
+   * The map's solid heights and its ground, or null to make them first from `make`; and the solid heights the sky's
+   * openness is made from, with a landmark's pieces left out, null where the map has none.
+   */
   readonly solid: Uint16Array | null;
   readonly ground: Uint16Array | null;
+  readonly bare: Uint16Array | null;
   readonly make: SolidJob | null;
   /** Cells pooled a side, the layer's side, and the sun, or null for no map. */
   readonly k: number;
@@ -217,8 +241,9 @@ export interface SolidJob {
   readonly x: Float32Array;
   readonly y: Float32Array;
   readonly z: Float32Array;
-  /** A byte a piece, 1 for gone, or null for none. */
+  /** A byte a piece, 1 for gone, or null for none; and 1 for a piece that hides no sky (`makeSolid` skip), or null for none. */
   readonly gone: Uint8Array | null;
+  readonly skip: Uint8Array | null;
   readonly heights: Uint16Array;
 }
 
@@ -226,6 +251,7 @@ export interface SweepMade {
   readonly id: number;
   readonly solid: Uint16Array;
   readonly ground: Uint16Array;
+  readonly bare: Uint16Array | null;
   /** The map, or null where no sun was sent, and how far its highest solid stands over its lowest, in metres. */
   readonly map: Uint16Array | null;
   readonly rise: number;
@@ -234,22 +260,22 @@ export interface SweepMade {
 
 /** Every buffer of a sweep or what it made, to move it to another thread rather than copy it. */
 export function sweepBuffers(m: SweepJob | SweepMade): ArrayBuffer[] {
-  const all = "map" in m ? [m.solid, m.ground, m.map, m.open?.bytes] : [m.solid, m.ground, m.make?.first, m.make?.kind, m.make?.yaw, m.make?.x, m.make?.y, m.make?.z, m.make?.gone, m.make?.heights];
+  const all = "map" in m ? [m.solid, m.ground, m.bare, m.map, m.open?.bytes] : [m.solid, m.ground, m.bare, m.make?.first, m.make?.kind, m.make?.yaw, m.make?.x, m.make?.y, m.make?.z, m.make?.gone, m.make?.skip, m.make?.heights];
   return all.flatMap((a) => (a ? [a.buffer as ArrayBuffer] : []));
 }
 
-/** What a job asks of a map's solid heights and ground, `dims` its size, on any thread. */
-function sweepOf(dims: MapDims, job: SweepJob, solid: Uint16Array, ground: Uint16Array): SweepMade {
+/** What a job asks of a map's solid heights, ground and bare heights, `dims` its size, on any thread. */
+function sweepOf(dims: MapDims, job: SweepJob, solid: Uint16Array, ground: Uint16Array, bare: Uint16Array | null): SweepMade {
   const nx = dims.chunksX * SIDE, nz = dims.chunksZ * SIDE;
   const map = job.sun ? new Uint16Array(job.size * job.size) : null;
   const rise = job.sun ? sweep(solid, nx, nz, job.k, job.size, job.sun[0]!, job.sun[1]!, job.sun[2]!, map!) : 0;
-  return { id: job.id, solid, ground, map, rise, open: job.open ? openMeasure(solid, ground, nx, nz, job.k, TOP_CELL, UNIT) : null };
+  return { id: job.id, solid, ground, bare, map, rise, open: job.open ? openMeasure(bare ?? solid, ground, nx, nz, job.k, TOP_CELL, UNIT) : null };
 }
 
 /** Does a sweep, on any thread: makes the solid heights first where it was sent them to make from, for a city of `kinds`. */
 export function doSweep(kinds: CityKinds, job: SweepJob): SweepMade {
   const d = kinds.dims;
-  let solid = job.solid, ground = job.ground;
+  let solid = job.solid, ground = job.ground, bare = job.bare;
   if (!solid || !ground) {
     const m = job.make!;
     const { first, kind, yaw, x, y, z } = m;
@@ -257,9 +283,10 @@ export function doSweep(kinds: CityKinds, job: SweepJob): SweepMade {
     const g = kinds.ground;
     const hf = new Heightfield(d, g.cell, g.minY, g.stepY, m.heights, new Uint8Array(0));
     ground = new Uint16Array(d.chunksX * d.chunksZ * SIDE * SIDE);
-    solid = makeSolid(city, hf, (c) => (m.gone ? m.gone.subarray(first[c]!, first[c + 1]!) : null), ground);
+    bare = m.skip ? new Uint16Array(ground.length) : null;
+    solid = makeSolid(city, hf, (c) => (m.gone ? m.gone.subarray(first[c]!, first[c + 1]!) : null), ground, bare ?? undefined, m.skip ?? undefined);
   }
-  return sweepOf(d, job, solid, ground);
+  return sweepOf(d, job, solid, ground, bare);
 }
 
 /** What stands of the map's pieces, as the far city follows it (farcity.ts goneOf, goneVersion, topsOf). */
@@ -293,9 +320,14 @@ export class FarShadow {
   private readonly standing: Standing;
   private readonly maker: CityMaker | null;
   private readonly held: (chunk: number) => boolean;
-  /** The solid heights and the ground, while they are here and not away being swept; and whether they have been made. */
+  /**
+   * The solid heights, the ground and the bare heights the openness is made from, while they are here and not away
+   * being swept; and whether they have been made. `skip` is a byte a piece, 1 for a landmark's, null for a map with none.
+   */
   private solid: Uint16Array | null = null;
   private ground: Uint16Array | null = null;
+  private bare: Uint16Array | null = null;
+  private readonly skip: Uint8Array | null;
   private made = false;
   private away = false;
   private asked = 0;
@@ -321,9 +353,14 @@ export class FarShadow {
   private cardCell = 0;
   private cardRise = 0;
 
-  /** `held` says the near store holds a chunk whole, whose pieces cast into the cascades. */
-  constructor(city: CityStatics, hf: Heightfield, standing: Standing, maker: CityMaker | null, held: (chunk: number) => boolean) {
+  /**
+   * `held` says the near store holds a chunk whole, whose pieces cast into the cascades; `own` is 1 for each kind a
+   * landmark of the map brings, whose pieces cast the sun's shadow and hide no sky.
+   */
+  constructor(city: CityStatics, hf: Heightfield, standing: Standing, maker: CityMaker | null, held: (chunk: number) => boolean, own: Uint8Array | null = null) {
     this.city = city;
+    const skip = own ? Uint8Array.from(city.kind, (k) => own[k] ?? 0) : null;
+    this.skip = skip?.includes(1) ? skip : null;
     this.hf = hf;
     this.standing = standing;
     this.held = held;
@@ -411,9 +448,13 @@ export class FarShadow {
       this.seen[c] = version[c]!;
       if (this.made) this.changed.push(c);
     }
-    const solid = this.solid;
+    const solid = this.solid, bare = this.bare;
     if (!solid || this.changed.length === 0) return;
-    for (const c of this.changed) chunkSolid(solid, this.city.dims, this.hf.minY, c, this.standing.topsOf(c), this.hf);
+    for (const c of this.changed) {
+      const tops = this.standing.topsOf(c);
+      chunkSolid(solid, this.city.dims, this.hf.minY, c, tops, this.hf);
+      if (bare) chunkSolid(bare, this.city.dims, this.hf.minY, c, this.city.in(c) > 0 ? cityTops(this.city, c, this.hf, leftOut(this.city, c, this.standing.goneOf(c), this.skip!)) : null, this.hf);
+    }
     this.changed.length = 0;
     this.stale = true;
     this.open.changed();
@@ -431,8 +472,8 @@ export class FarShadow {
       this.askedSize = size;
     }
     if (open) this.open.asked(cell, now);
-    const job: SweepJob = { id: ++this.asked, solid: this.made ? this.solid : null, ground: this.made ? this.ground : null, make: this.made ? null : this.solidJob(), k: cell / TOP_CELL, size, sun: sun ? Array.from(sun) : null, open };
-    this.solid = this.ground = null;
+    const job: SweepJob = { id: ++this.asked, solid: this.made ? this.solid : null, ground: this.made ? this.ground : null, bare: this.made ? this.bare : null, make: this.made ? null : this.solidJob(), k: cell / TOP_CELL, size, sun: sun ? Array.from(sun) : null, open };
+    this.solid = this.ground = this.bare = null;
     this.made = true;
     if (this.maker) {
       this.maker.sweep!(job);
@@ -440,10 +481,11 @@ export class FarShadow {
     }
     const start = clock();
     const ground = job.ground ?? new Uint16Array(this.city.dims.chunksX * this.city.dims.chunksZ * SIDE * SIDE);
-    const solid = job.solid ?? makeSolid(this.city, this.hf, (c) => this.standing.goneOf(c), ground);
-    const made = sweepOf(this.city.dims, { ...job, open: false }, solid, ground);
+    const bare = job.solid ? job.bare : this.skip ? new Uint16Array(ground.length) : null;
+    const solid = job.solid ?? makeSolid(this.city, this.hf, (c) => this.standing.goneOf(c), ground, bare ?? undefined, this.skip ?? undefined);
+    const made = sweepOf(this.city.dims, { ...job, open: false }, solid, ground, bare);
     const swept = clock();
-    const measure = open ? openMeasure(solid, ground, this.city.dims.chunksX * SIDE, this.city.dims.chunksZ * SIDE, job.k, TOP_CELL, UNIT) : null;
+    const measure = open ? openMeasure(bare ?? solid, ground, this.city.dims.chunksX * SIDE, this.city.dims.chunksZ * SIDE, job.k, TOP_CELL, UNIT) : null;
     if (sun) this.stats.ms = swept - start;
     this.got({ ...made, open: measure }, clock() - swept);
   }
@@ -457,7 +499,7 @@ export class FarShadow {
       const g = this.standing.goneOf(k);
       if (g) (gone ??= new Uint8Array(c.count)).set(g, c.first[k]!);
     }
-    return { first: c.first.slice(), kind: c.kind.slice(), yaw: c.yaw.slice(), x: c.x.slice(), y: c.y.slice(), z: c.z.slice(), gone, heights: this.hf.heights.slice() };
+    return { first: c.first.slice(), kind: c.kind.slice(), yaw: c.yaw.slice(), x: c.x.slice(), y: c.y.slice(), z: c.z.slice(), gone, skip: this.skip?.slice() ?? null, heights: this.hf.heights.slice() };
   }
 
   private take(): void {
@@ -469,6 +511,7 @@ export class FarShadow {
   private got(made: SweepMade, ms = 0): void {
     this.solid = made.solid;
     this.ground = made.ground;
+    this.bare = made.bare;
     this.away = false;
     if (made.id !== this.asked) return;
     if (made.open) this.open.got(made.open, ms);

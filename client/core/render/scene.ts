@@ -1187,7 +1187,7 @@ export class Scene {
     const source = this.world.city;
     if (!source || !this.farBounds) return null;
     this.city = new FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds);
-    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete);
+    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds);
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];
     if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));

@@ -8,7 +8,8 @@
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FAR_SPAN, FarShadow, TOP_CELL, makeSolid } from "../../client/core/render/farshadow.ts";
+import { cityKinds } from "../../client/core/render/citymake.ts";
+import { FAR_SPAN, FarShadow, TOP_CELL, doSweep, makeSolid } from "../../client/core/render/farshadow.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { BEND_MOST, CONTACT, CONTACT_BAND, OPEN_BYTES, OPEN_EVERY, OPEN_HEIGHTS, OPEN_STRENGTH, OPEN_WAYS, openMeasure, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { COARSE } from "../../client/core/render/terrain.ts";
@@ -256,6 +257,32 @@ test("the scene's part makes the measure when the statics come, by night and wit
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 64 } };
   const wide = frame(1e9);
   expect([wide.made, wide.width, wide.rows, wide.scale]).toEqual([3, 64, 64, -1 / (2 * TOP_CELL)]);
+});
+
+test("a landmark's pieces cast the sun's shadow but hide no sky, so a ship's own masts keep their light, here and on another thread", () => {
+  const { dims, hf, city } = twoTowers();
+  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
+  /** Every kind of the towers a landmark's, as a map's own are. */
+  const own = new Uint8Array(Math.max(...city.kind) + 1).fill(1);
+  const made = (kinds: Uint8Array | null) => {
+    const shadow = new FarShadow(city, hf, standing, null, () => false, kinds);
+    const p = new FramePacket();
+    p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 128 } };
+    p.lit = true;
+    shadow.update(p, allowance(1e9), 0, 0, 0, [0.5, 0.5, Math.SQRT1_2], 20);
+    return { far: Uint16Array.from(p.farMap), open: Uint8Array.from(p.openMap) };
+  };
+  const [city0, ship] = [made(null), made(own)];
+  // The towers hide sky as buildings; as a landmark's pieces they hide none, and their shadow is the same.
+  expect(Math.max(...city0.open.filter((_, i) => i % OPEN_BYTES === 0))).toBeGreaterThan(80);
+  expect(Math.max(...ship.open.filter((_, i) => i % OPEN_BYTES === 0))).toBe(0);
+  expect(ship.far).toEqual(city0.far);
+  // A worker sent which pieces hide no sky makes the same.
+  const kinds = cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] });
+  const skip = Uint8Array.from(city.kind, (k) => own[k]!);
+  const there = doSweep(kinds, { id: 1, solid: null, ground: null, bare: null, make: { first: city.first.slice(), kind: city.kind.slice(), yaw: city.yaw.slice(), x: city.x.slice(), y: city.y.slice(), z: city.z.slice(), gone: null, skip, heights: hf.heights.slice() }, k: 1, size: 128, sun: null, open: true });
+  expect(Math.max(...there.open!.bytes.filter((_, i) => i % OPEN_BYTES === 0))).toBe(0);
+  expect(Math.max(...there.solid)).toBeGreaterThan(Math.max(...there.bare!));
 });
 
 test("the rasterizer, the reference for light, takes sky light from a street between towers and leaves open ground as it was", () => {

@@ -8,7 +8,8 @@
 //   column, how much more of it lies toward +x than -x and toward +z than -z, and how it falls with height. Lines are
 //   swept from the buildings' tops along OPEN_WAYS ways round and OPEN_HEIGHTS heights up the sky, each an equal share
 //   of the sky's solid angle, as the far shadow sweeps along the sun; a cell takes each line that passes over its top.
-//   The ground hides nothing, so open ground beside no building is as it was. Over open ground the hidden share falls
+//   The ground hides nothing, so open ground beside no building is as it was, and nor does a landmark's piece, whose
+//   outline would be a ship's masts as a tower (farshadow.ts makeSolid's `bare`). Over open ground the hidden share falls
 //   with the square of the height over the ground, as it does in a street, which keeps its walls hidden until near
 //   their tops, to none at a height fitted to its area over height. A cell a building stands in takes its ground's
 //   shares from the cells round it, and falls from that to its roof's own, so a lookup beside a wall or under a roof's
