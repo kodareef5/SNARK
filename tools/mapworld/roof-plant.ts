@@ -122,7 +122,7 @@ export function makeRoofPlant(site: Site, placed: readonly StaticPiece[]): Stati
   // Room is left in each chunk for the obelisks and the harbours' wrecks, which come after.
   const { pieces, summary } = placeRoofPlant(site, placed, records, v.roofs, v.budgets.maxChunk - 8);
   writeFileSync(join(folder, "roofs.json"), `${JSON.stringify({ pieces: pieces.length, ...summary }, null, 2)}\n`);
-  console.log(`roof plant: ${pieces.length} pieces on ${summary.roofs} roofs, ${Object.entries(summary.placed).map(([k, n]) => `${n} ${k.slice(15)}`).join(", ")}`);
+  console.log(`roof plant: ${pieces.length} pieces on ${summary.roofs} roofs, ${Object.entries(summary.placed).map(([k, n]) => `${n} ${k.slice(14)}`).join(", ")}`);
   return pieces;
 }
 
