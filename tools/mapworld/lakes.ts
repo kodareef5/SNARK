@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Base } from "./base.ts";
+import type { Base, Grid } from "./base.ts";
 import { blur, distanceField, fillPolygon } from "./raster.ts";
 
 /** How a world's lakes are made, each with its default. `false` leaves them marsh. */
@@ -57,13 +57,12 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
   const path = join(base.folder, "base", "perched_water.geojson");
   if (rules === false || !existsSync(path)) return null;
   const r = { ...DEFAULTS, ...rules };
-  const n = base.n;
-  const cell = base.info.spacing_m;
-  const half = base.info.size_m / 2;
+  const { nx, nz, cell, west, north } = base.grid;
+  const N = nx * nz;
   const features = (JSON.parse(readFileSync(path, "utf8")) as { features: Feature[] }).features;
   const snap = (m: number): number => minY + Math.round((m - minY) / stepY) * stepY;
-  const body = new Uint16Array(n * n);
-  const taken = new Uint8Array(n * n);
+  const body = new Uint16Array(N);
+  const taken = new Uint8Array(N);
   const bodies: Lakes["bodies"] = [];
   const made: Lakes["made"][number][] = [];
   for (const f of features) {
@@ -75,8 +74,8 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
     const polygons = (f.geometry.type === "Polygon" ? [f.geometry.coordinates] : f.geometry.coordinates) as number[][][][];
     const at: number[] = [];
     for (const rings of polygons) {
-      fillPolygon(rings, (e) => (e + half) / cell, (no) => (half - no) / cell, n, n, (col, row) => {
-        const i = row * n + col;
+      fillPolygon(rings, (e) => (e - west) / cell, (no) => (north - no) / cell, nx, nz, (col, row) => {
+        const i = row * nx + col;
         if (taken[i] === 0 && !dry(i)) at.push(i);
         taken[i] = 1;
       });
@@ -112,8 +111,8 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
         const i = wet[k]!;
         const d = reached.get(i)!;
         if (d >= r.past) continue;
-        for (const j of [i - 1, i + 1, i - n, i + n]) {
-          if (j < 0 || j >= n * n || reached.has(j) || taken[j] === 1 || body[j] !== 0 || dry(j) || Number.isNaN(dem[j]!) || Math.abs(dem[j]! - sea - mode) > 0.05) continue;
+        for (const j of [i - 1, i + 1, i - nx, i + nx]) {
+          if (j < 0 || j >= N || reached.has(j) || taken[j] === 1 || body[j] !== 0 || dry(j) || Number.isNaN(dem[j]!) || Math.abs(dem[j]! - sea - mode) > 0.05) continue;
           reached.set(j, d + 1);
           wet.push(j);
         }
@@ -122,8 +121,8 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
       let rim = 0;
       let low = 0;
       for (const i of wet) {
-        for (const j of [i - 1, i + 1, i - n, i + n]) {
-          if (j < 0 || j >= n * n || reached.has(j)) continue;
+        for (const j of [i - 1, i + 1, i - nx, i + nx]) {
+          if (j < 0 || j >= N || reached.has(j)) continue;
           rim++;
           if (!Number.isNaN(dem[j]!) && dem[j]! - sea < mode - r.bank) low++;
         }
@@ -137,11 +136,11 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
       }
     } else {
       // Along the channel its lidar falls: smoothed over 20 m of the outline's own samples, each taken to the nearest step.
-      const value = new Float32Array(n * n);
-      const weight = new Float32Array(n * n);
+      const value = new Float32Array(N);
+      const weight = new Float32Array(N);
       for (const i of at) [value[i], weight[i]] = [lidar(i), 1];
-      const v = blur(value, n, n, 10, 2);
-      const w = blur(weight, n, n, 10, 2);
+      const v = blur(value, nx, nz, 10, 2);
+      const w = blur(weight, nx, nz, 10, 2);
       for (const i of at) {
         const here = v[i]! / w[i]!;
         if (lidar(i) > here + r.bank) continue;
@@ -159,12 +158,13 @@ export function readLakes(base: Base, rules: LakeRules | false | undefined, sea:
  * Carves each body's bed under its surface into `height` (metres over the sea, north up): `shoreDepth` at its edge and
  * `slope` deeper a metre out, to `deepest`. Returns the deepest water made.
  */
-export function carveLakes(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, n: number, cell: number): number {
+export function carveLakes(lakes: Lakes, rules: LakeRules | false | undefined, height: Float32Array, grid: Grid): number {
   const r = { ...DEFAULTS, ...(rules || {}) };
   const { body, bodies } = lakes;
-  const shore = distanceField((i) => body[i] === 0, n, n);
+  const { nx, nz, cell } = grid;
+  const shore = distanceField((i) => body[i] === 0, nx, nz);
   let deepest = 0;
-  for (let i = 0; i < n * n; i++) {
+  for (let i = 0; i < nx * nz; i++) {
     const b = body[i]!;
     if (b === 0) continue;
     const depth = Math.min(r.deepest, r.shoreDepth + Math.sqrt(shore[i]!) * cell * r.slope);
@@ -178,41 +178,43 @@ export function carveLakes(lakes: Lakes, rules: LakeRules | false | undefined, h
  * The bodies' squares of `cell` metres for the map file, row by row from z = 0 as the engine has them: a square is the
  * body of a corner sample in one, else of a corner next to one, so that each body's squares reach over its shore.
  */
-export function lakeSquares(lakes: Lakes, n: number, cell: number): Uint16Array {
+export function lakeSquares(lakes: Lakes, grid: Grid, cell: number): Uint16Array {
   const { body } = lakes;
+  const { nx, nz } = grid;
   // Each dry sample next to a lake takes that lake's number.
-  const shore = new Uint16Array(n * n);
-  for (let row = 0; row < n; row++) {
-    for (let col = 0; col < n; col++) {
-      const i = row * n + col;
+  const shore = new Uint16Array(nx * nz);
+  for (let row = 0; row < nz; row++) {
+    for (let col = 0; col < nx; col++) {
+      const i = row * nx + col;
       if (body[i] !== 0) continue;
       for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]] as const) {
         const c = col + dc;
         const r = row + dr;
-        if (c >= 0 && r >= 0 && c < n && r < n && body[r * n + c] !== 0) {
-          shore[i] = body[r * n + c]!;
+        if (c >= 0 && r >= 0 && c < nx && r < nz && body[r * nx + c] !== 0) {
+          shore[i] = body[r * nx + c]!;
           break;
         }
       }
     }
   }
-  // Engine sample (si, sj) is base sample (n - 1 - si, n - 1 - sj): x and z count west and south from the north-west corner.
-  const side = ((n - 1) * 2) / cell;
-  const per = cell / 2;
-  const grid = new Uint16Array(side * side);
-  for (let j = 0; j < side; j++) {
-    for (let i = 0; i < side; i++) {
+  // Engine sample (si, sj) is base sample (nx - 1 - si, nz - 1 - sj): x and z count west and south from the north-west corner.
+  const across = grid.sizeX / cell;
+  const down = grid.sizeZ / cell;
+  const per = cell / grid.cell;
+  const squares = new Uint16Array(across * down);
+  for (let j = 0; j < down; j++) {
+    for (let i = 0; i < across; i++) {
       let own = 0;
       let near = 0;
       for (let dj = 0; dj <= per && own === 0; dj++) {
         for (let di = 0; di <= per && own === 0; di++) {
-          const k = (n - 1 - (j * per + dj)) * n + (n - 1 - (i * per + di));
+          const k = (nz - 1 - (j * per + dj)) * nx + (nx - 1 - (i * per + di));
           if (body[k] !== 0) own = body[k]!;
           else if (near === 0) near = shore[k]!;
         }
       }
-      grid[j * side + i] = own !== 0 ? own : near;
+      squares[j * across + i] = own !== 0 ? own : near;
     }
   }
-  return grid;
+  return squares;
 }

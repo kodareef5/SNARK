@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
 import { flatWorld } from "../../tests/fixtures/world.ts";
+import { gridAt } from "./base.ts";
 import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
@@ -229,7 +230,8 @@ test("mapped water on both sides removes a wide earth bridge bank but keeps its 
   const n = 101; const height = new Float32Array(n * n).fill(2); const water = new Uint8Array(n * n);
   for (let row = 5; row < 96; row++) for (let col = 0; col < n; col++) if (row < 35 || row > 65) water[row * n + col] = 1;
   const way: import("./ways.ts").Way = { id: 1, kind: "road_bridge", name: null, class: "primary", lanes: 2, layer: 1, width_m: null, closed: false, length_m: 80, points: [] };
-  expect(cutBridgeWater([{ way, points: [[60, 100], [140, 100]], width: 12, outline: false }], height, water, n)).toBeGreaterThan(100);
+  const grid = gridAt([-100, -100, 100, 100]);
+  expect(cutBridgeWater([{ way, points: [[60, 100], [140, 100]], width: 12, outline: false }], height, water, grid)).toBeGreaterThan(100);
   expect(height[50 * n + 50]).toBe(-3);
   expect(water[50 * n + 50]).toBe(1);
   expect(height[50 * n + 10]).toBe(2);

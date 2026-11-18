@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cutBridgeWater, pathsOf, readWays } from "./ways.ts";
-import type { Base } from "./base.ts";
+import type { Base, Grid } from "./base.ts";
 import { makeHeaps, readBuildings, PART_COURT, PART_FLOOR, PART_HEAP, PART_POOL, PART_SPILL, PART_WALL, type Heaps } from "./heaps.ts";
 import { carveLakes, readLakes, type LakeRules, type Lakes } from "./lakes.ts";
 import { blur, distanceField, fbm, fillPolygon, hash3, regions, share } from "./raster.ts";
@@ -78,14 +78,12 @@ export interface World {
   readonly lakes?: LakeRules | false;
   /** The landmarks it places (tools/mapworld/landmarks.ts). */
   readonly landmarks?: readonly LandmarkSite[];
-  /** The lattice column and row of its south-east corner (shared/coords.ts), by default the lattice's middle. */
-  readonly frame?: readonly [number, number];
   /** Sectors of room it leaves to grow into north and west: its display origin is that far past the default. */
   readonly room?: { readonly north?: number; readonly west?: number };
 }
 
 export interface Ground {
-  readonly n: number;
+  readonly grid: Grid;
   readonly height: Float32Array;
   readonly surface: Uint8Array;
   /** Per sample, its district counting from 1 in the world's list, or 0. */
@@ -106,33 +104,32 @@ export interface Ground {
 }
 
 export function makeGround(base: Base, world: World, log: (line: string) => void): Ground {
-  const n = base.n;
-  const N = n * n;
-  const cell = base.info.spacing_m;
-  const half = base.info.size_m / 2;
+  const { grid } = base;
+  const { nx, nz, cell, west, north } = grid;
+  const N = nx * nz;
   const sea = world.seaNavd88;
   const water = base.bytes("water");
   const roads = base.bytes("roads");
   const biome = base.bytes("biome");
   const canopy = base.bytes("painted_canopy");
   const flooded = base.bytes("flooded_streets");
-  const gaps = world.bridgeGapLayer ? base.bytes(world.bridgeGapLayer) : new Uint8Array(base.n * base.n);
+  const gaps = world.bridgeGapLayer ? base.bytes(world.bridgeGapLayer) : new Uint8Array(N);
   const wrecks = base.bytes("wrecks");
   const dem = base.elevation();
   const model = base.bathymetry();
-  const bathy = model ? blur(model, n, n, 2, 3) : null;
+  const bathy = model ? blur(model, nx, nz, 2, 3) : null;
   const height = new Float32Array(N);
   const surface = new Uint8Array(N);
 
   // Distances across the shoreline, and for water which land is nearest.
   const nearLand = new Int32Array(N);
-  const toLand = distanceField((i) => water[i] === 0, n, n, nearLand);
-  const toWater = distanceField((i) => water[i] === 1, n, n);
+  const toLand = distanceField((i) => water[i] === 0, nx, nz, nearLand);
+  const toWater = distanceField((i) => water[i] === 1, nx, nz);
   const shore = new Float32Array(N);
   for (let i = 0; i < N; i++) shore[i] = Math.sqrt(water[i] ? toLand[i]! : toWater[i]!) * cell;
   // How much of the ground round each sample is beach, and how far each is from one.
-  const beach = share((i) => biome[i] === 6, n, n, 20);
-  const toBeach = distanceField((i) => biome[i] === 6 && beach[i]! > 0.25, n, n);
+  const beach = share((i) => biome[i] === 6, nx, nz, 20);
+  const toBeach = distanceField((i) => biome[i] === 6 && beach[i]! > 0.25, nx, nz);
   const sand = new Float32Array(N);
   for (let i = 0; i < N; i++) sand[i] = Math.sqrt(toBeach[i]!) * cell;
 
@@ -142,13 +139,13 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const weight = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     if (water[i]) continue;
-    if (Number.isNaN(dem[i]!) && !bathy) throw new Error(`sample ${i % n}, ${Math.floor(i / n)} has no elevation and the map no coastal model`);
+    if (Number.isNaN(dem[i]!) && !bathy) throw new Error(`sample ${i % nx}, ${Math.floor(i / nx)} has no elevation and the map no coastal model`);
     raw[i] = Number.isNaN(dem[i]!) ? bathy![i]! : dem[i]!;
     weight[i] = 1;
   }
   const radius = 1;
-  const sum = radius > 0 ? blur(raw, n, n, radius, 2) : raw;
-  const part = radius > 0 ? blur(weight, n, n, radius, 2) : weight;
+  const sum = radius > 0 ? blur(raw, nx, nz, radius, 2) : raw;
+  const part = radius > 0 ? blur(weight, nx, nz, radius, 2) : weight;
   const land = new Float32Array(N);
   for (let i = 0; i < N; i++) land[i] = water[i] ? 0 : sum[i]! / Math.max(1e-6, part[i]!);
 
@@ -184,7 +181,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const built = base.bytes("buildings");
   const lakes = readLakes(base, world.lakes, sea, world.minY, world.stepY, dem, (i) => built[i]! > 0);
   if (lakes) {
-    const deepest = carveLakes(lakes, world.lakes, height, n, cell);
+    const deepest = carveLakes(lakes, world.lakes, height, grid);
     const left = lakes.made.filter((m) => m.left);
     log(`ground: ${lakes.made.length - left.length} lakes as ${lakes.bodies.length} bodies of water, to ${deepest.toFixed(1)} m deep; ${left.length} left marsh${left.map((m) => ` (${m.name || m.id}: ${m.left})`).join("")}`);
   }
@@ -194,13 +191,13 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   if (ways.length === 0) {
     // Bridges: a long one stands as a causeway on its piers, a short one has fallen into a ford, and a marked span is gone.
     const span = (i: number): boolean => water[i] === 1 && (roads[i] === 3 || roads[i] === 5 || gaps[i] === 1);
-    const { label, count } = regions(span, n, n);
+    const { label, count } = regions(span, nx, nz);
     const box = Array.from({ length: count + 1 }, () => [Infinity, -Infinity, Infinity, -Infinity, 0]);
     for (let i = 0; i < N; i++) {
       const l = label[i]!;
       if (!l) continue;
-      const c = i % n;
-      const r = (i - c) / n;
+      const c = i % nx;
+      const r = (i - c) / nx;
       const bx = box[l]!;
       bx[0] = Math.min(bx[0]!, c);
       bx[1] = Math.max(bx[1]!, c);
@@ -219,14 +216,14 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     for (let i = 0; i < N; i++) {
       const l = label[i]!;
       if (!l || !standing(l) || gaps[i]) continue;
-      const c = i % n;
-      const r = (i - c) / n;
+      const c = i % nx;
+      const r = (i - c) / nx;
       let sum = 0;
       let m = 0;
       for (let dr = -1; dr <= 1; dr++) {
         for (let dc = -1; dc <= 1; dc++) {
-          const j = (r + dr) * n + c + dc;
-          if (r + dr < 0 || r + dr >= n || c + dc < 0 || c + dc >= n || water[j]) continue;
+          const j = (r + dr) * nx + c + dc;
+          if (r + dr < 0 || r + dr >= nz || c + dc < 0 || c + dc >= nx || water[j]) continue;
           sum += height[j]!;
           m++;
         }
@@ -238,11 +235,11 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     }
     while (head < tail) {
       const i = queue[head++]!;
-      const c = i % n;
-      const r = (i - c) / n;
+      const c = i % nx;
+      const r = (i - c) / nx;
       for (const [dc, dr, step] of [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]] as const) {
-        if (r + dr < 0 || r + dr >= n || c + dc < 0 || c + dc >= n) continue;
-        const j = (r + dr) * n + c + dc;
+        if (r + dr < 0 || r + dr >= nz || c + dc < 0 || c + dc >= nx) continue;
+        const j = (r + dr) * nx + c + dc;
         if (label[j] !== label[i] || gaps[j]) continue;
         const d = along[i]! + step * cell;
         if (d < along[j]!) {
@@ -255,22 +252,22 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     for (let i = 0; i < N; i++) {
       const l = label[i]!;
       if (!l || gaps[i]) continue;
-      const c = i % n;
-      const r = (i - c) / n;
+      const c = i % nx;
+      const r = (i - c) / nx;
       if (standing(l) && along[i]! < Infinity) {
         const rise = Math.min(5.5, 1.2 + length[l]! / 160);
         height[i] = from[i]! + Math.min(rise, along[i]! * 0.06);
         surface[i] = S.DECK;
         decks++;
       } else if (!standing(l)) {
-        height[i] = -0.45 + 0.25 * fbm(c * cell, r * cell, 4, 31);
+        height[i] = -0.45 + 0.25 * fbm(c * cell + grid.noiseWest, r * cell + grid.noiseNorth, 4, 31);
         surface[i] = S.FORD;
         fords++;
       }
     }
     // At a broken span the deck has slumped into the water from each end, and the middle is open.
     const deckNear = new Int32Array(N);
-    const toDeck = distanceField((i) => surface[i] === S.DECK, n, n, deckNear);
+    const toDeck = distanceField((i) => surface[i] === S.DECK, nx, nz, deckNear);
     for (let i = 0; i < N; i++) {
       if (!gaps[i] || !water[i]) continue;
       gapCount++;
@@ -285,19 +282,19 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     log(`ground: ${count} bridge pieces, ${decks} deck samples standing, ${fords} fallen into fords, ${gapCount} samples of broken span`);
 
   } else {
-    cutSamples = cutBridgeWater(pathsOf(ways, half).paths, height, water, n);
+    cutSamples = cutBridgeWater(pathsOf(ways, grid).paths, height, water, grid);
     for (let i = 0; i < N; i++) if (gaps[i] && water[i]) gapCount++;
     log(`ground: static bridge beds, ${cutSamples} samples cut, ${gapCount} authored gap samples retained`);
   }
 
   // Districts, by their rings, a later one over an earlier.
   const district = new Uint8Array(N);
-  const toCol = (e: number): number => (e + half) / cell;
-  const toRow = (no: number): number => (half - no) / cell;
+  const toCol = (e: number): number => (e - west) / cell;
+  const toRow = (no: number): number => (north - no) / cell;
   world.districts.forEach((d, k) => {
     const ring = d.ring.map(([lon, lat]) => base.tm.forward(lon, lat));
     ring.push(ring[0]!);
-    fillPolygon([ring], toCol, toRow, n, n, (col, row) => (district[row * n + col] = k + 1));
+    fillPolygon([ring], toCol, toRow, nx, nz, (col, row) => (district[row * nx + col] = k + 1));
   });
 
   // The ruins.
@@ -308,12 +305,12 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const road = new Uint8Array(N);
   for (let i = 0; i < N; i++) road[i] = roads[i] === 1 || roads[i] === 2 ? 1 : 0;
   const heaps = makeHeaps({
-    grid: { n, half, cell },
+    grid,
     buildings,
     districtOf: (e, no) => {
       const col = Math.round(toCol(e));
       const row = Math.round(toRow(no));
-      const k = col >= 0 && row >= 0 && col < n && row < n ? district[row * n + col]! : 0;
+      const k = col >= 0 && row >= 0 && col < nx && row < nz ? district[row * nx + col]! : 0;
       const d = k > 0 ? world.districts[k - 1]! : null;
       return { index: k, tall: d?.tall ?? 0.1, industrial: d?.style === "industrial" };
     },
@@ -337,7 +334,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   log(raise ? `ground: ${heaps.ruins.length} ruins raised as heaps, the tallest crest ${Math.max(...heaps.ruins.map((r) => r.crest)).toFixed(1)} m` : `ground: ${heaps.ruins.length} footprints left as bare slabs`);
 
   // Streets the sea has come into stand under a hand's depth of water at their edges and a knee's in the middle.
-  const dry = distanceField((i) => flooded[i] === 0, n, n);
+  const dry = distanceField((i) => flooded[i] === 0, nx, nz);
   for (let i = 0; i < N; i++) {
     if (!flooded[i] || water[i]) continue;
     const depth = 0.12 + Math.min(0.35, Math.sqrt(dry[i]!) * cell * 0.08);
@@ -350,15 +347,15 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const hulls = changes.features.filter((f) => f.properties.kind === "submerged_wreck").map((f) => f.properties);
   for (let i = 0; i < N; i++) {
     if (!wrecks[i]) continue;
-    const c = i % n;
-    const r = (i - c) / n;
-    const e = -half + c * cell;
-    const no = half - r * cell;
+    const c = i % nx;
+    const r = (i - c) / nx;
+    const e = west + c * cell;
+    const no = north - r * cell;
     let best = hulls[0]!;
     for (const h of hulls) if (Math.hypot(e - h.center![0], no - h.center![1]) < Math.hypot(e - best.center![0], no - best.center![1])) best = h;
     const a = (best.angle_degrees! * Math.PI) / 180;
     const t = ((e - best.center![0]) * Math.cos(a) + (no - best.center![1]) * Math.sin(a)) / best.length_m!;
-    height[i] = t > 0.3 ? 0.6 + 1.2 * (t - 0.3) : -1.05 + 0.3 * fbm(c * cell, r * cell, 3, 55);
+    height[i] = t > 0.3 ? 0.6 + 1.2 * (t - 0.3) : -1.05 + 0.3 * fbm(c * cell + grid.noiseWest, r * cell + grid.noiseNorth, 3, 55);
     surface[i] = S.WRECK;
   }
 
@@ -406,10 +403,10 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     const [ca, sa] = [Math.cos(angle), Math.sin(angle)];
     for (let i = 0; i < N; i++) {
       if (surface[i] !== S.YARD || district[i] !== port || shore[i]! < 8) continue;
-      const c = i % n;
-      const r = (i - c) / n;
-      const e = -half + c * cell;
-      const no = half - r * cell;
+      const c = i % nx;
+      const r = (i - c) / nx;
+      const e = west + c * cell;
+      const no = north - r * cell;
       const u = e * ca + no * sa;
       const v = -e * sa + no * ca;
       const row = Math.floor(v / 14);
@@ -425,5 +422,5 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     }
   }
   log(`ground: ${Math.round(stacks * 4)} square metres of container stacks`);
-  return { n, height, surface, district, heaps, shore, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
+  return { grid, height, surface, district, heaps, shore, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
 }

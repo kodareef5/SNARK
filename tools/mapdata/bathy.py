@@ -34,7 +34,7 @@ def main():
     with rasterio.open(dest, 'w', driver='GTiff', height=a.shape[0], width=a.shape[1], count=1, dtype='float32',
                        crs='EPSG:4326', transform=tx, nodata=-99999, compress='deflate', predictor=3) as ds:
         ds.write(a, 1)
-    grid = np.empty((m.n, m.n), np.float32)
+    grid = np.empty(m.shape, np.float32)
     with rasterio.open(dest) as ds:
         reproject(rasterio.band(ds, 1), grid, src_transform=ds.transform, src_crs=ds.crs, dst_transform=m.grid,
                   dst_crs=m.crs, resampling=Resampling.bilinear)

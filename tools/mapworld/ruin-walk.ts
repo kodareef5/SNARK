@@ -1,4 +1,4 @@
-import { reportPaths } from "./report-path.ts";
+import { readReport, reportPaths } from "./report-path.ts";
 const paths = reportPaths();
 // Authoritative capsule movement through stairs from the actual packed city, including rotated and damaged shells.
 import { readFileSync, writeFileSync } from "node:fs";
@@ -23,7 +23,7 @@ const source = mapNodes(map, hf, reg);
 const nodes = source ? new NodeField(map.dims, reg, source) : null;
 const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) };
 const params = reg.move[reg.index.get("core:survivor")!]!;
-const records = JSON.parse(readFileSync(`${folder}/buildings.json`, "utf8")) as RuinRecord[];
+const records = readReport<RuinRecord[]>(folder, "buildings.json", map.dims);
 const candidates = records.filter((r) => r.routes.length > 0).sort((a, b) => a.part - b.part);
 const sample = process.argv.includes("--all") ? candidates : candidates.filter((r, i) => r.special || i % Math.max(1, Math.floor(candidates.length / 48)) === 0);
 const results: { part: number; name: string | null; floors: number; route: number; startHeight: number; ok: boolean; message: string }[] = [];

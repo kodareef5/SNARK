@@ -67,25 +67,27 @@ const zoneIndex = (list: readonly Zone[], name: string): number => list.findInde
 const URBAN = new Set(["concrete", "deco", "terracotta", "mural"]);
 
 /** Each zone's picture, north up, a byte a square, and the layers that name them. `clear` is true where nothing may stand. */
-export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean, low: (col: number, row: number) => boolean = () => false, growth?: Vocabulary["growth"]): { plants: Uint8Array; stones: Uint8Array; sea: Uint8Array; side: number; layers: unknown[] } {
-  const { n, surface, height, shore } = ground;
-  const side = (n - 1) / (ZONE_CELL / 2);
-  const plants = new Uint8Array(side * side);
-  const stones = new Uint8Array(side * side);
-  const sea = new Uint8Array(side * side);
+export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean, low: (col: number, row: number) => boolean = () => false, growth?: Vocabulary["growth"]): { plants: Uint8Array; stones: Uint8Array; sea: Uint8Array; across: number; down: number; layers: unknown[] } {
+  const { surface, height, shore } = ground;
+  const { nx, nz, cell, noiseWest, noiseNorth } = ground.grid;
+  const across = (nx - 1) / (ZONE_CELL / cell);
+  const down = (nz - 1) / (ZONE_CELL / cell);
+  const plants = new Uint8Array(across * down);
+  const stones = new Uint8Array(across * down);
+  const sea = new Uint8Array(across * down);
   const P = (name: string): number => zoneIndex(PLANTS, name);
   const T = (name: string): number => zoneIndex(STONES, name);
   const W = (name: string): number => zoneIndex(SEA_FLOOR, name);
   const styleAt = (i: number): string => world.districts[ground.district[i]! - 1]?.style ?? "";
-  for (let py = 0; py < side; py++) {
-    for (let px = 0; px < side; px++) {
+  for (let py = 0; py < down; py++) {
+    for (let px = 0; px < across; px++) {
       const col = px * 2 + 1;
       const row = py * 2 + 1;
       if (clear(col, row)) continue;
-      const i = row * n + col;
+      const i = row * nx + col;
       const s = surface[i]!;
       const h = height[i]!;
-      const industrial = styleAt(i) === "industrial" || (shore[i]! < 100 && [-32, 0, 32].some((dy) => [-32, 0, 32].some((dx) => row + dy >= 0 && row + dy < n && col + dx >= 0 && col + dx < n && styleAt((row + dy) * n + col + dx) === "industrial")));
+      const industrial = styleAt(i) === "industrial" || (shore[i]! < 100 && [-32, 0, 32].some((dy) => [-32, 0, 32].some((dx) => row + dy >= 0 && row + dy < nz && col + dx >= 0 && col + dx < nx && styleAt((row + dy) * nx + col + dx) === "industrial")));
       const towers = (world.districts[ground.district[i]! - 1]?.tall ?? 0) >= 0.5;
       let plant = 0;
       let stone = 0;
@@ -141,7 +143,7 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           break;
         case S.STREET:
         case S.HIGHWAY:
-          if (growth && (Math.floor(col / 3) + Math.floor(row / 3)) % 4 === 0) plant = P("street garden");
+          if (growth && (Math.floor((col + noiseWest / cell) / 3) + Math.floor((row + noiseNorth / cell) / 3)) % 4 === 0) plant = P("street garden");
           stone = T("street blocks");
           break;
         case S.DECK:
@@ -154,9 +156,9 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
       // Industrial shore growth stays low enough to see the yards from the bay.
       if (industrial && plant) plant = P("yard");
       else if (low(col, row) && plant) plant = P(growth ? "yard" : "street garden");
-      plants[py * side + px] = plant;
-      stones[py * side + px] = stone;
-      sea[py * side + px] = s === S.CHANNEL ? W("channel") : s === S.DEEP ? W("deep") : 0;
+      plants[py * across + px] = plant;
+      stones[py * across + px] = stone;
+      sea[py * across + px] = s === S.CHANNEL ? W("channel") : s === S.DEEP ? W("deep") : 0;
     }
   }
   const layer = (seed: number, perChunk: number, zones: readonly Zone[], picture: string): unknown => ({
@@ -166,5 +168,5 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
     zones: zones.map((z) => ({ kinds: Object.fromEntries(Object.entries(growth?.zones[z.name]?.kinds ?? z.kinds).filter(([, weight]) => weight > 0)), bare: growth?.zones[z.name]?.bare ?? z.bare })),
     zone: picture,
   });
-  return { plants, stones, sea, side, layers: [layer(0x4d1a, PLANT_SLOTS, PLANTS, "plants.png"), layer(0x4d1b, STONE_SLOTS, STONES, "stones.png"), layer(0x4d1c, SEA_SLOTS, SEA_FLOOR, "sea.png")] };
+  return { plants, stones, sea, across, down, layers: [layer(0x4d1a, PLANT_SLOTS, PLANTS, "plants.png"), layer(0x4d1b, STONE_SLOTS, STONES, "stones.png"), layer(0x4d1c, SEA_SLOTS, SEA_FLOOR, "sea.png")] };
 }

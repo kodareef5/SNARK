@@ -37,12 +37,13 @@ export interface Site {
   readonly world: World;
   readonly ground: Ground;
   readonly footprints: readonly Footprint[];
-  /** Engine x and z of a point given in metres east and north of the map's centre. */
-  toEngine(e: number, n: number): [number, number];
-  /** The ground's height in metres above the sea at engine x and z, between samples. */
+  /** Lattice x and z (Grid, base.ts) of a point given in metres east and north of the projection's centre. */
+  toLattice(e: number, n: number): [number, number];
+  /** The ground's height in metres above the sea at lattice x and z, between samples. */
   groundAt(x: number, z: number): number;
-  /** The surface of the water nearest the sample at engine x and z, in metres above the sea: a lake's in one, else the sea's. */
+  /** The surface of the water nearest the sample at lattice x and z, in metres above the sea: a lake's in one, else the sea's. */
   waterAt(x: number, z: number): number;
+  /** Per 4 m square, row by row from the north, (nx - 1) / 2 a row: no plants at all, or only low ones. */
   readonly clearPlants: Uint8Array;
   readonly lowPlants: Uint8Array;
 }
@@ -54,24 +55,24 @@ export interface StaticLayer {
 
 export const STATIC_LAYERS: readonly StaticLayer[] = [RUINS];
 
-export function siteOf(world: World, ground: Ground, size: number, source: string): Site {
-  const n = ground.n;
-  const half = size / 2;
-  const at = (c: number, r: number): number => ground.height[Math.min(n - 1, Math.max(0, r)) * n + Math.min(n - 1, Math.max(0, c))]!;
+export function siteOf(world: World, ground: Ground, source: string): Site {
+  const { nx, nz, x0, z0, x1, z1, east, south } = ground.grid;
+  const [eastX, southZ] = [east + x0, south - z0];
+  const at = (c: number, r: number): number => ground.height[Math.min(nz - 1, Math.max(0, r)) * nx + Math.min(nx - 1, Math.max(0, c))]!;
   return {
     source,
     world,
     ground,
     growthRoutes: [],
     vehicles: [],
-    clearPlants: new Uint8Array(((n - 1) / 2) ** 2),
-    lowPlants: new Uint8Array(((n - 1) / 2) ** 2),
+    clearPlants: new Uint8Array(((nx - 1) / 2) * ((nz - 1) / 2)),
+    lowPlants: new Uint8Array(((nx - 1) / 2) * ((nz - 1) / 2)),
     footprints: ground.heaps.ruins.map((ruin) => ({ building: ruin.building, ruin, district: world.districts[ruin.district - 1] ?? null })),
-    toEngine: (e, no) => [half - e, half + no],
+    toLattice: (e, no) => [eastX - e, no - southZ],
     groundAt(x, z) {
       // Columns run west to east and rows north to south, so x and z count back from the far corner.
-      const fc = (size - x) / 2;
-      const fr = (size - z) / 2;
+      const fc = (x1 - x) / 2;
+      const fr = (z1 - z) / 2;
       const c = Math.floor(fc);
       const r = Math.floor(fr);
       const u = fc - c;
@@ -81,7 +82,7 @@ export function siteOf(world: World, ground: Ground, size: number, source: strin
     waterAt(x, z) {
       const lakes = ground.lakes;
       if (!lakes) return 0;
-      const b = lakes.body[Math.min(n - 1, Math.max(0, Math.round((size - z) / 2))) * n + Math.min(n - 1, Math.max(0, Math.round((size - x) / 2)))]!;
+      const b = lakes.body[Math.min(nz - 1, Math.max(0, Math.round((z1 - z) / 2))) * nx + Math.min(nx - 1, Math.max(0, Math.round((x1 - x) / 2)))]!;
       return b === 0 ? 0 : lakes.bodies[b - 1]!.surface;
     },
   };
