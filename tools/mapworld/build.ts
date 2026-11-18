@@ -22,6 +22,7 @@ import { makeGround, S, type World } from "./ground.ts";
 import { makeNodes, ZONE_CELL } from "./nodes.ts";
 import { placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf, type StaticPiece } from "./statics.ts";
+import { SPAWN_CLEAR, isFurniture } from "./street-furniture.ts";
 import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
@@ -115,6 +116,10 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const tint = makeTint(ground, world);
   lap("colour");
   const spawns = placeSpawns(ground, world, toSample);
+  // A survivor arrives clear of the street's furniture, which stood before the spawn points were known.
+  const furnished = statics.length;
+  for (let i = statics.length - 1; i >= 0; i--) if (isFurniture(statics[i]!.kind) && spawns.some((s) => Math.hypot(s.x - statics[i]!.x, s.z - statics[i]!.z) < SPAWN_CLEAR)) statics.splice(i, 1);
+  if (statics.length < furnished) lap(`${furnished - statics.length} pieces of street furniture taken from where survivors arrive`);
   const regions = placeRegions(ground, spawns, world.easyAroundSpawns ?? 0);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // A parked car stands well off where survivors arrive and where they leave, so neither's walk meets it.

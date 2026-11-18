@@ -459,3 +459,6 @@ export function makeFurniture(site: Site, placed: readonly StaticPiece[]): Stati
 }
 
 export const STREET_FURNITURE: StaticLayer = { name: "street furniture", make: makeFurniture };
+/** Whether a static is one of these, and how far from a spawn point the build takes them away (metres). */
+export const isFurniture = (kind: string): boolean => kind.startsWith(streetKind(""));
+export const SPAWN_CLEAR = 4;

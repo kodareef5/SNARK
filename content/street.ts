@@ -6,6 +6,7 @@
 // Their ids sort after every other core id, so no index moves.
 
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
+import { PI, detCos, detSin } from "../shared/math/scalar.ts";
 import type { HullDef } from "../shared/world/convex.ts";
 
 const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number): ShapeBox => ({
@@ -17,8 +18,9 @@ const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: num
  * degrees about the z axis through it, +Y toward +X.
  */
 const tilted = (b: ShapeBox, degrees: number, pivot = 0, side = 0): HullDef => {
-  const a = (degrees * Math.PI) / 180; const c = Math.cos(a); const s = Math.sin(a);
-  const t = (side * Math.PI) / 180; const ct = Math.cos(t); const st = Math.sin(t);
+  // The deterministic sine, so every engine compiles the same corners.
+  const a = (degrees * PI) / 180; const c = detCos(a); const s = detSin(a);
+  const t = (side * PI) / 180; const ct = detCos(t); const st = detSin(t);
   const corners: [number, number, number][] = [];
   for (const dx of [-1, 1]) for (const dy of [-1, 1]) for (const dz of [-1, 1]) {
     const x = b.at[0] + dx * b.half[0]; const y = b.at[1] + dy * b.half[1] - pivot; const z = b.at[2] + dz * b.half[2];
