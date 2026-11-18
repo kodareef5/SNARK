@@ -60,8 +60,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * replicated fatal-impact corpse checkpoints (S_CORPSE/CMD_CORPSE). 26: local car push/pull and manual flip commands.
  * 27: driver contact bodies and held controls precede the view, and depleted nodes distinguish crushed trees.
  * 28: contact rows carry public motion and policy only. 29: unoccupied cars report the automatic parking brake.
+ * 30: ground body prediction uses stationary sent views and the public PvE rule, and ground AI uses authored bite pitch.
  */
-export const PROTOCOL_VERSION = 29;
+export const PROTOCOL_VERSION = 30;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
