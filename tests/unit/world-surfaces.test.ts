@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SURFACE_FINISHES, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { SURFACE_FINISHES, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_FAR, WORLD_MRO, WorldFinishes, edgeOf, edged, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
@@ -15,7 +15,7 @@ test("ground aliases and static finishes remain distinct; desert open land is gr
   for (const [palette, ground, name] of [[10, true, "rock"], [10, false, "concrete"], [100, true, "gravel"], [100, false, "concrete"], [89, true, "paving"], [89, false, "steel"], [179, false, "rust"], [197, true, "grass"], [125, true, "sand"]] as const)
     expect(SURFACE_NAMES[surfaceIndex(palette, ground)]).toBe(name);
   expect(SURFACE_NAMES[surfaceIndex(123, true, "las-vegas")]).toBe("gravel");
-  for (let i = 0; i < 256; i++) for (const ground of [true, false]) expect(surfaceIndex(i, ground)).toBeWithin(0, 16);
+  for (let i = 0; i < 256; i++) for (const ground of [true, false]) expect(surfaceIndex(i, ground)).toBeWithin(0, SURFACE_NAMES.length);
 });
 
 test("macro fields are continuous across negative and positive cell boundaries and do not repeat every eight metres", () => {
@@ -167,11 +167,11 @@ test("a frame asks for every finish as wide as its tier keeps them, tells the ca
   const roles = ["base", "normal", "mro"] as const;
   const materials: PackMaterial[] = SURFACE_NAMES.map((name, k) => ({ id: surfaceMaterial(name), base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
   const textures: PackTexture[] = materials.flatMap((m) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : 2048 })));
-  const held = new Int8Array(48).fill(-1), asked: number[] = [], again: number[] = [];
+  const n = SURFACE_NAMES.length, held = new Int8Array(n * 3).fill(-1), asked: number[] = [], again: number[] = [];
   const residency = { format: "bc" as const, material: (m: number, pixels: number, _distance: number, roles = 3) => asked.push(m * 10000 + pixels + (roles === 3 ? 0 : roles / 10)), holds: (t: number) => held[t]!, again: (t: number) => { again.push(t); held[t] = -1; } };
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
   finishes.frame(p, residency, tierOf("high"));
-  expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([16, 1024, [1024, 1024, 512], [-1, -1, -1], 48]);
+  expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([n, 1024, [1024, 1024, 512], [-1, -1, -1], n * 3]);
   // Every texture at its first step but one base colour a step further: the arrays are drawn from their 64-pixel level.
   held.fill(0); held[0] = 1;
   finishes.frame(p, residency, tierOf("high"));
@@ -184,11 +184,11 @@ test("a frame asks for every finish as wide as its tier keeps them, tells the ca
   p.frame[FRAME.edgesOff] = 1;
   finishes.frame(p, residency, tierOf("ultra"));
   expect(p.frame[FRAME.edgesOff]).toBe(0);
-  expect([[...p.worldSide], [...p.worldLevel], again.length]).toEqual([[2048, 2048, 1024], [-1, -1, -1], 48]);
+  expect([[...p.worldSide], [...p.worldLevel], again.length]).toEqual([[2048, 2048, 1024], [-1, -1, -1], n * 3]);
   // The touch rule's light finish reads the base colour alone: only that is asked for and held, and the rest let go.
   held.fill(4); asked.length = 0; again.length = 0;
   finishes.frame(p, residency, forTouch(tierOf("high"), true));
-  expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([16, 1024.1, [1024, 0, 0], [-1, -1, -1], 48]);
+  expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([n, 1024.1, [1024, 0, 0], [-1, -1, -1], n * 3]);
   held.fill(4);
   finishes.frame(p, residency, forTouch(tierOf("high"), true));
   expect([...p.worldLevel]).toEqual([0, -1, -1]);
@@ -199,9 +199,9 @@ test("a frame asks for every finish as wide as its tier keeps them, tells the ca
 
 test("the eye's place in each finish's tiles is given to the card without its whole tiles, so a far corner of the map reads its texture as finely as the middle", () => {
   const city = new Float32Array(12); citySurface(city, "core:miami");
-  const phase = new Float32Array(48);
+  const phase = new Float32Array(SURFACE_NAMES.length * 3);
   worldPhase(phase, 16383.7, 12.3, 8191.4, city);
-  for (let k = 0; k < 16; k++) {
+  for (let k = 0; k < SURFACE_NAMES.length; k++) {
     const m = SURFACE_FINISHES[SURFACE_NAMES[k]!].metres;
     expect(phase[k * 3]).toBeCloseTo(16383.7 / m - Math.floor(16383.7 / m), 4);
     for (const c of [0, 1, 2]) expect(phase[k * 3 + c]).toBeWithin(0, 1);
@@ -243,7 +243,7 @@ test("a wall weathers by the masks: runoff more under open sky, a damp foot near
   const city = new Float32Array(12); citySurface(city, "core:miami");
   const id = (name: string): number => (SURFACE_NAMES as readonly string[]).indexOf(name);
   const masks = [1, 0.5, 1, 1];
-  const sample: WorldSample = (role, layer, _u, _v, _spread, out) => out.set(layer === 16 && role === 2 ? masks : [0.05, 0.05, 0.05, 1]);
+  const sample: WorldSample = (role, layer, _u, _v, _spread, out) => out.set(layer === WEATHER_LAYER && role === 2 ? masks : [0.05, 0.05, 0.05, 1]);
   const at = (finish: string, o: { wall?: number; seed?: number; over?: number; open?: number; dist?: number } = {}): number[] => {
     const albedo = Float64Array.of(0.5, 0.5, 0.5), orm = Float64Array.of(1, 0.8, 0);
     weathered(albedo, orm, id(finish), 2, o.wall ?? 1, o.seed ?? 0.61, o.over ?? 3, o.open ?? 1, 10, 3, 30, false, o.dist ?? 10, 0.01, city, sample);
@@ -279,16 +279,16 @@ test("with the weathering masks in the pack, a frame asks for them as wide as th
   const roles = ["base", "normal", "mro"] as const;
   const ids = [...SURFACE_NAMES.map(surfaceMaterial), "core:zz_world/weather"];
   const materials: PackMaterial[] = ids.map((id, k) => ({ id, base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
-  const textures: PackTexture[] = materials.flatMap((m, k) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : k === 16 ? 64 : 2048 })));
-  const held = new Int8Array(51).fill(4), asked: number[] = [];
+  const n = SURFACE_NAMES.length, textures: PackTexture[] = materials.flatMap((m, k) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : k === n ? 64 : 2048 })));
+  const held = new Int8Array(n * 3 + 3).fill(4), asked: number[] = [];
   const residency = { format: "bc" as const, material: (m: number, pixels: number) => asked.push(m * 10000 + pixels), holds: (t: number) => held[t]!, again: (t: number) => { held[t] = -1; } };
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
   finishes.frame(p, residency, tierOf("high"));
-  expect([asked.length, asked[16]]).toEqual([17, 16 * 10000 + 512]);
-  held.fill(4); held[50] = -1;
+  expect([asked.length, asked[n]]).toEqual([n + 1, n * 10000 + 512]);
+  held.fill(4); held[n * 3 + 2] = -1;
   finishes.frame(p, residency, tierOf("high"));
   expect([...p.worldLevel]).toEqual([0, 0, -1]);
-  held[50] = 3;
+  held[n * 3 + 2] = 3;
   finishes.frame(p, residency, tierOf("high"));
   expect([...p.worldLevel]).toEqual([0, 0, 0]);
 });

@@ -1,6 +1,6 @@
 // World surfaces, in the order of their layers. This is the owner's tuning desk. No map or texture rebuild is needed to
 // change these numbers: rebuild the client, or run tools/surfaces/views.ts again. Values are shared by both renderers.
-export const SURFACE_NAMES = ["grass", "sand", "dirt", "mud", "rock", "gravel", "asphalt", "paving", "concrete", "brick", "clay", "rust", "steel", "plaster", "wood", "glass"] as const;
+export const SURFACE_NAMES = ["grass", "sand", "dirt", "mud", "rock", "gravel", "asphalt", "paving", "concrete", "brick", "clay", "rust", "steel", "plaster", "wood", "glass", "sidewalk"] as const;
 export type SurfaceName = typeof SURFACE_NAMES[number];
 /** The material of a finish in the pack, whose textures are "<material>/<role>". */
 export const SURFACE_PREFIX = "core:zz_world/";
@@ -11,7 +11,7 @@ export const surfaceMaterial = (name: SurfaceName): string => SURFACE_PREFIX + n
  * base colour and a normal only as every material does, and the card never holds them in the arrays.
  */
 export const WEATHER_MATERIAL = SURFACE_PREFIX + "weather";
-export const WEATHER_LAYER = 16;
+export const WEATHER_LAYER = SURFACE_NAMES.length;
 export type SurfaceGroup = "living" | "dry" | "wet" | "mineral" | "masonry" | "metal" | "paint" | "timber" | "glass";
 
 /** Multipliers except wetness and growth, which are added. Tint multiplies linear reflectance. */
@@ -66,6 +66,8 @@ export const SURFACE_FINISHES: Record<SurfaceName, SurfaceFinish> = {
   plaster: finish("paint", 2.5, 0.7, 0.35, 0.05, 3, 0),
   wood: finish("timber", 2, 0.25, 0.26, 0.08, 10, 0, [0.5, 1 / 13]),
   glass: finish("glass", 2, 0.35, 0.2, 0.02, 1, 0),
+  // Poured concrete broomed across x, in 1.5 m panels whose tooled joints run both ways: a walk's, raised or on the ground.
+  sidewalk: finish("masonry", 3, 0.1, 0.35, 0.05, 8, 3, [0.5, 0.5]),
 };
 
 /**
@@ -80,6 +82,7 @@ export const SURFACE_WEATHERING: Record<SurfaceName, SurfaceWeathering> = {
   rock: weathers(0.8, 0.8, 0, 0, 0.8), gravel: weathers(0.4, 0.5, 0, 0, 0.5), asphalt: weathers(0.5, 0.5, 0, 0, 0.6), paving: weathers(0.6, 0.7, 0, 0, 0.7),
   concrete: weathers(1, 1, 0, 1, 1), brick: weathers(0.8, 1, 0, 0, 0.8, "salt"), clay: weathers(0.6, 0.6, 0, 0, 0.7), rust: weathers(0.8, 0.3, 0, 0, 0.7, "rust"),
   steel: weathers(0.8, 0.3, 0, 0, 0.6, "rust"), plaster: weathers(1, 1, 1, 0, 0.9), wood: weathers(0.7, 0.8, 0, 0, 0.8), glass: weathers(0.4, 0, 0, 0, 0.2),
+  sidewalk: weathers(0.6, 0.7, 0, 0, 0.7),
 };
 
 /** City-wide art direction. The key is the map id's last component; unknown maps use default. */
@@ -98,13 +101,14 @@ export const SURFACE_CITIES: Record<string, SurfaceDials> = {
 export const GROUND_SURFACES: Partial<Record<SurfaceName, readonly number[]>> = {
   grass: [7, 12, 16, 17, 18, 19, 20, 21, 130, 131, 137, 138, 139, 147, 148, 150, 151, 195, 196, 197],
   sand: [121, 122, 123, 124, 125, 133, 160, 168, 169],
-  dirt: [102, 103, 114, 158, 159], mud: [95, 96, 97, 117, 118, 127, 128, 129],
-  rock: [10, 15], gravel: [100, 101, 167], asphalt: [4, 84, 85, 86], paving: [1, 2, 88, 89, 98, 99],
-  concrete: [104, 112, 113], brick: [172, 180, 181], clay: [183, 205, 206], rust: [179],
+  // 96 was a highway's third colour and is otherwise a channel's bed, under the water.
+  dirt: [102, 103, 114, 158, 159], mud: [95, 97, 117, 118, 127, 128, 129],
+  rock: [10, 15], gravel: [100, 101, 167], asphalt: [4, 84, 85, 86, 96], paving: [2, 88, 89, 98, 99],
+  concrete: [104, 112, 113], brick: [172, 180, 181], clay: [183, 205, 206], rust: [179], sidewalk: [1, 231],
 };
 export const FALLBACK_SURFACES: Partial<Record<SurfaceName, readonly number[]>> = {
   // Architectural limestone uses fine mineral grain, not the ground's fractured bedrock.
-  rock: [15], asphalt: [4, 84, 85, 86], paving: [1, 98], concrete: [2, 10, 88, 99, 100, 101, 102],
+  rock: [15], asphalt: [4, 84, 85, 86], paving: [98], sidewalk: [1], concrete: [2, 10, 88, 99, 100, 101, 102],
   brick: [172, 180, 181, 183], clay: [205, 206], rust: [96, 179], steel: [5, 6, 89, 90, 91],
   plaster: [75, 81, 103, 104, 112, 113, 114, 135], wood: [115, 116, 120], glass: [9, 92],
   grass: [137, 138, 139, 150, 151, 195, 196, 197],
