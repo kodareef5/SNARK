@@ -56,7 +56,7 @@ test("only the family asked for is meant, and a name that fits several things me
 
 test("a variant shares its base's tag, and an alias is one definition's alone", () => {
   expect(REG.tags.get("raptor")!.map((k) => REG.ids[k])).toEqual(["core:raptor", "t:raptor_alpha"]);
-  expect([...REG.tags.keys()].sort()).toEqual(["carbonemys", "dodo", "grazer", "parasaur", "pteranodon", "raptor", "rex", "spino", "stego", "trike"]);
+  expect([...REG.tags.keys()].sort()).toEqual(["brachio", "carbonemys", "dodo", "grazer", "parasaur", "pteranodon", "raptor", "rex", "spino", "stego", "trike"]);
   expect([REG.ids[REG.aliases.get("pike")!], (REG.defs[REG.index.get("t:lance_long")!] as ItemDef).aliases]).toEqual(["t:lance", undefined]);
 
   const errors = (defs: DefPatch[]): string[] => packs(defs).errors;

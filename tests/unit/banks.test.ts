@@ -30,8 +30,8 @@ function terrain(height: (x: number, z: number) => number): TestWorld {
 /** Eight ways a bank may face, in degrees from +Z toward +X, and the unit vector up it. */
 const ASPECTS = [0, 45, 90, 135, 180, 225, 270, 315].map((deg) => ({ deg, ux: Math.sin((deg * Math.PI) / 180), uz: Math.cos((deg * Math.PI) / 180) }));
 
-/** Level ground, and from a line through (128, 128) a bank rising `deg` degrees up `aspect` to a flat top 12 m up. */
-const bank = (deg: number, aspect: (typeof ASPECTS)[number]): TestWorld => terrain((x, z) => Math.max(0, Math.min(12, ((x - 128) * aspect.ux + (z - 128) * aspect.uz) * tan(deg))));
+/** Level ground, and from a line through (128, 128) a bank rising `deg` degrees up `aspect` to a flat top (normally 12 m up). */
+const bank = (deg: number, aspect: (typeof ASPECTS)[number], top = 12): TestWorld => terrain((x, z) => Math.max(0, Math.min(top, ((x - 128) * aspect.ux + (z - 128) * aspect.uz) * tan(deg))));
 
 /**
  * The highest a body of `p` may stand short of the top: the highest corner of a face it can stand on that is not the top. Where
@@ -97,7 +97,8 @@ test("a body set on ground too steep to stand on slides down it as one that fall
   const wrong: string[] = [];
   for (const deg of [45, 50, 60, 75]) {
     for (const aspect of ASPECTS) {
-      const w = bank(deg, aspect);
+      // Keep the rounded base of the widest walker clear of the crest while measuring its descent.
+      const w = bank(deg, aspect, 24);
       for (const id of WALKERS) {
         const p = wild(id);
         // 6 m up, facing the top.
