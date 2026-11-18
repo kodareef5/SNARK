@@ -242,8 +242,8 @@ by `street.cars.parked`:
   drive off.
 - A district takes its car parks first: up to `lots.perDistrict` of its car
   parks' roads, in an order by a hash, each holding `lots.least` to `lots.most`
-  cars nose to tail, `lots.apart` metres from each other, and every car of a car
-  park `apart` metres from any other car. Then its streets: a density per
+  cars together along it, `lots.apart` metres from each other and `apart`
+  metres from any car outside it. Then its streets: a density per
   kilometre of such street, clamped to a few per district, the quietest streets
   first and then by a hash of the map's seed, and spread apart. The build drops
   one within 40 m of a spawn point or an obelisk.
