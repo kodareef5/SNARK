@@ -53,3 +53,8 @@ What was kept from each archive:
 | Source | License | Used for |
 | --- | --- | --- |
 | Cozy Cars Kit, tanker-truck.glb | CC0-1.0, recorded in the GLB root node | Tideline rigid water tanker and its eight salvage scenery meshes |
+| school-bus.glb | CC0-1.0, recorded in the GLB root node | District bus |
+| semi-truck.glb | CC0-1.0, recorded in the GLB root node | Semi tractor and its parked box trailer |
+| monster-truck.glb | CC0-1.0, recorded in the GLB root node | Monster pickup |
+| muscle-car.glb | CC0-1.0, recorded in the GLB root node | Muscle coupe |
+| taxi.glb | CC0-1.0, recorded in the GLB root node | City taxi |
