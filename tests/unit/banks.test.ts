@@ -122,6 +122,24 @@ test("a body set on ground too steep to stand on slides down it as one that fall
   expect(wrong.slice(0, 20)).toEqual([]);
 });
 
+test("a wide body sliding from a steep bank onto level ground carries its downward speed into that impact", () => {
+  const w = bank(75, ASPECTS[0]!);
+  const p = wild("core:rex");
+  const b = bodyAt(w, p, 128, 128 + 6 / tan(75));
+  b.grounded = false;
+  let fastest = 0;
+  for (let t = 0; t < 120 && !b.grounded; t++) {
+    fastest = Math.max(fastest, -b.vy);
+    stepBody(w, b, 0, 127, b.yaw, 0, BTN_JUMP, p, TICK_DT);
+  }
+  // It crosses more than its step height on the last tick. Its feet were above the flat,
+  // so this is a landing and its speed is what the server uses to assess fall damage.
+  expect(fastest * TICK_DT).toBeGreaterThan(p.stepUp);
+  expect([b.grounded, b.y]).toEqual([true, 0]);
+  expect(stepOut.landSpeed).toBeGreaterThanOrEqual(fastest);
+  expect(stepOut.landSpeed).toBeLessThanOrEqual(fastest + p.gravity * TICK_DT + 1e-5);
+});
+
 test("a tame walks up ground between ARK's two angles, 44.8 and 53.1 degrees, that stops the same species wild, from every side", () => {
   const wrong: string[] = [];
   for (const deg of [47, 52]) {
@@ -191,7 +209,9 @@ function creased(w: TestWorld, x: number, z: number, from: number, deg: number, 
     const held = b.y;
     if (!b.grounded || b.vy !== 0 || land > G * TICK_DT + 1e-6 || !(held > low)) wrong.push(`${id} in the crease: grounded ${b.grounded}, vy ${b.vy}, landed at ${land} once in, ${held} up`);
     stepBody(w, b, 0, 0, 0, 0, BTN_JUMP, p, TICK_DT);
-    if (!(b.vy > 0)) wrong.push(`${id} could not jump from the crease`);
+    if (p.jumpSpeed > 0) {
+      if (!(b.vy > 0)) wrong.push(`${id} could not jump from the crease`);
+    } else if (!b.grounded || b.vy !== 0 || b.y !== held) wrong.push(`${id} left the crease with no jump`);
     land = 0;
     for (let t = 0; t < 90; t++) {
       stepBody(w, b, 0, 0, 0, 0, 0, p, TICK_DT);

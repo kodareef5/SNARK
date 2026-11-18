@@ -552,14 +552,17 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     // it. Ground too steep is met below as a part's face is.
     let h = groundUnder(hf, nx, nz, r);
     if (ny < h && groundStands(slope)) {
-      if (h - ny > p.stepUp) {
+      // A fast fall can cross a step's height in one substep. Measure the rise from the higher of
+      // its feet before and after that fall, so landing on lower ground never looks like climbing it.
+      const stepFrom = Math.max(y, ny);
+      if (h - stepFrom > p.stepUp) {
         const hx = groundUnder(hf, nx, z, r);
-        if (ny >= hx || (hx - ny <= p.stepUp && groundStands(slope))) {
+        if (ny >= hx || (hx - stepFrom <= p.stepUp && groundStands(slope))) {
           nz = z;
           h = hx;
         } else {
           const hz = groundUnder(hf, x, nz, r);
-          if (ny >= hz || (hz - ny <= p.stepUp && groundStands(slope))) {
+          if (ny >= hz || (hz - stepFrom <= p.stepUp && groundStands(slope))) {
             nx = x;
             h = hz;
           } else {
@@ -621,7 +624,14 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
             const down = (push.y * gap) / push.depth;
             const side = Math.sqrt(push.x * push.x + push.z * push.z);
             if (side > 0 && (!walking || push.up <= slope || (push.depth < r && ny + r - down > top + SKIN))) {
-              const out = push.face ? (push.depth * push.depth) / (side * side) : (Math.sqrt(r * r - down * down) - (side * gap) / push.depth) / side;
+              let out: number;
+              if (push.face) out = (push.depth * push.depth) / (side * side);
+              else {
+                // A high lip met too steeply to stand on is a wall. Clear its side at full width
+                // so the lower sphere can follow the floor downhill beside it.
+                const width = walking && !stands && push.up > slope ? r : Math.sqrt(r * r - down * down);
+                out = (width - (side * gap) / push.depth) / side;
+              }
               nx += push.x * out;
               nz += push.z * out;
               blocked = true;

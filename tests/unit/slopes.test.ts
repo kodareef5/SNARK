@@ -302,7 +302,9 @@ test("a body dropped into a notch between two faces too steep to stand on is hel
     if (!b.grounded || b.vy !== 0 || land > G * TICK_DT + 1e-6 || !(held > 3)) wrong.push(`${id} in the notch: grounded ${b.grounded}, vy ${b.vy}, landed at ${land}, ${held} up`);
     // It may jump, and comes back down into the notch no faster than the jump took it up.
     stepBody(w, b, 0, 0, 0, 0, BTN_JUMP, p, TICK_DT);
-    if (!(b.vy > 0)) wrong.push(`${id} could not jump from the notch`);
+    if (p.jumpSpeed > 0) {
+      if (!(b.vy > 0)) wrong.push(`${id} could not jump from the notch`);
+    } else if (!b.grounded || b.vy !== 0 || b.y !== held) wrong.push(`${id} left the notch with no jump`);
     land = 0;
     for (let t = 0; t < 90; t++) {
       stepBody(w, b, 0, 0, 0, 0, 0, p, TICK_DT);
