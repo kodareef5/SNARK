@@ -4,3 +4,14 @@ checks/
 qa/
 *.npz
 round[0-9]*/
+# A vessel's bakes, which marine/bake.py makes again.
+core/vehicles/needle/tex/bakes/
+core/vehicles/thunderbolt/tex/bakes/
+core/vehicles/jon_boat/tex/bakes/
+core/vehicles/riptide/tex/bakes/
+core/vehicles/solstice/tex/bakes/
+core/vehicles/meridian/tex/bakes/
+core/vehicles/belvedere/tex/bakes/
+core/vehicles/sovereign/tex/bakes/
+core/vehicles/manta/tex/bakes/
+core/vehicles/lagoon/tex/bakes/

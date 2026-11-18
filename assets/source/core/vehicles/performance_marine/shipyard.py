@@ -10,11 +10,16 @@ import bmesh
 import bpy
 from mathutils import Vector
 
-from finishes import TILES
+from finishes import FITTINGS
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "compact"))
+sys.path.insert(0, str(HERE.parent / "marine"))
 from parts import E2B, Part, cylinder, rbox, tags_of
+from layout import check, lay_out, mark
+
+# The side of each vessel's own picture.
+SHELL = {"needle": 2048, "thunderbolt": 2048, "jon_boat": 2048, "riptide": 1024}
 
 
 def mix(a, b, t):
@@ -126,8 +131,11 @@ class Yard:
             if parent:
                 bone.parent = arm.edit_bones[parent]
         bpy.ops.object.mode_set(mode="OBJECT")
-        mats = {name:bpy.data.materials.new(name) for name in ("laminate","hardware")}
-        for bone, obj in self.objects:
+        # The vessel's own picture holds every moulded, painted, upholstered and glazed face; the family's atlas the
+        # small fittings, which tile.
+        mats = {name:bpy.data.materials.new(name) for name in ("shell","hardware")}
+        items, names, parts = [], [], []
+        for k, (bone, obj) in enumerate(self.objects):
             mesh = obj.data
             bm = bmesh.new()
             bm.from_mesh(mesh)
@@ -143,10 +151,16 @@ class Yard:
             pts = [v.co.copy() for v in mesh.vertices]
             low = [min(p[k] for p in pts) for k in range(3)]
             span = [max(p[k] for p in pts)-low[k] for k in range(3)]
+            own = []
             for face, tag in zip(mesh.polygons,tags):
-                mat, tile = TILES[tag]
-                face.material_index = list(mats).index(mat)
                 face.use_smooth = True
+                if tag not in FITTINGS:
+                    face.material_index = 0
+                    own.append("shell")
+                    continue
+                own.append(None)
+                face.material_index = 1
+                tile = FITTINGS.index(tag)
                 axis = max(range(3),key=lambda k:abs(face.normal[k]))
                 a, b = ((2,1),(0,2),(0,1))[axis]
                 for loop in face.loop_indices:
@@ -155,9 +169,16 @@ class Yard:
                     if (axis==2 and face.normal.z<0) or (axis==0 and face.normal.x>0):
                         u = 1-u
                     uv.data[loop].uv = ((tile%4+.04+.92*u)/4,1-(tile//4+.96-.92*v)/4)
+            mark(obj, tags, names, k, parts)
+            items.append((obj, own, tags))
+        sizes = {"shell": SHELL[self.kind]}
+        # The bottom is seen afloat only through the water.
+        lay_out(items, sizes, lambda tag, axis: .4 if axis == 3 else 1.0)
+        for bone, obj in self.objects:
+            mesh = obj.data
             mesh.set_sharp_from_angle(angle=math.radians(39))
             mesh.transform(E2B)
-            obj.vertex_groups.new(name=bone).add(list(range(len(pts))),1,"REPLACE")
+            obj.vertex_groups.new(name=bone).add(list(range(len(mesh.vertices))),1,"REPLACE")
             obj.parent = rig
             obj.modifiers.new("Armature","ARMATURE").object = rig
         bpy.ops.object.select_all(action="DESELECT")
@@ -166,6 +187,7 @@ class Yard:
         bpy.context.view_layer.objects.active = self.objects[0][1]
         bpy.ops.object.join()
         bpy.context.object.name = self.kind+"_skin"
+        check(str(HERE.parent / self.kind), [bpy.context.object], names, parts, sizes)
 
 
 def build(kind):

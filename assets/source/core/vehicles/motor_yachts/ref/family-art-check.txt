@@ -1,0 +1,27 @@
+core:solstice
+FAULT: core:solstice level 1: 6 vertices are shared by triangles that lay the picture both ways round, so one side of each is lit wrongly (the first at 1.504, 0.647, -5.016). A model whose export writes tangents has such vertices twice
+1 fault
+
+core:solstice_damaged
+ok
+
+core:solstice_sunk
+ok
+
+core:meridian
+ok
+
+core:meridian_damaged
+ok
+
+core:meridian_sunk
+ok
+
+core:sovereign
+ok
+
+core:sovereign_damaged
+ok
+
+core:sovereign_sunk
+ok

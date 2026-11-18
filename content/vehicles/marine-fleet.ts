@@ -41,6 +41,23 @@ const outfits: Record<string, Outfit> = {
   "core:lagoon": { mass: 28800, speed: 13.5, astern: 3.2, push: 1.3, lock: .95, helm: .65, grip: .55, steady: 1.3, bank: .24, plane: .36, lift: .12, spool: 1100, shift: .48, low: .1, fuel: 920, minutes: 100, slots: 56, payload: 3200, hp: 3000, aliases: ["powercat", "catamaran_yacht"] },
 };
 
+// The colours each vessel is found in, a palette index each, today's first: its paint, then the stripe and the upholstery
+// where it has them. A vessel's colours also choose its wear story (client/core/render/wear.ts), so two of a kind seldom
+// hurt alike.
+const liveries: Record<string, { paint: number[]; stripe?: number[]; seats?: number[] }> = {
+  "core:needle": { paint: [20, 46, 232, 230, 48, 53], seats: [230, 22, 232] },
+  "core:thunderbolt": { paint: [29, 232, 230, 34, 84, 41], seats: [104, 230, 22, 101] },
+  "core:jon_boat": { paint: [136, 128, 120, 87, 98] },
+  "core:riptide": { paint: [52, 49, 46, 230, 53, 48], seats: [230, 84, 46] },
+  "core:solstice": { paint: [131, 232, 29, 84, 104], stripe: [84, 230, 29, 90], seats: [101, 104, 230, 124] },
+  "core:meridian": { paint: [98, 84, 232, 30], stripe: [84, 230, 90, 213], seats: [101, 104, 230, 22] },
+  "core:belvedere": { paint: [93, 232, 29, 87], stripe: [84, 230, 29, 213], seats: [101, 104, 230, 124] },
+  "core:sovereign": { paint: [87, 232, 230, 29], stripe: [84, 213, 90, 230], seats: [101, 104, 230, 22] },
+  "core:manta": { paint: [40, 232, 46, 230], stripe: [74, 230, 29, 46], seats: [100, 101, 230] },
+  "core:lagoon": { paint: [91, 232, 104, 236], stripe: [41, 230, 29, 213], seats: [225, 101, 230] },
+};
+const dyes = (colors: readonly number[]) => colors.map(c => [c, 1] as const);
+
 function driveAt(at: MarinePoint, pivot: MarinePoint | undefined, radius: number, intake?: MarinePoint): BoatDrive {
   const propeller = { at, radius, ...(intake ? { enclosed: true, intake } : {}) };
   if (!pivot) return { propeller };
@@ -56,7 +73,7 @@ function movingDrive(suffix: string, pivot: MarinePoint | undefined, jet: boolea
 }
 
 function vessel(model: MarineModel): SpeciesDef {
-  const trim = model.trim ?? (model.family === "yacht" ? [84, 101] as const : undefined);
+  const livery = liveries[model.id]!, trim = model.family === "yacht" || model.family === "catamaran";
   const cat = model.family === "catamaran";
   const o = outfits[model.id]!, jet = model.family === "pwc";
   const big = model.length >= 14;
@@ -105,10 +122,11 @@ function vessel(model: MarineModel): SpeciesDef {
     radius: halfWidth, height: model.height, eyeHeight: Math.min(model.height, model.camera[1]), color: model.paint, mass: o.mass, slots: o.slots,
     stats: { health: [o.hp, 0, 0], stamina: [o.fuel, 0, 0], weight: [o.payload, 0, 0] },
     corpse: { health: Math.round(o.hp * .42), roll: 40 },
+    // The small craft's seats are their second region (performance_marine/spec.ts); a yacht's and a catamaran's third.
     regions: [
-      { name: cat ? "Hull" : "Paint", colors: [[model.paint, 1]] },
-      trim ? { name: cat ? "Boot stripe" : "Stripe", colors: [[trim[0], 1]] } : null,
-      trim ? { name: "Upholstery", colors: [[trim[1], 1]] } : null, null, null, null,
+      { name: cat ? "Hull" : "Paint", colors: dyes(livery.paint) },
+      trim ? { name: cat ? "Boot stripe" : "Stripe", colors: dyes(livery.stripe!) } : livery.seats ? { name: "Upholstery", colors: dyes(livery.seats) } : null,
+      trim ? { name: "Upholstery", colors: dyes(livery.seats!) } : null, null, null, null,
     ],
   };
 }
