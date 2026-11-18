@@ -490,7 +490,9 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
   if (!rules) return out;
   const { nx, x1, z1 } = site.ground.grid;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
-  const open = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT]);
+  // A city's sidewalks are where its walk network says (tools/mapdata/streets.py, painted SIDEWALK, 0.5 to 3 m from the
+  // road's edge) and look like these slabs: left out, a walk was refused on nearly every painted sidewalk.
+  const open = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT, S.SIDEWALK]);
   const rubble = (p: StaticPiece): boolean => /_z(skirt1|skirt2|wedge)_/.test(p.kind);
   /** Whether (x, z) is on a bridge's way on: its lanes and a metre beside them, 24 m out onto the approach and 12 m onto the deck. */
   const onWay = (x: number, z: number): boolean => entrances.some((e) => {

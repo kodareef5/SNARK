@@ -5,7 +5,8 @@ import { expect, test } from "bun:test";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { mapHeightfield, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { StagedMap } from "../../client/core/mapload.ts";
+import { mapHeightfield, parseMap, readHead, readPart, writeMap } from "../../shared/world/mapfile.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN } from "../../shared/world/ray.ts";
 import { ASPHALT, GROUND_CLASS, MUD, OFFROAD, SAND, vehicleSurfaceAt } from "../../shared/world/vehicle-surface.ts";
 import { wideMap } from "../fixtures/map.ts";
@@ -21,6 +22,22 @@ test("a map's ground classes come back from its file whole, a cell each two samp
   expect(back.ground).toEqual(ground);
   // The same map with none comes back with none, and its file is the one it always was.
   expect(parseMap(writeMap(base)).ground).toBeUndefined();
+});
+
+test("the page holds the classes as its sectors' ground comes, so its car reads the surface the server's does", () => {
+  const file = writeMap({ ...base, ground });
+  const head = readHead(file);
+  const staged = new StagedMap(head);
+  // Every part but the head, in a scrambled order; before a sector comes its cells read as plain ground.
+  const parts = head.parts.filter((p) => p.kind !== "statics" && p.kind !== "tops");
+  for (const [k, p] of [...parts].sort((a, b) => ((a.at * 7919) % 101) - ((b.at * 7919) % 101)).entries()) {
+    staged.take(readPart(head, p, file.subarray(p.at, p.at + p.length)) as never);
+    if (k === 0) expect(staged.hf.ground.length).toBe(ground.length);
+  }
+  expect(staged.hf.ground).toEqual(ground);
+  const server = { hf: mapHeightfield(parseMap(file)) } as CollisionWorld;
+  const page = { hf: staged.hf } as CollisionWorld;
+  for (const [x, z] of [[0, 0], [20, 36], [512, 128], [2800, 600], [4000, 1200]] as const) expect(vehicleSurfaceAt(page, HIT_TERRAIN, 0, x, z)).toBe(vehicleSurfaceAt(server, HIT_TERRAIN, 0, x, z));
 });
 
 test("a wheel on the terrain reads the class where it stands; one on a structure, or on a map with none, does not", () => {

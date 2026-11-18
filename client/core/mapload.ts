@@ -95,7 +95,11 @@ export class StagedMap {
 
   constructor(head: MapHead) {
     this.head = head;
-    this.hf = new Heightfield(head.dims, TERRAIN_CELL, head.minY, head.stepY);
+    // The ground's classes a wheel feels, a cell each two samples, filled as each sector's ground comes: the page's own
+    // car steps on this heightfield, and without them it drove every street off-road where the server's grips (D811).
+    // Before a sector comes its cells read as plain ground, where no body is predicted (D756).
+    const cells = (chunks: number): number => (chunks * CHUNK_SIZE) / TERRAIN_CELL / 2 + 1;
+    this.hf = new Heightfield(head.dims, TERRAIN_CELL, head.minY, head.stepY, undefined, undefined, new Uint8Array(cells(head.dims.chunksX) * cells(head.dims.chunksZ)));
     this.hf.seaLevel = head.seaLevel;
     this.hf.holdNone();
     this.nodes = blankLayers(head);
@@ -113,7 +117,7 @@ export class StagedMap {
       setNodes(dims, this.nodes, piece);
       if (piece.water) this.water.push(piece.water);
     } else if (piece.kind === "ground") {
-      setGround(dims, this.hf.heights, this.hf.tint, piece);
+      setGround(dims, this.hf.heights, this.hf.tint, piece, this.hf.ground);
       this.hf.hold(piece.sq.cx0, piece.sq.cz0, piece.sq.cx1, piece.sq.cz1);
       if (piece.listed.every((rows) => rows === null)) return;
       this.listed.push({ kind: "ground", sq: piece.sq, heights: NO_HEIGHTS, tint: NO_TINT, ground: NO_TINT, listed: piece.listed });

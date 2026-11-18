@@ -2,8 +2,7 @@
 //
 //   bun tools/maps/kit.ts pack <city|all>  writes var/kits/<city>-<cut>.tar.gz from var/mapdata/<city>/current
 //   bun tools/maps/kit.ts unpack <file>    puts it in var/mapdata/<city>/<cut>/ and points `current` at it
-//   bun tools/maps/kit.ts publish          packs every city onto the remote's `mapdata` branch, replacing it
-//   bun tools/maps/kit.ts fetch            takes that branch's kits into var/kits and unpacks each
+//   bun tools/maps/kit.ts fetch <host>     takes the kits from a machine that keeps them, over ssh, and unpacks each
 //
 // A kit is the cut's work folder as its stages left it, less the downloads (raw/, 8 to 10 GB a city) and the build's
 // reports, with raw/osm/all.json kept so the world stage can propose again, and the stages' keys. A stage's key is its
@@ -75,57 +74,34 @@ function unpack(file: string): string {
   return `${city}'s cut ${cut}, made at ${kit.commit.slice(0, 9)}${here === kit.commit ? " (this commit)" : `; this tree is at ${here.slice(0, 9)}, so the stages whose code differs run again`}: bun tools/maps/city.ts ${city}`;
 }
 
-/** The branch on the repository's own remote that holds the latest kits, and only them: made again whole each time. */
-const BRANCH = "mapdata";
 const CITIES = ["tampa", "miami", "los-angeles", "san-francisco", "las-vegas"];
 
-/**
- * Packs every city and puts its kits on the remote's `mapdata` branch as one commit with no parent, replacing what was
- * there, so the repository holds the latest kits and never their history (the committed layers maps v2 took out had
- * grown to 1.45 GB). Made with a scratch index, so no checkout is touched.
- */
-function publish(remote: string): void {
-  // Every city built through; one mid-run (its stages.json without a build) waits for the next publish.
-  const done = (c: string): boolean => {
-    const keys = join(MAPDATA, c, "current", "stages.json");
-    return existsSync(keys) && !existsSync(join(MAPDATA, c, "run.lock")) && Boolean((JSON.parse(readFileSync(keys, "utf8")) as Record<string, string>).build);
-  };
-  const files = CITIES.filter(done).map((c) => pack(c));
-  for (const c of CITIES.filter((c) => !done(c))) console.log(`${c}: not built through, left for the next publish`);
-  const index = join(KITS, ".index");
-  const env = { ...process.env, GIT_INDEX_FILE: index };
-  const git = (args: string[]): string => {
-    const r = Bun.spawnSync(["git", ...args], { cwd: ROOT, env, stderr: "pipe" });
-    if (r.exitCode !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr.toString().trim()}`);
-    return r.stdout.toString().trim();
-  };
-  git(["read-tree", "--empty"]);
-  const readme = join(KITS, "README.md");
-  writeFileSync(readme, `# City kits\n\nEach city's prepared map data, made at ${run(["git", "rev-parse", "--short", "HEAD"])} on ${new Date().toISOString().slice(0, 10)}. Take them with\n\`bun tools/maps/kit.ts fetch\` and build a city with \`bun tools/maps/city.ts <city>\` (tools/maps/README.md, \"kits\").\nThis branch is made again whole each time; it has no history.\n`);
-  for (const f of [readme, ...files.flatMap((f) => [f, `${f.slice(0, -".tar.gz".length)}.json`])]) {
-    git(["update-index", "--add", "--cacheinfo", `100644,${git(["hash-object", "-w", f])},${basename(f)}`]);
-  }
-  const commit = git(["commit-tree", git(["write-tree"]), "-m", `City kits made at ${run(["git", "rev-parse", "--short", "HEAD"])}`]);
-  run(["git", "push", "--force", remote, `${commit}:refs/heads/${BRANCH}`]);
-  console.log(`${files.length} kits on ${remote}'s ${BRANCH} as ${commit.slice(0, 9)}`);
+/** Whether a city's current cut is built through and no run of it is going: a kit of one mid-run would be half old. */
+function builtThrough(city: string): boolean {
+  const keys = join(MAPDATA, city, "current", "stages.json");
+  return existsSync(keys) && !existsSync(join(MAPDATA, city, "run.lock")) && Boolean((JSON.parse(readFileSync(keys, "utf8")) as Record<string, string>).build);
 }
 
-/** Takes the kits from the remote's `mapdata` branch into var/kits and unpacks each. */
-function fetchKits(remote: string): void {
-  run(["git", "fetch", "--no-tags", remote, `+refs/heads/${BRANCH}:refs/remotes/${remote}/${BRANCH}`]);
+/**
+ * Takes the kits from a machine that keeps them, over ssh (`host` as ssh names it, its kits at var/kits of its tree, or
+ * the folder a read-only rrsync key gives), into var/kits, and unpacks each. Kits stay out of git: a branch of them
+ * would come with every clone and fetch of the repository, 1.4 GB again each time they are made.
+ */
+function fetchKits(host: string, folder: string): void {
   mkdirSync(KITS, { recursive: true });
-  run(["sh", "-c", `git archive ${remote}/${BRANCH} | tar -x -C "${KITS}"`]);
+  const r = Bun.spawnSync(["rsync", "-a", "--partial", "--info=progress2", "--include=*.tar.gz", "--include=*.json", "--exclude=*", `${host}:${folder}`, `${KITS}/`], { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
+  if (r.exitCode !== 0) throw new Error(`rsync from ${host}:${folder} failed with ${r.exitCode}`);
   for (const f of readdirSync(KITS).filter((f) => f.endsWith(".tar.gz")).sort()) console.log(unpack(join(KITS, f)));
 }
 
 if (import.meta.main) {
   const [verb, what] = process.argv.slice(2);
-  // The remote main follows (origin here, forgejo on the Mac), unless named.
-  const upstream = Bun.spawnSync(["git", "rev-parse", "--abbrev-ref", "main@{upstream}"], { cwd: ROOT }).stdout.toString().trim();
-  const remote = process.env.KIT_REMOTE ?? (upstream.includes("/") ? upstream.slice(0, upstream.indexOf("/")) : "origin");
-  if (verb === "pack" && what) for (const city of what === "all" ? CITIES : [what]) console.log(pack(city));
-  else if (verb === "unpack" && what) console.log(unpack(what));
-  else if (verb === "publish") publish(what ?? remote);
-  else if (verb === "fetch") fetchKits(what ?? remote);
-  else { console.error("bun tools/maps/kit.ts pack <city | all> | unpack <file> | publish [remote] | fetch [remote]"); process.exit(2); }
+  if (verb === "pack" && what) {
+    for (const city of what === "all" ? CITIES : [what]) {
+      if (what === "all" && !builtThrough(city)) console.log(`${city}: not built through, or a run of it is going; not packed`);
+      else console.log(pack(city));
+    }
+  } else if (verb === "unpack" && what) console.log(unpack(what));
+  else if (verb === "fetch" && what) fetchKits(what, process.env.KIT_FOLDER ?? "./");
+  else { console.error("bun tools/maps/kit.ts pack <city | all> | unpack <file> | fetch <ssh host>   (KIT_FOLDER: the folder there, ./ under an rrsync key)"); process.exit(2); }
 }

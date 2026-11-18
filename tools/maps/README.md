@@ -65,17 +65,19 @@ holds several gigabytes of them; `du -sh var/mapdata/*` says what each city keep
 ## Building a city without its downloads: kits
 
 A machine that works on what the build makes of a city (buildings, furniture, the look) needs the prepared layers, not
-the downloads. The machine that holds the downloads publishes the cities' kits to the repository's `mapdata` branch,
-which holds the latest kits and no history (it is made again whole each time, so the repository does not grow with
-them); another machine fetches them and builds:
+the downloads. The machine that holds the downloads packs the cities' kits into its `var/kits`; another machine takes
+them over ssh and builds. Kits stay out of git: on a branch they would come with every clone and fetch of the
+repository, 1.4 GB again each time they are made.
 
 ```sh
-bun tools/maps/kit.ts publish      # on the machine with the downloads: every city packed onto the remote's mapdata branch
-bun tools/maps/kit.ts fetch        # elsewhere: the kits into var/kits, each unpacked into var/mapdata
-bun tools/maps/city.ts miami       # every stage but the build unchanged; the build makes var/maps/miami.snmap
+bun tools/maps/kit.ts pack all          # on the machine with the downloads: var/kits/<city>-<cut>.tar.gz, 0.2 to 0.4 GB each
+bun tools/maps/kit.ts fetch <ssh host>  # elsewhere: the kits into var/kits by rsync, each unpacked into var/mapdata
+bun tools/maps/city.ts miami            # every stage but the build unchanged; the build makes var/maps/miami.snmap
 ```
 
-`pack <city|all>` and `unpack <file>` do one kit by hand (var/kits/<city>-<cut>.tar.gz and its .json, 0.2 to 0.4 GB).
+The machine that keeps the kits gives each other machine a key that can only read them (in `authorized_keys`:
+`command="rrsync -ro /root/SNARK/var/kits",restrict ssh-ed25519 …`); with such a key the folder is `./`, the default.
+`unpack <file>` takes one kit by hand.
 
 A kit is the cut's work folder less `raw/` and `reports/`, with `raw/osm/all.json` kept for the world stage, and the
 stages' keys. Keys are inputs and code, never paths, so at the kit's commit every stage but the build is done; an edit
