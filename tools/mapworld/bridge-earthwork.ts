@@ -2,12 +2,78 @@ import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { frame, frameOf } from "../../shared/world/frame.ts";
 import type { DeckPoint } from "./bridges.ts";
 import type { Site, StaticPiece } from "./statics.ts";
+import type { roadIndex } from "./street-cars.ts";
 
 /** An emitted road end close enough to dry ground to have an earth approach. Coordinates are in the source lattice. */
 export interface RoadEntrance {
   x: number; y: number; z: number; dx: number; dz: number; width: number;
   /** Actual emitted slabs in the first twelve metres, ending before any authored gap. */
   slabs: StaticPiece[];
+  /** The continuing source road, sampled before buildings alter its dry soil. No extrapolation past its end. */
+  runout?: { x: number; y: number; z: number }[];
+}
+
+/** Follow one aligned source polyline away from a real abutment, including its bends. The bridge/source offset
+ * blends out over twelve metres. Stop at water, a mapped gap, an abrupt natural grade, or the source line's end. */
+export function roadRunout(site: Site, e: RoadEntrance, roads: ReturnType<typeof roadIndex>): void {
+  let best: typeof roads.segments[number] | undefined, distance = Infinity, foot = 0, direction = 1;
+  for (const s of roads.segments) {
+    const dx = s.bx - s.ax, dz = s.bz - s.az, length = Math.hypot(dx, dz);
+    if (Math.abs((dx * e.dx + dz * e.dz) / length) < .9) continue;
+    const t = Math.max(0, Math.min(1, ((e.x - s.ax) * dx + (e.z - s.az) * dz) / length ** 2));
+    const d = Math.hypot(e.x - s.ax - dx * t, e.z - s.az - dz * t);
+    if (d >= distance || d > Math.min(6, e.width / 2)) continue;
+    best = s; distance = d; foot = t; direction = dx * e.dx + dz * e.dz < 0 ? 1 : -1;
+  }
+  if (!best) return;
+  const line = roads.segments.filter(s => s.line === best.line), start = line.indexOf(best);
+  const fx = best.ax + (best.bx - best.ax) * foot, fz = best.az + (best.bz - best.az) * foot;
+  const vertices = [{ x: fx, z: fz }];
+  for (let i = start; i >= 0 && i < line.length; i += direction) {
+    const s = line[i]!, previous = vertices.at(-1)!;
+    if (i !== start && Math.hypot(previous.x - (direction > 0 ? s.ax : s.bx), previous.z - (direction > 0 ? s.az : s.bz)) > .1) break;
+    vertices.push({ x: direction > 0 ? s.bx : s.ax, z: direction > 0 ? s.bz : s.az });
+    if (Math.hypot(vertices.at(-1)!.x - fx, vertices.at(-1)!.z - fz) > 30) break;
+  }
+  const points = [{ x: e.x, y: site.groundAt(e.x, e.z), z: e.z }];
+  let travelled = 0, next = 2;
+  for (let i = 1; i < vertices.length; i++) {
+    const a = vertices[i - 1]!, b = vertices[i]!, length = Math.hypot(b.x - a.x, b.z - a.z);
+    if (length < .01) continue;
+    while (next <= travelled + length && next <= 24) {
+      const t = (next - travelled) / length, blend = Math.max(0, 1 - next / 12);
+      const x = a.x + (b.x - a.x) * t + (e.x - fx) * blend, z = a.z + (b.z - a.z) * t + (e.z - fz) * blend;
+      const y = site.groundAt(x, z), dx = (b.x - a.x) / length, dz = (b.z - a.z) / length;
+      // Preserve ordinary hillside roads too: this guard rejects a cliff, not a twenty-degree natural grade.
+      if (Math.abs(y - points.at(-1)!.y) > 1 || [-e.width / 2, 0, e.width / 2].some(side => !dry(site, x - dz * side, z + dx * side))) {
+        e.runout = points; return;
+      }
+      points.push({ x, y, z }); next += 2;
+    }
+    travelled += length;
+  }
+  e.runout = points;
+}
+
+/** Soil already supporting a dry road must not be excavated later by a nearby room/door. This mask preserves
+ * original soil; it creates no fill, and stops at wet samples, authored gaps and the measured runout boundary. */
+export function roadGroundSamples(site: Site, entrances: readonly RoadEntrance[]): Set<number> {
+  const g = site.ground.grid, kept = new Set<number>();
+  for (const e of entrances) for (let k = 1; k < (e.runout?.length ?? 0); k++) {
+    const a = e.runout![k - 1]!, b = e.runout![k]!, dx = b.x - a.x, dz = b.z - a.z, length2 = dx * dx + dz * dz;
+    const radius = e.width / 2;
+    for (let row = Math.max(0, Math.floor((g.z1 - Math.max(a.z, b.z) - radius) / g.cell)); row <= Math.min(g.nz - 1, Math.ceil((g.z1 - Math.min(a.z, b.z) + radius) / g.cell)); row++) {
+      for (let col = Math.max(0, Math.floor((g.x1 - Math.max(a.x, b.x) - radius) / g.cell)); col <= Math.min(g.nx - 1, Math.ceil((g.x1 - Math.min(a.x, b.x) + radius) / g.cell)); col++) {
+        const x = g.x1 - col * g.cell, z = g.z1 - row * g.cell;
+        if ((x - e.x) * e.dx + (z - e.z) * e.dz > 2) continue;
+        const raw = ((x - a.x) * dx + (z - a.z) * dz) / length2;
+        if (k === e.runout!.length - 1 && raw > 1) continue;
+        const t = Math.max(0, Math.min(1, raw));
+        if (Math.hypot(x - a.x - dx * t, z - a.z - dz * t) <= radius && dry(site, x, z)) kept.add(row * g.nx + col);
+      }
+    }
+  }
+  return kept;
 }
 
 export function roadEntrances(site: Site, deck: readonly DeckPoint[], rows: readonly StaticPiece[][], width: number): RoadEntrance[] {

@@ -15,7 +15,10 @@ import { bridgeHoles, makeBridges, roadDeckSlab, worldFrame, type DeckPoint } fr
 import { inRing, Mason } from "../../tools/mapworld/ruin-geometry.ts";
 import type { Site } from "../../tools/mapworld/statics.ts";
 import type { Way } from "../../tools/mapworld/ways.ts";
-import { gradeRoadEntrances, type RoadEntrance } from "../../tools/mapworld/bridge-earthwork.ts";
+import { gradeRoadEntrances, roadGroundSamples, roadRunout, type RoadEntrance } from "../../tools/mapworld/bridge-earthwork.ts";
+import { gradeApproaches } from "../../tools/mapworld/ruin-access.ts";
+import type { roadIndex } from "../../tools/mapworld/street-cars.ts";
+import { clearCirculation } from "../../tools/mapworld/ruin-clearance.ts";
 
 test("road slab definitions append without renumbering existing kinds and use the drawn convex surface", () => {
   const old = compileContent(CORE_CONTENT.filter(d => !d.id.startsWith("core:zzruin"))).registry!;
@@ -186,4 +189,51 @@ test("emitted driving lanes meet on native lattice geometry and share one termin
       }
     }
   } finally { rmSync(source, { recursive: true, force: true }); }
+});
+
+test("dry road runout follows its source bend, stops at water, and survives later doorway excavation", () => {
+  const grid = gridAt([-128, -128, 128, 128]), n = grid.nx * grid.nz;
+  const height = new Float32Array(n).fill(10), water = new Uint8Array(n), gaps = new Uint8Array(n);
+  const site = { ground: { grid, height, water, gaps, heaps: { owner: new Int32Array(n).fill(-1) } }, groundAt: () => 10 } as unknown as Site;
+  const points = [[100, 108], [116, 124], [128, 128], [160, 128]];
+  const segments = points.slice(1).map((p, i) => ({ ax: points[i]![0]!, az: points[i]![1]!, bx: p[0]!, bz: p[1]!, half: 4, mtfcc: "S1200", line: 0 }));
+  const roads = { segments } as ReturnType<typeof roadIndex>;
+  const e: RoadEntrance = { x: 128, y: 10.1, z: 128, dx: 1, dz: 0, width: 8, slabs: [] };
+  roadRunout(site, e, roads);
+  expect(e.runout!.length).toBe(13);
+  expect(e.runout!.at(-1)!.z).toBeLessThan(118);
+  const index = (x: number, z: number) => Math.round((grid.z1 - z) / 2) * grid.nx + Math.round((grid.x1 - x) / 2);
+  const kept = roadGroundSamples(site, [e]);
+  expect(kept.has(index(114, 122))).toBe(true);
+  expect(kept.has(index(104, 128))).toBe(false); // no invented straight continuation across the bend
+  expect(kept.has(index(144, 128))).toBe(false); // no reservation beneath the elevated deck
+  const a = { street: { x: 114, y: 1, z: 110 }, door: { x: 114, y: 1, z: 138 }, core: { x: 114, y: 1, z: 138 }, ramp: 1 };
+  gradeApproaches(site, [a], -1, kept);
+  expect(height[index(114, 122)]).toBe(10);
+  expect(height[index(114, 138)]).toBe(1); // lower ground outside the reserved road is still graded
+  water[index(116, 124)] = 1;
+  roadRunout(site, e, roads);
+  expect(e.runout!.length).toBeLessThan(8);
+  expect(roadGroundSamples(site, [e]).has(index(116, 124))).toBe(false);
+});
+
+test("a dry uphill outer foot above the former half-metre gate still anchors the terminal slab", () => {
+  const deck: DeckPoint[] = [0, 1, 2].map(i => ({ x: 100 + i * 3, y: 10 - i / 16, z: 128, yaw: 0, gap: false }));
+  const slab = roadDeckSlab(deck, 0, 10.558);
+  expect(slab.shape).toBe("floorroad4");
+  const w = flatWorld(4), m = new Mason(worldFrame({ sizeX: 256, sizeZ: 256 }), 0);
+  m.put(slab.shape, 100, slab.y, 128, "concrete", slab.yaw);
+  for (const p of m.pieces) w.structs.add(w.kind(p.kind), p.x, p.y, p.z, Math.round(p.yaw * 65536 / 360) & 65535, 0, 1e4);
+  expect(top(w, 98.001, 128)).toBeCloseTo(10.558, 2);
+});
+
+test("dry runout clearance removes a facade pier in the road while preserving its lower support and adjacent passage", () => {
+  const e: RoadEntrance = { x: 100, y: 5, z: 128, dx: 1, dz: 0, width: 8, slabs: [],
+    runout: [{ x: 100, y: 5, z: 128 }, { x: 76, y: 5, z: 128 }] };
+  const blocking = { kind: "core:zruin_pier4_concrete", x: 88, y: 6, z: 128, yaw: 0 };
+  const support = { ...blocking, y: 1 }, outside = { ...blocking, z: 138 };
+  const floor = { ...blocking, kind: "core:zruin_floor4_concrete", y: 4.8 };
+  const pieces = [blocking, support, outside, floor];
+  clearCirculation(pieces, [], pieces.length, [], [{ deck: [], entrances: [e] }]);
+  expect(pieces).toEqual([support, outside, floor]);
 });

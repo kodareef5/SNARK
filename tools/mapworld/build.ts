@@ -221,7 +221,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   const parsed = parseMap(bytes);
   if (world.heaps === false) {
     const bridges = JSON.parse(readFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "bridges.json"), "utf8")) as BridgeRecord[];
-    const entrances = bridges.flatMap(r => r.entrances.map(e => ({ ...engine(e), id: r.id, name: r.name, slabs: e.slabs.map(engine) })));
+    const entrances = bridges.flatMap(r => r.entrances.map(e => ({ ...engine(e), id: r.id, name: r.name, slabs: e.slabs.map(engine), runout: e.runout?.map(engine) })));
     writeFileSync(file.replace(/\.snmap$/, ".entrances.json"), JSON.stringify({ mapHash: parsed.hash, entrances }, null, 2) + "\n");
   }
   const packedMax = Math.max(...parsed.statics.first.slice(1).map((end, i) => end - parsed.statics.first[i]!));
