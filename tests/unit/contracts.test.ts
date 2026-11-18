@@ -60,8 +60,8 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   const ops = Object.entries(P).filter(([k]) => k.startsWith("CMD_")).map(([, v]) => v);
   expect(new Set(ops).size).toBe(ops.length);
   // 14 is the cluster's, 15 the beds', 16 the flyers' (below), 17 the stations wave's (tests/unit/stations-contracts.test.ts),
-  // 18 the vehicles' (tests/integration/vehicle-contracts.test.ts), 33 creative mode's (tests/integration/creative.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 33]);
+  // 18 the vehicles' (tests/integration/vehicle-contracts.test.ts), 34 creative mode's (tests/integration/creative.test.ts).
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 34]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
@@ -209,8 +209,8 @@ test("a body's flight counters travel with it, 20 bits after the rest, and every
   const w = new BitWriter(64);
   P.writeBody(w, a);
   // And after them the vehicles' bit for no vehicle and their bit for no seat: 380 without those.
-  // Protocol 27 adds one presence bit for ground creature counters.
-  expect(w.pos).toBe(383);
+  // Presence bits cover ground creature counters and Meridian flight state.
+  expect(w.pos).toBe(384);
   const b = new Body();
   const r = new BitReader(w.bytes());
   P.readBody(r, b);

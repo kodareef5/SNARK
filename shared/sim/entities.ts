@@ -4,7 +4,7 @@
 
 import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
-import { AnimState } from "../anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_JET } from "../anim/pose.ts";
 import { PI, TAU } from "../math/scalar.ts";
 import { MODE_WALK, STAMINA_UNITS, type Body } from "./character.ts";
 
@@ -147,6 +147,9 @@ export class EntityStore {
   bloom: Uint8Array;
   kick: Uint8Array;
   /** Flight state (Body.regenWait, Body.rollWait): 0 until FL1 of planning/reference/flyers-plan.md steps them. */
+  jetGear: Uint8Array;
+  jetSpent: Uint16Array;
+  jetThrust: Uint8Array;
   regenWait: Uint16Array;
   rollWait: Uint16Array;
   creatureMode: Uint8Array;
@@ -269,6 +272,9 @@ export class EntityStore {
     this.reloadTo = new Uint8Array(cap);
     this.bloom = new Uint8Array(cap);
     this.kick = new Uint8Array(cap);
+    this.jetGear = new Uint8Array(cap);
+    this.jetSpent = new Uint16Array(cap);
+    this.jetThrust = new Uint8Array(cap);
     this.regenWait = new Uint16Array(cap);
     this.rollWait = new Uint16Array(cap);
     this.creatureMode = new Uint8Array(cap);
@@ -347,6 +353,7 @@ export class EntityStore {
     this.reloadTo[i] = 0;
     this.bloom[i] = 0;
     this.kick[i] = 0;
+    this.jetGear[i] = this.jetSpent[i] = this.jetThrust[i] = 0;
     this.regenWait[i] = 0;
     this.rollWait[i] = 0;
     this.creatureMode[i] = 0;
@@ -407,6 +414,9 @@ export class EntityStore {
     this.reloadTo = wider(this.reloadTo, cap);
     this.bloom = wider(this.bloom, cap);
     this.kick = wider(this.kick, cap);
+    this.jetGear = wider(this.jetGear, cap);
+    this.jetSpent = wider(this.jetSpent, cap);
+    this.jetThrust = wider(this.jetThrust, cap);
     this.regenWait = wider(this.regenWait, cap);
     this.rollWait = wider(this.rollWait, cap);
     this.creatureMode = wider(this.creatureMode, cap);
@@ -590,6 +600,7 @@ export class EntityStore {
     posed.setAction(this.act[i]!, this.hold[i]!, tick - this.actTicks[i]!);
     posed.setMotion(this.vx[i]!, this.vz[i]!, (this.yaw[i]! * TAU) / 65536, (this.pitch[i]! * (PI / 2)) / 16384, this.vy[i]!);
     this.anim[i] = posed.pack();
+    if (!(this.cue[i]! & CUE_DEAD)) this.cue[i] = this.jetThrust[i] ? this.cue[i]! | CUE_JET : this.cue[i]! & ~CUE_JET;
   }
 
   loadBody(i: number, b: Body): void {
@@ -650,6 +661,9 @@ export class EntityStore {
     b.reloadTo = this.reloadTo[i]!;
     b.bloom = this.bloom[i]!;
     b.kick = this.kick[i]!;
+    b.jetGear = this.jetGear[i]!;
+    b.jetSpent = this.jetSpent[i]!;
+    b.jetThrust = this.jetThrust[i]!;
     b.regenWait = this.regenWait[i]!;
     b.rollWait = this.rollWait[i]!;
     b.creatureMode = this.creatureMode[i]!;
@@ -681,6 +695,8 @@ export class EntityStore {
     this.rounds[i] = b.rounds;
     this.bloom[i] = b.bloom;
     this.kick[i] = b.kick;
+    this.jetSpent[i] = b.jetSpent;
+    this.jetThrust[i] = b.jetThrust;
     this.regenWait[i] = b.regenWait;
     this.rollWait[i] = b.rollWait;
     this.creatureMode[i] = b.creatureMode;

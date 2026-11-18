@@ -59,7 +59,7 @@ import { DEADLINE_DESPAWN, Death, OP_DEATH } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
 import { VehicleTrees } from "./vehicle-trees.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { JET_BOOTS, JET_CUIRASS, JET_HELMET, stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
@@ -1015,6 +1015,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       records.dirty.add(rec.pid);
     }
     world.ents.setBodyLook(c.ent, rec.look);
+    world.ents.jetSpent[c.ent] = rec.jetSpent;
     // Every survivor is on a team, even a team of one.
     if (rec.team === 0) {
       rec.team = records.newTeam();
@@ -1050,6 +1051,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     else {
       const rec = records.byPid.get(c.pid);
       if (rec) {
+        rec.jetSpent = world.ents.jetSpent[c.ent]!;
         rec.x = world.ents.x[c.ent]!;
         rec.y = world.ents.y[c.ent]!;
         rec.z = world.ents.z[c.ent]!;
@@ -1240,7 +1242,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.allows = (c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out;
   game.onLand = (c, speed) => {
     const rec = records.byPid.get(c.pid);
-    if (rec) survival.landed(rec, speed);
+    if (rec && !(world.ents.jetGear[c.ent]! & JET_BOOTS)) survival.landed(rec, speed);
   };
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, tribes, voice,
@@ -1324,7 +1326,18 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const item = slot >= 0 ? inv.item[slot]! : 0;
       const was = ents.gears.get(e)?.[GEAR_HELD] ?? 0;
       gear[GEAR_HELD] = item;
-      for (let k = 0; k < ARMOR_SLOTS; k++) gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
+      let suit = 0;
+      for (let k = 0; k < ARMOR_SLOTS; k++) {
+        const slot = inv.armor + k, id = inv.item[slot]!;
+        gear[GEAR_WORN + k] = id;
+        const piece = reg.defs[id];
+        if (piece?.type === "item" && piece.wear?.set === "meridian" && inv.dur[slot]! > 0) suit |= 1 << k;
+      }
+      const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
+      ents.jetGear[e] = suit;
+      if (!(suit & JET_CUIRASS)) ents.jetThrust[e] = 0;
+      // Its air under water follows the helmet at once, not at the vitals' next deadline.
+      if (helmetChanged) survival.touch(rec);
       ents.setGear(e, gear);
       // Only the thing in hand has its attachment on, and taking another in hand switches it off: "it does require you to
       // press N each time you switch" (Flashlight Attachment). Others see a laser on (weapons-plan.md, M10).
