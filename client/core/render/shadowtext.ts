@@ -129,13 +129,17 @@ function filterText(m: number): string {
  * is 1 everywhere and reads no texture. `uCascades` is the frame's cascades, 0 while nothing casts, and the far map's
  * layer. The sun turned away from a surface is kept off it by its own back, whatever its normal map says. Places on the
  * map are in texels, the receiver's `at` with its depth, and `slope` is how its plane's depth rises a texel along each
- * axis. `farShadow` is the twin of farshadow.ts `farLookup`; with fFarScale 0 there is no far map and the farthest
- * cascade fades to the sun. Within the cascades, which the near store's pieces cast into and the far city does not, a
+ * axis. `farShadow` is the twin of farshadow.ts `farLookup`; with fFarScale not over 0 there is no far map and the
+ * farthest cascade fades to the sun. The far map's lanes are named whether or not there are cascades, since the sky's
+ * openness (skyopen.ts) reads them too. Within the cascades, which the near store's pieces cast into and the far city does not, a
  * pixel is shaded by the far map too, looked up where its ray to the sun leaves the chunks the near store holds
  * (`farBeyond`, farshadow.ts `nearLead`), so the far city's shadows reach near the camera and the near pieces' are not
  * cast twice.
  */
-export const SHADOW_GLSL = `#ifdef SHADOW_CASCADES
+export const SHADOW_GLSL = `#define fFarAt fSwell.zw
+#define fFarScale fLook.w
+#define fFarDepth fSkyAlong.w
+#ifdef SHADOW_CASCADES
 uniform highp sampler2DArrayShadow uShadow;
 uniform int uCascades;
 float shadowTexel(vec2 t, float layer, vec3 at, vec2 slope, float slack) {
@@ -161,9 +165,6 @@ ${filterText(3)}#endif
 float shadowShare(vec3 rel, int i) {
   return length(rel - fSpheres[i].xyz) / fSpheres[i].w;
 }
-#define fFarAt fSwell.zw
-#define fFarScale fLook.w
-#define fFarDepth fSkyAlong.w
 float farShadow(vec3 rel, vec3 normal) {
   if (fFarScale <= 0.0) return 1.0;
   vec3 sun = fTrueSun;

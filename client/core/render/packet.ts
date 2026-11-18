@@ -247,8 +247,9 @@ export const FRAME = {
   look: 148,
   /**
    * fFarAt, fFarScale and fFarDepth, in lanes the rest leave free (fSwell.zw, fLook.w, fSkyAlong.w): where the camera
-   * is on the far shadow's map (farshadow.ts) in its texels, x and z; its texels a metre, 0 while there is none to look
-   * up; and the camera's depth in it.
+   * is on the far shadow's map (farshadow.ts) in its texels, x and z; its texels a metre, negative while its map is not
+   * to be looked up, when the grid is still the sky's openness's (skyopen.ts), and 0 on a frame with neither; and the
+   * camera's depth in it.
    */
   farAt: 54,
   farScale: 151,
@@ -321,6 +322,7 @@ export interface TextureUpload {
 }
 
 const NO_ROWS = new Uint16Array(0);
+const NO_OPEN = new Uint8Array(0);
 
 export class FramePacket {
   readonly viewProj = new Float32Array(16);
@@ -363,6 +365,16 @@ export class FramePacket {
   farMap: Uint16Array = NO_ROWS;
   farRow = 0;
   farRows = 0;
+  /**
+   * The sky's openness over the far map's grid (skyopen.ts), on its own unit: its cells across and down, none while
+   * there is none for the grid the frame looks up on, in which case a renderer lets its texture go; and `openRows` of
+   * its rows from `openRow` to put on it, four bytes a cell. The scene owns the rows.
+   */
+  openWidth = 0;
+  openHeight = 0;
+  openMap: Uint8Array = NO_OPEN;
+  openRow = 0;
+  openRows = 0;
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
 
@@ -514,6 +526,8 @@ export class FramePacket {
     this.cascadesDrawn = 0;
     this.farMap = NO_ROWS;
     this.farRows = 0;
+    this.openMap = NO_OPEN;
+    this.openRows = this.openWidth = this.openHeight = 0;
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;
