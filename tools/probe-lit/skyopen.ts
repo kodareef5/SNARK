@@ -172,9 +172,12 @@ const VIEWS: { name: string; x: number; z: number; y?: number; up?: number; look
   { name: "foot", x: 6618, z: 4110, up: 1.7, look: [6618, 3, 4122], hours: [12] },
   { name: "street-150m", x: 6470, z: 4114, y: 150, look: [6640, 0, 4114], hours: [12] },
   { name: "shore", x: 2022, z: 2290, up: 1.7, look: [2150, 0, 2340], hours: [12] },
-  { name: "vehicles", x: 5970, z: 3270, up: 2.2, look: [5972, 1, 3318], hours: [12] },
+  { name: "vehicles", x: 6012, z: 3329, up: 1.8, look: [5942, 0.5, 3316], hours: [12] },
 ];
-/** A hurt road vehicle and a vessel the map parks by the bay, for the last view: kind, where, and the hurt stage its cue carries. */
+/**
+ * A hurt road vehicle and a vessel the map parks by the bay, for the last view, which stands 13 m from the car, near
+ * enough for its textures and its hurt layer, the boat 70 m beyond: kind, where, and the hurt stage its cue carries.
+ */
 const PARKED: [string, number, number, number][] = [
   ["core:fastback", 5999, 3325, 3],
   ["core:boat", 5942, 3316, 2],
@@ -206,7 +209,7 @@ async function mapShots(path: string): Promise<Shot[]> {
   for (const [kind, x, z, hurt] of PARKED) {
     const v = map.vehicles!.find((m) => m.kind === kind && Math.hypot(m.x - x, m.z - z) < 2)!;
     const n = remote.count++;
-    [remote.id[n], remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [900 + n, reg.index.get(kind)!, v.x, v.y ?? hf.heightAt(v.x, v.z), v.z, v.yaw, 1];
+    [remote.id[n], remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [900 + n, reg.index.get(kind)!, v.x, v.y ?? hf.heightAt(v.x, v.z), v.z, (v.yaw / YAW_UNITS) * 2 * Math.PI, 1];
     remote.colors.set([8, 7, 14, 6, 0, 0], n * 6);
     remote.cue[n] = hurt << CUE_HURT_SHIFT;
   }
