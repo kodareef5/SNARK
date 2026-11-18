@@ -1,3 +1,5 @@
+import { launchKey,readLaunch } from "../core/entry-state.ts";
+import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK } from "../../shared/net/protocol.ts";
 // Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
 
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -38,17 +40,28 @@ const bench = params.has("bench") ? new BenchRun() : null;
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? (await import("./device.ts")).devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
+const splash=document.querySelector<HTMLElement>("#boot-splash");
+const loadingLine=document.querySelector<HTMLElement>("#boot-line");
+if(selfcheck || bench || device || params.has("look") || params.has("trip"))splash?.remove();
 /** The GPU's times of a frame where nothing times it. */
 const UNTIMED: readonly number[][] = [];
 /** A survivor arriving from another server of the cluster, with its ticket (client/core/travel.ts). */
 const arrival = arrivalOf(location.hash);
+const entryKey=launchKey(location.pathname);
+let launch=null as ReturnType<typeof readLaunch>;
+try { if(!arrival && location.pathname.endsWith("/play.html")) launch=readLaunch(sessionStorage.getItem(entryKey)); } catch {}
 
+
+if(launch && params.get("name")!==launch.name)launch=null;
+if(launch?.intent==="create"){
+  const back=document.querySelector<HTMLAnchorElement>("#entry-back");if(back){back.href="./?screen=create";back.textContent="Return to character creation";}
+}
 async function boot(): Promise<void> {
   // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
   // The server names its map's head. Its landmarks' definitions and overviews come first, then the ground round the body
   // once the welcome says where that is, and the rest while the world is drawn (client/core/mapload.ts).
   // Until the first frame the page's one line says what it waits for when a part has failed (client/core/mapload.ts).
-  const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, { say: (line) => (root.textContent = line || "loading"), wait: (ms) => new Promise((go) => setTimeout(go, ms)), pause: nextTask(new MessageChannel()) }));
+  const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, { say: (line) => {root.textContent=line || "Preparing world…";if(loadingLine)loadingLine.textContent=root.textContent;}, wait: (ms) => new Promise((go) => setTimeout(go, ms)), pause: nextTask(new MessageChannel()) }));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
   // The socket opens once the overviews are in, so its handshake runs while the landmarks are read. The server waits 5 s for
   // a hello, and a socket it gave up on is opened again.
@@ -72,10 +85,11 @@ async function boot(): Promise<void> {
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
   const socket = await early;
   const session = new ClientSession(socket?.open ? socket : connect(socketAddress(location, "ws")), {
-    ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, arrival?.name ?? params.get("name"), arrival !== null),
+    ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, arrival?.name ?? launch?.name ?? params.get("name"), arrival !== null),
     ...(arrival ? { ticket: arrival.ticket } : {}),
     spectate: params.has("spectate"),
-    password: params.get("password") ?? "",
+    password: launch?.password ?? params.get("password") ?? "",
+    ...(launch ? {intent:launch.intent,createRequest:launch.request?Uint8Array.from(launch.request.match(/../g)!,hex=>parseInt(hex,16)):undefined} : {}),
     registry: reg,
     clipHash: manifest.clipHash,
     // The self-check, the bench, the device probe and ?quick skip the creator.
@@ -85,8 +99,18 @@ async function boot(): Promise<void> {
     cityMaker: new WorkerCityMaker(),
     ...(land ? { landmarks: land.landmarks } : {}),
   });
+  let createSeq=0, createFailed=false;
+  if(launch){
+    const chosen=launch;
+    void session.welcomed.then(()=>{
+      if(session.state==="closed")return;
+      if(chosen.intent==="create" && session.sessionState===SESSION_CREATING)createSeq=session.create(Uint8Array.from(chosen.look!),chosen.spawn);
+    });
+  }
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
+  const previous=session.onResult;
+  session.onResult=(seq,result)=>{previous?.(seq,result);if(createSeq && seq===createSeq && result!==RESULT_OK)createFailed=true;};
   if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
   void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));
   session.prediction.enabled = selfcheck;
@@ -139,6 +163,14 @@ async function boot(): Promise<void> {
   const drivingCheck = new ActivitySelfcheck(params);
   const drive = drivingCheck.vehicle?.data;
 
+  function showEntryProblem(){
+    splash?.remove();
+    root.replaceChildren();
+    root.textContent = createFailed ? "This spawn is unavailable. Choose another starting area."
+      : session.closeReason === REJECT_PASSWORD ? "Incorrect server password."
+      : session.closeReason === REJECT_NAME ? "This survivor is unavailable." : "Disconnected from world.";
+    document.querySelector<HTMLElement>("#entry-back")!.hidden=false;
+  }
   let restored = 0;
   if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress.frames, still: progress.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck.dinosaur?.data }) });
   canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
@@ -154,6 +186,11 @@ async function boot(): Promise<void> {
 
   let savedRevision = app.ui.settings.revision, savedAt = 0;
   const frame = (now: number): void => {
+    if(launch && (session.state==="closed" || createFailed)){showEntryProblem();return;}
+    if(launch && session.state==="active" && session.sessionState!==SESSION_CREATING){
+      try {sessionStorage.setItem(entryKey,JSON.stringify({intent:"resume",password:launch.password,name:launch.name}));localStorage.setItem("snark.name",launch.name);localStorage.setItem("snark.played."+new URL("./",location.href).href,JSON.stringify({name:launch.name,time:Date.now()}));} catch {}
+      launch=null;
+    }
     requestAnimationFrame(frame);
     const cssWidth = canvas.clientWidth;
     const cssHeight = canvas.clientHeight;
@@ -172,7 +209,7 @@ async function boot(): Promise<void> {
       save();
     }
     view.apply(app.ui.frame, cssHeight);
-    if (!packet) return;
+    if (!packet) {if(session.state==="closed" && splash?.isConnected)splash.remove();return;}
     const built = performance.now();
     // The tier says how many pixels to draw for one CSS pixel: the screen's own at most, or on ultra more (canvasRatio).
     const ratio = app.scene ? canvasRatio(app.scene.assets.tier, devicePixelRatio, cssWidth, cssHeight) : devicePixelRatio;
@@ -184,6 +221,7 @@ async function boot(): Promise<void> {
     }
     if (packet.lit) surfaces?.start();
     renderer.draw(packet);
+    if(splash?.isConnected)splash.remove();
     if (renderer.failed.length + renderer.failedTextures.length > 0) {
       for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
@@ -220,7 +258,9 @@ async function boot(): Promise<void> {
   };
   // The first frame waits for all the map's ground (`whole`), so none of it is fetched while the game is played. From then
   // on the console says when the map comes slowly, and the statics are handed over once every part has come.
-  await session.welcomed.then(() => loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arrived: (statics) => session.staticsArrived(statics), whole: true }));
+  await session.welcomed;
+  if(launch && session.state==="closed"){showEntryProblem();return;}
+  await loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arrived: (statics) => session.staticsArrived(statics), whole: true });
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   requestAnimationFrame(frame);
@@ -228,7 +268,9 @@ async function boot(): Promise<void> {
 
 (device ? device.before().then((go) => (go ? boot() : undefined)) : boot()).catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
+  splash?.remove();
   root.textContent = message;
+  document.querySelector<HTMLElement>("#entry-back")!.hidden=false;
   device?.fail(message);
   if (selfcheck) void fetch("__selfcheck", { method: "POST", body: JSON.stringify({ ok: false, error: message }) });
 });

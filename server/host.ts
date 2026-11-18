@@ -1,3 +1,4 @@
+import { CREATE_REQUEST,ownsSurvivor } from "./survivor-access.ts";
 import { ZONE_TORSO } from "../shared/anim/human.ts";
 import { IMPALE_SLOT } from "../shared/sim/seats.ts";
 import { CreatureTraits, inventoryEffectiveWeight } from "./creature-traits.ts";
@@ -155,14 +156,8 @@ export interface HostOptions {
 /** Ticks between console lines accepted from one session. */
 const TEXT_INTERVAL = 6;
 
-function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
-  return diff === 0;
-}
-
 export interface Host {
+  survivorRecord(name: string): EntityRecord | undefined;
   readonly world: ServerWorld;
   /**
    * The map file the world stands on, for clients to fetch: HostOptions.map's bytes, or the proving ground's. Null for a world
@@ -954,14 +949,20 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
 
   // A name belongs to the first device key that takes a body under it.
+  game.sameCreation=(name,key,request)=>{
+    const rec=recordOf(name), prior=rec?.extra.get(CREATE_REQUEST);
+    return !!rec && !!prior && ownsSurvivor(rec,key) && prior.length===request.length && request.every((b,i)=>prior[i]===b);
+  };
+  game.owns = (name, key) => { const rec = recordOf(name); return !!rec && ownsSurvivor(rec, key); };
   game.authorize = (name, key) => {
     // Nobody joins a world that has not saved for a minute.
     if (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS) return false;
     const rec = recordOf(name);
-    return !rec || !rec.keyHash || sameBytes(rec.keyHash, hashKey(key));
+    return !rec || !rec.keyHash || ownsSurvivor(rec,key);
   };
   if (cluster) {
     game.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
+    game.nameAway = name => cluster.away.has(name);
     game.away = (name, key) => cluster.awayCheck(name, key);
   }
   // A survivor that came from another server and has not risen joins as one that died does: with no body, choosing where.
@@ -975,6 +976,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const first = !rec;
     if (!rec) {
       rec = records.create(survivor, c.name);
+      if(c.createRequest)rec.extra.set(CREATE_REQUEST,c.createRequest.slice());
       if (persistence) persistence.bindSurvivor(c.name, rec.pid);
       else names.set(c.name, rec.pid);
       made.add(rec.pid);
@@ -1390,6 +1392,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     beds,
     cluster,
     settled,
+    survivorRecord: recordOf,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
       const row = rowOf(name);

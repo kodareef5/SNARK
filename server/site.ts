@@ -113,10 +113,12 @@ function linkLine(links: SiteLinks): string {
  * The start screen: every world running, lowest world first, each a link to its page with how many play there. The page
  * fetches itself every few seconds and puts the new list in place of the old, so the counts stay current while it is open.
  */
-export function startPage(worlds: readonly SiteWorld[], links: SiteLinks): string {
+export function startPage(worlds: readonly SiteWorld[], links: SiteLinks, entry?: { world: boolean; directory: string }): string {
   const list = worlds.length === 0 ? `<ul id="worlds"><li class="none">No world is running.</li></ul>` : `<ul id="worlds">${worlds.map(worldLine).join("")}</ul>`;
   const refresh = `<script>setInterval(()=>fetch(location.href,{cache:"no-store"}).then(r=>r.ok?r.text():"").then(t=>{const n=t&&new DOMParser().parseFromString(t,"text/html").getElementById("worlds");if(n)document.getElementById("worlds").replaceWith(n)}).catch(()=>{}),5000)</script>`;
-  return page("SNARK", `<h1>SNARK</h1><p class="sub">Miami Devolved</p><h2>Choose a world</h2>${list}${linkLine(links)}`, refresh);
+  const fallback = `<h1>SNARK</h1><p class="sub">Miami Devolved</p><h2>Choose a world</h2>${list}${linkLine(links)}`;
+  if (!entry) return page("SNARK",fallback,refresh);
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#102329"><title>SNARK: Miami Devolved</title><link rel="stylesheet" href="entry.css"><link rel="preload" as="image" href="title/miami-flight.webp"></head><body data-world="${entry.world}" data-directory="${esc(entry.directory)}"><div id="scenery" aria-hidden="true"></div><div class="shade"></div><header><a class="brand" href="./" aria-label="SNARK Miami Devolved title"><b>SNARK</b><small>Miami Devolved</small></a><div id="world-label"></div></header><main id="entry-root"><div class="opening"><b>SNARK</b><small>Miami Devolved</small><button type="button" class="skip">Skip intro</button></div></main><footer>${linkLine(links)}<span id="loading" role="status"></span><button id="motion" hidden></button></footer><noscript>${fallback}</noscript><script type="module" src="entry.js"></script></body></html>`;
 }
 
 /** Where RepositoryUrl goes until the operator names the code's home. */

@@ -29,6 +29,7 @@ export interface Announcement {
   url: string;
   players: number;
   max: number;
+  password?:boolean;
   /** The content hash of what it runs, as written (Registry.coreHash). A survivor carries only what both servers know. */
   content: number;
   /** It takes survivors from other servers: neither PreventDownloadSurvivors nor noTributeDownloads is set. */

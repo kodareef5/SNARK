@@ -237,6 +237,9 @@ export const HELLO_LOOK = 2;
 export const HELLO_TICKET = 4;
 /** Protocol 21. The client holds the map's statics (shared/world/mapfile.ts) and takes a chunk's from them, all but the slots CHUNK sends. */
 export const HELLO_STATICS = 8;
+/** Explicit title actions distinguish making a new survivor from resuming an existing one. */
+export const HELLO_NEW = 16;
+export const HELLO_RESUME = 32;
 export const KEY_BYTES = 16;
 /** A transfer's id (16 bytes), then the secret that lets one browser take it (16 bytes). */
 export const TICKET_BYTES = 32;
@@ -698,7 +701,7 @@ export function readBody(r: BitReader, b: Body): void {
 }
 
 /** `key` must be KEY_BYTES long, and a `ticket` TICKET_BYTES. */
-export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = "", ticket: Uint8Array | null = null): void {
+export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = "", ticket: Uint8Array | null = null, createRequest?: Uint8Array): void {
   w.bits(C_HELLO, 4);
   w.u16(version);
   w.u32(contentHash);
@@ -710,6 +713,7 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
   if (ticket) for (let i = 0; i < TICKET_BYTES; i++) w.u8(ticket[i] ?? 0);
   w.string(password);
+  if ((flags & HELLO_NEW) && createRequest?.length===KEY_BYTES) for(const b of createRequest)w.u8(b);
 }
 
 /** A connection's commands are numbered from 1 without gaps. After 65,535 comes 1, since 0 names no command. */

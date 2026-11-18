@@ -987,6 +987,7 @@ export class App {
     }
 
     this.travel(nowMs);
+    if (this.ui.leftWorld) { this.ui.leftWorld=false; this.page?.go("./?screen=roster"); }
     if (this.ui.reconnectRequested) { this.ui.reconnectRequested = false; this.page?.reload?.(); }
     if (session.state === "closed") {
       this.vehicleTelemetry.stop();
