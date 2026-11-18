@@ -9,8 +9,14 @@ import { agoText, spanText } from "./format.ts";
 export const SORTS = ["seen", "name", "tribe", "level", "played", "deaths"] as const;
 export type SortKey = (typeof SORTS)[number];
 
+/** A row that can be searched: a survivor's, now or at the playhead. */
+interface Named {
+  name: string;
+  tribe: string;
+}
+
 /** How well a row answers a search: 3 a name that starts with it, 2 a word of the name that does, 1 a name or tribe holding it, else 0. */
-function match(r: SurvivorRow, words: readonly string[]): number {
+function match(r: Named, words: readonly string[]): number {
   const name = r.name.toLowerCase();
   const tribe = r.tribe.toLowerCase();
   if (!words.every((w) => name.includes(w) || tribe.includes(w))) return 0;
@@ -20,7 +26,7 @@ function match(r: SurvivorRow, words: readonly string[]): number {
 }
 
 /** The rows a search finds, best first, each order kept among equals; every row for a blank search. */
-export function findSurvivors(rows: readonly SurvivorRow[], query: string): SurvivorRow[] {
+export function findSurvivors<T extends Named>(rows: readonly T[], query: string): T[] {
   const words = query.toLowerCase().split(/\s+/).filter((w) => w !== "");
   if (words.length === 0) return [...rows];
   return rows.map((r) => ({ r, m: match(r, words) })).filter((x) => x.m > 0).sort((a, b) => b.m - a.m).map((x) => x.r);

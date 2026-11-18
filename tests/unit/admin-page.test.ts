@@ -192,6 +192,7 @@ function stats(p50: number, more: { late?: number; dropped?: number; perSecond?:
     bodies: { count: more.bodies ?? 1000, max: 20000, reserve: 70, refused: more.refused ?? 0, groups: {}, kinds: [] },
     memory: { rss: 5e8, heapUsed: 2e8, heapTotal: 3e8 },
     save: { file: "world.db", bytes: 1e8, commits: 50000, failing: more.failing ? { seconds: 75, tries: 9, code: "SQLITE_FULL", error: "database or disk is full" } : null, checkpoint: { ms: 4, pages: 0 }, backups: [] },
+    log: { on: true, why: "", from: 1e12 - 86_400_000, to: 1e12, fromTick: 0, toTick: 9000, bytes: 1e7, cap: 1 << 30, segments: 3 },
     settings: [],
     modules: [],
   };

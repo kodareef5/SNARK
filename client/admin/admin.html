@@ -154,6 +154,36 @@
       .barline { height: 4px; background: rgba(168, 204, 234, 0.14); margin-top: 3px; }
       .barline i { display: block; height: 100%; background: var(--ice); }
 
+      #when b.past { color: var(--warn); }
+      .chip.on { border-color: var(--edge-hi); background: rgba(143, 217, 196, 0.16); color: var(--well); }
+      select.chip { height: 34px; max-width: 100%; }
+      .goto { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--dim); }
+      .goto input { height: 32px; padding: 0 6px; background: rgba(8, 16, 28, 0.7); border: 1px solid var(--edge); color-scheme: dark; }
+      .note { margin: 0; padding: 7px 14px; font-size: 14px; color: var(--dim); }
+      .strip { position: relative; padding: 0 10px 10px; }
+      .strip canvas { width: 100%; height: 120px; display: block; touch-action: none; cursor: ew-resize; }
+      #timeline.empty .strip, #timeline.empty .controls > :not(h2) { display: none; }
+      .tip { position: absolute; z-index: 2; max-width: 260px; padding: 6px 9px; font-size: 13px; background: rgba(10, 20, 34, 0.94); border: 1px solid var(--edge); pointer-events: none; }
+      .logs { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+      .logs section { padding-bottom: 10px; max-height: 640px; overflow: auto; }
+      .logs h2 { font-size: 17px; padding: 10px 14px 4px; }
+      .logs h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); margin: 12px 14px 4px; }
+      .logs h3 .dim { text-transform: none; letter-spacing: 0; }
+      .pad { margin: 0; padding: 2px 14px; }
+      .bad { color: var(--bad); font-weight: 500; }
+      code { font-size: 13px; color: var(--ice); }
+      time { color: var(--dim); margin-right: 4px; }
+      ul.held { columns: 2 150px; margin: 0; padding: 0 14px; list-style: none; font-size: 14px; }
+      ul.held li { break-inside: avoid; padding: 1px 0; }
+      ol.goes { margin: 0; padding: 0 6px; list-style: none; font-size: 14px; }
+      ol.goes li { padding: 3px 8px; cursor: pointer; }
+      ol.goes li:hover { background: rgba(120, 170, 220, 0.08); }
+      ol.goes li.near { box-shadow: inset 3px 0 0 var(--warn); background: rgba(236, 176, 72, 0.08); }
+      .figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 12px; padding: 6px 14px; }
+      .figs b { display: block; font-size: 20px; font-weight: 500; }
+      .players tr, #holders tr[data-pid] { cursor: pointer; }
+      .logs table { margin: 0 6px; width: calc(100% - 12px); }
+
       @media (max-width: 1080px) {
         .main { grid-template-columns: 1fr; }
         #people { max-height: 560px; min-height: 0; }
@@ -169,6 +199,8 @@
         .wide { display: none; }
         header nav { margin-left: 0; }
         .charts { grid-template-columns: 1fr; }
+        .figs { grid-template-columns: 1fr 1fr; }
+        .goto { width: 100%; }
       }
     </style>
   </head>
@@ -218,20 +250,35 @@
           <div class="scroll">
             <table>
               <thead>
-                <tr id="heads">
-                  <th data-sort="name">Name</th>
-                  <th data-sort="tribe" class="wide">Tribe</th>
-                  <th data-sort="level" class="num">Lvl</th>
-                  <th data-sort="seen">Seen</th>
-                  <th data-sort="played" class="num wide">Played</th>
-                  <th class="wide">Where</th>
-                  <th data-sort="deaths" class="wide">Deaths</th>
-                </tr>
+                <tr id="heads"></tr>
               </thead>
               <tbody id="rows"></tbody>
             </table>
             <div class="empty" id="none" hidden></div>
           </div>
+        </section>
+      </div>
+
+      <section id="timeline" class="glass">
+        <div class="bar controls">
+          <h2>Timeline</h2>
+          <button id="live" class="chip on" title="Back to now">Live</button>
+          <button id="play" class="chip" aria-label="Play or pause">&#9654;</button>
+          <select id="speed" class="chip" aria-label="Speed"></select>
+          <div class="spans" id="presets"></div>
+          <label class="goto">Go to <input type="datetime-local" id="goto" step="1" /></label>
+        </div>
+        <p id="lognote" class="note"></p>
+        <div id="tl" class="strip"><canvas id="tlcanvas"></canvas><div id="tltip" class="tip" hidden></div></div>
+      </section>
+
+      <div class="logs">
+        <section id="chosenlog" class="glass"></section>
+        <section id="figures" class="glass"></section>
+        <section id="itemsbox" class="glass">
+          <h2>Who had what</h2>
+          <div class="pad"><select id="itempick" class="chip" aria-label="An item held in the window"></select></div>
+          <div class="scroll"><table id="holders"></table></div>
         </section>
       </div>
 

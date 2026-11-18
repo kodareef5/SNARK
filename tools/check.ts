@@ -42,8 +42,11 @@ const SOUND_MAX_LINES = 300;
 const ASSETS_MAX_LINES = 500;
 /** The wiki's script: sounds, the map, search. Its decisions are in client/core/wiki. */
 const WIKI_MAX_LINES = 160;
-/** The admin page's script: polling, the map's canvas, the table and charts. Its decisions are in client/core/admin. */
-const ADMIN_MAX_LINES = 600;
+/**
+ * The admin page's script in its files: polling, the map's and the timeline's canvases, the tables, panels and charts.
+ * Its decisions are in client/core/admin. 600 held the live page; the timeline over the survivor log brought 330.
+ */
+const ADMIN_MAX_LINES = 1100;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {

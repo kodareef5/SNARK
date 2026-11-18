@@ -65,11 +65,11 @@ for (const n of [50, 200]) {
       now += 1000;
       const req = new Request(`http://localhost${path}`);
       let t0 = performance.now();
-      const res = pages.answer(req, "127.0.0.1", gate, new URL(req.url).pathname)!;
+      const res = (await pages.answer(req, "127.0.0.1", gate, new URL(req.url).pathname))!;
       fresh.push(performance.now() - t0);
       bytes = (await res.arrayBuffer()).byteLength;
       t0 = performance.now();
-      pages.answer(req, "127.0.0.1", gate, new URL(req.url).pathname);
+      await pages.answer(req, "127.0.0.1", gate, new URL(req.url).pathname);
       again.push(performance.now() - t0);
     }
     fresh.sort((a, b) => a - b);
