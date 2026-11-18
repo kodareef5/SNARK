@@ -4,6 +4,8 @@ import type { Def } from "../shared/content/defs.ts";
 // by `bun tools/mapworld/build.ts <name>` from assets/source/maps/<name>.
 export const MAPS: readonly Def[] = [
   { type: "map", id: "core:miami", label: "Miami", seaLevel: 0 },
+  // Miami widened from Bear Cut to Surfside: Miami's own city inside its square (tools/mapdata/widen.py).
+  { type: "map", id: "core:miami-coast", label: "Miami Coast", seaLevel: 0 },
   { type: "map", id: "core:tampa", label: "Tampa", seaLevel: 0 },
   { type: "map", id: "core:san-francisco", label: "San Francisco", seaLevel: 0 },
   // No sea in its frame: its ground stands 47 to 555 m over the sea, which is the map's zero.
