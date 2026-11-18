@@ -51,8 +51,10 @@ class Bytes {
     return at;
   }
 
-  join(): Uint8Array {
-    return Buffer.concat(this.parts);
+  /** The parts as one body, in order and not joined, each let go once sent: the page asks for them once. */
+  send(): Response {
+    const parts = this.parts.splice(0);
+    return new Response(new ReadableStream<Uint8Array>({ pull: (c) => (parts.length > 0 ? c.enqueue(parts.shift()!) : c.close()) }));
   }
 }
 
@@ -101,7 +103,8 @@ export class Shot {
   readonly width: number;
   readonly height: number;
   readonly ground: Heightfield;
-  readonly pack: Uint8Array;
+  /** Its pack's bytes, until the probe takes them to send the page once (tools/probe-lit.ts). */
+  pack: Uint8Array | null;
   private readonly out = new Bytes();
 
   constructor(key: string, width: number, height: number, ground: Heightfield, pack: Uint8Array) {
@@ -137,8 +140,9 @@ export class Shot {
     });
   }
 
-  bytes(): Uint8Array {
-    return this.out.join();
+  /** Its frames' bytes, sent once and then let go. */
+  send(): Response {
+    return this.out.send();
   }
 }
 
@@ -178,7 +182,13 @@ export class RawShot {
     return this.shape;
   }
 
-  bytes(): Uint8Array {
-    return this.out.join();
+  /** Whether the page times it (Readback `time`). */
+  get timed(): boolean {
+    return (this.shape as { repeat: number }).repeat > 0;
+  }
+
+  /** Its bytes, sent once and then let go. */
+  send(): Response {
+    return this.out.send();
   }
 }
