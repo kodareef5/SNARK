@@ -29,6 +29,9 @@ export function seedUrbanRoads(host: Host, completeExisting = false): number {
   return added;
 }
 
+/** The street cars park in front beside the patrol pair, in 4.5 m steps east of the spawn. */
+const STREET_BAYS: Readonly<Record<string, number>> = { "core:monster_truck": -1.5, "core:muscle_car": 1.5, "core:taxi": -2.5 };
+
 /** A pair of bays per road frame, facing the spawn. A persisted model keeps its bay identity after being driven away. */
 export function seedRoadFleet(host: Host): number {
   const { world, records } = host;
@@ -44,9 +47,9 @@ export function seedRoadFleet(host: Host): number {
     const definition = world.reg.vehicle[world.reg.index.get(model.id)!]!;
     // Keep the original six bays stable in existing saves. The patrol pair park in front. The tanker, longer than a car,
     // keeps the bay east of the six where it was first parked.
-    const tanker = model.id === "core:tanker";
-    const front = model.id === "core:patrol_sedan" || model.id === "core:patrol_jeep";
-    const x = world.spawn.x + (tanker ? 3.5 : front ? i - 6.5 : i - 2.5) * 4.5;
+    const tanker = model.id === "core:tanker", street = STREET_BAYS[model.id];
+    const front = model.id === "core:patrol_sedan" || model.id === "core:patrol_jeep" || street !== undefined;
+    const x = world.spawn.x + (tanker ? 3.5 : street ?? (front ? i - 6.5 : i - 2.5)) * 4.5;
     const z = world.spawn.z + (front ? 3.1 : 9), y = world.hf.heightAt(x, z), yaw = Math.PI;
     const e = vehiclePlaceFree(world, x, y, z, yaw, definition) ? host.spawnVehicle(model.id, x, z, 0, yaw, { origin }) : -1;
     if (e < 0)

@@ -138,6 +138,38 @@ const isWalk = (p: StaticPiece): boolean => /^core:zruin_zwalk8g?_/.test(p.kind)
 /** A way kept clear besides the site's reserved routes: its points and its width. */
 export type Reserved = Site["growthRoutes"][number];
 
+/**
+ * Whether a box meets a reserved route (a way to a door, a room's walk, a stair, a car's door room): the route's stretch,
+ * grown by its half width and `margin`, crosses the box's footprint, the box within half a metre below the route to 2.5 m
+ * above it. Routes in 64 m bins, as street-cars.ts keeps a parked car off them.
+ */
+export function routeCheck(reserved: readonly Reserved[], margin: number): (b: Box) => boolean {
+  const routes = reserved.flatMap((r) => r.points.slice(1).map((b, i) => ({ a: r.points[i]!, b, width: r.width })));
+  const routeBins = new Map<number, typeof routes>();
+  for (const r of routes) for (let z = Math.floor((Math.min(r.a.z, r.b.z) - r.width) / 64); z <= Math.floor((Math.max(r.a.z, r.b.z) + r.width) / 64); z++) for (let x = Math.floor((Math.min(r.a.x, r.b.x) - r.width) / 64); x <= Math.floor((Math.max(r.a.x, r.b.x) + r.width) / 64); x++) {
+    const k = binKey(x, z); if (!routeBins.has(k)) routeBins.set(k, []); routeBins.get(k)!.push(r);
+  }
+  return (b: Box): boolean => {
+    const reach = Math.hypot(b.size[0], b.size[2]) / 2 + 8; const near = new Set<(typeof routes)[number]>();
+    for (let bz = Math.floor((b.z - reach) / 64); bz <= Math.floor((b.z + reach) / 64); bz++) for (let bx = Math.floor((b.x - reach) / 64); bx <= Math.floor((b.x + reach) / 64); bx++) for (const r of routeBins.get(binKey(bx, bz)) ?? []) near.add(r);
+    const a = b.yaw / DEG; const c = Math.cos(a); const s = Math.sin(a);
+    for (const r of near) {
+      if (Math.min(r.a.y, r.b.y) - 0.5 > b.y + b.size[1] / 2 || Math.max(r.a.y, r.b.y) + 2.5 < b.y - b.size[1] / 2) continue;
+      // The route's stretch in the box's frame, the box grown by the route's half width: does the stretch cross it?
+      const local = (p: { x: number; z: number }): [number, number] => [(p.x - b.x) * c - (p.z - b.z) * s, (p.x - b.x) * s + (p.z - b.z) * c];
+      const p = local(r.a); const q = local(r.b); const half = [b.size[0] / 2 + r.width / 2 + margin, b.size[2] / 2 + r.width / 2 + margin];
+      let enter = 0; let leave = 1; let misses = false;
+      for (let axis = 0; axis < 2 && !misses; axis++) {
+        const delta = q[axis]! - p[axis]!;
+        if (Math.abs(delta) < 1e-8) misses = Math.abs(p[axis]!) >= half[axis]!;
+        else { const t0 = (-half[axis]! - p[axis]!) / delta; const t1 = (half[axis]! - p[axis]!) / delta; enter = Math.max(enter, Math.min(t0, t1)); leave = Math.min(leave, Math.max(t0, t1)); }
+      }
+      if (!misses && enter <= leave) return true;
+    }
+    return false;
+  };
+}
+
 export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules: Furniture, maxChunk: number, uses: ReadonlyMap<number, string> = new Map(), reserved: readonly Reserved[] = []): { pieces: StaticPiece[]; summary: FurnitureSummary } {
   const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid; const chunksX = ground.grid.sizeX / 64;
   const sample = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
@@ -160,31 +192,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     }
     return false;
   };
-  // Reserved routes in 64 m bins, as street-cars.ts keeps a parked car off them.
-  const routes = [...site.growthRoutes, ...reserved].flatMap((r) => r.points.slice(1).map((b, i) => ({ a: r.points[i]!, b, width: r.width })));
-  const routeBins = new Map<number, typeof routes>();
-  for (const r of routes) for (let z = Math.floor((Math.min(r.a.z, r.b.z) - r.width) / 64); z <= Math.floor((Math.max(r.a.z, r.b.z) + r.width) / 64); z++) for (let x = Math.floor((Math.min(r.a.x, r.b.x) - r.width) / 64); x <= Math.floor((Math.max(r.a.x, r.b.x) + r.width) / 64); x++) {
-    const k = binKey(x, z); if (!routeBins.has(k)) routeBins.set(k, []); routeBins.get(k)!.push(r);
-  }
-  const onRoute = (b: Box): boolean => {
-    const reach = Math.hypot(b.size[0], b.size[2]) / 2 + 8; const near = new Set<(typeof routes)[number]>();
-    for (let bz = Math.floor((b.z - reach) / 64); bz <= Math.floor((b.z + reach) / 64); bz++) for (let bx = Math.floor((b.x - reach) / 64); bx <= Math.floor((b.x + reach) / 64); bx++) for (const r of routeBins.get(binKey(bx, bz)) ?? []) near.add(r);
-    const a = b.yaw / DEG; const c = Math.cos(a); const s = Math.sin(a);
-    for (const r of near) {
-      if (Math.min(r.a.y, r.b.y) - 0.5 > b.y + b.size[1] / 2 || Math.max(r.a.y, r.b.y) + 2.5 < b.y - b.size[1] / 2) continue;
-      // The route's stretch in the box's frame, the box grown by the route's half width: does the stretch cross it?
-      const local = (p: { x: number; z: number }): [number, number] => [(p.x - b.x) * c - (p.z - b.z) * s, (p.x - b.x) * s + (p.z - b.z) * c];
-      const p = local(r.a); const q = local(r.b); const half = [b.size[0] / 2 + r.width / 2 + clear.route, b.size[2] / 2 + r.width / 2 + clear.route];
-      let enter = 0; let leave = 1; let misses = false;
-      for (let axis = 0; axis < 2 && !misses; axis++) {
-        const delta = q[axis]! - p[axis]!;
-        if (Math.abs(delta) < 1e-8) misses = Math.abs(p[axis]!) >= half[axis]!;
-        else { const t0 = (-half[axis]! - p[axis]!) / delta; const t1 = (half[axis]! - p[axis]!) / delta; enter = Math.max(enter, Math.min(t0, t1)); leave = Math.min(leave, Math.max(t0, t1)); }
-      }
-      if (!misses && enter <= leave) return true;
-    }
-    return false;
-  };
+  const onRoute = routeCheck([...site.growthRoutes, ...reserved], clear.route);
   const obstacles = obstacleIndex(placed);
   // The walks, which a piece stands on rather than keeps clear of: by 16 m bins, as boxes.
   const walkBins = new Map<number, Box[]>();

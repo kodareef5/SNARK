@@ -31,7 +31,7 @@ const tilted = (b: ShapeBox, degrees: number, pivot = 0, side = 0): HullDef => {
 };
 const round = (v: number): number => Math.round(v * 1000) / 1000;
 
-type Material = "core:mat_metal" | "core:mat_wood";
+type Material = "core:mat_metal" | "core:mat_wood" | "core:mat_stone";
 /** One piece: its mesh's name in the pack after "core:zzstreet_", its colour far off, its hit points and what harms it. */
 export interface StreetPiece {
   readonly name: string;
@@ -88,6 +88,19 @@ export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "deadend", color: YELLOW, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 3.05, -0.04, 0.04), box(-0.54, 0.54, 2.1, 3.18, 0.04, 0.06)] },
   // A sign's post whose plate is gone.
   { name: "post_bare", color: GALV, hp: 300, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.7, -0.04, 0.06)] },
+  // Roof plant, standing on a flat roof.
+  { name: "roof_ac", color: GALV, hp: 600, material: "core:mat_metal", boxes: [box(-0.5, 0.5, 0, 1.02, -0.42, 0.42)] },
+  // On its side.
+  { name: "roof_ac_tipped", color: GALV, hp: 500, material: "core:mat_metal", boxes: [box(-0.5, 0.5, 0, 0.84, -1.44, -0.42)] },
+  { name: "roof_rtu", color: GALV, hp: 1500, material: "core:mat_metal", boxes: [box(-1.75, 1.75, 0, 1.72, -0.95, 0.95)] },
+  { name: "roof_vent", color: RUST, hp: 300, material: "core:mat_metal", boxes: [box(-0.26, 0.26, 0, 0.95, -0.26, 0.26)] },
+  { name: "roof_duct", color: GALV, hp: 600, material: "core:mat_metal", boxes: [box(-2, 2, 0, 1, -0.3, 0.3)] },
+  { name: "roof_tank", color: WHITE, hp: 2500, material: "core:mat_metal", boxes: [box(-1.2, 1.2, 0, 1.7, -1.2, 1.2), box(-1.3, 1.3, 1.7, 5.2, -1.3, 1.3)] },
+  { name: "roof_solar", color: BLUE, hp: 400, material: "core:mat_metal", boxes: [box(-1.6, 1.6, 0, 0.72, -0.5, 0.5)] },
+  // One panel torn up and folded back over the rack.
+  { name: "roof_solar_broken", color: BLUE, hp: 300, material: "core:mat_metal", boxes: [box(-1.6, 1.6, 0, 0.72, -0.55, 0.5)] },
+  { name: "roof_bulkhead", color: WHITE, hp: 4000, material: "core:mat_stone", boxes: [box(-1.4, 1.4, 0, 2.85, -1.4, 1.4)] },
+  { name: "roof_dish", color: GALV, hp: 300, material: "core:mat_metal", boxes: [box(-0.45, 0.45, 0, 1.45, -0.45, 0.5)] },
   { name: "pole", color: WOOD, hp: 2500, material: "core:mat_wood", boxes: [POLE, CROSSARM, TRANSFORMER] },
   // Leaning 12 degrees away from the road.
   { name: "pole_leaning", color: WOOD, hp: 2500, material: "core:mat_wood", boxes: [box(-0.2, 0.2, 0, 0.3, -0.2, 0.2)], hulls: [tilted(POLE, -12), tilted(CROSSARM, -12), tilted(TRANSFORMER, -12)] },
@@ -128,3 +141,13 @@ const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
 }));
 export const STREET: readonly Def[] = [...SHAPES, ...STATICS];
+
+/**
+ * What a car knocks down (server/vehicle-trees.ts): a lamp or a wooden pole hit hard enough becomes its fallen form where it
+ * stood, for the joules its foot takes to give way, a trunk's account as the trees keep it (shared/sim/vehicle-tree.ts).
+ */
+export const STREET_TOPPLES: Readonly<Record<string, { into: string; work: number }>> = {
+  [streetKind("lamp")]: { into: streetKind("lamp_fallen"), work: 30000 },
+  [streetKind("lamp_leaning")]: { into: streetKind("lamp_fallen"), work: 15000 },
+  [streetKind("pole")]: { into: streetKind("pole_leaning"), work: 60000 },
+};
