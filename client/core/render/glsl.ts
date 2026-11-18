@@ -79,7 +79,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
   float painted = 0.0;
   if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
   float over = overGround(vRel);
-  float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0);
+  float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0);
 #ifdef WORLD_WEATHER
   if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) weathered(albedo, orm, vSurface, vOwn, vPlace, over, open, vRel, geometric, dx, dy);
 #endif
@@ -280,7 +280,7 @@ void main() {
       worldSharp = orm.y < ${f(WORLD_SHARP)};
     }
   }
-  orm.x *= skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0);
+  orm.x *= skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0);
   vec3 v = -normalize(vRel);
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);

@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { HudModel, headingOf, minimapImage, updateHud } from "../../client/core/hud.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
+import { FRAME } from "../../client/core/render/packet.ts";
+import { graded, linearToSrgb, srgbToLinear, tone } from "../../client/core/render/surface.ts";
 import { heldTo, probePasses, provingProbes } from "../../client/core/selfcheck.ts";
 import { MARKER_DEATH, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
@@ -139,11 +141,16 @@ test("on a lit tier the creature probe holds its colour to the facing nearest it
   [r.x[1], r.z[1], r.y[1]] = [PROBE_CREATURE.x, PROBE_CREATURE.z, view.hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z)];
   const pal = view.pack.palette;
   const dot = (a: readonly number[], b: readonly number[]): number => (a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!) / (Math.hypot(a[0]!, a[1]!, a[2]!) * Math.hypot(b[0]!, b[1]!, b[2]!));
-  // What a GPU read off the grazer at the probe server's hours, where the twin facing the camera says 0.9974 to 0.9999.
+  // What a GPU read off the grazer at the probe server's hours, where the twin facing the camera says 0.9974 to 0.9999,
+  // before medium took the grade; under the tone curve's knee, so each is shown again through the frame's grade.
   const gpu: Record<string, number[]> = { "7.5": [183, 154, 55], "9": [145, 132, 52], "12": [102, 97, 41] };
-  for (const [hour, got] of Object.entries(gpu)) {
+  for (const [hour, read] of Object.entries(gpu)) {
     view.scene.hour = Number(hour);
     const packet = view.scene.build(view.cam, r);
+    const lit = read.map((v, c) => srgbToLinear(v / 255) * packet.frame[FRAME.grade + c]!);
+    tone(lit, lit);
+    graded(lit, packet.frame);
+    const got = lit.map((v) => Math.round(255 * linearToSrgb(Math.min(Math.max(v, 0), 1))));
     const creature = provingProbes(view.cam, view.reg, pal, SKY_COLOR, view.hf, true, packet, { width: 320, height: 180, sample: null }).find((p) => p.name === "creature")!;
     expect(creature.facings!.length).toBeGreaterThan(32);
     expect(probePasses(creature, got[0]!, got[1]!, got[2]!)).toBe(true);

@@ -16,8 +16,8 @@ import { AIR, hazed } from "./atmosphere.ts";
 import { SEE_THROUGH_SPLIT } from "./glsl.ts";
 import { FRAME, SOURCE_MAP, SOURCE_WINDOW } from "./packet.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
-import { domeLight, trueSun } from "./sky.ts";
-import { LIGHT, linearToSrgb, skyOn, tone } from "./surface.ts";
+import { domeLight, shownSky, trueSun } from "./sky.ts";
+import { LIGHT, skyOn } from "./surface.ts";
 import { COARSE, type GroundSize } from "./terrain.ts";
 
 /** What water reflects head on, and how rough its surface is between the waves the pictures hold. */
@@ -333,7 +333,7 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
 
 /**
  * A sea pixel as the screen shows it, 0 to 255, over `below` (what is under it as shown, 0 to 255), `rel` metres from
- * the eye: the light hazed, exposed, toned and shown, then blended over `below` as the GPU blends it.
+ * the eye: the light hazed, exposed, toned, graded and shown, then blended over `below` as the GPU blends it.
  */
 export function seaShown(px: SeaPixel, rel: Vec, below: Vec, frame: Float32Array, table: Uint8Array): number[] {
   const s = [0, 0, 0];
@@ -341,9 +341,9 @@ export function seaShown(px: SeaPixel, rel: Vec, below: Vec, frame: Float32Array
   const air = [0, 0, 0];
   hazed(air, px.light, rel, frame, table, s);
   const e = frame[FRAME.exposure]!;
-  const toned = [0, 0, 0];
-  tone(toned, air.map((c) => c * e));
-  return toned.map((c, k) => 255 * linearToSrgb(Math.min(Math.max(c, 0), 1)) * px.cover + below[k]! * (1 - px.cover));
+  const shown = [0, 0, 0];
+  shownSky(air.map((c) => c * e), shown, frame);
+  return shown.map((c, k) => c * px.cover + below[k]! * (1 - px.cover));
 }
 
 const g = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));

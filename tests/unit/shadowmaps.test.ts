@@ -68,11 +68,12 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
       const relief = tier.relief && name !== "surface" ? "#define WORLD_RELIEF\n" : "";
       // A near static's walls are weathered where the finishes are read in full.
       const weather = name === "flat" || name === "seeThrough" ? `#define WORLD_WEATHER\n${tier.finishes > 1024 ? "" : tier.finishes === 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "";
-      // Its facades' parts and marks where it weathers, with rooms behind glass where the tier draws them (facade.ts).
+      // Its facades' parts and marks where it weathers, with rooms behind glass where the tier draws them (facade.ts), and
+      // a tier with contact defines its bodies' contact after (contact.ts).
       const facades = weather && FACADE_TIERS[tier.name] ? `#define FACADE\n${FACADE_TIERS[tier.name]!.reflect ? "#define FACADE_ROOMS\n" : ""}` : "";
-      expect(p.defines).toBe(`${relief}${weather}${facades}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n`);
+      expect(p.defines).toBe(`${relief}${weather}${facades}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n${tier.contact ? "#define CONTACT\n" : ""}`);
       expect(p.samplers.uShadow).toBe(UNIT.shadow);
-      expect(PROGRAMS[name]!(tier, "rgba", true).defines).toEndWith("#define SHADOW_HARD\n");
+      expect(PROGRAMS[name]!(tier, "rgba", true).defines).toContain(`${size}.0\n#define SHADOW_HARD\n`);
       // One cascade fewer, none, or shadows turned off: the lookup stops at the frame's cascades, and nothing is compiled again.
       for (const touch of [false, true]) {
         const top = forTouch(tier, touch);

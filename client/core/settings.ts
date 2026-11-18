@@ -1,11 +1,13 @@
 // Player settings change nothing on the server. The shell persists the small set of interface preferences.
 
 import { TICK_RATE } from "../../shared/coords.ts";
-import { DEFAULT_TIER, offeredTiers, type Tier } from "./assets/tiers.ts";
+import { DEFAULT_TIER, offeredTiers, startingTier, type Start, type Tier } from "./assets/tiers.ts";
 
 export class Settings {
   /** How much detail is drawn (client/core/assets/tiers.ts). */
   tier: Tier["name"] = DEFAULT_TIER;
+  /** The player chose the tier in the settings, or the game chose it short of the card's memory: only then is it saved, and the device's start leaves it. */
+  chosen = false;
   /**
    * "Steady frame: automatic": under the tier chosen, the game may draw coarser levels, thinner crowns, the far shadows
    * every other frame, far trees less far, fewer pixels, and at the last no sun shadows, to keep 60 frames a second
@@ -48,8 +50,13 @@ export class Settings {
 
   changed(): void { this.revision++; }
 
+  /** The tier the device starts on (tiers.ts startingTier), where none was chosen. */
+  start(d: Omit<Start, "touchFirst">): void {
+    if (!this.chosen) this.tier = startingTier({ ...d, touchFirst: this.touchFirst });
+  }
+
   interfacePreferences(): string {
-    const saved: Record<string, unknown> = { version: 1, tier: this.tier, snapshotBytes: this.snapshotBytes };
+    const saved: Record<string, unknown> = { version: 2, ...(this.chosen ? { tier: this.tier } : {}), snapshotBytes: this.snapshotBytes };
     for (const key of SAVED_FLAGS) saved[key] = this[key];
     for (const [key] of SAVED_NUMBERS) saved[key] = this[key];
     return JSON.stringify(saved);
@@ -58,12 +65,12 @@ export class Settings {
   restoreInterface(text: string | null): void {
     try {
       const saved = JSON.parse(text ?? "{}");
-      if (!saved || Array.isArray(saved) || saved.version !== 1) return;
+      if (!saved || Array.isArray(saved) || saved.version !== 2) return;
       for (const key of SAVED_FLAGS) if (typeof saved[key] === "boolean") this[key] = saved[key];
       for (const [key, lo, hi] of SAVED_NUMBERS) if (Number.isFinite(saved[key])) this[key] = Math.max(lo, Math.min(hi, saved[key]));
       this.minimapZoom = Math.round(this.minimapZoom);
       this.padGlyphs = Math.round(this.padGlyphs);
-      if (["lowpoly", "medium", "high", "ultra"].includes(saved.tier)) this.tier = saved.tier;
+      if (["lowpoly", "medium", "high", "ultra"].includes(saved.tier)) [this.tier, this.chosen] = [saved.tier, true];
       if (SNAPSHOT_BYTES.includes(saved.snapshotBytes)) this.snapshotBytes = saved.snapshotBytes;
     } catch {}
   }
@@ -115,6 +122,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
       // A tier not offered here is above those that are.
       const [list, at] = [offeredTiers(s.touchFirst), offeredTiers(s.touchFirst).findIndex((t) => t.name === s.tier)];
       s.tier = (at < 0 ? list.at(-1)! : list[clamp(at + by, 0, list.length - 1)]!).name;
+      s.chosen = true;
     } },
   { label: "Steady frame", value: (s) => (s.steady ? "automatic" : "off"), step: (s) => void (s.steady = !s.steady) },
   { label: "Connection", value: (s) => `${Math.round((s.snapshotBytes * TICK_RATE) / 1000)} KB/s`, step: (s, by) => void (s.snapshotBytes = SNAPSHOT_BYTES[clamp(SNAPSHOT_BYTES.indexOf(s.snapshotBytes) + by, 0, SNAPSHOT_BYTES.length - 1)]!) },

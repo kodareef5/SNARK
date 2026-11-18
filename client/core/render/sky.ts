@@ -11,7 +11,7 @@
 import { FRAME, FRAME_FLOATS } from "./packet.ts";
 import { AMBIENT, DIFFUSE, NIGHT_LIGHT } from "./shading.ts";
 import { SKY_LIGHTS, SKY_TABLE } from "./skytable.ts";
-import { linearToSrgb, lit, srgbToLinear, tone } from "./surface.ts";
+import { graded, linearToSrgb, lit, srgbToLinear, tone } from "./surface.ts";
 
 /** How far the sun's path leans toward +Z: its noon height is atan(1 / 0.43), low poly's, 66.7 degrees. */
 const TILT = Math.atan(0.43);
@@ -338,9 +338,14 @@ function notGiven(): never {
   throw new Error("the sky's table was asked for before the page gave it");
 }
 
-/** Light after exposure as the screen shows it, 0 to 255: the tone curve, then sRGB. */
-export function shownSky(c: Vec, out: Float32Array | Float64Array | number[]): void {
-  tone(out, c);
+/**
+ * Light after exposure as the screen shows it, 0 to 255: the tone curve, then sRGB; where `frame` is given and graded
+ * (post.ts), the grade's gain before the curve and its saturation and gamma after, as a lit shader shows it.
+ */
+export function shownSky(c: Vec, out: Float32Array | Float64Array | number[], frame?: Float32Array): void {
+  const grading = frame !== undefined && frame[FRAME.gamma]! > 0;
+  tone(out, grading ? [0, 1, 2].map((k) => c[k]! * frame[FRAME.grade + k]!) : c);
+  if (grading) graded(out, frame);
   for (let k = 0; k < 3; k++) out[k] = 255 * linearToSrgb(Math.max(0, Math.min(1, out[k]!)));
 }
 

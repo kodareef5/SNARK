@@ -53,6 +53,9 @@ import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
+import { contactFrame } from "./contact.ts";
+import { lightBytes, lightSamples, postFrame } from "./post.ts";
+import { skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
@@ -340,6 +343,12 @@ export class Scene {
   hour = 12;
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
   viewHeight = 720;
+  /** The canvas in its own pixels, which the light target takes and bloom's levels are counted from, and whether it draws more than the screen's own (post.ts). */
+  canvasWidth = 1280;
+  canvasHeight = 720;
+  supersampled = false;
+  /** Whether this frame is drawn with the page's other effects off (FramePacket.alternate). */
+  alternate = false;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
   now = 0;
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
@@ -489,6 +498,13 @@ export class Scene {
   /** Per body this frame: 1 for one astride the seat that steers its creature, 2 for a passenger astride, else 0. */
   private readonly seated = new Uint8Array(MAX_VIEW);
   private readonly saddleSeats: Registry["saddleSeats"];
+  /** A kind's mesh's half length along its way, 0 until its bounds have come: what contact takes a long body's length from. */
+  private readonly halfLength = (kind: number): number => {
+    const m = this.meshOfKind[kind];
+    return m === undefined || m === HIDDEN ? 0 : (this.assets.manifest.meshes[m]?.half[2] ?? 0);
+  };
+  /** What contact reads of the registry: bodies' sizes and vehicles' (contact.ts). */
+  private readonly sizes: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">;
   private readonly seatTurn = new Float64Array(MAX_VIEW * 9);
   /**
    * The bodies in view this frame: which remote entity each is, its place (x, y, z, yaw), whether it gets only one bone,
@@ -597,6 +613,7 @@ export class Scene {
     this.pitched = Uint8Array.from(reg.defs, (d) => (d?.type === "prop" && d.pitched ? 1 : 0));
     this.birthScale = reg.birthScale;
     this.saddleSeats = reg.saddleSeats;
+    this.sizes = reg;
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
@@ -770,6 +787,7 @@ export class Scene {
     p.camZ = cam.z;
     // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
     p.light = flatLight(this.hour, p.sun);
+    p.alternate = this.alternate;
     [p.frame[FRAME.handFrom], p.frame[FRAME.handTo]] = this.assets.tier.nodes.band;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
     this.finishes.frame(p, this.assets.residency, p.tier);
@@ -777,6 +795,9 @@ export class Scene {
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
+      postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
+      p.lightSamples = lightSamples(this.supersampled);
+      contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);
     }
     this.fit(cam);
@@ -796,6 +817,7 @@ export class Scene {
       p.fogStart = this.viewDistance * 0.45;
       p.fogEnd = this.viewDistance;
     }
+    skyShown(p);
 
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.castBox : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
@@ -850,6 +872,7 @@ export class Scene {
     const c = this.cascades;
     const setup = p.tier.shadows;
     this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
+    if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(this.canvasWidth, this.canvasHeight, lightSamples(this.supersampled)) : 0);
     this.casting = false;
     this.characters.shadows = null;
     if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {

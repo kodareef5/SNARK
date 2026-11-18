@@ -3,9 +3,11 @@
 // program; survivors of the core pack standing, crouched, armed and in armour, one astride a saddled pteranodon, and a
 // raptor take the lit flat program on medium and the flat one on low poly; on medium they cast with the depth program.
 // Each is held to the rasterizer at points on one body with no edge near, and enough of those must be on one-bone draws.
+// The frames carry no grade (post.ts): it holds poses, and the noon grade's gain of 1.8 steepens the twins' small
+// differences of light on a body past its tolerance; the lit and finish checks hold the grade to the rasterizer.
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { DRAW_ONE_BONE, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_ONE_BONE, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { SLOT_NAMES } from "../../shared/anim/human.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { STANCE_CROUCH } from "../../shared/sim/character.ts";
@@ -50,6 +52,7 @@ function tubes(): Shot {
   shot.manifest = set.manifest;
   for (let f = 0; f < 40; f++) {
     const p = w.frame(100, false);
+    p.frame.fill(0, FRAME.grade, FRAME.gamma + 1);
     raster.render(p);
     keep(shot, p, raster, f, 39);
   }
@@ -95,6 +98,7 @@ function bodies(tier: string): Shot {
     r.tick += 0.5;
     const p = scene.build(cam, r);
     if (f < 19) p.drawCount = p.tileCount = 0;
+    p.frame.fill(0, FRAME.grade, FRAME.gamma + 1);
     raster.render(p);
     keep(shot, p, raster, f, 19);
   }

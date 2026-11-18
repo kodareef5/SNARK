@@ -6,9 +6,10 @@ import { SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER, WEATHER_MATERIAL } from "
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
-import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
+import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
+import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, tapShift } from "../core/render/post.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
@@ -38,7 +39,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, offset: 30 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, offset: 31 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -86,6 +87,11 @@ export class GlRenderer {
   errors = 0;
   /** What compared lookups give on this device (shadowfilter.ts). Where they come back "hard" the shadow lookup filters for itself. */
   shadowLookup = "";
+  /** The light target's format and samples (post.ts), or 0 where the device has none. */
+  light = 0;
+  private samples = 0;
+  /** What the light target is made of for a canvas: the scene's framebuffer, multisampled, then its resolved copy's and each bloom level's, with their textures. */
+  private post = { size: "", fbs: [] as WebGLFramebuffer[], tex: [] as WebGLTexture[], bufs: [] as WebGLRenderbuffer[] };
   /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
@@ -204,6 +210,10 @@ export class GlRenderer {
     this.formats = [...(has("EXT_texture_compression_bptc", "EXT_texture_compression_rgtc") ? ["bc" as const] : []), ...(has("WEBGL_compressed_texture_astc") ? ["astc" as const] : []), "rgba"];
     this.format = this.formats.find((f) => f === this.forced) ?? this.formats[0]!;
     this.shadowLookup = comparedLookup(gl);
+    const most = (f: number): number => (gl.getExtension("EXT_color_buffer_float") ? ((gl.getInternalformatParameter(gl.RENDERBUFFER, f, gl.SAMPLES) as Int32Array | null)?.[0] ?? 0) : 0);
+    this.light = LIGHT_FORMATS.find((f) => most(f) > 0) ?? 0;
+    this.samples = this.light && Math.min(LIGHT_SAMPLES, most(this.light));
+    this.post = { size: "", fbs: [], tex: [], bufs: [] };
     this.shadow = { texture: null, targets: [], size: 0 };
     this.open = { texture: null, size: 0 };
     this.programs.clear();
@@ -458,10 +468,11 @@ export class GlRenderer {
   }
 
   /** Program `n` of the frame's tier, begun the first time it is asked for. */
-  private program(n: number): Program {
-    const text = Object.values(PROGRAMS)[n]!(this.warmed!, this.format, this.shadowLookup === "hard");
+  private program(n: number, light = this.light > 0): Program {
+    const text = Object.values(PROGRAMS)[n]!(this.warmed!, this.format, this.shadowLookup === "hard", light);
     const key = n + text.defines + text.vertex + text.fragment;
-    return (this.made[n] = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!);
+    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!;
+    return light === this.light > 0 ? (this.made[n] = made) : made;
   }
 
   /** Binds a vertex array unless it is bound. */
@@ -531,7 +542,7 @@ export class GlRenderer {
     if (last[U.sun] === this.serial) return prog;
     last[U.sun] = this.serial;
     if (at[U.sun]) gl.uniform3fv(at[U.sun], p.sun);
-    if (at[U.sky]) gl.uniform3fv(at[U.sky], p.sky);
+    if (at[U.sky]) gl.uniform3fv(at[U.sky], drawsLight(p.tier, this.light) ? p.sky : p.skyShown);
     if (at[U.fog]) gl.uniform2f(at[U.fog], p.fogStart, p.fogEnd);
     // Checker parity repeats every 16 m, so a small remainder keeps float precision.
     if (at[U.camMod]) gl.uniform3f(at[U.camMod], p.camX % 16, p.camY % 16, p.camZ % 16);
@@ -606,6 +617,8 @@ export class GlRenderer {
       this.made = this.programs.get(p.tier) ?? [];
       this.programs.set((this.warmed = p.tier), this.made);
       for (const n of tierPrograms(p.tier)) if (!this.made[n]) this.program(n);
+      // The governor's step to no light target draws the same tier with these, which a step should not wait to link.
+      if (drawsLight(p.tier, this.light)) for (const n of tierPrograms(p.tier)) this.program(n, false);
       this.world.forEach((t, r) => t && (gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r), gl.bindTexture(gl.TEXTURE_2D_ARRAY, t), this.anisotropy(gl.TEXTURE_2D_ARRAY)));
     }
     for (let r = 0; r < 3; r++) if (p.worldSide[r] !== this.worldSide[r]) {
@@ -712,9 +725,14 @@ export class GlRenderer {
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_BASE_LEVEL, (this.worldBase[r] = p.worldLevel[r]!));
       }
     }
-    this.shadows(p);
+    const finish = drawsLight(p.tier, this.light);
+    const samples = Math.min(this.samples, p.lightSamples);
+    // A frame drawn without it every other frame (FramePacket.alternate) leaves it for the frames either side.
+    if (this.post.size !== (finish ? `${gl.drawingBufferWidth} ${gl.drawingBufferHeight} ${samples}` : "") && (finish || !p.alternate)) this.targets(finish ? gl.drawingBufferWidth : 0, gl.drawingBufferHeight, samples);
+    this.shadows(p, finish ? this.post.fbs[0]! : null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
-    gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
+    const sky = finish ? p.sky : p.skyShown;
+    gl.clearColor(sky[0]!, sky[1]!, sky[2]!, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     let step = -1;
     for (let d = 0; d < p.drawCount; d++) {
@@ -751,6 +769,7 @@ export class GlRenderer {
     }
     // The terrain and the dome are drawn when there is no draw after them.
     while (step < STEP_FAR_SEE) this.step(p, ++step);
+    if (finish) this.toCanvas(p);
     // Every draw ends in the state the next begins from, as the mirror of it says, whatever another user of the context
     // (the device page) puts back between. The next frame's clear writes depth.
     this.set(false, false, false);
@@ -819,7 +838,7 @@ export class GlRenderer {
    * The sun's shadow maps, made for the tier and kept bound on their unit, and each cascade the frame draws, from the
    * sun into its layer: the ground that casts into it, then its casters, back faces only unless a material shows both.
    */
-  private shadows(p: FramePacket): void {
+  private shadows(p: FramePacket, into: WebGLFramebuffer | null): void {
     const gl = this.gl;
     const map = this.shadow;
     const cascades = p.lit ? p.tier.shadows.cascades : 0, size = p.lit ? p.tier.shadows.size : 0;
@@ -875,7 +894,72 @@ export class GlRenderer {
     }
     this.set(false, this.culling, false);
     gl.cullFace(gl.BACK);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, into);
+  }
+
+  /**
+   * The light target for a canvas `w` by `h` and `samples` (post.ts), with every level of bloom the canvas has, of which
+   * a frame draws as many as it says; made again from nothing, and none for `w` 0. With no samples the scene is drawn
+   * into its texture, `fbs[0]` and `fbs[1]` alike.
+   */
+  private targets(w: number, h: number, samples: number): void {
+    const gl = this.gl, t = this.post, levels = bloomLevels(h, 1);
+    for (const f of new Set(t.fbs.splice(0))) gl.deleteFramebuffer(f);
+    for (const x of t.tex.splice(0)) gl.deleteTexture(x);
+    for (const b of t.bufs.splice(0)) gl.deleteRenderbuffer(b);
+    t.size = w > 0 ? `${w} ${h} ${samples}` : "";
+    for (let k = samples > 0 ? -1 : 0; k <= levels && w > 0; k++) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, (t.fbs[k + 1] = gl.createFramebuffer()!));
+      // The scene's colour and depth where it has samples, its depth alone where it is drawn into its texture.
+      for (let r = k < 0 ? 0 : k === 0 && samples === 0 ? 1 : 2; r < 2; r++) {
+        gl.bindRenderbuffer(gl.RENDERBUFFER, t.bufs[t.bufs.length] = gl.createRenderbuffer()!);
+        gl.renderbufferStorageMultisample(gl.RENDERBUFFER, k < 0 ? samples : 0, r ? gl.DEPTH_COMPONENT24 : this.light, w, h);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, r ? gl.DEPTH_ATTACHMENT : gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, t.bufs.at(-1)!);
+      }
+      if (k < 0) continue;
+      gl.activeTexture(gl.TEXTURE0 + UNIT.details);
+      gl.bindTexture(gl.TEXTURE_2D, t.tex[k] = gl.createTexture()!);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, k > 0 ? BLOOM_FORMAT : this.light, Math.max(1, w >> levelShift(k)), Math.max(1, h >> levelShift(k)));
+      for (const p of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, p[0], p[1]);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.tex[k]!, 0);
+    }
+    t.fbs[0] ??= t.fbs[1]!;
+  }
+
+  /** The finish (post.ts): the scene resolved, bloom's chain down and then up, adding, and the finish into the canvas. */
+  private toCanvas(p: FramePacket): void {
+    const gl = this.gl, t = this.post, levels = Math.min(p.frame[FRAME.levels]!, t.tex.length - 1), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    this.passes?.mark(PASS_FINISH);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0]!);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbs[1]!);
+    if (t.fbs[0] !== t.fbs[1]) gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.invalidateFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0] !== t.fbs[1] ? [gl.COLOR_ATTACHMENT0, gl.DEPTH_ATTACHMENT] : [gl.DEPTH_ATTACHMENT]);
+    this.set(false, false, false);
+    gl.disable(gl.DEPTH_TEST);
+    this.vertexArray(null);
+    for (let k = 1; k <= levels; k++) this.pass(p, PROGRAM.bloomDown, k - 1, k);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    for (let k = levels - 1; k >= 1; k--) this.pass(p, PROGRAM.bloomUp, k + 1, k);
+    gl.disable(gl.BLEND);
+    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
+    gl.activeTexture(gl.TEXTURE0 + UNIT.layer);
+    gl.bindTexture(gl.TEXTURE_2D, t.tex[Math.min(1, levels)]!);
+    this.pass(p, PROGRAM.finish, 0, -1);
+    gl.enable(gl.DEPTH_TEST);
+  }
+
+  /** A pass of the finish with program `n`, from level `from` (0 the scene) into level `to`, or into the canvas for -1. */
+  private pass(p: FramePacket, n: number, from: number, to: number): void {
+    const gl = this.gl, t = this.post;
+    const prog = this.use(n, p);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, to < 0 ? null : t.fbs[to + 1]!);
+    gl.viewport(0, 0, Math.max(1, gl.drawingBufferWidth >> levelShift(to)), Math.max(1, gl.drawingBufferHeight >> levelShift(to)));
+    gl.activeTexture(gl.TEXTURE0 + UNIT.details);
+    gl.bindTexture(gl.TEXTURE_2D, t.tex[from]!);
+    gl.uniform4f(prog.at[U.pass]!, 1 / Math.max(1, gl.drawingBufferWidth >> tapShift(from, to)), 1 / Math.max(1, gl.drawingBufferHeight >> tapShift(from, to)), from === 0 ? 1 : 0, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.drawCalls++;
   }
 
   /**

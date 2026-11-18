@@ -135,6 +135,7 @@ async function boot(): Promise<void> {
   app.steer = driveCheck || selfcheck && params.has("dinosaur") || !selfcheck && !device;
   app.plainSky = selfcheck;
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
+  if (!measured) app.ui.settings.start({ renderer: renderer.rendererName, light: renderer.light > 0, memory: (navigator as { deviceMemory?: number }).deviceMemory });
   app.dpr = devicePixelRatio;
   app.address((name) => params.get(name), measured, orders);
   app.page = {
@@ -147,7 +148,7 @@ async function boot(): Promise<void> {
     arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
     json: (name) => fetchJson(fetch, name),
   };
-  const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes")) : null);
+  const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes"), params.has("sync") ? () => performance.now() : null) : null);
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.

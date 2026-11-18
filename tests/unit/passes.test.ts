@@ -2,15 +2,19 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { HAND_NEAR } from "../../client/core/render/hand.ts";
 import { DRAW_BLEND, DRAW_WATER, FRAME, FramePacket } from "../../client/core/render/packet.ts";
-import { BENCH_FRAMES, BenchRun, PASSES, PASS_CASTERS, PASS_DOME, PASS_NEAR, PassClock, effectsOff, packetWithout, passSpread, tierWithout, type QueryGl } from "../../client/core/passes.ts";
+import { BENCH_FRAMES, BenchRun, PASSES, PASS_CASTERS, PASS_DOME, PASS_NEAR, PassClock, alternateSpread, effectsOff, packetWithout, passSpread, tierWithout, type QueryGl } from "../../client/core/passes.ts";
 
 /** A card that runs each query `ms` long and has its result two frames later, or never where `timed` is false. */
 function card(ms: (pass: number) => number, timed = true) {
   let frame = 0;
   let open: { at: number; ms: number } | null = null;
   const order: number[] = [];
-  const gl: QueryGl & { frame(): void; lost: boolean } = {
+  const reads: unknown[] = [];
+  const gl: QueryGl & { frame(): void; lost: boolean; reads: unknown[] } = {
     lost: false,
+    reads,
+    bindFramebuffer: (_, fb) => void reads.push(fb),
+    readPixels: () => void reads.push("read"),
     frame: () => void frame++,
     getExtension: (name) => (timed && name === "EXT_disjoint_timer_query_webgl2" ? {} : null),
     getParameter: () => false,
@@ -56,6 +60,33 @@ test("the clock times each pass a frame marks, or the frame whole, and hands fra
   expect(clock.take()).toEqual([]);
 });
 
+test("on the page's clock a frame is timed whole, from its first mark until a pixel of the canvas is read back, with or without timer queries", () => {
+  let now = 0;
+  const c = card(() => 7, false);
+  c.gl.getParameter = () => "the scene's target";
+  const clock = new PassClock(c.gl, true, () => now);
+  expect(clock.on).toBe(true);
+  for (const ms of [3, 5]) {
+    clock.mark(0);
+    now += 1;
+    clock.mark(PASS_CASTERS);
+    now += ms - 1;
+    clock.end();
+  }
+  expect(clock.take()).toEqual([[3], [5]]);
+  // The read is of the canvas, and the framebuffer read before is put back.
+  expect(c.gl.reads.slice(0, 3)).toEqual([null, "read", "the scene's target"]);
+  expect(clock.take()).toEqual([]);
+});
+
+test("a run that turns effects off every other frame: each kind's median, and each other frame against its own either side", () => {
+  // A view that grows dearer as it turns, the frames without the effect a millisecond cheaper.
+  const frames = Array.from({ length: 9 }, (_, i) => 10 + i * 0.5 - (i % 2 ? 1 : 0));
+  const other = frames.map((_, i) => i % 2 === 1);
+  expect(alternateSpread(frames, other)).toEqual({ own: 12, other: 10.5, less: -1 });
+  expect(alternateSpread(frames, frames.map(() => false))).toBeNull();
+});
+
 test("a pass's spread and the frame's, by pass where passes were timed", () => {
   expect(passSpread([])).toBeNull();
   expect(passSpread([[2], [4], [3]])).toEqual({ frame: { median: 3, p95: 3 } });
@@ -76,7 +107,7 @@ test("a bench run measures once the scene is still, turns its view from then, an
   }
   expect(report!.frames).toBe(BENCH_FRAMES);
   expect(report!.frameMs.median).toBeCloseTo(16.7, 5);
-  expect([report!.gpuMs, (report!.gpuFrames as number[]).length, report!.renderer]).toEqual([{ frame: { median: 5, p95: 5 } }, BENCH_FRAMES, "a card"]);
+  expect([report!.gpuMs, (report!.gpuFrames as number[]).length, report!.renderer, report!.alternate]).toEqual([{ frame: { median: 5, p95: 5 } }, BENCH_FRAMES, "a card", null]);
 });
 
 test("effects off from the address: those in the tier, one copy a tier, and those in the built frame", () => {

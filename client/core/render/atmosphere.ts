@@ -366,7 +366,7 @@ void main() {
 /** The layers' pictures are masks: a picture that has not come reads as 0, no cloud. */
 const read = "rg";
 
-/** The sky's fragment text: the table in the view's direction, and over it the stars, the moon, the sun and the clouds, shown with half a step of dither. */
+/** The sky's fragment text: the table in the view's direction, and over it the stars, the moon, the sun and the clouds, shown with half a step of dither (none into a light target, whose finish dithers). */
 export const SKY_FRAGMENT = `#version 300 es
 precision highp float;
 in vec3 vRay;
@@ -551,7 +551,7 @@ vec4 layer(sampler2D map, vec3 d, vec3 behind, vec4 shape, vec2 at, bool heaped)
 void main() {
   vec3 d = normalize(vRay);
   if (fHaze.z < 0.0) {
-    o = vec4(uSky, 1.0);
+    o = vec4(fogShown(), 1.0);
     return;
   }
   vec3 behind = skyFrom(d) * fSunColor.w;
@@ -570,5 +570,5 @@ void main() {
       c = mix(c, low.rgb, low.a);
     }
   }
-  o = vec4(display(c) + (hash(uvec3(gl_FragCoord.xy, 3u)) - 0.5) / 255.0 * min(fHaze.w, 1.0), 1.0);
+  o = vec4(display(c) + (hash(uvec3(gl_FragCoord.xy, 3u)) - 0.5) * SHOWN_STEP * min(fHaze.w, 1.0), 1.0);
 }`;
