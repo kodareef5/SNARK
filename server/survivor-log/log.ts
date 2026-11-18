@@ -92,7 +92,7 @@ function workerBackend(folder: string, cap: number, world: LogWorld, say: (line:
   let span: LogSpan = { from: null, to: null, fromTick: null, toTick: null, bytes: 0, cap, segments: 0 };
   const waiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   let next = 1;
-  const send = (m: ToLog, transfer: Transferable[] = []): void => worker.postMessage(m, transfer);
+  const send = (m: ToLog, transfer: ArrayBuffer[] = []): void => worker.postMessage(m, transfer);
   worker.onmessage = (e: MessageEvent<FromLog>) => {
     const m = e.data;
     if (m.op === "span") span = m.span;
@@ -113,7 +113,7 @@ function workerBackend(folder: string, cap: number, world: LogWorld, say: (line:
   worker.unref();
   send({ op: "open", folder, cap, world, closed });
   return {
-    write: (b) => send({ op: "batch", batch: b }, [b.frame.buffer]),
+    write: (b) => send({ op: "batch", batch: b }, [b.frame.buffer as ArrayBuffer]),
     cap: (bytes) => send({ op: "cap", bytes }),
     end: () => send({ op: "end" }),
     close() {
