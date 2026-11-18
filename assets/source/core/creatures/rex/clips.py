@@ -117,7 +117,7 @@ def blink(t, closed=0):
 
 def idle(t):
     root(0.012 + 0.008 * math.sin(t * TAU))
-    head(0.62 * math.sin(t * TAU), 0.44 * math.sin(t * TAU + 0.3))
+    head(0.62 * math.sin(t * TAU), 0.44 * math.sin(t * TAU + 0.3), 2.7 + 0.7 * math.sin(t * TAU))
     tail(t, 0.53)
     blink(t)
     planted()

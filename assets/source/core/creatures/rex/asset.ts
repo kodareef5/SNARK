@@ -72,7 +72,7 @@ export default {
         socket(`rest_${s}`, "chest", [k * .646, .675, .50]),
         socket(`sole_${s}`, "chest", [k * .656, .604, .55]),
         socket(`knee_${s}`, "chest", [k * .47, .98, .65]),
-        socket(`breath_${s}`, "skull", [k * .296, .225, 1.46]),
+        socket(`breath_${s}`, "skull", [k * .39, .288, 1.642]),
         socket(`foot_${s}`, `toes_${s}`, [0, -.105, .27]),
       ];
     }),
