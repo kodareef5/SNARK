@@ -49,7 +49,8 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { Lasers, daylight } from "./render/laser.ts";
-import { CockpitLook, Viewpoint } from "./viewpoint.ts";
+import { CHASE_BOOM, CHASE_TILT, CockpitLook, ORBIT_BACK, Viewpoint, chasePitch } from "./viewpoint.ts";
+import { Orbit, rig, type OrbitRig } from "./orbit.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
@@ -90,6 +91,8 @@ const NAME_RANGE = 30;
 const VIEW_FLAG_PROP = 8;
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
+/** Metres the orbit's camera is from the eye before the body is drawn whole, its head and all. */
+const HEAD_CLEAR = .5;
 
 /** Initial vertical field of view, in radians. AIM_FOV multiplies the player's setting while aiming. */
 const BASE_FOV = 1.2217;
@@ -165,6 +168,10 @@ export class App {
   private fov = BASE_FOV;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
+  /** The orbit camera on K, and whether the last frame's view lets it start. */
+  readonly orbit = new Orbit();
+  private orbitFree = false;
+  private readonly viewRig = rig();
   private readonly mountCamera = new MountCameraPivot();
   private readonly cockpit = new CockpitLook();
   scene: Scene | null = null;
@@ -432,6 +439,11 @@ export class App {
         return true;
       }
     }
+    // Elsewhere K is the orbit camera, where the view lets it (frame()).
+    if (code === "KeyK") {
+      if (down && !repeat) this.orbit.set(!this.orbit.on && this.orbitFree);
+      return true;
+    }
     // F opens the occupied boat, the hull being aimed at, or a tribe creature's inventory.
     if (code === "KeyF") {
       if (down && !repeat) {
@@ -517,7 +529,21 @@ export class App {
     if (!this.ui.wantsPointerLock) return;
     this.refreshCockpitLook();
     if (this.cockpit.active) this.cockpit.look(-dx * LOOK_SPEED * this.controls.zoom, -dy * LOOK_SPEED * this.controls.zoom);
+    else if (this.orbit.on) this.orbit.look(-dx * LOOK_SPEED * this.controls.zoom, -dy * LOOK_SPEED * this.controls.zoom);
     else this.controls.look(dx, dy);
+  }
+
+  /** The mouse wheel's `deltaY` in pixels, lines or pages (`mode` 0, 1 or 2), as a browser gives it. True when it was used. */
+  wheel(deltaY: number, mode = 0): boolean {
+    if (!this.ui.wantsPointerLock) return false;
+    return this.orbit.wheel(mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100);
+  }
+
+  /** `out` as a chase camera shows a look of `yaw` and `pitch` on a boom of `boom` metres. */
+  private chaseRig(yaw: number, pitch: number, boom: number): OrbitRig {
+    const out = this.viewRig;
+    out.yaw = yaw; out.pitch = chasePitch(pitch); out.back = boom; out.side = out.rise = 0;
+    return out;
   }
 
   /** Refresh the world-space look sent with inputs; a passenger's head follows the same rotated view as the camera. */
@@ -1135,6 +1161,13 @@ export class App {
     const helicopterHost = (rotor || boat) && session.driving >= 0 ? session.driving : passengerCockpit ? session.own.seat - 1 : -1;
     this.cockpitLook(helicopterHost, cockpitFrame);
     const chase = passenger && session.thirdPerson && (!passengerCockpit || this.view.thirdPerson);
+    // The orbit goes round the body, its mount or the host of a passenger's chase view (-1 for none). A driver's chase
+    // camera and a cockpit look round freely already. A new subject is a view the game forces: the orbit gives way at
+    // once, and the camera eases from where it was as between any two views. The rule turning off, or death, eases it out.
+    const subject = car || this.cockpit.active || (passenger && !chase) ? -1 : session.driving >= 0 ? session.driving : passenger ? -3 - session.own.seat : -2;
+    if (this.orbit.follow(subject)) this.view.turn();
+    this.orbitFree = alive && session.thirdPerson && subject !== -1;
+    if (!this.orbitFree) this.orbit.set(false);
     if (!alive || car || (session.driving < 0 && (!chase || passengerFullAttitude))) this.mountCamera.reset();
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
@@ -1146,6 +1179,10 @@ export class App {
     // the view is where the next shot is pointed. The look the input sends stays the player's own.
     const gun = alive && session.weaponsAllowed ? (this.reg.weapon[session.own.held] ?? null) : null;
     const aiming = alive && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && gun !== null && gun.clip > 0;
+    // The orbit's view does not look along the aim: it neither narrows to it nor shows a sight, and the centre of the
+    // screen is not where a shot goes, so the crosshair is hidden while it is in use. The aim itself is the body's.
+    const orbiting = this.orbit.inUse, sighting = aiming && !orbiting;
+    hud.orbit = orbiting;
     const held = session.inventory && session.inventory.hotbar >= 0 && session.held >= 0 ? session.inventory.hotbar + session.held : -1;
     const scoped = aiming && scopeFitted(this.reg, session.inventory, held);
     let lookYaw = c.yaw;
@@ -1165,11 +1202,11 @@ export class App {
     const base = (settings.fov * Math.PI) / 180;
     const sight = gun && session.driving < 0 ? attachmentKind(this.reg, session.inventory, held) : "";
     const zoom = sight === "scope" ? SCOPE_ZOOM : sight === "holo" ? HOLO_ZOOM : 0;
-    let want = aiming ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
+    let want = sighting ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
     if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
-    hud.scope = aiming && sight === "scope";
-    hud.holo = alive && sight === "holo";
-    hud.tint = hud.holo && aiming ? HOLO_TINT : 0;
+    hud.scope = sighting && sight === "scope";
+    hud.holo = alive && sight === "holo" && !orbiting;
+    hud.tint = hud.holo && sighting ? HOLO_TINT : 0;
     this.sightAt.yaw = lookYaw;
     this.sightAt.pitch = lookPitch;
     this.sightAt.laser = alive && sight === "laser" && (session.inventory!.flags[held]! & FLAG_ON) !== 0;
@@ -1275,7 +1312,8 @@ export class App {
       const px = bx + Math.sin(body.yaw) * view.forward, pz = bz + Math.cos(body.yaw) * view.forward;
       // A posed dinosaur solves body clearance and roof height together. Other mounts anticipate the roof from inside their capsule.
       const pivot = obstruction ? by + view.up : this.mountCamera.height(world, identity, px, pz, by + (this.reg.move[body.kind]?.height ?? 1) * .5, by + view.up, o.vx, o.vz, dt);
-      this.view.placeVehicle(cam, world, px, pivot, pz, lookYaw, lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: identity, boom: view.boom, anticipate: !obstruction, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY }, obstruction);
+      const orbit = this.orbit.place(this.chaseRig(lookYaw, lookPitch, view.boom), view.boom, dt);
+      this.view.placeVehicle(cam, world, px, pivot, pz, orbit ? orbit.yaw : lookYaw, orbit ? orbit.pitch + CHASE_TILT : lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: identity, boom: orbit ? orbit.back : view.boom, anticipate: !obstruction, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY }, obstruction);
     } else if (passenger) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw, boom: number | undefined, chaseVx = 0, chaseVz = 0;
       if (!chase && passengerFullAttitude && cockpitFrame) {
@@ -1320,10 +1358,20 @@ export class App {
         break;
       }
       if (!chase && this.ownSeatEye(world, this.remote, session.tickClock, c.yaw, c.pitch, this.posedEye, false)) { px = this.posedEye[0]!; py = this.posedEye[1]!; pz = this.posedEye[2]!; }
-      if (chase) this.view.placeVehicle(cam, world, px, py, pz, lookYaw, lookPitch, heading, 0, dt, false, boom === undefined ? undefined : { vx: chaseVx, vy: 0, vz: chaseVz, id: makeHandle(session.own.seat - 1, session.own.seatGen), boom, anticipate: !passengerFullAttitude, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY });
-      else if (passengerCockpit && cockpitFrame) this.view.placeCockpit(cam, px, py, pz, cockpitFrame, this.cockpit.yaw, this.cockpit.pitch);
+      if (chase) {
+        const orbit = this.orbit.place(this.chaseRig(lookYaw, lookPitch, boom ?? CHASE_BOOM), boom ?? CHASE_BOOM, dt);
+        const motion = boom === undefined ? orbit ? { vx: 0, vy: 0, vz: 0, boom: orbit.back } : undefined
+          : { vx: chaseVx, vy: 0, vz: chaseVz, id: makeHandle(session.own.seat - 1, session.own.seatGen), boom: orbit ? orbit.back : boom, anticipate: !passengerFullAttitude, safeY: this.mountCamera.safeY, wantedY: this.mountCamera.wantedY };
+        this.view.placeVehicle(cam, world, px, py, pz, orbit ? orbit.yaw : lookYaw, orbit ? orbit.pitch + CHASE_TILT : lookPitch, heading, 0, dt, false, motion);
+      } else if (passengerCockpit && cockpitFrame) this.view.placeCockpit(cam, px, py, pz, cockpitFrame, this.cockpit.yaw, this.cockpit.pitch);
       else this.view.place(cam, world, px, py, pz, lookYaw, lookPitch, dt);
-    } else this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch, dt);
+    } else {
+      const orbit = this.orbit.place(this.view.own(this.viewRig, lookYaw, lookPitch), ORBIT_BACK, dt);
+      if (orbit) this.view.placeRig(cam, world, bx, by + eye, bz, orbit, dt);
+      else this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch, dt);
+    }
+    // The orbit shows the whole body once the camera is clear of the head.
+    if (this.orbit.inUse && this.orbit.shown.back > HEAD_CLEAR) body.firstPerson = false;
     this.view.thirdPerson = third;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.

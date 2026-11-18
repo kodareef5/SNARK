@@ -1,4 +1,5 @@
-// Places the camera at the eye, or over the right shoulder in third person, pulled in when something solid is in the way.
+// Places the camera at the eye, over the right shoulder in third person, or round the body in the orbit (orbit.ts), pulled
+// in when something solid is in the way.
 // The body always aims from its own eye, so the view cannot move a shot and the server never learns which view is used.
 
 import { capsuleFree, type CollisionWorld } from "../../shared/world/collide.ts";
@@ -10,6 +11,7 @@ import { clearCameraContact, roofEnvelope } from "./camera-roof.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import { vehicleRotation, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
 import { mountCameraHeight } from "./mount-camera.ts";
+import type { OrbitRig } from "./orbit.ts";
 
 const rotation = new Float64Array(4), forward = new Float64Array(3), up = new Float64Array(3);
 
@@ -56,13 +58,24 @@ export class CockpitLook {
 const BACK = 3.4;
 const SIDE = 0.55;
 const RISE = 0.25;
+/** Metres from the eye the orbit sits before the wheel moves it: third person's, so a start from there only centres it. */
+export const ORBIT_BACK = BACK;
+/** Metres a chase camera's boom holds it back at rest where the caller gives no length. */
+export const CHASE_BOOM = 6;
 /** Gap kept between the camera and the obstacle, so the near plane does not cut into a wall. */
 const CLEAR = 0.3;
 /** Preserve useful world depth precision in a squeezed orbit, even at maximum FOV on an ultrawide screen. */
 const MIN_MOUNT_NEAR = .05;
 /** Milliseconds the camera takes to go from one view to the next, and the furthest (metres) it eases rather than cuts. */
-const EASE_MS = 350;
+export const EASE_MS = 350;
 const EASE_REACH = 15;
+/** Radians a chase camera looks below the look it is given, and the least and most pitch it shows. */
+export const CHASE_TILT = .12;
+export const CHASE_DOWN = -1.35;
+export const CHASE_UP = 1.15;
+
+/** The pitch a chase camera shows for the look pitch `pitch`. */
+export function chasePitch(pitch: number): number { return Math.max(CHASE_DOWN, Math.min(CHASE_UP, pitch - CHASE_TILT)); }
 /** The vehicle's own motion, and how far back (metres) the boom holds the camera at rest: its size's, not one number for all. */
 export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number; boom?: number; anticipate?: boolean; safeY?: number; wantedY?: number }
 
@@ -85,6 +98,14 @@ export class Viewpoint {
   private readonly last = new Float64Array(3);
   private readonly easeFrom = new Float64Array(3);
   private easing = 0;
+  /** Where the camera last looked, and while an ease also turns it (turn()), the bearing that turn began from. */
+  private lastYawShown = 0;
+  private lastPitchShown = 0;
+  private turnNext = false;
+  private turning = false;
+  private turnYaw = 0;
+  private turnPitch = 0;
+  private readonly mine: OrbitRig = { yaw: 0, pitch: 0, back: 0, side: 0, rise: 0 };
 
   /** A centred chase view. Mouse look wins; only a moving driver's idle view gently follows the car. Returns look yaw. */
   placeVehicle(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, heading: number, speed: number, dt: number, follow = true, motion?: VehicleCameraMotion, body?: CameraBody | null): number {
@@ -121,9 +142,9 @@ export class Viewpoint {
       this.target[i] = wanted[i]! + (offset + change) * decay;
       this.targetVelocity[i] = (this.targetVelocity[i]! - omega * change) * decay;
     }
-    const rest = motion?.boom ?? 6, back = rest + Math.min(rest / 3, Math.abs(speed) * .06);
+    const rest = motion?.boom ?? CHASE_BOOM, back = rest + Math.min(rest / 3, Math.abs(speed) * .06);
     this.boom = reset ? back : this.boom + (back - this.boom) * (1 - Math.exp(-seconds * 4));
-    const viewPitch = Math.max(-1.35, Math.min(1.15, pitch - 0.12));
+    const viewPitch = chasePitch(pitch);
     cam.yaw = yaw;
     cam.pitch = viewPitch;
     cam.roll = 0;
@@ -338,12 +359,31 @@ export class Viewpoint {
    * eases over `dt` ms from where it was.
    */
   place(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, dt = 0): void {
+    this.placeRig(cam, world, ex, ey, ez, this.own(this.mine, yaw, pitch), dt);
+  }
+
+  /** As place, with the camera where `rig` puts it about the pivot (ex, ey, ez): the orbit's. */
+  placeRig(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, rig: OrbitRig, dt = 0): void {
     cam.nearLimit = Infinity;
     const switched = this.vehicleLook;
     this.vehicleLook = false;
-    this.put(cam, world, ex, ey, ez, yaw, pitch);
+    this.put(cam, world, ex, ey, ez, rig);
     this.ease(cam, world, ex, ey, ez, switched, Math.max(0, Math.min(100, dt)));
   }
+
+  /** Fills `out` with the eye's own view looking at `yaw` and `pitch`: at the eye, or over the shoulder in third person. */
+  own(out: OrbitRig, yaw: number, pitch: number): OrbitRig {
+    const third = this.thirdPerson;
+    out.yaw = yaw;
+    out.pitch = pitch;
+    out.back = third ? BACK : 0;
+    out.side = third ? SIDE : 0;
+    out.rise = third ? RISE : 0;
+    return out;
+  }
+
+  /** The next ease between views also turns the camera from where it last looked, which a cut orbit leaves elsewhere. */
+  turn(): void { this.turnNext = true; }
 
   /** An enclosed eye stays in its seat even during a loop; it never eases through the cabin wall from chase view. */
   placeCockpit(cam: Camera, ex: number, ey: number, ez: number, frame: VehicleFrame, yaw: number, pitch: number): void {
@@ -364,10 +404,18 @@ export class Viewpoint {
     if (switched && this.placed && Math.hypot(cam.x - this.last[0]!, cam.y - this.last[1]!, cam.z - this.last[2]!) < EASE_REACH) {
       this.easing = EASE_MS;
       from.set(this.last);
+      this.turning = this.turnNext;
+      this.turnYaw = this.lastYawShown;
+      this.turnPitch = this.lastPitchShown;
     }
+    this.turnNext = false;
     if (this.easing > 0) {
       this.easing = Math.max(0, this.easing - dt);
       const t = 1 - this.easing / EASE_MS, s = t * t * (3 - 2 * t);
+      if (this.turning) {
+        cam.yaw = this.turnYaw + angle(cam.yaw - this.turnYaw) * s;
+        cam.pitch = this.turnPitch + (cam.pitch - this.turnPitch) * s;
+      }
       let dx = from[0]! + (cam.x - from[0]!) * s - ex, dy = from[1]! + (cam.y - from[1]!) * s - ey, dz = from[2]! + (cam.z - from[2]!) * s - ez;
       const length = Math.hypot(dx, dy, dz);
       let reach = length;
@@ -379,29 +427,32 @@ export class Viewpoint {
       cam.x = ex + dx;
       cam.y = ey + dy;
       cam.z = ez + dz;
-    }
+    } else this.turning = false;
     this.last[0] = cam.x;
     this.last[1] = cam.y;
     this.last[2] = cam.z;
+    this.lastYawShown = cam.yaw;
+    this.lastPitchShown = cam.pitch;
     this.placed = true;
   }
 
-  private put(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number): void {
+  private put(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, rig: OrbitRig): void {
+    const { yaw, pitch, back, side, rise } = rig;
     cam.yaw = yaw;
     cam.pitch = pitch;
     cam.roll = 0;
     cam.x = ex;
     cam.y = ey;
     cam.z = ez;
-    if (!this.thirdPerson) return;
+    if (back === 0 && side === 0 && rise === 0) return;
     const sy = Math.sin(yaw);
     const cy = Math.cos(yaw);
     const sp = Math.sin(pitch);
     const cp = Math.cos(pitch);
     // The offset from the eye: back along the view, to the right, and up.
-    const dx = -sy * cp * BACK - cy * SIDE;
-    const dy = -sp * BACK + RISE;
-    const dz = -cy * cp * BACK + sy * SIDE;
+    const dx = -sy * cp * back - cy * side;
+    const dy = -sp * back + rise;
+    const dz = -cy * cp * back + sy * side;
     const length = Math.hypot(dx, dy, dz);
     let reach = length;
     if (world && castWorld(world, ex, ey, ez, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) reach = Math.max(0, rayHit.t - CLEAR);

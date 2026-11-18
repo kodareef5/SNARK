@@ -330,6 +330,8 @@ export class HudModel {
   /** A word across the top such as "SPECTATING" or "DEAD", or "". */
   banner = "";
   crosshair = true;
+  /** The orbit camera is in use: the middle of the screen is not where the body aims, so no crosshair is drawn there. */
+  orbit = false;
   /**
    * The held weapon's cone about the crosshair, as a share of half the view's height (the tangent of the cone over that of
    * half the field of view), or -1 for nothing held that has one.
