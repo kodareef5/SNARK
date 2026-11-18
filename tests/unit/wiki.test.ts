@@ -74,7 +74,7 @@ test("a creature's page has its stats by level, the wiki's taming table, its dro
 test("a vehicle's facts are its vehicle's, and a renamed command fails the wiki rather than printing a dead line", () => {
   const car = byId("core:compact");
   expect(car.facts.map((f) => f.label)).toEqual(["Top speed", "Seats", "Doors", "Fuel tank", "Health", "Inventory", "Carries", "Mass"]);
-  // Its top speed is the one it reaches, measured (wiki-handling.test.ts), not the limit its specification states.
+  // Its top speed is the one it reaches, measured (wiki-handling.slow.test.ts), not the limit its specification states.
   expect(car.facts[0]!.value).toEqual([`${Math.round(car.handling!.top * 3.6)} km/h`]);
   expect(car.tables.map((t) => t.title)).toEqual(["How it drives"]);
   expect(() => buildCatalogue({ console: consoleLine(commands().filter((c) => c.name !== "spawn")) })).toThrow('the wiki gives "spawn" lines');
