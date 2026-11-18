@@ -1,7 +1,7 @@
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate, type Numbers } from "../math/quat.ts";
 import { detCos, detSin } from "../math/scalar.ts";
 import { rayBox } from "../world/ray.ts";
-import type { VehicleDefinition } from "./vehicle.ts";
+import { boatDrives, type VehicleDefinition } from "./vehicle.ts";
 
 /**
  * Distance along a ray (unit direction) to a vehicle's hull at (x, y, z) turned `yaw` radians, or Infinity. The hull is the
@@ -21,8 +21,9 @@ export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: numb
       near = Math.min(near, rayBox(rayOrigin[0]!, rayOrigin[1]!, rayOrigin[2]!, rayDirection[0]!, rayDirection[1]!, rayDirection[2]!,
         box.at[0] - box.half[0], low, box.at[2] - box.half[2], box.at[0] + box.half[0], high, box.at[2] + box.half[2]));
     }
-    const motor = def.spec.outboard;
-    if (motor) {
+    for (const drive of boatDrives(def.spec)) {
+      const motor = drive.outboard;
+      if (!motor) continue;
       // The articulated motor yaws by -steering around its authored pivot. Keep rays in that same joint frame.
       const sn = detSin(-(attitude?.steering ?? 0)), cs = detCos(-(attitude?.steering ?? 0)), pivot = motor.pivot;
       const px = rayOrigin[0]! - pivot[0], pz = rayOrigin[2]! - pivot[2];

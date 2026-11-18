@@ -27,6 +27,25 @@ test("found boat variants use stable waterfront origins and preserve ranges thro
   }
 });
 
+test("mapped marinas offer larger boats and piers select compact craft with deterministic berths", () => {
+  const map = coast(), reg = coreRegistry();
+  const models = (kind: "marina" | "pier") => {
+    const ids = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const sites = mappedBoatSites([{ name: `Dock ${i}`, kind, e: 100, n: 72, in_footprint: null }], {}, (x, z) => [x, z]);
+      const [boat] = boatSites(map, reg, sites);
+      expect(boat).toBeDefined();
+      ids.add(boat!.kind);
+    }
+    return ids;
+  };
+  const marinas = models("marina"), piers = models("pier");
+  expect(marinas.size).toBeGreaterThan(6);
+  expect([...marinas].some(id => ["core:belvedere", "core:sovereign"].includes(id))).toBe(true);
+  expect(piers.size).toBeGreaterThan(3);
+  expect([...piers].every(id => reg.vehicle[reg.index.get(id)!]!.spec.halfLength <= 6)).toBe(true);
+});
+
 test("boat sites reject dry ground, open ocean without an accessible bank, and obstructed berths", () => {
   const reg = coreRegistry(), site: BoatSite = { id: "berth", kind: "civilian", x: 80, z: 60, radius: 0 };
   expect(boatSites(flatMap(2), reg, [site])).toEqual([]);

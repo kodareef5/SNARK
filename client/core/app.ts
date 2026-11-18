@@ -27,7 +27,7 @@ import { Controls, LOOK_SPEED } from "./controls.ts";
 import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
-import { seatScratch } from "./render/characters.ts";
+import { seatScratch, type VehicleRenderPose } from "./render/characters.ts";
 import { SQUEEZE_MOST } from "./render/budget.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
@@ -42,7 +42,7 @@ import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
 import { SeatedAim } from "./seated-aim.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
-import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
+import { rayVehicle, vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -145,6 +145,7 @@ export class App {
   /** Where a passenger sits, for its camera (Characters.seat), and the pose of the creature it sits on. */
   private readonly seatSpot = new Float64Array(12);
   private readonly seated = seatScratch();
+  private readonly rayPose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   private readonly mountState = new AnimState();
   readonly shots: Shots;
   /** Null until the world arrives. */
@@ -276,6 +277,8 @@ export class App {
   private nowMs = 0;
   /** Entity index of the tribe's creature under the crosshair, or -1. */
   lookedAt = -1;
+  /** Crosshair hit for boat service, including unclaimed hulls and salvage. */
+  private aimedBoat = -1;
   /** Entity index of any body under the crosshair within NAME_RANGE, or -1: what the attack whistle names. */
   target = -1;
   /** Entity index of the creature in the arms of the viewer's own body, as the last frame's remote sample says, or -1. */
@@ -405,13 +408,21 @@ export class App {
         return true;
       }
     }
-    // F opens the tribe creature that is ridden or looked at.
+    // F opens the occupied boat, the hull being aimed at, or a tribe creature's inventory.
     if (code === "KeyF") {
-      const which = this.session.driving >= 0 ? this.session.driving : this.lookedAt;
-      if (down && !repeat && which >= 0) {
-        const r = this.remote, at = r.id.subarray(0, r.count).indexOf(which);
-        if (at >= 0 && this.reg.vehicle[r.kind[at]!]) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_INSPECT); w.u32(makeHandle(which, r.gen[at]!)); });
-        else this.session.command(CMD_OPEN, (w) => w.u32(which >>> 0));
+      if (down && !repeat) {
+        const s = this.session, r = this.remote, ids = r.id.subarray(0, r.count);
+        let which = s.driving;
+        if (which < 0 && s.own.seatSlot && s.own.seat > 0) {
+          const at = ids.indexOf(s.own.seat - 1);
+          if (at >= 0 && r.gen[at] === s.own.seatGen && this.reg.vehicle[r.kind[at]!]?.movement === "boat") which = r.id[at]!;
+        }
+        if (which < 0) which = this.aimedBoat >= 0 ? this.aimedBoat : this.lookedAt;
+        if (which >= 0) {
+          const at = ids.indexOf(which);
+          if (at >= 0 && this.reg.vehicle[r.kind[at]!]) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_INSPECT); w.u32(makeHandle(which, r.gen[at]!)); });
+          else this.session.command(CMD_OPEN, w => w.u32(which >>> 0));
+        }
       }
       return true;
     }
@@ -586,6 +597,15 @@ export class App {
     return flyer;
   }
 
+  private lookHit(i: number, ox: number, oy: number, oz: number): number {
+    const r = this.remote, d = this.aim, kind = r.kind[i]!, hull = this.reg.vehicle[kind];
+    if (hull?.movement === "boat") return rayVehicle(hull, r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!, ox, oy, oz,
+      d[0]!, d[1]!, d[2]!, hull.spec.height, remoteVehiclePose(r, i, this.rayPose));
+    const size = this.sizeOf(i), radius = this.reg.bodyRadius[kind]! * size;
+    return rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - radius, r.y[i]!, r.z[i]! - radius,
+      r.x[i]! + radius, r.y[i]! + this.reg.bodyHeight[kind]! * size, r.z[i]! + radius);
+  }
+
   /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
   private who(world: CollisionWorld, eye: number): string {
     const s = this.session;
@@ -600,9 +620,7 @@ export class App {
     for (let i = 0; i < r.count; i++) {
       // What is in someone's arms is no mark for the use key, a blow or a whistle.
       if ((r.cue[i]! & CUE_HELD) !== 0) continue;
-      const size = this.sizeOf(i);
-      const rad = this.reg.bodyRadius[r.kind[i]!]! * size;
-      const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * size, r.z[i]! + rad);
+      const t = this.lookHit(i, ox, oy, oz);
       if (t < best) {
         best = t;
         hit = i;
@@ -610,6 +628,7 @@ export class App {
     }
     const mine = hit >= 0 && s.tribe.team !== 0 && r.team[hit] === s.tribe.team;
     this.target = hit >= 0 && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 ? r.id[hit]! : -1;
+    this.aimedBoat = hit >= 0 && this.reg.vehicle[r.kind[hit]!]?.movement === "boat" ? r.id[hit]! : -1;
     this.lookedAt = hit >= 0 && mine && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 && !this.scene!.characters.human(r.kind[hit]!) ? r.id[hit]! : -1;
     // A creature's name is in the mark over it (fillOverhead).
     if (hit < 0 || r.name[hit] === "" || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0 || !this.scene!.characters.human(r.kind[hit]!)) return "";
@@ -759,9 +778,7 @@ export class App {
     for (let i = 0; i < r.count; i++) {
       // What is in someone's arms is no mark for the use key, a blow or a whistle.
       if ((r.cue[i]! & CUE_HELD) !== 0) continue;
-      const size = this.sizeOf(i);
-      const rad = this.reg.bodyRadius[r.kind[i]!]! * size;
-      const t = rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - rad, r.y[i]!, r.z[i]! - rad, r.x[i]! + rad, r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * size, r.z[i]! + rad);
+      const t = this.lookHit(i, ox, oy, oz);
       if (t < best) {
         best = t;
         hit = i;
@@ -775,6 +792,16 @@ export class App {
       const car = this.reg.vehicle[r.kind[hit]!];
       if (car) {
         const frame = { ...remoteVehiclePose(r, hit), x: r.x[hit]!, y: r.y[hit]!, z: r.z[hit]!, yaw: r.yaw[hit]! };
+        if (car.movement === "boat") {
+          vehiclePoint(frame, car.seats[0]!.entry, this.seatAt);
+          if (Math.hypot(ox - this.seatAt[0]!, oz - this.seatAt[2]!) > 2) return "Board at the stern";
+          for (let slot = 1; slot <= car.seats.length; slot++) {
+            let occupied = false;
+            for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === slot) occupied = true;
+            if (!occupied) return car.seats[slot - 1]!.driver ? "E  take helm" : "E  board as passenger";
+          }
+          return "Boat full";
+        }
         let slot = 0, near = Infinity;
         for (let j = 0; j < car.seats.length; j++) {
           vehiclePoint(frame, car.seats[j]!.entry, this.seatAt);
@@ -1098,14 +1125,17 @@ export class App {
     if (alive && car && fullAttitude) {
       const frame = { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw };
       if (third) {
-        vehiclePoint(frame, [0, boat ? 1.1 : rotor ? 1.65 : car.spec.height * 2 / 3, rotor || boat ? -.35 : 0], this.seatSpot);
+        vehiclePoint(frame, [0, boat && !car.family ? 1.1 : rotor ? 1.65 : car.spec.height * 2 / 3, rotor || boat ? -.35 : 0], this.seatSpot);
         const heading = this.view.placeVehicle(cam, world, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, !rotor && !boat, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: rotor || boat ? Math.max(boat ? 8 : 10, car.spec.halfLength * 2) : car.spec.halfLength * 3 });
         if (!rotor && !boat) c.yaw = heading;
       } else {
         const slot = car.seats.findIndex(seat => seat.driver) + 1, ch = this.scene.characters;
         ch.seat(session.bodyKind, bx, by, bz, carYaw, this.body.state, session.tickClock, this.seatSpot, slot, vehiclePose);
         const seat = ch.seatPose(session.bodyKind, slot, vehiclePose!, this.seatSpot, carYaw, undefined, this.seated);
-        if (!seat || !ch.seatedEye(session.ownKind, seat, this.seatSpot)) vehiclePoint(frame, [.48, 1.86, .70], this.seatSpot);
+        if (!seat || !ch.seatedEye(session.ownKind, seat, this.seatSpot)) {
+          const anchor = car.seats[slot - 1]!.anchor;
+          vehiclePoint(frame, [anchor[0], anchor[1] + .76, anchor[2] + .05], this.seatSpot);
+        }
         this.view.placeCockpit(cam, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, frame, this.cockpit.yaw, this.cockpit.pitch);
       }
     } else if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + car.spec.height * 2 / 3, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: car.spec.halfLength * 3 });
@@ -1327,7 +1357,7 @@ export class App {
       this.useKept = false;
       c.release();
     }
-    const whom = alive ? this.who(world, eyeNow) : ((this.lookedAt = this.target = -1), "");
+    const whom = alive ? this.who(world, eyeNow) : ((this.aimedBoat = this.lookedAt = this.target = -1), "");
     this.eggAimed = -1;
     hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
