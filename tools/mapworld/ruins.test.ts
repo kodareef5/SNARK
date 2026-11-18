@@ -7,14 +7,15 @@ import { Body, stepBody } from "../../shared/sim/character.ts";
 import { flatWorld } from "../../tests/fixtures/world.ts";
 import { gridAt } from "./base.ts";
 import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
-import { stack, tower } from "./ruin-layouts.ts";
+import { layout, stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 import { RUIN_SHAPES } from "../../content/ruins.ts";
 import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
 import { extentOf, meets, type Box } from "./ruin-obstacles.ts";
 import { carPicker } from "./street-cars.ts";
-import { CityStatics, cellPart } from "../../shared/world/city.ts";
+import { CityStatics, boxPart, cellPart } from "../../shared/world/city.ts";
+import { chunkAt } from "../../shared/coords.ts";
 
 const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
 const rule: Rule = { recipe: "tower", height: 24, finish: "concrete", feature: "frame", holes: .35, wall: .35, bay: 8, matched: [], provisional: true };
@@ -311,4 +312,37 @@ test("a crowded tower fallback keeps a reachable stump when its footprint centre
   expect(m.entries.length).toBe(2);
   expect(m.pieces.length).toBeLessThan(150);
   expect(m.routes[0]!.x).toBeLessThan(104);
+});
+
+test("a facade module is walked as its few boxes and drawn with its parts in their own colours", () => {
+  const w = flatWorld(4);
+  const kind = w.kind("core:zruin_zbalc_limestone");
+  expect(w.reg.parts.start[kind + 1]! - w.reg.parts.start[kind]!).toBe(3);
+  const city = new CityStatics(w.dims, [{ kind: "core:zruin_zbalc_limestone", x: 96, y: 4, z: 96, yaw: 0 }], w.reg);
+  const colours = new Set(boxPart(city, chunkAt(w.dims, 96, 96), w.hf, () => null).color);
+  // The building's limestone, the coral wall behind the balconies and its dark openings.
+  expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 113]);
+});
+
+test("a block of flats repeats its balcony bay on every whole floor, with a different ground floor, blank ends and a capped top", () => {
+  const v = vocabulary(source);
+  const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
+  const shape = (p: { kind: string }): string => p.kind.split("_")[1]!;
+  for (const seed of [3, 41]) {
+    const m = new Mason(f, 0);
+    layout(m, { ...rule, recipe: "apartment", height: 24, finish: "limestone", form: v.forms.apartment, formName: "apartment", collapse: "shear", damage: v.damage.shear, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 8, detail: 0 });
+    const on = (name: string): { y: number }[] => m.pieces.filter((p) => shape(p) === name);
+    // Six storeys, the front and back six bays long, a corner failed: the same bay on the four floors between ground and
+    // top, all but the bay beside the failure whole on each.
+    const floors = new Map<number, number>();
+    for (const p of on("zbalc")) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
+    expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
+    expect([...floors.values()].every((n) => n === 11)).toBe(true);
+    expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
+    expect(on("zbalctop").length).toBe(11);
+    expect(on("zbalctop").every((p) => p.y > 20)).toBe(true);
+    // The short ends are blank, their top storey under a parapet; no loose balcony of the old kit is left.
+    expect(on("zpaneltop").length).toBeGreaterThanOrEqual(4);
+    expect(on("zbalcony")).toEqual([]);
+  }
 });

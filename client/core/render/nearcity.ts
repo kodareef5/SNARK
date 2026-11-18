@@ -253,8 +253,8 @@ function view(city: CityStatics, chunk: number, own: readonly number[], beside: 
     }
   }
   first.fill(at, c);
-  const { halfX, halfY, halfZ, color, plain, walked, look } = city;
-  return { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain, walked, look, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics;
+  const { halfX, halfY, halfZ, color, under, plain, walked, look } = city;
+  return { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, under, plain, walked, look, count: n, in: (k: number) => first[k + 1]! - first[k]! } as CityStatics;
 }
 
 /** Slots of meshes on the card start here, past the lakes' (lakes.ts). */

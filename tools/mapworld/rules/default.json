@@ -15,7 +15,8 @@
       "roof": "service",
       "front": "balconies",
       "windowEvery": 2,
-      "plan": "block"
+      "plan": "block",
+      "facade": { "ground": "zlobby", "floor": "zbalc", "top": "zbalctop", "stack": "zbalc4", "stackTop": "zbalc4top", "ends": true }
     },
     "hotel": {
       "shell": "masonry",
@@ -25,7 +26,8 @@
       "windowEvery": 2,
       "plan": "block",
       "marker": "hotel-sign",
-      "terrace": 1
+      "terrace": 1,
+      "facade": { "ground": "zlobby", "floor": "zbalc", "top": "zbalctop", "stack": "zbalc4", "stackTop": "zbalc4top", "ends": true }
     },
     "office": {
       "shell": "curtain",
@@ -36,16 +38,18 @@
       "plan": "block",
       "marker": "office-services",
       "terrace": 1,
-      "setbacks": 2
+      "setbacks": 2,
+      "facade": { "ground": "zlobby", "floor": "zcurt", "top": "zcurttop", "stack": "zcurt4", "stackTop": "zcurt4top" }
     },
     "garage": {
       "shell": "open",
       "inside": "parking",
-      "roof": "bare",
+      "roof": "service",
       "front": "ribbon",
       "windowEvery": 1,
       "plan": "block",
-      "marker": "parking-sign"
+      "marker": "parking-sign",
+      "facade": { "ground": "zdeck", "groundTop": "zdecktop", "gate": "zgate", "floor": "zdeck", "top": "zdecktop", "stack": "zwin4", "stackTop": "zwin4top" }
     },
     "warehouse": {
       "shell": "industrial",
@@ -98,7 +102,8 @@
       "front": "shopfront",
       "windowEvery": 1,
       "plan": "row",
-      "marker": "shop-sign"
+      "marker": "shop-sign",
+      "facade": { "ground": "zstore", "shutter": "zshutter", "floor": "zwin", "top": "zwintop", "stack": "zwin4", "stackTop": "zwin4top" }
     },
     "civic": {
       "shell": "masonry",
