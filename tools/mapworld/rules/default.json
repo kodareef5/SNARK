@@ -2044,5 +2044,20 @@
     "fences": { "classes": ["avenue", "street"], "set": 2.5, "depth": 12, "least": 12, "yard": 0.75, "open": 0.3, "gap": 0.08 },
     "billboards": { "classes": ["highway", "ramp", "avenue"], "spacing": 380, "set": [10, 16], "chance": 0.7 },
     "clear": { "road": 0.25, "inside": 0.35, "route": 0.4, "piece": 0.3, "between": 0.4, "edge": 12, "junction": 3, "rise": 0.6 }
+  },
+  "roofs": {
+    "seed": 5303,
+    "edge": 1.2,
+    "gap": 0.4,
+    "plant": {
+      "ac": { "per": 90, "least": 40, "most": 10, "chance": 0.8, "forms": [["roof_ac", 5], ["roof_ac_tipped", 1]] },
+      "rtu": { "per": 700, "least": 300, "most": 4, "chance": 0.6, "forms": [["roof_rtu", 1]] },
+      "vent": { "per": 150, "least": 40, "most": 4, "chance": 0.7, "forms": [["roof_vent", 1]] },
+      "duct": { "per": 500, "least": 250, "most": 3, "chance": 0.5, "forms": [["roof_duct", 1]] },
+      "tank": { "per": 2000, "least": 150, "most": 1, "chance": 0.3, "tall": 18, "forms": [["roof_tank", 1]] },
+      "solar": { "per": 120, "least": 60, "most": 6, "chance": 0.12, "south": true, "forms": [["roof_solar", 3], ["roof_solar_broken", 1]] },
+      "bulkhead": { "per": 100000, "least": 120, "most": 1, "chance": 0.7, "tall": 7, "forms": [["roof_bulkhead", 1]] },
+      "dish": { "per": 100000, "least": 40, "most": 1, "chance": 0.25, "forms": [["roof_dish", 1]] }
+    }
   }
 }
