@@ -8,21 +8,36 @@ import type { MarineModel, MarinePoint } from "./marine-model.ts";
 
 export const MARINE_MODELS: readonly MarineModel[] = [...SMALL_CRAFT, ...MOTOR_YACHTS, ...POWER_CATS];
 
+/**
+ * Each vessel's own handling and kit. Speeds in m/s, angles in radians, times in seconds. `speed` is flat out with one
+ * pilot aboard; the hull's resistance is solved from it. `push` is full thrust over the light ship's mass. `lock` is the
+ * drive's or nozzle's angle at full helm and `helm` how fast it gets there. `grip` is side drag per kilogram, what holds
+ * a hull to its line; `steady` damps every rotation; `bank` is the lean into a turn on plane, in metres of lever.
+ * Planing starts at `plane` of top speed and carries `lift` of the weight. `spool` is engine rpm gained a second and
+ * `shift` the pause in neutral between ahead and astern. The centre of mass is `low` metres under the float centres. A tank of `fuel` lasts `minutes` at full throttle.
+ */
 interface Outfit {
-  mass: number; speed: number; acceleration: number; wheel: number; fuel: number;
-  slots: number; payload: number; hp: number; aliases: string[];
+  mass: number; speed: number; astern: number; push: number; lock: number; helm: number;
+  grip: number; steady: number; bank: number; plane: number; lift: number; spool: number; shift: number; low: number;
+  fuel: number; minutes: number; slots: number; payload: number; hp: number; aliases: string[];
 }
 const outfits: Record<string, Outfit> = {
-  "core:needle": { mass: 2400, speed: 49, acceleration: 7.7, wheel: .38, fuel: 280, slots: 8, payload: 320, hp: 960, aliases: ["speedboat", "cigarette", "offshore_racer"] },
-  "core:thunderbolt": { mass: 5100, speed: 43, acceleration: 6.5, wheel: .4, fuel: 490, slots: 24, payload: 750, hp: 1450, aliases: ["cigar_boat", "offshore_speedboat"] },
-  "core:jon_boat": { mass: 195, speed: 11, acceleration: 4.8, wheel: .65, fuel: 25, slots: 16, payload: 290, hp: 540, aliases: ["jonboat", "reviewer_boat", "skiff"] },
-  "core:riptide": { mass: 390, speed: 29, acceleration: 9.8, wheel: .65, fuel: 58, slots: 5, payload: 230, hp: 620, aliases: ["jetski", "jet_ski", "pwc"] },
-  "core:solstice": { mass: 6800, speed: 21, acceleration: 3.1, wheel: .53, fuel: 400, slots: 32, payload: 1200, hp: 1850, aliases: ["day_yacht", "dayboat"] },
-  "core:meridian": { mass: 17500, speed: 19, acceleration: 2.2, wheel: .5, fuel: 720, slots: 48, payload: 2100, hp: 2600, aliases: ["sport_yacht", "coupe_yacht"] },
-  "core:belvedere": { mass: 46500, speed: 15, acceleration: 1.45, wheel: .48, fuel: 1250, slots: 64, payload: 4200, hp: 3650, aliases: ["flybridge_yacht", "motor_yacht"] },
-  "core:sovereign": { mass: 126000, speed: 12, acceleration: .95, wheel: .46, fuel: 2200, slots: 80, payload: 8000, hp: 5000, aliases: ["superyacht", "flagship_yacht"] },
-  "core:manta": { mass: 4600, speed: 28, acceleration: 4.9, wheel: .54, fuel: 330, slots: 24, payload: 850, hp: 1700, aliases: ["catamaran", "sport_powerboat"] },
-  "core:lagoon": { mass: 28800, speed: 15, acceleration: 1.7, wheel: .48, fuel: 920, slots: 56, payload: 3200, hp: 3000, aliases: ["powercat", "catamaran_yacht"] },
+  // Fastest on the water and thirsty; full helm flat out heels it over and stalls the engine as it goes.
+  "core:needle": { mass: 2400, speed: 50, astern: 4, push: 9.5, lock: .38, helm: 1, grip: .6, steady: 2.2, bank: .9, plane: .36, lift: .48, spool: 3700, shift: .22, low: .1, fuel: 280, minutes: 16, slots: 8, payload: 320, hp: 960, aliases: ["speedboat", "cigarette", "offshore_racer"] },
+  // Heavier and twin engined: as hard to turn flat out, but wider and it stays upright.
+  "core:thunderbolt": { mass: 5100, speed: 45, astern: 4, push: 8.2, lock: .42, helm: 1, grip: .6, steady: 2.2, bank: 1, plane: .36, lift: .48, spool: 3700, shift: .22, low: .1, fuel: 490, minutes: 19, slots: 24, payload: 750, hp: 1450, aliases: ["cigar_boat", "offshore_speedboat"] },
+  // A flat bottom with a tiller outboard: slow to climb on plane and it slides through a turn.
+  "core:jon_boat": { mass: 195, speed: 11, astern: 4, push: 5.5, lock: .35, helm: 1.8, grip: .5, steady: 4, bank: .55, plane: .62, lift: .4, spool: 3700, shift: .22, low: .1, fuel: 25, minutes: 55, slots: 16, payload: 290, hp: 540, aliases: ["jonboat", "reviewer_boat", "skiff"] },
+  // Off the line before anything else, leans hard into a carve and spins on the spot; no throttle, no steering.
+  "core:riptide": { mass: 390, speed: 29, astern: 4, push: 20, lock: .5, helm: 3.2, grip: 2, steady: 4.5, bank: .4, plane: .36, lift: .48, spool: 9000, shift: .15, low: .15, fuel: 58, minutes: 22, slots: 5, payload: 230, hp: 620, aliases: ["jetski", "jet_ski", "pwc"] },
+  // The yachts gather way slowly, carry it a long way and turn wide, more so the bigger they are.
+  "core:solstice": { mass: 6800, speed: 21, astern: 4, push: 2.6, lock: .55, helm: 1.4, grip: 1, steady: 3.2, bank: .55, plane: .36, lift: .32, spool: 3000, shift: .3, low: .1, fuel: 400, minutes: 45, slots: 32, payload: 1200, hp: 1850, aliases: ["day_yacht", "dayboat"] },
+  "core:meridian": { mass: 17500, speed: 17.5, astern: 3.2, push: 1.6, lock: .6, helm: .8, grip: .87, steady: 3.1, bank: .55, plane: .36, lift: .12, spool: 1100, shift: .48, low: .1, fuel: 720, minutes: 55, slots: 48, payload: 2100, hp: 2600, aliases: ["sport_yacht", "coupe_yacht"] },
+  "core:belvedere": { mass: 46500, speed: 14.5, astern: 3, push: 1, lock: .68, helm: .65, grip: .87, steady: 2.6, bank: .55, plane: .36, lift: .12, spool: 900, shift: .6, low: .1, fuel: 1250, minutes: 70, slots: 64, payload: 4200, hp: 3650, aliases: ["flybridge_yacht", "motor_yacht"] },
+  "core:sovereign": { mass: 126000, speed: 12, astern: 2.8, push: .62, lock: .78, helm: .5, grip: .87, steady: 2, bank: .55, plane: .36, lift: .12, spool: 700, shift: .8, low: .1, fuel: 2200, minutes: 90, slots: 80, payload: 8000, hp: 5000, aliases: ["superyacht", "flagship_yacht"] },
+  // Two hulls far apart: they stay flat in a turn and hold their line.
+  "core:manta": { mass: 4600, speed: 28, astern: 4, push: 5.8, lock: .6, helm: 1.5, grip: 1.2, steady: 4, bank: .24, plane: .36, lift: .48, spool: 3700, shift: .22, low: .1, fuel: 330, minutes: 34, slots: 24, payload: 850, hp: 1700, aliases: ["catamaran", "sport_powerboat"] },
+  "core:lagoon": { mass: 28800, speed: 13.5, astern: 3.2, push: 1.3, lock: .72, helm: .65, grip: 1.2, steady: 3, bank: .24, plane: .36, lift: .12, spool: 1100, shift: .48, low: .1, fuel: 920, minutes: 100, slots: 56, payload: 3200, hp: 3000, aliases: ["powercat", "catamaran_yacht"] },
 };
 
 function driveAt(at: MarinePoint, pivot: MarinePoint | undefined, radius: number, intake?: MarinePoint): BoatDrive {
@@ -42,9 +57,9 @@ function movingDrive(suffix: string, pivot: MarinePoint | undefined, jet: boolea
 function vessel(model: MarineModel): SpeciesDef {
   const trim = model.trim ?? (model.family === "yacht" ? [84, 101] as const : undefined);
   const cat = model.family === "catamaran";
-  const o = outfits[model.id]!, yacht = model.family === "yacht", jet = model.family === "pwc";
-  const big = model.length >= 14, planing = big ? .12 : yacht ? .32 : model.family === "jon" ? .28 : .48;
-  const thrust = o.mass * o.acceleration;
+  const o = outfits[model.id]!, jet = model.family === "pwc";
+  const big = model.length >= 14;
+  const thrust = o.mass * o.push;
   const halfWidth = model.beam / 2, halfLength = model.length / 2;
   const buoyancyHeight = Math.min(model.height, Math.max(.45, model.draft * 2.3));
   const displacement = Math.max(o.mass * 2.5, o.mass + o.payload + model.seats.length * 100 + o.mass * .2);
@@ -54,20 +69,20 @@ function vessel(model: MarineModel): SpeciesDef {
     at: [side * (model.sponsonX ?? halfWidth * .72), floatY, z * halfLength] as MarinePoint, weight: 1 / 6,
   })));
   const radius = Math.min(.85, Math.max(.09, model.draft * .46));
-  // Resistance at the design speed reflects the wetted area left on plane with one pilot aboard.
-  const wetted = Math.min(1, (o.mass * (1 - planing) + 80) / (displacement * .35));
-  const drag = ((thrust - (o.mass + 80) * .015 * o.speed) / wetted - 90 * o.speed) / (o.speed ** 2 * .68);
+  // Resistance at the design speed reflects how far the hull is on plane there and the wetted area left with one pilot aboard.
+  const planed = Math.min(1, Math.max(0, (1 - o.plane) / (o.plane * .8)));
+  const wetted = Math.min(1, (o.mass * (1 - o.lift * planed) + 80) / (displacement * .35));
+  const drag = ((thrust - (o.mass + 80) * .015 * o.speed) / wetted - 90 * o.speed) / (o.speed ** 2 * (1 - .32 * planed));
   const spec: BoatSpec = {
     halfWidth, halfLength, height: model.height, clearance: 0, mass: o.mass, displacement, draft: model.draft,
-    buoyancyHeight, buoyancyPoints, buoyancyDamping: big ? 5.8 : 4.7, centerOfMass: [0, floatY - .1, -.06 * halfLength], hullBoxes: model.boxes,
+    buoyancyHeight, buoyancyPoints, buoyancyDamping: big ? 5.8 : 4.7, centerOfMass: [0, floatY - o.low, -.06 * halfLength], hullBoxes: model.boxes,
     ...driveAt(model.propeller, model.outboard, radius, model.jetIntake),
     ...(model.secondPropeller ? { secondDrive: driveAt(model.secondPropeller, model.secondOutboard, radius) } : {}),
     thrust, reverseThrust: thrust * .36, idleRpm: big ? 650 : 900, maxRpm: big ? 3100 : jet ? 8200 : 6400,
-    rpmRate: big ? 1100 : jet ? 6000 : 3700, shiftDelay: big ? .48 : .22, maxSteer: o.wheel, steerRate: big ? .65 : jet ? 2.8 : 1.65,
-    maxForward: o.speed, maxReverse: big ? 3.2 : 4, planingSpeed: o.speed * .36, planingLift: planing, planingTrim: big ? .035 : .07,
-    ...(jet ? { planingBankArm: .14 } : {}),
-    forwardDrag: Math.max(1, drag), sideDrag: o.mass * (jet ? 1.35 : .87), angularDrag: big ? 3.1 : 2.8, gravity: 18,
-    fuelCapacity: o.fuel, fuelPerSecond: o.fuel / (big ? 4000 : jet ? 1550 : 2450),
+    rpmRate: o.spool, shiftDelay: o.shift, maxSteer: o.lock, steerRate: o.helm,
+    maxForward: o.speed, maxReverse: o.astern, planingSpeed: o.speed * o.plane, planingLift: o.lift, planingTrim: big ? .035 : .07, planingBankArm: o.bank,
+    forwardDrag: Math.max(1, drag), sideDrag: o.mass * o.grip, angularDrag: o.steady, gravity: 18,
+    fuelCapacity: o.fuel, fuelPerSecond: o.fuel / (o.minutes * 60),
   };
   const helmAxis = model.helmAxis ?? (jet ? [0, 1, 0] : [0, 0, 1]), ratio = jet ? -1 : .69 / spec.maxSteer;
   const [hx, hy, hz] = model.helm;
