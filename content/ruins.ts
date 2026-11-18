@@ -57,16 +57,18 @@ const SHOP_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 4, -0.3, 0
 const SHUTTER: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 4, -0.3, 0.3], [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 3.6, 0, 2.9, 0, 0.1, STEEL]];
 /** A garage's open deck: columns at the bay's ends and a weathered spandrel over the slab's edge. */
 const DECK: Part[] = [[-4, -3.65, 0, 3.6, -0.35, 0.35], [3.65, 4, 0, 3.6, -0.35, 0.35], [-3.65, 3.65, -0.4, 1.05, 0, 0.25, SPANDREL]];
+/** The deck above's edge beam, a lip under its slab. */
+const DECK_LIP: Part = [-3.65, 3.65, 3.4, 3.6, -0.1, 0.25];
 const DECK_CAP: Part[] = [[-4, 4, 3.6, 4.6, -0.1, 0.25, SPANDREL], [-0.08, 0.08, 4.6, 9.4, 0.05, 0.2, STEEL], [-0.7, 0.1, 9.25, 9.45, 0.05, 0.4, STEEL]];
 const MODULES = {
   zbalc: { look: BALCONY, walked: BALCONY_WALKED },
   zbalctop: { look: [...BALCONY, ...BALCONY_CAP], walked: [...BALCONY_WALKED, ...BALCONY_CAP] },
-  zbalc4: { look: [0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), walked: [[-4, 4, -0.25, 16, -0.4, 0.4]] },
-  zbalc4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), ...up(12, BALCONY_CAP)], walked: [[-4, 4, -0.25, 16, -0.4, 0.4], ...up(12, BALCONY_CAP)] },
+  zbalc4: { look: [0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2)))] },
+  zbalc4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY)), ...up(12, BALCONY_CAP)], walked: [[-4, 4, -0.25, 16, -0.25, 0.25], ...[0, 4, 8, 12].flatMap((y) => up(y, BALCONY_WALKED.slice(0, 2))), ...up(12, BALCONY_CAP)] },
   /** A ground floor of flats: a solid darker base, a high window, the head band in the building's finish. */
   zlobby: { look: [[-4, 4, 0, 2.3, -0.25, 0.25, BASE], [-4, -3.4, 2.3, 3.1, -0.25, 0.25, BASE], [3.4, 4, 2.3, 3.1, -0.25, 0.25, BASE], [-3.4, 3.4, 2.3, 3.1, -0.3, -0.2, DARK], [-4, 4, 3.1, 4, -0.25, 0.25]], walked: [wall(4)] },
   zstore: { look: SHOP, walked: SHOP_WALKED },
-  zshutter: { look: SHUTTER, walked: [...SHOP_WALKED.slice(0, 3), [-3.6, 3.6, 0, 2.9, 0, 0.1]] },
+  zshutter: { look: SHUTTER, walked: [...SHOP_WALKED.slice(0, 2), [-3.6, 3.6, 2.9, 4, -0.25, 0.3], [-3.6, 3.6, 0, 2.9, 0, 0.1]] },
   zwin: { look: WINDOWS, walked: [wall(4)] },
   zwintop: { look: [...WINDOWS, ...PARAPET], walked: [wall(4), ...PARAPET] },
   zwin4: { look: [0, 4, 8, 12].flatMap((y) => up(y, WINDOWS)), walked: [[-4, 4, 0, 16, -0.4, 0.4]] },
@@ -75,8 +77,9 @@ const MODULES = {
   zcurttop: { look: [...CURTAIN, ...CROWN], walked: [[-4, 4, -0.4, 5.2, -0.2, 0.25]] },
   zcurt4: { look: [0, 4, 8, 12].flatMap((y) => up(y, CURTAIN)), walked: [[-4, 4, -0.4, 15.6, -0.4, 0.4]] },
   zcurt4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, CURTAIN)), ...up(12, CROWN)], walked: [[-4, 4, -0.4, 17.2, -0.4, 0.4]] },
-  zdeck: { look: DECK, walked: DECK },
-  zdecktop: { look: [...DECK, ...DECK_CAP], walked: [...DECK, DECK_CAP[0]!] },
+  // Walked, its spandrel stands a little thicker than drawn, so its coarsest level is its look's within a hand.
+  zdeck: { look: [...DECK, DECK_LIP], walked: [DECK[0]!, DECK[1]!, [-3.65, 3.65, -0.4, 1.05, 0, 0.3], DECK_LIP] },
+  zdecktop: { look: [...DECK, DECK_LIP, ...DECK_CAP], walked: [DECK[0]!, DECK[1]!, [-3.65, 3.65, -0.4, 1.05, 0, 0.3], DECK_LIP, DECK_CAP[0]!, DECK_CAP[1]!] },
   /** A garage's way in: its columns and a head with a clearance bar under it. */
   zgate: { look: [DECK[0]!, DECK[1]!, [-3.65, 3.65, 3, 3.6, -0.1, 0.25, SPANDREL], [-3.4, 3.4, 2.75, 3, 0, 0.3, MARK]], walked: [DECK[0]!, DECK[1]!, [-3.65, 3.65, 2.75, 3.6, -0.1, 0.3]] },
 } satisfies Record<string, { look: readonly Part[]; walked: readonly Part[] }>;
@@ -125,6 +128,8 @@ function centred(id: string, walked: { boxes?: ShapeBox[]; hulls?: HullDef[] }, 
 // The column's broken head and the slab that fell from it break along the same teeth, so the one is seen to be the other's.
 const BREAK: readonly Tooth[] = [[-0.4, -0.1, 0.45, -0.1], [-0.1, 0.15, 0.2, -0.25], [0.15, 0.4, 0.55, -0.05]];
 const FALL = 25;
+/** The column's head broken along BREAK: a tooth across the column for each, standing up from its stump. */
+const headTeeth = (): HullDef[] => BREAK.map(([a, b, h]) => ({ corners: [[a, 2.6, -0.4], [b, 2.6, -0.4], [a, 2.6, 0.4], [b, 2.6, 0.4], [(a + b) / 2, 2.6 + h, -0.3], [(a + b) / 2, 2.6 + h, 0.3]] }));
 /**
  * The ends a bay's slab has where the bay beside it fell, laid along its edge (x along it, z out into the gap, its top at 0):
  * whole, with a lip and a bevelled nose; spalled, its cover lost to the aggregate with two bars bared; snapped, teeth of
@@ -141,9 +146,9 @@ export const RUIN_BREAKS = {
     hulls: slabTeeth([[-4, -2.7, 0.55, -0.15], [-2.7, -0.9, 0.25, -0.3], [-0.9, 1.4, 0.85, -0.1], [1.4, 4, 0.4, -0.25]]),
     boxes: bars([[-3.3, -0.08, 0.9, 0], [-1.8, -0.32, 0.5, 0.55], [0.1, -0.08, 1.15, 0.35], [2.6, -0.32, 0.6, 0.7]]),
   }),
-  zstub: centred(shaped("zstub"), { boxes: [{ at: [0, 1.3, 0], half: [0.4, 1.3, 0.4] }] }, {
+  zstub: centred(shaped("zstub"), { boxes: [{ at: [0, 1.3, 0], half: [0.4, 1.3, 0.4] }], hulls: headTeeth() }, {
     boxes: [{ at: [0, 1.3, 0], half: [0.4, 1.3, 0.4], color: 100 }, { at: [-0.28, 3.05, 0.28], half: [0.025, 0.45, 0.025], color: RUST }, { at: [0.28, 3.15, -0.28], half: [0.025, 0.55, 0.025], color: RUST }, { at: [0.28, 3.68, -0.05], half: [0.025, 0.025, 0.25], color: RUST }],
-    hulls: BREAK.map(([a, b, h, y]) => ({ corners: [[a, 2.6, -0.4], [b, 2.6, -0.4], [a, 2.6, 0.4], [b, 2.6, 0.4], [(a + b) / 2, 2.6 + h, -0.3], [(a + b) / 2, 2.6 + h, 0.3]] })),
+    hulls: headTeeth(),
   }),
   zfallen: centred(shaped("zfallen"), { hulls: [leaning([1.6, 0.15, 2], FALL)] }, {
     hulls: [leaning([1.6, 0.15, 2], FALL), ...BREAK.map(([a, b, out]) => ({ corners: ([[a * 4, -0.15, 2], [b * 4, -0.15, 2], [a * 4, 0.15, 2], [b * 4, 0.15, 2], [(a + b) * 2, -0.05, 2 + out], [(a + b) * 2, 0.05, 2 + out]] as const).map(lean(FALL)) }))],
