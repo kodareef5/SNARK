@@ -1,10 +1,14 @@
-// How a road vehicle wears its hurt and decay layer (surface.ts `wounded`). Each car takes one of WEAR_STORIES stories
-// for good, from its colour regions (`wearOf`), which it is saved with and every client is sent. A story is where the
-// car was struck: on a grid over the body's box at rest, how many stages later than its layer says a mark shows there.
-// The layer holds every mark any story shows, so a story costs nothing on the card: the draw carries its number.
+// How a road vehicle or a vessel wears its hurt and decay layer (surface.ts `wounded`). Each takes one of WEAR_STORIES
+// stories of its kind for good, from its colour regions (`wearOf`), which it is saved with and every client is sent. A
+// story is where it was struck: on a grid over the body's box at rest, how many stages later than its layer says a mark
+// shows there. The layer holds every mark any story shows, so a story costs nothing on the card: the draw carries its
+// number.
 
-/** Stories a road vehicle takes one of. 0 is none: the layer as it is. */
+/** Stories a road vehicle takes one of, and a vessel one of as many more. 0 is none: the layer as it is. */
 export const WEAR_STORIES = 5;
+/** The first story of each kind: `wearOf`'s `first`. */
+export const ROAD_STORIES = 1;
+export const MARINE_STORIES = ROAD_STORIES + WEAR_STORIES;
 /** A body's layer level and its story as one number, as characters.ts keys and draws them: the level, plus the story times this, which is more than LAYER_LEVELS. */
 export const WEAR_KEY = 128;
 /** Stages a mark is held back where a story never shows it while the car lives: a hurt mark then shows as its wreck has rusted. */
@@ -20,7 +24,8 @@ const HURT_ALPHA = 0.5;
 const HURT_LAST = 1 / 26;
 /**
  * The grid's first point and its step on each axis of the box, -1 to 1 across the mesh's bounds: x right, middle and
- * left (+X is the driver's side), y below and above the waist, z rear, middle and nose.
+ * left (+X is a car's driver's side and a vessel's port), y below and above the waist (a vessel's hull and its decks
+ * and house), z rear, middle and nose.
  */
 const FROM = [-0.8, -0.35, -0.7] as const;
 const STEP = [0.8, 0.8, 0.7] as const;
@@ -43,18 +48,28 @@ const STORIES: readonly (readonly [rear: readonly number[], middle: readonly num
   [[N, 3, N, N, N, N], [2, 1, 2, 2, 2, 2], [0, 0, 0, 0, 0, 0]],
   // Rolled: the roof and the glass round it, the windscreen a stage behind, the body late.
   [[3, 2, 3, 1, 0, 1], [2, 3, 2, 0, 0, 0], [3, 2, 3, 1, 1, 1]],
+  // A vessel holed forward to port: the bow and the port topsides first, the stern and the starboard quarter never.
+  [[N, N, 3, N, N, N], [N, 2, 1, N, 3, 2], [2, 0, 0, 3, 1, 1]],
+  // Struck astern to starboard: the transom, the drives and the starboard quarter, the bow never.
+  [[0, 1, 2, 1, 2, 3], [1, 3, N, 2, N, N], [3, N, N, N, N, N]],
+  // Ground along a quay to port: the port side's length, low first, and nothing to starboard.
+  [[N, 3, 1, N, N, 2], [N, 2, 0, N, 3, 1], [N, 3, 0, N, N, 1]],
+  // Run aground: the bottom and the bow first, the decks and the house late.
+  [[1, 0, 1, N, 3, N], [0, 0, 0, 3, 2, 3], [0, 0, 0, 2, 1, 2]],
+  // Burnt from above: the house, its glass and the canvas first, the hull late.
+  [[3, 2, 3, 1, 0, 1], [2, 3, 2, 0, 0, 0], [3, 3, 3, 1, 1, 1]],
 ];
 
 /** Every story's stages, CELLS each, the first story's first. */
 export const WEAR: readonly number[] = STORIES.flatMap((s) => s.flatMap((z) => [...z]));
 
-/** The story a car with these colour regions (six from `at`) takes, 1 to WEAR_STORIES. */
-export function wearOf(colors: ArrayLike<number>, at = 0): number {
+/** The story a body with these colour regions (six from `at`) takes: `first` (its kind's first story) and the WEAR_STORIES - 1 after. */
+export function wearOf(colors: ArrayLike<number>, at = 0, first = ROAD_STORIES): number {
   let h = 0x811c9dc5;
   for (let k = 0; k < 6; k++) h = Math.imul(h ^ colors[at + k]!, 0x01000193);
   h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
   h ^= h >>> 12;
-  return 1 + ((h >>> 0) % WEAR_STORIES);
+  return first + ((h >>> 0) % WEAR_STORIES);
 }
 
 /** Where on axis `a` a box coordinate lies on the grid: the cell's first point, and how far toward the next. */

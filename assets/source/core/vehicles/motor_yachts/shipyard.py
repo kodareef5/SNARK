@@ -11,8 +11,10 @@ from mathutils import Vector
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / "compact"))
+sys.path.insert(0, str(HERE.parent / "marine"))
 from parts import E2B, Part, cylinder, rbox, tags_of
-from palette import TILES
+from layout import check, lay_out, mark, on_first_sheet, sheets_of
+from palette import HULL, OWN, SCREENS, own
 
 
 def mix(a, b, t):
@@ -584,8 +586,10 @@ class Yacht:
             node.head=(x,-z,y); node.tail=(x,-z,y+.10)
             if name!="chassis": node.parent=arm.edit_bones["chassis"]
         bpy.ops.object.mode_set(mode="OBJECT")
-        mats={m:bpy.data.materials.new(m) for m in ("yacht","cabin","teak")}
-        for bone,o in self.parts:
+        sizes=OWN[self.name]
+        mats={m:bpy.data.materials.new(m) for m in (*sizes,"teak")}
+        items,names,parts,reach=[],[],[],1
+        for k,(bone,o) in enumerate(self.parts):
             me=o.data
             bm=bmesh.new(); bm.from_mesh(me)
             bmesh.ops.triangulate(bm,faces=list(bm.faces))
@@ -597,31 +601,32 @@ class Yacht:
             me.materials.clear()
             for m in mats.values(): me.materials.append(m)
             uv=me.uv_layers.new(name="shipyard")
-            low=[min(v.co[i] for v in me.vertices) for i in range(3)]
-            span=[max(v.co[i] for v in me.vertices)-low[i] for i in range(3)]
+            mine=[]
             for face,tag in zip(me.polygons,tags):
-                mat,idx=TILES[tag]
-                face.material_index=list(mats).index(mat)
                 face.use_smooth=True
+                picture=own(self.name,tag,face.center.y)
+                mine.append(picture)
+                face.material_index=list(mats).index(picture or "teak")
+                if picture:
+                    continue
+                # The planks run the length of the vessel, a sheet every 2.4 m.
                 axis=max(range(3),key=lambda i:abs(face.normal[i]))
                 a,b=[(2,1),(0,2),(0,1)][axis]
-                for j in face.loop_indices:
-                    pos=me.vertices[me.loops[j].vertex_index].co
-                    flip=(axis==0 and face.normal.x>0) or (axis==1 and face.normal.y>0) or (axis==2 and face.normal.z<0)
-                    if mat=="teak":
-                        uv.data[j].uv=((-pos[a] if flip else pos[a])/2.4,pos[b]/2.4)
-                    else:
-                        u=(pos[a]-low[a])/max(.001,span[a])
-                        v=(pos[b]-low[b])/max(.001,span[b])
-                        if flip: u=1-u
-                        uv.data[j].uv=((idx%4+.035+.93*u)/4,1-(idx//4+.965-.93*v)/4)
-                # A sub-texel sliver at a chine bevel would acquire either winding when
-                # native 16-bit UVs round. Map just these slivers to their centre texel.
-                a0,b0,c0=[uv.data[j].uv.copy() for j in face.loop_indices]
-                ab,ac=b0-a0,c0-a0
-                if abs(ab.x*ac.y-ab.y*ac.x) < max(ab.length,ac.length)*.00032:
-                    centre=(a0+b0+c0)/3
-                    for j in face.loop_indices: uv.data[j].uv=centre
+                flip=(axis==0 and face.normal.x>0) or (axis==1 and face.normal.y>0) or (axis==2 and face.normal.z<0)
+                sheet=[((-me.vertices[me.loops[j].vertex_index].co[a] if flip else me.vertices[me.loops[j].vertex_index].co[a])/2.4,
+                        me.vertices[me.loops[j].vertex_index].co[b]/2.4) for j in face.loop_indices]
+                sheet=on_first_sheet(sheet)
+                reach=max(reach,sheets_of(sheet))
+                for j,st in zip(face.loop_indices,sheet):
+                    uv.data[j].uv=st
+            mark(o,tags,names,k,parts)
+            items.append((o,mine,tags))
+        # The bottom is seen afloat only through the water, and the undersides of the decks in their own shade.
+        # A pane's inner face is cut out of the house's picture, and shown as little of it as any face; the helm's
+        # displays are read from a seat, at six times the texels of the rest.
+        lay_out(items,sizes,lambda tag,axis: 6.0 if tag in SCREENS else .05 if tag=="clear" else (.35 if tag in HULL else .5) if axis==3 else 1.0,sheets=reach)
+        for bone,o in self.parts:
+            me=o.data
             me.set_sharp_from_angle(angle=math.radians(37))
             me.transform(E2B)
             o.vertex_groups.new(name=bone).add(list(range(len(me.vertices))),1,"REPLACE")
@@ -631,6 +636,7 @@ class Yacht:
         bpy.context.view_layer.objects.active=self.parts[0][1]
         bpy.ops.object.join()
         bpy.context.object.name=self.name+"_skin"
+        check(str(HERE.parent/self.name),[bpy.context.object],names,parts,sizes)
 
 
 def build(name):
