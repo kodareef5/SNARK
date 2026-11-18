@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { HudModel } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
+import { SkyClock } from "../../client/core/sky.ts";
 import { KEY_CREATIVE_ANSWER, KEY_CREATIVE_PANEL, KEY_CREATIVE_PASSWORD, KEY_CREATIVE_UNLOCK, KEY_CREATIVE_WARNING } from "../../client/core/ui/creative.ts";
 import { KEY_MENU_CREATIVE } from "../../client/core/ui/menu.ts";
 import { K_SECRET } from "../../client/core/ui/nodes.ts";
@@ -214,6 +215,8 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
     // From nine in the morning to half past five, over two seconds, through noon.
     const [tick, ms] = [h.world.tick, h.now];
     const seen = new Set<number>(), hours: number[] = [];
+    // bo's sky, and the hour it is told, frame by frame.
+    const sky = new SkyClock(), told: number[] = [], shown: number[] = [];
     let frame = 0;
     ui.pointer(0, KEY_SUNDIAL, ...at(9), 0, ada);
     h.run(2000, () => {
@@ -222,6 +225,8 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
       build();
       seen.add(bo.dayOffset);
       hours.push(hourOfDay(h.world.tick, h.world.dayOffset, h.world.clock));
+      told.push(hourOfDay(bo.serverTick, bo.dayOffset, bo.clock));
+      shown.push(sky.step(bo.serverTick, bo.dayOffset, bo.clock, 1000 / 60, NaN, bo.creative));
     });
     ui.pointer(1, KEY_SUNDIAL, ...at(17.5), 0, ada);
     h.run(500, () => build());
@@ -233,6 +238,10 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
     expect(sent.length).toBeGreaterThan(12);
     expect(seen.size).toBeGreaterThan(12);
     expect(hours.some((x) => x > 11 && x < 13)).toBe(true);
+    // bo is told the hour in steps, and its sun sweeps between them: its largest move in a frame is a fraction of the largest step.
+    const most = (list: number[]): number => Math.max(...list.slice(1).map((x, i) => Math.abs(x - list[i]!)));
+    expect(most(told)).toBeGreaterThan(0.3);
+    expect(most(shown)).toBeLessThan(most(told) / 3);
     // A second turn, by the arrow keys: three quarters of an hour later is one more entry.
     ui.menuFocus = KEY_SUNDIAL;
     for (let i = 0; i < 3; i++) {
