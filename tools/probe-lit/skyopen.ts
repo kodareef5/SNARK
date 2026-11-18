@@ -7,9 +7,10 @@
 // The rasterizer draws no shadows (D203), so neither does the GPU here.
 //
 // With PROBE_PICTURES naming a folder and PROBE_MAP a built map, Miami's, it writes there pictures of that map on high
-// with the sun's shadows: a street between towers at noon and at 17:30, the foot of a building from 10 m, the same street
-// from 150 m up, and open ground by the shore, each without the openness and with it, the measure let go for without, so
-// both are the same frame, and where it darkened the picture.
+// with the sun's shadows and its textures streamed as a client's are: a street between towers at noon and at 17:30, the
+// foot of a building from 10 m, the same street from 150 m up, open ground by the shore, and a hurt road vehicle and a
+// vessel the map parks by the bay, each without the openness and with it, the measure let go for without, so both are
+// the same frame, and where it darkened the picture.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,15 +19,19 @@ import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { compileContent } from "../../shared/content/registry.ts";
+import { CUE_HURT_SHIFT } from "../../shared/anim/pose.ts";
+import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield, parseMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
+import { FakeNet } from "../../tests/fixtures/assetnet.ts";
 import { building, cityWorld, slopes, type CityWorld } from "../../tests/fixtures/cityworld.ts";
 import { buildCorePack } from "../pack/build.ts";
+import { gameFiles } from "../snap/files.ts";
 import { encodePng } from "../snap/png.ts";
 import { PICK_SKY } from "../snap/raster.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
@@ -167,51 +172,73 @@ const VIEWS: { name: string; x: number; z: number; y?: number; up?: number; look
   { name: "foot", x: 6618, z: 4110, up: 1.7, look: [6618, 3, 4122], hours: [12] },
   { name: "street-150m", x: 6470, z: 4114, y: 150, look: [6640, 0, 4114], hours: [12] },
   { name: "shore", x: 2022, z: 2290, up: 1.7, look: [2150, 0, 2340], hours: [12] },
+  { name: "vehicles", x: 5970, z: 3270, up: 2.2, look: [5972, 1, 3318], hours: [12] },
+];
+/** A hurt road vehicle and a vessel the map parks by the bay, for the last view: kind, where, and the hurt stage its cue carries. */
+const PARKED: [string, number, number, number][] = [
+  ["core:fastback", 5999, 3325, 3],
+  ["core:boat", 5942, 3316, 2],
 ];
 const [PW, PH] = [1280, 720];
 
-/** A built map on high with the sun's shadows, its statics all held by a near store holding the chunks within three of the camera whole; its trees left out. */
-function mapShots(path: string): Shot[] {
+/**
+ * A built map on high with the sun's shadows, its assets and textures streamed as a client's are (tools/snap/files.ts),
+ * its statics all held by a near store holding the chunks within three of the camera whole, the map's hurt road vehicle
+ * and vessel by the bay standing in view of the last; its trees left out.
+ */
+async function mapShots(path: string): Promise<Shot[]> {
   const map = parseMap(new Uint8Array(readFileSync(path)), false);
-  const reg = compileContent(CORE_CONTENT).registry!;
+  const reg = withContent(compileContent(CORE_CONTENT).registry!, map.content?.defs ?? []);
   const hf = mapHeightfield(map);
   const statics = new CityStatics(map.dims, map.statics, reg);
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   for (let i = 0; i < statics.count; i++) structs.add(statics.kind[i]!, statics.x[i]!, statics.y[i]!, statics.z[i]!, statics.yaw[i]!, 0, reg.maxHp[statics.kind[i]!]!);
-  const bytes = buildCorePack();
+  const files = await gameFiles(undefined, undefined, [], map.content?.landmarks ?? []);
+  const port = new FakeNet(files.files);
   const cam = new Camera();
   cam.aspect = PW / PH;
   const near = (chunk: number): boolean => Math.abs(chunkCx(map.dims, chunk) - Math.floor(cam.x / CHUNK_SIZE)) <= 3 && Math.abs(chunkCz(map.dims, chunk) - Math.floor(cam.z / CHUNK_SIZE)) <= 3;
-  const scene = new Scene({ mapId: map.id, dims: map.dims, hf, structs, far: { cells: new FarStore(), complete: near }, city: { statics, complete: near } }, reg, parsePack(bytes));
+  const scene = new Scene({ mapId: map.id, dims: map.dims, hf, structs, far: { cells: new FarStore(), complete: near }, city: { statics, complete: near } }, reg, parsePack(files.files[0]!), { manifest: files.manifest, port });
   scene.assets.tier = { ...tierOf("high"), uploadBytes: 64 * 2 ** 20 };
   scene.viewHeight = PH;
   if (scene.city) scene.city.makeMs = Infinity;
-  const shot = new Shot("sky-open-map", PW, PH, hf, bytes);
+  const remote = new RemoteSample();
+  for (const [kind, x, z, hurt] of PARKED) {
+    const v = map.vehicles!.find((m) => m.kind === kind && Math.hypot(m.x - x, m.z - z) < 2)!;
+    const n = remote.count++;
+    [remote.id[n], remote.kind[n], remote.x[n], remote.y[n], remote.z[n], remote.yaw[n], remote.flags[n]] = [900 + n, reg.index.get(kind)!, v.x, v.y ?? hf.heightAt(v.x, v.z), v.z, v.yaw, 1];
+    remote.colors.set([8, 7, 14, 6, 0, 0], n * 6);
+    remote.cue[n] = hurt << CUE_HURT_SHIFT;
+  }
+  const shot = new Shot("sky-open-map", PW, PH, hf, files.files[0]!);
+  shot.manifest = files.manifest;
   shot.shadows = true;
   scene.resetUploads();
+  const build = (): FramePacket => {
+    scene.now += 1000 / 60;
+    port.advance(scene.now);
+    return scene.build(cam, remote);
+  };
   for (const v of VIEWS) {
     for (const hour of v.hours) {
       scene.hour = hour;
       [cam.x, cam.z] = [v.x, v.z];
-      cam.y = v.y ?? hf.heightAt(v.x, v.z) + v.up!;
+      cam.y = v.y ?? Math.max(hf.heightAt(v.x, v.z), hf.seaLevel) + v.up!;
       const [dx, dy, dz] = [v.look[0] - cam.x, v.look[1] - cam.y, v.look[2] - cam.z];
       [cam.yaw, cam.pitch] = [Math.atan2(dx, dz), Math.atan2(dy, Math.hypot(dx, dz))];
-      for (let quiet = 0, k = 0; quiet < 3 && k < 2000; k++) {
-        scene.now += 1000 / 60;
-        const p = scene.build(cam, null);
+      for (let quiet = 0, k = 0; quiet < 3 && k < 3000; k++) {
+        const p = build();
         shot.add(p, false);
         const r = scene.assets.residency;
-        quiet = p.assetUploads.length + p.uploads.length > 0 || p.farRows > 0 || p.openRows > 0 || r.flying > 0 || r.waiting > 0 || (scene.city?.stats.missing ?? 0) > 0 ? 0 : quiet + 1;
+        quiet = p.assetUploads.length + p.uploads.length + p.texUploads.length > 0 || p.farRows > 0 || p.openRows > 0 || r.flying > 0 || r.waiting > 0 || (scene.city?.stats.missing ?? 0) > 0 ? 0 : quiet + 1;
       }
-      scene.now += 1000 / 60;
-      const p = scene.build(cam, null);
+      const p = build();
       // Without the measure, then with it again, all of it sent in the frame: the same frame but for that.
       const [width, height] = [p.openWidth, p.openHeight];
       p.openWidth = p.openHeight = 0;
       shot.add(p, true);
       scene.farShadow!.open.reset();
-      scene.now += 1000 / 60;
-      const again = scene.build(cam, null);
+      const again = build();
       if (again.openWidth !== width || again.openHeight !== height || again.openRows !== height) throw new Error("the measure did not go on the card again in one frame");
       shot.add(again, true);
       made.pictures.push({ name: `${v.name}-${String(Math.floor(hour)).padStart(2, "0")}${String(Math.round((hour % 1) * 60)).padStart(2, "0")}`, key: shot.key, off: shot.frames.length - 2, on: shot.frames.length - 1 });
@@ -225,9 +252,9 @@ function mapShots(path: string): Shot[] {
 export const skyOpenCheck: LitCheck = {
   name: "the sky's openness and the foot of what stands (skyopen.ts)",
 
-  shots(): Shot[] {
+  async shots(): Promise<Shot[]> {
     const shots = stagedShots();
-    if (process.env.PROBE_MAP && process.env.PROBE_PICTURES) shots.push(...mapShots(process.env.PROBE_MAP));
+    if (process.env.PROBE_MAP && process.env.PROBE_PICTURES) shots.push(...(await mapShots(process.env.PROBE_MAP)));
     return shots;
   },
 
