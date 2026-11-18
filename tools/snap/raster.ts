@@ -3,7 +3,7 @@
 
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { SURFACE_NAMES, WEATHER_LAYER, WEATHER_MATERIAL, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { FACADE_COLOURS, FACADE_TIERS, KIND, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
+import { FACADE_COLOURS, FACADE_TIERS, KIND, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { GROUND_BAND, GROUND_SCALE, edgeOf, edged, groundCover, groundMeet, groundWander, higher, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
@@ -150,6 +150,8 @@ const meet = new Float64Array(2);
 const ownNow = new Float32Array(4);
 /** What Rasterizer.facadeAt keeps of a pixel's face. */
 const FACADE_FLOATS = 15;
+/** facadeAt's kind for a pixel of the far program's, which draws a window as its bay's mean (facade.ts facadeFarVertex). */
+const FACADE_FAR = -2;
 const facadeNow = new Float32Array(FACADE_FLOATS);
 const edgeNow = new Float32Array(4);
 const wander = new Float64Array(2);
@@ -187,6 +189,9 @@ const NOTHING = [0, 0, 0];
 function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
+  // Where no facade's part is drawn, a window is its bay's mean (facade.ts facadeFarVertex).
+  const bay = !ground && facade && facade[0] === FACADE_FAR && FACADE_TIERS[p.tier.name] ? facadeFarColour(colorIndex) : null;
+  if (bay) for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(bay[c]!);
   normal[0] = smooth ? smooth[0]! : nx;
   normal[1] = smooth ? smooth[1]! : ny;
   normal[2] = smooth ? smooth[2]! : nz;
@@ -422,6 +427,8 @@ export class Rasterizer {
   private ownSeed = -1;
   /** On a weathered static's triangle that knows its face's borders: which are outer, a corner's place and its corner of the face, and the face's way across and up per unit of vFace. */
   private edgeFlags = 0;
+  /** Whether the draw is the far program's (programs.ts drawProgram), whose windows are their bay's mean. */
+  private farProgram = false;
   /** Whether the triangle being drawn knows its face's corners, and its outer borders, which facadeAt reads. */
   private faceKnown = false;
   private faceEdges = 0;
@@ -599,7 +606,7 @@ export class Rasterizer {
    * the pixel's static has no face known or is not weathered.
    */
   private facadeAt(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, colour: number, footprint: number, out: Float32Array): void {
-    out[0] = -1;
+    out[0] = this.ownSeed < 0 && this.farProgram ? FACADE_FAR : -1;
     if (!this.faceKnown || this.ownSeed < 0 || Math.abs(ny) > 0.5) return;
     const pu = this.edgeU, pv = this.edgeV, dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
     const a = pu[0]! * pu[0]! + pu[1]! * pu[1]! + pu[2]! * pu[2]!, b = pu[0]! * pv[0]! + pu[1]! * pv[1]! + pu[2]! * pv[2]!, c = pv[0]! * pv[0]! + pv[1]! * pv[1]! + pv[2]! * pv[2]!;
@@ -815,6 +822,7 @@ export class Rasterizer {
   private draw(p: FramePacket, d: number): void {
     this.drawing = d;
     this.ownSeed = -1;
+    this.farProgram = p.drawFade[d] !== 0 || p.drawHand[d] !== 0;
     [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
     if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) return this.details(p, d);
     if ((p.drawFlags[d]! & DRAW_PULLED) !== 0) return this.pulled(p, d);

@@ -5,6 +5,7 @@
 // flat one welded. What the first frame waits for holds the survivor's art and, of the rest of the catalogue, what the
 // session starts with alone: the definitions, the rigs and a line naming each mesh and clip.
 
+import { FACADE_MATERIALS } from "../client/core/render/facade.ts";
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
@@ -101,8 +102,8 @@ export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boole
   return { boot: (id) => boot.has(id), place: (id) => places.get(id) ?? [kinds.size, 0] };
 }
 
-/** The materials the client finds by name, whose rows what it reads first holds: the world's finishes, the sky's and the water's. */
-export const NAMED_MATERIALS: ReadonlySet<string> = new Set([...SURFACE_NAMES.map(surfaceMaterial), WEATHER_MATERIAL, SKY_MATERIAL, WATER_MATERIAL]);
+/** The materials the client finds by name, whose rows what it reads first holds: the world's finishes, the sky's, the water's and the facades' atlases. */
+export const NAMED_MATERIALS: ReadonlySet<string> = new Set([...SURFACE_NAMES.map(surfaceMaterial), WEATHER_MATERIAL, SKY_MATERIAL, WATER_MATERIAL, ...FACADE_MATERIALS]);
 
 /** The colour far blocks draw each palette colour in, from every piece's coarsest level in the whole pack, bound as a scene binds it. */
 function wholeFarColours(reg: Registry, pack: Pack): number[] {

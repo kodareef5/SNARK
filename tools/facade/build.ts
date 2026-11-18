@@ -11,6 +11,7 @@ import { ELEMENTS, FACADE_MATERIALS, FACADE_TOP, MARKS_PLACED, PLACED, ROOMS, RO
 import type { Material } from "../art/materials.ts";
 import { baseMips, encodePng, normalMips, packedMips, readPicture, unpack, type Picture } from "../pack/image.ts";
 import type { SourceMesh } from "../pack/write.ts";
+import { MATERIAL_CUTOUT } from "../../shared/pack/pack.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 export const FACADE_SOURCE = resolve(ROOT, "assets/source/core/facades");
@@ -188,7 +189,8 @@ export function facadeMaterials(): Material[] {
 export function facadeMeshes(): SourceMesh[] {
   return FACADE_MATERIALS.map((id, k) => {
     const roles = k === 0 ? (["base", "normal", "mro"] as const) : (["base"] as const);
-    const material = { id, base: 0, normal: k === 0 ? 1 : -1, mro: k === 0 ? 2 : -1, mask: -1, mask2: -1, tint: [1, 1, 1] as [number, number, number], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 };
+    // The elements' and the marks' base colours keep their alpha (the glass, a mark's cover), as a cut-out's does.
+    const material = { id, base: 0, normal: k === 0 ? 1 : -1, mro: k === 0 ? 2 : -1, mask: -1, mask2: -1, tint: [1, 1, 1] as [number, number, number], grey: 1, emissive: 0, flags: id === FACADE_MATERIALS[1] ? 0 : MATERIAL_CUTOUT, cutoff: 0, span: 0 };
     return { id: `core:zzz_${id.slice(5)}`, flat: 1, materials: [material], textures: roles.map((role) => ({ id: `${id}/${role}`, role, top: FACADE_TOP })),
       lods: [{ positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 0, 1]), colors: new Uint8Array(3), indices: Uint32Array.from([0, 2, 1]), uvs: Float32Array.from([0, 0, 1, 0, 0, 1]), normals: Float32Array.from([0, 1, 0, 0, 1, 0, 0, 1, 0]) }] };
   });

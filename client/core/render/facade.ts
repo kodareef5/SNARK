@@ -967,6 +967,43 @@ int facade(inout vec3 albedo, inout vec3 orm, inout vec3 n, out vec3 room, out v
 #endif
 `;
 
+/** What glass is seen as far off, past its room and its reflection's detail: a dark blue-grey, as light. */
+const GLASS_FAR = [0.07, 0.085, 0.1];
+/** The mean of a colour class's glazed elements far off, frame and glass by their cover, as light: windows, doors and displays (1), a curtain wall (2). */
+function farMean(colour: number): number[] {
+  const out = [0, 0, 0];
+  let n = 0;
+  KINDS.forEach((k) => {
+    if (k.colour !== colour || !k.room) return;
+    PLACED.forEach((p, e) => {
+      if (p.name !== k.element) return;
+      const cover = ELEMENT_MEANS[e * 5 + 3]!;
+      for (let c = 0; c < 3; c++) out[c]! += ELEMENT_MEANS[e * 5 + c]! * cover + GLASS_FAR[c]! * (1 - cover);
+      n++;
+    });
+  });
+  return out.map((v) => v / Math.max(n, 1));
+}
+const toSrgb = (l: number): number => (l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055);
+
+/**
+ * The far program's vertex text on a tier that draws facades (programs.ts): a dark opening's and a pane's palette
+ * colours (FACADE_COLOURS) as the mean of their glazed elements, so a window fading out far off, or handed over, is
+ * the average of its bay, a grey of frame and glass, and not a hole.
+ */
+export function facadeFarVertex(vertex: string): string {
+  const fetch = "  vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;\n";
+  if (!vertex.includes(fetch)) throw new Error("facadeFarVertex: not a flat vertex text");
+  const lines = FAR_COLOURS.map(([i, c], k) => `  ${k ? "else " : ""}if (i == ${i}u) vColor = vec3(${c.map((v) => v.toFixed(4)).join(", ")});\n`);
+  return vertex.replace(fetch, fetch + lines.join(""));
+}
+/** The palette colours facadeFarVertex draws as their bay's mean, and that mean as a display value, to four places. */
+const FAR_COLOURS: readonly (readonly [number, readonly number[]])[] = Object.entries(FACADE_COLOURS).filter(([, c]) => c === 1 || c === 2).sort((a, b) => a[1] - b[1]).map(([i, c]) => [Number(i), farMean(c).map((v) => Number(toSrgb(v).toFixed(4)))]);
+/** facadeFarVertex's twin: the display value palette colour `i` is drawn in where no facade's part is, or null for its own. */
+export function facadeFarColour(i: number): readonly number[] | null {
+  return FAR_COLOURS.find(([k]) => k === i)?.[1] ?? null;
+}
+
 /** The class each palette colour gives a vertex, by FACADE_COLOURS, put into FLAT's mesh vertex text as vFacade. */
 export function facadeVertex(vertex: string): string {
   if (!vertex.includes("out vec3 vRel;") || !vertex.includes("  vRel = p;")) throw new Error("facadeVertex: not a flat mesh vertex text");

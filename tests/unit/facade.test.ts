@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { FACADE_AT, RUIN_FACADES, RUIN_FINISHES } from "../../content/ruins.ts";
-import { ELEMENTS, FACADE_COLOURS, FACADE_GLSL, FACADE_TIERS, FACADE_TOP, KIND, KINDS, MARKS, MARKS_PLACED, NO_FLOOD, PLACED, ROOM_MEANS, facadeDress, facadeKind, facadeMarks, facadeOut, facadeRoomBox, facadeSeed, facadeSurface, facadeVertex, type FacadeSample } from "../../client/core/render/facade.ts";
-import { FLAT_MESH_VERTEX } from "../../client/core/render/glsl.ts";
+import { ELEMENTS, FACADE_COLOURS, FACADE_GLSL, FACADE_TIERS, FACADE_TOP, KIND, KINDS, MARKS, MARKS_PLACED, NO_FLOOD, PLACED, ROOM_MEANS, facadeDress, facadeFarColour, facadeFarVertex, facadeKind, facadeMarks, facadeOut, facadeRoomBox, facadeSeed, facadeSurface, facadeVertex, type FacadeSample } from "../../client/core/render/facade.ts";
+import { FAR_MESH_VERTEX, FLAT_MESH_VERTEX } from "../../client/core/render/glsl.ts";
+import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 
 test("each element's and each mark's variants lie in their atlas, 16 pixels apart", () => {
@@ -176,4 +177,16 @@ test("the flood's line lies at one height across every face, with silt below it 
     expect(at(-0.3)).toBeGreaterThan(at(0));
     expect(at(0.05)).toBe(0.5);
   }
+});
+
+test("far off, where no part is drawn, a window and a curtain wall are their bay's mean, and the rasterizer draws them so", () => {
+  const text = facadeFarVertex(FAR_MESH_VERTEX);
+  for (const [i, c] of Object.entries(FACADE_COLOURS)) {
+    const bay = facadeFarColour(Number(i));
+    expect(bay !== null).toBe(c === 1 || c === 2);
+    if (bay) expect(text).toContain(`if (i == ${i}u) vColor = vec3(${bay.map((v) => v.toFixed(4)).join(", ")});`);
+  }
+  expect(PROGRAMS.far!(TIERS[2]!, "bc").vertex).toContain("if (i == 83u)");
+  expect(PROGRAMS.far!(TIERS[0]!, "bc").vertex).not.toContain("if (i == 83u)");
+  expect(PROGRAMS.flat!(TIERS[2]!, "bc").vertex).not.toContain("if (i == 83u)");
 });
