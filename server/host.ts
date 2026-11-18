@@ -78,6 +78,7 @@ import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { settle, settleNear } from "./place.ts";
 import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
+import { CarReturn, DEADLINE_CAR } from "./car-return.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
@@ -195,6 +196,8 @@ export interface Host {
   readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
   readonly spawner: Spawner | null;
+  /** Null for a map that parks no car. */
+  readonly carReturn: CarReturn | null;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -892,6 +895,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (wiped >= 0) say(`destroyed ${wiped} wild creatures at the start, to be replaced`);
     persistence?.sidecar("spawner", spawner.saved);
   }
+  // A place where the map parks a car gets another some days after its car went (server/car-return.ts).
+  const returning = new CarReturn({ world, game, records, rules, deadlines, seed: opts.seed ?? 1,
+    park: (v, start) => parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", start) }, parsed?.vehicles ?? []);
+  const carReturn = returning.places.length > 0 ? returning : null;
+  if (carReturn) {
+    carReturn.begin(persistence && !loaded!.fresh ? (persistence.store.meta("carReturn") as string | null) : null);
+    persistence?.sidecar("carReturn", carReturn.saved);
+  }
 
   // A name belongs to the first device key that takes a body under it.
   game.authorize = (name, key) => {
@@ -1033,6 +1044,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       else if (kind === DEADLINE_SPAWN) spawner?.due(pid, stamp);
       else if (kind === DEADLINE_CORPSE) corpses.due(pid, stamp);
       else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
+      else if (kind === DEADLINE_CAR) carReturn?.due(pid, stamp);
     });
     refreshInventories();
     // Struggling, and the grace after a bola, once the buffs that came due have ended.
@@ -1316,6 +1328,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     overhead,
     hurt,
     spawner,
+    carReturn,
     beds,
     cluster,
     settled,

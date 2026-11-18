@@ -274,7 +274,9 @@ by `street.cars.parked`:
   parks the car in a new world, from the world's seed and where the car stands
   (`foundVehicle`, `server/vehicle-service.ts`), as it does for found aircraft
   and boats; the save keeps what was rolled. Which cars are hurt is the map's;
-  how hurt each is, and how much fuel each has, is the world's.
+  how hurt each is, and how much fuel each has, is the world's. A place whose
+  car has gone gets another some days later (`server/car-return.ts`,
+  `FoundCarReturnDays`).
 
 The kinds and their sizes come from the compiled content: a vehicle's
 `spec` (half width, half length, height, wheelbase, track, ground limit) and its
