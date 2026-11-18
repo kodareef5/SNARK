@@ -1,0 +1,22 @@
+{
+  "pieces": 25327,
+  "roofs": 11701,
+  "placed": {
+    "core:zzstreet_roof_ac": 11426,
+    "core:zzstreet_roof_ac_tipped": 2186,
+    "core:zzstreet_roof_rtu": 1265,
+    "core:zzstreet_roof_vent": 6032,
+    "core:zzstreet_roof_duct": 1368,
+    "core:zzstreet_roof_bulkhead": 1136,
+    "core:zzstreet_roof_dish": 793,
+    "core:zzstreet_roof_tank": 119,
+    "core:zzstreet_roof_solar_broken": 253,
+    "core:zzstreet_roof_solar": 749
+  },
+  "refused": {
+    "rim": 231577,
+    "route": 21816,
+    "piece": 38699,
+    "plant": 4801
+  }
+}
