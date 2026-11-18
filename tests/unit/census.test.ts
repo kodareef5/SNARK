@@ -135,7 +135,8 @@ artTest("Koru moored in its bay on medium at the iPhone's view: its eight cells,
   // plaques drawn from a picture of their own, and 126,184 casting 119,416 in 23 before its rig was its own see-through
   // parts, which cast nothing, and the cells' wires, thickened on their way off, no longer held them to finer levels;
   // a struck headsail is its roll, a line, not its sheet squeezed onto the stay, and the roll stands for the stay too.
-  expect(got).toEqual({ dock: [27, 116952, 97532, 25], deck: [31, 115200, 101256, 29], below: [26, 115428, 99712, 24], "200 m off": [34, 72736, 10240, 32] });
+  // From below it was 115,428 triangles until what lies under the seabed drawn was left out (render/hide.ts).
+  expect(got).toEqual({ dock: [27, 116952, 97532, 25], deck: [31, 115200, 101256, 29], below: [26, 112748, 99712, 24], "200 m off": [34, 72736, 10240, 32] });
   expect(KORU_LAYOUT.cells.length).toBe(8);
 });
 
@@ -183,11 +184,11 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // a building's bays came to wear their kind's facade modules (content/ruins.ts): the street on high was 41, 51 and
   // 67,608 near and 15 and 57,036 far, the roof 37, 46, 66,988, 19 and 77,014, the air 51, 45, 77,364, 13 and 73,184.
   // With what the near meshes and the ground wholly hide left out (render/hide.ts): the street on high was 44, 51 and
-  // 126,242 near and 15 and 112,772 far, the roof 40, 48, 131,204, 19 and 145,914; the air, which looks down on all of
-  // it, is as it was. Each is that again with `hide` off.
+  // 126,242 near and 15 and 112,772 far, the roof 40, 48 and 131,204 near; the air, which looks down on all of it, is as
+  // it was. Each is that again with `hide` off.
   expect(got).toEqual({
-    "street-300": { lowpoly: [25, 0, 109040, 10, 74790], "medium, touch": [16, 9, 59790, 9, 35880], medium: [25, 20, 109040, 13, 108514], high: [25, 48, 109040, 13, 108514], ultra: [25, 50, 109040, 13, 108514] },
-    "roof-300": { lowpoly: [33, 0, 122898, 11, 94312], "medium, touch": [21, 7, 72940, 14, 55476], medium: [33, 23, 122898, 18, 144002], high: [33, 48, 122898, 18, 145690], ultra: [33, 59, 122898, 18, 145690] },
+    "street-300": { lowpoly: [25, 0, 108822, 10, 74790], "medium, touch": [16, 9, 59572, 10, 37804], medium: [25, 20, 108822, 13, 108514], high: [25, 50, 108822, 13, 108514], ultra: [25, 56, 108822, 13, 108514] },
+    "roof-300": { lowpoly: [33, 0, 122898, 12, 94536], "medium, touch": [21, 7, 72940, 14, 55476], medium: [33, 23, 122898, 19, 144226], high: [33, 48, 122898, 19, 145914], ultra: [33, 59, 122898, 19, 145914] },
     "air-300": { lowpoly: [54, 0, 145540, 11, 92988], "medium, touch": [25, 2, 86920, 9, 41328], medium: [54, 7, 145540, 13, 141406], high: [54, 49, 145540, 13, 141406], ultra: [54, 57, 145540, 13, 141406] },
   });
 });

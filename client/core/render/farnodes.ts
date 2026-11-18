@@ -20,6 +20,7 @@ import { TACTICAL_CELL } from "../../../shared/world/tactical.ts";
 import type { Tier } from "../assets/tiers.ts";
 import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
+import { WORTH, type Hider } from "./hide.ts";
 import { FAR_SLOTS, FAR_TILE, FAR_TILE_METRES } from "./far.ts";
 import { HAND_FAR } from "./hand.ts";
 import { ATLAS_REGION, ATLAS_ROWS, ATLAS_WIDTH, InstanceWriter, type FramePacket } from "./packet.ts";
@@ -440,16 +441,20 @@ export class FarNodes {
    * neighbouring chunks of rows of one size with the same hand-over, in every depth range one of them is in: a range
    * clips what is not in it, and a draw saved is worth more than the vertices. A chunk the near field holds is drawn
    * faded in over the band, and left out where all of it is short of the band. A chunk out of view or reach, or whose box
-   * `hides` says is hidden, is left out, or drawn with its neighbours where it weighs less than a draw does. A run is told
+   * `hider` says is hidden, is left out, or drawn with its neighbours where it weighs less than a draw does. A run is told
    * how far off its nearest is.
    */
-  draw(cam: Camera, put: PutDraw, hides?: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => boolean): void {
+  draw(cam: Camera, put: PutDraw, hider?: Hider): void {
     const [from, to] = this.band;
     for (const t of this.tiles.keys()) {
       const tile = this.tiles.get(t)!;
       if (!tile.data || !tile.uploaded) continue;
       const w = tile.whole;
       if (near(w, 0, cam) >= this.most || !visible(w, 0, cam)) continue;
+      // Its cells tested one by one only where much of the tile is hidden.
+      const hidden = hider ? hider.share(w[0]! - cam.x, w[1]! - cam.y, w[2]! - cam.z, w[3]! - cam.x, w[4]! - cam.y, w[5]! - cam.z) : 0;
+      if (hidden === 1 && hider!.hides(w[0]! - cam.x, w[1]! - cam.y, w[2]! - cam.z, w[3]! - cam.x, w[4]! - cam.y, w[5]! - cam.z)) continue;
+      const hides = hidden >= WORTH ? hider : undefined;
       const whole = inside(w, 0, cam);
       const ox = (t % this.tilesX) * FAR_TILE_METRES - cam.x, oy = -cam.y, oz = Math.floor(t / this.tilesX) * FAR_TILE_METRES - cam.z;
       const buffer = FAR_NODE_BUFFERS + t;
@@ -475,7 +480,7 @@ export class FarNodes {
             bridge = -1;
             continue;
           }
-          if (seen >= this.reach[tile.farthest[q * (CELLS + 1) + c + 1]!]! || (!seenAll && !visible(b, k, cam)) || (hides !== undefined && hides(b[k]! - cam.x, b[k + 1]! - cam.y, b[k + 2]! - cam.z, b[k + 3]! - cam.x, b[k + 4]! - cam.y, b[k + 5]! - cam.z))) {
+          if (seen >= this.reach[tile.farthest[q * (CELLS + 1) + c + 1]!]! || (!seenAll && !visible(b, k, cam)) || (hides !== undefined && hides.hides(b[k]! - cam.x, b[k + 1]! - cam.y, b[k + 2]! - cam.z, b[k + 3]! - cam.x, b[k + 4]! - cam.y, b[k + 5]! - cam.z))) {
             bridge = bridge === first && (end - first) * (PULL_VERTICES << size) <= RUN_TRIANGLES * 3 ? end : -1;
             continue;
           }

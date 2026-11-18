@@ -26,6 +26,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
+import { WORTH, type Hider } from "./hide.ts";
 import { InlineCityMaker, cityJob, cityKinds, type CityMade, type CityMaker } from "./citymake.ts";
 import { FAR_BUFFER, FAR_HEIGHT } from "./far.ts";
 import type { FramePacket } from "./packet.ts";
@@ -391,7 +392,7 @@ export class FarCity {
    * faces are in, where it is gone (`drawFade`, below 0 to fade in, and 0 for a run wholly short of where the reach fades
    * and of any fade between levels, so its draw may take the program that never discards), and how far off its nearest is.
    */
-  draw(cam: Camera, reach: number, put: (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number) => void, hides?: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number) => boolean): void {
+  draw(cam: Camera, reach: number, put: (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number) => void, hider?: Hider): void {
     const levels = this.levels;
     const stats = this.stats;
     this.drawn.fill(0);
@@ -415,6 +416,14 @@ export class FarCity {
         tile.unseen = 0;
         continue;
       }
+      // A tile's box and ACROSS round it hold every chunk's faces at every form: one test where it is hidden whole, and
+      // its chunks tested one by one only where much of it is.
+      const hidden = hider ? hider.share(ax - ACROSS, ay, az - ACROSS, bx + ACROSS, by, bz + ACROSS) : 0;
+      if (hidden === 1 && hider!.hides(ax - ACROSS, ay, az - ACROSS, bx + ACROSS, by, bz + ACROSS)) {
+        tile.unseen = 0;
+        continue;
+      }
+      const hides = hidden >= WORTH ? hider : undefined;
       // A tile in view whose levels are none of them made yet, empty ones aside, is not drawn at all.
       if (!tile.held.some((h) => h !== null)) {
         stats.unseen++;
@@ -461,7 +470,7 @@ export class FarCity {
           const x1 = from[o + 3]! + across, y1 = from[o + 4]! + up, z1 = from[o + 5]! + across;
           const nearest = Math.hypot(Math.max(x0, -x1, 0), Math.max(y0, -y1, 0), Math.max(z0, -z1, 0));
           const farthest = Math.hypot(Math.max(-x0, x1), Math.max(-y0, y1), Math.max(-z0, z1));
-          const left = far[r] === 0 || (out && nearest >= end) || (into && farthest < start) || !cam.boxVisible(x0, y0, z0, x1, y1, z1) || (hides !== undefined && hides(x0, y0, z0, x1, y1, z1));
+          const left = far[r] === 0 || (out && nearest >= end) || (into && farthest < start) || !cam.boxVisible(x0, y0, z0, x1, y1, z1) || (hides !== undefined && hides.hides(x0, y0, z0, x1, y1, z1));
           kept[r] = left ? 0 : cam.passes(x0, y0, z0, x1, y1, z1);
           nears[r] = nearest;
           band[r] = (out || into) && farthest >= start && nearest < end ? 1 : 0;

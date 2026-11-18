@@ -258,6 +258,8 @@ function reorder32(a: Uint32Array, w: number, rows: number, count: number, order
 
 /** Metres round the camera within which Scene.nearPiece finds the nearest piece. */
 const CLEAR = 8;
+/** Metres over the lowest ground drawn a tile's ground must stand for the box under it to be put in the picture. */
+const RELIEF = 2;
 
 /** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
 export type Cutouts = "last" | "made" | "first" | "none";
@@ -805,6 +807,7 @@ export class Scene {
     this.boxed.fill(0);
     this.hiding.on = false;
     this.meshDrawn.clear();
+    this.closes.clear();
     this.chunkCasts.length = 0;
     this.later.length = 0;
     this.nearAt = 0;
@@ -879,10 +882,10 @@ export class Scene {
       const id = this.later[k]!;
       this.meshRuns(this.batches.get(id)!, id, this.later[k + 1]!, this.later[k + 2]!, this.later[k + 3]!, this.later[k + 4]!);
     }
-    const hides = this.hiding.on ? this.hides : undefined;
-    this.city?.draw(cam, tier.reach.city, this.drawCity, hides);
-    this.far?.draw(cam, tier.reach.bases, tier.fade, this.drawFar, hides);
-    this.nodesFar?.draw(cam, this.drawFarNodes, hides);
+    const hider = this.hiding.on ? this.hiding : undefined;
+    this.city?.draw(cam, tier.reach.city, this.drawCity, hider);
+    this.far?.draw(cam, tier.reach.bases, tier.fade, this.drawFar, hider);
+    this.nodesFar?.draw(cam, this.drawFarNodes, hider);
     if (this.casting) this.groundCast();
     if (remote) this.entities(cam, remote);
     this.bodies(cam, remote);
@@ -982,7 +985,7 @@ export class Scene {
    */
   private shadeHidden(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean {
     const e = this.shadeSlack;
-    return e < Infinity && this.hiding.hides(x0 - e, y0 - e, z0 - e, x1 + e, y1 + e, z1 + e);
+    return e < Infinity && this.hiding.hidesOver(x0 - e, y0 - e, z0 - e, x1 + e, y1 + e, z1 + e);
   }
 
   /**
@@ -1107,9 +1110,6 @@ export class Scene {
     p.castTriangles += ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? indexCount / 3 : this.trisOfMesh[mesh]![level]!) * count * maps;
   }
 
-  /** Whether the picture of what hides what (hide.ts) hides a camera-relative box; nothing while there is none. */
-  private readonly hides = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean => this.hiding.hides(x0, y0, z0, x1, y1, z1);
-
   /**
    * Makes the picture of what hides what from what is sure to be drawn whole this frame, and leaves out what it hides of
    * the frame so far: the ground's tiles from the view, and from the sun's maps those whose shadow it hides; the near
@@ -1117,7 +1117,8 @@ export class Scene {
    * that has left anything out, nor while the near plane may cut into the ground or into a piece of the near store's
    * meshes, which would open them. What is in the picture:
    * - the ground: under each tile drawn whose farthest point is within the view, a box up to its lowest sample. A line of
-   *   sight from the camera, over the ground, that reaches such a box has met the ground drawn on its way.
+   *   sight from the camera, over the ground, that reaches such a box has met the ground drawn on its way. What of a box
+   *   of the near store, a body or a shadow lies under the samples round it is hidden the same way (Hiding.hidesOver).
    * - the near store's meshes: the occluders of a chunk whose mesh is drawn (nearcity.ts), where each chunk round it whose
    *   pieces may hold its faces has its mesh drawn too, or none of its pieces in view, or none at all. A face the mesh
    *   leaves out is held by another piece drawn, or lies under the ground.
@@ -1143,10 +1144,22 @@ export class Scene {
     for (let j = cj - stride; j <= cj + 2 * stride; j += stride) for (let i = ci - stride; i <= ci + 2 * stride; i += stride) ground = Math.max(ground, hf.sample(Math.min(Math.max(i, 0), hf.nx - 1), Math.min(Math.max(j, 0), hf.nz - 1)));
     if (cam.y - ground <= reach) return;
     h.begin(cam);
-    // Under each tile drawn wholly within the view, a box from far under the ground up to its lowest sample.
+    // Under each tile drawn wholly within the view, a box from far under the ground up to its lowest sample; but where
+    // that stands no higher than RELIEF over the lowest ground drawn, as all of a flat map's does, it hides only what is
+    // under the ground, which a box tested over it is cut to.
     const floor = hf.minY - 1 - cam.y, low = this.terrain.low, up = this.terrain.farthestFrom(cam.y);
+    let lowest = Infinity;
+    for (let t = 0; t < p.tileCount; t++) if ((p.tilePass[t]! & (NEAR | FAR)) !== 0) lowest = Math.min(lowest, low[t]!);
+    // Over a rectangle the ground drawn stands no lower than the samples a quad round it, the coarsest drawn's.
+    let quad = 0;
+    for (let t = 0; t < p.tileCount; t++) quad = Math.max(quad, p.tiles[t * 4 + 2]!);
+    h.under = (x0, z0, x1, z1) => {
+      const ax = cam.x + x0 - quad, az = cam.z + z0 - quad, bx = cam.x + x1 + quad, bz = cam.z + z1 + quad;
+      return ax < 0 || az < 0 || bx > hf.sizeX || bz > hf.sizeZ ? -Infinity : this.terrain.lowest(ax, az, bx, bz) - cam.y;
+    };
+    h.underReach = this.viewDistance;
     for (let t = 0; t < p.tileCount; t++) {
-      if ((p.tilePass[t]! & (NEAR | FAR)) === 0) continue;
+      if ((p.tilePass[t]! & (NEAR | FAR)) === 0 || low[t]! <= lowest + RELIEF) continue;
       const x0 = p.tiles[t * 4]!, z0 = p.tiles[t * 4 + 1]!, size = p.tiles[t * 4 + 2]! * TILE_QUADS;
       if (Math.hypot(Math.max(-x0, x0 + size), Math.max(-z0, z0 + size), up) > this.viewDistance || low[t]! <= floor) continue;
       h.box(x0 + size / 2, (floor + low[t]!) / 2, z0 + size / 2, size / 2, (low[t]! - floor) / 2, size / 2, 1, 0);
@@ -1172,7 +1185,7 @@ export class Scene {
     for (let t = 0; t < p.tileCount; t++) {
       const x0 = p.tiles[t * 4]!, z0 = p.tiles[t * 4 + 1]!, quad = p.tiles[t * 4 + 2]!, size = quad * TILE_QUADS;
       const skirt = low[t]! - 2 * quad;
-      if ((p.tilePass[t]! & (NEAR | FAR)) !== 0 && h.hides(x0, skirt, z0, x0 + size, high[t]!, z0 + size)) {
+      if ((p.tilePass[t]! & (NEAR | FAR)) !== 0 && h.hidesOver(x0, skirt, z0, x0 + size, high[t]!, z0 + size)) {
         p.tilePass[t] = p.tilePass[t]! & ~(NEAR | FAR);
         p.triangles -= TILE_QUADS * TILE_QUADS * 2;
       }
@@ -1199,7 +1212,7 @@ export class Scene {
     let kept = 0;
     for (let d = 0; d < p.drawCount; d++) {
       const o = d * 6;
-      if (this.boxed[d] === 0 || !h.hides(box[o]!, box[o + 1]!, box[o + 2]!, box[o + 3]!, box[o + 4]!, box[o + 5]!)) {
+      if (this.boxed[d] === 0 || !h.hidesOver(box[o]!, box[o + 1]!, box[o + 2]!, box[o + 3]!, box[o + 4]!, box[o + 5]!)) {
         if (kept !== d) this.moveRow(d, kept);
         kept++;
         continue;
@@ -1273,12 +1286,16 @@ export class Scene {
         const x = cx + dx, z = cz + dz;
         if ((dx === 0 && dz === 0) || x < 0 || z < 0 || x >= dims.chunksX || z >= dims.chunksZ) continue;
         const n = z * dims.chunksX + x;
-        if (this.meshDrawn.has(n) || city.in(n) === 0 || this.unseen(cam, n) || (this.city?.isFar(n) && this.city.exactly(n, cam, reach))) continue;
-        return false;
+        let closed = this.closes.get(n);
+        if (closed === undefined) this.closes.set(n, (closed = this.meshDrawn.has(n) || city.in(n) === 0 || this.unseen(cam, n) || (this.city?.isFar(n) === true && this.city.exactly(n, cam, reach))));
+        if (!closed) return false;
       }
     }
     return true;
   }
+
+  /** Per chunk asked of this frame, whether it leaves no face of a neighbour's open (`sealed`). */
+  private readonly closes = new Map<number, boolean>();
 
   /** Per chunk of the map's statics, found when first asked for: per cell of 16 m, the box round the pieces whose middles are in it. */
   private readonly boxes = new Map<number, Float64Array>();
@@ -1685,7 +1702,7 @@ export class Scene {
           r += ch.reach(mount === MOUNT_OWN ? own!.kind : remote.kind[mount]!);
         }
         const top = y + (r > 2.2 ? r : 2.2);
-        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, top, z + r) || this.hiding.hides(x - r, y - 0.3, z - r, x + r, top, z + r)) {
+        if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, top, z + r) || this.hiding.hidesOver(x - r, y - 0.3, z - r, x + r, top, z + r)) {
           // Out of view, a body whose shadow may fall in it is posed after those in view, while bones are left.
           if (this.casting && this.bodyShadows.body(x, y, z, r) !== 0) {
             this.unseenFrom[unseen] = i;
@@ -2394,7 +2411,7 @@ export class Scene {
       const n = first[c + 1]! - first[c]!;
       if (n === 0) continue;
       const k = c * 6;
-      if (b.inView[c] === 0 || this.hiding.hides(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz)) {
+      if (b.inView[c] === 0 || this.hiding.hidesOver(box[k]! + ox, box[k + 1]! + oy, box[k + 2]! + oz, box[k + 3]! + ox, box[k + 4]! + oy, box[k + 5]! + oz)) {
         gap += n;
         continue;
       }
@@ -2856,7 +2873,7 @@ export class Scene {
       const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
       const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
       // Culled entries are left out of the counts. The second pass repeats the test.
-      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r) || this.hiding.hides(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r) || this.hiding.hidesOver(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       this.tally(cam, mesh, x, y, z);
       visible++;
     }
@@ -2873,7 +2890,7 @@ export class Scene {
       const x = (mine ? this.own!.x : remote.x[i]!) - cam.x;
       const y = (mine ? this.own!.y : remote.y[i]!) - cam.y;
       const z = (mine ? this.own!.z : remote.z[i]!) - cam.z;
-      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r) || this.hiding.hides(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
+      if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r) || this.hiding.hidesOver(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       const at = this.cursor[mesh]!++;
       const yaw = Math.round(((mine ? this.own!.yaw : remote.yaw[i]!) / (2 * Math.PI)) * 65536) & 0xffff;
       if (lies !== 0) this.transient.set(at, x, y, z, this.dropped.yaw(remote.id[i]!, yaw), this.dropped.colorOf(lies));

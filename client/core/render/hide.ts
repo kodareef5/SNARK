@@ -166,6 +166,13 @@ export class Hiding {
   on = false;
   /** Occluders and boxes tested this frame, and of those boxes the hidden. */
   readonly stats = { occluders: 0, tested: 0, hidden: 0 };
+  /**
+   * Where the ground hides what is under it this frame (`hidesOver`): the lowest the ground drawn may stand over a
+   * camera-relative rectangle of x and z, -Infinity where it does not say; and how far off a box may reach and still be
+   * under ground drawn. Null for nowhere.
+   */
+  under: ((x0: number, z0: number, x1: number, z1: number) => number) | null = null;
+  underReach = 0;
   width = 0;
   readonly height = HIDE_ROWS;
   private near = new Float32Array(0);
@@ -195,6 +202,7 @@ export class Hiding {
     }
     this.near.fill(0);
     this.on = false;
+    this.under = null;
     this.stats.occluders = this.stats.tested = this.stats.hidden = 0;
     const v = cam.viewProj, m = this.m;
     for (let c = 0; c < 3; c++) {
@@ -392,9 +400,63 @@ export class Hiding {
    * Whether the picture hides all of a camera-relative box: every pixel its corners span holds an occluder nearer than
    * its nearest corner. A box reaching the near plane, or off the screen, is not hidden.
    */
+  /** As `hides`, what of the box lies under the ground drawn hidden by it. */
+  hidesOver(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean {
+    if (!this.on) return false;
+    if (this.under && Math.hypot(Math.max(-minX, maxX), Math.max(-minY, maxY), Math.max(-minZ, maxZ)) <= this.underReach) {
+      const ground = this.under(minX, minZ, maxX, maxZ);
+      if (ground >= maxY) {
+        this.stats.tested++;
+        this.stats.hidden++;
+        return true;
+      }
+      minY = Math.max(minY, ground);
+    }
+    return this.hides(minX, minY, minZ, maxX, maxY, maxZ);
+  }
+
   hides(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean {
     if (!this.on) return false;
     this.stats.tested++;
+    if (!this.span(minX, minY, minZ, maxX, maxY, maxZ)) return false;
+    const W = this.width, near = this.near, blocks = this.blocks, need = this.need;
+    const i0 = this.i0, i1 = this.i1, j0 = this.j0, j1 = this.j1;
+    for (let bj = Math.floor(j0 / BLOCK); bj <= Math.floor(j1 / BLOCK); bj++) {
+      for (let bi = Math.floor(i0 / BLOCK); bi <= Math.floor(i1 / BLOCK); bi++) {
+        if (blocks[bj * this.across + bi]! > need) continue;
+        for (let j = Math.max(j0, bj * BLOCK); j <= Math.min(j1, bj * BLOCK + BLOCK - 1); j++) {
+          for (let i = Math.max(i0, bi * BLOCK); i <= Math.min(i1, bi * BLOCK + BLOCK - 1); i++) if (near[j * W + i]! <= need) return false;
+        }
+      }
+    }
+    this.stats.hidden++;
+    return true;
+  }
+
+  /**
+   * About how much of a camera-relative box the picture hides, 0 to 1: of SAMPLES by SAMPLES pixels spread over those
+   * its corners span, the share holding an occluder nearer than its nearest corner. For whether its parts are worth
+   * testing one by one; only `hides` says a box is hidden.
+   */
+  share(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): number {
+    if (!this.on || !this.span(minX, minY, minZ, maxX, maxY, maxZ)) return 0;
+    const W = this.width, near = this.near, need = this.need;
+    let n = 0;
+    for (let a = 0; a < SAMPLES; a++) {
+      const j = this.j0 + Math.floor(((this.j1 - this.j0) * (a + 0.5)) / SAMPLES);
+      for (let b = 0; b < SAMPLES; b++) if (near[j * W + this.i0 + Math.floor(((this.i1 - this.i0) * (b + 0.5)) / SAMPLES)]! > need) n++;
+    }
+    return n / (SAMPLES * SAMPLES);
+  }
+
+  /** The pixels a box's corners span, i0 to i1 and j0 to j1, and the inverse depth an occluder must pass: false for none. */
+  private i0 = 0;
+  private i1 = 0;
+  private j0 = 0;
+  private j1 = 0;
+  private need = 0;
+
+  private span(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean {
     const m = this.m, W = this.width, H = HIDE_ROWS;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, wNear = Infinity;
     for (let k = 0; k < 8; k++) {
@@ -409,22 +471,24 @@ export class Hiding {
       if (sy > y1) y1 = sy;
       if (w < wNear) wNear = w;
     }
-    const i0 = Math.max(0, Math.floor(x0)), i1 = Math.min(W - 1, Math.floor(x1));
-    const j0 = Math.max(0, Math.floor(y0)), j1 = Math.min(H - 1, Math.floor(y1));
-    if (i0 > i1 || j0 > j1) return false;
-    if (wNear - SLACK <= this.clip) return false;
-    const need = (1 + MARGIN) / (wNear - SLACK), near = this.near, blocks = this.blocks;
-    for (let bj = Math.floor(j0 / BLOCK); bj <= Math.floor(j1 / BLOCK); bj++) {
-      for (let bi = Math.floor(i0 / BLOCK); bi <= Math.floor(i1 / BLOCK); bi++) {
-        if (blocks[bj * this.across + bi]! > need) continue;
-        for (let j = Math.max(j0, bj * BLOCK); j <= Math.min(j1, bj * BLOCK + BLOCK - 1); j++) {
-          for (let i = Math.max(i0, bi * BLOCK); i <= Math.min(i1, bi * BLOCK + BLOCK - 1); i++) if (near[j * W + i]! <= need) return false;
-        }
-      }
-    }
-    this.stats.hidden++;
+    this.i0 = Math.max(0, Math.floor(x0));
+    this.i1 = Math.min(W - 1, Math.floor(x1));
+    this.j0 = Math.max(0, Math.floor(y0));
+    this.j1 = Math.min(H - 1, Math.floor(y1));
+    if (this.i0 > this.i1 || this.j0 > this.j1 || wNear - SLACK <= this.clip) return false;
+    this.need = (1 + MARGIN) / (wNear - SLACK);
     return true;
   }
+}
+
+/** Samples a side `Hiding.share` reads; and the share of them a far tile's must show hidden for its parts to be tested one by one. */
+const SAMPLES = 4;
+export const WORTH = 0.5;
+
+/** What the far layers ask of the picture of what hides what (Hiding). */
+export interface Hider {
+  hides(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): boolean;
+  share(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): number;
 }
 
 /** Scratch for a chunk's boxes: seven numbers each, least then most and the frame they are in; their places to the centimetre; keys. */
