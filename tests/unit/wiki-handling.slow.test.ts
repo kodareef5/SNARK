@@ -1,4 +1,5 @@
-// How each vehicle drives, as the wiki measures it from the vehicle's own step (tools/wiki/handling.ts) and says it.
+// How each vehicle drives, as the wiki measures it from the vehicle's own step (tools/wiki/handling.ts) and says it. It runs
+// every vehicle's model, so it grows with the fleet and runs before a merge (planning/quality/testing.md).
 
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
