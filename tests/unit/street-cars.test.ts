@@ -112,13 +112,15 @@ test("no two parked cars' envelopes cross, nor one's door room the other's body,
       expect(meets(room(p, clear), body(q)) || meets(room(q, clear), body(p))).toBe(false);
     }
   }
-  // The car park's road: two to four cars, standing on it, each the lot's `apart` from the next and the district's from any other.
+  // The car park's road: two to four cars together on it, each the lot's `apart` from the next and the district's from any other.
   const parked = cars.filter((p) => p.lot);
   expect(parked.length).toBeGreaterThanOrEqual(2); expect(parked.length).toBeLessThanOrEqual(4);
   for (const p of parked) {
     expect(Math.abs(p.z - 960)).toBeLessThan(3); expect(p.x).toBeGreaterThan(100); expect(p.x).toBeLessThan(400);
     for (const q of cars) if (q !== p) expect(Math.hypot(q.x - p.x, q.z - p.z)).toBeGreaterThanOrEqual(6);
   }
+  const xs = parked.map((p) => p.x).sort((a, b) => a - b);
+  expect(xs.at(-1)! - xs[0]!).toBeLessThanOrEqual((parked.length - 1) * (6 + 4));
 });
 
 test("a share of the parked cars are hurt in a range they drive in, the rest whole, and every one's fuel is in a band, most of them low", () => {

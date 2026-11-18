@@ -208,8 +208,11 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
     for (const line of [...roadsOf.keys()].sort((a, b) => hash3(a, 0, seed + 1229) - hash3(b, 0, seed + 1229) || a - b)) {
       if (held >= lots.perDistrict) break;
       const want = lots.least + hash3(line, 1, seed + 1229) % Math.max(1, lots.most - lots.least + 1);
-      const chosen: Candidate[] = [];
-      for (const p of roadsOf.get(line)!) if (chosen.length < want && free(p, chosen, lots.apart) && free(p, out, rules.apart)) chosen.push(p);
+      const road = roadsOf.get(line)!; const first = road.find((p) => free(p, out, rules.apart));
+      if (!first) continue;
+      // The rest nearest the first, so the car park's cars stand together.
+      const chosen = [first];
+      for (const p of [...road].sort((a, b) => Math.hypot(a.x - first.x, a.z - first.z) - Math.hypot(b.x - first.x, b.z - first.z))) if (chosen.length < want && free(p, chosen, lots.apart) && free(p, out, rules.apart)) chosen.push(p);
       if (chosen.length >= lots.least) { out.push(...chosen); held++; }
     }
     const want = Math.max(rules.least, Math.min(rules.most, Math.round((length[district] ?? 0) / 1000 * rules.perKm)));
