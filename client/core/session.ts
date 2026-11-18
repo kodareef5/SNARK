@@ -35,6 +35,7 @@ import {
   OWN_BUFFS,
   OWN_RULES,
   RULE_CORPSE_LOCATOR,
+  RULE_PVE,
   RULE_CROSSHAIR,
   RULE_DAMAGE_NUMBERS,
   RULE_GLOBAL_CHAT,
@@ -436,6 +437,7 @@ export class ClientSession {
   crosshair = true;
   mapLocation = true;
   corpseLocator = true;
+  pve = false;
   motdSeconds = 20;
   /** The server's clock scales: the whole cycle, and the day and the night within it. */
   readonly clock = { cycle: 1, day: 1, night: 1 };
@@ -992,7 +994,7 @@ export class ClientSession {
     else if (this.own.seatSlot === 0) {
       const params = this.registry.tamedMove[this.own.kind] ?? this.move!;
       stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, params, TICK_DT,
-        this.bodyContacts?.prepare(this.drawn.find(this.latestSnapshot), this.ownHandle, this.driving, this.own, params));
+        this.bodyContacts?.prepare(this.drawn.find(this.latestSnapshot), this.ownHandle, this.driving, this.own, params, this.world!, this.tribe.team, this.pve, inp.moveX[i]!, inp.moveZ[i]!, buttons, this.drawn));
     }
     else this.own.yaw = inp.yaw[i]!;
     if (this.driving >= 0) {
@@ -1300,6 +1302,7 @@ export class ClientSession {
       this.crosshair = (flags & RULE_CROSSHAIR) !== 0;
       this.mapLocation = (flags & RULE_MAP_LOCATION) !== 0;
       this.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
+      this.pve = (flags & RULE_PVE) !== 0;
     } else if (component === OWN_VOICE) {
       const slot = r.u16();
       const token = new Uint8Array(TOKEN_BYTES);

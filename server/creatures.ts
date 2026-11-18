@@ -1,7 +1,6 @@
 // Spawns creatures, wakes and sleeps them, and steps the awake ones. A chunk is awake while a player is within wakeRadius chunks of it.
 // Creatures in sleeping chunks are not stepped or iterated. Slow quantities such as hunger are lazy and belong to server/survival.ts.
 
-import type { BodyContacts } from "./body-contacts.ts";
 import { AnimState, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, PITCH_AUTHORED, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
 import { TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
@@ -53,7 +52,6 @@ export class Creatures {
   grounded = 0;
 
   private readonly world: ServerWorld;
-  private readonly bodyContacts: BodyContacts;
   private readonly records: Records;
   private readonly survival: Survival;
   private readonly rng: Rng;
@@ -82,7 +80,6 @@ export class Creatures {
 
   constructor(world: ServerWorld, game: GameServer, records: Records, survival: Survival, seed: number, wakeRadius = 3) {
     this.world = world;
-    this.bodyContacts = game.bodyContacts;
     this.records = records;
     this.survival = survival;
     this.rng = new Rng(seed);
@@ -95,7 +92,6 @@ export class Creatures {
     });
     this.chunkRefs = new Uint16Array(chunkCount(world.dims));
     this.mind = new Behavior(world, game, seed + 7);
-    this.bodyContacts.claimed = () => this.mind.contactBodies();
     this.mind.herd = this;
     // One that takes fright is startled before it runs.
     this.mind.onStartle = (e) => this.cue(e, CUE_STARTLE, false);
@@ -345,7 +341,7 @@ export class Creatures {
       if (swims) buttons = (buttons & ~BTN_SPRINT) | (!p.flies && this.under(e, p) ? BTN_JUMP : 0);
       const x0 = b.x;
       const z0 = b.z;
-      stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT, this.bodyContacts.prepare(e, b, p));
+      stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT);
       const landing = stepOut.landSpeed;
       if (landing >= LAND_SPEED && (b.mflags & MF_OUT) === 0 && world.anims[kind]?.land) this.cue(e, CUE_LAND, false);
       // Knocked out, it lies down from its limp fall as it comes to the ground.

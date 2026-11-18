@@ -1,7 +1,15 @@
 // Ground controllers meet other upright capsules without pushing them. Only their own inward travel/velocity is clipped.
 // The caller supplies current qualified bodies and still checks every resulting position against static geometry.
-import type { Body, MoveParams } from "./character.ts";
+import { BTN_JUMP, MF_OUT, MODE_WALK, stanceHeight, type Body, type MoveParams } from "./character.ts";
+import { capsuleFree, type CollisionWorld } from "../world/collide.ts";
 const STRIDE = 6, SKIN = .002, PASSES = 3;
+export function groundBlockingActive(body: Body, moveX: number, moveZ: number, buttons: number): boolean {
+  return body.mode === MODE_WALK && body.grounded && (body.mflags & MF_OUT) === 0 && (buttons & BTN_JUMP) === 0 &&
+    (moveX !== 0 || moveZ !== 0 || body.vx !== 0 || body.vz !== 0);
+}
+export function groundBodyTeamBlocks(own: number, other: number, pve: boolean): boolean {
+  return other === 0 || other !== own && !pve;
+}
 /** Native walking commits at most one radius per substep, including static separation, in at most sixteen substeps. */
 export function groundContactReach(body: Body, params: MoveParams, dt: number): number {
   const vx = body.vx, vz = body.vz, wish = params.walkSpeed * params.sprintMul * body.speedQ / 1000;
@@ -18,6 +26,30 @@ export class GroundBodies {
     if (this.count * STRIDE === this.rows.length) { const rows = new Float64Array(this.rows.length * 2); rows.set(this.rows); this.rows = rows; }
     const at = this.count++ * STRIDE, rows = this.rows;
     rows[at] = handle; rows[at + 1] = x; rows[at + 2] = y; rows[at + 3] = z; rows[at + 4] = radius; rows[at + 5] = height;
+  }
+  /** Normal controls must escape a crowded body gap or a doorway. Only bodies yield; static collision remains mandatory. */
+  allowEscape(world: CollisionWorld, body: Body, params: MoveParams): boolean {
+    let close = 0, near = -1;
+    const rows = this.rows, height = stanceHeight(params, body.stance);
+    for (let i = 0; i < this.count * STRIDE; i += STRIDE) {
+      const dx = body.x - rows[i + 1]!, dz = body.z - rows[i + 3]!, radius = params.radius + rows[i + 4]!;
+      const low = rows[i + 2]! + rows[i + 4]! - Math.max(params.radius, height - params.radius);
+      const high = rows[i + 2]! + Math.max(rows[i + 4]!, rows[i + 5]! - rows[i + 4]!) - params.radius;
+      const dy = body.y < low ? body.y - low : body.y > high ? body.y - high : 0;
+      const distance2 = dx * dx + dy * dy + dz * dz;
+      // Landing, dismounting or a newly visible body can begin overlapped. It must never become an inescapable cage.
+      if (distance2 < (radius - .01) * (radius - .01)) { this.count = 0; return false; }
+      if (distance2 < (radius + .6) * (radius + .6)) { near = i; if (++close > 1) { this.count = 0; return false; } }
+    }
+    if (near >= 0) {
+      const x = rows[near + 1]!, z = rows[near + 3]!, dx = x - body.x, dz = z - body.z, length = Math.sqrt(dx * dx + dz * dz);
+      if (length > 1e-8) {
+        const reach = params.radius + rows[near + 4]! + .05, sx = -dz / length * reach, sz = dx / length * reach;
+        if (!capsuleFree(world, x + sx, body.y, z + sz, params.radius, height) &&
+          !capsuleFree(world, x - sx, body.y, z - sz, params.radius, height)) { this.count = 0; return false; }
+      }
+    }
+    return this.count > 0;
   }
   clip(x: number, y: number, z: number, toX: number, toY: number, toZ: number, radius: number, height: number, vx: number, vz: number): void {
     const out = this.result; out.hit = false;

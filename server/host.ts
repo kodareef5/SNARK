@@ -503,6 +503,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest, bus, rigs: opts.rigs }, (opts.seed ?? 1) + 53);
   death.eye = (e, out) => { combat.eye(e, out); };
   creatures.onStrike = (e) => combat.bite(e);
+  game.bodyContacts.pve = () => rules.on("serverPVE");
   const tribes = new Tribes(world, records);
   tribes.rules = rules;
   tribes.bus = bus;

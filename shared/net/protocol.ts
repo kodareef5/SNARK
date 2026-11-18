@@ -474,6 +474,8 @@ export const RULE_THIRD_PERSON = 8;
 export const RULE_CROSSHAIR = 16;
 export const RULE_MAP_LOCATION = 32;
 export const RULE_CORPSE_LOCATOR = 64;
+/** Protected tame bodies yield to controlled movement under PvE. */
+export const RULE_PVE = 128;
 /**
  * team varint, tribe name string (empty for a survivor alone, and then rank and members are absent), rank u8, members (count
  * u8, then per member: name string, online 1 bit, owner 1 bit). Then a pending invitation: tribe name string (empty for
