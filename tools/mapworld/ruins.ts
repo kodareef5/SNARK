@@ -159,9 +159,9 @@ export function makeRuins(site: Site): StaticPiece[] {
     const more = clearCirculation(pieces, records, records[0]?.firstPiece ?? pieces.length, assemblies, bridges.records);
     for (const [kind, n] of Object.entries(more)) clearance[kind] = (clearance[kind] ?? 0) + n;
   }
-  // Ground at a sample lowered to `y`. A column past the map's east or west edge runs on into the next row or the last,
-  // as the five cities were built with: Miami's ground keeps six samples at its west edge lowered from its east edge.
+  // Ground at a sample lowered to `y`, or -1 for a sample past the map's edge, which is none: not its row's neighbour.
   const lower = (row: number, col: number, y: number): number => {
+    if (row < 0 || col < 0 || row >= nz || col >= nx) return -1;
     const i = row * nx + col; site.ground.height[i] = Math.min(y, site.ground.height[i]!); return i;
   };
   for (const r of records) gradeApproaches(site, r.approaches, -1);
@@ -203,7 +203,8 @@ export function makeRuins(site: Site): StaticPiece[] {
   for (const r of bridges.records) for (const d of r.swim) {
     for (let s = -d.distance - 2; s <= d.distance + 2; s++) for (let side = -3; side <= 3; side++) {
       const x = d.x + d.dx * s - d.dz * side; const z = d.z + d.dz * s + d.dx * side;
-      site.ground.water[lower(Math.round((z1 - z) / 2), Math.round((x1 - x) / 2), -3)] = 1;
+      const i = lower(Math.round((z1 - z) / 2), Math.round((x1 - x) / 2), -3);
+      if (i >= 0) site.ground.water[i] = 1;
     }
   }
   for (const r of records) {

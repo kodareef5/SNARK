@@ -1,0 +1,16 @@
+# Kept: city.json and map.json, the base layers, the labels, the world build's settings, reports and pictures.
+# Left out: the downloads (SOURCES.md and downloads.json say how to fetch them again).
+raw/
+checks/
+
+# Inventories every build writes again.
+reports/ruins5/buildings.json
+reports/ruins5/labels.json
+reports/ruins5/circulation.json
+reports/ruins5/places.json
+reports/ruins5/bridges.json
+reports/ruins5/bridge-walk.json
+reports/ruins5/room-walk.json
+reports/ruins5/street-clusters.json
+reports/ruins5/roof-gardens.json
+reports/ruins5/remnants.json
