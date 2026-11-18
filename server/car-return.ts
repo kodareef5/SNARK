@@ -13,7 +13,8 @@ import type { Rules } from "./settings/rules.ts";
 import { foundVehicle, VEHICLE_ORIGIN, type VehicleStart } from "./vehicle-service.ts";
 import type { ServerWorld } from "./world.ts";
 
-export const DEADLINE_CAR = 12;
+/** 12 and 13 are kept for the item program and 14 for W5 (tests/unit/weapons-contracts.test.ts). */
+export const DEADLINE_CAR = 15;
 /** Seconds between a place's checks. */
 export const CAR_CHECK_SECONDS = 600;
 /** Metres. A car this near its place is still there: one shoved aside has not gone. */
