@@ -188,9 +188,8 @@ export class Residency {
   private readonly matUnder: Uint8Array;
   private readonly matTop: Int8Array;
   private readonly matSeen: Uint32Array;
-  /** Per material: its hurt and decay layer, -1 for none, and how many steps under the widest of its maps it was authored. */
+  /** Per material: its hurt and decay layer, -1 for none. */
   private readonly matLayer: Int32Array;
-  private readonly layerUnder: Uint8Array;
   /** Per texture: the step the card draws with and the step of the copy on its way, -1 for none, and the last step that can be had. */
   private readonly has: Int8Array;
   private readonly goal: Int8Array;
@@ -299,7 +298,6 @@ export class Residency {
     this.matTop = new Int8Array(materials.length);
     this.matSeen = new Uint32Array(materials.length);
     this.matLayer = new Int32Array(materials.length);
-    this.layerUnder = new Uint8Array(materials.length);
     materials.forEach((_, i) => this.learnMaterial(i));
     this.has = new Int8Array(textures.length).fill(-1);
     this.goal = new Int8Array(textures.length).fill(-1);
@@ -338,7 +336,6 @@ export class Residency {
     });
     const layer = m.layer ?? -1;
     this.matLayer[i] = layer;
-    this.layerUnder[i] = layer < 0 ? 0 : Math.max(0, this.matTop[i]! - stepOf(textures[layer]!.top));
   }
 
   /** What the manifest says of a mesh whose row is here, with the blob of its page where it has one. */
@@ -626,13 +623,15 @@ export class Residency {
 
   /**
    * Says a material's hurt and decay layer is on screen, as `material` says of its maps: a body drawn with it is hurt or
-   * dead. Its first step is as urgent as what a material is not drawn without. False for a material with no layer.
+   * dead. It is wanted as wide as its base colour is, up to its own top, however much smaller it was stored: its marks
+   * are thin lines, which a coarser step swells. Its first step is as urgent as what a material is not drawn without.
+   * False for a material with no layer.
    */
   layer(m: number, pixels: number, distance: number): boolean {
     const t = this.matLayer[m]!;
     if (this.cap < 0 || t < 0) return false;
     const most = STEP0_SIZE << (this.matTop[m]! < this.cap ? this.matTop[m]! : this.cap);
-    this.texture(t, (pixels < most ? pixels : most) / (1 << this.layerUnder[m]!), 1 / distance, true);
+    this.texture(t, pixels < most ? pixels : most, 1 / distance, true);
     return true;
   }
 

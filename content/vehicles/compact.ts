@@ -1,4 +1,5 @@
 // First original vehicle in the actual game's species registry. Presentation lives in its asset source.
+import { COMPACT_ART } from "./compact-art.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import type { WheelVehicleDefinition, VehicleSpec, VehicleSurface } from "../../shared/sim/vehicle.ts";
 
@@ -28,7 +29,7 @@ export const MUD: VehicleSurface = { id: "mud", grip: 1.8, rolling: 1.1, drag: 0
 // Doors, wheels and the steering wheel name the rig's bones; each seat's anchor is its rig socket's point
 // (assets/source/core/vehicles/compact/ref/DESIGN.md), and the anchor is what server and client both use.
 export const COMPACT_VEHICLE: WheelVehicleDefinition = {
-  id: "core:compact", spec: COMPACT,
+  id: "core:compact", frame: "car", spec: COMPACT,
   seats: [
     { id: "driver", driver: true, anchor: [0.42, 0.59, 0.12], entry: [1.25, 0, 0.12], door: 0 },
     { id: "passenger", anchor: [-0.42, 0.59, 0.12], entry: [-1.25, 0, 0.12], door: 1 },
@@ -45,6 +46,7 @@ export const COMPACT_VEHICLE: WheelVehicleDefinition = {
   actionTicks: 18,
   // The door sills: the side windows are down and the screens open in the middle (DESIGN.md).
   beltline: 0.95,
+  shotPanels: COMPACT_ART.shotPanels,
 };
 
 /** Uses normal entity health, cargo and ownership; the vehicle controller supplies all movement. */

@@ -3,6 +3,7 @@ import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { wreckLook } from "../../content/vehicles/wrecks.ts";
 import type { Def, ShapeBox } from "../../shared/content/defs.ts";
 import { hullPoint, type HullDef } from "../../shared/world/convex.ts";
+import { binKey } from "./raster.ts";
 import type { StaticPiece } from "./statics.ts";
 
 interface Point { x: number; y: number; z: number; }
@@ -77,21 +78,21 @@ export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: Static
   const add = (p: StaticPiece): void => {
     const box = boxOf(p); const radius = Math.hypot(box.size[0], box.size[2]) / 2 + 1;
     for (let z = Math.floor((box.z - radius) / 64); z <= Math.floor((box.z + radius) / 64); z++) for (let x = Math.floor((box.x - radius) / 64); x <= Math.floor((box.x + radius) / 64); x++) {
-      const k = x + z * 1024; if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push({ p, box });
+      const k = binKey(x, z); if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push({ p, box });
     }
   };
   for (const p of pieces) add(p);
   const blocked = (points: readonly Point[]): boolean => {
     const minX = Math.min(...points.map((p) => p.x)); const maxX = Math.max(...points.map((p) => p.x));
     const minZ = Math.min(...points.map((p) => p.z)); const maxZ = Math.max(...points.map((p) => p.z));
-    for (let z = Math.floor(minZ / 64); z <= Math.floor(maxZ / 64); z++) for (let x = Math.floor(minX / 64); x <= Math.floor(maxX / 64); x++) for (const { p } of bins.get(x + z * 1024) ?? []) if (obstructs(p, points)) return true;
+    for (let z = Math.floor(minZ / 64); z <= Math.floor(maxZ / 64); z++) for (let x = Math.floor(minX / 64); x <= Math.floor(maxX / 64); x++) for (const { p } of bins.get(binKey(x, z)) ?? []) if (obstructs(p, points)) return true;
     return false;
   };
   /** Whether a piece already set down meets the box grown by `gap`. */
   const hits = (box: Box, gap = 0): boolean => {
     const radius = Math.hypot(box.size[0], box.size[2]) / 2 + gap;
     for (let z = Math.floor((box.z - radius) / 64); z <= Math.floor((box.z + radius) / 64); z++) for (let x = Math.floor((box.x - radius) / 64); x <= Math.floor((box.x + radius) / 64); x++) {
-      for (const q of bins.get(x + z * 1024) ?? []) if (meets(box, q.box, gap)) return true;
+      for (const q of bins.get(binKey(x, z)) ?? []) if (meets(box, q.box, gap)) return true;
     }
     return false;
   };
@@ -99,7 +100,7 @@ export function obstacleIndex(pieces: readonly StaticPiece[]): { add: (p: Static
   const count = (x: number, z: number, radius: number): number => {
     const seen = new Set<StaticPiece>();
     for (let bz = Math.floor((z - radius) / 64); bz <= Math.floor((z + radius) / 64); bz++) for (let bx = Math.floor((x - radius) / 64); bx <= Math.floor((x + radius) / 64); bx++) {
-      for (const { p, box } of bins.get(bx + bz * 1024) ?? []) if (Math.hypot(box.x - x, box.z - z) < radius) seen.add(p);
+      for (const { p, box } of bins.get(binKey(bx, bz)) ?? []) if (Math.hypot(box.x - x, box.z - z) < radius) seen.add(p);
     }
     return seen.size;
   };

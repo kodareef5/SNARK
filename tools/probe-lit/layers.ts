@@ -1,9 +1,11 @@
 // Hurt and dead bodies on a GPU, a check of tools/probe-lit.ts: the tube of the scene fixture with a hurt and decay
-// layer, four of them side on at hurt stages 1 and 3 and decay stages 1 and 3, on medium at noon. The surfaceLayer
-// program is held to the rasterizer, which draws the layer by surface.ts `wounded`, at points on one body with no edge
-// near, and enough of those points must be where a layer is drawn.
+// layer, four of them side on at hurt stages 1 and 3 and decay stages 1 and 3, on medium at noon, each drawn as a road
+// vehicle in a wear story of its own (wear.ts). The surfaceLayer program is held to the rasterizer, which draws the
+// layer by surface.ts `wounded`, at points on one body with no edge near, and enough of those points must be where a
+// layer is drawn.
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
+import { WEAR_STORIES } from "../../client/core/render/wear.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_HURT_SHIFT } from "../../shared/anim/pose.ts";
 import { sceneSet, sceneWorld } from "../../tests/fixtures/sceneworld.ts";
 import { TUBE } from "../../tests/fixtures/textured.ts";
@@ -36,6 +38,7 @@ export const layersCheck: LitCheck = {
     shot.manifest = set.manifest;
     for (let f = 0; f < 40; f++) {
       const p = w.frame(100, false);
+      for (let d = 0; d < p.drawCount; d++) if (p.drawLayer[d]! > 0) p.drawWear[d] = 1 + (d % WEAR_STORIES);
       raster.render(p);
       shot.add(p, f === 39);
       if (f === 39) made = { frame: f, color: raster.color.slice(), pickKind: raster.pickKind.slice(), pickId: raster.pickId.slice(), pickDraw: raster.pickDraw.slice(), layered: p.drawLayer.slice(0, p.drawCount) };
@@ -81,6 +84,6 @@ export const layersCheck: LitCheck = {
     }
     const [p, mm] = [spread(pixel), spread(mean)];
     const ok = p.points >= LEAST.all && layered >= LEAST.layered && p.p95 <= TOLERANCE.pixelP95 && mm.worst <= TOLERANCE.meanWorst;
-    return { ok, lines: [`four bodies at hurt stages 1 and 3 and decay stages 1 and 3 against the rasterizer: ${p.points} points, ${layered} on a layer; pixels 95 in 100 within ${p.p95}, worst ${p.worst}; 5 by 5 means worst ${mm.worst.toFixed(2)}  ${ok ? "ok" : "FAIL"}`] };
+    return { ok, lines: [`four bodies at hurt stages 1 and 3 and decay stages 1 and 3, each in a wear story, against the rasterizer: ${p.points} points, ${layered} on a layer; pixels 95 in 100 within ${p.p95}, worst ${p.worst}; 5 by 5 means worst ${mm.worst.toFixed(2)}  ${ok ? "ok" : "FAIL"}`] };
   },
 };

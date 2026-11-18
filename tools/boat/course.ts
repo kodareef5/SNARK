@@ -36,8 +36,8 @@ export function boatCourse(): MapData {
     heights: hf.heights, tint: hf.tint, statics, nodes: [], spawns: [{ name: "Launch dock", ...BOAT_COURSE.spawn }] };
 }
 
-export function writeBoatCourse(path: string): string {
-  const out = resolve(path); mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, writeMap(boatCourse())); return out;
+export function writeBoatCourse(path: string, course = boatCourse()): string {
+  const out = resolve(path); mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, writeMap(course)); return out;
 }
 if (import.meta.main) {
   const at = process.argv.indexOf("--out");

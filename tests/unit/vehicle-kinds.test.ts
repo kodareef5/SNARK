@@ -54,6 +54,9 @@ test("a vehicle that would not register or draw is refused when it compiles, wit
   expect(bad({ seats: [{ ...PICKUP.seats[0]!, id: "Driver" }] })).toBe("invalid vehicle seat");
   expect(bad({ doors: [...PICKUP.doors, PICKUP.doors[0]!] })).toBe("a vehicle has at most 4 doors");
   expect(bad({ doors: [{ ...PICKUP.doors[0]!, openTicks: 0 }, ...PICKUP.doors.slice(1)] })).toBe("invalid vehicle door");
+  expect(bad({ cargoDoor: 4 })).toBe("invalid vehicle cargo door");
+  expect(bad({ doors: [{ bone: "slider", slide: { outward: .1, along: NaN }, openTicks: 8, closeTicks: 10 }] })).toBe("invalid vehicle door");
+  expect(bad({ spec: { ...PICKUP.spec, frontDriveShare: 1.1 } })).toBe("invalid vehicle axle split or downforce");
   expect(bad({ actionTicks: 0 })).toBe("invalid vehicle action ticks");
   expect(bad({ beltline: 2 })).toBe("invalid vehicle belt line");
   expect(bad({ steeringWheel: { bone: "", axis: [0, 0, 1], ratio: 1 } })).toBe("invalid steering wheel");

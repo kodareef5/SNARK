@@ -2,7 +2,8 @@
 // file, a mesh file, a page file, a texture file for each variant and a manifest. An asset file is named after its own
 // hash, so a browser keeps it for good. What is fetched whole has a Brotli copy beside it. What is fetched by range is
 // stored a part at a time, deflated where that is smaller, and every level is ordered for the vertex cache first, a
-// flat one welded. What the first frame waits for holds the survivor and nothing else that grows with the catalogue.
+// flat one welded. What the first frame waits for holds the survivor's art and, of the rest of the catalogue, what the
+// session starts with alone: the definitions, the rigs and a line naming each mesh and clip.
 
 import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -33,10 +34,10 @@ import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
 import { SOUND_RATES, buildSounds, findSheets, type SoundReport } from "./pack/sound.ts";
-import { bootManifest, splitPack, writePages, type SplitFile } from "./pack/split.ts";
+import { bootManifest, splitLandmark, splitPack, writePages, type SplitFile } from "./pack/split.ts";
 import { storeParts, type StoreReport } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
-import { weigh, weighLandmarks } from "./sizes.ts";
+import { mapLandmarks, weigh, weighLandmarks } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
 
 /** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
@@ -99,6 +100,9 @@ export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boole
   });
   return { boot: (id) => boot.has(id), place: (id) => places.get(id) ?? [kinds.size, 0] };
 }
+
+/** The materials the client finds by name, whose rows what it reads first holds: the world's finishes, the sky's and the water's. */
+export const NAMED_MATERIALS: ReadonlySet<string> = new Set([SURFACE_MATERIAL, SKY_MATERIAL, WATER_MATERIAL]);
 
 /** The colour far blocks draw each palette colour in, from every piece's coarsest level in the whole pack, bound as a scene binds it. */
 function wholeFarColours(reg: Registry, pack: Pack): number[] {
@@ -217,9 +221,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     manifest.soundRows = `sounds.${partHash(rows)}.json`;
     writeFileSync(join(dist, "assets", manifest.soundRows), rows);
   }
-  // The materials the client finds by name: the world's finishes, the sky's and the water's.
-  const named = new Set([SURFACE_MATERIAL, SKY_MATERIAL, WATER_MATERIAL]);
-  writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(bootManifest(manifest, (id) => named.has(id))));
+  writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(bootManifest(manifest, (id) => NAMED_MATERIALS.has(id))));
   const landmarks = await buildLandmarks(dist, opts.quick ?? false);
   // The page asks for its script and the files the first frame needs as it is read. The server names its map's file, so main.js asks for that.
   const boot = `assets/${manifest.files[manifest.boot]!.name}`;
@@ -237,8 +239,9 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
 }
 
 /**
- * Each landmark's files in assets/landmarks: a boot file, a mesh file and its textures as the core's are made, and the
- * manifest that names them, which a client on a map that places it joins after the core's (shared/pack/join.ts). Its bytes.
+ * Each landmark's files in assets/landmarks: a boot file, a mesh file, a page file and its textures as the core's are made,
+ * and the manifest that names them, which a client on a map that places it joins after the core's (shared/pack/join.ts).
+ * Its pieces are paged (splitLandmark). Its bytes.
  */
 async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
   const out = join(dist, "assets/landmarks");
@@ -252,15 +255,19 @@ async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
     const placed = PLACED.find((l) => l.name === name);
     if (!placed) throw new Error(`assets/source/landmarks/${name} is the art of a landmark content/landmarks/index.ts does not have`);
     const art = landmarkArt(placed);
-    const { files: split, manifest } = splitPack(orderPack(landmarkPack(art)), name);
+    const { files: split, manifest, blobs } = splitLandmark(orderPack(landmarkPack(art)), name);
     await writeTextures(manifest, await gameTextures(SOURCE, name), name, out);
-    const { files } = await storeParts(split, manifest);
+    // As the core's: the pages say where everything else is stored, so they are written and stored after it.
+    const pageFile = split.findIndex((f) => f.role === "page");
+    const first = await storeParts(split, manifest, { only: split.flatMap((f, i) => (f.role === "page" ? [] : [i])) });
+    if (pageFile >= 0) first.files[pageFile] = { ...first.files[pageFile]!, bytes: writePages(manifest, blobs) };
+    const { files } = pageFile < 0 ? first : await storeParts(first.files, manifest, { only: [pageFile] });
     files.forEach((f, i) => {
       manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
       writeFileSync(join(out, manifest.files[i]!.name), f.bytes);
     });
     bytes += manifest.files.reduce((sum, f) => sum + f.bytes, 0);
-    writeFileSync(join(out, `${name}.json`), JSON.stringify(manifest));
+    writeFileSync(join(out, `${name}.json`), JSON.stringify(bootManifest(manifest)));
     for (const file of [`${name}.json`, manifest.files[manifest.boot]!.name]) writeFileSync(join(out, `${file}.br`), brotli(readFileSync(join(out, file)), quick));
     console.log(`landmark     ${name}: ${manifest.meshes.length} meshes, ${manifest.textures?.length ?? 0} textures, ${manifest.files.map((f) => `${f.role} ${f.bytes}`).join(", ")} bytes`);
     const far = manifest.meshes.find((m) => m.id === farMeshId(name));
@@ -287,5 +294,5 @@ if (import.meta.main) {
   console.log(`client/dist  main.js ${jsBytes} bytes, assets ${packBytes} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
   // Only `bun run build` is weighed: a build for a caller (buildClientApart) says where it goes.
   const dist = resolve(import.meta.dir, "../client/dist");
-  if (!flag("--stress") && at < 0 && ![weigh(dist), weighLandmarks(dist)].every(Boolean)) process.exitCode = 1;
+  if (!flag("--stress") && at < 0 && ![weigh(dist), weighLandmarks(dist, mapLandmarks(SOURCE))].every(Boolean)) process.exitCode = 1;
 }

@@ -48,6 +48,7 @@ import { Combat } from "./combat.ts";
 import { Creatures } from "./creatures.ts";
 import { DEADLINE_DESPAWN, Death } from "./death.ts";
 import { DEADLINE_NODE, Harvest } from "./harvest.ts";
+import { VehicleTrees } from "./vehicle-trees.ts";
 import { DEADLINE_CRAFT, Progression } from "./progression.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
@@ -77,6 +78,7 @@ import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { settle, settleNear } from "./place.ts";
 import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
+import { CarReturn, DEADLINE_CAR } from "./car-return.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
@@ -194,6 +196,8 @@ export interface Host {
   readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
   readonly spawner: Spawner | null;
+  /** Null for a map that parks no car. */
+  readonly carReturn: CarReturn | null;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -496,7 +500,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     persistence.sidecar("settings_at", at);
     settingsAt = at;
   }
-  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest, bus }, (opts.seed ?? 1) + 53);
+  const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest, bus, rigs: opts.rigs }, (opts.seed ?? 1) + 53);
+  death.eye = (e, out) => { combat.eye(e, out); };
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   tribes.rules = rules;
@@ -545,7 +550,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // A hit's buff goes through entangling, which reads the bola's fields (weapons-plan.md, M6); a bola'd body is not mounted.
   const entangle = new Entangle({ world, game, records, buffs });
   combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
-  const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec), tangled: (rec) => entangle.tangled(rec) });
+  const riding = new Riding({ world, game, records, tribes, rigs: opts.rigs, refresh: (rec) => refreshBody(rec), tangled: (rec) => entangle.tangled(rec) });
   // A saddle stays on while anyone sits on it, steering or not.
   taming.ridden = (e) => riding.occupied(e);
   // An unowned car is anyone's to take, and a tribe's own cars are its members'. On PvP another tribe's car
@@ -558,7 +563,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (victim && car.team !== 0 && !tribes.may(victim, car.team)) return true;
     return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
   };
-  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
+  const trees = harvest ? new VehicleTrees(world, harvest) : null;
+  if (trees) game.vehicleStep = trees.step;
+  const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
@@ -568,6 +575,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const actor = records.byPid.get(c.pid);
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   };
+  death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
   game.onVehicleStep = e => urban.impact(e);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
@@ -888,6 +896,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (wiped >= 0) say(`destroyed ${wiped} wild creatures at the start, to be replaced`);
     persistence?.sidecar("spawner", spawner.saved);
   }
+  // A place where the map parks a car gets another some days after its car went (server/car-return.ts).
+  const returning = new CarReturn({ world, game, records, rules, deadlines, seed: opts.seed ?? 1,
+    park: (v, start) => parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", start) }, parsed?.vehicles ?? []);
+  const carReturn = returning.places.length > 0 ? returning : null;
+  if (carReturn) {
+    carReturn.begin(persistence && !loaded!.fresh ? (persistence.store.meta("carReturn") as string | null) : null);
+    persistence?.sidecar("carReturn", carReturn.saved);
+  }
 
   // A name belongs to the first device key that takes a body under it.
   game.authorize = (name, key) => {
@@ -1029,6 +1045,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       else if (kind === DEADLINE_SPAWN) spawner?.due(pid, stamp);
       else if (kind === DEADLINE_CORPSE) corpses.due(pid, stamp);
       else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
+      else if (kind === DEADLINE_CAR) carReturn?.due(pid, stamp);
     });
     refreshInventories();
     // Struggling, and the grace after a bola, once the buffs that came due have ended.
@@ -1165,6 +1182,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     harvest?.sync(c);
     tactical.sync(c);
   };
+  game.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
   const corpseReplication = new CorpseReplication(game, corpses);
   game.onSnapshot = (c, view) => corpseReplication.sync(c, view);
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
@@ -1311,6 +1329,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     overhead,
     hurt,
     spawner,
+    carReturn,
     beds,
     cluster,
     settled,

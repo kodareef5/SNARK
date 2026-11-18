@@ -85,7 +85,7 @@ test("host keeps its pre-combat saddle pin, refreshes a contact-reported mount, 
   }
 });
 
-test("vehicle oxygen follows the posed pilot head in an inverted cabin, including body proportions and current host position", () => {
+test("vehicle oxygen follows the posed pilot head in an inverted cabin, independent of body proportions and using the current host position", () => {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(2)) });
   try {
     const session = h.join("head-water-pilot"); h.run(400);
@@ -103,7 +103,7 @@ test("vehicle oxygen follows the posed pilot head in an inverted cabin, includin
     look[LOOK_REGIONS + 5] = 127; // Longer neck; the pelvis stays fitted to the same seat.
     ents.looks.set(c.ent, look);
     expect(h.host.urban.eye(c.ent, eye)).toBe(true);
-    expect(eye[1]!).toBeGreaterThan(shortHead + .015);
+    expect(eye[1]!).toBe(shortHead);
     const uprightHead = eye[1]!;
     ents.vehicleQz[row] = 1; ents.vehicleQw[row] = 0;
     expect(h.host.urban.eye(c.ent, eye)).toBe(true);

@@ -57,10 +57,15 @@ export function soundView(session: ClientSession): SoundView {
 /** Hands the session's changes to structures and nodes to `sounds`, from now on. */
 export function hearSession(session: ClientSession, sounds: Sounds): void {
   session.onStructure = (was, kind, x, y, z, hpWas, hp, cause) => sounds.build.structure(was, kind, x, y, z, hpWas, hp, cause);
-  session.onNode = (chunk, index, used) => {
+  const beforeNode = session.onNode;
+  session.onNode = (chunk, index, used, crushed, form) => {
+    beforeNode?.(chunk, index, used, crushed, form);
     const field = session.nodeField;
-    if (!used || !field) return;
+    if (!used || !field || crushed && session.predictedTrees?.hidden(chunk * 65536 + index)) return;
     field.source.at(chunk, index, spot);
-    if (spot.kind !== 0) sounds.build.node(spot.kind, spot.x, spot.y, spot.z);
+    if (spot.kind !== 0) {
+      if (crushed) sounds.build.treeImpact(spot.kind, spot.x, spot.y, spot.z);
+      else sounds.build.node(spot.kind, spot.x, spot.y, spot.z);
+    }
   };
 }

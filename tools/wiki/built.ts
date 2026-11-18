@@ -37,16 +37,16 @@ export function readBuilt(dist: string): Built {
   if (core.soundRows) core.sounds = JSON.parse(readFileSync(at(core.soundRows), "utf8")) as ManifestSound[];
   const whole = (file: number): Uint8Array => new Uint8Array(readFileSync(at(core.files[file]!.name)));
   const inflate = (stored: Uint8Array): Uint8Array => new Uint8Array(inflateRawSync(stored));
-  const pages = readPages(core, whole, inflate);
   const coreBoot = parsePack(whole(core.boot));
   const clips = allClips(core, coreBoot, whole, inflate);
-  // Every landmark's meshes, materials and textures after the core's, as a client on a map that places it joins them.
+  // Every landmark's meshes, materials, textures and pages after the core's, as a client on a map that places it joins them.
   let joined = { manifest: core, boot: coreBoot };
   for (const name of existsSync(at("landmarks")) ? readdirSync(at("landmarks")).filter((n) => n.endsWith(".json")).sort() : []) {
     const m = parseManifest(readFileSync(at(`landmarks/${name}`), "utf8"));
     joined = joinLandmark(joined, { manifest: m, boot: parsePack(new Uint8Array(readFileSync(at(`landmarks/${m.files[m.boot]!.name}`)))) }, "landmarks");
   }
   const { manifest, boot } = joined;
+  const pages = readPages(manifest, (file) => new Uint8Array(readFileSync(at(manifest.files[file]!.name))), inflate);
   const loose = existsSync(at("loose.json")) ? (JSON.parse(readFileSync(at("loose.json"), "utf8")) as Built["loose"]) : null;
   const open = new Map<number, number>();
   const names = readdirSync(join(dist, "assets"));

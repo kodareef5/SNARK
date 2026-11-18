@@ -37,7 +37,8 @@ test("all four native cockpit cameras remain in the cabin and follow the host th
       ents.vehicleYaw[ents.vrow[e]!] = attitude.yaw; ents.vehiclePitch[ents.vrow[e]!] = attitude.pitch; ents.vehicleRoll[ents.vrow[e]!] = attitude.roll;
       ents.vx[e] = ents.vy[e] = ents.vz[e] = ents.vehicleYawRate[ents.vrow[e]!] = ents.vehiclePitchRate[ents.vrow[e]!] = ents.vehicleRollRate[ents.vrow[e]!] = 0;
       ents.vehicleEngineOn[ents.vrow[e]!] = 1; ents.vehicleRotorRpm[ents.vrow[e]!] = 410; ents.vehicleCollective[ents.vrow[e]!] = .6;
-      h.host.urban.syncAfterContact(e); run(250);
+      // This fixture teleports the carrier between fixed attitudes. Retire its former prediction just as the host does on a teleport.
+      h.world.history.discontinuity(e); h.host.urban.syncAfterContact(e); run(250);
       for (let i = 0; i < crew.length; i++) {
         const app = crew[i]!, s = app.session, r = app.remote;
         let frame: VehicleFrame;

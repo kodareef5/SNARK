@@ -1,3 +1,5 @@
+import { TreeFalls } from "../tree-fall.ts";
+import type { TreePresentationEvent } from "../vehicle-trees.ts";
 import { remoteVehiclePose } from "../vehicle-view.ts";
 // Structures are drawn per chunk and per mesh as instanced batches. A chunk's instance buffer is rebuilt only when a
 // piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn. Resource nodes are drawn
@@ -40,6 +42,7 @@ import { PROGRAM, drawProgram } from "./programs.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
+import { WEAR_KEY } from "./wear.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndexCount } from "./packet.ts";
 import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
 import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
@@ -314,6 +317,15 @@ interface ChunkBatch {
 
 export class Scene {
   readonly packet = new FramePacket();
+  readonly treeFalls = new TreeFalls();
+  private readonly hiddenNodes = new Set<number>();
+  private readonly hiddenChanged = new Set<number>();
+  hideNode(ref: number, hide: boolean): void {
+    if (this.hiddenNodes.has(ref) === hide) return;
+    if (hide) this.hiddenNodes.add(ref); else this.hiddenNodes.delete(ref);
+    const chunk = Math.floor(ref / 65536); this.hiddenChanged.add(chunk);
+    this.world.farNodes?.changes.touch(chunk);
+  }
   /** The registry where it has moving statics, else null, and those of the map once its statics have come. */
   private readonly motionReg: Registry | null;
   private movingFrom: MapStatics | null = null;
@@ -661,6 +673,7 @@ export class Scene {
     this.startCity();
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.heldGeometry(mesh, table.tris[mesh]!.length - 1);
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last, known: (mesh) => this.assets.known(mesh) };
+    if (world.farNodes) world.farNodes.hidden = ref => this.hiddenNodes.has(ref);
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
     this.lakes = world.hf.water && far >= 0 ? new Lakes(world.hf, world.hf.water, far) : null;
     this.waterMesh = table.find(WATER_MESH);
@@ -724,6 +737,8 @@ export class Scene {
   build(cam: Camera, remote: RemoteSample | null): FramePacket {
     const p = this.packet;
     p.beginFrame();
+    for (const chunk of this.hiddenChanged) { const batch = this.batches.get(NODE_BUFFERS + chunk); if (batch) batch.shape = -1; }
+    this.hiddenChanged.clear();
     this.doubled = 0;
     cam.split = p.split = this.assets.tier.split;
     cam.update();
@@ -795,6 +810,7 @@ export class Scene {
     this.bodies(cam, remote);
     if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
     if (this.falling && this.falling.count > 0) this.showFalling(cam, this.falling);
+    if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, (event, pose) => this.showTreeFall(cam, event, pose));
     if (this.ghost.kind !== 0) this.showGhost(cam);
     if (this.things.length > 0) this.showThings(cam);
     this.showDetails(cam, remote);
@@ -1500,6 +1516,20 @@ export class Scene {
       if (this.unseenMount[k] !== -1) this.seatIn(remote, i, this.unseenMount[k]!, place, k);
       this.addRemote(remote, i, place, k, rigid, true);
     }
+  }
+
+  private showTreeFall(cam: Camera, event: TreePresentationEvent, pose: Float64Array): void {
+    const p = this.packet, mesh = this.meshOfForm[event.form]!;
+    if (mesh === HIDDEN || p.boneCount >= Math.min(p.tier.bones, MAX_BONES) || p.transientCount >= p.transientIds.length) return;
+    const x = event.x - cam.x, y = event.y - cam.y, z = event.z - cam.z, size = this.sizeOfForm[event.form]! / SIZE_UNITS;
+    const radius = this.radiusOfMesh[mesh]! * size, distance = Math.hypot(x, y, z);
+    if (distance > 72 || !cam.boxVisible(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius)) return;
+    const bone = p.boneCount++, b = bone * BONE_FLOATS;
+    for (let i = 0; i < 12; i++) p.bones[b + i] = i % 4 === 3 ? pose[i]! - (i === 3 ? cam.x : i === 7 ? cam.y : cam.z) : pose[i]! * size;
+    const first = p.transientCount++; this.transient.setSkinned(first, bone, this.colorOfForm[event.form]!); p.transientIds[first] = 0;
+    const level = this.assets.choose(this.assets.table.error[mesh]!, Math.max(0, distance - radius), -1);
+    this.assets.wantTextured(mesh, level, distance);
+    this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED | DRAW_ONE_BONE, cam.passes(x - radius, y - radius, z - radius, x + radius, y + radius, z + radius));
   }
 
   private showFalling(cam: Camera, f: Falling): void {
@@ -2223,7 +2253,7 @@ export class Scene {
     const skip = mesh ? mine! : null;
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
-      if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1)) continue;
+      if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1) || (sizeOf && this.hiddenNodes.has(chunk * 65536 + s))) continue;
       const i = Math.min(side - 1, Math.max(0, Math.floor(((t.x[s]! - x0) * side) / CHUNK_SIZE)));
       const j = Math.min(side - 1, Math.max(0, Math.floor(((t.z[s]! - z0) * side) / CHUNK_SIZE)));
       const block = (inside && shell![s] === 0 ? cells : 0) + j * side + (j & 1 ? side - 1 - i : i);
@@ -2298,7 +2328,7 @@ export class Scene {
     const box = b.cellBox, zone = b.zone;
     for (let s = 0; s < t.high; s++) {
       const kind = t.kind[s]!;
-      if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1)) continue;
+      if (kind === 0 || meshOf[kind] === HIDDEN || (skip && skip[s] === 1) || (sizeOf && this.hiddenNodes.has(chunk * 65536 + s))) continue;
       const mesh = meshOf[kind]!;
       const x = t.x[s]!;
       const y = t.y[s]!;
@@ -2457,7 +2487,7 @@ export class Scene {
    * Draws `count` instances of a mesh at the level the card has nearest to `wanted`: one draw for each of the level's
    * sections when the card has everything its materials take, and otherwise one flat draw of the whole of it. `passes`
    * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two. A section whose
-   * material has its layer on the card draws it at `layer`. A tree's crown may be drawn at a level of its own, `crown`,
+   * material has its layer on the card draws it at `layer`, which holds its wear story too (wear.ts WEAR_KEY). A tree's crown may be drawn at a level of its own, `crown`,
    * and its cut-out leaves at a share, the first of them (tools/pack/sprays.ts): its bark from the level wanted and the
    * rest from the crown's, while both are drawn with their materials, else all of it at the crown's.
    */
@@ -2514,7 +2544,8 @@ export class Scene {
       p.drawOffset[d * 3 + 2] = oz;
       p.drawFlags[d] = flags | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
-      p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer : 0;
+      p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
+      p.drawWear[d] = p.drawLayer[d]! > 0 ? Math.floor(layer / WEAR_KEY) : 0;
       const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;
       tris += made;
       if (material < 0 || this.barkOf[material] === 0) crowns += made;

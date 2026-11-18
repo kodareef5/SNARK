@@ -9,7 +9,11 @@ import numpy as np
 from affine import Affine
 from PIL import Image
 
-CLIENT = 'snark-mapdata/1.0'
+CLIENT = 'mapdata/1.0'
+# The lattice's middle (shared/coords.ts), and the corner the map build's north-west noise is read from: the north-west
+# corner of a map 127 chunks a side there, in metres west and north of the middle's corner.
+FRAME_MIDDLE = 2048
+NOISE_CORNER = 127 * 64
 
 
 class Map:
@@ -23,12 +27,21 @@ class Map:
         if self.cfg:
             self.crs = self.cfg['crs_wkt']
             self.b = self.cfg['bounds']
-            self.size = self.cfg['size_m']
-            self.n = self.cfg['grid_samples']
+            self.width, self.depth = self.b[2] - self.b[0], self.b[3] - self.b[1]
+            # The 2 m samples as a picture holds them: rows north to south, then columns west to east.
+            self.shape = (self.cfg['grid_samples'][1], self.cfg['grid_samples'][0])
             self.grid = Affine(self.cfg['spacing_m'], 0, self.b[0] - 1, 0, -self.cfg['spacing_m'], self.b[3] + 1)
+            # Columns and rows from the corner the build's north-west noise is read from to the frame's (base.ts, Grid).
+            col, row = self.cfg['frame']
+            self.noise = ((NOISE_CORNER - self.width - (col - FRAME_MIDDLE) * 64) / 2, (NOISE_CORNER - self.depth - (row - FRAME_MIDDLE) * 64) / 2)
 
-    def transform(self, n):
-        return Affine(self.size / n, 0, self.b[0], 0, -self.size / n, self.b[3])
+    def transform(self, shape):
+        rows, cols = shape
+        return Affine(self.width / cols, 0, self.b[0], 0, -self.depth / rows, self.b[3])
+
+    def fine_shape(self):
+        """Pixel areas of the fine layers, rows and columns: 8,192 across 8,128 m, so about 0.992 m, and a multiple of 4."""
+        return 4 * round(self.depth * 2048 / 8128), 4 * round(self.width * 2048 / 8128)
 
     def lonlat_bounds(self, margin=0.0):
         c = self.cfg['corners_lon_lat']
@@ -41,12 +54,12 @@ class Map:
         data = json.loads((self.base / f'{name}.geojson').read_text())
         return [(shape(f['geometry']), f['properties']) for f in data['features']]
 
-    def burn(self, items, n, tx=None):
+    def burn(self, items, shape, tx=None):
         from rasterio.features import rasterize
         items = list(items)
         if not items:
-            return np.zeros((n, n), np.uint8)
-        return rasterize(items, out_shape=(n, n), transform=tx or self.transform(n), fill=0, dtype='uint8')
+            return np.zeros(shape, np.uint8)
+        return rasterize(items, out_shape=shape, transform=tx or self.transform(shape), fill=0, dtype='uint8')
 
     def write_features(self, name, features, folder=None):
         from shapely.geometry import mapping

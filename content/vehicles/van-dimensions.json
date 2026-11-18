@@ -1,0 +1,16 @@
+{
+  "panel_van": {
+    "halfWidth": 1.08, "bodyHalf": 0.99, "height": 2.52, "halfLength": 2.82,
+    "wheelRadius": 0.355, "wheelWidth": 0.225, "halfTrack": 0.835, "halfWheelbase": 1.65,
+    "seatX": 0.46, "seatY": 0.87, "seatZ": 0.80, "entryX": 1.42,
+    "hingeX": 0.96, "hingeY": 1.17, "hingeZ": 1.36, "steeringY": 1.17, "steeringZ": 1.23,
+    "slideX": 0.97, "slideY": 1.22, "slideZ": -0.58, "slideTravel": 1.26, "beltline": 1.31
+  },
+  "caravan": {
+    "halfWidth": 1.03, "bodyHalf": 0.95, "height": 1.83, "halfLength": 2.52,
+    "wheelRadius": 0.32, "wheelWidth": 0.215, "halfTrack": 0.80, "halfWheelbase": 1.52,
+    "seatX": 0.45, "seatY": 0.67, "seatZ": 0.72, "entryX": 1.36,
+    "hingeX": 0.92, "hingeY": 0.95, "hingeZ": 1.25, "steeringY": 0.97, "steeringZ": 1.15,
+    "slideX": 0.93, "slideY": 0.98, "slideZ": -0.42, "slideTravel": 1.04, "beltline": 1.05
+  }
+}

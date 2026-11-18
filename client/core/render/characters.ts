@@ -5,15 +5,16 @@ import type { SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
 import { createMountMotion, mountOrigin, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
+import { occupantPose, type OccupantSeat } from "../../../shared/anim/occupant.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation, type VehicleFrame } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
-import type { VehicleDefinition } from "../../../shared/sim/vehicle.ts";
-import { quatAxis, quatMul, quatRotate, quatUnrotate } from "../../../shared/math/quat.ts";
-import { B_HEAD, B_NECK, B_SPINE, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
+import { isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
+import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
+import { SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
-import { AnimState, HumanAnim, PITCH_STEPS, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
+import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { MODE_FLYER, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
@@ -34,6 +35,7 @@ import { anchorFrame, saddleSeat, seatFrame } from "../../../shared/anim/seat.ts
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
+import { WEAR_KEY, wearOf } from "./wear.ts";
 import { RotorBlur } from "./rotor-blur.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
@@ -62,6 +64,8 @@ interface Creature {
   worn: ReadonlyMap<number, number>;
   /** A vehicle poses its rig from its definition, not from a gait; null for a creature. */
   vehicle: VehicleRig | null;
+  /** A road vehicle wears its layer as the story its colours give it (wear.ts). */
+  wear: boolean;
   wreck: number;
   wreckError: readonly number[];
   oriented: Solved;
@@ -73,9 +77,9 @@ interface VehicleRig {
   wheels: Int16Array;
   rotors: Int16Array;
   doors: Int16Array;
+  slideOffsets?: Float32Array;
   steer: number;
-  outboard: number;
-  propeller: number;
+  drives: { bone: number; axis: readonly [number, number, number]; ratio: number; spin: boolean }[];
 }
 
 export interface VehicleRenderPose {
@@ -88,7 +92,7 @@ export interface VehicleRenderPose {
   doors?: number;
 }
 /** The pelvis target in camera-relative world space; the character's own rest proportions determine its origin. */
-export interface VehicleSeatPose extends VehicleRenderPose {
+export interface VehicleSeatPose extends VehicleRenderPose, OccupantSeat {
   x: number; y: number; z: number; yaw: number; driver: boolean; aimYaw?: number;
   /** The road wheels' steering as a share of the vehicle's most, -1 to 1, for the driver's arms. */
   steer: number;
@@ -134,8 +138,8 @@ interface BodyKind {
 }
 
 /**
- * `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none. `standIn`, on a DRAW_ONE_BONE draw, is
- * the first bone of the pose its bodies stand in.
+ * `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none, and their wear story with it
+ * (wear.ts WEAR_KEY). `standIn`, on a DRAW_ONE_BONE draw, is the first bone of the pose its bodies stand in.
  */
 export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number, standIn: number) => void;
 /** Puts instances into the shadow caster list for `cascades`, a bit each. `lod` is the level the view would draw them at. */
@@ -222,9 +226,8 @@ export class Characters {
   private readonly groundRotation = new Float64Array(4);
   private readonly wheel = new Float64Array(4);
   private readonly steer = new Float64Array(4);
-  private readonly localLook = new Float64Array(3);
+  private readonly seatState = new AnimState();
   private readonly origin = new Float64Array(3);
-  private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly lookColor = new Uint8Array(6);
   /** Scratch: a body's look, a vehicle's frame for its turn, a seat's place and what a seated body is posed from. */
   private readonly lookView = new Uint8Array(LOOK_BYTES);
@@ -365,7 +368,7 @@ export class Characters {
         if (m >= 0) worn.set(item, m);
       });
       const wreck = bind.own(d.id, "wreck");
-      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), oriented: new Solved(rig.bones) };
+      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: !!reg.vehicle[i] && isWheelVehicle(reg.vehicle[i]!), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -439,16 +442,14 @@ export class Characters {
     return out;
   }
 
-  /** Root on a seat, using the same body binding/proportions and pelvis solve as add(). Does not emit a draw. */
-  seatedOrigin(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: Float64Array | number[]): boolean {
+  /** Root on a seat, using the canonical proportions for the camera (D54). Does not emit a draw. */
+  seatedOrigin(kind: number, seat: VehicleSeatPose, out: Float64Array | number[], st = this.seatState, tick = 0): boolean {
     const k = this.kinds[kind];
     if (!k) return false;
-    const view = look ?? (k.sets.length > 1 ? PLAIN : null);
-    const set = k.sets[view && view[LOOK_SEX]! < k.sets.length ? view[LOOK_SEX]! : 0]!;
-    this.seatedPose(seat.role ?? (seat.driver ? "drive" : "passenger"), 0, seat.steer, undefined);
-    if (view) lookScales(view, this.scales);
-    solve(HUMAN, this.pose, this.solved, set.rest, view ? this.scales : null);
-    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, view ? this.scales : null, seat.definition, seat.steering);
+    const set = k.sets[0]!;
+    occupantPose(this.anim, st, tick, this.pose, seat, null, 0, seat.aimYaw ?? seat.yaw, seat.driver);
+    solve(HUMAN, this.pose, this.solved, set.rest);
+    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, null, seat.definition, seat.steering);
     vehicleRotation(seat, this.rotation);
     this.seatPlace[0] = seat.x;
     this.seatPlace[1] = seat.y;
@@ -457,9 +458,9 @@ export class Characters {
     return true;
   }
 
-  /** Eye in the posed head, for enclosed seats where weapons are stowed. Scales with the survivor's actual proportions. */
-  seatedEye(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: Float64Array): boolean {
-    if (!this.seatedOrigin(kind, look, seat, out)) return false;
+  /** Eye in the posed head, for enclosed seats where weapons are stowed. */
+  seatedEye(kind: number, seat: VehicleSeatPose, out: Float64Array, st = this.seatState, tick = 0): boolean {
+    if (!this.seatedOrigin(kind, seat, out, st, tick)) return false;
     const x = out[0]!, y = out[1]!, z = out[2]!;
     boneToModel(this.solved, SOCKET_EYE.bone, SOCKET_EYE.x, SOCKET_EYE.y, SOCKET_EYE.z, out);
     quatRotate(this.rotation, 0, out[0]!, out[1]!, out[2]!, out, 0);
@@ -470,8 +471,10 @@ export class Characters {
   /** The farthest any part of a body of this kind gets from its origin, for culling. */
   reach(kind: number): number {
     const c = this.creatures[kind];
-    // A block vehicle has just a chassis bone at its origin. Its mesh gives its visible extent.
-    return c ? c.anim.rig.reach || this.assets.table.radius[c.mesh]! : BODY_RADIUS;
+    if (!c) return BODY_RADIUS;
+    // Wheel and door pivots sit inside the bodywork. Include the mesh when framing a vehicle with long overhangs.
+    const radius = this.assets.table.radius[c.mesh]!;
+    return c.vehicle ? Math.max(c.anim.rig.reach, radius, c.vehicle.def.spec.halfLength) : c.anim.rig.reach || radius;
   }
 
   /** The bones a body of this kind takes when it is posed. */
@@ -721,7 +724,13 @@ export class Characters {
         if (s && v.steer >= 0) quatAxis(rig.a.rot, v.steer * 4, s.axis[0], s.axis[1], s.axis[2], steering * s.ratio);
         for (let d = 0; d < v.def.doors.length; d++) {
           const door = v.def.doors[d]!, b = v.doors[d]!;
-          if (b >= 0) quatAxis(rig.a.rot, b * 4, door.axis[0], door.axis[1], door.axis[2], vehicleDoor(vehicle?.doors ?? 0, d) * door.open);
+          if (b < 0) continue;
+          const fraction = vehicleDoor(vehicle?.doors ?? 0, d);
+          if (door.slide) {
+            const offsets = v.slideOffsets!;
+            offsets[b * 3] = door.slide.outward * Math.min(1, fraction * 5);
+            offsets[b * 3 + 2] = door.slide.along * Math.max(0, (fraction - .2) / .8);
+          } else quatAxis(rig.a.rot, b * 4, door.axis[0], door.axis[1], door.axis[2], fraction * door.open);
         }
         if (v.def.movement === "rotor") {
           for (let r = 0; r < v.def.rotors.length; r++) {
@@ -729,10 +738,9 @@ export class Characters {
             if (b >= 0) quatAxis(rig.a.rot, b * 4, rotor.axis[0], rotor.axis[1], rotor.axis[2], (vehicle?.rotorPhase ?? 0) * rotor.ratio);
           }
         }
-        if (v.def.movement === "boat") {
-          const motor = v.def.outboard, prop = v.def.propeller;
-          if (motor && v.outboard >= 0) quatAxis(rig.a.rot, v.outboard * 4, motor.axis[0], motor.axis[1], motor.axis[2], steering * motor.ratio);
-          if (prop && v.propeller >= 0) quatAxis(rig.a.rot, v.propeller * 4, prop.axis[0], prop.axis[1], prop.axis[2], (vehicle?.wheelAngle ?? 0) * prop.ratio);
+        for (const part of v.drives) {
+          const angle = part.spin ? vehicle?.wheelAngle ?? 0 : steering;
+          quatAxis(rig.a.rot, part.bone * 4, part.axis[0], part.axis[1], part.axis[2], angle * part.ratio);
         }
         quatAxis(this.wheel, 0, 1, 0, 0, vehicle?.wheelAngle ?? 0);
         for (let w = 0; w < v.def.wheels.length; w++) {
@@ -741,7 +749,7 @@ export class Characters {
           quatAxis(this.steer, 0, 0, 1, 0, v.def.wheels[w]!.steers ? steering : 0);
           quatMul(rig.a.rot, b * 4, this.steer, 0, this.wheel, 0);
         }
-        solve(rig, rig.a, rig.solved);
+        solve(rig, rig.a, rig.solved, rig.rest, null, v.slideOffsets);
         this.fresh++;
       } else solved = this.creatureSolved(kind, c, id, x, y, z, yaw, st, tick, size, unseen);
       if (v) {
@@ -749,14 +757,15 @@ export class Characters {
         orientSolved(rig.solved, this.rotation, c.oriented);
         // Wheel contact follows the support plane while the sprung body and its occupants roll, pitch and heave.
         this.turn(undefined, yaw, vehicle?.groundPitch ?? vehicle?.pitch ?? 0, vehicle?.groundRoll ?? vehicle?.roll ?? 0, this.groundRotation);
-        // In the air a wheel hangs a quarter of its travel below the body.
+        // Without a full attitude, a wheel in the air hangs a quarter of its travel below the body.
         const droop = v.def.movement !== "rotor" && v.def.movement !== "boat" ? (v.def.spec.suspensionTravel ?? 0.18) / 4 : 0;
         for (const b of v.wheels) {
           if (b < 0) continue;
           if (vehicle?.qw !== undefined && v.def.movement !== "rotor" && v.def.movement !== "boat") {
-            // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof.
-            const offset = vehicle.grounded !== false ? -(vehicle.rideOffset ?? 0) : -droop;
-            quatRotate(this.rotation, 0, 0, offset, 0, this.seatPlace, 0);
+            // A rigid car's wheels travel along its local spring axes, also when it rolls onto its roof. The ride offset is
+            // that travel, all of it where no wheel has ground. The grounded bit is the hull's contact too, and a rolled car
+            // rocking on its side or roof touches and leaves the ground from tick to tick, so it does not move the wheels.
+            quatRotate(this.rotation, 0, 0, -(vehicle.rideOffset ?? 0), 0, this.seatPlace, 0);
             for (let axis = 0; axis < 3; axis++) c.oriented.pos[b * 3 + axis]! += this.seatPlace[axis]!;
           } else if (vehicle?.grounded !== false) {
             quatRotate(this.groundRotation, 0, rig.solved.pos[b * 3]!, rig.solved.pos[b * 3 + 1]!, rig.solved.pos[b * 3 + 2]!, c.oriented.pos, b * 3);
@@ -838,7 +847,8 @@ export class Characters {
 
   /**
    * Queues a creature's `mesh`, whose levels lie `error` from its finest, on the bones from `first`, at the level its
-   * distance and size call for, and with its layer at `layer` where that level is drawn with materials. One `unseen`
+   * distance and size call for, and with its layer at `layer` where that level is drawn with materials, worn as its
+   * colours say where it is a road vehicle. One `unseen`
    * only casts, and asks for nothing. `stand` is the first bone of the pose it stands in on one bone, or -1. Returns the level.
    */
   private queueCreature(c: Creature, mesh: number, error: readonly number[], first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, stand: number, unseen: boolean, layer = 0): number {
@@ -848,7 +858,8 @@ export class Characters {
     const lod = this.levelOf(id, error, far);
     if (!unseen) this.assets.wantTextured(mesh, lod, far);
     if (!unseen && c.clips >= 0) this.assets.wantClips(c.clips);
-    const key = this.keyOf(mesh * this.levels + lod, layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer : 0, stand);
+    const shown = layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer + (c.wear ? wearOf(colors, colorAt) * WEAR_KEY : 0) : 0;
+    const key = this.keyOf(mesh * this.levels + lod, shown, stand);
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = first;
     this.region0[n] = c.color;
@@ -910,7 +921,7 @@ export class Characters {
   }
 
   /**
-   * The key of `key`'s bodies whose layer is at `layer` and that stand in the pose at bone `stand` (-1 for none). With no
+   * The key of `key`'s bodies whose layer is at `layer`, with its wear story, and that stand in the pose at bone `stand` (-1 for none). With no
    * key left those with a layer are drawn as `key`'s, without it, and those standing in a pose not at all: -1, counted dropped.
    */
   private keyOf(key: number, layer: number, stand: number): number {
@@ -1134,38 +1145,8 @@ export class Characters {
    * vehicle's, aiming from there, and stretched by its look's `scales`.
    */
   private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved): void {
-    humanPose(this.anim, st, tick, this.pose, g);
-    const enclosed = vehicleSeat?.role === "pilot" || vehicleSeat?.role === "cabin";
-    if (vehicleSeat) this.seatedPose(vehicleSeat.role ?? (vehicleSeat.driver ? "drive" : "passenger"), tick, vehicleSeat.steer, !enclosed && !vehicleSeat.driver ? this.pose : undefined);
-    else if (seat) {
-      this.seatedPose("ride", 0, undefined, steers ? undefined : this.pose);
-      if (!steers) {
-        // A passenger turns at the waist toward where it looks, from the way its seat faces.
-        const facing = Math.atan2(seat[seatAt + 2]!, seat[seatAt + 8]!);
-        const turn = Math.atan2(Math.sin(yaw - facing), Math.cos(yaw - facing));
-        quatAxis(this.steer, 0, 0, 1, 0, Math.max(-1.2, Math.min(1.2, turn)));
-        quatMul(this.pose.rot, B_SPINE * 4, this.steer, 0, this.pose.rot, B_SPINE * 4);
-      }
-    }
-    if (vehicleSeat && (!vehicleSeat.driver || vehicleSeat.role === "pilot") && vehicleSeat.aimYaw !== undefined) {
-      let turn = Math.atan2(Math.sin(vehicleSeat.aimYaw - vehicleSeat.yaw), Math.cos(vehicleSeat.aimYaw - vehicleSeat.yaw));
-      if (enclosed) {
-        // Inputs/observer look are in world space. Only after unrotating by the complete cabin attitude may
-        // those angles turn a seated neck; subtracting world yaw reverses the gaze through a loop or bank.
-        const pitch = st.pitch / PITCH_STEPS * Math.PI / 2, cp = Math.cos(pitch);
-        vehicleRotation(vehicleSeat, this.rotation);
-        quatUnrotate(this.rotation, 0, Math.sin(vehicleSeat.aimYaw) * cp, Math.sin(pitch), Math.cos(vehicleSeat.aimYaw) * cp, this.localLook, 0);
-        turn = Math.atan2(this.localLook[0]!, this.localLook[2]!);
-        const tilt = Math.max(-.75, Math.min(.75, Math.atan2(this.localLook[1]!, Math.hypot(this.localLook[0]!, this.localLook[2]!))));
-        quatAxis(this.steer, 0, 1, 0, 0, -tilt * .35);
-        quatMul(this.pose.rot, B_NECK * 4, this.steer, 0, this.pose.rot, B_NECK * 4);
-        quatAxis(this.steer, 0, 1, 0, 0, -tilt * .65);
-        quatMul(this.pose.rot, B_HEAD * 4, this.steer, 0, this.pose.rot, B_HEAD * 4);
-      }
-      const joint = enclosed ? B_HEAD : B_SPINE, limit = enclosed ? .8 : 1.2;
-      quatAxis(this.steer, 0, 0, 1, 0, Math.max(-limit, Math.min(limit, turn)));
-      quatMul(this.pose.rot, joint * 4, this.steer, 0, this.pose.rot, joint * 4);
-    }
+    if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount);
+    else humanPose(this.anim, st, tick, this.pose, g);
     // Longer legs lift the hips, so the feet stay on the ground.
     if (scales && !seat && !vehicleSeat) this.pose.root[1]! += lookLift(scales, set.rest);
     solve(HUMAN, this.pose, solved, set.rest, scales);
@@ -1384,7 +1365,14 @@ function writeRigid(out: Float32Array, at: number, x: number, y: number, z: numb
 function vehicleRig(def: VehicleDefinition | null, names: readonly string[]): VehicleRig | null {
   if (!def) return null;
   const bone = (name: string): number => names.indexOf(name);
-  return { def, outboard: def.movement === "boat" && def.outboard ? bone(def.outboard.bone) : -1, propeller: def.movement === "boat" && def.propeller ? bone(def.propeller.bone) : -1, rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
+  const drives: VehicleRig["drives"] = [];
+  if (def.movement === "boat") for (const drive of [def, def.secondDrive]) {
+    for (const kind of ["outboard", "propeller"] as const) {
+      const joint = drive?.[kind];
+      if (joint && bone(joint.bone) >= 0) drives.push({ ...joint, bone: bone(joint.bone), spin: kind === "propeller" });
+    }
+  }
+  return { def, drives, ...(def.doors.some(d => d.slide) ? { slideOffsets: new Float32Array(names.length * 3) } : {}), rotors: Int16Array.from(def.movement === "rotor" ? def.rotors : [], (r) => bone(r.bone)), wheels: Int16Array.from(def.wheels, (w) => bone(w.bone)), doors: Int16Array.from(def.doors, (d) => bone(d.bone)), steer: def.steeringWheel ? bone(def.steeringWheel.bone) : -1 };
 }
 
 function orientSolved(source: Solved, rotation: Float64Array, out: Solved): void {

@@ -10,6 +10,12 @@ import { partHash } from "../../tools/pack/manifest.ts";
 import { HELD_LEVEL_BYTES, PAGE_BYTES, bootManifest, splitPack } from "../../tools/pack/split.ts";
 import { meshKnown, readPage } from "../../shared/pack/manifest.ts";
 import { LEVEL_COLOURS, stressMeshes, stressSet } from "../../tools/pack/stress.ts";
+import { NAMED_MATERIALS, paging } from "../../tools/build-client.ts";
+import { BEAM_MESH, MISSING_MESH, WATER_MESH } from "../../tools/pack/build.ts";
+import { FAR_MESH } from "../../client/core/render/far.ts";
+import { fillSlot, slotsOf } from "../../shared/content/slots.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 
 artTest("a split pack holds every level once, byte for byte, with the coarsest of each mesh in the boot file", () => {
   const whole = corePackBytes();
@@ -83,6 +89,45 @@ artTest("paged, the boot file holds only the meshes it is told to, and every oth
   }
   expect(read.meshes.every(meshKnown)).toBe(true);
   expect(read.materials).toEqual(manifest.materials!);
+});
+
+artTest("what a page waits for before its first frame holds nothing of a vehicle's or a creature's own art: no level, row, material, texture or clip of it", () => {
+  const whole = corePackBytes();
+  const pack = parsePack(whole), reg = coreRegistry();
+  const { files, manifest } = splitPack(whole, "core", paging(reg, pack));
+  const boot = parsePack(files[manifest.boot]!.bytes);
+  const first = parseManifest(JSON.stringify(bootManifest(manifest, (id) => NAMED_MATERIALS.has(id))));
+  // The stand-ins any definition may fall back to, which the client finds by name.
+  const standIns = new Set([MISSING_MESH, WATER_MESH, BEAM_MESH, FAR_MESH]);
+  const held = new Set(boot.header.meshes.map((m) => m.id));
+  const heldMaterials = new Set(manifest.meshes.flatMap((m) => (held.has(m.id) ? m.levels.flatMap((l) => (l.sections ?? []).filter((_, k) => k % 3 === 0)) : [])));
+  const own = (d: Def): boolean => (d.type === "species" && (d.class === "vehicle" || d.class === "creature")) || (d.type === "item" && d.class === "vehicle");
+  const defs = reg.defs.filter((d): d is Def => d !== null);
+  const found: string[] = [];
+  let meshes = 0;
+  for (const u of slotsOf(defs)) {
+    const d = reg.defs[reg.index.get(u.owner)!]!;
+    if (!own(d)) continue;
+    const id = fillSlot(u, (asset, x) => asset === "mesh" && pack.meshIndex.has(x)).id;
+    if (u.asset !== "mesh" || id === "" || standIns.has(id)) continue;
+    meshes++;
+    const i = pack.meshIndex.get(id)!;
+    if (held.has(id)) found.push(`${d.id} ${u.slot}: ${id} has levels in the boot file`);
+    if (meshKnown(first.meshes[i]!)) found.push(`${d.id} ${u.slot}: ${id} has its row in what is read first`);
+    for (const l of manifest.meshes[i]!.levels) {
+      for (let k = 0; k < (l.sections?.length ?? 0); k += 3) {
+        const mat = l.sections![k]!;
+        if (first.materials![mat]!.id !== "" && !heldMaterials.has(mat) && !NAMED_MATERIALS.has(first.materials![mat]!.id)) found.push(`${d.id} ${u.slot}: ${id} is drawn with ${first.materials![mat]!.id}, whose row is read first`);
+      }
+    }
+  }
+  for (const d of defs) if (own(d) && "skeleton" in d && d.skeleton) for (const c of boot.header.clips) if (c.id.startsWith(`${d.skeleton}/`)) found.push(`${d.id}: its clip ${c.id} is in the boot file`);
+  // Every texture read first is one a held mesh's or a named material names.
+  const shown = new Set(first.materials!.filter((m) => m.id !== "").flatMap((m) => [m.base, m.normal, m.mro, m.mask, m.mask2, m.layer ?? -1]));
+  first.textures!.forEach((t, k) => t.id !== "" && !shown.has(k) && found.push(`texture ${t.id} is read first and no material read first names it`));
+  // The vessels' wrecks are their sunk forms, which the pack does not have yet (content/vehicles/harbour-wrecks.ts).
+  expect(meshes).toBeGreaterThan(30);
+  expect(found).toEqual([]);
 });
 
 artTest("the boot file holds the survivor's clips, and the clip file each creature skeleton's as the whole pack had them", () => {

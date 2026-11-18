@@ -21,10 +21,10 @@ export default {
   kind: "creature",
   // rig.py makes the armature "compact" on content/vehicles/compact-art.ts's pivots; model.py builds the car on it, every part closed and
   // rigid on its one bone, and checks the layout is the one tex/ was painted for.
-  source: { scripts: ["rig.py", "model.py"] },
+  source: { scripts: ["rig.py", "model.py", "open-glass.py"] },
   scale: 1,
   skeleton: { id: COMPACT.id, root: "chassis", bones: COMPACT.bones.length, order: COMPACT.bones },
-  // No hit capsules: the server hits a vehicle by the hull its content gives it, up to the belt.
+  // No hit capsules: the server hits a vehicle by its lower hull and the solid cabin panels in content.
   zones: [],
   // All on the chassis, whose joint is the origin, so each offset is the point itself.
   sockets: Object.entries(COMPACT.anchors).map(([name, at]) => ({ name, bone: "chassis", offset: at })),
@@ -36,7 +36,7 @@ export default {
     { name: "Wheels", sample: 91 },
   ],
   // body: the painted panels and the shut lines. trim: tyres, alloys, lamps, grilles, rubber, chrome and black plastic.
-  // cabin: the glass, whose inside is cut out so it is seen through from within, and everything inside.
+  // cabin: the glass, clear from both sides except for its printed perimeter, and everything inside.
   materials: {
     body: painted("body"),
     trim: painted("trim"),

@@ -1,6 +1,7 @@
 import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Grid } from "./base.ts";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";
 import type { Site } from "./statics.ts";
 import { pathsOf, readWays, type Path } from "./ways.ts";
@@ -15,11 +16,11 @@ export interface BridgeRecord {
   approaches: number;
 }
 export interface Corridor { a: Point; b: Point; width: number; low: number; high: number; }
-export const worldFrame = (size: number): Frame => ({ x: 0, z: 0, yaw: 0, c: 1, s: 0, width: size, depth: size, rings: [] });
+export const worldFrame = (grid: Pick<Grid, "sizeX" | "sizeZ">): Frame => ({ x: 0, z: 0, yaw: 0, c: 1, s: 0, width: grid.sizeX, depth: grid.sizeZ, rings: [] });
 const key = (p: Point, kind: string): string => `${kind === "rail_bridge" ? "rail" : "road"}:${Math.round(p[0] * 5)},${Math.round(p[1] * 5)}`;
 
 /** A road's square deck keeps its footprint; its top follows adjacent grades, including the turn onto level road. */
-export function roadDeckSlab(deck: readonly DeckPoint[], index: number): { shape: RuinShape; yaw: number; y: number } {
+export function roadDeckSlab(deck: readonly DeckPoint[], index: number, terminalGround?: number): { shape: RuinShape; yaw: number; y: number } {
   const d = deck[index]!, a = d.yaw * Math.PI / 180, dx = Math.cos(a), dz = -Math.sin(a);
   let low = d.y, high = d.y;
   if (!d.gap) for (const other of [deck[index - 1], deck[index + 1]]) {
@@ -31,14 +32,24 @@ export function roadDeckSlab(deck: readonly DeckPoint[], index: number): { shape
     if (along < 0) low = d.y - grade * 2;
     else high = d.y + grade * 2;
   }
-  const rise = high - low, step = Math.min(4, Math.round(Math.abs(rise) * 8)), y = (low + high) / 2 - .2;
+  // The outer end of a dry approach meets actual ground, not the terminal centre's clearance.
+  // Otherwise a nominal quarter-metre deck leaves a square bumper-height lip before its first slope.
+  const groundedEnd = terminalGround !== undefined && Math.abs(d.y - terminalGround) <= .5 && (index === 0 || index === deck.length - 1);
+  if (groundedEnd) {
+    if (index === 0) low = terminalGround;
+    else high = terminalGround;
+  }
+  const rise = high - low, step = Math.min(4, Math.round(Math.abs(rise) * 8));
+  let y = (low + high) / 2 - .2;
+  // Anchor the quantized slab at its outer edge exactly; the small residual stays at the overlapping inner seam.
+  if (groundedEnd) y = (index === 0 ? low + Math.sign(rise) * step / 16 : high - Math.sign(rise) * step / 16) - .2;
   return step ? { shape: `floorroad${step}` as RuinShape, yaw: d.yaw + (rise > 0 ? 90 : 270), y } : { shape: "floor4", yaw: d.yaw, y };
 }
 
 export function makeBridges(site: Site, accept: (m: Mason) => boolean): { records: BridgeRecord[]; corridors: Corridor[]; outlines: { id: number; status: string }[] } {
-  const size = (site.ground.n - 1) * 2;
-  const { paths, outlines } = pathsOf(readWays(site.source), size / 2);
-  const at = (x: number, z: number): number => Math.max(0, Math.min(site.ground.n - 1, Math.round((size - z) / 2))) * site.ground.n + Math.max(0, Math.min(site.ground.n - 1, Math.round((size - x) / 2)));
+  const grid = site.ground.grid; const { nx, nz, x0, z0, x1, z1 } = grid;
+  const { paths, outlines } = pathsOf(readWays(site.source), grid);
+  const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   // The sea's water or a lake's, which an approach or a ramp does not go down into.
   const wetAt = (i: number): boolean => site.ground.water[i] !== 0 || (site.ground.lakes?.body[i] ?? 0) !== 0;
   const wet = (p: Point): boolean => site.ground.water[at(p[0], p[1])] === 1 || (site.ground.lakes?.body[at(p[0], p[1])] ?? 0) !== 0;
@@ -137,7 +148,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
         const count = Math.max(Math.ceil(reach / 3), Math.ceil((d.y - y) / .25)); const ramp: DeckPoint[] = [];
         for (let i = 1; i <= count; i++) {
           const t = i / count; const px = d.x + dx * reach * t; const pz = d.z + dz * reach * t; const top = Math.round((d.y + (y - d.y) * t) * 16) / 16;
-          if (px < p.width || pz < p.width || px > size - p.width || pz > size - p.width || site.groundAt(px, pz) > top + .1 || [-p.width / 2 - 3, 0, p.width / 2 + 3].some((s) => site.ground.heaps.owner[at(px - dz * s, pz + dx * s)]! >= 0 || wetAt(at(px - dz * s, pz + dx * s)))) break;
+          if (px < x0 + p.width || pz < z0 + p.width || px > x1 - p.width || pz > z1 - p.width || site.groundAt(px, pz) > top + .1 || [-p.width / 2 - 3, 0, p.width / 2 + 3].some((s) => site.ground.heaps.owner[at(px - dz * s, pz + dx * s)]! >= 0 || wetAt(at(px - dz * s, pz + dx * s)))) break;
           let crosses = false;
           for (let bx = Math.floor(px / 16) - 2; bx <= Math.floor(px / 16) + 2; bx++) for (let bz = Math.floor(pz / 16) - 2; bz <= Math.floor(pz / 16) + 2; bz++) for (const other of deckBins.get(`${bx},${bz}`) ?? []) {
             const difference = Math.abs(other.d.y - top);
@@ -161,7 +172,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
   const rail = planned.filter(({ p }) => p.way.kind === "rail_bridge");
   const accessFeet: Point[] = [];
   for (const station of stations.filter((s) => s.kind === "station").sort((a, b) => a.name.localeCompare(b.name))) {
-    const [sx, sz] = site.toEngine(station.e, station.n);
+    const [sx, sz] = site.toLattice(station.e, station.n);
     const candidates = rail.flatMap(({ p, deck }) => deck.filter((d, i) => i % 3 === 0 && !d.gap && Math.hypot(d.x - sx, d.z - sz) < 100).map((d) => ({ p, d })));
     candidates.sort((a, b) => Math.hypot(a.d.x - sx, a.d.z - sz) - Math.hypot(b.d.x - sx, b.d.z - sz));
     let found = false;
@@ -184,7 +195,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
           const t = i / count; const px = x - nx * length * t; const pz = z - nz * length * t;
           const module = Math.min(modules - 1, Math.floor(i / 10)); const along = (i - module * 10) / 10;
           const y = heights[module]! + (heights[module + 1]! - heights[module]!) * along;
-          if (px < 8 || pz < 8 || px > size - 8 || pz > size - 8 || site.groundAt(px, pz) > y + .08 || [-1, 0, 1].some((s) => site.ground.heaps.owner[at(px + nz * s, pz - nx * s)]! >= 0 || wetAt(at(px + nz * s, pz - nx * s)))) break;
+          if (px < x0 + 8 || pz < z0 + 8 || px > x1 - 8 || pz > z1 - 8 || site.groundAt(px, pz) > y + .08 || [-1, 0, 1].some((s) => site.ground.heaps.owner[at(px + nz * s, pz - nx * s)]! >= 0 || wetAt(at(px + nz * s, pz - nx * s)))) break;
           let overhead = false;
           for (let bx = Math.floor(px / 16) - 2; bx <= Math.floor(px / 16) + 2; bx++) for (let bz = Math.floor(pz / 16) - 2; bz <= Math.floor(pz / 16) + 2; bz++) for (const other of deckBins.get(`${bx},${bz}`) ?? []) {
             const q = other.d; if (q.y <= y + .35 || q.y - .4 >= y + 2.1) continue;
@@ -225,7 +236,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     }
   }
   for (const { p, deck, length } of planned) {
-    const m = new Mason(worldFrame(size), 0);
+    const m = new Mason(worldFrame(grid), 0);
     for (const a of access.get(p) ?? []) {
       const start = a.points[0]!; m.put("step", start.x, start.y - .2, start.z, "concrete", start.yaw);
       for (let i = 0; i < a.points.length - 1; i += 10) {
@@ -240,8 +251,13 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     for (let i = 0; i < deck.length; i++) {
       const d = deck[i]!; if (d.gap) continue;
       const a = d.yaw * Math.PI / 180; const dx = Math.cos(a); const dz = -Math.sin(a);
-      const slab = p.way.kind === "road_bridge" ? roadDeckSlab(deck, i) : { shape: "floor4" as const, yaw: d.yaw, y: d.y - .2 };
-      for (let side = -p.width / 2 + 2; side < p.width / 2; side += 4) m.put(slab.shape, d.x - dz * side, slab.y, d.z + dx * side, "concrete", slab.yaw);
+      for (let side = -p.width / 2 + 2; side < p.width / 2; side += 4) {
+        const x = d.x - dz * side, z = d.z + dx * side, end = i === 0 ? -2 : i === deck.length - 1 ? 2 : 0;
+        const foot: Point = [x + dx * end, z + dz * end];
+        const ground = end && !wet(foot) ? site.groundAt(...foot) : undefined;
+        const slab = p.way.kind === "road_bridge" ? roadDeckSlab(deck, i, ground) : { shape: "floor4" as const, yaw: d.yaw, y: d.y - .2 };
+        m.put(slab.shape, x, slab.y, z, "concrete", slab.yaw);
+      }
       m.cover(d.x, d.z, p.width / 2 + 10);
       if (p.way.kind === "breakwater") {
         if (i % 3 === 0) m.put("rubble4", d.x, d.y - .1, d.z, "concrete", d.yaw + 17);

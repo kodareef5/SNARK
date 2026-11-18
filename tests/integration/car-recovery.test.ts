@@ -8,6 +8,7 @@ import { writeMap } from "../../shared/world/mapfile.ts";
 import { StaticVehicleSolids } from "../../shared/world/vehicle-solid.ts";
 import { carShapes } from "../../shared/world/vehicle-shapes.ts";
 import { recoveryFrame } from "../../server/vehicle-recovery.ts";
+import { capsuleFree } from "../../shared/world/collide.ts";
 import { Harness } from "../fixtures/net.ts";
 import { flatMap } from "../fixtures/map.ts";
 
@@ -173,5 +174,47 @@ test("ground-spawned cars park across a hillside and regain rest after a small s
     expect(a.vx[e]).toBe(0);
     const placed = h.host.spawnVehicle("core:compact", 40, 64, 0, 0, { y: 8 });
     expect(a.y[placed]).toBe(8); expect(a.vehicleRoll[a.vrow[placed]!]).toBe(0);
+  } finally { h.host.shutdown(); }
+});
+
+
+test("a real ledge fall can settle nose-down, release its driver, and report obstructed rather than busy recovery", () => {
+  const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(4)) });
+  try {
+    const session = h.join("nose-exit"); h.run(400);
+    const c = h.client(session)!, a = h.world.ents, owner = h.host.records.byPid.get(c.pid)!;
+    h.host.survival.gods.add(owner.pid);
+    const wall = h.reg.index.get("core:wall")!, hy = h.reg.halfY[wall]!, hx = h.reg.halfX[wall]!, hz = h.reg.halfZ[wall]!;
+    for (let z = 50 + hz; z < 70; z += hz * 2) for (let x = 120 + hx; x < 136; x += hx * 2) h.world.structs.add(wall, x, hy, z, 0, 0, 1e6);
+    for (const dx of [-3, 0, 3]) h.world.structs.add(wall, 128 + dx, 1.5, 73 + hz, 0, 0, 1e6);
+    const e = h.host.spawnVehicle("core:compact", 128, 58, owner.team, 0, { y: 3.02 }), v = a.vrow[e]!;
+    a.setPosition(c.ent, 129.6, 3.05, 58.12); h.world.history.discontinuity(c.ent); h.run(200);
+    expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1000);
+    a.vz[e] = 12; h.world.history.discontinuity(e);
+    h.pilots[0]!.moveZ = .3; h.run(1000); h.pilots[0]!.moveZ = 0; h.run(15000);
+    expect(Math.abs(2 * (a.vehicleQy[v]! * a.vehicleQz[v]! - a.vehicleQw[v]! * a.vehicleQx[v]!))).toBeGreaterThan(.8);
+    expect(Math.hypot(a.vx[e]!, a.vy[e]!, a.vz[e]!)).toBe(0);
+    h.host.urban.dismount(c); h.run(1000); expect(a.seat[c.ent]).toBe(0);
+    const move = h.reg.move[a.kind[c.ent]!]!;
+    expect(capsuleFree(h.world, a.x[c.ent]!, a.y[c.ent]!, a.z[c.ent]!, move.radius, move.height)).toBe(true);
+    // The three-metre gap cannot fit the upright longitudinal hull. Preserve that real obstruction.
+    a.setPosition(c.ent, a.x[e]! + 1.7, .1, a.z[e]!); h.world.history.discontinuity(c.ent);
+    expect(h.host.vehicles.flip(c, makeHandle(e, a.gen[e]!))).toBe(RESULT_OBSTRUCTED);
+  } finally { h.host.shutdown(); }
+});
+
+test("a clipped seated capsule cannot use a low ceiling as a new escape floor", () => {
+  const { h, c, a, e, v } = camp();
+  try {
+    a.setPosition(c.ent, 65.8, 0, 64.12); h.world.history.discontinuity(c.ent);
+    expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1000);
+    a.setPosition(e, 64, 1.52722, 64); a.vehicleQx[v] = .4890127; a.vehicleQw[v] = .8722767;
+    h.world.history.discontinuity(e); h.host.urban.syncAfterContact(e);
+    const ceiling = h.reg.index.get("core:ceiling")!, y = a.y[c.ent]! + .8;
+    for (let x = -6; x <= 6; x += 3) for (let z = -6; z <= 6; z += 3) h.world.structs.add(ceiling, 64 + x, y, 64 + z, 0, 0, 100);
+    h.host.urban.dismount(c);
+    const pending = h.host.urban.occupancy.pending(c.pid);
+    if (pending) { h.world.tick = pending.dueAt; h.host.urban.beforeStep(); }
+    expect(a.seat[c.ent]).toBe(e + 1);
   } finally { h.host.shutdown(); }
 });

@@ -17,6 +17,7 @@ import { HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import * as P from "../../shared/net/protocol.ts";
 import { DEADLINE_BREED } from "../../server/breeding.ts";
 import { DEADLINE_BUFF } from "../../server/buffs.ts";
+import { DEADLINE_CAR } from "../../server/car-return.ts";
 import { DEADLINE_CORPSE } from "../../server/corpses.ts";
 import { DEADLINE_DESPAWN } from "../../server/death.ts";
 import { DEADLINE_FECES } from "../../server/feces.ts";
@@ -59,12 +60,12 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   expect(new Set(ops).size).toBe(ops.length);
   // 14 is the cluster's, 15 the beds', 16 the flyers' (below), 17 the stations wave's (tests/unit/stations-contracts.test.ts),
   // 18 the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 26]);
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 28]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
   expect(new Set([P.CARRY_PICK_UP, P.CARRY_DROP, P.CARRY_THROW, P.CARRY_GRAB, P.CARRY_RELEASE]).size).toBe(5);
-  const kinds = [DEADLINE_VITALS, DEADLINE_DESPAWN, DEADLINE_NODE, DEADLINE_CRAFT, DEADLINE_BUFF, DEADLINE_FIRE, DEADLINE_TAME, DEADLINE_BREED, DEADLINE_SPAWN, DEADLINE_CORPSE, DEADLINE_FECES];
+  const kinds = [DEADLINE_VITALS, DEADLINE_DESPAWN, DEADLINE_NODE, DEADLINE_CRAFT, DEADLINE_BUFF, DEADLINE_FIRE, DEADLINE_TAME, DEADLINE_BREED, DEADLINE_SPAWN, DEADLINE_CORPSE, DEADLINE_FECES, DEADLINE_CAR];
   expect(new Set(kinds).size).toBe(kinds.length);
 });
 
@@ -77,7 +78,7 @@ test("the new columns change nothing for content that does not use them", () => 
     if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
     // The pteranodon is carried as 149 of drag weight by what can lift it, its mass is 190, and its kind takes fright with
     // it within 15 m. A vehicle's mass is its curb mass.
-    const dragged = ({ "core:pteranodon": [15, 149, 190, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0], "core:compact": [0, 0, 1100, 0, 0], "core:helicopter": [0, 0, 1050, 0, 0], "core:helicopter_rescue": [0, 0, 1050, 0, 0], "core:helicopter_police": [0, 0, 1050, 0, 0], "core:boat": [0, 0, 1400, 0, 0], "core:boat_rescue": [0, 0, 1400, 0, 0], "core:boat_police": [0, 0, 1400, 0, 0] } as Record<string, number[]>)[d.id];
+    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:pteranodon": [15, 149, 190, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);

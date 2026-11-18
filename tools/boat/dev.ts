@@ -10,6 +10,7 @@ import { foundVehicle, VEHICLE_ORIGIN } from "../../server/vehicle-service.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { buildClient } from "../build-client.ts";
+import { fleetMarina } from "./marina.ts";
 import { BOAT_COURSE, writeBoatCourse } from "./course.ts";
 
 /** Three persistent liveries; the ready utility hull carries ordinary service cargo and three real passengers. */
@@ -53,10 +54,13 @@ if (import.meta.main) {
   } else console.log(JSON.stringify(await buildClient({ quick: true })));
   const folder = value("--config") ?? DEV_CONFIG, { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
-  const dbPath = resolve(value("--db") ?? resolve(root, "var/boat-preview/world.db")); mkdirSync(dirname(dbPath), { recursive: true });
-  const live = liveFileOf(folder), map = value("--map") ? resolve(value("--map")!) : writeBoatCourse(resolve(root, "var/boat-preview/course.snmp"));
-  const server = startServer({ dev: true, hostname: value("--host") ?? "127.0.0.1", port: Number(value("--port") ?? 8791), dbPath, config: rules, map, ...(live ? { live } : {}) });
-  try { console.log(`Prepared ${seedBoatPreview(server.host)} boat previews.`); } catch (error) { server.stop(); throw error; }
+  const fleet = args.includes("--fleet"), preview = resolve(root, fleet ? "var/marine-fleet" : "var/boat-preview");
+  const dbPath = resolve(value("--db") ?? resolve(preview, "world.db")); mkdirSync(dirname(dbPath), { recursive: true });
+  const live = liveFileOf(folder), map = value("--map") ? resolve(value("--map")!) : writeBoatCourse(resolve(preview, "course.snmp"), fleet ? fleetMarina() : undefined);
+  const server = startServer({ dev: true, hostname: value("--host") ?? "127.0.0.1", port: Number(value("--port") ?? (fleet ? 8792 : 8791)), dbPath, config: rules, map, ...(live ? { live } : {}) });
+  if (!fleet) {
+    try { console.log(`Prepared ${seedBoatPreview(server.host)} boat previews.`); } catch (error) { server.stop(); throw error; }
+  }
   stopOnSignals(() => server.stop());
   console.log(`Boat preview: http://localhost:${server.port}\nIsolated save: ${dbPath}`);
   console.log("W/S ahead/astern · A/D helm · Space neutral · hold Shift precise throttle · V helm/chase · E ladder/seats · F cargo/service/recovery");

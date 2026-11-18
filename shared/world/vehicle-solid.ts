@@ -2,6 +2,7 @@
 import { WORLD_MAX_Y, WORLD_MIN_Y } from "../coords.ts";
 import { quatNormalize, quatRotate } from "../math/quat.ts";
 import { detCos, detSin, len3, TAU } from "../math/scalar.ts";
+import { sortU32 } from "../sort.ts";
 import type { CollisionWorld } from "./collide.ts";
 import { boxSolid, partSolid, solidsCross, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
@@ -115,7 +116,7 @@ function triangle(a: readonly number[], b: readonly number[], c: readonly number
 }
 
 /** Contact patch centre from the two supporting features. A small post uses its own patch, not the whole car face. */
-export function solidContactPoint(a: Solid, b: Solid, out: ContactGeometry): void {
+export function solidContactPoint(a: Solid, b: Solid, out: ContactGeometry, patch?: Float64Array): void {
   const { nx, ny, nz } = out;
   const length = Math.sqrt(nx * nx + nz * nz);
   const ux = length > 1e-8 ? nz / length : 1, uy = 0, uz = length > 1e-8 ? -nx / length : 0;
@@ -137,6 +138,7 @@ export function solidContactPoint(a: Solid, b: Solid, out: ContactGeometry): voi
   };
   const au = interval(a, aPlane, -1, ux, uy, uz), bu = interval(b, bPlane, 1, ux, uy, uz);
   const av = interval(a, aPlane, -1, vx, vy, vz), bv = interval(b, bPlane, 1, vx, vy, vz);
+  if (patch) { patch[0] = Math.max(au[0], bu[0]); patch[1] = Math.min(au[1], bu[1]); }
   const u = (Math.max(au[0], bu[0]) + Math.min(au[1], bu[1])) / 2;
   const v = (Math.max(av[0], bv[0]) + Math.min(av[1], bv[1])) / 2, normal = (aPlane + bPlane) / 2;
   out.x = ux * u + vx * v + nx * normal; out.y = uy * u + vy * v + ny * normal; out.z = uz * u + vz * v + nz * normal;
@@ -170,6 +172,8 @@ export class StaticVehicleSolids {
   private readonly obstacle = makeSolid();
   private readonly hit: SolidContact = { reason: "", hazard: false, nx: 0, ny: 1, nz: 0, x: 0, y: 0, z: 0, depth: 0 };
   private readonly candidates = new Float64Array(384);
+  private readonly patch = new Float64Array(2);
+  private readonly obstacleHit: SolidContact = { reason: "", hazard: false, nx: 0, ny: 1, nz: 0, x: 0, y: 0, z: 0, depth: 0 };
   private readonly points = Array.from({ length: 4 }, () => ({ x: 0, y: 0, z: 0 }));
   private readonly contactPoints: { x: number; y: number; z: number }[] = [];
   private separating = false;
@@ -178,7 +182,8 @@ export class StaticVehicleSolids {
   private readonly terrain: SolidContact = { reason: "terrain", hazard: false, nx: 0, ny: 1, nz: 0, x: 0, y: 0, z: 0, depth: 0 };
   private skin = .008;
   readonly world: CollisionWorld;
-  constructor(world: CollisionWorld) { this.world = world; }
+  private readonly ignoreNode: ((ref: number) => boolean) | undefined;
+  constructor(world: CollisionWorld, ignoreNode?: (ref: number) => boolean) { this.world = world; this.ignoreNode = ignoreNode; }
   blocked(from: Readonly<SolidFrame>, to: Readonly<SolidFrame>, shapes: readonly Shape[], joints?: readonly SolidJoint[], allowSeparating = false, skin = .008, center?: ArrayLike<number>, manifold = false): SolidContact | null {
     this.skin = skin; this.center = center; this.manifold = manifold; this.hit.balanced = false; this.hit.points = undefined; this.contactPoints.length = 0;
     let contacts = 0, weight = 0, blockedTerrain = false, blockedHazard = false, supportX = 0, supportY = 0, supportZ = 0, supportNX = 0, supportNY = 1, supportNZ = 0;
@@ -350,7 +355,7 @@ export class StaticVehicleSolids {
     this.geometry(a.solid, b); return true;
   }
   private geometry(a: Solid, b: Solid): void {
-    solidContactPoint(a, b, this.hit);
+    solidContactPoint(a, b, this.hit, this.patch);
     const hit = this.hit, center = this.center; hit.balanced = false;
     if (center && hit.ny > .4 && faceSupports(a, hit.nx, hit.ny, hit.nz, -1, center[0]!, center[2]!) &&
       faceSupports(b, hit.nx, hit.ny, hit.nz, 1, center[0]!, center[2]!)) {
@@ -383,21 +388,55 @@ export class StaticVehicleSolids {
   }
   private obstacles(store: StructureStore, area: Bounds, count: number, name: string): SolidContact | null {
     const n = store.query(area.minX, area.minZ, area.maxX, area.maxZ, this.found, area.minY, area.maxY);
+    // Replicated rows rebuild the grid in a different insertion order. Pick the same real contact on both peers.
+    sortU32(this.found.refs, n);
+    let retained = false, low = 0, high = 0, centre = 0;
+    const take = (ref: number): boolean => {
+      const hit = this.hit, saved = this.obstacleHit;
+      hit.reason = `${name}:${ref}`;
+      // Adjacent road pieces are one support patch. Join their actual contiguous supporting intervals;
+      // choosing only the first plate would manufacture a roll impulse on an otherwise symmetric crossing.
+      if (name !== "structure" || count !== 1 || hit.ny < .7 || hit.hazard || this.manifold) return false;
+      if (!retained) {
+        Object.assign(saved, hit); saved.points = undefined;
+        low = this.patch[0]!; high = this.patch[1]!; centre = (low + high) / 2;
+        retained = true;
+      } else if (saved.nx * hit.nx + saved.ny * hit.ny + saved.nz * hit.nz < .999 ||
+        Math.abs((hit.x - saved.x) * saved.nx + (hit.y - saved.y) * saved.ny + (hit.z - saved.z) * saved.nz) > .02) return true;
+      // The lateral intervals must also share the transverse contact line. Two floor islands at the same
+      // height but different fore/aft positions do not support the empty rectangle between them.
+      const dx = hit.x - saved.x, dy = hit.y - saved.y, dz = hit.z - saved.z;
+      const horizontal = Math.sqrt(saved.nx * saved.nx + saved.nz * saved.nz);
+      const transverse = horizontal > 1e-8 ? horizontal * dy - saved.ny * (saved.nx * dx + saved.nz * dz) / horizontal : dz;
+      if (Math.abs(transverse) > .02) return true;
+      // Only join contiguous portions of the same supporting feature. Gaps and unrelated ledges stay separate.
+      if (this.patch[0]! <= high + .02 && this.patch[1]! >= low - .02) {
+        low = Math.min(low, this.patch[0]!); high = Math.max(high, this.patch[1]!);
+      }
+      return true;
+    };
     for (let i = 0; i < n; i++) {
       const ref = this.found.refs[i]!, row = store.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535, kind = row.kind[slot]!;
-      if (store.isSoft(kind)) continue;
+      if (store.isSoft(kind) || name === "node" && this.ignoreNode?.(ref)) continue;
       const x = row.x[slot]!, y = row.y[slot]!, z = row.z[slot]!, yaw = row.yaw[slot]!;
       frameOf(yaw); const cs = frame.cos, sn = frame.sin, stretch = frame.stretch, boxes = store.parts.box;
       for (let j = store.parts.start[kind]! * 6, end = store.parts.start[kind + 1]! * 6; j < end; j += 6) {
         boxSolid(x + (cs * boxes[j]! + sn * boxes[j + 2]!) * stretch, y + boxes[j + 1]!, z + (cs * boxes[j + 2]! - sn * boxes[j]!) * stretch,
           cs, sn, boxes[j + 3]! * stretch, boxes[j + 4]!, boxes[j + 5]! * stretch, this.obstacle);
-        for (let part = 0; part < count; part++) if (this.meets(this.swept[part]!, this.obstacle)) { this.hit.reason = `${name}:${ref}`; return this.hit; }
+        for (let part = 0; part < count; part++) if (this.meets(this.swept[part]!, this.obstacle) && !take(ref)) return retained ? this.obstacleHit : this.hit;
       }
       const hulls = store.parts.hulls;
       if (hulls) for (let j = hulls.start[kind]!, end = hulls.start[kind + 1]!; j < end; j++) {
         partSolid(hulls, j, yaw, x, y, z, this.obstacle);
-        for (let part = 0; part < count; part++) if (this.meets(this.swept[part]!, this.obstacle)) { this.hit.reason = `${name}:${ref}`; return this.hit; }
+        for (let part = 0; part < count; part++) if (this.meets(this.swept[part]!, this.obstacle) && !take(ref)) return retained ? this.obstacleHit : this.hit;
       }
+    }
+    if (retained) {
+      const hit = this.obstacleHit;
+      const length = Math.sqrt(hit.nx * hit.nx + hit.nz * hit.nz), shift = (low + high) / 2 - centre;
+      hit.x += (length > 1e-8 ? hit.nz / length : 1) * shift;
+      hit.z += (length > 1e-8 ? -hit.nx / length : 0) * shift;
+      return hit;
     }
     return null;
   }

@@ -2,6 +2,7 @@
 // parts are met in shared/world/convex.ts, and the ground as its triangles are drawn.
 // capsuleFree is the authority on legal space. Movement, spawning, mounting and teleporting must all end in a position it accepts.
 
+import { sortU32 } from "../sort.ts";
 import { capsuleHull, hullPush } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
 import type { Heightfield } from "./heightfield.ts";
@@ -512,18 +513,20 @@ function edgeUnder(ha: number, hb: number, ax: number, az: number, ux: number, u
 }
 
 /** True when the capsule is inside the map and overlaps no terrain, structure or node. */
-export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number): boolean {
+export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, ordered = false): boolean {
   const hf = w.hf;
   if (x < 0 || z < 0 || x > hf.sizeX || z > hf.sizeZ) return false;
   if (y < groundUnder(hf, x, z, r) - SKIN) return false;
   const top = y + (h > 2 * r ? h : 2 * r) + PAD;
   const n = w.structs.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
+  if (ordered) sortU32(found.refs, n);
   for (let i = 0; i < n; i++) {
     if (capsuleBox(w.structs, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
   }
   const nodes = w.nodes;
   if (nodes) {
     const m = nodes.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
+    if (ordered) sortU32(found.refs, m);
     for (let i = 0; i < m; i++) {
       if (capsuleBox(nodes, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
     }

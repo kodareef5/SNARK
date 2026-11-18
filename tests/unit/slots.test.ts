@@ -1,6 +1,8 @@
 // The asset slots of the core content, against the pack the build makes.
 import { expect, test } from "bun:test";
 import { CORE_CONTENT, CORE_PACK } from "../../content/core.ts";
+import { HARBOUR_WRECK_FORMS, hulkOf } from "../../content/vehicles/harbour-wrecks.ts";
+import { MARINE_MODELS } from "../../content/vehicles/marine-fleet.ts";
 import type { Slot } from "../../shared/content/classes.ts";
 import { shapeHalf, type Def, type ShapeBox } from "../../shared/content/defs.ts";
 import { compilePacks } from "../../shared/content/packs.ts";
@@ -21,7 +23,10 @@ artTest("every asset the core content must have is in the pack, its own or the o
   // The practice dummy has no body of its own. The mannequin stands in, part for part. The pteranodon has no run on the
   // ground (ARK's speed table), and walks at every speed on foot.
   const stood = must.filter((u) => fillSlot(u, has).id !== u.id);
-  expect(stood.filter((u) => u.owner !== "core:dummy").map(slotAddress)).toEqual(["core:pteranodon#clip/run"]);
+  // A vessel's damaged and sunk forms stand as their shapes' boxes until the art has them; no map sets them down till then
+  // (content/vehicles/harbour-wrecks.ts).
+  const forms = new Set(MARINE_MODELS.flatMap((m) => HARBOUR_WRECK_FORMS.map((f) => hulkOf(m.id, f))));
+  expect(stood.filter((u) => u.owner !== "core:dummy" && !forms.has(u.owner)).map(slotAddress)).toEqual(["core:pteranodon#clip/run"]);
   expect(fillSlot(at("core:dummy#body/f/torso")!, has)).toEqual({ id: "core:mannequin/torso", word: "" });
   expect(new Set(uses.map(slotAddress)).size).toBe(uses.length);
 });

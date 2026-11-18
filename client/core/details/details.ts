@@ -116,6 +116,8 @@ export class Details {
   private readonly emitter = new Float64Array(3);
   /** The frame of the machine giving off details (machinery). */
   private readonly machine = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, qx: 0, qy: 0, qz: 0, qw: 1 };
+  private readonly treeDust: number;
+  private readonly nodeColours = new Uint8Array(6);
 
   /** `animOf` gives what a species of a kind plays, or null for one not drawn on a rig of its own. */
   constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array, animOf: (kind: number) => CreatureAnim | null) {
@@ -125,11 +127,14 @@ export class Details {
     this.rotorKinds = Uint8Array.from(reg.vehicle, v => v?.movement === "rotor" ? 1 : 0);
     this.effects = details?.effects ?? [];
     this.pictures = details?.pictures ?? [];
+    this.treeDust = this.effects.findIndex(e => e.id.includes("dust") && e.colour !== "body" && e.pass === "blend");
     this.pool = new Pool(MAX_DETAILS);
     this.reg = reg;
     this.animOf = animOf;
     const listens = new Uint16Array(reg.defs.length);
-    this.sheets = reg.defs.map((d) => (d?.type === "species" ? (details?.sheets.find((s) => s.owner === d.id) ?? null) : null));
+    const boatEffects = details?.sheets.find(s => s.owner === "core:boat");
+    this.sheets = reg.defs.map((d, kind) => d?.type === "species"
+      ? details?.sheets.find(s => s.owner === d.id) ?? (this.boatKinds[kind] ? boatEffects : null) ?? null : null);
     this.books = reg.defs.map((_, kind) => {
       const anim = this.sheets[kind] ? animOf(kind) : null;
       return anim ? this.bookOf(kind, anim) : null;
@@ -141,6 +146,18 @@ export class Details {
       listens,
       (o) => 1 << OCCASIONS.indexOf(o),
     );
+  }
+
+  /** A witnessed tree fracture reuses authored dust and the ordinary global particle/fill/distance budgets. */
+  nodeBreak(kind: number, id: number, x: number, y: number, z: number, tick: number, size: number): void {
+    if (this.treeDust < 0 || this.waiting.length >= MOST_WAITING) return;
+    const def = this.reg.defs[kind];
+    if (def?.type !== "node" || def.material !== "wood") return;
+    const effect = this.effects[this.treeDust]!;
+    const h: Happening = { occasion: "struck", id, kind, tick, x, y, z, yaw: 0, size: Math.max(1.4, Math.min(2.4, size * 1.8)),
+      anim: 0, cue: 0, grounded: true, colours: this.nodeColours, fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
+    this.waiting.push({ h, answer: { effect, delay: 0, entry: { effect: this.treeDust, from: "ground", at: "now", count: [14, 22] } },
+      due: tick, index: id, origin: { x, y: y + .65, z, floor: y } });
   }
 
   /** What a species of `kind` answers, as it plays `anim`. */
@@ -241,7 +258,7 @@ export class Details {
       const beat = Math.floor(r.tick / (TICK_RATE / 8));
       vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
       const water = hf.waterAt(frame.x, frame.z), draft = water - frame.y;
-      if (beat !== seen.wash && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < .95 && water > hf.heightAt(frame.x, frame.z) + .15) {
+      if (beat !== seen.wash && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < (book.vehicle?.movement === "boat" ? book.vehicle.spec.draft + .6 : .95) && water > hf.heightAt(frame.x, frame.z) + .15) {
         seen.wash = beat;
         for (const wake of WAKES) {
           if (seen.speed < wake.speed) continue;

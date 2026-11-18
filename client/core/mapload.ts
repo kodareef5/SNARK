@@ -251,15 +251,25 @@ export class MapLoader {
    * From now on the rest of the map comes, the ground nearest first to where `where` has the body, else to the map's first
    * spawn point. Resolves once the ground the first frame waits for where it has the body now has come, alone. From then
    * on `then.say` is told what the player is, and once every part has come `then.arrived` is handed the map's statics,
-   * read a step at a time.
+   * read a step at a time. With `then.whole` it resolves only once all the ground has come, and the statics then come one
+   * at a time: what the page asks for, until parts can come while the game is played without holding its packets back.
    */
-  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void } = {}): Promise<void> {
+  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void; readonly whole?: boolean } = {}): Promise<void> {
     this.where = where;
     const head = this.staged.head;
     const { x, z } = this.place();
     const near = firstFrameParts(head, x, z).filter((p) => this.grounds.includes(p));
     for (const p of near) this.grounds.splice(this.grounds.indexOf(p), 1);
     await Promise.all(near.map((p) => this.must(p)));
+    // With `whole` the rest of the ground comes before the first frame too, so that nothing of it is fetched while the
+    // game is played: parts coming six at once held the game's own packets back by seconds on a slow link, and a body
+    // is not predicted on ground that has not come.
+    if (then.whole) {
+      const rest = async (): Promise<void> => {
+        for (let p = this.grounds.length > 0 ? this.next() : null; p; p = this.grounds.length > 0 ? this.next() : null) await this.must(p);
+      };
+      await Promise.all(Array.from({ length: PARTS_AT_ONCE }, rest));
+    }
     this.asker.say("");
     this.asker.late = true;
     if (then.say) this.asker.say = then.say;
@@ -273,7 +283,8 @@ export class MapLoader {
         else this.rest.splice(k < 0 ? this.rest.length : k, 0, p);
       }
     };
-    void Promise.all(Array.from({ length: PARTS_AT_ONCE }, lane))
+    // With `whole` what is left is the statics, which come while the game is played: one at a time, as one file did.
+    void Promise.all(Array.from({ length: then.whole ? 1 : PARTS_AT_ONCE }, lane))
       .then(() => {
         const parts = head.parts.filter((p) => this.kept.has(p)).map((p) => ({ part: p, bytes: this.kept.get(p)! }));
         this.kept.clear();

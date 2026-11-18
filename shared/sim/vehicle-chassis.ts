@@ -46,11 +46,26 @@ function wheelSupports(s: VehicleState, p: VehicleSpec, w: VehicleWorld, mass: n
 }
 
 
+/** A near-vertical hull may be statically braced by a floor and a wall, even when neither face alone contains its COM. */
+function bracedAtRest(s: VehicleState, p: VehicleSpec, w: VehicleWorld): boolean {
+  vehicleRotation(s, q);
+  if (Math.abs(2 * (q[1]! * q[2]! - q[3]! * q[0]!)) < .65) return false;
+  const floor = w.contact(s, { ...s, y: s.y - .01 }, p);
+  if (!floor || floor.ny < .8) return false;
+  for (const [x, z] of [[.015, 0], [-.015, 0], [0, .015], [0, -.015]]) {
+    const wall = w.contact(s, { ...s, x: s.x + x!, z: s.z + z! }, p);
+    if (wall && Math.abs(wall.ny) < .4) return true;
+  }
+  return false;
+}
+
+
 export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCondition" | "engineOn" | "hullCondition" | "flooding">>, input: VehicleInput, p: VehicleSpec, w: VehicleWorld): VehicleStep {
   const result: VehicleStep = { blocked: null, impactSpeed: 0, landSpeed: 0, fuelUsed: 0, surface: "air", water: false, immersion: 0 };
   const contacts: VehicleContactQueries<VehicleState> = {
     contact: (from, to) => w.contact(from, to, p),
     penetration: at => w.penetration(at, p),
+    breakContact: w.breakContact ? (state, hit) => w.breakContact!(state, p, hit) : undefined,
   };
   const throttle = command(input.throttle, -1, 1), steer = command(input.steer, -1, 1), brake = command(input.brake, 0, 1);
   const dt = TICK_DT / 4, beforeFuel = s.fuel, gravity = p.gravity ?? 18;
@@ -60,6 +75,8 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
   if (s.fuel <= 0 || s.engineCondition <= .08 || s.hullCondition <= 0 || input.pilot === false) s.engineOn = false;
   else if (Math.abs(throttle) > .01) s.engineOn = true;
   let restingContact = false;
+  const startX = s.x, startY = s.y, startZ = s.z;
+  vehicleRotation(s, q); const startQx = q[0]!, startQy = q[1]!, startQz = q[2]!, startQw = q[3]!;
   for (let substep = 0; substep < 4; substep++) {
     integrateVehiclePose(s, p, 0); vehicleRotation(s, q);
     if (substep === 0) separateVehicleOverlap(s, contacts);
@@ -77,12 +94,17 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
     const spent = Math.min(s.fuel, s.engineOn ? Math.abs(throttle) * p.fuelPerSecond * dt : 0); s.fuel -= spent;
     if (wheels.length === 0 && prior.grounded && (water.immersion === 0 || s.flooding >= .999) && len3(s.vx, s.vy, s.vz) < .001 && len3(s.pitchRate, s.yawRate, s.rollRate) < .001) {
       const support = restingContact ? null : w.contact(s, { ...s, y: s.y - .01 }, p);
-      if (restingContact || support?.balanced && len3(support.nx, 0, support.nz) < support.ny * .45) {
+      if (restingContact || support?.balanced && len3(support.nx, 0, support.nz) < support.ny * .45 || bracedAtRest(s, p, w)) {
         restingContact = true;
         s.grounded = true; result.surface = "ground"; s.rideVelocity = 0; continue;
       }
     }
     s.vy -= gravity * dt;
+    if (p.downforce && forward > 0 && water.immersion === 0) {
+      // Acting at the centre of mass loads the suspension naturally. Do not create a levelling torque in flight.
+      const impulse = p.downforce * forward * forward * dt / mass;
+      s.vx -= up[0]! * impulse; s.vy -= up[1]! * impulse; s.vz -= up[2]! * impulse;
+    }
     let totalLoad = 0, averageOffset = 0, normalX = 0, normalY = 0, normalZ = 0;
     for (const wheel of wheels) {
       totalLoad += wheel.load; averageOffset += wheel.offset;
@@ -120,7 +142,8 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
       const side = pointV[0]! * sx + pointV[1]! * sy + pointV[2]! * sz;
       const share = wheel.load / Math.max(totalLoad, 1), grip = wheel.load / gravity * wheel.surface.grip * (wheel.front ? p.frontGrip ?? 1.08 : p.rearGrip ?? 1.05);
       const resistance = wheel.surface.rolling * mass + wheel.surface.drag * along * along * mass * (p.dragScale ?? 1) + mechanical.engineDrag;
-      let drive = s.engineOn ? mechanical.drive * (p.drivetrain ? 1 : p.acceleration / 8) * share : 0;
+      const torqueShare = p.frontDriveShare === undefined ? share : (wheel.front ? p.frontDriveShare : 1 - p.frontDriveShare) / 2;
+      let drive = s.engineOn ? mechanical.drive * (p.drivetrain ? 1 : p.acceleration / 8) * torqueShare : 0;
       drive = clamp(drive, -grip * .95, grip * .95);
       if (drive > 0) drive = Math.min(drive, Math.max(0, resistance * share + (p.maxForward - forward) / dt * mass * share));
       else if (drive < 0) drive = Math.max(drive, Math.min(0, -resistance * share + (-p.maxReverse - forward) / dt * mass * share));
@@ -159,12 +182,16 @@ export function stepVehicle(s: VehicleState & Partial<Pick<CarState, "engineCond
     s.pitchRate = clamp(s.pitchRate, -12, 12); s.yawRate = clamp(s.yawRate, -12, 12); s.rollRate = clamp(s.rollRate, -12, 12);
     s.wheelAngle = wrap(s.wheelAngle + forward * dt / p.wheelRadius);
   }
-  if (!restingContact && wheels.length === 0 && len3(s.vx, s.vy, s.vz) < .4 && len3(s.pitchRate, s.yawRate, s.rollRate) < .2) {
+  if (!restingContact && wheels.length === 0 && len3(s.vx, s.vy, s.vz) < .4 && len3(s.pitchRate, s.yawRate, s.rollRate) < .4) {
     separateVehicleOverlap(s, contacts);
     const support = w.contact(s, { ...s, y: s.y - .01 }, p);
-    if (support && support.balanced && len3(support.nx, 0, support.nz) < support.ny * .45 && (!result.water || s.flooding >= .999)) {
+    const balanced = support?.balanced && len3(support.nx, 0, support.nz) < support.ny * .45;
+    vehicleRotation(s, q);
+    const turned = 1 - Math.abs(startQx * q[0]! + startQy * q[1]! + startQz * q[2]! + startQw * q[3]!);
+    const braced = turned < 1e-6 && len3(s.x - startX, s.y - startY, s.z - startZ) < .002 && bracedAtRest(s, p, w);
+    if ((balanced || braced) && (!result.water || s.flooding >= .999)) {
       // A quiet roof/side resting over its support patch may sleep. An unsupported overhang keeps gravity/torque.
-      s.grounded = true; s.vx = s.vy = s.vz = s.pitchRate = s.yawRate = s.rollRate = 0;
+      s.grounded = true; s.vx = s.vy = s.vz = s.pitchRate = s.yawRate = s.rollRate = s.rideVelocity = 0;
     }
   }
   result.fuelUsed = beforeFuel - s.fuel;

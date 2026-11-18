@@ -3,6 +3,7 @@ import { join } from "node:path";
 import type { RuinFinish, RuinShape } from "../../content/ruins.ts";
 import type { Footprint } from "./statics.ts";
 import type { Cars } from "./street-cars.ts";
+import type { Harbours } from "../boat/sites.ts";
 import type { Facts } from "./labels.ts";
 import { rand3 } from "./raster.ts";
 
@@ -39,6 +40,7 @@ export interface Vocabulary {
   compositions: Record<string, Composition>;
   forms: Record<string, Form>; choices: Choice[]; assemblies: Record<string, Assembly>;
   street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[]; cars: Cars };
+  harbours: Harbours;
   version: number; seed: number; budgets: { maxChunk: number; maxCity: number; maxPlayableFloors: number; maxHeight: number };
   categories: Record<string, string>; recipes: Record<string, Recipe>;
   styles: Modifier[]; periods: Modifier[]; materials: Modifier[]; character: Modifier[];

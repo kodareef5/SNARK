@@ -176,17 +176,17 @@ def buildings(m):
 
 
 def elevation(m):
-    n = m.n
-    out = np.full((n, n), -9999, dtype=np.float32)
+    rows, cols = m.shape
+    out = np.full(m.shape, -9999, dtype=np.float32)
     tiles = json.loads((m.root / 'dem_selection.json').read_text())
     for i, t in enumerate(tiles):
         scale = t.get('z_to_m', m.city['dem']['z_to_m'])
         with rasterio.open(m.raw / 'dem' / t['name']) as src:
             b = transform_bounds(src.crs, m.crs, *src.bounds, densify_pts=21)
             c0 = max(0, math.floor((b[0] - m.grid.c) / 2) - 2)
-            c1 = min(n, math.ceil((b[2] - m.grid.c) / 2) + 2)
+            c1 = min(cols, math.ceil((b[2] - m.grid.c) / 2) + 2)
             r0 = max(0, math.floor((m.grid.f - b[3]) / 2) - 2)
-            r1 = min(n, math.ceil((m.grid.f - b[1]) / 2) + 2)
+            r1 = min(rows, math.ceil((m.grid.f - b[1]) / 2) + 2)
             if c0 >= c1 or r0 >= r1:
                 continue
             dst = np.full((r1 - r0, c1 - c0), -9999, dtype=np.float32)
@@ -205,7 +205,7 @@ def elevation(m):
 def main():
     m = folder_arg()
     t = time.time()
-    n = m.n
+    dims = m.shape
     water = tiger(m, 'areawater')
     roads = tiger(m, 'roads')
     bld = buildings(m)
@@ -219,7 +219,7 @@ def main():
     perched, sea_water = [], []
     features = osm_features(m)
     for g, p in water:
-        mask = m.burn([(g, 1)], n, m.grid) > 0
+        mask = m.burn([(g, 1)], dims, m.grid) > 0
         surveyed = mask & valid
         if surveyed.sum() >= .5 * max(1, mask.sum()) and float(np.median(elev[surveyed])) > sea + above:
             perched.append((g, {**p, 'kind': TIGER_WATER.get(p['mtfcc'], 'water')} if features else p, float(np.median(elev[surveyed]))))
@@ -227,26 +227,26 @@ def main():
             sea_water.append((g, p))
     for g, p in osm_water(m, features, water):
         # A pool's lidar surface may be interpolated across it; the median of what the survey has there stands for it.
-        mask = m.burn([(g, 1)], n, m.grid) > 0
+        mask = m.burn([(g, 1)], dims, m.grid) > 0
         surveyed = mask & valid
         if not surveyed.any():
-            mask = m.burn([(g.buffer(4), 1)], n, m.grid) > 0
+            mask = m.burn([(g.buffer(4), 1)], dims, m.grid) > 0
             surveyed = mask & valid
         if surveyed.any() and float(np.median(elev[surveyed])) > sea + above:
             perched.append((g, {**p, 'area_m2': round(g.area, 1)}, float(np.median(elev[surveyed]))))
     m.write_features('perched_water', [(g, {**p, 'surface_navd88_m': round(h, 2), 'above_sea_m': round(h - sea, 2)}) for g, p, h in perched])
     # Water that is dry most of the year, a detention basin or a wash, is listed and left as the ground it is.
-    lake = m.burn([(g, 1) for g, p, h in perched if not p.get('intermittent')], n, m.grid)
+    lake = m.burn([(g, 1) for g, p, h in perched if not p.get('intermittent')], dims, m.grid)
     save(lake, m.base / 'perched_water.png')
     water = sea_water
     m.write_features('areawater', water)
-    w = m.burn([(g, 1) for g, p in water], n, m.grid)
-    b = m.burn([(g, 1) for g, p in bld], n, m.grid)
+    w = m.burn([(g, 1) for g, p in water], dims, m.grid)
+    b = m.burn([(g, 1) for g, p in bld], dims, m.grid)
     paved = osm_paved(m, features)
     if paved:
         m.write_features('paved', paved)
     rd = m.burn([(g, PAVED) for g, p in paved] + [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
-                 for g, p in sorted(roads, key=lambda gp: gp[1]['width_m'])], n, m.grid)
+                 for g, p in sorted(roads, key=lambda gp: gp[1]['width_m'])], dims, m.grid)
     rd[(rd > 0) & (w > 0)] = 3  # a bridge over the water, which stays beneath it
     zero = m.cfg.get('height_zero_m', -100)
     if elev[valid].max() > zero + 655.35 or elev[valid].min() < zero:
@@ -256,25 +256,28 @@ def main():
     save(w, m.base / 'water.png')
     save(b, m.base / 'buildings.png')
     save(rd, m.base / 'roads.png')
-    lc = np.zeros((n, n), np.uint8)
+    lc = np.zeros(dims, np.uint8)
     with rasterio.open(m.raw / m.city['nlcd']['file']) as src:
         reproject(rasterio.band(src, 1), lc, src_transform=src.transform, src_crs=src.crs,
                   dst_transform=m.grid, dst_crs=m.crs, resampling=Resampling.nearest)
     save(lc, m.base / 'landcover.png')
     # Fictional succession, the rule Miami's was made by; distinct from NLCD.
-    coast = nd.distance_transform_edt(w == 0) * 2 if w.any() else np.full((n, n), np.inf, np.float32)
+    coast = nd.distance_transform_edt(w == 0) * 2 if w.any() else np.full(dims, np.inf, np.float32)
     # A desert city names the land cover that stays dry (barren, shrub and scrub): it is desert, not grown green.
     dry = m.city['succession'].get('dry_classes') or []
     grown = np.isin(lc, [c for c in GRASS_LIKE if c not in dry]) | ((lc == 22) & (coast < 180))
     grown = nd.gaussian_filter(grown.astype('float32'), 4) > .48
-    yy, xx = np.mgrid[:n, :n].astype(np.float32)
+    # On the lattice: a sample's column and row from the corner the build's noise is read from.
+    yy, xx = np.mgrid[:dims[0], :dims[1]].astype(np.float32)
+    xx += m.noise[0]
+    yy += m.noise[1]
     field = np.sin(xx / 47 + .7 * np.sin(yy / 83)) + np.cos(yy / 61 - xx / 103)
     near_ruin = nd.distance_transform_edt(b == 0) * 2 < 18
     away_road = nd.distance_transform_edt(rd == 0) * 2 > 6
     # Miami's heights, 6 m and 0.75 m NAVD88 over its sea of 0.3 m, are taken over each city's own sea.
     rise = elev - sea
     grown |= near_ruin & away_road & (b == 0) & (w == 0) & (rise < 5.7) & (field > -.25)
-    biome = np.full((n, n), 2, np.uint8)
+    biome = np.full(dims, 2, np.uint8)
     biome[grown] = 3
     biome[grown & (coast < 70)] = 4
     biome[grown & (rise < .45) & (coast < 140)] = 5
@@ -286,7 +289,7 @@ def main():
     ribbon = m.city['succession'].get('sand_ribbon')
     if ribbon:
         # An authored strip of bare sand east of a given easting, as Miami Beach's.
-        xs = np.arange(n) * 2 + m.b[0]
+        xs = np.arange(dims[1]) * 2 + m.b[0]
         beach |= (xs[None, :] > ribbon['east_of_m']) & (coast < ribbon['coast_m']) & (elev < ribbon['below_m'])
     biome[beach] = 6
     biome[b > 0] = 7

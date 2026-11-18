@@ -54,6 +54,10 @@ export interface VehicleSpec extends VehicleHullSpec {
   readonly suspensionTravel?: number;
   readonly gravity?: number;
   readonly airDrag?: number;
+  /** Fraction of engine torque sent to the front axle. Omitted uses the legacy load-proportional split. */
+  readonly frontDriveShare?: number;
+  /** Aero load in newtons per (m/s) squared, toward the underside on a forward run. */
+  readonly downforce?: number;
   /** Multiplier on the surface speed-squared resistance (body/tire drag). */
   readonly dragScale?: number;
 }
@@ -61,15 +65,21 @@ export interface VehicleSpec extends VehicleHullSpec {
 /** A vehicle's seats are seats like any host's (shared/sim/seats.ts), in its chassis frame. */
 export type VehicleSeat = Seat;
 
-/** A hinged part of the rig. `open` is radians about `axis` (in the bone's frame) when it is fully open. */
-export interface VehicleDoor {
+/** A rigid door, driven by its replicated open fraction. Sliding doors first release out of the seal, then run aft. */
+export type VehicleDoor = {
   readonly bone: string;
-  readonly axis: readonly [number, number, number];
-  readonly open: number;
-  /** Ticks it takes to swing fully open, and to swing shut. */
   readonly openTicks: number;
   readonly closeTicks: number;
-}
+} & ({
+  readonly axis: readonly [number, number, number];
+  readonly open: number;
+  readonly slide?: never;
+} | {
+  /** Signed local X and Z travel in metres. */
+  readonly slide: { readonly outward: number; readonly along: number };
+  readonly axis?: never;
+  readonly open?: never;
+});
 
 /** A wheel bone rolls about the chassis X axis with the wheel angle; one that steers turns about Y first. */
 export interface VehicleWheel {
@@ -77,16 +87,19 @@ export interface VehicleWheel {
   readonly steers?: boolean;
 }
 
-/** At most this many doors a vehicle: their open fractions travel in four bits each (shared/sim/vehicle-body.ts). */
+/** At most this many doors a vehicle: their open fractions travel in eight bits each (shared/sim/vehicle-body.ts). */
 export const MAX_VEHICLE_DOORS = 4;
 
 /** One kind of vehicle: its mechanics, its seats and the parts of its rig that move. Content, never code, says each. */
+type VehiclePoint3 = readonly [number, number, number];
 interface VehicleDefinitionBase {
   readonly id: string;
   /** Mesh used by the native persistent corpse for an opted-in mechanical wreck. */
   readonly wreck?: string;
   readonly seats: readonly VehicleSeat[];
   readonly doors: readonly VehicleDoor[];
+  /** Door held open while the vehicle's inventory is being accessed. */
+  readonly cargoDoor?: number;
   readonly wheels: readonly VehicleWheel[];
   /** The bone the driver's hands turn, about `axis`, `ratio` times the road wheels' steering angle. */
   readonly steeringWheel?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
@@ -94,11 +107,15 @@ interface VehicleDefinitionBase {
   readonly actionTicks: number;
   /** Metres up from the ground to where the body shell ends and the open cabin begins: a shot above it reaches whoever sits inside. */
   readonly beltline: number;
+  /** Solid cabin panels above the belt in vehicle-local metres. Openings between them admit shots. */
+  readonly shotPanels?: readonly (readonly [VehiclePoint3, VehiclePoint3, VehiclePoint3, VehiclePoint3])[];
 }
 
 /** Existing packs omit movement; their controller remains the wheeled one. */
 export interface WheelVehicleDefinition extends VehicleDefinitionBase {
   readonly movement?: "wheeled";
+  /** Road chassis family shown in the catalogue. Older wheel definitions use the car family. */
+  readonly frame?: "car" | "sports_car" | "van";
   readonly spec: VehicleSpec;
 }
 
@@ -158,8 +175,14 @@ export interface RotorVehicleDefinition extends VehicleDefinitionBase {
 /** A weighted float volume. Its centre and the common buoyancyHeight describe its vertical extent. */
 export interface BoatFloat { readonly at: readonly [number, number, number]; readonly weight: number }
 
-/** Utility motorboat tuning in metres, kilograms, seconds and radians. Water geometry comes from the world. */
-export interface BoatSpec extends VehicleHullSpec {
+export interface BoatDrive {
+  /** Steerable housing and skeg in chassis coordinates at zero steering. */
+  readonly outboard?: { readonly pivot: readonly [number, number, number]; readonly boxes: readonly VehicleCollisionBox[] };
+  readonly propeller: { readonly at: readonly [number, number, number]; readonly radius: number; readonly enclosed?: boolean; readonly intake?: readonly [number, number, number] };
+}
+
+/** Boat tuning in metres, kilograms, seconds and radians. Water geometry comes from the world. */
+export interface BoatSpec extends VehicleHullSpec, BoatDrive {
   readonly mass: number;
   /** Maximum kilograms of water displaced by the intact dry hull, never an unlimited height servo. */
   readonly displacement: number;
@@ -170,9 +193,8 @@ export interface BoatSpec extends VehicleHullSpec {
   readonly centerOfMass: readonly [number, number, number];
   readonly buoyancyPoints: readonly BoatFloat[];
   readonly hullBoxes: readonly VehicleCollisionBox[];
-  /** Steerable engine housing and skeg. These boxes are in the chassis frame at zero steering. */
-  readonly outboard?: { readonly pivot: readonly [number, number, number]; readonly boxes: readonly VehicleCollisionBox[] };
-  readonly propeller: { readonly at: readonly [number, number, number]; readonly radius: number };
+  /** A second independently immersed drive shares available engine thrust with the first. */
+  readonly secondDrive?: BoatDrive;
   readonly thrust: number;
   readonly reverseThrust: number;
   readonly idleRpm: number;
@@ -185,17 +207,37 @@ export interface BoatSpec extends VehicleHullSpec {
   /** Maximum fraction of unloaded weight supported by dynamic lift. */
   readonly planingLift: number;
   readonly planingTrim: number;
+  /** Effective roll lever of dynamic lift in a turn, in metres. The utility launch uses .55. */
+  readonly planingBankArm?: number;
   /** Hydrodynamic resistance coefficients; forward/side forces include linear and quadratic terms. */
   readonly forwardDrag: number;
   readonly sideDrag: number;
   readonly angularDrag: number;
   readonly gravity: number;
 }
-export interface BoatVehicleDefinition extends VehicleDefinitionBase {
-  readonly movement: "boat";
-  readonly spec: BoatSpec;
+export interface BoatDriveRig {
   readonly propeller?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
   readonly outboard?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
+}
+
+export interface BoatBoarding {
+  readonly water: readonly [number, number, number];
+  readonly ladder: readonly [number, number, number];
+  readonly deck: readonly [number, number, number];
+}
+export interface BoatVehicleDefinition extends VehicleDefinitionBase, BoatDriveRig {
+  readonly movement: "boat";
+  readonly spec: BoatSpec;
+  readonly secondDrive?: BoatDriveRig;
+  readonly boarding?: BoatBoarding;
+  readonly family?: "offshore" | "jon" | "pwc" | "yacht" | "catamaran";
+}
+
+const driveSets = new WeakMap<BoatSpec, readonly BoatDrive[]>();
+export function boatDrives(p: BoatSpec): readonly BoatDrive[] {
+  let drives = driveSets.get(p);
+  if (!drives) { drives = p.secondDrive ? [p, p.secondDrive] : [p]; driveSets.set(p, drives); }
+  return drives;
 }
 
 export type VehicleDefinition = WheelVehicleDefinition | RotorVehicleDefinition | BoatVehicleDefinition;
@@ -212,17 +254,22 @@ export function validateBoatSpec(s: BoatSpec): void {
   if (!Number.isFinite(s.clearance) || s.clearance < 0 || s.clearance >= s.height || s.mass < 50 || s.mass > 1000000 ||
     s.displacement <= s.mass || s.displacement > s.mass * 8 || s.draft >= s.height || s.buoyancyHeight > s.height ||
     s.maxRpm <= s.idleRpm || s.maxRpm > 20000 || s.maxSteer > .95 || s.maxForward > 70 || s.maxReverse > 15 ||
-    s.planingLift > .85 || s.planingTrim > .35 || !vec(s.centerOfMass) ||
+    s.planingLift > .85 || s.planingTrim > .35 || (s.planingBankArm !== undefined && (!Number.isFinite(s.planingBankArm) || s.planingBankArm < 0 || s.planingBankArm > 2)) || !vec(s.centerOfMass) ||
     !Array.isArray(s.buoyancyPoints) || s.buoyancyPoints.length < 4 || s.buoyancyPoints.length > 12 ||
     !s.buoyancyPoints.every(v => vec(v.at) && Number.isFinite(v.weight) && v.weight > 0 && Math.abs(v.at[0]) <= s.halfWidth && Math.abs(v.at[2]) <= s.halfLength) ||
     Math.abs(s.buoyancyPoints.reduce((sum, v) => sum + v.weight, 0) - 1) > 1e-6 ||
-    !Array.isArray(s.hullBoxes) || s.hullBoxes.length < 1 || s.hullBoxes.length > 16 ||
+    !Array.isArray(s.hullBoxes) || s.hullBoxes.length < 1 || s.hullBoxes.length > 24 ||
     !s.hullBoxes.every(b => b && vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 12)) ||
-    !s.propeller || !vec(s.propeller.at) || !Number.isFinite(s.propeller.radius) || s.propeller.radius <= 0 || s.propeller.radius > 1) throw new Error("inconsistent boat specification");
+    !s.propeller) throw new Error("inconsistent boat specification");
   const submerged = s.buoyancyPoints.reduce((sum, v) => sum + v.weight * clamp((s.draft - v.at[1]) / s.buoyancyHeight + .5, 0, 1), 0);
   if (Math.abs(submerged * s.displacement - s.mass) > s.mass * .025) throw new Error("boat draft disagrees with float volume");
-  if (s.outboard && (!vec(s.outboard.pivot) || !Array.isArray(s.outboard.boxes) || s.outboard.boxes.length > 8 ||
-    !s.outboard.boxes.every(b => vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 4)))) throw new Error("invalid boat outboard geometry");
+  for (const drive of boatDrives(s)) {
+    const prop = drive.propeller, motor = drive.outboard;
+    if (!prop || !vec(prop.at) || !Number.isFinite(prop.radius) || prop.radius <= 0 || prop.radius > 1 ||
+      (prop.enclosed !== undefined && typeof prop.enclosed !== "boolean") || (prop.intake !== undefined && (!prop.enclosed || !vec(prop.intake)))) throw new Error("invalid boat propeller");
+    if (motor && (!vec(motor.pivot) || !Array.isArray(motor.boxes) || motor.boxes.length > 8 ||
+      !motor.boxes.every(b => vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 4)))) throw new Error("invalid boat outboard geometry");
+  }
 }
 
 export function validateHelicopterSpec(s: HelicopterSpec): void {
@@ -247,9 +294,13 @@ export function validateHelicopterSpec(s: HelicopterSpec): void {
 /** Content checks beyond the spec's, so a definition that compiles always registers and draws. Throws on the first fault. */
 export function validateVehicleDefinition(d: VehicleDefinition): void {
   if (d.movement === "rotor") validateHelicopterSpec(d.spec);
-  else if (d.movement === "boat") validateBoatSpec(d.spec);
+  else if (d.movement === "boat") {
+    validateBoatSpec(d.spec);
+    if (d.family !== undefined && !["offshore", "jon", "pwc", "yacht", "catamaran"].includes(d.family)) throw new Error("invalid boat family");
+  }
   else {
     if (d.movement !== undefined && d.movement !== "wheeled") throw new Error("invalid vehicle movement");
+    if (d.frame !== undefined && !["car", "sports_car", "van"].includes(d.frame)) throw new Error("invalid road vehicle frame");
     validateVehicleSpec(d.spec);
   }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
@@ -257,7 +308,11 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
   if (!Array.isArray(d.wheels) || d.wheels.length > 16 || !d.wheels.every((w) => bone(w.bone))) throw new Error("invalid vehicle wheels");
   for (const door of d.doors) {
-    if (!bone(door.bone) || !vec(door.axis) || !Number.isFinite(door.open) || Math.abs(door.open) > Math.PI ||
+    const validMotion = door.slide
+      ? door.axis === undefined && door.open === undefined && Number.isFinite(door.slide.outward) && Math.abs(door.slide.outward) <= .5 &&
+        Number.isFinite(door.slide.along) && Math.abs(door.slide.along) > 0 && Math.abs(door.slide.along) <= 3
+      : vec(door.axis) && Number.isFinite(door.open) && Math.abs(door.open!) <= Math.PI;
+    if (!bone(door.bone) || !validMotion ||
       !Number.isInteger(door.openTicks) || door.openTicks < 1 || door.openTicks > 255 ||
       !Number.isInteger(door.closeTicks) || door.closeTicks < 1 || door.closeTicks > 255) throw new Error("invalid vehicle door");
   }
@@ -272,13 +327,19 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   }
   if (d.movement === "boat") {
     if (d.wheels.length) throw new Error("invalid boat rig");
-    for (const p of [d.propeller, d.outboard]) if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
+    if (d.boarding && ![d.boarding.water, d.boarding.ladder, d.boarding.deck].every(vec)) throw new Error("invalid boat boarding route");
+    if (d.secondDrive && !d.spec.secondDrive) throw new Error("second boat drive rig has no physical drive");
+    for (const p of [d.propeller, d.outboard, d.secondDrive?.propeller, d.secondDrive?.outboard]) if (p && (!bone(p.bone) || !vec(p.axis) || Math.abs(p.axis[0] * p.axis[0] + p.axis[1] * p.axis[1] + p.axis[2] * p.axis[2] - 1) > 1e-6 ||
       !Number.isFinite(p.ratio) || p.ratio === 0 || Math.abs(p.ratio) > 16)) throw new Error("invalid boat propulsion rig");
   }
+  if (d.cargoDoor !== undefined && (!Number.isInteger(d.cargoDoor) || d.cargoDoor < 0 || d.cargoDoor >= d.doors.length)) throw new Error("invalid vehicle cargo door");
   if (d.wreck !== undefined && (typeof d.wreck !== "string" || !d.wreck.includes(":"))) throw new Error("invalid vehicle wreck");
   const s = d.steeringWheel;
   if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
   if (!Number.isInteger(d.actionTicks) || d.actionTicks < 1 || d.actionTicks > 300) throw new Error("invalid vehicle action ticks");
+  for (const panel of d.shotPanels ?? []) {
+    if (panel.length !== 4 || panel.some(point => point.length !== 3 || !point.every(Number.isFinite))) throw new Error("invalid vehicle cabin panel");
+  }
   if (!Number.isFinite(d.beltline) || d.beltline <= d.spec.clearance || d.beltline > d.spec.height) throw new Error("invalid vehicle belt line");
   validateSeats(d.seats, d.doors.length, "vehicle");
 }
@@ -333,6 +394,8 @@ export interface VehicleInput {
 }
 
 export interface VehicleWorld {
+  /** Authority may fracture a contacted obstacle after paying its work through a point impulse. Null keeps the solid response. */
+  breakContact?(state: VehicleState, spec: VehicleSpec, hit: VehicleContact): number | null;
   /** Surface normal points out of the obstacle, toward the chassis. Scratch result: consume before another query. */
   contact(from: Readonly<VehicleState>, to: Readonly<VehicleState>, spec: VehicleSpec): VehicleContact | null;
   /** Actual current overlap, without the moving-contact skin; use only for bounded position recovery. */
@@ -342,7 +405,7 @@ export interface VehicleWorld {
 }
 
 export interface WheelRayContact { distance: number; nx: number; ny: number; nz: number; surface: VehicleSurface }
-export interface VehicleContact { reason: string; nx: number; ny: number; nz: number; x?: number; y?: number; z?: number; depth?: number; balanced?: boolean; geometryNx?: number; geometryNy?: number; geometryNz?: number; points?: readonly { x: number; y: number; z: number }[] }
+export interface VehicleContact { restitution?: number; reason: string; nx: number; ny: number; nz: number; x?: number; y?: number; z?: number; depth?: number; balanced?: boolean; geometryNx?: number; geometryNy?: number; geometryNz?: number; points?: readonly { x: number; y: number; z: number }[] }
 
 export interface VehicleStep {
   blocked: string | null;
@@ -360,10 +423,11 @@ export function validateVehicleSpec(s: VehicleSpec): void {
   for (const key of ["halfWidth", "halfLength", "height", "clearance", "wheelbase", "track", "wheelRadius", "acceleration", "brake", "maxForward", "maxReverse", "maxSteer", "steerRate", "maxRise", "maxDrop", "minGroundNormal", "fuelCapacity", "fuelPerSecond"] as const) {
     if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid vehicle ${key}`);
   }
-  const zero = new Set(["yawDamping", "airDrag", "dragScale"]);
+  const zero = new Set(["yawDamping", "airDrag", "dragScale", "frontDriveShare", "downforce"]);
   for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
   if (s.mass !== undefined && (s.mass < 50 || s.mass > 1000000)) throw new Error("invalid vehicle mass");
+  if ((s.frontDriveShare ?? 0) > 1 || (s.downforce ?? 0) > 10) throw new Error("invalid vehicle axle split or downforce");
   if (s.drivetrain !== undefined) validateDrivetrainSpec(s.drivetrain);
   if (s.clearance >= s.height || s.track > 2 * s.halfWidth || s.wheelbase > 2 * s.halfLength || s.maxSteer >= 1.2 || s.minGroundNormal > 1 ||
     (s.handbrakeGrip ?? 0.18) > 1 || (s.suspensionDamping ?? 0.85) > 2 || (s.suspensionFrequency ?? 10) > 24 ||

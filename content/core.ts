@@ -16,8 +16,10 @@ import { LETTER_BLOCKS } from "./lettering.ts";
 import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
 import { ROADS } from "./vehicles/roads.ts";
-import { COMPACT_SPECIES } from "./vehicles/compact.ts";
+import { ROAD_FLEET } from "./vehicles/road-fleet.ts";
 import { WRECKS } from "./vehicles/wrecks.ts";
+import { MARINE_FLEET } from "./vehicles/marine-fleet.ts";
+import { HARBOUR_WRECKS } from "./vehicles/harbour-wrecks.ts";
 import { BOATS } from "./vehicles/boat.ts";
 import { BOAT_ITEMS } from "./vehicles/boat-items.ts";
 import { HELICOPTERS } from "./vehicles/helicopter.ts";
@@ -382,13 +384,15 @@ const ALL: readonly Def[] = [
   { type: "structure", class: "static", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
   ...BUILDING_CONTENT,
   ...CREATURES,
-  COMPACT_SPECIES,
+  ...ROAD_FLEET,
   ...HELICOPTERS,
   ...BOATS,
+  ...MARINE_FLEET,
   ...BOAT_ITEMS,
   ...HELICOPTER_ITEMS,
   ...ROADS,
   ...WRECKS,
+  ...HARBOUR_WRECKS,
   CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,

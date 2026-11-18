@@ -52,6 +52,9 @@ const DEATH_CACHE = event("death.cache");
 
 export class Death {
   count = 0;
+  /** Shared current posed eye for seated interactions; absent on small standalone fixtures. */
+  eye: ((entity: number, out: Float64Array) => void) | null = null;
+  private readonly eyeAt = new Float64Array(3);
   /** The use button found nothing here to act on. Another system may want it (a bush to pick). */
   onUse: ((c: Client) => void) | null = null;
   /** The use button was pressed looking at a structure (`ref`) with nothing nearer. Returns a result code, or -1 if it has no use. */
@@ -60,6 +63,8 @@ export class Death {
   canOpen: ((c: Client, rec: EntityRecord) => boolean) | null = null;
   /** Whether a session that has the built container at `ref` open may go on using it. */
   keepsBuilt: ((c: Client, ref: number) => boolean) | null = null;
+  /** Reach and authorization for a live hull or a salvage hull opened at its stern. */
+  keepsBoatCargo: ((c: Client, e: number) => boolean) | null = null;
   /** Riding hooks. onRide gets the entity the use button was pressed on and returns a result code, or -1 if it does not take the press. */
   riding: ((c: Client) => boolean) | null = null;
   offMount: ((c: Client) => void) | null = null;
@@ -496,8 +501,14 @@ export class Death {
   private allowed(c: Client, box: EntityRecord): boolean {
     if (box.at >= 0) return this.keepsBuilt?.(c, box.at) ?? true;
     const e = this.ctx.records.entOf.get(box.pid);
+    if (e !== undefined && this.isBoat(e)) return this.keepsBoatCargo?.(c, e) ?? false;
     if (e === undefined || (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 || box.out) return true;
     return this.canOpen?.(c, box) ?? false;
+  }
+
+  private isBoat(e: number): boolean {
+    const { world } = this.ctx;
+    return world.reg.vehicle[world.ents.kind[e]!]?.movement === "boat";
   }
 
   close(c: Client): void {
@@ -525,7 +536,7 @@ export class Death {
         else if ((ents.flags[e]! & F_PROP) !== 0 && box.kind !== this.corpse && items.inv(box).used() === 0) this.remove(box);
         // A creature that woke up closes unless canOpen allows it.
         else if (!this.allowed(c, box)) this.close(c);
-        else {
+        else if (!this.isBoat(e)) {
           const dx = ents.x[e]! - ents.x[c.ent]!;
           const dy = ents.y[e]! - ents.y[c.ent]!;
           const dz = ents.z[e]! - ents.z[c.ent]!;
@@ -548,9 +559,9 @@ export class Death {
     const ents = world.ents;
     const reg = world.reg;
     const e = c.ent;
-    const ox = ents.x[e]!;
-    const oy = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
-    const oz = ents.z[e]!;
+    this.eyeAt[0] = ents.x[e]!; this.eyeAt[1] = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!); this.eyeAt[2] = ents.z[e]!;
+    this.eye?.(e, this.eyeAt);
+    const ox = this.eyeAt[0]!, oy = this.eyeAt[1]!, oz = this.eyeAt[2]!;
     const d = this.dir;
     lookDirection(c.heldYaw, c.heldPitch, d);
     const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);

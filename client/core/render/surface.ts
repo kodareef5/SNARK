@@ -13,6 +13,7 @@ import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
 import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
+import { WEAR_GLSL, wearAlpha } from "./wear.ts";
 
 /** What a surface that is not metal reflects head on. */
 export const DIELECTRIC = 0.04;
@@ -100,10 +101,11 @@ export function dyed(out: Out, base: Numbers, tint: Numbers, dyes: Numbers, mask
  * The dyed colour `albedo` and the packed map `mro` as a body's layer leaves them at `level` (LAYER_STAGES). `layer` is
  * the layer sampled: its colour as light, and in alpha how soon it shows, 1 at once and 0 never. A texel shows once
  * the level passes 1 less its alpha, fading in over a quarter stage; it takes the place of the dyed colour and is wet
- * while the body is fresh. A corpse's decay dulls and darkens all of it.
+ * while the body is fresh. A corpse's decay dulls and darkens all of it. `late` is the stages a road vehicle's wear
+ * story holds the texel back where it lies (wear.ts).
  */
-export function wounded(albedo: Out, mro: Out, layer: Numbers, level: number): void {
-  const shows = Math.min(Math.max((level - 1 + layer[3]!) * LAYER_EDGE, 0), 1);
+export function wounded(albedo: Out, mro: Out, layer: Numbers, level: number, late = 0): void {
+  const shows = Math.min(Math.max((level - 1 + wearAlpha(layer[3]!, late, LAYER_STAGES)) * LAYER_EDGE, 0), 1);
   const decay = Math.min(Math.max(level * 2 - 1, 0), 1);
   for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! + (layer[c]! - albedo[c]!) * shows;
   const grey = albedo[0]! * LUMA[0] + albedo[1]! * LUMA[1] + albedo[2]! * LUMA[2];
@@ -298,9 +300,10 @@ export const SURFACE_ANY: SurfaceVariant = { dyed: true, drops: true, layered: f
 
 /**
  * The vertex text. Its attributes 0 and 2 to 6 are the flat program's, `uSkin` is what `skinMode` gives, and `uUv` is
- * what the mesh's stored texture coordinates span (PackMesh.uv): 0, 0, 1, 1 for a mesh that does not say.
+ * what the mesh's stored texture coordinates span (PackMesh.uv): 0, 0, 1, 1 for a mesh that does not say. A layered
+ * one passes on where the vertex lies at rest in its mesh's bounds, -1 to 1, for the wear story (wear.ts).
  */
-export const surfaceVertex = ({ dyed, drops }: SurfaceVariant): string => `#version 300 es
+export const surfaceVertex = ({ dyed, drops, layered }: SurfaceVariant): string => `#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=2) in vec3 iPos;
 layout(location=3) in float iYaw;
@@ -320,7 +323,7 @@ uniform highp sampler2D ${dyed ? "uPalette, " : ""}uBones;
 out vec3 vRel, vNormal;
 out vec4 vTangent;
 out vec2 vUv;
-${dyed ? "flat out mat3 vDye, vDye2;\n" : ""}${drops ? "flat out float vAt;\n" : ""}${FRAME_BLOCK}${drops ? HAND_VERTEX : ""}mat3x4 bone(int i) {
+${layered ? "out vec3 vBox;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""}${drops ? "flat out float vAt;\n" : ""}${FRAME_BLOCK}${drops ? HAND_VERTEX : ""}mat3x4 bone(int i) {
   int n = i * 3;
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
@@ -356,7 +359,7 @@ ${dyed ? "  vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));\n  vDye2 = ma
 ${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
   vTangent = vec4(normalize(t), aTangent.w);
   vUv = uUv.xy + aUv * uUv.zw;
-  gl_Position = ${drops ? "handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : " : ""}uViewProj * vec4(p, 1.0);
+${layered ? "  vBox = aPos;\n" : ""}  gl_Position = ${drops ? "handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : " : ""}uViewProj * vec4(p, 1.0);
 }`;
 
 const DYE = `vec3 dye(uint i) {
@@ -487,7 +490,7 @@ ${dyed ? "flat in mat3 vDye, vDye2;\n" : ""}uniform sampler2D uBase, uNormal, uM
 uniform vec3 uTint;
 uniform float uCutoff, uSheet, uSkin;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${dyed ? DYED : ""}${layered ? WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -510,10 +513,10 @@ const DYED = `vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
 }
 `;
 
-/** `wounded` as GLSL, reading the layer on its unit at the draw's level. */
+/** `wounded` as GLSL, reading the layer on its unit at the draw's level, held back as the draw's wear story says. */
 const WOUNDED = `vec3 wounded(vec3 albedo, inout vec3 mro) {
   vec4 layer = texture(uLayer, vUv);
-  float shows = clamp((uLevel - 1.0 + layer.a) * ${f(LAYER_EDGE)}, 0.0, 1.0);
+  float shows = clamp((uLevel - 1.0 + wearAlpha(layer.a, wearLate(), ${f(LAYER_STAGES)})) * ${f(LAYER_EDGE)}, 0.0, 1.0);
   float decay = clamp(uLevel * 2.0 - 1.0, 0.0, 1.0);
   albedo = mix(albedo, layer.rgb, shows);
   float grey = dot(albedo, vec3(${LUMA.map(f).join(", ")}));

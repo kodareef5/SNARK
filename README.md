@@ -19,9 +19,13 @@ An ARK-style browser survival parody with GTA vehicles and persistent multiplaye
 
 **GTA**
 
-- **Playable.** Drive a compact car, pilot a motorboat or fly a helicopter. Vehicles carry passengers and cargo, burn fuel and persist across restarts.
+- **Playable.** Drive a Compact or Fastback coupe, a Veloce or Berlinetta sports car, a Panel Van or a Caravan. Pilot a utility launch, an offshore speedboat, a jon boat, a jet ski, a motor yacht or a power catamaran, or fly a helicopter. Vehicles carry passengers and cargo, burn fuel and persist across restarts.
 - **Partial.** Civilians can take seats and be carjacked. Ambient traffic and civilian routes are missing.
 - **Missing.** Wanted levels, police pursuits, missions and heists.
+
+For a test drive, run `bun tools/urban/dev.ts --fleet` and join the local server. All six road models park facing the plaza spawn. In an existing world, use an admin console command such as `gmsummon fastback`, `gmsummon veloce`, `gmsummon berlinetta`, `gmsummon panel_van`, or `gmsummon caravan` to park a fuelled vehicle ahead of you. The sports cars also answer to `lambo` and `ferrari`, and the Fastback to `porsche`. [View the fleet](planning/reference/road-fleet.png)
+
+For the ten new boats, run `bun tools/boat/dev.ts --fleet` and join the marina on port 8792. Follow the pier to a stern, look at the boat and press E to board. W/S controls throttle and reverse, A/D steers, Space selects neutral, and V switches between helm and chase views. Admins can also summon a boat by name near open water, for example `gmsummon jetski` or `gmsummon superyacht`. [View the boats](planning/reference/marine-fleet.png)
 
 ## Run it
 

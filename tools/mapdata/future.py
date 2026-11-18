@@ -62,11 +62,11 @@ def main():
     (m.base / 'future_changes.geojson').write_text(json.dumps({
         'type': 'FeatureCollection', 'crs': {'type': 'name', 'properties': {'name': m.cfg['crs_proj']}},
         'features': [{'type': 'Feature', 'geometry': mapping(g), 'properties': p} for g, p in gaps + wrecks]}, indent=2) + '\n')
-    save(m.burn([(g, 1) for g, p in gaps], m.n, m.grid), m.base / 'bridge_gaps.png')
-    save(m.burn([(g, 1) for g, p in wrecks], m.n, m.grid), m.base / 'wrecks.png')
+    save(m.burn([(g, 1) for g, p in gaps], m.shape, m.grid), m.base / 'bridge_gaps.png')
+    save(m.burn([(g, 1) for g, p in wrecks], m.shape, m.grid), m.base / 'wrecks.png')
     rd = np.array(Image.open(m.base / 'roads.png'))
     tunnel_name = m.city['roads']['tunnel_name']
-    tunnel = m.burn([(g.buffer(p['width_m'] / 2, cap_style=2), 1) for g, p in roads if tunnel_name in (p['name'] or '').lower()], m.n, m.grid) > 0
+    tunnel = m.burn([(g.buffer(p['width_m'] / 2, cap_style=2), 1) for g, p in roads if tunnel_name in (p['name'] or '').lower()], m.shape, m.grid) > 0
     rd[tunnel] = 4
     gap = np.array(Image.open(m.base / 'bridge_gaps.png')) > 0
     rd[gap & (rd == 3)] = 5

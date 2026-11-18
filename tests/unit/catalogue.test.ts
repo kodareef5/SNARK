@@ -7,6 +7,9 @@ import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
 import { LETTER_BLOCKS } from "../../content/lettering.ts";
 import { TERMINALS } from "../../content/terminals.ts";
+import { MARINE_FLEET } from "../../content/vehicles/marine-fleet.ts";
+import { HARBOUR_WRECKS } from "../../content/vehicles/harbour-wrecks.ts";
+import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import { WRECKS } from "../../content/vehicles/wrecks.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
@@ -56,25 +59,26 @@ test("the core pack's definitions fall into the classes, each passing its row", 
     "species/survivor": 1,
     "species/target": 1,
     // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts).
-    "species/vehicle": 7,
+    "species/vehicle": 12 + MARINE_FLEET.length,
     "species/civilian": 1,
     // And three road surfaces to drive on, on a paving shape of their own.
     "structure/piece": 36,
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 3,
-    // And the street wrecks, a shape each look and a static each of its kinds (content/vehicles/wrecks.ts).
-    "structure/static": 8 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length,
-    shape: 17 + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length,
+    // And the street wrecks, a shape each look and a static each of its kinds (content/vehicles/wrecks.ts), and the
+    // harbours', a shape each vessel and a static each of its hulk and forms (content/vehicles/harbour-wrecks.ts).
+    "structure/static": 8 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length + HARBOUR_WRECKS.filter((d) => d.type === "structure").length,
+    shape: 17 + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length + HARBOUR_WRECKS.filter((d) => d.type === "shape").length,
     material: 4,
     node: 14,
     "prop/container": 2,
     "prop/projectile": 2,
     buff: 7,
     spawns: 4,
-    map: 5,
+    map: 6,
   });
-  expect(rest.length).toBe(241 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length);
+  expect(rest.length).toBe(241 + ROAD_FLEET.length + MARINE_FLEET.length + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length + HARBOUR_WRECKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

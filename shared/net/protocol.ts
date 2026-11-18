@@ -36,7 +36,7 @@
 //     RESULT    reliable     command sequence u16 (0 when no command asked), code u8
 //     TEXT      reliable     channel u8, text string
 //     OWN       reliable     component u8, then that component's fields
-//     NODES     reliable     chunk u16, version u32, count u8, used-up slots (u8 each)
+//     NODES     reliable     chunk u16, version u32, count u16, used-up slots (slot u8, crushed bool each)
 //     EVENT     reliable     kind u8, then that kind's fields (see EVENT_*)
 //     TRAVEL    reliable     travel ticket (32 bytes), destination's world id u16; the connection then closes
 //
@@ -58,8 +58,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * travelling static's state. 24: S_MOTION's states are added to those told before: all of them after a welcome, in as many
  * messages as they take, and then each static as it is thrown. 25: wheeled full-attitude/flooding state and
  * replicated fatal-impact corpse checkpoints (S_CORPSE/CMD_CORPSE). 26: local car push/pull and manual flip commands.
+ * 27: driver contact bodies and held controls precede each snapshot view; depleted node rows distinguish crushed trees.
  */
-export const PROTOCOL_VERSION = 26;
+export const PROTOCOL_VERSION = 28;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -562,6 +563,11 @@ export const INPUT_WINDOW = 32;
  * body stops moving and lets go of every button but INPUT_KEPT, its stance.
  */
 export const INPUT_HOLD_TICKS = 8;
+/**
+ * The same for a vehicle someone drives or flies, a second: a stream that lost a segment holds the inputs behind it about
+ * that long, and a helicopter let go brakes and comes down. A driver who has truly gone drives on as long.
+ */
+export const VEHICLE_HOLD_TICKS = 30;
 export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;

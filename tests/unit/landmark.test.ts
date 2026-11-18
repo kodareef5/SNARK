@@ -8,7 +8,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { landmarkGround, placeLandmark, type Landmark } from "../../shared/world/landmark.ts";
 import { joinParts, parseMap, readHead, readPart, writeMap } from "../../shared/world/mapfile.ts";
-import { bootManifest, splitPack } from "../../tools/pack/split.ts";
+import { bootManifest, splitLandmark, splitPack } from "../../tools/pack/split.ts";
 import { boxMesh, buildPack } from "../../tools/pack/write.ts";
 import { Assets } from "../../client/core/assets/assets.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
@@ -113,25 +113,70 @@ test("a cold core page learns beside a landmark without moving its boot geometry
   }
 });
 
-artTest("Koru's levels stream from its own files joined after the core's: its coarsest drawn from the boot at once, its finest fetched", () => {
+/** Frames of a client that wants every level of `meshes` until all of them have come, or `frames` have passed. */
+function stream(assets: Assets, port: FakeNet, meshes: readonly number[], levels: (mesh: number) => number, frames = 120): void {
+  const packet = new FramePacket();
+  for (let f = 0, now = 0; f < frames; f++) {
+    now += 1000 / 60;
+    port.advance(now);
+    packet.beginFrame();
+    assets.begin(now, 669, 1.2217);
+    for (const mesh of meshes) for (let l = 0; l < levels(mesh); l++) assets.want(mesh, l, 5);
+    assets.end(packet, now);
+  }
+}
+
+test("a landmark's pieces are in pages of its own, which a client joins after the core's and reads where the joined manifest has them", () => {
+  const box = (id: string, half: number) => ({ id, lods: [boxMesh([half, half, half], 3), boxMesh([half, half, half], 4)] });
+  const core = splitPack(buildPack([box("core:a", 1), box("core:b", 2)], defaultPalette()), "core", { boot: (id) => id === "core:a" });
+  const more = splitLandmark(buildPack([box("t:c", 3), box("t:d", 4)], defaultPalette()), "t");
+  // Its boot file holds the palette and no level of any piece, and what a client reads first names each piece by its page.
+  const boot = parsePack(more.files[more.manifest.boot]!.bytes);
+  expect([boot.header.meshes.length, boot.header.rigs.length, boot.header.clips.length]).toEqual([0, 0, 0]);
+  const first = parseManifest(JSON.stringify(bootManifest(more.manifest)));
+  expect([first.meshes.map(meshKnown), first.pages!.length]).toEqual([[false, false], 1]);
+  const coreFirst = parseManifest(JSON.stringify(bootManifest(core.manifest)));
+  const joined = joinLandmark({ manifest: coreFirst, boot: parsePack(core.files[core.manifest.boot]!.bytes) }, { manifest: first, boot }, "landmarks");
+  const pageFile = joined.manifest.files.findIndex((f) => f.name === "landmarks/t.page.snpt");
+  expect([joined.manifest.pages!.length, joined.manifest.pages![1]!.file, joined.manifest.meshes.slice(2).map((m) => m.page)]).toEqual([2, pageFile, [1, 1]]);
+  const files = [...core.files.map((f) => f.bytes), ...more.files.filter((_, i) => i !== more.manifest.boot).map((f) => f.bytes)];
+  const port = new FakeNet(files), assets = new Assets(compileContent([]).registry!, joined.boot, joined.manifest, port);
+  stream(assets, port, [1, 2, 3], () => 2);
+  // Each piece's row came with its page, at its index in the joined manifest, with its small levels.
+  expect(joined.manifest.meshes.map((m) => [m.id, meshKnown(m)])).toEqual([["core:a", true], ["core:b", true], ["t:c", true], ["t:d", true]]);
+  for (const mesh of [2, 3]) expect(joined.manifest.meshes[mesh]!.levels.map((l) => l.file)).toEqual([pageFile, pageFile]);
+  expect([1, 2, 3].map((mesh) => [assets.level(mesh, 0), assets.level(mesh, 1)])).toEqual([[0, 1], [0, 1], [0, 1]]);
+  expect(assets.table.radius[3]).toBeCloseTo(Math.sqrt(48), 5);
+  expect(coreFirst.meshes.map(meshKnown)).toEqual([true, false]);
+});
+
+artTest("Koru's pieces stream from its own pages and files joined after the core's: each coarsest with its page, each finest from its mesh file, drawn with its own materials", () => {
   const core = splitPack(corePackBytes(), "core");
-  const more = splitPack(koruPackBytes(), "koru");
+  const more = splitLandmark(koruPackBytes(), "koru");
   const boots = [core, more].map((s) => parsePack(s.files[s.manifest.boot]!.bytes));
-  const { manifest, boot } = joinLandmark({ manifest: core.manifest, boot: boots[0]! }, { manifest: more.manifest, boot: boots[1]! }, "landmarks");
+  const own = parseManifest(JSON.stringify(bootManifest(more.manifest)));
+  const { manifest, boot } = joinLandmark({ manifest: core.manifest, boot: boots[0]! }, { manifest: own, boot: boots[1]! }, "landmarks");
   const files = [...core.files.map((f) => f.bytes), ...more.files.filter((_, i) => i !== more.manifest.boot).map((f) => f.bytes)];
   const port = new FakeNet(files);
   const assets = new Assets(withContent(coreRegistry(), KORU.defs), boot, manifest, port);
   const cells = manifest.meshes.flatMap((m, i) => (m.id.startsWith("koru:cell_") ? [i] : []));
   expect(cells.length).toBe(8);
-  for (const mesh of cells) expect(manifest.meshes[mesh]!.levels[assets.level(mesh, 0)]!.file).toBe(manifest.boot);
-  const packet = new FramePacket();
-  for (let f = 0, now = 0; f < 120; f++) {
-    now += 1000 / 60;
-    port.advance(now);
-    packet.beginFrame();
-    assets.begin(now, 669, 1.2217);
-    for (const mesh of cells) assets.want(mesh, 0, 5);
-    assets.end(packet, now);
-  }
+  expect(cells.map((mesh) => meshKnown(manifest.meshes[mesh]!))).toEqual(cells.map(() => false));
+  // A scene that starts draws its see-through rig as see-through before any page has come.
+  const through = more.manifest.meshes.filter((m) => m.seeThrough).map((m) => m.id);
+  expect([through.length > 0, manifest.meshes.filter((m) => m.seeThrough).map((m) => m.id)]).toEqual([true, through]);
+  stream(assets, port, cells, (mesh) => manifest.meshes[mesh]!.levels.length);
   expect(cells.map((mesh) => assets.level(mesh, 0))).toEqual(cells.map(() => 0));
+  const page = manifest.files.findIndex((f) => f.name === "landmarks/koru.page.snpt");
+  for (const mesh of cells) expect(manifest.meshes[mesh]!.levels.at(-1)!.file).toBe(page);
+  // A cell's materials and their textures are Koru's, at the joined manifest's indices.
+  const made = more.manifest;
+  for (const mesh of cells) {
+    const sections = manifest.meshes[mesh]!.levels[0]!.sections!;
+    for (let k = 0; k < sections.length; k += 3) {
+      const mat = manifest.materials![sections[k]!]!, theirs = made.materials![sections[k]! - core.manifest.materials!.length]!;
+      expect(mat.id).toBe(theirs.id);
+      if (mat.base >= 0) expect(manifest.textures![mat.base]!.id).toBe(made.textures![theirs.base]!.id);
+    }
+  }
 });

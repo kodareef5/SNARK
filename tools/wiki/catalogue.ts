@@ -16,9 +16,13 @@ import { STAT_NAMES, type StatName } from "../../shared/sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import type { Landmark } from "../../shared/world/landmark.ts";
 import { iconSubjects, type IconFraming } from "../pack/icons.ts";
+import { drivingTable, topSpeed } from "./driving.ts";
+import { handlingOf, type Handling } from "./handling.ts";
 import type { Subject } from "./posters.ts";
 
 export { num, time };
+
+const marineGroups = { offshore: "Offshore speedboat", jon: "Jon boat", pwc: "Personal watercraft", yacht: "Motor yacht", catamaran: "Power catamaran" };
 
 export type Kind = "creatures" | "characters" | "vehicles" | "items" | "resources" | "statuses" | "landmarks";
 export const KINDS: readonly Kind[] = ["creatures", "items", "resources", "vehicles", "landmarks", "statuses", "characters"];
@@ -38,7 +42,8 @@ export type Cell = string | Ref | Rated;
 export interface Table {
   title: string;
   head: Cell[];
-  rows: Cell[][];
+  /** A cell of several parts, such as names that each link, is a list of them. */
+  rows: (Cell | Cell[])[][];
   note?: Cell[];
   /** A taming table, worked out again on the page for the server's taming speed and difficulty. */
   taming?: TamingInput;
@@ -63,6 +68,8 @@ export interface Entry {
   picture: Omit<Subject, "key"> | null;
   /** What it is in a line, under its name on its card, where its group says too little. */
   line?: string;
+  /** How a vehicle drives, as measured (handling.ts). */
+  handling?: Handling;
 }
 
 const GAME_HOUR = GAME_HOUR_TICKS / TICK_RATE;
@@ -185,6 +192,9 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
   // A station is named by the structure it is: the wiki has the item that places it.
   const made = (id: string): string => placer.get(id)?.id ?? id;
   const icons = new Map(iconSubjects(reg.defs, has).map((s) => [s.owner, s]));
+  // A seat's occupant weighs its species' mass, or 80 kg where it gives none (server/urban.ts, payloadMass).
+  const survivor = defs.find((d): d is SpeciesDef => d.type === "species" && d.class === "survivor");
+  const driver = survivor?.mass || 80;
   const entries = new Map<string, Entry>();
   const add = (e: Entry): Entry => (entries.set(e.id, e), e);
   const entry = (id: string, kind: Kind, label: string, group: string, picture: Entry["picture"] = null, owners: string[] = []): Entry =>
@@ -208,22 +218,29 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
     } else picture = { meshes: [d.mesh], colors: d.regions?.map((r) => r?.colors[0]?.[0] ?? 0) ?? [], body: true };
     // A species with no art of its own is a stand-in, and not in the wiki (coverage.ts).
     if (!picture.meshes.every(has)) continue;
-    const group = creature ? (d.fly ? "Flyer" : "Creature") : kind === "vehicles" ? sentence(d.vehicle?.movement ?? "car") : "Human";
+    const vehicle = d.vehicle;
+    const group = vehicle?.movement === "boat" && vehicle.family ? marineGroups[vehicle.family]
+      : vehicle ? sentence(vehicle.movement === "rotor" || vehicle.movement === "boat" ? vehicle.movement : (vehicle.frame ?? "car").replace("_", " "))
+      : creature ? (d.fly ? "Flyer" : "Creature") : "Human";
     const e = entry(d.id, kind, labelOf(d), group, picture, [d.id]);
     const fact = facts(e);
     if (kind === "vehicles") {
       const v = d.vehicle!;
-      const spec = v.spec as unknown as Record<string, number>;
-      fact("Top speed", `${num(spec.maxForward! * 3.6, 0)} km/h`);
-      if (spec.maxReverse) fact("Reverse", `${num(spec.maxReverse * 3.6, 0)} km/h`);
-      if (spec.climbSpeed) fact("Climbs at", `${num(spec.climbSpeed, 1)} m/s`);
+      const handling = handlingOf(v, driver);
+      e.handling = handling;
+      fact("Top speed", topSpeed(handling));
+      if (v.movement === "boat") {
+        fact("Length", `${num(v.spec.halfLength * 2, 1)} m`);
+        fact("Beam", `${num(v.spec.halfWidth * 2, 2)} m`);
+      }
       fact("Seats", String(v.seats.length));
       if (v.doors.length) fact("Doors", String(v.doors.length));
-      if (spec.fuelCapacity) fact("Fuel tank", `${num(spec.fuelCapacity)} units`, `, ${time(spec.fuelCapacity / spec.fuelPerSecond!)} at full throttle`);
+      fact("Fuel tank", `${num(v.spec.fuelCapacity)} units`);
       fact("Health", num(d.stats?.health?.[0] ?? 0));
       if (d.slots) fact("Inventory", `${d.slots} slots`);
       if (d.stats?.weight) fact("Carries", `${num(d.stats.weight[0])} kg`);
-      fact("Mass", `${num(spec.mass ?? d.mass ?? 0)} kg`);
+      fact("Mass", `${num(v.spec.mass ?? d.mass ?? 0)} kg`);
+      e.tables.push(drivingTable(handling));
       e.console = line("spawn", d.id);
     } else {
       if (creature) {

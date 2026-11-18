@@ -2,8 +2,8 @@
 import { quatMul, quatRotate } from "../math/quat.ts";
 import { detCos, detSin, len3 } from "../math/scalar.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
-import type { BoatSpec, BoatVehicleDefinition, RotorVehicleDefinition, VehicleSpec } from "../sim/vehicle.ts";
-import { box, makeSolid, shape, tube, type Shape, type SolidFrame } from "./vehicle-solid.ts";
+import { boatDrives, type VehicleDefinition, type BoatDrive, type BoatSpec, type BoatVehicleDefinition, type RotorVehicleDefinition, type VehicleSpec } from "../sim/vehicle.ts";
+import { box, makeSolid, shape, tube, type Shape, type SolidFrame, type SolidJoint } from "./vehicle-solid.ts";
 export interface BoatFrame extends VehicleFrame { steering?: number }
 const q = new Float64Array(4), jointQ = new Float64Array(4), point = new Float64Array(3);
 const cars = new WeakMap<VehicleSpec, readonly Shape[]>();
@@ -33,7 +33,7 @@ export function carShapes(p: VehicleSpec): readonly Shape[] {
   const parts = [shape(solid)]; cars.set(p, parts); return parts;
 }
 /** The outboard's axis is yaw=-steering: positive helm turns the bow toward local +X by pushing the stern toward -X. */
-export function boatOutboardFrame(frame: BoatFrame, p: BoatSpec): SolidFrame {
+export function boatOutboardFrame(frame: BoatFrame, p: BoatDrive): SolidFrame {
   vehicleRotation(frame, q);
   const pivot = p.outboard?.pivot ?? [0, 0, 0];
   quatRotate(q, 0, pivot[0]!, pivot[1]!, pivot[2]!, point, 0);
@@ -41,17 +41,35 @@ export function boatOutboardFrame(frame: BoatFrame, p: BoatSpec): SolidFrame {
   jointQ.set([0, detSin(angle / 2), 0, detCos(angle / 2)]); quatMul(q, 0, q, 0, jointQ, 0);
   return { x: frame.x + point[0]!, y: frame.y + point[1]!, z: frame.z + point[2]!, qx: q[0]!, qy: q[1]!, qz: q[2]!, qw: q[3]! };
 }
+export const boatMounts = (frame: BoatFrame, p: BoatSpec): SolidFrame[] => boatDrives(p).map(drive => boatOutboardFrame(frame, drive));
+export function boatJoints(from: BoatFrame, to: BoatFrame, p: BoatSpec): SolidJoint[] {
+  return boatDrives(p).map(drive => {
+    const start = boatOutboardFrame(from, drive);
+    return { from: start, to: from === to ? start : boatOutboardFrame(to, drive) };
+  });
+}
 const boats = new WeakMap<BoatVehicleDefinition, Shape[]>();
 export function boatShapes(def: BoatVehicleDefinition): readonly Shape[] {
-  let parts = boats.get(def);
-  if (!parts) {
-    const p = def.spec.propeller, pivot = def.spec.outboard?.pivot ?? [0, 0, 0], at = p.at.map((n, i) => n - pivot[i]!);
-    const prop = shape(tube([at[0]!, at[1]!, at[2]! - .06], [at[0]!, at[1]!, at[2]! + .06], [1, 0, 0], [0, 1, 0], p.radius, p.radius, 12), true);
-    prop.joint = 0;
-    parts = [prop, ...def.spec.hullBoxes.map(b => box(b.at, b.half))];
-    for (const b of def.spec.outboard?.boxes ?? []) { const part = box(b.at.map((n, i) => n - pivot[i]!), b.half); part.joint = 0; parts.push(part); }
-    boats.set(def, parts);
+  const cached = boats.get(def);
+  if (cached) return cached;
+  const parts: Shape[] = [];
+  // Test exposed propellers first, so a blade contact keeps its hazard when it overlaps the skeg.
+  for (const [index, drive] of boatDrives(def.spec).entries()) {
+    const p = drive.propeller, pivot = drive.outboard?.pivot ?? [0, 0, 0], at = p.at.map((n, i) => n - pivot[i]!);
+    if (!p.enclosed) {
+      const prop = shape(tube([at[0]!, at[1]!, at[2]! - .06], [at[0]!, at[1]!, at[2]! + .06], [1, 0, 0], [0, 1, 0], p.radius, p.radius, 12), true);
+      prop.joint = index; parts.push(prop);
+    }
   }
+  for (const b of def.spec.hullBoxes) parts.push(box(b.at, b.half));
+  for (const [index, drive] of boatDrives(def.spec).entries()) {
+    if (!drive.outboard) continue;
+    for (const b of drive.outboard.boxes) {
+      const part = box(b.at.map((n, i) => n - drive.outboard!.pivot[i]!), b.half);
+      part.joint = index; parts.push(part);
+    }
+  }
+  boats.set(def, parts);
   return parts;
 }
 const helicopters = new WeakMap<RotorVehicleDefinition, Shape[]>();
@@ -72,4 +90,21 @@ export function helicopterShapes(def: RotorVehicleDefinition): Shape[] {
   parts.push(shape(tube(p.tail.from, p.tail.to, [1, 0, 0], [0, 1, 0], p.tail.radius, p.tail.tipRadius ?? p.tail.radius, 8)));
   for (const part of p.tail.boxes ?? []) parts.push(box(part.at, part.half));
   helicopters.set(def, parts); return parts;
+}
+
+const solidRadii = new WeakMap<VehicleDefinition, number>();
+
+/** Maximum reach from the rigid origin in any attitude, including an outboard turned about its own offset pivot. */
+export function vehicleSolidRadius(def: VehicleDefinition): number {
+  const cached = solidRadii.get(def);
+  if (cached !== undefined) return cached;
+  const parts = def.movement === "boat" ? boatShapes(def) : def.movement === "rotor" ? helicopterShapes(def) : carShapes(def.spec);
+  const drives = def.movement === "boat" ? boatDrives(def.spec) : undefined;
+  let radius = 0;
+  for (const part of parts) {
+    const pivot = part.joint === undefined ? undefined : drives?.[part.joint]?.outboard?.pivot;
+    radius = Math.max(radius, part.radius + (pivot ? len3(...pivot) : 0));
+  }
+  solidRadii.set(def, radius);
+  return radius;
 }

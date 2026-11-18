@@ -10,6 +10,8 @@ export interface VehicleContactQueries<S extends VehicleState, C extends Vehicle
   penetration(at: Readonly<S>): C | null;
   steeringJoint?: boolean;
   onContact?(contact: C): void;
+  /** Returns the absorbed equivalent impact speed when the obstacle changed, or null for its ordinary response. */
+  breakContact?(state: S, contact: C): number | null;
 }
 export interface VehicleContactStep { blocked: string | null; impactSpeed: number; landSpeed?: number }
 const manifold = new Float64Array(12);
@@ -27,12 +29,13 @@ export function separateVehicleOverlap<S extends VehicleState>(s: S, w: VehicleC
   }
 }
 
-export function resolveVehicleContacts<S extends VehicleState, C extends VehicleContact>(s: S, prior: S, p: VehicleRigidSpec, w: VehicleContactQueries<S, C>, dt: number, result: VehicleContactStep): void {
+/** Returns true only when every bounded linear remainder sweep was obstructed. */
+export function resolveVehicleContacts<S extends VehicleState, C extends VehicleContact>(s: S, prior: S, p: VehicleRigidSpec, w: VehicleContactQueries<S, C>, dt: number, result: VehicleContactStep): boolean {
   let start = prior, remaining = dt;
   let nx = 0, ny = 0, nz = 0;
   for (let iteration = 0; iteration < 4; iteration++) {
     const raw = w.contact(start, s);
-    if (!raw) return;
+    if (!raw) return false;
     const hit = { ...raw }; let pointCount = 0;
     const savePoints = (contact: VehicleContact): void => {
       pointCount = Math.min(4, contact.points?.length ?? 0);
@@ -70,6 +73,16 @@ export function resolveVehicleContacts<S extends VehicleState, C extends Vehicle
     s.qx = q[0]!; s.qy = q[1]!; s.qz = q[2]!; s.qw = q[3]!;
     if (w.steeringJoint) s.steering = start.steering + (target.steering - start.steering) * low;
     w.onContact?.(hit);
+    const broken = w.breakContact?.(s, hit);
+    if (broken !== undefined && broken !== null) {
+      if (result.landSpeed !== undefined && hit.ny > .4) result.landSpeed = Math.max(result.landSpeed, broken);
+      else result.impactSpeed = Math.max(result.impactSpeed, broken);
+      remaining *= 1 - low; start = { ...s };
+      // A fractured obstacle may leave a stump. Its replacement and everything beyond it still take the
+      // same bounded sweep; exhausting the contact budget keeps the last tested pose.
+      integrateVehiclePose(s, p, remaining);
+      continue;
+    }
     const gx = hit.geometryNx ?? hit.nx, gy = hit.geometryNy ?? hit.ny, gz = hit.geometryNz ?? hit.nz;
     const repeated = iteration > 0 && nx * gx + ny * gy + nz * gz > .999;
     nx = gx; ny = gy; nz = gz;
@@ -100,7 +113,7 @@ export function resolveVehicleContacts<S extends VehicleState, C extends Vehicle
   s.x = start.x; s.y = start.y; s.z = start.z; s.qx = start.qx; s.qy = start.qy; s.qz = start.qz; s.qw = start.qw;
   if (w.steeringJoint) s.steering = start.steering;
   const slide = { ...s, x: s.x + s.vx * remaining, y: s.y + s.vy * remaining, z: s.z + s.vz * remaining };
-  if (!w.contact(s, slide)) { s.x = slide.x; s.y = slide.y; s.z = slide.z; return; }
+  if (!w.contact(s, slide)) { s.x = slide.x; s.y = slide.y; s.z = slide.z; return false; }
   // The point may separate through rotation while the COM still enters the face. If that rotation was
   // rejected, the stored translation must obey the same constraint as the pose. Each additional face is
   // checked before accepting the tangent remainder; projections can only remove linear kinetic energy.
@@ -120,9 +133,12 @@ export function resolveVehicleContacts<S extends VehicleState, C extends Vehicle
       slide.x = s.x + s.vx * remaining; slide.y = s.y + s.vy * remaining; slide.z = s.z + s.vz * remaining;
     }
     const next = w.contact(s, slide);
-    if (!next) { s.x = slide.x; s.y = slide.y; s.z = slide.z; return; }
+    if (!next) { s.x = slide.x; s.y = slide.y; s.z = slide.z; return false; }
     nx = next.geometryNx ?? next.nx; ny = next.geometryNy ?? next.ny; nz = next.geometryNz ?? next.nz;
   }
+  // Every remaining linear direction was rejected by real geometry. Callers may retire that unexecuted
+  // translation rather than carrying it as momentum while a resting hull stays at the same pose.
+  return true;
 }
 
 const rows = new Float64Array(24);
@@ -134,14 +150,16 @@ function respond<S extends VehicleState>(s: S, p: VehicleRigidSpec, hit: Vehicle
   // an overturned chassis and a boat retain hull-on-ground grip for resting support.
   const uprightCar = p.wheelbase !== undefined && 1 - 2 * (q[0]! * q[0]! + q[2]! * q[2]!) > .5;
   quatUnrotate(q, 0, (hit.x ?? s.x) - s.x, (hit.y ?? s.y) - s.y, (hit.z ?? s.z) - s.z, localPoint, 0);
-  const pitchPatch = uprightCar && hit.ny > .7 &&
+  // Road pitch damping cannot hold a car up on its bumper: outside an ordinary driving attitude,
+  // its real off-centre support must remain free to tip the chassis under gravity.
+  const pitchPatch = uprightCar && 1 - 2 * (q[0]! * q[0]! + q[2]! * q[2]!) > .8 && hit.ny > .7 &&
     Math.abs(localPoint[0]!) < p.halfWidth * .25 && Math.abs(s.rollRate) < .2;
   const friction = hit.ny > .4 ? uprightCar ? pitchPatch ? .04 : .12 : .45 : .12;
   for (let i = 0; i < count; i++) {
     const x = manifold[i * 3]!, y = manifold[i * 3 + 1]!, z = manifold[i * 3 + 2]!;
     vehiclePointVelocity(s, p, x, y, z, pointV);
     const speed = Math.max(0, -(pointV[0]! * hit.nx + pointV[1]! * hit.ny + pointV[2]! * hit.nz));
-    closing = Math.max(closing, speed); rows[i * 6] = speed > 2 ? speed * .12 : 0;
+    closing = Math.max(closing, speed); rows[i * 6] = speed > 2 ? speed * (hit.restitution ?? .12) : 0;
     rows[i * 6 + 5] = vehiclePointInverseMass(s, p, x, y, z, hit.nx, hit.ny, hit.nz);
   }
   for (let pass = 0; pass < (count > 1 ? 6 : 1); pass++) for (let index = 0; index < count; index++) {

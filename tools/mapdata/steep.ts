@@ -28,9 +28,9 @@ const source = mapNodes(map, hf, reg);
 const nodes = source ? new NodeField(map.dims, reg, source) : null;
 const world = { hf, structs, ...(nodes && plants ? { nodes: nodes.store } : {}) };
 const params = reg.move[reg.index.get("core:survivor")!]!;
-const size = map.dims.chunksX * 64;
-const half = size / 2;
-const engine = ([e, n]: P): P => [half - e, half + n];
+const base = new Base(city);
+const { nx, nz, sizeX, sizeZ, west, south, east, north } = base.grid;
+const engine = ([e, n]: P): P => [east - e, n - south];
 const degrees = (grade: number): number => (Math.atan(grade) * 180) / Math.PI;
 
 // Points every 2 m along a line, with the ground's height at each.
@@ -42,7 +42,7 @@ function profile(line: P[]): { x: number; z: number; y: number; s: number }[] {
     const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     for (let t = k === 1 ? 0 : 2; t <= len; t += 2) {
       const x = a[0] + ((b[0] - a[0]) * t) / len; const z = a[1] + ((b[1] - a[1]) * t) / len;
-      if (x < 4 || z < 4 || x > size - 4 || z > size - 4) continue;
+      if (x < 4 || z < 4 || x > sizeX - 4 || z > sizeZ - 4) continue;
       out.push({ x, z, y: hf.heightAt(x, z), s: s + t });
     }
     s += len;
@@ -129,25 +129,24 @@ const topStairs = stairs.slice(0, count);
 // The ground past the survivor's limit, as the lidar has it (base/height.png) and as the map does once footprints are
 // levelled and approaches graded: shares on footprints, roads and the rest, and the steepest squares of 256 m, each
 // named by the nearest named place.
-const base = new Base(city);
 const lidar = base.elevation();
 const onFootprint = base.bytes("buildings");
 const onRoad = base.bytes("roads");
-const n = base.n;
 const limit = Math.acos(params.slopeCos);
 const tooSteep = (h: (c: number, r: number) => number, c: number, r: number): boolean => {
   const gx = (h(c + 1, r) - h(c, r)) / 2; const gz = (h(c, r + 1) - h(c, r)) / 2;
   return Math.atan(Math.hypot(gx, gz)) > limit;
 };
-const mapAt = (c: number, r: number): number => hf.heightAt(size - c * 2, size - r * 2);
-const lidarAt = (c: number, r: number): number => lidar[r * n + c]!;
+const mapAt = (c: number, r: number): number => hf.heightAt(sizeX - c * 2, sizeZ - r * 2);
+const lidarAt = (c: number, r: number): number => lidar[r * nx + c]!;
 const SQUARE = 128;
+const across = Math.ceil(nx / SQUARE);
 const squares = new Map<number, { lidar: number; map: number }>();
 const tally = { lidar: { footprints: 0, roads: 0, open: 0 }, map: { footprints: 0, roads: 0, open: 0 }, cells: 0 };
-for (let r = 0; r + 1 < n; r++) for (let c = 0; c + 1 < n; c++) {
+for (let r = 0; r + 1 < nz; r++) for (let c = 0; c + 1 < nx; c++) {
   tally.cells++;
-  const where = onFootprint[r * n + c] ? "footprints" : onRoad[r * n + c] ? "roads" : "open";
-  const k = Math.floor(r / SQUARE) * 64 + Math.floor(c / SQUARE);
+  const where = onFootprint[r * nx + c] ? "footprints" : onRoad[r * nx + c] ? "roads" : "open";
+  const k = Math.floor(r / SQUARE) * across + Math.floor(c / SQUARE);
   const sq = squares.get(k) ?? { lidar: 0, map: 0 };
   if (tooSteep(lidarAt, c, r)) { tally.lidar[where]++; sq.lidar++; }
   if (tooSteep(mapAt, c, r)) { tally.map[where]++; sq.map++; }
@@ -160,7 +159,7 @@ const steepGround = {
   lidarHectares: Object.fromEntries(Object.entries(tally.lidar).map(([k, v]) => [k, hectares(v)])),
   mapHectares: Object.fromEntries(Object.entries(tally.map).map(([k, v]) => [k, hectares(v)])),
   steepestSquares: [...squares.entries()].sort((a, b) => b[1].lidar - a[1].lidar).slice(0, count).map(([k, v]) => {
-    const [e, no] = [-half + ((k % 64) + 0.5) * SQUARE * 2, half - (Math.floor(k / 64) + 0.5) * SQUARE * 2];
+    const [e, no] = [west + ((k % across) + 0.5) * SQUARE * 2, north - (Math.floor(k / across) + 0.5) * SQUARE * 2];
     const near = places.reduce((best, p) => (Math.hypot(p.e - e, p.n - no) < Math.hypot(best.e - e, best.n - no) ? p : best), places[0]!);
     return { near: near.name, e: Math.round(e), n: Math.round(no), lidarShare: Number((v.lidar / SQUARE ** 2).toFixed(3)), mapShare: Number((v.map / SQUARE ** 2).toFixed(3)) };
   }),

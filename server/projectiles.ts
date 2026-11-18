@@ -6,7 +6,7 @@ import { TAU } from "../shared/math/scalar.ts";
 import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, shotDir } from "../shared/sim/aim.ts";
-import { Body, stanceEye } from "../shared/sim/character.ts";
+import { Body } from "../shared/sim/character.ts";
 import { shotRays } from "../shared/content/registry.ts";
 import { falloff } from "../shared/sim/damage.ts";
 import { FISTS } from "../shared/sim/weapon.ts";
@@ -138,6 +138,7 @@ export class Projectiles {
   private readonly liveKind: number;
   private readonly flareKind: number;
   private readonly rng: Rng;
+  private readonly eyeAt = new Float64Array(3);
   private readonly dir = [0, 0, 0];
   private readonly body = new Body();
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
@@ -189,22 +190,20 @@ export class Projectiles {
    */
   launch(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number): void {
     const { world, combat } = this.ctx;
-    const ents = world.ents;
     const reg = world.reg;
     const e = c.ent;
     if (e < 0 || ammo === 0) return;
     const d = this.dir;
     const rays = shotRays(reg, weapon, ammo);
     this.aim(c, rec, weapon, 0, d, rays);
-    const ox = ents.x[e]!;
-    const oy = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
-    const oz = ents.z[e]!;
+    const view = combat.viewTick(c);
+    combat.eye(e, this.eyeAt, combat.originTick(c, view));
+    const ox = this.eyeAt[0]!, oy = this.eyeAt[1]!, oz = this.eyeAt[2]!;
     this.fired++;
     if (reg.ammoLight[ammo]! > 0) {
       this.flare(ammo, draw, ox, oy, oz, d);
       return;
     }
-    const view = combat.viewTick(c);
     this.lastShot.rays = rays;
     this.lastShot.hits = 0;
     this.silencedShot = this.silenced(rec);
@@ -621,9 +620,11 @@ export class Projectiles {
     const d = this.dir;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
     const speed = reg.throwSpeed[item]!;
-    const x = ents.x[e]! + d[0]! * 0.5;
-    const y = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!) + d[1]! * 0.5;
-    const z = ents.z[e]! + d[2]! * 0.5;
+    this.ctx.combat.eye(e, this.eyeAt);
+    // Check the short release segment too; a throw cannot skip a nearby roof/wall.
+    const obstruction = castWorld(world, this.eyeAt[0]!, this.eyeAt[1]!, this.eyeAt[2]!, d[0]!, d[1]!, d[2]!, .5);
+    const ahead = obstruction === HIT_NONE ? .5 : Math.max(0, rayHit.t - .01);
+    const x = this.eyeAt[0]! + d[0]! * ahead, y = this.eyeAt[1]! + d[1]! * ahead, z = this.eyeAt[2]! + d[2]! * ahead;
     const ent = ents.create(this.liveKind, x, y, z, F_PROP);
     if (ent < 0) return;
     if (this.thrown.length >= MAX_THROWN) this.burst(this.thrown.shift()!);

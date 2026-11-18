@@ -1,5 +1,6 @@
 // A look is the 28 bytes the character creator makes. It picks meshes, colours and bone stretches only.
-// Hit zones, collision and the eye are the skeleton's for every survivor, so no look is an advantage.
+// On foot, hit zones, collision and eye retain the common skeleton. Seated eyes and capsule centres follow the
+// rendered body binding/proportions; capsule radii and movement collision stay canonical.
 
 import { REGION_BASE, EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../pack/palette.ts";
 import type { Rng } from "../rng.ts";

@@ -769,6 +769,8 @@ export interface ModelShot {
   zoom?: number;
   /** The level of the hurt and decay layer of each material that has one, in LAYER_LEVELS (client/core/render/surface.ts); 0 for none. Its texture must be on the card. */
   layer?: number;
+  /** The wear story the layer is drawn with (client/core/render/wear.ts), 0 for none. */
+  wear?: number;
 }
 
 /**
@@ -868,7 +870,7 @@ export class ModelView {
         p.drawMaterial[d] = runs[r]!;
         p.drawFirstIndex[d] = runs[r + 1]!;
         p.drawIndexCount[d] = runs[r + 2]!;
-        if (material.layer !== undefined) p.drawLayer[d] = shot.layer ?? 0;
+        if (material.layer !== undefined) [p.drawLayer[d], p.drawWear[d]] = [shot.layer ?? 0, shot.layer ? (shot.wear ?? 0) : 0];
       }
     }
     p.texUploads.push(...this.sending);

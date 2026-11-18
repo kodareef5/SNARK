@@ -7,7 +7,8 @@
 
 import { bodySeed, AnimState } from "../shared/anim/pose.ts";
 import { seatOn, SEAT_FLOATS } from "../shared/anim/seat.ts";
-import { seatedEye } from "../shared/anim/seated-eye.ts";
+import { OccupantBody } from "../shared/anim/occupant.ts";
+import type { PackRig } from "../shared/pack/pack.ts";
 import { makeHandle } from "../shared/ids.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, TEXT_NOTICE } from "../shared/net/protocol.ts";
@@ -52,6 +53,7 @@ const RIDE_DISMOUNT = event("ride.dismount");
 
 export interface RidingContext {
   readonly world: ServerWorld;
+  readonly rigs?: readonly PackRig[];
   readonly game: GameServer;
   readonly records: Records;
   readonly tribes: Tribes;
@@ -70,6 +72,7 @@ export class Riding {
   dismounted = 0;
   readonly occupancy: Occupancy;
   private readonly ctx: RidingContext;
+  private readonly occupant: OccupantBody;
   private readonly seating: Seating;
   /** By the mount's record id. */
   private readonly hosts = new Map<number, Host>();
@@ -85,6 +88,7 @@ export class Riding {
 
   constructor(ctx: RidingContext) {
     this.ctx = ctx;
+    this.occupant = new OccupantBody(ctx.rigs);
     this.seating = new Seating(ctx.world, ctx.records);
     const { world, records, tribes } = ctx;
     this.occupancy = new Occupancy({
@@ -278,7 +282,10 @@ export class Riding {
     this.frameOn(host, seat);
     this.st.unpack(ents.anim[e]!, ents.cue[e]!);
     this.st.seed = bodySeed(e);
-    seatedEye(world.anim, this.st, world.tick, this.frame, seat.driver === true, out);
+    const definition = world.reg.defs[ents.kind[e]!];
+    const rest = this.occupant.rest(definition?.type === "species" ? definition.mesh : "human");
+    this.occupant.saddle(world.anim, this.st, world.tick, this.frame, seat.driver === true, ents.yaw[e]! * TAU / 65536, rest);
+    this.occupant.eye(out);
     return true;
   }
 

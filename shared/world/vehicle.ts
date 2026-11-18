@@ -9,7 +9,7 @@ import { type PartTable } from "./structures.ts";
 import { capsuleKind } from "./collide.ts";
 import { vehicleSurfaceAt } from "./vehicle-surface.ts";
 import { vehicleRotation, type VehicleFrame } from "../sim/vehicle-frame.ts";
-import { boatOutboardFrame, boatShapes, carShapes, helicopterShapes } from "./vehicle-shapes.ts";
+import { boatMounts, boatShapes, carShapes, helicopterShapes } from "./vehicle-shapes.ts";
 import { StaticVehicleSolids, bounds, makeSolid, solidContact, sweep, tube, type ContactGeometry, type SolidFrame, type Swept } from "./vehicle-solid.ts";
 import { boxSolid, partSolid, type Solid } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
@@ -65,9 +65,9 @@ export function carMeetsCapsule(p: VehicleSpec, at: VehicleFrame, x: number, y: 
 export function carMeetsVehicle(p: VehicleSpec, at: VehicleFrame, other: VehicleDefinition, otherFrame: VehicleFrame): CarContact | null {
   solidFrame(otherFrame, otherContactFrame);
   const target = otherContactFrame, parts = other.movement === "boat" ? boatShapes(other) : other.movement === "rotor" ? helicopterShapes(other) : carShapes(other.spec);
-  const mount = other.movement === "boat" ? boatOutboardFrame(otherFrame, other.spec) : target;
+  const mounts = other.movement === "boat" ? boatMounts(otherFrame, other.spec) : null;
   for (const part of parts) {
-    const pose = part.joint === undefined ? target : mount; sweep(part, pose, pose, targetSweep);
+    const pose = part.joint === undefined || !mounts ? target : mounts[part.joint]!; sweep(part, pose, pose, targetSweep);
     const hit = carContact(p, at, targetSweep.solid);
     if (hit) { hit.otherRotor = other.movement === "rotor" && part.hazard; hit.otherPropeller = other.movement === "boat" && part.hazard; return hit; }
   }
@@ -93,9 +93,9 @@ export class StaticVehicleWorld implements VehicleWorld {
   private readonly center = new Float64Array(3);
   private readonly supportWorld: CollisionWorld;
 
-  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref) => vehicleSurfaceAt(world, hit, ref)) {
+  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref) => vehicleSurfaceAt(world, hit, ref), ignoreNode?: (ref: number) => boolean) {
     this.world = world;
-    this.solids = new StaticVehicleSolids(world);
+    this.solids = new StaticVehicleSolids(world, ignoreNode);
     this.surfaceAt = surfaceAt;
     // Resource nodes obstruct the chassis but are not road support. Soft vegetation never becomes an elevated road.
     this.supportWorld = { hf: world.hf, structs: world.structs };
@@ -118,7 +118,7 @@ export class StaticVehicleWorld implements VehicleWorld {
     const a = this.frame(from), b = this.frame(to), { comX, comY, comZ } = vehicleMassProperties(p, to);
     quatRotate(this.q, 0, comX, comY, comZ, this.center, 0);
     this.center[0] += to.x; this.center[1] += to.y; this.center[2] += to.z;
-    const rest = 1 - 2 * (b.qx * b.qx + b.qz * b.qz) < .5 && Math.abs(2 * (b.qy * b.qz - b.qw * b.qx)) < .65 && to.vx * to.vx + to.vy * to.vy + to.vz * to.vz < 4;
+    const rest = 1 - 2 * (b.qx * b.qx + b.qz * b.qz) < .5 && to.vx * to.vx + to.vy * to.vy + to.vz * to.vz < 4;
     return this.solids.blocked(a, b, carShapes(p), undefined, true, .008, rest ? this.center : undefined, rest);
   }
   penetration(at: Readonly<VehicleState>, p: VehicleSpec): VehicleContact | null {

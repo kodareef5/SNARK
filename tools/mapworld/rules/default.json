@@ -1663,7 +1663,7 @@
       "pile-up"
     ],
     "cars": {
-      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk.",
+      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a district first takes up to `perDistrict` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles` and then by its name in `districts` (0 takes a kind out). A share `hurt.share` of the cars have their condition rolled in `hurt.condition`, the rest are whole; each car's fuel is rolled in a band of `fuel`, [from, to, weight], as fractions of its tank.",
       "cell": 160,
       "fires": 0.18,
       "slewed": 0.15,
@@ -1674,7 +1674,22 @@
         "fire": [["core:compact_wreck", 8], ["core:compact_wreck_tipped", 1], ["core:compact_abandoned_stripped", 2]]
       },
       "paints": { "white": 4, "silver": 4, "black": 3, "red": 2, "blue": 2 },
-      "parked": { "perKm": 0.4, "least": 2, "most": 4, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200", "S1780"] }
+      "parked": {
+        "perKm": 0.4, "least": 2, "most": 4, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200"],
+        "lots": { "classes": ["S1780"], "least": 2, "most": 4, "apart": 9, "perDistrict": 2 },
+        "kinds": { "core:compact": 40, "core:caravan": 24, "core:fastback": 18, "core:panel_van": 12, "core:veloce": 3, "core:berlinetta": 3 },
+        "styles": {
+          "industrial": { "core:panel_van": 45, "core:caravan": 10, "core:fastback": 6, "core:veloce": 0, "core:berlinetta": 0 },
+          "mural": { "core:panel_van": 30 },
+          "concrete": { "core:panel_van": 22, "core:veloce": 5, "core:berlinetta": 5 },
+          "terracotta": { "core:panel_van": 18 },
+          "residential": { "core:caravan": 34, "core:panel_van": 6 },
+          "deco": { "core:fastback": 24, "core:veloce": 8, "core:berlinetta": 8, "core:panel_van": 8 }
+        },
+        "districts": {},
+        "hurt": { "share": 0.2, "condition": [0.35, 0.7] },
+        "fuel": [[0.03, 0.15, 3], [0.15, 0.5, 1]]
+      }
     }
   },
   "damage": {
@@ -1952,5 +1967,30 @@
     "tall": 16,
     "towerAbove": 48,
     "tallAbove": 128
+  },
+  "harbours": {
+    "marina": { "least": 3, "most": 6 },
+    "pier": { "share": 0.25, "longest": 12 },
+    "room": 2, "apart": 120,
+    "kinds": {
+      "marina": { "core:boat": 6, "core:jon_boat": 6, "core:riptide": 10, "core:needle": 7, "core:thunderbolt": 5, "core:solstice": 12, "core:meridian": 9, "core:belvedere": 6, "core:sovereign": 3, "core:manta": 8, "core:lagoon": 4 },
+      "pier": { "core:boat": 10, "core:jon_boat": 24, "core:riptide": 20, "core:needle": 5, "core:solstice": 4, "core:manta": 4 }
+    },
+    "styles": {
+      "industrial": { "core:boat": 30, "core:jon_boat": 30, "core:riptide": 4, "core:needle": 1, "core:thunderbolt": 1, "core:solstice": 2, "core:meridian": 1, "core:belvedere": 0, "core:sovereign": 0, "core:manta": 2, "core:lagoon": 1 },
+      "terracotta": { "core:jon_boat": 30, "core:boat": 12, "core:belvedere": 2, "core:sovereign": 0 },
+      "mural": { "core:jon_boat": 26, "core:riptide": 24, "core:sovereign": 0 },
+      "residential": { "core:solstice": 18, "core:manta": 12, "core:meridian": 10, "core:lagoon": 6 },
+      "concrete": { "core:meridian": 14, "core:belvedere": 9, "core:sovereign": 4, "core:lagoon": 7, "core:jon_boat": 2 },
+      "deco": { "core:needle": 14, "core:thunderbolt": 10, "core:riptide": 12, "core:belvedere": 9, "core:sovereign": 6, "core:jon_boat": 1, "core:boat": 2 }
+    },
+    "districts": {
+      "Fisher Island": { "core:sovereign": 12, "core:belvedere": 12, "core:lagoon": 8, "core:jon_boat": 0, "core:boat": 0 },
+      "Watson Island": { "core:sovereign": 10, "core:belvedere": 10, "core:meridian": 12, "core:jon_boat": 2 },
+      "Davis Islands": { "core:belvedere": 10, "core:sovereign": 6 }
+    },
+    "condition": [[0.5, 0.64, 1], [0.65, 0.9, 2], [0.9, 1, 1]],
+    "fuel": [[0.06, 0.2, 3], [0.2, 0.5, 1]],
+    "wrecks": { "marina": [0.5, 0.7], "pier": [0.03, 0.02], "out": [40, 160], "sunk": 0.55, "apart": 30 }
   }
 }

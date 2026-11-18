@@ -129,7 +129,7 @@ export interface SceneSet {
 }
 
 let registry: Registry | null = null;
-const sets = new Map<number, SceneSet>();
+const sets = new Map<string, SceneSet>();
 
 export function sceneRegistry(): Registry {
   if (registry) return registry;
@@ -152,14 +152,15 @@ export function tubeLayers(size: number): { hurt: Picture; decay: Picture } {
 /**
  * The boot file, the mesh file and the rgba texture file, with their manifest. The tube's pictures are `pixels`
  * across, which tests leave at 64 and the benchmark raises. Built once per process for each size. With `layered` its
- * hide has a hurt and decay layer (`tubeLayers`).
+ * hide has a hurt and decay layer (`tubeLayers`), stored `layer` across.
  */
-export function sceneSet(pixels = 64, layered = false): SceneSet {
-  const made = sets.get(pixels * 2 + (layered ? 1 : 0));
+export function sceneSet(pixels = 64, layered = false, layer = pixels): SceneSet {
+  const key = `${pixels} ${layered} ${layer}`;
+  const made = sets.get(key);
   if (made) return made;
   const tube = tubeMesh();
   for (const t of tube.textures!) t.top = pixels;
-  if (layered) tube.materials![0]!.layer = tube.textures!.push({ id: `${TUBE}/layer`, role: "layer", top: pixels }) - 1;
+  if (layered) tube.materials![0]!.layer = tube.textures!.push({ id: `${TUBE}/layer`, role: "layer", top: layer }) - 1;
   // Drawn flat, the tube's horn is the palette colour the build finds nearest its pictures (D154), not the fixture's yellow.
   for (const lod of tube.lods) lod.colors = lod.colors.map((c) => (c === 6 ? HORN : c));
   const meshes = [...grayboxMeshes(DEFS), ...mannequinMeshes(), ...weaponMeshes(), tube, panelMesh(), clubMesh(), tubeSaddleMesh()];
@@ -168,12 +169,12 @@ export function sceneSet(pixels = 64, layered = false): SceneSet {
   const planks = picture(64, (x, y) => (((x >> 3) + (y >> 3)) & 3) === 0 ? [150, 110, 70, 0] : (x >> 3) & 1 ? [170, 125, 80, 255] : [120, 85, 55, 255]);
   const pictures = tubePictures();
   for (const role of MAP_ROLES) pictures[role] = enlarged(pictures[role], pixels / pictures[role].width);
-  const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips({ ...pictures, ...(layered ? tubeLayers(pixels) : {}) }), [PANEL]: materialMips({ base: planks }) };
+  const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips({ ...pictures, ...(layered ? tubeLayers(layer) : {}) }), [PANEL]: materialMips({ base: planks }) };
   const file = writeTextureFile("rgba", manifest.textures!.map((t) => rgbaTexture(t.role, mips[t.id.slice(0, t.id.lastIndexOf("/"))]![t.role]!)));
   manifest.textures!.forEach((t, i) => (t.in.rgba = { file: files.length, ...file.placed[i]! }));
   files.push({ name: "scene.tex.rgba.sntx", role: "tex", bytes: file.bytes });
   manifest.files.push({ name: "scene.tex.rgba.sntx", bytes: file.bytes.length, role: "tex", format: "rgba" });
-  sets.set(pixels * 2 + (layered ? 1 : 0), { files, manifest });
+  sets.set(key, { files, manifest });
   return { files, manifest };
 }
 

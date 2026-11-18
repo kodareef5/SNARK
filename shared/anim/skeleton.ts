@@ -37,22 +37,28 @@ const v = new Float64Array(3);
 
 /**
  * `rest` is the skeleton's own rest joints or a rig's (other proportions, same bones). `scale`, when given, stretches
- * each bone along its own axes (x, y, z per bone), which moves its children.
+ * each bone along its own axes (x, y, z per bone), which moves its children. jointOffsets add translation in
+ * the parent frame before scaling, for mechanisms such as sliding doors.
  */
-export function solve(skel: Skeleton, pose: Pose, out: Solved, rest: Float32Array = skel.rest, scale: Float32Array | null = null): void {
+export function solve(skel: Skeleton, pose: Pose, out: Solved, rest: Float32Array = skel.rest, scale: Float32Array | null = null, jointOffsets?: Float32Array): void {
   const rot = out.rot;
   const pos = out.pos;
   for (let b = 0; b < skel.bones; b++) {
     const p = skel.parent[b]!;
     if (p < 0) {
       for (let k = 0; k < 4; k++) rot[b * 4 + k] = pose.rot[b * 4 + k]!;
-      for (let k = 0; k < 3; k++) pos[b * 3 + k] = rest[b * 3 + k]! + pose.root[k]!;
+      for (let k = 0; k < 3; k++) pos[b * 3 + k] = rest[b * 3 + k]! + pose.root[k]! + (jointOffsets?.[b * 3 + k] ?? 0);
       continue;
     }
     quatMul(rot, b * 4, rot, p * 4, pose.rot, b * 4);
     let ox = rest[b * 3]! - rest[p * 3]!;
     let oy = rest[b * 3 + 1]! - rest[p * 3 + 1]!;
     let oz = rest[b * 3 + 2]! - rest[p * 3 + 2]!;
+    if (jointOffsets) {
+      ox += jointOffsets[b * 3]!;
+      oy += jointOffsets[b * 3 + 1]!;
+      oz += jointOffsets[b * 3 + 2]!;
+    }
     if (scale) {
       ox *= scale[p * 3]!;
       oy *= scale[p * 3 + 1]!;

@@ -149,3 +149,30 @@ test('an overturned overhang cannot sleep with its centre of mass beyond the act
   for (let tick = 0; tick < 90; tick++) stepVehicle(car, { throttle: 0, steer: 0, brake: 0, handbrake: true, pilot: false }, COMPACT, adapter);
   expect(car.y).toBeLessThan(1.5);
 });
+
+test('an unsupported nose-down car tips under gravity instead of skating on its bumper', () => {
+  const world = road(0, false), b = new Body(); b.vehicle = true; b.x = 128; b.z = 150; b.y = 1.52722;
+  b.vehicleQx = .4890127; b.vehicleQw = .8722767; b.fuel = 40; b.grounded = false;
+  for (let tick = 0; tick < 300; tick++) stepVehicleBody(world, b, 0, 0, BTN_JUMP, COMPACT_VEHICLE, undefined, undefined, false);
+  expect(1 - 2 * (b.vehicleQx ** 2 + b.vehicleQz ** 2)).toBeGreaterThan(.9);
+  expect(rests(b)).toBe(true); expect(Math.hypot(b.x - 128, b.z - 150)).toBeLessThan(5);
+});
+
+test('a car braced on its nose by a real floor and wall sleeps and wakes when the wall is removed', () => {
+  const world = road(0, false), height = 3;
+  const structs = new StructureStore(world.hf.dims, new Float32Array([0, 10, 6]), new Float32Array([0, height / 2, 4]), new Float32Array([0, 10, .25]));
+  structs.add(1, 64, height / 2, 60, 0, 0, 100); const wall = structs.add(2, 64, 4, 73.25, 0, 0, 100);
+  const environment = { hf: world.hf, structs }, b = new Body(), yaw = Math.PI / 18;
+  b.vehicle = true; b.x = 64; b.y = height; b.z = 62; b.fuel = 40;
+  b.vehicleQy = Math.sin(yaw / 2); b.vehicleQw = Math.cos(yaw / 2); b.vehicleYaw = yaw;
+  b.vx = Math.sin(yaw) * 8; b.vz = Math.cos(yaw) * 8;
+  for (let tick = 0; tick < 900; tick++) stepVehicleBody(environment, b, 0, tick < 30 ? 38 : 0, tick < 30 ? 0 : BTN_JUMP, COMPACT_VEHICLE, undefined, undefined, tick < 30);
+  expect(rests(b)).toBe(true);
+  const start = [b.x, b.y, b.z, b.vehicleQx, b.vehicleQy, b.vehicleQz, b.vehicleQw];
+  for (let tick = 0; tick < 1800; tick++) stepVehicleBody(environment, b, 0, 0, BTN_JUMP, COMPACT_VEHICLE, undefined, undefined, false);
+  expect([b.x, b.y, b.z, b.vehicleQx, b.vehicleQy, b.vehicleQz, b.vehicleQw]).toEqual(start);
+  structs.remove(wall);
+  b.vz = 1;
+  for (let tick = 0; tick < 30; tick++) stepVehicleBody(environment, b, 0, 0, 0, COMPACT_VEHICLE, undefined, undefined, false);
+  expect(Math.hypot(b.x - start[0]!, b.y - start[1]!, b.z - start[2]!)).toBeGreaterThan(.1);
+});

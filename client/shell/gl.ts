@@ -36,7 +36,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, offset: 28 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, offset: 29 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -512,9 +512,9 @@ export class GlRenderer {
 
   /**
    * Material `m` of a textured draw or caster of `mesh`: its tint, grey and cutoff, what the mesh's texture coordinates
-   * span, and the first `roles` of its maps; and for a draw with a layer at `level`, the level.
+   * span, and the first `roles` of its maps; and for a draw with a layer at `level`, the level and its wear story.
    */
-  private material(prog: Program, m: number, mesh: number, cutout: boolean, level: number, roles: number): void {
+  private material(prog: Program, m: number, mesh: number, cutout: boolean, level: number, roles: number, wear = 0): void {
     const gl = this.gl;
     const mat = this.materials[m]!;
     const at = prog.at, last = prog.last;
@@ -530,6 +530,7 @@ export class GlRenderer {
       gl.uniform4fv(at[U.uv]!, this.meshes[mesh]!.uv ?? WHOLE_UV);
     }
     if (level > 0) this.uniform(prog, U.level, level / LAYER_LEVELS);
+    if (level > 0) this.uniform(prog, U.wear, wear);
     this.maps(mat, roles);
   }
 
@@ -680,7 +681,7 @@ export class GlRenderer {
       this.uniform(prog, U.skin, skinMode(flags, textured && lod.skin));
       this.uniform(prog, U.fade, p.drawFade[d]!);
       this.uniform(prog, U.hand, p.drawHand[d]!);
-      if (textured) this.material(prog, m, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length);
+      if (textured) this.material(prog, m, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length, p.drawWear[d]!);
       else if ((flags & DRAW_WATER) !== 0) this.maps(this.materials[m], MAP_ROLES.length);
       else {
         this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
