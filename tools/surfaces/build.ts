@@ -4,6 +4,7 @@
 // damp, peel and joints in one picture as wide as a finish's packed map; and the road's masks, the ground's macros in
 // one such picture and a road's repairs in another. Kept under var/surfaces/art/<name>/ by a hash
 // of what made them. bun tools/surfaces/build.ts builds them.
+import { ART } from "../art/source.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -37,7 +38,7 @@ const WEATHER_WIDE = 2048, WEATHER_TALL = 1024, WEATHER_STUB = 64;
 /** The road's masks, each a picture ROAD_SIDE a side: the macros' tile and the repairs', and the masks in each's packed map, red to alpha. */
 const ROAD_SIDE = 1024;
 const ROAD_PACKS = { road: ["asphalt", "beach", "asphalt-rough", "beach-rough"], repairs: ["patches", "seams", "seals", "cracks"] } as const;
-export const HAS_SURFACES = [...SURFACE_NAMES, "weather", "road"].every((name) => existsSync(join(WORLD_ART, name, "material.json")));
+export const HAS_SURFACES = ART && [...SURFACE_NAMES, "weather", "road"].every((name) => existsSync(join(WORLD_ART, name, "material.json")));
 
 /** The finishes as materials, and the weathering masks' after them, their pictures made first where they are not. */
 export function worldMaterials(): Material[] {

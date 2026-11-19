@@ -8,7 +8,8 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { hashString } from "../../shared/hash.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { isBoatVehicle, type BoatVehicleDefinition } from "../../shared/sim/vehicle.ts";
-import { filesUnder, SOURCE } from "../art/source.ts";
+import releasedMeshes from "./release-meshes.json";
+import { ART, filesUnder, SOURCE } from "../art/source.ts";
 import { binKey } from "../mapworld/raster.ts";
 import { meets, type Box } from "../mapworld/ruin-obstacles.ts";
 import type { StaticPiece } from "../mapworld/statics.ts";
@@ -26,6 +27,7 @@ export interface WreckGround { waterAt(x: number, z: number): number; groundAt(x
 
 /** The meshes of the art under assets/source/core/vehicles, by id. */
 export function vehicleMeshes(): Set<string> {
+  if (!ART) return new Set(releasedMeshes);
   return new Set(filesUnder(join(SOURCE, "core/vehicles"), ".snpk").flatMap((f) => parsePack(new Uint8Array(readFileSync(f))).header.meshes.map((m) => m.id)));
 }
 

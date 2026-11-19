@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { ATLAS_MOST, CELL, FLAT_SHAPES, GROUNDS, OCCASIONS, atlasBytes, effectOf, knownFrom, type DetailEffect, type DetailEntry, type DetailPicture, type DetailSheet, type Occasion, type PackDetails, type SheetSource } from "../../shared/pack/details.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { SOURCE, filesUnder } from "../art/source.ts";
+import { ART, SOURCE, filesUnder } from "../art/source.ts";
 import { halvings, readPicture, square, unpack, type Picture } from "./image.ts";
 import { readRegions } from "./mask.ts";
 import type { SourceDetails } from "./write.ts";
@@ -31,6 +31,7 @@ export interface FoundSheet {
 
 /** The library's sheet first, then every creature's `cues.json`, in path order. */
 export function findSheets(source: string = SOURCE): FoundSheet[] {
+  if (source === SOURCE && !ART) return [];
   const read = (file: string, owner: string): FoundSheet => {
     try {
       return { owner, dir: dirname(file), file, sheet: JSON.parse(readFileSync(file, "utf8")) as SheetSource };

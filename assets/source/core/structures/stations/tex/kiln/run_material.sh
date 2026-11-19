@@ -7,6 +7,6 @@ export PYTHONDONTWRITEBYTECODE=1
 if python3 -c 'import numpy, scipy, PIL' 2>/dev/null; then
     exec python3 "$@"
 fi
-KILN_CACHE=/home/user/.cache/uv/archive-v0
+KILN_CACHE="${HOME}/.cache/uv/archive-v0"
 export PYTHONPATH="$KILN_CACHE/7ZZUcka-GOFOHzIv:$KILN_CACHE/1sfcstuJeRVF79K2:$KILN_CACHE/foBAIccdpapW5CvV"
-exec /home/user/.local/share/uv/python/cpython-3.13-linux-x86_64-gnu/bin/python3 "$@"
+exec "${HOME}/.local/share/uv/python/cpython-3.13-linux-x86_64-gnu/bin/python3" "$@"

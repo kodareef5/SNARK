@@ -3,6 +3,7 @@
 // into its cell. Written under var/facade/art, kept while the sources and this file are unchanged.
 // bun tools/facade/build.ts [--means] prints the means facade.ts keeps; --write puts them there.
 
+import { ART } from "../art/source.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -266,7 +267,7 @@ export function buildFacadeArt(source = FACADE_SOURCE, out = FACADE_ART): { elem
 }
 
 /** Whether the facades' painted sources are in the checkout, as the world finishes' are (HAS_SURFACES). */
-export const HAS_FACADES = existsSync(join(FACADE_SOURCE, "elements")) && existsSync(join(FACADE_SOURCE, "rooms"));
+export const HAS_FACADES = ART && existsSync(join(FACADE_SOURCE, "elements")) && existsSync(join(FACADE_SOURCE, "rooms"));
 
 /** The pack's materials of the atlases (facade.ts FACADE_MATERIALS). */
 export function facadeMaterials(): Material[] {

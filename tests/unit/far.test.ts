@@ -9,6 +9,7 @@ import { INSTANCE_BYTES, VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import { FarCells, farTopByte } from "../../shared/world/tactical.ts";
 import { castle, farWorld, type FarWorld } from "../fixtures/farworld.ts";
+import { ART } from "../../tools/art/source.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 /** The middle of the map the castles stand on, 24 chunks a side. */
@@ -58,7 +59,7 @@ test("a castle 600 m off with no rows is drawn as blocks over 90% or more of wha
   }
 });
 
-test("blocks take the colour their pieces' art shows, not the one their kind is listed in", () => {
+test("far wood matches the near pieces in both graybox and painted builds", () => {
   const w = farWorld({ chunks: 24, pack: corePack() });
   const chunk = castle(w, MID, MID);
   w.send(chunk);
@@ -74,7 +75,7 @@ test("blocks take the colour their pieces' art shows, not the one their kind is 
   const listed = (w.reg.defs[w.id("core:wall_wood")] as { color: number }).color;
   const pal = w.pack.palette;
   expect(Math.max(...[0, 1, 2].map((c) => Math.abs(far[c]! - near[c]!)))).toBeLessThan(12);
-  expect(Math.max(...[0, 1, 2].map((c) => Math.abs(pal[listed * 4 + c]! - near[c]!)))).toBeGreaterThan(40);
+  if (ART) expect(Math.max(...[0, 1, 2].map((c) => Math.abs(pal[listed * 4 + c]! - near[c]!)))).toBeGreaterThan(40);
 });
 
 test("a chunk whose rows come over five ticks is drawn far until its last row and near after, never both and never neither", () => {

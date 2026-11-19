@@ -156,7 +156,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   writeFileSync(join(dist, "admin/index.html"), readFileSync(join(root, "client/admin/admin.html"), "utf8").replace("/* face */", face));
   // The music as it is played: each track's layers as Opus, music.json listing them, and the lab to hear them.
   const music = join(root, "assets/source/core/music");
-  if (existsSync(join(music, "music.json"))) {
+  if (ART && existsSync(join(music, "music.json"))) {
     // The lab goes beside the files it plays: assets/music/listen.html on the dev server.
     cpSync(music, join(dist, "assets/music"), { recursive: true, filter: (f) => statSync(f).isDirectory() || (/\.(opus|json|js|html)$/.test(f) && !f.slice(music.length).includes(`${sep}sound${sep}`)) });
   }
@@ -258,7 +258,7 @@ async function buildLandmarks(dist: string, quick: boolean): Promise<number> {
   let bytes = 0;
   // Their content takes a second to load, so only a build loads it.
   const { LANDMARKS: PLACED } = await import("../content/landmarks/index.ts");
-  for (const name of existsSync(LANDMARKS) ? readdirSync(LANDMARKS).filter((n) => statSync(join(LANDMARKS, n)).isDirectory()).sort() : []) {
+  for (const name of ART && existsSync(LANDMARKS) ? readdirSync(LANDMARKS).filter((n) => statSync(join(LANDMARKS, n)).isDirectory()).sort() : []) {
     // What the core's stages and the landmark before left is collected before a landmark's art is read.
     Bun.gc(true);
     const placed = PLACED.find((l) => l.name === name);
@@ -303,7 +303,7 @@ if (import.meta.main) {
   console.log(`client/dist  main.js ${jsBytes} bytes, assets ${packBytes} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
   // Only `bun run build` is weighed: a build for a caller (buildClientApart) says where it goes.
   const dist = resolve(import.meta.dir, "../client/dist");
-  if (!flag("--stress") && at < 0 && ![weigh(dist), weighLandmarks(dist, mapLandmarks(SOURCE))].every(Boolean)) {
+  if (!flag("--stress") && at < 0 && ![weigh(dist), weighLandmarks(dist, ART ? mapLandmarks(SOURCE) : undefined)].every(Boolean)) {
     // A quick build's Brotli copies are about a tenth larger than a build's, so a row over its budget here says nothing
     // of the build a player gets: only that one fails.
     if (flag("--quick")) console.log("a quick build: its Brotli rows run about a tenth over a build's, and no row fails it");

@@ -41,7 +41,12 @@ function importGraph(entry: string): string[] {
 type Json = Record<string, unknown>;
 
 /** The stages in order: a name, what it runs, and the files of code it is (its key changes when they do). */
-const py = (script: string, ...args: string[]) => (work: string): string[] => [python, "-I", join(LEGACY, script), work, ...args];
+function pythonArgs(...args: string[]): string[] {
+  if (!existsSync(python)) throw new Error("This stage needs tools/mapdata/.venv: see tools/maps/README.md");
+  return [python, "-I", ...args];
+}
+
+const py = (script: string, ...args: string[]) => (work: string): string[] => pythonArgs(join(LEGACY, script), work, ...args);
 /** What every Python stage imports, so part of each one's code. */
 const COMMON = join(LEGACY, "common.py");
 // A stage's key is the stage before it's, its code, and what it reads beyond the city's settings (`own`: authored files
@@ -130,7 +135,6 @@ function main(): void {
   const from = names.indexOf(only ?? opt("--from") ?? names[0]!);
   const to = names.indexOf(only ?? opt("--to") ?? names[names.length - 1]!);
   if (from < 0 || to < 0) throw new Error(`the stages are ${names.join(", ")}`);
-  if (!existsSync(python)) throw new Error("no tools/mapdata/.venv: see tools/maps/README.md");
 
   const source = join(ROOT, "assets/source/maps", name);
   const city = readJson(join(source, "city.json"));
@@ -160,7 +164,7 @@ function main(): void {
     const kept = join(top, cut, "counties.json");
     if (!existsSync(kept)) {
       const [lon, lat] = settings.centre as number[];
-      const run = Bun.spawnSync([python, "-I", join(HERE, "counties.py"), String(lon), String(lat), ...(settings.bounds as number[]).map(String)], { cwd: ROOT, stderr: "inherit" });
+      const run = Bun.spawnSync(pythonArgs(join(HERE, "counties.py"), String(lon), String(lat), ...(settings.bounds as number[]).map(String)), { cwd: ROOT, stderr: "inherit" });
       if (run.exitCode !== 0) throw new Error("counties.py failed");
       writeFileSync(kept, run.stdout);
     }

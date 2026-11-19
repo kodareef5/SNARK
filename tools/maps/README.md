@@ -64,6 +64,8 @@ holds several gigabytes of them; `du -sh var/mapdata/*` says what each city keep
 
 ## Building a city without its downloads: kits
 
+For the pinned GitHub release, run `bun run media kit <city>` and then `bun tools/maps/city.ts <city>`. The installer fetches only the selected kit and verifies its checksum. The prepared stages can be reused with Bun alone. Install the Python environment above when changing a Python stage or starting a new cut. To host the existing map, use `bun run media map <city>`.
+
 A machine that works on what the build makes of a city (buildings, furniture, the look) needs the prepared layers, not
 the downloads. The machine that holds the downloads packs the cities' kits into its `var/kits` and gives them over
 http; another machine downloads them and builds. Kits stay out of git: on a branch they would come with every clone
