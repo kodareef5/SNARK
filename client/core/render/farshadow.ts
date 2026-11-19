@@ -368,7 +368,7 @@ export class FarShadow {
     this.city = city;
     const landmarks = own ? cityReach(city, own).landmarks : null;
     let skip: Uint8Array | null = null;
-    for (const [c, left] of landmarks ?? []) (skip ??= new Uint8Array(city.count)).set(left, city.first[c]!);
+    for (const c of landmarks?.keys() ?? []) (skip ??= new Uint8Array(city.count)).set(landmarks!.get(c)!, city.first[c]!);
     this.skip = skip;
     this.hf = hf;
     this.standing = standing;

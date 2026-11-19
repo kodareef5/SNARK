@@ -205,7 +205,7 @@ function* rowSteps(dims: MapDims, t: MapStatics, reg: Registry): Generator<void,
 function* chunkReach(city: CityStatics, landmark: Uint8Array): Generator<void, CityReach> {
   const { first, kind, x, y, z, halfY } = city;
   const chunks = chunkCount(city.dims);
-  const across = Float64Array.from(city.halfX, (hx, k) => Math.hypot(hx, city.halfZ[k]!));
+  const across = Float64Array.from(city.halfX, (hx, k) => len3(hx, 0, city.halfZ[k]!));
   const reach = new Float64Array(chunks * 6);
   const landmarks = new Map<number, Uint8Array>();
   let since = 0;
