@@ -39,6 +39,11 @@ export class UiView {
   private pass = 0;
   /** A finger's device: its text fields are never drawn under 16 px, below which iOS zooms the page to one in focus. */
   private readonly coarse = matchMedia("(pointer: coarse)").matches;
+  /**
+   * A field that takes the focus within a finger's press. A phone raises its keyboard only for a focus made inside a
+   * press, and the field core asks for is not drawn until the next frame, when it takes the focus over with the keyboard up.
+   */
+  private readonly lure = Object.assign(document.createElement("input"), { tabIndex: -1, ariaHidden: "true" });
 
   constructor(root: HTMLElement, events: UiEvents) {
     this.root = root;
@@ -52,7 +57,10 @@ export class UiView {
       if (kind === 0 && dial) el!.setPointerCapture(e.pointerId);
       if (kind === 3 && !dial) return;
       if (key !== 0 && this.scale > 0) events.pointer(kind === 3 ? 1 : kind, key, e.clientX / this.scale, e.clientY / this.scale, e.button, e.pointerType === "touch" ? Math.abs(e.pointerId) + 1 : 0);
+      if (e.pointerType === "touch" && kind < 2 && events.typing?.() && !(document.activeElement instanceof HTMLInputElement)) this.lure.focus();
     };
+    this.lure.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;font-size:16px;pointer-events:none;border:0;padding:0";
+    root.after(this.lure);
     root.addEventListener("pointerdown", forward(0));
     root.addEventListener("pointerup", forward(1));
     root.addEventListener("pointermove", forward(2));
@@ -70,6 +78,7 @@ export class UiView {
     const rescaled = scale !== this.scale;
     this.scale = scale;
     const pass = ++this.pass;
+    if (document.activeElement === this.lure && !this.events.typing?.()) this.lure.blur();
     for (let i = 0; i < f.count; i++) {
       const n = f.nodes[i]!;
       let b = this.bound.get(n.key);

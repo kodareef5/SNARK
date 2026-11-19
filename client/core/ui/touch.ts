@@ -3,10 +3,10 @@
 // from the canvas's own size and insets, so it follows the window either way up.
 
 import type { HudModel } from "../hud.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CANCEL, T_CHARACTER, T_CLOSE, T_DOWN, T_FOLLOW, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CANCEL, T_CHARACTER, T_CHAT, T_CLOSE, T_DOWN, T_FOLLOW, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
 import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
-import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CHARACTER, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MENU, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
+import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CHARACTER, I_CHAT, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MENU, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
 
 /** Keys of the layer's pictures, which are never pressed: four to a button, then the stick's. */
 const KEY_TOUCH_ART = 3300000;
@@ -35,13 +35,16 @@ const RADIANS = Math.PI / 180;
 /** From one vital to the next in their row: an icon and the room a finger's press of it takes. */
 export const VITAL_PITCH = 42;
 
+/** Menu, Bag, Character and Chat. */
+const BAR_BUTTONS = 4;
+
 /** Where the HUD puts what the touch layer moves aside: the vitals' row and the stack under the bar. */
 export interface TouchPlan { vitalsX: number; vitalsY: number; stackY: number; map: number }
 const plan: TouchPlan = { vitalsX: 0, vitalsY: 0, stackY: 0, map: 160 };
 
 /** The plan for this canvas. The same object each time. */
 export function touchPlan(f: UiFrame, muted: boolean): TouchPlan {
-  const left = f.left + MARGIN, top = f.top + MARGIN, bar = 3 * BAR_PITCH;
+  const left = f.left + MARGIN, top = f.top + MARGIN, bar = BAR_BUTTONS * BAR_PITCH;
   // A canvas short or narrow has a smaller minimap, and one too narrow for the vitals beside the bar has them under it.
   plan.map = f.height < 560 || f.width < 520 ? 120 : 160;
   const beside = left + bar + GAP + 7 * VITAL_PITCH + GAP <= f.width - f.right - MARGIN - plan.map;
@@ -93,6 +96,12 @@ export function pill(f: UiFrame, key: number, x: number, y: number, w: number, h
   }
 }
 
+/** Where the chat box stands while a finger types in it: under the bar, at the top, where a phone's keyboard does not reach. */
+export function chatTop(f: UiFrame): { top: number; bottom: number } {
+  const top = f.top + MARGIN + BAR + 10;
+  return { top, bottom: top + 3 * 19 + 56 };
+}
+
 /** The two zones, under everything else the HUD draws: call before it. */
 export function touchZones(f: UiFrame): void {
   const split = Math.round(f.width * MOVE_SHARE);
@@ -105,7 +114,7 @@ export function touchZones(f: UiFrame): void {
 /** The bar in the top left, and the minimap as the way to the map. Returns the bits of what it showed. */
 export function touchBar(f: UiFrame, t: TouchPlay, mapX: number, mapY: number, mapSize: number, minimap: boolean): number {
   const x = f.left + MARGIN + BAR / 2, y = f.top + MARGIN + BAR / 2;
-  let shown = button(f, t, T_MENU, x, y, BAR, P_SQUARE, I_MENU, "Menu") | button(f, t, T_BAG, x + BAR_PITCH, y, BAR, P_SQUARE, I_BAG, "Bag") | button(f, t, T_CHARACTER, x + BAR_PITCH * 2, y, BAR, P_SQUARE, I_CHARACTER, "Character");
+  let shown = button(f, t, T_MENU, x, y, BAR, P_SQUARE, I_MENU, "Menu") | button(f, t, T_BAG, x + BAR_PITCH, y, BAR, P_SQUARE, I_BAG, "Bag") | button(f, t, T_CHARACTER, x + BAR_PITCH * 2, y, BAR, P_SQUARE, I_CHARACTER, "Character") | button(f, t, T_CHAT, x + BAR_PITCH * 3, y, BAR, P_SQUARE, I_CHAT, "Chat");
   if (minimap) {
     // Above the minimap's own buttons, which keep its foot.
     const n = f.add(KEY_TOUCH_BUTTON + T_MAP, K_HOLD, mapX, mapY, mapSize, mapSize - 36, S_KEY);

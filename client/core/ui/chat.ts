@@ -8,6 +8,9 @@ import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_T
 export const KEY_CHAT_PANEL = 13;
 export const KEY_CHAT_INPUT = 14;
 export const KEY_CHAT_TAG = 15;
+/** By touch, beside the field: sends what was typed, as Enter does. */
+export const KEY_CHAT_SEND = 5397;
+const SEND_WIDTH = 64;
 /** Per row shown, up to MAX_ROWS. */
 export const KEY_CHAT_ROW = 16;
 
@@ -108,10 +111,15 @@ export class ChatState {
   }
 
   /** Lays the box out between `top` and `bottom`, newest line lowest. Shut, it shows only recent lines, which fade. */
-  build(f: UiFrame, top: number, bottom: number, now: number): void {
-    const w = Math.min(WIDTH, f.width - MARGIN * 2);
+  /**
+   * The log, and the box while it is open, between `top` and `bottom`. With `touch` the field and its buttons are a
+   * finger's size and a Send button stands beside the field.
+   */
+  build(f: UiFrame, top: number, bottom: number, now: number, touch = false): void {
+    const x0 = f.left + MARGIN;
+    const w = Math.min(WIDTH, f.width - f.left - f.right - MARGIN * 2);
     const lh = lineHeight(S_CHAT);
-    const inputH = lineHeight(S_INPUT) + 6;
+    const inputH = touch && this.open ? 44 : lineHeight(S_INPUT) + 6;
     const sig = `${w}:${this.version}`;
     if (sig !== this.rowsFor) {
       this.rowsFor = sig;
@@ -134,12 +142,12 @@ export class ChatState {
     const shown = live.length;
     if (this.open) {
       const h = most * lh + inputH + 12;
-      f.add(KEY_CHAT_PANEL, K_PANEL, MARGIN - 4, bottom - h + 4, w + 8, h, S_CHAT_PANEL);
+      f.add(KEY_CHAT_PANEL, K_PANEL, x0 - 4, bottom - h + 4, w + 8, h, S_CHAT_PANEL);
     }
     let y = rowsBottom - shown * lh;
     for (let k = 0; k < shown; k++) {
       const row = this.rows[live[k]!]!;
-      const n = f.text(KEY_CHAT_ROW + k, MARGIN, y, w - 8, ROW_STYLE[row.channel] ?? S_CHAT, row.text);
+      const n = f.text(KEY_CHAT_ROW + k, x0, y, w - 8, ROW_STYLE[row.channel] ?? S_CHAT, row.text);
       if (!this.open) {
         const left = row.hold - (now - row.at);
         n.alpha = left >= FADE_TICKS ? 1 : Math.max(0, left / FADE_TICKS);
@@ -148,12 +156,18 @@ export class ChatState {
     }
     if (!this.open) return;
     // A click on the channel tag changes channel, as Tab does.
-    const tag = f.add(KEY_CHAT_TAG, K_BUTTON, MARGIN, bottom - inputH, TAG_WIDTH, inputH, S_CHAT_TAG);
+    const tag = f.add(KEY_CHAT_TAG, K_BUTTON, x0, bottom - inputH, TAG_WIDTH, inputH, S_CHAT_TAG);
     tag.text = TAG[this.channel] ?? "";
+    tag.label = "Change channel";
     tag.interactive = true;
-    const field = f.add(KEY_CHAT_INPUT, K_INPUT, MARGIN + TAG_WIDTH + 4, bottom - inputH, w - TAG_WIDTH - 4, inputH, S_INPUT);
+    const send = touch ? SEND_WIDTH + 4 : 0;
+    const field = f.add(KEY_CHAT_INPUT, K_INPUT, x0 + TAG_WIDTH + 4, bottom - inputH, w - TAG_WIDTH - 4 - send, inputH, S_INPUT);
     field.text = this.input;
     field.interactive = true;
     field.focus = true;
+    if (touch) {
+      const b = f.add(KEY_CHAT_SEND, K_BUTTON, x0 + w - SEND_WIDTH, bottom - inputH, SEND_WIDTH, inputH, S_CHAT_TAG);
+      b.text = "Send"; b.label = "Send"; b.interactive = true;
+    }
   }
 }

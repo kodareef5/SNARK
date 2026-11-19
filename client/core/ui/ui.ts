@@ -5,11 +5,11 @@ import type { ClientSession } from "../session.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT } from "./console.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { CharacterScreen } from "./character.ts";
-import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_TAG } from "./chat.ts";
+import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.ts";
 import { CreatorScreen } from "./creator.ts";
 import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand, hotbarCell, hotbarLeft, hotbarTop } from "./hud.ts";
-import { touchBar, touchClose, touchControls, touchPlan, touchZones } from "./touch.ts";
+import { chatTop, touchBar, touchClose, touchControls, touchPlan, touchZones } from "./touch.ts";
 import type { TouchPlay } from "../touch.ts";
 import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
 import { CONTROL_GROUPS } from "./controls-guide.ts";
@@ -91,6 +91,11 @@ export class Ui {
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
     return this.menu || this.inspect || this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
+  }
+
+  /** A text field is wanted: the shell of a touch device raises its keyboard within the press that asked. */
+  get typing(): boolean {
+    return this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
   }
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
@@ -278,6 +283,10 @@ export class Ui {
       this.chat.cycle(session);
       return;
     }
+    if (kind === 0 && key === KEY_CHAT_SEND) {
+      this.chat.submit(session);
+      return;
+    }
     if (this.creating) {
       this.creator.pointer(kind, key, session);
       return;
@@ -328,8 +337,9 @@ export class Ui {
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.
       if (session) {
-        const band = chatBand(f, hud);
-        this.chat.build(f, band.top, band.bottom, session.serverTick);
+        // A finger's keyboard covers the foot of the screen, so the box it types in stands at the top.
+        const band = plan && this.chat.open ? chatTop(f) : chatBand(f, hud);
+        this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null);
       }
       if (plan && this.touchPlay && controls) {
         this.touchShown = touchBar(f, this.touchPlay, f.width - f.right - 12 - plan.map, f.top + 12, plan.map, this.settings.minimap);
@@ -377,7 +387,8 @@ export class Ui {
     // A screen, the chat box or a prompt that a keyboard would leave by Escape has a button for it by touch.
     if (plan && this.touchPlay && !this.wantsPointerLock && !this.menu && !this.creating && !this.dead && !this.console.open) this.touchShown |= touchClose(f, this.touchPlay);
     // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
-    if (this.settings.muted && !this.console.open) unmuteButton(f, plan);
+    // Not while a finger types in the chat box, which has its place.
+    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan);
     if (session) this.console.absorb(session);
     this.console.build(f);
     if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }

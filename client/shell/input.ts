@@ -12,13 +12,15 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
     if (app.ui.wantsPointerLock && engaged && !locked) void canvas.requestPointerLock?.()?.catch(() => { engaged = false; });
     else if (!app.ui.wantsPointerLock && locked) document.exitPointerLock();
   };
+  // A phone's on-screen keyboard names a key but gives it no code.
+  const code = (e: KeyboardEvent): string => e.code || (e.key === "Enter" || e.key === "Escape" || e.key === "Tab" ? e.key : "");
   addEventListener("keydown", (e) => {
-    if (e.code === "Escape" && performance.now() - escapedAt < 150) return;
-    if (app.key(e.code, true, e.repeat)) e.preventDefault();
+    if (code(e) === "Escape" && performance.now() - escapedAt < 150) return;
+    if (app.key(code(e), true, e.repeat)) e.preventDefault();
     sync();
   });
   addEventListener("keyup", (e) => {
-    if (app.key(e.code, false, false)) e.preventDefault();
+    if (app.key(code(e), false, false)) e.preventDefault();
     sync();
   });
   addEventListener("blur", () => { app.ui.inspect = false; app.blur(); });

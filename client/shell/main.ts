@@ -291,7 +291,7 @@ async function boot(): Promise<void> {
   if(launch && session.state==="closed"){showEntryProblem();return;}
   await loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arriving: (statics, whole) => session.staticsSteps(statics, whole), held: () => session.behind });
   // The interface takes the page's line from here.
-  const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger) });
+  const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger), typing: () => app.ui.typing });
   requestAnimationFrame(frame);
 }
 

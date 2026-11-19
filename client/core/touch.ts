@@ -24,8 +24,10 @@ export const T_MORE = 11, T_MELEE = 12, T_VIEW = 13, T_ORBIT = 14, T_FOLLOW = 15
 export const T_ROTATE = 18, T_SNAP = 19, T_RAISE = 20, T_LOWER = 21, T_CANCEL = 22;
 /** Flying and driving: down, a roll or a flight mode, a brake or a recovery, and a way of going held on (precise, agile). */
 export const T_DOWN = 23, T_ROLL = 24, T_HOLD = 25, T_SHIFT = 26;
+/** The chat box, from the bar. */
+export const T_CHAT = 27;
 /** Buttons have a bit each in what a frame showed, so there are at most 31. */
-export const T_COUNT = 27;
+export const T_COUNT = 28;
 
 /** Units from the stick's middle to its rim, the still middle, and the share of the way out at which it sprints. */
 export const STICK_REACH = 60;
@@ -38,7 +40,7 @@ export const LONG_MS = 400;
 
 /** What a tap of a button presses for a moment. */
 const TAPS: Readonly<Record<number, string>> = {
-  [T_MENU]: "Escape", [T_BAG]: "KeyI", [T_CHARACTER]: "KeyP", [T_MAP]: "KeyM", [T_CLOSE]: "Escape", [T_CANCEL]: "Escape",
+  [T_MENU]: "Escape", [T_BAG]: "KeyI", [T_CHARACTER]: "KeyP", [T_MAP]: "KeyM", [T_CLOSE]: "Escape", [T_CANCEL]: "Escape", [T_CHAT]: "Enter",
   [T_VIEW]: "KeyV", [T_ORBIT]: "KeyK", [T_FOLLOW]: "KeyJ", [T_STAY]: "KeyU", [T_SIC]: "Period", [T_ROTATE]: "KeyE", [T_RAISE]: "ArrowUp", [T_LOWER]: "ArrowDown",
 };
 /** What a button holds down while a finger is on it. The same key means what the body's state makes of it: R reloads on foot and yaws a helicopter. */

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_USE, T_VIEW } from "../../client/core/touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CHAT, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_USE, T_VIEW } from "../../client/core/touch.ts";
+import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_SEND, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
 import { KEY_HOTBAR, KEY_MINIMAP, KEY_PROMPT, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { KEY_INV_ACTION, KEY_INV_HALF, KEY_INV_INFO, KEY_INV_SLOT, KEY_INV_USE } from "../../client/core/ui/inventory.ts";
@@ -52,7 +53,7 @@ test("the touch layer fits every phone and tablet, either way up: inside the scr
     expect(h / f.height, where).toBeGreaterThanOrEqual(Math.min(SCALE_FLOOR, w / MIN_WIDTH) - 0.01);
     expect(f.width * (h / f.height), where).toBeLessThanOrEqual(w + 1);
     const unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
-    for (const which of [T_ATTACK, T_JUMP, T_STANCE, T_USE, T_MENU, T_BAG, T_CHARACTER, T_MAP]) expect(f.find(KEY_TOUCH_BUTTON + which), `${where}: button ${which}`).not.toBeNull();
+    for (const which of [T_ATTACK, T_JUMP, T_STANCE, T_USE, T_MENU, T_BAG, T_CHARACTER, T_CHAT, T_MAP]) expect(f.find(KEY_TOUCH_BUTTON + which), `${where}: button ${which}`).not.toBeNull();
     expect(app.ui.touchShown & (1 << T_ATTACK), where).toBeGreaterThan(0);
     expect(f.find(KEY_UNMUTE) !== null, where).toBe(muted);
     // The zones lie under everything, and cover the canvas between them.
@@ -296,4 +297,37 @@ test("More turns the cluster's page and back, a way of going is held on by its b
   app.vehicleTelemetry.stop();
   run(100);
   expect([app.touch.shifted, app.controls.buttons & BTN_SPRINT, has(T_SHIFT)]).toEqual([false, 0, false]);
+});
+
+test("chat by touch: the bar opens the box at the top, where a keyboard does not cover it, and Send says it", () => {
+  for (const [name, w, hh, insets] of WINDOWS) {
+    const h = new Harness(), app = phone(h, "talker");
+    insets.forEach((v, i) => (app.insets[i] = v));
+    const run = (ms: number) => h.run(ms, (now) => app.frame(now, w, hh));
+    const press = (key: number): void => { app.pointer(0, key, 0, 0, 0, 1); app.pointer(1, key, 0, 0, 0, 1); run(60); };
+    run(600);
+    const f = app.ui.frame;
+    expect([app.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, null]);
+    press(KEY_TOUCH_BUTTON + T_CHAT);
+    const field = f.find(KEY_CHAT_INPUT)!, send = f.find(KEY_CHAT_SEND)!, tag = f.find(KEY_CHAT_TAG)!, unit = hh / f.height;
+    expect([app.ui.chat.open, app.ui.typing, field.focus], name).toEqual([true, true, true]);
+    // The field is in the top half of the screen with room to spare, a finger's height, inside the screen's edges, beside its buttons.
+    expect((field.y + field.h) * unit, name).toBeLessThan(hh * 0.45);
+    expect(Math.min(field.h, send.h, tag.h), name).toBeGreaterThanOrEqual(44);
+    expect(tag.x >= insets[0]! / unit && send.x + send.w <= f.width - insets[2]! / unit, name).toBe(true);
+    expect(tag.x + tag.w <= field.x && field.x + field.w <= send.x, name).toBe(true);
+    expect(textWidth(send.text, send.style), name).toBeLessThanOrEqual(send.w);
+    // The way out is there, and covers neither the field nor its buttons.
+    const close = f.find(KEY_TOUCH_BUTTON + T_CLOSE)!;
+    for (const n of [field, send, tag]) expect(close.x < n.x + n.w && n.x < close.x + close.w && close.y < n.y + n.h && n.y < close.y + close.h, name).toBe(false);
+    app.textInput(KEY_CHAT_INPUT, "anyone near the docks?");
+    press(KEY_CHAT_SEND);
+    run(300);
+    expect([app.ui.chat.open, app.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, false, null]);
+    const said: string[] = [];
+    for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAT_ROW && f.nodes[i]!.key < KEY_CHAT_ROW + 14) said.push(f.nodes[i]!.text);
+    expect(said.join(" "), name).toContain("anyone near the docks?");
+    // Shut, the log is back where it was, low on the left, and the layer is back with it.
+    expect(f.find(KEY_ZONE_MOVE), name).not.toBeNull();
+  }
 });
