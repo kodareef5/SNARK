@@ -500,7 +500,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     },
   });
 
-  host.cluster?.listening(server.port ?? 0, (opts.publicUrl ?? "").replace(/\/+$/, ""));
+  host.cluster?.listening(server.port ?? 0, (opts.publicUrl ?? "").replace(/\/+$/, ""), { client: clientDir, parts: opts.map ? resolve(partsFolder(opts.map)) : "" });
 
   // Each tick is timed for the admin page. The checkpoint is the keeper thread's work, so asking for it costs nothing
   // here, late or not.
