@@ -15,12 +15,7 @@ keys/reports/*/
 keys/reports/*.png
 keys/style/panels/
 keys/style/*.png
-!keys/style/palette.png
 keys/views/sheet.png
 
-# The moon is built from four of its originals.
+# The moon is built from four of its originals, which come with the art like every other picture.
 moon/originals/round-*.png
-!moon/originals/round-08.png
-!moon/originals/round-15.png
-!moon/originals/round-16.png
-!moon/originals/round-17.png

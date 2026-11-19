@@ -1,4 +1,2 @@
-# The Blender art build consumes these prepared donor meshes.
-!arches.npz
-!parts.npz
-!shells.npz
+# The Blender art build consumes the prepared donor meshes here. They come with the art.
+*.npz
