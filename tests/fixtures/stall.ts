@@ -20,8 +20,14 @@ class Busy implements Connection {
   onMessage: ((channel: number, data: Uint8Array) => void) | null = null;
   onClose: (() => void) | null = null;
   private readonly waiting: (() => void)[] = [];
+  readonly inner: LoopbackEnd;
+  private readonly clock: () => number;
+  private readonly until: () => number;
 
-  constructor(readonly inner: LoopbackEnd, private readonly clock: () => number, private readonly until: () => number, heard?: (channel: number, data: Uint8Array) => void) {
+  constructor(inner: LoopbackEnd, clock: () => number, until: () => number, heard?: (channel: number, data: Uint8Array) => void) {
+    this.inner = inner;
+    this.clock = clock;
+    this.until = until;
     inner.onMessage = (channel, data) => this.later(() => (heard?.(channel, data), this.onMessage?.(channel, data)));
     inner.onClose = () => this.later(() => this.onClose?.());
   }
