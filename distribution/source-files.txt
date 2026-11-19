@@ -6612,3 +6612,11 @@ assets/source/surfaces/source/ground-organic.png
 assets/source/surfaces/source/ruins-finishes.png
 assets/source/surfaces/source/ruins-masonry.png
 assets/source/ui/glass-source.png
+assets/source/ui/touch.png
+assets/source/ui/touch.webp
+assets/source/ui/touch/controls-1.png
+assets/source/ui/touch/controls-2.png
+assets/source/ui/touch/icons-1.png
+assets/source/ui/touch/icons-2.png
+assets/source/ui/touch/icons-3.png
+assets/source/ui/vitals-source.png
