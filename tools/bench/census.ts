@@ -62,14 +62,15 @@ export const centreOf = (map: MapData): [number, number] => [mapSizeX(map.dims) 
 /**
  * Downtown Miami: at eye height 300 m into the grid looking west along the street (the GPU bench's street), on a 42 m
  * roof beside it, 150 m over that street, and the far city's two views from the air of
- * assets/source/maps/miami/look/farcity-views.json, over the hand-over and over the whole of downtown.
+ * assets/source/maps/miami/look/farcity-views.json, over the hand-over and over the whole of downtown. In metres from
+ * the 16 km map's centre: on the 8 km map they were 3,328 m further west and 2,368 m further north.
  */
 export const CENSUS_VIEWS: readonly CensusView[] = [
-  { name: "street-300", east: -2469, north: -639, up: 1.7, yaw: 1.6083, pitch: 0.02 },
-  { name: "roof-300", east: -2467, north: -781, y: 44.3, yaw: 1.0683, pitch: -0.25 },
-  { name: "air-300", east: -2469, north: -639, up: 150, yaw: 1.6083, pitch: -0.55 },
-  { name: "air-handover", east: -2136, north: -1114, y: 140, yaw: 1.5708, pitch: -0.2978 },
-  { name: "air-wide", east: -1836, north: -1564, y: 320, yaw: 1.1903, pitch: -0.2887 },
+  { name: "street-300", east: 859, north: -3007, up: 1.7, yaw: 1.6083, pitch: 0.02 },
+  { name: "roof-300", east: 861, north: -3149, y: 44.3, yaw: 1.0683, pitch: -0.25 },
+  { name: "air-300", east: 859, north: -3007, up: 150, yaw: 1.6083, pitch: -0.55 },
+  { name: "air-handover", east: 1192, north: -3482, y: 140, yaw: 1.5708, pitch: -0.2978 },
+  { name: "air-wide", east: 1492, north: -3932, y: 320, yaw: 1.1903, pitch: -0.2887 },
 ];
 /** The views whose near window the Miami slice holds whole. */
 export const SLICE_VIEWS = CENSUS_VIEWS.slice(0, 3);

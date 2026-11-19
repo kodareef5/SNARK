@@ -15,9 +15,12 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { MapStatics, type MapData, type MapStatic } from "../../shared/world/mapfile.ts";
 
-/** Downtown Miami's 9 by 9 chunks from chunk (99, 48), which hold the near windows of its three views whole. */
+/**
+ * Downtown Miami's 9 by 9 chunks from chunk (111, 75) of the 16 km map, which hold the near windows of its three views
+ * whole; (99, 48) on the 8 km map.
+ */
 export const MIAMI_SLICE = new URL("./miami-slice.gz", import.meta.url).pathname;
-export const MIAMI_CUT = { cx: 99, cz: 48, side: 9 } as const;
+export const MIAMI_CUT = { cx: 111, cz: 75, side: 9 } as const;
 
 export interface CitySlice {
   readonly map: MapData;
