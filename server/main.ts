@@ -225,12 +225,19 @@ export function worldSettings(host: Host): { name: string; map: string; settings
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
 /**
- * Runs `loop.tick` TICK_RATE times a second of `now`'s clock, given when each was due, and `loop.idle` after each call:
- * one tick a call, each call made by `later` after the given milliseconds, so that requests and sockets are served
- * between ticks that run late and never wait behind a run of them. A loop more than 250 ms behind gives up the ticks
- * due, and tells `loop.drop` how many. Returns what stops it.
+ * Milliseconds behind its clock past which the loop gives ticks up instead of catching them up. While it is behind, a
+ * page's snapshots are that much older, and a page replays at most 128 ticks past one (client/core/session.ts HISTORY).
  */
-export function tickLoop(loop: { tick(due: number): void; idle(): void; drop(ticks: number, at: number): void }, now = (): number => performance.now(), later = (go: () => void, ms: number): (() => void) => {
+export const CATCH_UP_MS = 2000;
+
+/**
+ * Runs `loop.tick` TICK_RATE times a second of `now`'s clock, given when each was due and how many more were due by the
+ * time it began, and `loop.idle` after each call: one tick a call, each call made by `later` after the given milliseconds,
+ * so that requests and sockets are served between ticks that run late and never wait behind a run of them. A loop behind
+ * catches up so; past CATCH_UP_MS behind it gives up the ticks beyond that, and tells `loop.drop` how many. Returns what
+ * stops it.
+ */
+export function tickLoop(loop: { tick(due: number, behind: number): void; idle(): void; drop(ticks: number, at: number): void }, now = (): number => performance.now(), later = (go: () => void, ms: number): (() => void) => {
   const timer = setTimeout(go, ms);
   return () => clearTimeout(timer);
 }): () => void {
@@ -239,13 +246,14 @@ export function tickLoop(loop: { tick(due: number): void; idle(): void; drop(tic
   const turn = (): void => {
     const at = now();
     if (at >= next) {
-      loop.tick(next);
+      loop.tick(next, Math.floor((at - next) / tickMs));
       next += tickMs;
     }
     loop.idle();
-    if (at - next > 250) {
-      loop.drop(Math.floor((at - next) / tickMs) + 1, at);
-      next = at + tickMs;
+    if (at - next > CATCH_UP_MS) {
+      const ticks = Math.ceil((at - next - CATCH_UP_MS) / tickMs);
+      loop.drop(ticks, at);
+      next += ticks * tickMs;
     }
     stop = later(turn, Math.max(0, next - now()));
   };
@@ -505,13 +513,16 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   // Each tick is timed for the admin page. The checkpoint is the keeper thread's work, so asking for it costs nothing
   // here, late or not.
   const stopTicks = tickLoop({
-    tick: (due) => {
+    tick: (due, behind) => {
       const began = performance.now();
-      host.game.tick();
+      host.game.tick(behind);
       meter.tick(due, began, performance.now());
     },
     idle: () => host.idle(),
-    drop: (ticks, at) => meter.drop(ticks, at),
+    drop: (ticks, at) => {
+      meter.drop(ticks, at);
+      host.game.giveUp(ticks);
+    },
   });
 
   if (opts.terminal) {
