@@ -355,10 +355,10 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     // Signals where the data marks them at the junction; where the data marks no points at all, by the classes' rule.
     const here = graph.mapped.points ? markedNear(j.x, j.z, j.reach + J.marked) : [];
     const signals = graph.mapped.points ? n >= 3 && here.some((m) => m.kind === "signal") : n >= 3 && major + minor === n && (major >= 3 || (major === 2 && minor === 2 && chance(hash3(h, 1, seed), J.signalCross)));
-    // The ways in a stop the data marks holds: on the piece the stop is on, the way its traffic comes in along (a stop
-    // drawn on the junction's own point says which by its direction).
+    // The ways in whose traffic a stop the data maps governs: traffic along a piece as it is drawn comes in along the way
+    // out that runs back along it.
     const marked = here.filter((m) => m.kind === "stop");
-    const markedStops = j.arms.filter((a) => marked.some((m) => m.pieces.includes(a.line) && (m.direction === "forward" ? a.sense < 0 : m.direction === "backward" ? a.sense > 0 : true)));
+    const markedStops = j.arms.filter((a) => marked.some((m) => m.governs.some((g) => g.line === a.line && (g.dir > 0 ? a.sense < 0 : a.sense > 0))));
     if (signals) held.push({ x: j.x, z: j.z, reach: j.reach, lines: null });
     if (signals) {
       j.arms.forEach((a, i) => {
@@ -733,10 +733,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     graph.crossings.forEach((c) => {
       if (c.signal === true) return;
       const mx = (c.ax + c.bx) / 2; const mz = (c.az + c.bz) / 2;
-      const here = graph.mapped.points ? markedNear(mx, mz, c.half + 2) : [];
-      if (here.some((m) => m.kind === "signal")) return;
-      const type = here.find((m) => m.kind === "crossing" && m.crossing !== null)?.crossing ?? null;
-      if (type !== null && !X.marked.includes(type)) return;
+      if (graph.mapped.points && markedNear(mx, mz, c.half + 2).some((m) => m.kind === "signal")) return;
+      if (c.type !== null && !X.marked.includes(c.type)) return;
       const road = roadAt(mx, mz, 2); if (!road) return;
       const cls = classOf(road.s)!; if (!J.major.includes(cls) && !J.minor.includes(cls)) return;
       if (held.some((q) => Math.hypot(q.x - road.fx, q.z - road.fz) < q.reach + 6 && (q.lines === null || q.lines.has(road.s.line)))) return;

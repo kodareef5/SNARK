@@ -22,7 +22,7 @@ afterAll(() => { for (const f of folders) rmSync(f, { recursive: true, force: tr
 const N = 513, SIZE = (N - 1) * 2, GROUND = 1;
 interface Road { mtfcc: string; width: number; from: [number, number]; to: [number, number]; name?: string; props?: Record<string, unknown> }
 /** What the street data holds beside the roads, in the fixture's metres: walk features, stalls and marked points. */
-interface Beside { walks?: unknown[]; stalls?: unknown[]; nodes?: unknown[] }
+interface Beside { walks?: unknown[]; stalls?: unknown[]; controls?: unknown[] }
 const GRID: Road[] = [];
 for (let at = 100; at <= 900; at += 100) {
   const avenue = at === 500;
@@ -41,7 +41,7 @@ function fixture(roads: readonly Road[], routes: Site["growthRoutes"] = [], besi
   writeFileSync(join(source, "base/roads.geojson"), JSON.stringify({ type: "FeatureCollection", features }));
   if (beside.walks) writeFileSync(join(source, "base/walks.geojson"), JSON.stringify({ type: "FeatureCollection", features: beside.walks }));
   if (beside.stalls) writeFileSync(join(source, "base/stalls.json"), JSON.stringify(beside.stalls));
-  if (beside.nodes) writeFileSync(join(source, "base/street_nodes.geojson"), JSON.stringify({ type: "FeatureCollection", features: beside.nodes }));
+  if (beside.controls) writeFileSync(join(source, "base/controls.json"), JSON.stringify(beside.controls));
   const surface = new Uint8Array(N * N).fill(S.OPEN), district = new Uint8Array(N * N).fill(1);
   for (let row = 0; row < N; row++) for (let col = 0; col < N; col++) {
     const x = SIZE - col * 2, z = SIZE - row * 2, i = row * N + col;
@@ -326,11 +326,13 @@ test("speed limits, meters and no parking as the data says, where it says", () =
 
 test("signals and stops where the data marks them, the class rule only at a junction it marks nothing at, and none where it marks points elsewhere", () => {
   const forms = { ...RULES.forms, signal: [["signal", 1]], stop: [["stop", 1]] } as Furniture["forms"];
-  const point = (x: number, z: number, props: Record<string, unknown>) => ({ type: "Feature", geometry: { type: "Point", coordinates: [x, z] }, properties: props });
-  // A signal at two streets' crossing (300, 300), and a stop for traffic going north on x = 400 into (400, 400), drawn on
-  // the piece from z = 300 to 400.
-  const nodes = [point(300, 304, { kind: "signal", ways: [] }), point(400, 394, { kind: "stop", direction: "forward", ways: [`${northward(400)}:3`] })];
-  const { pieces } = place(fixture(GRID, [], { nodes }), [], { ...RULES, forms });
+  // A signal at two streets' crossing (300, 300), governing all four ways in, and a stop for traffic going north on
+  // x = 400 into (400, 400), along the piece from z = 300 to 400 as it is drawn.
+  const controls = [
+    { kind: "signal", at: [300, 300], governs: [{ piece: `${northward(300)}:2`, dir: 1 }, { piece: `${northward(300)}:3`, dir: -1 }] },
+    { kind: "stop", at: [400, 394], governs: [{ piece: `${northward(400)}:3`, dir: 1 }] },
+  ];
+  const { pieces } = place(fixture(GRID, [], { controls }), [], { ...RULES, forms });
   expect(near(pieces, "signal", 300, 300, 25).length).toBeGreaterThan(0);
   expect(near(pieces, "stop", 300, 300, 25).length).toBe(0);
   const stops = near(pieces, "stop", 400, 400, 25);
@@ -341,14 +343,13 @@ test("signals and stops where the data marks them, the class rule only at a junc
 });
 
 test("nothing stands on a crossing, and the crossing sign stands before one no signal holds, of a marked type where the data says", () => {
+  // The walk network's crossings, with their type where the data keeps it.
   const forms = { ...RULES.forms, crossing: [["crossing", 1]] } as Furniture["forms"];
   const rules = { ...RULES, forms, regulations: { ...RULES.regulations, crossing: { ...RULES.regulations.crossing, chance: 1 } } };
   const crossing = (z: number, props: Record<string, unknown>) => ({ type: "Feature", geometry: { type: "LineString", coordinates: [[194, z], [206, z]] }, properties: { kind: "crossing", width_m: 3, ...props } });
-  const point = (z: number, props: Record<string, unknown>) => ({ type: "Feature", geometry: { type: "Point", coordinates: [200, z] }, properties: props });
   // Across the street along x = 200, mid-block: one marked, one unmarked, one at a signal.
-  const walks = [crossing(250, { drawn: true }), crossing(650, { drawn: true }), crossing(450, { drawn: false, signal: true })];
-  const nodes = [point(250, { kind: "crossing", crossing: "marked", ways: [] }), point(650, { kind: "crossing", crossing: "unmarked", ways: [] })];
-  const { pieces } = place(fixture(GRID, [], { walks, nodes }), [], rules);
+  const walks = [crossing(250, { drawn: true, crossing: "marked" }), crossing(650, { drawn: true, crossing: "unmarked" }), crossing(450, { drawn: false, signal: true })];
+  const { pieces } = place(fixture(GRID, [], { walks }), [], rules);
   for (const p of pieces) for (const b of boxes(p)) for (const z of [250, 450, 650]) expect(Math.abs(b.x - 200) < 7 && Math.abs(b.z - z) < 1.5 + RULES.clear.crossing).toBe(false);
   expect(near(pieces, "crossing", 200, 250, 15).length).toBe(2);
   expect(near(pieces, "crossing", 200, 650, 15).length).toBe(0);
