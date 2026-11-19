@@ -574,13 +574,16 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       const road = roadAt((c.ax + c.bx) / 2, (c.az + c.bz) / 2, 2); if (!road) continue;
       // A crossing that runs along the road is no crossing of it.
       const sin = Math.abs(vx * road.dz - vz * road.dx); if (sin < 0.5) continue;
-      const t = (road.fx - c.ax) * vx + (road.fz - c.az) * vz; const cx = c.ax + vx * t; const cz = c.az + vz * t;
-      let left = Math.min(cl, (2 * road.s.half) / sin) - 2 * T.inset; const chosen: [string, number][] = [];
+      // Where along it the crossing meets the road's middle, and the stretch of it between the kerbs, less the inset: a
+      // crossing drawn in pieces has each piece's share of that striped.
+      const t = (road.fx - c.ax) * vx + (road.fz - c.az) * vz; const across = (2 * road.s.half) / sin;
+      const lo = Math.max(0, t - across / 2 + T.inset); const hi = Math.min(cl, t + across / 2 - T.inset);
+      let left = hi - lo; const chosen: [string, number][] = [];
       for (const [name, length] of sizes) while (left >= length) { chosen.push([name, length]); left -= length; }
-      let from = -chosen.reduce((a, q) => a + q[1], 0) / 2;
-      const yaw = ((Math.atan2(-vz, vx) * DEG) % 360 + 360) % 360; const h = hash3(Math.round(cx * 4), Math.round(cz * 4), seed + 15);
+      let from = lo + left / 2;
+      const yaw = ((Math.atan2(-vz, vx) * DEG) % 360 + 360) % 360; const h = hash3(Math.round((c.ax + vx * t) * 4), Math.round((c.az + vz * t) * 4), seed + 15);
       chosen.forEach(([name, length], k) => {
-        const px = cx + vx * (from + length / 2); const pz = cz + vz * (from + length / 2); from += length;
+        const px = c.ax + vx * (from + length / 2); const pz = c.az + vz * (from + length / 2); from += length;
         if (Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge) return void refuse("stripes", "edge");
         const chunk = chunkOf(px, pz); if (counts[chunk]! >= maxChunk) return void refuse("stripes", "budget");
         counts[chunk]!++;
