@@ -8,12 +8,16 @@ import { DRAW_TEXTURED } from "./render/packet.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { WINDOW } from "./render/terrain.ts";
 
-/** A frame at which `what` came ("street") or went ("-street"), by the page's clock in ms, and where the body was. */
+/**
+ * A frame at which `what` came ("street") or went ("-street"), by the page's clock in ms, where the body was, and the
+ * bytes of art the page had been sent by then.
+ */
 export interface TripMark {
   readonly at: number;
   readonly what: string;
   readonly x: number;
   readonly z: number;
+  readonly art: number;
 }
 
 /** Metres the body moves between two frames that the trip takes as a jump. */
@@ -127,6 +131,6 @@ export class TripProbe {
   }
 
   private mark(what: string): void {
-    this.marks.push({ at: this.seen, what, x: Math.round(this.x), z: Math.round(this.z) });
+    this.marks.push({ at: this.seen, what, x: Math.round(this.x), z: Math.round(this.z), art: this.app.scene?.assets.residency.stats.fetched ?? 0 });
   }
 }
