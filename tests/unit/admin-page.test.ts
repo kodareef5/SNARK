@@ -180,14 +180,14 @@ test("a survivor is found by a few letters of its name or its tribe, names that 
 });
 
 /** Stats as the server says them, the loop running at `p50` ms a tick for ten seconds. */
-function stats(p50: number, more: { late?: number; dropped?: number; perSecond?: number; failing?: boolean; bodies?: number; refused?: number } = {}): Stats {
+function stats(p50: number, more: { late?: number; dropped?: number; perSecond?: number; failing?: boolean; bodies?: number; refused?: number; long?: Stats["ticks"]["long"] } = {}): Stats {
   const n = 10;
   const col = (v: number): number[] => Array.from({ length: n }, () => v);
   return {
     at: 1e12,
     world: { name: "Isla", dev: false, tick: 9000, startedAt: 1e12 - 3_600_000, cluster: "" },
     map: { id: "core:isla", label: "Isla", sizeX: 8192, sizeZ: 8192, chunksX: 128, chunksZ: 128 },
-    ticks: { rate: 30, budget: 1000 / 30, ran: 9000, dropped: more.dropped ?? 0, seconds: { at: col(0).map((_, i) => 1e12 - (n - i) * 1000), ticks: col(more.perSecond ?? 30), p50: col(p50), worst: col(p50 * 2), late: col(more.late ?? 2), dropped: col(0).map((_, i) => (i === n - 1 ? (more.dropped ?? 0) : 0)) } },
+    ticks: { rate: 30, budget: 1000 / 30, ran: 9000, dropped: more.dropped ?? 0, seconds: { at: col(0).map((_, i) => 1e12 - (n - i) * 1000), ticks: col(more.perSecond ?? 30), p50: col(p50), worst: col(p50 * 2), late: col(more.late ?? 2), dropped: col(0).map((_, i) => (i === n - 1 ? (more.dropped ?? 0) : 0)) }, long: more.long ?? { own: 0, core: 0, page: 0 } },
     online: { now: 3, max: 70 },
     bodies: { count: more.bodies ?? 1000, max: 20000, reserve: 70, refused: more.refused ?? 0, groups: {}, kinds: [] },
     memory: { rss: 5e8, heapUsed: 2e8, heapTotal: 3e8 },
@@ -215,6 +215,11 @@ test("the verdict leads with the worst thing wrong: the save failing, then falli
   expect([full.level, full.reasons]).toEqual([STRAINED, ["19,000 bodies of the 19,930 the world has room for", "12 bodies refused for want of room since the start"]]);
   const none = verdict({ ...stats(4), ticks: { ...stats(4).ticks, seconds: { at: [], ticks: [], p50: [], worst: [], late: [], dropped: [] } } });
   expect([none.level, none.reasons]).toEqual([STRAINED, ["no tick has been timed yet"]]);
+  // Strained by its long ticks, a server says whose they were; a healthy one with a few says nothing of them.
+  const long = { own: 2, core: 14, page: 1 };
+  const shared = verdict(stats(20, { long }));
+  expect([shared.level, shared.reasons]).toEqual([STRAINED, ["ticks take 20.0 ms of their 33.3 ms", "of the ticks over 33.3 ms in the last two minutes, 2 were the server's own work, 14 waited for a core and 1 for pages"]]);
+  expect(verdict(stats(4, { long })).reasons).toEqual([]);
 });
 
 test("charts: round steps up a value axis, round times of the reader's clock along the foot, and runs broken where nothing was timed", () => {

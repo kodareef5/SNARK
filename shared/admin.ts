@@ -81,8 +81,12 @@ export interface Stats {
   at: number;
   world: { name: string; dev: boolean; tick: number; startedAt: number; cluster: string };
   map: { id: string; label: string; sizeX: number; sizeZ: number; chunksX: number; chunksZ: number };
-  /** Ticks a second, the ms one has, ticks run and given up since the start, and the last two minutes by the second. */
-  ticks: { rate: number; budget: number; ran: number; dropped: number; seconds: Record<SecondField, number[]> };
+  /**
+   * Ticks a second, the ms one has, ticks run and given up since the start, and the last two minutes by the second; and of
+   * those minutes' ticks over their ms, or as long before them, how many were the server's own work, and how many the
+   * machine's, waiting for a core or for pages (server/admin/parts.ts).
+   */
+  ticks: { rate: number; budget: number; ran: number; dropped: number; seconds: Record<SecondField, number[]>; long: { own: number; core: number; page: number } };
   online: { now: number; max: number };
   bodies: Bodies;
   memory: { rss: number; heapUsed: number; heapTotal: number };

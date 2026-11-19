@@ -28,6 +28,8 @@ export interface ServerView {
   given: number;
   /** Its ticks that ran late or long or followed ticks given up: the tick, ms late, ms long, and ticks given up just before. */
   loop: [number, number, number, number][];
+  /** Its long ticks as the server's parts record keeps them: the tick, whose its time was, the process's CPU ms in it, and its longest parts. */
+  whose: [number, "own" | "core" | "page", number, string][];
 }
 
 export interface Line {
@@ -221,6 +223,11 @@ export function describe(s: Session): string[] {
   // The server's side.
   const loop = servers.flatMap((v) => v.loop);
   const seconds = servers.reduce((n, v) => n + v.ticks, 0) / TICK_RATE;
+  const whose = servers.flatMap((v) => v.whose);
+  if (whose.length > 0) {
+    const of = (w: string): number => whose.filter((x) => x[1] === w).length;
+    say(`  the server's long ticks: ${of("own")} its own work, ${of("core")} waiting for a core, ${of("page")} waiting for pages${whose.some((x) => x[1] === "own") ? `; its own: ${whose.filter((x) => x[1] === "own").slice(0, 8).map((x) => `tick ${x[0]} (${x[3]})`).join("; ")}` : ""}`);
+  }
   say(`  the server: its tick at most ${Math.max(0, ...servers.map((v) => v.long))} ms long and ${Math.max(0, ...servers.map((v) => v.late))} ms late, ${loop.length} ticks listed late or long, ${servers.reduce((n, v) => n + v.given, 0)} given up; it sent ${seconds > 0 ? Math.round(servers.reduce((n, v) => n + v.snapshots, 0) / seconds) : 0} snapshots and ${seconds > 0 ? Math.round(servers.reduce((n, v) => n + v.bytes, 0) / seconds / 1024) : 0} KB a second, skipped ${servers.reduce((n, v) => n + v.skipped, 0)}, at most ${Math.round(Math.max(0, ...servers.map((v) => v.waiting)) / 1024)} KB waiting behind the socket`);
 
   // Disagreements, field by field.
