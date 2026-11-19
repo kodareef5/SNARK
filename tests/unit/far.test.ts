@@ -179,6 +179,25 @@ test("the same cells give the same tile bytes, and cells sent again unchanged ma
   expect(two).toEqual(one);
 });
 
+test("blocks made on ground that changes after are made again on it: the same tile as the same cells make on that ground from the start", () => {
+  const [before, after] = [(x: number, z: number): number => 3 + 4 * Math.sin(x / 61), (x: number, z: number): number => 9 * Math.cos(z / 45)];
+  const w = farWorld({ chunks: 24, ground: before });
+  const fresh = farWorld({ chunks: 24, ground: after });
+  castle(w, MID, MID, w.hf.heightAt(MID, MID));
+  for (const chunk of w.sendAll()) fresh.sendCells(chunk, w.cells.chunks.get(chunk)!);
+  w.look(MID, 10, MID, 700, 0.5);
+  Object.assign(fresh.cam, { x: w.cam.x, y: w.cam.y, z: w.cam.z, yaw: w.cam.yaw, pitch: w.cam.pitch });
+  const tiles = (p: FramePacket): Uint8Array[] => p.assetUploads.filter((u) => u.slot >= FAR_SLOTS).map((u) => u.data);
+  const first = tiles(w.frame());
+  // The ground comes as a client's does, a sector of it at a time, and says where it changed.
+  for (let j = 0; j < w.hf.nz; j++) for (let i = 0; i < w.hf.nx; i++) w.hf.setSample(i, j, after(i * w.hf.cell, j * w.hf.cell));
+  w.hf.hold(0, 0, 24, 24);
+  const again = tiles(w.frame());
+  expect([first.length, again.length]).toEqual([1, 1]);
+  expect([again, Bun.deepEquals(again[0], first[0])]).toEqual([tiles(fresh.frame()), false]);
+  expect(tiles(w.frame()).length).toBe(0);
+});
+
 test("a block's foot is under every level of the drawn ground, so it meets the coarse ground far off with no gap", () => {
   // Steep, bumpy ground, where a coarse level of it lies metres off the fine one.
   const ground = (x: number, z: number): number => 40 * Math.sin(x / 37) * Math.cos(z / 53) + 12 * Math.sin(x / 11 + z / 7);

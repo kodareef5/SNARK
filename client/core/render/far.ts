@@ -324,6 +324,8 @@ export class FarBlocks {
   private readonly parts = new Map<number, FarPart>();
   private readonly tiles = new Map<number, Tile>();
   private seen = -1;
+  /** The heightfield's changes taken in. */
+  private ground: number;
   private next = 0;
   /** The instance buffer is on the card, and blocks are drawn at all (the tier reaches past 0). */
   private sent = false;
@@ -349,6 +351,7 @@ export class FarBlocks {
     this.far = new Uint8Array(chunkCount(dims));
     this.stamp = new Uint32Array(chunkCount(dims));
     this.cityStamp = new Uint32Array(chunkCount(dims));
+    this.ground = hf.changes.length;
   }
 
   /** A far city come after these: every chunk's blocks are made again, without the cells it draws. */
@@ -374,6 +377,17 @@ export class FarBlocks {
    */
   update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, x: number, z: number, reach: number): void {
     this.on = reach > 0;
+    // Ground that came: the blocks on it are made again, and those a chunk past it, whose feet may reach across.
+    const c = this.hf.changes, { chunksX, chunksZ } = this.dims;
+    for (; this.ground < c.length; this.ground += 4) {
+      for (let cz = Math.max(0, c[this.ground + 1]! - 1); cz < Math.min(chunksZ, c[this.ground + 3]! + 1); cz++) {
+        for (let cx = Math.max(0, c[this.ground]! - 1); cx < Math.min(chunksX, c[this.ground + 2]! + 1); cx++) {
+          if (!this.known.has(cz * chunksX + cx)) continue;
+          this.parts.delete(cz * chunksX + cx);
+          this.touch(cz * chunksX + cx);
+        }
+      }
+    }
     const cells = this.source.cells;
     for (const chunk of cells.chunks.keys()) {
       const far = this.source.complete(chunk) ? 0 : 1;

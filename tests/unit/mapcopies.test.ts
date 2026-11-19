@@ -28,7 +28,7 @@ test("each part's copies give its bytes back, and a release's are the smaller", 
   expect(sum(release.parts)).toBeLessThan(sum(everyday.parts));
 });
 
-test("the heaviest first frame is the head and what the page's first frame waits for where it waits longest, by the loader's own rule: the landmarks' definitions, every overview and at most four sectors' ground", async () => {
+test("the heaviest first frame is the head and what the page's first frame waits for where it waits longest, by the loader's own rule: the landmarks' definitions, the overviews its sectors lie in and at most four sectors' ground", async () => {
   // The wide map's ten sectors, two rows of five, none of its nodes listed (a listed layer's map waits for all its ground).
   const m = wideMap();
   const file = writeMap({ ...m, nodes: m.nodes.filter((l) => !("first" in l)) });
@@ -40,7 +40,8 @@ test("the heaviest first frame is the head and what the page's first frame waits
   let most = 0;
   for (let z = 0; z <= head.dims.chunksZ * CHUNK_SIZE; z += CHUNK_SIZE) for (let x = 0; x <= head.dims.chunksX * CHUNK_SIZE; x += CHUNK_SIZE) most = Math.max(most, at(x, z));
   expect([wide.first.br, at(...wide.first.at), wide.first.sectors.length]).toEqual([most, most, 4]);
-  const overviews = wide.parts.filter((p) => p.kind === "overview").reduce((n, p) => n + p.br.length, 0);
+  // Of the overviews, those the heaviest place's sectors lie in.
+  const overviews = firstFrameParts(head, ...wide.first.at).filter((p) => p.kind === "overview").reduce((n, p) => n + br(p.name), 0);
   const grounds = wide.parts.filter((p) => p.kind === "ground" && wide.first.sectors.includes(`${p.col}-${p.row}`)).reduce((n, p) => n + p.br.length, 0);
   expect(wide.first.br).toBe(br(head.name) + overviews + grounds);
   // Until the statics are all in hand there: every part but the tops.

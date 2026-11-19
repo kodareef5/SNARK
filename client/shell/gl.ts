@@ -13,7 +13,7 @@ import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, le
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, lampsOn, skinMode } from "../core/render/surface.ts";
-import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
+import { SKIRT_BEHIND, coarseArea, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import type { Tier } from "../core/assets/tiers.ts";
 import type { Manifest, ManifestMesh } from "../../shared/pack/manifest.ts";
@@ -179,6 +179,8 @@ export class GlRenderer {
   /** The terrain's pictures (terrain.ts), and the two copies of the window's pair, heights then tints. */
   private readonly ground: GroundSize;
   private windows: WebGLTexture[] = [];
+  /** The heightfield's changes the whole map's pair on the card holds. */
+  private mapSeen = 0;
   private readonly materials: readonly PackMaterial[];
   /** Each mesh's bounds and what its stored texture coordinates span, as the manifest has them once its page has come. */
   private readonly meshes: readonly ManifestMesh[];
@@ -251,6 +253,7 @@ export class GlRenderer {
       return t;
     };
     const g = this.ground, coarse = coarseGround(this.hf);
+    this.mapSeen = this.hf.changes.length;
     texture(UNIT.palette, gl.RGBA8, 256, this.finish.height, gl.RGBA, gl.UNSIGNED_BYTE, this.finish.pixels);
     texture(UNIT.heights, gl.R16UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_SHORT, coarse.heights);
     texture(UNIT.tint, gl.R8UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_BYTE, coarse.tint);
@@ -659,6 +662,14 @@ export class GlRenderer {
       }
     } else if (error !== gl.NO_ERROR) this.errors++;
     if (asked) this.unaskedSlots.length = this.unaskedTextures.length = 0;
+    // The whole map's pair again where the ground changed since it went on the card.
+    for (const c = this.hf.changes; this.mapSeen < c.length; this.mapSeen += 4) {
+      const a = coarseArea(this.hf, c[this.mapSeen]!, c[this.mapSeen + 1]!, c[this.mapSeen + 2]!, c[this.mapSeen + 3]!);
+      gl.activeTexture(gl.TEXTURE0 + UNIT.heights);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, a.i, a.j, a.w, a.h, gl.RED_INTEGER, gl.UNSIGNED_SHORT, a.heights);
+      gl.activeTexture(gl.TEXTURE0 + UNIT.tint);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, a.i, a.j, a.w, a.h, gl.RED_INTEGER, gl.UNSIGNED_BYTE, a.tint);
+    }
     // Rows of a copy of the terrain window, from the heightfield as it lies, and the copy drawn with on its units.
     const w = p.groundWindow;
     const drawn = w[0]!, copy = w[3]!, i = w[4]!, j = w[5]!, row = w[6]!, rows = w[7]!;

@@ -53,18 +53,27 @@ export function groundSize(hf: Pick<Heightfield, "nx" | "nz" | "cell">): GroundS
 
 /** The whole map's pair: the height and tint of every COARSE-th sample. A map's side is whole chunks, so its last sample is one. */
 export function coarseGround(hf: Heightfield): { heights: Uint16Array; tint: Uint8Array } {
-  const size = groundSize(hf);
-  const w = size.width[SOURCE_MAP]!, h = size.height[SOURCE_MAP]!;
+  return coarseArea(hf, 0, 0, hf.dims.chunksX, hf.dims.chunksZ);
+}
+
+/**
+ * The whole map's pair over chunks cx0, cz0 up to cx1, cz1, their far edges among them, as the card takes it again where
+ * the ground changed (Heightfield.changes): the corner and the size in the pair's samples, and their heights and tints.
+ */
+export function coarseArea(hf: Heightfield, cx0: number, cz0: number, cx1: number, cz1: number): { i: number; j: number; w: number; h: number; heights: Uint16Array; tint: Uint8Array } {
+  const per = CHUNK_SIZE / hf.cell / COARSE;
+  const i0 = cx0 * per, j0 = cz0 * per;
+  const w = cx1 * per - i0 + 1, h = cz1 * per - j0 + 1;
   const heights = new Uint16Array(w * h);
   const tint = new Uint8Array(w * h);
   for (let j = 0; j < h; j++) {
     for (let i = 0; i < w; i++) {
-      const at = Math.min(j * COARSE, hf.nz - 1) * hf.nx + Math.min(i * COARSE, hf.nx - 1);
+      const at = (j0 + j) * COARSE * hf.nx + (i0 + i) * COARSE;
       heights[j * w + i] = hf.heights[at]!;
       tint[j * w + i] = hf.tint[at]!;
     }
   }
-  return { heights, tint };
+  return { i: i0, j: j0, w, h, heights, tint };
 }
 
 /**

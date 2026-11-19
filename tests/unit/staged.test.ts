@@ -8,7 +8,8 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { FramePacket, SOURCE_WINDOW } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
-import { TerrainLod, coarseGround, groundSize, type GroundBudget } from "../../client/core/render/terrain.ts";
+import { TerrainLod, coarseArea, coarseGround, groundSize, type GroundBudget } from "../../client/core/render/terrain.ts";
+import { Lakes } from "../../client/core/render/lakes.ts";
 import { ReliefTiles, paintRelief } from "../../client/core/tactical.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
@@ -16,6 +17,7 @@ import { Rng } from "../../shared/rng.ts";
 import { ground, groundUnder } from "../../shared/world/collide.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_STEP, joinParts, mapHeightfield, nodeLayers, parseMap, readHead, readPart, setGround, writeMap, type GroundPiece, type MapHead, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
+import type { NodeSource, NodeSpot } from "../../shared/world/nodes.ts";
 import { StagedMap } from "../../client/core/mapload.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
@@ -123,7 +125,6 @@ function cornerStaged(file: Uint8Array): { staged: StagedMap; grounds: GroundPie
   const { head, overviews, grounds } = partsOf(file);
   const staged = new StagedMap(head);
   for (const o of overviews) staged.take(o);
-  staged.settle();
   return { staged, grounds };
 }
 
@@ -301,4 +302,101 @@ test("a sector's ground is copied into the heightfield and let go: the staged ma
     expect([listed, grounds.some((g) => held.has(g.heights.buffer) || held.has(g.tint.buffer)), rows.length > 0, rows.every((b) => held.has(b))]).toEqual([listed, false, listed, true]);
     expect([listed, staged.hf.heights, [...staged.nodes]]).toEqual([listed, mapHeightfield(parseMap(file)).heights, [...parseMap(file).nodes]]);
   }
+});
+
+/** Every node `source` stands, chunk by chunk and slot by slot, as its kind, form, place and turn; the ground's height left out. */
+function standing(source: NodeSource, chunks: number): string[] {
+  const spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const out: string[] = [];
+  for (let c = 0; c < chunks; c++) {
+    for (let k = 0; k < source.perChunk; k++) {
+      source.at(c, k, spot);
+      if (spot.kind !== 0) out.push(`${c} ${k} ${spot.kind} ${spot.form} ${spot.x} ${spot.z} ${spot.yaw}`);
+    }
+  }
+  return out;
+}
+
+test("before any overview the ground is the head's coarse picture as a 64 m tile draws it, the pond stands flat on it and no node stands; each overview then brings its square's ground, nodes and water, and once all have come they are the map's", () => {
+  const file = writeMap(cornerMap());
+  const map = parseMap(file);
+  const { head, overviews } = partsOf(file);
+  const staged = new StagedMap(head);
+  const hf = staged.hf;
+  // The coarse picture as a heightfield of 64 m, whose heightAt is the triangles a tile that coarse draws; a sample's tint the nearest corner's.
+  const coarse = new Heightfield(head.dims, CHUNK_SIZE, head.minY, head.stepY, Uint16Array.from(head.coarse.heights));
+  let wrong = 0;
+  for (let j = 0; j < hf.nz; j++) {
+    for (let i = 0; i < hf.nx; i++) {
+      const want = Math.round((coarse.heightAt(i * hf.cell, j * hf.cell) - head.minY) / head.stepY);
+      if (hf.heights[j * hf.nx + i] !== want || hf.tint[j * hf.nx + i] !== head.coarse.tint[Math.round(j / PER) * 7 + Math.round(i / PER)]) wrong++;
+    }
+  }
+  // Most of the 64 m square round the corner in the pond's middle is under it: that corner names it and stands under its surface.
+  const pond = 3 * 7 + 3;
+  expect([wrong, head.coarse.bodies![pond], hf.water!.bodyAt(192, 192), hf.waterAt(192, 192), hf.heightAt(192, 192) < 7.5]).toEqual([0, 1, 1, 7.5, true]);
+  // The lakes draw it from the first frame: a tile of its faces goes on the card.
+  const p = new FramePacket();
+  new Lakes(hf, hf.water!, 0).update(p, { spend() {}, reserve() {} }, 192, 192, 2000);
+  expect(p.assetUploads.length).toBe(1);
+  const reg = nodeRegistry();
+  const chunks = head.dims.chunksX * head.dims.chunksZ;
+  const nodes = nodeLayers(hf.dims, hf, reg, staged.nodes)!;
+  const all = standing(nodeLayers(map.dims, mapHeightfield(map), reg, map.nodes)!, chunks);
+  expect([standing(nodes, chunks), all.length > 100]).toEqual([[], true]);
+  // Each overview, the nodes of its square's chunks and no others.
+  const inside = (o: OverviewPiece) => (line: string): boolean => {
+    const c = Number(line.split(" ")[0]);
+    return c % 6 >= o.sq.cx0 && c % 6 < o.sq.cx1 && Math.floor(c / 6) >= o.sq.cz0 && Math.floor(c / 6) < o.sq.cz1;
+  };
+  const came: OverviewPiece[] = [];
+  for (const o of scrambled(overviews, 8)) {
+    staged.take(o);
+    came.push(o);
+    expect(standing(nodes, chunks)).toEqual(all.filter((line) => came.some((q) => inside(q)(line))));
+  }
+  // The water of every overview, its squares where the map holds them and none in a chunk the coarse picture alone reached.
+  const [w, v] = [hf.water!, map.water!];
+  let squares = 0;
+  for (let z = 1; z < hf.sizeZ; z += 2) for (let x = 1; x < hf.sizeX; x += 2) if (w.bodyAt(x, z) !== v.bodyAt(x, z)) squares++;
+  expect([squares, [...w.chunks()].filter((c) => !v.chunks().includes(c)).every((c) => w.squares.subarray(w.block[c]!, w.block[c]! + w.side * w.side).every((b) => b === 0))]).toEqual([0, true]);
+  expect([...w.box]).toEqual([...v.box]);
+});
+
+test("a sector's ground that comes before its overview waits for it: none of its chunks holds its own until the overview has come, and then each does, its ground the map's", () => {
+  const { head, overviews, grounds } = partsOf(file);
+  const staged = new StagedMap(head);
+  const g = grounds.find((p) => p.sq.cx0 > 0)!;
+  const o = overviews.find((q) => q.sq.cx0 <= g.sq.cx0 && q.sq.cx1 >= g.sq.cx1)!;
+  staged.take(g);
+  expect([staged.hf.exact.every((e) => e === 0), staged.hf.changes.length / 4]).toEqual([true, 1]);
+  staged.take(o);
+  let off = 0;
+  for (let j = g.sq.cz0 * PER; j <= g.sq.cz1 * PER; j++) for (let i = g.sq.cx0 * PER; i <= g.sq.cx1 * PER; i++) if (staged.hf.heights[j * whole.nx + i] !== whole.heights[j * whole.nx + i]) off++;
+  const [x0, z0, x1, z1] = [g.sq.cx0 * CHUNK_SIZE, g.sq.cz0 * CHUNK_SIZE, g.sq.cx1 * CHUNK_SIZE - 0.01, g.sq.cz1 * CHUNK_SIZE - 0.01];
+  expect([off, staged.hf.exactIn(x0, z0, x1, z1), staged.hf.exact.filter((e) => e === 1).length, staged.hf.changes.length / 4]).toEqual([0, true, (g.sq.cx1 - g.sq.cx0) * (g.sq.cz1 - g.sq.cz0), 3]);
+});
+
+test("the whole map's pair on the card, made once and sent again where the ground changed, is at every step what a picture made then would be, and the map's own once the overviews have come", () => {
+  const { head, overviews, grounds } = partsOf(file);
+  const staged = new StagedMap(head);
+  const hf = staged.hf;
+  const card = coarseGround(hf);
+  const across = groundSize(hf).width[0]!;
+  let seen = hf.changes.length;
+  let sent = 0;
+  for (const piece of scrambled([...overviews, ...grounds], 9)) {
+    staged.take(piece);
+    for (const c = hf.changes; seen < c.length; seen += 4) {
+      const a = coarseArea(hf, c[seen]!, c[seen + 1]!, c[seen + 2]!, c[seen + 3]!);
+      for (let r = 0; r < a.h; r++) {
+        card.heights.set(a.heights.subarray(r * a.w, (r + 1) * a.w), (a.j + r) * across + a.i);
+        card.tint.set(a.tint.subarray(r * a.w, (r + 1) * a.w), (a.j + r) * across + a.i);
+      }
+      sent += a.w * a.h;
+    }
+    expect(card).toEqual(coarseGround(hf));
+  }
+  // The overviews' squares and the sectors' once each, their far edges among them.
+  expect([card, sent]).toEqual([coarseGround(whole), [...overviews, ...grounds].reduce((n, p) => n + ((p.sq.cx1 - p.sq.cx0) * 8 + 1) * ((p.sq.cz1 - p.sq.cz0) * 8 + 1), 0)]);
 });

@@ -1,8 +1,9 @@
 // Each grid cell is two triangles split along the diagonal from (i, j) to (i+1, j+1). Collision, prediction and LOD 0 rendering
 // all use this triangulation, so what is drawn is what is solid. Everything below the surface is solid.
 //
-// A client's ground comes a part at a time (shared/world/mapfile.ts): every sample is first filled from its overview, and
-// each sector then sets its own. `exact` says which chunks hold the map's own samples, and `changes` where samples changed.
+// A client's ground comes a part at a time (shared/world/mapfile.ts): every sample is first filled from the head's coarse
+// picture, then from its overview, and each sector then sets its own. `exact` says which chunks hold the map's own
+// samples, and `changes` where samples changed.
 
 import { CHUNK_SIZE, chunkCount, framed, type FramedDims, type MapDims } from "../coords.ts";
 import type { MapWater } from "./water.ts";
