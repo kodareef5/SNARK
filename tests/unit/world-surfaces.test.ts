@@ -2,9 +2,10 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SURFACE_FINISHES, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_FAR, WORLD_MRO, WORLD_NEAR, WORLD_RISE, WorldFinishes, finishMetres, edgeOf, edged, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_NEAR, WORLD_RISE, WorldFinishes, finishMetres, edgeOf, edged, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { srgbToLinear } from "../../client/core/render/surface.ts";
 import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
 import type { PackMaterial, PackTexture } from "../../shared/pack/pack.ts";
 import { WORLD_ART, paintedOf, worldMaterials } from "../../tools/surfaces/build.ts";
@@ -159,6 +160,7 @@ artTest("each finish's painted size, relief and module are the ones the renderer
     const painted = paintedOf(name), f = SURFACE_FINISHES[name];
     expect([name, painted.metres, painted.height_mm, painted.module?.map((m) => m.toFixed(6))]).toEqual([name, f.metres, f.height, f.module?.map((m) => m.toFixed(6))]);
     expect([name, [...rgbaOf(materials[k]!, "mro", 1024).pictures[0]!].slice(0, 3)]).toEqual([name, [...WORLD_MRO[k]!]]);
+    expect([name, [...rgbaOf(materials[k]!, "base", 2048).pictures[0]!].slice(0, 4)]).toEqual([name, [...WORLD_BASE[k]!]]);
   });
   expect(JSON.parse(readFileSync(join(WORLD_ART, "grass", "material.json"), "utf8")).metres).toBe(SURFACE_FINISHES.grass.metres);
 });
@@ -366,6 +368,15 @@ test("drawn early, a finish keeps its base colours and stands at its packed map'
   const flat = [128 / 255, 128 / 255, 1, 1], plain = [...mean, 0.5];
   expect(at(1, [0.2, 0.9, 0.3, 0.8], [0.9, 0.1, 1, 1])).toEqual(at(0, plain, flat));
   expect(at(0.5, plain, flat)).toEqual(at(0, plain, flat));
+  // Before anything has come, the finish is its means, its base colour's too, and reads no map at all; that mean is what
+  // the base colour map comes to at its coarsest, so the first of it to come sharpens the picture and does not recolour it.
+  const read = (early: number, sample: WorldSample): number[] => {
+    const albedo = Float64Array.of(0.4, 0.4, 0.4), orm = new Float64Array(3), normalOut = new Float64Array(3);
+    worldSurface(albedo, orm, normalOut, albedo, id, x, 0, 7.1, 0, 1, 0, 0.002, city, sample, false, null, null, early);
+    return [...albedo, ...orm, ...normalOut].map((c) => Number(c.toFixed(6)));
+  };
+  const base = WORLD_BASE[id]!.map((b, c) => (c < 3 ? srgbToLinear(b / 255) : b / 255));
+  expect(read(2, (role) => { throw new Error(`read role ${role}`); })).toEqual(read(1, (role, _layer, _u, _v, _spread, out) => out.set(role === 0 ? base : role === 1 ? flat : plain)));
   // Maps that do add something: early, none of it; risen, all of it; between, between.
   const [none, half, all] = [1, 0.5, 0].map((e) => at(e, [0.6, 0.4, 0, 0.8], [0.7, 0.4, 1, 1]));
   expect(none).toEqual(at(1, plain, flat));

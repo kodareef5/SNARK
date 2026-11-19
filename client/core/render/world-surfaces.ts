@@ -5,6 +5,7 @@ import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
+import { srgbToLinear } from "./surface.ts";
 
 type Out = Float64Array;
 type Numbers = ArrayLike<number>;
@@ -17,6 +18,14 @@ export const WORLD_SHARP = 0.6;
 export const WORLD_MRO: readonly (readonly [number, number, number])[] = [
   [240, 225, 0], [251, 246, 0], [183, 221, 0], [242, 184, 0], [217, 237, 0], [234, 238, 0], [233, 225, 0], [195, 225, 0],
   [254, 225, 0], [239, 233, 0], [207, 192, 0], [249, 217, 0], [255, 161, 1], [254, 205, 0], [245, 221, 0], [255, 54, 0],
+];
+/**
+ * Each finish's base colour and tint mask, its base colour map's one-pixel mip as stored (sRGB): what a finish is drawn
+ * as before any of its maps has come, so that what comes sharpens it and never colours it otherwise.
+ */
+export const WORLD_BASE: readonly (readonly [number, number, number, number])[] = [
+  [98, 110, 48, 223], [206, 183, 158, 255], [128, 102, 77, 204], [93, 74, 60, 253], [125, 125, 123, 251], [150, 134, 116, 125], [96, 96, 93, 104], [128, 125, 119, 218],
+  [137, 134, 126, 253], [160, 113, 89, 211], [143, 91, 68, 204], [124, 80, 60, 1], [113, 111, 106, 252], [197, 192, 183, 255], [95, 89, 80, 244], [116, 128, 128, 253],
 ];
 /**
  * The base-two logarithm of the tiles a pixel crosses beyond which a finish begins to be read as from afar, and the
@@ -58,7 +67,8 @@ export function citySurface(out: Float32Array, id: string): void {
 }
 const finishes = SURFACE_NAMES.map((name, i) => {
   const f = SURFACE_FINISHES[name], g = SURFACE_GROUPS[f.group];
-  return { ...f, metres: f.metres * g.scale, bump: f.bump * g.bump, weather: f.weather * g.weather, tint: g.tint, wetness: g.wetness, growth: g.growth, module: f.module ?? [0, 0], mean: WORLD_MRO[i]!.map((b) => b / 255) };
+  const b = WORLD_BASE[i]!;
+  return { ...f, metres: f.metres * g.scale, bump: f.bump * g.bump, weather: f.weather * g.weather, tint: g.tint, wetness: g.wetness, growth: g.growth, module: f.module ?? [0, 0], mean: WORLD_MRO[i]!.map((v) => v / 255), base: [srgbToLinear(b[0] / 255), srgbToLinear(b[1] / 255), srgbToLinear(b[2] / 255), b[3] / 255] };
 });
 /** Metres across finish `index`'s tile in a city (citySurface). */
 export const finishMetres = (index: number, city: Numbers): number => finishes[index]!.metres * city[3]!;
@@ -215,12 +225,21 @@ const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Fl
  * A finish's maps at tile point (u, v), its second copy shown over the first where secondShare says, the higher
  * showing; where `depth` (tiles) is more than 0, read where the ray to the eye along `view` (relief) meets the painted
  * height. Into `maps`. Where `early` is 1 only the base colours have come: the rest are read as their means, and the
- * copies meet by their noise alone; between 0 and 1 they come up to what is read.
+ * copies meet by their noise alone; between 0 and 1 they come up to what is read. Where it is 2 nothing has come, and
+ * the finish is its means, its base colour's too.
  */
 function finishMaps(id: number, u: number, v: number, spread: number, sample: WorldSample, light: boolean, view: Numbers, depth: number, early = 0): void {
   const f = finishes[id]!, turned = f.module[0] === 0;
   const far = light ? 1 : clamp((spread - WORLD_FAR) / WORLD_FAR_BAND);
   const second = secondShare(u, v), t = second * (1 - far);
+  if (early >= 2) {
+    for (let c = 0; c < 4; c++) maps.base[c] = f.base[c]!;
+    for (let c = 0; c < 3; c++) maps.mro[c] = f.mean[c]!;
+    maps.mro[3] = 0.5;
+    maps.lean[0] = maps.lean[1] = 0;
+    maps.patch = second;
+    return;
+  }
   if (depth > 0 && early < 1) {
     relief(id, u, v, spread, view, depth, t >= 0.5, sample);
     u = met[0]!;
@@ -278,7 +297,7 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
  * of one copy alone, and no stain. (nx, ny, nz) is the face's normal, which chooses the projection and where growth
  * takes; `smooth`, where given, is the normal the light falls on and the bump turns (the ground's, from its heights),
  * and otherwise the face's is. `early` is the frame's (FramePacket `worldEarly`): 1 while only the base colours have
- * come, read as the far path reads them. `eye`, where given, is the way to the eye, and the finish is read where that ray meets
+ * come, read as the far path reads them, and 2 before any has, the finish its means. `eye`, where given, is the way to the eye, and the finish is read where that ray meets
  * its painted height (assets/tiers.ts `relief`).
  */
 export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Numbers, index: number, x: number, y: number, z: number,
@@ -603,6 +622,7 @@ ${vectors("WF", finishes.map((f) => [f.metres, f.bump, f.rough, f.metal]))}
 ${vectors("WT", finishes.map((f) => [...f.tint, f.palette]))}
 ${vectors("WW", finishes.map((f) => [f.weather, f.wetness, f.growth, f.mean[1]!]))}
 ${vectors("WO", finishes.map((f) => [...f.mean, 0.5]))}
+${vectors("WB", finishes.map((f) => f.base))}
 ${vectors("WM", finishes.map((f) => [...f.module, f.height, f.lift]))}const float WS[16] = float[16](${finishes.map((f) => fl(f.patch)).join(",")});
 
 float surfaceHash(ivec2 p) {
@@ -655,6 +675,14 @@ void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out ve
   float far = clamp((log2(max(length(dx), length(dy))) - ${fl(WORLD_FAR)}) / ${fl(WORLD_FAR_BAND)}, 0.0, 1.0);
 #endif
   float t = second * (1.0 - far);
+  // Nothing come yet (uWorldReady 3): the finish is its means, so what comes sharpens it and never recolours it.
+  if (uWorldReady > 2.5) {
+    base = WB[id];
+    mro = WO[id];
+    bump = vec2(0.0);
+    tone = second;
+    return;
+  }
   // 1 while the base colours alone have come: the rest stand at their means, and the copies meet by their noise.
   float early = clamp(uWorldReady - 1.0, 0.0, 1.0);
 #ifdef WORLD_RELIEF
