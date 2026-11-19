@@ -174,18 +174,41 @@ function orderSprays(indices: Uint32Array, first: number, count: number, vertice
   order.forEach((t, k) => indices.set(was.subarray(t * 3, t * 3 + 3), first + k * 3));
 }
 
-/** A level drawn with materials: triangles for the cache inside each run, then vertices, surfaces and skins in the order those first use them. */
+/**
+ * A level drawn with materials: vertices whose vertex, surface and skin bytes are all the same made one, then triangles
+ * for the cache inside each run, then vertices, surfaces and skins in the order those first use them. A vertex made one
+ * gives every triangle that names it the bytes it had, so the level draws as it did. A source splits a vertex for each
+ * face it is on (a box's corner is three, each with its face's normal and texture coordinate), and where neighbouring
+ * faces agree on all of it the split is only weight: a tenth of the cruise's finest vertices.
+ */
 function orderRuns(pack: Pack, lod: PackLod, cutout: (material: number) => boolean): Level {
-  const indices = readIndices(pack, lod);
-  const vertices = lodVertices(pack, lod);
+  const allVertices = lodVertices(pack, lod);
+  const allSurface = lodSurface(pack, lod)!;
+  const allSkin = lodSkin(pack, lod);
+  const first = new Map<string, number>();
+  const kept: number[] = [];
+  const to = new Uint32Array(lod.vertexCount);
+  // A vertex's bytes as a key: each two bytes one character, so two keys are the same string only where the bytes are.
+  const record = new Uint8Array(VERTEX_BYTES + SURFACE_BYTES + SKIN_BYTES);
+  const halves = new Uint16Array(record.buffer, 0, (allSkin ? record.length : VERTEX_BYTES + SURFACE_BYTES) / 2);
+  for (let v = 0; v < lod.vertexCount; v++) {
+    record.set(allVertices.subarray(v * VERTEX_BYTES, (v + 1) * VERTEX_BYTES), 0);
+    record.set(allSurface.subarray(v * SURFACE_BYTES, (v + 1) * SURFACE_BYTES), VERTEX_BYTES);
+    if (allSkin) record.set(allSkin.subarray(v * SKIN_BYTES, (v + 1) * SKIN_BYTES), VERTEX_BYTES + SURFACE_BYTES);
+    const key = String.fromCharCode(...halves);
+    let k = first.get(key);
+    if (k === undefined) first.set(key, (k = kept.push(v) - 1));
+    to[v] = k;
+  }
+  const indices = readIndices(pack, lod).map((v) => to[v]!);
+  const vertices = permuted(allVertices, kept, VERTEX_BYTES);
   const runs = lod.sections!;
   for (let k = 0; k < runs.length; k += 3) {
     if (cutout(runs[k]!)) orderSprays(indices, runs[k + 1]!, runs[k + 2]!, vertices);
-    else cacheOrder(indices, runs[k + 1]!, runs[k + 2]!, lod.vertexCount);
+    else cacheOrder(indices, runs[k + 1]!, runs[k + 2]!, kept.length);
   }
-  const from = fetchOrder(indices, lod.vertexCount);
-  const skin = lodSkin(pack, lod);
-  return { indices, vertices: permuted(vertices, from, VERTEX_BYTES), surface: permuted(lodSurface(pack, lod)!, from, SURFACE_BYTES), skin: skin && permuted(skin, from, SKIN_BYTES) };
+  const from = Array.from(fetchOrder(indices, kept.length), (k) => kept[k]!);
+  return { indices, vertices: permuted(allVertices, from, VERTEX_BYTES), surface: permuted(allSurface, from, SURFACE_BYTES), skin: allSkin && permuted(allSkin, from, SKIN_BYTES) };
 }
 
 /**

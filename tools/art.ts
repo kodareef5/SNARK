@@ -110,7 +110,9 @@ function sheet(asset: Asset, pack: Pack, report: Report, outDir: string, say: (l
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "sheet.png"), encodePng(drawn.width, drawn.height, drawn.pixels));
   // The same sheet a page a file, each small enough to be read at full size.
-  const pages = drawn.pages.map((p) => ({ name: p.name, file: `sheet.${p.name}.png`, y: p.y, width: p.width, height: p.height }));
+  // A page is named after its mesh, and a piece's id may hold a slash (core:tide_eye/crown): in a file's name that was a
+  // folder that is not there, and the sheet of every such asset stopped at its first page.
+  const pages = drawn.pages.map((p) => ({ name: p.name, file: `sheet.${p.name.replaceAll("/", "_")}.png`, y: p.y, width: p.width, height: p.height }));
   drawn.pages.forEach((p, i) => writeFileSync(join(dir, pages[i]!.file), encodePng(p.width, p.height, p.pixels)));
   writeFileSync(join(dir, "sheet.json"), JSON.stringify({ ...report, sheet: { file: "sheet.png", width: drawn.width, height: drawn.height, pages, cells: drawn.cells } }, null, 2) + "\n");
   say(`  ${join(dir, "sheet.png")} and ${pages.length} pages beside it (${pages.map((p) => p.name).join(", ")})\n  ${join(dir, "sheet.json")}`);

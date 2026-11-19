@@ -646,6 +646,31 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
   run(180);
   expect([...new Set(meshes())].sort()).toEqual(["core:bow", ...["feet", "hands", "legs", "torso"].map(slot => "core:human_m/armor/meridian/" + slot)]);
 
+  // Seen by another: close by the suit is drawn; from farther its levels come sooner than the body's would; and from far
+  // off the body's own parts stand in for it, since nobody can tell plates from paint there.
+  const watch = (metres: number): { id: string; level: number }[] => {
+    // The wearer is set down `metres` north of the watcher, who turns to face it.
+    ents.x[e] = ents.x[eb]!;
+    ents.z[e] = ents.z[eb]! + metres;
+    ents.y[e] = h.world.hf.heightAt(ents.x[e]!, ents.z[e]!);
+    bo.controls.yaw = 0;
+    h.run(500, (now) => {
+      app.frame(now, 1280, 720);
+      seen = bo.frame(now, 1280, 720);
+    });
+    return [...seen!.drawMesh.subarray(0, seen!.drawCount)].map((m, d) => ({ id: pack.header.meshes[m]!.id, level: seen!.drawLod[d]!, flags: seen!.drawFlags[d]! }))
+      .filter((d) => (d.flags & (DRAW_SKINNED | DRAW_NEAR)) === DRAW_SKINNED && d.id.startsWith("core:human_m/"));
+  };
+  const suit = (drawn: { id: string; level: number }[]) => drawn.filter((d) => d.id.includes("/armor/meridian/"));
+  const near = watch(3);
+  expect(suit(near).map((d) => d.id).sort()).toEqual(["feet", "hands", "head", "legs", "torso"].map((slot) => "core:human_m/armor/meridian/" + slot));
+  expect(suit(near).every((d) => d.level === 0)).toBe(true);
+  const middle = watch(12);
+  expect(suit(middle).length).toBe(5);
+  expect(suit(middle).every((d) => d.level >= 1)).toBe(true);
+  const far = watch(130);
+  expect(suit(far)).toEqual([]);
+  expect(far.map((d) => d.id).sort()).toEqual(["feet", "hands", "head", "legs", "torso"].map((slot) => "core:human_m/" + slot));
 });
 
 /** Fails if a node is off the canvas, a text is wider than its box, or two controls overlap. */

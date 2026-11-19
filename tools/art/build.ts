@@ -134,7 +134,7 @@ export function convertModel(asset: Asset & { spec: CreatureAsset }, glb: string
     });
     const distanceLods = t.mesh.id === asset.id ? spec.distanceLods?.(made.rig.names!, palette) : undefined;
     meshes[meshes.indexOf(t.mesh)] = withSurfaceLevels(t.mesh, {
-      budgets: t.budgets, flat: t.flat ?? Math.max(1, t.budgets.length), maps: t.maps, palette, preserveBones, distanceLods,
+      budgets: t.budgets, flat: t.flat ?? Math.max(1, t.budgets.length), maps: t.maps, palette, preserveBones, distanceLods, holdParts: spec.holdParts,
     });
   }
   out.meshes.push(...meshes);
@@ -411,7 +411,7 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
     const distanceLods = m.id === asset.id ? spec.distanceLods?.(names, palette) : undefined;
     return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, {
       budgets, flat: plan.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}),
-      palette, preserveBones, distanceLods,
+      palette, preserveBones, distanceLods, holdParts: spec.holdParts,
     });
   });
   // A creature's rig takes what its asset now says of how it moves and dies.
