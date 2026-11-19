@@ -44,6 +44,9 @@ export function verdict(s: Stats): Verdict {
   if (b.count >= room * 0.9) found.push([STRAINED, `${b.count.toLocaleString("en")} bodies of the ${room.toLocaleString("en")} the world has room for`]);
   if (b.refused > 0) found.push([STRAINED, `${counted(b.refused, "body", "bodies")} refused for want of room since the start`]);
   if (loop.seconds === 0) found.push([STRAINED, "no tick has been timed yet"]);
+  // Whose the long ticks were says whether the server or the machine it runs on is to be looked at.
+  const { own, core, page } = s.ticks.long;
+  if (found.length > 0 && own + core + page > 0) found.push([WELL, `of the ticks over ${msText(budget)} in the last two minutes, ${own} were the server's own work, ${core} waited for a core and ${page} for pages`]);
   found.sort((a, c) => c[0] - a[0]);
   const level = found[0]?.[0] ?? WELL;
   const word = level === FAILING ? (f ? "Not saving" : "Falling behind") : level === STRAINED ? "Strained" : "Healthy";

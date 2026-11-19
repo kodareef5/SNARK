@@ -71,11 +71,13 @@ for (const [name, link] of LINKS) {
       put(walker.ent, 100, 100);
       const e = car(100, 104);
       h.run(1500);
-      const z = a.z[e]!, contacts = h.host.urban.contacts!.contacts, met = h.server.feet.met;
+      const z = a.z[e]!, contacts = h.host.urban.contacts!.contacts, met = h.server.feet.met, kept = h.host.urban.restingKept;
       h.pilots[0]!.moveZ = 1;
       const w = watch(h, s, 5000);
       say(`${name}, into a parked car`, w);
       expect(h.server.feet.met - met).toBeGreaterThan(100);
+      // The car's heartbeats while it is pressed are answered from the last (server/vehicle-rest.ts), and it still stops the walker.
+      expect(h.host.urban.restingKept - kept).toBeGreaterThan(0);
       expect(w.corrections - w.line).toBe(0);
       // The car's own sweep finds the walker clear of its true hull, so it is neither pushed nor pushes.
       expect(h.host.urban.contacts!.contacts).toBe(contacts);

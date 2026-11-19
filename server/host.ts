@@ -87,6 +87,7 @@ import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { settle, settleNear } from "./place.ts";
 import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
+import { PART } from "./admin/parts.ts";
 import { CarReturn, DEADLINE_CAR } from "./car-return.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap } from "../shared/world/mapfile.ts";
@@ -1100,6 +1101,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); };
   const seatedHead = new Float64Array(3);
+  const parts = game.parts;
   game.onStep = (tick) => {
     creative.step(tick);
     for (const c of game.clients) {
@@ -1109,6 +1111,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       focus.set(c.id, c.chunk);
       moved(was, c.chunk);
     }
+    parts.mark(PART.focus);
     for (const c of game.clients) {
       if (!c?.active || c.ent < 0) continue;
       const rec = records.byPid.get(c.pid);
@@ -1128,33 +1131,45 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       else if (kind === DEADLINE_FIRE) stations.due(pid, stamp);
       else if (kind === DEADLINE_TAME) taming.due(pid, stamp);
       else if (kind === DEADLINE_BREED) breeding.due(pid, stamp);
-      else if (kind === DEADLINE_SPAWN) spawner?.due(pid, stamp);
+      else if (kind === DEADLINE_SPAWN) {
+        parts.mark(PART.deadlines);
+        spawner?.due(pid, stamp);
+        parts.mark(PART.spawner);
+      }
       else if (kind === DEADLINE_CORPSE) corpses.due(pid, stamp);
       else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
       else if (kind === DEADLINE_CAR) carReturn?.due(pid, stamp);
     });
     refreshInventories();
+    parts.mark(PART.deadlines);
     // Struggling, and the grace after a bola, once the buffs that came due have ended.
     entangle.step(tick);
     creatureTraits.step(creatures.awake, creatures.awakeCount);
     death.step();
+    parts.mark(PART.life);
     // Riders move with their mounts before combat aims at either.
     urban.step();
     riding.step();
     carry.step(tick);
+    parts.mark(PART.riders);
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
     projectiles.step();
     clouds.step();
+    parts.mark(PART.combat);
     creatures.step(tick);
+    parts.mark(PART.creatures);
     creatureContacts.step(creatures.awake, creatures.awakeCount);
     for (const e of urban.contacts!.step()) {
       urban.syncAfterContact(e);
       riding.syncAfterContact(e);
     }
+    parts.mark(PART.contacts);
     impale.step();
     spawner?.step(tick);
+    parts.mark(PART.spawner);
     build.step();
+    parts.mark(PART.build);
     taming.step();
     breeding.step(tick);
     feces.step(tick);
@@ -1162,6 +1177,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     corpses.step(tick);
     hurt.step(tick);
     voice.step(tick);
+    parts.mark(PART.world);
     // A full entity store is logged when it first refuses, and then at most once a minute.
     if (world.ents.refused !== refusedTold && tick >= refusedNext) {
       say(`the world has no place for more bodies (${world.ents.refused - refusedTold} refused): it holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
@@ -1205,6 +1221,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     bus.flush();
     refreshInventories();
     survivorLog.step(tick);
+    parts.mark(PART.modules);
     if (persistence && opts.backups && tick % liveEvery === 0) persistence.keeper.backup();
     if (persistence && !persistence.tryCommit(commitEvery)) {
       const late = tick - persistence.failing!.since;

@@ -7,6 +7,7 @@
 import { TICK_RATE } from "../shared/coords.ts";
 import { INPUT_WINDOW, MARGIN_UNKNOWN } from "../shared/net/protocol.ts";
 import type { Client, GameServer } from "./game.ts";
+import { measure, partsText } from "./admin/parts.ts";
 
 /** Ticks kept of each session and of the loop, for a report to come and settle in. */
 const KEPT = 1024;
@@ -194,6 +195,11 @@ export class PlayLog {
       ticks, snapshots, skipped: Math.max(0, skippedTo - skipped), bytes: Math.max(0, sentTo - sent), waiting: most,
       margin: lo > hi ? null : [lo, hi], lead: leadLo > leadHi ? null : [leadLo, leadHi],
       guessed, longest, guesses, late: Math.round(worstLate), long: Math.round(worstLong), given, loop,
+      // Beside the loop's ticks, the server's own record of its long ones (server/admin/parts.ts): whose each was, and where it went.
+      whose: this.game.parts.recent(from + 1, to).slice(-LISTED).map((t) => {
+        const m = measure(this.game.parts.limit, t);
+        return [t.tick, m.whose, Math.round(m.cpu), partsText(t)];
+      }),
     };
   }
 }

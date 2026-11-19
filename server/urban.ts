@@ -34,6 +34,7 @@ import type { Client, GameServer } from './game.ts';
 import { Occupancy, type OccupancyAction, type OccupancyApproval, type OccupancyEffect } from './occupancy.ts';
 import type { EntityRecord, Records } from './records.ts';
 import { Seating, type Point } from './seating.ts';
+import { RestingBeat } from './vehicle-rest.ts';
 import type { ServerWorld } from './world.ts';
 
 interface UrbanContext {
@@ -59,7 +60,7 @@ function boatRouteLength(def: BoatVehicleDefinition): number | undefined {
   return def.boarding ? Math.hypot(2 * def.spec.halfLength, def.spec.height, 2 * def.spec.halfWidth) : undefined;
 }
 
-interface HostSeat { entity: number; handle: number; definition: VehicleDefinition; last: Point & { vx: number; vy: number; vz: number } }
+interface HostSeat { entity: number; handle: number; definition: VehicleDefinition; last: Point & { vx: number; vy: number; vz: number }; beat?: RestingBeat }
 interface Scope { epoch: number; request: number; connection: Connection | null }
 export interface UrbanIncident { action: number; tick: number; offender: number; victim: number; vehicle: number }
 /** Seat tables are pruned as hosts disappear and actors go idle; these only bound a pathological world. */
@@ -85,8 +86,9 @@ const REST_TICKS = 30;
 export class Urban {
   readonly occupancy: Occupancy;
   contacts: VehicleContacts | null = null;
-  /** Diagnostics, not replicated gameplay state: vehicles nobody drives stepped. */
+  /** Diagnostics, not replicated gameplay state: vehicles nobody drives stepped, and of those heartbeats the ones answered by the last (server/vehicle-rest.ts). */
   stepped = 0;
+  restingKept = 0;
   /** Bounded live incident feed; production save components are a separate follow-up. */
   readonly incidents: UrbanIncident[] = [];
   private readonly ctx: UrbanContext;
@@ -787,10 +789,17 @@ export class Urban {
       // Catch the car on its brake as the shove dies out, before gravity rolls it back downhill.
       const pushed = this.recoveryCoasting(e);
       if (!pushed) this.pushes.delete(pid);
-      if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
+      const resting = this.resting(e);
+      if (!driven && (!resting || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
         this.stepped++;
-        (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
+        const beat = resting && !pushed ? (host.beat ??= new RestingBeat()) : null;
+        if (beat?.holds(world, this.body)) this.restingKept++;
+        else {
+          beat?.begin(this.body);
+          (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
+          beat?.end(world, this.body);
+        }
         ents.storeBody(e, this.body);
         this.impact(e);
         ents.pose(e, world.tick);

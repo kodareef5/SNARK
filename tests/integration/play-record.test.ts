@@ -78,6 +78,18 @@ test("a clean line and a page that keeps up: nothing corrected, and the record s
   expect(text.at(-1)).toContain("nothing went wrong");
 });
 
+test("beside the loop's ticks, the record names whose each long tick was, from the server's own record of its parts", () => {
+  const r = recorded({ tcp: true, latencyMs: 40 });
+  // Every tick is kept as long, so every tick a report covers is named.
+  r.h.server.parts.limit = -1;
+  r.walk(6000);
+  const { text } = r.end();
+  const line = text.find((l) => l.startsWith("  the server's long ticks: "));
+  expect(line).toBeDefined();
+  const [own, core, page] = /: (\d+) its own work, (\d+) waiting for a core, (\d+) waiting for pages/.exec(line!)!.slice(1).map(Number);
+  expect(own! + core! + page!).toBeGreaterThan(TICK_RATE);
+});
+
 test("a page that stalls while it walks: its clock keeps time, nothing is corrected, and the late snapshots are the page's", () => {
   const r = recorded({ tcp: true, latencyMs: 40 }, { manual: true });
   const pilot = r.pilot;
@@ -161,7 +173,7 @@ test("a disagreement planted on the server: one correction of the two ends, with
 });
 
 test("a correction whose ticks the page forgot when its clock jumped back past those it sent is named for that, not left with the disagreements", () => {
-  const view = { ticks: 90, snapshots: 90, skipped: 0, bytes: 0, waiting: 0, margin: [1, 2] as [number, number], lead: [1, 3] as [number, number], guessed: 0, longest: 0, guesses: [], late: 0, long: 0, given: 0, loop: [] };
+  const view = { ticks: 90, snapshots: 90, skipped: 0, bytes: 0, waiting: 0, margin: [1, 2] as [number, number], lead: [1, 3] as [number, number], guessed: 0, longest: 0, guesses: [], late: 0, long: 0, given: 0, loop: [], whose: [] };
   const page = { v: 1, name: "ada", joined: 1, n: 0, from: 10, to: 200, ms: 5000, frames: 300, long: 0, over100: 0, over250: 0, worst: 0, ticks: 190, skipped: 0, unheld: 0, kinds: { "": 190 }, snapshots: 150, adopted: 0, moved: 2, state: 0, seats: 0, jumps: 1, margin: [1, 40] as [number, number], rtt: 2, x: 0, z: 0, frameList: [], gaps: [], unheldList: [], notes: [], t0: 0, dropped: 0, jumpList: [{ t: 120, by: -38, behind: false }], rewound: [[121, 160]] as [number, number][] };
   const correction = (t: number) => ({ t, since: t - 1, sim: t + 3, what: "moved", d: 0.05, kind: "", x: 1, y: 0, z: 1, m: 2, resumed: false, whole: true, rows: 0, statics: true, near: "", input: [0, 127, 0, 0, 0], fields: [["z", 1, 1.05]] as [string, number, number][] });
   const [s] = sessions([{ at: "", slot: 0, page: { ...page, corrections: [correction(125), correction(180)] }, server: view }]);
