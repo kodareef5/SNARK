@@ -163,6 +163,8 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       }
       // What fell lies heaped against the wall it fell from.
       if (broken && adjacent === 0 && !damaged.has(t) && bay === 8 && opts.detail < 2 && mode !== "burnt") facade(m, "zwedge", u, base, v, side, "concrete");
+      // Whether the wall's top storey wears a module with a parapet's coping, which moss may lie along.
+      let coped = false;
       for (let level = from; level < top;) {
         const h = base + level * 4;
         if (open && level >= openFrom) {
@@ -187,6 +189,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           if (upper && top - level >= 4 && !(plant && level + 4 === top) && ![0, 1, 2, 3].some((k) => bandEnds(level + k))) {
             const lid = capped && level + 4 === top;
             facade(m, end ? (lid ? "zshafttop" : "zshaft8") : lid ? grammar.stackTop : grammar.stack, u, h, v, side, rule.finish);
+            coped ||= lid && !end;
             level += 4; continue;
           }
           // A shop's front has its own door; any other ground floor keeps an open bay where the way in is.
@@ -202,11 +205,12 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
             : last ? (plant ? "zplanttop" : grammar.top) : railed ? "zbalcrail" : grammar.floor;
           if (name) {
             facade(m, name, u, h, v, side, rule.finish);
+            coped ||= last && name === grammar.top;
             if (name === "zbalcbare") facade(m, "zendsag", u, h, v, side, "fracture");
             // Beside a failure a vine hangs from one balcony in three, a bare one's broken slab too.
             const grows = hash3(opts.seed + 89, t.i * 4 + side, t.j * 64 + level);
             if (nearFall && (name === "zbalc" || name === "zbalcrail" || name === "zbalcbare") && grows % 3 === 0) grow(m, grows >>> 4, u, h, v, side, 2);
-            if (level === 0 && last && !end && !grammar.groundTop) facade(m, "zparapet8", u, h + 4, v, side, rule.finish);
+            if (level === 0 && last && !end && !grammar.groundTop) { facade(m, "zparapet8", u, h + 4, v, side, rule.finish); coped = true; }
             level++; continue;
           }
         }
@@ -262,7 +266,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       }
       if (crown?.kind === "screen" && capped && adjacent === 0 && top === floors) facade(m, "zscreen", u, base + top * 4, v, side, rule.finish);
       // Moss along one whole parapet's coping in four.
-      if (capped && adjacent === 0 && top === floors && grammar?.top === "zwintop" && hash3(opts.seed + 233, t.i * 4 + side, t.j) % 4 === 0) facade(m, "zmoss", u, base + top * 4 + 0.95, v, side, "concrete");
+      if (coped && adjacent === 0 && top === floors && grammar?.top === "zwintop" && hash3(opts.seed + 233, t.i * 4 + side, t.j) % 4 === 0) facade(m, "zmoss", u, base + top * 4 + 0.95, v, side, "concrete");
       if (chipped) facade(m, `zcrown${5 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 2}` as RuinShape, u, base + top * 4, v, side, rule.finish);
       else if (!capped && (!safe(t) || bitten.has(t) || broke) && mode !== "hanging") facade(m, `zcrown${1 + hash3(opts.seed + 97, t.i * 4 + side, t.j) % 4}` as RuinShape, u, base + top * 4, v, side, rule.finish);
       // What fell from a wall lies along its foot: one bay in four, one in two beside a failure; never at a way in.

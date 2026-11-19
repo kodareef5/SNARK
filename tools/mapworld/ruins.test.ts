@@ -331,6 +331,28 @@ test("a facade module is walked as its few boxes and drawn with its parts in the
   expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 104, 113]);
 });
 
+test("moss lies only along a parapet's coping, never over a broken wall's slab ends or a party wall", () => {
+  const v = vocabulary(source);
+  const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
+  const shape = (p: { kind: string }): string => p.kind.split("_")[1]!;
+  const coping = new Set(["zwintop", "zwin4top", "zplanttop", "zparapet8"]);
+  let moss = 0;
+  for (const [recipe, height, form] of [["apartment", 24, "apartment"], ["office", 12, "office"], ["shop", 4, "shop"]] as const) {
+    for (const collapse of ["shear", "facade", "pancake"] as const) {
+      for (const seed of [1, 7, 19, 33]) {
+        const m = new Mason(f, 0);
+        layout(m, { ...rule, recipe, height, finish: "limestone", form: v.forms[form], formName: form, collapse, damage: v.damage[collapse], assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 8, detail: 0 });
+        for (const p of m.pieces.filter((q) => shape(q) === "zmoss")) {
+          moss++;
+          const under = m.pieces.filter((q) => coping.has(shape(q)) && Math.hypot(q.x - p.x, q.z - p.z) < 0.6 && q.y < p.y && p.y - q.y < 13);
+          expect({ at: [p.x, p.y, p.z], under: under.length > 0 }).toEqual({ at: [p.x, p.y, p.z], under: true });
+        }
+      }
+    }
+  }
+  expect(moss).toBeGreaterThan(0);
+});
+
 test("a block of flats repeats its balcony bay on every whole floor, with a different ground floor, blank ends and a capped top", () => {
   const v = vocabulary(source);
   const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
