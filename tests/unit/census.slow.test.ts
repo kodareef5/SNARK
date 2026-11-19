@@ -44,10 +44,12 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // 8 km map the street on high was 52, 98, 130,970, 13 and 130,032, the roof 77, 95, 163,548, 19 and 186,210, the air
   // 115, 107, 185,144, 14 and 182,734 (163,542, 185,058 and 182,608 before the hanging slabs hung nearly sheer and
   // twisted, content/ruins.ts zdrape). Its attics' copings were bevelled: 135,482 and 140,694 at the street, 166,732 and
-  // 191,006 on the roof, 187,692 and 186,144 in the air.
+  // 191,006 on the roof, 187,692 and 186,144 in the air. Cut again when vines came to hang from bare balconies too: the
+  // street on high was 84, 177, 134,942, 14 and 140,146, the roof 129, 176, 166,142, 19 and 190,306, the air 165, 171,
+  // 187,138, 14 and 185,524.
   expect(got).toEqual({
-    "street-300": { lowpoly: [85, 0, 135038, 11, 98142], "medium, touch": [51, 34, 79284, 10, 48550], medium: [84, 82, 134942, 14, 140146], high: [84, 177, 134942, 14, 140146], ultra: [84, 201, 134942, 14, 140146] },
-    "roof-300": { lowpoly: [130, 0, 166238, 13, 125604], "medium, touch": [67, 25, 99224, 14, 72630], medium: [129, 94, 166142, 19, 187550], high: [129, 176, 166142, 19, 190306], ultra: [129, 207, 166142, 19, 190306] },
-    "air-300": { lowpoly: [166, 0, 187234, 11, 120900], "medium, touch": [67, 6, 115026, 9, 52900], medium: [165, 26, 187138, 14, 185524], high: [165, 171, 187138, 14, 185524], ultra: [165, 193, 187138, 14, 185524] },
+    "street-300": { lowpoly: [80, 0, 135070, 11, 98092], "medium, touch": [52, 32, 79356, 10, 48436], medium: [79, 83, 134974, 14, 140226], high: [79, 170, 134974, 14, 140226], ultra: [79, 192, 134974, 14, 140226] },
+    "roof-300": { lowpoly: [127, 0, 166282, 13, 125592], "medium, touch": [79, 23, 99568, 14, 72458], medium: [126, 91, 166186, 19, 187472], high: [126, 164, 166186, 19, 190228], ultra: [126, 194, 166186, 19, 190228] },
+    "air-300": { lowpoly: [164, 0, 187266, 11, 120880], "medium, touch": [72, 5, 115076, 9, 52786], medium: [163, 23, 187170, 14, 185632], high: [163, 171, 187170, 14, 185632], ultra: [163, 191, 187170, 14, 185632] },
   });
 });
