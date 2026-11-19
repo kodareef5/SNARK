@@ -1,6 +1,6 @@
 # Street furniture construction register
 
-Seventeen plates cover eighteen fixtures and thirty-one form entries. The route and speed posts share a sheet and have independent origins. Two later entries, the pay station (18) and the crosswalk bars (19), have no measured plate: their numbers are the model's.
+Seventeen plates cover eighteen fixtures and thirty-one form entries. The route and speed posts share a sheet and have independent origins. Three later entries, the pay station (18), the crosswalk bars (19) and the yield sign (20), have no measured plate: their numbers are the model's.
 
 ## Drawing conventions
 
@@ -37,6 +37,7 @@ Cut schedules below each reference form give centres, section profiles, end poin
 | 17 | [Newspaper box](#piece-newsbox) · [Plate](newsbox.png) | Standing |
 | 18 | [Pay station](#piece-paystation) | Standing, Broken |
 | 19 | [Crosswalk bars](#piece-crosswalk) | Fresh, Worn |
+| 20 | [Yield sign](#piece-yield) | Standing, Bent |
 
 <a id="piece-lamp"></a>
 
@@ -1346,7 +1347,7 @@ No measured plate: the numbers are the model's, after the continental (ladder-le
 
 Bars 0.60 m wide with 0.60 m between them, each the crossing's 3.00 m long, running along the road so that they stand side by side across it. Local X runs across the road (the crossing's length) and Z along it. Four lengths tile a crossing of any length in 1.20 m steps: 1, 2, 4 and 8 bars, 1.20, 2.40, 4.80 and 9.60 m, each with half a gap at either end, so pieces laid end to end keep the spacing.
 
-The bars are paint with no picture, in flat colours. Each is one quad lying 0.015 m over the origin with its back face under it, closed by being two-sided: 4 triangles a bar.
+Each bar is one quad lying 0.015 m over the origin with its back face under it, closed by being two-sided: 4 triangles a bar. It is laid on a road paint part of the atlas, the bar's length along the picture: fresh, as white as road paint, an albedo of about 0.75; worn, faded and grimed, worn through to the road in patches along the tyres' lines. Drawn in a flat colour, a static is drawn as the finish its palette colour names, and the paint's (palette 1) was paving: grey, jointed, and faint on the road.
 
 **Why the collider is buried.** A static is always met as its shape's boxes or else its own half box (shared/content/registry.ts: a shape has at least one box or convex part, and a structure's half is never zero), and only a node may be soft. Paint must be walked and driven over as the road is, so each piece's one box lies wholly under the road: X over the bars, Y −0.12 … −0.02 m, Z −1.50 … 1.50 m. The piece is laid at the road's height, so the ground is what a wheel, a body or a ray meets first, and nothing meets the box from above. Nothing harms paint: the pieces have no material.
 
@@ -1356,10 +1357,10 @@ The bars are paint with no picture, in flat colours. Each is one quad lying 0.01
 
 | Piece | Bars | X min … max (m) | Y min … max (m) | Z min … max (m) | Material | Colour | Value |
 |---|---:|---:|---:|---:|---|---|---:|
-| `crosswalk1` | 1 | -0.30 … 0.30 | 0.015 | -1.50 … 1.50 | Road paint | white | V77 |
-| `crosswalk2` | 2 | -0.90 … 0.90 | 0.015 | -1.50 … 1.50 | Road paint | white | V77 |
-| `crosswalk4` | 4 | -2.10 … 2.10 | 0.015 | -1.50 … 1.50 | Road paint | white | V77 |
-| `crosswalk8` | 8 | -4.50 … 4.50 | 0.015 | -1.50 … 1.50 | Road paint | white | V77 |
+| `crosswalk1` | 1 | -0.30 … 0.30 | 0.015 | -1.50 … 1.50 | Road paint | white | V87 |
+| `crosswalk2` | 2 | -0.90 … 0.90 | 0.015 | -1.50 … 1.50 | Road paint | white | V87 |
+| `crosswalk4` | 4 | -2.10 … 2.10 | 0.015 | -1.50 … 1.50 | Road paint | white | V87 |
+| `crosswalk8` | 8 | -4.50 … 4.50 | 0.015 | -1.50 … 1.50 | Road paint | white | V87 |
 
 Bar k of n is centred at X = 1.20 (k + 0.5) − 0.60 n.
 
@@ -1369,8 +1370,7 @@ The same bars worn through where wheels ran along them and flaked off: each bar 
 
 | Part | Material | Colour | Value |
 |---|---|---|---:|
-| Pieces of bar | Road paint | faded white | V67 |
-| ↳ About a third of them | Road paint | grimed | V57 |
+| Pieces of bar | Road paint | faded white, worn through in patches | V74 |
 
 ### Setting out
 
@@ -1378,6 +1378,53 @@ The same bars worn through where wheels ran along them and flaked off: each bar 
 |---|---|---|---|
 | On the road | Origin at the road's height on the crossing's centre line, X across the road, Z along it. | Across the road where a pedestrian crossing is, end to end at the 1.20 m pitch, the longest pieces first. | A long piece is flat: on a cambered road its ends float or sink by the camber under them, which shorter pieces follow better. |
 
-**Atlas treatment.** None: paint only.
+**Atlas treatment.** Road paint · white V87, the tyres' faint grey lines along it. Worn · faded V74, the road showing through V30.
 
-**Distance model.** Past the finest, one patch over the bars in the colour of paint and road together (V55 fresh, V44 worn), 4 triangles, its error stated as 0.10 m: on medium it is first drawn about 350 m off. The low poly tier draws from the second level, so there it is the patch at every distance. A one-bar piece has the finest only.
+**Distance model.** Past the finest, one patch over the bars in the colour of paint and road together, mixed as light (V68 fresh, V49 worn), 4 triangles, its error stated as 0.10 m: on medium it is first drawn about 350 m off. The low poly tier draws from the second level, so there it is the patch at every distance. A one-bar piece has the finest only.
+
+<a id="piece-yield"></a>
+
+## 20 · Yield sign
+
+No measured plate: the numbers are the model's, after R1-2 (Standard Highway Signs, Regulatory, page 2) at its 36-inch conventional size.
+
+Equilateral triangle 0.91 m across, a corner down at Y 2.10 m, its top edge at Y 2.89 m. The face is the book's design, aged, on the see-through atlas (its spare had the room), so the triangle's rounded corners are cut from the slab. Two fixings on the vertical centreline, 0.08 m and 0.53 m under the top edge, with brackets behind them.
+
+### Standing
+
+Red border and legend faded to brick on chalky white sheeting. **Pose.** Rigid assembly, 0° about the ground origin (0.00, 0.00, 0.00).
+
+**Assembly envelope.** X -0.46 … 0.46 m, Y 0.00 … 2.89 m, Z -0.03 … 0.05 m.
+
+| Part | X min … max (m) | Y min … max (m) | Z min … max (m) | Material | Colour | Value |
+|---|---:|---:|---:|---|---|---:|
+| Square post | -0.03 … 0.03 | 0.00 … 2.84 | -0.03 … 0.03 | Galvanised steel | zinc grey | V60 |
+| Triangle face | -0.46 … 0.46 | 2.10 … 2.89 | 0.04 … 0.05 | Aluminium | faded red and white | V62 |
+| Brackets | -0.05 … 0.05 | 2.34 … 2.83 | 0.00 … 0.04 | Galvanised steel | zinc grey | V60 |
+
+<details>
+<summary>Fabrication schedule</summary>
+
+| Member | Construction in metres |
+|---|---|
+| Square post | Box 0.064 × 3.19 × 0.064 from Y −0.35, in two at Y 0.50 so the bent form bends there. |
+| Triangle face | Triangle about (0.00, 2.625, 0.045), corners (0.00, 2.10), (±0.455, 2.888), extruded 0.012, laid on the face's picture by its own box. |
+| Brackets | Boxes 0.10 × 0.04 × 0.04 at Y 2.36 and 2.81, behind the fixings. |
+
+</details>
+
+### Bent
+
+The post bent at Y 0.50 m. **Pose.** Above 0.50 m, turned −35° about X through (0.00, 0.50, 0.00), then 12° about Z through the same point.
+
+**Assembly envelope.** X -0.04 … 0.86 m, Y 0.00 … 2.54 m, Z -1.37 … 0.04 m.
+
+### Setting out
+
+| Foot to kerb face | Orientation | Placement and repetition | Keep clear |
+|---|---|---|---|
+| 0.75 m | Face +Z toward the traffic that yields. | One on the right of each yielding approach, near the yield line. | As the stop sign. |
+
+**Atlas treatment.** Border and legend · faded red V42. Sheeting · chalk white V85.
+
+**Distance model.** Past the finest, the post and the triangle without its brackets, in flat colours.

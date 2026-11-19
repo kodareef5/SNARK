@@ -202,6 +202,35 @@ def stop_bent():
     return m.moved(lambda p: turn(p, "x", -40, (0, 0.5, 0)) if p[1] > 0.5 else p)
 
 
+# R1-2, the 36-inch yield triangle, a corner down at 2.1 m. Its face is on the see-through atlas, whose spare had room
+# for it, and is drawn with its rounded corners.
+YIELD_ACROSS = 0.91
+
+
+def yield_whole():
+    m = Mesh()
+    # In two, as the stop's post, so a bent one bends at 0.5 m.
+    box(m, (-0.032, -0.35, -0.032), (0.032, 0.5, 0.032), "galvanised")
+    box(m, (-0.032, 0.5, -0.032), (0.032, 2.84, 0.032), "galvanised", phase=0.6)
+    polygon(m, (0, 2.1 + YIELD_ACROSS / math.sqrt(3), 0.045), YIELD_ACROSS, 0.012, ("cut", "yield"), 3, -math.pi / 2, fit=True)
+    if fine():
+        # Its brackets, behind the two bolts.
+        box(m, (-0.05, 2.34, 0.0), (0.05, 2.38, 0.04), "galvanised")
+        box(m, (-0.05, 2.79, 0.0), (0.05, 2.83, 0.04), "galvanised")
+    return m
+
+
+@piece("yield")
+def yield_():
+    return yield_whole()
+
+
+@piece("yield_bent")
+def yield_bent():
+    # Bent back 35 degrees at 0.5 m and 12 over to one side, as a car leaves it.
+    return yield_whole().moved(lambda p: turn(turn(p, "x", -35, (0, 0.5, 0)), "z", 12, (0, 0.5, 0)) if p[1] > 0.5 else p)
+
+
 @piece("street_name")
 def street_name():
     # Two blades crossed on a cap at the post's top, each lettered on both faces, nothing in front of their names.
@@ -772,21 +801,29 @@ def newsbox():
 # Crosswalk bars, the continental kind US cities paint: bars 0.6 m wide with 0.6 m between, each the crossing's 3 m long,
 # running along the road and lying side by side across it. x runs across the road, z along it. A piece of n bars is
 # 1.2 n m long with half a gap at either end, so pieces laid end to end across the road keep the spacing. Each bar is
-# paint without a picture, both its faces 15 mm over the road, so the bar is closed.
+# both its faces 15 mm over the road, so it is closed, laid on a road paint part of the atlas (fresh or worn) with the
+# bar's length along the picture: drawn flat, a static's colour is drawn as the finish its palette colour names, and the
+# paint's was paving, grey and jointed.
 BAR_PITCH = 1.2
 
 
-def paint_patch(m, corners, colour, y=0.015):
-    """Road paint lying flat at `y` over the corners (x, z), from the -x, -z one round toward +z."""
+def paint_patch(m, corners, colour, y=0.015, bar=None, off=0.0):
+    """Road paint lying flat at `y` over the corners (x, z), from the -x, -z one round toward +z: a flat colour, or with
+    `bar` (the x of the bar's middle) the part `colour` laid over the bar from `off` along it."""
     top = [(x, y, z) for x, z in corners]
-    m.quad(top, [(0.0, 0.0)] * len(top), "flat_" + colour)
-    m.quad(top[::-1], [(0.0, 0.0)] * len(top), "flat_" + colour)
+    if bar is None:
+        uvs, mat = [(0.0, 0.0)] * len(top), "flat_" + colour
+    else:
+        uvs, mat = [part_uv("street", colour, off + (z + 1.5) / 3 * 0.75, (x - bar + 0.3) / 0.6) for x, z in corners], "street"
+    m.quad(top, uvs, mat)
+    m.quad(top[::-1], uvs[::-1], mat)
     return m
 
 
 def worn_bar(m, x, rng):
     # Worn through where wheels ran along it and flaked off: the bar broken across into pieces, some of them gone, their
-    # ends ragged and their sides eaten in. At least one piece of each bar is left.
+    # ends ragged and their sides eaten in. At least one piece of each bar is left. Each piece shows its own stretch of
+    # the worn paint.
     cuts = sorted(rng.uniform(-1.2, 1.2) for _ in range(rng.randint(1, 3)))
     spans = list(zip([-1.5] + cuts, cuts + [1.5]))
     keep = [s for s in spans if rng.random() > 0.3] or [max(spans, key=lambda s: s[1] - s[0])]
@@ -797,8 +834,8 @@ def worn_bar(m, x, rng):
             continue
         a, b = x - 0.3 + rng.uniform(0.0, 0.1), x + 0.3 - rng.uniform(0.0, 0.1)
         s0, s1 = rng.uniform(-0.08, 0.08), rng.uniform(-0.08, 0.08)
-        shade = "paint_grimy" if rng.random() < 0.3 else "paint_worn"
-        paint_patch(m, [(a, z0 + max(0.0, s0)), (a, z1 - max(0.0, s1)), (b, z1 - max(0.0, -s1)), (b, z0 + max(0.0, -s0))], shade)
+        off = rng.random() * 0.25
+        paint_patch(m, [(a, z0 + max(0.0, s0)), (a, z1 - max(0.0, s1)), (b, z1 - max(0.0, -s1)), (b, z0 + max(0.0, -s0))], "paint_worn", bar=x, off=off)
     return m
 
 
@@ -814,7 +851,7 @@ def crosswalk(n, worn=False):
         if worn:
             worn_bar(m, x, rng)
         else:
-            paint_patch(m, [(x - 0.3, -1.5), (x - 0.3, 1.5), (x + 0.3, 1.5), (x + 0.3, -1.5)], "paint")
+            paint_patch(m, [(x - 0.3, -1.5), (x - 0.3, 1.5), (x + 0.3, 1.5), (x + 0.3, -1.5)], "paint", bar=x, off=(k * 0.37) % 0.25)
     return m
 
 
