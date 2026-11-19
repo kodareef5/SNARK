@@ -21,8 +21,12 @@ afterAll(() => { for (const f of folders) rmSync(f, { recursive: true, force: tr
 // grid of streets 100 m apart, two of them avenues, which cross at (500, 500).
 const N = 513, SIZE = (N - 1) * 2, GROUND = 1;
 interface Road { mtfcc: string; width: number; from: [number, number]; to: [number, number]; name?: string; props?: Record<string, unknown> }
-/** What the street data holds beside the roads, in the fixture's metres: walk features, stalls and marked points. */
-interface Beside { walks?: unknown[]; stalls?: unknown[]; controls?: unknown[] }
+/**
+ * What the street data holds beside the roads, in the fixture's metres: walk features, stalls, marked points, and road
+ * pieces drawn through the points given, each a piece of its own (`line:<n>`), not cut where others cross it.
+ */
+interface Line { points: [number, number][]; mtfcc: string; width: number; props?: Record<string, unknown> }
+interface Beside { walks?: unknown[]; stalls?: unknown[]; controls?: unknown[]; lines?: Line[] }
 const GRID: Road[] = [];
 for (let at = 100; at <= 900; at += 100) {
   const avenue = at === 500;
@@ -38,6 +42,7 @@ function fixture(roads: readonly Road[], routes: Site["growthRoutes"] = [], besi
     const t0 = i === 0 ? 0 : all[i - 1]!; const at = (u: number): [number, number] => [r.from[0] + (r.to[0] - r.from[0]) * u, r.from[1] + (r.to[1] - r.from[1]) * u];
     return { type: "Feature", geometry: { type: "LineString", coordinates: [at(t0), at(t)] }, properties: { id: `${n}:${i}`, mtfcc: r.mtfcc, width_m: r.width, name: r.name ?? null, ...r.props } };
   }));
+  for (const [n, l] of (beside.lines ?? []).entries()) features.push({ type: "Feature", geometry: { type: "LineString", coordinates: l.points }, properties: { id: `line:${n}`, mtfcc: l.mtfcc, width_m: l.width, name: null, ...l.props } });
   writeFileSync(join(source, "base/roads.geojson"), JSON.stringify({ type: "FeatureCollection", features }));
   if (beside.walks) writeFileSync(join(source, "base/walks.geojson"), JSON.stringify({ type: "FeatureCollection", features: beside.walks }));
   if (beside.stalls) writeFileSync(join(source, "base/stalls.json"), JSON.stringify(beside.stalls));
@@ -180,9 +185,12 @@ test("a stop sign whose place a walk's curb ramp takes stands further back along
   for (const [i, r] of ramps.entries()) {
     const was = open[i]!; const now = moved.find((p) => Math.hypot(p.x - was.x, p.z - was.z) < 4 && p.yaw === was.yaw);
     expect(now).toBeDefined();
-    // As far from its kerb as before, 2.6 m further along the street, away from the junction.
+    // As far from its kerb as before, just behind the ramp along the street, away from the junction.
     expect(Math.abs(kerb(GRID, now!.x, now!.z) - kerb(GRID, was.x, was.z))).toBeLessThan(0.05);
-    expect(Math.hypot(now!.x - r.x, now!.z - r.z)).toBeCloseTo(RULES.junctions.past, 1);
+    expect(Math.hypot(now!.x - r.x, now!.z - r.z)).toBeGreaterThan(1);
+    expect(Math.hypot(now!.x - r.x, now!.z - r.z)).toBeLessThanOrEqual(RULES.junctions.past);
+    const junction = (p: StaticPiece): number => Math.max(Math.abs(p.x - Math.round(p.x / 100) * 100), Math.abs(p.z - Math.round(p.z / 100) * 100));
+    expect(junction(now!)).toBeGreaterThan(junction(was));
   }
 });
 
@@ -395,8 +403,8 @@ test("a stop or a signal the data maps away from any junction stands at its own 
   const signal = near(pieces, "signal", 200, 450, 10);
   expect(signal.length).toBe(1);
   expect(signal[0]!.x).toBeGreaterThan(200); expect(signal[0]!.z).toBeLessThan(450);
-  expect(summary.mapped?.stop).toEqual({ mapped: 1, used: 1 });
-  expect(summary.mapped?.signal).toEqual({ mapped: 1, used: 1 });
+  expect(summary.mapped?.stop).toEqual({ mapped: 1, used: 1, rest: {} });
+  expect(summary.mapped?.signal).toEqual({ mapped: 1, used: 1, rest: {} });
 });
 
 test("a crossing on an avenue keeps its stripes fresh", () => {
@@ -414,5 +422,87 @@ test("a give-way the data maps has its YIELD sign before it, facing the traffic 
   const sign = near(pieces, "yield", 600, 350, 8);
   expect(sign.length).toBe(1);
   expect(sign[0]!.z).toBeLessThan(350);
-  expect(summary.mapped?.give_way).toEqual({ mapped: 1, used: 1 });
+  expect(summary.mapped?.give_way).toEqual({ mapped: 1, used: 1, rest: {} });
+});
+
+/** The distance from (x, z) to a drawn line's middle. */
+const fromLine = (l: Line, x: number, z: number): number => Math.min(...l.points.slice(1).map((b, i) => {
+  const a = l.points[i]!, ex = b[0] - a[0], ez = b[1] - a[1];
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * ex + (z - a[1]) * ez) / (ex * ex + ez * ez)));
+  return Math.hypot(x - a[0] - ex * t, z - a[1] - ez * t);
+}));
+
+test("a stop sign follows its way's line where it bends, and stands behind the crossing that takes its first place", () => {
+  // A street that leaves an avenue northward and bends east within ten metres: set along the first stretch's straight line,
+  // the sign would stand in the street's own lanes.
+  const avenue: Line = { points: [[300, 800], [500, 800], [700, 800]], mtfcc: "S1200", width: 14 };
+  const street: Line = { points: [[500, 800], [500, 805], [510, 820], [520, 860]], mtfcc: "S1400", width: 8 };
+  // A crossing 6 m wide across the street at x = 200, south of the avenue, where its sign's first place is (9 m out).
+  const walks = [{ type: "Feature", geometry: { type: "LineString", coordinates: [[194, 489], [206, 489]] }, properties: { kind: "crossing", width_m: 6 } }];
+  const rules = { ...RULES, junctions: { ...RULES.junctions, signalCross: 0 } };
+  const { pieces } = place(fixture(GRID.filter((r) => r.to[1] < 790 || r.from[1] > 810 || r.from[0] === r.to[0] && r.from[0] !== 500), [], { lines: [avenue, street], walks }), [], rules);
+  const bent = pieces.filter((p) => p.kind.startsWith(streetKind("stop")) && Math.hypot(p.x - 500, p.z - 800) < 25 && p.z > 800);
+  expect(bent.length).toBe(1);
+  const sign = bent[0]!;
+  // Off the street's kerb by its setback, clear of the avenue, on the right of the traffic coming south to the avenue (+x).
+  expect(fromLine(street, sign.x, sign.z) - 4).toBeGreaterThan(RULES.junctions.stop - 0.2);
+  expect(fromLine(street, sign.x, sign.z) - 4).toBeLessThan(2 * RULES.junctions.stop + 0.2);
+  expect(sign.z - 800 - 7).toBeGreaterThan(RULES.clear.road);
+  expect(sign.x).toBeGreaterThan(500);
+  // At x = 200 the northbound traffic's sign stands south of the crossing, clear of it, no further than it may go.
+  const south = pieces.filter((p) => p.kind.startsWith(streetKind("stop")) && Math.abs(p.x - 200) < 8 && p.z < 500 && p.z > 460);
+  expect(south.length).toBe(1);
+  expect(south[0]!.z).toBeLessThan(489 - 3 - RULES.clear.crossing);
+  expect(500 - 7 - RULES.junctions.stopBack - south[0]!.z).toBeLessThanOrEqual(RULES.junctions.seek);
+});
+
+// A divided avenue, its carriageways one way at z = 500 (east, as drawn) and z = 512 (west), crossed at x = 200 by a
+// two-way street; one-way streets leave the near carriageway at x = 300 and come to it at x = 400. Each piece ends at
+// the junctions, as the street data cuts its ways.
+const DIVIDED: Line[] = [
+  ...[[60, 200], [200, 300], [300, 400], [400, 964]].map(([a, b]): Line => ({ points: [[a!, 500], [b!, 500]], mtfcc: "S1200", width: 8, props: { highway: "primary", oneway_dir: 1 } })),
+  ...[[964, 200], [200, 60]].map(([a, b]): Line => ({ points: [[a!, 512], [b!, 512]], mtfcc: "S1200", width: 8, props: { highway: "primary", oneway_dir: 1 } })),
+  ...[[300, 500], [500, 512], [512, 700]].map(([a, b]): Line => ({ points: [[200, a!], [200, b!]], mtfcc: "S1400", width: 8, props: { highway: "residential" } })),
+  { points: [[300, 500], [300, 300]], mtfcc: "S1400", width: 8, props: { highway: "residential", oneway_dir: 1 } },
+  { points: [[400, 300], [400, 500]], mtfcc: "S1400", width: 8, props: { highway: "residential", oneway_dir: 1 } },
+];
+const stopsNear = (pieces: readonly StaticPiece[], x: number, z0: number, z1: number): StaticPiece[] => pieces.filter((p) => p.kind.startsWith(streetKind("stop")) && Math.abs(p.x - x) < 8 && p.z > z0 && p.z < z1);
+
+test("the classes' rule puts no stop in a divided road's median, nor on a one-way street that leaves the junction", () => {
+  const rules = { ...RULES, junctions: { ...RULES.junctions, signalCross: 0 } };
+  const { pieces } = place(fixture([], [], { lines: DIVIDED }), [], rules);
+  expect(stopsNear(pieces, 200, 480, 500).length).toBe(1);
+  expect(stopsNear(pieces, 200, 500, 512).length).toBe(0);
+  expect(stopsNear(pieces, 200, 512, 535).length).toBe(1);
+  expect(stopsNear(pieces, 300, 470, 500).length).toBe(0);
+  expect(stopsNear(pieces, 400, 470, 500).length).toBe(1);
+});
+
+test("a mapped control counts as standing only where a sign of its own stands, and the count says what each of the rest is", () => {
+  const controls = [
+    // Northbound on the street at x = 200, before the near carriageway.
+    { kind: "stop", e: 200, n: 495, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: "line:6", travel: [0, 1] }] },
+    // Northbound at x = 400, where a signal holds the junction.
+    { kind: "signal", e: 400, n: 500, direction: null, all_way: false, junction: true, crossing: null, markings: null, approaches: [{ road: "line:10", travel: [0, 1] }] },
+    { kind: "stop", e: 400, n: 495, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: "line:10", travel: [0, 1] }] },
+    // One the data gives no way for, and one southbound at x = 300 whose every place a row of crates takes.
+    { kind: "stop", e: 640, n: 640, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [] },
+    { kind: "stop", e: 300, n: 380, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: "line:9", travel: [0, -1] }] },
+  ];
+  const crates: StaticPiece[] = [];
+  for (let z = 374; z <= 397; z += 0.5) for (const x of [304.75, 305.5, 306.25]) crates.push({ kind: "core:crate", x, y: GROUND + 0.5, z, yaw: 0 });
+  const { pieces, summary } = place(fixture([], [], { lines: DIVIDED, controls }), crates);
+  expect(stopsNear(pieces, 200, 480, 500).length).toBe(1);
+  expect(stopsNear(pieces, 300, 370, 400).length).toBe(0);
+  expect(summary.mapped?.stop).toEqual({ mapped: 4, used: 1, rest: { signal: 1, nothing: 1, piece: 1 } });
+  expect(summary.mapped?.signal?.used).toBe(1);
+});
+
+test("a mapped signal has a head for each way in where two of its ways run on in line, a corner short", () => {
+  const forms = { ...RULES.forms, signal: [["signal", 1]] } as Furniture["forms"];
+  const rules = { ...RULES, forms, junctions: { ...RULES.junctions, standing: 1 } };
+  const lines: Line[] = [{ points: [[100, 800], [500, 800], [900, 800]], mtfcc: "S1200", width: 14 }, { points: [[500, 800], [500, 600]], mtfcc: "S1400", width: 8 }];
+  const controls = [{ kind: "signal", e: 500, n: 800, direction: null, all_way: false, junction: true, crossing: null, markings: null, approaches: [] }];
+  const { pieces } = place(fixture([], [], { lines, controls }), [], rules);
+  expect(near(pieces, "signal", 500, 800, 25).length).toBe(3);
 });

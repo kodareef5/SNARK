@@ -46,8 +46,10 @@ export interface Furniture {
    * work, none in a district of a style `dark` names. */
   lamps: { spacing: Record<string, number>; both: string[]; set: number; lit: Record<string, number>; dark: string[] };
   /** Metres from the kerbs to a signal's pole and a street-name sign at a corner, and to a stop sign's post; `past`, how much
-   * further back along the street a stop sign or a corner's box goes where a walk's curb ramp stands in its place. */
-  junctions: { major: string[]; minor: string[]; signalCross: number; signal: number; stop: number; name: number; stopBack: number; standing: number; past: number; marked: number };
+   * further back along the street a corner's box goes where a walk's curb ramp stands in its place; `seek`, how far back
+   * along its way from its first place a stop or yield sign may go to find room; `room`, how much of its way behind that
+   * place the classes' rule needs before it puts a stop there, a car's length. */
+  junctions: { major: string[]; minor: string[]; signalCross: number; signal: number; stop: number; name: number; stopBack: number; standing: number; past: number; marked: number; seek: number; room: number };
   poles: { classes: string[]; styles: string[]; spacing: number; set: number };
   hydrants: { classes: string[]; spacing: number; first: number; set: number };
   /** Runs of `run` meters `every` metres apart, a block of `block` metres at a time, before buildings of `uses`. */
@@ -85,8 +87,12 @@ export interface Furniture {
 }
 
 /** What a layer makes, and why candidates were left out, by rule. */
-/** `mapped`: the controls the data maps, by kind, and how many of them a junction's signs or signals were placed for. */
-export interface FurnitureSummary { placed: Record<string, number>; byRule: Record<string, number>; refused: Record<string, Record<string, number>>; mapped?: Record<string, { mapped: number; used: number }>; }
+/**
+ * `mapped`: the controls the data maps, by kind: how many have a sign or a signal head of their own standing (`used`),
+ * and for each of the rest why: `signal` where a signal at its junction holds its traffic, `nothing` where it governs no
+ * piece drawn, `way` where its way gives no room to stand by, else what most of its places met.
+ */
+export interface FurnitureSummary { placed: Record<string, number>; byRule: Record<string, number>; refused: Record<string, Record<string, number>>; mapped?: Record<string, { mapped: number; used: number; rest: Record<string, number> }>; }
 
 interface Part { lo: [number, number, number]; hi: [number, number, number] }
 /** A way out of a junction: which way it leaves, the key of the point it leads to, and +1 where that is the way its line is drawn. */
@@ -225,8 +231,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const mine = new Map<number, Box[]>();
   const pieces: StaticPiece[] = [];
   const summary: FurnitureSummary = { placed: {}, byRule: {}, refused: {} };
-  let quiet = false;
-  const refuse = (rule: string, why: string): false => { if (!quiet) { const r = (summary.refused[rule] ??= {}); r[why] = (r[why] ?? 0) + 1; } return false; };
+  let quiet = false; let lastWhy = "";
+  const refuse = (rule: string, why: string): false => { lastWhy = why; if (!quiet) { const r = (summary.refused[rule] ??= {}); r[why] = (r[why] ?? 0) + 1; } return false; };
 
   /**
    * Sets the piece down if every rule allows it, on the lowest ground under its foot; says whether it did. Its foot keeps
@@ -276,6 +282,83 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     return false;
   };
   const form = (rule: string, h: number): string => { const rows = rules.forms[rule]; if (!rows?.length) throw new Error(`furniture.forms has no ${rule}`); return pick(rows, h); };
+  /**
+   * A control's sign or pole at the first of its places that takes it, each [x, z, yaw, metres off the road's edge].
+   * Where none does, it is refused once, for what most of its places met, or `way` where its way gave it none.
+   */
+  const putFirst = (rule: string, name: string, places: readonly (readonly [number, number, number, number])[]): string | null => {
+    const met = new Map<string, number>();
+    quiet = true;
+    for (const [x, z, yaw, road] of places) {
+      if (put(rule, name, x, z, yaw, clear.between, road)) { quiet = false; return null; }
+      met.set(lastWhy, (met.get(lastWhy) ?? 0) + 1);
+    }
+    quiet = false;
+    const why = [...met].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "way";
+    refuse(rule, why);
+    return why;
+  };
+
+  // Each line's runs of points as the data draws them, to walk a street from a point along its real line.
+  const runs = new Map<number, [number, number][][]>();
+  for (const s of segments) {
+    let rs = runs.get(s.line); if (!rs) runs.set(s.line, (rs = []));
+    const last = rs.at(-1)?.at(-1);
+    if (last && last[0] === s.ax && last[1] === s.az) rs.at(-1)!.push([s.bx, s.bz]); else rs.push([[s.ax, s.az], [s.bx, s.bz]]);
+  }
+  /** The run of a line holding the node `key` with a point after it going `sense`, and the node's place in it. */
+  const runAt = (line: number, key: number, sense: number): [[number, number][], number] | null => {
+    for (const pts of runs.get(line) ?? []) for (let k = 0; k < pts.length; k++) if (k + sense >= 0 && k + sense < pts.length && nodeKey(pts[k]![0], pts[k]![1]) === key) return [pts, k];
+    return null;
+  };
+  /** A place on a street, the way it runs there, and the half width of its piece. */
+  interface Stand { x: number; z: number; dx: number; dz: number; half: number }
+  /**
+   * Where the street is `d` metres on from (x, z), which lies on the stretch of a line's run from point i toward point
+   * i + sense, and which way it runs there: on through a node where only two ways meet (a way's tags change there). Short
+   * of that, the node it ends at (a junction or a dead end) and how far that was.
+   */
+  const trace = (line: number, pts: [number, number][], i: number, sense: number, x: number, z: number, d: number): Stand | { end: number; node: ReturnType<typeof graph.nodeAt> } => {
+    let walked = 0;
+    for (let hops = 0; hops < 512; hops++) {
+      const j = i + sense;
+      if (j < 0 || j >= pts.length) {
+        const n = graph.nodeAt(x, z);
+        if (!n || n.ways.length !== 2) return { end: walked, node: n };
+        const [px, pz] = pts[i - sense]!; const ix = x - px; const iz = z - pz;
+        const w = n.ways[0]!.dx * ix + n.ways[0]!.dz * iz > n.ways[1]!.dx * ix + n.ways[1]!.dz * iz ? n.ways[0]! : n.ways[1]!;
+        const at = runAt(w.line, n.key, w.sense); if (!at) return { end: walked, node: n };
+        [pts, i] = at; line = w.line; sense = w.sense; [x, z] = pts[i]!;
+        continue;
+      }
+      const [bx, bz] = pts[j]!; const l = Math.hypot(bx - x, bz - z);
+      if (l > 1e-6) {
+        if (d <= l) return { x: x + ((bx - x) * d) / l, z: z + ((bz - z) * d) / l, dx: (bx - x) / l, dz: (bz - z) / l, half: graph.pieces[line]!.half };
+        d -= l; walked += l;
+      }
+      x = bx; z = bz; i = j;
+      if (j < pts.length - 1) { const n = graph.nodeAt(x, z); if (n && n.ways.length >= 3) return { end: walked, node: n }; }
+    }
+    return { end: walked, node: undefined };
+  };
+  const isStand = (s: ReturnType<typeof trace>): s is Stand => "dx" in s;
+  /** Walking out of a junction (or a node) along one of its ways. */
+  const outOf = (j: { x: number; z: number }, a: { line: number; sense: number }, d: number): ReturnType<typeof trace> => {
+    const at = runAt(a.line, nodeKey(j.x, j.z), a.sense); if (!at) return { end: 0, node: undefined };
+    return trace(a.line, at[0], at[1], a.sense, at[0][at[1]]![0], at[0][at[1]]![1], d);
+  };
+  /** The point `set` metres off a street's kerb at a place on it, on the right of the way it runs there (side 1) or its left (-1). */
+  const kerbAt = (s: Stand, side: number, set: number): [number, number] => [s.x - s.dz * side * (s.half + set), s.z + s.dx * side * (s.half + set)];
+  /** Places from `from` metres along a way out of a node to `to`, a step at a time, at each setback in turn. */
+  const STEP = 0.5;
+  const seek = (walkTo: (d: number) => ReturnType<typeof trace>, from: number, to: number, side: number, sets: readonly number[], yaw: (s: Stand) => number): [number, number, number, number][] => {
+    const places: [number, number, number, number][] = [];
+    for (let d = from; d <= to + 1e-6; d += STEP) {
+      const s = walkTo(d); if (!isStand(s)) break;
+      for (const set of sets) places.push([...kerbAt(s, side, set), yaw(s), clear.road]);
+    }
+    return places;
+  };
 
   // A building's use behind a point of the verge, looking `deep` metres along (nx, nz): its class as the attributes give it.
   const useAt = (x: number, z: number, vx: number, vz: number, deep = 16): string => {
@@ -349,8 +432,11 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     }
     return out;
   };
+  const oneWay = (line: number): boolean => graph.pieces[line]!.oneway !== 0;
   const held: { x: number; z: number; reach: number; lines: Set<number> | null }[] = [];
-  const used = new Set<Marked>();
+  // The mapped controls with a sign or a head of their own standing, those a signal at their junction holds instead, and
+  // what kept each of the others out.
+  const stood = new Set<Marked>(); const signalled = new Set<Marked>(); const missing = new Map<Marked, string>();
   for (const j of junctions) {
     const h = hash3(Math.round(j.x * 4), Math.round(j.z * 4), seed);
     const n = j.arms.length; const major = j.arms.filter(isMajor).length; const minor = j.arms.filter(isMinor).length;
@@ -359,14 +445,14 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     // Signals where the data marks them at the junction; where the data marks no points at all, by the classes' rule.
     const here = graph.mapped.points ? markedNear(j.x, j.z, j.reach + J.marked) : [];
     const signals = graph.mapped.points ? n >= 3 && here.some((m) => m.kind === "signal") : n >= 3 && major + minor === n && (major >= 3 || (major === 2 && minor === 2 && chance(hash3(h, 1, seed), J.signalCross)));
-    // The ways in whose traffic a stop the data maps governs: traffic on a way out's line that travels toward the junction,
-    // against the way out.
-    const marked = here.filter((m) => m.kind === "stop");
-    const markedStops = j.arms.filter((a) => marked.some((m) => m.governs.some((g) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0)));
-    for (const m of marked) if (m.governs.some((g) => j.arms.some((a) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0))) used.add(m);
-    if (signals) for (const m of here) if (m.kind === "signal") used.add(m);
-    if (signals) held.push({ x: j.x, z: j.z, reach: j.reach, lines: null });
+    // The mapped stops that govern a way in: traffic on the way out's line that travels toward the junction, against the
+    // way out.
+    const governing = (a: Arm): Marked[] => here.filter((m) => m.kind === "stop" && m.governs.some((g) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0));
+    const markedStops = j.arms.filter((a) => governing(a).length > 0);
     if (signals) {
+      held.push({ x: j.x, z: j.z, reach: j.reach, lines: null });
+      for (const a of j.arms) for (const m of governing(a)) signalled.add(m);
+      let stands = false; let why: string | null = null;
       j.arms.forEach((a, i) => {
         // A mast arm spans the larger ways only, where the classes' rule put the signals; a lesser street's way in has none.
         // Where the data marks them, every street's way in has its own.
@@ -375,31 +461,40 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         // traffic's right, its arm over the lanes it goes on into. Where nothing goes on (a T's stem), at the near corner.
         const o = j.arms.findIndex((b) => b.dx * a.dx + b.dz * a.dz < -0.8);
         const far = o >= 0 ? j.arms[o]! : null; const next = o >= 0 ? j.arms[(o + 1) % n]! : null;
-        // At the corner, or where a crossing or another way takes that place, further back along the way it stands by.
-        const pole = (back: number) => (set: number): [number, number, number] | null => {
-          if (far && next) { const p = corner(j, far, next, set); return p && [p[0] + far.dx * back, p[1] + far.dz * back, yawOf(far.dz, -far.dx)]; }
-          const p = corner(j, prev(i), a, set); return p && [p[0] + a.dx * back, p[1] + a.dz * back, yawOf(-a.dz, a.dx)];
-        };
-        // And where the far corner has no room (another way's lanes, a crossing, a building), at the near corner on the
-        // traffic's right, its arm over the lanes it comes in on.
-        const near = (back: number) => (set: number): [number, number, number] | null => {
-          const p = corner(j, prev(i), a, set); return p && [p[0] + a.dx * back, p[1] + a.dz * back, yawOf(-a.dz, a.dx)];
-        };
-        putOut("signals", form("signal", hash3(h, 20 + i, seed)), J.signal, pole(0), pole(J.past), pole(2 * J.past), near(0), near(J.past), near(2 * J.past));
+        // How far along `on` the corner between p and q is; where they run on nearly in line there is none, and the pole
+        // starts at the junction's mouth.
+        const along = (p: Arm, q: Arm, on: Arm, set: number): number => { const c = corner(j, p, q, set); return c ? Math.max(0, (c[0] - j.x) * on.dx + (c[1] - j.z) * on.dz) : 0; };
+        // From the corner a step at a time back along the way it stands by, where a crossing or another way takes the
+        // corner; then the same from the near corner on the traffic's right, its arm over the lanes it comes in on.
+        const farSide = (set: number): [number, number, number, number][] => far && next ? seek((d) => outOf(j, far, d), along(far, next, far, set), along(far, next, far, set) + 2 * J.past, 1, [set], (s) => yawOf(s.dz, -s.dx)) : [];
+        const nearSide = (set: number): [number, number, number, number][] => seek((d) => outOf(j, a, d), along(prev(i), a, a, set), along(prev(i), a, a, set) + 2 * J.past, -1, [set], (s) => yawOf(-s.dz, s.dx));
+        // Last, just inside the road's edge at the first of them, where no lane runs.
+        const inside = [...farSide(-0.1), ...nearSide(-0.1)].slice(0, 1).map((p): [number, number, number, number] => [p[0], p[1], p[2], -clear.inside]);
+        const r = putFirst("signals", form("signal", hash3(h, 20 + i, seed)), [...farSide(J.signal), ...nearSide(J.signal), ...farSide(0.45), ...nearSide(0.45), ...inside]);
+        if (r === null) stands = true; else why = r;
       });
+      for (const m of here) if (m.kind === "signal") { if (stands) stood.add(m); else if (why !== null) missing.set(m, why); }
     } else if (markedStops.length > 0 || (n >= 3 && minor > 0 && major + minor === n)) {
       // The ways in the data marks a stop on; where it marks none, the lesser street stops: a T's stem, or of two streets
-      // crossing the one with fewer ways in, by a hash.
+      // crossing the one with fewer ways in, by a hash. Not a way across a divided road's median, between its carriageways,
+      // which its traffic comes in by from the far one, nor one whose traffic has just come from another junction or an end,
+      // with no room on it for a car to stand behind the sign, nor one way out of the junction that no traffic comes in by.
+      const back = (a: Arm): number => Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half)) + J.stopBack;
+      const median = (a: Arm): boolean => {
+        const e = outOf(j, a, rules.regulations.divided.apart[1]);
+        if (isStand(e) || !e.node || e.node.ways.length < 3) return false;
+        const across = (w: { dx: number; dz: number }): boolean => Math.abs(w.dx * a.dx + w.dz * a.dz) < 0.7;
+        return e.node.ways.some((w) => oneWay(w.line) && across(w) && j.arms.some((b) => b !== a && oneWay(b.line) && across(b) && Math.abs(w.dx * b.dx + w.dz * b.dz) > 0.9));
+      };
       const lines = [...new Set(j.arms.map((a) => a.line))];
-      const stopped = markedStops.length > 0 ? markedStops : major > 0 ? j.arms.filter(isMinor) : n === 3 ? j.arms.filter((a) => j.arms.filter((b) => b.line === a.line).length === 1) : j.arms.filter((a) => a.line === lines[hash3(h, 2, seed) % lines.length]);
+      const stopped = markedStops.length > 0 ? markedStops : (major > 0 ? j.arms.filter(isMinor) : n === 3 ? j.arms.filter((a) => j.arms.filter((b) => b.line === a.line).length === 1) : j.arms.filter((a) => a.line === lines[hash3(h, 2, seed) % lines.length])).filter((a) => graph.pieces[a.line]!.oneway * a.sense <= 0 && !median(a) && isStand(outOf(j, a, back(a) + J.room)));
       held.push({ x: j.x, z: j.z, reach: j.reach, lines: new Set(stopped.map((a) => a.line)) });
       for (const [i, a] of j.arms.entries()) {
         if (!stopped.includes(a)) continue;
-        const across = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half));
-        const back = across + J.stopBack;
-        // On the right of traffic coming in, facing it.
-        const at = (d: number) => (set: number): [number, number, number] => [j.x + a.dx * d + a.dz * (a.half + set), j.z + a.dz * d - a.dx * (a.half + set), yawOf(a.dx, a.dz)];
-        putOut("stops", form("stop", hash3(h, 30 + i, seed)), J.stop, at(back), at(back + J.past));
+        // On the right of traffic coming in, facing it: at the rule's place, or where the crossing or another way's lanes
+        // take that, the first place further back along its way that has room, before the crossing.
+        const why = putFirst("stops", form("stop", hash3(h, 30 + i, seed)), seek((d) => outOf(j, a, d), back(a), back(a) + J.seek, -1, [J.stop, 2 * J.stop], (s) => yawOf(s.dx, s.dz)));
+        for (const m of governing(a)) { if (why === null) stood.add(m); else if (!stood.has(m)) missing.set(m, why); }
       }
       const first = j.arms.findIndex((a) => stopped.includes(a));
       if (first >= 0) putOut("names", "street_name", J.name, (set) => { const p = corner(j, prev(first), j.arms[first]!, set); return p && [p[0], p[1], yawOf(j.arms[first]!.dx, j.arms[first]!.dz)]; });
@@ -421,20 +516,33 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     });
   }
 
-  // A signal, stop or give-way the data maps where no junction of three ways is (a signal at a crossing, a stop at a
-  // driveway or where two ways meet): at its own point, on the right of each way of traffic it governs. A signal stands
-  // past the point, its arm over the lanes; a sign before it, facing the traffic.
+  // A signal, stop or give-way the data maps that no junction stood a sign or head for (a signal at a crossing, a stop at
+  // a driveway or where two ways meet, a give-way, a junction's stop that found no room there): at its own point, on the
+  // right of each way of traffic it governs, along that way's line. A signal stands past the point, its arm over the
+  // lanes; a sign before it, facing the traffic, further back where the first place has no room.
   for (const m of graph.marked) {
-    if (used.has(m) || !(m.kind === "signal" || m.kind === "stop" || (m.kind === "give_way" && rules.forms.yield))) continue;
+    if (stood.has(m) || signalled.has(m) || !(m.kind === "signal" || m.kind === "stop" || (m.kind === "give_way" && rules.forms.yield))) continue;
     const h = hash3(Math.round(m.x * 4), Math.round(m.z * 4), seed + 17);
     const rule = m.kind === "signal" ? "signals" : m.kind === "stop" ? "stops" : "yields";
     m.governs.forEach((g, k) => {
-      const l = Math.hypot(g.dx, g.dz) || 1; const tx = g.dx / l; const tz = g.dz / l; const half = graph.pieces[g.line]!.half;
-      const at = (d: number, yaw: number) => (set: number): [number, number, number] => [m.x + tx * d - tz * (half + set), m.z + tz * d + tx * (half + set), yaw];
-      const placed = m.kind === "signal"
-        ? putOut(rule, form("signal", hash3(h, k, seed)), J.signal, at(J.past, yawOf(tz, -tx)), at(2 * J.past, yawOf(tz, -tx)))
-        : putOut(rule, form(m.kind === "stop" ? "stop" : "yield", hash3(h, k, seed)), J.stop, at(-J.stopBack, yawOf(-tx, -tz)), at(-J.stopBack - J.past, yawOf(-tx, -tz)));
-      if (placed) used.add(m);
+      // The stretch of its line nearest the point, the foot of the point on it, and which way the traffic runs along it.
+      let on: { pts: [number, number][]; i: number; fx: number; fz: number; sense: number } | null = null; let least = Infinity;
+      for (const pts of runs.get(g.line) ?? []) for (let i = 0; i + 1 < pts.length; i++) {
+        const [ax, az] = pts[i]!; const ex = pts[i + 1]![0] - ax; const ez = pts[i + 1]![1] - az;
+        const t = Math.max(0, Math.min(1, ((m.x - ax) * ex + (m.z - az) * ez) / (ex * ex + ez * ez || 1)));
+        const far = Math.hypot(m.x - ax - ex * t, m.z - az - ez * t);
+        if (far < least) { least = far; on = { pts, i, fx: ax + ex * t, fz: az + ez * t, sense: ex * g.dx + ez * g.dz >= 0 ? 1 : -1 }; }
+      }
+      if (!on) return;
+      const { pts, i, fx, fz, sense } = on;
+      const walkTo = (way: number) => (d: number) => trace(g.line, pts, way > 0 ? i : i + 1, way, fx, fz, d);
+      let places: [number, number, number, number][];
+      if (m.kind === "signal") {
+        const side = (set: number) => seek(walkTo(sense), J.past, 3 * J.past, 1, [set], (s) => yawOf(s.dz, -s.dx));
+        places = [...side(J.signal), ...side(0.45), ...side(-0.1).slice(0, 1).map((p): [number, number, number, number] => [p[0], p[1], p[2], -clear.inside])];
+      } else places = seek(walkTo(-sense), J.stopBack, J.stopBack + J.seek, -1, [J.stop, 2 * J.stop], (s) => yawOf(s.dx, s.dz));
+      const why = putFirst(rule, form(m.kind === "signal" ? "signal" : m.kind === "stop" ? "stop" : "yield", hash3(h, k, seed)), places);
+      if (why === null) stood.add(m); else if (!stood.has(m)) missing.set(m, why);
     });
   }
   // Each line of the named classes, walked from its first point: where the `d`th metre of it is, and which way it runs.
@@ -597,7 +705,12 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   });
   if (graph.mapped.points) {
     summary.mapped = {};
-    for (const m of graph.marked) { const k = (summary.mapped[m.kind] ??= { mapped: 0, used: 0 }); k.mapped++; if (used.has(m)) k.used++; }
+    for (const m of graph.marked) {
+      if (m.kind === "crossing") continue;
+      const k = (summary.mapped[m.kind] ??= { mapped: 0, used: 0, rest: {} }); k.mapped++;
+      const why = stood.has(m) ? null : signalled.has(m) ? "signal" : m.governs.length === 0 ? "nothing" : missing.get(m) ?? "untried";
+      if (why === null) k.used++; else k.rest[why] = (k.rest[why] ?? 0) + 1;
+    }
   }
   // Stripes on the crossings of the walk network, laid flat on the road between its kerbs: the longest pieces first, from
   // where the crossing meets the road's middle out. Last, as nothing stands on a crossing and they take a chunk's budget.
