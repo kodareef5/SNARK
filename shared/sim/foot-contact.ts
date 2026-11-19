@@ -1,8 +1,8 @@
 // A body on foot that a session drives meets each vehicle as its snapshots show it: a fixed solid at the position and
-// attitude the view carries (shared/net/view.ts), never the server's unrounded pose. The server, right after the body's
-// step, and the page predicting it, after its own, so meet the same solid to the bit: a vehicle that stands costs no
-// correction. What a vehicle does in its own step this tick is the server's sweep (server/vehicle-contacts.ts), which
-// the page learns of from the next snapshot.
+// attitude the view carries (shared/net/view.ts), never the server's unrounded pose. The server meets it so right after
+// the body's step and the page predicting the body after its own, so both meet the same solid to the bit and a vehicle
+// that stands costs no correction. What a vehicle does in its own step is the server's sweep (server/vehicle-contacts.ts),
+// which the page learns of from the next snapshot.
 import { len3 } from "../math/scalar.ts";
 import type { Registry } from "../content/registry.ts";
 import { CAPSULE_EXTENT, VehiclePairQueries } from "../world/vehicle-pair.ts";
@@ -28,7 +28,6 @@ const widerFloat = (a: Float64Array): Float64Array => { const b = new Float64Arr
  */
 export class FootVehicles {
   count = 0;
-  index = new Uint32Array(16);
   kind = new Uint32Array(16);
   x = new Float64Array(16);
   y = new Float64Array(16);
@@ -37,13 +36,13 @@ export class FootVehicles {
   attitudeA = new Uint32Array(16);
   attitudeB = new Uint32Array(16);
 
-  push(index: number, kind: number, x: number, y: number, z: number, pose: number, attitudeA: number, attitudeB: number): void {
+  push(kind: number, x: number, y: number, z: number, pose: number, attitudeA: number, attitudeB: number): void {
     const n = this.count;
-    if (n === this.index.length) {
-      this.index = wider(this.index); this.kind = wider(this.kind); this.x = widerFloat(this.x); this.y = widerFloat(this.y); this.z = widerFloat(this.z);
+    if (n === this.kind.length) {
+      this.kind = wider(this.kind); this.x = widerFloat(this.x); this.y = widerFloat(this.y); this.z = widerFloat(this.z);
       this.pose = wider(this.pose); this.attitudeA = wider(this.attitudeA); this.attitudeB = wider(this.attitudeB);
     }
-    this.index[n] = index; this.kind[n] = kind; this.x[n] = x; this.y[n] = y; this.z[n] = z;
+    this.kind[n] = kind; this.x[n] = x; this.y[n] = y; this.z[n] = z;
     this.pose[n] = pose; this.attitudeA[n] = attitudeA; this.attitudeB[n] = attitudeB;
     this.count = n + 1;
   }
@@ -82,6 +81,7 @@ export class FootContacts {
     if (list.count === 0 || b.mode === MODE_GHOST || b.mode === MODE_NONE) return false;
     const w = this.walker, from = w.prior, to = w.state, r = p.radius, h = stanceHeight(p, b.stance);
     upright(from, before.x, before.y, before.z);
+    from.vx = before.vx; from.vy = before.vy; from.vz = before.vz;
     upright(to, b.x, b.y, b.z);
     to.vx = b.vx; to.vy = b.vy; to.vz = b.vz;
     // A body moved farther than a step can is placed, not walking: what it was placed among is the server's to settle.
@@ -107,6 +107,9 @@ export class FootContacts {
       const hit = this.pair.sweep();
       if (!hit) continue;
       resolveDynamicContact(v, w, hit, this.pair, this.scratch, this.result);
+      // Where the way back from the vehicle goes into the ground, as under a part above its head, it stays where it began
+      // the tick if it was clear there.
+      if (this.pair.overlap(v, w) && !this.pair.geometry(s, from)) { to.x = from.x; to.y = from.y; to.z = from.z; }
       met = true;
     }
     if (!met) return false;

@@ -87,6 +87,26 @@ for (const [name, link] of LINKS) {
     } finally { h.host.shutdown(); }
   });
 
+  test(`${name}: walking into a parked helicopter, and swimming into a floating boat, costs no correction`, () => {
+    for (const [kind, sea] of [["core:helicopter", -Infinity], ["core:boat", 2]] as const) {
+      const h = new Harness({}, 1, 60, { dev: true, wild: false, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(4, { seaLevel: sea })) });
+      try {
+        const s = h.join("walker", link); h.run(1500);
+        const a = h.world.ents, walker = h.client(s)!;
+        a.setPosition(walker.ent, 100, 0, 96); h.world.history.discontinuity(walker.ent);
+        const e = h.host.spawnVehicle(kind, 100, 103, 0, 0);
+        expect(e).toBeGreaterThanOrEqual(0);
+        h.run(4000);
+        const met = h.server.feet.met;
+        h.pilots[0]!.moveZ = 1;
+        const w = watch(h, s, 5000);
+        say(`${name}, into ${sea > 0 ? "a floating" : "a parked"} ${kind}`, w);
+        expect(h.server.feet.met - met).toBeGreaterThan(30);
+        expect(w.corrections - w.line).toBe(0);
+      } finally { h.host.shutdown(); }
+    }
+  });
+
   test(`${name}: along a row of parked cars, and wedged between two, costs no correction`, () => {
     for (const between of [false, true]) {
       const { h, s, walker, put, car } = yard(link);

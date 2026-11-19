@@ -1132,8 +1132,9 @@ export class ClientSession {
 
   /**
    * The body on foot, stepping tick `t`, meets the vehicles of the newest snapshot as the server meets them
-   * (shared/sim/foot-contact.ts). The server meets each where it stood after tick t - 1. One that stands is where the
-   * snapshot has it, to the bit; one that moves is carried on as the snapshots before showed it going.
+   * (shared/sim/foot-contact.ts). The server meets each where it stands as the body steps, after tick t - 1 for one
+   * nobody drives. One that stands is where the snapshot has it, to the bit; one that moves is carried on as the
+   * snapshots before showed it going.
    */
   private meetVehicles(t: number, p: MoveParams): void {
     const world = this.world!;
@@ -1152,7 +1153,7 @@ export class ClientSession {
       if (v) for (let j = 0, k = 0; j < v.count; j++) {
         if (!this.registry.vehicle[v.kind[j]!] || (v.flags[j]! & (F_PROP >>> 1)) !== 0) continue;
         const n = list.count;
-        list.push(v.id[j]!, v.kind[j]!, dequantX(v.qx[j]!), dequantY(v.qy[j]!), dequantX(v.qz[j]!), v.vehiclePose[j]!, v.vehicleAttitudeA[j]!, v.vehicleAttitudeB[j]!);
+        list.push(v.kind[j]!, dequantX(v.qx[j]!), dequantY(v.qy[j]!), dequantX(v.qz[j]!), v.vehiclePose[j]!, v.vehicleAttitudeA[j]!, v.vehicleAttitudeB[j]!);
         if (this.footFrom.length < n * 3 + 3) {
           const from = new Float64Array(n * 6), rate = new Float64Array(n * 6);
           from.set(this.footFrom); rate.set(this.footRate); this.footFrom = from; this.footRate = rate;
