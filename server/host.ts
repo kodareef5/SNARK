@@ -601,6 +601,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
   game.onVehicleStep = e => urban.impact(e);
+  game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
     parkingBrake: e => urban.parkingBrake(e),

@@ -15,6 +15,7 @@ import {
   HELLO_SPECTATE,
   HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
   HELLO_TICKET,
+  BUTTON_BITS,
   INPUT_HOLD_TICKS,
   VEHICLE_HOLD_TICKS,
   INPUT_KEPT,
@@ -85,6 +86,7 @@ import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Place } from "./beds.ts";
+import { ServerFootContacts } from "./foot-contacts.ts";
 
 export interface GameOptions {
   /** In ticks. */
@@ -284,6 +286,24 @@ export class Client {
   newestInput = 0;
   /** What GameServer.given was at its welcome: a snapshot tells it the ticks given up since. */
   givenAt = 0;
+  /**
+   * The buttons each tick was stepped with, by its own tick. The buttons of an input that came after its tick, which that
+   * tick stepped without, are carried into the next tick stepped (`carry`), and its snapshot says so (`carried`), so a
+   * press is not lost to a late input and the page replays it where the server stepped it.
+   */
+  readonly stepped = new Uint16Array(INPUT_WINDOW);
+  readonly steppedAt = new Uint32Array(INPUT_WINDOW);
+  carry = 0;
+  carried = 0;
+  /** The oldest tick a late input may carry from: a press more than a second late is let go, its moment past. */
+  lateFrom = 0;
+  /** For readInputs: the buttons of an input for `tick`, which has been stepped. */
+  readonly late = (tick: number, buttons: number): void => {
+    const k = tick & (INPUT_WINDOW - 1);
+    if (tick < this.lateFrom || this.steppedAt[k] !== tick) return;
+    this.carry |= buttons & ~this.stepped[k]!;
+    this.stepped[k] |= buttons;
+  };
   /** Newest snapshot the client says it decoded. */
   ackTick = 0;
   /** High-water mark even while an ACK of zero requests a fresh full snapshot. */
@@ -374,6 +394,8 @@ export class Client {
     this.inputs.tick.fill(0);
     this.vehicleSeatSnapshot = this.vehicleSeatSnapshot === 0 ? 0 : -1;
     this.heldX = this.heldZ = this.heldButtons = 0;
+    this.carry = this.carried = 0;
+    this.steppedAt.fill(0);
     this.newestInput = this.highestAck = this.ackTick = this.lastSnapshot = 0;
     this.views.clear();
     this.known.fill(0);
@@ -480,6 +502,9 @@ export class GameServer {
   onVehicleStep: ((e: number) => void) | null = null;
   /** The host adds resource contacts around this same shared vehicle step. */
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
+  /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
+  readonly feet: ServerFootContacts;
+  private readonly footBefore = new Body();
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -500,10 +525,12 @@ export class GameServer {
   private readonly ranks: Uint16Array[] = [];
   private gathered = 0;
   /**
-   * Ticks the loop (server/main.ts) was behind its clock as this tick began, and those it gave up since the start. A
-   * margin is told against the tick due, so a page's clock keeps to the loop's clock while the loop catches up.
+   * Ticks the loop (server/main.ts) was behind its clock as the tick about to run began. The loop sets it before each
+   * tick, so that a wrapper of `tick` cannot lose it. A margin is told against the tick due, so a page's clock keeps to
+   * the loop's clock while the loop catches up.
    */
-  private behind = 0;
+  behind = 0;
+  /** Ticks the loop gave up since the start. */
   private given = 0;
   /** The tick due when snapshots last went out. While the loop catches up they go out at the clock's pace, not each tick's. */
   private dueSent = 0;
@@ -531,6 +558,7 @@ export class GameServer {
   constructor(world: ServerWorld, opts: Partial<GameOptions> = {}) {
     this.world = world;
     this.opts = { ...DEFAULTS, ...opts };
+    this.feet = new ServerFootContacts(world);
     this.clients = new Array(this.opts.maxClients).fill(null);
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
     // Removes are sent whatever they cost, 6.7 KB for 2,048 of them, and an update can take two bytes more than it was budgeted at.
@@ -570,12 +598,11 @@ export class GameServer {
     this.dueSent -= ticks;
   }
 
-  /** `behind` is how many more ticks the loop owed as this one began. */
-  tick(behind = 0): void {
+  tick(): void {
     const world = this.world;
     const ents = world.ents;
     const T = ++world.tick;
-    this.behind = behind;
+    const behind = this.behind;
 
     this.onBeforeStep?.();
 
@@ -605,6 +632,12 @@ export class GameServer {
           c.heldButtons &= INPUT_KEPT;
         }
       }
+      c.carried = c.closed ? 0 : c.carry;
+      c.heldButtons |= c.carried;
+      c.carry = 0;
+      c.stepped[T & (INPUT_WINDOW - 1)] = c.heldButtons;
+      c.steppedAt[T & (INPUT_WINDOW - 1)] = T;
+      c.lateFrom = T - TICK_RATE;
       c.edges();
       if (c.ent >= 0 && ents.seatSlot[c.ent] === IMPALE_SLOT && ents.seat[c.ent] !== 0) {
         c.heldButtons = c.pressed = 0;
@@ -628,8 +661,10 @@ export class GameServer {
           this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
+          this.footBefore.copy(b);
           if (combat && driving) stepCreature(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, c.pressed, world.reg.tamedMove[b.kind]!, combat, TICK_DT, true, c.closed || T - c.inputAt > INPUT_HOLD_TICKS);
           else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
+          this.feet.meet(e, this.footBefore, b, world.reg.tamedMove[b.kind]!);
         } else { b.yaw = c.heldYaw; b.jetThrust = 0; stepOut.landSpeed = 0; }
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.
@@ -1057,7 +1092,7 @@ export class GameServer {
     const ack = r.u32();
     const behind = r.u8() / VIEW_STEPS;
     const validAck = ack >= c.highestAck && ack <= c.lastSnapshot && c.views.find(ack) ? ack : 0;
-    const newest = readInputs(r, c.inputs, this.world.tick, validAck, behind, c.inputAcks);
+    const newest = readInputs(r, c.inputs, this.world.tick, validAck, behind, c.inputAcks, c.late);
     if (newest === 0) return false;
     if (newest <= this.world.tick) this.stats.lateInputs++;
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
@@ -1446,6 +1481,8 @@ export class GameServer {
     const given = (this.given - c.givenAt) & 0xffff;
     w.bool(given !== 0);
     if (given !== 0) w.u16(given);
+    w.bool(c.carried !== 0);
+    if (c.carried !== 0) w.bits(c.carried, BUTTON_BITS);
     w.bits(c.state, 2);
     // 0 for its own body, else the index of the entity it drives plus one.
     w.varint(c.drive + 1);

@@ -16,8 +16,9 @@
 //                            yaw u16, tuned content hash u32, tuning string (shared/content/tuning.ts), the clock's
 //                            cycle, day and night scales (f64 each), MOTD seconds u16, takes the map's statics 1 bit
 //     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8, ticks given up since the welcome
-//                            1 bit and if set u16 (wrapping), session state 2 bits, driven entity index + 1 varint
-//                            (0 = its own body), that body, entity delta (see view.ts)
+//                            1 bit and if set u16 (wrapping), buttons carried into this tick from an input that came
+//                            after its own 1 bit and if set 10 bits, session state 2 bits, driven entity index + 1
+//                            varint (0 = its own body), that body, entity delta (see view.ts)
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits; to a client that takes statics, for
 //                            a chunk that holds map statics, from the map 1 bit, and if set first slot u16 and count
 //                            u16 of the slots it takes as the map has them; rows, in ascending slots; then removals:
@@ -72,8 +73,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 34: creative mode, RULE_CREATIVE and the sundial's CMD_CLOCK. They were written as 33 on their branch while main took 33
  * for the above.
  * 35: a snapshot's margin is told against the tick due on the loop's clock, and it says the ticks the loop gave up.
+ * 36: a snapshot says the buttons its tick carried from an input that came after its own tick.
  */
-export const PROTOCOL_VERSION = 35;
+export const PROTOCOL_VERSION = 36;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -802,9 +804,10 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
 
 /**
  * Call after reading `ack` and `behind` (in ticks). Keeps only ticks in (serverTick, serverTick + INPUT_WINDOW) not already
- * present. Returns the newest tick named, or 0 if the message was malformed.
+ * present, and hands `late` the buttons of each tick named that the server has stepped. Returns the newest tick named, or
+ * 0 if the message was malformed.
  */
-export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number, ack = 0, behind = 0, ackHistory?: Uint32Array): number {
+export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number, ack = 0, behind = 0, ackHistory?: Uint32Array, late?: (tick: number, buttons: number) => void): number {
   const newest = r.u32();
   const count = r.bits(3) + 1;
   let moveX = 0;
@@ -828,7 +831,7 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
       // Preserve the packet acknowledgement separately from the interpolated view. Redundant
       // copies received later cannot replace the acknowledgement of the first accepted copy.
       if (ackHistory) ackHistory[tick & inputs.mask] = ack;
-    }
+    } else if (tick <= serverTick) late?.(tick, buttons);
   }
   return r.overflow ? 0 : newest;
 }
