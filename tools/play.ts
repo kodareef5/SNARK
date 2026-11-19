@@ -37,16 +37,18 @@ export interface Line {
   server: ServerView;
 }
 
-export const CAUSES = ["page", "line", "server", "unheld", "disagree"] as const;
+export const CAUSES = ["page", "line", "server", "unheld", "rewound", "disagree"] as const;
 export type Cause = (typeof CAUSES)[number];
 const SAID: Record<Cause, string> = {
   page: "1 the page stalled",
   line: "2 the line held inputs back",
   server: "3 the server ran late",
   unheld: "4 not predicted (ground not held)",
-  disagree: "5 the two ends disagree",
+  rewound: "5a after a clock jump the page and the server stepped different inputs for ticks already sent",
+  disagree: "5b the two ends disagree",
 };
-const VERDICT: Record<Cause, string> = { page: "the page stalls", line: "network", server: "the server stalls", unheld: "not predicted while the map's ground comes", disagree: "the two ends disagree" };
+const WIDE = Math.max(...Object.values(SAID).map((t) => t.length));
+const VERDICT: Record<Cause, string> = { page: "the page stalls", line: "network", server: "the server stalls", unheld: "not predicted while the map's ground comes", rewound: "the two ends disagree on inputs after the page's clock jumped back", disagree: "the two ends disagree" };
 
 /** A server tick this many ms late was stalled: the snapshots of its catching up report margins far too high. */
 const SERVER_LATE_MS = 50;
@@ -92,7 +94,7 @@ export function judge(s: Session): Judged {
   const guessed = new Map<number, number>();
   const serverLate = new Set<number>();
   const pageLate = new Set<number>();
-  const unheld: [number, number][] = [];
+  const unheld: [number, number][] = [], rewound: [number, number][] = [];
   const frames: PlayFrame[] = [];
   for (const { page, server } of s.lines) {
     for (const [t, since] of server.guesses) guessed.set(t, since);
@@ -102,6 +104,7 @@ export function judge(s: Session): Judged {
       for (let t = f.t; t < f.t + f.n + f.skip; t++) pageLate.add(t);
     }
     unheld.push(...page.unheldList);
+    rewound.push(...page.rewound);
   }
   // A frame over 250 ms also slips the page's clock by the rest (client/core/session.ts takes at most 250 ms a frame), so
   // its inputs stay late after it, until the margin is back.
@@ -124,6 +127,7 @@ export function judge(s: Session): Judged {
       const guesses: number[] = [];
       for (let t = c.since; t <= c.t; t++) if (guessed.has(t)) guesses.push(t);
       if (c.resumed || unheld.some(([a, b]) => a <= c.t && b > c.since)) cause = "unheld";
+      else if (rewound.some(([a, b]) => a <= c.t && b > c.since)) cause = "rewound";
       else if (guesses.some((g) => pageLate.has(g))) cause = "page";
       else if (guesses.some((g) => any(g - SERVER_BEFORE, g, serverLate))) cause = "server";
       else if (guesses.length > 0) cause = "line";
@@ -186,12 +190,12 @@ export function describe(s: Session): string[] {
   const kept = j.corrections.length + j.joining.length, counted = moved + state;
   say(`  corrections: ${moved} that moved the body and ${state} of other state alone (${per(counted)} a minute); ${seats} changes of seat, which nothing predicts${kept < counted ? `; ${counted - kept} beyond what the reports kept are not judged` : ""}`);
   if (j.joining.length > 0) say(`    ${j.joining.length} of them in its first ${JOIN_TICKS / TICK_RATE} s, while its clock found its margin, are not counted below`);
-  say(`    ${"cause".padEnd(36)} ${"a minute".padStart(9)} ${"moved".padStart(6)} ${"state".padStart(6)}   largest`);
+  say(`    ${"cause".padEnd(WIDE)} ${"a minute".padStart(9)} ${"moved".padStart(6)} ${"state".padStart(6)}   largest`);
   for (const cause of CAUSES) {
     const of = j.corrections.filter((x) => x.cause === cause);
     const m = of.filter((x) => x.c.what === "moved");
     const big = of.reduce<PlayCorrection | null>((b, x) => (!b || x.c.d > b.d ? x.c : b), null);
-    say(`    ${SAID[cause].padEnd(36)} ${per(of.length).padStart(9)} ${String(m.length).padStart(6)} ${String(of.length - m.length).padStart(6)}   ${big ? `${big.d.toFixed(3)} m at tick ${big.t}, ${place(big)}${big.kind ? `, ${big.kind}` : ""}` : "-"}`);
+    say(`    ${SAID[cause].padEnd(WIDE)} ${per(of.length).padStart(9)} ${String(m.length).padStart(6)} ${String(of.length - m.length).padStart(6)}   ${big ? `${big.d.toFixed(3)} m at tick ${big.t}, ${place(big)}${big.kind ? `, ${big.kind}` : ""}` : "-"}`);
   }
 
   // Stretches drawn late.
@@ -208,7 +212,7 @@ export function describe(s: Session): string[] {
   const costly = over250.filter((f) => j.jumps.some((x) => x.after250 && x.t >= f.t && x.t - f.t <= AFTER_FRAME)).length;
   say(`  long frames: ${sum((p) => p.long)} of ${sum((p) => p.frames)} came 50 ms or more after the one before, ${sum((p) => p.over100)} over 100 ms, ${sum((p) => p.over250)} over 250 ms; the longest ${Math.max(0, ...pages.map((p) => p.worst))} ms; ${sum((p) => p.skipped)} ticks skipped`);
   if (over250.length > 0) say(`  the page stalled ${over250.length} times past 250 ms, ${costly === over250.length ? "each costing a clock jump" : `${costly} of them costing a clock jump`}`);
-  const worst = [...j.frames].sort((a, b) => b.ms - a.ms).slice(0, 6);
+  const worst = [...j.frames].sort((a, b) => b.ms - a.ms).filter((f, i) => f.ms > 250 || i < 6).slice(0, 24);
   for (const f of worst) {
     const did = [f.ground ? `${f.ground} ground parts landed` : "", f.handed ? "statics handed over" : "", f.got ? `${Math.round(f.got / 1024)} KB of art came` : "", f.up + f.tex + f.buf ? `${f.up} levels, ${f.tex} textures and ${f.buf} buffers put on the card` : "", f.flying ? `${f.flying} requests under way` : ""].filter(Boolean);
     say(`    ${String(f.ms).padStart(5)} ms at tick ${f.t}: the page's own code ${f.own} ms of it${did.length ? `; ${did.join(", ")}` : ""}; ${f.n} ticks sampled late${f.skip ? `, ${f.skip} skipped` : ""}; the margin after ${f.after === 127 ? "not told" : f.after}${f.back ? `, on time again from tick ${f.back}` : ""}`);

@@ -150,6 +150,8 @@ export interface PlayReport {
   gaps: PlayGap[];
   /** Stretches of ticks not predicted, first and last. */
   unheldList: [number, number][];
+  /** Ticks whose inputs the page had and forgot, sent ones among them, when its clock jumped back past those it sent: first and last. */
+  rewound: [number, number][];
   /**
    * What else the page did, each with the newest tick sampled and the page's clock in ms: the session's state and what it
    * drove, the socket closing and why, the graphics context lost and given back, the tier, each step of the governor,
@@ -196,8 +198,9 @@ export class PredictionTrace {
   /** The first tick of the stretch not predicted now, or -1; and the snapshot the body was predicted again from. */
   private openUnheld = -1;
   private resumedAt = -1;
-  /** Where the session will be stepped from: the newest tick sampled or skipped, as the frame before left it. */
+  /** Where the session will be stepped from: the newest tick sampled or skipped, as the frame before left it; and the snapshot the clock last jumped at. */
   private last = -1;
+  private jumpedAt = 0;
   /** The newest tick and page time seen, which a note is told at. */
   private tick = 0;
   private now = 0;
@@ -221,6 +224,8 @@ export class PredictionTrace {
     const r = this.report ?? this.open(s, now, sampled);
     // Ticks the session took from snapshots while the page stalled count with those it skipped.
     const first = this.last >= 0 && this.last < s.simTick - sampled ? this.last + 1 : s.simTick - sampled + 1;
+    // A clock set back past ticks it sent forgets every input it kept, those after the snapshot it jumped at too.
+    if (this.last >= 0 && s.simTick - sampled < this.last) this.keep(r.rewound, [Math.min(s.simTick - sampled, this.jumpedAt) + 1, this.last]);
     const taken = s.simTick - sampled + 1 - first;
     this.last = s.simTick + skipped;
     this.tick = s.simTick;
@@ -319,6 +324,7 @@ export class PredictionTrace {
   }
 
   jump(tick: number, by: number, behind: boolean): void {
+    this.jumpedAt = tick;
     if (this.report) this.keep(this.report.jumpList, { t: tick, by, behind });
   }
 
@@ -370,7 +376,7 @@ export class PredictionTrace {
       v: PLAY_VERSION, name: s.name, joined: s.joined, n: this.sent++, from, to: from, ms: 0,
       frames: 0, long: 0, over100: 0, over250: 0, worst: 0, ticks: 0, skipped: 0, unheld: 0, kinds: {},
       snapshots: 0, adopted: 0, moved: 0, state: 0, seats: 0, jumps: 0, margin: [127, -127], rtt: 0, x: 0, z: 0,
-      corrections: [], frameList: [], jumpList: [], gaps: [], unheldList: [], notes: [], t0: Math.round(now), dropped: 0,
+      corrections: [], frameList: [], jumpList: [], gaps: [], unheldList: [], rewound: [], notes: [], t0: Math.round(now), dropped: 0,
     });
   }
 

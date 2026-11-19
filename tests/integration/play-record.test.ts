@@ -74,7 +74,7 @@ test("a clean line and a page that keeps up: nothing corrected, and the record s
   r.walk(12000);
   const { rows, text } = r.end();
   console.log(text.join("\n"));
-  expect(rows).toEqual({ page: 0, line: 0, server: 0, unheld: 0, disagree: 0 });
+  expect(rows).toEqual({ page: 0, line: 0, server: 0, unheld: 0, rewound: 0, disagree: 0 });
   expect(text.at(-1)).toContain("nothing went wrong");
 });
 
@@ -101,7 +101,7 @@ test("a page that stalls while it walks: its corrections are the page's", () => 
   const { rows, text, judged } = r.end();
   console.log(text.join("\n"));
   expect(rows.page).toBeGreaterThan(0);
-  expect([rows.line, rows.server, rows.unheld, rows.disagree]).toEqual([0, 0, 0, 0]);
+  expect([rows.line, rows.server, rows.unheld, rows.rewound, rows.disagree]).toEqual([0, 0, 0, 0, 0]);
   expect(judged.frames.filter((f) => f.ms > 250).length).toBe(6);
 });
 
@@ -114,7 +114,7 @@ test("a line that holds inputs back while the page keeps up: its corrections are
   const { rows, text } = r.end();
   console.log(text.join("\n"));
   expect(rows.line).toBeGreaterThan(0);
-  expect([rows.page, rows.server, rows.unheld, rows.disagree]).toEqual([0, 0, 0, 0]);
+  expect([rows.page, rows.server, rows.unheld, rows.rewound, rows.disagree]).toEqual([0, 0, 0, 0, 0]);
 });
 
 test("a server whose loop stalls and catches up while inputs are on their way: its corrections are the server's", () => {
@@ -125,7 +125,7 @@ test("a server whose loop stalls and catches up while inputs are on their way: i
   const { rows, text } = r.end();
   console.log(text.join("\n"));
   expect(rows.server).toBeGreaterThan(0);
-  expect([rows.page, rows.line, rows.unheld, rows.disagree]).toEqual([0, 0, 0, 0]);
+  expect([rows.page, rows.line, rows.unheld, rows.rewound, rows.disagree]).toEqual([0, 0, 0, 0, 0]);
 });
 
 test("a server that falls behind and gives up the ticks due: the page's clock jumps for it, and the record says so first", () => {
@@ -136,9 +136,22 @@ test("a server that falls behind and gives up the ticks due: the page's clock ju
   r.walk(4000);
   const { rows, text, judged } = r.end();
   console.log(text.join("\n"));
-  expect([rows.page, rows.line, rows.unheld, rows.disagree]).toEqual([0, 0, 0, 0]);
+  expect([rows.page, rows.line, rows.unheld, rows.rewound, rows.disagree]).toEqual([0, 0, 0, 0, 0]);
   expect(text[1]).toMatch(/^ {2}the server fell behind 1 time and gave up 1[0-9] ticks/);
   expect(judged.jumps.map((j) => [j.behind, j.cause])).toEqual([[false, "server"]]);
+});
+
+test("a server that falls more than a second behind: the page's clock jumps back past ticks it sent, and what follows is named for that", () => {
+  const r = recorded({ tcp: true, latencyMs: 40 });
+  r.walk(3000);
+  r.loop.held = r.h.now + 1500;
+  r.loop.give = true;
+  r.walk(5000);
+  const { rows, text, judged } = r.end();
+  console.log(text.join("\n"));
+  expect([rows.page, rows.line, rows.unheld, rows.disagree]).toEqual([0, 0, 0, 0]);
+  expect(judged.jumps.filter((j) => !j.behind && j.cause === "server" && j.by < -30).length).toBe(1);
+  expect(rows.rewound).toBeGreaterThan(0);
 });
 
 test("a page whose ground has not come: the stretch is not predicted, and what follows its coming is put down to that", () => {
@@ -149,7 +162,7 @@ test("a page whose ground has not come: the stretch is not predicted, and what f
   r.walk(4000);
   const { rows, text } = r.end();
   console.log(text.join("\n"));
-  expect([rows.page, rows.line, rows.server, rows.disagree]).toEqual([0, 0, 0, 0]);
+  expect([rows.page, rows.line, rows.server, rows.rewound, rows.disagree]).toEqual([0, 0, 0, 0, 0]);
   expect(text.find((l) => l.includes("not predicted (the ground"))).toMatch(/: [34]\.\d s in 1 stretches/);
 });
 
@@ -161,7 +174,7 @@ test("a disagreement planted on the server: one correction of the two ends, with
   r.walk(3000);
   const { rows, text, judged } = r.end();
   console.log(text.join("\n"));
-  expect(rows).toEqual({ page: 0, line: 0, server: 0, unheld: 0, disagree: 1 });
+  expect(rows).toEqual({ page: 0, line: 0, server: 0, unheld: 0, rewound: 0, disagree: 1 });
   expect(judged.corrections[0]!.c.fields.map((f) => f[0])).toContain("x");
   expect(text.some((l) => /^ {4}x +1 /.test(l))).toBe(true);
 });
