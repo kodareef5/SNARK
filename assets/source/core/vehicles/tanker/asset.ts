@@ -37,6 +37,7 @@ export default {
   flat: 2,
   budgets: { triangles: [26500, 13500, 9800, 3750, 1100, 870], texture: { top: 1024, megabytes: 12 } },
   preserveBones: Object.keys(rig).filter((b) => b.startsWith("wheel_")),
+  holdParts: true,
   distanceLods(names, palette) {
     const colours = rgb.map((c) => nearestColour(palette, c[0]!, c[1]!, c[2]!));
     return shells.map((level) => {

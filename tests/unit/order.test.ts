@@ -81,11 +81,29 @@ function cards(): SourceMesh {
   return mesh;
 }
 
-/** The tube with its horn cut out, the cards, and a box: one flat level, its 8 corners each written for 3 faces. */
+/**
+ * A flat square of 2 by 2 quads drawn with a material, each triangle written with corners of its own, as a generated
+ * landmark's are: 24 corners where 9 differ in any byte.
+ */
+function sheet(): SourceMesh {
+  const mesh = squareMesh("test:sheet", 1, ["base"]);
+  const [positions, uvs]: number[][] = [[], []];
+  const corner = (i: number, j: number): void => void (positions.push(i / 2, j / 2, 0), uvs.push(i / 2, 1 - j / 2));
+  for (let j = 0; j < 2; j++) {
+    for (let i = 0; i < 2; i++) {
+      for (const [di, dj] of [[0, 0], [1, 0], [1, 1], [0, 0], [1, 1], [0, 1]] as const) corner(i + di, j + dj);
+    }
+  }
+  const n = positions.length / 3;
+  mesh.lods = [{ positions: Float32Array.from(positions), colors: new Uint8Array(n).fill(15), indices: Uint32Array.from({ length: n }, (_, k) => k), uvs: Float32Array.from(uvs), normals: Float32Array.from({ length: n * 3 }, (_, i) => (i % 3 === 2 ? 1 : 0)) }];
+  return mesh;
+}
+
+/** The tube with its horn cut out, the cards, the sheet, and a box: one flat level, its 8 corners each written for 3 faces. */
 function cutPack(): Uint8Array {
   const tube = tubeMesh();
   tube.materials![1]!.flags |= MATERIAL_CUTOUT;
-  return buildPack([tube, cards(), { id: "test:box", lods: [boxMesh([0.5, 1, 0.25], 7)] }], defaultPalette(), tubeClips(), [TUBE_RIG]);
+  return buildPack([tube, cards(), sheet(), { id: "test:box", lods: [boxMesh([0.5, 1, 0.25], 7)] }], defaultPalette(), tubeClips(), [TUBE_RIG]);
 }
 
 /** Which card each triangle of the cards is part of, in the order drawn. */
@@ -97,7 +115,7 @@ function cardsOf(pack: Pack): number[] {
   return Array.from({ length: lod.indexCount / 3 }, (_, t) => Math.floor(x(ix[t * 3]!) / 2 + 0.1));
 }
 
-test("a pack ordered draws the same triangles in each run, a cut-out run's sprays in the order the writer ranked them, and a flat level from welded vertices", () => {
+test("a pack ordered draws the same triangles in each run, a cut-out run's sprays in the order the writer ranked them, and every level from welded vertices", () => {
   const before = parsePack(cutPack());
   const after = parsePack(orderPack(cutPack()));
   const fetched: (string | number)[][] = [];
@@ -114,11 +132,15 @@ test("a pack ordered draws the same triangles in each run, a cut-out run's spray
       }
       expect(now.sections).toEqual(lod.sections);
       for (let k = 0; k < lod.sections.length; k += 3) expect(corners(after, now, lod.sections[k + 1]!, lod.sections[k + 2]!)).toEqual(corners(before, lod, lod.sections[k + 1]!, lod.sections[k + 2]!));
+      // No two vertices left the same in every byte: a corner, its surface and its skin.
+      const [v, s, sk] = [lodVertices(after, now), lodSurface(after, now)!, lodSkin(after, now)];
+      const kept = new Set(Array.from({ length: now.vertexCount }, (_, i) => [...v.subarray(i * VERTEX_BYTES, (i + 1) * VERTEX_BYTES), ...s.subarray(i * SURFACE_BYTES, (i + 1) * SURFACE_BYTES), ...(sk?.subarray(i * SKIN_BYTES, (i + 1) * SKIN_BYTES) ?? [])].join(".")));
+      expect(kept.size).toBe(now.vertexCount);
     });
   });
-  // The box is its 8 corners; the tube's coarsest level welds only at the seam of the horn, which is one colour. The
-  // tube's levels with materials, horn and all, fetch fewer vertices.
-  expect(fetched.filter((row) => row[0] !== "test:cards")).toEqual([["test:box", 24, 8, -1], ["test:tube", 306, 306, -1], ["test:tube", 90, 90, -1], ["test:tube", 30, 28, -1]]);
+  // The box is its 8 corners and the sheet its 9; the tube's coarsest level welds only at the seam of the horn, which is
+  // one colour, and its levels with materials, horn and all, have no corner written twice alike, and fetch fewer vertices.
+  expect(fetched.filter((row) => row[0] !== "test:cards")).toEqual([["test:box", 24, 8, -1], ["test:sheet", 24, 9, -1], ["test:tube", 306, 306, -1], ["test:tube", 90, 90, -1], ["test:tube", 30, 28, -1]]);
   // The frame budget draws a first share of a cut-out run: the cards, largest first as the writer put them, stay so.
   const ranked = cardsOf(before);
   expect([ranked.filter((c, t) => c !== ranked[t - 1]), cardsOf(after)]).toEqual([[5, 1, 3, 2, 4, 0], ranked]);
