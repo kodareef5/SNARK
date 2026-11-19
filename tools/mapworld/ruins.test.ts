@@ -421,6 +421,8 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     expect([...floors.values()].every((n) => n === 11)).toBe(true);
     expect(on("zbalcbare").length).toBeGreaterThan(0);
     expect(sags.length).toBeGreaterThan(on("zbalcbare").length);
+    // Over the stripped bay a fallen balcony's slab hangs from the highest of its storeys, in one front of two.
+    if (seed === 3) expect(on("zdrape").length).toBeGreaterThan(0);
     expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
     // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub, as it
     // does beside the failure.

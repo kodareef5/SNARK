@@ -200,7 +200,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
             for (const e of [-1, 1]) m.put("fin4", u - dz * e * (bay / 2 - .4), h + 2, v + dx * e * (bay / 2 - .4), rule.finish, turn);
             facade(m, "zendsag", u, h, v, side, "fracture");
             // From the highest such storey, two a building at most, the balcony's slab hangs down the bay below it.
-            if (!stripped(level + 1) && level >= 2 && drapes < 2 && hash3(opts.seed + 239, t.i * 4 + side, t.j) % 2 === 0) { facade(m, "zdrape", u, h, v, side, "concrete"); drapes++; }
+            if ((level + 1 >= top || !stripped(level + 1)) && level >= 2 && drapes < 2 && hash3(opts.seed + 239, t.i * 4 + side, t.j) % 2 === 0) { facade(m, "zdrape", u, h, v, side, "concrete"); drapes++; }
             level++; continue;
           }
           if (upper && top - level >= 4 && !(plant && level + 4 === top) && ![0, 1, 2, 3].some((k) => bandEnds(level + k))) {
