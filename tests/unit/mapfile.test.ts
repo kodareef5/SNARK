@@ -433,8 +433,9 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   expect(() => parseMap(file.subarray(0, 20))).toThrow("map: it is cut short");
   expect(() => parseMap(rehashed((view) => view.setUint16(4, 3, true)))).toThrow("map: version 3 is not one this build reads: build the map again");
   expect(() => parseMap(rehashed((view) => view.setFloat32(28, 4, true)))).toThrow("map: its samples are 4 m apart");
-  // Twice as wide, its overview's ground is read as twice the samples it holds.
-  expect(() => parseMap(rehashed((view) => view.setUint16(16, 2, true)))).toThrow(/^map: its part overview\.32-32\.[0-9a-f]{16}\.part runs past its end$/);
+  // Twice as wide, the head's coarse picture is read as twice the samples it holds (it was the overview's ground that ran
+  // past its end until the head held the whole map coarse).
+  expect(() => parseMap(rehashed((view) => view.setUint16(16, 2, true)))).toThrow("map: a section runs past its end");
   // Off the lattice's grid by a sector, its parts lie off the map.
   expect(() => parseMap(rehashed((view) => view.setUint16(20, 2064, true)))).toThrow(/^map: its part ground\.128-128\.[0-9a-f]{16}\.part lies off the map$/);
   // The first section's length, made to reach past the end of the file.
@@ -549,6 +550,55 @@ test("zoned layers of the same squares share one picture in the file and in memo
       expect(s.kind === 0 ? [0] : s).toEqual(t.kind === 0 ? [0] : t);
     }
   }
+});
+
+/**
+ * Ground of 4 by 4 chunks: a shallow sea in the west (x under 80 m) at -0.5 m, a lake of 128 m a side at 4 m under a
+ * surface of 5 m, land at 8 m, and in the south (z from 224 m) land at 0.5 m with a channel to the floor; tinted 7, 9 and 3.
+ */
+function coarseMap(): MapData {
+  const n = 4 * 32 + 1;
+  const unit = (m: number): number => (m + 32) * 256;
+  const lake = (x: number, z: number): boolean => x >= 128 && x < 256 && z >= 64 && z < 192;
+  const ground = (x: number, z: number): number => (x < 80 ? unit(-0.5) : lake(x, z) ? unit(4) : z < 224 ? unit(8) : x === 200 || x === 202 ? 0 : unit(0.5));
+  const heights = Uint16Array.from({ length: n * n }, (_, k) => ground((k % n) * 2, Math.floor(k / n) * 2));
+  const tint = Uint8Array.from({ length: n * n }, (_, k) => ((k % n) * 2 < 80 ? 7 : lake((k % n) * 2, Math.floor(k / n) * 2) ? 9 : 3));
+  const grid = Uint16Array.from({ length: 32 * 32 }, (_, k) => (lake((k % 32) * 8, Math.floor(k / 32) * 8) ? 1 : 0));
+  const water = MapWater.fromGrid({ chunksX: 4, chunksZ: 4 }, -32, 1 / 256, 8, [{ name: "Square Lake", level: unit(5) }], grid);
+  return flatMap(4, { seaLevel: 0, heights, tint, water });
+}
+
+/** The tags and byte lengths of a head's sections, in its order. */
+function sections(file: Uint8Array): [string, number][] {
+  const view = new DataView(file.buffer, file.byteOffset);
+  const out: [string, number][] = [];
+  for (let at = 56 + 1 + file[56]!; at < view.getUint32(12, true); at += 8 + view.getUint32(at + 4, true)) out.push([String.fromCharCode(...file.subarray(at, at + 4)), view.getUint32(at + 4, true)]);
+  return out;
+}
+
+test("the head holds the whole map at every chunk's corner: a square's mean, held under the sea or a lake where most of it is under, at or over the sea where most is dry, its commonest tint, its lake, and the chunks the overviews hold water for", () => {
+  const file = writeMap(coarseMap());
+  const { coarse, bodies } = { coarse: readHead(file).coarse, bodies: readHead(file).water!.bodies };
+  const at = (i: number, j: number): [number, number, number] => [coarse.heights[j * 5 + i]!, coarse.tint[j * 5 + i]!, coarse.bodies![j * 5 + i]!];
+  // All sea; most sea, the land in it lifting the mean over the sea, held a unit under; all lake; most lake, held a unit
+  // under its surface; most dry with the channel taking the mean under the sea, held at it; dry.
+  expect([at(0, 2), at(1, 2), at(3, 2), at(2, 2), at(3, 4), at(4, 4)]).toEqual([[8064, 7, 0], [8191, 7, 0], [9216, 9, 1], [9471, 9, 1], [8192, 3, 0], [8320, 3, 0]]);
+  expect([coarse.heights.length, [...coarse.bodies!].flatMap((b, k) => (b > 0 ? [k] : [])), [...coarse.water], bodies.length]).toEqual([25, [8, 12, 13, 14], [6, 7, 10, 11], 1]);
+  // Its bytes: 25 heights as a grid, their tints, their bodies as a grid and a bit for each of the 16 chunks.
+  expect(sections(file).find(([tag]) => tag === "COAR")).toEqual(["COAR", 25 * 2 + 25 + 25 * 2 + 2]);
+  // With no water, the heights and tints alone; a head without the picture, or naming a body it does not list, is refused.
+  const dry = writeMap(flatMap(4));
+  expect([sections(dry).find(([tag]) => tag === "COAR"), readHead(dry).coarse.bodies, [...readHead(dry).coarse.heights]]).toEqual([["COAR", 25 * 3], null, Array(25).fill(32 * 256)]);
+  const rehashed = (change: (copy: Uint8Array) => void): Uint8Array => {
+    const copy = file.slice();
+    change(copy);
+    new DataView(copy.buffer).setUint32(8, hashBytes(copy.subarray(12, readHead(file).bytes)), true);
+    return copy;
+  };
+  const coar = (copy: Uint8Array): number => copy.findIndex((_, k) => String.fromCharCode(...copy.subarray(k, k + 4)) === "COAR");
+  expect(() => readHead(rehashed((c) => c.set([..."CXAR"].map((ch) => ch.charCodeAt(0)), coar(c))))).toThrow("map: its head has no coarse picture (COAR): build the map again");
+  // The low byte of the first sample's body in its zigzagged grid made 4: it names body 2.
+  expect(() => readHead(rehashed((c) => (c[coar(c) + 8 + 75] = 4)))).toThrow("map: its coarse picture names a body of water its head does not list");
 });
 
 test("a map's static pieces are set down in the file's order, and a piece the content lacks stops the load", () => {
