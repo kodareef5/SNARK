@@ -4,7 +4,7 @@
 // their painted parts in tex/parts (ref/SOURCES.md says how each was made). "street" is opaque; "street_cut" is drawn
 // where its alpha is over half: chain-link, broken glass, torn vinyl. The script makes every level; the flat ones are
 // in the colours of what their faces were laid on, the last the piece's masses in a dozen to seventy triangles. The
-// crosswalk bars are road paint with no picture, flat at every level, the last a patch of four triangles.
+// crosswalk bars are laid on the atlas's road paint, their last level a flat patch of four triangles.
 
 import type { PiecesAsset } from "../../../../../tools/art/spec.ts";
 
@@ -22,6 +22,8 @@ const PIECES: Readonly<Record<string, readonly number[]>> = {
   signal_bent: [292, 28],
   stop: [76, 36],
   stop_bent: [76, 36],
+  yield: [56, 32],
+  yield_bent: [56, 32],
   street_name: [68],
   speed: [24],
   speed40: [24],
@@ -94,7 +96,10 @@ export default {
   materials: {
     street: { base: "tex/street_base.png", normal: "tex/street_normal.png", packed: "tex/street_packed.png", height: "tex/street_height.png" },
     // A working lamp's lens, which gives out light from dusk to dawn (paint.py; client/core/render/surface.ts `glow`).
-    street_glow: { base: "tex/glow_base.png", emissive: 4, night: true },
+    // Its emissive is light where the noon sun is 1, and by night the frame's exposure is 42,000 (midnight) to 108,000 (an
+    // hour after sunset), so 0.000025 brings the sodium-orange glass to 1 to 2.7 after exposure: bright, and short of
+    // where the tone curve whitens a colour much; it blooms a little only at its brightest. At 4 it was white.
+    street_glow: { base: "tex/glow_base.png", emissive: 0.000025, night: true },
     street_cut: { base: "tex/cut_base.png", normal: "tex/cut_normal.png", packed: "tex/cut_packed.png", height: "tex/cut_height.png", cutout: true },
   },
   budgets: { triangles: [432, 320, 120, 72], texture: { top: 2048, megabytes: 40 } },

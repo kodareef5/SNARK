@@ -29,12 +29,12 @@ FLAT = {"galvanised": (138, 141, 140), "green": (88, 104, 90), "yellow": (178, 1
         "louvre": (138, 141, 140), "tank": (190, 186, 176), "solar": (44, 52, 70), "duct": (150, 152, 150), "door": (100, 110, 100),
         "spare": (138, 141, 140), "fence": (150, 150, 146), "billboard": (172, 162, 142), "glass": (170, 180, 182), "torn": (190, 185, 170),
         "oneway": (60, 58, 54), "oneway_left": (60, 58, 54), "noentry": (165, 72, 68), "crossing": (190, 172, 96), "deadend": (190, 172, 96),
-        "noparking": (205, 202, 190), "speed30": (205, 202, 190), "speed40": (205, 202, 190), "lens_lit": (250, 196, 128),
+        "noparking": (205, 202, 190), "speed30": (205, 202, 190), "speed40": (205, 202, 190), "lens_lit": (247, 155, 68),
         "speed25": (205, 202, 190), "speed35": (205, 202, 190), "speed45": (205, 202, 190), "paystation": (70, 78, 86),
-        "paystation_paint": (70, 78, 86), "paystation_smashed": (48, 54, 52),
-        # Road paint, which has no picture: fresh, worn, grimed, and far off, where the bars blur into the road between them.
-        "paint": (200, 198, 188), "paint_worn": (174, 170, 158), "paint_grimy": (150, 146, 136), "paint_far": (140, 140, 136),
-        "paint_worn_far": (112, 112, 110)}
+        "paystation_paint": (70, 78, 86), "paystation_smashed": (48, 54, 52), "yield": (192, 143, 129),
+        # Road paint: fresh, as white as road paint (an albedo of about 0.75), worn, and far off, where the bars blur into
+        # the road between them, mixed with it as light.
+        "paint": (226, 224, 216), "paint_worn": (190, 187, 178), "paint_far": (176, 174, 166), "paint_worn_far": (126, 126, 122)}
 
 
 def srgb_linear(c):
@@ -356,9 +356,11 @@ def octagon(m, centre, across, thick, front, back_strip="galvanised", move=None)
     return polygon(m, centre, across, thick, front, 8, math.pi / 8, back_strip, move)
 
 
-def polygon(m, centre, across, thick, front, sides, start, back_strip="galvanised", move=None):
+def polygon(m, centre, across, thick, front, sides, start, back_strip="galvanised", move=None, fit=False):
     """A flat sign of `sides` corners in the x-y plane, the first `start` radians round from +x, `across` wide and tall,
-    its front looking +z and laid on `front`'s square: a disc (many sides), a diamond (four, from 0), an octagon."""
+    its front looking +z and laid on `front`'s square: a disc (many sides), a diamond (four, from 0), an octagon. With
+    `fit` it is laid on the part by its own box, as a triangle is, whose corners stand off-centre in a square. A part of
+    the see-through atlas is drawn with its material."""
     reach = max(abs(math.cos(start + k * 2 * math.pi / sides)) for k in range(sides))
     r = across / 2 / reach
     pts = [(math.cos(start + k * 2 * math.pi / sides) * r, math.sin(start + k * 2 * math.pi / sides) * r) for k in range(sides)]
@@ -366,7 +368,13 @@ def polygon(m, centre, across, thick, front, sides, start, back_strip="galvanise
     zf, zb = centre[2] + thick / 2, centre[2] - thick / 2
     fx = lambda x: (x / across) + 0.5
     fy = lambda y: 0.5 - (y / across)
-    m.face([m.vert(mv((centre[0] + x, centre[1] + y, zf))) for x, y in pts], [part_uv(*front, fx(x), fy(y)) for x, y in pts], "street")
+    if fit:
+        x0, x1 = min(x for x, _ in pts), max(x for x, _ in pts)
+        y0, y1 = min(y for _, y in pts), max(y for _, y in pts)
+        fx = lambda x: (x - x0) / (x1 - x0)
+        fy = lambda y: (y1 - y) / (y1 - y0)
+    face_mat = "street" if front[0] == "street" else "street_cut"
+    m.face([m.vert(mv((centre[0] + x, centre[1] + y, zf))) for x, y in pts], [part_uv(*front, fx(x), fy(y)) for x, y in pts], face_mat)
     m.face([m.vert(mv((centre[0] + x, centre[1] + y, zb))) for x, y in pts[::-1]], [strip_uv(back_strip, x + 0.5, fy(y)) for x, y in pts[::-1]], "street")
     for k in range(sides):
         (x0, y0), (x1, y1) = pts[k], pts[(k + 1) % sides]
