@@ -36,10 +36,10 @@ export interface StreetNode { x: number; z: number; ways: Way[]; key: number; }
 export interface Marked { x: number; z: number; kind: string; allWay: boolean; crossing: string | null; governs: { line: number; dx: number; dz: number }[]; }
 
 /**
- * A crossing of the walk network, from a to b across the road, `half` its half width; `signal` and its type (crossing=*)
- * where the data says.
+ * A crossing of the walk network, from a to b across the road, `half` its half width; `signal`, its type (crossing=*)
+ * and its markings (crossing:markings) where the data says.
  */
-export interface Crossing { ax: number; az: number; bx: number; bz: number; half: number; drawn: boolean; signal: boolean | null; type: string | null; }
+export interface Crossing { ax: number; az: number; bx: number; bz: number; half: number; drawn: boolean; signal: boolean | null; type: string | null; markings: string | null; }
 
 /** A parking lot: where its stalls' middle is, and each stall's middle and the middle of its end on the aisle. */
 export interface Lot { id: string; x: number; z: number; stalls: [number, number, number, number][]; }
@@ -161,7 +161,7 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
       return (ux * vx + uz * vz) / ((Math.hypot(ux, uz) * Math.hypot(vx, vz)) || 1) < 0.985;
     });
     for (let i = 1; i < run.length; i++) {
-      crossings.push({ ax: run[i - 1]![0], az: run[i - 1]![1], bx: run[i]![0], bz: run[i]![1], half: (num(f.properties.width_m) ?? 3) / 2, drawn: f.properties.drawn === true, signal: typeof f.properties.signal === "boolean" ? f.properties.signal : null, type: text(f.properties.crossing) });
+      crossings.push({ ax: run[i - 1]![0], az: run[i - 1]![1], bx: run[i]![0], bz: run[i]![1], half: (num(f.properties.width_m) ?? 3) / 2, drawn: f.properties.drawn === true, signal: typeof f.properties.signal === "boolean" ? f.properties.signal : null, type: text(f.properties.crossing), markings: text(f.properties.markings) });
     }
   }
   const crossingBins = new Map<number, Crossing[]>();

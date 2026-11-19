@@ -357,6 +357,9 @@ test("nothing stands on a crossing, and the crossing sign stands before one no s
   expect(near(pieces, "crossing", 200, 250, 15).length).toBe(2);
   expect(near(pieces, "crossing", 200, 650, 15).length).toBe(0);
   expect(near(pieces, "crossing", 200, 450, 15).length).toBe(0);
+  // The unmarked one has no stripes; the others have theirs.
+  const striped = (z: number): number => pieces.filter((p) => /crosswalk/.test(p.kind) && Math.abs(p.z - z) < 2).length;
+  expect([striped(250), striped(450), striped(650)].map((n) => n > 0)).toEqual([true, true, false]);
 });
 
 test("a crossing is striped between the kerbs, the longest pieces first, and a lot with stalls has its pay station", () => {

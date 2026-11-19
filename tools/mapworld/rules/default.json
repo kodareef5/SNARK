@@ -2053,7 +2053,7 @@
     "fences": { "classes": ["avenue", "street"], "set": 2.5, "depth": 12, "least": 12, "yard": 0.75, "open": 0.3, "gap": 0.08 },
     "billboards": { "classes": ["highway", "ramp", "avenue"], "spacing": 380, "set": [10, 16], "chance": 0.7 },
     "paystations": { "least": 8, "tries": 6, "set": 0.6 },
-    "stripes": { "pieces": { "crosswalk8": 9.6, "crosswalk4": 4.8, "crosswalk2": 2.4, "crosswalk1": 1.2 }, "inset": 0.3 },
+    "stripes": { "pieces": { "crosswalk8": 9.6, "crosswalk4": 4.8, "crosswalk2": 2.4, "crosswalk1": 1.2 }, "inset": 0.3, "bare": ["unmarked", "no"] },
     "clear": { "road": 0.25, "inside": 0.35, "route": 0.4, "piece": 0.3, "between": 0.4, "edge": 12, "junction": 3, "rise": 0.6, "crossing": 0.3 }
   },
   "roofs": {

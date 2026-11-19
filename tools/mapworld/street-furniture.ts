@@ -75,8 +75,9 @@ export interface Furniture {
   billboards: { classes: string[]; spacing: number; set: [number, number]; chance: number };
   /** A pay station for each lot of at least `least` stalls, at the head of one of the `tries` stalls nearest its middle. */
   paystations?: { least: number; tries: number; set: number };
-  /** Stripes laid on a crossing: the forms of each length of stripes, in metres, and how far in from each kerb they stop. */
-  stripes?: { pieces: Record<string, number>; inset: number };
+  /** Stripes laid on a crossing: the forms of each length of stripes, in metres, and how far in from each kerb they stop;
+   * `bare`, the crossing types (crossing=*) the data says are not painted. */
+  stripes?: { pieces: Record<string, number>; inset: number; bare: string[] };
   /** Metres kept clear: of a lane's edge, a reserved route's, any piece's; between two of these; of the map's edge. */
   /** `inside` is how far inside a road's edge a post may stand where it fits nowhere else. */
   clear: { road: number; inside: number; route: number; piece: number; between: number; edge: number; junction: number; rise: number; crossing: number };
@@ -572,6 +573,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   if (T) {
     const sizes = Object.entries(T.pieces).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
     for (const c of graph.crossings) {
+      if ((c.type !== null && T.bare.includes(c.type)) || c.markings === "no") continue;
       const ex = c.bx - c.ax; const ez = c.bz - c.az; const cl = Math.hypot(ex, ez); if (cl < 1) continue;
       const vx = ex / cl; const vz = ez / cl;
       const road = roadAt((c.ax + c.bx) / 2, (c.az + c.bz) / 2, 2); if (!road) continue;
