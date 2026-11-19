@@ -5,6 +5,7 @@
 // with its landmarks; --moved 1 draws their moving statics at their second state (a yacht's sails set).
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
 // --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
+// --orbit ROUND,DOWN,NOTCHES with --ride or --fight draws the scene from the orbit camera, swung round by degrees (tools/snap/orbit.ts).
 // --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 // --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
 
@@ -71,6 +72,7 @@ import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
 import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
 import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from "./snap/ride.ts";
+import { orbitScene } from "./snap/orbit.ts";
 import { HUD_MODES, hudScene, type HudMode } from "./snap/hud.ts";
 import { saddleAsset, saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
@@ -943,6 +945,8 @@ if (import.meta.main) {
     return i >= 0 ? args[i + 1] : undefined;
   };
   const [w, h] = (arg("size") ?? "960x540").split("x").map(Number);
+  // With --ride or --fight, the orbit camera once the scene is set (tools/snap/orbit.ts); a bare --orbit takes its defaults.
+  const orbit = args.includes("--orbit") ? (arg("orbit")?.startsWith("--") === false ? arg("orbit")! : "") : null;
   if (args.includes("--creator")) {
     const tab = Number(arg("creator") ?? 0) || 0;
     const pixels = clientPicture(w!, h!, null, (app) => {
@@ -1052,8 +1056,9 @@ if (import.meta.main) {
           run(1000 / 30);
         }
       }
+      if (orbit !== null) orbitScene(app, run, orbit);
     });
-    const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
+    const out = resolve(arg("out") ?? `artifacts/fight-${what}${orbit !== null ? "-orbit" : ""}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);
@@ -1074,8 +1079,11 @@ if (import.meta.main) {
     const moment = (arg("moment") ?? "air") as RideMoment;
     if (!RIDE_MOMENTS.includes(moment)) throw new Error(`--moment takes ${RIDE_MOMENTS.join(", ")}, not "${moment}"`);
     const [watch, passenger] = [args.includes("--watch"), args.includes("--passenger")];
-    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => rideScene(app, run, hh, species, moment, watch, passenger), rideGame(species, passenger));
-    const out = resolve(arg("out") ?? `artifacts/ride-${species}-${moment}${watch ? "-watched" : passenger ? "-passenger" : ""}.png`);
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
+      rideScene(app, run, hh, species, moment, watch, passenger);
+      if (orbit !== null) orbitScene(app, run, orbit);
+    }, rideGame(species, passenger));
+    const out = resolve(arg("out") ?? `artifacts/ride-${species}-${moment}${watch ? "-watched" : passenger ? "-passenger" : ""}${orbit !== null ? "-orbit" : ""}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);

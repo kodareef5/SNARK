@@ -63,6 +63,8 @@ const BILLBOARD = [box(-0.45, 0.45, 0, 10, -0.45, 0.45), box(-7.4, 7.4, 9.55, 14
 
 export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "lamp", color: GALV, hp: 3000, material: "core:mat_metal", boxes: [MAST, LAMP_HEAD] },
+  // One that still works: its lens glows from dusk to dawn.
+  { name: "lamp_lit", color: GALV, hp: 3000, material: "core:mat_metal", boxes: [MAST, LAMP_HEAD] },
   // Tilted from a heaved footing, 14 degrees along the kerb and 5 toward the road.
   { name: "lamp_leaning", color: GALV, hp: 3000, material: "core:mat_metal", boxes: [box(-0.3, 0.3, 0, 0.2, -0.3, 0.3)], hulls: [tilted(MAST, 5, 0, 14), tilted(LAMP_HEAD, 5, 0, 14)] },
   // Snapped at its foot, the mast lying along the kerb on the walk's side and its head beyond it.

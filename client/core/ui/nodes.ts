@@ -19,6 +19,10 @@ export const K_INPUT = 4;
 export const K_BUTTON = 5;
 /** Native range interaction; core draws its track and thumb separately. */
 export const K_SLIDER = 6;
+/** A region turned by a press, as a dial: the pointer is held to it from the press to its release, and every move goes to it. */
+export const K_DIAL = 7;
+/** A text field whose content is never shown: a password. */
+export const K_SECRET = 8;
 
 export const CANVAS_HEIGHT = 720;
 /** The narrowest canvas laid out is a phone held upright. */
@@ -62,6 +66,8 @@ export interface UiImage {
   data: Uint8ClampedArray;
   /** Changes when `data` does. */
   version: number;
+  /** Scaled smoothly, as a painting is, where a map's cells are kept square. */
+  smooth?: boolean;
   /**
    * A file the page fetches the picture from, for an image too large to hand over by its pixels: a sheet of inventory
    * pictures. `data` may then be empty, and is the same picture where a tool fills it.

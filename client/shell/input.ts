@@ -40,6 +40,10 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
   addEventListener("mousemove", (e) => {
     if (document.pointerLockElement === canvas) app.look(e.movementX, e.movementY);
   });
+  // The orbit camera takes the wheel while it is on; otherwise the browser has it as before.
+  addEventListener("wheel", (e) => {
+    if (document.pointerLockElement === canvas && app.wheel(e.deltaY, e.deltaMode)) e.preventDefault();
+  }, { passive: false });
   canvas.addEventListener("mousedown", (e) => {
     if (document.pointerLockElement === canvas) app.mouseButton(e.button, true);
   });

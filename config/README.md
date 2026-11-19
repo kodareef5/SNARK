@@ -12,7 +12,7 @@ bun server/main.ts --config config/boosted-50x --db world.db
 | `official` | Set as ARK's official servers are: rates at 1, difficulty 5 |
 | `boosted-10x` | Experience, taming, harvesting, hatching and growing up ten times as fast |
 | `boosted-50x` | The same at fifty |
-| `dev` | What `bun run dev` reads: raising a creature takes minutes, damage numbers are shown, wild creatures are level 1 to 30 |
+| `dev` | What `bun run dev` reads: raising a creature takes minutes, damage numbers are shown, wild creatures are level 1 to 30, and the menu has the Creative entry |
 
 A test reads every folder here and fails if anything in one is refused,
 unknown or without effect (`tests/integration/round5.test.ts`). How the files

@@ -100,13 +100,14 @@ test("a server reached at /miami answers its world under it, sends /miami on wit
   const wiki = await get(`${at}/wiki?x=1`);
   expect([wiki.status, wiki.headers.get("location"), await (await get(`${at}/wiki/`)).text()]).toEqual([308, "wiki/?x=1", "<!doctype html><title>the wiki</title>"]);
   expect([(await get(`${at}/source/`)).status, (await (await get(`${at}/source/`)).text()).includes("Coming soon")]).toEqual([200, true]);
-  // The sound board is the world's, behind its password, and the site does not hand its page out.
+  // The sound board and the admin page are the world's, behind its password, and the site does not hand them out.
   writeFileSync(join(dir, "sounds.html"), "the board");
+  mkdirSync(join(dir, "admin"));
+  writeFileSync(join(dir, "admin/index.html"), "the admin page");
   expect([await (await get(`${at}/sounds.html`)).text(), (await get(`${at}/admin/sounds.json`)).status]).toEqual(["not found", 404]);
-  for (const path of ["/Sounds.html", "//sounds.html"]) expect(await (await get(`${at}${path}`)).text()).toBe("not found");
-  // The world's own is behind its gate, which this server, with no admin password, keeps shut, in any case of the path.
-  expect(await (await get(`${at}/miami/sounds.html`)).text()).toStartWith("the sound board opens on a development server");
-  expect(await (await get(`${at}/miami/Sounds.html`)).text()).toStartWith("the sound board opens on a development server");
+  for (const path of ["/Sounds.html", "//sounds.html", "/admin/", "/Admin/index.html", "/admin/stats.json", "/admin"]) expect([path, await (await get(`${at}${path}`)).text()]).toEqual([path, "not found"]);
+  // The world's own are behind its gate, which this server, with no admin password, keeps shut, in any case of the path.
+  for (const path of ["/miami/sounds.html", "/miami/Sounds.html", "/miami/admin/", "/miami/ADMIN/stats.json", "/miami/admin/survivors.json"]) expect(await (await get(`${at}${path}`)).text()).toStartWith("the admin pages open on a development server");
 });
 
 test("a server at the root of its host is all world as before, and has the page the source link goes to and its links", async () => {

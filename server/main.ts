@@ -23,7 +23,11 @@ import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
 import { clientAddress } from "./front.ts";
-import { boardAsked, boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
+import { boardOwners, soundBoard } from "./sound-board.ts";
+import { adminAsked, type AdminGate } from "./admin/gate.ts";
+import { TickMeter } from "./admin/meter.ts";
+import { AdminPages } from "./admin/routes.ts";
+import { gaugesOf } from "./admin/stats.ts";
 import { CUES } from "../shared/sound/cues.ts";
 import { partHash, partsFolder, readHead } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
@@ -235,7 +239,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const pack = parsePack(served(manifest.boot));
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
   const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
-  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
+  const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, survivorLog: { mode: "worker" as const }, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
   for (const m of host.lists.renamed) console.log(`settings: ${m.setting} names ${m.name}, which is now ${m.to.join(", ")}`);
@@ -254,7 +258,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash);
   // The shared families of sounds are the owners the catalogue's fallbacks name.
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
-  const board: BoardGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
+  const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
+  const meter = new TickMeter(() => gaugesOf(host));
+  const admin = new AdminPages({ host, meter, dir: join(clientDir, "admin"), start: { tick: host.world.tick, wall: meter.startedAt } });
   if (opts.probeScene) {
     const ents = host.world.ents;
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
@@ -349,8 +355,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (same) return same;
       if (at === "site") {
         if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links(), entryBuilt ? {world:false,directory} : undefined));
-        // The sound board is a world's, behind its admin password (soundBoard), and not the site's to hand out.
-        return boardAsked(path) ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
+        // The admin pages are a world's, behind its admin password (server/admin/gate.ts), and not the site's to hand out.
+        return adminAsked(path) ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
       }
       // A development server's own routes and its sockets are for a browser that asked for this machine (namesThisMachine).
       const local = !opts.dev || namesThisMachine(req.headers.get("host"), named);
@@ -392,8 +398,11 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         measured(result);
         return new Response("ok");
       }
-      const sounds = soundBoard(req, who, local ? board : { ...board, dev: false }, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
+      const gate = local ? board : { ...board, dev: false };
+      const sounds = soundBoard(req, who, gate, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
       if (sounds) return sounds;
+      const page = admin.answer(req, who, gate, path);
+      if (page) return page;
       const map = mapRoute(path, req);
       if (map) return map;
       const file = await serveFile(clientDir, req, path === "/play.html" ? "/index.html" : path);
@@ -464,7 +473,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
 
   host.cluster?.listening(server.port ?? 0, (opts.publicUrl ?? "").replace(/\/+$/, ""));
 
-  // Fixed-rate loop on the wall clock, with bounded catch-up after a stall.
+  // Fixed-rate loop on the wall clock, with bounded catch-up after a stall. Each tick is timed for the admin page.
   const tickMs = 1000 / TICK_RATE;
   let next = performance.now() + tickMs;
   let timer: ReturnType<typeof setTimeout>;
@@ -472,13 +481,19 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     const now = performance.now();
     let steps = 0;
     while (now >= next && steps < 5) {
+      const began = performance.now();
       host.game.tick();
+      meter.tick(next, began, performance.now());
       next += tickMs;
       steps++;
     }
     // The checkpoint is the keeper thread's work, so asking for it costs nothing here, late or not.
     host.idle();
-    if (now - next > 250) next = now + tickMs;
+    if (now - next > 250) {
+      // The ticks due up to now are given up.
+      meter.drop(Math.floor((now - next) / tickMs) + 1, now);
+      next = now + tickMs;
+    }
     timer = setTimeout(loop, Math.max(0, next - performance.now()));
   };
   timer = setTimeout(loop, tickMs);
