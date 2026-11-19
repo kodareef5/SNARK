@@ -12,9 +12,9 @@ export interface Crown {
   readonly kind: CrownKind;
   /** Tiles whose top storeys were torn away: their walls end in broken tops, and a taller tile's side toward one is open. */
   readonly torn: ReadonlySet<Tile>;
-  /** A plant floor's room over the middle of the roof: the tiles raised two storeys over the rest. */
+  /** A plant floor's room over the middle of the roof: the tiles raised two storeys or more over the rest. */
   readonly raised: ReadonlySet<Tile>;
-  /** A screen's notch: the side it is broken out of and the tiles along it that have none, a storey lower than the rest. */
+  /** A screen's notch: the side it is broken out of and the tiles along it that have none, a storey or more lower. */
   readonly notch: { readonly side: number; readonly tiles: ReadonlySet<Tile> } | null;
 }
 
@@ -132,8 +132,9 @@ export function crownOf(s: CrownSite): Crown | null {
     return { kind, torn, raised: new Set(), notch: null };
   }
   if (kind === "plant") {
-    // Two storeys and its lift's overrun over them, so it reads from a kilometre where one storey is two pixels.
-    for (const t of inner) tops.set(tileKey(t.i, t.j), floors + 2);
+    // Two storeys, a tenth of the tower's on a tall one, and its lift's overrun over them, so it reads from a kilometre
+    // where one storey is two pixels.
+    for (const t of inner) tops.set(tileKey(t.i, t.j), floors + Math.max(2, Math.round(floors / 10)));
     return { kind, torn, raised: new Set(inner), notch: null };
   }
   // A screen round the roof, broken out along one or two bays of one side.
@@ -142,7 +143,7 @@ export function crownOf(s: CrownSite): Crown | null {
   const edge = tiles.filter((t) => !tops.has(tileKey(t.i + dx, t.j + dz))).sort((a, b) => (dx ? a.v - b.v : a.u - b.u));
   const from = h(8, 9, 191) % Math.max(1, edge.length - 1);
   const notch = new Set(edge.slice(from, from + 1 + (h(9, 10, 193) % 2)));
-  // The notch takes the storey under the screen too, a storey and the screen's height deep.
-  for (const t of notch) set(t, floors - 1);
+  // The notch takes the storeys under the screen too, a twelfth of the tower's and one at least.
+  for (const t of notch) set(t, floors - Math.max(1, Math.round(floors / 12)));
   return { kind: "screen", torn, raised: new Set(), notch: { side, tiles: notch } };
 }

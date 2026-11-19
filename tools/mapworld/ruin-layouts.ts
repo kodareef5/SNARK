@@ -198,9 +198,9 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           if (name) {
             facade(m, name, u, h, v, side, rule.finish);
             if (name === "zbalcbare") facade(m, "zendsag", u, h, v, side, "fracture");
-            // Beside a failure a vine hangs from one balcony in three.
+            // Beside a failure a vine hangs from one balcony in three, a bare one's broken slab too.
             const grows = hash3(opts.seed + 89, t.i * 4 + side, t.j * 64 + level);
-            if (nearFall && (name === "zbalc" || name === "zbalcrail") && grows % 3 === 0) grow(m, grows >>> 4, u, h, v, side, 2);
+            if (nearFall && (name === "zbalc" || name === "zbalcrail" || name === "zbalcbare") && grows % 3 === 0) grow(m, grows >>> 4, u, h, v, side, 2);
             if (level === 0 && last && !end && !grammar.groundTop) facade(m, "zparapet8", u, h + 4, v, side, rule.finish);
             level++; continue;
           }
