@@ -352,8 +352,26 @@ test("nothing stands on a crossing, and the crossing sign stands before one no s
   // Across the street along x = 200, mid-block: one marked, one unmarked, one at a signal.
   const walks = [crossing(250, { drawn: true, crossing: "marked" }), crossing(650, { drawn: true, crossing: "unmarked" }), crossing(450, { drawn: false, signal: true })];
   const { pieces } = place(fixture(GRID, [], { walks }), [], rules);
-  for (const p of pieces) for (const b of boxes(p)) for (const z of [250, 450, 650]) expect(Math.abs(b.x - 200) < 7 && Math.abs(b.z - z) < 1.5 + RULES.clear.crossing).toBe(false);
+  // Nothing but its stripes.
+  for (const p of pieces.filter((q) => !/crosswalk/.test(q.kind))) for (const b of boxes(p)) for (const z of [250, 450, 650]) expect(Math.abs(b.x - 200) < 7 && Math.abs(b.z - z) < 1.5 + RULES.clear.crossing).toBe(false);
   expect(near(pieces, "crossing", 200, 250, 15).length).toBe(2);
   expect(near(pieces, "crossing", 200, 650, 15).length).toBe(0);
   expect(near(pieces, "crossing", 200, 450, 15).length).toBe(0);
+});
+
+test("a crossing is striped between the kerbs, the longest pieces first, and a lot with stalls has its pay station", () => {
+  // Across the avenue along x = 500 (14 m wide), between z = 600 and 700, a crossing drawn in three pieces: walk, road, walk.
+  const walks = [{ type: "Feature", geometry: { type: "LineString", coordinates: [[490, 650], [493, 650], [507, 650], [510, 650]] }, properties: { kind: "crossing", drawn: true, width_m: 3 } }];
+  // A lot of twelve stalls in a row facing north onto an aisle, west of x = 260 at z = 640.
+  const stalls = Array.from({ length: 12 }, (_, i) => ({ lot: "osm:way/1", e: 220 + i * 2.7, n: 635, fe: 220 + i * 2.7, fn: 637.5 }));
+  const { pieces } = place(fixture(GRID, [], { walks, stalls }));
+  const bars = pieces.filter((p) => /zzstreet_crosswalk/.test(p.kind)).sort((a, b) => a.x - b.x);
+  // 14 m less 0.3 m at each kerb: 8 bars, 2 and 1, 13.2 m of them, about the road's middle.
+  expect(bars.map((p) => Number(p.kind.replace(/^.*crosswalk(\d+).*$/, "$1"))).sort((a, b) => b - a)).toEqual([8, 2, 1]);
+  for (const p of bars) { expect(Math.abs(p.z - 650)).toBeLessThan(0.01); expect(Math.abs(p.x - 500)).toBeLessThan(7); expect(p.y).toBe(GROUND); }
+  const station = pieces.filter((p) => /zzstreet_paystation/.test(p.kind));
+  expect(station.length).toBe(1);
+  // At the head of a stall, south of the row, facing the aisle to the north.
+  expect(station[0]!.z).toBeLessThan(635);
+  expect(Math.round(Math.cos(station[0]!.yaw * Math.PI / 180))).toBe(1);
 });
