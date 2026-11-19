@@ -60,6 +60,9 @@ export const SMALL_LANES = 2;
 export const IN_FLIGHT_SHARED = 24;
 export const SMALL_LANES_SHARED = 20;
 export const SMALL_PART = 256 * 1024;
+/** Requests under way at most, and of them kept for small parts, while the game's socket is held back (`holdBack`). */
+export const IN_FLIGHT_HELD = 2;
+export const SMALL_LANES_HELD = 1;
 /** Nothing more is asked for while this many bytes have arrived and wait to go on the card. */
 export const WAITING_LIMIT = 16 * 1024 * 1024;
 /** A slot nobody has wanted for this many frames is given up, whether it is on its way or has arrived. */
@@ -120,6 +123,8 @@ export class Residency {
   waiting = 0;
   /** Requests under way. */
   flying = 0;
+  /** Set while the game's socket is held back (session.ts behind): few requests are under way, so its packets come first. */
+  holdBack = false;
   /**
    * Requests that failed are `failed` (to be asked again) or `dead` (given up), and by kind `failNet`, `failHash` and
    * `failRange`, with the HTTP status of the last on the network, 0 for no answer. `refused` counts uploads the card refused.
@@ -488,8 +493,8 @@ export class Residency {
     this.learned.length = 0;
     if (!this.port) return;
     const shared = this.port.protocol === "h2" || this.port.protocol.startsWith("h3");
-    this.inFlight = shared ? IN_FLIGHT_SHARED : IN_FLIGHT;
-    this.smallLanes = shared ? SMALL_LANES_SHARED : SMALL_LANES;
+    this.inFlight = this.holdBack ? IN_FLIGHT_HELD : shared ? IN_FLIGHT_SHARED : IN_FLIGHT;
+    this.smallLanes = this.holdBack ? SMALL_LANES_HELD : shared ? SMALL_LANES_SHARED : SMALL_LANES;
     const n = this.port.take(this.arrivals);
     for (let i = 0; i < n; i++) {
       const a = this.arrivals[i]!;

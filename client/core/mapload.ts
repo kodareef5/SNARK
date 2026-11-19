@@ -230,6 +230,7 @@ export class MapLoader {
   private arrived: ((statics: MapStatics, whole: boolean) => void) | undefined;
   private handedNear = false;
   private near = CITY_NEAR;
+  private held: () => boolean = () => false;
   private handed = false;
   private where: () => Place | null = () => null;
 
@@ -274,11 +275,13 @@ export class MapLoader {
    * point, each sector's ground before its statics. Resolves once the ground the first frame waits for where it has the
    * body now has come, alone. From then on `then.say` is told what the player is; `then.arrived` is handed the statics of
    * the sectors within CITY_NEAR of the body once their ground and statics have come and not every part has, and then the
-   * map's statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR.
+   * map's statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR. While
+   * `then.held` says the game's socket is held back, one part at a time is under way.
    */
-  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics, whole: boolean) => void; readonly near?: number } = {}): Promise<void> {
+  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics, whole: boolean) => void; readonly near?: number; readonly held?: () => boolean } = {}): Promise<void> {
     this.where = where;
     this.near = then.near ?? CITY_NEAR;
+    this.held = then.held ?? (() => false);
     const head = this.staged.head;
     const { x, z } = this.place();
     const near = firstFrameParts(head, x, z).filter((p) => this.left.includes(p));
@@ -292,11 +295,12 @@ export class MapLoader {
   }
 
   /**
-   * Asks for the nearest parts left until as many are under way as the nearest allows (URGENT_AT_ONCE or AFTER_AT_ONCE); hands
+   * Asks for the nearest parts left until as many are under way as the nearest allows (URGENT_AT_ONCE or AFTER_AT_ONCE, or
+   * one while the game's socket is held back); hands
    * the statics round the body over once their sectors have come, and all of them once every part has.
    */
   private pump(): void {
-    for (let k = this.nearest(); k >= 0 && this.under < (this.urgent(this.left[k]!) ? URGENT_AT_ONCE : AFTER_AT_ONCE); k = this.nearest()) {
+    for (let k = this.nearest(); k >= 0 && this.under < (this.held() ? 1 : this.urgent(this.left[k]!) ? URGENT_AT_ONCE : AFTER_AT_ONCE); k = this.nearest()) {
       const p = this.left.splice(k, 1)[0]!;
       this.under++;
       void this.ask(p).then(
