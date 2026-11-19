@@ -1521,12 +1521,13 @@ export class ClientSession {
   }
 
   /**
-   * Call when the map's statics arrive after the session began: the far city starts with them, and the server is told, so
-   * that from its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
+   * Call when map statics arrive after the session began: those of the sectors round the body first, `whole` false, which
+   * the far city starts with, and then the whole map's, which it is made again of and the server is told of, so that from
+   * its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
    */
-  staticsArrived(statics: MapStatics): void {
-    this.arrived = statics;
-    this.startCity(statics);
+  staticsArrived(statics: MapStatics, whole = true): void {
+    if (whole) this.arrived = statics;
+    this.startCity(statics, true);
   }
 
   /**
@@ -1538,9 +1539,10 @@ export class ClientSession {
     return (this.heldCity ??= new CityStatics(this.world.dims, (this.arrived ?? this.opts.statics)!, this.registry));
   }
 
-  private startCity(statics: MapStatics | null): void {
+  /** The far city of `statics`, where the world has none or, `again`, in place of the one it has. */
+  private startCity(statics: MapStatics | null, again = false): void {
     const world = this.world;
-    if (!world || world.city) return;
+    if (!world || (world.city && !again)) return;
     const city = this.opts.city?.(this.registry) ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
     if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
   }

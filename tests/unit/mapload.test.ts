@@ -114,6 +114,40 @@ test("after the first frame the page asks for the rest nearest first, each secto
   expect(wholeStatics(handed)).toBe(true);
 });
 
+test("the statics of the sectors within reach of the body are handed over once their ground and statics have come, before the rest have, and then the whole map's", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 100, z: 448, vx: 0, vz: 0 };
+  const reach = 1200;
+  const handed: [MapStatics, boolean][] = [];
+  void loader!.follow(() => body, { arrived: (t, all) => handed.push([t, all]), near: reach });
+  const near = head.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && off(p, body.x, body.z) <= reach);
+  const inSector = (p: MapPart): number => {
+    const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+    let n = 0;
+    for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) n += head.counts[cz * head.dims.chunksX + cx]!;
+    return n;
+  };
+  const rows = near.filter((p) => p.kind === "statics").reduce((n, p) => n + inSector(p), 0);
+  // The map has sectors past that reach, and statics within it.
+  expect([near.length < head.parts.filter((p) => p.kind === "ground" || p.kind === "statics").length, rows > 0]).toEqual([true, true]);
+  let at = -1;
+  while (s.waiting.length > 0 || handed.length === 0) {
+    await s.answer();
+    if (handed.length > 0 && at < 0) at = s.answered;
+  }
+  await s.drain();
+  await settle();
+  // Handed round the body as soon as its last part there came, with those sectors' rows alone; then whole.
+  const came = s.asked.slice(0, at).map((url) => url.slice(4));
+  expect(near.every((p) => came.includes(p.name))).toBe(true);
+  expect(head.parts.filter((p) => p.kind === "statics").every((p) => came.includes(p.name))).toBe(false);
+  expect([handed.length, handed[0]![1], handed[0]![0].length, handed[1]![1]]).toEqual([2, false, rows, true]);
+  expect(wholeStatics(handed[1]![0])).toBe(true);
+});
+
 test("the page asks for the head, then the land and the overviews, then nothing until it knows where the body is; then that sector's ground alone, then the rest nearest first six at once, and the statics last", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;

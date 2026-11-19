@@ -4,9 +4,11 @@
 // for and which come alone (firstFrameParts says which, for the loader and for the map's build). Then, while the game is
 // played, the rest nearest first by where the body is and where it is heading, ordered again at each ask so a jump goes
 // first to where it lands, each sector's ground before its statics: URGENT_AT_ONCE at once while ground within RING is
-// wanted, AFTER_AT_ONCE otherwise. The statics are handed over once every part has come. A part that fails is asked for
-// again after a wait that grows to a cap, for as long as the page lives, and what has come is kept. One that comes damaged
-// or as another's is refused by name and asked for again, until the DAMAGED_MOST-th time breaks the map.
+// wanted, AFTER_AT_ONCE otherwise. Once the ground and the statics of every sector within CITY_NEAR of the body have come,
+// those sectors' statics are handed over, for the far city round the body; and once every part has come, all of them. A
+// part that fails is asked for again after a wait that grows to a cap, for as long as the page lives, and what has come is
+// kept. One that comes damaged or as another's is refused by name and asked for again, until the DAMAGED_MOST-th time
+// breaks the map.
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import type { Def } from "../../shared/content/defs.ts";
@@ -30,6 +32,8 @@ export const AFTER_AT_ONCE = 2;
 export const RING = 600;
 /** Seconds of the body's way ahead of it whose ground is asked for as if the body were there. */
 export const LEAD = 2;
+/** Metres round the body whose sectors' statics are handed over before the rest: as far as any tier draws the far city. */
+export const CITY_NEAR = 4096;
 /** Milliseconds before a part that failed is asked for again: RETRY_FIRST, doubled at each failure in a row, to RETRY_MOST. */
 export const RETRY_FIRST = 500;
 export const RETRY_MOST = 8000;
@@ -219,9 +223,13 @@ export class MapLoader {
   /** The parts, ground and statics, not yet asked for, or failed and to be asked for again; and how many are under way. */
   private readonly left: MapPart[];
   private under = 0;
-  /** The statics' bytes as each has come, until they are handed over, to whom, and whether they have been. */
+  /** The ground and statics parts come so far, and the statics' bytes as each has come until they are all handed over. */
+  private readonly came = new Set<MapPart>();
   private readonly kept = new Map<MapPart, Uint8Array>();
-  private arrived: ((statics: MapStatics) => void) | undefined;
+  /** To whom the statics are handed over, and whether those round the body and all of them have been. */
+  private arrived: ((statics: MapStatics, whole: boolean) => void) | undefined;
+  private handedNear = false;
+  private near = CITY_NEAR;
   private handed = false;
   private where: () => Place | null = () => null;
 
@@ -264,11 +272,13 @@ export class MapLoader {
   /**
    * From now on the rest of the map comes, nearest first to where `where` has the body, else to the map's first spawn
    * point, each sector's ground before its statics. Resolves once the ground the first frame waits for where it has the
-   * body now has come, alone. From then on `then.say` is told what the player is, and once every part has come
-   * `then.arrived` is handed the map's statics, read a step at a time.
+   * body now has come, alone. From then on `then.say` is told what the player is; `then.arrived` is handed the statics of
+   * the sectors within CITY_NEAR of the body once their ground and statics have come and not every part has, and then the
+   * map's statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR.
    */
-  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void } = {}): Promise<void> {
+  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics, whole: boolean) => void; readonly near?: number } = {}): Promise<void> {
     this.where = where;
+    this.near = then.near ?? CITY_NEAR;
     const head = this.staged.head;
     const { x, z } = this.place();
     const near = firstFrameParts(head, x, z).filter((p) => this.left.includes(p));
@@ -282,8 +292,8 @@ export class MapLoader {
   }
 
   /**
-   * Asks for the nearest parts left until as many are under way as the nearest allows (URGENT_AT_ONCE or AFTER_AT_ONCE), and
-   * once every part has come hands the statics over.
+   * Asks for the nearest parts left until as many are under way as the nearest allows (URGENT_AT_ONCE or AFTER_AT_ONCE); hands
+   * the statics round the body over once their sectors have come, and all of them once every part has.
    */
   private pump(): void {
     for (let k = this.nearest(); k >= 0 && this.under < (this.urgent(this.left[k]!) ? URGENT_AT_ONCE : AFTER_AT_ONCE); k = this.nearest()) {
@@ -302,12 +312,27 @@ export class MapLoader {
         (e: unknown) => ((this.handed = true), this.asker.say(why(e))),
       );
     }
-    if (this.under > 0 || this.left.length > 0 || this.handed) return;
-    this.handed = true;
     const head = this.staged.head;
+    if (this.under > 0 || this.left.length > 0) {
+      this.handNear();
+      return;
+    }
+    if (this.handed) return;
+    this.handed = true;
     const parts = head.parts.filter((p) => this.kept.has(p)).map((p) => ({ part: p, bytes: this.kept.get(p)! }));
     this.kept.clear();
-    void readStatics({ head, parts }, this.pause).then((statics) => this.arrived?.(statics), (e: unknown) => this.asker.say(why(e)));
+    void readStatics({ head, parts }, this.pause).then((statics) => this.arrived?.(statics, true), (e: unknown) => this.asker.say(why(e)));
+  }
+
+  /** The statics of the sectors within `near` of the body handed over, once those sectors' ground and statics have all come. */
+  private handNear(): void {
+    if (this.handedNear || this.handed) return;
+    const head = this.staged.head;
+    const near = head.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && this.off(p) <= this.near);
+    if (near.some((p) => !this.came.has(p) && !everywhere(head, p))) return;
+    this.handedNear = true;
+    const parts = near.filter((p) => this.kept.has(p)).map((p) => ({ part: p, bytes: this.kept.get(p)! }));
+    if (parts.length > 0) void readStatics({ head, parts }, this.pause).then((statics) => this.handed || this.arrived?.(statics, false), (e: unknown) => this.asker.say(why(e)));
   }
 
   /** Where the body is, or the map's first spawn point standing still. */
@@ -359,6 +384,7 @@ export class MapLoader {
     if ("wait" in got) return got.wait;
     if (got.value instanceof Uint8Array) this.kept.set(p, got.value);
     else this.staged.take(got.value);
+    this.came.add(p);
     return 0;
   }
 }

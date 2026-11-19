@@ -265,10 +265,10 @@ async function boot(): Promise<void> {
     }
   };
   // The first frame waits for the ground round the body; the rest comes while the game is played, nearest first. From then
-  // on the console says when the map comes slowly, and the statics are handed over once every part has come.
+  // on the console says when the map comes slowly, and the statics are handed over round the body and then whole.
   await session.welcomed;
   if(launch && session.state==="closed"){showEntryProblem();return;}
-  await loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arrived: (statics) => session.staticsArrived(statics) });
+  await loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arrived: (statics, whole) => session.staticsArrived(statics, whole) });
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   requestAnimationFrame(frame);
