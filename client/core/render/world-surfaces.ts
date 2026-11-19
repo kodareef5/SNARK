@@ -1,6 +1,6 @@
 // Metre-space materials for terrain and meshes without authored surfaces. CPU and GLSL deliberately use the same
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
-import { SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WEATHER_LAYER, WEATHER_MATERIAL, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
+import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
@@ -113,15 +113,15 @@ export class WorldFinishes {
   private risen = 0;
   private drawnEarly = false;
 
-  /** The weathering masks' material, whose packed map is the packed array's last layer, or -1. */
-  private readonly weather: number;
+  /** The masks' materials (the weathering's and the road's), whose packed maps are the packed array's layers after the finishes', or -1 each. */
+  private readonly masks: number[];
 
   constructor(materials: readonly PackMaterial[], textures: readonly PackTexture[]) {
     const found = SURFACE_NAMES.map((name) => materials.findIndex((m) => m.id === surfaceMaterial(name)));
     this.materials = found.every((m) => m >= 0) ? found : [];
-    this.weather = this.materials.length ? materials.findIndex((m) => m.id === WEATHER_MATERIAL) : -1;
+    this.masks = MASK_MATERIALS.map((id) => (this.materials.length ? materials.findIndex((m) => m.id === id) : -1));
     const roles = ["base", "normal", "mro"] as const;
-    this.textures = roles.map((role, r) => [...this.materials, ...(r === 2 && this.weather >= 0 ? [this.weather] : [])].map((m) => materials[m]![role]));
+    this.textures = roles.map((role, r) => [...this.materials, ...(r === 2 ? this.masks.filter((m) => m >= 0) : [])].map((m) => materials[m]![role]));
     this.tops = this.textures.map((ts) => (ts.length ? textures[ts[0]!]!.top : 0));
     this.share = this.tops.map((top) => top / (this.tops[0] || 1));
   }
@@ -141,8 +141,8 @@ export class WorldFinishes {
     this.side = side;
     this.roles = roles;
     for (const m of this.materials) if (side > 0) residency.material(m, side, WORLD_NEAR, roles, true);
-    // The masks' material is widest in its packed map, which is kept as wide as the finishes' are.
-    if (side > 0 && roles === 3 && this.weather >= 0) residency.material(this.weather, side >> 1, WORLD_NEAR, 3, true);
+    // A mask's material is widest in its packed map, which is kept as wide as the finishes' are.
+    if (side > 0 && roles === 3) for (const m of this.masks) if (m >= 0) residency.material(m, side >> 1, WORLD_NEAR, 3, true);
     for (let r = 0; r < 3; r++) {
       const along = r < roles ? Math.min(side * this.share[r]!, topIn(residency.format, this.tops[r]!)) : 0;
       let level = along > 0 ? 0 : -1;
@@ -163,6 +163,7 @@ export class WorldFinishes {
     p.worldComing = side > 0 && this.textures[0]!.every((t) => residency.canHave(t));
     worldPhase(p.worldPhase, p.camX, p.camY, p.camZ, p.surfaceCity);
     p.frame[FRAME.edgesOff] = 0;
+    p.frame[FRAME.roadOff] = 0;
   }
 }
 
@@ -578,6 +579,51 @@ export function groundMeet(cover: number, a: number, b: number, c: number, d: nu
   if (out[0] >= 0) out[1] = clamp((most / (mine + most) - 0.5) * GROUND_MEET + 0.5);
 }
 
+/** Metres the ground's macros' tile spans, and a road's repairs' (content/surfaces.ts ROAD_MATERIAL, REPAIRS_MATERIAL). */
+export const ROAD_MACRO = 32;
+export const ROAD_REPAIRS = 8;
+/** Tar, as light: the sealant over a patch's seams and in a sealed crack. */
+const TAR = [0.03, 0.029, 0.027] as const;
+/** How rough tar is, and the roughness a joint or a seal comes to. */
+const TAR_ROUGH = 0.42;
+const ASPHALT = SURFACE_NAMES.indexOf("asphalt"), SAND = SURFACE_NAMES.indexOf("sand");
+/** The beach's second copy of its macro: turned an eighth and this many metres a tile, so the two never line up. */
+const BEACH_TURN = Math.SQRT1_2, BEACH_SECOND = 41;
+const roadMask = new Float64Array(4);
+
+/**
+ * The ground's wear at map point (x, z) where its finish `id` is asphalt or sand, a pixel `footprint` metres wide, onto
+ * albedo and orm (worldSurface's). Sand takes the beach's macro, two copies at angles. Asphalt takes a used road's
+ * macro and its repairs in 8 m squares on the world's axes, each square with its own share of patches and of sealed
+ * cracks and its own place in their tile, by a hash of where it is; open cracks are in every square.
+ */
+export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number, footprint: number, sample: WorldSample): void {
+  const level = (metres: number): number => Math.log2(Math.max(footprint / metres, 1e-9));
+  if (id === SAND) {
+    sample(2, ROAD_LAYER, x / ROAD_MACRO, z / ROAD_MACRO, level(ROAD_MACRO), roadMask);
+    const first = roadMask[1]!;
+    sample(2, ROAD_LAYER, (x - z) * BEACH_TURN / BEACH_SECOND + 0.37, (x + z) * BEACH_TURN / BEACH_SECOND + 0.71, level(BEACH_SECOND), roadMask);
+    const k = (1 + (first - 0.5) * ROAD_LOOK.beach) * (1 + (roadMask[1]! - 0.5) * ROAD_LOOK.beach * 0.5);
+    for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! * k;
+    return;
+  }
+  if (id !== ASPHALT) return;
+  sample(2, ROAD_LAYER, x / ROAD_MACRO, z / ROAD_MACRO, level(ROAD_MACRO), roadMask);
+  const shade = 1 + (roadMask[0]! - 0.5) * ROAD_LOOK.macro;
+  let rough = orm[1]! * (1 + (roadMask[2]! - 0.5) * 0.25 * ROAD_LOOK.macroRough);
+  const ku = Math.floor(x / ROAD_REPAIRS), kv = Math.floor(z / ROAD_REPAIRS);
+  const h = surfaceHash(ku * 8, kv * 14);
+  const edge = smooth(0, 0.4, Math.min(x - ku * ROAD_REPAIRS, (ku + 1) * ROAD_REPAIRS - x, z - kv * ROAD_REPAIRS, (kv + 1) * ROAD_REPAIRS - z));
+  sample(2, REPAIRS_LAYER, x / ROAD_REPAIRS + fract(h * 7.13), z / ROAD_REPAIRS + fract(h * 3.71), level(ROAD_REPAIRS), roadMask);
+  const patched = h < ROAD_LOOK.patched ? edge : 0, sealed = fract(h * 13.7) < ROAD_LOOK.sealed ? edge : 0, from = 0.35 + 0.4 * fract(h * 5.3);
+  const patch = roadMask[0]! * patched, seam = roadMask[1]! * patched, seal = smooth(from, from + 0.15, roadMask[2]!) * sealed;
+  const dim = shade * (1 - 0.2 * patch) * (1 - 0.3 * roadMask[3]! * edge);
+  rough -= 0.08 * patch;
+  const tar = Math.max(seam, seal) * 0.9;
+  for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! * dim * (1 - tar) + TAR[c]! * tar;
+  orm[1] = clamp(rough * (1 - tar) + TAR_ROUGH * tar, 0.12, 1);
+}
+
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
 const vectors = (name: string, rows: readonly (readonly number[])[]): string => {
   const t = `vec${rows[0]!.length}`;
@@ -921,4 +967,46 @@ int groundMeet(int cover, ivec4 t, vec2 f, out float share) {
   share = other < 0 ? 0.0 : clamp((most / (mine + most) - 0.5) * ${fl(GROUND_MEET)} + 0.5, 0.0, 1.0);
   return other;
 }
+`;
+
+/**
+ * The ground's wear on asphalt and sand, where the tier reads the finishes in full (WORLD_ROAD): `roadWorn`'s twin;
+ * the frame block's fFacade.w is set when the frame is drawn without it (passes.ts "road").
+ */
+export const ROAD_GLSL = `#ifdef WORLD_ROAD
+const vec3 TAR = vec3(${TAR.map(fl).join(",")});
+// Wear onto a finish id's albedo and orm at world point p, and p's change a pixel across and down.
+void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec3 dpx, vec3 dpy) {
+  if (fFacade.w > 0.5 || (id != ${SAND} && id != ${ASPHALT})) return;
+  if (id == ${SAND}) {
+    vec2 tx = vec2(dpx.x - dpx.z, dpx.x + dpx.z) * ${fl(BEACH_TURN / BEACH_SECOND)}, ty = vec2(dpy.x - dpy.z, dpy.x + dpy.z) * ${fl(BEACH_TURN / BEACH_SECOND)};
+    float first = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_MACRO)}, ${fl(ROAD_LAYER)}), dpx.xz / ${fl(ROAD_MACRO)}, dpy.xz / ${fl(ROAD_MACRO)}).g;
+    float second = textureGrad(uWorldOrm, vec3(vec2(p.x - p.z, p.x + p.z) * ${fl(BEACH_TURN / BEACH_SECOND)} + vec2(0.37, 0.71), ${fl(ROAD_LAYER)}), tx, ty).g;
+    albedo *= (1.0 + (first - 0.5) * ${fl(ROAD_LOOK.beach)}) * (1.0 + (second - 0.5) * ${fl(ROAD_LOOK.beach * 0.5)});
+    return;
+  }
+  vec4 m = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_MACRO)}, ${fl(ROAD_LAYER)}), dpx.xz / ${fl(ROAD_MACRO)}, dpy.xz / ${fl(ROAD_MACRO)});
+  float rough = orm.y * (1.0 + (m.b - 0.5) * ${fl(0.25 * ROAD_LOOK.macroRough)});
+  vec2 k = floor(p.xz / ${fl(ROAD_REPAIRS)});
+  float h = surfaceHash(ivec2(k) * ivec2(8, 14));
+  vec2 inside = min(p.xz - k * ${fl(ROAD_REPAIRS)}, (k + 1.0) * ${fl(ROAD_REPAIRS)} - p.xz);
+  float edge = smoothstep(0.0, 0.4, min(inside.x, inside.y));
+  vec4 r = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_REPAIRS)} + vec2(fract(h * 7.13), fract(h * 3.71)), ${fl(REPAIRS_LAYER)}), dpx.xz / ${fl(ROAD_REPAIRS)}, dpy.xz / ${fl(ROAD_REPAIRS)});
+  float patched = h < ${fl(ROAD_LOOK.patched)} ? edge : 0.0, sealed = fract(h * 13.7) < ${fl(ROAD_LOOK.sealed)} ? edge : 0.0, from = 0.35 + 0.4 * fract(h * 5.3);
+  float fill = r.r * patched, tar = max(r.g * patched, smoothstep(from, from + 0.15, r.b) * sealed) * 0.9;
+  albedo = mix(albedo * (1.0 + (m.r - 0.5) * ${fl(ROAD_LOOK.macro)}) * (1.0 - 0.2 * fill) * (1.0 - 0.3 * r.a * edge), TAR, tar);
+  orm.y = clamp(mix(rough - 0.08 * fill, ${fl(TAR_ROUGH)}, tar), 0.12, 1.0);
+}
+// The wear reads the packed array's masks, so it comes up with them as the weathering does (uWorldReady 1 to 2).
+void roadWorn(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec3 dpx, vec3 dpy) {
+  float risen = 2.0 - uWorldReady;
+  if (risen <= 0.0) return;
+  vec3 a0 = albedo, o0 = orm;
+  roadWear(albedo, orm, id, p, dpx, dpy);
+  if (risen < 1.0) {
+    albedo = mix(a0, albedo, risen);
+    orm = mix(o0, orm, risen);
+  }
+}
+#endif
 `;
