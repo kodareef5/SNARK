@@ -1,4 +1,4 @@
-"""Recreate the editable-art and review archives from an installed source tree."""
+"""Recreate the editable-art archives from an installed source tree."""
 import argparse
 from collections import defaultdict
 from pathlib import Path
@@ -9,8 +9,6 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def group(path):
-    if path.startswith("planning/"):
-        return "review-media"
     for name in ("nodes", "vehicles", "creatures", "structures", "sfx", "world"):
         if path.startswith(f"assets/source/core/{name}/"):
             return "art-" + name

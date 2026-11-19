@@ -76,7 +76,7 @@ def install_kit(path, city):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("kind", choices=["list", "art", "references", "client", "map", "kit"])
+    parser.add_argument("kind", choices=["list", "art", "client", "map", "kit"])
     parser.add_argument("city", nargs="?")
     args = parser.parse_args()
     if (args.kind in ("map", "kit")) != bool(args.city):
@@ -86,6 +86,8 @@ def main():
         parser.exit(1, "The media release is a draft. Use list to review its contents.\n")
     selected = [item for item in RELEASE["assets"] if for_list or
                 (item["kind"] == args.kind and item.get("city") == args.city)]
+    if for_list and not RELEASE["assets"]:
+        parser.exit(0, "No media has been packed for this source yet.\n")
     if not selected:
         parser.error("no match in this release; use list to see the available cities")
     for item in selected:
