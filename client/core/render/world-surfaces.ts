@@ -104,8 +104,9 @@ export class WorldFinishes {
   private readonly share: number[];
   private side = 0;
   private roles = 0;
-  /** Frames since every map has come, up to WORLD_RISE. */
+  /** Frames since every map has come, up to WORLD_RISE; and whether a frame has been drawn without them since the finishes were asked for, which the rise is for. */
   private risen = 0;
+  private drawnEarly = false;
 
   /** The weathering masks' material, whose packed map is the packed array's last layer, or -1. */
   private readonly weather: number;
@@ -128,7 +129,10 @@ export class WorldFinishes {
     const side = this.present && tier.lit ? tier.finishes : 0;
     // The touch rule's light finish reads the base colour alone, so it neither fetches nor holds the others.
     const roles = tier.finish === "light" ? 1 : 3;
-    if (side !== this.side || roles !== this.roles) for (const ts of this.textures) for (const t of ts) residency.again(t);
+    if (side !== this.side || roles !== this.roles) {
+      for (const ts of this.textures) for (const t of ts) residency.again(t);
+      this.drawnEarly = false;
+    }
     this.side = side;
     this.roles = roles;
     for (const m of this.materials) if (side > 0) residency.material(m, side, WORLD_NEAR, roles, true);
@@ -146,7 +150,9 @@ export class WorldFinishes {
     }
     // Drawn from the base colours alone, the far path's way, until the normals and packed maps have all come too.
     const full = p.worldLevel[0]! >= 0 && (roles < 3 || (p.worldLevel[1]! >= 0 && p.worldLevel[2]! >= 0));
-    this.risen = full ? Math.min(WORLD_RISE, this.risen + 1) : 0;
+    // Maps that were all there from the first frame drawn with them come up at once: there is nothing to rise from.
+    if (side > 0 && !full) this.drawnEarly = true;
+    this.risen = full ? (this.drawnEarly ? Math.min(WORLD_RISE, this.risen + 1) : WORLD_RISE) : 0;
     p.worldEarly = 1 - this.risen / WORLD_RISE;
     worldPhase(p.worldPhase, p.camX, p.camY, p.camZ, p.surfaceCity);
     p.frame[FRAME.edgesOff] = 0;
