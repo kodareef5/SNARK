@@ -419,7 +419,7 @@ ${dyed ? DYE : ""}${ON_GROUND}void main() {
     n = r * aNormal;
     t = r * aTangent.xyz;
   }
-${dyed ? "  vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));\n  vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 ? 0u : iRegB.y));\n" : ""}  vRel = p;
+${dyed ? "  vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));\n  vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 && uSkin > -1.5 ? 0u : iRegB.y));\n" : ""}  vRel = p;
 ${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
   vTangent = vec4(normalize(t), aTangent.w);
   vUv = uUv.xy + aUv * uUv.zw;
