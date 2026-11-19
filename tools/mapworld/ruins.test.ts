@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { existsSync, readdirSync, readFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RUIN_BLOCKS } from "../../content/ruins.ts";
 import type { ShapeDef, StructureDef } from "../../shared/content/defs.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -13,7 +12,7 @@ import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { layout, stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
-import { BREAK_AT, RUIN_BREAKS, RUIN_SHAPES } from "../../content/ruins.ts";
+import { BREAK_AT, RUIN_BLOCKS, RUIN_BREAKS, RUIN_SHAPES } from "../../content/ruins.ts";
 import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
 import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
@@ -358,6 +357,27 @@ test("a roof's shrub stands on what it grows from: its plant's foot at its origi
     }
   }
   expect(shrubs).toBeGreaterThan(0);
+});
+
+test("a hanging slab hangs from the top of what stands beside its bay, which a tower's top may have brought lower", () => {
+  const v = vocabulary(source);
+  const f: Frame = { ...frame(0), width: 48, depth: 40, rings: [[[-24, -20], [24, -20], [24, 20], [-24, 20], [-24, -20]]] };
+  let plates = 0;
+  for (const [form, height] of [["apartment", 156], ["office", 64]] as const) {
+    for (let seed = 0; seed < 12; seed++) {
+      const m = new Mason(f, 0);
+      layout(m, { ...rule, recipe: "tower", height, finish: "concrete", form: v.forms[form], formName: form, collapse: "hanging", damage: v.damage.hanging, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 16, detail: 0 });
+      const hung = m.pieces.filter((p) => p.kind.includes("_plate30_"));
+      const walls = m.pieces.filter((p) => !p.kind.includes("_plate30_") && !p.kind.includes("_zcore_"));
+      for (const p of hung) {
+        plates++;
+        const top = p.y + RUIN_SHAPES.plate30[1] / 2;
+        // Its top at a storey's height, and some wall or slab standing there with it.
+        expect([seed, Math.abs(top / 4 - Math.round(top / 4)) < 1e-6, walls.some((w) => Math.abs(w.x - p.x) < 12 && Math.abs(w.z - p.z) < 12 && w.y > top - 4 && w.y < top + 1)]).toEqual([seed, true, true]);
+      }
+    }
+  }
+  expect(plates).toBeGreaterThan(0);
 });
 
 test("moss lies only along a parapet's coping, never over a broken wall's slab ends or a party wall", () => {

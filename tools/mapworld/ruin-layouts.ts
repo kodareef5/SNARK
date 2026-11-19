@@ -389,7 +389,9 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   if (mode === "lost-top") for (const t of cap.filter((t) => (t.i + t.j) % 4 === 0).slice(0, 6)) {
     m.put("fin4", t.u, base + height + 2, t.v, "steel"); m.put("rubble4", t.u + 1.5, base + height + .55, t.v, "concrete", 19);
   }
-  for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay, !has(keys, t, 0, -1) ? -1 : !has(keys, t, 0, 1) ? 1 : 0);
+  // A hanging slab hangs from the top of what stands beside its bay, which a tower's top may have brought lower.
+  const hangFrom = (t: Tile): number => base + 4 * Math.max(0, ...SIDES.map(([a, b]) => byKey.get(tileKey(t.i + a, t.j + b))).filter((n): n is Tile => !!n && !damaged.has(n)).map((n) => tops.get(tileKey(n.i, n.j)) ?? 0));
+  for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay, !has(keys, t, 0, -1) ? -1 : !has(keys, t, 0, 1) ? 1 : 0, hangFrom(t));
   // A downpipe runs down the front corner of the end wall of a low building with a facade, its foot stained.
   const corner = [...tiles].sort((a, b) => a.j - b.j || a.i - b.i)[0];
   if (corner && form.facade && bay === 8 && base === 0 && opts.detail < 2 && !has(keys, corner, -1, 0) && !damaged.has(corner) && hash3(opts.seed + 19, 3, 5) % 2 === 0) {
@@ -498,7 +500,7 @@ function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, 
   }
 }
 
-function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number, bay: number, facadeSide: number): void {
+function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number, bay: number, facadeSide: number, hang: number): void {
   m.falls.push({ mode, u: t.u, v: t.v });
   if (base !== 0 || opts.detail > 1) return;
   if (mode === "facade" && facadeSide) for (let y = 0; y < Math.min(12, height); y += 4) {
@@ -519,7 +521,11 @@ function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, o
       m.put(shape, t.u + u, RUIN_SHAPES[shape][1] / 2 + n * .38 + ((h >>> 16) & 255) / 700, t.v + v, "concrete", h % 160 - 80 + n % 2 * 180);
     }
   }
-  else if (mode === "hanging") { const shape = rule.damage?.plates?.[0] ?? "plate30"; m.put(shape, t.u + 1, height - RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 12); m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); }
+  else if (mode === "hanging") {
+    const shape = rule.damage?.plates?.[0] ?? "plate30";
+    if (hang > base) m.put(shape, t.u + 1, hang - RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 12);
+    m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21);
+  }
   else if (mode !== "burnt") {
     m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); m.put("rubble", t.u - 2, .35, t.v - 1, "concrete", 63);
     if (mode === "lost-top") { m.put("mound", t.u, 1, t.v - 1); m.put("plate30", t.u + .5, RUIN_SHAPES.plate30[1] / 2, t.v, "concrete", 160); }
