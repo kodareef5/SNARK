@@ -1,4 +1,5 @@
 import { ServerDirectory } from "./directory.ts";
+import type { Server, ServerWebSocket } from "bun";
 import { SurvivorAccess, entryReply } from "./survivor-access.ts";
 // bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
@@ -26,6 +27,7 @@ import { clientAddress } from "./front.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { adminAsked, type AdminGate } from "./admin/gate.ts";
 import { TickMeter } from "./admin/meter.ts";
+import { PART, type TickParts } from "./admin/parts.ts";
 import { AdminPages } from "./admin/routes.ts";
 import { gaugesOf } from "./admin/stats.ts";
 import { CUES } from "../shared/sound/cues.ts";
@@ -253,6 +255,18 @@ export function tickLoop(loop: { tick(due: number): void; idle(): void; drop(tic
   return () => stop();
 }
 
+/** `fn`, its time counted as the loop's work between ticks under `part` (server/admin/parts.ts). */
+function timed<A extends unknown[], R>(parts: TickParts, part: number, fn: (...a: A) => R): (...a: A) => R {
+  return (...a) => {
+    const began = performance.now();
+    try {
+      return fn(...a);
+    } finally {
+      parts.between(part, performance.now() - began);
+    }
+  };
+}
+
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const base = pathOf(opts.publicUrl ?? "");
   const named = /^https?:\/\//i.test(opts.publicUrl ?? "") ? new URL(opts.publicUrl!).hostname.toLowerCase() : "";
@@ -368,11 +382,12 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   let skipped = 0;
   // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
   const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
+  const parts = host.game.parts;
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
     ...(hostname ? { hostname } : {}),
     ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) }, http2: true } : {}),
-    async fetch(req, srv) {
+    fetch: timed(parts, PART.http, async (req: Request, srv: Server<Socket>) => {
       const url = new URL(req.url);
       const answered = opts.routes?.(req, url);
       if (answered) return answered;
@@ -438,10 +453,10 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       // A device probe measures the link quiet before the game's files come, as index.html leaves its own preloads.
       if ((path === "/" || path === "/index.html" || path === "/play.html") && file.ok && !url.searchParams.has("device")) file.headers.set("link", mapRoute.link);
       return file;
-    },
+    }),
     websocket: {
       maxPayloadLength: MESSAGE_BYTES_MAX,
-      open(ws) {
+      open: timed(parts, PART.sockets, (ws: ServerWebSocket<Socket>) => {
         if (ws.data.isVoice) {
           ws.data.voice = host.voice.connect({
             send(data) {
@@ -477,8 +492,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         };
         ws.data.conn = conn;
         onConnection?.(conn);
-      },
-      message(ws, message) {
+      }),
+      message: timed(parts, PART.sockets, (ws: ServerWebSocket<Socket>, message: string | Buffer) => {
         if (typeof message === "string" || message.length === 0) return;
         if (ws.data.voice) {
           host.voice.receive(ws.data.voice, message, performance.now());
@@ -489,14 +504,14 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           return;
         }
         ws.data.conn?.onMessage?.(message[0]!, message.subarray(1));
-      },
-      close(ws) {
+      }),
+      close: timed(parts, PART.sockets, (ws: ServerWebSocket<Socket>) => {
         if (ws.data.voice) return void host.voice.disconnect(ws.data.voice);
         const conn = ws.data.conn as (Connection & { open: boolean }) | null;
         if (!conn) return;
         conn.open = false;
         conn.onClose?.();
-      },
+      }),
     },
   });
 
@@ -507,10 +522,15 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const stopTicks = tickLoop({
     tick: (due) => {
       const began = performance.now();
+      parts.due = due;
       host.game.tick();
       meter.tick(due, began, performance.now());
     },
-    idle: () => host.idle(),
+    idle: () => {
+      const began = performance.now();
+      host.idle();
+      parts.between(PART.idle, performance.now() - began);
+    },
     drop: (ticks, at) => meter.drop(ticks, at),
   });
 

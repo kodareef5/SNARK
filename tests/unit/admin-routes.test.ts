@@ -44,7 +44,7 @@ test("every admin route answers only past the gate, in any spelling of its path,
     const meter = new TickMeter(() => gaugesOf(h.host));
     const pages = new AdminPages({ host: h.host, meter, dir, start: { tick: 0, wall: Date.now() } });
     const ask = asker(pages);
-    const paths = ["/admin", "/admin/", "/admin/index.html", "/admin/admin.js", "/admin/stats.json", "/admin/minutes.json", "/admin/survivors.json", "/admin/bases.bin", "/admin/nothing"];
+    const paths = ["/admin", "/admin/", "/admin/index.html", "/admin/admin.js", "/admin/stats.json", "/admin/minutes.json", "/admin/ticks.json", "/admin/survivors.json", "/admin/bases.bin", "/admin/nothing"];
     // Among them paths the sound board turns down once their dots and escaped slashes are resolved.
     const spellings = ["/Admin/Stats.json", "/ADMIN/", "//admin/survivors.json", "/admin//bases.bin", "/%61dmin/stats.json", "/admin/%73tats.json", "/admin/./stats.json", "/admin/source/../sounds.html", "/admin/source/core%2f..%2f..%2fsecret.txt"];
     // A server with neither --dev nor a password keeps every one shut.

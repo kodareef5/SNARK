@@ -85,6 +85,7 @@ import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Place } from "./beds.ts";
+import { PART, TickParts } from "./admin/parts.ts";
 
 export interface GameOptions {
   /** In ticks. */
@@ -472,6 +473,8 @@ export class GameServer {
   onVehicleStep: ((e: number) => void) | null = null;
   /** The host adds resource contacts around this same shared vehicle step. */
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
+  /** Where each tick's time went, part by part (server/admin/parts.ts). The host marks the parts of its step in it. */
+  readonly parts = new TickParts();
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -552,8 +555,11 @@ export class GameServer {
     const world = this.world;
     const ents = world.ents;
     const T = ++world.tick;
+    const parts = this.parts;
+    parts.begin();
 
     this.onBeforeStep?.();
+    parts.mark(PART.before);
 
     for (const c of this.clients) {
       if (!c) continue;
@@ -643,14 +649,18 @@ export class GameServer {
       }
       c.chunk = chunkAt(world.dims, b.x, b.z);
     }
+    parts.mark(PART.bodies);
 
     for (const c of this.clients) if (c?.active && c.queue.length > 0) this.runCommands(c);
     for (const c of this.clients) if (c?.closed && T >= c.lingerUntil) this.finalize(c);
     for (const p of this.pending) if (T - p.since >= HELLO_TICKS) this.turnAway(p, REJECT_MALFORMED);
+    parts.mark(PART.commands);
 
     this.onStep?.(T);
+    parts.mark(PART.save);
     // History records the world as this tick's snapshots show it.
     world.history.record(T);
+    parts.mark(PART.history);
 
     const snap = T % this.opts.snapshotEvery === 0;
     this.gathered = 0;
@@ -664,9 +674,13 @@ export class GameServer {
       }
       if (c.ownDirty) this.sendOwn(c);
       this.onReplicate?.(c);
+      parts.mark(PART.own);
       if (snap) this.snapshot(c, T);
+      parts.mark(PART.snapshot);
       this.syncChunks(c, T);
+      parts.mark(PART.chunks);
     }
+    parts.end(T);
   }
 
   /** Whether modules let a session open a box, a body or a creature's bag. A session refused is told why. */

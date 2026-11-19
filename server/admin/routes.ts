@@ -5,6 +5,7 @@
 //   /admin/                 the page (client/admin), and /admin/admin.js its script
 //   /admin/stats.json       stats.ts Stats: the loop's last two minutes by the second, and the state of the server now
 //   /admin/minutes.json     the meter's minutes, from=<n> those from the n-th on, and `next` to ask from after them
+//   /admin/ticks.json       parts.ts TickReport: where the ticks' time went by part, and the long ticks part by part
 //   /admin/survivors.json   survivors.ts Survivors: every survivor, where each is, and its recent deaths
 //   /admin/bases.bin        bases.ts: the tribes' bases at level=<0 to 3> of the players' map cells
 //   /admin/content.json     the names the interface shows for the content's ids, where they are not the id's own words
@@ -71,6 +72,7 @@ export class AdminPages {
   private readonly now: () => number;
   private readonly backups = new BackupList();
   private readonly stats: EverySecond<string>;
+  private readonly ticks: EverySecond<string>;
   private readonly survivors: EverySecond<Promise<string>>;
   /** The newest of each level's bases and the version of the cells it was made from, which is looked at once a second. */
   private readonly bases = new Map<number, { version: number; bytes: Uint8Array }>();
@@ -86,6 +88,7 @@ export class AdminPages {
     this.o = o;
     this.now = o.now ?? Date.now;
     this.stats = new EverySecond(() => JSON.stringify(statsOf(o.host, o.meter, bodiesOf(o.host), this.backups, this.now())));
+    this.ticks = new EverySecond(() => JSON.stringify(o.host.game.parts.report()));
     // A list that failed is not the second's answer: the next request makes it again.
     this.survivors = new EverySecond(() => {
       const made = this.survivorsJson();
@@ -116,6 +119,7 @@ export class AdminPages {
     if (at === "/admin/stats.json") return new Response(this.stats.get(now), { headers: JSON_HEADERS });
     if (at === "/admin/survivors.json") return this.survivors.get(now).then((text) => new Response(text, { headers: JSON_HEADERS }));
     if (at === "/admin/minutes.json") return new Response(this.minutes(Number(url.searchParams.get("from") ?? 0)), { headers: JSON_HEADERS });
+    if (at === "/admin/ticks.json") return new Response(this.ticks.get(now), { headers: JSON_HEADERS });
     if (at === "/admin/content.json") return new Response(this.labels(), { headers: JSON_HEADERS });
     if (at === "/admin/bases.bin") {
       const level = Number(url.searchParams.get("level") ?? 3);
