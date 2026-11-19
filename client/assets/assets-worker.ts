@@ -7,9 +7,9 @@ import { unfilterPart } from "../../shared/pack/stored.ts";
 
 interface Scope {
   onmessage: ((e: MessageEvent) => void) | null;
-  postMessage(message: unknown, transfer?: Transferable[]): void;
+  postMessage(message: unknown, transfer?: ArrayBuffer[]): void;
 }
-const scope = self as unknown as Scope;
+const scope = globalThis as unknown as Scope;
 
 /** One request: parts of one file, which follow one another in it, to be answered as one run of bytes. */
 export interface Ask {
@@ -89,7 +89,7 @@ new PerformanceObserver((list, watch) => {
 function openDisk(limit: number, touch: boolean): void {
   diskLimit = limit;
   keepMemory = touch ? KEEP_MEMORY_TOUCH : KEEP_MEMORY;
-  const storage = navigator.storage as unknown as { getDirectory(): Promise<{ getDirectoryHandle(name: string, o: { create: boolean }): Promise<Folder> }> };
+  const storage = (navigator as unknown as { storage: { getDirectory(): Promise<{ getDirectoryHandle(name: string, o: { create: boolean }): Promise<Folder> }> } }).storage;
   found = Promise.resolve()
     .then(() => storage.getDirectory())
     .then((root) => root.getDirectoryHandle("parts", { create: true }))
@@ -267,14 +267,18 @@ async function open(stored: Bytes, part: AssetPart, into: Bytes): Promise<boolea
 
 type Run = { data: Bytes[] | null; fail: number; fetched: number; status: number };
 
-/** Fetches parts that follow one another in a file with one range, past the browser's cache if `fresh`. Each comes back as stored, a view of the one answer. */
-async function fetchRun(url: string, parts: readonly AssetPart[], signal: AbortSignal, fresh = false): Promise<Run> {
+/**
+ * Fetches parts that follow one another in a file with one range. Each comes back as stored, a view of the one answer.
+ * Never through the browser's cache: Chrome sends the ranges of one file that go through it one at a time, and the
+ * worker keeps its own copy.
+ */
+async function fetchRun(url: string, parts: readonly AssetPart[], signal: AbortSignal): Promise<Run> {
   const [delay = 0, rate = 0, loss = 0] = net;
   if (delay > 0) await wait(delay);
   if (Math.random() * 100 < loss) return { data: null, fail: FAIL_NET, fetched: 0, status: 0 };
   const from = parts[0]!.offset;
   const length = parts.reduce((sum, p) => sum + p.length, 0);
-  const res = await fetch(url, { headers: { range: `bytes=${from}-${from + length - 1}` }, signal, cache: fresh ? "reload" : "default" });
+  const res = await fetch(url, { headers: { range: `bytes=${from}-${from + length - 1}` }, signal, cache: "no-store" });
   // A server that does not do ranges would send the whole file for each part.
   if (res.status === 416 || res.status === 200) {
     void res.body?.cancel().catch(() => {});
@@ -318,7 +322,7 @@ async function answer(a: Ask): Promise<void> {
       }
       let end = k + 1;
       while (end < n && !have[end] && a.parts[end]!.offset === a.parts[end - 1]!.offset + a.parts[end - 1]!.length) end++;
-      runs.push({ k, got: fetchRun(a.url, a.parts.slice(k, end), stop.signal, a.fresh).catch(() => ({ data: null, fail: FAIL_NET, fetched: 0, status: 0 })) });
+      runs.push({ k, got: fetchRun(a.url, a.parts.slice(k, end), stop.signal).catch(() => ({ data: null, fail: FAIL_NET, fetched: 0, status: 0 })) });
       k = end;
     }
     for (const run of runs) {

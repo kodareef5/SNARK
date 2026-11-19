@@ -24,9 +24,10 @@ const FINE = ((WINDOW - 1) / 2) * TERRAIN_CELL;
 /**
  * Watches the app's frames. Marks: `frame`, the first drawn; `street`, each chunk within one of the body's that the map
  * has statics in whole in the near store, every asset asked for in hand, and pieces drawn with their materials; `far`, the
- * far city drawn in the view; `handed`, the map's statics handed to the session; `predicting`, the body predicted; `exact`,
- * the ground the fine terrain draws all the map's own; `jump`, the body moved more than JUMP metres in a frame. Each, but
- * `frame` and `jump`, again with a minus when it went.
+ * far city drawn in the view; `colour`, the world's finishes drawn, every role the frame reads in hand (client/shell/gl.ts
+ * worldReady), or none to draw; `soft`, no texture shown without its first step; `handed`, the map's statics handed to the
+ * session; `predicting`, the body predicted; `exact`, the ground the fine terrain draws all the map's own; `jump`, the body
+ * moved more than JUMP metres in a frame. Each, but `frame` and `jump`, again with a minus when it went.
  */
 export class TripProbe {
   readonly marks: TripMark[] = [];
@@ -71,6 +72,10 @@ export class TripProbe {
     for (let d = 0; d < p.drawCount && !textured; d++) textured = (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
     this.set("street", textured && r.flying === 0 && r.waiting === 0 && this.near((c) => this.counts[c] === 0 || world.far.complete(c)));
     this.set("far", (scene.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) > 0);
+    let colour = true;
+    for (let k = 0; k < 3; k++) if (p.worldSide[0]! > 0 && p.worldSide[k]! > 0 && p.worldLevel[k]! < 0) colour = false;
+    this.set("colour", colour);
+    this.set("soft", r.bare() === 0);
     this.set("handed", world.city !== undefined);
     this.set("predicting", session.predicting);
     this.set("exact", world.hf.exactIn(x - FINE, z - FINE, x + FINE, z + FINE));
