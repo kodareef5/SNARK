@@ -371,7 +371,7 @@ test("a crossing is striped between the kerbs, the longest pieces first, and a l
   for (const p of bars) { expect(Math.abs(p.z - 650)).toBeLessThan(0.01); expect(Math.abs(p.x - 500)).toBeLessThan(7); expect(p.y).toBe(GROUND); }
   const station = pieces.filter((p) => /zzstreet_paystation/.test(p.kind));
   expect(station.length).toBe(1);
-  // At the head of a stall, south of the row, facing the aisle to the north.
+  // At the head of a stall, south of the row, its panel (-z) to the aisle in the north.
   expect(station[0]!.z).toBeLessThan(635);
-  expect(Math.round(Math.cos(station[0]!.yaw * Math.PI / 180))).toBe(1);
+  expect(Math.round(Math.cos(station[0]!.yaw * Math.PI / 180))).toBe(-1);
 });

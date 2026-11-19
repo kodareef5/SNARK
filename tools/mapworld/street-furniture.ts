@@ -503,7 +503,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       }
     }
   });
-  // A pay station in each lot with stalls enough, at the head of a stall near the lot's middle, facing its aisle.
+  // A pay station in each lot with stalls enough, at the head of a stall near the lot's middle, its panel (its -z) to the
+  // aisle.
   const Y = rules.paystations;
   if (Y) for (const lot of graph.lots) {
     if (lot.stalls.length < Y.least) continue;
@@ -511,7 +512,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const nearest = [...lot.stalls].sort((a, b) => Math.hypot(a[0] - lot.x, a[1] - lot.z) - Math.hypot(b[0] - lot.x, b[1] - lot.z)).slice(0, Y.tries);
     for (const [x, z, fx, fz] of nearest) {
       const ox = x - fx; const oz = z - fz; const ol = Math.hypot(ox, oz) || 1;
-      if (put("paystations", form("paystation", h), x + (ox / ol) * (ol + Y.set), z + (oz / ol) * (ol + Y.set), yawOf(-ox / ol, -oz / ol))) break;
+      if (put("paystations", form("paystation", h), x + (ox / ol) * (ol + Y.set), z + (oz / ol) * (ol + Y.set), yawOf(ox / ol, oz / ol))) break;
     }
   }
   // Speed limit signs at the limit each class posts, or now and then on the larger ways an evacuation route sign, on the
