@@ -290,7 +290,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const tag = graph.pieces[line]?.sidewalk;
     return tag === "no" || tag === "none" ? false : tag === "left" ? side < 0 : tag === "right" ? side > 0 : true;
   };
-  const litTag = (line: number): string | null => graph.pieces[line]?.lit ?? null;
+  const litTag = (line: number): boolean | null => graph.pieces[line]?.lit ?? null;
   const speedOf = (line: number): number | null => graph.pieces[line]?.maxspeed ?? null;
   const parkingOf = (line: number, side: number): string | null => graph.pieces[line]?.parking[side > 0 ? 1 : 0] ?? null;
 
@@ -355,10 +355,10 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     // Signals where the data marks them at the junction; where the data marks no points at all, by the classes' rule.
     const here = graph.mapped.points ? markedNear(j.x, j.z, j.reach + J.marked) : [];
     const signals = graph.mapped.points ? n >= 3 && here.some((m) => m.kind === "signal") : n >= 3 && major + minor === n && (major >= 3 || (major === 2 && minor === 2 && chance(hash3(h, 1, seed), J.signalCross)));
-    // The ways in whose traffic a stop the data maps governs: traffic along a piece as it is drawn comes in along the way
-    // out that runs back along it.
+    // The ways in whose traffic a stop the data maps governs: traffic on a way out's line that travels toward the junction,
+    // against the way out.
     const marked = here.filter((m) => m.kind === "stop");
-    const markedStops = j.arms.filter((a) => marked.some((m) => m.governs.some((g) => g.line === a.line && (g.dir > 0 ? a.sense < 0 : a.sense > 0))));
+    const markedStops = j.arms.filter((a) => marked.some((m) => m.governs.some((g) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0)));
     if (signals) held.push({ x: j.x, z: j.z, reach: j.reach, lines: null });
     if (signals) {
       j.arms.forEach((a, i) => {
@@ -460,7 +460,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   // Lamps.
   const L = rules.lamps;
   along(Object.keys(L.spacing), (cls) => L.spacing[cls]!, 1, (x, z, dx, dz, half, k, line, cls) => {
-    if (nearJunction(x, z) || litTag(line) === "no") return;
+    if (nearJunction(x, z) || litTag(line) === false) return;
     const h = hash3(line, k, seed + 1);
     for (const s of L.both.includes(cls) ? [1, -1] : [k % 2 === 0 ? 1 : -1]) {
       let name = form("lamp", hash3(h, s + 2, seed));
@@ -485,11 +485,13 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const M = rules.meters;
   along(M.classes, () => M.block, 4, (x, z, dx, dz, half, k, line) => {
     for (const s of [1, -1]) {
+      // A kerb the data says cars stand at, in a dense district, has them; one it says they do not, none; where it says
+      // nothing, before the uses that would have them.
       const kerb = parkingOf(line, s);
-      if (!walked(line, s) || (kerb !== null && kerb !== "paid")) continue;
+      if (!walked(line, s) || kerb === "no" || districtOf(x, z).tall < M.tall) continue;
       const h = hash3(line, k * 2 + (s > 0 ? 0 : 1), seed + 4);
       if (kerb === null) {
-        if (districtOf(x, z).tall < M.tall || !chance(h, M.chance)) continue;
+        if (!chance(h, M.chance)) continue;
         const [ux, uz] = side(x, z, dx, dz, half + 0.5, s);
         if (!M.uses.includes(useAt(ux, uz, -dz * s, dx * s, 20))) continue;
       }
@@ -705,7 +707,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     along(Object.keys(P.chance), () => P.every, 13, (x, z, dx, dz, half, k, line) => {
       if (nearJunction(x, z)) return;
       for (const s of [1, -1]) {
-        const kerb = parkingOf(line, s); if (kerb !== "no" && kerb !== "no_parking" && kerb !== "no_stopping") continue;
+        if (parkingOf(line, s) !== "no") continue;
         // Traffic on the right side (1) goes as the line is drawn; on the left, against it, where the street is two-way.
         const t = s > 0 ? 1 : -1; if (flow.has(line) && flow.get(line)! !== t) continue;
         const zx = dz * t * Math.cos(turn) - dx * t * Math.sin(turn); const zz = -dx * t * Math.cos(turn) - dz * t * Math.sin(turn);

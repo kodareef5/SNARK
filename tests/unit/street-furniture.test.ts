@@ -299,7 +299,7 @@ test("a way the data says is one way gets DO NOT ENTER on its way in and ONE WAY
 });
 
 test("a side the data says has no sidewalk has nothing of a sidewalk on it; a street it says is unlit has no lamps", () => {
-  const { pieces } = place(fixture(tagged({ [northward(700)]: { highway: "residential", sidewalk: "no" }, [northward(600)]: { highway: "residential", lit: "no" } })));
+  const { pieces } = place(fixture(tagged({ [northward(700)]: { highway: "residential", sidewalk: "no" }, [northward(600)]: { highway: "residential", lit: false } })));
   const along = (x: number, kinds: RegExp): StaticPiece[] => pieces.filter((p) => kinds.test(p.kind) && Math.abs(p.x - x) < 12 && Math.abs(p.z - Math.round(p.z / 100) * 100) > 15);
   expect(along(700, /zzstreet_hydrant$/).length).toBe(0);
   expect(along(800, /zzstreet_hydrant$/).length).toBeGreaterThan(0);
@@ -309,13 +309,13 @@ test("a side the data says has no sidewalk has nothing of a sidewalk on it; a st
 
 test("speed limits, meters and no parking as the data says, where it says", () => {
   const forms = { ...RULES.forms, speed40: [["speed40", 1]], speed30: [["speed30", 1]], noparking: [["noparking", 1]] } as Furniture["forms"];
-  const roads = tagged({ [northward(800)]: { highway: "residential", maxspeed_mph: 40 }, [northward(200)]: { highway: "residential", parking_left: "paid", parking_right: "paid" }, [northward(400)]: { highway: "residential", parking_left: "no_parking" } });
+  const roads = tagged({ [northward(800)]: { highway: "residential", maxspeed_mph: 40 }, [northward(200)]: { highway: "residential", parking_left: "parallel", parking_right: "parallel" }, [northward(400)]: { highway: "residential", parking_left: "no" } });
   const { pieces } = place(fixture(roads), [], { ...RULES, forms });
   const along = (x: number, kind: string): StaticPiece[] => pieces.filter((p) => p.kind === streetKind(kind) && Math.abs(p.x - x) < 12);
   expect(along(800, "speed40").length).toBeGreaterThan(0);
   expect(along(800, "speed30").length).toBe(0);
   expect(along(700, "speed30").length).toBeGreaterThan(0);
-  // No building in the fixture is a shop, so meters stand only where the data says a kerb is paid.
+  // No building in the fixture is a shop, so meters stand only where the data says cars stand at the kerb.
   expect(along(200, "meter").length + along(200, "meter_bent").length).toBeGreaterThan(0);
   expect(pieces.filter((p) => /zzstreet_meter/.test(p.kind) && Math.abs(p.x - 200) > 12).length).toBe(0);
   // No parking on the left of the way it is drawn (north): the west side, +x.
@@ -328,9 +328,11 @@ test("signals and stops where the data marks them, the class rule only at a junc
   const forms = { ...RULES.forms, signal: [["signal", 1]], stop: [["stop", 1]] } as Furniture["forms"];
   // A signal at two streets' crossing (300, 300), governing all four ways in, and a stop for traffic going north on
   // x = 400 into (400, 400), along the piece from z = 300 to 400 as it is drawn.
+  // As tools/mapdata/streets.py writes them: a place in the data's metres, and each approach's piece and travel, east
+  // and north (the fixture's metres are the engine's).
   const controls = [
-    { kind: "signal", at: [300, 300], governs: [{ piece: `${northward(300)}:2`, dir: 1 }, { piece: `${northward(300)}:3`, dir: -1 }] },
-    { kind: "stop", at: [400, 394], governs: [{ piece: `${northward(400)}:3`, dir: 1 }] },
+    { kind: "signal", e: 300, n: 300, direction: null, all_way: false, junction: true, crossing: null, markings: null, approaches: [{ road: `${northward(300)}:2`, travel: [0, 1] }, { road: `${northward(300)}:3`, travel: [0, -1] }] },
+    { kind: "stop", e: 400, n: 394, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: `${northward(400)}:3`, travel: [0, 1] }] },
   ];
   const { pieces } = place(fixture(GRID, [], { controls }), [], { ...RULES, forms });
   expect(near(pieces, "signal", 300, 300, 25).length).toBeGreaterThan(0);

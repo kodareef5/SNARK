@@ -18,7 +18,8 @@ export interface Piece {
   /** 1 one way as drawn, -1 one way against it, 0 both ways. */
   oneway: number;
   sidewalk: string | null; bridge: boolean; tunnel: boolean;
-  maxspeed: number | null; lit: string | null; parking: [string | null, string | null];
+  /** Its speed limit in miles an hour, whether it is lit, and how cars stand at its kerb on each side ("no" none). */
+  maxspeed: number | null; lit: boolean | null; parking: [string | null, string | null];
 }
 
 /** A way out of a node: which way it leaves, its piece, and +1 where that is the way the piece is drawn. */
@@ -28,10 +29,11 @@ export interface Way { dx: number; dz: number; line: number; sense: number; }
 export interface StreetNode { x: number; z: number; ways: Way[]; key: number; }
 
 /**
- * A signal, stop or give-way the data maps (base/controls.json): where it is, and the traffic it governs, each a line and
- * which way along it (1 as the piece is drawn, -1 against).
+ * A signal, stop, give-way or crossing the data maps (base/controls.json, tools/mapdata/streets.py `controls`): where it
+ * is, the traffic it governs (each the line it comes along and the way it travels, a unit vector in engine metres), and a
+ * crossing's type (crossing=*).
  */
-export interface Marked { x: number; z: number; kind: string; governs: { line: number; dir: number }[]; }
+export interface Marked { x: number; z: number; kind: string; allWay: boolean; crossing: string | null; governs: { line: number; dx: number; dz: number }[]; }
 
 /**
  * A crossing of the walk network, from a to b across the road, `half` its half width; `signal` and its type (crossing=*)
@@ -88,7 +90,7 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
     pieces.push({
       id: text(p.id) ?? `line:${line}`, mtfcc: text(p.mtfcc) ?? "", highway: text(p.highway), name: text(p.name), lanes: num(p.lanes) ?? 2,
       half: (num(p.width_m) ?? 8) / 2, oneway, sidewalk: text(p.sidewalk), bridge: p.bridge === true, tunnel: p.tunnel === true,
-      maxspeed: num(p.maxspeed_mph), lit: text(p.lit), parking: [text(p.parking_left), text(p.parking_right)],
+      maxspeed: num(p.maxspeed_mph), lit: typeof p.lit === "boolean" ? p.lit : null, parking: [text(p.parking_left), text(p.parking_right)],
     });
     const runs = f.geometry.type === "MultiLineString" ? (f.geometry.coordinates as number[][][]) : [f.geometry.coordinates as number[][]];
     for (const run of runs) {
@@ -133,11 +135,17 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
   // The controls the data maps, on the pieces whose ids it names.
   const byId = new Map(pieces.map((p, i) => [p.id, i]));
   const controls = read<unknown>(join(source, "base/controls.json"));
-  const marked: Marked[] = controlsOf(controls).flatMap((c) => {
-    const at = placeOf(c); if (!at) return [];
-    const [x, z] = toLattice(at[0], at[1]);
-    const governs = governed(c).map(([id, dir]) => ({ line: byId.get(id) ?? -1, dir })).filter((g) => g.line >= 0);
-    return [{ x, z, kind: kindOf(text(c.kind) ?? text(c.type) ?? ""), governs }];
+  const marked: Marked[] = (Array.isArray(controls) ? (controls as Record<string, unknown>[]) : []).flatMap((c) => {
+    const e = num(c.e); const n = num(c.n); if (e === null || n === null) return [];
+    const [x, z] = toLattice(e, n);
+    const governs = (Array.isArray(c.approaches) ? (c.approaches as Record<string, unknown>[]) : []).flatMap((a) => {
+      const line = byId.get(String(a.road)); const t = a.travel as number[] | undefined;
+      if (line === undefined || !Array.isArray(t)) return [];
+      // The way it travels, east and north, as the engine's metres turn it.
+      const [tx, tz] = toLattice(e + t[0]!, n + t[1]!);
+      return [{ line, dx: tx - x, dz: tz - z }];
+    });
+    return [{ x, z, kind: text(c.kind) ?? "", allWay: c.all_way === true, crossing: text(c.crossing), governs }];
   });
 
   // The walk network's crossings.
@@ -180,26 +188,6 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
   return { segments, pieces, nodes, junction, nodeAt: (x, z) => at.get(nodeKey(x, z)), marked, crossings, onCrossing, lots, mapped: { points: controls !== null, tags } };
 }
 
-// controls.json as its writer lays it out: a list of controls (or an object holding one under `controls`), each with its
-// kind, its place in the data's metres, and the road pieces it governs with the direction of their traffic.
-type Control = Record<string, unknown>;
-const controlsOf = (data: unknown): Control[] => {
-  const list = Array.isArray(data) ? data : data && typeof data === "object" && Array.isArray((data as Control).controls) ? ((data as Control).controls as unknown[]) : [];
-  return list.filter((c): c is Control => c !== null && typeof c === "object");
-};
-const placeOf = (c: Control): [number, number] | null => {
-  const pair = (v: unknown): [number, number] | null => (Array.isArray(v) && typeof v[0] === "number" && typeof v[1] === "number" ? [v[0], v[1]] : null);
-  return pair(c.at) ?? pair(c.point) ?? pair(c.xy) ?? (num(c.e) !== null && num(c.n) !== null ? [num(c.e)!, num(c.n)!] : num(c.x) !== null && num(c.y) !== null ? [num(c.x)!, num(c.y)!] : null);
-};
-/** A direction as a sign: 1 with the piece as drawn, -1 against it. */
-const sense = (v: unknown): number => (v === -1 || v === "backward" || v === "-1" ? -1 : 1);
-const governed = (c: Control): [string, number][] => {
-  if (Array.isArray(c.governs)) return (c.governs as Control[]).filter((g) => g && typeof g === "object").map((g) => [String(g.piece ?? g.id ?? g.road), sense(g.dir ?? g.direction)]);
-  const ids = Array.isArray(c.pieces) ? (c.pieces as unknown[]) : Array.isArray(c.roads) ? (c.roads as unknown[]) : [];
-  const dirs = Array.isArray(c.directions) ? (c.directions as unknown[]) : [];
-  return ids.map((id, i) => [String(id), sense(dirs[i])]);
-};
-const kindOf = (k: string): string => (k === "traffic_signals" ? "signal" : k === "give-way" || k === "yield" ? "give_way" : k);
 const graphs = new Map<string, StreetGraph>();
 /** The street graph of a site, read once for each work folder. */
 export function streetGraph(site: { source: string; toLattice: (e: number, n: number) => [number, number] }): StreetGraph {
