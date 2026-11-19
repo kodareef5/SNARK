@@ -28,13 +28,13 @@ const widerFloat = (a: Float64Array): Float64Array => { const b = new Float64Arr
  */
 export class FootVehicles {
   count = 0;
-  kind = new Uint32Array(16);
-  x = new Float64Array(16);
-  y = new Float64Array(16);
-  z = new Float64Array(16);
-  pose = new Uint32Array(16);
-  attitudeA = new Uint32Array(16);
-  attitudeB = new Uint32Array(16);
+  kind: Uint32Array = new Uint32Array(16);
+  x: Float64Array = new Float64Array(16);
+  y: Float64Array = new Float64Array(16);
+  z: Float64Array = new Float64Array(16);
+  pose: Uint32Array = new Uint32Array(16);
+  attitudeA: Uint32Array = new Uint32Array(16);
+  attitudeB: Uint32Array = new Uint32Array(16);
 
   push(kind: number, x: number, y: number, z: number, pose: number, attitudeA: number, attitudeB: number): void {
     const n = this.count;
