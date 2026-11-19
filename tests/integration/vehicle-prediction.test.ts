@@ -32,29 +32,29 @@ test("damage changes mechanical condition once; health regeneration does not inv
   } finally { h.host.shutdown(); }
 });
 
-test("a catch-up frame transmits every newly sampled tick, including the first tick's short tap", () => {
+test("a long frame samples its newest tick alone, which carries a short tap seen before it, and sends none of the ticks it held", () => {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });
   try {
     const s = h.join("catch-up", {}, { manual: true });
     h.run(500, now => s.update(now, 0, 0, 0, 0, 0));
     const before = s.simTick;
-    // No server time passes during this frame. The entire batch can still arrive before it is needed.
     s.update(h.now + 1, 0, 0, 0, 0, BTN_USE);
     expect(s.simTick).toBe(before);
     s.update(h.now + 201, 0, 1, 0, 0, 0);
     expect(s.simTick - before).toBeGreaterThan(4);
     h.net.advance(h.now + 1);
+    // The frame's ticks before its newest were never sampled: the server holds the input before them, as the page did.
     const accepted = h.client(s)!.inputs;
-    for (let tick = before + 1; tick <= s.simTick; tick++) expect(accepted.has(tick)).toBe(true);
-    expect(accepted.buttons[(before + 1) & accepted.mask]! & BTN_USE).toBe(BTN_USE);
-    expect(accepted.buttons[s.simTick & accepted.mask]! & BTN_USE).toBe(0);
+    for (let tick = before + 1; tick < s.simTick; tick++) expect(accepted.has(tick)).toBe(false);
+    expect(accepted.buttons[s.simTick & accepted.mask]! & BTN_USE).toBe(BTN_USE);
     const last = s.simTick;
-    // A clock jump may skip time after the bounded eight-step catch-up. Never label uninitialized input as sampled.
+    // A clock jump past what one update steps is held the same way. Never label an input not sampled as sampled.
     s.tickClock += 20;
     s.update(h.now + 217, 0, 1, 0, 0, 0);
     h.net.advance(h.now + 2);
     expect(s.simTick).toBeGreaterThan(last + 8);
-    expect(h.client(s)!.newestInput).toBe(last + 8);
+    expect(h.client(s)!.newestInput).toBe(s.simTick);
+    for (let tick = last + 1; tick < s.simTick; tick++) expect(h.client(s)!.inputs.has(tick)).toBe(false);
   } finally { h.host.shutdown(); }
 });
 
