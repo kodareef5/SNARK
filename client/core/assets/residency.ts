@@ -75,6 +75,8 @@ export const FIRST = 1e6;
 export const PAGE_FIRST = 4 * FIRST;
 /** How urgent a material's textures are against one another. */
 const WEIGHT: readonly number[] = [1, 0.5, 0.25, 1, 1];
+/** A texture's climb is as urgent as the pixels it adds for each this many bytes of it, so the cheapest gain comes first. */
+const CLIMB_BYTES = 65536;
 /** A texture in view is remade smaller only if what is left would do for this many times the pixels it covers. */
 const KEEP = 1.25;
 /** How long to wait before asking again for what failed, and how long once those are used up. */
@@ -668,7 +670,11 @@ export class Residency {
     this.letGo(t);
   }
 
-  /** A texture shown `px` pixels across. Its next step is as urgent as the pixels it adds, times `weight`. */
+  /**
+   * A texture shown `px` pixels across. Its first step is as urgent as FIRST where `first`, else its pixels times `weight`;
+   * after it, the climb to the step it is shown at is as urgent as the pixels that adds, times `weight`, for each
+   * CLIMB_BYTES of the climb.
+   */
   private texture(t: number, px: number, weight: number, first: boolean): void {
     const slot = this.texBase + t;
     const have = this.has[t]!;
@@ -683,11 +689,14 @@ export class Residency {
       }
     } else if (px > this.px[t]!) this.px[t] = px;
     if (have >= this.limit[t]!) return;
-    const next = STEP0_SIZE << (have + 1);
     let urgency: number;
-    if (have < 0) urgency = first ? FIRST * (1 + weight) : next * weight;
-    else if (px > next >> 1) urgency = ((px < next ? px : next) - (next >> 1)) * weight;
-    else return;
+    if (have < 0) urgency = first ? FIRST * (1 + weight) : STEP0_SIZE * weight;
+    else {
+      const want = stepFor(px, this.limit[t]!);
+      if (want <= have) return;
+      const top = STEP0_SIZE << want;
+      urgency = (((px < top ? px : top) - (STEP0_SIZE << have)) * weight * CLIMB_BYTES) / (this.through[t * STEPS + want]! - this.through[t * STEPS + have]!);
+    }
     if (urgency > this.urgency[slot]!) this.urgency[slot] = urgency;
     if (this.state[slot] === ABSENT && this.queued[t] !== this.frame) {
       this.queued[t] = this.frame;
@@ -1006,8 +1015,10 @@ export class Residency {
       let rider = -1;
       let goal = 0;
       if (this.isTexture(slot)) {
-        // A texture climbs a step at a time, and only into room that is not spoken for.
-        goal = this.has[slot - this.texBase]! + 1;
+        // A texture comes at its first step, then climbs in one request to the step it is shown at, and only into room
+        // that is not spoken for.
+        const t = slot - this.texBase, have = this.has[t]!;
+        goal = have < 0 ? 0 : Math.max(have + 1, stepFor(this.px[t]!, this.limit[t]!));
         bytes = this.through[(slot - this.texBase) * STEPS + goal]!;
         if (this.texMarked + this.texComing + bytes > this.texBudget) {
           this.short = true;

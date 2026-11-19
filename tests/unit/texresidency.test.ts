@@ -113,7 +113,7 @@ const asks = (w: World, slot: number): string[] => w.port.log.filter((line) => l
 const kinds = (w: World, slot: number): string[] => asks(w, slot).map((line) => line.split(" ").slice(4).join(" "));
 const once = (w: World): boolean => [...w.port.over.values()].every((times) => times === 1);
 
-test("on a slow, lossy link a body turns from flat to its materials when the card holds all that takes, and its textures then climb a step at a time", () => {
+test("on a slow, lossy link a body turns from flat to its materials when the card holds all that takes, and its textures then climb straight to the step they are shown at", () => {
   const upload = 16 * 1024;
   const w = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 300 })), { latencyMs: 80, bytesPerSecond: 1.2e6, loss: 0.1, seed: 4 }, { uploadBytes: upload });
   w.frame(0);
@@ -127,12 +127,18 @@ test("on a slow, lossy link a body turns from flat to its materials when the car
   // At 3.5 m a hide 2 m across covers 294 pixels and wants its 512, with the packed map and the masks a step under,
   // as they were authored. The bodies 4.6 m off to the sides want a step less of everything.
   expect([0, 1, 2].map((body) => tops(w, body))).toEqual([WIDE.map((top) => top >> 1), WIDE, WIDE.map((top) => top >> 1)]);
-  // Each texture was made at 64 and then at each size up to the one it has, each time from a request of its own.
+  // Each texture was made at 64 and then at bigger sizes up to the one it has, each from a request of its own that went
+  // straight to the step it was shown at then, with the steps before it: fewer than a step a request would have made.
+  let steps = 0;
   for (let t = 0; t < 3 * MAPS; t++) {
     const made = w.card.made.filter(([texture]) => texture === t).map(([, top]) => top);
-    expect(made).toEqual(made.map((_, k) => 64 << k));
-    expect(kinds(w, texSlot(SET, t)).filter((kind) => !kind.endsWith("fresh")).filter((kind, k, all) => all.indexOf(kind) === k)).toEqual(made.map((_, k) => (k === 0 ? "" : `x${k + 1}`)));
+    expect([made[0], made.every((top, k) => k === 0 || top > made[k - 1]!)]).toEqual([64, true]);
+    // Steps a request asked for, each request's more than the one's before, a lost one's among them.
+    const asked = kinds(w, texSlot(SET, t)).filter((kind) => !kind.endsWith("fresh")).filter((kind, k, all) => all.indexOf(kind) === k).map((kind) => (kind === "" ? 1 : Number(kind.slice(1))));
+    expect([asked.every((n, k) => k === 0 || n > asked[k - 1]!), made.every((top) => asked.includes(Math.log2(top / 64) + 1))]).toEqual([true, true]);
+    steps += Math.log2(made.at(-1)! / 64) + 1;
   }
+  expect(w.card.made.length).toBeLessThan(steps);
   // Requests were lost and asked again, and still no part crossed the link twice: a step up asks for the steps before
   // it too, and those the port had kept.
   expect(w.r.stats.failed).toBeGreaterThan(3);
@@ -225,9 +231,9 @@ test("textures keep to their share: the least lately drawn goes whole and its bo
   expect([tops(w, 0), tops(w, 1), w.dropped.textures]).toEqual([WIDE, WIDE, 0]);
   w.run(3, stops[2]!);
   // The third body's came in, and for them the first body's went, each all at once, in the order they were last drawn in, until there was room.
-  expect([tops(w, 0), tops(w, 2), w.dropped]).toEqual([[0, 0, 0, 0, 256, 256], WIDE, { levels: 0, textures: 4 }]);
+  expect([tops(w, 0), tops(w, 2), w.dropped]).toEqual([[0, 0, 0, 256, 256, 256], WIDE, { levels: 0, textures: 3 }]);
   w.run(3, stops[3]!);
-  expect([tops(w, 0), tops(w, 1), tops(w, 3)]).toEqual([[0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 256, 256], WIDE]);
+  expect([tops(w, 0), tops(w, 1), tops(w, 3)]).toEqual([[0, 0, 0, 0, 0, 0], [0, 0, 0, 256, 256, 256], WIDE]);
   expect(w.card.mostTex).toBeLessThanOrEqual(share);
   expect(w.card.mostTex).toBeGreaterThan(share * 0.9);
   // Back at the first body: its finest level and its surface are still on the card, and it is drawn flat until its base colour is back.
@@ -235,8 +241,8 @@ test("textures keep to their share: the least lately drawn goes whole and its bo
   expect([w.drawn[0], w.shown[0], w.card.surfaces.has(w.r.slot(0, 0))]).toEqual([0, 0, true]);
   w.run(3, stops[0]!);
   expect([w.shown[0], tops(w, 0)]).toEqual([1, WIDE]);
-  // It was made again from its 64, out of parts the port had kept: nothing crossed the link twice.
-  expect(w.card.made.filter(([texture]) => texture === BASE).map(([, top]) => top)).toEqual([64, 128, 256, 512, 64, 128, 256, 512]);
+  // It was made again from its 64 and then its 512, out of parts the port had kept: nothing crossed the link twice.
+  expect(w.card.made.filter(([texture]) => texture === BASE).map(([, top]) => top)).toEqual([64, 512, 64, 512]);
   expect(once(w)).toBe(true);
 
   // A card with room for two bodies' textures and little more: the levels of the bodies left behind go, and the textures never give them room.
@@ -257,12 +263,12 @@ test("a texture in view that holds more than is wanted of it is remade smaller w
   w.run(4, -3.5);
   expect([tops(w, 0), tops(w, 1)]).toEqual([WIDE, NARROW]);
   // Beside the second body, the first is 146 m off and still holds its 512s. As many are given back as the second needs room for.
-  const far = [64, 64, 64, 64, 256, 256];
+  const far = [64, 64, 64, 256, 256, 256];
   w.run(6, 146.5);
-  expect([tops(w, 0), tops(w, 1), w.r.stats.shrunk]).toEqual([far, WIDE, 4]);
+  expect([tops(w, 0), tops(w, 1), w.r.stats.shrunk]).toEqual([far, WIDE, 3]);
   // And back again. Nothing was let go, neither body was ever drawn flat for it, and the share was kept to.
   w.run(6, -3.5);
-  expect([tops(w, 0), tops(w, 1), w.r.stats.shrunk, w.dropped.textures, [...w.lapsed]]).toEqual([WIDE, far, 8, 0, [0, 0]]);
+  expect([tops(w, 0), tops(w, 1), w.r.stats.shrunk, w.dropped.textures, [...w.lapsed]]).toEqual([WIDE, far, 6, 0, [0, 0]]);
   expect(w.card.mostTex).toBeLessThanOrEqual(share * OVERFLOW);
   // It settles: nothing is asked for while nothing moves.
   const { requests } = w.r.stats;
@@ -282,8 +288,8 @@ test("what cannot be had: a body is drawn without a normal, a texture stays at t
   w.run(8, -3.5);
   // A normal whose first step is wrong is asked for twice. Its body is drawn with its materials all the same.
   expect([kinds(w, texSlot(set, NORMAL)), w.shown[0], tops(w, 0)]).toEqual([["", "fresh"], 1, [512, 0, 256, 256, 256, 256]]);
-  // A base colour whose 256 is wrong stays at 128. The 256 was asked for twice, with the two steps before it.
-  expect([kinds(w, texSlot(set, MAPS + BASE)), w.shown[1], tops(w, 1)[BASE]]).toEqual([["", "x2", "x3", "x3 fresh"], 1, 128]);
+  // A base colour whose 256 is wrong stays at 128. The 256 was asked for twice, with the two steps before it, and then the 128.
+  expect([kinds(w, texSlot(set, MAPS + BASE)), w.shown[1], tops(w, 1)[BASE]]).toEqual([["", "x3", "x3 fresh", "x2"], 1, 128]);
   // A surface that is wrong came with its level, twice. Then the level was asked for alone, and is drawn flat.
   expect([kinds(w, w.r.slot(2, 0)), w.drawn[2], w.shown[2]]).toEqual([["x3", "x3 fresh", ""], 0, 0]);
   // A mask that cannot be had at all leaves its body flat.
