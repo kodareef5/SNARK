@@ -1,9 +1,10 @@
 // `bun tools/map/trip.ts --map var/maps/miami.snmap [--mbit 5,20] [--out folder]`: what a player feels of a built map as it
 // comes. A server of the map runs here behind a link of this tool's own, held to each `--mbit` (shared by every connection
 // a slice at a time, with --latency ms there and back), and a headless Chrome, muted, joins from an empty cache at ?trip
-// (client/core/trip.ts). The body joins on the map's thickest street; goes 300 m up once the street round it is drawn or a
-// third of the map has come; waits there until the far city is drawn or two thirds have come, so that it jumps while the
-// map still comes; then jumps to the thickest street 4 km away, whose sector's ground is answered 503 at its first ask.
+// (client/core/trip.ts). The body joins on the map's thickest street; goes 300 m up once the street round it is drawn
+// sharp, or PATIENCE.street seconds on; waits there until the far city is drawn or two thirds of the map have come, so that
+// it jumps while the map still comes; then jumps to the thickest street 4 km away, whose sector's ground is answered 503 at
+// its first ask. Each moment it prints comes with the bytes of art and of the map the page had in hand then.
 // It prints, by the page's clock: the first frame; the first in which the street is drawn with its pieces and materials;
 // the first in which the far city is drawn; the last part; after the jump, the time until the body is predicted again,
 // until the ground the fine terrain draws is the map's own and until the street there is drawn; whether the failed part
@@ -32,7 +33,7 @@ const value = (flag: string, otherwise: string): string => {
   return at >= 0 ? process.argv[at + 1]! : otherwise;
 };
 /** Seconds the trip waits for each thing before it goes on without. */
-const PATIENCE = { frame: 180, street: 60, far: 120, jump: 20, after: 90, end: 120 };
+const PATIENCE = { frame: 180, street: 120, far: 120, jump: 20, after: 90, end: 120 };
 /** Metres the body goes up once the street is drawn. */
 const UP = 300;
 /** Metres from where the trip joins to where it jumps to. */
@@ -257,10 +258,10 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const share = (): number => seen.parts.filter((p) => p.status === 200).reduce((n, p) => n + p.bytes, 0) / handed;
     await until(PATIENCE.frame, () => on("frame") !== undefined);
     await shot("first-frame", on("frame"));
-    await until(PATIENCE.street, () => on("street") !== undefined || share() >= 1 / 3);
+    await until(PATIENCE.street, () => on("street") !== undefined);
     await shot("street", on("street"));
     const street = JSON.stringify(await page.value("globalThis.snarkTrip?.state()"));
-    // Up, standing on nothing, once the street is drawn or a third of the map has come.
+    // Up, standing on nothing, once the street is drawn or the trip has waited long enough for it.
     const ents = server.host.world.ents;
     const e = server.host.game.clients.find((c) => c?.name === "trip")!.ent;
     ents.mode[e] = MODE_GHOST;
@@ -321,21 +322,28 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const lastPart = [...parts].every(came) ? Math.max(...seen.parts.filter((p) => parts.has(p.name) && p.status === 200).map((p) => p.end)) : undefined;
     const far = seen.marks.find((m) => m.what === "far");
     say(`trip on ${head.id} over ${opts.mbit} Mbit/s, ${opts.latency} ms there and back: joined at ${from.x}, ${from.z}, went ${UP} m up at ${s(upAt)} (${Math.round(upShare * 100)}% of the map in), jumped to ${to.x}, ${to.z} at ${s(jumpAt)} (${Math.round(jumpShare * 100)}% in); ${failing.name}, the ground there, ${fails ? "was answered 503 at its first ask" : "failed at no ask (--no-fail)"}`);
-    say(`  first frame                           ${s(on("frame"))}`);
+    /** Bytes of art and of the map the page had in hand at the first `what` mark, or "" where it never came. */
+    const bytes = (what: string): string => {
+      const m = seen.marks.find((k) => k.what === what);
+      if (!m) return "";
+      const map = seen.parts.filter((p) => p.status === 200 && p.end <= m.at).reduce((n, p) => n + p.bytes, 0);
+      return `   (art ${(m.art / 1e6).toFixed(1)} MB, map ${(map / 1e6).toFixed(1)} MB in hand)`;
+    };
+    say(`  first frame                           ${s(on("frame"))}${bytes("frame")}`);
     const at = (m: TripMark | undefined): string => (m ? `${s(m.at)} at ${m.x}, ${m.z}` : "never");
     const joined = on("street");
-    say(`  street drawn with its materials       ${joined !== undefined && joined < upAt ? s(joined) : `not before the body went up (${street})`}; the street jumped to, ${later(jump === undefined ? undefined : on("street", jump), jump)}`);
-    say(`  far city drawn                        ${at(far)}`);
+    say(`  street drawn with its materials       ${joined !== undefined && joined < upAt ? s(joined) : `not before the body went up (${street})`}; the street jumped to, ${later(jump === undefined ? undefined : on("street", jump), jump)}${bytes("street")}`);
+    say(`  far city drawn                        ${at(far)}${bytes("far")}`);
     /** When `what` came, if it held when the body went up, else why not. */
     const held = (what: string): string => {
       const last = seen.marks.filter((m) => (m.what === what || m.what === `-${what}`) && m.at <= upAt).at(-1);
       return last?.what === what ? `${s(last.at)}, ${later(last.at, on("frame"))}` : `not before the body went up (${last ? `went at ${s(last.at)}` : "never"})`;
     };
-    say(`  the finishes drawn (colour)           ${held("colour")}`);
-    say(`  no texture without its first step    ${held("soft")}`);
+    say(`  the finishes drawn (colour)           ${held("colour")}${bytes("colour")}`);
+    say(`  no texture without its first step    ${held("soft")}${bytes("soft")}`);
     say(`  last part                             ${lastPart === undefined ? `never: ${[...parts].filter((n) => !came(n)).join(" ")} not come` : s(lastPart)}`);
-    say(`  statics handed over                   ${s(on("handed"))}`);
-    say(`  the jump drawn                        ${s(jump)}`);
+    say(`  statics handed over                   ${s(on("handed"))}${bytes("handed")}`);
+    say(`  the jump drawn                        ${s(jump)}, ${jump === undefined ? "never" : `${((jump - jumpAt) / 1000).toFixed(2)} s after the server moved the body`}`);
     say(`  predicted again after the jump        ${later(predicted, jump)}`);
     say(`  ground exact after the jump           ${later(exact, jump)}`);
     say(`  the failed part                       ${fails === 0 ? "none failed" : `asked ${asked.length} times (${asked.join(", ")}): ${asked.includes(200) ? "it came on a later ask" : "it never came"}`}`);

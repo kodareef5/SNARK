@@ -1,6 +1,7 @@
 // Everything a renderer needs to draw one frame, as data. client/core decides what is visible, and a renderer only executes.
 // Uploads and drops persist across frames and must be applied in order. Draws and terrain tiles describe this frame only.
 
+import { SURFACE_NAMES } from "../../../content/surfaces.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
@@ -390,7 +391,7 @@ export class FramePacket {
   worldEarly = 1;
   /** Whether the finishes' base colours can come, which they are drawn as their means until they do; false where nothing can bring them. */
   worldComing = false;
-  readonly worldPhase = new Float32Array(48);
+  readonly worldPhase = new Float32Array(SURFACE_NAMES.length * 3);
   /** The textures the facades read, by their index in the manifest, -1 for none: the elements' base colour, normal and packed map, the rooms', the marks' (facade.ts FacadeAtlases). */
   readonly facadeSlots = new Int32Array(5).fill(-1);
   /** Linear 0..1 RGB. */

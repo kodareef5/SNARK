@@ -172,6 +172,8 @@ export class Residency {
   private readonly retryAt: Float64Array;
   private readonly rehashed: Uint8Array;
   private readonly drawn: Uint8Array;
+  /** Set on a slot whose request was given up once while the game's socket was held back, which is not given up again. */
+  private readonly spared: Uint8Array;
   /** Set on a level put on the card in a frame before its surface: it is kept, and drawn once the surface follows. */
   private readonly apart: Uint8Array;
   /** Bytes the card has been handed of a level or a surface going up in pieces. From the first of them it holds the whole. */
@@ -227,7 +229,8 @@ export class Residency {
   private readonly reserves = new Map<string, number>();
   /** Bytes of this frame's allowance spent on what is not an asset. */
   private spent = 0;
-  private flyingLarge = 0;
+  /** Requests under way for more than SMALL_PART. */
+  flyingLarge = 0;
   /** How many requests may be under way, and how many of them are kept for small parts: more where the port's files come over HTTP/2 or 3. */
   private inFlight = IN_FLIGHT;
   private smallLanes = SMALL_LANES;
@@ -292,6 +295,7 @@ export class Residency {
     this.retryAt = new Float64Array(slots);
     this.rehashed = new Uint8Array(slots);
     this.drawn = new Uint8Array(slots);
+    this.spared = new Uint8Array(slots);
     this.apart = new Uint8Array(this.levels);
     this.given = new Uint32Array(this.texBase);
     this.data = new Array<Uint8Array | null>(slots).fill(null);
@@ -665,6 +669,11 @@ export class Residency {
     return this.unstarted;
   }
 
+  /** How many slots were wanted this frame that the card did not hold and that were not on their way: 0 once all it shows is in. */
+  wanting(): number {
+    return this.wants.length;
+  }
+
   /** The last step of texture `t` (its index in the manifest) the card holds, or -1 for none. */
   holds(t: number): number {
     return this.has[t]!;
@@ -948,6 +957,19 @@ export class Residency {
     if (!this.port) return;
     if (this.keepAll) for (let slot = this.pageBase; slot < this.size.length; slot++) this.wantSlot(slot, 0);
 
+    // While the game's socket is held back, large requests under way past the one it keeps are given up, to be asked for
+    // again: their bytes would hold its packets back for seconds. Each slot at most once, so a link always behind still
+    // brings everything.
+    for (let k = 0; this.holdBack && this.flyingLarge > IN_FLIGHT_HELD - SMALL_LANES_HELD && k < this.under.length; k++) {
+      const slot = this.under[k]!;
+      if (this.state[slot] !== LOADING || slot >= this.pageBase || this.spared[slot] === 1 || this.asked(slot) <= SMALL_PART) continue;
+      this.spared[slot] = 1;
+      this.port.cancel(slot);
+      this.land(slot);
+      this.undo(slot);
+      this.state[slot] = ABSENT;
+      this.stats.cancelled++;
+    }
     // What nobody wants any longer is given up, on its way or arrived, but for a page, which every mesh of it needs. What the card has begun is finished.
     let kept = 0;
     for (const slot of this.under) {

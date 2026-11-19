@@ -16,8 +16,8 @@ const GROUND: Record<number, readonly number[]> = {
   [S.WET_SAND]: [122, 121],
   [S.BEACH]: [125, 124, 169],
   [S.DUNE]: [168, 133, 160],
-  [S.HIGHWAY]: [84, 85, 96],
-  [S.STREET]: [85, 86, 129],
+  [S.HIGHWAY]: [84, 85, 86],
+  [S.STREET]: [85, 86, 84],
   [S.DECK]: [89, 88, 99],
   [S.FORD]: [99, 98, 129],
   [S.COURT]: [151, 150, 98],
@@ -32,14 +32,19 @@ const GROUND: Record<number, readonly number[]> = {
   [S.DESERT]: [123, 122, 167, 124, 100],
   // An airfield: asphalt and concrete.
   [S.PAVED]: [85, 99, 84, 100],
-  // Where people walk and park (tools/mapdata/streets.py), from the indices the client reads as paving and asphalt
-  // (content/surfaces.ts): a sidewalk paved and pale against its street, a crossing the palest, a lot asphalt.
-  [S.SIDEWALK]: [98, 99, 88],
-  [S.CROSSWALK]: [2, 1, 98],
-  [S.WALKWAY]: [99, 101, 98, 100],
-  [S.PLAZA]: [88, 98, 1, 99],
+  // Where people walk and park (tools/mapdata/streets.py), from the indices the client reads as its finishes
+  // (content/surfaces.ts): a sidewalk the walks' concrete, pale against its street; a crossing the street's asphalt,
+  // its stripes painted over it; a plaza paved; a lot asphalt. A walkway is a town's walk or a park's path (PARK_PATH).
+  [S.SIDEWALK]: [1, 231],
+  [S.CROSSWALK]: [85, 86],
+  [S.WALKWAY]: [1, 231],
+  [S.PLAZA]: [88, 98, 99],
   [S.LOT]: [84, 85, 86],
 };
+/** A walkway mostly among a park's ground, within PATH_REACH samples either way, is a park's path of gravel. */
+const PARK = new Set<number>([S.GREEN, S.CANOPY, S.OPEN, S.MANGROVE, S.MARSH, S.DUNE, S.BEACH, S.WET_SAND]);
+const PARK_PATH = [101, 100];
+const PATH_REACH = 6;
 
 /** A dry city's open ground and courts are gravel, dust and paving, not grass; its weeds are dry. */
 const DRY: Record<number, readonly number[]> = {
@@ -67,6 +72,17 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
   const tint = new Uint8Array(nx * nz);
   const table = world.dryGround ? { ...GROUND, ...DRY } : GROUND;
   const weeds = world.dryGround ? 158 : 150;
+  // The share of a park's ground round a sample, counted where a walkway asks.
+  const parkShare = (c: number, r: number): number => {
+    let park = 0, all = 0;
+    for (let j = Math.max(0, r - PATH_REACH); j <= Math.min(nz - 1, r + PATH_REACH); j++) {
+      for (let k = Math.max(0, c - PATH_REACH); k <= Math.min(nx - 1, c + PATH_REACH); k++) {
+        all++;
+        if (PARK.has(surface[j * nx + k]!)) park++;
+      }
+    }
+    return park / all;
+  };
   for (let i = 0; i < nx * nz; i++) {
     const c = i % nx;
     const r = (i - c) / nx;
@@ -92,7 +108,7 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
       tint[i] = CONTAINERS[ground.container[i]! % CONTAINERS.length]!;
       continue;
     }
-    const list = table[s] ?? [15];
+    const list = s === S.WALKWAY && parkShare(c, r) > 0.4 ? PARK_PATH : table[s] ?? [15];
     let k = list[0]!;
     if (list.length > 1) {
       const wet = s === S.FLAT || s === S.DEEP || s === S.CHANNEL || s === S.SHALLOW;
