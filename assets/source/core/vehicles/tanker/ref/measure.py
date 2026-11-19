@@ -14,7 +14,10 @@ def write(path, data):
 
 write(ROOT / "ref/rig.json", PIVOTS)
 levels = []
-for geometry in [model(level=1), model(level=2), model(False), model(False, True)]:
+# Only the two coarsest levels are built by hand. The 9,800 and 3,750 triangle levels are made from the finest by the
+# art build: its 1.1 cm and 3.9 cm against the hand-fitted shells' 8.9 cm and 16.3 cm (capped hub recesses, tank-end
+# shoulders), so they are drawn from 37 m on medium where the shells waited until 312 m.
+for geometry in [model(False), model(False, True)]:
     parts = []
     for v, f, t, g, b in flat_paint(geometry):
         parts.append([b, t, v.round(5).flatten().tolist(), f.flatten().tolist()])

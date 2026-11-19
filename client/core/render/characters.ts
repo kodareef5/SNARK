@@ -48,6 +48,20 @@ import { PatrolLights } from "./patrol-lights.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
+/**
+ * An outfit is heavy where its pieces' coarsest levels hold more than this many times the triangles of the body parts
+ * they stand in for: a tailored suit of plates over a liner, not a shirt cut from the body's own mesh. The Meridian
+ * suit is 2,243 triangles there on a body of about 420.
+ */
+const HEAVY_OUTFIT = 2;
+/**
+ * How much sooner a heavy outfit goes to its next level than the body would: its levels are chosen as if it stood this
+ * many times as far off. A body's levels change where a quarter of a pixel of error would show (Tier.threshold on
+ * medium), a figure for a body of 4,400 triangles; a suit of 21,000 on it gives up three times that, still under a
+ * pixel, and is drawn at its finest only within about 8 m where the body is to 25. At the body's last level the outfit
+ * is not drawn at all: the body's own part stands in for it in the outfit's colours.
+ */
+const HEAVY_RELAX = 3;
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents and a held item. */
 const PARTS = SLOT_COUNT + 5;
 const PLAIN = defaultLook();
@@ -146,6 +160,8 @@ interface BodySet {
   /** Per armor set, indexed as Worn.set. The pack mesh worn in each body slot, -1 where the set has none. */
   armor: Int32Array[];
   vents: Int32Array;
+  /** Per armor set, 1 where the set is heavy (HEAVY_OUTFIT). */
+  heavy: Uint8Array;
 }
 
 interface Worn {
@@ -325,6 +341,8 @@ export class Characters {
   private readonly assets: Assets;
   /** The level each body was last drawn at, by its id. */
   private readonly last = new Map<number, number>();
+  /** The level each body's heavy outfit was last drawn at, as `last` is the body's. */
+  private readonly lastHeavy = new Map<number, number>();
   /** Each body's gait, by its id, so its legs go by the ground it covers (shared/anim/gait.ts). */
   private readonly gaits = new Map<number, Stride>();
   private frame = 0;
@@ -412,6 +430,17 @@ export class Characters {
         // A missing piece is -1 here, and the body's own part is drawn in the piece's colours.
         vents: Int32Array.from(sets, set => human(bind.own(piece(set, "torso"), "vents", body))),
         armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (part) => human(bind.own(piece(set, part), "worn", body)))),
+        heavy: Uint8Array.from(sets, (set) => {
+          const coarsest = (m: number): number => assets.manifest.meshes[m]!.levels.at(-1)!.tris;
+          let worn = 0, bare = 0;
+          SLOT_NAMES.forEach((part, k) => {
+            const m = human(bind.own(piece(set, part), "worn", body));
+            if (m < 0 || slots[k]! < 0) return;
+            worn += coarsest(m);
+            bare += coarsest(slots[k]!);
+          });
+          return worn > HEAVY_OUTFIT * bare ? 1 : 0;
+        }),
       };
     };
     this.rigs = pack.header.rigs;
@@ -1156,6 +1185,7 @@ export class Characters {
     this.layers.begin();
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
+    if (this.lastHeavy.size > 4096) this.lastHeavy.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
     if (this.waiting.length > 0) this.takeClips();
   }
@@ -1306,6 +1336,17 @@ export class Characters {
       const piece = cut >= 0 && this.assets.known(cut) ? cut : -1;
       const hidden = headless && slot === SLOT_HEAD;
       if (hidden && casts === 0) continue;
+      const heavy = piece >= 0 && !own && set.heavy[worn!.set] === 1;
+      if (heavy && lod === set.error.length - 1 && set.slots[slot]! >= 0) {
+        // Too far to tell plates from paint: the body's own part in the outfit's colours, a fifth of the triangles.
+        const c = this.wornColor;
+        c.fill(worn!.colors[0]);
+        c[REGION_SECOND - REGION_BASE] = worn!.colors[1];
+        c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
+        this.queuePart(set.slots[slot]!, c, 0, -1, unseen || hidden);
+        if (slot === SLOT_HEAD) { covered = true; sealed = worn!.sealed; }
+        continue;
+      }
       if (piece >= 0) {
         // The piece uses its own three colours, and the body's colours for the other regions.
         const c = this.wornColor;
@@ -1313,7 +1354,14 @@ export class Characters {
         c[REGION_MAIN - REGION_BASE] = worn!.colors[0];
         c[REGION_SECOND - REGION_BASE] = worn!.colors[1];
         c[REGION_TRIM - REGION_BASE] = worn!.colors[2];
+        if (heavy) {
+          // Never finer than the body beside it, and coarser sooner (HEAVY_RELAX).
+          const level = Math.max(lod, this.assets.choose(set.error, far * this.assets.tier.bodyError * HEAVY_RELAX, this.lastHeavy.get(id) ?? -1));
+          this.lastHeavy.set(id, level);
+          part.lod = level;
+        }
         this.queuePart(piece, c, 0, -1, unseen || hidden);
+        part.lod = lod;
         if (worn!.vented && st.jet && !st.grounded && st.mode !== MODE_SWIM && !seat && !vehicleSeat && !st.dead && !st.out) {
           const vents = set.vents[worn!.set]!;
           if (vents >= 0 && this.assets.known(vents)) this.queuePart(vents, c, 0, -1, unseen || hidden);

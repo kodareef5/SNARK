@@ -3,7 +3,7 @@
 import math
 import json
 from pathlib import Path
-from instrument import Mesh, TAU, arc, beam, box, ring
+from instrument import Mesh, TAU, arc, beam, box, plate, ring
 from mathutils import Vector
 
 profile = json.loads(
@@ -188,24 +188,27 @@ def deck(m):
         for j in range(32 if m.level == 0 else 16):
             t = TAU * j / (32 if m.level == 0 else 16)
             for radius, length, band in [(58, 6, 1), (36, 7, 2), (16, 4, 1)]:
-                box(
+                # Inlaid register marks, flush plates and not blocks: their tops stand where the blocks' did.
+                plate(
                     m,
-                    (radius * math.cos(t), 0.085, radius * math.sin(t)),
-                    (length, 0.012, 0.07 if j % 4 else 0.18),
+                    (radius * math.cos(t), 0.097, radius * math.sin(t)),
+                    length,
+                    0.07 if j % 4 else 0.18,
                     t,
                     band,
                 )
         for j in range(4):
             t = j * math.pi / 2
             for s in (-1, 1):
-                box(
+                plate(
                     m,
                     (
                         49 * math.cos(t) - s * 3 * math.sin(t),
-                        0.093,
+                        0.111,
                         49 * math.sin(t) + s * 3 * math.cos(t),
                     ),
-                    (19, 0.018, 0.23),
+                    19,
+                    0.23,
                     t,
                     5,
                 )

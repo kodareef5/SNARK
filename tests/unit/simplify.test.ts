@@ -5,6 +5,7 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePackBytes, frozenPack } from "../fixtures/pack.ts";
 import { CREATURE_ASSETS } from "../fixtures/assets.ts";
+import { measureSurface } from "../../tools/art/check.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { FEWEST, simplify, withLevels } from "../../tools/pack/simplify.ts";
 import { boxMesh, buildPack, unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
@@ -93,6 +94,62 @@ test("a ball's levels lie further from it as they get coarser, by about what the
       expect(m.lod.bones![v]).toBe(y >= 0 ? 1 : 2);
     }
   }
+});
+
+/**
+ * A closed flat ring half a millimetre thick, 0.58 m across, at height 0.5, `sides` round, beside twelve solid 4 cm
+ * crumbs: a wheel's disc among bolts, as a vehicle's parts are.
+ */
+function ringAndCrumbs(sides: number): SourceLod {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  // Four rings, outer top, inner top, inner bottom, outer bottom, each joined to the next by a band.
+  for (const [r, y] of [[0.29, 0.50025], [0.2, 0.50025], [0.2, 0.49975], [0.29, 0.49975]] as const) {
+    for (let i = 0; i < sides; i++) positions.push(r * Math.cos((i / sides) * Math.PI * 2), y, r * Math.sin((i / sides) * Math.PI * 2));
+  }
+  for (let k = 0; k < 4; k++) {
+    const [a, b] = [k * sides, ((k + 1) % 4) * sides];
+    for (let i = 0; i < sides; i++) {
+      const j = (i + 1) % sides;
+      indices.push(a + i, a + j, b + i, b + i, a + j, b + j);
+    }
+  }
+  for (let c = 0; c < 12; c++) {
+    const cube = boxMesh([0.02, 0.02, 0.02], 4);
+    const base = positions.length / 3;
+    for (let v = 0; v < cube.positions.length; v += 3) positions.push(cube.positions[v]! - 0.55 + c * 0.1, cube.positions[v + 1]!, cube.positions[v + 2]!);
+    indices.push(...cube.indices.map((i) => i + base));
+  }
+  return { positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(4), indices: Uint32Array.from(indices) };
+}
+
+test("held, a thin part keeps its extent where it would have shrunk, and nothing turns over", () => {
+  const fine = ringAndCrumbs(28);
+  /** How far across what is left of the ring reaches, and how many triangles it keeps. */
+  const ring = (lod: SourceLod): [number, number] => {
+    let [lo, hi, kept] = [Infinity, -Infinity, 0];
+    for (let t = 0; t < lod.indices.length; t += 3) {
+      const corners = [0, 1, 2].map((k) => lod.indices[t + k]! * 3);
+      if (!corners.every((v) => lod.positions[v + 1]! > 0.3)) continue;
+      kept++;
+      for (const v of corners) [lo, hi] = [Math.min(lo, lod.positions[v]!), Math.max(hi, lod.positions[v]!)];
+    }
+    return [hi - lo, kept];
+  };
+  const [loose] = simplify(fine, [120]);
+  const [held] = simplify(fine, [120], [], true);
+  // Without, the rim's points slide round onto each other for almost nothing and the ring draws in.
+  expect(ring(loose!.lod)[0]).toBeLessThan(0.55);
+  // Held, its furthest points along the axes stay where they were, and it keeps at least the triangles it had.
+  expect(ring(held!.lod)[0]).toBeCloseTo(0.58, 4);
+  expect(ring(held!.lod)[1]).toBeGreaterThanOrEqual(ring(loose!.lod)[1]);
+  for (const made of [loose!, held!]) {
+    expect(tris(made.lod)).toBe(120);
+    const facts = measureSurface(made.lod);
+    expect([facts.parts, facts.holes, facts.flipped, facts.insideOut]).toEqual([13, 0, 0, 0]);
+  }
+  // Asked not to, it makes the levels it always made.
+  expect(simplify(fine, [120], [], false)[0]!.lod).toEqual(loose!.lod);
 });
 
 artTest("a mesh with one level gets more only if it has the triangles for them, and a creature that brings one gets five", () => {
