@@ -7,7 +7,7 @@ import { BitWriter } from "../../shared/net/codec.ts";
 import { InputBuffer, PROTOCOL_VERSION, writeHello, writeInputs } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
-import { BTN_SPRINT } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { REWIND_TICKS } from "../../server/combat.ts";
 import { Rig, bursts, frames, turning, type PageOptions } from "../fixtures/stall.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
@@ -126,5 +126,26 @@ test("inputs banked far ahead buy a body no steps: it steps once a tick whatever
   }
   // Sprint speed is 7.2 m/s, 0.24 m a tick.
   expect(most).toBeLessThan(0.25);
+  h.host.shutdown();
+});
+
+test("a press whose input comes after its tick is stepped at the next tick, and the page replays it there", () => {
+  const h = new Harness();
+  const s = h.join("hopper", { tcp: true, latencyMs: 40 });
+  h.run(2000);
+  const e = h.ent(s);
+  const y0 = h.world.ents.y[e]!;
+  const corrections = s.stats.corrections;
+  // Everything sent for 150 ms is lost and sent again after its tick: a tap of jump among it.
+  h.net.outage(h.ends[0]!, 150);
+  h.pilots[0]!.buttons = BTN_JUMP;
+  h.run(1000 / 30);
+  h.pilots[0]!.buttons = 0;
+  let rose = 0;
+  h.run(3000, () => (rose = Math.max(rose, h.world.ents.y[e]! - y0)));
+  expect(rose).toBeGreaterThan(1);
+  // Each late tick of the press was stepped without it, and the tick it went into with it: each a correction, then none.
+  expect(s.stats.corrections - corrections).toBeLessThanOrEqual(3);
+  expect(s.own.y).toBe(h.world.ents.y[e]!);
   h.host.shutdown();
 });

@@ -91,7 +91,6 @@ interface Knobs {
   farReach?: number;
   city?: number;
   fewerCascades?: number;
-  noShadows?: boolean;
   details?: number;
   bodies?: number;
   own?: boolean;
@@ -108,8 +107,9 @@ interface Knobs {
  * follow levels too, but where the frame's budget binds they take back what the rest gives, and there the leaves steps
  * give, each passed by where crowns near could give little (CROWNS). The farther cascade every other frame takes a sixth
  * to a quarter of what is cast. Then far trees, levels looser again, a cascade fewer and bodies' own levels, and only
- * then pixels, which a phone bound by triangles buys least with: the screen's own. Then what a fight shows, and the sun's
- * shadows last. Shadows less far is no step: a nearer cascade's finer texels ask finer casters, and it cast more. Before
+ * then pixels, which a phone bound by triangles buys least with: the screen's own. Then what a fight shows, last. No step
+ * takes the sun's shadows, which would change the light of the whole picture where a step may cost only detail; and
+ * shadows less far is no step: a nearer cascade's finer texels ask finer casters, and it cast more. Before
  * all of these a desktop gives back what it was given beyond a phone: first the pixels ultra draws past the screen's
  * own, a quarter of its pixels on a screen of one device pixel to one, then the light target (render/post.ts), which no
  * phone draws: the frame keeps its grade and contact and loses bloom and the sharpen, and 3 to 4 ms of a desktop's card.
@@ -130,7 +130,6 @@ export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] 
   { name: "85% of the pixels a side", knobs: { ratio: 0.85 } },
   { name: "70% of the pixels a side", knobs: { ratio: 0.7 } },
   { name: "small details: half the pool, of each burst and of the fill", knobs: { details: 0.5 } },
-  { name: "no sun shadows", knobs: { noShadows: true } },
 ];
 
 /** `base` with `knobs`, for a screen of `dpr` device pixels a CSS pixel. */
@@ -145,7 +144,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     fewest: knobs.own && base.fewest > ratio ? 0 : base.fewest,
     reach: { ...base.reach, trees: base.reach.trees * far, rocks: base.reach.rocks * far, bushes: base.reach.bushes * far },
     city: knobs.city ? { levels: nearer(base.city.levels, knobs.city) } : base.city,
-    shadows: s.cascades === 0 || !base.lit ? s : { ...s, everyOther: s.everyOther || (knobs.everyOther === true && s.cascades > 1), cascades: knobs.noShadows ? 0 : Math.max(1, s.cascades - (knobs.fewerCascades ?? 0)) },
+    shadows: s.cascades === 0 || !base.lit ? s : { ...s, everyOther: s.everyOther || (knobs.everyOther === true && s.cascades > 1), cascades: Math.max(1, s.cascades - (knobs.fewerCascades ?? 0)) },
     budget: { ...base.budget, triangles: base.budget.triangles * (knobs.leaves ?? 1) },
     details: knobs.details ? { ...base.details, pool: Math.round(base.details.pool * knobs.details), share: base.details.share * knobs.details, fill: base.details.fill * knobs.details } : base.details,
     bodyError: base.bodyError * (knobs.bodies ?? 1),

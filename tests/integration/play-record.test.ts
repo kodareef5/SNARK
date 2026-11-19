@@ -33,7 +33,8 @@ function recorded(link: LinkOptions, opts: { unheld?: boolean; manual?: boolean 
       log.drop(given);
     }
     for (; loop.owed >= 0; loop.owed--) {
-      tick(loop.owed);
+      h.server.behind = loop.owed;
+      tick();
       log.ticked(loop.due - loop.owed * tickMs, h.now, h.now, loop.owed);
     }
     loop.owed = 0;

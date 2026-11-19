@@ -1,3 +1,5 @@
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+
 /** Reproducible Miami camera and animation timeline. Coordinates are engine metres, west and north. */
 export interface TitleFlight {
   map: string;
@@ -47,4 +49,34 @@ export function flightPosition(seconds: number, route: TitleFlight = MIAMI_FLIGH
       d = points[(i + 2) % n]![axis]!;
     return b + 0.5 * t * (c - a + t * (2 * a - 5 * b + 4 * c - d + t * (3 * b - 3 * c + d - a)));
   });
+}
+
+/** Chunks a side of the portrait's beach, and metres to the left of its middle, as the portrait faces, of the water's edge. */
+export const STUDIO_CHUNKS = 4;
+export const STUDIO_SHORE = 40;
+/**
+ * Sand colours of the palette for dry sand, wet sand and the shallows' bed. Drawn flat, with no finishes, the dry one is
+ * two steps darker than the beach's commonest (tools/mapworld/tint.ts), so that it reads as the still's textured sand.
+ */
+export const STUDIO_TINTS = { sand: 123, wet: 121, bed: 122 } as const;
+
+/**
+ * The ground the menu's portrait stands the survivor on where it loads no map (client/entry/flight.ts): a beach in the
+ * beach's own colours, as the still it fades in over has, with the sea along its left, -x, since the portrait faces -z.
+ * The sand rises 2 m in 100 from the water to 0.6 m, and the bed falls 1 m in 15 to 4 m deep.
+ */
+export function studioGround(): Heightfield {
+  const dims = { chunksX: STUDIO_CHUNKS, chunksZ: STUDIO_CHUNKS };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -8, 1 / 64);
+  const shore = hf.sizeX / 2 - STUDIO_SHORE;
+  for (let j = 0; j < hf.nz; j++) {
+    for (let i = 0; i < hf.nx; i++) {
+      const off = i * hf.cell - shore;
+      const y = off >= 0 ? Math.min(0.6, 0.02 * off) : Math.max(-4, off / 15);
+      hf.heights[j * hf.nx + i] = Math.round((y - hf.minY) / hf.stepY);
+      hf.tint[j * hf.nx + i] = y > 0.25 ? STUDIO_TINTS.sand : y > -0.4 ? STUDIO_TINTS.wet : STUDIO_TINTS.bed;
+    }
+  }
+  hf.seaLevel = 0;
+  return hf;
 }
