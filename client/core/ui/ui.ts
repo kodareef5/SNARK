@@ -68,6 +68,9 @@ export class Ui {
   /** A piece is being built, or a vehicle set down: the touch cluster is then the builder's. The app sets both. */
   building = false;
   placing = false;
+  /** Whether there is voice to talk on, and whether a creature is looked at: the app sets both, for the touch layer. */
+  canTalk = false;
+  creatureAhead = false;
   touchShown = 0;
   get touch(): boolean { return this.inputDevice === 2; }
   inspect = false;
@@ -319,7 +322,7 @@ export class Ui {
   build(aspect: number, hud: HudModel, session: ClientSession | null): void {
     const f = this.frame;
     f.begin(aspect, this.canvasHeight);
-    const plan = this.touch ? touchPlan(f, this.settings.muted) : null;
+    const plan = this.touch ? touchPlan(f, this.settings.muted, this.canTalk) : null;
     this.inventory.touch = this.touch;
     this.touchShown = 0;
     this.creating = session?.sessionState === SESSION_CREATING;
@@ -338,13 +341,13 @@ export class Ui {
       // Chat is built over the HUD and under every screen.
       if (session) {
         // A finger's keyboard covers the foot of the screen, so the box it types in stands at the top.
-        const band = plan && this.chat.open ? chatTop(f) : chatBand(f, hud);
+        const band = plan && this.chat.open ? chatTop(f, plan) : chatBand(f, hud);
         this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null);
       }
       if (plan && this.touchPlay && controls) {
-        this.touchShown = touchBar(f, this.touchPlay, f.width - f.right - 12 - plan.map, f.top + 12, plan.map, this.settings.minimap);
+        this.touchShown = touchBar(f, this.touchPlay, f.width - f.right - 12 - plan.map, f.top + 12, plan.map, this.settings.minimap, plan.mic);
         const slots = hud.hotbar.length;
-        if (play) this.touchShown |= touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0);
+        if (play) this.touchShown |= touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0, this.creatureAhead);
       }
     } else if (this.creating) this.chat.close();
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.

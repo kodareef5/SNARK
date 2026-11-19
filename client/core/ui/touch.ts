@@ -3,10 +3,10 @@
 // from the canvas's own size and insets, so it follows the window either way up.
 
 import type { HudModel } from "../hud.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CANCEL, T_CHARACTER, T_CHAT, T_CLOSE, T_DOWN, T_FOLLOW, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CANCEL, T_CHARACTER, T_CHAT, T_CLOSE, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
 import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
-import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CHARACTER, I_CHAT, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MENU, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
+import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CHARACTER, I_CHAT, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MENU, I_MIC, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
 
 /** Keys of the layer's pictures, which are never pressed: four to a button, then the stick's. */
 const KEY_TOUCH_ART = 3300000;
@@ -39,19 +39,22 @@ export const VITAL_PITCH = 42;
 const BAR_BUTTONS = 4;
 
 /** Where the HUD puts what the touch layer moves aside: the vitals' row and the stack under the bar. */
-export interface TouchPlan { vitalsX: number; vitalsY: number; stackY: number; map: number }
-const plan: TouchPlan = { vitalsX: 0, vitalsY: 0, stackY: 0, map: 160 };
+export interface TouchPlan { vitalsX: number; vitalsY: number; stackY: number; under: number; map: number; mic: boolean }
+const plan: TouchPlan = { vitalsX: 0, vitalsY: 0, stackY: 0, under: 0, map: 160, mic: false };
 
 /** The plan for this canvas. The same object each time. */
-export function touchPlan(f: UiFrame, muted: boolean): TouchPlan {
-  const left = f.left + MARGIN, top = f.top + MARGIN, bar = BAR_BUTTONS * BAR_PITCH;
+export function touchPlan(f: UiFrame, muted: boolean, mic = false): TouchPlan {
+  const left = f.left + MARGIN, top = f.top + MARGIN, bar = (BAR_BUTTONS + (mic ? 1 : 0)) * BAR_PITCH;
+  plan.mic = mic;
   // A canvas short or narrow has a smaller minimap, and one too narrow for the vitals beside the bar has them under it.
   plan.map = f.height < 560 || f.width < 520 ? 120 : 160;
   const beside = left + bar + GAP + 7 * VITAL_PITCH + GAP <= f.width - f.right - MARGIN - plan.map;
   // Beside the bar the vitals share its middle line; under it their glass shares its left edge.
   plan.vitalsX = (beside ? left + bar + GAP : left) + 6;
   plan.vitalsY = beside ? top + (BAR - 32) / 2 : top + BAR + 10;
-  plan.stackY = top + BAR + 10 + (beside ? 0 : 42) + (muted ? 52 : 0);
+  // What stands under the bar and the vitals starts at `under`, or a row lower while the offer to unmute has that row.
+  plan.under = top + BAR + 10 + (beside ? 0 : 42);
+  plan.stackY = plan.under + (muted ? 52 : 0);
   return plan;
 }
 
@@ -97,8 +100,10 @@ export function pill(f: UiFrame, key: number, x: number, y: number, w: number, h
 }
 
 /** Where the chat box stands while a finger types in it: under the bar, at the top, where a phone's keyboard does not reach. */
-export function chatTop(f: UiFrame): { top: number; bottom: number } {
-  const top = f.top + MARGIN + BAR + 10;
+export function chatTop(f: UiFrame, touch: TouchPlan): { top: number; bottom: number } {
+  // On its side a phone's keyboard leaves less than half the screen, and the box may cover the vitals to keep in it;
+  // upright there is room under them.
+  const top = f.width > f.height ? f.top + MARGIN + BAR + 10 : touch.under;
   return { top, bottom: top + 3 * 19 + 56 };
 }
 
@@ -112,9 +117,11 @@ export function touchZones(f: UiFrame): void {
 }
 
 /** The bar in the top left, and the minimap as the way to the map. Returns the bits of what it showed. */
-export function touchBar(f: UiFrame, t: TouchPlay, mapX: number, mapY: number, mapSize: number, minimap: boolean): number {
+export function touchBar(f: UiFrame, t: TouchPlay, mapX: number, mapY: number, mapSize: number, minimap: boolean, mic = false): number {
   const x = f.left + MARGIN + BAR / 2, y = f.top + MARGIN + BAR / 2;
   let shown = button(f, t, T_MENU, x, y, BAR, P_SQUARE, I_MENU, "Menu") | button(f, t, T_BAG, x + BAR_PITCH, y, BAR, P_SQUARE, I_BAG, "Bag") | button(f, t, T_CHARACTER, x + BAR_PITCH * 2, y, BAR, P_SQUARE, I_CHARACTER, "Character") | button(f, t, T_CHAT, x + BAR_PITCH * 3, y, BAR, P_SQUARE, I_CHAT, "Chat");
+  // The microphone, where there is voice: lit while a finger is on it.
+  if (mic) shown |= button(f, t, T_MIC, x + BAR_PITCH * 4, y, BAR, P_SQUARE, I_MIC, "Talk");
   if (minimap) {
     // Above the minimap's own buttons, which keep its foot.
     const n = f.add(KEY_TOUCH_BUTTON + T_MAP, K_HOLD, mapX, mapY, mapSize, mapSize - 36, S_KEY);
@@ -134,7 +141,7 @@ export function touchClose(f: UiFrame, t: TouchPlay): number {
  * is, which the cluster stands above where it would reach it, and `mapFoot` where the minimap ends, which the prompt's
  * pill stays below. Returns the bits of the buttons it showed.
  */
-export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: Situation, hotbarRight: number, hotbarTop: number, mapFoot: number): number {
+export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: Situation, hotbarRight: number, hotbarTop: number, mapFoot: number, creature = false): number {
   const left = f.left + MARGIN, right = f.width - f.right - MARGIN;
   let bottom = f.height - f.bottom - MARGIN;
   // Above the hotbar and the line over it that says what is loaded, where the cluster would reach them.
@@ -195,8 +202,9 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: 
       at(T_MELEE, 0, BUTTON, I_MELEE, "Melee");
       at(T_VIEW, 1, BUTTON, I_VIEW, "View");
       at(T_ORBIT, 2, BUTTON, I_ORBIT, "Orbit camera");
-      at(T_FOLLOW, 4, SMALL, I_WHISTLE, "Whistle: all follow");
-      at(T_STAY, 5, SMALL, I_ANCHOR, "Whistle: all stay");
+      // To the creature looked at, where one is; else to every one that hears.
+      if (creature) { at(T_FOLLOW_ONE, 4, SMALL, I_WHISTLE, "Whistle: this one follow"); at(T_STAY_ONE, 5, SMALL, I_ANCHOR, "Whistle: this one stay"); }
+      else { at(T_FOLLOW, 4, SMALL, I_WHISTLE, "Whistle: all follow"); at(T_STAY, 5, SMALL, I_ANCHOR, "Whistle: all stay"); }
       at(T_SIC, 6, SMALL, I_CREATURE, "Whistle: attack this target");
     } else {
       const flyer = situation === "flyer";
