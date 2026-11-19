@@ -9,6 +9,7 @@ import { KEY_BUFF, KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY
 import { KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LINK, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
 import { K_HOLD, K_IMAGE, K_SLIDER, UiFrame, textWidth, type UiImage } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
+import * as layout from "../../client/core/ui/touch.ts";
 import { filledVital } from "../../client/core/ui/vitals.ts";
 import { IMAGE_SKIN, ICON_SIZE, SKIN_HEIGHT, SKIN_WIDTH } from "../../client/core/ui/skin.ts";
 import { drawUi } from "../../tools/snap/ui.ts";
@@ -149,7 +150,7 @@ test("every menu, settings group and device layout fits from phone portrait to u
 
 test("a phone on its side: the menu, every settings tab and page, and the controls fit a canvas as short as 400 units", () => {
   const ui=new Ui(),hud=new HudModel();
-  ui.inputDevice=2;
+  ui.inputDevice=2;ui.layer=layout;
   // With the links the menu shows beneath Controls, which a short canvas has to make room for.
   ui.links=siteLinks({wiki:"/wiki/",repository:"https://git.example.com/code"});
   let paged=0;
@@ -223,6 +224,7 @@ test("sliders accept pointer values, reject invalid input, and support repeated 
 
 test("a page starts muted and offers to unmute over the HUD and the menu; a press unmutes, and the choice is saved", () => {
   const ui=new Ui(),hud=new HudModel();
+  ui.layer=layout;
   expect(ui.settings.muted).toBe(true);
   for (const aspect of [9/16,4/3,16/9,32/9]) for (const menu of [false,true]) for (const touch of [false,true]) {
     ui.menu=menu;ui.inputDevice=touch?2:0;ui.build(aspect,hud,null);

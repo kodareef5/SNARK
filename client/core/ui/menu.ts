@@ -1,7 +1,7 @@
 import { MINIMAP_SIZE, type HudModel } from "../hud.ts";
 import type { SiteLink } from "../travel.ts";
 import { K_BUTTON, K_HOLD, K_PANEL, textWidth, type UiFrame } from "./nodes.ts";
-import { pill, type TouchPlan } from "./touch.ts";
+import type { TouchPlan } from "./touch.ts";
 import { glass } from "./skin.ts";
 import { S_UNMUTE, S_ICE, S_MENU, S_MENU_BUTTON, S_MENU_MAIN, S_MENU_NOTE, S_MENU_FOCUS, S_HUD_HIT } from "./style.ts";
 
@@ -36,7 +36,7 @@ export function menuButton(f: UiFrame, key: number, x: number, y: number, width:
  * the bar in the top left, where `touch` keeps a row for it. Call it after the screens: where one has a control there
  * (choosing where to rise fills the window) the offer is left out, and the HUD and the menu have it again.
  */
-export function unmuteButton(f: UiFrame, touch: TouchPlan | null): void {
+export function unmuteButton(f: UiFrame, touch: TouchPlan | null, pill: typeof import("./touch.ts").pill | null = null): void {
   const w = Math.ceil(textWidth(UNMUTE_TEXT, S_UNMUTE)) + 32, h = 44, left = f.left + 12;
   const y = touch ? touch.stackY - 52 : f.top + 12;
   const x = touch ? left : Math.max(left, Math.min(Math.round((f.width - w) / 2), f.width - f.right - 12 - MINIMAP_SIZE - 10 - w));
@@ -45,7 +45,7 @@ export function unmuteButton(f: UiFrame, touch: TouchPlan | null): void {
     if (q.interactive && q.kind !== K_HOLD && x < q.x + q.w && q.x < x + w && y < q.y + q.h && q.y < y + h) return;
   }
   // The HUD's glass under it, or by touch the touch sheet's pill, which that page already has.
-  if (touch) pill(f, 3400000, x, y, w, h, false);
+  if (touch && pill) pill(f, 3400000, x, y, w, h, false);
   else { glass(f, KEY_UNMUTE, x, y, w, h); f.add(90000 + KEY_UNMUTE, K_PANEL, x + 14, y + h - 7, w - 28, 2, S_ICE); }
   const n = f.add(KEY_UNMUTE, K_BUTTON, x, y, w, h, S_UNMUTE);
   n.text = UNMUTE_TEXT; n.label = "Sound is off: unmute"; n.interactive = true;

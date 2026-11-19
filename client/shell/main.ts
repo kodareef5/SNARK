@@ -208,6 +208,8 @@ async function boot(): Promise<void> {
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
   device?.attach({ app, pack, reg, hf }, renderer);
 
+  // The touch layer's layout and its art's stand-in are fetched by a page a finger has used, and by no other.
+  let layering = false;
   let savedRevision = app.ui.settings.revision, savedAt = 0;
   const frame = (now: number): void => {
     if(launch && (session.state==="closed" || createFailed)){showEntryProblem();return;}
@@ -220,6 +222,7 @@ async function boot(): Promise<void> {
     const cssHeight = canvas.clientHeight;
     const t0 = performance.now();
     app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
+    if (app.ui.touch && !app.ui.layer && !layering) { layering = true; void import("../core/ui/touch.ts").then((m) => (app.ui.layer = m), () => (layering = false)); }
     if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
     if (bench) app.autopilot(bench.since(now));
     drivingCheck?.step(app, now);

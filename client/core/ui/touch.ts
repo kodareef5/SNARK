@@ -1,9 +1,14 @@
 // Where the touch layer stands (client/core/touch.ts is what it does): two zones under the HUD, a cluster of buttons
-// by the right thumb, the world's prompt as a pill above them, and a bar of three in the top left. Everything is placed
-// from the canvas's own size and insets, so it follows the window either way up.
+// by the right thumb, the world's prompt as a pill above them, and a bar in the top left. Everything is placed from the
+// canvas's own size and insets, so it follows the window either way up.
+//
+// Nothing imports this module's values but a page that is touched: the interface holds it as `Ui.layer`, which the
+// shell fetches when a finger is first used, so a page played with a mouse or a pad never downloads the layout or the
+// sheet's stand-in (D871). Import its types freely; import a value from here and every page pays for it.
 
 import type { HudModel } from "../hud.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CANCEL, T_CHARACTER, T_CHAT, T_CLOSE, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
+import { VITAL_PITCH } from "./hud.ts";
 import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
 import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CHARACTER, I_CHAT, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MENU, I_MIC, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
@@ -31,9 +36,6 @@ export type Situation = "foot" | "flyer" | "building" | "placing";
 /** How far left of the canvas's right margin the cluster reaches, and how far above its foot. */
 const CLUSTER_W = ATTACK / 2 + OUTER + SMALL / 2, CLUSTER_H = ATTACK / 2 + OUTER + SMALL / 2;
 const RADIANS = Math.PI / 180;
-
-/** From one vital to the next in their row: an icon and the room a finger's press of it takes. */
-export const VITAL_PITCH = 42;
 
 /** Menu, Bag, Character and Chat. */
 const BAR_BUTTONS = 4;

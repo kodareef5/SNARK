@@ -5,7 +5,7 @@ import { ACTION_DRAW, ACTION_NONE, MAX_MARKERS, MINIMAP_SIZE, type HudModel, typ
 import type { Settings } from "../settings.ts";
 import { filledVital } from "./vitals.ts";
 import { glass } from "./skin.ts";
-import { VITAL_PITCH, type TouchPlan } from "./touch.ts";
+import type { TouchPlan } from "./touch.ts";
 import { MAX_DOTS } from "../render/laser.ts";
 import { K_BAR, K_BUTTON, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUFF, S_DARK, S_BANNER, S_CROSS, S_FRAME, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT_TEXT, S_STAMINA, S_TEXT } from "./style.ts";
@@ -64,6 +64,8 @@ export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mat
 export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a };
 
 export const HOTBAR_CELL = 52;
+/** From one vital to the next in their row by touch: an icon and the room a finger's press of it takes. */
+export const VITAL_PITCH = 42;
 /** The cone's strokes: their length, and how near the dot they come, in canvas units. */
 const CONE_STROKE = 6;
 const CONE_MIN = 5;
