@@ -181,7 +181,7 @@ export class FinishNear {
       n++;
       const f = this.ground[hf.tint[row + i]!]!;
       if (step > 1 && f !== ASPHALT && f !== SAND) continue;
-      const d = Math.hypot(Math.max(0, Math.hypot(dx, dz) - spread), over);
+      const h = Math.max(0, Math.sqrt(dx * dx + dz * dz) - spread), d = Math.sqrt(h * h + over * over);
       if (d < this.found[f]!) this.found[f] = d;
     }
     return Math.max(1, n);
