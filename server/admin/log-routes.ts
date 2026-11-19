@@ -85,16 +85,27 @@ interface Kept {
   text: string;
 }
 
+/** Calls `end` after `ms` milliseconds without keeping the process up for it. */
+export type Later = (ms: number, end: () => void) => void;
+const later: Later = (ms, end) => void setTimeout(end, ms).unref();
+
 export class LogRoutes {
   private readonly host: Host;
   private readonly now: () => number;
-  /** This second's answers by their query, so pages asking the same thing at once cost one read. */
+  private readonly later: Later;
+  /** This second's answers by their query, so pages asking the same thing at once cost one read. Let go as the second ends. */
   private readonly asked = new Map<string, Promise<Kept>>();
   private second = -1;
 
-  constructor(host: Host, now: () => number) {
+  constructor(host: Host, now: () => number, after: Later = later) {
     this.host = host;
     this.now = now;
+    this.later = after;
+  }
+
+  /** Answers kept, for the tests. */
+  get kept(): number {
+    return this.asked.size;
   }
 
   /** The answer to `at`, a path under /admin/log/ in lower case, or null for any other path. */
@@ -116,7 +127,8 @@ export class LogRoutes {
     else if (name === "wall.json") read = ["wallAt", p.int("tick", 0, Number.MAX_SAFE_INTEGER)];
     else if (name === "holders.json") {
       const item = p.word("item");
-      if (!this.host.world.reg.index.has(item) && p.error === "") p.error = "item is the content id of an item, such as core:metal_ingot";
+      const reg = this.host.world.reg, kind = reg.index.get(item);
+      if ((kind === undefined || reg.defs[kind]?.type !== "item") && p.error === "") p.error = "item is the content id of an item, such as core:metal_ingot";
       const window = p.window();
       const quality = p.has("quality") ? p.int("quality", 0, QUALITY_NAMES.length - 1) : undefined;
       const bp = p.word("blueprint");
@@ -146,7 +158,11 @@ export class LogRoutes {
       this.second = second;
     }
     let p = this.asked.get(key);
-    if (!p) this.asked.set(key, (p = make()));
+    if (!p) {
+      // The first answer of a second sets that second's end, when every answer it kept is let go.
+      if (this.asked.size === 0) this.later(1000 - (now - second * 1000), () => this.second === second && this.asked.clear());
+      this.asked.set(key, (p = make()));
+    }
     const kept = await p;
     return kept.status === 200 ? new Response(kept.text, { headers: JSON_HEADERS }) : new Response(kept.text, { status: kept.status });
   }

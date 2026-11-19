@@ -59,6 +59,11 @@ class EverySecond<T> {
     }
     return this.value;
   }
+
+  /** Lets go of `value` if it is the one kept, so that the next request makes another. */
+  forget(value: T): void {
+    if (this.value === value) this.value = null;
+  }
 }
 
 export class AdminPages {
@@ -81,7 +86,12 @@ export class AdminPages {
     this.o = o;
     this.now = o.now ?? Date.now;
     this.stats = new EverySecond(() => JSON.stringify(statsOf(o.host, o.meter, bodiesOf(o.host), this.backups, this.now())));
-    this.survivors = new EverySecond(() => this.survivorsJson());
+    // A list that failed is not the second's answer: the next request makes it again.
+    this.survivors = new EverySecond(() => {
+      const made = this.survivorsJson();
+      made.catch(() => this.survivors.forget(made));
+      return made;
+    });
     this.version = new EverySecond(() => basesVersion(o.host.tactical.summaries));
     this.log = new LogRoutes(o.host, this.now);
   }

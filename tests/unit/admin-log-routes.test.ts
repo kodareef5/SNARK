@@ -10,7 +10,7 @@ import type { Stats, Survivors } from "../../shared/admin.ts";
 import { MARKER_DEATH } from "../../shared/net/protocol.ts";
 import type { AdminGate } from "../../server/admin/gate.ts";
 import { WINDOW_LEAST } from "../../client/core/admin/timeline.ts";
-import { WINDOW_MOST } from "../../server/admin/log-routes.ts";
+import { LogRoutes, WINDOW_MOST } from "../../server/admin/log-routes.ts";
 import { TickMeter } from "../../server/admin/meter.ts";
 import { AdminPages } from "../../server/admin/routes.ts";
 import { gaugesOf } from "../../server/admin/stats.ts";
@@ -93,6 +93,9 @@ test("the log's routes answer only past the gate, each read's own JSON as it is,
       [`/admin/log/track.json?pid=0&${window}&step=1000`, "pid is a whole number"],
       [`/admin/log/held.json?pid=${pid}`, "at is a whole number"],
       [`/admin/log/holders.json?item=core:nothing&${window}`, "item is the content id"],
+      // A content id that is no item's, a creature's or a structure's, is refused as the words say.
+      [`/admin/log/holders.json?item=core:raptor&${window}`, "item is the content id of an item"],
+      [`/admin/log/holders.json?item=core:campfire&${window}`, "item is the content id of an item"],
       [`/admin/log/holders.json?item=core:spear&${window}&quality=9`, "quality is a whole number from 0 to 5"],
       [`/admin/log/holders.json?item=core:spear&${window}&blueprint=yes`, "blueprint is 0 or 1"],
       ["/admin/log/wall.json?tick=x", "tick is a whole number"],
@@ -125,6 +128,29 @@ test("the same question within a second is one read, and a page polling the span
     h.run(1000);
     await ask(path);
     expect(reads).toBe(2);
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("an answer is kept no longer than its second, whether or not anything is asked after it", async () => {
+  const { h, now } = world("forget.db");
+  try {
+    h.join("bo");
+    h.run(1500);
+    h.host.survivorLog.flush();
+    const ends: { ms: number; end: () => void }[] = [];
+    const routes = new LogRoutes(h.host, now, (ms, end) => ends.push({ ms, end }));
+    const ask = (to: number): Promise<Response> => Promise.resolve(routes.answer("/admin/log/survivors.json", new URL(`http://localhost/admin/log/survivors.json?from=${W0}&to=${to}`))!);
+    for (let k = 0; k < 5; k++) expect((await ask(now() - k)).status).toBe(200);
+    // Five questions in one second, five answers kept, and one end set for them: what is left of that second.
+    expect([routes.kept, ends.length, ends[0]!.ms]).toEqual([5, 1, 1000 - (now() % 1000)]);
+    ends[0]!.end();
+    expect(routes.kept).toBe(0);
+    // A later second keeps its own and sets its own end.
+    h.run(1000);
+    await ask(now());
+    expect([routes.kept, ends.length]).toEqual([1, 2]);
   } finally {
     h.host.shutdown();
   }

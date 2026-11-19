@@ -6,6 +6,9 @@ import { posix } from "node:path";
 import { sameSecret } from "../commands/core.ts";
 import type { Guesses } from "../guesses.ts";
 
+/** Not fatal: bytes that are not UTF-8 read as replacement letters, which no password is, so they are a wrong guess. */
+const UTF8 = new TextDecoder();
+
 export interface AdminGate {
   dev: boolean;
   password: string | null;
@@ -22,7 +25,8 @@ export function refused(req: Request, who: string, gate: AdminGate): Response | 
   const auth = /^Basic (.+)$/.exec(req.headers.get("authorization") ?? "");
   let given: string | null = null;
   try {
-    given = auth ? atob(auth[1]!) : null;
+    // atob gives the sign-in's bytes one to a letter; the browser sent them as UTF-8, as the charset below asks.
+    given = auth ? UTF8.decode(Uint8Array.from(atob(auth[1]!), (c) => c.charCodeAt(0))) : null;
   } catch {
     given = null;
   }
