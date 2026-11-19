@@ -13,12 +13,11 @@ import { GEAR_WORN } from "../../shared/sim/entities.ts";
 import { LOOK_BYTES, defaultLook, validLook } from "../../shared/anim/look.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { MapLoader } from "../core/mapload.ts";
 import { fetchBytes, fetchContent, nextTask, withLandmarks } from "../core/fetched.ts";
 import { RemoteSample } from "../core/session.ts";
 import { tierOf } from "../core/assets/tiers.ts";
-import { flightPosition, MIAMI_FLIGHT as route } from "../core/title-route.ts";
+import { flightPosition, MIAMI_FLIGHT as route, studioGround } from "../core/title-route.ts";
 
 const notify = (type: string) => parent.postMessage({ source: "snark-scene", type }, location.origin);
 const canvas = document.querySelector("canvas")!;
@@ -64,9 +63,8 @@ async function start() {
     fetchContent(fetch, media.content),
     fetchBytes(fetch, media.sky),
   ]);
-  const dims = { chunksX: 2, chunksZ: 2 };
-  const head = loader?.staged.head ?? { id: "studio", dims, spawns: [] };
-  const hf = loader?.staged.hf ?? new Heightfield(dims, TERRAIN_CELL, 4, 1 / 64);
+  const hf = loader?.staged.hf ?? studioGround();
+  const head = loader?.staged.head ?? { id: "studio", dims: hf.dims, spawns: [] };
   const content = loader?.staged.content;
   const { reg, manifest, pack } = await withLandmarks(fetch, content, base, core, parsePack(new Uint8Array(boot)));
   giveSky(new Uint8Array(sky));

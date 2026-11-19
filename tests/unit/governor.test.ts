@@ -9,18 +9,18 @@ import { artTest } from "../fixtures/needs-art.ts";
 /** Each step leaves this share of the GPU's time: a made-up card on which every step buys a little. */
 const leave = (level: number): number => 0.88 ** level;
 
-test("a tier's levels are its steps that change something, the light target first, then levels and leaves and the sun's shadows last, and none touches the near nodes or the far bases", () => {
+test("a tier's levels are its steps that change something, the light target first, then levels and leaves and small details last, none takes the sun's shadows, and none touches the near nodes or the far bases", () => {
   const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
   const details = "small details: half the pool, of each burst and of the fill";
   const levels = ["levels: half again the error", "levels: twice the error", "levels: three times the error"];
   const city = "the far city's levels to 70% as far";
   const target = "no light target";
-  expect(names("high", 3)).toEqual(["the tier", target, levels[0], city, "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", details, "no sun shadows"]);
+  expect(names("high", 3)).toEqual(["the tier", target, levels[0], city, "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", details]);
   // A screen of one device pixel a CSS pixel has no pixels to spare; low poly casts nothing.
   expect(names("medium", 1)).not.toContain("85% of the pixels a side");
   expect(names("lowpoly", 1)).toEqual(["the tier", levels[0], city, "leaves: the frame's triangles to 75%", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "bodies a level coarser", details]);
   const medium = ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, Math.round(l.tier.threshold * 100) / 100, l.tier.shadows.cascades, l.tier.bodyError, l.tier.pixelRatio, l.tier.details.pool]);
-  expect(medium).toEqual([[2e6, 0.22, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.66, 2, 1, 1.5, 1536], [1e6, 0.66, 1, 1, 1.5, 1536], [1e6, 0.66, 1, 2, 1.5, 1536], [1e6, 0.66, 1, 2, 1.27, 1536], [1e6, 0.66, 1, 2, 1.05, 1536], [1e6, 0.66, 1, 2, 1.05, 768], [1e6, 0.66, 0, 2, 1.05, 768]]);
+  expect(medium).toEqual([[2e6, 0.22, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.66, 2, 1, 1.5, 1536], [1e6, 0.66, 1, 1, 1.5, 1536], [1e6, 0.66, 1, 2, 1.5, 1536], [1e6, 0.66, 1, 2, 1.27, 1536], [1e6, 0.66, 1, 2, 1.05, 1536], [1e6, 0.66, 1, 2, 1.05, 768]]);
   // The far city's step draws the same forms nearer, so nothing made of them is made again.
   const form = ({ to: _, ...f }: { to: number }) => f;
   const [atTier, nearer] = [ladder(tierOf("medium"), 3)[1]!.tier.city.levels, ladder(tierOf("medium"), 3)[2]!.tier.city.levels];
@@ -39,10 +39,10 @@ test("high and ultra give back the light target first of all, which keeps the gr
   const own = "no more pixels than the screen's own";
   const target = "no light target";
   const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
-  const after = ["small details: half the pool, of each burst and of the fill", "no sun shadows"];
+  const after = ["small details: half the pool, of each burst and of the fill"];
   expect(names("ultra", 1).slice(0, 3)).toEqual(["the tier", target, "levels: half again the error"]);
-  expect(names("ultra", 1).slice(-3)).toEqual(["bodies a level coarser", ...after]);
-  expect(names("ultra", 1.5).slice(-5)).toEqual(["bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", ...after]);
+  expect(names("ultra", 1).slice(-2)).toEqual(["bodies a level coarser", ...after]);
+  expect(names("ultra", 1.5).slice(-4)).toEqual(["bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", ...after]);
   for (const t of TIERS) for (const dpr of [1, 1.5, 2, 3]) expect(names(t.name, dpr).includes(own)).toBe(false);
   for (const t of TIERS) expect(names(t.name, 3).includes(target)).toBe(t.post !== null);
   const ultra = ladder(tierOf("ultra"), 1);
