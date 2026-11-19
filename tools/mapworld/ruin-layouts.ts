@@ -172,7 +172,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
           level++; continue;
         }
         // A plant room's walls are blank; a plant floor's top storey is louvres under a parapet.
-        if ((crown?.raised.has(t) || t === tower) && level >= floors) { facade(m, "zpaneltop", u, h, v, side, rule.finish); level++; continue; }
+        if ((crown?.raised.has(t) || t === tower) && level >= floors) { facade(m, level === top - 1 ? "zpaneltop" : "zpanel8", u, h, v, side, rule.finish); level++; continue; }
         const entry = level === 0 && (entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) && (t.i + t.j) % 2 === 0);
         const upper = level >= playable; const lookout = top > playable && level === playable;
         const party = rule.party?.includes(side) && adjacent === 0;
