@@ -5,6 +5,7 @@
 
 import math
 import os
+import random
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -48,6 +49,11 @@ def lamp_arm(m, lens="lens"):
     return lamp_head(m, (0, MAST_TOP + 1.03, 2.42), lens)
 
 
+def housing_uv(u, v):
+    """The cobra head's plain metal, a patch of the spare's picture: the same pixels as when the spare was 288 by 320."""
+    return part_uv("street", "spare", u * 287 / 127, v * 319 / 127)
+
+
 def lamp_head(m, back, lens="lens"):
     """The cobra head, its back on the arm's end, reaching on toward the road, its lens below: `lens_lit` for one that
     still works, whose picture the atlas marks to glow."""
@@ -68,14 +74,14 @@ def lamp_head(m, back, lens="lens"):
         hi0, hi1 = y + t0 * 0.65, y + t1 * 0.65
         pts = lambda zz, h, lo, hi: [(-h, hi, zz), (h, hi, zz), (h, lo, zz), (-h, lo, zz)]
         a, b = pts(z0, h0, lo0, hi0), pts(z1, h1, lo1, hi1)
-        uv = lambda u, v: part_uv("street", "spare", u, v)
+        uv = housing_uv
         m.quad([a[0], b[0], b[1], a[1]], [uv(0.1, 0.1), uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1)], "street")
         m.quad([a[1], b[1], b[2], a[2]], [uv(0.1, 0.1), uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1)], "street")
         m.quad([a[3], b[3], b[0], a[0]], [uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1), uv(0.1, 0.1)], "street")
         m.quad([a[2], b[2], b[3], a[3]], [face_uv(1, (z0 - z) / 0.92), face_uv(1, (z1 - z) / 0.92), face_uv(0, (z1 - z) / 0.92), face_uv(0, (z0 - z) / 0.92)], face_mat)
     for (zz, h, t), rev in ((outline[0], True), (outline[-1], False)):
         q = [(-h, y + t * 0.65, zz), (-h, y - t * 0.35, zz), (h, y - t * 0.35, zz), (h, y + t * 0.65, zz)]
-        uv = [part_uv("street", "spare", u, v) for u, v in ((0.1, 0.1), (0.1, 0.3), (0.3, 0.3), (0.3, 0.1))]
+        uv = [housing_uv(u, v) for u, v in ((0.1, 0.1), (0.1, 0.3), (0.3, 0.3), (0.3, 0.1))]
         m.quad(q[::-1] if rev else q, uv[::-1] if rev else uv, "street")
     return m
 
@@ -227,6 +233,27 @@ def speed30():
     m = Mesh()
     post(m, 2.82)
     return panel(m, (0, 2.48, 0.045), 0.61, 0.76, 0.012, "+z", ("street", "speed30"))
+
+
+@piece("speed25")
+def speed25():
+    m = Mesh()
+    post(m, 2.82)
+    return panel(m, (0, 2.48, 0.045), 0.61, 0.76, 0.012, "+z", ("street", "speed25"))
+
+
+@piece("speed35")
+def speed35():
+    m = Mesh()
+    post(m, 2.82)
+    return panel(m, (0, 2.48, 0.045), 0.61, 0.76, 0.012, "+z", ("street", "speed35"))
+
+
+@piece("speed45")
+def speed45():
+    m = Mesh()
+    post(m, 2.82)
+    return panel(m, (0, 2.48, 0.045), 0.61, 0.76, 0.012, "+z", ("street", "speed45"))
 
 
 @piece("noentry")
@@ -511,6 +538,64 @@ def meter_broken():
     return m.join(top.moved(lambda p: turn(p, "x", -8, (0, 0.6, 0))))
 
 
+# A car park's pay station: a cabinet 0.45 m wide and 0.3 m deep on a pedestal, 1.65 m tall with the solar panel on its
+# roof, its panel (PAY HERE, the screen, the keypad, the card and receipt slots) looking -z, at the walk. Its paint is a
+# swatch of the panel's picture laid over each whole face.
+PAY_PAINT = ("street", "paystation_paint")
+# The screen on the panel, from its picture: x from 0.007 to 0.176 m, y from 1.348 to 1.418 m.
+SCREEN = ((0.007, 1.348), (0.176, 1.418))
+
+
+def kiosk_box(m, lo, hi, front=None, move=None):
+    decals = dict.fromkeys(kit.FACES, PAY_PAINT)
+    if front:
+        decals["-z"] = front
+    return box(m, lo, hi, "galvanised", decals=decals, move=move)
+
+
+def kiosk(m, smashed=False):
+    """The cabinet standing on its pedestal's top at 0.5 m: its body, and its head with the panel."""
+    kiosk_box(m, (-0.225, 0.5, -0.15), (0.225, 1.2, 0.15))
+    kiosk_box(m, (-0.225, 1.2, -0.15), (0.225, 1.5375, 0.15), ("street", "paystation"))
+    if not fine():
+        return m
+    # Its rain hood, and the solar panel on its roof, rising 12 degrees to the back.
+    kiosk_box(m, (-0.24, 1.5375, -0.17), (0.24, 1.57, 0.165))
+    box(m, (-0.2, 1.57, -0.15), (0.2, 1.59, 0.14), "galvanised", decals={"+y": ("street", "solar", (0, 0, 0.25, 0.42))}, move=lambda p: turn(p, "x", -12, (0, 1.57, -0.15)))
+    if smashed:
+        (x0, y0), (x1, y1) = SCREEN
+        kiosk_box(m, (x0, y0, -0.156), (x1, y1, -0.15), ("street", "paystation_smashed"))
+    return m
+
+
+def kiosk_foot(m, top=0.5):
+    if fine():
+        box(m, (-0.2, 0.0, -0.15), (0.2, 0.02, 0.15), "galvanised")
+    return kiosk_box(m, (-0.12, -0.3, -0.09), (0.12, top, 0.09))
+
+
+def kiosk_mass(m, y0):
+    return kiosk_box(m, (-0.225, y0, -0.15), (0.225, 1.57, 0.15), ("street", "paystation"))
+
+
+@piece("paystation")
+def paystation():
+    m = Mesh()
+    if kit.LEVEL >= 3:
+        return kiosk_mass(m, 0.0)
+    return kiosk(kiosk_foot(m))
+
+
+@piece("paystation_broken")
+def paystation_broken():
+    # Torn from its pedestal at 0.45 m and fallen on its back toward the road, turned a little, its screen smashed in.
+    fallen = lambda p: turn((p[0] + 0.06, -p[2] + 0.165, p[1]), "y", 9)
+    if kit.LEVEL >= 3:
+        return kiosk_mass(Mesh(), 0.5).moved(fallen)
+    m = kiosk_foot(Mesh(), 0.45)
+    return m.join(kiosk(Mesh(), smashed=True).moved(fallen))
+
+
 @piece("bollard")
 def bollard():
     m = Mesh()
@@ -682,6 +767,60 @@ def newsbox():
     box(m, (-0.1, 0.02, -0.08), (0.1, 0.36, 0.08), "blue")
     box(m, (-0.25, 0.36, -0.235), (0.25, 1.0 if fine() else 1.04, 0.235), "blue", decals={"-z": ("street", "newsbox")})
     return m
+
+
+# Crosswalk bars, the continental kind US cities paint: bars 0.6 m wide with 0.6 m between, each the crossing's 3 m long,
+# running along the road and lying side by side across it. x runs across the road, z along it. A piece of n bars is
+# 1.2 n m long with half a gap at either end, so pieces laid end to end across the road keep the spacing. Each bar is
+# paint without a picture, both its faces 15 mm over the road, so the bar is closed.
+BAR_PITCH = 1.2
+
+
+def paint_patch(m, corners, colour, y=0.015):
+    """Road paint lying flat at `y` over the corners (x, z), from the -x, -z one round toward +z."""
+    top = [(x, y, z) for x, z in corners]
+    m.quad(top, [(0.0, 0.0)] * len(top), "flat_" + colour)
+    m.quad(top[::-1], [(0.0, 0.0)] * len(top), "flat_" + colour)
+    return m
+
+
+def worn_bar(m, x, rng):
+    # Worn through where wheels ran along it and flaked off: the bar broken across into pieces, some of them gone, their
+    # ends ragged and their sides eaten in. At least one piece of each bar is left.
+    cuts = sorted(rng.uniform(-1.2, 1.2) for _ in range(rng.randint(1, 3)))
+    spans = list(zip([-1.5] + cuts, cuts + [1.5]))
+    keep = [s for s in spans if rng.random() > 0.3] or [max(spans, key=lambda s: s[1] - s[0])]
+    for z0, z1 in keep:
+        z0 += rng.uniform(0.0, 0.2) if z0 > -1.5 else rng.uniform(0.0, 0.06)
+        z1 -= rng.uniform(0.0, 0.2) if z1 < 1.5 else rng.uniform(0.0, 0.06)
+        if z1 - z0 < 0.2:
+            continue
+        a, b = x - 0.3 + rng.uniform(0.0, 0.1), x + 0.3 - rng.uniform(0.0, 0.1)
+        s0, s1 = rng.uniform(-0.08, 0.08), rng.uniform(-0.08, 0.08)
+        shade = "paint_grimy" if rng.random() < 0.3 else "paint_worn"
+        paint_patch(m, [(a, z0 + max(0.0, s0)), (a, z1 - max(0.0, s1)), (b, z1 - max(0.0, -s1)), (b, z0 + max(0.0, -s0))], shade)
+    return m
+
+
+def crosswalk(n, worn=False):
+    m = Mesh()
+    half = n * BAR_PITCH / 2
+    if not fine(1):
+        # Past the finest the bars are one patch in the colour of paint and road together, as they blur there.
+        return paint_patch(m, [(0.3 - half, -1.5), (0.3 - half, 1.5), (half - 0.3, 1.5), (half - 0.3, -1.5)], "paint_worn_far" if worn else "paint_far", 0.012)
+    rng = random.Random(f"crosswalk{n}")
+    for k in range(n):
+        x = BAR_PITCH * (k + 0.5) - half
+        if worn:
+            worn_bar(m, x, rng)
+        else:
+            paint_patch(m, [(x - 0.3, -1.5), (x - 0.3, 1.5), (x + 0.3, 1.5), (x + 0.3, -1.5)], "paint")
+    return m
+
+
+for bars in (1, 2, 4, 8):
+    piece(f"crosswalk{bars}")(lambda bars=bars: crosswalk(bars))
+    piece(f"crosswalk{bars}_worn")(lambda bars=bars: crosswalk(bars, worn=True))
 
 
 # Roof plant: what stands on a flat roof, its foot on the roof's top at y = 0, its front (the louvres, the door) +z.
