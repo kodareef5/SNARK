@@ -4,8 +4,10 @@ Roads are OpenStreetMap's highways (raw/osm/streets.json, fetch.py), drawn over 
 map took before, wander metres off the kerb and carry a width for their class alone. A road keeps the form prepare.py
 burns (an id, a TIGER class, a name, a width) and adds what OpenStreetMap says of it: lanes, one way, the TIGER name it
 runs along, bridge and tunnel, its speed limit in mph, whether it is lit, its surface and the kerb parking each side of
-its drawn direction. Signals, stops and give-ways go to `controls.json`, each with the pieces and directions of the
-traffic it governs, so the street furniture can stand signs and signal heads where they are mapped. Its width is its tagged width, else its lanes at 3.3 m and its kerb space; its stretch
+its drawn direction, and which way a one-way street runs against that direction (oneway_dir). Signals, stops,
+give-ways and crossings go to `controls.json`, each with the pieces and directions of the traffic it governs (a
+crossing with its crossing=* and markings), so the street furniture can stand signs and signal heads where they are
+mapped. Its width is its tagged width, else its lanes at 3.3 m and its kerb space; its stretch
 between two junctions is drawn straight where it never strays a metre from the straight line. A TIGER road stays where
 OpenStreetMap draws none along it.
 
@@ -93,17 +95,19 @@ def lit(v):
     return None if v is None else v not in ('no', 'disused')
 
 
-CONTROLS = ('traffic_signals', 'stop', 'give_way')
+CONTROLS = ('traffic_signals', 'stop', 'give_way', 'crossing')
 
 
 def controls(m, elements, ways, cut, kept):
-    """controls.json: each signal, stop and give-way point, where it stands and the traffic it governs.
+    """controls.json: each signal, stop, give-way and crossing point, where it stands and the traffic it governs.
 
     `approaches` are the movements toward the point the control is for, each the road piece the traffic is on (an id of
     roads.geojson) and the way it travels there (a unit vector, east and north): what a sign or a signal head faces.
     OpenStreetMap's direction=forward|backward (or traffic_signals:direction) picks one side of the way the point is on;
     with none, every way through it gives its approaches, one way roads only the one traffic drives. A point where ways
-    meet is a junction: a stop there without a direction is OpenStreetMap's ambiguous one, kept with every approach."""
+    meet is a junction: a stop there without a direction is OpenStreetMap's ambiguous one, kept with every approach.
+    A crossing keeps its crossing=* (traffic_signals, marked, uncontrolled, unmarked, ...) and crossing:markings, so a
+    pedestrian-crossing sign can go only where no signal controls a marked one; other kinds have them None."""
     to_map = Transformer.from_crs(4326, m.crs, always_xy=True).transform
     frame = box(*m.b)
     points = {e['id']: e for e in elements if e['type'] == 'node' and e.get('tags', {}).get('highway') in CONTROLS}
@@ -138,7 +142,8 @@ def controls(m, elements, ways, cut, kept):
         out.append({'kind': {'traffic_signals': 'signal'}.get(t['highway'], t['highway']), 'osm': nid, 'e': round(x, 2), 'n': round(y, 2),
                     'at': [round(e['lon'], 7), round(e['lat'], 7)], 'direction': direction, 'all_way': t.get('stop') == 'all',
                     'junction': len(through[nid]) > 1 or any(0 < i < len(w['nodes']) - 1 and i in cut[w['id']][0] for w, i in through[nid]),
-                    'approaches': approaches})
+                    'crossing': t.get('crossing') if t['highway'] == 'crossing' else None,
+                    'markings': t.get('crossing:markings') if t['highway'] == 'crossing' else None, 'approaches': approaches})
     (m.base / 'controls.json').write_text(json.dumps(out, separators=(',', ':')) + '\n')
     return {**Counter(c['kind'] for c in out), 'with_no_approach': sum(1 for c in out if not c['approaches'])}
 
@@ -202,7 +207,8 @@ def roads(m, elements, tiger_roads):
                 if near:
                     tiger_name = tiger_roads[min(near, key=lambda i: tiger_roads[i][0].distance(mid))][1].get('name')
             out.append((g, {'id': f"osm:{w['id']}:{k}", 'mtfcc': mtfcc, 'name': t.get('name') or tiger_name, 'tiger_name': tiger_name,
-                            'highway': t['highway'], 'lanes': lanes, 'oneway': oneway, 'width_m': width,
+                            # oneway_dir: 1 one way along the drawn direction, -1 against it (OpenStreetMap's oneway=-1), 0 both.
+                            'highway': t['highway'], 'lanes': lanes, 'oneway': oneway, 'oneway_dir': cut[w['id']][1], 'width_m': width,
                             'bridge': t.get('bridge') not in (None, 'no'), 'tunnel': t.get('tunnel') == 'yes',  # a building passage runs at the street's own level
                             'tunnel_name': t.get('tunnel:name'),
                             'sidewalk': t.get('sidewalk'), 'layer': number(t.get('layer')) or 0,
@@ -222,11 +228,12 @@ def roads(m, elements, tiger_roads):
             touching = [reach[i] for i in reach_tree.query(g, predicate='intersects')]
             covered = g.intersection(unary_union(touching)).length if touching else 0.0
             if covered / g.length < 1 / 3:
-                kept_tiger.append((g, {**p, 'tiger_name': p.get('name')}))
+                kept_tiger.append((g, {**p, 'tiger_name': p.get('name'), 'oneway_dir': 0, 'maxspeed_mph': None, 'lit': None, 'surface': None,
+                                       'parking_left': None, 'parking_right': None}))
     lines = [g for g, _ in out + kept_tiger for g in getattr(g, 'geoms', [g]) if g.geom_type == 'LineString']
     stats = {'osm_ways': len(ways), 'road_pieces': len(out), 'straightened': straightened, 'tiger_kept': len(kept_tiger),
              'tiger_lines': len(tiger_roads or []), 'lanes_tagged': sum(1 for w in ways if number(w['tags'].get('lanes'))),
-             'oneway': sum(1 for _, p in out if p['oneway']), 'road_network_largest_share': connected(lines, 1.0),
+             'oneway': sum(1 for _, p in out if p['oneway']), 'oneway_against_drawn': sum(1 for _, p in out if p['oneway_dir'] < 0), 'road_network_largest_share': connected(lines, 1.0),
              'maxspeed_tagged': sum(1 for _, p in out if p['maxspeed_mph']), 'lit_tagged': sum(1 for _, p in out if p['lit'] is not None),
              'kerb_parking_tagged': sum(1 for _, p in out if p['parking_left'] or p['parking_right']),
              'controls': controls(m, elements, ways, cut, {p['id'] for _, p in out})}
@@ -246,7 +253,8 @@ def walks(m, elements, road_list):
                 kind = t.get('footway') if t.get('footway') in ('sidewalk', 'crossing') else hw if hw != 'path' else 'path'
                 g = LineString([to_map(p['lon'], p['lat']) for p in e['geometry']]).intersection(frame)
                 if not g.is_empty:
-                    drawn.append((g, {'kind': kind, 'drawn': True, 'width_m': WALK_WIDTH.get(kind, 2.5), 'id': f"osm:{e['id']}"}))
+                    drawn.append((g, {'kind': kind, 'drawn': True, 'width_m': WALK_WIDTH.get(kind, 2.5), 'id': f"osm:{e['id']}",
+                                      **({'crossing': t.get('crossing'), 'markings': t.get('crossing:markings')} if kind == 'crossing' else {})}))
         elif e['type'] == 'node' and t.get('highway') in ('crossing', 'traffic_signals'):
             x, y = to_map(e['lon'], e['lat'])
             if frame.contains(Point(x, y)):
@@ -320,7 +328,8 @@ def walks(m, elements, road_list):
         c = road.interpolate(at)
         made.append((LineString([(c.x - dy / n * half, c.y + dx / n * half), (c.x + dy / n * half, c.y - dx / n * half)]),
                      {'kind': 'crossing', 'drawn': False, 'width_m': WALK_WIDTH['crossing'], 'id': f"crossing:{round(c.x)}:{round(c.y)}",
-                      'signal': t.get('highway') == 'traffic_signals'}))
+                      'signal': t.get('highway') == 'traffic_signals' or t.get('crossing') == 'traffic_signals',
+                      'crossing': t.get('crossing'), 'markings': t.get('crossing:markings')}))
     return drawn + made
 
 
