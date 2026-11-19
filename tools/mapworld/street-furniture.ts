@@ -739,7 +739,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       if (c.signal === true) return;
       const mx = (c.ax + c.bx) / 2; const mz = (c.az + c.bz) / 2;
       if (graph.mapped.points && markedNear(mx, mz, c.half + 2).some((m) => m.kind === "signal")) return;
-      if (c.type !== null && !X.marked.includes(c.type)) return;
+      // Where the data keeps no type, only a crossing it draws, as one OpenStreetMap draws is most often painted.
+      if (c.type !== null ? !X.marked.includes(c.type) : !c.drawn) return;
       const road = roadAt(mx, mz, 2); if (!road) return;
       const cls = classOf(road.s)!; if (!J.major.includes(cls) && !J.minor.includes(cls)) return;
       if (held.some((q) => Math.hypot(q.x - road.fx, q.z - road.fz) < q.reach + 6 && (q.lines === null || q.lines.has(road.s.line)))) return;

@@ -153,7 +153,13 @@ export function readStreetGraph(source: string, toLattice: (e: number, n: number
   const crossings: Crossing[] = [];
   for (const f of walks) {
     if (f.properties.kind !== "crossing" || f.geometry.type !== "LineString") continue;
-    const run = (f.geometry.coordinates as number[][]).map(([e, n]) => toLattice(e!, n!));
+    // A crossing drawn in pieces that run on in one line (a point at each kerb, one on the road's middle) is one piece.
+    const run = (f.geometry.coordinates as number[][]).map(([e, n]) => toLattice(e!, n!)).filter((q, i, all) => {
+      if (i === 0 || i === all.length - 1) return true;
+      const [a, b] = [all[i - 1]!, all[i + 1]!];
+      const ux = q[0] - a[0], uz = q[1] - a[1], vx = b[0] - q[0], vz = b[1] - q[1];
+      return (ux * vx + uz * vz) / ((Math.hypot(ux, uz) * Math.hypot(vx, vz)) || 1) < 0.985;
+    });
     for (let i = 1; i < run.length; i++) {
       crossings.push({ ax: run[i - 1]![0], az: run[i - 1]![1], bx: run[i]![0], bz: run[i]![1], half: (num(f.properties.width_m) ?? 3) / 2, drawn: f.properties.drawn === true, signal: typeof f.properties.signal === "boolean" ? f.properties.signal : null, type: text(f.properties.crossing) });
     }
