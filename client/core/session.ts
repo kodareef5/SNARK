@@ -559,6 +559,10 @@ export class ClientSession {
   /** The tick sampleRemote last drew remote entities at, which is what was on screen when the next input is sampled. 0 before the first. */
   shown = 0;
   latestSnapshot = 0;
+  /** The snapshot before the newest, which a correction was compared from. */
+  private previousSnapshot = 0;
+  /** The server's tick at the welcome. */
+  joined = 0;
   /** The frame clock, in ms, when the newest snapshot was taken in; -1 before the first. */
   private snapshotAt = -1;
 
@@ -644,6 +648,7 @@ export class ClientSession {
     conn.onMessage = (channel, data) => this.receive(channel, data);
     conn.onClose = () => {
       if (this.state !== "closed") {
+        if (this.state === "active") this.prediction.closed(this, "the socket closed");
         this.state = "closed";
         this.closeReason = CLOSED_BY_PEER;
       }
@@ -789,7 +794,7 @@ export class ClientSession {
       else this.stats.unheld++;
     }
     const newestInput = this.simTick;
-    this.prediction.frame(frameMs, steps, unsampled);
+    this.prediction.frame(frameMs, steps, unsampled, this, nowMs);
     if (steps > 0) {
       this.sendInputs(newestInput, steps);
       this.recenterNodes();
@@ -841,6 +846,23 @@ export class ClientSession {
       this.reconcile(this.latestSnapshot, this.told);
     }
     this.predicting = held;
+  }
+
+  /**
+   * What this page holds of the chunk at (x, z), for the record of play: whether all its rows have come, how many, whether
+   * its statics are the page's own map's, and the nearest other body of the newest view within 4 m, its kind and metres.
+   */
+  private heldAt(x: number, z: number): { whole: boolean; rows: number; statics: boolean; near: string } {
+    const world = this.world;
+    if (!world) return { whole: false, rows: 0, statics: false, near: "" };
+    const chunk = chunkAt(world.dims, x, z);
+    const view = this.views.find(this.latestSnapshot), own = handleIndex(this.ownHandle);
+    let near = "", best = 4;
+    for (let i = 0; view && i < view.count; i++) {
+      const d = Math.hypot(dequantX(view.qx[i]!) - x, dequantX(view.qz[i]!) - z);
+      if (d < best && view.id[i] !== own && view.id[i] !== this.driving) [best, near] = [d, `${this.registry.defs[view.kind[i]!]?.id ?? view.kind[i]} ${d.toFixed(1)} m`];
+    }
+    return { whole: this.whole[chunk] === 1, rows: world.structs.chunks[chunk]?.live ?? 0, statics: this.staticKinds !== null, near };
   }
 
   private groundHeld(): boolean {
@@ -1000,6 +1022,7 @@ export class ClientSession {
   }
 
   close(): void {
+    if (this.state === "active") this.prediction.closed(this, "the page left");
     this.state = "closed";
     this.conn.close();
     this.welcomedNow();
@@ -1162,8 +1185,10 @@ export class ClientSession {
       }
     }
     else if (type === S_REJECT) {
+      const was = this.state;
       this.state = "closed";
       this.closeReason = r.u8();
+      if (was === "active") this.prediction.closed(this, `the server put it out (${this.closeReason})`);
       if (this.closeReason === REJECT_TRAVEL) this.closeText = r.string(MAX_SERVER_TEXT_BYTES);
       this.welcomedNow();
     } else if (type === S_TRAVEL) {
@@ -1572,6 +1597,7 @@ export class ClientSession {
     this.tickClock = tick + INITIAL_LEAD;
     this.simTick = tick + INITIAL_LEAD;
     this.renderClock = tick;
+    this.joined = tick;
     this.state = "active";
     this.predicting = this.groundHeld();
     this.welcomedNow();
@@ -1583,6 +1609,7 @@ export class ClientSession {
    * its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
    */
   staticsArrived(statics: MapStatics, whole = true): void {
+    this.prediction.handed++;
     if (whole) this.arrived = statics;
     this.startCity(statics, true);
   }
@@ -1615,6 +1642,7 @@ export class ClientSession {
     readBody(r, sb);
     if (r.overflow || tick <= this.latestSnapshot) return;
     if (!readContacts(r, this.contactSnapshot, tick, this.world?.hf.sizeX, this.world?.hf.sizeZ)) { this.stats.undecodable++; return; }
+    const gapMs = this.snapshotAt < 0 ? 0 : this.lastNow - this.snapshotAt;
     this.snapshotAt = this.lastNow;
 
     const base = age > 0 ? this.views.find(tick - age) : null;
@@ -1638,6 +1666,7 @@ export class ClientSession {
     for (const id of dying) if (!this.died.has(id)) this.died.set(id, tick);
     for (const [id, at] of this.died) if (tick - at > DIED_KEPT) this.died.delete(id);
     if (this.latestSnapshot > 0) this.noteGap(tick);
+    this.previousSnapshot = this.latestSnapshot;
     this.latestSnapshot = tick;
     this.needFull = false;
     this.sessionState = state;
@@ -1645,6 +1674,7 @@ export class ClientSession {
     this.treeDriver = 0;
     for (let i = 0; i < next.count; i++) if (next.id[i] === driving) { this.treeDriver = makeHandle(driving, next.gen[i]!); break; }
     this.stats.snapshots++;
+    this.prediction.snapshot(tick, margin, gapMs, tick - this.previousSnapshot);
     // The inputs sent again are ones the server has, so this says only which snapshot came.
     if (this.sentInput > 0 && tick - this.sentAck >= QUIET_TICKS) this.sendInputs(this.sentInput, 1);
 
@@ -1736,6 +1766,7 @@ export class ClientSession {
   private jump(by: number, keep = false): void {
     this.tickClock += by;
     this.stats.clockJumps++;
+    this.prediction.jump(this.latestSnapshot, by, by > 0);
     const at = Math.floor(this.tickClock);
     let from = Math.max(at, this.sentInput);
     if (this.simTick - at > (keep ? HISTORY - 1 : TICK_RATE)) {
@@ -1801,16 +1832,17 @@ export class ClientSession {
     // Even an exact own-body baseline can have newer target facts that change the future replay.
     const replayContacts = this.registry.vehicle[sb.kind] && this.vehicleContacts?.needsReplay;
     if (matches && !passenger && !replayContacts) return;
-    if (predicted && !matches && this.prediction.enabled) {
-      const i = tick & this.inputs.mask;
-      this.prediction.record(tick, this.simTick, this.stats.margin, this.driving, compared, sb,
-        [this.inputs.moveX[i]!, this.inputs.moveZ[i]!, this.inputs.buttons[i]!, this.inputs.yaw[i]!, this.inputs.pitch[i]!]);
-    }
     const moved = !predicted || !compared.samePosition(sb);
     // The server changed which body this is or where it sits (a mount, a seat, getting out, being pulled out), or what the
     // vehicle it drives carries (someone getting in or out of it, its hold changed). Nothing
     // predicts when the server commits one, so it is no misprediction; it is taken as told and shown at once.
     const changed = predicted && (compared.kind !== sb.kind || compared.vehicle !== sb.vehicle || compared.seat !== sb.seat || compared.seatSlot !== sb.seatSlot || compared.seatGen !== sb.seatGen || compared.vehiclePayloadMass !== sb.vehiclePayloadMass);
+    if (predicted && !matches && this.prediction.enabled) {
+      const i = tick & this.inputs.mask;
+      const input = [this.inputs.moveX[i]!, this.inputs.moveZ[i]!, this.inputs.buttons[i]!, this.inputs.yaw[i]!, this.inputs.pitch[i]!];
+      this.prediction.record(tick, this.simTick, this.stats.margin, this.driving, compared, sb, input);
+      this.prediction.corrected(this, tick, this.previousSnapshot, changed ? "seat" : moved ? "moved" : "state", compared, sb, input, this.heldAt(sb.x, sb.z));
+    }
     if (predicted && !matches) {
       if (changed) this.stats.transitions++;
       else if (moved) this.stats.corrections++;
