@@ -100,11 +100,11 @@ const LOUVRE = 84;
 const PLANT: Part[] = [[-4, -3.6, 0, 4, -0.25, 0.25], [3.6, 4, 0, 4, -0.25, 0.25], [-3.6, 3.6, 0, 0.4, -0.25, 0.25], [-3.6, 3.6, 3.25, 4, -0.25, 0.25], [-3.6, 3.6, 0.4, 3.25, -0.35, -0.25, LOUVRE],
   ...[0.7, 1.15, 1.6, 2.05, 2.5, 2.95].map((y): Part => [-3.6, 3.6, y, y + 0.12, -0.25, 0.08, METAL])];
 /** A screen standing on a tower's roof at its edge, a storey tall, hiding its plant, with a coping. */
-// A low building's raised parapet over its way in, and along its front. Walked as it looks, with a square coping: on low
-// poly the near city's mesh draws a piece as walked and its instance as it looks, and a bevel or a coping walked as its
-// wall showed along every edge of a front of them.
-const ATTIC: Part[] = up(-0.05, [[-4, 4, 0, 2.4, -0.32, 0.37], [-4, 4, 2.4, 2.55, -0.36, 0.42]]);
-const STEP_UP: Part[] = up(-0.05, [[-4, 4, 0, 1.25, -0.32, 0.37], [-4, 4, 1.25, 1.4, -0.36, 0.42]]);
+// A low building's raised parapet over its way in, and along its front. Walked as it looks, with a square coping in pale
+// render: on low poly the near city's mesh draws a piece as walked and its instance as it looks, and a bevel or a coping
+// walked as its wall showed along every edge of a front of them.
+const ATTIC: Part[] = up(-0.05, [[-4, 4, 0, 2.4, -0.32, 0.37], [-4, 4, 2.4, 2.55, -0.36, 0.42, FRONT]]);
+const STEP_UP: Part[] = up(-0.05, [[-4, 4, 0, 1.25, -0.32, 0.37], [-4, 4, 1.25, 1.4, -0.36, 0.42, FRONT]]);
 const SCREEN: Part[] = [[-4, 4, 0, 3.6, -0.3, 0.3], bevelX([-4, 4, 3.6, 3.75, -0.35, 0.4], 0.06, "uoui")];
 /** A shop's front: half piers, a sign band standing proud of them, a dark display on a low riser and a 2 m door set back. */
 const SHOP: Part[] = [bevelY([-4, -3.6, 0, 4, -0.3, 0.3], 0.1, "+"), bevelY([3.6, 4, 0, 4, -0.3, 0.3], 0.1, "-"), [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 1.4, 0, 0.5, -0.25, 0.05], [-3.6, 1.4, 0.5, 2.9, -0.25, -0.15, DARK], [1.4, 1.6, 0, 2.9, -1.2, 0.05]];
@@ -270,7 +270,9 @@ const skirt = (name: string, lumps: readonly (readonly [number, number, number, 
 };
 /** A wall panel 3.8 m by 2.8 m hanging from one fixing at a slab's edge, its far end dropped 34 degrees, standing off the edge. */
 const HANG = 34 * Math.PI / 180;
-const hanging = (): Corner[] => [0.35, 0.55].flatMap((z) => ([[0, 0], [3.8, 0], [3.8, -2.8], [0, -2.8]] as const).map(([x, y]): Corner => [x * Math.cos(HANG) + y * Math.sin(HANG) - 1.45, -x * Math.sin(HANG) + y * Math.cos(HANG) - 0.45, z]));
+// Its corners on a 1/4096 m grid: an engine's sine and cosine may differ in the last place, and content must not.
+const grid = (v: number): number => Math.round(v * 4096) / 4096;
+const hanging = (): Corner[] => [0.35, 0.55].flatMap((z) => ([[0, 0], [3.8, 0], [3.8, -2.8], [0, -2.8]] as const).map(([x, y]): Corner => [grid(x * Math.cos(HANG) + y * Math.sin(HANG) - 1.45), grid(-x * Math.sin(HANG) + y * Math.cos(HANG) - 0.45), z]));
 /**
  * A slab 6 m wide torn from its bay and hanging from its top edge on the slab line (z = 0, y = 0), nearly sheer, out to
  * 1.3 m at one end of its foot and 2 m at the other and 1 m lower there, so it is seen twisted and not as an eave.
