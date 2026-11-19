@@ -18,6 +18,7 @@ export const WORLD_SHARP = 0.6;
 export const WORLD_MRO: readonly (readonly [number, number, number])[] = [
   [240, 225, 0], [251, 246, 0], [183, 221, 0], [242, 184, 0], [217, 237, 0], [234, 238, 0], [233, 225, 0], [195, 225, 0],
   [254, 225, 0], [239, 233, 0], [207, 192, 0], [249, 217, 0], [255, 161, 1], [254, 205, 0], [245, 221, 0], [255, 54, 0],
+  [254, 214, 0],
 ];
 /**
  * Each finish's base colour and tint mask, its base colour map's one-pixel mip as stored (sRGB): what a finish is drawn
@@ -26,6 +27,7 @@ export const WORLD_MRO: readonly (readonly [number, number, number])[] = [
 export const WORLD_BASE: readonly (readonly [number, number, number, number])[] = [
   [98, 110, 48, 223], [206, 183, 158, 255], [128, 102, 77, 204], [93, 74, 60, 253], [125, 125, 123, 251], [150, 134, 116, 125], [96, 96, 93, 104], [128, 125, 119, 218],
   [137, 134, 126, 253], [160, 113, 89, 211], [143, 91, 68, 204], [124, 80, 60, 1], [113, 111, 106, 252], [197, 192, 183, 255], [95, 89, 80, 244], [116, 128, 128, 253],
+  [158, 154, 147, 255],
 ];
 /**
  * The base-two logarithm of the tiles a pixel crosses beyond which a finish begins to be read as from afar, and the
@@ -65,6 +67,8 @@ export function citySurface(out: Float32Array, id: string): void {
   out[8] = d.bump;
   out.fill(0, 9, 12);
 }
+/** The finishes, a layer each of the arrays, before the masks'. */
+const N = SURFACE_NAMES.length;
 const finishes = SURFACE_NAMES.map((name, i) => {
   const f = SURFACE_FINISHES[name], g = SURFACE_GROUPS[f.group];
   const b = WORLD_BASE[i]!;
@@ -577,7 +581,7 @@ export function groundMeet(cover: number, a: number, b: number, c: number, d: nu
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
 const vectors = (name: string, rows: readonly (readonly number[])[]): string => {
   const t = `vec${rows[0]!.length}`;
-  return `const ${t} ${name}[16] = ${t}[16](${rows.map((a) => `${t}(${a.map(fl).join(",")})`).join(",")});\n`;
+  return `const ${t} ${name}[${N}] = ${t}[${N}](${rows.map((a) => `${t}(${a.map(fl).join(",")})`).join(",")});\n`;
 };
 /** Adds a material index to FLAT's mesh vertex texts, and gives the colour as light, keeping the low-poly texts byte-for-byte. */
 export function worldVertex(vertex: string): string {
@@ -623,7 +627,7 @@ const desert = Array.from({ length: 256 }, (_, i) => i).filter((i) => surfaceInd
  */
 export const WORLD_GLSL = `
 uniform vec3 uWorldEye;
-uniform vec3 uWorldPhase[16];
+uniform vec3 uWorldPhase[${N}];
 uniform vec4 uSurfaceCity[3];
 uniform float uWorldReady;
 uniform highp sampler2DArray uWorldBase, uWorldNormal, uWorldOrm;
@@ -632,7 +636,7 @@ ${vectors("WT", finishes.map((f) => [...f.tint, f.palette]))}
 ${vectors("WW", finishes.map((f) => [f.weather, f.wetness, f.growth, f.mean[1]!]))}
 ${vectors("WO", finishes.map((f) => [...f.mean, 0.5]))}
 ${vectors("WB", finishes.map((f) => f.base))}
-${vectors("WM", finishes.map((f) => [...f.module, f.height, f.lift]))}const float WS[16] = float[16](${finishes.map((f) => fl(f.patch)).join(",")});
+${vectors("WM", finishes.map((f) => [...f.module, f.height, f.lift]))}const float WS[${N}] = float[${N}](${finishes.map((f) => fl(f.patch)).join(",")});
 
 float surfaceHash(ivec2 p) {
   uint h = uint(p.x) * 1597334677u ^ uint(p.y) * 3812015801u;
@@ -765,8 +769,8 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   return mro.a * WM[id].z + WM[id].w;
 }
 #ifdef WORLD_WEATHER
-${vectors("WX", weatherings.map((w) => [w.runs, w.damp, w.peel, w.joints]))}const float WV[16] = float[16](${weatherings.map((w) => fl(w.value)).join(",")});
-const vec3 WL[16] = vec3[16](${weatherings.map((w) => `vec3(${LEFT[w.left].map(fl).join(",")})`).join(",")});
+${vectors("WX", weatherings.map((w) => [w.runs, w.damp, w.peel, w.joints]))}const float WV[${N}] = float[${N}](${weatherings.map((w) => fl(w.value)).join(",")});
+const vec3 WL[${N}] = vec3[${N}](${weatherings.map((w) => `vec3(${LEFT[w.left].map(fl).join(",")})`).join(",")});
 // A static's wall, as ownVertex says: whether the face is a wall, from ln, its normal in the own frame (from own's steps
 // between pixels), with over its metres over the ground. along is metres along the wall the way a reader facing it
 // reads, sense the sign that turns the own frame's x (where the face looks along z) or z into it, storey and bay the
@@ -831,7 +835,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, vec3 own, vec2 place, 
 }
 #endif
 #if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
-const vec3 WE[16] = vec3[16](${edgings.map((e) => `vec3(${e.map(fl).join(",")})`).join(",")});
+const vec3 WE[${N}] = vec3[${N}](${edgings.map((e) => `vec3(${e.map(fl).join(",")})`).join(",")});
 // edgeOf's and edged's twins: face is the static's corners across its face (vFace), edges its outer borders (vEdges),
 // painted worldSurface's height there.
 void edged(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec2 face, uint edges, float painted, vec3 rel, vec3 dpx, vec3 dpy) {
