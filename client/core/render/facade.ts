@@ -492,8 +492,9 @@ export interface FacadeResidency {
 
 /**
  * The facades' atlases a frame at a time, on a tier that draws them with its finishes in full: each is asked for as wide
- * as the tier draws it, and the frame names the textures for the card's facade units (FramePacket `facadeSlots`) and
- * says in fFacade the city's flood line and whether every atlas the tier reads has come.
+ * as the nearest face that shows it can show it, no wider than the tier draws it, and the frame names the textures for
+ * the card's facade units (FramePacket `facadeSlots`) and says in fFacade the city's flood line and whether every atlas
+ * the tier reads has come.
  */
 export class FacadeAtlases {
   private readonly materials: readonly number[];
@@ -507,16 +508,24 @@ export class FacadeAtlases {
     this.flood = FACADE_FLOOD[city.split(":").pop()!] ?? NO_FLOOD;
   }
 
-  frame(p: FramePacket, residency: FacadeResidency, tier: Tier): void {
+  /**
+   * `wall`, `front` and `glass` are metres from the eye to the nearest face of a static, to one that wears an element and
+   * to glass with a room behind it (finish-near.ts), and `scale` the pixels a metre covers a metre off. An atlas shown
+   * there is a texel a pixel at its finest level: the elements' FACADE_TOP over DENSITY metres across, the marks' and a
+   * room's square's a 256th of FACADE_TOP a metre.
+   */
+  frame(p: FramePacket, residency: FacadeResidency, tier: Tier, wall: number, front: number, glass: number, scale: number): void {
     const t = FACADE_TIERS[tier.name];
     p.facadeSlots.fill(-1);
     p.frame[FRAME.facade] = this.flood;
     p.frame[FRAME.facade + 1] = 0;
     if (!t || !tier.lit || tier.finish !== "full" || this.textures.length === 0) return;
     const [elements, rooms, marks] = this.materials;
-    residency.material(elements!, t.elements, 1, 3);
-    if (t.rooms > 0) residency.material(rooms!, t.rooms, 1, 1);
-    residency.material(marks!, t.marks, 1, 1);
+    // Never narrower than 256, from which the elements' and the marks' finest levels are read (`most`).
+    const shown = (metres: number, at: number): number => Math.max(256, (metres * scale) / Math.max(at, 0.25));
+    residency.material(elements!, Math.min(t.elements, shown(FACADE_TOP / DENSITY, front)), 1, 3);
+    if (t.rooms > 0) residency.material(rooms!, Math.min(t.rooms, shown(FACADE_TOP / 256, glass)), 1, 1);
+    residency.material(marks!, Math.min(t.marks, shown(FACADE_TOP / MARK_DENSITY, wall)), 1, 1);
     let ready = 1;
     this.textures.forEach((slot, k) => {
       if (k === 3 && t.rooms === 0) return;

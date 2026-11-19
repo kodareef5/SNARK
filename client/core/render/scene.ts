@@ -51,7 +51,8 @@ import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
-import { WorldFinishes, citySurface } from "./world-surfaces.ts";
+import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
+import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
@@ -530,6 +531,8 @@ export class Scene {
   /** The materials whose pictures the dome and the sea draw, or -1 where the pack has none. */
   private readonly skyMaterial: number;
   private readonly finishes: WorldFinishes;
+  /** How near the eye each finish, wall, front and glass comes, which sizes what the finishes and the facades ask for. */
+  readonly finishNear: FinishNear;
   private readonly facades: FacadeAtlases;
   private readonly waterMaterial: number;
   private readonly beamMesh: number;
@@ -774,6 +777,7 @@ export class Scene {
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
     this.finishes = new WorldFinishes(table.materials, this.assets.manifest.textures ?? []);
+    this.finishNear = new FinishNear(reg, surfaceCity(world.mapId ?? "default") === "las-vegas");
     this.facades = new FacadeAtlases(table.materials, world.mapId ?? "default");
     citySurface(this.packet.surfaceCity, world.mapId ?? "default");
     this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
@@ -870,8 +874,10 @@ export class Scene {
     p.alternate = this.alternate;
     [p.frame[FRAME.handFrom], p.frame[FRAME.handTo]] = this.assets.tier.nodes.band;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
-    this.finishes.frame(p, this.assets.residency, p.tier);
-    this.facades.frame(p, this.assets.residency, p.tier);
+    const near = this.finishNear.metres, scale = this.assets.scale;
+    if (p.tier.lit) this.finishNear.update(cam.x, cam.y, cam.z, this.world.hf, this.world.structs, scale, finishTaps(p.tier));
+    this.finishes.frame(p, this.assets.residency, p.tier, near, scale);
+    this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
