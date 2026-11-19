@@ -84,7 +84,8 @@ export interface Furniture {
 }
 
 /** What a layer makes, and why candidates were left out, by rule. */
-export interface FurnitureSummary { placed: Record<string, number>; byRule: Record<string, number>; refused: Record<string, Record<string, number>>; }
+/** `mapped`: the controls the data maps, by kind, and how many of them a junction's signs or signals were placed for. */
+export interface FurnitureSummary { placed: Record<string, number>; byRule: Record<string, number>; refused: Record<string, Record<string, number>>; mapped?: Record<string, { mapped: number; used: number }>; }
 
 interface Part { lo: [number, number, number]; hi: [number, number, number] }
 /** A way out of a junction: which way it leaves, the key of the point it leads to, and +1 where that is the way its line is drawn. */
@@ -348,6 +349,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     return out;
   };
   const held: { x: number; z: number; reach: number; lines: Set<number> | null }[] = [];
+  const used = new Set<Marked>();
   for (const j of junctions) {
     const h = hash3(Math.round(j.x * 4), Math.round(j.z * 4), seed);
     const n = j.arms.length; const major = j.arms.filter(isMajor).length; const minor = j.arms.filter(isMinor).length;
@@ -360,6 +362,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     // against the way out.
     const marked = here.filter((m) => m.kind === "stop");
     const markedStops = j.arms.filter((a) => marked.some((m) => m.governs.some((g) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0)));
+    for (const m of marked) if (m.governs.some((g) => j.arms.some((a) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0))) used.add(m);
+    if (signals) for (const m of here) if (m.kind === "signal") used.add(m);
     if (signals) held.push({ x: j.x, z: j.z, reach: j.reach, lines: null });
     if (signals) {
       j.arms.forEach((a, i) => {
@@ -567,6 +571,10 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const back = W.set[0] + (hash3(h, 1, seed) % 1000) / 1000 * (W.set[1] - W.set[0]);
     const [px, pz, yaw] = side(x, z, dx, dz, half + back, h % 2 === 0 ? 1 : -1); put("billboards", form("billboard", hash3(h, 2, seed)), px, pz, yaw);
   });
+  if (graph.mapped.points) {
+    summary.mapped = {};
+    for (const m of graph.marked) { const k = (summary.mapped[m.kind] ??= { mapped: 0, used: 0 }); k.mapped++; if (used.has(m)) k.used++; }
+  }
   // Stripes on the crossings of the walk network, laid flat on the road between its kerbs: the longest pieces first, from
   // where the crossing meets the road's middle out. Last, as nothing stands on a crossing and they take a chunk's budget.
   const T = rules.stripes;
