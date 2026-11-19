@@ -272,9 +272,9 @@ export function verdict(j: Judged, stalls: number): string {
   return `${VERDICT[top]} (${n} of ${total} corrections, clock jumps and late snapshots${rest.length ? `; the rest: ${rest.join(", ")}` : ""})`;
 }
 
-/** The lines of a file the server wrote. */
+/** The lines of a file the server wrote, but the captures of the light that ride it (tools/light.ts). */
 export function readLines(file: string): Line[] {
-  return readFileSync(file, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as Line);
+  return readFileSync(file, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => JSON.parse(l) as Line).filter((l) => !("light" in l.page));
 }
 
 if (import.meta.main) {
