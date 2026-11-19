@@ -63,14 +63,21 @@ export function crownOf(s: CrownSite): Crown | null {
   const far = Math.max(1, ...tiles.map((t) => Math.hypot(t.u - cu, t.v - cv)));
   if (s.lost) {
     // A lost top stands at many heights: the lift's core whole, a spire over the tiles round it, which stand a few storeys
-    // lower each, and the rest lower still toward where it failed, a storey up or down by seed.
+    // lower each, and the rest lower still toward where it failed, a storey up or down by seed. So that a row of them is
+    // not a row of spires, one in three keeps its core and the stair beside it whole together, two bays standing, and one
+    // in three has its core broken off a storey over the rest.
+    const spire = h(floors, tiles.length, 211) % 3;
     for (const t of tiles) {
       if (s.damaged.has(t) || s.cores.includes(t)) continue;
       const k = tileKey(t.i, t.j);
-      if (s.escape.includes(t)) set(t, floors - 2 - (h(t.i, t.j, 3) % 2));
+      if (s.escape.includes(t)) set(t, spire === 1 ? floors : floors - 2 - (h(t.i, t.j, 3) % 2));
       else if (s.safe(t)) set(t, floors - 3 - (h(t.i, t.j, 5) % Math.max(1, Math.ceil(room * 0.5))));
       else tops.set(k, Math.max(playable, Math.min(floors - 2, Math.floor(floors * (0.55 + 0.25 * Math.hypot(t.u - cu, t.v - cv) / far)) + (h(t.i, t.j, 7) % 3) - 1)));
       if (tops.get(k)! < floors) torn.add(t);
+    }
+    if (spire === 2) {
+      const rest = Math.max(least, ...tiles.filter((t) => !s.cores.includes(t)).map((t) => tops.get(tileKey(t.i, t.j))!));
+      for (const c of s.cores) if (!s.damaged.has(c)) set(c, rest + 1);
     }
     return { kind: "ragged", torn, raised: new Set(), notch: null };
   }
@@ -87,7 +94,8 @@ export function crownOf(s: CrownSite): Crown | null {
         const [dx, dz] = SIDES[side - 4]!;
         const depth = Math.round((dx ? (dx > 0 ? maxU - t.u : t.u - minU) : dz > 0 ? maxV - t.v : t.v - minV) / bay);
         const along = Math.round(Math.abs(dx ? t.v - (minV + maxV) / 2 : t.u - (minU + maxU) / 2) / bay);
-        ring = along <= 1 ? depth : 9;
+        // A cleft through the building's depth, so the sky shows through it.
+        ring = along <= 1 ? (depth <= 1 ? 0 : 1) : along === 2 && depth <= 1 ? 2 : 9;
       }
       const ragged = h(t.i, t.j, 159);
       if (ring <= 1) set(t, floors - drop + (ragged % 3));
@@ -97,18 +105,21 @@ export function crownOf(s: CrownSite): Crown | null {
   }
   // A whole tower's crown, by its walls and its seed, so neighbours differ: glass most often sets back or screens its plant,
   // flats and hotels most often put a plant room on top.
+  // A slab two bays deep or long against its depth sets back its end, which reads from a kilometre where a room or a
+  // screen on its roof does not.
   const order: CrownKind[] = s.shell === "curtain" ? ["third", "third", "screen", "plant"] : ["plant", "plant", "screen", "third"];
-  let kind = order[h(floors, 5, 167) % order.length]!;
+  const spans = [maxU - minU, maxV - minV].map((d) => Math.round(d / bay) + 1).sort((a, b) => a - b);
+  let kind = spans[0]! <= 2 || spans[1]! >= 1.8 * spans[0]! ? "third" : order[h(floors, 5, 167) % order.length]!;
   const inner = tiles.filter((t) => SIDES.every(([a, b]) => tops.has(tileKey(t.i + a, t.j + b))));
   if (kind === "plant" && inner.length === 0) kind = "screen";
   if (kind === "third") {
-    // A third of the plan along its long axis set back an eighth of its storeys, three at least, and on a wide one the
+    // A third of the plan along its long axis set back a seventh of its storeys, four at least, and on a wide one the
     // third across from it half as far.
     const long = maxU - minU >= maxV - minV;
     const at = (t: Tile): number => Math.round(((long ? t.u : t.v) - (long ? minU : minV)) / bay);
     const n = at(tiles.find((t) => (long ? t.u : t.v) === (long ? maxU : maxV))!) + 1;
     const k = Math.max(1, Math.round(n / 3));
-    const step = Math.max(3, Math.round(floors * 0.13));
+    const step = Math.max(4, Math.round(floors * 0.15));
     const high = h(5, 6, 173) % 2 === 1;
     const both = n >= 4 && h(6, 7, 179) % 3 === 0;
     for (const t of tiles) {

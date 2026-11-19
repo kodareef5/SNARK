@@ -424,7 +424,7 @@ test("a street's walk is a step a body and a mount climb, and a car crosses its 
   }
 });
 
-test("a tower's top reads from a kilometre: torn, set back, a plant floor or a notched screen by seed, ragged round a core where it was lost, and never below the refuge's storey", () => {
+test("a tower's top reads from a kilometre: torn, set back, a plant floor or a notched screen by seed, ragged round a core where it was lost, never below the refuge's storey", () => {
   const v = vocabulary(source);
   const f: Frame = { ...frame(0), width: 48, depth: 48, rings: [[[-24, -24], [24, -24], [24, 24], [-24, 24], [-24, -24]]] };
   const shape = (p: { kind: string }): string => p.kind.split("_")[1]!;
@@ -452,10 +452,15 @@ test("a tower's top reads from a kilometre: torn, set back, a plant floor or a n
     else if (Math.max(...top) - Math.min(...top) >= 12) seen.add("third");
   }
   expect([...seen].sort()).toEqual(["plant", "screen", "third", "torn"]);
-  // A lost top stands at many heights round its core, which stands three storeys over all else.
-  const m = new Mason(f, 0);
-  layout(m, { ...rule, recipe: "tower", height: 160, finish: "concrete", form: v.forms.apartment, formName: "apartment", collapse: "lost-top", damage: v.damage["lost-top"], assemblies: v.assemblies, interiors: v.interiors }, { seed: 5, playable: 16, detail: 0 });
-  const top = roofs(m).sort((a, b) => b - a);
-  expect(top[0]! - top[1]!).toBeGreaterThanOrEqual(8);
-  expect(new Set(top).size).toBeGreaterThanOrEqual(4);
+  // A lost top stands at many heights round its core, which by seed stands two storeys or more over all else, or with
+  // the stair beside it, or broken off a storey over the rest.
+  const over: number[] = [];
+  for (let seed = 0; seed < 12; seed++) {
+    const m = new Mason(f, 0);
+    layout(m, { ...rule, recipe: "tower", height: 160, finish: "concrete", form: v.forms.apartment, formName: "apartment", collapse: "lost-top", damage: v.damage["lost-top"], assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 16, detail: 0 });
+    const top = roofs(m).sort((a, b) => b - a);
+    expect(new Set(top).size).toBeGreaterThanOrEqual(4);
+    over.push(top[0]! - top[1]!);
+  }
+  expect([over.some((d) => d >= 8), over.some((d) => d === 4), over.some((d) => d === 0)]).toEqual([true, true, true]);
 });
