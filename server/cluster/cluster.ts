@@ -93,6 +93,8 @@ export class Cluster {
   /** How pages reach this server, said in the folder: the port it listens on, and the address it is reached at from elsewhere. */
   port = 0;
   url = "";
+  /** Where its built client and its map's parts are, for a front on this machine. */
+  private files: Announcement["files"];
   /** The wall clock, in milliseconds. Tickets end by it, and time in transit is measured by it. */
   now: () => number = () => Date.now();
   /** What recovering at the load did, one line each. */
@@ -209,9 +211,10 @@ export class Cluster {
   }
 
   /** The server listens, on `port`, and is reached from elsewhere at `url` ("" for nowhere): it says so at once. */
-  listening(port: number, url: string): void {
+  listening(port: number, url: string, files?: Announcement["files"]): void {
     this.port = port;
     this.url = url;
+    this.files = files;
     if (this.ctx && !this.stopped) this.announce();
   }
 
@@ -246,6 +249,7 @@ export class Cluster {
       survivors: !rules.on("PreventDownloadSurvivors") && !rules.on("noTributeDownloads"),
       items: !rules.on("PreventDownloadItems") && !rules.on("noTributeDownloads"),
       at: this.now(),
+      ...(this.files ? { files: this.files } : {}),
     };
   }
 
