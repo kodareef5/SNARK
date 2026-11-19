@@ -76,8 +76,8 @@ const NEEDED: readonly number[] = [0, 3, 4];
 export const FIRST = 1e6;
 /** A page is more urgent than step 0 of any texture: nothing of its meshes is drawn without it. So is the first level of a mesh with none held. */
 export const PAGE_FIRST = 4 * FIRST;
-/** How urgent a material's textures are against one another. */
-const WEIGHT: readonly number[] = [1, 0.5, 0.25, 1, 1];
+/** How urgent a material's textures are against one another: base colour, normal, packed map and the two masks. */
+export const WEIGHT: readonly number[] = [1, 0.5, 0.25, 1, 1];
 /** A texture's climb is as urgent as the pixels it adds for each this many bytes of it, so the cheapest gain comes first. */
 const CLIMB_BYTES = 65536;
 /** A texture in view is remade smaller only if what is left would do for this many times the pixels it covers. */
@@ -655,6 +655,15 @@ export class Residency {
     const most = STEP0_SIZE << (this.matTop[m]! < this.cap ? this.matTop[m]! : this.cap);
     this.texture(t, pixels < most ? pixels : most, 1 / distance, true);
     return true;
+  }
+
+  /**
+   * Says texture `t` (its index in the manifest) is on screen this frame `px` pixels across, as `material` says of a
+   * material's maps, for one asked for by itself: a layer of the world finishes' arrays. `weight` is its urgency against
+   * the others, and `needed` makes its first step as urgent as a base colour's.
+   */
+  shown(t: number, px: number, weight: number, needed: boolean): void {
+    if (this.cap >= 0) this.texture(t, Math.min(px, STEP0_SIZE << this.cap), weight, needed);
   }
 
   /** Whether a material's layer can be drawn with this frame. */

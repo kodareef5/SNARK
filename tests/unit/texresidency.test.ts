@@ -517,3 +517,23 @@ test("a material whose every map it is not drawn without asks for each one's fir
   expect(order(true).slice(0, 4)).toEqual([BASE, NORMAL, MRO, MAPS + BASE]);
   expect(order(false).slice(0, 2)).toEqual([BASE, MAPS + BASE]);
 });
+
+test("a texture asked for by itself climbs to the step it is shown at, and keeps every step it holds when shown smaller and then wider again: the eye moving lets nothing go and fetches nothing twice", () => {
+  const w = world([]);
+  let now = 0, drops = 0;
+  const frame = (px: number): void => {
+    now += 16;
+    w.port.advance(now);
+    w.packet.beginFrame();
+    w.assets.begin(now, 720, 1.2217);
+    w.r.shown(BASE, px, 1, true);
+    w.assets.end(w.packet, now);
+    w.card.take(w.packet);
+    drops += w.packet.texDrops.length;
+  };
+  for (let f = 0; f < 600 && w.r.holds(BASE) < 2; f++) frame(256);
+  expect([w.r.holds(BASE), w.card.textures.get(BASE)?.top]).toEqual([2, 256]);
+  const { requests, fetched } = w.r.stats;
+  for (let f = 0; f < 120; f++) frame(f < 60 ? 32 : 256);
+  expect([w.r.holds(BASE), w.r.stats.requests - requests, w.r.stats.fetched - fetched, drops, w.r.wanting()]).toEqual([2, 0, 0, 0, 0]);
+});
