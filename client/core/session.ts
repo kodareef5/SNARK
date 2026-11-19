@@ -605,8 +605,9 @@ export class ClientSession {
   private lateBy = 0;
   /** Ticks the server has told it gave up since the welcome, wrapping at 16 bits. */
   private given = 0;
-  /** The newest tick stepped after a long frame as the server holds a missing input, not sampled; and the ticks whose input it let go of, stepped with no pilot. */
+  /** The newest tick stepped as the server steps a missing input, not sampled: no input at or before it is sent again. */
   private heldTo = 0;
+  /** Ticks whose input is one the server let go of, which a replay steps with no pilot, as the server does. */
   private readonly letGo = new Uint8Array(HISTORY);
   /** The furthest the render clock ran past the newest snapshot before the next came, in each of the last few seconds, and which second each is. */
   private readonly ahead = new Float32Array(8);
