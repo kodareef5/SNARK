@@ -19,10 +19,11 @@ import type { ShapeLook } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import { TAU, detCos, detSin, len3 } from "../math/scalar.ts";
-import { MAX_CORNERS, hullPoint, hullTable, type HullDef, type HullTable } from "./convex.ts";
+import { MAX_CORNERS, hullPoint, hullSteps, type HullDef, type HullTable } from "./convex.ts";
 import type { Heightfield } from "./heightfield.ts";
 import { MapStatics, type MapStatic } from "./mapfile.ts";
 import { TACTICAL_CELL, farTopByte } from "./tactical.ts";
+import { EYE_COLLIDERS } from "./tide-eye.ts";
 
 const QUARTER = YAW_UNITS / 4;
 
@@ -52,56 +53,26 @@ export class CityStatics {
   readonly walked: CityForm;
   readonly look: CityForm;
 
-  constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[], reg: Registry) {
+  /** `rows`, where given, are what CityStatics.steps made of `statics` with `reg`. */
+  constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[], reg: Registry, rows?: CityRows) {
     this.dims = dims;
-    const t = MapStatics.of(dims, statics);
-    // Each of the map's kinds as a content index, or 0 for one this content lacks or that is not a structure.
-    const of = t.kinds.map((id) => {
-      const k = reg.index.get(id);
-      return k !== undefined && reg.defs[k]?.type === "structure" ? k : 0;
-    });
-    const kind = new Uint16Array(t.length);
-    let n = 0;
-    for (let r = 0; r < kind.length; r++) if ((kind[r] = of[t.kind[r]!]!) !== 0) n++;
-    if (n === t.length) {
-      // Every piece is drawn, so the map's own columns serve and the city is held once.
-      this.first = t.first;
-      this.kind = kind;
-      this.yaw = t.yaw;
-      this.x = t.x;
-      this.y = t.y;
-      this.z = t.z;
-    } else {
-      const chunks = chunkCount(dims);
-      const first = (this.first = new Uint32Array(chunks + 1));
-      this.kind = new Uint16Array(n);
-      this.yaw = new Uint16Array(n);
-      this.x = new Float32Array(n);
-      this.y = new Float32Array(n);
-      this.z = new Float32Array(n);
-      let i = 0;
-      for (let c = 0; c < chunks; c++) {
-        for (let r = t.first[c]!; r < t.first[c + 1]!; r++) {
-          if (kind[r] === 0) continue;
-          this.kind[i] = kind[r]!;
-          this.yaw[i] = t.yaw[r]!;
-          this.x[i] = t.x[r]!;
-          this.y[i] = t.y[r]!;
-          this.z[i] = t.z[r]!;
-          i++;
-        }
-        first[c + 1] = i;
-      }
-    }
+    ({ first: this.first, kind: this.kind, yaw: this.yaw, x: this.x, y: this.y, z: this.z } = rows ?? finish(rowSteps(dims, MapStatics.of(dims, statics), reg)));
     this.halfX = reg.halfX;
     this.halfY = reg.halfY;
     this.halfZ = reg.halfZ;
-    this.color = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0));
-    this.under = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.under ?? d.color : 0));
-    this.plain = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.shape !== undefined ? 0 : 1));
-    this.near = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.near ? 1 : 0));
-    this.walked = { start: reg.parts.start, box: reg.parts.box, color: null, hulls: reg.parts.hulls ?? null };
-    this.look = lookForm(reg, this.walked);
+    ({ color: this.color, under: this.under, plain: this.plain, near: this.near, walked: this.walked, look: this.look } = kindTables(reg));
+  }
+
+  /**
+   * The city of `statics` a slice of SLICE pieces a step, with what chunkReach gives of it with `reg`'s landmark kinds
+   * (cityReach), and the look form of `reg`'s kinds HULL_STEP parts a step the first time: so that a page makes a whole
+   * map's between its frames.
+   */
+  static *steps(dims: MapDims, statics: MapStatics, reg: Registry): Generator<void, CityStatics> {
+    const { landmark } = known.get(reg) ?? (yield* kindSteps(reg));
+    const city = new CityStatics(dims, statics, reg, yield* rowSteps(dims, statics, reg));
+    madeReach.set(city, { landmark, ...(yield* chunkReach(city, landmark)) });
+    return city;
   }
 
   get count(): number {
@@ -112,6 +83,163 @@ export class CityStatics {
   in(chunk: number): number {
     return this.first[chunk + 1]! - this.first[chunk]!;
   }
+}
+
+/** Pieces made between two pauses (CityStatics.steps, chunkReach). */
+const SLICE = 1 << 15;
+
+/** A city's pieces by chunk. */
+interface CityRows {
+  readonly first: Uint32Array;
+  readonly kind: Uint16Array;
+  readonly yaw: Uint16Array;
+  readonly x: Float32Array;
+  readonly y: Float32Array;
+  readonly z: Float32Array;
+}
+
+/** Per chunk, the box its pieces but a landmark's reach, and its landmark's pieces (chunkReach). */
+export interface CityReach {
+  readonly reach: Float64Array;
+  readonly landmarks: ReadonlyMap<number, Uint8Array>;
+}
+
+/** What chunkReach gave of a city CityStatics.steps made, with the landmark kinds it was given. */
+const madeReach = new WeakMap<CityStatics, CityReach & { readonly landmark: Uint8Array }>();
+
+/** What chunkReach gives of `city` with `landmark`: as CityStatics.steps made it, where it made it with those kinds. */
+export function cityReach(city: CityStatics, landmark: Uint8Array): CityReach {
+  const made = madeReach.get(city);
+  return made?.landmark === landmark ? made : finish(chunkReach(city, landmark));
+}
+
+/** What a city keeps by content index, the same for every city of one registry. */
+interface KindTables {
+  readonly color: Uint8Array;
+  readonly under: Uint8Array;
+  readonly plain: Uint8Array;
+  readonly near: Uint8Array;
+  readonly walked: CityForm;
+  readonly look: CityForm;
+  readonly landmark: Uint8Array;
+}
+
+/** Each registry's kind tables, made once: its look form takes a tenth of a second on a map with landmarks. */
+const known = new WeakMap<Registry, KindTables>();
+
+function kindTables(reg: Registry): KindTables {
+  return known.get(reg) ?? finish(kindSteps(reg));
+}
+
+function* kindSteps(reg: Registry): Generator<void, KindTables> {
+  const walked: CityForm = { start: reg.parts.start, box: reg.parts.box, color: null, hulls: reg.parts.hulls ?? null };
+  const tables = {
+    color: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0)),
+    under: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.under ?? d.color : 0)),
+    plain: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.shape !== undefined ? 0 : 1)),
+    near: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.near ? 1 : 0)),
+    walked,
+    look: yield* lookForm(reg, walked),
+    landmark: landmarkKinds(reg),
+  };
+  known.set(reg, tables);
+  return tables;
+}
+
+const landmarksOf = new WeakMap<Registry, Uint8Array>();
+
+/**
+ * Per content index, 1 for a kind a landmark brings or a tide eye's collider, which the far drawings leave to a landmark's
+ * far mesh: one array a registry, so a city made with them is known by it (cityReach).
+ */
+export function landmarkKinds(reg: Registry): Uint8Array {
+  let kinds = landmarksOf.get(reg);
+  if (!kinds) landmarksOf.set(reg, (kinds = Uint8Array.from(reg.defs, (def, k) => (reg.own.has(k) || (def && EYE_COLLIDERS.has(def.id)) ? 1 : 0))));
+  return kinds;
+}
+
+/** `steps` run to their end. */
+function finish<T>(steps: Generator<void, T>): T {
+  for (let s = steps.next(); ; s = steps.next()) if (s.done) return s.value;
+}
+
+/** The pieces of `t` with a content index each, those of a kind this content lacks or that is not a structure left out. */
+function* rowSteps(dims: MapDims, t: MapStatics, reg: Registry): Generator<void, CityRows> {
+  // Each of the map's kinds as a content index, or 0 for one this content lacks or that is not a structure.
+  const of = Uint16Array.from(t.kinds, (id) => {
+    const k = reg.index.get(id);
+    return k !== undefined && reg.defs[k]?.type === "structure" ? k : 0;
+  });
+  const kind = new Uint16Array(t.length);
+  let n = 0;
+  for (let r = 0; r < kind.length; r++) {
+    if ((kind[r] = of[t.kind[r]!]!) !== 0) n++;
+    if (r % SLICE === SLICE - 1) yield;
+  }
+  // Every piece is drawn, so the map's own columns serve and the city is held once.
+  if (n === t.length) return { first: t.first, kind, yaw: t.yaw, x: t.x, y: t.y, z: t.z };
+  const chunks = chunkCount(dims);
+  const rows = { first: new Uint32Array(chunks + 1), kind: new Uint16Array(n), yaw: new Uint16Array(n), x: new Float32Array(n), y: new Float32Array(n), z: new Float32Array(n) };
+  let i = 0;
+  for (let c = 0; c < chunks; c++) {
+    for (let r = t.first[c]!; r < t.first[c + 1]!; r++) {
+      if (kind[r] === 0) continue;
+      rows.kind[i] = kind[r]!;
+      rows.yaw[i] = t.yaw[r]!;
+      rows.x[i] = t.x[r]!;
+      rows.y[i] = t.y[r]!;
+      rows.z[i] = t.z[r]!;
+      if (++i % SLICE === 0) yield;
+    }
+    rows.first[c + 1] = i;
+  }
+  return rows;
+}
+
+/**
+ * Per chunk of `city`, the box its pieces reach, but those of a kind `landmark` names (by content index), which the far
+ * drawings leave to the landmark's far mesh: six numbers a chunk, its least x, y and z and its most, a turned piece
+ * reaching no farther across than its half diagonal, and Infinity to -Infinity where it has no other piece. And per chunk
+ * with a piece of such a kind, a byte a piece, 1 for those. A pause after every SLICE pieces.
+ */
+function* chunkReach(city: CityStatics, landmark: Uint8Array): Generator<void, CityReach> {
+  const { first, kind, x, y, z, halfY } = city;
+  const chunks = chunkCount(city.dims);
+  const across = Float64Array.from(city.halfX, (hx, k) => len3(hx, 0, city.halfZ[k]!));
+  const reach = new Float64Array(chunks * 6);
+  const landmarks = new Map<number, Uint8Array>();
+  let since = 0;
+  for (let c = 0; c < chunks; c++) {
+    const o = c * 6;
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let i = first[c]!; i < first[c + 1]!; i++) {
+      const k = kind[i]!;
+      if (landmark[k] === 1) {
+        let left = landmarks.get(c);
+        if (!left) landmarks.set(c, (left = new Uint8Array(first[c + 1]! - first[c]!)));
+        left[i - first[c]!] = 1;
+        continue;
+      }
+      const r = across[k]!;
+      x0 = Math.min(x0, x[i]! - r);
+      y0 = Math.min(y0, y[i]! - halfY[k]!);
+      z0 = Math.min(z0, z[i]! - r);
+      x1 = Math.max(x1, x[i]! + r);
+      y1 = Math.max(y1, y[i]! + halfY[k]!);
+      z1 = Math.max(z1, z[i]! + r);
+    }
+    reach[o] = x0;
+    reach[o + 1] = y0;
+    reach[o + 2] = z0;
+    reach[o + 3] = x1;
+    reach[o + 4] = y1;
+    reach[o + 5] = z1;
+    if ((since += first[c + 1]! - first[c]!) >= SLICE) {
+      since = 0;
+      yield;
+    }
+  }
+  return { reach, landmarks };
 }
 
 /**
@@ -127,7 +255,7 @@ export interface CityForm {
 }
 
 /** Every kind's form as the near store draws it: its shape's look where it has one, else as walked. */
-function lookForm(reg: Registry, walked: CityForm): CityForm {
+function* lookForm(reg: Registry, walked: CityForm): Generator<void, CityForm> {
   const shapeOf = (k: number): { hulls?: readonly HullDef[]; look?: ShapeLook } | null => {
     const d = reg.defs[k];
     const s = d?.type === "structure" && d.shape !== undefined ? reg.defs[reg.index.get(d.shape) ?? 0] : null;
@@ -149,7 +277,7 @@ function lookForm(reg: Registry, walked: CityForm): CityForm {
     const s = shapeOf(k);
     return (s?.look ? s.look.hulls : s?.hulls) ?? [];
   };
-  return { start, box: Float32Array.from(box), color: color.some((c) => c !== 0) ? Uint8Array.from(color) : null, hulls: hullTable(n, hullsOf) };
+  return { start, box: Float32Array.from(box), color: color.some((c) => c !== 0) ? Uint8Array.from(color) : null, hulls: yield* hullSteps(n, hullsOf) };
 }
 
 /**

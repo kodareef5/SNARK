@@ -133,8 +133,12 @@ export function crownOf(s: CrownSite): Crown | null {
   }
   if (kind === "plant") {
     // Two storeys, a tenth of the tower's on a tall one, and its lift's overrun over them, so it reads from a kilometre
-    // where one storey is two pixels.
-    for (const t of inner) tops.set(tileKey(t.i, t.j), floors + Math.max(2, Math.round(floors / 10)));
+    // where one storey is two pixels. It steps: the room's edge stands half as high as its middle (the tiles inside it,
+    // or else the cores), so it reads as plant on a roof and not a second building on the first.
+    const rise = Math.max(2, Math.round(floors / 10));
+    const deep = new Set(inner.filter((t) => SIDES.every(([a, b]) => inner.some((o) => o.i === t.i + a && o.j === t.j + b))));
+    const middle = deep.size ? deep : new Set(inner.filter((t) => s.cores.includes(t)));
+    for (const t of inner) tops.set(tileKey(t.i, t.j), floors + (middle.has(t) || middle.size === 0 ? rise : Math.ceil(rise / 2)));
     return { kind, torn, raised: new Set(inner), notch: null };
   }
   // A screen round the roof, broken out along one or two bays of one side.

@@ -11,7 +11,7 @@ import { mapLabel } from "../cluster/cluster.ts";
 import type { Host } from "../host.ts";
 import { backupsFolder } from "../persist/backup.ts";
 import { changedSettings } from "../settings/rules.ts";
-import { TICK_MS, type Gauges, type TickMeter } from "./meter.ts";
+import { SECONDS_KEPT, TICK_MS, type Gauges, type TickMeter } from "./meter.ts";
 
 /** The group a body is counted in, by what its kind is. */
 function groupOf(def: { type: string; class?: string } | null | undefined, flags: number, team: number): string {
@@ -124,7 +124,7 @@ export function statsOf(host: Host, meter: TickMeter, bodies: Bodies, backups: B
     at: now,
     world: { name: rules.text("SessionName") || mapLabel(world.reg, world.mapId), dev: host.dev, tick: world.tick, startedAt: meter.startedAt, cluster: host.cluster ? host.cluster.serverName(host.cluster.world) : "" },
     map: { id: world.mapId, label: mapLabel(world.reg, world.mapId), sizeX: world.hf.sizeX, sizeZ: world.hf.sizeZ, chunksX: world.dims.chunksX, chunksZ: world.dims.chunksZ },
-    ticks: { rate: TICK_RATE, budget: TICK_MS, ran: meter.ticks, dropped: meter.dropped, seconds: meter.secondColumns() },
+    ticks: { rate: TICK_RATE, budget: TICK_MS, ran: meter.ticks, dropped: meter.dropped, seconds: meter.secondColumns(), long: game.parts.whose(now - SECONDS_KEPT * 1000) },
     online: { now: game.playerCount, max: game.opts.maxClients },
     bodies,
     memory: { rss: mem.rss, heapUsed: mem.heapUsed, heapTotal: mem.heapTotal },

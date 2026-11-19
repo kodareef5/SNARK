@@ -1,4 +1,5 @@
 import { ServerDirectory } from "./directory.ts";
+import type { Server, ServerWebSocket } from "bun";
 import { SurvivorAccess, entryReply } from "./survivor-access.ts";
 // bun server/main.ts [--dev] [--client-dir folder] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
@@ -15,7 +16,7 @@ import type { ModuleDef } from "./api/module.ts";
 import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -26,11 +27,13 @@ import { clientAddress } from "./front.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
 import { adminAsked, type AdminGate } from "./admin/gate.ts";
 import { TickMeter } from "./admin/meter.ts";
+import { PART, type TickParts } from "./admin/parts.ts";
 import { AdminPages } from "./admin/routes.ts";
 import { gaugesOf } from "./admin/stats.ts";
 import { CUES } from "../shared/sound/cues.ts";
 import { partHash, partsFolder, readHead } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
+import { PlayLog, REPORT_BYTES_MAX } from "./playlog.ts";
 import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
 
 export interface ServerOptions {
@@ -71,6 +74,11 @@ export interface ServerOptions {
    * around it everywhere else (pathOf, placeOf).
    */
   publicUrl?: string;
+  /**
+   * A development server's folder for the record of play (server/playlog.ts): its pages are told to keep one and send it,
+   * and each run writes its reports in a file of its own there. Without it, or without `dev`, no page keeps one.
+   */
+  play?: string;
 }
 
 export interface RunningServer {
@@ -225,12 +233,19 @@ export function worldSettings(host: Host): { name: string; map: string; settings
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
 /**
- * Runs `loop.tick` TICK_RATE times a second of `now`'s clock, given when each was due, and `loop.idle` after each call:
- * one tick a call, each call made by `later` after the given milliseconds, so that requests and sockets are served
- * between ticks that run late and never wait behind a run of them. A loop more than 250 ms behind gives up the ticks
- * due, and tells `loop.drop` how many. Returns what stops it.
+ * Milliseconds behind its clock past which the loop gives ticks up instead of catching them up. While it is behind, a
+ * page's snapshots are that much older, and a page replays at most 128 ticks past one (client/core/session.ts HISTORY).
  */
-export function tickLoop(loop: { tick(due: number): void; idle(): void; drop(ticks: number, at: number): void }, now = (): number => performance.now(), later = (go: () => void, ms: number): (() => void) => {
+export const CATCH_UP_MS = 2000;
+
+/**
+ * Runs `loop.tick` TICK_RATE times a second of `now`'s clock, given when each was due and how many more were due by the
+ * time it began, and `loop.idle` after each call: one tick a call, each call made by `later` after the given milliseconds,
+ * so that requests and sockets are served between ticks that run late and never wait behind a run of them. A loop behind
+ * catches up so; past CATCH_UP_MS behind it gives up the ticks beyond that, and tells `loop.drop` how many. Returns what
+ * stops it.
+ */
+export function tickLoop(loop: { tick(due: number, behind: number): void; idle(): void; drop(ticks: number, at: number): void }, now = (): number => performance.now(), later = (go: () => void, ms: number): (() => void) => {
   const timer = setTimeout(go, ms);
   return () => clearTimeout(timer);
 }): () => void {
@@ -239,18 +254,31 @@ export function tickLoop(loop: { tick(due: number): void; idle(): void; drop(tic
   const turn = (): void => {
     const at = now();
     if (at >= next) {
-      loop.tick(next);
+      loop.tick(next, Math.floor((at - next) / tickMs));
       next += tickMs;
     }
     loop.idle();
-    if (at - next > 250) {
-      loop.drop(Math.floor((at - next) / tickMs) + 1, at);
-      next = at + tickMs;
+    if (at - next > CATCH_UP_MS) {
+      const ticks = Math.ceil((at - next - CATCH_UP_MS) / tickMs);
+      loop.drop(ticks, at);
+      next += ticks * tickMs;
     }
     stop = later(turn, Math.max(0, next - now()));
   };
   let stop = later(turn, tickMs);
   return () => stop();
+}
+
+/** `fn`, its time counted as the loop's work between ticks under `part` (server/admin/parts.ts). */
+function timed<A extends unknown[], R>(parts: TickParts, part: number, fn: (...a: A) => R): (...a: A) => R {
+  return (...a) => {
+    const began = performance.now();
+    try {
+      return fn(...a);
+    } finally {
+      parts.between(part, performance.now() - began);
+    }
+  };
 }
 
 export function startServer(opts: ServerOptions = {}): RunningServer {
@@ -289,6 +317,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
   const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
   const meter = new TickMeter(() => gaugesOf(host));
+  const playFile = opts.dev && opts.play ? join(opts.play, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.jsonl`) : "";
+  const play = playFile ? new PlayLog(host.game, (line) => (mkdirSync(opts.play!, { recursive: true }), appendFileSync(playFile, line + "\n"))) : null;
   const admin = new AdminPages({ host, meter, dir: join(clientDir, "admin"), start: { tick: host.world.tick, wall: meter.startedAt } });
   if (opts.probeScene) {
     const ents = host.world.ents;
@@ -368,11 +398,12 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   let skipped = 0;
   // A development server gives cheats without a password, so nothing off this machine reaches it unless it is asked to listen there.
   const hostname = opts.hostname ?? (opts.dev ? "127.0.0.1" : undefined);
+  const parts = host.game.parts;
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
     ...(hostname ? { hostname } : {}),
     ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) }, http2: true } : {}),
-    async fetch(req, srv) {
+    fetch: timed(parts, PART.http, async (req: Request, srv: Server<Socket>) => {
       const url = new URL(req.url);
       const answered = opts.routes?.(req, url);
       if (answered) return answered;
@@ -421,6 +452,14 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         report(await req.json());
         return new Response("ok");
       }
+      // Not for this machine alone: the owner plays a development world from elsewhere, through a tunnel and the front.
+      if (path === "/__play" && play) {
+        if (req.method === "GET") return new Response(null, { status: 204 });
+        if (req.method !== "POST") return new Response("POST a report", { status: 405 });
+        if (Number(req.headers.get("content-length") ?? 0) > REPORT_BYTES_MAX) return new Response("too long", { status: 413 });
+        const why = play.report(await req.text());
+        return why === "" ? new Response(null, { status: 204 }) : new Response(why, { status: 422 });
+      }
       if (path === "/__bench" && req.method === "POST" && opts.dev && local) {
         const result = await req.json();
         console.log(`frame times from a browser:\n${JSON.stringify(result, null, 2)}`);
@@ -438,10 +477,10 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       // A device probe measures the link quiet before the game's files come, as index.html leaves its own preloads.
       if ((path === "/" || path === "/index.html" || path === "/play.html") && file.ok && !url.searchParams.has("device")) file.headers.set("link", mapRoute.link);
       return file;
-    },
+    }),
     websocket: {
       maxPayloadLength: MESSAGE_BYTES_MAX,
-      open(ws) {
+      open: timed(parts, PART.sockets, (ws: ServerWebSocket<Socket>) => {
         if (ws.data.isVoice) {
           ws.data.voice = host.voice.connect({
             send(data) {
@@ -455,21 +494,28 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           });
           return;
         }
-        const conn: Connection & { open: boolean } = {
+        // What it sent and skipped, and what waits, are read for the record of play (server/playlog.ts).
+        const conn: Connection & { open: boolean; bytesSent: number; skipped: number; readonly buffered: number } = {
           open: true,
+          bytesSent: 0,
+          skipped: 0,
+          get buffered() {
+            return ws.getBufferedAmount();
+          },
           address: ws.data.address,
           onMessage: null,
           onClose: null,
           send(channel, data) {
             if (!conn.open) return;
             const rule = backlog(channel, ws.getBufferedAmount(), host.game.opts.snapshotBytesMax);
-            if (rule === 1) return void skipped++;
+            if (rule === 1) return void (skipped++, conn.skipped++);
             if (rule === 2) return void ws.close(1008, "too slow");
             // Bun copies what it is given before send returns, so every message goes out through one buffer.
             const frame = data.length < outgoing.length ? outgoing.subarray(0, data.length + 1) : new Uint8Array(data.length + 1);
             frame[0] = channel;
             frame.set(data, 1);
             ws.send(frame);
+            conn.bytesSent += frame.length;
           },
           close() {
             if (conn.open) ws.close();
@@ -477,8 +523,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         };
         ws.data.conn = conn;
         onConnection?.(conn);
-      },
-      message(ws, message) {
+      }),
+      message: timed(parts, PART.sockets, (ws: ServerWebSocket<Socket>, message: string | Buffer) => {
         if (typeof message === "string" || message.length === 0) return;
         if (ws.data.voice) {
           host.voice.receive(ws.data.voice, message, performance.now());
@@ -489,14 +535,14 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           return;
         }
         ws.data.conn?.onMessage?.(message[0]!, message.subarray(1));
-      },
-      close(ws) {
+      }),
+      close: timed(parts, PART.sockets, (ws: ServerWebSocket<Socket>) => {
         if (ws.data.voice) return void host.voice.disconnect(ws.data.voice);
         const conn = ws.data.conn as (Connection & { open: boolean }) | null;
         if (!conn) return;
         conn.open = false;
         conn.onClose?.();
-      },
+      }),
     },
   });
 
@@ -505,13 +551,25 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   // Each tick is timed for the admin page. The checkpoint is the keeper thread's work, so asking for it costs nothing
   // here, late or not.
   const stopTicks = tickLoop({
-    tick: (due) => {
+    tick: (due, behind) => {
       const began = performance.now();
+      parts.due = due;
+      host.game.behind = behind;
       host.game.tick();
-      meter.tick(due, began, performance.now());
+      const ended = performance.now();
+      meter.tick(due, began, ended);
+      play?.ticked(due, began, ended, behind);
     },
-    idle: () => host.idle(),
-    drop: (ticks, at) => meter.drop(ticks, at),
+    idle: () => {
+      const began = performance.now();
+      host.idle();
+      parts.between(PART.idle, performance.now() - began);
+    },
+    drop: (ticks, at) => {
+      meter.drop(ticks, at);
+      host.game.giveUp(ticks);
+      play?.drop(ticks);
+    },
   });
 
   if (opts.terminal) {
@@ -577,6 +635,7 @@ if (import.meta.main) {
     clientDir: value("--client-dir"),
     publicUrl: value("--public-url"),
     dev,
+    play: resolve(import.meta.dir, "../var/play"),
     config: rules,
     ...(live ? { live } : {}),
     map: value("--map"),

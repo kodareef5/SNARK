@@ -315,6 +315,37 @@ test("a maker on other threads sweeps there, moving the solid heights and the ma
   expect(CHUNK_SIZE / TOP_CELL).toBe(16);
 });
 
+test("the first job for a maker on other threads is a copy of the city and the ground made 16 MB a frame, as they are, and what is gone as it is the frame it goes", () => {
+  // Ground of 96 chunks a side, 19 MB of heights: two frames of copying.
+  const reg = farRegistry();
+  const dims: MapDims = { chunksX: 96, chunksZ: 96 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  for (let j = 0; j < hf.nz; j += 7) hf.setSample(5, j, j % 50);
+  const city = new CityStatics(dims, asWritten(building(160, 160, 0, 12)), reg);
+  const jobs: SweepJob[] = [];
+  const maker = new ThreadedCityMaker(() => ({ onmessage: null, postMessage: (m) => void ("sweep" in m && jobs.push(m.sweep)) }), 1);
+  maker.start(cityKinds(city, hf, { center: [0, 0, 0], half: [1, 1, 1] }));
+  const goneVersion = new Uint32Array(chunkCount(dims));
+  let gone: Gone = null;
+  const chunk = chunkAt(dims, 160, 160);
+  const standing = { goneOf: (c: number): Gone => (c === chunk ? gone : null), goneVersion, topsOf: () => null };
+  const shadow = new FarShadow(city, hf, standing, maker, () => false);
+  const p = new FramePacket();
+  p.tier = { ...tierOf("medium"), shadows: { ...tierOf("medium").shadows, size: 128 } };
+  p.lit = true;
+  shadow.update(p, allowance(1e9), 0, 0, 0, sunAt(40, 30));
+  expect(jobs.length).toBe(0);
+  // A piece goes while the copy is made: the job holds it gone.
+  gone = new Uint8Array(city.in(chunk)).fill(1, 0, 3);
+  goneVersion[chunk]!++;
+  p.beginFrame();
+  shadow.update(p, allowance(1e9), 0, 0, 0, sunAt(40, 30));
+  expect(jobs.length).toBe(1);
+  const made = jobs[0]!.make!;
+  expect([made.first, made.kind, made.yaw, made.x, made.y, made.z, made.heights]).toEqual([city.first, city.kind, city.yaw, city.x, city.y, city.z, hf.heights]);
+  expect([made.heights === hf.heights, made.gone!.subarray(city.first[chunk]!, city.first[chunk + 1]!)]).toEqual([false, gone]);
+});
+
 test("the lookup leaves a building's own sunlit walls and roof lit wherever they lie in their cells and however it is turned, and shades the ground in its shadow", () => {
   const reg = farRegistry();
   const dims: MapDims = { chunksX: 8, chunksZ: 8 };

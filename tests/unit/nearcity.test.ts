@@ -187,8 +187,8 @@ test("crossing a chunk border at the slice's densest place makes no more in a fr
   const w = client();
   const { cam, hf, scene } = w;
   // The window round the slice's chunk (3, 3) holds its most statics; the walk goes east from its middle over the border
-  // into (4, 3), which brings a column of seven chunks. The 16 km map's slice holds 27,542 pieces, its window round (3, 3)
-  // 19,243, made in 303 frames.
+  // into (4, 3), which brings a column of seven chunks. The 16 km map's slice holds 27,978 pieces, its window round (3, 3)
+  // 19,557, made in 300 frames.
   let x = 3.5 * CHUNK_SIZE;
   const z = 3.5 * CHUNK_SIZE;
   [cam.x, cam.z, cam.y, cam.yaw] = [x, z, hf.heightAt(x, z) + 1.7, Math.PI / 2];

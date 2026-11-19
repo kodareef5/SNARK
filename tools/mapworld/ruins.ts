@@ -1,6 +1,6 @@
 import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
-import { BREAK_AT, RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { BREAK_AT, pieceMiddle, RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { gradeRoadEntrances, roadGroundSamples } from "./bridge-earthwork.ts";
@@ -169,7 +169,7 @@ export function makeRuins(site: Site): StaticPiece[] {
     records.push({ firstPiece: pieces.length - built.pieces.length, footprint: Math.floor(f.building.id / 4), part: f.building.id, name: p.named?.name ?? p.facts.label.name ?? null,
       district: f.district?.name ?? "Unzoned", square: p.square, recipe: rule.recipe, special: p.named?.layout ?? null,
       x: frame.x, y: base, z: frame.z, yaw: frame.yaw, width: frame.width, depth: frame.depth,
-      height: Math.max(...built.pieces.map((s) => s.y + RUIN_SHAPES[s.kind.split("_")[1] as RuinShape][1] / 2)) - base,
+      height: Math.max(...built.pieces.map((s) => { const name = s.kind.split("_")[1] as RuinShape; return pieceMiddle(name, s.y) + RUIN_SHAPES[name][1] / 2; })) - base,
       form: rule.formName ?? rule.recipe, collapse: rule.collapse ?? "shear", rooms: built.rooms, falls: built.falls, exposure: rule.event?.exposure, shelter: rule.event?.shelter, party: rule.party,
       blocks: built.pieces.length, detail, approaches, entries: built.entries, escapes: built.escapes, wings: built.wings, routes: built.routes, provisional: rule.provisional, modifiers: rule.matched, lore: p.facts.research?.lore ?? null, kind: p.facts.kind, sourceHeight: p.facts.height, heightFrom: p.facts.heightFrom, kindFrom: p.facts.kindFrom, researchFrom: p.facts.researchFrom ?? null });
   }

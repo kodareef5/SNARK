@@ -17,6 +17,7 @@ import { CMD_CORPSE, S_CORPSE } from "../../shared/net/protocol.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
+  BUTTON_BITS,
   BUTTON_MASK,
   HELLO_SPECTATE,
   HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
@@ -100,7 +101,7 @@ import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
 import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
-import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
+import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { BTN_JUMP, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
@@ -110,7 +111,8 @@ import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSt
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
-import { GEAR_COUNT } from "../../shared/sim/entities.ts";
+import { F_PROP, GEAR_COUNT } from "../../shared/sim/entities.ts";
+import { FootContacts, FootVehicles } from "../../shared/sim/foot-contact.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -559,6 +561,10 @@ export class ClientSession {
   /** The tick sampleRemote last drew remote entities at, which is what was on screen when the next input is sampled. 0 before the first. */
   shown = 0;
   latestSnapshot = 0;
+  /** The snapshot before the newest, which a correction was compared from. */
+  private previousSnapshot = 0;
+  /** The server's tick at the welcome. */
+  joined = 0;
   /** The frame clock, in ms, when the newest snapshot was taken in; -1 before the first. */
   private snapshotAt = -1;
 
@@ -577,6 +583,15 @@ export class ClientSession {
   vehicleContacts: VehiclePrediction | null = null;
   private readonly contactSnapshot = new ContactSnapshot();
   private readonly contactBefore = new Body();
+  private readonly footBefore = new Body();
+  private feet: FootContacts | null = null;
+  private feetWorld: CollisionWorld | null = null;
+  /** The vehicles of the newest snapshot, as its view carries them, and the tick they were read at. */
+  private readonly footVehicles = new FootVehicles();
+  private footTick = -1;
+  /** Where each of those stood in that snapshot, and the metres a tick it went over the few before it. */
+  private footFrom = new Float64Array(48);
+  private footRate = new Float64Array(48);
 
   private readonly conn: Connection;
   private readonly opts: SessionOptions;
@@ -601,6 +616,14 @@ export class ClientSession {
   private lastNow = -1;
   private dilation = 1;
   private guardTick = 0;
+  /** Ticks the margins say the clock is behind, which the next frame jumps unless it was long: then the frame was why. */
+  private lateBy = 0;
+  /** Ticks the server has told it gave up since the welcome, wrapping at 16 bits. */
+  private given = 0;
+  /** The newest tick stepped as the server steps a missing input, not sampled: no input at or before it is sent again. */
+  private heldTo = 0;
+  /** Ticks whose input is one the server let go of, which a replay steps with no pilot, as the server does. */
+  private readonly letGo = new Uint8Array(HISTORY);
   /** The furthest the render clock ran past the newest snapshot before the next came, in each of the last few seconds, and which second each is. */
   private readonly ahead = new Float32Array(8);
   private readonly aheadAt = new Int32Array(8).fill(-1);
@@ -636,6 +659,7 @@ export class ClientSession {
     conn.onMessage = (channel, data) => this.receive(channel, data);
     conn.onClose = () => {
       if (this.state !== "closed") {
+        if (this.state === "active") this.prediction.closed(this, "the socket closed");
         this.state = "closed";
         this.closeReason = CLOSED_BY_PEER;
       }
@@ -732,10 +756,16 @@ export class ClientSession {
     const frameMs = dt;
     this.lastNow = nowMs;
     if (this.arrived && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
-    if (dt > 100) this.hitch = true;
     if (dt > 250) dt = 250;
     const ticks = (dt / 1000) * TICK_RATE;
-    this.tickClock += ticks * this.dilation;
+    // The input clock keeps real time through a long frame, so the first input after it is on time. Margins told of
+    // inputs sent before it say nothing of the clock, and none counts until snapshots can show those sent after.
+    this.tickClock += (frameMs / 1000) * TICK_RATE + ticks * (this.dilation - 1);
+    const long = frameMs > 100;
+    if (long) {
+      this.hitch = true;
+      this.ignoreMargins(Math.floor(this.tickClock));
+    } else if (this.lateBy > 0) this.jump(this.lateBy);
     this.renderClock += ticks;
     this.followJitter(ticks);
     this.vehicleCorrection.update(dt);
@@ -758,24 +788,54 @@ export class ClientSession {
     this.tapped |= buttons;
     this.holdGround();
     const target = Math.floor(this.tickClock);
+    // After a long frame, or a jump past what one update steps, the ticks but the newest were never sampled and the
+    // server may have stepped some already: they go as the server takes ticks it has no input for, and the input sampled
+    // now is for the newest, which is on time.
+    const unsampled = long || target - this.simTick > MAX_STEPS_PER_UPDATE ? Math.max(0, target - 1 - this.simTick) : 0;
+    if (unsampled > 0) this.hold(target - 1);
     let steps = 0;
     while (this.simTick < target && steps < MAX_STEPS_PER_UPDATE) {
       const t = ++this.simTick;
       steps++;
       this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons);
+      this.letGo[t & (HISTORY - 1)] = 0;
       this.tapped = 0;
       this.ownPrev.copy(this.own);
       if (this.predicting) this.step(t);
       else this.stats.unheld++;
     }
-    // Too far behind to catch up by simulating, so skip. The server held the last input meanwhile.
     const newestInput = this.simTick;
-    this.prediction.frame(frameMs, steps, Math.max(0, target - newestInput));
-    if (this.simTick < target) this.simTick = target;
+    this.prediction.frame(frameMs, steps, unsampled, this, nowMs);
     if (steps > 0) {
       this.sendInputs(newestInput, steps);
       this.recenterNodes();
     }
+  }
+
+  /**
+   * Steps the ticks to `to`, none of them sampled, as the server steps those it has no input for (server/game.ts): the
+   * last input sent goes on for a while and is then let go of, as a replay does. They are not sent.
+   */
+  private hold(to: number): void {
+    const inp = this.inputs;
+    const last = this.sentInput;
+    const i = last & inp.mask;
+    const known = last > 0 && inp.has(last);
+    const vehicle = this.registry.vehicle[this.own.kind];
+    const span = vehicle && this.driving >= 0 ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS;
+    const [x, z, buttons] = [inp.moveX[i]!, inp.moveZ[i]!, inp.buttons[i]!];
+    const yaw = known ? inp.yaw[i]! : Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff;
+    const pitch = known ? inp.pitch[i]! : 0;
+    const quiet = !known ? 0 : vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : buttons & INPUT_KEPT;
+    // Past its history the body is not stepped: the next snapshot gives it.
+    if (to - this.simTick < HISTORY) for (let t = this.simTick + 1; t <= to; t++) {
+      const held = known && t - last <= span;
+      inp.set(t, held ? x : 0, held ? z : 0, yaw, pitch, held ? buttons & BUTTON_MASK : quiet);
+      this.letGo[t & (HISTORY - 1)] = known && !held ? 1 : 0;
+      this.ownPrev.copy(this.own);
+      if (this.predicting) this.step(t, !known || held);
+    }
+    this.simTick = this.heldTo = to;
   }
 
   /** Where its living body is and how it moves, or null before the welcome, while dead or choosing, and watching. */
@@ -797,6 +857,23 @@ export class ClientSession {
       this.reconcile(this.latestSnapshot, this.told);
     }
     this.predicting = held;
+  }
+
+  /**
+   * What this page holds of the chunk at (x, z), for the record of play: whether all its rows have come, how many, whether
+   * its statics are the page's own map's, and the nearest other body of the newest view within 4 m, its kind and metres.
+   */
+  private heldAt(x: number, z: number): { whole: boolean; rows: number; statics: boolean; near: string } {
+    const world = this.world;
+    if (!world) return { whole: false, rows: 0, statics: false, near: "" };
+    const chunk = chunkAt(world.dims, x, z);
+    const view = this.views.find(this.latestSnapshot), own = handleIndex(this.ownHandle);
+    let near = "", best = 4;
+    for (let i = 0; view && i < view.count; i++) {
+      const d = Math.hypot(dequantX(view.qx[i]!) - x, dequantX(view.qz[i]!) - z);
+      if (d < best && view.id[i] !== own && view.id[i] !== this.driving) [best, near] = [d, `${this.registry.defs[view.kind[i]!]?.id ?? view.kind[i]} ${d.toFixed(1)} m`];
+    }
+    return { whole: this.whole[chunk] === 1, rows: world.structs.chunks[chunk]?.live ?? 0, statics: this.staticKinds !== null, near };
   }
 
   private groundHeld(): boolean {
@@ -956,6 +1033,7 @@ export class ClientSession {
   }
 
   close(): void {
+    if (this.state === "active") this.prediction.closed(this, "the page left");
     this.state = "closed";
     this.conn.close();
     this.welcomedNow();
@@ -1008,9 +1086,13 @@ export class ClientSession {
       this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
     }
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
-    else if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, this.registry.tamedMove[this.own.kind] ?? this.move!, combat, TICK_DT, true, !pilot);
-    else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
-    else { this.own.yaw = inp.yaw[i]!; this.own.jetThrust = 0; }
+    else if (combat && this.driving >= 0 || this.own.seatSlot === 0) {
+      const p = this.registry.tamedMove[this.own.kind] ?? this.move!;
+      this.footBefore.copy(this.own);
+      if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, p, combat, TICK_DT, true, !pilot);
+      else stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, p, TICK_DT);
+      this.meetVehicles(t, p);
+    } else { this.own.yaw = inp.yaw[i]!; this.own.jetThrust = 0; }
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];
@@ -1049,11 +1131,59 @@ export class ClientSession {
     this.bodyTick[t & (HISTORY - 1)] = t;
   }
 
+  /**
+   * The body on foot, stepping tick `t`, meets the vehicles of the newest snapshot as the server meets them
+   * (shared/sim/foot-contact.ts). The server meets each where it stands as the body steps, after tick t - 1 for one
+   * nobody drives. One that stands is where the snapshot has it, to the bit; one that moves is carried on as the
+   * snapshots before showed it going.
+   */
+  private meetVehicles(t: number, p: MoveParams): void {
+    const world = this.world!;
+    if (this.feetWorld !== world) {
+      this.feet = new FootContacts(world, this.registry);
+      this.feetWorld = world;
+      this.footTick = -1;
+    }
+    const list = this.footVehicles, at = this.latestSnapshot;
+    if (this.footTick !== at) {
+      this.footTick = at;
+      list.count = 0;
+      const v = this.drawn.find(at);
+      let back = 0, old: EntityView | null = null;
+      for (let k = 4; k > 0 && !old; k--) if (at > k) { old = this.drawn.find(at - k); back = k; }
+      if (v) for (let j = 0, k = 0; j < v.count; j++) {
+        if (!this.registry.vehicle[v.kind[j]!] || (v.flags[j]! & (F_PROP >>> 1)) !== 0) continue;
+        const n = list.count;
+        list.push(v.kind[j]!, dequantX(v.qx[j]!), dequantY(v.qy[j]!), dequantX(v.qz[j]!), v.vehiclePose[j]!, v.vehicleAttitudeA[j]!, v.vehicleAttitudeB[j]!);
+        if (this.footFrom.length < n * 3 + 3) {
+          const from = new Float64Array(n * 6), rate = new Float64Array(n * 6);
+          from.set(this.footFrom); rate.set(this.footRate); this.footFrom = from; this.footRate = rate;
+        }
+        this.footFrom[n * 3] = list.x[n]!; this.footFrom[n * 3 + 1] = list.y[n]!; this.footFrom[n * 3 + 2] = list.z[n]!;
+        this.footRate[n * 3] = this.footRate[n * 3 + 1] = this.footRate[n * 3 + 2] = 0;
+        // Both views are in ascending id, so the older one is walked once.
+        while (old && k < old.count && old.id[k]! < v.id[j]!) k++;
+        if (!old || k === old.count || old.id[k] !== v.id[j] || old.gen[k] !== v.gen[j]) continue;
+        const dx = (v.qx[j]! - old.qx[k]!) / (POS_UNITS * back), dy = (v.qy[j]! - old.qy[k]!) / (POS_UNITS * back), dz = (v.qz[j]! - old.qz[k]!) / (POS_UNITS * back);
+        // A jump is a vehicle placed, not driven.
+        if (dx * dx + dy * dy + dz * dz > 4) continue;
+        this.footRate[n * 3] = dx; this.footRate[n * 3 + 1] = dy; this.footRate[n * 3 + 2] = dz;
+      }
+    }
+    const ahead = Math.max(0, Math.min(TICK_RATE, t - 1 - at));
+    for (let i = 0; i < list.count; i++) {
+      list.x[i] = this.footFrom[i * 3]! + this.footRate[i * 3]! * ahead;
+      list.y[i] = this.footFrom[i * 3 + 1]! + this.footRate[i * 3 + 1]! * ahead;
+      list.z[i] = this.footFrom[i * 3 + 2]! + this.footRate[i * 3 + 2]! * ahead;
+    }
+    this.feet!.meet(this.footBefore, this.own, p, list);
+  }
+
   private sendInputs(newest: number, sampled: number): void {
     // Every freshly sampled tick must be sent, including a short tap at the start of a catch-up frame.
     // The existing wire count holds eight ticks, the same bound as one update's simulation work.
     let count = 1;
-    while (count < Math.max(INPUT_REDUNDANCY, sampled) && this.inputs.has(newest - count)) count++;
+    while (count < Math.max(INPUT_REDUNDANCY, sampled) && newest - count > this.heldTo && this.inputs.has(newest - count)) count++;
     const w = this.w;
     w.reset();
     // The last argument is how far behind the newest snapshot remote entities were drawn when the newest input was sampled.
@@ -1118,8 +1248,10 @@ export class ClientSession {
       }
     }
     else if (type === S_REJECT) {
+      const was = this.state;
       this.state = "closed";
       this.closeReason = r.u8();
+      if (was === "active") this.prediction.closed(this, `the server put it out (${this.closeReason})`);
       if (this.closeReason === REJECT_TRAVEL) this.closeText = r.string(MAX_SERVER_TEXT_BYTES);
       this.welcomedNow();
     } else if (type === S_TRAVEL) {
@@ -1528,6 +1660,7 @@ export class ClientSession {
     this.tickClock = tick + INITIAL_LEAD;
     this.simTick = tick + INITIAL_LEAD;
     this.renderClock = tick;
+    this.joined = tick;
     this.state = "active";
     this.predicting = this.groundHeld();
     this.welcomedNow();
@@ -1539,8 +1672,20 @@ export class ClientSession {
    * its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
    */
   staticsArrived(statics: MapStatics, whole = true): void {
+    const steps = this.staticsSteps(statics, whole);
+    while (!steps.next().done);
+  }
+
+  /**
+   * staticsArrived a step at a time (CityStatics.steps), for a page that lets frames go between them: what it changes of
+   * this session and its world is changed at the last step.
+   */
+  *staticsSteps(statics: MapStatics, whole = true): Generator<void, void> {
+    const world = this.world, reg = this.registry;
+    const city = world && !this.opts.city ? yield* CityStatics.steps(world.dims, statics, reg) : null;
+    this.prediction.handed++;
     if (whole) this.arrived = statics;
-    this.startCity(statics, true);
+    this.startCity(statics, true, world === this.world && reg === this.registry ? city : null);
   }
 
   /**
@@ -1552,11 +1697,11 @@ export class ClientSession {
     return (this.heldCity ??= new CityStatics(this.world.dims, (this.arrived ?? this.opts.statics)!, this.registry));
   }
 
-  /** The far city of `statics`, where the world has none or, `again`, in place of the one it has. */
-  private startCity(statics: MapStatics | null, again = false): void {
+  /** The far city of `statics`, `made` where it is made already, where the world has none or, `again`, in place of the one it has. */
+  private startCity(statics: MapStatics | null, again = false, made: CityStatics | null = null): void {
     const world = this.world;
     if (!world || (world.city && !again)) return;
-    const city = this.opts.city?.(this.registry) ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
+    const city = this.opts.city?.(this.registry) ?? made ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
     if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
   }
 
@@ -1564,12 +1709,15 @@ export class ClientSession {
     const tick = r.u32();
     const age = r.u8();
     const margin = r.sbits(8);
+    const given = r.bool() ? r.u16() : 0;
+    const carried = r.bool() ? r.bits(BUTTON_BITS) : 0;
     const state = r.bits(2);
     const driving = r.varint() - 1;
     const sb = this.serverBody;
     readBody(r, sb);
     if (r.overflow || tick <= this.latestSnapshot) return;
     if (!readContacts(r, this.contactSnapshot, tick, this.world?.hf.sizeX, this.world?.hf.sizeZ)) { this.stats.undecodable++; return; }
+    const gapMs = this.snapshotAt < 0 ? 0 : this.lastNow - this.snapshotAt;
     this.snapshotAt = this.lastNow;
 
     const base = age > 0 ? this.views.find(tick - age) : null;
@@ -1593,6 +1741,7 @@ export class ClientSession {
     for (const id of dying) if (!this.died.has(id)) this.died.set(id, tick);
     for (const [id, at] of this.died) if (tick - at > DIED_KEPT) this.died.delete(id);
     if (this.latestSnapshot > 0) this.noteGap(tick);
+    this.previousSnapshot = this.latestSnapshot;
     this.latestSnapshot = tick;
     this.needFull = false;
     this.sessionState = state;
@@ -1600,13 +1749,24 @@ export class ClientSession {
     this.treeDriver = 0;
     for (let i = 0; i < next.count; i++) if (next.id[i] === driving) { this.treeDriver = makeHandle(driving, next.gen[i]!); break; }
     this.stats.snapshots++;
+    this.prediction.snapshot(tick, margin, gapMs, tick - this.previousSnapshot);
     // The inputs sent again are ones the server has, so this says only which snapshot came.
     if (this.sentInput > 0 && tick - this.sentAck >= QUIET_TICKS) this.sendInputs(this.sentInput, 1);
 
-    // Render clock follows the newest server tick, smoothly unless far off.
+    // Render clock follows the newest server tick, smoothly unless far off. Ahead of it, as when the server stalled, it
+    // comes back no further than keeps what is drawn from going back.
     const lag = tick - this.renderClock;
-    if (lag > 6 || lag < -6) this.renderClock = tick;
+    if (lag > 6) this.renderClock = tick;
+    else if (lag < -6) this.renderClock = Math.max(tick, this.shown + this.remoteDelay);
     else this.renderClock += lag * 0.1;
+
+    // The server's loop gave ticks up, and its clock is that much behind where it was: this one moves back as many at
+    // once. The inputs sent past the new time stand, and the server will step them.
+    const shift = ((given - this.given) << 16) >> 16;
+    if (shift > 0) {
+      this.given = given;
+      this.jump(-shift, true);
+    }
 
     // Until an input of its own reaches the server there is no margin to steer by. A page that stalled as it joined, a
     // great landmark's files coming, is behind the server by then and samples no input at all, so it would never have
@@ -1646,36 +1806,24 @@ export class ClientSession {
           }
         }
         // Far off is every input late for a quarter second, or every one early. That moves the best of them, or the worst, to
-        // the target. Late inputs the client did not send, a page stopped or a clock behind, are a reason to jump. Late
-        // inputs it sent that the line holds back are not: then the server lacks more of those sent than it did, as it
-        // never does while it lacks only those not sent.
+        // the target. Late inputs the client did not send are a reason to jump, but only at the next frame: a page that
+        // stopped drawing sends none either, and the long frame that ends the stop puts its clock right. Late inputs it
+        // sent that the line holds back are not: then the server lacks more of those sent than it did, as it never does
+        // while it lacks only those not sent.
         const behind = n >= 4 && nowHi < 0 && !(most > least + STALL_TICKS);
-        if (behind || (n >= 4 && nowLo >= TARGET_MARGIN + 7)) {
-          this.marginAt.fill(0);
-          this.tickClock += TARGET_MARGIN - (behind ? nowHi : nowLo);
-          this.dilation = 1;
-          this.stats.clockJumps++;
-          // Simulated far past the new time. Waiting for the clock would freeze the player, so start again here.
-          // The next snapshot supplies the body. Short of that, the inputs already sent stand, and the server's margin is
-          // the newest of them until one past them is sent on the new clock.
-          const at = Math.floor(this.tickClock);
-          let from = Math.max(at, this.sentInput);
-          if (this.simTick - at > TICK_RATE) {
-            this.simTick = from = at;
-            this.bodyTick.fill(0);
-            this.inputs.tick.fill(0);
-          }
-          // Ignore feedback until snapshots can reflect this jump. That is a round trip, capped at a second
-          // because the estimate is unreliable just after a jump.
-          const wait = Math.ceil(this.stats.rttTicks);
-          this.guardTick = from + (wait < 0 ? 0 : wait > TICK_RATE ? TICK_RATE : wait) + 2;
-        } else {
+        if (behind) this.lateBy = TARGET_MARGIN - nowHi;
+        // Early, the server holds every input sent unless a margin was a bound: then some were past its window.
+        else if (n >= 4 && nowLo >= TARGET_MARGIN + 7) this.jump(TARGET_MARGIN - nowLo, nowHi < 127);
+        else {
+          this.lateBy = 0;
           const e = Math.min(TARGET_MARGIN - lo, MARGIN_CAP - hi);
           this.dilation = 1 + (e > 2 ? 2 : e < -1 ? -1 : e) * 0.01;
         }
       }
     }
 
+    // The server stepped this tick with buttons of an input of this page's that came after its own tick: so does a replay.
+    if (carried !== 0 && this.inputs.has(tick)) this.inputs.buttons[tick & this.inputs.mask] |= carried;
     const discontinuity = this.vehicleContacts?.accept(this.contactSnapshot, sb, this.simTick, this.alpha);
     this.reconcile(tick, sb);
     if (discontinuity) {
@@ -1683,6 +1831,39 @@ export class ClientSession {
       this.vehicleCorrection.reset();
     }
     this.vehicleContacts?.finishReplay(this.alpha);
+  }
+
+  /**
+   * Moves the input clock `by` ticks at once. With `keep` the server holds every input sent and will step each, so the
+   * page keeps them and samples none of those ticks again, as far as its history reaches. Without, simulated far past the
+   * new time, waiting for the clock would freeze the player, so it starts again there and the next snapshot supplies the
+   * body. Short of that, the inputs already sent stand, and the server's margin is the newest of them until one past them
+   * is sent on the new clock.
+   */
+  private jump(by: number, keep = false): void {
+    this.tickClock += by;
+    this.stats.clockJumps++;
+    this.prediction.jump(this.latestSnapshot, by, by > 0);
+    const at = Math.floor(this.tickClock);
+    let from = Math.max(at, this.sentInput);
+    if (this.simTick - at > (keep ? HISTORY - 1 : TICK_RATE)) {
+      this.simTick = from = at;
+      this.bodyTick.fill(0);
+      this.inputs.tick.fill(0);
+    }
+    this.ignoreMargins(from);
+  }
+
+  /**
+   * Ignores margins until snapshots can reflect inputs sent from tick `from` on. That is a round trip, capped at a second
+   * because the estimate is unreliable just after a jump.
+   */
+  private ignoreMargins(from: number): void {
+    this.marginAt.fill(0);
+    this.dilation = 1;
+    this.lateBy = 0;
+    const wait = Math.ceil(this.stats.rttTicks);
+    this.guardTick = from + (wait < 0 ? 0 : wait > TICK_RATE ? TICK_RATE : wait) + 2;
   }
 
   /** On a mismatch with the body predicted for `tick`, rewinds and replays. */
@@ -1728,28 +1909,25 @@ export class ClientSession {
     // Even an exact own-body baseline can have newer target facts that change the future replay.
     const replayContacts = this.registry.vehicle[sb.kind] && this.vehicleContacts?.needsReplay;
     if (matches && !passenger && !replayContacts) return;
-    if (predicted && !matches && this.prediction.enabled) {
-      const i = tick & this.inputs.mask;
-      this.prediction.record(tick, this.simTick, this.stats.margin, this.driving, compared, sb,
-        [this.inputs.moveX[i]!, this.inputs.moveZ[i]!, this.inputs.buttons[i]!, this.inputs.yaw[i]!, this.inputs.pitch[i]!]);
-    }
     const moved = !predicted || !compared.samePosition(sb);
     // The server changed which body this is or where it sits (a mount, a seat, getting out, being pulled out), or what the
     // vehicle it drives carries (someone getting in or out of it, its hold changed). Nothing
     // predicts when the server commits one, so it is no misprediction; it is taken as told and shown at once.
     const changed = predicted && (compared.kind !== sb.kind || compared.vehicle !== sb.vehicle || compared.seat !== sb.seat || compared.seatSlot !== sb.seatSlot || compared.seatGen !== sb.seatGen || compared.vehiclePayloadMass !== sb.vehiclePayloadMass);
+    if (predicted && !matches && this.prediction.enabled) {
+      const i = tick & this.inputs.mask;
+      const input = [this.inputs.moveX[i]!, this.inputs.moveZ[i]!, this.inputs.buttons[i]!, this.inputs.yaw[i]!, this.inputs.pitch[i]!];
+      this.prediction.record(tick, this.simTick, this.stats.margin, this.driving, compared, sb, input);
+      this.prediction.corrected(this, tick, this.previousSnapshot, changed ? "seat" : moved ? "moved" : "state", compared, sb, input, this.heldAt(sb.x, sb.z));
+    }
     if (predicted && !matches) {
       if (changed) this.stats.transitions++;
       else if (moved) this.stats.corrections++;
       else this.stats.stateCorrections++;
     }
-    if (this.simTick - tick >= HISTORY) {
-      this.own.copy(sb);
-      this.ownPrev.copy(sb);
-      this.smoothX = this.smoothY = this.smoothZ = 0;
-      this.vehicleCorrection.reset();
-      return;
-    }
+    // Older than the prediction's history, as the first snapshots after a server's long stall are: nothing to compare or
+    // replay from, and the snapshots that follow are within it.
+    if (this.simTick - tick >= HISTORY) return;
     const vehicle = !!this.registry.vehicle[this.own.kind];
     const alpha = vehicle ? this.alpha : 1;
     const wasX = this.ownPrev.x + (this.own.x - this.ownPrev.x) * alpha;
@@ -1769,6 +1947,7 @@ export class ClientSession {
       if (this.inputs.has(t)) {
         last = t;
         gap = 0;
+        pilot = this.letGo[t & (HISTORY - 1)] === 0;
       } else if (last !== 0) {
         const i = last & this.inputs.mask;
         // Past the hold the server stops a quiet car on its handbrake (server/game.ts); replay the same.
@@ -1777,8 +1956,12 @@ export class ClientSession {
         const quiet = vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : this.inputs.buttons[i]! & INPUT_KEPT;
         pilot = held;
         this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, held ? this.inputs.buttons[i]! & BUTTON_MASK : quiet);
+        this.letGo[t & (HISTORY - 1)] = held ? 0 : 1;
         last = t;
-      } else this.inputs.set(t, 0, 0, Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff, 0, 0);
+      } else {
+        this.inputs.set(t, 0, 0, Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff, 0, 0);
+        this.letGo[t & (HISTORY - 1)] = 0;
+      }
       if (t === this.simTick) this.ownPrev.copy(this.own);
       this.step(t, pilot);
     }

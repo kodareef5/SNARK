@@ -8,7 +8,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
-import type { Get } from "../../client/core/fetched.ts";
+import { nextTask, type Get } from "../../client/core/fetched.ts";
 import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, StagedMap, URGENT_AT_ONCE, firstFrameParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
@@ -20,7 +20,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_CHUNKS, mapHeightfield, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatics, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
-import { cornerMap, wideMap } from "../fixtures/map.ts";
+import { cornerMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { nodePack, nodeRegistry } from "../fixtures/nodeworld.ts";
 
 /** wideMap with a landmark, whose definitions are its land part, and none of its nodes listed (see the test of those below). */
@@ -393,6 +393,33 @@ test("a part that fails once, three times or for good, before the first frame or
       }
     }
   }
+});
+
+test("a sector's statics are set in the whole map's as they come, a pause after each slice read and each slice set; the hand-over's own steps are taken with a pause between, by a message the page sends itself, to their end", async () => {
+  // Three slices of pieces and some in one sector: each slice is a step as it is read and as it is set in its chunks.
+  const statics = Array.from({ length: 100000 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:floor", x: (i % 250) + 0.5, y: 33, z: Math.floor(i / 400) + 0.5, yaw: (i * 64) & 0xffff }));
+  const big = writeMap(flatMap(4, { statics }));
+  const all = parseMap(big);
+  const channel = new MessageChannel();
+  let pauses = 0;
+  const pause = nextTask(channel);
+  const s = heldServer(big);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${readHead(big).name}`, { ...NOW, pause: () => (pauses++, pause()) }).then((l) => (loader = l));
+  await s.drain();
+  const handed: [MapStatics, boolean, number][] = [];
+  function* arriving(t: MapStatics, whole: boolean): Generator<void, void> {
+    for (let k = 0; k < 5; k++) yield;
+    handed.push([t, whole, pauses]);
+  }
+  void loader!.follow(() => ({ x: 100, z: 100, vx: 0, vz: 0 }), { arriving });
+  await s.drain();
+  for (let k = 0; k < 200 && handed.length === 0; k++) await settle();
+  channel.port1.close();
+  // Read and set, three steps each; then the hand-over's five: the whole map's, the sector being all of it.
+  expect([handed.length, handed[0]![1], handed[0]![2]]).toEqual([1, true, 3 + 3 + 5]);
+  const t = handed[0]![0];
+  expect([t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([all.statics.first, all.statics.kind, all.statics.x, all.statics.y, all.statics.z, all.statics.yaw]);
 });
 
 test("a part that comes damaged or as another's is refused by name and asked for again; the third time the map is broken: before the first frame the page fails saying which, after it the player is told and the statics never come", async () => {

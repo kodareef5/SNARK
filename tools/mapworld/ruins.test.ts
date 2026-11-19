@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
-import { existsSync, readdirSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { ShapeDef, StructureDef } from "../../shared/content/defs.ts";
 import { TICK_DT } from "../../shared/coords.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
 import { flatWorld } from "../../tests/fixtures/world.ts";
 import { gridAt } from "./base.ts";
@@ -10,7 +12,7 @@ import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { layout, stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
-import { BREAK_AT, RUIN_BREAKS, RUIN_SHAPES } from "../../content/ruins.ts";
+import { BREAK_AT, RUIN_BLOCKS, RUIN_BREAKS, RUIN_SHAPES } from "../../content/ruins.ts";
 import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
 import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
@@ -331,6 +333,53 @@ test("a facade module is walked as its few boxes and drawn with its parts in the
   expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 104, 113]);
 });
 
+test("a roof's shrub stands on what it grows from: its plant's foot at its origin, on the planter's top or the roof", () => {
+  // The plant is the creeper's, whose foot is at its origin as a node's on the ground is, its roots a little below.
+  const plants = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/nodes/plants/plants.snpk", import.meta.url))));
+  const creeper = plants.header.meshes.find((m) => m.id === "core:creeper_3")!;
+  const foot = creeper.center[1] - creeper.half[1];
+  expect([foot > -0.3, foot <= 0.05]).toEqual([true, true]);
+  // So the kind is drawn at its shape's origin with its box standing on it.
+  const kind = RUIN_BLOCKS.find((d) => d.id === "core:zruin_zshrub_concrete") as StructureDef;
+  const shape = RUIN_BLOCKS.find((d) => d.type === "shape" && d.id === kind.shape) as ShapeDef;
+  expect([kind.mesh, shape.boxes.map((b) => b.at[1] - b.half[1])]).toEqual(["core:creeper_3", [0]]);
+  // And a roof's garden sets it down at its foot, on its planter's top or on the roof beside it, as a broken roof's tuft
+  // is on that roof: at a storey's height.
+  const v = vocabulary(source);
+  let shrubs = 0;
+  for (let seed = 0; seed < 40; seed++) {
+    const m = new Mason(frame(0), 0);
+    layout(m, { ...rule, recipe: "shop", height: 8, finish: "limestone", form: v.forms.shop, formName: "shop", roofGrowth: 1 }, { seed, playable: 8, detail: 0 });
+    const covers = m.pieces.filter((p) => p.kind.includes("_zcover_"));
+    for (const p of m.pieces.filter((q) => q.kind.includes("_zshrub_"))) {
+      shrubs++;
+      expect([p.y, covers.some((c) => Math.abs(c.y + 0.55 - p.y) < 1e-6) || Math.abs(p.y / 4 - Math.round(p.y / 4)) < 1e-6]).toEqual([p.y, true]);
+    }
+  }
+  expect(shrubs).toBeGreaterThan(0);
+});
+
+test("a hanging slab hangs from its bay's roof, which a tower's top may have brought lower", () => {
+  const v = vocabulary(source);
+  const f: Frame = { ...frame(0), width: 48, depth: 40, rings: [[[-24, -20], [24, -20], [24, 20], [-24, 20], [-24, -20]]] };
+  let plates = 0;
+  for (const [form, height] of [["apartment", 156], ["office", 64]] as const) {
+    for (let seed = 0; seed < 12; seed++) {
+      const m = new Mason(f, 0);
+      layout(m, { ...rule, recipe: "tower", height, finish: "concrete", form: v.forms[form], formName: form, collapse: "hanging", damage: v.damage.hanging, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 16, detail: 0 });
+      const hung = m.pieces.filter((p) => p.kind.includes("_plate30_"));
+      const walls = m.pieces.filter((p) => !p.kind.includes("_plate30_") && !p.kind.includes("_zcore_"));
+      for (const p of hung) {
+        plates++;
+        const top = p.y + RUIN_SHAPES.plate30[1] / 2;
+        // Its top at a storey's height, and its bay's roof there with it.
+        expect([seed, Math.abs(top / 4 - Math.round(top / 4)) < 1e-6, walls.some((w) => Math.abs(w.x - p.x) < 12 && Math.abs(w.z - p.z) < 12 && w.y > top - 4 && w.y < top + 1)]).toEqual([seed, true, true]);
+      }
+    }
+  }
+  expect(plates).toBeGreaterThan(0);
+});
+
 test("moss lies only along a parapet's coping, never over a broken wall's slab ends or a party wall", () => {
   const v = vocabulary(source);
   const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
@@ -362,18 +411,24 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     layout(m, { ...rule, recipe: "apartment", height: 24, finish: "limestone", form: v.forms.apartment, formName: "apartment", collapse: "shear", damage: v.damage.shear, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 8, detail: 0 });
     const on = (name: string): { y: number }[] => m.pieces.filter((p) => shape(p) === name);
     // Six storeys, the front and back six bays long, a corner failed: the same bay on the four floors between ground and
-    // top, all but the bay beside the failure whole on each; there the balcony fell, its slab's end tipped into the gap.
+    // top, all but the bays beside the failure whole on each. There, the bay next to the gap is stripped to its columns
+    // and the one beyond is bare of its balcony, each with its slab's end tipped into the gap.
     const floors = new Map<number, number>();
-    for (const p of [...on("zbalc"), ...on("zbalcrail"), ...on("zbalcbare")].filter((p) => p.y < 20)) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
+    // A sagging slab's end on the fronts, which hangs below its floor, so it is counted a metre up.
+    const sags = m.pieces.filter((p) => shape(p) === "zendsag" && Math.abs(p.z - f.z) > 12).map((p) => ({ y: p.y + 1 }));
+    for (const p of [...on("zbalc"), ...on("zbalcrail"), ...sags].filter((p) => p.y < 20)) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
     expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
     expect([...floors.values()].every((n) => n === 11)).toBe(true);
     expect(on("zbalcbare").length).toBeGreaterThan(0);
-    expect(on("zendsag").length).toBeGreaterThanOrEqual(on("zbalcbare").length);
+    expect(sags.length).toBeGreaterThan(on("zbalcbare").length);
+    // Over the stripped bay a fallen balcony's slab hangs from the highest of its storeys, in one front of two.
+    if (seed === 3) expect(on("zdrape").length).toBeGreaterThan(0);
     expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
     // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub, as it
     // does beside the failure.
     const chipped = [...on("zbalc"), ...on("zbalcrail"), ...on("zbalcbare")].filter((p) => p.y > 20).length;
-    expect(on("zbalctop").length + chipped).toBe(11);
+    const stripped = sags.filter((p) => p.y > 20).length - on("zbalcbare").filter((p) => p.y > 20).length;
+    expect(on("zbalctop").length + chipped + stripped).toBe(11);
     expect(on("zbalctop").every((p) => p.y > 20)).toBe(true);
     expect(on("zcrown5").length + on("zcrown6").length).toBeGreaterThanOrEqual(chipped);
     // The short ends are blank, their top storey under a parapet; no loose balcony of the old kit is left.

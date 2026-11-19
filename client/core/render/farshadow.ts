@@ -20,7 +20,7 @@
 // only where its texels a metre are positive.
 
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
-import { cityTops, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { cityReach, cityTops, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { CityKinds, CityMaker } from "./citymake.ts";
@@ -302,6 +302,10 @@ export interface Standing {
  */
 const NEAR_SCAN = 6;
 
+/** Bytes of the first job's copy made in a frame, and the elements of a column copied a step. */
+const COPY_BYTES = 1 << 24;
+const COPY_SLICE = 1 << 20;
+
 /** Milliseconds from some fixed moment: the page's clock in a browser and under Bun. */
 const clock = (): number => (globalThis as { performance?: { now(): number } }).performance?.now() ?? Date.now();
 
@@ -330,6 +334,9 @@ export class FarShadow {
   private readonly skip: Uint8Array | null;
   private made = false;
   private away = false;
+  /** The first job's copy of the city and the ground while it is made, and once it is whole until it is sent. */
+  private copying: Generator<number, SolidJob> | null = null;
+  private copy: SolidJob | null = null;
   private asked = 0;
   /** goneVersion as the solid heights last took it, the chunks to make again, and whether the map was swept before them. */
   private readonly seen: Uint32Array;
@@ -359,8 +366,10 @@ export class FarShadow {
    */
   constructor(city: CityStatics, hf: Heightfield, standing: Standing, maker: CityMaker | null, held: (chunk: number) => boolean, own: Uint8Array | null = null) {
     this.city = city;
-    const skip = own ? Uint8Array.from(city.kind, (k) => own[k] ?? 0) : null;
-    this.skip = skip?.includes(1) ? skip : null;
+    const landmarks = own ? cityReach(city, own).landmarks : null;
+    let skip: Uint8Array | null = null;
+    for (const c of landmarks?.keys() ?? []) (skip ??= new Uint8Array(city.count)).set(landmarks!.get(c)!, city.first[c]!);
+    this.skip = skip;
     this.hf = hf;
     this.standing = standing;
     this.held = held;
@@ -403,7 +412,7 @@ export class FarShadow {
     this.follow();
     const swept = casts && (!this.map || this.stale || this.mapCell !== cell || this.mapSize !== size || tipMoves(this.mapSun, sun, this.mapRise) >= REMAKE * cell);
     const open = this.open.due(cell, now);
-    if (!this.away && (swept || open)) this.ask(cell, size, swept ? sun : null, open, now);
+    if (!this.away && (swept || open) && this.copied()) this.ask(cell, size, swept ? sun : null, open, now);
     this.take();
     if (cascades > 0) this.upload(p, budget);
     this.open.upload(p, budget, cell);
@@ -472,8 +481,8 @@ export class FarShadow {
       this.askedSize = size;
     }
     if (open) this.open.asked(cell, now);
-    const job: SweepJob = { id: ++this.asked, solid: this.made ? this.solid : null, ground: this.made ? this.ground : null, bare: this.made ? this.bare : null, make: this.made ? null : this.solidJob(), k: cell / TOP_CELL, size, sun: sun ? Array.from(sun) : null, open };
-    this.solid = this.ground = this.bare = null;
+    const job: SweepJob = { id: ++this.asked, solid: this.made ? this.solid : null, ground: this.made ? this.ground : null, bare: this.made ? this.bare : null, make: this.made ? null : this.copy, k: cell / TOP_CELL, size, sun: sun ? Array.from(sun) : null, open };
+    this.solid = this.ground = this.bare = this.copy = null;
     this.made = true;
     if (this.maker) {
       this.maker.sweep!(job);
@@ -490,16 +499,44 @@ export class FarShadow {
     this.got({ ...made, open: measure }, clock() - swept);
   }
 
-  /** What the solid heights are made from, copied to go to another thread: here they are made from the city as it is. */
-  private solidJob(): SolidJob | null {
-    if (!this.maker) return null;
+  /**
+   * Whether the first job's copy of what the solid heights are made from is whole, where they are made on another thread:
+   * a whole map's city and ground are a quarter of a gigabyte, copied COPY_BYTES a frame.
+   */
+  private copied(): boolean {
+    if (this.made || !this.maker || this.copy) return true;
+    const steps = (this.copying ??= this.solidSteps());
+    for (let bytes = 0, s = steps.next(); ; s = steps.next()) {
+      if (s.done) {
+        this.copy = s.value;
+        this.copying = null;
+        return true;
+      }
+      if ((bytes += s.value) >= COPY_BYTES) return false;
+    }
+  }
+
+  /**
+   * What the solid heights are made from, copied to go to another thread a slice at a time, each step giving its bytes;
+   * what is gone, as it is at the end.
+   */
+  private *solidSteps(): Generator<number, SolidJob> {
     const c = this.city;
+    const copy = function* <T extends Uint8Array | Uint16Array | Uint32Array | Float32Array>(from: T): Generator<number, T> {
+      const out = new (from.constructor as new (n: number) => T)(from.length);
+      for (let at = 0; at < from.length; at += COPY_SLICE) {
+        out.set(from.subarray(at, at + COPY_SLICE), at);
+        yield Math.min(COPY_SLICE, from.length - at) * from.BYTES_PER_ELEMENT;
+      }
+      return out;
+    };
+    const job = { first: yield* copy(c.first), kind: yield* copy(c.kind), yaw: yield* copy(c.yaw), x: yield* copy(c.x), y: yield* copy(c.y), z: yield* copy(c.z), skip: this.skip ? yield* copy(this.skip) : null, heights: yield* copy(this.hf.heights) };
     let gone: Uint8Array | null = null;
     for (let k = 0; k < chunkCount(c.dims); k++) {
       const g = this.standing.goneOf(k);
       if (g) (gone ??= new Uint8Array(c.count)).set(g, c.first[k]!);
     }
-    return { first: c.first.slice(), kind: c.kind.slice(), yaw: c.yaw.slice(), x: c.x.slice(), y: c.y.slice(), z: c.z.slice(), gone, skip: this.skip?.slice() ?? null, heights: this.hf.heights.slice() };
+    return { ...job, gone };
   }
 
   private take(): void {

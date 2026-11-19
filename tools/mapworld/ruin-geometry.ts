@@ -1,4 +1,4 @@
-import { finished, RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { finished, pieceMiddle, RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import type { Footprint, Site, StaticPiece } from "./statics.ts";
 
 export type Point = readonly [number, number];
@@ -167,13 +167,14 @@ export function reserveRoutes(m: Mason): number {
     if (["flight", "step", "landing", "floor4", "floor8", "floor16"].includes(name)) return true;
     if (!removable.has(name) && !entryPaths.length) return true;
     const [w, h, d] = RUIN_SHAPES[name]; const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    const mid = pieceMiddle(name, p.y);
     for (const points of [...(removable.has(name) ? paths : []), ...entryPaths]) for (let i = 1; i < points.length; i++) {
       const from = points[i - 1]!; const to = points[i]!; const length = Math.hypot(to.x - from.x, to.z - from.z);
-      if (Math.min(from.y, to.y) + .4 >= p.y + h / 2 || Math.max(from.y, to.y) + 2.2 <= p.y - h / 2) continue;
+      if (Math.min(from.y, to.y) + .4 >= mid + h / 2 || Math.max(from.y, to.y) + 2.2 <= mid - h / 2) continue;
       if (Math.min(from.x, to.x) - w - d > p.x || Math.max(from.x, to.x) + w + d < p.x || Math.min(from.z, to.z) - w - d > p.z || Math.max(from.z, to.z) + w + d < p.z) continue;
       for (let n = 0; n <= Math.ceil(length * 2); n++) {
         const t = n / Math.max(1, Math.ceil(length * 2)); const y = from.y + (to.y - from.y) * t;
-        if (p.y + h / 2 <= y + .4 || p.y - h / 2 >= y + 2.2) continue;
+        if (mid + h / 2 <= y + .4 || mid - h / 2 >= y + 2.2) continue;
         const dx = from.x + (to.x - from.x) * t - p.x; const dz = from.z + (to.z - from.z) * t - p.z;
         if (Math.abs(dx * c - dz * s) < w / 2 + .5 && Math.abs(dx * s + dz * c) < d / 2 + .5) return false;
       }

@@ -7,7 +7,7 @@ import { joinLandmark } from "../../shared/pack/join.ts";
 import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { soundFault, type ManifestSound } from "../../shared/pack/sound.ts";
-import { joinStatics, partSteps, readHead, type MapContent, type MapHead, type MapPart, type MapStatics, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { readHead, type MapContent, type MapHead, type MapPart } from "../../shared/world/mapfile.ts";
 
 export interface Answer {
   ok: boolean;
@@ -69,31 +69,6 @@ export function within<T>(url: string, read: () => T): T {
   }
 }
 
-/** A map's sectors' statics as fetched, for `readStatics`. */
-export interface FetchedStatics {
-  readonly head: MapHead;
-  readonly parts: readonly { readonly part: MapPart; readonly bytes: Uint8Array }[];
-}
-
-/**
- * The statics of a fetched map, each sector's read and then set in its chunks' rows a step at a time, a sector or a slice of
- * one a step, with `pause` between, so frames go on.
- */
-export async function readStatics({ head, parts }: FetchedStatics, pause: () => Promise<void>): Promise<MapStatics> {
-  const pieces: StaticsPiece[] = [];
-  for (const { part, bytes } of parts) {
-    const steps = partSteps(head, part, bytes);
-    let step = steps.next();
-    for (; !step.done; step = steps.next()) await pause();
-    pieces.push(step.value as StaticsPiece);
-    await pause();
-  }
-  const steps = joinStatics(head, pieces, false);
-  let step = steps.next();
-  for (; !step.done; step = steps.next()) await pause();
-  return step.value;
-}
-
 /** A map's whole file, as a program that reads one fetches it: its head and every part, put back together in their order. */
 export async function fetchMapFile(get: Get, url: string): Promise<Uint8Array> {
   const { head, bytes, at } = await fetchHead(get, url);
@@ -113,11 +88,19 @@ export interface TaskChannel {
   port2: { postMessage(message: null): void };
 }
 
+/** A page's own scheduler of tasks (`scheduler.postTask`), where it has one. */
+export interface TaskScheduler {
+  postTask(task: () => void): Promise<unknown>;
+}
+
 /**
- * A pause until the page's next task, by a message to itself. A timer set from a timer waits at least 4 ms once five are
- * nested, which a map's hundred or more steps would add up to.
+ * A pause until the page's next task: a task of the page's own scheduler where it has one, else a message to itself. A
+ * timer set from a timer waits at least 4 ms once five are nested, which a map's hundred or more steps would add up to;
+ * and Chrome hands a page's messages to itself on in one task while more keep coming, so the map's steps ran in tasks of
+ * 50 to 110 ms with no frame between them.
  */
-export function nextTask(channel: TaskChannel): () => Promise<void> {
+export function nextTask(channel: TaskChannel, scheduler = (globalThis as { scheduler?: TaskScheduler }).scheduler): () => Promise<void> {
+  if (scheduler) return () => scheduler.postTask(() => {}).then(() => {});
   const waiting: (() => void)[] = [];
   channel.port1.onmessage = () => waiting.shift()?.();
   return () =>

@@ -71,8 +71,8 @@ const FORMATS: Readonly<Record<string | number, readonly number[]>> = {
   8: [0x93d7, 0x93b7, 0x93b7],
   rgba: [0x8c43, 0x822b, 0x8058],
 };
-/** Frames that upload a frame that asks the card for an error: a want of memory is known within about 130 ms at 60 a second. */
-const ASK_EVERY = 8;
+/** The most ms a want of memory goes unknown on a card that never catches up with the page between two frames. */
+const ASK_MOST_MS = 5000;
 const RUNS = Math.max(MAX_DRAWS, MAX_CASTERS);
 
 export class GlRenderer {
@@ -90,6 +90,8 @@ export class GlRenderer {
   /** The light target's format and samples (post.ts), or 0 where the device has none. */
   light = 0;
   private samples = 0;
+  /** The most anisotropy the card filters with, 0 for none: asked once, since asking waits for the card. */
+  private mostAnisotropy = 0;
   /** What the light target is made of for a canvas: the scene's framebuffer, multisampled, then its resolved copy's and each bloom level's, with their textures. */
   private post = { size: "", fbs: [] as WebGLFramebuffer[], tex: [] as WebGLTexture[], bufs: [] as WebGLRenderbuffer[] };
   /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
@@ -157,10 +159,14 @@ export class GlRenderer {
   /** What was uploaded since the card was last asked for an error, and the frames that uploaded. */
   private readonly unaskedSlots: number[] = [];
   private readonly unaskedTextures: number[] = [];
-  private uploading = 0;
+  /** A fence at the end of the frame `askFrame`, set while uploads go unasked; when the first unasked one was made. */
+  private asking: WebGLSync | null = null;
+  private askFrame = 0;
+  private unaskedSince = -1;
   private readonly buffers = new Map<number, WebGLBuffer>();
-  /** The indices levels of quads share (packet.ts quadIndices), by the bytes of one. */
+  /** The indices levels of quads share (packet.ts quadIndices), by the bytes of one, and the bytes each holds: asking the card waits for it. */
   private readonly quads: WebGLBuffer[] = [];
+  private readonly quadBytes: number[] = [];
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
@@ -222,6 +228,7 @@ export class GlRenderer {
     this.formats = [...(has("EXT_texture_compression_bptc", "EXT_texture_compression_rgtc") ? ["bc" as const] : []), ...(has("WEBGL_compressed_texture_astc") ? ["astc" as const] : []), "rgba"];
     this.format = this.formats.find((f) => f === this.forced) ?? this.formats[0]!;
     this.shadowLookup = comparedLookup(gl);
+    this.mostAnisotropy = gl.getExtension("EXT_texture_filter_anisotropic") ? (gl.getParameter(0x84ff) as number) : 0;
     const most = (f: number): number => (gl.getExtension("EXT_color_buffer_float") ? ((gl.getInternalformatParameter(gl.RENDERBUFFER, f, gl.SAMPLES) as Int32Array | null)?.[0] ?? 0) : 0);
     this.light = LIGHT_FORMATS.find((f) => most(f) > 0) ?? 0;
     this.samples = this.light && Math.min(LIGHT_SAMPLES, most(this.light));
@@ -238,7 +245,8 @@ export class GlRenderer {
     gl.getExtension("KHR_parallel_shader_compile");
     this.multi = gl.getExtension("WEBGL_multi_draw");
     this.buffers.clear();
-    this.quads.length = 0;
+    this.quads.length = this.quadBytes.length = 0;
+    this.asking = null;
     this.textures.clear();
     this.making.clear();
     this.surfaces.clear();
@@ -359,7 +367,10 @@ export class GlRenderer {
       gl.vertexAttribIPointer(6, 1, gl.UNSIGNED_BYTE, VERTEX_BYTES, 7);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, u.quads ? (this.quads[u.indexBytes] ??= gl.createBuffer()!) : lod.buffers[1]!);
       if (!u.quads) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indexBytes, gl.STATIC_DRAW);
-      else if (gl.getBufferParameter(gl.ELEMENT_ARRAY_BUFFER, gl.BUFFER_SIZE) < u.indexCount * u.indexBytes) gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, quadIndices(u.indexCount, u.indexBytes), gl.STATIC_DRAW);
+      else if ((this.quadBytes[u.indexBytes] ?? 0) < u.indexCount * u.indexBytes) {
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, quadIndices(u.indexCount, u.indexBytes), gl.STATIC_DRAW);
+        this.quadBytes[u.indexBytes] = u.indexCount * u.indexBytes;
+      }
       for (let a = 2; a <= 5; a++) {
         gl.enableVertexAttribArray(a);
         gl.vertexAttribDivisor(a, 1);
@@ -453,7 +464,7 @@ export class GlRenderer {
 
   /** Reads the texture bound to `target` for the angle it is seen at, as far as the frame's tier asks and the card offers. */
   private anisotropy(target: number): void {
-    if (this.gl.getExtension("EXT_texture_filter_anisotropic")) this.gl.texParameterf(target, 0x84fe, Math.max(1, Math.min(this.warmed!.anisotropy, this.gl.getParameter(0x84ff) as number)));
+    if (this.mostAnisotropy > 0) this.gl.texParameterf(target, 0x84fe, Math.max(1, Math.min(this.warmed!.anisotropy, this.mostAnisotropy)));
   }
 
   /** Rows of a world finish's picture into its layer of its role's array, which is made at the side the frame asks when first written. */
@@ -643,18 +654,17 @@ export class GlRenderer {
       this.worldBase[r] = -2;
     }
     this.passes?.mark(PASS_UPLOADS);
-    for (const slot of p.assetDrops) this.drop(slot);
-    for (const u of p.assetUploads) {
-      if (u.of === undefined) this.take(u);
-      else this.takeSurface(u);
+    // Running out of memory shows as an error after the fact, and asking makes the page wait for the card to have done all
+    // it was given, which on a busy card is frames of work. So it is asked before this frame's uploads, where the card
+    // had finished the last frame by the time this one began, or after ASK_MOST_MS; a want of memory fails everything
+    // uploaded since the last ask.
+    const now = performance.now();
+    const caught = this.asking !== null && gl.getSyncParameter(this.asking, gl.SYNC_STATUS) === gl.SIGNALED;
+    const asked = (caught && this.askFrame === this.serial - 1) || (this.unaskedSince >= 0 && now - this.unaskedSince >= ASK_MOST_MS);
+    if ((caught || asked) && this.asking) {
+      gl.deleteSync(this.asking);
+      this.asking = null;
     }
-    for (const t of p.texDrops) this.forget(t);
-    for (const u of p.texUploads) this.fill(u);
-    // Running out of memory shows as an error after the fact, and asking makes the page wait for the card, so it is
-    // asked in one of every ASK_EVERY frames that upload, and a want of memory fails all they uploaded.
-    for (const u of p.assetUploads) this.unaskedSlots.push(u.slot);
-    for (const u of p.texUploads) if (!this.unaskedTextures.includes(u.slot)) this.unaskedTextures.push(u.slot);
-    const asked = p.assetUploads.length + p.texUploads.length > 0 && ++this.uploading % ASK_EVERY === 0;
     const error = asked ? gl.getError() : gl.NO_ERROR;
     if (error === gl.OUT_OF_MEMORY) {
       for (const slot of this.unaskedSlots) {
@@ -666,7 +676,20 @@ export class GlRenderer {
         this.failedTextures.push(t);
       }
     } else if (error !== gl.NO_ERROR) this.errors++;
-    if (asked) this.unaskedSlots.length = this.unaskedTextures.length = 0;
+    if (asked) {
+      this.unaskedSlots.length = this.unaskedTextures.length = 0;
+      this.unaskedSince = -1;
+    }
+    for (const slot of p.assetDrops) this.drop(slot);
+    for (const u of p.assetUploads) {
+      if (u.of === undefined) this.take(u);
+      else this.takeSurface(u);
+    }
+    for (const t of p.texDrops) this.forget(t);
+    for (const u of p.texUploads) this.fill(u);
+    for (const u of p.assetUploads) this.unaskedSlots.push(u.slot);
+    for (const u of p.texUploads) if (!this.unaskedTextures.includes(u.slot)) this.unaskedTextures.push(u.slot);
+    if (this.unaskedSince < 0 && this.unaskedSlots.length + this.unaskedTextures.length > 0) this.unaskedSince = now;
     // The whole map's pair again where the ground changed since it went on the card.
     for (const c = this.hf.changes; this.mapSeen < c.length; this.mapSeen += 4) {
       const a = coarseArea(this.hf, c[this.mapSeen]!, c[this.mapSeen + 1]!, c[this.mapSeen + 2]!, c[this.mapSeen + 3]!);
@@ -807,6 +830,10 @@ export class GlRenderer {
     this.vertexArray(null);
     this.array(null);
     gl.useProgram((this.current = null));
+    if (this.unaskedSince >= 0 && this.asking === null) {
+      this.asking = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      this.askFrame = this.serial;
+    }
     this.passes?.end();
   }
 

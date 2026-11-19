@@ -1,5 +1,5 @@
 import { launchKey,readLaunch } from "../core/entry-state.ts";
-import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK } from "../../shared/net/protocol.ts";
+import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 // Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
 
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -30,6 +30,7 @@ import { UiView } from "./ui.ts";
 import { ActivitySelfcheck } from "../core/activity-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
 import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
+import { CAPTURE_KEY, LightCapture, SAMPLE_H, SAMPLE_W } from "../core/light-capture.ts";
 
 declare const __CONTENT_FILE__: string;
 const params = new URLSearchParams(location.search);
@@ -116,6 +117,8 @@ async function boot(): Promise<void> {
   if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
   void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));
   session.prediction.enabled = selfcheck;
+  // A development world keeps the page's record of play from its first frame and is sent it off the game's socket (server/playlog.ts).
+  if (!device) void fetch("__play").then((r) => r.status === 204 && session.prediction.start((report) => void fetch("__play", { method: "POST", body: report, keepalive: true }).catch(() => {})), () => {});
   const skin = installSkin(app.ui.frame);
   void Object.assign(new Image(), { src: SKIN_URL }).decode().catch(() => Object.assign(skin, { ...skinPixels(), url: "" }));
   // A tool's look at a place takes its orders from the server the tool started for it, which alone answers /__look; on
@@ -151,6 +154,11 @@ async function boot(): Promise<void> {
     json: (name) => fetchJson(fetch, name),
   };
   const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes"), params.has("sync") ? () => performance.now() : null) : null);
+  // A development world's page captures the light it draws for ten seconds at F9, read back from a small copy of the
+  // canvas, and sends it with its record of play.
+  const light = new LightCapture(), copy = Object.assign(document.createElement("canvas"), { width: SAMPLE_W, height: SAMPLE_H }).getContext("2d", { willReadFrequently: true })!;
+  const say = (line: string): void => (console.log(line), app.ui.chat.print(TEXT_NOTICE, line, session.serverTick));
+  if (!measured) void fetch("__play").then((r) => r.status === 204 && addEventListener("keydown", (e) => e.code === CAPTURE_KEY && light.start(performance.now()) && say("Capturing the light of every frame for ten seconds")), () => {});
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
@@ -182,12 +190,12 @@ async function boot(): Promise<void> {
   }
   let restored = 0;
   if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress.frames, still: progress.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck.dinosaur?.data }) });
-  canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
+  canvas.addEventListener("webglcontextlost", (e) => (e.preventDefault(), session.prediction.note("the graphics context was lost")));
   canvas.addEventListener("webglcontextrestored", () => {
     renderer.init();
     app.scene?.resetUploads();
     app.pressure();
-    restored++;
+    session.prediction.note(`the graphics context was given back (${++restored} times)`);
   });
   /** With ?lose=1 the self-check takes the graphics context away and gives it back, and must still see its picture. */
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
@@ -230,6 +238,11 @@ async function boot(): Promise<void> {
     }
     if (packet.lit) surfaces?.start();
     renderer.draw(packet);
+    if (light.on) {
+      copy.drawImage(canvas, 0, 0, SAMPLE_W, SAMPLE_H);
+      const sent = light.frame(now, packet, app, copy.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data, { userAgent: navigator.userAgent, dpr: devicePixelRatio, renderer: renderer.rendererName, format: renderer.format });
+      if (sent) void Promise.all(sent.map((part) => fetch("__play", { method: "POST", body: part }).then((r) => r.ok, () => false))).then((ok) => say(ok.every(Boolean) ? `Light capture saved in the record of play, ${sent.length} parts` : `Light capture: ${ok.filter((o) => !o).length} of ${sent.length} parts not saved`));
+    }
     if(splash?.isConnected)splash.remove();
     if (renderer.failed.length + renderer.failedTextures.length > 0) {
       for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);
@@ -237,7 +250,7 @@ async function boot(): Promise<void> {
       app.pressure();
     }
     const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
-    app.drawn(packet, ours);
+    app.drawn(packet, ours, width, height);
     device?.frame(now, packet, t0, built);
     if (progress.frames === 30) loser?.loseContext();
     // The self-check asks for a call and listens for it leaving the volume.
@@ -269,7 +282,7 @@ async function boot(): Promise<void> {
   // on the console says when the map comes slowly, and the statics are handed over round the body and then whole.
   await session.welcomed;
   if(launch && session.state==="closed"){showEntryProblem();return;}
-  await loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arrived: (statics, whole) => session.staticsArrived(statics, whole), held: () => session.behind });
+  await loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arriving: (statics, whole) => session.staticsSteps(statics, whole), held: () => session.behind });
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   requestAnimationFrame(frame);

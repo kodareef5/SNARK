@@ -15,6 +15,7 @@ import {
   HELLO_SPECTATE,
   HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
   HELLO_TICKET,
+  BUTTON_BITS,
   INPUT_HOLD_TICKS,
   VEHICLE_HOLD_TICKS,
   INPUT_KEPT,
@@ -85,6 +86,8 @@ import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Place } from "./beds.ts";
+import { PART, TickParts } from "./admin/parts.ts";
+import { ServerFootContacts } from "./foot-contacts.ts";
 
 export interface GameOptions {
   /** In ticks. */
@@ -133,8 +136,14 @@ function sameText(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** Unreliable messages from one client per tick. The rest are dropped. */
+/**
+ * Unreliable messages from one client: this many a tick, and up to PACKETS_HELD at once, what a page sends at most, one a
+ * tick, in the ticks of input the server buffers, which a stalled loop reads in one go. The rest are dropped.
+ */
 const MAX_PACKETS_PER_TICK = 8;
+const PACKETS_HELD = INPUT_WINDOW;
+/** An input this many ticks older than a client's newest is from its clock started again, which a page does a second back (client/core/session.ts). */
+const RESTARTED = 16;
 /** Reliable messages from one client per tick. A command past this is answered busy, and anything else is a strike. */
 const MAX_RELIABLE_PER_TICK = 32;
 /** Malformed messages tolerated before disconnecting. */
@@ -276,6 +285,26 @@ export class Client {
   drawn = 0;
   private before = 0;
   newestInput = 0;
+  /** What GameServer.given was at its welcome: a snapshot tells it the ticks given up since. */
+  givenAt = 0;
+  /**
+   * The buttons each tick was stepped with, by its own tick. The buttons of an input that came after its tick, which that
+   * tick stepped without, are carried into the next tick stepped (`carry`), and its snapshot says so (`carried`), so a
+   * press is not lost to a late input and the page replays it where the server stepped it.
+   */
+  readonly stepped = new Uint16Array(INPUT_WINDOW);
+  readonly steppedAt = new Uint32Array(INPUT_WINDOW);
+  carry = 0;
+  carried = 0;
+  /** The oldest tick a late input may carry from: a press more than a second late is let go, its moment past. */
+  lateFrom = 0;
+  /** For readInputs: the buttons of an input for `tick`, which has been stepped. */
+  readonly late = (tick: number, buttons: number): void => {
+    const k = tick & (INPUT_WINDOW - 1);
+    if (tick < this.lateFrom || this.steppedAt[k] !== tick) return;
+    this.carry |= buttons & ~this.stepped[k]!;
+    this.stepped[k] |= buttons;
+  };
   /** Newest snapshot the client says it decoded. */
   ackTick = 0;
   /** High-water mark even while an ACK of zero requests a fresh full snapshot. */
@@ -366,6 +395,8 @@ export class Client {
     this.inputs.tick.fill(0);
     this.vehicleSeatSnapshot = this.vehicleSeatSnapshot === 0 ? 0 : -1;
     this.heldX = this.heldZ = this.heldButtons = 0;
+    this.carry = this.carried = 0;
+    this.steppedAt.fill(0);
     this.newestInput = this.highestAck = this.ackTick = this.lastSnapshot = 0;
     this.views.clear();
     this.known.fill(0);
@@ -472,6 +503,11 @@ export class GameServer {
   onVehicleStep: ((e: number) => void) | null = null;
   /** The host adds resource contacts around this same shared vehicle step. */
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
+  /** Where each tick's time went, part by part (server/admin/parts.ts). The host marks the parts of its step in it. */
+  readonly parts = new TickParts();
+  /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
+  readonly feet: ServerFootContacts;
+  private readonly footBefore = new Body();
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -491,6 +527,16 @@ export class GameServer {
   /** For each of those lists, each entry's place in the order it was chosen in. A client is sent the entries below its cap. */
   private readonly ranks: Uint16Array[] = [];
   private gathered = 0;
+  /**
+   * Ticks the loop (server/main.ts) was behind its clock as the tick about to run began. The loop sets it before each
+   * tick, so that a wrapper of `tick` cannot lose it. A margin is told against the tick due, so a page's clock keeps to
+   * the loop's clock while the loop catches up.
+   */
+  behind = 0;
+  /** Ticks the loop gave up since the start. */
+  private given = 0;
+  /** The tick due when snapshots last went out. While the loop catches up they go out at the clock's pace, not each tick's. */
+  private dueSent = 0;
   /** `opts.viewCap`, held to what a view can hold. */
   private readonly cap: number;
   /** Per chunk: the tick `around[aroundAt]` was gathered for it. */
@@ -515,6 +561,7 @@ export class GameServer {
   constructor(world: ServerWorld, opts: Partial<GameOptions> = {}) {
     this.world = world;
     this.opts = { ...DEFAULTS, ...opts };
+    this.feet = new ServerFootContacts(world);
     this.clients = new Array(this.opts.maxClients).fill(null);
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
     // Removes are sent whatever they cost, 6.7 KB for 2,048 of them, and an update can take two bytes more than it was budgeted at.
@@ -548,16 +595,26 @@ export class GameServer {
     return c.drive >= 0 && this.world.reg.vehicle[this.world.ents.kind[c.drive]!] ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS;
   }
 
+  /** Ticks the loop gave up: every page is told, and moves its clock back as many. */
+  giveUp(ticks: number): void {
+    this.given += ticks;
+    this.dueSent -= ticks;
+  }
+
   tick(): void {
     const world = this.world;
     const ents = world.ents;
     const T = ++world.tick;
+    const behind = this.behind;
+    const parts = this.parts;
+    parts.begin();
 
     this.onBeforeStep?.();
+    parts.mark(PART.before);
 
     for (const c of this.clients) {
       if (!c) continue;
-      c.packets = 0;
+      c.packets = Math.max(0, c.packets - MAX_PACKETS_PER_TICK);
       c.reliable = 0;
       if (!c.active) continue;
       const inputs = c.inputs;
@@ -581,6 +638,12 @@ export class GameServer {
           c.heldButtons &= INPUT_KEPT;
         }
       }
+      c.carried = c.closed ? 0 : c.carry;
+      c.heldButtons |= c.carried;
+      c.carry = 0;
+      c.stepped[T & (INPUT_WINDOW - 1)] = c.heldButtons;
+      c.steppedAt[T & (INPUT_WINDOW - 1)] = T;
+      c.lateFrom = T - TICK_RATE;
       c.edges();
       if (c.ent >= 0 && ents.seatSlot[c.ent] === IMPALE_SLOT && ents.seat[c.ent] !== 0) {
         c.heldButtons = c.pressed = 0;
@@ -604,8 +667,10 @@ export class GameServer {
           this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
+          this.footBefore.copy(b);
           if (combat && driving) stepCreature(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, c.pressed, world.reg.tamedMove[b.kind]!, combat, TICK_DT, true, c.closed || T - c.inputAt > INPUT_HOLD_TICKS);
           else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
+          this.feet.meet(e, this.footBefore, b, world.reg.tamedMove[b.kind]!);
         } else { b.yaw = c.heldYaw; b.jetThrust = 0; stepOut.landSpeed = 0; }
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.
@@ -643,16 +708,22 @@ export class GameServer {
       }
       c.chunk = chunkAt(world.dims, b.x, b.z);
     }
+    parts.mark(PART.bodies);
 
     for (const c of this.clients) if (c?.active && c.queue.length > 0) this.runCommands(c);
     for (const c of this.clients) if (c?.closed && T >= c.lingerUntil) this.finalize(c);
     for (const p of this.pending) if (T - p.since >= HELLO_TICKS) this.turnAway(p, REJECT_MALFORMED);
+    parts.mark(PART.commands);
 
     this.onStep?.(T);
+    parts.mark(PART.save);
     // History records the world as this tick's snapshots show it.
     world.history.record(T);
+    parts.mark(PART.history);
 
-    const snap = T % this.opts.snapshotEvery === 0;
+    const every = this.opts.snapshotEvery;
+    const snap = behind > 0 ? T + behind >= this.dueSent + every : T % every === 0;
+    if (snap) this.dueSent = T + behind;
     this.gathered = 0;
     for (const c of this.clients) {
       if (!c?.active || c.closed) continue;
@@ -664,9 +735,13 @@ export class GameServer {
       }
       if (c.ownDirty) this.sendOwn(c);
       this.onReplicate?.(c);
+      parts.mark(PART.own);
       if (snap) this.snapshot(c, T);
+      parts.mark(PART.snapshot);
       this.syncChunks(c, T);
+      parts.mark(PART.chunks);
     }
+    parts.end(T);
   }
 
   /** Whether modules let a session open a box, a body or a creature's bag. A session refused is told why. */
@@ -1005,7 +1080,7 @@ export class GameServer {
     if (c.closed) return;
     let over = false;
     if (channel !== CH_RELIABLE) {
-      if (++c.packets > MAX_PACKETS_PER_TICK) {
+      if (++c.packets > PACKETS_HELD) {
         this.stats.throttled++;
         return;
       }
@@ -1031,12 +1106,12 @@ export class GameServer {
     const ack = r.u32();
     const behind = r.u8() / VIEW_STEPS;
     const validAck = ack >= c.highestAck && ack <= c.lastSnapshot && c.views.find(ack) ? ack : 0;
-    const newest = readInputs(r, c.inputs, this.world.tick, validAck, behind, c.inputAcks);
+    const newest = readInputs(r, c.inputs, this.world.tick, validAck, behind, c.inputAcks, c.late);
     if (newest === 0) return false;
     if (newest <= this.world.tick) this.stats.lateInputs++;
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
-    // client its clock has run away. It moves backward only by a whole window, which is a restarted clock.
-    const fresh = newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW;
+    // client its clock has run away. It moves backward only by more than RESTARTED, which is a restarted clock.
+    const fresh = newest > c.newestInput || newest < c.newestInput - RESTARTED;
     if (fresh) {
       // A stream delivers in order, so an input arrives with the first message whose newest reaches it.
       for (let t = Math.max(newest > c.newestInput ? c.newestInput + 1 : 0, newest - INPUT_WINDOW + 1); t <= newest; t++) c.arrived[t & (INPUT_WINDOW - 1)] = this.world.tick;
@@ -1259,6 +1334,7 @@ export class GameServer {
   }
 
   private welcome(c: Client): void {
+    c.givenAt = this.given;
     const world = this.world;
     const ents = world.ents;
     const w = this.welcomeW;
@@ -1411,11 +1487,16 @@ export class GameServer {
     w.u8(base ? age : 0);
     // Before the first input there is no margin. Sending 0 - T would tell a client joining a
     // long-running world that it is hopelessly late.
-    let margin = c.newestInput - T;
+    let margin = c.newestInput - T - this.behind;
     if (c.newestInput === 0) margin = MARGIN_UNKNOWN;
     else if (margin < -127) margin = -127;
     else if (margin > 127) margin = 127;
     w.sbits(margin, 8);
+    const given = (this.given - c.givenAt) & 0xffff;
+    w.bool(given !== 0);
+    if (given !== 0) w.u16(given);
+    w.bool(c.carried !== 0);
+    if (c.carried !== 0) w.bits(c.carried, BUTTON_BITS);
     w.bits(c.state, 2);
     // 0 for its own body, else the index of the entity it drives plus one.
     w.varint(c.drive + 1);
