@@ -644,6 +644,13 @@ export class Residency {
     return t >= 0 && this.has[t]! >= 0;
   }
 
+  /** How many textures that can be had were shown this frame with no step of them on the card. */
+  bare(): number {
+    let n = 0;
+    for (let t = 0; t < this.has.length; t++) if (this.has[t]! < 0 && this.limit[t]! >= 0 && this.seen[this.texBase + t] === this.frame) n++;
+    return n;
+  }
+
   /** The last step of texture `t` (its index in the manifest) the card holds, or -1 for none. */
   holds(t: number): number {
     return this.has[t]!;

@@ -148,6 +148,15 @@ test("on a slow, lossy link a body turns from flat to its materials when the car
   expect([w.r.stats.requests - requests, w.r.flying, w.dropped]).toEqual([0, 0, { levels: 0, textures: 0 }]);
 });
 
+test("the textures shown without their first step are counted, every map of each body's materials at first, and none once each has its first step", () => {
+  const w = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 300 })));
+  w.frame(0);
+  expect(w.r.bare()).toBe(3 * MAPS);
+  const end = w.run(10, 0, 29.65);
+  w.run(2, end);
+  expect([w.settled(), w.r.bare()]).toEqual([true, 0]);
+});
+
 test("a level and its surface that would pass a frame's bytes together go up in two frames, and the level is drawn once its surface is there", () => {
   const [level, surface, skin] = SET.manifest.meshes[0]!.levels[0]!.parts.map((p) => p.bytes);
   const upload = level! + surface! + skin! - 1;

@@ -8,8 +8,11 @@
 // the first in which the far city is drawn; the last part; after the jump, the time until the body is predicted again,
 // until the ground the fine terrain draws is the map's own and until the street there is drawn; whether the failed part
 // came on a later ask and the map was whole at the end; and the page's heap and array memory at the statics' hand-over.
-// A picture is taken at each of those moments, into --out. The client must be built (bun run build). --dist names
-// another, --chrome the browser, and --no-fail fails no request.
+// A picture is taken at each of those moments, into --out. It prints too when the world's finishes were drawn and when
+// no texture on screen lacked its first step, both as they stood when the body went up, and what the server's tick took
+// and how late its loop ran, since a server that cannot keep its tick answers every file late. The link runs in a
+// process of its own, so its hops never wait on the server's loop. The client must be built (bun run build). --dist
+// names another, --chrome the browser, and --no-fail fails no request.
 
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,122 +54,25 @@ function headOf(path: string): MapHead {
   }
 }
 
-/**
- * A link to `port` on this machine, as a player's would be: what the server sends goes out over one line of `mbit`, each
- * connection given a slice in turn, and every byte either way comes `latency` / 2 ms late. A connection holds at most
- * WINDOW bytes waiting for the line before the link stops reading the server's side of it, so the server meets a slow
- * link as it would over TCP: its own sends wait, and it skips what it may.
- */
-function shapedLink(port: number, mbit: number, latency: number): { port: number; stop(): void } {
-  const rate = (mbit * 1e6) / 8 / 1000;
-  const SLICE = 16384;
-  const WINDOW = 65536;
-  interface Pipe {
-    up: import("bun").Socket<undefined> | null;
-    early: Uint8Array[];
-    /** What the server sent and the line has not taken, its bytes, and slices on the line not yet come. */
-    down: Uint8Array[];
-    queued: number;
-    flying: number;
-    out: Uint8Array[];
-    upOut: Uint8Array[];
-    closed: boolean;
-    upClosed: boolean;
+/** The link to `port` in a process of its own (tools/map/link.ts), so its hops never wait on the server's loop. */
+async function linkApart(port: number, mbit: number, latency: number): Promise<{ port: number; stop(): void }> {
+  const child = Bun.spawn([process.execPath, join(import.meta.dir, "link.ts"), String(port), String(mbit), String(latency)], { stdout: "pipe", stderr: "inherit" });
+  const reader = child.stdout.getReader();
+  let text = "";
+  while (!text.includes("\n")) {
+    const { value, done } = await reader.read();
+    if (done) throw new Error("the trip's link did not start");
+    text += new TextDecoder().decode(value);
   }
-  /** Ends the page's side of a connection once the server's has ended and all it sent has come. */
-  const ended = (client: import("bun").Socket<Pipe>): void => void (client.data.upClosed && client.data.down.length === 0 && client.data.flying === 0 && !client.data.closed && client.end());
-  const pipes: { client: import("bun").Socket<Pipe>; pipe: Pipe }[] = [];
-  let turn = 0;
-  let free = 0;
-  let pumping = false;
-  const flush = (socket: import("bun").Socket<any>, queue: Uint8Array[]): void => {
-    while (queue.length > 0) {
-      const n = socket.write(queue[0]!);
-      if (n < queue[0]!.length) {
-        queue[0] = queue[0]!.subarray(Math.max(0, n));
-        return;
-      }
-      queue.shift();
-    }
-  };
-  const send = (socket: import("bun").Socket<any>, queue: Uint8Array[], bytes: Uint8Array): void => {
-    queue.push(bytes);
-    if (queue.length === 1) flush(socket, queue);
-  };
-  const pump = (): void => {
-    const live = pipes.filter((p) => p.pipe.down.length > 0);
-    if (live.length === 0) {
-      pumping = false;
-      return;
-    }
-    const { client, pipe } = live[turn++ % live.length]!;
-    const head = pipe.down[0]!;
-    const slice = head.subarray(0, SLICE);
-    if (slice.length === head.length) pipe.down.shift();
-    else pipe.down[0] = head.subarray(SLICE);
-    pipe.queued -= slice.length;
-    if (pipe.queued <= WINDOW / 2) pipe.up?.resume();
-    free = Math.max(free, performance.now()) + slice.length / rate;
-    pipe.flying++;
-    setTimeout(() => {
-      pipe.flying--;
-      if (!pipe.closed) send(client, pipe.out, slice);
-      ended(client);
-    }, Math.max(0, free - performance.now()) + latency / 2);
-    setTimeout(pump, Math.max(0, free - performance.now()));
-  };
-  const listener = Bun.listen<Pipe>({
-    hostname: "127.0.0.1",
-    port: 0,
-    socket: {
-      open(client) {
-        const pipe: Pipe = { up: null, early: [], down: [], queued: 0, flying: 0, out: [], upOut: [], closed: false, upClosed: false };
-        client.data = pipe;
-        pipes.push({ client, pipe });
-        void Bun.connect<undefined>({
-          hostname: "127.0.0.1",
-          port,
-          socket: {
-            data(up, bytes) {
-              pipe.down.push(new Uint8Array(bytes));
-              pipe.queued += bytes.length;
-              if (pipe.queued > WINDOW) up.pause();
-              if (!pumping) {
-                pumping = true;
-                pump();
-              }
-            },
-            drain(up) {
-              flush(up, pipe.upOut);
-            },
-            close() {
-              pipe.upClosed = true;
-              ended(client);
-            },
-            error() {},
-          },
-        }).then((up) => {
-          pipe.up = up;
-          for (const bytes of pipe.early.splice(0)) send(up, pipe.upOut, bytes);
-        }, () => client.end());
-      },
-      data(client, bytes) {
-        const pipe = client.data, copy = new Uint8Array(bytes);
-        setTimeout(() => (pipe.up ? send(pipe.up, pipe.upOut, copy) : pipe.early.push(copy)), latency / 2);
-      },
-      drain(client) {
-        flush(client, client.data.out);
-      },
-      close(client) {
-        client.data.closed = true;
-        client.data.up?.end();
-        pipes.splice(pipes.findIndex((p) => p.client === client), 1);
-      },
-      error() {},
-    },
-  });
-  return { port: listener.port, stop: () => listener.stop(true) };
+  reader.releaseLock();
+  return { port: Number(text.trim()), stop: () => child.kill() };
 }
+
+/** Milliseconds between the looks at how late the server's loop runs. */
+const LATE_EVERY = 20;
+
+/** The `q` quantile of `values`, in ms with one decimal. */
+const quantile = (values: readonly number[], q: number): string => ([...values].sort((a, b) => a - b)[Math.floor(values.length * q)] ?? 0).toFixed(1);
 
 /** A page of a headless Chrome spoken to over DevTools. */
 interface Page {
@@ -283,7 +189,23 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
   });
   // The page joins on the street; the trip moves it from there.
   Object.assign(server.host.world, { spawn: { x: from.x, z: from.z, yaw: 0 } });
-  const link = shapedLink(server.port, opts.mbit, opts.latency);
+  // What each tick of the server takes, and how late a timer of its loop fires.
+  const ticks: number[] = [];
+  const late: number[] = [];
+  const game = server.host.game, tick = game.tick.bind(game);
+  game.tick = () => {
+    const t0 = performance.now();
+    tick();
+    ticks.push(performance.now() - t0);
+  };
+  const started = performance.now();
+  let lateAt = started;
+  const lateness = setInterval(() => {
+    const now = performance.now();
+    late.push(now - lateAt - LATE_EVERY);
+    lateAt = now;
+  }, LATE_EVERY);
+  const link = await linkApart(server.port, opts.mbit, opts.latency);
   const profile = mkdtempSync(join(tmpdir(), "snark-trip-"));
   const chrome = Bun.spawn([opts.chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1280,720", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   const lines: string[] = [];
@@ -404,6 +326,13 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const joined = on("street");
     say(`  street drawn with its materials       ${joined !== undefined && joined < upAt ? s(joined) : `not before the body went up (${street})`}; the street jumped to, ${later(jump === undefined ? undefined : on("street", jump), jump)}`);
     say(`  far city drawn                        ${at(far)}`);
+    /** When `what` came, if it held when the body went up, else why not. */
+    const held = (what: string): string => {
+      const last = seen.marks.filter((m) => (m.what === what || m.what === `-${what}`) && m.at <= upAt).at(-1);
+      return last?.what === what ? `${s(last.at)}, ${later(last.at, on("frame"))}` : `not before the body went up (${last ? `went at ${s(last.at)}` : "never"})`;
+    };
+    say(`  the finishes drawn (colour)           ${held("colour")}`);
+    say(`  no texture without its first step    ${held("soft")}`);
     say(`  last part                             ${lastPart === undefined ? `never: ${[...parts].filter((n) => !came(n)).join(" ")} not come` : s(lastPart)}`);
     say(`  statics handed over                   ${s(on("handed"))}`);
     say(`  the jump drawn                        ${s(jump)}`);
@@ -412,6 +341,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     say(`  the failed part                       ${fails === 0 ? "none failed" : `asked ${asked.length} times (${asked.join(", ")}): ${asked.includes(200) ? "it came on a later ask" : "it never came"}`}`);
     say(`  whole at the end                      ground ${whole.ground ? "all the map's own" : "not all the map's own"}; far city of ${whole.pieces} pieces, of the map's ${statics} statics`);
     say(`  memory at the hand-over, after a GC   ${heap || "never handed over"}`);
+    say(`  the server's tick                     ${ticks.length} in ${((performance.now() - started) / 1000).toFixed(0)} s, p50 ${quantile(ticks, 0.5)} ms, p90 ${quantile(ticks, 0.9)} ms, most ${Math.max(0, ...ticks).toFixed(1)} ms; its loop late p50 ${quantile(late, 0.5)} ms, p90 ${quantile(late, 0.9)} ms`);
     const before = seen.parts.filter((p) => p.status === 200 && p.end <= (on("frame") ?? -1));
     const rule = [head.name, ...firstFrameParts(head, from.x, from.z).map((p) => p.name)];
     const sent = (names: readonly string[]): string => (names.reduce((n, name) => n + statSync(join(partsFolder(opts.map), `${name}.br`)).size, 0) / 1e6).toFixed(2);
@@ -421,6 +351,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     return lines;
   } finally {
     clearInterval(watchdog);
+    clearInterval(lateness);
     page?.close();
     chrome.kill();
     await chrome.exited;

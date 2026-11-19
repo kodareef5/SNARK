@@ -604,6 +604,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
     parkingBrake: e => urban.parkingBrake(e),
+    resting: e => urban.resting(e),
     boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
     anchored: (e, opposing) => {
       const vehicle = records.byPid.get(world.ents.pid[e]!);
