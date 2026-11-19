@@ -7,6 +7,7 @@
 #   DEV=1 TUNNEL=quick deploy/mac/cluster.sh miami     development worlds: cheats need no password
 #   FRONT_PORT=8786 deploy/mac/cluster.sh miami        the front on another port, where 8787 is taken
 #   TUNNEL=https://<its address> deploy/mac/cluster.sh miami   a tunnel already running, so a restart keeps the address
+#   MAPS=var/maps-game deploy/mac/cluster.sh miami     the maps read from another folder than var/maps
 #
 #   <host>/               the start screen: every world running, how many play on each
 #   <host>/<map>/         a world, at the path named by its map
@@ -26,6 +27,7 @@ cd "$(cd "$(dirname "$0")" && pwd)/../.."
 [ -f client/dist/wiki/index.html ] || echo "/wiki/ is not found until bun run wiki builds it"
 id=${CLUSTER:-main}
 front=${FRONT_PORT:-8787}
+maps=${MAPS:-var/maps}
 logs=var/logs/$id
 mkdir -p var/cluster "$logs"
 [ -f var/admin-password.txt ] && export SNARK_ADMIN_PASSWORD="$(head -1 var/admin-password.txt)"
@@ -49,10 +51,10 @@ dev=()
 [ -n "${DEV:-}" ] && dev=(--dev) && unset SNARK_ADMIN_PASSWORD
 port=8798
 for map in "$@"; do
-  [ -f "var/maps/$map.snmap" ] || { echo "$map left out: var/maps/$map.snmap does not exist (bun tools/mapworld/build.ts $map)"; continue; }
+  [ -f "$maps/$map.snmap" ] || { echo "$map left out: $maps/$map.snmap does not exist (bun tools/mapworld/build.ts $map)"; continue; }
   name=$(printf '%s\n' "$map" | tr - ' ' | awk '{ for (i = 1; i <= NF; i++) $i = toupper(substr($i, 1, 1)) substr($i, 2) } 1')
   # A development world is told the tunnel's host, since it takes a page at no other name but this machine's.
-  bun server/main.ts --map "var/maps/$map.snmap" --db "var/cluster/$map.db" --host 127.0.0.1 --port $port --public-url "${DEV:+$address}/$map" "-clusterid=$id" "?SessionName=$name" --config "${CONFIG:-config/official}" ${dev[@]+"${dev[@]}"} >"$logs/$map.log" 2>&1 &
+  bun server/main.ts --map "$maps/$map.snmap" --db "var/cluster/$map.db" --host 127.0.0.1 --port $port --public-url "${DEV:+$address}/$map" "-clusterid=$id" "?SessionName=$name" --config "${CONFIG:-config/official}" ${dev[@]+"${dev[@]}"} >"$logs/$map.log" 2>&1 &
   worlds+=($!)
   echo "$name at /$map/ on port $port, log $logs/$map.log"
   port=$((port + 1))
