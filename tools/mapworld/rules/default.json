@@ -2025,7 +2025,7 @@
       "fence": [["fence", 5], ["fence_sagging", 3], ["fence_down", 1]],
       "billboard": [["billboard", 2], ["billboard_bare", 1]]
     },
-    "lamps": { "spacing": { "highway": 44, "avenue": 35, "street": 30, "ramp": 44, "lot": 40 }, "both": ["highway", "avenue"], "set": 0.9 },
+    "lamps": { "spacing": { "highway": 44, "avenue": 35, "street": 30, "ramp": 44, "lot": 40 }, "both": ["highway", "avenue"], "set": 0.9, "lit": { "highway": 0.15, "avenue": 0.3, "street": 0.1, "ramp": 0.15, "lot": 0.05 }, "dark": ["industrial"] },
     "junctions": { "major": ["avenue"], "minor": ["street"], "signalCross": 0.5, "signal": 1.2, "stop": 0.75, "name": 1.4, "stopBack": 2, "standing": 0.9, "past": 2.6 },
     "poles": { "classes": ["street"], "styles": ["residential", "terracotta", "mural"], "spacing": 40, "set": 1.2 },
     "hydrants": { "classes": ["avenue", "street"], "spacing": 110, "first": 9, "set": 0.65 },

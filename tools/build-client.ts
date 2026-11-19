@@ -149,6 +149,11 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const pieces = [...readFileSync(join(dist, "main.js"), "utf8").matchAll(/\bimport\s*(?:\{[^}]*\}\s*from\s*)?"\.\/([^"]+\.js)"/g)].map((m) => m[1]!);
   console.log(`ui           ${ui.bytes} bytes transferred, ${ui.decodedBytes} RGBA bytes`);
   copyFileSync(join(root, "client/sound/sounds.html"), join(dist, "sounds.html"));
+  // The admin page in a folder of its own, which only the admin pages' gate serves (server/admin/routes.ts), in the HUD's face.
+  const admin = await Bun.build({ entrypoints: [join(root, "client/admin/admin.ts")], outdir: join(dist, "admin"), naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
+  if (!admin.success) throw new Error(admin.logs.map(String).join("\n"));
+  const face = ui.font ? `@font-face { font-family: "Barlow Semi Condensed"; src: url("../${ui.font}") format("truetype"); font-display: swap; }` : "";
+  writeFileSync(join(dist, "admin/index.html"), readFileSync(join(root, "client/admin/admin.html"), "utf8").replace("/* face */", face));
   // The music as it is played: each track's layers as Opus, music.json listing them, and the lab to hear them.
   const music = join(root, "assets/source/core/music");
   if (existsSync(join(music, "music.json"))) {

@@ -8,7 +8,7 @@
 import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
-import { DETAIL_LAMP, DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR } from "./packet.ts";
+import { DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE } from "./packet.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
@@ -86,7 +86,7 @@ const SHAPES = `vec3 shapeOf(uint shape, vec2 c) {
 const KEEPS = `const float FADE_ORDER[16] = float[16](${FADE_ORDER.map((v) => v.toFixed(1)).join(", ")});
 uniform float uBlend, uFrom;
 float covers(float alpha) {
-  if ((vFlags & ${DETAIL_ROTOR | DETAIL_LAMP}u) != 0u && uBlend > 0.5 && 1.0 / gl_FragCoord.w + 0.5 * fwidth(1.0 / gl_FragCoord.w) < uFrom) discard;
+  if ((vFlags & ${DETAIL_ROTOR | DETAIL_LAMP | DETAIL_POOL}u) != 0u && uBlend > 0.5 && 1.0 / gl_FragCoord.w + 0.5 * fwidth(1.0 / gl_FragCoord.w) < uFrom) discard;
   if (uBlend > 0.5) return alpha * vShows * ((vFlags & ${DETAIL_PUFF}u) != 0u ? clamp((vRel.y - vFloor) / (0.5 * vHalf), 0.0, 1.0) : 1.0);
   ivec2 q = ivec2(gl_FragCoord.xy) & 3;
   if (vShows * 16.0 <= FADE_ORDER[q.y * 4 + q.x] + 0.5) return 0.0;
@@ -122,14 +122,30 @@ const LAMP_SHAPE = `vec3 lampOf(vec2 c) {
 }
 `;
 
+/**
+ * Alpha across a street lamp's soft disc of light, falling off smoothly to nothing at its rim, or across a wire's width
+ * (DETAIL_WIRE), soft at its edges. Twins of poolOf and wireOf below.
+ */
+const POOL_SHAPE = `vec3 poolOf(vec2 c) {
+  float a = 1.0 - smoothstep(0.0, 1.0, length(c));
+  return vec3(a * a, 0.0, 1.0);
+}
+vec3 wireOf(vec2 c) {
+  return vec3(1.0 - smoothstep(0.35, 1.0, abs(c.y)), 0.0, 1.0);
+}
+vec3 pooled(vec2 c) {
+  return (vFlags & 7u) == ${DETAIL_WIRE & 7}u ? wireOf(c) : poolOf(c);
+}
+`;
+
 export const DETAIL_FLAT_FRAGMENT = `#version 300 es
 precision highp float;
 ${INS}uniform vec3 uSun, uSky;
 uniform vec2 uFog;
 uniform float uLight;
 out vec4 o;
-${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${KEEPS}void main() {
-  vec3 s = (vFlags & ${DETAIL_LAMP}u) != 0u ? lampOf(vCorner)
+${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}void main() {
+  vec3 s = (vFlags & ${DETAIL_POOL}u) != 0u ? pooled(vCorner) : (vFlags & ${DETAIL_LAMP}u) != 0u ? lampOf(vCorner)
          : (vFlags & ${DETAIL_ROTOR}u) != 0u ? rotorOf(vCorner, vGrey) : shapeOf(vFlags & 7u, vCorner);
   float a = covers(s.x);
   if (a < 0.004) discard;
@@ -144,15 +160,16 @@ export const DETAIL_LIT_FRAGMENT = `#version 300 es
 precision highp float;
 ${INS}uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${ROTOR_SHAPE}${LAMP_SHAPE}${KEEPS}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
   bool rotor = (vFlags & ${DETAIL_ROTOR}u) != 0u;
-  bool lamp = (vFlags & ${DETAIL_LAMP}u) != 0u;
+  bool pool = (vFlags & ${DETAIL_POOL}u) != 0u;
+  bool lamp = pool || (vFlags & ${DETAIL_LAMP}u) != 0u;
   vec4 t;
   if (lamp || rotor) {
-    vec3 s = lamp ? lampOf(vCorner) : rotorOf(vCorner, vGrey);
+    vec3 s = pool ? pooled(vCorner) : lamp ? lampOf(vCorner) : rotorOf(vCorner, vGrey);
     t = vec4(s.z, s.y, 0.0, s.x);
   } else t = texture(uDetails, vUv);
   float a = covers(t.a);
@@ -163,6 +180,23 @@ void main() {
   vec3 light = (vFlags & ${DETAIL_LIT}u) != 0u ? lit(albedo, vec3(1.0, 1.0, 0.0), n, v, vec3(0.0), sunShadow(vRel, n)) : albedo / fSunColor.w;
   o = vec4(shown(light, vRel), a);
 }`;
+
+/** Twin of the street lamp's soft disc in both shader tiers. */
+export function poolOf(x: number, y: number, out: Float64Array | number[]): void {
+  const t = Math.min(1, Math.max(0, Math.hypot(x, y)));
+  const a = 1 - t * t * (3 - 2 * t);
+  out[0] = a * a;
+  out[1] = 0;
+  out[2] = 1;
+}
+
+/** Twin of a wire's width in both shader tiers: `y` across it. */
+export function wireOf(y: number, out: Float64Array | number[]): void {
+  const t = Math.min(1, Math.max(0, (Math.abs(y) - 0.35) / 0.65));
+  out[0] = 1 - t * t * (3 - 2 * t);
+  out[1] = 0;
+  out[2] = 1;
+}
 
 /** Twin of the analytic lamp shape in both shader tiers. */
 export function lampOf(x: number, y: number, out: Float64Array | number[]): void {

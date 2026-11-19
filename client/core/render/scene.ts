@@ -27,6 +27,8 @@ import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortF64, sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
+import { StreetLamps } from "./street-lamps.ts";
+import { StreetWires } from "./street-wires.ts";
 import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
@@ -402,6 +404,10 @@ export class Scene {
    */
   hide = true;
   nearFirst = true;
+  /** The light of the street lamps that still work (street-lamps.ts). */
+  readonly streetLamps: StreetLamps;
+  /** The wires between the utility poles still standing (street-wires.ts). */
+  readonly streetWires: StreetWires;
   /** What hides what this frame. */
   readonly hiding = new Hiding();
 
@@ -737,6 +743,8 @@ export class Scene {
     this.transientF32 = new Float32Array(t.buffer, t.byteOffset, t.byteLength >> 2);
     this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
     this.characters = new Characters(reg, pack, this.assets);
+    this.streetLamps = new StreetLamps(reg);
+    this.streetWires = new StreetWires(reg);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
@@ -1514,11 +1522,18 @@ export class Scene {
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const { rotorBlur, patrolLights } = this.characters;
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, rotorBlur.count + patrolLights.count);
+    const { streetLamps, streetWires } = this;
+    streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
+    streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count);
     const particles = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
     patrolLights.write(p);
+    const wires = p.detailCount;
+    streetWires.write(p);
+    const street = p.detailCount;
+    streetLamps.write(p);
     // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
@@ -1526,7 +1541,9 @@ export class Scene {
     this.drawDetails(0, cut, DRAW_CUTOUT, NEAR);
     this.drawDetails(cut, particles - cut, DRAW_BLEND, NEAR);
     this.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
-    this.drawDetails(lamps, seen - lamps, DRAW_BLEND, patrolLights.passes(cam));
+    this.drawDetails(lamps, wires - lamps, DRAW_BLEND, patrolLights.passes(cam));
+    this.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
+    this.drawDetails(street, seen - street, DRAW_BLEND, streetLamps.passes(cam));
     this.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
   }

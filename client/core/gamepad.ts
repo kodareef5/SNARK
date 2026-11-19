@@ -102,6 +102,7 @@ export class GamepadInput {
       if(i>=12 && i<=15){const slot=PAD_SLOTS[i]!+(modifier?4:0);this.pulse(`Digit${slot+1}`,target);}
       else if(modifier && (i===2 || i===3))this.pulse(i===2?"Digit9":"Digit0",target);
       else if(modifier && i===5)this.pulse("KeyV",target);
+      else if(modifier && i===1)this.pulse("KeyK",target);
       else if(i===11 && target.patrol)this.pulse("KeyK",target);
       else if(i===11 && target.flying)this.hold(i,modifier?"KeyX":"KeyC",target);
       else if(PAD_TAPS[i]){this.pending[i]=1;this.since[i]=now;}

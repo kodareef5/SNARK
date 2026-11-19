@@ -8,7 +8,9 @@ height's range in millimetres. Here each is set in its place, a strip's gutters 
 step of the picture does not take in its neighbour; each normal is made from its own height at its own scale (a strip
 is 512 pixels a metre, a part its picture's width over its width in the world); and the packed map holds occlusion,
 roughness and metal in red, green and blue, at half the base colour's side. A part not painted yet is laid in one flat
-colour, so the meshes can be built and looked at before the pictures come.
+colour, so the meshes can be built and looked at before the pictures come. A working lamp's lens is a picture of its
+own (tex/glow_base.png, from tex/parts/lens_lit), the base colour of the material that glows (asset.ts `emissive`), its
+alpha whole.
 """
 
 import json
@@ -26,6 +28,9 @@ TEX = os.path.join(HERE, "tex")
 PARTS = os.path.join(TEX, "parts")
 LAYOUT = json.load(open(os.path.join(HERE, "layout.json")))
 SCALES = json.load(open(os.path.join(PARTS, "parts.json"))) if os.path.exists(os.path.join(PARTS, "parts.json")) else {}
+
+# The glowing lens's picture: square, as a texture is; the lens is wider than long, and lays it so.
+GLOW_SIZE = (128, 128)
 
 # The colour a part is laid in until it is painted, as sRGB: the strips' means as their briefs give them.
 FLAT = {"galvanised": (138, 141, 140), "green": (88, 104, 90), "yellow": (178, 158, 92), "red": (150, 76, 64), "blue": (62, 84, 118),
@@ -131,4 +136,7 @@ if __name__ == "__main__":
     os.makedirs(TEX, exist_ok=True)
     save("street", atlas("street", False), False)
     save("cut", atlas("cut", True), True)
+    lens = Image.open(os.path.join(PARTS, "lens_lit", "base.png")).convert("RGB").resize(GLOW_SIZE, Image.LANCZOS)
+    lens.putalpha(255)
+    lens.save(os.path.join(TEX, "glow_base.png"))
     print("paint: tex/street_* and tex/cut_* written")
