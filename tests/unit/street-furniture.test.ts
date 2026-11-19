@@ -474,7 +474,7 @@ const DIVIDED: Line[] = [
 ];
 const stopsNear = (pieces: readonly StaticPiece[], x: number, z0: number, z1: number): StaticPiece[] => pieces.filter((p) => p.kind.startsWith(streetKind("stop")) && Math.abs(p.x - x) < 8 && p.z > z0 && p.z < z1);
 
-test("the classes' rule puts no stop in a divided road's median, nor on a one-way street that leaves the junction", () => {
+test("the classes' rule puts no stop in a divided road's median, nor on a one-way street that leaves the junction, and names the corner all the same", () => {
   const rules = { ...RULES, junctions: { ...RULES.junctions, signalCross: 0 } };
   const { pieces } = place(fixture([], [], { lines: DIVIDED }), [], rules);
   expect(stopsNear(pieces, 200, 480, 500).length).toBe(1);
@@ -482,6 +482,8 @@ test("the classes' rule puts no stop in a divided road's median, nor on a one-wa
   expect(stopsNear(pieces, 200, 512, 535).length).toBe(1);
   expect(stopsNear(pieces, 300, 470, 500).length).toBe(0);
   expect(stopsNear(pieces, 400, 470, 500).length).toBe(1);
+  // Where it stops no way, the corner still has its street-name sign.
+  expect(near(pieces, "street_name", 300, 500, 15).length).toBe(1);
 });
 
 test("a mapped control counts as standing only where a sign of its own stands, and the count says what each of the rest is", () => {

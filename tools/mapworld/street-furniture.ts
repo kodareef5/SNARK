@@ -496,7 +496,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         const why = putFirst("stops", form("stop", hash3(h, 30 + i, seed)), seek((d) => outOf(j, a, d), back(a), back(a) + J.seek, -1, [J.stop, 2 * J.stop], (s) => yawOf(s.dx, s.dz)));
         for (const m of governing(a)) { if (why === null) stood.add(m); else if (!stood.has(m)) missing.set(m, why); }
       }
-      const first = j.arms.findIndex((a) => stopped.includes(a));
+      // The street-name sign at the corner of the first way that stops, or where none does, of the first lesser way.
+      const stops = j.arms.findIndex((a) => stopped.includes(a)); const first = stops >= 0 ? stops : j.arms.findIndex(isMinor);
       if (first >= 0) putOut("names", "street_name", J.name, (set) => { const p = corner(j, prev(first), j.arms[first]!, set); return p && [p[0], p[1], yawOf(j.arms[first]!.dx, j.arms[first]!.dz)]; });
     }
     // Corner furniture, by the use of the building behind the corner.
