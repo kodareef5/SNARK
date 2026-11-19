@@ -96,6 +96,8 @@ export const S_CONTROL_TITLE = 63;
 export const S_DIAL_HOUR = 64;
 /** A note of the menu's screens that warns, in the warm accent. */
 export const S_MENU_WARN = 65;
+/** The offer to unmute: plain words over glass. */
+export const S_UNMUTE = 66;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -164,4 +166,5 @@ export const STYLES: readonly Style[] = [
   /* S_CONTROL_TITLE */ style(0, 0xe3f4fc, 18),
   /* S_DIAL_HOUR */ style(0, 0xecfaff, 40, 1),
   /* S_MENU_WARN */ style(0, 0xf2a477, 13),
+  /* S_UNMUTE */ style(0, 0xecfaff, 20, 1, true),
 ];

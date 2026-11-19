@@ -140,7 +140,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // Workers and worklets run in their own threads, so each is bundled as a separate file. The page's script is split, so
   // that the device probe is fetched only by a page that runs it.
   const bundle = async (files: string[], splitting: boolean): Promise<Bun.BuildArtifact[]> => {
-    const result = await Bun.build({ entrypoints: files.map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", splitting, target: "browser", minify: true, sourcemap: "linked", define: { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName) } });
+    const result = await Bun.build({ entrypoints: files.map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", splitting, target: "browser", minify: true, sourcemap: "linked", define: { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName) } });
     if (!result.success) throw new Error(result.logs.map(String).join("\n"));
     return result.outputs;
   };

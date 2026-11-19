@@ -288,7 +288,8 @@ export class Sounds {
     this.pending.length = 0;
     this.crowd.clear();
     this.fade(dt, running, nowMs);
-    p.music = this.music && view && !this.early ? this.music.update(nowMs, this.hearing(view, hf, ear, nowMs)) : null;
+    // Music that would not be heard (muted, or its volume at nothing) is not streamed, and its director waits.
+    p.music = this.music && view && !this.early && volumes.master > 0 && volumes.music > 0 ? this.music.update(nowMs, this.hearing(view, hf, ear, nowMs)) : null;
     this.mixer.follow(p, this.ear, this.locate);
     lib.end(p);
     sink.apply(p);

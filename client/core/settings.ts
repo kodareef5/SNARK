@@ -30,6 +30,11 @@ export class Settings {
   fov = 70;
   /** A multiple of the default. */
   voiceVolume = 1;
+  /**
+   * Nothing is heard, voice chat included, until the player asks for sound: a page that plays by itself is unwelcome
+   * in a browser. The interface offers to unmute while this is set (ui/menu.ts unmuteButton), and the choice is saved.
+   */
+  muted = true;
   /** Every sound but voice chat, then each bus of them (client/core/sound/packet.ts): a multiple of the default. */
   masterVolume = 1;
   /** Effects: creatures, steps, fighting, building. */
@@ -44,8 +49,9 @@ export class Settings {
   vitalLabels = false;
   minimapZoom = -1;
   padGlyphs = 0;
-  /** Transient screen state; excluded from saved preferences. */
+  /** Transient screen state; excluded from saved preferences. `page` is of the tab's rows, where a short canvas cannot show them all. */
   tab = 0;
+  page = 0;
   revision = 0;
 
   changed(): void { this.revision++; }
@@ -76,7 +82,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady"] as const;
+const SAVED_FLAGS = ["minimap", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1]] as const;
 
 export const VOLUME_MAX = 2;
@@ -129,6 +135,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Minimap", value: (s) => s.minimap ? "on" : "off", step: (s) => void (s.minimap = !s.minimap) },
   { label: "Status labels", value: (s) => s.vitalLabels ? "on" : "off", step: (s) => void (s.vitalLabels = !s.vitalLabels) },
   { label: "Diagnostics", value: (s) => s.diagnostics ? "on" : "off", step: (s) => void (s.diagnostics = !s.diagnostics) },
+  { label: "Sound", value: (s) => s.muted ? "off" : "on", step: (s) => void (s.muted = !s.muted) },
 ];
 
 const megabytes = (bytes: number): string => (bytes >= 1048576 * 10 ? `${Math.round(bytes / 1048576)} MB` : `${(bytes / 1048576).toFixed(1)} MB`);

@@ -1,0 +1,163 @@
+// Where the touch layer stands (client/core/touch.ts is what it does): two zones under the HUD, a cluster of buttons
+// by the right thumb, the world's prompt as a pill above them, and a bar of three in the top left. Everything is placed
+// from the canvas's own size and insets, so it follows the window either way up.
+
+import type { HudModel } from "../hud.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CLOSE, T_JUMP, T_MAP, T_MENU, T_RELOAD, T_STANCE, T_USE, type TouchPlay } from "../touch.ts";
+import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
+import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
+import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CHARACTER, I_CROUCH, I_JUMP, I_MENU, I_RELOAD, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
+
+/** Keys of the layer's pictures, which are never pressed: four to a button, then the stick's. */
+const KEY_TOUCH_ART = 3300000;
+/** The share of the canvas's width the move zone takes, from the left. */
+export const MOVE_SHARE = 0.45;
+const MARGIN = 12;
+/** Sizes, in units: the buttons across, a bar button and the step from one to the next, and a pill's height. */
+const ATTACK = 76, BUTTON = 56, SMALL = 48, BAR = 44, BAR_PITCH = 52, PILL = 44;
+const GAP = 8;
+/**
+ * The cluster is an arc about Attack, which stands in the corner: a thumb pivots there and its tip sweeps the rest.
+ * Each is a distance from Attack's middle and an angle from straight right, turning up and over to the left. The
+ * distances leave a finger's gap between neighbours, and between their boxes, which is what a press is tested against.
+ */
+const ARC = 88, OUTER = 148;
+const JUMP_AT = 95, STANCE_AT = 140, AIM_AT = 185, RELOAD_AT = 172;
+/** How far left of the canvas's right margin the cluster reaches, and how far above its foot. */
+const CLUSTER_W = ATTACK / 2 + OUTER + SMALL / 2, CLUSTER_H = ATTACK / 2 + ARC + BUTTON / 2;
+const RADIANS = Math.PI / 180;
+
+/** From one vital to the next in their row: an icon and the room a finger's press of it takes. */
+export const VITAL_PITCH = 42;
+
+/** Where the HUD puts what the touch layer moves aside: the vitals' row and the stack under the bar. */
+export interface TouchPlan { vitalsX: number; vitalsY: number; stackY: number; map: number }
+const plan: TouchPlan = { vitalsX: 0, vitalsY: 0, stackY: 0, map: 160 };
+
+/** The plan for this canvas. The same object each time. */
+export function touchPlan(f: UiFrame, muted: boolean): TouchPlan {
+  const left = f.left + MARGIN, top = f.top + MARGIN, bar = 3 * BAR_PITCH;
+  // A canvas short or narrow has a smaller minimap, and one too narrow for the vitals beside the bar has them under it.
+  plan.map = f.height < 560 || f.width < 520 ? 120 : 160;
+  const beside = left + bar + GAP + 7 * VITAL_PITCH + GAP <= f.width - f.right - MARGIN - plan.map;
+  // Beside the bar the vitals share its middle line; under it their glass shares its left edge.
+  plan.vitalsX = (beside ? left + bar + GAP : left) + 6;
+  plan.vitalsY = beside ? top + (BAR - 32) / 2 : top + BAR + 10;
+  plan.stackY = top + BAR + 10 + (beside ? 0 : 42) + (muted ? 52 : 0);
+  return plan;
+}
+
+function art(f: UiFrame, key: number, x: number, y: number, w: number, h: number, sx: number, sy: number, sw: number, sh: number): UiNode {
+  f.images[IMAGE_TOUCH] ??= TOUCH_URL ? { width: TOUCH_WIDTH, height: TOUCH_HEIGHT, data: new Uint8ClampedArray(0), version: 0, url: TOUCH_URL, smooth: true } : touchPixels();
+  const n = f.add(key, K_IMAGE, x, y, w, h, S_LABEL);
+  n.image = IMAGE_TOUCH;
+  n.sx = sx; n.sy = sy; n.sw = sw; n.sh = sh;
+  return n;
+}
+
+/** A part of the sheet drawn so that its body is `d` across, about `cx`, `cy`. */
+function part(f: UiFrame, key: number, which: number, cx: number, cy: number, d: number): UiNode {
+  const cell = d / BODY;
+  return art(f, key, cx - cell / 2, cy - cell / 2, cell, cell, which * PART, 0, PART, PART);
+}
+
+/** A button `d` across about `cx`, `cy`: its glass, lit while held, its glyph, and what a finger presses. Returns its bit. */
+function button(f: UiFrame, t: TouchPlay, b: number, cx: number, cy: number, d: number, glass: number, icon: number, label: string, lit = false): number {
+  part(f, KEY_TOUCH_ART + b * 4, glass + (lit || t.held(b) ? 1 : 0), cx, cy, d);
+  if (TOUCH_URL) art(f, KEY_TOUCH_ART + b * 4 + 1, cx - d * 0.44, cy - d * 0.44, d * 0.88, d * 0.88, (icon % ICON_COLUMNS) * ICON, ICON_Y + Math.floor(icon / ICON_COLUMNS) * ICON, ICON, ICON);
+  const n = f.add(KEY_TOUCH_BUTTON + b, K_HOLD, cx - d / 2, cy - d / 2, d, d, S_KEY);
+  // Without the painted sheet a button says what it is.
+  if (!TOUCH_URL) n.text = fitText(label, d, S_KEY);
+  n.label = label; n.interactive = true;
+  return 1 << b;
+}
+
+/**
+ * The sheet's pill with its body at `x`, `y`, `w` by `h`, lit or at rest, as three pictures from `key`: the ends keep
+ * their shape and the middle stretches. The slices meet on whole pixels, or a seam shows between them.
+ */
+export function pill(f: UiFrame, key: number, x: number, y: number, w: number, h: number, lit: boolean): void {
+  const cell = h / BODY, k = cell / PILL_H, edge = ((PILL_W - PILL_BODY) / 2) * k, cap = PILL_CAP * k;
+  const x0 = f.snap(x - edge), x1 = f.snap(x - edge + cap), x2 = f.snap(x + w + edge - cap), x3 = f.snap(x + w + edge), y0 = y + h / 2 - cell / 2;
+  // Pressed, the lit pill glows through the one at rest, so the words on it can still be read.
+  for (let pass = 0; pass <= (lit ? 1 : 0); pass++) {
+    const sx0 = pass * PILL_W, k0 = key + pass * 3, alpha = pass ? 0.5 : 1;
+    art(f, k0, x0, y0, x1 - x0, cell, sx0, PILL_Y, PILL_CAP, PILL_H).alpha = alpha;
+    art(f, k0 + 1, x1, y0, Math.max(1, x2 - x1), cell, sx0 + PILL_CAP, PILL_Y, PILL_W - PILL_CAP * 2, PILL_H).alpha = alpha;
+    art(f, k0 + 2, x2, y0, x3 - x2, cell, sx0 + PILL_W - PILL_CAP, PILL_Y, PILL_CAP, PILL_H).alpha = alpha;
+  }
+}
+
+/** The two zones, under everything else the HUD draws: call before it. */
+export function touchZones(f: UiFrame): void {
+  const split = Math.round(f.width * MOVE_SHARE);
+  const move = f.add(KEY_ZONE_MOVE, K_HOLD, 0, 0, split, f.height, S_KEY);
+  move.label = "Move"; move.interactive = true;
+  const look = f.add(KEY_ZONE_LOOK, K_HOLD, split, 0, f.width - split, f.height, S_KEY);
+  look.label = "Look"; look.interactive = true;
+}
+
+/** The bar in the top left, and the minimap as the way to the map. Returns the bits of what it showed. */
+export function touchBar(f: UiFrame, t: TouchPlay, mapX: number, mapY: number, mapSize: number, minimap: boolean): number {
+  const x = f.left + MARGIN + BAR / 2, y = f.top + MARGIN + BAR / 2;
+  let shown = button(f, t, T_MENU, x, y, BAR, P_SQUARE, I_MENU, "Menu") | button(f, t, T_BAG, x + BAR_PITCH, y, BAR, P_SQUARE, I_BAG, "Bag") | button(f, t, T_CHARACTER, x + BAR_PITCH * 2, y, BAR, P_SQUARE, I_CHARACTER, "Character");
+  if (minimap) {
+    // Above the minimap's own buttons, which keep its foot.
+    const n = f.add(KEY_TOUCH_BUTTON + T_MAP, K_HOLD, mapX, mapY, mapSize, mapSize - 36, S_KEY);
+    n.label = "Open the map"; n.interactive = true;
+    shown |= 1 << T_MAP;
+  }
+  return shown;
+}
+
+/** The way out of a screen a finger opened, in the top right, over it: what Escape is to a keyboard. Returns its bit. */
+export function touchClose(f: UiFrame, t: TouchPlay): number {
+  return button(f, t, T_CLOSE, f.width - f.right - MARGIN - BAR / 2, f.top + MARGIN + BAR / 2, BAR, P_SQUARE, I_CANCEL, "Close");
+}
+
+/**
+ * The stick and the right-hand cluster, over the HUD: call after it. `hotbarRight` and `hotbarTop` say where the hotbar
+ * is, which the cluster stands above where it would reach it, and `mapFoot` where the minimap ends, which the prompt's
+ * pill stays below. Returns the bits of the buttons it showed.
+ */
+export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, flyer: boolean, hotbarRight: number, hotbarTop: number, mapFoot: number): number {
+  const left = f.left + MARGIN, right = f.width - f.right - MARGIN;
+  let bottom = f.height - f.bottom - MARGIN;
+  // Above the hotbar and the line over it that says what is loaded, where the cluster would reach them.
+  if (hotbarRight + GAP > right - CLUSTER_W) bottom = hotbarTop - GAP - 22;
+  // The stick where the thumb is, or faint at rest where a thumb would land: as far in from its corner as it is across.
+  const sx = t.stick ? t.stickX : left + STICK_REACH + 16, sy = t.stick ? t.stickY : bottom - STICK_REACH - 16;
+  part(f, KEY_TOUCH_ART + 900, P_RING, sx, sy, STICK_REACH * 2).alpha = t.stick ? 0.9 : 0.35;
+  part(f, KEY_TOUCH_ART + 901, P_KNOB, sx + t.knobX, sy + t.knobY, 52).alpha = t.stick ? 1 : 0.4;
+
+  const driving = m.vehicle?.active === true;
+  const ax = right - ATTACK / 2, ay = bottom - ATTACK / 2;
+  let shown = 0;
+  if (driving) shown |= button(f, t, T_JUMP, ax, ay, ATTACK, P_ROUND, I_BRAKE, "Brake");
+  else {
+    shown |= button(f, t, T_ATTACK, ax, ay, ATTACK, P_ROUND, I_ATTACK, "Attack");
+    shown |= button(f, t, T_JUMP, ax + ARC * Math.cos(JUMP_AT * RADIANS), ay - ARC * Math.sin(JUMP_AT * RADIANS), BUTTON, P_ROUND, flyer ? I_WINGS : I_JUMP, flyer ? "Take off or land" : "Jump");
+    if (!flyer) shown |= button(f, t, T_STANCE, ax + ARC * Math.cos(STANCE_AT * RADIANS), ay - ARC * Math.sin(STANCE_AT * RADIANS), BUTTON, P_ROUND, I_CROUCH, "Stance");
+    const armed = m.ammo !== "" || m.cone >= 0 || m.scope || m.holo;
+    if (armed || t.aiming) shown |= button(f, t, T_AIM, ax + ARC * Math.cos(AIM_AT * RADIANS), ay - ARC * Math.sin(AIM_AT * RADIANS), BUTTON, P_ROUND, I_AIM, "Aim", t.aiming);
+    if (m.ammo !== "") shown |= button(f, t, T_RELOAD, ax + OUTER * Math.cos(RELOAD_AT * RADIANS), ay - OUTER * Math.sin(RELOAD_AT * RADIANS), SMALL, P_ROUND, I_RELOAD, "Reload");
+  }
+  // What the world offers, as a pill by the thumb: the prompt without its key.
+  const offer = usePrompt(m.prompt);
+  if (offer !== "") {
+    // Above the cluster, or on a canvas too short for that, to its left.
+    const above = bottom - (driving ? ATTACK : CLUSTER_H) - GAP - PILL, beside = right - (driving ? ATTACK : CLUSTER_W) - GAP, high = above >= mapFoot + GAP;
+    const w = Math.max(96, Math.min((high ? right : beside) - left, Math.ceil(textWidth(offer, S_PROMPT)) + 44)), x = (high ? right : beside) - w, y = high ? above : bottom - PILL;
+    pill(f, KEY_TOUCH_ART + T_USE * 4, x, y, w, PILL, t.held(T_USE));
+    const n = f.add(KEY_TOUCH_BUTTON + T_USE, K_HOLD, x, y, w, PILL, S_PROMPT);
+    n.text = fitText(offer, w - 16, S_PROMPT); n.label = offer; n.interactive = true;
+    shown |= 1 << T_USE;
+  }
+  return shown;
+}
+
+/** What the use key would do, from a prompt that names it ("E  ride raptor" gives "Ride raptor"); "" for any other line. */
+export function usePrompt(prompt: string): string {
+  if (!prompt.startsWith("E  ")) return "";
+  return prompt.charAt(3).toUpperCase() + prompt.slice(4);
+}

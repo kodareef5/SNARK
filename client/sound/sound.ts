@@ -100,6 +100,8 @@ export class SoundIo implements SoundSink {
     const ctx = this.context();
     this.resumed = true;
     if (ctx.state === "suspended") void ctx.resume();
+    // A music layer a browser would not start outside a touch (iOS) starts on this one; one played to its end stays ended.
+    for (const l of this.layers) if (l.el.paused && !l.el.ended) void l.el.play().catch(() => {});
   }
 
   /** Whether the viewer has touched the page, so the context may play when it is shown again. */

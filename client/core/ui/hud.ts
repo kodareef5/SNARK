@@ -5,11 +5,11 @@ import { ACTION_DRAW, ACTION_NONE, MAX_MARKERS, MINIMAP_SIZE, type HudModel, typ
 import type { Settings } from "../settings.ts";
 import { filledVital } from "./vitals.ts";
 import { glass } from "./skin.ts";
-import { KEY_MENU_OPEN, menuButton } from "./menu.ts";
+import { VITAL_PITCH, type TouchPlan } from "./touch.ts";
 import { MAX_DOTS } from "../render/laser.ts";
 import { K_BAR, K_BUTTON, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUFF, S_DARK, S_BANNER, S_CROSS, S_FRAME, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT_TEXT, S_STAMINA, S_TEXT } from "./style.ts";
-import { S_HUD_COUNT, S_HUD_HIT, S_HUD_KEY, S_ICE, S_MENU_FOCUS, S_MENU_MAIN, S_MENU_NOTE, S_WARNING } from "./style.ts";
+import { S_HUD_COUNT, S_HUD_HIT, S_HUD_KEY, S_ICE, S_KEY_SMALL, S_MENU_FOCUS, S_MENU_MAIN, S_MENU_NOTE, S_WARNING } from "./style.ts";
 
 export const KEY_READOUT = 1;
 export const KEY_MINIMAP_FRAME = 10;
@@ -106,12 +106,31 @@ function buildReticle(f: UiFrame, W: number, H: number): void {
  * ammo line and the status line. It does not move as those come and go.
  */
 export function chatBand(f: UiFrame, _m: HudModel): { top: number; bottom: number } {
-  return { top: f.height / 2 + 92, bottom: f.height - MARGIN - HOTBAR_CELL - (f.width < 1100 ? 102 : 20) };
+  return { top: f.height / 2 + 92, bottom: f.height - f.bottom - MARGIN - HOTBAR_CELL - (f.width < 1100 ? 102 : 20) };
 }
 
-export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minimap" | "diagnostics" | "vitalLabels"> & { touchFirst?: boolean } = { minimap: true, diagnostics: false, vitalLabels: false }, controls = true, inspect = false): void {
+/** A hotbar cell's side for `slots` of them on this canvas, the bar's left edge and its top. */
+export function hotbarCell(f: UiFrame, slots: number): number {
+  return Math.min(HOTBAR_CELL, Math.floor((f.width - f.left - f.right - MARGIN * 2 - 3 * (slots - 1)) / slots));
+}
+export function hotbarLeft(f: UiFrame, slots: number): number {
+  return Math.round((f.width - (slots * (hotbarCell(f, slots) + 3) - 3)) / 2);
+}
+export function hotbarTop(f: UiFrame, slots: number): number {
+  return f.height - f.bottom - MARGIN - hotbarCell(f, slots);
+}
+
+/**
+ * The HUD, inside the canvas's insets. With `touch` (ui/touch.ts touchPlan) it makes room for a finger's controls: the
+ * vitals stand in a row at the top, the stack in the top left starts under the bar, the minimap is the plan's size and
+ * the prompt loses its key.
+ */
+export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minimap" | "diagnostics" | "vitalLabels"> = { minimap: true, diagnostics: false, vitalLabels: false }, controls = true, inspect = false, touch: TouchPlan | null = null): void {
   const W = f.width;
   const H = f.height;
+  // The corners anchored things keep to, and the minimap's side.
+  const left = f.left + MARGIN, top = touch ? touch.stackY : f.top + MARGIN, right = W - f.right - MARGIN, foot = H - f.bottom - MARGIN;
+  const MAP = touch ? touch.map : MINIMAP_SIZE;
   const lh = lineHeight(S_TEXT);
   // The dark panel goes first, under everything else, and a holo-scope's tint with it.
   if (m.out) f.add(KEY_OUT, K_PANEL, 0, 0, W, H, S_DARK).alpha = 0.82;
@@ -129,31 +148,30 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     n.alpha = d.alpha;
   }
   if (m.scope && m.banner === "") buildReticle(f, W, H);
-  if (controls && options.touchFirst) menuButton(f, KEY_MENU_OPEN, MARGIN, MARGIN, 44, "Esc");
-  if (options.diagnostics) for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, MARGIN, MARGIN + i * lh, Math.min(W - MARGIN * 2, 400), S_TEXT, fitText(m.readout[i]!, Math.min(W - MARGIN * 2, 400), S_TEXT));
-  const voiceY = options.diagnostics ? MARGIN + m.readout.length * lh + 4 : MARGIN;
+  if (options.diagnostics) for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, left, top + i * lh, Math.min(right - left, 400), S_TEXT, fitText(m.readout[i]!, Math.min(right - left, 400), S_TEXT));
+  const voiceY = options.diagnostics ? top + m.readout.length * lh + 4 : top;
   if (m.voice !== "") {
     // A voice state is in capitals and is lit. Anything else is a sentence saying what is wrong, drawn plain.
     const live = m.voice === m.voice.toUpperCase();
-    const n = f.add(KEY_VOICE, K_PANEL, MARGIN, voiceY, Math.min(W - MARGIN * 2, live ? 96 : 330), lineHeight(S_BUFF) + 4, S_BUFF);
+    const n = f.add(KEY_VOICE, K_PANEL, left, voiceY, Math.min(right - left, live ? 96 : 330), lineHeight(S_BUFF) + 4, S_BUFF);
     n.tint = !live ? 0x4a4f58 : m.voice === "MIC OPEN" ? 0x6a7a3a : 0x3c9a4a;
     n.text = m.voice;
   }
   const talkH = lineHeight(S_BUFF) + 4;
   for (let i = 0; i < m.talkers.length && i < 8; i++) {
-    const n = f.add(KEY_TALKER + i, K_PANEL, MARGIN, voiceY + (talkH + 2) * (i + (m.voice !== "" ? 1 : 0)), 170, talkH, S_BUFF);
+    const n = f.add(KEY_TALKER + i, K_PANEL, left, voiceY + (talkH + 2) * (i + (m.voice !== "" ? 1 : 0)), 170, talkH, S_BUFF);
     n.tint = 0x2f5f8a;
     n.text = m.talkers[i]!;
   }
 
   // On a narrow canvas the minimap moves below the readout instead of beside it.
-  const mapX = W - MARGIN - MINIMAP_SIZE;
-  const mapY = options.diagnostics && W < 640 ? voiceY + 8 : MARGIN;
-  const mapTools = controls && (inspect || options.touchFirst);
+  const mapX = right - MAP;
+  const mapY = options.diagnostics && W < 640 ? voiceY + 8 : f.top + MARGIN;
+  const mapTools = controls && (inspect || touch !== null);
   if (options.minimap) {
     const mapTop = mapY;
-    glass(f, KEY_MINIMAP_FRAME, mapX - 2, mapTop - 2, MINIMAP_SIZE + 4, MINIMAP_SIZE + 4);
-    const picture = f.add(KEY_MINIMAP, K_IMAGE, mapX, mapTop, MINIMAP_SIZE, MINIMAP_SIZE, S_FRAME);
+    glass(f, KEY_MINIMAP_FRAME, mapX - 2, mapTop - 2, MAP + 4, MAP + 4);
+    const picture = f.add(KEY_MINIMAP, K_IMAGE, mapX, mapTop, MAP, MAP, S_FRAME);
     picture.image = IMAGE_MINIMAP;
     picture.alpha = .82;
     // The minimap is a window on the map, and its markers are put on its picture. The model lists the most important marker
@@ -165,11 +183,11 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
       const u = (k.u - view.u0) / view.du;
       const v = (k.v - view.v0) / view.dv;
       if (u < 0 || u > 1 || v < 0 || v > 1) continue;
-      f.add(KEY_MARKER + shown++, K_PANEL, mapX + Math.max(2, Math.min(MINIMAP_SIZE - 2, u * MINIMAP_SIZE)) - 2, mapTop + Math.max(2, Math.min(MINIMAP_SIZE - 2, v * MINIMAP_SIZE)) - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
+      f.add(KEY_MARKER + shown++, K_PANEL, mapX + Math.max(2, Math.min(MAP - 2, u * MAP)) - 2, mapTop + Math.max(2, Math.min(MAP - 2, v * MAP)) - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
     }
-    if (inspect || options.diagnostics) f.text(KEY_CLOCK, mapX, mapTop + MINIMAP_SIZE + 4, MINIMAP_SIZE, S_LABEL, m.clock);
+    if (inspect || options.diagnostics) f.text(KEY_CLOCK, mapX, mapTop + MAP + 4, MAP, S_LABEL, m.clock);
     if (mapTools) for (let i = 0; i < 2; i++) {
-      const b = f.add(KEY_MINIMAP_OUT + i, K_BUTTON, mapX + i * 36, mapY + MINIMAP_SIZE - 32, 32, 32, S_HUD_HIT);
+      const b = f.add(KEY_MINIMAP_OUT + i, K_BUTTON, mapX + i * 36, mapY + MAP - 32, 32, 32, S_HUD_HIT);
       b.text = i === 0 ? "−" : "+";
       b.label = i === 0 ? "Zoom out" : "Zoom in";
       b.interactive = true;
@@ -180,19 +198,19 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   // helicopter's and a boat's are taller, with their state and their keys.
   const dash = m.vehicle?.active ? m.vehicle : null;
   const dashW = dash?.rotor ? HELI_W : dash?.boat ? BOAT_W : DASH_W, dashH = dash?.rotor ? HELI_H : dash?.boat ? BOAT_H : DASH_H;
-  const dashY = options.minimap ? mapY + MINIMAP_SIZE + 28 : mapY;
+  const dashY = options.minimap ? mapY + MAP + 28 : mapY;
   if (mapTools) {
     const beside = dash && !options.minimap ? dashW + 4 : 0;
-    const toggle = f.add(KEY_MINIMAP_TOGGLE, K_BUTTON, W - MARGIN - 32 - beside, mapY + (options.minimap ? MINIMAP_SIZE - 32 : 0), 32, 32, S_HUD_HIT);
+    const toggle = f.add(KEY_MINIMAP_TOGGLE, K_BUTTON, right - 32 - beside, mapY + (options.minimap ? MAP - 32 : 0), 32, 32, S_HUD_HIT);
     toggle.text = "◇";
     toggle.label = options.minimap ? "Hide minimap" : "Show minimap";
     toggle.interactive = true;
   }
   if (m.jetGear && !dash) {
-    const width = 210, x = W - MARGIN - width, y = dashY + (mapTools && !options.minimap ? 36 : 0);
+    const width = 210, x = right - width, y = dashY + (mapTools && !options.minimap ? 36 : 0);
     const left = Math.max(0, JET_CAPACITY - m.jetSpent);
     const status = m.jetThrust === JET_HOVER ? "Level flight" : m.jetThrust ? "Climbing" :
-      m.jetGrounded && m.jetSpent ? "Recharging" : !left ? "Empty · land to recharge" : options.touchFirst ? "Hold Jump + Sprint to hover" : "Hold Space · add Shift to hover";
+      m.jetGrounded && m.jetSpent ? "Recharging" : !left ? "Empty · land to recharge" : touch ? "Hold Jump, stick at its rim to hover" : "Hold Space · add Shift to hover";
     const linked = m.jetGear === JET_FULL_SUIT;
     glass(f, KEY_JET_FUEL, x, y, width, linked ? 83 : 63);
     f.text(KEY_JET_FUEL + 1, x + 10, y + 6, width - 20, S_HUD_COUNT, `Jet fuel   ${(left / TICK_RATE).toFixed(1)} s`);
@@ -201,7 +219,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     if (linked) f.text(KEY_JET_FUEL + 4, x + 10, y + 59, width - 20, S_MENU_NOTE, "Full suit · 2× recharge");
   }
   if (dash && !dash.rotor && !dash.boat) {
-    const x = W - MARGIN - DASH_W, y = dashY;
+    const x = right - DASH_W, y = dashY;
     glass(f, KEY_VEHICLE, x, y, DASH_W, DASH_H);
     f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(dash.speed * 3.6).toString().padStart(3, "0"));
     f.text(KEY_VEHICLE + 7, x + 64, y + 15, 40, S_MENU_NOTE, "km/h");
@@ -214,7 +232,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     f.text(KEY_VEHICLE + 6, x + 12, y + 83, DASH_W - 24, S_MENU_NOTE, dash.flooding > .04 && dash.engineCondition <= .08 ? "E exit · Push ashore to repair" : dash.engineCondition <= .08 ? "F service · Repair engine" : dash.lightMode >= 0 ? `K / R3 lights · ${PATROL_LIGHT_MODES[dash.lightMode]}` : "Space brake · E exit");
   }
   if (dash?.rotor) {
-    const v = dash, x = W - MARGIN - HELI_W, y = dashY, line = HELI_W - 24;
+    const v = dash, x = right - HELI_W, y = dashY, line = HELI_W - 24;
     glass(f, KEY_VEHICLE, x, y, HELI_W, HELI_H);
     f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(v.speed * 3.6).toString().padStart(3, "0"));
     f.text(KEY_VEHICLE + 10, x + 64, y + 15, 40, S_MENU_NOTE, "km/h");
@@ -230,7 +248,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     f.text(KEY_VEHICLE + 9, x + 12, y + 155, line, S_MENU_NOTE, v.grounded ? "V cockpit/chase · E exit" : "V cockpit/chase · Land to exit");
   }
   if (dash?.boat) {
-    const v = dash, x = W - MARGIN - BOAT_W, y = dashY, line = BOAT_W - 24;
+    const v = dash, x = right - BOAT_W, y = dashY, line = BOAT_W - 24;
     glass(f, KEY_VEHICLE, x, y, BOAT_W, BOAT_H);
     f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(v.speed * 1.94384).toString().padStart(2, "0"));
     f.text(KEY_VEHICLE + 10, x + 64, y + 15, 40, S_MENU_NOTE, "kn");
@@ -248,23 +266,32 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
 
   const barW = 150;
   const labelW = 62;
-  const vitalY = H - MARGIN - 38 - (W < 640 ? HOTBAR_CELL + 8 : 0);
+  const vitalY = foot - 38 - (W < 640 ? HOTBAR_CELL + 8 : 0);
+  // At the top they stand against the sky, and need glass behind them to be read: as far as the last one shown.
+  if (touch) {
+    let last = -1;
+    for (let i = 0; i < m.vitals.length; i++) { const v = m.vitals[i]!; if (!((v.id === "oxygen" && v.fraction >= 1) || (v.id === "torpor" && v.fraction <= 0))) last = i; }
+    if (last >= 0) glass(f, KEY_VITAL - 1, touch.vitalsX - 6, touch.vitalsY - 5, last * VITAL_PITCH + 44, 42, 0.85);
+  }
   for (let i = 0; i < m.vitals.length; i++) {
     const v = m.vitals[i]!;
     if ((v.id === "oxygen" && v.fraction >= 1) || (v.id === "torpor" && v.fraction <= 0)) continue;
-    const x = W - MARGIN - 38;
-    const y = vitalY - i * 43;
+    // By touch the thumbs have the lower corners, and the vitals stand in a row at the top, each over its number.
+    const x = touch ? touch.vitalsX + i * VITAL_PITCH : right - 38;
+    const y = touch ? touch.vitalsY : vitalY - i * 43;
     filledVital(f, KEY_VITAL + i * 2 + 1, i, x, y, 32, v.fraction, v.label, controls);
-    if (options.vitalLabels || inspect) f.text(KEY_VITAL + i * 2, x - 126, y + 8, 116, S_HUD_COUNT, `${v.label}  ${Math.round(v.fraction * 100)}%`);
+    if (!(options.vitalLabels || inspect)) continue;
+    if (touch) f.text(KEY_VITAL + i * 2, x - 4, y + 33, 40, S_KEY_SMALL, `${Math.round(v.fraction * 100)}`);
+    else f.text(KEY_VITAL + i * 2, x - 126, y + 8, 116, S_HUD_COUNT, `${v.label}  ${Math.round(v.fraction * 100)}%`);
   }
   // Buffs stay in a column above the bottom row. A buff with negative seconds shows no time.
   const buffW = barW + labelW;
   const buffH = lineHeight(S_BUFF) + 2;
-  let by = H - MARGIN - HOTBAR_CELL - 64 - buffH;
+  let by = foot - HOTBAR_CELL - 64 - buffH;
   const buffTop = dash ? Math.max(200, dashY + dashH + 4) : 200;
   for (let i = 0; i < m.buffs.length && i < 16 && by > buffTop; i++) {
     const b = m.buffs[i]!;
-    const n = f.add(KEY_BUFF + i, K_PANEL, Math.max(MARGIN, W - MARGIN - buffW - 58), by, buffW, buffH, S_BUFF);
+    const n = f.add(KEY_BUFF + i, K_PANEL, touch ? left : Math.max(left, right - buffW - 58), by, buffW, buffH, S_BUFF);
     n.tint = b.tint;
     n.text = b.seconds < 0 ? b.label : `${b.label}  ${b.seconds}s`;
     by -= buffH + 2;
@@ -272,11 +299,10 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
 
   // The hotbar stays at the bottom even when a message, a vital or chat changes.
   if (m.hotbar.length > 0) {
-    const cell = Math.min(HOTBAR_CELL, Math.floor((W - MARGIN * 2 - 3 * (m.hotbar.length - 1)) / m.hotbar.length));
+    const cell = hotbarCell(f, m.hotbar.length);
     const gap = 3;
-    const total = m.hotbar.length * (cell + gap) - gap;
-    const x0 = Math.round((W - total) / 2);
-    const y0 = H - MARGIN - cell;
+    const x0 = hotbarLeft(f, m.hotbar.length);
+    const y0 = hotbarTop(f, m.hotbar.length);
     const small = lineHeight(S_SLOT_TEXT);
     for (let i = 0; i < m.hotbar.length; i++) {
       const c = m.hotbar[i]!;
@@ -296,7 +322,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
       }
       f.text(key + 2, x + 2, y0 + cell - small - 2, cell - 7, S_HUD_COUNT, c.number);
     }
-    if (m.ammo !== "") f.text(KEY_AMMO, Math.max(MARGIN, W / 2 - 150), y0 - lineHeight(S_PROMPT) - 3, Math.min(300, W - MARGIN * 2), S_PROMPT, m.ammo);
+    if (m.ammo !== "") f.text(KEY_AMMO, Math.max(left, W / 2 - 150), y0 - lineHeight(S_PROMPT) - 3, Math.min(300, right - left), S_PROMPT, m.ammo);
   }
 
   // Through a scope its reticle (built under the rest) stands in for the crosshair. A holo-scope's crosshair shows whatever
@@ -316,10 +342,12 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   if (m.crosshair) {
     // The helm panel already carries the exit control; repeating it over the centre overlaps portrait instruments.
     const exitInPanel = m.vehicle?.active && m.vehicle.boat && m.prompt === "E  exit vehicle";
-    if (m.prompt !== "" && !exitInPanel) f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, fitText(m.prompt, 300, S_PROMPT));
+    // A finger is offered the prompt as a button (ui/touch.ts), so here it loses its key.
+    const prompt = touch && m.prompt.startsWith("E  ") ? m.prompt.slice(3) : m.prompt;
+    if (prompt !== "" && !exitInPanel) f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, fitText(prompt, 300, S_PROMPT));
     if (m.actionKind !== ACTION_NONE) f.add(KEY_ACTION, K_BAR, W / 2 - 40, H / 2 + 38, 80, 5, m.actionKind === ACTION_DRAW ? S_STAMINA : S_OXYGEN).value = m.actionFraction;
   }
-  if (m.status !== "") f.text(KEY_STATUS, MARGIN, H / 2 - 100, W - MARGIN * 2, S_TEXT, m.status.slice(0, Math.floor((W - MARGIN * 2) / 7.8)));
+  if (m.status !== "") f.text(KEY_STATUS, left, H / 2 - 100, right - left, S_TEXT, m.status.slice(0, Math.floor((right - left) / 7.8)));
   if (m.banner !== "") {
     const bw = 240;
     const n = f.add(KEY_BANNER, K_PANEL, W / 2 - bw / 2, 56, bw, lineHeight(S_BANNER) + 8, S_BANNER);

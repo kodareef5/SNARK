@@ -1,7 +1,7 @@
 // Draws the interface: one element per node, placed where client/core says, with no layout or state here.
 // Text is always set as text, never as markup, so nothing a player types or is named can become HTML.
 
-import { K_BAR, K_BUTTON, K_DIAL, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
+import { K_BAR, K_BUTTON, K_DIAL, K_HOLD, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
 import { bindTextInput, type UiEvents } from "../core/ui/events.ts";
 import { STYLES } from "../core/ui/style.ts";
 
@@ -37,6 +37,8 @@ export class UiView {
   private readonly bound = new Map<number, Bound>();
   private scale = 0;
   private pass = 0;
+  /** A finger's device: its text fields are never drawn under 16 px, below which iOS zooms the page to one in focus. */
+  private readonly coarse = matchMedia("(pointer: coarse)").matches;
 
   constructor(root: HTMLElement, events: UiEvents) {
     this.root = root;
@@ -45,11 +47,11 @@ export class UiView {
     const forward = (kind: number) => (e: PointerEvent) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>("[data-k]");
       const key = Number(el?.dataset.k ?? 0);
-      // A dial keeps the pointer from its press to its release, wherever it goes, and a cancelled touch lets go of it.
-      const dial = this.bound.get(key)?.kind === K_DIAL;
+      // A dial or a held control keeps the pointer from its press to its release, wherever it goes, and a cancelled touch lets go of it.
+      const held = this.bound.get(key)?.kind, dial = held === K_DIAL || held === K_HOLD;
       if (kind === 0 && dial) el!.setPointerCapture(e.pointerId);
       if (kind === 3 && !dial) return;
-      if (key !== 0 && this.scale > 0) events.pointer(kind === 3 ? 1 : kind, key, e.clientX / this.scale, e.clientY / this.scale, e.button);
+      if (key !== 0 && this.scale > 0) events.pointer(kind === 3 ? 1 : kind, key, e.clientX / this.scale, e.clientY / this.scale, e.button, e.pointerType === "touch" ? Math.abs(e.pointerId) + 1 : 0);
     };
     root.addEventListener("pointerdown", forward(0));
     root.addEventListener("pointerup", forward(1));
@@ -57,7 +59,7 @@ export class UiView {
     root.addEventListener("pointercancel", forward(3));
     root.addEventListener("click", (e) => {
       const key = Number((e.target as HTMLElement).dataset?.k ?? 0);
-      if (e.detail === 0 && key) events.pointer(0, key, 0, 0, 0);
+      if (e.detail === 0 && key) events.pointer(0, key, 0, 0, 0, 0);
     });
     root.addEventListener("contextmenu", (e) => e.preventDefault());
   }
@@ -95,7 +97,7 @@ export class UiView {
         const st = STYLES[n.style]!;
         s.background = n.tint >= 0 ? rgb(n.tint) : (st.fill & 255) === 0 ? "none" : rgba(st.fill);
         s.color = rgb(st.ink);
-        s.fontSize = `${st.font * scale}px`;
+        s.fontSize = `${this.coarse && (n.kind === K_INPUT || n.kind === K_SECRET) ? Math.max(16, st.font * scale) : st.font * scale}px`;
         s.fontFamily = st.sans ? "Hud, Arial, sans-serif" : "ui-monospace, Menlo, Consolas, monospace";
         s.textAlign = st.align === 1 ? "center" : st.align === 2 ? "right" : "left";
         s.textShadow = st.shadow ? "0 1px 2px #000" : "none";

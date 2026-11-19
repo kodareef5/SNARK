@@ -60,10 +60,13 @@ artTest("a client hears a dodo before it, startled and fleeing on soft feet when
   const me = h.ent(app.session);
   const e = h.host.spawnCreature("core:dodo", ents.x[me]!, ents.z[me]! + 4, 1);
   h.host.creatures.mind.stay(e, h.world.tick + 1e6);
+  // A page starts muted: the dodo's sounds come and are held, and none plays until the player unmutes.
+  expect(app.ui.settings.muted).toBe(true);
   run(1500);
   // Its sounds have come and are held, but for its steps on sand, since it is not on sand.
   expect(ears.held).toBe(built.sounds.reduce((n, s) => n + (s.id.endsWith("step/sand") ? 0 : s.takes.length), 0));
-  ears.heard.length = 0;
+  expect(ears.heard).toEqual([]);
+  app.ui.settings.muted = false;
 
   // Struck: startled, then fleeing, its feet heard as it goes.
   h.host.creatures.provoke(e, ents.x[me]!, ents.z[me]!, me);
@@ -89,6 +92,7 @@ test("when the session closes, everything playing stops, the bed under it too", 
   const manifest = manifestWithSounds(pack, bytes.length, withBeds);
   const net = new FakeNet([bytes, withBeds.file], { latencyMs: 30, bytesPerSecond: 2e6 });
   const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, pack, { manifest, port: net });
+  app.ui.settings.muted = false;
   // The device as client/sound keeps it: the voices it plays, stopped before started.
   const playing = new Set<number>();
   let loops = 0;

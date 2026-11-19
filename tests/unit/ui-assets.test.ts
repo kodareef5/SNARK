@@ -15,14 +15,19 @@ test("HUD export is bounded, content-addressed and carries its local font licens
   const dir=mkdtempSync(join(tmpdir(),"snark-ui-"));
   try {
     const out=buildUiAssets(dir), files=readdirSync(join(dir,"assets"));
-    expect(files.length).toBe(4); expect(out.bytes).toBeLessThan(96*1024); expect(out.decodedBytes).toBeLessThanOrEqual(1024*1024);
-    for (const name of [out.atlas,out.font]) expect(name).toContain(partHash(readFileSync(join(dir,name))));
+    // The sheet, the font twice and its licence, and the touch controls' sheet, which only a touched page fetches and `bytes` leaves out.
+    expect(files.length).toBe(5); expect(out.bytes).toBeLessThan(96*1024); expect(out.decodedBytes).toBeLessThanOrEqual(1024*1024);
+    for (const name of [out.atlas,out.font,out.touch]) expect(name).toContain(partHash(readFileSync(join(dir,name))));
+    expect(out.touch).toMatch(/^assets\/touch\.[0-9a-f]+\.webp$/);
+    expect(statSync(join(dir,out.touch)).size).toBeLessThan(400*1024);
     const sheet=readPng(join(dir,out.atlas));
     expect([sheet.width,sheet.height,sheet.channels]).toEqual([512,448,4]);
     expect(sheet.data[(447*512+511)*4+3]).toBe(0);
     const glassAlpha=sheet.data[((256+32)*512+32)*4+3]!;
     expect(glassAlpha).toBeGreaterThan(0); expect(glassAlpha).toBeLessThan(200);
     expect(statSync(join(dir,out.atlas)).size).toBeLessThan(32*1024);
+    // The vitals are the generated glyphs: a health cross with rounded arms is clear at its cell's corner and solid at its middle, in each of its rows.
+    for (const row of [0,1,2]) expect([sheet.data[((row*64+6)*512+6)*4+3], sheet.data[((row*64+32)*512+32)*4+3]!>180]).toEqual([0,true]);
     expect(readFileSync(join(dir,"assets/hud-font-license.txt"),"utf8")).toContain("SIL OPEN FONT LICENSE");
   } finally { rmSync(dir,{recursive:true,force:true}); }
 });

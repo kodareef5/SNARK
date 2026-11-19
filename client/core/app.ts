@@ -72,7 +72,8 @@ import { SplitPort } from "./sound/split.ts";
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
 import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
-import { CANVAS_HEIGHT } from "./ui/nodes.ts";
+import { canvasHeight } from "./ui/nodes.ts";
+import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
@@ -208,6 +209,16 @@ export class App {
   private shown: Registry;
   private readonly pad = new GamepadInput();
   private readonly padTarget: PadTarget;
+  /** Play by touch: its state, and what it drives. */
+  readonly touch = new TouchPlay();
+  private readonly touchTarget: TouchTarget = {
+    key: (code, down) => { this.key(code, down, false, 2); }, mouse: (button, down) => this.mouseButton(button, down, 2),
+    move: (x, z) => this.controls.touchMove(x, z), look: (dx, dy) => this.look(dx, dy),
+  };
+  /** What the screen's edges take from each side, in CSS pixels: left, top, right, bottom. The shell sets them. */
+  readonly insets = [0, 0, 0, 0];
+  /** CSS pixels to a canvas unit, this frame. */
+  private unit = 1;
   private readonly pack: Pack;
   private last = -1;
   /** Adopt the welcome's authored/saved facing once, before the first input overwrites it. */
@@ -243,6 +254,7 @@ export class App {
     };
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    this.ui.touchPlay = this.touch;
     const app = this;
     this.padTarget = {
       get inMenu() { return !app.ui.wantsPointerLock; },
@@ -353,7 +365,8 @@ export class App {
     if (v.notice !== "") hud.voice = v.notice;
     else if (this.talking) hud.voice = this.ui.settings.toggleTalk && !v.sending ? "MIC OPEN" : TALK_LABEL[this.talkMode]!;
     hud.micLevel = v.level;
-    if (this.volumeSet !== this.ui.settings.voiceVolume) v.volume((this.volumeSet = this.ui.settings.voiceVolume));
+    const heard = this.ui.settings.muted ? 0 : this.ui.settings.voiceVolume;
+    if (this.volumeSet !== heard) v.volume((this.volumeSet = heard));
     if (v.speakers.size === 0) return;
     const r = this.remote;
     const own = this.session.own;
@@ -504,6 +517,7 @@ export class App {
   }
 
   mouseButton(button: number, down: boolean, source = 0): void {
+    if (down && source !== 1) this.ui.inputDevice = source;
     if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
     if (button === 0 && this.vehiclePlacement.active) {
       if (down) this.vehiclePlacement.place(this.session);
@@ -573,6 +587,7 @@ export class App {
 
   blur(): void {
     this.controls.release();
+    this.touch.reset();
     this.useDownAt = -1;
     this.useKept = this.eggKept = false;
     this.usePulse = 0;
@@ -594,8 +609,13 @@ export class App {
     this.ui.input(key, value);
   }
 
-  /** `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. */
-  pointer(kind: number, key: number, x: number, y: number, button: number): void {
+  /**
+   * `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. `finger` is 0 for a mouse, and a
+   * touch's own number, 1 or more, for a finger.
+   */
+  pointer(kind: number, key: number, x: number, y: number, button: number, finger = 0): void {
+    if (finger > 0) this.ui.inputDevice = 2;
+    if (this.touch.pointer(kind, key, x, y, finger, this.nowMs, this.touchTarget, this.unit)) return;
     if (!this.ui.menu && this.ui.map && mapPointer(this.hud, kind, key, x, y)) return;
     if ((this.ui.wantsPointerLock || this.ui.inspect) && kind === 0 && button === 0) {
       if (key >= KEY_VITAL && key < KEY_VITAL + this.hud.vitals.length * 2) { this.ui.settings.vitalLabels = !this.ui.settings.vitalLabels; this.ui.settings.changed(); }
@@ -959,7 +979,9 @@ export class App {
     if (!pinned) return;
     this.governor.held = Number(get("level") ?? 0);
     this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
-    // Such a page runs unattended, often behind someone's other work, and its music would start at full volume.
+    // Such a page runs unattended, often behind someone's other work, and its music would start at full volume. It is
+    // not muted, since nobody is there to unmute it and the self-check listens for a sound.
+    this.ui.settings.muted = false;
     const volume = Number(get("volume") ?? MEASURED_VOLUME);
     this.ui.settings.masterVolume = Number.isFinite(volume) ? Math.max(0, Math.min(VOLUME_MAX, volume)) : MEASURED_VOLUME;
   }
@@ -1030,6 +1052,14 @@ export class App {
     this.last = nowMs;
     this.fps += (1000 / Math.max(dt, 1) - this.fps) * 0.05;
     const aspect = width / Math.max(height, 1);
+    // The interface's canvas for this window: shorter for a short one, with the screen's edges kept clear.
+    const ui = this.ui, units = canvasHeight(width, height);
+    this.unit = Math.max(height, 1) / units;
+    ui.canvasHeight = units;
+    ui.frame.unit = this.unit;
+    ui.frame.left = this.insets[0]! / this.unit; ui.frame.top = this.insets[1]! / this.unit; ui.frame.right = this.insets[2]! / this.unit; ui.frame.bottom = this.insets[3]! / this.unit;
+    ui.flyer = this.controls.onFlyer;
+    this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
     const session = this.session;
     const hud = this.hud;
     const c = this.controls;
@@ -1421,7 +1451,7 @@ export class App {
     packetWithout(packet, off);
     hud.minimapVisible = this.ui.settings.minimap && !this.ui.menu;
     if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
-    updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);
+    updateHud(hud, session, this.remote, this.fps, this.unit);
     hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     this.feedback.absorb(session, this.reg, nowMs);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers, session.hitMarkers);
@@ -1435,7 +1465,7 @@ export class App {
     const vol = this.ui.settings;
     if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);
     if (this.sounds) this.sounds.assetsIdle = this.scene.assets.residency.flying === 0 && this.scene.assets.residency.waiting === 0;
-    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session, this.sky), this.scene.characters.fallen);
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.muted ? 0 : vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session, this.sky), this.scene.characters.fallen);
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder, v = this.vehiclePlacement;

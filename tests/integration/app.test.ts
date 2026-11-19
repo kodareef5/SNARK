@@ -424,11 +424,15 @@ test("the talk key with Alt is a whisper and with Shift a yell; set to switch, o
   expect(calls).toEqual([[true, 1, true], [false, 1, true]]);
   expect(label()).toBeUndefined();
 
-  // The port gets the volume once each time the setting changes. The settings meter shows the port's level.
-  expect(volumes).toEqual([1]);
+  // The port gets the volume once each time it changes: nothing while the page is muted, as it starts, then the
+  // setting. The settings meter shows the port's level.
+  expect(volumes).toEqual([0]);
+  app.ui.settings.muted = false;
+  run(50);
+  expect(volumes).toEqual([0, 1]);
   app.ui.settings.voiceVolume = 0.5;
   run(100);
-  expect(volumes).toEqual([1, 0.5]);
+  expect(volumes).toEqual([0, 1, 0.5]);
   app.key("KeyO", true);
   run(50);
   app.pointer(0, KEY_SETTINGS_TAB + 1, 0, 0, 0);

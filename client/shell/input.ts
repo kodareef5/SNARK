@@ -9,7 +9,7 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
   let escapedAt = -Infinity;
   const sync = (): void => {
     const locked = document.pointerLockElement === canvas;
-    if (app.ui.wantsPointerLock && engaged && !locked) void canvas.requestPointerLock()?.catch(() => { engaged = false; });
+    if (app.ui.wantsPointerLock && engaged && !locked) void canvas.requestPointerLock?.()?.catch(() => { engaged = false; });
     else if (!app.ui.wantsPointerLock && locked) document.exitPointerLock();
   };
   addEventListener("keydown", (e) => {
@@ -22,7 +22,10 @@ export function bindInput(canvas: HTMLCanvasElement, app: App): void {
     sync();
   });
   addEventListener("blur", () => { app.ui.inspect = false; app.blur(); });
-  canvas.addEventListener("click", () => {
+  // A finger on the world brings up the touch controls (client/core/touch.ts), and never locks a pointer it does not have.
+  canvas.addEventListener("pointerdown", (e) => { if (e.pointerType === "touch") app.ui.inputDevice = 2; });
+  canvas.addEventListener("click", (e) => {
+    if ((e as PointerEvent).pointerType === "touch") return;
     engaged = true;
     sync();
   });

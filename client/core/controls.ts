@@ -46,6 +46,9 @@ export class Controls {
   private padMouse = 0;
   private analogX = 0;
   private analogZ = 0;
+  /** The touch stick's, apart from the pad's: a pad not there sends its stick at rest every frame. */
+  private touchX = 0;
+  private touchZ = 0;
   /** BTN_CROUCH, BTN_PRONE or 0. The bit is sent every tick while the stance is wanted. */
   private stance = 0;
   get onFlyer(): boolean { return this.flyer; }
@@ -112,7 +115,13 @@ export class Controls {
     this.held.clear();
     this.padHeld.clear();
     this.mouse = 0;
-    this.padMouse = this.analogX = this.analogZ = 0;
+    this.padMouse = this.analogX = this.analogZ = this.touchX = this.touchZ = 0;
+    this.refresh();
+  }
+
+  touchMove(x: number, z: number): void {
+    this.touchX = Number.isFinite(x) ? Math.max(-1, Math.min(1, x)) : 0;
+    this.touchZ = Number.isFinite(z) ? Math.max(-1, Math.min(1, z)) : 0;
     this.refresh();
   }
 
@@ -124,8 +133,8 @@ export class Controls {
 
   private refresh(): void {
     const k = this.held;
-    this.moveX = Math.max(-1,Math.min(1,(k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0) + this.analogX));
-    this.moveZ = Math.max(-1,Math.min(1,(k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0) + this.analogZ));
+    this.moveX = Math.max(-1,Math.min(1,(k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0) + this.analogX + this.touchX));
+    this.moveZ = Math.max(-1,Math.min(1,(k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0) + this.analogZ + this.touchZ));
     let buttons = this.mouse | this.padMouse | this.stance | (this.wing ? BTN_JUMP : 0) | (this.helicopter && this.directFlight ? BTN_MOD : 0);
     const bindings = this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : BINDINGS;
     for (const code of k) buttons |= bindings[code] ?? 0;

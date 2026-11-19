@@ -23,7 +23,7 @@ const SHEETS: Record<string, Record<string, unknown>> = {
   "sfx/helicopter": { "engine/idle": one(120, true), "engine/start": one(120) },
 };
 
-function world(): { sounds: Sounds; net: FakeNet; id: (name: string) => number; frame: (view?: SoundView | null, remote?: RemoteSample) => SoundSink & { music: boolean } } {
+function world(): { sounds: Sounds; net: FakeNet; id: (name: string) => number; volumes: { master: number; music: number }; frame: (view?: SoundView | null, remote?: RemoteSample) => SoundSink & { music: boolean } } {
   const root = mkdtempSync(join(tmpdir(), "snark-ahead-"));
   try {
     for (const [folder, sounds] of Object.entries(SHEETS)) {
@@ -37,14 +37,15 @@ function world(): { sounds: Sounds; net: FakeNet; id: (name: string) => number; 
     const sounds = new Sounds({ sounds: built.sounds }, net, w.reg, () => null);
     sounds.setMusic([{ id: "primeval", bpm: 90, seconds: 104, layers: ["calm"] }]);
     let now = 0;
+    const volumes = { master: 1, effects: 1, ambience: 1, music: 1, interface: 1 };
     const sink = { running: true, music: false, apply: (p: { music: unknown }) => void (sink.music = p.music !== null) };
     const frame = (view: SoundView | null = null, remote = new RemoteSample()): typeof sink => {
       now += 1000 / 30;
       net.advance(now);
-      sounds.frame(sink, now, remote, w.hf, { x: 0, y: 1.6, z: 0, yaw: 0, pitch: 0 }, { master: 1, effects: 1, ambience: 1, music: 1, interface: 1 }, view);
+      sounds.frame(sink, now, remote, w.hf, { x: 0, y: 1.6, z: 0, yaw: 0, pitch: 0 }, volumes, view);
       return sink;
     };
-    return { sounds, net, id: (name) => sounds.library.index.get(name)!, frame };
+    return { sounds, net, id: (name) => sounds.library.index.get(name)!, volumes, frame };
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -72,6 +73,17 @@ test("the start set and the music wait while the first view streams in, and five
   let waited = 0;
   while (!b.frame(view(0)).music) waited++;
   expect((waited * 1000) / 30).toBeCloseTo(5000, -2);
+});
+
+test("music that would not be heard is not asked of the device: muted, or its own volume at nothing", () => {
+  const { sounds, volumes, frame } = world();
+  sounds.assetsIdle = true;
+  volumes.master = 0;
+  for (let k = 0; k < 30; k++) expect(frame(view(0)).music).toBe(false);
+  [volumes.master, volumes.music] = [1, 0];
+  expect(frame(view(0)).music).toBe(false);
+  volumes.music = 1;
+  expect(frame(view(0)).music).toBe(true);
 });
 
 test("what the hand may make is held before the first shot: the pistol's report and reload, and a blow landing", () => {

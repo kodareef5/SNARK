@@ -10,28 +10,43 @@ export const KEY_SETTINGS_TITLE = 2301;
 export const KEY_SETTINGS_ROW = 2310;
 export const KEY_SETTINGS_MIC = 2390;
 export const KEY_SETTINGS_TAB = 2270;
+/** Page back, page on, and "1 / 2", shown where a tab's rows do not all fit. */
+export const KEY_SETTINGS_PAGE = 2290;
+const ROW = 52;
 export const KEY_SETTINGS_SLIDER = 5900;
 export const SETTING_GROUPS = [
   { name: "Display", rows: [11, 12, 2, 0] },
-  { name: "Audio", rows: [5, 6, 7, 8, 9, 3, 4] },
+  { name: "Audio", rows: [17, 5, 6, 7, 8, 9, 3, 4] },
   { name: "Input", rows: [1] },
   { name: "Interface", rows: [14, 15, 16, 13, 10] },
 ] as const;
-const TOGGLES = new Set([0,4,12,14,15,16]);
+const TOGGLES = new Set([0,4,12,14,15,16,17]);
 
 export function buildSettings(f: UiFrame, s: Settings, micLevel = 0, focus = 0): void {
   menuBackdrop(f);
-  const w = Math.min(f.width-32,780), h = 560, x = Math.round((f.width-w)/2), y = 80, narrow = w<580;
+  // As tall as the canvas lets it be: a phone on its side pages the rows a taller window shows at once.
+  const w = Math.min(f.width-f.left-f.right-32,780), h = Math.min(560,f.height-f.top-f.bottom-16), x = Math.round((f.width-w)/2), y = Math.max(f.top+8,Math.min(80,Math.round((f.height-h)/2))), narrow = w<580;
   const right=x+w-24, inner=w-48;
   f.add(KEY_SETTINGS_PANEL,K_PANEL,x,y,w,h,S_HUD_HIT);
   glass(f,KEY_SETTINGS_PANEL,x,y,w,h);
-  f.text(KEY_SETTINGS_TITLE,x+24,y+20,w-140,S_MENU_HEADING,"Settings");
   smallButton(f,KEY_MENU_BACK,right-56,y+16,56,36,"Back","Back",focus===KEY_MENU_BACK);
   const tabW=inner/SETTING_GROUPS.length;
   SETTING_GROUPS.forEach((group,i)=>smallButton(f,KEY_SETTINGS_TAB+i,x+24+i*tabW,y+66,tabW-8,34,group.name,group.name,s.tab===i));
   const group=SETTING_GROUPS[s.tab]??SETTING_GROUPS[0];
-  group.rows.forEach((i,rowAt)=>{
-    const row=SETTING_ROWS[i]!, ry=y+112+rowAt*52, key=KEY_SETTINGS_ROW+i*4;
+  // All of a tab's rows where the panel has the room, as a full window has; else as many to a page as fit. A row
+  // with a slider under its label (a narrow panel) is the taller kind.
+  const need=(i:number):number=>narrow && SETTING_ROWS[i]!.range?54:34, limit=h-(s.tab===1?44:8), count=group.rows.length;
+  const perPage=112+(count-1)*ROW+need(group.rows[count-1]!)<=limit?count:Math.max(1,Math.floor((limit-112-(narrow?54:34))/ROW)+1), pages=Math.ceil(count/perPage);
+  s.page=Math.max(0,Math.min(pages-1,s.page));
+  f.text(KEY_SETTINGS_TITLE,x+24,y+20,pages>1?w-290:w-140,S_MENU_HEADING,"Settings");
+  if(pages>1) {
+    for(let k=0;k<2;k++)smallButton(f,KEY_SETTINGS_PAGE+k,right-200+k*88,y+16,36,36,k?"›":"‹",k?"Next page":"Previous page",focus===KEY_SETTINGS_PAGE+k);
+    f.text(KEY_SETTINGS_PAGE+2,right-160,y+25,44,S_HUD_COUNT,`${s.page+1} / ${pages}`);
+  }
+  group.rows.forEach((i,at)=>{
+    const rowAt=at-s.page*perPage;
+    if(rowAt<0 || rowAt>=perPage)return;
+    const row=SETTING_ROWS[i]!, ry=y+112+rowAt*ROW, key=KEY_SETTINGS_ROW+i*4;
     f.text(key,x+24,ry+5,narrow?inner-112:196,S_MENU_NOTE,fitText(row.label,narrow?inner-112:196,S_MENU_NOTE));
     const valueX = narrow ? right-106 : right-186;
     f.text(key+1,valueX,ry+5,106,S_HUD_COUNT,fitText(row.value(s),106,S_HUD_COUNT));
@@ -65,7 +80,9 @@ export function settingsValue(key: number, value: number, s: Settings): boolean 
 }
 
 export function settingsClick(key: number, s: Settings): boolean {
-  if(key>=KEY_SETTINGS_TAB && key<KEY_SETTINGS_TAB+SETTING_GROUPS.length){s.tab=key-KEY_SETTINGS_TAB;return true;}
+  if(key>=KEY_SETTINGS_TAB && key<KEY_SETTINGS_TAB+SETTING_GROUPS.length){s.tab=key-KEY_SETTINGS_TAB;s.page=0;return true;}
+  // The build keeps the page within the tab's pages.
+  if(key===KEY_SETTINGS_PAGE || key===KEY_SETTINGS_PAGE+1){s.page+=key===KEY_SETTINGS_PAGE?-1:1;return true;}
   const k=key-KEY_SETTINGS_ROW;
   if(k<0 || k>=SETTING_ROWS.length*4 || k%4<2)return false;
   SETTING_ROWS[k>>2]!.step(s,k%4===2?-1:1); s.changed(); return true;

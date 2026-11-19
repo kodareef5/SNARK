@@ -140,9 +140,16 @@ async function boot(): Promise<void> {
   app.steer = driveCheck || selfcheck && params.has("dinosaur") || !selfcheck && !device;
   app.plainSky = selfcheck;
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
+  if (app.ui.settings.touchFirst) app.ui.inputDevice = 2;
+  // What the screen's own edges take (a notch, a home bar), which the page's padding measures: the interface keeps clear of them.
+  const edges = (): void => { const s = getComputedStyle(document.body); [s.paddingLeft, s.paddingTop, s.paddingRight, s.paddingBottom].forEach((side, i) => (app.insets[i] = parseFloat(side) || 0)); };
+  edges();
+  addEventListener("resize", edges);
   if (!measured) app.ui.settings.start({ renderer: renderer.rendererName, light: renderer.light > 0, memory: (navigator as { deviceMemory?: number }).deviceMemory });
   app.dpr = devicePixelRatio;
   app.address((name) => params.get(name), measured, orders);
+  // A trip's page is a tool's too: nobody is at it to unmute, and its pictures are of the world.
+  if (params.has("trip")) app.ui.settings.muted = false;
   app.page = {
     origin: location.origin,
     protocol: location.protocol,
@@ -284,7 +291,7 @@ async function boot(): Promise<void> {
   if(launch && session.state==="closed"){showEntryProblem();return;}
   await loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arriving: (statics, whole) => session.staticsSteps(statics, whole), held: () => session.behind });
   // The interface takes the page's line from here.
-  const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
+  const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger) });
   requestAnimationFrame(frame);
 }
 

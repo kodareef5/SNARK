@@ -3,11 +3,11 @@ import { HudModel, VehicleTelemetry } from "../../client/core/hud.ts";
 import { Settings, SETTING_ROWS } from "../../client/core/settings.ts";
 import { KEY_CONTROL_DETAIL, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "../../client/core/ui/controls-help.ts";
 import { KEY_CONTROL_PAD } from "../../client/core/ui/controller.ts";
-import { SETTING_GROUPS } from "../../client/core/ui/settings.ts";
+import { KEY_SETTINGS_PAGE, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, SETTING_GROUPS } from "../../client/core/ui/settings.ts";
 import { siteLinks } from "../../client/core/travel.ts";
 import { KEY_BUFF, KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY_VEHICLE, KEY_VITAL } from "../../client/core/ui/hud.ts";
-import { KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LINK, KEY_MENU_RESUME, KEY_MENU_SETTINGS } from "../../client/core/ui/menu.ts";
-import { K_IMAGE, K_SLIDER, UiFrame, textWidth, type UiImage } from "../../client/core/ui/nodes.ts";
+import { KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LINK, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
+import { K_HOLD, K_IMAGE, K_SLIDER, UiFrame, textWidth, type UiImage } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { filledVital } from "../../client/core/ui/vitals.ts";
 import { IMAGE_SKIN, ICON_SIZE, SKIN_HEIGHT, SKIN_WIDTH } from "../../client/core/ui/skin.ts";
@@ -147,6 +147,60 @@ test("every menu, settings group and device layout fits from phone portrait to u
   }
 });
 
+test("a phone on its side: the menu, every settings tab and page, and the controls fit a canvas as short as 400 units", () => {
+  const ui=new Ui(),hud=new HudModel();
+  ui.inputDevice=2;
+  // With the links the menu shows beneath Controls, which a short canvas has to make room for.
+  ui.links=siteLinks({wiki:"/wiki/",repository:"https://git.example.com/code"});
+  let paged=0;
+  for (const [w,h] of [[1056,488],[834,469],[710,400],[1280,576]] as const) for (const mode of [0,1,2,3,4,5,6,7]) {
+    ui.canvasHeight=h;ui.menu=true;ui.options=mode>=1 && mode<=4;ui.settings.tab=mode-1;ui.settings.page=0;ui.help=mode>=5;ui.helpDevice=mode-5;
+    for (let page=0;page<4;page++) {
+      ui.build(w/h,hud,null);
+      const f=ui.frame,nodes=f.nodes.slice(0,f.count),where=`${w}x${h} mode=${mode} page=${page}`;
+      expect([f.width,f.height],where).toEqual([w,h]);
+      const keys=new Set<number>();
+      for (const n of nodes) {
+        expect(keys.has(n.key),`${where} key=${n.key}`).toBe(false);keys.add(n.key);
+        // The touch sheet's pictures carry their glow in clear margins, which may pass an edge; nothing else may.
+        if (!(n.kind===K_IMAGE && n.key>=3300000)) expect(n.x>=-0.01 && n.y>=-0.01 && n.x+n.w<=f.width+0.01 && n.y+n.h<=f.height+0.01,`${where} key=${n.key} at ${n.x},${n.y} ${n.w}x${n.h}`).toBe(true);
+        if (n.text) expect(textWidth(n.text,n.style),`${where}: ${n.text}`).toBeLessThanOrEqual(n.w+0.01);
+      }
+      const controls=nodes.filter(n=>n.interactive);
+      for (let i=0;i<controls.length;i++) for (let j=i+1;j<controls.length;j++) {
+        const a=controls[i]!,b=controls[j]!;
+        expect(a.x<b.x+b.w && b.x<a.x+a.w && a.y<b.y+b.h && b.y<a.y+a.h,`${where}: overlap ${a.key}/${b.key}`).toBe(false);
+      }
+      // On so short a canvas the controls are the touch page, whichever was asked for.
+      if (mode>=5 && h<640) expect(nodes.some(n=>n.text==="Left side") && !nodes.some(n=>n.label==="Controller"),where).toBe(true);
+      // Every row of a tab is on one of its pages.
+      if (!ui.options || !f.find(KEY_SETTINGS_PAGE)) break;
+      const was=ui.settings.page;
+      ui.pointer(0,KEY_SETTINGS_PAGE+1,0,0,0,null);ui.build(w/h,hud,null);
+      if (ui.settings.page===was) break;
+      paged++;
+    }
+  }
+  expect(paged).toBeGreaterThanOrEqual(2);
+  // A full window, and a phone upright, show every tab whole: no tab pages there.
+  for (const [aspect,height] of [[16/9,720],[9/16,720],[405/876,876]] as const) for (let tab=0;tab<4;tab++) {
+    ui.canvasHeight=height;ui.options=true;ui.help=false;ui.settings.tab=tab;ui.settings.page=0;ui.build(aspect,hud,null);
+    expect(ui.frame.find(KEY_SETTINGS_PAGE),`tab ${tab} at ${height}`).toBeNull();
+  }
+  // The audio tab's eight rows, over the pages of the shortest canvas, each once.
+  ui.canvasHeight=400;ui.options=true;ui.help=false;ui.settings.tab=1;ui.settings.page=0;
+  const seen:string[]=[];
+  for (let page=0;page<4;page++) {
+    ui.build(710/400,hud,null);
+    for (const n of ui.frame.nodes.slice(0,ui.frame.count)) if (n.key>=KEY_SETTINGS_ROW && n.key<KEY_SETTINGS_ROW+SETTING_ROWS.length*4 && (n.key-KEY_SETTINGS_ROW)%4===0) seen.push(n.text);
+    const was=ui.settings.page;ui.pointer(0,KEY_SETTINGS_PAGE+1,0,0,0,null);ui.build(710/400,hud,null);
+    if (ui.settings.page===was) break;
+  }
+  expect(seen).toEqual(["Sound","Master volume","Effects volume","Ambience volume","Music volume","Interface volume","Voice volume","Talk key (B)"]);
+  // A tab chosen starts at its first page.
+  ui.pointer(0,KEY_SETTINGS_TAB+1,0,0,0,null);expect(ui.settings.page).toBe(0);
+});
+
 test("sliders accept pointer values, reject invalid input, and support repeated precise keyboard adjustments",()=>{
   const ui=new Ui(),hud=new HudModel();ui.menu=ui.options=true;ui.settings.tab=2;
   ui.build(16/9,hud,null);
@@ -167,11 +221,39 @@ test("sliders accept pointer values, reject invalid input, and support repeated 
   ui.console.open=false;ui.options=ui.menu=false;ui.key("ArrowLeft",true,false,null);expect(ui.settings.sensitivity).toBe(3);
 });
 
+test("a page starts muted and offers to unmute over the HUD and the menu; a press unmutes, and the choice is saved", () => {
+  const ui=new Ui(),hud=new HudModel();
+  expect(ui.settings.muted).toBe(true);
+  for (const aspect of [9/16,4/3,16/9,32/9]) for (const menu of [false,true]) for (const touch of [false,true]) {
+    ui.menu=menu;ui.inputDevice=touch?2:0;ui.build(aspect,hud,null);
+    const b=ui.frame.find(KEY_UNMUTE)!,where=`aspect=${aspect} menu=${menu} touch=${touch}`;
+    expect([b.interactive,b.text],where).toEqual([true,"Unmute sound"]);
+    expect(textWidth(b.text,b.style),where).toBeLessThanOrEqual(b.w);
+    expect(b.h,where).toBeGreaterThanOrEqual(44);
+    expect(b.x>=0 && b.x+b.w<=ui.frame.width,where).toBe(true);
+    for (const n of ui.frame.nodes.slice(0,ui.frame.count)) if (n!==b && n.interactive && n.kind!==K_HOLD) expect(b.x<n.x+n.w && n.x<b.x+b.w && b.y<n.y+n.h && n.y<b.y+b.h,`${where} over ${n.key}`).toBe(false);
+  }
+  // Only a press of the main button unmutes: not a pointer passing over, nor the secondary button.
+  const before=ui.settings.revision;
+  ui.pointer(2,KEY_UNMUTE,0,0,0,null);ui.pointer(0,KEY_UNMUTE,0,0,2,null);
+  expect([ui.settings.muted,ui.settings.revision]).toEqual([true,before]);
+  ui.pointer(0,KEY_UNMUTE,0,0,0,null);
+  expect([ui.settings.muted,ui.settings.revision,ui.menu]).toEqual([false,before+1,true]);
+  ui.build(16/9,hud,null);
+  expect(ui.frame.find(KEY_UNMUTE)).toBeNull();
+  // The choice outlasts the page; a visitor with nothing saved, or with preferences from before, is muted.
+  const copy=new Settings();copy.restoreInterface(ui.settings.interfacePreferences());expect(copy.muted).toBe(false);
+  const old=new Settings();old.restoreInterface('{"version":2,"masterVolume":1}');expect(old.muted).toBe(true);
+  // The settings' Sound row mutes again, and the offer comes back.
+  SETTING_ROWS.find(r=>r.label==="Sound")!.step(ui.settings,1);ui.build(16/9,hud,null);
+  expect([ui.settings.muted,ui.frame.find(KEY_UNMUTE)!==null]).toEqual([true,true]);
+});
+
 test("the menu's links are buttons beneath Controls that open where the server says, once a press, by pointer or by key", () => {
   const ui=new Ui(),hud=new HudModel(),opened:string[]=[];ui.openMenu();ui.openLink=(url)=>void opened.push(url);
   ui.links=siteLinks({wiki:"/wiki/",repository:"https://snark.dev/code"});ui.build(16/9,hud,null);
   const buttons=()=>ui.frame.nodes.slice(0,ui.frame.count).filter(n=>n.interactive).map(n=>n.text);
-  expect(buttons()).toEqual(["Reconnect","Settings","Controls","Wiki","Source code"]);
+  expect(buttons()).toEqual(["Reconnect","Settings","Controls","Wiki","Source code","Unmute sound"]);
   ui.pointer(0,KEY_MENU_LINK+1,0,0,0,null);
   expect([opened,ui.menu]).toEqual([["https://snark.dev/code"],true]);
   // Chosen with the keyboard: Tab moves the focus down to the button, and Enter presses it.

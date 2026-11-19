@@ -8,13 +8,15 @@ import { CharacterScreen } from "./character.ts";
 import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_TAG } from "./chat.ts";
 import { CreatorScreen } from "./creator.ts";
 import { buildCombat } from "./combat.ts";
-import { buildHud, chatBand } from "./hud.ts";
+import { buildHud, chatBand, hotbarCell, hotbarLeft, hotbarTop } from "./hud.ts";
+import { touchBar, touchClose, touchControls, touchPlan, touchZones } from "./touch.ts";
+import type { TouchPlay } from "../touch.ts";
 import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
 import { CONTROL_GROUPS } from "./controls-guide.ts";
-import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, menuLink } from "./menu.ts";
+import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE, menuLink, unmuteButton } from "./menu.ts";
 import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
 import { InventoryScreen } from "./inventory.ts";
-import { K_SLIDER, UiFrame } from "./nodes.ts";
+import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { buildMap } from "./screens.ts";
 import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
 import { Settings } from "../settings.ts";
@@ -56,7 +58,15 @@ export class Ui {
   help = false;
   helpDevice = 0;
   helpGroup = 0;
+  /** What the player last used: 0 the keyboard and mouse, 1 a pad, 2 a finger. The HUD's controls and words follow it. */
   inputDevice = 0;
+  /** The canvas's height in units, which a short window lowers (nodes.ts canvasHeight). The app sets it each frame. */
+  canvasHeight = CANVAS_HEIGHT;
+  /** The touch layer's state, which the app owns; whether the body it drives flies; and the buttons the last frame showed, a bit each. */
+  touchPlay: TouchPlay | null = null;
+  flyer = false;
+  touchShown = 0;
+  get touch(): boolean { return this.inputDevice === 2; }
   inspect = false;
   reconnectRequested = false;
   leftWorld = false;
@@ -232,6 +242,7 @@ export class Ui {
 
   /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
   pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null): void {
+    if (key === KEY_UNMUTE) { if (kind === 0 && button === 0) { this.settings.muted = false; this.settings.changed(); } return; }
     if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
     if (this.menu) {
       if (kind === 2 && this.frame.find(key)?.interactive) this.menuFocus = key;
@@ -248,7 +259,7 @@ export class Ui {
         else if (key === KEY_MENU_BACK) { this.focusTo(this.creative ? KEY_MENU_CREATIVE : KEY_MENU_RESUME); this.options = this.help = this.creative = false; }
         else if (key === KEY_MENU_LEAVE) { session?.close(); this.leftWorld=true; this.focusTo(KEY_MENU_RESUME); }
         else if (!this.options && !this.help && !this.creative) { const url = menuLink(key, this.links); if (url !== null) this.openLink?.(url); }
-        else if (this.help && (key === KEY_CONTROLS_DEVICE || key === KEY_CONTROLS_DEVICE + 1)) this.helpDevice = key - KEY_CONTROLS_DEVICE;
+        else if (this.help && key >= KEY_CONTROLS_DEVICE && key <= KEY_CONTROLS_DEVICE + 2) this.helpDevice = key - KEY_CONTROLS_DEVICE;
         else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;
         else if (this.help && key === KEY_CONTROL_GLYPHS) { this.settings.padGlyphs=1-this.settings.padGlyphs; this.settings.changed(); }
         else if (this.options) settingsClick(key, this.settings);
@@ -295,20 +306,32 @@ export class Ui {
 
   build(aspect: number, hud: HudModel, session: ClientSession | null): void {
     const f = this.frame;
-    f.begin(aspect);
+    f.begin(aspect, this.canvasHeight);
+    const plan = this.touch ? touchPlan(f, this.settings.muted) : null;
+    this.inventory.touch = this.touch;
+    this.touchShown = 0;
     this.creating = session?.sessionState === SESSION_CREATING;
     this.dead = session?.sessionState === SESSION_DEAD;
     // A survivor still in the creator has no vitals, no position and nothing to aim at.
     if (session) this.chat.absorb(session);
     if (!this.creating && !this.menu) {
+      const controls = (this.wantsPointerLock || this.inspect) && !session?.open;
+      // A finger's zones lie under the whole HUD while the body is being played.
+      const play = plan !== null && this.touchPlay !== null && session !== null && controls && this.wantsPointerLock;
+      if (play) touchZones(f);
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
-      buildHud(f, hud, this.settings, (this.wantsPointerLock || this.inspect) && !session?.open, this.inspect);
+      buildHud(f, hud, this.settings, controls, this.inspect, plan);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.
       if (session) {
         const band = chatBand(f, hud);
         this.chat.build(f, band.top, band.bottom, session.serverTick);
+      }
+      if (plan && this.touchPlay && controls) {
+        this.touchShown = touchBar(f, this.touchPlay, f.width - f.right - 12 - plan.map, f.top + 12, plan.map, this.settings.minimap);
+        const slots = hud.hotbar.length;
+        if (play) this.touchShown |= touchControls(f, this.touchPlay, hud, this.flyer, slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0);
       }
     } else if (this.creating) this.chat.close();
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
@@ -348,6 +371,10 @@ export class Ui {
       this.naming.absorb(session);
       if (!this.console.open && !this.menu) this.naming.build(f, session, this.registry);
     }
+    // A screen, the chat box or a prompt that a keyboard would leave by Escape has a button for it by touch.
+    if (plan && this.touchPlay && !this.wantsPointerLock && !this.menu && !this.creating && !this.dead && !this.console.open) this.touchShown |= touchClose(f, this.touchPlay);
+    // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
+    if (this.settings.muted && !this.console.open) unmuteButton(f, plan);
     if (session) this.console.absorb(session);
     this.console.build(f);
     if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }

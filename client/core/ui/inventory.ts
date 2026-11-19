@@ -92,6 +92,8 @@ export function itemLabel(reg: Registry, item: number): string {
 
 export class InventoryScreen {
   open = false;
+  /** The last thing used was a finger (Ui.touch): the screen's words name presses, not keys and mouse buttons. */
+  touch = false;
   /** The app starts the world preview; the inventory never creates a vehicle directly. */
   onDeploy: ((slot: number) => void) | null = null;
   private readonly vehicleSample = new RemoteSample();
@@ -277,7 +279,8 @@ export class InventoryScreen {
     if (this.held >= 0 && (!heldInv || heldInv.item[this.held] === 0)) this.held = -1;
 
     this.registry = reg;
-    const cols = Math.max(4, Math.min(10, Math.floor((f.width - PAD * 4) / (CELL + GAP))));
+    // Ten across, or on a canvas too short for the rows that makes (a phone on its side), as many as fourteen.
+    const cols = Math.max(4, Math.min(f.height < 520 ? 14 : 10, Math.floor((f.width - f.left - f.right - PAD * 4) / (CELL + GAP))));
     const w = cols * (CELL + GAP) - GAP + PAD * 2;
     const titleH = lineHeight(S_TITLE);
     const infoH = lineHeight(S_LABEL);
@@ -478,7 +481,7 @@ export class InventoryScreen {
     grid(own, BOX_SELF, KEY_INV_SLOT, top, 0, own.bag);
     top += rows(own.bag);
     if (tail) {
-      f.text(KEY_INV_ROW_LABEL, x0 + PAD, top, w - PAD * 2, S_LABEL, "Hotbar: keys 1 to 0");
+      f.text(KEY_INV_ROW_LABEL, x0 + PAD, top, w - PAD * 2, S_LABEL, this.touch ? "Hotbar" : "Hotbar: keys 1 to 0");
       top += infoH;
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.hotbar, HOTBAR_SLOTS);
       top += rows(HOTBAR_SLOTS);
@@ -498,7 +501,7 @@ export class InventoryScreen {
     const shownBox = this.held >= 0 ? this.heldBox : this.hoverBox;
     const shown = this.held >= 0 ? this.held : this.hover;
     const inv = this.box(session, shownBox);
-    let info = this.held >= 0 ? "click a slot to put it down" : "left click: pick up   middle: half   right: use";
+    let info = this.touch ? (this.held >= 0 ? "press a slot to put it down" : "press a stack to pick it up") : this.held >= 0 ? "click a slot to put it down" : "left click: pick up   middle: half   right: use";
     if (inv && shown >= 0 && shown < inv.cap && inv.item[shown] !== 0) {
       const item = inv.item[shown]!;
       const spoil = inv.spoilAt[shown]!;

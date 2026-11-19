@@ -16,6 +16,9 @@ that. `shell`, `voice`, `sound` and `admin` have no tests and are limited to 1,6
 300 and 1,100 lines by `tools/check.ts`. When something in one needs a test, move it into
 `core`.
 
+Play by touch is decided in core too: `core/touch.ts` (two zones and a few buttons, turned into the keys and looks
+a keyboard sends) and `core/ui/touch.ts` (where they stand); the shell only holds a pointer to a control and forwards it.
+
 `index.html` is the page. `bun run build` writes `client/dist`.
 
 See [rendering](../planning/architecture/rendering.md),

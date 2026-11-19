@@ -1,5 +1,6 @@
-// A screen is a flat list of nodes, each with an explicit rectangle on a virtual canvas 720 units high. All layout is decided
-// in core, so it can be tested in Bun without a browser. A node's key stays the same from frame to frame.
+// A screen is a flat list of nodes, each with an explicit rectangle on a virtual canvas 720 units high, or as high as a
+// short window has room for (canvasHeight). All layout is decided in core, so it can be tested in Bun without a browser.
+// A node's key stays the same from frame to frame.
 // Node objects are reused by list position, not key. Copy keys and values needed beyond the current frame.
 
 import { STYLES, LINE_HEIGHT, CHAR_ADVANCE } from "./style.ts";
@@ -24,9 +25,34 @@ export const K_DIAL = 7;
 /** A text field whose content is never shown: a password. */
 export const K_SECRET = 8;
 
+/**
+ * A control a finger holds (a touch zone, a button that acts while pressed): as a dial, the pointer stays with it from
+ * the press to its release, and every move and a cancelled touch go to it.
+ */
+export const K_HOLD = 9;
+
 export const CANVAS_HEIGHT = 720;
-/** The narrowest canvas laid out is a phone held upright. */
-export const MIN_ASPECT = 9 / 16;
+/** The narrowest canvas laid out: 720 units at 9 to 16. */
+export const MIN_WIDTH = 405;
+/**
+ * The least a canvas unit is drawn at, in CSS pixels. A window too short for 720 units at that gets a shorter canvas,
+ * so its controls keep their size and its screens are laid out for less room (planning/workstreams/touch.md).
+ */
+export const SCALE_FLOOR = 0.8;
+/** The shortest canvas laid out: a small phone on its side. */
+export const MIN_HEIGHT = 400;
+
+/**
+ * The canvas's height in units for a window of `widthPx` by `heightPx` CSS pixels. One scale serves both ways: 720
+ * units high where the window is wide enough for that, taller where it is narrower than 9 to 16 (a phone upright, whose
+ * canvas would otherwise be wider than its screen), and shorter where 720 would draw a unit under the floor.
+ */
+export function canvasHeight(widthPx: number, heightPx: number): number {
+  const fit = Math.min(heightPx / CANVAS_HEIGHT, widthPx / MIN_WIDTH);
+  const scale = Math.max(fit, Math.min(SCALE_FLOOR, widthPx / MIN_WIDTH));
+  return Math.max(MIN_HEIGHT, Math.round(heightPx / Math.max(scale, 1e-6)));
+}
+
 export const MAX_ASPECT = 32 / 9;
 
 export interface UiNode {
@@ -83,17 +109,25 @@ export interface UiIcons {
 
 export class UiFrame {
   width = 1280;
-  readonly height = CANVAS_HEIGHT;
+  height = CANVAS_HEIGHT;
+  /** What the screen's edges take from each side (a notch, a home bar), in units: anchored things stay inside. */
+  left = 0;
+  top = 0;
+  right = 0;
+  bottom = 0;
+  /** CSS pixels to a unit, where the app knows it: pictures cut into slices meet on whole pixels (snap). */
+  unit = 1;
   count = 0;
   readonly nodes: UiNode[] = [];
   readonly images: (UiImage | null)[] = [null];
   /** The inventory pictures, or null where there are none: then every item shows its swatch. */
   icons: UiIcons | null = null;
 
-  /** `aspect` is width over height. */
-  begin(aspect: number): void {
-    const a = aspect < MIN_ASPECT ? MIN_ASPECT : aspect > MAX_ASPECT ? MAX_ASPECT : aspect;
-    this.width = Math.round(CANVAS_HEIGHT * a);
+  /** `aspect` is width over height, and `height` the canvas's in units (canvasHeight). */
+  begin(aspect: number, height = CANVAS_HEIGHT): void {
+    this.height = height;
+    // Never narrower than the narrowest layout, which a canvas taller than 720 reaches at less than 9 to 16.
+    this.width = Math.max(MIN_WIDTH, Math.round(height * Math.min(aspect, MAX_ASPECT)));
     this.count = 0;
   }
 
@@ -141,6 +175,11 @@ export class UiFrame {
     if (this.icons.place(n, owner)) return n;
     this.count--;
     return null;
+  }
+
+  /** `v` moved to the nearest whole CSS pixel. */
+  snap(v: number): number {
+    return Math.round(v * this.unit) / this.unit;
   }
 
   find(key: number): UiNode | null {

@@ -27,6 +27,8 @@
 }
 body {
   margin: 0;
+  /* The page runs under a notch and a home bar (viewport-fit=cover); its content keeps clear of them. */
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   min-height: 100svh;
   display: flex;
   flex-direction: column;

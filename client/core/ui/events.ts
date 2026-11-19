@@ -2,8 +2,8 @@ import type { UiNode } from "./nodes.ts";
 
 export interface UiEvents {
   text(key: number, value: string): void;
-  /** `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. */
-  pointer(kind: number, key: number, x: number, y: number, button: number): void;
+  /** `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. `finger` is 0 for a mouse, else a touch's own number. */
+  pointer(kind: number, key: number, x: number, y: number, button: number, finger: number): void;
 }
 
 /** Forwards edits for the lifetime of a field, across frame rebuilds. A range sends its position as a fraction of its maximum. */
