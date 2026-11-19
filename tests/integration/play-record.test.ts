@@ -97,7 +97,7 @@ test("a page that stalls while it walks: its corrections are the page's", () => 
       r.s.update(now, pilot.moveX, pilot.moveZ, pilot.yaw, pilot.pitch, pilot.buttons);
     });
   }
-  const { rows, text, judged } = r.end();
+  const { rows, judged } = r.end();
   expect(rows.page).toBeGreaterThan(0);
   expect([rows.line, rows.server, rows.unheld, rows.rewound, rows.disagree]).toEqual([0, 0, 0, 0, 0]);
   expect(judged.frames.filter((f) => f.ms > 250).length).toBe(6);
@@ -109,7 +109,7 @@ test("a line that holds inputs back while the page keeps up: its corrections are
     // A spell in which every segment either way is lost, and sent again after it.
     r.walk(1000, (now) => void (now % 2000 < 1000 / 60 && r.h.net.outage(r.h.ends[0]!, 150)));
   }
-  const { rows, text } = r.end();
+  const { rows } = r.end();
   expect(rows.line).toBeGreaterThan(0);
   expect([rows.page, rows.server, rows.unheld, rows.rewound, rows.disagree]).toEqual([0, 0, 0, 0, 0]);
 });
@@ -119,7 +119,7 @@ test("a server whose loop stalls and catches up while inputs are on their way: i
   for (let k = 0; k < 8; k++) {
     r.walk(1000, (now) => void (now % 2000 < 1000 / 60 && (r.loop.held = now + 240)));
   }
-  const { rows, text } = r.end();
+  const { rows } = r.end();
   expect(rows.server).toBeGreaterThan(0);
   expect([rows.page, rows.line, rows.unheld, rows.rewound, rows.disagree]).toEqual([0, 0, 0, 0, 0]);
 });
@@ -142,7 +142,7 @@ test("a server that falls more than a second behind: the page's clock jumps back
   r.loop.held = r.h.now + 1500;
   r.loop.give = true;
   r.walk(5000);
-  const { rows, text, judged } = r.end();
+  const { rows, judged } = r.end();
   expect([rows.page, rows.line, rows.unheld, rows.disagree]).toEqual([0, 0, 0, 0]);
   expect(judged.jumps.filter((j) => !j.behind && j.cause === "server" && j.by < -30).length).toBe(1);
   expect(rows.rewound).toBeGreaterThan(0);
