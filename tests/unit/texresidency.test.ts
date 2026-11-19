@@ -2,7 +2,7 @@
 // that takes, textures climb a step at a time within their share of the card, and low poly asks for none of it.
 import { expect, test } from "bun:test";
 import { FAIL_NET, type AssetArrival } from "../../client/core/assets/port.ts";
-import { FIRST, OVERFLOW } from "../../client/core/assets/residency.ts";
+import { FIRST, IN_FLIGHT_HELD, OVERFLOW, SMALL_LANES_HELD } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { MANIFEST_VERSION, parseManifest, type Manifest, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
@@ -167,6 +167,20 @@ test("the textures shown without their first step are counted, every map of each
   const end = w.run(10, 0, 29.65);
   w.run(2, end);
   expect([w.settled(), w.r.bare()]).toEqual([true, 0]);
+});
+
+test("held back while large requests are under way, all but one of them are given up within the frame, and asked for again once it is not", () => {
+  const w = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 0 })), { latencyMs: 80, bytesPerSecond: 0.2e6 });
+  let k = 0;
+  for (; k < 600 && w.r.flyingLarge < 2; k++) w.frame(-3.5);
+  expect(w.r.flyingLarge).toBeGreaterThan(1);
+  const cancelled = w.r.stats.cancelled, large = w.r.flyingLarge;
+  w.r.holdBack = true;
+  w.frame(-3.5);
+  expect([w.r.flyingLarge, w.r.stats.cancelled - cancelled]).toEqual([IN_FLIGHT_HELD - SMALL_LANES_HELD, large - (IN_FLIGHT_HELD - SMALL_LANES_HELD)]);
+  w.r.holdBack = false;
+  w.run(30, -3.5);
+  expect([w.settled(), tops(w, 1)]).toEqual([true, WIDE]);
 });
 
 test("a level and its surface that would pass a frame's bytes together go up in two frames, and the level is drawn once its surface is there", () => {

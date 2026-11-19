@@ -8,12 +8,16 @@ import { DRAW_TEXTURED } from "./render/packet.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { WINDOW } from "./render/terrain.ts";
 
-/** A frame at which `what` came ("street") or went ("-street"), by the page's clock in ms, and where the body was. */
+/**
+ * A frame at which `what` came ("street") or went ("-street"), by the page's clock in ms, where the body was, and the
+ * bytes of art the page had been sent by then.
+ */
 export interface TripMark {
   readonly at: number;
   readonly what: string;
   readonly x: number;
   readonly z: number;
+  readonly art: number;
 }
 
 /** Metres the body moves between two frames that the trip takes as a jump. */
@@ -23,7 +27,8 @@ const FINE = ((WINDOW - 1) / 2) * TERRAIN_CELL;
 
 /**
  * Watches the app's frames. Marks: `frame`, the first drawn; `street`, each chunk within one of the body's that the map
- * has statics in whole in the near store, every asset asked for in hand, and pieces drawn with their materials; `far`, the
+ * has statics in whole in the near store, every asset shown at the level and step it is wanted at and nothing on its way,
+ * and pieces drawn with their materials; `far`, the
  * far city drawn in the view; `colour`, the world's finishes drawn with their base colours, where before those come they
  * are drawn as their means (client/shell/gl.ts worldReady), or none to draw; `soft`, no texture shown without its first
  * step; `handed`, the whole map's statics handed
@@ -74,7 +79,7 @@ export class TripProbe {
     const p = scene.packet, r = scene.assets.residency;
     let textured = false;
     for (let d = 0; d < p.drawCount && !textured; d++) textured = (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
-    this.set("street", textured && r.flying === 0 && r.waiting === 0 && this.near((c) => this.counts[c] === 0 || world.far.complete(c)));
+    this.set("street", textured && r.flying === 0 && r.waiting === 0 && r.wanting() === 0 && this.near((c) => this.counts[c] === 0 || world.far.complete(c)));
     this.set("far", (scene.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) > 0);
     this.set("colour", p.worldSide[0] === 0 || p.worldLevel[0]! >= 0);
     this.set("soft", r.bare() === 0);
@@ -127,6 +132,6 @@ export class TripProbe {
   }
 
   private mark(what: string): void {
-    this.marks.push({ at: this.seen, what, x: Math.round(this.x), z: Math.round(this.z) });
+    this.marks.push({ at: this.seen, what, x: Math.round(this.x), z: Math.round(this.z), art: this.app.scene?.assets.residency.stats.fetched ?? 0 });
   }
 }
