@@ -1,7 +1,7 @@
 // What the page fetches whole as it starts: a failure names the request and what the server answered.
 
 import { expect, test } from "bun:test";
-import { fetchBytes, fetchJson, fetchMapFile, fetchSounds, fetchText, type Get } from "../../client/core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMapFile, fetchSounds, fetchText, nextTask, type Get } from "../../client/core/fetched.ts";
 import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
 import { partsOf, readHead, writeMap } from "../../shared/world/mapfile.ts";
 import { wideMap } from "../fixtures/map.ts";
@@ -76,3 +76,31 @@ test("a part that comes as another's, or a head that is damaged or not there, is
   await expect(fetchMapFile(() => Promise.resolve(new Response(head2)), `map/${head.name}`)).rejects.toThrow(`map/${head.name}: map: its head is damaged`);
 });
 
+
+test("a page's pause is a task of its own scheduler where it has one, each pause one task and its step after it; else a message to itself", async () => {
+  const ran: string[] = [];
+  const queue: (() => void)[] = [];
+  const scheduler = { postTask: (task: () => void) => new Promise<void>((done) => queue.push(() => (task(), ran.push("task"), done()))) };
+  const pause = nextTask({ port1: { onmessage: null }, port2: { postMessage: () => ran.push("message") } }, scheduler);
+  const steps = (async () => {
+    for (let k = 0; k < 3; k++) {
+      await pause();
+      ran.push(`step ${k}`);
+    }
+  })();
+  for (let k = 0; k < 3; k++) {
+    await Promise.resolve();
+    queue.shift()!();
+    await new Promise((go) => setTimeout(go, 0));
+  }
+  await steps;
+  expect(ran).toEqual(["task", "step 0", "task", "step 1", "task", "step 2"]);
+  // With none, a message on the channel, answered by the next one that comes.
+  const channel = new MessageChannel();
+  let posted = 0;
+  const message = nextTask({ port1: channel.port1, port2: { postMessage: (m) => (posted++, channel.port2.postMessage(m)) } }, undefined);
+  await message();
+  await message();
+  channel.port1.close();
+  expect(posted).toBe(2);
+});

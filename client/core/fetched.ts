@@ -88,11 +88,19 @@ export interface TaskChannel {
   port2: { postMessage(message: null): void };
 }
 
+/** A page's own scheduler of tasks (`scheduler.postTask`), where it has one. */
+export interface TaskScheduler {
+  postTask(task: () => void): Promise<unknown>;
+}
+
 /**
- * A pause until the page's next task, by a message to itself. A timer set from a timer waits at least 4 ms once five are
- * nested, which a map's hundred or more steps would add up to.
+ * A pause until the page's next task: a task of the page's own scheduler where it has one, else a message to itself. A
+ * timer set from a timer waits at least 4 ms once five are nested, which a map's hundred or more steps would add up to;
+ * and Chrome hands a page's messages to itself on in one task while more keep coming, so the map's steps ran in tasks of
+ * 50 to 110 ms with no frame between them.
  */
-export function nextTask(channel: TaskChannel): () => Promise<void> {
+export function nextTask(channel: TaskChannel, scheduler = (globalThis as { scheduler?: TaskScheduler }).scheduler): () => Promise<void> {
+  if (scheduler) return () => scheduler.postTask(() => {}).then(() => {});
   const waiting: (() => void)[] = [];
   channel.port1.onmessage = () => waiting.shift()?.();
   return () =>
