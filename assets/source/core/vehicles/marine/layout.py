@@ -191,6 +191,11 @@ def check(folder, objects, names, parts, sizes):
         return digest
     known = os.path.join(folder, "tex", "layout.json")
     want = json.load(open(known))["hash"] if os.path.exists(known) else None
-    if want != digest:
+    # Under `bun run art` (SNARK_LAYOUT=settle) the build goes on and says the layout moved: the same model lays out
+    # differently on another processor, and the art tool then keeps the committed mesh the pictures fit, or refuses if the
+    # shape changed too (tools/pack/settle.ts).
+    if want != digest and os.environ.get("SNARK_LAYOUT") == "settle":
+        print(f"model: layout moved {digest} from {want}")
+    elif want != digest:
         raise SystemExit(f"model: the layout is {digest}, and {folder}/tex was painted for {want}. Run ../marine/bake.py and the family's paint and wear scripts again")
     return digest

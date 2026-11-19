@@ -1242,7 +1242,9 @@ export function meridian(body: readonly SourceMesh[], rig: PackRig): SourceMesh[
  * the cuirass is stored with its sleeves tucked inside the armholes. */
 function loosePiece(worn: SourceMesh, slot: string): SourceMesh {
   const names: Record<string, string> = { head: "hat", torso: "shirt", hands: "gloves", legs: "pants", feet: "boots" };
-  const lods = worn.lods.map((src) => {
+  // A piece lying on the ground is seen from standing height at the nearest: it starts at the worn piece's second
+  // level, where it was the whole of the worn piece again (the helmet's 5,809 triangles twice in the pack).
+  const lods = worn.lods.slice(1).map((src) => {
     const pos: number[] = [],
       uv: number[] = [],
       normals: number[] = [],
@@ -1285,5 +1287,5 @@ function loosePiece(worn: SourceMesh, slot: string): SourceMesh {
       ...(src.uvs ? { uvs: Float32Array.from(uv), normals: Float32Array.from(normals), sections: Uint8Array.from(sections) } : {}),
     };
   });
-  return { id: `core:meridian_${names[slot]}/dropped`, lods, flat: 2 };
+  return { id: `core:meridian_${names[slot]}/dropped`, lods, flat: 1 };
 }

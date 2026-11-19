@@ -46,6 +46,54 @@ The pack is made from the rest of the folder, so two branches that change one
 asset both change its pack. After merging them, build the asset again and
 commit what comes out.
 
+### A build keeps what it did not change
+
+The committed pack is not only what the game reads. It is the one record of
+the shape the pictures in `tex/` were painted on, and a build cannot be relied
+on to make that shape again: measured on 2026-11-19, of the packs built again
+on the Linux server from the tree that made them,
+
+- the survivor's hands came out one storage step away on one vertex in ten
+  (Blender's arithmetic differs in a float's last place between an Apple
+  processor and an Intel one), and the grips searched for from them came out
+  somewhere else altogether;
+- the Rex came out the same shape with its skin projected a few pixels away,
+  and a yacht with its charts packed in another order (a layout decided by
+  which way a face at 45 degrees is taken to look);
+- the Rex's finest vertices came out in another order on two runs of one
+  machine.
+
+So a build is settled on the pack it replaces (`tools/pack/settle.ts`), and
+says what it did:
+
+- a mesh made the same as the committed one to within a step of storage is the
+  committed one, byte for byte, and with it the rig and the grips;
+- a mesh of the same shape, lit alike, whose texture layout came out elsewhere
+  keeps the committed mesh, since the pictures fit that one;
+- everything else is made anew. A changed position, normal, bone, or a colour
+  on a layout that stands, is a change.
+
+Building an asset nobody changed therefore leaves its pack exactly as it was,
+on any machine, and changing one piece of a pack changes that piece only.
+
+```
+bun run art -- core:rex --relayout    take this build's texture layout: its pictures are being painted again
+bun run art -- core:rex --keep core:saddle_rex   keep the meshes whose ids start so, whatever was built
+bun run art -- core:rex --fresh       write the build as it came, settled on nothing
+```
+
+A model that checks its layout against `tex/layout.json` (the car, the boats,
+the helicopter) no longer stops a build whose layout came out elsewhere: it
+says so, and the build keeps the committed mesh if the shape is the same and
+refuses if the shape changed as well, which is when the pictures really are to
+be baked and painted again. `--relayout` after that.
+
+What this does not do is tell you that a pack is out of date. A pack is not
+built again when the tools that make it change, so a fresh build of an old
+pack may differ for that reason alone (the dodo's, the hatchet's and the
+bushes' did): those come out as made anew, and are then yours to look at and
+commit or not.
+
 ## A creature
 
 `asset.ts` exports a `CreatureAsset`: the skeleton, hit zones, sockets, colour
@@ -215,6 +263,19 @@ not kept: `marine/bake.py` and the three scripts make them again.
   its hurt and decay pictures, dust and sun, its paint still dyed by the
   static's colour. Their finest level is made from the model to 6,000 triangles,
   as a street holds many.
+
+A vehicle modelled as hundreds of separate closed parts (pressings, tubes, castings
+joined into one object) cannot keep all of them in its flat levels: a 6,400 triangle
+level of a 947-part jeep has under seven triangles a part. Which parts go is the
+simplifier's choice, and on its own it chooses badly: a large thin part (a wheel's
+disc, a coil spring, a gauge face) shrinks along its own plane or length for almost
+nothing, so it vanishes before the solid crumbs around it, and the level's error and
+the distance it waits for jump. `holdParts: true` in `asset.ts` holds each part's six
+furthest points along the axes and the edges of its sheets as firmly as a border,
+so a part goes by what that costs its outline, and the small ones go first. It is
+opt in, as `preserveBones` is: on a creature, or at the coarsest of levels where
+there is not a triangle left for every part, it can cost more than it saves. Set it
+where `--check` shows the flat levels coming in closer, and build the asset again.
 
 ## Rigid pieces
 
@@ -478,6 +539,52 @@ distance, turns no normal more than 3 degrees and moves no other channel more
 than 4 levels. A test runs the check over every asset here, so a pack with a
 fault does not pass `bun run check`. That test reads only the sizes of the
 pictures. `--check` reads and measures them.
+
+### What the check passes and a player still pays for
+
+Every one of these passed the check on 2026-11-18 and was found by reading its
+numbers, not its verdict. Read the table it prints before calling a model done.
+
+- **Many parts, and the wrong ones going.** The `parts` column is the model's
+  separate shells. A model of hundreds of them cannot keep them all in its
+  flat levels, and left to itself the simplifier lets the large thin ones go
+  first (a wheel disc, a coil spring), so the level's error jumps and it is
+  first drawn far later: the hand-made compact (7 parts) hands over to its
+  flat level at 34 m on medium, the patrol jeep (947 parts) did at 140 m and
+  still at 24,500 triangles, the tanker (227 parts) at 312 m, eight pixels
+  tall. `holdParts: true` in the asset makes the small parts go first (the
+  jeep 101 m, the tanker 37 m). It is not hidden geometry: 24 of the jeep's
+  947 parts are never seen from outside, so welding shells or leaving out
+  interiors buys almost nothing. Hand-made far levels are measured like any
+  other: the tanker's were 8.9 cm out where the simplifier's are 1.1.
+- **A turned form lit as slabs.** A ring, a drum or a console made on a lathe
+  is round only if its faces carry the surface's normals. A generator that
+  gives each face its own flat normal draws a ring of 72 plates as 72 plates.
+  `core/structures/tide-eye/instrument.py` shows the way that keeps each
+  plate's own trim: `Mesh.face(..., normals=[...])`, set from the form, not
+  from Blender's smoothing, which would round the profile's corners too.
+- **A thin inlay made as a box.** A mark 2 cm high on a floor is a plate (its
+  top, and its underside back to back so no edge is open), not a box whose ten
+  other triangles are sides nobody sees.
+- **What a player stands at.** The check prints pixels a metre for each
+  material on each mesh. The piece a player uses at arm's length should not be
+  the one whose faces each show a twentieth of a tile.
+- **A variant's own pictures.** A damaged or sunk form with its own base,
+  packed and mask maps costs a whole set. Before thinking a wear layer could
+  stand in, compare roughness and metal as well as colour: the boats' damaged
+  hulls differ from the intact in a fifth of their colour and up to half of
+  their roughness, and a layer carries colour alone.
+- **Two vertices a triangle is not a fault** in a model built of boxes: each
+  corner of a box is three vertices, one for each face's normal and texture
+  coordinate. The client's build makes one of any that are the same in every
+  byte; do not bend a model to share more.
+- **What is worn against what wears it.** A full Meridian suit is about 24,500
+  triangles at its finest on a body of 4,400; `triangles.armor` does not hold
+  a tailored outfit to anything. Fifty of them in one view is more than a
+  million triangles before anything else is drawn.
+- **A stated error far under the measured one.** `errors` is for levels a
+  measure of points cannot judge. Stating a third of what is measured brings
+  a coarse level in three times sooner than its shape has earned.
 
 ## Looking at an asset
 
