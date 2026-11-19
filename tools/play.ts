@@ -132,20 +132,20 @@ export function judge(s: Session): Judged {
       corrections.push({ c, cause });
     }
   }
-  const before = (t: number, f: PlayFrame): boolean => f.t <= t && t - f.t <= AFTER_FRAME;
   const jumps: Judged["jumps"] = [];
   const gaps: Judged["gaps"] = [];
   for (const { page } of s.lines) {
     for (const j of page.jumpList) {
       if (j.t < settled) continue;
-      // A page that stalls makes its inputs late, never early; a server that falls behind makes them early.
-      const stalls = j.behind ? frames.filter((f) => before(j.t, f)) : [];
-      const cause: Cause = stalls.length > 0 ? "page" : any(j.t - AFTER_FRAME, j.t, serverLate) ? "server" : "line";
-      jumps.push({ ...j, cause, after250: stalls.some((f) => f.ms > 250) });
+      // A page that stalls makes its inputs late, never early; a server that falls behind makes them early. A clock jumps
+      // on the margins of the last quarter second, some ticks after the inputs that were late.
+      const page = j.behind && any(j.t - 8, j.t, pageLate);
+      const cause: Cause = page ? "page" : any(j.t - AFTER_FRAME, j.t, serverLate) ? "server" : "line";
+      jumps.push({ ...j, cause, after250: page && frames.some((f) => f.ms > 250 && f.t <= j.t && j.t - f.t <= AFTER_FRAME) });
     }
     for (const g of page.gaps) {
       if (g.t < settled) continue;
-      const cause: Cause = frames.some((f) => before(g.t, f)) ? "page" : any(g.t - g.ticks, g.t, serverLate) ? "server" : "line";
+      const cause: Cause = frames.some((f) => f.t >= g.t - g.ticks - 8 && f.t <= g.t) ? "page" : any(g.t - g.ticks, g.t, serverLate) ? "server" : "line";
       gaps.push({ t: g.t, ms: g.ms, cause });
     }
   }
@@ -205,7 +205,7 @@ export function describe(s: Session): string[] {
 
   // Long frames and what the page did in them.
   const over250 = j.frames.filter((f) => f.ms > 250);
-  const costly = over250.filter((f) => j.jumps.some((x) => x.behind && x.t >= f.t && x.t - f.t <= AFTER_FRAME)).length;
+  const costly = over250.filter((f) => j.jumps.some((x) => x.after250 && x.t >= f.t && x.t - f.t <= AFTER_FRAME)).length;
   say(`  long frames: ${sum((p) => p.long)} of ${sum((p) => p.frames)} came 50 ms or more after the one before, ${sum((p) => p.over100)} over 100 ms, ${sum((p) => p.over250)} over 250 ms; the longest ${Math.max(0, ...pages.map((p) => p.worst))} ms; ${sum((p) => p.skipped)} ticks skipped`);
   if (over250.length > 0) say(`  the page stalled ${over250.length} times past 250 ms, ${costly === over250.length ? "each costing a clock jump" : `${costly} of them costing a clock jump`}`);
   const worst = [...j.frames].sort((a, b) => b.ms - a.ms).slice(0, 6);
