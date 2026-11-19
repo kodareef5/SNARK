@@ -96,6 +96,11 @@ export class FinishNear {
     });
   }
 
+  /** Whether no look is under way: none has begun since the eye, the store and the ground last stood as one looked at them. */
+  get through(): boolean {
+    return this.stage < 0;
+  }
+
   /**
    * A frame with the eye at (x, y, z): the look goes on, or begins, over `hf` and `store`, out to the reaches that
    * `scale` pixels a metre a metre off and `taps` (2 where the tier reads at a slant, else 1) give.
