@@ -147,7 +147,10 @@ export class StagedMap {
       this.early.delete(key);
     } else if (piece.kind === "ground") {
       const under = overviewOf(piece.sq);
-      if (!this.overviews.has(under)) return void this.early.set(under, [...(this.early.get(under) ?? []), piece]);
+      if (!this.overviews.has(under)) {
+        this.early.set(under, [...(this.early.get(under) ?? []), piece]);
+        return;
+      }
       setGround(dims, this.hf.heights, this.hf.tint, piece, this.hf.ground);
       this.hf.hold(piece.sq.cx0, piece.sq.cz0, piece.sq.cx1, piece.sq.cz1);
       if (piece.listed.every((rows) => rows === null)) return;

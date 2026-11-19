@@ -5,7 +5,8 @@
 // sharp, or PATIENCE.street seconds on; waits there until the far city is drawn or two thirds of the map have come, so that
 // it jumps while the map still comes; then jumps to the thickest street 4 km away, whose sector's ground is answered 503 at
 // its first ask. Each moment it prints comes with the bytes of art and of the map the page had in hand then.
-// It prints, by the page's clock: the first frame; the first in which the street is drawn with its pieces and materials;
+// It prints, by the page's clock: the first frame; when every overview was in hand, the far ground and the sea drawn from
+// them where the head's coarse picture stood before; the first in which the street is drawn with its pieces and materials;
 // the first in which the far city is drawn; the last part; after the jump, the time until the body is predicted again,
 // until the ground the fine terrain draws is the map's own and until the street there is drawn; whether the failed part
 // came on a later ask and the map was whole at the end; and the page's heap and array memory at the statics' hand-over.
@@ -243,6 +244,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
       const t0 = performance.now();
       for (; !ready() && performance.now() - t0 < seconds * 1000 && chrome.exitCode === null; seen = await look()) {
         await measure();
+        await overviewShot();
         await Bun.sleep(50);
       }
       await measure();
@@ -250,6 +252,14 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     let shots = 0;
     const shot = async (name: string, when: number | undefined): Promise<void> => void (when !== undefined && (await page!.shot(join(opts.out, `${opts.mbit}mbit${fails ? "" : "-whole"}-${++shots}-${name}.png`))));
     const came = (name: string): boolean => seen.parts.some((p) => p.name === name && p.status === 200);
+    /** A picture once every overview has come, wherever in the trip that is. */
+    const overviews = head.parts.filter((p) => p.kind === "overview").map((p) => p.name);
+    let overviewed = false;
+    const overviewShot = async (): Promise<void> => {
+      if (overviewed || !overviews.every(came)) return;
+      overviewed = true;
+      await shot("overviews", 0);
+    };
     const s = (ms: number | undefined): string => (ms === undefined ? "never" : `${(ms / 1000).toFixed(2)} s`);
     const later = (ms: number | undefined, from: number | undefined): string => (ms === undefined || from === undefined ? "never" : `${((ms - from) / 1000).toFixed(2)} s after it`);
 
@@ -330,6 +340,8 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
       return `   (art ${(m.art / 1e6).toFixed(1)} MB, map ${(map / 1e6).toFixed(1)} MB in hand)`;
     };
     say(`  first frame                           ${s(on("frame"))}${bytes("frame")}`);
+    const overviewsAt = overviews.every(came) ? Math.max(...seen.parts.filter((p) => overviews.includes(p.name) && p.status === 200).map((p) => p.end)) : undefined;
+    say(`  every overview in hand                ${s(overviewsAt)}, ${later(overviewsAt, on("frame"))}`);
     const at = (m: TripMark | undefined): string => (m ? `${s(m.at)} at ${m.x}, ${m.z}` : "never");
     const joined = on("street");
     say(`  street drawn with its materials       ${joined !== undefined && joined < upAt ? s(joined) : `not before the body went up (${street})`}; the street jumped to, ${later(jump === undefined ? undefined : on("street", jump), jump)}${bytes("street")}`);

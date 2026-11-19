@@ -94,22 +94,37 @@ export class Heightfield {
     const w = ((cx1 - cx0) * per) / step + 1;
     const d = heights.length / w;
     const [i0, j0, nx, cx] = [cx0 * per, cz0 * per, this.nx, this.dims.chunksX];
+    // Each sample's coarse cell along an axis, where in it the sample lies, and its nearest coarse sample: the same for
+    // every chunk, so worked out once a call.
+    const along = (n: number, last: number): { cell: Int32Array; at: Float64Array; near: Int32Array } => {
+      const a = { cell: new Int32Array(n), at: new Float64Array(n), near: new Int32Array(n) };
+      for (let s = 0; s < n; s++) {
+        a.cell[s] = Math.min(last, Math.floor(s / step));
+        a.at[s] = (s - a.cell[s]! * step) / step;
+        a.near[s] = a.cell[s]! + Math.round(a.at[s]!);
+      }
+      return a;
+    };
+    const across = along((cx1 - cx0) * per + 1, w - 2);
+    const down = along((cz1 - cz0) * per + 1, d - 2);
+    const [cell, at, near] = [across.cell, across.at, across.near];
+    const [out, outTint] = [this.heights, this.tint];
+    const tints = outTint.length > 0;
     for (let z = cz0; z < cz1; z++) {
       for (let x = cx0; x < cx1; x++) {
         if (this.exact[z * cx + x] === 1) continue;
+        // Only a chunk beside one that holds its own has edge samples to leave.
+        const beside = this.besideOwn(x, z);
         for (let j = z * per; j <= z * per + per; j++) {
           const edgeJ = j === z * per || j === z * per + per;
-          const cj = Math.min(d - 2, Math.floor((j - j0) / step));
-          const v = (j - j0 - cj * step) / step;
+          const kj = down.cell[j - j0]! * w, v = down.at[j - j0]!, tj = down.near[j - j0]! * w, row = j * nx;
           for (let i = x * per; i <= x * per + per; i++) {
-            if ((edgeJ || i === x * per || i === x * per + per) && this.ownSample(i, j)) continue;
-            const ci = Math.min(w - 2, Math.floor((i - i0) / step));
-            const u = (i - i0 - ci * step) / step;
-            const k = cj * w + ci;
+            if (beside && (edgeJ || i === x * per || i === x * per + per) && this.ownSample(i, j)) continue;
+            const k = kj + cell[i - i0]!, u = at[i - i0]!;
             const h00 = heights[k]!, h11 = heights[k + w + 1]!;
             const q = u >= v ? h00 + (heights[k + 1]! - h00) * u + (h11 - heights[k + 1]!) * v : h00 + (h11 - heights[k + w]!) * u + (heights[k + w]! - h00) * v;
-            this.heights[j * nx + i] = Math.round(q);
-            if (this.tint.length > 0) this.tint[j * nx + i] = tint[(cj + Math.round(v)) * w + ci + Math.round(u)]!;
+            out[row + i] = Math.round(q);
+            if (tints) outTint[row + i] = tint[tj + near[i - i0]!]!;
           }
         }
       }
@@ -130,6 +145,13 @@ export class Heightfield {
     const [a, b, c, e] = [at(x0, chunksX), at(x1, chunksX), at(z0, chunksZ), at(z1, chunksZ)];
     for (let z = c; z <= e; z++) for (let x = a; x <= b; x++) if (this.exact[z * chunksX + x] === 0) return false;
     return true;
+  }
+
+  /** Whether any of the up to eight chunks round chunk (x, z) holds its own. */
+  private besideOwn(x: number, z: number): boolean {
+    const { chunksX, chunksZ } = this.dims;
+    for (let b = Math.max(0, z - 1); b <= Math.min(chunksZ - 1, z + 1); b++) for (let a = Math.max(0, x - 1); a <= Math.min(chunksX - 1, x + 1); a++) if (this.exact[b * chunksX + a] === 1) return true;
+    return false;
   }
 
   /** Whether sample (i, j) is one of a chunk that holds its own: any of the up to four chunks it is a corner or an edge of. */
