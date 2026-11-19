@@ -737,7 +737,7 @@ export class GlRenderer {
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_BASE_LEVEL, (this.worldBase[r] = p.worldLevel[r]!));
       }
     }
-    this.worldReady = p.worldSide[0] === 0 ? 0 : base ? 1 + (full ? p.worldEarly : 1) : 3;
+    this.worldReady = p.worldSide[0] === 0 ? 0 : base ? 1 + (full ? p.worldEarly : 1) : p.worldComing ? 3 : 0;
     const finish = drawsLight(p.tier, this.light);
     const samples = Math.min(this.samples, p.lightSamples);
     // A frame drawn without it every other frame (FramePacket.alternate) leaves it for the frames either side.

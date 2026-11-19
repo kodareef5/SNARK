@@ -645,6 +645,11 @@ export class Residency {
     return t >= 0 && this.has[t]! >= 0;
   }
 
+  /** Whether texture `t` (its index in the manifest) can be had at all: false with no network to bring it. */
+  canHave(t: number): boolean {
+    return this.limit[t]! >= 0;
+  }
+
   /** The last step of texture `t` (its index in the manifest) the card holds, or -1 for none. */
   holds(t: number): number {
     return this.has[t]!;

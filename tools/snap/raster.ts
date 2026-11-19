@@ -562,7 +562,7 @@ export class Rasterizer {
     // Drawn from the base colours as soon as they have all come, the far path's way until the rest have (glsl.ts finishMaps).
     this.worldMaps = packet.lit && maps.every((roles) => roles.length === 3 && roles[0]) ? (maps as Texture[][]) : null;
     // Where the frame has finishes and none of their base colours has come, they are drawn as their means (finishMaps).
-    this.finishesMeant = packet.lit && packet.worldSide[0]! > 0 && !this.worldMaps;
+    this.finishesMeant = packet.lit && packet.worldSide[0]! > 0 && packet.worldComing && !this.worldMaps;
     // Coming up as the frame says where it holds the maps too, and at once where it has not seen them (a picture given its maps).
     finishesEarly = maps.every((roles) => roles.every((t) => t)) && (!weather || this.weatherMap) ? (packet.worldLevel[0]! >= 0 ? packet.worldEarly : 0) : 1;
     if (this.finishesMeant) finishesEarly = 2;

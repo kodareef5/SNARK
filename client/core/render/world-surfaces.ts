@@ -88,6 +88,7 @@ export interface FinishResidency {
   readonly format: TextureFormat;
   material(m: number, pixels: number, distance: number, roles?: number, needed?: boolean): void;
   holds(t: number): number;
+  canHave(t: number): boolean;
   again(t: number): void;
 }
 
@@ -154,6 +155,8 @@ export class WorldFinishes {
     if (side > 0 && !full) this.drawnEarly = true;
     this.risen = full ? (this.drawnEarly ? Math.min(WORLD_RISE, this.risen + 1) : WORLD_RISE) : 0;
     p.worldEarly = 1 - this.risen / WORLD_RISE;
+    // Where their base colours cannot come at all (a picture made with no network), the finishes are not drawn early.
+    p.worldComing = side > 0 && this.textures[0]!.every((t) => residency.canHave(t));
     worldPhase(p.worldPhase, p.camX, p.camY, p.camZ, p.surfaceCity);
     p.frame[FRAME.edgesOff] = 0;
   }

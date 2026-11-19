@@ -170,7 +170,7 @@ test("a frame asks for every finish as wide as its tier keeps them, tells the ca
   const materials: PackMaterial[] = SURFACE_NAMES.map((name, k) => ({ id: surfaceMaterial(name), base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
   const textures: PackTexture[] = materials.flatMap((m) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : 2048 })));
   const held = new Int8Array(48).fill(-1), asked: number[] = [], again: number[] = [];
-  const residency = { format: "bc" as const, material: (m: number, pixels: number, _distance: number, roles = 3) => asked.push(m * 10000 + pixels + (roles === 3 ? 0 : roles / 10)), holds: (t: number) => held[t]!, again: (t: number) => { again.push(t); held[t] = -1; } };
+  const residency = { format: "bc" as const, material: (m: number, pixels: number, _distance: number, roles = 3) => asked.push(m * 10000 + pixels + (roles === 3 ? 0 : roles / 10)), holds: (t: number) => held[t]!, canHave: () => true, again: (t: number) => { again.push(t); held[t] = -1; } };
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
   finishes.frame(p, residency, tierOf("high"));
   expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([16, 1024, [1024, 1024, 512], [-1, -1, -1], 48]);
@@ -283,7 +283,7 @@ test("with the weathering masks in the pack, a frame asks for them as wide as th
   const materials: PackMaterial[] = ids.map((id, k) => ({ id, base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
   const textures: PackTexture[] = materials.flatMap((m, k) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : k === 16 ? 64 : 2048 })));
   const held = new Int8Array(51).fill(4), asked: number[] = [];
-  const residency = { format: "bc" as const, material: (m: number, pixels: number) => asked.push(m * 10000 + pixels), holds: (t: number) => held[t]!, again: (t: number) => { held[t] = -1; } };
+  const residency = { format: "bc" as const, material: (m: number, pixels: number) => asked.push(m * 10000 + pixels), holds: (t: number) => held[t]!, canHave: () => true, again: (t: number) => { held[t] = -1; } };
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
   finishes.frame(p, residency, tierOf("high"));
   expect([asked.length, asked[16]]).toEqual([17, 16 * 10000 + 512]);
@@ -329,11 +329,14 @@ test("the finishes are drawn from their base colours as soon as those have all c
   const materials: PackMaterial[] = SURFACE_NAMES.map((name, k) => ({ id: surfaceMaterial(name), base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
   const textures: PackTexture[] = materials.flatMap((m) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : 2048 })));
   const n = SURFACE_NAMES.length, held = new Int8Array(n * 3).fill(-1), asks: string[] = [];
-  const residency = { format: "bc" as const, material: (_m: number, _pixels: number, distance: number, roles = 3, needed = false) => asks.push(`${distance} ${roles} ${needed}`), holds: (t: number) => held[t]!, again: () => {} };
+  const residency = { format: "bc" as const, material: (_m: number, _pixels: number, distance: number, roles = 3, needed = false) => asks.push(`${distance} ${roles} ${needed}`), holds: (t: number) => held[t]!, canHave: () => true, again: () => {} };
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
-  // Nothing in: none drawn. Every finish is asked for as near as WORLD_NEAR with each of its maps needed.
+  // Nothing in: drawn as their means while they can come. Every finish is asked for as near as WORLD_NEAR with each of its maps needed.
   finishes.frame(p, residency, tierOf("high"));
-  expect([[...p.worldLevel], p.worldEarly, [...new Set(asks)]]).toEqual([[-1, -1, -1], 1, [`${WORLD_NEAR} 3 true`]]);
+  expect([[...p.worldLevel], p.worldEarly, p.worldComing, [...new Set(asks)]]).toEqual([[-1, -1, -1], 1, true, [`${WORLD_NEAR} 3 true`]]);
+  // Where nothing can bring them (a picture made with no network), they are not drawn early but plain, as before them.
+  finishes.frame(p, { ...residency, canHave: () => false }, tierOf("high"));
+  expect(p.worldComing).toBe(false);
   // The base colours in: drawn from them alone, early.
   for (let k = 0; k < n; k++) held[3 * k] = 0;
   finishes.frame(p, residency, tierOf("high"));
