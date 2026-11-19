@@ -4,9 +4,9 @@
 // which the welcome's registry holds. Then the ground of the sectors within reach of the body and the overviews they lie
 // in, which the first frame waits for and which come alone (firstFrameParts says which, for the loader and for the map's
 // build). Then, while the game is played, the rest nearest first by where the body is and where it is heading, ordered
-// again at each ask so a jump goes first to where it lands: the overviews and ground within RING, then every other
-// overview, then the rest, each sector's ground before its statics; URGENT_AT_ONCE at once while what is within RING is
-// wanted, AFTER_AT_ONCE otherwise. Once the overviews, the ground and the statics of every sector within CITY_NEAR of the
+// again at each ask so a jump goes first to where it lands: the overviews and ground within RING, then the other overviews
+// within CITY_NEAR, then the rest, the far overviews among them, each sector's ground before its statics; URGENT_AT_ONCE
+// at once while what is within RING is wanted, AFTER_AT_ONCE otherwise. Once the overviews, the ground and the statics of every sector within CITY_NEAR of the
 // body have come, those sectors' statics are handed over, for the far city round the body; and once every part has come,
 // all of them. A part that fails is asked for again after a wait that grows to a cap, for as long as the page lives, and
 // what has come is kept. One that comes damaged or as another's is refused by name and asked for again, until the
@@ -342,11 +342,11 @@ export class MapLoader {
 
   /**
    * From now on the rest of the map comes, nearest first to where `where` has the body, else to the map's first spawn
-   * point, the overviews before the rest but for what is within RING, each sector's ground before its statics. Resolves
-   * once the ground and the overviews the first frame waits for where it has the body now have come, alone. From then on
-   * `then.say` is told what the player is; `then.arrived` is handed the statics of the sectors within CITY_NEAR of the
-   * body once their overviews, ground and statics have come and not every part has, and then the
-   * map's statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR. While
+   * point, the overviews within CITY_NEAR before the rest but for what is within RING, each sector's ground before its
+   * statics. Resolves once the ground and the overviews the first frame waits for where it has the body now have come,
+   * alone. From then on `then.say` is told what the player is; `then.arrived` is handed the statics of the sectors within
+   * CITY_NEAR of the body once their overviews, ground and statics have come and not every part has, and then the map's
+   * statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR. While
    * `then.held` says the game's socket is held back, one part at a time is under way.
    */
   async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics, whole: boolean) => void; readonly near?: number; readonly held?: () => boolean } = {}): Promise<void> {
@@ -430,14 +430,14 @@ export class MapLoader {
   }
 
   /**
-   * Which of the parts left goes next: the nearest overview or ground within RING, else the nearest overview, else the
-   * nearest, a sector's ground before its statics; -1 for none.
+   * Which of the parts left goes next: the nearest overview or ground within RING, else the nearest overview within
+   * CITY_NEAR, which the far city waits for, else the nearest, a sector's ground before its statics; -1 for none.
    */
   private nearest(): number {
     let best = -1;
     let least = Infinity;
     this.left.forEach((p, k) => {
-      const off = this.off(p) + (p.kind === "statics" ? 0.5 : this.urgent(p) ? -1e9 : p.kind === "overview" ? -1e6 : 0);
+      const off = this.off(p) + (p.kind === "statics" ? 0.5 : this.urgent(p) ? -1e9 : p.kind === "overview" && this.off(p) <= this.near ? -1e6 : 0);
       if (off < least) [best, least] = [k, off];
     });
     return best;

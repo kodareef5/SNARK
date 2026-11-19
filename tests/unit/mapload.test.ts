@@ -9,7 +9,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import type { Get } from "../../client/core/fetched.ts";
-import { AFTER_AT_ONCE, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, StagedMap, URGENT_AT_ONCE, firstFrameParts, type Place } from "../../client/core/mapload.ts";
+import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, StagedMap, URGENT_AT_ONCE, firstFrameParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
@@ -82,23 +82,27 @@ const off = (p: MapPart, x: number, z: number): number => {
 };
 /** Whether a part is an overview or ground within RING of (x, z). */
 const ringed = (p: MapPart, x: number, z: number): boolean => (p.kind === "overview" || p.kind === "ground") && off(p, x, z) <= RING;
-/** The order the loader asks for the parts left in with the body at (x, z): what is within RING, then the overviews, then the rest, each nearest first and a sector's ground before its statics. */
-const rank = (p: MapPart, x: number, z: number): number => off(p, x, z) + (p.kind === "statics" ? 0.5 : ringed(p, x, z) ? -1e9 : p.kind === "overview" ? -1e6 : 0);
+/**
+ * The order the loader asks for the parts left in with the body at (x, z): what is within RING, then the overviews within
+ * `near` (CITY_NEAR), then the rest, each nearest first and a sector's ground before its statics.
+ */
+const rank = (p: MapPart, x: number, z: number, near = CITY_NEAR): number => off(p, x, z) + (p.kind === "statics" ? 0.5 : ringed(p, x, z) ? -1e9 : p.kind === "overview" && off(p, x, z) <= near ? -1e6 : 0);
 /** Answers the waiting requests until `done` holds. */
 const until = async (s: { answer(k?: number): Promise<void> }, done: () => boolean): Promise<void> => {
   while (!done()) await s.answer();
 };
 
-test("after the first frame the page asks for the rest nearest first: the overviews and ground within the ring four at once, then the other overviews, then the rest two at once, each sector's ground before its statics; and hands the statics over once every part has come", async () => {
+test("after the first frame the page asks for the rest nearest first: the overviews and ground within the ring four at once, then the other overviews within the city's reach, then the rest two at once, an overview past that reach among them, each sector's ground before its statics; and hands the statics over once every part has come", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
   await s.drain();
-  // Past FIRST_REACH of the west overview, which comes after the first frame.
+  // Past FIRST_REACH of the west overview, which comes after the first frame, and past the city's reach as this test has it.
   const body = { x: 3500, z: 448, vx: 0, vz: 0 };
+  const reach = 2600;
   let handed: MapStatics | null = null;
   let drawn = false;
-  void loader!.follow(() => body, { arrived: (t) => (handed = t) }).then(() => (drawn = true));
+  void loader!.follow(() => body, { arrived: (t, all) => all && (handed = t), near: reach }).then(() => (drawn = true));
   await settle();
   const near = firstFrameParts(head, body.x, body.z);
   const rest = head.parts.filter((p) => (p.kind === "overview" || p.kind === "ground" || p.kind === "statics") && !near.includes(p));
@@ -117,8 +121,12 @@ test("after the first frame the page asks for the rest nearest first: the overvi
   expect(most).toBe(AFTER_AT_ONCE);
   // Each the nearest of those left when it was asked for by the loader's order.
   const order = s.asked.slice(before).filter((url) => !near.some((p) => nameOf(p) === url)).map((url) => rest.find((p) => nameOf(p) === url)!);
-  for (let k = 1; k < order.length; k++) expect(rank(order[k]!, body.x, body.z)).toBeGreaterThanOrEqual(rank(order[k - 1]!, body.x, body.z));
+  for (let k = 1; k < order.length; k++) expect(rank(order[k]!, body.x, body.z, reach)).toBeGreaterThanOrEqual(rank(order[k - 1]!, body.x, body.z, reach));
   expect(order.length).toBe(rest.length);
+  // The west overview, past the city's reach, after every sector's ground and statics within it and before its own sector's.
+  const west = order.findIndex((p) => p.kind === "overview");
+  const within = order.filter((p, k) => p.kind !== "overview" && off(p, body.x, body.z) <= reach && k > west);
+  expect([within.length, order.slice(0, west).some((p) => p.col === 127)]).toEqual([0, false]);
   expect(loader!.staged.hf.exactIn(0, 0, head.dims.chunksX * CHUNK_SIZE, head.dims.chunksZ * CHUNK_SIZE)).toBe(true);
   await settle();
   expect(wholeStatics(handed)).toBe(true);
