@@ -6,13 +6,13 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { LONG_KEPT, PART, PARTS, TickParts, type TickReport } from "../../server/admin/parts.ts";
+import { LONG_KEPT, PART, PARTS, TickParts, measure, type TickReport } from "../../server/admin/parts.ts";
 import { TickMeter } from "../../server/admin/meter.ts";
 import { AdminPages } from "../../server/admin/routes.ts";
 import { gaugesOf } from "../../server/admin/stats.ts";
 import { Guesses } from "../../server/guesses.ts";
 import { Harness } from "../fixtures/net.ts";
-import { describe as describeTicks, measure } from "../../tools/ticks.ts";
+import { describe as describeTicks } from "../../tools/ticks.ts";
 
 /** The parts a tick runs, as against those of the loop between ticks. */
 const IN_TICK = PARTS.slice(0, PART.sockets);
@@ -93,16 +93,16 @@ test("the admin page reads the parts past its gate", async () => {
   }
 });
 
-test("the tool calls a long tick its own when the process ran through it, else waiting for pages if it read any in, else waiting for a core", () => {
+test("a long tick is the server's own when the process ran through it, else waiting for pages if it read any in, else waiting for a core", () => {
   const parts = new TickParts();
   const report = parts.report();
   const tick = (ms: number, counts: number[]) => ({ tick: 1, at: 0, ms, late: 0, parts: new Array<number>(PARTS.length).fill(0), counts, gap: [0, 0, 0, 0, 0] });
-  expect(measure(report, tick(100, [90, 0, 0, 0, 3])).kind).toBe("own");
-  expect(measure(report, tick(100, [10, 4, 0, 0, 3])).kind).toBe("page");
-  expect(measure(report, tick(100, [10, 0, 0, 0, 40])).kind).toBe("core");
+  expect(measure(report.limit, tick(100, [90, 0, 0, 0, 3])).whose).toBe("own");
+  expect(measure(report.limit, tick(100, [10, 4, 0, 0, 3])).whose).toBe("page");
+  expect(measure(report.limit, tick(100, [10, 0, 0, 0, 40])).whose).toBe("core");
   // One kept for the time before it is called by that time's counts.
   const before = { ...tick(5, [5, 0, 0, 0, 0]), gap: [2, 0, 0, 0, 9] };
   before.parts[PART.stray] = 80;
-  expect(measure(report, before)).toEqual({ ms: 80, cpu: 2, pageIns: 0, preempted: 9, kind: "core" });
+  expect(measure(report.limit, before)).toEqual({ ms: 80, cpu: 2, pageIns: 0, preempted: 9, whose: "core" });
   expect(describeTicks({ ...report, recent: [tick(100, [90, 0, 0, 0, 3]), before] })[1]).toBe("by kind: the server's own 1 ticks, 100 ms (56%); waiting for a core 1 ticks, 80 ms (44%)");
 });

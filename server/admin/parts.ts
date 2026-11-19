@@ -62,6 +62,30 @@ export interface TickReport {
 
 const N = COUNTS.length;
 
+/** Whose a long tick's time was: the server's own work, the machine's for want of a core, or the machine's for want of pages. */
+export type Whose = "own" | "core" | "page";
+
+/**
+ * A long tick's time and counts, and whose that time was: its own when the tick itself was long, else the time between it
+ * and the tick before. The process's CPU time at 0.7 of the time or more is the server at work; less, it was waiting, for
+ * pages if it read any in, else for a core. The CPU time is all the process's threads', so the call errs toward the server.
+ */
+export function measure(limit: number, t: LongTick): { ms: number; cpu: number; pageIns: number; preempted: number; whose: Whose } {
+  const ownTick = t.ms > limit;
+  let ms = t.ms;
+  if (!ownTick) {
+    ms = 0;
+    for (let k = BETWEEN; k < PARTS.length; k++) ms += t.parts[k]!;
+  }
+  const [cpu, pageIns, , , preempted] = ownTick ? t.counts : t.gap;
+  return { ms, cpu: cpu!, pageIns: pageIns!, preempted: preempted!, whose: cpu! >= 0.7 * ms ? "own" : pageIns! > 0 ? "page" : "core" };
+}
+
+/** The parts of a long tick that took a millisecond or more, longest first, as "riders 40, contacts 9". */
+export function partsText(t: LongTick): string {
+  return PARTS.map((p, i) => [p, t.parts[i]!] as const).filter(([, v]) => v >= 1).sort((a, b) => b[1] - a[1]).map(([p, v]) => `${p} ${Math.round(v)}`).join(", ");
+}
+
 /** The COUNTS as one read gives them, CPU in µs, into `into` from `at`. */
 function counters(into: Float64Array, at: number): void {
   const u = process.resourceUsage();
@@ -72,12 +96,9 @@ function counters(into: Float64Array, at: number): void {
   into[at + 4] = u.involuntaryContextSwitches;
 }
 
-/** The counts from row `a` to row `b` of `c`, CPU in ms. */
-function delta(c: Float64Array, a: number, b: number): number[] {
-  const out: number[] = [];
-  for (let k = 0; k < N; k++) out.push(k === 0 ? round((c[b * N]! - c[a * N]!) / 1000) : c[b * N + k]! - c[a * N + k]!);
-  return out;
-}
+/** A long tick's row in the ring: its tick, start, time and lateness, its parts, its counts and the gap's. */
+const HEAD = 4;
+const ROW = HEAD + PARTS.length + 2 * N;
 
 export class TickParts {
   /** Ms a tick or the time between two may take before it is kept. */
@@ -95,7 +116,8 @@ export class TickParts {
   private ended = -1;
   /** Three rows of counts: at the last tick's end, at this one's start and at its end. */
   private readonly count = new Float64Array(3 * N);
-  private readonly ring: (LongTick | null)[] = new Array(LONG_KEPT).fill(null);
+  /** Long ticks as rows of numbers, so that what is kept is the same memory after a day as after a minute. */
+  private readonly ring = new Float64Array(LONG_KEPT * ROW);
 
   /** Starts a tick. What was counted between ticks since the last one ended is this tick's to keep. */
   begin(): void {
@@ -133,15 +155,17 @@ export class TickParts {
     const c = this.count;
     counters(c, 2 * N);
     if (kept) {
-      this.ring[this.long % LONG_KEPT] = {
-        tick,
-        at: Math.round(performance.timeOrigin + this.began),
-        ms: round(ms),
-        late: Number.isNaN(this.due) ? 0 : round(Math.max(0, this.began - this.due)),
-        parts: Array.from(this.ms, round),
-        counts: delta(c, 1, 2),
-        gap: this.ended < 0 ? new Array<number>(N).fill(0) : delta(c, 0, 1),
-      };
+      const row = (this.long % LONG_KEPT) * ROW, r = this.ring;
+      r[row] = tick;
+      r[row + 1] = performance.timeOrigin + this.began;
+      r[row + 2] = ms;
+      r[row + 3] = Number.isNaN(this.due) ? 0 : Math.max(0, this.began - this.due);
+      r.set(this.ms, row + HEAD);
+      for (let k = 0; k < N; k++) {
+        const unit = k === 0 ? 1000 : 1;
+        r[row + HEAD + PARTS.length + k] = (c[2 * N + k]! - c[N + k]!) / unit;
+        r[row + HEAD + PARTS.length + N + k] = this.ended < 0 ? 0 : (c[N + k]! - c[k]!) / unit;
+      }
       this.long++;
     }
     for (let k = 0; k < PARTS.length; k++) {
@@ -156,11 +180,28 @@ export class TickParts {
     this.due = NaN;
   }
 
-  /** The long ticks held, oldest first. */
-  recent(): LongTick[] {
+  /** The long ticks held, oldest first; with `from` and `to`, those of ticks `from` to `to` alone. */
+  recent(from = 0, to = Infinity): LongTick[] {
     const out: LongTick[] = [];
-    for (let n = Math.max(0, this.long - LONG_KEPT); n < this.long; n++) out.push(this.ring[n % LONG_KEPT]!);
+    for (let n = Math.max(0, this.long - LONG_KEPT); n < this.long; n++) {
+      const tick = this.ring[(n % LONG_KEPT) * ROW]!;
+      if (tick >= from && tick <= to) out.push(this.held(n));
+    }
     return out;
+  }
+
+  /** How many of the long ticks since wall ms `since` were whose. */
+  whose(since: number): Record<Whose, number> {
+    const out: Record<Whose, number> = { own: 0, core: 0, page: 0 };
+    for (let n = this.long - 1; n >= Math.max(0, this.long - LONG_KEPT) && this.ring[(n % LONG_KEPT) * ROW + 1]! >= since; n--) out[measure(this.limit, this.held(n)).whose]++;
+    return out;
+  }
+
+  /** The `n`-th long tick kept since the start, which the ring must still hold. */
+  private held(n: number): LongTick {
+    const row = (n % LONG_KEPT) * ROW, r = this.ring;
+    const part = (at: number, length: number): number[] => Array.from(r.subarray(row + at, row + at + length), round);
+    return { tick: r[row]!, at: Math.round(r[row + 1]!), ms: round(r[row + 2]!), late: round(r[row + 3]!), parts: part(HEAD, PARTS.length), counts: part(HEAD + PARTS.length, N), gap: part(HEAD + PARTS.length + N, N) };
   }
 
   report(): TickReport {
