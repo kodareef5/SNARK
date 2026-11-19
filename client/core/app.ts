@@ -616,7 +616,7 @@ export class App {
   pointer(kind: number, key: number, x: number, y: number, button: number, finger = 0): void {
     if (finger > 0) this.ui.inputDevice = 2;
     if (this.touch.pointer(kind, key, x, y, finger, this.nowMs, this.touchTarget, this.unit)) return;
-    if (!this.ui.menu && this.ui.map && mapPointer(this.hud, kind, key, x, y)) return;
+    if (!this.ui.menu && this.ui.map && mapPointer(this.hud, kind, key, x, y, finger)) return;
     if ((this.ui.wantsPointerLock || this.ui.inspect) && kind === 0 && button === 0) {
       if (key >= KEY_VITAL && key < KEY_VITAL + this.hud.vitals.length * 2) { this.ui.settings.vitalLabels = !this.ui.settings.vitalLabels; this.ui.settings.changed(); }
       if (key === KEY_MINIMAP_TOGGLE) { this.ui.settings.minimap = !this.ui.settings.minimap; this.ui.settings.changed(); }

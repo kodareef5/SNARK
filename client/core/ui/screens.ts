@@ -81,11 +81,17 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): voi
   if (session.mapLocation !== false) pin(KEY_MAP_PIN + 16, mapU(hf, session.own.x), mapV(hf, session.own.z), 4, S_MARK_SELF);
 }
 
+/** The fingers on the map: the one that drags it, where it was last and whether it has moved, and a second that pinches with it. */
+const held = { first: 0, x: 0, y: 0, moved: false, second: 0, x2: 0, y2: 0, apart: 0 };
+/** How far two fingers part, or close, for one step of the map's zoom, as a share of where they began. */
+const PINCH = 1.35;
+
 /**
- * A click on the map looks there, and its two buttons zoom. The place pointed at, or the nearest place on the map to it, is
- * kept for the line under the map. Returns true if the map used the event.
+ * A click on the map looks there, and its two buttons zoom. A finger (`finger` above 0) drags the map under it, looks
+ * where it taps, and with a second finger pinches the zoom a step at a time. The place pointed at, or the nearest place
+ * on the map to it, is kept for the line under the map. Returns true if the map used the event.
  */
-export function mapPointer(hud: HudModel, kind: number, key: number, x: number, y: number): boolean {
+export function mapPointer(hud: HudModel, kind: number, key: number, x: number, y: number, finger = 0): boolean {
   const chart = hud.chart;
   if (!chart || key < KEY_MAP_IMAGE || key > KEY_MAP_ZOOM + 1 || key === KEY_MAP_TITLE) return false;
   if (key !== KEY_MAP_IMAGE) {
@@ -95,6 +101,31 @@ export function mapPointer(hud: HudModel, kind: number, key: number, x: number, 
   const view = chart.full.view;
   hud.pointedU = Math.max(0, Math.min(1, view.u0 + ((x - hud.mapBox.x) / hud.mapBox.size) * view.du));
   hud.pointedV = Math.max(0, Math.min(1, view.v0 + ((y - hud.mapBox.y) / hud.mapBox.size) * view.dv));
-  if (kind === 0) chart.look(hud.pointedU, hud.pointedV);
+  if (finger === 0) {
+    if (kind === 0) chart.look(hud.pointedU, hud.pointedV);
+    return true;
+  }
+  if (kind === 0) {
+    if (held.first === 0) { held.first = finger; held.x = x; held.y = y; held.moved = false; }
+    else if (held.second === 0 && finger !== held.first) { held.second = finger; held.x2 = x; held.y2 = y; held.apart = Math.hypot(x - held.x, y - held.y); held.moved = true; }
+  } else if (kind === 2) {
+    if (finger === held.second) { held.x2 = x; held.y2 = y; }
+    else if (finger !== held.first) return true;
+    else if (held.second === 0) {
+      // One finger: the map goes with it.
+      if (Math.hypot(x - held.x, y - held.y) > 3) held.moved = true;
+      if (held.moved) chart.look(Math.max(0, Math.min(1, chart.fullU - ((x - held.x) / hud.mapBox.size) * view.du)), Math.max(0, Math.min(1, chart.fullV - ((y - held.y) / hud.mapBox.size) * view.dv)));
+      if (held.moved) { held.x = x; held.y = y; }
+    } else { held.x = x; held.y = y; }
+    if (held.second !== 0 && held.apart > 0) {
+      const now = Math.hypot(held.x2 - held.x, held.y2 - held.y);
+      if (now >= held.apart * PINCH || now <= held.apart / PINCH) { chart.zoomFull(now > held.apart ? 1 : -1); held.apart = now; }
+    }
+  } else if (finger === held.second) held.second = 0;
+  else if (finger === held.first) {
+    // A tap looks where it landed; a drag has already taken the map there.
+    if (!held.moved) chart.look(hud.pointedU, hud.pointedV);
+    held.first = held.second = 0;
+  }
   return true;
 }

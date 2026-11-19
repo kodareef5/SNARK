@@ -7,6 +7,7 @@ import { KEY_HOTBAR, KEY_MINIMAP, KEY_PROMPT, KEY_VITAL } from "../../client/cor
 import { KEY_INV_ACTION, KEY_INV_HALF, KEY_INV_INFO, KEY_INV_SLOT, KEY_INV_USE } from "../../client/core/ui/inventory.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { KEY_MENU, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
+import { KEY_MAP_IMAGE } from "../../client/core/ui/screens.ts";
 import { K_HOLD, MIN_WIDTH, SCALE_FLOOR, textWidth } from "../../client/core/ui/nodes.ts";
 import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -330,4 +331,50 @@ test("chat by touch: the bar opens the box at the top, where a keyboard does not
     // Shut, the log is back where it was, low on the left, and the layer is back with it.
     expect(f.find(KEY_ZONE_MOVE), name).not.toBeNull();
   }
+});
+
+test("the map by touch: a finger drags it, a tap looks there, and two fingers pinch its zoom a step at a time", () => {
+  const h = new Harness(), app = phone(h, "mapper");
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, 844, 390));
+  run(600);
+  app.pointer(0, KEY_TOUCH_BUTTON + T_MAP, 0, 0, 0, 1); app.pointer(1, KEY_TOUCH_BUTTON + T_MAP, 0, 0, 0, 1);
+  run(100);
+  const f = app.ui.frame, chart = app.hud.chart!, map = f.find(KEY_MAP_IMAGE)!;
+  expect([app.ui.map, map.interactive]).toEqual([true, true]);
+  const cx = map.x + map.w / 2, cy = map.y + map.h / 2;
+  // Zoomed in, so there is somewhere to go. Two fingers part: one step in; they close: one step out, and back in.
+  const zoom = chart.fullZoom;
+  app.pointer(0, KEY_MAP_IMAGE, cx - 40, cy, 0, 1);
+  app.pointer(0, KEY_MAP_IMAGE, cx + 40, cy, 0, 2);
+  app.pointer(2, KEY_MAP_IMAGE, cx + 80, cy, 0, 2);
+  expect(chart.fullZoom).toBe(zoom + 1);
+  app.pointer(2, KEY_MAP_IMAGE, cx + 85, cy, 0, 2);
+  expect(chart.fullZoom).toBe(zoom + 1);
+  app.pointer(2, KEY_MAP_IMAGE, cx + 20, cy, 0, 2);
+  expect(chart.fullZoom).toBe(zoom);
+  app.pointer(2, KEY_MAP_IMAGE, cx + 60, cy, 0, 2);
+  expect(chart.fullZoom).toBe(zoom + 1);
+  // Letting go of a pinch looks nowhere new.
+  const [u0, v0] = [chart.fullU, chart.fullV];
+  app.pointer(1, KEY_MAP_IMAGE, cx + 60, cy, 0, 2);
+  app.pointer(1, KEY_MAP_IMAGE, cx - 40, cy, 0, 1);
+  expect([chart.fullU, chart.fullV]).toEqual([u0, v0]);
+  run(50);
+  // One finger drags the map under it: to the right and down shows what was to the left and above.
+  const view = chart.full.view;
+  app.pointer(0, KEY_MAP_IMAGE, cx, cy, 0, 1);
+  app.pointer(2, KEY_MAP_IMAGE, cx + 50, cy + 30, 0, 1);
+  expect(chart.fullU).toBeCloseTo(u0 - (50 / map.w) * view.du, 6);
+  expect(chart.fullV).toBeCloseTo(v0 - (30 / map.h) * view.dv, 6);
+  app.pointer(1, KEY_MAP_IMAGE, cx + 50, cy + 30, 0, 1);
+  expect(chart.fullU).toBeCloseTo(u0 - (50 / map.w) * view.du, 6);
+  // A tap looks where it landed.
+  run(50);
+  const now = chart.full.view, tapU = now.u0 + 0.25 * now.du;
+  app.pointer(0, KEY_MAP_IMAGE, map.x + map.w * 0.25, cy, 0, 1);
+  app.pointer(1, KEY_MAP_IMAGE, map.x + map.w * 0.25, cy, 0, 1);
+  expect(chart.fullU).toBeCloseTo(tapU, 6);
+  // A mouse still looks where it clicks, at once.
+  app.pointer(0, KEY_MAP_IMAGE, cx, cy, 0, 0);
+  expect(chart.fullU).toBeCloseTo(app.hud.pointedU, 9);
 });
