@@ -723,16 +723,21 @@ export class GlRenderer {
 
     this.bound.length = 0;
     this.mapped = null;
-    this.worldReady = 1;
+    // 0 with no finishes; 3 with none of their maps yet, drawn as their means; 2 with the base colours alone, drawn the
+    // far path's way; 1 to 2 as the rest come up (`early`).
+    let base = true, full = true;
     for (let r = 0; r < 3; r++) {
       if (r > 0 && p.worldSide[r] === 0) continue;
-      if (p.worldLevel[r]! < 0 || this.worldBase[r]! < -1) this.worldReady = 0;
-      else if (p.worldLevel[r] !== this.worldBase[r]) {
+      if (p.worldLevel[r]! < 0 || this.worldBase[r]! < -1) {
+        full = false;
+        if (r === 0) base = false;
+      } else if (p.worldLevel[r] !== this.worldBase[r]) {
         gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.world[r]!);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_BASE_LEVEL, (this.worldBase[r] = p.worldLevel[r]!));
       }
     }
+    this.worldReady = p.worldSide[0] === 0 ? 0 : base ? 1 + (full ? p.worldEarly : 1) : p.worldComing ? 3 : 0;
     const finish = drawsLight(p.tier, this.light);
     const samples = Math.min(this.samples, p.lightSamples);
     // A frame drawn without it every other frame (FramePacket.alternate) leaves it for the frames either side.

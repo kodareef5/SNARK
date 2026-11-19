@@ -593,6 +593,8 @@ export class Scene {
   readonly nodesFar: FarNodes | null;
   /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
   city: FarCity | null = null;
+  /** The world's statics the far city was made of. */
+  private citySource: CitySource | null = null;
   /** With the far city, the near store's chunks' statics drawn flat as their form as a mesh a chunk (nearcity.ts). */
   readonly near: NearCity | null;
   /** Whether a chunk the near store holds whole draws such statics from its mesh; false draws them as instances, for pictures held to them. */
@@ -876,7 +878,7 @@ export class Scene {
       postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
       p.lightSamples = lightSamples(this.supersampled);
       contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
-      if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);
+      if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance, undefined, true);
     }
     if (!p.lit) p.frame[FRAME.exposure] = 0;
     writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z);
@@ -903,6 +905,8 @@ export class Scene {
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
     const tier = this.assets.tier;
+    // The map's statics handed over again: the far city is made of them, taking over what it can of the one before.
+    if (this.city && this.world.city !== this.citySource) this.startCity(this.city);
     if (this.city ?? this.startCity()) this.farCity(cam);
     this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now);
     p.frame[FRAME.fade] = tier.fade;
@@ -1600,11 +1604,18 @@ export class Scene {
     p.triangles += triangles * copies;
   };
 
-  /** The far city once the world has the map's statics, which the far blocks then leave their cells to. */
-  private startCity(): FarCity | null {
+  /**
+   * The far city once the world has the map's statics, which the far blocks then leave their cells to; or, given the far
+   * city `before` of statics handed over before, of those the world has now.
+   */
+  private startCity(before: FarCity | null = null): FarCity | null {
     const source = this.world.city;
     if (!source || !this.farBounds) return null;
-    this.city = new FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds);
+    this.citySource = source;
+    this.boxes.clear();
+    this.clearAt.fill(NaN, 0, 3);
+    this.clearAt[3] = 0;
+    this.city = new FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
     this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds);
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];

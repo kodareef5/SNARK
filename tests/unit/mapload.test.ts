@@ -1,13 +1,14 @@
 // The page's map as its parts come (client/core/mapload.ts): its head, its landmarks' definitions and its overviews before
 // anything; the ground within reach of the body alone, which the first frame waits for, by the rule the map's build holds to
-// its budget; then the rest of the ground nearest first to where the body is and is heading, six at once, and the statics
-// last, all of them. A part that fails is asked for again, the wait between asks counted here with no clock.
+// its budget; then the rest nearest first to where the body is and is heading, each sector's ground before its statics,
+// four at once while that is ground within RING and two otherwise, and the statics handed over once all have come. A part
+// that fails is asked for again, the wait between asks counted here with no clock.
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import type { Get } from "../../client/core/fetched.ts";
-import { DAMAGED_MOST, MapLoader, PARTS_AT_ONCE, RETRY_FIRST, RETRY_MOST, StagedMap, WHOLE_REACH, firstFrameParts, type Place } from "../../client/core/mapload.ts";
+import { AFTER_AT_ONCE, DAMAGED_MOST, MapLoader, RETRY_FIRST, RETRY_MOST, RING, StagedMap, URGENT_AT_ONCE, firstFrameParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
@@ -79,44 +80,94 @@ const off = (p: MapPart, x: number, z: number): number => {
   return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
 };
 
-test("told to bring the whole ground first, the page draws nothing until every ground part within reach has come, and then asks for the rest of the ground nearest first and the statics, one at a time", async () => {
+test("after the first frame the page asks for the rest nearest first, each sector's ground before its statics, four at once while that is ground within the ring and two otherwise, and hands the statics over once every part has come", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
   await s.drain();
-  const before = s.asked.length;
   const body = { x: 1056, z: 448, vx: 0, vz: 0 };
-  let drawn = false;
   let handed: MapStatics | null = null;
-  void loader!.follow(() => body, { arrived: (t) => (handed = t), whole: true }).then(() => (drawn = true));
+  void loader!.follow(() => body, { arrived: (t) => (handed = t) });
   await settle();
-  const ground = head.parts.filter((p) => p.kind === "ground");
-  const near = ground.filter((p) => off(p, body.x, body.z) <= WHOLE_REACH).map(nameOf);
-  const far = ground.filter((p) => off(p, body.x, body.z) > WHOLE_REACH).sort((a, b) => off(a, body.x, body.z) - off(b, body.x, body.z)).map(nameOf);
-  const statics = head.parts.filter((p) => p.kind === "statics").map(nameOf);
-  // This map reaches past it, so both kinds are tested.
-  expect([near.length > 0, far.length > 0]).toEqual([true, true]);
-  // Every ground part within reach is answered before anything is drawn, and nothing else is asked for meanwhile.
-  while (s.asked.length - before < near.length || s.waiting.some((w) => near.includes(w.url))) {
-    expect(drawn).toBe(false);
-    expect(s.waiting.every((w) => near.includes(w.url))).toBe(true);
-    await s.answer();
-  }
-  await settle();
-  expect(drawn).toBe(true);
-  expect(s.asked.slice(before, before + near.length).sort()).toEqual([...near].sort());
-  // Then the rest of the ground nearest first, and the statics, never two at once.
+  const near = firstFrameParts(head, body.x, body.z);
+  const rest = head.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && !near.includes(p));
+  const before = s.asked.length;
+  await s.answer();
+  const urgent = rest.filter((p) => p.kind === "ground" && off(p, body.x, body.z) <= RING);
+  // This map has ground within the ring and past it, so both are tested.
+  expect([urgent.length > 1, urgent.length < URGENT_AT_ONCE, rest.length > urgent.length]).toEqual([true, true, true]);
+  // The ground within the ring is asked for at once, and nothing else while it is the nearest left.
+  expect(s.waiting.map((w) => w.url).sort()).toEqual(urgent.map(nameOf).sort());
   let most = 0;
   while (s.waiting.length > 0) {
+    if (s.waiting.every((w) => !urgent.map(nameOf).includes(w.url))) most = Math.max(most, s.waiting.length);
+    await s.answer();
+  }
+  expect(most).toBe(AFTER_AT_ONCE);
+  // Each the nearest of those left when it was asked for, the ground within the ring first, a sector's ground before its statics.
+  const order = s.asked.slice(before).map((url) => rest.find((p) => nameOf(p) === url)!);
+  const rank = (p: MapPart): number => off(p, body.x, body.z) + (p.kind === "statics" ? 0.5 : urgent.includes(p) ? -1e9 : 0);
+  for (let k = 1; k < order.length; k++) expect(rank(order[k]!)).toBeGreaterThanOrEqual(rank(order[k - 1]!));
+  expect(order.length).toBe(rest.length);
+  expect(loader!.staged.hf.exactIn(0, 0, head.dims.chunksX * CHUNK_SIZE, head.dims.chunksZ * CHUNK_SIZE)).toBe(true);
+  await settle();
+  expect(wholeStatics(handed)).toBe(true);
+});
+
+test("while the game's socket is held back the map comes one part at a time, and as many as before once it is not", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 1056, z: 448, vx: 0, vz: 0 };
+  let held = true;
+  void loader!.follow(() => body, { held: () => held });
+  await settle();
+  await s.answer();
+  let most = 0;
+  for (let k = 0; k < 6; k++) {
     most = Math.max(most, s.waiting.length);
     await s.answer();
   }
-  await settle();
   expect(most).toBe(1);
-  expect(s.asked.slice(before + near.length)).toEqual([...far, ...statics]);
-  expect(loader!.staged.hf.exactIn(0, 0, head.dims.chunksX * CHUNK_SIZE, head.dims.chunksZ * CHUNK_SIZE)).toBe(true);
-  expect(handed).not.toBeNull();
-  expect(handed!.length).toBe(whole.statics.length);
+  held = false;
+  await s.answer();
+  expect(s.waiting.length).toBeGreaterThan(1);
+  await s.drain();
+});
+
+test("the statics of the sectors within reach of the body are handed over once their ground and statics have come, before the rest have, and then the whole map's", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 100, z: 448, vx: 0, vz: 0 };
+  const reach = 1200;
+  const handed: [MapStatics, boolean][] = [];
+  void loader!.follow(() => body, { arrived: (t, all) => handed.push([t, all]), near: reach });
+  const near = head.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && off(p, body.x, body.z) <= reach);
+  const inSector = (p: MapPart): number => {
+    const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+    let n = 0;
+    for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) n += head.counts[cz * head.dims.chunksX + cx]!;
+    return n;
+  };
+  const rows = near.filter((p) => p.kind === "statics").reduce((n, p) => n + inSector(p), 0);
+  // The map has sectors past that reach, and statics within it.
+  expect([near.length < head.parts.filter((p) => p.kind === "ground" || p.kind === "statics").length, rows > 0]).toEqual([true, true]);
+  let at = -1;
+  while (s.waiting.length > 0 || handed.length === 0) {
+    await s.answer();
+    if (handed.length > 0 && at < 0) at = s.answered;
+  }
+  await s.drain();
+  await settle();
+  // Handed round the body as soon as its last part there came, with those sectors' rows alone; then whole.
+  const came = s.asked.slice(0, at).map((url) => url.slice(4));
+  expect(near.every((p) => came.includes(p.name))).toBe(true);
+  expect(head.parts.filter((p) => p.kind === "statics").every((p) => came.includes(p.name))).toBe(false);
+  expect([handed.length, handed[0]![1], handed[0]![0].length, handed[1]![1]]).toEqual([2, false, rows, true]);
+  expect(wholeStatics(handed[1]![0])).toBe(true);
 });
 
 test("the page asks for the head, then the land and the overviews, then nothing until it knows where the body is; then that sector's ground alone, then the rest nearest first six at once, and the statics last", async () => {
@@ -147,27 +198,22 @@ test("the page asks for the head, then the land and the overviews, then nothing 
   await s.answer();
   await settle();
   expect([near, staged.hf.exactIn(body.x - PREDICTED_REACH, body.z - PREDICTED_REACH, body.x + PREDICTED_REACH, body.z + PREDICTED_REACH)]).toEqual([true, true]);
-  // Then six at once, each the nearest of those left to where the body is then; it jumps across the map halfway.
-  const rest = grounds.filter((p) => !mine.includes(p));
-  expect(s.waiting.length).toBe(PARTS_AT_ONCE);
-  const asked = s.asked.length;
-  let left = [...rest];
-  for (const url of s.asked.slice(asked - PARTS_AT_ONCE)) left = left.filter((p) => nameOf(p) !== url);
+  // Then each ask the nearest of those left to where the body is then; it jumps across the map halfway.
+  let left = head.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && !s.asked.includes(nameOf(p)));
+  const rank = (p: MapPart): number => off(p, body.x, body.z) + (p.kind === "statics" ? 0.5 : p.kind === "ground" && off(p, body.x, body.z) <= RING ? -1e9 : 0);
+  for (const url of s.waiting.map((w) => w.url)) left = left.filter((p) => nameOf(p) !== url);
+  const total = left.length;
   while (left.length > 0) {
-    if (left.length === 2) [body.x, body.z] = [100, 1200];
+    if (left.length === Math.floor(total / 2)) [body.x, body.z] = [100, 1200];
     await s.answer();
-    const url = s.asked.at(-1)!;
-    const best = Math.min(...left.map((p) => off(p, body.x, body.z)));
-    const p = left.find((q) => nameOf(q) === url)!;
-    expect(off(p, body.x, body.z)).toBe(best);
-    left = left.filter((q) => q !== p);
+    for (const url of s.asked.slice(s.asked.length - 1)) {
+      const p = left.find((q) => nameOf(q) === url);
+      if (!p) continue;
+      expect(rank(p)).toBe(Math.min(...left.map(rank)));
+      left = left.filter((q) => q !== p);
+    }
   }
-  // The statics are asked for once every ground part has been, and come only once all of the ground has.
-  const statics = head.parts.filter((p) => p.kind === "statics").map(nameOf);
-  while (s.waiting.some((w) => !statics.includes(w.url))) await s.answer(s.waiting.findIndex((w) => !statics.includes(w.url)));
-  expect(handed).toBeNull();
   await s.drain();
-  expect([s.most, s.asked.slice(-statics.length).sort()]).toEqual([PARTS_AT_ONCE, [...statics].sort()]);
   expect([staged.hf.heights, staged.hf.tint, [...staged.nodes]]).toEqual([whole.heights, whole.tint, [...whole.nodes]]);
   expect(wholeStatics(handed)).toBe(true);
 });
@@ -211,10 +257,10 @@ test("after a failure a sector goes back among those left by its distance: asked
   void loader!.follow(() => body);
   await settle();
   await s.answer();
-  // The nearest behind the body is among the six asked for first. It fails, and its lane waits while the others go on.
+  // The nearest behind the body is among those asked for first. It fails, and its lane waits while the others go on.
   expect(s.waiting.map((w) => w.url)).toContain(nameOf(failing));
   await s.answer(s.waiting.findIndex((w) => w.url === nameOf(failing)));
-  for (let k = 0; k < PARTS_AT_ONCE; k++) await s.answer();
+  for (let k = 0; k < URGENT_AT_ONCE; k++) await s.answer();
   expect([waits, s.asked.filter((u) => u === nameOf(failing)).length]).toEqual([[RETRY_FIRST], 1]);
   // The body goes across the map and the wait ends: from then on each ask is the nearest to it of those left, the failed one among them.
   let left = [...behind.filter((p) => !s.asked.includes(nameOf(p))), failing];

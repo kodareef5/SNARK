@@ -182,9 +182,9 @@ export function cityWorld(options: CityWorldOptions) {
       structs.setVersion(chunk, t?.version ?? 0);
       whole[chunk] = 1;
     },
-    /** The statics of a `late` world come. */
-    arrive(): void {
-      world.city = { statics, complete, ...maker };
+    /** The statics of a `late` world come: all of them, or `some`, as those round the body come first. */
+    arrive(some = statics): void {
+      world.city = { statics: some, complete, ...maker };
     },
     /** The near store lets go of `chunk`. */
     drop(chunk: number): void {

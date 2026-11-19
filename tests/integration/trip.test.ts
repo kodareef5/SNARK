@@ -29,12 +29,13 @@ function walk(watched: boolean): { frames: number[]; probe: TripProbe | null } {
   return { frames, probe };
 }
 
-test("a page told ?trip draws and sends what one not told does, and marks its first frame, its body predicted and its ground exact", () => {
+test("a page told ?trip draws and sends what one not told does, and marks its first frame, its colours, its body predicted and its ground exact", () => {
   const plain = walk(false);
   const watched = walk(true);
   expect(watched.frames.length).toBeGreaterThan(500);
   expect(watched.frames).toEqual(plain.frames);
   const marks = watched.probe!.marks;
-  expect([marks[0]!.what, marks.some((m) => m.what === "predicting"), marks.some((m) => m.what === "exact")]).toEqual(["frame", true, true]);
+  // The harness serves no textures: no texture shown lacks a step it could have, and the world's finishes never come.
+  expect([marks[0]!.what, ...["predicting", "exact", "soft", "colour"].map((what) => marks.some((m) => m.what === what))]).toEqual(["frame", true, true, true, false]);
   expect(watched.probe!.whole().ground).toBe(true);
 });

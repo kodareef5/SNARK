@@ -38,6 +38,11 @@ export interface Announcement {
   items: boolean;
   /** Wall clock, milliseconds, of the last time it said so. */
   at: number;
+  /**
+   * Where its built client and its map's parts are on this machine ("" for none), so that a front on it answers them from
+   * disk itself and they never wait behind the world's tick (server/front.ts).
+   */
+  files?: { client: string; parts: string };
 }
 
 /**
