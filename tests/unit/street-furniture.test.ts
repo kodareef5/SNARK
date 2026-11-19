@@ -225,6 +225,19 @@ test("a street that ends without meeting another gets a DEAD END sign at its mou
   expect(Math.round(Math.cos(p.yaw * Math.PI / 180))).toBe(-1);
 });
 
+test("a share of the standing lamps still works, more on an avenue than a street, none in a district left dark", () => {
+  const { pieces } = place(fixture(GRID));
+  const lamps = pieces.filter((p) => p.kind === streetKind("lamp") || p.kind === streetKind("lamp_lit"));
+  const share = (avenue: boolean): number => {
+    const ps = lamps.filter((p) => (Math.min(Math.abs(p.x - 500), Math.abs(p.z - 500)) < 12) === avenue);
+    return ps.filter((p) => p.kind === streetKind("lamp_lit")).length / ps.length;
+  };
+  expect(share(true)).toBeGreaterThan(0.15); expect(share(false)).toBeGreaterThan(0.02);
+  expect(share(true)).toBeGreaterThan(share(false));
+  const dark = fixture(GRID); (dark.world as unknown as { districts: { style: string }[] }).districts[0]!.style = "industrial";
+  expect(place(dark).pieces.some((p) => p.kind === streetKind("lamp_lit"))).toBe(false);
+});
+
 test("a rule that names a piece the set lacks stops the build", () => {
   const rules = { ...RULES, forms: { ...RULES.forms, lamp: [["lamp_post", 1]] as [string, number][] } };
   expect(() => place(fixture(GRID.slice(0, 2)), [], rules)).toThrow("furniture.forms names lamp_post, which is no street piece");

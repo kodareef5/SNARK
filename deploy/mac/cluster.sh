@@ -5,6 +5,7 @@
 #   deploy/mac/cluster.sh miami los-angeles            the worlds, the front on 127.0.0.1:8787
 #   TUNNEL=quick deploy/mac/cluster.sh miami tampa     and a quick tunnel, whose address it prints
 #   DEV=1 TUNNEL=quick deploy/mac/cluster.sh miami     development worlds: cheats need no password
+#   FRONT_PORT=8786 deploy/mac/cluster.sh miami        the front on another port, where 8787 is taken
 #
 #   <host>/               the start screen: every world running, how many play on each
 #   <host>/<map>/         a world, at the path named by its map
@@ -23,6 +24,7 @@ cd "$(cd "$(dirname "$0")" && pwd)/../.."
 [ -f client/dist/index.html ] || { echo "the client is not built: bun run build"; exit 1; }
 [ -f client/dist/wiki/index.html ] || echo "/wiki/ is not found until bun run wiki builds it"
 id=${CLUSTER:-main}
+front=${FRONT_PORT:-8787}
 logs=var/logs/$id
 mkdir -p var/cluster "$logs"
 [ -f var/admin-password.txt ] && export SNARK_ADMIN_PASSWORD="$(head -1 var/admin-password.txt)"
@@ -32,7 +34,7 @@ others=()
 address=
 if [ "${TUNNEL:-}" = quick ]; then
   : > "$logs/tunnel.log"
-  cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8787 > "$logs/tunnel.log" 2>&1 &
+  cloudflared tunnel --no-autoupdate --url "http://127.0.0.1:$front" > "$logs/tunnel.log" 2>&1 &
   others+=($!)
   for n in {1..60}; do
     address=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$logs/tunnel.log" 2>/dev/null | tail -1)
@@ -52,9 +54,9 @@ for map in "$@"; do
   echo "$name at /$map/ on port $port, log $logs/$map.log"
   port=$((port + 1))
 done
-bun server/front.ts --cluster "var/cluster/clusters/$id" --host 127.0.0.1 --port 8787 > "$logs/front.log" 2>&1 &
+bun server/front.ts --cluster "var/cluster/clusters/$id" --host 127.0.0.1 --port "$front" > "$logs/front.log" 2>&1 &
 others+=($!)
-echo "the front at http://127.0.0.1:8787/"
+echo "the front at http://127.0.0.1:$front/"
 [ "${TUNNEL:-}" = quick ] && echo "the tunnel at ${address:-no address yet: see $logs/tunnel.log}"
 stop() {
   # Every pid of each: an array's bare name in bash is its first element alone.

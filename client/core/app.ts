@@ -1411,6 +1411,8 @@ export class App {
     session.holdNodes(this.scene.assets.tier.nodes.chunks);
     this.scene.characters.corpseMotions = session.corpseMotions;
     sceneWithout(this.scene, this.off);
+    // The street lamps' light, which a bench turns off every other frame (`?ab=lamps`).
+    this.scene.streetLamps.on = !off.has("lamps");
     const packet = this.scene.build(cam, this.remote);
     session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
     packetWithout(packet, off);

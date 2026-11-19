@@ -13,8 +13,9 @@
 // card reads too long where a frame has many passes or the card is busy with the frame before; with shadows and the far
 // layers off in turn on medium at one and on ultra at two. The finish's light
 // target, its bloom and bodies' contact are each turned off every other frame on high and ultra at one, as the walls'
-// worn edges are on the street, on the page's clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
-// the turning view and other work on the card move little, and which a timer query on this card reads too long. A city
+// worn edges and the facades are on the street, on the page's clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
+// the turning view and other work on the card move little, and which a timer query on this card reads too long. The
+// street lamps' light (render/street-lamps.ts) is turned off so on the street at night, at 22:00, on high and ultra. A city
 // row's GL draws and triangles are of the frame its run ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
 // process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
@@ -31,6 +32,7 @@ import { fileURLToPath } from "node:url";
 import { WOOD, basePieces, crowdScene } from "../../client/core/devicescene.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT } from "../../shared/anim/pose.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";
+import { offsetForHour } from "../../shared/sim/clock.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { PASSES, type Effect } from "../../client/core/passes.ts";
@@ -61,6 +63,8 @@ interface Run {
   view?: View;
   scale?: number;
   cpu?: number;
+  /** The hour the world is set to, where not the server's. */
+  hour?: number;
 }
 const BASE_PIECES = 1024;
 
@@ -92,6 +96,9 @@ export function plan(): Run[] {
   }
   runs.push({ scene: "city", view: "street", tier: "high", scale: 1, off: "facades" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "edges" });
+  // The facades' parts and marks, off every other frame, read again whenever the atlases or a room's light change.
+  for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "facades" });
+  for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "lamps", hour: 22 });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
   return runs;
 }
@@ -227,7 +234,7 @@ export function flock(server: ReturnType<typeof startServer>): number {
   return n;
 }
 
-const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}`;
+const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}${r.hour !== undefined ? `, at ${r.hour}:00` : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
 async function measure(runs: Run[], times: number, say: (line: string) => void): Promise<Map<string, Record<string, any>[]>> {
@@ -262,6 +269,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     if (scene === "flock") flock(server);
     // One profile a scene: the asset cache is warm after the first run, and the page joins as the same survivor.
     const profile = mkdtempSync(join(tmpdir(), "snark-gpu-"));
+    const day = server.host.world.dayOffset;
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
         const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}`;
@@ -269,6 +277,10 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), 150000 * (r.cpu ?? 1)))));
         const pixels = r.view ? ["--window-size=1920,1080", `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
+        // The world's own hour for every other run.
+        const w = server.host.world;
+        w.dayOffset = r.hour !== undefined ? offsetForHour(w.tick, r.hour, w.clock) : day;
+        server.host.game.markAllOwn();
         rmSync(join(profile, "DevToolsActivePort"), { force: true });
         const browser = Bun.spawn([CHROME!, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
         const page = await devtools(profile);
