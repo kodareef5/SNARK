@@ -134,8 +134,14 @@ function sameText(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/** Unreliable messages from one client per tick. The rest are dropped. */
+/**
+ * Unreliable messages from one client: this many a tick, and up to PACKETS_HELD at once, what a page sends at most, one a
+ * tick, in the ticks of input the server buffers, which a stalled loop reads in one go. The rest are dropped.
+ */
 const MAX_PACKETS_PER_TICK = 8;
+const PACKETS_HELD = INPUT_WINDOW;
+/** An input this many ticks older than a client's newest is from its clock started again, which a page does a second back (client/core/session.ts). */
+const RESTARTED = 16;
 /** Reliable messages from one client per tick. A command past this is answered busy, and anything else is a strike. */
 const MAX_RELIABLE_PER_TICK = 32;
 /** Malformed messages tolerated before disconnecting. */
@@ -277,6 +283,8 @@ export class Client {
   drawn = 0;
   private before = 0;
   newestInput = 0;
+  /** What GameServer.given was at its welcome: a snapshot tells it the ticks given up since. */
+  givenAt = 0;
   /** Newest snapshot the client says it decoded. */
   ackTick = 0;
   /** High-water mark even while an ACK of zero requests a fresh full snapshot. */
@@ -495,6 +503,14 @@ export class GameServer {
   /** For each of those lists, each entry's place in the order it was chosen in. A client is sent the entries below its cap. */
   private readonly ranks: Uint16Array[] = [];
   private gathered = 0;
+  /**
+   * Ticks the loop (server/main.ts) was behind its clock as this tick began, and those it gave up since the start. A
+   * margin is told against the tick due, so a page's clock keeps to the loop's clock while the loop catches up.
+   */
+  private behind = 0;
+  private given = 0;
+  /** The tick due when snapshots last went out. While the loop catches up they go out at the clock's pace, not each tick's. */
+  private dueSent = 0;
   /** `opts.viewCap`, held to what a view can hold. */
   private readonly cap: number;
   /** Per chunk: the tick `around[aroundAt]` was gathered for it. */
@@ -553,16 +569,24 @@ export class GameServer {
     return c.drive >= 0 && this.world.reg.vehicle[this.world.ents.kind[c.drive]!] ? VEHICLE_HOLD_TICKS : INPUT_HOLD_TICKS;
   }
 
-  tick(): void {
+  /** Ticks the loop gave up: every page is told, and moves its clock back as many. */
+  giveUp(ticks: number): void {
+    this.given += ticks;
+    this.dueSent -= ticks;
+  }
+
+  /** `behind` is how many more ticks the loop owed as this one began. */
+  tick(behind = 0): void {
     const world = this.world;
     const ents = world.ents;
     const T = ++world.tick;
+    this.behind = behind;
 
     this.onBeforeStep?.();
 
     for (const c of this.clients) {
       if (!c) continue;
-      c.packets = 0;
+      c.packets = Math.max(0, c.packets - MAX_PACKETS_PER_TICK);
       c.reliable = 0;
       if (!c.active) continue;
       const inputs = c.inputs;
@@ -659,7 +683,9 @@ export class GameServer {
     // History records the world as this tick's snapshots show it.
     world.history.record(T);
 
-    const snap = T % this.opts.snapshotEvery === 0;
+    const every = this.opts.snapshotEvery;
+    const snap = behind > 0 ? T + behind >= this.dueSent + every : T % every === 0;
+    if (snap) this.dueSent = T + behind;
     this.gathered = 0;
     for (const c of this.clients) {
       if (!c?.active || c.closed) continue;
@@ -1012,7 +1038,7 @@ export class GameServer {
     if (c.closed) return;
     let over = false;
     if (channel !== CH_RELIABLE) {
-      if (++c.packets > MAX_PACKETS_PER_TICK) {
+      if (++c.packets > PACKETS_HELD) {
         this.stats.throttled++;
         return;
       }
@@ -1042,8 +1068,8 @@ export class GameServer {
     if (newest === 0) return false;
     if (newest <= this.world.tick) this.stats.lateInputs++;
     // Track the newest tick even when it is too far ahead to buffer, because the margin sent back tells a
-    // client its clock has run away. It moves backward only by a whole window, which is a restarted clock.
-    const fresh = newest > c.newestInput || newest < c.newestInput - INPUT_WINDOW;
+    // client its clock has run away. It moves backward only by more than RESTARTED, which is a restarted clock.
+    const fresh = newest > c.newestInput || newest < c.newestInput - RESTARTED;
     if (fresh) {
       // A stream delivers in order, so an input arrives with the first message whose newest reaches it.
       for (let t = Math.max(newest > c.newestInput ? c.newestInput + 1 : 0, newest - INPUT_WINDOW + 1); t <= newest; t++) c.arrived[t & (INPUT_WINDOW - 1)] = this.world.tick;
@@ -1266,6 +1292,7 @@ export class GameServer {
   }
 
   private welcome(c: Client): void {
+    c.givenAt = this.given;
     const world = this.world;
     const ents = world.ents;
     const w = this.welcomeW;
@@ -1418,11 +1445,14 @@ export class GameServer {
     w.u8(base ? age : 0);
     // Before the first input there is no margin. Sending 0 - T would tell a client joining a
     // long-running world that it is hopelessly late.
-    let margin = c.newestInput - T;
+    let margin = c.newestInput - T - this.behind;
     if (c.newestInput === 0) margin = MARGIN_UNKNOWN;
     else if (margin < -127) margin = -127;
     else if (margin > 127) margin = 127;
     w.sbits(margin, 8);
+    const given = (this.given - c.givenAt) & 0xffff;
+    w.bool(given !== 0);
+    if (given !== 0) w.u16(given);
     w.bits(c.state, 2);
     // 0 for its own body, else the index of the entity it drives plus one.
     w.varint(c.drive + 1);

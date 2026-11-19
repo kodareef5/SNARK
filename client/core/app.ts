@@ -964,13 +964,14 @@ export class App {
     this.ui.settings.masterVolume = Number.isFinite(volume) ? Math.max(0, Math.min(VOLUME_MAX, volume)) : MEASURED_VOLUME;
   }
 
-  /** After the frame is handed to WebGL: our code took `ours` ms of it. */
-  drawn(packet: FramePacket, ours: number): void {
+  /** After the frame is handed to WebGL: our code took `ours` ms of it, on a canvas of `width` by `height` device pixels. */
+  drawn(packet: FramePacket, ours: number, width = 0, height = 0): void {
     const budget = this.scene?.budget;
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
     const city = this.scene?.city?.drawn.reduce((n, t) => n + t, 0) ?? 0;
     this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle, city * PHONE_MS.triangle);
+    this.session.prediction.page(ours, packet, this.scene?.assets.residency, this.governor, this.dpr, width, height);
   }
 
   /** The shell says the graphics card ran out of memory or lost everything. On every third time the graphics tier falls by one. */

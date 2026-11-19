@@ -15,8 +15,9 @@
 //                            day offset u32, map id string, map hash u32, chunksX-1 u8, chunksZ-1 u8, own body,
 //                            yaw u16, tuned content hash u32, tuning string (shared/content/tuning.ts), the clock's
 //                            cycle, day and night scales (f64 each), MOTD seconds u16, takes the map's statics 1 bit
-//     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8, session state 2 bits, driven
-//                            entity index + 1 varint (0 = its own body), that body, entity delta (see view.ts)
+//     SNAPSHOT  unreliable   tick u32, baseline age u8 (0 = none), input margin s8, ticks given up since the welcome
+//                            1 bit and if set u16 (wrapping), session state 2 bits, driven entity index + 1 varint
+//                            (0 = its own body), that body, entity delta (see view.ts)
 //     CHUNK     reliable     chunk u16, version u32, final 1 bit, row count 16 bits; to a client that takes statics, for
 //                            a chunk that holds map statics, from the map 1 bit, and if set first slot u16 and count
 //                            u16 of the slots it takes as the map has them; rows, in ascending slots; then removals:
@@ -70,8 +71,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * read the other's bodies wrong.
  * 34: creative mode, RULE_CREATIVE and the sundial's CMD_CLOCK. They were written as 33 on their branch while main took 33
  * for the above.
+ * 35: a snapshot's margin is told against the tick due on the loop's clock, and it says the ticks the loop gave up.
  */
-export const PROTOCOL_VERSION = 34;
+export const PROTOCOL_VERSION = 35;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -578,13 +580,20 @@ export const TEXT_MOTD = 5;
 export const MAX_CHAT_CHARS = 120;
 export const MAX_TRIBE_NAME = 24;
 
-/** The snapshot input margin when no input has arrived yet. The client must not steer its clock by it. */
+/**
+ * The snapshot input margin when no input has arrived yet. The client must not steer its clock by it. A margin is the
+ * newest input less the tick due on the server loop's clock, which is the tick it steps while the loop keeps up.
+ */
 export const MARGIN_UNKNOWN = -128;
 
 /** Inputs carried per packet. Losing up to three packets in a row costs nothing. */
 export const INPUT_REDUNDANCY = 4;
-/** How many ticks ahead of the server tick an input may be and still be buffered. */
-export const INPUT_WINDOW = 32;
+/**
+ * How many ticks ahead of the server tick an input may be and still be buffered: a page's lead and what it sends while the
+ * server stalls, for eight seconds, which a loop then catches up (server/main.ts CATCH_UP_MS) or gives up and the page
+ * waits out. A tick steps a body once whatever is buffered, so inputs sent early buy nothing.
+ */
+export const INPUT_WINDOW = 256;
 /**
  * Ticks the server goes on with a client's last input when none comes: about a quarter of a second, as in ARK. After that the
  * body stops moving and lets go of every button but INPUT_KEPT, its stance.

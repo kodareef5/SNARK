@@ -116,6 +116,8 @@ async function boot(): Promise<void> {
   if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
   void silent.then((why) => why && app.ui.console.print(`no sounds: ${why}`));
   session.prediction.enabled = selfcheck;
+  // A development world keeps the page's record of play from its first frame and is sent it off the game's socket (server/playlog.ts).
+  if (!device) void fetch("__play").then((r) => r.status === 204 && session.prediction.start((report) => void fetch("__play", { method: "POST", body: report, keepalive: true }).catch(() => {})), () => {});
   const skin = installSkin(app.ui.frame);
   void Object.assign(new Image(), { src: SKIN_URL }).decode().catch(() => Object.assign(skin, { ...skinPixels(), url: "" }));
   // A tool's look at a place takes its orders from the server the tool started for it, which alone answers /__look; on
@@ -182,12 +184,12 @@ async function boot(): Promise<void> {
   }
   let restored = 0;
   if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress.frames, still: progress.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck.dinosaur?.data }) });
-  canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
+  canvas.addEventListener("webglcontextlost", (e) => (e.preventDefault(), session.prediction.note("the graphics context was lost")));
   canvas.addEventListener("webglcontextrestored", () => {
     renderer.init();
     app.scene?.resetUploads();
     app.pressure();
-    restored++;
+    session.prediction.note(`the graphics context was given back (${++restored} times)`);
   });
   /** With ?lose=1 the self-check takes the graphics context away and gives it back, and must still see its picture. */
   const loser = params.has("lose") ? renderer.gl.getExtension("WEBGL_lose_context") : null;
@@ -237,7 +239,7 @@ async function boot(): Promise<void> {
       app.pressure();
     }
     const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
-    app.drawn(packet, ours);
+    app.drawn(packet, ours, width, height);
     device?.frame(now, packet, t0, built);
     if (progress.frames === 30) loser?.loseContext();
     // The self-check asks for a call and listens for it leaving the volume.
