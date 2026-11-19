@@ -52,6 +52,15 @@ export function textureParts(tex: ManifestTexture, format: TextureFormat, last: 
   return out;
 }
 
+/**
+ * How a part's bytes are asked for: `length` bytes of the file from `from`, by one range, never through the browser's
+ * cache. Chrome sends the ranges of one file that go through its cache one at a time, every texture is a range of one
+ * file and every mesh level of another, and the worker keeps its own copy (client/assets/assets-worker.ts).
+ */
+export function rangeAsk<Signal>(from: number, length: number, signal: Signal): { headers: { range: string }; signal: Signal; cache: "no-store" } {
+  return { headers: { range: `bytes=${from}-${from + length - 1}` }, signal, cache: "no-store" };
+}
+
 export interface AssetRequest {
   /** The level of a mesh, its surface, the step of a texture, a skeleton's clips or a page, the bytes are for. */
   slot: number;
