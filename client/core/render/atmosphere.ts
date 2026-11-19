@@ -15,6 +15,7 @@ import { EYE_SKY_GLSL } from "./tide-eye.ts";
 import { FRAME, FRAME_BLOCK, FRAME_FLOATS } from "./packet.ts";
 import { MOON_RADIUS, SKY_GLSL, SUN_RADIUS, domeLight, hazeColor, hourOfSun, luminance, skyFrame, sunHeight, trueSun, upCoord, type Sky } from "./sky.ts";
 import { LIGHT, skyFromGlsl } from "./surface.ts";
+import { WORLD_NEAR } from "./world-surfaces.ts";
 
 /** The haze's density at sea level, per metre, and the height over which it thins by e: 3% at 200 m, 15% at 1 km and 47% at 4 km along the sea, tuned to the keys from the plan's 2.5e-4. */
 export const HAZE_DENSITY = 1.6e-4;
@@ -46,9 +47,10 @@ export const SKY_MATERIAL = "core:sky/sky";
 export const EARTH = 6371000;
 /**
  * How the sky's pictures are asked for: as though a whole one covered this many pixels, so each comes as large as the
- * tier allows, and as urgently as a thing this many metres off, after what is near.
+ * tier allows, and as urgently as the world's finishes (world-surfaces.ts WORLD_NEAR), each map one it is not drawn
+ * without: the clouds are a few kilobytes at their first steps and are over the whole frame.
  */
-export const SKY_ASKED = { pixels: 4096, distance: 2000 };
+export const SKY_ASKED = { pixels: 4096, distance: WORLD_NEAR };
 /** A layer is drawn once its picture is this many pixels across: a smaller one is too soft to show. */
 const LAYER_SMALLEST = 512;
 

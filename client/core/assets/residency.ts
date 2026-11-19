@@ -611,16 +611,17 @@ export class Residency {
    * Says a material is on screen this frame, a whole texture of it covering `pixels` pixels on something `distance`
    * metres off. Each of its textures is kept, and wanted at the first step that is as wide as it is shown: as far
    * under the material's widest as it was authored, and no wider than the tier allows. Only its first `roles` maps are
-   * wanted where fewer are read.
+   * wanted where fewer are read. `needed` says each of them is one the material is not drawn without, as the world's
+   * finishes' every map is, so each one's first step is as urgent as a base colour's.
    */
-  material(m: number, pixels: number, distance: number, roles = MAPS): void {
+  material(m: number, pixels: number, distance: number, roles = MAPS, needed = false): void {
     if (this.cap < 0) return;
     this.matSeen[m] = this.frame;
     const most = STEP0_SIZE << (this.matTop[m]! < this.cap ? this.matTop[m]! : this.cap);
     const shown = pixels < most ? pixels : most;
     for (let r = 0; r < roles; r++) {
       const t = this.matTex[m * MAPS + r]!;
-      if (t >= 0) this.texture(t, shown / (1 << this.matUnder[m * MAPS + r]!), WEIGHT[r]! / distance, r === 0 || r >= 3);
+      if (t >= 0) this.texture(t, shown / (1 << this.matUnder[m * MAPS + r]!), WEIGHT[r]! / distance, needed || r === 0 || r >= 3);
     }
   }
 
@@ -642,6 +643,11 @@ export class Residency {
   layered(m: number): boolean {
     const t = this.matLayer[m]!;
     return t >= 0 && this.has[t]! >= 0;
+  }
+
+  /** Whether texture `t` (its index in the manifest) can be had at all: false with no network to bring it. */
+  canHave(t: number): boolean {
+    return this.limit[t]! >= 0;
   }
 
   /** How many textures that can be had were shown this frame with no step of them on the card. */

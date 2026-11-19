@@ -386,6 +386,10 @@ export class FramePacket {
    */
   readonly worldSide = new Int32Array(3);
   readonly worldLevel = new Int32Array(3).fill(-1);
+  /** 1 while the finishes are drawn from their base colours alone, falling to 0 as their every map comes in (world-surfaces.ts WorldFinishes). */
+  worldEarly = 1;
+  /** Whether the finishes' base colours can come, which they are drawn as their means until they do; false where nothing can bring them. */
+  worldComing = false;
   readonly worldPhase = new Float32Array(48);
   /** The textures the facades read, by their index in the manifest, -1 for none: the elements' base colour, normal and packed map, the rooms', the marks' (facade.ts FacadeAtlases). */
   readonly facadeSlots = new Int32Array(5).fill(-1);
