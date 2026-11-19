@@ -14,6 +14,7 @@ import type { PiecesAsset } from "../../../../../tools/art/spec.ts";
  */
 const PIECES: Readonly<Record<string, readonly number[]>> = {
   lamp: [220, 152, 52, 28],
+  lamp_lit: [220, 152, 52, 28],
   lamp_leaning: [220, 152, 52, 28],
   lamp_fallen: [256, 172, 64, 36],
   signal: [432, 40],
@@ -52,6 +53,16 @@ const PIECES: Readonly<Record<string, readonly number[]>> = {
   billboard: [320, 32],
   billboard_bare: [308, 68],
   newsbox: [48, 12],
+  roof_ac: [48, 36],
+  roof_ac_tipped: [48, 36],
+  roof_rtu: [124, 24],
+  roof_vent: [64, 36, 24, 16],
+  roof_duct: [60],
+  roof_tank: [180, 108],
+  roof_solar: [96, 48],
+  roof_solar_broken: [96, 48],
+  roof_bulkhead: [36],
+  roof_dish: [76, 52, 36, 28],
 };
 
 export default {
@@ -60,6 +71,8 @@ export default {
   pieces: Object.entries(PIECES).map(([name, triangles]) => ({ id: `core:zzstreet_${name}`, object: name, triangles })),
   materials: {
     street: { base: "tex/street_base.png", normal: "tex/street_normal.png", packed: "tex/street_packed.png", height: "tex/street_height.png" },
+    // A working lamp's lens, which gives out light from dusk to dawn (paint.py; client/core/render/surface.ts `glow`).
+    street_glow: { base: "tex/glow_base.png", emissive: 4, night: true },
     street_cut: { base: "tex/cut_base.png", normal: "tex/cut_normal.png", packed: "tex/cut_packed.png", height: "tex/cut_height.png", cutout: true },
   },
   budgets: { triangles: [432, 320, 120, 72], texture: { top: 2048, megabytes: 40 } },

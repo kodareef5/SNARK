@@ -38,20 +38,25 @@ def lamp_mast(m, y0=0.08, y1=MAST_TOP, plate=True):
     return cylinder(m, (0, y0 + 0.03, 0), (0, y1, 0), r(y0), r(y1), 10, "galvanised")
 
 
-def lamp_arm(m):
+def lamp_arm(m, lens="lens"):
     path = [(0, MAST_TOP - 0.05, 0)]
     for k in range(1, 6):
         a = math.radians(90 * k / 5)
         path.append((0, MAST_TOP - 0.05 + math.sin(a) * 0.9, 0.9 - math.cos(a) * 0.9))
     path.append((0, MAST_TOP + 0.99, 2.5))
     tube(m, path, [0.075] + [0.055] * 5 + [0.05], 8, "galvanised", start=MAST_TOP)
-    return lamp_head(m, (0, MAST_TOP + 1.03, 2.42))
+    return lamp_head(m, (0, MAST_TOP + 1.03, 2.42), lens)
 
 
-def lamp_head(m, back):
-    """The cobra head, its back on the arm's end, reaching on toward the road, its lens below."""
+def lamp_head(m, back, lens="lens"):
+    """The cobra head, its back on the arm's end, reaching on toward the road, its lens below: `lens_lit` for one that
+    still works, whose picture the atlas marks to glow."""
     x, y, z = back
+    lit = lens == "lens_lit"
+    face_uv = (lambda fx, fy: (fx, 1 - fy)) if lit else (lambda fx, fy: part_uv("street", "lens", fx, fy))
+    face_mat = "street_glow" if lit else "street"
     if not fine():
+        # Far off a level is flat, without pictures or glow: the lit lamp's light is its cards' there.
         return box(m, (-0.2, y - 0.06, z), (0.2, y + 0.1, z + 0.92), "galvanised", decals={"-y": ("street", "lens")})
     sections = [(0.0, 0.13, 0.1), (0.14, 0.2, 0.15), (0.55, 0.22, 0.16), (0.82, 0.14, 0.12), (0.92, 0.06, 0.07)]
     outline = []
@@ -67,7 +72,7 @@ def lamp_head(m, back):
         m.quad([a[0], b[0], b[1], a[1]], [uv(0.1, 0.1), uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1)], "street")
         m.quad([a[1], b[1], b[2], a[2]], [uv(0.1, 0.1), uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1)], "street")
         m.quad([a[3], b[3], b[0], a[0]], [uv(0.1, 0.3), uv(0.3, 0.3), uv(0.3, 0.1), uv(0.1, 0.1)], "street")
-        m.quad([a[2], b[2], b[3], a[3]], [part_uv("street", "lens", 1, (z0 - z) / 0.92), part_uv("street", "lens", 1, (z1 - z) / 0.92), part_uv("street", "lens", 0, (z1 - z) / 0.92), part_uv("street", "lens", 0, (z0 - z) / 0.92)], "street")
+        m.quad([a[2], b[2], b[3], a[3]], [face_uv(1, (z0 - z) / 0.92), face_uv(1, (z1 - z) / 0.92), face_uv(0, (z1 - z) / 0.92), face_uv(0, (z0 - z) / 0.92)], face_mat)
     for (zz, h, t), rev in ((outline[0], True), (outline[-1], False)):
         q = [(-h, y + t * 0.65, zz), (-h, y - t * 0.35, zz), (h, y - t * 0.35, zz), (h, y + t * 0.65, zz)]
         uv = [part_uv("street", "spare", u, v) for u, v in ((0.1, 0.1), (0.1, 0.3), (0.3, 0.3), (0.3, 0.1))]
@@ -75,16 +80,22 @@ def lamp_head(m, back):
     return m
 
 
-def lamp_whole():
+def lamp_whole(lens="lens"):
     m = Mesh()
     footing(m)
     lamp_mast(m)
-    return lamp_arm(m)
+    return lamp_arm(m, lens)
 
 
 @piece("lamp")
 def lamp():
     return lamp_whole()
+
+
+@piece("lamp_lit")
+def lamp_lit():
+    # One that still works: its lens glows from dusk to dawn.
+    return lamp_whole("lens_lit")
 
 
 @piece("lamp_leaning")
@@ -671,6 +682,130 @@ def newsbox():
     box(m, (-0.1, 0.02, -0.08), (0.1, 0.36, 0.08), "blue")
     box(m, (-0.25, 0.36, -0.235), (0.25, 1.0 if fine() else 1.04, 0.235), "blue", decals={"-z": ("street", "newsbox")})
     return m
+
+
+# Roof plant: what stands on a flat roof, its foot on the roof's top at y = 0, its front (the louvres, the door) +z.
+
+def condenser(m, move=None):
+    # A split system's condenser, 1.0 by 0.9 by 0.8 m, on two skids: louvres on its sides, its fan's guard on top.
+    for x in (-0.38, 0.38):
+        box(m, (x - 0.04, 0.0, -0.42), (x + 0.04, 0.08, 0.42), "galvanised", move=move)
+    box(m, (-0.5, 0.08, -0.4), (0.5, 0.98, 0.4), "galvanised", decals={"+z": ("street", "louvre"), "-z": ("street", "louvre"), "+x": ("street", "louvre")}, move=move)
+    if fine():
+        box(m, (-0.34, 0.98, -0.34), (0.34, 1.02, 0.34), "rust", move=move)
+    return m
+
+
+@piece("roof_ac")
+def roof_ac():
+    return condenser(Mesh())
+
+
+@piece("roof_ac_tipped")
+def roof_ac_tipped():
+    # Blown over onto its side by a storm.
+    return condenser(Mesh(), move=lambda p: turn(p, "x", -90, (0, 0.0, -0.42)))
+
+
+@piece("roof_rtu")
+def roof_rtu():
+    # A packaged rooftop unit, 3.0 by 1.3 by 1.8 m on its curb: louvres down its long sides, two fans on top, its duct down
+    # through the curb at its end.
+    m = Mesh()
+    box(m, (-1.6, 0.0, -0.95), (1.6, 0.25, 0.95), "concrete")
+    box(m, (-1.5, 0.25, -0.9), (1.5, 1.55, 0.9), "galvanised", decals={"+z": ("street", "louvre"), "-z": ("street", "louvre")})
+    if fine():
+        for x in (-0.75, 0.75):
+            cylinder(m, (x, 1.55, 0), (x, 1.72, 0), 0.42, 0.4, 12, "galvanised")
+        box(m, (1.5, 0.6, -0.3), (1.75, 1.2, 0.3), "rust")
+    return m
+
+
+@piece("roof_vent")
+def roof_vent():
+    # A turbine vent on its stack.
+    m = Mesh()
+    cylinder(m, (0, 0.0, 0), (0, 0.6, 0), 0.16, 0.16, 8, "galvanised")
+    cylinder(m, (0, 0.6, 0), (0, 0.95, 0), 0.26, 0.2, 10, "rust")
+    return m
+
+
+@piece("roof_duct")
+def roof_duct():
+    # A duct 3.6 m along x on three stands, turning down into the roof at its -x end.
+    m = Mesh()
+    for x in (-1.2, 0.4, 1.9):
+        box(m, (x - 0.04, 0.0, -0.25), (x + 0.04, 0.45, 0.25), "rust")
+    box(m, (-1.6, 0.45, -0.3), (2.0, 1.0, 0.3), "galvanised", decals={"+z": ("street", "duct"), "-z": ("street", "duct")})
+    return box(m, (-2.0, 0.0, -0.3), (-1.6, 1.0, 0.3), "galvanised")
+
+
+def tank_wall(m, r, y0, y1, sides):
+    """A tank's wall, the tank's picture once round it."""
+    pts = [(math.cos(2 * math.pi * k / sides) * r, math.sin(2 * math.pi * k / sides) * r) for k in range(sides + 1)]
+    for k in range(sides):
+        (x0, z0), (x1, z1) = pts[k], pts[k + 1]
+        f0, f1 = k / sides, (k + 1) / sides
+        m.quad([(x0, y1, z0), (x1, y1, z1), (x1, y0, z1), (x0, y0, z0)], [part_uv("street", "tank", f0, 0), part_uv("street", "tank", f1, 0), part_uv("street", "tank", f1, 1), part_uv("street", "tank", f0, 1)], "street")
+    # Its floor and its lid, closing it.
+    ring = pts[:-1]
+    m.face([m.vert((x, y1, z)) for x, z in ring[::-1]], [part_uv("street", "tank", 0.5 + x / (4 * r), 0.5 + z / (4 * r)) for x, z in ring[::-1]], "street")
+    m.face([m.vert((x, y0, z)) for x, z in ring], [part_uv("street", "tank", 0.5 + x / (4 * r), 0.5 + z / (4 * r)) for x, z in ring], "street")
+    return m
+
+
+@piece("roof_tank")
+def roof_tank():
+    # A steel water tank, 2.6 m across and 3 m tall, on a stand 1.6 m high.
+    m = Mesh()
+    for x in (-0.95, 0.95):
+        for z in (-0.95, 0.95):
+            box(m, (x - 0.07, 0.0, z - 0.07), (x + 0.07, 1.6, z + 0.07), "rust")
+    box(m, (-1.2, 1.6, -1.2), (1.2, 1.7, 1.2), "rust")
+    sides = 16 if fine() else 10
+    tank_wall(m, 1.3, 1.7, 4.7, sides)
+    return cylinder(m, (0, 4.7, 0), (0, 5.2, 0), 1.25, 0.15, sides, "galvanised")
+
+
+def solar_rack(m, broken=False):
+    # Two panels side by side on a rack, rising 20 degrees toward +z, so facing -z: south when the piece is not turned.
+    for x in (-1.6, 0.0):
+        tilt = lambda p: turn(p, "x", -20, (0, 0.35, -0.5))
+        lean = tilt if not (broken and x == 0.0) else (lambda p: turn(tilt(p), "x", 120, (0, 0.35, -0.5)))
+        box(m, (x + 0.05, 0.33, -0.5), (x + 1.55, 0.37, 0.5), "galvanised", decals={"+y": ("street", "solar")}, move=lean)
+    for x in (-1.5, 0.0, 1.5):
+        box(m, (x - 0.03, 0.0, -0.5), (x + 0.03, 0.35, -0.44), "galvanised")
+        box(m, (x - 0.03, 0.0, 0.3), (x + 0.03, 0.7, 0.36), "galvanised")
+    return m
+
+
+@piece("roof_solar")
+def roof_solar():
+    return solar_rack(Mesh())
+
+
+@piece("roof_solar_broken")
+def roof_solar_broken():
+    # One panel torn up and folded back over its rack.
+    return solar_rack(Mesh(), broken=True)
+
+
+@piece("roof_bulkhead")
+def roof_bulkhead():
+    # The stair's bulkhead: a box 2.6 m square and 2.7 m tall, its door on +z.
+    m = Mesh()
+    box(m, (-1.3, 0.0, -1.3), (1.3, 2.7, 1.3), "concrete")
+    box(m, (-1.4, 2.7, -1.4), (1.4, 2.85, 1.4), "concrete")
+    return panel(m, (0, 1.05, 1.31), 0.9, 2.1, 0.02, "+z", ("street", "door"))
+
+
+@piece("roof_dish")
+def roof_dish():
+    # A satellite dish on a short mast and its foot, looking up 30 degrees toward +z.
+    m = Mesh()
+    box(m, (-0.3, 0.0, -0.3), (0.3, 0.06, 0.3), "galvanised")
+    cylinder(m, (0, 0.06, 0), (0, 1.1, 0), 0.04, 0.04, 6, "galvanised")
+    return tube(m, [(0, 1.1, 0.0), (0, 1.18, 0.14)], [0.12, 0.45], 12, "galvanised")
 
 
 # Each piece's levels, each with at most four fifths of the triangles of the one before: a level that saves less is left out.

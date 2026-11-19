@@ -268,8 +268,11 @@ once in a new world; the save keeps it from then on. `parkCars` in
 by `street.cars.parked`:
 
 - Each place's kind is drawn by a hash from the weights of `kinds`, changed by the
-  district's style in `styles` (vans where there are shops and works, caravans
-  among homes, sports cars few, most by the beaches) and then by the district's
+  district's style in `styles` (vans where there are shops and works, and the
+  tanker, the semi and the monster pickup among the works; caravans among homes;
+  buses among homes and where the blocks are concrete or terracotta, and taxis
+  where they are concrete; sports cars few, most by the beaches) and then by
+  the district's
   name in `districts`, which a city's vocabulary may add; a weight of 0 takes a
   kind out. The place is then tested for that kind alone.
 - At the kerb on the right of travel of a centreline of the listed classes (local
