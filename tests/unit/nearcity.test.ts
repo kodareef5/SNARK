@@ -187,12 +187,13 @@ test("crossing a chunk border at the slice's densest place makes no more in a fr
   const w = client();
   const { cam, hf, scene } = w;
   // The window round the slice's chunk (3, 3) holds its most statics; the walk goes east from its middle over the border
-  // into (4, 3), which brings a column of seven chunks.
+  // into (4, 3), which brings a column of seven chunks. The 16 km map's slice holds 27,448 pieces, its window round (3, 3)
+  // 19,162, made in 304 frames.
   let x = 3.5 * CHUNK_SIZE;
   const z = 3.5 * CHUNK_SIZE;
   [cam.x, cam.z, cam.y, cam.yaw] = [x, z, hf.heightAt(x, z) + 1.7, Math.PI / 2];
   w.follow(x, z);
-  for (let f = 0; f < 300 && (f < 2 || scene.near!.stats.waiting > 0); f++) w.frame();
+  for (let f = 0; f < 400 && (f < 2 || scene.near!.stats.waiting > 0); f++) w.frame();
   expect(scene.near!.stats.waiting).toBe(0);
   const frames: { laid: number; steps: number; made: number }[] = [];
   for (let f = 0; f < 300; f++) {
@@ -251,6 +252,6 @@ test("on foot and over the slice, a draw or caster is marked as the one before i
   // A chunk's mesh casts a run of its cells into each cascade, and a view that leaves out cells within a chunk draws it
   // in runs: here 7 draws and 23 casters could go in the call before them (7 and 25 on the slice before the ruins' broken
   // tops, rubble and growth, 8 and 24 after them until what the near meshes hide was left out, render/hide.ts, and 5 and
-  // 23 until the street's furniture stood on its walks and tall buildings had tops).
-  expect([joined, cast]).toEqual([7, 23]);
+  // 23 until the street's furniture stood on its walks and tall buildings had tops, and 7 and 23 on the 8 km map's slice).
+  expect([joined, cast]).toEqual([8, 23]);
 });

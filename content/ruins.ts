@@ -100,6 +100,11 @@ const LOUVRE = 84;
 const PLANT: Part[] = [[-4, -3.6, 0, 4, -0.25, 0.25], [3.6, 4, 0, 4, -0.25, 0.25], [-3.6, 3.6, 0, 0.4, -0.25, 0.25], [-3.6, 3.6, 3.25, 4, -0.25, 0.25], [-3.6, 3.6, 0.4, 3.25, -0.35, -0.25, LOUVRE],
   ...[0.7, 1.15, 1.6, 2.05, 2.5, 2.95].map((y): Part => [-3.6, 3.6, y, y + 0.12, -0.25, 0.08, METAL])];
 /** A screen standing on a tower's roof at its edge, a storey tall, hiding its plant, with a coping. */
+// A low building's raised parapet over its way in, and along its front. Walked as it looks, with a square coping: on low
+// poly the near city's mesh draws a piece as walked and its instance as it looks, and a bevel or a coping walked as its
+// wall showed along every edge of a front of them.
+const ATTIC: Part[] = up(-0.05, [[-4, 4, 0, 2.4, -0.32, 0.37], [-4, 4, 2.4, 2.55, -0.36, 0.42]]);
+const STEP_UP: Part[] = up(-0.05, [[-4, 4, 0, 1.25, -0.32, 0.37], [-4, 4, 1.25, 1.4, -0.36, 0.42]]);
 const SCREEN: Part[] = [[-4, 4, 0, 3.6, -0.3, 0.3], bevelX([-4, 4, 3.6, 3.75, -0.35, 0.4], 0.06, "uoui")];
 /** A shop's front: half piers, a sign band standing proud of them, a dark display on a low riser and a 2 m door set back. */
 const SHOP: Part[] = [bevelY([-4, -3.6, 0, 4, -0.3, 0.3], 0.1, "+"), bevelY([3.6, 4, 0, 4, -0.3, 0.3], 0.1, "-"), [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 1.4, 0, 0.5, -0.25, 0.05], [-3.6, 1.4, 0.5, 2.9, -0.25, -0.15, DARK], [1.4, 1.6, 0, 2.9, -1.2, 0.05]];
@@ -158,8 +163,8 @@ const MODULES = {
   zplanttop: { look: [...PLANT, ...PARAPET], walked: [wall(4), ...PARAPET] },
   zscreen: { look: SCREEN, walked: [[-4, 4, 0, 3.75, -0.3, 0.3]] },
   // A low building's roofline: an attic over a lobby's bay, and a parapet raised along a run of a long front's bays.
-  zattic: { look: up(-0.05, [[-4, 4, 0, 2.4, -0.32, 0.37], bevelX([-4, 4, 2.4, 2.55, -0.36, 0.42], 0.06, "uoui")]), walked: [[-4, 4, -0.05, 2.5, -0.32, 0.37]] },
-  zstepup: { look: up(-0.05, [[-4, 4, 0, 1.25, -0.32, 0.37], bevelX([-4, 4, 1.25, 1.4, -0.36, 0.42], 0.06, "uoui")]), walked: [[-4, 4, -0.05, 1.35, -0.32, 0.37]] },
+  zattic: { look: ATTIC, walked: ATTIC },
+  zstepup: { look: STEP_UP, walked: STEP_UP },
   /** The shade of an open storey's inside, set back from a torn edge: what is seen between its slabs from afar. */
   zgloom: { look: [[-3.6, 3.6, 0.05, 3.55, -0.1, 0.1, LOUVRE]], walked: [[-3.6, 3.6, 0.05, 3.55, -0.1, 0.1]] },
   // Walked, its spandrel stands a little thicker than drawn, so its coarsest level is its look's within a hand.
