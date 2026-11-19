@@ -8,7 +8,7 @@
 import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
-import { DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR } from "./packet.ts";
+import { DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE } from "./packet.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
@@ -122,10 +122,19 @@ const LAMP_SHAPE = `vec3 lampOf(vec2 c) {
 }
 `;
 
-/** Alpha across a street lamp's soft disc of light, falling off smoothly to nothing at its rim. Twin of poolOf below. */
+/**
+ * Alpha across a street lamp's soft disc of light, falling off smoothly to nothing at its rim, or across a wire's width
+ * (DETAIL_WIRE), soft at its edges. Twins of poolOf and wireOf below.
+ */
 const POOL_SHAPE = `vec3 poolOf(vec2 c) {
   float a = 1.0 - smoothstep(0.0, 1.0, length(c));
   return vec3(a * a, 0.0, 1.0);
+}
+vec3 wireOf(vec2 c) {
+  return vec3(1.0 - smoothstep(0.35, 1.0, abs(c.y)), 0.0, 1.0);
+}
+vec3 pooled(vec2 c) {
+  return (vFlags & 7u) == ${DETAIL_WIRE & 7}u ? wireOf(c) : poolOf(c);
 }
 `;
 
@@ -136,7 +145,7 @@ uniform vec2 uFog;
 uniform float uLight;
 out vec4 o;
 ${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}void main() {
-  vec3 s = (vFlags & ${DETAIL_POOL}u) != 0u ? poolOf(vCorner) : (vFlags & ${DETAIL_LAMP}u) != 0u ? lampOf(vCorner)
+  vec3 s = (vFlags & ${DETAIL_POOL}u) != 0u ? pooled(vCorner) : (vFlags & ${DETAIL_LAMP}u) != 0u ? lampOf(vCorner)
          : (vFlags & ${DETAIL_ROTOR}u) != 0u ? rotorOf(vCorner, vGrey) : shapeOf(vFlags & 7u, vCorner);
   float a = covers(s.x);
   if (a < 0.004) discard;
@@ -160,7 +169,7 @@ void main() {
   bool lamp = pool || (vFlags & ${DETAIL_LAMP}u) != 0u;
   vec4 t;
   if (lamp || rotor) {
-    vec3 s = pool ? poolOf(vCorner) : lamp ? lampOf(vCorner) : rotorOf(vCorner, vGrey);
+    vec3 s = pool ? pooled(vCorner) : lamp ? lampOf(vCorner) : rotorOf(vCorner, vGrey);
     t = vec4(s.z, s.y, 0.0, s.x);
   } else t = texture(uDetails, vUv);
   float a = covers(t.a);
@@ -177,6 +186,14 @@ export function poolOf(x: number, y: number, out: Float64Array | number[]): void
   const t = Math.min(1, Math.max(0, Math.hypot(x, y)));
   const a = 1 - t * t * (3 - 2 * t);
   out[0] = a * a;
+  out[1] = 0;
+  out[2] = 1;
+}
+
+/** Twin of a wire's width in both shader tiers: `y` across it. */
+export function wireOf(y: number, out: Float64Array | number[]): void {
+  const t = Math.min(1, Math.max(0, (Math.abs(y) - 0.35) / 0.65));
+  out[0] = 1 - t * t * (3 - 2 * t);
   out[1] = 0;
   out[2] = 1;
 }
