@@ -2013,6 +2013,7 @@
       "speed35": [["speed35", 5], ["post_bare", 1]],
       "speed45": [["speed45", 5], ["post_bare", 1]],
       "paystation": [["paystation", 6], ["paystation_broken", 1]],
+      "yield": [["yield", 5], ["yield_bent", 1]],
       "crosswalk1": [["crosswalk1", 1], ["crosswalk1_worn", 2]],
       "crosswalk2": [["crosswalk2", 1], ["crosswalk2_worn", 2]],
       "crosswalk4": [["crosswalk4", 1], ["crosswalk4_worn", 2]],

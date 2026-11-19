@@ -406,3 +406,13 @@ test("a crossing on an avenue keeps its stripes fresh", () => {
   expect(bars.length).toBeGreaterThan(0);
   expect(bars.filter((p) => p.kind.endsWith("_worn"))).toEqual([]);
 });
+
+test("a give-way the data maps has its YIELD sign before it, facing the traffic it governs", () => {
+  const forms = { ...RULES.forms, yield: [["yield", 1]] } as Furniture["forms"];
+  const controls = [{ kind: "give_way", e: 600, n: 350, direction: null, all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: `${northward(600)}:3`, travel: [0, 1] }] }];
+  const { pieces, summary } = place(fixture(GRID, [], { controls }), [], { ...RULES, forms });
+  const sign = near(pieces, "yield", 600, 350, 8);
+  expect(sign.length).toBe(1);
+  expect(sign[0]!.z).toBeLessThan(350);
+  expect(summary.mapped?.give_way).toEqual({ mapped: 1, used: 1 });
+});
