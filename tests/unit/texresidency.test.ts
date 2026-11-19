@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 import { FAIL_NET, type AssetArrival } from "../../client/core/assets/port.ts";
 import { FIRST, OVERFLOW } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
+import { FramePacket } from "../../client/core/render/packet.ts";
 import { MANIFEST_VERSION, parseManifest, type Manifest, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, parsePack, type PackHeader, type PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, TEXTURE_VERSION, blockOf, pictureBytes, stepBytes, stepOf, textureBytes, topIn, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
@@ -463,4 +464,18 @@ test("the tube as the splitter lays it out: a level in the boot file takes its s
   const [fine, middle] = set.manifest.meshes[0]!.levels;
   w.r.download();
   expect(w.port.filled).toEqual([...fine!.parts, ...middle!.parts.slice(1)].map((p) => p.bytes).concat(set.manifest.textures!.map((tex) => stepBytes("rgba", tex.role, 0, 1))));
+});
+
+test("a material whose every map it is not drawn without asks for each one's first step before another's base colour, its base colour first and its packed map last", () => {
+  const order = (needed: boolean): number[] => {
+    const w = world([], { latencyMs: 100 });
+    w.assets.begin(0, 720, 1.2217);
+    w.r.material(2, 512, 2);
+    w.r.material(0, 512, 0.345, 3, needed);
+    w.assets.end(new FramePacket(), 16);
+    return w.port.log.filter((line) => line.split(" ")[1] === "ask").map((line) => Number(line.split(" ")[2]) - texSlot(SET, 0));
+  };
+  // The first body's hide is material 0, its textures 0 to 4; the second's, 2 m off, is material 2, its textures 6 to 10.
+  expect(order(true).slice(0, 4)).toEqual([BASE, NORMAL, MRO, MAPS + BASE]);
+  expect(order(false).slice(0, 2)).toEqual([BASE, MAPS + BASE]);
 });

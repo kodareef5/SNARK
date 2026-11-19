@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SURFACE_FINISHES, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_FAR, WORLD_MRO, WorldFinishes, edgeOf, edged, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_FAR, WORLD_MRO, WORLD_NEAR, WORLD_RISE, WorldFinishes, finishMetres, edgeOf, edged, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
@@ -320,4 +320,55 @@ test("a static's face finds its nearest outer border from its corners, and its e
   expect(chipped[0]!).toBeLessThan(sound[0]!);
   expect(chipped[4]!).toBeGreaterThan(sound[4]!);
   expect(at(steel, 0.005, 0.002, false, 0)[5]!).toBeGreaterThan(0.5);
+});
+
+test("the finishes are drawn from their base colours as soon as those have all come, asked for ahead of other textures, and come up to every map over a moment once the rest have", () => {
+  const roles = ["base", "normal", "mro"] as const;
+  const materials: PackMaterial[] = SURFACE_NAMES.map((name, k) => ({ id: surfaceMaterial(name), base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
+  const textures: PackTexture[] = materials.flatMap((m) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : 2048 })));
+  const n = SURFACE_NAMES.length, held = new Int8Array(n * 3).fill(-1), asks: string[] = [];
+  const residency = { format: "bc" as const, material: (_m: number, _pixels: number, distance: number, roles = 3, needed = false) => asks.push(`${distance} ${roles} ${needed}`), holds: (t: number) => held[t]!, again: () => {} };
+  const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
+  // Nothing in: none drawn. Every finish is asked for as near as WORLD_NEAR with each of its maps needed.
+  finishes.frame(p, residency, tierOf("high"));
+  expect([[...p.worldLevel], p.worldEarly, [...new Set(asks)]]).toEqual([[-1, -1, -1], 1, [`${WORLD_NEAR} 3 true`]]);
+  // The base colours in: drawn from them alone, early.
+  for (let k = 0; k < n; k++) held[3 * k] = 0;
+  finishes.frame(p, residency, tierOf("high"));
+  expect([p.worldLevel[0]! >= 0, p.worldLevel[1], p.worldLevel[2], p.worldEarly]).toEqual([true, -1, -1, 1]);
+  // All in: early falls to 0 over WORLD_RISE frames, and comes back to 1 if a map is let go.
+  held.fill(0);
+  const rise: number[] = [];
+  for (let f = 0; f < WORLD_RISE + 2; f++) {
+    finishes.frame(p, residency, tierOf("high"));
+    rise.push(p.worldEarly);
+  }
+  expect([rise[0]!, rise.every((e, k) => k === 0 || e <= rise[k - 1]!), rise.at(-1)]).toEqual([1 - 1 / WORLD_RISE, true, 0]);
+  held[5] = -1;
+  finishes.frame(p, residency, tierOf("high"));
+  expect(p.worldEarly).toBe(1);
+});
+
+test("drawn early, a finish keeps its base colours and stands at its packed map's means with no lean: what the missing maps would add is all that changes as they come", () => {
+  const city = new Float32Array(12); citySurface(city, "core:miami");
+  const id = (SURFACE_NAMES as readonly string[]).indexOf("concrete"), mean = WORLD_MRO[id]!.map((b) => b / 255);
+  // A place where the finish's second copy does not show, where the heights would decide nothing between the copies.
+  const metres = finishMetres(id, city);
+  let x = 0.1;
+  while (secondShare(x / metres, 7.1 / metres) > 0) x += 0.37;
+  const at = (early: number, mro: number[], normal: number[]): number[] => {
+    const sample: WorldSample = (role, _layer, u, v, _spread, out) => out.set(role === 0 ? [0.3 + 0.2 * (u - Math.floor(u)), 0.25, 0.2 + 0.1 * (v - Math.floor(v)), 1] : role === 1 ? normal : mro);
+    const albedo = Float64Array.of(0.4, 0.4, 0.4), orm = new Float64Array(3), normalOut = new Float64Array(3);
+    worldSurface(albedo, orm, normalOut, albedo, id, x, 0, 7.1, 0, 1, 0, 0.002, city, sample, false, null, null, early);
+    return [...albedo, ...orm, ...normalOut].map((c) => Number(c.toFixed(6)));
+  };
+  // Maps that add nothing: a flat normal and the packed map's means. Early or not, the same picture.
+  const flat = [128 / 255, 128 / 255, 1, 1], plain = [...mean, 0.5];
+  expect(at(1, [0.2, 0.9, 0.3, 0.8], [0.9, 0.1, 1, 1])).toEqual(at(0, plain, flat));
+  expect(at(0.5, plain, flat)).toEqual(at(0, plain, flat));
+  // Maps that do add something: early, none of it; risen, all of it; between, between.
+  const [none, half, all] = [1, 0.5, 0].map((e) => at(e, [0.6, 0.4, 0, 0.8], [0.7, 0.4, 1, 1]));
+  expect(none).toEqual(at(1, plain, flat));
+  expect(all).not.toEqual(none);
+  expect(half.every((c, k) => c >= Math.min(none[k]!, all[k]!) - 1e-6 && c <= Math.max(none[k]!, all[k]!) + 1e-6)).toBe(true);
 });

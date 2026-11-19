@@ -25,6 +25,14 @@ export const WORLD_MRO: readonly (readonly [number, number, number])[] = [
  */
 export const WORLD_FAR = -4;
 export const WORLD_FAR_BAND = 1;
+/**
+ * The metres the finishes are asked for as if they were off (assets/residency.ts `material`): their maps' first steps
+ * come before every other texture's but those nearer the eye than about 1.4 m, base colours first and the packed
+ * maps last, and after the meshes' pages. They colour the whole screen.
+ */
+export const WORLD_NEAR = 0.345;
+/** Frames over which the finishes come up from their base colours alone to every map once all have come (`early`). */
+export const WORLD_RISE = 20;
 /** Tiles across one cell of the noise that says where a finish's second copy shows, and the share of a tile's height over which the higher of two shows through the other. */
 export const WORLD_PATCH = 0.37;
 export const WORLD_BAND = 0.2;
@@ -68,7 +76,7 @@ export function worldPhase(out: Float32Array, x: number, y: number, z: number, c
 /** What the finishes need of the textures' residency (assets/residency.ts). */
 export interface FinishResidency {
   readonly format: TextureFormat;
-  material(m: number, pixels: number, distance: number, roles?: number): void;
+  material(m: number, pixels: number, distance: number, roles?: number, needed?: boolean): void;
   holds(t: number): number;
   again(t: number): void;
 }
@@ -86,6 +94,8 @@ export class WorldFinishes {
   private readonly share: number[];
   private side = 0;
   private roles = 0;
+  /** Frames since every map has come, up to WORLD_RISE. */
+  private risen = 0;
 
   /** The weathering masks' material, whose packed map is the packed array's last layer, or -1. */
   private readonly weather: number;
@@ -111,9 +121,9 @@ export class WorldFinishes {
     if (side !== this.side || roles !== this.roles) for (const ts of this.textures) for (const t of ts) residency.again(t);
     this.side = side;
     this.roles = roles;
-    for (const m of this.materials) if (side > 0) residency.material(m, side, 1, roles);
+    for (const m of this.materials) if (side > 0) residency.material(m, side, WORLD_NEAR, roles, true);
     // The masks' material is widest in its packed map, which is kept as wide as the finishes' are.
-    if (side > 0 && roles === 3 && this.weather >= 0) residency.material(this.weather, side >> 1, 1, 3);
+    if (side > 0 && roles === 3 && this.weather >= 0) residency.material(this.weather, side >> 1, WORLD_NEAR, 3, true);
     for (let r = 0; r < 3; r++) {
       const along = r < roles ? Math.min(side * this.share[r]!, topIn(residency.format, this.tops[r]!)) : 0;
       let level = along > 0 ? 0 : -1;
@@ -124,6 +134,10 @@ export class WorldFinishes {
       p.worldSide[r] = along;
       p.worldLevel[r] = level;
     }
+    // Drawn from the base colours alone, the far path's way, until the normals and packed maps have all come too.
+    const full = p.worldLevel[0]! >= 0 && (roles < 3 || (p.worldLevel[1]! >= 0 && p.worldLevel[2]! >= 0));
+    this.risen = full ? Math.min(WORLD_RISE, this.risen + 1) : 0;
+    p.worldEarly = 1 - this.risen / WORLD_RISE;
     worldPhase(p.worldPhase, p.camX, p.camY, p.camZ, p.surfaceCity);
     p.frame[FRAME.edgesOff] = 0;
   }
@@ -200,13 +214,14 @@ const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Fl
 /**
  * A finish's maps at tile point (u, v), its second copy shown over the first where secondShare says, the higher
  * showing; where `depth` (tiles) is more than 0, read where the ray to the eye along `view` (relief) meets the painted
- * height. Into `maps`.
+ * height. Into `maps`. Where `early` is 1 only the base colours have come: the rest are read as their means, and the
+ * copies meet by their noise alone; between 0 and 1 they come up to what is read.
  */
-function finishMaps(id: number, u: number, v: number, spread: number, sample: WorldSample, light: boolean, view: Numbers, depth: number): void {
+function finishMaps(id: number, u: number, v: number, spread: number, sample: WorldSample, light: boolean, view: Numbers, depth: number, early = 0): void {
   const f = finishes[id]!, turned = f.module[0] === 0;
   const far = light ? 1 : clamp((spread - WORLD_FAR) / WORLD_FAR_BAND);
   const second = secondShare(u, v), t = second * (1 - far);
-  if (depth > 0) {
+  if (depth > 0 && early < 1) {
     relief(id, u, v, spread, view, depth, t >= 0.5, sample);
     u = met[0]!;
     v = met[1]!;
@@ -215,17 +230,19 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
   for (const r of read) r.fill(0);
   if (t < 1) {
     sample(0, id, u, v, spread, read[0]!);
-    if (far < 1) {
+    if (far < 1 && early < 1) {
       sample(2, id, u, v, spread, read[1]!);
       sample(1, id, u, v, spread, read[2]!);
     }
   }
   if (t > 0) {
     sample(0, id, bu, bv, spread, read[3]!);
-    sample(2, id, bu, bv, spread, read[4]!);
-    sample(1, id, bu, bv, spread, read[5]!);
+    if (early < 1) {
+      sample(2, id, bu, bv, spread, read[4]!);
+      sample(1, id, bu, bv, spread, read[5]!);
+    }
   }
-  const s = t <= 0 ? 0 : t >= 1 ? 1 : higher(read[1]![3]!, read[4]![3]!, t);
+  const s = t <= 0 ? 0 : t >= 1 ? 1 : higher(read[1]![3]!, read[4]![3]!, t) * (1 - early) + t * early;
   maps.patch = s * (1 - far) + second * far;
   for (let c = 0; c < 4; c++) {
     maps.base[c] = read[0]![c]! * (1 - s) + read[3]![c]! * s;
@@ -246,6 +263,12 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
     maps.lean[0] = far >= 1 ? 0 : maps.lean[0]! * (1 - far);
     maps.lean[1] = far >= 1 ? 0 : maps.lean[1]! * (1 - far);
   }
+  if (early > 0) {
+    for (let c = 0; c < 3; c++) maps.mro[c] = maps.mro[c]! * (1 - early) + f.mean[c]! * early;
+    maps.mro[3] = maps.mro[3]! * (1 - early) + 0.5 * early;
+    maps.lean[0] = early >= 1 ? 0 : maps.lean[0]! * (1 - early);
+    maps.lean[1] = early >= 1 ? 0 : maps.lean[1]! * (1 - early);
+  }
 }
 
 /**
@@ -254,11 +277,12 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
  * by one screen pixel on the projection. `light` is the touch rule's finish (assets/tiers.ts `finish`): the base colour
  * of one copy alone, and no stain. (nx, ny, nz) is the face's normal, which chooses the projection and where growth
  * takes; `smooth`, where given, is the normal the light falls on and the bump turns (the ground's, from its heights),
- * and otherwise the face's is. `eye`, where given, is the way to the eye, and the finish is read where that ray meets
+ * and otherwise the face's is. `early` is the frame's (FramePacket `worldEarly`): 1 while only the base colours have
+ * come, read as the far path reads them. `eye`, where given, is the way to the eye, and the finish is read where that ray meets
  * its painted height (assets/tiers.ts `relief`).
  */
 export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Numbers, index: number, x: number, y: number, z: number,
-  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null): number {
+  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null, early = 0): number {
   const f = finishes[index]!;
   const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
   const metres = finishMetres(index, city);
@@ -272,7 +296,7 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     tangent[2] = axis === 1 ? eye[1]! * Math.sign(ny) : axis === 0 ? eye[0]! * Math.sign(nx) : eye[2]! * Math.sign(nz);
     if (tangent[2] > 0.1) depth = (f.height / 1000 / metres) * clamp(2 - 2 ** spread * RELIEF_TEXELS);
   }
-  finishMaps(index, u, v, spread, sample, light, tangent, depth);
+  finishMaps(index, u, v, spread, sample, light, tangent, depth, early);
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
   const stain = light ? 0 : 0.75 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.25 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
   const weather = f.weather * city[4]!;
@@ -631,8 +655,10 @@ void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out ve
   float far = clamp((log2(max(length(dx), length(dy))) - ${fl(WORLD_FAR)}) / ${fl(WORLD_FAR_BAND)}, 0.0, 1.0);
 #endif
   float t = second * (1.0 - far);
+  // 1 while the base colours alone have come: the rest stand at their means, and the copies meet by their noise.
+  float early = clamp(uWorldReady - 1.0, 0.0, 1.0);
 #ifdef WORLD_RELIEF
-  if (depth > 0.0) q = worldRelief(id, q, dx, dy, view, depth, t >= 0.5);
+  if (depth > 0.0 && early < 1.0) q = worldRelief(id, q, dx, dy, view, depth, t >= 0.5);
 #endif
   vec2 qb = secondAt(q, id);
   vec2 bx = turned ? vec2(-dx.y, dx.x) : dx, by = turned ? vec2(-dy.y, dy.x) : dy;
@@ -641,22 +667,24 @@ void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out ve
   vec2 n0 = vec2(0.0), n1 = vec2(0.0);
   if (t < 1.0) {
     b0 = textureGrad(uWorldBase, vec3(q, layer), dx, dy);
-    if (far < 1.0) {
+    if (far < 1.0 && early < 1.0) {
       r0 = textureGrad(uWorldOrm, vec3(q, layer), dx, dy);
       n0 = lean(textureGrad(uWorldNormal, vec3(q, layer), dx, dy));
     }
   }
   if (t > 0.0) {
     b1 = textureGrad(uWorldBase, vec3(qb, layer), bx, by);
-    r1 = textureGrad(uWorldOrm, vec3(qb, layer), bx, by);
-    n1 = lean(textureGrad(uWorldNormal, vec3(qb, layer), bx, by));
-    if (turned) n1 = vec2(-n1.y, n1.x);
+    if (early < 1.0) {
+      r1 = textureGrad(uWorldOrm, vec3(qb, layer), bx, by);
+      n1 = lean(textureGrad(uWorldNormal, vec3(qb, layer), bx, by));
+      if (turned) n1 = vec2(-n1.y, n1.x);
+    }
   }
-  float s = t <= 0.0 ? 0.0 : t >= 1.0 ? 1.0 : higher(r0.a, r1.a, t, 1.0, ${fl(WORLD_BAND)});
+  float s = t <= 0.0 ? 0.0 : t >= 1.0 ? 1.0 : mix(higher(r0.a, r1.a, t, 1.0, ${fl(WORLD_BAND)}), t, early);
   tone = mix(s, second, far);
   base = mix(b0, b1, s);
-  mro = mix(mix(r0, r1, s), WO[id], far);
-  bump = far >= 1.0 ? vec2(0.0) : mix(n0, n1, s) * (1.0 - far);
+  mro = mix(mix(mix(r0, r1, s), WO[id], far), WO[id], early);
+  bump = far >= 1.0 || early >= 1.0 ? vec2(0.0) : mix(n0, n1, s) * (1.0 - far) * (1.0 - early);
 }
 // Whether the finish is smooth enough to mirror the sky as a picture (worldSharp's twin), set by worldSurface.
 bool worldSharp = false;
