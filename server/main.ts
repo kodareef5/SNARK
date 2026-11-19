@@ -15,7 +15,7 @@ import type { ModuleDef } from "./api/module.ts";
 import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
-import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { parsePack } from "../shared/pack/pack.ts";
@@ -31,6 +31,7 @@ import { gaugesOf } from "./admin/stats.ts";
 import { CUES } from "../shared/sound/cues.ts";
 import { partHash, partsFolder, readHead } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
+import { PlayLog, REPORT_BYTES_MAX } from "./playlog.ts";
 import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
 
 export interface ServerOptions {
@@ -71,6 +72,11 @@ export interface ServerOptions {
    * around it everywhere else (pathOf, placeOf).
    */
   publicUrl?: string;
+  /**
+   * A development server's folder for the record of play (server/playlog.ts): its pages are told to keep one and send it,
+   * and each run writes its reports in a file of its own there. Without it, or without `dev`, no page keeps one.
+   */
+  play?: string;
 }
 
 export interface RunningServer {
@@ -289,6 +295,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
   const board: AdminGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
   const meter = new TickMeter(() => gaugesOf(host));
+  const playFile = opts.dev && opts.play ? join(opts.play, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.jsonl`) : "";
+  const play = playFile ? new PlayLog(host.game, (line) => (mkdirSync(opts.play!, { recursive: true }), appendFileSync(playFile, line + "\n"))) : null;
   const admin = new AdminPages({ host, meter, dir: join(clientDir, "admin"), start: { tick: host.world.tick, wall: meter.startedAt } });
   if (opts.probeScene) {
     const ents = host.world.ents;
@@ -421,6 +429,14 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         report(await req.json());
         return new Response("ok");
       }
+      // Not for this machine alone: the owner plays a development world from elsewhere, through a tunnel and the front.
+      if (path === "/__play" && play) {
+        if (req.method === "GET") return new Response(null, { status: 204 });
+        if (req.method !== "POST") return new Response("POST a report", { status: 405 });
+        if (Number(req.headers.get("content-length") ?? 0) > REPORT_BYTES_MAX) return new Response("too long", { status: 413 });
+        const why = play.report(await req.text());
+        return why === "" ? new Response(null, { status: 204 }) : new Response(why, { status: 422 });
+      }
       if (path === "/__bench" && req.method === "POST" && opts.dev && local) {
         const result = await req.json();
         console.log(`frame times from a browser:\n${JSON.stringify(result, null, 2)}`);
@@ -455,21 +471,28 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           });
           return;
         }
-        const conn: Connection & { open: boolean } = {
+        // What it sent and skipped, and what waits, are read for the record of play (server/playlog.ts).
+        const conn: Connection & { open: boolean; bytesSent: number; skipped: number; readonly buffered: number } = {
           open: true,
+          bytesSent: 0,
+          skipped: 0,
+          get buffered() {
+            return ws.getBufferedAmount();
+          },
           address: ws.data.address,
           onMessage: null,
           onClose: null,
           send(channel, data) {
             if (!conn.open) return;
             const rule = backlog(channel, ws.getBufferedAmount(), host.game.opts.snapshotBytesMax);
-            if (rule === 1) return void skipped++;
+            if (rule === 1) return void (skipped++, conn.skipped++);
             if (rule === 2) return void ws.close(1008, "too slow");
             // Bun copies what it is given before send returns, so every message goes out through one buffer.
             const frame = data.length < outgoing.length ? outgoing.subarray(0, data.length + 1) : new Uint8Array(data.length + 1);
             frame[0] = channel;
             frame.set(data, 1);
             ws.send(frame);
+            conn.bytesSent += frame.length;
           },
           close() {
             if (conn.open) ws.close();
@@ -508,10 +531,15 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     tick: (due) => {
       const began = performance.now();
       host.game.tick();
-      meter.tick(due, began, performance.now());
+      const ended = performance.now();
+      meter.tick(due, began, ended);
+      play?.ticked(due, began, ended);
     },
     idle: () => host.idle(),
-    drop: (ticks, at) => meter.drop(ticks, at),
+    drop: (ticks, at) => {
+      meter.drop(ticks, at);
+      play?.drop(ticks);
+    },
   });
 
   if (opts.terminal) {
@@ -576,6 +604,7 @@ if (import.meta.main) {
     hostname: value("--host"),
     publicUrl: value("--public-url"),
     dev,
+    play: resolve(import.meta.dir, "../var/play"),
     config: rules,
     ...(live ? { live } : {}),
     map: value("--map"),
