@@ -43,16 +43,32 @@ export function hourOfDay(tick: number, offset: number, c: ClockScales = UNIT_CL
   return SUNSET + ((p - a - b) * c.cycle * c.night) / CLOCK_HOUR_TICKS;
 }
 
-/** The whole-tick offset that puts `tick` at `hour`, to within half a tick. */
-export function offsetForHour(tick: number, hour: number, c: ClockScales = UNIT_CLOCK): number {
+/** Ticks from midnight to `hour`, the inverse of hourOfDay within one cycle. Not a whole number in general. */
+export function dayTickOfHour(hour: number, c: ClockScales = UNIT_CLOCK): number {
   const a = nightHalf(c);
   const b = dayPart(c);
-  const whole = 2 * a + b;
   const h = ((hour % 24) + 24) % 24;
-  const want = h < SUNRISE ? (h * CLOCK_HOUR_TICKS) / (c.cycle * c.night) : h < SUNSET ? a + ((h - SUNRISE) * CLOCK_HOUR_TICKS) / (c.cycle * c.day) : a + b + ((h - SUNSET) * CLOCK_HOUR_TICKS) / (c.cycle * c.night);
+  return h < SUNRISE ? (h * CLOCK_HOUR_TICKS) / (c.cycle * c.night) : h < SUNSET ? a + ((h - SUNRISE) * CLOCK_HOUR_TICKS) / (c.cycle * c.day) : a + b + ((h - SUNSET) * CLOCK_HOUR_TICKS) / (c.cycle * c.night);
+}
+
+/** The whole-tick offset that puts `tick` at `hour`, to within half a tick. */
+export function offsetForHour(tick: number, hour: number, c: ClockScales = UNIT_CLOCK): number {
+  const whole = cycleTicks(c);
+  const want = dayTickOfHour(hour, c);
   const offset = Math.round((((want - (tick % whole)) % whole) + whole) % whole);
   // An offset that rounds up to the whole cycle is the start of the cycle.
   return offset >= whole ? 0 : offset;
+}
+
+/** An hour as CMD_CLOCK carries it: a share of the day in CLOCK_SHARES steps of two game seconds, so a whole minute is exact. */
+export const CLOCK_SHARES = 43200;
+
+export function shareOfHour(hour: number): number {
+  return Math.round(((((hour % 24) + 24) % 24) * CLOCK_SHARES) / 24) % CLOCK_SHARES;
+}
+
+export function hourOfShare(share: number): number {
+  return (share * 24) / CLOCK_SHARES;
 }
 
 export function isDay(hour: number): boolean {

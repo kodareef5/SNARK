@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>SNARK admin</title>
+    <style>
+      /* face */
+      :root {
+        --ink: #dbe8f3;
+        --dim: #93a9bd;
+        --faint: #5f778c;
+        --glass: rgba(20, 36, 56, 0.78);
+        --glass-hi: rgba(36, 60, 88, 0.62);
+        --edge: rgba(168, 204, 234, 0.22);
+        --edge-hi: rgba(206, 230, 250, 0.62);
+        --ice: #a9d6f2;
+        --well: #8fd9c4;
+        --warn: #ecb048;
+        --bad: #ec6a52;
+        --cut: 10px;
+        font: 15px/1.35 "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
+        font-variant-numeric: tabular-nums;
+        color: var(--ink);
+        background: #08111c;
+      }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(120% 80% at 18% -10%, #21405f 0%, #102136 46%, #08111c 100%) fixed;
+      }
+      a { color: var(--ice); }
+      h1, h2, h3 { font-weight: 500; margin: 0; letter-spacing: 0.02em; }
+      button, input, select { font: inherit; color: inherit; }
+      .page { max-width: 1680px; margin: 0 auto; padding: 14px 16px 40px; display: grid; gap: 12px; }
+      .glass {
+        position: relative;
+        background: linear-gradient(180deg, var(--glass-hi), var(--glass) 42px);
+        border: 1px solid var(--edge);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 10px 30px rgba(0, 0, 0, 0.25);
+        clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, 0 100%);
+      }
+      /* The cut corner's own edge, on the diagonal the clip leaves. */
+      .glass::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: var(--cut);
+        height: var(--cut);
+        background: linear-gradient(to top right, transparent calc(50% - 0.8px), var(--edge-hi) 50%, transparent calc(50% + 0.8px));
+        opacity: 0.55;
+        pointer-events: none;
+      }
+      .label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--dim); }
+      .dim { color: var(--dim); }
+      .faint { color: var(--faint); }
+
+      header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; padding: 2px 2px 0; }
+      header h1 { font-size: 22px; }
+      header .where { color: var(--dim); }
+      header nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
+      .badge { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; padding: 1px 6px; border: 1px solid var(--warn); color: var(--warn); }
+
+      #health { display: grid; grid-template-columns: 4px 1fr; gap: 0 16px; padding: 14px 18px 14px 0; }
+      #health .mark { background: var(--well); align-self: stretch; }
+      #health[data-level="1"] .mark { background: var(--warn); }
+      #health[data-level="2"] .mark { background: var(--bad); }
+      #health h2 { font-size: 30px; line-height: 1.1; }
+      #health[data-level="1"] h2 { color: var(--warn); }
+      #health[data-level="2"] h2 { color: var(--bad); }
+      #health .line { font-size: 17px; color: var(--ink); margin-top: 2px; }
+      #health ul { margin: 6px 0 0; padding: 0; list-style: none; color: var(--dim); }
+      #health li::before { content: "! "; color: var(--warn); font-weight: 600; }
+
+      #tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+      .tile { padding: 10px 14px 12px; min-height: 104px; display: flex; flex-direction: column; gap: 2px; }
+      .tile .value { font-size: 28px; line-height: 1.1; }
+      .tile .value small { font-size: 15px; color: var(--dim); margin-left: 4px; }
+      .tile .sub { font-size: 13px; color: var(--dim); }
+      .tile canvas { width: 100%; height: 26px; margin-top: auto; display: block; }
+      .tile.warn .value { color: var(--warn); }
+      .tile.bad .value { color: var(--bad); }
+
+      .main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(360px, 1fr); gap: 12px; align-items: stretch; }
+      #mapbox { min-height: 560px; display: flex; flex-direction: column; }
+      .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 9px 14px; border-bottom: 1px solid var(--edge); }
+      .bar h2 { font-size: 17px; margin-right: auto; }
+      .bar label { display: flex; align-items: center; gap: 5px; font-size: 14px; color: var(--dim); cursor: pointer; }
+      .bar input[type="checkbox"] { accent-color: #7fb8de; }
+      #map { position: relative; flex: 1; min-height: 420px; touch-action: none; cursor: grab; overflow: hidden; }
+      #map.dragging { cursor: grabbing; }
+      #map canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+      .zoom { position: absolute; right: 10px; top: 10px; display: grid; gap: 4px; }
+      .zoom button, .chip {
+        min-width: 34px;
+        height: 34px;
+        padding: 0 10px;
+        border: 1px solid var(--edge);
+        background: rgba(14, 26, 42, 0.82);
+        cursor: pointer;
+      }
+      .zoom button:hover, .chip:hover { border-color: var(--edge-hi); }
+      #readout { position: absolute; left: 10px; bottom: 8px; font-size: 13px; color: var(--ink); text-shadow: 0 1px 2px #000; pointer-events: none; }
+      #when { position: absolute; left: 10px; top: 8px; font-size: 13px; color: var(--ink); text-shadow: 0 1px 2px #000; pointer-events: none; }
+      #when b { color: var(--well); font-weight: 500; }
+      #loading { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); pointer-events: none; }
+
+      #people { display: flex; flex-direction: column; min-height: 560px; max-height: 760px; }
+      #find {
+        flex: 1 1 220px;
+        min-width: 0;
+        height: 36px;
+        padding: 0 12px;
+        background: rgba(8, 16, 28, 0.7);
+        border: 1px solid var(--edge);
+        outline: none;
+      }
+      #find:focus { border-color: var(--edge-hi); }
+      #count { font-size: 14px; color: var(--dim); }
+      .scroll { overflow: auto; flex: 1; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th { position: sticky; top: 0; z-index: 1; background: #13253a; text-align: left; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); padding: 7px 8px; cursor: pointer; white-space: nowrap; user-select: none; }
+      th.on { color: var(--ink); box-shadow: inset 0 -2px 0 var(--ice); }
+      td { padding: 6px 8px; border-top: 1px solid rgba(168, 204, 234, 0.08); white-space: nowrap; }
+      td.num, th.num { text-align: right; }
+      tbody tr { cursor: pointer; }
+      tbody tr:hover { background: rgba(120, 170, 220, 0.08); }
+      tbody tr.chosen { background: rgba(120, 190, 240, 0.16); box-shadow: inset 3px 0 0 var(--ice); }
+      .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 7px; background: var(--faint); vertical-align: 1px; }
+      .dot.on { background: var(--well); box-shadow: 0 0 6px rgba(143, 217, 196, 0.7); }
+      .dot.dead { background: var(--bad); }
+      .empty { padding: 26px 14px; color: var(--dim); }
+
+      #charts { padding-bottom: 6px; }
+      .spans { display: flex; gap: 4px; }
+      .spans button { height: 30px; padding: 0 10px; border: 1px solid var(--edge); background: transparent; cursor: pointer; color: var(--dim); }
+      .spans button.on { color: var(--ink); border-color: var(--edge-hi); background: rgba(120, 170, 220, 0.12); }
+      .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 4px 18px; padding: 10px 14px; }
+      .chart h3 { font-size: 14px; color: var(--dim); display: flex; gap: 10px; align-items: baseline; }
+      .chart h3 span { font-size: 12px; }
+      .chart canvas { width: 100%; height: 130px; display: block; }
+      .key i { display: inline-block; width: 10px; height: 3px; margin: 0 4px 3px 6px; vertical-align: middle; }
+
+      #details { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); gap: 12px; }
+      #details section { padding-bottom: 8px; }
+      #details h2 { font-size: 16px; padding: 10px 14px 6px; }
+      #details .scroll { max-height: 340px; padding: 0 6px; }
+      #details td { font-size: 13px; }
+      #details td.wrap { white-space: normal; word-break: break-word; }
+      .barline { height: 4px; background: rgba(168, 204, 234, 0.14); margin-top: 3px; }
+      .barline i { display: block; height: 100%; background: var(--ice); }
+
+      #when b.past { color: var(--warn); }
+      .chip.on { border-color: var(--edge-hi); background: rgba(143, 217, 196, 0.16); color: var(--well); }
+      select.chip { height: 34px; max-width: 100%; }
+      .goto { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--dim); }
+      .goto input { height: 32px; padding: 0 6px; background: rgba(8, 16, 28, 0.7); border: 1px solid var(--edge); color-scheme: dark; }
+      .note { margin: 0; padding: 7px 14px; font-size: 14px; color: var(--dim); }
+      .strip { position: relative; padding: 0 10px 10px; }
+      .strip canvas { width: 100%; height: 120px; display: block; touch-action: none; cursor: ew-resize; }
+      #timeline.empty .strip, #timeline.empty .controls > :not(h2) { display: none; }
+      .tip { position: absolute; z-index: 2; max-width: 260px; padding: 6px 9px; font-size: 13px; background: rgba(10, 20, 34, 0.94); border: 1px solid var(--edge); pointer-events: none; }
+      .logs { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; align-items: start; }
+      .logs section { padding-bottom: 10px; max-height: 640px; overflow: auto; }
+      .logs h2 { font-size: 17px; padding: 10px 14px 4px; }
+      .logs h3 { font-size: 13px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; color: var(--dim); margin: 12px 14px 4px; }
+      .logs h3 .dim { text-transform: none; letter-spacing: 0; }
+      .pad { margin: 0; padding: 2px 14px; }
+      .bad { color: var(--bad); font-weight: 500; }
+      code { font-size: 13px; color: var(--ice); }
+      time { color: var(--dim); margin-right: 4px; }
+      ul.held { columns: 2 150px; margin: 0; padding: 0 14px; list-style: none; font-size: 14px; }
+      ul.held li { break-inside: avoid; padding: 1px 0; }
+      ol.goes { margin: 0; padding: 0 6px; list-style: none; font-size: 14px; }
+      ol.goes li { padding: 3px 8px; cursor: pointer; }
+      ol.goes li:hover { background: rgba(120, 170, 220, 0.08); }
+      ol.goes li.near { box-shadow: inset 3px 0 0 var(--warn); background: rgba(236, 176, 72, 0.08); }
+      .figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 12px; padding: 6px 14px; }
+      .figs b { display: block; font-size: 20px; font-weight: 500; }
+      .players tr, #holders tr[data-pid] { cursor: pointer; }
+      .logs table { margin: 0 6px; width: calc(100% - 12px); }
+
+      @media (max-width: 1080px) {
+        .main { grid-template-columns: 1fr; }
+        #people { max-height: 560px; min-height: 0; }
+        #mapbox { min-height: 0; }
+        #map { min-height: 0; height: 64vh; }
+      }
+      @media (max-width: 620px) {
+        .page { padding: 10px 10px 30px; gap: 10px; }
+        #tiles { grid-template-columns: 1fr 1fr; gap: 8px; }
+        .tile { min-height: 92px; padding: 8px 10px; }
+        .tile .value { font-size: 23px; }
+        #health h2 { font-size: 25px; }
+        .wide { display: none; }
+        header nav { margin-left: 0; }
+        .charts { grid-template-columns: 1fr; }
+        .figs { grid-template-columns: 1fr 1fr; }
+        .goto { width: 100%; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header>
+        <h1 id="name">SNARK admin</h1>
+        <span class="where" id="where"></span>
+        <span class="badge" id="dev" hidden>development</span>
+        <nav><a href="../sounds.html">Sound board</a><a href="../">Play</a></nav>
+      </header>
+
+      <section id="health" class="glass" data-level="0" aria-live="polite">
+        <div class="mark"></div>
+        <div><h2 id="word">Asking the server</h2><div class="line" id="line"></div><ul id="reasons"></ul></div>
+      </section>
+
+      <section id="tiles"></section>
+
+      <div class="main">
+        <section id="mapbox" class="glass">
+          <div class="bar">
+            <h2>Map</h2>
+            <label><input type="checkbox" id="offline" checked /> offline survivors</label>
+            <label><input type="checkbox" id="names" checked /> names</label>
+            <label><input type="checkbox" id="bases" checked /> bases</label>
+          </div>
+          <div id="map">
+            <canvas id="mapcanvas"></canvas>
+            <div id="loading">Painting the map's ground</div>
+            <div id="when"></div>
+            <div id="readout"></div>
+            <div class="zoom">
+              <button id="zin" aria-label="Zoom in">+</button>
+              <button id="zout" aria-label="Zoom out">&minus;</button>
+              <button id="zfit" aria-label="The whole map">&#9634;</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="people" class="glass">
+          <div class="bar">
+            <h2>Survivors</h2>
+            <span id="count"></span>
+            <input id="find" type="search" placeholder="Find a survivor or a tribe ( / )" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr id="heads"></tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+            <div class="empty" id="none" hidden></div>
+          </div>
+        </section>
+      </div>
+
+      <section id="timeline" class="glass">
+        <div class="bar controls">
+          <h2>Timeline</h2>
+          <button id="live" class="chip on" title="Back to now">Live</button>
+          <button id="play" class="chip" aria-label="Play or pause">&#9654;</button>
+          <select id="speed" class="chip" aria-label="Speed"></select>
+          <div class="spans" id="presets"></div>
+          <label class="goto">Go to <input type="datetime-local" id="goto" step="1" /></label>
+        </div>
+        <p id="lognote" class="note"></p>
+        <div id="tl" class="strip"><canvas id="tlcanvas"></canvas><div id="tltip" class="tip" hidden></div></div>
+      </section>
+
+      <div class="logs">
+        <section id="chosenlog" class="glass"></section>
+        <section id="figures" class="glass"></section>
+        <section id="itemsbox" class="glass">
+          <h2>Who had what</h2>
+          <div class="pad"><select id="itempick" class="chip" aria-label="An item held in the window"></select></div>
+          <div class="scroll"><table id="holders"></table></div>
+        </section>
+      </div>
+
+      <section id="charts" class="glass">
+        <div class="bar">
+          <h2>The last hours</h2>
+          <div class="spans" id="spans"></div>
+        </div>
+        <div class="charts">
+          <div class="chart"><h3>Tick time <span class="key"><i style="background:#a9d6f2"></i>median<i style="background:#ecb048"></i>worst<i style="background:#ec6a52;height:1px"></i>budget</span></h3><canvas id="c-tick"></canvas></div>
+          <div class="chart"><h3>Late start <span class="key"><i style="background:#ecb048"></i>latest<i style="background:#a9d6f2"></i>mean</span></h3><canvas id="c-late"></canvas></div>
+          <div class="chart"><h3>Survivors online</h3><canvas id="c-online"></canvas></div>
+          <div class="chart"><h3>Memory <span class="key"><i style="background:#a9d6f2"></i>resident<i style="background:#8fd9c4"></i>heap</span></h3><canvas id="c-memory"></canvas></div>
+        </div>
+      </section>
+
+      <section id="details">
+        <section class="glass"><h2>Bodies in the world</h2><div class="scroll"><table id="t-bodies"></table></div></section>
+        <section class="glass"><h2>The save</h2><div class="scroll"><table id="t-save"></table></div></section>
+        <section class="glass"><h2>Settings not at their default</h2><div class="scroll"><table id="t-settings"></table></div></section>
+        <section class="glass"><h2>Modules</h2><div class="scroll"><table id="t-modules"></table></div></section>
+      </section>
+    </div>
+    <script type="module" src="admin.js"></script>
+  </body>
+</html>

@@ -68,8 +68,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 33 adds equipped flight armor, remaining reserve accounting and active thrust to the owner body. It was written as 32
  * on its branch while main took 32 for the above; the two merged without a conflict and would have let a client of one
  * read the other's bodies wrong.
+ * 34: creative mode, RULE_CREATIVE and the sundial's CMD_CLOCK. They were written as 33 on their branch while main took 33
+ * for the above.
  */
-export const PROTOCOL_VERSION = 33;
+export const PROTOCOL_VERSION = 34;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -386,6 +388,13 @@ export const CMD_VEHICLE = 32;
 export const CMD_STATICS = 33;
 /** Refresh up to eight currently visible corpse checkpoints: count u8, then generation-qualified entity handles u32. */
 export const CMD_CORPSE = 34;
+/**
+ * Protocol 34. An admin turns the time of day on the Creative screen's sundial: the hour u16, in two-second steps from
+ * midnight below CLOCK_SHARES (shared/sim/clock.ts), then 1 bit set on the turn's last message. DENIED without the admin
+ * role or while the server does not show creative mode (RULE_CREATIVE). A turn is journalled once, as `settime` at the
+ * hour it ended on.
+ */
+export const CMD_CLOCK = 35;
 export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;
@@ -490,6 +499,8 @@ export const RULE_THIRD_PERSON = 8;
 export const RULE_CROSSHAIR = 16;
 export const RULE_MAP_LOCATION = 32;
 export const RULE_CORPSE_LOCATOR = 64;
+/** Protocol 34. The server shows creative mode (bShowCreativeMode): the game's menu has a Creative entry. */
+export const RULE_CREATIVE = 128;
 /**
  * team varint, tribe name string (empty for a survivor alone, and then rank and members are absent), rank u8, members (count
  * u8, then per member: name string, online 1 bit, owner 1 bit). Then a pending invitation: tribe name string (empty for

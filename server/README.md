@@ -6,6 +6,7 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | --- | --- |
 | `main.ts` | Process entry: static files, WebSocket adapter for the game and for voice, wall-clock tick loop |
 | `sound-board.ts` | The sound board, an admin's page, and the sound folders' briefs and recipes behind it |
+| `admin/` | The admin pages' gate (`gate.ts`), the loop's own timing (`meter.ts`), and `/admin/` (`routes.ts`): the server's stats (`stats.ts`), its survivors (`survivors.ts`), the tribes' bases (`bases.ts`) and the survivor log's reads (`log-routes.ts`), as `shared/admin.ts` and `shared/survivor-log.ts` shape them |
 | `site.ts`, `front.ts` | Worlds at paths of one host: the site around them (the start screen, `links.json`, the source link's page), and the program that sends each path to its world |
 | `host.ts` | Assembles world, records, every system below, persistence, and the game loop |
 | `game.ts` | Connections, input buffering and validation, the body each session drives, snapshots by class, structure sync |
@@ -33,6 +34,7 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `console.ts`, `commands/` | The console and its commands: session, admin, combat, social, creatures, settings |
 | `persist/store.ts`, `persist/codec.ts` | SQLite schema, and a record as bytes, the form a save keeps it in and a transfer carries it in |
 | `persist/persistence.ts` | What each commit contains |
+| `survivor-log/` | Where each survivor was and what it held, over time, beside the save: the tick thread's recorder (`recorder.ts`, `log.ts`), the segments on disk and every read of them (`store.ts`), and the thread they run on (`worker.ts`) |
 | `cluster/` | The servers of a cluster: the shared folder (`folder.ts`), a transfer's sealed file (`parcel.ts`), travel, recovery and the travel list (`cluster.ts`), and whether the cluster balances (`audit.ts`) |
 
 Nothing but `main.ts`, and `front.ts`, a program of its own, takes a socket or
@@ -59,10 +61,11 @@ run in the [operator's guide](../planning/reference/operators.md).
 `--dev` enables the self-check report endpoint and cheats without a password, and
 reads `config/dev` when no other folder is named. It must not be used on a
 public server, and it takes a socket only for a browser that asked for this machine by
-`localhost`, an address, or the host of `--public-url` (`namesThisMachine`). `/sounds.html` is the sound board (`sound-board.ts`), every sound by
-owner and occasion with the briefs and recipes behind them: open on a `--dev`
-server, and on any other only to a browser that gives `ServerAdminPassword` at
-its sign-in (any name). `--cert` and `--key` serve over TLS, which a browser asks for
+`localhost`, an address, or the host of `--public-url` (`namesThisMachine`). `/admin/` is the admin page
+(`admin/routes.ts`, `client/admin`): the server's health from the loop's own timing, its survivors and a live map of them.
+`/sounds.html` is the sound board (`sound-board.ts`), every sound by owner and occasion with the briefs and recipes behind
+them. Both are open on a `--dev` server, and on any other only to a browser that gives `ServerAdminPassword` at its
+sign-in (any name), behind one gate (`admin/gate.ts`). `--cert` and `--key` serve over TLS, which a browser asks for
 before it gives a page a microphone anywhere but `localhost`. A login name is not authentication; accounts do not exist yet.
 
 ## A cluster

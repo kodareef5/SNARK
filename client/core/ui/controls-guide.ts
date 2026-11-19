@@ -3,7 +3,7 @@ export const CONTROL_GROUPS=["Move","Combat","World","Build","Flight","Menus"] a
 export interface Binding { title: string; detail: string; group: number }
 const b=(group:number,title:string,detail=""):Binding=>({group,title,detail});
 const KEYS: Readonly<Record<string,Binding>>={
-  KeyK:b(2,"Patrol lights","In the driver’s seat, cycle off, patrol, response and pursuit."),
+  KeyK:b(2,"Orbit camera / patrol lights","On foot, riding or as a passenger, swing the camera round you or your mount without turning; the wheel moves it nearer or further, and K again returns to your view. In a patrol vehicle’s driver’s seat, cycle the lights: off, patrol, response and pursuit. Other drivers already turn the chase camera with the mouse."),
   KeyW:b(0,"Forward"),KeyA:b(0,"Strafe left"),KeyS:b(0,"Back"),KeyD:b(0,"Strafe right"),ShiftLeft:b(0,"Sprint","Hold while moving. Sprint stands up from crouch."),
   Space:b(0,"Jump","From crouch or prone, press to stand. With a Meridian cuirass, hold to climb and add Sprint for level flight."),KeyC:b(0,"Crouch","Press again to stand."),KeyX:b(0,"Prone","Press again to stand."),
   Mouse0:b(1,"Attack","Hold to use the equipped weapon. While building, place the preview."),Mouse2:b(1,"Aim / alternate attack"),MouseMove:b(0,"Look","Move the mouse to aim and steer the camera."),
@@ -29,8 +29,8 @@ export function keyBinding(code:string,group:number):Binding|undefined {
   return KEYS[code];
 }
 const PAD_MENU:Readonly<Record<number,Binding>>={0:b(5,"Select / drag","Hold to pick up an inventory stack; release over its destination."),1:b(5,"Back"),9:b(5,"Menu / back"),12:b(5,"Previous control"),13:b(5,"Next control"),14:b(5,"Decrease / previous"),15:b(5,"Increase / next"),10:b(5,"Navigate","Left stick: move focus. Horizontal movement adjusts the focused slider.")};
-const PAD_DEFAULT:Readonly<Record<number,Binding>>={0:b(0,"Jump"),1:b(2,"Inventory"),2:b(1,"Reload","Tap to reload. Hold to open the owned creature's inventory."),3:b(2,"Use / ride","Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions."),
-    4:b(2,"Hotbar modifier","Hold with the D-pad for slots 5–8; with X / □ for 9; with Y / △ for 0. With RB / R1, switch view."),5:b(1,"Melee / lower bow"),6:b(1,"Aim / alternate attack"),7:b(1,"Attack"),
+const PAD_DEFAULT:Readonly<Record<number,Binding>>={0:b(0,"Jump"),1:b(2,"Inventory","Hold LB / L1 first for the orbit camera."),2:b(1,"Reload","Tap to reload. Hold to open the owned creature's inventory."),3:b(2,"Use / ride","Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions."),
+    4:b(2,"Hotbar modifier","Hold with the D-pad for slots 5–8; with X / □ for 9; with Y / △ for 0. With RB / R1, switch view; with B / ○, the orbit camera."),5:b(1,"Melee / lower bow"),6:b(1,"Aim / alternate attack"),7:b(1,"Attack"),
     8:b(2,"Map / inspect","Tap to open the map. Hold to inspect the HUD; release to return to play."),9:b(5,"Menu"),10:b(0,"Move / sprint","Move with the left stick. Hold its button to sprint."),11:b(0,"Look / crouch / prone","Look with the right stick. On foot, tap to crouch or hold to go prone. At the wheel of a patrol vehicle, press it to change the lights."),
     12:b(2,"Hotbar 1 / 5","Hold LB / L1 for slot 5."),15:b(2,"Hotbar 2 / 6","Hold LB / L1 for slot 6."),13:b(2,"Hotbar 3 / 7","Hold LB / L1 for slot 7."),14:b(2,"Hotbar 4 / 8","Hold LB / L1 for slot 8.") };
 const PAD_FLIGHT:Readonly<Record<number,Binding>>={11:b(4,"Look / roll / brake","Look with the right stick. Hold its button to roll; hold LB / L1 first to brake."),0:b(4,"Take off / land")};

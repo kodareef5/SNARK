@@ -1,17 +1,14 @@
 // Session, server and clock commands.
 
-import { parseNumber } from "../../shared/console.ts";
+import { CHEAT_GUESSES, WRONG_PASSWORD, parseNumber } from "../../shared/console.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { REJECT_DENIED, REJECT_KICKED, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { formatHour, hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
 import { latLonText, latOf, lonOf } from "../../shared/world/coords.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
-import { event } from "../events/bus.ts";
-
-const SESSION_ADMIN = event("session.admin");
+import { admit } from "../creative.ts";
 
 const STATE_NAMES: Record<number, string> = { [SESSION_ALIVE]: "alive", [SESSION_DEAD]: "dead", [SESSION_SPECTATING]: "spectating" };
-const MAX_PASSWORD_ATTEMPTS = 3;
 
 const needsSession = "this command needs a session";
 
@@ -103,13 +100,11 @@ export function addCoreCommands(con: Console): void {
         if (wait > 0) return `too many wrong passwords: wait ${Math.ceil(wait / TICK_RATE)} s`;
         if (password !== null && !sameSecret(args[0] ?? "", password)) {
           guesses.wrong(who, tick);
-          if (++c.cheatAttempts >= MAX_PASSWORD_ATTEMPTS) ctx.host.game.reject(c, REJECT_DENIED);
-          return "wrong password";
+          if (++c.cheatAttempts >= CHEAT_GUESSES) ctx.host.game.reject(c, REJECT_DENIED);
+          return WRONG_PASSWORD;
         }
         guesses.right(who);
-        c.admin = true;
-        c.ownDirty = true;
-        ctx.host.bus.after(SESSION_ADMIN, { pid: c.pid });
+        admit(ctx.host.bus, c);
         return "cheats enabled";
       },
     },
@@ -194,6 +189,21 @@ export function addCoreCommands(con: Console): void {
         p.commit(true);
         p.keeper.backup();
         return "a backup was started; the server's log says where it went";
+      },
+    },
+    {
+      name: "survivorlog",
+      usage: "",
+      help: "Say what span the survivor log holds, how much disk it takes and its cap.",
+      admin: true,
+      run(ctx) {
+        const s = ctx.host.survivorLog.span();
+        const mb = (n: number): string => `${(n / (1 << 20)).toFixed(1)} MB`;
+        const at = (wall: number): string => `${new Date(wall).toISOString().slice(0, 19).replace("T", " ")} UTC`;
+        const state = s.on ? "on" : `off: ${s.why}`;
+        if (s.from === null || s.to === null) return `survivor log ${state}; it holds nothing yet${s.folder ? ` (${s.folder}, cap ${mb(s.cap)})` : ""}`;
+        const minutes = Math.round((s.to - s.from) / 60000);
+        return `survivor log ${state}: ${at(s.from)} (tick ${s.fromTick}) to ${at(s.to)} (tick ${s.toTick}), ${Math.floor(minutes / 60)} h ${minutes % 60} min, in ${s.segments} segments; ${mb(s.bytes)} of ${mb(s.cap)} in ${s.folder}`;
       },
     },
     {

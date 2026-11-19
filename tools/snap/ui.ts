@@ -1,6 +1,6 @@
 // Draws an interface frame over a picture with the browser binder's rectangles and colours, and a bitmap font in place of a real one.
 
-import { K_BAR, K_IMAGE, K_INPUT, K_SLIDER, glyphAdvance, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
+import { K_BAR, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, glyphAdvance, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
 import { STYLES } from "../../client/core/ui/style.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./font.ts";
 
@@ -76,14 +76,15 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
       continue;
     }
     if (n.text === "") continue;
-    // Each glyph sits in its character cell, so text takes the width core laid it out with.
+    // Each glyph sits in its character cell, so text takes the width core laid it out with. A password is never drawn.
+    const text = n.kind === K_SECRET ? "*".repeat(n.text.length) : n.text;
     const dot = Math.max(1 / scale, st.font * .6 / (GLYPH_WIDTH + 1));
-    const textW = textWidth(n.text, n.style);
-    const pad = n.kind === K_INPUT ? 6 : 0;
+    const textW = textWidth(text, n.style);
+    const pad = n.kind === K_INPUT || n.kind === K_SECRET ? 6 : 0;
     const tx = st.align === 1 ? n.x + (n.w - textW) / 2 : st.align === 2 ? n.x + n.w - textW : n.x + pad;
     const ty = n.y + (n.h - dot * GLYPH_HEIGHT) / 2;
     let advance = 0;
-    for (const character of n.text) {
+    for (const character of text) {
       const code = character.codePointAt(0)!;
       const cell = glyphAdvance(code, n.style), dx = Math.min(dot, cell / (GLYPH_WIDTH + 1));
       for (let col = 0; col < GLYPH_WIDTH; col++) {

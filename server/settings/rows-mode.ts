@@ -163,7 +163,7 @@ m.under("Structures, PvP and tribes")
 
 m.under("Other")
   .b("bUseSingleplayerSettings", false, "ARK's single-player factors are put on top of what the files and the command line give: taming x2.5, hatching x9, growing up x35, the wait to mate x0.15, a tame's health per level x2.125 and its melee x2.3529; and what the dead leave lies six times as long. A value set afterwards, at the console or from the live file, is that value outright.", live())
-  .b("bShowCreativeMode", false, "A button for creative mode.", plan("ops"))
+  .b("bShowCreativeMode", false, "The game's menu has a Creative entry: the admin's tools, the first a sundial that turns the time of day for everyone. One without the admin role is asked there for the admin password, as enablecheats asks it.", live({ live: true, client: true, note: "ARK's creative mode also makes crafting free and lifts the weight a survivor carries; neither is here yet. The tools are admin actions the server checks, so a session with the role but no menu entry may still use the console." }))
   .b("MaxDifficulty", false, "Difficulty is 5, whatever else is set.", plan("polish", { note: "Named on the difficulty page only; not verified as a server setting." }))
   .b("bDisablePhotoMode", false, "Photo mode.", none("unreal", { game: "A" }))
   .i("PhotoModeRangeLimit", 3000, "Photo mode.", none("unreal", { game: "A" }))
