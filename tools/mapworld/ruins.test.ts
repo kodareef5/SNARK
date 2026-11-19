@@ -420,3 +420,39 @@ test("a street's walk is a step a body and a mount climb, and a car crosses its 
     expect(car.z).toBeGreaterThan(103);
   }
 });
+
+test("a tower's top reads from a kilometre: torn, set back, a plant floor or a notched screen by seed, ragged round a core where it was lost, and never below the refuge's storey", () => {
+  const v = vocabulary(source);
+  const f: Frame = { ...frame(0), width: 48, depth: 48, rings: [[[-24, -24], [24, -24], [24, 24], [-24, 24], [-24, -24]]] };
+  const shape = (p: { kind: string }): string => p.kind.split("_")[1]!;
+  // A tile's roof: the highest floor plate over its middle.
+  const roofs = (m: Mason): number[] => tilesOf(m.frame, 8).map((t) => {
+    const [x, z] = m.point(t.u, t.v);
+    return Math.max(0, ...m.pieces.filter((p) => ["floor8", "floor16"].includes(shape(p)) && [p.x - x, p.z - z].every((d) => Math.abs(d) < RUIN_SHAPES[shape(p) as "floor8"][0] / 2 - 1)).map((p) => p.y + 0.2));
+  }).filter((y) => y > 0);
+  const seen = new Set<string>();
+  // A failure whose slabs hang keeps every tile's height, so the tops are the crown's alone.
+  for (let seed = 0; seed < 16; seed++) {
+    const m = new Mason(f, 0);
+    layout(m, { ...rule, recipe: "tower", height: 128, finish: "concrete", form: v.forms.office, formName: "office", collapse: "hanging", damage: v.damage.hanging, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 12, detail: 0 });
+    const kinds = new Set(m.pieces.map(shape));
+    const top = roofs(m);
+    // Nothing is cut below the storey over the twelve playable ones, where the refuge is.
+    expect(Math.min(...top)).toBeGreaterThanOrEqual(13 * 4);
+    if (kinds.has("zgloom")) {
+      seen.add("torn");
+      // Its floors open over the gap, a slab hung from one in two, and three storeys gone or more.
+      expect(kinds.has("pier4") && kinds.has("zendsnap") || kinds.has("zendspall")).toBe(true);
+      expect(Math.max(...top) - Math.min(...top)).toBeGreaterThanOrEqual(12);
+    } else if (kinds.has("zplanttop")) seen.add("plant");
+    else if (kinds.has("zscreen")) seen.add("screen");
+    else if (Math.max(...top) - Math.min(...top) >= 12) seen.add("third");
+  }
+  expect([...seen].sort()).toEqual(["plant", "screen", "third", "torn"]);
+  // A lost top stands at many heights round its core, which stands three storeys over all else.
+  const m = new Mason(f, 0);
+  layout(m, { ...rule, recipe: "tower", height: 160, finish: "concrete", form: v.forms.apartment, formName: "apartment", collapse: "lost-top", damage: v.damage["lost-top"], assemblies: v.assemblies, interiors: v.interiors }, { seed: 5, playable: 16, detail: 0 });
+  const top = roofs(m).sort((a, b) => b - a);
+  expect(top[0]! - top[1]!).toBeGreaterThanOrEqual(8);
+  expect(new Set(top).size).toBeGreaterThanOrEqual(4);
+});
