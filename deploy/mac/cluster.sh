@@ -6,6 +6,7 @@
 #   TUNNEL=quick deploy/mac/cluster.sh miami tampa     and a quick tunnel, whose address it prints
 #   DEV=1 TUNNEL=quick deploy/mac/cluster.sh miami     development worlds: cheats need no password
 #   FRONT_PORT=8786 deploy/mac/cluster.sh miami        the front on another port, where 8787 is taken
+#   TUNNEL=https://<its address> deploy/mac/cluster.sh miami   a tunnel already running, so a restart keeps the address
 #
 #   <host>/               the start screen: every world running, how many play on each
 #   <host>/<map>/         a world, at the path named by its map
@@ -41,6 +42,8 @@ if [ "${TUNNEL:-}" = quick ]; then
     [ -n "$address" ] && break
     sleep 1
   done
+elif [ -n "${TUNNEL:-}" ]; then
+  address=$TUNNEL
 fi
 dev=()
 [ -n "${DEV:-}" ] && dev=(--dev) && unset SNARK_ADMIN_PASSWORD
@@ -57,7 +60,7 @@ done
 bun server/front.ts --cluster "var/cluster/clusters/$id" --host 127.0.0.1 --port "$front" > "$logs/front.log" 2>&1 &
 others+=($!)
 echo "the front at http://127.0.0.1:$front/"
-[ "${TUNNEL:-}" = quick ] && echo "the tunnel at ${address:-no address yet: see $logs/tunnel.log}"
+[ -n "${TUNNEL:-}" ] && echo "the tunnel at ${address:-no address yet: see $logs/tunnel.log}"
 stop() {
   # Every pid of each: an array's bare name in bash is its first element alone.
   kill "${others[@]}" 2>/dev/null
