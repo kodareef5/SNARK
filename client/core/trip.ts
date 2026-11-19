@@ -2,6 +2,7 @@
 // things the trip measures came or went, on globalThis.snarkTrip for the tool to read over DevTools. It reads the app and
 // changes nothing of it: what the page fetches, draws and sends is the same with it as without.
 
+import { SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { App } from "./app.ts";
 import { DRAW_TEXTURED } from "./render/packet.ts";
@@ -97,6 +98,24 @@ export class TripProbe {
     const world = this.app.session.world;
     if (!world) return { ground: false, pieces: 0 };
     return { ground: world.hf.exactIn(0, 0, world.hf.sizeX, world.hf.sizeZ), pieces: world.city?.statics.first.at(-1) ?? 0 };
+  }
+
+  /**
+   * Bytes of art fetched so far by kind: the textures of the world's finishes and their masks, of the facades, of the
+   * sky, of the landmarks and the rest of the core's; and all else, the meshes, their surfaces, the pages and the clips.
+   */
+  art(): Record<string, number> {
+    const out: Record<string, number> = { finishes: 0, facades: 0, sky: 0, landmarks: 0, textures: 0, meshes: 0 };
+    const r = this.app.scene?.assets.residency;
+    if (!r) return out;
+    let textures = 0;
+    for (const t of r.textureState()) {
+      const kind = t.id.startsWith(SURFACE_PREFIX) ? "finishes" : t.id.startsWith("core:facade") ? "facades" : t.id.startsWith("core:sky") ? "sky" : t.id.startsWith("core:") ? "textures" : "landmarks";
+      out[kind]! += t.fetched;
+      textures += t.fetched;
+    }
+    out.meshes = r.stats.fetched - textures;
+    return out;
   }
 
   /** What the street waits for, as it is now: requests under way and bytes waiting for the card, and the chunks round the body not whole. */

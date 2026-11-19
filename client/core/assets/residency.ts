@@ -208,6 +208,8 @@ export class Residency {
   private readonly through: Uint32Array;
   /** How many bytes of the copy on its way the card has been handed. From the first of them the card holds that copy whole. */
   private readonly gone: Uint32Array;
+  /** Bytes of each texture that came over the network, every copy of it. */
+  private readonly texFetched: Float64Array;
   /** The most pixels across that anything showed a texture at this frame, and the frame it joined `wants`. */
   private readonly px: Float32Array;
   private readonly queued: Uint32Array;
@@ -244,9 +246,9 @@ export class Residency {
   private readonly fromBoot: number[] = [];
   private readonly arrivals: AssetArrival[] = [];
 
-  /** Bounded, on-demand inspection: authored texture identity and its resident/incoming step. */
-  textureState(): { id: string; have: number; goal: number; state: number; wanted: boolean }[] {
-    return (this.manifest.textures ?? []).map((texture, t) => ({ id: texture.id, have: this.has[t]!, goal: this.goal[t]!, state: this.state[this.texBase + t]!, wanted: this.seen[this.texBase + t] === this.frame }));
+  /** Bounded, on-demand inspection: authored texture identity, its resident/incoming step and the bytes fetched of it. */
+  textureState(): { id: string; have: number; goal: number; state: number; wanted: boolean; fetched: number }[] {
+    return (this.manifest.textures ?? []).map((texture, t) => ({ id: texture.id, have: this.has[t]!, goal: this.goal[t]!, state: this.state[this.texBase + t]!, wanted: this.seen[this.texBase + t] === this.frame, fetched: this.texFetched[t]! }));
   }
 
   /** `pages` are the blobs of pages whose rows a tool has read into the manifest already (shared/pack/manifest.ts `readPages`), by page. */
@@ -319,6 +321,7 @@ export class Residency {
     this.limit = new Int8Array(textures.length);
     this.through = new Uint32Array(textures.length * STEPS);
     this.gone = new Uint32Array(textures.length);
+    this.texFetched = new Float64Array(textures.length);
     this.px = new Float32Array(textures.length);
     this.queued = new Uint32Array(textures.length);
     this.down = new Uint8Array(textures.length);
@@ -511,6 +514,7 @@ export class Residency {
       this.land(slot);
       this.stats.fetched += a.fetched;
       this.stats.cached += a.cached;
+      if (this.isTexture(slot)) this.texFetched[slot - this.texBase]! += a.fetched;
       const rider = slot < this.levels && this.state[this.levels + slot] === RIDING ? this.levels + slot : -1;
       // A port that brings fewer bytes than were asked for has failed, whatever it says.
       if (a.data && a.data.length === this.asked(slot)) {
