@@ -63,6 +63,9 @@ const SHELTER = [
   box(-2, 2, 0, 2.3, -0.8, -0.72), box(-2.1, -1.9, 0, 2.3, -0.8, 0.45), box(1.92, 2, 0, 2.3, -0.8, 0.3),
   box(-2, -1.92, 0, 2.45, 0.72, 0.8), box(1.92, 2, 0, 2.45, 0.72, 0.8), box(2.56, 2.64, 0, 2.7, 0.51, 0.59),
 ];
+// The yield sign's post above its bend at 0.5 m, and its face.
+const YIELD_POST = box(-0.04, 0.04, 0.5, 2.84, -0.04, 0.04);
+const YIELD_FACE = box(-0.46, 0.46, 2.1, 2.89, 0.04, 0.06);
 const BILLBOARD = [box(-0.45, 0.45, 0, 10, -0.45, 0.45), box(-7.4, 7.4, 9.55, 14.4, -0.45, 1.55)];
 /**
  * A crosswalk of `bars` bars, 1.2 m a bar across the road (x) and 3 m along it (z). Paint is walked and driven over as the
@@ -86,6 +89,10 @@ export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "stop", color: RED, hp: 400, material: "core:mat_metal", boxes: [POST, box(-0.38, 0.38, 2.1, 2.86, 0.04, 0.08)] },
   // The post bent back 40 degrees at 0.5 m, as a car leaves it.
   { name: "stop_bent", color: RED, hp: 300, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 0.5, -0.04, 0.04)], hulls: [tilted(box(-0.04, 0.04, 0.5, 2.9, -0.04, 0.04), -40, 0.5), tilted(box(-0.38, 0.38, 2.1, 2.86, 0.04, 0.08), -40, 0.5)] },
+  // R1-2, the 36-inch triangle a corner down at 2.1 m.
+  { name: "yield", color: RED, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.84, -0.04, 0.04), YIELD_FACE] },
+  // Bent back 35 degrees at 0.5 m and 12 over to one side, as a car leaves it.
+  { name: "yield_bent", color: RED, hp: 300, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 0.5, -0.04, 0.04)], hulls: [tilted(YIELD_POST, -35, 0.5, 12), tilted(YIELD_FACE, -35, 0.5, 12)] },
   { name: "street_name", color: GREEN, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.75, -0.04, 0.04), box(-0.46, 0.46, 2.75, 2.95, -0.02, 0.02), box(-0.02, 0.02, 2.95, 3.17, -0.46, 0.46)] },
   { name: "speed", color: WHITE, hp: 400, material: "core:mat_metal", boxes: [POST, box(-0.31, 0.31, 2.1, 2.86, 0.04, 0.08)] },
   { name: "evacuation", color: BLUE, hp: 400, material: "core:mat_metal", boxes: [box(-0.04, 0.04, 0, 2.7, -0.04, 0.04), box(-0.31, 0.31, 2.1, 2.71, 0.04, 0.08)] },

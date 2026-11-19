@@ -15,9 +15,12 @@ import { VehicleCards } from "./vehicle-cards.ts";
 export const MAX_LIT_LAMPS = 48;
 /** Metres out to which a lamp's light is drawn, and from which it fades to nothing there. */
 const REACH = 140, FADE_FROM = 100;
-/** Where a lamp's lens is in the lamp's own frame (its head over the road, +z), and the radius of its pool and its glow. */
+/**
+ * Where a lamp's lens is in the lamp's own frame (its head over the road, +z), and the radius of its pool and its glow: a
+ * cobra head at nearly 9 m lights the road about one and a half times its height each way.
+ */
 const LENS = [0, 8.85, 2.9] as const;
-const POOL = 9, GLOW = 0.6;
+const POOL = 13, GLOW = 0.6;
 /** The light's colours (RGBA bytes, least significant first): a high-pressure sodium lamp's warm white. */
 const POOL_COLOUR = 0xff5096ff, GLOW_COLOUR = 0xff64aaff;
 /** How much of each shows at its strongest, of 255. */
