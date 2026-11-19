@@ -43,6 +43,8 @@ export interface StreetPiece {
   readonly material?: Material;
   readonly boxes: readonly ShapeBox[];
   readonly hulls?: readonly HullDef[];
+  /** Paint on the ground (shared/content/defs.ts StructureDef `paint`). */
+  readonly paint?: true;
 }
 
 // Palette colours: galvanised steel, signal yellow, creosoted wood, rust, hydrant red, mailbox blue, bench green, sign white,
@@ -68,12 +70,12 @@ const YIELD_POST = box(-0.04, 0.04, 0.5, 2.84, -0.04, 0.04);
 const YIELD_FACE = box(-0.46, 0.46, 2.1, 2.89, 0.04, 0.06);
 const BILLBOARD = [box(-0.45, 0.45, 0, 10, -0.45, 0.45), box(-7.4, 7.4, 9.55, 14.4, -0.45, 1.55)];
 /**
- * A crosswalk of `bars` bars, 1.2 m a bar across the road (x) and 3 m along it (z). Paint is walked and driven over as the
- * road is, so its box lies wholly under the road, its top 2 cm under the origin, which is laid at the road's height: the
- * ground is what a wheel, a body or a ray meets first, and nothing meets the box from above. A static has to have a box
- * (shared/content/registry.ts).
+ * A crosswalk of `bars` bars, 1.2 m a bar across the road (x) and 3 m along it (z), drawn on the ground as paint is
+ * (`paint`). Paint is walked and driven over as the road is, and a static has to have a box (shared/content/registry.ts):
+ * so a small one deep under its origin, which is laid at the road's height at its middle. A box as wide as the bars stood
+ * out of a road that slopes or is crowned under them, where a wheel met its edge.
  */
-const crosswalk = (bars: number): ShapeBox[] => [box(0.3 - bars * 0.6, bars * 0.6 - 0.3, -0.12, -0.02, -1.5, 1.5)];
+const crosswalk = (): ShapeBox[] => [box(-0.1, 0.1, -0.3, -0.2, -0.1, 0.1)];
 
 export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "lamp", color: GALV, hp: 3000, material: "core:mat_metal", boxes: [MAST, LAMP_HEAD] },
@@ -154,8 +156,8 @@ export const STREET_PIECES: readonly StreetPiece[] = [
   { name: "newsbox", color: BLUE, hp: 600, material: "core:mat_metal", boxes: [box(-0.26, 0.26, 0, 1.06, -0.25, 0.24)] },
   // Crosswalk bars on the road, 1, 2, 4 and 8 of them, fresh and worn; nothing harms paint.
   ...[1, 2, 4, 8].flatMap((bars): StreetPiece[] => [
-    { name: `crosswalk${bars}`, color: WHITE, hp: 1000, boxes: crosswalk(bars) },
-    { name: `crosswalk${bars}_worn`, color: WHITE, hp: 1000, boxes: crosswalk(bars) },
+    { name: `crosswalk${bars}`, color: WHITE, hp: 1000, boxes: crosswalk(), paint: true },
+    { name: `crosswalk${bars}_worn`, color: WHITE, hp: 1000, boxes: crosswalk(), paint: true },
   ]),
 ];
 
@@ -166,7 +168,7 @@ const shapeId = (name: string): string => `core:zzstreetshape_${name}`;
 const SHAPES: readonly ShapeDef[] = STREET_PIECES.map((p) => ({ type: "shape", id: shapeId(p.name), role: "thing", boxes: p.boxes, ...(p.hulls ? { hulls: p.hulls } : {}) }));
 const STATICS: readonly StructureDef[] = STREET_PIECES.map((p) => ({
   type: "structure", class: "static", id: streetKind(p.name), mesh: streetKind(p.name), shape: shapeId(p.name), half: shapeHalf(p.boxes, p.hulls),
-  color: p.color, hp: p.hp, ...(p.material ? { material: p.material } : {}),
+  color: p.color, hp: p.hp, ...(p.material ? { material: p.material } : {}), ...(p.paint ? { paint: true as const } : {}),
   // Drawn near only: left out of the far city's lattice and mass, where a lamp would take a whole cell. A billboard is seen from afar.
   ...(p.name.startsWith("billboard") ? {} : { near: true as const }),
 }));

@@ -721,7 +721,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       if ((c.type !== null && T.bare.includes(c.type)) || c.markings === "no") continue;
       const ex = c.bx - c.ax; const ez = c.bz - c.az; const cl = Math.hypot(ex, ez); if (cl < 1) continue;
       const vx = ex / cl; const vz = ez / cl;
-      const road = roadAt((c.ax + c.bx) / 2, (c.az + c.bz) / 2, 2); if (!road) continue;
+      // Paint lies on the ground (content/street.ts `paint`): none on a road the data says is a bridge, over its deck.
+      const road = roadAt((c.ax + c.bx) / 2, (c.az + c.bz) / 2, 2); if (!road || graph.pieces[road.s.line]?.bridge) continue;
       // A crossing that runs along the road is no crossing of it.
       const sin = Math.abs(vx * road.dz - vz * road.dx); if (sin < 0.5) continue;
       // Where along it the crossing meets the road's middle, and the stretch of it between the kerbs, less the inset: a

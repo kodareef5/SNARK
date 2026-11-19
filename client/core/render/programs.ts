@@ -68,7 +68,7 @@ function flatOr(tier: Tier, format: TextureFormat, hard: boolean, light: boolean
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
 function surface(tier: Tier, format: TextureFormat, hard: boolean, light: boolean, variant: SurfaceVariant): ProgramText {
-  const samplers: Record<string, number> = { uBones: UNIT.bones, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uGroundHeight: UNIT.heights };
+  const samplers: Record<string, number> = { uBones: UNIT.bones, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uGroundHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights };
   if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
   if (variant.layered) samplers.uLayer = UNIT.layer;
   return { vertex: surfaceVertex(variant), fragment: surfaceFragment(format, AIR, variant), defines: shadowDefines(tier.shadows, hard) + out(tier, light), samplers };

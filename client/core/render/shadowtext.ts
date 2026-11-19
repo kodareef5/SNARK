@@ -268,7 +268,7 @@ void main() {
   } else {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);
-    if (uSkin < -0.5) l *= float(iRegB.y) / ${g(SIZE_UNITS)};
+    if (uSkin < -0.5 && uSkin > -1.5) l *= float(iRegB.y) / ${g(SIZE_UNITS)};
     p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
   }
   vUv = uUv.xy + aUv * uUv.zw;

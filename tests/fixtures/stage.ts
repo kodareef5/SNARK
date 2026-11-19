@@ -85,9 +85,10 @@ export class Stage {
   /** The way to the sun. `begin` gives it length 1. */
   sun = [0.3, 0.8, 0.5];
 
-  constructor(pack: Pack, width = 160, height = 90, manifest: Manifest | null = null) {
+  /** `hf` is the ground under it, which paint on the ground is drawn on: a flat one far under the stage where not given. */
+  constructor(pack: Pack, width = 160, height = 90, manifest: Manifest | null = null, hf: Heightfield = ground) {
     this.pack = pack;
-    this.raster = new Rasterizer(width, height, pack, ground, manifest);
+    this.raster = new Rasterizer(width, height, pack, hf, manifest);
     this.raster.skyTable = EVEN_TABLE;
     this.cam.aspect = width / height;
   }

@@ -14,7 +14,7 @@ import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } fro
 import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
@@ -406,6 +406,8 @@ export class Rasterizer {
 
   private readonly pack: Pack;
   private readonly hf: Heightfield;
+  /** The terrain window's size in samples, as the card holds it (terrain.ts groundSize), once asked. */
+  private window: ReturnType<typeof groundSize> | null = null;
   private readonly buffers = new Map<number, { data: Uint8Array; slots: Uint16Array }>();
   private readonly lods = new Map<number, DecodedLod>();
   /** Given a manifest, only what a packet has uploaded may be drawn, as on a graphics card. Levels are kept by slot. */
@@ -1372,9 +1374,18 @@ export class Rasterizer {
       out[v * 3] = m[0]! * lx + m[1]! * ly + m[2]! * lz + m[3]!;
       out[v * 3 + 1] = m[4]! * lx + m[5]! * ly + m[6]! * lz + m[7]!;
       out[v * 3 + 2] = m[8]! * lx + m[9]! * ly + m[10]! * lz + m[11]!;
+      if (mode === -2) out[v * 3 + 1] = this.onGround(p, out[v * 3]!, out[v * 3 + 1]!, out[v * 3 + 2]!, ly);
       turned(m, normals, v * 3, this.frames, v * 6);
       turned(m, tangents, v * 4, this.frames, v * 6 + 3);
     }
+  }
+
+  /** The twin of surface.ts `onGround`: the ground under a camera-relative point, camera-relative, `lift` over it, where the window reaches. */
+  private onGround(p: FramePacket, rx: number, ry: number, rz: number, lift: number): number {
+    const f = p.frame, size = (this.window ??= groundSize(this.hf)), per = f[FRAME.sea + 2]!;
+    const cx = f[FRAME.ground]! + rx * per, cz = f[FRAME.ground + 1]! + rz * per;
+    if (cx < 0 || cz < 0 || cx > size.width[SOURCE_WINDOW]! - 1 || cz > size.height[SOURCE_WINDOW]! - 1) return ry;
+    return this.hf.heightAt(rx + p.camX, rz + p.camZ) - p.camY + lift;
   }
 
   /** Positions are camera-relative. Counter-clockwise faces the viewer. */

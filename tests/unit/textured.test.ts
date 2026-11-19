@@ -1,6 +1,6 @@
 // Meshes drawn with materials: the lighting of client/core/render/surface.ts, and the software rasterizer drawing it.
 import { expect, test } from "bun:test";
-import { DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_SIZED, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
+import { DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { AMBIENT } from "../../client/core/render/shading.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { SKY_GLSL } from "../../client/core/render/sky.ts";
@@ -11,6 +11,7 @@ import { describePack } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, SKIN_BYTES, VERTEX_BYTES, lodSkin, lodVertices, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
+import { Heightfield } from "../../shared/world/heightfield.ts";
 import { SIZE_UNITS } from "../../shared/world/nodes.ts";
 import { packedMips } from "../../tools/pack/image.ts";
 import { buildPack, type SourceMesh } from "../../tools/pack/write.ts";
@@ -534,6 +535,56 @@ test("a node drawn at its size and turned is its mesh made at that size: lit, at
       expect(both.reduce((most, i) => Math.max(most, Math.abs(sized.depth[i]! - made.depth[i]!)), 0)).toBeLessThan(1e-5);
     }
   }
+});
+
+/** A square `side` across lying `lift` over its origin, on the plane that rises `dx` a metre along x and `dz` along z, facing up. */
+function floorMesh(id: string, side: number, lift: number, dx: number, dz: number): SourceMesh {
+  const h = side / 2;
+  const corners = [[-h, -h], [-h, h], [h, h], [h, -h]] as const;
+  return {
+    id,
+    lods: [{
+      positions: Float32Array.from(corners.flatMap(([x, z]) => [x, lift + dx * x + dz * z, z])), colors: new Uint8Array(4).fill(15),
+      indices: Uint32Array.of(0, 1, 2, 0, 2, 3), uvs: Float32Array.from(corners.flatMap(([x, z]) => [x / side + 0.5, z / side + 0.5])),
+      normals: Float32Array.from(corners.flatMap(() => [0, 1, 0])), tangents: Float32Array.from(corners.flatMap(() => [1, 0, 0, 1])),
+    }],
+    flat: 1,
+    materials: [{ id, base: 0, normal: -1, mro: -1, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: MATERIAL_TWO_SIDED, cutoff: 0, span: side }],
+    textures: [{ id: `${id}/base`, role: "base", top: 64 }],
+  };
+}
+
+test("paint on the ground is drawn on the ground under each of its corners, where the window holds the ground, whatever height it was set at", () => {
+  // A chunk of ground that rises 5 cells of its height a sample along x and 26 along z: about 1% and 5%, a plane its
+  // triangles hold exactly.
+  const hf = new Heightfield({ chunksX: 1, chunksZ: 1 }, 2, 0, 1 / 256);
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, (5 * i + 26 * j) / 256);
+  const [dx, dz, lift, at] = [5 / 512, 26 / 512, 0.015, 30];
+  const pack = packOf(floorMesh("test:paint", 8, lift, 0, 0), floorMesh("test:laid", 8, lift, dx, dz));
+  const stage = new Stage(pack, W * 2, H * 2, null, hf);
+  [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch] = [at, hf.heightAt(at, at) + 5, at + 7, Math.PI, -0.6];
+  const draw = (id: string, y: number, flags: number): { pickKind: Uint8Array; depth: Float32Array } => {
+    stage.begin();
+    // The window is the chunk's own samples, from its corner.
+    stage.packet.frame[FRAME.ground] = stage.cam.x / 2;
+    stage.packet.frame[FRAME.ground + 1] = stage.cam.z / 2;
+    stage.packet.frame[FRAME.sea + 2] = 1 / 2;
+    stage.textures(`${id}/`, { base: plain(200, 200, 200, 255) });
+    stage.add(id, 0, { x: at, y, z: at, flags });
+    stage.render();
+    return { pickKind: stage.raster.pickKind.slice(), depth: stage.raster.depth.slice() };
+  };
+  const laid = draw("test:laid", hf.heightAt(at, at), 0);
+  const both = (a: { pickKind: Uint8Array }) => [...Array(W * H * 4).keys()].filter((i) => a.pickKind[i] === PICK_ENTITY && laid.pickKind[i] === PICK_ENTITY);
+  const differ = (a: { depth: Float32Array }, on: number[]) => on.reduce((most, i) => Math.max(most, Math.abs(a.depth[i]! - laid.depth[i]!)), 0);
+  for (const y of [hf.heightAt(at, at), 40]) {
+    const paint = draw("test:paint", y, DRAW_GROUND), on = both(paint);
+    expect(on.length).toBeGreaterThan(2000);
+    expect(differ(paint, on)).toBeLessThan(1e-5);
+  }
+  // Without the flag the flat square stands level at the height it was set: buried at one side of the slope, over it at the other.
+  const level = draw("test:paint", hf.heightAt(at, at), 0);
+  expect(differ(level, both(level))).toBeGreaterThan(1e-4);
 });
 
 test("a textured draw needs its level's surface, its base colour and its masks on the card, and takes a missing normal or packed map as neutral", () => {

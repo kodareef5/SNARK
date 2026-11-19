@@ -380,6 +380,11 @@ export interface StructureDef extends Named {
   readonly under?: number;
   /** Drawn near only: a street piece or a building's small kit, left out of the far city's lattice and mass levels. */
   readonly near?: true;
+  /**
+   * Paint on the ground: each vertex of its mesh is drawn its own height over the ground under it, wherever the frame holds
+   * the ground's samples (packet.ts DRAW_GROUND), and it casts no shadow. It follows the ground alone, not what stands on it.
+   */
+  readonly paint?: true;
   /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
   readonly half: readonly [number, number, number];
   /** A shape id, if it is more than one box or not centred on its origin. `half` must equal the box that holds the shape. */

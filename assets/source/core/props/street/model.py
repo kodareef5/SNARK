@@ -803,20 +803,29 @@ def newsbox():
 # 1.2 n m long with half a gap at either end, so pieces laid end to end across the road keep the spacing. Each bar is
 # both its faces 15 mm over the road, so it is closed, laid on a road paint part of the atlas (fresh or worn) with the
 # bar's length along the picture: drawn flat, a static's colour is drawn as the finish its palette colour names, and the
-# paint's was paving, grey and jointed.
+# paint's was paving, grey and jointed. The game draws each vertex of a bar on the ground under it (content/street.ts
+# `paint`), so a bar is cut across every STRIP along its length, where the road may bend under it.
 BAR_PITCH = 1.2
+STRIP = 0.5
 
 
-def paint_patch(m, corners, colour, y=0.015, bar=None, off=0.0):
+def paint_patch(m, corners, colour, y=0.015, bar=None, off=0.0, cut=False):
     """Road paint lying flat at `y` over the corners (x, z), from the -x, -z one round toward +z: a flat colour, or with
-    `bar` (the x of the bar's middle) the part `colour` laid over the bar from `off` along it."""
-    top = [(x, y, z) for x, z in corners]
-    if bar is None:
-        uvs, mat = [(0.0, 0.0)] * len(top), "flat_" + colour
-    else:
-        uvs, mat = [part_uv("street", colour, off + (z + 1.5) / 3 * 0.75, (x - bar + 0.3) / 0.6) for x, z in corners], "street"
-    m.quad(top, uvs, mat)
-    m.quad(top[::-1], uvs[::-1], mat)
+    `bar` (the x of the bar's middle) the part `colour` laid over the bar from `off` along it. `cut` cuts it across at
+    every STRIP of z from the bar's end that both its sides reach."""
+    (a0, z0), (a1, z1), (b1, w1), (b0, w0) = corners
+    cuts = [-1.5 + STRIP * k for k in range(1, round(3 / STRIP))] if cut else []
+    cuts = [c for c in cuts if max(z0, w0) < c < min(z1, w1)]
+    rows = [((a0, z0), (b0, w0))] + [((a0, c), (b0, c)) for c in cuts] + [((a1, z1), (b1, w1))]
+    for (l0, r0), (l1, r1) in zip(rows, rows[1:]):
+        strip = [l0, l1, r1, r0]
+        top = [(x, y, z) for x, z in strip]
+        if bar is None:
+            uvs, mat = [(0.0, 0.0)] * len(top), "flat_" + colour
+        else:
+            uvs, mat = [part_uv("street", colour, off + (z + 1.5) / 3 * 0.75, (x - bar + 0.3) / 0.6) for x, z in strip], "street"
+        m.quad(top, uvs, mat)
+        m.quad(top[::-1], uvs[::-1], mat)
     return m
 
 
@@ -835,7 +844,7 @@ def worn_bar(m, x, rng):
         a, b = x - 0.3 + rng.uniform(0.0, 0.1), x + 0.3 - rng.uniform(0.0, 0.1)
         s0, s1 = rng.uniform(-0.08, 0.08), rng.uniform(-0.08, 0.08)
         off = rng.random() * 0.25
-        paint_patch(m, [(a, z0 + max(0.0, s0)), (a, z1 - max(0.0, s1)), (b, z1 - max(0.0, -s1)), (b, z0 + max(0.0, -s0))], "paint_worn", bar=x, off=off)
+        paint_patch(m, [(a, z0 + max(0.0, s0)), (a, z1 - max(0.0, s1)), (b, z1 - max(0.0, -s1)), (b, z0 + max(0.0, -s0))], "paint_worn", bar=x, off=off, cut=True)
     return m
 
 
@@ -851,7 +860,7 @@ def crosswalk(n, worn=False):
         if worn:
             worn_bar(m, x, rng)
         else:
-            paint_patch(m, [(x - 0.3, -1.5), (x - 0.3, 1.5), (x + 0.3, 1.5), (x + 0.3, -1.5)], "paint", bar=x, off=(k * 0.37) % 0.25)
+            paint_patch(m, [(x - 0.3, -1.5), (x - 0.3, 1.5), (x + 0.3, 1.5), (x + 0.3, -1.5)], "paint", bar=x, off=(k * 0.37) % 0.25, cut=True)
     return m
 
 

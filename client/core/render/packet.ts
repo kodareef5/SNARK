@@ -21,8 +21,8 @@ export const MAX_WATER_TILES = 256;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
- * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 4096 are taken; the next flag takes 8192, then 16384, up
- * to 32768. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth.
+ * DRAW_ flags, a bit each of `drawFlags`, which holds 16, and every one is taken. A blended draw is see-through. It comes
+ * after everything opaque, shows both faces and writes no depth.
  */
 export const DRAW_BLEND = 1;
 /**
@@ -97,6 +97,12 @@ export const DETAIL_POOL = 128;
 export const DETAIL_WIRE = DETAIL_POOL | 1;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
+/**
+ * Paint on the ground (shared/content/defs.ts StructureDef `paint`): a rigid draw each of whose vertices stands its own
+ * height over the ground under it, as the terrain window holds the ground's samples, and where the window does not reach,
+ * where its instance stands (surface.ts `onGround`). A textured draw does this; a flat one is drawn as it stands.
+ */
+export const DRAW_GROUND = 8192;
 /** A self-lit optical surface in its instance dye. */
 export const DRAW_EMISSIVE = 16384;
 /** An elevated navigational landmark whose flat silhouette remains visible through the city's distance fade. */

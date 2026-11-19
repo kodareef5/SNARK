@@ -10,7 +10,7 @@
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
-import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
@@ -334,11 +334,12 @@ export function skyShown(p: FramePacket): void {
 
 /**
  * How a draw's vertices are placed, which is `uSkin`: 0 a rigid mesh turned by its yaw, -1 the same at the size its instance
- * carries (DRAW_SIZED), 1 each vertex on its own bone, 2 each on its own bone of the pose the draw stands in (DRAW_ONE_BONE)
- * and then on the instance's first bone, 3 each on up to four bones by its skin entry. `entries` says the level has those.
+ * carries (DRAW_SIZED), -2 the same each vertex on the ground under it (DRAW_GROUND, which only a textured draw follows),
+ * 1 each vertex on its own bone, 2 each on its own bone of the pose the draw stands in (DRAW_ONE_BONE) and then on the
+ * instance's first bone, 3 each on up to four bones by its skin entry. `entries` says the level has those.
  */
 export function skinMode(flags: number, entries: boolean): number {
-  if ((flags & DRAW_SKINNED) === 0) return (flags & DRAW_SIZED) !== 0 ? -1 : 0;
+  if ((flags & DRAW_SKINNED) === 0) return (flags & DRAW_SIZED) !== 0 ? -1 : (flags & DRAW_GROUND) !== 0 ? -2 : 0;
   return (flags & DRAW_ONE_BONE) !== 0 ? 2 : entries ? 3 : 1;
 }
 
@@ -381,6 +382,7 @@ uniform vec3 uOffset, uCenter, uHalf;
 uniform vec4 uUv;
 uniform float uSkin${dyed ? ", uGrey" : ""};
 uniform highp sampler2D ${dyed ? "uPalette, " : ""}uBones;
+uniform highp usampler2D uWindowHeight;
 out vec3 vRel, vNormal;
 out vec4 vTangent;
 out vec2 vUv;
@@ -389,7 +391,7 @@ ${layered ? "out vec3 vBox;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
-${dyed ? DYE : ""}void main() {
+${dyed ? DYE : ""}${ON_GROUND}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p, n, t;
   if (uSkin > 0.5) {
@@ -412,7 +414,8 @@ ${dyed ? DYE : ""}void main() {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);
     mat3 r = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
-    p = r * (uSkin < -0.5 ? l * (float(iRegB.y) / ${f(SIZE_UNITS)}) : l) + iPos + uOffset;
+    p = r * (uSkin < -0.5 && uSkin > -1.5 ? l * (float(iRegB.y) / ${f(SIZE_UNITS)}) : l) + iPos + uOffset;
+    if (uSkin < -1.5) p.y = onGround(p, l.y);
     n = r * aNormal;
     t = r * aTangent.xyz;
   }
@@ -422,6 +425,30 @@ ${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
   vUv = uUv.xy + aUv * uUv.zw;
 ${layered ? "  vBox = aPos;\n" : ""}  gl_Position = ${drops ? "handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : " : ""}uViewProj * vec4(p, 1.0);
 }`;
+
+/**
+ * The ground under a camera-relative point, camera-relative, by the triangles the terrain draws from the window's samples
+ * (heightfield.ts heightAt), `lift` over it; where the window does not reach, the point's own height. Its twin is the
+ * rasterizer's (tools/snap/raster.ts `pose`).
+ */
+const ON_GROUND = `float onGround(vec3 rel, float lift) {
+  vec2 last = vec2(textureSize(uWindowHeight, 0) - 1);
+  vec2 c = fGround.xy + rel.xz * fSea.z;
+  if (any(lessThan(c, vec2(0.0))) || any(greaterThan(c, last))) return rel.y;
+  ivec2 k = ivec2(min(floor(c), last - 1.0));
+  vec2 f = c - vec2(k);
+  float h00 = float(texelFetch(uWindowHeight, k, 0).r), h11 = float(texelFetch(uWindowHeight, k + 1, 0).r);
+  float h;
+  if (f.x >= f.y) {
+    float h10 = float(texelFetch(uWindowHeight, k + ivec2(1, 0), 0).r);
+    h = h00 + (h10 - h00) * f.x + (h11 - h10) * f.y;
+  } else {
+    float h01 = float(texelFetch(uWindowHeight, k + ivec2(0, 1), 0).r);
+    h = h00 + (h11 - h01) * f.x + (h01 - h00) * f.y;
+  }
+  return (h - fSea.x) * fSea.y - fHaze.z + lift;
+}
+`;
 
 const DYE = `vec3 dye(uint i) {
   if (i == 0u) return vec3(1.0);

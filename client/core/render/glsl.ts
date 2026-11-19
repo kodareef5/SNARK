@@ -187,7 +187,7 @@ ${BONE}void main() {
   } else {
     float t = iYaw * 6.283185307;
     float s = sin(t), c = cos(t);
-    if (uSkin < -0.5) l *= float(iRegB.y) / ${SIZE_UNITS.toFixed(1)};
+    if (uSkin < -0.5 && uSkin > -1.5) l *= float(iRegB.y) / ${SIZE_UNITS.toFixed(1)};
     p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
   }
   uint i = aColor;

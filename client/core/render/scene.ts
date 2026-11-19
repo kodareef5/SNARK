@@ -51,7 +51,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
 import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
@@ -430,6 +430,8 @@ export class Scene {
   private readonly reachOfMesh: Float32Array;
   /** 1 for kinds drawn with their pitch as well as their yaw. */
   private readonly pitched: Uint8Array;
+  /** Per mesh, DRAW_GROUND where a kind of paint on the ground is drawn with it, which casts no shadow; else 0. */
+  private readonly groundFlags: Uint16Array;
   /** Per species. The size a newborn is drawn at, as a share of a grown one. */
   private readonly birthScale: Float32Array;
   /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
@@ -689,6 +691,7 @@ export class Scene {
     this.birthScale = reg.birthScale;
     this.saddleSeats = reg.saddleSeats;
     this.sizes = reg;
+    this.groundFlags = new Uint16Array(table.count);
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
@@ -701,6 +704,7 @@ export class Scene {
       const mesh = bind.mesh(d.id, d.type === "species" ? "body" : "mesh");
       this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
       this.colorOfKind[k] = d.color;
+      if (mesh >= 0 && d.type === "structure" && d.paint) this.groundFlags[mesh] = DRAW_GROUND;
     }
     this.finder = new RoomFinder(reg, this.meshOfKind, (stream?.manifest ?? pack.header).meshes, table.error);
     this.twinOf = new Int32Array(table.count).fill(-1);
@@ -1064,7 +1068,7 @@ export class Scene {
     const spans = this.spans;
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
-      if (b.ranges[r + 2] === 0) continue;
+      if (b.ranges[r + 2] === 0 || this.groundFlags[mesh] !== 0) continue;
       const at0 = q * (b.blocks + 1);
       // A node is drawn up to its kind's largest size, which scales its radius and errors.
       const scale = sized ? this.reachOfMesh[mesh]! : 1;
@@ -3175,7 +3179,7 @@ export class Scene {
       p.drawOffset[d * 3] = ox;
       p.drawOffset[d * 3 + 1] = oy;
       p.drawOffset[d * 3 + 2] = oz;
-      p.drawFlags[d] = flags | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
+      p.drawFlags[d] = flags | this.groundFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
       p.drawWear[d] = p.drawLayer[d]! > 0 ? Math.floor(layer / WEAR_KEY) : 0;

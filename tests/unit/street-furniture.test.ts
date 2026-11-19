@@ -258,7 +258,7 @@ test("a rule that names a piece the set lacks stops the build", () => {
   expect(() => place(fixture(GRID.slice(0, 2)), [], rules)).toThrow("furniture.forms names lamp_post, which is no street piece");
 });
 
-artTest("each piece is met where it is drawn: its mesh within its shape, and its shape within its mesh, a hand's breadth either way", () => {
+artTest("each piece is met where it is drawn: its mesh within its shape, and its shape within its mesh, a hand's breadth either way; paint as the ground", () => {
   const pack = parsePack(readFileSync(join(import.meta.dir, "../../assets/source/core/props/street/street.snpk")));
   const meshes = unpackMeshes(pack);
   for (const piece of STREET_PIECES) {
@@ -267,6 +267,12 @@ artTest("each piece is met where it is drawn: its mesh within its shape, and its
     const p = mesh!.lods[0]!.positions, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
     // What stands above the ground: a footing or a post carried into it is met as the ground.
     for (let v = 0; v < p.length; v += 3) if (p[v + 1]! > 0.01) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k]!, p[v + k]!); hi[k] = Math.max(hi[k]!, p[v + k]!); }
+    // Paint lies a hair over the ground, and its box wholly under the ground, so that the ground is what anything meets.
+    if (piece.paint) {
+      expect([piece.name, lo[1]! > 0, hi[1]! < 0.03]).toEqual([piece.name, true, true]);
+      for (const b of piece.boxes) expect([piece.name, b.at[1]! + b.half[1]! < -0.1]).toEqual([piece.name, true]);
+      continue;
+    }
     const slo = [Infinity, Infinity, Infinity], shi = [-Infinity, -Infinity, -Infinity];
     for (const b of piece.boxes) for (let k = 0; k < 3; k++) { slo[k] = Math.min(slo[k]!, b.at[k]! - b.half[k]!); shi[k] = Math.max(shi[k]!, b.at[k]! + b.half[k]!); }
     for (const h of piece.hulls ?? []) for (const c of h.corners) for (let k = 0; k < 3; k++) { slo[k] = Math.min(slo[k]!, c[k]!); shi[k] = Math.max(shi[k]!, c[k]!); }
@@ -505,4 +511,11 @@ test("a mapped signal has a head for each way in where two of its ways run on in
   const controls = [{ kind: "signal", e: 500, n: 800, direction: null, all_way: false, junction: true, crossing: null, markings: null, approaches: [] }];
   const { pieces } = place(fixture([], [], { lines, controls }), [], rules);
   expect(near(pieces, "signal", 500, 800, 25).length).toBe(3);
+});
+
+test("no bars are laid on a crossing of a road the data says is a bridge, which they would lie under", () => {
+  const walks = [{ type: "Feature", geometry: { type: "LineString", coordinates: [[190, 650], [210, 650]] }, properties: { kind: "crossing", drawn: true, width_m: 3 } }];
+  const bars = (roads: Road[]): number => place(fixture(roads, [], { walks })).pieces.filter((p) => /zzstreet_crosswalk/.test(p.kind) && Math.abs(p.z - 650) < 2).length;
+  expect(bars(GRID)).toBeGreaterThan(0);
+  expect(bars(tagged({ [northward(200)]: { highway: "residential", bridge: true } }))).toBe(0);
 });
