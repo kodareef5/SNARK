@@ -359,7 +359,7 @@ test("a roof's shrub stands on what it grows from: its plant's foot at its origi
   expect(shrubs).toBeGreaterThan(0);
 });
 
-test("a hanging slab hangs from the top of what stands beside its bay, which a tower's top may have brought lower", () => {
+test("a hanging slab hangs from its bay's roof, which a tower's top may have brought lower", () => {
   const v = vocabulary(source);
   const f: Frame = { ...frame(0), width: 48, depth: 40, rings: [[[-24, -20], [24, -20], [24, 20], [-24, 20], [-24, -20]]] };
   let plates = 0;
@@ -372,7 +372,7 @@ test("a hanging slab hangs from the top of what stands beside its bay, which a t
       for (const p of hung) {
         plates++;
         const top = p.y + RUIN_SHAPES.plate30[1] / 2;
-        // Its top at a storey's height, and some wall or slab standing there with it.
+        // Its top at a storey's height, and its bay's roof there with it.
         expect([seed, Math.abs(top / 4 - Math.round(top / 4)) < 1e-6, walls.some((w) => Math.abs(w.x - p.x) < 12 && Math.abs(w.z - p.z) < 12 && w.y > top - 4 && w.y < top + 1)]).toEqual([seed, true, true]);
       }
     }

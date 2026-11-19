@@ -389,8 +389,9 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   if (mode === "lost-top") for (const t of cap.filter((t) => (t.i + t.j) % 4 === 0).slice(0, 6)) {
     m.put("fin4", t.u, base + height + 2, t.v, "steel"); m.put("rubble4", t.u + 1.5, base + height + .55, t.v, "concrete", 19);
   }
-  // A hanging slab hangs from the top of what stands beside its bay, which a tower's top may have brought lower.
-  const hangFrom = (t: Tile): number => base + 4 * Math.max(0, ...SIDES.map(([a, b]) => byKey.get(tileKey(t.i + a, t.j + b))).filter((n): n is Tile => !!n && !damaged.has(n)).map((n) => tops.get(tileKey(n.i, n.j)) ?? 0));
+  // A hanging slab hangs from its bay's roof, which is all of the bay that is left and which a tower's top may have
+  // brought lower.
+  const hangFrom = (t: Tile): number => base + 4 * (tops.get(tileKey(t.i, t.j)) ?? 0);
   for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay, !has(keys, t, 0, -1) ? -1 : !has(keys, t, 0, 1) ? 1 : 0, hangFrom(t));
   // A downpipe runs down the front corner of the end wall of a low building with a facade, its foot stained.
   const corner = [...tiles].sort((a, b) => a.j - b.j || a.i - b.i)[0];
