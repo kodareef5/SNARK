@@ -82,6 +82,8 @@ export interface Row {
   readonly note: string;
   /** A player may know its value: the wiki lists it (tools/wiki). */
   readonly public: boolean;
+  /** A password: its value is never sent anywhere, the admin page included, which says only that it is set. */
+  readonly secret: boolean;
 }
 
 export interface Extra {
@@ -93,6 +95,7 @@ export interface Extra {
   game?: "E" | "A";
   note?: string;
   public?: boolean;
+  secret?: boolean;
 }
 
 interface Standing extends Extra {
@@ -131,7 +134,7 @@ export class Sheet {
   }
 
   private add(name: string, kind: Kind, def: Row["def"], doc: string, s: Standing, min: number, max: number): void {
-    this.rows.push({ name, at: this.at, kind, def, min: s.min ?? min, max: s.max ?? max, status: s.status, waits: s.waits, live: s.live ?? false, client: s.client ?? false, retime: s.retime ?? "", group: this.group, doc, game: s.game ?? "", note: s.note ?? "", public: s.public ?? false });
+    this.rows.push({ name, at: this.at, kind, def, min: s.min ?? min, max: s.max ?? max, status: s.status, waits: s.waits, live: s.live ?? false, client: s.client ?? false, retime: s.retime ?? "", group: this.group, doc, game: s.game ?? "", note: s.note ?? "", public: s.public ?? false, secret: s.secret ?? false });
   }
 
   f(name: string, def: number, doc: string, s: Standing): this {

@@ -92,6 +92,10 @@ export const S_KEY_EDGE = 60;
 export const S_KEY_FILL = 61;
 export const S_KEY_ACTIVE = 62;
 export const S_CONTROL_TITLE = 63;
+/** The hour in the middle of the sundial. */
+export const S_DIAL_HOUR = 64;
+/** A note of the menu's screens that warns, in the warm accent. */
+export const S_MENU_WARN = 65;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -158,4 +162,6 @@ export const STYLES: readonly Style[] = [
   /* S_KEY_FILL */ style(0x0b2134df, 0xb5dbea),
   /* S_KEY_ACTIVE */ style(0x326483bb, 0xe8f8ff),
   /* S_CONTROL_TITLE */ style(0, 0xe3f4fc, 18),
+  /* S_DIAL_HOUR */ style(0, 0xecfaff, 40, 1),
+  /* S_MENU_WARN */ style(0, 0xf2a477, 13),
 ];

@@ -1,13 +1,15 @@
 // The HUD and its screens through the whole client, for pictures: `bun run snap -- --hud MODE` (--size WxH).
-// Modes: play, menu, settings, audio, controls, controller, drive, drive-hidden (the minimap hidden, H held), ride, riding, station.
+// Modes: play, menu, settings, audio, controls, controller, drive, drive-hidden (the minimap hidden, H held), ride, riding, station,
+// creative (the sundial at 17:30, facing the low sun), creative-night (at 22:30) and creative-locked (the password asked).
 
 import type { App } from "../../client/core/app.ts";
 import { BOX_SELF, CMD_MOVE, CMD_STRUCT } from "../../shared/net/protocol.ts";
+import { KEY_MENU_CREATIVE } from "../../client/core/ui/menu.ts";
 import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../../tests/fixtures/arena.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
 
-export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station"] as const;
+export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked"] as const;
 export type HudMode = (typeof HUD_MODES)[number];
 
 /** The setup for clientPicture (tools/snap.ts): a survivor with things in her hotbar, then the screen or scene `mode` names. */
@@ -63,6 +65,22 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
       h.host.riding.mount(h.client(s)!, e);
       run(1200);
     }
+  } else if (mode === "creative" || mode === "creative-night" || mode === "creative-locked") {
+    if (h.host.setSetting("bShowCreativeMode", "True") !== "") throw new Error("creative mode would not come on");
+    s.text(`settime ${mode === "creative-night" ? "22:30" : "17:30"}`);
+    run(400);
+    // Toward where the sun sets (render/sky.ts, +X), seen past the panel on the left.
+    c.yaw = Math.PI / 2;
+    c.pitch = 0.04;
+    if (mode === "creative-locked") {
+      const me = h.client(s)!;
+      me.admin = false;
+      me.ownDirty = true;
+      run(200);
+    }
+    app.ui.openMenu();
+    app.ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, s);
+    run(400);
   } else if (mode === "station") {
     const fire = h.world.structs.add(id("campfire"), x, g.y + h.reg.halfY[id("campfire")]!, z + 2, 0, me.team, 100);
     const rec = h.host.fixtures.ensure(fire);

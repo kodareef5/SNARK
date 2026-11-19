@@ -41,8 +41,9 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // tops (tools/mapworld/ruin-crowns.ts): the roof on high was 77, 94, 163,572, 19 and 186,210, the air 115, 107,
   // 183,856, 14 and 180,302. Cut again the same evening from the 16 km map at the same downtown, which holds its lit
   // lamps, low buildings' attics and raised parapets, the flats' bare balcony bays, cut shop fronts, ivy and moss: on the
-  // 8 km map the street on high was 52, 98, 130,970, 13 and 130,032, the roof 77, 95, 163,542, 19 and 186,210, the air
-  // 115, 107, 185,058, 14 and 182,608. Its attics' copings were bevelled: 135,482 and 140,694 at the street, 166,732 and
+  // 8 km map the street on high was 52, 98, 130,970, 13 and 130,032, the roof 77, 95, 163,548, 19 and 186,210, the air
+  // 115, 107, 185,144, 14 and 182,734 (163,542, 185,058 and 182,608 before the hanging slabs hung nearly sheer and
+  // twisted, content/ruins.ts zdrape). Its attics' copings were bevelled: 135,482 and 140,694 at the street, 166,732 and
   // 191,006 on the roof, 187,692 and 186,144 in the air.
   expect(got).toEqual({
     "street-300": { lowpoly: [85, 0, 135038, 11, 98142], "medium, touch": [51, 34, 79284, 10, 48550], medium: [84, 82, 134942, 14, 140146], high: [84, 177, 134942, 14, 140146], ultra: [84, 201, 134942, 14, 140146] },

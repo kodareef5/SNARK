@@ -55,7 +55,7 @@ ev("server.stop", "after", "why", "the engine's exit, the crash report", "server
 ev("server.settings", "after", "names source", "", "server/host.ts", "wired", "Settings changed while running, from the console or the live file.");
 ev("server.broadcast", "after", "text", "the admin broadcast", "server/commands/core.ts", "ops", "An admin spoke to everyone.");
 ev("command", "before", "byPid name line source", "console commands and RCON packets", "server/console.ts", "wired", "A console command is about to run.");
-ev("command.ran", "after", "byPid name line source", "", "server/console.ts", "wired", "A console command ran. This is the audit trail.");
+ev("command.ran", "after", "byPid name line source", "", "server/console.ts", "wired", "A console command ran. This is the audit trail. A turn of the Creative screen's sundial is told once, as the `settime` it ended on.");
 
 ev("session.login", "before", "name address isNew", "the pre-login, ban and exclusive-join checks", "server/game.ts", "wired", "Someone is asking to join. No body exists yet.");
 ev("session.join", "after", "pid name isNew", "the new-player handler", "server/host.ts", "wired", "A session has a survivor.");
@@ -64,7 +64,7 @@ ev("session.leave", "after", "pid why", "logout and kick", "server/host.ts", "wi
 ev("session.create", "before", "name", "the create-character request", "server/own.ts", "wired", "A survivor is about to be made.");
 ev("session.spawn", "after", "pid first why", "the first spawn, and taking a body", "server/host.ts", "wired", "A survivor's body entered the world.");
 ev("session.respawn", "before", "pid bed wait!", "the respawn-at-point request", "server/beds.ts", "wired", "A dead survivor is about to come back.");
-ev("session.admin", "after", "pid", "the admin-detected notice", "server/commands/core.ts", "wired", "A session enabled cheats.");
+ev("session.admin", "after", "pid", "the admin-detected notice", "server/creative.ts", "wired", "A session was given the admin role: by `enablecheats`, or as it entered while CreativeForAll was on.");
 ev("zone.enter", "after", "pid zone", "an actor overlap beginning", "server/host.ts", "limits", "A body entered a zone.");
 ev("zone.leave", "after", "pid zone", "an actor overlap ending", "server/host.ts", "limits", "A body left a zone.");
 

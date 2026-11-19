@@ -11,7 +11,8 @@ import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand } from "./hud.ts";
 import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
 import { CONTROL_GROUPS } from "./controls-guide.ts";
-import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, menuLink } from "./menu.ts";
+import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, menuLink } from "./menu.ts";
+import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { K_SLIDER, UiFrame } from "./nodes.ts";
 import { buildMap } from "./screens.ts";
@@ -41,6 +42,8 @@ export class Ui {
   readonly naming = new NamePrompt();
   /** The other servers of the cluster, opened at an obelisk's terminal. */
   readonly travel = new TravelScreen();
+  /** The admin's tools, opened from the menu while the server shows creative mode. */
+  readonly creativeScreen = new CreativeScreen();
   /** The session is in the creator, which is then the whole interface. */
   creating = false;
   /** Which screen is up. `options` is the settings screen. */
@@ -48,6 +51,8 @@ export class Ui {
   character = false;
   options = false;
   menu = false;
+  /** The Creative screen, within the menu. */
+  creative = false;
   help = false;
   helpDevice = 0;
   helpGroup = 0;
@@ -84,7 +89,7 @@ export class Ui {
     this.menu = true;
     this.menuShift = false;
     this.inspect = false;
-    this.help = this.options = false;
+    this.help = this.options = this.creative = false;
     this.focusTo(KEY_MENU_RESUME);
   }
 
@@ -104,6 +109,7 @@ export class Ui {
 
   adjustFocused(by: number, end = false): boolean {
     if(this.console.open || this.chat.open || (!this.menu && !this.creating))return false;
+    if(this.menu && this.creative)return !end && this.creativeScreen.adjust(this.menuFocus,by,this.menuShift);
     const n=this.frame.find(this.menuFocus);
     if(n?.kind===K_SLIDER) { this.input(n.key,String(end?(by>0?1:0):n.value+by*n.step)); return true; }
     return !end && this.options && settingsAdjust(this.menuFocus,by,this.settings);
@@ -111,15 +117,22 @@ export class Ui {
 
   /** Returns true if the interface used the key. The shell must then suppress the browser's own handling. */
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
+    // The password's field has the keys a field types with; the menu keeps those that move between its controls.
+    const typing = this.menu && this.creative && this.menuFocus === KEY_CREATIVE_PASSWORD;
+    if (typing && !["Escape", "Tab", "Enter", "NumpadEnter", "ArrowUp", "ArrowDown", "ShiftLeft", "ShiftRight"].includes(code)) return false;
     if(down && ["ArrowLeft","ArrowRight","Home","End"].includes(code) && this.adjustFocused(code==="ArrowLeft"||code==="Home"?-1:1,code==="Home"||code==="End"))return true;
     if (this.menu) {
       if (code === "ShiftLeft" || code === "ShiftRight") this.menuShift = down;
       if (code === "Escape" && down && !repeat) {
         if (this.options || this.help) { this.options = this.help = false; this.focusTo(KEY_MENU_RESUME); }
+        else if (this.creative) { this.creative = false; this.focusTo(KEY_MENU_CREATIVE); }
         else this.menu = false;
       }
+      if (typing && down && !repeat && (code === "Enter" || code === "NumpadEnter")) { if (session) this.creativeScreen.submit(session); return true; }
       if (down && (code === "Tab" || code === "ArrowDown" || code === "ArrowUp")) this.moveFocus(code === "ArrowUp" || (code === "Tab" && this.menuShift) ? -1 : 1);
-      if (down && !repeat && (code === "Enter" || code === "Space" || code === "NumpadEnter")) this.pointer(0, this.menuFocus, 0, 0, 0, session);
+      // A key presses the middle of what has the focus, as the pad does, so a dial is not turned to where the key never was.
+      const n = this.frame.find(this.menuFocus);
+      if (down && !repeat && (code === "Enter" || code === "Space" || code === "NumpadEnter")) this.pointer(0, this.menuFocus, n ? n.x + n.w / 2 : 0, n ? n.y + n.h / 2 : 0, 0, session);
       return true;
     }
     const con = this.console;
@@ -222,14 +235,19 @@ export class Ui {
     if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
     if (this.menu) {
       if (kind === 2 && this.frame.find(key)?.interactive) this.menuFocus = key;
+      if (this.creative && session && (kind !== 0 || button === 0) && this.creativeScreen.pointer(kind, key, x, y, session)) {
+        if (kind === 0 && this.frame.find(key)?.interactive) this.focusTo(key);
+        return;
+      }
       if (kind === 0 && button === 0) {
         if(this.frame.find(key)?.interactive)this.focusTo(key);
         if (key === KEY_MENU_RESUME) { if (session?.state === "closed") this.reconnectRequested = true; else this.menu = false; }
+        else if (key === KEY_MENU_CREATIVE && session?.creative) { this.creative = true; this.focusTo(this.creativeScreen.first(session)); }
         else if (key === KEY_MENU_SETTINGS) { this.options = true; this.focusTo(KEY_MENU_BACK); }
         else if (key === KEY_MENU_CONTROLS) { this.help = true; this.helpDevice = this.inputDevice; this.focusTo(KEY_MENU_BACK); }
-        else if (key === KEY_MENU_BACK) { this.options = this.help = false; this.focusTo(KEY_MENU_RESUME); }
+        else if (key === KEY_MENU_BACK) { this.focusTo(this.creative ? KEY_MENU_CREATIVE : KEY_MENU_RESUME); this.options = this.help = this.creative = false; }
         else if (key === KEY_MENU_LEAVE) { session?.close(); this.leftWorld=true; this.focusTo(KEY_MENU_RESUME); }
-        else if (!this.options && !this.help) { const url = menuLink(key, this.links); if (url !== null) this.openLink?.(url); }
+        else if (!this.options && !this.help && !this.creative) { const url = menuLink(key, this.links); if (url !== null) this.openLink?.(url); }
         else if (this.help && (key === KEY_CONTROLS_DEVICE || key === KEY_CONTROLS_DEVICE + 1)) this.helpDevice = key - KEY_CONTROLS_DEVICE;
         else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;
         else if (this.help && key === KEY_CONTROL_GLYPHS) { this.settings.padGlyphs=1-this.settings.padGlyphs; this.settings.changed(); }
@@ -267,7 +285,8 @@ export class Ui {
       if(this.options?settingsValue(key,v,this.settings):this.creating && this.creator.value(key,v))n.value=v;
       return;
     }
-    if (key === KEY_NAME_INPUT) this.naming.edit(value);
+    if (key === KEY_CREATIVE_PASSWORD) this.creativeScreen.edit(value);
+    else if (key === KEY_NAME_INPUT) this.naming.edit(value);
     else if (key === KEY_STRUCT_NAME_INPUT) this.structure.edit(value);
     else if (key === KEY_CHOOSE_FILTER) this.choosing.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
@@ -299,12 +318,20 @@ export class Ui {
       this.choosing.filtering = false;
       this.choosing.edit("");
     }
+    // The Creative entry follows the server's rule, and so does the screen if it was open.
+    if (this.creative && !session?.creative) { this.creative = false; this.focusTo(KEY_MENU_RESUME); }
+    const creative = this.menu && this.creative && !this.console.open && !this.chat.open;
+    if (session) this.creativeScreen.pump(session, creative);
     if (!this.console.open && !this.chat.open) {
       if (this.menu) {
         if (this.options) {
           buildSettings(f, this.settings, hud.micLevel, this.menuFocus);
         } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus, this.helpGroup, this.settings.padGlyphs);
-        else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links);
+        else if (creative && session) {
+          this.creativeScreen.build(f, session, hud, this.menuFocus);
+          // The password's field gives way to the tools once the server has given the role.
+          if (!f.find(this.menuFocus)?.interactive && !this.focusNext) this.focusTo(this.creativeScreen.first(session));
+        } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);
       } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) this.choosing.build(f, session, hud);
       else if (this.map && session) buildMap(f, session, hud);
