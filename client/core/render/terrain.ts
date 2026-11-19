@@ -230,19 +230,21 @@ export class TerrainLod {
     const hf = this.hf;
     const per = Math.round(CHUNK_SIZE / hf.cell);
     const w0 = this.width[0]!, lo0 = this.minY[0]!, hi0 = this.maxY[0]!;
+    // The stored steps' least and most, a sample's height rising with its step: a whole map's are 66 million samples.
+    const { heights, nx } = hf;
     for (let tz = cz0; tz < cz1; tz++) {
       for (let tx = cx0; tx < cx1; tx++) {
-        let a = Infinity;
-        let b = -Infinity;
+        let a = 65535;
+        let b = 0;
         for (let j = tz * per; j <= (tz + 1) * per; j++) {
-          for (let i = tx * per; i <= (tx + 1) * per; i++) {
-            const y = hf.sample(i, j);
-            if (y < a) a = y;
-            if (y > b) b = y;
+          for (let k = j * nx + tx * per, end = k + per; k <= end; k++) {
+            const q = heights[k]!;
+            if (q < a) a = q;
+            if (q > b) b = q;
           }
         }
-        lo0[tz * w0 + tx] = a;
-        hi0[tz * w0 + tx] = b;
+        lo0[tz * w0 + tx] = hf.minY + a * hf.stepY;
+        hi0[tz * w0 + tx] = hf.minY + b * hf.stepY;
       }
     }
     for (let level = 1; level < this.levels; level++) {
