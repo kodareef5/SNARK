@@ -331,6 +331,28 @@ test("a facade module is walked as its few boxes and drawn with its parts in the
   expect([...colours].sort((a, b) => a - b)).toEqual([10, 83, 101, 104, 113]);
 });
 
+test("moss lies only along a parapet's coping, never over a broken wall's slab ends or a party wall", () => {
+  const v = vocabulary(source);
+  const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
+  const shape = (p: { kind: string }): string => p.kind.split("_")[1]!;
+  const coping = new Set(["zwintop", "zwin4top", "zplanttop", "zparapet8"]);
+  let moss = 0;
+  for (const [recipe, height, form] of [["apartment", 24, "apartment"], ["office", 12, "office"], ["shop", 4, "shop"]] as const) {
+    for (const collapse of ["shear", "facade", "pancake"] as const) {
+      for (const seed of [1, 7, 19, 33]) {
+        const m = new Mason(f, 0);
+        layout(m, { ...rule, recipe, height, finish: "limestone", form: v.forms[form], formName: form, collapse, damage: v.damage[collapse], assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 8, detail: 0 });
+        for (const p of m.pieces.filter((q) => shape(q) === "zmoss")) {
+          moss++;
+          const under = m.pieces.filter((q) => coping.has(shape(q)) && Math.hypot(q.x - p.x, q.z - p.z) < 0.6 && q.y < p.y && p.y - q.y < 13);
+          expect({ at: [p.x, p.y, p.z], under: under.length > 0 }).toEqual({ at: [p.x, p.y, p.z], under: true });
+        }
+      }
+    }
+  }
+  expect(moss).toBeGreaterThan(0);
+});
+
 test("a block of flats repeats its balcony bay on every whole floor, with a different ground floor, blank ends and a capped top", () => {
   const v = vocabulary(source);
   const f: Frame = { ...frame(0), width: 48, depth: 24, rings: [[[-24, -12], [24, -12], [24, 12], [-24, 12], [-24, -12]]] };
@@ -340,14 +362,17 @@ test("a block of flats repeats its balcony bay on every whole floor, with a diff
     layout(m, { ...rule, recipe: "apartment", height: 24, finish: "limestone", form: v.forms.apartment, formName: "apartment", collapse: "shear", damage: v.damage.shear, assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 8, detail: 0 });
     const on = (name: string): { y: number }[] => m.pieces.filter((p) => shape(p) === name);
     // Six storeys, the front and back six bays long, a corner failed: the same bay on the four floors between ground and
-    // top, all but the bay beside the failure whole on each.
+    // top, all but the bay beside the failure whole on each; there the balcony fell, its slab's end tipped into the gap.
     const floors = new Map<number, number>();
-    for (const p of [...on("zbalc"), ...on("zbalcrail")].filter((p) => p.y < 20)) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
+    for (const p of [...on("zbalc"), ...on("zbalcrail"), ...on("zbalcbare")].filter((p) => p.y < 20)) floors.set(Math.floor(p.y / 4), (floors.get(Math.floor(p.y / 4)) ?? 0) + 1);
     expect([...floors.keys()].sort()).toEqual([1, 2, 3, 4]);
     expect([...floors.values()].every((n) => n === 11)).toBe(true);
+    expect(on("zbalcbare").length).toBeGreaterThan(0);
+    expect(on("zendsag").length).toBeGreaterThanOrEqual(on("zbalcbare").length);
     expect(on("zlobby").length).toBeGreaterThanOrEqual(8);
-    // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub.
-    const chipped = on("zbalc").filter((p) => p.y > 20).length;
+    // The top floor's balconies are roofed, but where a stretch of the parapet fell, which leaves its broken stub, as it
+    // does beside the failure.
+    const chipped = [...on("zbalc"), ...on("zbalcrail"), ...on("zbalcbare")].filter((p) => p.y > 20).length;
     expect(on("zbalctop").length + chipped).toBe(11);
     expect(on("zbalctop").every((p) => p.y > 20)).toBe(true);
     expect(on("zcrown5").length + on("zcrown6").length).toBeGreaterThanOrEqual(chipped);
@@ -421,7 +446,7 @@ test("a street's walk is a step a body and a mount climb, and a car crosses its 
   }
 });
 
-test("a tower's top reads from a kilometre: torn, set back, a plant floor or a notched screen by seed, ragged round a core where it was lost, and never below the refuge's storey", () => {
+test("a tower's top reads from a kilometre: torn, set back, a plant floor or a notched screen by seed, ragged round a core where it was lost, never below the refuge's storey", () => {
   const v = vocabulary(source);
   const f: Frame = { ...frame(0), width: 48, depth: 48, rings: [[[-24, -24], [24, -24], [24, 24], [-24, 24], [-24, -24]]] };
   const shape = (p: { kind: string }): string => p.kind.split("_")[1]!;
@@ -449,10 +474,15 @@ test("a tower's top reads from a kilometre: torn, set back, a plant floor or a n
     else if (Math.max(...top) - Math.min(...top) >= 12) seen.add("third");
   }
   expect([...seen].sort()).toEqual(["plant", "screen", "third", "torn"]);
-  // A lost top stands at many heights round its core, which stands three storeys over all else.
-  const m = new Mason(f, 0);
-  layout(m, { ...rule, recipe: "tower", height: 160, finish: "concrete", form: v.forms.apartment, formName: "apartment", collapse: "lost-top", damage: v.damage["lost-top"], assemblies: v.assemblies, interiors: v.interiors }, { seed: 5, playable: 16, detail: 0 });
-  const top = roofs(m).sort((a, b) => b - a);
-  expect(top[0]! - top[1]!).toBeGreaterThanOrEqual(8);
-  expect(new Set(top).size).toBeGreaterThanOrEqual(4);
+  // A lost top stands at many heights round its core, which by seed stands two storeys or more over all else, or with
+  // the stair beside it, or broken off a storey over the rest.
+  const over: number[] = [];
+  for (let seed = 0; seed < 12; seed++) {
+    const m = new Mason(f, 0);
+    layout(m, { ...rule, recipe: "tower", height: 160, finish: "concrete", form: v.forms.apartment, formName: "apartment", collapse: "lost-top", damage: v.damage["lost-top"], assemblies: v.assemblies, interiors: v.interiors }, { seed, playable: 16, detail: 0 });
+    const top = roofs(m).sort((a, b) => b - a);
+    expect(new Set(top).size).toBeGreaterThanOrEqual(4);
+    over.push(top[0]! - top[1]!);
+  }
+  expect([over.some((d) => d >= 8), over.some((d) => d === 4), over.some((d) => d === 0)]).toEqual([true, true, true]);
 });

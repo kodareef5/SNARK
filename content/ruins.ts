@@ -61,15 +61,28 @@ const up = (y: number, parts: readonly Part[]): Part[] => parts.map((p) => {
   return q;
 });
 const wall = (top: number, out = 0.25): Part => [-4, 4, 0, top, -0.25, out];
+/** Parts turned end for end along the bay, their cut edges with them. */
+const mirror = (parts: readonly Part[]): Part[] => parts.map((p) => {
+  const [a, b, c, d, e, f, g] = p; const q: Part = [-b, -a, c, d, e, f, g];
+  const cut = BEVEL.get(p); if (cut) BEVEL.set(q, cut.map(([x, y, z]): Corner => [-x, y, z]));
+  return q;
+});
 /**
  * Two flats' balconies across the bay, 2 m deep behind a solid front, a divider between them; behind, a coral wall with a
  * door and a window to each flat, jambs at the columns and a band from the head down to the slab above.
  */
+/**
+ * A flat's recessed wall: jambs at the columns and the wall between them in faded coral, so a district's blue does not
+ * make them read as glass left blank, and a door and a window to each flat.
+ */
+const RECESS: Part[] = [
+  [-4, -3.6, 0, 2.7, -0.25, 0.25, CORAL], [3.6, 4, 0, 2.7, -0.25, 0.25, CORAL], [-3.6, 3.6, 0, 2.7, -0.35, -0.25, CORAL],
+  ...[-2, 2].flatMap((c): Part[] => [[c - 1.5, c - 0.6, 0, 2.2, -0.25, -0.2, DARK], [c, c + 1.4, 0.9, 2.3, -0.25, -0.2, DARK]]),
+];
 const RETURNS: Part[] = [[-4, -3.9, 0, 1.05, 0.25, 1.82, FRONT], [3.9, 4, 0, 1.05, 0.25, 1.82, FRONT]];
 const BALCONY: Part[] = [
-  bevelX([-4, 4, -0.25, 0, 0, 2], 0.12, "do"), [-4, 4, 0, 1.05, 1.82, 2, FRONT], ...RETURNS, [-0.1, 0.1, 0, 2.7, 0.25, 1.82], [-4, 4, 2.7, 4, -0.25, 0.25],
-  [-4, -3.6, 0, 2.7, -0.25, 0.25], [3.6, 4, 0, 2.7, -0.25, 0.25], [-3.6, 3.6, 0, 2.7, -0.35, -0.25, CORAL],
-  ...[-2, 2].flatMap((c): Part[] => [[c - 1.5, c - 0.6, 0, 2.2, -0.25, -0.2, DARK], [c, c + 1.4, 0.9, 2.3, -0.25, -0.2, DARK]]),
+  bevelX([-4, 4, -0.25, 0, 0, 2], 0.12, "do"), [-4, 4, 0, 1.05, 1.82, 2, FRONT], ...RETURNS, [-0.1, 0.1, 0, 2.7, 0.25, 1.82, CORAL], [-4, 4, 2.7, 4, -0.25, 0.25],
+  ...RECESS,
 ];
 /** Walked, a balcony's front returns at the bay's ends, so it is reached only from the flat behind it. */
 const BALCONY_WALKED: Part[] = [[-4, 4, -0.25, 0, 0, 2], [-4, 4, 0, 1.05, 1.82, 2], ...RETURNS, wall(4)];
@@ -87,9 +100,17 @@ const LOUVRE = 84;
 const PLANT: Part[] = [[-4, -3.6, 0, 4, -0.25, 0.25], [3.6, 4, 0, 4, -0.25, 0.25], [-3.6, 3.6, 0, 0.4, -0.25, 0.25], [-3.6, 3.6, 3.25, 4, -0.25, 0.25], [-3.6, 3.6, 0.4, 3.25, -0.35, -0.25, LOUVRE],
   ...[0.7, 1.15, 1.6, 2.05, 2.5, 2.95].map((y): Part => [-3.6, 3.6, y, y + 0.12, -0.25, 0.08, METAL])];
 /** A screen standing on a tower's roof at its edge, a storey tall, hiding its plant, with a coping. */
+// A low building's raised parapet over its way in, and along its front. Walked as it looks, with a square coping in pale
+// render: on low poly the near city's mesh draws a piece as walked and its instance as it looks, and a bevel or a coping
+// walked as its wall showed along every edge of a front of them.
+const ATTIC: Part[] = up(-0.05, [[-4, 4, 0, 2.4, -0.32, 0.37], [-4, 4, 2.4, 2.55, -0.36, 0.42, FRONT]]);
+const STEP_UP: Part[] = up(-0.05, [[-4, 4, 0, 1.25, -0.32, 0.37], [-4, 4, 1.25, 1.4, -0.36, 0.42, FRONT]]);
 const SCREEN: Part[] = [[-4, 4, 0, 3.6, -0.3, 0.3], bevelX([-4, 4, 3.6, 3.75, -0.35, 0.4], 0.06, "uoui")];
 /** A shop's front: half piers, a sign band standing proud of them, a dark display on a low riser and a 2 m door set back. */
 const SHOP: Part[] = [bevelY([-4, -3.6, 0, 4, -0.3, 0.3], 0.1, "+"), bevelY([3.6, 4, 0, 4, -0.3, 0.3], 0.1, "-"), [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 1.4, 0, 0.5, -0.25, 0.05], [-3.6, 1.4, 0.5, 2.9, -0.25, -0.15, DARK], [1.4, 1.6, 0, 2.9, -1.2, 0.05]];
+/** Beside a failure: the sign band and its head cut back different lengths and the pier at the break broken off. */
+const SHOP_CUT: Part[] = [SHOP[0]!, [3.6, 4, 0, 2.4, -0.3, 0.3], [-3.6, 0.9, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 2.2, 3.8, 4, -0.25, 0.25], SHOP[4]!, SHOP[5]!, SHOP[6]!];
+const SHOP_CUT_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 2.4, -0.3, 0.3], [-3.6, 0.9, 2.9, 3.8, -0.25, 0.4], [-3.6, 2.2, 3.8, 4, -0.25, 0.25], [-3.6, 1.6, 0, 2.9, -0.25, 0.05]];
 const SHOP_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 4, -0.3, 0.3], [-3.6, 3.6, 2.9, 4, -0.25, 0.4], [-3.6, 1.6, 0, 2.9, -0.25, 0.05]];
 /** The same front with a blue-grey shutter down over display and door. */
 const SHUTTER: Part[] = [SHOP[0]!, SHOP[1]!, [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 3.6, 0, 2.9, 0, 0.1, STEEL]];
@@ -110,6 +131,8 @@ const ENTRY: Part[] = [[-4, 4, 2.82, 3, -0.09, 0.09, METAL], [-3.2, 3.2, 3, 3.25
 const MODULES = {
   zbalc: { look: BALCONY, walked: BALCONY_WALKED },
   zbalctop: { look: [...BALCONY, ...BALCONY_CAP], walked: [...BALCONY_WALKED, ...BALCONY_CAP] },
+  /** Beside a failure a flat's balcony has fallen: its wall bare to the slab's broken end. */
+  zbalcbare: { look: [[-4, 4, 2.7, 4, -0.25, 0.25], ...RECESS], walked: [wall(4)] },
   zbalcrail: { look: RAILED, walked: [BALCONY_WALKED[0]!, [-4, 4, 0, 1.05, 1.85, 2], ...RAIL_ENDS, wall(4)] },
   zentry: { look: ENTRY, walked: [[-4, 4, 2.82, 3.45, -0.09, 2.1]] },
   /** A downpipe a storey long on a wall's face, with its clips, and its foot: a shoe and the stain the water left. */
@@ -125,6 +148,9 @@ const MODULES = {
    */
   zlobby: { look: [[-4, 4, 0, 2.3, -0.25, 0.25, BASE], [-0.5, 0.5, 0, 2.2, 0.25, 0.275, DARK], [-4, -3.4, 2.3, 3.1, -0.25, 0.25, BASE], [3.4, 4, 2.3, 3.1, -0.25, 0.25, BASE], [-3.4, 3.4, 2.3, 3.1, -0.3, -0.2, DARK], [-4, 4, 3.1, 4, -0.25, 0.25]], walked: [wall(4)] },
   zstore: { look: SHOP, walked: SHOP_WALKED },
+  // Its break toward +x, and toward -x.
+  zstorecut: { look: SHOP_CUT, walked: SHOP_CUT_WALKED },
+  zstorecutl: { look: mirror(SHOP_CUT), walked: mirror(SHOP_CUT_WALKED) },
   zshutter: { look: SHUTTER, walked: [...SHOP_WALKED.slice(0, 2), [-3.6, 3.6, 2.9, 4, -0.25, 0.3], [-3.6, 3.6, 0, 2.9, 0, 0.1]] },
   zwin: { look: WINDOWS, walked: [wall(4)] },
   zwintop: { look: [...WINDOWS, ...PARAPET], walked: [wall(4), ...PARAPET] },
@@ -136,6 +162,9 @@ const MODULES = {
   zcurt4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, CURTAIN)), ...up(12, CROWN)], walked: [[-4, 4, -0.4, 17.2, -0.4, 0.4]] },
   zplanttop: { look: [...PLANT, ...PARAPET], walked: [wall(4), ...PARAPET] },
   zscreen: { look: SCREEN, walked: [[-4, 4, 0, 3.75, -0.3, 0.3]] },
+  // A low building's roofline: an attic over a lobby's bay, and a parapet raised along a run of a long front's bays.
+  zattic: { look: ATTIC, walked: ATTIC },
+  zstepup: { look: STEP_UP, walked: STEP_UP },
   /** The shade of an open storey's inside, set back from a torn edge: what is seen between its slabs from afar. */
   zgloom: { look: [[-3.6, 3.6, 0.05, 3.55, -0.1, 0.1, LOUVRE]], walked: [[-3.6, 3.6, 0.05, 3.55, -0.1, 0.1]] },
   // Walked, its spandrel stands a little thicker than drawn, so its coarsest level is its look's within a hand.
@@ -234,14 +263,16 @@ const crown = (name: string, runs: readonly (readonly [number, number, number, n
 /** A lump of rubble along a wall's foot from a to b, h high against the wall and reaching `out` from it on the ground. */
 const lump = (a: number, b: number, h: number, out: number): HullDef => ({ corners: [[a, 0, 0.2], [b, 0, 0.2], [a + 0.3, 0, out * 0.85], [b - 0.2, 0, out], [a + 0.2, h, 0.2], [b - 0.3, h * 0.75, 0.2]] });
 /** What fell along a wall's foot: lumps of it against the wall, blocks loose on its slope and soil with weeds at its toe. */
-const skirt = (name: string, lumps: readonly (readonly [number, number, number, number])[], blocks: readonly (readonly [number, number, number, number])[], toe: number): ShapeDef => {
-  const hulls = lumps.map(([a, b, h, out]) => lump(a, b, h, out));
+const skirt = (name: string, lumps: readonly (readonly [number, number, number, number])[], blocks: readonly (readonly [number, number, number, number])[], toe: number, more: readonly HullDef[] = []): ShapeDef => {
+  const hulls = [...lumps.map(([a, b, h, out]) => lump(a, b, h, out)), ...more];
   const loose = blocks.map(([x, z, size, colour]): ShapeBox => ({ at: [x, size * 0.4, z], half: [size, size * 0.5, size * 0.8], color: colour }));
   return centred(shaped(name), { hulls }, { hulls, boxes: [...loose, { at: [0, 0.02, toe], half: [3.6, 0.02, 0.2], color: WEED }] });
 };
-/** A wall panel 3.8 m by 2.8 m hanging from one fixing at a slab's edge, its far end dropped 16 degrees, standing off the edge. */
-const HANG = 16 * Math.PI / 180;
-const hanging = (): Corner[] => [0.35, 0.55].flatMap((z) => ([[0, 0], [3.8, 0], [3.8, -2.8], [0, -2.8]] as const).map(([x, y]): Corner => [x * Math.cos(HANG) + y * Math.sin(HANG) - 1.45, -x * Math.sin(HANG) + y * Math.cos(HANG) - 0.45, z]));
+/** A wall panel 3.8 m by 2.8 m hanging from one fixing at a slab's edge, its far end dropped 34 degrees, standing off the edge. */
+const HANG = 34 * Math.PI / 180;
+// Its corners on a 1/4096 m grid: an engine's sine and cosine may differ in the last place, and content must not.
+const grid = (v: number): number => Math.round(v * 4096) / 4096;
+const hanging = (): Corner[] => [0.35, 0.55].flatMap((z) => ([[0, 0], [3.8, 0], [3.8, -2.8], [0, -2.8]] as const).map(([x, y]): Corner => [grid(x * Math.cos(HANG) + y * Math.sin(HANG) - 1.45), grid(-x * Math.sin(HANG) + y * Math.cos(HANG) - 0.45), z]));
 /**
  * A slab 6 m wide torn from its bay and hanging from its top edge on the slab line (z = 0, y = 0), nearly sheer, out to
  * 1.3 m at one end of its foot and 2 m at the other and 1 m lower there, so it is seen twisted and not as an eave.
@@ -250,7 +281,27 @@ const DRAPE: Corner[] = [[-3, 0, 0], [3, 0, 0], [-2.3, -6.6, 1.3], [3.3, -5.6, 2
 /** A column out of plumb by 8 degrees, its head broken on a slant. */
 const LEAN_COLUMN: Corner[] = [[-0.3, 0, -0.3], [0.3, 0, -0.3], [-0.3, 0, 0.3], [0.3, 0, 0.3], [-0.3, 3.2, 0.15], [0.3, 2.9, 0.12], [-0.3, 3.05, 0.73], [0.3, 2.75, 0.69]];
 /** Strands of a vine hanging from a slab's edge, each its place along it, its length and colour, over a line of moss. */
-const STRANDS: readonly (readonly [number, number, number])[] = [[-1.2, 1.4, LEAF], [-0.75, 2.6, MOSS], [-0.3, 1.9, WEED], [0.2, 3.1, LEAF], [0.7, 1.2, MOSS], [1.15, 2.2, WEED]];
+/**
+ * Strands of three vines, each its place along the edge, its length, its stem's thickness and its colour: unevenly spaced,
+ * long and short, a thick old stem among thin ones, so a row of them is not a comb.
+ */
+type Strand = readonly [number, number, number, number];
+const STRANDS: readonly (readonly Strand[])[] = [
+  [[-1.35, 0.7, 0.05, MOSS], [-1.05, 2.9, 0.11, LEAF], [-0.4, 1.6, 0.06, WEED], [0.05, 3.5, 0.09, LEAF], [0.95, 1.1, 0.05, MOSS], [1.3, 2.2, 0.13, LEAF]],
+  [[-1.4, 2.4, 0.12, LEAF], [-0.6, 0.8, 0.05, WEED], [-0.35, 1.9, 0.07, MOSS], [0.6, 3.2, 0.1, LEAF], [1.4, 1.3, 0.06, WEED]],
+  [[-1.2, 1.2, 0.06, MOSS], [-0.9, 3.4, 0.12, LEAF], [-0.1, 2.1, 0.08, WEED], [0.25, 0.9, 0.05, MOSS], [1.1, 2.7, 0.1, LEAF], [1.45, 1.6, 0.07, WEED]],
+];
+/** A vine from a slab's edge: moss in runs along the edge, each strand's stem and leaves clumped along it, the most at its tip. */
+const vine = (strands: readonly Strand[]): ShapeBox[] => [
+  ...[[-1.5, -0.5, 0.05], [-0.2, 0.9, 0.04], [1.1, 1.55, 0.06]].map(([a, b, h]): ShapeBox => ({ at: [(a! + b!) / 2, -h!, 0.03], half: [(b! - a!) / 2, h!, 0.03], color: MOSS })),
+  ...strands.flatMap(([x, length, thick, colour], k): ShapeBox[] => [
+    { at: [x, -length / 2, 0.04], half: [thick / 2, length / 2, thick / 2], color: colour },
+    ...[0.35, 0.65, 1].filter((f) => f * length > 0.5 || f === 1).map((f, n): ShapeBox => {
+      const r = (0.08 + thick) * (f === 1 ? 1.4 : 1);
+      return { at: [x + ((k + n) % 2 ? r * 0.6 : -r * 0.6), -f * length + r, 0.05], half: [r, r, 0.04], color: colour };
+    }),
+  ]),
+];
 // The column's broken head and the slab that fell from it break along the same teeth, so the one is seen to be the other's.
 const BREAK: readonly Tooth[] = [[-0.4, -0.1, 0.45, -0.1], [-0.1, 0.15, 0.2, -0.25], [0.15, 0.4, 0.55, -0.05]];
 const FALL = 25;
@@ -291,7 +342,8 @@ export const RUIN_BREAKS = {
     boxes: bars([[-2.5, -0.95, 0.35, 0.4], [-0.4, -0.95, 0.25, 0], [1.8, -0.95, 0.4, 0.55]]).map((b) => ({ ...b, at: [b.at[0], b.at[1], b.at[2] + 2.15] as const })),
   }),
   // The rubble at the foot of a failure, 8 m along the wall it fell from, up to 1.5 m high against it and 2.8 m out.
-  zwedge: skirt("zwedge", [[-3.9, -0.2, 1.3, 2.6], [-0.6, 3.9, 1.5, 2.8]], [[-2.8, 1.9, 0.3, 101], [-0.2, 1.5, 0.22, 99], [0.9, 2.3, 0.35, 102], [2.9, 2.1, 0.25, 101]], 2.75),
+  // A broad piece of the wall leans on it, its top against the wall 2.4 m up and its foot on the ground 1.8 m out.
+  zwedge: skirt("zwedge", [[-3.9, -0.2, 1.3, 2.6], [-0.6, 3.9, 1.5, 2.8]], [[-2.8, 1.9, 0.3, 101], [-0.2, 1.5, 0.22, 99], [0.9, 2.3, 0.35, 102], [2.9, 2.1, 0.25, 101]], 2.75, [{ corners: leaning([1.7, 0.14, 1.4], -58).corners.map(([x, y, z]) => [x - 1.6, y + 1.3, z + 1.05] as const) }]),
   // What fell from a standing wall along its foot, two runs of it.
   zskirt1: skirt("zskirt1", [[-3.7, -0.4, 0.5, 1.0], [-0.8, 3.6, 0.38, 1.1]], [[-2.6, 0.75, 0.2, 101], [1.6, 0.95, 0.24, 99], [-0.4, 0.7, 0.16, 102]], 1.15),
   zskirt2: skirt("zskirt2", [[-3.8, 0.2, 0.36, 0.95], [-0.2, 3.8, 0.55, 1.15]], [[-2.2, 0.8, 0.18, 99], [0.4, 1.0, 0.22, 101], [2.6, 0.7, 0.15, 102]], 1.2),
@@ -302,9 +354,11 @@ export const RUIN_BREAKS = {
   zdrape: centred(shaped("zdrape"), { hulls: [{ corners: DRAPE }] }, { hulls: [{ corners: DRAPE }], boxes: bars([[-3.4, -0.2, 0.5, 0.6], [-0.6, -0.15, 0.35, 0], [1.7, -0.25, 0.6, 0.8], [3.6, -0.2, 0.4, 0.3]]) }),
   zhang: centred(shaped("zhang"), { hulls: [{ corners: hanging() }] }, { hulls: [{ corners: hanging() }], boxes: [{ at: [-1.45, -0.3, 0.45], half: [0.04, 0.2, 0.04], color: RUST }] }),
   zleancol: centred(shaped("zleancol"), { hulls: [{ corners: LEAN_COLUMN }] }, { hulls: [{ corners: LEAN_COLUMN }], boxes: [{ at: [-0.18, 3.25, 0.55], half: [0.025, 0.3, 0.025], color: RUST }, { at: [0.15, 3.0, 0.3], half: [0.025, 0.25, 0.025], color: RUST }] }),
-  zvine: centred(shaped("zvine"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, {
-    boxes: [{ at: [0, -0.04, 0.03], half: [1.5, 0.04, 0.03], color: MOSS }, ...STRANDS.flatMap(([x, length, colour]): ShapeBox[] => [{ at: [x, -length / 2, 0.04], half: [0.04, length / 2, 0.02], color: colour }, { at: [x, -length + 0.12, 0.05], half: [0.14, 0.14, 0.04], color: colour }])],
-  }),
+  // Moss and weeds along a ledge's top, 8 m of it in runs and clumps.
+  zmoss: centred(shaped("zmoss"), { boxes: [{ at: [0, 0.07, 0], half: [3.9, 0.07, 0.28] }] }, { boxes: ([[-3.9, -2.6, 0.05, MOSS], [-2.3, -1.9, 0.12, WEED], [-1.2, 0.7, 0.04, MOSS], [0.9, 1.3, 0.1, LEAF], [1.8, 3.3, 0.06, MOSS], [3.4, 3.9, 0.14, WEED]] as const).map(([a, b, h, c]): ShapeBox => ({ at: [(a + b) / 2, h / 2, 0], half: [(b - a) / 2, h / 2, 0.14 + h], color: c })) }),
+  zvine: centred(shaped("zvine"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, { boxes: vine(STRANDS[0]!) }),
+  zvine2: centred(shaped("zvine2"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, { boxes: vine(STRANDS[1]!) }),
+  zvine3: centred(shaped("zvine3"), { boxes: [{ at: [0, -0.05, 0.03], half: [0.05, 0.05, 0.03] }] }, { boxes: vine(STRANDS[2]!) }),
   ...street(),
 } satisfies Record<string, ShapeDef>;
 export type BreakPiece = keyof typeof RUIN_BREAKS;
@@ -316,6 +370,8 @@ const slopeSizes = Object.fromEntries(Object.entries({ ...RUIN_SLOPES, ...RUIN_F
 export const RUIN_SHAPES = {
   ...slopeSizes,
   zshrub: [2.2, 1.24, 1.22], zrooftree: [.8, 3.4, .8],
+  // Ivy hanging from a broken edge, the plants' leafy vines (assets/source/core/nodes/plants/vine.py), drawn about their box's middle.
+  zivy1: [3.2, 2.7, 0.5], zivy2: [2.6, 1.7, 0.4], zivy3: [3.2, 4, 0.6],
   zbalcony: [8, .4, 2],
   zpanel8: [8, 4, .6], zpanel16: [16, 4, .6], zshaft8: [8, 16, .8], zshaft16: [16, 16, .8],
   // A blank end wall's top storey and its parapet, four such storeys, and a parapet by itself.
@@ -362,14 +418,16 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
   zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"], zdeckramp: ["concrete"],
-  zwedge: ["concrete"], zskirt1: ["concrete"], zskirt2: ["concrete"], zendsag: ["fracture"], zdrape: ["concrete"], zleancol: ["concrete"], zvine: ["concrete"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zpipetop: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
+  zwedge: ["concrete"], zskirt1: ["concrete"], zskirt2: ["concrete"], zendsag: ["fracture"], zdrape: ["concrete"], zleancol: ["concrete"], zmoss: ["concrete"], zvine: ["concrete"], zvine2: ["concrete"], zvine3: ["concrete"], zpipe4: ["concrete"], zpipefoot: ["concrete"], zpipetop: ["concrete"], zwalk8: ["concrete"], zwalk8g: ["concrete"], zcurbramp: ["concrete"], zcurbrampl: ["concrete"], zdrain: ["concrete"], zutility: ["concrete"], zendwhole: ["fracture"], zendspall: ["fracture"], zendsnap: ["fracture"], zstub: ["fracture"], zfallen: ["concrete"],
 };
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
-export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z"))));
-const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub"]);
+/** The plants' meshes the ruins grow: a tuft on a roof, a tree in it, ivy from a broken edge. */
+const GROWN: Partial<Record<string, string>> = { zshrub: "core:creeper_3", zrooftree: "core:tree_1", zivy1: "core:vine_1", zivy2: "core:vine_2", zivy3: "core:vine_3" };
+export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && !GROWN[name] && (PAINTED.has(name) || name.startsWith("z"))));
+const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zvine2", "zvine3", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub", "zivy1", "zivy2", "zivy3", "zmoss"]);
 const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
   (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name as RuinShape, finish)).map((finish) => ({
-    type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: name === "zshrub" ? "core:creeper_3" : name === "zrooftree" ? "core:tree_1" : "box",
+    type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: GROWN[name] ?? "box",
     half: [size[0] / 2, size[1] / 2, size[2] / 2] as const,
     ...RUIN_FINISHES[finish],
     ...(name in RUIN_SLOPES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_SLOPES[name as keyof typeof RUIN_SLOPES], RUIN_FINISHES[finish]) : {}),
@@ -378,7 +436,7 @@ const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([na
     // The street's pieces and a building's small kit are drawn near only, left out of the far city's lattice and mass.
     ...(NEAR_ONLY.has(name) ? { near: true as const } : {}),
     // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
-    ...(name === "zshrub" || name === "zrooftree" ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
+    ...(GROWN[name] ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
   })),
 );
 export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES), ...Object.values(RUIN_FACADES), ...Object.values(RUIN_BREAKS)];

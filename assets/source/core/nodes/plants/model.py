@@ -12,8 +12,9 @@ import kit  # noqa: E402
 import palmetto  # noqa: E402
 import seagrape  # noqa: E402
 import variants  # noqa: E402
+import vine  # noqa: E402
 
-BUILDERS = {"bush": bush, "palmetto": palmetto, "fern": fern, "seagrape": seagrape, "creeper": creeper}
+BUILDERS = {"bush": bush, "palmetto": palmetto, "fern": fern, "seagrape": seagrape, "creeper": creeper, "vine": vine}
 
 
 def emit(name, levels):
