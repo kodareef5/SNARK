@@ -4,7 +4,7 @@ import type { Probe } from "../../client/core/selfcheck.ts";
 import { Rng } from "../../shared/rng.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import { provingView, type ProvingView } from "../../tools/snap.ts";
-import { SURFACE_NAMES, WEATHER_MATERIAL, surfaceMaterial } from "../../content/surfaces.ts";
+import { MASK_MATERIALS, SURFACE_NAMES, surfaceMaterial } from "../../content/surfaces.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import type { WorldSample } from "../../client/core/render/world-surfaces.ts";
 import type { TextureUpload } from "../../client/core/render/packet.ts";
@@ -18,7 +18,7 @@ const ROLES = ["base", "normal", "mro"] as const;
 /** The probe tests supply their own texture bytes, including on a checkout with no finishes: each finish's material, in the order of SURFACE_NAMES, and the weathering masks' after them. */
 export function referenceManifest(pack: Pack): { manifest: ReturnType<typeof describePack>; materials: PackMaterial[] } {
   const manifest = describePack(pack, { name: "boot", bytes: pack.blobAt + pack.blob.length });
-  const present = [...SURFACE_NAMES.map(surfaceMaterial), WEATHER_MATERIAL].map((id) => manifest.materials?.find((m) => m.id === id));
+  const present = [...SURFACE_NAMES.map(surfaceMaterial), ...MASK_MATERIALS].map((id) => manifest.materials?.find((m) => m.id === id));
   if (present.every((m) => m)) return { manifest, materials: present as PackMaterial[] };
   const first = (manifest.textures ??= []).length;
   const materials = worldSurfaceMeshes().map((mesh, k) => ({ ...mesh.materials![0]!, base: first + 3 * k, normal: first + 3 * k + 1, mro: first + 3 * k + 2 }));
@@ -33,8 +33,8 @@ export function referenceManifest(pack: Pack): { manifest: ReturnType<typeof des
 export function worldMaps(pack: Pack): { sample: WorldSample; uploads: TextureUpload[] } {
   const sources = worldMaterials();
   const uploads: TextureUpload[] = [];
-  // The weathering masks' material is the layer after the finishes', as the packed array has it.
-  const maps: Texture[][] = [...SURFACE_NAMES.map(surfaceMaterial), WEATHER_MATERIAL].map((id, k) => {
+  // The masks' materials are the layers after the finishes', as the packed array has them.
+  const maps: Texture[][] = [...SURFACE_NAMES.map(surfaceMaterial), ...MASK_MATERIALS].map((id, k) => {
     const material = pack.header.materials!.find((m) => m.id === id)!;
     return ROLES.map((role) => {
       const top = Math.min(pack.header.textures![material[role]]!.top, role === "mro" ? 256 : 512);

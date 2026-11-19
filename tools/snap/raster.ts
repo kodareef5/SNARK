@@ -2,9 +2,9 @@
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { SURFACE_NAMES, WEATHER_LAYER, WEATHER_MATERIAL, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
-import { GROUND_BAND, GROUND_SCALE, edgeOf, edged, groundCover, groundMeet, groundWander, higher, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { GROUND_BAND, GROUND_SCALE, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
@@ -178,6 +178,12 @@ function risenTo(albedo: Float64Array | number[], orm: Float64Array | number[], 
   const l = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
   for (let c = 0; c < 3; c++) normal[c] = normal[c]! / l;
 }
+/** Asphalt's and sand's wear (world-surfaces.ts roadWorn), as much of it as the packed maps have risen to (glsl.ts's call). */
+function wornRoad(albedo: Float64Array, orm: Float64Array, normal: Float64Array, id: number, x: number, z: number, footprint: number, sample: WorldSample): void {
+  risenFrom(albedo, orm, normal);
+  roadWorn(albedo, orm, id, x, z, footprint, sample);
+  risenTo(albedo, orm, null, 1 - finishesEarly);
+}
 const wander = new Float64Array(2);
 
 /**
@@ -239,9 +245,14 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
   } else if (sample) {
     const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light", index = surfaceIndex(colorIndex, ground, city);
     const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
+    // Asphalt's and sand's wear, as LIT_TERRAIN_FRAGMENT has it where the tier reads the finishes in full: it reads the
+    // packed array's masks, so it comes up with them as the weathering does.
+    const worn = ground && !touch && p.frame[FRAME.roadOff]! < 0.5 && finishesEarly < 1;
+    if (worn) wornRoad(albedo, worldOrm, normal, index, rx + p.camX, rz + p.camZ, footprint, sample);
     if (other >= 0 && share > 0) {
       for (let c = 0; c < 3; c++) albedo2[c] = srgbToLinear(pal[other * 4 + c]! / 255);
       const b = higher(h, worldSurface(albedo2, orm2, normal2, albedo2, surfaceIndex(other, true, city), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly), share, GROUND_SCALE, GROUND_BAND);
+      if (worn) wornRoad(albedo2, orm2, normal2, surfaceIndex(other, true, city), rx + p.camX, rz + p.camZ, footprint, sample);
       for (let c = 0; c < 3; c++) {
         albedo[c] = albedo[c]! * (1 - b) + albedo2[c]! * b;
         worldOrm[c] = worldOrm[c]! * (1 - b) + orm2[c]! * b;
@@ -433,10 +444,10 @@ export class Rasterizer {
   private worldMaps: Texture[][] | null = null;
   /** The frame has finishes and none of their base colours has come: drawn as their means. */
   private finishesMeant = false;
-  /** The weathering masks' packed map, which the finishes are not drawn without where the pack has them, or null. */
-  private weatherMap: Texture | null = null;
+  /** The masks' packed maps (the weathering's and the road's), which the finishes are not drawn without where the pack has them, or null each. */
+  private maskMaps: (Texture | null)[] = [];
   private readonly worldSample: WorldSample = (role, layer, u, v, spread, out) => {
-    if (layer === WEATHER_LAYER) return this.weatherMap ? sample(this.weatherMap, u, v, spread, out) : void out.fill(0);
+    if (layer >= WEATHER_LAYER) return this.maskMaps[layer - WEATHER_LAYER] ? sample(this.maskMaps[layer - WEATHER_LAYER]!, u, v, spread, out) : void out.fill(0);
     sample(this.worldMaps![layer]![role]!, u, v, spread, out);
   };
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();
@@ -557,14 +568,14 @@ export class Rasterizer {
     const materials = (this.manifest ?? this.pack.header)?.materials ?? [];
     const finishes = SURFACE_NAMES.map((name) => materials.find((m) => m.id === surfaceMaterial(name)));
     const maps = finishes.map((m) => (m ? [m.base, m.normal, m.mro].map((t) => this.textures.get(t)) : []));
-    const weather = materials.find((m) => m.id === WEATHER_MATERIAL);
-    this.weatherMap = weather ? (this.textures.get(weather.mro) ?? null) : null;
+    const masks = MASK_MATERIALS.map((id) => materials.find((m) => m.id === id));
+    this.maskMaps = masks.map((m) => (m ? (this.textures.get(m.mro) ?? null) : null));
     // Drawn from the base colours as soon as they have all come, the far path's way until the rest have (glsl.ts finishMaps).
     this.worldMaps = packet.lit && maps.every((roles) => roles.length === 3 && roles[0]) ? (maps as Texture[][]) : null;
     // Where the frame has finishes and none of their base colours has come, they are drawn as their means (finishMaps).
     this.finishesMeant = packet.lit && packet.worldSide[0]! > 0 && packet.worldComing && !this.worldMaps;
     // Coming up as the frame says where it holds the maps too, and at once where it has not seen them (a picture given its maps).
-    finishesEarly = maps.every((roles) => roles.every((t) => t)) && (!weather || this.weatherMap) ? (packet.worldLevel[0]! >= 0 ? packet.worldEarly : 0) : 1;
+    finishesEarly = maps.every((roles) => roles.every((t) => t)) && masks.every((m, k) => !m || this.maskMaps[k]) ? (packet.worldLevel[0]! >= 0 ? packet.worldEarly : 0) : 1;
     if (this.finishesMeant) finishesEarly = 2;
     const facades = Array.from(packet.facadeSlots, (t) => (t >= 0 ? this.textures.get(t) ?? null : undefined));
     this.facadeSample = packet.lit && facades.some((t) => t) && facades.every((t) => t !== null) ? (k, u, v, lod, out) => sample(facades[k]!, u, v, lod - (facades[k]!.pictures.length - 1), out) : null;

@@ -12,6 +12,17 @@ export const surfaceMaterial = (name: SurfaceName): string => SURFACE_PREFIX + n
  */
 export const WEATHER_MATERIAL = SURFACE_PREFIX + "weather";
 export const WEATHER_LAYER = SURFACE_NAMES.length;
+/**
+ * The ground's macros (assets/source/core/world/road/): a used carriageway's light and roughness from above over 32 m,
+ * and a beach's; and a road's repairs over 8 m: saw-cut patches, the sealant over their seams, sealed cracks and open
+ * ones. The packed array's layers after the weathering masks'.
+ */
+export const ROAD_MATERIAL = SURFACE_PREFIX + "road";
+export const ROAD_LAYER = WEATHER_LAYER + 1;
+export const REPAIRS_MATERIAL = SURFACE_PREFIX + "repairs";
+export const REPAIRS_LAYER = WEATHER_LAYER + 2;
+/** The masks' materials in the order of their layers after the finishes'. */
+export const MASK_MATERIALS = [WEATHER_MATERIAL, ROAD_MATERIAL, REPAIRS_MATERIAL] as const;
 export type SurfaceGroup = "living" | "dry" | "wet" | "mineral" | "masonry" | "metal" | "paint" | "timber" | "glass";
 
 /** Multipliers except wetness and growth, which are added. Tint multiplies linear reflectance. */
@@ -84,6 +95,12 @@ export const SURFACE_WEATHERING: Record<SurfaceName, SurfaceWeathering> = {
   steel: weathers(0.8, 0.3, 0, 0, 0.6, "rust"), plaster: weathers(1, 1, 1, 0, 0.9), wood: weathers(0.7, 0.8, 0, 0, 0.8), glass: weathers(0.4, 0, 0, 0, 0.2),
   sidewalk: weathers(0.6, 0.7, 0, 0, 0.7),
 };
+
+/**
+ * How asphalt wears (world-surfaces.ts `roadWorn`), each a share of the most: its macro's light and roughness, and of
+ * each 8 m square, the share patched and the share whose cracks are sealed. The beach's macro is its light alone.
+ */
+export const ROAD_LOOK = { macro: 0.7, macroRough: 0.6, patched: 0.18, sealed: 0.3, beach: 0.8 };
 
 /** City-wide art direction. The key is the map id's last component; unknown maps use default. */
 export const SURFACE_CITIES: Record<string, SurfaceDials> = {

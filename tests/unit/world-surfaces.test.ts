@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SURFACE_FINISHES, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_NEAR, WORLD_RISE, WorldFinishes, finishMetres, edgeOf, edged, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_NEAR, WORLD_RISE, WorldFinishes, finishMetres, edgeOf, edged, roadWorn, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { srgbToLinear } from "../../client/core/render/surface.ts";
@@ -385,4 +385,32 @@ test("drawn early, a finish keeps its base colours and stands at its packed map'
   expect(none).toEqual(at(1, plain, flat));
   expect(all).not.toEqual(none);
   expect(half.every((c, k) => c >= Math.min(none[k]!, all[k]!) - 1e-6 && c <= Math.max(none[k]!, all[k]!) + 1e-6)).toBe(true);
+});
+
+test("asphalt wears by its macro and its repairs in 8 m squares, sand by the beach's macro, and nothing else wears", () => {
+  const id = (name: string): number => (SURFACE_NAMES as readonly string[]).indexOf(name);
+  const masks = { road: [0.5, 0.5, 0.5, 0.5], repairs: [0, 0, 0, 0] };
+  const sample: WorldSample = (_role, layer, _u, _v, _spread, out) => out.set(layer === ROAD_LAYER ? masks.road : layer === REPAIRS_LAYER ? masks.repairs : [0, 0, 0, 0]);
+  const at = (finish: string, x = 10, z = 10): number[] => {
+    const albedo = Float64Array.of(0.2, 0.2, 0.2), orm = Float64Array.of(1, 0.8, 0);
+    roadWorn(albedo, orm, id(finish), x, z, 0.002, sample);
+    return [albedo[0]!, orm[1]!];
+  };
+  const plain = at("asphalt");
+  expect(plain).toEqual([0.2, 0.8]);
+  // The macro lightens and roughens where it says; sand takes its own, and paving none.
+  masks.road = [0.9, 0.9, 0.9, 0.5];
+  expect(at("asphalt")[0]!).toBeGreaterThan(plain[0]!);
+  expect(at("asphalt")[1]!).toBeGreaterThan(plain[1]!);
+  expect(at("sand")[0]!).toBeGreaterThan(0.2);
+  expect(at("paving")).toEqual([0.2, 0.8]);
+  // Open cracks darken every square away from its edge; seams and seals are tar in some squares only.
+  masks.road = [0.5, 0.5, 0.5, 0.5];
+  masks.repairs = [0, 0, 0, 1];
+  expect(at("asphalt")[0]!).toBeLessThan(plain[0]!);
+  expect(at("asphalt", 8, 10)).toEqual(plain);
+  masks.repairs = [0, 1, 1, 0];
+  const squares = Array.from({ length: 64 }, (_, k) => at("asphalt", 4 + (k % 8) * 8, 4 + Math.floor(k / 8) * 8)[0]!);
+  expect(squares.some((v) => v < 0.1)).toBe(true);
+  expect(squares.some((v) => v === 0.2)).toBe(true);
 });

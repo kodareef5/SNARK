@@ -304,6 +304,8 @@ export const FRAME = {
   facade: 152,
   /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`). */
   edgesOff: 154,
+  /** Its fourth: 1 on a frame drawn without the ground's wear on asphalt and sand (`?off=road`, world-surfaces.ts `roadWorn`). */
+  roadOff: 155,
   /**
    * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
    * blue, and the saturation after it; then the power the toned light is raised to, bloom's share, the sharpen's
