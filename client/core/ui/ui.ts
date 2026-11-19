@@ -65,6 +65,9 @@ export class Ui {
   /** The touch layer's state, which the app owns; whether the body it drives flies; and the buttons the last frame showed, a bit each. */
   touchPlay: TouchPlay | null = null;
   flyer = false;
+  /** A piece is being built, or a vehicle set down: the touch cluster is then the builder's. The app sets both. */
+  building = false;
+  placing = false;
   touchShown = 0;
   get touch(): boolean { return this.inputDevice === 2; }
   inspect = false;
@@ -331,7 +334,7 @@ export class Ui {
       if (plan && this.touchPlay && controls) {
         this.touchShown = touchBar(f, this.touchPlay, f.width - f.right - 12 - plan.map, f.top + 12, plan.map, this.settings.minimap);
         const slots = hud.hotbar.length;
-        if (play) this.touchShown |= touchControls(f, this.touchPlay, hud, this.flyer, slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0);
+        if (play) this.touchShown |= touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0);
       }
     } else if (this.creating) this.chat.close();
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.

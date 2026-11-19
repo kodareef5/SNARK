@@ -3,10 +3,10 @@
 // from the canvas's own size and insets, so it follows the window either way up.
 
 import type { HudModel } from "../hud.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CLOSE, T_JUMP, T_MAP, T_MENU, T_RELOAD, T_STANCE, T_USE, type TouchPlay } from "../touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_CANCEL, T_CHARACTER, T_CLOSE, T_DOWN, T_FOLLOW, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_USE, T_VIEW, type TouchPlay } from "../touch.ts";
 import { K_HOLD, K_IMAGE, fitText, textWidth, type UiFrame, type UiNode } from "./nodes.ts";
 import { S_KEY, S_LABEL, S_PROMPT } from "./style.ts";
-import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CHARACTER, I_CROUCH, I_JUMP, I_MENU, I_RELOAD, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
+import { BODY, ICON, ICON_COLUMNS, ICON_Y, IMAGE_TOUCH, I_AIM, I_ANCHOR, I_ATTACK, I_BAG, I_BRAKE, I_CANCEL, I_CHARACTER, I_CREATURE, I_CROUCH, I_DOWN, I_JUMP, I_LEFT, I_LIGHTS, I_MELEE, I_MENU, I_MORE, I_ORBIT, I_PLACE, I_PROPELLER, I_RELOAD, I_RIGHT, I_ROTATE, I_ROTOR, I_SNAP, I_SPRINT, I_UP, I_VARIANT, I_VIEW, I_WHISTLE, I_WINGS, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_KNOB, P_RING, P_ROUND, P_SQUARE, TOUCH_HEIGHT, TOUCH_URL, TOUCH_WIDTH, touchPixels } from "./touch-art.ts";
 
 /** Keys of the layer's pictures, which are never pressed: four to a button, then the stick's. */
 const KEY_TOUCH_ART = 3300000;
@@ -21,10 +21,15 @@ const GAP = 8;
  * Each is a distance from Attack's middle and an angle from straight right, turning up and over to the left. The
  * distances leave a finger's gap between neighbours, and between their boxes, which is what a press is tested against.
  */
-const ARC = 88, OUTER = 148;
-const JUMP_AT = 95, STANCE_AT = 140, AIM_AT = 185, RELOAD_AT = 172;
+const ARC = 88, OUTER = 156;
+/** The places on the arcs, by angle: three on the near one, four on the far one. Which button has which is the situation's. */
+const NEAR = [95, 140, 185] as const, FAR = [100, 125, 150, 175] as const;
+/** From one place to the next along the foot of the cluster, where a canvas too short for the far arc's top puts its two highest. */
+const ALONG = SMALL + GAP;
+/** What the body is doing, which decides the cluster. */
+export type Situation = "foot" | "flyer" | "building" | "placing";
 /** How far left of the canvas's right margin the cluster reaches, and how far above its foot. */
-const CLUSTER_W = ATTACK / 2 + OUTER + SMALL / 2, CLUSTER_H = ATTACK / 2 + ARC + BUTTON / 2;
+const CLUSTER_W = ATTACK / 2 + OUTER + SMALL / 2, CLUSTER_H = ATTACK / 2 + OUTER + SMALL / 2;
 const RADIANS = Math.PI / 180;
 
 /** From one vital to the next in their row: an icon and the room a finger's press of it takes. */
@@ -120,7 +125,7 @@ export function touchClose(f: UiFrame, t: TouchPlay): number {
  * is, which the cluster stands above where it would reach it, and `mapFoot` where the minimap ends, which the prompt's
  * pill stays below. Returns the bits of the buttons it showed.
  */
-export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, flyer: boolean, hotbarRight: number, hotbarTop: number, mapFoot: number): number {
+export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, situation: Situation, hotbarRight: number, hotbarTop: number, mapFoot: number): number {
   const left = f.left + MARGIN, right = f.width - f.right - MARGIN;
   let bottom = f.height - f.bottom - MARGIN;
   // Above the hotbar and the line over it that says what is loaded, where the cluster would reach them.
@@ -130,23 +135,80 @@ export function touchControls(f: UiFrame, t: TouchPlay, m: HudModel, flyer: bool
   part(f, KEY_TOUCH_ART + 900, P_RING, sx, sy, STICK_REACH * 2).alpha = t.stick ? 0.9 : 0.35;
   part(f, KEY_TOUCH_ART + 901, P_KNOB, sx + t.knobX, sy + t.knobY, 52).alpha = t.stick ? 1 : 0.4;
 
-  const driving = m.vehicle?.active === true;
+  const driving = m.vehicle?.active === true, v = driving ? m.vehicle! : null;
   const ax = right - ATTACK / 2, ay = bottom - ATTACK / 2;
   let shown = 0;
-  if (driving) shown |= button(f, t, T_JUMP, ax, ay, ATTACK, P_ROUND, I_BRAKE, "Brake");
-  else {
-    shown |= button(f, t, T_ATTACK, ax, ay, ATTACK, P_ROUND, I_ATTACK, "Attack");
-    shown |= button(f, t, T_JUMP, ax + ARC * Math.cos(JUMP_AT * RADIANS), ay - ARC * Math.sin(JUMP_AT * RADIANS), BUTTON, P_ROUND, flyer ? I_WINGS : I_JUMP, flyer ? "Take off or land" : "Jump");
-    if (!flyer) shown |= button(f, t, T_STANCE, ax + ARC * Math.cos(STANCE_AT * RADIANS), ay - ARC * Math.sin(STANCE_AT * RADIANS), BUTTON, P_ROUND, I_CROUCH, "Stance");
-    const armed = m.ammo !== "" || m.cone >= 0 || m.scope || m.holo;
-    if (armed || t.aiming) shown |= button(f, t, T_AIM, ax + ARC * Math.cos(AIM_AT * RADIANS), ay - ARC * Math.sin(AIM_AT * RADIANS), BUTTON, P_ROUND, I_AIM, "Aim", t.aiming);
-    if (m.ammo !== "") shown |= button(f, t, T_RELOAD, ax + OUTER * Math.cos(RELOAD_AT * RADIANS), ay - OUTER * Math.sin(RELOAD_AT * RADIANS), SMALL, P_ROUND, I_RELOAD, "Reload");
+  // Where the far arc's top would reach the minimap (a small phone on its side), its two highest places lie along
+  // the cluster's foot instead, left of the lowest.
+  const low = bottom - CLUSTER_H < mapFoot + GAP, last = FAR[FAR.length - 1]! * RADIANS;
+  // A button on the near arc (`place` 0 to 2) or the far one (3 to 6), `d` across.
+  const at = (b: number, place: number, d: number, icon: number, label: string, lit = false): void => {
+    const far = place >= NEAR.length, angle = (far ? FAR[place - NEAR.length]! : NEAR[place]!) * RADIANS, out = far ? OUTER : ARC;
+    if (low && (place === 3 || place === 4)) shown |= button(f, t, b, ax + OUTER * Math.cos(last) - ALONG * (place - 2), ay - OUTER * Math.sin(last), d, P_ROUND, icon, label, lit);
+    else shown |= button(f, t, b, ax + out * Math.cos(angle), ay - out * Math.sin(angle), d, P_ROUND, icon, label, lit);
+  };
+  const corner = (b: number, icon: number, label: string): void => { shown |= button(f, t, b, ax, ay, ATTACK, P_ROUND, icon, label); };
+  if (v?.rotor) {
+    // A helicopter: the collective under the thumb, yaw side by side above it, and the rest about them.
+    corner(T_JUMP, I_UP, "Collective up");
+    at(T_DOWN, 2, BUTTON, I_DOWN, "Collective down");
+    at(T_SNAP, 4, SMALL, I_LEFT, "Yaw left");
+    at(T_RELOAD, 3, SMALL, I_RIGHT, "Yaw right");
+    at(T_ROLL, 0, BUTTON, I_ROTOR, "Flight mode");
+    at(T_HOLD, 1, BUTTON, I_ANCHOR, "Hold to recover");
+    at(T_SHIFT, 5, SMALL, I_SPRINT, "Agile", t.shifted);
+    at(T_VIEW, 6, SMALL, I_VIEW, "View");
+  } else if (v?.boat) {
+    corner(T_JUMP, I_ANCHOR, "Neutral");
+    at(T_SHIFT, 1, BUTTON, I_PROPELLER, "Precision throttle", t.shifted);
+    at(T_VIEW, 0, BUTTON, I_VIEW, "View");
+  } else if (v) {
+    corner(T_JUMP, I_BRAKE, "Brake");
+    at(T_VIEW, 0, BUTTON, I_VIEW, "View");
+    if (v.lightMode >= 0) at(T_ORBIT, 1, BUTTON, I_LIGHTS, "Lights");
+  } else if (situation === "placing") {
+    corner(T_ATTACK, I_PLACE, "Place");
+    at(T_ROTATE, 0, BUTTON, I_RIGHT, "Turn right");
+    at(T_SNAP, 1, BUTTON, I_LEFT, "Turn left");
+    at(T_CANCEL, 2, BUTTON, I_CANCEL, "Cancel");
+  } else if (situation === "building") {
+    corner(T_ATTACK, I_PLACE, "Place");
+    at(T_ROTATE, 0, BUTTON, I_ROTATE, "Rotate");
+    at(T_RELOAD, 1, BUTTON, I_VARIANT, "Next variant");
+    at(T_SNAP, 2, BUTTON, I_SNAP, "Next snap point; hold for free placement");
+    at(T_RAISE, 3, SMALL, I_UP, "Raise");
+    at(T_LOWER, 4, SMALL, I_DOWN, "Lower");
+  } else {
+    corner(T_ATTACK, I_ATTACK, "Attack");
+    at(T_MORE, 3, SMALL, I_MORE, t.more ? "Back" : "More", t.more);
+    if (t.more) {
+      // The second page: a blow by hand, the view and the orbit camera, and the whistles to every creature that hears.
+      at(T_MELEE, 0, BUTTON, I_MELEE, "Melee");
+      at(T_VIEW, 1, BUTTON, I_VIEW, "View");
+      at(T_ORBIT, 2, BUTTON, I_ORBIT, "Orbit camera");
+      at(T_FOLLOW, 4, SMALL, I_WHISTLE, "Whistle: all follow");
+      at(T_STAY, 5, SMALL, I_ANCHOR, "Whistle: all stay");
+      at(T_SIC, 6, SMALL, I_CREATURE, "Whistle: attack this target");
+    } else {
+      const flyer = situation === "flyer";
+      at(T_JUMP, 0, BUTTON, flyer ? I_WINGS : I_JUMP, flyer ? "Take off or land" : "Jump");
+      if (flyer) { at(T_ROLL, 1, BUTTON, I_ROTATE, "Roll"); at(T_HOLD, 2, BUTTON, I_BRAKE, "Brake"); }
+      else {
+        at(T_STANCE, 1, BUTTON, I_CROUCH, "Stance");
+        const armed = m.ammo !== "" || m.cone >= 0 || m.scope || m.holo;
+        if (armed || t.aiming) at(T_AIM, 2, BUTTON, I_AIM, "Aim", t.aiming);
+        if (m.ammo !== "") at(T_RELOAD, 6, SMALL, I_RELOAD, "Reload");
+      }
+    }
   }
+  // At a wheel or a helm Shift is a way of going, with a button of its own, and the stick's rim does not press it.
+  t.rim = !driving;
   // What the world offers, as a pill by the thumb: the prompt without its key.
   const offer = usePrompt(m.prompt);
   if (offer !== "") {
     // Above the cluster, or on a canvas too short for that, to its left.
-    const above = bottom - (driving ? ATTACK : CLUSTER_H) - GAP - PILL, beside = right - (driving ? ATTACK : CLUSTER_W) - GAP, high = above >= mapFoot + GAP;
+    // Clear of the far arc's top, which is a little above the near one's.
+    const above = bottom - CLUSTER_H - GAP - PILL, beside = right - CLUSTER_W - ALONG * 2 - GAP, high = above >= mapFoot + GAP;
     const w = Math.max(96, Math.min((high ? right : beside) - left, Math.ceil(textWidth(offer, S_PROMPT)) + 44)), x = (high ? right : beside) - w, y = high ? above : bottom - PILL;
     pill(f, KEY_TOUCH_ART + T_USE * 4, x, y, w, PILL, t.held(T_USE));
     const n = f.add(KEY_TOUCH_BUTTON + T_USE, K_HOLD, x, y, w, PILL, S_PROMPT);

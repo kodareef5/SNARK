@@ -129,8 +129,14 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   const W = f.width;
   const H = f.height;
   // The corners anchored things keep to, and the minimap's side.
-  const left = f.left + MARGIN, top = touch ? touch.stackY : f.top + MARGIN, right = W - f.right - MARGIN, foot = H - f.bottom - MARGIN;
+  const left = f.left + MARGIN, right = W - f.right - MARGIN, foot = H - f.bottom - MARGIN;
   const MAP = touch ? touch.map : MINIMAP_SIZE;
+  // A vehicle's instruments. A finger's buttons say what they do, so by touch the panels lose their lines of keys (`lean`);
+  // and on a phone on its side the thumb's cluster has the place under the minimap, so they stand under the bar (`aside`).
+  const dash = m.vehicle?.active ? m.vehicle : null, lean = touch !== null, aside = touch !== null && dash !== null && W > H;
+  const dashW = dash?.rotor ? HELI_W : dash?.boat ? BOAT_W : DASH_W;
+  const dashH = lean ? (dash?.rotor ? 124 : dash?.boat ? 106 : 88) : dash?.rotor ? HELI_H : dash?.boat ? BOAT_H : DASH_H;
+  const top = touch ? touch.stackY + (aside ? dashH + 8 : 0) : f.top + MARGIN;
   const lh = lineHeight(S_TEXT);
   // The dark panel goes first, under everything else, and a holo-scope's tint with it.
   if (m.out) f.add(KEY_OUT, K_PANEL, 0, 0, W, H, S_DARK).alpha = 0.82;
@@ -196,9 +202,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
 
   // The car's instruments sit under the minimap and its clock, or in the minimap's place while it is hidden. A
   // helicopter's and a boat's are taller, with their state and their keys.
-  const dash = m.vehicle?.active ? m.vehicle : null;
-  const dashW = dash?.rotor ? HELI_W : dash?.boat ? BOAT_W : DASH_W, dashH = dash?.rotor ? HELI_H : dash?.boat ? BOAT_H : DASH_H;
-  const dashY = options.minimap ? mapY + MAP + 28 : mapY;
+  const dashY = aside ? touch.stackY : options.minimap ? mapY + MAP + 28 : mapY, dashX = aside ? left : right - dashW;
   if (mapTools) {
     const beside = dash && !options.minimap ? dashW + 4 : 0;
     const toggle = f.add(KEY_MINIMAP_TOGGLE, K_BUTTON, right - 32 - beside, mapY + (options.minimap ? MAP - 32 : 0), 32, 32, S_HUD_HIT);
@@ -219,8 +223,8 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     if (linked) f.text(KEY_JET_FUEL + 4, x + 10, y + 59, width - 20, S_MENU_NOTE, "Full suit · 2× recharge");
   }
   if (dash && !dash.rotor && !dash.boat) {
-    const x = right - DASH_W, y = dashY;
-    glass(f, KEY_VEHICLE, x, y, DASH_W, DASH_H);
+    const x = dashX, y = dashY;
+    glass(f, KEY_VEHICLE, x, y, DASH_W, dashH);
     f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(dash.speed * 3.6).toString().padStart(3, "0"));
     f.text(KEY_VEHICLE + 7, x + 64, y + 15, 40, S_MENU_NOTE, "km/h");
     f.text(KEY_VEHICLE + 1, x + DASH_W - 52, y + 6, 40, S_MENU_MAIN, dash.gear < 0 ? "R" : dash.gear === 0 ? "N" : `D${dash.gear}`);
@@ -228,12 +232,13 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     f.text(KEY_VEHICLE + 3, x + 12, y + 47, 100, S_MENU_NOTE, `${Math.round(dash.rpm / 100) * 100} rpm`);
     f.text(KEY_VEHICLE + 4, x + 118, y + 47, DASH_W - 130, S_MENU_NOTE, `Fuel ${Math.round(dash.fuel * 100)}%`);
     const warn = dash.flooding > .04 ? `TAKING WATER ${Math.round(dash.flooding * 100)}%` : dash.engineCondition <= .08 ? "ENGINE DAMAGED" : dash.handbrake ? "HANDBRAKE" : dash.brake > 0 ? "BRAKING" : "";
-    f.text(KEY_VEHICLE + 5, x + 12, y + 65, DASH_W - 24, warn ? S_WARNING : S_MENU_NOTE, warn || "W/S drive · A/D steer");
-    f.text(KEY_VEHICLE + 6, x + 12, y + 83, DASH_W - 24, S_MENU_NOTE, dash.flooding > .04 && dash.engineCondition <= .08 ? "E exit · Push ashore to repair" : dash.engineCondition <= .08 ? "F service · Repair engine" : dash.lightMode >= 0 ? `K / R3 lights · ${PATROL_LIGHT_MODES[dash.lightMode]}` : "Space brake · E exit");
+    if (warn || !lean) f.text(KEY_VEHICLE + 5, x + 12, y + 65, DASH_W - 24, warn ? S_WARNING : S_MENU_NOTE, warn || "W/S drive · A/D steer");
+    if (lean) { if (!warn && dash.lightMode >= 0) f.text(KEY_VEHICLE + 6, x + 12, y + 65, DASH_W - 24, S_MENU_NOTE, `Lights · ${PATROL_LIGHT_MODES[dash.lightMode]}`); }
+    else f.text(KEY_VEHICLE + 6, x + 12, y + 83, DASH_W - 24, S_MENU_NOTE, dash.flooding > .04 && dash.engineCondition <= .08 ? "E exit · Push ashore to repair" : dash.engineCondition <= .08 ? "F service · Repair engine" : dash.lightMode >= 0 ? `K / R3 lights · ${PATROL_LIGHT_MODES[dash.lightMode]}` : "Space brake · E exit");
   }
   if (dash?.rotor) {
-    const v = dash, x = right - HELI_W, y = dashY, line = HELI_W - 24;
-    glass(f, KEY_VEHICLE, x, y, HELI_W, HELI_H);
+    const v = dash, x = dashX, y = dashY, line = HELI_W - 24;
+    glass(f, KEY_VEHICLE, x, y, HELI_W, dashH);
     f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(v.speed * 3.6).toString().padStart(3, "0"));
     f.text(KEY_VEHICLE + 10, x + 64, y + 15, 40, S_MENU_NOTE, "km/h");
     f.text(KEY_VEHICLE + 1, x + HELI_W - 104, y + 15, 92, v.recovery ? S_WARNING : S_MENU_NOTE, v.recovery ? "RECOVERING" : v.direct ? "DIRECT" : "ASSISTED");
@@ -242,26 +247,33 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     f.text(KEY_VEHICLE + 4, x + 12, y + 65, line, S_MENU_NOTE, `${v.altitude.toFixed(1)} m AGL · ${v.vertical >= 0 ? "+" : ""}${v.vertical.toFixed(1)} m/s`);
     f.text(KEY_VEHICLE + 5, x + 12, y + 83, line, S_MENU_NOTE, `Collective ${Math.round(v.collective * 100)}% · ${v.engineOn ? "ENGINE ON" : "ENGINE OFF"}`);
     const worn = v.rotorCondition < .7 || v.engineCondition < .7;
-    f.text(KEY_VEHICLE + 6, x + 12, y + 101, line, worn ? S_WARNING : S_MENU_NOTE, worn ? `Engine ${Math.round(v.engineCondition * 100)}% · Rotor ${Math.round(v.rotorCondition * 100)}%` : "W/S pitch · A/D bank · Q/R yaw");
-    f.text(KEY_VEHICLE + 7, x + 12, y + 119, line, S_MENU_NOTE, v.engineOn ? "Space/Ctrl collective · Shift agile" : "Hold Space to start and lift");
-    f.text(KEY_VEHICLE + 8, x + 12, y + 137, line, S_MENU_NOTE, "C flight mode · Hold X recover");
-    f.text(KEY_VEHICLE + 9, x + 12, y + 155, line, S_MENU_NOTE, v.grounded ? "V cockpit/chase · E exit" : "V cockpit/chase · Land to exit");
+    if (lean) f.text(KEY_VEHICLE + 6, x + 12, y + 101, line, worn ? S_WARNING : S_MENU_NOTE, worn ? `Engine ${Math.round(v.engineCondition * 100)}% · Rotor ${Math.round(v.rotorCondition * 100)}%` : v.engineOn ? (v.grounded ? "On the ground" : "Land to get out") : "Hold the collective up to start");
+    else {
+      f.text(KEY_VEHICLE + 6, x + 12, y + 101, line, worn ? S_WARNING : S_MENU_NOTE, worn ? `Engine ${Math.round(v.engineCondition * 100)}% · Rotor ${Math.round(v.rotorCondition * 100)}%` : "W/S pitch · A/D bank · Q/R yaw");
+      f.text(KEY_VEHICLE + 7, x + 12, y + 119, line, S_MENU_NOTE, v.engineOn ? "Space/Ctrl collective · Shift agile" : "Hold Space to start and lift");
+      f.text(KEY_VEHICLE + 8, x + 12, y + 137, line, S_MENU_NOTE, "C flight mode · Hold X recover");
+      f.text(KEY_VEHICLE + 9, x + 12, y + 155, line, S_MENU_NOTE, v.grounded ? "V cockpit/chase · E exit" : "V cockpit/chase · Land to exit");
+    }
   }
   if (dash?.boat) {
-    const v = dash, x = right - BOAT_W, y = dashY, line = BOAT_W - 24;
-    glass(f, KEY_VEHICLE, x, y, BOAT_W, BOAT_H);
+    const v = dash, x = dashX, y = dashY, line = BOAT_W - 24;
+    glass(f, KEY_VEHICLE, x, y, BOAT_W, dashH);
     f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(v.speed * 1.94384).toString().padStart(2, "0"));
     f.text(KEY_VEHICLE + 10, x + 64, y + 15, 40, S_MENU_NOTE, "kn");
     f.text(KEY_VEHICLE + 1, x + BOAT_W - 104, y + 15, 92, S_MENU_NOTE, v.gear < 0 ? "REVERSE" : v.gear > 0 ? "AHEAD" : "NEUTRAL");
     f.add(KEY_VEHICLE + 2, K_BAR, x + 12, y + 41, line, 3, S_MENU_FOCUS).value = Math.min(1, v.rpm / v.redline);
     f.text(KEY_VEHICLE + 3, x + 12, y + 47, line, S_MENU_NOTE, `${Math.round(v.rpm / 100) * 100} rpm · Fuel ${Math.round(v.fuel * 100)}%`);
     const alarm = v.capsized ? "CAPSIZED - E to escape" : v.flooding >= .5 ? `FLOODING ${Math.round(v.flooding * 100)}% - E to escape` : v.flooding > .04 ? `TAKING WATER ${Math.round(v.flooding * 100)}% - repair hull` : "";
-    f.text(KEY_VEHICLE + 4, x + 12, y + 65, line, alarm ? S_WARNING : S_MENU_NOTE, alarm || `Hull ${Math.round(v.hullCondition * 100)}% · Engine ${Math.round(v.engineCondition * 100)}%`);
-    f.text(KEY_VEHICLE + 5, x + 12, y + 83, line, S_MENU_NOTE, v.precision ? "PRECISION THROTTLE" : v.engineOn ? "ENGINE ON" : "W/S to start engine");
-    f.text(KEY_VEHICLE + 6, x + 12, y + 101, line, S_MENU_NOTE, "W/S ahead/reverse · A/D steer");
-    f.text(KEY_VEHICLE + 7, x + 12, y + 119, line, S_MENU_NOTE, "Space neutral · Shift precision");
-    f.text(KEY_VEHICLE + 8, x + 12, y + 137, line, S_MENU_NOTE, "V helm/chase · Mouse look");
-    f.text(KEY_VEHICLE + 9, x + 12, y + 155, line, S_MENU_NOTE, "E leave helm · F cargo/service");
+    const escape = lean ? "get out" : "E to escape";
+    const alarmed = alarm.replace("E to escape", escape);
+    f.text(KEY_VEHICLE + 4, x + 12, y + 65, line, alarm ? S_WARNING : S_MENU_NOTE, alarmed || `Hull ${Math.round(v.hullCondition * 100)}% · Engine ${Math.round(v.engineCondition * 100)}%`);
+    f.text(KEY_VEHICLE + 5, x + 12, y + 83, line, S_MENU_NOTE, v.precision ? "PRECISION THROTTLE" : v.engineOn ? "ENGINE ON" : lean ? "Push the stick to start the engine" : "W/S to start engine");
+    if (!lean) {
+      f.text(KEY_VEHICLE + 6, x + 12, y + 101, line, S_MENU_NOTE, "W/S ahead/reverse · A/D steer");
+      f.text(KEY_VEHICLE + 7, x + 12, y + 119, line, S_MENU_NOTE, "Space neutral · Shift precision");
+      f.text(KEY_VEHICLE + 8, x + 12, y + 137, line, S_MENU_NOTE, "V helm/chase · Mouse look");
+      f.text(KEY_VEHICLE + 9, x + 12, y + 155, line, S_MENU_NOTE, "E leave helm · F cargo/service");
+    }
   }
 
   const barW = 150;

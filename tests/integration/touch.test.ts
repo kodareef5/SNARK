@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CLOSE, T_JUMP, T_MAP, T_MENU, T_RELOAD, T_STANCE, T_USE } from "../../client/core/touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_USE, T_VIEW } from "../../client/core/touch.ts";
+import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
 import { KEY_HOTBAR, KEY_MINIMAP, KEY_PROMPT, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_INV_ACTION, KEY_INV_HALF, KEY_INV_INFO, KEY_INV_SLOT, KEY_INV_USE } from "../../client/core/ui/inventory.ts";
+import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { KEY_MENU, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
 import { K_HOLD, MIN_WIDTH, SCALE_FLOOR, textWidth } from "../../client/core/ui/nodes.ts";
-import { BTN_JUMP, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -74,7 +77,7 @@ test("the touch layer fits every phone and tablet, either way up: inside the scr
     expect(f.find(KEY_VITAL + 1)!.y, where).toBeLessThan(f.height / 3);
     // The cluster is an arc about Attack in the corner: each of the rest is a finger's gap clear of it and of its neighbours.
     const middle = (which: number): [number, number, number] => { const n = f.find(KEY_TOUCH_BUTTON + which)!; return [n.x + n.w / 2, n.y + n.h / 2, n.w / 2]; };
-    const around = [T_JUMP, T_STANCE, T_AIM, T_RELOAD, T_ATTACK].map(middle);
+    const around = [T_JUMP, T_STANCE, T_AIM, T_RELOAD, T_MORE, T_ATTACK].map(middle);
     for (let i = 0; i < around.length; i++) for (let j = i + 1; j < around.length; j++) expect(Math.hypot(around[i]![0] - around[j]![0], around[i]![1] - around[j]![1]) - around[i]![2] - around[j]![2], `${where}: buttons ${i} and ${j}`).toBeGreaterThanOrEqual(3.9);
     const attack = f.find(KEY_TOUCH_BUTTON + T_ATTACK)!;
     expect(attack.x + attack.w, where).toBeCloseTo(f.width - r - 12, 5);
@@ -168,4 +171,129 @@ test("the layer follows the last thing used: a key or a pad's stick puts it away
   app.pointer(0, KEY_HOTBAR, 0, 0, 0, 0);
   run(50);
   expect(shown()).toBe(false);
+});
+
+test("the bag by touch: a stack picked up is used with Use, and Half puts down half of it", () => {
+  const h = new Harness({}, 1, 60, { dev: true }), app = phone(h, "bag");
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, 844, 390));
+  run(500);
+  for (const line of ["enablecheats", "give stone 150", "give berry 5"]) {
+    app.key("Backquote", true); app.textInput(KEY_CONSOLE_INPUT, line); app.key("Enter", true); app.key("Backquote", true);
+    run(300);
+  }
+  const rec = h.host.records.byPid.get(h.client(app.session)!.pid)!, inv = h.host.items.inv(rec);
+  h.host.survival.add(rec, V_FOOD, -30);
+  // A finger, after the keys that typed the cheats: the bar's Bag opens the screen.
+  const press = (key: number): void => { app.pointer(0, key, 0, 0, 0, 1); app.pointer(1, key, 0, 0, 0, 1); run(60); };
+  press(KEY_HOTBAR);
+  press(KEY_TOUCH_BUTTON + T_BAG);
+  const f = app.ui.frame, slot = (s: number): number => KEY_INV_SLOT + s * 3;
+  expect([app.ui.inventory.open, f.find(KEY_INV_USE) !== null, f.find(KEY_INV_HALF)!.text, f.find(KEY_INV_INFO)!.text]).toEqual([true, true, "Half", "press a stack to pick it up"]);
+  // The row's six buttons stand side by side, with their words whole.
+  const row = [KEY_INV_USE, KEY_INV_HALF, KEY_INV_ACTION, KEY_INV_ACTION + 3].map((k) => f.find(k)!);
+  for (let i = 1; i < row.length; i++) expect(row[i]!.x).toBeGreaterThanOrEqual(row[i - 1]!.x + row[i - 1]!.w);
+  for (const b of row) expect(textWidth(b.text, b.style)).toBeLessThanOrEqual(b.w);
+  // Eat a berry: pick the stack up, then Use.
+  const berries = app.session.inventory!.item.indexOf(h.reg.index.get("core:berry")!), food = h.host.survival.value(rec, V_FOOD);
+  press(slot(berries));
+  expect(app.ui.inventory.held).toBe(berries);
+  press(KEY_INV_USE);
+  run(300);
+  expect([inv.count[berries], app.ui.inventory.held]).toEqual([4, -1]);
+  expect(h.host.survival.value(rec, V_FOOD)).toBeGreaterThan(food + 1.4);
+  // Half of the hundred stones to an empty slot.
+  const stones = app.session.inventory!.item.indexOf(h.reg.index.get("core:stone")!), empty = app.session.inventory!.item.indexOf(0, 12);
+  expect(inv.count[stones]).toBe(100);
+  press(slot(stones));
+  press(KEY_INV_HALF);
+  expect(f.find(KEY_INV_HALF)!.label).toBe("Half of the stack will be put down");
+  press(slot(empty));
+  run(300);
+  expect([inv.count[stones], inv.count[empty]]).toEqual([50, 50]);
+  // Nothing picked up, Use and Half do nothing.
+  press(KEY_INV_USE); press(KEY_INV_HALF);
+  expect(app.ui.inventory.held).toBe(-1);
+  // A mouse's screen has no such buttons, and its hint names its buttons.
+  app.key("KeyW", true); app.key("KeyW", false);
+  run(60);
+  expect([f.find(KEY_INV_USE), f.find(KEY_INV_HALF), f.find(KEY_INV_INFO)!.text.startsWith("left click")]).toEqual([null, null, true]);
+});
+
+test("each situation has its own cluster on the same arcs: the second page, building, placing, a flyer, a car, a boat and a helicopter", () => {
+  const SITUATIONS: [string, (app: App) => void, number[], number[]][] = [
+    ["the second page", (app) => { app.touch.more = true; }, [T_ATTACK, T_MORE, T_MELEE, T_VIEW, T_ORBIT, T_FOLLOW, T_STAY, T_SIC], [T_JUMP, T_STANCE, T_AIM, T_RELOAD]],
+    ["building", (app) => { app.ui.building = true; }, [T_ATTACK, T_ROTATE, T_RELOAD, T_SNAP, T_RAISE, T_LOWER], [T_JUMP, T_STANCE, T_MORE]],
+    ["placing a vehicle", (app) => { app.ui.placing = true; }, [T_ATTACK, T_ROTATE, T_SNAP, T_CANCEL], [T_JUMP, T_STANCE, T_MORE, T_RAISE]],
+    ["a flyer", (app) => { app.ui.flyer = true; }, [T_ATTACK, T_JUMP, T_ROLL, T_HOLD, T_MORE], [T_STANCE, T_AIM]],
+    ["a car", (app) => { Object.assign(app.hud, { vehicle: Object.assign(app.vehicleTelemetry, { active: true, rotor: false, boat: false, lightMode: 0 }) }); }, [T_JUMP, T_VIEW, T_ORBIT], [T_ATTACK, T_STANCE, T_MORE]],
+    ["a boat", (app) => { Object.assign(app.hud, { vehicle: Object.assign(app.vehicleTelemetry, { active: true, rotor: false, boat: true }) }); }, [T_JUMP, T_SHIFT, T_VIEW], [T_ATTACK, T_STANCE, T_MORE]],
+    ["a helicopter", (app) => { Object.assign(app.hud, { vehicle: Object.assign(app.vehicleTelemetry, { active: true, rotor: true, boat: false }) }); }, [T_JUMP, T_DOWN, T_SNAP, T_RELOAD, T_ROLL, T_HOLD, T_SHIFT, T_VIEW], [T_ATTACK, T_STANCE, T_MORE]],
+  ];
+  for (const [what, set, has, lacks] of SITUATIONS) for (const [name, w, h, insets] of WINDOWS) {
+    const net = new Harness(), app = phone(net, "arc");
+    insets.forEach((v, i) => (app.insets[i] = v));
+    app.ui.settings.muted = false;
+    net.run(600, (now) => app.frame(now, w, h));
+    const hud = app.hud;
+    hud.prompt = "E  exit vehicle";
+    while (hud.hotbar.length < 10) hud.hotbar.push({ tint: -1, label: "", number: "" });
+    set(app);
+    app.ui.build(w / h, hud, app.session);
+    const f = app.ui.frame, where = `${what}, ${name}`, unit = h / f.height, [l, t, r, b] = insets.map((v) => v / unit) as [number, number, number, number];
+    for (const k of has) expect(f.find(KEY_TOUCH_BUTTON + k), `${where}: button ${k}`).not.toBeNull();
+    for (const k of lacks) expect(f.find(KEY_TOUCH_BUTTON + k), `${where}: button ${k}`).toBeNull();
+    for (const k of has) expect(app.ui.touchShown & (1 << k), `${where}: bit ${k}`).toBeGreaterThan(0);
+    const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive && n.key !== KEY_ZONE_MOVE && n.key !== KEY_ZONE_LOOK);
+    for (const n of controls) {
+      const at = `${where}: key ${n.key} "${n.label}"`;
+      expect(n.x >= l - 0.01 && n.y >= t - 0.01 && n.x + n.w <= f.width - r + 0.01 && n.y + n.h <= f.height - b + 0.01, at).toBe(true);
+      if (n.kind === K_HOLD) expect(Math.min(n.w, n.h), at).toBeGreaterThanOrEqual(44);
+      if (n.text) expect(textWidth(n.text, n.style), at).toBeLessThanOrEqual(n.w + 0.01);
+    }
+    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+      const p = controls[i]!, q = controls[j]!;
+      expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h, `${where}: ${p.key} "${p.label}" over ${q.key} "${q.label}"`).toBe(false);
+    }
+    // Round buttons keep a finger's gap between them.
+    const round = has.map((k) => f.find(KEY_TOUCH_BUTTON + k)!).map((n) => [n.x + n.w / 2, n.y + n.h / 2, n.w / 2] as const);
+    for (let i = 0; i < round.length; i++) for (let j = i + 1; j < round.length; j++) expect(Math.hypot(round[i]![0] - round[j]![0], round[i]![1] - round[j]![1]) - round[i]![2] - round[j]![2], `${where}: buttons ${has[i]} and ${has[j]}`).toBeGreaterThanOrEqual(3.9);
+  }
+});
+
+test("More turns the cluster's page and back, a way of going is held on by its button, and the stick's rim sprints only on foot", () => {
+  const h = new Harness(), app = phone(h, "pages");
+  const run = (ms: number) => h.run(ms, (now) => app.frame(now, 844, 390));
+  const press = (which: number): void => { app.pointer(0, KEY_TOUCH_BUTTON + which, 0, 0, 0, 2); app.pointer(1, KEY_TOUCH_BUTTON + which, 0, 0, 0, 2); run(50); };
+  run(600);
+  const f = app.ui.frame, has = (which: number): boolean => f.find(KEY_TOUCH_BUTTON + which) !== null;
+  expect([has(T_JUMP), has(T_MELEE)]).toEqual([true, false]);
+  press(T_MORE);
+  expect([has(T_JUMP), has(T_MELEE), has(T_VIEW), f.find(KEY_TOUCH_BUTTON + T_MORE)!.label]).toEqual([false, true, true, "Back"]);
+  // A blow by hand is held as long as the finger is.
+  app.pointer(0, KEY_TOUCH_BUTTON + T_MELEE, 0, 0, 0, 2);
+  expect(app.controls.buttons & BTN_MELEE).toBe(BTN_MELEE);
+  app.pointer(1, KEY_TOUCH_BUTTON + T_MELEE, 0, 0, 0, 2);
+  expect(app.controls.buttons).toBe(0);
+  press(T_MORE);
+  expect([has(T_JUMP), has(T_MELEE)]).toEqual([true, false]);
+  // On foot the rim sprints.
+  app.pointer(0, KEY_ZONE_MOVE, 150, 350, 0, 1);
+  app.pointer(2, KEY_ZONE_MOVE, 150, 280, 0, 1);
+  expect(app.controls.buttons & BTN_SPRINT).toBe(BTN_SPRINT);
+  app.pointer(1, KEY_ZONE_MOVE, 150, 280, 0, 1);
+  // At a helm it does not, and Precision holds Shift from one press to the next; leaving the helm lets it go.
+  Object.assign(app.vehicleTelemetry, { active: true, rotor: false, boat: true });
+  Object.assign(app.hud, { vehicle: app.vehicleTelemetry });
+  app.ui.build(844 / 390, app.hud, app.session);
+  expect([has(T_SHIFT), app.touch.rim]).toEqual([true, false]);
+  app.pointer(0, KEY_ZONE_MOVE, 150, 350, 0, 1);
+  app.pointer(2, KEY_ZONE_MOVE, 150, 280, 0, 1);
+  expect([app.controls.moveZ, app.controls.buttons & BTN_SPRINT]).toEqual([1, 0]);
+  app.pointer(1, KEY_ZONE_MOVE, 150, 280, 0, 1);
+  app.pointer(0, KEY_TOUCH_BUTTON + T_SHIFT, 0, 0, 0, 2);
+  app.pointer(1, KEY_TOUCH_BUTTON + T_SHIFT, 0, 0, 0, 2);
+  expect([app.touch.shifted, app.controls.buttons & BTN_SPRINT]).toEqual([true, BTN_SPRINT]);
+  app.vehicleTelemetry.stop();
+  run(100);
+  expect([app.touch.shifted, app.controls.buttons & BTN_SPRINT, has(T_SHIFT)]).toEqual([false, 0, false]);
 });

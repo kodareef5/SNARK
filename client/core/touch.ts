@@ -18,7 +18,14 @@ export const KEY_ZONE_MOVE = 5600;
 export const KEY_ZONE_LOOK = 5601;
 export const KEY_TOUCH_BUTTON = 5610;
 export const T_ATTACK = 0, T_JUMP = 1, T_AIM = 2, T_STANCE = 3, T_RELOAD = 4, T_USE = 5, T_MENU = 6, T_BAG = 7, T_CHARACTER = 8, T_MAP = 9, T_CLOSE = 10;
-export const T_COUNT = 11;
+/** More turns the cluster to its second page: a blow by hand, the view, the orbit camera and the whistles. */
+export const T_MORE = 11, T_MELEE = 12, T_VIEW = 13, T_ORBIT = 14, T_FOLLOW = 15, T_STAY = 16, T_SIC = 17;
+/** Building and placing: turn the piece, the next snap (held: free placement), up and down, and leave off. */
+export const T_ROTATE = 18, T_SNAP = 19, T_RAISE = 20, T_LOWER = 21, T_CANCEL = 22;
+/** Flying and driving: down, a roll or a flight mode, a brake or a recovery, and a way of going held on (precise, agile). */
+export const T_DOWN = 23, T_ROLL = 24, T_HOLD = 25, T_SHIFT = 26;
+/** Buttons have a bit each in what a frame showed, so there are at most 31. */
+export const T_COUNT = 27;
 
 /** Units from the stick's middle to its rim, the still middle, and the share of the way out at which it sprints. */
 export const STICK_REACH = 60;
@@ -30,9 +37,12 @@ export const LOOK_GAIN = 2.2;
 export const LONG_MS = 400;
 
 /** What a tap of a button presses for a moment. */
-const TAPS: Readonly<Record<number, string>> = { [T_MENU]: "Escape", [T_BAG]: "KeyI", [T_CHARACTER]: "KeyP", [T_MAP]: "KeyM", [T_CLOSE]: "Escape" };
-/** What a button holds down while a finger is on it. */
-const HELD: Readonly<Record<number, string>> = { [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE" };
+const TAPS: Readonly<Record<number, string>> = {
+  [T_MENU]: "Escape", [T_BAG]: "KeyI", [T_CHARACTER]: "KeyP", [T_MAP]: "KeyM", [T_CLOSE]: "Escape", [T_CANCEL]: "Escape",
+  [T_VIEW]: "KeyV", [T_ORBIT]: "KeyK", [T_FOLLOW]: "KeyJ", [T_STAY]: "KeyU", [T_SIC]: "Period", [T_ROTATE]: "KeyE", [T_RAISE]: "ArrowUp", [T_LOWER]: "ArrowDown",
+};
+/** What a button holds down while a finger is on it. The same key means what the body's state makes of it: R reloads on foot and yaws a helicopter. */
+const HELD: Readonly<Record<number, string>> = { [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE", [T_MELEE]: "KeyG", [T_SNAP]: "KeyQ", [T_DOWN]: "ControlLeft", [T_ROLL]: "KeyC", [T_HOLD]: "KeyX" };
 
 export class TouchPlay {
   /** The finger on each zone, as the shell numbers it plus one; 0 for none. */
@@ -53,8 +63,12 @@ export class TouchPlay {
   private readonly finger = new Int32Array(T_COUNT);
   private readonly since = new Float64Array(T_COUNT);
   private readonly long = new Uint8Array(T_COUNT);
-  /** Aim stays on from one press to the next. */
+  /** Aim stays on from one press to the next, and so do the cluster's second page and the way of going that Shift holds. */
   aiming = false;
+  more = false;
+  shifted = false;
+  /** Whether the stick's rim sprints: on foot and on a mount, not at a wheel or a helm, where Shift means something else. */
+  rim = true;
 
   get stick(): boolean { return this.moveFinger !== 0; }
   held(button: number): boolean { return this.finger[button] !== 0; }
@@ -85,6 +99,8 @@ export class TouchPlay {
       this.finger[b] = who; this.since[b] = nowMs; this.long[b] = 0;
       if (b === T_ATTACK) { t.mouse(0, true); this.aimX = x; this.aimY = y; }
       else if (b === T_AIM) t.mouse(2, (this.aiming = !this.aiming));
+      else if (b === T_MORE) this.more = !this.more;
+      else if (b === T_SHIFT) t.key("ShiftLeft", (this.shifted = !this.shifted));
       else if (HELD[b]) t.key(HELD[b]!, true);
       else if (TAPS[b]) { t.key(TAPS[b]!, true); t.key(TAPS[b]!, false); }
     } else if (who !== this.finger[b]) return true;
@@ -104,13 +120,15 @@ export class TouchPlay {
       else if (b === T_STANCE && !this.long[b] && nowMs - this.since[b]! >= LONG_MS) { this.long[b] = 1; t.key("KeyX", true); t.key("KeyX", false); }
     }
     if (this.aiming && (shown & (1 << T_AIM)) === 0) t.mouse(2, (this.aiming = false));
+    if (this.shifted && (shown & (1 << T_SHIFT)) === 0) t.key("ShiftLeft", (this.shifted = false));
+    if (this.more && (shown & (1 << T_MORE)) === 0) this.more = false;
   }
 
   /** Forgets every finger, as the controls forget every key (App.blur): a menu opened, or the page lost its focus. */
   reset(): void {
     this.moveFinger = this.lookFinger = 0;
     this.knobX = this.knobY = 0;
-    this.sprinting = this.aiming = false;
+    this.sprinting = this.aiming = this.shifted = this.more = false;
     this.finger.fill(0);
   }
 
@@ -133,7 +151,7 @@ export class TouchPlay {
     this.knobX = dx; this.knobY = dy;
     const out = Math.min(far, STICK_REACH), push = out <= STICK_DEAD ? 0 : (out - STICK_DEAD) / (STICK_REACH - STICK_DEAD);
     t.move(push > 0 ? (dx / out) * push : 0, push > 0 ? ((0 - dy) / out) * push : 0);
-    const sprint = out >= STICK_REACH * SPRINT_AT;
+    const sprint = this.rim && out >= STICK_REACH * SPRINT_AT;
     if (sprint !== this.sprinting) t.key("ShiftLeft", (this.sprinting = sprint));
   }
 

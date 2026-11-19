@@ -74,6 +74,9 @@ export const KEY_VEHICLE_TAB = 2901;
 export const KEY_VEHICLE_RECOVER = 2902;
 export const KEY_VEHICLE_FLIP = 2903;
 export const KEY_VEHICLE_PULL = 2904;
+/** By touch, with a stack picked up: use it, as a right click does, and take half of it, as a middle click does. */
+export const KEY_INV_USE = 2905;
+export const KEY_INV_HALF = 2906;
 /** A slot's colour by quality: none for primitive, then green, blue, purple, gold and cyan, as ARK's tiers read. */
 const QUALITY_TINT: readonly number[] = [-1, 0x3f7a42, 0x31579a, 0x6c4290, 0x8f7426, 0x2b8790];
 
@@ -218,16 +221,16 @@ export class InventoryScreen {
       });
       return;
     }
+    if (kind === 0 && key === KEY_INV_HALF) { if (this.held >= 0) this.half = !this.half; return; }
+    if (kind === 0 && key === KEY_INV_USE) {
+      const from = this.held, mine = this.box(session, this.heldBox);
+      if (from >= 0 && mine) this.use(this.heldBox, from, mine, session);
+      return;
+    }
     const inv = this.box(session, box);
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
-      // Only a carried item can be used, but in an open creature's inventory a torpor dose is fed to it and a saddle put on.
-      const onCreature = (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0 || (this.registry?.saddleFits[inv.item[slot]!] ?? 0) !== 0;
-      if (box === BOX_SELF && this.registry?.vehicleDeploy[inv.item[slot]!] && !(inv.flags[slot]! & FLAG_BLUEPRINT)) {
-        this.onDeploy?.(slot); if (this.onDeploy) this.close(session);
-      } else if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
-      else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && onCreature) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
-      this.held = -1;
+      this.use(box, slot, inv, session);
       return;
     }
     if (this.held < 0) {
@@ -262,6 +265,17 @@ export class InventoryScreen {
       w.u16(count);
       w.u16(src.item[from]!);
     });
+  }
+
+  /** Uses what is in `slot` of `box`: a right click, or by touch the Use button on a stack picked up. */
+  private use(box: number, slot: number, inv: Inventory, session: ClientSession): void {
+    // Only a carried item can be used, but in an open creature's inventory a torpor dose is fed to it and a saddle put on.
+    const onCreature = (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0 || (this.registry?.saddleFits[inv.item[slot]!] ?? 0) !== 0;
+    if (box === BOX_SELF && this.registry?.vehicleDeploy[inv.item[slot]!] && !(inv.flags[slot]! & FLAG_BLUEPRINT)) {
+      this.onDeploy?.(slot); if (this.onDeploy) this.close(session);
+    } else if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
+    else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && onCreature) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
+    this.held = -1;
   }
 
   build(f: UiFrame, session: ClientSession | null, reg: Registry | null, palette: Uint8Array | null): void {
@@ -489,9 +503,17 @@ export class InventoryScreen {
       top += infoH;
       grid(own, BOX_SELF, KEY_INV_SLOT, top, own.armor, ARMOR_SLOTS);
       top += rows(ARMOR_SLOTS) + 4;
-      const bw = (w - PAD * 2 - GAP * (ACTIONS.length - 1)) / ACTIONS.length;
+      // A finger has no right or middle button: Use and Half stand first in the row, for the stack picked up.
+      const extra = this.touch ? 2 : 0, across = ACTIONS.length + extra;
+      const bw = (w - PAD * 2 - GAP * (across - 1)) / across;
+      for (let i = 0; i < extra; i++) {
+        const b = f.add(i === 0 ? KEY_INV_USE : KEY_INV_HALF, K_BUTTON, x0 + PAD + i * (bw + GAP), top, bw, 24, this.held >= 0 && i === 1 && this.half ? S_SLOT_HELD : S_BUTTON);
+        b.text = i === 0 ? "Use" : "Half";
+        b.label = i === 0 ? "Use the stack picked up" : this.half ? "Half of the stack will be put down" : "Put down half of the stack picked up";
+        b.interactive = true;
+      }
       ACTIONS.forEach((label, i) => {
-        const b = f.add(KEY_INV_ACTION + i, K_BUTTON, x0 + PAD + i * (bw + GAP), top, bw, 24, S_BUTTON);
+        const b = f.add(KEY_INV_ACTION + i, K_BUTTON, x0 + PAD + (i + extra) * (bw + GAP), top, bw, 24, S_BUTTON);
         b.text = label;
         b.interactive = true;
       });
@@ -501,7 +523,7 @@ export class InventoryScreen {
     const shownBox = this.held >= 0 ? this.heldBox : this.hoverBox;
     const shown = this.held >= 0 ? this.held : this.hover;
     const inv = this.box(session, shownBox);
-    let info = this.touch ? (this.held >= 0 ? "press a slot to put it down" : "press a stack to pick it up") : this.held >= 0 ? "click a slot to put it down" : "left click: pick up   middle: half   right: use";
+    let info = this.touch ? (this.held >= 0 ? "press a slot to put it down, or Use, Half or Drop it" : "press a stack to pick it up") : this.held >= 0 ? "click a slot to put it down" : "left click: pick up   middle: half   right: use";
     if (inv && shown >= 0 && shown < inv.cap && inv.item[shown] !== 0) {
       const item = inv.item[shown]!;
       const spoil = inv.spoilAt[shown]!;

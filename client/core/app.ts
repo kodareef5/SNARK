@@ -1059,6 +1059,8 @@ export class App {
     ui.frame.unit = this.unit;
     ui.frame.left = this.insets[0]! / this.unit; ui.frame.top = this.insets[1]! / this.unit; ui.frame.right = this.insets[2]! / this.unit; ui.frame.bottom = this.insets[3]! / this.unit;
     ui.flyer = this.controls.onFlyer;
+    ui.building = this.builder.active;
+    ui.placing = this.vehiclePlacement.active;
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
     const session = this.session;
     const hud = this.hud;
