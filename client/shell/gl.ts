@@ -74,6 +74,8 @@ const FORMATS: Readonly<Record<string | number, readonly number[]>> = {
 /** The most ms a want of memory goes unknown on a card that never catches up with the page between two frames. */
 const ASK_MOST_MS = 5000;
 const RUNS = Math.max(MAX_DRAWS, MAX_CASTERS);
+/** KHR_parallel_shader_compile's query of whether a program has linked, which does not wait. */
+const COMPLETION_STATUS = 0x91b1;
 
 export class GlRenderer {
   readonly gl: WebGL2RenderingContext;
@@ -107,6 +109,9 @@ export class GlRenderer {
   private readonly linked = new Map<string, Program>();
   private warmed: Tier | null = null;
   private made: Program[] = [];
+  /** Each tier's programs as `ready` asks after them, and whether the card links away from the page. */
+  private readonly asked = new Map<Tier, Program[]>();
+  private parallel = false;
   /** Where the frame's GPU time goes (passes.ts), if anything times it. */
   passes: PassClock | null = null;
   /** A pixel for each map a material lacks or has not been sent, made the first time a frame draws with materials. */
@@ -242,7 +247,8 @@ export class GlRenderer {
     this.worldSide = [0, 0, 0];
     this.current = this.warmed = this.mapped = this.vao = this.arrayBuffer = null;
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
-    gl.getExtension("KHR_parallel_shader_compile");
+    this.parallel = gl.getExtension("KHR_parallel_shader_compile") !== null;
+    this.asked.clear();
     this.multi = gl.getExtension("WEBGL_multi_draw");
     this.buffers.clear();
     this.quads.length = this.quadBytes.length = 0;
@@ -492,11 +498,23 @@ export class GlRenderer {
   }
 
   /** Program `n` of the frame's tier, begun the first time it is asked for. */
-  private program(n: number, light = this.light > 0): Program {
-    const text = Object.values(PROGRAMS)[n]!(this.warmed!, this.format, this.shadowLookup === "hard", light);
+  private program(n: number, light = this.light > 0, tier = this.warmed!): Program {
+    const text = Object.values(PROGRAMS)[n]!(tier, this.format, this.shadowLookup === "hard", light);
     const key = n + text.defines + text.vertex + text.fragment;
     const made = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!;
-    return light === this.light > 0 ? (this.made[n] = made) : made;
+    return light === this.light > 0 && tier === this.warmed ? (this.made[n] = made) : made;
+  }
+
+  /**
+   * Whether every program a frame of `tier` draws with has linked, with the copies a step to no light target draws,
+   * beginning any not begun. Where the card links away from the page (KHR_parallel_shader_compile) asking waits for
+   * nothing, so a new tier or a governor's step can be drawn once it is ready; elsewhere it is ready at once, and its
+   * first frame waits for the links as it always did.
+   */
+  ready(tier: Tier): boolean {
+    if (!this.parallel) return true;
+    const progs = this.asked.get(tier) ?? this.asked.set(tier, tierPrograms(tier).flatMap((n) => (drawsLight(tier, this.light) ? [true, false] : [this.light > 0]).map((light) => this.program(n, light, tier)))).get(tier)!;
+    return progs.every((prog) => !prog.text || this.gl.getProgramParameter(prog.program, COMPLETION_STATUS));
   }
 
   /** Binds a vertex array unless it is bound. */

@@ -147,6 +147,7 @@ async function boot(): Promise<void> {
   addEventListener("resize", edges);
   if (!measured) app.ui.settings.start({ renderer: renderer.rendererName, light: renderer.light > 0, memory: (navigator as { deviceMemory?: number }).deviceMemory });
   app.dpr = devicePixelRatio;
+  app.tierReady = (tier) => renderer.ready(tier);
   app.address((name) => params.get(name), measured, orders);
   // A trip's page is a tool's too: nobody is at it to unmute, and its pictures are of the world.
   if (params.has("trip")) app.ui.settings.muted = false;

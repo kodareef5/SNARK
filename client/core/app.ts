@@ -6,8 +6,8 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 import { Icons } from "./assets/icons.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
-import { canvasRatio, forTouch, ownRatio, tierOf } from "./assets/tiers.ts";
-import { Governor, PHONE_MS, workMs } from "./governor.ts";
+import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tiers.ts";
+import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { VOLUME_MAX, keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
@@ -193,6 +193,15 @@ export class App {
   plainSky = false;
   /** Keeps the frame steady under the tier chosen (governor.ts). The shell tells it what each frame took. */
   readonly governor = new Governor();
+  /**
+   * Whether the card has linked every program a tier draws with, beginning those it has not (the shell's `ready`). A
+   * tier chosen or stepped to is drawn once it has, and the one before until then; null draws it at once.
+   */
+  tierReady: ((tier: Tier) => boolean) | null = null;
+  /** The tier chosen whose governor's steps are begun, those still to begin, a step a frame, and whether a tier was drawn yet. */
+  private warmedBase: Tier | null = null;
+  private readonly warming: Tier[] = [];
+  private tierShown = false;
   /** The screen's device pixels a CSS pixel, and effects the page's address turned off (passes.ts). */
   dpr = 1;
   off: ReadonlySet<Effect> = new Set();
@@ -1438,7 +1447,14 @@ export class App {
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
     this.scene.alternate = alternate;
     this.scene.assets.residency.holdBack = this.session.behind;
-    this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), off);
+    const chosen = forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst);
+    const governed = tierWithout(this.governor.tier(chosen, this.ui.settings.steady, this.dpr, nowMs), off);
+    if (this.tierReady && chosen !== this.warmedBase) this.warming.splice(0, Infinity, ...ladder((this.warmedBase = chosen), this.dpr).map((l) => tierWithout(l.tier, off)));
+    if (this.tierReady && this.warming.length > 0) this.tierReady(this.warming.shift()!);
+    if (!this.tierShown || governed === this.scene.assets.tier || !this.tierReady || this.tierReady(governed)) {
+      this.scene.assets.tier = governed;
+      this.tierShown = true;
+    }
     const ratio = canvasRatio(this.scene.assets.tier, this.dpr, width, height);
     [this.scene.canvasWidth, this.scene.canvasHeight] = [Math.floor(width * ratio), Math.floor(height * ratio)];
     this.scene.supersampled = ratio > ownRatio(this.scene.assets.tier, this.dpr);
