@@ -1,11 +1,14 @@
 // A map as the page takes it in parts (shared/world/mapfile.ts). Before anything is drawn: its head, its landmarks'
 // definitions, which the welcome's registry holds, and every overview, whose ground stands in for each sector's until it
 // comes (shared/world/heightfield.ts). Then the ground of the sectors within reach of the body, which the first frame waits
-// for and which come alone (firstFrameParts says which, for the loader and for the map's build); then the rest of the
-// ground nearest first, by where the body is and where it is heading, a few at once and ordered again at each ask, so a
-// jump goes first to where it lands; and last the statics, all of them, handed over once every part has come. A part that
-// fails is asked for again after a wait that grows to a cap, for as long as the page lives, and what has come is kept. One
-// that comes damaged or as another's is refused by name and asked for again, until the DAMAGED_MOST-th time breaks the map.
+// for and which come alone (firstFrameParts says which, for the loader and for the map's build). Then, while the game is
+// played, the rest nearest first by where the body is and where it is heading, ordered again at each ask so a jump goes
+// first to where it lands, each sector's ground before its statics: URGENT_AT_ONCE at once while ground within RING is
+// wanted, AFTER_AT_ONCE otherwise. Once the ground and the statics of every sector within CITY_NEAR of the body have come,
+// those sectors' statics are handed over, for the far city round the body; and once every part has come, all of them. A
+// part that fails is asked for again after a wait that grows to a cap, for as long as the page lives, and what has come is
+// kept. One that comes damaged or as another's is refused by name and asked for again, until the DAMAGED_MOST-th time
+// breaks the map.
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import type { Def } from "../../shared/content/defs.ts";
@@ -15,18 +18,22 @@ import { fetchBytes, readStatics, within, type Get } from "./fetched.ts";
 import { PREDICTED_REACH } from "./session.ts";
 
 /**
- * Parts asked for at once: as many as a browser opens to a host over HTTP/1.1, so that on a link of 100 ms a request one
- * part's round trip is mostly hidden by the others' bytes.
+ * Parts asked for at once before the first frame: as many as a browser opens to a host over HTTP/1.1, so that on a link of
+ * 100 ms a request one part's round trip is mostly hidden by the others' bytes.
  */
 export const PARTS_AT_ONCE = 6;
+/**
+ * Parts asked for at once while the game is played: while the nearest part left is ground within RING of the body or of
+ * where it is heading, and otherwise. Fewer than a browser's six connections to a host, so the art always has some.
+ */
+export const URGENT_AT_ONCE = 4;
+export const AFTER_AT_ONCE = 2;
+/** Metres round the body, and round where it will be LEAD seconds on, whose ground is urgent once the game is played. */
+export const RING = 600;
 /** Seconds of the body's way ahead of it whose ground is asked for as if the body were there. */
 export const LEAD = 2;
-/**
- * Metres round the body within which `follow`'s `whole` brings all the ground before the first frame; the rest comes one
- * part at a time, nearest first, while the game is played. All a map's ground was 9.8 MB on an 8 km city and would be
- * about 40 MB on one of 16 km; this much is some 6 MB at most, wherever the body stands, and ahead of any car.
- */
-export const WHOLE_REACH = 2500;
+/** Metres round the body whose sectors' statics are handed over before the rest: as far as any tier draws the far city. */
+export const CITY_NEAR = 4096;
 /** Milliseconds before a part that failed is asked for again: RETRY_FIRST, doubled at each failure in a row, to RETRY_MOST. */
 export const RETRY_FIRST = 500;
 export const RETRY_MOST = 8000;
@@ -213,11 +220,18 @@ export class MapLoader {
   private readonly wait: (ms: number) => Promise<void>;
   private readonly pause: () => Promise<void>;
   private readonly at: (p: MapPart) => string;
-  /** The ground parts not yet asked for, or failed and to be asked for again; and the statics', in the head's order. */
-  private readonly grounds: MapPart[];
-  private readonly rest: MapPart[];
-  /** The statics' bytes as each has come, until they are handed over. */
+  /** The parts, ground and statics, not yet asked for, or failed and to be asked for again; and how many are under way. */
+  private readonly left: MapPart[];
+  private under = 0;
+  /** The ground and statics parts come so far, and the statics' bytes as each has come until they are all handed over. */
+  private readonly came = new Set<MapPart>();
   private readonly kept = new Map<MapPart, Uint8Array>();
+  /** To whom the statics are handed over, and whether those round the body and all of them have been. */
+  private arrived: ((statics: MapStatics, whole: boolean) => void) | undefined;
+  private handedNear = false;
+  private near = CITY_NEAR;
+  private held: () => boolean = () => false;
+  private handed = false;
   private where: () => Place | null = () => null;
 
   private constructor(asker: Asker, opts: LoaderOptions, at: (p: MapPart) => string, staged: StagedMap) {
@@ -227,8 +241,7 @@ export class MapLoader {
     this.at = at;
     this.staged = staged;
     const head = staged.head;
-    this.grounds = head.parts.filter((p) => p.kind === "ground" && !everywhere(head, p));
-    this.rest = handOverParts(head).filter((p) => p.kind === "statics");
+    this.left = handOverParts(head).filter((p) => (p.kind === "ground" || p.kind === "statics") && !everywhere(head, p));
   }
 
   /**
@@ -258,55 +271,72 @@ export class MapLoader {
   }
 
   /**
-   * From now on the rest of the map comes, the ground nearest first to where `where` has the body, else to the map's first
-   * spawn point. Resolves once the ground the first frame waits for where it has the body now has come, alone. From then
-   * on `then.say` is told what the player is, and once every part has come `then.arrived` is handed the map's statics,
-   * read a step at a time. With `then.whole` it resolves only once all the ground within WHOLE_REACH has come, and the rest
-   * of the ground then the statics come one at a time: what the page asks for, until parts can come while the game is
-   * played without holding its packets back.
+   * From now on the rest of the map comes, nearest first to where `where` has the body, else to the map's first spawn
+   * point, each sector's ground before its statics. Resolves once the ground the first frame waits for where it has the
+   * body now has come, alone. From then on `then.say` is told what the player is; `then.arrived` is handed the statics of
+   * the sectors within CITY_NEAR of the body once their ground and statics have come and not every part has, and then the
+   * map's statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR. While
+   * `then.held` says the game's socket is held back, one part at a time is under way.
    */
-  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics) => void; readonly whole?: boolean } = {}): Promise<void> {
+  async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics, whole: boolean) => void; readonly near?: number; readonly held?: () => boolean } = {}): Promise<void> {
     this.where = where;
+    this.near = then.near ?? CITY_NEAR;
+    this.held = then.held ?? (() => false);
     const head = this.staged.head;
     const { x, z } = this.place();
-    const near = firstFrameParts(head, x, z).filter((p) => this.grounds.includes(p));
-    for (const p of near) this.grounds.splice(this.grounds.indexOf(p), 1);
+    const near = firstFrameParts(head, x, z).filter((p) => this.left.includes(p));
+    for (const p of near) this.left.splice(this.left.indexOf(p), 1);
     await Promise.all(near.map((p) => this.must(p)));
-    // With `whole` the rest of the ground comes before the first frame too, so that nothing of it is fetched while the
-    // game is played: parts coming six at once held the game's own packets back by seconds on a slow link, and a body
-    // is not predicted on ground that has not come.
-    // On a big map only the ground within WHOLE_REACH: the rest comes after, one part at a time and nearest first, on the
-    // one lane the statics take, which holds no packet back.
-    if (then.whole) {
-      const within = this.grounds.filter((p) => offOf(head, p, x, z) <= WHOLE_REACH);
-      for (const p of within) this.grounds.splice(this.grounds.indexOf(p), 1);
-      let k = 0;
-      const rest = async (): Promise<void> => {
-        for (let p = within[k++]; p; p = within[k++]) await this.must(p);
-      };
-      await Promise.all(Array.from({ length: PARTS_AT_ONCE }, rest));
-    }
     this.asker.say("");
     this.asker.late = true;
     if (then.say) this.asker.say = then.say;
-    const lane = async (): Promise<void> => {
-      for (let p = this.next(); p; p = this.next()) {
-        const got = await this.ask(p);
-        if (got === 0) continue;
-        await this.wait(got);
-        const k = this.rest.findIndex((q) => q.at > p.at);
-        if (p.kind === "ground") this.grounds.push(p);
-        else this.rest.splice(k < 0 ? this.rest.length : k, 0, p);
-      }
-    };
-    // With `whole` what is left is the statics, which come while the game is played: one at a time, as one file did.
-    void Promise.all(Array.from({ length: then.whole ? 1 : PARTS_AT_ONCE }, lane))
-      .then(() => {
-        const parts = head.parts.filter((p) => this.kept.has(p)).map((p) => ({ part: p, bytes: this.kept.get(p)! }));
-        this.kept.clear();
-        return readStatics({ head, parts }, this.pause);
-      })
-      .then((statics) => then.arrived?.(statics), (e: unknown) => this.asker.say(why(e)));
+    this.arrived = then.arrived;
+    this.pump();
+  }
+
+  /**
+   * Asks for the nearest parts left until as many are under way as the nearest allows (URGENT_AT_ONCE or AFTER_AT_ONCE, or
+   * one while the game's socket is held back); hands
+   * the statics round the body over once their sectors have come, and all of them once every part has.
+   */
+  private pump(): void {
+    for (let k = this.nearest(); k >= 0 && this.under < (this.held() ? 1 : this.urgent(this.left[k]!) ? URGENT_AT_ONCE : AFTER_AT_ONCE); k = this.nearest()) {
+      const p = this.left.splice(k, 1)[0]!;
+      this.under++;
+      void this.ask(p).then(
+        async (got) => {
+          if (got !== 0) {
+            await this.wait(got);
+            this.left.push(p);
+          }
+          this.under--;
+          this.pump();
+        },
+        // Broken: nothing more is handed over.
+        (e: unknown) => ((this.handed = true), this.asker.say(why(e))),
+      );
+    }
+    const head = this.staged.head;
+    if (this.under > 0 || this.left.length > 0) {
+      this.handNear();
+      return;
+    }
+    if (this.handed) return;
+    this.handed = true;
+    const parts = head.parts.filter((p) => this.kept.has(p)).map((p) => ({ part: p, bytes: this.kept.get(p)! }));
+    this.kept.clear();
+    void readStatics({ head, parts }, this.pause).then((statics) => this.arrived?.(statics, true), (e: unknown) => this.asker.say(why(e)));
+  }
+
+  /** The statics of the sectors within `near` of the body handed over, once those sectors' ground and statics have all come. */
+  private handNear(): void {
+    if (this.handedNear || this.handed) return;
+    const head = this.staged.head;
+    const near = head.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && this.off(p) <= this.near);
+    if (near.some((p) => !this.came.has(p) && !everywhere(head, p))) return;
+    this.handedNear = true;
+    const parts = near.filter((p) => this.kept.has(p)).map((p) => ({ part: p, bytes: this.kept.get(p)! }));
+    if (parts.length > 0) void readStatics({ head, parts }, this.pause).then((statics) => this.handed || this.arrived?.(statics, false), (e: unknown) => this.asker.say(why(e)));
   }
 
   /** Where the body is, or the map's first spawn point standing still. */
@@ -316,18 +346,27 @@ export class MapLoader {
     return this.where() ?? { x: spawn.x, z: spawn.z, vx: 0, vz: 0 };
   }
 
-  /** The ground part nearest the body or where it will be LEAD seconds on, else the statics' next in order, else null. */
-  private next(): MapPart | null {
-    if (this.grounds.length === 0) return this.rest.shift() ?? null;
+  /** Metres from the body, or from where it will be LEAD seconds on if that is nearer, to part `p`'s sector. */
+  private off(p: MapPart): number {
     const head = this.staged.head;
     const { x, z, vx, vz } = this.place();
-    let best = 0;
+    return Math.min(offOf(head, p, x, z), offOf(head, p, x + vx * LEAD, z + vz * LEAD));
+  }
+
+  /** Whether part `p` is ground within RING of the body or of where it is heading. */
+  private urgent(p: MapPart): boolean {
+    return p.kind === "ground" && this.off(p) <= RING;
+  }
+
+  /** Which of the parts left goes next: the nearest ground within RING, else the nearest, a sector's ground before its statics; -1 for none. */
+  private nearest(): number {
+    let best = -1;
     let least = Infinity;
-    this.grounds.forEach((p, k) => {
-      const off = Math.min(offOf(head, p, x, z), offOf(head, p, x + vx * LEAD, z + vz * LEAD));
+    this.left.forEach((p, k) => {
+      const off = this.off(p) + (p.kind === "statics" ? 0.5 : this.urgent(p) ? -1e9 : 0);
       if (off < least) [best, least] = [k, off];
     });
-    return this.grounds.splice(best, 1)[0]!;
+    return best;
   }
 
   /** Part `p` asked for until it comes, and taken in. */
@@ -349,6 +388,7 @@ export class MapLoader {
     if ("wait" in got) return got.wait;
     if (got.value instanceof Uint8Array) this.kept.set(p, got.value);
     else this.staged.take(got.value);
+    this.came.add(p);
     return 0;
   }
 }

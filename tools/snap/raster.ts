@@ -156,6 +156,28 @@ const FACADE_FLOATS = 15;
 const FACADE_FAR = -2;
 const facadeNow = new Float32Array(FACADE_FLOATS);
 const edgeNow = new Float32Array(4);
+/** The frame's finishes' `early` as the rasterizer holds their maps (FramePacket `worldEarly`): 1 while only the base colours have come. */
+let finishesEarly = 1;
+/** What a pixel was before the weathering or an edge, which come up with the packed maps: `risenTo` takes `risen` of what they made. */
+const before = new Float64Array(9);
+function risenFrom(albedo: ArrayLike<number>, orm: ArrayLike<number>, normal: ArrayLike<number>): void {
+  for (let c = 0; c < 3; c++) {
+    before[c] = albedo[c]!;
+    before[c + 3] = orm[c]!;
+    before[c + 6] = normal[c]!;
+  }
+}
+function risenTo(albedo: Float64Array | number[], orm: Float64Array | number[], normal: Float64Array | number[] | null, risen: number): void {
+  if (risen >= 1) return;
+  for (let c = 0; c < 3; c++) {
+    albedo[c] = before[c]! + (albedo[c]! - before[c]!) * risen;
+    orm[c] = before[c + 3]! + (orm[c]! - before[c + 3]!) * risen;
+    if (normal) normal[c] = before[c + 6]! + (normal[c]! - before[c + 6]!) * risen;
+  }
+  if (!normal) return;
+  const l = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
+  for (let c = 0; c < 3; c++) normal[c] = normal[c]! / l;
+}
 const wander = new Float64Array(2);
 
 /**
@@ -216,10 +238,10 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255);
   } else if (sample) {
     const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light", index = surfaceIndex(colorIndex, ground, city);
-    const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null);
+    const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
     if (other >= 0 && share > 0) {
       for (let c = 0; c < 3; c++) albedo2[c] = srgbToLinear(pal[other * 4 + c]! / 255);
-      const b = higher(h, worldSurface(albedo2, orm2, normal2, albedo2, surfaceIndex(other, true, city), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null), share, GROUND_SCALE, GROUND_BAND);
+      const b = higher(h, worldSurface(albedo2, orm2, normal2, albedo2, surfaceIndex(other, true, city), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly), share, GROUND_SCALE, GROUND_BAND);
       for (let c = 0; c < 3; c++) {
         albedo[c] = albedo[c]! * (1 - b) + albedo2[c]! * b;
         worldOrm[c] = worldOrm[c]! * (1 - b) + orm2[c]! * b;
@@ -228,9 +250,17 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       const l = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
       for (let c = 0; c < 3; c++) normal[c]! /= l;
     }
-    if (weather && weather[3]! >= 0 && !ground && !touch) {
+    // The weathering and the edges read the packed maps, so they come up with them, as LIT has it.
+    const risen = 1 - finishesEarly;
+    if (weather && weather[3]! >= 0 && !ground && !touch && risen > 0) {
+      risenFrom(albedo, worldOrm, normal);
       weathered(albedo, worldOrm, index, weather[0]!, weather[2]!, weather[3]!, over, open, rx + p.camX, ry + p.camY, rz + p.camZ, Math.abs(nx) > Math.abs(nz), dist, footprint, p.surfaceCity, sample);
-      if (edge && edge[0]! >= 0) edged(albedo, worldOrm, normal, index, edge[0]!, edge[1]!, edge[2]!, edge[3]!, h, rx + p.camX, ry + p.camY, rz + p.camZ, footprint, p.surfaceCity, p.tier.finishes < 1024);
+      risenTo(albedo, worldOrm, null, risen);
+      if (edge && edge[0]! >= 0) {
+        risenFrom(albedo, worldOrm, normal);
+        edged(albedo, worldOrm, normal, index, edge[0]!, edge[1]!, edge[2]!, edge[3]!, h, rx + p.camX, ry + p.camY, rz + p.camZ, footprint, p.surfaceCity, p.tier.finishes < 1024);
+        risenTo(albedo, worldOrm, normal, risen);
+      }
     }
     // A facade's part and the marks on a wall, as LIT has them (facade.ts), where the frame reads them.
     const tier = FACADE_TIERS[p.tier.name];
@@ -401,6 +431,8 @@ export class Rasterizer {
   /** Textures being made: their pictures as bytes, and how many bytes are still to come. */
   /** Each world finish's base colour, normal and packed map, once all of them have come. */
   private worldMaps: Texture[][] | null = null;
+  /** The frame has finishes and none of their base colours has come: drawn as their means. */
+  private finishesMeant = false;
   /** The weathering masks' packed map, which the finishes are not drawn without where the pack has them, or null. */
   private weatherMap: Texture | null = null;
   private readonly worldSample: WorldSample = (role, layer, u, v, spread, out) => {
@@ -527,7 +559,13 @@ export class Rasterizer {
     const maps = finishes.map((m) => (m ? [m.base, m.normal, m.mro].map((t) => this.textures.get(t)) : []));
     const weather = materials.find((m) => m.id === WEATHER_MATERIAL);
     this.weatherMap = weather ? (this.textures.get(weather.mro) ?? null) : null;
-    this.worldMaps = packet.lit && maps.every((roles) => roles.length === 3 && roles.every((t) => t)) && (!weather || this.weatherMap) ? (maps as Texture[][]) : null;
+    // Drawn from the base colours as soon as they have all come, the far path's way until the rest have (glsl.ts finishMaps).
+    this.worldMaps = packet.lit && maps.every((roles) => roles.length === 3 && roles[0]) ? (maps as Texture[][]) : null;
+    // Where the frame has finishes and none of their base colours has come, they are drawn as their means (finishMaps).
+    this.finishesMeant = packet.lit && packet.worldSide[0]! > 0 && packet.worldComing && !this.worldMaps;
+    // Coming up as the frame says where it holds the maps too, and at once where it has not seen them (a picture given its maps).
+    finishesEarly = maps.every((roles) => roles.every((t) => t)) && (!weather || this.weatherMap) ? (packet.worldLevel[0]! >= 0 ? packet.worldEarly : 0) : 1;
+    if (this.finishesMeant) finishesEarly = 2;
     const facades = Array.from(packet.facadeSlots, (t) => (t >= 0 ? this.textures.get(t) ?? null : undefined));
     this.facadeSample = packet.lit && facades.some((t) => t) && facades.every((t) => t !== null) ? (k, u, v, lod, out) => sample(facades[k]!, u, v, lod - (facades[k]!.pictures.length - 1), out) : null;
     if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
@@ -585,7 +623,7 @@ export class Rasterizer {
       const open = this.opened(s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, ground, this.deferredBody[at] === 0);
       const own = this.deferredOwn.subarray(at * 4, at * 4 + 4), edge = this.deferredEdge.subarray(at * 4, at * 4 + 4);
       const over = own[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, s[g6]!, s[g6 + 1]!, s[g6 + 2]!) : 0;
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen);
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
@@ -1427,7 +1465,7 @@ export class Rasterizer {
           // Metres a pixel covers on the finish's projection, and on the ground's level for its cover's wander.
           let footprint = 0;
           let reach = 0;
-          if (p.lit && ((this.worldMaps && !this.plain) || ground)) {
+          if (p.lit && (((this.worldMaps || this.finishesMeant) && !this.plain) || ground)) {
             const r0 = (e0 + e0x) * poly[v0 + 5]!, r1 = (e1 + e1x) * poly[v1 + 5]!, r2 = (e2 - e0x - e1x) * poly[v2 + 5]!;
             const d0 = (e0 + e0y) * poly[v0 + 5]!, d1 = (e1 + e1y) * poly[v1 + 5]!, d2 = (e2 - e0y - e1y) * poly[v2 + 5]!;
             const u = axis === 0 ? rz : rx, v = axis === 1 ? rz : ry;
@@ -1500,7 +1538,7 @@ export class Rasterizer {
             this.owned(rx, ry, rz, nx, ny, nz, ownNow);
             const over = ownNow[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz) : 0;
             this.facadeAt(rx, ry, rz, nx, ny, nz, colorIndex, footprint, facadeNow);
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen);
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen);
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;
             cb = rgb[2]! * 255;

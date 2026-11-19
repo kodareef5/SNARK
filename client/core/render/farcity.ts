@@ -192,6 +192,8 @@ export class FarCity {
   /** Milliseconds spent asking the worker for levels since the last frame. */
   private fedMs = 0;
   private readonly asked = new Map<number, Asked>();
+  /** Slots of levels of a city before this one that it did not take over, let go at its first update. */
+  private readonly dropping: number[] = [];
   private readonly arrived: CityMade[] = [];
   private readonly got: CityMade[] = [];
   /** The tiles that may be in reach: those within it and two tiles more of where the camera was when they were found. */
@@ -210,8 +212,11 @@ export class FarCity {
   private readonly band = new Uint8Array(CITY_TILE * CITY_TILE);
   private readonly nearest = new Float64Array(CITY_TILE * CITY_TILE);
 
-  /** `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a landmark brings. */
-  constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, landmark: Uint8Array = new Uint8Array(0)) {
+  /**
+   * `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a
+   * landmark brings. `before` is the far city of statics handed over before these, whose levels it takes over (`adopt`).
+   */
+  constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, landmark: Uint8Array = new Uint8Array(0), before: FarCity | null = null) {
     this.source = source;
     this.dims = dims;
     this.hf = hf;
@@ -271,6 +276,26 @@ export class FarCity {
       this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0 });
     }
     this.listed = new Uint8Array(this.tiles.length);
+    if (before) this.adopt(before);
+  }
+
+  /**
+   * Takes over from `before` its forms, its next slot, and the levels of each tile whose chunks with pieces are the same in
+   * both, which are made of the same pieces; its other levels go at this city's first update. Then a skyline shown goes on
+   * being shown while the tiles that differ are made again.
+   */
+  private adopt(before: FarCity): void {
+    this.forms.push(...before.forms);
+    this.next = before.next;
+    const old = new Map(before.tiles.map((tile) => [tile.t, tile]));
+    for (const tile of this.tiles) {
+      const was = old.get(tile.t);
+      if (!was || was.chunks.length !== tile.chunks.length || was.chunks.some((c, k) => c !== tile.chunks[k])) continue;
+      tile.held.push(...was.held);
+      tile.primary = was.primary;
+      old.delete(tile.t);
+    }
+    for (const was of old.values()) for (const h of was.held) if (h && h.slot >= 0) this.dropping.push(h.slot);
   }
 
   /** Whether `chunk`'s statics are drawn here this frame, so the near store draws none of that chunk. */
@@ -309,6 +334,8 @@ export class FarCity {
     }
     this.on = reach > 0 && levels.length > 0;
     this.share = share;
+    for (const slot of this.dropping) p.assetDrops.push(slot);
+    this.dropping.length = 0;
     this.standing(near, cells);
     const stats = this.stats;
     const start = clock();

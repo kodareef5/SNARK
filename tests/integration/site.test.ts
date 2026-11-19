@@ -5,6 +5,7 @@ import { afterAll, expect, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ClusterFolder } from "../../server/cluster/folder.ts";
 import { clientAddress, closeCode, frontRoute, frontWorlds, sendDown, startFront, type Pipe } from "../../server/front.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { startServer, type RunningServer } from "../../server/main.ts";
@@ -196,6 +197,30 @@ test("the front knows only worlds running and listening, routes a path to its wo
   // A world believes who a request is from what a proxy on its own machine says, and nothing else does.
   expect([clientAddress("127.0.0.1", "198.51.100.1, 203.0.113.7, 127.0.0.1"), clientAddress("::ffff:127.0.0.1", "2001:db8::7"), clientAddress("203.0.113.9", "198.51.100.1"), clientAddress("127.0.0.1", "<script>, 127.0.0.1"), clientAddress("::1", null)]).toEqual(["203.0.113.7", "2001:db8::7", "203.0.113.9", "127.0.0.1", "::1"]);
   expect([closeCode(1000), closeCode(1008), closeCode(1005), closeCode(1006), closeCode(4001), closeCode(0)]).toEqual([1000, 1008, 1000, 1000, 4001, 1000]);
+});
+
+test("the front answers a world's built files and map parts from disk itself, where the world says they are, ranges and Brotli as the world does, and passes on what it does not hold", async () => {
+  const saves = mkdtempSync(join(dir, "front-files-"));
+  const client = join(saves, "client"), parts = join(saves, "miami.parts");
+  mkdirSync(join(client, "assets"), { recursive: true });
+  mkdirSync(parts);
+  writeFileSync(join(client, "assets", "core.tex.0123456789abcdef.bin"), new Uint8Array(4096).map((_, i) => i & 255));
+  writeFileSync(join(parts, "ground.1-1.0123456789abcdef.part"), new Uint8Array(100));
+  writeFileSync(join(parts, "ground.1-1.0123456789abcdef.part.br"), new Uint8Array(7));
+  // The world's port answers nothing: whatever the front passes on comes back as a world not answering.
+  const gone = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
+  const port = gone.port;
+  gone.stop(true);
+  const a = { world: 1, saveId: "", save: "", name: "", map: "", mapId: "", port, url: "/miami", players: 0, max: 70, content: 0, survivors: true, items: true, at: Date.now(), files: { client, parts } };
+  new ClusterFolder(saves).announce(a);
+  const front = startFront(saves, 0, "127.0.0.1");
+  running.push(front);
+  const at = `http://127.0.0.1:${front.port}/miami`;
+  const range = await get(`${at}/assets/core.tex.0123456789abcdef.bin`, { headers: { range: "bytes=10-19" } });
+  expect([range.status, [...new Uint8Array(await range.arrayBuffer())]]).toEqual([206, [10, 11, 12, 13, 14, 15, 16, 17, 18, 19]]);
+  const part = await get(`${at}/map/ground.1-1.0123456789abcdef.part`, { headers: { "accept-encoding": "br" }, decompress: false } as RequestInit);
+  expect([part.status, part.headers.get("content-encoding"), (await part.arrayBuffer()).byteLength]).toEqual([200, "br", 7]);
+  expect([(await get(`${at}/map.json`)).status, (await get(`${at}/assets/missing.bin`)).status, (await get(`http://127.0.0.1:${front.port}/assets/core.tex.0123456789abcdef.bin`)).status]).toEqual([502, 502, 502]);
 });
 
 test("the front keeps a world's backlog rule on a page's socket, which the world cannot see past it", () => {

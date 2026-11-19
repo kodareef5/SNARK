@@ -249,6 +249,36 @@ test("statics that come after the first frame start the far city then, and the f
   expect(cityDraws(w.frame()).length).toBeGreaterThan(0);
 });
 
+test("statics handed over round the body and then whole: the far city of the whole draws the tiles that are the same from its first frame, and makes again only those that differ", () => {
+  const near: MapStatic[] = [];
+  const far: MapStatic[] = [];
+  for (let cx = 1; cx < 6; cx += 2) for (let cz = 1; cz < 6; cz += 2) near.push(...building(...mid(cx, cz), 0, 4));
+  for (let cx = 9; cx < 15; cx += 2) for (let cz = 9; cz < 15; cz += 2) far.push(...building(...mid(cx, cz), 0, 4));
+  // A building the whole has in a tile of those round the body, which that tile is made again for.
+  const edge = building(...mid(7, 1), 0, 2);
+  const w = cityWorld({ chunks: 16, statics: [...near, ...far, ...edge], late: true });
+  w.look(...mid(3, 3), 10, 900, 2.4, 60);
+  w.frame();
+  w.arrive(new CityStatics(w.dims, asWritten(near), w.reg));
+  w.frame();
+  const first = w.scene.city!;
+  first.makeMs = Infinity;
+  for (let k = 0; k < 20 && (first.stats.behind > 0 || first.stats.missing > 0); k++) w.frame();
+  const shown = cityDraws(w.frame()).length;
+  expect(shown).toBeGreaterThan(0);
+  w.arrive();
+  const p = w.frame();
+  const then = w.scene.city!;
+  expect(then).not.toBe(first);
+  // Its first frame draws what was shown but for the tile that differs, and lets go of that tile's levels alone.
+  expect(cityDraws(p).length).toBeGreaterThan(0);
+  expect(p.assetDrops.length).toBeGreaterThan(0);
+  expect(p.assetDrops.length).toBeLessThan(shown);
+  then.makeMs = Infinity;
+  for (let k = 0; k < 20 && (then.stats.behind > 0 || then.stats.missing > 0); k++) w.frame();
+  expect(cityDraws(w.frame()).length).toBeGreaterThanOrEqual(shown);
+});
+
 test("the lattice fades out over the end of its reach exactly where the mass fades in", () => {
   for (let x = 0; x < 4; x++) {
     for (let y = 0; y < 4; y++) {

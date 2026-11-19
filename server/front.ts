@@ -5,6 +5,9 @@
 //
 //   bun server/front.ts --cluster var/cluster/clusters/<id> [--port 8787] [--host address]
 //
+// A world's built files and its map's parts it answers from disk itself, where the world says they are, so that they never
+// wait behind the world's tick.
+//
 // A tunnel or proxy that routes by path itself, as a named Cloudflare tunnel's ingress rules do, needs none of this: it sends
 // each world's path to that world's port and every other path to any of them.
 
@@ -12,13 +15,18 @@ import type { ServerWebSocket } from "bun";
 import { resolve } from "node:path";
 import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG } from "../shared/net/transport.ts";
 import { ClusterFolder, LIVE_MS, type Announcement } from "./cluster/folder.ts";
+import { serveFile } from "./files.ts";
 import { pathOf } from "./site.ts";
 
-/** A world the front sends to: the path it is reached at ("" for the root of a host) and its port on this machine. */
+/**
+ * A world the front sends to: the path it is reached at ("" for the root of a host), its port on this machine, and where
+ * its built client and its map's parts are, where it says.
+ */
 export interface FrontWorld {
   world: number;
   path: string;
   port: number;
+  files?: Announcement["files"];
 }
 
 /**
@@ -30,7 +38,7 @@ export function frontWorlds(all: readonly Announcement[], now: number): FrontWor
   for (const a of all) {
     if (a.at <= now - LIVE_MS || a.port === 0) continue;
     try {
-      out.push({ world: a.world, path: pathOf(a.url), port: a.port });
+      out.push({ world: a.world, path: pathOf(a.url), port: a.port, ...(a.files ? { files: a.files } : {}) });
     } catch {
       // Its own server refused that address as it started, so it is not running with it.
     }
@@ -64,6 +72,18 @@ export function clientAddress(peer: string, forwarded: string | null): string {
     if (/^[0-9a-f.:]{2,45}$/i.test(a) && !onThisMachine(a)) who = a;
   }
   return who;
+}
+
+/**
+ * A world's built file or map part, `pathname` falling under its path, answered from disk as the world itself answers it
+ * (serveFile); null for any other path or for a file not there, which the world answers.
+ */
+export async function fromDisk(req: Request, pathname: string, to: FrontWorld): Promise<Response | null> {
+  const rest = to.path === "" ? pathname : pathname.startsWith(`${to.path}/`) ? pathname.slice(to.path.length) : "";
+  const dir = rest.startsWith("/assets/") ? to.files?.client : rest.startsWith("/map/") ? to.files?.parts : "";
+  if (!dir) return null;
+  const res = await serveFile(dir, req, rest.startsWith("/map/") ? rest.slice(4) : rest);
+  return res.status === 404 ? null : res;
 }
 
 /** Headers that belong to one connection and so are not passed on. */
@@ -162,7 +182,7 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
       const peer = srv.requestIP(req)?.address ?? "";
       const was = req.headers.get("x-forwarded-for");
       const forwarded = was ? `${was}, ${peer}` : peer;
-      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return pass(req, url, to, forwarded);
+      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return (await fromDisk(req, url.pathname, to)) ?? pass(req, url, to, forwarded);
       // The world checks the page's origin against the host the page asked for, so both go on as the page sent them.
       const headers: Record<string, string> = { "x-forwarded-for": forwarded };
       for (const h of ["origin", "host", "user-agent"]) {

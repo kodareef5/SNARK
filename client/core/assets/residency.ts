@@ -60,6 +60,9 @@ export const SMALL_LANES = 2;
 export const IN_FLIGHT_SHARED = 24;
 export const SMALL_LANES_SHARED = 20;
 export const SMALL_PART = 256 * 1024;
+/** Requests under way at most, and of them kept for small parts, while the game's socket is held back (`holdBack`). */
+export const IN_FLIGHT_HELD = 2;
+export const SMALL_LANES_HELD = 1;
 /** Nothing more is asked for while this many bytes have arrived and wait to go on the card. */
 export const WAITING_LIMIT = 16 * 1024 * 1024;
 /** A slot nobody has wanted for this many frames is given up, whether it is on its way or has arrived. */
@@ -75,6 +78,8 @@ export const FIRST = 1e6;
 export const PAGE_FIRST = 4 * FIRST;
 /** How urgent a material's textures are against one another. */
 const WEIGHT: readonly number[] = [1, 0.5, 0.25, 1, 1];
+/** A texture's climb is as urgent as the pixels it adds for each this many bytes of it, so the cheapest gain comes first. */
+const CLIMB_BYTES = 65536;
 /** A texture in view is remade smaller only if what is left would do for this many times the pixels it covers. */
 const KEEP = 1.25;
 /** How long to wait before asking again for what failed, and how long once those are used up. */
@@ -118,6 +123,8 @@ export class Residency {
   waiting = 0;
   /** Requests under way. */
   flying = 0;
+  /** Set while the game's socket is held back (session.ts behind): few requests are under way, so its packets come first. */
+  holdBack = false;
   /**
    * Requests that failed are `failed` (to be asked again) or `dead` (given up), and by kind `failNet`, `failHash` and
    * `failRange`, with the HTTP status of the last on the network, 0 for no answer. `refused` counts uploads the card refused.
@@ -213,6 +220,8 @@ export class Residency {
   private readonly late: number[] = [];
 
   private frame = 0;
+  /** Textures that can be had shown this frame with no step on the card: while there are any, none climbs past its first. */
+  private unstarted = 0;
   /** The time the frame began, in milliseconds. */
   private now = 0;
   private readonly reserves = new Map<string, number>();
@@ -482,12 +491,13 @@ export class Residency {
     this.unlink(this.texMark);
     this.toTail(this.texMark, this.texRoot);
     this.texMarked = 0;
+    this.unstarted = 0;
     if (this.format !== this.made) this.remake();
     this.learned.length = 0;
     if (!this.port) return;
     const shared = this.port.protocol === "h2" || this.port.protocol.startsWith("h3");
-    this.inFlight = shared ? IN_FLIGHT_SHARED : IN_FLIGHT;
-    this.smallLanes = shared ? SMALL_LANES_SHARED : SMALL_LANES;
+    this.inFlight = this.holdBack ? IN_FLIGHT_HELD : shared ? IN_FLIGHT_SHARED : IN_FLIGHT;
+    this.smallLanes = this.holdBack ? SMALL_LANES_HELD : shared ? SMALL_LANES_SHARED : SMALL_LANES;
     const n = this.port.take(this.arrivals);
     for (let i = 0; i < n; i++) {
       const a = this.arrivals[i]!;
@@ -611,16 +621,17 @@ export class Residency {
    * Says a material is on screen this frame, a whole texture of it covering `pixels` pixels on something `distance`
    * metres off. Each of its textures is kept, and wanted at the first step that is as wide as it is shown: as far
    * under the material's widest as it was authored, and no wider than the tier allows. Only its first `roles` maps are
-   * wanted where fewer are read.
+   * wanted where fewer are read. `needed` says each of them is one the material is not drawn without, as the world's
+   * finishes' every map is, so each one's first step is as urgent as a base colour's.
    */
-  material(m: number, pixels: number, distance: number, roles = MAPS): void {
+  material(m: number, pixels: number, distance: number, roles = MAPS, needed = false): void {
     if (this.cap < 0) return;
     this.matSeen[m] = this.frame;
     const most = STEP0_SIZE << (this.matTop[m]! < this.cap ? this.matTop[m]! : this.cap);
     const shown = pixels < most ? pixels : most;
     for (let r = 0; r < roles; r++) {
       const t = this.matTex[m * MAPS + r]!;
-      if (t >= 0) this.texture(t, shown / (1 << this.matUnder[m * MAPS + r]!), WEIGHT[r]! / distance, r === 0 || r >= 3);
+      if (t >= 0) this.texture(t, shown / (1 << this.matUnder[m * MAPS + r]!), WEIGHT[r]! / distance, needed || r === 0 || r >= 3);
     }
   }
 
@@ -644,11 +655,14 @@ export class Residency {
     return t >= 0 && this.has[t]! >= 0;
   }
 
+  /** Whether texture `t` (its index in the manifest) can be had at all: false with no network to bring it. */
+  canHave(t: number): boolean {
+    return this.limit[t]! >= 0;
+  }
+
   /** How many textures that can be had were shown this frame with no step of them on the card. */
   bare(): number {
-    let n = 0;
-    for (let t = 0; t < this.has.length; t++) if (this.has[t]! < 0 && this.limit[t]! >= 0 && this.seen[this.texBase + t] === this.frame) n++;
-    return n;
+    return this.unstarted;
   }
 
   /** The last step of texture `t` (its index in the manifest) the card holds, or -1 for none. */
@@ -662,7 +676,11 @@ export class Residency {
     this.letGo(t);
   }
 
-  /** A texture shown `px` pixels across. Its next step is as urgent as the pixels it adds, times `weight`. */
+  /**
+   * A texture shown `px` pixels across. Its first step is as urgent as FIRST where `first`, else its pixels times `weight`;
+   * after it, the climb to the step it is shown at is as urgent as the pixels that adds, times `weight`, for each
+   * CLIMB_BYTES of the climb.
+   */
   private texture(t: number, px: number, weight: number, first: boolean): void {
     const slot = this.texBase + t;
     const have = this.has[t]!;
@@ -670,6 +688,7 @@ export class Residency {
       this.seen[slot] = this.frame;
       this.urgency[slot] = 0;
       this.px[t] = px;
+      if (have < 0 && this.limit[t]! >= 0) this.unstarted++;
       if (have >= 0) {
         this.unlink(slot);
         this.toTail(slot, this.texRoot);
@@ -677,11 +696,14 @@ export class Residency {
       }
     } else if (px > this.px[t]!) this.px[t] = px;
     if (have >= this.limit[t]!) return;
-    const next = STEP0_SIZE << (have + 1);
     let urgency: number;
-    if (have < 0) urgency = first ? FIRST * (1 + weight) : next * weight;
-    else if (px > next >> 1) urgency = ((px < next ? px : next) - (next >> 1)) * weight;
-    else return;
+    if (have < 0) urgency = first ? FIRST * (1 + weight) : STEP0_SIZE * weight;
+    else {
+      const want = stepFor(px, this.limit[t]!);
+      if (want <= have) return;
+      const top = STEP0_SIZE << want;
+      urgency = (((px < top ? px : top) - (STEP0_SIZE << have)) * weight * CLIMB_BYTES) / (this.through[t * STEPS + want]! - this.through[t * STEPS + have]!);
+    }
     if (urgency > this.urgency[slot]!) this.urgency[slot] = urgency;
     if (this.state[slot] === ABSENT && this.queued[t] !== this.frame) {
       this.queued[t] = this.frame;
@@ -1000,8 +1022,11 @@ export class Residency {
       let rider = -1;
       let goal = 0;
       if (this.isTexture(slot)) {
-        // A texture climbs a step at a time, and only into room that is not spoken for.
-        goal = this.has[slot - this.texBase]! + 1;
+        // A texture comes at its first step, then climbs in one request to the step it is shown at, once no texture
+        // shown lacks its first, and only into room that is not spoken for.
+        const t = slot - this.texBase, have = this.has[t]!;
+        if (have >= 0 && this.unstarted > 0) continue;
+        goal = have < 0 ? 0 : Math.max(have + 1, stepFor(this.px[t]!, this.limit[t]!));
         bytes = this.through[(slot - this.texBase) * STEPS + goal]!;
         if (this.texMarked + this.texComing + bytes > this.texBudget) {
           this.short = true;

@@ -365,6 +365,11 @@ export class NearCity {
    */
   of(chunk: number, t: ChunkTable, city: CityStatics, standing: Standing, side: number, far: number, p: FramePacket): NearChunk {
     let c = this.chunks.get(chunk);
+    // The map's statics were handed over again with other pieces in this chunk (session.ts staticsArrived): found anew.
+    if (c && c.mine.length !== city.in(chunk)) {
+      this.letGo(p, c);
+      c = undefined;
+    }
     if (!c) this.chunks.set(chunk, (c = { mine: new Uint8Array(city.in(chunk)), mesh: null, shape: -1, version: 0, frame: 0, far: 0 }));
     c.frame = this.frame;
     c.far = far;
