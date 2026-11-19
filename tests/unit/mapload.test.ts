@@ -9,7 +9,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import type { Get } from "../../client/core/fetched.ts";
-import { AFTER_AT_ONCE, DAMAGED_MOST, MapLoader, RETRY_FIRST, RETRY_MOST, RING, StagedMap, URGENT_AT_ONCE, firstFrameParts, type Place } from "../../client/core/mapload.ts";
+import { AFTER_AT_ONCE, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, StagedMap, URGENT_AT_ONCE, firstFrameParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
@@ -94,7 +94,8 @@ test("after the first frame the page asks for the rest nearest first: the overvi
   let loader: MapLoader | null = null;
   void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
   await s.drain();
-  const body = { x: 1056, z: 448, vx: 0, vz: 0 };
+  // Past FIRST_REACH of the west overview, which comes after the first frame.
+  const body = { x: 3500, z: 448, vx: 0, vz: 0 };
   let handed: MapStatics | null = null;
   let drawn = false;
   void loader!.follow(() => body, { arrived: (t) => (handed = t) }).then(() => (drawn = true));
@@ -104,8 +105,8 @@ test("after the first frame the page asks for the rest nearest first: the overvi
   const before = s.asked.length;
   await until(s, () => drawn);
   const urgent = rest.filter((p) => ringed(p, body.x, body.z));
-  // This map has an overview and ground within the ring and past it, so both are tested.
-  expect([urgent.some((p) => p.kind === "overview"), urgent.length > 1, urgent.length <= URGENT_AT_ONCE, rest.length > urgent.length]).toEqual([true, true, true, true]);
+  // This map has ground within the ring and past it, and an overview past it, so each is tested.
+  expect([rest.some((p) => p.kind === "overview" && !urgent.includes(p)), urgent.length > 1, urgent.length <= URGENT_AT_ONCE, rest.length > urgent.length]).toEqual([true, true, true, true]);
   // What is within the ring is asked for at once, and nothing else while it is the nearest left.
   expect(s.waiting.map((w) => w.url).sort()).toEqual(urgent.map(nameOf).sort());
   let most = 0;
@@ -130,9 +131,10 @@ test("while the game's socket is held back the map comes one part at a time, and
   await s.drain();
   const body = { x: 1056, z: 448, vx: 0, vz: 0 };
   let held = true;
-  void loader!.follow(() => body, { held: () => held });
+  let drawn = false;
+  void loader!.follow(() => body, { held: () => held }).then(() => (drawn = true));
   await settle();
-  await s.answer();
+  await until(s, () => drawn);
   let most = 0;
   for (let k = 0; k < 6; k++) {
     most = Math.max(most, s.waiting.length);
@@ -195,16 +197,16 @@ test("the page asks for the head, then the land, then nothing until it knows whe
   expect(staged.content).toEqual(whole.content);
   await settle();
   expect(s.asked.length).toBe(1 + first.length);
-  // The body stands in the middle of a sector: only that one and the overview it lies in come before the first frame.
+  // The body stands in the middle of a sector: only that one, the overview it lies in and the other overview, within
+  // FIRST_REACH, come before the first frame.
   const body = { x: 1056, z: 448, vx: 0, vz: 0 };
   let near = false;
   let handed: MapStatics | null = null;
   void loader!.follow(() => body, { arrived: (t) => (handed = t) }).then(() => (near = true));
   await settle();
-  const mine = head.parts.filter((p) => (p.kind === "ground" && off(p, body.x, body.z) <= PREDICTED_REACH) || (p.kind === "overview" && off(p, body.x, body.z) === 0));
-  expect([s.asked.slice(1 + first.length), mine.map((p) => p.kind)]).toEqual([mine.map(nameOf), ["overview", "ground"]]);
-  await s.answer();
-  await s.answer();
+  const mine = head.parts.filter((p) => (p.kind === "ground" && off(p, body.x, body.z) <= PREDICTED_REACH) || (p.kind === "overview" && off(p, body.x, body.z) < FIRST_REACH));
+  expect([s.asked.slice(1 + first.length), mine.map((p) => p.kind)]).toEqual([mine.map(nameOf), ["overview", "overview", "ground"]]);
+  await until(s, () => near);
   expect([near, staged.hf.exactIn(body.x - PREDICTED_REACH, body.z - PREDICTED_REACH, body.x + PREDICTED_REACH, body.z + PREDICTED_REACH)]).toEqual([true, true]);
   // Then each ask the nearest of those left to where the body is then; it jumps across the map halfway.
   let left = head.parts.filter((p) => (p.kind === "overview" || p.kind === "ground" || p.kind === "statics") && !s.asked.includes(nameOf(p)));
@@ -225,7 +227,7 @@ test("the page asks for the head, then the land, then nothing until it knows whe
   expect(wholeStatics(handed)).toBe(true);
 });
 
-test("the first frame on this map waits for its head, its land, the overviews its sectors lie in and at most four sectors' ground, as firstFrameParts says: counted, not timed", async () => {
+test("the first frame on this map waits for its head, its land, the overviews within reach and at most four sectors' ground, as firstFrameParts says: counted, not timed", async () => {
   const count = async (body: Place): Promise<number[]> => {
     const s = heldServer(file);
     let loader: MapLoader | null = null;
@@ -240,12 +242,14 @@ test("the first frame on this map waits for its head, its land, the overviews it
     return [s.answered, s.bytes];
   };
   const size = (kinds: string[]): number => head.bytes + head.parts.filter((p) => kinds.includes(p.kind)).reduce((n, p) => n + p.length, 0);
-  // In a sector's middle, one sector's ground and one overview; at the corner of four, four sectors in one overview. The
-  // page fetched 5.07 MB before its first frame here, a ground part holding its classes for a wheel as well
-  // (MapData.ground). Both overviews came before the first frame, 1,129,968 and 2,522,716 bytes in 5 and 8 files, until
-  // the head held the whole map coarse, 7,638 bytes more of it (COAR).
-  expect(await count({ x: 1056, z: 448, vx: 0, vz: 0 })).toEqual([4, 1095289]);
-  expect(await count({ x: 1536, z: 896, vx: 0, vz: 0 })).toEqual([7, 2488037]);
+  // In a sector's middle, one sector's ground; at the corner of four, four; both overviews, within FIRST_REACH of either
+  // place. The page fetched 5.07 MB before its first frame here, a ground part holding its classes for a wheel as well
+  // (MapData.ground). The same parts as when the first frame waited for every overview, and the head 7,638 bytes more
+  // since it holds the whole map coarse (COAR): 1,129,968 and 2,522,716 bytes then.
+  expect(await count({ x: 1056, z: 448, vx: 0, vz: 0 })).toEqual([5, 1137606]);
+  expect(await count({ x: 1536, z: 896, vx: 0, vz: 0 })).toEqual([8, 2530354]);
+  // Past FIRST_REACH of the west overview, in a sector's middle: the head, the land, one overview and one ground.
+  expect((await count({ x: 3000, z: 448, vx: 0, vz: 0 }))[0]).toBe(4);
   expect([size(["land", "overview"]), size(["land", "overview", "ground"])]).toEqual([388770, 5074890]);
   // Off the map's sectors' corners: two sectors along an edge, one in a middle; and every corner, at most four.
   for (const [x, z] of [[1024, 448], [100, 100], [0, 0], [2048, 1024], [3200, 1280]] as const) await count({ x, z, vx: 0, vz: 0 });

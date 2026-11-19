@@ -9,7 +9,7 @@ import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants, gzip } from "node:zlib";
 import { firstFrameParts, handOverParts } from "../../client/core/mapload.ts";
-import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
+import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { partsFolder, partsOf, readHead, type MapHead, type MapPart, type PartKind } from "../../shared/world/mapfile.ts";
 
 /**
@@ -98,21 +98,16 @@ export async function packMap(file: Uint8Array, release = false): Promise<Packed
 
 /**
  * The heaviest first frame of a map's parts, by the rule the page asks by: over every place a body can stand, the head and
- * the parts firstFrameParts names there. The sectors within reach of a place all meet at a corner of the sectors' lattice,
- * or at the map's edge where that corner is off it, and reach no fewer from there: those corners are the places weighed.
+ * the parts firstFrameParts names there. Every square that rule reaches has its edges on the chunks' lattice, and a place
+ * in a chunk reaches no square that one of the chunk's corners does not: those corners are the places weighed.
  */
 export function firstFrame(parts: readonly PackedPart[], head: MapHead): FirstFrame {
   const by = new Map(parts.map((p) => [p.name, p]));
   const sum = (of: readonly MapPart[], encoding: "br" | "gz"): number => of.reduce((n, p) => n + by.get(p.name)![encoding].length, by.get(head.name)![encoding].length);
-  const { frameX, frameZ, chunksX, chunksZ } = head.dims;
-  const along = (frame: number, chunks: number): number[] => {
-    const out: number[] = [];
-    for (let k = Math.floor(frame / SECTOR_CHUNKS); (k - 1) * SECTOR_CHUNKS < frame + chunks; k++) out.push(Math.max(0, Math.min(chunks, k * SECTOR_CHUNKS - frame)) * CHUNK_SIZE);
-    return out;
-  };
+  const { chunksX, chunksZ } = head.dims;
   let best = { br: -1, at: [0, 0] as readonly [number, number], of: [] as MapPart[] };
-  for (const z of along(frameZ, chunksZ)) {
-    for (const x of along(frameX, chunksX)) {
+  for (let z = 0; z <= chunksZ * CHUNK_SIZE; z += CHUNK_SIZE) {
+    for (let x = 0; x <= chunksX * CHUNK_SIZE; x += CHUNK_SIZE) {
       const of = firstFrameParts(head, x, z);
       const br = sum(of, "br");
       if (br > best.br) best = { br, at: [x, z], of };

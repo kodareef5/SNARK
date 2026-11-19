@@ -31,6 +31,12 @@ export const PARTS_AT_ONCE = 6;
  */
 export const URGENT_AT_ONCE = 4;
 export const AFTER_AT_ONCE = 2;
+/**
+ * Metres round the body whose overviews the first frame waits for, so the ground there is drawn finer than the head's
+ * coarse picture and its trees stand: the far trees' reach on the high tier (assets/tiers.ts), within half an overview's
+ * side, so at most four.
+ */
+export const FIRST_REACH = 2048;
 /** Metres round the body, and round where it will be LEAD seconds on, whose ground is urgent once the game is played. */
 export const RING = 600;
 /** Seconds of the body's way ahead of it whose ground is asked for as if the body were there. */
@@ -73,8 +79,9 @@ const overviewOf = (sector: { readonly col: number; readonly row: number }): num
 /**
  * The parts the first frame waits for with the body at (x, z), besides the head, in the head's order: those it waits for
  * everywhere, the ground of each sector within PREDICTED_REACH of it on both axes, where the body is predicted from the
- * first frame on, and the overviews those sectors lie in, which hold their nodes and their water. The loader asks by it,
- * and the map's build holds its worst over the map to a budget (tools/map/pack.ts).
+ * first frame on, the overviews those sectors lie in, which hold their nodes and their water, and those less than
+ * FIRST_REACH from it. The loader asks by it, and the map's build holds its worst over the map to a budget
+ * (tools/map/pack.ts).
  */
 export function firstFrameParts(head: MapHead, x: number, z: number): MapPart[] {
   const r = PREDICTED_REACH;
@@ -84,7 +91,7 @@ export function firstFrameParts(head: MapHead, x: number, z: number): MapPart[] 
     return sq.cx0 * CHUNK_SIZE <= x + r && sq.cx1 * CHUNK_SIZE >= x - r && sq.cz0 * CHUNK_SIZE <= z + r && sq.cz1 * CHUNK_SIZE >= z - r;
   });
   const under = new Set(grounds.map(overviewOf));
-  return head.parts.filter((p) => everywhere(head, p) || grounds.includes(p) || (p.kind === "overview" && under.has(squareKey(p.col, p.row))));
+  return head.parts.filter((p) => everywhere(head, p) || grounds.includes(p) || (p.kind === "overview" && (under.has(squareKey(p.col, p.row)) || offOf(head, p, x, z) < FIRST_REACH)));
 }
 
 /**
