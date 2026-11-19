@@ -1061,6 +1061,8 @@ export class App {
     ui.flyer = this.controls.onFlyer;
     ui.building = this.builder.active;
     ui.placing = this.vehiclePlacement.active;
+    ui.canTalk = this.voice !== null && this.voice.notice === "";
+    ui.creatureAhead = this.lookedAt >= 0;
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
     const session = this.session;
     const hud = this.hud;

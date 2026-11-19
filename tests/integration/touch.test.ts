@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CHAT, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_USE, T_VIEW } from "../../client/core/touch.ts";
-import { KEY_CHAT_INPUT, KEY_CHAT_ROW, KEY_CHAT_SEND, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, T_AIM, T_ATTACK, T_BAG, T_CHARACTER, T_CHAT, T_CLOSE, T_CANCEL, T_DOWN, T_FOLLOW, T_FOLLOW_ONE, T_HOLD, T_JUMP, T_LOWER, T_MAP, T_MELEE, T_MENU, T_MIC, T_MORE, T_ORBIT, T_RAISE, T_RELOAD, T_ROLL, T_ROTATE, T_SHIFT, T_SIC, T_SNAP, T_STANCE, T_STAY, T_STAY_ONE, T_USE, T_VIEW } from "../../client/core/touch.ts";
+import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_SEND, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
+import { TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import { KEY_CONSOLE_INPUT } from "../../client/core/ui/console.ts";
 import { KEY_HOTBAR, KEY_MINIMAP, KEY_PROMPT, KEY_VITAL } from "../../client/core/ui/hud.ts";
 import { KEY_INV_ACTION, KEY_INV_HALF, KEY_INV_INFO, KEY_INV_SLOT, KEY_INV_USE } from "../../client/core/ui/inventory.ts";
@@ -377,4 +378,48 @@ test("the map by touch: a finger drags it, a tap looks there, and two fingers pi
   // A mouse still looks where it clicks, at once.
   app.pointer(0, KEY_MAP_IMAGE, cx, cy, 0, 0);
   expect(chart.fullU).toBeCloseTo(app.hud.pointedU, 9);
+});
+
+test("where there is voice the bar has Talk, held to talk; a creature looked at is whistled to alone; and the chat box stands under the vitals", () => {
+  for (const [name, w, hh, insets] of WINDOWS) {
+    const h = new Harness(), app = phone(h, "voice");
+    insets.forEach((v, i) => (app.insets[i] = v));
+    app.ui.settings.muted = false;
+    const run = (ms: number) => h.run(ms, (now) => app.frame(now, w, hh));
+    run(600);
+    const f = app.ui.frame, hud = app.hud;
+    expect(f.find(KEY_TOUCH_BUTTON + T_MIC), name).toBeNull();
+    // With voice: a fifth button in the bar, clear of the vitals, the minimap and the rest.
+    app.ui.canTalk = true;
+    while (hud.hotbar.length < 10) hud.hotbar.push({ tint: -1, label: "", number: "" });
+    app.ui.build(w / hh, hud, app.session);
+    const mic = f.find(KEY_TOUCH_BUTTON + T_MIC)!, unit = hh / f.height;
+    expect(mic !== null && mic.x + mic.w <= f.width - insets[2]! / unit, name).toBe(true);
+    const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive && n.key !== KEY_ZONE_MOVE && n.key !== KEY_ZONE_LOOK);
+    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) {
+      const p = controls[i]!, q = controls[j]!;
+      expect(p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h, `${name}: ${p.key} "${p.label}" over ${q.key} "${q.label}"`).toBe(false);
+    }
+    // Held, it talks; let go, it stops.
+    app.pointer(0, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 0, 1);
+    expect(app.talking, name).toBe(true);
+    app.pointer(1, KEY_TOUCH_BUTTON + T_MIC, 0, 0, 0, 1);
+    expect(app.talking, name).toBe(false);
+    // The second page's whistles are to every creature that hears, or to the one looked at.
+    app.touch.more = true;
+    app.ui.build(w / hh, hud, app.session);
+    expect([f.find(KEY_TOUCH_BUTTON + T_FOLLOW) !== null, f.find(KEY_TOUCH_BUTTON + T_FOLLOW_ONE)], name).toEqual([true, null]);
+    app.ui.creatureAhead = true;
+    app.ui.build(w / hh, hud, app.session);
+    expect([f.find(KEY_TOUCH_BUTTON + T_FOLLOW), f.find(KEY_TOUCH_BUTTON + T_FOLLOW_ONE)!.label, f.find(KEY_TOUCH_BUTTON + T_STAY_ONE)!.label], name).toEqual([null, "Whistle: this one follow", "Whistle: this one stay"]);
+    // The chat box, open, starts under the bar and under the vitals where they stand under the bar.
+    app.touch.more = false;
+    app.ui.chat.begin(TEXT_GLOBAL, app.session);
+    app.ui.build(w / hh, hud, app.session);
+    const box = f.find(KEY_CHAT_PANEL)!, vital = f.find(KEY_VITAL + 1)!, field = f.find(KEY_CHAT_INPUT)!;
+    expect(box.y, name).toBeGreaterThanOrEqual(f.top + 12 + 44);
+    // Upright, under the vitals too; on its side the keyboard leaves no room for that, and the box may cover them.
+    if (f.width < f.height && vital.y > f.top + 12 + 44) expect(box.y, name).toBeGreaterThanOrEqual(vital.y + vital.h - 6);
+    expect((field.y + field.h) * unit, name).toBeLessThan(hh * 0.45);
+  }
 });
