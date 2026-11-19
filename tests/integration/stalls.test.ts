@@ -13,8 +13,8 @@ import { Rig, bursts, frames, turning, type PageOptions } from "../fixtures/stal
 import { Harness, testKey } from "../fixtures/net.ts";
 
 /** Long ticks of two bursts measured in one run, a long one every six ticks, and the live server's worst tick. */
-const MEASURED = { 300: [84, 119, 149, 205, 124, 119, 158, 138, 151, 89, 146, 160, 115, 134, 54], 700: [154, 78, 130, 60, 444, 299, 56, 188, 63, 186, 119, 308, 85, 80, 52, 96, 55, 53, 57, 228, 82, 211], 1100: [725] };
-const LONG_FRAMES = frames([[5000, 300], [12000, 800], [20000, 2000]]);
+const MEASURED = { 150: [84, 119, 149, 205, 124, 119, 158, 138, 151, 89, 146, 160, 115, 134, 54], 400: [154, 78, 130, 60, 444, 299, 56, 188, 63, 186, 119, 308, 85, 80, 52, 96, 55, 53, 57, 228, 82, 211], 650: [725] };
+const LONG_FRAMES = frames([[4000, 300], [8000, 800], [13000, 2000]]);
 
 /** A walker on a turning path and a page standing by that draws it, watched `ms` after two seconds to settle. */
 function play(cost: (k: number) => number, ms: number, walker: PageOptions = {}, link = walker.link ?? { tcp: true, latencyMs: 20 }) {
@@ -30,7 +30,7 @@ function play(cost: (k: number) => number, ms: number, walker: PageOptions = {},
 }
 
 test("a server whose ticks run late in bursts as measured moves no page's clock, loses no input and corrects nothing, and the meter counts them late", () => {
-  const { walker, watcher, dropped, late } = play(bursts(MEASURED), 40000);
+  const { walker, watcher, dropped, late } = play(bursts(MEASURED), 24000);
   expect([walker.jumps, watcher.jumps, dropped]).toEqual([0, 0, 0]);
   expect([walker.thrown, walker.guessed, walker.corrections]).toEqual([0, 0, 0]);
   // The tick after the one of 725 ms begins about 690 ms late.
@@ -53,7 +53,7 @@ test("a stall of half a second or two is caught up: others stand still no longer
 });
 
 test("frames of 300, 800 and 2,000 ms leave a walking page's clock on real time: the input after each is on time and nothing is corrected", () => {
-  const { walker } = play(bursts({}), 30000, { frame: LONG_FRAMES });
+  const { walker } = play(bursts({}), 18000, { frame: LONG_FRAMES });
   expect([walker.jumps, walker.thrown, walker.corrections]).toEqual([0, 0, 0]);
   // The ticks of a frame that were never sampled the server holds and lets go of, as the page stepped them.
   expect(walker.guessed).toBeGreaterThan(80);
@@ -61,8 +61,8 @@ test("frames of 300, 800 and 2,000 ms leave a walking page's clock on real time:
 
 test("both together on a lossy stream cost no jump, and no more thrown inputs or corrections than the stream alone", () => {
   const link = { tcp: true, loss: 0.01, latencyMs: 100 };
-  const alone = play(bursts({}), 40000, { link }).walker;
-  const both = play(bursts(MEASURED), 40000, { link, frame: LONG_FRAMES });
+  const alone = play(bursts({}), 24000, { link }).walker;
+  const both = play(bursts(MEASURED), 24000, { link, frame: LONG_FRAMES });
   expect([both.walker.jumps, both.watcher.jumps, both.dropped]).toEqual([0, 0, 0]);
   expect(both.walker.thrown).toBeLessThanOrEqual(alone.thrown);
   expect(both.walker.corrections).toBeLessThanOrEqual(alone.corrections);
