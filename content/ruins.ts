@@ -99,6 +99,20 @@ const CROWN: Part[] = [bevelX([-4, 4, 3.6, 5.2, -0.15, 0.25], 0.1, "uo")];
 const LOUVRE = 84;
 const PLANT: Part[] = [[-4, -3.6, 0, 4, -0.25, 0.25], [3.6, 4, 0, 4, -0.25, 0.25], [-3.6, 3.6, 0, 0.4, -0.25, 0.25], [-3.6, 3.6, 3.25, 4, -0.25, 0.25], [-3.6, 3.6, 0.4, 3.25, -0.35, -0.25, LOUVRE],
   ...[0.7, 1.15, 1.6, 2.05, 2.5, 2.95].map((y): Part => [-3.6, 3.6, y, y + 0.12, -0.25, 0.08, METAL])];
+/**
+ * A tall building's wall where it has no facade of its own: precast panels a storey high over a band at the slab's edge, a
+ * pair of slot windows to each bay; a plant floor's louvres; the stair of a service core read from outside as a slot the
+ * height of the storey with its landing across it. All within the wall's thickness, walked as the wall.
+ */
+const CLAD_BAND: Part = [-4, 4, 0, 0.4, -0.3, 0.25, SPANDREL];
+const CLAD: Part[] = [CLAD_BAND, [-4, 4, 0.4, 1.2, -0.3, 0.25], [-4, 4, 2.9, 4, -0.3, 0.25], [-4, -2.6, 1.2, 2.9, -0.3, 0.25], [-1.4, 1.4, 1.2, 2.9, -0.3, 0.25],
+  [2.6, 4, 1.2, 2.9, -0.3, 0.25], [-2.6, -1.4, 1.2, 2.9, -0.3, 0.1, DARK], [1.4, 2.6, 1.2, 2.9, -0.3, 0.1, DARK]];
+const CLAD_LOUVRE: Part[] = [CLAD_BAND, [-4, 4, 0.4, 0.8, -0.3, 0.25], [-4, 4, 3.4, 4, -0.3, 0.25], [-4, -3.6, 0.8, 3.4, -0.3, 0.25], [3.6, 4, 0.8, 3.4, -0.3, 0.25],
+  [-3.6, 3.6, 0.8, 3.4, -0.3, 0.05, LOUVRE], ...[1.2, 1.8, 2.4, 3].map((y): Part => [-3.6, 3.6, y, y + 0.1, 0.05, 0.2, METAL])];
+const CLAD_CORE: Part[] = [CLAD_BAND, [-4, -0.5, 0.4, 4, -0.3, 0.25], [0.5, 4, 0.4, 4, -0.3, 0.25], [-0.5, 0.5, 0.4, 4, -0.3, 0.1, DARK], [-0.5, 0.5, 2, 2.2, 0.1, 0.25]];
+const CLAD_WALL = (storeys: number): Part[] => [[-4, 4, 0, storeys * 4, -0.3, 0.25]];
+/** Four storeys of a clad wall, the last of them one of `last`. */
+const clad4 = (last: readonly Part[], every: readonly Part[] = CLAD): Part[] => [...[0, 4, 8].flatMap((y) => up(y, every)), ...up(12, last)];
 /** A screen standing on a tower's roof at its edge, a storey tall, hiding its plant, with a coping. */
 // A low building's raised parapet over its way in, and along its front. Walked as it looks, with a square coping in pale
 // render: on low poly the near city's mesh draws a piece as walked and its instance as it looks, and a bevel or a coping
@@ -161,6 +175,15 @@ const MODULES = {
   zcurt4: { look: [0, 4, 8, 12].flatMap((y) => up(y, CURTAIN)), walked: [[-4, 4, -0.4, 15.6, -0.4, 0.4]] },
   zcurt4top: { look: [...[0, 4, 8, 12].flatMap((y) => up(y, CURTAIN)), ...up(12, CROWN)], walked: [[-4, 4, -0.4, 17.2, -0.4, 0.4]] },
   zplanttop: { look: [...PLANT, ...PARAPET], walked: [wall(4), ...PARAPET] },
+  /** A plant room's louvred storey on a tower's roof, between piers, under a band. */
+  zplant: { look: PLANT, walked: [wall(4)] },
+  zclad: { look: CLAD, walked: CLAD_WALL(1) },
+  zcladl: { look: CLAD_LOUVRE, walked: CLAD_WALL(1) },
+  zcladc: { look: CLAD_CORE, walked: CLAD_WALL(1) },
+  zclad4: { look: clad4(CLAD), walked: CLAD_WALL(4) },
+  zclad4l: { look: clad4(CLAD_LOUVRE), walked: CLAD_WALL(4) },
+  zclad4c: { look: clad4(CLAD_CORE, CLAD_CORE), walked: CLAD_WALL(4) },
+  zclad4top: { look: [...clad4(CLAD), ...up(12, PARAPET)], walked: [...CLAD_WALL(4), ...up(12, PARAPET)] },
   zscreen: { look: SCREEN, walked: [[-4, 4, 0, 3.75, -0.3, 0.3]] },
   // A low building's roofline: an attic over a lobby's bay, and a parapet raised along a run of a long front's bays.
   zattic: { look: ATTIC, walked: ATTIC },
@@ -423,6 +446,17 @@ const ONLY_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = {
 /** Whether a shape comes in that finish: a pitched roof in its own few; otherwise concrete always, the facade pieces and the z kit in every finish. */
 /** The plants' meshes the ruins grow: a tuft on a roof, a tree in it, ivy from a broken edge. */
 const GROWN: Partial<Record<string, string>> = { zshrub: "core:creeper_3", zrooftree: "core:tree_1", zivy1: "core:vine_1", zivy2: "core:vine_2", zivy3: "core:vine_3" };
+/**
+ * Grown pieces whose plant's mesh has its foot at its origin, as a node's on the ground has: set down at the foot, on what
+ * they grow from, their box standing on it as a shape's, which the mesh is drawn at the origin of.
+ */
+export const FOOTED = new Set<string>(["zshrub", "zrooftree"]);
+/** The height of the middle of a piece of `name` set down at `y`. */
+export const pieceMiddle = (name: string, y: number): number => (FOOTED.has(name) ? y + RUIN_SHAPES[name as RuinShape][1] / 2 : y);
+const FOOTED_SHAPES = new Map([...FOOTED].map((name): [string, ShapeDef] => {
+  const [w, h, d] = RUIN_SHAPES[name as RuinShape];
+  return [name, { type: "shape", id: shaped(name), role: "thing", boxes: [{ at: [0, h / 2, 0], half: [w / 2, h / 2, d / 2] }] }];
+}));
 export const finished = (name: RuinShape, finish: RuinFinish): boolean => ONLY_FINISHES[name]?.includes(finish) ?? (finish === "concrete" || (finish !== "fracture" && !GROWN[name] && (PAINTED.has(name) || name.startsWith("z"))));
 const NEAR_ONLY = new Set<string>(["zwalk8", "zwalk8g", "zcurbramp", "zcurbrampl", "zdrain", "zutility", "zskirt1", "zskirt2", "zvine", "zvine2", "zvine3", "zpipe4", "zpipefoot", "zpipetop", "zleancol", "zshrub", "zivy1", "zivy2", "zivy3", "zmoss"]);
 const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
@@ -435,8 +469,9 @@ const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([na
     ...(name in RUIN_BREAKS ? staticOf(ruinKind(name as RuinShape, finish), RUIN_BREAKS[name as BreakPiece], RUIN_FINISHES[finish]) : {}),
     // The street's pieces and a building's small kit are drawn near only, left out of the far city's lattice and mass.
     ...(NEAR_ONLY.has(name) ? { near: true as const } : {}),
+    ...(FOOTED_SHAPES.has(name) ? { shape: FOOTED_SHAPES.get(name)!.id, half: shapeHalf(FOOTED_SHAPES.get(name)!.boxes) } : {}),
     // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
     ...(GROWN[name] ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
   })),
 );
-export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES), ...Object.values(RUIN_FACADES), ...Object.values(RUIN_BREAKS)];
+export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES), ...Object.values(RUIN_FACADES), ...Object.values(RUIN_BREAKS), ...FOOTED_SHAPES.values()];

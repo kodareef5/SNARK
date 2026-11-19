@@ -533,8 +533,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // and crosswalk bars added theirs; without them it is that again. It was 3461533038 until the yield sign and its bent
   // form added theirs; without them it is that again. It was 44264498 until a low roofline's attic and raised parapet,
   // the street list's bare balcony bay and cut shop fronts, and the ruins' ivy, moss and vines of uneven strands and the
-  // plants' vine meshes added theirs; without them it is that again.
-  expect(hash).toBe(806818637);
+  // plants' vine meshes added theirs; without them it is that again. It was 806818637 until a tall building's cladding,
+  // a plant room's louvres and the footed shrub's shape added theirs; without them it is that again.
+  expect(hash).toBe(2113431422);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -568,8 +569,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1672489163 before the trailer, as above, 1576802991 until the street's working lamp, as above, and
   // 1144228197 until a tower's tops, as above, and 397096185 until the street's pay stations, crosswalks and three
   // speed limits, as above, 102222647 until the yield signs, as above, and 2142902571 until a low roofline's, the street
-  // list's and the ivy, as above.
-  expect(saddled.hash).toBe(1161881608);
+  // list's and the ivy, as above, and 1161881608 until the cladding, the plant room's louvres and the shrub's shape.
+  expect(saddled.hash).toBe(1911735803);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

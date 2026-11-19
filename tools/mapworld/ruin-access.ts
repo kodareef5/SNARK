@@ -1,4 +1,4 @@
-import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
+import { pieceMiddle, RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { S } from "./ground.ts";
 import { binKey } from "./raster.ts";
 import type { Mason } from "./ruin-geometry.ts";
@@ -17,8 +17,8 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
   const index = (pieces: readonly StaticPiece[]): Map<number, Solid[]> => {
     const out = new Map<number, Solid[]>();
     for (const p of pieces) {
-      const [w, h, d] = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape]; const angle = p.yaw * Math.PI / 180;
-      const o = { x: p.x, z: p.z, lo: p.y - h / 2, hi: p.y + h / 2, floor: p.kind.includes("_floor"), c: Math.cos(angle), s: Math.sin(angle), w: w / 2 + .45, d: d / 2 + .45 };
+      const name = p.kind.split("_")[1] as RuinShape; const [w, h, d] = RUIN_SHAPES[name]; const angle = p.yaw * Math.PI / 180; const y = pieceMiddle(name, p.y);
+      const o = { x: p.x, z: p.z, lo: y - h / 2, hi: y + h / 2, floor: p.kind.includes("_floor"), c: Math.cos(angle), s: Math.sin(angle), w: w / 2 + .45, d: d / 2 + .45 };
       const reach = o.w + o.d;
       for (let z = Math.floor((p.z - reach) / 4); z <= Math.floor((p.z + reach) / 4); z++) for (let x = Math.floor((p.x - reach) / 4); x <= Math.floor((p.x + reach) / 4); x++) {
         const bin = out.get(binKey(x, z)); if (bin) bin.push(o); else out.set(binKey(x, z), [o]);
@@ -42,7 +42,7 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
   };
   const plan = (m: Mason, owner: number): Approach[] => {
     const out: Approach[] = [];
-    const own = index(m.pieces.filter((p) => { const shape = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape]; return p.y + shape[1] / 2 > m.base + .4 && p.y - shape[1] / 2 < m.base + 2.2; }));
+    const own = index(m.pieces.filter((p) => { const name = p.kind.split("_")[1] as RuinShape; const h = RUIN_SHAPES[name][1]; const y = pieceMiddle(name, p.y); return y + h / 2 > m.base + .4 && y - h / 2 < m.base + 2.2; }));
     const obstructed = (x: number, z: number, y: number): boolean => {
       const k = binKey(Math.floor(x / 4), Math.floor(z / 4));
       for (const o of own.get(k) ?? []) if (stands(o, x, z, y, false)) return true;
