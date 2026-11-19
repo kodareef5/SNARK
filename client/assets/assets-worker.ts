@@ -2,7 +2,7 @@
 // hash, and keeps them as stored, in memory and on disk, off the page's thread. What to fetch and when is decided in
 // client/core/assets. This file joins those decisions to the browser.
 
-import { FAIL_HASH, FAIL_NET, FAIL_RANGE, type AssetPart } from "../core/assets/port.ts";
+import { FAIL_HASH, FAIL_NET, FAIL_RANGE, rangeAsk, type AssetPart } from "../core/assets/port.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
 
 interface Scope {
@@ -267,14 +267,14 @@ async function open(stored: Bytes, part: AssetPart, into: Bytes): Promise<boolea
 
 type Run = { data: Bytes[] | null; fail: number; fetched: number; status: number };
 
-/** Fetches parts that follow one another in a file with one range, past the browser's cache if `fresh`. Each comes back as stored, a view of the one answer. */
-async function fetchRun(url: string, parts: readonly AssetPart[], signal: AbortSignal, fresh = false): Promise<Run> {
+/** Fetches parts that follow one another in a file with one range (rangeAsk). Each comes back as stored, a view of the one answer. */
+async function fetchRun(url: string, parts: readonly AssetPart[], signal: AbortSignal): Promise<Run> {
   const [delay = 0, rate = 0, loss = 0] = net;
   if (delay > 0) await wait(delay);
   if (Math.random() * 100 < loss) return { data: null, fail: FAIL_NET, fetched: 0, status: 0 };
   const from = parts[0]!.offset;
   const length = parts.reduce((sum, p) => sum + p.length, 0);
-  const res = await fetch(url, { headers: { range: `bytes=${from}-${from + length - 1}` }, signal, cache: fresh ? "reload" : "default" });
+  const res = await fetch(url, rangeAsk(from, length, signal));
   // A server that does not do ranges would send the whole file for each part.
   if (res.status === 416 || res.status === 200) {
     void res.body?.cancel().catch(() => {});
@@ -318,7 +318,7 @@ async function answer(a: Ask): Promise<void> {
       }
       let end = k + 1;
       while (end < n && !have[end] && a.parts[end]!.offset === a.parts[end - 1]!.offset + a.parts[end - 1]!.length) end++;
-      runs.push({ k, got: fetchRun(a.url, a.parts.slice(k, end), stop.signal, a.fresh).catch(() => ({ data: null, fail: FAIL_NET, fetched: 0, status: 0 })) });
+      runs.push({ k, got: fetchRun(a.url, a.parts.slice(k, end), stop.signal).catch(() => ({ data: null, fail: FAIL_NET, fetched: 0, status: 0 })) });
       k = end;
     }
     for (const run of runs) {

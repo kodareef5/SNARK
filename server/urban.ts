@@ -85,6 +85,8 @@ const REST_TICKS = 30;
 export class Urban {
   readonly occupancy: Occupancy;
   contacts: VehicleContacts | null = null;
+  /** Diagnostics, not replicated gameplay state: vehicles nobody drives stepped. */
+  stepped = 0;
   /** Bounded live incident feed; production save components are a separate follow-up. */
   readonly incidents: UrbanIncident[] = [];
   private readonly ctx: UrbanContext;
@@ -787,6 +789,7 @@ export class Urban {
       if (!pushed) this.pushes.delete(pid);
       if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
+        this.stepped++;
         (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
         ents.storeBody(e, this.body);
         this.impact(e);
@@ -1142,10 +1145,18 @@ export class Urban {
     rec.extra.set(VEHICLE_COMPONENT, bytes.slice()); records.dirty.add(rec.pid);
   }
 
-  /** A car on its wheels that has stopped: no speed, and its springs and turn as good as settled. */
-  private resting(e: number): boolean {
+  /**
+   * A car on its wheels that has stopped: no speed, and its springs and turn as good as settled. A boat that floats or
+   * lies still, its engine stopped, its wheel centred and no water to take in or bail, whose step would move nothing.
+   */
+  resting(e: number): boolean {
     const ents = this.ctx.world.ents, v = ents.vrow[e]!, still = (n: number): boolean => Math.abs(n) < 1e-3;
-    if (this.ctx.world.reg.vehicle[ents.kind[e]!]?.movement === 'rotor' && (ents.vehicleEngineOn[v] !== 0 || ents.vehicleRotorRpm[v]! > 0)) return false;
+    const movement = this.ctx.world.reg.vehicle[ents.kind[e]!]?.movement;
+    if (movement === 'boat') {
+      return ents.vehicleEngineOn[v] === 0 && ents.vehicleRpm[v] === 0 && ents.steering[v] === 0 && ents.vehicleShiftTime[v] === 0 && ents.vehicleFlooding[v] === 0 && ents.vehicleHullCondition[v]! >= .5 &&
+        still(ents.vx[e]!) && still(ents.vy[e]!) && still(ents.vz[e]!) && still(ents.vehicleYawRate[v]!) && still(ents.vehiclePitchRate[v]!) && still(ents.vehicleRollRate[v]!);
+    }
+    if (movement === 'rotor' && (ents.vehicleEngineOn[v] !== 0 || ents.vehicleRotorRpm[v]! > 0)) return false;
     return (ents.flags[e]! & F_GROUNDED) !== 0 && ents.vx[e] === 0 && ents.vz[e] === 0 && still(ents.vy[e]!) &&
       still(ents.vehicleYawRate[v]!) && still(ents.vehiclePitchRate[v]!) && still(ents.vehicleRollRate[v]!) && still(ents.vehicleRideVelocity[v]!);
   }

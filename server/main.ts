@@ -224,6 +224,35 @@ export function worldSettings(host: Host): { name: string; map: string; settings
 /** The default settings folder of a development server. It speeds up taming, hatching and growth so raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
+/**
+ * Runs `loop.tick` TICK_RATE times a second of `now`'s clock, given when each was due, and `loop.idle` after each call:
+ * one tick a call, each call made by `later` after the given milliseconds, so that requests and sockets are served
+ * between ticks that run late and never wait behind a run of them. A loop more than 250 ms behind gives up the ticks
+ * due, and tells `loop.drop` how many. Returns what stops it.
+ */
+export function tickLoop(loop: { tick(due: number): void; idle(): void; drop(ticks: number, at: number): void }, now = (): number => performance.now(), later = (go: () => void, ms: number): (() => void) => {
+  const timer = setTimeout(go, ms);
+  return () => clearTimeout(timer);
+}): () => void {
+  const tickMs = 1000 / TICK_RATE;
+  let next = now() + tickMs;
+  const turn = (): void => {
+    const at = now();
+    if (at >= next) {
+      loop.tick(next);
+      next += tickMs;
+    }
+    loop.idle();
+    if (at - next > 250) {
+      loop.drop(Math.floor((at - next) / tickMs) + 1, at);
+      next = at + tickMs;
+    }
+    stop = later(turn, Math.max(0, next - now()));
+  };
+  let stop = later(turn, tickMs);
+  return () => stop();
+}
+
 export function startServer(opts: ServerOptions = {}): RunningServer {
   const base = pathOf(opts.publicUrl ?? "");
   const named = /^https?:\/\//i.test(opts.publicUrl ?? "") ? new URL(opts.publicUrl!).hostname.toLowerCase() : "";
@@ -473,30 +502,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
 
   host.cluster?.listening(server.port ?? 0, (opts.publicUrl ?? "").replace(/\/+$/, ""));
 
-  // Fixed-rate loop on the wall clock, with bounded catch-up after a stall. Each tick is timed for the admin page.
-  const tickMs = 1000 / TICK_RATE;
-  let next = performance.now() + tickMs;
-  let timer: ReturnType<typeof setTimeout>;
-  const loop = (): void => {
-    const now = performance.now();
-    let steps = 0;
-    while (now >= next && steps < 5) {
+  // Each tick is timed for the admin page. The checkpoint is the keeper thread's work, so asking for it costs nothing
+  // here, late or not.
+  const stopTicks = tickLoop({
+    tick: (due) => {
       const began = performance.now();
       host.game.tick();
-      meter.tick(next, began, performance.now());
-      next += tickMs;
-      steps++;
-    }
-    // The checkpoint is the keeper thread's work, so asking for it costs nothing here, late or not.
-    host.idle();
-    if (now - next > 250) {
-      // The ticks due up to now are given up.
-      meter.drop(Math.floor((now - next) / tickMs) + 1, now);
-      next = now + tickMs;
-    }
-    timer = setTimeout(loop, Math.max(0, next - performance.now()));
-  };
-  timer = setTimeout(loop, tickMs);
+      meter.tick(due, began, performance.now());
+    },
+    idle: () => host.idle(),
+    drop: (ticks, at) => meter.drop(ticks, at),
+  });
 
   if (opts.terminal) {
     void (async () => {
@@ -518,7 +534,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     },
     stop() {
       clearInterval(heartbeat); listings.close();
-      clearTimeout(timer);
+      stopTicks();
       server.stop(true);
       host.shutdown();
       mapRoute.close();
