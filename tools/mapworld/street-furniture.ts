@@ -76,8 +76,9 @@ export interface Furniture {
   /** A pay station for each lot of at least `least` stalls, at the head of one of the `tries` stalls nearest its middle. */
   paystations?: { least: number; tries: number; set: number };
   /** Stripes laid on a crossing: the forms of each length of stripes, in metres, and how far in from each kerb they stop;
-   * `bare`, the crossing types (crossing=*) the data says are not painted. */
-  stripes?: { pieces: Record<string, number>; inset: number; bare: string[] };
+   * `bare`, the crossing types (crossing=*) the data says are not painted; `fresh`, the classes whose crossings are kept
+   * painted, as a signalled crossing's are. */
+  stripes?: { pieces: Record<string, number>; inset: number; bare: string[]; fresh: string[] };
   /** Metres kept clear: of a lane's edge, a reserved route's, any piece's; between two of these; of the map's edge. */
   /** `inside` is how far inside a road's edge a post may stand where it fits nowhere else. */
   clear: { road: number; inside: number; route: number; piece: number; between: number; edge: number; junction: number; rise: number; crossing: number };
@@ -374,10 +375,17 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         // traffic's right, its arm over the lanes it goes on into. Where nothing goes on (a T's stem), at the near corner.
         const o = j.arms.findIndex((b) => b.dx * a.dx + b.dz * a.dz < -0.8);
         const far = o >= 0 ? j.arms[o]! : null; const next = o >= 0 ? j.arms[(o + 1) % n]! : null;
-        putOut("signals", form("signal", hash3(h, 20 + i, seed)), J.signal, (set) => {
-          if (far && next) { const p = corner(j, far, next, set); return p && [p[0], p[1], yawOf(far.dz, -far.dx)]; }
-          const p = corner(j, prev(i), a, set); return p && [p[0], p[1], yawOf(-a.dz, a.dx)];
-        });
+        // At the corner, or where a crossing or another way takes that place, further back along the way it stands by.
+        const pole = (back: number) => (set: number): [number, number, number] | null => {
+          if (far && next) { const p = corner(j, far, next, set); return p && [p[0] + far.dx * back, p[1] + far.dz * back, yawOf(far.dz, -far.dx)]; }
+          const p = corner(j, prev(i), a, set); return p && [p[0] + a.dx * back, p[1] + a.dz * back, yawOf(-a.dz, a.dx)];
+        };
+        // And where the far corner has no room (another way's lanes, a crossing, a building), at the near corner on the
+        // traffic's right, its arm over the lanes it comes in on.
+        const near = (back: number) => (set: number): [number, number, number] | null => {
+          const p = corner(j, prev(i), a, set); return p && [p[0] + a.dx * back, p[1] + a.dz * back, yawOf(-a.dz, a.dx)];
+        };
+        putOut("signals", form("signal", hash3(h, 20 + i, seed)), J.signal, pole(0), pole(J.past), pole(2 * J.past), near(0), near(J.past), near(2 * J.past));
       });
     } else if (markedStops.length > 0 || (n >= 3 && minor > 0 && major + minor === n)) {
       // The ways in the data marks a stop on; where it marks none, the lesser street stops: a T's stem, or of two streets
@@ -413,6 +421,22 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     });
   }
 
+  // A signal, stop or give-way the data maps where no junction of three ways is (a signal at a crossing, a stop at a
+  // driveway or where two ways meet): at its own point, on the right of each way of traffic it governs. A signal stands
+  // past the point, its arm over the lanes; a sign before it, facing the traffic.
+  for (const m of graph.marked) {
+    if (used.has(m) || !(m.kind === "signal" || m.kind === "stop" || (m.kind === "give_way" && rules.forms.yield))) continue;
+    const h = hash3(Math.round(m.x * 4), Math.round(m.z * 4), seed + 17);
+    const rule = m.kind === "signal" ? "signals" : m.kind === "stop" ? "stops" : "yields";
+    m.governs.forEach((g, k) => {
+      const l = Math.hypot(g.dx, g.dz) || 1; const tx = g.dx / l; const tz = g.dz / l; const half = graph.pieces[g.line]!.half;
+      const at = (d: number, yaw: number) => (set: number): [number, number, number] => [m.x + tx * d - tz * (half + set), m.z + tz * d + tx * (half + set), yaw];
+      const placed = m.kind === "signal"
+        ? putOut(rule, form("signal", hash3(h, k, seed)), J.signal, at(J.past, yawOf(tz, -tx)), at(2 * J.past, yawOf(tz, -tx)))
+        : putOut(rule, form(m.kind === "stop" ? "stop" : "yield", hash3(h, k, seed)), J.stop, at(-J.stopBack, yawOf(-tx, -tz)), at(-J.stopBack - J.past, yawOf(-tx, -tz)));
+      if (placed) used.add(m);
+    });
+  }
   // Each line of the named classes, walked from its first point: where the `d`th metre of it is, and which way it runs.
   const lines = new Map<number, Segment[]>();
   for (const s of segments) if (classOf(s) !== undefined) { if (!lines.has(s.line)) lines.set(s.line, []); lines.get(s.line)!.push(s); }
@@ -594,13 +618,14 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       let left = hi - lo; const chosen: [string, number][] = [];
       for (const [name, length] of sizes) while (left >= length) { chosen.push([name, length]); left -= length; }
       let from = lo + left / 2;
+      const fresh = c.signal === true || c.type === "traffic_signals" || T.fresh.includes(classOf(road.s) ?? "");
       const yaw = ((Math.atan2(-vz, vx) * DEG) % 360 + 360) % 360; const h = hash3(Math.round((c.ax + vx * t) * 4), Math.round((c.az + vz * t) * 4), seed + 15);
       chosen.forEach(([name, length], k) => {
         const px = c.ax + vx * (from + length / 2); const pz = c.az + vz * (from + length / 2); from += length;
         if (Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge) return void refuse("stripes", "edge");
         const chunk = chunkOf(px, pz); if (counts[chunk]! >= maxChunk) return void refuse("stripes", "budget");
         counts[chunk]!++;
-        const kind = streetKind(form(name, hash3(h, k, seed)));
+        const kind = streetKind(fresh ? name : form(name, hash3(h, k, seed)));
         pieces.push({ kind, x: px, y: site.groundAt(px, pz), z: pz, yaw });
         summary.placed[kind] = (summary.placed[kind] ?? 0) + 1; summary.byRule.stripes = (summary.byRule.stripes ?? 0) + 1;
       });

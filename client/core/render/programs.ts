@@ -63,7 +63,7 @@ function flatOr(tier: Tier, format: TextureFormat, hard: boolean, light: boolean
   const facades = weathers ? FACADE_TIERS[tier.name] : null;
   const own = weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex);
   const facadeUnits: Record<string, number> = facades ? { uFacadeBase: UNIT.facade, uFacadeNormal: UNIT.facade + 1, uFacadeOrm: UNIT.facade + 2, uFacadeRooms: UNIT.facade + 3, uFacadeMarks: UNIT.facade + 4 } : {};
-  return { vertex: litVertex ?? (facades ? facadeVertex(own) : FACADE_TIERS[tier.name] && vertex === FAR_MESH_VERTEX ? facadeFarVertex(own) : own), fragment: (facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + (weathers ? `#define WORLD_WEATHER\n${tier.finishes >= 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits } };
+  return { vertex: litVertex ?? (facades ? facadeVertex(own) : FACADE_TIERS[tier.name] && vertex === FAR_MESH_VERTEX ? facadeFarVertex(own) : own), fragment: (facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + `#define WORLD_TAPS ${Math.max(1, tier.anisotropy).toFixed(1)}\n` + (weathers ? `#define WORLD_WEATHER\n${tier.finishes >= 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
@@ -85,7 +85,11 @@ const mesh = (tier: Tier, made: ProgramText): ProgramText => (tier.lit ? { ...ma
 
 const MAKE = {
   flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
-  terrain: (tier, format, hard = false, light = false) => flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX),
+  // Where the tier reads the finishes in full, asphalt and sand wear (world-surfaces.ts `roadWorn`).
+  terrain: (tier, format, hard = false, light = false) => {
+    const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX);
+    return tier.lit && tier.finish === "full" ? { ...t, defines: `#define WORLD_ROAD\n${t.defines}` } : t;
+  },
   // The same, for the tiles that read the window round the camera (terrain.ts).
   terrainWindow: (tier, format, hard, light): ProgramText => {
     const t = MAKE.terrain(tier, format, hard, light);

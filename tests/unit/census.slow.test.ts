@@ -39,11 +39,22 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // 42, 181,608, 14 and 177,982. Since a mass's cells under the air are cut to their pieces' tops (shared/world/city.ts)
   // the roof on low poly, which draws the mass past 600 m, has 62 far triangles more. Cut again when towers came to have
   // tops (tools/mapworld/ruin-crowns.ts): the roof on high was 77, 94, 163,572, 19 and 186,210, the air 115, 107,
-  // 183,856, 14 and 180,302. Its hanging slabs were then 8 m wide and hung 62 degrees: hung nearly sheer and twisted
-  // (content/ruins.ts zdrape) the roof's near triangles were 163,542 and the air's 185,058 near and 182,608 far.
+  // 183,856, 14 and 180,302. Cut again the same evening from the 16 km map at the same downtown, which holds its lit
+  // lamps, low buildings' attics and raised parapets, the flats' bare balcony bays, cut shop fronts, ivy and moss: on the
+  // 8 km map the street on high was 52, 98, 130,970, 13 and 130,032, the roof 77, 95, 163,548, 19 and 186,210, the air
+  // 115, 107, 185,144, 14 and 182,734 (163,542, 185,058 and 182,608 before the hanging slabs hung nearly sheer and
+  // twisted, content/ruins.ts zdrape). Its attics' copings were bevelled: 135,482 and 140,694 at the street, 166,732 and
+  // 191,006 on the roof, 187,692 and 186,144 in the air. Cut again when vines came to hang from bare balconies too: the
+  // street on high was 84, 177, 134,942, 14 and 140,146, the roof 129, 176, 166,142, 19 and 190,306, the air 165, 171,
+  // 187,138, 14 and 185,524. Cut again when every vine's anchor kept its strands and a balcony band ended only on the
+  // storeys where the bay beside it is gone: 79, 170, 134,974, 14 and 140,226 at the street, 126, 164, 166,186, 19 and
+  // 190,228 on the roof, 163, 171, 187,170, 14 and 185,632 in the air. Cut again when moss came to lie only along a
+  // coping, which moves the roofs' plant (six moss strips fewer here, and the roof plant's kinds come out otherwise, each
+  // kind a draw): 79, 193, 141,556, 14 and 144,018 at the street, 137, 185, 173,296, 19 and 195,360 on the roof, 175,
+  // 182, 194,648, 14 and 190,202 in the air.
   expect(got).toEqual({
-    "street-300": { lowpoly: [52, 0, 130970, 10, 91182], "medium, touch": [38, 18, 77114, 10, 45888], medium: [52, 52, 130970, 13, 130032], high: [52, 98, 130970, 13, 130032], ultra: [52, 116, 130970, 13, 130032] },
-    "roof-300": { lowpoly: [77, 0, 163548, 13, 121996], "medium, touch": [47, 10, 97390, 14, 69482], medium: [77, 49, 163548, 19, 183360], high: [77, 95, 163548, 19, 186210], ultra: [77, 110, 163548, 19, 186210] },
-    "air-300": { lowpoly: [115, 0, 185144, 11, 119038], "medium, touch": [47, 3, 113956, 9, 50048], medium: [115, 15, 185144, 14, 182734], high: [115, 107, 185144, 14, 182734], ultra: [115, 122, 185144, 14, 182734] },
+    "street-300": { lowpoly: [86, 0, 141820, 11, 100392], "medium, touch": [55, 47, 82694, 10, 48754], medium: [85, 100, 141724, 14, 143902], high: [85, 207, 141724, 14, 143902], ultra: [85, 243, 141724, 14, 143902] },
+    "roof-300": { lowpoly: [148, 0, 173608, 13, 128528], "medium, touch": [84, 33, 103666, 14, 73136], medium: [147, 100, 173512, 19, 192348], high: [147, 197, 173512, 19, 195254], ultra: [147, 231, 173512, 19, 195254] },
+    "air-300": { lowpoly: [184, 0, 194840, 11, 123334], "medium, touch": [80, 6, 120762, 9, 53104], medium: [183, 30, 194744, 14, 190114], high: [183, 194, 194744, 14, 190114], ultra: [183, 216, 194744, 14, 190114] },
   });
 });

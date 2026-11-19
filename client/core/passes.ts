@@ -217,9 +217,10 @@ export class BenchRun {
  * or mark, as before their atlases come (facade.ts). "hide"
  * draws what the frame finds wholly hidden (render/hide.ts), and "order" draws an opaque step's draws by what they bind
  * alone and its ground first, as they went before they went nearest first (render/scene.ts order). "edges" draws walls
- * with no worn edges (world-surfaces.ts).
+ * with no worn edges and "road" the ground with no wear on asphalt and sand (world-surfaces.ts). "nearmesh" draws the
+ * near city's pieces as instances, none as a chunk's mesh (render/nearcity.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "nearmesh"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -248,18 +249,20 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
   return copy;
 }
 
-/** The effects that live in how the scene builds a frame: what is hidden left out, and the opaque draws nearest first. */
-export function sceneWithout(scene: { hide: boolean; nearFirst: boolean }, off: ReadonlySet<Effect>): void {
+/** The effects that live in how the scene builds a frame: what is hidden left out, the opaque draws nearest first, and the near city's meshes. */
+export function sceneWithout(scene: { hide: boolean; nearFirst: boolean; nearMesh: boolean }, off: ReadonlySet<Effect>): void {
   scene.hide = !off.has("hide");
   scene.nearFirst = !off.has("order");
+  scene.nearMesh = !off.has("nearmesh");
 }
 
-/** The effects that live in a built frame: the haze, bodies' contact, the facades and the edges in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
+/** The effects that live in a built frame: the haze, bodies' contact, the facades, the edges and the road's wear in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
   if (off.has("contact")) p.frame.fill(0, FRAME.contact, FRAME.eyes);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
   if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
+  if (off.has("road")) p.frame[FRAME.roadOff] = 1;
   for (let d = 0; d < p.drawCount; d++) {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;

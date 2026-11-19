@@ -45,6 +45,14 @@ KINDS = {
         # Heaped high on one side, over a broken stump or against a wall's foot.
         {"seed": 419, "width": 2.6, "depth": 1.8, "height": 1.5, "steep": 0.4, "runs": 10, "run": 0.5, "shoulders": 3, "rim": 14, "strands": 9, "runners": 4, "left": 5},
     ],
+    "vine": [
+        # A curtain three metres wide from a slab's edge, its longest strands near three metres.
+        {"seed": 503, "width": 3.0, "length": 2.8, "mat": 9},
+        # A short one from a balcony's lip.
+        {"seed": 509, "width": 2.4, "length": 1.6, "mat": 6},
+        # Long and sparse: a few old strands down a storey and more.
+        {"seed": 521, "width": 3.0, "length": 3.6, "mat": 7},
+    ],
 }
 
 # Every individual has its own used-up mesh, so a node keeps its frame when it is stripped.

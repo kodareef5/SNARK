@@ -2,6 +2,7 @@
 // things the trip measures came or went, on globalThis.snarkTrip for the tool to read over DevTools. It reads the app and
 // changes nothing of it: what the page fetches, draws and sends is the same with it as without.
 
+import { SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { App } from "./app.ts";
 import { DRAW_TEXTURED } from "./render/packet.ts";
@@ -28,7 +29,7 @@ const FINE = ((WINDOW - 1) / 2) * TERRAIN_CELL;
 /**
  * Watches the app's frames. Marks: `frame`, the first drawn; `street`, each chunk within one of the body's that the map
  * has statics in whole in the near store, every asset shown at the level and step it is wanted at and nothing on its way,
- * and pieces drawn with their materials; `far`, the
+ * no look for how near the finishes come under way (render/finish-near.ts), and pieces drawn with their materials; `far`, the
  * far city drawn in the view; `colour`, the world's finishes drawn with their base colours, where before those come they
  * are drawn as their means (client/shell/gl.ts worldReady), or none to draw; `soft`, no texture shown without its first
  * step; `handed`, the whole map's statics handed
@@ -79,7 +80,7 @@ export class TripProbe {
     const p = scene.packet, r = scene.assets.residency;
     let textured = false;
     for (let d = 0; d < p.drawCount && !textured; d++) textured = (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
-    this.set("street", textured && r.flying === 0 && r.waiting === 0 && r.wanting() === 0 && this.near((c) => this.counts[c] === 0 || world.far.complete(c)));
+    this.set("street", textured && r.flying === 0 && r.waiting === 0 && r.wanting() === 0 && scene.finishNear.through && this.near((c) => this.counts[c] === 0 || world.far.complete(c)));
     this.set("far", (scene.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) > 0);
     this.set("colour", p.worldSide[0] === 0 || p.worldLevel[0]! >= 0);
     this.set("soft", r.bare() === 0);
@@ -97,6 +98,24 @@ export class TripProbe {
     const world = this.app.session.world;
     if (!world) return { ground: false, pieces: 0 };
     return { ground: world.hf.exactIn(0, 0, world.hf.sizeX, world.hf.sizeZ), pieces: world.city?.statics.first.at(-1) ?? 0 };
+  }
+
+  /**
+   * Bytes of art fetched so far by kind: the textures of the world's finishes and their masks, of the facades, of the
+   * sky, of the landmarks and the rest of the core's; and all else, the meshes, their surfaces, the pages and the clips.
+   */
+  art(): Record<string, number> {
+    const out: Record<string, number> = { finishes: 0, facades: 0, sky: 0, landmarks: 0, textures: 0, meshes: 0 };
+    const r = this.app.scene?.assets.residency;
+    if (!r) return out;
+    let textures = 0;
+    for (const t of r.textureState()) {
+      const kind = t.id.startsWith(SURFACE_PREFIX) ? "finishes" : t.id.startsWith("core:facade") ? "facades" : t.id.startsWith("core:sky") ? "sky" : t.id.startsWith("core:") ? "textures" : "landmarks";
+      out[kind]! += t.fetched;
+      textures += t.fetched;
+    }
+    out.meshes = r.stats.fetched - textures;
+    return out;
   }
 
   /** What the street waits for, as it is now: requests under way and bytes waiting for the card, and the chunks round the body not whole. */

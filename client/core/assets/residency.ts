@@ -76,8 +76,8 @@ const NEEDED: readonly number[] = [0, 3, 4];
 export const FIRST = 1e6;
 /** A page is more urgent than step 0 of any texture: nothing of its meshes is drawn without it. So is the first level of a mesh with none held. */
 export const PAGE_FIRST = 4 * FIRST;
-/** How urgent a material's textures are against one another. */
-const WEIGHT: readonly number[] = [1, 0.5, 0.25, 1, 1];
+/** How urgent a material's textures are against one another: base colour, normal, packed map and the two masks. */
+export const WEIGHT: readonly number[] = [1, 0.5, 0.25, 1, 1];
 /** A texture's climb is as urgent as the pixels it adds for each this many bytes of it, so the cheapest gain comes first. */
 const CLIMB_BYTES = 65536;
 /** A texture in view is remade smaller only if what is left would do for this many times the pixels it covers. */
@@ -208,6 +208,8 @@ export class Residency {
   private readonly through: Uint32Array;
   /** How many bytes of the copy on its way the card has been handed. From the first of them the card holds that copy whole. */
   private readonly gone: Uint32Array;
+  /** Bytes of each texture that came over the network, every copy of it. */
+  private readonly texFetched: Float64Array;
   /** The most pixels across that anything showed a texture at this frame, and the frame it joined `wants`. */
   private readonly px: Float32Array;
   private readonly queued: Uint32Array;
@@ -244,9 +246,9 @@ export class Residency {
   private readonly fromBoot: number[] = [];
   private readonly arrivals: AssetArrival[] = [];
 
-  /** Bounded, on-demand inspection: authored texture identity and its resident/incoming step. */
-  textureState(): { id: string; have: number; goal: number; state: number; wanted: boolean }[] {
-    return (this.manifest.textures ?? []).map((texture, t) => ({ id: texture.id, have: this.has[t]!, goal: this.goal[t]!, state: this.state[this.texBase + t]!, wanted: this.seen[this.texBase + t] === this.frame }));
+  /** Bounded, on-demand inspection: authored texture identity, its resident/incoming step and the bytes fetched of it. */
+  textureState(): { id: string; have: number; goal: number; state: number; wanted: boolean; fetched: number }[] {
+    return (this.manifest.textures ?? []).map((texture, t) => ({ id: texture.id, have: this.has[t]!, goal: this.goal[t]!, state: this.state[this.texBase + t]!, wanted: this.seen[this.texBase + t] === this.frame, fetched: this.texFetched[t]! }));
   }
 
   /** `pages` are the blobs of pages whose rows a tool has read into the manifest already (shared/pack/manifest.ts `readPages`), by page. */
@@ -319,6 +321,7 @@ export class Residency {
     this.limit = new Int8Array(textures.length);
     this.through = new Uint32Array(textures.length * STEPS);
     this.gone = new Uint32Array(textures.length);
+    this.texFetched = new Float64Array(textures.length);
     this.px = new Float32Array(textures.length);
     this.queued = new Uint32Array(textures.length);
     this.down = new Uint8Array(textures.length);
@@ -511,6 +514,7 @@ export class Residency {
       this.land(slot);
       this.stats.fetched += a.fetched;
       this.stats.cached += a.cached;
+      if (this.isTexture(slot)) this.texFetched[slot - this.texBase]! += a.fetched;
       const rider = slot < this.levels && this.state[this.levels + slot] === RIDING ? this.levels + slot : -1;
       // A port that brings fewer bytes than were asked for has failed, whatever it says.
       if (a.data && a.data.length === this.asked(slot)) {
@@ -651,6 +655,15 @@ export class Residency {
     const most = STEP0_SIZE << (this.matTop[m]! < this.cap ? this.matTop[m]! : this.cap);
     this.texture(t, pixels < most ? pixels : most, 1 / distance, true);
     return true;
+  }
+
+  /**
+   * Says texture `t` (its index in the manifest) is on screen this frame `px` pixels across, as `material` says of a
+   * material's maps, for one asked for by itself: a layer of the world finishes' arrays. `weight` is its urgency against
+   * the others, and `needed` makes its first step as urgent as a base colour's.
+   */
+  shown(t: number, px: number, weight: number, needed: boolean): void {
+    if (this.cap >= 0) this.texture(t, Math.min(px, STEP0_SIZE << this.cap), weight, needed);
   }
 
   /** Whether a material's layer can be drawn with this frame. */

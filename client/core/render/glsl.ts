@@ -12,7 +12,7 @@ import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
@@ -269,7 +269,7 @@ uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}vec3 groundColour(int tint) {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${ROAD_GLSL}vec3 groundColour(int tint) {
   vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
@@ -285,11 +285,18 @@ void main() {
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uWorldReady > 0.5) {
     float h = worldSurface(albedo, orm, n, geometric, groundSurface(tint), vRel, dx, dy), share;
+#ifdef WORLD_ROAD
+    roadWorn(albedo, orm, groundSurface(tint), vRel + uWorldEye, dx, dy);
+    worldSharp = orm.y < ${f(WORLD_SHARP)};
+#endif
     // Where it meets another finish, the higher of the two shows through the other.
     int other = groundMeet(tint, tints, s - vec2(i), share);
     if (share > 0.0) {
       vec3 albedo2 = groundColour(other), orm2, n2 = level;
       float b = higher(h, worldSurface(albedo2, orm2, n2, geometric, groundSurface(other), vRel, dx, dy), share, ${f(GROUND_SCALE)}, ${f(GROUND_BAND)});
+#ifdef WORLD_ROAD
+      roadWorn(albedo2, orm2, groundSurface(other), vRel + uWorldEye, dx, dy);
+#endif
       albedo = mix(albedo, albedo2, b);
       orm = mix(orm, orm2, b);
       n = normalize(mix(n, n2, b));
