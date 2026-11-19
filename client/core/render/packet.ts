@@ -306,7 +306,7 @@ export const FRAME = {
   facade: 152,
   /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`). */
   edgesOff: 154,
-  /** Its fourth: 1 on a frame drawn without the ground's wear on asphalt and sand (`?off=road`, world-surfaces.ts `roadWorn`). */
+  /** Its fourth: 1 more on a frame drawn without the ground's wear on asphalt and sand (`?off=road`, world-surfaces.ts `roadWorn`), and 2 more without a walk's (`?off=walks`, `walkWorn`). */
   roadOff: 155,
   /**
    * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and

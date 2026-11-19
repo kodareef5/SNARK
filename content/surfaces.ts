@@ -101,6 +101,12 @@ export const SURFACE_WEATHERING: Record<SurfaceName, SurfaceWeathering> = {
  * each 8 m square, the share patched and the share whose cracks are sealed. The beach's macro is its light alone.
  */
 export const ROAD_LOOK = { macro: 0.7, macroRough: 0.6, patched: 0.18, sealed: 0.3, beach: 0.8 };
+/**
+ * How a poured walk wears (world-surfaces.ts `walkWorn`) by its 1.5 m panels and the joints between them, each panel
+ * and each joint's piece by a hash of where it is: a panel's tone either way, the shares of panels stained, cracked and
+ * sunk and how far a sunk one leans; and of the joints' pieces, the shares holding grass and, of the rest, dirt.
+ */
+export const WALK_LOOK = { tone: 0.09, stained: 0.3, cracked: 0.2, sunk: 0.15, lean: 0.035, grass: 0.22, dirt: 0.55 };
 
 /** City-wide art direction. The key is the map id's last component; unknown maps use default. */
 export const SURFACE_CITIES: Record<string, SurfaceDials> = {
