@@ -5,8 +5,8 @@
 // in, which the first frame waits for and which come alone (firstFrameParts says which, for the loader and for the map's
 // build). Then, while the game is played, the rest nearest first by where the body is and where it is heading, ordered
 // again at each ask so a jump goes first to where it lands: the overviews and ground within RING, then the other overviews
-// within CITY_NEAR, then the rest, the far overviews among them, each sector's ground before its statics; URGENT_AT_ONCE
-// at once while what is within RING is wanted, AFTER_AT_ONCE otherwise. Once the overviews, the ground and the statics of every sector within CITY_NEAR of the
+// within CITY_NEAR, then its sectors, then the overviews past it, then the rest, each sector's ground before its statics;
+// URGENT_AT_ONCE at once while what is within RING is wanted, AFTER_AT_ONCE otherwise. Once the overviews, the ground and the statics of every sector within CITY_NEAR of the
 // body have come, those sectors' statics are handed over, for the far city round the body; and once every part has come,
 // all of them. A part that fails is asked for again after a wait that grows to a cap, for as long as the page lives, and
 // what has come is kept. One that comes damaged or as another's is refused by name and asked for again, until the
@@ -342,8 +342,8 @@ export class MapLoader {
 
   /**
    * From now on the rest of the map comes, nearest first to where `where` has the body, else to the map's first spawn
-   * point, the overviews within CITY_NEAR before the rest but for what is within RING, each sector's ground before its
-   * statics. Resolves once the ground and the overviews the first frame waits for where it has the body now have come,
+   * point, the overviews within CITY_NEAR and then its sectors before the rest but for what is within RING, and the
+   * overviews past it before their sectors, each sector's ground before its statics. Resolves once the ground and the overviews the first frame waits for where it has the body now have come,
    * alone. From then on `then.say` is told what the player is; `then.arrived` is handed the statics of the sectors within
    * CITY_NEAR of the body once their overviews, ground and statics have come and not every part has, and then the map's
    * statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR. While
@@ -430,15 +430,18 @@ export class MapLoader {
   }
 
   /**
-   * Which of the parts left goes next: the nearest overview or ground within RING, else the nearest overview within
-   * CITY_NEAR, which the far city waits for, else the nearest, a sector's ground before its statics; -1 for none.
+   * Which of the parts left goes next, nearest first within each of these in turn: the overviews and ground within RING;
+   * the overviews within CITY_NEAR and then its sectors, which the far city waits for; the overviews past it; the rest. A
+   * sector's ground goes before its statics; -1 for none.
    */
   private nearest(): number {
     let best = -1;
     let least = Infinity;
     this.left.forEach((p, k) => {
-      const off = this.off(p) + (p.kind === "statics" ? 0.5 : this.urgent(p) ? -1e9 : p.kind === "overview" && this.off(p) <= this.near ? -1e6 : 0);
-      if (off < least) [best, least] = [k, off];
+      const off = this.off(p);
+      const turn = this.urgent(p) ? 0 : (off <= this.near ? 1 : 3) + (p.kind === "overview" ? 0 : 1);
+      const rank = turn * 1e6 + off + (p.kind === "statics" ? 0.5 : 0);
+      if (rank < least) [best, least] = [k, rank];
     });
     return best;
   }

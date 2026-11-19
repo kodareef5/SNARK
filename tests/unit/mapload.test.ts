@@ -83,10 +83,11 @@ const off = (p: MapPart, x: number, z: number): number => {
 /** Whether a part is an overview or ground within RING of (x, z). */
 const ringed = (p: MapPart, x: number, z: number): boolean => (p.kind === "overview" || p.kind === "ground") && off(p, x, z) <= RING;
 /**
- * The order the loader asks for the parts left in with the body at (x, z): what is within RING, then the overviews within
- * `near` (CITY_NEAR), then the rest, each nearest first and a sector's ground before its statics.
+ * The order the loader asks for the parts left in with the body at (x, z): what is within RING; the overviews within
+ * `near` (CITY_NEAR) and then its sectors; the overviews past it; the rest; each nearest first and a sector's ground
+ * before its statics.
  */
-const rank = (p: MapPart, x: number, z: number, near = CITY_NEAR): number => off(p, x, z) + (p.kind === "statics" ? 0.5 : ringed(p, x, z) ? -1e9 : p.kind === "overview" && off(p, x, z) <= near ? -1e6 : 0);
+const rank = (p: MapPart, x: number, z: number, near = CITY_NEAR): number => (ringed(p, x, z) ? 0 : (off(p, x, z) <= near ? 1 : 3) + (p.kind === "overview" ? 0 : 1)) * 1e6 + off(p, x, z) + (p.kind === "statics" ? 0.5 : 0);
 /** Answers the waiting requests until `done` holds. */
 const until = async (s: { answer(k?: number): Promise<void> }, done: () => boolean): Promise<void> => {
   while (!done()) await s.answer();
@@ -123,10 +124,10 @@ test("after the first frame the page asks for the rest nearest first: the overvi
   const order = s.asked.slice(before).filter((url) => !near.some((p) => nameOf(p) === url)).map((url) => rest.find((p) => nameOf(p) === url)!);
   for (let k = 1; k < order.length; k++) expect(rank(order[k]!, body.x, body.z, reach)).toBeGreaterThanOrEqual(rank(order[k - 1]!, body.x, body.z, reach));
   expect(order.length).toBe(rest.length);
-  // The west overview, past the city's reach, after every sector's ground and statics within it and before its own sector's.
+  // The west overview, past the city's reach, after every sector's ground and statics within it and before any past it.
   const west = order.findIndex((p) => p.kind === "overview");
   const within = order.filter((p, k) => p.kind !== "overview" && off(p, body.x, body.z) <= reach && k > west);
-  expect([within.length, order.slice(0, west).some((p) => p.col === 127)]).toEqual([0, false]);
+  expect([within.length, order.slice(0, west).some((p) => p.kind !== "overview" && off(p, body.x, body.z) > reach)]).toEqual([0, false]);
   expect(loader!.staged.hf.exactIn(0, 0, head.dims.chunksX * CHUNK_SIZE, head.dims.chunksZ * CHUNK_SIZE)).toBe(true);
   await settle();
   expect(wholeStatics(handed)).toBe(true);
