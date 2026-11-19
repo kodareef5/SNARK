@@ -2009,6 +2009,14 @@
       "stop": [["stop", 5], ["stop_bent", 2]],
       "speed": [["speed", 5], ["post_bare", 1]],
       "speed40": [["speed40", 5], ["post_bare", 1]],
+      "speed25": [["speed25", 5], ["post_bare", 1]],
+      "speed35": [["speed35", 5], ["post_bare", 1]],
+      "speed45": [["speed45", 5], ["post_bare", 1]],
+      "paystation": [["paystation", 6], ["paystation_broken", 1]],
+      "crosswalk1": [["crosswalk1", 1], ["crosswalk1_worn", 2]],
+      "crosswalk2": [["crosswalk2", 1], ["crosswalk2_worn", 2]],
+      "crosswalk4": [["crosswalk4", 1], ["crosswalk4_worn", 2]],
+      "crosswalk8": [["crosswalk8", 1], ["crosswalk8_worn", 2]],
       "speed30": [["speed30", 5], ["post_bare", 1]],
       "evacuation": [["evacuation", 1]],
       "oneway": [["oneway", 5], ["post_bare", 1]],
@@ -2026,7 +2034,7 @@
       "billboard": [["billboard", 2], ["billboard_bare", 1]]
     },
     "lamps": { "spacing": { "highway": 44, "avenue": 35, "street": 30, "ramp": 44, "lot": 40 }, "both": ["highway", "avenue"], "set": 0.9, "lit": { "highway": 0.15, "avenue": 0.3, "street": 0.1, "ramp": 0.15, "lot": 0.05 }, "dark": ["industrial"] },
-    "junctions": { "major": ["avenue"], "minor": ["street"], "signalCross": 0.5, "signal": 1.2, "stop": 0.75, "name": 1.4, "stopBack": 2, "standing": 0.9, "past": 2.6 },
+    "junctions": { "major": ["avenue"], "minor": ["street"], "signalCross": 0.5, "signal": 1.2, "stop": 0.75, "name": 1.4, "stopBack": 2, "standing": 0.9, "past": 2.6, "marked": 14 },
     "poles": { "classes": ["street"], "styles": ["residential", "terracotta", "mural"], "spacing": 40, "set": 1.2 },
     "hydrants": { "classes": ["avenue", "street"], "spacing": 110, "first": 9, "set": 0.65 },
     "meters": { "classes": ["avenue", "street"], "uses": ["Commercial", "Government", "Assembly"], "tall": 0.5, "block": 60, "chance": 0.45, "every": 6.5, "run": [3, 6], "set": 0.6 },
@@ -2037,14 +2045,16 @@
       "divided": { "classes": ["highway", "avenue"], "apart": [6, 35], "share": 0.6 },
       "oneway": { "chance": 0.6, "set": 0.8 },
       "noentry": { "set": 0.8, "back": 3 },
-      "crossing": { "chance": 0.2, "set": 0.85, "back": 3 },
+      "crossing": { "chance": 0.2, "set": 0.85, "back": 3, "marked": ["marked", "uncontrolled", "zebra"] },
       "deadend": { "classes": ["street"], "least": 40, "reach": 1500, "set": 0.85, "back": 5 },
-      "noparking": { "chance": { "avenue": 0.15, "street": 0.05 }, "set": 0.6, "back": 9, "angle": 40 }
+      "noparking": { "chance": { "avenue": 0.15, "street": 0.05 }, "set": 0.6, "back": 9, "angle": 40, "every": 80 }
     },
     "rails": { "classes": ["highway", "ramp"], "set": 0.8, "drop": 1.2, "water": 9 },
     "fences": { "classes": ["avenue", "street"], "set": 2.5, "depth": 12, "least": 12, "yard": 0.75, "open": 0.3, "gap": 0.08 },
     "billboards": { "classes": ["highway", "ramp", "avenue"], "spacing": 380, "set": [10, 16], "chance": 0.7 },
-    "clear": { "road": 0.25, "inside": 0.35, "route": 0.4, "piece": 0.3, "between": 0.4, "edge": 12, "junction": 3, "rise": 0.6 }
+    "paystations": { "least": 8, "tries": 6, "set": 0.6 },
+    "stripes": { "pieces": { "crosswalk8": 9.6, "crosswalk4": 4.8, "crosswalk2": 2.4, "crosswalk1": 1.2 }, "inset": 0.3, "bare": ["unmarked", "no"] },
+    "clear": { "road": 0.25, "inside": 0.35, "route": 0.4, "piece": 0.3, "between": 0.4, "edge": 12, "junction": 3, "rise": 0.6, "crossing": 0.3 }
   },
   "roofs": {
     "seed": 5303,

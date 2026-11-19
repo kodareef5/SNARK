@@ -89,6 +89,15 @@
  "oneway_left": {
   "height_mm": 6
  },
+ "paystation": {
+  "height_mm": 10
+ },
+ "paystation_paint": {
+  "height_mm": 10
+ },
+ "paystation_smashed": {
+  "height_mm": 10
+ },
  "poster": {
   "height_mm": 13
  },
@@ -110,10 +119,19 @@
  "speed": {
   "height_mm": 6
  },
+ "speed25": {
+  "height_mm": 6
+ },
  "speed30": {
   "height_mm": 6
  },
+ "speed35": {
+  "height_mm": 6
+ },
  "speed40": {
+  "height_mm": 6
+ },
+ "speed45": {
   "height_mm": 6
  },
  "stop": {

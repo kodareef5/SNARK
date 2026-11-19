@@ -32,7 +32,7 @@ import { binKey, hash3 } from "./raster.ts";
 import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
-import { roadIndex } from "./street-cars.ts";
+import { nodeKey, streetGraph, type Marked, type Segment } from "./street-graph.ts";
 
 /** A rule's kinds by their names after "core:zzstreet_", with their weights. */
 type Forms = readonly (readonly [string, number])[];
@@ -47,7 +47,7 @@ export interface Furniture {
   lamps: { spacing: Record<string, number>; both: string[]; set: number; lit: Record<string, number>; dark: string[] };
   /** Metres from the kerbs to a signal's pole and a street-name sign at a corner, and to a stop sign's post; `past`, how much
    * further back along the street a stop sign or a corner's box goes where a walk's curb ramp stands in its place. */
-  junctions: { major: string[]; minor: string[]; signalCross: number; signal: number; stop: number; name: number; stopBack: number; standing: number; past: number };
+  junctions: { major: string[]; minor: string[]; signalCross: number; signal: number; stop: number; name: number; stopBack: number; standing: number; past: number; marked: number };
   poles: { classes: string[]; styles: string[]; spacing: number; set: number };
   hydrants: { classes: string[]; spacing: number; first: number; set: number };
   /** Runs of `run` meters `every` metres apart, a block of `block` metres at a time, before buildings of `uses`. */
@@ -64,23 +64,29 @@ export interface Furniture {
   regulations: {
     divided: { classes: string[]; apart: [number, number]; share: number };
     oneway: { chance: number; set: number }; noentry: { set: number; back: number };
-    crossing: { chance: number; set: number; back: number };
+    /** `marked`: the crossing types (crossing=*) that take the sign where the data says. */
+    crossing: { chance: number; set: number; back: number; marked: string[] };
     deadend: { classes: string[]; least: number; reach: number; set: number; back: number };
-    noparking: { chance: Record<string, number>; set: number; back: number; angle: number };
+    noparking: { chance: Record<string, number>; set: number; back: number; angle: number; every: number };
   };
   rails: { classes: string[]; set: number; drop: number; water: number };
   /** Fence along the street line of an open lot or a yard at least `least` metres long, a 3 m run at a time. */
   fences: { classes: string[]; set: number; depth: number; least: number; yard: number; open: number; gap: number };
   billboards: { classes: string[]; spacing: number; set: [number, number]; chance: number };
+  /** A pay station for each lot of at least `least` stalls, at the head of one of the `tries` stalls nearest its middle. */
+  paystations?: { least: number; tries: number; set: number };
+  /** Stripes laid on a crossing: the forms of each length of stripes, in metres, and how far in from each kerb they stop;
+   * `bare`, the crossing types (crossing=*) the data says are not painted. */
+  stripes?: { pieces: Record<string, number>; inset: number; bare: string[] };
   /** Metres kept clear: of a lane's edge, a reserved route's, any piece's; between two of these; of the map's edge. */
   /** `inside` is how far inside a road's edge a post may stand where it fits nowhere else. */
-  clear: { road: number; inside: number; route: number; piece: number; between: number; edge: number; junction: number; rise: number };
+  clear: { road: number; inside: number; route: number; piece: number; between: number; edge: number; junction: number; rise: number; crossing: number };
 }
 
 /** What a layer makes, and why candidates were left out, by rule. */
-export interface FurnitureSummary { placed: Record<string, number>; byRule: Record<string, number>; refused: Record<string, Record<string, number>>; }
+/** `mapped`: the controls the data maps, by kind, and how many of them a junction's signs or signals were placed for. */
+export interface FurnitureSummary { placed: Record<string, number>; byRule: Record<string, number>; refused: Record<string, Record<string, number>>; mapped?: Record<string, { mapped: number; used: number }>; }
 
-interface Segment { ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number }
 interface Part { lo: [number, number, number]; hi: [number, number, number] }
 /** A way out of a junction: which way it leaves, the key of the point it leads to, and +1 where that is the way its line is drawn. */
 interface Arm { dx: number; dz: number; half: number; cls: string; line: number; to: number; sense: number }
@@ -174,8 +180,8 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid; const chunksX = ground.grid.sizeX / 64;
   const sample = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   const { clear } = rules; const seed = rules.seed;
-  const roads = roadIndex(site);
-  const segments: Segment[] = roads.segments;
+  const graph = streetGraph(site);
+  const segments: Segment[] = graph.segments;
   const classOf = (s: { mtfcc: string }): string | undefined => rules.classes[s.mtfcc];
   // Every road's stretches in 16 m bins, to keep the lanes clear of every way, named or not.
   const laneBins = new Map<number, Segment[]>();
@@ -230,6 +236,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const foot = worldBox(shape.foot, x, 0, z, yaw); const corners = footprint(foot);
     if (corners.some(([px, pz]) => Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge)) return refuse(rule, "edge");
     if (corners.some(([px, pz]) => inLane(px, pz, road))) return refuse(rule, "lane");
+    if (corners.some(([px, pz]) => graph.onCrossing(px, pz, clear.crossing))) return refuse(rule, "crossing");
     // On a walk wherever it touches one, on the lowest ground under it elsewhere.
     const tops = corners.map(([px, pz]) => walkTop(px, pz)); const walk = Math.max(...tops);
     const heights = corners.map(([px, pz], i) => Math.max(site.groundAt(px, pz), tops[i]!));
@@ -279,16 +286,28 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     return "";
   };
   const districtOf = (x: number, z: number): { style: string; tall: number } => site.world.districts[ground.district[sample(x, z)]! - 1] ?? { style: "", tall: 0 };
+  // What the street data says of a line (street-graph.ts), where it says it: whether a side of it (1 the right of the way
+  // it is drawn, -1 its left) has a sidewalk, whether it is lit, its speed limit, and its kerb's parking on a side.
+  const walked = (line: number, side: number): boolean => {
+    const tag = graph.pieces[line]?.sidewalk;
+    return tag === "no" || tag === "none" ? false : tag === "left" ? side < 0 : tag === "right" ? side > 0 : true;
+  };
+  const litTag = (line: number): boolean | null => graph.pieces[line]?.lit ?? null;
+  const speedOf = (line: number): number | null => graph.pieces[line]?.maxspeed ?? null;
+  const parkingOf = (line: number, side: number): string | null => graph.pieces[line]?.parking[side > 0 ? 1 : 0] ?? null;
 
-  // Junctions, from the stretches' ends: three ways or more, or two streets meeting at an angle.
+  // Junctions, from the street graph's nodes (street-graph.ts): three ways or more. Where only two meet, a way's tags
+  // change, in the middle of a block.
+  const keyOf = nodeKey;
+  // Each line's first and last points' keys, for where a way out of a node leads.
+  const lineEnds = new Map<number, [number, number]>();
+  for (const s of segments) { const e = lineEnds.get(s.line); if (!e) lineEnds.set(s.line, [keyOf(s.ax, s.az), keyOf(s.bx, s.bz)]); else e[1] = keyOf(s.bx, s.bz); }
   const ends = new Map<number, { x: number; z: number; arms: Arm[] }>();
-  const keyOf = (x: number, z: number): number => (Math.round(x * 2) + 65536) * 131072 + Math.round(z * 2) + 65536;
-  for (const s of segments) {
-    const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const cls = classOf(s) ?? "";
-    for (const [x, z, dx, dz, to, sense] of [[s.ax, s.az, (s.bx - s.ax) / length, (s.bz - s.az) / length, keyOf(s.bx, s.bz), 1], [s.bx, s.bz, (s.ax - s.bx) / length, (s.az - s.bz) / length, keyOf(s.ax, s.az), -1]] as const) {
-      const k = keyOf(x, z); if (!ends.has(k)) ends.set(k, { x, z, arms: [] });
-      ends.get(k)!.arms.push({ dx, dz, half: s.half, cls, line: s.line, to, sense });
-    }
+  for (const n of graph.nodes) {
+    ends.set(n.key, { x: n.x, z: n.z, arms: n.ways.map((w) => {
+      const piece = graph.pieces[w.line]!; const [first, last] = lineEnds.get(w.line) ?? [n.key, n.key];
+      return { dx: w.dx, dz: w.dz, half: piece.half, cls: classOf(piece) ?? "", line: w.line, to: w.sense > 0 ? last : first, sense: w.sense };
+    }) });
   }
   const junctions: Junction[] = [];
   // A street the data draws twice (two names for one way) is one arm, the wider.
@@ -299,8 +318,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   };
   for (const e of ends.values()) {
     const arms = armsAt(e);
-    if (arms.length < 2) continue;
-    if (arms.length === 2 && (arms[0]!.line === arms[1]!.line || arms[0]!.dx * arms[1]!.dx + arms[0]!.dz * arms[1]!.dz < -0.87)) continue;
+    if (arms.length < 3) continue;
     junctions.push({ x: e.x, z: e.z, arms, reach: Math.max(...arms.map((a) => a.half)) + clear.junction });
   }
   const junctionBins = new Map<number, Junction[]>();
@@ -319,16 +337,39 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const da = a.half + set; const db = b.half + set;
     return [j.x + (a.dx * db + b.dx * da) / sin, j.z + (a.dz * db + b.dz * da) / sin];
   };
+  // The points the data marks (signals, stops), by 32 m bins, and the junctions whose traffic a signal or a stop holds: a
+  // crossing there needs no sign of its own.
+  const markedBins = new Map<number, Marked[]>();
+  for (const m of graph.marked) { const k = binKey(Math.floor(m.x / 32), Math.floor(m.z / 32)); if (!markedBins.has(k)) markedBins.set(k, []); markedBins.get(k)!.push(m); }
+  const markedNear = (x: number, z: number, reach: number): Marked[] => {
+    const out: Marked[] = [];
+    for (let bz = Math.floor((z - reach) / 32); bz <= Math.floor((z + reach) / 32); bz++) for (let bx = Math.floor((x - reach) / 32); bx <= Math.floor((x + reach) / 32); bx++) {
+      for (const m of markedBins.get(binKey(bx, bz)) ?? []) if (Math.hypot(m.x - x, m.z - z) < reach) out.push(m);
+    }
+    return out;
+  };
+  const held: { x: number; z: number; reach: number; lines: Set<number> | null }[] = [];
+  const used = new Set<Marked>();
   for (const j of junctions) {
     const h = hash3(Math.round(j.x * 4), Math.round(j.z * 4), seed);
     const n = j.arms.length; const major = j.arms.filter(isMajor).length; const minor = j.arms.filter(isMinor).length;
     // The previous arm of each, turning the other way: the corner on the right of traffic coming in along it.
     const prev = (i: number): Arm => j.arms[(i + n - 1) % n]!;
-    const signals = n >= 3 && major + minor === n && (major >= 3 || (major === 2 && minor === 2 && chance(hash3(h, 1, seed), J.signalCross)));
+    // Signals where the data marks them at the junction; where the data marks no points at all, by the classes' rule.
+    const here = graph.mapped.points ? markedNear(j.x, j.z, j.reach + J.marked) : [];
+    const signals = graph.mapped.points ? n >= 3 && here.some((m) => m.kind === "signal") : n >= 3 && major + minor === n && (major >= 3 || (major === 2 && minor === 2 && chance(hash3(h, 1, seed), J.signalCross)));
+    // The ways in whose traffic a stop the data maps governs: traffic on a way out's line that travels toward the junction,
+    // against the way out.
+    const marked = here.filter((m) => m.kind === "stop");
+    const markedStops = j.arms.filter((a) => marked.some((m) => m.governs.some((g) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0)));
+    for (const m of marked) if (m.governs.some((g) => j.arms.some((a) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0))) used.add(m);
+    if (signals) for (const m of here) if (m.kind === "signal") used.add(m);
+    if (signals) held.push({ x: j.x, z: j.z, reach: j.reach, lines: null });
     if (signals) {
       j.arms.forEach((a, i) => {
-        // A mast arm spans the larger ways only; a lesser street's way in has none.
-        if (!isMajor(a) || !chance(hash3(h, 10 + i, seed), J.standing)) return;
+        // A mast arm spans the larger ways only, where the classes' rule put the signals; a lesser street's way in has none.
+        // Where the data marks them, every street's way in has its own.
+        if ((graph.mapped.points ? !isMajor(a) && !isMinor(a) : !isMajor(a)) || !chance(hash3(h, 10 + i, seed), J.standing)) return;
         // Its heads face the traffic that comes in along it, from across the junction: the pole at the far corner on that
         // traffic's right, its arm over the lanes it goes on into. Where nothing goes on (a T's stem), at the near corner.
         const o = j.arms.findIndex((b) => b.dx * a.dx + b.dz * a.dz < -0.8);
@@ -338,10 +379,12 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
           const p = corner(j, prev(i), a, set); return p && [p[0], p[1], yawOf(-a.dz, a.dx)];
         });
       });
-    } else if (n >= 3 && minor > 0 && major + minor === n) {
-      // The lesser street stops: a T's stem, or of two streets crossing the one with fewer ways in, by a hash.
+    } else if (markedStops.length > 0 || (n >= 3 && minor > 0 && major + minor === n)) {
+      // The ways in the data marks a stop on; where it marks none, the lesser street stops: a T's stem, or of two streets
+      // crossing the one with fewer ways in, by a hash.
       const lines = [...new Set(j.arms.map((a) => a.line))];
-      const stopped = major > 0 ? j.arms.filter(isMinor) : n === 3 ? j.arms.filter((a) => j.arms.filter((b) => b.line === a.line).length === 1) : j.arms.filter((a) => a.line === lines[hash3(h, 2, seed) % lines.length]);
+      const stopped = markedStops.length > 0 ? markedStops : major > 0 ? j.arms.filter(isMinor) : n === 3 ? j.arms.filter((a) => j.arms.filter((b) => b.line === a.line).length === 1) : j.arms.filter((a) => a.line === lines[hash3(h, 2, seed) % lines.length]);
+      held.push({ x: j.x, z: j.z, reach: j.reach, lines: new Set(stopped.map((a) => a.line)) });
       for (const [i, a] of j.arms.entries()) {
         if (!stopped.includes(a)) continue;
         const across = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half));
@@ -349,13 +392,6 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         // On the right of traffic coming in, facing it.
         const at = (d: number) => (set: number): [number, number, number] => [j.x + a.dx * d + a.dz * (a.half + set), j.z + a.dz * d - a.dx * (a.half + set), yawOf(a.dx, a.dz)];
         putOut("stops", form("stop", hash3(h, 30 + i, seed)), J.stop, at(back), at(back + J.past));
-      }
-      // Where the larger street's traffic goes on through, a pedestrian crossing sign on the right of some of its ways in.
-      const X = rules.regulations.crossing;
-      for (const [i, a] of j.arms.entries()) {
-        if (stopped.includes(a) || !isMajor(a) || !chance(hash3(h, 40 + i, seed), X.chance)) continue;
-        const back = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half)) + X.back;
-        putOut("crossings", form("crossing", hash3(h, 50 + i, seed)), X.set, (set) => [j.x + a.dx * back + a.dz * (a.half + set), j.z + a.dz * back - a.dx * (a.half + set), yawOf(a.dx, a.dz)]);
       }
       const first = j.arms.findIndex((a) => stopped.includes(a));
       if (first >= 0) putOut("names", "street_name", J.name, (set) => { const p = corner(j, prev(first), j.arms[first]!, set); return p && [p[0], p[1], yawOf(j.arms[first]!.dx, j.arms[first]!.dz)]; });
@@ -421,6 +457,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   along(B.classes, () => B.spacing, 7, (x, z, dx, dz, half, k, line) => {
     if (nearJunction(x, z, 6)) return;
     const s = k % 2 === 0 ? 1 : -1; const h = hash3(line, k, seed + 7);
+    if (!walked(line, s)) return;
     if (chance(h, B.shelter)) { const [px, pz, yaw] = side(x, z, dx, dz, half + B.set + 0.8, s); if (put("shelters", form("shelter", hash3(h, 1, seed)), px, pz, yaw)) return; }
     const [px, pz, yaw] = side(x, z, dx, dz, half + B.bench, s);
     if (put("shelters", form("bench", hash3(h, 2, seed)), px, pz, yaw)) { const [bx, bz] = [px + dx * 1.6, pz + dz * 1.6]; put("shelters", form("bin", hash3(h, 3, seed)), bx, bz, yaw); }
@@ -428,7 +465,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   // Lamps.
   const L = rules.lamps;
   along(Object.keys(L.spacing), (cls) => L.spacing[cls]!, 1, (x, z, dx, dz, half, k, line, cls) => {
-    if (nearJunction(x, z)) return;
+    if (nearJunction(x, z) || litTag(line) === false) return;
     const h = hash3(line, k, seed + 1);
     for (const s of L.both.includes(cls) ? [1, -1] : [k % 2 === 0 ? 1 : -1]) {
       let name = form("lamp", hash3(h, s + 2, seed));
@@ -445,18 +482,24 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   });
   // Hydrants, the first a few metres in from where a line starts.
   const H = rules.hydrants;
-  along(H.classes, () => H.spacing, 3, (x, z, dx, dz, half, k) => {
-    if (nearJunction(x, z, -4)) return;
+  along(H.classes, () => H.spacing, 3, (x, z, dx, dz, half, k, line) => {
+    if (nearJunction(x, z, -4) || !walked(line, k % 2 === 0 ? 1 : -1)) return;
     putOut("hydrants", "hydrant", H.set, (set) => side(x, z, dx, dz, half + set, k % 2 === 0 ? 1 : -1));
   }, (line, every) => H.first + hash3(line, 3, seed) % Math.max(1, Math.floor(every / 4)));
   // Parking meters in runs, before shops and offices in the denser districts.
   const M = rules.meters;
   along(M.classes, () => M.block, 4, (x, z, dx, dz, half, k, line) => {
-    if (districtOf(x, z).tall < M.tall) return;
     for (const s of [1, -1]) {
-      const h = hash3(line, k * 2 + (s > 0 ? 0 : 1), seed + 4); if (!chance(h, M.chance)) continue;
-      const [ux, uz] = side(x, z, dx, dz, half + 0.5, s);
-      if (!M.uses.includes(useAt(ux, uz, -dz * s, dx * s, 20))) continue;
+      // A kerb the data says cars stand at, in a dense district, has them; one it says they do not, none; where it says
+      // nothing, before the uses that would have them.
+      const kerb = parkingOf(line, s);
+      if (!walked(line, s) || kerb === "no" || districtOf(x, z).tall < M.tall) continue;
+      const h = hash3(line, k * 2 + (s > 0 ? 0 : 1), seed + 4);
+      if (kerb === null) {
+        if (!chance(h, M.chance)) continue;
+        const [ux, uz] = side(x, z, dx, dz, half + 0.5, s);
+        if (!M.uses.includes(useAt(ux, uz, -dz * s, dx * s, 20))) continue;
+      }
       const count = M.run[0] + hash3(h, 1, seed) % (M.run[1] - M.run[0] + 1);
       for (let m = 0; m < count; m++) {
         const [mx, mz] = [x + dx * m * M.every, z + dz * m * M.every];
@@ -465,12 +508,25 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       }
     }
   });
+  // A pay station in each lot with stalls enough, at the head of a stall near the lot's middle, its panel (its -z) to the
+  // aisle.
+  const Y = rules.paystations;
+  if (Y) for (const lot of graph.lots) {
+    if (lot.stalls.length < Y.least) continue;
+    const h = hash3(Math.round(lot.x * 4), Math.round(lot.z * 4), seed + 16);
+    const nearest = [...lot.stalls].sort((a, b) => Math.hypot(a[0] - lot.x, a[1] - lot.z) - Math.hypot(b[0] - lot.x, b[1] - lot.z)).slice(0, Y.tries);
+    for (const [x, z, fx, fz] of nearest) {
+      const ox = x - fx; const oz = z - fz; const ol = Math.hypot(ox, oz) || 1;
+      if (put("paystations", form("paystation", h), x + (ox / ol) * (ol + Y.set), z + (oz / ol) * (ol + Y.set), yawOf(ox / ol, oz / ol))) break;
+    }
+  }
   // Speed limit signs at the limit each class posts, or now and then on the larger ways an evacuation route sign, on the
   // right, facing the traffic.
   const G = rules.signs;
   along(Object.keys(G.spacing), (cls) => G.spacing[cls]!, 5, (x, z, dx, dz, half, k, line, cls) => {
     if (nearJunction(x, z)) return;
-    const h = hash3(line, k, seed + 5); const rule = chance(hash3(h, 1, seed), G.evacuation[cls] ?? 0) ? "evacuation" : G.limits[cls];
+    const h = hash3(line, k, seed + 5); const mph = speedOf(line);
+    const rule = chance(hash3(h, 1, seed), G.evacuation[cls] ?? 0) ? "evacuation" : mph !== null && rules.forms[`speed${mph}`] ? `speed${mph}` : G.limits[cls];
     if (!rule) return;
     putOut("signs", form(rule, h), G.set, (set) => { const [px, pz] = side(x, z, dx, dz, half + set, 1); return [px, pz, yawOf(-dx, -dz)]; });
   });
@@ -515,15 +571,54 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const back = W.set[0] + (hash3(h, 1, seed) % 1000) / 1000 * (W.set[1] - W.set[0]);
     const [px, pz, yaw] = side(x, z, dx, dz, half + back, h % 2 === 0 ? 1 : -1); put("billboards", form("billboard", hash3(h, 2, seed)), px, pz, yaw);
   });
+  if (graph.mapped.points) {
+    summary.mapped = {};
+    for (const m of graph.marked) { const k = (summary.mapped[m.kind] ??= { mapped: 0, used: 0 }); k.mapped++; if (used.has(m)) k.used++; }
+  }
+  // Stripes on the crossings of the walk network, laid flat on the road between its kerbs: the longest pieces first, from
+  // where the crossing meets the road's middle out. Last, as nothing stands on a crossing and they take a chunk's budget.
+  const T = rules.stripes;
+  if (T) {
+    const sizes = Object.entries(T.pieces).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    for (const c of graph.crossings) {
+      if ((c.type !== null && T.bare.includes(c.type)) || c.markings === "no") continue;
+      const ex = c.bx - c.ax; const ez = c.bz - c.az; const cl = Math.hypot(ex, ez); if (cl < 1) continue;
+      const vx = ex / cl; const vz = ez / cl;
+      const road = roadAt((c.ax + c.bx) / 2, (c.az + c.bz) / 2, 2); if (!road) continue;
+      // A crossing that runs along the road is no crossing of it.
+      const sin = Math.abs(vx * road.dz - vz * road.dx); if (sin < 0.5) continue;
+      // Where along it the crossing meets the road's middle, and the stretch of it between the kerbs, less the inset: a
+      // crossing drawn in pieces has each piece's share of that striped.
+      const t = (road.fx - c.ax) * vx + (road.fz - c.az) * vz; const across = (2 * road.s.half) / sin;
+      const lo = Math.max(0, t - across / 2 + T.inset); const hi = Math.min(cl, t + across / 2 - T.inset);
+      let left = hi - lo; const chosen: [string, number][] = [];
+      for (const [name, length] of sizes) while (left >= length) { chosen.push([name, length]); left -= length; }
+      let from = lo + left / 2;
+      const yaw = ((Math.atan2(-vz, vx) * DEG) % 360 + 360) % 360; const h = hash3(Math.round((c.ax + vx * t) * 4), Math.round((c.az + vz * t) * 4), seed + 15);
+      chosen.forEach(([name, length], k) => {
+        const px = c.ax + vx * (from + length / 2); const pz = c.az + vz * (from + length / 2); from += length;
+        if (Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge) return void refuse("stripes", "edge");
+        const chunk = chunkOf(px, pz); if (counts[chunk]! >= maxChunk) return void refuse("stripes", "budget");
+        counts[chunk]!++;
+        const kind = streetKind(form(name, hash3(h, k, seed)));
+        pieces.push({ kind, x: px, y: site.groundAt(px, pz), z: pz, yaw });
+        summary.placed[kind] = (summary.placed[kind] ?? 0) + 1; summary.byRule.stripes = (summary.byRule.stripes ?? 0) + 1;
+      });
+    }
+  }
   return { pieces, summary };
 
   function regulate(): void {
     const R = rules.regulations; const D = R.divided;
-    // Which way each one-way line runs: +1 as it is drawn, -1 against.
+    // Which way each one-way line runs: +1 as it is drawn, -1 against. Where the data says (a piece of OpenStreetMap's,
+    // with its highway class), as it says; where it does not (TIGER's lines), a street of one name drawn twice is two
+    // carriageways, each with the other on its left, and a ramp goes the way of what it leaves or joins.
     const flow = new Map<number, number>();
+    const said = (line: number): boolean => graph.pieces[line]?.highway != null;
+    for (const line of lines.keys()) if (said(line) && graph.pieces[line]!.oneway !== 0) flow.set(line, graph.pieces[line]!.oneway);
     const names = lineNames(site);
     for (const [line, run] of lines) {
-      const name = names[line]; if (!name || !D.classes.includes(classOf(run[0]!)!)) continue;
+      const name = names[line]; if (!name || said(line) || !D.classes.includes(classOf(run[0]!)!)) continue;
       let votes = 0; let beside = 0; let all = 0;
       for (const s of run) {
         const length = Math.hypot(s.bx - s.ax, s.bz - s.az); const dx = (s.bx - s.ax) / length; const dz = (s.bz - s.az) / length;
@@ -553,7 +648,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       for (const e of ends.values()) {
         const arms = armsAt(e);
         for (const r of arms) {
-          if (!ramp(r.line) || flow.has(r.line)) continue;
+          if (!ramp(r.line) || flow.has(r.line) || said(r.line)) continue;
           const known = arms.filter((b) => b.line !== r.line && flow.has(b.line));
           const leaving = known.filter((b) => !ramp(b.line) && b.sense * flow.get(b.line)! > 0);
           let out = 0;
@@ -613,12 +708,60 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     for (const j of junctions) {
       const h = hash3(Math.round(j.x * 4), Math.round(j.z * 4), seed + 13);
       j.arms.forEach((a, i) => {
-        if (flow.has(a.line) || !chance(hash3(h, i, seed), P.chance[a.cls] ?? 0)) return;
+        if (flow.has(a.line) || parkingOf(a.line, -a.sense) !== null || !chance(hash3(h, i, seed), P.chance[a.cls] ?? 0)) return;
         const back = Math.max(...j.arms.filter((b) => b !== a).map((b) => b.half)) + P.back;
         const zx = -a.dz * Math.cos(turn) + a.dx * Math.sin(turn); const zz = a.dx * Math.cos(turn) + a.dz * Math.sin(turn);
         putOut("noparking", form("noparking", hash3(h, 20 + i, seed)), P.set, (set) => [j.x + a.dx * back + a.dz * (a.half + set), j.z + a.dz * back - a.dx * (a.half + set), yawOf(zx, zz)]);
       });
     }
+    // And along a kerb the data says has no parking, one every `every` metres, facing the traffic beside it.
+    along(Object.keys(P.chance), () => P.every, 13, (x, z, dx, dz, half, k, line) => {
+      if (nearJunction(x, z)) return;
+      for (const s of [1, -1]) {
+        if (parkingOf(line, s) !== "no") continue;
+        // Traffic on the right side (1) goes as the line is drawn; on the left, against it, where the street is two-way.
+        const t = s > 0 ? 1 : -1; if (flow.has(line) && flow.get(line)! !== t) continue;
+        const zx = dz * t * Math.cos(turn) - dx * t * Math.sin(turn); const zz = -dx * t * Math.cos(turn) - dz * t * Math.sin(turn);
+        putOut("noparking", form("noparking", hash3(line, k * 2 + (s > 0 ? 0 : 1), seed + 13)), P.set, (set) => { const [px, pz] = side(x, z, dx, dz, half + set, s); return [px, pz, yawOf(zx, zz)]; });
+      }
+    });
+    crossingSigns(flow);
+  }
+
+  /** The road stretch nearest (x, z) within `reach` of its edge, and the foot of the point on it. */
+  function roadAt(x: number, z: number, reach: number): { s: Segment; fx: number; fz: number; dx: number; dz: number } | null {
+    let best: { s: Segment; fx: number; fz: number; dx: number; dz: number } | null = null; let least = Infinity;
+    for (const o of laneBins.get(binKey(Math.floor(x / 16), Math.floor(z / 16))) ?? []) {
+      if (classOf(o) === undefined) continue;
+      const ex = o.bx - o.ax; const ez = o.bz - o.az; const l = Math.hypot(ex, ez); const t = Math.max(0, Math.min(1, ((x - o.ax) * ex + (z - o.az) * ez) / (l * l)));
+      const fx = o.ax + ex * t; const fz = o.az + ez * t; const d = Math.hypot(x - fx, z - fz);
+      if (d < o.half + reach && d < least) { least = d; best = { s: o, fx, fz, dx: ex / l, dz: ez / l }; }
+    }
+    return best;
+  }
+
+  /**
+   * The pedestrian crossing sign (W11-2) before a crossing of the walk network that no signal or stop holds, on the right
+   * of the traffic coming to it, facing it: where the data says what a crossing is, only one of the `marked` types.
+   */
+  function crossingSigns(flow: ReadonlyMap<number, number>): void {
+    const X = rules.regulations.crossing;
+    graph.crossings.forEach((c) => {
+      if (c.signal === true) return;
+      const mx = (c.ax + c.bx) / 2; const mz = (c.az + c.bz) / 2;
+      if (graph.mapped.points && markedNear(mx, mz, c.half + 2).some((m) => m.kind === "signal")) return;
+      // Where the data keeps no type, only a crossing it draws, as one OpenStreetMap draws is most often painted.
+      if (c.type !== null ? !X.marked.includes(c.type) : !c.drawn) return;
+      const road = roadAt(mx, mz, 2); if (!road) return;
+      const cls = classOf(road.s)!; if (!J.major.includes(cls) && !J.minor.includes(cls)) return;
+      if (held.some((q) => Math.hypot(q.x - road.fx, q.z - road.fz) < q.reach + 6 && (q.lines === null || q.lines.has(road.s.line)))) return;
+      const h = hash3(Math.round(mx * 4), Math.round(mz * 4), seed + 14); if (!chance(h, X.chance)) return;
+      for (const t of [1, -1]) {
+        if (flow.has(road.s.line) && flow.get(road.s.line)! !== t) continue;
+        const tx = road.dx * t; const tz = road.dz * t; const back = c.half + X.back;
+        putOut("crossings", form("crossing", hash3(h, t > 0 ? 1 : 2, seed)), X.set, (set) => { const [px, pz] = side(road.fx - tx * back, road.fz - tz * back, tx, tz, road.s.half + set, 1); return [px, pz, yawOf(-tx, -tz)]; });
+      }
+    });
   }
 }
 

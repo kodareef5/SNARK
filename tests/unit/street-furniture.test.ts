@@ -8,6 +8,7 @@ import { S } from "../../tools/mapworld/ground.ts";
 import { meets, type Box } from "../../tools/mapworld/ruin-obstacles.ts";
 import type { Site, StaticPiece } from "../../tools/mapworld/statics.ts";
 import { placeFurniture, type Furniture } from "../../tools/mapworld/street-furniture.ts";
+import { junctionAt } from "../../tools/mapworld/street-graph.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -19,22 +20,28 @@ afterAll(() => { for (const f of folders) rmSync(f, { recursive: true, force: tr
 // A flat square of 1,024 m on 2 m samples, the ground 1 m up, one district of shops and flats. Roads in engine metres: a
 // grid of streets 100 m apart, two of them avenues, which cross at (500, 500).
 const N = 513, SIZE = (N - 1) * 2, GROUND = 1;
-interface Road { mtfcc: string; width: number; from: [number, number]; to: [number, number]; name?: string }
+interface Road { mtfcc: string; width: number; from: [number, number]; to: [number, number]; name?: string; props?: Record<string, unknown> }
+/** What the street data holds beside the roads, in the fixture's metres: walk features, stalls and marked points. */
+interface Beside { walks?: unknown[]; stalls?: unknown[]; controls?: unknown[] }
 const GRID: Road[] = [];
 for (let at = 100; at <= 900; at += 100) {
   const avenue = at === 500;
   GRID.push({ mtfcc: avenue ? "S1200" : "S1400", width: avenue ? 14 : 8, from: [60, at], to: [964, at] });
   GRID.push({ mtfcc: avenue ? "S1200" : "S1400", width: avenue ? 14 : 8, from: [at, 60], to: [at, 964] });
 }
-function fixture(roads: readonly Road[], routes: Site["growthRoutes"] = []): Site {
+function fixture(roads: readonly Road[], routes: Site["growthRoutes"] = [], beside: Beside = {}): Site {
   const source = mkdtempSync(join(tmpdir(), "snark-street-furniture-")); folders.push(source); mkdirSync(join(source, "base"));
   // Each road split at every crossing, as the street data splits its lines.
   const cuts = (r: Road): number[] => [...new Set([0, ...roads.filter((o) => o !== r && (o.from[0] === o.to[0]) !== (r.from[0] === r.to[0])).map((o) => (r.from[0] === r.to[0] ? o.from[1] - r.from[1] : o.from[0] - r.from[0]) / (r.from[0] === r.to[0] ? r.to[1] - r.from[1] : r.to[0] - r.from[0])).filter((t) => t > 0 && t < 1), 1])].sort((a, b) => a - b);
-  const features = roads.flatMap((r) => cuts(r).slice(1).map((t, i, all) => {
+  // Each piece's id is its road's place in the list and its own along the road.
+  const features = roads.flatMap((r, n) => cuts(r).slice(1).map((t, i, all) => {
     const t0 = i === 0 ? 0 : all[i - 1]!; const at = (u: number): [number, number] => [r.from[0] + (r.to[0] - r.from[0]) * u, r.from[1] + (r.to[1] - r.from[1]) * u];
-    return { type: "Feature", geometry: { type: "LineString", coordinates: [at(t0), at(t)] }, properties: { mtfcc: r.mtfcc, width_m: r.width, name: r.name ?? null } };
+    return { type: "Feature", geometry: { type: "LineString", coordinates: [at(t0), at(t)] }, properties: { id: `${n}:${i}`, mtfcc: r.mtfcc, width_m: r.width, name: r.name ?? null, ...r.props } };
   }));
   writeFileSync(join(source, "base/roads.geojson"), JSON.stringify({ type: "FeatureCollection", features }));
+  if (beside.walks) writeFileSync(join(source, "base/walks.geojson"), JSON.stringify({ type: "FeatureCollection", features: beside.walks }));
+  if (beside.stalls) writeFileSync(join(source, "base/stalls.json"), JSON.stringify(beside.stalls));
+  if (beside.controls) writeFileSync(join(source, "base/controls.json"), JSON.stringify(beside.controls));
   const surface = new Uint8Array(N * N).fill(S.OPEN), district = new Uint8Array(N * N).fill(1);
   for (let row = 0; row < N; row++) for (let col = 0; col < N; col++) {
     const x = SIZE - col * 2, z = SIZE - row * 2, i = row * N + col;
@@ -259,4 +266,115 @@ artTest("each piece is met where it is drawn: its mesh within its shape, and its
     for (const k of [0, 2]) expect([piece.name, k, Math.abs(lo[k]! - slo[k]!) <= 0.25]).toEqual([piece.name, k, true]);
     for (const k of [0, 1, 2]) expect([piece.name, k, Math.abs(hi[k]! - shi[k]!) <= 0.25]).toEqual([piece.name, k, true]);
   }
+});
+
+/** GRID with some of its roads given what the street data says of them. */
+const tagged = (props: Record<number, Record<string, unknown>>): Road[] => GRID.map((r, i) => (props[i] ? { ...r, props: props[i] } : r));
+/** GRID's road along x = `x` (they run from z = 60 to 964), by its place in the list. */
+const northward = (x: number): number => GRID.findIndex((r) => r.from[0] === x && r.to[0] === x);
+const near = (pieces: readonly StaticPiece[], kind: string, x: number, z: number, r: number): StaticPiece[] => pieces.filter((p) => p.kind === streetKind(kind) && Math.hypot(p.x - x, p.z - z) < r);
+
+test("junctions are where three ways meet: where a street's data changes in the middle of a block nothing of a corner stands, and the walks end at none", () => {
+  // The street along z = 300 drawn as two pieces that meet at x = 250, between two crossings, as a way ends where its
+  // tags change.
+  const roads: Road[] = [...GRID.filter((r) => !(r.from[1] === 300 && r.to[1] === 300)), { mtfcc: "S1400", width: 8, from: [60, 300], to: [250, 300], name: "Heron St" }, { mtfcc: "S1400", width: 8, from: [250, 300], to: [964, 300], name: "Heron Street" }];
+  const site = fixture(roads);
+  const { pieces } = place(site);
+  expect(pieces.filter((p) => Math.hypot(p.x - 250, p.z - 300) < 14 && /zzstreet_(stop|street_name|signal|mailbox|newsbox|bollard|noentry|oneway|deadend)/.test(p.kind))).toEqual([]);
+  expect(junctionAt(site, 250, 300, 10)).toBe(false);
+  expect(junctionAt(site, 300, 300, 10)).toBe(true);
+  expect(junctionAt(site, 60, 300, 10)).toBe(false);
+});
+
+test("a way the data says is one way gets DO NOT ENTER on its way in and ONE WAY beside its way out, without a pair to guess it from", () => {
+  const forms = { ...RULES.forms, oneway: [["oneway", 1]], noentry: [["noentry", 1]] } as Furniture["forms"];
+  // The street along x = 300 runs north only, as drawn.
+  const { pieces } = place(fixture(tagged({ [northward(300)]: { highway: "residential", oneway: true } })), [], { ...RULES, forms });
+  const noentry = pieces.filter((p) => p.kind === streetKind("noentry") && Math.abs(p.x - 300) < 15);
+  expect(noentry.length).toBeGreaterThan(3);
+  // Each stands on the side of a crossing its traffic comes from: south of it.
+  for (const p of noentry) expect(p.z).toBeLessThan(Math.round(p.z / 100) * 100);
+  expect(pieces.filter((p) => p.kind === streetKind("oneway") && Math.abs(p.x - 300) < 15).length).toBeGreaterThan(0);
+  expect(pieces.filter((p) => /zzstreet_(noentry|oneway)$/.test(p.kind) && Math.abs(p.x - 200) < 15 && Math.abs(p.z - 500) > 20).length).toBe(0);
+});
+
+test("a side the data says has no sidewalk has nothing of a sidewalk on it; a street it says is unlit has no lamps", () => {
+  const { pieces } = place(fixture(tagged({ [northward(700)]: { highway: "residential", sidewalk: "no" }, [northward(600)]: { highway: "residential", lit: false } })));
+  const along = (x: number, kinds: RegExp): StaticPiece[] => pieces.filter((p) => kinds.test(p.kind) && Math.abs(p.x - x) < 12 && Math.abs(p.z - Math.round(p.z / 100) * 100) > 15);
+  expect(along(700, /zzstreet_hydrant$/).length).toBe(0);
+  expect(along(800, /zzstreet_hydrant$/).length).toBeGreaterThan(0);
+  expect(along(600, /zzstreet_lamp/).length).toBe(0);
+  expect(along(400, /zzstreet_lamp/).length).toBeGreaterThan(0);
+});
+
+test("speed limits, meters and no parking as the data says, where it says", () => {
+  const forms = { ...RULES.forms, speed40: [["speed40", 1]], speed30: [["speed30", 1]], noparking: [["noparking", 1]] } as Furniture["forms"];
+  const roads = tagged({ [northward(800)]: { highway: "residential", maxspeed_mph: 40 }, [northward(200)]: { highway: "residential", parking_left: "parallel", parking_right: "parallel" }, [northward(400)]: { highway: "residential", parking_left: "no" } });
+  const { pieces } = place(fixture(roads), [], { ...RULES, forms });
+  const along = (x: number, kind: string): StaticPiece[] => pieces.filter((p) => p.kind === streetKind(kind) && Math.abs(p.x - x) < 12);
+  expect(along(800, "speed40").length).toBeGreaterThan(0);
+  expect(along(800, "speed30").length).toBe(0);
+  expect(along(700, "speed30").length).toBeGreaterThan(0);
+  // No building in the fixture is a shop, so meters stand only where the data says cars stand at the kerb.
+  expect(along(200, "meter").length + along(200, "meter_bent").length).toBeGreaterThan(0);
+  expect(pieces.filter((p) => /zzstreet_meter/.test(p.kind) && Math.abs(p.x - 200) > 12).length).toBe(0);
+  // No parking on the left of the way it is drawn (north): the west side, +x.
+  const signs = along(400, "noparking").filter((p) => Math.abs(p.z - Math.round(p.z / 100) * 100) > 20);
+  expect(signs.length).toBeGreaterThan(3);
+  for (const p of signs) expect(p.x).toBeGreaterThan(400);
+});
+
+test("signals and stops where the data marks them, the class rule only at a junction it marks nothing at, and none where it marks points elsewhere", () => {
+  const forms = { ...RULES.forms, signal: [["signal", 1]], stop: [["stop", 1]] } as Furniture["forms"];
+  // A signal at two streets' crossing (300, 300), governing all four ways in, and a stop for traffic going north on
+  // x = 400 into (400, 400), along the piece from z = 300 to 400 as it is drawn.
+  // As tools/mapdata/streets.py writes them: a place in the data's metres, and each approach's piece and travel, east
+  // and north (the fixture's metres are the engine's).
+  const controls = [
+    { kind: "signal", e: 300, n: 300, direction: null, all_way: false, junction: true, crossing: null, markings: null, approaches: [{ road: `${northward(300)}:2`, travel: [0, 1] }, { road: `${northward(300)}:3`, travel: [0, -1] }] },
+    { kind: "stop", e: 400, n: 394, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: `${northward(400)}:3`, travel: [0, 1] }] },
+  ];
+  const { pieces } = place(fixture(GRID, [], { controls }), [], { ...RULES, forms });
+  expect(near(pieces, "signal", 300, 300, 25).length).toBeGreaterThan(0);
+  expect(near(pieces, "stop", 300, 300, 25).length).toBe(0);
+  const stops = near(pieces, "stop", 400, 400, 25);
+  expect(stops.length).toBe(1);
+  expect(stops[0]!.z).toBeLessThan(400);
+  // The avenues' crossing, which the classes' rule signals, has none: the data marks signals, none there.
+  expect(near(pieces, "signal", 500, 500, 30).length).toBe(0);
+});
+
+test("nothing stands on a crossing, and the crossing sign stands before one no signal holds, of a marked type where the data says", () => {
+  // The walk network's crossings, with their type where the data keeps it.
+  const forms = { ...RULES.forms, crossing: [["crossing", 1]] } as Furniture["forms"];
+  const rules = { ...RULES, forms, regulations: { ...RULES.regulations, crossing: { ...RULES.regulations.crossing, chance: 1 } } };
+  const crossing = (z: number, props: Record<string, unknown>) => ({ type: "Feature", geometry: { type: "LineString", coordinates: [[194, z], [206, z]] }, properties: { kind: "crossing", width_m: 3, ...props } });
+  // Across the street along x = 200, mid-block: one marked, one unmarked, one at a signal.
+  const walks = [crossing(250, { drawn: true, crossing: "marked" }), crossing(650, { drawn: true, crossing: "unmarked" }), crossing(450, { drawn: false, signal: true })];
+  const { pieces } = place(fixture(GRID, [], { walks }), [], rules);
+  // Nothing but its stripes.
+  for (const p of pieces.filter((q) => !/crosswalk/.test(q.kind))) for (const b of boxes(p)) for (const z of [250, 450, 650]) expect(Math.abs(b.x - 200) < 7 && Math.abs(b.z - z) < 1.5 + RULES.clear.crossing).toBe(false);
+  expect(near(pieces, "crossing", 200, 250, 15).length).toBe(2);
+  expect(near(pieces, "crossing", 200, 650, 15).length).toBe(0);
+  expect(near(pieces, "crossing", 200, 450, 15).length).toBe(0);
+  // The unmarked one has no stripes; the others have theirs.
+  const striped = (z: number): number => pieces.filter((p) => /crosswalk/.test(p.kind) && Math.abs(p.z - z) < 2).length;
+  expect([striped(250), striped(450), striped(650)].map((n) => n > 0)).toEqual([true, true, false]);
+});
+
+test("a crossing is striped between the kerbs, the longest pieces first, and a lot with stalls has its pay station", () => {
+  // Across the avenue along x = 500 (14 m wide), between z = 600 and 700, a crossing drawn in three pieces: walk, road, walk.
+  const walks = [{ type: "Feature", geometry: { type: "LineString", coordinates: [[490, 650], [493, 650], [507, 650], [510, 650]] }, properties: { kind: "crossing", drawn: true, width_m: 3 } }];
+  // A lot of twelve stalls in a row facing north onto an aisle, west of x = 260 at z = 640.
+  const stalls = Array.from({ length: 12 }, (_, i) => ({ lot: "osm:way/1", e: 220 + i * 2.7, n: 635, fe: 220 + i * 2.7, fn: 637.5 }));
+  const { pieces } = place(fixture(GRID, [], { walks, stalls }));
+  const bars = pieces.filter((p) => /zzstreet_crosswalk/.test(p.kind)).sort((a, b) => a.x - b.x);
+  // 14 m less 0.3 m at each kerb: 8 bars, 2 and 1, 13.2 m of them, about the road's middle.
+  expect(bars.map((p) => Number(p.kind.replace(/^.*crosswalk(\d+).*$/, "$1"))).sort((a, b) => b - a)).toEqual([8, 2, 1]);
+  for (const p of bars) { expect(Math.abs(p.z - 650)).toBeLessThan(0.01); expect(Math.abs(p.x - 500)).toBeLessThan(7); expect(p.y).toBe(GROUND); }
+  const station = pieces.filter((p) => /zzstreet_paystation/.test(p.kind));
+  expect(station.length).toBe(1);
+  // At the head of a stall, south of the row, its panel (-z) to the aisle in the north.
+  expect(station[0]!.z).toBeLessThan(635);
+  expect(Math.round(Math.cos(station[0]!.yaw * Math.PI / 180))).toBe(-1);
 });

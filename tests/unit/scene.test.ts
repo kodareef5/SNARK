@@ -529,8 +529,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // The obelisk meshes move the handles again.
   // It was 2537772709 until the street's working lamp (content/street.ts `lamp_lit`) added its grey mesh; without it
   // it is that again. It was 2546408971 until a tower's plant floor, screen, open storey's shade and hanging slab added
-  // theirs; without them it is that again.
-  expect(hash).toBe(946739524);
+  // theirs; without them it is that again. It was 946739524 until the street's speed limits 25, 35 and 45, pay stations
+  // and crosswalk bars added theirs; without them it is that again.
+  expect(hash).toBe(3461533038);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -562,8 +563,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // the far wood was drawn after the near store and opaque draws went nearest first, as above, 3205222107 until the
   // street's new signs, as above, and 1872585659 until a tall building's cornice, as above.
   // It was 1672489163 before the trailer, as above, 1576802991 until the street's working lamp, as above, and
-  // 1144228197 until a tower's tops, as above.
-  expect(saddled.hash).toBe(397096185);
+  // 1144228197 until a tower's tops, as above, and 397096185 until the street's pay stations, crosswalks and three
+  // speed limits, as above.
+  expect(saddled.hash).toBe(102222647);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

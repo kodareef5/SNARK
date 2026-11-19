@@ -11,6 +11,7 @@ import { joinFrontages } from "./ruin-frontage.ts";
 import { boxOf, extentOf, middleOf, obstacleIndex, obstructs } from "./ruin-obstacles.ts";
 import { parkFreightTrailers } from "./freight.ts";
 import { carPicker, frameYaw, parkCars, roadIndex } from "./street-cars.ts";
+import { junctionAt } from "./street-graph.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { wreckLook } from "../../content/vehicles/wrecks.ts";
@@ -538,7 +539,7 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
       for (let d = 4; d + 4 <= length; d += 8) {
         const [fx, fz] = [s.ax + ux * d, s.az + uz * d];
         const y = site.groundAt(...curb(d, 0.3)); ground.push(y);
-        if (roads.junction(fx, fz, s.half + rules.fromJunction)) { slots.push("junction"); continue; }
+        if (junctionAt(site, fx, fz, s.half + rules.fromJunction)) { slots.push("junction"); continue; }
         // The road's raster runs a sample or so past its edge, so the curb's corners may stand on street.
         const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [...curb(d + a, b), b] as const));
         if (y < 0.1 || corners.some(([x, z, b]) => !(open.has(site.ground.surface[at(x, z)]!) || b < 1 && site.ground.surface[at(x, z)] === S.STREET) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) { slots.push("bare"); continue; }

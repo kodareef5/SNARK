@@ -29,7 +29,12 @@ FLAT = {"galvanised": (138, 141, 140), "green": (88, 104, 90), "yellow": (178, 1
         "louvre": (138, 141, 140), "tank": (190, 186, 176), "solar": (44, 52, 70), "duct": (150, 152, 150), "door": (100, 110, 100),
         "spare": (138, 141, 140), "fence": (150, 150, 146), "billboard": (172, 162, 142), "glass": (170, 180, 182), "torn": (190, 185, 170),
         "oneway": (60, 58, 54), "oneway_left": (60, 58, 54), "noentry": (165, 72, 68), "crossing": (190, 172, 96), "deadend": (190, 172, 96),
-        "noparking": (205, 202, 190), "speed30": (205, 202, 190), "speed40": (205, 202, 190), "lens_lit": (250, 196, 128)}
+        "noparking": (205, 202, 190), "speed30": (205, 202, 190), "speed40": (205, 202, 190), "lens_lit": (250, 196, 128),
+        "speed25": (205, 202, 190), "speed35": (205, 202, 190), "speed45": (205, 202, 190), "paystation": (70, 78, 86),
+        "paystation_paint": (70, 78, 86), "paystation_smashed": (48, 54, 52),
+        # Road paint, which has no picture: fresh, worn, grimed, and far off, where the bars blur into the road between them.
+        "paint": (200, 198, 188), "paint_worn": (174, 170, 158), "paint_grimy": (150, 146, 136), "paint_far": (140, 140, 136),
+        "paint_worn_far": (112, 112, 110)}
 
 
 def srgb_linear(c):
@@ -172,11 +177,12 @@ class Mesh:
         return sum(len(f[0]) - 2 for f in self.faces)
 
     def build(self, name):
-        flat = LEVEL >= 2
+        # A mesh all of plain colours ("flat_paint") has no pictures, and is flat at every level.
+        flat = LEVEL >= 2 or all(mat.startswith("flat_") for _, _, mat, _ in self.faces)
         faces = self.faces
         if flat:
             # Each face in its colour, and no more than three colours a level: a lesser one takes the nearest of the three.
-            keys = [key_of(uvs[0], mat) for _, uvs, mat, _ in faces]
+            keys = [mat[5:] if mat.startswith("flat_") else key_of(uvs[0], mat) for _, uvs, mat, _ in faces]
             count = {}
             for k in keys:
                 count[k] = count.get(k, 0) + 1
@@ -273,7 +279,9 @@ FACES = {
 
 def box(m, lo, hi, strip, decals=None, mat="street", phase=0.0, move=None):
     """A box from corner `lo` to `hi`. Each face is a strip's piece, its longer side along the strip, or the part `decals`
-    names for it ("+z": ("street", "stop")), laid upright and unmirrored as seen from outside. `move` moves its corners."""
+    names for it ("+z": ("street", "stop")), laid upright and unmirrored as seen from outside, or a piece of that part
+    from (fx0, fy0) to (fx1, fy1) of its width and height ("+y": ("street", "solar", (0, 0, 0.25, 0.42))). `move` moves
+    its corners."""
     decals = decals or {}
     c = mul(add(lo, hi), 0.5)
     h = mul(sub(hi, lo), 0.5)
@@ -288,8 +296,9 @@ def box(m, lo, hi, strip, decals=None, mat="street", phase=0.0, move=None):
         # Counter-clockwise seen from outside: top left, bottom left, bottom right, top right.
         order = [corners[0], corners[3], corners[2], corners[1]]
         if key in decals:
-            atlas, part = decals[key]
-            uvs = [part_uv(atlas, part, fx, fy) for _, fx, fy in order]
+            atlas, part, *crop = decals[key]
+            fx0, fy0, fx1, fy1 = crop[0] if crop else (0, 0, 1, 1)
+            uvs = [part_uv(atlas, part, fx0 + fx * (fx1 - fx0), fy0 + fy * (fy1 - fy0)) for _, fx, fy in order]
             mat_here = "street" if atlas == "street" else "street_cut"
         else:
             w = abs(dot(right, mul(h, 2)))
