@@ -3,7 +3,7 @@
 //
 // The head:
 //   0   "SNMP"
-//   4   u16 version 9, u16 reserved
+//   4   u16 version 10, u16 reserved
 //   8   u32 hash        FNV-1a of every byte of the head after it: the map's hash, which names each part by its own
 //   12  u32 bytes of the head. Its parts follow it in the order of its table, each where the one before ends.
 //   16  u16 chunksX, u16 chunksZ
@@ -39,6 +39,12 @@
 //         stands at (a roof, a berth), 4 and 8 two f64 fractions each, the range its condition and its fuel are rolled in.
 //   WATR  water standing on its own surfaces (shared/world/water.ts): u8 metres a square (1, 2, 4, 8, 16, 32 or 64), u16
 //         count of bodies, each a string name and a u16 surface in the heights' units. Its squares are the overviews'.
+//   COAR  the whole map at every chunk's corner (64 m), which a client draws until each overview comes: (chunksX + 1) by
+//         (chunksZ + 1) heights as a grid, then a u8 tint each. A height is the mean of the 64 m square round it, held
+//         under the surface of the water most of that square is under, the sea's or a body's, and at or over the sea's
+//         where most of it is dry; a tint the square's commonest. Then, where the head has WATR, a u16 each as a grid, the
+//         number of the body most of its square is under counting from 1, or 0; and a bit a chunk row by row, lowest bit
+//         first, set where the overviews hold its water squares.
 //   LAND  what the map adds to the content: u8 count of its landmarks and each a name, whose files a client fetches
 //         (assets/landmarks/<name>.json), then f64 x, y, z of its origin and u16 yaw as it was placed. The definitions
 //         they add are the land part.
@@ -97,7 +103,7 @@ import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
 import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
 
-export const MAP_VERSION = 9;
+export const MAP_VERSION = 10;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -106,6 +112,8 @@ export const OVERVIEW_CHUNKS = 64;
 export const OVERVIEW_STEP = 4;
 /** Samples along a chunk's side, less its far edge. */
 const CHUNK_SAMPLES = CHUNK_SIZE / TERRAIN_CELL;
+/** Samples between two of the head's coarse picture (COAR): a chunk's side, 64 m. */
+export const COARSE_STEP = CHUNK_SAMPLES;
 /** A static's bytes in a statics part's columns: id, yaw, x, y, z. */
 const STAT_ROW = 2 + 2 + 3 + 3 + 3;
 /** The far feed's cells of a chunk, 4 m each (shared/world/tactical.ts). */
@@ -865,6 +873,72 @@ function overviewPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[]
   return o.done();
 }
 
+/** The whole map at every chunk's corner, as the head's COAR holds it, and the chunks its overviews hold water for. */
+export interface CoarsePicture {
+  /** (chunksX + 1) a row, row by row from z = 0. */
+  readonly heights: Uint16Array;
+  readonly tint: Uint8Array;
+  /** By sample, the number of the body of water most of its square is under, or 0; null where the map has no WATR. */
+  readonly bodies: Uint16Array | null;
+  /** The chunks the overviews hold water squares for, ascending. */
+  readonly water: Uint32Array;
+}
+
+function coarsePicture(m: MapData, dims: MapDims): CoarsePicture {
+  const nx = dims.chunksX * CHUNK_SAMPLES + 1;
+  const nz = dims.chunksZ * CHUNK_SAMPLES + 1;
+  const w = dims.chunksX + 1;
+  const n = w * (dims.chunksZ + 1);
+  const [heights, tint] = [new Uint16Array(n), new Uint8Array(n)];
+  const water = m.water ?? null;
+  const bodies = water ? new Uint16Array(n) : null;
+  // Surfaces in the heights' units: the sea's, -Infinity for none, and each body's by its number.
+  const sea = (m.seaLevel - m.minY) / m.stepY;
+  const level = [0, ...(water?.bodies.map((b) => b.level) ?? [])];
+  const half = COARSE_STEP / 2;
+  const tints = new Uint32Array(256);
+  // What each sample of a square shows, -1 dry ground, 0 the sea or a body's number, and how many show each.
+  const shows: number[] = [];
+  const many: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const [I, J] = [k % w, Math.floor(k / w)];
+    let sum = 0;
+    tints.fill(0);
+    shows.length = many.length = 0;
+    for (let j = Math.max(0, J * COARSE_STEP - half); j <= Math.min(nz - 1, J * COARSE_STEP + half); j++) {
+      const cz = Math.min(dims.chunksZ - 1, Math.floor(j / CHUNK_SAMPLES));
+      for (let i = Math.max(0, I * COARSE_STEP - half); i <= Math.min(nx - 1, I * COARSE_STEP + half); i++) {
+        const h = m.heights[j * nx + i]!;
+        sum += h;
+        tints[m.tint[j * nx + i]!]!++;
+        let b = 0;
+        if (water) {
+          const cx = Math.min(dims.chunksX - 1, Math.floor(i / CHUNK_SAMPLES));
+          const at = water.block[cz * dims.chunksX + cx]!;
+          const square = (v: number, c: number): number => Math.min(water.side - 1, Math.floor(((v - c * CHUNK_SAMPLES) * TERRAIN_CELL) / water.cell));
+          if (at >= 0) b = water.squares[at + square(j, cz) * water.side + square(i, cx)]!;
+        }
+        const s = b > 0 ? (h < level[b]! ? b : -1) : h < sea ? 0 : -1;
+        const at = shows.indexOf(s);
+        if (at < 0) shows.push(s), many.push(1);
+        else many[at]!++;
+      }
+    }
+    let top = 0;
+    for (let q = 1; q < many.length; q++) if (many[q]! > many[top]!) top = q;
+    const what = shows[top]!;
+    let h = Math.round(sum / many.reduce((a, b) => a + b, 0));
+    if (what >= 0) h = Math.min(h, Math.ceil(what === 0 ? sea : level[what]!) - 1);
+    else if (h < sea) h = Math.ceil(sea);
+    heights[k] = Math.max(0, Math.min(65535, h));
+    if (bodies && what > 0) bodies[k] = what;
+    let t = 0;
+    for (let q = 1; q < 256; q++) if (tints[q]! > tints[t]!) t = q;
+    tint[k] = t;
+  }
+  return { heights, tint, bodies, water: water?.chunks() ?? new Uint32Array(0) };
+}
+
 function putSquares(o: Out, squares: Uint16Array): void {
   const at = o.take(squares.length * 2);
   for (let q = 0; q < squares.length; q++) o.view.setUint16(at + q * 2, squares[q]!, true);
@@ -1104,6 +1178,16 @@ function headPart(m: MapData, dims: FramedDims, layers: readonly NodeLayer[], st
       }
     });
   }
+  const coarse = coarsePicture(m, dims);
+  o.section("COAR", () => {
+    putGrid(o, coarse.heights, dims.chunksX + 1);
+    o.put(coarse.tint);
+    if (!coarse.bodies) return;
+    putGrid(o, coarse.bodies, dims.chunksX + 1);
+    const bits = new Uint8Array(Math.ceil(chunkCount(dims) / 8));
+    for (const c of coarse.water) bits[c >> 3]! |= 1 << (c & 7);
+    o.put(bits);
+  });
   const land = m.content;
   if (land && land.landmarks.length + land.defs.length > 0) {
     o.section("LAND", () => {
@@ -1223,6 +1307,8 @@ export interface MapHead {
   readonly landmarks: readonly MapLandmark[] | null;
   readonly layers: readonly LayerRule[];
   readonly water: { readonly cell: number; readonly bodies: readonly WaterBody[] } | null;
+  /** The whole map at every chunk's corner, which a client draws until each overview comes. */
+  readonly coarse: CoarsePicture;
   /** The content ids its statics name by number. */
   readonly kinds: readonly string[];
   /** How many statics each chunk holds, row by row: a chunk's rows of MapStatics, laid out before any sector's come (blankStatics). */
@@ -1294,10 +1380,15 @@ function readHeadSections(r: In, hash: number): MapHead {
   let kinds: string[] = [];
   let counts: Uint16Array = new Uint16Array(chunkCount(dims));
   let parts: MapPart[] | null = null;
+  let coarse: In | null = null;
   while (r.at < r.bytes.length) {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
     const s = new In(r.take(r.u32()));
     if (tag === "NODE") layers.push(readRule(s));
+    else if (tag === "COAR") {
+      if (coarse) throw new Error("map: it has two COAR sections");
+      coarse = s;
+    }
     else if (tag === "TEYE") {
       if (tideEyes) throw new Error("map: duplicate Tide Eye section");
       tideEyes = Array.from({ length: s.u8() }, () => {
@@ -1376,9 +1467,26 @@ function readHeadSections(r: In, hash: number): MapHead {
     if (!vehicles[index]) throw new Error("map: parked vehicle extension names a missing vehicle");
     vehicles[index] = { ...vehicles[index]!, ...extra };
   }
-  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, ...(tideEyes ? { tideEyes } : {}), layers, water, kinds, counts, parts: parts ?? [] };
+  const head = { hash, bytes: r.bytes.length, name: partName("head", 0, 0, partHash(r.bytes)), id, dims, minY, stepY, seaLevel, spawns, regions, vehicles, landmarks, ...(tideEyes ? { tideEyes } : {}), layers, water, coarse: readCoarse(coarse, dims, water), kinds, counts, parts: parts ?? [] };
   checkParts(head);
   return head;
+}
+
+function readCoarse(s: In | null, dims: FramedDims, water: MapHead["water"]): CoarsePicture {
+  if (!s) throw new Error("map: its head has no coarse picture (COAR): build the map again");
+  const [w, d, chunks] = [dims.chunksX + 1, dims.chunksZ + 1, chunkCount(dims)];
+  const heights = getGrid(s, w, d);
+  const tint = s.take(w * d).slice();
+  let bodies: Uint16Array | null = null;
+  const held: number[] = [];
+  if (water) {
+    bodies = getGrid(s, w, d);
+    if (bodies.some((b) => b > water.bodies.length)) throw new Error("map: its coarse picture names a body of water its head does not list");
+    const bits = s.take(Math.ceil(chunks / 8));
+    for (let c = 0; c < chunks; c++) if ((bits[c >> 3]! >> (c & 7)) & 1) held.push(c);
+  }
+  if (s.at !== s.bytes.length) throw new Error("map: its coarse picture runs on past what it holds");
+  return { heights, tint, bodies, water: Uint32Array.from(held) };
 }
 
 /** Throws unless the head lists one overview for each of the map's overview squares, one ground for each sector, and nothing else twice. */
@@ -1872,6 +1980,8 @@ export function parseMap(file: Uint8Array, verify = true): MapFile {
   if (file.length > end) throw new Error("map: it runs on past its last part");
   const map = joinParts(head, head.parts.map((p) => readPart(head, p, file.subarray(p.at, p.at + p.length), verify)));
   if (head.counts.some((n, c) => map.statics.first[c + 1]! - map.statics.first[c]! !== n)) throw new Error("map: its statics are not as many a chunk as its head counts");
+  const held = map.water?.chunks() ?? new Uint32Array(0);
+  if (held.length !== head.coarse.water.length || held.some((c, k) => c !== head.coarse.water[k])) throw new Error("map: its head's chunks of water are not those its overviews hold");
   check(map);
   return map;
 }

@@ -28,7 +28,7 @@ test("each part's copies give its bytes back, and a release's are the smaller", 
   expect(sum(release.parts)).toBeLessThan(sum(everyday.parts));
 });
 
-test("the heaviest first frame is the head and what the page's first frame waits for where it waits longest, by the loader's own rule: the landmarks' definitions, every overview and at most four sectors' ground", async () => {
+test("the heaviest first frame is the head and what the page's first frame waits for where it waits longest, by the loader's own rule: the landmarks' definitions, the overviews within reach and at most four sectors' ground", async () => {
   // The wide map's ten sectors, two rows of five, none of its nodes listed (a listed layer's map waits for all its ground).
   const m = wideMap();
   const file = writeMap({ ...m, nodes: m.nodes.filter((l) => !("first" in l)) });
@@ -40,7 +40,8 @@ test("the heaviest first frame is the head and what the page's first frame waits
   let most = 0;
   for (let z = 0; z <= head.dims.chunksZ * CHUNK_SIZE; z += CHUNK_SIZE) for (let x = 0; x <= head.dims.chunksX * CHUNK_SIZE; x += CHUNK_SIZE) most = Math.max(most, at(x, z));
   expect([wide.first.br, at(...wide.first.at), wide.first.sectors.length]).toEqual([most, most, 4]);
-  const overviews = wide.parts.filter((p) => p.kind === "overview").reduce((n, p) => n + p.br.length, 0);
+  // Of the overviews, those within reach of the heaviest place.
+  const overviews = firstFrameParts(head, ...wide.first.at).filter((p) => p.kind === "overview").reduce((n, p) => n + br(p.name), 0);
   const grounds = wide.parts.filter((p) => p.kind === "ground" && wide.first.sectors.includes(`${p.col}-${p.row}`)).reduce((n, p) => n + p.br.length, 0);
   expect(wide.first.br).toBe(br(head.name) + overviews + grounds);
   // Until the statics are all in hand there: every part but the tops.
@@ -57,7 +58,7 @@ test("a part over its kind's budget, or a first frame over its own, is refused a
   const ground = packed.parts.find((p) => p.kind === "ground")!;
   const big = { ...ground, br: Buffer.alloc(PART_BUDGETS.ground + 1) };
   expect(() => checkBudgets({ ...packed, parts: packed.parts.map((p) => (p === ground ? big : p)) })).toThrow(`map: its part ${ground.name} is 1.05 MB on the wire, over the 1.05 MB a part of its kind may be in tools/map/pack.ts (an everyday build's copies`);
-  expect(() => checkBudgets({ ...packed, first: { ...packed.first, br: FIRST_FRAME_BUDGET + 1 } })).toThrow("waits for 12.58 MB of it before it draws, over the 12.58 MB of tools/map/pack.ts");
+  expect(() => checkBudgets({ ...packed, first: { ...packed.first, br: FIRST_FRAME_BUDGET + 1 } })).toThrow("waits for 6.29 MB of it before it draws, over the 6.29 MB of tools/map/pack.ts");
 });
 
 test("a map's build writes its head and parts beside it, each with its copies, and takes away what is not one of them", async () => {

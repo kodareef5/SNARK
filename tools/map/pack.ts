@@ -9,7 +9,7 @@ import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { brotliCompress, constants, gzip } from "node:zlib";
 import { firstFrameParts, handOverParts } from "../../client/core/mapload.ts";
-import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
+import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { partsFolder, partsOf, readHead, type MapHead, type MapPart, type PartKind } from "../../shared/world/mapfile.ts";
 
 /**
@@ -30,16 +30,13 @@ export const PACK_LANES = Math.max(2, Math.min(8, availableParallelism()));
 export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20 };
 /**
  * Brotli bytes of the heaviest first frame on a map: its head and the parts the page's first frame waits for where it
- * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, every overview and the ground of the
- * sectors within reach of the body, four where they meet. A player waits for no more wherever it stands: 3.69 MB on Miami
- * and 3.36 on Los Angeles, everyday builds of 2026-11-17 at version 8 (1.5 and 1.3 s at 20 Mbit/s, the phone link the
- * asset bench takes). A map of 255 chunks a side (D810) has four times the overviews of those 8 km squares, and they are
- * most of what it waits for: everyday builds of 2026-11-18 wait for 8.00 MB at most on San Francisco, 8.45 on Las Vegas,
- * 8.79 on Tampa, 9.80 on Miami and 11.33 on Los Angeles, whose hills' overviews pack worst. 12 MiB holds every one of
- * them, Los Angeles in about 4.5 s at 20 Mbit/s as a release (D812). Past it, the first frame should wait for the
- * overviews near the body alone, not every one.
+ * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, the ground of the sectors within
+ * reach of the body, four where they meet, and the overviews within FIRST_REACH of it, four where they meet. While the
+ * first frame waited for every overview, a 16 km map waited for 8.00 MB (San Francisco) to 11.33 (Los Angeles), and this
+ * was 12 MiB (D812). Since the head holds the whole map coarse (map version 10), an everyday build of Miami waits for
+ * 4.5 MB at most and 3.3 on average over its places (1.8 and 1.3 s at 20 Mbit/s, the phone link the asset bench takes).
  */
-export const FIRST_FRAME_BUDGET = 12 << 20;
+export const FIRST_FRAME_BUDGET = 6 << 20;
 
 /** A part, or the head, as written beside the map, and its copies. */
 export interface PackedPart {
@@ -98,21 +95,16 @@ export async function packMap(file: Uint8Array, release = false): Promise<Packed
 
 /**
  * The heaviest first frame of a map's parts, by the rule the page asks by: over every place a body can stand, the head and
- * the parts firstFrameParts names there. The sectors within reach of a place all meet at a corner of the sectors' lattice,
- * or at the map's edge where that corner is off it, and reach no fewer from there: those corners are the places weighed.
+ * the parts firstFrameParts names there. Every square that rule reaches has its edges on the chunks' lattice, and a place
+ * in a chunk reaches no square that one of the chunk's corners does not: those corners are the places weighed.
  */
 export function firstFrame(parts: readonly PackedPart[], head: MapHead): FirstFrame {
   const by = new Map(parts.map((p) => [p.name, p]));
   const sum = (of: readonly MapPart[], encoding: "br" | "gz"): number => of.reduce((n, p) => n + by.get(p.name)![encoding].length, by.get(head.name)![encoding].length);
-  const { frameX, frameZ, chunksX, chunksZ } = head.dims;
-  const along = (frame: number, chunks: number): number[] => {
-    const out: number[] = [];
-    for (let k = Math.floor(frame / SECTOR_CHUNKS); (k - 1) * SECTOR_CHUNKS < frame + chunks; k++) out.push(Math.max(0, Math.min(chunks, k * SECTOR_CHUNKS - frame)) * CHUNK_SIZE);
-    return out;
-  };
+  const { chunksX, chunksZ } = head.dims;
   let best = { br: -1, at: [0, 0] as readonly [number, number], of: [] as MapPart[] };
-  for (const z of along(frameZ, chunksZ)) {
-    for (const x of along(frameX, chunksX)) {
+  for (let z = 0; z <= chunksZ * CHUNK_SIZE; z += CHUNK_SIZE) {
+    for (let x = 0; x <= chunksX * CHUNK_SIZE; x += CHUNK_SIZE) {
       const of = firstFrameParts(head, x, z);
       const br = sum(of, "br");
       if (br > best.br) best = { br, at: [x, z], of };

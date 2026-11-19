@@ -1,19 +1,22 @@
-// A map as the page takes it in parts (shared/world/mapfile.ts). Before anything is drawn: its head, its landmarks'
-// definitions, which the welcome's registry holds, and every overview, whose ground stands in for each sector's until it
-// comes (shared/world/heightfield.ts). Then the ground of the sectors within reach of the body, which the first frame waits
-// for and which come alone (firstFrameParts says which, for the loader and for the map's build). Then, while the game is
-// played, the rest nearest first by where the body is and where it is heading, ordered again at each ask so a jump goes
-// first to where it lands, each sector's ground before its statics: URGENT_AT_ONCE at once while ground within RING is
-// wanted, AFTER_AT_ONCE otherwise. Once the ground and the statics of every sector within CITY_NEAR of the body have come,
-// those sectors' statics are handed over, for the far city round the body; and once every part has come, all of them. A
-// part that fails is asked for again after a wait that grows to a cap, for as long as the page lives, and what has come is
-// kept. One that comes damaged or as another's is refused by name and asked for again, until the DAMAGED_MOST-th time
-// breaks the map.
+// A map as the page takes it in parts (shared/world/mapfile.ts). Its head holds the whole map at every chunk's corner,
+// its ground, its sea and its lakes, which stands in for each overview until it comes, as an overview's ground stands in
+// for each sector's (shared/world/heightfield.ts). Before anything is drawn: the head and its landmarks' definitions,
+// which the welcome's registry holds. Then the ground of the sectors within reach of the body and the overviews they lie
+// in, which the first frame waits for and which come alone (firstFrameParts says which, for the loader and for the map's
+// build). Then, while the game is played, the rest nearest first by where the body is and where it is heading, ordered
+// again at each ask so a jump goes first to where it lands: the overviews and ground within RING, then the other overviews
+// within CITY_NEAR, then its sectors, then the overviews past it, then the rest, each sector's ground before its statics;
+// URGENT_AT_ONCE at once while what is within RING is wanted, AFTER_AT_ONCE otherwise. Once the overviews, the ground and the statics of every sector within CITY_NEAR of the
+// body have come, those sectors' statics are handed over, for the far city round the body; and once every part has come,
+// all of them. A part that fails is asked for again after a wait that grows to a cap, for as long as the page lives, and
+// what has come is kept. One that comes damaged or as another's is refused by name and asked for again, until the
+// DAMAGED_MOST-th time breaks the map.
 
-import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
+import { CHUNK_SIZE, SECTOR_CHUNKS, chunkCount } from "../../shared/coords.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { OVERVIEW_STEP, blankLayers, joinWater, listedRows, partHash, readHead, readPart, setGround, setNodes, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type MapStatics, type NodeLayer } from "../../shared/world/mapfile.ts";
+import { COARSE_STEP, OVERVIEW_CHUNKS, OVERVIEW_STEP, blankLayers, listedRows, partHash, readHead, readPart, setGround, setNodes, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type MapStatics, type NodeLayer } from "../../shared/world/mapfile.ts";
+import { MapWater } from "../../shared/world/water.ts";
 import { fetchBytes, readStatics, within, type Get } from "./fetched.ts";
 import { PREDICTED_REACH } from "./session.ts";
 
@@ -28,6 +31,12 @@ export const PARTS_AT_ONCE = 6;
  */
 export const URGENT_AT_ONCE = 4;
 export const AFTER_AT_ONCE = 2;
+/**
+ * Metres round the body whose overviews the first frame waits for, so the ground there is drawn finer than the head's
+ * coarse picture and its trees stand: the far trees' reach on the high tier (assets/tiers.ts), within half an overview's
+ * side, so at most four.
+ */
+export const FIRST_REACH = 2048;
 /** Metres round the body, and round where it will be LEAD seconds on, whose ground is urgent once the game is played. */
 export const RING = 600;
 /** Seconds of the body's way ahead of it whose ground is asked for as if the body were there. */
@@ -54,27 +63,35 @@ export interface Place {
 }
 
 /**
- * Whether the first frame waits for part `p` wherever the body is: the landmarks' definitions, every overview, and on a map
- * with a listed node layer every sector's ground, since the head does not say that layer's slots a chunk and a node source
- * counts them as it is made.
+ * Whether the first frame waits for part `p` wherever the body is: the landmarks' definitions, and on a map with a listed
+ * node layer every sector's ground and so every overview, since the head does not say that layer's slots a chunk and a
+ * node source counts them as it is made.
  */
 function everywhere(head: MapHead, p: MapPart): boolean {
-  return p.kind === "land" || p.kind === "overview" || (p.kind === "ground" && head.layers.some((rule) => rule.type === 1));
+  return p.kind === "land" || ((p.kind === "ground" || p.kind === "overview") && head.layers.some((rule) => rule.type === 1));
 }
+
+/** A square of the lattice by its column and row, as a number. */
+const squareKey = (col: number, row: number): number => col * 4096 + row;
+/** The overview's square a sector's lies in: both are squares of the lattice, and a sector's lies within one overview's. */
+const overviewOf = (sector: { readonly col: number; readonly row: number }): number => squareKey(Math.floor((sector.col * SECTOR_CHUNKS) / OVERVIEW_CHUNKS), Math.floor((sector.row * SECTOR_CHUNKS) / OVERVIEW_CHUNKS));
 
 /**
  * The parts the first frame waits for with the body at (x, z), besides the head, in the head's order: those it waits for
- * everywhere, and the ground of each sector within PREDICTED_REACH of it on both axes, where the body is predicted from the
- * first frame on. The loader asks by it, and the map's build holds its worst over the map to a budget (tools/map/pack.ts).
+ * everywhere, the ground of each sector within PREDICTED_REACH of it on both axes, where the body is predicted from the
+ * first frame on, the overviews those sectors lie in, which hold their nodes and their water, and those less than
+ * FIRST_REACH from it. The loader asks by it, and the map's build holds its worst over the map to a budget
+ * (tools/map/pack.ts).
  */
 export function firstFrameParts(head: MapHead, x: number, z: number): MapPart[] {
   const r = PREDICTED_REACH;
-  return head.parts.filter((p) => {
-    if (everywhere(head, p)) return true;
+  const grounds = head.parts.filter((p) => {
     if (p.kind !== "ground") return false;
     const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
     return sq.cx0 * CHUNK_SIZE <= x + r && sq.cx1 * CHUNK_SIZE >= x - r && sq.cz0 * CHUNK_SIZE <= z + r && sq.cz1 * CHUNK_SIZE >= z - r;
   });
+  const under = new Set(grounds.map(overviewOf));
+  return head.parts.filter((p) => everywhere(head, p) || grounds.includes(p) || (p.kind === "overview" && (under.has(squareKey(p.col, p.row)) || offOf(head, p, x, z) < FIRST_REACH)));
 }
 
 /**
@@ -87,8 +104,9 @@ export function handOverParts(head: MapHead): MapPart[] {
 
 /**
  * A map as a client holds it while its parts come: its ground, in which a sample not yet its sector's is its overview's,
- * its node layers, its water and its landmarks. Every overview is taken before anything reads it. A sector's ground is
- * copied into the heightfield and let go; of a listed node layer's rows, only those are kept.
+ * and one not yet its overview's the head's coarse picture's; its node layers, its water and its landmarks. A sector's
+ * ground waits until its overview has come, and is then copied into the heightfield and let go; of a listed node layer's
+ * rows, only those are kept.
  */
 export class StagedMap {
   readonly head: MapHead;
@@ -98,19 +116,26 @@ export class StagedMap {
   content: MapContent | undefined;
   /** Each sector's come so far that has rows of a listed node layer: those rows, and none of its ground. */
   private readonly listed: GroundPiece[] = [];
-  private readonly water: { readonly chunks: Uint32Array; readonly squares: Uint16Array }[] = [];
+  /** The overviews' squares come so far, and the sectors' grounds come before their overview, by its square. */
+  private readonly overviews = new Set<number>();
+  private readonly early = new Map<number, GroundPiece[]>();
 
   constructor(head: MapHead) {
     this.head = head;
+    const { dims, coarse } = head;
     // The ground's classes a wheel feels, a cell each two samples, filled as each sector's ground comes: the page's own
     // car steps on this heightfield, and without them it drove every street off-road where the server's grips (D811).
     // Before a sector comes its cells read as plain ground, where no body is predicted (D756).
     const cells = (chunks: number): number => (chunks * CHUNK_SIZE) / TERRAIN_CELL / 2 + 1;
-    this.hf = new Heightfield(head.dims, TERRAIN_CELL, head.minY, head.stepY, undefined, undefined, new Uint8Array(cells(head.dims.chunksX) * cells(head.dims.chunksZ)));
+    this.hf = new Heightfield(dims, TERRAIN_CELL, head.minY, head.stepY, undefined, undefined, new Uint8Array(cells(dims.chunksX) * cells(dims.chunksZ)));
     this.hf.seaLevel = head.seaLevel;
     this.hf.holdNone();
+    this.hf.fill(0, 0, dims.chunksX, dims.chunksZ, COARSE_STEP, coarse.heights, coarse.tint);
     this.nodes = blankLayers(head);
+    // Every slot is taken out until its chunk's overview says which stand, so no node stands on the coarse ground.
+    for (const layer of this.nodes) if (!("first" in layer)) layer.out!.fill(255);
     this.content = head.landmarks ? { landmarks: head.landmarks, defs: [] } : undefined;
+    if (head.water) this.hf.water = coarseWater(head);
   }
 
   /** Takes in a part read: the land's definitions, an overview's ground, node pictures and water, or a sector's ground and its listed nodes. */
@@ -122,8 +147,17 @@ export class StagedMap {
       const sq = piece.sq;
       this.hf.fill(sq.cx0, sq.cz0, sq.cx1, sq.cz1, OVERVIEW_STEP, piece.heights, piece.tint);
       setNodes(dims, this.nodes, piece);
-      if (piece.water) this.water.push(piece.water);
+      if (piece.water) this.hf.water = takeWater(this.head, this.hf.water!, piece.sq, piece.water);
+      const key = squareKey(sq.col, sq.row);
+      this.overviews.add(key);
+      for (const g of this.early.get(key) ?? []) this.take(g);
+      this.early.delete(key);
     } else if (piece.kind === "ground") {
+      const under = overviewOf(piece.sq);
+      if (!this.overviews.has(under)) {
+        this.early.set(under, [...(this.early.get(under) ?? []), piece]);
+        return;
+      }
       setGround(dims, this.hf.heights, this.hf.tint, piece, this.hf.ground);
       this.hf.hold(piece.sq.cx0, piece.sq.cz0, piece.sq.cx1, piece.sq.cz1);
       if (piece.listed.every((rows) => rows === null)) return;
@@ -132,11 +166,48 @@ export class StagedMap {
       this.head.layers.forEach((rule, k) => rule.type === 1 && piece.listed[k]!.count.some((n) => n > 0) && Object.assign(this.nodes[k]!, listedRows(dims, rule.kinds, k, this.listed)));
     }
   }
+}
 
-  /** The water of every overview, once they have all come: as joinParts makes it (shared/world/mapfile.ts). */
-  settle(): void {
-    if (this.head.water) this.hf.water = joinWater(this.head, this.water);
-  }
+/**
+ * The map's water before its overviews come, laid out once over every chunk the head says the overviews hold water for
+ * and every chunk a coarse sample's body reaches: each square the body of the coarse sample nearest it, so the lakes stand
+ * flat over the coarse ground from the first frame.
+ */
+function coarseWater(head: MapHead): MapWater {
+  const { dims, coarse } = head;
+  const { cell, bodies } = head.water!;
+  const [side, across] = [CHUNK_SIZE / cell, dims.chunksX + 1];
+  const held = new Uint8Array(chunkCount(dims));
+  for (const c of coarse.water) held[c] = 1;
+  coarse.bodies!.forEach((b, k) => {
+    if (b === 0) return;
+    const [i, j] = [k % across, Math.floor(k / across)];
+    for (let cz = Math.max(0, j - 1); cz <= Math.min(dims.chunksZ - 1, j); cz++) for (let cx = Math.max(0, i - 1); cx <= Math.min(dims.chunksX - 1, i); cx++) held[cz * dims.chunksX + cx] = 1;
+  });
+  const chunks: number[] = [];
+  held.forEach((h, c) => h === 1 && chunks.push(c));
+  const squares = new Uint16Array(chunks.length * side * side);
+  // A square's nearest corner along an axis, from its chunk's column or row and its own.
+  const nearest = (chunk: number, s: number): number => Math.round(chunk + ((s + 0.5) * cell) / CHUNK_SIZE);
+  chunks.forEach((c, k) => {
+    for (let s = 0; s < side * side; s++) squares[k * side * side + s] = coarse.bodies![nearest(Math.floor(c / dims.chunksX), Math.floor(s / side)) * across + nearest(c % dims.chunksX, s % side)]!;
+  });
+  return new MapWater(dims, head.minY, head.stepY, cell, bodies, Uint32Array.from(chunks), squares);
+}
+
+/**
+ * The water once an overview's has come: its chunks' squares its own, none where it holds none, in the same layout and
+ * the same squares, so whatever was made of the water before reads them where they lie.
+ */
+function takeWater(head: MapHead, was: MapWater, sq: { readonly cx0: number; readonly cz0: number; readonly cx1: number; readonly cz1: number }, water: { readonly chunks: Uint32Array; readonly squares: Uint16Array }): MapWater {
+  const { dims, squares, block } = was;
+  const per = was.side * was.side;
+  for (let cz = sq.cz0; cz < sq.cz1; cz++) for (let cx = sq.cx0; cx < sq.cx1; cx++) if (block[cz * dims.chunksX + cx]! >= 0) squares.fill(0, block[cz * dims.chunksX + cx]!, block[cz * dims.chunksX + cx]! + per);
+  water.chunks.forEach((c, k) => {
+    if (block[c]! < 0) throw new Error("map: an overview holds water where its head says there is none");
+    squares.set(water.squares.subarray(k * per, k * per + per), block[c]!);
+  });
+  return new MapWater(dims, head.minY, head.stepY, was.cell, was.bodies, was.chunks(), squares);
 }
 
 const NO_HEIGHTS = new Uint16Array(0);
@@ -220,10 +291,10 @@ export class MapLoader {
   private readonly wait: (ms: number) => Promise<void>;
   private readonly pause: () => Promise<void>;
   private readonly at: (p: MapPart) => string;
-  /** The parts, ground and statics, not yet asked for, or failed and to be asked for again; and how many are under way. */
+  /** The parts, overviews, ground and statics, not yet asked for, or failed and to be asked for again; and how many are under way. */
   private readonly left: MapPart[];
   private under = 0;
-  /** The ground and statics parts come so far, and the statics' bytes as each has come until they are all handed over. */
+  /** The overviews, ground and statics come so far, and the statics' bytes as each has come until they are all handed over. */
   private readonly came = new Set<MapPart>();
   private readonly kept = new Map<MapPart, Uint8Array>();
   /** To whom the statics are handed over, and whether those round the body and all of them have been. */
@@ -241,12 +312,12 @@ export class MapLoader {
     this.at = at;
     this.staged = staged;
     const head = staged.head;
-    this.left = handOverParts(head).filter((p) => (p.kind === "ground" || p.kind === "statics") && !everywhere(head, p));
+    this.left = handOverParts(head).filter((p) => p.kind !== "land" && !everywhere(head, p));
   }
 
   /**
    * The map whose head is at `url`, once its head and the parts its first frame waits for wherever the body is have come,
-   * six at once: its landmarks' definitions and its overviews, and on a map with a listed node layer all its ground.
+   * six at once: its landmarks' definitions, and on a map with a listed node layer all its overviews and ground.
    */
   static async start(get: Get, url: string, opts: LoaderOptions): Promise<MapLoader> {
     const asker = new Asker(get, opts.say ?? (() => {}));
@@ -265,17 +336,17 @@ export class MapLoader {
       for (let k = next++; k < first.length; k = next++) await loader.must(first[k]!);
     };
     await Promise.all(Array.from({ length: Math.min(PARTS_AT_ONCE, first.length) }, lane));
-    loader.staged.settle();
     asker.say("");
     return loader;
   }
 
   /**
    * From now on the rest of the map comes, nearest first to where `where` has the body, else to the map's first spawn
-   * point, each sector's ground before its statics. Resolves once the ground the first frame waits for where it has the
-   * body now has come, alone. From then on `then.say` is told what the player is; `then.arrived` is handed the statics of
-   * the sectors within CITY_NEAR of the body once their ground and statics have come and not every part has, and then the
-   * map's statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR. While
+   * point, the overviews within CITY_NEAR and then its sectors before the rest but for what is within RING, and the
+   * overviews past it before their sectors, each sector's ground before its statics. Resolves once the ground and the overviews the first frame waits for where it has the body now have come,
+   * alone. From then on `then.say` is told what the player is; `then.arrived` is handed the statics of the sectors within
+   * CITY_NEAR of the body once their overviews, ground and statics have come and not every part has, and then the map's
+   * statics once every part has come, `whole`, each read a step at a time. `then.near` stands for CITY_NEAR. While
    * `then.held` says the game's socket is held back, one part at a time is under way.
    */
   async follow(where: () => Place | null, then: { readonly say?: (line: string) => void; readonly arrived?: (statics: MapStatics, whole: boolean) => void; readonly near?: number; readonly held?: () => boolean } = {}): Promise<void> {
@@ -328,11 +399,11 @@ export class MapLoader {
     void readStatics({ head, parts }, this.pause).then((statics) => this.arrived?.(statics, true), (e: unknown) => this.asker.say(why(e)));
   }
 
-  /** The statics of the sectors within `near` of the body handed over, once those sectors' ground and statics have all come. */
+  /** The statics of the sectors within `near` of the body handed over, once those sectors' overviews, ground and statics have all come. */
   private handNear(): void {
     if (this.handedNear || this.handed) return;
     const head = this.staged.head;
-    const near = head.parts.filter((p) => (p.kind === "ground" || p.kind === "statics") && this.off(p) <= this.near);
+    const near = head.parts.filter((p) => (p.kind === "overview" || p.kind === "ground" || p.kind === "statics") && this.off(p) <= this.near);
     if (near.some((p) => !this.came.has(p) && !everywhere(head, p))) return;
     this.handedNear = true;
     const parts = near.filter((p) => this.kept.has(p)).map((p) => ({ part: p, bytes: this.kept.get(p)! }));
@@ -346,25 +417,31 @@ export class MapLoader {
     return this.where() ?? { x: spawn.x, z: spawn.z, vx: 0, vz: 0 };
   }
 
-  /** Metres from the body, or from where it will be LEAD seconds on if that is nearer, to part `p`'s sector. */
+  /** Metres from the body, or from where it will be LEAD seconds on if that is nearer, to part `p`'s square. */
   private off(p: MapPart): number {
     const head = this.staged.head;
     const { x, z, vx, vz } = this.place();
     return Math.min(offOf(head, p, x, z), offOf(head, p, x + vx * LEAD, z + vz * LEAD));
   }
 
-  /** Whether part `p` is ground within RING of the body or of where it is heading. */
+  /** Whether part `p` is an overview or ground within RING of the body or of where it is heading. */
   private urgent(p: MapPart): boolean {
-    return p.kind === "ground" && this.off(p) <= RING;
+    return (p.kind === "ground" || p.kind === "overview") && this.off(p) <= RING;
   }
 
-  /** Which of the parts left goes next: the nearest ground within RING, else the nearest, a sector's ground before its statics; -1 for none. */
+  /**
+   * Which of the parts left goes next, nearest first within each of these in turn: the overviews and ground within RING;
+   * the overviews within CITY_NEAR and then its sectors, which the far city waits for; the overviews past it; the rest. A
+   * sector's ground goes before its statics; -1 for none.
+   */
   private nearest(): number {
     let best = -1;
     let least = Infinity;
     this.left.forEach((p, k) => {
-      const off = this.off(p) + (p.kind === "statics" ? 0.5 : this.urgent(p) ? -1e9 : 0);
-      if (off < least) [best, least] = [k, off];
+      const off = this.off(p);
+      const turn = this.urgent(p) ? 0 : (off <= this.near ? 1 : 3) + (p.kind === "overview" ? 0 : 1);
+      const rank = turn * 1e6 + off + (p.kind === "statics" ? 0.5 : 0);
+      if (rank < least) [best, least] = [k, rank];
     });
     return best;
   }
@@ -393,8 +470,8 @@ export class MapLoader {
   }
 }
 
-/** Metres from (x, z) to the map's part `p`'s square. */
+/** Metres from (x, z) to the map's part `p`'s square, an overview's or a sector's. */
 function offOf(head: MapHead, p: MapPart, x: number, z: number): number {
-  const sq = squareOf(head.dims, SECTOR_CHUNKS, p.col, p.row)!;
+  const sq = squareOf(head.dims, p.kind === "overview" ? OVERVIEW_CHUNKS : SECTOR_CHUNKS, p.col, p.row)!;
   return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
 }

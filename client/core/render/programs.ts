@@ -85,7 +85,7 @@ const mesh = (tier: Tier, made: ProgramText): ProgramText => (tier.lit ? { ...ma
 
 const MAKE = {
   flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
-  // Where the tier reads the finishes in full, asphalt and sand wear (world-surfaces.ts `roadWorn`).
+  // Where the tier reads the finishes in full, asphalt, sand and walks wear (world-surfaces.ts `roadWorn`, `walkWorn`).
   terrain: (tier, format, hard = false, light = false) => {
     const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX);
     return tier.lit && tier.finish === "full" ? { ...t, defines: `#define WORLD_ROAD\n${t.defines}` } : t;

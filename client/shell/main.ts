@@ -58,13 +58,14 @@ if(launch?.intent==="create"){
 }
 async function boot(): Promise<void> {
   // Every file the first frame needs is asked for before anything else runs, and index.html asked for most of them already.
-  // The server names its map's head. Its landmarks' definitions and overviews come first, then the ground round the body
-  // once the welcome says where that is, and the rest while the world is drawn (client/core/mapload.ts).
+  // The server names its map's head, which holds the whole map coarse. Its landmarks' definitions come first, then the ground
+  // round the body and its overviews once the welcome says where that is, and the rest while the world is drawn
+  // (client/core/mapload.ts).
   // Until the first frame the page's one line says what it waits for when a part has failed (client/core/mapload.ts).
   const loading = fetchJson(fetch, "map.json").then((named) => MapLoader.start(fetch, (named as { head: string }).head, { say: (line) => {root.textContent=line || "Preparing world…";if(loadingLine)loadingLine.textContent=root.textContent;}, wait: (ms) => new Promise((go) => setTimeout(go, ms)), pause: nextTask(new MessageChannel()) }));
   const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE), content = fetchContent(fetch, __CONTENT_FILE__);
-  // The socket opens once the overviews are in, so its handshake runs while the landmarks are read. The server waits 5 s for
-  // a hello, and a socket it gave up on is opened again.
+  // The socket opens once the landmarks' definitions are in, so its handshake runs while they are read. The server waits 5 s
+  // for a hello, and a socket it gave up on is opened again.
   const early = loading.then(() => connect(socketAddress(location, "ws")), () => null);
   // The manifest names every mesh and says where the pages are. The boot pack is fetched whole, and the rest as it is
   // wanted. The sound library starts once the sounds' rows have come.

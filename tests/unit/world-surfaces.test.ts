@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadWorn, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadWorn, walkMeet, walkWorn, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
@@ -464,4 +464,46 @@ test("asphalt wears by its macro and its repairs in 8 m squares, sand by the bea
   const squares = Array.from({ length: 64 }, (_, k) => at("asphalt", 4 + (k % 8) * 8, 4 + Math.floor(k / 8) * 8)[0]!);
   expect(squares.some((v) => v < 0.1)).toBe(true);
   expect(squares.some((v) => v === 0.2)).toBe(true);
+});
+
+test("a walk wears by its 1.5 m panels and their joints, each by where it is, and nothing else does", () => {
+  const city = new Float32Array(12); citySurface(city, "core:miami");
+  const panel = finishMetres((SURFACE_NAMES as readonly string[]).indexOf("sidewalk"), city) / 2;
+  let mask = [0.9, 0.9, 0.9, 0.9];
+  const sample: WorldSample = (_role, _layer, _u, _v, _spread, out) => out.set(mask);
+  const at = (finish: string, x: number, z: number, footprint = 0.002): number[] => {
+    const albedo = Float64Array.of(0.3, 0.3, 0.3), orm = Float64Array.of(1, 0.8, 0), normal = Float64Array.of(0, 1, 0);
+    walkWorn(albedo, orm, normal, (SURFACE_NAMES as readonly string[]).indexOf(finish), x, z, footprint, city, sample);
+    return [...albedo, orm[1]!, ...normal];
+  };
+  expect(at("asphalt", 1, 1)).toEqual([0.3, 0.3, 0.3, 0.8, 0, 1, 0]);
+  // Inside a panel one look throughout; panels differ from each other in tone, and some lean.
+  const middles = Array.from({ length: 100 }, (_, k) => at("sidewalk", ((k % 10) + 0.5) * panel, (Math.floor(k / 10) + 0.5) * panel));
+  expect(at("sidewalk", 0.4 * panel, 0.6 * panel)[0]).toBe(at("sidewalk", 0.6 * panel, 0.4 * panel)[0]!);
+  expect(new Set(middles.map((m) => m[0]!.toFixed(4))).size).toBeGreaterThan(50);
+  expect(middles.some((m) => m[5]! < 1)).toBe(true);
+  expect(middles.some((m) => m[5] === 1)).toBe(true);
+  // Stains and cracks follow the masks; with masks that mark nothing, no panel is darker than its tone.
+  mask = [0, 0, 0, 0];
+  const bare = Array.from({ length: 100 }, (_, k) => at("sidewalk", ((k % 10) + 0.5) * panel, (Math.floor(k / 10) + 0.5) * panel)[0]!);
+  expect(bare.filter((v, k) => v > middles[k]![0]! + 1e-9).length).toBeGreaterThan(0);
+  // Some joints hold grass or dirt and some nothing; a far pixel sees little of either.
+  const joints = Array.from({ length: 200 }, (_, k) => at("sidewalk", (Math.floor(k / 2) + 0.5) * panel, (k % 2) * panel * 7));
+  expect(joints.some((j) => j[1]! > j[0]! * 1.3)).toBe(true);
+  expect(joints.some((j) => j[3]! > 0.85 && j[1]! < j[0]! * 1.3)).toBe(true);
+  const near = joints.map((j) => j[0]!), far = Array.from({ length: 200 }, (_, k) => at("sidewalk", (Math.floor(k / 2) + 0.5) * panel, (k % 2) * panel * 7, 0.5)[0]!);
+  const spread = (v: number[]): number => Math.max(...v) - Math.min(...v);
+  expect(spread(far)).toBeLessThan(spread(near));
+});
+
+test("a walk meets another finish on a line, over a pixel across it", () => {
+  // A pixel 1 cm wide is a hundredth of the share across a 2 m sample.
+  expect(walkMeet(0.5, 0.01)).toBe(0.5);
+  expect(walkMeet(0.495, 0.01)).toBe(0);
+  expect(walkMeet(0.2, 0.01)).toBe(0);
+  // Where the other finish weighs more than the cover's own (its samples split between two tints), all of it shows.
+  expect(walkMeet(0.505, 0.01)).toBe(1);
+  expect(walkMeet(0.8, 0.01)).toBe(1);
+  const ramp = [0.496, 0.498, 0.5, 0.502, 0.504].map((s) => walkMeet(s, 0.01));
+  expect(ramp.every((v, k) => k === 0 || v > ramp[k - 1]!)).toBe(true);
 });
