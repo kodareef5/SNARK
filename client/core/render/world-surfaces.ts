@@ -171,10 +171,14 @@ export class WorldFinishes {
         if (along > 0) {
           let px = 0;
           if (l < WEATHER_LAYER) {
+            let at = near[l]!;
             // Paint let go on a wall shows the concrete under it.
-            const at = l === CONCRETE ? Math.min(near[l]!, ...PEELED.map((f) => near[f]!)) : near[l]!;
+            if (l === CONCRETE) for (const f of PEELED) at = Math.min(at, near[f]!);
             px = shown(finishMetres(l, p.surfaceCity), at);
-          } else for (const [f, metres] of MASK_READS[l - WEATHER_LAYER]!) px = Math.max(px, shown(metres, near[f]!));
+          } else {
+            const reads = MASK_READS[l - WEATHER_LAYER]!;
+            for (let j = 0; j < reads.length; j += 2) px = Math.max(px, shown(reads[j + 1]!, near[reads[j]!]!));
+          }
           residency.shown(t, Math.min(along, px), WEIGHT[r]! / WORLD_NEAR, true);
         }
         const held = residency.holds(t);
@@ -628,14 +632,14 @@ const ASPHALT = SURFACE_NAMES.indexOf("asphalt"), SAND = SURFACE_NAMES.indexOf("
 /** The finishes whose paint lets go to the concrete under it on a wall (`weathered`). */
 const PEELED = SURFACE_NAMES.flatMap((name, i) => (SURFACE_WEATHERING[name].peel > 0 ? [i] : []));
 /**
- * What reads each mask, by its slot in finish-near.ts's distances, and at how many metres a tile: the statics' walls the
- * weathering, a storey up; asphalt and sand the macro, a walk too for the stains of its panels; asphalt the repairs, and
- * a walk for its panels' cracks.
+ * What reads each mask, in pairs: its slot in finish-near.ts's distances and the metres a tile it reads at. The statics'
+ * walls the weathering, a storey up; asphalt and sand the macro, a walk too for the stains of its panels; asphalt the
+ * repairs, and a walk for its panels' cracks.
  */
-const MASK_READS: readonly (readonly (readonly [number, number])[])[] = [
-  [[NEAR_WALL, WEATHER_STOREY]],
-  [[ASPHALT, ROAD_MACRO], [SAND, ROAD_MACRO], [SIDEWALK, 3]],
-  [[ASPHALT, ROAD_REPAIRS], [SIDEWALK, 4]],
+const MASK_READS: readonly (readonly number[])[] = [
+  [NEAR_WALL, WEATHER_STOREY],
+  [ASPHALT, ROAD_MACRO, SAND, ROAD_MACRO, SIDEWALK, 3],
+  [ASPHALT, ROAD_REPAIRS, SIDEWALK, 4],
 ];
 /** The beach's second copy of its macro: turned an eighth and this many metres a tile, so the two never line up. */
 const BEACH_TURN = Math.SQRT1_2, BEACH_SECOND = 41;
