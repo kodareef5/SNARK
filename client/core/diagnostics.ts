@@ -60,6 +60,8 @@ export interface PlayCorrection {
   whole: boolean;
   rows: number;
   statics: boolean;
+  /** The nearest other body the page held within 4 m, its kind and metres, or "". */
+  near: string;
   /** The input of the tick: move x and z, buttons, yaw and pitch, as sent. */
   input: number[];
   /** Each field that differed: its name, the page's value and the server's. */
@@ -341,7 +343,7 @@ export class PredictionTrace {
   }
 
   /** A snapshot of tick `t`, compared after the one of `since`, that was not as predicted, and what the page held where the body was. */
-  corrected(s: ClientSession, t: number, since: number, what: string, predicted: Body, authoritative: Body, input: number[], held: { whole: boolean; rows: number; statics: boolean }): void {
+  corrected(s: ClientSession, t: number, since: number, what: string, predicted: Body, authoritative: Body, input: number[], held: { whole: boolean; rows: number; statics: boolean; near: string }): void {
     const r = this.report;
     if (!r) return;
     const fields = differing(predicted, authoritative).slice(0, FIELDS_KEPT).map((f): [string, number | boolean, number | boolean] => [f.name, f.predicted, f.authoritative]);

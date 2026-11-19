@@ -239,7 +239,7 @@ export function describe(s: Session): string[] {
     say(`    ${"field".padEnd(20)} ${"times".padStart(6)}   largest difference`);
     for (const [name, e] of [...fields].sort((a, b) => b[1].n - a[1].n)) say(`    ${name.padEnd(20)} ${String(e.n).padStart(6)}   ${e.most}`);
     for (const c of [...disagree].sort((a, b) => b.d - a.d).slice(0, 8)) {
-      say(`    tick ${c.t} (from ${c.since}), ${c.kind || "on foot"} at ${place(c)}, ${c.d.toFixed(3)} m: the chunk ${c.whole ? "whole" : "not whole"} with ${c.rows} rows, statics ${c.statics ? "from the page's map" : "as sent"}; ${c.fields.map(([n, a, b]) => `${n} ${a} / ${b}`).join(", ")}`);
+      say(`    tick ${c.t} (from ${c.since}), ${c.kind || "on foot"} at ${place(c)}, ${c.d.toFixed(3)} m: the chunk ${c.whole ? "whole" : "not whole"} with ${c.rows} rows, statics ${c.statics ? "from the page's map" : "as sent"}${c.near ? `, beside a ${c.near}` : ", no other body within 4 m"}; ${c.fields.map(([n, a, b]) => `${n} ${a} / ${b}`).join(", ")}`);
     }
   }
 

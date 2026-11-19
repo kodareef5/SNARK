@@ -804,12 +804,21 @@ export class ClientSession {
     this.predicting = held;
   }
 
-  /** What this page holds of the chunk at (x, z), for the record of play. */
-  private heldAt(x: number, z: number): { whole: boolean; rows: number; statics: boolean } {
+  /**
+   * What this page holds of the chunk at (x, z), for the record of play: whether all its rows have come, how many, whether
+   * its statics are the page's own map's, and the nearest other body of the newest view within 4 m, its kind and metres.
+   */
+  private heldAt(x: number, z: number): { whole: boolean; rows: number; statics: boolean; near: string } {
     const world = this.world;
-    if (!world) return { whole: false, rows: 0, statics: false };
+    if (!world) return { whole: false, rows: 0, statics: false, near: "" };
     const chunk = chunkAt(world.dims, x, z);
-    return { whole: this.whole[chunk] === 1, rows: world.structs.chunks[chunk]?.live ?? 0, statics: this.staticKinds !== null };
+    const view = this.views.find(this.latestSnapshot), own = handleIndex(this.ownHandle);
+    let near = "", best = 4;
+    for (let i = 0; view && i < view.count; i++) {
+      const d = Math.hypot(dequantX(view.qx[i]!) - x, dequantX(view.qz[i]!) - z);
+      if (d < best && view.id[i] !== own && view.id[i] !== this.driving) [best, near] = [d, `${this.registry.defs[view.kind[i]!]?.id ?? view.kind[i]} ${d.toFixed(1)} m`];
+    }
+    return { whole: this.whole[chunk] === 1, rows: world.structs.chunks[chunk]?.live ?? 0, statics: this.staticKinds !== null, near };
   }
 
   private groundHeld(): boolean {
