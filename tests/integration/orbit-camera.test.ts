@@ -17,12 +17,10 @@ import { orbitScene } from "../../tools/snap/orbit.ts";
 
 const pack = parsePack(corePackBytes());
 
-/** A survivor on flat open ground with cheats on, her whole client framed every frame. */
-function survivor(h: Harness, name: string) {
-  const app = new App(h.join(name, {}, { manual: true }), h.reg, pack);
-  return app;
-}
+/** A survivor whose whole client the test frames. */
+const survivor = (h: Harness, name: string): App => new App(h.join(name, {}, { manual: true }), h.reg, pack);
 
+/** Ada on flat open ground with cheats on; `run` frames every client in `apps`. */
 function world() {
   const h = new Harness({}, 1, 60, { dev: true });
   const app = survivor(h, "ada"), s = app.session;
