@@ -149,7 +149,8 @@ export function judge(s: Session): Judged {
     }
     for (const g of page.gaps) {
       if (g.t < settled) continue;
-      const cause: Cause = frames.some((f) => f.t >= g.t - g.ticks - 8 && f.t <= g.t) ? "page" : any(g.t - g.ticks, g.t, serverLate) ? "server" : "line";
+      // A snapshot's tick lags the inputs sampled beside it by the margin and the trip, so a stall is looked for either side.
+      const cause: Cause = frames.some((f) => f.ms >= 250 && Math.abs(f.t - g.t) <= g.ticks + 16) ? "page" : any(g.t - g.ticks, g.t, serverLate) ? "server" : "line";
       gaps.push({ t: g.t, ms: g.ms, cause });
     }
   }
@@ -259,17 +260,23 @@ export function describe(s: Session): string[] {
   return out;
 }
 
-/** Which it is, in words a reader who knows nothing of the code can take. */
+/**
+ * Which it is, in words a reader who knows nothing of the code can take: what moved the body (corrections that moved it,
+ * clock jumps) or held what is drawn (late snapshots). A correction of other state alone, a car's wear the server
+ * applies, moves nothing.
+ */
 export function verdict(j: Judged, stalls: number): string {
   const weight = new Map<Cause, number>(CAUSES.map((c) => [c, 0]));
-  for (const x of j.corrections) weight.set(x.cause, weight.get(x.cause)! + 1);
+  for (const x of j.corrections) if (x.c.what === "moved") weight.set(x.cause, weight.get(x.cause)! + 1);
   for (const x of j.jumps) weight.set(x.cause, weight.get(x.cause)! + 1);
   for (const x of j.gaps) weight.set(x.cause, weight.get(x.cause)! + 1);
   const total = [...weight.values()].reduce((a, b) => a + b, 0);
-  if (total === 0) return stalls > 0 ? `the page stalls, though nothing was corrected for it` : "nothing went wrong: the two ends agreed and the line kept up";
+  const state = j.corrections.filter((x) => x.c.what !== "moved").length;
+  const also = state > 0 ? `; ${state} corrections of other state alone moved nothing` : "";
+  if (total === 0) return (stalls > 0 ? `the page stalls, though nothing moved the body for it` : "nothing went wrong: nothing moved the body, and the line kept up") + also;
   const [top, n] = [...weight].sort((a, b) => b[1] - a[1])[0]!;
   const rest = [...weight].filter(([c, m]) => c !== top && m > 0).map(([c, m]) => `${m} ${VERDICT[c]}`);
-  return `${VERDICT[top]} (${n} of ${total} corrections, clock jumps and late snapshots${rest.length ? `; the rest: ${rest.join(", ")}` : ""})`;
+  return `${VERDICT[top]} (${n} of ${total} corrections that moved the body, clock jumps and late snapshots${rest.length ? `; the rest: ${rest.join(", ")}` : ""})${also}`;
 }
 
 /** The lines of a file the server wrote. */
