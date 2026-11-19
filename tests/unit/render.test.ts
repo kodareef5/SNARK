@@ -191,7 +191,7 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   view.cam.pitch = -0.5;
   view.render();
   const dry = rgb(at(0.5, 0.8));
-  expect(Math.abs(dry[0]! - dry[2]!)).toBeLessThan(12); // grey, not blue
+  expect(dry[2]! - dry[0]!).toBeLessThan(12); // not blue: its finish's own warm grey, drawn as its mean before any map has come
 
   // From above the pool, picking still finds the ground under the water.
   view.cam.x = PROVING_POOL.x;
@@ -200,7 +200,7 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   view.cam.pitch = -1.3;
   const above = view.render();
   const wet = rgb(at(0.5, 0.5));
-  expect(wet[2]! - wet[0]!).toBeGreaterThan(40);
+  expect(wet[2]! - wet[0]! - (dry[2]! - dry[0]!)).toBeGreaterThan(20); // the water tints its bed bluer than the dry plaza is
   expect(view.raster.pickKind[at(0.5, 0.5)]).toBe(PICK_TERRAIN);
   expect(above.drawFlags[above.drawCount - 1]).toBe(DRAW_BLEND | DRAW_WATER);
   // Nothing else is see-through. Nodes are drawn at their sizes.
