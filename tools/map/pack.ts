@@ -30,16 +30,13 @@ export const PACK_LANES = Math.max(2, Math.min(8, availableParallelism()));
 export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20 };
 /**
  * Brotli bytes of the heaviest first frame on a map: its head and the parts the page's first frame waits for where it
- * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, every overview and the ground of the
- * sectors within reach of the body, four where they meet. A player waits for no more wherever it stands: 3.69 MB on Miami
- * and 3.36 on Los Angeles, everyday builds of 2026-11-17 at version 8 (1.5 and 1.3 s at 20 Mbit/s, the phone link the
- * asset bench takes). A map of 255 chunks a side (D810) has four times the overviews of those 8 km squares, and they are
- * most of what it waits for: everyday builds of 2026-11-18 wait for 8.00 MB at most on San Francisco, 8.45 on Las Vegas,
- * 8.79 on Tampa, 9.80 on Miami and 11.33 on Los Angeles, whose hills' overviews pack worst. 12 MiB holds every one of
- * them, Los Angeles in about 4.5 s at 20 Mbit/s as a release (D812). Past it, the first frame should wait for the
- * overviews near the body alone, not every one.
+ * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, the ground of the sectors within
+ * reach of the body, four where they meet, and the overviews within FIRST_REACH of it, four where they meet. While the
+ * first frame waited for every overview, a 16 km map waited for 8.00 MB (San Francisco) to 11.33 (Los Angeles), and this
+ * was 12 MiB (D812). Since the head holds the whole map coarse (map version 10), an everyday build of Miami waits for
+ * 4.5 MB at most and 3.3 on average over its places (1.8 and 1.3 s at 20 Mbit/s, the phone link the asset bench takes).
  */
-export const FIRST_FRAME_BUDGET = 12 << 20;
+export const FIRST_FRAME_BUDGET = 6 << 20;
 
 /** A part, or the head, as written beside the map, and its copies. */
 export interface PackedPart {

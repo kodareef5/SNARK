@@ -58,7 +58,7 @@ test("a part over its kind's budget, or a first frame over its own, is refused a
   const ground = packed.parts.find((p) => p.kind === "ground")!;
   const big = { ...ground, br: Buffer.alloc(PART_BUDGETS.ground + 1) };
   expect(() => checkBudgets({ ...packed, parts: packed.parts.map((p) => (p === ground ? big : p)) })).toThrow(`map: its part ${ground.name} is 1.05 MB on the wire, over the 1.05 MB a part of its kind may be in tools/map/pack.ts (an everyday build's copies`);
-  expect(() => checkBudgets({ ...packed, first: { ...packed.first, br: FIRST_FRAME_BUDGET + 1 } })).toThrow("waits for 12.58 MB of it before it draws, over the 12.58 MB of tools/map/pack.ts");
+  expect(() => checkBudgets({ ...packed, first: { ...packed.first, br: FIRST_FRAME_BUDGET + 1 } })).toThrow("waits for 6.29 MB of it before it draws, over the 6.29 MB of tools/map/pack.ts");
 });
 
 test("a map's build writes its head and parts beside it, each with its copies, and takes away what is not one of them", async () => {
