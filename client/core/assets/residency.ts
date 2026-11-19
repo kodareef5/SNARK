@@ -220,6 +220,8 @@ export class Residency {
   private readonly late: number[] = [];
 
   private frame = 0;
+  /** Textures that can be had shown this frame with no step on the card: while there are any, none climbs past its first. */
+  private unstarted = 0;
   /** The time the frame began, in milliseconds. */
   private now = 0;
   private readonly reserves = new Map<string, number>();
@@ -489,6 +491,7 @@ export class Residency {
     this.unlink(this.texMark);
     this.toTail(this.texMark, this.texRoot);
     this.texMarked = 0;
+    this.unstarted = 0;
     if (this.format !== this.made) this.remake();
     this.learned.length = 0;
     if (!this.port) return;
@@ -659,9 +662,7 @@ export class Residency {
 
   /** How many textures that can be had were shown this frame with no step of them on the card. */
   bare(): number {
-    let n = 0;
-    for (let t = 0; t < this.has.length; t++) if (this.has[t]! < 0 && this.limit[t]! >= 0 && this.seen[this.texBase + t] === this.frame) n++;
-    return n;
+    return this.unstarted;
   }
 
   /** The last step of texture `t` (its index in the manifest) the card holds, or -1 for none. */
@@ -687,6 +688,7 @@ export class Residency {
       this.seen[slot] = this.frame;
       this.urgency[slot] = 0;
       this.px[t] = px;
+      if (have < 0 && this.limit[t]! >= 0) this.unstarted++;
       if (have >= 0) {
         this.unlink(slot);
         this.toTail(slot, this.texRoot);
@@ -1020,9 +1022,10 @@ export class Residency {
       let rider = -1;
       let goal = 0;
       if (this.isTexture(slot)) {
-        // A texture comes at its first step, then climbs in one request to the step it is shown at, and only into room
-        // that is not spoken for.
+        // A texture comes at its first step, then climbs in one request to the step it is shown at, once no texture
+        // shown lacks its first, and only into room that is not spoken for.
         const t = slot - this.texBase, have = this.has[t]!;
+        if (have >= 0 && this.unstarted > 0) continue;
         goal = have < 0 ? 0 : Math.max(have + 1, stepFor(this.px[t]!, this.limit[t]!));
         bytes = this.through[(slot - this.texBase) * STEPS + goal]!;
         if (this.texMarked + this.texComing + bytes > this.texBudget) {

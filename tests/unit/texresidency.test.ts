@@ -139,6 +139,11 @@ test("on a slow, lossy link a body turns from flat to its materials when the car
     steps += Math.log2(made.at(-1)! / 64) + 1;
   }
   expect(w.card.made.length).toBeLessThan(steps);
+  // No texture climbed past its first step while any shown lacked its first, lost ones asked again included.
+  const texAsks = w.port.log.filter((line) => line.split(" ")[1] === "ask" && Number(line.split(" ")[2]) >= texSlot(SET, 0));
+  const climbs = texAsks.map((line, k) => (line.split(" ").slice(4).join(" ").startsWith("x") ? k : -1)).filter((k) => k >= 0);
+  const firsts = texAsks.map((line, k) => (line.split(" ").slice(4).join(" ").startsWith("x") ? -1 : k)).filter((k) => k >= 0);
+  expect([climbs.length > 0, Math.max(...firsts) < Math.min(...climbs)]).toEqual([true, true]);
   // Requests were lost and asked again, and still no part crossed the link twice: a step up asks for the steps before
   // it too, and those the port had kept.
   expect(w.r.stats.failed).toBeGreaterThan(3);
@@ -288,6 +293,10 @@ test("what cannot be had: a body is drawn without a normal, a texture stays at t
   w.run(8, -3.5);
   // A normal whose first step is wrong is asked for twice. Its body is drawn with its materials all the same.
   expect([kinds(w, texSlot(set, NORMAL)), w.shown[0], tops(w, 0)]).toEqual([["", "fresh"], 1, [512, 0, 256, 256, 256, 256]]);
+  // Until it was asked for again, no texture climbed past its first step: a texture shown with none goes first.
+  const normal = w.port.log.filter((line) => line.split(" ")[1] === "ask" && line.split(" ")[2] === String(texSlot(set, NORMAL))).map((line) => w.port.log.indexOf(line));
+  const climbed = w.port.log.findIndex((line) => line.split(" ")[1] === "ask" && Number(line.split(" ")[2]) >= texSlot(set, 0) && line.split(" ").slice(4).join(" ").startsWith("x"));
+  expect(climbed).toBeGreaterThan(normal[1]!);
   // A base colour whose 256 is wrong stays at 128. The 256 was asked for twice, with the two steps before it, and then the 128.
   expect([kinds(w, texSlot(set, MAPS + BASE)), w.shown[1], tops(w, 1)[BASE]]).toEqual([["", "x3", "x3 fresh", "x2"], 1, 128]);
   // A surface that is wrong came with its level, twice. Then the level was asked for alone, and is drawn flat.
