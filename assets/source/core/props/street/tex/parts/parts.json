@@ -32,6 +32,9 @@
  "cut_torn": {
   "height_mm": 11
  },
+ "cut_yield": {
+  "height_mm": 6
+ },
  "deadend": {
   "height_mm": 6
  },
@@ -88,6 +91,12 @@
  },
  "oneway_left": {
   "height_mm": 6
+ },
+ "paint": {
+  "height_mm": 1
+ },
+ "paint_worn": {
+  "height_mm": 1.8
  },
  "paystation": {
   "height_mm": 10

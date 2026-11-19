@@ -378,3 +378,41 @@ test("a crossing is striped between the kerbs, the longest pieces first, and a l
   expect(station[0]!.z).toBeLessThan(635);
   expect(Math.round(Math.cos(station[0]!.yaw * Math.PI / 180))).toBe(-1);
 });
+
+test("a stop or a signal the data maps away from any junction stands at its own point, on the right of the traffic it governs", () => {
+  const forms = { ...RULES.forms, signal: [["signal", 1]], stop: [["stop", 1]] } as Furniture["forms"];
+  const controls = [
+    { kind: "stop", e: 400, n: 350, direction: null, all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: `${northward(400)}:3`, travel: [0, 1] }] },
+    { kind: "signal", e: 200, n: 450, direction: null, all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: `${northward(200)}:4`, travel: [0, -1] }] },
+  ];
+  const { pieces, summary } = place(fixture(GRID, [], { controls }), [], { ...RULES, forms });
+  // Northbound traffic's right is -x; the sign stands before the point, facing the traffic (south).
+  const stop = near(pieces, "stop", 400, 350, 8);
+  expect(stop.length).toBe(1);
+  expect(stop[0]!.x).toBeLessThan(400); expect(stop[0]!.z).toBeLessThan(350);
+  expect(Math.round(Math.cos(stop[0]!.yaw * Math.PI / 180))).toBe(-1);
+  // Southbound traffic's right is +x; the signal stands past the point.
+  const signal = near(pieces, "signal", 200, 450, 10);
+  expect(signal.length).toBe(1);
+  expect(signal[0]!.x).toBeGreaterThan(200); expect(signal[0]!.z).toBeLessThan(450);
+  expect(summary.mapped?.stop).toEqual({ mapped: 1, used: 1 });
+  expect(summary.mapped?.signal).toEqual({ mapped: 1, used: 1 });
+});
+
+test("a crossing on an avenue keeps its stripes fresh", () => {
+  const walks = [{ type: "Feature", geometry: { type: "LineString", coordinates: [[490, 650], [510, 650]] }, properties: { kind: "crossing", drawn: true, width_m: 3 } }];
+  const { pieces } = place(fixture(GRID, [], { walks }));
+  const bars = pieces.filter((p) => /zzstreet_crosswalk/.test(p.kind));
+  expect(bars.length).toBeGreaterThan(0);
+  expect(bars.filter((p) => p.kind.endsWith("_worn"))).toEqual([]);
+});
+
+test("a give-way the data maps has its YIELD sign before it, facing the traffic it governs", () => {
+  const forms = { ...RULES.forms, yield: [["yield", 1]] } as Furniture["forms"];
+  const controls = [{ kind: "give_way", e: 600, n: 350, direction: null, all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: `${northward(600)}:3`, travel: [0, 1] }] }];
+  const { pieces, summary } = place(fixture(GRID, [], { controls }), [], { ...RULES, forms });
+  const sign = near(pieces, "yield", 600, 350, 8);
+  expect(sign.length).toBe(1);
+  expect(sign[0]!.z).toBeLessThan(350);
+  expect(summary.mapped?.give_way).toEqual({ mapped: 1, used: 1 });
+});
