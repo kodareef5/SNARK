@@ -193,17 +193,7 @@ export class Rig {
       },
     );
     const send = conn.send.bind(conn);
-    conn.send = (channel, data) => {
-      r.reset(data);
-      if (r.bits(4) === C_INPUT) {
-        r.u32();
-        r.u8();
-        const newest = r.u32();
-        const count = r.bits(3) + 1;
-        for (let t = newest - count + 1; t <= newest; t++) sent.add(t);
-      }
-      send(channel, data);
-    };
+    conn.send = (channel, data) => (noteInputs(data, sent, r), send(channel, data));
     const session = this.h.adopt(name, conn, end, server, { manual: true });
     page = {
       session, conn, until: 0, next: net.now, sent, snaps, snapBytes, missing: [],
@@ -284,7 +274,8 @@ export class Rig {
       const c = clients[i];
       if (c && p.session.state === "active" && !c.inputs.has(T)) p.missing.push(T);
     });
-    this.h.server.tick(behind);
+    this.h.server.behind = behind;
+    this.h.server.tick();
     if (!watching) return;
     this.pages.forEach((p, i) => {
       const c = clients[i];
@@ -325,6 +316,17 @@ export class Rig {
     }
     p.drawn = drawn;
   }
+}
+
+/** Adds to `sent` the ticks an input message `data` carries; any other message adds nothing. */
+export function noteInputs(data: Uint8Array, sent: Set<number>, r = new BitReader()): void {
+  r.reset(data);
+  if (r.bits(4) !== C_INPUT) return;
+  r.u32();
+  r.u8();
+  const newest = r.u32();
+  const count = r.bits(3) + 1;
+  for (let t = newest - count + 1; t <= newest; t++) sent.add(t);
 }
 
 /** Ticks of 7 ms, the server's median with one player, but for the long ones `bursts` puts at a tick: each its list of costs in ms, a long one every `gap` ticks. */

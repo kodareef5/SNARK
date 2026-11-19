@@ -554,7 +554,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     tick: (due, behind) => {
       const began = performance.now();
       parts.due = due;
-      host.game.tick(behind);
+      host.game.behind = behind;
+      host.game.tick();
       const ended = performance.now();
       meter.tick(due, began, ended);
       play?.ticked(due, began, ended, behind);

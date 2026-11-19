@@ -103,6 +103,11 @@ export interface FinishResidency {
 export const finishTaps = (tier: Tier): number => (tier.anisotropy > 1 ? 2 : 1);
 /** Levels a frame a layer's finest level in hand comes down by on the card once a finer one has come (`worldLeast`). */
 export const WORLD_EASE = 0.25;
+/** worldGrad's widening of a read's steps (dx, dy: texels of the array's base a pixel), held `least` levels over it, as its twin. */
+export function heldWidening(dx: readonly number[], dy: readonly number[], least: number, taps: number): number {
+  const a = Math.hypot(dx[0]!, dx[1]!), b = Math.hypot(dy[0]!, dy[1]!), major = Math.max(a, b, 1e-9), minor = Math.max(Math.abs(dx[0]! * dy[1]! - dx[1]! * dy[0]!) / major, 1e-9);
+  return least > 0 ? Math.max(1, 2 ** least * Math.max(Math.min(2 ** Math.ceil(Math.log2(major / Math.max(Math.min(a, b), 1e-9))), taps) / major, 1 / minor)) : 1;
+}
 /** Metres nearer than which a surface is wanted as if it were this near. */
 const NEAREST = 0.25;
 
@@ -835,11 +840,13 @@ float higher(float a, float b, float t, float scale, float band) {
 }
 // A read of an array's layer at q held to the finest level of it on the card, \`least\` levels over the array's base
 // (FramePacket worldLeast): where the card could read finer, the steps between pixels are widened until it cannot, a
-// slanted read taken as the next power of two taps up to the tier's anisotropy. A level never put on the card is never read.
+// slanted read taken as the next power of two taps up to the tier's anisotropy, and its footprint's narrow way never under
+// a texel, as a card may take the level from that however slanted. A level never put on the card is never read (heldWidening).
 vec4 worldGrad(highp sampler2DArray s, vec2 q, int layer, vec2 dx, vec2 dy, float least) {
   if (least > 0.0) {
     float side = float(textureSize(s, 0).x), a = length(dx) * side, b = length(dy) * side, major = max(max(a, b), 1e-9);
-    float k = max(1.0, exp2(least) * min(exp2(ceil(log2(major / max(min(a, b), 1e-9)))), WORLD_TAPS) / major);
+    float minor = max(abs(dx.x * dy.y - dx.y * dy.x) * side * side / major, 1e-9);
+    float k = max(1.0, exp2(least) * max(min(exp2(ceil(log2(major / max(min(a, b), 1e-9)))), WORLD_TAPS) / major, 1.0 / minor));
     dx *= k;
     dy *= k;
   }

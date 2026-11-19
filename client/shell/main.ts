@@ -1,5 +1,5 @@
 import { launchKey,readLaunch } from "../core/entry-state.ts";
-import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK } from "../../shared/net/protocol.ts";
+import { SESSION_CREATING, REJECT_NAME, REJECT_PASSWORD, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 // Browser entry point. Each frame it asks the app what to draw, and hands the world to WebGL and the interface to the DOM binder.
 
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -30,6 +30,7 @@ import { UiView } from "./ui.ts";
 import { ActivitySelfcheck } from "../core/activity-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
 import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
+import { CAPTURE_KEY, LightCapture, SAMPLE_H, SAMPLE_W } from "../core/light-capture.ts";
 
 declare const __CONTENT_FILE__: string;
 const params = new URLSearchParams(location.search);
@@ -153,6 +154,11 @@ async function boot(): Promise<void> {
     json: (name) => fetchJson(fetch, name),
   };
   const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes"), params.has("sync") ? () => performance.now() : null) : null);
+  // A development world's page captures the light it draws for ten seconds at F9, read back from a small copy of the
+  // canvas, and sends it with its record of play.
+  const light = new LightCapture(), copy = Object.assign(document.createElement("canvas"), { width: SAMPLE_W, height: SAMPLE_H }).getContext("2d", { willReadFrequently: true })!;
+  const say = (line: string): void => (console.log(line), app.ui.chat.print(TEXT_NOTICE, line, session.serverTick));
+  if (!measured) void fetch("__play").then((r) => r.status === 204 && addEventListener("keydown", (e) => e.code === CAPTURE_KEY && light.start(performance.now()) && say("Capturing the light of every frame for ten seconds")), () => {});
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
@@ -232,6 +238,11 @@ async function boot(): Promise<void> {
     }
     if (packet.lit) surfaces?.start();
     renderer.draw(packet);
+    if (light.on) {
+      copy.drawImage(canvas, 0, 0, SAMPLE_W, SAMPLE_H);
+      const sent = light.frame(now, packet, app, copy.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data, { userAgent: navigator.userAgent, dpr: devicePixelRatio, renderer: renderer.rendererName, format: renderer.format });
+      if (sent) void Promise.all(sent.map((part) => fetch("__play", { method: "POST", body: part }).then((r) => r.ok, () => false))).then((ok) => say(ok.every(Boolean) ? `Light capture saved in the record of play, ${sent.length} parts` : `Light capture: ${ok.filter((o) => !o).length} of ${sent.length} parts not saved`));
+    }
     if(splash?.isConnected)splash.remove();
     if (renderer.failed.length + renderer.failedTextures.length > 0) {
       for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);

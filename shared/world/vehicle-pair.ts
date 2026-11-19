@@ -33,6 +33,8 @@ export class VehiclePairQueries implements DynamicQueries {
   private a!: DynamicBody; private b!: DynamicBody;
   private defA!: VehicleDefinition; private defB: VehicleDefinition | undefined;
   private radiusB = 0; private heightB = 0;
+  /** Metres the actor is met early on every side: a body on foot's (shared/sim/foot-contact.ts). `free` tests its own size. */
+  private skin = 0;
   private readonly q = new Float64Array(4); private readonly qa = new Float64Array(4); private readonly qb = new Float64Array(4);
   private readonly otherQ = new Float64Array(4); private readonly otherA = new Float64Array(4); private readonly otherB = new Float64Array(4);
   private readonly pose = dynamicState(); private readonly otherPose = dynamicState();
@@ -44,8 +46,8 @@ export class VehiclePairQueries implements DynamicQueries {
     this.world = world;
     this.solids = new StaticVehicleSolids(world, omits ? ref => !!this.checking && omits(this.checking, ref) : undefined);
   }
-  configure(a: DynamicBody, b: DynamicBody, defA: VehicleDefinition, defB: VehicleDefinition | undefined, radius: number, height: number): void {
-    this.a = a; this.b = b; this.defA = defA; this.defB = defB; this.radiusB = radius; this.heightB = height;
+  configure(a: DynamicBody, b: DynamicBody, defA: VehicleDefinition, defB: VehicleDefinition | undefined, radius: number, height: number, skin = 0): void {
+    this.a = a; this.b = b; this.defA = defA; this.defB = defB; this.radiusB = radius; this.heightB = height; this.skin = skin;
     rotation(a.prior, this.qa); rotation(a.state, this.qb);
     rotation(b.prior, this.otherA); rotation(b.state, this.otherB);
     Object.assign(this.pose, a.state); Object.assign(this.otherPose, b.state);
@@ -56,11 +58,11 @@ export class VehiclePairQueries implements DynamicQueries {
    */
   sweep(): PairContact | null {
     const a = this.a.prior, b = this.a.state, c = this.b.prior, d = this.b.state;
-    const source = vehicleSolidRadius(this.defA), target = this.defB ? vehicleSolidRadius(this.defB) : this.radiusB * CAPSULE_EXTENT;
+    const source = vehicleSolidRadius(this.defA), target = this.defB ? vehicleSolidRadius(this.defB) : (this.radiusB + this.skin) * CAPSULE_EXTENT;
     const x = c.x - a.x, y = c.y - a.y, z = c.z - a.z;
     const dx = d.x - c.x - (b.x - a.x), dy = d.y - c.y - (b.y - a.y), dz = d.z - c.z - (b.z - a.z);
     // Relative origin positions that could overlap. A vehicle can tilt in any direction. Actors stand above their origin.
-    const reach = source + target, lowY = -source - (this.defB ? target : Math.max(this.heightB, this.radiusB * 2)), highY = source + (this.defB ? target : 0);
+    const reach = source + target, lowY = -source - (this.defB ? target : Math.max(this.heightB, this.radiusB * 2) + 2 * this.skin), highY = source + (this.defB ? target : this.skin);
     const start = rayBox(x, y, z, dx, dy, dz, -reach, lowY, -reach, reach, highY, reach);
     if (start > 1) return null;
     const end = 1 - rayBox(d.x - b.x, d.y - b.y, d.z - b.z, -dx, -dy, -dz, -reach, lowY, -reach, reach, highY, reach);
@@ -106,12 +108,12 @@ export class VehiclePairQueries implements DynamicQueries {
   }
 
   geometry(a: DynamicState, b: DynamicState) {
-    const def = this.defA, other = this.defB;
+    const def = this.defA, other = this.defB, skin = this.skin, y = b.y - skin, r = this.radiusB + skin, h = Math.max(this.heightB, this.radiusB * 2) + 2 * skin;
     return isWheelVehicle(def)
-      ? other ? carMeetsVehicle(def.spec, a, other, b) : carMeetsCapsule(def.spec, a, b.x, b.y, b.z, this.radiusB, this.heightB)
+      ? other ? carMeetsVehicle(def.spec, a, other, b) : carMeetsCapsule(def.spec, a, b.x, y, b.z, r, h)
       : isBoatVehicle(def)
-        ? other ? boatMeetsVehicle(def, a, other, b) : boatMeetsCapsule(def, a, b.x, b.y, b.z, this.radiusB, this.heightB)
-        : other ? helicopterMeetsVehicle(def, a, other, b) : helicopterMeetsCapsule(def, a, b.x, b.y, b.z, this.radiusB, this.heightB);
+        ? other ? boatMeetsVehicle(def, a, other, b) : boatMeetsCapsule(def, a, b.x, y, b.z, r, h)
+        : other ? helicopterMeetsVehicle(def, a, other, b) : helicopterMeetsCapsule(def, a, b.x, y, b.z, r, h);
   }
 
   overlap(a: DynamicBody, b: DynamicBody): DynamicContact | null {
