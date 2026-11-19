@@ -521,3 +521,22 @@ test("no bars are laid on a crossing of a road the data says is a bridge, which 
   expect(bars(GRID)).toBeGreaterThan(0);
   expect(bars(tagged({ [northward(200)]: { highway: "residential", bridge: true } }))).toBe(0);
 });
+
+test("a mapped give-way on a junction's way keeps the classes' stop off it, and no second sign faces traffic one already faces", () => {
+  const forms = { ...RULES.forms, yield: [["yield", 1]], stop: [["stop", 1]] } as Furniture["forms"];
+  const rules = { ...RULES, forms, junctions: { ...RULES.junctions, signalCross: 0 } };
+  // A give-way 6 m before the near carriageway on the street at x = 200, northbound; and a stop and a give-way the data
+  // maps on one point of the one-way street at x = 400, both for its northbound traffic.
+  const controls = [
+    { kind: "give_way", e: 200, n: 494, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: "line:6", travel: [0, 1] }] },
+    { kind: "stop", e: 400, n: 470, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: "line:10", travel: [0, 1] }] },
+    { kind: "give_way", e: 400, n: 470, direction: "forward", all_way: false, junction: false, crossing: null, markings: null, approaches: [{ road: "line:10", travel: [0, 1] }] },
+  ];
+  const { pieces, summary } = place(fixture([], [], { lines: DIVIDED, controls }), [], rules);
+  const signs = (x: number, z0: number, z1: number, kind: RegExp) => pieces.filter((p) => kind.test(p.kind) && Math.abs(p.x - x) < 8 && p.z > z0 && p.z < z1);
+  expect(signs(200, 470, 500, /zzstreet_stop/).length).toBe(0);
+  expect(signs(200, 470, 500, /zzstreet_yield/).length).toBe(1);
+  expect(signs(400, 440, 480, /zzstreet_(stop|yield)/).length).toBe(1);
+  // The give-way the stop serves counts as standing: a sign faces its traffic.
+  expect(summary.mapped?.give_way).toEqual({ mapped: 2, used: 2, rest: {} });
+});

@@ -299,6 +299,26 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     return why;
   };
 
+  // The signs and signal poles of controls set so far, by 16 m bins. A second one facing the same traffic within SERVED
+  // metres of one is not set: the traffic has its sign or its heads (a junction drawn as several nodes, a STOP and a
+  // YIELD the data maps on one way), and the control it stands for counts as standing.
+  const SERVED = 5;
+  const controls = new Map<number, { x: number; z: number; yaw: number; signal: boolean }[]>();
+  const served = (signal: boolean, places: readonly (readonly [number, number, number, number])[]): boolean => places.some(([x, z, yaw]) => {
+    for (let bz = Math.floor((z - SERVED) / 16); bz <= Math.floor((z + SERVED) / 16); bz++) for (let bx = Math.floor((x - SERVED) / 16); bx <= Math.floor((x + SERVED) / 16); bx++) {
+      for (const c of controls.get(binKey(bx, bz)) ?? []) if (c.signal === signal && Math.hypot(c.x - x, c.z - z) < SERVED && Math.abs(((c.yaw - yaw + 540) % 360) - 180) < 30) return true;
+    }
+    return false;
+  });
+  const putControl = (rule: string, name: string, places: readonly (readonly [number, number, number, number])[]): string | null => {
+    const signal = rule === "signals";
+    if (served(signal, places)) { refuse(rule, "served"); return null; }
+    const why = putFirst(rule, name, places); if (why !== null) return why;
+    const p = pieces.at(-1)!; const k = binKey(Math.floor(p.x / 16), Math.floor(p.z / 16));
+    if (!controls.has(k)) controls.set(k, []); controls.get(k)!.push({ x: p.x, z: p.z, yaw: p.yaw, signal });
+    return null;
+  };
+
   // Each line's runs of points as the data draws them, to walk a street from a point along its real line.
   const runs = new Map<number, [number, number][][]>();
   for (const s of segments) {
@@ -447,7 +467,17 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const signals = graph.mapped.points ? n >= 3 && here.some((m) => m.kind === "signal") : n >= 3 && major + minor === n && (major >= 3 || (major === 2 && minor === 2 && chance(hash3(h, 1, seed), J.signalCross)));
     // The mapped stops that govern a way in: traffic on the way out's line that travels toward the junction, against the
     // way out.
-    const governing = (a: Arm): Marked[] => here.filter((m) => m.kind === "stop" && m.governs.some((g) => g.line === a.line && g.dx * a.dx + g.dz * a.dz < 0));
+    // Whether a control stands on one of the junction's ways, along its line on through where its tags change, and
+    // governs the traffic that comes in along it (or, `either`, any traffic on it).
+    const onArm = (a: Arm, m: Marked, either = false): boolean => {
+      if (m.governs.some((g) => g.line === a.line && (either || g.dx * a.dx + g.dz * a.dz < 0))) return true;
+      for (let d = 0; d <= J.marked + J.seek; d += 2) {
+        const s = outOf(j, a, d); if (!isStand(s)) return false;
+        if (Math.hypot(s.x - m.x, s.z - m.z) < 2) return m.governs.some((g) => either || g.dx * s.dx + g.dz * s.dz < 0);
+      }
+      return false;
+    };
+    const governing = (a: Arm): Marked[] => here.filter((m) => m.kind === "stop" && onArm(a, m));
     const markedStops = j.arms.filter((a) => governing(a).length > 0);
     if (signals) {
       held.push({ x: j.x, z: j.z, reach: j.reach, lines: null });
@@ -470,7 +500,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         const nearSide = (set: number): [number, number, number, number][] => seek((d) => outOf(j, a, d), along(prev(i), a, a, set), along(prev(i), a, a, set) + 2 * J.past, -1, [set], (s) => yawOf(-s.dz, s.dx));
         // Last, just inside the road's edge at the first of them, where no lane runs.
         const inside = [...farSide(-0.1), ...nearSide(-0.1)].slice(0, 1).map((p): [number, number, number, number] => [p[0], p[1], p[2], -clear.inside]);
-        const r = putFirst("signals", form("signal", hash3(h, 20 + i, seed)), [...farSide(J.signal), ...nearSide(J.signal), ...farSide(0.45), ...nearSide(0.45), ...inside]);
+        const r = putControl("signals", form("signal", hash3(h, 20 + i, seed)), [...farSide(J.signal), ...nearSide(J.signal), ...farSide(0.45), ...nearSide(0.45), ...inside]);
         if (r === null) stands = true; else why = r;
       });
       for (const m of here) if (m.kind === "signal") { if (stands) stood.add(m); else if (why !== null) missing.set(m, why); }
@@ -487,13 +517,16 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         return e.node.ways.some((w) => oneWay(w.line) && across(w) && j.arms.some((b) => b !== a && oneWay(b.line) && across(b) && Math.abs(w.dx * b.dx + w.dz * b.dz) > 0.9));
       };
       const lines = [...new Set(j.arms.map((a) => a.line))];
-      const stopped = markedStops.length > 0 ? markedStops : (major > 0 ? j.arms.filter(isMinor) : n === 3 ? j.arms.filter((a) => j.arms.filter((b) => b.line === a.line).length === 1) : j.arms.filter((a) => a.line === lines[hash3(h, 2, seed) % lines.length])).filter((a) => graph.pieces[a.line]!.oneway * a.sense <= 0 && !median(a) && isStand(outOf(j, a, back(a) + J.room)));
+      // Where the data maps a give-way on one of its ways, governing the junction or the way on out of it (a roundabout's
+      // entry just past it), the rule adds no stop.
+      const yields = here.some((m) => m.kind === "give_way" && j.arms.some((a) => onArm(a, m, true)));
+      const stopped = markedStops.length > 0 ? markedStops : yields ? [] : (major > 0 ? j.arms.filter(isMinor) : n === 3 ? j.arms.filter((a) => j.arms.filter((b) => b.line === a.line).length === 1) : j.arms.filter((a) => a.line === lines[hash3(h, 2, seed) % lines.length])).filter((a) => graph.pieces[a.line]!.oneway * a.sense <= 0 && !median(a) && isStand(outOf(j, a, back(a) + J.room)));
       held.push({ x: j.x, z: j.z, reach: j.reach, lines: new Set(stopped.map((a) => a.line)) });
       for (const [i, a] of j.arms.entries()) {
         if (!stopped.includes(a)) continue;
         // On the right of traffic coming in, facing it: at the rule's place, or where the crossing or another way's lanes
         // take that, the first place further back along its way that has room, before the crossing.
-        const why = putFirst("stops", form("stop", hash3(h, 30 + i, seed)), seek((d) => outOf(j, a, d), back(a), back(a) + J.seek, -1, [J.stop, 2 * J.stop], (s) => yawOf(s.dx, s.dz)));
+        const why = putControl("stops", form("stop", hash3(h, 30 + i, seed)), seek((d) => outOf(j, a, d), back(a), back(a) + J.seek, -1, [J.stop, 2 * J.stop], (s) => yawOf(s.dx, s.dz)));
         for (const m of governing(a)) { if (why === null) stood.add(m); else if (!stood.has(m)) missing.set(m, why); }
       }
       // The street-name sign at the corner of the first way that stops, or where none does, of the first lesser way.
@@ -542,7 +575,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
         const side = (set: number) => seek(walkTo(sense), J.past, 3 * J.past, 1, [set], (s) => yawOf(s.dz, -s.dx));
         places = [...side(J.signal), ...side(0.45), ...side(-0.1).slice(0, 1).map((p): [number, number, number, number] => [p[0], p[1], p[2], -clear.inside])];
       } else places = seek(walkTo(-sense), J.stopBack, J.stopBack + J.seek, -1, [J.stop, 2 * J.stop], (s) => yawOf(s.dx, s.dz));
-      const why = putFirst(rule, form(m.kind === "signal" ? "signal" : m.kind === "stop" ? "stop" : "yield", hash3(h, k, seed)), places);
+      const why = putControl(rule, form(m.kind === "signal" ? "signal" : m.kind === "stop" ? "stop" : "yield", hash3(h, k, seed)), places);
       if (why === null) stood.add(m); else if (!stood.has(m)) missing.set(m, why);
     });
   }
