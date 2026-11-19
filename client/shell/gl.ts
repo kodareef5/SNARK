@@ -676,7 +676,10 @@ export class GlRenderer {
         this.failedTextures.push(t);
       }
     } else if (error !== gl.NO_ERROR) this.errors++;
-    if (asked) [this.unaskedSlots.length, this.unaskedTextures.length, this.unaskedSince] = [0, 0, -1];
+    if (asked) {
+      this.unaskedSlots.length = this.unaskedTextures.length = 0;
+      this.unaskedSince = -1;
+    }
     for (const slot of p.assetDrops) this.drop(slot);
     for (const u of p.assetUploads) {
       if (u.of === undefined) this.take(u);
@@ -827,7 +830,10 @@ export class GlRenderer {
     this.vertexArray(null);
     this.array(null);
     gl.useProgram((this.current = null));
-    if (this.unaskedSince >= 0 && this.asking === null) [this.asking, this.askFrame] = [gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), this.serial];
+    if (this.unaskedSince >= 0 && this.asking === null) {
+      this.asking = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+      this.askFrame = this.serial;
+    }
     this.passes?.end();
   }
 
