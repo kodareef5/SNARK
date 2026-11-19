@@ -100,7 +100,7 @@ import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
 import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
-import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
+import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { BTN_JUMP, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
@@ -110,7 +110,8 @@ import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSt
 import { stepCreature } from "../../shared/sim/creature-actions.ts";
 import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
-import { GEAR_COUNT } from "../../shared/sim/entities.ts";
+import { F_PROP, GEAR_COUNT } from "../../shared/sim/entities.ts";
+import { FootContacts, FootVehicles } from "../../shared/sim/foot-contact.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -577,6 +578,15 @@ export class ClientSession {
   vehicleContacts: VehiclePrediction | null = null;
   private readonly contactSnapshot = new ContactSnapshot();
   private readonly contactBefore = new Body();
+  private readonly footBefore = new Body();
+  private feet: FootContacts | null = null;
+  private feetWorld: CollisionWorld | null = null;
+  /** The vehicles of the newest snapshot, as its view carries them, and the tick they were read at. */
+  private readonly footVehicles = new FootVehicles();
+  private footTick = -1;
+  /** Where each of those stood in that snapshot, and the metres a tick it went over the few before it. */
+  private footFrom = new Float64Array(48);
+  private footRate = new Float64Array(48);
 
   private readonly conn: Connection;
   private readonly opts: SessionOptions;
@@ -1008,9 +1018,13 @@ export class ClientSession {
       this.vehicleContacts?.step(t, this.contactBefore, this.own, vehicle);
     }
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
-    else if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, this.registry.tamedMove[this.own.kind] ?? this.move!, combat, TICK_DT, true, !pilot);
-    else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
-    else { this.own.yaw = inp.yaw[i]!; this.own.jetThrust = 0; }
+    else if (combat && this.driving >= 0 || this.own.seatSlot === 0) {
+      const p = this.registry.tamedMove[this.own.kind] ?? this.move!;
+      this.footBefore.copy(this.own);
+      if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, p, combat, TICK_DT, true, !pilot);
+      else stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, p, TICK_DT);
+      this.meetVehicles(t, p);
+    } else { this.own.yaw = inp.yaw[i]!; this.own.jetThrust = 0; }
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];
@@ -1047,6 +1061,53 @@ export class ClientSession {
     }
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
+  }
+
+  /**
+   * The body on foot, stepping tick `t`, meets the vehicles of the newest snapshot as the server meets them
+   * (shared/sim/foot-contact.ts). The server meets each where it stood after tick t - 1. One that stands is where the
+   * snapshot has it, to the bit; one that moves is carried on as the snapshots before showed it going.
+   */
+  private meetVehicles(t: number, p: MoveParams): void {
+    const world = this.world!;
+    if (this.feetWorld !== world) {
+      this.feet = new FootContacts(world, this.registry);
+      this.feetWorld = world;
+      this.footTick = -1;
+    }
+    const list = this.footVehicles, at = this.latestSnapshot;
+    if (this.footTick !== at) {
+      this.footTick = at;
+      list.count = 0;
+      const v = this.drawn.find(at);
+      let back = 0, old: EntityView | null = null;
+      for (let k = 4; k > 0 && !old; k--) if (at > k) { old = this.drawn.find(at - k); back = k; }
+      if (v) for (let j = 0, k = 0; j < v.count; j++) {
+        if (!this.registry.vehicle[v.kind[j]!] || (v.flags[j]! & (F_PROP >>> 1)) !== 0) continue;
+        const n = list.count;
+        list.push(v.id[j]!, v.kind[j]!, dequantX(v.qx[j]!), dequantY(v.qy[j]!), dequantX(v.qz[j]!), v.vehiclePose[j]!, v.vehicleAttitudeA[j]!, v.vehicleAttitudeB[j]!);
+        if (this.footFrom.length < n * 3 + 3) {
+          const from = new Float64Array(n * 6), rate = new Float64Array(n * 6);
+          from.set(this.footFrom); rate.set(this.footRate); this.footFrom = from; this.footRate = rate;
+        }
+        this.footFrom[n * 3] = list.x[n]!; this.footFrom[n * 3 + 1] = list.y[n]!; this.footFrom[n * 3 + 2] = list.z[n]!;
+        this.footRate[n * 3] = this.footRate[n * 3 + 1] = this.footRate[n * 3 + 2] = 0;
+        // Both views are in ascending id, so the older one is walked once.
+        while (old && k < old.count && old.id[k]! < v.id[j]!) k++;
+        if (!old || k === old.count || old.id[k] !== v.id[j] || old.gen[k] !== v.gen[j]) continue;
+        const dx = (v.qx[j]! - old.qx[k]!) / (POS_UNITS * back), dy = (v.qy[j]! - old.qy[k]!) / (POS_UNITS * back), dz = (v.qz[j]! - old.qz[k]!) / (POS_UNITS * back);
+        // A jump is a vehicle placed, not driven.
+        if (dx * dx + dy * dy + dz * dz > 4) continue;
+        this.footRate[n * 3] = dx; this.footRate[n * 3 + 1] = dy; this.footRate[n * 3 + 2] = dz;
+      }
+    }
+    const ahead = Math.max(0, Math.min(TICK_RATE, t - 1 - at));
+    for (let i = 0; i < list.count; i++) {
+      list.x[i] = this.footFrom[i * 3]! + this.footRate[i * 3]! * ahead;
+      list.y[i] = this.footFrom[i * 3 + 1]! + this.footRate[i * 3 + 1]! * ahead;
+      list.z[i] = this.footFrom[i * 3 + 2]! + this.footRate[i * 3 + 2]! * ahead;
+    }
+    this.feet!.meet(this.footBefore, this.own, p, list);
   }
 
   private sendInputs(newest: number, sampled: number): void {

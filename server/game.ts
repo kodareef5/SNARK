@@ -85,6 +85,7 @@ import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Place } from "./beds.ts";
+import { ServerFootContacts } from "./foot-contacts.ts";
 
 export interface GameOptions {
   /** In ticks. */
@@ -472,6 +473,9 @@ export class GameServer {
   onVehicleStep: ((e: number) => void) | null = null;
   /** The host adds resource contacts around this same shared vehicle step. */
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
+  /** A body a session drives on foot meets the vehicles round it in its own step, as the page predicting it does. */
+  readonly feet: ServerFootContacts;
+  private readonly footBefore = new Body();
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -515,6 +519,7 @@ export class GameServer {
   constructor(world: ServerWorld, opts: Partial<GameOptions> = {}) {
     this.world = world;
     this.opts = { ...DEFAULTS, ...opts };
+    this.feet = new ServerFootContacts(world);
     this.clients = new Array(this.opts.maxClients).fill(null);
     this.cap = Math.max(1, Math.min(MAX_VIEW, Math.floor(this.opts.viewCap)));
     // Removes are sent whatever they cost, 6.7 KB for 2,048 of them, and an update can take two bytes more than it was budgeted at.
@@ -604,8 +609,10 @@ export class GameServer {
           this.vehicleStep(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : c.heldButtons, vehicle, TICK_DT, c.heldYaw, !quiet);
         } else if (!passenger) {
           // A survivor's tamed numbers are its own. A body that is driven is a tame's.
+          this.footBefore.copy(b);
           if (combat && driving) stepCreature(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, c.pressed, world.reg.tamedMove[b.kind]!, combat, TICK_DT, true, c.closed || T - c.inputAt > INPUT_HOLD_TICKS);
           else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
+          this.feet.meet(e, this.footBefore, b, world.reg.tamedMove[b.kind]!);
         } else { b.yaw = c.heldYaw; b.jetThrust = 0; stepOut.landSpeed = 0; }
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.
