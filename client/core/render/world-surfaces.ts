@@ -1,6 +1,7 @@
 // Metre-space materials for terrain and meshes without authored surfaces. CPU and GLSL deliberately use the same
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
-import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
+import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
+import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
@@ -579,6 +580,18 @@ export function groundMeet(cover: number, a: number, b: number, c: number, d: nu
   if (out[0] >= 0) out[1] = clamp((most / (mine + most) - 0.5) * GROUND_MEET + 0.5);
 }
 
+/** The ground's sidewalk, whose edges are straight: no wander where it is one of a cell's four (groundWander), and `walkMeet`. */
+export const GROUND_WALK = SURFACE_NAMES.indexOf("sidewalk");
+/**
+ * How much of the other finish shows where the sidewalk meets another, from groundMeet's share, a pixel `footprint`
+ * metres wide: half on the line where the two finishes' samples weigh the same, none half a pixel to the cover's side
+ * of it and all of it half a pixel to the other's, so a poured walk has an edge and not the higher finish's spill
+ * (`higher`).
+ */
+export function walkMeet(share: number, footprint: number): number {
+  return clamp((share - 0.5) / Math.max((footprint * GROUND_MEET) / TERRAIN_CELL, 1e-3) + 0.5);
+}
+
 /** Metres the ground's macros' tile spans, and a road's repairs' (content/surfaces.ts ROAD_MATERIAL, REPAIRS_MATERIAL). */
 export const ROAD_MACRO = 32;
 export const ROAD_REPAIRS = 8;
@@ -622,6 +635,70 @@ export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number
   const tar = Math.max(seam, seal) * 0.9;
   for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! * dim * (1 - tar) + TAR[c]! * tar;
   orm[1] = clamp(rough * (1 - tar) + TAR_ROUGH * tar, 0.12, 1);
+}
+
+/** Dirt and grass in a walk's joints, as light, and the metres either side of a joint's line the most of each reaches. */
+const DIRT = [0.08, 0.066, 0.048] as const, GRASS = [0.03, 0.055, 0.014] as const;
+const JOINT_DIRT = 0.008, JOINT_GRASS = 0.035;
+const walkMask = new Float64Array(4);
+/** How much of a pixel `footprint` metres wide, `d` metres from a line's middle, the line `half` metres either side of it covers. */
+const covered = (d: number, half: number, footprint: number): number => {
+  const f = Math.max(footprint, 1e-4);
+  return clamp((half - d) / f + 0.5) * clamp((2 * half) / f);
+};
+
+/**
+ * A poured walk's wear at map point (x, z) where finish `id` is the sidewalk, a pixel `footprint` metres wide, onto
+ * albedo, orm and normal (worldSurface's), by its panels (the finish's module, half its tile) and their joints. Each
+ * panel by a hash of where it is takes its own tone and may be stained (the road's macro), cracked (the repairs' cracks)
+ * or sunk, leaning a little one way; each joint's piece, a panel's side, may hold grass or dirt along it, in patches.
+ */
+export function walkWorn(albedo: Out, orm: Out, normal: Out, id: number, x: number, z: number, footprint: number, city: Numbers, sample: WorldSample): void {
+  if (id !== GROUND_WALK) return;
+  const panel = finishMetres(id, city) / 2;
+  const gu = x / panel, gv = z / panel, ku = Math.floor(gu), kv = Math.floor(gv), fu = gu - ku, fv = gv - kv;
+  const h = surfaceHash(ku * 5 + 3, kv * 9 + 1);
+  const du = Math.min(fu, 1 - fu) * panel, dv = Math.min(fv, 1 - fv) * panel, d = Math.min(du, dv);
+  // The joint nearest, by the panels' corner it starts at and which way it runs.
+  const hj = du < dv ? surfaceHash((ku + (fu > 0.5 ? 1 : 0)) * 7, kv * 13 + 5) : surfaceHash(ku * 7 + 3, (kv + (fv > 0.5 ? 1 : 0)) * 13);
+  const inner = clamp((d - 0.02) / 0.05);
+  let shade = 1 + (fract(h * 3.1) - 0.5) * WALK_LOOK.tone, rough = orm[1]!;
+  if (fract(h * 7.7) < WALK_LOOK.stained) {
+    sample(2, ROAD_LAYER, x / 3 + fract(h * 5.3), z / 3 + fract(h * 9.1), Math.log2(Math.max(footprint / 3, 1e-9)), walkMask);
+    const stain = smooth(0.45, 0.75, walkMask[0]!) * inner;
+    shade *= 1 - 0.22 * stain;
+    rough += 0.05 * stain;
+  }
+  if (fract(h * 11.3) < WALK_LOOK.cracked) {
+    sample(2, REPAIRS_LAYER, x / ROAD_REPAIRS + fract(h * 2.9), z / ROAD_REPAIRS + fract(h * 6.7), Math.log2(Math.max(footprint / ROAD_REPAIRS, 1e-9)), walkMask);
+    const from = 0.2 + 0.2 * fract(h * 4.1), crack = smooth(from, from + 0.12, walkMask[2]!) * inner;
+    shade *= 1 - 0.5 * crack;
+    rough += 0.1 * crack;
+  }
+  let gap = 0;
+  if (fract(h * 13.9) < WALK_LOOK.sunk) {
+    const a = fract(h * 17.3) * 2 * Math.PI;
+    normal[0] = normal[0]! + Math.cos(a) * WALK_LOOK.lean;
+    normal[2] = normal[2]! + Math.sin(a) * WALK_LOOK.lean;
+    const l = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
+    for (let c = 0; c < 3; c++) normal[c] = normal[c]! / l;
+    gap = covered(d, 0.008, footprint) * 0.5;
+  }
+  shade *= 1 - gap;
+  for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! * shade;
+  // Along the joint in patches a quarter of a metre or so, grass in tufts a few centimetres apart.
+  const along = du < dv ? gv : gu, patchy = surfaceNoise(along * 6 + hj * 50, hj * 31);
+  if (fract(hj * 3.7) < WALK_LOOK.grass) {
+    const tufts = 0.35 + 0.65 * surfaceNoise(along * 40 + hj * 17, hj * 13);
+    const g = covered(d, JOINT_GRASS * smooth(0.35, 0.8, patchy) * tufts, footprint) * 0.9;
+    for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! * (1 - g) + GRASS[c]! * g;
+    rough = rough * (1 - g) + 0.9 * g;
+  } else if (fract(hj * 5.9) < WALK_LOOK.dirt) {
+    const k = covered(d, JOINT_DIRT * (0.5 + patchy), footprint) * 0.75;
+    for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! * (1 - k) + DIRT[c]! * k;
+    rough = rough * (1 - k) + 0.95 * k;
+  }
+  orm[1] = clamp(rough, 0.12, 1);
 }
 
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
@@ -967,17 +1044,25 @@ int groundMeet(int cover, ivec4 t, vec2 f, out float share) {
   share = other < 0 ? 0.0 : clamp((most / (mine + most) - 0.5) * ${fl(GROUND_MEET)} + 0.5, 0.0, 1.0);
   return other;
 }
+const int GROUND_WALK = ${GROUND_WALK};
+bool groundWalks(ivec4 t) {
+  return groundSurface(t.x) == GROUND_WALK || groundSurface(t.y) == GROUND_WALK || groundSurface(t.z) == GROUND_WALK || groundSurface(t.w) == GROUND_WALK;
+}
+float walkMeet(float share, float footprint) {
+  return clamp((share - 0.5) / max(footprint * ${fl(GROUND_MEET / TERRAIN_CELL)}, 0.001) + 0.5, 0.0, 1.0);
+}
 `;
 
 /**
- * The ground's wear on asphalt and sand, where the tier reads the finishes in full (WORLD_ROAD): `roadWorn`'s twin;
- * the frame block's fFacade.w is set when the frame is drawn without it (passes.ts "road").
+ * The ground's wear on asphalt, sand and walks, where the tier reads the finishes in full (WORLD_ROAD): the twins of
+ * `roadWorn` and `walkWorn`. The frame block's fFacade.w has 1 in it when the frame is drawn without the first (passes.ts
+ * "road") and 2 without the second ("walks").
  */
 export const ROAD_GLSL = `#ifdef WORLD_ROAD
 const vec3 TAR = vec3(${TAR.map(fl).join(",")});
 // Wear onto a finish id's albedo and orm at world point p, and p's change a pixel across and down.
 void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec3 dpx, vec3 dpy) {
-  if (fFacade.w > 0.5 || (id != ${SAND} && id != ${ASPHALT})) return;
+  if (mod(fFacade.w, 2.0) > 0.5 || (id != ${SAND} && id != ${ASPHALT})) return;
   if (id == ${SAND}) {
     vec2 tx = vec2(dpx.x - dpx.z, dpx.x + dpx.z) * ${fl(BEACH_TURN / BEACH_SECOND)}, ty = vec2(dpy.x - dpy.z, dpy.x + dpy.z) * ${fl(BEACH_TURN / BEACH_SECOND)};
     float first = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_MACRO)}, ${fl(ROAD_LAYER)}), dpx.xz / ${fl(ROAD_MACRO)}, dpy.xz / ${fl(ROAD_MACRO)}).g;
@@ -997,15 +1082,65 @@ void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec3 dpx, vec3 
   albedo = mix(albedo * (1.0 + (m.r - 0.5) * ${fl(ROAD_LOOK.macro)}) * (1.0 - 0.2 * fill) * (1.0 - 0.3 * r.a * edge), TAR, tar);
   orm.y = clamp(mix(rough - 0.08 * fill, ${fl(TAR_ROUGH)}, tar), 0.12, 1.0);
 }
-// The wear reads the packed array's masks, so it comes up with them as the weathering does (uWorldReady 1 to 2).
-void roadWorn(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec3 dpx, vec3 dpy) {
+const vec3 DIRT = vec3(${DIRT.map(fl).join(",")}), GRASS = vec3(${GRASS.map(fl).join(",")});
+float covered(float d, float width, float footprint) {
+  float f = max(footprint, 0.0001);
+  return clamp((width - d) / f + 0.5, 0.0, 1.0) * clamp(2.0 * width / f, 0.0, 1.0);
+}
+// A walk's wear (walkWorn's twin); fFacade.w's second bit is set when the frame is drawn without it (passes.ts "walks").
+void walkWear(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec3 p, vec3 dpx, vec3 dpy) {
+  if (fFacade.w > 1.5 || id != GROUND_WALK) return;
+  float panel = WF[id].x * uSurfaceCity[0].w * 0.5, footprint = max(length(dpx.xz), length(dpy.xz));
+  vec2 g = p.xz / panel, k = floor(g), f = g - k;
+  ivec2 ik = ivec2(k);
+  float h = surfaceHash(ik * ivec2(5, 9) + ivec2(3, 1));
+  vec2 dd = min(f, 1.0 - f) * panel;
+  float d = min(dd.x, dd.y);
+  float hj = dd.x < dd.y ? surfaceHash(ivec2((ik.x + (f.x > 0.5 ? 1 : 0)) * 7, ik.y * 13 + 5)) : surfaceHash(ivec2(ik.x * 7 + 3, (ik.y + (f.y > 0.5 ? 1 : 0)) * 13));
+  float inner = clamp((d - 0.02) / 0.05, 0.0, 1.0);
+  float shade = 1.0 + (fract(h * 3.1) - 0.5) * ${fl(WALK_LOOK.tone)}, rough = orm.y;
+  if (fract(h * 7.7) < ${fl(WALK_LOOK.stained)}) {
+    float m = textureGrad(uWorldOrm, vec3(p.xz / 3.0 + vec2(fract(h * 5.3), fract(h * 9.1)), ${fl(ROAD_LAYER)}), dpx.xz / 3.0, dpy.xz / 3.0).r;
+    float stain = smoothstep(0.45, 0.75, m) * inner;
+    shade *= 1.0 - 0.22 * stain;
+    rough += 0.05 * stain;
+  }
+  if (fract(h * 11.3) < ${fl(WALK_LOOK.cracked)}) {
+    float m = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_REPAIRS)} + vec2(fract(h * 2.9), fract(h * 6.7)), ${fl(REPAIRS_LAYER)}), dpx.xz / ${fl(ROAD_REPAIRS)}, dpy.xz / ${fl(ROAD_REPAIRS)}).b;
+    float from = 0.2 + 0.2 * fract(h * 4.1), crack = smoothstep(from, from + 0.12, m) * inner;
+    shade *= 1.0 - 0.5 * crack;
+    rough += 0.1 * crack;
+  }
+  if (fract(h * 13.9) < ${fl(WALK_LOOK.sunk)}) {
+    float a = fract(h * 17.3) * ${fl(2 * Math.PI)};
+    n = normalize(n + vec3(cos(a), 0.0, sin(a)) * ${fl(WALK_LOOK.lean)});
+    shade *= 1.0 - covered(d, 0.008, footprint) * 0.5;
+  }
+  albedo *= shade;
+  float along = dd.x < dd.y ? g.y : g.x, patchy = surfaceNoise(vec2(along * 6.0 + hj * 50.0, hj * 31.0));
+  if (fract(hj * 3.7) < ${fl(WALK_LOOK.grass)}) {
+    float tufts = 0.35 + 0.65 * surfaceNoise(vec2(along * 40.0 + hj * 17.0, hj * 13.0));
+    float c = covered(d, ${fl(JOINT_GRASS)} * smoothstep(0.35, 0.8, patchy) * tufts, footprint) * 0.9;
+    albedo = mix(albedo, GRASS, c);
+    rough = mix(rough, 0.9, c);
+  } else if (fract(hj * 5.9) < ${fl(WALK_LOOK.dirt)}) {
+    float c = covered(d, ${fl(JOINT_DIRT)} * (0.5 + patchy), footprint) * 0.75;
+    albedo = mix(albedo, DIRT, c);
+    rough = mix(rough, 0.95, c);
+  }
+  orm.y = clamp(rough, 0.12, 1.0);
+}
+// The ground's wear reads the packed array's masks, so it comes up with them as the weathering does (uWorldReady 1 to 2).
+void groundWorn(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec3 p, vec3 dpx, vec3 dpy) {
   float risen = 2.0 - uWorldReady;
   if (risen <= 0.0) return;
-  vec3 a0 = albedo, o0 = orm;
+  vec3 a0 = albedo, o0 = orm, n0 = n;
   roadWear(albedo, orm, id, p, dpx, dpy);
+  walkWear(albedo, orm, n, id, p, dpx, dpy);
   if (risen < 1.0) {
     albedo = mix(a0, albedo, risen);
     orm = mix(o0, orm, risen);
+    n = normalize(mix(n0, n, risen));
   }
 }
 #endif

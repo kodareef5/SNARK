@@ -13,7 +13,7 @@
 // card reads too long where a frame has many passes or the card is busy with the frame before; with shadows and the far
 // layers off in turn on medium at one and on ultra at two. The finish's light
 // target, its bloom and bodies' contact are each turned off every other frame on high and ultra at one, as the walls'
-// worn edges, the facades and the road's wear are on the street, on the page's clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
+// worn edges, the facades, the road's wear and the walks' are on the street, on the page's clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
 // the turning view and other work on the card move little, and which a timer query on this card reads too long. The
 // street lamps' light (render/street-lamps.ts) is turned off so on the street at night, at 22:00, on high and ultra, and the
 // wires between the poles (render/street-wires.ts) by day. A city row's GL draws and triangles are of the frame its run
@@ -102,6 +102,7 @@ export function plan(): Run[] {
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "lamps", hour: 22 });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "wires" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "road" });
+  for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "walks" });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
   return runs;
 }

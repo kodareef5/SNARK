@@ -276,9 +276,16 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL",
 void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
-  vec2 s = clamp(vAt + groundWander(vRel.xz + uWorldEye.xz, max(length(dx.xz), length(dy.xz))) / uField.z, vec2(0.0), uLast);
+  float footprint = max(length(dx.xz), length(dy.xz));
+  vec2 s = clamp(vAt + groundWander(vRel.xz + uWorldEye.xz, footprint) / uField.z, vec2(0.0), uLast);
   ivec2 i = min(ivec2(s), ivec2(uLast) - 1);
   ivec4 tints = ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r);
+  // A walk's edge is straight: where the sidewalk is one of the four, the cover is looked up where the pixel is.
+  if (groundWalks(tints)) {
+    s = clamp(vAt, vec2(0.0), uLast);
+    i = min(ivec2(s), ivec2(uLast) - 1);
+    tints = ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r);
+  }
   int tint = groundCover(tints, s - vec2(i));
   vec3 albedo = groundColour(tint);
   vec3 n = normalize(vNormal), level = n;
@@ -286,16 +293,19 @@ void main() {
   if (uWorldReady > 0.5) {
     float h = worldSurface(albedo, orm, n, geometric, groundSurface(tint), vRel, dx, dy), share;
 #ifdef WORLD_ROAD
-    roadWorn(albedo, orm, groundSurface(tint), vRel + uWorldEye, dx, dy);
+    groundWorn(albedo, orm, n, groundSurface(tint), vRel + uWorldEye, dx, dy);
     worldSharp = orm.y < ${f(WORLD_SHARP)};
 #endif
-    // Where it meets another finish, the higher of the two shows through the other.
+    // Where it meets another finish, the higher of the two shows through the other, and a walk meets it on a line.
     int other = groundMeet(tint, tints, s - vec2(i), share);
+    bool straight = other >= 0 && (groundSurface(tint) == GROUND_WALK || groundSurface(other) == GROUND_WALK);
+    if (straight) share = walkMeet(share, footprint);
     if (share > 0.0) {
       vec3 albedo2 = groundColour(other), orm2, n2 = level;
-      float b = higher(h, worldSurface(albedo2, orm2, n2, geometric, groundSurface(other), vRel, dx, dy), share, ${f(GROUND_SCALE)}, ${f(GROUND_BAND)});
+      float h2 = worldSurface(albedo2, orm2, n2, geometric, groundSurface(other), vRel, dx, dy);
+      float b = straight ? share : higher(h, h2, share, ${f(GROUND_SCALE)}, ${f(GROUND_BAND)});
 #ifdef WORLD_ROAD
-      roadWorn(albedo2, orm2, groundSurface(other), vRel + uWorldEye, dx, dy);
+      groundWorn(albedo2, orm2, n2, groundSurface(other), vRel + uWorldEye, dx, dy);
 #endif
       albedo = mix(albedo, albedo2, b);
       orm = mix(orm, orm2, b);

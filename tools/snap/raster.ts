@@ -4,7 +4,7 @@
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
-import { GROUND_BAND, GROUND_SCALE, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadWorn, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
@@ -178,11 +178,15 @@ function risenTo(albedo: Float64Array | number[], orm: Float64Array | number[], 
   const l = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
   for (let c = 0; c < 3; c++) normal[c] = normal[c]! / l;
 }
-/** Asphalt's and sand's wear (world-surfaces.ts roadWorn), as much of it as the packed maps have risen to (glsl.ts's call). */
-function wornRoad(albedo: Float64Array, orm: Float64Array, normal: Float64Array, id: number, x: number, z: number, footprint: number, sample: WorldSample): void {
+/**
+ * The ground's wear, asphalt's and sand's (world-surfaces.ts roadWorn) where `road` and a walk's (walkWorn) where
+ * `walks`, as much of it as the packed maps have risen to (glsl.ts groundWorn).
+ */
+function wornGround(albedo: Float64Array, orm: Float64Array, normal: Float64Array, id: number, x: number, z: number, footprint: number, city: ArrayLike<number>, sample: WorldSample, road: boolean, walks: boolean): void {
   risenFrom(albedo, orm, normal);
-  roadWorn(albedo, orm, id, x, z, footprint, sample);
-  risenTo(albedo, orm, null, 1 - finishesEarly);
+  if (road) roadWorn(albedo, orm, id, x, z, footprint, sample);
+  if (walks) walkWorn(albedo, orm, normal, id, x, z, footprint, city, sample);
+  risenTo(albedo, orm, normal, 1 - finishesEarly);
 }
 const wander = new Float64Array(2);
 
@@ -193,15 +197,20 @@ const wander = new Float64Array(2);
  */
 function groundPair(hf: Heightfield, pic: GroundPicture, x: number, z: number, footprint: number, desert: boolean, out: Float64Array): number {
   groundWander(x, z, footprint, wander);
-  const metres = hf.cell * pic.step;
-  const s = Math.min(Math.max((x + wander[0]!) / metres - pic.i / pic.step, 0), pic.lastI);
-  const t = Math.min(Math.max((z + wander[1]!) / metres - pic.j / pic.step, 0), pic.lastJ);
-  const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1);
-  const at = (pic.j + j * pic.step) * hf.nx + pic.i + i * pic.step, down = pic.step * hf.nx;
-  const a = hf.tint[at]!, b = hf.tint[at + pic.step]!, c = hf.tint[at + down]!, d = hf.tint[at + down + pic.step]!;
-  const cover = groundCover(a, b, c, d, s - i, t - j);
-  groundMeet(cover, a, b, c, d, s - i, t - j, (tint) => surfaceIndex(tint, true, desert ? "las-vegas" : "default"), out);
-  return cover;
+  const metres = hf.cell * pic.step, finish = (tint: number): number => surfaceIndex(tint, true, desert ? "las-vegas" : "default");
+  const look = (wx: number, wz: number): number => {
+    const s = Math.min(Math.max((x + wx) / metres - pic.i / pic.step, 0), pic.lastI);
+    const t = Math.min(Math.max((z + wz) / metres - pic.j / pic.step, 0), pic.lastJ);
+    const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1);
+    const at = (pic.j + j * pic.step) * hf.nx + pic.i + i * pic.step, down = pic.step * hf.nx;
+    const a = hf.tint[at]!, b = hf.tint[at + pic.step]!, c = hf.tint[at + down]!, d = hf.tint[at + down + pic.step]!;
+    // A walk's edge is straight: where the sidewalk is one of the four, the cover is looked up where the point is.
+    if ((wx !== 0 || wz !== 0) && [a, b, c, d].some((tint) => finish(tint) === GROUND_WALK)) return look(0, 0);
+    const cover = groundCover(a, b, c, d, s - i, t - j);
+    groundMeet(cover, a, b, c, d, s - i, t - j, finish, out);
+    return cover;
+  };
+  return look(wander[0]!, wander[1]!);
 }
 /** What LIT lights a flat draw as: no occlusion, fully rough, not metal. Its highlight mirrors nothing. */
 const ROUGH = [1, 1, 0];
@@ -247,12 +256,18 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
     // Asphalt's and sand's wear, as LIT_TERRAIN_FRAGMENT has it where the tier reads the finishes in full: it reads the
     // packed array's masks, so it comes up with them as the weathering does.
-    const worn = ground && !touch && p.frame[FRAME.roadOff]! < 0.5 && finishesEarly < 1;
-    if (worn) wornRoad(albedo, worldOrm, normal, index, rx + p.camX, rz + p.camZ, footprint, sample);
+    const off = p.frame[FRAME.roadOff]!, road = off % 2 < 0.5, walks = off < 1.5;
+    const worn = ground && !touch && (road || walks) && finishesEarly < 1;
+    if (worn) wornGround(albedo, worldOrm, normal, index, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks);
+    // A walk meets another finish on a line (walkMeet), and elsewhere the higher of the two shows through.
+    const second = other >= 0 ? surfaceIndex(other, true, city) : -1;
+    const straight = ground && other >= 0 && (index === GROUND_WALK || second === GROUND_WALK);
+    if (straight) share = walkMeet(share, footprint);
     if (other >= 0 && share > 0) {
       for (let c = 0; c < 3; c++) albedo2[c] = srgbToLinear(pal[other * 4 + c]! / 255);
-      const b = higher(h, worldSurface(albedo2, orm2, normal2, albedo2, surfaceIndex(other, true, city), rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly), share, GROUND_SCALE, GROUND_BAND);
-      if (worn) wornRoad(albedo2, orm2, normal2, surfaceIndex(other, true, city), rx + p.camX, rz + p.camZ, footprint, sample);
+      const h2 = worldSurface(albedo2, orm2, normal2, albedo2, second, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
+      const b = straight ? share : higher(h, h2, share, GROUND_SCALE, GROUND_BAND);
+      if (worn) wornGround(albedo2, orm2, normal2, second, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks);
       for (let c = 0; c < 3; c++) {
         albedo[c] = albedo[c]! * (1 - b) + albedo2[c]! * b;
         worldOrm[c] = worldOrm[c]! * (1 - b) + orm2[c]! * b;

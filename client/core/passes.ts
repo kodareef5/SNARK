@@ -217,9 +217,9 @@ export class BenchRun {
  * or mark, as before their atlases come (facade.ts). "hide"
  * draws what the frame finds wholly hidden (render/hide.ts), and "order" draws an opaque step's draws by what they bind
  * alone and its ground first, as they went before they went nearest first (render/scene.ts order). "edges" draws walls
- * with no worn edges and "road" the ground with no wear on asphalt and sand (world-surfaces.ts).
+ * with no worn edges, "road" the ground with no wear on asphalt and sand, and "walks" none on a walk (world-surfaces.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -260,7 +260,7 @@ export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("contact")) p.frame.fill(0, FRAME.contact, FRAME.eyes);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
   if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
-  if (off.has("road")) p.frame[FRAME.roadOff] = 1;
+  p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0);
   for (let d = 0; d < p.drawCount; d++) {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;
