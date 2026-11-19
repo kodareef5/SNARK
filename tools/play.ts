@@ -210,12 +210,12 @@ export function describe(s: Session): string[] {
   // Long frames and what the page did in them.
   const over250 = j.frames.filter((f) => f.ms > 250);
   const costly = over250.filter((f) => j.jumps.some((x) => x.after250 && x.t >= f.t && x.t - f.t <= AFTER_FRAME)).length;
-  say(`  long frames: ${sum((p) => p.long)} of ${sum((p) => p.frames)} came 50 ms or more after the one before, ${sum((p) => p.over100)} over 100 ms, ${sum((p) => p.over250)} over 250 ms; the longest ${Math.max(0, ...pages.map((p) => p.worst))} ms; ${sum((p) => p.skipped)} ticks skipped`);
+  say(`  long frames: ${sum((p) => p.long)} of ${sum((p) => p.frames)} came 50 ms or more after the one before, ${sum((p) => p.over100)} over 100 ms, ${sum((p) => p.over250)} over 250 ms; the longest ${Math.max(0, ...pages.map((p) => p.worst))} ms; ${sum((p) => p.skipped)} ticks not sampled`);
   if (over250.length > 0) say(`  the page stalled ${over250.length} times past 250 ms, ${costly === over250.length ? "each costing a clock jump" : `${costly} of them costing a clock jump`}`);
   const worst = [...j.frames].sort((a, b) => b.ms - a.ms).filter((f, i) => f.ms > 250 || i < 6).slice(0, 24);
   for (const f of worst) {
     const did = [f.ground ? `${f.ground} ground parts landed` : "", f.handed ? "statics handed over" : "", f.got ? `${Math.round(f.got / 1024)} KB of art came` : "", f.up + f.tex + f.buf ? `${f.up} levels, ${f.tex} textures and ${f.buf} buffers put on the card` : "", f.flying ? `${f.flying} requests under way` : ""].filter(Boolean);
-    say(`    ${String(f.ms).padStart(5)} ms at tick ${f.t}: the page's own code ${f.own} ms of it${did.length ? `; ${did.join(", ")}` : ""}; ${f.n} ticks sampled late${f.skip ? `, ${f.skip} skipped` : ""}; the margin after ${f.after === 127 ? "not told" : f.after}${f.back ? `, on time again from tick ${f.back}` : ""}`);
+    say(`    ${String(f.ms).padStart(5)} ms at tick ${f.t}: the page's own code ${f.own} ms of it${did.length ? `; ${did.join(", ")}` : ""}; ${f.skip ? `${f.skip} ticks not sampled, stepped as the server steps them, then ` : ""}${f.n} sampled late; the margin after ${f.after === 127 ? "not told" : f.after}${f.back ? `, on time again from tick ${f.back}` : ""}`);
   }
 
   // The server's side.

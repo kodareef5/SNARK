@@ -71,8 +71,8 @@ export interface PlayCorrection {
 /** A frame that came LONG_FRAME_MS or more after the one before. */
 export interface PlayFrame {
   /**
-   * The first tick not sampled before it, how many it sampled, and how many it never sampled or sent: skipped, or taken
-   * from snapshots that came while it stalled.
+   * The first tick not sampled before it, how many it never sampled or sent (stepped as the server steps ticks it has no
+   * input for, or taken from snapshots that came while it stalled), and how many it sampled after those.
    */
   t: number;
   n: number;
@@ -215,7 +215,10 @@ export class PredictionTrace {
     this.send = send;
   }
 
-  /** Each frame of an active session, after its ticks are sampled: `sampled` from the session's simTick back, and `skipped` after it. */
+  /**
+   * Each frame of an active session, after its ticks are sampled: `sampled` from the session's simTick back, and before
+   * them `skipped` it stepped unsampled, as the server steps ticks it has no input for.
+   */
   frame(elapsed: number, sampled: number, skipped: number, s?: ClientSession, now = 0): void {
     if (!this.enabled) return;
     this.longestFrameMs = Math.max(this.longestFrameMs, elapsed);
@@ -224,12 +227,12 @@ export class PredictionTrace {
     this.skippedTicks += skipped;
     if (!this.send || !s) return;
     const r = this.report ?? this.open(s, now, sampled);
-    // Ticks the session took from snapshots while the page stalled count with those it skipped.
+    // Ticks stepped unsampled, or taken from snapshots that came while the page stalled, are those it skipped.
     const first = this.last >= 0 && this.last < s.simTick - sampled ? this.last + 1 : s.simTick - sampled + 1;
     // A clock set back past ticks it sent forgets every input it kept, those after the snapshot it jumped at too.
     if (this.last >= 0 && s.simTick - sampled < this.last) this.keep(r.rewound, [Math.min(s.simTick - sampled, this.jumpedAt) + 1, this.last]);
-    const taken = s.simTick - sampled + 1 - first;
-    this.last = s.simTick + skipped;
+    const skip = s.simTick - sampled + 1 - first;
+    this.last = s.simTick;
     this.tick = s.simTick;
     this.now = now;
     const kind = s.driving >= 0 ? s.own.kind : -1, seen = this.seen;
@@ -259,7 +262,7 @@ export class PredictionTrace {
       if (elapsed > 100) r.over100++;
       if (elapsed > 250) r.over250++;
       r.worst = Math.max(r.worst, Math.round(elapsed));
-      const f: PlayFrame = { t: first, n: sampled, skip: skipped + taken, ms: Math.round(elapsed), own: Math.round(this.own), up: this.up, tex: this.tex, buf: this.buf, got: this.fetched - this.fetchedThen, ground: this.groundThen < 0 ? 0 : (ground - this.groundThen) / 4, handed: this.handed - this.handedThen, flying: this.flying, after: 127, back: 0 };
+      const f: PlayFrame = { t: first, n: sampled, skip, ms: Math.round(elapsed), own: Math.round(this.own), up: this.up, tex: this.tex, buf: this.buf, got: this.fetched - this.fetchedThen, ground: this.groundThen < 0 ? 0 : (ground - this.groundThen) / 4, handed: this.handed - this.handedThen, flying: this.flying, after: 127, back: 0 };
       if (this.keep(r.frameList, f)) {
         this.pending = f;
         this.pendingLeft = AFTER_SNAPSHOTS;

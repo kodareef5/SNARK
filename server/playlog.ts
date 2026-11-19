@@ -82,8 +82,11 @@ export class PlayLog {
     this.clock = clock;
   }
 
-  /** After each tick: when the loop meant to run it, when it began and when it ended, in ms of one clock. */
-  ticked(due: number, began: number, ended: number): void {
+  /**
+   * After each tick: when the loop meant to run it, when it began and when it ended, in ms of one clock, and how many more
+   * ticks the loop owed as it began, which the margin is told against (server/game.ts).
+   */
+  ticked(due: number, began: number, ended: number, behind = 0): void {
     const T = this.game.world.tick, k = T % KEPT;
     this.loopTick[k] = T;
     this.late[k] = began - due;
@@ -97,7 +100,7 @@ export class PlayLog {
       s.tick[k] = T;
       s.since[k] = c.inputAt === 0 ? 255 : Math.min(254, T - c.inputAt);
       s.arrived[k] = -2;
-      s.margin[k] = c.newestInput === 0 ? MARGIN_UNKNOWN : Math.max(-127, Math.min(127, c.newestInput - T));
+      s.margin[k] = c.newestInput === 0 ? MARGIN_UNKNOWN : Math.max(-127, Math.min(127, c.newestInput - T - behind));
       s.snapshot[k] = c.lastSnapshot === T ? 1 : 0;
       const conn = c.conn as Counted;
       s.sent[k] = conn.bytesSent ?? 0;
