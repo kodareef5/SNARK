@@ -207,4 +207,8 @@ digest=layout_hash(objects);print("boat layout:",digest)
 known=os.path.join(HERE,"tex","layout.json")
 if os.environ.get("BOAT_LAYOUT")!="new":
     wanted=json.load(open(known))["hash"] if os.path.exists(known) else None
-    if wanted!=digest:raise SystemExit(f"boat layout changed: {digest}; repaint textures from tex/bake.py")
+    # Under `bun run art` (SNARK_LAYOUT=settle) the build goes on and says the layout moved: the same model lays out
+    # differently on another processor, and the art tool then keeps the committed mesh the pictures fit, or refuses if the
+    # shape changed too (tools/pack/settle.ts).
+    if wanted!=digest and os.environ.get("SNARK_LAYOUT")=="settle":print(f"model: layout moved {digest} from {wanted}")
+    elif wanted!=digest:raise SystemExit(f"boat layout changed: {digest}; repaint textures from tex/bake.py")

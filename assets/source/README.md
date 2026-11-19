@@ -46,6 +46,54 @@ The pack is made from the rest of the folder, so two branches that change one
 asset both change its pack. After merging them, build the asset again and
 commit what comes out.
 
+### A build keeps what it did not change
+
+The committed pack is not only what the game reads. It is the one record of
+the shape the pictures in `tex/` were painted on, and a build cannot be relied
+on to make that shape again: measured on 2026-11-19, of the packs built again
+on the Linux server from the tree that made them,
+
+- the survivor's hands came out one storage step away on one vertex in ten
+  (Blender's arithmetic differs in a float's last place between an Apple
+  processor and an Intel one), and the grips searched for from them came out
+  somewhere else altogether;
+- the Rex came out the same shape with its skin projected a few pixels away,
+  and a yacht with its charts packed in another order (a layout decided by
+  which way a face at 45 degrees is taken to look);
+- the Rex's finest vertices came out in another order on two runs of one
+  machine.
+
+So a build is settled on the pack it replaces (`tools/pack/settle.ts`), and
+says what it did:
+
+- a mesh made the same as the committed one to within a step of storage is the
+  committed one, byte for byte, and with it the rig and the grips;
+- a mesh of the same shape, lit alike, whose texture layout came out elsewhere
+  keeps the committed mesh, since the pictures fit that one;
+- everything else is made anew. A changed position, normal, bone, or a colour
+  on a layout that stands, is a change.
+
+Building an asset nobody changed therefore leaves its pack exactly as it was,
+on any machine, and changing one piece of a pack changes that piece only.
+
+```
+bun run art -- core:rex --relayout    take this build's texture layout: its pictures are being painted again
+bun run art -- core:rex --keep core:saddle_rex   keep the meshes whose ids start so, whatever was built
+bun run art -- core:rex --fresh       write the build as it came, settled on nothing
+```
+
+A model that checks its layout against `tex/layout.json` (the car, the boats,
+the helicopter) no longer stops a build whose layout came out elsewhere: it
+says so, and the build keeps the committed mesh if the shape is the same and
+refuses if the shape changed as well, which is when the pictures really are to
+be baked and painted again. `--relayout` after that.
+
+What this does not do is tell you that a pack is out of date. A pack is not
+built again when the tools that make it change, so a fresh build of an old
+pack may differ for that reason alone (the dodo's, the hatchet's and the
+bushes' did): those come out as made anew, and are then yours to look at and
+commit or not.
+
 ## A creature
 
 `asset.ts` exports a `CreatureAsset`: the skeleton, hit zones, sockets, colour

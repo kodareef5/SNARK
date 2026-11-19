@@ -37,6 +37,8 @@ export interface Built {
   details?: SourceDetails;
   /** A landmark's finishes, where its asset states them (shared/pack/finish.ts). */
   finishes?: number[];
+  /** What a model's script said where its texture layout is not the one its pictures were painted for (SNARK_LAYOUT=settle). */
+  layoutMoved?: string;
 }
 
 const triangles = (m: SourceMesh): string => m.lods.map((l, i) => `${String(l.indices.length / 3).padStart(5)}${i < (m.flat ?? 0) ? "*" : " "}`).join("");
@@ -274,7 +276,8 @@ export function buildAsset(asset: Asset): Built {
     const scripted = (scripts: readonly string[], what: object): void => {
       const job = join(dir, "job.json");
       writeFileSync(job, JSON.stringify({ folder: asset.dir, scripts, ...what }));
-      blender("build.py", [job], "build: done");
+      const moved = /^model: layout moved .*$/m.exec(blender("build.py", [job], "build: done"));
+      if (moved) out.layoutMoved = moved[0];
     };
     if (spec.kind === "creature") {
       const glb = join(dir, "model.glb");
