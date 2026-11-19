@@ -17,6 +17,7 @@ import { CMD_CORPSE, S_CORPSE } from "../../shared/net/protocol.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
+  BUTTON_BITS,
   BUTTON_MASK,
   HELLO_SPECTATE,
   HELLO_STATICS, HELLO_NEW, HELLO_RESUME,
@@ -1636,6 +1637,7 @@ export class ClientSession {
     const age = r.u8();
     const margin = r.sbits(8);
     const given = r.bool() ? r.u16() : 0;
+    const carried = r.bool() ? r.bits(BUTTON_BITS) : 0;
     const state = r.bits(2);
     const driving = r.varint() - 1;
     const sb = this.serverBody;
@@ -1747,6 +1749,8 @@ export class ClientSession {
       }
     }
 
+    // The server stepped this tick with buttons of an input of this page's that came after its own tick: so does a replay.
+    if (carried !== 0 && this.inputs.has(tick)) this.inputs.buttons[tick & this.inputs.mask] |= carried;
     const discontinuity = this.vehicleContacts?.accept(this.contactSnapshot, sb, this.simTick, this.alpha);
     this.reconcile(tick, sb);
     if (discontinuity) {
