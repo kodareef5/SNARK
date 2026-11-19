@@ -114,6 +114,28 @@ test("after the first frame the page asks for the rest nearest first, each secto
   expect(wholeStatics(handed)).toBe(true);
 });
 
+test("while the game's socket is held back the map comes one part at a time, and as many as before once it is not", async () => {
+  const s = heldServer(file);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${head.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 1056, z: 448, vx: 0, vz: 0 };
+  let held = true;
+  void loader!.follow(() => body, { held: () => held });
+  await settle();
+  await s.answer();
+  let most = 0;
+  for (let k = 0; k < 6; k++) {
+    most = Math.max(most, s.waiting.length);
+    await s.answer();
+  }
+  expect(most).toBe(1);
+  held = false;
+  await s.answer();
+  expect(s.waiting.length).toBeGreaterThan(1);
+  await s.drain();
+});
+
 test("the statics of the sectors within reach of the body are handed over once their ground and statics have come, before the rest have, and then the whole map's", async () => {
   const s = heldServer(file);
   let loader: MapLoader | null = null;

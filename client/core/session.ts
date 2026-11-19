@@ -293,6 +293,8 @@ const NODE_RADIUS = 3;
  * near holds the map's own ground (shared/world/heightfield.ts), and the page's first frame waits for the sectors it meets.
  */
 export const PREDICTED_REACH = 128;
+/** Milliseconds with no snapshot past which the game's socket is taken as held back (`behind`): some snapshots' worth. */
+export const BEHIND_MS = 300;
 /** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */
 const ASK_AGAIN_MS = 1000;
 /**
@@ -557,6 +559,8 @@ export class ClientSession {
   /** The tick sampleRemote last drew remote entities at, which is what was on screen when the next input is sampled. 0 before the first. */
   shown = 0;
   latestSnapshot = 0;
+  /** The frame clock, in ms, when the newest snapshot was taken in; -1 before the first. */
+  private snapshotAt = -1;
 
   /**
    * `corrections` counts snapshots that moved the predicted body. `stateCorrections` counts those that changed only other
@@ -1389,6 +1393,15 @@ export class ClientSession {
     }
   }
 
+  /**
+   * Whether the game's socket is held back: no snapshot has come for BEHIND_MS of the frame clock while the session
+   * plays, as when what the page fetches besides takes the link. That fetching holds back then (Residency.holdBack, the
+   * map's loader), so the game's own packets come first.
+   */
+  get behind(): boolean {
+    return this.state === "active" && this.snapshotAt >= 0 && this.lastNow - this.snapshotAt > BEHIND_MS;
+  }
+
   /** The client's estimate of the server tick, for evaluating vitals and spoil clocks. */
   get serverTick(): number {
     return Math.floor(this.renderClock);
@@ -1557,6 +1570,7 @@ export class ClientSession {
     readBody(r, sb);
     if (r.overflow || tick <= this.latestSnapshot) return;
     if (!readContacts(r, this.contactSnapshot, tick, this.world?.hf.sizeX, this.world?.hf.sizeZ)) { this.stats.undecodable++; return; }
+    this.snapshotAt = this.lastNow;
 
     const base = age > 0 ? this.views.find(tick - age) : null;
     if (age > 0 && !base) {

@@ -1402,6 +1402,7 @@ export class App {
     this.ui.settings.kept = keptLine(kept);
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
     this.scene.alternate = alternate;
+    this.scene.assets.residency.holdBack = this.session.behind;
     this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), off);
     const ratio = canvasRatio(this.scene.assets.tier, this.dpr, width, height);
     [this.scene.canvasWidth, this.scene.canvasHeight] = [Math.floor(width * ratio), Math.floor(height * ratio)];
