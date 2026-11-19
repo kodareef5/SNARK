@@ -1,12 +1,13 @@
 // The world finishes' material sets, from each finish's painted sources under assets/source/core/world/<finish>/ to the
 // three pictures a material takes: base colour with the tint mask in alpha, a normal made from the height, and
 // occlusion, roughness, metal and height packed at half the side; and the walls' weathering masks, packed as runoff,
-// damp, peel and joints in one picture as wide as a finish's packed map. Kept under var/surfaces/art/<name>/ by a hash
+// damp, peel and joints in one picture as wide as a finish's packed map; and the road's masks, the ground's macros in
+// one such picture and a road's repairs in another. Kept under var/surfaces/art/<name>/ by a hash
 // of what made them. bun tools/surfaces/build.ts builds them.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { SURFACE_NAMES, WEATHER_MATERIAL, surfaceMaterial, type SurfaceName } from "../../content/surfaces.ts";
+import { REPAIRS_MATERIAL, ROAD_MATERIAL, SURFACE_NAMES, WEATHER_MATERIAL, surfaceMaterial, type SurfaceName } from "../../content/surfaces.ts";
 import type { Material } from "../art/materials.ts";
 import { encodePng, readPicture, type Picture } from "../pack/image.ts";
 import type { SourceMesh } from "../pack/write.ts";
@@ -33,7 +34,10 @@ const sources = (name: SurfaceName): string[] => ["base", "height", "roughness",
 const WEATHER = ["runs", "damp", "peel", "joints"] as const;
 /** The weathering masks' painted width and height, and the side of a placeholder base colour and normal. */
 const WEATHER_WIDE = 2048, WEATHER_TALL = 1024, WEATHER_STUB = 64;
-export const HAS_SURFACES = [...SURFACE_NAMES, "weather"].every((name) => existsSync(join(WORLD_ART, name, "material.json")));
+/** The road's masks, each a picture ROAD_SIDE a side: the macros' tile and the repairs', and the masks in each's packed map, red to alpha. */
+const ROAD_SIDE = 1024;
+const ROAD_PACKS = { road: ["asphalt", "beach", "asphalt-rough", "beach-rough"], repairs: ["patches", "seams", "seals", "cracks"] } as const;
+export const HAS_SURFACES = [...SURFACE_NAMES, "weather", "road"].every((name) => existsSync(join(WORLD_ART, name, "material.json")));
 
 /** The finishes as materials, and the weathering masks' after them, their pictures made first where they are not. */
 export function worldMaterials(): Material[] {
@@ -42,7 +46,14 @@ export function worldMaterials(): Material[] {
     return { name, id: surfaceMaterial(name), dir: join(SURFACE_ART, name), spec: { base: "base.png", normal: "normal.png", packed: "mro.png", tiles: paintedOf(name).metres } };
   });
   buildWeather();
-  return [...finishes, { name: "weather", id: WEATHER_MATERIAL, dir: join(SURFACE_ART, "weather"), spec: { base: "base.png", normal: "normal.png", packed: "mro.png", tiles: 8 } }];
+  buildRoad();
+  const road = JSON.parse(readFileSync(join(WORLD_ART, "road", "material.json"), "utf8")) as { macro: number; repairs: number };
+  return [
+    ...finishes,
+    { name: "weather", id: WEATHER_MATERIAL, dir: join(SURFACE_ART, "weather"), spec: { base: "base.png", normal: "normal.png", packed: "mro.png", tiles: 8 } },
+    { name: "road", id: ROAD_MATERIAL, dir: join(SURFACE_ART, "road"), spec: { base: "base.png", normal: "normal.png", packed: "mro.png", tiles: road.macro } },
+    { name: "repairs", id: REPAIRS_MATERIAL, dir: join(SURFACE_ART, "repairs"), spec: { base: "base.png", normal: "normal.png", packed: "mro.png", tiles: road.repairs } },
+  ];
 }
 
 const grey = (p: Picture, side: number, what: string): Float32Array => {
@@ -140,11 +151,48 @@ export function buildWeather(): void {
   put("key", new TextEncoder().encode(key));
 }
 
-/** A finish's material carrier, and the weathering masks' last: like the sky's, this triangle is never drawn. Named last, it renumbers no other mesh. */
+/**
+ * The road's two packed maps (content/surfaces.ts ROAD_MATERIAL, REPAIRS_MATERIAL), unless those under var/ were made
+ * from these: each four of its masks, red to alpha, as wide as a finish's packed map; and a grey base colour and a flat
+ * normal each, which nothing draws.
+ */
+export function buildRoad(): void {
+  const hash = createHash("sha256").update(readFileSync(import.meta.filename));
+  const files = Object.values(ROAD_PACKS).flatMap((masks) => masks.map((m) => join(WORLD_ART, "road", `${m}.png`)));
+  for (const file of [join(WORLD_ART, "road", "material.json"), ...files]) hash.update(file).update(readFileSync(file));
+  const key = hash.digest("hex"), n = SURFACE_TOP / 2;
+  for (const [name, masks] of Object.entries(ROAD_PACKS)) {
+    const dir = join(SURFACE_ART, name), stamp = join(dir, "key");
+    if (existsSync(stamp) && readFileSync(stamp, "utf8") === key) continue;
+    mkdirSync(dir, { recursive: true });
+    const mro = new Uint8Array(n * n * 4), step = ROAD_SIDE / n;
+    masks.forEach((m, c) => {
+      const p = grey(readPicture(join(WORLD_ART, "road", `${m}.png`)), ROAD_SIDE, m);
+      for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+        let sum = 0;
+        for (let j = 0; j < step; j++) for (let i = 0; i < step; i++) sum += p[(y * step + j) * ROAD_SIDE + x * step + i]!;
+        mro[(y * n + x) * 4 + c] = byte(sum / (step * step));
+      }
+    });
+    const s = WEATHER_STUB, base = new Uint8Array(s * s * 4).fill(128), normal = new Uint8Array(s * s * 3);
+    for (let i = 0; i < s * s; i++) normal.set([128, 128, 255], i * 3);
+    const put = (file: string, bytes: Uint8Array): void => {
+      writeFileSync(join(dir, `${file}.${process.pid}.tmp`), bytes);
+      renameSync(join(dir, `${file}.${process.pid}.tmp`), join(dir, file));
+    };
+    put("base.png", encodePng({ width: s, height: s, channels: 4, depth: 8, data: base }));
+    put("normal.png", encodePng({ width: s, height: s, channels: 3, depth: 8, data: normal }));
+    put("mro.png", encodePng({ width: n, height: n, channels: 4, depth: 8, data: mro }));
+    put("key", new TextEncoder().encode(key));
+  }
+}
+
+/** A finish's material carrier, and the masks' (the weathering's and the road's) last: like the sky's, this triangle is never drawn. */
 export function worldSurfaceMeshes(): SourceMesh[] {
-  return [...SURFACE_NAMES, "weather" as const].map((name) => {
-    const id = name === "weather" ? WEATHER_MATERIAL : surfaceMaterial(name);
-    const textures = (["base", "normal", "mro"] as const).map((role) => ({ id: `${id}/${role}`, role, top: role === "mro" ? SURFACE_TOP / 2 : name === "weather" ? WEATHER_STUB : SURFACE_TOP }));
+  const masks: Record<string, string> = { weather: WEATHER_MATERIAL, road: ROAD_MATERIAL, repairs: REPAIRS_MATERIAL };
+  return [...SURFACE_NAMES, "weather" as const, "road" as const, "repairs" as const].map((name) => {
+    const id = masks[name] ?? surfaceMaterial(name as SurfaceName);
+    const textures = (["base", "normal", "mro"] as const).map((role) => ({ id: `${id}/${role}`, role, top: role === "mro" ? SURFACE_TOP / 2 : masks[name] ? WEATHER_STUB : SURFACE_TOP }));
     const material = { id, base: 0, normal: 1, mro: 2, mask: -1, mask2: -1, tint: [1, 1, 1] as [number, number, number], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 };
     return { id: `core:zz_world_${name}`, flat: 1, materials: [material], textures,
       lods: [{ positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 0, 1]), colors: new Uint8Array(3), indices: Uint32Array.from([0, 2, 1]),
@@ -155,5 +203,6 @@ export function worldSurfaceMeshes(): SourceMesh[] {
 if (import.meta.main) {
   for (const name of SURFACE_NAMES) if (existsSync(join(WORLD_ART, name, "material.json"))) buildFinish(name);
   if (existsSync(join(WORLD_ART, "weather", "material.json"))) buildWeather();
+  if (existsSync(join(WORLD_ART, "road", "material.json"))) buildRoad();
   console.log(SURFACE_ART);
 }

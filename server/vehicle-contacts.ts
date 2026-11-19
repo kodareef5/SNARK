@@ -41,12 +41,17 @@ export interface VehicleContactsContext {
   boarding?(actor: number, vehicle: number): boolean;
   /** Only an empty, parked protected foreign vehicle is anchored against an unauthorized opposing actor. */
   anchored?(vehicle: number, opposing: EntityRecord): boolean;
+  /** At rest: stepped only on its heartbeat, at under a millimetre a second (server/urban.ts). */
+  resting?(vehicle: number): boolean;
   pair?(event: VehicleCollisionPair): void;
 }
-interface Frame { body: Body; handle: number; pid: number; tick: number; motionEpoch: number; consumed: boolean; by: number; byHandle: number }
+/** `settled`: it starts this tick in the pose it was captured in last tick, and nothing placed it since. */
+interface Frame { body: Body; handle: number; pid: number; tick: number; motionEpoch: number; consumed: boolean; by: number; byHandle: number; settled: boolean }
 interface Touch { seen: number; hazardFirst: number; hazardSecond: number }
 interface Contact extends DynamicContact { entity: number; handle: number; pid: number; rotor: boolean; propeller: boolean; otherRotor: boolean; otherPropeller: boolean; hazardSpeed: number; mass: number }
 const MIN_HARM_SPEED = 2.5;
+/** How far a vehicle at rest may move on its heartbeat and still count as keeping its pose: a tenth of a millimetre. */
+const STILL = 1e-4;
 const REARM_TICKS = 15;
 const contact = (): Contact => ({ entity: -1, handle: 0, pid: 0, t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, depth: 0, rotor: false, propeller: false, otherRotor: false, otherPropeller: false, hazardSpeed: 0, mass: 1 });
 
@@ -74,8 +79,9 @@ export class VehicleContacts {
   private heightB = 0;
   private readonly restingPadding: number;
   private targetPadding = 0;
-  /** Diagnostics, not replicated gameplay state. */
+  /** Diagnostics, not replicated gameplay state: contacts resolved, and pairs swept. */
   contacts = 0;
+  sweeps = 0;
 
   constructor(ctx: VehicleContactsContext) {
     this.ctx = ctx;
@@ -144,7 +150,8 @@ export class VehicleContacts {
     if (!vehicle || vehicle.dead || records.entOf.get(vehicle.pid) !== e) return;
     const handle = makeHandle(e, ents.gen[e]!);
     let frame = this.frames.get(e);
-    if (!frame) { frame = { body: new Body(), handle, pid: 0, tick: 0, motionEpoch: 0, consumed: false, by: 0, byHandle: 0 }; this.frames.set(e, frame); }
+    if (!frame) { frame = { body: new Body(), handle, pid: 0, tick: 0, motionEpoch: 0, consumed: false, by: 0, byHandle: 0, settled: false }; this.frames.set(e, frame); }
+    frame.settled = frame.tick === world.tick - 1 && frame.handle === handle && frame.motionEpoch === world.history.motionEpoch(e) && this.posed(frame.body, e);
     ents.loadBody(e, frame.body);
     world.history.track(e);
     frame.handle = handle; frame.pid = ents.pid[e]!; frame.tick = world.tick; frame.motionEpoch = world.history.motionEpoch(e); frame.consumed = false;
@@ -187,7 +194,11 @@ export class VehicleContacts {
         if (ents.resolve(frame.handle) !== e || ents.pid[e] !== frame.pid || frame.motionEpoch !== world.history.motionEpoch(e)) break;
         this.gather(e, from, def);
         this.first.entity = -1;
+        const still = this.still(e);
         for (const target of this.candidates) {
+          // Two vehicles nobody drives that kept their poses this tick cannot meet in it: whatever reaches either is
+          // met from the side that moved.
+          if (still && this.still(target)) continue;
           const handle = makeHandle(target, ents.gen[target]!);
           if (this.touches.get(Math.min(frame.handle, handle))?.get(Math.max(frame.handle, handle))?.seen === world.tick) continue;
           const hit = this.rigidContact(e, frame, target, def);
@@ -204,6 +215,24 @@ export class VehicleContacts {
       if (!pairs.size) this.touches.delete(car);
     }
     return this.changed;
+  }
+
+  /** Whether `e` is a vehicle nobody drives, settled, that keeps this tick the pose it was captured in. */
+  private still(e: number): boolean {
+    const { world } = this.ctx, ents = world.ents, frame = this.frames.get(e);
+    return !!frame && frame.settled && frame.by === 0 && frame.tick === world.tick && frame.handle === makeHandle(e, ents.gen[e]!) &&
+      frame.motionEpoch === world.history.motionEpoch(e) && this.posed(frame.body, e);
+  }
+
+  /**
+   * Whether vehicle `e`'s place, attitude and wheel are those `b` holds. For one at rest, within STILL metres and STILL
+   * of each part of its attitude: it moves only on its heartbeat, by less than a skin of the sweeps.
+   */
+  private posed(b: Body, e: number): boolean {
+    const ents = this.ctx.world.ents, v = ents.vrow[e]!, off = this.ctx.resting?.(e) ? STILL : 0;
+    const near = (a: number, c: number): boolean => Math.abs(a - c) <= off;
+    return near(b.x, ents.x[e]!) && near(b.y, ents.y[e]!) && near(b.z, ents.z[e]!) && near(b.vehicleQx, ents.vehicleQx[v]!) && near(b.vehicleQy, ents.vehicleQy[v]!) &&
+      near(b.vehicleQz, ents.vehicleQz[v]!) && near(b.vehicleQw, ents.vehicleQw[v]!) && b.steering === ents.steering[v];
   }
 
   private includeTravel(def: VehicleDefinition, dx: number, dz: number): void {
@@ -265,6 +294,7 @@ export class VehicleContacts {
   private upright(s: DynamicState): void { s.qx = s.qy = s.qz = 0; s.qw = 1; s.pitchRate = s.yawRate = s.rollRate = 0; }
   /** Geometry bounds choose samples; they are never used as damage speed. */
   private rigidContact(car: number, frame: Frame, e: number, def: VehicleDefinition): Contact | null {
+    this.sweeps++;
     this.prepare(car, frame, e);
     const { world } = this.ctx, ents = world.ents, c = this.b.prior, d = this.b.state;
     // Actors use history and a capped character step. Vehicle captures have already passed their own velocity and epoch checks.

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { SelfcheckSurfaces } from "../../client/core/selfcheck-surfaces.ts";
+import { MASK_MATERIALS, SURFACE_NAMES } from "../../content/surfaces.ts";
 import { probePasses, provingProbes } from "../../client/core/selfcheck.ts";
 import { DRAW_PLAIN } from "../../client/core/render/packet.ts";
 import { lit, srgbToLinear } from "../../client/core/render/surface.ts";
@@ -97,8 +98,8 @@ test("self-check fetches independent RGBA maps, keeps GPU arrivals separate and 
   const reference = new SelfcheckSurfaces(manifest, port);
   expect(port.log).toHaveLength(0); // Creating it for a low-poly check fetches nothing.
   reference.start(); reference.start();
-  // Each finish's three maps, and the weathering masks' packed map.
-  expect(port.log).toHaveLength(49);
+  // Each finish's three maps, and each mask's packed map: the weathering's and the road's two.
+  expect(port.log).toHaveLength(SURFACE_NAMES.length * 3 + MASK_MATERIALS.length);
   reference.request({ slot: 42, file: 1, parts: [{ offset: 0, length: 16, hash: "" }], priority: 1, fresh: false });
   port.advance(1);
   const arrivals: Parameters<SelfcheckSurfaces["take"]>[0] = [];

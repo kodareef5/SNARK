@@ -2,7 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
-import { SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER, WEATHER_MATERIAL } from "../../content/surfaces.ts";
+import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
@@ -198,8 +198,12 @@ export class GlRenderer {
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
-    // The weathering masks are the packed array's last layer; their base colour and normal are never drawn.
-    for (const m of this.materials) if (m.id.startsWith(SURFACE_PREFIX)) [m.base, m.normal, m.mro].forEach((t, r) => (m.id !== WEATHER_MATERIAL || r === 2) && this.worldLayer.set(t, r * 32 + (m.id === WEATHER_MATERIAL ? WEATHER_LAYER : (SURFACE_NAMES as readonly string[]).indexOf(m.id.slice(SURFACE_PREFIX.length)))));
+    // The masks (the weathering's and the road's) are the packed array's layers after the finishes'; their base colour and normal are never drawn.
+    for (const m of this.materials) {
+      if (!m.id.startsWith(SURFACE_PREFIX)) continue;
+      const mask = (MASK_MATERIALS as readonly string[]).indexOf(m.id);
+      [m.base, m.normal, m.mro].forEach((t, r) => (mask < 0 || r === 2) && this.worldLayer.set(t, r * 32 + (mask >= 0 ? WEATHER_LAYER + mask : (SURFACE_NAMES as readonly string[]).indexOf(m.id.slice(SURFACE_PREFIX.length)))));
+    }
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.meshes = manifest.meshes;
     this.finish = finishTable(pack.palette, manifest);
@@ -456,7 +460,7 @@ export class GlRenderer {
     gl.activeTexture(gl.TEXTURE0 + UNIT.maps + role);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.world[role] ?? (this.world[role] = gl.createTexture()));
     if (this.worldBase[role] === -2) {
-      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), internal, side, side, role === 2 ? WEATHER_LAYER + 1 : SURFACE_NAMES.length);
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), internal, side, side, role === 2 ? WEATHER_LAYER + MASK_MATERIALS.length : SURFACE_NAMES.length);
       gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       this.anisotropy(gl.TEXTURE_2D_ARRAY);
       this.worldBase[role] = -1;
@@ -723,16 +727,21 @@ export class GlRenderer {
 
     this.bound.length = 0;
     this.mapped = null;
-    this.worldReady = 1;
+    // 0 with no finishes; 3 with none of their maps yet, drawn as their means; 2 with the base colours alone, drawn the
+    // far path's way; 1 to 2 as the rest come up (`early`).
+    let base = true, full = true;
     for (let r = 0; r < 3; r++) {
       if (r > 0 && p.worldSide[r] === 0) continue;
-      if (p.worldLevel[r]! < 0 || this.worldBase[r]! < -1) this.worldReady = 0;
-      else if (p.worldLevel[r] !== this.worldBase[r]) {
+      if (p.worldLevel[r]! < 0 || this.worldBase[r]! < -1) {
+        full = false;
+        if (r === 0) base = false;
+      } else if (p.worldLevel[r] !== this.worldBase[r]) {
         gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.world[r]!);
         gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_BASE_LEVEL, (this.worldBase[r] = p.worldLevel[r]!));
       }
     }
+    this.worldReady = p.worldSide[0] === 0 ? 0 : base ? 1 + (full ? p.worldEarly : 1) : p.worldComing ? 3 : 0;
     const finish = drawsLight(p.tier, this.light);
     const samples = Math.min(this.samples, p.lightSamples);
     // A frame drawn without it every other frame (FramePacket.alternate) leaves it for the frames either side.

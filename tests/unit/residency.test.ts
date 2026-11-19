@@ -2,7 +2,7 @@
 // within its budget, and what cannot be had is given up on without the scene going bare.
 import { expect, test } from "bun:test";
 import { Assets } from "../../client/core/assets/assets.ts";
-import { IN_FLIGHT, IN_FLIGHT_SHARED, OVERFLOW, SMALL_LANES, SMALL_LANES_SHARED, SMALL_PART } from "../../client/core/assets/residency.ts";
+import { IN_FLIGHT, IN_FLIGHT_HELD, IN_FLIGHT_SHARED, OVERFLOW, SMALL_LANES, SMALL_LANES_SHARED, SMALL_PART } from "../../client/core/assets/residency.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { meshKnown, parseManifest } from "../../shared/pack/manifest.ts";
@@ -53,6 +53,17 @@ test("flying through a field of rocks on a slow, lossy link: nothing is drawn th
   for (const times of w.switches) for (let i = 2; i < times.length; i++) expect(times[i]! - times[i - 2]!).toBeGreaterThan(1000);
   // Most of what was fetched was drawn.
   expect(w.r.stats.fetched / w.r.stats.used).toBeLessThan(1.6);
+});
+
+test("while the game's socket is held back few requests are under way, and the flight settles as it does without", () => {
+  const [free, held] = [false, true].map((holdBack) => {
+    const w = world({ latencyMs: 300, bytesPerSecond: 1.5e6 });
+    w.r.holdBack = holdBack;
+    w.run(8, 0);
+    return w;
+  });
+  expect([free!.port.mostAtOnce, held!.port.mostAtOnce]).toEqual([IN_FLIGHT, IN_FLIGHT_HELD]);
+  expect([held!.settled(), held!.r.stats.skipped, held!.r.stats.used]).toEqual([true, 0, free!.r.stats.used]);
 });
 
 test("over HTTP/2 or 3 more requests are under way at once, and the flight settles as it does over HTTP/1.1", () => {

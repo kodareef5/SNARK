@@ -1,6 +1,6 @@
 # Street furniture construction register
 
-Seventeen plates cover eighteen fixtures and thirty-one form entries. The route and speed posts share a sheet and have independent origins.
+Seventeen plates cover eighteen fixtures and thirty-one form entries. The route and speed posts share a sheet and have independent origins. Three later entries, the pay station (18), the crosswalk bars (19) and the yield sign (20), have no measured plate: their numbers are the model's.
 
 ## Drawing conventions
 
@@ -35,6 +35,9 @@ Cut schedules below each reference form give centres, section profiles, end poin
 | 15 | [W-beam guardrail](#piece-rail) · [Plate](rail.png) | Whole, Bent |
 | 16 | [Expressway billboard](#piece-billboard) · [Plate](billboard.png) | Whole, Bare |
 | 17 | [Newspaper box](#piece-newsbox) · [Plate](newsbox.png) | Standing |
+| 18 | [Pay station](#piece-paystation) | Standing, Broken |
+| 19 | [Crosswalk bars](#piece-crosswalk) | Fresh, Worn |
+| 20 | [Yield sign](#piece-yield) | Standing, Bent |
 
 <a id="piece-lamp"></a>
 
@@ -381,6 +384,8 @@ Two faded green blades mark the intersection. **Pose.** Rigid assembly, 0° abou
 Two separate spawnable assets. Each owns its own (0.00, 0.00, 0.00) at its post. Set the panels with their bottom edges at 2.11 m. The speed face is 0.61 × 0.76 m, the hurricane route graphic 0.61 × 0.61 m. Sign skins are two-sided, with a maximum 0.02 m folded-edge proxy.
 
 Use an independent mesh pivot for each post. Typical speed-mark ink occupies the central 0.45 m of the blank. The hurricane icon, disk, words and arrow share a single face patch.
+
+The game posts six limits on this one panel and post, each a piece of its own with its own face: 25, 30, 35, 40, 45 and 55 mph (`speed25`, `speed30`, `speed35`, `speed40`, `speed45`, and `speed` for 55).
 
 ### Speed limit
 
@@ -1261,3 +1266,165 @@ A yellowed front page remains behind the drop door. **Pose.** Rigid assembly, 0�
 **Atlas treatment.** Masthead · chalk V84. Print and coin slot · charcoal V25.
 
 **Distance model.** Retain the pedestal, overhanging cabinet and contrasting front window.
+
+<a id="piece-paystation"></a>
+
+## 18 · Pay station
+
+No measured plate: the numbers are the model's, after a car park's multi-space pay station.
+
+Cabinet 0.45 m wide and 0.30 m deep on a pedestal, 1.65 m to the back of its solar panel. The control panel (a blue band with a P and PAY HERE, the screen, two buttons, the keypad, the card and receipt slots) looks −Z, at the walk, as the mailbox's chute does. Every other face is one swatch of its blue-grey paint, rusting at its edges. No maker's name.
+
+### Standing
+
+A blue-grey kiosk with a dead screen. **Pose.** Rigid assembly, 0° about the ground origin (0.00, 0.00, 0.00).
+
+**Assembly envelope.** X -0.24 … 0.24 m, Y 0.00 … 1.65 m, Z -0.17 … 0.17 m.
+
+| Part | X min … max (m) | Y min … max (m) | Z min … max (m) | Material | Colour | Value |
+|---|---:|---:|---:|---|---|---:|
+| Base plate | -0.20 … 0.20 | 0.00 … 0.02 | -0.15 … 0.15 | Galvanised steel | zinc grey | V60 |
+| Pedestal | -0.12 … 0.12 | 0.00 … 0.50 | -0.09 … 0.09 | Painted steel | blue-grey | V29 |
+| Cabinet | -0.23 … 0.23 | 0.50 … 1.20 | -0.15 … 0.15 | Painted steel | blue-grey | V29 |
+| Head | -0.23 … 0.23 | 1.20 … 1.54 | -0.15 … 0.15 | Painted steel | blue-grey | V29 |
+| ↳ Control panel (atlas) | -0.23 … 0.23 | 1.20 … 1.54 | -0.15 … -0.15 | Painted steel | blue band, white legend | V27 |
+| ↳ Screen (atlas) | 0.01 … 0.18 | 1.35 … 1.42 | -0.15 … -0.15 | Glass | dead grey-green | V23 |
+| Rain hood | -0.24 … 0.24 | 1.54 … 1.57 | -0.17 … 0.17 | Painted steel | blue-grey | V29 |
+| Solar panel | -0.20 … 0.20 | 1.57 … 1.65 | -0.15 … 0.13 | Glass | dark blue cells | V20 |
+
+<details>
+<summary>Fabrication schedule</summary>
+
+| Member | Construction in metres |
+|---|---|
+| Base plate | Box 0.40 × 0.02 × 0.30 at (0.00, 0.01, 0.00). |
+| Pedestal | Box 0.24 × 0.80 × 0.18 at (0.00, 0.10, 0.00), carried 0.30 into the ground. |
+| Cabinet | Box 0.45 × 0.70 × 0.30 at (0.00, 0.85, 0.00). |
+| Head | Box 0.45 × 0.3375 × 0.30 at (0.00, 1.37, 0.00), its −Z face the panel's picture. |
+| Rain hood | Box 0.48 × 0.0325 × 0.335 at (0.00, 1.55, 0.00). |
+| Solar panel | Box 0.40 × 0.02 × 0.29 on the hood, turned −12° about X through (0.00, 1.57, −0.15), so it rises to the back and faces the walk. |
+
+</details>
+
+### Broken
+
+Torn from its pedestal and fallen on its back toward the road, its screen smashed in. **Pose.** The cabinet, head, hood and panel turned 90° about X (the panel up, the top toward +Z), lifted 0.165 m to lie on the hood's back, moved 0.06 m along +X, then turned 9° about Y through the origin. The pedestal stands to 0.45 m.
+
+**Assembly envelope.** X -0.20 … 0.55 m, Y 0.00 … 0.45 m, Z -0.15 … 1.66 m.
+
+| Part | X min … max (m) | Y min … max (m) | Z min … max (m) | Material | Colour | Value |
+|---|---:|---:|---:|---|---|---:|
+| Base plate | -0.20 … 0.20 | 0.00 … 0.02 | -0.15 … 0.15 | Galvanised steel | zinc grey | V60 |
+| Pedestal stub | -0.12 … 0.12 | 0.00 … 0.45 | -0.09 … 0.09 | Painted steel | blue-grey | V29 |
+| Fallen cabinet, head and hood | -0.10 … 0.55 | 0.00 … 0.34 | 0.45 … 1.66 | Painted steel | blue-grey | V29 |
+| ↳ Smashed screen | 0.28 … 0.46 | 0.32 … 0.32 | 1.29 … 1.39 | Glass | crazed, shards gone to black | V20 |
+
+<details>
+<summary>Fabrication schedule</summary>
+
+| Member | Construction in metres |
+|---|---|
+| Pedestal stub | Box 0.24 × 0.75 × 0.18 at (0.00, 0.075, 0.00), carried 0.30 into the ground. |
+| Smashed screen | Box over the screen, 0.169 × 0.07 × 0.006, proud of the panel, its face the smashed screen's picture. Then posed with the cabinet. |
+
+</details>
+
+### Setting out
+
+| Foot to kerb face | Orientation | Placement and repetition | Keep clear |
+|---|---|---|---|
+| 0.75 m | The panel faces −Z, the walk; the road is behind it. | One for a block face of metered stalls, or at a car park's entrance and along its walkways, about one for every eight to ten stalls. | Keep the walk's through route and the doors of parked cars clear. |
+
+**Atlas treatment.** Panel band · faded blue V27, legend chalk white V80. Keypad · pale grey V59. Screen · grey-green V23; smashed, crazed from one blow with shards gone to black. Paint swatch · blue-grey V29, rust at its edges.
+
+**Distance model.** Past the finest, one box from the ground to the hood with the panel on its front (12 triangles); the flat level between is left out, as for the other pieces built of boxes.
+
+<a id="piece-crosswalk"></a>
+
+## 19 · Crosswalk bars
+
+No measured plate: the numbers are the model's, after the continental (ladder-less) crosswalks US cities paint.
+
+Bars 0.60 m wide with 0.60 m between them, each the crossing's 3.00 m long, running along the road so that they stand side by side across it. Local X runs across the road (the crossing's length) and Z along it. Four lengths tile a crossing of any length in 1.20 m steps: 1, 2, 4 and 8 bars, 1.20, 2.40, 4.80 and 9.60 m, each with half a gap at either end, so pieces laid end to end keep the spacing.
+
+Each bar is one quad lying 0.015 m over the origin with its back face under it, closed by being two-sided: 4 triangles a bar. It is laid on a road paint part of the atlas, the bar's length along the picture: fresh, as white as road paint, an albedo of about 0.75; worn, faded and grimed, worn through to the road in patches along the tyres' lines. Drawn in a flat colour, a static is drawn as the finish its palette colour names, and the paint's (palette 1) was paving: grey, jointed, and faint on the road.
+
+**Why the collider is buried.** A static is always met as its shape's boxes or else its own half box (shared/content/registry.ts: a shape has at least one box or convex part, and a structure's half is never zero), and only a node may be soft. Paint must be walked and driven over as the road is, so each piece's one box lies wholly under the road: X over the bars, Y −0.12 … −0.02 m, Z −1.50 … 1.50 m. The piece is laid at the road's height, so the ground is what a wheel, a body or a ray meets first, and nothing meets the box from above. Nothing harms paint: the pieces have no material.
+
+### Fresh
+
+**Pose.** Rigid assembly, 0° about the ground origin (0.00, 0.00, 0.00).
+
+| Piece | Bars | X min … max (m) | Y min … max (m) | Z min … max (m) | Material | Colour | Value |
+|---|---:|---:|---:|---:|---|---|---:|
+| `crosswalk1` | 1 | -0.30 … 0.30 | 0.015 | -1.50 … 1.50 | Road paint | white | V87 |
+| `crosswalk2` | 2 | -0.90 … 0.90 | 0.015 | -1.50 … 1.50 | Road paint | white | V87 |
+| `crosswalk4` | 4 | -2.10 … 2.10 | 0.015 | -1.50 … 1.50 | Road paint | white | V87 |
+| `crosswalk8` | 8 | -4.50 … 4.50 | 0.015 | -1.50 … 1.50 | Road paint | white | V87 |
+
+Bar k of n is centred at X = 1.20 (k + 0.5) − 0.60 n.
+
+### Worn
+
+The same bars worn through where wheels ran along them and flaked off: each bar cut across into two to four pieces, about three in ten of them gone, their ends ragged (slanted up to 0.08 m) and their sides eaten in up to 0.10 m; at least one piece of each bar is left. The breaks are seeded by the piece's length, so each length breaks its own way. `crosswalk1_worn`, `crosswalk2_worn`, `crosswalk4_worn` and `crosswalk8_worn` lie within their fresh forms' envelopes.
+
+| Part | Material | Colour | Value |
+|---|---|---|---:|
+| Pieces of bar | Road paint | faded white, worn through in patches | V74 |
+
+### Setting out
+
+| Foot to kerb face | Orientation | Placement and repetition | Keep clear |
+|---|---|---|---|
+| On the road | Origin at the road's height on the crossing's centre line, X across the road, Z along it. | Across the road where a pedestrian crossing is, end to end at the 1.20 m pitch, the longest pieces first. | A long piece is flat: on a cambered road its ends float or sink by the camber under them, which shorter pieces follow better. |
+
+**Atlas treatment.** Road paint · white V87, the tyres' faint grey lines along it. Worn · faded V74, the road showing through V30.
+
+**Distance model.** Past the finest, one patch over the bars in the colour of paint and road together, mixed as light (V68 fresh, V49 worn), 4 triangles, its error stated as 0.10 m: on medium it is first drawn about 350 m off. The low poly tier draws from the second level, so there it is the patch at every distance. A one-bar piece has the finest only.
+
+<a id="piece-yield"></a>
+
+## 20 · Yield sign
+
+No measured plate: the numbers are the model's, after R1-2 (Standard Highway Signs, Regulatory, page 2) at its 36-inch conventional size.
+
+Equilateral triangle 0.91 m across, a corner down at Y 2.10 m, its top edge at Y 2.89 m. The face is the book's design, aged, on the see-through atlas (its spare had the room), so the triangle's rounded corners are cut from the slab. Two fixings on the vertical centreline, 0.08 m and 0.53 m under the top edge, with brackets behind them.
+
+### Standing
+
+Red border and legend faded to brick on chalky white sheeting. **Pose.** Rigid assembly, 0° about the ground origin (0.00, 0.00, 0.00).
+
+**Assembly envelope.** X -0.46 … 0.46 m, Y 0.00 … 2.89 m, Z -0.03 … 0.05 m.
+
+| Part | X min … max (m) | Y min … max (m) | Z min … max (m) | Material | Colour | Value |
+|---|---:|---:|---:|---|---|---:|
+| Square post | -0.03 … 0.03 | 0.00 … 2.84 | -0.03 … 0.03 | Galvanised steel | zinc grey | V60 |
+| Triangle face | -0.46 … 0.46 | 2.10 … 2.89 | 0.04 … 0.05 | Aluminium | faded red and white | V62 |
+| Brackets | -0.05 … 0.05 | 2.34 … 2.83 | 0.00 … 0.04 | Galvanised steel | zinc grey | V60 |
+
+<details>
+<summary>Fabrication schedule</summary>
+
+| Member | Construction in metres |
+|---|---|
+| Square post | Box 0.064 × 3.19 × 0.064 from Y −0.35, in two at Y 0.50 so the bent form bends there. |
+| Triangle face | Triangle about (0.00, 2.625, 0.045), corners (0.00, 2.10), (±0.455, 2.888), extruded 0.012, laid on the face's picture by its own box. |
+| Brackets | Boxes 0.10 × 0.04 × 0.04 at Y 2.36 and 2.81, behind the fixings. |
+
+</details>
+
+### Bent
+
+The post bent at Y 0.50 m. **Pose.** Above 0.50 m, turned −35° about X through (0.00, 0.50, 0.00), then 12° about Z through the same point.
+
+**Assembly envelope.** X -0.04 … 0.86 m, Y 0.00 … 2.54 m, Z -1.37 … 0.04 m.
+
+### Setting out
+
+| Foot to kerb face | Orientation | Placement and repetition | Keep clear |
+|---|---|---|---|
+| 0.75 m | Face +Z toward the traffic that yields. | One on the right of each yielding approach, near the yield line. | As the stop sign. |
+
+**Atlas treatment.** Border and legend · faded red V42. Sheeting · chalk white V85.
+
+**Distance model.** Past the finest, the post and the triangle without its brackets, in flat colours.

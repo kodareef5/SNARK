@@ -200,7 +200,11 @@ test("every piece content means to be walked onto still is, and every piece mean
       // On open ground: a foundation as it is set down, anything else on its base. From eight sides, a step reaches it if it
       // is a foundation or low enough.
       const ref = role === ROLE_FOUNDATION ? put(w, k) : w.structs.add(k, 64, w.structs.halfYOf(k), 64, 0, 0, 1);
-      const top = topOf(w, ref, k);
+      // Its top is its highest box's, which is its half's but where its boxes are not about its origin: a crosswalk's one
+      // box lies wholly under it.
+      let peak = -Infinity;
+      for (let b = reg.parts.start[k]! * 6; b < reg.parts.start[k + 1]! * 6; b += 6) peak = Math.max(peak, reg.parts.box[b + 1]! + reg.parts.box[b + 4]!);
+      const top = topOf(w, ref, k) - w.structs.halfYOf(k) + peak;
       const onto = role === ROLE_FOUNDATION || top <= STEP + SKIN;
       for (let side = 0; side < 8; side++) {
         const { high, upon } = walk(w, survivor, 64, 64, side * 45, { from: Math.hypot(reg.halfX[k]!, reg.halfZ[k]!) + 0.5 });

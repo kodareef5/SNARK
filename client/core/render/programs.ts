@@ -85,7 +85,11 @@ const mesh = (tier: Tier, made: ProgramText): ProgramText => (tier.lit ? { ...ma
 
 const MAKE = {
   flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
-  terrain: (tier, format, hard = false, light = false) => flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX),
+  // Where the tier reads the finishes in full, asphalt and sand wear (world-surfaces.ts `roadWorn`).
+  terrain: (tier, format, hard = false, light = false) => {
+    const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX);
+    return tier.lit && tier.finish === "full" ? { ...t, defines: `#define WORLD_ROAD\n${t.defines}` } : t;
+  },
   // The same, for the tiles that read the window round the camera (terrain.ts).
   terrainWindow: (tier, format, hard, light): ProgramText => {
     const t = MAKE.terrain(tier, format, hard, light);

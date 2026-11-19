@@ -12,7 +12,7 @@ import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
@@ -80,11 +80,24 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
   if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
   float over = overGround(vRel);
   float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0);
+  // The weathering and the edges read the packed maps, so they come up with them (uWorldReady 2 is the base colours alone).
+  float risen = 2.0 - uWorldReady;
 #ifdef WORLD_WEATHER
-  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5) weathered(albedo, orm, vSurface, vOwn, vPlace, over, open, vRel, geometric, dx, dy);
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0) {
+    vec3 a0 = albedo, o0 = orm;
+    weathered(albedo, orm, vSurface, vOwn, vPlace, over, open, vRel, geometric, dx, dy);
+    albedo = mix(a0, albedo, risen);
+    orm = mix(o0, orm, risen);
+  }
 #endif
 #if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
-  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && fFacade.z < 0.5) edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0 && fFacade.z < 0.5) {
+    vec3 a0 = albedo, o0 = orm, n0 = n;
+    edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
+    albedo = mix(a0, albedo, risen);
+    orm = mix(o0, orm, risen);
+    if (risen < 1.0) n = normalize(mix(n0, n, risen));
+  }
 #endif
   // A facade's part and the marks on a wall (facade.ts): the room behind glass lit by the face's daylight, and the street's far side it mirrors.
   vec3 room = vec3(0.0);
@@ -256,7 +269,7 @@ uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}vec3 groundColour(int tint) {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${ROAD_GLSL}vec3 groundColour(int tint) {
   vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
@@ -272,11 +285,18 @@ void main() {
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uWorldReady > 0.5) {
     float h = worldSurface(albedo, orm, n, geometric, groundSurface(tint), vRel, dx, dy), share;
+#ifdef WORLD_ROAD
+    roadWorn(albedo, orm, groundSurface(tint), vRel + uWorldEye, dx, dy);
+    worldSharp = orm.y < ${f(WORLD_SHARP)};
+#endif
     // Where it meets another finish, the higher of the two shows through the other.
     int other = groundMeet(tint, tints, s - vec2(i), share);
     if (share > 0.0) {
       vec3 albedo2 = groundColour(other), orm2, n2 = level;
       float b = higher(h, worldSurface(albedo2, orm2, n2, geometric, groundSurface(other), vRel, dx, dy), share, ${f(GROUND_SCALE)}, ${f(GROUND_BAND)});
+#ifdef WORLD_ROAD
+      roadWorn(albedo2, orm2, groundSurface(other), vRel + uWorldEye, dx, dy);
+#endif
       albedo = mix(albedo, albedo2, b);
       orm = mix(orm, orm2, b);
       n = normalize(mix(n, n2, b));
