@@ -2,25 +2,35 @@
 
 The clone contains the engine, client, server, game content, tools, tests, editable art recipes and metadata, and five authored city definitions. Of the planning notes it keeps the three generated reference pages and the benchmark record under `planning/`. The other notes are kept outside this repository, so some links into `planning/` lead nowhere. The release manifest pins the optional binary files, which GitHub CLI downloads from this repository's releases.
 
-## Review status
+## What the releases hold
 
-No media has been packed for the current source, so the manifest lists no files and a clone builds with generated geometry. `distribution/source-files.txt` is the current inventory of binary inputs. City builds are manual. GitHub Actions is disabled.
+Two releases carry the binary files that Git does not. `distribution/release.json` pins every file by name, size and SHA-256.
+
+- **`art`** holds the painted game's inputs: textures, converted packs, sounds, music, fonts and the third-party models the art conversions read. There is one archive to an asset, such as a creature, a vehicle or a set of sounds. `distribution/source-files.txt` lists every file in them. Reference pictures, films and concept models are not included.
+- **`map-kits`** holds one prepared kit to a city: the layers the map build reads, without the 8 to 10 GB of public downloads they were made from.
+
+Each file is named for its own bytes, so a release keeps old files beside new ones. A clone at any commit finds exactly the files its manifest names, and a new or changed asset adds one file. Both releases are drafts while the repository is private, which only its owner can download.
+
+Built clients and built maps are not published. Both must match one exact commit, and both come from the steps below.
 
 ## Installing
 
-Run `bun run media list` for the compressed download sizes. The installer verifies file sizes and SHA-256 before unpacking. An interrupted download can be retried. If an installed file has local edits, installation stops at that file and preserves it. Install a new release in a fresh checkout to keep local edits and earlier map cuts available.
+Run `bun run media list` to see what this commit pins and what is installed here.
 
-- `client` installs the ready-to-serve client and wiki under `var/release-client`. The server loads the boot pack, rigs, and clips from this same client.
-- `map CITY` installs the v9 map, bridge entrance metadata, source notices and download records under `var/maps`. The server produces compressed parts as needed. To precompute them, run `bun tools/map.ts pack var/maps/CITY.snmap`.
-- `kit CITY` restores one prepared cut to `var/mapdata/CITY`. Run `bun tools/maps/city.ts CITY` to make the map. A kit includes the prepared layers, stage hashes and OSM extract used by the world stage. Raw elevation and other upstream downloads stay on the preparation machine.
-- `art` restores all seven parts of the editable art set beside their tracked recipes. The verified installation writes the local `assets/.art-installed` marker. Full game builds use the converted packs, material sources and audio. Blender is only necessary when rebuilding art that uses Blender.
+- `bun run media art` installs every art archive beside the tracked recipes. `bun run media art core-creatures-dodo` installs one, and `bun run media art core-sfx` installs every archive whose name starts that way. Once every archive is in place the installer writes `assets/.art-installed`, and `bun run build` builds the painted game. Until then a build uses generated geometry and the built-in HUD. Blender is only needed to convert art again.
+- `bun run media kit CITY` restores one city's prepared cut to `var/mapdata/CITY`. `bun tools/maps/city.ts CITY` then makes `var/maps/CITY.snmap`. Stages whose code has changed since the kit was packed run again; the ones after the downloads need only the Python environment in [the map pipeline's notes](../tools/maps/README.md).
 
-## Preparing another release
+Downloads are kept under `var/downloads` and checked before unpacking, so an interrupted run can be repeated. A later run fetches only archives that are missing or changed. A file you have edited is left alone and stops the installation, unless the installer itself put it there or you pass `--force`.
 
-1. Build from a clean, named source commit. Update the art recipes and city definitions in Git. Keep upstream dataset requests, licences and SHA-256 records with their city.
-2. Update `distribution/source-files.txt` when adding or retiring binary inputs. With the full source inputs installed, run `python3 tools/release/pack-sources.py OUTPUT` to package the art. The inventory keeps old experiments, local saves and temporary downloads out of releases.
-3. Build the client and wiki into a clean output directory. Archive its contents under `var/release-client/`. Put the core BC and ASTC texture files in their own archives so each upload stays below 2 GiB. For each city, run the map pipeline and `bun tools/maps/kit.ts pack CITY`. Package the playable map and matching entrances, source notices and download records under `var/maps/`.
-4. Create a new release tag. Attach the files to a draft release. Pin the tag, source revision, filenames, byte counts and SHA-256 values in `distribution/release.json`. Test a fresh source build, one client/map install, and a kit rebuild. Match the uploaded digests and set the manifest status to `published` when publishing. Keep older releases available to commits that reference them.
+To host the game, build the client and the wiki (`bun run build`, `bun run wiki`), build a map for each city, and start a server for each as [the server's notes](../server/README.md) describe.
+
+## Packing
+
+1. `distribution/source-files.txt` is the inventory of binary inputs. With those files installed, `python3 tools/release/pack.py art OUTPUT` writes one archive to an asset and pins them in `distribution/release.json`. An asset that did not change packs to the same file as before.
+2. On the machine that built the cities, `bun tools/maps/kit.ts pack all` and then `python3 tools/release/pack.py kits OUTPUT` do the same for the kits.
+3. Upload the files the releases do not have yet with `gh release upload art OUTPUT/*` and `gh release upload map-kits OUTPUT/*`, then commit the manifest.
+
+City builds are manual. GitHub Actions is disabled.
 
 ## History
 

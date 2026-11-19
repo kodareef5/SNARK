@@ -10,11 +10,11 @@ import { unpackMeshes, type SourceDetails, type SourceMesh } from "../pack/write
 
 export const SOURCE = fileURLToPath(new URL("../../assets/source", import.meta.url));
 
-/** Installed by the media command after it verifies every art archive in the release. */
+/** Left by the media command once every art archive the manifest names is in place: the manifest's art id. */
 const receipt = fileURLToPath(new URL("../../assets/.art-installed", import.meta.url));
 const manifest = fileURLToPath(new URL("../../distribution/release.json", import.meta.url));
 export const ART = existsSync(receipt) && existsSync(manifest)
-  && readFileSync(receipt, "utf8").trim() === JSON.parse(readFileSync(manifest, "utf8")).tag;
+  && readFileSync(receipt, "utf8").trim() === JSON.parse(readFileSync(manifest, "utf8")).art?.id;
 
 /** Every file under `dir` whose name ends in `ending`, in name order, so every machine finds them in the same order. */
 export function filesUnder(dir: string, ending: string, out: string[] = []): string[] {

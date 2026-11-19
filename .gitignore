@@ -62,6 +62,7 @@ __pycache__/
 
 # The release installer restores binary art and reference media beside their recipes.
 /assets/.art-installed
+/assets/.art-archives.json
 /assets/source/maps/*/raw/
 /assets/source/maps/*/reports/
 /assets/**/*.bin
