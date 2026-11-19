@@ -531,8 +531,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // it is that again. It was 2546408971 until a tower's plant floor, screen, open storey's shade and hanging slab added
   // theirs; without them it is that again. It was 946739524 until the street's speed limits 25, 35 and 45, pay stations
   // and crosswalk bars added theirs; without them it is that again. It was 3461533038 until the yield sign and its bent
-  // form added theirs; without them it is that again.
-  expect(hash).toBe(44264498);
+  // form added theirs; without them it is that again. It was 44264498 until a low roofline's attic and raised parapet,
+  // the street list's bare balcony bay and cut shop fronts, and the ruins' ivy, moss and vines of uneven strands and the
+  // plants' vine meshes added theirs; without them it is that again.
+  expect(hash).toBe(806818637);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -565,8 +567,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // street's new signs, as above, and 1872585659 until a tall building's cornice, as above.
   // It was 1672489163 before the trailer, as above, 1576802991 until the street's working lamp, as above, and
   // 1144228197 until a tower's tops, as above, and 397096185 until the street's pay stations, crosswalks and three
-  // speed limits, as above, and 102222647 until the yield signs, as above.
-  expect(saddled.hash).toBe(2142902571);
+  // speed limits, as above, 102222647 until the yield signs, as above, and 2142902571 until a low roofline's, the street
+  // list's and the ivy, as above.
+  expect(saddled.hash).toBe(1161881608);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

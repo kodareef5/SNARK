@@ -49,7 +49,7 @@ test("a facade module's parts are known by their colour and the size of their fa
   }
   expect(stray).toEqual([]);
   const reveal = (kind: number): string[] => [...new Set(Object.entries(RUIN_FACADES).flatMap(([name, s]) => s.look!.boxes!.filter((b) => b.color === undefined).flatMap((b) => faces(b.half).filter(([w, h, up]) => facadeKind(0, w, h, up) === kind).map(() => name))))];
-  expect(reveal(KIND.jamb)).toEqual(["zstore"]);
+  expect(reveal(KIND.jamb)).toEqual(["zstore", "zstorecut", "zstorecutl"]);
   expect(reveal(KIND.pier)).toEqual(["zdeck", "zdecktop", "zgate"]);
 });
 

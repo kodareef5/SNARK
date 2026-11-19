@@ -1,10 +1,11 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_NEAR, WORLD_RISE, WorldFinishes, finishMetres, edgeOf, edged, roadWorn, walkMeet, walkWorn, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadWorn, walkMeet, walkWorn, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
 import { srgbToLinear } from "../../client/core/render/surface.ts";
 import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
 import type { PackMaterial, PackTexture } from "../../shared/pack/pack.ts";
@@ -165,38 +166,91 @@ artTest("each finish's painted size, relief and module are the ones the renderer
   expect(JSON.parse(readFileSync(join(WORLD_ART, "grass", "material.json"), "utf8")).metres).toBe(SURFACE_FINISHES.grass.metres);
 });
 
-test("a frame asks for every finish as wide as its tier keeps them, tells the card the finest level all have come to, and has them taken again when that side changes", () => {
+/** Each finish's material and its three maps, then the masks' where `masks`, as a pack lists them: base colour and normal 2048 across, the packed map 1024. */
+function finishPack(masks: boolean): { materials: PackMaterial[]; textures: PackTexture[] } {
   const roles = ["base", "normal", "mro"] as const;
-  const materials: PackMaterial[] = SURFACE_NAMES.map((name, k) => ({ id: surfaceMaterial(name), base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
-  const textures: PackTexture[] = materials.flatMap((m) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : 2048 })));
-  const n = SURFACE_NAMES.length, held = new Int8Array(n * 3).fill(-1), asked: number[] = [], again: number[] = [];
-  const residency = { format: "bc" as const, material: (m: number, pixels: number, _distance: number, roles = 3) => asked.push(m * 10000 + pixels + (roles === 3 ? 0 : roles / 10)), holds: (t: number) => held[t]!, canHave: () => true, again: (t: number) => { again.push(t); held[t] = -1; } };
+  const ids = [...SURFACE_NAMES.map(surfaceMaterial), ...(masks ? MASK_MATERIALS : [])];
+  const materials: PackMaterial[] = ids.map((id, k) => ({ id, base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
+  return { materials, textures: materials.flatMap((m, k) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : k >= SURFACE_NAMES.length ? 64 : 2048 }))) };
+}
+/** A residency that holds `held` steps by texture and keeps the pixels each texture was last asked for at. */
+function finishResidency(held: Int8Array, again: number[] = []) {
+  const asked = new Map<number, number>(), asks: string[] = [];
+  return { asked, asks, format: "bc" as const, shown: (t: number, px: number, weight: number, needed: boolean) => void (asked.set(t, px), asks.push(`${weight} ${needed}`)), holds: (t: number) => held[t]!, canHave: () => true, again: (t: number) => void (again.push(t), (held[t] = -1)) };
+}
+/** Every surface at the eye, and none within reach. */
+const AT_EYE = new Float32Array(NEAR_GLASS + 1), NONE = new Float32Array(NEAR_GLASS + 1).fill(Infinity);
+
+test("a frame asks for each finish's maps no wider than its tier keeps them, tells the card the finest level any layer has come to and each layer's own over it, and has them taken again when that side changes", () => {
+  const { materials, textures } = finishPack(false);
+  const n = SURFACE_NAMES.length, held = new Int8Array(n * 3).fill(-1), again: number[] = [];
+  const residency = finishResidency(held, again);
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
-  finishes.frame(p, residency, tierOf("high"));
-  expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([n, 1024, [1024, 1024, 512], [-1, -1, -1], n * 3]);
-  // Every texture at its first step but one base colour a step further: the arrays are drawn from their 64-pixel level.
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect([residency.asked.size, residency.asked.get(0), residency.asked.get(1), residency.asked.get(2), [...p.worldSide], [...p.worldLevel], again.length]).toEqual([n * 3, 1024, 1024, 512, [1024, 1024, 512], [-1, -1, -1], n * 3]);
+  // Every texture at its first step but one base colour a step further: its array is read from that one's 128-pixel
+  // level, every other layer held a level over it, at its 64.
   held.fill(0); held[0] = 1;
-  finishes.frame(p, residency, tierOf("high"));
-  expect([...p.worldLevel]).toEqual([4, 4, 3]);
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect([[...p.worldLevel], p.worldLeast[0], p.worldLeast[3], p.worldLeast[1], p.worldLeast[2]]).toEqual([[3, 4, 3], 0, 1, 0, 0]);
+  // Come to their widest, the arrays are read from their widest; a layer that came down eases to it, WORLD_EASE a frame.
   held.fill(4); held[2] = 3;
-  finishes.frame(p, residency, tierOf("high"));
-  expect([...p.worldLevel]).toEqual([0, 0, 0]);
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect([[...p.worldLevel], p.worldLeast[0], p.worldLeast[3]]).toEqual([[0, 0, 0], 3 - WORLD_EASE, 4 - WORLD_EASE]);
+  for (let f = 0; f < 4 / WORLD_EASE; f++) finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect(p.worldLeast.every((v) => v === 0)).toBe(true);
+  // One let go to its first step is held there at once.
+  held[3] = 0;
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect([p.worldLevel[0], p.worldLeast[3]]).toEqual([0, 4]);
   again.length = 0;
   // A frame drawn without the edges (`?off=edges`) is followed by one with them.
   p.frame[FRAME.edgesOff] = 1;
-  finishes.frame(p, residency, tierOf("ultra"));
+  finishes.frame(p, residency, tierOf("ultra"), AT_EYE, 1000);
   expect(p.frame[FRAME.edgesOff]).toBe(0);
   expect([[...p.worldSide], [...p.worldLevel], again.length]).toEqual([[2048, 2048, 1024], [-1, -1, -1], n * 3]);
   // The touch rule's light finish reads the base colour alone: only that is asked for and held, and the rest let go.
-  held.fill(4); asked.length = 0; again.length = 0;
-  finishes.frame(p, residency, forTouch(tierOf("high"), true));
-  expect([asked.length, asked[0], [...p.worldSide], [...p.worldLevel], again.length]).toEqual([n, 1024.1, [1024, 0, 0], [-1, -1, -1], n * 3]);
+  held.fill(4); residency.asked.clear(); again.length = 0;
+  finishes.frame(p, residency, forTouch(tierOf("high"), true), AT_EYE, 1000);
+  expect([residency.asked.size, residency.asked.get(0), [...p.worldSide], [...p.worldLevel], again.length]).toEqual([n, 1024, [1024, 0, 0], [-1, -1, -1], n * 3]);
   held.fill(4);
-  finishes.frame(p, residency, forTouch(tierOf("high"), true));
+  finishes.frame(p, residency, forTouch(tierOf("high"), true), AT_EYE, 1000);
   expect([...p.worldLevel]).toEqual([0, -1, -1]);
-  finishes.frame(p, residency, tierOf("lowpoly"));
+  finishes.frame(p, residency, tierOf("lowpoly"), AT_EYE, 1000);
   expect([[...p.worldSide], [...p.worldLevel]]).toEqual([[0, 0, 0], [-1, -1, -1]]);
   for (const tier of TIERS) expect([tier.name, tier.finishes]).toEqual([tier.name, { lowpoly: 0, medium: 512, high: 1024, ultra: 2048 }[tier.name]]);
+});
+
+test("each finish is asked for as wide as its nearest surface shows it, twice where the tier reads at a slant; a mask as the nearest of what reads it needs, concrete where paint lets go to it; never wider than the tier keeps, and its first step alone where nothing shows it", () => {
+  const { materials, textures } = finishPack(true);
+  const n = SURFACE_NAMES.length, held = new Int8Array(textures.length).fill(4);
+  const residency = finishResidency(held);
+  const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
+  const id = (name: string): number => (SURFACE_NAMES as readonly string[]).indexOf(name);
+  const near = NONE.slice();
+  near[id("asphalt")] = 2.5;
+  near[id("plaster")] = 10;
+  near[NEAR_WALL] = 8;
+  const at = (finish: number, role: number): number => residency.asked.get(3 * finish + role)!;
+  finishes.frame(p, residency, tierOf("high"), near, 500);
+  // 500 pixels a metre a metre off, a tile of asphalt 2.5 m across 2.5 m off, twice: 1000; plaster 10 m off, 250. Their
+  // packed maps as wide, but no wider than the packed array's 512.
+  expect([at(id("asphalt"), 0), at(id("asphalt"), 1), at(id("asphalt"), 2), at(id("plaster"), 0), at(id("plaster"), 2)]).toEqual([1000, 1000, 512, 250, 250]);
+  expect([SURFACE_WEATHERING.plaster.peel > 0, at(id("concrete"), 0), at(id("grass"), 0), at(id("grass"), 2)]).toEqual([true, (2 * 500 * finishMetres(id("concrete"), p.surfaceCity)) / 10, 0, 0]);
+  // The weathering a storey of 4 m on a wall 8 m off; the road's macro and its repairs on the asphalt, to the array's side.
+  expect([at(n, 2), at(n + 1, 2), at(n + 2, 2), residency.asked.has(3 * n)]).toEqual([500, 512, 512, false]);
+  // Read head on, once: half as wide; and no wider than medium keeps them.
+  finishes.frame(p, residency, { ...tierOf("high"), anisotropy: 1 }, near, 500);
+  expect([at(id("asphalt"), 0), at(id("plaster"), 0)]).toEqual([500, 125]);
+  finishes.frame(p, residency, tierOf("medium"), AT_EYE, 500);
+  expect([at(id("asphalt"), 0), at(id("asphalt"), 2)]).toEqual([512, 256]);
+});
+
+test("every read of the finishes' arrays goes through worldGrad, held to its layer's finest level on the card, which widens a read only where a level less than that could be read", () => {
+  for (const text of [WORLD_GLSL, ROAD_GLSL]) expect(text.match(/textureGrad\(uWorld/g)).toBeNull();
+  expect(WORLD_GLSL.match(/textureGrad\(/g)!.length).toBe(1);
+  for (const read of ["worldBase(q, id, dx, dy)", "worldOrm(q, id, dx, dy)", "worldNormal(qb, id, bx, by)", `worldOrm(q, ${WEATHER_LAYER}, gx, gy)`]) expect(WORLD_GLSL).toContain(read);
+  for (const layer of [ROAD_LAYER, REPAIRS_LAYER]) expect(ROAD_GLSL).toContain(`, ${layer}, `);
 });
 
 test("the eye's place in each finish's tiles is given to the card without its whole tiles, so a far corner of the map reads its texture as finely as the middle", () => {
@@ -277,21 +331,18 @@ test("a wall weathers by the masks: runoff more under open sky, a damp foot near
   expect(at("concrete", { over: 3.6 })[0]!).toBeLessThan(at("concrete", { over: 0.6 })[0]!);
 });
 
-test("with the weathering masks in the pack, a frame asks for them as wide as the packed array keeps, and the array is not drawn until they are in", () => {
-  const roles = ["base", "normal", "mro"] as const;
-  const ids = [...SURFACE_NAMES.map(surfaceMaterial), "core:zz_world/weather"];
-  const materials: PackMaterial[] = ids.map((id, k) => ({ id, base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
-  const n = SURFACE_NAMES.length, textures: PackTexture[] = materials.flatMap((m, k) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : k === n ? 64 : 2048 })));
-  const held = new Int8Array(n * 3 + 3).fill(4), asked: number[] = [];
-  const residency = { format: "bc" as const, material: (m: number, pixels: number) => asked.push(m * 10000 + pixels), holds: (t: number) => held[t]!, canHave: () => true, again: (t: number) => { held[t] = -1; } };
+test("with the masks in the pack, a frame asks for their packed maps alone, as wide as the packed array keeps, and the array is not drawn until they are in", () => {
+  const { materials, textures } = finishPack(true);
+  const n = SURFACE_NAMES.length, held = new Int8Array(textures.length).fill(4);
+  const residency = finishResidency(held);
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
-  finishes.frame(p, residency, tierOf("high"));
-  expect([asked.length, asked[n]]).toEqual([n + 1, n * 10000 + 512]);
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
+  expect([residency.asked.size, residency.asked.get(3 * n + 2), residency.asked.has(3 * n)]).toEqual([n * 3 + 3, 512, false]);
   held.fill(4); held[n * 3 + 2] = -1;
-  finishes.frame(p, residency, tierOf("high"));
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
   expect([...p.worldLevel]).toEqual([0, 0, -1]);
   held[n * 3 + 2] = 3;
-  finishes.frame(p, residency, tierOf("high"));
+  finishes.frame(p, residency, tierOf("high"), AT_EYE, 1000);
   expect([...p.worldLevel]).toEqual([0, 0, 0]);
 });
 
@@ -328,29 +379,29 @@ test("the finishes are drawn from their base colours as soon as those have all c
   const roles = ["base", "normal", "mro"] as const;
   const materials: PackMaterial[] = SURFACE_NAMES.map((name, k) => ({ id: surfaceMaterial(name), base: 3 * k, normal: 3 * k + 1, mro: 3 * k + 2, mask: -1, mask2: -1, tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 }));
   const textures: PackTexture[] = materials.flatMap((m) => roles.map((role) => ({ id: `${m.id}/${role}`, role, top: role === "mro" ? 1024 : 2048 })));
-  const n = SURFACE_NAMES.length, held = new Int8Array(n * 3).fill(-1), asks: string[] = [];
-  const residency = { format: "bc" as const, material: (_m: number, _pixels: number, distance: number, roles = 3, needed = false) => asks.push(`${distance} ${roles} ${needed}`), holds: (t: number) => held[t]!, canHave: () => true, again: () => {} };
+  const n = SURFACE_NAMES.length, held = new Int8Array(n * 3).fill(-1);
+  const residency = finishResidency(held);
   const finishes = new WorldFinishes(materials, textures), p = new FramePacket();
-  // Nothing in: drawn as their means while they can come. Every finish is asked for as near as WORLD_NEAR with each of its maps needed.
-  finishes.frame(p, residency, tierOf("high"));
-  expect([[...p.worldLevel], p.worldEarly, p.worldComing, [...new Set(asks)]]).toEqual([[-1, -1, -1], 1, true, [`${WORLD_NEAR} 3 true`]]);
+  // Nothing in: drawn as their means while they can come. Every map is asked for as if WORLD_NEAR off, and needed.
+  finishes.frame(p, residency, tierOf("high"), NONE, 1000);
+  expect([[...p.worldLevel], p.worldEarly, p.worldComing, [...new Set(residency.asks)]]).toEqual([[-1, -1, -1], 1, true, [1, 0.5, 0.25].map((w) => `${w / WORLD_NEAR} true`)]);
   // Where nothing can bring them (a picture made with no network), they are not drawn early but plain, as before them.
-  finishes.frame(p, { ...residency, canHave: () => false }, tierOf("high"));
+  finishes.frame(p, { ...residency, canHave: () => false }, tierOf("high"), NONE, 1000);
   expect(p.worldComing).toBe(false);
   // The base colours in: drawn from them alone, early.
   for (let k = 0; k < n; k++) held[3 * k] = 0;
-  finishes.frame(p, residency, tierOf("high"));
+  finishes.frame(p, residency, tierOf("high"), NONE, 1000);
   expect([p.worldLevel[0]! >= 0, p.worldLevel[1], p.worldLevel[2], p.worldEarly]).toEqual([true, -1, -1, 1]);
   // All in: early falls to 0 over WORLD_RISE frames, and comes back to 1 if a map is let go.
   held.fill(0);
   const rise: number[] = [];
   for (let f = 0; f < WORLD_RISE + 2; f++) {
-    finishes.frame(p, residency, tierOf("high"));
+    finishes.frame(p, residency, tierOf("high"), NONE, 1000);
     rise.push(p.worldEarly);
   }
   expect([rise[0]!, rise.every((e, k) => k === 0 || e <= rise[k - 1]!), rise.at(-1)]).toEqual([1 - 1 / WORLD_RISE, true, 0]);
   held[5] = -1;
-  finishes.frame(p, residency, tierOf("high"));
+  finishes.frame(p, residency, tierOf("high"), NONE, 1000);
   expect(p.worldEarly).toBe(1);
 });
 

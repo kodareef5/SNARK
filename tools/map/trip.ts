@@ -4,7 +4,8 @@
 // (client/core/trip.ts). The body joins on the map's thickest street; goes 300 m up once the street round it is drawn
 // sharp, or PATIENCE.street seconds on; waits there until the far city is drawn or two thirds of the map have come, so that
 // it jumps while the map still comes; then jumps to the thickest street 4 km away, whose sector's ground is answered 503 at
-// its first ask. Each moment it prints comes with the bytes of art and of the map the page had in hand then.
+// its first ask. Each moment it prints comes with the bytes of art and of the map the page had in hand then, and the art
+// is told by kind as the body goes up (client/core/trip.ts `art`).
 // It prints, by the page's clock: the first frame; the first in which the street is drawn with its pieces and materials;
 // the first in which the far city is drawn; the last part; after the jump, the time until the body is predicted again,
 // until the ground the fine terrain draws is the map's own and until the street there is drawn; whether the failed part
@@ -261,6 +262,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await until(PATIENCE.street, () => on("street") !== undefined);
     await shot("street", on("street"));
     const street = JSON.stringify(await page.value("globalThis.snarkTrip?.state()"));
+    const kinds = await page.value<Record<string, number>>("globalThis.snarkTrip?.art() ?? {}");
     // Up, standing on nothing, once the street is drawn or the trip has waited long enough for it.
     const ents = server.host.world.ents;
     const e = server.host.game.clients.find((c) => c?.name === "trip")!.ent;
@@ -333,6 +335,7 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     const at = (m: TripMark | undefined): string => (m ? `${s(m.at)} at ${m.x}, ${m.z}` : "never");
     const joined = on("street");
     say(`  street drawn with its materials       ${joined !== undefined && joined < upAt ? s(joined) : `not before the body went up (${street})`}; the street jumped to, ${later(jump === undefined ? undefined : on("street", jump), jump)}${bytes("street")}`);
+    say(`  art by kind when the body went up     ${Object.entries(kinds).map(([k, n]) => `${k} ${(n / 1e6).toFixed(1)}`).join(", ")} MB`);
     say(`  far city drawn                        ${at(far)}${bytes("far")}`);
     /** When `what` came, if it held when the body went up, else why not. */
     const held = (what: string): string => {

@@ -5,7 +5,9 @@ import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { FRAME, type FramePacket } from "./packet.ts";
+import { WEIGHT } from "../assets/residency.ts";
+import { NEAR_WALL } from "./finish-near.ts";
+import { FRAME, WORLD_LAYERS, type FramePacket } from "./packet.ts";
 import { srgbToLinear } from "./surface.ts";
 
 type Out = Float64Array;
@@ -38,7 +40,7 @@ export const WORLD_BASE: readonly (readonly [number, number, number, number])[] 
 export const WORLD_FAR = -4;
 export const WORLD_FAR_BAND = 1;
 /**
- * The metres the finishes are asked for as if they were off (assets/residency.ts `material`): their maps' first steps
+ * The metres the finishes are asked for as if they were off (assets/residency.ts `shown`): their maps' first steps
  * come before every other texture's but those nearer the eye than about 1.4 m, base colours first and the packed
  * maps last, and after the meshes' pages. They colour the whole screen.
  */
@@ -91,21 +93,33 @@ export function worldPhase(out: Float32Array, x: number, y: number, z: number, c
 /** What the finishes need of the textures' residency (assets/residency.ts). */
 export interface FinishResidency {
   readonly format: TextureFormat;
-  material(m: number, pixels: number, distance: number, roles?: number, needed?: boolean): void;
+  shown(t: number, px: number, weight: number, needed: boolean): void;
   holds(t: number): number;
   canHave(t: number): boolean;
   again(t: number): void;
 }
 
+/** How many times its nearest surface's pixels a tile a finish is wanted at: twice where the tier reads at a slant, whose taps may read a level finer. */
+export const finishTaps = (tier: Tier): number => (tier.anisotropy > 1 ? 2 : 1);
+/** Levels a frame a layer's finest level in hand comes down by on the card once a finer one has come (`worldLeast`). */
+export const WORLD_EASE = 0.25;
+/** Metres nearer than which a surface is wanted as if it were this near. */
+const NEAREST = 0.25;
+
 /**
- * The world finishes' materials, a frame at a time: each is asked for as wide as the tier keeps them, and the card is
- * told the side of the array it keeps each role in, a layer a finish, and the finest level every layer has come to.
- * When the side changes the card makes its arrays again, so their textures are taken again from their first step.
+ * The world finishes' maps, a frame at a time. Each layer of each role is asked for as wide as its nearest surface
+ * shows it (finish-near.ts), no wider than the tier keeps them and never less than its first step; the card is told the
+ * side of the array it keeps each role in, the finest level any layer has come to, which it reads from, and for each
+ * layer how far over that the finest it holds lies, so that no read takes a level it has not had. A layer that comes
+ * to a finer level eases down to it over frames. When the side changes the card makes its arrays again, so their
+ * textures are taken again from their first step.
  */
 export class WorldFinishes {
   private readonly materials: number[];
-  /** Each role's textures, a finish each, by their index in the manifest, the role's top, and its top against the base colour's. */
+  /** Each role's textures by their index in the manifest, and each one's layer of the array: a finish each, then the masks'. */
   private readonly textures: number[][];
+  private readonly layers: number[][];
+  /** Each role's top, and its top against the base colour's. */
   private readonly tops: number[];
   private readonly share: number[];
   private side = 0;
@@ -113,16 +127,17 @@ export class WorldFinishes {
   /** Frames since every map has come, up to WORLD_RISE; and whether a frame has been drawn without them since the finishes were asked for, which the rise is for. */
   private risen = 0;
   private drawnEarly = false;
-
-  /** The masks' materials (the weathering's and the road's), whose packed maps are the packed array's layers after the finishes', or -1 each. */
-  private readonly masks: number[];
+  /** Per layer and role as `worldLeast` lays them out, the finest level the card reads, counted from the array's widest. */
+  private readonly read = new Float32Array(WORLD_LAYERS * 3);
 
   constructor(materials: readonly PackMaterial[], textures: readonly PackTexture[]) {
     const found = SURFACE_NAMES.map((name) => materials.findIndex((m) => m.id === surfaceMaterial(name)));
     this.materials = found.every((m) => m >= 0) ? found : [];
-    this.masks = MASK_MATERIALS.map((id) => (this.materials.length ? materials.findIndex((m) => m.id === id) : -1));
+    const masks = MASK_MATERIALS.map((id) => (this.materials.length ? materials.findIndex((m) => m.id === id) : -1));
     const roles = ["base", "normal", "mro"] as const;
-    this.textures = roles.map((role, r) => [...this.materials, ...(r === 2 ? this.masks.filter((m) => m >= 0) : [])].map((m) => materials[m]![role]));
+    const layers = roles.map((_, r) => [...this.materials.map((_, i) => i), ...(r === 2 ? masks.flatMap((m, k) => (m >= 0 ? [WEATHER_LAYER + k] : [])) : [])]);
+    this.layers = layers;
+    this.textures = roles.map((role, r) => layers[r]!.map((l) => materials[l < WEATHER_LAYER ? this.materials[l]! : masks[l - WEATHER_LAYER]!]![role]));
     this.tops = this.textures.map((ts) => (ts.length ? textures[ts[0]!]!.top : 0));
     this.share = this.tops.map((top) => top / (this.tops[0] || 1));
   }
@@ -131,7 +146,12 @@ export class WorldFinishes {
     return this.materials.length > 0;
   }
 
-  frame(p: FramePacket, residency: FinishResidency, tier: Tier): void {
+  /**
+   * `near` is metres from the eye to the nearest surface of each finish and the nearest wall (finish-near.ts), and
+   * `scale` the pixels a metre covers on screen a metre off. A layer is wanted at as many pixels a tile as its nearest
+   * surface shows, times `finishTaps`.
+   */
+  frame(p: FramePacket, residency: FinishResidency, tier: Tier, near: ArrayLike<number>, scale: number): void {
     const side = this.present && tier.lit ? tier.finishes : 0;
     // The touch rule's light finish reads the base colour alone, so it neither fetches nor holds the others.
     const roles = tier.finish === "light" ? 1 : 3;
@@ -141,18 +161,40 @@ export class WorldFinishes {
     }
     this.side = side;
     this.roles = roles;
-    for (const m of this.materials) if (side > 0) residency.material(m, side, WORLD_NEAR, roles, true);
-    // A mask's material is widest in its packed map, which is kept as wide as the finishes' are.
-    if (side > 0 && roles === 3) for (const m of this.masks) if (m >= 0) residency.material(m, side >> 1, WORLD_NEAR, 3, true);
+    const taps = finishTaps(tier);
+    const shown = (metres: number, at: number): number => (taps * scale * metres) / Math.max(at, NEAREST);
     for (let r = 0; r < 3; r++) {
       const along = r < roles ? Math.min(side * this.share[r]!, topIn(residency.format, this.tops[r]!)) : 0;
-      let level = along > 0 ? 0 : -1;
-      for (const t of this.textures[r]!) {
+      const ts = this.textures[r]!, ls = this.layers[r]!;
+      let level = along > 0 ? 0 : -1, finest = Infinity;
+      for (let k = 0; k < ts.length; k++) {
+        const t = ts[k]!, l = ls[k]!;
+        if (along > 0) {
+          let px = 0;
+          if (l < WEATHER_LAYER) {
+            let at = near[l]!;
+            // Paint let go on a wall shows the concrete under it.
+            if (l === CONCRETE) for (const f of PEELED) at = Math.min(at, near[f]!);
+            px = shown(finishMetres(l, p.surfaceCity), at);
+          } else {
+            const reads = MASK_READS[l - WEATHER_LAYER]!;
+            for (let j = 0; j < reads.length; j += 2) px = Math.max(px, shown(reads[j + 1]!, near[reads[j]!]!));
+          }
+          residency.shown(t, Math.min(along, px), WEIGHT[r]! / WORLD_NEAR, true);
+        }
         const held = residency.holds(t);
-        level = held < 0 || level < 0 ? -1 : Math.max(level, Math.log2(along / Math.min(along, STEP0_SIZE << held)));
+        if (held < 0 || level < 0) {
+          level = -1;
+          continue;
+        }
+        const at = Math.log2(along / Math.min(along, STEP0_SIZE << held)), was = this.read[l * 3 + r]!;
+        finest = Math.min(finest, at);
+        this.read[l * 3 + r] = at > was ? at : Math.max(at, was - WORLD_EASE);
       }
+      if (level >= 0) level = finest;
       p.worldSide[r] = along;
       p.worldLevel[r] = level;
+      for (const l of ls) p.worldLeast[l * 3 + r] = level < 0 ? 0 : this.read[l * 3 + r]! - level;
     }
     // Drawn from the base colours alone, the far path's way, until the normals and packed maps have all come too.
     const full = p.worldLevel[0]! >= 0 && (roles < 3 || (p.worldLevel[1]! >= 0 && p.worldLevel[2]! >= 0));
@@ -599,7 +641,19 @@ export const ROAD_REPAIRS = 8;
 const TAR = [0.03, 0.029, 0.027] as const;
 /** How rough tar is, and the roughness a joint or a seal comes to. */
 const TAR_ROUGH = 0.42;
-const ASPHALT = SURFACE_NAMES.indexOf("asphalt"), SAND = SURFACE_NAMES.indexOf("sand");
+const ASPHALT = SURFACE_NAMES.indexOf("asphalt"), SAND = SURFACE_NAMES.indexOf("sand"), SIDEWALK = SURFACE_NAMES.indexOf("sidewalk");
+/** The finishes whose paint lets go to the concrete under it on a wall (`weathered`). */
+const PEELED = SURFACE_NAMES.flatMap((name, i) => (SURFACE_WEATHERING[name].peel > 0 ? [i] : []));
+/**
+ * What reads each mask, in pairs: its slot in finish-near.ts's distances and the metres a tile it reads at. The statics'
+ * walls the weathering, a storey up; asphalt and sand the macro, a walk too for the stains of its panels; asphalt the
+ * repairs, and a walk for its panels' cracks.
+ */
+const MASK_READS: readonly (readonly number[])[] = [
+  [NEAR_WALL, WEATHER_STOREY],
+  [ASPHALT, ROAD_MACRO, SAND, ROAD_MACRO, SIDEWALK, 3],
+  [ASPHALT, ROAD_REPAIRS, SIDEWALK, ROAD_REPAIRS],
+];
 /** The beach's second copy of its macro: turned an eighth and this many metres a tile, so the two never line up. */
 const BEACH_TURN = Math.SQRT1_2, BEACH_SECOND = 41;
 const roadMask = new Float64Array(4);
@@ -754,6 +808,10 @@ uniform vec3 uWorldPhase[${N}];
 uniform vec4 uSurfaceCity[3];
 uniform float uWorldReady;
 uniform highp sampler2DArray uWorldBase, uWorldNormal, uWorldOrm;
+uniform vec3 uWorldLeast[${WORLD_LAYERS}];
+#ifndef WORLD_TAPS
+#define WORLD_TAPS 16.0
+#endif
 ${vectors("WF", finishes.map((f) => [f.metres, f.bump, f.rough, f.metal]))}
 ${vectors("WT", finishes.map((f) => [...f.tint, f.palette]))}
 ${vectors("WW", finishes.map((f) => [f.weather, f.wetness, f.growth, f.mean[1]!]))}
@@ -775,6 +833,21 @@ float higher(float a, float b, float t, float scale, float band) {
   float wa = max(ha - top, 0.0), wb = max(hb - top, 0.0);
   return wb / (wa + wb);
 }
+// A read of an array's layer at q held to the finest level of it on the card, \`least\` levels over the array's base
+// (FramePacket worldLeast): where the card could read finer, the steps between pixels are widened until it cannot, a
+// slanted read taken as the next power of two taps up to the tier's anisotropy. A level never put on the card is never read.
+vec4 worldGrad(highp sampler2DArray s, vec2 q, int layer, vec2 dx, vec2 dy, float least) {
+  if (least > 0.0) {
+    float side = float(textureSize(s, 0).x), a = length(dx) * side, b = length(dy) * side, major = max(max(a, b), 1e-9);
+    float k = max(1.0, exp2(least) * min(exp2(ceil(log2(major / max(min(a, b), 1e-9)))), WORLD_TAPS) / major);
+    dx *= k;
+    dy *= k;
+  }
+  return textureGrad(s, vec3(q, float(layer)), dx, dy);
+}
+vec4 worldBase(vec2 q, int layer, vec2 dx, vec2 dy) { return worldGrad(uWorldBase, q, layer, dx, dy, uWorldLeast[layer].x); }
+vec4 worldNormal(vec2 q, int layer, vec2 dx, vec2 dy) { return worldGrad(uWorldNormal, q, layer, dx, dy, uWorldLeast[layer].y); }
+vec4 worldOrm(vec2 q, int layer, vec2 dx, vec2 dy) { return worldGrad(uWorldOrm, q, layer, dx, dy, uWorldLeast[layer].z); }
 vec2 lean(vec4 nn) { return (nn.WORLD_NORMAL * 255.0 - 128.0) / 127.5; }
 // Where tile point q is on a finish's second copy, turned and moved or moved by whole modules.
 vec2 secondAt(vec2 q, int id) {
@@ -787,12 +860,11 @@ vec2 worldRelief(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, bool 
   vec2 along = -view.xy / view.z * depth / ${fl(RELIEF_STEPS)};
   bool turned = second && WM[id].x == 0.0;
   vec2 gx = turned ? vec2(-dx.y, dx.x) : dx, gy = turned ? vec2(-dy.y, dy.x) : dy;
-  float layer = float(id);
-  float above = 1.0 - textureGrad(uWorldOrm, vec3(second ? secondAt(q, id) : q, layer), gx, gy).a, under = 0.0;
+  float above = 1.0 - worldOrm(second ? secondAt(q, id) : q, id, gx, gy).a, under = 0.0;
   int k = 1;
   for (; k <= ${RELIEF_STEPS}; k++) {
     vec2 p = q + along * float(k);
-    under = textureGrad(uWorldOrm, vec3(second ? secondAt(p, id) : p, layer), gx, gy).a - (1.0 - float(k) / ${fl(RELIEF_STEPS)});
+    under = worldOrm(second ? secondAt(p, id) : p, id, gx, gy).a - (1.0 - float(k) / ${fl(RELIEF_STEPS)});
     if (under >= 0.0) break;
     above = -under;
   }
@@ -826,21 +898,20 @@ void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out ve
 #endif
   vec2 qb = secondAt(q, id);
   vec2 bx = turned ? vec2(-dx.y, dx.x) : dx, by = turned ? vec2(-dy.y, dy.x) : dy;
-  float layer = float(id);
   vec4 b0 = vec4(0.0), r0 = vec4(0.0), b1 = vec4(0.0), r1 = vec4(0.0);
   vec2 n0 = vec2(0.0), n1 = vec2(0.0);
   if (t < 1.0) {
-    b0 = textureGrad(uWorldBase, vec3(q, layer), dx, dy);
+    b0 = worldBase(q, id, dx, dy);
     if (far < 1.0 && early < 1.0) {
-      r0 = textureGrad(uWorldOrm, vec3(q, layer), dx, dy);
-      n0 = lean(textureGrad(uWorldNormal, vec3(q, layer), dx, dy));
+      r0 = worldOrm(q, id, dx, dy);
+      n0 = lean(worldNormal(q, id, dx, dy));
     }
   }
   if (t > 0.0) {
-    b1 = textureGrad(uWorldBase, vec3(qb, layer), bx, by);
+    b1 = worldBase(qb, id, bx, by);
     if (early < 1.0) {
-      r1 = textureGrad(uWorldOrm, vec3(qb, layer), bx, by);
-      n1 = lean(textureGrad(uWorldNormal, vec3(qb, layer), bx, by));
+      r1 = worldOrm(qb, id, bx, by);
+      n1 = lean(worldNormal(qb, id, bx, by));
       if (turned) n1 = vec2(-n1.y, n1.x);
     }
   }
@@ -926,7 +997,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, vec3 own, vec2 place, 
   vec2 q = vec2(along / ${fl(WEATHER_BAY)} + floor(k / 2.0) * 0.25, -over / ${fl(WEATHER_STOREY)});
   vec2 gx = vec2((facesZ ? ox.x : ox.z) * flip / ${fl(WEATHER_BAY)}, -dpx.y / ${fl(WEATHER_STOREY)});
   vec2 gy = vec2((facesZ ? oy.x : oy.z) * flip / ${fl(WEATHER_BAY)}, -dpy.y / ${fl(WEATHER_STOREY)});
-  vec4 m = textureGrad(uWorldOrm, vec3(q, ${fl(WEATHER_LAYER)}), gx, gy);
+  vec4 m = worldOrm(q, ${WEATHER_LAYER}, gx, gy);
   float dirty = smoothstep(0.5, 0.75, surfaceNoise(vec2(p.x / 31.0 + 11.3, p.z / 31.0 + 5.7)));
   float leak = (0.3 + 0.7 * fract(seed * 7.13)) * (0.55 + 0.9 * surfaceNoise(vec2(p.x / 41.0 + 3.1, p.z / 41.0 + 7.7))) * (1.0 + dirty);
   vec4 x = WX[id];
@@ -941,7 +1012,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, vec3 own, vec2 place, 
       bool facesX = abs(face.x) > abs(face.z);
       vec2 qc = facesX ? vec2(rel.z / mc + ph.z, -rel.y / mc - ph.y) : vec2(rel.x / mc + ph.x, -rel.y / mc - ph.y);
       vec2 cx = (facesX ? vec2(dpx.z, -dpx.y) : vec2(dpx.x, -dpx.y)) / mc, cy = (facesX ? vec2(dpy.z, -dpy.y) : vec2(dpy.x, -dpy.y)) / mc;
-      bare = textureGrad(uWorldBase, vec3(qc, ${fl(CONCRETE)}), cx, cy).rgb;
+      bare = worldBase(qc, ${CONCRETE}, cx, cy).rgb;
     }
     albedo = (mix(albedo, vec3(grey * 1.1), chalk) * (1.0 - lost) + bare * uSurfaceCity[0].rgb * 0.85 * lost) * (1.0 - 0.3 * rim);
   }
@@ -1065,18 +1136,18 @@ void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec3 dpx, vec3 
   if (mod(fFacade.w, 2.0) > 0.5 || (id != ${SAND} && id != ${ASPHALT})) return;
   if (id == ${SAND}) {
     vec2 tx = vec2(dpx.x - dpx.z, dpx.x + dpx.z) * ${fl(BEACH_TURN / BEACH_SECOND)}, ty = vec2(dpy.x - dpy.z, dpy.x + dpy.z) * ${fl(BEACH_TURN / BEACH_SECOND)};
-    float first = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_MACRO)}, ${fl(ROAD_LAYER)}), dpx.xz / ${fl(ROAD_MACRO)}, dpy.xz / ${fl(ROAD_MACRO)}).g;
-    float second = textureGrad(uWorldOrm, vec3(vec2(p.x - p.z, p.x + p.z) * ${fl(BEACH_TURN / BEACH_SECOND)} + vec2(0.37, 0.71), ${fl(ROAD_LAYER)}), tx, ty).g;
+    float first = worldOrm(p.xz / ${fl(ROAD_MACRO)}, ${ROAD_LAYER}, dpx.xz / ${fl(ROAD_MACRO)}, dpy.xz / ${fl(ROAD_MACRO)}).g;
+    float second = worldOrm(vec2(p.x - p.z, p.x + p.z) * ${fl(BEACH_TURN / BEACH_SECOND)} + vec2(0.37, 0.71), ${ROAD_LAYER}, tx, ty).g;
     albedo *= (1.0 + (first - 0.5) * ${fl(ROAD_LOOK.beach)}) * (1.0 + (second - 0.5) * ${fl(ROAD_LOOK.beach * 0.5)});
     return;
   }
-  vec4 m = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_MACRO)}, ${fl(ROAD_LAYER)}), dpx.xz / ${fl(ROAD_MACRO)}, dpy.xz / ${fl(ROAD_MACRO)});
+  vec4 m = worldOrm(p.xz / ${fl(ROAD_MACRO)}, ${ROAD_LAYER}, dpx.xz / ${fl(ROAD_MACRO)}, dpy.xz / ${fl(ROAD_MACRO)});
   float rough = orm.y * (1.0 + (m.b - 0.5) * ${fl(0.25 * ROAD_LOOK.macroRough)});
   vec2 k = floor(p.xz / ${fl(ROAD_REPAIRS)});
   float h = surfaceHash(ivec2(k) * ivec2(8, 14));
   vec2 inside = min(p.xz - k * ${fl(ROAD_REPAIRS)}, (k + 1.0) * ${fl(ROAD_REPAIRS)} - p.xz);
   float edge = smoothstep(0.0, 0.4, min(inside.x, inside.y));
-  vec4 r = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_REPAIRS)} + vec2(fract(h * 7.13), fract(h * 3.71)), ${fl(REPAIRS_LAYER)}), dpx.xz / ${fl(ROAD_REPAIRS)}, dpy.xz / ${fl(ROAD_REPAIRS)});
+  vec4 r = worldOrm(p.xz / ${fl(ROAD_REPAIRS)} + vec2(fract(h * 7.13), fract(h * 3.71)), ${REPAIRS_LAYER}, dpx.xz / ${fl(ROAD_REPAIRS)}, dpy.xz / ${fl(ROAD_REPAIRS)});
   float patched = h < ${fl(ROAD_LOOK.patched)} ? edge : 0.0, sealed = fract(h * 13.7) < ${fl(ROAD_LOOK.sealed)} ? edge : 0.0, from = 0.35 + 0.4 * fract(h * 5.3);
   float fill = r.r * patched, tar = max(r.g * patched, smoothstep(from, from + 0.15, r.b) * sealed) * 0.9;
   albedo = mix(albedo * (1.0 + (m.r - 0.5) * ${fl(ROAD_LOOK.macro)}) * (1.0 - 0.2 * fill) * (1.0 - 0.3 * r.a * edge), TAR, tar);
@@ -1100,13 +1171,13 @@ void walkWear(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec3 p, v
   float inner = clamp((d - 0.02) / 0.05, 0.0, 1.0);
   float shade = 1.0 + (fract(h * 3.1) - 0.5) * ${fl(WALK_LOOK.tone)}, rough = orm.y;
   if (fract(h * 7.7) < ${fl(WALK_LOOK.stained)}) {
-    float m = textureGrad(uWorldOrm, vec3(p.xz / 3.0 + vec2(fract(h * 5.3), fract(h * 9.1)), ${fl(ROAD_LAYER)}), dpx.xz / 3.0, dpy.xz / 3.0).r;
+    float m = worldOrm(p.xz / 3.0 + vec2(fract(h * 5.3), fract(h * 9.1)), ${ROAD_LAYER}, dpx.xz / 3.0, dpy.xz / 3.0).r;
     float stain = smoothstep(0.45, 0.75, m) * inner;
     shade *= 1.0 - 0.22 * stain;
     rough += 0.05 * stain;
   }
   if (fract(h * 11.3) < ${fl(WALK_LOOK.cracked)}) {
-    float m = textureGrad(uWorldOrm, vec3(p.xz / ${fl(ROAD_REPAIRS)} + vec2(fract(h * 2.9), fract(h * 6.7)), ${fl(REPAIRS_LAYER)}), dpx.xz / ${fl(ROAD_REPAIRS)}, dpy.xz / ${fl(ROAD_REPAIRS)}).b;
+    float m = worldOrm(p.xz / ${fl(ROAD_REPAIRS)} + vec2(fract(h * 2.9), fract(h * 6.7)), ${REPAIRS_LAYER}, dpx.xz / ${fl(ROAD_REPAIRS)}, dpy.xz / ${fl(ROAD_REPAIRS)}).b;
     float from = 0.2 + 0.2 * fract(h * 4.1), crack = smoothstep(from, from + 0.12, m) * inner;
     shade *= 1.0 - 0.5 * crack;
     rough += 0.1 * crack;

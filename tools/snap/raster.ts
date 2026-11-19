@@ -14,7 +14,7 @@ import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } fro
 import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
@@ -461,9 +461,12 @@ export class Rasterizer {
   private finishesMeant = false;
   /** The masks' packed maps (the weathering's and the road's), which the finishes are not drawn without where the pack has them, or null each. */
   private maskMaps: (Texture | null)[] = [];
+  /** Per layer and role as FramePacket `worldLeast` lays them out, the least `spread` a read takes: the card reads no finer than that layer's finest level it lets be read. */
+  private readonly worldFinest = new Float64Array(WORLD_LAYERS * 3).fill(-Infinity);
   private readonly worldSample: WorldSample = (role, layer, u, v, spread, out) => {
-    if (layer >= WEATHER_LAYER) return this.maskMaps[layer - WEATHER_LAYER] ? sample(this.maskMaps[layer - WEATHER_LAYER]!, u, v, spread, out) : void out.fill(0);
-    sample(this.worldMaps![layer]![role]!, u, v, spread, out);
+    const at = Math.max(spread, this.worldFinest[layer * 3 + role]!);
+    if (layer >= WEATHER_LAYER) return this.maskMaps[layer - WEATHER_LAYER] ? sample(this.maskMaps[layer - WEATHER_LAYER]!, u, v, at, out) : void out.fill(0);
+    sample(this.worldMaps![layer]![role]!, u, v, at, out);
   };
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();
   /** For a textured draw: each vertex's normal and tangent after its bones, a vertex's bones blended, and the instance's dyes. */
@@ -591,6 +594,11 @@ export class Rasterizer {
     this.finishesMeant = packet.lit && packet.worldSide[0]! > 0 && packet.worldComing && !this.worldMaps;
     // Coming up as the frame says where it holds the maps too, and at once where it has not seen them (a picture given its maps).
     finishesEarly = maps.every((roles) => roles.every((t) => t)) && masks.every((m, k) => !m || this.maskMaps[k]) ? (packet.worldLevel[0]! >= 0 ? packet.worldEarly : 0) : 1;
+    // A layer is read as finely as its own pictures go, but no finer than the card is let read it (world-surfaces.ts worldGrad).
+    for (let k = 0; k < WORLD_LAYERS * 3; k++) {
+      const side = packet.worldSide[k % 3]!, level = packet.worldLevel[k % 3]!;
+      this.worldFinest[k] = side > 0 && level >= 0 ? level + packet.worldLeast[k]! - Math.log2(side) : -Infinity;
+    }
     if (this.finishesMeant) finishesEarly = 2;
     const facades = Array.from(packet.facadeSlots, (t) => (t >= 0 ? this.textures.get(t) ?? null : undefined));
     this.facadeSample = packet.lit && facades.some((t) => t) && facades.every((t) => t !== null) ? (k, u, v, lod, out) => sample(facades[k]!, u, v, lod - (facades[k]!.pictures.length - 1), out) : null;

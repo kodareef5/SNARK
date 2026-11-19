@@ -1,13 +1,15 @@
 // Everything a renderer needs to draw one frame, as data. client/core decides what is visible, and a renderer only executes.
 // Uploads and drops persist across frames and must be applied in order. Draws and terrain tiles describe this frame only.
 
-import { SURFACE_NAMES } from "../../../content/surfaces.ts";
+import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER } from "../../../content/surfaces.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
 
+/** Layers of the world finishes' arrays: a finish each, then the masks' (content/surfaces.ts MASK_MATERIALS). */
+export const WORLD_LAYERS = WEATHER_LAYER + MASK_MATERIALS.length;
 export const MAX_DRAWS = 4096;
 export const MAX_TILES = 1024;
 /** Quads per terrain tile side, at every level. */
@@ -384,11 +386,16 @@ export class FramePacket {
   readonly surfaceCity = Float32Array.from([1, 1, 1, 1, 1, 0, 0.08, 0, 1, 0, 0, 0]);
   /**
    * The world finishes' maps (world-surfaces.ts `WorldFinishes`), by role, base colour, normal and packed: the side of
-   * the array the card keeps each in, a layer a finish, 0 for none; the finest level of it every layer holds, -1 until
-   * every layer holds one; and where the eye is in each finish's tiles, less whole tiles, along x, y and z.
+   * the array the card keeps each in, a layer a finish, 0 for none; the finest level of it any layer holds, which the
+   * card reads from, -1 until every layer holds one; and where the eye is in each finish's tiles, less whole tiles.
    */
   readonly worldSide = new Int32Array(3);
   readonly worldLevel = new Int32Array(3).fill(-1);
+  /**
+   * Per layer of the arrays (WORLD_LAYERS), for base colour, normal and packed map in turn: how many levels over
+   * `worldLevel` the finest of it the card may read lies, which it holds; fractional while the layer eases down to a finer.
+   */
+  readonly worldLeast = new Float32Array(WORLD_LAYERS * 3);
   /** 1 while the finishes are drawn from their base colours alone, falling to 0 as their every map comes in (world-surfaces.ts WorldFinishes). */
   worldEarly = 1;
   /** Whether the finishes' base colours can come, which they are drawn as their means until they do; false where nothing can bring them. */
