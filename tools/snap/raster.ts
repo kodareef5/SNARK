@@ -3,7 +3,7 @@
 
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { SURFACE_NAMES, WEATHER_LAYER, WEATHER_MATERIAL, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { FACADE_COLOURS, FACADE_TIERS, KIND, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
+import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { GROUND_BAND, GROUND_SCALE, edgeOf, edged, groundCover, groundMeet, groundWander, higher, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
@@ -188,7 +188,7 @@ const NOTHING = [0, 0, 0];
  * A landmark's draw names its row of `finish` (shared/pack/finish.ts): a colour it states is lit as that finish, as LIT_MESH_FRAGMENT has it.
  * `open` is the share of the sky's light the sky's openness leaves it (skyopen.ts), which its sheet's light from behind keeps.
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null, roomOpen: RoomOpen | null = null): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
   // Where no facade's part is drawn, a window is its bay's mean (facade.ts facadeFarVertex).
@@ -254,7 +254,9 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
       facadeSky[0] = nx; facadeSky[1] = ny; facadeSky[2] = nz;
       skyLight(facadeLight, p.frame, facadeSky);
-      for (let c = 0; c < 3; c++) light[c]! += facadeIO.room[c]! * facadeLight[c]! * open;
+      // A room is lit by the sky's share over the street at the top of its opening (facade.ts ROOM_OUT).
+      const lights = roomOpen ? Math.max(roomOpen(rx + nx * ROOM_OUT, rz + nz * ROOM_OUT, nx, ny, nz, over + facadeIO.roomUp), ROOM_OPEN_LEAST) : open;
+      for (let c = 0; c < 3; c++) light[c]! += facadeIO.room[c]! * facadeLight[c]! * lights;
     }
   } else {
     opened.set([open, 1, 0]);
@@ -264,6 +266,8 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
 }
 
 const facadeIO = facadeOut();
+/** The sky's share at a point over the ground, as skyopen.ts `skyOpen` reads it with no contact, for a room behind glass. */
+type RoomOpen = (rx: number, rz: number, nx: number, ny: number, nz: number, over: number) => number;
 const facadeSky = new Float64Array(3), facadeLight = new Float64Array(3);
 /**
  * A pixel's facade part and marks into the scratch litFlat lights (albedo, worldOrm, normal), from `facade`, the face as
@@ -581,7 +585,7 @@ export class Rasterizer {
       const open = this.opened(s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, ground, this.deferredBody[at] === 0);
       const own = this.deferredOwn.subarray(at * 4, at * 4 + 4), edge = this.deferredEdge.subarray(at * 4, at * 4 + 4);
       const over = own[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, s[g6]!, s[g6 + 1]!, s[g6 + 2]!) : 0;
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample);
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && this.worldMaps ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
@@ -676,6 +680,8 @@ export class Rasterizer {
    * programs take it (skyopen.ts): the ground's as the ground's, else at its height over the ground, with its foot
    * taken down where it `stands`.
    */
+  private readonly roomOpen: RoomOpen = (rx, rz, nx, ny, nz, over) => skyOpen(this.open, this.openWidth, this.openHeight, this.packet.frame, rx, rz, nx, ny, nz, over, 0);
+
   private opened(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, ground: boolean, stands: boolean): number {
     const p = this.packet;
     if (ground) return skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0);
@@ -1493,7 +1499,7 @@ export class Rasterizer {
             this.owned(rx, ry, rz, nx, ny, nz, ownNow);
             const over = ownNow[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz) : 0;
             this.facadeAt(rx, ry, rz, nx, ny, nz, colorIndex, footprint, facadeNow);
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample);
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && this.worldMaps ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen);
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;
             cb = rgb[2]! * 255;

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { decodeTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { DENSITY, ELEMENTS, FACADE_MATERIALS, FACADE_TOP, MARKS_PLACED, PLACED, ROOMS, ROOM_FACES, type FacadeTier } from "../../client/core/render/facade.ts";
+import { ELEMENTS, FACADE_MATERIALS, FACADE_TOP, MARKS_PLACED, PLACED, ROOMS, ROOM_FACES, type FacadeTier } from "../../client/core/render/facade.ts";
 import type { Material } from "../art/materials.ts";
 import { baseMips, encodePng, normalMips, packedMips, readPicture, unpack, type Picture } from "../pack/image.ts";
 import type { SourceMesh } from "../pack/write.ts";
@@ -127,11 +127,11 @@ function softGlass(colour: Float32Array, rough: Float32Array, w: number, h: numb
  * A sign band left to the weather, in its linear colour and roughness: its paint bleached in patches, run-off streaks
  * from its top edge, grime along its foot, and flakes gone to the render beneath. Lettering still reads at 15 m.
  */
-function weatherSign(colour: Float32Array, rough: Float32Array, w: number, h: number, seed: number): void {
-  const metres = h / DENSITY;
+function weatherSign(colour: Float32Array, rough: Float32Array, w: number, h: number, seed: number, perMetre: number): void {
+  const metres = h / perMetre;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4, u = x / DENSITY, v = y / DENSITY;
+      const i = (y * w + x) * 4, u = x / perMetre, v = y / perMetre;
       const rgb = [colour[i]!, colour[i + 1]!, colour[i + 2]!];
       const lum = 0.2126 * rgb[0]! + 0.7152 * rgb[1]! + 0.0722 * rgb[2]!;
       // Sun bleaching, in broad patches.
@@ -204,7 +204,7 @@ export function buildFacadeArt(source = FACADE_SOURCE, out = FACADE_ART): { elem
       return q ? fitted(q, p.w, p.h) : new Float32Array(p.w * p.h * 4).fill(MISSING[name]!);
     };
     const [occ, rough, metal] = [grey("occlusion"), grey("roughness"), grey("metal")];
-    if (p.name === "sign") weatherSign(colour, rough, p.w, p.h, 11 + p.variant);
+    if (p.name === "sign") weatherSign(colour, rough, p.w, p.h, 11 + p.variant, p.w / ELEMENTS.find((e) => e[0] === "sign")![1]);
     softGlass(colour, rough, p.w, p.h);
     const packed = new Float32Array(p.w * p.h * 4);
     for (let i = 0; i < packed.length; i += 4) packed.set([occ[i]!, rough[i]!, metal[i]!, 1], i);

@@ -110,9 +110,9 @@ ${FACADE_GLSL.replaceAll("FACADE_NORMAL", "rg")}void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   vec3 albedo = vec3(0.5), orm = vec3(1.0), n = geometric, room;
-  vec4 far;
+  vec4 far, roomAt;
 #ifdef FACADE
-  int k = facade(albedo, orm, n, room, far, vClass, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uEyeY, vRel.y + uEyeY);
+  int k = facade(albedo, orm, n, room, far, roomAt, vClass, vFace, dFdx(vFace), dFdy(vFace), vOwn, dFdx(vOwn), dFdy(vOwn), vPlace, vEdges, vRel, dx, dy, geometric, vRel.y + uEyeY, vRel.y + uEyeY);
 #else
   int k = 1;
   room = vec3(0.0);
