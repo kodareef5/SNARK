@@ -7,7 +7,7 @@ import { joinLandmark } from "../../shared/pack/join.ts";
 import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { soundFault, type ManifestSound } from "../../shared/pack/sound.ts";
-import { joinStatics, partSteps, readHead, type MapContent, type MapHead, type MapPart, type MapStatics, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { readHead, type MapContent, type MapHead, type MapPart } from "../../shared/world/mapfile.ts";
 
 export interface Answer {
   ok: boolean;
@@ -67,31 +67,6 @@ export function within<T>(url: string, read: () => T): T {
   } catch (e) {
     throw new Error(`${url}: ${e instanceof Error ? e.message : String(e)}`);
   }
-}
-
-/** A map's sectors' statics as fetched, for `readStatics`. */
-export interface FetchedStatics {
-  readonly head: MapHead;
-  readonly parts: readonly { readonly part: MapPart; readonly bytes: Uint8Array }[];
-}
-
-/**
- * The statics of a fetched map, each sector's read and then set in its chunks' rows a step at a time, a sector or a slice of
- * one a step, with `pause` between, so frames go on.
- */
-export async function readStatics({ head, parts }: FetchedStatics, pause: () => Promise<void>): Promise<MapStatics> {
-  const pieces: StaticsPiece[] = [];
-  for (const { part, bytes } of parts) {
-    const steps = partSteps(head, part, bytes);
-    let step = steps.next();
-    for (; !step.done; step = steps.next()) await pause();
-    pieces.push(step.value as StaticsPiece);
-    await pause();
-  }
-  const steps = joinStatics(head, pieces, false);
-  let step = steps.next();
-  for (; !step.done; step = steps.next()) await pause();
-  return step.value;
 }
 
 /** A map's whole file, as a program that reads one fetches it: its head and every part, put back together in their order. */

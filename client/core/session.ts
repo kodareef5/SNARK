@@ -1539,8 +1539,19 @@ export class ClientSession {
    * its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
    */
   staticsArrived(statics: MapStatics, whole = true): void {
+    const steps = this.staticsSteps(statics, whole);
+    while (!steps.next().done);
+  }
+
+  /**
+   * staticsArrived a step at a time (CityStatics.steps), for a page that lets frames go between them: what it changes of
+   * this session and its world is changed at the last step.
+   */
+  *staticsSteps(statics: MapStatics, whole = true): Generator<void, void> {
+    const world = this.world, reg = this.registry;
+    const city = world && !this.opts.city ? yield* CityStatics.steps(world.dims, statics, reg) : null;
     if (whole) this.arrived = statics;
-    this.startCity(statics, true);
+    this.startCity(statics, true, world === this.world && reg === this.registry ? city : null);
   }
 
   /**
@@ -1552,11 +1563,11 @@ export class ClientSession {
     return (this.heldCity ??= new CityStatics(this.world.dims, (this.arrived ?? this.opts.statics)!, this.registry));
   }
 
-  /** The far city of `statics`, where the world has none or, `again`, in place of the one it has. */
-  private startCity(statics: MapStatics | null, again = false): void {
+  /** The far city of `statics`, `made` where it is made already, where the world has none or, `again`, in place of the one it has. */
+  private startCity(statics: MapStatics | null, again = false, made: CityStatics | null = null): void {
     const world = this.world;
     if (!world || (world.city && !again)) return;
-    const city = this.opts.city?.(this.registry) ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
+    const city = this.opts.city?.(this.registry) ?? made ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
     if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete, maker: this.opts.cityMaker };
   }
 

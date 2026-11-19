@@ -203,6 +203,15 @@ function ringInto(f: number, out: number[]): number[] {
 
 /** Builds the table of every kind's parts. `partsOf(k)` lists kind k's parts, each one hullFault accepts. */
 export function hullTable(kinds: number, partsOf: (kind: number) => readonly HullDef[]): HullTable {
+  const steps = hullSteps(kinds, partsOf);
+  for (let s = steps.next(); ; s = steps.next()) if (s.done) return s.value;
+}
+
+/** Parts hullSteps builds between two pauses. */
+const HULL_STEP = 512;
+
+/** hullTable a step at a time, a pause after every HULL_STEP parts and never inside one, whose hull the working arrays hold. */
+export function* hullSteps(kinds: number, partsOf: (kind: number) => readonly HullDef[]): Generator<void, HullTable> {
   const start = new Uint32Array(kinds + 1);
   const corner: number[] = [];
   const face: number[] = [];
@@ -228,6 +237,7 @@ export function hullTable(kinds: number, partsOf: (kind: number) => readonly Hul
         ring.push(ringCorners.length);
         ringInto(f, ringCorners);
       }
+      if (sixty.length % HULL_STEP === 0) yield;
     }
   }
   start[kinds] = sixty.length;

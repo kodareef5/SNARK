@@ -114,6 +114,26 @@ test("a client whose statics come after its hello is sent rows until it says it 
   expect(cleo.world!.city!.statics.count).toBeGreaterThan(100);
 });
 
+test("statics handed over a step at a time leave the session and its world as they were until the last step, and are then what staticsArrived makes of them", () => {
+  // More crates than a step makes, so that the city is made in several.
+  const crates: MapStatic[] = [];
+  for (let k = 0; k < 40000; k++) crates.push({ kind: "core:crate", x: (1 + (k % 7)) * CHUNK_SIZE + 4 + (Math.floor(k / 7) % 8) * 7, y: 40 + Math.floor(k / 3136) * 3, z: (1 + (Math.floor(k / 56) % 7)) * CHUNK_SIZE + 4 + (Math.floor(k / 392) % 8) * 7, yaw: 0 });
+  const h = new Harness({}, 1, 30, { map: writeMap(flatMap(9, { statics: crates })) });
+  const cleo = h.join("cleo", {}, { statics: false });
+  for (let n = 0; n < 100 && !cleo.world; n++) h.run(5);
+  const c = h.client(cleo)!;
+  const steps = cleo.staticsSteps(h.world.statics!, true);
+  let taken = 0;
+  for (let s = steps.next(); !s.done; s = steps.next(), taken++) {
+    h.run(20);
+    expect([cleo.world!.city, c.statics]).toEqual([undefined, false]);
+  }
+  expect(taken).toBeGreaterThan(1);
+  expect(cleo.world!.city!.statics.count).toBe(40000);
+  h.run(1000);
+  expect(c.statics).toBe(true);
+});
+
 test("a near window of the map's statics is whole within a tick of the body's arrival for a client that holds them, rows still going at 256 slots a tick to one that does not", () => {
   // The 7 by 7 chunks round the middle of a map 9 chunks wide each hold 640 crates: 31,360 slots, 123 ticks at 256 a tick.
   const crates: MapStatic[] = [];

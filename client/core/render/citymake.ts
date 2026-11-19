@@ -91,6 +91,12 @@ export interface CityMaker {
   swept?(): SweepMade | null;
 }
 
+/** Whether levels made with `a` are made alike with `b`: the same tables of one registry, the same ground's scale and bounds. */
+function sameKinds(a: CityKinds, b: CityKinds): boolean {
+  const tables = ["dims", "halfX", "halfY", "halfZ", "color", "under", "near", "plain", "walked", "look"] as const;
+  return tables.every((k) => a[k] === b[k]) && JSON.stringify([a.ground, a.center, a.half]) === JSON.stringify([b.ground, b.center, b.half]);
+}
+
 export function cityKinds(city: CityStatics, hf: Heightfield, bounds: { center: readonly number[]; half: readonly number[] }): CityKinds {
   const { dims, halfX, halfY, halfZ, color, under, plain, near, walked, look } = city;
   const middle = Float32Array.from(halfX, (hx, k) => 2 * (hx + halfY[k]! + halfZ[k]! - Math.max(hx, halfY[k]!, halfZ[k]!) - Math.min(hx, halfY[k]!, halfZ[k]!)));
@@ -274,9 +280,11 @@ export class ThreadedCityMaker implements CityMaker {
   }
 
   start(kinds: CityKinds): void {
+    // A city handed over again of the same kinds: the threads hold them, and sending them again takes tens of milliseconds.
+    const same = this.kinds !== null && sameKinds(this.kinds, kinds);
     this.kinds = kinds;
     this.done.length = 0;
-    for (const thread of this.threads) thread.postMessage({ kinds });
+    if (!same) for (const thread of this.threads) thread.postMessage({ kinds });
   }
 
   make(job: CityJob): void {

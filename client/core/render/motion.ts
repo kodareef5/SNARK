@@ -45,13 +45,16 @@ const NONE: readonly [number, number, number, number] = [0, 0, 0, 1];
 export function movingOf(reg: Registry, statics: MapStatics): Moving[] {
   const out: Moving[] = [];
   const kinds = statics.kinds.map((id) => reg.index.get(id) ?? 0);
-  for (let c = 0; c + 1 < statics.first.length; c++) {
-    for (let row = statics.first[c]!; row < statics.first[c + 1]!; row++) {
-      const kind = kinds[statics.kind[row]!]!, facet = reg.motion[kind];
-      if (!facet) continue;
-      const d = reg.defs[kind]!;
-      out.push({ ref: c * 65536 + row - statics.first[c]!, kind, facet, ticks: motionTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), fixed: Uint8Array.from(facet.parts, (part) => (JSON.stringify(part.from) === JSON.stringify(part.to) ? 1 : 0)), away: Uint8Array.from(facet.parts, (part) => (part.from.away ? 1 : 0) | (part.to.away ? 2 : 0)), posed: -1, progress: 0 });
-    }
+  // A whole map's millions of rows are looked through by the map's kind, 1 for one that moves.
+  const moves = Uint8Array.from(kinds, (k) => (reg.motion[k] ? 1 : 0));
+  if (!moves.includes(1)) return out;
+  const { first, kind: of } = statics;
+  for (let row = 0, c = 0; row < of.length; row++) {
+    if (moves[of[row]!] === 0) continue;
+    while (first[c + 1]! <= row) c++;
+    const kind = kinds[of[row]!]!, facet = reg.motion[kind]!;
+    const d = reg.defs[kind]!;
+    out.push({ ref: c * 65536 + row - first[c]!, kind, facet, ticks: motionTicks(facet), x: statics.x[row]!, y: statics.y[row]!, z: statics.z[row]!, yaw: statics.yaw[row]!, color: d.type === "structure" ? d.color : 0, pose: new Float32Array(facet.parts.length * PART_FLOATS), level: new Int8Array(facet.parts.length).fill(-1), fixed: Uint8Array.from(facet.parts, (part) => (JSON.stringify(part.from) === JSON.stringify(part.to) ? 1 : 0)), away: Uint8Array.from(facet.parts, (part) => (part.from.away ? 1 : 0) | (part.to.away ? 2 : 0)), posed: -1, progress: 0 });
   }
   return out;
 }

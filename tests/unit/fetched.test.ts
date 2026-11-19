@@ -1,10 +1,10 @@
 // What the page fetches whole as it starts: a failure names the request and what the server answered.
 
 import { expect, test } from "bun:test";
-import { fetchBytes, fetchJson, fetchMapFile, fetchSounds, fetchText, nextTask, readStatics, type Get } from "../../client/core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMapFile, fetchSounds, fetchText, type Get } from "../../client/core/fetched.ts";
 import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
-import { parseMap, partsOf, readHead, writeMap } from "../../shared/world/mapfile.ts";
-import { flatMap, wideMap } from "../fixtures/map.ts";
+import { partsOf, readHead, writeMap } from "../../shared/world/mapfile.ts";
+import { wideMap } from "../fixtures/map.ts";
 
 /** A server that answers each path as given, and 404 "not found" for any other, as server/files.ts does. */
 const server = (files: Record<string, string>): Get => (url) => Promise.resolve(url in files ? new Response(files[url]) : new Response("not found", { status: 404 }));
@@ -76,20 +76,3 @@ test("a part that comes as another's, or a head that is damaged or not there, is
   await expect(fetchMapFile(() => Promise.resolve(new Response(head2)), `map/${head.name}`)).rejects.toThrow(`map/${head.name}: map: its head is damaged`);
 });
 
-test("a page's statics read with a message to itself between steps are the same, a step for each slice of a sector's pieces read and set and one after each sector", async () => {
-  // Three slices of pieces and some in one sector: each slice is a step as it is read and as it is set in its chunks, and
-  // the sector's end another each time.
-  const statics = Array.from({ length: 100000 }, (_, i) => ({ kind: i % 3 === 0 ? "core:wall" : "core:floor", x: (i % 250) + 0.5, y: 33, z: Math.floor(i / 400) + 0.5, yaw: (i * 64) & 0xffff }));
-  const file = writeMap(flatMap(4, { statics }));
-  const whole = parseMap(file);
-  const head = readHead(file);
-  const channel = new MessageChannel();
-  let posted = 0;
-  let steps = 0;
-  const pause = nextTask({ port1: channel.port1, port2: { postMessage: (m) => (posted++, channel.port2.postMessage(m)) } });
-  const part = head.parts.find((p) => p.kind === "statics")!;
-  const t = await readStatics({ head, parts: [{ part, bytes: file.subarray(part.at, part.at + part.length) }] }, () => (steps++, pause()));
-  channel.port1.close();
-  expect([steps, posted]).toEqual([8, 8]);
-  expect([t.first, t.kind, t.x, t.y, t.z, t.yaw]).toEqual([whole.statics.first, whole.statics.kind, whole.statics.x, whole.statics.y, whole.statics.z, whole.statics.yaw]);
-});

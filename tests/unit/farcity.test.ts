@@ -20,10 +20,10 @@ import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCx, chunkCz } from "../../shared/c
 import { TAU, detCos, detSin } from "../../shared/math/scalar.ts";
 import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
-import { CityStatics, cellPart, cityTops, goneByCells, goneByRows, mergedPart, type CityPart } from "../../shared/world/city.ts";
+import { CityStatics, cellPart, cityReach, cityTops, goneByCells, goneByRows, landmarkKinds, mergedPart, type CityPart } from "../../shared/world/city.ts";
 import { hullOf, hullPoint, type HullDef } from "../../shared/world/convex.ts";
 import { HeightWindow } from "../../shared/world/heightfield.ts";
-import { mapHeightfield, parseMap, placeStatics, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
+import { MapStatics, mapHeightfield, parseMap, placeStatics, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { Found, StructureStore } from "../../shared/world/structures.ts";
 import { Summary, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
 import { BEAM, FLOOR, PIER, SLOPE_SLAB30, STEP, WALL, asWritten, building, cityWorld, slopes } from "../fixtures/cityworld.ts";
@@ -277,6 +277,34 @@ test("statics handed over round the body and then whole: the far city of the who
   then.makeMs = Infinity;
   for (let k = 0; k < 20 && (then.stats.behind > 0 || then.stats.missing > 0); k++) w.frame();
   expect(cityDraws(w.frame()).length).toBeGreaterThanOrEqual(shown);
+});
+
+test("a city made a step at a time is the one made at once, the reach of its chunks made with it, and its far city draws the same picture", () => {
+  const statics = [...building(...mid(3, 3), 0, 4), ...building(...mid(9, 9), 0, 3), ...building(...mid(12, 4), 0, 2)];
+  const drawn = (stepped: boolean) => {
+    const w = cityWorld({ chunks: 16, statics, late: true });
+    let city: CityStatics | null = null;
+    if (!stepped) city = new CityStatics(w.dims, asWritten(statics), w.reg);
+    else for (let s = CityStatics.steps(w.dims, MapStatics.of(w.dims, asWritten(statics)), w.reg), r = s.next(); !(r.done && (city = r.value)); r = s.next());
+    w.look(...mid(3, 3), 10, 900, 2.4, 60);
+    w.frame();
+    w.arrive(city!);
+    w.frame();
+    w.scene.city!.makeMs = Infinity;
+    for (let k = 0; k < 20 && (w.scene.city!.stats.behind > 0 || w.scene.city!.stats.missing > 0); k++) w.frame();
+    const p = w.frame();
+    const kinds = landmarkKinds(w.reg);
+    return { city: city!, draws: cityDraws(p).length, far: [...w.covered().far], reach: cityReach(city!, kinds), kept: cityReach(city!, kinds) === cityReach(city!, kinds) };
+  };
+  const once = drawn(false), stepped = drawn(true);
+  expect([stepped.city.first, stepped.city.kind, stepped.city.yaw, stepped.city.x, stepped.city.y, stepped.city.z]).toEqual([once.city.first, once.city.kind, once.city.yaw, once.city.x, once.city.y, once.city.z]);
+  expect([stepped.city.color, stepped.city.plain, stepped.city.walked, stepped.city.look]).toEqual([once.city.color, once.city.plain, once.city.walked, once.city.look]);
+  // The reach steps made is kept and given each time it is asked for; the one made at once is worked out alike when asked.
+  expect([stepped.kept, once.kept]).toEqual([true, false]);
+  expect([stepped.reach.reach, [...stepped.reach.landmarks]]).toEqual([once.reach.reach, [...once.reach.landmarks]]);
+  expect(stepped.draws).toBeGreaterThan(0);
+  expect([stepped.draws, sum(Uint8Array.from(stepped.far))]).toEqual([once.draws, sum(Uint8Array.from(once.far))]);
+  expect(stepped.far).toEqual(once.far);
 });
 
 test("the lattice fades out over the end of its reach exactly where the mass fades in", () => {

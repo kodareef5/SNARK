@@ -1,4 +1,4 @@
-import { CROWN_ORIGIN, DECK_RADIUS, EYE_COLLIDERS, EYE_DYE, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { CROWN_ORIGIN, DECK_RADIUS, EYE_DYE, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
 import { aperture, eyePhase, eyePower, shutterOpening, writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
@@ -16,6 +16,7 @@ import type { Manifest } from "../../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "../../../shared/pack/pack.ts";
 import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
+import { landmarkKinds } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
@@ -728,7 +729,7 @@ export class Scene {
     }
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
-    this.landmarkKinds = Uint8Array.from(reg.defs, (def, k) => (reg.own.has(k) || (def && EYE_COLLIDERS.has(def.id)) ? 1 : 0));
+    this.landmarkKinds = landmarkKinds(reg);
     this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;

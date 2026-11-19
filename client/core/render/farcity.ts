@@ -21,7 +21,7 @@
 
 import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
-import { cityTops, goneByCells, goneByRows, type CityStatics, type Gone } from "../../../shared/world/city.ts";
+import { cityReach, cityTops, goneByCells, goneByRows, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import type { FarStore } from "../farcells.ts";
@@ -160,7 +160,7 @@ export class FarCity {
   private readonly tiles: Tile[] = [];
   private readonly tileOfChunk: Int32Array;
   /** Per chunk with any, a byte a piece: 1 for a landmark's, which no level holds. */
-  private readonly left = new Map<number, Uint8Array>();
+  private readonly left: ReadonlyMap<number, Uint8Array>;
   /** Per chunk: which of its pieces are gone, as last seen near and as the far feed shows; and a count of changes to that. */
   private readonly gone = new Map<number, Uint8Array>();
   private readonly seenNear = new Map<number, Uint8Array>();
@@ -201,9 +201,9 @@ export class FarCity {
   private readonly listed: Uint8Array;
   private readonly aroundAt = Float64Array.of(Infinity, Infinity, -1);
   /**
-   * Per chunk, the box its pieces reach, which its boxes' faces do not leave; and per chunk of the tile being drawn, 1
-   * where it is drawn far, its box from the camera, and at the level being drawn, the depth ranges its faces are in or 0
-   * for none, and 1 where it is in that level's fade.
+   * Per chunk, the box its pieces but a landmark's reach, which its boxes' faces do not leave (shared/world/city.ts
+   * chunkReach); and per chunk of the tile being drawn, 1 where it is drawn far, its box from the camera, and at the
+   * level being drawn, the depth ranges its faces are in or 0 for none, and 1 where it is in that level's fade.
    */
   private readonly chunkBox: Float64Array;
   private readonly far = new Uint8Array(CITY_TILE * CITY_TILE);
@@ -232,39 +232,18 @@ export class FarCity {
     this.seenShape = new Int32Array(chunks).fill(-1);
     this.seenCells = new Uint32Array(chunks);
     this.goneVersion = new Uint32Array(chunks);
-    const { first, x, y, z, kind, halfX, halfY, halfZ } = source.statics;
+    ({ reach: this.chunkBox, landmarks: this.left } = cityReach(source.statics, landmark));
+    const cb = this.chunkBox;
     const byTile = new Map<number, number[]>();
     for (let c = 0; c < chunks; c++) {
-      let drawn = 0;
-      for (let i = first[c]!; i < first[c + 1]!; i++) {
-        if (landmark[kind[i]!] !== 1) drawn++;
-        else {
-          if (!this.left.has(c)) this.left.set(c, new Uint8Array(first[c + 1]! - first[c]!));
-          this.left.get(c)![i - first[c]!] = 1;
-        }
-      }
-      if (drawn === 0) continue;
+      if (!(cb[c * 6]! <= cb[c * 6 + 3]!)) continue;
       const t = this.tileOf(c);
       byTile.set(t, [...(byTile.get(t) ?? []), c]);
     }
-    const cb = (this.chunkBox = new Float64Array(chunks * 6));
     for (const t of byTile.keys()) {
       const list = byTile.get(t)!;
       const box = Float64Array.from([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
       for (const c of list) {
-        cb.fill(Infinity, c * 6, c * 6 + 3).fill(-Infinity, c * 6 + 3, c * 6 + 6);
-        for (let i = first[c]!; i < first[c + 1]!; i++) {
-          const k = kind[i]!;
-          if (landmark[k] === 1) continue;
-          // A turned piece reaches no farther than its half diagonal.
-          const r = Math.hypot(halfX[k]!, halfZ[k]!);
-          cb[c * 6] = Math.min(cb[c * 6]!, x[i]! - r);
-          cb[c * 6 + 1] = Math.min(cb[c * 6 + 1]!, y[i]! - halfY[k]!);
-          cb[c * 6 + 2] = Math.min(cb[c * 6 + 2]!, z[i]! - r);
-          cb[c * 6 + 3] = Math.max(cb[c * 6 + 3]!, x[i]! + r);
-          cb[c * 6 + 4] = Math.max(cb[c * 6 + 4]!, y[i]! + halfY[k]!);
-          cb[c * 6 + 5] = Math.max(cb[c * 6 + 5]!, z[i]! + r);
-        }
         for (let a = 0; a < 3; a++) {
           box[a] = Math.min(box[a]!, cb[c * 6 + a]! - BELOW);
           box[a + 3] = Math.max(box[a + 3]!, cb[c * 6 + a + 3]! + BELOW);
