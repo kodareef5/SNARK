@@ -9,7 +9,6 @@ import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.t
 import { CreatorScreen } from "./creator.ts";
 import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand, hotbarCell, hotbarLeft, hotbarTop } from "./hud.ts";
-import { chatTop, touchBar, touchClose, touchControls, touchPlan, touchZones } from "./touch.ts";
 import type { TouchPlay } from "../touch.ts";
 import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
 import { CONTROL_GROUPS } from "./controls-guide.ts";
@@ -64,6 +63,11 @@ export class Ui {
   canvasHeight = CANVAS_HEIGHT;
   /** The touch layer's state, which the app owns; whether the body it drives flies; and the buttons the last frame showed, a bit each. */
   touchPlay: TouchPlay | null = null;
+  /**
+   * The touch layer's layout (ui/touch.ts), once the shell has fetched it: a page fetches it when a finger is first
+   * used, and until it comes the HUD is drawn as for a mouse. Null on a page never touched, which never pays for it.
+   */
+  layer: typeof import("./touch.ts") | null = null;
   flyer = false;
   /** A piece is being built, or a vehicle set down: the touch cluster is then the builder's. The app sets both. */
   building = false;
@@ -322,7 +326,8 @@ export class Ui {
   build(aspect: number, hud: HudModel, session: ClientSession | null): void {
     const f = this.frame;
     f.begin(aspect, this.canvasHeight);
-    const plan = this.touch ? touchPlan(f, this.settings.muted, this.canTalk) : null;
+    const layer = this.touch ? this.layer : null;
+    const plan = layer ? layer.touchPlan(f, this.settings.muted, this.canTalk) : null;
     this.inventory.touch = this.touch;
     this.touchShown = 0;
     this.creating = session?.sessionState === SESSION_CREATING;
@@ -333,7 +338,7 @@ export class Ui {
       const controls = (this.wantsPointerLock || this.inspect) && !session?.open;
       // A finger's zones lie under the whole HUD while the body is being played.
       const play = plan !== null && this.touchPlay !== null && session !== null && controls && this.wantsPointerLock;
-      if (play) touchZones(f);
+      if (play) layer!.touchZones(f);
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
@@ -341,13 +346,13 @@ export class Ui {
       // Chat is built over the HUD and under every screen.
       if (session) {
         // A finger's keyboard covers the foot of the screen, so the box it types in stands at the top.
-        const band = plan && this.chat.open ? chatTop(f, plan) : chatBand(f, hud);
+        const band = plan && this.chat.open ? layer!.chatTop(f, plan) : chatBand(f, hud);
         this.chat.build(f, band.top, band.bottom, session.serverTick, plan !== null);
       }
       if (plan && this.touchPlay && controls) {
-        this.touchShown = touchBar(f, this.touchPlay, f.width - f.right - 12 - plan.map, f.top + 12, plan.map, this.settings.minimap, plan.mic);
+        this.touchShown = layer!.touchBar(f, this.touchPlay, f.width - f.right - 12 - plan.map, f.top + 12, plan.map, this.settings.minimap, plan.mic);
         const slots = hud.hotbar.length;
-        if (play) this.touchShown |= touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0, this.creatureAhead);
+        if (play) this.touchShown |= layer!.touchControls(f, this.touchPlay, hud, this.placing ? "placing" : this.building ? "building" : this.flyer ? "flyer" : "foot", slots ? hotbarLeft(f, slots) + slots * (hotbarCell(f, slots) + 3) - 3 : 0, slots ? hotbarTop(f, slots) : f.height, this.settings.minimap ? f.top + 12 + plan.map : 0, this.creatureAhead);
       }
     } else if (this.creating) this.chat.close();
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
@@ -388,10 +393,10 @@ export class Ui {
       if (!this.console.open && !this.menu) this.naming.build(f, session, this.registry);
     }
     // A screen, the chat box or a prompt that a keyboard would leave by Escape has a button for it by touch.
-    if (plan && this.touchPlay && !this.wantsPointerLock && !this.menu && !this.creating && !this.dead && !this.console.open) this.touchShown |= touchClose(f, this.touchPlay);
+    if (plan && this.touchPlay && !this.wantsPointerLock && !this.menu && !this.creating && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
     // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
     // Not while a finger types in the chat box, which has its place.
-    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan);
+    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null);
     if (session) this.console.absorb(session);
     this.console.build(f);
     if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }

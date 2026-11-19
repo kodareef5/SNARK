@@ -1,4 +1,9 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { HudModel } from "../../client/core/hud.ts";
+import { KEY_UNMUTE } from "../../client/core/ui/menu.ts";
+import { Ui } from "../../client/core/ui/ui.ts";
 import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, LONG_MS, LOOK_GAIN, STICK_DEAD, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_COUNT, T_JUMP, T_STANCE, T_USE, TouchPlay, type TouchTarget } from "../../client/core/touch.ts";
 import { CANVAS_HEIGHT, MIN_HEIGHT, MIN_WIDTH, SCALE_FLOOR, UiFrame, canvasHeight } from "../../client/core/ui/nodes.ts";
 import { usePrompt } from "../../client/core/ui/touch.ts";
@@ -144,6 +149,29 @@ test("a button that is no longer shown lets go, aim goes off with its button, an
   // The zone is free for the next finger.
   p.pointer(0, KEY_ZONE_MOVE, 50, 60, 4, 0, t, 1);
   expect([p.stick, p.stickX]).toEqual([true, 50]);
+});
+
+test("a page that is never touched does not pay for the touch layout: nothing a mouse's page runs imports a value from it", () => {
+  // The interface holds the layout as `Ui.layer`, fetched on a first touch. A value imported from it, or from its
+  // art, by what every page loads would put it back in every page's script.
+  const root = join(import.meta.dir, "../../client");
+  for (const file of ["core/app.ts", "core/ui/ui.ts", "core/ui/hud.ts", "core/ui/menu.ts", "core/ui/chat.ts", "core/ui/inventory.ts", "core/ui/controls-help.ts", "core/touch.ts", "shell/ui.ts", "shell/input.ts"]) {
+    const source = readFileSync(join(root, file), "utf8");
+    for (const line of source.split("\n")) {
+      const from = /^import\s[^"']*["']([^"']+)["']/.exec(line)?.[1];
+      // Its own file and its art's, wherever the import is written from.
+      const whose = from ? join(root, file, "..", from) : "";
+      if (whose === join(root, "core/ui/touch.ts") || whose === join(root, "core/ui/touch-art.ts")) expect(/^import\s+type\s/.test(line), `${file}: ${line}`).toBe(true);
+    }
+  }
+  // The shell fetches it when it is wanted, and not before.
+  const shell = readFileSync(join(root, "shell/main.ts"), "utf8");
+  expect(shell.includes('import("../core/ui/touch.ts")') && !/^import\s[^\n]*core\/ui\/touch\.ts/m.test(shell)).toBe(true);
+  // Until it has come, a page whose last input was a finger draws the mouse's HUD and does not fail.
+  const ui = new Ui(), hud = new HudModel();
+  ui.inputDevice = 2;
+  ui.build(844 / 390, hud, null);
+  expect([ui.touch, ui.layer, ui.frame.find(KEY_ZONE_MOVE), ui.frame.find(KEY_UNMUTE) !== null]).toEqual([true, null, null, true]);
 });
 
 test("a prompt that names the use key is offered as a button without it", () => {

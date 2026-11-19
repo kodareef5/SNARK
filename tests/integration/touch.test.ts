@@ -14,6 +14,8 @@ import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/c
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
+// The touch layer's layout, which a page fetches when a finger is first used; here it is at hand.
+import * as layout from "../../client/core/ui/touch.ts";
 
 const pack = parsePack(corePackBytes());
 
@@ -21,6 +23,7 @@ const pack = parsePack(corePackBytes());
 function phone(h: Harness, name: string): App {
   const app = new App(h.join(name, { latencyMs: 20 }, { manual: true }), h.reg, pack);
   app.ui.inputDevice = 2;
+  app.ui.layer = layout;
   return app;
 }
 
@@ -153,6 +156,7 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
 
 test("the layer follows the last thing used: a key or a pad's stick puts it away, and a finger brings it back", () => {
   const h = new Harness(), app = new App(h.join("hybrid", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  app.ui.layer = layout;
   let last = 0;
   const run = (ms: number) => h.run(ms, (now) => void app.frame((last = now), 1280, 720));
   run(600);
