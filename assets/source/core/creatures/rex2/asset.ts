@@ -1,6 +1,7 @@
 // Rex v2, built from Patch's T-rex (ref/SOURCES.md). The plan is planning/workstreams/rex2.md.
 import { defaultPalette, nearestColour } from "../../../../../shared/pack/palette.ts";
 import type { CreatureAsset, ZoneSpec } from "../../../../../tools/art/spec.ts";
+import rider from "./ref/rider.json";
 import fitted from "./ref/zones.json";
 
 const palette = defaultPalette();
@@ -19,14 +20,15 @@ const single = ["idle_look", "idle_scent", "attack", "call", "startled", "flinch
 export default {
   modelCredit: "Animated T-rex by Patch, made with anymove (https://patch.gg/create/toolbox/assets/anymove:trex), CC0 1.0. Adapted for SNARK",
   kind: "creature",
-  source: { scripts: ["import.py", "gaits.py", "clips.py"] },
+  source: { scripts: ["import.py", "gaits.py", "clips.py", "saddle.py"] },
   scale: 1,
   skeleton: { id: "rex2", root: "pelvis", bones: 25 },
   zones,
-  // Offsets are from each bone's joint at rest, in metres (ref/caps.ts prints where they land). The seat is mid-back,
-  // 16 cm over the skin; the vent is under the root of the tail.
+  // Offsets are from each bone's joint at rest, in metres (ref/caps.ts prints where they land). The seat and the
+  // rider's grips, footrests, soles and knees are placed by saddle.py and kept in ref/rider.json. The vent is under the
+  // root of the tail.
   sockets: [
-    { name: "seat", bone: "spine", offset: [0, 1.2, 0.3] },
+    ...Object.entries(rider).map(([name, offset]) => ({ name, bone: "spine", offset: offset as [number, number, number] })),
     { name: "overhead", bone: "spine", offset: [0, 2.4, 0.3] },
     { name: "head", bone: "skull", of: ["skull"], at: "top" },
     { name: "mouth", bone: "jaw", of: ["jaw"], at: "front" },
@@ -65,4 +67,10 @@ export default {
   // The thighs are wider than the hips, and the trunk and tail root carry the body on the ground. Their capsules ride
   // on the pelvis body, so a fallen Rex rests on them and its thigh doesn't sink.
   contacts: ["thigh_l", "thigh_r", "metatarsus_l", "metatarsus_r", "humerus_l", "humerus_r", "spine", "chest", "neck_1", "neck_2", "jaw", "tail_1", "tail_2", "tail_4"] },
+  // Worn as core:saddle_rex2 until it takes the Rex's place, because two packs can't both hold core:saddle_rex/worn.
+  worn: [{
+    item: "core:saddle_rex2", object: "saddle",
+    materials: { rex2_saddle: { base: "tex/rex2_saddle_base.png", normal: "tex/rex2_saddle_normal.png", packed: "tex/rex2_saddle_packed.png" } },
+    budgets: { triangles: [4800, 1600, 550, 360] }, flat: 2,
+  }],
 } satisfies CreatureAsset;

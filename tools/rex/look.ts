@@ -2,12 +2,14 @@
 // and new Rex are judged on the same views:
 //
 //   bun tools/rex/look.ts <out folder> --dist <built client> [--species core:rex,core:rex2] [--tiers high,ultra]
-//                         [--views side,front,quarter,head,far] [--seconds 25] [--hour 14]
+//                         [--views side,front,quarter,head,far,saddle] [--seconds 25] [--hour 14] [--ride core:rex2]
 //
 // The client is one built apart, such as the paddock's (`bun tools/carbonemys-rex/dev.ts --rex2 --dist DIR`). A server
 // on the Rex paddock places each Rex wild in a row and holds it still, facing east. It answers each view's /__look with
 // its orders and holds the survivor there as a ghost. One headless Chrome, muted, opens each view on each tier and keeps
-// <out>/<view>-<species>-<tier>.png.
+// <out>/<view>-<species>-<tier>.png. With --ride, a second page's survivor is tamed that Rex, saddles it and sits on it,
+// and that page's own riding camera is <out>/ride-<species>-<tier>.png. Two pages share the GPU, so the camera page's
+// pictures are then drawn coarser.
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,6 +26,7 @@ const { values, positionals } = parseArgs({
   options: {
     dist: { type: "string" }, species: { type: "string", default: "core:rex,core:rex2" }, tiers: { type: "string", default: "high" },
     views: { type: "string", default: "side,front,quarter,head,far" }, seconds: { type: "string", default: "25" }, hour: { type: "string", default: "14" },
+    ride: { type: "string" },
   },
 });
 const [out] = positionals;
@@ -41,6 +44,7 @@ const VIEWS: Record<string, View> = {
   quarter: { ahead: 11, right: 12, up: 5, look: [0, 2.8] },
   head: { ahead: 7.5, right: 4, up: 4.6, look: [3.6, 4.3] },
   far: { ahead: 20, right: 60, up: 2, look: [0, 2.8] },
+  saddle: { ahead: 3, right: 7, up: 5.2, look: [1, 5] },
 };
 
 const species = values.species!.split(",");
@@ -84,13 +88,52 @@ const hold = setInterval(() => {
   }
   if (!at) return;
   for (const c of game.clients) {
-    if (!c?.active || c.closed || c.ent < 0) continue;
+    if (!c?.active || c.closed || c.ent < 0 || !c.name.startsWith("look")) continue;
     world.ents.mode[c.ent] = MODE_GHOST;
     world.ents.setPosition(c.ent, at[0], at[1], at[2]);
     world.history.discontinuity(c.ent);
     world.ents.vx[c.ent] = world.ents.vy[c.ent] = world.ents.vz[c.ent] = 0;
   }
 }, 50);
+
+/** A second page whose survivor gets on `id`: tamed to them, saddled, and mounted, all by the server. */
+async function ride(port: number, who: number, id: string, tier: string): Promise<string> {
+  const name = `rider${who}`;
+  const page = await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(`http://127.0.0.1:${server.port}/?quick&name=${name}&tier=${tier}`)}`, { method: "PUT" })).json() as { webSocketDebuggerUrl: string };
+  let client;
+  for (let i = 0; i < 240 && !client; i++) {
+    await Bun.sleep(500);
+    client = game.clients.find((c) => c?.active && !c.closed && c.ent >= 0 && c.name === name);
+  }
+  if (!client) throw new Error("the rider never joined");
+  const p = placed.find((q) => q.id === id);
+  if (!p) throw new Error(`${id} is not among --species`);
+  const reg = world.reg, owner = server.host.records.byPid.get(client.pid)!, rec = server.host.records.byPid.get(world.ents.pid[p.e]!)!;
+  if (!server.host.taming.give(rec, owner, 0, "forced")) throw new Error(`could not tame ${id}`);
+  rec.saddle = reg.saddleFits.indexOf(reg.index.get(id)!);
+  if (rec.saddle <= 0) throw new Error(`no saddle fits ${id}`);
+  server.host.refreshBody(rec);
+  world.ents.setPosition(client.ent, p.x, ground(p.x, p.z), p.z - 3);
+  world.history.discontinuity(client.ent);
+  await Bun.sleep(1000);
+  const result = server.host.riding.mount(client, p.e);
+  await Bun.sleep(3000);
+  console.log(`the rider got on ${id}: ${result === 0 ? "yes" : `no, result ${result}`}`);
+  return page.webSocketDebuggerUrl;
+}
+
+/** A picture of a page by its debugging socket: here the rider's own, whose camera follows the mount. */
+async function picture(socket: string, file: string): Promise<void> {
+  const ws = new WebSocket(socket);
+  await new Promise((r) => (ws.onopen = r));
+  const shot = await new Promise<{ data: string }>((r) => {
+    ws.onmessage = (m) => { const d = JSON.parse(String(m.data)); if (d.id === 1) r(d.result); };
+    ws.send(JSON.stringify({ id: 1, method: "Page.captureScreenshot", params: { format: "png" } }));
+  });
+  ws.close();
+  writeFileSync(file, Buffer.from(shot.data, "base64"));
+  console.log(file);
+}
 
 const profile = join(work, "profile");
 const port = 9300 + Math.floor(Math.random() * 500);
@@ -119,6 +162,13 @@ try {
   await send("Page.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: 1600, height: 900, deviceScaleFactor: 1, mobile: false });
   const who = Math.floor(Math.random() * 1e6);
+  if (values.ride) {
+    // The rider's page is drawn on the first tier asked for, and its own riding camera is the picture.
+    const tier = values.tiers!.split(",")[0]!;
+    const rider = await ride(port, who, values.ride, tier);
+    await Bun.sleep(Number(values.seconds) * 1000);
+    await picture(rider, join(out, `ride-${values.ride.replace("core:", "")}-${tier}.png`));
+  }
   let first = true;
   for (const tier of values.tiers!.split(",")) {
     for (const p of placed) {

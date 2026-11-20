@@ -22,7 +22,7 @@ scene = bpy.context.scene
 scene.render.fps = 30
 sys.path.insert(0, FOLDER)
 sys.dont_write_bytecode = True
-for script in ("import.py", "gaits.py", "clips.py"):
+for script in ("import.py", "gaits.py", "clips.py", "saddle.py"):
     if os.path.exists(os.path.join(FOLDER, script)):
         runpy.run_path(os.path.join(FOLDER, script), run_name="__main__")
 
@@ -54,7 +54,9 @@ scene.collection.objects.link(ground)
 
 # The Rex faces -Y in Blender. Side looks from +X; the quarter from front-right and a little above. With "head" the
 # cameras follow the skull, close up, from the side and from the front quarter.
-head = len(args) > 3 and args[3] == "head"
+head = len(args) > 3 and args[3] in ("head", "saddle")
+# With "saddle", the close cameras follow the saddle on the back instead of the head.
+saddle_view = len(args) > 3 and args[3] == "saddle"
 # With "around": from its left, its right, the front and above, for lying poses.
 around = len(args) > 3 and args[3] == "around"
 VIEWS = ([((5, 0, 0.3), (math.radians(90), 0, math.radians(90)), 4.2),
@@ -85,7 +87,10 @@ for ai, action in enumerate(actions):
             scene.frame_set(int(frame), subframe=frame % 1)
             # The middle of the head: halfway from the skull joint to the end of the jaw.
             bones = rig.pose.bones
-            skull = rig.matrix_world @ ((bones["skull"].head + bones["jaw"].tail) / 2) if head else Vector()
+            if saddle_view:
+                skull = rig.matrix_world @ (bones["spine"].matrix @ Vector((0, 0.3, 0)).to_4d()).to_3d() + Vector((0, 0, 0.9))
+            else:
+                skull = rig.matrix_world @ ((bones["skull"].head + bones["jaw"].tail) / 2) if head else Vector()
             cam.location = Vector(loc) + skull
             scene.render.filepath = tmp
             bpy.ops.render.render(write_still=True)

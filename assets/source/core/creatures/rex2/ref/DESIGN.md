@@ -160,5 +160,27 @@ root ride on the pelvis as contacts, so a fallen Rex rests on them. `bun tools/r
   11.9 cm on a 35% slope (claws and the side of the skull). Without the contacts the thigh sank 38 cm.
 - Every fall settles within 3.6 seconds.
 
+## Saddle and rider
+
+`saddle.py` builds the old Rex's riding tree on this back: a quilted pad, a dished seat, tree rails, two grip horns,
+stirrups on leathers and two girths, on the old saddle's leather, wood and brass pictures (copied to `tex/`). Every
+height is cast onto the back, the stirrups hang 7 cm outside the flank, and the girths are cast round the chest. The
+pad is a quarter wider than the old one, because this back is broader. The saddle takes the bone weights of the skin
+nearest each vertex, so it bends with the back; the clay sheet (`ref/compare/sheet-saddle.png`) shows it lying on the
+back without sinking through in idle, run and the roar. Its levels are 3,676, 1,600, 550 and 360 triangles; at 240 or
+fewer, one piece of the farthest level turned inside out.
+
+The seat is 1.0 m ahead of the hips and 5.03 m up. `saddle.py` places the seat and the rider's grips, footrests,
+soles and knees, and keeps them in `ref/rider.json`, which `asset.ts` gives. The build stops if the saddle and the
+file disagree by more than a centimetre; `REX2_WRITE_SOCKETS=1` writes them afresh. The stirrups hang 0.42 m under
+the seat: lower, the back is so broad that the rider's legs would have to spread a metre to each side.
+
+The saddle item `core:saddle_rex2` has a `rider` block, so the rider's hands hold the grips and their feet and knees
+aim for the stirrups. The old Rex's saddle never had one. In the game (`ref/look/ride-rex2-high.png`, the rider's own
+camera from `tools/rex/look.ts --ride core:rex2`) the rider sits astride the seat with their hands on the grips. Their
+feet rest at the edge of the pad rather than in the irons, which their legs don't reach.
+
+`bun run snap -- --ride` stops with an error for any ground creature, the old Rex too, so it isn't used here.
+
 `ref/clipinfo.py` tracks the jaw, head and hips frame by frame. `ref/sheet.py ... around` draws a pose from four
 sides. The sheets are in `ref/compare/`.

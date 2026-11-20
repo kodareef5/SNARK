@@ -40,7 +40,7 @@ export const REX: readonly Def[] = [
 ];
 
 // Rex v2 while it is built (planning/workstreams/rex2.md). It stands beside the Rex in the paddock and nowhere else:
-// no spawns, eggs, feces, saddle or aliases. When it is done the Rex takes its model and this goes.
+// no spawns, eggs, feces or aliases, and its saddle is made nowhere. When it is done the Rex takes its model and this goes.
 const { breeds: _breeds, aliases: _aliases, feces: _feces, ...rex } = REX[0] as Extract<Def, { type: "species" }>;
 // Its regions' first colours are the palette's nearest browns to the source's own, measured by
 // assets/source/core/creatures/rex2/ref/paint.py, so a wild one looks as the model was painted. Where the nearest is
@@ -58,4 +58,10 @@ export const REX2: readonly Def[] = [
     ...rex, id: "core:rex2", mesh: "core:rex2", skeleton: "rex2", regions: regions2, color: regions2[0]!.colors[0][0],
     radius: 1.7, height: 5.6, eyeHeight: 4.9, bite: { ...rex.bite!, reach: 6.2 },
   },
+  // Its saddle, which the paddock gives it. The seat and the rider's hands, feet and knees are its asset's sockets
+  // (assets/source/core/creatures/rex2/ref/rider.json); the anchor is where the seat is at rest.
+  { type: "item", class: "saddle", id: "core:saddle_rex2", label: "Rex v2 saddle", color: 3, stack: 1, weight: 20,
+    saddle: { fits: "core:rex2", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 5.025, 1.0], entry: [2.6, 0, 1.0],
+      rider: { hands: ["grip_l", "grip_r"], feet: ["rest_l", "rest_r"], knees: ["knee_l", "knee_r"],
+        soles: { sockets: ["sole_l", "sole_r"], half: [.15, .13] }, grips: { radius: .027, span: [-.12, .13], forearmAlignment: 75 } } }] } },
 ];
