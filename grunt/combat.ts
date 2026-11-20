@@ -4,15 +4,15 @@
 // swing from here, a step aside when something else is under the crosshair.
 
 import type { Run } from "./body.ts";
-import { CREATURES, MELEE } from "./know.ts";
+import { CREATURES, holding, MELEE, ROLES } from "./know.ts";
 import type { Outcome } from "./protocol.ts";
 import { rideKind } from "./nav.ts";
-import { board, hold, holdBest, type SkillContext, type SkillResult } from "./skills.ts";
+import { board, holdBest, type SkillContext, type SkillResult } from "./skills.ts";
 
 /** What the character can fight with now: a mount that fights (ridden), a bow with arrows, a melee weapon. */
 export function arms(b: SkillContext["belief"]): { bow: boolean; melee: string | null; mount: string | null } {
   const ridden = b.self?.mount ? b.things.get(b.self.mount) : undefined;
-  return { bow: b.count("bow") > 0 && b.count("arrow") > 0, melee: MELEE.find((w) => b.count(w) > 0) ?? null, mount: ridden?.tags?.includes("fighter") ? ridden.id : null };
+  return { bow: holding((i) => b.count(i), "bow") > 0 && holding((i) => b.count(i), "arrow") > 0, melee: MELEE.find((w) => b.count(w) > 0) ?? null, mount: ridden?.tags?.includes("fighter") ? ridden.id : null };
 }
 
 export function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
@@ -59,7 +59,7 @@ export function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
       yield* ctx.body.settle(ctx.body.act([{ control: "interact", target: b.self.mount, verb: "dismount" }], "dismount to fight"), 1500);
       yield { until: () => !b.self?.mount, ms: 1000 };
     }
-    const ok = weapon === "mount" && a.mount ? b.things.get(a.mount)?.type ?? "mount" : weapon === "bow" && a.bow ? (yield* hold(ctx, "bow")) && "bow" : yield* holdBest(ctx, [...MELEE]);
+    const ok = weapon === "mount" && a.mount ? b.things.get(a.mount)?.type ?? "mount" : weapon === "bow" && a.bow ? yield* holdBest(ctx, ROLES.bow) : yield* holdBest(ctx, [...MELEE]);
     p.weapon = ok || "hands";
     const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "assist", kind: "attack", target, ...(p.weapon === "bow" ? { range: [8, 35] as [number, number] } : {}), until: { health_below: retreat, ...(weapon === "mount" ? { mount_health_below: 0.25 } : {}) } }], `attack ${target}`), 180_000);
     const d = (o?.detail ?? {}) as { result?: string; swings?: number; shots?: number; hits?: number; by?: string | null };

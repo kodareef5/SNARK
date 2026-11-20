@@ -245,7 +245,8 @@ export interface Slot {
   uses?: Gauge | null;
 }
 
-/** A recipe as the inventory screen offers it. */
+/** A recipe as the inventory screen offers it. `level`: the character's level it is first learned at, when that is
+ * still ahead (it cannot be made until then: `can` is 0). */
 export interface Craftable {
   item: string;
   needs: Record<string, number>;
@@ -254,6 +255,7 @@ export interface Craftable {
   seconds: number;
   /** A station kind the recipe needs, or null for the hands. */
   at: string | null;
+  level?: number;
 }
 
 export interface InventoryChannel {

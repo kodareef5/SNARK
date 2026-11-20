@@ -6,20 +6,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { CLOSED_BAD_CONTENT, ClientSession } from "../client/core/session.ts";
+import { CLOSED_BAD_CONTENT } from "../client/core/session.ts";
 import { CORE_CONTENT } from "../content/core.ts";
-import { defaultLook } from "../shared/anim/look.ts";
-import { compileContent, withContent } from "../shared/content/registry.ts";
+import { compileContent } from "../shared/content/registry.ts";
 import type { ClusterList } from "../client/core/travel.ts";
 import { CMD_RESPAWN, CMD_TRAVEL, KEY_BYTES, SESSION_ALIVE, REJECT_CONTENT, REJECT_DENIED, REJECT_FULL, REJECT_KICKED, REJECT_NAME, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION } from "../shared/net/protocol.ts";
-import { parseManifest } from "../shared/pack/manifest.ts";
-import { CityStatics } from "../shared/world/city.ts";
-import { mapHeightfield, mapNodes, parseMap } from "../shared/world/mapfile.ts";
-import { fetchMapFile } from "../client/core/fetched.ts";
 import { Mcp, type Answer, type ToolHost } from "./mcp.ts";
-import { connect } from "./socket.ts";
 import { GUIDE } from "./guide.ts";
 import { RESOURCES } from "./lookup.ts";
+import { joinServer } from "./join.ts";
 import { Agent, INSTRUCTIONS, toolDefs } from "./tools.ts";
 import { TRAVEL_DEFS, nearestTerminal, riseAt, serverNamed, socketOf } from "./travel.ts";
 
@@ -110,33 +105,8 @@ async function main(): Promise<void> {
   const enter = async (): Promise<void> => {
     joining = true;
     try {
-      const get = async (file: string): Promise<Response> => {
-        const res = await fetch(fileUrl(url, file));
-        if (!res.ok) throw new Error(`asked for ${file} and got ${res.status}`);
-        return res;
-      };
-      // The server poses bodies with the clips of the pack it serves, and wants the same of whoever joins.
-      const clipHash = parseManifest(await (await get("assets/manifest.json")).text()).clipHash;
-      // It names its map's head, whose parts hold the ground and where the trees and rocks stand: read whole, as one file.
-      const named = (await (await get("map.json")).json()) as { head: string };
-      const map = parseMap(await fetchMapFile(get, named.head));
-      const hf = mapHeightfield(map);
       const ticket = trip && trip.refused === "" ? trip.ticket : null;
-      const session = new ClientSession(connect(url), {
-        name: args.name,
-        key,
-        // A map's landmarks bring definitions of their own, compiled after the core's as the server's are.
-        registry: withContent(reg, map.content?.defs ?? []),
-        clipHash,
-        look: defaultLook(),
-        password: process.env.SNARK_PASSWORD ?? "",
-        ...(ticket ? { ticket } : {}),
-        resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
-        nodes: (ground, content) => mapNodes(map, ground, content),
-        // The map's own pieces everywhere, as a browser has them for its far city: the skyline a flight keeps over.
-        city: (content) => new CityStatics(map.dims, map.statics, content),
-        statics: map.statics,
-      });
+      const session = await joinServer(url, args.name, key, reg, ticket);
       agent = new Agent(session, { console: args.console });
       console.error(`joining ${url} as ${args.name}${ticket ? " with a travel ticket" : ""}`);
     } catch (err) {

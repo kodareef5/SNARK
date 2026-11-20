@@ -32,5 +32,21 @@ export const CREATURES: Record<string, CreatureLore> = {
   },
 };
 
+/** What a player calls each kind of thing in the games grunt has met: a role, and the item names that fill it in each
+ * (the mock's first, then SNARK's), best first. */
+export const ROLES: Record<"pick" | "hatchet" | "bow" | "arrow" | "food" | "berries", string[]> = {
+  pick: ["stone_pick", "pick", "metal_pick"],
+  hatchet: ["stone_hatchet", "hatchet", "metal_hatchet"],
+  bow: ["bow", "crossbow"],
+  arrow: ["arrow", "arrow_stone"],
+  food: ["berries", "berry", "meat", "cooked_meat"],
+  berries: ["berries", "berry"],
+};
+
 /** Melee weapons, best first. */
-export const MELEE = ["stone_pick", "stone_hatchet"];
+export const MELEE = [...ROLES.pick, ...ROLES.hatchet, "club"];
+
+/** How many of a role the bag holds, whichever names fill it. */
+export function holding(count: (item: string) => number, role: keyof typeof ROLES): number {
+  return ROLES[role].reduce((n, item) => n + count(item), 0);
+}

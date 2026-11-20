@@ -11,6 +11,7 @@ import type {
   Action, Craftable, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, Plan,
   RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../../grunt/protocol.ts";
+import type { WorldEvent } from "../../grunt/endpoint.ts";
 import { BUILD_RATE, BUILD_REACH, MAX_PLAN as BUILDING_MAX, type PieceAt, PIECE_RECIPES, Structures } from "./structures.ts";
 import { CHAR, CLIFF, DEEP, LEGEND, SHALLOW, type Feature, type Terrain } from "./terrain.ts";
 
@@ -177,10 +178,7 @@ interface Running {
   done: Record<string, unknown>;
 }
 
-export type WorldEvent =
-  | { type: "event"; kind: string; data: Record<string, unknown> }
-  | { type: "outcome"; command: string; index: number; status: "completed" | "interrupted" | "failed";
-      by?: Interruption; code?: RejectCode | "blocked"; detail?: Record<string, unknown> };
+export type { WorldEvent } from "../../grunt/endpoint.ts";
 
 /** A small seeded generator, so that a world made twice from one seed runs the same. */
 function rng(seed: number): () => number {
@@ -250,6 +248,10 @@ export class World {
 
   get t(): number {
     return this.tick * TICK_MS;
+  }
+
+  named(name: string): void {
+    this.me.name = name;
   }
 
   on(fn: (e: WorldEvent) => void): void {

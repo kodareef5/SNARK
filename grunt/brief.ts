@@ -5,6 +5,7 @@
 
 import type { Agenda } from "./agenda.ts";
 import { compass } from "./belief.ts";
+import { MELEE } from "./know.ts";
 import type { Report, Runtime, Task } from "./runtime.ts";
 import { SKILLS } from "./skills.ts";
 
@@ -131,7 +132,7 @@ export const CARDS: Card[] = [
       const t = d.task;
       const it = d.id ? b.things.get(d.id) : undefined;
       const won = s.rt.fights.filter((f) => f.foe === d.type && f.won);
-      const armed = ["stone_hatchet", "stone_pick"].some((w) => b.slotOf(w) !== null);
+      const armed = MELEE.some((w) => b.slotOf(w) !== null);
       const odds = won.length
         ? `You have beaten ${won.length} ${d.type} before, in about ${won.at(-1)!.swings} swings, losing ${won.at(-1)!.health_lost} health.`
         : `You have not fought a ${d.type ?? "creature"} yet; ${it?.health !== undefined ? `it is at ${pct(it.health)} health` : "its strength is unknown"}.`;

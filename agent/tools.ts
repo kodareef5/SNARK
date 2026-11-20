@@ -89,6 +89,13 @@ export class Agent implements ToolHost {
   readonly remote = new RemoteSample();
   readonly controller: Controller;
   private readonly withConsole: boolean;
+  /**
+   * Inputs set from outside (the grunt gateway's move, look, jump and crouch), used while no task runs: the controller
+   * would otherwise hold the body still. Its yaw stays the controller's when it ends, so a task starts from it.
+   */
+  manual: { moveX: number; moveZ: number; yaw: number; pitch: number; buttons: number } | null = null;
+  /** Told of every combat event the session brings, before the agent takes it (the grunt gateway's events). */
+  onEvent: ((ev: ClientSession["events"][number]) => void) | null = null;
   private readonly far: FarLayer | undefined;
   private readonly run: Record<string, (a: Record<string, unknown>, ctx: CallContext) => Answer | Promise<Answer>>;
   /** Each returns true once it has resolved its promise. */
@@ -154,7 +161,9 @@ export class Agent implements ToolHost {
     this.absorb();
     const c = this.controller;
     c.step(now);
-    s.update(now, c.moveX, c.moveZ, c.yaw, c.pitch, c.buttons);
+    const m = this.manual && !c.busy ? this.manual : null;
+    if (m) (c.yaw = m.yaw), (c.pitch = m.pitch);
+    s.update(now, m ? m.moveX : c.moveX, m ? m.moveZ : c.moveZ, c.yaw, c.pitch, m ? m.buttons : c.buttons);
     for (let i = 0; i < this.waiting.length; ) {
       if (this.waiting[i]!(now)) this.waiting.splice(i, 1);
       else i++;
@@ -165,6 +174,7 @@ export class Agent implements ToolHost {
   private absorb(): void {
     const s = this.session;
     for (const ev of s.events) {
+      this.onEvent?.(ev);
       if (ev.kind === EVENT_HIT) {
         this.controller.hit(ev.x, ev.z);
         if (ev.damage > 0) this.tell(`you hit for ${Math.round(ev.damage)}${ev.kill ? ", and killed it" : ""}`);

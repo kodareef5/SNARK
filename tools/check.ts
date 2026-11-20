@@ -74,7 +74,7 @@ const ZONES: Zone[] = [
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },
   { dir: "modules", may: ["shared", "server/api", "modules"], builtins: false },
   // A player that is a program: headless core on a socket, with tools in place of keys. It names nothing of the server's.
-  { dir: "agent", may: ["shared", "content", "client/core", "agent"], builtins: true },
+  { dir: "agent", may: ["shared", "content", "client/core", "agent", "grunt"], builtins: true },
   // A Pi package that plays a game as a player, through the grunt protocol (D879). It names nothing of the game's: a game
   // speaks its protocol. Pi loads it under Node, so it uses Node's built-ins and none of Bun's.
   { dir: "grunt", may: ["grunt"], builtins: true },

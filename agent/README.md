@@ -17,9 +17,12 @@ and commands a browser sends, and has no powers a player lacks.
 | `commands.ts` | Commands at ten a second, and each one's result |
 | `travel.ts` | The travel tool and the cluster's servers |
 | `socket.ts` | WebSocket as a `Connection`, as the shell has it |
+| `join.ts` | Joining a server as a survivor: the clips' hash, the map read whole, the session |
+| `gateway.ts` | The grunt protocol (`grunt/protocol.md`) for a server: a WebSocket at `/grunt`, one survivor a connection |
+| `grunt.ts` | A survivor as a grunt world: its senses as the protocol's channels, the controls as the Agent's inputs and tools |
 
-The zone may import `shared`, `content` and `client/core`, and Bun's
-built-ins. It names nothing of the server's. Ways are found in `shared/world`:
+The zone may import `shared`, `content`, `client/core` and `grunt` (the
+protocol and its endpoint, for the gateway), and Bun's built-ins. It names nothing of the server's. Ways are found in `shared/world`:
 `path.ts` on the ground, `layers.ts` up stairs, over bridges and across water,
 both written against `CollisionWorld` so that creatures can use them too.
 
@@ -190,3 +193,20 @@ hunter comes, it ends like any task.
 - Breeding beyond carrying an egg: claiming a baby and feeding it.
 - Grenades thrown at a target, and the pteranodon's grab.
 - Refuelling a car: nothing in the game does yet.
+
+## The grunt gateway
+
+```sh
+bun agent/gateway.ts --url ws://localhost:8787/ws --port 8771   # grunt clients connect to ws://127.0.0.1:8771/grunt
+```
+
+Each grunt client (`grunt/`, the Pi package) that says hello joins the server as
+the survivor it names, with a key per name in `~/.snark` as the agent keeps, and
+plays it through the same headless client: the server is not changed and sees a
+player. Positions turn from SNARK's frame (x west, z north) to the protocol's (x
+east, z south). The assists are the Agent's tasks (its attack walks up and
+strikes, or keeps its distance and aims ahead with a bow; its harvest takes the
+right tool in hand). Not yet spoken: the build helper (`plan`), the map and focus
+channels. `tests/integration/grunt-gateway.test.ts` plays one on a server in process;
+`bun tools/grunt/live.ts --url ws://127.0.0.1:8771/grunt --name Scout "…"` puts a
+model on it.

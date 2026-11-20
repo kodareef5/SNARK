@@ -81,6 +81,8 @@ export class Body {
     const thing = this.belief.things.get(id);
     if (!thing) return false;
     const yaw = this.belief.yawTo(thing.pos);
+    // A game that shows no crosshair (no focus channel): turned toward it is as faced as can be known.
+    if (this.session.welcome && !this.session.welcome.capabilities.channels.includes("focus")) return yield* this.turnTo(yaw);
     for (const off of [0, 0.15, -0.15, 0.3, -0.3]) {
       yield* this.turnTo(yaw + off);
       const after = this.belief.now;

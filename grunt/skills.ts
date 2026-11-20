@@ -9,6 +9,7 @@ import { fight } from "./combat.ts";
 import { escort, follow, repair, upkeep } from "./company.ts";
 import { empty, loot, migrate, organize, stash } from "./haul.ts";
 import { kit } from "./kit.ts";
+import { ROLES } from "./know.ts";
 import { type Costs, costsFor, type Danger, type RideKind, rideKind, type Route, WALK } from "./nav.ts";
 import type { Remembered } from "./belief.ts";
 import type { Body, Run } from "./body.ts";
@@ -40,7 +41,7 @@ export interface Skill {
 }
 
 const YIELD: Record<string, string> = { tree: "wood", rock: "stone", bush: "fiber" };
-const TOOLS: Record<string, string[]> = { tree: ["stone_hatchet", "stone_pick"], rock: ["stone_pick", "stone_hatchet"], bush: [] };
+const TOOLS: Record<string, string[]> = { tree: [...ROLES.hatchet, ...ROLES.pick], rock: [...ROLES.pick, ...ROLES.hatchet], bush: [] };
 
 function addGained(p: Record<string, unknown>, o: Outcome | undefined): number {
   const got = (o?.detail?.gained ?? {}) as Record<string, number>;
@@ -311,7 +312,7 @@ function* explore(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
 }
 
 /** Gathers from trees, rocks or bushes near where it started, until none is left there or it has enough. */
-function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+export function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const b = ctx.belief, p = ctx.progress;
   // The kind of the target, when one is named and the kind is not.
   const kind = String(args.kind ?? (typeof args.target === "string" ? b.things.get(args.target)?.type : undefined) ?? "tree");
@@ -368,12 +369,17 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
       const d = b.dangerNear(near[0]!.pos)!;
       return { status: "blocked", summary: `every ${kind} left is near the ${d?.type ?? "danger"} I saw ${Math.round((d?.age ?? 0) / 1000)} s ago; ${summary()}`, data: { gained: p.gained, reason: "danger", danger: d } };
     }
-    const arrival = yield* ctx.body.walkTo(() => b.things.get(target)?.pos ?? null, kind === "rock" ? 2.2 : 1.8, { ignore: target });
-    if (arrival === "lost") continue;
-    if (arrival === "blocked" || !(yield* ctx.body.face(target))) {
-      unreachable.add(target);
-      (p.unreachable as string[]).push(target);
-      continue;
+    // With the game's harvest assist, near is enough: the assist closes in and faces the thing itself.
+    const assisted = !!b.assists?.kinds.includes("harvest");
+    const there = b.things.get(target)?.pos;
+    if (!assisted || (there && b.distance(there) > 12)) {
+      const arrival = yield* ctx.body.walkTo(() => b.things.get(target)?.pos ?? null, assisted ? 6 : kind === "rock" ? 2.2 : 1.8, { ignore: target });
+      if (arrival === "lost") continue;
+      if (arrival === "blocked" || (!assisted && !(yield* ctx.body.face(target)))) {
+        unreachable.add(target);
+        (p.unreachable as string[]).push(target);
+        continue;
+      }
     }
     let misses = 0;
     // The game's assist works the hands: one action takes the thing (or as much as is wanted), at the tool's pace.
@@ -435,7 +441,7 @@ function* flee(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResul
 
 /** Fights a creature with the best weapon to hand: closes in, faces it, swings until it is dead or gone. */
 /** Where each material comes from. */
-const SOURCE: Record<string, string> = { wood: "tree", thatch: "tree", stone: "rock", flint: "rock", fiber: "bush", berries: "bush" };
+const SOURCE: Record<string, string> = { wood: "tree", thatch: "tree", stone: "rock", flint: "rock", metal: "rock", fiber: "bush", berries: "bush", berry: "bush" };
 
 /** Gathers until the inventory holds a whole list of materials: trees, then rocks, then bushes, as each is needed. */
 export function* gather(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
@@ -462,6 +468,7 @@ export function* craft(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
   const item = String(args.item ?? ""), count = Math.max(1, Number(args.count ?? 1));
   const recipe = ctx.belief.inventory?.craftable.find((r) => r.item === item);
   if (!recipe) return { status: "failed", summary: `I don't know how to make ${item}` };
+  if (recipe.level) return { status: "blocked", summary: `${item} is learned at level ${recipe.level}; I can't make it yet`, data: { reason: "level", level: recipe.level } };
   if (recipe.can < count) return { status: "blocked", summary: `I can make ${recipe.can} ${item}, not ${count}: it needs ${Object.entries(recipe.needs).map(([k, v]) => `${v} ${k}`).join(", ")} each`, data: { can: recipe.can, needs: recipe.needs } };
   const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "craft", item, count }], `craft ${count} ${item}`), recipe.seconds * count * 1000 + 3000);
   if (o?.status === "completed") return { status: "done", summary: `made ${count} ${item}` };
