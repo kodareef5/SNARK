@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { FALLBACK_SURFACES, GROUND_SURFACES, SURFACE_NAMES } from "../../content/surfaces.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { provingView, settle } from "../snap.ts";
 import { SOURCE } from "../art/source.ts";

@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import { forTouch, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";

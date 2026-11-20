@@ -6,6 +6,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";

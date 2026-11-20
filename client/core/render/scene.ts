@@ -39,10 +39,10 @@ import { FAR_FROM, farPlane, type Camera } from "./camera.ts";
 import { Characters, riderFitScratch, seatScratch, type RiderFit, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
-import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
+import { CITY_BUFFER, FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budget.ts";
-import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
-import { CityBlocks, type BlocksSource } from "./cityblocks.ts";
+import type { FarCity, CitySource } from "./farcity.ts";
+import type { CityBlocks, BlocksSource } from "./cityblocks.ts";
 import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
@@ -623,7 +623,11 @@ export class Scene {
   /** The map's landmarks where the near store does not hold their pieces' chunks whole, with the far city. */
   landmarks: FarLandmarks | null = null;
   /** The city past what the far city and the far blocks draw, as blocks from its tops, given them and the far mesh. */
-  readonly blocks: CityBlocks | null;
+  blocks: CityBlocks | null = null;
+  /** What the city's blocks are made from, until the late code (city-late.ts) has come to make them. */
+  private blocksFrom: { tops: BlocksSource; colours: Uint8Array } | null;
+  /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
+  static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks } | null = null;
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
   private readonly farMesh: number;
@@ -789,7 +793,8 @@ export class Scene {
     const listed = this.assets.manifest.farColours;
     const colours = this.farBounds && (world.far || world.tops) ? (listed ? Uint8Array.from(listed) : farColours(reg, pack, shown)) : null;
     this.far = world.far && colours ? new FarBlocks(world.far, world.dims, world.hf, far, this.farBounds!, colours) : null;
-    this.blocks = world.tops && colours ? new CityBlocks(world.tops, world.dims, world.hf, far, colours, this.landmarkKinds) : null;
+    this.blocksFrom = world.tops && colours ? { tops: world.tops, colours } : null;
+    this.makeBlocks();
     const flat = (k: number): boolean => this.meshOfKind[k] !== missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
     this.near = this.farBounds ? new NearCity(reg, far, this.landmarkKinds, flat) : null;
     this.startCity();
@@ -945,6 +950,7 @@ export class Scene {
     this.far?.update(p, this.assets.residency, cam.x, cam.z, tier.reach.bases);
     // A tier that draws no far city draws none of its blocks either.
     const blocksView = tier.reach.city > 0 && tier.city.levels.length > 0 ? this.viewDistance : 0;
+    this.makeBlocks();
     this.blocks?.update(p, this.assets.residency, cam, blocksView, this.city ? this.citySource!.statics : null, this.city);
     this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier);
     if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
@@ -1640,18 +1646,25 @@ export class Scene {
     p.triangles += triangles * copies;
   };
 
+  /** The city's blocks, made once the late code has come: at once where it already has, as in tests and tools. */
+  private makeBlocks(): void {
+    if (this.blocks || !this.blocksFrom || !Scene.late) return;
+    this.blocks = new Scene.late.CityBlocks(this.blocksFrom.tops, this.world.dims, this.world.hf, this.farMesh, this.blocksFrom.colours, this.landmarkKinds);
+    this.blocksFrom = null;
+  }
+
   /**
    * The far city once the world has the map's statics, which the far blocks then leave their cells to; or, given the far
    * city `before` of statics handed over before, of those the world has now.
    */
   private startCity(before: FarCity | null = null): FarCity | null {
     const source = this.world.city;
-    if (!source || !this.farBounds) return null;
+    if (!source || !this.farBounds || !Scene.late) return null;
     this.citySource = source;
     this.boxes.clear();
     this.clearAt.fill(NaN, 0, 3);
     this.clearAt[3] = 0;
-    this.city = new FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
+    this.city = new Scene.late.FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
     this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds);
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];

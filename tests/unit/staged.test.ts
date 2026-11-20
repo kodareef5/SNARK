@@ -8,6 +8,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { FramePacket, SOURCE_WINDOW } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { TerrainLod, coarseArea, coarseGround, groundSize, type GroundBudget } from "../../client/core/render/terrain.ts";
 import { Lakes } from "../../client/core/render/lakes.ts";
 import { ReliefTiles, paintRelief } from "../../client/core/tactical.ts";

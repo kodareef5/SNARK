@@ -32,6 +32,7 @@ import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { Found, StructureStore } from "../../shared/world/structures.ts";
 import { MapWater } from "../../shared/world/water.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { farRegistry, farWorld, type FarWorld } from "../../tests/fixtures/farworld.ts";
 import { buildCorePack } from "../pack/build.ts";
 import { packedMips, readPicture } from "../pack/image.ts";

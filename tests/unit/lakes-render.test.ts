@@ -8,6 +8,7 @@ import { FAR_MESH } from "../../client/core/render/far.ts";
 import { LAKE_SLOTS, Lakes } from "../../client/core/render/lakes.ts";
 import { DRAW_BLEND, DRAW_WATER, FRAME, FramePacket, PASS_FAR, PASS_NEAR } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { UNDERWATER_VIEW, WATER_TILE } from "../../client/core/render/shading.ts";
 import { groundSize } from "../../client/core/render/terrain.ts";
 import { seaDepth } from "../../client/core/render/water.ts";

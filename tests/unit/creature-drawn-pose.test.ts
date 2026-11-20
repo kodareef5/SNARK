@@ -6,6 +6,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { writeBones } from "../../client/core/render/characters.ts";
 import { DRAW_ONE_BONE, DRAW_SKINNED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { creatureFootfallDomain, FOOTFALL_NONE } from "../../shared/anim/creature.ts";
 import { AnimState, DIR_STEPS, LAYER_FLINCH } from "../../shared/anim/pose.ts";

@@ -9,6 +9,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import type { FarNodeSource } from "../../client/core/render/farnodes.ts";
 import { DRAW_CUTOUT, DRAW_TEXTURED, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
 import { B_PROP_R, HUMAN } from "../../shared/anim/human.ts";

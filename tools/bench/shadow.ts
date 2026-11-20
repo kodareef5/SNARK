@@ -9,6 +9,7 @@ import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_TEXTURED, TILE_CASTS, TILE_QUADS, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { Cascades, MAX_CASCADES, reach, type ShadowSetup } from "../../client/core/render/shadow.ts";
 import { hourOfSun } from "../../client/core/render/sky.ts";
 import { RemoteSample } from "../../client/core/session.ts";

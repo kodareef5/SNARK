@@ -34,6 +34,8 @@ export const FAR_SLOTS = 1 << 30;
 export const FAR_SPAN = 1 << 29;
 /** The instance buffer every tile is drawn with: one instance at the origin. Clear of chunk indices and the node store's. */
 export const FAR_BUFFER = 2 << 20;
+/** The far city's tiles and the city's blocks are drawn with the next one (farcity.ts, cityblocks.ts). */
+export const CITY_BUFFER = FAR_BUFFER + 1;
 /** What the far blocks hold on the card, as residency.ts reserves it. */
 const RESERVE = "far blocks";
 /**

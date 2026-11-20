@@ -11,6 +11,7 @@ import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { FAR_BUFFER } from "../../client/core/render/far.ts";
 import { DRAW_DETAILS, DRAW_PULLED, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { chunkAt } from "../../shared/coords.ts";

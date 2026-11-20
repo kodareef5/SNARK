@@ -10,6 +10,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_ONE_BONE, DRAW_SKINNED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { creaturePose } from "../../shared/anim/creature.ts";
 import { B_HIPS, B_PROP_L, B_PROP_R, HUMAN_BONES, SLOT_FEET, SLOT_HANDS, type Socket } from "../../shared/anim/human.ts";

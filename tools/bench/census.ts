@@ -21,6 +21,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { CITY_BUFFER, CITY_SLOTS } from "../../client/core/render/farcity.ts";
 import { DRAW_RANGED, DRAW_TEXTURED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCount, mapSizeX, mapSizeZ } from "../../shared/coords.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";

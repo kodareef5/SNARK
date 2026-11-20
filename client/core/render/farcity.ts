@@ -28,7 +28,8 @@ import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
 import { WORTH, type Hider } from "./hide.ts";
 import { InlineCityMaker, cityJob, cityKinds, type CityMade, type CityMaker } from "./citymake.ts";
-import { FAR_BUFFER, FAR_HEIGHT } from "./far.ts";
+import { CITY_BUFFER, FAR_HEIGHT } from "./far.ts";
+export { CITY_BUFFER } from "./far.ts";
 import type { FramePacket } from "./packet.ts";
 
 /** Chunks along a tile's side, a whole number of tiles to a sector of 16, and its side in metres. */
@@ -49,8 +50,6 @@ const ACROSS = 4;
 /** Slots of tiles on the card start here, past the far blocks' (far.ts FAR_SLOTS up to twice that). */
 export const CITY_SLOTS = 2 ** 31;
 const CITY_SLOT_SPAN = 2 ** 30;
-/** The instance buffer every tile is drawn with: one instance at the origin. */
-export const CITY_BUFFER = FAR_BUFFER + 1;
 const RESERVE = "far city";
 /** Levels are made, nearest first and tiles with nothing on the card before the rest; here, until this much of a frame is spent. */
 export const MAKE_MS = 2;

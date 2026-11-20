@@ -17,6 +17,7 @@ import { AnimState, bodySeed } from "../../shared/anim/pose.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ItemDef } from "../../shared/content/defs.ts";

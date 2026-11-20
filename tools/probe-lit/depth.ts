@@ -9,6 +9,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { PASS_FAR, PASS_NEAR, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";

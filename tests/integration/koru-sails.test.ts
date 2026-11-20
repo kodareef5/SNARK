@@ -1,6 +1,8 @@
 import { expect } from "bun:test";
 import { artTest } from "../fixtures/needs-art.ts";
 import { App } from "../../client/core/app.ts";
+// The app's scenes draw the far city, which a page fetches after its first frame (D873).
+import "../../client/core/render/city-late.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";

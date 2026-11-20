@@ -7,6 +7,7 @@ import { cpus, tmpdir, totalmem } from "node:os";
 import { join, resolve } from "node:path";
 import { Camera } from "../client/core/render/camera.ts";
 import { Scene } from "../client/core/render/scene.ts";
+import "../client/core/render/city-late.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";
 import { AnimState, HumanAnim } from "../shared/anim/pose.ts";

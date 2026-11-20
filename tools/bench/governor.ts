@@ -13,6 +13,7 @@ import { TARGET_MS, ladder, workMs, type GovernorStep } from "../../client/core/
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene, type Thing } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CHUNK_SIZE, chunkCount } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";

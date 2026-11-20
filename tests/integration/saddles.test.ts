@@ -6,6 +6,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_SKINNED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, ORDER_UNSADDLE, RESULT_OK } from "../../shared/net/protocol.ts";

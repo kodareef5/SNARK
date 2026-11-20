@@ -9,6 +9,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import type { FarSource } from "../../client/core/render/far.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";

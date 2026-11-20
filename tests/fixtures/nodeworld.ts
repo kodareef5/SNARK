@@ -11,6 +11,7 @@ import type { FarSource } from "../../client/core/render/far.ts";
 import { NodeChanges, type FarNodeSource } from "../../client/core/render/farnodes.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";

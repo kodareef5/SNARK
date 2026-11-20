@@ -6,6 +6,7 @@ import type { AssetRequest } from "../../client/core/assets/port.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SIZE_REGION, TRANSIENT_BUFFER, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
 import { drawProgram } from "../../client/core/render/programs.ts";
 import type { Cutouts, OwnBody } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { Falling } from "../../client/core/rubble.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { hashBytes } from "../../shared/hash.ts";

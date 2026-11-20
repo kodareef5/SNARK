@@ -21,6 +21,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { farBeyondLookup, farLookup } from "../../client/core/render/farshadow.ts";
 import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { shadowCascade } from "../../client/core/render/shadowtext.ts";
 import { hourOfSun, trueSun } from "../../client/core/render/sky.ts";
 import { CORE_CONTENT } from "../../content/core.ts";

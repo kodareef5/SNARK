@@ -28,6 +28,7 @@ import { canvasRatio, tierOf } from "../client/core/assets/tiers.ts";
 import { Camera } from "../client/core/render/camera.ts";
 import { BONE_FLOATS, DRAW_CUTOUT, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, type FramePacket, type TextureUpload } from "../client/core/render/packet.ts";
 import { Scene } from "../client/core/render/scene.ts";
+import "../client/core/render/city-late.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import type { NodeDef } from "../shared/content/defs.ts";

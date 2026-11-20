@@ -6,6 +6,7 @@ import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_CUTOUT, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, MAX_CASTERS, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { DEPTH_STEPS } from "../../client/core/render/shadow.ts";
 import { hourOfSun } from "../../client/core/render/sky.ts";
 import { COARSE } from "../../client/core/render/terrain.ts";

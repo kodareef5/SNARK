@@ -6,6 +6,7 @@ import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { HudModel, VehicleTelemetry } from "../../client/core/hud.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";

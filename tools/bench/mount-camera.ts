@@ -1,6 +1,7 @@
 // Measures the whole controlled-mount pose/camera/frame path, including padded obstruction queries.
 import { Camera } from "../../client/core/render/camera.ts";
 import { Scene, type OwnBody } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { GEAR_COUNT, GEAR_WORN } from "../../shared/sim/entities.ts";

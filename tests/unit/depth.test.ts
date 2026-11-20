@@ -5,6 +5,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_FAR_SEE, TILE_CASTS, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { chunkAt } from "../../shared/coords.ts";

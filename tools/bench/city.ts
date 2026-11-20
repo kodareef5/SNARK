@@ -14,6 +14,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { CITY_AHEAD, cityThreads, makeLevel, type CityJob, type CityKinds, type CityMade, type CityMaker } from "../../client/core/render/citymake.ts";
 import { CITY_BUFFER, type FarCity } from "../../client/core/render/farcity.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";

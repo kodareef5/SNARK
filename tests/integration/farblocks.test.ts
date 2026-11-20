@@ -6,6 +6,7 @@ import { expect, test } from "bun:test";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER } from "../../client/core/render/far.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";

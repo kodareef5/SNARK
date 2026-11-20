@@ -11,6 +11,7 @@ import type { CityMaker } from "../../client/core/render/citymake.ts";
 import type { CitySource } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";

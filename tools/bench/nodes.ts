@@ -5,6 +5,7 @@
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { CHUNK_CELLS, Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";

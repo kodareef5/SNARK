@@ -14,6 +14,7 @@ import { FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { FRAME, FRAME_FLOATS, MAX_CASCADES } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { comparedLookup } from "../../client/core/render/shadowfilter.ts";
 import { DEPTH_VERTEX, EDGE, axisWeights, clampDepth, handOver, shadowBytes, shadowCascade, shadowKernel } from "../../client/core/render/shadowtext.ts";
 import { skyFrame, theSky } from "../../client/core/render/sky.ts";

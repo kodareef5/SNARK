@@ -13,8 +13,6 @@ import { App } from "../core/app.ts";
 import { fetchBytes, fetchContent, fetchJson, fetchSounds, fetchText, nextTask, withLandmarks } from "../core/fetched.ts";
 import { MapLoader } from "../core/mapload.ts";
 import { loadIdentity } from "../core/identity.ts";
-import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
-import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
 import { BenchRun, PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
@@ -27,7 +25,6 @@ import { VoiceIo } from "../voice/voice.ts";
 import { SoundIo } from "../sound/sound.ts";
 import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
-import { ActivitySelfcheck } from "../core/activity-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
 import { installSkin, SKIN_URL, skinPixels } from "../core/ui/skin.ts";
 import { CAPTURE_KEY, LightCapture, SAMPLE_H, SAMPLE_W } from "../core/light-capture.ts";
@@ -35,9 +32,13 @@ import { CAPTURE_KEY, LightCapture, SAMPLE_H, SAMPLE_W } from "../core/light-cap
 declare const __CONTENT_FILE__: string;
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
+// The self-check's code comes only to a page told ?selfcheck (D873).
+const checks = selfcheck ? await import("../core/selfcheck-tools.ts") : null;
 const driveCheck = selfcheck && params.has("urbanDrive");
 /** A measurement run. The camera flies itself and the page reports frame times and the GPU's by pass. */
 const bench = params.has("bench") ? new BenchRun() : null;
+// The far city and the city's blocks come as their own file, which the first frame does not wait for (D873).
+void import("../core/render/city-late.ts");
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? (await import("./device.ts")).devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
@@ -111,7 +112,7 @@ async function boot(): Promise<void> {
       if(chosen.intent==="create" && session.sessionState===SESSION_CREATING)createSeq=session.create(Uint8Array.from(chosen.look!),chosen.spawn);
     });
   }
-  const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
+  const surfaces = checks ? new checks.SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   const previous=session.onResult;
   session.onResult=(seq,result)=>{previous?.(seq,result);if(createSeq && seq===createSeq && result!==RESULT_OK)createFailed=true;};
@@ -185,9 +186,9 @@ async function boot(): Promise<void> {
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
   const voiceListen = selfcheck && params.get("voice") === "listen";
   voice.loop = voiceCheck;
-  const progress = new SelfcheckProgress();
-  const drivingCheck = new ActivitySelfcheck(params);
-  const drive = drivingCheck.vehicle?.data;
+  const progress = checks ? new checks.SelfcheckProgress() : null;
+  const drivingCheck = checks ? new checks.ActivitySelfcheck(params) : null;
+  const drive = drivingCheck?.vehicle?.data;
 
   function showEntryProblem(){
     splash?.remove();
@@ -198,7 +199,7 @@ async function boot(): Promise<void> {
     document.querySelector<HTMLElement>("#entry-back")!.hidden=false;
   }
   let restored = 0;
-  if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress.frames, still: progress.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck.dinosaur?.data }) });
+  if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress!.frames, still: progress!.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive, dinosaur: drivingCheck?.dinosaur?.data }) });
   canvas.addEventListener("webglcontextlost", (e) => (e.preventDefault(), session.prediction.note("the graphics context was lost")));
   canvas.addEventListener("webglcontextrestored", () => {
     renderer.init();
@@ -264,13 +265,13 @@ async function boot(): Promise<void> {
     const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
     app.drawn(packet, ours, width, height);
     device?.frame(now, packet, t0, built);
-    if (progress.frames === 30) loser?.loseContext();
+    if (progress?.frames === 30) loser?.loseContext();
     // The self-check asks for a call and listens for it leaving the volume.
-    if (selfcheck && sound && progress.frames >= 0) {
-      if (progress.frames === 30) app.ui.local?.("sound call");
+    if (selfcheck && sound && progress!.frames >= 0) {
+      if (progress!.frames === 30) app.ui.local?.("sound call");
       sound.listen();
     }
-    if (progress.frames === 45) loser?.restoreContext();
+    if (progress?.frames === 45) loser?.restoreContext();
     const r = app.scene!.assets.residency;
     const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent });
     if (result) document.title = `SNARK ${result.frameMs.median} ms`;
@@ -280,8 +281,8 @@ async function boot(): Promise<void> {
     // second of played voice, or for ten seconds to report that none was.
     const voiced = voiceCheck || voiceListen;
     // Parts are written to disk a little after they arrive. The report waits until that has been still for half a second.
-    if (selfcheck && progress.advance(performance.now() - t0, port.cache.used, !packet.lit || surfaces!.done, voiced, voice.report.played, drivingCheck.finished)) {
-      const report = selfcheckReport(app, pack, manifest, hf, packet, {
+    if (checks && progress && drivingCheck && progress.advance(performance.now() - t0, port.cache.used, !packet.lit || surfaces!.done, voiced, voice.report.played, drivingCheck.finished)) {
+      const report = checks.selfcheckReport(app, pack, manifest, hf, packet, {
         has: name => params.has(name), voiced, voiceListen, voice: voice.report,
         driveCheck, drive, dinosaur: drivingCheck.dinosaur?.data, restored, misplaced: view.misplaced(app.ui.frame), sound: sound ? { peak: sound.peak } : null,
         cache: port.cache, userAgent: navigator.userAgent, width, height, times: progress.times, renderer, surfaces,

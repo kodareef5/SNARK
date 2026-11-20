@@ -9,6 +9,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, pieceWeight } from "../../client/core/render/nearcity.ts";
 import { DRAW_CUTOUT, DRAW_RANGED, DRAW_TEXTURED, MAX_CASTERS, MAX_DRAWS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield } from "../../shared/world/mapfile.ts";

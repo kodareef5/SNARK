@@ -13,6 +13,7 @@ import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_F
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { PREDICTED_REACH } from "../../client/core/session.ts";
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";

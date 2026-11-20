@@ -10,6 +10,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
 import { SOURCE_WINDOW, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { parsePack } from "../../shared/pack/pack.ts";

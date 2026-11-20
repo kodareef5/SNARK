@@ -15,6 +15,7 @@ import { FarStore } from "../../client/core/farcells.ts";
 import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
 import { MESH_SLOT } from "../../client/core/render/nearcity.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import "../../client/core/render/city-late.ts";
 import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield } from "../../shared/world/mapfile.ts";
