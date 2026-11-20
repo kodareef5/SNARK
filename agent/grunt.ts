@@ -9,7 +9,7 @@
 
 import type { GameWorld, WorldEvent } from "../grunt/endpoint.ts";
 import type {
-  Action, ChatLine, Craftable, EntitiesChannel, Entity, FocusChannel, Interruption, InventoryChannel, MapChannel,
+  Action, Building, Capabilities, ChatLine, Craftable, FormSpec, Plan, EntitiesChannel, Entity, FocusChannel, Interruption, InventoryChannel, MapChannel,
   RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../grunt/protocol.ts";
 import { ownIndex } from "../client/core/session.ts";
@@ -19,7 +19,11 @@ import { BTN_CROUCH, BTN_JUMP, BTN_PRIMARY, BTN_SECONDARY, BTN_SPRINT, STAMINA_U
 import { V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
 import type { Answer } from "./mcp.ts";
 import { observe, shortName } from "./observe.ts";
+import { Planner } from "./plan.ts";
 import type { Agent } from "./tools.ts";
+import { STRUCT_UNITS, YAW_UNITS } from "../shared/coords.ts";
+import { Found } from "../shared/world/structures.ts";
+import { Support } from "../shared/world/support.ts";
 
 /** SNARK's position to the protocol's, and back. */
 const toG = (x: number, z: number): [number, number] => [-x, -z];
@@ -68,11 +72,25 @@ export class SnarkWorld implements GameWorld {
   private wasAlive = true;
   /** The container the character opened last (the session does not name it). */
   private openedId: string | null = null;
+  private readonly planner: Planner;
+  private buildingCache: Building | undefined;
+  private readonly found = new Found();
+  /** Each of the tribe's pieces' health as last seen, for damage told as it happens. */
+  private readonly hpSeen = new Map<number, number>();
+  private damageAt = 0;
+  /** Waits by the world's clock (a test steps it on virtual time). */
+  private readonly sleepers: { at: number; wake: () => void }[] = [];
+
+  private sleep(ms: number): Promise<void> {
+    if (ms <= 0) return Promise.resolve();
+    return new Promise((wake) => this.sleepers.push({ at: this.t + ms, wake }));
+  }
 
   constructor(agent: Agent, name: string) {
     this.agent = agent;
     this.me = { id: "", name, alive: true };
     agent.onEvent = (ev) => this.combat(ev);
+    this.planner = new Planner(agent.session);
   }
 
   on(fn: (e: WorldEvent) => void): void {
@@ -122,6 +140,8 @@ export class SnarkWorld implements GameWorld {
     this.agent.manual = this.inputs();
     this.agent.tick(now);
     this.hear();
+    this.watchDamage();
+    for (let i = this.sleepers.length - 1; i >= 0; i--) if (this.t >= this.sleepers[i]!.at) this.sleepers.splice(i, 1)[0]!.wake();
     if (this.wasAlive && !this.me.alive) this.event("died", { by: null, pos: this.selfChannel().pos });
     this.wasAlive = this.me.alive;
   }
@@ -234,6 +254,7 @@ export class SnarkWorld implements GameWorld {
         if (a.verb === "mount") return this.call(command, index, "mount", { id: a.target, wait_s: 50 });
         if (a.verb === "dismount") return this.call(command, index, "mount", { off: true, wait_s: 25 });
         if (a.verb === "close") return (this.openedId = null), instant();
+        if (a.verb === "lock" || a.verb === "unlock") return this.call(command, index, "structure", { id: a.target, do: a.verb, wait_s: 25 });
         return "not_permitted";
       }
       case "items":
@@ -254,8 +275,11 @@ export class SnarkWorld implements GameWorld {
           return this.call(command, index, "harvest", { id: a.target, ...(tool ? { tool } : {}), wait_s: 50 }, undefined, true);
         }
         if (a.kind === "follow") return this.follow(command, index, a);
+        if (a.kind === "repair") return this.repairBase(command, index, a.target);
         return "unknown_control";
       }
+      case "plan":
+        return this.plan(command, index, a, instant);
       default:
         return "unknown_control";
     }
@@ -352,13 +376,193 @@ export class SnarkWorld implements GameWorld {
           break;
         }
         // Waiting: a moment before following on.
-        await new Promise((ok) => setTimeout(ok, 600 + Math.random() * 1200));
+        await this.sleep(600 + Math.random() * 1200);
       }
       if (this.task?.id !== id) return;
       this.task = null;
       this.emit({ type: "outcome", command, index, status: result === "seconds" ? "completed" : "failed", ...(result === "seconds" ? {} : { code: "blocked" as const }), detail: { result } });
     })();
     return null;
+  }
+
+  // --- Building ---------------------------------------------------------------------------------------------------
+
+  /** The capabilities, with the building this server's content has (agent/plan.ts). */
+  capabilities(base: Capabilities): Capabilities {
+    return { ...base, building: (this.buildingCache ??= this.planner.building()) };
+  }
+
+  private specs(): Map<string, FormSpec> {
+    return new Map((this.capabilities({} as Capabilities).building!.forms ?? []).map((f) => [f.form, f]));
+  }
+
+  /** The plan control: check a whole plan at once; build it piece by piece; take pieces down. */
+  private plan(command: string, index: number, a: Extract<Action, { control: "plan" }>, instant: (d: Record<string, unknown>) => null): RejectCode | null {
+    if (!a.plan?.anchor || !Array.isArray(a.plan.pieces) || a.plan.pieces.length > 400) return "bad_arguments";
+    if (a.op === "upgrade") return "not_permitted";
+    if (a.op === "check") {
+      const { verdicts, base } = this.planner.check(a.plan, this.specs());
+      const s = this.s;
+      const need: Record<string, number> = {};
+      a.plan.pieces.forEach((p, k) => verdicts[k]!.status !== "built" && (need[p.item] = (need[p.item] ?? 0) + 1));
+      const have = Object.fromEntries(Object.keys(need).map((i) => [i, s.inventory?.total(s.registry.index.get(`core:${i}`) ?? -1) ?? 0]));
+      return instant({ verdicts, base, need, have });
+    }
+    if (a.op === "remove") return this.removePieces(command, index, a);
+    this.endTask("replaced");
+    const id = ++this.tasks;
+    this.task = { command, index, id };
+    void this.buildPlan(command, index, id, a.plan, Math.max(0, a.from ?? 0), Math.min(a.plan.pieces.length - 1, a.to ?? a.plan.pieces.length - 1));
+    return null;
+  }
+
+  /** Places a plan's pieces from `from` to `to`, each judged against what stands now, at the advertised pace. */
+  private async buildPlan(command: string, index: number, id: number, plan: Plan, from: number, to: number): Promise<void> {
+    const specs = this.specs(), pl = this.planner, s = this.s;
+    const f = pl.frame(plan);
+    const done = { placed: 0, ids: [] as string[], at: from } as Record<string, unknown> & { placed: number; ids: string[]; at: number };
+    const end = (status: "completed" | "failed", extra: Record<string, unknown> = {}) => {
+      if (this.task?.id !== id) return;
+      this.task = null;
+      this.emit({ type: "outcome", command, index, status, ...(status === "failed" ? { code: extra.reason === "missing_items" ? "missing_items" : "blocked" } : {}), detail: { ...done, ...(typeof f !== "string" && f.base >= 0 ? { base: `s${f.base}` } : {}), ...extra } });
+    };
+    if (typeof f === "string") return end("failed", { reason: "blocked", fix: f });
+    for (let k = from; k <= to; k++) {
+      if (this.task?.id !== id) return;
+      done.at = k;
+      const p = plan.pieces[k]!;
+      const live = s.world!.structs;
+      const { verdict, res } = pl.judge(live, f, p, specs.get(p.form), new Support(live, s.registry, (x, z) => s.world!.hf.heightAt(x, z)));
+      if (verdict.status === "built") {
+        if (Number.isNaN(f.y) && res && s.registry.role[res.kind] === 0) (f.y = res.pose.y / STRUCT_UNITS), (f.base = Number(String(verdict.by).slice(1)));
+        continue;
+      }
+      if ((verdict.status !== "ok" && !(verdict.status === "blocked" && verdict.by === "you")) || !res) return end("failed", { reason: verdict.status, ...(verdict.by ? { by: verdict.by } : {}), ...(verdict.fix ? { fix: verdict.fix } : {}) });
+      const [x, z] = [res.pose.x / STRUCT_UNITS, res.pose.z / STRUCT_UNITS];
+      const facing = ((res.pose.yaw / YAW_UNITS) * 360 + 360) % 360;
+      const asForm = shortName(s.registry.ids[res.kind]).replace(/_[a-z]+$/, "");
+      const args: Record<string, unknown> = res.how === "socket" ? { item: p.item, as: asForm, on: `s${res.target}`, socket: res.socket, turn: res.turn }
+        : res.how === "top" ? { item: p.item, on: `s${res.target}`, x, z, facing } : { item: p.item, as: asForm, x, z, facing, lift: res.lift / 8 };
+      const t0 = this.t;
+      // In reach, it builds from where it stands; in the piece's way, it steps off first.
+      const ans = (await this.agent.call("place", { ...args, stay: verdict.by !== "you", wait_s: 25 })) ?? { state: "refused", reason: "no place tool" };
+      if (this.task?.id !== id) return;
+      if (ans.state !== "done") return end("failed", { reason: verdictOf(String(ans.reason ?? "")), said: ans.reason });
+      done.placed++;
+      if (typeof ans.id === "string") {
+        done.ids.push(ans.id);
+        if (Number.isNaN(f.y) && s.registry.role[res.kind] === 0) (f.y = res.pose.y / STRUCT_UNITS), (f.base = Number(ans.id.slice(1)));
+        this.event("built", { id: ans.id, form: p.form, item: p.item, ...(f.base >= 0 ? { base: `s${f.base}` } : {}) });
+      }
+      // The helper's pace: a piece every half second at most, by the world's clock.
+      await this.sleep(500 - (this.t - t0));
+    }
+    end("completed");
+  }
+
+  /** Takes pieces down: picked up whole while the game allows (a full refund), else demolished (part back). */
+  private removePieces(command: string, index: number, a: Extract<Action, { control: "plan" }>): RejectCode | null {
+    const ids = a.ids ?? [];
+    if (!ids.length) return "bad_arguments";
+    this.endTask("replaced");
+    const id = ++this.tasks;
+    this.task = { command, index, id };
+    void (async () => {
+      const removed: string[] = [], refused: Record<string, string> = {};
+      for (const target of ids) {
+        if (this.task?.id !== id) return;
+        let r = await this.agent.call("structure", { id: target, do: "pick_up", wait_s: 25 });
+        if (r?.state !== "done") r = await this.agent.call("structure", { id: target, do: "demolish", wait_s: 25 });
+        if (r?.state === "done") removed.push(target);
+        else refused[target] = String(r?.reason ?? "refused");
+      }
+      if (this.task?.id !== id) return;
+      this.task = null;
+      this.emit({ type: "outcome", command, index, status: Object.keys(refused).length ? "failed" : "completed", ...(Object.keys(refused).length ? { code: "blocked" as const } : {}), detail: { removed, refused } });
+    })();
+    return null;
+  }
+
+  /** The repair assist on a base: each of its damaged pieces in turn, at the game's cost, until none is or the bag runs short. */
+  private repairBase(command: string, index: number, base: string): RejectCode | null {
+    const s = this.s;
+    const ref = Number(base.replace(/^s/, ""));
+    const t = s.world?.structs.chunks[Math.floor(ref / 65536)];
+    if (!t || t.kind[ref & 0xffff] === 0) return "unknown_target";
+    this.endTask("replaced");
+    const id = ++this.tasks;
+    this.task = { command, index, id };
+    const [bx, bz] = [t.x[ref & 0xffff]!, t.z[ref & 0xffff]!];
+    void (async () => {
+      let repaired = 0, result = "whole";
+      const waited = new Set<number>();
+      for (let round = 0; round < 200 && this.task?.id === id; round++) {
+        const hurt = this.damagedNear(bx, bz).filter((r) => !waited.has(r));
+        if (!hurt.length) break;
+        const r = await this.agent.call("structure", { id: `s${hurt[0]}`, do: "repair", wait_s: 25 });
+        if (r?.state === "done") (repaired++, this.event("repaired", { id: `s${hurt[0]}`, base }));
+        else if (/wait|soon|recently|cooldown/i.test(String(r?.reason))) waited.add(hurt[0]!), (result = "waiting");
+        else if (/short|missing|ingredient|need/i.test(String(r?.reason))) {
+          result = "materials";
+          break;
+        } else waited.add(hurt[0]!);
+      }
+      if (this.task?.id !== id) return;
+      this.task = null;
+      this.emit({ type: "outcome", command, index, status: result === "materials" ? "failed" : "completed", ...(result === "materials" ? { code: "missing_items" as const } : {}), detail: { result, repaired, left: this.damagedNear(bx, bz).length } });
+    })();
+    return null;
+  }
+
+  /** The tribe's damaged pieces within 40 m of a point, nearest first. */
+  private damagedNear(x: number, z: number): number[] {
+    const s = this.s, structs = s.world!.structs, reg = s.registry;
+    const n = structs.query(x - 40, z - 40, x + 40, z + 40, this.found);
+    const out: [number, number][] = [];
+    for (let i = 0; i < n; i++) {
+      const ref = this.found.refs[i]!;
+      const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
+      if (t.owner[slot] !== s.tribe.team || t.kind[slot] === 0) continue;
+      if (t.hp[slot]! < (reg.maxHp[t.kind[slot]!] ?? 0) - 0.5) out.push([ref, Math.hypot(t.x[slot]! - s.own.x, t.z[slot]! - s.own.z)]);
+    }
+    return out.sort((a, b) => a[1] - b[1]).map(([r]) => r);
+  }
+
+  /** Damage to the tribe's pieces about the survivor, told once each time it changes (and mended when it is whole). */
+  private watchDamage(): void {
+    const s = this.s;
+    if (!s.world || this.t < this.damageAt) return;
+    this.damageAt = this.t + 2000;
+    const structs = s.world.structs, reg = s.registry;
+    const n = structs.query(s.own.x - 60, s.own.z - 60, s.own.x + 60, s.own.z + 60, this.found);
+    for (let i = 0; i < n; i++) {
+      const ref = this.found.refs[i]!;
+      const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
+      if (t.owner[slot] !== s.tribe.team || t.kind[slot] === 0) continue;
+      const max = reg.maxHp[t.kind[slot]!] ?? 0, hp = t.hp[slot]!;
+      const was = this.hpSeen.get(ref);
+      this.hpSeen.set(ref, hp);
+      if (was === undefined || Math.abs(was - hp) < 0.5) continue;
+      const [x, z] = toG(t.x[slot]!, t.z[slot]!);
+      const form = shortName(reg.ids[t.kind[slot]!]).replace(/_[a-z]+$/, "");
+      if (hp < was) this.event("damaged", { id: `s${ref}`, base: `s${this.baseOf(t.x[slot]!, t.z[slot]!)}`, form, pos: [x, t.y[slot]!, z], health: max ? hp / max : 0 });
+      else if (hp >= max - 0.5) this.event("repaired", { id: `s${ref}` });
+    }
+  }
+
+  /** The base a piece is of: the nearest of the tribe's foundations. */
+  private baseOf(x: number, z: number): number {
+    const s = this.s, structs = s.world!.structs;
+    const n = structs.query(x - 30, z - 30, x + 30, z + 30, this.found);
+    let best = -1, bestD = Infinity;
+    for (let i = 0; i < n; i++) {
+      const ref = this.found.refs[i]!;
+      const t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff;
+      if (t.owner[slot] !== s.tribe.team || s.registry.role[t.kind[slot]!] !== 0) continue;
+      const d = Math.hypot(t.x[slot]! - x, t.z[slot]! - z);
+      if (d < bestD) (bestD = d), (best = ref);
+    }
+    return best;
   }
 
   /** The running task ends (replaced or stopped): the Agent's controller is told to cancel it. */
@@ -552,4 +756,16 @@ function resultOf(tool: string, state: string, a: Record<string, unknown>): stri
   if (/ammo|arrow/.test(why)) return "ammo";
   if (/health|hurt|danger/.test(why)) return "health";
   return "obstructed";
+}
+
+/** The protocol's verdict for what the place tool said when the server refused a piece (agent/commands.ts words). */
+function verdictOf(reason: string): string {
+  if (/in the way|obstruct/i.test(reason)) return "blocked";
+  if (/too high|ground/i.test(reason)) return "too_high";
+  if (/support|hold/i.test(reason)) return "no_support";
+  if (/enemy|another tribe/i.test(reason)) return "enemy_near";
+  if (/far|reach/i.test(reason)) return "too_far";
+  if (/carry no|ingredient|short/i.test(reason)) return "missing_items";
+  if (/not yours|tribe/i.test(reason)) return "occupied";
+  return "blocked";
 }

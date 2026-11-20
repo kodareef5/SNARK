@@ -79,10 +79,37 @@ export interface Building {
   rate: number;
   /** Pieces in one plan, at most. */
   max_pieces: number;
+  /** Each tier: the item that places each form in it. */
   tiers: Record<string, Partial<Record<PieceForm, string>>>;
+  /** The forms the game has, and how each goes on the grid. A game adds a piece (a fence, a gate, a sloped roof, a
+   * triangle foundation) by adding it here; a client that knows the placement classes builds it unchanged. Absent:
+   * the eight square forms of version 0. */
+  forms?: FormSpec[];
+  /** Seconds after placing in which a piece is taken back whole (a full refund); after, it is demolished for part. */
+  pickup_s?: number;
+  /** Items set down on a floor (boxes, vaults, beds, stations): what a layout furnishes rooms with. */
+  things?: string[];
 }
 
-export type PieceForm = "foundation" | "wall" | "doorframe" | "windowframe" | "ceiling" | "door" | "pillar" | "stairs";
+/** A form's way onto the grid: `floor` a cell at a storey (foundations, ceilings), `edge` a cell's side (walls,
+ * frames, fences, railings), `edge_top` on an edge piece (a sloped roof), `corner` a cell's corner (pillars),
+ * `in_frame` in a frame on an edge (doors, windows, gates, hatches), `centre` a cell's middle facing a way (stairs,
+ * ramps, ladders), `thing` set down on a floor. */
+export interface FormSpec {
+  form: PieceForm;
+  place: "floor" | "edge" | "edge_top" | "corner" | "in_frame" | "centre" | "thing";
+  /** `square` (the default) or `triangle` (half a cell, on a square's side). */
+  shape?: "square" | "triangle";
+  /** On the ground (a foundation, a fence foundation), or on what stands (a ceiling). */
+  ground?: boolean;
+  /** The form whose frame it fills (a door: doorframe; a gate: gateway). */
+  frame?: PieceForm;
+}
+
+/** The forms of version 0; a game may list more in `Building.forms`. */
+export const BASIC_FORMS = ["foundation", "wall", "doorframe", "windowframe", "ceiling", "door", "pillar", "stairs"] as const;
+/** A form's name: open, since games add pieces. */
+export type PieceForm = (typeof BASIC_FORMS)[number] | (string & {});
 export type Side = "n" | "e" | "s" | "w";
 
 /** A piece of a plan, on the plan's grid: cell i grows east and j south of cell 0, 0; storey 0 is the ground. A piece
@@ -95,6 +122,10 @@ export interface PlanPiece {
   level: number;
   side?: Side;
   up?: Side;
+  /** A triangle piece: the side of the square cell it stands against, the triangle pointing out of it. */
+  half?: Side;
+  /** A thing on a floor: where on the cell (a side, or `c` its middle). */
+  spot?: Side | "c";
 }
 
 /** Where a plan's grid lies: cell 0, 0's centre at a point, turned a number of quarter turns clockwise (seen from
@@ -108,7 +139,8 @@ export interface Plan {
 
 /** What the game says of each piece of a plan, checked in order as though those before it stood. */
 export type PieceVerdict =
-  | "ok" | "built" | "occupied" | "blocked" | "no_support" | "terrain" | "too_far" | "not_in_tier" | "enemy_near";
+  | "ok" | "built" | "occupied" | "blocked" | "no_support" | "terrain" | "too_high" | "too_far" | "not_in_tier" | "enemy_near"
+  | "missing_items" | "not_in_game";
 
 export interface Limits {
   max_duration_ms: number;
@@ -353,7 +385,7 @@ export type Action =
   /** The build helper. check: at once, a verdict for every piece and the bill of what is still to place. build: places
    * the pieces from `from` up to `to` in order, at the game's rate, from the inventory, each within reach; it stops at
    * the first that cannot go, saying which and why. */
-  | { control: "plan"; op: "check" | "build"; plan: Plan; from?: number; to?: number }
+  | { control: "plan"; op: "check" | "build" | "remove" | "upgrade"; plan: Plan; from?: number; to?: number; ids?: EntityId[] }
   /** An assist: the game works the hands on a target until it is done or an `until` holds. aim: keep the crosshair on
    * it (leading it, with a bow in hand). attack: close in and strike at the weapon's pace; with a bow, keep `range`
    * [near, far] metres, lead and loose. harvest: swing at a tool's pace until it is gone. The client's own move or look

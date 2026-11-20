@@ -706,6 +706,7 @@ export class World {
       }
       case "plan": {
         if (!a.plan?.anchor || !Array.isArray(a.plan.pieces) || a.plan.pieces.length > BUILDING_MAX) return "bad_arguments";
+        if (a.op !== "check" && a.op !== "build") return "not_permitted";
         if (a.op === "check") {
           const { verdicts, base } = this.structures.check(this.site(), a.plan, false);
           // What is still to place, against the bag.

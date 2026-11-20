@@ -19,11 +19,11 @@ import { Agent } from "./tools.ts";
 export const SNARK_LIMITS: Limits = { max_duration_ms: 2000, leash_ms: 3000, max_rate_hz: 20, act_per_s: 20, command_memory_s: 600 };
 export const SNARK_CAPABILITIES: Capabilities = {
   channels: ["self", "entities", "terrain", "inventory", "chat"],
-  controls: ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "chat", "assist"],
-  events: ["hurt", "died", "chat", "notice", "struck"],
-  verbs: ["open", "close", "harvest", "mount", "dismount"],
+  controls: ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "chat", "assist", "plan"],
+  events: ["hurt", "died", "chat", "notice", "struck", "built", "damaged", "repaired"],
+  verbs: ["open", "close", "harvest", "mount", "dismount", "lock", "unlock"],
   // The agent's own tasks, worked with a player's inputs a tick at a time: its turning and its aim are its controller's.
-  assists: { kinds: ["attack", "harvest", "follow"], reaction_ms: 100, spread_deg: 2 },
+  assists: { kinds: ["attack", "harvest", "follow", "repair"], reaction_ms: 100, spread_deg: 2 },
 };
 
 interface Args {
@@ -119,7 +119,7 @@ async function main(): Promise<void> {
           (world) => {
             if (!links.has(l)) return world.agent.session.close();
             l.world = world;
-            l.endpoint = new Endpoint(world, { capabilities: () => SNARK_CAPABILITIES, limits: SNARK_LIMITS, game: { name: "SNARK", version: "0" }, tickMs: 1000 / 60 });
+            l.endpoint = new Endpoint(world, { capabilities: () => world.capabilities(SNARK_CAPABILITIES), limits: SNARK_LIMITS, game: { name: "SNARK", version: "0" }, tickMs: 1000 / 60 });
             l.conn = l.endpoint.connect((m) => l.send(m));
             for (const m of l.waiting.splice(0)) l.conn.receive(m);
           },
