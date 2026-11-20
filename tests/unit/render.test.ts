@@ -205,7 +205,8 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   expect(above.drawFlags[above.drawCount - 1]).toBe(DRAW_BLEND | DRAW_WATER);
   // Nothing else is see-through. Nodes are drawn at their sizes.
   for (let d = 0; d < above.drawCount - 1; d++) expect(above.drawFlags[d]! & ~DRAW_SIZED).toBe(0);
-  expect(above.fogEnd).toBe(4000);
+  // The view is measured along the ground, so from above the pool it ends a hair past 4 km (Scene.alongGround).
+  expect(above.fogEnd).toBeCloseTo(4000, 1);
 
   view.cam.y = PROVING_SEA_LEVEL - 3;
   view.cam.pitch = 1.3;

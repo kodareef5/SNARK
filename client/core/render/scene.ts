@@ -375,11 +375,24 @@ export class Scene {
   /**
    * Metres to the end of the view: the tier's (Tier.viewDistance), or what is set here, as tests and tools hold it. The
    * ground, the sea, lakes, parts and the city's blocks are not drawn past it, the haze and low poly's fog end there, and
-   * the camera's far plane is set from it (camera.ts farPlane).
+   * the camera's far plane is set from it (camera.ts farPlane). The tier's view is a distance along the ground: it grows
+   * with the camera's height (alongGround), so flying up does not shrink the ground in view.
    */
   get viewDistance(): number {
-    return this.heldView > 0 ? this.heldView : this.assets.tier.viewDistance;
+    return this.heldView > 0 ? this.heldView : this.alongGround(this.assets.tier.viewDistance);
   }
+
+  /**
+   * The distance from the camera that reaches `metres` along the ground below it. Everything is culled by its distance
+   * from the eye, a sphere, which meets the ground in a smaller circle the higher the eye is: from 3 km up a 4 km reach
+   * met it 2.6 km out.
+   */
+  alongGround(metres: number): number {
+    return Math.hypot(metres, this.lift);
+  }
+
+  /** The camera's height over the ground under it, set each frame. */
+  private lift = 0;
 
   set viewDistance(metres: number) {
     this.heldView = metres;
@@ -887,6 +900,7 @@ export class Scene {
     this.later.length = 0;
     this.nearAt = 0;
     cam.split = p.split = this.assets.tier.split;
+    this.lift = Math.max(0, cam.y - this.world.hf.heightAt(cam.x, cam.z));
     cam.far = farPlane(this.viewDistance);
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
@@ -976,7 +990,7 @@ export class Scene {
       this.meshRuns(this.batches.get(id)!, id, this.later[k + 1]!, this.later[k + 2]!, this.later[k + 3]!, this.later[k + 4]!);
     }
     const hider = this.hiding.on ? this.hiding : undefined;
-    this.city?.draw(cam, tier.reach.city, this.drawCity, hider);
+    this.city?.draw(cam, this.alongGround(tier.reach.city), this.drawCity, hider);
     this.far?.draw(cam, tier.reach.bases, tier.fade, this.drawFar, hider);
     this.blocks?.draw(cam, blocksView, this.shown, this.drawCity, hider);
     this.nodesFar?.draw(cam, this.drawFarNodes, hider);
@@ -1374,7 +1388,7 @@ export class Scene {
    * whole, or has none of its pieces in view, or none at all; so that no face of the chunk's another holds is open.
    */
   private sealed(cam: Camera, chunk: number): boolean {
-    const dims = this.world.dims, city = this.world.city!.statics, reach = this.assets.tier.reach.city;
+    const dims = this.world.dims, city = this.world.city!.statics, reach = this.alongGround(this.assets.tier.reach.city);
     const cx = chunkCx(dims, chunk), cz = chunkCz(dims, chunk);
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
@@ -1680,7 +1694,7 @@ export class Scene {
     const p = this.packet;
     const tier = this.assets.tier;
     p.frame[FRAME.fade] = tier.fade;
-    this.city!.update(p, this.assets.residency, cam, tier.city.levels, tier.reach.city, tier.fade, this.world.structs, this.world.far?.cells ?? null);
+    this.city!.update(p, this.assets.residency, cam, tier.city.levels, this.alongGround(tier.reach.city), tier.fade, this.world.structs, this.world.far?.cells ?? null);
     // A landmark is drawn to the end of the view, as the city's blocks leave its cells to it.
     this.landmarks?.draw(p, cam, this.assets, this.viewDistance, tier.fade, this.drawLandmark);
   }
@@ -2194,7 +2208,7 @@ export class Scene {
       this.movingFrom = statics;
       this.moving = statics ? movingOf(this.motionReg!, statics) : [];
     }
-    const own = Math.min(this.viewDistance, tier.reach.parts), landmark = Math.min(this.viewDistance, Math.max(tier.reach.parts, tier.reach.city));
+    const own = Math.min(this.viewDistance, tier.reach.parts), landmark = Math.min(this.viewDistance, Math.max(tier.reach.parts, this.alongGround(tier.reach.city)));
     const states = source.states(), tick = source.tick();
     const bones = Math.min(tier.bones, MAX_BONES), draws = Math.min(MAX_DRAWS, tier.budget.draws);
     for (const t of this.moving) {

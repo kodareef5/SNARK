@@ -135,8 +135,8 @@ test("past the far city's reach its buildings are blocks, faded in over the pixe
   const drawn = blockDraws(p);
   expect(drawn.length).toBeGreaterThan(0);
   // A run fades in at the reach or is drawn whole; and the far city fades out at it.
-  for (const d of drawn) expect([0, -reach]).toContain(p.drawFade[d]!);
-  expect(cityDraws(p).some((d) => p.drawFade[d] === reach)).toBe(true);
+  for (const d of drawn) expect([0, Math.fround(-w.scene.alongGround(reach))]).toContain(p.drawFade[d]!);
+  expect(cityDraws(p).some((d) => p.drawFade[d] === Math.fround(w.scene.alongGround(reach)))).toBe(true);
   // Where a pixel's ray meets the ground short of where the far city fades, what it shows is nearer still: there not a
   // pixel moved. Past its reach the blocks drew buildings over what was nothing.
   const ray = new Float64Array(3);
@@ -183,7 +183,7 @@ test("before the map's statics the blocks draw all but what the far feed's block
   w.arrive();
   for (let f = 0; f < 6; f++) p = w.frame();
   expect(cityDraws(p).length).toBeGreaterThan(0);
-  for (const d of blockDraws(p)) expect([0, -700]).toContain(p.drawFade[d]!);
+  for (const d of blockDraws(p)) expect([0, Math.fround(-w.scene.alongGround(700))]).toContain(p.drawFade[d]!);
   const tower = w.chunkOf(14 * CHUNK_SIZE + 32, 14 * CHUNK_SIZE + 32);
   const tall = w.raster.color.slice();
   const had = indices(p, blockDraws(p));

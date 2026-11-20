@@ -35,14 +35,15 @@ test("a tier names how far it sees, 4 km on low poly and medium, 6 on high and 8
   for (const tier of TIERS) {
     w.scene.assets.tier = tier;
     const p = w.frame(100, false);
-    const view = tier.viewDistance;
+    // The tier's view along the ground, from the camera's height (Scene.alongGround).
+    const view = w.scene.alongGround(tier.viewDistance);
     // The sea's tiles, a kilometre a side, run past the view's end round the camera on a lit tier.
     let d = 0;
     while (d < p.drawCount && p.drawMesh[d] !== w.mesh("core:water")) d++;
     const pos = new Float32Array(p.transient.buffer, p.transient.byteOffset, p.transient.byteLength >> 2);
     let sea = 0;
     for (let i = p.drawFirst[d]!; i < p.drawFirst[d]! + p.drawInstances[d]!; i++) sea = Math.max(sea, Math.hypot(pos[i * 5]!, pos[i * 5 + 2]!));
-    expect([tier.name, p.lit ? p.frame[FRAME.ends + 1] : p.fogEnd, w.cam.far, p.lit ? sea >= view : true]).toEqual([tier.name, view, farPlane(view), true]);
+    expect([tier.name, p.lit ? p.frame[FRAME.ends + 1] : p.fogEnd, w.cam.far, p.lit ? sea >= view : true]).toEqual([tier.name, p.lit ? Math.fround(view) : view, farPlane(view), true]);
   }
   // Four kilometres as the camera always had them: its far plane at 6 km.
   expect([farPlane(4000), farPlane(6000), farPlane(8000)]).toEqual([6000, 9000, 12000]);

@@ -153,6 +153,22 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   expect([seen(PICK_ENTITY, 100) > 100, seen(PICK_ENTITY, 101) > 100, seen(PICK_ENTITY, 102) > 100, seen(PICK_ENTITY, 0) > 600, seen(PICK_STRUCTURE, -1) > 600]).toEqual([true, true, true, true, true]);
 });
 
+test("the view reaches as far along the ground from high up as from the ground, and a view a test holds stays as held", () => {
+  const w = sceneWorld();
+  const tierView = w.scene.assets.tier.viewDistance, ground = w.hf.heightAt(w.cam.x, w.cam.z);
+  for (const y of [ground + 2, ground + 300, ground + 3000]) {
+    w.cam.y = y;
+    w.frame();
+    // A sphere of this radius round the eye meets the ground the tier's view away, however high the eye.
+    expect(w.scene.viewDistance).toBeCloseTo(Math.hypot(tierView, y - ground), 6);
+    expect(Math.sqrt(w.scene.viewDistance ** 2 - (y - ground) ** 2)).toBeCloseTo(tierView, 6);
+    expect(w.cam.far).toBeGreaterThanOrEqual(w.scene.viewDistance);
+  }
+  w.scene.viewDistance = 1900;
+  w.frame();
+  expect(w.scene.viewDistance).toBe(1900);
+});
+
 test("a step's cut-out draws come after all its opaque ones; as they were made, before them all and none are a switch away, and the first three draw the same picture", () => {
   // Rows of panels, the nearer hiding the farther, a creature among them and one past the split. Panels are structures,
   // made before the bodies, so as made a panel's lattice comes before the creatures.
@@ -535,8 +551,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // form added theirs; without them it is that again. It was 44264498 until a low roofline's attic and raised parapet,
   // the street list's bare balcony bay and cut shop fronts, and the ruins' ivy, moss and vines of uneven strands and the
   // plants' vine meshes added theirs; without them it is that again. It was 806818637 until a tall building's cladding,
-  // a plant room's louvres and the footed shrub's shape added theirs; without them it is that again.
-  expect(hash).toBe(2113431422);
+  // a plant room's louvres and the footed shrub's shape added theirs; without them it is that again. It was 2113431422
+  // until the view was measured along the ground (Scene.alongGround): low poly's fog ends a little farther off with the
+  // camera up; with the view as a distance from the eye it is that again.
+  expect(hash).toBe(48987352);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -570,8 +588,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1672489163 before the trailer, as above, 1576802991 until the street's working lamp, as above, and
   // 1144228197 until a tower's tops, as above, and 397096185 until the street's pay stations, crosswalks and three
   // speed limits, as above, 102222647 until the yield signs, as above, and 2142902571 until a low roofline's, the street
-  // list's and the ivy, as above, and 1161881608 until the cladding, the plant room's louvres and the shrub's shape.
-  expect(saddled.hash).toBe(1911735803);
+  // list's and the ivy, as above, and 1161881608 until the cladding, the plant room's louvres and the shrub's shape,
+  // and 1911735803 until the view was measured along the ground, as above.
+  expect(saddled.hash).toBe(801807325);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

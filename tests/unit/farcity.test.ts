@@ -379,7 +379,7 @@ test("a tile wholly short of the last tenth of its reach draws with no fade, and
   const at = (d: number): number => Math.hypot(p.drawOffset[d * 3]! + 160, p.drawOffset[d * 3 + 2]! + 160);
   const fades = cityDraws(p).map((d) => [at(d) < 1000, p.drawFade[d]!] as const);
   expect(fades.filter(([near]) => near).map(([, f]) => f)).toEqual([0]);
-  expect(fades.filter(([near]) => !near).map(([, f]) => f)).toEqual([2048]);
+  expect(fades.filter(([near]) => !near).map(([, f]) => f)).toEqual([Math.fround(w.scene.alongGround(2048))]);
 });
 
 test("tiles with nothing on the card are made first, a chunk at a time within the frame's budget", () => {
