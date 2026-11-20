@@ -75,8 +75,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 35: a snapshot's margin is told against the tick due on the loop's clock, and it says the ticks the loop gave up.
  * 36: a snapshot says the buttons its tick carried from an input that came after its own tick.
  * 37: a survivor's emote, its own word beside the pose and the cues in a view (AnimState.packEmote), and CMD_EMOTE.
+ * 38: the owner's powered maneuvers, button edges, tap windows and recovery. CUE_JET selects the powered motion layout for observers.
  */
-export const PROTOCOL_VERSION = 37;
+export const PROTOCOL_VERSION = 38;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -709,9 +710,17 @@ export function writeBody(w: BitWriter, b: Body): void {
   const creature = b.creatureMode !== 0 || b.creatureCooldown !== 0 || b.creaturePower !== 0 || b.creatureSide !== 0 || b.creaturePrimaryCooldown !== 0;
   w.bool(creature);
   if (creature) { w.bits(b.creatureMode, 2); w.bits(b.creatureCooldown, 10); w.u8(b.creaturePower); w.bits(b.creatureSide, 1); w.bits(b.creaturePrimaryCooldown, 10); }
-  const suit = b.jetGear !== 0 || b.jetSpent !== 0;
+  const suit = b.jetGear !== 0 || b.jetSpent !== 0 || b.jetRecovery !== 0;
   w.bool(suit);
-  if (suit) { w.bits(b.jetGear, 5); w.bits(b.jetSpent, JET_SPENT_BITS); w.bits(b.jetThrust, 2); }
+  if (suit) {
+    w.bits(b.jetGear, 5);
+    w.bits(b.jetSpent, JET_SPENT_BITS);
+    w.bits(b.jetThrust, 3);
+    w.bits(b.jetKeys, 3);
+    w.bits(b.jetJumpTap, 4);
+    w.bits(b.jetSprintTap, 4);
+    w.bits(b.jetRecovery, 6);
+  }
   writeFlight(w, b);
   writeVehicle(w, b);
 }
@@ -742,8 +751,15 @@ export function readBody(r: BitReader, b: Body): void {
   b.kick = r.u8();
   if (r.bool()) { b.creatureMode = r.bits(2); b.creatureCooldown = r.bits(10); b.creaturePower = r.u8(); b.creatureSide = r.bits(1); b.creaturePrimaryCooldown = r.bits(10); }
   else b.creatureMode = b.creatureCooldown = b.creaturePower = b.creatureSide = b.creaturePrimaryCooldown = 0;
-  if (r.bool()) { b.jetGear = r.bits(5); b.jetSpent = r.bits(JET_SPENT_BITS); b.jetThrust = r.bits(2); }
-  else b.jetGear = b.jetSpent = b.jetThrust = 0;
+  if (r.bool()) {
+    b.jetGear = r.bits(5);
+    b.jetSpent = r.bits(JET_SPENT_BITS);
+    b.jetThrust = r.bits(3);
+    b.jetKeys = r.bits(3);
+    b.jetJumpTap = r.bits(4);
+    b.jetSprintTap = r.bits(4);
+    b.jetRecovery = r.bits(6);
+  } else b.jetGear = b.jetSpent = b.jetThrust = b.jetKeys = b.jetJumpTap = b.jetSprintTap = b.jetRecovery = 0;
   readFlight(r, b);
   readVehicle(r, b);
 }

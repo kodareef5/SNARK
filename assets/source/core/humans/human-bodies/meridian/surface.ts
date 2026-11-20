@@ -24,6 +24,7 @@ export const finish = {
   sink: 14,
   crown: 15,
   visor: 16, // Same cobalt atlas island as the inlays, drawn as a transmitting lens.
+  sprayLeft: 19, sprayRight: 20,
   plume: 18, // Procedural exhaust uses local coordinates from nozzle to tip.
   palm: 17, // Shares the brass island with hardware, with its own padded UV bounds.
 } as const;
@@ -79,9 +80,9 @@ export class Surface {
     this.p.push(...point);
     this.n.push(...normal);
     this.b.push(bone);
-    if (tile === finish.plume) {
+    if (tile >= finish.plume) {
       this.c.push(v < 0.28 ? 13 : v < 0.7 ? 64 : 41);
-      this.uv.push(u, v);
+      this.uv.push(u + (tile-finish.plume)*2, v);
       return i;
     }
     const color = tile === finish.palm ? finish.rubber : tile === finish.visor ? finish.glass : tile;
@@ -174,7 +175,7 @@ export class Surface {
     return us;
   }
   private mark(start: number, tile: number) {
-    for (let i = start; i < this.ix.length; i += 3) this.slots.push(tile === finish.lamp ? 1 : tile === finish.visor ? 2 : tile === finish.plume ? 3 : 0);
+    for (let i = start; i < this.ix.length; i += 3) this.slots.push(tile === finish.lamp ? 1 : tile === finish.visor ? 2 : tile >= finish.plume ? 3 : 0);
   }
   /** A gridded panel with a rolled lip across its angular sides. Rows are ordered bottom to top. */
   panel(form: Form, rows: readonly Row[], tile: number, bone: number, segments = 12, bevel = 0.003, sole = false) {

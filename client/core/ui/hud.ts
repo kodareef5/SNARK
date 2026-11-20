@@ -1,6 +1,6 @@
 import { PATROL_LIGHT_MODES } from "../../../shared/sim/vehicle.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
-import { JET_CAPACITY, JET_FULL_SUIT, JET_HOVER } from "../../../shared/sim/character.ts";
+import { JET_UP, JET_FIST, JET_DASH, JET_CAPACITY, JET_FULL_SUIT, JET_HOVER } from "../../../shared/sim/character.ts";
 import { ACTION_DRAW, ACTION_NONE, MAX_MARKERS, MINIMAP_SIZE, type HudModel, type MarkerKind } from "../hud.ts";
 import type { Settings } from "../settings.ts";
 import { filledVital } from "./vitals.ts";
@@ -245,7 +245,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   if (m.jetGear && !dash) {
     const width = 210, x = right - width, y = dashY + (mapTools && !options.minimap ? 36 : 0);
     const left = Math.max(0, JET_CAPACITY - m.jetSpent);
-    const status = m.jetThrust === JET_HOVER ? "Level flight" : m.jetThrust ? "Climbing" :
+    const status = m.jetThrust === JET_UP ? "Vertical burst" : m.jetThrust === JET_DASH ? "Greave dash" : m.jetThrust === JET_FIST ? "Gauntlet lunge" : m.jetThrust === JET_HOVER ? "Level flight" : m.jetThrust ? "Climbing" :
       m.jetGrounded && m.jetSpent ? "Recharging" : !left ? "Empty · land to recharge" : touch ? "Hold Jump, stick at its rim to hover" : "Hold Space · add Shift to hover";
     const linked = m.jetGear === JET_FULL_SUIT;
     glass(f, KEY_JET_FUEL, x, y, width, linked ? 83 : 63);

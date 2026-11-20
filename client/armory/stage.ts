@@ -12,8 +12,8 @@ import { StructureStore } from "../../shared/world/structures.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { defaultLook, LOOK_SEX, LOOK_BEARD, LOOK_HAIR, setRegion } from "../../shared/anim/look.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
-import { STANCE_CROUCH } from "../../shared/sim/character.ts";
-import { HOLD_TOOL } from "../../shared/sim/weapon.ts";
+import { JET_DASH, JET_FIST, JET_FULL_SUIT, JET_HOVER, JET_LIFT, JET_UP, STANCE_CROUCH } from "../../shared/sim/character.ts";
+import { ACT_SWING, HOLD_TOOL } from "../../shared/sim/weapon.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { B_HAND_R } from "../../shared/anim/human.ts";
 import { INSTANCE_BYTES, parsePack } from "../../shared/pack/pack.ts";
@@ -188,16 +188,34 @@ async function run() {
     });
     actor.gear[GEAR_HELD] = grip.checked ? reg.index.get("core:pick")! : 0;
     anim.setAction(0, grip.checked ? HOLD_TOOL : 0, 0);
-    anim.grounded = pose.value !== "air";
-    anim.jet = !anim.grounded;
-    actor.cue[0] = anim.packCue();
+    const t = captureTick ?? now * 0.03;
+    const sequence = pose.value === "steer";
+    const cycle = t % 216;
+    const flight = !sequence ? pose.value : cycle < 35 ? "air" : cycle < 86 ? "cruise" : cycle < 95 ? "bank" :
+      cycle < 133 ? "cruise" : cycle < 142 ? "lunge" : cycle < 181 ? "cruise" : cycle < 190 ? "rise" : "air";
+    const mode = flight === "air" ? JET_LIFT : flight === "cruise" ? JET_HOVER : flight === "bank" ? JET_DASH :
+      flight === "lunge" ? JET_FIST : flight === "rise" ? JET_UP : 0;
+    anim.grounded = mode === 0;
     actor.flags[0] = anim.grounded ? 1 : 0;
     anim.stance = pose.value === "crouch" || mounted ? STANCE_CROUCH : 0;
     anim.speed = pose.value === "run" ? 16 : 0;
-    const t = captureTick ?? now * 0.03;
+    anim.dir = 0;
+    if (mode) {
+      anim.speed = mode === JET_HOVER || mode === JET_DASH || mode === JET_FIST ? 15 : 0;
+      anim.dir = flight === "bank" ? 12 : 0;
+      if (sequence && flight === "cruise") {
+        const ramp = cycle < 86 ? (cycle-35)/19 : cycle < 133 ? (cycle-95)/32 : (181-cycle)/23;
+        anim.speed = Math.round(15*Math.min(1, Math.max(0, ramp)));
+        if (cycle >= 95 && cycle < 133) anim.dir = (16-Math.round(4*(1-Math.min(1,ramp))))%16;
+      }
+      if (flight === "lunge") anim.setAction(ACT_SWING, 0, sequence ? Math.floor(t-cycle)+133 : Math.floor(t/2)*2-4);
+    }
+    anim.setJet(mode, inputs[4]!.checked ? JET_FULL_SUIT : 0);
+    actor.cue[0] = anim.packCue();
     actor.tick = t;
     actor.anim[0] = anim.pack();
     actor.anim[1] = 0;
+    actor.y[0] = mode ? 0.31 : 0;
     // A moving survivor travels through the actual stride tracker. The camera follows.
     actor.z[0] = pose.value === "run" ? 32 + (t % 180) * 0.085 : 32;
     cam.aspect = w / h;
@@ -217,7 +235,7 @@ async function run() {
     cam.fovY = close ? 0.63 : 0.65;
     cam.x = 32 + Math.sin(angle) * dist;
     cam.z = actor.z[0]! + Math.cos(angle) * dist;
-    cam.y = target + dist * 0.08;
+    cam.y = actor.y[0]! + target + dist * 0.08;
     cam.yaw = angle + Math.PI;
     cam.pitch = -0.08;
     if (view.value === "under" || view.value === "soles") {
@@ -226,7 +244,7 @@ async function run() {
       const rise = soles ? 1.04 : 0.68;
       cam.x = 32 + Math.sin(angle) * distance;
       cam.z = actor.z[0]! + Math.cos(angle) * distance;
-      cam.y = (soles ? 0.04 : 1.21) - rise;
+      cam.y = actor.y[0]! + (soles ? 0.04 : 1.21) - rise;
       cam.pitch = Math.atan2(rise, distance);
     }
     if (view.value === "glove") {

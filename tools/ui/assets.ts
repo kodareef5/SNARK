@@ -40,7 +40,7 @@ export function uiSheet(): ReturnType<typeof skinPixels> {
 /** `touch` is the touch controls' painted sheet, "" where it is not installed: a page fetches it only once it is touched. */
 export function buildUiAssets(dist: string): { atlas: string; touch: string; font: string; bytes: number; decodedBytes: number } {
   mkdirSync(join(dist, "assets"), { recursive: true });
-  const sheet = uiSheet(), png = encodePng(sheet.width, sheet.height, sheet.data);
+  const sheet = uiSheet(), png = encodePng(sheet.width, sheet.height, sheet.data, 9);
   const atlasName = `assets/hud.${partHash(png)}.png`;
   writeFileSync(join(dist, atlasName), png);
   // The touch sheet as tools/ui/touch-art.ts left it: the smaller copy where it made one.

@@ -1361,7 +1361,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       }
       const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
       ents.jetGear[e] = suit;
-      if (!(suit & JET_CUIRASS)) ents.jetThrust[e] = 0;
+      if (!(suit & JET_CUIRASS)) ents.jetThrust[e] = ents.jetKeys[e] = ents.jetJumpTap[e] = ents.jetSprintTap[e] = 0;
       // Its air under water follows the helmet at once, not at the vitals' next deadline.
       if (helmetChanged) survival.touch(rec);
       ents.setGear(e, gear);

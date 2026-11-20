@@ -93,8 +93,35 @@ const JUMP = 3;
 /** Radians a second under which a turn on the spot has all but stopped, so the next begins anew. */
 const SPIN_ANEW = 0.2;
 
+/** Two driven pendulums, forward and lateral. The distal joint follows the loaded joint.
+ * Fixed-size substeps, joint stops and a velocity limit keep a reversal or a late frame bounded. */
+export class FlightJoints {
+  readonly bend = new Float64Array(4);
+  private readonly velocity = new Float64Array(4);
+  step(forward: number, lateral: number, seconds: number): void {
+    if (!(seconds >= 0 && seconds <= 0.14)) {
+      this.bend.set([forward, lateral, forward, lateral]);
+      this.velocity.fill(0);
+      return;
+    }
+    const steps = Math.ceil(seconds*120);
+    for (let k = 0; k < steps; k++) {
+      const dt = seconds/steps;
+      for (let i = 0; i < 4; i++) {
+        const target = i < 2 ? (i === 0 ? forward : lateral) : this.bend[i-2]!;
+        const stiffness = i < 2 ? 115 : 76, damping = i < 2 ? 17 : 12;
+        const rate = Math.max(-5, Math.min(5, this.velocity[i]! + ((target-this.bend[i]!)*stiffness - this.velocity[i]!*damping)*dt));
+        const angle = this.bend[i]! + rate*dt;
+        this.bend[i] = Math.max(-1, Math.min(1, angle));
+        this.velocity[i] = this.bend[i] === angle ? rate : 0;
+      }
+    }
+  }
+}
+
 /** What a client keeps of a body between frames to play its gait by the ground it covers. */
 export class Gait {
+  flightJoints?: FlightJoints;
   /** Turns of the gait, 0 to 1. */
   phase = 0;
   /**
@@ -164,7 +191,10 @@ export class Gait {
     if (speed === 0 && moved * size <= JUMP) speed = moved / seconds;
     const want = speed > arc / seconds ? speed : arc / seconds;
     this.speed += ((want - this.speed) * seconds) / (EASE + seconds);
-    if (moved * size > JUMP) return 0;
+    if (moved * size > JUMP) {
+      this.flightJoints = undefined;
+      return 0;
+    }
     return moved > arc ? moved : arc;
   }
 

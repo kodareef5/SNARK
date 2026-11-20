@@ -7,7 +7,7 @@ import {
 import { gaitShares } from "../../shared/anim/gait.ts";
 import { AnimState, HumanAnim, SPEED_STEP, humanPose } from "../../shared/anim/pose.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
+import { JET_FULL_SUIT, JET_DASH, JET_FIST, JET_UP, JET_LIFT, JET_HOVER, STANCE_CROUCH, STANCE_PRONE } from "../../shared/sim/character.ts";
 import { Solved, boneToModel, rayCapsule, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
 import { Rng } from "../../shared/rng.ts";
 import { quatAxis, quatMul, quatMulConj, quatNlerp, quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
@@ -347,4 +347,32 @@ test("a ray meets a capsule where stepping along the ray first comes within its 
   }
   expect(hits).toBeGreaterThan(500);
   expect(hits).toBeLessThan(3900);
+});
+
+test("a spotter decodes powered motion, boot emission, and the original action and emote together", () => {
+  const pilot = new AnimState(), spotter = new AnimState();
+  pilot.grounded = false;
+  for (const mode of [JET_LIFT, JET_HOVER, JET_UP, JET_FIST, JET_DASH]) for (const gear of [JET_FULL_SUIT, 2]) {
+    pilot.setMotion(-9, 3, 0, 0.25);
+    pilot.setJet(mode, gear);
+    pilot.setAction(2, 0, 27);
+    pilot.emote = 2;
+    spotter.unpack(pilot.pack(), pilot.packCue(), pilot.packEmote());
+    expect([spotter.jetMode, spotter.bootJets, spotter.dir, spotter.speed, spotter.actionStart, spotter.emote])
+      .toEqual([mode, pilot.bootJets, pilot.dir, pilot.speed, 27, 2]);
+  }
+});
+
+artTest("a burst punch puts either glove ahead of the helmet at the melee strike tick", () => {
+  const pilot = new AnimState();
+  pilot.grounded = false;
+  pilot.setMotion(0, 15, 0, 0);
+  pilot.setJet(JET_FIST, JET_FULL_SUIT);
+  for (const start of [0,1]) {
+    pilot.setAction(2, 0, start);
+    const s = solved(pilot, start + 5);
+    const hand = start === 0 ? B_HAND_L : B_HAND_R;
+    expect(z(s, hand) - z(s, B_HEAD)).toBeGreaterThan(0.26);
+    expect(Math.abs(y(s, hand) - y(s, B_HEAD))).toBeLessThan(0.32);
+  }
 });

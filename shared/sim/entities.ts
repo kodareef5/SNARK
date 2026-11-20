@@ -152,6 +152,10 @@ export class EntityStore {
   jetGear: Uint8Array;
   jetSpent: Uint16Array;
   jetThrust: Uint8Array;
+  jetKeys: Uint8Array;
+  jetJumpTap: Uint8Array;
+  jetSprintTap: Uint8Array;
+  jetRecovery: Uint8Array;
   regenWait: Uint16Array;
   rollWait: Uint16Array;
   creatureMode: Uint8Array;
@@ -278,6 +282,10 @@ export class EntityStore {
     this.jetGear = new Uint8Array(cap);
     this.jetSpent = new Uint16Array(cap);
     this.jetThrust = new Uint8Array(cap);
+    this.jetKeys = new Uint8Array(cap);
+    this.jetJumpTap = new Uint8Array(cap);
+    this.jetSprintTap = new Uint8Array(cap);
+    this.jetRecovery = new Uint8Array(cap);
     this.regenWait = new Uint16Array(cap);
     this.rollWait = new Uint16Array(cap);
     this.creatureMode = new Uint8Array(cap);
@@ -358,6 +366,7 @@ export class EntityStore {
     this.bloom[i] = 0;
     this.kick[i] = 0;
     this.jetGear[i] = this.jetSpent[i] = this.jetThrust[i] = 0;
+    this.jetKeys[i] = this.jetJumpTap[i] = this.jetSprintTap[i] = this.jetRecovery[i] = 0;
     this.regenWait[i] = 0;
     this.rollWait[i] = 0;
     this.creatureMode[i] = 0;
@@ -422,6 +431,10 @@ export class EntityStore {
     this.jetGear = wider(this.jetGear, cap);
     this.jetSpent = wider(this.jetSpent, cap);
     this.jetThrust = wider(this.jetThrust, cap);
+    this.jetKeys = wider(this.jetKeys, cap);
+    this.jetJumpTap = wider(this.jetJumpTap, cap);
+    this.jetSprintTap = wider(this.jetSprintTap, cap);
+    this.jetRecovery = wider(this.jetRecovery, cap);
     this.regenWait = wider(this.regenWait, cap);
     this.rollWait = wider(this.rollWait, cap);
     this.creatureMode = wider(this.creatureMode, cap);
@@ -604,6 +617,7 @@ export class EntityStore {
     posed.stance = this.stance[i]!;
     posed.setAction(this.act[i]!, this.hold[i]!, tick - this.actTicks[i]!);
     posed.setMotion(this.vx[i]!, this.vz[i]!, (this.yaw[i]! * TAU) / 65536, (this.pitch[i]! * (PI / 2)) / 16384, this.vy[i]!);
+    posed.setJet(this.jetThrust[i]!, this.jetGear[i]!);
     this.anim[i] = posed.pack();
     if (!(this.cue[i]! & CUE_DEAD)) this.cue[i] = this.jetThrust[i] ? this.cue[i]! | CUE_JET : this.cue[i]! & ~CUE_JET;
   }
@@ -669,6 +683,10 @@ export class EntityStore {
     b.jetGear = this.jetGear[i]!;
     b.jetSpent = this.jetSpent[i]!;
     b.jetThrust = this.jetThrust[i]!;
+    b.jetKeys = this.jetKeys[i]!;
+    b.jetJumpTap = this.jetJumpTap[i]!;
+    b.jetSprintTap = this.jetSprintTap[i]!;
+    b.jetRecovery = this.jetRecovery[i]!;
     b.regenWait = this.regenWait[i]!;
     b.rollWait = this.rollWait[i]!;
     b.creatureMode = this.creatureMode[i]!;
@@ -702,6 +720,10 @@ export class EntityStore {
     this.kick[i] = b.kick;
     this.jetSpent[i] = b.jetSpent;
     this.jetThrust[i] = b.jetThrust;
+    this.jetKeys[i] = b.jetKeys;
+    this.jetJumpTap[i] = b.jetJumpTap;
+    this.jetSprintTap[i] = b.jetSprintTap;
+    this.jetRecovery[i] = b.jetRecovery;
     this.regenWait[i] = b.regenWait;
     this.rollWait[i] = b.rollWait;
     this.creatureMode[i] = b.creatureMode;

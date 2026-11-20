@@ -21,7 +21,7 @@ function chunk(type: string, data: Uint8Array): Uint8Array {
   return out;
 }
 
-export function encodePng(width: number, height: number, rgba: Uint8Array | Uint8ClampedArray): Uint8Array {
+export function encodePng(width: number, height: number, rgba: Uint8Array | Uint8ClampedArray, level = -1): Uint8Array {
   const raw = new Uint8Array(height * (1 + width * 4));
   for (let y = 0; y < height; y++) {
     raw.set(rgba.subarray(y * width * 4, (y + 1) * width * 4), y * (1 + width * 4) + 1);
@@ -31,7 +31,7 @@ export function encodePng(width: number, height: number, rgba: Uint8Array | Uint
   view.setUint32(0, width);
   view.setUint32(4, height);
   header.set([8, 6, 0, 0, 0], 8);
-  const parts = [Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", new Uint8Array(deflateSync(raw))), chunk("IEND", new Uint8Array(0))];
+  const parts = [Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", header), chunk("IDAT", new Uint8Array(deflateSync(raw, { level }))), chunk("IEND", new Uint8Array(0))];
   const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
   let at = 0;
   for (const p of parts) {

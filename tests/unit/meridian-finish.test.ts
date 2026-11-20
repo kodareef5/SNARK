@@ -54,3 +54,16 @@ test("the exhaust fades at the tip and silhouette, pulses continuously, and reta
   sample(0.6, 0.9, 100);
   expect(rgb[2]!).toBeGreaterThan(2 * rgb[1]!);
 });
+
+test("each nozzle has independent travelling flecks that fade between emissions", () => {
+  const rgb = new Float64Array(3), phase = exhaustPhase(80);
+  for (const seed of [2, 4]) {
+    const lane = 3, variant = ((lane + seed)*0.618034)%1;
+    const age = (0.25+variant)%1;
+    const azimuth = seed + (lane+0.5+0.22*Math.sin(age*5+lane))/7;
+    expect(exhaustLight(rgb, age, azimuth, 1, phase, 1)).toBeGreaterThan(0.4);
+    expect(rgb[2]).toBeGreaterThan(rgb[0]!);
+    expect(exhaustLight(rgb, age, azimuth, 1, exhaustPhase(160), 1)).toBe(0);
+    expect(exhaustLight(rgb, age, azimuth+(seed === 2 ? 2 : -2), 1, phase, 1)).toBe(0);
+  }
+});

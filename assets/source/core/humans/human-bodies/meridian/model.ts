@@ -2,7 +2,7 @@
 // The dark liner supplies every mixed-set seam; each ceramic panel follows one rigid bone.
 import type { PackRig } from "../../../../../../shared/pack/pack.ts";
 import type { SourceMesh } from "../../../../../../tools/pack/write.ts";
-import { B_CHEST, B_HEAD, B_HIPS, B_NECK, B_SPINE, B_UPPER_CHEST } from "../../../../../../shared/anim/human.ts";
+import { B_CHEST, B_FOOT_L, B_FOOT_R, B_HEAD, B_HIPS, B_NECK, B_SPINE, B_UPPER_CHEST } from "../../../../../../shared/anim/human.ts";
 import { contour, finish as f, Surface, type Form, type Profile, type Row } from "./surface.ts";
 
 function band(s: Surface, form: Form, lo: number, hi: number, tile: number, bone: number, off = 0) {
@@ -573,7 +573,15 @@ function torso(s: Surface, female: boolean, rest: readonly number[]) {
       fore,
       3,
     );
-    band(s, sleeve, wrist - 0.012, wrist - 0.002, f.alloy, fore, 0.003);
+    // The outer vambrace has a back of its own, but the inside of the forearm was open
+    // from cuff to elbow. The opposing ivory half leaves two narrow textile flex seams.
+    s.panel(sleeve, [
+      [elbow + 0.024, 230, 298, 0.003], [elbow + 0.046, 217, 308, 0.007],
+      [elbow + 0.081, 231, 300, 0.008], [wrist - 0.037, 215, 322, 0.006],
+      [wrist - 0.012, 186, 344, 0.002],
+    ], f.limb, fore, 12);
+    s.panel(sleeve, [[wrist - 0.015,-180,180,0.003], [wrist - 0.002,-180,180,0.003]],
+      f.ceramic, fore, 24, 0.0005);
     jet(s, side, w);
   }
 }
@@ -949,7 +957,7 @@ function lower(s: Surface, female: boolean) {
 
 function boots(s: Surface, female: boolean) {
   for (const side of [-1, 1]) {
-    const foot = side > 0 ? 16 : 19,
+    const foot = side > 0 ? B_FOOT_L : B_FOOT_R,
       toe = side > 0 ? 20 : 21,
       cx = side * 0.112;
     const boot = contour(
@@ -1192,6 +1200,22 @@ function openVents(female: boolean, level: number) {
       1.33 - down, nozzleX + side * down * 0.10, -0.172 - down * 0.43, r, r,
     ]));
     s.panel(form, plume.map(([down]) => [1.33-down, -180, 180]), f.plume, B_UPPER_CHEST, 16, 0);
+    if (level === 0) {
+      const wake = plume.map(([down, r]) => [1.33-down*1.35, nozzleX+side*down*0.14, -0.172-down*0.59,
+        r*1.4+down*0.09, r*1.4+down*0.09] as const);
+      s.panel(contour(wake), wake.map(([h]) => [h,-180,180]), side < 0 ? f.sprayLeft : f.sprayRight, B_UPPER_CHEST, 12, 0);
+    }
+  }
+  return s.done();
+}
+
+/** Separate foot bones keep the two boot nozzles on the soles as the ankles swing. */
+function bootVents(level: number) {
+  const s = new Surface(level);
+  for (const side of [-1, 1]) {
+    const rings = [[0.32,0.001], [0.23,0.019], [0.13,0.031], [0.06,0.036], [0,0.018]] as const;
+    const shape = rings.map(([d,r]) => [-0.014-d, side*0.112, -0.064-d*0.3, r, r] as const);
+    s.panel(contour(shape), shape.map(([y]) => [y,-180,180]), f.plume, side > 0 ? B_FOOT_L : B_FOOT_R, 12, 0);
   }
   return s.done();
 }
@@ -1226,6 +1250,8 @@ export function meridian(body: readonly SourceMesh[], rig: PackRig): SourceMesh[
     const parts = female ? ([worn] as SourceMesh[]) : [worn, loosePiece(worn, slot)];
     if (slot === "torso")
       parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/vents`, lods: lods.map((_, level) => openVents(female, level)) });
+    if (slot === "feet")
+      parts.push({ ...worn, id: `core:${rig.id}/armor/meridian/boot_jets`, lods: lods.map((_, level) => bootVents(level)) });
     return parts;
   });
 }
