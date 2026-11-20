@@ -8,7 +8,7 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
@@ -28,6 +28,7 @@ import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
 import { Entangle } from "./entangle.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
+import { Emotes } from "./emote.ts";
 import { Carry } from "./carry.ts";
 import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
@@ -204,6 +205,7 @@ export interface Host {
   /** The creature packages' modules, each still doing nothing. */
   readonly corpses: Corpses;
   readonly carry: Carry;
+  readonly emotes: Emotes;
   readonly feces: Feces;
   readonly eggs: Eggs;
   readonly overhead: Overhead;
@@ -625,6 +627,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
   death.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
+  const emotes = new Emotes({ world, game });
   const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
@@ -1154,6 +1157,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     urban.step();
     riding.step();
     carry.step(tick);
+    emotes.step();
     parts.mark(PART.riders);
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
@@ -1451,6 +1455,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     tactical,
     corpses,
     carry,
+    emotes,
     feces,
     eggs,
     overhead,
@@ -1523,6 +1528,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.handle(CMD_OPEN, (c, r) => taming.open(c, r));
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CARRY, (c, r) => carry.command(c, r));
+  game.handle(CMD_EMOTE, (c, r) => emotes.command(c, r));
   game.handle(CMD_TAKE, (c, r) => eggs.take(c, r));
   game.handle(CMD_TRAVEL, (c, r) => {
     const to = r.u16();

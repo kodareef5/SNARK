@@ -47,6 +47,7 @@ import {
   OWN_TRIBE,
   OWN_VOICE,
   CMD_CHAT,
+  CMD_EMOTE,
   MAX_CHAT_CHARS,
   OWN_HELD,
   OWN_LOOK,
@@ -250,6 +251,8 @@ export class RemoteSample {
   /** The pose and the cues, packed as the server sent them. See `AnimState.pack` and `packCue`. */
   readonly anim = new Uint32Array(MAX_VIEW);
   readonly cue = new Uint32Array(MAX_VIEW);
+  /** A survivor's emote, packed as `AnimState.packEmote` does; 0 for none. */
+  readonly emote = new Uint32Array(MAX_VIEW);
   /** LOOK_BYTES each, valid where `hasLook` is 1. */
   readonly look = new Uint8Array(MAX_VIEW * LOOK_BYTES);
   readonly hasLook = new Uint8Array(MAX_VIEW);
@@ -738,6 +741,11 @@ export class ClientSession {
     return this.command(CMD_TEXT, (w) => w.string(cut));
   }
 
+  /** An emote (shared/anim/emotes.ts): play (op 0) its number, at `target` for a pair; stop (1); join (2) `target`'s dance. */
+  emote(op: number, n: number, target = -1): number {
+    return this.command(CMD_EMOTE, (w) => (w.bits(op, 2), w.u16(n), w.varint(target + 1)));
+  }
+
   /** `channel` is TEXT_GLOBAL, TEXT_LOCAL or TEXT_TRIBE. The server decides who reads it. */
   chat(channel: number, words: string): number {
     const cut = words.length > MAX_CHAT_CHARS ? words.slice(0, MAX_CHAT_CHARS) : words;
@@ -956,9 +964,11 @@ export class ClientSession {
         // The pose is not blended. It comes from the nearer snapshot.
         out.anim[n] = k < 0.5 ? a!.anim[i]! : b.anim[j]!;
         out.cue[n] = k < 0.5 ? a!.cue[i]! : b.cue[j]!;
+        out.emote[n] = k < 0.5 ? a!.emote[i]! : b.emote[j]!;
       } else {
         out.anim[n] = attachment.anim[attachmentRow]!;
         out.cue[n] = attachment.cue[attachmentRow]!;
+        out.emote[n] = attachment.emote[attachmentRow]!;
         out.x[n] = dequantX(attachment.qx[attachmentRow]!);
         out.y[n] = dequantY(attachment.qy[attachmentRow]!);
         out.z[n] = dequantX(attachment.qz[attachmentRow]!);

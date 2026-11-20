@@ -15,6 +15,7 @@ const KEYS: Readonly<Record<string,Binding>>={
   KeyT:b(2,"Follow: one","Whistle to the creature you are looking at."),KeyY:b(2,"Stay: one","Whistle to the creature you are looking at."),KeyJ:b(2,"Follow: all"),KeyU:b(2,"Stay: all"),
   Period:b(2,"Attack this target","Orders tribe creatures that can hear you."),BracketRight:b(2,"Attack my target"),
   KeyQ:b(3,"Next snap point","Tap to cycle snaps. Hold to toggle free placement."),
+  KeyZ:b(2,"Emotes","Gestures, dances and moves for two: 1-9 plays one, the arrows turn the pages. A move for two goes to whoever you look at, and begins when they answer with it back."),
   ArrowUp:b(2,"Pan map up"),ArrowDown:b(2,"Pan map down"),ArrowLeft:b(2,"Pan map left"),ArrowRight:b(2,"Pan map right"),
 };
 const BUILD: Readonly<Record<string,Binding>>={KeyQ:b(3,"Next snap point","Tap to cycle snaps. Hold to toggle free placement."),KeyE:b(3,"Rotate","Rotate the active building preview."),KeyR:b(3,"Next variant","Cycle the active building piece variants."),ArrowUp:b(3,"Raise preview"),ArrowDown:b(3,"Lower preview"),Mouse0:b(3,"Place")};

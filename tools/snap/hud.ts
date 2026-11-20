@@ -9,7 +9,7 @@ import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../../tests/fixtures/arena.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
 
-export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked"] as const;
+export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance"] as const;
 export type HudMode = (typeof HUD_MODES)[number];
 
 /** The setup for clientPicture (tools/snap.ts): a survivor with things in her hotbar, then the screen or scene `mode` names. */
@@ -81,6 +81,14 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
     app.ui.openMenu();
     app.ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, s);
     run(400);
+  } else if (mode === "emotes" || mode === "emote-dance") {
+    // The emote menu open on its dances; or, closed, the survivor dancing as the server has it.
+    s.text("emote robot");
+    run(1200);
+    if (mode === "emotes") {
+      app.ui.emotes.open = true;
+      app.ui.emotes.page = 2;
+    }
   } else if (mode === "station") {
     const fire = h.world.structs.add(id("campfire"), x, g.y + h.reg.halfY[id("campfire")]!, z + 2, 0, me.team, 100);
     const rec = h.host.fixtures.ensure(fire);

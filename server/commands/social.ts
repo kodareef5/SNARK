@@ -1,6 +1,9 @@
 // Tribe and mute commands.
 
+import { EMOTES, EMOTE_NUMBER, emoteOf } from "../../shared/anim/emotes.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_OK } from "../../shared/net/protocol.ts";
 import type { Console, ConsoleCommand } from "../console.ts";
+import { EMOTE_JOIN, EMOTE_PLAY, EMOTE_STOP } from "../emote.ts";
 import type { Client } from "../game.ts";
 import type { Host } from "../host.ts";
 import { NAME_UNCLEAR, meant } from "../names.ts";
@@ -124,6 +127,46 @@ export function addSocialCommands(con: Console): void {
         const which = meant(all, name);
         if (which === NAME_UNCLEAR) return `more than one survivor you have muted could be "${name}"; give the name exactly`;
         return which >= 0 && ctx.host.chat.mute(c.name, all[which]!, false) ? `You will hear ${name} again.` : `${name} was not muted.`;
+      },
+    },
+    {
+      name: "emote",
+      usage: "<emote> [survivor] | stop | join <survivor>",
+      examples: ["emote wave", "emote high_five Ana", "emote join Ana"],
+      help: "Play an emote (\"emotes\" lists them). A pair's emote at someone invites them; they answer with it back at you. \"join\" dances in step with someone dancing.",
+      admin: false,
+      run(ctx, args) {
+        const host = ctx.host, c = ctx.client;
+        if (!c || c.ent < 0) return needsSurvivor;
+        const word = (args[0] ?? "").toLowerCase();
+        if (!word) return 'usage: emote <emote> [survivor]; "emotes" lists them';
+        if (word === "stop") return (host.emotes.request(c.ent, EMOTE_STOP, 0), "");
+        const who = word === "join" ? args.slice(1).join(" ") : args.slice(1).join(" ");
+        let target = -1;
+        if (who) {
+          const to = sessionNamed(host, who);
+          if (to === NAME_UNCLEAR) return `more than one survivor here could be "${who}"; give the name exactly`;
+          if (!to || to.ent < 0) return `nobody called "${who}" is here`;
+          target = to.ent;
+        }
+        if (word === "join") return host.emotes.request(c.ent, EMOTE_JOIN, 0, target) === RESULT_OK ? "" : `${who} is not dancing near you`;
+        const n = EMOTE_NUMBER.get(word);
+        if (!n) return `no emote "${word}"; "emotes" lists them`;
+        const result = host.emotes.request(c.ent, EMOTE_PLAY, n, target);
+        if (result === RESULT_OK) return emoteOf(n)!.pair && target >= 0 && host.emotes.playingOf(c.ent) !== n ? `You asked ${who}.` : "";
+        return result === RESULT_FAR ? "too far away" : result === RESULT_DENIED ? "not now: stand still on the ground, hands free" : result === RESULT_BUSY ? "" : emoteOf(n)!.pair ? `a ${emoteOf(n)!.name.toLowerCase()} needs someone: emote ${word} <survivor>` : "not now";
+      },
+    },
+    {
+      name: "emotes",
+      usage: "[tag]",
+      help: "The emotes, by what they are for, or those with a tag (dance, greeting, fun, scary, rest, pair...).",
+      admin: false,
+      run(_ctx, args) {
+        const tag = (args[0] ?? "").toLowerCase();
+        const list = EMOTES.filter((e) => !tag || e.tags.includes(tag));
+        if (!list.length) return `no emotes tagged "${tag}"`;
+        return list.map((e) => `${e.id}${e.pair ? " <survivor>" : ""}  ${e.tags.join(", ")}`).join("\n");
       },
     },
   ];

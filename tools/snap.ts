@@ -23,7 +23,8 @@ import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
-import { AnimState, CUE_DEAD, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_TORPOR, HumanAnim, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
+import { EMOTES, EMOTE_NUMBER } from "../shared/anim/emotes.ts";
 import { sizeSpan } from "../shared/anim/corpse.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
 import type { Rig } from "../shared/anim/rigs.ts";
@@ -624,6 +625,70 @@ export function posesScene(view: ProvingView, tick: number, first: number, facin
   cam.z = 211;
   cam.y = view.hf.heightAt(cam.x, cam.z) + 4.4;
   cam.fovY = 0.25;
+}
+
+/**
+ * The emote gallery: each emote named (or the page'th three of the list) as six moments across its clip, facing the
+ * camera, its id under it. A pair shows its two sides face to face as the server stands them, at three moments.
+ */
+export function emotesScene(view: ProvingView, which: string, tick: number, face = Math.PI): void {
+  const r = view.remote;
+  r.count = 0;
+  r.tick = tick;
+  const kind = view.reg.index.get("core:survivor")!;
+  const page = Number(which);
+  // A page is four emotes: two lines of two, each at four moments.
+  const ids = Number.isInteger(page) && which !== "" ? EMOTES.slice(page * 4, page * 4 + 4).map((e) => e.id) : which.split(",");
+  const st = new AnimState();
+  const anim = new HumanAnim(view.pack.clips);
+  sceneLabels.length = 0;
+  const [x0, z0, gapX, gapZ, moments] = [256, 228, 1.45, 4.2, 4];
+  ids.forEach((id, slot) => {
+    const n = EMOTE_NUMBER.get(id);
+    if (!n) throw new Error(`no emote ${id}`);
+    const def = EMOTES[n - 1]!;
+    const frames = anim.emotes[n]?.frames ?? 30;
+    const line = Math.floor(slot / 2), half = slot % 2;
+    const z = z0 + line * gapZ;
+    for (let c = 0; c < moments; c++) {
+      // Moments spread over the clip: a loop over one turn of it, a one-shot inside its fades, where the move is.
+      const at = def.loop ? Math.floor((c / moments) * frames) : Math.floor((0.15 + (0.7 * c) / (moments - 1)) * (frames - 1));
+      // The camera looks along +Z, so -X is to its right: the line reads from left to right.
+      const x = x0 - (half * moments + c - (2 * moments - 1) / 2) * gapX;
+      for (const side of def.pair ? [0, 1] : [0]) {
+        const k = r.count++;
+        r.id[k] = idWithSeed(0) + 1024 * (k + 1);
+        r.kind[k] = kind;
+        // A pair stands face to face across the view, a little turned toward it.
+        const px = def.pair ? x + (side === 0 ? def.pair.apart / 2 : -def.pair.apart / 2) : x;
+        r.x[k] = px;
+        r.z[k] = z;
+        r.y[k] = view.hf.heightAt(px, z);
+        r.yaw[k] = def.pair ? (side === 0 ? -Math.PI / 2 : Math.PI / 2) : face;
+        r.flags[k] = 1;
+        r.gear.fill(0, k * GEAR_COUNT, (k + 1) * GEAR_COUNT);
+        r.span[k] = r.grown[k] = r.seat[k] = r.hasLook[k] = 0;
+        st.unpack(0);
+        st.setAction(ACT_NONE, HOLD_HANDS, 0);
+        st.emote = side === 0 ? n : (EMOTE_NUMBER.get(def.pair!.with) ?? n);
+        // A loop a turn in, past its fade, at the moment's frame.
+        st.emoteStart = (tick - at - (def.loop ? frames : 0)) & 0xffff;
+        r.anim[k] = st.pack();
+        r.cue[k] = 0;
+        r.emote[k] = st.packEmote();
+      }
+      if (c === 0) sceneLabels.push({ text: id, at: [x, view.hf.heightAt(x, z) - 0.1, z] });
+    }
+  });
+  const cam = view.cam;
+  cam.fovY = 0.3;
+  const across = Math.atan(Math.tan(cam.fovY / 2) * cam.aspect);
+  const far = (2 * moments * gapX) / 2 / Math.tan(across) + 1;
+  cam.x = x0;
+  cam.pitch = -0.32;
+  cam.z = z0 - far;
+  cam.y = view.hf.heightAt(x0, z0) + 0.9 - Math.tan(cam.pitch) * (far + gapZ / 2);
+  cam.yaw = 0;
 }
 
 /** The front row wears each armor tier in full on each sex, weapon in hand. The back row holds each weapon in turn, plus one body in odd pieces. */
@@ -1242,6 +1307,7 @@ if (import.meta.main) {
       const dodo = (await findAssets(source)).find((a) => a.id === "core:dodo")?.spec;
       statesScene(view, arg("states") ?? "knockout", Number(arg("tick") ?? 400), (Number(arg("face") ?? -90) * Math.PI) / 180, dodo?.kind === "creature" ? dodo.regions.map((region) => region.sample) : []);
     }
+    if (args.includes("--emotes")) emotesScene(view, arg("emotes") ?? "0", Number(arg("tick") ?? 2000), (Number(arg("face") ?? 180) * Math.PI) / 180);
     if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
     if (saddles) {
       // In the colours its asset is reviewed in.

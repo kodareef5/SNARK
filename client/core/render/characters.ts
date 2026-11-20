@@ -17,6 +17,7 @@ import { SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
+import { emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
@@ -319,6 +320,8 @@ export class Characters {
   private readonly extraAt = new Int32Array(EXTRA_KEYS * 4);
   /** Stand-ins made so far, by body set and then by what they do (standIn). */
   private readonly standIns: (StandIn | undefined)[][] = [];
+  /** Stand-ins of survivors in whole-body emotes, by body kind and set and the emote. */
+  private readonly emoteStandIns = new Map<number, StandIn>();
   private readonly riderStandIns = new Map<number, Map<number, Map<number, StandIn>>>();
   private readonly riderCounted = new Map<number, Map<number, Set<number>>>();
   private readonly neutralGrip = new RiderGrips();
@@ -713,6 +716,25 @@ export class Characters {
    */
   private standIn(kind: number, set: number, st: AnimState, seated: boolean, impaled = false, rider?: RiderFit, foot = -1, hand = -1): StandIn {
     const c = this.creatures[kind];
+    // A survivor in a whole-body emote (sitting, lying, dancing) stands in at the middle of it.
+    const emote = !c && !seated && !impaled ? emoteOf(st.emote) : null;
+    if (emote?.mask === "full") {
+      const key = (kind * 2 + set) * 1024 + st.emote;
+      let e = this.emoteStandIns.get(key);
+      if (e) return e;
+      const like = new AnimState();
+      like.emote = st.emote;
+      like.emoteStart = 0;
+      const frames = this.anim.emotes[st.emote]?.frames ?? 2;
+      humanPose(this.anim, like, Math.floor(frames / 2), this.pose, null);
+      const body = this.kinds[kind]!.sets[set]!;
+      const solved = new Solved(HUMAN_BONES);
+      solve(HUMAN, this.pose, solved, body.rest, null);
+      const rows = new Float32Array(HUMAN_BONES * BONE_FLOATS);
+      writeBones(rows, 0, solved, body.rest, null, 0, 0, 0, 0);
+      this.emoteStandIns.set(key, (e = { rows, solved, counted: -1, written: -1, first: 0 }));
+      return e;
+    }
     const doing = c?.vehicle ? 0 : this.standState(st, seated, impaled);
     const of = (this.standIns[kind * 2 + set] ??= []);
     // Content indices are 16-bit and seats at most 16: this numeric key stays exactly representable and bounded by content.

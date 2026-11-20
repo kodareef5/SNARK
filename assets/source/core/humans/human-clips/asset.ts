@@ -23,11 +23,30 @@ export default {
         { source: "Punch_Jab", id: "human/punch" },
         { source: "Punch_Cross", id: "human/punch_cross" },
         { source: "Sword_Attack", id: "human/tool_swing" },
+        // Emotes (shared/anim/emotes.ts LIBRARY_EMOTES).
+        { source: "Dance_Loop", id: "human/emote/groove", loop: true },
+        { source: "Idle_Talking_Loop", id: "human/emote/talk", loop: true },
+        { source: "Fixing_Kneeling", id: "human/emote/fix", loop: true },
+        { source: "Spell_Simple_Idle_Loop", id: "human/emote/magic", loop: true },
+        { source: "Spell_Simple_Shoot", id: "human/emote/cast" },
+        { source: "Hit_Chest", id: "human/emote/flinch" },
       ],
     },
     {
       raw: "quaternius/animation-library-2/UAL2_Standard.glb",
-      clips: [{ source: "OverhandThrow", id: "human/throw" }],
+      clips: [
+        { source: "OverhandThrow", id: "human/throw" },
+        // Emotes (shared/anim/emotes.ts LIBRARY_EMOTES).
+        { source: "Idle_TalkingPhone_Loop", id: "human/emote/phone", loop: true },
+        { source: "Idle_FoldArms_Loop", id: "human/emote/fold_arms", loop: true },
+        { source: "Zombie_Idle_Loop", id: "human/emote/zombie_idle", loop: true },
+        { source: "Yes", id: "human/emote/yes" },
+        { source: "Idle_No_Loop", id: "human/emote/no", loop: false },
+        { source: "Consume", id: "human/emote/eat" },
+        { source: "Zombie_Scratch", id: "human/emote/zombie_scratch" },
+        { source: "Farm_PlantSeed", id: "human/emote/plant" },
+        { source: "Farm_Watering", id: "human/emote/water_plants" },
+      ],
     },
   ],
 } satisfies HumanClipsAsset;

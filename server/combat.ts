@@ -920,7 +920,8 @@ export class Combat {
       const reach = this.t / scale;
       if (this.human[kind] && world.anim) {
         if (past.seat && !this.seatInRay(past, rx, ry, rz, ux, uy, uz, reach)) continue;
-        st.unpack(past.anim, past.cue);
+        // A survivor's emote as it is now: emotes change seldom beside the ticks a hit looks back.
+        st.unpack(past.anim, past.cue, world.ents.emote[i]!);
         st.seed = bodySeed(i);
         const seated = this.seated(i, past, tick);
         const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach, this.contactPadding)
