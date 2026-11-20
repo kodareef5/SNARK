@@ -2,6 +2,8 @@
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
 import { SURFACE_NAMES } from "../../../content/surfaces.ts";
+// Normal-incidence and grazing values of a coated, tinted faceplate.
+export const visor = { cover: 0.73, edgeCover: 0.97, coat: 0.63, edgeCoat: 0.94 } as const;
 export const STEEL = SURFACE_NAMES.indexOf("steel"), RUST = SURFACE_NAMES.indexOf("rust"), GLASS = SURFACE_NAMES.indexOf("glass");
 export function worldReceiver(surface: number, rough: number, metal: number): number {
   if (surface === GLASS) return Math.max(0, Math.min(1, (0.8 - rough) * 2.5));

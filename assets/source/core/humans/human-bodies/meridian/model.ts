@@ -80,7 +80,7 @@ function helmet(s: Surface) {
       [1.653, -58, 58, 0.007],
       [1.6535, -18, 18, 0.007],
     ],
-    f.glass,
+    f.visor,
     B_HEAD,
     34,
   );
@@ -208,14 +208,15 @@ function helmet(s: Surface) {
       5,
     );
   }
+  // Keep the graphite chin insert in front of both cheek bevels throughout its face.
   s.panel(
     shell,
     [
-      [1.501, -7, 7, 0.003],
-      [1.512, -15, 15, 0.008],
-      [1.532, -19, 19, 0.008],
-      [1.549, -13, 13, 0.007],
-      [1.562, -5, 5, 0.003],
+      [1.501, -7, 7, 0.014],
+      [1.512, -15, 15, 0.017],
+      [1.532, -19, 19, 0.018],
+      [1.549, -13, 13, 0.017],
+      [1.562, -5, 5, 0.014],
     ],
     f.seam,
     B_HEAD,
@@ -265,7 +266,7 @@ function torso(s: Surface, female: boolean, rest: readonly number[]) {
       [1.406, -33, 33, 0.01],
       [1.418, -24, 24, 0.005],
     ],
-    f.ceramic,
+    f.chest,
     B_UPPER_CHEST,
     24,
   );
@@ -338,7 +339,7 @@ function torso(s: Surface, female: boolean, rest: readonly number[]) {
         ],
         side,
       ),
-      f.chest,
+      f.limb,
       B_UPPER_CHEST,
       17,
     );
@@ -1122,7 +1123,7 @@ function gloves(s: Surface, female: boolean, rest: readonly number[]) {
         [wrist + 0.092, 32, 152, 0.003],
         [wrist + 0.103, 56, 130],
       ],
-      f.seam,
+      f.rubber,
       hand,
       11,
     );
@@ -1132,7 +1133,7 @@ function gloves(s: Surface, female: boolean, rest: readonly number[]) {
         [wrist + 0.029, 83, 92, 0.007],
         [wrist + 0.06, 81, 94, 0.008],
       ],
-      f.glass,
+      f.lamp,
       hand,
       4,
     );
@@ -1210,7 +1211,7 @@ export function meridian(body: readonly SourceMesh[], rig: PackRig): SourceMesh[
     const slot = base.id.split("/").at(-1)!;
     const lods = base.lods.map((lod, level) => {
       const s = new Surface(level);
-      s.liner(lod);
+      s.liner(lod, slot === "hands");
       switch (slot) {
         case "head":
           helmet(s);

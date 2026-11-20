@@ -6,37 +6,189 @@
 
 from pathlib import Path
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 ROOT = Path(__file__).resolve().parent
 N, PAD = 256, 6
 rng = np.random.default_rng(71024)
 v, u = np.mgrid[0:N, 0:N]
 x, y = (u - PAD) / (N - 2 * PAD), (v - PAD) / (N - 2 * PAD)
+SIDE = 512
 atlas = {
-    k: Image.new("RGB", (4 * N, 4 * N)) for k in ("finish", "normal", "orm", "dye")
+    k: Image.new("RGB", (4 * SIDE, 4 * SIDE)) for k in ("finish", "normal", "orm", "dye")
 }
 font = ImageFont.load_default(size=12)
 small = ImageFont.load_default(size=9)
 # Base colour, roughness and metalness. Separate UV islands let small hardware keep its own finish.
 swatches = [
-    ((202, 205, 201), 131, 37),
-    ((163, 174, 176), 130, 77),
+    ((236, 236, 229), 152, 3),
+    ((72, 88, 102), 165, 6),
     ((47, 55, 60), 195, 14),
     ((61, 74, 83), 111, 168),
     ((25, 72, 119), 44, 172),
     ((119, 229, 255), 72, 45),
     ((201, 129, 57), 128, 69),
     ((173, 185, 190), 84, 197),
-    ((197, 202, 201), 121, 44),
-    ((204, 207, 204), 128, 34),
+    ((245, 243, 234), 162, 3),
+    ((204, 216, 220), 138, 8),
     ((45, 58, 69), 143, 129),
     ((30, 40, 48), 186, 25),
-    ((194, 200, 199), 119, 46),
-    ((172, 179, 180), 137, 62),
+    ((221, 222, 210), 150, 5),
+    ((99, 111, 121), 174, 6),
     ((39, 59, 71), 121, 142),
-    ((210, 212, 209), 124, 34),
+    ((242, 242, 235), 153, 3),
 ]
+# Four flat-lit material scans from the generated master. The subsections have distinct
+# responses to light. Baked luminance is deliberately weaker on polished surfaces.
+source = Image.open(ROOT / "engraving-source.png").convert("RGB")
+half = source.width // 2
+scans = []
+for col, row in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+    left, top = col * half, row * half
+    scans.append(source.crop((left+3, top+3, left+half-3, top+half-3))
+                 .resize((SIDE, SIDE), Image.Resampling.LANCZOS))
+
+
+def pixels(im):
+    return np.asarray(im, dtype=np.float32)
+
+
+def enlarged(im, nearest=False):
+    return im.resize((SIDE, SIDE), Image.Resampling.NEAREST if nearest else Image.Resampling.BICUBIC)
+
+
+def livery(tile, rgb, response):
+    # Printed enamel lies flush under the clear coat. Each mask names points in a
+    # whole UV island, so the same mark fits either body and each textured LOD.
+    def paint(points, pigment, roughness):
+        mask = Image.new("L", (SIDE, SIDE))
+        ImageDraw.Draw(mask).polygon([(round(x * SIDE), round(y * SIDE)) for x, y in points], fill=255)
+        selected = np.asarray(mask) != 0
+        rgb[selected] = pigment
+        response[selected] = [245, roughness, 4]
+
+    ink, amber = (23, 52, 77), (202, 131, 56)
+    if tile == 15:
+        # Offset racing stripe. Leave a thread of ivory between the two colours.
+        paint([(0.592, 0.10), (0.604, 0.10), (0.635, 0.76), (0.598, 0.91), (0.577, 0.91), (0.608, 0.75)], ink, 124)
+        paint([(0.611, 0.17), (0.618, 0.17), (0.646, 0.76), (0.616, 0.88), (0.609, 0.88), (0.635, 0.75)], amber, 136)
+    elif tile == 8:
+        # A swept tab follows the outer collar. Its return ends above the chest motor.
+        paint([(0.095, 0.16), (0.22, 0.16), (0.35, 0.30), (0.35, 0.34), (0.326, 0.34), (0.205, 0.23), (0.095, 0.23)], ink, 130)
+        for x in (0.132, 0.162):
+            paint([(x, 0.257), (x + 0.017, 0.257), (x + 0.037, 0.281), (x + 0.020, 0.281)], amber, 142)
+    elif tile == 12:
+        # The access mark reads from behind when the flight vanes deploy.
+        paint([(0.17, 0.66), (0.27, 0.66), (0.41, 0.80), (0.37, 0.80)], ink, 133)
+        paint([(0.294, 0.66), (0.32, 0.66), (0.458, 0.80), (0.433, 0.80)], amber, 138)
+
+
+def detailed(tile, img, h, orm):
+    rgb, height, response = pixels(enlarged(img)), pixels(enlarged(h)), pixels(enlarged(orm))
+    yy, xx = np.mgrid[:SIDE, :SIDE] / SIDE
+    if tile == 4:
+        # Cobalt interlayer. The actual moving highlight is supplied by the environment.
+        rgb = np.stack([14 + 9*yy, 43 + 29*yy, 78 + 38*yy], axis=2)
+        response[:] = [250, 31, 12]
+    elif tile == 5:
+        # Keep the glow blue even where its core catches direct sunlight.
+        rgb *= [0.44, 0.78, 1.12]
+        response[:] = [249, 72, 20]
+    elif tile == 6:
+        # A vulcanized palm has low, closely spaced staggered grip pads. The right
+        # fifth keeps the original brass for the two small fasteners that use it.
+        column = xx*35
+        row = yy*32
+        a = np.abs((column + 0.5*(np.floor(row) % 2)) % 1 - 0.5)
+        b = np.abs(row % 1 - 0.5)
+        pad = np.clip((0.49-np.maximum(b, 0.88*a+0.5*b))*15, 0, 1)
+        groove = np.clip((0.13-np.abs((yy*5.5 + 0.12*np.cos(xx*7)) % 1-0.5))*10, 0, 1)
+        grain = pixels(scans[2].convert("L"))
+        rubber = 18 + pad*18 - groove*8 + np.clip(grain-np.median(grain),-22,28)*0.19
+        grip = xx < 0.80
+        rgb[grip] = (rubber[:, :, None] + [0, 4, 8])[grip]
+        height[grip] = (119 + pad*18 - groove*13)[grip]
+        response[:, :, 0][grip] = (178 + pad*61 - groove*18)[grip]
+        response[:, :, 1][grip] = (210 - pad*32 + groove*9)[grip]
+        response[:, :, 2][grip] = 3
+    else:
+        textile = tile in (2, 11)
+        machined = tile in (3, 7, 10, 14)
+        scan = scans[{2: 1, 11: 2}.get(tile, 3 if machined else 0)]
+        if tile in (9, 12, 14):
+            scan = scan.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        if tile in (1, 13, 15):
+            scan = scan.transpose(Image.Transpose.ROTATE_180)
+        art = pixels(scan)
+        lum = pixels(scan.convert("L"))
+        blurred = pixels(scan.convert("L").filter(ImageFilter.GaussianBlur(3)))
+        high = lum - blurred
+        if textile:
+            # Dark seams retain ambient occlusion in shade. The high yarns stay matte.
+            rgb = art * (1.08 if tile == 2 else 1.27) + [7, 9, 11]
+            height = 126 + (lum - np.median(lum))*0.78 + high*0.32
+            response[:, :, 0] = np.clip(160 + lum*1.65 + high*0.9, 125, 250)
+            response[:, :, 1] = np.clip((220 if tile == 2 else 171) + high*0.43, 140, 241)
+            response[:, :, 2] = 4
+        elif machined:
+            # Fine polished cuts share the pattern with the normal map. No painted sun streak.
+            if tile == 7:  # Mirror-polished fasteners and machined rings.
+                rgb = 0.50*rgb + 0.44*art + 12
+                rough, metal = 50, 238
+            elif tile == 3:  # Bead-blasted titanium under the lip of a shell.
+                rgb = 0.73*rgb + 0.19*art
+                rough, metal = 157, 190
+            else:  # Black oxide over recesses and heat sinks.
+                rgb = 0.52*rgb + 0.10*art
+                rough, metal = 177, 62
+            height += (0.58 if tile == 7 else 0.28)*high
+            response[:, :, 0] = np.clip(240 + 0.48*high, 195, 250)
+            response[:, :, 1] = np.clip(rough - high*(0.44 if tile == 7 else 0.15), 34, 204)
+            response[:, :, 2] = metal
+        else:
+            # The cobalt enamel, milled bead and satin field reflect independently.
+            enamel = np.clip((art[:, :, 2] - art[:, :, 0] - 8) / 42, 0, 1)
+            cut = np.clip((211 - blurred) / 68, 0, 1)
+            # Hero engravings follow the sides of the breastplate and the brow. Keep
+            # a quiet satin field through the middle for the form and its sun highlight.
+            if tile in (0, 8, 15):
+                field = np.clip((np.abs(xx - 0.51) - 0.09)*4.0 + (0.38-yy)*0.55, 0.12, 1)
+            elif tile in (9, 12):
+                field = np.clip((xx-0.24)*2.7, 0.13, 0.78)
+            else:
+                field = np.clip((0.48-yy)*2.8, 0.12, 0.64)
+            # The substrate carries the colour even when it reflects a dark street.
+            # Use the relief from the scan, with the original blue lacquer in its cuts.
+            _, rough, metal = swatches[tile]
+            rgb += (np.clip(lum - np.median(lum), -85, 30)*0.16*field)[:, :, None]
+            enamel *= field
+            rgb = rgb*(1-0.54*enamel[:, :, None]) + art*(0.54*enamel[:, :, None])
+            height = 125 + (height-125)*0.55 + field*(0.24*high - cut*2.2)
+            cut *= field
+            response[:, :, 0] = np.clip(247 - cut*34 + high*0.3, 167, 251)
+            response[:, :, 1] = np.clip(rough - 13*cut - 34*enamel - high*0.08, 84, 184)
+            response[:, :, 2] = metal + 15*cut
+            # Follow the padded UV border around the existing cut of each plate. A
+            # bright metal fillet sits against a dark gasket, leaving its center pearl.
+            rim = np.minimum(np.minimum(xx, 1-xx), np.minimum(yy, 1-yy)) - 0.035
+            fillet = np.clip((0.012 - np.abs(rim - 0.022))*165, 0, 1)
+            gasket = np.clip((0.008 - np.abs(rim - 0.040))*160, 0, 1)
+            rgb *= 1.0 - 0.20*gasket[:, :, None]
+            rgb = rgb*(1-fillet[:, :, None]) + np.array([209, 220, 228])*fillet[:, :, None]
+            response[:, :, 1] = response[:, :, 1]*(1-fillet) + 36*fillet
+            response[:, :, 2] = response[:, :, 2]*(1-fillet) + 247*fillet
+            height += 7*fillet - 5*gasket
+            livery(tile, rgb, response)
+    dy, dx = np.gradient(height / 255)
+    nn = np.stack([-dx*2.9, dy*2.9, np.ones_like(dx)], 2)
+    if tile == 4:
+        # The compound optical surface bows gently across both axes.
+        nn[:, :, 0] += 0.10*(2*xx-1)
+        nn[:, :, 1] += 0.32*(1-2*yy)
+    nn /= np.sqrt((nn*nn).sum(axis=2, keepdims=True))
+    return tuple(Image.fromarray(np.uint8(np.clip(a,0,255))) for a in (rgb,(nn*0.5+0.5)*255,response))
+
+
 for i, (base, rough, metal) in enumerate(swatches):
     noise = rng.normal(0, 1, (N, N))
     grad = 3 * np.sin(x * 2.2) - 3 * y + noise * 0.85
@@ -158,7 +310,7 @@ for i, (base, rough, metal) in enumerate(swatches):
             )
             for a, b in (path[1], path[-1]):
                 screw(a, b)
-        if i == 0:
+        if i == 8:
             # Meridian datum etched into the right side of the continuous breastplate.
             ink.arc((162, 113, 184, 135), -80, 161, fill=(111, 130, 137), width=2)
             ink.line((172, 117, 168, 129, 177, 123), fill=(105, 122, 129), width=2)
@@ -197,12 +349,8 @@ for i, (base, rough, metal) in enumerate(swatches):
         mask.rectangle((34, 40, 219, 46), fill=(255, 0, 255))  # wearable secondary
     if i == 4:
         mask.rectangle((14, 205, 242, 215), fill=(255, 255, 0))  # wearable trim
-    hh = np.asarray(h, dtype=float) / 255
-    dy, dx = np.gradient(hh)
-    nn = np.stack([-dx * 2.8, dy * 2.8, np.ones_like(dx)], 2)
-    nn /= np.sqrt((nn * nn).sum(axis=2, keepdims=True))
-    normal = Image.fromarray(np.uint8(np.clip((nn * 0.5 + 0.5) * 255, 0, 255)))
-    for name, pic in [("finish", img), ("normal", normal), ("orm", orm), ("dye", dye)]:
-        atlas[name].paste(pic, ((i % 4) * N, (i // 4) * N))
+    img, normal, orm = detailed(i, img, h, orm)
+    for name, pic in [("finish", img), ("normal", normal), ("orm", orm), ("dye", enlarged(dye, True))]:
+        atlas[name].paste(pic, ((i % 4) * SIDE, (i // 4) * SIDE))
 for name, img in atlas.items():
     img.save(ROOT / (name + ".png"), optimize=True)

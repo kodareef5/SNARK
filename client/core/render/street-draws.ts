@@ -1,13 +1,13 @@
 // Resolve the authored finish once per material or mesh and put each draw's optical inputs in the frame.
-import { crownedSpokes, fixtureKind } from "../../../content/street-finishes.ts";
-import type { PackHeader } from "../../../shared/pack/pack.ts";
+import { crownedSpokes, fixtureKind, LENS } from "../../../content/street-finishes.ts";
+import { MATERIAL_LENS, type PackHeader } from "../../../shared/pack/pack.ts";
 import { nearMeshSlot } from "./nearcity.ts";
 import { DRAW_TEXTURED, type FramePacket } from "./packet.ts";
 import { StreetMaterials, wheelBoneMask } from "./street-finish.ts";
 
 interface DrawArt {
   meshes: readonly { id: string; rig?: number }[];
-  materials?: readonly { id: string }[];
+  materials?: readonly { id: string; flags?: number }[];
 }
 export class StreetDraws {
   private readonly materials: StreetMaterials;
@@ -32,7 +32,8 @@ export class StreetDraws {
       p.drawWheelBones[d] = wheels;
       p.drawSpokeCrown[d] = wheels ? this.spokes[mesh]! : 0;
       const m = p.drawMaterial[d]!;
-      p.drawStreetMaterial[d] = this.materials.code(m, this.art.materials?.[m]?.id ?? "", mesh, wheels !== 0);
+      const material = this.art.materials?.[m];
+      p.drawStreetMaterial[d] = ((material?.flags ?? 0) & MATERIAL_LENS) !== 0 ? LENS : this.materials.code(m, material?.id ?? "", mesh, wheels !== 0);
     }
   }
 }

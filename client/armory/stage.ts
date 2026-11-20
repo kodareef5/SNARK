@@ -1,7 +1,7 @@
 import { GlRenderer } from "../shell/gl.ts";
 import { Camera } from "../core/render/camera.ts";
 import { Scene } from "../core/render/scene.ts";
-import { FRAME } from "../core/render/packet.ts";
+import { BONE_FLOATS, FRAME } from "../core/render/packet.ts";
 import { giveSky } from "../core/render/sky.ts";
 import { RemoteSample } from "../core/session.ts";
 import { tierOf } from "../core/assets/tiers.ts";
@@ -14,7 +14,8 @@ import { AnimState } from "../../shared/anim/pose.ts";
 import { STANCE_CROUCH } from "../../shared/sim/character.ts";
 import { HOLD_TOOL } from "../../shared/sim/weapon.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
+import { B_HAND_R } from "../../shared/anim/human.ts";
+import { INSTANCE_BYTES, parsePack } from "../../shared/pack/pack.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 
 const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(id)!;
@@ -73,6 +74,7 @@ async function run() {
   const pack = parsePack(files[manifest.boot]!),
     dims = { chunksX: 1, chunksZ: 1 },
     hf = new Heightfield(dims, 8, 0, 1);
+  hf.tint.fill(4); // The studio floor is slate in the environment seen by the suit.
   const scene = new Scene({ dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts) }, reg, pack, {
     manifest,
     port,
@@ -127,7 +129,7 @@ async function run() {
   mix.value = params.get("mix") ?? "bare";
   const grip = $<HTMLInputElement>("#tool");
   grip.checked = params.has("tool");
-  const orbit = () => (view.value === "back" ? 2.7 : pose.value === "mount" ? 1.15 : 0.42);
+  const orbit = () => (view.value === "glove" ? -1.28 : view.value === "back" ? 2.7 : pose.value === "mount" ? 1.15 : 0.42);
   let angle = Number(params.get("angle") ?? orbit()),
     drag: number | null = null;
   view.onchange = pose.onchange = () => {
@@ -152,6 +154,14 @@ async function run() {
       angle += e.key === "ArrowLeft" ? -0.16 : 0.16;
     }
   };
+  // Follow the animated right palm in the same bone palette used for the actual draw.
+  const palm = [32, 0.9, 32], instances = new DataView(scene.packet.transient.buffer);
+  const fits = ["m", "f"].map(sex => ({
+    hands: new Map(["bare", "meridian", "cloth", "hide"].map(set => [set, scene.assets.table.find(
+      "core:human_" + sex + (set === "bare" ? "/hands" : "/armor/" + set + "/hands")
+    )])),
+    rest: pack.header.rigs.find(rig => rig.id === "human_" + sex)!.rest
+  }));
   let frames = 0;
   let captureTick = params.has("tick") ? Number(params.get("tick")) : null;
   if (params.has("capture"))
@@ -209,10 +219,32 @@ async function run() {
     cam.y = target + dist * 0.08;
     cam.yaw = angle + Math.PI;
     cam.pitch = -0.08;
+    if (view.value === "glove") {
+      const distance = 0.34;
+      cam.x = palm[0]! + Math.sin(angle)*distance;
+      cam.y = palm[1]! + 0.06;
+      cam.z = palm[2]! + Math.cos(angle)*distance;
+      cam.pitch = -Math.atan2(0.06,distance);
+    }
     scene.hour = shade.checked ? 18.8 : 11.5;
     scene.now = now;
     scene.viewHeight = h;
     const p = scene.build(cam, actor);
+    if (view.value === "glove") {
+      const { hands, rest } = fits[look[LOOK_SEX]!]!;
+      const mesh = hands.get(inputs[2]!.checked ? "meridian" : mix.value) ?? -1;
+      const d = p.drawMesh.subarray(0, p.drawCount).indexOf(mesh);
+      if (d >= 0) {
+        const bone = instances.getUint16(p.drawFirst[d]!*INSTANCE_BYTES + 12, true) + B_HAND_R;
+        const wrist = B_HAND_R*3;
+        palm[0] = cam.x; palm[1] = cam.y; palm[2] = cam.z;
+        for (let axis = 0; axis < 3; axis++) {
+          const r = bone*BONE_FLOATS + 4*axis;
+          palm[axis]! += p.bones[r+3]!
+            + p.bones[r]!*(rest[wrist]! - 0.067) + p.bones[r+1]!*rest[wrist+1]! + p.bones[r+2]!*rest[wrist+2]!;
+        }
+      }
+    }
     p.tileCount = 0;
     p.sky.set([0.076, 0.115, 0.153]);
     p.frame[FRAME.eyeHeight] = -1;

@@ -3,7 +3,7 @@
 
 import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER } from "../../../content/surfaces.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
-import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
@@ -53,6 +53,12 @@ export const DRAW_TEXTURED = 32;
 export const DRAW_TWO_SIDED = 64;
 /** Nothing shows where the base colour's alpha is under the material's cutoff. */
 export const DRAW_CUTOUT = 128;
+
+export function texturedFlags(flags: number): number {
+  return DRAW_TEXTURED | ((flags & MATERIAL_TWO_SIDED) ? DRAW_TWO_SIDED : 0)
+    | ((flags & MATERIAL_CUTOUT) ? DRAW_CUTOUT : 0) | ((flags & MATERIAL_LENS) ? DRAW_BLEND : 0);
+}
+
 /**
  * A rigid draw whose instances carry their size in colour region SIZE_REGION, in SIZE_UNITS (shared/world/nodes.ts) of the
  * size the mesh was made: a resource node. Each is drawn that size about its origin, and the region gives no colour.

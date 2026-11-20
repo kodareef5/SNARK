@@ -2,7 +2,7 @@
 import trailer from "./vehicles/trailer-axles.json" with { type: "json" };
 import { GRATE, UTILITY_ENAMEL } from "./colours.ts";
 
-export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3;
+export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3, LENS = 4, ENAMEL_ARMOR = 5;
 const materials = new Map<string, number>();
 for (const part of [
   "berlinetta/coachwork", "bus/livery", "compact/body", "compact_abandoned/body",
@@ -10,6 +10,7 @@ for (const part of [
   "road_van/coach", "semi/livery", "tanker/livery", "tanker_wrecks/livery", "taxi/livery", "veloce/coachwork",
 ]) materials.set("core:" + part, PAINT);
 materials.set("core:compact_wreck/body", BURNT_SHEET);
+materials.set("core:human-bodies/meridian", ENAMEL_ARMOR);
 for (const part of [
   "compact/cabin", "compact/trim", "compact_abandoned/cabin", "compact_abandoned/trim", "compact_wreck/cabin",
   "compact_wreck/trim", "fastback/detail", "road_van/cabin", "road_van/fittings", "street/street", "street/street_cut",

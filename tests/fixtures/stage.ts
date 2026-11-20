@@ -3,14 +3,14 @@
 
 import { Camera } from "../../client/core/render/camera.ts";
 import { writeBones } from "../../client/core/render/characters.ts";
-import { BONE_FLOATS, DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, texturedFlags, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { AMBIENT, DIFFUSE } from "../../client/core/render/shading.ts";
 import { SKY_SIZE, SKY_SLICES, decodeTexel, encodeTexel } from "../../client/core/render/sky.ts";
 import { DIELECTRIC, skyShare, srgbToLinear } from "../../client/core/render/surface.ts";
 import type { Rig } from "../../shared/anim/rigs.ts";
 import { solve } from "../../shared/anim/skeleton.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
-import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
+import { type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import type { TextureRole } from "../../shared/pack/texture.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -164,7 +164,7 @@ export class Stage {
       p.drawOffset[d * 3] = at.standIn ?? 0;
       p.drawFlags[d] = flags;
       if (!material) continue;
-      p.drawFlags[d]! |= DRAW_TEXTURED | ((material.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((material.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
+      p.drawFlags[d]! |= texturedFlags(material.flags);
       p.drawMaterial[d] = runs[k]!;
       p.drawFirstIndex[d] = runs[k + 1]!;
       p.drawIndexCount[d] = runs[k + 2]!;

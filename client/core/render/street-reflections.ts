@@ -10,8 +10,10 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { ReceiverIndex } from "./receiver-index.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import type { RemoteSample } from "../session.ts";
+import { GEAR_COUNT, GEAR_WORN } from "../../../shared/sim/entities.ts";
+import { stanceEye } from "../../../shared/sim/character.ts";
 import type { Camera } from "./camera.ts";
-import type { RenderWorld } from "./scene.ts";
+import type { OwnBody, RenderWorld } from "./scene.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
 
 import { GLASS, RUST, STEEL, FINE_STREET_WIDTH, STREET_WIDTH, captureByte, streetWidth, type StreetImage, streetPriority } from "./street-finish.ts";
@@ -71,6 +73,7 @@ export class StreetReflections {
     if (t.high <= ROWS_PER_CHUNK || cam.x < x0-REACH || cam.z < z0-REACH || cam.x > x0+CHUNK_SIZE+REACH || cam.z > z0+CHUNK_SIZE+REACH) return;
     if (this.dense.get(t)?.shape !== t.shape) this.dense.set(t, new ReceiverIndex(t,this.priority));
   }
+  private readonly visorItem: number;
   private readonly priority: Float32Array;
   private readonly proxies = Array.from({ length: MAX_PROXIES }, emptyProxy);
   private candidate = emptyProxy();
@@ -105,6 +108,7 @@ export class StreetReflections {
   private readonly forms: NodeForms;
   private readonly bounds?: ResidentBounds;
   constructor(reg: Registry, palette: Uint8Array, forms: NodeForms, bounds?: ResidentBounds) {
+    this.visorItem = reg.index.get("core:meridian_hat") ?? -1;
     this.bounds = bounds;
     this.reg = reg;
     this.palette = Float32Array.from(palette, channel => (channel / 255) ** 2.2);
@@ -113,7 +117,7 @@ export class StreetReflections {
     this.priority = Float32Array.from(reg.defs, placedPriority);
   }
 
-  frame(p: FramePacket, cam: Camera, world: RenderWorld, remote: RemoteSample | null, hidden: ReadonlySet<number>, now: number): void {
+  frame(p: FramePacket, cam: Camera, world: RenderWorld, remote: RemoteSample | null, hidden: ReadonlySet<number>, now: number, own?: OwnBody | null): void {
     const offset = FRAME.reflection;
     p.frame[offset + 3] = 0;
     p.street = p.previousStreet = null;
@@ -151,7 +155,11 @@ export class StreetReflections {
         for (let i = 0; i < remote.count; i++) {
           const k = remote.kind[i]!,
             v = this.reg.vehicle[k];
-          if (!v || !isWheelVehicle(v)) continue;
+          if (!v || !isWheelVehicle(v)) {
+            if (remote.gear[i * GEAR_COUNT + GEAR_WORN] === this.visorItem && remote.id[i] !== own?.cockpitActor)
+              this.helmet(cam, remote.id[i]!, k, remote.x[i]!, remote.y[i]!, remote.z[i]!, (remote.anim[i]! >>> 8) & 3);
+            continue;
+          }
           const s = v.spec;
           this.consider(
             cam,
@@ -173,6 +181,8 @@ export class StreetReflections {
           );
         }
       }
+      if (own && !own.firstPerson && own.gear[GEAR_WORN] === this.visorItem)
+        this.helmet(cam, own.id, own.kind, own.x, own.y, own.z, own.state.stance);
       this.gather(world.structs, cam, false, hidden);
       if (this.winner) {
         const winner: Proxy = this.winner;
@@ -283,6 +293,11 @@ export class StreetReflections {
     }
   }
 
+  private helmet(cam: Camera, id: number, kind: number, x: number, y: number, z: number, stance: number): void {
+    const move = this.reg.move[kind];
+    if (move) this.consider(cam, -2-id, x, y+stanceEye(move,stance), z, 0.16, 0.14, 0.16, 0, 0, false, 2, kind, 0, 0, 0, true);
+  }
+
   private consider(
     cam: Camera,
     id: number,
@@ -300,6 +315,7 @@ export class StreetReflections {
     ox: number,
     oy: number,
     oz: number,
+    receiverOnly = false,
   ): void {
     const dx = x - cam.x,
       dy = y - cam.y,
@@ -327,6 +343,7 @@ export class StreetReflections {
       this.best = score;
       this.winner = Object.assign(this.selected, data);
     }
+    if (receiverOnly) return; // A visor receives the shared picture without painting a proxy of itself.
     let slot = this.count;
     if (slot < MAX_PROXIES) this.count++;
     else {
@@ -353,7 +370,7 @@ export class StreetReflections {
         const gx = Math.max(0, Math.min(hf.nx - 1, Math.round((this.x + distance * sx) / hf.cell)));
         const gz = Math.max(0, Math.min(hf.nz - 1, Math.round((this.z + distance * sz) / hf.cell)));
         const tint = hf.tint[gz * hf.nx + gx];
-        for (let ch = 0; ch < 3; ch++) pixels[at * 4 + ch] = tint === undefined ? captureByte(39/255) : this.groundColor[tint * 4 + ch]!;
+        for (let ch = 0; ch < 3; ch++) pixels[at * 4 + ch] = !tint ? captureByte(39/255) : this.groundColor[tint * 4 + ch]!;
         pixels[at * 4 + 3] = 255;
       }
     }

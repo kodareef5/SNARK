@@ -13,7 +13,7 @@ import { CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz, type MapDims } from "../../../
 import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
-import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "../../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import { landmarkKinds } from "../../../shared/world/city.ts";
@@ -56,7 +56,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount } from "./packet.ts";
 import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
@@ -855,7 +855,7 @@ export class Scene {
   private learn(meshes: readonly number[]): void {
     const table = this.assets.table;
     table.materials.forEach((m, k) => {
-      this.materialFlags[k] = DRAW_TEXTURED | ((m.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((m.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
+      this.materialFlags[k] = texturedFlags(m.flags);
       this.barkOf[k] = m.id.endsWith("bark") ? 1 : 0;
     });
     const part = (mesh: number, keep: (material: number) => boolean): number[] => table.sections[mesh]!.map((runs) => runs.reduce((n, _, k) => (k % 3 === 0 && keep(runs[k]!) ? n + runs[k + 2]! / 3 : n), 0));
@@ -1031,7 +1031,7 @@ export class Scene {
     p.frame[FRAME.streetLook] = this.finishGloss - 1;
     p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
     p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;
-    this.street.frame(p, cam, this.world, remote, this.hiddenNodes, this.now);
+    this.street.frame(p, cam, this.world, remote, this.hiddenNodes, this.now, this.own);
     this.assets.residency.reserve("street environment", streetTextureBytes(p.tier.reflectionHz));
     this.order();
     this.streetDraws.write(p);
