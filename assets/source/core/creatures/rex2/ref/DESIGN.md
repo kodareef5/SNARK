@@ -59,3 +59,14 @@ well close up on the high tier.
 
 For a hands-on look, `bun tools/carbonemys-rex/dev.ts --rex2 --dist var/rex2/client --port 8797` puts both Rexes in
 the paddock. Rex v2 has no saddle yet.
+
+## Bones and weights
+
+The rig stays as it came, renamed. The game reads one bone by name, `jaw` (when the roar sound starts), and the model
+has it. Mirroring needs the `_l` and `_r` names it now has. There are no eye or lid bones, so it does not blink.
+
+`ref/sheet.py` draws each clip in clay at evenly spaced moments, from the side and the front quarter, or close on the
+head with `head`. The sheets in `ref/compare/` (`sheet-act`, `sheet-head`, `sheet-gait`) show no tears or collapsed
+joints in any clip. At the top of the roar the jaw opens wide on a modelled tongue, palate and teeth. The dark line
+behind the jaw is a fold in the sculpt, not a tear. The knees and hips keep their volume through walk and run. No
+weights were changed.
