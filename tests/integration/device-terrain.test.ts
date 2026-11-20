@@ -48,7 +48,7 @@ test("the terrain flight is offered only by its own server's link, flies the cam
   // Then the wood on each tier the device takes. The proving ground's far nodes are only in the chunks at its west and
   // north edges that the near field leaves out, which the turning camera faces in some rungs and not in others, as its
   // settling took longer or shorter: whether a rung drew any is not judged here.
-  expect(t.wood.map((g) => `${g.tier} ${g.reach}${g.band ? " band" : ""}`)).toEqual(["lowpoly 500", "medium 1200", "high 2000", "medium 1200 band"]);
+  expect(t.wood.map((g) => `${g.tier} ${g.reach}${g.band ? " band" : ""}`)).toEqual(["lowpoly 500", "medium 1500", "high 1500", "medium 1500 band"]);
   expect(lacking(r, "terrain").filter((line) => !line.startsWith("wood "))).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window", "far 130: bases stood in 58 chunks", "far 480: bases stood in 58 chunks", "the wood has no rung on ultra"]);
   const table = deviceTable(r);
   expect(table.some((line) => line.startsWith("terrain   a map 0.5 km across"))).toBe(true);

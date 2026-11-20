@@ -57,10 +57,11 @@ test("a real city's downtown at its three views on each tier: the near city's dr
   // 183, 194, 194,744, 14 and 190,114 in the air. Cut again when crosswalk bars became paint on the ground, which casts
   // no shadow, and a control's sign or pole stopped standing where one already faces the same traffic: 97, 201, 142,326,
   // 14 and 144,784 at the street on high, 153, 214, 172,920, 19 and 198,168 on the roof, 181, 195, 195,754, 14 and
-  // 190,508 in the air.
+  // 190,508 in the air. When the far city's finer levels reached farther (D876) only its triangles moved: medium's on the
+  // roof from 195,274, and a phone's medium from 48,882 at the street, 73,276 on the roof and 53,232 in the air.
   expect(got).toEqual({
-    "street-300": { lowpoly: [96, 0, 142386, 11, 100846], "medium, touch": [60, 39, 82390, 10, 48882], medium: [95, 87, 142290, 14, 144772], high: [95, 178, 142290, 14, 144772], ultra: [95, 206, 142290, 14, 144772] },
-    "roof-300": { lowpoly: [151, 0, 172896, 13, 130098], "medium, touch": [90, 29, 103578, 14, 73276], medium: [151, 104, 172896, 19, 195274], high: [151, 189, 172896, 19, 198162], ultra: [151, 227, 172896, 19, 198162] },
-    "air-300": { lowpoly: [182, 0, 195850, 11, 123576], "medium, touch": [81, 5, 120240, 9, 53232], medium: [181, 24, 195754, 14, 190496], high: [181, 173, 195754, 14, 190496], ultra: [181, 192, 195754, 14, 190496] },
+    "street-300": { lowpoly: [96, 0, 142386, 11, 100846], "medium, touch": [60, 39, 82390, 10, 123846], medium: [95, 87, 142290, 14, 144772], high: [95, 178, 142290, 14, 144772], ultra: [95, 206, 142290, 14, 144772] },
+    "roof-300": { lowpoly: [151, 0, 172896, 13, 130098], "medium, touch": [90, 29, 103578, 14, 162574], medium: [151, 104, 172896, 19, 198162], high: [151, 189, 172896, 19, 198162], ultra: [151, 227, 172896, 19, 198162] },
+    "air-300": { lowpoly: [182, 0, 195850, 11, 123576], "medium, touch": [81, 5, 120240, 9, 140092], medium: [181, 24, 195754, 14, 190496], high: [181, 173, 195754, 14, 190496], ultra: [181, 192, 195754, 14, 190496] },
   });
 });

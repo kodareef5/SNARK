@@ -307,7 +307,7 @@ test("a city made a step at a time is the one made at once, the reach of its chu
   expect(stepped.far).toEqual(once.far);
 });
 
-test("the lattice fades out over the end of its reach exactly where the mass fades in", () => {
+test("the bare level fades out over the end of its reach exactly where the mass fades in", () => {
   for (let x = 0; x < 4; x++) {
     for (let y = 0; y < 4; y++) {
       for (let d = 800; d <= 1000; d += 0.5) expect(fadeKeeps(d, 900, 0.1, x, y)).toBe(!fadeKeeps(d, -900, 0.1, x, y));
@@ -316,18 +316,19 @@ test("the lattice fades out over the end of its reach exactly where the mass fad
   const statics: MapStatic[] = [];
   for (let k = 0; k < 6; k++) statics.push(...building(...mid(10 + k * 3, 30), 0, 6, 2, k * 2000));
   const w = cityWorld({ chunks: 48, statics, width: 480, height: 270 });
-  w.look(16 * CHUNK_SIZE, 10, 30 * CHUNK_SIZE + 32, 830, Math.PI / 2, 30);
+  w.look(16 * CHUNK_SIZE, 10, 30 * CHUNK_SIZE + 32, 1430, Math.PI / 2, 30);
   const p = w.frame();
-  // The tower 862 m off, in the fade, is drawn twice, the lattice fading out and the mass fading in.
+  // The tower 1,462 m off, in the fade at the end of medium's bare level, is drawn twice: the bare level fading out and
+  // the mass fading in.
   const fades = cityDraws(p).map((d) => p.drawFade[d]!);
-  expect(fades.some((f) => f === 900)).toBe(true);
-  expect(fades.some((f) => f === -900)).toBe(true);
+  expect(fades.some((f) => f === 1500)).toBe(true);
+  expect(fades.some((f) => f === -1500)).toBe(true);
 });
 
 test("across a fade between levels a chunk wholly past the one's end draws none of it and one wholly short of the fade none of the other, for the picture both drawn whole give", () => {
-  // Rows of towers in three rows of tiles, one in every chunk across the fade: the lattice into the mass on medium from
-  // 810 to 900 m, and the mass in 4 m cells into that in 8 m cells on high from 1,800 to 2,000 m.
-  for (const { tier, end, from, off } of [{ tier: "medium", end: 900, from: 10, off: 820 }, { tier: "high", end: 2000, from: 26, off: 1900 }]) {
+  // Rows of towers in three rows of tiles, one in every chunk across the fade: the bare level into the mass on medium
+  // from 1,350 to 1,500 m, and the mass in 4 m cells into that in 8 m cells on high from 2,070 to 2,300 m.
+  for (const { tier, end, from, off } of [{ tier: "medium", end: 1500, from: 10, off: 1420 }, { tier: "high", end: 2300, from: 26, off: 2200 }]) {
     const statics: MapStatic[] = [];
     for (let k = 0; k < 18; k++) for (const cz of [27, 31, 35]) statics.push(...building(...mid(from + k, cz), 0, 4 + ((k * 5) % 7), 2, (k * 2300 + cz * 700) % 16384));
     const w = cityWorld({ chunks: 64, statics, width: 480, height: 270, tier: tierOf(tier) });
@@ -351,9 +352,9 @@ test("across a fade between levels a chunk wholly past the one's end draws none 
       const sign = new Map<number, number>();
       for (const d of list) if (p.drawFade[d] === end || p.drawFade[d] === -end) sign.set(p.drawSlot[d]!, Math.sign(p.drawFade[d]!));
       const slots = new Set(list.map((d) => p.drawSlot[d]!));
-      if (slots.size < 2) continue;
+      // A tile in the fade between two other levels, nearer or farther, is left as drawn.
+      if (slots.size < 2 || sign.size === 0) continue;
       expect(slots.size).toBe(2);
-      expect(sign.size).toBeGreaterThan(0);
       both++;
       const finer = [...slots].find((s) => sign.get(s) === 1 || (!sign.has(s) && [...sign.values()][0] === -1))!;
       for (const d of list) [p.drawFirstIndex[d], p.drawIndexCount[d], p.drawFade[d]] = [0, whole.get(p.drawSlot[d]!)!, p.drawSlot[d] === finer ? end : -end];
@@ -370,8 +371,8 @@ test("across a fade between levels a chunk wholly past the one's end draws none 
 });
 
 test("a tile wholly short of the last tenth of its reach draws with no fade, and one reaching into it fades there", () => {
-  // Two towers in line, one 300 m off and one 1,900 m off, on medium (reach 2,048 m).
-  const statics = [...building(...mid(2, 30), 0, 6), ...building(...mid(2, 55), 0, 6)];
+  // Two towers in line, one 300 m off and one 2,412 m off, on medium (reach 2,500 m, its last level from 2,000 m).
+  const statics = [...building(...mid(2, 30), 0, 6), ...building(...mid(2, 63), 0, 6)];
   const w = cityWorld({ chunks: 64, statics, width: 320, height: 180 });
   const [x, z] = mid(2, 30);
   w.look(x, 10, z, 300, 0, 2);
@@ -379,7 +380,7 @@ test("a tile wholly short of the last tenth of its reach draws with no fade, and
   const at = (d: number): number => Math.hypot(p.drawOffset[d * 3]! + 160, p.drawOffset[d * 3 + 2]! + 160);
   const fades = cityDraws(p).map((d) => [at(d) < 1000, p.drawFade[d]!] as const);
   expect(fades.filter(([near]) => near).map(([, f]) => f)).toEqual([0]);
-  expect(fades.filter(([near]) => !near).map(([, f]) => f)).toEqual([Math.fround(w.scene.alongGround(2048))]);
+  expect(fades.filter(([near]) => !near).map(([, f]) => f)).toEqual([Math.fround(w.scene.alongGround(2500))]);
 });
 
 test("tiles with nothing on the card are made first, a chunk at a time within the frame's budget", () => {

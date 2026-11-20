@@ -147,7 +147,7 @@ artTest("Koru's sails, gaffs and rig are drawn as far as its far mesh, past medi
   const cam = new Camera();
   [cam.aspect, cam.fovY] = [VIEW[0] / VIEW[1], (VIEW[2] * Math.PI) / 180];
   const parts = new Set(KORU_LAYOUT.motion.parts.map((p) => scene.assets.table.find(p.mesh)));
-  const drawn = Object.fromEntries([1100, 1500, 1900, 2300].map((metres) => {
+  const drawn = Object.fromEntries([1400, 1800, 2200, 2700].map((metres) => {
     const at = koruPoint([-metres, 20, 0]), to = koruPoint([0, 20, 0]);
     [cam.x, cam.y, cam.z] = at;
     headings(scene, cam, [Math.atan2(to[0] - at[0], to[2] - at[2])]);
@@ -155,9 +155,9 @@ artTest("Koru's sails, gaffs and rig are drawn as far as its far mesh, past medi
     for (let d = 0; d < scene.packet.drawCount; d++) if (parts.has(scene.packet.drawMesh[d]!)) n++;
     return [metres, [n, scene.packet.dropped]];
   }));
-  // Medium draws moving parts to 1,200 m and the far city and the landmarks' far meshes to 2,048 m.
-  expect([tierOf("medium").reach.parts, tierOf("medium").reach.city]).toEqual([1200, 2048]);
-  expect(drawn).toEqual({ 1100: [21, 0], 1500: [21, 0], 1900: [21, 0], 2300: [0, 0] });
+  // Medium draws moving parts to 1,500 m and the far city and the landmarks' far meshes to 2,500 m.
+  expect([tierOf("medium").reach.parts, tierOf("medium").reach.city]).toEqual([1500, 2500]);
+  expect(drawn).toEqual({ 1400: [21, 0], 1800: [21, 0], 2200: [21, 0], 2700: [0, 0] });
 });
 
 test("the HUD holds at most 500 nodes in every mode, the vehicles' dashes and the menus among them, and grows none after warming up", () => {

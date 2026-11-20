@@ -268,7 +268,8 @@ test("at the benchmark's density each tier's far triangles in view stay within i
   w.cam.aspect = 16 / 9;
   w.scene.viewHeight = 1080;
   w.scene.nodesFar!.makes = Infinity;
-  const rows: Record<string, number> = { ultra: 2.0e6, high: 0.9e6, medium: 315e3, lowpoly: 39e3 };
+  // Medium's row was 315 k with its trees to 1,200 m; at 1,500 m (D876) they cover about 1.56 times the ground.
+  const rows: Record<string, number> = { ultra: 2.0e6, high: 0.9e6, medium: 500e3, lowpoly: 39e3 };
   const cut = (tier: Tier, reach: number): number => {
     const [edge, from] = [((2 * tier.nodes.chunks + 1) * CHUNK_SIZE) / Math.sqrt(Math.PI), tier.nodes.band[0]];
     return Math.sqrt(reach * reach - edge * edge + from * from);
