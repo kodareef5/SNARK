@@ -4,8 +4,8 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
-import { ENAMEL_ARMOR, LENS } from "../../content/street-finishes.ts";
-import { polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
+import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../content/street-finishes.ts";
+import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
 import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, tireMould, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
@@ -1800,6 +1800,19 @@ export class Rasterizer {
           const qs = 1 / (q0 + q1 + q2);
           for (let i = 0; i < CARRIED; i++) carried[i] = (q0 * poly[v0 + i]! + q1 * poly[v1 + i]! + q2 * poly[v2 + i]!) * qs;
           const u = carried[3]!, v = carried[4]!;
+          if (s.label === EXHAUST) {
+            const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!);
+            const n = Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
+            const facing = -(carried[0]!*carriedNormal[0]! + carried[1]!*carriedNormal[1]! + carried[2]!*carriedNormal[2]!) / Math.max(1e-10, dist*n);
+            const alpha = exhaustLight(light, v, u, facing, p.frame[FRAME.exhaustPhase]!, p.frame[FRAME.exposure]!);
+            shown(rgb, light, dist, p);
+            for (let c = 0; c < 3; c++) {
+              const channel = at*4 + c;
+              this.color[channel] = this.color[channel]! * (1-alpha) + 255*rgb[c]!*alpha;
+            }
+            this.fragments++;
+            continue;
+          }
           // The picture to sample is chosen by how far the texture coordinate moves to the next pixel right and to the next down.
           const r0 = (e0 + e0x) * i0, r1 = (e1 + e1x) * i1, r2 = (e2 - e0x - e1x) * i2;
           const d0 = (e0 + e0y) * i0, d1 = (e1 + e1y) * i1, d2 = (e2 - e0y - e1y) * i2;

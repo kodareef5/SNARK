@@ -11,6 +11,7 @@ import { Found } from "../world/structures.ts";
 // Bit positions match the five slots in worn inventory order. Only serviceable pieces count.
 export const JET_HELMET = 1 << 0;
 export const JET_CUIRASS = 1 << 1;
+export const JET_GLOVES = 1 << 2;
 export const JET_GREAVES = 1 << 3;
 export const JET_BOOTS = 1 << 4;
 export const JET_FULL_SUIT = 31;
@@ -24,6 +25,12 @@ export const JET_STRIDE = 1.5;
 export const JET_SWIM = 1.5;
 export const JET_LIFT = 1;
 export const JET_HOVER = 2;
+export const JET_UP = 3, JET_FIST = 4, JET_DASH = 5;
+const JET_TAP = 9, JET_RECOVERY = 33, JET_BURST_TICKS = 9;
+
+export function bootThrust(mode: number, gear: number, speed: number): boolean {
+  return (gear & JET_BOOTS) !== 0 && (mode >= JET_UP || (mode === JET_HOVER && (gear & JET_GREAVES) !== 0 && speed > 6));
+}
 
 export const BTN_JUMP = 1;
 export const BTN_SPRINT = 2;
@@ -254,6 +261,11 @@ export class Body {
   /** Ticks of thrust spent from this survivor's rechargeable reserve. */
   jetSpent = 0;
   jetThrust = 0;
+  /** Last sampled Jump, Sprint and Melee, their tap windows, and the shared burst recovery in simulation ticks. */
+  jetKeys = 0;
+  jetJumpTap = 0;
+  jetSprintTap = 0;
+  jetRecovery = 0;
   /**
    * Flight state (planning/reference/flyers-plan.md): the ticks before stamina may come back, held full in the air and
    * counted down on the ground and in water after it lands, and the ticks before it may roll again. Each is 0 for a body
@@ -330,6 +342,10 @@ export class Body {
     this.jetGear = o.jetGear;
     this.jetSpent = o.jetSpent;
     this.jetThrust = o.jetThrust;
+    this.jetKeys = o.jetKeys;
+    this.jetJumpTap = o.jetJumpTap;
+    this.jetSprintTap = o.jetSprintTap;
+    this.jetRecovery = o.jetRecovery;
     this.regenWait = o.regenWait;
     this.rollWait = o.rollWait;
     this.creatureMode = o.creatureMode;
@@ -399,6 +415,7 @@ export class Body {
       this.bloom === o.bloom &&
       this.kick === o.kick &&
       this.jetGear === o.jetGear && this.jetSpent === o.jetSpent && this.jetThrust === o.jetThrust &&
+      this.jetKeys === o.jetKeys && this.jetJumpTap === o.jetJumpTap && this.jetSprintTap === o.jetSprintTap && this.jetRecovery === o.jetRecovery &&
       this.regenWait === o.regenWait &&
       this.creatureMode === o.creatureMode &&
       this.creatureCooldown === o.creatureCooldown &&
@@ -447,13 +464,47 @@ const DESCENT = 2;
 const BRAKE = 60;
 const found = new Found();
 
+/** Movement, replay and the server use the same edge detector. Recovery survives taking a piece off. */
+function jetMode(b: Body, prior: number, buttons: number, ready: boolean, moving: boolean): number {
+  if (!ready) {
+    b.jetJumpTap = b.jetSprintTap = 0;
+    return 0;
+  }
+  const keys = (buttons & (BTN_JUMP | BTN_SPRINT)) | ((buttons & BTN_MELEE) ? 4 : 0);
+  const pressed = keys & ~b.jetKeys;
+  b.jetKeys = keys;
+  const up = (pressed & BTN_JUMP) !== 0 && b.jetJumpTap > 0;
+  const dash = (pressed & BTN_SPRINT) !== 0 && b.jetSprintTap > 0 && moving;
+  b.jetJumpTap = pressed & BTN_JUMP ? JET_TAP : Math.max(0, b.jetJumpTap-1);
+  b.jetSprintTap = pressed & BTN_SPRINT ? JET_TAP : Math.max(0, b.jetSprintTap-1);
+  if (b.grounded) return 0;
+  const fist = (pressed & 4) !== 0 && !b.held && !b.act && (b.jetGear & JET_GLOVES) !== 0;
+  const mode = up ? JET_UP : fist ? JET_FIST : dash && (b.jetGear & JET_GREAVES) && !(b.mflags & MF_NO_SPRINT) ? JET_DASH : 0;
+  const cost = mode === JET_UP ? 24 : mode === JET_FIST ? 21 : 27;
+  if (mode && b.jetRecovery === 0 && b.jetSpent + cost <= JET_CAPACITY) {
+    b.jetSpent += cost;
+    b.jetRecovery = JET_RECOVERY;
+    b.jetJumpTap = b.jetSprintTap = 0;
+    return mode;
+  }
+  if (prior >= JET_UP && b.jetRecovery > JET_RECOVERY-JET_BURST_TICKS
+    && (prior !== JET_FIST || (!b.held && (b.jetGear & JET_GLOVES)))
+    && (prior !== JET_DASH || ((b.jetGear & JET_GREAVES) && !(b.mflags & MF_NO_SPRINT)))) return prior;
+  if (!(buttons & BTN_JUMP) || b.jetSpent >= JET_CAPACITY) return 0;
+  b.jetSpent++;
+  return buttons & BTN_SPRINT ? JET_HOVER : JET_LIFT;
+}
+
 /**
  * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
  * straight up. These are the quantized values sent on the wire.
  */
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   stepOut.landSpeed = 0;
+  const priorThrust = b.jetThrust;
   b.jetThrust = 0;
+  if (b.jetRecovery > 0) b.jetRecovery--;
+  if (b.mode !== MODE_WALK || b.seat || !(b.jetGear & JET_CUIRASS)) b.jetKeys = b.jetJumpTap = b.jetSprintTap = 0;
   stepOut.tookOff = false;
   stepOut.setDown = false;
   stepOut.rolled = false;
@@ -529,10 +580,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const jetEquipped = (b.jetGear & JET_CUIRASS) !== 0 && !b.seat;
   const jetReady = jetEquipped && standing && (flags & (MF_OUT | MF_ROOTED | MF_NO_JUMP)) === 0;
   if (jetEquipped && b.grounded) b.jetSpent = Math.max(0, b.jetSpent - (b.jetGear === JET_FULL_SUIT ? 2 : 1));
-  if (jetReady && !b.grounded && b.jetSpent < JET_CAPACITY && (buttons & BTN_JUMP) !== 0) {
-    b.jetThrust = (buttons & BTN_SPRINT) !== 0 ? JET_HOVER : JET_LIFT;
-    b.jetSpent++;
-  }
+  b.jetThrust = jetMode(b, priorThrust, buttons, jetReady, m2 > 0.025);
   const sprint = !b.jetThrust && m2 > 0 && standing && canSprint(b, buttons);
   let stamina = spendStamina(b, p, sprint, m2 > 0 ? p.staminaWalk : 0);
   const fastCruise = b.jetThrust === JET_HOVER && (b.jetGear & JET_GREAVES) !== 0 && !(flags & MF_NO_SPRINT);
@@ -562,7 +610,21 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       stamina -= p.staminaJump;
     } else vy = 0;
   }
-  if (b.jetThrust) {
+  if (b.jetThrust >= JET_UP) {
+    // Commit the impulse once. Turning the camera cannot turn a burst or reinstate velocity stopped by a wall.
+    vx = b.vx; vy = b.vy; vz = b.vz;
+    if (b.jetRecovery === JET_RECOVERY) {
+      if (b.jetThrust === JET_UP) vy = Math.max(12, vy);
+      else if (b.jetThrust === JET_FIST) {
+        const aim = Math.max(-0.85, Math.min(0.85, pitch * YAW_TO_RAD));
+        vx = 15 * s * detCos(aim); vz = 15 * c * detCos(aim); vy = 15 * detSin(aim);
+      } else {
+        const power = 18 / Math.sqrt(mx * mx + mz * mz);
+        vx = (s*mz - c*mx)*power; vz = (c*mz + s*mx)*power; vy *= 0.28;
+      }
+    }
+    vy -= p.gravity * dt * 0.25;
+  } else if (b.jetThrust) {
     const target = b.jetThrust === JET_HOVER ? 0 : 4;
     const impulse = 24 * dt;
     vy += Math.max(-impulse, Math.min(impulse, target - vy));

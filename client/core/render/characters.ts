@@ -66,7 +66,7 @@ const HEAVY_OUTFIT = 2;
  */
 const HEAVY_RELAX = 3;
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents and a held item. */
-const PARTS = SLOT_COUNT + 5;
+const PARTS = SLOT_COUNT + 6;
 const PLAIN = defaultLook();
 
 /** Warm a small area of the living hide while keeping its inherited colour visible.
@@ -439,7 +439,7 @@ export class Characters {
         beard: Int32Array.from(BEARD_STYLES, (s) => human(bind.own(d.id, "beard", `${sex}/${s.id}`))),
         rest,
         // A missing piece is -1 here, and the body's own part is drawn in the piece's colours.
-        vents: Int32Array.from(sets, set => human(bind.own(piece(set, "torso"), "vents", body))),
+        vents: Int32Array.from(sets.flatMap(set => SLOT_NAMES.map(part => human(bind.own(piece(set, part), "vents", body))))),
         armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (part) => human(bind.own(piece(set, part), "worn", body)))),
         heavy: Uint8Array.from(sets, (set) => {
           const coarsest = (m: number): number => assets.manifest.meshes[m]!.levels.at(-1)!.tris;
@@ -1423,9 +1423,14 @@ export class Characters {
         }
         this.queuePart(piece, c, 0, -1, unseen || hidden);
         part.lod = lod;
-        if (worn!.vented && st.jet && !st.grounded && st.mode !== MODE_SWIM && !seat && !vehicleSeat && !st.dead && !st.out) {
-          const vents = set.vents[worn!.set]!;
-          if (vents >= 0 && this.assets.known(vents)) this.queuePart(vents, c, 0, -1, unseen || hidden);
+        if (worn!.vented && (slot !== SLOT_FEET || st.bootJets) && st.jet && !st.grounded && st.mode !== MODE_SWIM && !seat && !vehicleSeat && !st.dead && !st.out) {
+          const vents = set.vents[worn!.set * SLOT_COUNT + slot]!;
+          if (vents >= 0 && !unseen && !hidden && this.assets.known(vents)) {
+            // The fixed housings already cast with the cuirass. Exhaust never enters a shadow cascade.
+            part.casts = 0;
+            this.queuePart(vents, c, 0, -1, false);
+            part.casts = casts;
+          }
         }
         if (slot === SLOT_HEAD) { covered = true; sealed = worn!.sealed; }
       }

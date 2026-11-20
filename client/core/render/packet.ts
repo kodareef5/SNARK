@@ -3,7 +3,7 @@
 
 import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER } from "../../../content/surfaces.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
-import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_EXHAUST, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
@@ -56,7 +56,7 @@ export const DRAW_CUTOUT = 128;
 
 export function texturedFlags(flags: number): number {
   return DRAW_TEXTURED | ((flags & MATERIAL_TWO_SIDED) ? DRAW_TWO_SIDED : 0)
-    | ((flags & MATERIAL_CUTOUT) ? DRAW_CUTOUT : 0) | ((flags & MATERIAL_LENS) ? DRAW_BLEND : 0);
+    | ((flags & MATERIAL_CUTOUT) ? DRAW_CUTOUT : 0) | ((flags & (MATERIAL_LENS | MATERIAL_EXHAUST)) ? DRAW_BLEND : 0);
 }
 
 /**
@@ -348,8 +348,10 @@ export const FRAME = {
   streetLook: 196 + MAX_CONTACTS * 8,
   /** For each supported wheel, the ground normal X/Z, its camera-relative plane offset, and the global bone index plus one. */
   tireContacts: 200 + MAX_CONTACTS * 8,
+  /** fEffects.x: periodic exhaust phase in radians. */
+  exhaustPhase: 200 + MAX_CONTACTS * 8 + MAX_TIRE_CONTACTS * 4,
 } as const;
-export const FRAME_FLOATS = FRAME.tireContacts + MAX_TIRE_CONTACTS * 4;
+export const FRAME_FLOATS = FRAME.exhaustPhase + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -360,6 +362,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fEyes[6];
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
   highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
+  highp vec4 fEffects;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -623,7 +626,7 @@ export class FramePacket {
 
   beginFrame(): void {
     this.street = this.previousStreet = null;
-    this.frame.fill(0, FRAME.tireContacts, FRAME_FLOATS);
+    this.frame.fill(0, FRAME.tireContacts, FRAME.exhaustPhase);
     this.frame[FRAME.previousReflection + 3] = 0;
     this.frame[FRAME.reflection + 3] = 0;
     this.uploads.length = 0;

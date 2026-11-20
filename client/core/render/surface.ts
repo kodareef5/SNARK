@@ -10,8 +10,8 @@
 export { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { MATERIAL_INDICATOR, MATERIAL_NIGHT, type PackMaterial } from "../../../shared/pack/pack.ts";
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
-import { POLISHED_SKY } from "./suit-finish.ts";
-import { ENAMEL_ARMOR, LENS } from "../../../content/street-finishes.ts";
+import { EXHAUST_GLSL, POLISHED_SKY } from "./suit-finish.ts";
+import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../../content/street-finishes.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
@@ -655,13 +655,18 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${WHEEL_FINISH_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
 }
 void main() {
-${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  vec4 base = texture(uBase, vUv);
+${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetMaterial) == ${EXHAUST}) {
+    vec4 gas = exhaustLight(vUv,dot(normalize(vNormal),-normalize(vRel)),fEffects.x,fSunColor.w);
+    o = vec4(shown(gas.rgb,vRel),gas.a);
+    return;
+  }
+  vec4 base = texture(uBase, vUv);
 ${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2, vUv).rgb;\n" : ""}  vec3 mro = texture(uMro, vUv).rgb;
   vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
 ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n  if (cover == 0.0) discard;\n" : "  float cover = 1.0;\n"}  vec3 v = -normalize(vRel);

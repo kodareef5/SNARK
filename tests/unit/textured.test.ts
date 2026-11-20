@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { StreetDraws } from "../../client/core/render/street-draws.ts";
-import { ENAMEL_ARMOR, LENS } from "../../content/street-finishes.ts";
+import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../content/street-finishes.ts";
 import { AMBIENT } from "../../client/core/render/shading.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { SKY_GLSL } from "../../client/core/render/sky.ts";
@@ -10,7 +10,7 @@ import { DIELECTRIC, KNEE, NEUTRAL, SMOOTHEST, SURFACE_VERTEX, dyed, lit, materi
 import { buildRig } from "../../shared/anim/rigs.ts";
 import { quatAxis } from "../../shared/math/quat.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
-import { MATERIAL_CUTOUT, MATERIAL_INDICATOR, MATERIAL_LENS, MATERIAL_TWO_SIDED, SKIN_BYTES, VERTEX_BYTES, lodSkin, lodVertices, parsePack, type Pack } from "../../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, MATERIAL_TWO_SIDED, SKIN_BYTES, VERTEX_BYTES, lodSkin, lodVertices, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
@@ -502,6 +502,30 @@ test("a textured visor transmits its backing and leaves its depth and picking in
   expect(darkLens.depth).toBe(dark.depth);
   expect(brightLens.color - darkLens.color).toBeGreaterThan(0);
   expect(brightLens.color - darkLens.color).toBeLessThan(bright.color - dark.color);
+});
+
+test("powered gas blends over a solid surface without changing the depth or object under the cursor", () => {
+  const pack = packOf(squareMesh("test:plate", 1, ["base"]), squareMesh("test:plume", 1, ["base"], { flags: MATERIAL_EXHAUST }));
+  const stage = facing(pack, 1, 1.2), finishes = new StreetDraws(pack.header, pack.header.rigs);
+  const pixel = (H / 2)*W + W / 2;
+  const draw = (on: boolean) => {
+    stage.begin();
+    stage.textures("test:plate/", { base: plain(42, 42, 42, 255) });
+    stage.textures("test:plume/", { base: plain(0, 0, 0, 0) });
+    stage.add("test:plate", 0, { x: 0, y: 0, z: 0 });
+    if (on) {
+      stage.add("test:plume", 0, { x: 0, y: 0, z: 0.08 });
+      finishes.write(stage.packet);
+      expect(stage.packet.drawStreetMaterial[1]).toBe(EXHAUST);
+      expect(stage.packet.drawFlags[1]! & DRAW_BLEND).toBe(DRAW_BLEND);
+    }
+    const image = stage.render();
+    expect(stage.raster.pickId[pixel]).toBe(1);
+    return { depth: stage.raster.depth[pixel], blue: image[4*pixel + 2]! };
+  };
+  const base = draw(false), powered = draw(true);
+  expect(powered.depth).toBe(base.depth);
+  expect(powered.blue).toBeGreaterThan(base.blue + 25);
 });
 
 test("a two-sided material shows its back lit as its other side, and a cut-out one shows nothing where its alpha is under the cutoff", () => {

@@ -1106,7 +1106,10 @@ export class ClientSession {
       if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, p, combat, TICK_DT, true, !pilot);
       else stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, p, TICK_DT);
       this.meetVehicles(t, p);
-    } else { this.own.yaw = inp.yaw[i]!; this.own.jetThrust = 0; }
+    } else {
+      this.own.yaw = inp.yaw[i]!;
+      this.own.jetThrust = this.own.jetKeys = this.own.jetJumpTap = this.own.jetSprintTap = 0;
+    }
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];

@@ -1291,9 +1291,9 @@ export class App {
     }
     body.state.mode = session.own.mode;
     body.state.grounded = session.own.grounded;
-    body.state.jet = session.own.jetThrust !== 0;
     body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
+    body.state.setJet(session.own.jetThrust, session.own.jetGear);
     // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.
     body.state.setAction(session.own.act, this.holding >= 0 ? HOLD_CARRY : (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);

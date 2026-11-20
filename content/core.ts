@@ -79,7 +79,7 @@ const GEAR: Def[] = [
     // was first a refit of flak at flak's own 100 and 120.
     return [
       { type: "item", class: "armor", id: item, label, stack: 1, color: 93, weight: [4, 6, 3, 6, 3][i]!,
-        wear: { slot: piece.slot, set: "meridian", armor: 180, uses: 300, colors: [93, 82, 41], ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : {}) },
+        wear: { slot: piece.slot, set: "meridian", armor: 180, uses: 300, colors: [93, 82, 41], ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : piece.slot === "feet" ? { vents: "boot_jets" } : {}) },
         craft: { at: id("fabricator"), seconds: 5, xp: 0, needs: [
           { item: id(`flak_${piece.name}`), count: 1 }, { item: id("crystal"), count: 2 }, { item: id("electronics"), count: 1 },
         ] } },

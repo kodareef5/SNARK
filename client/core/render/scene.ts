@@ -41,6 +41,7 @@ import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
 import { FAR_FROM, farPlane, type Camera } from "./camera.ts";
 import { Characters, riderFitScratch, seatScratch, type RiderFit, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
+import { exhaustPhase } from "./suit-finish.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import { CITY_BUFFER, FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
@@ -1058,6 +1059,7 @@ export class Scene {
     this.quadsOnCard();
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
+    p.frame[FRAME.exhaustPhase] = exhaustPhase(this.now);
     p.frame[FRAME.streetLook] = this.finishGloss - 1;
     p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
     p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;

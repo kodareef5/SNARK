@@ -4,7 +4,7 @@
 import { expect, test } from "bun:test";
 import { Pose, sampleClip } from "../../shared/anim/clip.ts";
 import { CreatureAnim, advanceCreature, creatureStride, creaturePose } from "../../shared/anim/creature.ts";
-import { Gait, gaitShares } from "../../shared/anim/gait.ts";
+import { FlightJoints, Gait, gaitShares } from "../../shared/anim/gait.ts";
 import { B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, SPEED_STEP, advanceHuman, bodySeed } from "../../shared/anim/pose.ts";
 import { buildRigs, type Rig } from "../../shared/anim/rigs.ts";
@@ -277,4 +277,34 @@ artTest("the client draws a creature with the gait it keeps for it", () => {
     for (let k = 0; k < expected.length; k++) off = Math.max(off, Math.abs(p.bones[k]! - expected[k]!));
     expect(off).toBeLessThan(1e-4);
   }
+});
+
+test("the constrained flight joints trail direction changes, stay bounded and settle across render rates", () => {
+  const evaluate = (hz: number) => {
+    const joints = new FlightJoints();
+    joints.step(0, 0, -1);
+    for (let i = 0; i < hz; i++) joints.step(1,-1,1/hz);
+    expect(joints.bend[0]).toBeGreaterThan(0.95);
+    joints.step(-1,1,1/hz);
+    expect(joints.bend[2]).toBeGreaterThan(joints.bend[0]!);
+    for (let i = 1; i < hz/2; i++) {
+      joints.step(-1,1,1/hz);
+      expect([...joints.bend].every(x => Math.abs(x)<=1)).toBe(true);
+    }
+    const end = [...joints.bend];
+    joints.step(0,0,1);
+    expect([...joints.bend]).toEqual([0,0,0,0]);
+    return end;
+  };
+  const reference = evaluate(120);
+  for (const hz of [30, 60]) evaluate(hz).forEach((v,i) => expect(v).toBeCloseTo(reference[i]!,5));
+});
+
+test("a teleport discards a pilot's previous joint velocities", () => {
+  const gait = new Gait();
+  gait.track(0,0,0,10,6,0.12,1);
+  gait.flightJoints = new FlightJoints();
+  gait.flightJoints.step(1,-1,1/30);
+  gait.track(50,0,0,11,6,0.12,1);
+  expect(gait.flightJoints).toBeUndefined();
 });

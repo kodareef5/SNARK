@@ -3,14 +3,14 @@
 // may also give it a Gait, which puts the legs where the ground the body covered says (shared/anim/gait.ts).
 
 import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
-import { quatAxis, quatMul, quatRotate } from "../math/quat.ts";
+import { quatAxis, quatIdentity, quatMul, quatMulConj, quatNlerp, quatRotate } from "../math/quat.ts";
 import { Pose, blendPose, sampleClip, type Clip, type ClipSet } from "./clip.ts";
-import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
-import { B_CHEST, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES } from "./human.ts";
+import { FlightJoints, footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type GaitClip } from "./gait.ts";
+import { B_FOOT_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_LOWER_ARM_L, B_LOWER_ARM_R, B_CHEST, B_HAND_L, B_HAND_R, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK, B_SHOULDER_L, B_SHOULDER_R, B_SPINE, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES } from "./human.ts";
 import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
-import { MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
+import { bootThrust, JET_DASH, JET_FIST, JET_UP, JET_HOVER, JET_LIFT, MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
 import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
 import { cradle } from "./hold.ts";
 import { emotePose } from "./emote.ts";
@@ -156,6 +156,14 @@ export class AnimState {
   hurt = 0;
   decay = 0;
   jet = false;
+  jetMode = JET_LIFT;
+  bootJets = false;
+
+  setJet(mode: number, gear: number): void {
+    this.jet = mode !== 0;
+    this.jetMode = mode || JET_LIFT;
+    this.bootJets = bootThrust(mode, gear, this.speed * SPEED_STEP);
+  }
   rivalry = false;
   /** 0, or 1 to MATING_STEPS. */
   mating = 0;
@@ -168,7 +176,9 @@ export class AnimState {
   /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
     const motion =
-      this.mode === MODE_FLYER
+      this.jet && !this.grounded && this.mode === MODE_WALK
+        ? this.speed | (this.dir << 4) | ((this.jetMode-1) << 8) | (this.bootJets ? 1 << 11 : 0)
+        : this.mode === MODE_FLYER
         ? this.speed | ((this.bank & 15) << 4) | (ANIM_FLYING << 8) | ((this.climb & 3) << 10)
         : this.speed | (this.dir << 4) | (this.stance << 8) | (this.mode === MODE_SWIM ? 1 << 10 : 0) | (this.grounded ? 0 : 1 << 11);
     return (motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (this.action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 6))) >>> 0;
@@ -221,7 +231,18 @@ export class AnimState {
     this.unpackCue(cue);
     this.unpackEmote(emote);
     this.speed = word & 15;
-    if (((word >>> 8) & 3) === ANIM_FLYING) {
+    this.jetMode = JET_LIFT;
+    this.bootJets = false;
+    if (this.jet) {
+      this.dir = (word >>> 4) & 15;
+      this.jetMode = ((word >>> 8) & 7) + 1;
+      this.bootJets = (word & (1 << 11)) !== 0;
+      this.mode = MODE_WALK;
+      this.grounded = false;
+      this.stance = STANCE_STAND;
+      this.bank = 0;
+      this.climb = CLIMB_LEVEL;
+    } else if (((word >>> 8) & 3) === ANIM_FLYING) {
       this.mode = MODE_FLYER;
       this.grounded = false;
       this.stance = STANCE_STAND;
@@ -422,7 +443,14 @@ const v = new Float64Array(3);
  */
 export function advanceHuman(anim: HumanAnim, g: Gait, st: AnimState, tick: number, x: number, z: number, yaw: number): void {
   const gaits = anim.gaitsOf(st);
+  const elapsed = (tick - g.tick) / TICK_RATE;
   const metres = g.track(x, z, yaw, tick, st.speed * SPEED_STEP, FOOT_RADIUS, 1);
+  if (st.jet && !st.grounded) {
+    const travel = st.speed / SPEED_MAX, direction = st.dir * TAU / DIR_STEPS;
+    const fresh = !g.flightJoints || metres < 0;
+    const joints = g.flightJoints ??= new FlightJoints();
+    joints.step(travel*detCos(direction), travel*detSin(direction), fresh ? -1 : elapsed);
+  } else if (g.flightJoints) g.flightJoints = undefined;
   const stride = gaitShares(gaits, g.speed, true, anim.w);
   if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, stride);
   else g.step(metres, stride);
@@ -471,14 +499,39 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     bodyPitch = pitch * k;
     twistAngle = 0;
   } else if (st.jet && !st.grounded) {
-    // Let the pack carry the weight. Leave the arms free for held tools and weapon poses.
     loop(anim.idle, t, out);
-    const lean = Math.min(1, st.speed * SPEED_STEP / 10);
-    turn(out, B_SPINE, 1, 0, 0, 0.10 * lean);
-    turn(out, B_UPPER_LEG_L, 1, 0, 0, -0.16 + 0.18 * lean);
-    turn(out, B_UPPER_LEG_R, 1, 0, 0, 0.06 + 0.18 * lean);
-    turn(out, B_LOWER_LEG_L, 1, 0, 0, 0.32);
-    turn(out, B_LOWER_LEG_R, 1, 0, 0, 0.43);
+    const travel = st.speed / SPEED_MAX, direction = st.dir * TAU / DIR_STEPS;
+    const forward = travel*detCos(direction), left = travel*detSin(direction);
+    const joints = gait?.flightJoints?.bend;
+    const pitchLag = clamp((joints?.[0] ?? forward)-forward,-0.22,0.22);
+    const rollLag = clamp((joints?.[1] ?? left)-left,-0.22,0.22);
+    const legLag = clamp((joints?.[2] ?? forward)-forward,-0.32,0.32);
+    const sideLag = clamp((joints?.[3] ?? left)-left,-0.32,0.32);
+    const drift = detSin(t*0.12), sway = detSin(t*0.077+1.2);
+    const up = st.jetMode === JET_UP, fist = st.jetMode === JET_FIST, dash = st.jetMode === JET_DASH;
+    const bank = -(left*(dash ? 0.78 : 0.49) + 0.55*rollLag + 0.025*sway);
+    bodyPitch = -(forward*(dash || fist ? 0.96 : st.jetMode === JET_HOVER ? 0.73 : 0.51) + 0.45*pitchLag + 0.035*drift);
+    turnRoot(out, 0, 0, 1, bank, 1.14);
+    turn(out, B_NECK, 0, 0, 1, -bank*0.38);
+    turn(out, B_HEAD, 0, 0, 1, -bank*0.23);
+    out.root[1]! += 0.012*drift*(1-travel);
+    // Hips suspend the legs. Knees and ankles trail acceleration, then return to an asymmetric relaxed hang.
+    for (let side = -1; side <= 1; side += 2) {
+      const hip = side > 0 ? B_UPPER_LEG_L : B_UPPER_LEG_R;
+      const arm = side > 0 ? B_UPPER_ARM_L : B_UPPER_ARM_R;
+      const handFree = (st.action >>> 3) === HOLD_HANDS;
+      const tuck = (up ? 0.43 : 0.0) + 0.08*side + 0.08*drift*side;
+      turn(out, hip, 1,0,0, -0.18 - tuck + 0.39*forward - 0.30*legLag);
+      turn(out, hip, 0,0,1, side*0.065 - 0.20*left - 0.28*sideLag);
+      turn(out, side > 0 ? B_LOWER_LEG_L : B_LOWER_LEG_R, 1,0,0, 0.46 + tuck + (dash ? 0.23 : 0) - 0.12*forward);
+      turn(out, side > 0 ? B_FOOT_L : B_FOOT_R, 1,0,0, 0.16 + 0.22*tuck - 0.15*legLag);
+      if (handFree) {
+        turn(out, arm, 0,0,1, side*(0.14 + 0.06*sway + 0.12*travel) - 0.16*sideLag);
+        turn(out, arm, 1,0,0, 0.25*forward - 0.13*legLag - side*0.055*drift);
+        turn(out, side > 0 ? B_LOWER_ARM_L : B_LOWER_ARM_R, 1,0,0, -0.18 - 0.12*side*sway - 0.15*travel);
+      }
+    }
+    spineShare = 0.09;
     twistAngle = 0;
   } else if (!st.grounded) {
     loop(anim.fall, t, out);
@@ -539,7 +592,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   }
 
   // An emote over all that: a whole-body one stands the body straight, and only its neck and head follow the look.
-  if (emotePose(anim.emotes, st, tick, out) > 0) {
+  if (!(st.jet && st.jetMode >= JET_UP) && emotePose(anim.emotes, st, tick, out) > 0) {
     twistAngle = 0;
     spineShare = 0;
     raised = 0;
@@ -571,6 +624,33 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   }
   // Arms round a creature hold it where they hold it, however the back has turned.
   if (hold === HOLD_CARRY) cradle(out, st.stance);
+  if (st.jet && st.jetMode === JET_FIST && hold === HOLD_HANDS) jetPunch(out, st, e, pitch);
+}
+
+const fistParent = new Float64Array(4);
+const fistReach = new Float64Array(4);
+
+/** Extend the lead glove along the travel vector even when the chest is pitched over. */
+function jetPunch(out: Pose, st: AnimState, elapsed: number, pitch: number): void {
+  const left = (st.actionStart & 1) === 0;
+  const arm = left ? B_UPPER_ARM_L : B_UPPER_ARM_R;
+  const elbow = left ? B_LOWER_ARM_L : B_LOWER_ARM_R;
+  const hand = left ? B_HAND_L : B_HAND_R;
+  const weight = clamp(elapsed / 2, 0, 1);
+  quatIdentity(fistParent, 0);
+  for (let bone = HUMAN.parent[arm]!; bone >= 0; bone = HUMAN.parent[bone]!)
+    quatMul(fistParent, 0, out.rot, bone * 4, fistParent, 0);
+  quatAxis(fistReach, 0, 0, 1, 0, left ? -PI/2 : PI/2);
+  quatAxis(q, 0, 1, 0, 0, -clamp(pitch, -0.85, 0.85) - 0.13);
+  quatMul(fistReach, 0, q, 0, fistReach, 0);
+  quatAxis(q, 0, 0, 1, 0, st.dir * TAU / DIR_STEPS);
+  quatMul(fistReach, 0, q, 0, fistReach, 0);
+  quatMulConj(q, 0, fistParent, 0, fistReach, 0);
+  quatNlerp(out.rot, arm*4, out.rot, arm*4, q, 0, weight);
+  quatAxis(q, 0, 0, 1, 0, left ? -0.16 : 0.16);
+  quatNlerp(out.rot, elbow*4, out.rot, elbow*4, q, 0, weight);
+  quatIdentity(q, 0);
+  quatNlerp(out.rot, hand*4, out.rot, hand*4, q, 0, weight);
 }
 
 /** Turns the whole body about an axis through (0, pivotY, 0) in model space. */

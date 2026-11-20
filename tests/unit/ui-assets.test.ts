@@ -1,8 +1,9 @@
+import { spawnSync } from "node:child_process";
 import { expect } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildUiAssets } from "../../tools/ui/assets.ts";
+import { buildUiAssets, uiSheet } from "../../tools/ui/assets.ts";
 import { fontAdvances } from "../../tools/ui/font.ts";
 import { FONT_ADVANCES, FONT_UNITS } from "../../client/core/ui/font-metrics.ts";
 import { fitText, textWidth, wrapText } from "../../client/core/ui/nodes.ts";
@@ -20,7 +21,13 @@ test("HUD export is bounded, content-addressed and carries its local font licens
     for (const name of [out.atlas,out.font,out.touch]) expect(name).toContain(partHash(readFileSync(join(dir,name))));
     expect(out.touch).toMatch(/^assets\/touch\.[0-9a-f]+\.webp$/);
     expect(statSync(join(dir,out.touch)).size).toBeLessThan(400*1024);
-    const sheet=readPng(join(dir,out.atlas));
+    const path = join(dir, out.atlas);
+    if (path.endsWith(".webp")) {
+      const decoded = join(dir, "roundtrip.png");
+      expect(spawnSync("dwebp", ["-quiet", path, "-o", decoded]).status).toBe(0);
+    }
+    const sheet = readPng(path.endsWith(".webp") ? join(dir,"roundtrip.png") : path);
+    expect(Buffer.from(sheet.data).equals(Buffer.from(uiSheet().data))).toBe(true);
     expect([sheet.width,sheet.height,sheet.channels]).toEqual([512,448,4]);
     expect(sheet.data[(447*512+511)*4+3]).toBe(0);
     const glassAlpha=sheet.data[((256+32)*512+32)*4+3]!;

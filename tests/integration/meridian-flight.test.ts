@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { CUE_JET } from "../../shared/anim/pose.ts";
-import { BTN_JUMP, BTN_SPRINT, JET_CAPACITY, JET_FULL_SUIT, JET_HOVER, JET_LIFT, JET_STRIDE } from "../../shared/sim/character.ts";
+import { AnimState, CUE_JET } from "../../shared/anim/pose.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_SPRINT, JET_UP, JET_FIST, JET_DASH, JET_CAPACITY, JET_FULL_SUIT, JET_HOVER, JET_LIFT, JET_STRIDE } from "../../shared/sim/character.ts";
 import { JET_SPENT_BITS } from "../../shared/net/protocol.ts";
 import { V_HEALTH, V_OXYGEN } from "../../shared/sim/vitals.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -171,4 +171,105 @@ test("a sealed helmet keeps its wearer's air under water, and a broken one does 
   h.run(200);
   h.host.survival.setSubmerged(rec, true);
   expect(rec.vitals!.rate[V_OXYGEN]).toBeLessThan(0);
+});
+
+test("a double jump press fires one predicted up-burst and reaches an observer during the impulse", () => {
+  const { h, wearer, e, input, ents } = fitted();
+  const watcher = h.join("spotter");
+  h.run(400);
+  const corrections = wearer.stats.corrections;
+  input.buttons = BTN_JUMP;
+  h.run(83);
+  input.buttons = 0;
+  h.run(67);
+  input.buttons = BTN_JUMP;
+  h.run(100);
+  expect(wearer.own.jetThrust).toBe(JET_UP);
+  expect(wearer.own.vy).toBeGreaterThan(10);
+  expect(ents.jetThrust[e]).toBe(JET_UP);
+  expect(wearer.own.jetSpent).toBeGreaterThanOrEqual(24);
+  const paid = wearer.own.jetSpent, remote = new RemoteSample(), st = new AnimState();
+  let seen = false;
+  for (let i = 0; i < 10; i++) {
+    watcher.sampleRemote(remote);
+    const k = remote.id.subarray(0,remote.count).indexOf(e);
+    if (k >= 0) {
+      st.unpack(remote.anim[k]!, remote.cue[k]!);
+      seen ||= st.jet && st.jetMode === JET_UP && st.bootJets;
+    }
+    input.buttons = i % 2 ? BTN_JUMP : 0;
+    h.run(33);
+  }
+  expect(seen).toBe(true);
+  expect(wearer.own.jetRecovery).toBeGreaterThan(0);
+  expect(wearer.own.jetSpent-paid).toBeLessThan(8);
+  expect(wearer.stats.corrections).toBe(corrections);
+});
+
+test("a greave burst holds its strafe vector through a camera turn and requires intact leggings", () => {
+  const { h, wearer, rec, input } = fitted();
+  const inv = h.host.items.inv(rec);
+  input.buttons = BTN_JUMP;
+  h.run(650);
+  input.moveX = 1;
+  const tapShift = () => {
+    input.buttons = BTN_JUMP | BTN_SPRINT; h.run(66);
+    input.buttons = BTN_JUMP; h.run(68);
+    input.buttons = BTN_JUMP | BTN_SPRINT; h.run(66);
+  };
+  tapShift();
+  expect(wearer.own.jetThrust).toBe(JET_DASH);
+  expect(wearer.own.vx).toBeCloseTo(-18, 3);
+  input.yaw = Math.PI / 2;
+  input.moveX = 0;
+  input.moveZ = 1;
+  h.run(100);
+  expect(wearer.own.vx).toBeCloseTo(-18, 3);
+  expect(wearer.own.vz).toBeCloseTo(0, 3);
+  input.buttons = BTN_JUMP; h.run(1200);
+  h.host.items.wear(rec, inv.armor + 3, 999);
+  h.run(200);
+  tapShift();
+  expect(wearer.own.jetThrust).toBe(JET_HOVER);
+});
+
+test("the glove impulse follows aim, starts a melee swing and cuts out on loss of a gauntlet", () => {
+  const { h, wearer, e, rec, input, ents } = fitted();
+  input.buttons = BTN_JUMP; h.run(650);
+  input.pitch = 0.45;
+  input.buttons = BTN_JUMP | BTN_MELEE; h.run(167);
+  expect(wearer.own.jetThrust).toBe(JET_FIST);
+  expect(ents.jetThrust[e]).toBe(JET_FIST);
+  expect(wearer.own.act).toBeGreaterThan(0);
+  expect(wearer.own.vz).toBeGreaterThan(12);
+  expect(wearer.own.vy).toBeGreaterThan(5);
+  h.host.items.wear(rec, h.host.items.inv(rec).armor + 2, 999);
+  h.run(100);
+  expect(ents.jetThrust[e]).not.toBe(JET_FIST);
+  input.buttons = BTN_JUMP; h.run(1100);
+  input.buttons |= BTN_MELEE; h.run(66);
+  expect(wearer.own.jetThrust).toBe(JET_LIFT);
+});
+
+test("the flying punch can connect with a second airborne survivor through the authoritative melee resolver", () => {
+  const { h, wearer, rec, input } = fitted();
+  const target = h.join("sparring");
+  h.run(500);
+  h.say(target, "enablecheats");
+  h.say(target, "armor meridian");
+  h.say(target, "tp 245 259");
+  const other = h.pilots[1]!;
+  input.buttons = other.buttons = BTN_JUMP;
+  h.run(800);
+  input.buttons |= BTN_SPRINT; other.buttons |= BTN_SPRINT;
+  h.run(300);
+  input.pitch = -0.12;
+  const hits = h.host.combat.hits;
+  input.buttons |= BTN_MELEE;
+  h.run(430);
+  expect(h.host.combat.hits).toBe(hits + 1);
+  expect(h.host.combat.last.by).toBe(rec.pid);
+  expect(h.host.combat.last.victim).toBe(h.world.ents.pid[h.ent(target)]!);
+  expect(h.host.combat.last.damage).toBeGreaterThan(0);
+  expect(wearer.own.jetRecovery).toBeGreaterThan(0);
 });
