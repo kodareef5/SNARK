@@ -176,12 +176,13 @@ test("the settings the wiki lists are the rows marked public, and every command 
 
 test("every page is whole HTML, names only what it has, and writes what the content says as text", () => {
   const dist = mkdtempSync(join(tmpdir(), "snark-wiki-"));
+  const resource = entries.find((e) => e.kind === "resources")!;
   try {
     const card = { file: "/wiki/media/raptor.card.png", width: 240, height: 180 };
     const site: Site = {
       assets: { css: "/wiki/a.css", js: "/wiki/a.js", search: "/wiki/s.json", font: "/assets/f.ttf", revision: "abc" },
       entries: entries.map((e) => (e.id === "core:raptor" ? { ...e, label: '<img src=x onerror="bad()">' } : e)),
-      pictures: new Map([["core:raptor", { views: [card], card }]]),
+      pictures: new Map([["core:raptor", { views: [card], card }], [resource.id, { views: [card], card }]]),
       credits: new Map([["core:raptor", "Model and motion: from a CC0 1.0 pack."]]),
       atlases: [
         { id: "core:miami", slug: "miami", label: "Miami", metres: [8128, 8128], ground: card, card, resources: [], creatures: [], vehicles: [], regions: [], spawns: [], obelisks: [], landmarks: [{ of: "koru", name: "koru", x: 400, y: 500 }], districts: [], sources: [] },
@@ -205,6 +206,12 @@ test("every page is whole HTML, names only what it has, and writes what the cont
       writeFileSync(file, "");
     }
     expect(() => checkLinks(pages, dist)).not.toThrow();
+    // A creature's picture opens its model in the game's studio (D889); a resource's, which has no one model, does not.
+    const raptor3d = [...pages.entries()].find(([path]) => path.startsWith("creatures/raptor"))![1];
+    expect(raptor3d.match(/data-view="[^"]*"/g)).toEqual(['data-view="/studio.html?id=core%3Araptor"']);
+    const grown = [...pages.entries()].find(([path]) => path.startsWith(`resources/${resource.id.split(":")[1]}`))![1];
+    expect(grown).toContain('class="views"');
+    expect(grown).not.toContain("data-view");
     // A landmark's home is its map: its dot, its row of the layers and its card under the map lead to its page, which leads back.
     const miami = pages.get("maps/miami/")!;
     expect(miami).toContain('<a href="/wiki/landmarks/koru/"><g class="landmark" transform="translate(400 500)"><circle r="5"/><text y="-9">Koru</text></g></a>');

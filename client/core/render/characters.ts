@@ -4,7 +4,8 @@ import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
 
 import type { SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { Pose } from "../../../shared/anim/clip.ts";
+import { Pose, sampleClip, type Clip } from "../../../shared/anim/clip.ts";
+import { conformCreature } from "../../../shared/anim/ground-conform.ts";
 import { createMountMotion, mountOrigin, mountPose, type MountMotionRole } from "../../../shared/anim/mount.ts";
 import { occupantPose, type OccupantSeat } from "../../../shared/anim/occupant.ts";
 import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
@@ -270,6 +271,11 @@ export class Characters {
   readonly anim: HumanAnim;
   /** Bodies drawn on bones of their own this frame, and those of them whose pose was worked out anew. */
   posed = 0;
+  /**
+   * A clip body `id` plays at `frame` in place of what its state would have it do, posed every frame: the wiki's studio
+   * (client/entry/studio.ts) shows any move a body has this way. Null in the game.
+   */
+  override: { id: number; clip: Clip; frame: number } | null = null;
   fresh = 0;
   /** Set while the sun casts. Null leaves every body out of the shadows. */
   shadows: BodyShadows | null = null;
@@ -675,7 +681,14 @@ export class Characters {
     const solved = this.kept(g, rig.bones);
     const aloft = st.mode === MODE_FLYER && !st.grounded;
     g.kind = kind;
-    if (this.due(g, kind * 4, id, distance, unseen, aloft ? 0 : g.speed, always)) {
+    const over = this.override !== null && this.override.id === id ? this.override : null;
+    if (over) {
+      if (this.due(g, kind * 4, id, distance, unseen, 0, true)) {
+        sampleClip(over.clip, over.frame, rig.a);
+        solve(rig, rig.a, solved);
+        conformCreature(rig, st, rig.a, solved, this.groundWorld, worldX, worldY, worldZ, yaw, size);
+      }
+    } else if (this.due(g, kind * 4, id, distance, unseen, aloft ? 0 : g.speed, always)) {
       poseCreatureOn(c.anim, st, tick, this.groundWorld, worldX, worldY, worldZ, yaw, size, g, solved);
       g.posedGait.phase = g.phase; g.posedGait.speed = g.speed; g.posedGait.domain = creatureFootfallDomain(c.anim, st, tick);
     }
@@ -1229,6 +1242,11 @@ export class Characters {
   }
 
   /** Whether the game has emote `n` here: its clip is in the boot pack, or in the group that streams. */
+  /** Whether the emotes' clips have come (or this build has none to come). */
+  get emotesHere(): boolean {
+    return this.emoteSlot < 0;
+  }
+
   emoteKnown(n: number): boolean {
     const e = EMOTES[n - 1];
     return !!e && (!!this.anim.emotes[n] || this.assets.table.has("clip", emoteClipId(e.id)));
@@ -1341,7 +1359,8 @@ export class Characters {
       g.kind = kind;
       if (g.riderProfile !== (rider?.profile ?? 0)) { g.form = -1; g.riderProfile = rider?.profile ?? 0; }
       const form = kind * 8 + at * 4 + (seat ? 1 : 0) + (impaled ? 2 : 0);
-      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined)) this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips);
+      const over = this.override !== null && this.override.id === id ? this.override : null;
+      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null)) this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over);
       if (seat) {
         // A rider sits in its seat's whole frame, and leans, pitches and banks as the seat does.
         writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, 0, 0, 0, 0);
@@ -1449,8 +1468,9 @@ export class Characters {
    * Works out a survivor's pose into `solved`: from its state at `tick` and its gait, seated in a saddle `seat` or a
    * vehicle's, aiming from there, and stretched by its look's `scales`.
    */
-  private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved, impaled = false, rider?: RiderFit, soles: Float64Array | null = null, grips: Float64Array | null = null): void {
-    if (impaled) {
+  private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved, impaled = false, rider?: RiderFit, soles: Float64Array | null = null, grips: Float64Array | null = null, over: { clip: Clip; frame: number } | null = null): void {
+    if (over) sampleClip(over.clip, over.frame, this.pose);
+    else if (impaled) {
       humanPose(this.anim, st, tick, this.pose, g);
       this.seatedPose("impaled", 0, undefined, undefined);
     } else if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount);
