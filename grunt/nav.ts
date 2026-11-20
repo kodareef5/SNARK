@@ -30,6 +30,35 @@ export interface Costs {
   deep: number;
   /** Unknown ground: a little more than ground when trekking (it is probably passable), the point when exploring. */
   unknown: number;
+  /** Blocked ground, for what goes over it (a flyer above cliffs): absent, blocked is impassable. */
+  blocked?: number;
+}
+
+/** How a ride goes, as grunt knows it: the ground it uses and its speed, m/s (road speed where faster). */
+export interface RideKind {
+  on: "land" | "wheels" | "water" | "air";
+  speed: number;
+  road?: number;
+}
+
+/** What a player learns of each ride (the game's kinds), and a guess from an entity's tags for a kind it has not met. */
+export const RIDE_KINDS: Record<string, RideKind> = {
+  parasaur: { on: "land", speed: 10 }, pteranodon: { on: "air", speed: 18 },
+  car: { on: "wheels", speed: 9, road: 16 }, heli: { on: "air", speed: 25 }, boat: { on: "water", speed: 10 },
+};
+export function rideKind(type: string, tags: string[] = []): RideKind {
+  return RIDE_KINDS[type] ?? (tags.includes("flyer") ? { on: "air", speed: 15 } : tags.includes("boat") ? { on: "water", speed: 8 } : tags.includes("car") ? { on: "wheels", speed: 9, road: 14 } : { on: "land", speed: 8 });
+}
+
+/** Costs for a ride: seconds a metre against walking (3.5 m/s), on the ground it can use. */
+export function costsFor(r: RideKind): Costs {
+  const t = (speed: number) => 3.5 / speed;
+  switch (r.on) {
+    case "air": return { ground: t(r.speed), road: t(r.speed), bridge: t(r.speed), shallow: t(r.speed), deep: t(r.speed), unknown: t(r.speed), blocked: t(r.speed) };
+    case "water": return { ground: Infinity, road: Infinity, bridge: t(r.speed), shallow: t(r.speed * 0.7), deep: t(r.speed), unknown: Infinity };
+    case "wheels": return { ground: t(r.speed), road: t(r.road ?? r.speed), bridge: t(r.road ?? r.speed), shallow: t(r.speed * 0.4), deep: Infinity, unknown: t(r.speed) * 1.6 };
+    default: return { ground: t(r.speed), road: t(r.speed), bridge: t(r.speed), shallow: t(r.speed * 0.7), deep: t(r.speed * 0.35), unknown: t(r.speed) * 1.6 };
+  }
 }
 
 export const WALK: Costs = { ground: 1, road: 0.9, bridge: 1, shallow: 2.2, deep: 6, unknown: 1.6 };
@@ -155,7 +184,7 @@ export class NavMap {
 
   private cost(k: number, c: Costs): number {
     const base = this.kindCost(k, c);
-    if (!isFinite(base)) return base;
+    if (!isFinite(base) || c.blocked !== undefined) return base;
     // Hugging a wall is where a body snags: ground next to blocked ground costs half as much again.
     const i = k % this.w, j = Math.floor(k / this.w);
     for (let dj = -1; dj <= 1; dj++) {
@@ -176,7 +205,7 @@ export class NavMap {
       case SHALLOW: return c.shallow;
       case DEEP: return c.deep;
       case UNKNOWN: return c.unknown;
-      default: return Infinity;
+      default: return c.blocked ?? Infinity;
     }
   }
 
@@ -195,13 +224,13 @@ export class NavMap {
       }
       return v;
     };
-    // A goal on blocked ground: the nearest passable cell to it.
+    // A goal this way of going cannot reach (blocked ground; land, for a boat): the nearest cell it can.
     let near = false;
     if (!isFinite(this.kindCost(goal, c))) {
       near = true;
       let best = -1, bestD = Infinity;
       const gi = goal % this.w, gj = Math.floor(goal / this.w);
-      for (let r = 1; r < 12 && best < 0; r++) {
+      for (let r = 1; r < 200 && best < 0; r++) {
         for (let dj = -r; dj <= r; dj++) {
           for (let di = -r; di <= r; di++) {
             const i = gi + di, j = gj + dj;

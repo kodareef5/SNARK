@@ -1,0 +1,93 @@
+{
+  "name": "heli-far",
+  "about": "950 m off, past broken cliffs; a helicopter stands by.",
+  "world": {
+    "seed": 2,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -650,
+        -1050,
+        650,
+        120
+      ],
+      "features": [
+        {
+          "type": "cliff",
+          "from": [
+            -300,
+            -200
+          ],
+          "to": [
+            400,
+            -260
+          ],
+          "width": 6,
+          "height": 40
+        },
+        {
+          "type": "cliff",
+          "from": [
+            -500,
+            -500
+          ],
+          "to": [
+            200,
+            -520
+          ],
+          "width": 6,
+          "height": 40
+        },
+        {
+          "type": "water",
+          "rect": [
+            -100,
+            -800,
+            500,
+            -650
+          ],
+          "depth": "deep"
+        }
+      ]
+    },
+    "things": [
+      {
+        "type": "heli",
+        "x": 9,
+        "z": 2
+      }
+    ]
+  },
+  "prompt": "You are Scout. Get to x 300, z -950 as quickly as you sensibly can, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          300,
+          -950
+        ],
+        "within": 6
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 420
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 300,
+      "z": -950
+    }
+  }
+}

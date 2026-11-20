@@ -20,6 +20,27 @@ const FOV = Math.PI / 3, SWING_MS = 600, PICK_MS = 500, CELL = 3, MAX_HOLD = 200
 const CARRY = 250;
 const RAPTOR = { sees: 20, gives_up: 30, speed: 4.5, wander: 1.2, bite: 8, every_ms: 1000, reach: 1.6, hp: 60 };
 
+/** What can be ridden or driven, and how it goes: speed (m/s), on a road where it is faster, turning (rad/s), and
+ * the ground it goes on. Flyers keep a height: jump climbs, crouch comes down. */
+export interface Ride {
+  speed: number;
+  road?: number;
+  turn: number;
+  /** "land": ground, wading and swimming as a body does; "wheels": ground and shallow water only; "water": only water. */
+  on: "land" | "wheels" | "water" | "air";
+  /** A flyer's stamina a second in the air, if it tires. */
+  tires?: number;
+  radius: number;
+}
+export const RIDES: Record<string, Ride> = {
+  parasaur: { speed: 10, turn: 3, on: "land", radius: 1.2 },
+  pteranodon: { speed: 18, turn: 2, on: "air", tires: 1.2, radius: 1.2 },
+  car: { speed: 9, road: 16, turn: 1.4, on: "wheels", radius: 1.4 },
+  heli: { speed: 25, turn: 1.8, on: "air", radius: 3 },
+  boat: { speed: 10, turn: 1.2, on: "water", radius: 2 },
+};
+const CLIMB = 6, CEILING = 120;
+
 // --- Items and recipes --------------------------------------------------------------------------------------------
 
 const WEIGHT: Record<string, number> = {
@@ -67,6 +88,10 @@ interface Thing {
   home?: [number, number];
   goal?: [number, number];
   biteAt?: number;
+  /** Tame, and someone's: does not hunt or wander. */
+  tame?: boolean;
+  /** A flyer's own stamina. */
+  stamina?: number;
   // A container's slots; a structure's place.
   slots?: Slot[];
   piece?: { yaw: number; y: number; cell: string; edge?: string; open?: boolean };
@@ -128,6 +153,8 @@ export class World {
     id: "e:1", name: "Scout", alive: true, x: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vz: 0,
     health: 100, stamina: 100, food: 100, water: 100, slots: [] as Slot[], held: null as number | null,
     open: null as string | null, crafting: [] as { item: string; left: number; ready: number; command: string; index: number }[],
+    /** What it rides or drives, and how high it is (flying). */
+    mount: null as string | null, y: 0, crouch: false,
   };
   readonly heardChat: { channel: string; from: string; from_id?: string; text: string; t: number }[] = [];
   readonly said: { channel: string; text: string; t: number }[] = [];
@@ -168,6 +195,8 @@ export class World {
     const base: Record<string, Pick<Thing, "r" | "blocks" | "left">> = {
       tree: { r: 0.5, blocks: true, left: 30 }, rock: { r: 0.8, blocks: true, left: 20 }, bush: { r: 0.5, blocks: false, left: 12 },
       chest: { r: 0.5, blocks: true, left: 0 }, raptor: { r: 0.6, blocks: false, left: RAPTOR.hp }, player: { r: 0.4, blocks: false, left: 100 },
+      parasaur: { r: 1.2, blocks: false, left: 300 }, pteranodon: { r: 1.2, blocks: false, left: 200 },
+      car: { r: 1.4, blocks: false, left: 500 }, heli: { r: 3, blocks: false, left: 800 }, boat: { r: 2, blocks: false, left: 400 },
     };
     const b = base[type] ?? { r: 0.5, blocks: true, left: 1 };
     this.things.set(id, { id, kind, type, x, z, ...b, ...extra });
@@ -260,9 +289,11 @@ export class World {
   /** What the character perceives: everything near, and what is in front of it farther off. */
   perceives(t: Thing): boolean {
     const d = this.dist(t);
-    if (!(d <= NEAR || (d <= SIGHT && Math.abs(this.bearing(t.x, t.z)) <= FOV))) return false;
-    // A cliff between hides what is behind it.
-    return d < 2 || !this.terrain || this.terrain.clear(this.me.x, this.me.z, t.x, t.z);
+    if (t.id === this.me.mount) return true;
+    // From high up a body sees much further, and over cliffs lower than it flies.
+    const high = this.me.y > 15;
+    if (!(d <= (high ? 40 : NEAR) || (d <= (high ? 160 : SIGHT) && Math.abs(this.bearing(t.x, t.z)) <= FOV))) return false;
+    return d < 2 || !this.terrain || this.terrain.clear(this.me.x, this.me.z, t.x, t.z, Math.max(1.5, this.me.y));
   }
 
   /** What is under the crosshair and within reach. */
@@ -281,6 +312,8 @@ export class World {
   }
 
   private affords(t: Thing): string[] {
+    if (t.id === this.me.mount) return this.me.y < 0.5 ? ["dismount"] : [];
+    if (RIDES[t.type] && t.tame && !this.me.mount && this.dist(t) - t.r <= REACH) return ["mount"];
     if (this.dist(t) - t.r > REACH) return [];
     if (t.type === "bush") return ["harvest"];
     if (t.type === "chest") return [this.me.open === t.id ? "close" : "open"];
@@ -292,8 +325,9 @@ export class World {
     const m = this.me, h = this.heldItem();
     const held = m.held === null || !h ? null : { item: h, slot: m.held, uses: m.slots[m.held]?.uses ?? null };
     return {
-      id: m.id, name: m.name, alive: m.alive, pos: [m.x, 0, m.z], yaw: m.yaw, pitch: m.pitch, vel: [m.vx, 0, m.vz],
-      on: this.terrain?.at(m.x, m.z) === DEEP ? "water" : "ground", held, mount: null, status: this.weight() > CARRY ? ["encumbered"] : [],
+      id: m.id, name: m.name, alive: m.alive, pos: [m.x, m.y, m.z], yaw: m.yaw, pitch: m.pitch, vel: [m.vx, 0, m.vz],
+      on: m.y > 0.5 ? "air" : m.mount ? (this.things.get(m.mount)?.kind === "vehicle" ? "vehicle" : "mount") : this.terrain?.at(m.x, m.z) === DEEP ? "water" : "ground",
+      held, mount: m.mount, status: this.weight() > CARRY ? ["encumbered"] : [],
       vitals: { health: [m.health, 100], stamina: [m.stamina, 100], food: [m.food, 100], water: [m.water, 100], weight: [Math.round(this.weight() * 10) / 10, CARRY] },
     };
   }
@@ -305,7 +339,8 @@ export class World {
     const items: Entity[] = seen.slice(0, max).map((t) => ({
       id: t.id, kind: t.kind, type: t.type, ...(t.name ? { name: t.name } : {}),
       pos: [t.x, t.piece?.y ?? 0, t.z], distance: Math.round(this.dist(t) * 100) / 100, bearing: this.bearing(t.x, t.z),
-      ...(t.kind === "creature" ? { health: t.left / RAPTOR.hp, disposition: "hostile" as const, tags: t.hunting ? ["hunting"] : ["wild"] } : {}),
+      ...(t.kind === "creature" && !t.tame ? { health: t.left / RAPTOR.hp, disposition: "hostile" as const, tags: t.hunting ? ["hunting"] : ["wild"] } : {}),
+      ...(t.tame || t.kind === "vehicle" ? { disposition: "own" as const, tags: [RIDES[t.type]!.on === "air" ? "flyer" : RIDES[t.type]!.on === "water" ? "boat" : t.kind === "vehicle" ? "car" : "mount", "rideable", ...(t.id === this.me.mount ? ["ridden"] : []), ...(t.stamina !== undefined ? [`stamina ${Math.round(t.stamina)}`] : [])] } : {}),
       ...(t.kind === "player" ? { disposition: t.hostile ? ("hostile" as const) : ("neutral" as const) } : {}),
       ...(t.kind === "structure" ? { disposition: "own" as const, tags: t.piece?.open ? ["open"] : [] } : {}),
       affords: this.affords(t),
@@ -324,7 +359,7 @@ export class World {
         let ch: string = this.terrain ? CHAR[this.terrain.at(x, z)]! : ".";
         for (const t of this.things.values()) {
           if (Math.hypot(t.x - x, t.z - z) > t.r + cell / 2 || !this.perceives(t)) continue;
-          ch = t.type === "tree" ? "T" : t.type === "rock" ? "R" : t.type === "bush" ? "b" : t.kind === "structure" ? (t.blocks ? "#" : "=") : t.kind === "creature" ? "c" : t.kind === "player" ? "P" : "B";
+          ch = t.type === "tree" ? "T" : t.type === "rock" ? "R" : t.type === "bush" ? "b" : t.kind === "structure" ? (t.blocks ? "#" : "=") : t.kind === "creature" ? "c" : t.kind === "player" ? "P" : t.kind === "vehicle" ? "v" : "B";
         }
         if (Math.abs(x - this.me.x) < cell / 2 && Math.abs(z - this.me.z) < cell / 2) ch = "@";
         row += ch;
@@ -333,7 +368,7 @@ export class World {
     }
     return {
       cell, origin: [ox, oz], size: [n, n], rows, heights: null,
-      legend: { ...LEGEND, ".": "walkable", "#": "blocked", T: "tree", R: "rock", b: "bush", B: "container", c: "creature", P: "player", "@": "self" },
+      legend: { ...LEGEND, ".": "walkable", "#": "blocked", T: "tree", R: "rock", b: "bush", B: "container", c: "creature", P: "player", v: "vehicle", "@": "self" },
     };
   }
 
@@ -521,17 +556,36 @@ export class World {
       }
       case "rotate":
         return "unknown_control";
+      case "crouch":
+        this.me.crouch = a.on;
+        return instant({ on: a.on });
       case "look":
       case "move":
       case "jump":
-      case "crouch":
       case "use":
       case "interact": {
         if (a.control === "interact") {
           const t = this.things.get(a.target);
           if (!t) return "unknown_target";
           if (!this.affords(t).includes(a.verb)) return this.dist(t) - t.r > REACH ? "out_of_reach" : "not_permitted";
+          if (a.verb === "dismount") {
+            const spot = this.landing(t);
+            if (!spot) return "not_permitted";
+            this.releaseAll("mounted");
+            this.me.mount = null;
+            [this.me.x, this.me.z] = spot;
+            this.event("dismounted", { mount: t.id });
+            return instant();
+          }
           if (this.focusThing()?.id !== t.id) return "out_of_reach";
+          if (a.verb === "mount") {
+            this.releaseAll("mounted");
+            this.me.mount = t.id;
+            this.me.x = t.x;
+            this.me.z = t.z;
+            this.event("mounted", { mount: t.id });
+            return instant();
+          }
           if (a.verb === "open" || a.verb === "close") {
             if (t.type === "chest") this.me.open = a.verb === "open" ? t.id : null;
             else if (t.piece) (t.piece.open = a.verb === "open"), (t.blocks = a.verb !== "open");
@@ -578,7 +632,7 @@ export class World {
     if (this.terrain && m.alive) {
       this.terrain.explore(m.x, m.z, 24);
       // Deep water: a swimmer tires, and drowns when it can swim no more.
-      if (this.terrain.at(m.x, m.z) === DEEP) {
+      if (this.terrain.at(m.x, m.z) === DEEP && !m.mount) {
         m.stamina = Math.max(0, m.stamina - 3 * dt);
         if (m.stamina <= 0 && this.tick % 20 === 0) this.hurt(4, "water");
       }
@@ -591,7 +645,7 @@ export class World {
       m.food = Math.max(0, m.food - 0.01 * dt);
       m.water = Math.max(0, m.water - 0.02 * dt);
     }
-    for (const t of this.things.values()) if (t.kind === "creature") this.creature(t, dt);
+    for (const t of this.things.values()) if (t.kind === "creature" && !t.tame) this.creature(t, dt);
     for (const key of [...this.running.keys()]) {
       const r = this.running.get(key)!;
       if (key !== "look" && this.t >= r.until) this.end(key, "completed");
@@ -607,14 +661,16 @@ export class World {
       r.done.pitch = a.pitch ?? Math.max(-1.4, Math.min(1.4, this.me.pitch + (a.pitch_delta ?? 0)));
     }
     const dy = wrap((r.done.yaw as number) - this.me.yaw), dp = (r.done.pitch as number) - this.me.pitch;
-    this.me.yaw = wrap(this.me.yaw + Math.sign(dy) * Math.min(Math.abs(dy), TURN * dt));
+    const rate = this.me.mount ? (RIDES[this.things.get(this.me.mount)?.type ?? ""]?.turn ?? TURN) : TURN;
+    this.me.yaw = wrap(this.me.yaw + Math.sign(dy) * Math.min(Math.abs(dy), rate * dt));
     this.me.pitch += Math.sign(dp) * Math.min(Math.abs(dp), PITCH_TURN * dt);
     if (Math.abs(wrap((r.done.yaw as number) - this.me.yaw)) < 1e-3 && Math.abs((r.done.pitch as number) - this.me.pitch) < 1e-3) this.end("look", "completed");
   }
 
   private walk(dt: number): void {
-    const r = this.running.get("move");
     const m = this.me;
+    if (m.mount) return this.ride(dt);
+    const r = this.running.get("move");
     if (!r || r.action.control !== "move") return;
     const a = r.action;
     const [fx, fz] = this.forward();
@@ -642,6 +698,94 @@ export class World {
     m.vz = vz * speed;
     m.x = nx;
     m.z = nz;
+  }
+
+  /** A body on a mount or in a vehicle: the mount's speed and ground; a flyer's height. */
+  private ride(dt: number): void {
+    const m = this.me, mount = this.things.get(m.mount!);
+    if (!mount) return void (m.mount = null);
+    const ride = RIDES[mount.type]!;
+    const air = ride.on === "air";
+    // Height: jump held climbs, crouch comes down; a flyer out of stamina comes down by itself.
+    if (air) {
+      if (ride.tires) {
+        mount.stamina ??= 100;
+        mount.stamina = Math.max(0, Math.min(100, mount.stamina + (m.y > 0.5 ? -ride.tires : 4) * dt));
+      }
+      const spent = ride.tires !== undefined && (mount.stamina ?? 100) <= 0;
+      const up = this.running.get("jump") && !spent;
+      const down = m.crouch || spent;
+      const floor = this.terrain && [CLIFF].includes(this.terrain.at(m.x, m.z)) ? this.terrain.height(m.x, m.z) + 1 : 0;
+      if (up) m.y = Math.min(CEILING, m.y + CLIMB * dt);
+      else if (down) {
+        const ground = this.terrain?.at(m.x, m.z);
+        // A flyer settles on firm ground, and only hovers low over water.
+        const lowest = ground === DEEP || ground === SHALLOW ? 1 : floor;
+        m.y = Math.max(lowest, m.y - CLIMB * dt);
+      }
+    }
+    const r = this.running.get("move");
+    let vx = 0, vz = 0;
+    if (r && r.action.control === "move") {
+      const a = r.action;
+      const [fx, fz] = this.forward();
+      vx = fx * a.forward + (ride.on === "wheels" || ride.on === "water" ? 0 : Math.cos(m.yaw) * a.strafe);
+      vz = fz * a.forward + (ride.on === "wheels" || ride.on === "water" ? 0 : Math.sin(m.yaw) * a.strafe);
+      const len = Math.hypot(vx, vz);
+      if (len > 1) (vx /= len), (vz /= len);
+    }
+    const ground = this.terrain?.at(m.x, m.z) ?? 0;
+    let speed = ride.speed;
+    if (air) speed = m.y > 2 ? ride.speed : 3;
+    else if (ride.on === "wheels") speed = ground === 4 || ground === 5 ? (ride.road ?? ride.speed) : ground === SHALLOW ? ride.speed * 0.4 : ride.speed;
+    else if (ride.on === "land") speed = ground === SHALLOW ? ride.speed * 0.7 : ground === DEEP ? ride.speed * 0.35 : ride.speed;
+    else if (ride.on === "water" && ground === SHALLOW) speed = ride.speed * 0.7;
+    const nx = m.x + vx * speed * dt, nz = m.z + vz * speed * dt;
+    if (vx || vz) {
+      const hit = this.rideCollide(nx, nz, ride);
+      if (hit) {
+        m.vx = m.vz = 0;
+        if (this.t - this.lastBlocked >= 1000) {
+          this.lastBlocked = this.t;
+          this.event("blocked", { by: hit, pos: [m.x, m.y, m.z] });
+        }
+      } else {
+        if (r) r.done.moved_m = ((r.done.moved_m as number) ?? 0) + Math.hypot(nx - m.x, nz - m.z);
+        m.vx = vx * speed;
+        m.vz = vz * speed;
+        m.x = nx;
+        m.z = nz;
+      }
+    }
+    mount.x = m.x;
+    mount.z = m.z;
+  }
+
+  /** What stops a mount: cliffs it is below (or any, on the ground), and the wrong ground (water for wheels, land for a boat). */
+  private rideCollide(x: number, z: number, ride: Ride): string | null {
+    if (!this.terrain) return null;
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4, px = x + Math.cos(a) * ride.radius, pz = z + Math.sin(a) * ride.radius;
+      const k = this.terrain.at(px, pz);
+      if (k === CLIFF && this.terrain.height(px, pz) >= this.me.y) return "terrain";
+    }
+    const k = this.terrain.at(x, z);
+    if (ride.on === "wheels" && k === DEEP) return "water";
+    if (ride.on === "water" && k !== DEEP && k !== SHALLOW) return "land";
+    return null;
+  }
+
+  /** Where to step off a mount: firm ground beside it, or (a boat in deep water) the water. */
+  private landing(t: Thing): [number, number] | null {
+    for (const d of [2.5, 4, 6]) {
+      for (let i = 0; i < 8; i++) {
+        const a = this.me.yaw + Math.PI / 2 + (i * Math.PI) / 4;
+        const x = t.x + Math.cos(a) * d, z = t.z + Math.sin(a) * d;
+        const k = this.terrain?.at(x, z) ?? 0;
+        if (k !== CLIFF && k !== DEEP && !this.collide(x, z)) return [x, z];
+      }
+    }
+    return RIDES[t.type]?.on === "water" ? [t.x, t.z] : null;
   }
 
   /** What would be in the way of the body at (x, z): an id, or null. */
@@ -774,7 +918,7 @@ export class World {
     let tx: number, tz: number, speed: number;
     if (t.hunting) {
       [tx, tz, speed] = [m.x, m.z, RAPTOR.speed];
-      if (d <= RAPTOR.reach && this.t >= (t.biteAt ?? 0)) {
+      if (d <= RAPTOR.reach && m.y < 3 && this.t >= (t.biteAt ?? 0)) {
         t.biteAt = this.t + RAPTOR.every_ms;
         this.hurt(RAPTOR.bite, t.id);
       }

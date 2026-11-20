@@ -4,7 +4,8 @@
 // finds: its progress, and the world as believed.
 
 import { type Belief, compass } from "./belief.ts";
-import { type Costs, type Danger, type Route, WALK } from "./nav.ts";
+import { type Costs, costsFor, type Danger, type RideKind, rideKind, type Route, WALK } from "./nav.ts";
+import type { Remembered } from "./belief.ts";
 import type { Body, Run } from "./body.ts";
 import type { Outcome, Vec3 } from "./protocol.ts";
 
@@ -101,15 +102,93 @@ function* walkTo(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRes
   return { status: "blocked", summary: r === "lost" ? `I lost sight of ${to}` : r === "unreachable" ? `I know no way to ${label}` : "something is in the way and I can't get round it", data: { reason: r } };
 }
 
-/** A trek: a long way, over the map, in legs, keeping clear of known danger, and saying how the way goes. */
+interface Way {
+  id: string;
+  how: string;
+  seconds: number;
+  ride?: Remembered;
+  kind?: RideKind;
+}
+
+/** The ways the character could go: on foot, or on each ride it knows of near enough, each timed as a whole (walking
+ * to it, the ride, walking on from where it must stop, mounting, climbing and landing). */
+function ways(b: Belief, goal: Vec3): Way[] {
+  const out: Way[] = [];
+  const nav = b.nav;
+  const walk = nav.w ? nav.route(b.pos, goal, WALK, dangerCosts(b)) : null;
+  out.push({ id: "walk", how: "on foot", seconds: Math.round(walk ? walk.cost / 3.5 : (b.distance(goal) / 3.5) * 1.3) });
+  if (!nav.w) return out;
+  const riding = b.self?.mount ?? null;
+  for (const r of b.find((t) => !!t.tags?.includes("rideable") && b.distance(t.pos) < 200)) {
+    const kind = rideKind(r.type, r.tags);
+    const toIt = r.id === riding ? 0 : (nav.route(b.pos, r.pos, WALK)?.cost ?? Infinity) / 3.5 + 4;
+    const ridden = nav.route(r.pos, goal, costsFor(kind), kind.on === "air" ? [] : dangerCosts(b));
+    if (!ridden || !isFinite(toIt)) continue;
+    const end = ridden.points.at(-1) ?? r.pos;
+    const rest = ridden.near ? (nav.route(end, goal, WALK)?.cost ?? Infinity) / 3.5 + 4 : 0;
+    const overhead = kind.on === "air" ? 16 : 2;
+    const seconds = toIt + ridden.cost / 3.5 + rest + overhead;
+    if (isFinite(seconds)) out.push({ id: `ride:${r.id}`, how: `the ${r.type} ${r.id}${r.id === riding ? " (riding it)" : ""}`, seconds: Math.round(seconds), ride: r, kind });
+  }
+  return out.sort((x, y) => x.seconds - y.seconds);
+}
+
+function* dismount(ctx: SkillContext): Run<boolean> {
+  const b = ctx.belief, id = b.self?.mount;
+  if (!id) return true;
+  yield* ctx.body.settle(ctx.body.act([{ control: "interact", target: id, verb: "dismount" }], "dismount"), 2000);
+  yield { until: () => !b.self?.mount, ms: 1500 };
+  return !b.self?.mount;
+}
+
+/** Gets on a ride: walks to it, faces it, mounts; a flyer climbs to where cliffs are below it. */
+function* board(ctx: SkillContext, ride: Remembered, kind: RideKind): Run<boolean> {
+  const b = ctx.belief;
+  if (b.self?.mount !== ride.id) {
+    if (!(yield* dismount(ctx))) return false;
+    const r = yield* ctx.body.goTo(() => b.things.get(ride.id)?.pos ?? null, 2.6, { ignore: ride.id, dangers: () => dangerCosts(b) });
+    if (r !== "arrived" || !(yield* ctx.body.face(ride.id))) return false;
+    yield* ctx.body.settle(ctx.body.act([{ control: "interact", target: ride.id, verb: "mount" }], `mount ${ride.id}`), 2000);
+    yield { until: () => b.self?.mount === ride.id, ms: 1500 };
+    if (b.self?.mount !== ride.id) return false;
+  }
+  if (kind.on === "air") {
+    for (let i = 0; i < 12 && (b.self?.pos[1] ?? 0) < 45; i++) yield* ctx.body.settle(ctx.body.act([{ control: "jump", hold_ms: 2000 }], "climb"), 3000);
+  }
+  return true;
+}
+
+function* land(ctx: SkillContext): Run {
+  const b = ctx.belief;
+  yield* ctx.body.settle(ctx.body.act([{ control: "crouch", on: true }], "descend"), 1000);
+  yield { until: () => (b.self?.pos[1] ?? 0) < 1.2, ms: 25000 };
+  yield* ctx.body.settle(ctx.body.act([{ control: "crouch", on: false }], "landed"), 1000);
+}
+
+/** A trek: a long way, over the map, by the quickest way the character has (on foot, or a ride it knows of),
+ * keeping clear of known danger, and saying how the way goes. */
 function* travel(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const b = ctx.belief, p = ctx.progress;
   const { point, to, label } = destination(b, args);
-  if (!point()) return { status: "failed", summary: `I don't know where ${to} is` };
+  const goal = point();
+  if (!goal) return { status: "failed", summary: `I don't know where ${to} is` };
   const start = b.pos, t0 = b.now;
   let told = Infinity, detours = Number(p.detours ?? 0);
-  const r = yield* ctx.body.goTo(point, typeof args.reach === "number" ? args.reach : 3, {
-    ...(to ? { ignore: to } : {}), sprint: !!args.run, dangers: () => dangerCosts(b),
+  // How to go: asked for, or the quickest of the ways it has.
+  const all = ways(b, goal);
+  const asked = typeof args.by === "string" ? all.find((w) => w.id === `ride:${args.by}` || w.id === args.by) : undefined;
+  const choice = asked?.id ?? (yield* ctx.decide("travel.mode", all.map((w) => w.id), { options: all.map((w) => ({ id: w.id, how: w.how, seconds: w.seconds })) }));
+  const way = all.find((w) => w.id === choice) ?? all[0]!;
+  if (all.length > 1 && !p.way) ctx.note(`going ${way.how}, about ${way.seconds} s${all.length > 1 ? ` (${all.filter((w) => w !== way).map((w) => `${w.how} ${w.seconds} s`).join(", ")})` : ""}`);
+  p.way = way.id;
+  let costs: Costs = WALK;
+  if (way.ride && way.kind) {
+    if (!(yield* board(ctx, way.ride, way.kind))) return { status: "blocked", summary: `I couldn't get on the ${way.ride.type}`, data: { reason: "board" } };
+    costs = costsFor(way.kind);
+  } else if (b.self?.mount) yield* dismount(ctx);
+  const air = way.kind?.on === "air";
+  const r0 = yield* ctx.body.goTo(point, typeof args.reach === "number" ? args.reach : 3, {
+    ...(to ? { ignore: to } : {}), sprint: !!args.run, costs, ...(air ? {} : { dangers: () => dangerCosts(b) }),
     onRoute: (route, replans, why) => {
       const said: Record<string, string> = {
         bumped: "something the map does not show is in the way", "blocked ahead": "the way ahead turned out blocked",
@@ -117,7 +196,7 @@ function* travel(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRes
         "danger ahead": "I saw danger near the way", "target moved": `${label} moved`,
       };
       if (replans === 0 && !p.route) ctx.note(`on my way to ${label}: ${describeRoute(route)}`);
-      else if (replans > 0) (p.detours = ++detours), ctx.note(`${said[why ?? "bumped"]}; new way: ${describeRoute(route)} from here`);
+      else if (replans > 0 && route.length >= 5) (p.detours = ++detours), ctx.note(`${said[why ?? "bumped"]}; new way: ${describeRoute(route)} from here`);
       p.route = describeRoute(route);
     },
     onLeg: (left) => {
@@ -127,9 +206,18 @@ function* travel(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRes
       }
     },
   });
+  let r = r0;
+  if (air) yield* land(ctx);
+  // A ride that stops short (a boat at the shore): off, and on foot the rest of the way.
+  if (r === "near" && way.ride) {
+    yield* dismount(ctx);
+    r = yield* ctx.body.goTo(point, typeof args.reach === "number" ? args.reach : 3, { dangers: () => dangerCosts(b) });
+  }
+  if (args.dismount && b.self?.mount) yield* dismount(ctx);
   const walked = Math.round(Math.hypot(b.pos[0] - start[0], b.pos[2] - start[2]));
   const time = Math.round((b.now - t0) / 1000);
-  if (r === "arrived") return { status: "done", summary: `I'm at ${label}, after ${time} s${detours ? ` and ${detours} detour${detours > 1 ? "s" : ""}` : ""}`, data: { seconds: time, detours } };
+  const by = way.ride ? ` by ${way.how}${b.self?.mount ? " (still on it)" : ""}` : "";
+  if (r === "arrived") return { status: "done", summary: `I'm at ${label}${by}, after ${time} s${detours ? ` and ${detours} detour${detours > 1 ? "s" : ""}` : ""}`, data: { seconds: time, detours, way: way.id } };
   if (r === "unreachable") return { status: "blocked", summary: `I know no way to ${label} from here (${walked} m from where I set out): explore toward it, or another way of travelling`, data: { reason: "unreachable" } };
   return { status: "blocked", summary: r === "lost" ? `I lost track of ${label}` : `I can't get through to ${label}`, data: { reason: r, detours } };
 }
@@ -507,7 +595,7 @@ export const SKILLS: Record<string, Skill> = {
   },
   travel: {
     name: "travel", describe: "A trek across the map: plans the way over the map, keeps clear of known danger, goes round what turns out blocked, and notes how it goes.",
-    params: { x: "number", z: "number", to: "entity id, in place of x and z", reach: "metres (default 3)", run: "boolean: sprint where it can" },
+    params: { x: "number", z: "number", to: "entity id, in place of x and z", reach: "metres (default 3)", run: "boolean: sprint where it can", by: "a ride's id, or walk (default: the quickest way it has)", dismount: "boolean: get off at the end" },
     body: true, run: travel,
   },
   explore: {

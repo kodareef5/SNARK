@@ -42,7 +42,8 @@ const json = (v: unknown) => JSON.stringify(v);
 function traceFile(name: string): { path: string; sink: (line: string) => void; flush: () => void } {
   const dir = process.env.GRUNT_TRACES ?? join(homedir(), ".pi", "agent", "grunt", "traces");
   mkdirSync(dir, { recursive: true });
-  const path = join(dir, `${name.replace(/[^\w-]/g, "_")}-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`);
+  // Named for the character, the time and this process, so two characters started at once never share a file.
+  const path = join(dir, `${name.replace(/[^\w-]/g, "_")}-${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}.jsonl`);
   let buf: string[] = [];
   const flush = () => {
     if (!buf.length) return;

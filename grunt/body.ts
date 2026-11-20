@@ -15,7 +15,7 @@ export interface Recorder {
 }
 
 /** What a walk ended with. */
-export type Arrival = "arrived" | "blocked" | "lost" | "unreachable" | "stopped";
+export type Arrival = "arrived" | "blocked" | "lost" | "unreachable" | "stopped" | "near";
 /** Why a route was planned again. */
 export type Replan = "bumped" | "blocked ahead" | "worse ground ahead" | "danger ahead" | "target moved";
 
@@ -213,6 +213,11 @@ export class Body {
       if (!again) {
         const t = target();
         if (t && b.distance(t) <= reach + 0.5) return "arrived";
+        // As near as this way of going gets (a boat at the shore): the rest is for another way.
+        if (r.near) {
+          this.stop("as near as it goes");
+          return "near";
+        }
       }
       if (++replans > 20) {
         this.stop("too many tries");

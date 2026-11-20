@@ -129,7 +129,7 @@ export class Runtime {
     const near = { radius: 40, cell: 2 };
     await this.session.subscribe(hasMap ? { ...SUBSCRIPTION, terrain: { hz: 2, ...near }, map: { hz: 0.2, cell: 4 } } : SUBSCRIPTION, ["*"]);
     if (hasMap) await this.session.observe({ map: { cell: 4 }, terrain: near }).then((o) => this.belief.observe(o));
-    await this.session.observe({ self: {}, inventory: {}, entities: { radius: 40, max: 30 }, focus: {} }).then((o) => this.belief.observe(o));
+    await this.session.observe({ self: {}, inventory: {}, entities: { radius: 80, max: 40 }, focus: {} }).then((o) => this.belief.observe(o));
   }
 
   /** Runs the tick on the runtime's clock until `halt`. */

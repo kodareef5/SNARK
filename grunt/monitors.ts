@@ -25,6 +25,8 @@ export type Monitor = (b: Belief, ctx: MonitorContext) => Signal[];
 /** Hostile creatures seen near and closing, being hurt, and hunters heard but not seen. */
 export const threat: Monitor = (b) => {
   const out: Signal[] = [];
+  // High in the air, what hunts on the ground is no threat.
+  if ((b.self?.pos[1] ?? 0) > 5) return out;
   for (const t of b.find((r) => (r.kind === "creature" || r.kind === "player") && r.disposition === "hostile" && b.age(r.seen) < 3000)) {
     const d = b.distance(t.pos);
     if (d > 25) continue;
@@ -33,7 +35,8 @@ export const threat: Monitor = (b) => {
     out.push({ kind: "danger", urgency: u, about: t.id, detail: { type: t.type, distance: Math.round(d * 10) / 10, hunting: !!t.tags?.includes("hunting") } });
   }
   // Being hurt is danger, unless what did it is known to be gone (dead, used up) since.
-  const hurt = b.since(b.now - 2000, "hurt").filter((e) => typeof e.data.by !== "string" || b.things.has(e.data.by) || b.dangers.has(e.data.by));
+  // Only blows and shots count: drowning, cold or a fall is the body's trouble, not something to run from.
+  const hurt = b.since(b.now - 2000, "hurt").filter((e) => (e.data.kind === "melee" || e.data.kind === "projectile") && (typeof e.data.by !== "string" || b.things.has(e.data.by) || b.dangers.has(e.data.by)));
   if (hurt.length) {
     const by = hurt.at(-1)!.data.by;
     out.push({ kind: "danger", urgency: 1, ...(typeof by === "string" ? { about: by } : {}), detail: { hurt: hurt.reduce((n, e) => n + Number(e.data.amount), 0) } });

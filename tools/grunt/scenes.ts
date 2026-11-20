@@ -5,7 +5,7 @@ import { Terrain, type TerrainSpec } from "./terrain.ts";
 import { type CharacterSetup, World } from "./world.ts";
 
 export interface SceneThing {
-  type: "tree" | "rock" | "bush" | "chest" | "raptor" | "player";
+  type: "tree" | "rock" | "bush" | "chest" | "raptor" | "player" | "parasaur" | "pteranodon" | "car" | "heli" | "boat";
   x: number;
   z: number;
   name?: string;
@@ -25,7 +25,10 @@ export interface Scene {
 
 const KIND: Record<SceneThing["type"], EntityKind> = {
   tree: "resource", rock: "resource", bush: "resource", chest: "container", raptor: "creature", player: "player",
+  parasaur: "creature", pteranodon: "creature", car: "vehicle", heli: "vehicle", boat: "vehicle",
 };
+/** What a scene places tame and ready to ride. */
+const RIDEABLE = new Set(["parasaur", "pteranodon", "car", "heli", "boat"]);
 
 export function makeWorld(scene: Scene = {}): World {
   const w = new World(scene.seed ?? 1);
@@ -35,7 +38,7 @@ export function makeWorld(scene: Scene = {}): World {
   }
   for (const t of scene.things ?? []) {
     const slots = t.items ? Object.entries(t.items).map(([item, count], slot) => ({ slot, item, count })) : t.type === "chest" ? [] : undefined;
-    w.place(KIND[t.type], t.type, t.x, t.z, { ...(t.name ? { name: t.name } : {}), ...(slots ? { slots } : {}), ...(t.hostile ? { hostile: true } : {}) });
+    w.place(KIND[t.type], t.type, t.x, t.z, { ...(t.name ? { name: t.name } : {}), ...(slots ? { slots } : {}), ...(t.hostile ? { hostile: true } : {}), ...(RIDEABLE.has(t.type) ? { tame: true } : {}) });
   }
   w.setup(scene.me ?? {});
   return w;
