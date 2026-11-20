@@ -11,7 +11,8 @@ import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_DIAL, K_IMAGE, K_PANEL, lineHeight, wrapText, type UiFrame, type UiImage } from "./nodes.ts";
 import { S_DIAL_HOUR, S_HUD_HIT, S_ICE, S_KEY, S_KEY_SMALL, S_LABEL, S_MENU_NOTE } from "./style.ts";
 
-export const IMAGE_DIAL = 4;
+/** The face's slot in the frame's image table: clear of the hearts', which take 3 to 3 + MATING_STEPS (ui/tame.ts). */
+export const IMAGE_DIAL = 41;
 /** The face's side in pixels is the dial's on the screen, in steps of DIAL_STEP, from the least to the most here. */
 export const DIAL_STEP = 64;
 export const DIAL_LEAST = 256;

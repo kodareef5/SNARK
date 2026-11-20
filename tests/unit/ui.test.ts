@@ -5,7 +5,7 @@ import { Chart } from "../../client/core/tactical.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
 import { bindTextInput } from "../../client/core/ui/events.ts";
-import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
+import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_SELF_ARROW, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_INV_INFO, KEY_INV_PANEL, KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
@@ -185,14 +185,15 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
         expect(f.find(KEY_INV_SLOT + 39 * 3 + 2)!.text).toBe("100");
         expect(f.find(KEY_INV_INFO)!.text).toContain("berry x100");
       }
-      // At most 256 markers are drawn, the first the model lists. The reader's own is drawn last, so it is on top.
+      // At most 256 markers are drawn, the first the model lists: the reader's own as its arrow, after the rest, so on top.
       const markers: number[] = [];
       for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_MARKER && f.nodes[i]!.key < KEY_MARKER + 1000) markers.push(i);
-      expect(markers.length).toBe(256);
-      const own = f.nodes[markers[255]!]!;
+      expect(markers.length).toBe(255);
+      const own = f.find(KEY_SELF_ARROW)!;
+      expect(f.nodes.indexOf(own)).toBeGreaterThan(markers[254]!);
       const map = f.find(KEY_MINIMAP)!;
-      // The complete marker remains inside the map at its far boundary.
-      expect([own.x + own.w, own.y + own.h]).toEqual([map.x + map.w, map.y + map.h]);
+      // The arrow stands where the marker would, kept inside the map at its far boundary.
+      expect([own.x + own.w / 2, own.y + own.h / 2]).toEqual([map.x + map.w - 2, map.y + map.h - 2]);
     }
   }
 });

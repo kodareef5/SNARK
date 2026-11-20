@@ -41,8 +41,8 @@ const RADIANS = Math.PI / 180;
 const BAR_BUTTONS = 4;
 
 /** Where the HUD puts what the touch layer moves aside: the vitals' row and the stack under the bar. */
-export interface TouchPlan { vitalsX: number; vitalsY: number; stackY: number; under: number; map: number; mic: boolean }
-const plan: TouchPlan = { vitalsX: 0, vitalsY: 0, stackY: 0, under: 0, map: 160, mic: false };
+export interface TouchPlan { vitalsX: number; vitalsY: number; stackY: number; under: number; map: number; mic: boolean; topEnd: number }
+const plan: TouchPlan = { vitalsX: 0, vitalsY: 0, stackY: 0, under: 0, map: 160, mic: false, topEnd: 0 };
 
 /** The plan for this canvas. The same object each time. */
 export function touchPlan(f: UiFrame, muted: boolean, mic = false): TouchPlan {
@@ -57,6 +57,8 @@ export function touchPlan(f: UiFrame, muted: boolean, mic = false): TouchPlan {
   // What stands under the bar and the vitals starts at `under`, or a row lower while the offer to unmute has that row.
   plan.under = top + BAR + 10 + (beside ? 0 : 42);
   plan.stackY = plan.under + (muted ? 52 : 0);
+  // The right end of what the top row holds: the bar, and the vitals where they stand beside it.
+  plan.topEnd = beside ? plan.vitalsX + 6 * VITAL_PITCH : left + bar - (BAR_PITCH - BAR);
   return plan;
 }
 

@@ -98,6 +98,9 @@ export const S_DIAL_HOUR = 64;
 export const S_MENU_WARN = 65;
 /** The offer to unmute: plain words over glass. */
 export const S_UNMUTE = 66;
+/** The compass's letters and degrees, pale ice over the world; N in the warm accent. */
+export const S_COMPASS = 67;
+export const S_COMPASS_NORTH = 68;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -167,4 +170,6 @@ export const STYLES: readonly Style[] = [
   /* S_DIAL_HOUR */ style(0, 0xecfaff, 40, 1),
   /* S_MENU_WARN */ style(0, 0xf2a477, 13),
   /* S_UNMUTE */ style(0, 0xecfaff, 20, 1, true),
+  /* S_COMPASS */ style(0, 0xc9e7f3, 11, 1, true),
+  /* S_COMPASS_NORTH */ style(0, 0xf2a477, 12, 1, true),
 ];

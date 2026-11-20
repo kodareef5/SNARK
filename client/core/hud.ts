@@ -26,6 +26,7 @@ import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_OFF, type Marks } 
 import { CombatModel } from "./feedback.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import { paintRelief, type Chart } from "./tactical.ts";
+import { Compass } from "./ui/compass.ts";
 
 /** One of the reader's tribe is a mate and one of its creatures a tame. A player is a survivor of another tribe, and a creature is not the tribe's. */
 export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature";
@@ -280,6 +281,11 @@ export class HudModel {
   /** Degrees clockwise from north. */
   heading = 0;
   compass = "N";
+  /** The compass at the top of the screen and the arrow on the maps: the heading as shown, on its spring. */
+  readonly dial = new Compass();
+  /** The map's size in metres, east to west and north to south, for bearings between places on it. */
+  mapSizeX = 1;
+  mapSizeZ = 1;
   speed = 0;
   pingMs = 0;
   fps = 0;
@@ -308,6 +314,10 @@ export class HudModel {
   /** The map's pictures and where they look. Null until the app has the world, and then both screens show the whole map. */
   chart: Chart | null = null;
   minimapVisible = true;
+  /** The map screen or the choice of where to rise covers the HUD: no compass. */
+  bare = false;
+  /** Where the compass ends at the top of the screen, for what stands under it; 0 while it is not shown. */
+  compassBottom = 0;
   /** Screen pixels to a unit of the interface, so the map's pictures are made at the size they are shown. */
   scale = 1;
   /** Counts updates. `mapSeen` is the update during which the map screen was last built. */
@@ -465,7 +475,7 @@ function fillMarkers(model: HudModel, session: ClientSession, remote: RemoteSamp
 }
 
 /** `scale` is screen pixels to a unit of the interface. */
-export function updateHud(model: HudModel, session: ClientSession, remote: RemoteSample, fps: number, scale = 1): void {
+export function updateHud(model: HudModel, session: ClientSession, remote: RemoteSample, fps: number, scale = 1, nowMs?: number): void {
   const world = session.world;
   if (!world) return;
   const b = session.own;
@@ -482,6 +492,11 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   model.lat = latOf(world.hf.dims, b.z);
   model.heading = headingOf(session.ownYaw);
   model.compass = COMPASS[Math.round(model.heading / 45) % 8]!;
+  // Without a time the compass shows the heading as it is.
+  if (nowMs === undefined) model.dial.set(model.heading);
+  else model.dial.step(model.heading, nowMs);
+  model.mapSizeX = world.hf.sizeX;
+  model.mapSizeZ = world.hf.sizeZ;
   model.speed = Math.hypot(b.vx, b.vz);
   model.pingMs = Math.max(0, (session.stats.rttTicks * 1000) / TICK_RATE);
   model.fps = fps;

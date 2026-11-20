@@ -1477,7 +1477,7 @@ export class App {
     packetWithout(packet, off);
     hud.minimapVisible = this.ui.settings.minimap && !this.ui.menu;
     if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
-    updateHud(hud, session, this.remote, this.fps, this.unit);
+    updateHud(hud, session, this.remote, this.fps, this.unit, nowMs);
     hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     this.feedback.absorb(session, this.reg, nowMs);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers, session.hitMarkers);
