@@ -168,12 +168,25 @@ export interface Slot {
   uses?: Gauge | null;
 }
 
+/** A recipe as the inventory screen offers it. */
+export interface Craftable {
+  item: string;
+  needs: Record<string, number>;
+  /** How many could be made now. */
+  can: number;
+  seconds: number;
+  /** A station kind the recipe needs, or null for the hands. */
+  at: string | null;
+}
+
 export interface InventoryChannel {
   slots: Slot[];
   capacity: number;
   weight: Gauge;
   hotbar: (number | null)[];
   open: { id: EntityId; slots: Slot[] } | null;
+  craftable: Craftable[];
+  crafting: { item: string; left: number; ready_in_s: number }[];
 }
 
 export interface ChatLine {
@@ -188,10 +201,23 @@ export interface ChatChannel {
   lines: ChatLine[];
 }
 
+export type PlacementRefusal = "no_support" | "blocked" | "occupied" | "too_far" | "not_flat" | "not_permitted";
+
+/** The preview of a held structure, as a player sees it. */
+export interface Placement {
+  piece: string;
+  pos: Vec3;
+  yaw: number;
+  snapped: { to: EntityId; where: string } | null;
+  valid: boolean;
+  reason: PlacementRefusal | null;
+}
+
 export interface FocusChannel {
   target: EntityId | null;
   distance?: number;
   verbs?: string[];
+  placement?: Placement;
 }
 
 export interface ImageChannel {
@@ -222,7 +248,8 @@ export interface GameEvent extends Envelope<"event">, Sequenced {
 
 // --- Acting -------------------------------------------------------------------------------------------------------
 
-export type ControlName = "move" | "look" | "jump" | "crouch" | "stop" | "interact" | "use" | "select" | "items" | "chat";
+export type ControlName =
+  | "move" | "look" | "jump" | "crouch" | "stop" | "interact" | "use" | "select" | "items" | "craft" | "rotate" | "chat";
 
 export type Action =
   | { control: "move"; forward: number; strafe: number; sprint?: boolean; duration_ms: number }
@@ -234,6 +261,8 @@ export type Action =
   | { control: "use"; hand: "primary" | "secondary"; hold_ms?: number }
   | { control: "select"; slot: number }
   | { control: "items"; op: "move" | "drop" | "equip" | "consume"; slot: number; to?: "self" | "open" | "ground"; count?: number }
+  | { control: "craft"; item: string; count: number }
+  | { control: "rotate"; steps: number }
   | { control: "chat"; channel: "local" | "global" | "group"; text: string };
 
 export interface Act extends Envelope<"act"> {
@@ -246,7 +275,7 @@ export interface Act extends Envelope<"act"> {
 
 export type RejectCode =
   | "unknown_control" | "bad_arguments" | "unknown_target" | "out_of_reach" | "not_permitted"
-  | "no_body" | "stale" | "rate_limited" | "too_long";
+  | "no_body" | "stale" | "rate_limited" | "too_long" | "missing_items";
 
 export interface Ack extends Envelope<"ack"> {
   command: string;

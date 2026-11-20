@@ -76,8 +76,8 @@ client                                      game
   "frame": { "units": "m", "up": "+y", "east": "+x", "south": "+z" },
   "capabilities": {
     "channels": ["self", "entities", "terrain", "inventory", "chat", "focus"],
-    "controls": ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "chat"],
-    "events": ["hurt", "died", "respawn", "chat", "item", "mounted", "dismounted", "notice"],
+    "controls": ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "rotate", "chat"],
+    "events": ["hurt", "died", "respawn", "chat", "item", "mounted", "dismounted", "notice", "blocked", "heard", "crafted"],
     "verbs": ["open", "harvest", "pick_up", "mount", "talk"]
   },
   "limits": { "max_duration_ms": 2000, "leash_ms": 1500, "max_rate_hz": 20,
@@ -182,14 +182,24 @@ A vital is `[value, max]`. A game omits vitals it has none of and may add its ow
 columns west to east. `heights`, if asked with `{ "heights": true }`, is a row-major array of ground heights.
 
 **`inventory`**: `{ "slots": [{ "slot": 0, "item": "wood", "count": 40, "uses": null }], "capacity": 30,
-"weight": [31.5, 120], "hotbar": [1, 4, null, ...], "open": null }`. While a container is open, `open` is
-`{ "id": "e:…", "slots": [...] }`.
+"weight": [31.5, 120], "hotbar": [1, 4, null, ...], "open": null, "craftable": [...], "crafting": [...] }`. While a
+container is open, `open` is `{ "id": "e:…", "slots": [...] }`.
+
+`craftable` is what the inventory screen offers to make: every recipe the character knows, with what it needs and how
+many it could make now, `{ "item": "wood_wall", "needs": { "wood": 15, "thatch": 4, "fiber": 2 }, "can": 2,
+"seconds": 1.5, "at": null }`, where `at` names a station kind the recipe needs (`"campfire"`, `"smithy"`) or is
+null for the hands. `crafting` is the queue: `[{ "item": "wood_wall", "left": 2, "ready_in_s": 0.8 }]`.
 
 **`chat`**: what the character has heard since the last chat observation: `{ "lines": [{ "channel": "local",
 "from": "Ana", "from_id": "e:310", "text": "come here", "t": 1532001 }] }`.
 
 **`focus`**: what the character is looking at and could act on now: `{ "target": "n:7.33", "distance": 2.1,
 "verbs": ["harvest"] }` or `{ "target": null }`.
+
+While a structure is held, `focus` also has `placement`, the preview a player sees: `{ "piece": "wood_wall", "pos":
+[...], "yaw": 1.57, "snapped": { "to": "s:12", "where": "east" }, "valid": true, "reason": null }`. `snapped` is null
+for a piece standing free; `reason` says why an invalid preview is refused (`no_support`, `blocked`, `occupied`,
+`too_far`, `not_flat`, `not_permitted`). `use primary` places the piece where the preview stands, if it is valid.
 
 **`image`** (optional capability): a frame of the character's view, `{ "mime": "image/jpeg", "width": 384,
 "height": 216, "data": "<base64>" }`, asked with `{ "width": …, "height": … }`. Only when the game lists it.
@@ -207,6 +217,9 @@ columns west to east. `heights`, if asked with `{ "heights": true }`, is a row-m
 | `item` | `item`, `delta` (gained positive, lost negative), `count` after |
 | `mounted`, `dismounted` | `mount` (an entity id) |
 | `notice` | something the interface tells the player: `text`, `level` (`info`, `warning`, `danger`) |
+| `blocked` | movement stopped by something: `by` (an entity id, `terrain`, `water` or `structure`), `pos` |
+| `heard` | a sound the character heard: `kind` (`creature`, `footsteps`, `impact`, `shot`, `voice`, `other`), `bearing`, `loudness` (0 to 1), `what` if a player could tell (`raptor`), never a hidden entity's id |
+| `crafted` | `item`, `count`, from the `crafting` queue |
 
 A game may send kinds it lists in `welcome` beyond these; a client ignores kinds it does not know.
 
@@ -235,7 +248,8 @@ A game may send kinds it lists in `welcome` beyond these; a client ignores kinds
 ```
 
 A rejected action has `"accepted": false` and a `code`: `unknown_control`, `bad_arguments`, `unknown_target`,
-`out_of_reach`, `not_permitted`, `no_body`, `stale`, `rate_limited`, `too_long`. A repeated `command` is answered
+`out_of_reach`, `not_permitted`, `no_body`, `stale`, `rate_limited`, `too_long`, `missing_items` (a `craft` without what
+its recipe needs, a `select` or `items` of an empty slot). A repeated `command` is answered
 with the first `ack` again and `"duplicate": true`.
 
 ### `outcome` (game), when each accepted action ends
@@ -263,6 +277,8 @@ the connection is about to close.
 | `use` | `hand` (`primary`, `secondary`), `hold_ms` | What the held item does: swing, shoot, eat. Aimed by `look` |
 | `select` | `slot` | Takes a hotbar slot in hand |
 | `items` | `op` (`move`, `drop`, `equip`, `consume`), `slot`, `to`, `count` | The inventory screen's moves; `to` is `self`, `open` or `ground` |
+| `craft` | `item`, `count` | The inventory screen's craft button, from `craftable`; the outcome comes when the last is made (`crafted` events between) |
+| `rotate` | `steps` | Turns the held structure's preview, a step being the game's own (90° for most pieces) |
 | `chat` | `channel` (`local`, `global`, `group`), `text` | As a player types it |
 
 `duration_ms` and `hold_ms` are at most `limits.max_duration_ms`. To keep moving, a client sends again before the
@@ -280,8 +296,8 @@ last one runs out.
 
 ## Not in version 0
 
-Deltas instead of whole snapshots; audio as sound events with direction; the map screen; crafting and building
-screens beyond `items`; group (tribe) management; vehicles' own controls; an administrator's channel. An admin's
+Deltas instead of whole snapshots; the map screen; stations' own screens beyond `craft` with `at`; inspecting a
+creature or a structure closely; group (tribe) management; vehicles' own controls; an administrator's channel. An admin's
 powers, if a game offers them, go through a separate, explicitly granted and logged channel, never through the
 player's controls.
 
