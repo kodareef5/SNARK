@@ -42,5 +42,5 @@ Version 0.0. The package loads and the protocol is drafted; nothing connects yet
 5. SNARK speaks the protocol, and the first player plays a real map.
 6. A policy behind each skill, swapped one at a time and compared on the same traces.
 
-The design this follows came from a research conversation, kept in `planning/reference/grunt-background.txt`. Its
+The design this follows came from a research conversation, kept in `planning/reference/grunt-background.md`. Its
 model names and figures are unverified notes, not decisions.
