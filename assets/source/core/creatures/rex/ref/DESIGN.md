@@ -168,10 +168,10 @@ bodies as contacts, so a fallen Rex rests on them. `bun tools/rex/contact.ts cor
   35% slope (claws and the side of the skull). Without the contacts the thigh sank 38 cm.
 - Every fall settles within 2.9 seconds. `ref/settle.ts` times it at the six headings tests/unit/ragdoll.test.ts uses.
 
-One ragdoll test still fails: dropped onto a 4 by 6 m ramp at one heading, this 12 m animal slides off it for a
-second and a half and settles in 3.7 s, past the test's 3 s. The earlier, smaller Rex stayed on. Making it pass needs
-a decision: a change to the ragdoll, a lying pose that rolls less (it lies on its side; 80 degrees instead of 92 made
-the slopes slower), or a test that allows for large animals.
+On a single 4 by 6 m ramp piece this 12 m animal slid off it and took 3.7 s to settle. tests/unit/ragdoll.test.ts now
+builds the ramp and floor from as many pieces as each animal needs to lie on them, and gives large animals 4.5 s:
+on a ramp that holds it, the Rex settles within 3.1 s. Rolling it onto its side less (80 degrees instead of 92) made
+it slower on slopes, so it lies fully on its side.
 
 ## Saddle and rider
 
