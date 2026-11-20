@@ -4,7 +4,8 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
-import { LENS } from "../../content/street-finishes.ts";
+import { ENAMEL_ARMOR, LENS } from "../../content/street-finishes.ts";
+import { polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
 import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, tireMould, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
@@ -24,7 +25,7 @@ import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_G
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
-import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lampsOn, materialEmission, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, bumped, direct, dyed, lampsOn, materialEmission, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
@@ -157,6 +158,11 @@ const eye = new Float64Array(3);
 const light = new Float64Array(3);
 const rgb = new Float64Array(3);
 const reflected = new Float64Array(3);
+const coatingNormal = new Float64Array(3);
+const coatingF0 = [0.065, 0.065, 0.065];
+const platinum = [0.85, 0.89, 0.94];
+const lensTint = [0.21, 0.70, 1.30];
+const lensRim = [0.85, 0.94, 1.08];
 const mirrored = new Float64Array(3);
 const smoothed = new Float64Array(3);
 const albedo2 = new Float64Array(3);
@@ -1860,16 +1866,49 @@ export class Rasterizer {
               for (let c=0; c<3; c++) normal[c]! /= length;
             }
           }
-          const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
-          for (let i = 0; i < 3; i++) reflected[i] = twice * normal[i]! - eye[i]!;
+          const nl = (back ? -1 : 1) / Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
+          const lens = s.label === LENS, armor = s.label === ENAMEL_ARMOR;
+          const polished = lens ? 1 : armor ? polishMask(mro[1]!) : 0;
+          let opticalNormal = normal, specularLayer = 0;
+          const gloss = p.frame[FRAME.streetLook]!;
+          if (polished > 0) {
+            const t = Math.max(0, Math.min(1, (mro[2]! - 0.45) / (0.86 - 0.45)));
+            const metal = t*t*(3-2*t);
+            specularLayer = polished*(1-metal);
+            const smooth = lens ? 0 : 0.72*specularLayer;
+            for (let c = 0; c < 3; c++) coatingNormal[c] = normal[c]!*(1-smooth) + carriedNormal[c]!*nl*smooth;
+            const length = Math.hypot(coatingNormal[0]!, coatingNormal[1]!, coatingNormal[2]!);
+            for (let c = 0; c < 3; c++) coatingNormal[c]! /= length;
+            opticalNormal = coatingNormal;
+            if (armor) {
+              const plated = polished*metal;
+              for (let c = 0; c < 3; c++) {
+                const pigment = albedo[c]!;
+                albedo[c] = pigment*(1-0.12*specularLayer)*(1-plated) + (0.23*pigment + 0.77*platinum[c]!)*plated;
+              }
+              mro[1]! += plated*(glossRoughness(Math.max(0.095, mro[1]!*0.58), 1, gloss) - mro[1]!);
+            }
+          }
+          const twice = 2 * (opticalNormal[0]! * eye[0]! + opticalNormal[1]! * eye[1]! + opticalNormal[2]! * eye[2]!);
+          const edge = 1 - Math.max(0, Math.min(1, twice*0.5));
+          for (let i = 0; i < 3; i++) reflected[i] = twice * opticalNormal[i]! - eye[i]!;
           skyFrom(mirrored, p.frame, reflected, this.look);
           let alpha = 1;
-          if (s.label === LENS) {
-            const edge = (1 - Math.max(0,Math.min(1,twice * 0.5))) ** 4;
-            alpha = visor.cover + (visor.edgeCover-visor.cover)*edge;
-            coat = visor.coat + (visor.edgeCoat-visor.coat)*edge;
-            streetMirror(mirrored,p,reflected,carried[0]!,carried[1]!,carried[2]!,mro[1]!,1);
-          } else if (s.label) {
+          if (polished > 0) {
+            const rough = glossRoughness(lens ? 0.12 : mro[1]! + (0.20-mro[1]!)*specularLayer, 1, gloss);
+            polishedSky(mirrored, p.frame, reflected, rough);
+            streetMirror(mirrored, p, reflected, carried[0]!, carried[1]!, carried[2]!, rough, polished);
+            const edge2 = edge*edge;
+            if (lens) {
+              alpha = visor.cover + (visor.edgeCover-visor.cover)*edge2;
+              coat = visor.coat + (visor.edgeCoat-visor.coat)*edge2;
+              for (let c = 0; c < 3; c++) mirrored[c]! *= lensTint[c]! + (lensRim[c]!-lensTint[c]!)*edge2;
+            } else {
+              const grey = 0.2126*mirrored[0]! + 0.7152*mirrored[1]! + 0.0722*mirrored[2]!;
+              for (let c = 0; c < 3; c++) mirrored[c]! += (grey-mirrored[c]!)*0.18*specularLayer;
+              coat = specularLayer*(0.16 + 0.51*edge2);
+            }
+          } else if (!armor && s.label) {
             const share = receiver(s.label, mask[0]!, mro[1]!, mro[2]!);
             if (share > 0) {
               const paint = s.label === PAINT || s.label === BURNT_SHEET ? mask[0]!*Math.max(0,Math.min(1,(0.72-mro[1]!)*3.5)) : 0;
@@ -1891,11 +1930,20 @@ export class Rasterizer {
               mirrored[c] = mirrored[c]!*(1+0.85*chrome*visibility)+(0.55*p.frame[sky+c]!+0.45*grey)*fill*hue;
             }
           }
-          const nl = (back ? -1 : 1) / Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
           const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
           opened.set([mro[0]! * open, mro[1]!, mro[2]!]);
           lit(light, albedo, opened, normal, eye, p.frame, mirrored);
           for (let c=0; c<3; c++) light[c] = light[c]!*(1-coat)+mirrored[c]!*open*coat;
+          if (specularLayer > 0) {
+            let variance = 0;
+            for (let k = 5; k < 8; k++) {
+              const dx = (r0*poly[v0+k]! + r1*poly[v1+k]! + r2*poly[v2+k]!)/(r0+r1+r2) - carried[k]!;
+              const dy = (d0*poly[v0+k]! + d1*poly[v1+k]! + d2*poly[v2+k]!)/(d0+d1+d2) - carried[k]!;
+              variance += dx*dx + dy*dy;
+            }
+            direct(light, p.frame, FRAME.sun, FRAME.sunColor, coatingF0, 1, 0.00104976 + Math.min(0.024, 0.16*variance),
+              opticalNormal, eye, Math.max(0.001, 1-edge), specularLayer);
+          }
           through(light, albedo, mro, normal, p.frame, s.sheet);
           if (s.emissive) for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * s.emissive;
           shown(rgb, light, dist, p);

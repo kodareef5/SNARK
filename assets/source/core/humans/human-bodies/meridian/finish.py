@@ -123,16 +123,30 @@ def detailed(tile, img, h, orm):
                 field = np.clip((xx-0.24)*2.7, 0.13, 0.78)
             else:
                 field = np.clip((0.48-yy)*2.8, 0.12, 0.64)
-            strength = (0.57*field)[:, :, None]
+            strength = (0.84*field)[:, :, None]
             rgb = rgb*(1-strength) + art*strength
-            height += field*(0.53*high - cut*5)
+            height += field*(0.68*high - cut*5)
             cut *= field
             enamel *= field
             response[:, :, 0] = np.clip(247 - cut*34 + high*0.3, 167, 251)
             response[:, :, 1] = np.clip(93 - 35*cut - 18*enamel - high*0.19, 40, 107)
             response[:, :, 2] = 17 + 164*cut*(1-enamel)
+            # Follow the padded UV border around the existing cut of each plate. A
+            # bright metal fillet sits against a dark gasket, leaving its center pearl.
+            rim = np.minimum(np.minimum(xx, 1-xx), np.minimum(yy, 1-yy)) - 0.035
+            fillet = np.clip((0.012 - np.abs(rim - 0.022))*165, 0, 1)
+            gasket = np.clip((0.008 - np.abs(rim - 0.040))*160, 0, 1)
+            rgb *= 0.93 - 0.25*gasket[:, :, None]
+            rgb = rgb*(1-fillet[:, :, None]) + np.array([209, 220, 228])*fillet[:, :, None]
+            response[:, :, 1] = response[:, :, 1]*(1-fillet) + 36*fillet
+            response[:, :, 2] = response[:, :, 2]*(1-fillet) + 247*fillet
+            height += 13*fillet - 9*gasket
     dy, dx = np.gradient(height / 255)
     nn = np.stack([-dx*2.9, dy*2.9, np.ones_like(dx)], 2)
+    if tile == 4:
+        # The compound optical surface bows gently across both axes.
+        nn[:, :, 0] += 0.10*(2*xx-1)
+        nn[:, :, 1] += 0.32*(1-2*yy)
     nn /= np.sqrt((nn*nn).sum(axis=2, keepdims=True))
     return tuple(Image.fromarray(np.uint8(np.clip(a,0,255))) for a in (rgb,(nn*0.5+0.5)*255,response))
 

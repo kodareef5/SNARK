@@ -10,7 +10,8 @@
 export { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { MATERIAL_INDICATOR, MATERIAL_NIGHT, type PackMaterial } from "../../../shared/pack/pack.ts";
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
-import { LENS } from "../../../content/street-finishes.ts";
+import { POLISHED_SKY } from "./suit-finish.ts";
+import { ENAMEL_ARMOR, LENS } from "../../../content/street-finishes.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
@@ -199,7 +200,7 @@ export function skyLight(out: Out, frame: Numbers, n: Numbers): void {
  * Adds one light's share: the frame block's direction at `way` and colour at `colour`, `shade` of it reaching the
  * surface. Lambert and a GGX highlight as wide as the roughness squared, shadowed by Smith's term and edged by Schlick's.
  */
-function direct(out: Out, frame: Numbers, way: number, colour: number, albedo: Numbers, metal: number, a2: number, n: Numbers, v: Numbers, nv: number, shade = 1): void {
+export function direct(out: Out, frame: Numbers, way: number, colour: number, albedo: Numbers, metal: number, a2: number, n: Numbers, v: Numbers, nv: number, shade = 1): void {
   const lx = frame[way]!, ly = frame[way + 1]!, lz = frame[way + 2]!;
   const nl = Math.max(n[0]! * lx + n[1]! * ly + n[2]! * lz, 0);
   // What the shader works out and adds as nothing.
@@ -654,7 +655,7 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${WHEEL_FINISH_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${WHEEL_FINISH_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -696,13 +697,42 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
       n = normalize(n + chrome*crown);
     }
   }
-  vec3 ray = reflect(-v,n), mirror = skyFrom(ray);
-  if (int(uStreetMaterial) == ${LENS}) {
-    float edge = pow(1.0-clamp(dot(n,v),0.0,1.0),4.0);
-    cover = mix(${f(visor.cover)},${f(visor.edgeCover)},edge);
-    coat = mix(${f(visor.coat)},${f(visor.edgeCoat)},edge);
-    mirror = streetMirror(mirror,ray,vRel,mro.g,1.0);
-  } else if (uStreetMaterial > 0.5) {
+  bool lens = int(uStreetMaterial) == ${LENS};
+  bool armor = int(uStreetMaterial) == ${ENAMEL_ARMOR};
+  float polished = lens ? 1.0 : armor ? polishMask(mro.g) : 0.0;
+  float specularLayer = 0.0;
+  float coatA2 = 0.00104976; // 0.18 perceptual roughness, to the fourth power for GGX.
+  if (armor || lens) {
+    vec3 dx = dFdx(vNormal), dy = dFdy(vNormal);
+    coatA2 += min(0.024,0.16*(dot(dx,dx)+dot(dy,dy)));
+  }
+  vec3 coatNormal = n;
+  if (polished > 0.0) {
+    float metal = smoothstep(0.45,0.86,mro.b);
+    specularLayer = polished*(1.0-metal);
+    // The clear outer varnish bridges fine engravings in the substrate.
+    vec3 shell = normalize(gl_FrontFacing ? vNormal : -vNormal);
+    coatNormal = normalize(mix(n,shell,lens ? 0.0 : 0.72*specularLayer));
+    if (armor) {
+      albedo = mix(albedo*(1.0-0.12*specularLayer),mix(albedo,vec3(0.85,0.89,0.94),0.77),polished*metal);
+      mro.g = mix(mro.g,glossRoughness(max(0.095,mro.g*0.58),1.0),polished*metal);
+    }
+  }
+  vec3 ray = reflect(-v,coatNormal), mirror = skyFrom(ray);
+  float edge = 1.0-clamp(dot(coatNormal,v),0.0,1.0);
+  if (polished > 0.0) {
+    float coatRough = glossRoughness(lens ? 0.12 : mix(mro.g,0.20,specularLayer),1.0);
+    mirror = streetMirror(polishedSky(mirror,ray,coatRough),ray,vRel,coatRough,polished);
+    if (lens) {
+      cover = mix(${f(visor.cover)},${f(visor.edgeCover)},edge*edge);
+      coat = mix(${f(visor.coat)},${f(visor.edgeCoat)},edge*edge);
+      // A blue optical coating transmits the dark liner through the middle and silvers at its edge.
+      mirror *= mix(vec3(0.21,0.70,1.30),vec3(0.85,0.94,1.08),edge*edge);
+    } else {
+      mirror = mix(mirror,vec3(dot(mirror,vec3(0.2126,0.7152,0.0722))),0.18*specularLayer);
+      coat = specularLayer*(0.16+0.51*edge*edge);
+    }
+  } else if (!armor && uStreetMaterial > 0.5) {
     float paint = ${dyed ? "(uStreetMaterial < 1.5 || burntSheet) ? mask.r * clamp((0.72-mro.g)*3.5,0.0,1.0) : 0.0" : "0.0"};
     float receives = max(paint,max(clamp(mro.b*1.5,0.0,1.0)*clamp((0.85-mro.g)*3.0,0.0,1.0),clamp((0.34-mro.g)*5.0,0.0,1.0)));
     if (receives > 0.0) {
@@ -726,7 +756,11 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     mirror += chrome*fill*(0.12+1.15*exp2(-9.0*abs(ray.y-0.12)))*(0.40+2.20*visibility);
   }
   vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);
-  o = vec4(shown(mix(radiance,mirror*open,coat) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
+  radiance = mix(radiance,mirror*open,coat);
+  if (specularLayer > 0.0) {
+    radiance += specularLayer*shade*direct(fSun.xyz,fSunColor.rgb,vec3(0.065),1.0,coatA2,coatNormal,v,max(0.001,1.0-edge));
+  }
+  o = vec4(shown(radiance + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
 }`;
 }
 

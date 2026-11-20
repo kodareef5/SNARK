@@ -254,13 +254,16 @@ export class Surface {
         next = rings[k]!,
         start = this.b.length,
         first = this.ix.length;
+      // A ring's sloping face has a radial normal component. A flat annulus keeps its axial normal.
+      const slope = (next[1] - prev[1]) / Math.max(0.00001, prev[0] - next[0]);
       for (const [radius, z] of [prev, next])
         for (let j = 0; j <= seg; j++) {
           const a = (j * Math.PI * 2) / seg,
             c = Math.cos(a),
             s = Math.sin(a),
             p = center.map((val, i) => val + radius * (u[i]! * c + v[i]! * s) + z * n[i]!) as V;
-          this.vertex(p, n, 0.5 + (0.48 * c * radius) / rings[0]![0], 0.5 - (0.48 * s * radius) / rings[0]![0], next[2], bone);
+          const normal = unit(n.map((val, i) => val + slope * (u[i]! * c + v[i]! * s)) as V);
+          this.vertex(p, normal, 0.5 + (0.48 * c * radius) / rings[0]![0], 0.5 - (0.48 * s * radius) / rings[0]![0], next[2], bone);
         }
       for (let j = 0; j < seg; j++) {
         const a = start + j,

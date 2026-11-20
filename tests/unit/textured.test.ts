@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { StreetDraws } from "../../client/core/render/street-draws.ts";
-import { LENS } from "../../content/street-finishes.ts";
+import { ENAMEL_ARMOR, LENS } from "../../content/street-finishes.ts";
 import { AMBIENT } from "../../client/core/render/shading.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { SKY_GLSL } from "../../client/core/render/sky.ts";
@@ -454,6 +454,28 @@ test("self-dimming indicators hold their blue emission through the evening expos
     expect(materialEmission(lamp, 1, exposure)*exposure).toBeCloseTo(2.94, 5);
     expect(materialEmission({ ...lamp, flags: 0 }, 1, exposure)).toBe(1.05);
   }
+});
+
+test("Meridian reflects a bright horizon in the lacquer and preserves the rough padding on the same atlas", () => {
+  const id = "core:human-bodies/meridian";
+  const pack = packOf(squareMesh(id, 1, ["base", "mro"]));
+  const stage = facing(pack, 1, 1.2), finishes = new StreetDraws(pack.header, pack.header.rigs);
+  const draw = (rough: number, finish: boolean) => {
+    stage.sun = [0, 1, 0];
+    stage.begin();
+    stage.textures(id + "/", { base: plain(96, 96, 96, 255), mro: plain(255, rough, 0, 255) });
+    stage.add(id, 0, { x: 0, y: 0, z: 0 });
+    finishes.write(stage.packet);
+    expect(stage.packet.drawStreetMaterial[0]).toBe(ENAMEL_ARMOR);
+    if (!finish) stage.packet.drawStreetMaterial[0] = 0;
+    return stage.render().slice();
+  };
+  expect(apart(draw(215, true), draw(215, false))).toBe(0);
+  const coat = draw(90, true), base = draw(90, false);
+  const reflectedHorizon = ((H / 2 - 6)*W + W / 2)*4;
+  const ground = ((H / 2 + 8)*W + W / 2)*4;
+  expect(coat[reflectedHorizon]! - base[reflectedHorizon]!).toBeGreaterThan(12);
+  expect(coat[reflectedHorizon]! - coat[ground]!).toBeGreaterThan(12);
 });
 
 test("a textured visor transmits its backing and leaves its depth and picking intact", () => {
