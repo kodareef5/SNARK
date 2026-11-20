@@ -10,7 +10,6 @@ import { FRAME, type FramePacket } from "./render/packet.ts";
 import type { Camera } from "./render/camera.ts";
 import type { RemoteSample } from "./session.ts";
 import { GEAR_COUNT, GEAR_WORN } from "../../shared/sim/entities.ts";
-import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { defaultLook, LOOK_BYTES } from "../../shared/anim/look.ts";
 import type { Scene } from "./render/scene.ts";
@@ -98,21 +97,18 @@ export function shorePalms(set: ShoreSet, reg: Registry) {
   return nodes;
 }
 export const heroMeshes = [
-  "core:pteranodon",
-  "core:saddle_pteranodon/worn",
+  "core:rex",
+  "core:saddle_rex/worn",
   ...["head", "torso", "hands", "legs", "feet"].map((s) => "core:human_m/armor/meridian/" + s),
 ];
 const DEG = Math.PI / 180;
 const TURN = 2 * Math.PI;
-const MOUNT_HEADING = 0.58;
-/** Positions are absolute so pausing, taking a plate or revisiting a time yields the same pose. */
-export interface ShoreCast {
-  hoverY: number;
+interface ShoreCast {
   seatHeight: number;
   bearing: number;
   eye: ShoreSet["eye"];
 }
-export function mountPteranodon(actors: RemoteSample, set: ShoreSet, reg: Registry): ShoreCast {
+export function mountRex(actors: RemoteSample, set: ShoreSet, reg: Registry): ShoreCast {
   const requireKind = (name: string) => {
     const id = reg.index.get("core:" + name);
     if (!id) throw Error("Missing title actor " + name);
@@ -120,25 +116,22 @@ export function mountPteranodon(actors: RemoteSample, set: ShoreSet, reg: Regist
   };
   const [x, z] = set.actor,
     bearing = Math.atan2(set.eye.x - x, set.eye.z - z),
-    hoverY = set.hf.heightAt(x, z) + 7;
+    groundY = set.hf.heightAt(x, z);
   actors.count = 2;
-  const hover = new AnimState();
-  hover.mode = MODE_FLYER;
-  hover.grounded = false;
+  const idle = new AnimState().pack();
   for (let i = 0; i < 2; i++) {
     actors.id[i] = i + 1;
     actors.gen[i] = 1;
-    actors.flags[i] = 0;
+    actors.flags[i] = 1;
     actors.x[i] = x;
-    actors.y[i] = hoverY;
+    actors.y[i] = groundY;
     actors.z[i] = z;
-    actors.yaw[i] = bearing + MOUNT_HEADING;
+    actors.yaw[i] = bearing + 0.25;
+    actors.anim[i] = idle;
   }
-  actors.anim[0] = hover.pack();
-  actors.kind[0] = requireKind("pteranodon");
-  actors.gear[GEAR_WORN] = requireKind("saddle_pteranodon");
-  // Pattern, wing root, beak and crest, crest band, membrane, breast.
-  actors.colors.set([14, 10, 3, 10, 14, 10]);
+  actors.kind[0] = requireKind("rex");
+  actors.gear[GEAR_WORN] = requireKind("saddle_rex");
+  actors.colors.set([8, 7, 14, 6, 9, 3]);
   actors.kind[1] = requireKind("survivor");
   actors.seat[1] = 2;
   actors.seatGen[1] = 1;
@@ -149,8 +142,8 @@ export function mountPteranodon(actors: RemoteSample, set: ShoreSet, reg: Regist
     actors.gear[GEAR_COUNT + GEAR_WORN + i] = requireKind("meridian_" + piece);
   });
   const seat = reg.saddleSeats[actors.gear[GEAR_WORN]!]?.find((s) => s.driver);
-  if (!seat) throw Error("The title Pteranodon needs a driver seat");
-  return { seatHeight: seat.anchor[1], hoverY, bearing, eye: set.eye };
+  if (!seat) throw Error("The title Rex needs a driver seat");
+  return { seatHeight: seat.anchor[1], bearing, eye: set.eye };
 }
 export function shoreView(
   scene: Scene,
@@ -168,24 +161,23 @@ export function shoreView(
     cs = Math.cos(a);
   // Bring the shoulder inside a portrait frame without cutting the instrument out above it.
   const portrait = Math.max(0, Math.min(1, (1.15 - cam.aspect) / 0.64));
-  const side = c.side + 0.25 * portrait + mouseX * 0.23,
+  const side = c.side - 0.1 * portrait + mouseX * 0.23,
     back = c.back + 2.4 * portrait;
   cam.x = actors.x[0]! - cs * side - sn * back;
   cam.z = actors.z[0]! + sn * side - cs * back;
-  const bob = 0.15 * Math.sin(seconds * TURN / 4.8) + 0.04 * Math.sin(seconds * TURN / 8);
-  actors.y[0] = actors.y[1] = cast.hoverY + bob;
-  cam.y = cast.hoverY + cast.seatHeight + c.height - 0.85 * portrait + 0.22 * bob + mouseY * 0.12;
+  cam.y = actors.y[0]! + cast.seatHeight + c.height + mouseY * 0.12;
   cam.yaw = a + (c.pan - portrait * 12 + mouseX * 1.3) * DEG;
   cam.pitch = (c.tilt + mouseY * 0.75) * DEG;
   cam.fovY = c.lens * DEG;
   actors.tick = seconds * 30;
-  scene.hour = (24 + c.hour + 0.42 * Math.sin(seconds * TURN / 160)) % 24;
+  scene.hour = c.hour;
   // Face the shore at the opening. Linger broadside and pass the narrow edge faster, with continuous angular velocity.
   const turn = seconds * TURN / 180;
   const heading = a + Math.PI + turn - 0.32 * Math.sin(2 * turn);
   cast.eye.yaw = Math.round(heading * 65536 / TURN) & 65535;
   scene.eyeSeconds = -40 + 15.5 + 2.2 * Math.sin(seconds * TURN / 92);
-  scene.sextantScale = 2.75;
+  // Keep the clock face at its directed screen size through the Rex shot’s wider 68-degree lens.
+  scene.sextantScale = 3.35;
   scene.eyeIndexOffset = 0.72 * Math.sin(seconds * TURN / 64);
   scene.characters.seatedHeadTurn = 0.42 * Math.sin(seconds * 0.29) + 0.13 * Math.sin(seconds * 0.71);
 }
@@ -193,20 +185,14 @@ export function shoreView(
 /** Red spill from the instrument on the low clouds, with a dusk grade shared by the bay and the actors. */
 export function shoreLight(packet: FramePacket) {
   const f = packet.frame;
-  // The sky's autoexposure spans orders of magnitude through twilight. Bound the added light after exposure.
+  // Keep the opening's red spill and cap it at higher exposures for shots authored after dusk.
   const exposure = f[FRAME.exposure]!;
   const inverseExposure = exposure > 0 ? 1 / exposure : 0;
-  f[FRAME.cloudSun]! += Math.min(0.012, 1.6 * inverseExposure);
+  f[FRAME.cloudSun]! += Math.min(0.012, 1.8 * inverseExposure);
   f[FRAME.cloudSun + 1]! *= 0.52;
   f[FRAME.cloudSun + 2]! *= 0.57;
-  // Soft bounce off the bay lifts the shaded mount under its wings without lifting the red sky itself.
-  const fill = 0.32 * inverseExposure;
-  for (let k = 0; k < 3; k++) {
-    f[FRAME.skyAbove + k]! += fill;
-    f[FRAME.skyBelow + k]! += fill * 0.65;
-  }
   f[FRAME.grade]! *= 1.06;
-  f[FRAME.grade + 1]! *= 0.66;
-  f[FRAME.grade + 2]! *= 0.74;
+  f[FRAME.grade + 1]! *= 0.51;
+  f[FRAME.grade + 2]! *= 0.58;
   f[FRAME.gamma]! *= 1.1;
 }

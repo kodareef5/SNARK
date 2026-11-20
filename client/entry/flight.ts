@@ -20,7 +20,7 @@ import { forTouch, startingTier, tierOf } from "../core/assets/tiers.ts";
 import { flightPosition, MIAMI_FLIGHT as route, studioGround } from "../core/title-route.ts";
 
 import "../core/render/city-late.ts";
-import { heroMeshes, shorePalms, shoreLight, prepareShore, type Shore, mountPteranodon, shoreView } from "../core/title-shore.ts";
+import { heroMeshes, shorePalms, shoreLight, prepareShore, type Shore, mountRex, shoreView } from "../core/title-shore.ts";
 import { OPENING_SHOT, validShot } from "../../shared/title-scene.ts";
 
 const params = new URLSearchParams(location.search);
@@ -149,7 +149,7 @@ async function start() {
   const actors = new RemoteSample(),
     cam = new Camera(),
     flight = new AnimState();
-  const cast = shore ? mountPteranodon(actors, shore, reg) : null;
+  const cast = shore ? mountRex(actors, shore, reg) : null;
   const focus = shore ? heroMeshes.map((id) => scene.assets.table.find(id)).filter((m) => m >= 0) : undefined;
   const readyToReveal = () => {
     if (!focus?.length) return false;
