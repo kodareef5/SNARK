@@ -1,10 +1,10 @@
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
-import { PAINT, coatWear, finishSeed, fixtureFace, fixtureKind, receiver, streetMaterial, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
+import { PAINT, coatWear, glossRoughness, finishSeed, fixtureFace, fixtureKind, receiver, streetMaterial, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -256,14 +256,19 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
     for (let c = 0; c < 3; c++) reflected[c] = twice * normal[c]! - eye[c]!;
     if (worldOrm[1]! < 1 && look) skyFrom(mirrored, p.frame, reflected, look);
-    if (finish.pixels[own + 3] === 255) streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,Math.max(0,Math.min(1,(0.85-worldOrm[1]!)*3))*worldOrm[2]!);
+    if (finish.pixels[own + 3] === 255) {
+      const share = Math.max(0, Math.min(1, (0.85 - worldOrm[1]!) * 3)) * worldOrm[2]!;
+      if (share) worldOrm[1] = glossRoughness(worldOrm[1]!, share, p.frame[FRAME.streetLook]!);
+      streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,share);
+    }
     opened.set([worldOrm[0]! * open, worldOrm[1]!, worldOrm[2]!]);
     lit(light, albedo, opened, normal, eye, p.frame, worldOrm[1]! < 1 && look ? mirrored : NOTHING);
     through(light, albedo, worldOrm, normal, p.frame, finish.pixels[own + 1027]! / 255);
   } else if (fixture) {
     const twice = 2*(nx*eye[0]!+ny*eye[1]!+nz*eye[2]!);
     for (let c=0; c<3; c++) reflected[c] = twice*normal[c]!-eye[c]!;
-    const rough = (fixture === 1 ? 0.37 : fixture === 2 ? 0.58 : 0.26) + 0.055*Math.sin((rx+p.camX)*3+(rz+p.camZ)*2+(ry+p.camY)*9);
+    const originalRough = (fixture === 1 ? 0.37 : fixture === 2 ? 0.58 : 0.26) + 0.055*Math.sin((rx+p.camX)*3+(rz+p.camZ)*2+(ry+p.camY)*9);
+    const rough = glossRoughness(originalRough, 0.8, p.frame[FRAME.streetLook]!);
     if (fixture === 3 && look) skyFrom(mirrored,p.frame,reflected,look);
     else skyLight(mirrored,p.frame,reflected);
     streetMirror(mirrored,p,reflected,rx,ry,rz,rough,0.8);
@@ -271,6 +276,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     lit(light,albedo,opened,normal,eye,p.frame,mirrored);
   } else if (sample) {
     const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light", index = surfaceIndex(colorIndex, ground, city);
+    let asphalt = ground && index === DRY_ASPHALT.surface ? 1 : 0;
     const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
     // Asphalt's and sand's wear, as LIT_TERRAIN_FRAGMENT has it where the tier reads the finishes in full: it reads the
     // packed array's masks, so it comes up with them as the weathering does.
@@ -285,6 +291,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       for (let c = 0; c < 3; c++) albedo2[c] = srgbToLinear(pal[other * 4 + c]! / 255);
       const h2 = worldSurface(albedo2, orm2, normal2, albedo2, second, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
       const b = straight ? share : higher(h, h2, share, GROUND_SCALE, GROUND_BAND);
+      if (ground) asphalt += ((second === DRY_ASPHALT.surface ? 1 : 0) - asphalt) * b;
       if (worn) wornGround(albedo2, orm2, normal2, second, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks);
       for (let c = 0; c < 3; c++) {
         albedo[c] = albedo[c]! * (1 - b) + albedo2[c]! * b;
@@ -293,6 +300,11 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       }
       const l = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
       for (let c = 0; c < 3; c++) normal[c]! /= l;
+    }
+    const dry = asphalt * p.frame[FRAME.streetLook + 2]!;
+    if (dry) {
+      for (let c = 0; c < 3; c++) albedo[c]! *= 1 - dry * (1 - DRY_ASPHALT.albedo);
+      worldOrm[1]! += dry * DRY_ASPHALT.roughnessShare * Math.max(0, DRY_ASPHALT.roughnessFloor - worldOrm[1]!);
     }
     // The weathering and the edges read the packed maps, so they come up with them, as LIT has it.
     const risen = 1 - finishesEarly;
@@ -327,7 +339,9 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const plainFace = !facade || facade[0]! <= 0 || !facadeSample || !tier || p.frame[FRAME.facade+1]! <= 0.5;
     const surfaceShare = !ground && plainFace ? worldReceiver(index,worldOrm[1]!,worldOrm[2]!) : 0;
     const coated = facadeIO.coated;
-    streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,glass ? 1 : coated ? Math.max(0,Math.min(1,(0.85-worldOrm[1]!)*3)) : surfaceShare);
+    const finishShare = glass ? 1 : coated ? Math.max(0,Math.min(1,(0.85-worldOrm[1]!)*3)) : surfaceShare;
+    if (finishShare) worldOrm[1] = glossRoughness(worldOrm[1]!,finishShare,p.frame[FRAME.streetLook]!);
+    streetMirror(mirrored,p,reflected,rx,ry,rz,worldOrm[1]!,finishShare);
     worldOrm[0]! *= open;
     lit(light, albedo, worldOrm, normal, eye, p.frame, (sharp && !look) || worldOrm[1]! >= 1 ? NOTHING : mirrored);
     if (facadeIO.room[0]! + facadeIO.room[1]! + facadeIO.room[2]! > 0) {
@@ -338,6 +352,9 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
       for (let c = 0; c < 3; c++) light[c]! += facadeIO.room[c]! * facadeLight[c]! * lights;
     }
   } else {
+    if (ground && p.frame[FRAME.streetLook + 2] && surfaceIndex(colorIndex, true) === DRY_ASPHALT.surface) {
+      for (let c = 0; c < 3; c++) albedo[c]! *= DRY_ASPHALT.albedo;
+    }
     opened.set([open, 1, 0]);
     lit(light, albedo, opened, normal, eye, p.frame, NOTHING);
   }
@@ -1761,9 +1778,10 @@ export class Rasterizer {
             if (share > 0) {
               const paint = s.label === PAINT ? mask[0]!*Math.max(0,Math.min(1,(0.72-mro[1]!)*3.5)) : 0;
               mro[1] = Math.max(0.07,Math.min(1,mro[1]!+coatWear(u,v,s.seed,2**spread)*share-0.19*paint));
+              mro[1] = glossRoughness(mro[1]!,share,p.frame[FRAME.streetLook]!);
               streetMirror(mirrored,p,reflected,carried[0]!,carried[1]!,carried[2]!,mro[1]!,share);
               const nv = Math.max(0,Math.min(1,normal[0]!*eye[0]!+normal[1]!*eye[1]!+normal[2]!*eye[2]!));
-              coat = paint*(0.045+0.22*(1-nv)**5)*(1-mro[1]!);
+              coat = (1+0.5*p.frame[FRAME.streetLook]!)*paint*(0.045+0.22*(1-nv)**5)*(1-mro[1]!);
             }
           }
           const nl = (back ? -1 : 1) / Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);

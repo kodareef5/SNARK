@@ -42,7 +42,7 @@ export interface ProgramText {
 export const withDefines = (source: string, defines: string): string => source.replace("\n", "\n" + defines);
 
 // Remove the unused sampler declaration as well as its lookup on programs with no local environment.
-const streetText = (fragment: string, on: boolean): string => on ? fragment : fragment.replace("uniform highp sampler2D uStreetEnv;", "");
+const streetText = (fragment: string, on: boolean): string => on ? fragment : fragment.replace("uniform highp sampler2DArray uStreetEnv;", "");
 const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
 const GROUND = { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint };
 const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };

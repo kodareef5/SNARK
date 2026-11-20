@@ -62,6 +62,11 @@ export function receiver(label: number, paintMask: number, rough: number, metal:
   return Math.max(paint, clamp(metal * 1.5) * clamp((0.85 - rough) * 3), clamp((0.34 - rough) * 5));
 }
 
+/** The slider changes only the fraction of a texel carrying a reflective finish. */
+export function glossRoughness(rough: number, mask: number, offset: number): number {
+  return Math.max(0.07, Math.min(1, rough * (1 - 0.38 * mask * offset)));
+}
+
 export const SEED_GLSL = `
 float finishSeed(uint id, vec3 place) {
   uvec3 p = uvec3(ivec3(floor(place*4.0+0.5)));
@@ -71,25 +76,39 @@ float finishSeed(uint id, vec3 place) {
 }`;
 export const STREET_GLSL = `
 #ifdef STREET
-uniform highp sampler2D uStreetEnv;
+uniform highp sampler2DArray uStreetEnv;
 #endif
+float glossRoughness(float rough, float mask) {
+  return clamp(rough*(1.0-0.38*mask*fStreetLook.x),0.07,1.0);
+}
 float coatWear(vec2 uv, float seed, float footprint) {
   float wipe = sin(18.0*uv.x+5.0*uv.y+6.0*seed+2.0*sin(7.0*uv.y+4.0*seed));
   float grit = sin(310.0*uv.x+23.0*uv.y+19.0*seed)*sin(191.0*uv.y+13.0*seed);
   return 0.035+0.075*seed+0.06*wipe*wipe+0.025*grit*clamp(1.0-footprint*320.0,0.0,1.0);
 }
-vec3 streetMirror(vec3 original, vec3 ray, vec3 rel, float rough, float mask) {
 #ifdef STREET
-  vec3 offset = rel-fReflection.xyz;
-  float strength = mask*fReflection.w*clamp((19.0-length(offset))/9.0,0.0,1.0);
-  if (strength <= 0.001) return original;
+vec4 streetSample(vec3 ray, vec3 offset, float rough, float layer) {
+  float near = clamp((19.0-length(offset))/9.0,0.0,1.0);
+  if (near <= 0.0) return vec4(0.0);
   vec3 localRay = ray*16.0+offset;
   vec3 dir = dot(localRay,localRay) > 1e-8 ? normalize(localRay) : ray;
   vec2 uv = vec2(atan(dir.x,dir.z)/6.283185307+0.5,asin(clamp(dir.y,-1.0,1.0))/3.141592654+0.5);
-  vec4 local = textureLod(uStreetEnv,uv,clamp(rough*5.0-0.4,0.0,5.0));
-  return original*(1.0-strength*local.a)+local.rgb*fSkyAbove.rgb*strength;
+  return near*textureLod(uStreetEnv,vec3(uv,layer),clamp(rough*5.0-0.4,0.0,5.0));
+}
+#endif
+vec3 streetMirror(vec3 original, vec3 ray, vec3 rel, float rough, float mask) {
+#ifdef STREET
+  float strength = mask*fReflection.w;
+  float gain = 1.0+mask*fStreetLook.x;
+  if (strength <= 0.001) return original*gain;
+  vec4 local = streetSample(ray,rel-fReflection.xyz,rough,fStreetLook.y);
+  if (fPreviousReflection.w > 0.0) {
+    vec4 previous = streetSample(ray,rel-fPreviousReflection.xyz,rough,1.0-fStreetLook.y);
+    local = mix(local,previous,fPreviousReflection.w);
+  }
+  return (original*(1.0-strength*local.a)+local.rgb*fSkyAbove.rgb*strength)*gain;
 #else
-  return original;
+  return original*(1.0+mask*fStreetLook.x);
 #endif
 }
 `;
@@ -103,6 +122,7 @@ function filtered(image: StreetImage): Uint8Array[] {
     for (let k = 1; k <= 5; k++) levels.push(new Uint8Array((STREET_WIDTH >> k) * (STREET_HEIGHT >> k) * 4));
     mipCache.set(image, cache = { revision: 0, levels });
   }
+  cache.levels[0] = image.pixels;
   for (let k = 1; k <= 5; k++) {
     const w = STREET_WIDTH >> k, h = STREET_HEIGHT >> k, src = cache.levels[k - 1]!, dst = cache.levels[k]!;
     for (let y = 0; y < h; y++) {
@@ -130,12 +150,22 @@ export function streetMirror(
   mask: number,
 ): void {
   const f = FRAME.reflection;
-  if (!p.street || !mask || !p.frame[f + 3]) return;
-  x -= p.frame[f]!;
-  y -= p.frame[f + 1]!;
-  z -= p.frame[f + 2]!;
-  const strength = mask * p.frame[f + 3]! * clamp((19 - Math.hypot(x, y, z)) / 9);
-  if (strength <= 0.001) return;
+  if (!mask) return;
+  const gain = 1 + mask * p.frame[FRAME.streetLook]!;
+  if (!p.street || !p.frame[f + 3]) {
+    for (let c = 0; c < 3; c++) out[c]! *= gain;
+    return;
+  }
+  const history = FRAME.previousReflection, old = p.previousStreet ? p.frame[history + 3]! : 0;
+  sample.fill(0);
+  if (old < 1) sampleStreet(p.street, ray, x - p.frame[f]!, y - p.frame[f+1]!, z - p.frame[f+2]!, rough, 1 - old);
+  if (old > 0 && p.previousStreet) sampleStreet(p.previousStreet, ray, x - p.frame[history]!, y - p.frame[history+1]!, z - p.frame[history+2]!, rough, old);
+  const strength = mask * p.frame[f + 3]!;
+  for (let c = 0; c < 3; c++) out[c] = (out[c]! * (1 - strength * sample[3]!) + sample[c]! * p.frame[FRAME.skyAbove + c]! * strength) * gain;
+}
+function sampleStreet(image: StreetImage, ray: ArrayLike<number>, x: number, y: number, z: number, rough: number, weight: number): void {
+  const near = clamp((19 - Math.hypot(x, y, z)) / 9);
+  if (!near) return;
   x += 16 * ray[0]!;
   y += 16 * ray[1]!;
   z += 16 * ray[2]!;
@@ -146,12 +176,11 @@ export function streetMirror(
   }
   const u = Math.atan2(x, z) / (2 * Math.PI) + 0.5, v = Math.asin(y / Math.hypot(x, y, z)) / Math.PI + 0.5;
   const lod = Math.max(0, Math.min(5, rough * 5 - 0.4)), low = Math.floor(lod);
-  const levels = filtered(p.street);
-  sample.fill(0);
+  const levels = filtered(image);
   for (let k = low; k <= Math.ceil(lod); k++) {
     const w = STREET_WIDTH >> k, h = STREET_HEIGHT >> k, src = levels[k]!;
     const a = u * w - 0.5, b = Math.max(0, Math.min(h - 1, v * h - 0.5)), i = Math.floor(a), j = Math.floor(b);
-    const mip = (1 - Math.abs(lod - k)) / 255;
+    const mip = near * weight * (1 - Math.abs(lod - k)) / 255;
     for (let dy = 0; dy <= 1; dy++) {
       for (let dx = 0; dx <= 1; dx++) {
         const at = (Math.min(h - 1, j + dy) * w + ((i + dx) & (w - 1))) * 4;
@@ -160,5 +189,4 @@ export function streetMirror(
       }
     }
   }
-  for (let c = 0; c < 3; c++) out[c] = out[c]! * (1 - strength * sample[3]!) + sample[c]! * p.frame[FRAME.skyAbove + c]! * strength;
 }

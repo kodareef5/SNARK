@@ -28,6 +28,7 @@ import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortF64, sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
+import { DEFAULT_FINISH_GLOSS } from "../settings.ts";
 import { fixtureKind } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
@@ -498,6 +499,8 @@ export class Scene {
   private readonly trunkTris: number[][];
   private readonly leafTris: number[][];
   readonly street: StreetReflections;
+  finishGloss = DEFAULT_FINISH_GLOSS;
+  roadFinish = 0;
   private readonly world: RenderWorld;
   private readonly batches = new Map<number, ChunkBatch>();
   /** Rigid species keep palette lighting; the static fallback finish belongs to world geometry. */
@@ -1019,8 +1022,11 @@ export class Scene {
     this.quadsOnCard();
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
+    p.frame[FRAME.streetLook] = this.finishGloss - 1;
+    p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
+    p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;
     this.street.frame(p, cam, this.world, remote, this.hiddenNodes, this.now);
-    this.assets.residency.reserve("street environment", p.street ? 10924 : p.tier.reflectionHz ? 4 : 0);
+    this.assets.residency.reserve("street environment", p.street ? 21848 : p.tier.reflectionHz ? 8 : 0);
     this.order();
     markJoins(p);
     // The frame's count, from which the next frame's crowns near take their squeeze.

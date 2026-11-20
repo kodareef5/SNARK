@@ -644,8 +644,9 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     if (receives > 0.0) {
       float wear = coatWear(vUv,vFinishSeed,footprint);
       mro.g = clamp(mro.g+wear*receives-0.19*paint,0.07,1.0);
+      mro.g = glossRoughness(mro.g,receives);
       mirror = streetMirror(mirror,ray,vRel,mro.g,receives);
-      coat = paint*(0.045+0.22*pow(1.0-clamp(dot(n,v),0.0,1.0),5.0))*(1.0-mro.g);
+      coat = (1.0+0.5*fStreetLook.x)*paint*(0.045+0.22*pow(1.0-clamp(dot(n,v),0.0,1.0),5.0))*(1.0-mro.g);
     }
   }
   vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);

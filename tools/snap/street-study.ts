@@ -32,7 +32,9 @@ const v = provingView(width, height, {}, { manifest, files }, { ...map, statics:
 const { cam, scene, remote, hf, raster } = v;
 scene.assets.tier = tierOf("high");
 scene.viewHeight = height;
-scene.hour = 12.5;
+const hour = Number(process.argv.find(arg => arg.startsWith("--hour="))?.slice(7) ?? 12.5);
+if (!Number.isFinite(hour) || hour < 0 || hour >= 24) throw new Error("--hour must be in [0,24)");
+scene.hour = hour;
 cam.fovY = 57 * Math.PI / 180;
 const carX = 8649, carZ = 7898;
 function look(x: number, z: number, tx: number, tz: number, ty: number, eye = 1.6): void {
@@ -118,6 +120,13 @@ if (gpu) {
   shot.shadows = true;
   shot.repeats = 16;
   const load = scene.assets.residency;
+  const finishes = process.argv.includes("--finishes");
+  const studies: string[] = [];
+  let sunUp = true;
+  const readStudy = (name: string) => {
+    studies.push(name);
+    shot.add(scene.packet, true);
+  };
   const passed = await litProbe(chrome, [{
     name: "Miami street reflections",
     shots() {
@@ -133,6 +142,30 @@ if (gpu) {
             shot.add(p, true);
             p.frame[FRAME.reflection + 3] = 0;
             shot.add(p, true);
+            if (finishes) {
+              sunUp = -p.frame[FRAME.moon + 1]! > 0;
+              p.frame[FRAME.reflection + 3] = 1;
+              for (const [name, gloss, road] of [
+                ["gloss-100", 1, 0], ["gloss-135", 1.35, 0], ["gloss-200", 2, 0],
+                ["dry-asphalt", 1.35, 1], ["dry-asphalt-deeper-shade", 1.35, 2],
+              ] as const) {
+                p.frame[FRAME.streetLook] = gloss - 1;
+                p.frame[FRAME.streetLook + 2] = road ? 1 : 0;
+                p.frame[FRAME.streetLook + 3] = road === 2 ? 1 : 0;
+                readStudy(name);
+              }
+              p.frame[FRAME.streetLook + 2] = p.frame[FRAME.streetLook + 3] = 0;
+              // Move a traffic proxy beside the painted door. Keep camera, draw lists and lighting
+              // fixed, so every changed screen pixel comes from the changing reflection.
+              remote.x[1] = carX - 2.5;
+              remote.z[1] = carZ;
+              const world = { dims: map.dims, hf, structs: v.structs, nodes: v.nodes.store };
+              const hidden = new Set<number>();
+              for (const ms of [0, 45, 90, 135, 180]) {
+                scene.street.frame(p, cam, world, remote, hidden, scene.now + 270 + ms);
+                readStudy("traffic-" + ms + "ms");
+              }
+            }
             return [shot];
           }
           // Alternate the order to reduce warm-up and GPU clock bias.
@@ -178,8 +211,20 @@ if (gpu) {
       const fallback = different(back.pixels(shot.key, shot.read[9]!)!, back.pixels(shot.key, shot.read[1]!)!, 3);
       const restored = different(back.pixels(shot.key, shot.read[10]!)!, back.pixels(shot.key, shot.read[11]!)!, 3);
       const times = shot.read.slice(0, 8).map((k) => back.time(shot.key + "/" + k));
+      let studyOK = true;
+      if (finishes) {
+        const picture = (name: string) => back.pixels(shot.key, shot.read[12 + studies.indexOf(name)]!)!;
+        for (const name of studies) writeFileSync(join(out, name + ".png"), encodePng(width, height, picture(name)));
+        const original = picture("gloss-135");
+        const delta = [0, 45, 90, 135, 180].map(ms => different(original, picture("traffic-" + ms + "ms"), 2));
+        const gloss = different(original, picture("gloss-100"), 3), road = different(original, picture("dry-asphalt"), 3);
+        const shade = different(picture("dry-asphalt"), picture("dry-asphalt-deeper-shade"), 3);
+        console.log("fixed-camera pixel counts", { hour, sunUp, gloss, road, shade, traffic: delta, times: studies.map((_, i) => back.time(shot.key + "/" + shot.read[12 + i])) });
+        const shadowOK = sunUp ? shade > 50 : shade === 0;
+        studyOK = gloss > 0 && road > 0 && shadowOK && delta[0] === 0 && delta[2]! > 0 && delta[4]! > delta[2]!;
+      }
       return {
-        ok: changed > 200 && seeded > 5 && restored > 200 && fallback === 0,
+        ok: studyOK && changed > 200 && seeded > 5 && restored > 200 && fallback === 0,
         lines: [
           back.device.renderer,
           fallback + " pixels differed by three or more between released-capture tier and sky fallback",

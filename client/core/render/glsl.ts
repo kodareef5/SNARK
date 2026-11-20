@@ -2,6 +2,7 @@
 // low poly has always been drawn with, and a test pins its hash so that it stays so. A WebGL2 shell compiles it as is.
 // The lit tiers draw the same vertices with LIT, which lights them as surface.ts does.
 
+import { DRY_ASPHALT } from "../../../content/surfaces.ts";
 import { GLASS, RUST, STEEL, STREET_GLSL } from "./street-finish.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
@@ -134,6 +135,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
     if (vSurface == ${GLASS}) receives = clamp((0.8-orm.y)*2.5,0.0,1.0);
     else if (vSurface == ${STEEL} || vSurface == ${RUST}) receives = clamp((0.85-orm.y)*3.0,0.0,1.0)*orm.z;
   }
+  orm.y = receives > 0.0 ? glossRoughness(orm.y,receives) : orm.y;
   mirrored = streetMirror(mirrored,r,vRel,orm.y,receives);
 #endif
   o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * roomOpen, vRel), uAlpha);
@@ -156,7 +158,7 @@ export const LIT_MESH_FRAGMENT = [
   ["void main() {\n", `${THROUGH}void main() {\n`],
   ["  vec3 orm = vec3(1.0, 1.0, 0.0);\n", "  vec3 orm = vFinish.xyz;\n"],
   ["  vec3 v = -normalize(vRel);\n", "  vec3 v = -normalize(vRel);\n  if (vShare < 1.0) n = v;\n"],
-  ["  mirrored = streetMirror(mirrored,r,vRel,orm.y,receives);", "  if (uSolid >= 2.0 && vShare >= 1.0) receives = max(receives,clamp((0.85-orm.y)*3.0,0.0,1.0)*orm.z);\n  mirrored = streetMirror(mirrored,r,vRel,orm.y,receives);"],
+  ["  orm.y = receives > 0.0", "  if (uSolid >= 2.0 && vShare >= 1.0) receives = max(receives,clamp((0.85-orm.y)*3.0,0.0,1.0)*orm.z);\n  orm.y = receives > 0.0"],
   ["worldSharp ? skyFrom(r)", "worldSharp || vFinish.y < 1.0 ? skyFrom(r)"],
   ["  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, sunShadow(vRel, geometric)) + room * skyLight(geometric) * roomOpen, vRel), uAlpha);", "  float shade = sunShadow(vRel, sunward(geometric, vFinish.w));\n  o = vec4(shown(lit(albedo, orm * vec3(open, 1.0, 1.0), n, v, mirrored, shade) + through(albedo, orm, n, vFinish.w, shade) + room * skyLight(geometric) * roomOpen, vRel), uAlpha * vShare);"],
 ].reduce((text, [from, to]) => swap(text, from!, to!), LIT_FRAGMENT);
@@ -312,6 +314,7 @@ void main() {
   }
   int tint = groundCover(tints, s - vec2(i));
   vec3 albedo = groundColour(tint);
+  float asphalt = groundSurface(tint) == ${DRY_ASPHALT.surface} ? 1.0 : 0.0;
   vec3 n = normalize(vNormal), level = n;
   vec3 orm = vec3(1.0, 1.0, 0.0);
   if (uWorldReady > 0.5) {
@@ -331,17 +334,25 @@ void main() {
 #ifdef WORLD_ROAD
       groundWorn(albedo2, orm2, n2, groundSurface(other), vRel + uWorldEye, vAt, dx, dy);
 #endif
+      asphalt = mix(asphalt,groundSurface(other) == ${DRY_ASPHALT.surface} ? 1.0 : 0.0,b);
       albedo = mix(albedo, albedo2, b);
       orm = mix(orm, orm2, b);
       n = normalize(mix(n, n2, b));
       worldSharp = orm.y < ${f(WORLD_SHARP)};
     }
   }
-  orm.x *= skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0);
+  float shade = sunShadow(vRel, geometric);
+  float dry = asphalt*fStreetLook.z;
+  albedo *= mix(1.0,${f(DRY_ASPHALT.albedo)},dry);
+  orm.y = mix(orm.y,max(orm.y,${f(DRY_ASPHALT.roughnessFloor)}),${f(DRY_ASPHALT.roughnessShare)}*dry);
+  if (dry > 0.0) worldSharp = orm.y < ${f(WORLD_SHARP)};
+  float daylight = smoothstep(0.0,0.25,fTrueSun.y);
+  orm.x *= (1.0-${f(DRY_ASPHALT.shade)}*dry*fStreetLook.w*(1.0-shade)*daylight)
+    * skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0);
   vec3 v = -normalize(vRel);
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
-  o = vec4(shown(lit(albedo, orm, n, v, mirrored, sunShadow(vRel, geometric)), vRel), 1.0);
+  o = vec4(shown(lit(albedo, orm, n, v, mirrored, shade), vRel), 1.0);
 }`;
 
 /**

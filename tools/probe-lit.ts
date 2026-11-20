@@ -68,7 +68,7 @@ async function groundOf(id) {
 
 const reflectionTiers = new Map();
 function unpack(p, f, blob) {
-  const previous = p.street;
+  const previous = [p.street, p.previousStreet];
   p.beginFrame();
   for (const [name, value] of Object.entries(f.scalars)) if (name === "tier") p.tier = tierOf(value); else p[name] = value;
   if (p.tier.reflectionHz !== f.reflectionHz) {
@@ -79,9 +79,9 @@ function unpack(p, f, blob) {
   // An array longer than the packet's own, as the far shadow's rows are, is taken as it comes.
   for (const [name, at, n] of f.arrays) if (n > p[name].length) p[name] = new p[name].constructor(blob.buffer, at, n); else p[name].set(new p[name].constructor(blob.buffer, at, n));
   const data = ([at, n]) => blob.subarray(at, at + n);
-  if (f.street) {
-    const pixels = data(f.street.pixels);
-    p.street = previous && previous.pixels.byteOffset === pixels.byteOffset ? previous : { revision: f.street.revision, pixels };
+  for (const key of ["street", "previousStreet"]) if (f[key]) {
+    const pixels = data(f[key].pixels);
+    p[key] = previous.find(img => img && img.pixels.buffer === pixels.buffer && img.pixels.byteOffset === pixels.byteOffset) ?? { revision: f[key].revision, pixels };
   }
   for (const [buffer, at, n] of f.uploads) p.uploads.push({ buffer, data: data([at, n]), slots: new Uint16Array(0) });
   for (const u of f.assetUploads) p.assetUploads.push({ ...u, data: data(u.data) });

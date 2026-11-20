@@ -1446,6 +1446,8 @@ export class App {
     this.ui.settings.kept = keptLine(kept);
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
     this.scene.alternate = alternate;
+    this.scene.finishGloss = this.ui.settings.finishGloss;
+    this.scene.roadFinish = this.ui.settings.roadFinish;
     this.scene.assets.residency.holdBack = this.session.behind;
     const chosen = forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst);
     const governed = tierWithout(this.governor.tier(chosen, this.ui.settings.steady, this.dpr, nowMs), off);

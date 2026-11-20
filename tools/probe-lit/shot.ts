@@ -61,6 +61,7 @@ class Bytes {
 /** A frame as the page rebuilds it: its numbers and tier, each array as far as it is used, and its uploads, with where their bytes are. */
 export interface Frame {
   reflectionHz: number;
+  previousStreet: Frame["street"];
   street: { revision: number; pixels: [number, number] } | null;
   scalars: Record<string, number | boolean | string>;
   arrays: [string, number, number][];
@@ -110,8 +111,7 @@ export class Shot {
   /** Its pack's bytes, until the probe takes them to send the page once (tools/probe-lit.ts). */
   pack: Uint8Array | null;
   private readonly out = new Bytes();
-  private image: FramePacket["street"] = null;
-  private saved: Frame["street"] = null;
+  private readonly images = new WeakMap<NonNullable<FramePacket["street"]>, NonNullable<Frame["street"]>>();
 
   constructor(key: string, width: number, height: number, ground: Heightfield, pack: Uint8Array) {
     [this.key, this.width, this.height, this.ground, this.pack] = [key, width, height, ground, pack];
@@ -133,14 +133,16 @@ export class Shot {
       }
     }
     if (!this.shadows) scalars.cascadeCount = 0;
-    if (p.street !== this.image || p.street?.revision !== this.saved?.revision) {
-      this.image = p.street;
-      this.saved = p.street ? { revision: p.street.revision, pixels: ref(p.street.pixels) } : null;
-    }
+    const image = (img: FramePacket["street"]): Frame["street"] => {
+      if (!img) return null;
+      let saved = this.images.get(img);
+      if (saved?.revision !== img.revision) this.images.set(img, saved = { revision: img.revision, pixels: ref(img.pixels) });
+      return saved;
+    };
     if (read) this.read.push(this.frames.length);
     this.frames.push({
       reflectionHz: p.tier.reflectionHz,
-      street: this.saved,
+      street: image(p.street), previousStreet: image(p.previousStreet),
       scalars,
       arrays,
       uploads: p.uploads.map((u) => [u.buffer, ...ref(u.data)]),

@@ -71,12 +71,24 @@ test("a car shares the street picture, movement updates at the tier rate, turnin
     return [...light];
   };
   expect(see([0.7, 0, 0.7])).not.toEqual(see([-0.7, 0, -0.7]));
+  const ray = [0.7, 0, 0.7], settled = see(ray);
   cars.z[1] = 40;
   tick(249);
   expect(p.street!.pixels).toEqual(before);
   tick(250);
   expect(p.street!.revision).toBe(2);
   expect(p.street!.pixels).not.toEqual(before);
+  expect(see(ray)).toEqual(settled);
+  const transition = [45, 90, 135, 180].map(ms => {
+    tick(250 + ms);
+    return see(ray);
+  });
+  const latest = transition[3]!;
+  expect(latest).not.toEqual(settled);
+  for (const [i, weight] of [0.15625, 0.5, 0.84375, 1].entries()) {
+    for (let c = 0; c < 3; c++) expect(transition[i]![c]).toBeCloseTo(settled[c]! + weight * (latest[c]! - settled[c]!), 5);
+  }
+  expect(p.previousStreet).toBeNull();
   p.tier = { ...p.tier, reflectionHz: 1 };
   cars.z[1] = 48;
   tick(500);
@@ -106,11 +118,13 @@ test("the visible larger receiver can win, deleted geometry leaves the picture, 
   world.structs.remove(ref);
   tick(750);
   expect(p.street!.pixels).toEqual(before);
+  expect(p.previousStreet).not.toBeNull();
   cam.z = 110;
   tick(751);
   expect(p.street).toBeNull();
   cam.z = 40;
   tick(752);
+  expect(p.previousStreet).toBeNull();
   expect(p.frame[FRAME.reflection + 3]).toBe(0);
   p.tier = { ...p.tier, reflectionHz: 0 };
   tick(753);

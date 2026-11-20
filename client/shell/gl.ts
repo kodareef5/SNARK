@@ -178,8 +178,9 @@ export class GlRenderer {
   private transient!: WebGLBuffer;
   private ids!: WebGLBuffer;
   private streetTexture: WebGLTexture | null = null;
-  private streetImage: StreetImage | null = null;
-  private streetRevision = -1;
+  private readonly streetImages: (StreetImage | null)[] = [null, null];
+  private readonly streetRevisions = [-1, -1];
+  private streetWidth = 0;
   private readonly noReflection = new Float32Array(1);
   private readonly receivers: Uint8Array;
   private readonly fixtures: Uint8Array;
@@ -308,8 +309,7 @@ export class GlRenderer {
     this.ids = gl.createBuffer()!;
     gl.vertexAttribI4ui(12, 0, 0, 0, 0);
     this.streetTexture = null;
-    this.streetImage = null;
-    this.streetRevision = -1;
+    this.streetWidth = 0;
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, (this.frame = gl.createBuffer()!));
     gl.bufferData(gl.UNIFORM_BUFFER, FRAME_FLOATS * 4, gl.DYNAMIC_DRAW);
 
@@ -681,24 +681,35 @@ export class GlRenderer {
     if (!p.tier.reflectionHz) {
       if (this.streetTexture) gl.deleteTexture(this.streetTexture);
       this.streetTexture = null;
-      this.streetImage = null;
-      this.streetRevision = -1;
+      this.streetImages.fill(null);
+      this.streetWidth = 0;
       return;
     }
-    if (this.streetTexture && this.streetImage === p.street && this.streetRevision === (p.street?.revision ?? 0)) return;
-    gl.activeTexture(gl.TEXTURE0 + UNIT.street);
-    this.streetTexture ??= gl.createTexture();
-    if (!this.streetTexture) return;
-    gl.bindTexture(gl.TEXTURE_2D, this.streetTexture);
-    const img = p.street;
-    if (img && this.streetImage) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, STREET_WIDTH, STREET_HEIGHT, gl.RGBA, gl.UNSIGNED_BYTE, img.pixels);
-    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, img ? STREET_WIDTH : 1, img ? STREET_HEIGHT : 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, img?.pixels ?? null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    this.streetImage = img;
-    this.streetRevision = img?.revision ?? 0;
+    const width = p.street ? STREET_WIDTH : 1, target = gl.TEXTURE_2D_ARRAY;
+    let dirty = this.streetWidth !== width;
+    if (dirty) {
+      gl.activeTexture(gl.TEXTURE0 + UNIT.street);
+      this.streetTexture ??= gl.createTexture();
+      if (!this.streetTexture) return;
+      gl.bindTexture(target, this.streetTexture);
+      gl.texImage3D(target, 0, gl.RGBA8, width, p.street ? STREET_HEIGHT : 1, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      this.streetWidth = width;
+      this.streetImages.fill(null);
+    }
+    for (let i = 0; i < 2; i++) {
+      const img = i ? p.previousStreet : p.street;
+      if (!img) continue;
+      const layer = img.revision & 1;
+      if (this.streetImages[layer] === img && this.streetRevisions[layer] === img.revision) continue;
+      gl.activeTexture(gl.TEXTURE0 + UNIT.street);
+      gl.texSubImage3D(target, 0, 0, 0, layer, STREET_WIDTH, STREET_HEIGHT, 1, gl.RGBA, gl.UNSIGNED_BYTE, img.pixels);
+      this.streetImages[layer] = img;
+      this.streetRevisions[layer] = img.revision;
+      dirty = true;
+    }
+    if (dirty) gl.generateMipmap(target);
   }
 
   draw(p: FramePacket): void {

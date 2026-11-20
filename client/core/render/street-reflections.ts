@@ -50,6 +50,13 @@ export function placedPriority(d: Registry["defs"][number]): number {
 export class StreetReflections {
   private readonly priority: Float32Array;
   private readonly proxies: Proxy[] = [];
+  private previous: StreetImage | null = null;
+  private previousX = 0;
+  private previousY = 0;
+  private previousZ = 0;
+  private changedAt = 0;
+  private blendMs = 0;
+  private revision = 0;
   private scratch: Uint8Array | null = null;
   private readonly depth = new Float32Array(STREET_WIDTH * STREET_HEIGHT);
   private next = -Infinity;
@@ -80,10 +87,12 @@ export class StreetReflections {
   frame(p: FramePacket, cam: Camera, world: RenderWorld, remote: RemoteSample | null, hidden: ReadonlySet<number>, now: number): void {
     const offset = FRAME.reflection;
     p.frame[offset + 3] = 0;
-    p.street = null;
+    p.street = p.previousStreet = null;
+    const history = FRAME.previousReflection;
+    p.frame[history + 3] = 0;
     const hz = p.tier.reflectionHz;
     if (!p.lit || !hz) {
-      this.image = null;
+      this.image = this.previous = null;
       this.scratch = null;
       this.anchor = -1;
       this.next = -Infinity;
@@ -126,17 +135,38 @@ export class StreetReflections {
       if (this.winner) {
         const winner: Proxy = this.winner;
         if (world.nodes) this.gather(world.nodes, cam, true, hidden);
-        if (this.anchor === -1 || Math.hypot(winner.x - this.x, winner.y - this.y, winner.z - this.z) > 5) this.started = now;
+        const travel = Math.hypot(winner.x - this.x, winner.y - this.y, winner.z - this.z);
+        const cut = this.anchor === -1 || travel > (winner.id === this.anchor ? 16 : 5);
+        if (cut) {
+          this.started = now;
+          this.blendMs = 0;
+        }
+        const oldX = this.x, oldY = this.y, oldZ = this.z;
         this.anchor = winner.id;
         this.x = winner.x;
         this.y = winner.y;
         this.z = winner.z;
         this.ground = world.hf.heightAt(this.x, this.z);
-        this.capture(world.hf);
+        if (this.capture(world.hf, travel > 0.01) && !cut) {
+          this.previousX = oldX;
+          this.previousY = oldY;
+          this.previousZ = oldZ;
+          this.changedAt = now;
+          this.blendMs = Math.min(300, 720 / hz);
+        }
       } else this.anchor = -1;
     }
     if (this.anchor === -1 || !this.image) return;
     p.street = this.image;
+    p.frame[FRAME.streetLook + 1] = this.image.revision & 1;
+    if (this.previous && this.blendMs > 0 && now - this.changedAt < this.blendMs) {
+      const t = Math.max(0, (now - this.changedAt) / this.blendMs);
+      p.previousStreet = this.previous;
+      p.frame[history] = this.previousX - cam.x;
+      p.frame[history + 1] = this.previousY - cam.y;
+      p.frame[history + 2] = this.previousZ - cam.z;
+      p.frame[history + 3] = 1 - t * t * (3 - 2 * t);
+    }
     p.frame[offset] = this.x - cam.x;
     p.frame[offset + 1] = this.y - cam.y;
     p.frame[offset + 2] = this.z - cam.z;
@@ -223,9 +253,8 @@ export class StreetReflections {
     }
   }
 
-  private capture(hf: Heightfield): void {
-    const image = this.image ??= { pixels: new Uint8Array(STREET_WIDTH * STREET_HEIGHT * 4), revision: 0 };
-    const pixels = this.scratch ??= new Uint8Array(image.pixels.length);
+  private capture(hf: Heightfield, moved: boolean): boolean {
+    const pixels = this.scratch ??= new Uint8Array(STREET_WIDTH * STREET_HEIGHT * 4);
     pixels.fill(0);
     this.depth.fill(Infinity);
     for (let j = 0; j < STREET_HEIGHT / 2; j++) {
@@ -275,12 +304,18 @@ export class StreetReflections {
         }
       }
     }
-    // A still street needs no upload. Keep the image object and its byte array stable for renderer caches.
-    for (let i = 0; i < pixels.length; i++) {
-      if (pixels[i] === image.pixels[i]) continue;
-      image.pixels.set(pixels);
-      image.revision++;
-      break;
+    if (this.image && !moved) {
+      const current = this.image.pixels;
+      let i = 0;
+      while (i < pixels.length && current[i] === pixels[i]) i++;
+      if (i === pixels.length) return false;
     }
+    const next = this.previous ?? { pixels: new Uint8Array(pixels.length), revision: 0 };
+    this.previous = this.image;
+    this.image = next;
+    this.scratch = next.pixels;
+    next.pixels = pixels;
+    next.revision = ++this.revision;
+    return true;
   }
 }

@@ -334,3 +334,17 @@ test("horizontal value adjustment follows direction, and never invokes the asset
   ui.settings.tab=3;ui.build(16/9,hud,null);ui.menuFocus=2310+10*4+3;
   expect(ui.adjustFocused(1)).toBe(false);expect(ui.settings.download).toBe(false);
 });
+
+test("the Display tab exposes independent gloss and road controls and restores old preferences", () => {
+  const s = new Settings();
+  s.restoreInterface('{"version":2,"tier":"medium"}');
+  expect([s.finishGloss, s.roadFinish]).toEqual([1.35, 0]);
+  const rows = SETTING_GROUPS[0].rows.map(i => SETTING_ROWS[i]!);
+  const gloss = rows.find(row => row.label === "Finish gloss")!, road = rows.find(row => row.label === "Road finish")!;
+  gloss.range!.set(s, 1.97);
+  road.step(s, 1);
+  road.step(s, 1);
+  const restored = new Settings();
+  restored.restoreInterface(s.interfacePreferences());
+  expect([gloss.value(restored), road.value(restored), restored.tier]).toEqual(["195%", "Dry + deeper shade", "medium"]);
+});
