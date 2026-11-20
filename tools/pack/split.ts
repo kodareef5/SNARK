@@ -1,6 +1,7 @@
 // Splits a whole pack into the file a client fetches at start, the file it fetches a level at a time, the file it
 // fetches a creature skeleton's clips from and the file of pages, and writes the manifest that says where everything is.
 
+import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
 import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
 import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
@@ -118,6 +119,8 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   const rigOf = (c: PackClip): string => c.id.slice(0, c.id.lastIndexOf("/"));
   const skeletons = new Map<string, PackClip[]>();
   for (const r of pack.header.rigs) if (r.names) skeletons.set(r.id, []);
+  // The survivors' emotes (shared/anim/emotes.ts) come after the first frame too: a body plays one once they have come.
+  skeletons.set(EMOTE_GROUP, []);
   for (const c of pack.header.clips) skeletons.get(rigOf(c))?.push(c);
   const parts: Uint8Array[] = [];
   const streamed: ManifestClips[] = [];

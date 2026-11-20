@@ -1,0 +1,13 @@
+{
+  "name": "pair-highfive",
+  "about": "Asked to congratulate someone with a high five: an emote for two at her id, which she answers, and a word in chat.",
+  "world": {
+    "seed": 3,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 0 },
+    "things": [{ "type": "player", "name": "Ana", "x": 0, "z": -3, "accepts": true }]
+  },
+  "owners": ["Ana"],
+  "prompt": "You are Scout. Ana just won the beach race. Congratulate her with a high five, then tell her well done in local chat.",
+  "success": { "all": [{ "emoted": "high_five", "toward": "Ana" }, { "said": "well done|congrat|nice|great" }] },
+  "budget": { "seconds": 120 }
+}

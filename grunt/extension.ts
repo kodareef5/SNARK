@@ -18,6 +18,7 @@ import { compile } from "./layout.ts";
 import { socketLink } from "./link.ts";
 import type { PiExtensionAPI, PiTool, PiToolResult } from "./pi.ts";
 import { GRUNT_VERSION } from "./protocol.ts";
+import { PERSONAS, personaOf, type Persona, type PersonaInput } from "./persona.ts";
 import { type Report, Runtime } from "./runtime.ts";
 import { Session } from "./session.ts";
 import { SKILLS } from "./skills.ts";
@@ -55,6 +56,17 @@ function agendaFile(name: string): string {
   const dir = process.env.GRUNT_STATE ?? join(homedir(), ".pi", "agent", "grunt", "agenda");
   mkdirSync(dir, { recursive: true });
   return join(dir, `${name.replace(/[^\w-]/g, "_")}.json`);
+}
+
+/** A character's persona: the one asked for, else one written beside its agenda (<name>.persona.json), else GRUNT_PERSONA,
+ * else the stoic default. A name is a built-in persona; an object is one written out. */
+function loadPersona(name: string, asked?: unknown): Persona {
+  if (asked) return personaOf(asked as string | PersonaInput);
+  try {
+    return personaOf(JSON.parse(readFileSync(agendaFile(name).replace(/\.json$/, ".persona.json"), "utf8")) as PersonaInput);
+  } catch {
+    return personaOf(process.env.GRUNT_PERSONA);
+  }
 }
 
 function loadAgenda(name: string): Agenda {
@@ -120,12 +132,12 @@ export default function grunt(pi: PiExtensionAPI): void {
     pi.sendMessage({ customType: "grunt", content: `[game] ${r.text}${b.text ? `\n\n${b.text}` : ""}`, display: true, details: r }, { triggerTurn: true, deliverAs: "followUp" });
   };
 
-  async function connect(url: string, name: string, owners: string[]): Promise<Mind> {
+  async function connect(url: string, name: string, owners: string[], persona?: unknown): Promise<Mind> {
     disconnect();
     const link = await socketLink(url);
     const session = new Session(link);
     const t = traceFile(name);
-    const rt = new Runtime({ session, owners, trace: new Trace(t.sink), onReport: wake, lively: true });
+    const rt = new Runtime({ session, owners, trace: new Trace(t.sink), onReport: wake, lively: true, persona: loadPersona(name, persona), seed: Date.now() & 0xffff });
     link.onClose((why) => {
       if (mind?.rt !== rt) return;
       rt.halt();
@@ -168,10 +180,10 @@ export default function grunt(pi: PiExtensionAPI): void {
     {
       name: "game_connect", label: "Join a game",
       description: "Join a game that speaks the grunt protocol, as a character. Afterwards the character's senses, skills and chat are yours through the other game_ tools.",
-      parameters: { type: "object", properties: { url: { type: "string", description: "ws://host:port/path of the game's grunt endpoint" }, name: { type: "string", description: "the character's name" }, owners: { type: "array", items: { type: "string" }, description: "players whose instructions the character follows" }, again: { type: "boolean", description: "drop the connection there is and connect anew" } }, required: ["url", "name"], additionalProperties: false },
+      parameters: { type: "object", properties: { url: { type: "string", description: "ws://host:port/path of the game's grunt endpoint" }, name: { type: "string", description: "the character's name" }, owners: { type: "array", items: { type: "string" }, description: "players whose instructions the character follows" }, persona: { description: `who the character is when idle: ${Object.keys(PERSONAS).join(", ")}, or {name, about, traits: {playful, social, menacing, shy, energetic, showoff}} (0 to 1)` }, again: { type: "boolean", description: "drop the connection there is and connect anew" } }, required: ["url", "name"], additionalProperties: false },
       async execute(_id, p) {
         if (mind && !p.again) return text(`Already connected to ${mind.url} as ${mind.rt.name}. Nothing changed; pass again: true to reconnect.\n${json(mind.rt.summary())}`);
-        const m = await connect(String(p.url), String(p.name), Array.isArray(p.owners) ? p.owners.map(String) : []);
+        const m = await connect(String(p.url), String(p.name), Array.isArray(p.owners) ? p.owners.map(String) : [], p.persona);
         return text(`Connected as ${m.rt.name}.\n${json(m.rt.summary())}`, { trace: m.tracePath });
       },
     },
@@ -192,7 +204,11 @@ export default function grunt(pi: PiExtensionAPI): void {
       description: "The skills the character can run with game_do, with their parameters.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       async execute() {
-        return text(json(Object.values(SKILLS).map((s) => ({ skill: s.name, does: s.describe, params: s.params }))));
+        // The game's emotes, by what they are for, with the skills that play them.
+        const emotes = mind?.rt.belief.emotes;
+        const byTag: Record<string, string[]> = {};
+        for (const e of emotes ?? []) for (const t of e.tags.slice(0, 2)) (byTag[t] ??= []).push(e.pair ? `${e.name} (for two)` : e.name);
+        return text(json({ skills: Object.values(SKILLS).map((s) => ({ skill: s.name, does: s.describe, params: s.params })), ...(emotes?.length ? { emotes: byTag } : {}) }));
       },
     },
     {
@@ -347,10 +363,12 @@ export default function grunt(pi: PiExtensionAPI): void {
       const [sub = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
       if (sub === "protocol") return ctx.ui.notify(`grunt protocol ${GRUNT_VERSION} (draft): ${SPEC}`, "info");
       if (sub === "connect") {
-        const [url, name, ...owners] = rest;
-        if (!url || !name) return ctx.ui.notify("usage: /grunt connect <ws://…> <name> [owner…]", "warning");
+        const [url, name, ...more] = rest;
+        if (!url || !name) return ctx.ui.notify("usage: /grunt connect <ws://…> <name> [owner…] [persona=<name>]", "warning");
+        const persona = more.find((w) => w.startsWith("persona="))?.slice(8);
+        const owners = more.filter((w) => !w.startsWith("persona="));
         try {
-          const m = await connect(url, name, owners);
+          const m = await connect(url, name, owners, persona);
           return ctx.ui.notify(`connected to ${url} as ${m.rt.name}; trace ${m.tracePath}`, "info");
         } catch (err) {
           return ctx.ui.notify(`could not connect: ${err instanceof Error ? err.message : String(err)}`, "error");

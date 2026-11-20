@@ -5,6 +5,8 @@
 import { arms, lore } from "./combat.ts";
 import { CREATURES } from "./know.ts";
 import { Belief, compass, side, wrap } from "./belief.ts";
+import { Idle } from "./idle.ts";
+import { personaOf, type PersonaInput } from "./persona.ts";
 import { Body, type Run, type Wait } from "./body.ts";
 import { MONITORS, type Monitor, type Signal } from "./monitors.ts";
 import { type DecisionPolicy, RulesPolicy } from "./policy.ts";
@@ -29,7 +31,8 @@ export interface Task {
   progress: Record<string, unknown>;
   result?: SkillResult;
   /** Who started it: the Director, or the arbiter answering a signal. */
-  by: "director" | "arbiter";
+  /** Who started it: the Director, the arbiter's reflexes, or the idle (whose tasks tell nobody). */
+  by: "director" | "arbiter" | "idle";
   /** A job claimed in the tribe's chat for this task ("on it: ..."), released when it ends ("done: ..."). */
   claim?: string;
   started: number;
@@ -56,6 +59,10 @@ export interface RuntimeOptions {
   policy?: DecisionPolicy;
   /** Small glances and shifts while idle, so a character waiting does not stand like a post (off for tests). */
   lively?: boolean;
+  /** Who the character is when idle (grunt/persona.ts): a built-in name or one written out; stoic by default. And the
+   * seed its idle's choices follow. */
+  persona?: string | PersonaInput;
+  seed?: number;
   /** The policy the arbiter asks; its questions must be answered at once, so rules by default. */
   arbiterPolicy?: DecisionPolicy;
   trace?: Trace;
@@ -84,7 +91,8 @@ export class Runtime {
   private readonly onReport: (r: Report) => void;
   private active: Running | null = null;
   private readonly lively: boolean;
-  private glanceAt = 0;
+  /** Who the character is when nobody tells it anything (grunt/idle.ts). */
+  readonly idler: Idle;
   private side: Running[] = [];
   private suspended: Task[] = [];
   private stopLoop: (() => void) | null = null;
@@ -109,6 +117,7 @@ export class Runtime {
     this.monitors = o.monitors ?? MONITORS;
     this.owners = o.owners ?? [];
     this.lively = !!o.lively;
+    this.idler = new Idle(personaOf(o.persona), o.seed ?? 1);
     this.onReport = o.onReport ?? (() => {});
     this.body = new Body(this.session, this.belief, this.trace);
     this.session.on("observation", (m: Observation) => {
@@ -140,6 +149,7 @@ export class Runtime {
     const w = await this.session.hello(name);
     this.name = w.character.name;
     this.belief.building = w.capabilities.building ?? null;
+    this.belief.emotes = w.capabilities.emotes ?? null;
     this.belief.assists = w.capabilities.assists ?? null;
     this.trace.record("connected", { game: w.game, character: w.character, limits: w.limits });
     // A game with a map screen: it is read now and then (under fog it grows as the character explores), and the ground
@@ -284,7 +294,7 @@ export class Runtime {
     // A reflex over with nothing put aside to come back: what next is the Director's, and it is told so.
     const resumes = task.by === "arbiter" && !this.swapping && !this.active && this.suspended.length > 0;
     const idle = task.by === "arbiter" && !this.swapping && !this.active && !this.suspended.length ? " Nothing was put aside: what next is yours." : "";
-    if (status !== "cancelled" || task.by === "director") this.report({ kind: known ? "note" : "task", text: `${task.skill} ${task.id} ${status}: ${result.summary}${this.options(task, result)}${idle}`, data: { task: task.id, skill: task.skill, status, by: task.by, resumes, ...result.data } });
+    if ((status !== "cancelled" || task.by === "director") && task.by !== "idle") this.report({ kind: known ? "note" : "task", text: `${task.skill} ${task.id} ${status}: ${result.summary}${this.options(task, result)}${idle}`, data: { task: task.id, skill: task.skill, status, by: task.by, resumes, ...result.data } });
     // The arbiter's own task over, what it put aside comes back once the character has caught its breath (tick).
     if (task.by === "arbiter" && !this.swapping && !this.active && this.suspended.length) this.restingSince = this.belief.now;
   }
@@ -362,7 +372,16 @@ export class Runtime {
         this.retake(f.id);
       }
     }
-    if (this.lively && !this.active && !this.suspended.length) this.idle();
+    // The idle: answers to others' emotes always, and, lively and free, its own moves.
+    const b = this.belief;
+    const hp = b.self?.vitals.health;
+    this.idler.tick({
+      belief: b, owners: this.owners, busy: !!this.active || this.suspended.length > 0,
+      danger: b.find((t) => t.disposition === "hostile" && b.distance(t.pos) < 30 && b.age(t.seen) < 5000).length > 0 || (!!hp && hp[0] < hp[1] * 0.4),
+      lively: this.lively, act: (actions, why) => this.body.act(actions, why),
+      perform: (routine, target) => void this.start("perform", { routine, ...(target ? { target } : {}) }, "idle"),
+      trace: (kind, data) => this.trace.record(kind, data),
+    });
     // Damage to a base, gathered for a moment (a storm hits many pieces at once), then told once.
     const hurt = [...this.belief.damaged.values()].filter((d) => this.belief.now - d.t < 30_000 && this.belief.now - d.t > 800);
     for (const base of new Set(hurt.map((d) => d.base))) {
@@ -504,20 +523,6 @@ export class Runtime {
   }
 
   /** The character as the Director should know it: one compact view. */
-  /** Idle, now and then: a glance at something about (a person most), a look off to one side, a step. */
-  private idle(): void {
-    const b = this.belief;
-    if (b.now < this.glanceAt || !b.self) return;
-    this.glanceAt = b.now + 2500 + Math.random() * 6000;
-    const about = b.find((t) => b.distance(t.pos) < 25);
-    const people = about.filter((t) => t.kind === "player");
-    const roll = Math.random();
-    const at = roll < 0.4 && people.length ? people[0]! : roll < 0.75 && about.length ? about[Math.floor(Math.random() * about.length)]! : null;
-    const yaw = at ? b.yawTo(at.pos) : b.self.yaw + (Math.random() - 0.5) * 1.6;
-    const step = roll > 0.92;
-    this.body.act([{ control: "look", yaw: wrap(yaw), pitch: (Math.random() - 0.5) * 0.15 }, ...(step ? [{ control: "move" as const, forward: 0, strafe: Math.random() < 0.5 ? -1 : 1, duration_ms: 350 }] : [])], "idle");
-  }
-
   // --- The tribe: "first who can, does" -----------------------------------------------------------------------
 
   /** Jobs taken in the tribe's chat by others, still open: "on it: X" and no "done: X" or "stuck: X" from the same one
@@ -571,6 +576,7 @@ export class Runtime {
       dir: compass(b.yawTo(t.pos)), side: side(b.bearingTo(t.pos)), ...(t.disposition ? { disposition: t.disposition } : {}),
       ...(t.kind === "creature" && t.health !== undefined ? { health: `${Math.round(t.health * 100)}%` } : {}),
       ...(t.tags?.includes("hunting") ? { hunting: true } : {}),
+      ...(t.tags?.some((x) => x.startsWith("emote")) ? { doing: t.tags.filter((x) => x.startsWith("emote") || x.startsWith("invite")) } : {}),
       ...(t.base ? { base: t.base } : {}),
       ...(t.kind === "creature" && t.disposition === "hostile" ? { fight: this.odds(t.type) } : {}),
       ...(b.age(t.seen) > 3000 ? { seen_s_ago: Math.round(b.age(t.seen) / 1000) } : {}),

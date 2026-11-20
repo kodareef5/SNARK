@@ -8,11 +8,13 @@
 // not a game: numbers are round, and only what grunt's skills need is here.
 
 import type {
-  Action, Craftable, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, Plan,
+  Action, Craftable, EmoteSpec, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, Plan,
   RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../../grunt/protocol.ts";
 import type { WorldEvent } from "../../grunt/endpoint.ts";
 import { BUILD_RATE, BUILD_REACH, MAX_PLAN as BUILDING_MAX, type PieceAt, PICKUP_S, PIECE_HP, PIECE_RECIPES, specOf, Structures, THINGS } from "./structures.ts";
+import { emoteClips } from "../../shared/anim/emote-clips.ts";
+import { EMOTES, emoteClipId } from "../../shared/anim/emotes.ts";
 import { CHAR, CLIFF, DEEP, LEGEND, SHALLOW, type Feature, type Terrain } from "./terrain.ts";
 
 export const TICK_MS = 50;
@@ -164,7 +166,26 @@ interface Thing {
   // A container's slots; a structure's place.
   slots?: Slot[];
   piece?: PieceAt;
+  /** A player's emote, and until when (a loop until it stops); an invite it has made to the character, and one it
+   * has had from the character; whether it accepts the character's invites. */
+  emote?: string;
+  emoteUntil?: number;
+  invite?: { name: string; until: number };
+  asked?: { name: string; at: number; until: number };
+  accepts?: boolean;
 }
+
+/** The emotes the mock has: SNARK's list (shared/anim/emotes.ts), each one-shot as long as its clip. */
+export const EMOTE_SPECS: EmoteSpec[] = EMOTES.map((e) => {
+  const clip = emoteClips().find((c) => c.id === emoteClipId(e.id));
+  return {
+    name: e.id, tags: [...e.tags], loop: e.loop, mask: e.mask, ...(e.loop ? {} : { seconds: (clip?.frames ?? 60) / 30 }),
+    ...(e.pair ? { pair: { ...e.pair } } : {}), ...(e.group ? { group: true } : {}),
+  };
+});
+const EMOTE_SPEC = new Map(EMOTE_SPECS.map((e) => [e.name, e]));
+/** How long an invite waits for its answer, how near it is made from, and how near a dance is joined. */
+const INVITE_MS = 8000, INVITE_RANGE = 4, JOIN_RANGE = 15;
 
 interface Running {
   command: string;
@@ -228,7 +249,11 @@ export class World {
     mount: null as string | null, y: 0, crouch: false,
     /** Wearing a tek suit; and the time aloft since the last unit of element burned. */
     suit: false, aloft: 0,
+    /** The emote it plays, until when, and whether moving ends it. */
+    emote: null as { name: string; until: number; full: boolean } | null,
   };
+  /** Every emote played, by whom (a name), at whom, and when: what a scenario's `emoted` check reads. */
+  readonly emoted: { who: string; name: string; t: number; target?: string }[] = [];
   readonly heardChat: { channel: string; from: string; from_id?: string; text: string; t: number }[] = [];
   readonly said: { channel: string; text: string; t: number }[] = [];
   private readonly running = new Map<string, Running>();
@@ -459,6 +484,8 @@ export class World {
         ],
       } : {}),
       ...(t.kind === "player" ? { disposition: t.hostile ? ("hostile" as const) : ("neutral" as const) } : {}),
+      // A player's emote is what a look at them shows; an invite at the character, which way they reach.
+      ...(t.kind === "player" && (t.emote || t.invite) ? { tags: [...(t.emote ? [`emote:${t.emote}`] : []), ...(t.invite && t.invite.until > this.t ? [`emote_to:${this.me.id}`, `invite:${t.invite.name}`] : [])] } : {}),
       ...(t.kind === "structure" ? { disposition: "own" as const, tags: t.piece?.open ? ["open"] : [] } : {}),
       ...(t.piece ? { base: t.piece.base } : {}),
       affords: this.affords(t),
@@ -673,7 +700,10 @@ export class World {
     switch (a.control) {
       case "stop":
         for (const key of [...this.running.keys()]) this.end(key, "interrupted", { by: "stop" });
+        this.me.emote = null;
         return instant();
+      case "emote":
+        return this.emote(command, index, a, instant);
       case "chat":
         this.said.push({ channel: a.channel, text: a.text, t: this.t });
         return instant();
@@ -878,6 +908,102 @@ export class World {
     for (const key of [...this.running.keys()]) {
       const r = this.running.get(key)!;
       if (key !== "look" && this.t >= r.until) this.end(key, "completed");
+    }
+    this.emotes();
+  }
+
+  // --- Emotes -----------------------------------------------------------------------------------------------------
+
+  private emote(command: string, index: number, a: Extract<Action, { control: "emote" }>, instant: (d?: Record<string, unknown>) => null): RejectCode | null {
+    const m = this.me;
+    if (a.stop) {
+      if (this.running.has("emote")) this.end("emote", "interrupted", { by: "stop" });
+      m.emote = null;
+      return instant();
+    }
+    if (!m.alive || m.mount || m.y > 0.5) return "not_permitted";
+    let name = a.name;
+    if (a.join) {
+      const t = this.things.get(a.join);
+      if (!t?.emote || !EMOTE_SPEC.get(t.emote)?.group) return "unknown_target";
+      if (this.dist(t) > JOIN_RANGE) return "out_of_reach";
+      name = t.emote;
+    }
+    const spec = name ? EMOTE_SPEC.get(name) : undefined;
+    if (!spec) return "bad_arguments";
+    if (spec.mask === "full" && this.running.has("move")) return "not_permitted";
+    if (spec.pair) {
+      const t = a.target ? this.things.get(a.target) : undefined;
+      if (!t || t.kind !== "player") return "unknown_target";
+      if (this.dist(t) > INVITE_RANGE) return "out_of_reach";
+      // The answer to the other's invite begins the pair; anything else asks them.
+      const theirs = t.invite && t.invite.until > this.t ? t.invite.name : null;
+      if (theirs && (theirs === spec.name || EMOTE_SPEC.get(theirs)?.pair?.with === spec.name)) {
+        t.invite = undefined;
+        this.pair(t, theirs, spec.name);
+        return this.play(command, index, spec, a.seconds, t.name ?? t.id);
+      }
+      t.asked = { name: spec.name, at: this.t, until: this.t + INVITE_MS };
+      return instant({ invited: t.id, name: spec.name });
+    }
+    return this.play(command, index, spec, a.seconds);
+  }
+
+  /** The character plays `spec`: a one-shot's outcome comes as it ends, a loop's at once. */
+  private play(command: string, index: number, spec: EmoteSpec, seconds?: number, target?: string): null {
+    const m = this.me;
+    if (this.running.has("emote")) this.end("emote", "interrupted", { by: "replaced" });
+    const until = spec.loop ? (seconds ? this.t + seconds * 1000 : Infinity) : this.t + (spec.seconds ?? 2) * 1000;
+    m.emote = { name: spec.name, until, full: spec.mask === "full" };
+    this.emoted.push({ who: m.name, name: spec.name, t: this.t, ...(target ? { target } : {}) });
+    this.running.set("emote", { command, index, action: { control: "emote", name: spec.name }, started: this.t, until: spec.loop ? this.t : until, next: this.t, done: { name: spec.name } });
+    return null;
+  }
+
+  /** A pair begun: the player plays its side, face to face with the character. */
+  private pair(t: Thing, theirs: string, mine: string): void {
+    t.emote = theirs;
+    t.emoteUntil = this.t + (EMOTE_SPEC.get(theirs)?.seconds ?? 2) * 1000;
+    this.me.yaw = yawTo(this.me.x, this.me.z, t.x, t.z);
+    this.emoted.push({ who: t.name ?? t.id, name: theirs, t: this.t, target: this.me.name });
+    this.event("emoted", { who: t.id, name: theirs, target: this.me.id, with: mine });
+  }
+
+  /** A player emotes (a scenario's script): at the character, a pair's emote is an invite. */
+  playerEmote(id: string, name: string, atMe = false): void {
+    const t = this.things.get(id);
+    const spec = EMOTE_SPEC.get(name);
+    if (!t || !spec) return;
+    if (spec.pair && atMe) {
+      t.invite = { name, until: this.t + INVITE_MS };
+      this.event("invited", { from: t.id, name, with: spec.pair.with });
+      return;
+    }
+    t.emote = name;
+    t.emoteUntil = spec.loop ? Infinity : this.t + (spec.seconds ?? 2) * 1000;
+    this.emoted.push({ who: t.name ?? t.id, name, t: this.t, ...(atMe ? { target: this.me.name } : {}) });
+    this.event("emoted", { who: t.id, name, ...(atMe ? { target: this.me.id } : {}) });
+  }
+
+  /** Each tick: emotes run out, moving ends a whole-body one, a player who accepts answers the character's invite. */
+  private emotes(): void {
+    const m = this.me;
+    if (m.emote && (this.t >= m.emote.until || (m.emote.full && (m.vx !== 0 || m.vz !== 0)) || !m.alive || m.mount)) {
+      if (this.running.has("emote")) this.end("emote", this.t >= m.emote.until ? "completed" : "interrupted", { by: "replaced" });
+      m.emote = null;
+    }
+    for (const t of this.things.values()) {
+      if (t.emote && this.t >= (t.emoteUntil ?? Infinity)) (t.emote = undefined), (t.emoteUntil = undefined);
+      if (t.invite && t.invite.until <= this.t) t.invite = undefined;
+      if (!t.asked) continue;
+      if (t.asked.until <= this.t) t.asked = undefined;
+      else if (t.accepts && this.t - t.asked.at >= 1000 && this.dist(t) <= INVITE_RANGE) {
+        const spec = EMOTE_SPEC.get(t.asked.name)!;
+        t.asked = undefined;
+        this.pair(t, spec.pair!.with, spec.name);
+        m.emote = { name: spec.name, until: this.t + (spec.seconds ?? 2) * 1000, full: true };
+        this.emoted.push({ who: m.name, name: spec.name, t: this.t, target: t.name ?? t.id });
+      }
     }
   }
 

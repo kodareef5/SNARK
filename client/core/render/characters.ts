@@ -17,7 +17,7 @@ import { SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
-import { emoteOf } from "../../../shared/anim/emotes.ts";
+import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
@@ -322,6 +322,9 @@ export class Characters {
   private readonly standIns: (StandIn | undefined)[][] = [];
   /** Stand-ins of survivors in whole-body emotes, by body kind and set and the emote. */
   private readonly emoteStandIns = new Map<number, StandIn>();
+  /** The manifest's slot of the emotes' clips while they are still to come, else -1; and whether they are wanted. */
+  private emoteSlot = -1;
+  private emotesWanted = false;
   private readonly riderStandIns = new Map<number, Map<number, Map<number, StandIn>>>();
   private readonly riderCounted = new Map<number, Map<number, Set<number>>>();
   private readonly neutralGrip = new RiderGrips();
@@ -387,6 +390,7 @@ export class Characters {
     this.palette = pack.palette;
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
+    this.emoteSlot = assets.table.skeletons.get(EMOTE_GROUP) ?? -1;
     this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
     this.plain = table.count * this.levels;
     this.counts = new Uint32Array(this.plain + EXTRA_KEYS);
@@ -718,6 +722,7 @@ export class Characters {
     const c = this.creatures[kind];
     // A survivor in a whole-body emote (sitting, lying, dancing) stands in at the middle of it.
     const emote = !c && !seated && !impaled ? emoteOf(st.emote) : null;
+    if (st.emote !== 0 && !this.anim.emotes[st.emote]) this.wantEmotes();
     if (emote?.mask === "full") {
       const key = (kind * 2 + set) * 1024 + st.emote;
       let e = this.emoteStandIns.get(key);
@@ -1220,6 +1225,30 @@ export class Characters {
     if (this.lastHeavy.size > 4096) this.lastHeavy.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
     if (this.waiting.length > 0) this.takeClips();
+    if (this.emoteSlot >= 0 && this.emotesWanted) this.takeEmotes();
+  }
+
+  /** Whether the game has emote `n` here: its clip is in the boot pack, or in the group that streams. */
+  emoteKnown(n: number): boolean {
+    const e = EMOTES[n - 1];
+    return !!e && (!!this.anim.emotes[n] || this.assets.table.has("clip", emoteClipId(e.id)));
+  }
+
+  /** Asks for the emotes' clips, as a body plays one or the emote menu opens. */
+  wantEmotes(): void {
+    if (this.emoteSlot < 0) return;
+    this.emotesWanted = true;
+    this.assets.wantClips(this.emoteSlot);
+  }
+
+  /** The emotes' clips, once come: every body plays them from then, and its whole-body stand-ins are made again. */
+  private takeEmotes(): void {
+    this.assets.wantClips(this.emoteSlot);
+    const set = this.assets.clips(this.emoteSlot);
+    if (!set) return;
+    this.anim.addEmotes(set);
+    this.emoteStandIns.clear();
+    this.emoteSlot = -1;
   }
 
   /**
@@ -1425,7 +1454,10 @@ export class Characters {
       humanPose(this.anim, st, tick, this.pose, g);
       this.seatedPose("impaled", 0, undefined, undefined);
     } else if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount);
-    else humanPose(this.anim, st, tick, this.pose, g);
+    else {
+      if (st.emote !== 0 && !this.anim.emotes[st.emote]) this.wantEmotes();
+      humanPose(this.anim, st, tick, this.pose, g);
+    }
     // Longer legs lift the hips, so the feet stay on the ground.
     if (scales && !seat && !vehicleSeat && !impaled) this.pose.root[1]! += lookLift(scales, set.rest);
     solve(HUMAN, this.pose, solved, set.rest, scales);

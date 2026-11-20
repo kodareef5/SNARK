@@ -1533,7 +1533,8 @@ export class App {
       emotes.target = this.target;
       emotes.targetName = this.remote.name[i]!;
     }
-    emotes.has = (n) => !!this.scene!.characters.anim.emotes[n];
+    emotes.has = (n) => this.scene!.characters.emoteKnown(n);
+    if (emotes.open) this.scene!.characters.wantEmotes();
     hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);

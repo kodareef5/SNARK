@@ -9,7 +9,7 @@
 
 import type { GameWorld, WorldEvent } from "../grunt/endpoint.ts";
 import type {
-  Action, Building, Capabilities, ChatLine, Craftable, FormSpec, Plan, EntitiesChannel, Entity, FocusChannel, Interruption, InventoryChannel, MapChannel,
+  Action, Building, Capabilities, ChatLine, Craftable, EmoteSpec, FormSpec, Plan, EntitiesChannel, Entity, FocusChannel, Interruption, InventoryChannel, MapChannel,
   RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../grunt/protocol.ts";
 import { ownIndex } from "../client/core/session.ts";
@@ -21,6 +21,9 @@ import type { Answer } from "./mcp.ts";
 import { observe, shortName } from "./observe.ts";
 import { focusOf } from "./focus.ts";
 import { MapRaster } from "./map.ts";
+import { EMOTES, EMOTE_NUMBER, emoteOf } from "../shared/anim/emotes.ts";
+import { emoteClips } from "../shared/anim/emote-clips.ts";
+import { AnimState } from "../shared/anim/pose.ts";
 import { Planner } from "./plan.ts";
 import type { Agent } from "./tools.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../shared/coords.ts";
@@ -29,6 +32,14 @@ import { Support } from "../shared/world/support.ts";
 
 /** SNARK's position to the protocol's, and back. */
 const toG = (x: number, z: number): [number, number] => [-x, -z];
+/** The emotes SNARK has (shared/anim/emotes.ts), as the protocol lists them; a one-shot's length from its clip. */
+const EMOTE_SPECS: EmoteSpec[] = EMOTES.map((e) => {
+  const clip = emoteClips().find((c) => c.id === `human/emote/${e.id}`);
+  return {
+    name: e.id, tags: [...e.tags], loop: e.loop, mask: e.mask, ...(!e.loop && clip ? { seconds: Math.round((clip.frames / 30) * 10) / 10 } : {}),
+    ...(e.pair ? { pair: { ...e.pair } } : {}), ...(e.group ? { group: true } : {}),
+  };
+});
 const wrap = (a: number): number => Math.atan2(Math.sin(a), Math.cos(a));
 
 const CHANNEL_OF: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_LOCAL]: "local", [TEXT_TRIBE]: "group" };
@@ -143,6 +154,7 @@ export class SnarkWorld implements GameWorld {
     this.agent.tick(now);
     this.hear();
     this.watchDamage();
+    this.watchEmotes();
     for (let i = this.sleepers.length - 1; i >= 0; i--) if (this.t >= this.sleepers[i]!.at) this.sleepers.splice(i, 1)[0]!.wake();
     if (this.wasAlive && !this.me.alive) this.event("died", { by: null, pos: this.selfChannel().pos });
     this.wasAlive = this.me.alive;
@@ -177,6 +189,12 @@ export class SnarkWorld implements GameWorld {
     this.logSeen = s.logVersion;
     for (const l of fresh > 0 ? s.log.slice(-fresh) : []) {
       if (l.channel === TEXT_NOTICE) {
+        // An invite to a pair's emote (server/emote.ts says it so): who asks, and the side to answer with.
+        const inv = /^(.+?) would like an? (.+?) with you: emote (\S+) back/.exec(l.text);
+        if (inv) {
+          const name = EMOTES.find((e) => e.name.toLowerCase() === inv[2])?.id ?? inv[3]!;
+          this.event("invited", { from: this.idOfName(inv[1]!) ?? inv[1]!, name, with: inv[3]! });
+        }
         this.event("notice", { text: l.text, level: "info" });
         continue;
       }
@@ -243,6 +261,8 @@ export class SnarkWorld implements GameWorld {
         return instant();
       case "chat":
         return this.call(command, index, "say", { channel: a.channel === "group" ? "tribe" : a.channel, text: a.text });
+      case "emote":
+        return this.emote(command, index, a);
       case "craft":
         return this.call(command, index, "craft", { recipe: a.item, count: a.count, learn: true, wait_s: 50 });
       case "select": {
@@ -391,8 +411,80 @@ export class SnarkWorld implements GameWorld {
 
   /** The capabilities, with the building this server's content has (agent/plan.ts). */
   capabilities(base: Capabilities): Capabilities {
-    return { ...base, building: (this.buildingCache ??= this.planner.building()) };
+    return { ...base, building: (this.buildingCache ??= this.planner.building()), emotes: EMOTE_SPECS };
   }
+
+  // --- Emotes -------------------------------------------------------------------------------------------------------
+
+  /** The emote word the server has for body `n` (an entity index), as the view has it. */
+  private emoteWord(n: number): number {
+    const r = this.agent.remote;
+    for (let i = 0; i < r.count; i++) if (r.id[i] === n) return r.emote[i]!;
+    return 0;
+  }
+
+  private idOfName(name: string): string | null {
+    const r = this.agent.remote;
+    for (let i = 0; i < r.count; i++) if (r.name[i] === name) return `e${r.id[i]}`;
+    return null;
+  }
+
+  /** The emote control: CMD_EMOTE, then what the server made of it, read from this body's own emote word. */
+  private emote(command: string, index: number, a: Extract<Action, { control: "emote" }>): RejectCode | null {
+    const s = this.s, me = this.ownId();
+    const ent = (id?: string): number => (id && /^e\d+$/.test(id) ? Number(id.slice(1)) : -1);
+    if (a.stop) {
+      s.emote(1, 0);
+      this.emit({ type: "outcome", command, index, status: "completed" });
+      return null;
+    }
+    const n = a.name ? (EMOTE_NUMBER.get(a.name) ?? 0) : 0;
+    if (a.join) {
+      if (ent(a.join) < 0) return "unknown_target";
+      s.emote(2, 0, ent(a.join));
+    } else {
+      const def = n ? EMOTES[n - 1]! : null;
+      if (!def) return "bad_arguments";
+      if (def.pair && ent(a.target) < 0) return "unknown_target";
+      s.emote(0, n, def.pair ? ent(a.target) : -1);
+    }
+    void (async () => {
+      await this.sleep(400);
+      const st = new AnimState();
+      st.unpackEmote(this.emoteWord(me));
+      const def = emoteOf(st.emote);
+      if (!def) {
+        // A pair's emote at someone who has not asked is an invite: nothing plays until they answer.
+        const pair = n ? EMOTES[n - 1]!.pair : undefined;
+        this.emit({ type: "outcome", command, index, status: pair ? "completed" : "failed", ...(pair ? { detail: { invited: a.target } } : { code: "not_permitted" as const }) });
+        return;
+      }
+      if (a.seconds && def.loop) {
+        await this.sleep(a.seconds * 1000);
+        if (this.emoteWord(me) === st.packEmote()) s.emote(1, 0);
+      }
+      // A one-shot ends as its word clears; a loop is told at once.
+      for (let k = 0; !def.loop && k < 400 && this.emoteWord(me) !== 0; k++) await this.sleep(100);
+      this.emit({ type: "outcome", command, index, status: "completed", detail: { name: def.id } });
+    })();
+    return null;
+  }
+
+  /** Others' emote words as they change: an `emoted` event for each that begins. */
+  private watchEmotes(): void {
+    const r = this.agent.remote, st = this.emoteSt, me = this.ownId();
+    for (let i = 0; i < r.count; i++) {
+      const id = r.id[i]!, word = r.emote[i]!;
+      if (id === me || this.emoteWords.get(id) === word) continue;
+      this.emoteWords.set(id, word);
+      st.unpackEmote(word);
+      const def = emoteOf(st.emote);
+      if (def) this.event("emoted", { who: `e${id}`, name: def.id });
+    }
+    if (this.emoteWords.size > 512) this.emoteWords.clear();
+  }
+  private readonly emoteWords = new Map<number, number>();
+  private readonly emoteSt = new AnimState();
 
   private specs(): Map<string, FormSpec> {
     return new Map((this.capabilities({} as Capabilities).building!.forms ?? []).map((f) => [f.form, f]));
@@ -647,7 +739,7 @@ export class SnarkWorld implements GameWorld {
           id, kind, type: kind === "resource" ? material! : name, ...(kind === "resource" ? { name: list } : named ? { name } : {}),
           pos: [x, 0, z], distance: far, bearing: wrap(yaw - wrap(-s.ownYaw)),
           ...(kind === "creature" ? { disposition: hostile ? "hostile" : own ? "own" : "neutral", health: hurt === "near death" ? 0.1 : hurt === "badly hurt" ? 0.35 : hurt === "hurt" ? 0.7 : 1, tags: more } : {}),
-          ...(kind === "player" ? { disposition: "neutral" as const } : {}),
+          ...(kind === "player" ? { disposition: "neutral" as const, ...this.playerTags(id) } : {}),
           ...(kind === "vehicle" ? { disposition: more.includes("yours") ? "own" : "neutral", tags: ["car", "rideable", ...more] } : {}),
           ...(own && kind === "creature" && more.includes("saddled") ? { tags: [...more, "mount", "rideable"] } : {}),
           affords: kind === "container" || kind === "structure" ? ["open"] : kind === "resource" ? ["harvest"] : own && more.includes("saddled") ? ["mount", "open"] : [],
@@ -656,6 +748,15 @@ export class SnarkWorld implements GameWorld {
     }
     items.sort((p, q) => p.distance - q.distance);
     return { items: items.slice(0, max), more: Math.max(0, items.length - max) } as EntitiesChannel;
+  }
+
+  /** What a look at a player shows of what they are doing: their emote. */
+  private playerTags(id: string): { tags?: string[] } {
+    const word = this.emoteWord(Number(id.slice(1)));
+    if (!word) return {};
+    this.emoteSt.unpackEmote(word);
+    const def = emoteOf(this.emoteSt.emote);
+    return def ? { tags: [`emote:${def.id}`] } : {};
   }
 
   /** A node's kind by what it gives: wood is a tree, stone or metal a rock, nothing hard a bush. */

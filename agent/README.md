@@ -222,7 +222,11 @@ plan pieces; `remove` picks up (within the 30 s window) or demolishes; the repai
 assist mends a base's pieces as the cooldown allows, and `damaged`/`repaired`
 events come from the hp the client sees.
 
-`tests/integration/grunt-gateway.test.ts`, `grunt-build.test.ts` and
-`grunt-senses.test.ts` play it on a server in process;
+Emotes are the server's own (CMD_EMOTE): the control plays one, asks someone
+for a pair or joins a dance; others' emote words become `emote:` tags and
+`emoted` events, and the server's invite notice an `invited` event.
+
+`tests/integration/grunt-gateway.test.ts`, `grunt-build.test.ts`,
+`grunt-senses.test.ts` and `grunt-emotes.test.ts` play it on a server in process;
 `bun tools/grunt/live.ts --url ws://127.0.0.1:8771/grunt --name Scout "…"` puts a
 model on it.

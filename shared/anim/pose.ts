@@ -304,7 +304,7 @@ export class HumanAnim {
   readonly pistolAimed: Clip | null;
   readonly pistolLowered: Clip | null;
   /** Each emote's clip by its number (shared/anim/emotes.ts), null for none or one not loaded. */
-  readonly emotes: readonly (Clip | null)[];
+  readonly emotes: (Clip | null)[];
   /** The gaits of each way of moving, slowest first: on foot, crouched, prone and swimming. */
   readonly standing: readonly GaitClip[];
   readonly crouching: readonly GaitClip[];
@@ -351,6 +351,15 @@ export class HumanAnim {
     // A crawl drags its feet and a swimmer has no ground, so their strides are the speed each plays at its own rate.
     this.crawling = gaits([this.proneCrawl, this.proneCrawl ? (PRONE_SPEED * this.proneCrawl.frames) / TICK_RATE : 0]);
     this.swimming = gaits([this.swim, this.swim ? (SWIM_SPEED * this.swim.frames) / TICK_RATE : 0]);
+  }
+
+  /** Takes in emote clips that came later (a client streams them after the first frame). */
+  addEmotes(set: ClipSet): void {
+    EMOTES.forEach((e, i) => {
+      const k = set.index.get(emoteClipId(e.id));
+      const clip = k === undefined ? null : set.clips[k]!;
+      if (clip && clip.bones === HUMAN_BONES) this.emotes[i + 1] = clip;
+    });
   }
 
   /** The gaits that move a body in this state. */

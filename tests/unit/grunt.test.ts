@@ -61,7 +61,7 @@ test("the Director's tools are the game_ ones, with plain JSON Schema parameters
   expect([...tools.keys()]).toEqual(["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_blueprints", "game_agenda", "game_goal"]);
   for (const t of tools.values()) expect(t.parameters).toMatchObject({ type: "object", additionalProperties: false });
   expect((tools.get("game_do")!.parameters.properties as { skill: { enum: string[] } }).skill.enum).toEqual(Object.keys(SKILLS));
-  const skills = JSON.parse((await tools.get("game_skills")!.execute("1", {}, undefined, undefined, {})).content[0]!.text);
+  const skills = JSON.parse((await tools.get("game_skills")!.execute("1", {}, undefined, undefined, {})).content[0]!.text).skills;
   expect(skills.map((s: { skill: string }) => s.skill)).toContain("harvest");
   expect(tools.get("game_look")!.execute("2", {}, undefined, undefined, {})).rejects.toThrow("not connected");
 });

@@ -53,6 +53,9 @@ How to decide:
   exactly what it takes, and gather takes that whole list in one task. pos is [x, height, z], with x growing east
   and z growing south (north is -z); build's x, z put the middle of the base there, and facing turns its front.
   To add to a base, build with its base id (extend it on its grid); capture copies a base, dismantle takes one down.
+- Your persona's idle runs by itself (glances, a wave for your people, a dance when it is quiet, whatever fits who you
+  are): leave it be. Answer a player in kind when it fits: game_do emote (a wave back, a dance, a high five at their
+  id, which asks them) or perform (a routine). A player's emote shows in game_look as an emote: tag on them.
 - When the goal is reached, say so as you were asked (often in chat with game_say), with the real numbers from the
   game, and stop.
 - Keep your own agenda (game_agenda): work that takes several steps or will outlast this moment goes on it as to-dos

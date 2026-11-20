@@ -4,7 +4,7 @@
 
 import type { Layout } from "./layout.ts";
 import { NavMap } from "./nav.ts";
-import type { Assists, Building, ChatLine, EntitiesChannel, Entity, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, Slot, TerrainChannel, Vec3 } from "./protocol.ts";
+import type { EmoteSpec, Assists, Building, ChatLine, EntitiesChannel, Entity, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, Slot, TerrainChannel, Vec3 } from "./protocol.ts";
 
 export interface Remembered extends Entity {
   /** The game clock (ms) when it was last seen, and its position then. */
@@ -39,6 +39,10 @@ export class Belief {
   readonly stores = new Map<string, { slots: Slot[]; capacity: number; name?: string; t: number }>();
   /** Pieces of its bases it was told are damaged, and not yet repaired. */
   readonly damaged = new Map<string, { base: string; form: string; pos: Vec3; health: number; t: number }>();
+  /** Events ever heard (the list keeps the last 200): what a reader that has seen so many has still to see. */
+  eventCount = 0;
+  /** The game's emotes (capabilities.emotes), or null where it has none. */
+  emotes: EmoteSpec[] | null = null;
   /** Layouts captured from bases standing (game_do capture), to build again by name. */
   readonly layouts: Record<string, Layout> = {};
   /** The game's assists, if it has them, and their limits. */
@@ -90,6 +94,7 @@ export class Belief {
 
   event(e: GameEvent): void {
     this.now = Math.max(this.now, e.t);
+    this.eventCount++;
     this.events.push(e);
     if (this.events.length > 200) this.events.shift();
     if (e.kind === "heard" && this.self) {

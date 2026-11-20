@@ -101,7 +101,7 @@ test("a stored set lists where each part is now, and each comes back to the byte
   const raw = sceneSet();
   const set = await storedSet();
   expect(parseManifest(JSON.stringify(set.manifest))).toEqual(set.manifest);
-  expect([set.manifest.version, set.files.map((f) => f.name)]).toEqual([MANIFEST_VERSION, ["scene.boot.snpk", "scene.mesh.snpt", "scene.tex.rgba.sntx"]]);
+  expect([set.manifest.version, set.files.map((f) => f.name)]).toEqual([MANIFEST_VERSION, ["scene.boot.snpk", "scene.mesh.snpt", "scene.clip.snpt", "scene.tex.rgba.sntx"]]);
   // The boot file is fetched whole and is as it was. The others are smaller, each behind a header of its own.
   expect(set.files[0]!.bytes).toEqual(raw.files[0]!.bytes);
   expect(new DataView(set.files[1]!.bytes.buffer).getUint32(0, true)).toBe(PARTS_MAGIC);

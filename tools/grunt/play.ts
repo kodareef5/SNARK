@@ -15,7 +15,7 @@ import { compile, type Layout } from "../../grunt/layout.ts";
 import { GameEndpoint } from "./game.ts";
 import { makeWorld, type Scene } from "./scenes.ts";
 import { slot } from "./structures.ts";
-import { TICK_MS, type World } from "./world.ts";
+import { EMOTE_SPECS, TICK_MS, type World } from "./world.ts";
 
 export type Check =
   | { all: Check[] }
@@ -46,7 +46,9 @@ export type Check =
   | { lives: string }
   /** Some base has at least these pieces, and a ceiling over every foundation if `roofed`. */
   | { base_has: Partial<Record<string, number>>; roofed?: boolean }
-  | { at: [number, number]; within: number };
+  | { at: [number, number]; within: number }
+  /** An emote (by name or tag) played: by the character, or by `by` (a name); at `toward` (a name) if given. */
+  | { emoted: string; by?: string; toward?: string };
 
 export interface Scenario {
   name: string;
@@ -62,9 +64,13 @@ export interface Scenario {
     | { at_s: number; damage: { x: number; z: number; radius: number; amount: number } }
     | { at_s: number; prompt: string }
     | { at_s: number; at_built: number; drop: "rock" }
+    /** A player emotes; `at_me` a pair's emote invites the character. */
+    | { at_s: number; emote: { from: string; name: string; at_me?: boolean } }
   )[];
   success: Check;
   budget: { seconds: number };
+  /** The character's persona (grunt/persona.ts), a built-in name. */
+  persona?: string;
 }
 
 export function check(c: Check, w: World): boolean {
@@ -73,6 +79,10 @@ export function check(c: Check, w: World): boolean {
   if ("have" in c) return w.count(c.have) >= c.at_least;
   if ("none_near" in c) return ![...w.things.values()].some((t) => t.type === c.none_near && Math.hypot(t.x - c.of[0], t.z - c.of[1]) <= c.within);
   if ("said" in c) return w.said.some((s) => new RegExp(c.said, "i").test(s.text));
+  if ("emoted" in c) {
+    const tagged = new Set(EMOTE_SPECS.filter((e) => e.tags.includes(c.emoted)).map((e) => e.name));
+    return w.emoted.some((e) => (e.name === c.emoted || tagged.has(e.name)) && e.who === (c.by ?? w.me.name) && (!c.toward || e.target === c.toward));
+  }
   if ("near" in c) return [...w.things.values()].some((t) => (t.name === c.near || t.id === c.near) && Math.hypot(t.x - w.me.x, t.z - w.me.z) <= c.within);
   if ("built" in c) return Object.entries(c.built).every(([piece, n]) => [...w.things.values()].filter((t) => t.type === piece).length >= n);
   if ("at" in c && !("where" in c)) return Math.hypot(w.me.x - c.at[0], w.me.z - c.at[1]) <= c.within;
@@ -181,7 +191,7 @@ if (import.meta.main) {
   const tools = ["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_goal", "game_blueprints", "game_agenda"];
   // Each run its own agenda, so runs never remember each other.
   const state = mkdtempSync(join(tmpdir(), "grunt-agenda-"));
-  const pi = spawn("pi", ["--mode", "rpc", "--no-session", "-ne", "-ns", "-e", root, "--tools", tools.join(","), "--model", model, "--thinking", thinking], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, GRUNT_STATE: state } });
+  const pi = spawn("pi", ["--mode", "rpc", "--no-session", "-ne", "-ns", "-e", root, "--tools", tools.join(","), "--model", model, "--thinking", thinking], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, GRUNT_STATE: state, ...(sc.persona ? { GRUNT_PERSONA: sc.persona } : {}) } });
   pi.stderr.on("data", (d) => show && process.stderr.write(d));
   pi.stdin.on("error", () => {});
   const send = (m: object) => pi.stdin.write(JSON.stringify(m) + "\n");
@@ -257,6 +267,7 @@ if (import.meta.main) {
         if ("say" in ev) world.say(ev.say.from, ev.say.text, ev.say.channel ?? "local", who(ev.say.from));
         else if ("speak" in ev) world.speak(who(ev.speak.from) ?? "", ev.speak.text);
         else if ("damage" in ev) world.damage(ev.damage.x, ev.damage.z, ev.damage.radius, ev.damage.amount);
+        else if ("emote" in ev) world.playerEmote(who(ev.emote.from) ?? "", ev.emote.name, ev.emote.at_me);
         else send({ type: "prompt", message: ev.prompt, streamingBehavior: "followUp" });
         if (show) console.log(`${el.toFixed(1)}s [script] ${JSON.stringify(ev)}`);
       });

@@ -53,6 +53,24 @@ export interface Capabilities {
   /** Players' speech, transcribed and heard by the character within `range` metres. The character itself talks in
    * chat: it has no voice. */
   voice?: { range: number };
+  /** The emotes the character can play (the emote control): open, as a game lists them. */
+  emotes?: EmoteSpec[];
+}
+
+/** An emote a game has: its name, what it is for (tags such as greeting, dance, fun, scary, rest, reaction, pair), and
+ * how it plays. A pair's emote is played by two face to face: one asks with the other as its target (an invite), the
+ * other answers with `pair.with` back (the same, mostly), and the game stands them `apart` and begins both at once. A
+ * group's may be joined in step. */
+export interface EmoteSpec {
+  name: string;
+  tags: string[];
+  loop: boolean;
+  /** "upper": the arms and head, over walking; "full": the whole body, which moving ends. */
+  mask: "full" | "upper";
+  /** A one-shot's length, seconds. */
+  seconds?: number;
+  pair?: { with: string; apart: number };
+  group?: boolean;
 }
 
 /** The assists' limits: the hands done for the client no better than a good player's. */
@@ -367,7 +385,7 @@ export interface GameEvent extends Envelope<"event">, Sequenced {
 // --- Acting -------------------------------------------------------------------------------------------------------
 
 export type ControlName =
-  | "move" | "look" | "jump" | "crouch" | "stop" | "interact" | "use" | "select" | "items" | "craft" | "rotate" | "chat" | "plan" | "assist";
+  | "move" | "look" | "jump" | "crouch" | "stop" | "interact" | "use" | "select" | "items" | "craft" | "rotate" | "chat" | "plan" | "assist" | "emote";
 
 export type Action =
   | { control: "move"; forward: number; strafe: number; sprint?: boolean; duration_ms: number }
@@ -395,7 +413,11 @@ export type Action =
    * [near, far] metres, lead and loose. harvest: swing at a tool's pace until it is gone. The client's own move or look
    * takes over from it. */
   | { control: "assist"; kind: AssistKind; target: EntityId; range?: [number, number]; natural?: boolean; until?: { health_below?: number; mount_health_below?: number; stamina_below?: number; count?: number; seconds?: number } }
-  | { control: "chat"; channel: "local" | "global" | "group"; text: string };
+  | { control: "chat"; channel: "local" | "global" | "group"; text: string }
+  /** An emote (capabilities.emotes): played, or a pair's at `target` (an invite, or the answer to one), or `join`ing
+   * another's in step, or `stop`ping the one playing. A one-shot completes as it ends; a loop completes at once and
+   * plays until stopped, moved out of, or `seconds` pass. */
+  | { control: "emote"; name?: string; target?: EntityId; join?: EntityId; stop?: boolean; seconds?: number };
 
 export interface Act extends Envelope<"act"> {
   /** Unique within the session: what makes the act happen once. */

@@ -165,6 +165,12 @@ export const CARDS: Card[] = [
     },
   },
   {
+    id: "persona",
+    // Who the character is, so what it says in chat sounds like the one its idle shows.
+    relevance: (s) => (s.rt.idler.persona.name !== "stoic" ? 0.15 : 0),
+    text: (s) => `Your persona: ${s.rt.idler.persona.name}, ${s.rt.idler.persona.about}. Your idle moves on its own; speak in chat as this one would, and use game_do emote or perform to answer someone in kind.`,
+  },
+  {
     id: "idle",
     relevance: (s) => (!s.rt.current && !s.rt.waiting.length && activeGoals(s).length ? 0.8 : 0),
     text: (s) => `You are idle and a goal is not marked met. If it is met, report it as asked and mark it with game_goal; if not, start the next step now.`,

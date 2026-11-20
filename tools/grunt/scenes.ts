@@ -22,6 +22,9 @@ export interface SceneThing {
   items?: Record<string, number>;
   /** A player who is an enemy. */
   hostile?: boolean;
+  /** A player emoting from the start (a dance, a loop); and whether it accepts the character's invites to a pair. */
+  emote?: string;
+  accepts?: boolean;
 }
 
 export interface Scene {
@@ -53,6 +56,7 @@ export function makeWorld(scene: Scene = {}): World {
       ...(t.name ? { name: t.name } : {}), ...(slots ? { slots } : {}), ...(t.hostile ? { hostile: true } : {}),
       ...(RIDEABLE.has(t.type) || t.tame ? { tame: true } : {}),
       ...(t.path ? { path: t.path.map((p) => [...p] as [number, number]), pace: t.speed ?? 3, departs: (t.at_s ?? 0) * 1000 } : {}),
+      ...(t.emote ? { emote: t.emote, emoteUntil: Infinity } : {}), ...(t.accepts ? { accepts: true } : {}),
     });
   }
   for (const b of scene.bases ?? []) {

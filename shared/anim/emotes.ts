@@ -135,7 +135,9 @@ export function emoteOf(n: number): EmoteDef | null {
   return EMOTES[n - 1] ?? null;
 }
 
-export const emoteClipId = (id: string): string => `human/emote/${id}`;
+/** The emotes' clips are one group, streamed after the first frame (tools/pack/split.ts). */
+export const EMOTE_GROUP = "human/emote";
+export const emoteClipId = (id: string): string => `${EMOTE_GROUP}/${id}`;
 
 /** Ticks to blend an emote in, and a one-shot out. */
 export const EMOTE_FADE = 6;

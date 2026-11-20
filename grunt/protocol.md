@@ -240,6 +240,8 @@ character has no voice of its own: it answers in chat.
 | `blocked` | movement stopped by something: `by` (an entity id, `terrain`, `water` or `structure`), `pos` |
 | `heard` | a sound the character heard: `kind` (`creature`, `footsteps`, `impact`, `shot`, `voice`, `other`), `bearing`, `loudness` (0 to 1), `what` if a player could tell (`raptor`), never a hidden entity's id |
 | `crafted` | `item`, `count`, from the `crafting` queue |
+| `emoted` | another body began an emote it can see: `who`, `name`; `target` where it is part of a pair with the character |
+| `invited` | someone asks the character to play a pair's emote with them: `from`, `name` (theirs), `with` (the side to answer with) |
 
 A game may send kinds it lists in `welcome` beyond these; a client ignores kinds it does not know.
 
@@ -412,6 +414,28 @@ An assist is fair because it is a good player's hands, never more, and never eye
 5. It never strikes what it is not after: something else under the crosshair ends it (`obstructed`, `by`).
 6. Everything costs what it costs a player: stamina, durability, ammunition.
 7. The client's own `move` or `look` takes over from it at once.
+
+### Emotes: gestures, dances and moves for two
+
+Where a game has emotes (`emote` in `controls`, `emotes` in `capabilities`), it lists them, open as `building.forms`
+is: `[{ "name": "wave", "tags": ["greeting", "friendly"], "loop": false, "mask": "upper", "seconds": 2.2 }, { "name":
+"disco", "tags": ["dance", "fun"], "loop": true, "mask": "full", "group": true }, { "name": "high_five", "tags":
+["pair", "greeting"], "loop": false, "mask": "full", "pair": { "with": "high_five", "apart": 0.64 } }, …]`. Tags say
+what a move is for (`greeting`, `answer`, `approval`, `reaction`, `dance`, `fun`, `silly`, `showoff`, `victory`,
+`scary`, `taunt`, `rude`, `rest`, `idle`, `work`, `exercise`, `pair`), so a client picks by purpose in any game.
+
+- `{ "control": "emote", "name": "wave" }` plays one. An `upper` one plays over walking; a `full` one stands the body
+  and moving ends it. A one-shot's outcome comes as it ends; a loop's at once, and it plays until stopped, moved out
+  of, or `seconds` pass.
+- A pair's emote at a `target` asks them (an invite: the outcome completes with `invited`, and nothing plays yet); the
+  other answering with `pair.with` at the one who asked begins it: the game stands the two `apart` metres face to face
+  and starts both on one tick. An unanswered invite lapses after some seconds. No one is ever moved into a pair they
+  did not answer.
+- `{ "control": "emote", "join": id }` plays a `group` emote someone is playing, in step with them.
+- `{ "control": "emote", "stop": true }` ends the one playing.
+
+Others' emotes show on them in `entities` as tags `emote:<name>`, and as `emoted` events; an invite to the character
+comes as an `invited` event (and on the mock as tags `emote_to:<id>`, `invite:<name>` on the one asking).
 
 ## Staying connected
 

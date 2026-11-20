@@ -5,6 +5,8 @@
 
 import { type Belief, compass } from "./belief.ts";
 import { build, capture, dismantle } from "./build.ts";
+import { emote, perform } from "./idle.ts";
+import { ROUTINES } from "./routines.ts";
 import { fight } from "./combat.ts";
 import { escort, follow, repair, upkeep } from "./company.ts";
 import { empty, loot, migrate, organize, stash } from "./haul.ts";
@@ -518,6 +520,14 @@ export const SKILLS: Record<string, Skill> = {
   },
   craft: { name: "craft", describe: "Craft items from the inventory, by the recipes the inventory screen shows.", params: { item: "item name", count: "number" }, body: false, run: craft },
   say: { name: "say", describe: "Say a line in chat.", params: { text: "string", channel: "local | global | group" }, body: false, run: say },
+  emote: {
+    name: "emote", describe: "Play an emote the game has (game_look lists them): a gesture, a dance, a scary or idle move, by name or by tag (greeting, dance, fun, scary, rest...). A move for two (handshake, high_five, hug...) goes to a target: it asks them, or answers their ask. join: dance in step with someone dancing. stop: end the one playing.",
+    params: { name: "an emote's name", tag: "or a tag: the game's first fitting one", target: "who a move for two is with (an id)", join: "an id: join their dance", seconds: "number: how long a loop plays", stop: "boolean" }, body: false, run: emote,
+  },
+  perform: {
+    name: "perform", describe: `Play a routine, a little choreography of emotes and steps: ${ROUTINES.map((r) => `${r.name} (${r.about}${r.needs === "target" ? ", at a target" : ""})`).join("; ")}.`,
+    params: { routine: "a routine's name", target: "who it is for (an id)" }, body: true, run: perform,
+  },
   dismantle: {
     name: "dismantle", describe: "Take a base down (or the pieces named): picked up whole while the game allows (a full refund), else demolished for part; things and doors first, the top storey down.",
     params: { base: "base id", ids: "only these pieces", keep_things: "boolean: leave boxes, beds and stations" }, body: true, run: dismantle,
