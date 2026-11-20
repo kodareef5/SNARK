@@ -29,12 +29,13 @@ import { skyOpenCheck } from "./probe-lit/skyopen.ts";
 import { standCheck } from "./probe-lit/stand.ts";
 import { terrainCheck } from "./probe-lit/terrain.ts";
 import { waterCheck } from "./probe-lit/water.ts";
+import { streetFinishCheck } from "./probe-lit/street-finishes.ts";
 import { CHROME_FLAGS } from "./chrome.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, rotorCheck, facadeCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, postCheck, terrainCheck, seamsCheck, farCheck, cityCheck, skyCheck, shadowCheck, farShadowCheck, skyOpenCheck, nodesCheck, waterCheck, layersCheck, standCheck, detailsCheck, rotorCheck, facadeCheck, streetFinishCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");

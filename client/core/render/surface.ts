@@ -7,7 +7,9 @@
 //
 // Directions are in the world and of length 1. Colours are linear until `shown`.
 
-import { SEED_GLSL, STREET_GLSL } from "./street-finish.ts";
+export { linearToSrgb, srgbToLinear } from "./color-space.ts";
+import { linearToSrgb, srgbToLinear } from "./color-space.ts";
+import { BURNT_SHEET, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
@@ -82,15 +84,6 @@ export function lampsOn(frame: Numbers): number {
   // The true sun is the moon's direction turned round.
   const t = Math.min(1, Math.max(0, (LAMPS_OFF + frame[FRAME.moon + 1]!) / LAMPS_OFF));
   return t * t * (3 - 2 * t);
-}
-
-/** A display value as light, and light as a display value: the sRGB curve. */
-export function srgbToLinear(s: number): number {
-  return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-}
-
-export function linearToSrgb(l: number): number {
-  return l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055;
 }
 
 /**
@@ -653,7 +646,7 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${WHEEL_FINISH_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -669,7 +662,8 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
   // The fractional quarter of the material code carries the static vehicle's weather exposure.
   float age = fract(uStreetMaterial)*4.0;
-  if (age > 0.0) weatherVehicle(albedo,mro,vWheelPoint,vFinishSeed,age);
+  bool burntSheet = int(uStreetMaterial) == ${BURNT_SHEET};
+  if (age > 0.0) weatherVehicle(albedo,mro,vWheelPoint,vFinishSeed,age,burntSheet);
   float coat = 0.0, chrome = 0.0;
 
   float footprint = max(length(dFdx(vUv)),length(dFdy(vUv)));
@@ -677,29 +671,9 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     float near = (1.0-smoothstep(8.0,24.0,length(vRel)))${layered ? "*(1.0-smoothstep(0.15,0.85,uLevel))" : ""};
     float radial = length(vWheelPoint.yz);
     float outboard = vWheelPoint.x*(vWheel.w < 1.5 ? -1.0 : 1.0);
-    float outerMetal = clamp((outboard-0.16)*10.0,0.0,1.0)*clamp((0.83-radial)*12.0,0.0,1.0)*clamp((0.70-mro.g)*6.0,0.0,1.0);
-    float rubber = clamp((0.30-mro.b)*5.0,0.0,1.0)*clamp((mro.g-0.45)*5.0,0.0,1.0)*near*clamp((radial-0.45)*9.0,0.0,1.0);
-    chrome = clamp((mro.b-0.45)*3.4,0.0,1.0)*max(outerMetal,max(${dyed ? "clamp(mask.b*1.8,0.0,1.0)" : "0.0"},clamp((0.35-mro.g)*6.0,0.0,1.0)))*clamp((0.85-mro.g)*5.0,0.0,1.0)*near;
-    float dust = clamp((mro.g-0.24)*2.0,0.0,1.0);
     float width = max(length(dFdx(vWheelPoint)),length(dFdy(vWheelPoint)));
-    float mould = 0.0;
-    if (rubber > 0.0 && width < 0.023) {
-      float r = radial;
-      vec3 ribs = clamp(1.0-abs(vec3(r)-vec3(0.77,0.845,0.885))/0.012,0.0,1.0);
-      float shoulder = clamp((r-0.86)*14.0,0.0,1.0);
-      float angle = atan(vWheelPoint.y,vWheelPoint.z);
-      float groove = clamp((cos(42.0*angle+13.0*abs(vWheelPoint.x))-0.32)*3.0,0.0,1.0)*shoulder;
-      mould = (0.25*dot(ribs,vec3(1.0,1.0,0.65))-0.32*groove+0.09*shoulder*(1.0-groove))*clamp(1.0-45.0*width,0.0,1.0);
-    }
-    albedo *= 1.0-rubber*(0.75-0.10*dust+0.08*(1.0-mro.r)-1.1*mould);
-    mro.g += rubber*(max(0.0,0.90-mro.g)-0.38*mould);
+    chrome = wheelFinish(albedo,mro,${dyed ? "mask.b" : "0.0"},near,vWheelPoint,vFinishSeed,width,outboard);
     if (chrome > 0.0) {
-      float wipe = sin(19.0*vWheelPoint.z + 7.0*vWheelPoint.y + 9.0*vFinishSeed);
-      float grit = sin(151.0*vWheelPoint.y)*sin(123.0*vWheelPoint.z+13.0*vFinishSeed)*clamp(1.0-70.0*width,0.0,1.0);
-      float marks = smoothstep(0.30,0.83,vFinishSeed)*(0.035+0.065*wipe*wipe+0.022*grit);
-      albedo = mix(albedo,vec3(0.86,0.89,0.94),0.96*chrome);
-      mro.g = mix(mro.g,0.076+marks,chrome);
-      mro.b = mix(mro.b,1.0,chrome);
       // A gently crowned face turns a flat spoke through a range of real reflection directions.
       vec3 crown = 0.88*(vWheel.xyz - n*dot(vWheel.xyz,n));
       // The compact's five flat castings are 44 mm wide on a 300 mm wheel.
@@ -716,7 +690,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   }
   vec3 ray = reflect(-v,n), mirror = skyFrom(ray);
   if (uStreetMaterial > 0.5) {
-    float paint = uStreetMaterial < 1.5 ? ${dyed ? "mask.r" : "0.0"} * clamp((0.72-mro.g)*3.5,0.0,1.0) : 0.0;
+    float paint = ${dyed ? "(uStreetMaterial < 1.5 || burntSheet) ? mask.r * clamp((0.72-mro.g)*3.5,0.0,1.0) : 0.0" : "0.0"};
     float receives = max(paint,max(clamp(mro.b*1.5,0.0,1.0)*clamp((0.85-mro.g)*3.0,0.0,1.0),clamp((0.34-mro.g)*5.0,0.0,1.0)));
     if (receives > 0.0) {
       float wear = coatWear(vUv,vFinishSeed,footprint);

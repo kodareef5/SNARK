@@ -7,13 +7,14 @@ import { CHUNK_SIZE, YAW_UNITS } from "../../../shared/coords.ts";
 import { isWheelVehicle } from "../../../shared/sim/vehicle.ts";
 import { type NodeForms, SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
-import type { StructureStore } from "../../../shared/world/structures.ts";
+import { ReceiverIndex } from "./receiver-index.ts";
+import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import type { RenderWorld } from "./scene.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
 
-import { GLASS, RUST, STEEL, FINE_STREET_WIDTH, STREET_WIDTH, streetWidth, type StreetImage, streetPriority } from "./street-finish.ts";
+import { GLASS, RUST, STEEL, FINE_STREET_WIDTH, STREET_WIDTH, captureByte, streetWidth, type StreetImage, streetPriority } from "./street-finish.ts";
 const TAU = 2 * Math.PI, REACH = 36, MAX_PROXIES = 128, ROWS_PER_CHUNK = 192;
 function captureGrid(width: number) {
   const height = width / 2;
@@ -50,18 +51,30 @@ interface Proxy {
   oz: number;
 }
 
+function emptyProxy(): Proxy {
+  return { id: -1, x: 0, y: 0, z: 0, hx: 0, hy: 0, hz: 0, yaw: 0, color: 0, tree: false, importance: 0, kind: 0, ox: 0, oy: 0, oz: 0 };
+}
+
 /** The resident static kinds eligible to anchor a shared street picture. */
 export function placedPriority(d: Registry["defs"][number]): number {
   if (!d) return 0;
   const declared = Math.max(streetPriority(d.id), "mesh" in d ? streetPriority(d.mesh) : 0);
-  if (declared || d.type !== "structure" || d.id.startsWith("core:compact_wreck")) return declared;
+  if (declared || d.type !== "structure") return declared;
   const surface = surfaceIndex(d.color, false);
   return surface === GLASS ? 0.7 : surface === STEEL ? 0.35 : surface === RUST ? 0.12 : 0;
 }
 
 export class StreetReflections {
+  private readonly dense = new WeakMap<ChunkTable, ReceiverIndex>();
+  private readonly nearby = new Int32Array(3);
+  indexChunk(t: ChunkTable, x0: number, z0: number, cam: Camera): void {
+    if (t.high <= ROWS_PER_CHUNK || cam.x < x0-REACH || cam.z < z0-REACH || cam.x > x0+CHUNK_SIZE+REACH || cam.z > z0+CHUNK_SIZE+REACH) return;
+    if (this.dense.get(t)?.shape !== t.shape) this.dense.set(t, new ReceiverIndex(t,this.priority));
+  }
   private readonly priority: Float32Array;
-  private readonly proxies: Proxy[] = [];
+  private readonly proxies = Array.from({ length: MAX_PROXIES }, emptyProxy);
+  private candidate = emptyProxy();
+  private readonly selected = emptyProxy();
   private readonly drawOrder = new Uint16Array(MAX_PROXIES);
   private readonly silhouettes = new Map<number, readonly ShapeBox[] | null>();
   private previous: StreetImage | null = null;
@@ -87,13 +100,15 @@ export class StreetReflections {
   private count = 0;
   private ground = 0;
   private readonly reg: Registry;
-  private readonly palette: Uint8Array;
+  private readonly palette: Float32Array;
+  private readonly groundColor: Uint8Array;
   private readonly forms: NodeForms;
   private readonly bounds?: ResidentBounds;
   constructor(reg: Registry, palette: Uint8Array, forms: NodeForms, bounds?: ResidentBounds) {
     this.bounds = bounds;
     this.reg = reg;
-    this.palette = Uint8Array.from(palette, (channel) => Math.round(255 * (channel / 255) ** 2.2));
+    this.palette = Float32Array.from(palette, channel => (channel / 255) ** 2.2);
+    this.groundColor = Uint8Array.from(this.palette, captureByte);
     this.forms = forms;
     this.priority = Float32Array.from(reg.defs, placedPriority);
   }
@@ -163,7 +178,7 @@ export class StreetReflections {
         const winner: Proxy = this.winner;
         if (world.nodes) this.gather(world.nodes, cam, true, hidden);
         const travel = Math.hypot(winner.x - this.x, winner.y - this.y, winner.z - this.z);
-        const cut = this.anchor === -1 || travel > (winner.id === this.anchor ? 16 : 5);
+        const cut = this.anchor === -1 || travel > 16;
         if (cut) {
           this.started = now;
           this.blendMs = 0;
@@ -210,9 +225,20 @@ export class StreetReflections {
           t = store.chunks[chunk];
         if (!t) continue;
         const rows = Math.min(t.high, ROWS_PER_CHUNK);
+        let ahead = 0;
+        const index = !nodes && t.high > ROWS_PER_CHUNK ? this.dense.get(t) : undefined;
+        if (index?.shape === t.shape) {
+          const m = cam.viewProj;
+          for (let step = 0; step < 3; step++) {
+            const range = step * 6;
+            const slot = index.nearest(cam.x + range*m[3]!, cam.y + range*m[7]!, cam.z + range*m[11]!);
+            if (slot >= 0 && (ahead < 1 || this.nearby[0] !== slot) && (ahead < 2 || this.nearby[1] !== slot)) this.nearby[ahead++] = slot;
+          }
+        }
         for (let row = 0; row < rows; row++) {
-          const slot = Math.floor((row * t.high) / rows),
-            form = t.kind[slot]!,
+          const slot = row < ahead ? this.nearby[row]! : Math.floor((row-ahead)*t.high/(rows-ahead));
+          if (row >= ahead && ((ahead > 0 && slot === this.nearby[0]) || (ahead > 1 && slot === this.nearby[1]) || (ahead > 2 && slot === this.nearby[2]))) continue;
+          const form = t.kind[slot]!,
             ref = chunk * 65536 + slot;
           if (!form || (nodes && (this.forms.depleted[form] || hidden.has(ref)))) continue;
           const k = nodes ? this.forms.kind[form]! : form;
@@ -292,17 +318,24 @@ export class StreetReflections {
       const inFrame = Math.max(0.15, Math.min(1, 1.5 - Math.max(offX, offY) / depth));
       score = priority * importance * inFrame * (id === this.anchor ? 1.35 : 1);
     }
-    const data = { id, x, y, z, hx, hy, hz, yaw, color, tree, importance, kind, ox, oy, oz };
+    const data = this.candidate;
+    data.id = id; data.x = x; data.y = y; data.z = z;
+    data.hx = hx; data.hy = hy; data.hz = hz; data.yaw = yaw;
+    data.color = color; data.tree = tree; data.importance = importance; data.kind = kind;
+    data.ox = ox; data.oy = oy; data.oz = oz;
     if (score > Math.max(this.best, 0.0012)) {
       this.best = score;
-      this.winner = data;
+      this.winner = Object.assign(this.selected, data);
     }
-    if (this.count < MAX_PROXIES) this.proxies[this.count++] = data;
+    let slot = this.count;
+    if (slot < MAX_PROXIES) this.count++;
     else {
-      let least = 0;
-      for (let n = 1; n < MAX_PROXIES; n++) if (this.proxies[n]!.importance < this.proxies[least]!.importance) least = n;
-      if (importance > this.proxies[least]!.importance) this.proxies[least] = data;
+      slot = 0;
+      for (let n = 1; n < MAX_PROXIES; n++) if (this.proxies[n]!.importance < this.proxies[slot]!.importance) slot = n;
+      if (importance <= this.proxies[slot]!.importance) return;
     }
+    this.candidate = this.proxies[slot]!;
+    this.proxies[slot] = data;
   }
 
   private capture(hf: Heightfield, moved: boolean, grid: typeof standardGrid, frame: Float32Array): boolean {
@@ -320,7 +353,7 @@ export class StreetReflections {
         const gx = Math.max(0, Math.min(hf.nx - 1, Math.round((this.x + distance * sx) / hf.cell)));
         const gz = Math.max(0, Math.min(hf.nz - 1, Math.round((this.z + distance * sz) / hf.cell)));
         const tint = hf.tint[gz * hf.nx + gx];
-        for (let ch = 0; ch < 3; ch++) pixels[at * 4 + ch] = tint === undefined ? 39 : this.palette[tint * 4 + ch]!;
+        for (let ch = 0; ch < 3; ch++) pixels[at * 4 + ch] = tint === undefined ? captureByte(39/255) : this.groundColor[tint * 4 + ch]!;
         pixels[at * 4 + 3] = 255;
       }
     }
@@ -449,7 +482,7 @@ export class StreetReflections {
         }
         this.depth[at] = t;
         const shade = fine ? 0.34 + 0.66 * Math.max(0, Math.min(1, diffuse)) : tx > tz ? 0.76 : 0.94;
-        for (let ch = 0; ch < 3; ch++) pixels[4 * at + ch] = Math.round(this.palette[color * 4 + ch]! * shade);
+        for (let ch = 0; ch < 3; ch++) pixels[4 * at + ch] = captureByte(this.palette[color * 4 + ch]! * shade);
         pixels[4 * at + 3] = 255;
       }
     }

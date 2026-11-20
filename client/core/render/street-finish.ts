@@ -1,4 +1,5 @@
 // Receiver labels are optical properties. Gameplay material, impact sounds and salvage stay independent.
+import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { FRAME, type FramePacket } from "./packet.ts";
 import { SURFACE_NAMES } from "../../../content/surfaces.ts";
 export const STEEL = SURFACE_NAMES.indexOf("steel"), RUST = SURFACE_NAMES.indexOf("rust"), GLASS = SURFACE_NAMES.indexOf("glass");
@@ -7,60 +8,49 @@ export function worldReceiver(surface: number, rough: number, metal: number): nu
   return surface === STEEL || surface === RUST ? Math.max(0, Math.min(1, (0.85 - rough) * 3)) * metal : 0;
 }
 export const STREET_WIDTH = 64, FINE_STREET_WIDTH = 128;
+export const captureWidth = (hz: number): number => hz >= 4 ? FINE_STREET_WIDTH : hz > 0 ? STREET_WIDTH : 0;
+export function streetTextureBytes(hz: number): number {
+  const width = captureWidth(hz);
+  // Both RGBA layers, including the final 1 x 1 level of a 2:1 texture.
+  return width ? (2 * width * width + 1) / 3 * 8 : 0;
+}
 export function streetWidth(image: StreetImage): number {
   return image.pixels.length === FINE_STREET_WIDTH * FINE_STREET_WIDTH * 2 ? FINE_STREET_WIDTH : STREET_WIDTH;
 }
+// Store RGB in display space to preserve dark tones. Alpha remains linear coverage.
+const encoded = Uint8Array.from({ length: 8193 }, (_, i) => Math.round(255*linearToSrgb(i/8192)));
+const decoded = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i/255));
+export const captureByte = (linear: number): number => encoded[Math.round(linear*8192)]!;
 export interface StreetImage {
   pixels: Uint8Array;
   revision: number;
 }
 
-export const PAINT = 1, FITTINGS = 2, FIXTURE_PAINT = 1, FIXTURE_IRON = 2, SIGN_ENAMEL = 3;
-export function fixtureKind(mesh: string): number {
-  if (mesh === "core:box_trailer") return 4;
-  if (mesh === "core:zruin_zutility_concrete") return FIXTURE_PAINT;
-  if (mesh === "core:zruin_zdrain_concrete") return FIXTURE_IRON;
-  if (/^core:zruin_zsign_(?:blue|clay|mint|rose)$/.test(mesh)) return SIGN_ENAMEL;
+export { PAINT, FITTINGS, BURNT_SHEET, FIXTURE_IRON, FIXTURE_PAINT, SIGN_ENAMEL, fixtureKind, streetPriority, streetMaterial, vehicleWeather } from "../../../content/street-finishes.ts";
+import { PAINT, BURNT_SHEET, fixtureFaces, axleEnvelope, streetMaterial, vehicleWeather } from "../../../content/street-finishes.ts";
+
+export function fixtureFace(kind: number, palette: number, y = 0, z = 0): number {
+  for (const rule of fixtureFaces[kind] ?? []) {
+    if (rule.palette.length && !rule.palette.includes(palette)) continue;
+    if (rule.wheel !== undefined && y < axleEnvelope.top && axleEnvelope.z.some(axle => Math.abs(z - axle) < axleEnvelope.reach)) return rule.wheel;
+    return rule.face;
+  }
   return 0;
 }
-export function fixtureFace(kind: number, palette: number, y = 0, z = 0): number {
-  if (kind === 4) {
-    const axle = y < 1.08 && Math.min(Math.abs(z+5.054), Math.abs(z+3.754)) < 0.55;
-    if (axle && palette === 82) return 5;
-    if (palette === 102 || palette === 86) return axle ? 4 : 6;
-    return palette === 41 || palette === 214 ? 7 : 0;
-  }
-  if (kind === SIGN_ENAMEL) return SIGN_ENAMEL;
-  return (kind === FIXTURE_PAINT && palette === 140) || (kind === FIXTURE_IRON && palette === 11) ? kind : 0;
-}
 
-/** Capture priority is separate from the per-pixel mask. A rough wheel, a poster or a missing pane can share a mesh with paint or glass. */
-export function streetPriority(id: string): number {
-  if (/^core:zruin_(?:zstore|zwin|zcurt)/.test(id)) return 0.85;
-  if (/^core:zruin_(?:zshutter|zutility|zdrain)_/.test(id)) return 0.42;
-  const exposure = vehicleWeather(id);
-  if (exposure) return 0.85 - 0.5 * exposure;
-  if (fixtureKind(id) === SIGN_ENAMEL) return 0.5;
-  if (/^core:zzstreet_(?:hydrant|shelter|signal|lamp|meter|paystation|rail|fence|billboard|bollard|mailbox|newsbox)/.test(id)) return 0.4;
-  return /^core:compact_abandoned(?:_|$)/.test(id) ? 0.85 : 0;
-}
-
-export function streetMaterial(id: string, wheeledRig = false): number {
-  const [asset, part] = id.split("/");
-  if (asset === "core:street") return part === "street" || part === "street_cut" ? FITTINGS : 0;
-  if (
-    !wheeledRig && asset !== "core:compact_wreck" && asset !== "core:tanker_wrecks" && !/^core:(?:compact|fastback|patrol_sedan|patrol_jeep|taxi|panel_van|caravan|road_van|muscle_car|semi|monster_truck|bus|veloce|berlinetta|tanker|box_trailer)(?:_abandoned)?$/
-      .test(asset!)
-  ) return 0;
-  return /^(?:body|coach|coachwork|cruiser|patrol|enamel|paint|livery|shell|exterior|finish)$/.test(part!) ? PAINT : FITTINGS;
-}
-
-/** Exposure of the material left on each placed vehicle. The separate cistern shares the salvage atlas. */
-export function vehicleWeather(mesh: string): number {
-  if (mesh === "core:box_trailer") return 0.32;
-  if (mesh.startsWith("core:compact_abandoned") || mesh === "core:tanker_abandoned") return 0.55;
-  if (mesh.startsWith("core:compact_wreck") || mesh === "core:tanker_burnout") return 1;
-  return /^core:tanker_(?:impact|rear_crush|rollover|separated|stripped|cistern)$/.test(mesh) ? 0.78 : 0;
+/** Compile the same content rules for a flat mesh vertex. */
+export function fixtureShader(): string {
+  const axle = axleEnvelope.z.map(z => `abs(p.z - ${z}) < ${axleEnvelope.reach}`).join(" || ");
+  const rows = fixtureFaces.map((rules, kind) => {
+    if (!rules.length) return "";
+    const faces = rules.map(rule => {
+      const condition = rule.palette.map(color => `i == ${color}u`).join(" || ");
+      const result = rule.wheel === undefined ? rule.face : `axle ? ${rule.wheel} : ${rule.face}`;
+      return `${condition ? "if (" + condition + ") " : ""}return ${result};`;
+    });
+    return `if (kind == ${kind}) { ${faces.join(" ")} }`;
+  });
+  return `int fixtureFace(int kind, uint i, vec3 p) { bool axle = p.y < ${axleEnvelope.top} && (${axle}); ${rows.join("\n")} return 0; }`;
 }
 
 /** Material pages fill in independently of mesh pages. Cache only a resolved material ID. */
@@ -97,13 +87,20 @@ export function coatWear(u: number, v: number, seed: number, footprint: number):
 
 export function receiver(label: number, paintMask: number, rough: number, metal: number): number {
   if (!label) return 0;
-  const paint = label === PAINT ? paintMask * clamp((0.72 - rough) * 3.5) : 0;
+  const paint = label === PAINT || label === BURNT_SHEET ? paintMask * clamp((0.72 - rough) * 3.5) : 0;
   return Math.max(paint, clamp(metal * 1.5) * clamp((0.85 - rough) * 3), clamp((0.34 - rough) * 5));
 }
 
 /** Broken patches in metres, attached to the prop. Oxide replaces a fraction of the exposed conductor. */
-export function weatherVehicle(albedo: Float64Array, orm: Float64Array, x: number, y: number, z: number, seed: number, age: number): void {
+export function weatherVehicle(albedo: Float64Array, orm: Float64Array, x: number, y: number, z: number, seed: number, age: number, burntSheet = false): void {
   const field = 0.48*Math.sin(4.1*x+2.7*z+13*seed) + 0.32*Math.sin(6.7*y-3.2*z+8*seed) + 0.2*Math.sin(15*x+11*z+3*y);
+  // The burnt compact atlas bakes metalness to zero. Small breaks in the scale reveal the sheet beneath it.
+  if (burntSheet) {
+    const edge = clamp((-field-0.39)*4);
+    const scrape = edge*edge*(3-2*edge)*clamp((orm[0]!-0.25)*2.5);
+    orm[2]! += (0.76-orm[2]!)*scrape;
+    orm[1]! += (0.35-orm[1]!)*scrape;
+  }
   const patch = clamp((field+0.8*age-0.44)*2.3);
   const oxide = patch*patch*(3-2*patch)*clamp(orm[2]!*2.3)*age;
   const dust = age*(0.08+0.12*patch);
@@ -159,6 +156,35 @@ export function wheelFinish(albedo: Float64Array, orm: Float64Array, wheelMask: 
   return chrome;
 }
 
+export const WHEEL_FINISH_GLSL = `
+float wheelFinish(inout vec3 albedo, inout vec3 mro, float mask, float near, vec3 point, float seed, float width, float outboard) {
+  float radial = length(point.yz);
+  float outerMetal = clamp((outboard-0.16)*10.0,0.0,1.0)*clamp((0.83-radial)*12.0,0.0,1.0)*clamp((0.70-mro.g)*6.0,0.0,1.0);
+  float rubber = clamp((0.30-mro.b)*5.0,0.0,1.0)*clamp((mro.g-0.45)*5.0,0.0,1.0)*near*clamp((radial-0.45)*9.0,0.0,1.0);
+  float chrome = clamp((mro.b-0.45)*3.4,0.0,1.0)*max(outerMetal,max(clamp(mask*1.8,0.0,1.0),clamp((0.35-mro.g)*6.0,0.0,1.0)))*clamp((0.85-mro.g)*5.0,0.0,1.0)*near;
+  float dust = clamp((mro.g-0.24)*2.0,0.0,1.0);
+  float mould = 0.0;
+  if (rubber > 0.0 && width < 0.023) {
+    float r = radial;
+    vec3 ribs = clamp(1.0-abs(vec3(r)-vec3(0.77,0.845,0.885))/0.012,0.0,1.0);
+    float shoulder = clamp((r-0.86)*14.0,0.0,1.0);
+    float angle = atan(point.y,point.z);
+    float groove = clamp((cos(42.0*angle+13.0*abs(point.x))-0.32)*3.0,0.0,1.0)*shoulder;
+    mould = (0.25*dot(ribs,vec3(1.0,1.0,0.65))-0.32*groove+0.09*shoulder*(1.0-groove))*clamp(1.0-45.0*width,0.0,1.0);
+  }
+  albedo *= 1.0-rubber*(0.75-0.10*dust+0.08*(1.0-mro.r)-1.1*mould);
+  mro.g += rubber*(max(0.0,0.90-mro.g)-0.38*mould);
+  if (chrome > 0.0) {
+    float wipe = sin(19.0*point.z + 7.0*point.y + 9.0*seed);
+    float grit = sin(151.0*point.y)*sin(123.0*point.z+13.0*seed)*clamp(1.0-70.0*width,0.0,1.0);
+    float marks = smoothstep(0.30,0.83,seed)*(0.035+0.065*wipe*wipe+0.022*grit);
+    albedo = mix(albedo,vec3(0.86,0.89,0.94),0.96*chrome);
+    mro.g = mix(mro.g,0.076+marks,chrome);
+    mro.b = mix(mro.b,1.0,chrome);
+  }
+  return chrome;
+}`;
+
 export const SEED_GLSL = `
 float finishSeed(uint id, vec3 place) {
   uvec3 p = uvec3(ivec3(floor(place*4.0+0.5)));
@@ -170,8 +196,13 @@ export const STREET_GLSL = `
 #ifdef STREET
 uniform highp sampler2DArray uStreetEnv;
 #endif
-void weatherVehicle(inout vec3 albedo, inout vec3 orm, vec3 p, float seed, float age) {
+void weatherVehicle(inout vec3 albedo, inout vec3 orm, vec3 p, float seed, float age, bool burntSheet) {
   float field = 0.48*sin(4.1*p.x+2.7*p.z+13.0*seed)+0.32*sin(6.7*p.y-3.2*p.z+8.0*seed)+0.20*sin(15.0*p.x+11.0*p.z+3.0*p.y);
+  if (burntSheet) {
+    float scrape = smoothstep(0.39,0.64,-field)*clamp((orm.r-0.25)*2.5,0.0,1.0);
+    orm.b = mix(orm.b,0.76,scrape);
+    orm.g = mix(orm.g,0.35,scrape);
+  }
   float coverage = clamp((field+0.8*age-0.44)*2.3,0.0,1.0);
   float oxide = coverage*coverage*(3.0-2.0*coverage)*clamp(orm.b*2.3,0.0,1.0)*age;
   float dust = age*(0.08+0.12*coverage);
@@ -234,7 +265,8 @@ function filtered(image: StreetImage): Uint8Array[] {
       for (let x = 0; x < w; x++) {
         for (let c = 0; c < 4; c++) {
           const i = (y * 4 * w + x * 2) * 4 + c;
-          dst[(y * w + x) * 4 + c] = Math.round((src[i]! + src[i + 4]! + src[i + w * 8]! + src[i + w * 8 + 4]!) / 4);
+          const a = src[i]!, b = src[i + 4]!, d = src[i + w * 8]!, e = src[i + w * 8 + 4]!;
+          dst[(y * w + x) * 4 + c] = c === 3 ? Math.round((a+b+d+e)/4) : captureByte((decoded[a]!+decoded[b]!+decoded[d]!+decoded[e]!)/4);
         }
       }
     }
@@ -286,12 +318,13 @@ function sampleStreet(image: StreetImage, ray: ArrayLike<number>, x: number, y: 
   for (let k = low; k <= Math.ceil(lod); k++) {
     const w = width >> k, h = w >> 1, src = levels[k]!;
     const a = u * w - 0.5, b = Math.max(0, Math.min(h - 1, v * h - 0.5)), i = Math.floor(a), j = Math.floor(b);
-    const mip = near * weight * (1 - Math.abs(lod - k)) / 255;
+    const mip = near * weight * (1 - Math.abs(lod - k));
     for (let dy = 0; dy <= 1; dy++) {
       for (let dx = 0; dx <= 1; dx++) {
         const at = (Math.min(h - 1, j + dy) * w + ((i + dx) & (w - 1))) * 4;
         const wt = (dx ? a - i : 1 - a + i) * (dy ? b - j : 1 - b + j) * mip;
-        for (let c = 0; c < 4; c++) sample[c]! += src[at + c]! * wt;
+        for (let c = 0; c < 3; c++) sample[c]! += decoded[src[at+c]!]! * wt;
+        sample[3]! += src[at+3]! * wt / 255;
       }
     }
   }

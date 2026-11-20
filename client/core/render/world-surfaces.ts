@@ -1,3 +1,4 @@
+import { fixtureShader } from "./street-finish.ts";
 // Metre-space materials for terrain and meshes without authored surfaces. CPU and GLSL deliberately use the same
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
@@ -850,9 +851,9 @@ const vectors = (name: string, rows: readonly (readonly number[])[]): string => 
 /** Adds a material index to FLAT's mesh vertex texts, and gives the colour as light, keeping the low-poly texts byte-for-byte. */
 export function worldVertex(vertex: string): string {
   const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, false));
-  const lookup = `#ifdef STREET_FINISH\nuniform float uFixture;\nflat out int vFixture;\n#endif\nflat out int vSurface;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
+  const lookup = `#ifdef STREET_FINISH\nuniform float uFixture;\nflat out int vFixture;\n${fixtureShader()}\n#endif\nflat out int vSurface;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
   const light = "  vColor = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));\n";
-  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  if (fixture == 4) {\n    bool axle = l.y < 1.08 && min(abs(l.z+5.054),abs(l.z+3.754)) < 0.55;\n    vFixture = axle && i == 82u ? 5 : i == 102u || i == 86u ? (axle ? 4 : 6) : i == 41u || i == 214u ? 7 : 0;\n  } else vFixture = fixture == 3 ? 3 : (fixture == 1 && i == 140u) ? 1 : (fixture == 2 && i == 11u) ? 2 : 0;\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n${light}  vRel = p;`);
+  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  vFixture = fixtureFace(fixture,i,l);\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n${light}  vRel = p;`);
 }
 
 /**

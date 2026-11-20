@@ -1,8 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { nearMeshSlot } from "../core/render/nearcity.ts";
-import { streetWidth, type StreetImage, fixtureKind, StreetMaterials, wheelBoneMask } from "../core/render/street-finish.ts";
+import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
 import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
@@ -183,10 +182,7 @@ export class GlRenderer {
   private readonly streetRevisions = [-1, -1];
   private streetWidth = 0;
   private readonly noReflection = new Float32Array(1);
-  private readonly streetMaterials: StreetMaterials;
-  private readonly wheelCenters: (Float32Array | null)[];
-  private readonly wheelMasks: Uint32Array;
-  private readonly fixtures: Uint8Array;
+  private readonly wheelCenters: Float32Array[];
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
   private detailAtlas: WebGLTexture | null = null;
@@ -228,8 +224,6 @@ export class GlRenderer {
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
-    this.streetMaterials = new StreetMaterials(this.materials.length, manifest.meshes);
-    this.fixtures = new Uint8Array(manifest.meshes.length).fill(255);
     // The masks (the weathering's and the road's) are the packed array's layers after the finishes'; their base colour and normal are never drawn.
     for (const m of this.materials) {
       if (!m.id.startsWith(SURFACE_PREFIX)) continue;
@@ -238,8 +232,7 @@ export class GlRenderer {
     }
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.meshes = manifest.meshes;
-    this.wheelCenters = (pack.header.rigs ?? []).map(rig => wheelBoneMask(rig.names) ? Float32Array.from(rig.rest.slice(0,96)) : null);
-    this.wheelMasks = Uint32Array.from(pack.header.rigs ?? [], rig => wheelBoneMask(rig.names));
+    this.wheelCenters = (pack.header.rigs ?? []).map(rig => Float32Array.from(rig.rest.slice(0,96)));
     this.finish = finishTable(pack.palette, manifest);
     this.forced = forced;
     this.init();
@@ -639,14 +632,6 @@ export class GlRenderer {
     }
     this.uniform(prog, U.grey, mat.grey);
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
-    const rig = this.meshes[mesh]?.rig ?? -1, wheels = this.wheelMasks[rig] ?? 0;
-    this.uniform(prog, U.streetMaterial, this.streetMaterials.code(m, mat.id, mesh, wheels !== 0));
-    this.uniform(prog, U.spokeCrown, wheels && this.meshes[mesh]!.id === "core:compact" ? 1 : 0);
-    if (wheels && at[U.wheelCenters] && last[U.wheelCenters] !== rig) {
-      gl.uniform3fv(at[U.wheelCenters]!, this.wheelCenters[rig]!);
-      last[U.wheelCenters] = rig;
-    }
-    if (at[U.wheelBones] && last[U.wheelBones] !== wheels) gl.uniform1ui(at[U.wheelBones]!, last[U.wheelBones] = wheels);
     this.uniform(prog, U.sheet, mat.sheet ?? 0);
     this.uniform(prog, U.emissive, (mat.flags & MATERIAL_NIGHT) !== 0 ? mat.emissive * this.night : mat.emissive);
     if (last[U.uv] !== mesh) {
@@ -656,6 +641,18 @@ export class GlRenderer {
     if (level > 0) this.uniform(prog, U.level, level / LAYER_LEVELS);
     if (level > 0) this.uniform(prog, U.wear, wear);
     this.maps(mat, roles);
+  }
+
+  private streetFinish(prog: Program, p: FramePacket, d: number): void {
+    const gl = this.gl, at = prog.at, last = prog.last;
+    const wheels = p.drawWheelBones[d]!, rig = this.meshes[p.drawMesh[d]!]!.rig ?? -1;
+    this.uniform(prog, U.streetMaterial, p.drawStreetMaterial[d]!);
+    this.uniform(prog, U.spokeCrown, p.drawSpokeCrown[d]!);
+    if (wheels && at[U.wheelCenters] && last[U.wheelCenters] !== rig) {
+      gl.uniform3fv(at[U.wheelCenters]!, this.wheelCenters[rig]!);
+      last[U.wheelCenters] = rig;
+    }
+    if (at[U.wheelBones] && last[U.wheelBones] !== wheels) gl.uniform1ui(at[U.wheelBones]!, last[U.wheelBones] = wheels);
   }
 
   /**
@@ -696,14 +693,14 @@ export class GlRenderer {
       this.streetWidth = 0;
       return;
     }
-    const width = p.street ? streetWidth(p.street) : 1, target = gl.TEXTURE_2D_ARRAY;
+    const width = captureWidth(p.tier.reflectionHz), target = gl.TEXTURE_2D_ARRAY;
     let dirty = this.streetWidth !== width;
     if (dirty) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.street);
       this.streetTexture ??= gl.createTexture();
       if (!this.streetTexture) return;
       gl.bindTexture(target, this.streetTexture);
-      gl.texImage3D(target, 0, gl.RGBA8, width, Math.max(1,width >> 1), 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.texImage3D(target, 0, gl.SRGB8_ALPHA8, width, width >> 1, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       gl.texParameteri(target, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
       gl.texParameteri(target, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       this.streetWidth = width;
@@ -917,12 +914,13 @@ export class GlRenderer {
       this.uniform(prog, U.skin, skinMode(flags, textured && lod.skin));
       this.uniform(prog, U.fade, p.drawFade[d]!);
       this.uniform(prog, U.hand, p.drawHand[d]!);
-      if (textured) this.material(prog, m, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length, p.drawWear[d]!);
+      if (textured) {
+        this.streetFinish(prog, p, d);
+        this.material(prog, m, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length, p.drawWear[d]!);
+      }
       else if ((flags & DRAW_WATER) !== 0) this.maps(this.materials[m], MAP_ROLES.length);
       else {
-        const mesh = p.drawMesh[d]!;
-        if (this.fixtures[mesh] === 255 && this.meshes[mesh]) this.fixtures[mesh] = fixtureKind(this.meshes[mesh]!.id);
-        this.uniform(prog, U.fixture, nearMeshSlot(p.drawSlot[d]!) ? -1 : this.fixtures[mesh] ?? 0);
+        this.uniform(prog, U.fixture, p.drawFixture[d]!);
         this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
         this.uniform(prog, U.alpha, blend && this.finish.row[p.drawMesh[d]!] === 0 ? WATER_ALPHA : 1);
       }

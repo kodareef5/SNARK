@@ -67,6 +67,7 @@ import { SOURCE } from "./art/source.ts";
 import { gameFiles, type GameFiles } from "./snap/files.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./snap/font.ts";
 import { encodePng } from "./snap/png.ts";
+import { StreetDraws } from "../client/core/render/street-draws.ts";
 import { PICK_SKY, Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
 import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
@@ -785,6 +786,7 @@ export interface ModelShot {
  * the noon sun's light and the noon sky's, as a mirror shows it too, and the background is painted over the dome after.
  */
 export class ModelView {
+  private readonly streetDraws: StreetDraws;
   readonly raster: Rasterizer;
   readonly cam = new Camera();
   private readonly packet = new FramePacket();
@@ -797,6 +799,7 @@ export class ModelView {
   constructor(pack: Pack, width: number, height: number, background: readonly [number, number, number]) {
     this.raster = new Rasterizer(width, height, pack, new Heightfield({ chunksX: 1, chunksZ: 1 }, 64, 0, 1));
     this.pack = pack;
+    this.streetDraws = new StreetDraws(pack.header, pack.header.rigs);
     this.background = background;
     this.cam.aspect = width / height;
     this.cam.fovY = MODEL_FOV;
@@ -885,6 +888,7 @@ export class ModelView {
     // The sky a material reflects is the game's. Where nothing is drawn, the background is put back.
     const sky = sections ? [0, 1, 2].map((k) => this.pack.palette[SKY_COLOR * 4 + k]! / 255) : this.background;
     p.sky.set(sky);
+    this.streetDraws.write(p);
     this.raster.render(p);
     const { color, pickKind, depth, width, height } = this.raster;
     const [red, green, blue] = this.background.map((c) => c * 255) as [number, number, number];

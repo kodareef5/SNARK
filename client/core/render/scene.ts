@@ -29,6 +29,8 @@ import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortF64, sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
 import { DEFAULT_FINISH_GLOSS, DEFAULT_ROAD_FINISH } from "../settings.ts";
+import { StreetDraws } from "./street-draws.ts";
+import { streetTextureBytes } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
 import { StreetWires } from "./street-wires.ts";
@@ -497,6 +499,7 @@ export class Scene {
   /** Per mesh and level, the triangles of its sections drawn with bark and of its cut-out ones. */
   private readonly trunkTris: number[][];
   private readonly leafTris: number[][];
+  private readonly streetDraws: StreetDraws;
   readonly street: StreetReflections;
   finishGloss = DEFAULT_FINISH_GLOSS;
   roadFinish = DEFAULT_ROAD_FINISH;
@@ -781,6 +784,7 @@ export class Scene {
       const def = reg.defs[kind];
       if (def?.type === "node" && familyOf(def) === 0 && forms.depleted[f] === 0) this.treeOf[mesh] = 1;
     }
+    this.streetDraws = new StreetDraws(stream?.manifest ?? pack.header, pack.header.rigs);
     this.street = new StreetReflections(reg, pack.palette, forms, { meshes: (stream?.manifest ?? pack.header).meshes, kinds: this.meshOfKind, forms: this.meshOfForm });
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
@@ -1028,8 +1032,9 @@ export class Scene {
     p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
     p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;
     this.street.frame(p, cam, this.world, remote, this.hiddenNodes, this.now);
-    this.assets.residency.reserve("street environment", p.street ? 21848 : p.tier.reflectionHz ? 8 : 0);
+    this.assets.residency.reserve("street environment", streetTextureBytes(p.tier.reflectionHz));
     this.order();
+    this.streetDraws.write(p);
     markJoins(p);
     // The frame's count, from which the next frame's crowns near take their squeeze.
     this.budget.end(this.now, p.triangles, p.drawCount);
@@ -2435,6 +2440,7 @@ export class Scene {
       if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk) || this.landmarks?.isFar(chunk))) continue;
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
+      if (base === 0 && p.tier.reflectionHz) this.street.indexChunk(t,x0,z0,cam);
       const own = near ? near.of(chunk, t, statics!, this.city!, this.chunkCells, Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z), p) : null;
       const mesh = own?.mesh ?? null;
       let batch = this.batches.get(id);

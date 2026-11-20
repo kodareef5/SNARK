@@ -353,7 +353,7 @@ export class NearCity {
     this.labels = Uint8Array.from(reg.defs, d => d ? fixtureKind(d.id) : 0);
     const turns = new Set<number>();
     for (let k = 1; k < reg.defs.length; k++) for (const other of [reg.opens[k]!, reg.lights[k]!]) if (other !== 0) turns.add(k).add(other);
-    this.kinds = Uint8Array.from(reg.defs, (d, k) => (d?.type === "structure" && d.class === "static" && (d.mesh === "box" || d.mesh === "shape") && !turns.has(k) && reg.motion[k] === null && landmark[k] !== 1 && reg.halfX[k]! > 0 && flat(k) ? 1 : 0));
+    this.kinds = Uint8Array.from(reg.defs, (d, k) => (d?.type === "structure" && d.class === "static" && (d.mesh === "box" || d.mesh === "shape") && !turns.has(k) && reg.motion[k] === null && landmark[k] !== 1 && reg.halfX[k]! > 0 && this.labels[k]! <= 3 && flat(k) ? 1 : 0));
   }
 
   /** Chunk `chunk` as followed here, while it is drawn near. */

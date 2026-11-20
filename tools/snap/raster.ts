@@ -4,8 +4,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
-import { nearMeshSlot } from "../../client/core/render/nearcity.ts";
-import { weatherVehicle, vehicleWeather, PAINT, coatWear, glossRoughness, wheelFinish, wheelBoneMask, tireMould, finishSeed, fixtureFace, fixtureKind, receiver, streetMaterial, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
+import { weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, tireMould, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
@@ -466,14 +465,6 @@ export class Rasterizer {
   private readonly sun = new Float64Array(3);
 
   private readonly pack: Pack;
-  private readonly fixtureLabels: Uint8Array;
-  private fixtureOfMesh(mesh: number): number {
-    if (this.fixtureLabels[mesh] === 255) {
-      const id = (this.manifest ?? this.pack.header).meshes[mesh]?.id;
-      if (id) this.fixtureLabels[mesh] = fixtureKind(id);
-    }
-    return this.fixtureLabels[mesh] ?? 0;
-  }
   private readonly hf: Heightfield;
   /** The terrain window's size in samples, as the card holds it (terrain.ts groundSize), once asked. */
   private window: ReturnType<typeof groundSize> | null = null;
@@ -599,7 +590,6 @@ export class Rasterizer {
     this.pack = pack;
     this.hf = hf;
     this.manifest = manifest;
-    this.fixtureLabels = new Uint8Array((manifest ?? pack.header)?.meshes?.length ?? 0).fill(255);
     this.finish = finishTable(pack.palette, manifest ?? pack.header ?? { meshes: [] });
     this.color = new Uint8ClampedArray(width * height * 4);
     this.depth = new Float32Array(width * height);
@@ -1044,8 +1034,8 @@ export class Rasterizer {
     // Far blocks, the far city and a landmark's far mesh short of where their reach fades draw with no fade, and are far all the same.
     const far = this.fade !== 0 || p.drawBuffer[d] === FAR_BUFFER || p.drawBuffer[d] === CITY_BUFFER || p.drawBuffer[d] === LANDMARK_BUFFER;
     const weathers = p.lit && p.tier.finish === "full" && !skinned && p.drawFade[d] === 0 && p.drawHand[d] === 0;
-    const packedFixture = nearMeshSlot(p.drawSlot[d]!);
-    const meshFixture = this.fixtureOfMesh(meshIndex);
+    const packedFixture = p.drawFixture[d] === -1;
+    const meshFixture = p.drawFixture[d]!;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
@@ -1407,8 +1397,8 @@ export class Rasterizer {
     const box = wear === 0 ? null : lod.positions.map((x, i) => (x - center[i % 3]!) / half[i % 3]!);
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
-    const wheels = wheelBoneMask(rig?.names);
-    const s: Surfaced = { weather: vehicleWeather(mesh.id), spokeCrown: mesh.id === "core:compact", firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: streetMaterial(material.id, wheels !== 0), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const wheels = p.drawWheelBones[d]!, finish = p.drawStreetMaterial[d]!;
+    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: p.drawSpokeCrown[d] === 1, firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1826,7 +1816,7 @@ export class Rasterizer {
             sample(s.layer, u, v, spread, layer);
             wounded(albedo, mro, layer, s.level, wearLate(s.wear, carried[12]!, carried[13]!, carried[14]!));
           }
-          if (s.weather) weatherVehicle(albedo,mro,carried[15]!,carried[16]!,carried[17]!,s.seed,s.weather);
+          if (s.weather) weatherVehicle(albedo,mro,carried[15]!,carried[16]!,carried[17]!,s.seed,s.weather,s.label === BURNT_SHEET);
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
           let coat = 0, chrome = 0;
           if (wheel) {
@@ -1873,7 +1863,7 @@ export class Rasterizer {
           if (s.label) {
             const share = receiver(s.label, mask[0]!, mro[1]!, mro[2]!);
             if (share > 0) {
-              const paint = s.label === PAINT ? mask[0]!*Math.max(0,Math.min(1,(0.72-mro[1]!)*3.5)) : 0;
+              const paint = s.label === PAINT || s.label === BURNT_SHEET ? mask[0]!*Math.max(0,Math.min(1,(0.72-mro[1]!)*3.5)) : 0;
               mro[1] = Math.max(0.07,Math.min(1,mro[1]!+coatWear(u,v,seed,2**spread)*share*(1-0.96*chrome)-0.19*paint));
               mro[1] = glossRoughness(mro[1]!,share,p.frame[FRAME.streetLook]!);
               streetMirror(mirrored,p,reflected,carried[0]!,carried[1]!,carried[2]!,mro[1]!,share);

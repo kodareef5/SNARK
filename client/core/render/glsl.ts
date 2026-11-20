@@ -130,7 +130,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
       worldSharp = vFixture == 4;
       orm.gb = vFixture == 4 ? vec2(0.14,0.91) : tire ? vec2(0.95,0.0) : vFixture == 6 ? vec2(0.42,0.72) : vec2(0.53,0.08);
       albedo *= tire ? 0.31+0.8*grain : 1.0;
-      weatherVehicle(albedo,orm,place,0.0,0.32);
+      weatherVehicle(albedo,orm,place,0.0,0.32,false);
       fixtureShare = tire ? 0.0 : (1.0-orm.g)*(vFixture == 7 ? 0.32 : 1.0);
     }
   }

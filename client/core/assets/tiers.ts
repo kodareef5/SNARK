@@ -251,7 +251,7 @@ export function forTouch(tier: Tier, touchFirst: boolean): Tier {
   const had = touched.get(tier);
   if (had) return had;
   const { offered: _, ...values } = tier.touch;
-  return touched.set(tier, { ...tier, ...values, post: null, contact: false }).get(tier)!;
+  return touched.set(tier, { ...tier, ...values, reflectionHz: Math.min(1, tier.reflectionHz), post: null, contact: false }).get(tier)!;
 }
 
 /** The tiers the settings offer: on a touch-first device, those whose touch rule does not leave them out. */

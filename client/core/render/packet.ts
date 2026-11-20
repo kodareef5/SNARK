@@ -512,6 +512,11 @@ export class FramePacket {
   readonly drawOffset = new Float32Array(MAX_DRAWS * 3);
   /** DRAW_ bits. Draws with DRAW_BLEND come last. */
   readonly drawFlags = new Uint16Array(MAX_DRAWS);
+  /** Optical finish and wheel data for textured draws. Flat draws use their declared fixture, or -1 for a packed vertex label. */
+  readonly drawStreetMaterial = new Float32Array(MAX_DRAWS);
+  readonly drawWheelBones = new Uint32Array(MAX_DRAWS);
+  readonly drawSpokeCrown = new Uint8Array(MAX_DRAWS);
+  readonly drawFixture = new Int8Array(MAX_DRAWS);
   /** For a DRAW_TEXTURED draw: the manifest's material, and the run of indices it covers. */
   readonly drawMaterial = new Uint16Array(MAX_DRAWS);
   readonly drawFirstIndex = new Uint32Array(MAX_DRAWS);

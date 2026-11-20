@@ -101,7 +101,7 @@ test("a textured draw is drawn undyed where its material has no masks, and by a 
   expect([any, PROGRAMS.surfaceWhole!(tier, "astc"), undyed, whole].map((t) => outputs(t.vertex))).toEqual([43, 42, 25, 24]);
   expect([any, undyed, whole].map((t) => [t.fragment.split("discard").length - 1, t.fragment.split("texture(uMask").length - 1])).toEqual([[2, 2], [2, 0], [0, 0]]);
   expect(whole.fragment).toContain("vec3 albedo = base.rgb * uTint;");
-  expect(whole.fragment).toContain("float paint = uStreetMaterial < 1.5 ? 0.0");
+  expect(whole.fragment).toContain("float paint = 0.0;");
   expect(whole.fragment).toContain("mix(radiance,mirror*open,coat)");
 });
 

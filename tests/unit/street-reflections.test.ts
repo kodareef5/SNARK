@@ -6,7 +6,7 @@ import { nodeForms } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { ParkedContacts } from "../../client/core/render/contact.ts";
 import { deflectTire, TireContacts, tireShadow } from "../../client/core/render/tire-contact.ts";
@@ -15,7 +15,7 @@ import { BONE_FLOATS, FRAME, FramePacket, MAX_TIRE_CONTACTS } from "../../client
 import { streetSilhouette } from "../../client/core/render/street-silhouettes.ts";
 import { StreetReflections } from "../../client/core/render/street-reflections.ts";
 import {
-  FINE_STREET_WIDTH, STREET_WIDTH, streetWidth, wheelBoneMask, wheelFinish, tireMould, vehicleWeather, weatherVehicle, StreetMaterials,
+  FINE_STREET_WIDTH, STREET_WIDTH, streetTextureBytes, streetWidth, wheelBoneMask, wheelFinish, tireMould, vehicleWeather, weatherVehicle, StreetMaterials,
   coatWear,
   finishSeed,
   fixtureFace,
@@ -55,7 +55,7 @@ function street() {
     cars.z[n] = z;
     cars.colors[n * 6] = 41 + n;
   };
-  return { world, cam, cars, p, tick, car, hidden };
+  return { world, cam, cars, p, tick, car, hidden, capture };
 }
 
 test("a car shares the street picture, movement updates at the tier rate, turning still changes the lookup between captures", () => {
@@ -245,7 +245,7 @@ test("unmasked truck rims, painted centres, and brake discs keep distinct finish
   expect(sample(0.85,0.03,0.35,0.98)).toBe(0);
   const cache = new StreetMaterials(1,[{id:"future:truck"}]);
   expect(cache.code(0,"",0,true)).toBe(0);
-  expect(cache.code(0,"future:truck/coach",0,true)).toBe(1);
+  expect(cache.code(0,"future:truck/coach",0,true)).toBe(2);
   expect(cache.code(0,"future:truck/coach",0,false)).toBe(0);
 });
 
@@ -323,4 +323,39 @@ test("reflection silhouettes include the authored window bays and the compact's 
   expect(car.some(part => part.color === 83)).toBe(true);
   expect(car.filter(part => part.color === 230).length).toBe(4);
   expect(streetSilhouette(reg,reg.index.get("core:survivor")!)).toBeNull();
+});
+
+test("walking between receivers six metres apart crossfades their world-space samples at full strength", () => {
+  const {p,cam,tick,car} = street();
+  car(0,40,44); car(1,47,44); tick(0); tick(200);
+  const previous = p.street!;
+  cam.x = 47; tick(250);
+  expect(p.previousStreet).toBe(previous);
+  expect(p.frame[FRAME.previousReflection]).toBe(-7);
+  expect(p.frame[FRAME.reflection]).toBe(0);
+  expect(p.frame[FRAME.reflection+3]).toBe(1);
+  tick(340);
+  expect(p.frame[FRAME.previousReflection+3]).toBeCloseTo(0.5);
+  cam.x = 80; car(1,80,44); tick(500);
+  expect(p.previousStreet).toBeNull();
+  expect(p.frame[FRAME.reflection+3]).toBe(0);
+});
+
+test("touch uses at most one capture a second and budgets both complete texture layers", () => {
+  expect(["lowpoly","medium","high","ultra"].map(name => forTouch(tierOf(name),true).reflectionHz)).toEqual([0,1,1,1]);
+  expect([0,1,2,4].map(streetTextureBytes)).toEqual([0,21848,21848,87384]);
+});
+
+test("a close receiver between sampled rows in a dense chunk enters the next picture, and removal clears it", () => {
+  const {world,tick,p,capture,cam} = street();
+  const plain = reg.index.get("core:zruin_zpipe4_concrete")!, sign = reg.index.get("core:zruin_zsign_mint")!;
+  for (let i=0; i<501; i++) world.structs.add(plain,3,2,3,0,0,100);
+  const ref = world.structs.add(sign,40,1,44,0,0,100);
+  for (let i=0; i<98; i++) world.structs.add(plain,3,2,3,0,0,100);
+  expect(Array.from({length:192}, (_, i) => Math.floor(i*600/192))).not.toContain(ref);
+  capture.indexChunk(world.structs.chunks[0]!,0,0,cam);
+  tick(0); expect(p.street).not.toBeNull();
+  world.structs.remove(ref);
+  capture.indexChunk(world.structs.chunks[0]!,0,0,cam);
+  tick(250); expect(p.street).toBeNull();
 });
