@@ -6,7 +6,8 @@
 //                                                          [--thinking low] [--seconds 300] [--show]
 
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { BLUEPRINTS } from "../../grunt/blueprints.ts";
@@ -177,8 +178,10 @@ if (import.meta.main) {
   }, TICK_MS);
 
   // Tools this version of grunt registers: an older one (an arm of a comparison) may lack game_goal, which Pi ignores.
-  const tools = ["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_goal", "game_blueprints"];
-  const pi = spawn("pi", ["--mode", "rpc", "--no-session", "-ne", "-ns", "-e", root, "--tools", tools.join(","), "--model", model, "--thinking", thinking], { stdio: ["pipe", "pipe", "pipe"] });
+  const tools = ["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_goal", "game_blueprints", "game_agenda"];
+  // Each run its own agenda, so runs never remember each other.
+  const state = mkdtempSync(join(tmpdir(), "grunt-agenda-"));
+  const pi = spawn("pi", ["--mode", "rpc", "--no-session", "-ne", "-ns", "-e", root, "--tools", tools.join(","), "--model", model, "--thinking", thinking], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, GRUNT_STATE: state } });
   pi.stderr.on("data", (d) => show && process.stderr.write(d));
   pi.stdin.on("error", () => {});
   const send = (m: object) => pi.stdin.write(JSON.stringify(m) + "\n");

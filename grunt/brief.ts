@@ -3,6 +3,7 @@
 // relevant that fit a budget and writes them from live facts (real ids, numbers, the exact calls to make). It goes at
 // the end of the request and is never kept in the transcript, so the cached prefix stays as it was.
 
+import type { Agenda } from "./agenda.ts";
 import { compass } from "./belief.ts";
 import type { Report, Runtime, Task } from "./runtime.ts";
 import { SKILLS } from "./skills.ts";
@@ -16,6 +17,8 @@ export interface Goal {
 }
 
 export interface Situation {
+  /** The character's own agenda, if it has one. */
+  agenda?: Agenda;
   rt: Runtime;
   goals: Goal[];
   /** The last tool call that failed, and why. */
@@ -66,6 +69,12 @@ function yields(s: Situation): { tree: Record<string, number>; bush: Record<stri
 }
 
 export const CARDS: Card[] = [
+  {
+    // The character's own to-dos (not the standing chores, which come by themselves when it is idle).
+    id: "agenda",
+    relevance: (s) => (s.agenda?.todos.some((t) => t.status === "open" && t.from !== "standing") ? 0.5 : 0),
+    text: (s) => `Your agenda (game_agenda): ${s.agenda!.todos.filter((t) => t.status === "open" && t.from !== "standing").sort((a, b) => a.priority - b.priority).slice(0, 5).map((t) => `${t.id} (${t.priority}): ${t.text}`).join("; ")}.`,
+  },
   {
     // Working with a tribe: the jobs others have taken, so this one takes another.
     id: "tribe",

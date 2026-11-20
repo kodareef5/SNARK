@@ -1322,7 +1322,8 @@ export class World {
     d.ready = this.t + (bush ? PICK_MS : SWING_MS);
     // Never a blow at what it is not after: something else under the crosshair (a tree between) stops it.
     const f = this.focusThing();
-    if (f?.id !== t.id) {
+    // In the way is what stands there (a tree, a rock, a body that lives); a body lying on the ground is not.
+    if (f && f.id !== t.id && (f.blocks || f.kind === "creature" || f.kind === "player")) {
       d.wrong = Number(d.wrong ?? 0) + 1;
       if (Number(d.wrong) >= 3) finish("failed", "obstructed", { by: f?.id ?? null });
       return;

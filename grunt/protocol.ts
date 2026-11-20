@@ -50,9 +50,9 @@ export interface Capabilities {
   building?: Building;
   /** The assists (the assist control), where the game has them. */
   assists?: Assists;
-  /** Players' speech, transcribed and heard by the character within `range` metres; `speaks`: the character's own
-   * chat on the voice channel is spoken aloud (text to speech). */
-  voice?: { range: number; speaks: boolean };
+  /** Players' speech, transcribed and heard by the character within `range` metres. The character itself talks in
+   * chat: it has no voice. */
+  voice?: { range: number };
 }
 
 /** The assists' limits: the hands done for the client no better than a good player's. */
@@ -357,7 +357,7 @@ export type Action =
    * [near, far] metres, lead and loose. harvest: swing at a tool's pace until it is gone. The client's own move or look
    * takes over from it. */
   | { control: "assist"; kind: AssistKind; target: EntityId; range?: [number, number]; natural?: boolean; until?: { health_below?: number; mount_health_below?: number; stamina_below?: number; count?: number; seconds?: number } }
-  | { control: "chat"; channel: "local" | "global" | "group" | "voice"; text: string };
+  | { control: "chat"; channel: "local" | "global" | "group"; text: string };
 
 export interface Act extends Envelope<"act"> {
   /** Unique within the session: what makes the act happen once. */

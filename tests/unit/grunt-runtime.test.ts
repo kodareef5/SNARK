@@ -436,3 +436,32 @@ test("speech from an owner nearby reaches the Director as said aloud, with who a
   h.run(1000);
   expect(h.rt.reports.find((r) => r.kind === "addressed")!.text).toBe(`Ana (${ana}, an owner, 8 m south) said aloud (the transcription is unsure): "come with me to the river"`);
 });
+
+test("kit makes a loadout from bare hands: a pick first (flint comes from rocks only with one), then the rest", async () => {
+  const trees = [[8, -10], [11, -13], [6, -15], [13, -8], [9, -18], [14, -16]].map(([x, z]) => ({ type: "tree" as const, x: x!, z: z! }));
+  const rocks = [[-10, -6], [-14, -9], [-12, -14]].map(([x, z]) => ({ type: "rock" as const, x: x!, z: z! }));
+  const bushes = [[-4, 7], [-6, 9], [-3, 11], [-8, 12]].map(([x, z]) => ({ type: "bush" as const, x: x!, z: z! }));
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0 }, things: [...trees, ...rocks, ...bushes] });
+  const t = h.rt.start("kit", {});
+  h.run(900_000, () => t.status !== "running");
+  expect(t.result!.summary).toBe("my loadout is complete: made stone_pick, stone_hatchet, bow, 20 arrow");
+  for (const [item, n] of [["stone_pick", 1], ["stone_hatchet", 1], ["bow", 1], ["arrow", 20]] as const) expect(h.world.count(item)).toBeGreaterThanOrEqual(n);
+  expect(h.world.count("berries") + h.world.count("meat")).toBeGreaterThanOrEqual(10);
+});
+
+test("upkeep looks after a base in one go: repairs with materials fetched from the vault, empties the harvester, stashes", async () => {
+  const h = await harness({
+    me: { x: 0, z: 0, yaw: 0, items: { stone_pick: 1 } },
+    bases: [{ blueprint: "hut_2x2", x: 0, z: -12 }],
+    things: [{ type: "vault", name: "Stone vault", x: 10, z: -4, items: { wood: 900, thatch: 300, fiber: 300 } }, { type: "ankylo", name: "Bumper", x: -9, z: -3, items: { stone: 800, flint: 200 } }],
+  });
+  h.run(500);
+  h.world.damage(0, -12, 5, 3000);
+  h.run(1500);
+  const t = h.rt.start("upkeep", {});
+  h.run(600_000, () => t.status !== "running");
+  expect(t.status).toBe("done");
+  expect(h.world.wholeStructures()).toBe(true);
+  expect([...h.world.things.values()].find((x) => x.name === "Bumper")!.slots).toEqual([]);
+  expect(t.result!.summary).toMatch(/^looked after the base: repaired 17 pieces of b:1 for .*; emptied Bumper into the stores: 800 stone, 200 flint/);
+});

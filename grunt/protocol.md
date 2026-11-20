@@ -209,8 +209,8 @@ for a piece standing free; `reason` says why an invalid preview is refused (`no_
 transcribed and heard by the character as a `chat` line on the `voice` channel, but only within `voice.range` metres,
 as a player hears it: `{ "channel": "voice", "from": "Ana", "from_id": "e:12", "text": "follow me", "voice":
 { "distance": 8, "bearing": 1.2, "loudness": 0.8, "confidence": 0.93 } }`. The game knows whose microphone it was,
-so `from_id` is always given: who said what is never a guess. `confidence` is the transcription's. Where
-`voice.speaks`, the character's own `chat` on `voice` is spoken aloud.
+so `from_id` is always given: who said what is never a guess. `confidence` is the transcription's. A client's
+character has no voice of its own: it answers in chat.
 
 **`image`** (optional capability): a frame of the character's view, `{ "mime": "image/jpeg", "width": 384,
 "height": 216, "data": "<base64>" }`, asked with `{ "width": …, "height": … }`. Only when the game lists it.

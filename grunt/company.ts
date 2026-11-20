@@ -4,6 +4,7 @@
 
 import type { Run } from "./body.ts";
 import { fight } from "./combat.ts";
+import { fetch, upkeep as keepUp } from "./haul.ts";
 import type { Vec3 } from "./protocol.ts";
 import type { SkillContext, SkillResult } from "./skills.ts";
 
@@ -86,7 +87,7 @@ export function* repair(ctx: SkillContext, args: Record<string, unknown>): Run<S
   if (!b.assists?.kinds.includes("repair")) return { status: "failed", summary: "this game has no repair assist" };
   const base = typeof args.base === "string" ? args.base : [...b.damaged.values()][0]?.base;
   if (!base) return { status: "done", summary: "nothing I know of is damaged" };
-  let mended = 0;
+  let mended = 0, fetched = false;
   const spent: Record<string, number> = {};
   for (let round = 0; round < 12; round++) {
     const hurt = [...b.damaged.entries()].filter(([, d]) => d.base === base);
@@ -98,6 +99,11 @@ export function* repair(ctx: SkillContext, args: Record<string, unknown>): Run<S
     mended += Number(d.repaired ?? 0);
     for (const [k, v] of Object.entries(d.spent ?? {})) spent[k] = (spent[k] ?? 0) + v;
     yield { ms: 600 };
+    if (d.result === "materials" && !fetched && d.need) {
+      // Short: what it takes may be in the stores.
+      fetched = true;
+      if (yield* fetch(ctx, Object.fromEntries(Object.entries(d.need).map(([k, v]) => [k, b.count(k) + v * 20])))) continue;
+    }
     if (d.result === "materials") {
       return { status: "blocked", summary: `repaired ${mended} pieces, then ran short: the next takes ${Object.entries(d.need ?? {}).map(([k, v]) => `${v} ${k}`).join(", ")}`, data: { reason: "materials", bill: d.need, mended } };
     }
@@ -108,4 +114,9 @@ export function* repair(ctx: SkillContext, args: Record<string, unknown>): Run<S
   return left
     ? { status: "blocked", summary: `repaired ${mended} pieces for ${cost}; ${left} more I could not get to`, data: { reason: "reach", mended } }
     : { status: "done", summary: `repaired ${mended} pieces of ${base} for ${cost}`, data: { mended, spent } };
+}
+
+/** Looking after the base in one go (grunt/haul.ts upkeep): repairs, the harvesters emptied, a heavy bag stashed. */
+export function* upkeep(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+  return yield* keepUp(ctx, args, repair);
 }

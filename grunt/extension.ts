@@ -5,12 +5,14 @@
 // which run as tasks on the runtime's own tick, and it hears back through messages that start a turn when something
 // needs it (a task over, danger, a line said to the character). The operator has /grunt.
 
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BLUEPRINTS } from "./blueprints.ts";
+import { Agenda } from "./agenda.ts";
 import { brief, BriefDelivery, type Goal, type Situation } from "./brief.ts";
+import { missing } from "./kit.ts";
 import { compile } from "./layout.ts";
 import { socketLink } from "./link.ts";
 import type { PiExtensionAPI, PiTool, PiToolResult } from "./pi.ts";
@@ -28,6 +30,8 @@ const BUILDER = readFileSync(new URL("./builder.md", import.meta.url), "utf8");
 /** Reports that wake the Director. Notes only wait in `look`. */
 /** How long an idle mind with an open goal is left before it is told, and how often in a row. */
 const IDLE_MS = 20_000, IDLE_NUDGES = 3;
+/** How long the same due items wait before the idle character is told of them again. */
+const AUTONOMY_MS = 180_000;
 const WAKES = new Set<Report["kind"]>(["task", "danger", "clear", "addressed", "critical", "need", "connection"]);
 
 /** Every skill and its parameters, in one line each: what game_do's description carries. */
@@ -39,10 +43,26 @@ interface Mind {
   url: string;
   tracePath: string;
   flush: () => void;
+  agenda: Agenda;
 }
 
 const text = (t: string, details: unknown = null): PiToolResult => ({ content: [{ type: "text", text: t }], details });
 const json = (v: unknown) => JSON.stringify(v);
+
+/** Where a character's agenda is kept between sessions: one file per character name. */
+function agendaFile(name: string): string {
+  const dir = process.env.GRUNT_STATE ?? join(homedir(), ".pi", "agent", "grunt", "agenda");
+  mkdirSync(dir, { recursive: true });
+  return join(dir, `${name.replace(/[^\w-]/g, "_")}.json`);
+}
+
+function loadAgenda(name: string): Agenda {
+  try {
+    return Agenda.from(JSON.parse(readFileSync(agendaFile(name), "utf8")));
+  } catch {
+    return new Agenda();
+  }
+}
 
 function traceFile(name: string): { path: string; sink: (line: string) => void; flush: () => void } {
   const dir = process.env.GRUNT_TRACES ?? join(homedir(), ".pi", "agent", "grunt", "traces");
@@ -65,10 +85,30 @@ export default function grunt(pi: PiExtensionAPI): void {
   const goals: Goal[] = [];
   let lastError: Situation["lastError"];
   let lastSaid = -Infinity;
-  const situation = (): Situation | null => (mind ? { rt: mind.rt, goals, lastSaid, ...(lastError ? { lastError } : {}) } : null);
+  const situation = (): Situation | null => (mind ? { rt: mind.rt, goals, lastSaid, agenda: mind.agenda, ...(lastError ? { lastError } : {}) } : null);
+  const save = () => {
+    if (mind) writeFileSync(agendaFile(mind.rt.name), JSON.stringify(mind.agenda.toJSON(), null, 1));
+  };
+  // Agenda items a task was started for, closed when the task ends done.
+  const forTodo = new Map<string, string>();
 
   const delivery = new BriefDelivery();
   const wake = (r: Report) => {
+    // A task done that was started for an agenda item: the item is done (a chore comes round again in its time); a
+    // build done is a base worth remembering.
+    if (r.kind === "task" && mind && typeof r.data?.task === "string") {
+      const todo = forTodo.get(r.data.task);
+      if (todo && r.data.status === "done") {
+        try {
+          mind.agenda.done(todo, Date.now(), r.text.slice(0, 160));
+        } catch {
+          // dropped meanwhile
+        }
+      }
+      if (r.data.skill === "build" && r.data.status === "done") mind.agenda.remember(r.text.replace(/^build \S+ done: /, ""), ["base", "built"], Date.now());
+      forTodo.delete(r.data.task);
+      save();
+    }
     if (!WAKES.has(r.kind)) return;
     // A reflex's end is news only when nothing it put aside comes back by itself (its danger was told already).
     if (r.kind === "task" && r.data?.by === "arbiter" && r.data?.status === "done" && r.data?.resumes) return;
@@ -94,7 +134,10 @@ export default function grunt(pi: PiExtensionAPI): void {
     await rt.connect(name);
     rt.run();
     flusher ??= setInterval(() => mind?.flush(), 1000);
-    mind = { rt, session, url, tracePath: t.path, flush: t.flush };
+    const agenda = loadAgenda(rt.name);
+    agenda.standing(Date.now());
+    mind = { rt, session, url, tracePath: t.path, flush: t.flush, agenda };
+    save();
     // A character plays through the game tools alone: the coding tools are put away for this session.
     pi.setActiveTools(pi.getActiveTools().filter((n) => n.startsWith("game_")));
     // The conversation is told it is connected, so the model never goes looking for a game it already has.
@@ -104,6 +147,7 @@ export default function grunt(pi: PiExtensionAPI): void {
 
   function disconnect(): void {
     if (!mind) return;
+    save();
     mind.rt.halt();
     mind.flush();
     try {
@@ -158,7 +202,7 @@ export default function grunt(pi: PiExtensionAPI): void {
         "You play a game character through game_ tools. Never try to steer it step by step: start a skill with game_do and wait to be told how it went. Don't poll with game_look or game_tasks while a task runs; the game tells you.",
         "game_look shows everything the character's senses reach, all round at once; ids in it are what skills take as targets. It never needs to turn round to find things.",
       ],
-      parameters: { type: "object", properties: { skill: { type: "string", enum: Object.keys(SKILLS) }, args: { type: "object", description: "the skill's parameters (game_skills lists them)" }, resume: { type: "string", description: "a task id: take that blocked, cancelled or put-aside task up again where it was, in place of skill and args" }, replace: { type: "boolean", description: "stop the task running now for this one, even if it only just started" }, claim: { type: "string", description: "working with a tribe: the job this is, said in the tribe's chat (\"on it: clear the raptors\"); refused if another already has it" }, join: { type: "boolean", description: "help with a job another has claimed, without claiming it" } }, additionalProperties: false },
+      parameters: { type: "object", properties: { skill: { type: "string", enum: Object.keys(SKILLS) }, args: { type: "object", description: "the skill's parameters (game_skills lists them)" }, resume: { type: "string", description: "a task id: take that blocked, cancelled or put-aside task up again where it was, in place of skill and args" }, replace: { type: "boolean", description: "stop the task running now for this one, even if it only just started" }, todo: { type: "string", description: "the agenda item this is for (an id): marked done when the task ends done" }, claim: { type: "string", description: "working with a tribe: the job this is, said in the tribe's chat (\"on it: clear the raptors\"); refused if another already has it" }, join: { type: "boolean", description: "help with a job another has claimed, without claiming it" } }, additionalProperties: false },
       async execute(_id, p) {
         const rt = need().rt;
         // A claim for what is already running (it was started a moment before the job was named): the claim goes on it.
@@ -183,6 +227,7 @@ export default function grunt(pi: PiExtensionAPI): void {
         }
         const t = p.resume ? rt.retake(String(p.resume)) : rt.start(String(p.skill), (p.args ?? {}) as Record<string, unknown>);
         if (job && !p.join && t.status === "running") rt.claim(t, job);
+        if (typeof p.todo === "string" && t.status === "running") forTodo.set(t.id, p.todo);
         if (t.status !== "running") return text(`${t.skill} ${t.status}: ${t.result?.summary ?? ""}`, { task: t.id });
         return { ...text(`started ${t.skill} as ${t.id}. It runs on its own; you will get a message when it is over or something needs you.`, { task: t.id }), terminate: true };
       },
@@ -209,7 +254,7 @@ export default function grunt(pi: PiExtensionAPI): void {
     {
       name: "game_say", label: "Say",
       description: "Say a line in the game's chat, as the character.",
-      parameters: { type: "object", properties: { text: { type: "string" }, channel: { type: "string", enum: ["local", "global", "group", "voice"], description: "voice: spoken aloud, where the game speaks (answer speech in kind)" } }, required: ["text"], additionalProperties: false },
+      parameters: { type: "object", properties: { text: { type: "string" }, channel: { type: "string", enum: ["local", "global", "group"], description: "local (near players hear it; the answer to speech), global, or group (the tribe)" } }, required: ["text"], additionalProperties: false },
       async execute(_id, p) {
         const rt = need().rt;
         rt.start("say", { text: String(p.text), channel: p.channel ?? "local" });
@@ -234,6 +279,43 @@ export default function grunt(pi: PiExtensionAPI): void {
           return `- ${name} (${c.bounds[2] - c.bounds[0] + 1} by ${c.bounds[3] - c.bounds[1] + 1}${storeys > 1 ? `, ${storeys} storeys` : ""}, ${c.pieces.length} pieces): ${l.about ?? ""}`;
         });
         return text(`${BUILDER}\nThe library:\n${lib.join("\n")}`);
+      },
+    },
+    {
+      name: "game_agenda", label: "Agenda",
+      description: "Your own agenda, kept between sessions: things to do by priority (1 first), chores that come round again, and notes worth remembering (where things are, who asked what). list: the agenda and the latest notes. add: a to-do (text, priority, every_s for a chore). done / drop / update: an item by id. note: remember something (text, tags). recall: notes about something (query).",
+      parameters: { type: "object", properties: { op: { type: "string", enum: ["list", "add", "done", "drop", "update", "note", "recall"] }, id: { type: "string" }, text: { type: "string" }, priority: { type: "number", description: "1 (first) to 5" }, every_s: { type: "number", description: "a chore: due again this many seconds after it is done" }, note: { type: "string" }, tags: { type: "array", items: { type: "string" } }, query: { type: "string" } }, required: ["op"], additionalProperties: false },
+      async execute(_id, p) {
+        const a = need().agenda, now = Date.now();
+        const said = (r: string) => (save(), text(r));
+        switch (p.op) {
+          case "add": {
+            if (typeof p.text !== "string") throw new Error("add takes text");
+            const t = a.add(p.text, { priority: Number(p.priority ?? 3), ...(typeof p.every_s === "number" ? { every_s: p.every_s } : {}), now });
+            return said(`added ${t.id}`);
+          }
+          case "done":
+            return said(`${a.done(String(p.id), now, typeof p.note === "string" ? p.note : undefined).id} done`);
+          case "drop":
+            a.get(String(p.id)).status = "dropped";
+            return said(`${p.id} dropped`);
+          case "update": {
+            const t = a.get(String(p.id));
+            if (typeof p.text === "string") t.text = p.text;
+            if (typeof p.priority === "number") t.priority = Math.min(5, Math.max(1, Math.round(p.priority)));
+            if (typeof p.every_s === "number") t.every_s = p.every_s;
+            if (typeof p.note === "string") t.note = p.note;
+            return said(`${t.id} updated`);
+          }
+          case "note": {
+            if (typeof p.text !== "string") throw new Error("note takes text");
+            return said(`noted ${a.remember(p.text, Array.isArray(p.tags) ? (p.tags as string[]) : [], now).id}`);
+          }
+          case "recall":
+            return text(a.recall(String(p.query ?? "")).map((n) => `${n.id}: ${n.text}${n.tags.length ? ` [${n.tags.join(", ")}]` : ""}`).join("\n") || "nothing noted about that");
+          default:
+            return text(`${a.said(now, 12)}\n\nNotes:\n${a.notes.slice(-8).map((n) => `${n.id}: ${n.text}`).join("\n") || "none"}`);
+        }
       },
     },
     {
@@ -313,9 +395,23 @@ export default function grunt(pi: PiExtensionAPI): void {
     thinking = false;
     idleSince = Date.now();
   });
+  let lastDue = "";
   const idler = setInterval(() => {
     const open = goals.filter((g) => g.status === "active");
-    if (!mind || thinking || mind.rt.current || !open.length || nudges >= IDLE_NUDGES || Date.now() - idleSince < IDLE_MS) return;
+    if (!mind || thinking || mind.rt.current || Date.now() - idleSince < IDLE_MS) return;
+    // Nothing asked of it: the agenda's due items, first things first, now and then while it stays idle.
+    if (!open.length) {
+      const due = mind.agenda.due(Date.now());
+      const key = due.map((t) => t.id).join(",");
+      if (!due.length || (key === lastDue && Date.now() - idleSince < AUTONOMY_MS)) return;
+      lastDue = key;
+      idleSince = Date.now();
+      const kitShort = missing(mind.rt.belief);
+      const lines = due.slice(0, 4).map((t) => `${t.id} (${t.priority}): ${t.text}${t.key === "loadout" && kitShort.length ? ` [missing: ${kitShort.join(", ")}]` : t.key === "loadout" ? " [complete: mark it done]" : ""}`);
+      wake({ kind: "need", t: mind.rt.belief.now, text: `nothing is asked of you. Due on your agenda, first things first:\n${lines.join("\n")}\nStart the first that needs doing (game_do with "todo": its id, and it is marked done when the task is), or mark it done or put it off with game_agenda. Stay available: an owner's word comes first.`, data: { idle: true, due: due.map((t) => t.id) } });
+      return;
+    }
+    if (nudges >= IDLE_NUDGES) return;
     nudges++;
     idleSince = Date.now();
     const v = mind.rt.belief.self?.vitals ?? {};

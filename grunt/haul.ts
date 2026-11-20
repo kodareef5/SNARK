@@ -212,3 +212,46 @@ export function* migrate(ctx: SkillContext, args: Record<string, unknown>): Run<
   }
   return { status: "done", summary: `moved ${from.length} containers' things into ${to.length} in ${trips} trips: ${said(moved)}`, data: { moved, trips } };
 }
+
+/** Fetches materials from the stores about into the bag: each store looked into (nearest first), what is short taken. */
+export function* fetch(ctx: SkillContext, bill: Record<string, number>): Run<boolean> {
+  const b = ctx.belief;
+  const short = () => Object.entries(bill).filter(([i, n]) => b.count(i) < n).map(([i]) => i);
+  for (const s of stores(b).sort((x, y) => b.distance(x.pos) - b.distance(y.pos))) {
+    if (!short().length) break;
+    const known = b.stores.get(s.id);
+    if (known && !known.slots.some((x) => short().includes(x.item))) continue;
+    if (!(yield* openUp(ctx, s.id))) continue;
+    if (!(b.inventory?.open?.slots ?? []).some((x) => short().includes(x.item))) continue;
+    yield* transfer(ctx, "open", { items: short() });
+  }
+  return !short().length;
+}
+
+/** Looking after a base, in one go: damage repaired (materials fetched from the stores if the bag is short), the
+ * harvesters emptied into the stores, and a heavy bag's spare resources stashed. */
+export function* upkeep(ctx: SkillContext, args: Record<string, unknown>, repairIt: (ctx: SkillContext, args: Record<string, unknown>) => Run<SkillResult>): Run<SkillResult> {
+  const b = ctx.belief;
+  const did: string[] = [];
+  if (b.damaged.size) {
+    let r = yield* repairIt({ ...ctx, progress: {} }, {});
+    if (r.status === "blocked" && r.data?.reason === "materials") {
+      // Its bill several times over: a storm leaves more than one piece to mend.
+      const bill = Object.fromEntries(Object.entries((r.data.bill ?? {}) as Record<string, number>).map(([i, n]) => [i, b.count(i) + n * 20]));
+      if (yield* fetch(ctx, bill)) r = yield* repairIt({ ...ctx, progress: {} }, {});
+      else if (Object.keys(bill).some((i) => b.count(i) > 0)) r = yield* repairIt({ ...ctx, progress: {} }, {});
+    }
+    did.push(r.summary);
+    if (r.status !== "done") return { status: "blocked", summary: `looking after the base: ${did.join("; ")}`, data: { ...(r.data ?? {}) } };
+  }
+  const tames = b.find((t) => !!t.tags?.includes("inventory") && t.disposition === "own" && b.distance(t.pos) < 80);
+  for (const t of tames) {
+    const r = yield* empty({ ...ctx, progress: {} }, { from: t.id });
+    if (!/^moved nothing|^emptied .*: nothing/.test(r.summary)) did.push(r.summary);
+  }
+  if (b.weightFraction() > 0.5 && stores(b).length) {
+    const r = yield* stash({ ...ctx, progress: {} }, { kinds: ["resource"] });
+    did.push(r.summary);
+  }
+  return { status: "done", summary: did.length ? `looked after the base: ${did.join("; ")}` : "the base needs nothing: no damage, the harvesters are empty, the bag is light" };
+}

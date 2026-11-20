@@ -86,7 +86,7 @@
       },
       {
         "not": {
-          "said": "^on it:.*raptor"
+          "said": "^on it: (clear|kill|deal with)[^.]*raptor"
         }
       }
     ]

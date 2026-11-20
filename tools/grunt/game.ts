@@ -18,7 +18,7 @@ export const CAPABILITIES: Capabilities = {
   verbs: ["harvest", "open", "close"],
   building: BUILDING,
   assists: { kinds: ["aim", "attack", "harvest", "follow", "repair"], ...ASSIST },
-  voice: { range: VOICE_RANGE, speaks: true },
+  voice: { range: VOICE_RANGE },
 };
 
 export interface Connection {

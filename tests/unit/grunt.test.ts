@@ -6,6 +6,7 @@ import type { NotifyType, PiCommand, PiExtensionAPI, PiTool } from "../../grunt/
 import { GRUNT_VERSION } from "../../grunt/protocol.ts";
 import { SKILLS } from "../../grunt/skills.ts";
 import { NavMap, WALK } from "../../grunt/nav.ts";
+import { Agenda } from "../../grunt/agenda.ts";
 import { BLUEPRINTS } from "../../grunt/blueprints.ts";
 import { compile } from "../../grunt/layout.ts";
 
@@ -57,7 +58,7 @@ test("grunt registers /grunt, which answers status, protocol and an unknown subc
 
 test("the Director's tools are the game_ ones, with plain JSON Schema parameters, and refuse to act unconnected", async () => {
   const { tools } = load();
-  expect([...tools.keys()]).toEqual(["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_blueprints", "game_goal"]);
+  expect([...tools.keys()]).toEqual(["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_blueprints", "game_agenda", "game_goal"]);
   for (const t of tools.values()) expect(t.parameters).toMatchObject({ type: "object", additionalProperties: false });
   expect((tools.get("game_do")!.parameters.properties as { skill: { enum: string[] } }).skill.enum).toEqual(Object.keys(SKILLS));
   const skills = JSON.parse((await tools.get("game_skills")!.execute("1", {}, undefined, undefined, {})).content[0]!.text);
@@ -100,4 +101,24 @@ test("a layout's mistakes are told plainly", () => {
     "room 0: \"x1\" is not a side: n, e, s or w, with the cell along it (s0, s1, ...)",
   ]);
   expect(compile({ rooms: [{ at: [0, 0], size: [2, 2] }], stairs: [{ at: [0, 0], up: "n" }] }).problems).toEqual(["stairs at 0,0 storey 0 lead up to no room"]);
+});
+
+test("the agenda: standing chores, own to-dos by priority, chores due again in their time, notes recalled, kept as JSON", () => {
+  const a = new Agenda();
+  a.standing(0);
+  a.standing(0);
+  expect(a.todos.filter((t) => t.from === "standing").length).toBe(4);
+  const fix = a.add("fix the gate", { priority: 1, now: 10 });
+  expect(a.due(1000).map((t) => t.id)[0]).toBe(fix.id);
+  a.done(fix.id, 2000);
+  const loadout = a.todos.find((t) => t.key === "loadout")!;
+  a.done(loadout.id, 2000);
+  expect(a.due(3000).some((t) => t.id === loadout.id || t.id === fix.id)).toBe(false);
+  expect(a.due(2000 + 900_000).some((t) => t.id === loadout.id)).toBe(true);
+  a.remember("the stone vault is e:5, north of the hut", ["base", "vault"], 5);
+  a.remember("good trees east of the river", ["wood"], 6);
+  expect(a.recall("where is the vault").map((n) => n.text)).toEqual(["the stone vault is e:5, north of the hut"]);
+  const back = Agenda.from(JSON.parse(JSON.stringify(a.toJSON())));
+  expect(back.said(3000)).toBe(a.said(3000));
+  expect(back.add("x", { now: 7 }).id).not.toBe(fix.id);
 });

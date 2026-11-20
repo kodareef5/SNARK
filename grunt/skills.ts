@@ -6,8 +6,9 @@
 import { type Belief, compass } from "./belief.ts";
 import { build } from "./build.ts";
 import { fight } from "./combat.ts";
-import { escort, follow, repair } from "./company.ts";
+import { escort, follow, repair, upkeep } from "./company.ts";
 import { empty, loot, migrate, organize, stash } from "./haul.ts";
+import { kit } from "./kit.ts";
 import { type Costs, costsFor, type Danger, type RideKind, rideKind, type Route, WALK } from "./nav.ts";
 import type { Remembered } from "./belief.ts";
 import type { Body, Run } from "./body.ts";
@@ -334,7 +335,8 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
   const enough = () => (want !== null && have() >= want) || (!!until && Object.entries(until).every(([i, n]) => b.count(i) >= n));
   let moves = 0;
   // What is about the character is known all at once: no looking round before deciding there is none near.
-  const summary = () => `gathered ${Object.entries((p.gained ?? {}) as Record<string, number>).map(([k, v]) => `${v} ${k}`).join(", ") || "nothing"} from ${Number(p.targets ?? 0)} ${kind}s`;
+  // What it could not get at is said, so "done" is never taken for "none left".
+  const summary = () => `gathered ${Object.entries((p.gained ?? {}) as Record<string, number>).map(([k, v]) => `${v} ${k}`).join(", ") || "nothing"} from ${Number(p.targets ?? 0)} ${kind}s${((p.unreachable ?? []) as string[]).filter((id) => ctx.belief.things.has(id)).length ? `; ${((p.unreachable ?? []) as string[]).filter((id) => ctx.belief.things.has(id)).length} I could not get at (${((p.unreachable ?? []) as string[]).filter((id) => ctx.belief.things.has(id)).join(", ")})` : ""}`;
   p.targets ??= 0;
   const tool = kind === "bush" ? null : yield* holdBest(ctx, TOOLS[kind]!);
   const first = typeof args.target === "string" && !p.first_done ? args.target : null;
@@ -436,7 +438,7 @@ function* flee(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResul
 const SOURCE: Record<string, string> = { wood: "tree", thatch: "tree", stone: "rock", flint: "rock", fiber: "bush", berries: "bush" };
 
 /** Gathers until the inventory holds a whole list of materials: trees, then rocks, then bushes, as each is needed. */
-function* gather(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+export function* gather(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const b = ctx.belief, p = ctx.progress;
   const items = (args.items && typeof args.items === "object" ? args.items : {}) as Record<string, number>;
   const unknown = Object.keys(items).filter((i) => !(i in SOURCE));
@@ -456,7 +458,7 @@ function* gather(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRes
 
 // --- Building: grunt/build.ts -------------------------------------------------------------------------------
 
-function* craft(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+export function* craft(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const item = String(args.item ?? ""), count = Math.max(1, Number(args.count ?? 1));
   const recipe = ctx.belief.inventory?.craftable.find((r) => r.item === item);
   if (!recipe) return { status: "failed", summary: `I don't know how to make ${item}` };
@@ -468,7 +470,7 @@ function* craft(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResu
 
 function* say(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const text = String(args.text ?? "");
-  const channel = (["local", "global", "group", "voice"].includes(String(args.channel)) ? args.channel : "local") as "local" | "global" | "group" | "voice";
+  const channel = (["local", "global", "group"].includes(String(args.channel)) ? args.channel : "local") as "local" | "global" | "group";
   yield* ctx.body.settle(ctx.body.act([{ control: "chat", channel, text }], "say"), 2000);
   return { status: "done", summary: `said "${text}"` };
 }
@@ -509,6 +511,7 @@ export const SKILLS: Record<string, Skill> = {
   },
   craft: { name: "craft", describe: "Craft items from the inventory, by the recipes the inventory screen shows.", params: { item: "item name", count: "number" }, body: false, run: craft },
   say: { name: "say", describe: "Say a line in chat.", params: { text: "string", channel: "local | global | group" }, body: false, run: say },
+  kit: { name: "kit", describe: "Make a basic loadout (a pick, a hatchet, a bow, 20 arrows, some food): what is missing, crafted in order, each one's materials gathered first.", params: {}, body: true, run: kit },
   loot: {
     name: "loot", describe: "Loot bodies about (or one container) into the bag, as much as it can carry.",
     params: { target: "a body or container (default: every body about)", items: "only these items", kinds: "only these kinds: resource, food, ammo, ..." }, body: true, run: loot,
@@ -536,6 +539,10 @@ export const SKILLS: Record<string, Skill> = {
   escort: {
     name: "escort", describe: "Escort someone: follow, and fight whatever hostile comes within guard metres of them or you; done when they reach `to`.",
     params: { target: "id or name", to: "{x, z}: where they are going", guard: "metres (default 20)", seconds: "how long at most (default 900)" }, body: true, run: escort,
+  },
+  upkeep: {
+    name: "upkeep", describe: "Look after the base in one go: repair what the game said was damaged (fetching materials from the stores if the bag is short), empty the harvesters into the stores, stash a heavy bag.",
+    params: {}, body: true, run: upkeep,
   },
   repair: {
     name: "repair", describe: "Repair a base's damaged parts (the game tells of damage) through the repair assist, for half their recipe in what they lack.",
