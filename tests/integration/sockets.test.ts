@@ -68,7 +68,18 @@ test("a world hosts a server directory only when its operator asks, and a search
     expect([existsSync(join(saves, "plain.db.directory.sqlite")), existsSync(join(saves, "hosting.db.directory.sqlite"))]).toEqual([false, false]);
     // A world asks to be listed only when it is listed somewhere.
     expect([await says(plain.port!), await says(hosting.port!)]).toEqual([false, true]);
-    expect(await (await fetch(`http://localhost:${hosting.port}/entry-world.json`)).json()).toMatchObject({ pve: false, about: "", discord: "", tags: {} });
+    const card = async () => (await fetch(`http://localhost:${hosting.port}/entry-world.json`)).json();
+    expect(await card()).toMatchObject({ pve: false, about: "", discord: "", tags: {} });
+    // What its listing says changes while it runs, kept to what a list may show.
+    for (const [name, value] of [
+      ["ServerDescription", "Tames‮ kept  safe."],
+      ["DiscordUrl", "https://discord.gg/reef"],
+      ["ServerTags", "rates=3x, region=eu, slots=40, Bad Name=1"],
+    ])
+      expect(hosting.host.setSetting(name, value)).toBe("");
+    expect(await card()).toMatchObject({ about: "Tames kept safe.", discord: "https://discord.gg/reef", tags: { rates: "3x", region: "eu", slots: 40 } });
+    expect(hosting.host.setSetting("DiscordUrl", "https://elsewhere.example/reef")).toBe("");
+    expect(((await card()) as { discord: string }).discord).toBe("");
   } finally {
     console.log = log;
     plain.stop();
