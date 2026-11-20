@@ -5,7 +5,7 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { type MapStatic, MapStatics, parseMap } from "../../shared/world/mapfile.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { placedPriority } from "../../client/core/render/street-reflections.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, FRAME, MAX_CONTACTS, type FramePacket } from "../../client/core/render/packet.ts";
 import { findChrome } from "../chrome.ts";
 import { litProbe } from "../probe-lit.ts";
 import { Shot } from "../probe-lit/shot.ts";
@@ -126,6 +126,7 @@ if (view) {
     remote.steering[0] = 0.32;
     inspect(-1.47,0.40,1.78,-0.82,0.30,1.25);
   }
+  else if (view === "side") inspect(-5.9,1.03,2.75,0,0.57,0);
   else if (view === "front") inspect(-0.15,1.62,3.7,0,1.10,0.04);
   else if (view === "oblique") inspect(-2.1,1.55,1.45,0,1.17,0.50);
   else if (view === "driver") inspect(0.42,1.11,0.17,0.42,1.14,6.0);
@@ -197,12 +198,39 @@ if (gpu) {
         if (!loading && !load.flying && !load.waiting && p.frame[FRAME.reflection + 3] === 1) {
           if (view) {
             shot.add(p, true);
+            if (view === "wheel" || view === "side") {
+              // Same light, geometry and old ellipsoid, with only the chassis footprint switched off.
+              const original = p.frame.slice(FRAME.contact,FRAME.contact+8*MAX_CONTACTS);
+              for (let j=0; j<MAX_CONTACTS; j++) {
+                const at = FRAME.contact+8*j+6;
+                p.frame[at] = Math.abs(p.frame[at]!);
+              }
+              shot.add(p,true);
+              p.frame.set(original,FRAME.contact);
+              const capture = p.frame[FRAME.reflection+3]!;
+              p.frame[FRAME.reflection+3] = 0;
+              shot.add(p,true);
+              p.frame[FRAME.reflection+3] = capture;
+            }
+            const savedCards = view === "wheel" ? p.detailWords.slice(0,p.detailCount*DETAIL_FLOATS) : null;
             if (!hideCards(p,DETAIL_GLASS)) throw new Error(view + " has no windshield");
             shot.add(p, true);
             if (view === "wheel") {
               hideCards(p,DETAIL_TIRE);
               shot.add(p,true);
+              const supported = p.frame.slice(FRAME.tireContacts);
               p.frame.fill(0,FRAME.tireContacts);
+              shot.add(p,true);
+              p.frame.set(supported,FRAME.tireContacts);
+              p.detailWords.set(savedCards!);
+              // Move the other car into the mirror with the main camera, poses and draw lists frozen.
+              remote.x[1] = carX-2.9;
+              remote.z[1] = carZ-1.4;
+              remote.colors[6] = 233;
+              const world = { dims: map.dims, hf, structs: v.structs, nodes: v.nodes.store };
+              const hidden = new Set<number>();
+              scene.street.frame(p,cam,world,remote,hidden,scene.now+260);
+              scene.street.frame(p,cam,world,remote,hidden,scene.now+460);
               shot.add(p,true);
             }
             return [shot];
@@ -268,14 +296,35 @@ if (gpu) {
       const on = back.pixels(shot.key, shot.read[0]!)!, sky = back.pixels(shot.key, shot.read[1]!)!;
       if (view) {
         writeFileSync(join(out, view + ".png"), encodePng(width, height, on));
-        writeFileSync(join(out, view + "-open.png"), encodePng(width, height, sky));
-        const changed = different(on,sky,3);
+        const chassisStudy = view === "wheel" || view === "side";
+        const open = chassisStudy ? back.pixels(shot.key,shot.read[3]!)! : sky;
+        writeFileSync(join(out, view + "-open.png"), encodePng(width, height, open));
+        const changed = different(on,open,3);
+        let chassis = 0;
+        if (chassisStudy) {
+          const fallback = back.pixels(shot.key,shot.read[2]!)!;
+          writeFileSync(join(out,view+"-no-chassis.png"),encodePng(width,height,sky));
+          writeFileSync(join(out,view+"-sky-only.png"),encodePng(width,height,fallback));
+          chassis = different(on,sky,3);
+          if (view === "side") return { ok: chassis > 200, lines: [back.device.renderer, "Whole-car shadow changed "+chassis+" pixels."] };
+        }
         if (view === "wheel") {
-          const bare = back.pixels(shot.key, shot.read[2]!)!, unloaded = back.pixels(shot.key,shot.read[3]!)!;
+          const bare = back.pixels(shot.key, shot.read[4]!)!, unloaded = back.pixels(shot.key,shot.read[5]!)!;
           writeFileSync(join(out,"wheel-no-contact.png"),encodePng(width,height,bare));
           writeFileSync(join(out,"wheel-unloaded.png"),encodePng(width,height,unloaded));
-          const contact = different(sky,bare,2), deflection = different(bare,unloaded,2);
-          return { ok: contact > 25 && deflection > 25, lines: [back.device.renderer, "Contact shadow changed "+contact+" pixels. Tire deflection changed "+deflection+" pixels."] };
+          const contact = different(open,bare,2), deflection = different(bare,unloaded,2);
+          const passing = back.pixels(shot.key,shot.read[6]!)!;
+          writeFileSync(join(out,"wheel-traffic.png"),encodePng(width,height,passing));
+          let rimChanges = 0;
+          // In the matched wheel camera the foreground rim occupies this ellipse.
+          for (let y=0; y<height; y++) for (let x=0; x<width; x++) {
+            const rx=(x/width-0.5)/0.126, ry=(y/height-0.553)/0.235;
+            if (rx*rx+ry*ry > 1) continue;
+            const i=(y*width+x)*4;
+            if (Math.max(Math.abs(on[i]!-passing[i]!),Math.abs(on[i+1]!-passing[i+1]!),Math.abs(on[i+2]!-passing[i+2]!)) >= 5) rimChanges++;
+          }
+          return { ok: chassis > 200 && contact > 25 && deflection > 25 && rimChanges > 100,
+            lines: [back.device.renderer, "Whole-car shadow changed "+chassis+" pixels. Contact shadow changed "+contact+" pixels. Tire deflection changed "+deflection+" pixels. Moving traffic changed "+rimChanges+" foreground rim pixels."] };
         }
         return { ok: changed > 100, lines: [back.device.renderer, view + " glass changed " + changed + " pixels by at least three channel values"] };
       }

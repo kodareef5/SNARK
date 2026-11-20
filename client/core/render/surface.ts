@@ -650,7 +650,7 @@ uniform float uCutoff, uSheet, uSkin, uEmissive;
 flat in float vFinishSeed;
 in vec3 vWheelPoint;
 in vec4 vWheel;
-uniform float uStreetMaterial;
+uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
 ${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
@@ -694,7 +694,17 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
       mro.g = mix(mro.g,0.076+marks,chrome);
       mro.b = mix(mro.b,1.0,chrome);
       // A gently crowned face turns a flat spoke through a range of real reflection directions.
-      n = normalize(n + 0.58*chrome*(vWheel.xyz - n*dot(vWheel.xyz,n)));
+      vec3 crown = 0.88*(vWheel.xyz - n*dot(vWheel.xyz,n));
+      // The compact's five flat castings are 44 mm wide on a 300 mm wheel.
+      // Curve the specular normal across each face between the authored bevels.
+      float r = length(vWheelPoint.yz);
+      if (uSpokeCrown > 0.5 && r > 0.18 && r < 0.64) {
+        float phase = 5.0*atan(vWheelPoint.z,vWheelPoint.y);
+        float across = clamp(sin(phase)*r/0.3667,-1.0,1.0);
+        float ends = smoothstep(0.18,0.25,r)*(1.0-smoothstep(0.57,0.64,r));
+        crown += cross(n,vWheel.xyz)*(0.70*sign(vWheelPoint.x)*across*ends/r);
+      }
+      n = normalize(n + chrome*crown);
     }
   }
   vec3 ray = reflect(-v,n), mirror = skyFrom(ray);
@@ -709,10 +719,17 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
       coat = (1.0+0.5*fStreetLook.x)*paint*(0.045+0.22*pow(1.0-clamp(dot(n,v),0.0,1.0),5.0))*(1.0-mro.g);
     }
   }
-  // Soft horizon fill uses the current sky energy, including at dusk and night.
+  // Let a dark reflected object interrupt the horizon highlight as it crosses a polished face.
   if (chrome > 0.0) {
     vec3 fill = mix(fSkyAbove.rgb,vec3(dot(fSkyAbove.rgb,vec3(0.2126,0.7152,0.0722))),0.45);
-    mirror += chrome*fill*(0.12+1.15*exp2(-9.0*abs(ray.y-0.12)));
+    float incident = dot(mirror,vec3(0.2126,0.7152,0.0722));
+    float skyEnergy = dot(fill,vec3(0.2126,0.7152,0.0722));
+    float visibility = incident/(incident+0.26*skyEnergy+0.00001);
+    // A passing coloured panel also colours its highlight. Normalizing by luminance preserves the exposure.
+    float neutral = 0.06*skyEnergy+0.00001;
+    fill *= mix(vec3(1.0),(mirror+neutral)/(incident+neutral),0.65);
+    mirror *= 1.0+0.85*chrome*visibility;
+    mirror += chrome*fill*(0.12+1.15*exp2(-9.0*abs(ray.y-0.12)))*(0.40+2.20*visibility);
   }
   vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);
   o = vec4(shown(mix(radiance,mirror*open,coat) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);

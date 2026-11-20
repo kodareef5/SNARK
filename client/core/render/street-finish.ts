@@ -6,7 +6,10 @@ export function worldReceiver(surface: number, rough: number, metal: number): nu
   if (surface === GLASS) return Math.max(0, Math.min(1, (0.8 - rough) * 2.5));
   return surface === STEEL || surface === RUST ? Math.max(0, Math.min(1, (0.85 - rough) * 3)) * metal : 0;
 }
-export const STREET_WIDTH = 64, STREET_HEIGHT = 32;
+export const STREET_WIDTH = 64, FINE_STREET_WIDTH = 128;
+export function streetWidth(image: StreetImage): number {
+  return image.pixels.length === FINE_STREET_WIDTH * FINE_STREET_WIDTH * 2 ? FINE_STREET_WIDTH : STREET_WIDTH;
+}
 export interface StreetImage {
   pixels: Uint8Array;
   revision: number;
@@ -127,7 +130,8 @@ vec4 streetSample(vec3 ray, vec3 offset, float rough, float layer) {
   vec3 localRay = ray*16.0+offset;
   vec3 dir = dot(localRay,localRay) > 1e-8 ? normalize(localRay) : ray;
   vec2 uv = vec2(atan(dir.x,dir.z)/6.283185307+0.5,asin(clamp(dir.y,-1.0,1.0))/3.141592654+0.5);
-  return near*textureLod(uStreetEnv,vec3(uv,layer),clamp(rough*5.0-0.4,0.0,5.0));
+  float extraMip = textureSize(uStreetEnv,0).x == ${FINE_STREET_WIDTH} ? clamp((rough-0.09)/0.16,0.0,1.0) : 0.0;
+  return near*textureLod(uStreetEnv,vec3(uv,layer),max(0.0,rough*5.0-0.4+extraMip));
 }
 #endif
 vec3 streetMirror(vec3 original, vec3 ray, vec3 rel, float rough, float mask) {
@@ -152,13 +156,14 @@ function filtered(image: StreetImage): Uint8Array[] {
   let cache = mipCache.get(image);
   if (cache?.revision === image.revision) return cache.levels;
   if (!cache) {
-    const levels = [image.pixels];
-    for (let k = 1; k <= 5; k++) levels.push(new Uint8Array((STREET_WIDTH >> k) * (STREET_HEIGHT >> k) * 4));
+    const width = streetWidth(image), levels = [image.pixels];
+    for (let w = width >> 1; w >= 2; w >>= 1) levels.push(new Uint8Array(w * w * 2));
     mipCache.set(image, cache = { revision: 0, levels });
   }
   cache.levels[0] = image.pixels;
-  for (let k = 1; k <= 5; k++) {
-    const w = STREET_WIDTH >> k, h = STREET_HEIGHT >> k, src = cache.levels[k - 1]!, dst = cache.levels[k]!;
+  const width = streetWidth(image);
+  for (let k = 1; k < cache.levels.length; k++) {
+    const w = width >> k, h = w >> 1, src = cache.levels[k - 1]!, dst = cache.levels[k]!;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         for (let c = 0; c < 4; c++) {
@@ -209,10 +214,11 @@ function sampleStreet(image: StreetImage, ray: ArrayLike<number>, x: number, y: 
     z = ray[2]!;
   }
   const u = Math.atan2(x, z) / (2 * Math.PI) + 0.5, v = Math.asin(y / Math.hypot(x, y, z)) / Math.PI + 0.5;
-  const lod = Math.max(0, Math.min(5, rough * 5 - 0.4)), low = Math.floor(lod);
+  const width = streetWidth(image), extraMip = width === FINE_STREET_WIDTH ? clamp((rough-0.09)/0.16) : 0;
   const levels = filtered(image);
+  const lod = Math.min(levels.length-1, Math.max(0, rough * 5 - 0.4 + extraMip)), low = Math.floor(lod);
   for (let k = low; k <= Math.ceil(lod); k++) {
-    const w = STREET_WIDTH >> k, h = STREET_HEIGHT >> k, src = levels[k]!;
+    const w = width >> k, h = w >> 1, src = levels[k]!;
     const a = u * w - 0.5, b = Math.max(0, Math.min(h - 1, v * h - 0.5)), i = Math.floor(a), j = Math.floor(b);
     const mip = near * weight * (1 - Math.abs(lod - k)) / 255;
     for (let dy = 0; dy <= 1; dy++) {

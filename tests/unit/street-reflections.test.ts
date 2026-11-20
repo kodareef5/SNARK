@@ -11,9 +11,10 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { deflectTire, TireContacts, tireShadow } from "../../client/core/render/tire-contact.ts";
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { BONE_FLOATS, FRAME, FramePacket, MAX_TIRE_CONTACTS } from "../../client/core/render/packet.ts";
+import { streetSilhouette } from "../../client/core/render/street-silhouettes.ts";
 import { StreetReflections } from "../../client/core/render/street-reflections.ts";
 import {
-  wheelBoneMask, wheelFinish, tireMould,
+  FINE_STREET_WIDTH, STREET_WIDTH, streetWidth, wheelBoneMask, wheelFinish, tireMould,
   coatWear,
   finishSeed,
   fixtureFace,
@@ -243,4 +244,40 @@ test("the windscreen transmits the road from the driver's seat and gains reflect
   expect(outside!).toBeLessThan(0.25);
   expect(edge!*edgeShare!).toBeGreaterThan(outside!*share!*4);
   expect(sample(1,0.95)[0]!).toBeGreaterThan(outside!);
+});
+
+test("capacity changes select a smaller shared panorama and discard incompatible history", () => {
+  const {car,tick,p} = street();
+  car(0,40,42);
+  car(1,38,47);
+  tick(0);
+  expect(streetWidth(p.street!)).toBe(FINE_STREET_WIDTH);
+  car(1,37,47);
+  tick(250);
+  expect(p.previousStreet).not.toBeNull();
+  p.tier = tierOf("medium");
+  tick(251);
+  expect(streetWidth(p.street!)).toBe(STREET_WIDTH);
+  expect(p.previousStreet).toBeNull();
+  expect(p.frame[FRAME.previousReflection+3]).toBe(0);
+  p.tier = tierOf("lowpoly");
+  tick(252);
+  expect(p.street).toBeNull();
+  p.tier = tierOf("high");
+  tick(253);
+  expect(streetWidth(p.street!)).toBe(FINE_STREET_WIDTH);
+  expect(p.previousStreet).toBeNull();
+});
+
+test("reflection silhouettes include the authored window bays and the compact's painted body, glass and rubber", () => {
+  const windowKind = reg.index.get("core:zruin_zwin_concrete")!;
+  const window = streetSilhouette(reg,windowKind)!;
+  const lights = window.filter(part => part.color === 83);
+  expect(lights.length).toBe(2);
+  expect(lights[0]!.at[0]).toBeCloseTo(-lights[1]!.at[0],5);
+  const car = streetSilhouette(reg,reg.index.get("core:compact")!)!;
+  expect(car.some(part => part.color === undefined)).toBe(true);
+  expect(car.some(part => part.color === 83)).toBe(true);
+  expect(car.filter(part => part.color === 230).length).toBe(4);
+  expect(streetSilhouette(reg,reg.index.get("core:survivor")!)).toBeNull();
 });

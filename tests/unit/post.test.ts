@@ -127,12 +127,21 @@ test("contact: the bodies nearest the camera, a vehicle as its driving box, the 
   contactFrame(frame, true, reg, remote, null, cam);
   const spec = reg.vehicle[car]!.spec;
   // The car first, nearest, as its box, then the living survivor; the dead and the far are left out, and the list ends.
-  expect([...frame.subarray(FRAME.contact + 4, FRAME.contact + 7)].map((v) => Math.round(v * 100) / 100)).toEqual([spec.halfWidth, spec.height / 2, spec.halfLength].map((v) => Math.round(Math.fround(v) * 100) / 100));
+  expect([...frame.subarray(FRAME.contact + 4, FRAME.contact + 7)].map((v) => Math.round(v * 100) / 100)).toEqual([spec.halfWidth, spec.height / 2, -spec.halfLength].map((v) => Math.round(Math.fround(v) * 100) / 100));
   expect([frame[FRAME.contact]!, frame[FRAME.contact + 8]!, frame[FRAME.contact + 20]!]).toEqual([10, 30, 0]);
   const up = [0, 1, 0];
   const under = contactShare(frame, [10, -1.7, 0], up);
   const beside = contactShare(frame, [10, -1.7, spec.halfWidth + 3], up);
-  expect(under).toBeCloseTo(1 - CONTACT_MOST, 3);
+  expect(under).toBeCloseTo((1 - CONTACT_MOST) * 0.16, 3);
+  // With only the additional chassis shape disabled, the original ellipsoid still shades the road.
+  const old = frame.slice(); old[FRAME.contact+6] = spec.halfLength;
+  for (const x of [-0.85,0,0.85]) {
+    const sill = [10+x*spec.halfLength, -1.7, spec.halfWidth*1.18];
+    expect(contactShare(frame,sill,up)).toBeLessThan(contactShare(old,sill,up)*0.52);
+  }
+  for (const y of [-3.0,-1.0]) {
+    expect(contactShare(frame,[10,y,0],up)).toBeCloseTo(contactShare(old,[10,y,0],up),5);
+  }
   expect(beside).toBeGreaterThan(0.9);
   expect(contactShare(frame, [60, -1.7, 0], up)).toBe(1);
   // A face turned from the body takes none.

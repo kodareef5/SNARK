@@ -1,3 +1,4 @@
+import { contactAt } from "../../client/core/render/contact.ts";
 import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.ts";
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
@@ -71,6 +72,7 @@ interface Surfaced {
   label: number;
   seed: number;
   wheelBones: number;
+  spokeCrown: boolean;
   firstBone: number;
   positions: Float32Array;
   rest?: number[];
@@ -816,8 +818,9 @@ export class Rasterizer {
 
   private opened(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, ground: boolean, stands: boolean): number {
     const p = this.packet;
-    if (ground) return skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0);
-    return skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, nx, ny, nz, overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz), stands ? 1 : 0);
+    const contact = (ground || stands) && p.tier.contact ? contactAt(p.frame, rx, ry, rz, nx, ny, nz) : 1;
+    if (ground) return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0);
+    return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, nx, ny, nz, overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz), stands ? 1 : 0);
   }
 
   /**
@@ -1390,7 +1393,7 @@ export class Rasterizer {
     const box = wear === 0 ? null : lod.positions.map((x, i) => (x - center[i % 3]!) / half[i % 3]!);
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
-    const s: Surfaced = { firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheelBoneMask(rig?.names) : 0, label: streetMaterial(material.id), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const s: Surfaced = { spokeCrown: mesh.id === "core:compact", firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheelBoneMask(rig?.names) : 0, label: streetMaterial(material.id), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1829,9 +1832,20 @@ export class Rasterizer {
               const y = carried[16]!/scale, z = carried[17]!/scale;
               const dx=m[b+1]!*y+m[b+2]!*z, dy=m[b+5]!*y+m[b+6]!*z, dz=m[b+9]!*y+m[b+10]!*z;
               const dot=normal[0]!*dx+normal[1]!*dy+normal[2]!*dz;
-              normal[0]! += 0.58*chrome*(dx-normal[0]!*dot);
-              normal[1]! += 0.58*chrome*(dy-normal[1]!*dot);
-              normal[2]! += 0.58*chrome*(dz-normal[2]!*dot);
+              let bend = 0;
+              const radius = Math.hypot(carried[16]!, carried[17]!);
+              if (s.spokeCrown && radius > 0.18 && radius < 0.64) {
+                const across = Math.max(-1, Math.min(1, (Math.sin(5 * Math.atan2(carried[17]!, carried[16]!)) * radius) / 0.3667));
+                const base = Math.min(1, (radius - 0.18) / 0.07),
+                  tip = Math.min(1, (0.64 - radius) / 0.07);
+                bend = (0.7 * Math.sign(carried[15]!) * across * base * base * (3 - 2 * base) * tip * tip * (3 - 2 * tip)) / radius;
+              }
+              const nx = normal[0]!,
+                ny = normal[1]!,
+                nz = normal[2]!;
+              normal[0]! += chrome * (0.88 * (dx - nx * dot) + bend * (ny * dz - nz * dy));
+              normal[1]! += chrome * (0.88 * (dy - ny * dot) + bend * (nz * dx - nx * dz));
+              normal[2]! += chrome * (0.88 * (dz - nz * dot) + bend * (nx * dy - ny * dx));
               const length = Math.hypot(normal[0]!,normal[1]!,normal[2]!);
               for (let c=0; c<3; c++) normal[c]! /= length;
             }
@@ -1852,8 +1866,14 @@ export class Rasterizer {
           }
           if (chrome > 0) {
             const sky = FRAME.skyAbove, grey = 0.2126*p.frame[sky]!+0.7152*p.frame[sky+1]!+0.0722*p.frame[sky+2]!;
-            const fill = chrome*(0.12+1.15*2**(-9*Math.abs(reflected[1]!-0.12)));
-            for (let c=0; c<3; c++) mirrored[c]! += (0.55*p.frame[sky+c]!+0.45*grey)*fill;
+            const incident = 0.2126*mirrored[0]!+0.7152*mirrored[1]!+0.0722*mirrored[2]!;
+            const visibility = incident/(incident + 0.26*grey + 0.00001);
+            const fill = chrome*(0.12+1.15*2**(-9*Math.abs(reflected[1]!-0.12)))*(0.40+2.20*visibility);
+            const neutral = 0.06*grey+0.00001;
+            for (let c=0; c<3; c++) {
+              const hue = 0.35+0.65*(mirrored[c]!+neutral)/(incident+neutral);
+              mirrored[c] = mirrored[c]!*(1+0.85*chrome*visibility)+(0.55*p.frame[sky+c]!+0.45*grey)*fill*hue;
+            }
           }
           const nl = (back ? -1 : 1) / Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
           const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
