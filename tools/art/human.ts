@@ -3,7 +3,7 @@
 import { join } from "node:path";
 import { BEARD_STYLES, BODY_SCALES, HAIR_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_MAIN, REGION_SECOND, REGION_SKIN, REGION_TRIM, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
+import { MATERIAL_EXHAUST, MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
@@ -90,6 +90,9 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, finish?: Desc
         if (spec.tailored.visor) {
           mesh.materials[1] ??= finish.material;
           mesh.materials[2] = { ...finish.material, id: finish.material.id + "/visor", flags: finish.material.flags | MATERIAL_LENS };
+        }
+        if (spec.tailored.exhaust) {
+          mesh.materials[3] = { ...finish.material, id: finish.material.id + "/exhaust", flags: MATERIAL_EXHAUST };
         }
         mesh.textures = finish.textures;
         meshes.push(mesh);

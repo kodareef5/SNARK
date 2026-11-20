@@ -82,6 +82,8 @@ export const MATERIAL_NIGHT = 4;
 export const MATERIAL_LENS = 8;
 /** A self-dimming status light. Limits its own apparent luminance as the eye adapts to darkness. */
 export const MATERIAL_INDICATOR = 16;
+/** Emitting gas with procedural coverage along its local UV axis. */
+export const MATERIAL_EXHAUST = 32;
 
 export interface PackMaterial {
   id: string;

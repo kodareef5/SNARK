@@ -970,7 +970,7 @@ function boots(s: Surface, female: boolean) {
     s.panel(
       boot,
       [
-        [0.002, -180, 180],
+        [-0.010, -180, 180],
         [0.012, -180, 180, 0.002],
         [0.024, -180, 180],
       ],
@@ -978,6 +978,7 @@ function boots(s: Surface, female: boolean) {
       foot,
       24,
       0,
+      true,
     );
     s.panel(
       boot,
@@ -1140,7 +1141,7 @@ function gloves(s: Surface, female: boolean, rest: readonly number[]) {
   }
 }
 
-/** The paired ceramic vanes extend from the stowed engine blocks in air. Only the two small exhaust cores emit. */
+/** The paired ceramic vanes extend from the stowed engine blocks in air. The exhaust follows the nozzle axis and spreads into the wake. */
 function openVents(female: boolean, level: number) {
   const s = new Surface(level);
   for (const side of [-1, 1]) {
@@ -1182,25 +1183,15 @@ function openVents(female: boolean, level: number) {
       B_UPPER_CHEST,
       9,
     );
-    const core = contour([
-      [1.212, x, -0.215, 0.002, 0.002],
-      [1.246, x, -0.204, 0.008, 0.008],
-      [1.289, x, -0.184, 0.014, 0.014],
-      [1.329, x, -0.172, 0.019, 0.018],
-    ]);
-    s.panel(
-      core,
-      [
-        [1.212, -180, 180],
-        [1.246, -180, 180],
-        [1.289, -180, 180],
-        [1.329, -180, 180],
-      ],
-      f.lamp,
-      B_UPPER_CHEST,
-      12,
-      0,
-    );
+    const nozzleX = side * ((female ? 0.83 : 1) * 0.092 + 0.014);
+    const plume = [
+      [0.47, 0.001], [0.39, 0.022], [0.28, 0.041], [0.19, 0.045],
+      [0.12, 0.049], [0.055, 0.038], [0, 0.021],
+    ] as const;
+    const form = contour(plume.map(([down, r]) => [
+      1.33 - down, nozzleX + side * down * 0.10, -0.172 - down * 0.43, r, r,
+    ]));
+    s.panel(form, plume.map(([down]) => [1.33-down, -180, 180]), f.plume, B_UPPER_CHEST, 16, 0);
   }
   return s.done();
 }

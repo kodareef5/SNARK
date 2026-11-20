@@ -24,6 +24,7 @@ export const finish = {
   sink: 14,
   crown: 15,
   visor: 16, // Same cobalt atlas island as the inlays, drawn as a transmitting lens.
+  plume: 18, // Procedural exhaust uses local coordinates from nozzle to tip.
   palm: 17, // Shares the brass island with hardware, with its own padded UV bounds.
 } as const;
 // Keep the broad ivory plates and slate joins distinct in the palette-only distance mesh.
@@ -78,6 +79,11 @@ export class Surface {
     this.p.push(...point);
     this.n.push(...normal);
     this.b.push(bone);
+    if (tile === finish.plume) {
+      this.c.push(v < 0.28 ? 13 : v < 0.7 ? 64 : 41);
+      this.uv.push(u, v);
+      return i;
+    }
     const color = tile === finish.palm ? finish.rubber : tile === finish.visor ? finish.glass : tile;
     this.c.push(palette[color]!);
     if (tile === finish.visor) tile = finish.glass;
@@ -168,17 +174,17 @@ export class Surface {
     return us;
   }
   private mark(start: number, tile: number) {
-    for (let i = start; i < this.ix.length; i += 3) this.slots.push(tile === finish.lamp ? 1 : tile === finish.visor ? 2 : 0);
+    for (let i = start; i < this.ix.length; i += 3) this.slots.push(tile === finish.lamp ? 1 : tile === finish.visor ? 2 : tile === finish.plume ? 3 : 0);
   }
   /** A gridded panel with a rolled lip across its angular sides. Rows are ordered bottom to top. */
-  panel(form: Form, rows: readonly Row[], tile: number, bone: number, segments = 12, bevel = 0.003) {
+  panel(form: Form, rows: readonly Row[], tile: number, bone: number, segments = 12, bevel = 0.003, sole = false) {
     const extent = rows.at(-1)![0] - rows[0]![0];
     if (this.level === 2) {
       if (extent < 0.013 && tile !== finish.glass && tile !== finish.visor) return;
       if (rows.length > 4) rows = rows.filter((_, i) => i === 0 || i === rows.length - 1 || i % 2 === 1);
     }
     const firstIndex = this.ix.length;
-    const n = Math.max(2, Math.round(segments * [1, 0.5, 0.16][this.level]!)),
+    const n = Math.max(sole ? 8 : 2, Math.round(segments * [1, 0.5, 0.16][this.level]!)),
       start = this.b.length;
     const point = (r: number, u: number, delta = 0): V => {
       const row = rows[r]!,
@@ -209,6 +215,45 @@ export class Surface {
         }
       }
     this.mark(firstIndex, tile);
+    if (sole) this.outsole(us.slice(0, -1).map(u => point(0, u)), bone);
+    const forward = this.ix[firstIndex + 1] === start + 1;
+    const backed = tile === finish.ceramic || tile === finish.chest || tile === finish.crown || tile === finish.limb
+      || tile === finish.seam || tile === finish.jet || tile === finish.shoe || tile === finish.rubber || tile === finish.alloy;
+    if (backed && bevel > 0) {
+      // Keep every edge vertex so that the backing meets its return exactly. The dark inner surface
+      // doesn't carry the rolled outer highlight, so one column per ~40 degrees suffices between rims.
+      const begin = this.ix.length, last = rows.length-1;
+      const arc = Math.max(...rows.map(row => Math.abs(row[2]-row[1])));
+      const stride = Math.max(1, Math.floor(m / Math.ceil(arc / 40)));
+      let previous: number[] = [], lower: number[] = [];
+      for (let r = 0; r <= last; r++) {
+        const current: number[] = [], upper: number[] = [];
+        for (let j = 0; j <= m; j++) {
+          if (r > 0 && r < last && j !== m && j % stride !== 0) continue;
+          const at = 3 * (start + r * (m+1) + j);
+          current.push(j);
+          upper.push(this.vertex(point(r, us[j]!, this.level === 0 ? -0.01 : 0),
+            [-this.n[at]!, -this.n[at+1]!, -this.n[at+2]!], us[j]!, r/last, finish.rubber, bone));
+        }
+        if (r > 0) {
+          // Walk both row boundaries in angular order, also covering the transition to the dense end cap.
+          let i = 0, j = 0;
+          while (i+1 < lower.length || j+1 < upper.length) {
+            const a = lower[i]!, c = upper[j]!;
+            if ((previous[i+1] ?? Infinity) < (current[j+1] ?? Infinity)) {
+              const b = lower[++i]!;
+              if (forward) this.ix.push(a,c,b); else this.ix.push(a,b,c);
+            } else {
+              const d = upper[++j]!;
+              if (forward) this.ix.push(a,c,d); else this.ix.push(a,d,c);
+            }
+          }
+        }
+        previous = current;
+        lower = upper;
+      }
+      this.mark(begin, finish.rubber);
+    }
     if (bevel <= 0 || this.level > 0) return;
     // Return each free edge to the liner. A narrow metallic bevel catches light seen almost edge-on.
     const wall = (r: number, u: number, k: number, w: number) => {
@@ -216,13 +261,14 @@ export class Surface {
         b = point(k, w),
         c = point(k, w, -0.01),
         d = point(r, u, -0.01);
-      const normal = unit(cross(sub(b, a), sub(d, a))),
+      const normal = unit(forward ? cross(sub(b, a), sub(d, a)) : cross(sub(d, a), sub(b, a))),
         start = this.b.length;
       this.vertex(a, normal, u, 0.06, finish.alloy, bone);
       this.vertex(b, normal, w, 0.06, finish.alloy, bone);
       this.vertex(c, normal, w, 0.91, finish.alloy, bone);
       this.vertex(d, normal, u, 0.91, finish.alloy, bone);
-      this.ix.push(start, start + 1, start + 2, start, start + 2, start + 3);
+      if (forward) this.ix.push(start, start + 1, start + 2, start, start + 2, start + 3);
+      else this.ix.push(start, start + 2, start + 1, start, start + 3, start + 2);
       this.slots.push(0, 0);
     };
     const last = rows.length - 1;
@@ -234,6 +280,40 @@ export class Surface {
       wall(r, 0, r + 1, 0);
       wall(r + 1, 1, r, 1);
     }
+  }
+  /** A continuous rubber outsole on the welt's exact perimeter. The near level has raised chevron lugs. */
+  private outsole(ring: V[], bone: number) {
+    const xs = ring.map(p => p[0]), zs = ring.map(p => p[2]);
+    const left = Math.min(...xs), right = Math.max(...xs), heel = Math.min(...zs), toe = Math.max(...zs);
+    const y = ring[0]![1], mid = (left + right) / 2;
+    const vertex = (p: V, normal: V, tile: number) =>
+      this.vertex(p, normal, (p[0] - left) / (right - left), (p[2] - heel) / (toe - heel), tile, bone);
+    const down: V = [0, -1, 0], begin = this.ix.length;
+    const center = vertex([mid, y, (heel + toe) / 2], down, finish.palm);
+    const rim = ring.map(p => vertex(p, down, finish.palm));
+    for (let i = 0; i < rim.length; i++) this.ix.push(center, rim[(i + 1) % rim.length]!, rim[i]!);
+    if (this.level === 0) {
+      // A split heel and forefoot leave a flex channel under the arch.
+      for (const t of [0.15, 0.26, 0.55, 0.66, 0.77, 0.86]) for (const side of [-1, 1]) {
+        const z = mix(heel, toe, t), outer = (right - left) * Math.sqrt(1 - (2*t - 1)**2) * 0.40;
+        const near = mid + side * 0.006, far = mid + side * outer;
+        const face: V[] = [[near, y-0.003, z-0.012], [far, y-0.003, z+0.002],
+          [far, y-0.003, z+0.014], [near, y-0.003, z+0.002]];
+        if (side < 0) face.reverse();
+        const at = face.map(p => vertex(p, down, finish.rubber));
+        this.ix.push(at[0]!, at[1]!, at[2]!, at[0]!, at[2]!, at[3]!);
+        for (let i = 0; i < 4; i++) {
+          const a = face[i]!, b = face[(i + 1) % 4]!;
+          const normal = unit(cross(sub(a,b), [0,1,0]));
+          const q = vertex(b, normal, finish.rubber);
+          vertex(a, normal, finish.rubber);
+          vertex([a[0], y, a[2]], normal, finish.rubber);
+          vertex([b[0], y, b[2]], normal, finish.rubber);
+          this.ix.push(q, q+1, q+2, q, q+2, q+3);
+        }
+      }
+    }
+    this.mark(begin, finish.rubber);
   }
   /** Machined concentric ring, oriented by its outward normal. A minute centre radius closes a lens. */
   dial(center: V, axis: V, rings: readonly (readonly [number, number, number])[], bone: number, segments = 28) {

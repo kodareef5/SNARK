@@ -1425,7 +1425,12 @@ export class Characters {
         part.lod = lod;
         if (worn!.vented && st.jet && !st.grounded && st.mode !== MODE_SWIM && !seat && !vehicleSeat && !st.dead && !st.out) {
           const vents = set.vents[worn!.set]!;
-          if (vents >= 0 && this.assets.known(vents)) this.queuePart(vents, c, 0, -1, unseen || hidden);
+          if (vents >= 0 && !unseen && !hidden && this.assets.known(vents)) {
+            // The fixed housings already cast with the cuirass. Exhaust never enters a shadow cascade.
+            part.casts = 0;
+            this.queuePart(vents, c, 0, -1, false);
+            part.casts = casts;
+          }
         }
         if (slot === SLOT_HEAD) { covered = true; sealed = worn!.sealed; }
       }

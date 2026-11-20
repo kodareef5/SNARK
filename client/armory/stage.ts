@@ -1,4 +1,5 @@
 import { GlRenderer } from "../shell/gl.ts";
+import { exhaustPhase } from "../core/render/suit-finish.ts";
 import { Camera } from "../core/render/camera.ts";
 import { Scene } from "../core/render/scene.ts";
 import { BONE_FLOATS, FRAME } from "../core/render/packet.ts";
@@ -201,8 +202,8 @@ async function run() {
     actor.z[0] = pose.value === "run" ? 32 + (t % 180) * 0.085 : 32;
     cam.aspect = w / h;
     const close = view.value !== "whole",
-      dist = close ? 1.1 : mounted ? Math.max(6.4, 6.0 / cam.aspect) : Math.max(3.3, 1.75 / cam.aspect);
-    const target = mounted
+      dist = view.value === "back" ? 1.32 : close ? 1.1 : mounted ? Math.max(6.4, 6.0 / cam.aspect) : Math.max(3.3, 1.75 / cam.aspect);
+    const target = view.value === "back" && !mounted ? 1.19 : mounted
       ? close
         ? 1.98
         : 1.12
@@ -219,6 +220,15 @@ async function run() {
     cam.y = target + dist * 0.08;
     cam.yaw = angle + Math.PI;
     cam.pitch = -0.08;
+    if (view.value === "under" || view.value === "soles") {
+      const soles = view.value === "soles";
+      const distance = soles ? 0.26 : 0.78;
+      const rise = soles ? 1.04 : 0.68;
+      cam.x = 32 + Math.sin(angle) * distance;
+      cam.z = actor.z[0]! + Math.cos(angle) * distance;
+      cam.y = (soles ? 0.04 : 1.21) - rise;
+      cam.pitch = Math.atan2(rise, distance);
+    }
     if (view.value === "glove") {
       const distance = 0.34;
       cam.x = palm[0]! + Math.sin(angle)*distance;
@@ -245,6 +255,7 @@ async function run() {
         }
       }
     }
+    if (captureTick !== null) p.frame[FRAME.exhaustPhase] = exhaustPhase(t * (1000 / 30));
     p.tileCount = 0;
     p.sky.set([0.076, 0.115, 0.153]);
     p.frame[FRAME.eyeHeight] = -1;

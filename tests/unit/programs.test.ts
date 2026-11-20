@@ -53,7 +53,8 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
 
   expect(FRAME_BLOCK).toContain("highp vec4 fEyes[6]");
   expect(FRAME.eyes + 6 * 4).toBe(FRAME.reflection);
-  expect([FRAME.reflection + 4, FRAME.previousReflection + 4, FRAME.streetLook + 4, FRAME.tireContacts + 4*MAX_TIRE_CONTACTS]).toEqual([FRAME.previousReflection, FRAME.streetLook, FRAME.tireContacts, FRAME_FLOATS]);
+  expect([FRAME.reflection + 4, FRAME.previousReflection + 4, FRAME.streetLook + 4, FRAME.tireContacts + 4*MAX_TIRE_CONTACTS]).toEqual([FRAME.previousReflection, FRAME.streetLook, FRAME.tireContacts, FRAME.exhaustPhase]);
+  expect(FRAME.exhaustPhase + 4).toBe(FRAME_FLOATS);
   const p = new FramePacket();
   p.split = 384;
   p.cascades[0] = 2;
