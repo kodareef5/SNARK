@@ -1,9 +1,10 @@
 // Every survivor of a world as the admin page lists and maps them: who, which tribe, what level, online or last seen, play
 // time, where they are now or were last, and their recent deaths. One pass over the survivors and one over the sessions.
 
-import type { SurvivorRow, Survivors } from "../../shared/admin.ts";
+import type { AdminOverview, SurvivorRow, Survivors } from "../../shared/admin.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { MARKER_DEATH } from "../../shared/net/protocol.ts";
+import type { Client } from "../game.ts";
 import type { Host } from "../host.ts";
 
 /** The tick and wall time this run of the server began at, so a tick since then reads as a time. */
@@ -12,11 +13,28 @@ export interface RunStart {
   wall: number;
 }
 
+/** Seats follow what the survivor sits on, which may move. */
+function positionOf(host: Host, entity: number): { x: number; z: number; riding: string } {
+  const { ents, reg } = host.world;
+  const seat = ents.seat[entity]! - 1;
+  const at = seat >= 0 ? seat : entity;
+  return { x: ents.x[at]!, z: ents.z[at]!, riding: seat >= 0 ? reg.ids[ents.kind[seat]!] ?? "" : "" };
+}
+
+export function onlinePositions(host: Host): AdminOverview["positions"] {
+  const positions: AdminOverview["positions"] = [];
+  for (const c of host.game.clients) {
+    if (!c?.active || c.closed || c.ent < 0 || c.pid === 0) continue;
+    const { x, z } = positionOf(host, c.ent);
+    positions.push({ name: c.name, x, z });
+  }
+  return positions;
+}
+
 export function survivorsOf(host: Host, start: RunStart, now = Date.now()): Survivors {
   const { world, records, game } = host;
-  const ents = world.ents;
   const tick = world.tick;
-  const sessions = new Map<number, NonNullable<(typeof game.clients)[number]>>();
+  const sessions = new Map<number, Client>();
   for (const c of game.clients) if (c?.active && c.pid !== 0) sessions.set(c.pid, c);
   const wallOf = (t: number): number | null => (t >= start.tick ? Math.round(now - ((tick - t) / TICK_RATE) * 1000) : null);
   const out: SurvivorRow[] = [];
@@ -24,18 +42,7 @@ export function survivorsOf(host: Host, start: RunStart, now = Date.now()): Surv
     const rec = records.byPid.get(pid);
     if (!rec) continue;
     const c = sessions.get(pid);
-    let x = rec.x;
-    let z = rec.z;
-    let riding = "";
-    const e = c !== undefined && c.ent >= 0 ? c.ent : -1;
-    if (e >= 0) {
-      // A seated survivor is where what it sits on is, which moves it.
-      const seat = ents.seat[e]! - 1;
-      const at = seat >= 0 ? seat : e;
-      x = ents.x[at]!;
-      z = ents.z[at]!;
-      if (seat >= 0) riding = world.reg.ids[ents.kind[seat]!] ?? "";
-    }
+    const { x, z, riding } = c && c.ent >= 0 ? positionOf(host, c.ent) : { x: rec.x, z: rec.z, riding: "" };
     const { lastLogin, playMs } = host.activity.summary(rec);
     out.push({
       pid,

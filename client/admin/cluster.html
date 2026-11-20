@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cluster admin · SNARK</title>
+    <style>
+      /* face */
+      :root { color-scheme: dark; font: 17px "Barlow Semi Condensed", system-ui, sans-serif; color: #eef7ff; background: #0a111a; }
+      * { box-sizing: border-box; }
+      [hidden] { display: none !important; }
+      body { margin: 0; }
+      main { max-width: 94rem; margin: auto; padding: clamp(1rem, 3vw, 2.5rem); }
+      h1, h2, h3, p { margin: 0; }
+      h1 { font-size: clamp(2.1rem, 5vw, 3.2rem); line-height: 1.05; }
+      h2 { font-size: 1.4rem; }
+      a { color: #a9d6f2; text-underline-offset: 0.2em; }
+      header, .bar, .card-head, form { display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap; }
+      header, .card-head { justify-content: space-between; }
+      header { padding-bottom: 1.4rem; border-bottom: 1px solid #2b4155; }
+      .summary { display: flex; flex-wrap: wrap; gap: 0.6rem 1.6rem; margin: 1rem 0; }
+      .summary p, .muted, .chat-meta { color: #a5bbce; }
+      .summary strong { color: #eef7ff; font-size: 1.15em; }
+      #updated { margin-left: auto; }
+      .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(17rem, 27rem); gap: 1.25rem; align-items: start; }
+      #worlds { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 0.9rem; margin-top: 0.7rem; }
+      .panel, .card, #access { background: #121f2e; border: 1px solid #2b4155; border-radius: 0.65rem; }
+      .card { min-width: 0; overflow: hidden; }
+      .card-head, .card-foot, .pad, #access { padding: 0.75rem 0.9rem; }
+      .card-foot { display: grid; gap: 0.2rem; }
+      .card h3 { overflow-wrap: anywhere; font-size: 1.2rem; }
+      .health { font-weight: 600; color: #a5bbce; }
+      .health[data-level="0"] { color: #8fd9c4; }
+      .health[data-level="1"] { color: #f1bd6a; }
+      .health[data-level="2"] { color: #ff9d8b; }
+      .preview { min-height: 8rem; display: grid; place-items: center; background: #192533; }
+      canvas { display: block; width: min(100%, 25rem); height: auto; }
+      .cover { text-align: center; padding: 0.75rem; }
+      #access { margin-bottom: 1.2rem; }
+      #access p { margin-bottom: 0.5rem; }
+      input, select, button { min-height: 2.2rem; border: 1px solid #40596e; border-radius: 0.35rem; background: #182b3d; color: inherit; font: inherit; padding: 0.2rem 0.55rem; }
+      input { width: min(14rem, 100%); }
+      button { cursor: pointer; }
+      #chat { position: sticky; top: 1rem; overflow: hidden; }
+      #chat-lines { margin: 0; padding: 0; list-style: none; max-height: min(70vh, 46rem); overflow: auto; }
+      #chat-lines li { padding: 0.6rem 0.9rem; border-top: 1px solid #2b4155; overflow-wrap: anywhere; }
+      .chat-meta { font-size: 0.86rem; margin-bottom: 0.12rem; }
+      @media (max-width: 760px) {
+        .layout { grid-template-columns: 1fr; }
+        #chat { position: static; }
+        #updated { margin-left: 0; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header><h1>Cluster admin</h1><a href="/">Play</a></header>
+      <div class="summary">
+        <p><strong id="world-count">—</strong> worlds</p>
+        <p><strong id="player-count">—</strong> online / capacity</p>
+        <p id="updated" role="status">Discovering worlds…</p>
+      </div>
+      <section id="access" hidden>
+        <p id="access-note" class="muted"></p>
+        <form id="sign-in">
+          <label for="password">Admin password</label>
+          <input id="password" type="password" required autocomplete="current-password" />
+          <button>Sign in</button>
+          <button id="sign-out" type="button" hidden>Clear sign-in</button>
+        </form>
+      </section>
+      <div class="layout">
+        <section aria-labelledby="maps-heading">
+          <h2 id="maps-heading">World maps</h2>
+          <div id="worlds"></div>
+        </section>
+        <section class="panel" id="chat" aria-labelledby="chat-heading">
+          <div class="pad">
+            <h2 id="chat-heading">Recent chat</h2>
+            <div class="bar">
+              <select id="chat-world" aria-label="Chat world"><option value="">All worlds</option></select>
+              <select id="chat-channel" aria-label="Chat channel"><option value="">All channels</option></select>
+            </div>
+          </div>
+          <ol id="chat-lines"></ol>
+          <p class="pad muted" id="chat-state">Waiting for world chat…</p>
+        </section>
+      </div>
+    </main>
+    <template id="world-card">
+      <article class="card">
+        <div class="card-head"><h3></h3><span class="health"></span></div>
+        <div class="preview"><canvas width="192" height="192" hidden role="img"></canvas><p class="cover muted"></p></div>
+        <div class="card-foot"><p class="count"></p><p class="detail muted"></p><a>World admin</a></div>
+      </article>
+    </template>
+    <script type="module" src="cluster.js"></script>
+  </body>
+</html>

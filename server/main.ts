@@ -29,10 +29,10 @@ import { boardOwners, soundBoard } from "./sound-board.ts";
 import { adminAsked, type AdminGate } from "./admin/gate.ts";
 import { TickMeter } from "./admin/meter.ts";
 import { PART, type TickParts } from "./admin/parts.ts";
-import { AdminPages } from "./admin/routes.ts";
+import { AdminPages, adminTerrain } from "./admin/routes.ts";
 import { gaugesOf } from "./admin/stats.ts";
 import { CUES } from "../shared/sound/cues.ts";
-import { partHash, partsFolder, readHead } from "../shared/world/mapfile.ts";
+import { partHash, partsFolder, readHead, type MapFile } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
 import { PlayLog, REPORT_BYTES_MAX } from "./playlog.ts";
 import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
@@ -307,7 +307,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[file]!.name)));
   const pack = parsePack(served(manifest.boot));
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
-  const roles = { dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
+  let terrain: Uint8Array<ArrayBuffer> | undefined;
+  const onMapLoaded = (map: MapFile): void => void (terrain = adminTerrain(map));
+  const roles = { onMapLoaded, dev: opts.dev ?? false, clips, rigs: pack.header.rigs, ...(opts.map ? { map: opts.map } : {}), ...(opts.adminPassword ? { adminPassword: opts.adminPassword } : {}), ...(opts.config ? { config: opts.config } : {}), ...(opts.modules ? { modules: opts.modules } : {}), now: () => performance.now(), ...(opts.live ? { live: opts.live } : {}) };
   const host = createHost(registry, opts.probeScene ? { ...roles, startingCreatures: 0, wakeRadius: -1 } : { ...roles, ...(opts.dbPath ? { dbPath: opts.dbPath, keeper: "worker" as const, survivorLog: { mode: "worker" as const }, backups: !opts.noBackups, store: { allowMissingContent: opts.allowMissingContent ?? false } } : {}), wild: true });
   // Settings problems are logged at startup and do not stop the server.
   for (const m of host.lists.missing) console.log(`settings: ${m.setting} names ${m.name}, which this build does not have`);
@@ -337,7 +339,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const meter = new TickMeter(() => gaugesOf(host));
   const playFile = opts.dev && opts.play ? join(opts.play, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.jsonl`) : "";
   const play = playFile ? new PlayLog(host.game, (line) => (mkdirSync(opts.play!, { recursive: true }), appendFileSync(playFile, line + "\n"))) : null;
-  const admin = new AdminPages({ host, meter, dir: join(clientDir, "admin"), start: { tick: host.world.tick, wall: meter.startedAt } });
+  const admin = new AdminPages({ host, meter, dir: join(clientDir, "admin"), terrain, start: { tick: host.world.tick, wall: meter.startedAt } });
   if (opts.probeScene) {
     const ents = host.world.ents;
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
@@ -425,6 +427,13 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       const url = new URL(req.url);
       const answered = opts.routes?.(req, url);
       if (answered) return answered;
+      // The cluster shell uses public discovery. Every private request goes through the target world's own admin gate.
+      const clusterPath = url.pathname;
+      if (clusterPath === "/cluster/admin") return new Response(null, { status: 308, headers: { location: `/cluster/admin/${url.search}` } });
+      if (clusterPath === "/cluster/admin/") return serveFile(clientDir, req, "/admin/cluster.html");
+      if (clusterPath === "/cluster/admin/cluster.js" || clusterPath === "/cluster/admin/cluster.js.map") {
+        return serveFile(clientDir, req, clusterPath.slice("/cluster".length));
+      }
       const { at, path } = placeOf(base, url.pathname);
       if (at === "slash") return new Response(null, { status: 308, headers: { location: `${base}/${url.search}` } });
       const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));

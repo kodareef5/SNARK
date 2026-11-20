@@ -1,6 +1,7 @@
 // Text chat. A line goes out as "name: words" to everyone its channel reaches who has not muted the speaker.
 // The server decides who that is. A client names a channel and nothing else.
 
+import type { AdminChatLine } from "../shared/admin.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { MAX_CHAT_CHARS, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SESSION_SPECTATING, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { event, type Bus } from "./events/bus.ts";
@@ -14,6 +15,7 @@ export const LOCAL_RANGE = 60;
 /** A survivor may say BURST lines at once, and earns another every EARN_TICKS. */
 const BURST = 5;
 const EARN_TICKS = 2 * TICK_RATE;
+const RECENT_LINES = 100;
 
 export interface ChatContext {
   readonly game: GameServer;
@@ -43,6 +45,7 @@ export class Chat {
   /** By speaker name, exact: the lines it may still say at once, and the tick that count was true at. */
   private readonly allowance = new Map<string, { lines: number; at: number }>();
 
+  private readonly recent: AdminChatLine[] = [];
   private readonly ctx: ChatContext;
 
   constructor(ctx: ChatContext) {
@@ -71,6 +74,11 @@ export class Chat {
   /** Everyone `listener` has muted. */
   mutedBy(listener: string): string[] {
     return [...(this.mutes.get(listener) ?? [])];
+  }
+
+  /** Accepted player messages in delivery order, oldest first. Kept for this run only. */
+  recentLines(): AdminChatLine[] {
+    return this.recent.slice();
   }
 
   /** Returns a RESULT code. A refusal also tells the speaker why. */
@@ -125,6 +133,8 @@ export class Chat {
       game.sendText(to, channel, out);
       this.delivered++;
     }
+    if (this.recent.length === RECENT_LINES) this.recent.shift();
+    this.recent.push({ at: Date.now(), channel, speaker: c.name, text: line });
     bus.after(CHAT_SAID, { pid: c.pid, channel, text: line, heard: this.delivered - heard });
     return RESULT_OK;
   }

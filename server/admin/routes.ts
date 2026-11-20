@@ -8,12 +8,18 @@
 //   /admin/ticks.json       parts.ts TickReport: where the ticks' time went by part, and the long ticks part by part
 //   /admin/survivors.json   survivors.ts Survivors: every survivor, where each is, and its recent deaths
 //   /admin/bases.bin        bases.ts: the tribes' bases at level=<0 to 3> of the players' map cells
+//   /admin/overview.json   stats, online positions and recent chat for the cluster dashboard
+//   /admin/chat.json       recent accepted player text chat
+//   /admin/terrain.rgba    a small relief map for the cluster dashboard
 //   /admin/content.json     the names the interface shows for the content's ids, where they are not the id's own words
 //   /admin/log/...          the survivor log's reads (log-routes.ts)
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import type { Survivors } from "../../shared/admin.ts";
+import { ADMIN_TERRAIN_SIDE, type AdminOverview, type Stats, type Survivors } from "../../shared/admin.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import { mapHeightfield, type MapData } from "../../shared/world/mapfile.ts";
+import { paintRelief } from "../../shared/world/relief.ts";
 import type { Host } from "../host.ts";
 import { boardAsked } from "../sound-board.ts";
 import { basesOf, basesVersion } from "./bases.ts";
@@ -21,7 +27,7 @@ import { adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
 import { LogRoutes } from "./log-routes.ts";
 import type { TickMeter } from "./meter.ts";
 import { BackupList, bodiesOf, statsOf } from "./stats.ts";
-import { survivorsOf, type RunStart } from "./survivors.ts";
+import { onlinePositions, survivorsOf, type RunStart } from "./survivors.ts";
 
 const FRESH = { "cache-control": "no-store" };
 const JSON_HEADERS = { ...FRESH, "content-type": "application/json" };
@@ -39,8 +45,17 @@ export interface AdminOptions {
   /** The built page's folder, client/dist/admin. */
   dir: string;
   start: RunStart;
+  terrain?: Uint8Array<ArrayBuffer>;
   /** Wall ms. */
   now?: () => number;
+}
+
+/** Paint the preview while the map's colour data is available at startup. */
+export function adminTerrain(map: MapData): Uint8Array<ArrayBuffer> {
+  const side = ADMIN_TERRAIN_SIDE;
+  const pixels = new Uint32Array(side * side);
+  paintRelief(mapHeightfield(map), defaultPalette(), 0, 0, 0, side, pixels);
+  return new Uint8Array(pixels.buffer);
 }
 
 /** A value made at most once a second. */
@@ -71,7 +86,11 @@ export class AdminPages {
   private readonly o: AdminOptions;
   private readonly now: () => number;
   private readonly backups = new BackupList();
-  private readonly stats: EverySecond<string>;
+  private readonly stats: EverySecond<Stats>;
+  private readonly statsJson: EverySecond<string>;
+  private readonly overview: EverySecond<string>;
+  private readonly chat: EverySecond<string>;
+  private terrainGzip: Uint8Array<ArrayBuffer> | null = null;
   private readonly ticks: EverySecond<string>;
   private readonly survivors: EverySecond<Promise<string>>;
   /** The newest of each level's bases and the version of the cells it was made from, which is looked at once a second. */
@@ -87,7 +106,14 @@ export class AdminPages {
   constructor(o: AdminOptions) {
     this.o = o;
     this.now = o.now ?? Date.now;
-    this.stats = new EverySecond(() => JSON.stringify(statsOf(o.host, o.meter, bodiesOf(o.host), this.backups, this.now())));
+    this.stats = new EverySecond(() => statsOf(o.host, o.meter, bodiesOf(o.host), this.backups, this.now()));
+    this.statsJson = new EverySecond(() => JSON.stringify(this.stats.get(this.now())));
+    this.overview = new EverySecond(() => JSON.stringify({
+      stats: this.stats.get(this.now()),
+      positions: onlinePositions(o.host),
+      chat: o.host.chat.recentLines(),
+    } satisfies AdminOverview));
+    this.chat = new EverySecond(() => JSON.stringify(o.host.chat.recentLines()));
     this.ticks = new EverySecond(() => JSON.stringify(o.host.game.parts.report()));
     // A list that failed is not the second's answer: the next request makes it again.
     this.survivors = new EverySecond(() => {
@@ -116,7 +142,10 @@ export class AdminPages {
       return existsSync(path) ? new Response(Bun.file(path), { headers: { ...FRESH, "content-type": file[1] } }) : new Response("build the client first", { status: 404 });
     }
     const now = this.now();
-    if (at === "/admin/stats.json") return new Response(this.stats.get(now), { headers: JSON_HEADERS });
+    if (at === "/admin/stats.json") return new Response(this.statsJson.get(now), { headers: JSON_HEADERS });
+    if (at === "/admin/overview.json") return new Response(this.overview.get(now), { headers: JSON_HEADERS });
+    if (at === "/admin/chat.json") return new Response(this.chat.get(now), { headers: JSON_HEADERS });
+    if (at === "/admin/terrain.rgba") return this.terrainImage(req);
     if (at === "/admin/survivors.json") return this.survivors.get(now).then((text) => new Response(text, { headers: JSON_HEADERS }));
     if (at === "/admin/minutes.json") return new Response(this.minutes(Number(url.searchParams.get("from") ?? 0)), { headers: JSON_HEADERS });
     if (at === "/admin/ticks.json") return new Response(this.ticks.get(now), { headers: JSON_HEADERS });
@@ -127,6 +156,16 @@ export class AdminPages {
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
     return this.log.answer(at, url) ?? new Response("not found", { status: 404 });
+  }
+
+  private terrainImage(req: Request): Response {
+    const raw = this.o.terrain;
+    if (!raw) return new Response("terrain not available", { status: 404 });
+    const gzip = /(?:^|,)[ ]*gzip(?:[ ]*,|$)/i.test(req.headers.get("accept-encoding") ?? "");
+    if (gzip) this.terrainGzip ??= Bun.gzipSync(raw);
+    return new Response(gzip ? this.terrainGzip : raw, {
+      headers: { ...FRESH, "content-type": "application/octet-stream", vary: "accept-encoding", ...(gzip ? { "content-encoding": "gzip" } : {}) },
+    });
   }
 
   /**

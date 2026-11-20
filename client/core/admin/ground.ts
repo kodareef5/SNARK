@@ -1,11 +1,11 @@
-// The admin map's picture of the ground, painted as the players' map paints it (paintRelief in client/core/tactical.ts)
+// The admin map's picture of the ground, painted as the players' map paints it (paintRelief in shared/world/relief.ts)
 // from the map's overviews alone: every fourth sample, 8 m apart, which every map file has and the page fetches as the game
 // does. All of a 16 km map's overviews are some 12 MB where its whole ground is some 40, and at 8 m a pixel the picture holds
 // all they show.
 
 import { Heightfield, TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
 import { OVERVIEW_STEP, joinWater, readHead, readPart, type MapHead, type OverviewPiece } from "../../../shared/world/mapfile.ts";
-import { paintRelief } from "../tactical.ts";
+import { paintRelief } from "../../../shared/world/relief.ts";
 
 /** Metres between an overview's samples. */
 export const OVERVIEW_CELL = TERRAIN_CELL * OVERVIEW_STEP;

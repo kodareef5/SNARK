@@ -190,6 +190,11 @@
         #mapbox { min-height: 0; }
         #map { min-height: 0; height: 64vh; }
       }
+      #world-chat .bar label { margin-left: auto; }
+      #world-chat .scroll { max-height: 22rem; }
+      #chat-lines { list-style: none; margin: 0; padding: 0; }
+      #chat-lines li { padding: 7px 12px; border-top: 1px solid #26394c; overflow-wrap: anywhere; }
+      .chat-meta { color: #93a9bd; font-size: 0.85em; }
       @media (max-width: 620px) {
         .page { padding: 10px 10px 30px; gap: 10px; }
         #tiles { grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -210,7 +215,7 @@
         <h1 id="name">SNARK admin</h1>
         <span class="where" id="where"></span>
         <span class="badge" id="dev" hidden>development</span>
-        <nav><a href="../sounds.html">Sound board</a><a href="../">Play</a></nav>
+        <nav><a href="/cluster/admin/">Cluster admin</a><a href="../sounds.html">Sound board</a><a href="../">Play</a></nav>
       </header>
 
       <section id="health" class="glass" data-level="0" aria-live="polite">
@@ -258,6 +263,14 @@
           </div>
         </section>
       </div>
+
+      <section id="world-chat" class="glass">
+        <div class="bar">
+          <h2>Recent chat</h2>
+          <label>Channel <select id="chat-channel" class="chip"><option value="">All channels</option></select></label>
+        </div>
+        <div class="scroll"><ol id="chat-lines"></ol><p id="chat-state" class="note">Loading chat…</p></div>
+      </section>
 
       <section id="timeline" class="glass">
         <div class="bar controls">

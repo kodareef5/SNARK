@@ -6,8 +6,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Minutes, Stats, Survivors } from "../../shared/admin.ts";
-import { MARKER_DEATH } from "../../shared/net/protocol.ts";
+import type { AdminOverview, Minutes, Stats, Survivors } from "../../shared/admin.ts";
+import { MARKER_DEATH, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import { CELL_FILLED, Summary } from "../../shared/world/tactical.ts";
 import { basesOf, basesVersion, isBase } from "../../server/admin/bases.ts";
 import { adminAsked, type AdminGate } from "../../server/admin/gate.ts";
@@ -44,7 +44,7 @@ test("every admin route answers only past the gate, in any spelling of its path,
     const meter = new TickMeter(() => gaugesOf(h.host));
     const pages = new AdminPages({ host: h.host, meter, dir, start: { tick: 0, wall: Date.now() } });
     const ask = asker(pages);
-    const paths = ["/admin", "/admin/", "/admin/index.html", "/admin/admin.js", "/admin/stats.json", "/admin/minutes.json", "/admin/ticks.json", "/admin/survivors.json", "/admin/bases.bin", "/admin/nothing"];
+    const paths = ["/admin", "/admin/", "/admin/index.html", "/admin/admin.js", "/admin/stats.json", "/admin/minutes.json", "/admin/ticks.json", "/admin/survivors.json", "/admin/bases.bin", "/admin/overview.json", "/admin/chat.json", "/admin/terrain.rgba", "/admin/nothing"];
     // Among them paths the sound board turns down once their dots and escaped slashes are resolved.
     const spellings = ["/Admin/Stats.json", "/ADMIN/", "//admin/survivors.json", "/admin//bases.bin", "/%61dmin/stats.json", "/admin/%73tats.json", "/admin/./stats.json", "/admin/source/../sounds.html", "/admin/source/core%2f..%2f..%2fsecret.txt"];
     // A server with neither --dev nor a password keeps every one shut.
@@ -67,6 +67,9 @@ test("every admin route answers only past the gate, in any spelling of its path,
     expect((await right("/admin/admin.js")).headers.get("content-type")).toBe("text/javascript");
     expect([(await right("/admin")).status, (await right("/admin?x=1")).headers.get("location")]).toEqual([308, "admin/?x=1"]);
     for (const path of ["/admin/stats.json", "/Admin/Stats.json", "/admin/survivors.json", "/admin/minutes.json", "/admin/content.json", "/admin/log/span.json"]) expect([path, (await right(path)).headers.get("content-type")]).toEqual([path, "application/json"]);
+    expect(await (await right("/admin/chat.json")).json()).toEqual([]);
+    const overview = (await (await right("/admin/overview.json")).json()) as AdminOverview;
+    expect([overview.stats.map.id, overview.positions, overview.chat]).toEqual([h.world.mapId, [], []]);
     expect([(await right("/admin/nothing")).status, (await right("/admin/bases.bin?level=7")).status, (await right("/admin/bases.bin?level=2")).status]).toEqual([404, 400, 200]);
     // The content's names, for the page to write items and what was ridden as the game does.
     const labels = ((await (await right("/admin/content.json")).json()) as { labels: Record<string, string> }).labels;
@@ -84,6 +87,29 @@ test("every admin route answers only past the gate, in any spelling of its path,
   } finally {
     rmSync(dir, { recursive: true, force: true });
     h.host.shutdown();
+  }
+});
+
+test("the cluster overview has live survivor positions and the same accepted chat as the world's chat feed", async () => {
+  const h = new Harness();
+  const dir = pageDir();
+  try {
+    const ada = h.join("Ada");
+    h.run(600);
+    ada.chat(TEXT_GLOBAL, "Hello from this world");
+    h.run(300);
+    const pages = new AdminPages({ host: h.host, meter: new TickMeter(() => gaugesOf(h.host)), dir, start: { tick: 0, wall: Date.now() } });
+    const gate: AdminGate = { dev: true, password: null, guesses: new Guesses(), tick: () => h.world.tick };
+    const ask = asker(pages);
+    const overview = (await (await ask(gate, "/admin/overview.json"))!.json()) as AdminOverview;
+    expect(overview.stats.online.now).toBe(1);
+    const c = h.client(ada)!;
+    expect(overview.positions).toEqual([{ name: "Ada", x: h.world.ents.x[c.ent], z: h.world.ents.z[c.ent] }]);
+    expect(overview.chat).toEqual([{ at: expect.any(Number), channel: TEXT_GLOBAL, speaker: "Ada", text: "Hello from this world" }]);
+    expect(await (await ask(gate, "/admin/chat.json"))!.json()).toEqual(overview.chat);
+  } finally {
+    h.host.shutdown();
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

@@ -4,11 +4,13 @@
 // and details; map.ts the map; history.ts the timeline and the log; charts.ts the charts.
 
 import type { Minutes, Stats, Survivors } from "../../shared/admin.ts";
+import { RecentChat } from "../core/admin/chat.ts";
 import { SPANS, clockText, joinMinutes } from "../core/admin/chart.ts";
 import { agoText, bytesText, counted, idWords, msText, spanText } from "../core/admin/format.ts";
 import { liveFrame } from "../core/admin/frame.ts";
 import { FAILING, recentLoop, verdict } from "../core/admin/health.ts";
 import { deathsText, findSurvivors, placeText, playedText, seenText, sortSurvivors, type SortKey } from "../core/admin/table.ts";
+import { addChatChannels, chatPanel } from "./chat.ts";
 import { drawCharts, spark } from "./charts.ts";
 import { $, ICE, S, WARN, ask, esc, hooks, offset } from "./dom.ts";
 import { ensure, refresh, showPastPeople, syncLog } from "./history.ts";
@@ -29,6 +31,16 @@ async function poll(): Promise<void> {
     $("word").textContent = "Not answering";
     $("line").textContent = S.answeredAt ? `its last answer was ${agoText(S.answeredAt, Date.now())}` : String(e);
   }
+}
+
+const chatChannel = $<HTMLSelectElement>("chat-channel");
+const chat = new RecentChat();
+const chatView = chatPanel($("chat-lines"), $("chat-state"));
+const drawChat = (): void => chatView(chat.view(chatChannel.value));
+async function pollChat(): Promise<void> {
+  if (document.hidden) return;
+  await chat.refresh(async () => (await ask("chat.json")).json());
+  drawChat();
 }
 
 async function pollMinutes(): Promise<void> {
@@ -185,6 +197,10 @@ void ask("content.json")
   .then((r) => r.json() as Promise<{ labels: Record<string, string> }>)
   .then((c) => (S.labels = c.labels))
   .catch(() => {});
+addChatChannels(chatChannel);
+chatChannel.addEventListener("change", drawChat);
+void pollChat();
+setInterval(() => void pollChat(), 3000);
 void poll();
 void pollMinutes().catch(() => {});
 void loadMap().catch((e: unknown) => ($("loading").textContent = `The map did not load: ${String(e)}`));

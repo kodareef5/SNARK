@@ -316,6 +316,13 @@ test("chat: everyone, those near, and the tribe each hear what is theirs to hear
   expect(since(from, TEXT_NOTICE)[2]).toEqual(["You are not in a tribe."]);
   expect(since(from, TEXT_TRIBE).flat()).toEqual([]);
 
+  expect(h.host.chat.recentLines().map(({ speaker, channel, text }) => [speaker, channel, text])).toEqual([
+    ["ada", TEXT_GLOBAL, "hello, island"],
+    ["ada", TEXT_LOCAL, "anyone near?"],
+    ["cy", TEXT_LOCAL, "I am"],
+    ["bob", TEXT_TRIBE, "the wall is up"],
+  ]);
+
   expect(h.say(bob, "mute")[0]).toBe("You have muted nobody.");
   expect(h.say(bob, "mute bob")[0]).toBe("That is you.");
   expect(h.say(bob, "mute Ada")[0]).toBe("You will not hear Ada.");

@@ -2,6 +2,7 @@
 // Times are wall ms since 1970, places the world's metres (shared/world/coords.ts), durations ms. The survivor log's
 // answers are shaped in shared/survivor-log.ts.
 
+import type { TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "./net/protocol.ts";
 import type { LogSpan } from "./survivor-log.ts";
 
 /** A second of the loop: its start, ticks run, the median and worst tick, the latest start, and ticks given up. */
@@ -134,3 +135,23 @@ export interface Survivors {
   tick: number;
   survivors: SurvivorRow[];
 }
+
+export type AdminChatChannel = typeof TEXT_GLOBAL | typeof TEXT_LOCAL | typeof TEXT_TRIBE;
+
+/** An accepted player text message, using the world's wall clock. */
+export interface AdminChatLine {
+  at: number;
+  channel: AdminChatChannel;
+  speaker: string;
+  text: string;
+}
+
+/** /admin/overview.json, the live data for one card in the cluster admin. */
+export interface AdminOverview {
+  stats: Stats;
+  positions: Pick<SurvivorRow, "name" | "x" | "z">[];
+  chat: AdminChatLine[];
+}
+
+/** Side of /admin/terrain.rgba in pixels. */
+export const ADMIN_TERRAIN_SIDE = 192;

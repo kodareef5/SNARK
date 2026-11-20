@@ -1,5 +1,8 @@
 // How the admin page writes its numbers: sizes, spans of time, times ago and milliseconds, short enough for a tile.
 
+/** Text escaped for an HTML element or double-quoted attribute. */
+export const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+
 /** Bytes as KB, MB or GB, a thousand to the next. */
 export function bytesText(n: number): string {
   if (n < 1000) return `${Math.round(n)} B`;

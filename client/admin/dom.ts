@@ -14,7 +14,7 @@ import { Timeline } from "../core/admin/timeline.ts";
 import type { MapWindow } from "../core/admin/view.ts";
 
 export const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
-export const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+export { esc } from "../core/admin/format.ts";
 export const ICE = "#a9d6f2", WARN = "#ecb048", BAD = "#ec6a52", WELL = "#8fd9c4", INK = "#eef7ff", DIM = "#93a9bd";
 export const FACE = '"Barlow Semi Condensed", system-ui, sans-serif';
 /** Minutes the reader's clock is behind UTC. */

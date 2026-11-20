@@ -5,8 +5,11 @@ import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import type { BitReader } from "../../shared/net/codec.ts";
 import { COORD_UNIT, SECTOR_UNITS, latOf, lonOf, xOfLon, zOfLat, type MapExtent } from "../../shared/world/coords.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { MAP_VOID, paintRelief } from "../../shared/world/relief.ts";
 import { Cells, Marks, OWNER_OTHER, TACTICAL_CELL, levelSide, readCells, readMarks } from "../../shared/world/tactical.ts";
 import type { UiImage } from "./ui/nodes.ts";
+
+export { paintRelief } from "../../shared/world/relief.ts";
 
 /** Structure cells by chunk, kept for as long as the session lasts, and the latest marks. */
 export class MapStore {
@@ -94,46 +97,8 @@ export interface TileSource {
   step(): void;
 }
 
-/** Where there is no map and where no tile has come yet. */
-const VOID = 0xff30241a;
 const RELIEF_SIZE = 256;
 const RELIEF_KEPT = 24;
-
-/** Paints one tile of the pyramid from the heightfield: each sample's colour, shaded by its slope with the light from the north-west, and water over what lies under the sea or a lake. */
-export function paintRelief(hf: Heightfield, palette: Uint8Array, zoom: number, col: number, row: number, size: number, out: Uint32Array): void {
-  const whole = Math.max(hf.sizeX, hf.sizeZ);
-  const side = whole / (1 << zoom);
-  // The slope is taken over about a pixel, so a far zoom shows the broad shape of the land.
-  const reach = Math.max(1, Math.round(side / size / hf.cell));
-  for (let py = 0; py < size; py++) {
-    const z = (hf.sizeZ + whole) / 2 - (row + (py + 0.5) / size) * side;
-    const j = Math.max(0, Math.min(hf.nz - 1 - reach, Math.floor(z / hf.cell)));
-    for (let px = 0; px < size; px++) {
-      const x = (hf.sizeX + whole) / 2 - (col + (px + 0.5) / size) * side;
-      if (x < 0 || z < 0 || x > hf.sizeX || z > hf.sizeZ) {
-        out[py * size + px] = VOID;
-        continue;
-      }
-      const i = Math.max(0, Math.min(hf.nx - 1 - reach, Math.floor(x / hf.cell)));
-      const tint = hf.tint[j * hf.nx + i]! * 4;
-      const h = hf.sample(i, j);
-      const relief = (hf.sample(Math.min(hf.nx - 1, i + reach), j) - h + hf.sample(i, Math.min(hf.nz - 1, j + reach)) - h) / (reach * hf.cell);
-      const shade = Math.max(0.55, Math.min(1.3, 0.9 + relief * 0.35));
-      let r = palette[tint]! * shade;
-      let g = palette[tint + 1]! * shade;
-      let b = palette[tint + 2]! * shade;
-      const water = hf.waterAt(x, z);
-      if (h < water) {
-        // Deeper water is more of the water's colour.
-        const k = Math.min(0.9, 0.55 + (water - h) * 0.08);
-        r += (40 - r) * k;
-        g += (92 - g) * k;
-        b += (140 - b) * k;
-      }
-      out[py * size + px] = 0xff000000 | (Math.min(255, b) << 16) | (Math.min(255, g) << 8) | Math.min(255, r);
-    }
-  }
-}
 
 /** Plain tiles made here from the heightfield, one a frame, the least lately used forgotten past RELIEF_KEPT. */
 export class ReliefTiles implements TileSource {
@@ -349,7 +314,7 @@ export class MapPicture {
           t = tiles.tile(z, c, r);
         }
         if (!t) {
-          for (let py = y0; py < y1; py++) out.fill(VOID, py * N + x0, py * N + x1);
+          for (let py = y0; py < y1; py++) out.fill(MAP_VOID, py * N + x0, py * N + x1);
           continue;
         }
         const span = whole / (1 << z);

@@ -90,7 +90,7 @@ import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
 import { CarReturn, DEADLINE_CAR } from "./car-return.ts";
 import { spawnTables } from "./settings/spawns.ts";
-import { parseMap } from "../shared/world/mapfile.ts";
+import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
@@ -133,6 +133,8 @@ export interface HostOptions {
    * file from there. Without one, and without `world`, the proving ground.
    */
   map?: Uint8Array<ArrayBuffer> | string;
+  /** Reads the map while it is being loaded, before the simulation drops its drawing data. */
+  onMapLoaded?: (map: MapFile) => void;
   /** Use this world instead of creating one from a map file. Its structures are kept only if the save is new. */
   world?: ServerWorld;
   /** For a world the host creates: the most entities it holds, in place of the MaxEntities setting, and the size its store starts at. */
@@ -334,6 +336,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   if (store) opened.push(store);
   const mapFile = opts.world || typeof opts.map === "string" ? null : (opts.map ?? provingFile(reg));
   const parsed = given ?? (mapFile ? parseMap(mapFile) : null);
+  if (parsed) opts.onMapLoaded?.(parsed);
   // Every world starts from the map's statics. A save's chunks are laid over them (Persistence.load).
   const world = opts.world ?? createMapWorld(reg, parsed!, { entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");

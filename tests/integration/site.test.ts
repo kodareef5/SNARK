@@ -5,6 +5,7 @@ import { afterAll, expect, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ADMIN_TERRAIN_SIDE } from "../../shared/admin.ts";
 import { ClusterFolder } from "../../server/cluster/folder.ts";
 import { clientAddress, closeCode, frontRoute, frontWorlds, sendDown, startFront, type Pipe } from "../../server/front.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
@@ -43,7 +44,7 @@ function opens(url: string, origin: string | null): Promise<boolean> {
 
 test("a server's path is its public address's, plain words that are not the site's own; a request falls in its world, on the site, or at the path itself", () => {
   expect([pathOf(""), pathOf("https://play.example"), pathOf("https://play.example/"), pathOf("https://play.example/miami/"), pathOf("/miami"), pathOf("/eu/miami")]).toEqual(["", "", "", "/miami", "/miami", "/eu/miami"]);
-  for (const bad of ["/mi ami", "/miami?x", "//miami", "/..", "/wiki", "https://play.example/assets", "/source/x", "javascript:alert(1)", "ftp://play.example/miami"]) expect(() => pathOf(bad)).toThrow("--public-url");
+  for (const bad of ["/mi ami", "/miami?x", "//miami", "/..", "/wiki", "https://play.example/assets", "/source/x", "/cluster", "/cluster/admin", "javascript:alert(1)", "ftp://play.example/miami"]) expect(() => pathOf(bad)).toThrow("--public-url");
   expect([placeOf("", "/ws"), placeOf("/miami", "/miami"), placeOf("/miami", "/miami/ws"), placeOf("/miami", "/"), placeOf("/miami", "/miamiz/ws")]).toEqual([
     { at: "world", path: "/ws" },
     { at: "slash", path: "/miami" },
@@ -156,7 +157,12 @@ test("the front sends each path to its world and the site to the lowest world, s
     running.push(s);
     return s;
   };
-  const [miami, tampa] = [world("Miami"), world("Tampa", "the password")];
+
+  const [miami, tampa] = [world("Miami", "miami password"), world("Tampa", "the password")];
+  const adminDir = join(dir, "admin");
+  mkdirSync(adminDir, { recursive: true });
+  writeFileSync(join(adminDir, "cluster.html"), "<!doctype html><title>cluster admin</title>");
+  writeFileSync(join(adminDir, "cluster.js"), "export {};");
   const front = startFront(join(saves, "site"), 0, "127.0.0.1");
   running.push(front);
   const at = `http://127.0.0.1:${front.port}`;
@@ -166,6 +172,20 @@ test("the front sends each path to its world and the site to the lowest world, s
   // And so does the list the wiki's maps are marked from, each world by its map's id.
   const listed = (await (await get(`${at}/worlds.json`)).json()) as { name: string; mapId: string; address: string }[];
   expect(listed.map((w) => [w.name, w.mapId, w.address])).toEqual([["Miami", miami.host.world.mapId, "/miami/"], ["Tampa", tampa.host.world.mapId, "/tampa/"]]);
+  const admin = await get(`${at}/cluster/admin?world=tampa`);
+  expect([admin.status, admin.headers.get("location")]).toEqual([308, "/cluster/admin/?world=tampa"]);
+  expect(await (await get(`${at}/cluster/admin/`)).text()).toContain("<title>cluster admin</title>");
+  expect(await (await get(`${at}/cluster/admin/cluster.js`)).text()).toBe("export {};");
+  expect((await get(`${at}/cluster/admin/overview.json`)).status).toBe(404);
+  const good = { headers: { authorization: `Basic ${btoa("x:the password")}` } };
+  expect((await get(`${at}/miami/admin/chat.json`, good)).status).toBe(401);
+  expect((await get(`${at}/tampa/admin/chat.json`)).status).toBe(401);
+  expect(await (await get(`${at}/tampa/admin/overview.json`, good)).json()).toMatchObject({ stats: { world: { name: "Tampa" } }, positions: [], chat: [] });
+  const terrain = await get(`${at}/tampa/admin/terrain.rgba`, { headers: { ...good.headers, "accept-encoding": "identity" } });
+  const rgba = new Uint8Array(await terrain.arrayBuffer());
+  expect([terrain.status, terrain.headers.get("cache-control"), rgba.length]).toEqual([200, "no-store", ADMIN_TERRAIN_SIDE ** 2 * 4]);
+  // The simulation deliberately discards terrain tints, but the admin map needs the colours from the file.
+  expect(rgba.some((c, i) => i % 4 !== 3 && c > 0)).toBe(true);
   // Each path goes to its own world: their maps are their own, and each sends its path on with its slash.
   const [m, t] = [await (await get(`${at}/miami/map.json`)).json(), await (await get(`${at}/tampa/map.json`)).json()];
   expect([miami.host.world.mapHash, tampa.host.world.mapHash]).toEqual([(m as { hash: number }).hash, (t as { hash: number }).hash]);

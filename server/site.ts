@@ -22,7 +22,7 @@ export interface SiteWorld {
 }
 
 /** The first parts of a path the site answers itself, so no world may be reached at one. */
-const SITE_PATHS = new Set(["wiki", "assets", "source"]);
+const SITE_PATHS = new Set(["wiki", "assets", "source", "cluster"]);
 
 /**
  * The path a server is reached at, from its public address (--public-url): "/miami" for https://play.example/miami and for
