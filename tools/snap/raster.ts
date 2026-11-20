@@ -4,7 +4,8 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
-import { weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, tireMould, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
+import { LENS } from "../../content/street-finishes.ts";
+import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, tireMould, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
@@ -23,12 +24,12 @@ import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_G
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
-import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lampsOn, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lampsOn, materialEmission, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
-import { INSTANCE_BYTES, MATERIAL_NIGHT, VERTEX_BYTES, detailsAtlas, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, VERTEX_BYTES, detailsAtlas, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { MAP_ROLES, TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -1398,7 +1399,7 @@ export class Rasterizer {
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
     const wheels = p.drawWheelBones[d]!, finish = p.drawStreetMaterial[d]!;
-    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: p.drawSpokeCrown[d] === 1, firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: p.drawSpokeCrown[d] === 1, firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1798,13 +1799,15 @@ export class Rasterizer {
           sample(s.maps[0]!, u, v, spread, base);
           if (base[3]! < s.cutoff) continue;
           this.fragments++;
-          this.depth[at] = z;
-          this.deferred[at] = 0;
-          this.pickKind[at] = pickKind;
-          this.pickId[at] = pickId;
-          this.pickBone[at] = bone;
-          this.pickDraw[at] = this.drawing;
-          this.cover[at] = s.cutoff > 0 ? covered(s.maps[0]!, base[3]!, s.cutoff, u, v, ux, vx, uy, vy, spread) : 1;
+          if (s.label !== LENS) {
+            this.depth[at] = z;
+            this.deferred[at] = 0;
+            this.pickKind[at] = pickKind;
+            this.pickId[at] = pickId;
+            this.pickBone[at] = bone;
+            this.pickDraw[at] = this.drawing;
+            this.cover[at] = s.cutoff > 0 ? covered(s.maps[0]!, base[3]!, s.cutoff, u, v, ux, vx, uy, vy, spread) : 1;
+          }
           sample(s.maps[1]!, u, v, spread, bump);
           sample(s.maps[2]!, u, v, spread, mro);
           sample(s.maps[3]!, u, v, spread, mask);
@@ -1860,7 +1863,13 @@ export class Rasterizer {
           const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
           for (let i = 0; i < 3; i++) reflected[i] = twice * normal[i]! - eye[i]!;
           skyFrom(mirrored, p.frame, reflected, this.look);
-          if (s.label) {
+          let alpha = 1;
+          if (s.label === LENS) {
+            const edge = (1 - Math.max(0,Math.min(1,twice * 0.5))) ** 4;
+            alpha = visor.cover + (visor.edgeCover-visor.cover)*edge;
+            coat = visor.coat + (visor.edgeCoat-visor.coat)*edge;
+            streetMirror(mirrored,p,reflected,carried[0]!,carried[1]!,carried[2]!,mro[1]!,1);
+          } else if (s.label) {
             const share = receiver(s.label, mask[0]!, mro[1]!, mro[2]!);
             if (share > 0) {
               const paint = s.label === PAINT || s.label === BURNT_SHEET ? mask[0]!*Math.max(0,Math.min(1,(0.72-mro[1]!)*3.5)) : 0;
@@ -1890,9 +1899,10 @@ export class Rasterizer {
           through(light, albedo, mro, normal, p.frame, s.sheet);
           if (s.emissive) for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * s.emissive;
           shown(rgb, light, dist, p);
-          this.color[at * 4] = rgb[0]! * 255;
-          this.color[at * 4 + 1] = rgb[1]! * 255;
-          this.color[at * 4 + 2] = rgb[2]! * 255;
+          for (let c = 0; c < 3; c++) {
+            const channel = at * 4 + c, value = rgb[c]! * 255;
+            this.color[channel] = alpha === 1 ? value : this.color[channel]! * (1-alpha) + value*alpha;
+          }
         }
       }
     }

@@ -13,14 +13,14 @@ import { comparedLookup } from "../core/render/shadowfilter.ts";
 import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, tapShift } from "../core/render/post.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
-import { LAYER_LEVELS, NEUTRAL, lampsOn, skinMode } from "../core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, lampsOn, materialEmission, skinMode } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseArea, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import type { Tier } from "../core/assets/tiers.ts";
 import type { Manifest, ManifestMesh } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
 import { CELL, mipOffset } from "../../shared/pack/details.ts";
-import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, MATERIAL_NIGHT, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { ROAD_PLANES, ROAD_STEP, roadSamples } from "../../shared/world/roadframe.ts";
@@ -152,6 +152,7 @@ export class GlRenderer {
   private worldReady = 0;
   /** How much a material that glows only by night glows in this frame (surface.ts `lampsOn`). */
   private night = 0;
+  private exposure = 1;
   /** The world finishes' maps by role, each an array of a layer a finish, its side and the finest level drawn; and each world texture's role * 32 + layer. */
   private world: (WebGLTexture | null)[] = [];
   private worldSide = [0, 0, 0];
@@ -633,7 +634,7 @@ export class GlRenderer {
     this.uniform(prog, U.grey, mat.grey);
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
     this.uniform(prog, U.sheet, mat.sheet ?? 0);
-    this.uniform(prog, U.emissive, (mat.flags & MATERIAL_NIGHT) !== 0 ? mat.emissive * this.night : mat.emissive);
+    this.uniform(prog, U.emissive, materialEmission(mat, this.night, this.exposure));
     if (last[U.uv] !== mesh) {
       last[U.uv] = mesh;
       gl.uniform4fv(at[U.uv]!, this.meshes[mesh]!.uv ?? WHOLE_UV);
@@ -821,6 +822,7 @@ export class GlRenderer {
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
     if (p.street && !this.streetTexture) gl.bufferSubData(gl.UNIFORM_BUFFER, (FRAME.reflection + 3) * 4, this.noReflection);
     this.night = lampsOn(p.frame);
+    this.exposure = p.frame[FRAME.exposure]!;
 
     // Resource changes first, in order.
     for (const u of p.uploads) {
@@ -910,7 +912,7 @@ export class GlRenderer {
       const m = p.drawMaterial[d]!;
       const layer = p.drawLayer[d]!;
       const prog = this.use(drawProgram(p, d, this.materials[m]), p);
-      this.set(blend, !blend && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
+      this.set(blend, (textured || !blend) && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
       this.uniform(prog, U.skin, skinMode(flags, textured && lod.skin));
       this.uniform(prog, U.fade, p.drawFade[d]!);
       this.uniform(prog, U.hand, p.drawHand[d]!);

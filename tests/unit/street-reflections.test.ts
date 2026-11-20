@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { GEAR_WORN } from "../../shared/sim/entities.ts";
 import { nodeForms } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
@@ -57,6 +58,27 @@ function street() {
   };
   return { world, cam, cars, p, tick, car, hidden, capture };
 }
+
+test("a nearby worn visor can anchor the shared picture until it is removed or leaves close range", () => {
+  const { cars, p, tick } = street();
+  cars.count = 1;
+  cars.kind[0] = reg.index.get("core:survivor")!;
+  cars.id[0] = 7;
+  cars.x[0] = 40;
+  cars.z[0] = 42;
+  tick(0);
+  expect(p.street).toBeNull();
+  cars.gear[GEAR_WORN] = reg.index.get("core:meridian_hat")!;
+  tick(250);
+  expect(p.street).not.toBeNull();
+  cars.z[0] = 55;
+  tick(500);
+  expect(p.street).toBeNull();
+  cars.z[0] = 42;
+  cars.gear[GEAR_WORN] = 0;
+  tick(750);
+  expect(p.street).toBeNull();
+});
 
 test("a car shares the street picture, movement updates at the tier rate, turning still changes the lookup between captures", () => {
   const { p, tick, car, cars } = street();

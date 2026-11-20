@@ -453,6 +453,8 @@ export interface HumanBodiesAsset {
     readonly material: string;
     /** Optional second material section for self-lit indicator lenses, in linear light. */
     readonly indicatorEmission?: number;
+    /** Slot 2 shares the finish maps and transmits the helmet backing. */
+    readonly visor?: boolean;
     readonly make: (body: readonly SourceMesh[], rig: PackRig) => SourceMesh[];
   };
   readonly materials?: Readonly<Record<string, MaterialSpec>>;

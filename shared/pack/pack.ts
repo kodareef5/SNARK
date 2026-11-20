@@ -78,6 +78,10 @@ export const MATERIAL_TWO_SIDED = 1;
 export const MATERIAL_CUTOUT = 2;
 /** A material whose glow (`emissive`) is on only from dusk to dawn, as a working street lamp's lens (client/core/render/surface.ts `lampsOn`). */
 export const MATERIAL_NIGHT = 4;
+/** Tinted reflective lens. Drawn after its opaque backing with angle-dependent coverage. */
+export const MATERIAL_LENS = 8;
+/** A self-dimming status light. Limits its own apparent luminance as the eye adapts to darkness. */
+export const MATERIAL_INDICATOR = 16;
 
 export interface PackMaterial {
   id: string;

@@ -8,8 +8,10 @@
 // Directions are in the world and of length 1. Colours are linear until `shown`.
 
 export { linearToSrgb, srgbToLinear } from "./color-space.ts";
+import { MATERIAL_INDICATOR, MATERIAL_NIGHT, type PackMaterial } from "../../../shared/pack/pack.ts";
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
-import { BURNT_SHEET, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
+import { LENS } from "../../../content/street-finishes.ts";
+import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
@@ -84,6 +86,12 @@ export function lampsOn(frame: Numbers): number {
   // The true sun is the moon's direction turned round.
   const t = Math.min(1, Math.max(0, (LAMPS_OFF + frame[FRAME.moon + 1]!) / LAMPS_OFF));
   return t * t * (3 - 2 * t);
+}
+
+/** A wearable status LED dims in darkness, where the simulated eye can gain over 30,000 times. */
+export function materialEmission(material: PackMaterial, night: number, exposure: number): number {
+  const light = material.emissive * ((material.flags & MATERIAL_NIGHT) ? night : 1);
+  return (material.flags & MATERIAL_INDICATOR) ? light * Math.min(1, 2.8/Math.max(1, exposure)) : light;
 }
 
 /**
@@ -689,7 +697,12 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     }
   }
   vec3 ray = reflect(-v,n), mirror = skyFrom(ray);
-  if (uStreetMaterial > 0.5) {
+  if (int(uStreetMaterial) == ${LENS}) {
+    float edge = pow(1.0-clamp(dot(n,v),0.0,1.0),4.0);
+    cover = mix(${f(visor.cover)},${f(visor.edgeCover)},edge);
+    coat = mix(${f(visor.coat)},${f(visor.edgeCoat)},edge);
+    mirror = streetMirror(mirror,ray,vRel,mro.g,1.0);
+  } else if (uStreetMaterial > 0.5) {
     float paint = ${dyed ? "(uStreetMaterial < 1.5 || burntSheet) ? mask.r * clamp((0.72-mro.g)*3.5,0.0,1.0) : 0.0" : "0.0"};
     float receives = max(paint,max(clamp(mro.b*1.5,0.0,1.0)*clamp((0.85-mro.g)*3.0,0.0,1.0),clamp((0.34-mro.g)*5.0,0.0,1.0)));
     if (receives > 0.0) {

@@ -1885,6 +1885,7 @@ assets/source/core/facades/rooms/room-15/floor.png
 assets/source/core/facades/rooms/room-15/side.png
 assets/source/core/humans/human-bodies/human-bodies.snpk
 assets/source/core/humans/human-bodies/meridian/dye.png
+assets/source/core/humans/human-bodies/meridian/engraving-source.png
 assets/source/core/humans/human-bodies/meridian/finish.png
 assets/source/core/humans/human-bodies/meridian/normal.png
 assets/source/core/humans/human-bodies/meridian/orm.png

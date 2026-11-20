@@ -23,6 +23,8 @@ export const finish = {
   shoe: 13,
   sink: 14,
   crown: 15,
+  visor: 16, // Same cobalt atlas island as the inlays, drawn as a transmitting lens.
+  palm: 17, // Shares the brass island with hardware, with its own padded UV bounds.
 } as const;
 const palette = [93, 92, 82, 85, 41, 64, 206, 91, 93, 93, 84, 82, 93, 92, 84, 93];
 const rad = Math.PI / 180;
@@ -75,12 +77,20 @@ export class Surface {
     this.p.push(...point);
     this.n.push(...normal);
     this.b.push(bone);
-    this.c.push(palette[tile]!);
+    const color = tile === finish.palm ? finish.rubber : tile === finish.visor ? finish.glass : tile;
+    this.c.push(palette[color]!);
+    if (tile === finish.visor) tile = finish.glass;
+    if (tile === finish.brass) u = 0.84 + 0.16*u;
+    if (tile === finish.palm) {
+      tile = finish.brass;
+      u *= 0.76;
+    }
     this.uv.push(((tile % 4) + pad + u * (1 - 2 * pad)) / 4, (Math.floor(tile / 4) + pad + v * (1 - 2 * pad)) / 4);
     return i;
   }
   /** Dark textile follows the source mesh exactly, including distal fingertip weights and body-slider seams. */
-  liner(lod: SourceLod) {
+  liner(lod: SourceLod, hand: boolean) {
+    const tile = hand ? finish.palm : finish.knit, scale = hand ? 8 : 3;
     const p = lod.positions,
       ix = lod.indices,
       normals = new Map<string, V>();
@@ -109,20 +119,20 @@ export class Surface {
         top = Math.abs(normal[1]) > 0.78;
       for (const v of tri) {
         const pt = pos(v),
-          u = (side ? pt[2] : pt[0]) + 1,
+          u = (side && !top ? pt[2] : pt[0]) + 1,
           w = (top ? pt[2] : pt[1]) + 0.3;
-        const tu = Math.abs(((u * 3) % 2) - 1),
-          tv = Math.abs(((w * 3) % 2) - 1),
+        const tu = Math.abs(((u * scale) % 2) - 1),
+          tv = Math.abs(((w * scale) % 2) - 1),
           bone = lod.bones![v]!;
         // A corner is the body's vertex with the knit's coordinate there: where two triangles agree on both it is one
         // vertex, where each corner of each triangle was its own.
         const id = `${key(v)}|${bone}|${Math.round(tu * 1e5)}|${Math.round(tv * 1e5)}`;
         let at = this.linerVertices.get(id);
-        if (at === undefined) this.linerVertices.set(id, (at = this.vertex(pt, unit(normals.get(key(v))!), tu, tv, finish.knit, bone)));
+        if (at === undefined) this.linerVertices.set(id, (at = this.vertex(pt, unit(normals.get(key(v))!), tu, tv, tile, bone)));
         this.ix.push(at);
       }
     }
-    this.mark(start, finish.knit);
+    this.mark(start, tile);
   }
   /**
    * Where a panel's columns stand across it, 0 to 1. A lipped panel keeps its lip one of its `n` segments wide at each
@@ -157,13 +167,13 @@ export class Surface {
     return us;
   }
   private mark(start: number, tile: number) {
-    for (let i = start; i < this.ix.length; i += 3) this.slots.push(tile === finish.lamp ? 1 : 0);
+    for (let i = start; i < this.ix.length; i += 3) this.slots.push(tile === finish.lamp ? 1 : tile === finish.visor ? 2 : 0);
   }
   /** A gridded panel with a rolled lip across its angular sides. Rows are ordered bottom to top. */
   panel(form: Form, rows: readonly Row[], tile: number, bone: number, segments = 12, bevel = 0.003) {
     const extent = rows.at(-1)![0] - rows[0]![0];
     if (this.level === 2) {
-      if (extent < 0.013 && tile !== finish.glass) return;
+      if (extent < 0.013 && tile !== finish.glass && tile !== finish.visor) return;
       if (rows.length > 4) rows = rows.filter((_, i) => i === 0 || i === rows.length - 1 || i % 2 === 1);
     }
     const firstIndex = this.ix.length;

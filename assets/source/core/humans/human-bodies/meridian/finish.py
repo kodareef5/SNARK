@@ -6,15 +6,16 @@
 
 from pathlib import Path
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 ROOT = Path(__file__).resolve().parent
 N, PAD = 256, 6
 rng = np.random.default_rng(71024)
 v, u = np.mgrid[0:N, 0:N]
 x, y = (u - PAD) / (N - 2 * PAD), (v - PAD) / (N - 2 * PAD)
+SIDE = 512
 atlas = {
-    k: Image.new("RGB", (4 * N, 4 * N)) for k in ("finish", "normal", "orm", "dye")
+    k: Image.new("RGB", (4 * SIDE, 4 * SIDE)) for k in ("finish", "normal", "orm", "dye")
 }
 font = ImageFont.load_default(size=12)
 small = ImageFont.load_default(size=9)
@@ -37,6 +38,105 @@ swatches = [
     ((39, 59, 71), 121, 142),
     ((210, 212, 209), 124, 34),
 ]
+# Four flat-lit material scans from the generated master. The subsections have distinct
+# responses to light. Baked luminance is deliberately weaker on polished surfaces.
+source = Image.open(ROOT / "engraving-source.png").convert("RGB")
+half = source.width // 2
+scans = []
+for col, row in [(0, 0), (1, 0), (0, 1), (1, 1)]:
+    left, top = col * half, row * half
+    scans.append(source.crop((left+3, top+3, left+half-3, top+half-3))
+                 .resize((SIDE, SIDE), Image.Resampling.LANCZOS))
+
+
+def pixels(im):
+    return np.asarray(im, dtype=np.float32)
+
+
+def enlarged(im, nearest=False):
+    return im.resize((SIDE, SIDE), Image.Resampling.NEAREST if nearest else Image.Resampling.BICUBIC)
+
+
+def detailed(tile, img, h, orm):
+    rgb, height, response = pixels(enlarged(img)), pixels(enlarged(h)), pixels(enlarged(orm))
+    yy, xx = np.mgrid[:SIDE, :SIDE] / SIDE
+    if tile == 4:
+        # Cobalt interlayer. The actual moving highlight is supplied by the environment.
+        rgb = np.stack([14 + 9*yy, 43 + 29*yy, 78 + 38*yy], axis=2)
+        response[:] = [250, 31, 12]
+    elif tile == 5:
+        # Keep the glow blue even where its core catches direct sunlight.
+        rgb *= [0.44, 0.78, 1.12]
+        response[:] = [249, 72, 20]
+    elif tile == 6:
+        # A vulcanized palm has low, closely spaced staggered grip pads. The right
+        # fifth keeps the original brass for the two small fasteners that use it.
+        column = xx*35
+        row = yy*32
+        a = np.abs((column + 0.5*(np.floor(row) % 2)) % 1 - 0.5)
+        b = np.abs(row % 1 - 0.5)
+        pad = np.clip((0.49-np.maximum(b, 0.88*a+0.5*b))*15, 0, 1)
+        groove = np.clip((0.13-np.abs((yy*5.5 + 0.12*np.cos(xx*7)) % 1-0.5))*10, 0, 1)
+        grain = pixels(scans[2].convert("L"))
+        rubber = 18 + pad*18 - groove*8 + np.clip(grain-np.median(grain),-22,28)*0.19
+        grip = xx < 0.80
+        rgb[grip] = (rubber[:, :, None] + [0, 4, 8])[grip]
+        height[grip] = (119 + pad*18 - groove*13)[grip]
+        response[:, :, 0][grip] = (178 + pad*61 - groove*18)[grip]
+        response[:, :, 1][grip] = (210 - pad*32 + groove*9)[grip]
+        response[:, :, 2][grip] = 3
+    else:
+        textile = tile in (2, 11)
+        machined = tile in (3, 7, 10, 14)
+        scan = scans[{2: 1, 11: 2}.get(tile, 3 if machined else 0)]
+        if tile in (9, 12, 14):
+            scan = scan.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        if tile in (1, 13, 15):
+            scan = scan.transpose(Image.Transpose.ROTATE_180)
+        art = pixels(scan)
+        lum = pixels(scan.convert("L"))
+        blurred = pixels(scan.convert("L").filter(ImageFilter.GaussianBlur(3)))
+        high = lum - blurred
+        if textile:
+            # Dark seams retain ambient occlusion in shade. The high yarns stay matte.
+            rgb = art * (1.48 if tile == 2 else 1.27) + [7, 9, 11]
+            height = 126 + (lum - np.median(lum))*0.78 + high*0.32
+            response[:, :, 0] = np.clip(160 + lum*1.65 + high*0.9, 125, 250)
+            response[:, :, 1] = np.clip((220 if tile == 2 else 171) + high*0.43, 140, 241)
+            response[:, :, 2] = 4
+        elif machined:
+            # Fine polished cuts share the pattern with the normal map. No painted sun streak.
+            rgb = 0.50*rgb + 0.44*art + (12 if tile in (3,7) else -10)
+            height += 0.58*high
+            response[:, :, 0] = np.clip(240 + 0.48*high, 195, 250)
+            response[:, :, 1] = np.clip((50 if tile == 7 else 83) - high*0.44, 34, 130)
+            response[:, :, 2] = 238 if tile == 7 else 206
+        else:
+            # The cobalt enamel, milled bead and satin field reflect independently.
+            enamel = np.clip((art[:, :, 2] - art[:, :, 0] - 8) / 42, 0, 1)
+            cut = np.clip((211 - blurred) / 68, 0, 1)
+            # Hero engravings follow the sides of the breastplate and the brow. Keep
+            # a quiet satin field through the middle for the form and its sun highlight.
+            if tile in (0, 8, 15):
+                field = np.clip((np.abs(xx - 0.51) - 0.09)*4.0 + (0.38-yy)*0.55, 0.12, 1)
+            elif tile in (9, 12):
+                field = np.clip((xx-0.24)*2.7, 0.13, 0.78)
+            else:
+                field = np.clip((0.48-yy)*2.8, 0.12, 0.64)
+            strength = (0.57*field)[:, :, None]
+            rgb = rgb*(1-strength) + art*strength
+            height += field*(0.53*high - cut*5)
+            cut *= field
+            enamel *= field
+            response[:, :, 0] = np.clip(247 - cut*34 + high*0.3, 167, 251)
+            response[:, :, 1] = np.clip(93 - 35*cut - 18*enamel - high*0.19, 40, 107)
+            response[:, :, 2] = 17 + 164*cut*(1-enamel)
+    dy, dx = np.gradient(height / 255)
+    nn = np.stack([-dx*2.9, dy*2.9, np.ones_like(dx)], 2)
+    nn /= np.sqrt((nn*nn).sum(axis=2, keepdims=True))
+    return tuple(Image.fromarray(np.uint8(np.clip(a,0,255))) for a in (rgb,(nn*0.5+0.5)*255,response))
+
+
 for i, (base, rough, metal) in enumerate(swatches):
     noise = rng.normal(0, 1, (N, N))
     grad = 3 * np.sin(x * 2.2) - 3 * y + noise * 0.85
@@ -197,12 +297,8 @@ for i, (base, rough, metal) in enumerate(swatches):
         mask.rectangle((34, 40, 219, 46), fill=(255, 0, 255))  # wearable secondary
     if i == 4:
         mask.rectangle((14, 205, 242, 215), fill=(255, 255, 0))  # wearable trim
-    hh = np.asarray(h, dtype=float) / 255
-    dy, dx = np.gradient(hh)
-    nn = np.stack([-dx * 2.8, dy * 2.8, np.ones_like(dx)], 2)
-    nn /= np.sqrt((nn * nn).sum(axis=2, keepdims=True))
-    normal = Image.fromarray(np.uint8(np.clip((nn * 0.5 + 0.5) * 255, 0, 255)))
-    for name, pic in [("finish", img), ("normal", normal), ("orm", orm), ("dye", dye)]:
-        atlas[name].paste(pic, ((i % 4) * N, (i // 4) * N))
+    img, normal, orm = detailed(i, img, h, orm)
+    for name, pic in [("finish", img), ("normal", normal), ("orm", orm), ("dye", enlarged(dye, True))]:
+        atlas[name].paste(pic, ((i % 4) * SIDE, (i // 4) * SIDE))
 for name, img in atlas.items():
     img.save(ROOT / (name + ".png"), optimize=True)

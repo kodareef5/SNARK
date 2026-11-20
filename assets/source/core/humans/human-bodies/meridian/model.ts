@@ -80,7 +80,7 @@ function helmet(s: Surface) {
       [1.653, -58, 58, 0.007],
       [1.6535, -18, 18, 0.007],
     ],
-    f.glass,
+    f.visor,
     B_HEAD,
     34,
   );
@@ -1122,7 +1122,7 @@ function gloves(s: Surface, female: boolean, rest: readonly number[]) {
         [wrist + 0.092, 32, 152, 0.003],
         [wrist + 0.103, 56, 130],
       ],
-      f.seam,
+      f.rubber,
       hand,
       11,
     );
@@ -1132,7 +1132,7 @@ function gloves(s: Surface, female: boolean, rest: readonly number[]) {
         [wrist + 0.029, 83, 92, 0.007],
         [wrist + 0.06, 81, 94, 0.008],
       ],
-      f.glass,
+      f.lamp,
       hand,
       4,
     );
@@ -1210,7 +1210,7 @@ export function meridian(body: readonly SourceMesh[], rig: PackRig): SourceMesh[
     const slot = base.id.split("/").at(-1)!;
     const lods = base.lods.map((lod, level) => {
       const s = new Surface(level);
-      s.liner(lod);
+      s.liner(lod, slot === "hands");
       switch (slot) {
         case "head":
           helmet(s);
