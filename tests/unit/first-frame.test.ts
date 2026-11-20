@@ -48,6 +48,7 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/selfcheck-surfaces.ts",
     "client/core/activity-selfcheck.ts",
     "client/core/assets/frames.ts",
+    "client/core/assets/inspect.ts",
   ];
   for (const file of late) expect(files.includes(file), file).toBe(false);
   // The shell fetches them itself.
