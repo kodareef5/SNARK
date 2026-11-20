@@ -1,0 +1,84 @@
+{
+  "name": "escort-voice",
+  "about": "Ana, an owner, asks aloud to be walked to the outpost 90 m north; two raptors along the way. Speech in, escort, fights on the way.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "stone_hatchet": 1
+      },
+      "hold": "stone_hatchet"
+    },
+    "things": [
+      {
+        "type": "player",
+        "name": "Ana",
+        "x": 0,
+        "z": -3,
+        "path": [
+          [
+            0,
+            -40
+          ],
+          [
+            0,
+            -90
+          ]
+        ],
+        "speed": 2.5,
+        "at_s": 8
+      },
+      {
+        "type": "raptor",
+        "x": 18,
+        "z": -45
+      },
+      {
+        "type": "raptor",
+        "x": -16,
+        "z": -72
+      }
+    ]
+  },
+  "owners": [
+    "Ana"
+  ],
+  "prompt": "You are Scout, a survivor. Ana is your owner. Listen to her.",
+  "script": [
+    {
+      "at_s": 1,
+      "speak": {
+        "from": "Ana",
+        "text": "Scout, walk me to the outpost up north, at z minus ninety. There are raptors about."
+      }
+    }
+  ],
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "lives": "Ana"
+      },
+      {
+        "where": "Ana",
+        "at": [
+          0,
+          -90
+        ],
+        "within": 3
+      },
+      {
+        "none_hostile": true
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 240
+  }
+}

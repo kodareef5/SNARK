@@ -264,3 +264,111 @@ test("a tek suit flies on element: jump climbs, it goes fast aloft, burns a unit
   expect(s.world.count("element")).toBe(0);
   expect(s.world.me.y).toBeLessThan(0.5);
 });
+
+// --- Inventories, mounts, following, repair, voice ---------------------------------------------------------------
+
+test("transfer all moves every matching stack between the character and the open box, as far as there is room", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1, wood: 250, stone: 120, berries: 10 } }, things: [{ type: "chest", x: 0, z: -1.8, items: { flint: 40 } }] });
+  const box = [...s.world.things.values()].find((t) => t.type === "chest")!;
+  s.act({ control: "interact", target: box.id, verb: "open" });
+  s.step(1);
+  // Resources in, the hatchet and food kept; 20 wood kept back.
+  let c = s.act({ control: "items", op: "transfer", from: "self", to: "open", kinds: ["resource"], keep: { wood: 20 } });
+  s.step(1);
+  expect(s.outcomes(c)[0]).toMatchObject({ status: "completed", detail: { moved: { wood: 230, stone: 120 }, reason: null } });
+  expect([s.world.count("wood"), s.world.count("stone"), s.world.count("stone_hatchet"), s.world.count("berries")]).toEqual([20, 0, 1, 10]);
+  const inv = s.observe({ inventory: {} }).channels.inventory!;
+  expect(inv.open).toMatchObject({ id: box.id, capacity: 30 });
+  expect(inv.slots.find((x) => x.item === "berries")!.kind).toBe("food");
+  // Out again, just the flint.
+  c = s.act({ control: "items", op: "transfer", from: "open", to: "self", items: ["flint"] });
+  s.step(1);
+  expect(s.outcomes(c)[0]).toMatchObject({ detail: { moved: { flint: 40 } } });
+  // Walk off, and the box closes.
+  s.world.me.z = 10;
+  s.step(1);
+  expect(s.observe({ inventory: {} }).channels.inventory!.open).toBeNull();
+});
+
+test("a kill leaves a body to loot; taking from it stops at what the character can carry", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { stone_pick: 1, stone: 590 }, hold: "stone_pick" }, things: [{ type: "raptor", x: 0, z: -6 }] });
+  const raptor = [...s.world.things.values()].find((t) => t.type === "raptor")!.id;
+  until(s, s.act({ control: "assist", kind: "attack", target: raptor }), 600);
+  const body = [...s.world.things.values()].find((t) => t.type === "corpse")!;
+  expect(body.kind).toBe("container");
+  s.world.me.x = body.x;
+  s.world.me.z = body.z + 1.5;
+  s.world.me.yaw = 0;
+  s.act({ control: "interact", target: body.id, verb: "open" });
+  s.step(1);
+  const c = s.act({ control: "items", op: "transfer", from: "open", to: "self" });
+  s.step(1);
+  const d = s.outcomes(c)[0]!.detail as { moved: Record<string, number>; reason: string | null };
+  expect(d.moved.meat).toBeGreaterThan(0);
+  expect(s.world.count("meat") + s.world.count("hide")).toBeGreaterThan(0);
+});
+
+test("fighting from a tame raptor: its jaws do the work at its pace, and it takes the bites meant for its rider", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0 }, things: [{ type: "raptor", x: 1.5, z: 0, tame: true }, { type: "raptor", x: 0, z: -14 }] });
+  const [mine, wild] = [...s.world.things.values()].filter((t) => t.type === "raptor").sort((a, b) => Number(!!b.tame) - Number(!!a.tame));
+  s.world.me.yaw = Math.PI / 2;
+  until(s, s.act({ control: "interact", target: mine!.id, verb: "mount" }), 5);
+  expect(s.world.me.mount).toBe(mine!.id);
+  const o = until(s, s.act({ control: "assist", kind: "attack", target: wild!.id, until: { mount_health_below: 0.2 } }), 600)!;
+  expect(o).toMatchObject({ status: "completed", detail: { result: "killed", hits: 4, damage: 60 } });
+  expect(s.world.me.health).toBe(100);
+  expect(mine!.left).toBeLessThan(200);
+  // A mount that cannot fight is refused.
+  const p = open({ me: { x: 0, z: 0, yaw: Math.PI / 2 }, things: [{ type: "parasaur", x: 1.5, z: 0 }, { type: "raptor", x: 0, z: -14 }] });
+  const para = [...p.world.things.values()].find((t) => t.type === "parasaur")!;
+  until(p, p.act({ control: "interact", target: para.id, verb: "mount" }), 5);
+  const w = [...p.world.things.values()].find((t) => t.type === "raptor")!.id;
+  expect(until(p, p.act({ control: "assist", kind: "attack", target: w }), 20)).toMatchObject({ status: "failed", detail: { result: "unarmed_mount" } });
+});
+
+test("following keeps near a walking player, runs when left behind, and waiting it glances about and shifts its feet", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0 }, things: [{ type: "player", name: "Ana", x: 0, z: -5, path: [[0, -60], [40, -60]], speed: 3, at_s: 2 }, { type: "tree", x: 8, z: -8 }] });
+  const ana = [...s.world.things.values()].find((t) => t.name === "Ana")!;
+  const c = s.act({ control: "assist", kind: "follow", target: ana.id, range: [2.5, 6], until: { seconds: 60 } });
+  let worst = 0;
+  for (let i = 0; i < 1000; i++) {
+    s.step(1);
+    if (i > 100) worst = Math.max(worst, Math.hypot(ana.x - s.world.me.x, ana.z - s.world.me.z));
+  }
+  expect(worst).toBeLessThan(12);
+  expect(Math.hypot(ana.x - 40, ana.z + 60)).toBeLessThan(1);
+  // Standing about at the end: it has glanced about more than once.
+  s.step(300);
+  const d = s.outcomes(c)[0]?.detail ?? (s.world as unknown as { running: Map<string, { done: Record<string, unknown> }> }).running.get("hands")!.done;
+  expect(Number(d.glances)).toBeGreaterThan(2);
+  expect(Math.hypot(ana.x - s.world.me.x, ana.z - s.world.me.z)).toBeLessThan(7);
+});
+
+test("repair mends a base's damaged pieces within reach for half their recipe in the share they lack", () => {
+  const s = open({ me: { x: 0, z: 9, yaw: 0, items: { piece_foundation_wood: 4, piece_wall_wood: 8, piece_door_wood: 1, piece_ceiling_wood: 4 } } });
+  const kit = BUILDING.tiers.wood!;
+  const pieces = compile(BLUEPRINTS.hut_2x2!).pieces.map((p) => ({ ...p, item: kit[p.form]! }));
+  const built = until(s, s.act({ control: "plan", op: "build", plan: { anchor: { at: [0, 0] }, pieces } }), 400)!;
+  const base = (built.detail as { base: string }).base;
+  s.world.damage(1.5, 1.5, 3, 5000);
+  const damaged = s.got.filter((m) => m.type === "event" && m.kind === "damaged").length;
+  void damaged;
+  const poor = until(s, s.act({ control: "assist", kind: "repair", target: base }), 100)!;
+  expect(poor).toMatchObject({ status: "failed", detail: { result: "materials" } });
+  s.world.give("wood", 600);
+  s.world.give("thatch", 200);
+  s.world.give("fiber", 200);
+  const ok = until(s, s.act({ control: "assist", kind: "repair", target: base }), 400)!;
+  expect(ok).toMatchObject({ status: "completed", detail: { result: "whole" } });
+  expect(Number(ok.detail!.repaired)).toBeGreaterThan(4);
+  expect(s.world.count("wood")).toBeLessThan(600);
+});
+
+test("speech is heard within a voice's range, with who said it and where from; beyond it, not at all", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0 }, things: [{ type: "player", name: "Ana", x: 0, z: 20 }, { type: "player", name: "Bo", x: 0, z: 90 }] });
+  const [ana, bo] = ["Ana", "Bo"].map((n) => [...s.world.things.values()].find((t) => t.name === n)!.id);
+  expect(s.world.speak(ana!, "Scout, follow me")).toBe(true);
+  expect(s.world.speak(bo!, "anyone there?")).toBe(false);
+  const lines = s.observe({ chat: {} }).channels.chat!.lines;
+  expect(lines).toEqual([expect.objectContaining({ channel: "voice", from: "Ana", from_id: ana, text: "Scout, follow me", voice: expect.objectContaining({ distance: 20, loudness: 0.5 }) })]);
+});

@@ -84,7 +84,7 @@ export default function grunt(pi: PiExtensionAPI): void {
     const link = await socketLink(url);
     const session = new Session(link);
     const t = traceFile(name);
-    const rt = new Runtime({ session, owners, trace: new Trace(t.sink), onReport: wake });
+    const rt = new Runtime({ session, owners, trace: new Trace(t.sink), onReport: wake, lively: true });
     link.onClose((why) => {
       if (mind?.rt !== rt) return;
       rt.halt();
@@ -153,14 +153,21 @@ export default function grunt(pi: PiExtensionAPI): void {
     {
       name: "game_do", label: "Do",
       description: `Start a skill as a task. It runs on its own, and your turn ends: a message comes when it ends, is blocked, or something needs you. Starting a skill that uses the body replaces the one using it now, so don't start one to check on another. The skills and their args:\n${SKILL_LINES}`,
-      promptSnippet: "game_do: start a skill (walk_to, travel, explore, gather, harvest, build, craft, fight, say)",
+      promptSnippet: "game_do: start a skill (walk_to, travel, explore, gather, harvest, build, craft, fight, loot, stash, empty, organize, migrate, follow, escort, repair, say)",
       promptGuidelines: [
         "You play a game character through game_ tools. Never try to steer it step by step: start a skill with game_do and wait to be told how it went. Don't poll with game_look or game_tasks while a task runs; the game tells you.",
         "game_look shows everything the character's senses reach, all round at once; ids in it are what skills take as targets. It never needs to turn round to find things.",
       ],
-      parameters: { type: "object", properties: { skill: { type: "string", enum: Object.keys(SKILLS) }, args: { type: "object", description: "the skill's parameters (game_skills lists them)" }, resume: { type: "string", description: "a task id: take that blocked, cancelled or put-aside task up again where it was, in place of skill and args" }, replace: { type: "boolean", description: "stop the task running now for this one, even if it only just started" } }, additionalProperties: false },
+      parameters: { type: "object", properties: { skill: { type: "string", enum: Object.keys(SKILLS) }, args: { type: "object", description: "the skill's parameters (game_skills lists them)" }, resume: { type: "string", description: "a task id: take that blocked, cancelled or put-aside task up again where it was, in place of skill and args" }, replace: { type: "boolean", description: "stop the task running now for this one, even if it only just started" }, claim: { type: "string", description: "working with a tribe: the job this is, said in the tribe's chat (\"on it: clear the raptors\"); refused if another already has it" }, join: { type: "boolean", description: "help with a job another has claimed, without claiming it" } }, additionalProperties: false },
       async execute(_id, p) {
         const rt = need().rt;
+        // A claim for what is already running (it was started a moment before the job was named): the claim goes on it.
+        const running = rt.current;
+        if (typeof p.claim === "string" && p.claim.trim() && running && running.by === "director" && !running.claim && (!p.skill || p.skill === running.skill)) {
+          const taken = rt.claim(running, p.claim.trim());
+          if (taken) throw new Error(`${taken.by} has "${p.claim.trim()}" (claimed ${taken.ago} s ago): take another job, or pass join: true to help with it`);
+          return { ...text(`claimed "${p.claim.trim()}" for ${running.skill} ${running.id}, which is running; the tribe is told.`, { task: running.id }), terminate: true };
+        }
         if (!p.resume && !p.skill) throw new Error("give a skill (with its args) or resume: a task id");
         // Two body skills started in one breath: the second would only cancel the first. Wait for the first's word.
         const cur = rt.current;
@@ -168,7 +175,14 @@ export default function grunt(pi: PiExtensionAPI): void {
         if (body && !p.replace && cur && cur.by === "director" && rt.belief.now - cur.started < 5000) {
           throw new Error(`${cur.skill} ${cur.id} was started a moment ago and is running; wait for its result, or pass replace: true to stop it for this`);
         }
+        // The tribe: first who can, does. A job another has is refused, unless joining it to help.
+        const job = typeof p.claim === "string" && p.claim.trim() ? p.claim.trim() : null;
+        if (job && !p.join) {
+          const taken = rt.claims().find((c) => c.job.toLowerCase() === job.toLowerCase());
+          if (taken) throw new Error(`${taken.by} has "${taken.job}" (claimed ${Math.round((rt.belief.now - taken.t) / 1000)} s ago): take another job, or pass join: true to help with it`);
+        }
         const t = p.resume ? rt.retake(String(p.resume)) : rt.start(String(p.skill), (p.args ?? {}) as Record<string, unknown>);
+        if (job && !p.join && t.status === "running") rt.claim(t, job);
         if (t.status !== "running") return text(`${t.skill} ${t.status}: ${t.result?.summary ?? ""}`, { task: t.id });
         return { ...text(`started ${t.skill} as ${t.id}. It runs on its own; you will get a message when it is over or something needs you.`, { task: t.id }), terminate: true };
       },
@@ -195,7 +209,7 @@ export default function grunt(pi: PiExtensionAPI): void {
     {
       name: "game_say", label: "Say",
       description: "Say a line in the game's chat, as the character.",
-      parameters: { type: "object", properties: { text: { type: "string" }, channel: { type: "string", enum: ["local", "global", "group"] } }, required: ["text"], additionalProperties: false },
+      parameters: { type: "object", properties: { text: { type: "string" }, channel: { type: "string", enum: ["local", "global", "group", "voice"], description: "voice: spoken aloud, where the game speaks (answer speech in kind)" } }, required: ["text"], additionalProperties: false },
       async execute(_id, p) {
         const rt = need().rt;
         rt.start("say", { text: String(p.text), channel: p.channel ?? "local" });

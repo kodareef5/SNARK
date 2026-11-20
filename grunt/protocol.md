@@ -205,6 +205,13 @@ a structure is held, `focus` then has `placement`, the preview a player sees: `{
 for a piece standing free; `reason` says why an invalid preview is refused (`no_support`, `blocked`, `occupied`,
 `too_far`, `not_flat`, `not_permitted`). `use primary` places the piece where the preview stands, if it is valid.
 
+**Speech.** Where the game has players' voice (`capabilities.voice`), what a player says into a microphone is
+transcribed and heard by the character as a `chat` line on the `voice` channel, but only within `voice.range` metres,
+as a player hears it: `{ "channel": "voice", "from": "Ana", "from_id": "e:12", "text": "follow me", "voice":
+{ "distance": 8, "bearing": 1.2, "loudness": 0.8, "confidence": 0.93 } }`. The game knows whose microphone it was,
+so `from_id` is always given: who said what is never a guess. `confidence` is the transcription's. Where
+`voice.speaks`, the character's own `chat` on `voice` is spoken aloud.
+
 **`image`** (optional capability): a frame of the character's view, `{ "mime": "image/jpeg", "width": 384,
 "height": 216, "data": "<base64>" }`, asked with `{ "width": …, "height": … }`. Only when the game lists it.
 
@@ -280,7 +287,8 @@ the connection is about to close.
 | `interact` | `target`, `verb`, `hold_ms` | A verb from the target's `affords`; `hold_ms` for verbs held down (`harvest`) |
 | `use` | `hand` (`primary`, `secondary`), `hold_ms` | What the held item does: swing, shoot, eat. Aimed by `look` |
 | `select` | `slot` | Takes a hotbar slot in hand |
-| `items` | `op` (`move`, `drop`, `equip`, `consume`), `slot`, `to`, `count` | The inventory screen's moves; `to` is `self`, `open` or `ground` |
+| `items` | `op` (`move`, `drop`, `equip`, `consume`), `slot`, `from`, `to`, `count` | The inventory screen's moves; `from` is `self` or `open`, `to` is `self`, `open` or `ground` |
+| `items` | `op: "transfer"`, `from`, `to`, `items`, `kinds`, `keep` | The screen's "transfer all" with a filter: every matching stack between the bag and the open container (a box, a vault, a body, a tame's inventory), as far as there is room and the character can carry; `keep` leaves so many |
 | `craft` | `item`, `count` | The inventory screen's craft button, from `craftable`; the outcome comes when the last is made (`crafted` events between) |
 | `rotate` | `steps` | Turns the held structure's preview, a step being the game's own (90° for most pieces) |
 | `chat` | `channel` (`local`, `global`, `group`), `text` | As a player types it |
@@ -344,6 +352,15 @@ until it is done, at limits it sets and advertises:
   when the target comes inside `near`), lead, and loose. Until the target is dead (`result: "killed"`), or
   `until.health_below` / `until.stamina_below` (the client's own line to break off at).
 - `harvest`: swing (or pick) at the tool's pace until the thing is used up (`gone`) or `until.count` of its yield.
+- `follow`: keep near the target (`range` [near, far] metres), walking or running as the gap asks. With `natural`
+  (the default) it moves as a person does: the spot it keeps changes now and then (behind, to one side), its line
+  wanders a little, and waiting it glances about (at the one it follows most) and shifts its feet.
+- `repair`: the damaged pieces of a base (`target` is the base) within reach, one after another at the game's pace,
+  each for the share of its recipe the game asks (half the recipe in what it lacks, in the mock). `materials` with
+  `need` when the bag is short.
+- Riding a creature that fights (a tame raptor), `attack` is the mount's: its bite, pace and reach; the mount takes
+  what is meant for its rider; `until.mount_health_below` breaks off before it is lost. A mount that does not fight
+  is refused (`unarmed_mount`).
 
 The outcome's `detail` gives `result` (`killed`, `gone`, `count`, `health`, `stamina`, `weight`, `seconds`, or on
 failure `lost`, `obstructed` with `by`, `ammo`, `out_of_reach`) and the tally: `swings`, `shots`, `hits`, `damage`,

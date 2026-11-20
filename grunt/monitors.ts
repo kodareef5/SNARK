@@ -67,9 +67,11 @@ export const social: Monitor = (b, ctx) => {
     if (l.read) continue;
     const named = l.text.toLowerCase().includes(name);
     const owner = ctx.owners.some((o) => o.toLowerCase() === l.from.toLowerCase());
-    if (!named && !owner) continue;
+    // Spoken close by, by an owner, it is said to the character even without its name (as one speaks to a companion).
+    const near = l.channel === "voice" && (l.voice?.distance ?? 99) <= 15;
+    if (!named && !(owner && (l.channel !== "voice" || near))) continue;
     l.read = true;
-    out.push({ kind: "addressed", urgency: owner ? 0.8 : 0.6, detail: { from: l.from, text: l.text, channel: l.channel, owner } });
+    out.push({ kind: "addressed", urgency: owner ? 0.8 : 0.6, detail: { from: l.from, text: l.text, channel: l.channel, owner, ...(l.from_id ? { from_id: l.from_id } : {}), ...(l.voice ? { voice: l.voice } : {}) } });
   }
   return out;
 };

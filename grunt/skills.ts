@@ -6,6 +6,8 @@
 import { type Belief, compass } from "./belief.ts";
 import { build } from "./build.ts";
 import { fight } from "./combat.ts";
+import { escort, follow, repair } from "./company.ts";
+import { empty, loot, migrate, organize, stash } from "./haul.ts";
 import { type Costs, costsFor, type Danger, type RideKind, rideKind, type Route, WALK } from "./nav.ts";
 import type { Remembered } from "./belief.ts";
 import type { Body, Run } from "./body.ts";
@@ -160,7 +162,7 @@ function* dismount(ctx: SkillContext): Run<boolean> {
 }
 
 /** Gets on a ride: walks to it, faces it, mounts; a flyer climbs to where cliffs are below it. */
-function* board(ctx: SkillContext, ride: Remembered, kind: RideKind): Run<boolean> {
+export function* board(ctx: SkillContext, ride: Remembered, kind: RideKind): Run<boolean> {
   const b = ctx.belief;
   if (b.self?.mount !== ride.id) {
     if (!(yield* dismount(ctx))) return false;
@@ -181,6 +183,20 @@ function* land(ctx: SkillContext): Run {
   yield* ctx.body.settle(ctx.body.act([{ control: "crouch", on: true }], "descend"), 1000);
   yield { until: () => (b.self?.pos[1] ?? 0) < 1.2, ms: 25000 };
   yield* ctx.body.settle(ctx.body.act([{ control: "crouch", on: false }], "landed"), 1000);
+}
+
+/** Gets on a mount or into a vehicle by id or name (walking to it), or off it. */
+function* mountUp(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+  const b = ctx.belief;
+  const id = typeof args.target === "string" ? (b.things.has(args.target) ? args.target : b.find((t) => !!t.tags?.includes("rideable") && (t.name ?? t.type).toLowerCase() === String(args.target).toLowerCase())[0]?.id) : b.find((t) => !!t.tags?.includes("rideable"))[0]?.id;
+  const ride = id ? b.things.get(id) : undefined;
+  if (!ride) return { status: "failed", summary: `there is no ${String(args.target ?? "mount")} about to ride` };
+  if (!(yield* board(ctx, ride, rideKind(ride.type, ride.tags)))) return { status: "blocked", summary: `I couldn't get on the ${ride.type}` };
+  return { status: "done", summary: `I'm on the ${ride.type} ${ride.id}` };
+}
+
+function* getOff(ctx: SkillContext): Run<SkillResult> {
+  return (yield* dismount(ctx)) ? { status: "done", summary: "I'm on foot" } : { status: "blocked", summary: "I couldn't get off here" };
 }
 
 /** A trek: a long way, over the map, by the quickest way the character has (on foot, or a ride it knows of),
@@ -452,7 +468,7 @@ function* craft(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResu
 
 function* say(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const text = String(args.text ?? "");
-  const channel = (["local", "global", "group"].includes(String(args.channel)) ? args.channel : "local") as "local" | "global" | "group";
+  const channel = (["local", "global", "group", "voice"].includes(String(args.channel)) ? args.channel : "local") as "local" | "global" | "group" | "voice";
   yield* ctx.body.settle(ctx.body.act([{ control: "chat", channel, text }], "say"), 2000);
   return { status: "done", summary: `said "${text}"` };
 }
@@ -493,5 +509,39 @@ export const SKILLS: Record<string, Skill> = {
   },
   craft: { name: "craft", describe: "Craft items from the inventory, by the recipes the inventory screen shows.", params: { item: "item name", count: "number" }, body: false, run: craft },
   say: { name: "say", describe: "Say a line in chat.", params: { text: "string", channel: "local | global | group" }, body: false, run: say },
+  loot: {
+    name: "loot", describe: "Loot bodies about (or one container) into the bag, as much as it can carry.",
+    params: { target: "a body or container (default: every body about)", items: "only these items", kinds: "only these kinds: resource, food, ammo, ..." }, body: true, run: loot,
+  },
+  stash: {
+    name: "stash", describe: "Put the bag's things in a box or vault (default: resources, food and pieces; never the gear in use).",
+    params: { to: "container id or name (default: the nearest)", items: "only these items", kinds: "only these kinds" }, body: true, run: stash,
+  },
+  empty: {
+    name: "empty", describe: "Empty a container or a carrying creature (a harvester) into the stores, trip after trip: vaults first, then boxes.",
+    params: { from: "container or creature id or name", to: "container id or name (default: the stores about)", items: "only these items", kinds: "only these kinds (default resource, food)" }, body: true, run: empty,
+  },
+  organize: {
+    name: "organize", describe: "Sort the containers about: each item goes to the one named for it or its kind (\"stone vault\", \"food box\"), else to the one already holding most of it.",
+    params: { containers: "ids or names (default: every box and vault about)" }, body: true, run: organize,
+  },
+  migrate: {
+    name: "migrate", describe: "Move a base's stores to another: everything in the containers about one place into those about another, trip after trip.",
+    params: { from: "container ids or names, or {x, z, radius}", to: "container ids or names, or {x, z, radius}", kinds: "only these kinds" }, body: true, run: migrate,
+  },
+  follow: {
+    name: "follow", describe: "Follow someone (or a creature) through the game's follow assist: keeps a natural distance, runs when left behind, glances about while waiting. Goes by the map when it loses them.",
+    params: { target: "id or name", near: "metres (default 2.5)", far: "metres (default 6)", seconds: "how long (default 600)" }, body: true, run: follow,
+  },
+  escort: {
+    name: "escort", describe: "Escort someone: follow, and fight whatever hostile comes within guard metres of them or you; done when they reach `to`.",
+    params: { target: "id or name", to: "{x, z}: where they are going", guard: "metres (default 20)", seconds: "how long at most (default 900)" }, body: true, run: escort,
+  },
+  repair: {
+    name: "repair", describe: "Repair a base's damaged parts (the game tells of damage) through the repair assist, for half their recipe in what they lack.",
+    params: { base: "base id (default: the one with damage)" }, body: true, run: repair,
+  },
+  mount: { name: "mount", describe: "Get on a mount or into a vehicle (walks to it); a flyer climbs. Fighting from a mount that fights (a tame raptor) is then its own.", params: { target: "id or name (default: the nearest)" }, body: true, run: mountUp },
+  dismount: { name: "dismount", describe: "Get off the mount or out of the vehicle.", params: {}, body: true, run: getOff },
   look_around: { name: "look_around", describe: "Turn the whole way round, for appearance only: you already know everything about you that the senses reach.", params: {}, body: true, run: lookAround },
 };

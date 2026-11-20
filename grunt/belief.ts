@@ -3,7 +3,7 @@
 // can ask how old it is.
 
 import { NavMap } from "./nav.ts";
-import type { Assists, Building, EntitiesChannel, Entity, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, TerrainChannel, Vec3 } from "./protocol.ts";
+import type { Assists, Building, ChatLine, EntitiesChannel, Entity, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, Slot, TerrainChannel, Vec3 } from "./protocol.ts";
 
 export interface Remembered extends Entity {
   /** The game clock (ms) when it was last seen, and its position then. */
@@ -34,10 +34,14 @@ export class Belief {
   readonly nav = new NavMap();
   /** The game's build helper, if it has one: its grid, reach, pace and the pieces of each tier. */
   building: Building | null = null;
+  /** What is in each container the character has had open, as it last saw it. */
+  readonly stores = new Map<string, { slots: Slot[]; capacity: number; name?: string; t: number }>();
+  /** Pieces of its bases it was told are damaged, and not yet repaired. */
+  readonly damaged = new Map<string, { base: string; form: string; pos: Vec3; health: number; t: number }>();
   /** The game's assists, if it has them, and their limits. */
   assists: Assists | null = null;
   readonly things = new Map<string, Remembered>();
-  readonly chat: { t: number; from: string; text: string; channel: string; read: boolean }[] = [];
+  readonly chat: { t: number; from: string; from_id?: string; text: string; channel: string; voice?: ChatLine["voice"]; read: boolean }[] = [];
   readonly heard: Heard[] = [];
   readonly events: GameEvent[] = [];
   /** Where hostile things were last seen, kept after they are out of sight: a place to keep away from. */
@@ -50,12 +54,16 @@ export class Belief {
     this.now = Math.max(this.now, o.t);
     const c = o.channels;
     if (c.self) (this.self = c.self), (this.selfAt = o.t);
-    if (c.inventory) (this.inventory = c.inventory), (this.inventoryAt = o.t);
+    if (c.inventory) {
+      (this.inventory = c.inventory), (this.inventoryAt = o.t);
+      const open = c.inventory.open;
+      if (open) this.stores.set(open.id, { slots: open.slots, capacity: open.capacity, ...(open.name ? { name: open.name } : {}), t: o.t });
+    }
     if (c.focus) (this.focus = c.focus), (this.focusAt = o.t);
     if (c.terrain) (this.terrain = c.terrain), this.nav.fromTerrain(c.terrain);
     if (c.map) this.nav.fromMap(c.map);
     if (c.entities) this.see(c.entities, o.t);
-    if (c.chat) for (const l of c.chat.lines) if (!this.chat.some((x) => x.t === l.t && x.text === l.text)) this.chat.push({ t: l.t, from: l.from, text: l.text, channel: l.channel, read: false });
+    if (c.chat) for (const l of c.chat.lines) if (!this.chat.some((x) => x.t === l.t && x.text === l.text)) this.chat.push({ t: l.t, from: l.from, ...(l.from_id ? { from_id: l.from_id } : {}), text: l.text, channel: l.channel, ...(l.voice ? { voice: l.voice } : {}), read: false });
   }
 
   private see(e: EntitiesChannel, t: number): void {
@@ -85,6 +93,8 @@ export class Belief {
       this.heard.push({ t: e.t, kind: String(e.data.kind), ...(e.data.what ? { what: String(e.data.what) } : {}), yaw: this.self.yaw + Number(e.data.bearing), loudness: Number(e.data.loudness) });
       if (this.heard.length > 50) this.heard.shift();
     }
+    if (e.kind === "damaged" && typeof e.data.id === "string") this.damaged.set(e.data.id, { base: String(e.data.base), form: String(e.data.form), pos: e.data.pos as Vec3, health: Number(e.data.health), t: e.t });
+    if (e.kind === "repaired" && typeof e.data.id === "string") this.damaged.delete(e.data.id);
     // A game that says a thing is gone (used up, dead) is believed at once.
     if (e.kind === "notice" && typeof e.data.id === "string" && /used up|dead|destroyed/.test(String(e.data.text))) {
       this.things.delete(e.data.id);

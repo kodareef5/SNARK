@@ -67,6 +67,12 @@ function yields(s: Situation): { tree: Record<string, number>; bush: Record<stri
 
 export const CARDS: Card[] = [
   {
+    // Working with a tribe: the jobs others have taken, so this one takes another.
+    id: "tribe",
+    relevance: (s) => (s.rt.claims().length ? 0.7 : 0),
+    text: (s) => `Taken in the tribe's chat (leave these to them, or join to help): ${s.rt.claims().map((c) => `${c.by}: "${c.job}" (${Math.round((s.rt.belief.now - c.t) / 1000)} s ago)`).join("; ")}.`,
+  },
+  {
     id: "goal",
     relevance: (s) => (s.goals.length ? 1 : 0),
     text: (s) => {

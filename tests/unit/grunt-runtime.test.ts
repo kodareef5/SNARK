@@ -310,3 +310,129 @@ test("travel flies a tek suit over a wall when it has the element for it, and wa
   poor.run(2_000);
   expect(w.progress.way).toBe("walk");
 });
+
+// --- Hauling, company, repair, the saddle, the tribe, speech -----------------------------------------------------
+
+test("empty clears a harvester into the vaults in trips, keeping the character's own gear", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { stone_pick: 1, wood: 30 } }, things: [
+    { type: "ankylo", x: 8, z: -4, items: { stone: 1400, flint: 300, metal: 200 } },
+    { type: "vault", x: -6, z: -6, name: "Stone vault" }, { type: "vault", x: -6, z: 0, name: "Spare vault" },
+  ] });
+  const anky = [...h.world.things.values()].find((t) => t.type === "ankylo")!;
+  const t = h.rt.start("empty", { from: anky.id, to: "Stone vault" });
+  h.run(400_000, () => t.status !== "running");
+  expect(t.status).toBe("done");
+  expect(anky.slots).toEqual([]);
+  const v = (name: string) => [...h.world.things.values()].find((x) => x.name === name)!.slots!.reduce((n, s) => n + s.count, 0);
+  expect(v("Stone vault") + v("Spare vault")).toBe(1900);
+  expect(h.world.count("stone_pick")).toBe(1);
+  expect(h.world.count("wood")).toBe(30);
+  expect(t.result!.summary).toMatch(/^emptied ankylo into Stone vault: 1400 stone, 300 flint, 200 metal in \d+ trips$/);
+  expect(Number(t.result!.data!.trips)).toBeGreaterThan(2);
+});
+
+test("organize sends each item to the box named for it or its kind, else where most of it is", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0 }, things: [
+    { type: "chest", x: -4, z: -4, name: "Food box", items: { stone: 50, berries: 5 } },
+    { type: "vault", x: 0, z: -6, name: "Stone vault", items: { wood: 80, meat: 6 } },
+    { type: "chest", x: 4, z: -4, name: "Odds", items: { wood: 200, berries: 10, stone: 30 } },
+  ] });
+  const t = h.rt.start("organize", {});
+  h.run(400_000, () => t.status !== "running");
+  expect(t.status).toBe("done");
+  const has = (name: string) => [...h.world.things.values()].find((x) => x.name === name)!.slots!.reduce((o: Record<string, number>, s) => ((o[s.item] = (o[s.item] ?? 0) + s.count), o), {});
+  expect(has("Food box")).toEqual({ berries: 15, meat: 6 });
+  expect(has("Stone vault")).toEqual({ stone: 80 });
+  expect(has("Odds")).toEqual({ wood: 280 });
+});
+
+test("loot takes what a kill leaves; migrate moves one base's stores to another", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [
+    { type: "raptor", x: 0, z: -10 },
+    { type: "chest", x: 30, z: 0, name: "Old box", items: { stone: 300, flint: 50 } }, { type: "chest", x: 34, z: 2, name: "Old box 2", items: { wood: 120 } },
+    { type: "vault", x: 0, z: 40, name: "New vault" },
+  ] });
+  const raptor = [...h.world.things.values()].find((t) => t.type === "raptor")!.id;
+  const f = h.rt.start("fight", { target: raptor });
+  h.run(60_000, () => f.status !== "running");
+  const l = h.rt.start("loot", {});
+  h.run(30_000, () => l.status !== "running");
+  expect(l.result!.summary).toMatch(/^looted \d+ meat, \d+ hide from 1 body$/);
+  const m = h.rt.start("migrate", { from: { x: 32, z: 1, radius: 8 }, to: ["New vault"] });
+  h.run(400_000, () => m.status !== "running");
+  expect(m.status).toBe("done");
+  const vault = [...h.world.things.values()].find((x) => x.name === "New vault")!;
+  expect(vault.slots!.reduce((o: Record<string, number>, s) => ((o[s.item] = (o[s.item] ?? 0) + s.count), o), {})).toMatchObject({ stone: 300, flint: 50, wood: 120 });
+});
+
+test("follow keeps with a walking player; escort fights the raptor that comes for her, and sees her there", async () => {
+  const path: [number, number][] = [[0, -40], [0, -90]];
+  const h = await harness({ me: { x: 0, z: 2, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [{ type: "player", name: "Ana", x: 0, z: -3, path, speed: 2.5, at_s: 1 }] });
+  const ana = [...h.world.things.values()].find((t) => t.name === "Ana")!;
+  const t = h.rt.start("escort", { target: "Ana", to: { x: 0, z: -90 }, guard: 20 });
+  h.run(8_000);
+  // A raptor comes out of the brush ahead of her.
+  const raptor = h.world.place("creature", "raptor", 12, ana.z - 10);
+  h.run(120_000, () => t.status === "done" || t.status === "blocked" || t.status === "failed");
+  expect(t.status).toBe("done");
+  expect(h.world.things.has(raptor)).toBe(false);
+  expect(ana.left).toBeGreaterThan(70);
+  expect(t.result!.summary).toBe("Ana is at 0, -90, safe; I killed 1 on the way");
+});
+
+test("repair mends what the game said was damaged, for its materials", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { piece_foundation_wood: 4, piece_wall_wood: 8, piece_door_wood: 1, piece_ceiling_wood: 4 } } });
+  const b = h.rt.start("build", { blueprint: "hut_2x2" });
+  h.run(60_000, () => b.status !== "running");
+  const [x, z] = [h.world.me.x, h.world.me.z - 6];
+  h.world.damage(x, z, 4, 4000);
+  h.run(500);
+  expect(h.rt.belief.damaged.size).toBeGreaterThan(4);
+  const poor = h.rt.start("repair", {});
+  h.run(20_000, () => poor.status !== "running");
+  expect(poor.status).toBe("blocked");
+  expect(h.rt.reports.at(-1)!.text).toContain("ran short");
+  h.world.give("wood", 900), h.world.give("thatch", 300), h.world.give("fiber", 300);
+  const ok = h.rt.start("repair", {});
+  h.run(60_000, () => ok.status !== "running");
+  expect(ok.status).toBe("done");
+  expect(h.rt.belief.damaged.size).toBe(0);
+});
+
+test("from a tame raptor's back the fight is the mount's, and the reflex fights rather than runs", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: Math.PI / 2 }, things: [{ type: "raptor", x: 1.5, z: 0, tame: true }] });
+  const mine = [...h.world.things.values()].find((t) => t.type === "raptor")!;
+  h.world.me.mount = mine.id;
+  h.run(500);
+  const wild = h.world.place("creature", "raptor", 0, -17);
+  h.run(60_000, () => !h.world.things.has(wild));
+  expect(h.world.things.has(wild)).toBe(false);
+  expect(h.rt.trace.of("decision").find((d) => d.point === "threat.respond")).toMatchObject({ choice: "fight", why: "my mount fights" });
+  expect(h.rt.trace.of("decision").find((d) => d.point === "fight.weapon")).toMatchObject({ choice: "mount" });
+  expect(h.world.me.health).toBe(100);
+});
+
+test("the tribe: a job another has claimed is theirs; one this character takes is said, and said done", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0 }, things: [{ type: "player", name: "Bolt", x: 5, z: 5 }] });
+  h.world.say("Bolt", "on it: clear the raptors north", "group");
+  h.run(1000);
+  expect(h.rt.claims()).toEqual([expect.objectContaining({ job: "clear the raptors north", by: "Bolt" })]);
+  const t = h.rt.start("walk_to", { x: 0, z: -10 });
+  expect(h.rt.claim(t, "Clear the raptors north")).toMatchObject({ by: "Bolt" });
+  expect(h.rt.claim(t, "fetch wood")).toBeNull();
+  h.run(20_000, () => t.status !== "running");
+  h.run(1000);
+  const said = h.world.said.filter((l) => l.channel === "group").map((l) => l.text);
+  expect(said).toEqual(["on it: fetch wood", "done: fetch wood"]);
+  h.world.say("Bolt", "done: clear the raptors north", "group");
+  h.run(1000);
+  expect(h.rt.claims()).toEqual([]);
+});
+
+test("speech from an owner nearby reaches the Director as said aloud, with who and where, without the name", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0 }, things: [{ type: "player", name: "Ana", x: 0, z: 8 }] }, ["Ana"]);
+  const ana = [...h.world.things.values()].find((t) => t.name === "Ana")!.id;
+  h.world.speak(ana, "come with me to the river", 0.6);
+  h.run(1000);
+  expect(h.rt.reports.find((r) => r.kind === "addressed")!.text).toBe(`Ana (${ana}, an owner, 8 m south) said aloud (the transcription is unsure): "come with me to the river"`);
+});

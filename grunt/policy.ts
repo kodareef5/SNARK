@@ -66,7 +66,7 @@ export const DEFAULT_RULES: Record<string, Rule> = {
     return best ? { choice: best.id, why: best.hunting ? "the nearest that hunts me" : "the nearest" } : { choice: "stop", why: "none left" };
   },
   // With what: a bow while there are arrows and it is not already at the character's throat; else the best blade.
-  "fight.weapon": (i) => (i.state.bow === true && num(i.state.distance, 99) > 4 ? { choice: "bow", why: "from range" } : { choice: "melee", why: i.state.bow ? "too close for the bow" : "no bow" }),
+  "fight.weapon": (i) => (i.state.mount ? { choice: "mount", why: "from the saddle" } : i.state.bow === true && num(i.state.distance, 99) > 4 ? { choice: "bow", why: "from range" } : { choice: "melee", why: i.state.bow ? "too close for the bow" : "no bow" }),
   // The quickest way; the options come timed.
   "travel.mode": (i) => {
     const o = (i.state.options as { id: string; seconds: number }[] | undefined) ?? [];
@@ -74,6 +74,10 @@ export const DEFAULT_RULES: Record<string, Rule> = {
     return best ? { choice: best.id, scores: Object.fromEntries(o.map((x) => [x.id, x.seconds])), why: `quickest: about ${best.seconds} s` } : { choice: i.candidates[0]! };
   },
   "threat.respond": (i) => {
+    if (i.state.mounted === true && num(i.state.mount_health, 1) < 0.3) return { choice: "flee", why: "my mount is badly hurt" };
+    if (i.state.mounted === true && num(i.state.pack, 1) <= 3) return { choice: "fight", why: "my mount fights" };
+    // Guarding someone: an armed guard stands and fights what it can, rather than leave them to it.
+    if (i.state.guarding === true && i.state.armed && num(i.state.health, 1) >= 0.4 && num(i.state.pack, 1) <= 2) return { choice: "fight", why: "I'm guarding someone" };
     if (!i.state.armed) return { choice: "flee", why: "nothing to fight with" };
     // A bow and breath to keep moving: shoot it, keeping range, rather than run (a pack of more than three: run).
     if (i.state.ranged === true && num(i.state.health, 1) >= 0.5 && num(i.state.stamina, 1) >= 0.4 && num(i.state.pack, 1) <= 3) return { choice: "fight", why: "I can shoot it from range" };

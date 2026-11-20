@@ -12,6 +12,9 @@ export interface CreatureLore {
   /** Several together, with a melee weapon; with a bow. */
   pack_armed: string;
   pack_ranged: string;
+  /** From the back of a mount that fights (a tame raptor), alone and in a pack. */
+  mounted: string;
+  pack_mounted: string;
   /** Whether an armed character at full health beats one. */
   beatable: boolean;
 }
@@ -23,6 +26,8 @@ export const CREATURES: Record<string, CreatureLore> = {
     unarmed: "a losing fight",
     pack_armed: "a losing fight in melee: run, or fight them from range",
     pack_ranged: "fair from range if you keep moving: about 4 arrows each",
+    mounted: "a good fight from the saddle: your mount's bite kills it in about 4, and it takes the bites, not you",
+    pack_mounted: "fair from the saddle while your mount's health holds: break off below a quarter",
     beatable: true,
   },
 };

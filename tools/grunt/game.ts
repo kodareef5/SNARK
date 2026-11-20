@@ -8,16 +8,17 @@ import {
   GRUNT_VERSION, type Ack, type Capabilities, type ChannelName, type ChannelOptions, type ChannelRequest, type Channels,
   type ClientMessage, type GameMessage, type Limits,
 } from "../../grunt/protocol.ts";
-import { ASSIST, TICK_MS, type World, type WorldEvent } from "./world.ts";
+import { ASSIST, TICK_MS, VOICE_RANGE, type World, type WorldEvent } from "./world.ts";
 
 export const LIMITS: Limits = { max_duration_ms: 2000, leash_ms: 1500, max_rate_hz: 20, act_per_s: 20, command_memory_s: 600 };
 export const CAPABILITIES: Capabilities = {
   channels: ["self", "entities", "terrain", "inventory", "chat", "focus"],
   controls: ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "chat", "plan", "assist"],
-  events: ["hurt", "died", "chat", "item", "notice", "blocked", "heard", "crafted", "built", "mounted", "dismounted", "struck"],
+  events: ["hurt", "died", "chat", "item", "notice", "blocked", "heard", "crafted", "built", "mounted", "dismounted", "struck", "damaged", "repaired"],
   verbs: ["harvest", "open", "close"],
   building: BUILDING,
-  assists: { kinds: ["aim", "attack", "harvest"], ...ASSIST },
+  assists: { kinds: ["aim", "attack", "harvest", "follow", "repair"], ...ASSIST },
+  voice: { range: VOICE_RANGE, speaks: true },
 };
 
 export interface Connection {

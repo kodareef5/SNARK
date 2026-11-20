@@ -29,6 +29,20 @@ export type Check =
   /** A layout (a library name, or one written out) stands, whole, in any turn; in a tier if one is named; its ground
    * floor south of a line if `south_of` is given. */
   | { stands: string | Layout; tier?: string; south_of?: number }
+  /** A container (by name) holds at least these. */
+  | { holds: string; items: Record<string, number> }
+  /** Containers (by name) hold nothing. */
+  | { emptied: string[] }
+  /** A thing (by name) is within so many metres of a point. */
+  | { where: string; at: [number, number]; within: number }
+  /** No hostile creature is left alive. */
+  | { none_hostile: true }
+  /** Every structure piece whole (nothing left damaged). */
+  | { whole: true }
+  /** The check does not hold. */
+  | { not: Check }
+  /** A thing (by name) alive: a player's health above nothing. */
+  | { lives: string }
   /** Some base has at least these pieces, and a ceiling over every foundation if `roofed`. */
   | { base_has: Partial<Record<string, number>>; roofed?: boolean }
   | { at: [number, number]; within: number };
@@ -41,7 +55,13 @@ export interface Scenario {
   prompt: string;
   /** At a time: a line said, or a prompt from the user; once so many pieces stand: a rock dropped on a foundation's cell
    * the running build has yet to reach. */
-  script?: ({ at_s: number; say: { from: string; text: string } } | { at_s: number; prompt: string } | { at_s: number; at_built: number; drop: "rock" })[];
+  script?: (
+    | { at_s: number; say: { from: string; text: string; channel?: string } }
+    | { at_s: number; speak: { from: string; text: string } }
+    | { at_s: number; damage: { x: number; z: number; radius: number; amount: number } }
+    | { at_s: number; prompt: string }
+    | { at_s: number; at_built: number; drop: "rock" }
+  )[];
   success: Check;
   budget: { seconds: number };
 }
@@ -54,9 +74,23 @@ export function check(c: Check, w: World): boolean {
   if ("said" in c) return w.said.some((s) => new RegExp(c.said, "i").test(s.text));
   if ("near" in c) return [...w.things.values()].some((t) => (t.name === c.near || t.id === c.near) && Math.hypot(t.x - w.me.x, t.z - w.me.z) <= c.within);
   if ("built" in c) return Object.entries(c.built).every(([piece, n]) => [...w.things.values()].filter((t) => t.type === piece).length >= n);
-  if ("at" in c) return Math.hypot(w.me.x - c.at[0], w.me.z - c.at[1]) <= c.within;
+  if ("at" in c && !("where" in c)) return Math.hypot(w.me.x - c.at[0], w.me.z - c.at[1]) <= c.within;
   if ("hut_south_of" in c) return stands(w, "hut_2x2", undefined, c.hut_south_of);
   if ("stands" in c) return stands(w, c.stands, c.tier, c.south_of);
+  if ("whole" in c) return w.wholeStructures();
+  const named = (n: string) => [...w.things.values()].find((t) => t.name === n);
+  if ("holds" in c) {
+    const slots = named(c.holds)?.slots ?? [];
+    return Object.entries(c.items).every(([i, n]) => slots.filter((x) => x.item === i).reduce((k, x) => k + x.count, 0) >= n);
+  }
+  if ("emptied" in c) return c.emptied.every((n) => (named(n)?.slots ?? [1]).length === 0);
+  if ("where" in c) {
+    const t = named(c.where);
+    return !!t && Math.hypot(t.x - c.at[0], t.z - c.at[1]) <= c.within;
+  }
+  if ("none_hostile" in c) return ![...w.things.values()].some((t) => t.kind === "creature" && !t.tame);
+  if ("not" in c) return !check(c.not, w);
+  if ("lives" in c) return [...w.things.values()].some((t) => t.name === c.lives && t.left > 0);
   if ("base_has" in c) {
     return [...w.structures.bases.values()].some((b) => {
       const pieces = [...w.things.values()].filter((t) => t.piece?.base === b.id).map((t) => t.piece!);
@@ -216,7 +250,10 @@ if (import.meta.main) {
           return;
         }
         done.add(i);
-        if ("say" in ev) world.say(ev.say.from, ev.say.text, "local", [...world.things.values()].find((t) => t.name === ev.say.from)?.id);
+        const who = (n: string) => [...world.things.values()].find((t) => t.name === n)?.id;
+        if ("say" in ev) world.say(ev.say.from, ev.say.text, ev.say.channel ?? "local", who(ev.say.from));
+        else if ("speak" in ev) world.speak(who(ev.speak.from) ?? "", ev.speak.text);
+        else if ("damage" in ev) world.damage(ev.damage.x, ev.damage.z, ev.damage.radius, ev.damage.amount);
         else send({ type: "prompt", message: ev.prompt, streamingBehavior: "followUp" });
         if (show) console.log(`${el.toFixed(1)}s [script] ${JSON.stringify(ev)}`);
       });

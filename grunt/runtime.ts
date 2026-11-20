@@ -4,7 +4,7 @@
 
 import { arms, lore } from "./combat.ts";
 import { CREATURES } from "./know.ts";
-import { Belief, compass, side } from "./belief.ts";
+import { Belief, compass, side, wrap } from "./belief.ts";
 import { Body, type Run, type Wait } from "./body.ts";
 import { MONITORS, type Monitor, type Signal } from "./monitors.ts";
 import { type DecisionPolicy, RulesPolicy } from "./policy.ts";
@@ -30,6 +30,8 @@ export interface Task {
   result?: SkillResult;
   /** Who started it: the Director, or the arbiter answering a signal. */
   by: "director" | "arbiter";
+  /** A job claimed in the tribe's chat for this task ("on it: ..."), released when it ends ("done: ..."). */
+  claim?: string;
   started: number;
   ended?: number;
 }
@@ -52,6 +54,8 @@ export interface RuntimeOptions {
   session: Session;
   clock?: Clock;
   policy?: DecisionPolicy;
+  /** Small glances and shifts while idle, so a character waiting does not stand like a post (off for tests). */
+  lively?: boolean;
   /** The policy the arbiter asks; its questions must be answered at once, so rules by default. */
   arbiterPolicy?: DecisionPolicy;
   trace?: Trace;
@@ -79,6 +83,8 @@ export class Runtime {
   private readonly owners: string[];
   private readonly onReport: (r: Report) => void;
   private active: Running | null = null;
+  private readonly lively: boolean;
+  private glanceAt = 0;
   private side: Running[] = [];
   private suspended: Task[] = [];
   private stopLoop: (() => void) | null = null;
@@ -102,6 +108,7 @@ export class Runtime {
     this.skills = o.skills ?? SKILLS;
     this.monitors = o.monitors ?? MONITORS;
     this.owners = o.owners ?? [];
+    this.lively = !!o.lively;
     this.onReport = o.onReport ?? (() => {});
     this.body = new Body(this.session, this.belief, this.trace);
     this.session.on("observation", (m: Observation) => {
@@ -272,6 +279,8 @@ export class Runtime {
     if (task.skill === "fight" && result.data?.foe) this.fights.push({ foe: String(result.data.foe), won: !!result.data.won, swings: Number(result.data.swings ?? 0), weapon: (result.data.weapon as string | null) ?? null, health_lost: Number(result.data.health_lost ?? 0) });
     // A task the Director replaced or cancelled itself is no news to it: a note, not a report that wakes it.
     const known = status === "cancelled" && (result.summary === "cancelled" || result.summary.startsWith("replaced by"));
+    // A job the tribe was told this one had: told it is done, or stuck and why, so another can take it.
+    if (task.claim) this.start("say", { text: status === "done" ? `done: ${task.claim}` : `stuck: ${task.claim} — ${result.summary.slice(0, 120)}`, channel: "group" }, "director");
     // A reflex over with nothing put aside to come back: what next is the Director's, and it is told so.
     const resumes = task.by === "arbiter" && !this.swapping && !this.active && this.suspended.length > 0;
     const idle = task.by === "arbiter" && !this.swapping && !this.active && !this.suspended.length ? " Nothing was put aside: what next is yours." : "";
@@ -353,6 +362,15 @@ export class Runtime {
         this.retake(f.id);
       }
     }
+    if (this.lively && !this.active && !this.suspended.length) this.idle();
+    // Damage to a base, gathered for a moment (a storm hits many pieces at once), then told once.
+    const hurt = [...this.belief.damaged.values()].filter((d) => this.belief.now - d.t < 30_000 && this.belief.now - d.t > 800);
+    for (const base of new Set(hurt.map((d) => d.base))) {
+      const mine = [...this.belief.damaged.values()].filter((d) => d.base === base);
+      const worst = Math.min(...mine.map((d) => d.health));
+      const forms = [...new Set(mine.map((d) => d.form))].join(", ");
+      this.once(`damaged:${base}`, 60_000, { kind: "need", text: `my base ${base} is damaged: ${mine.length} pieces (${forms}), the worst at ${Math.round(worst * 100)}%. To mend it: game_do repair {"base": "${base}"}`, data: { base, pieces: mine.length, worst } });
+    }
     const signals = this.monitors.flatMap((m) => m(this.belief, { name: this.name, owners: this.owners }));
     this.arbitrate(signals);
     if (this.restingSince !== null && !this.active && this.suspended.length) {
@@ -413,9 +431,19 @@ export class Runtime {
     }
     for (const s of signals) {
       if (s.kind === "addressed") {
-        const who = this.belief.find((t) => t.kind === "player" && t.name === s.detail.from)[0];
-        const where = who ? `${who.id}, ${s.detail.owner ? "an owner, " : ""}${Math.round(this.belief.distance(who.pos))} m ${compass(this.belief.yawTo(who.pos))}` : s.detail.owner ? "an owner, not in sight" : "not in sight";
-        this.report({ kind: "addressed", text: `${s.detail.from} (${where}): "${s.detail.text}"`, data: { ...s.detail, ...(who ? { id: who.id } : {}) } });
+        const id = typeof s.detail.from_id === "string" ? s.detail.from_id : undefined;
+        const who = (id ? this.belief.things.get(id) : undefined) ?? this.belief.find((t) => t.kind === "player" && t.name === s.detail.from)[0];
+        const v = s.detail.voice as { distance: number; bearing: number; confidence: number } | undefined;
+        // Spoken: where the voice came from even when the speaker is out of sight, and a doubtful transcription said so.
+        const where = who
+          ? `${who.id}, ${s.detail.owner ? "an owner, " : ""}${Math.round(this.belief.distance(who.pos))} m ${compass(this.belief.yawTo(who.pos))}`
+          : v ? `${id ?? "?"}, ${s.detail.owner ? "an owner, " : ""}heard ${Math.round(v.distance)} m ${compass(wrap((this.belief.self?.yaw ?? 0) + v.bearing))}, not in sight`
+          : s.detail.owner ? "an owner, not in sight" : "not in sight";
+        const how = v ? ` said aloud${v.confidence < 0.7 ? " (the transcription is unsure)" : ""}` : s.detail.channel === "group" ? " in the tribe's chat" : s.detail.channel === "global" ? " in global chat" : "";
+        // The tribe's chat: answer there, and take a job by claiming it (what others have taken, said).
+        const taken = this.claims();
+        const tribe = s.detail.channel === "group" ? ` (answer in the tribe's chat, channel "group"; take a job by starting it with game_do's claim${taken.length ? `; taken already: ${taken.map((c) => `${c.by} has "${c.job}"`).join(", ")}` : ""})` : "";
+        this.report({ kind: "addressed", text: `${s.detail.from} (${where})${how}: "${s.detail.text}"${tribe}`, data: { ...s.detail, ...(who ? { id: who.id } : id ? { id } : {}) } });
       }
       else if (s.kind === "critical") this.once(`critical`, 30000, { kind: "critical", text: `badly hurt (${Math.round(Number(s.detail.health) * 100)}% health)`, data: s.detail });
       else if (s.kind === "need") this.once(`need:${s.detail.need}`, 600000, { kind: "need", text: `I need to ${s.detail.need}`, data: s.detail });
@@ -427,7 +455,7 @@ export class Runtime {
     const b = this.belief;
     const it = danger.about ? b.things.get(danger.about) : undefined;
     const a = arms(b);
-    const armed = !!a.melee || a.bow;
+    const armed = !!a.melee || a.bow || !!a.mount;
     // How many hostile creatures are close and hunting: a pack is another matter.
     const pack = b.find((t) => t.kind === "creature" && t.disposition === "hostile" && !!t.tags?.includes("hunting") && b.distance(t.pos) < 30).length;
     // How often this very creature has had the character running, and whether such a fight is known to be won.
@@ -437,7 +465,7 @@ export class Runtime {
     const candidates = it ? ["flee", "fight", "ignore"] : ["flee", "ignore"];
     const state = {
       health: Math.round(b.vital("health") * 100) / 100, stamina: Math.round(b.vital("stamina") * 100) / 100, armed,
-      distance: it ? Math.round(b.distance(it.pos) * 10) / 10 : (danger.detail.distance ?? null), its_health: it?.health ?? null, what: it?.type ?? danger.detail.heard ?? null, doing: doing ?? null, chased, beatable, ranged: a.bow, pack,
+      distance: it ? Math.round(b.distance(it.pos) * 10) / 10 : (danger.detail.distance ?? null), its_health: it?.health ?? null, what: it?.type ?? danger.detail.heard ?? null, doing: doing ?? null, chased, beatable, ranged: a.bow, pack, mounted: !!a.mount, mount_health: a.mount ? (b.things.get(a.mount)?.health ?? 1) : null, guarding: (this.current ?? this.suspended.at(-1))?.skill === "escort",
     };
     const r = this.arbiterPolicy.decide({ point: "threat.respond", candidates, state });
     const c = r instanceof Promise ? { choice: "flee", why: "an arbiter policy must answer at once" } : r;
@@ -476,6 +504,46 @@ export class Runtime {
   }
 
   /** The character as the Director should know it: one compact view. */
+  /** Idle, now and then: a glance at something about (a person most), a look off to one side, a step. */
+  private idle(): void {
+    const b = this.belief;
+    if (b.now < this.glanceAt || !b.self) return;
+    this.glanceAt = b.now + 2500 + Math.random() * 6000;
+    const about = b.find((t) => b.distance(t.pos) < 25);
+    const people = about.filter((t) => t.kind === "player");
+    const roll = Math.random();
+    const at = roll < 0.4 && people.length ? people[0]! : roll < 0.75 && about.length ? about[Math.floor(Math.random() * about.length)]! : null;
+    const yaw = at ? b.yawTo(at.pos) : b.self.yaw + (Math.random() - 0.5) * 1.6;
+    const step = roll > 0.92;
+    this.body.act([{ control: "look", yaw: wrap(yaw), pitch: (Math.random() - 0.5) * 0.15 }, ...(step ? [{ control: "move" as const, forward: 0, strafe: Math.random() < 0.5 ? -1 : 1, duration_ms: 350 }] : [])], "idle");
+  }
+
+  // --- The tribe: "first who can, does" -----------------------------------------------------------------------
+
+  /** Jobs taken in the tribe's chat by others, still open: "on it: X" and no "done: X" or "stuck: X" from the same one
+   * since, within the last fifteen minutes. */
+  claims(): { job: string; by: string; t: number }[] {
+    const open = new Map<string, { job: string; by: string; t: number }>();
+    for (const l of this.belief.chat) {
+      if (l.channel !== "group" || l.from === this.name || this.belief.now - l.t > 900_000) continue;
+      const m = /^(on it|done|stuck):\s*(.+?)(?:\s+[—-]\s+.*)?$/i.exec(l.text.trim());
+      if (!m) continue;
+      const job = m[2]!.toLowerCase();
+      if (m[1]!.toLowerCase() === "on it") open.set(job, { job: m[2]!, by: l.from, t: l.t });
+      else if (open.get(job)?.by === l.from) open.delete(job);
+    }
+    return [...open.values()];
+  }
+
+  /** Whether another has the job; if not, it is this one's, said in the tribe's chat. */
+  claim(task: Task, job: string): { by: string; ago: number } | null {
+    const taken = this.claims().find((c) => c.job.toLowerCase() === job.toLowerCase());
+    if (taken) return { by: taken.by, ago: Math.round((this.belief.now - taken.t) / 1000) };
+    task.claim = job;
+    this.start("say", { text: `on it: ${job}`, channel: "group" }, "director");
+    return null;
+  }
+
   /** How a fight with a creature of this kind would go, as the character knows: its own fights first, else lore. */
   odds(type: string): string {
     const had = this.fights.filter((f) => f.foe === type);
@@ -485,8 +553,12 @@ export class Runtime {
       return `you won ${won.length} of ${had.length} such fights, losing about ${lost} health each`;
     }
     const many = this.belief.find((t) => t.type === type && t.disposition === "hostile" && this.belief.distance(t.pos) < 40).length;
-    const said = lore(type, arms(this.belief), many);
-    return said ? `${said} (what players know; you have not fought one)` : "unknown: you have never fought one";
+    const a = arms(this.belief);
+    const said = lore(type, a, many);
+    // A fighting tame at hand and not ridden: what the odds are from its saddle (fight gets on it by itself).
+    const tame = a.mount ? undefined : this.belief.find((t) => !!t.tags?.includes("fighter") && t.disposition === "own" && this.belief.distance(t.pos) < 40)[0];
+    const saddle = tame ? `; from the saddle of ${tame.name ?? tame.type} (${tame.id}, here; game_do fight rides it): ${lore(type, { ...a, mount: tame.id }, many)}` : "";
+    return said ? `${said}${saddle} (what players know; you have not fought one)` : "unknown: you have never fought one";
   }
 
   summary(): Record<string, unknown> {

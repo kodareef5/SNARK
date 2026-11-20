@@ -11,7 +11,7 @@ import type {
   Action, Craftable, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, Plan,
   RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../../grunt/protocol.ts";
-import { BUILD_RATE, MAX_PLAN as BUILDING_MAX, type PieceAt, PIECE_RECIPES, Structures } from "./structures.ts";
+import { BUILD_RATE, BUILD_REACH, MAX_PLAN as BUILDING_MAX, type PieceAt, PIECE_RECIPES, Structures } from "./structures.ts";
 import { CHAR, CLIFF, DEEP, LEGEND, SHALLOW, type Feature, type Terrain } from "./terrain.ts";
 
 export const TICK_MS = 50;
@@ -33,9 +33,20 @@ export interface Ride {
   /** A flyer's stamina a second in the air, if it tires. */
   tires?: number;
   radius: number;
+  /** A mount that fights: its blow's damage, pace and reach (the rider attacks with it). */
+  attack?: { damage: number; every_ms: number; reach: number };
 }
+/** A piece's health when whole, as SNARK's (content/building.ts). */
+const PIECE_HP: Record<string, number> = { foundation: 15000, wall: 10000, doorframe: 10000, windowframe: 10000, ceiling: 10000, stairs: 10000, pillar: 6250, door: 6250 };
+/** How fast the repair assist mends, pieces a second; a repair costs half the piece's recipe in the share it lacks. */
+const REPAIR_RATE = 2;
+
+/** A tame creature's health when whole. */
+const RIDE_HP: Record<string, number> = { parasaur: 300, pteranodon: 200, raptor: 200, ankylo: 400 };
 export const RIDES: Record<string, Ride> = {
   parasaur: { speed: 10, turn: 3, on: "land", radius: 1.2 },
+  raptor: { speed: 11, turn: 4, on: "land", radius: 0.6, attack: { damage: 15, every_ms: 700, reach: 2.2 } },
+  ankylo: { speed: 5, turn: 1.5, on: "land", radius: 1.2, attack: { damage: 12, every_ms: 1200, reach: 2.6 } },
   pteranodon: { speed: 18, turn: 2, on: "air", tires: 1.2, radius: 1.2 },
   car: { speed: 9, road: 16, turn: 1.4, on: "wheels", radius: 1.4 },
   heli: { speed: 25, turn: 1.8, on: "air", radius: 3 },
@@ -50,6 +61,8 @@ const SUIT_BURN_S = 2;
 export const BOW = { damage: 18, draw_ms: 800, range: 45, speed: 45, ammo: "arrow" };
 /** The assists, as the game advertises them: a player's reaction and a good player's aim, not an aimbot's. */
 export const ASSIST = { reaction_ms: 150, spread_deg: 1.5 };
+/** How far a speaking voice carries. */
+export const VOICE_RANGE = 40;
 
 // --- Items and recipes --------------------------------------------------------------------------------------------
 
@@ -75,6 +88,43 @@ export const RECIPES: Record<string, { needs: Record<string, number>; seconds: n
   arrow: { needs: { wood: 1, flint: 1, fiber: 2 }, seconds: 0.5 },
 };
 const STACK = (item: string) => (item in TOOLS || item === "bow" || item === "tek_suit" ? 1 : 100);
+/** What sort each item is, as the inventory screen sorts it. */
+export function kindOf(item: string): string {
+  if (item.startsWith("piece_")) return "structure";
+  if (item in TOOLS) return "tool";
+  return ({ bow: "weapon", arrow: "ammo", tek_suit: "armor", element: "fuel", berries: "food", meat: "food" } as Record<string, string>)[item] ?? "resource";
+}
+/** How many stacks a container holds. */
+const CAPACITY: Record<string, number> = { self: 60, chest: 30, vault: 120, corpse: 20, creature: 40 };
+/** Puts items into slots, filling stacks first, up to a number of stacks: how many went in. */
+function addTo(slots: Slot[], item: string, n: number, capacity: number): number {
+  let left = n;
+  for (const s of slots) {
+    if (left <= 0) break;
+    if (s.item === item && s.count < STACK(item)) {
+      const add = Math.min(left, STACK(item) - s.count);
+      (s.count += add), (left -= add);
+    }
+  }
+  while (left > 0 && slots.length < capacity) {
+    const add = Math.min(left, STACK(item));
+    slots.push({ slot: slots.length, item, count: add });
+    left -= add;
+  }
+  return n - left;
+}
+function takeFrom(slots: Slot[], item: string, n: number): number {
+  let left = n;
+  for (let i = slots.length - 1; i >= 0 && left > 0; i--) {
+    const s = slots[i]!;
+    if (s.item !== item) continue;
+    const k = Math.min(left, s.count);
+    (s.count -= k), (left -= k);
+    if (s.count === 0) slots.splice(i, 1);
+  }
+  slots.forEach((s, i) => (s.slot = i));
+  return n - left;
+}
 
 // --- The things in the world --------------------------------------------------------------------------------------
 
@@ -106,6 +156,12 @@ interface Thing {
   vz?: number;
   /** Hurt by the character: hunts it, wherever, until then. */
   angry?: number;
+  /** A walking player's way, pace (m/s) and when it sets off. */
+  path?: [number, number][];
+  pace?: number;
+  departs?: number;
+  /** A loot bag's end. */
+  expires?: number;
   // A container's slots; a structure's place.
   slots?: Slot[];
   piece?: PieceAt;
@@ -215,12 +271,19 @@ export class World {
     const id = `${prefix}${this.next++}`;
     const base: Record<string, Pick<Thing, "r" | "blocks" | "left">> = {
       tree: { r: 0.5, blocks: true, left: 150 }, rock: { r: 0.8, blocks: true, left: 80 }, bush: { r: 0.5, blocks: false, left: 12 },
-      chest: { r: 0.5, blocks: true, left: 0 }, raptor: { r: 0.6, blocks: false, left: RAPTOR.hp }, player: { r: 0.4, blocks: false, left: 100 },
+      chest: { r: 0.5, blocks: true, left: 0 }, vault: { r: 0.7, blocks: true, left: 0 }, corpse: { r: 0.5, blocks: false, left: 0 }, ankylo: { r: 1.2, blocks: false, left: 400 }, raptor: { r: 0.6, blocks: false, left: RAPTOR.hp }, player: { r: 0.4, blocks: false, left: 100 },
       parasaur: { r: 1.2, blocks: false, left: 300 }, pteranodon: { r: 1.2, blocks: false, left: 200 },
       car: { r: 1.4, blocks: false, left: 500 }, heli: { r: 3, blocks: false, left: 800 }, boat: { r: 2, blocks: false, left: 400 },
     };
     const b = base[type] ?? { r: 0.5, blocks: true, left: 1 };
-    this.things.set(id, { id, kind, type, x, z, ...b, ...extra });
+    // A tame creature is as hale as a mount of its kind; a container's things are restacked as the game stacks them.
+    const hp = extra.tame && RIDE_HP[type] ? { left: RIDE_HP[type]! } : {};
+    const slots = extra.slots ? (() => {
+      const out: Slot[] = [];
+      for (const s of extra.slots) addTo(out, s.item, s.count, 1000);
+      return { slots: out };
+    })() : {};
+    this.things.set(id, { id, kind, type, x, z, ...b, ...extra, ...hp, ...slots });
     return id;
   }
 
@@ -235,6 +298,18 @@ export class World {
     const line = { channel, from, ...(from_id ? { from_id } : {}), text, t: this.t };
     this.heardChat.push(line);
     this.event("chat", line);
+  }
+
+  /** A player speaking aloud: heard (transcribed) only within a voice's range, quieter farther off. */
+  speak(id: string, text: string, confidence = 0.95): boolean {
+    const p = this.things.get(id);
+    if (!p || p.kind !== "player") return false;
+    const d = this.dist(p);
+    if (d > VOICE_RANGE) return false;
+    const line = { channel: "voice", from: p.name ?? id, from_id: id, text, t: this.t, voice: { distance: Math.round(d * 10) / 10, bearing: Math.round(this.bearing(p.x, p.z) * 100) / 100, loudness: Math.round((1 - d / VOICE_RANGE) * 100) / 100, confidence } };
+    this.heardChat.push(line);
+    this.event("chat", line);
+    return true;
   }
 
   // --- Inventory --------------------------------------------------------------------------------------------------
@@ -345,10 +420,11 @@ export class World {
 
   private affords(t: Thing): string[] {
     if (t.id === this.me.mount) return this.me.y < 0.5 ? ["dismount"] : [];
-    if (RIDES[t.type] && t.tame && !this.me.mount && this.dist(t) - t.r <= REACH) return ["mount"];
     if (this.dist(t) - t.r > REACH) return [];
+    if (t.tame && t.slots) return [...(this.me.open === t.id ? ["close"] : ["open"]), ...(RIDES[t.type] && !this.me.mount ? ["mount"] : [])];
+    if (RIDES[t.type] && t.tame && !this.me.mount) return ["mount"];
     if (t.type === "bush") return ["harvest"];
-    if (t.type === "chest") return [this.me.open === t.id ? "close" : "open"];
+    if (t.kind === "container" || (t.tame && t.slots)) return [...(this.me.open === t.id ? ["close"] : ["open"]), ...(RIDES[t.type] && t.tame && !this.me.mount ? ["mount"] : [])];
     if (t.piece?.form === "door") return [t.piece.open ? "close" : "open"];
     return [];
   }
@@ -373,7 +449,15 @@ export class World {
       id: t.id, kind: t.kind, type: t.type, ...(t.name ? { name: t.name } : {}),
       pos: [t.x, t.piece?.y ?? 0, t.z], distance: Math.round(this.dist(t) * 100) / 100, bearing: this.bearing(t.x, t.z),
       ...(t.kind === "creature" && !t.tame ? { health: t.left / RAPTOR.hp, disposition: "hostile" as const, tags: t.hunting ? ["hunting"] : ["wild"] } : {}),
-      ...(t.tame || t.kind === "vehicle" ? { disposition: "own" as const, tags: [RIDES[t.type]!.on === "air" ? "flyer" : RIDES[t.type]!.on === "water" ? "boat" : t.kind === "vehicle" ? "car" : "mount", "rideable", ...(t.id === this.me.mount ? ["ridden"] : []), ...(t.stamina !== undefined ? [`stamina ${Math.round(t.stamina)}`] : [])] } : {}),
+      ...(t.tame || t.kind === "vehicle" ? {
+        disposition: "own" as const,
+        ...(t.kind === "creature" ? { health: Math.max(0, t.left) / (RIDE_HP[t.type] ?? 300) } : {}),
+        tags: [
+          ...(RIDES[t.type] ? [RIDES[t.type]!.on === "air" ? "flyer" : RIDES[t.type]!.on === "water" ? "boat" : t.kind === "vehicle" ? "car" : "mount", "rideable"] : []),
+          ...(RIDES[t.type]?.attack ? ["fighter"] : []), ...(t.slots ? ["inventory"] : []),
+          ...(t.id === this.me.mount ? ["ridden"] : []), ...(t.stamina !== undefined ? [`stamina ${Math.round(t.stamina)}`] : []),
+        ],
+      } : {}),
       ...(t.kind === "player" ? { disposition: t.hostile ? ("hostile" as const) : ("neutral" as const) } : {}),
       ...(t.kind === "structure" ? { disposition: "own" as const, tags: t.piece?.open ? ["open"] : [] } : {}),
       affords: this.affords(t),
@@ -423,10 +507,11 @@ export class World {
       can: Math.min(...Object.entries(r.needs).map(([i, n]) => Math.floor(this.count(i) / n))),
     }));
     const box = m.open ? this.things.get(m.open) : undefined;
+    const kinded = (s: Slot) => ({ ...s, kind: kindOf(s.item) });
     return {
-      slots: m.slots.map((s) => ({ ...s })), capacity: 60, weight: [Math.round(this.weight() * 10) / 10, CARRY],
+      slots: m.slots.map(kinded), capacity: CAPACITY.self!, weight: [Math.round(this.weight() * 10) / 10, CARRY],
       hotbar: Array.from({ length: 10 }, (_, i) => (i < m.slots.length ? i : null)),
-      open: box ? { id: box.id, slots: (box.slots ?? []).map((s) => ({ ...s })) } : null,
+      open: box ? { id: box.id, slots: (box.slots ?? []).map(kinded), capacity: this.capacityOf(box), ...(box.name ? { name: box.name } : {}) } : null,
       craftable,
       crafting: m.crafting.map((c) => ({ item: c.item, left: c.left, ready_in_s: Math.max(0, (c.ready - this.t) / 1000) })),
     };
@@ -455,6 +540,50 @@ export class World {
     return null;
   }
 
+  private capacityOf(t: Thing): number {
+    return CAPACITY[t.type] ?? (t.kind === "creature" ? CAPACITY.creature! : 30);
+  }
+
+  /** How many of an item the character can take on before it is over its carrying limit. */
+  private roomFor(item: string): number {
+    return Math.max(0, Math.floor((CARRY - this.weight()) / weightOf(item)));
+  }
+
+  /** "Transfer all", with a filter: every matching stack from one side to the other, as far as there is room. */
+  private transfer(a: Extract<Action, { control: "items"; op: "transfer" }>, instant: (detail: Record<string, unknown>) => null): RejectCode | null {
+    const box = this.me.open ? this.things.get(this.me.open) : undefined;
+    if (!box || a.from === a.to) return box ? "bad_arguments" : "not_permitted";
+    if (this.dist(box) - box.r > REACH + 1) return "out_of_reach";
+    box.slots ??= [];
+    const from = a.from === "self" ? this.me.slots : box.slots;
+    const match = (item: string) => (!a.items || a.items.includes(item)) && (!a.kinds || a.kinds.includes(kindOf(item)));
+    const moved: Record<string, number> = {};
+    let reason: string | null = null;
+    for (const item of [...new Set(from.map((x) => x.item))].filter(match)) {
+      const have = from.filter((x) => x.item === item).reduce((n, x) => n + x.count, 0);
+      let n = Math.max(0, have - (a.keep?.[item] ?? 0));
+      if (a.to === "self") {
+        const room = this.roomFor(item);
+        if (room < n) (n = room), (reason = "weight");
+        const slotsFree = CAPACITY.self! - this.me.slots.length;
+        const fits = this.me.slots.filter((x) => x.item === item).reduce((k, x) => k + STACK(item) - x.count, 0) + slotsFree * STACK(item);
+        if (fits < n) (n = fits), (reason = "full");
+        if (n <= 0) continue;
+        takeFrom(box.slots, item, n);
+        this.give(item, n);
+      } else {
+        if (n <= 0) continue;
+        const put = addTo(box.slots, item, n, this.capacityOf(box));
+        if (put < n) reason = "full";
+        if (put <= 0) continue;
+        this.take(item, put, true);
+        n = put;
+      }
+      moved[item] = n;
+    }
+    return instant({ moved, reason });
+  }
+
   /** What the build checks need of the world. */
   site() {
     return {
@@ -471,7 +600,7 @@ export class World {
     const slab = p.form === "wall" || p.form === "windowframe" || p.form === "door";
     const id = this.place("structure", `${p.form}_${tier}`, at.x, at.z, {
       r: p.form === "foundation" || p.form === "ceiling" || p.form === "stairs" ? 1.5 : p.form === "pillar" ? 0.25 : 0.3,
-      blocks: slab || p.form === "pillar", left: 10000,
+      blocks: slab || p.form === "pillar", left: PIECE_HP[p.form]!,
       piece: { form: p.form, tier, base: base.id, cell: p.cell, level: p.level, ...(p.side ? { side: p.side } : {}), ...(p.up ? { up: p.up } : {}), yaw: at.yaw, y: at.y },
     });
     this.event("built", { id, form: p.form, item: p.item, base: base.id });
@@ -502,6 +631,7 @@ export class World {
         return instant({ item: this.me.slots[a.slot]!.item });
       }
       case "items": {
+        if (a.op === "transfer") return this.transfer(a, instant);
         const s = this.me.slots[a.slot];
         if (!s) return "missing_items";
         if (a.op === "consume") {
@@ -522,6 +652,15 @@ export class World {
         // move between the character and the open box
         const box = this.me.open ? this.things.get(this.me.open) : undefined;
         if (!box) return "not_permitted";
+        if (a.from === "open" && a.to === "self") {
+          const b = box.slots![a.slot];
+          if (!b) return "missing_items";
+          const n = Math.min(a.count ?? b.count, b.count, this.roomFor(b.item));
+          const item = b.item;
+          takeFrom(box.slots!, item, n);
+          this.give(item, n);
+          return instant({ moved: n });
+        }
         if (a.to === "open") {
           const n = Math.min(a.count ?? s.count, s.count);
           const item = s.item;
@@ -545,9 +684,15 @@ export class World {
         this.me.crouch = a.on;
         return instant({ on: a.on });
       case "assist": {
+        if (a.kind === "repair") {
+          if (!this.structures.bases.has(a.target)) return "unknown_target";
+          if (this.running.has("hands")) this.end("hands", "interrupted", { by: "replaced" });
+          this.running.set("hands", { command, index, action: a, started: this.t, until: Infinity, next: this.t, done: { repaired: 0, spent: {} } });
+          return null;
+        }
         const t = this.things.get(a.target);
         if (!t) return "unknown_target";
-        if (!["aim", "attack", "harvest"].includes(a.kind)) return "bad_arguments";
+        if (!["aim", "attack", "harvest", "follow"].includes(a.kind)) return "bad_arguments";
         if (a.kind === "harvest" && t.kind !== "resource") return "not_permitted";
         if (a.kind === "attack" && t.kind !== "creature" && t.kind !== "player") return "not_permitted";
         if (!this.perceives(t)) return "out_of_reach";
@@ -599,7 +744,7 @@ export class World {
             return instant();
           }
           if (a.verb === "open" || a.verb === "close") {
-            if (t.type === "chest") this.me.open = a.verb === "open" ? t.id : null;
+            if (t.kind === "container" || t.slots) this.me.open = a.verb === "open" ? t.id : null;
             else if (t.piece) (t.piece.open = a.verb === "open"), (t.blocks = a.verb !== "open");
             return instant();
           }
@@ -660,6 +805,12 @@ export class World {
       m.water = Math.max(0, m.water - 0.02 * dt);
     }
     for (const t of this.things.values()) if (t.kind === "creature" && !t.tame) this.creature(t, dt);
+    for (const t of this.things.values()) if (t.path && t.left > 0) this.walker(t, dt);
+    for (const t of [...this.things.values()]) if (t.expires && this.t >= t.expires) this.things.delete(t.id);
+    if (m.open) {
+      const box = this.things.get(m.open);
+      if (!box || this.dist(box) - box.r > REACH + 1.5) m.open = null;
+    }
     this.fly(dt);
     // Where each creature and player has been this last second and a half: what a reaction lagging behind sees.
     for (const t of this.things.values()) {
@@ -963,6 +1114,19 @@ export class World {
   /** One tick of running or walking along the facing, as the move control would: what stopped it, or null. */
   private stride(sprint: boolean, dt: number): string | null {
     const m = this.me;
+    const mount = m.mount ? this.things.get(m.mount) : undefined;
+    if (mount) {
+      // Ridden: the mount's pace and its ground.
+      const ride = RIDES[mount.type]!;
+      const k = this.terrain?.at(m.x, m.z) ?? 0;
+      const speed = k === SHALLOW ? ride.speed * 0.7 : k === DEEP ? ride.speed * 0.35 : ride.speed;
+      const [fx, fz] = this.forward();
+      const nx = m.x + fx * speed * dt, nz = m.z + fz * speed * dt;
+      const hit = this.rideCollide(nx, nz, ride);
+      if (hit) return (m.vx = m.vz = 0), hit;
+      [m.x, m.z, m.vx, m.vz, mount.x, mount.z] = [nx, nz, fx * speed, fz * speed, nx, nz];
+      return null;
+    }
     const ground = this.terrain?.at(m.x, m.z);
     const sprinting = sprint && m.stamina > 1 && ground !== DEEP;
     const wading = ground === SHALLOW ? 0.6 : ground === DEEP ? 0.4 : 1;
@@ -974,6 +1138,31 @@ export class World {
     if (hit) return (m.vx = m.vz = 0), hit;
     [m.x, m.z, m.vx, m.vz] = [nx, nz, fx * speed, fz * speed];
     return null;
+  }
+
+  /** A mount bitten: hurt, and its rider thrown when it falls. */
+  private strikeMount(mount: Thing, damage: number, by: string): void {
+    mount.left -= damage;
+    this.event("hurt", { amount: damage, health: this.me.health, by, kind: "melee", mount: mount.id, mount_health: Math.max(0, mount.left) / (RIDE_HP[mount.type] ?? 300) });
+    if (mount.left <= 0) {
+      this.me.mount = null;
+      this.me.y = 0;
+      this.things.delete(mount.id);
+      this.event("dismounted", { mount: mount.id, reason: "it died" });
+      this.event("notice", { text: `your ${mount.type} is dead`, level: "warning", id: mount.id });
+    }
+  }
+
+  /** A player walking its way: point to point at its pace, from when it sets off; it waits for no one. */
+  private walker(t: Thing, dt: number): void {
+    if (this.t < (t.departs ?? 0) || !t.path?.length) return void (t.vx = t.vz = 0);
+    const [tx, tz] = t.path[0]!;
+    const d = Math.hypot(tx - t.x, tz - t.z), step = (t.pace ?? 3) * dt;
+    if (d <= step) {
+      [t.x, t.z] = [tx, tz];
+      t.path.shift();
+    } else (t.x += ((tx - t.x) / d) * step), (t.z += ((tz - t.z) / d) * step);
+    [t.vx, t.vz] = [d > step ? ((tx - t.x) / d) * (t.pace ?? 3) : 0, d > step ? ((tz - t.z) / d) * (t.pace ?? 3) : 0];
   }
 
   /** A blow or an arrow landing on a creature: it is hurt, angry, and dead at nothing left. */
@@ -988,6 +1177,11 @@ export class World {
       this.things.delete(t.id);
       this.trail.delete(t.id);
       this.event("notice", { text: `the ${t.type} is dead`, level: "info", id: t.id });
+      // What it leaves: a body to loot, for ten minutes.
+      const slots: Slot[] = [];
+      addTo(slots, "meat", 4 + Math.floor(this.random() * 4), CAPACITY.corpse!);
+      addTo(slots, "hide", 3 + Math.floor(this.random() * 3), CAPACITY.corpse!);
+      this.place("container", "corpse", t.x, t.z, { name: `${t.type} body`, slots, expires: this.t + 600_000 });
     }
   }
 
@@ -1036,8 +1230,11 @@ export class World {
       m.vx = m.vz = 0;
       this.end("hands", status, status === "failed" ? { code: result === "ammo" ? "missing_items" : "blocked" } : {});
     };
+    if (a.kind === "repair") return this.repair(r, a.target, finish);
     const t = this.things.get(a.target);
     if (!t) return finish("completed", d.killed ? "killed" : "gone");
+    const mount = m.mount ? this.things.get(m.mount) : undefined;
+    if (u.mount_health_below !== undefined && mount && mount.left / (RIDE_HP[mount.type] ?? 300) < u.mount_health_below) return finish("completed", "mount_health");
     if (u.health_below !== undefined && m.health / 100 < u.health_below) return finish("completed", "health");
     if (u.stamina_below !== undefined && m.stamina / 100 < u.stamina_below) return finish("completed", "stamina");
     if (a.kind === "harvest" && this.weight() > CARRY) return finish("completed", "weight");
@@ -1061,6 +1258,7 @@ export class World {
       d.stuck_ms = hit ? Number(d.stuck_ms ?? 0) + TICK_MS : 0;
       if (Number(d.stuck_ms) > 1500) finish("failed", "obstructed", { by: hit });
     };
+    if (a.kind === "follow") return this.follow(r, a, t, seen, dist);
     if (a.kind === "aim") {
       const bow = this.heldItem() === "bow";
       this.faceToward(bow ? this.lead(seen) : toward, dt);
@@ -1097,8 +1295,21 @@ export class World {
       }
       return void rest();
     }
-    // Hands: close in, face it, strike at the tool's own pace.
+    // Hands (or a fighting mount's jaws): close in, face it, strike at the weapon's own pace.
     const bush = t.type === "bush";
+    const jaws = m.mount && a.kind === "attack" ? RIDES[this.things.get(m.mount)?.type ?? ""]?.attack : undefined;
+    if (m.mount && a.kind === "attack" && !jaws) return finish("failed", "unarmed_mount");
+    if (jaws) {
+      if (dist > jaws.reach + t.r - 0.3) {
+        run(toward, true);
+        return void rest();
+      }
+      const off = this.faceToward(toward, dt);
+      if (off > 0.35 || this.t < Number(d.ready ?? 0)) return void rest();
+      d.ready = this.t + jaws.every_ms;
+      d.swings = Number(d.swings) + 1;
+      return this.strike(t, jaws.damage, this.things.get(m.mount!)!.type, d);
+    }
     if (dist > REACH + t.r - 0.4) {
       if (a.kind === "harvest" && dist > 20) return finish("failed", "out_of_reach");
       run(toward, a.kind === "attack" && m.stamina > 15);
@@ -1141,6 +1352,109 @@ export class World {
     if (t.left <= 0) {
       this.things.delete(t.id);
       this.event("notice", { text: `the ${t.type} is used up`, level: "info", id: t.id });
+    }
+  }
+
+  /** Following: keeping to a spot near the target (behind it and to a side, the spot changing now and then), walking
+   * or running as the gap asks; waiting, it glances at what is about, the target most, and shifts its feet, as a
+   * person waiting does. Ends when the target is lost from sight, or at `until.seconds`. */
+  private follow(r: Running, a: Extract<Action, { control: "assist" }>, t: Thing, seen: { x: number; z: number; vx: number; vz: number }, dist: number): void {
+    const m = this.me, d = r.done, dt = TICK_MS / 1000;
+    const [near, far] = a.range ?? [2.5, 6];
+    const natural = a.natural !== false;
+    // The spot: behind the way it is going (or on this side of it, standing), off to one side, re-chosen now and then.
+    if (d.spot_at === undefined || this.t >= Number(d.spot_at)) {
+      d.spot_at = this.t + (natural ? 6000 + this.random() * 6000 : 1e9);
+      d.side = natural ? (this.random() < 0.5 ? -1 : 1) * (0.3 + this.random() * 0.6) : 0;
+      d.gap = near + (far - near) * (natural ? 0.3 + this.random() * 0.5 : 0.5);
+    }
+    const moving = Math.hypot(seen.vx, seen.vz) > 0.3;
+    const back = moving ? Math.atan2(-seen.vx, seen.vz) : yawTo(seen.x, seen.z, m.x, m.z);
+    const a2 = back + Number(d.side);
+    const spot = [seen.x + Math.sin(a2) * Number(d.gap), seen.z - Math.cos(a2) * Number(d.gap)] as const;
+    const gap = Math.hypot(spot[0] - m.x, spot[1] - m.z);
+    if (dist > far || gap > 2.5) {
+      // Going: a little wander in the line while walking, a run when far behind or the target is quick.
+      const wobble = natural ? Math.sin(this.t / 700 + Number(d.side) * 5) * 0.08 : 0;
+      const sprint = dist > far + 8 || Math.hypot(seen.vx, seen.vz) > WALK + 0.2;
+      if (this.faceToward(yawTo(m.x, m.z, spot[0], spot[1]) + wobble, dt) < 0.6) {
+        const hit = this.stride(sprint, dt);
+        d.stuck_ms = hit ? Number(d.stuck_ms ?? 0) + TICK_MS : 0;
+        if (Number(d.stuck_ms) > 2500) {
+          Object.assign(d, { result: "obstructed", by: hit });
+          return this.end("hands", "failed", { code: "blocked" });
+        }
+      }
+      d.idle_at = this.t + 800;
+      return;
+    }
+    m.vx = m.vz = 0;
+    m.stamina = Math.min(100, m.stamina + 6 * dt);
+    if (!natural) return void this.faceToward(yawTo(m.x, m.z, seen.x, seen.z), dt);
+    // Waiting: now and then a glance (the target most often, else something about), now and then a step.
+    if (this.t >= Number(d.idle_at ?? 0)) {
+      d.idle_at = this.t + 1500 + this.random() * 4000;
+      const roll = this.random();
+      const about = [...this.things.values()].filter((o) => o.id !== t.id && !o.piece && this.dist(o) < 25 && this.perceives(o));
+      if (roll < 0.5 || !about.length) d.look = yawTo(m.x, m.z, seen.x, seen.z);
+      else if (roll < 0.85) {
+        const o = about[Math.floor(this.random() * about.length)]!;
+        d.look = yawTo(m.x, m.z, o.x, o.z);
+      } else d.shuffle = this.t + 400 + this.random() * 400;
+      d.glances = Number(d.glances ?? 0) + 1;
+    }
+    if (Number(d.shuffle ?? 0) > this.t) this.stride(false, dt);
+    else if (d.look !== undefined) this.faceToward(Number(d.look), dt * 0.6);
+  }
+
+  /** Repairing a base: its damaged pieces within reach, one after another at the assist's pace, each for half its
+   * recipe in the share of health it lacks. Done when none within reach is damaged; stopped, saying what it needs, when
+   * the bag runs short. */
+  private repair(r: Running, base: string, finish: (status: "completed" | "failed", result: string, extra?: Record<string, unknown>) => void): void {
+    const d = r.done, m = this.me;
+    if (this.t < Number(d.ready ?? 0)) return;
+    const hurt = [...this.things.values()].filter((t) => t.piece?.base === base && t.left < PIECE_HP[t.piece.form]!);
+    const near = hurt.filter((t) => Math.hypot(t.x - m.x, t.z - m.z, t.piece!.y - m.y) <= BUILD_REACH);
+    if (!near.length) return finish("completed", hurt.length ? "out_of_reach" : "whole", { left: hurt.length });
+    const t = near.sort((a, b) => this.dist(a) - this.dist(b))[0]!;
+    const p = t.piece!;
+    const share = 1 - t.left / PIECE_HP[p.form]!;
+    const recipe = PIECE_RECIPES[`piece_${p.form === "doorframe" || p.form === "windowframe" ? "wall" : p.form}_${p.tier}`]!;
+    const cost = Object.fromEntries(Object.entries(recipe.needs).map(([i, n]) => [i, Math.max(1, Math.ceil(n * share * 0.5))]));
+    const short = Object.entries(cost).filter(([i, n]) => this.count(i) < n);
+    if (short.length) return finish("failed", "materials", { need: cost, piece: t.id });
+    const spent = d.spent as Record<string, number>;
+    for (const [i, n] of Object.entries(cost)) this.take(i, n, true), (spent[i] = (spent[i] ?? 0) + n);
+    t.left = PIECE_HP[p.form]!;
+    d.repaired = Number(d.repaired) + 1;
+    d.ready = this.t + 1000 / REPAIR_RATE;
+    this.event("repaired", { id: t.id, base, form: p.form });
+  }
+
+  /** Whether every structure piece is whole. */
+  wholeStructures(): boolean {
+    return [...this.things.values()].every((t) => !t.piece || t.left >= PIECE_HP[t.piece.form]!);
+  }
+
+  /** Raises a plan whole at once, as it would stand had it been built (a scene's base already standing). */
+  raise(plan: Plan): string | null {
+    const { verdicts, base } = this.structures.check(this.site(), plan, false);
+    if (!base) return null;
+    const on = base.id ? base : { ...this.structures.newBase(base), off: [0, 0] as [number, number] };
+    plan.pieces.forEach((p, k) => {
+      const v = verdicts[k]!;
+      if (v.status === "ok" || (v.status === "blocked" && v.by === this.me.id)) this.put(on, { ...p, cell: [p.cell[0] + on.off[0], p.cell[1] + on.off[1]] });
+    });
+    return on.id;
+  }
+
+  /** Damage to structures about a point (a storm, a raid): each piece within the radius loses health. */
+  damage(x: number, z: number, radius: number, amount: number): void {
+    for (const t of [...this.things.values()]) {
+      if (!t.piece || Math.hypot(t.x - x, t.z - z) > radius) continue;
+      t.left -= amount;
+      this.event("damaged", { id: t.id, base: t.piece.base, form: t.piece.form, pos: [t.x, t.piece.y, t.z], health: Math.max(0, t.left) / PIECE_HP[t.piece.form]! });
+      if (t.left <= 0) this.things.delete(t.id);
     }
   }
 
@@ -1195,14 +1509,35 @@ export class World {
   private creature(t: Thing, dt: number): void {
     const m = this.me, d = Math.hypot(t.x - m.x, t.z - m.z);
     const angry = (t.angry ?? 0) > this.t && d < 90;
-    if (m.alive && (d < RAPTOR.sees || angry)) t.hunting = true;
-    if (!m.alive || (d > RAPTOR.gives_up && !angry)) t.hunting = false;
+    // Its prey: the character, or a player nearer it (the character's anger keeps it on the character).
+    let prey: Thing | null = null, pd = angry ? Infinity : d;
+    if (!angry) for (const o of this.things.values()) {
+      if (o.kind !== "player" || o.left <= 0 || o.hostile) continue;
+      const od = Math.hypot(o.x - t.x, o.z - t.z);
+      if (od < pd && od < RAPTOR.sees) (prey = o), (pd = od);
+    }
+    if (prey) t.hunting = true;
+    else {
+      if (m.alive && (d < RAPTOR.sees || angry)) t.hunting = true;
+      if (!m.alive || (d > RAPTOR.gives_up && !angry)) t.hunting = false;
+    }
     let tx: number, tz: number, speed: number;
-    if (t.hunting) {
+    if (t.hunting && prey) {
+      [tx, tz, speed] = [prey.x, prey.z, RAPTOR.speed];
+      if (pd <= RAPTOR.reach && this.t >= (t.biteAt ?? 0)) {
+        t.biteAt = this.t + RAPTOR.every_ms;
+        prey.left -= RAPTOR.bite;
+        this.event("notice", { text: `${prey.name ?? prey.id} is bitten by a ${t.type}`, level: "warning", id: prey.id });
+        if (prey.left <= 0) this.event("notice", { text: `${prey.name ?? prey.id} is dead`, level: "warning", id: prey.id });
+      }
+    } else if (t.hunting) {
       [tx, tz, speed] = [m.x, m.z, RAPTOR.speed];
       if (d <= RAPTOR.reach && m.y < 3 && this.t >= (t.biteAt ?? 0)) {
         t.biteAt = this.t + RAPTOR.every_ms;
-        this.hurt(RAPTOR.bite, t.id);
+        // A mount takes the bites meant for its rider.
+        const mount = m.mount ? this.things.get(m.mount) : undefined;
+        if (mount && mount.kind === "creature") this.strikeMount(mount, RAPTOR.bite, t.id);
+        else this.hurt(RAPTOR.bite, t.id);
       }
     } else {
       const home = (t.home ??= [t.x, t.z]);

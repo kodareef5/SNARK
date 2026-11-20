@@ -50,6 +50,9 @@ export interface Capabilities {
   building?: Building;
   /** The assists (the assist control), where the game has them. */
   assists?: Assists;
+  /** Players' speech, transcribed and heard by the character within `range` metres; `speaks`: the character's own
+   * chat on the voice channel is spoken aloud (text to speech). */
+  voice?: { range: number; speaks: boolean };
 }
 
 /** The assists' limits: the hands done for the client no better than a good player's. */
@@ -61,7 +64,7 @@ export interface Assists {
   spread_deg: number;
 }
 
-export type AssistKind = "aim" | "attack" | "harvest";
+export type AssistKind = "aim" | "attack" | "harvest" | "follow" | "repair";
 
 /** How a game's structures go together, for the plan control: a grid of foundation cells, storeys, the pieces each
  * tier has (form → the item that places it), and how fast and how far off the helper places them. */
@@ -237,6 +240,8 @@ export interface Slot {
   slot: number;
   item: string;
   count: number;
+  /** What sort of thing it is, as the game sorts it: resource, food, tool, weapon, ammo, armor, structure, fuel. */
+  kind?: string;
   uses?: Gauge | null;
 }
 
@@ -256,17 +261,21 @@ export interface InventoryChannel {
   capacity: number;
   weight: Gauge;
   hotbar: (number | null)[];
-  open: { id: EntityId; slots: Slot[] } | null;
+  open: { id: EntityId; slots: Slot[]; capacity: number; name?: string } | null;
   craftable: Craftable[];
   crafting: { item: string; left: number; ready_in_s: number }[];
 }
 
 export interface ChatLine {
-  channel: "local" | "global" | "group" | (string & {});
+  /** "voice": a player's microphone speech, transcribed; heard only within a voice's range, as a player hears it. */
+  channel: "local" | "global" | "group" | "voice" | (string & {});
   from: string;
+  /** Who said it: for voice, always (the game knows whose microphone it was). */
   from_id?: EntityId;
   text: string;
   t: number;
+  /** Speech: where it came from, how loud it was here, and how sure the transcription is (0 to 1). */
+  voice?: { distance: number; bearing: number; loudness: number; confidence: number };
 }
 
 export interface ChatChannel {
@@ -333,7 +342,10 @@ export type Action =
   | { control: "interact"; target: EntityId; verb: string; hold_ms?: number }
   | { control: "use"; hand: "primary" | "secondary"; hold_ms?: number }
   | { control: "select"; slot: number }
-  | { control: "items"; op: "move" | "drop" | "equip" | "consume"; slot: number; to?: "self" | "open" | "ground"; count?: number }
+  | { control: "items"; op: "move" | "drop" | "equip" | "consume"; slot: number; from?: "self" | "open"; to?: "self" | "open" | "ground"; count?: number }
+  /** The inventory screen's "transfer all": every stack that matches, between the character and the open container,
+   * at once, as far as the destination has room (and the character can carry). `keep` leaves so many of an item. */
+  | { control: "items"; op: "transfer"; from: "self" | "open"; to: "self" | "open"; items?: string[]; kinds?: string[]; keep?: Record<string, number> }
   | { control: "craft"; item: string; count: number }
   | { control: "rotate"; steps: number }
   /** The build helper. check: at once, a verdict for every piece and the bill of what is still to place. build: places
@@ -344,8 +356,8 @@ export type Action =
    * it (leading it, with a bow in hand). attack: close in and strike at the weapon's pace; with a bow, keep `range`
    * [near, far] metres, lead and loose. harvest: swing at a tool's pace until it is gone. The client's own move or look
    * takes over from it. */
-  | { control: "assist"; kind: AssistKind; target: EntityId; range?: [number, number]; until?: { health_below?: number; stamina_below?: number; count?: number; seconds?: number } }
-  | { control: "chat"; channel: "local" | "global" | "group"; text: string };
+  | { control: "assist"; kind: AssistKind; target: EntityId; range?: [number, number]; natural?: boolean; until?: { health_below?: number; mount_health_below?: number; stamina_below?: number; count?: number; seconds?: number } }
+  | { control: "chat"; channel: "local" | "global" | "group" | "voice"; text: string };
 
 export interface Act extends Envelope<"act"> {
   /** Unique within the session: what makes the act happen once. */

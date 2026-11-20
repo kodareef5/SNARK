@@ -1,0 +1,77 @@
+{
+  "name": "organize-vaults",
+  "about": "Storage in a mess: stone in the food box, food in the stone vault, wood everywhere. Sort it by the names on the boxes.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {}
+    },
+    "things": [
+      {
+        "type": "chest",
+        "name": "Food box",
+        "x": -4,
+        "z": -4,
+        "items": {
+          "stone": 50,
+          "berries": 5
+        }
+      },
+      {
+        "type": "vault",
+        "name": "Stone vault",
+        "x": 0,
+        "z": -6,
+        "items": {
+          "wood": 80,
+          "meat": 6
+        }
+      },
+      {
+        "type": "vault",
+        "name": "Wood vault",
+        "x": 4,
+        "z": -4,
+        "items": {
+          "wood": 200,
+          "berries": 10,
+          "stone": 30
+        }
+      }
+    ]
+  },
+  "prompt": "You are Scout. Our storage is a mess. Sort it out so everything is in the box or vault it belongs in, and tell me in local chat when it's tidy.",
+  "success": {
+    "all": [
+      {
+        "holds": "Food box",
+        "items": {
+          "berries": 15,
+          "meat": 6
+        }
+      },
+      {
+        "holds": "Stone vault",
+        "items": {
+          "stone": 80
+        }
+      },
+      {
+        "holds": "Wood vault",
+        "items": {
+          "wood": 280
+        }
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 300
+  }
+}

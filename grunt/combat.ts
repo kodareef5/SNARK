@@ -6,11 +6,13 @@
 import type { Run } from "./body.ts";
 import { CREATURES, MELEE } from "./know.ts";
 import type { Outcome } from "./protocol.ts";
-import { hold, holdBest, type SkillContext, type SkillResult } from "./skills.ts";
+import { rideKind } from "./nav.ts";
+import { board, hold, holdBest, type SkillContext, type SkillResult } from "./skills.ts";
 
-/** What the character can fight with now: a bow with arrows, a melee weapon, both or neither. */
-export function arms(b: SkillContext["belief"]): { bow: boolean; melee: string | null } {
-  return { bow: b.count("bow") > 0 && b.count("arrow") > 0, melee: MELEE.find((w) => b.count(w) > 0) ?? null };
+/** What the character can fight with now: a mount that fights (ridden), a bow with arrows, a melee weapon. */
+export function arms(b: SkillContext["belief"]): { bow: boolean; melee: string | null; mount: string | null } {
+  const ridden = b.self?.mount ? b.things.get(b.self.mount) : undefined;
+  return { bow: b.count("bow") > 0 && b.count("arrow") > 0, melee: MELEE.find((w) => b.count(w) > 0) ?? null, mount: ridden?.tags?.includes("fighter") ? ridden.id : null };
 }
 
 export function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
@@ -43,13 +45,23 @@ export function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
     }
     p.target = target;
     p.started = true;
-    // With what: a bow from range while it has arrows, else the best melee weapon.
+    // A fighting tame at hand and the character on foot: into the saddle first (fighting is what it is for).
+    if (!b.self?.mount && args.on_foot !== true) {
+      const tame = b.find((t) => !!t.tags?.includes("fighter") && t.disposition === "own" && b.distance(t.pos) < 40 && (t.health ?? 1) > 0.4)[0];
+      if (tame && (yield* board(ctx, tame, rideKind(tame.type, tame.tags)))) ctx.note(`on the ${tame.name ?? tame.type} to fight`);
+    }
+    // With what: the mount if it fights, a bow from range while it has arrows, else the best melee weapon.
     const a = arms(b);
     const it = b.things.get(target);
-    const weapon = yield* ctx.decide("fight.weapon", ["bow", "melee"], { bow: a.bow, melee: a.melee, distance: it ? b.distance(it.pos) : null, type: it?.type ?? null });
-    const ok = weapon === "bow" && a.bow ? (yield* hold(ctx, "bow")) && "bow" : yield* holdBest(ctx, [...MELEE]);
+    const weapon = yield* ctx.decide("fight.weapon", ["mount", "bow", "melee"], { mount: a.mount, bow: a.bow, melee: a.melee, distance: it ? b.distance(it.pos) : null, type: it?.type ?? null });
+    if (weapon !== "mount" && b.self?.mount) {
+      // A mount that does not fight: off it to fight on foot.
+      yield* ctx.body.settle(ctx.body.act([{ control: "interact", target: b.self.mount, verb: "dismount" }], "dismount to fight"), 1500);
+      yield { until: () => !b.self?.mount, ms: 1000 };
+    }
+    const ok = weapon === "mount" && a.mount ? b.things.get(a.mount)?.type ?? "mount" : weapon === "bow" && a.bow ? (yield* hold(ctx, "bow")) && "bow" : yield* holdBest(ctx, [...MELEE]);
     p.weapon = ok || "hands";
-    const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "assist", kind: "attack", target, ...(p.weapon === "bow" ? { range: [8, 35] as [number, number] } : {}), until: { health_below: retreat } }], `attack ${target}`), 180_000);
+    const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "assist", kind: "attack", target, ...(p.weapon === "bow" ? { range: [8, 35] as [number, number] } : {}), until: { health_below: retreat, ...(weapon === "mount" ? { mount_health_below: 0.25 } : {}) } }], `attack ${target}`), 180_000);
     const d = (o?.detail ?? {}) as { result?: string; swings?: number; shots?: number; hits?: number; by?: string | null };
     tally.swings += Number(d.swings ?? 0);
     tally.shots += Number(d.shots ?? 0);
@@ -64,6 +76,8 @@ export function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
         continue;
       case "health":
         return result("blocked", `I'm hurt (${Math.round(b.vital("health") * 100)}% health) and broke off`, false);
+      case "mount_health":
+        return result("blocked", "my mount is badly hurt; I broke off", false);
       case "lost":
         if (all) {
           target = null;
@@ -121,9 +135,10 @@ function* byHand(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRes
 }
 
 /** How a fight with a creature of this kind looks, with what the character has: for game_look and the reflexes. */
-export function lore(type: string, a: { bow: boolean; melee: string | null }, many: number): string | null {
+export function lore(type: string, a: { bow: boolean; melee: string | null; mount?: string | null }, many: number): string | null {
   const l = CREATURES[type];
   if (!l) return null;
+  if (a.mount) return many < 2 ? l.mounted : `${many} together: ${l.pack_mounted}`;
   const one = a.bow ? l.ranged : a.melee ? l.armed : l.unarmed;
   if (many < 2) return one;
   return a.bow ? `${many} together: ${l.pack_ranged}` : a.melee ? `${many} together: ${l.pack_armed}` : `${many} together: a losing fight`;
