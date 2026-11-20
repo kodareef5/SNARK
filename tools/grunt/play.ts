@@ -91,7 +91,11 @@ if (import.meta.main) {
       close: (ws) => ws.data.conn?.close(),
     },
   });
+  // The world holds still until the Director has the instruction, so nothing happens to the character before it knows
+  // what it is there for.
+  let running = false;
   const loop = setInterval(() => {
+    if (!running) return;
     world.step();
     game.afterStep();
   }, TICK_MS);
@@ -113,6 +117,11 @@ if (import.meta.main) {
       return;
     }
     const s = Math.round(world.t / 100) / 10;
+    if (e.type === "response" && e.id === "p") {
+      if (e.success === false) modelError = `the instruction was refused: ${JSON.stringify(e.error ?? e).slice(0, 200)}`;
+      else running = true;
+      if (show) console.log(`${s}s [instruction] ${e.success === false ? "refused" : "accepted"}`);
+    }
     if (e.type === "agent_start") busy = true;
     if (e.type === "agent_settled") busy = false;
     if (e.type === "extension_ui_request" && e.method === "notify") {
@@ -146,8 +155,9 @@ if (import.meta.main) {
 
   const url = `ws://127.0.0.1:${server.port}/grunt`;
   send({ id: "c", type: "prompt", message: `/grunt connect ${url} ${sc.world.me?.name ?? "Scout"} ${(sc.owners ?? []).join(" ")}`.trim() });
-  setTimeout(() => send({ id: "p", type: "prompt", message: sc.prompt }), 1500);
+  setTimeout(() => send({ id: "p", type: "prompt", message: sc.prompt, streamingBehavior: "followUp" }), 1500);
   const started = world.t;
+  const wallStart = Date.now();
   const done = new Set<number>();
   const result = await new Promise<"success" | "timeout" | "died" | "model_error">((resolve) => {
     const watch = setInterval(() => {
@@ -160,6 +170,7 @@ if (import.meta.main) {
         if (show) console.log(`${el.toFixed(1)}s [script] ${JSON.stringify(ev)}`);
       });
       const allDone = done.size === (sc.script ?? []).length;
+      if (!running && Date.now() - wallStart > 30000) modelError ||= "the instruction was never answered";
       if (modelError) (clearInterval(watch), resolve("model_error"));
       else if (allDone && check(sc.success, world) && !busy) (clearInterval(watch), resolve("success"));
       else if (!world.me.alive) (clearInterval(watch), resolve("died"));

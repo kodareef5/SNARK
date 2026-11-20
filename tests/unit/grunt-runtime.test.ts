@@ -95,7 +95,7 @@ test("a line with the character's name, or from its owner, reaches the Director;
   h.world.say("Bob", "Scout, come here");
   h.world.say("Ana", "follow me");
   h.run(500);
-  expect(h.rt.reports.filter((r) => r.kind === "addressed").map((r) => r.text)).toEqual(["Bob: Scout, come here", "Ana: follow me"]);
+  expect(h.rt.reports.filter((r) => r.kind === "addressed").map((r) => r.text)).toEqual(['Bob (not in sight): "Scout, come here"', 'Ana (an owner, not in sight): "follow me"']);
 });
 
 test("craft makes what the inventory screen offers, and says what is missing otherwise", async () => {
@@ -145,7 +145,7 @@ test("build crafts the pieces it lacks from materials first, and says what is sh
   const t2 = poor.rt.start("build", { blueprint: "hut_2x2" });
   poor.run(10_000, () => t2.status !== "running");
   expect(t2.status).toBe("blocked");
-  expect(t2.result!.summary).toMatch(/I need \d+ more wood_foundation and can make 1: short of \d+ more wood/);
+  expect(t2.result!.summary).toBe("the hut_2x2 takes 297 wood, 73 thatch, 40 fiber in all; I'm short of 267 more wood, 63 more thatch, 30 more fiber");
 });
 
 test("a blocked task taken up again keeps its place and progress: the harvest goes back to its own grove", async () => {
@@ -162,4 +162,12 @@ test("a blocked task taken up again keeps its place and progress: the harvest go
   expect(again.status).toBe("done");
   expect([...h.world.things.values()].some((t) => t.type === "tree")).toBe(false);
   expect(h.world.count("wood")).toBe(60);
+});
+
+test("a speaker in sight is told with its id, distance and direction, so the Director can go to it", async () => {
+  const h = await harness({ things: [{ type: "player", x: 8, z: 6, name: "Ana" }] }, ["Ana"]);
+  h.run(500);
+  h.world.say("Ana", "Scout, come here please");
+  h.run(500);
+  expect(h.rt.reports.find((r) => r.kind === "addressed")!.text).toMatch(/^Ana \(e:\d+, an owner, 10 m south-east\): "Scout, come here please"$/);
 });

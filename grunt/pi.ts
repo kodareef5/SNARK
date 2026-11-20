@@ -49,4 +49,5 @@ export interface PiExtensionAPI {
   getActiveTools(): string[];
   setActiveTools(names: string[]): void;
   on(event: "session_shutdown", handler: () => void | Promise<void>): unknown;
+  on(event: "before_agent_start", handler: (event: { systemPromptOptions: { customPrompt?: string; sections?: Record<string, string> } }) => void | Promise<void>): unknown;
 }

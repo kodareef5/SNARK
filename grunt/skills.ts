@@ -178,14 +178,17 @@ function* flee(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResul
 
 /** Fights a creature with the best weapon to hand: closes in, faces it, swings until it is dead or gone. */
 function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
-  const b = ctx.belief, target = String(args.target ?? "");
+  const b = ctx.belief, p = ctx.progress, target = String(args.target ?? "");
   const weapon = yield* holdBest(ctx, ["stone_pick", "stone_hatchet"]);
   const start = b.now;
-  let swings = 0;
+  p.health0 ??= b.vital("health");
+  p.foe ??= b.things.get(target)?.type ?? "creature";
+  let swings = Number(p.swings ?? 0);
+  const lost = () => Math.round((Number(p.health0) - b.vital("health")) * 100);
   while (b.now - start < 30000) {
     const t = b.things.get(target);
-    if (!t) return { status: "done", summary: `the fight is over after ${swings} swings${weapon ? ` with the ${weapon}` : ""}`, data: { swings } };
-    if (b.vital("health") < 0.15) return { status: "blocked", summary: "I'm nearly dead", data: { swings } };
+    if (!t) return { status: "done", summary: `the fight is over after ${swings} swings${weapon ? ` with the ${weapon}` : ""}; I lost ${lost()} health`, data: { swings, won: true, foe: p.foe, weapon, health_lost: lost() } };
+    if (b.vital("health") < 0.15) return { status: "blocked", summary: "I'm nearly dead", data: { swings, won: false, foe: p.foe, weapon, health_lost: lost() } };
     if (b.distance(t.pos) > 1.8) {
       ctx.body.act([{ control: "look", yaw: b.yawTo(t.pos), pitch: 0 }, { control: "move", forward: 1, strafe: 0, sprint: true, duration_ms: 300 }], "close in");
       yield { ms: 100 };
@@ -193,9 +196,10 @@ function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResu
     }
     ctx.body.act([{ control: "look", yaw: b.yawTo(t.pos), pitch: 0 }, { control: "use", hand: "primary", hold_ms: 600 }], `strike ${target}`);
     swings++;
+    p.swings = swings;
     yield { ms: 600 };
   }
-  return { status: "blocked", summary: "it won't die", data: { swings } };
+  return { status: "blocked", summary: "it won't die", data: { swings, won: false, foe: p.foe, weapon, health_lost: lost() } };
 }
 
 // --- Building ---------------------------------------------------------------------------------------------------
@@ -272,6 +276,19 @@ function* build(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResu
   // What is needed that is not in hand: craft it from materials, or say what is short.
   const needs: Record<string, number> = {};
   for (const s of left()) needs[s.piece] = (needs[s.piece] ?? 0) + 1;
+  // The whole bill first: what every missing piece takes, against what is in the bag, so the shortage is told once.
+  const bill: Record<string, number> = {};
+  for (const [piece, n] of Object.entries(needs)) {
+    const missing = Math.max(0, n - b.count(piece));
+    const r = b.inventory?.craftable.find((x) => x.item === piece);
+    if (!missing || !r) continue;
+    for (const [item, k] of Object.entries(r.needs)) bill[item] = (bill[item] ?? 0) + k * missing;
+  }
+  const short = Object.entries(bill).filter(([item, k]) => b.count(item) < k).map(([item, k]) => `${k - b.count(item)} more ${item}`);
+  if (short.length) {
+    const all = Object.entries(bill).map(([item, k]) => `${k} ${item}`).join(", ");
+    return { status: "blocked", summary: `the ${name} takes ${all} in all; I'm short of ${short.join(", ")}`, data: { bill, short, reason: "materials" } };
+  }
   for (const [piece, n] of Object.entries(needs)) {
     const missing = n - b.count(piece);
     if (missing <= 0) continue;

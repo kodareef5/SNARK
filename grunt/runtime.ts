@@ -2,7 +2,7 @@
 // monitors and the arbiter, and runs them on its own tick (10 a second). The Director (Pi's conversation) starts
 // tasks and hears reports; it never sends controls.
 
-import { Belief } from "./belief.ts";
+import { Belief, compass, side } from "./belief.ts";
 import { Body, type Run, type Wait } from "./body.ts";
 import { MONITORS, type Monitor, type Signal } from "./monitors.ts";
 import { type DecisionPolicy, RulesPolicy } from "./policy.ts";
@@ -66,6 +66,8 @@ export class Runtime {
   readonly tasks: Task[] = [];
   readonly reports: Report[] = [];
   name = "";
+  /** What the character remembers of its fights: a player's own experience of what it can beat. */
+  readonly fights: { foe: string; won: boolean; swings: number; weapon: string | null; health_lost: number }[] = [];
   private readonly session: Session;
   private readonly clock: Clock;
   private readonly policy: DecisionPolicy;
@@ -140,6 +142,9 @@ export class Runtime {
   start(skill: string, args: Record<string, unknown> = {}, by: Task["by"] = "director"): Task {
     const s = this.skills[skill];
     if (!s) throw new Error(`no skill ${skill}: ${Object.keys(this.skills).join(", ")}`);
+    // The Director asking for what a reflex already does joins it: replacing it would drop what the reflex put aside.
+    const a = this.active?.task;
+    if (by === "director" && a?.by === "arbiter" && a.skill === skill && (skill === "flee" || a.args.target === args.target)) return a;
     const unknown = Object.keys(args).filter((k) => !(k in s.params));
     if (unknown.length) throw new Error(`${skill} takes ${Object.keys(s.params).join(", ") || "no arguments"}, not ${unknown.join(", ")}: ${JSON.stringify(s.params)}`);
     const task: Task = { id: `t${++this.n}`, skill, args, status: "running", progress: {}, by, started: this.belief.now };
@@ -245,11 +250,27 @@ export class Runtime {
     task.result = result;
     task.ended = this.belief.now;
     this.trace.record("task", { task: task.id, skill: task.skill, status, result });
+    if (task.skill === "fight" && result.data?.foe) this.fights.push({ foe: String(result.data.foe), won: !!result.data.won, swings: Number(result.data.swings ?? 0), weapon: (result.data.weapon as string | null) ?? null, health_lost: Number(result.data.health_lost ?? 0) });
     // A task the Director replaced or cancelled itself is no news to it: a note, not a report that wakes it.
     const known = status === "cancelled" && (result.summary === "cancelled" || result.summary.startsWith("replaced by"));
-    if (status !== "cancelled" || task.by === "director") this.report({ kind: known ? "note" : "task", text: `${task.skill} ${status}: ${result.summary}`, data: { task: task.id, skill: task.skill, status, by: task.by, ...result.data } });
+    if (status !== "cancelled" || task.by === "director") this.report({ kind: known ? "note" : "task", text: `${task.skill} ${task.id} ${status}: ${result.summary}${this.options(task, result)}`, data: { task: task.id, skill: task.skill, status, by: task.by, ...result.data } });
     // The arbiter's own task over, what it put aside comes back once the character has caught its breath (tick).
     if (task.by === "arbiter" && !this.swapping && !this.active && this.suspended.length) this.restingSince = this.belief.now;
+  }
+
+  /** What the Director can do about a blocked task, spelled out, so the choice is between real moves. */
+  private options(task: Task, result: SkillResult): string {
+    if (task.status !== "blocked") return "";
+    const d = result.data?.danger as { id?: string; type?: string } | undefined;
+    if (result.data?.reason === "danger" && d?.id) {
+      const it = this.belief.things.get(d.id);
+      const won = this.fights.filter((f) => f.foe === d.type && f.won);
+      const health = it?.health !== undefined ? `, ${Math.round(it.health * 100)}% health` : "";
+      return `. Options: fight it to clear the way (game_do fight {"target": "${d.id}"}${health}${won.length ? `; you have beaten ${won.length} ${d.type} before, losing ${won.at(-1)!.health_lost} health` : ""}), harvest somewhere else, or wait and game_do {"resume": "${task.id}"}.`;
+    }
+    if (result.data?.reason === "weight") return ". Options: craft something from the materials, or put things in a box.";
+    if (result.data?.reason === "materials") return `. Gather what is short (harvest takes kind and count: a tree gives about 30 wood and 10 thatch, a bush about 12 fiber), then game_do {"resume": "${task.id}"}.`;
+    return "";
   }
 
   private suspend(): void {
@@ -350,7 +371,11 @@ export class Runtime {
       if (go) this.respond(danger, doing);
     }
     for (const s of signals) {
-      if (s.kind === "addressed") this.report({ kind: "addressed", text: `${s.detail.from}: ${s.detail.text}`, data: s.detail });
+      if (s.kind === "addressed") {
+        const who = this.belief.find((t) => t.kind === "player" && t.name === s.detail.from)[0];
+        const where = who ? `${who.id}, ${s.detail.owner ? "an owner, " : ""}${Math.round(this.belief.distance(who.pos))} m ${compass(this.belief.yawTo(who.pos))}` : s.detail.owner ? "an owner, not in sight" : "not in sight";
+        this.report({ kind: "addressed", text: `${s.detail.from} (${where}): "${s.detail.text}"`, data: { ...s.detail, ...(who ? { id: who.id } : {}) } });
+      }
       else if (s.kind === "critical") this.once(`critical`, 30000, { kind: "critical", text: `badly hurt (${Math.round(Number(s.detail.health) * 100)}% health)`, data: s.detail });
       else if (s.kind === "need") this.once(`need:${s.detail.need}`, 600000, { kind: "need", text: `I need to ${s.detail.need}`, data: s.detail });
     }
@@ -374,15 +399,20 @@ export class Runtime {
     this.trace.record("decision", { point: "threat.respond", candidates, state, choice, why: c.why, policy: this.arbiterPolicy.name, ms: 0 });
     if (choice === "ignore") return;
     const what = String(state.what ?? "something");
+    const where = it ? `, ${compass(b.yawTo(it.pos))}` : danger.yaw !== undefined ? `, heard to the ${compass(danger.yaw)}` : "";
+    const aside = () => {
+      const t = this.suspended.at(-1) ?? null;
+      return t ? `; ${t.skill} ${t.id} is put aside and comes back by itself once it is safe` : "";
+    };
     if (choice === "fight") {
-      this.report({ kind: "danger", text: `${what} ${state.distance ?? "?"} m off and I can't outrun it: fighting`, data: { ...danger.detail, ...state } });
       if (doing !== "flee") this.suspend();
-      this.start("fight", { target: danger.about }, "arbiter");
+      const t = this.start("fight", { target: danger.about }, "arbiter");
+      this.report({ kind: "danger", text: `${what} ${state.distance ?? "?"} m off${where} and I can't outrun it — handled: fighting (fight ${t.id})${aside()}.`, data: { ...danger.detail, ...state, handled: true } });
       return;
     }
-    this.report({ kind: "danger", text: `${what} ${state.distance ?? "?"} m off; running${this.active ? `, ${this.active.task.skill} put aside` : ""}`, data: { ...danger.detail, ...state } });
     this.suspend();
-    this.start("flee", { ...(danger.about ? { from: danger.about } : {}), ...(danger.yaw !== undefined ? { yaw: danger.yaw } : {}) }, "arbiter");
+    const t = this.start("flee", { ...(danger.about ? { from: danger.about } : {}), ...(danger.yaw !== undefined ? { yaw: danger.yaw } : {}) }, "arbiter");
+    this.report({ kind: "danger", text: `${what} ${state.distance ?? "?"} m off${where} — handled: running (flee ${t.id})${aside()}. Nothing for you to do unless you want something else.`, data: { ...danger.detail, ...state, handled: true } });
   }
 
   private once(key: string, every: number, r: Omit<Report, "t">): void {
@@ -403,7 +433,9 @@ export class Runtime {
     const b = this.belief, s = b.self;
     const near = b.find(() => true).slice(0, 15).map((t) => ({
       id: t.id, type: t.type, ...(t.name ? { name: t.name } : {}), distance: Math.round(b.distance(t.pos) * 10) / 10,
-      bearing: Math.round(b.bearingTo(t.pos) * 100) / 100, ...(t.disposition ? { disposition: t.disposition } : {}),
+      dir: compass(b.yawTo(t.pos)), side: side(b.bearingTo(t.pos)), ...(t.disposition ? { disposition: t.disposition } : {}),
+      ...(t.kind === "creature" && t.health !== undefined ? { health: `${Math.round(t.health * 100)}%` } : {}),
+      ...(t.tags?.includes("hunting") ? { hunting: true } : {}),
       ...(b.age(t.seen) > 3000 ? { seen_s_ago: Math.round(b.age(t.seen) / 1000) } : {}),
     }));
     return {
@@ -414,8 +446,10 @@ export class Runtime {
       inventory: (b.inventory?.slots ?? []).map((x) => `${x.item}×${x.count}`),
       can_craft: (b.inventory?.craftable ?? []).filter((r) => r.can > 0).map((r) => `${r.item} (${r.can})`),
       near,
-      doing: this.current ? { task: this.current.id, skill: this.current.skill, args: this.current.args, progress: this.current.progress } : null,
+      doing: this.current ? { task: this.current.id, skill: this.current.skill, by: this.current.by === "arbiter" ? "reflex" : "you", args: this.current.args, progress: this.current.progress } : null,
       put_aside: this.suspended.map((t) => ({ task: t.id, skill: t.skill })),
+      blocked: this.tasks.filter((t) => t.status === "blocked").slice(-3).map((t) => ({ task: t.id, skill: t.skill, why: t.result?.summary })),
+      remembers: { fights: this.fights.slice(-5) },
     };
   }
 }

@@ -151,6 +151,19 @@ export class Belief {
   }
 }
 
+const COMPASS = ["north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west"];
+
+/** A world yaw as a compass word: 0 north, clockwise. */
+export function compass(yaw: number): string {
+  return COMPASS[((Math.round(yaw / (Math.PI / 4)) % 8) + 8) % 8]!;
+}
+
+/** A bearing from the character's facing as a word. */
+export function side(bearing: number): string {
+  const a = Math.abs(bearing);
+  return a < 0.5 ? "ahead" : a > 2.6 ? "behind" : bearing > 0 ? "right" : "left";
+}
+
 export function wrap(a: number): number {
   let r = a % (2 * Math.PI);
   if (r <= -Math.PI) r += 2 * Math.PI;

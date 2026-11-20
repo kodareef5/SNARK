@@ -5,7 +5,7 @@
 // which run as tasks on the runtime's own tick, and it hears back through messages that start a turn when something
 // needs it (a task over, danger, a line said to the character). The operator has /grunt.
 
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,8 @@ import { Trace } from "./trace.ts";
 
 export const GRUNT_PACKAGE_VERSION = "0.1.0";
 const SPEC = fileURLToPath(new URL("./protocol.md", import.meta.url));
+/** The Director's own system prompt while a character is connected, in place of Pi's coding-assistant one. */
+const DIRECTOR = readFileSync(new URL("./director.md", import.meta.url), "utf8");
 /** Reports that wake the Director. Notes only wait in `look`. */
 const WAKES = new Set<Report["kind"]>(["task", "danger", "clear", "addressed", "critical", "need", "connection"]);
 
@@ -206,6 +208,12 @@ export default function grunt(pi: PiExtensionAPI): void {
       }
       ctx.ui.notify(`grunt: unknown subcommand "${sub}". Try /grunt status, connect, disconnect, trace or protocol.`, "warning");
     },
+  });
+
+  // While a character is connected the conversation is its Director, not a coding assistant.
+  pi.on("before_agent_start", (event) => {
+    if (!mind) return;
+    event.systemPromptOptions.customPrompt = DIRECTOR;
   });
 
   pi.on("session_shutdown", () => {
