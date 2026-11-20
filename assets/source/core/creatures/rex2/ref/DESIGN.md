@@ -70,3 +70,37 @@ head with `head`. The sheets in `ref/compare/` (`sheet-act`, `sheet-head`, `shee
 joints in any clip. At the top of the roar the jaw opens wide on a modelled tongue, palate and teeth. The dark line
 behind the jaw is a fold in the sculpt, not a tear. The knees and hips keep their volume through walk and run. No
 weights were changed.
+
+## Clips
+
+All 19 of the game's clips. Six come from the source, one is cut from its jump, and twelve are made in `clips.py`.
+
+| Clip | Ticks | Made from |
+|---|---:|---|
+| idle | 84 | Idle |
+| walk, run | 80, 64 | Walk_Root and Run_Root, less their steady travel, with the feet held (`gaits.py`) |
+| attack | 22 | Attack frames 0 to 44 at double speed: the jaw snaps shut on tick 10, where the bite lands |
+| flinch | 15 | Hit frames 0 to 18: the recoil and return |
+| call | 101 | Roar |
+| land | 24 | The end of Jump: touchdown, crouch and recovery |
+| fall | 40 | The top of Jump, held, with a little tail and leg motion |
+| idle_look, idle_scent, startled, turn | 81, 88, 36, 36 | Idle, with the head, chest or feet turned on top |
+| swim, swim_idle | 38, 72 | Head up, legs paddling, tail sweeping |
+| torpor_in, torpor_idle, torpor_eat, torpor_out, death | 58, 78, 38, 72, 66 | Knees give, then it rolls onto its left side |
+
+How the source clips were fixed:
+
+- **Walk and run.** The source's own in-place gaits hold the pelvis still sideways, so each planted foot is dragged
+  20 cm across. The game's gaits come from the forward-moving clips instead, with the steady travel taken off and
+  centred where the in-place clips stand. Leg IK then holds each foot on its mark while it is down. The art check
+  measures 2 to 9 cm of slide on the walk and 1 to 3 cm on the run.
+- **Attack and flinch.** The game plays the bite over 23 ticks and the flinch over about 15, so each is cut to the
+  part that matters and sped up.
+
+Lying down, it rests on its left side: the lower leg turns in under the flank and the upper leg drapes over it, the
+head swings down to the ground and the tail curls onto it. Each frame is then lowered until the skin touches the
+ground. `ref/rest.py` measures the lowest skin point of each part. In `torpor_idle` the hips are 15 cm up, the chest
+38 cm, the head 29 cm and the tail tip 12 cm, and it rests on its left thigh.
+
+`ref/clipinfo.py` tracks the jaw, head and hips frame by frame. `ref/sheet.py ... around` draws a pose from four
+sides. The sheets are in `ref/compare/`.

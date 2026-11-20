@@ -11,6 +11,8 @@ import os
 
 import bpy
 
+from curves import cut, fcurves
+
 FOLDER = os.path.dirname(os.path.abspath(__file__))
 SOURCE = os.path.abspath(os.path.join(FOLDER, "../../../../raw/patch/anymove-trex.glb"))
 SHA256 = "1ef52f9b3ec54ab812e75ff3c2851f3121ae3d93f80ba953315091faae7355cb"
@@ -28,8 +30,14 @@ BONES = {
 # Source clip to game clip. The gaits come from Walk_Root and Run_Root, which carry the body forward as the feet push
 # it. The game moves the body itself, so their steady forward travel is taken off (in_place). Their own Walk and Run
 # stay in place by holding the pelvis still sideways too, which drags the planted feet across by the body's sway.
-CLIPS = {"Idle": "idle", "Walk_Root": "walk", "Run_Root": "run", "Attack": "attack", "Hit": "flinch", "Roar": "call"}
+CLIPS = {"Idle": "idle", "Walk_Root": "walk", "Run_Root": "run", "Attack": "attack", "Hit": "flinch", "Roar": "call",
+         "Jump": "_jump"}
 GAITS = {"walk", "run"}
+# Clips the game plays over a fixed time, cut to the part it needs and sped up to fit: name -> (first frame, last
+# frame, ticks). The bite is 23 ticks and lands on tick 10 (content/creatures/rex.ts); Attack's jaw snaps shut on frame
+# 21, so frames 0 to 44 at double speed land it on tick 10.5. The flinch is the recoil and return at the start of Hit.
+CUTS = {"attack": (0, 44, 22), "flinch": (0, 18, 15)}
+# A name starting "_" is a source for clips.py, which removes it.
 
 
 def check_source():
@@ -37,14 +45,6 @@ def check_source():
         digest = hashlib.sha256(f.read()).hexdigest()
     if digest != SHA256:
         raise SystemExit(f"rex2: {SOURCE} is not the file ref/SOURCES.md describes (sha256 {digest})")
-
-
-def fcurves(action):
-    """Every F-curve of an action, through its layers and slots."""
-    for layer in action.layers:
-        for strip in layer.strips:
-            for bag in strip.channelbags:
-                yield from bag.fcurves
 
 
 def rename_bones(rig, body):
@@ -133,6 +133,10 @@ def build():
     body.name, body.data.name = "rex2_body", "rex2_body"
     if rig.animation_data:
         rig.animation_data.action = None
+        # The importer also lays each clip on an NLA track. They would keep playing under every pose made here, and the
+        # build lays its own tracks when it writes the file.
+        for track in list(rig.animation_data.nla_tracks):
+            rig.animation_data.nla_tracks.remove(track)
 
     rename_bones(rig, body)
 
@@ -151,6 +155,9 @@ def build():
         ticks = retime(action)
         if name in GAITS:
             in_place(action, centres[name])
+        if name in CUTS:
+            cut(action, *CUTS[name])
+            ticks = CUTS[name][2]
         action.name = name
         print(f"rex2: clip {name} from {[k for k, v in CLIPS.items() if v == name][0]}, {ticks} ticks")
     print(f"rex2: {len(rig.data.bones)} bones, {len(body.data.polygons)} faces, {len(body.data.vertices)} vertices")

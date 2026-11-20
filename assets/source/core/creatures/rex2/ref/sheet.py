@@ -55,8 +55,14 @@ scene.collection.objects.link(ground)
 # The Rex faces -Y in Blender. Side looks from +X; the quarter from front-right and a little above. With "head" the
 # cameras follow the skull, close up, from the side and from the front quarter.
 head = len(args) > 3 and args[3] == "head"
+# With "around": from its left, its right, the front and above, for lying poses.
+around = len(args) > 3 and args[3] == "around"
 VIEWS = ([((5, 0, 0.3), (math.radians(90), 0, math.radians(90)), 4.2),
           ((3.2, -3.6, 1.2), (math.radians(75), 0, math.radians(42)), 4.2)] if head else
+         [((16, 0, 2), (math.radians(90), 0, math.radians(90)), 14),
+          ((-16, 0, 2), (math.radians(90), 0, math.radians(-90)), 14),
+          ((0, -20, 2), (math.radians(90), 0, 0), 9),
+          ((0, 0, 25), (0, 0, 0), 14)] if around else
          [((16, 0, 3), (math.radians(90), 0, math.radians(90)), 15),
           ((10, -11, 6.5), (math.radians(70), 0, math.radians(42)), 15)])
 from mathutils import Vector

@@ -36,13 +36,13 @@ const zones: ZoneSpec[] = [
   }),
 ];
 
-const loop = ["idle", "walk", "run"];
-const single = ["attack", "flinch", "call"];
+const loop = ["idle", "walk", "run", "swim", "swim_idle", "fall", "torpor_idle"];
+const single = ["idle_look", "idle_scent", "attack", "call", "startled", "flinch", "land", "turn", "torpor_in", "torpor_eat", "torpor_out", "death"];
 
 export default {
   modelCredit: "Animated T-rex by Patch, made with anymove (https://patch.gg/create/toolbox/assets/anymove:trex), CC0 1.0. Adapted for SNARK",
   kind: "creature",
-  source: { scripts: ["import.py", "gaits.py"] },
+  source: { scripts: ["import.py", "gaits.py", "clips.py"] },
   scale: 1,
   skeleton: { id: "rex2", root: "pelvis", bones: 25 },
   zones,
@@ -61,7 +61,10 @@ export default {
   },
   feet: ["toes_l", "toes_r"],
   // How far the source's Walk_Root and Run_Root travel in one cycle (ref/gait.py).
-  gaits: { walk: { stride: 4.23 }, run: { stride: 6.29 } },
+  gaits: {
+    walk: { stride: 4.23 }, run: { stride: 6.29 },
+    swim: { stride: 3.8, stated: "Alternating hindlimb strokes at three metres per second." },
+  },
   budgets: { triangles: [58000, 30000, 14500, 6200, 2600, 1000], texture: { top: 4096, megabytes: 160 } },
   flat: 5,
 } satisfies CreatureAsset;
