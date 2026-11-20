@@ -208,14 +208,15 @@ function helmet(s: Surface) {
       5,
     );
   }
+  // Keep the graphite chin insert in front of both cheek bevels throughout its face.
   s.panel(
     shell,
     [
-      [1.501, -7, 7, 0.003],
-      [1.512, -15, 15, 0.008],
-      [1.532, -19, 19, 0.008],
-      [1.549, -13, 13, 0.007],
-      [1.562, -5, 5, 0.003],
+      [1.501, -7, 7, 0.014],
+      [1.512, -15, 15, 0.017],
+      [1.532, -19, 19, 0.018],
+      [1.549, -13, 13, 0.017],
+      [1.562, -5, 5, 0.014],
     ],
     f.seam,
     B_HEAD,
@@ -265,7 +266,7 @@ function torso(s: Surface, female: boolean, rest: readonly number[]) {
       [1.406, -33, 33, 0.01],
       [1.418, -24, 24, 0.005],
     ],
-    f.ceramic,
+    f.chest,
     B_UPPER_CHEST,
     24,
   );
@@ -338,7 +339,7 @@ function torso(s: Surface, female: boolean, rest: readonly number[]) {
         ],
         side,
       ),
-      f.chest,
+      f.limb,
       B_UPPER_CHEST,
       17,
     );

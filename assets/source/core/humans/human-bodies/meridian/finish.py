@@ -21,22 +21,22 @@ font = ImageFont.load_default(size=12)
 small = ImageFont.load_default(size=9)
 # Base colour, roughness and metalness. Separate UV islands let small hardware keep its own finish.
 swatches = [
-    ((202, 205, 201), 131, 37),
-    ((163, 174, 176), 130, 77),
+    ((236, 236, 229), 152, 3),
+    ((72, 88, 102), 165, 6),
     ((47, 55, 60), 195, 14),
     ((61, 74, 83), 111, 168),
     ((25, 72, 119), 44, 172),
     ((119, 229, 255), 72, 45),
     ((201, 129, 57), 128, 69),
     ((173, 185, 190), 84, 197),
-    ((197, 202, 201), 121, 44),
-    ((204, 207, 204), 128, 34),
+    ((245, 243, 234), 162, 3),
+    ((204, 216, 220), 138, 8),
     ((45, 58, 69), 143, 129),
     ((30, 40, 48), 186, 25),
-    ((194, 200, 199), 119, 46),
-    ((172, 179, 180), 137, 62),
+    ((221, 222, 210), 150, 5),
+    ((99, 111, 121), 174, 6),
     ((39, 59, 71), 121, 142),
-    ((210, 212, 209), 124, 34),
+    ((242, 242, 235), 153, 3),
 ]
 # Four flat-lit material scans from the generated master. The subsections have distinct
 # responses to light. Baked luminance is deliberately weaker on polished surfaces.
@@ -55,6 +55,32 @@ def pixels(im):
 
 def enlarged(im, nearest=False):
     return im.resize((SIDE, SIDE), Image.Resampling.NEAREST if nearest else Image.Resampling.BICUBIC)
+
+
+def livery(tile, rgb, response):
+    # Printed enamel lies flush under the clear coat. Each mask names points in a
+    # whole UV island, so the same mark fits either body and each textured LOD.
+    def paint(points, pigment, roughness):
+        mask = Image.new("L", (SIDE, SIDE))
+        ImageDraw.Draw(mask).polygon([(round(x * SIDE), round(y * SIDE)) for x, y in points], fill=255)
+        selected = np.asarray(mask) != 0
+        rgb[selected] = pigment
+        response[selected] = [245, roughness, 4]
+
+    ink, amber = (23, 52, 77), (202, 131, 56)
+    if tile == 15:
+        # Offset racing stripe. Leave a thread of ivory between the two colours.
+        paint([(0.592, 0.10), (0.604, 0.10), (0.635, 0.76), (0.598, 0.91), (0.577, 0.91), (0.608, 0.75)], ink, 124)
+        paint([(0.611, 0.17), (0.618, 0.17), (0.646, 0.76), (0.616, 0.88), (0.609, 0.88), (0.635, 0.75)], amber, 136)
+    elif tile == 8:
+        # A swept tab follows the outer collar. Its return ends above the chest motor.
+        paint([(0.095, 0.16), (0.22, 0.16), (0.35, 0.30), (0.35, 0.34), (0.326, 0.34), (0.205, 0.23), (0.095, 0.23)], ink, 130)
+        for x in (0.132, 0.162):
+            paint([(x, 0.257), (x + 0.017, 0.257), (x + 0.037, 0.281), (x + 0.020, 0.281)], amber, 142)
+    elif tile == 12:
+        # The access mark reads from behind when the flight vanes deploy.
+        paint([(0.17, 0.66), (0.27, 0.66), (0.41, 0.80), (0.37, 0.80)], ink, 133)
+        paint([(0.294, 0.66), (0.32, 0.66), (0.458, 0.80), (0.433, 0.80)], amber, 138)
 
 
 def detailed(tile, img, h, orm):
@@ -99,18 +125,26 @@ def detailed(tile, img, h, orm):
         high = lum - blurred
         if textile:
             # Dark seams retain ambient occlusion in shade. The high yarns stay matte.
-            rgb = art * (1.48 if tile == 2 else 1.27) + [7, 9, 11]
+            rgb = art * (1.08 if tile == 2 else 1.27) + [7, 9, 11]
             height = 126 + (lum - np.median(lum))*0.78 + high*0.32
             response[:, :, 0] = np.clip(160 + lum*1.65 + high*0.9, 125, 250)
             response[:, :, 1] = np.clip((220 if tile == 2 else 171) + high*0.43, 140, 241)
             response[:, :, 2] = 4
         elif machined:
             # Fine polished cuts share the pattern with the normal map. No painted sun streak.
-            rgb = 0.50*rgb + 0.44*art + (12 if tile in (3,7) else -10)
-            height += 0.58*high
+            if tile == 7:  # Mirror-polished fasteners and machined rings.
+                rgb = 0.50*rgb + 0.44*art + 12
+                rough, metal = 50, 238
+            elif tile == 3:  # Bead-blasted titanium under the lip of a shell.
+                rgb = 0.73*rgb + 0.19*art
+                rough, metal = 157, 190
+            else:  # Black oxide over recesses and heat sinks.
+                rgb = 0.52*rgb + 0.10*art
+                rough, metal = 177, 62
+            height += (0.58 if tile == 7 else 0.28)*high
             response[:, :, 0] = np.clip(240 + 0.48*high, 195, 250)
-            response[:, :, 1] = np.clip((50 if tile == 7 else 83) - high*0.44, 34, 130)
-            response[:, :, 2] = 238 if tile == 7 else 206
+            response[:, :, 1] = np.clip(rough - high*(0.44 if tile == 7 else 0.15), 34, 204)
+            response[:, :, 2] = metal
         else:
             # The cobalt enamel, milled bead and satin field reflect independently.
             enamel = np.clip((art[:, :, 2] - art[:, :, 0] - 8) / 42, 0, 1)
@@ -123,24 +157,28 @@ def detailed(tile, img, h, orm):
                 field = np.clip((xx-0.24)*2.7, 0.13, 0.78)
             else:
                 field = np.clip((0.48-yy)*2.8, 0.12, 0.64)
-            strength = (0.84*field)[:, :, None]
-            rgb = rgb*(1-strength) + art*strength
-            height += field*(0.68*high - cut*5)
-            cut *= field
+            # The substrate carries the colour even when it reflects a dark street.
+            # Use the relief from the scan, with the original blue lacquer in its cuts.
+            _, rough, metal = swatches[tile]
+            rgb += (np.clip(lum - np.median(lum), -85, 30)*0.16*field)[:, :, None]
             enamel *= field
+            rgb = rgb*(1-0.54*enamel[:, :, None]) + art*(0.54*enamel[:, :, None])
+            height = 125 + (height-125)*0.55 + field*(0.24*high - cut*2.2)
+            cut *= field
             response[:, :, 0] = np.clip(247 - cut*34 + high*0.3, 167, 251)
-            response[:, :, 1] = np.clip(93 - 35*cut - 18*enamel - high*0.19, 40, 107)
-            response[:, :, 2] = 17 + 164*cut*(1-enamel)
+            response[:, :, 1] = np.clip(rough - 13*cut - 34*enamel - high*0.08, 84, 184)
+            response[:, :, 2] = metal + 15*cut
             # Follow the padded UV border around the existing cut of each plate. A
             # bright metal fillet sits against a dark gasket, leaving its center pearl.
             rim = np.minimum(np.minimum(xx, 1-xx), np.minimum(yy, 1-yy)) - 0.035
             fillet = np.clip((0.012 - np.abs(rim - 0.022))*165, 0, 1)
             gasket = np.clip((0.008 - np.abs(rim - 0.040))*160, 0, 1)
-            rgb *= 0.93 - 0.25*gasket[:, :, None]
+            rgb *= 1.0 - 0.20*gasket[:, :, None]
             rgb = rgb*(1-fillet[:, :, None]) + np.array([209, 220, 228])*fillet[:, :, None]
             response[:, :, 1] = response[:, :, 1]*(1-fillet) + 36*fillet
             response[:, :, 2] = response[:, :, 2]*(1-fillet) + 247*fillet
-            height += 13*fillet - 9*gasket
+            height += 7*fillet - 5*gasket
+            livery(tile, rgb, response)
     dy, dx = np.gradient(height / 255)
     nn = np.stack([-dx*2.9, dy*2.9, np.ones_like(dx)], 2)
     if tile == 4:
@@ -272,7 +310,7 @@ for i, (base, rough, metal) in enumerate(swatches):
             )
             for a, b in (path[1], path[-1]):
                 screw(a, b)
-        if i == 0:
+        if i == 8:
             # Meridian datum etched into the right side of the continuous breastplate.
             ink.arc((162, 113, 184, 135), -80, 161, fill=(111, 130, 137), width=2)
             ink.line((172, 117, 168, 129, 177, 123), fill=(105, 122, 129), width=2)

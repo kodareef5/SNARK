@@ -26,7 +26,8 @@ export const finish = {
   visor: 16, // Same cobalt atlas island as the inlays, drawn as a transmitting lens.
   palm: 17, // Shares the brass island with hardware, with its own padded UV bounds.
 } as const;
-const palette = [93, 92, 82, 85, 41, 64, 206, 91, 93, 93, 84, 82, 93, 92, 84, 93];
+// Keep the broad ivory plates and slate joins distinct in the palette-only distance mesh.
+const palette = [10, 85, 82, 86, 41, 64, 206, 91, 10, 93, 83, 82, 93, 87, 83, 10];
 const rad = Math.PI / 180;
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
