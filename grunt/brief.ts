@@ -34,6 +34,21 @@ export interface Card {
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 const recent = (s: Situation, ms: number, ...kinds: Report["kind"][]) => s.rt.reports.filter((r) => r.t >= s.rt.belief.now - ms && kinds.includes(r.kind));
 const blockedBy = (s: Situation, reason: string): Task[] => s.rt.tasks.filter((t) => t.status === "blocked" && t.result?.data?.reason === reason);
+
+/** The threat that keeps getting in the way, if it is still there: a task it blocks, or two runs from it lately. */
+function recurring(s: Situation): { id: string; type?: string; task?: Task } | null {
+  const b = s.rt.belief;
+  const alive = (id: string) => !!id && (b.things.has(id) || (b.dangers.has(id) && b.now - b.dangers.get(id)!.t < 60000));
+  const t = blockedBy(s, "danger").filter((x) => alive(String((x.result?.data?.danger as { id?: string } | undefined)?.id ?? ""))).at(-1);
+  if (t) {
+    const d = t.result!.data!.danger as { id: string; type?: string };
+    return { id: d.id, ...(d.type ? { type: d.type } : {}), task: t };
+  }
+  const runs = new Map<string, number>();
+  for (const f of s.rt.tasks) if (f.by === "arbiter" && f.skill === "flee" && f.started > b.now - 180000) runs.set(String(f.args.from ?? ""), (runs.get(String(f.args.from ?? "")) ?? 0) + 1);
+  for (const [id, n] of runs) if (n >= 2 && alive(id)) return { id, type: b.things.get(id)?.type ?? b.dangers.get(id)?.type };
+  return null;
+}
 const activeGoals = (s: Situation) => s.goals.filter((g) => g.status === "active");
 
 /** Thatch and wood a tree gives, and fiber a bush, from the character's own harvests where it has any. */
@@ -94,18 +109,11 @@ export const CARDS: Card[] = [
   {
     id: "recurring-threat",
     // The same creature has made the character run more than once, or has blocked a task: it is a problem to remove.
-    relevance: (s) => {
-      const runs = s.rt.tasks.filter((t) => t.by === "arbiter" && t.skill === "flee" && t.started > s.rt.belief.now - 180000).length;
-      return blockedBy(s, "danger").length || runs >= 2 ? 0.95 : 0;
-    },
+    relevance: (s) => (recurring(s) ? 0.95 : 0),
     text: (s) => {
       const b = s.rt.belief;
-      const t = blockedBy(s, "danger").at(-1);
-      const d = (t?.result?.data?.danger as { id?: string; type?: string } | undefined) ?? (() => {
-        const f = s.rt.tasks.filter((x) => x.by === "arbiter" && x.skill === "flee").at(-1);
-        const id = String(f?.args.from ?? "");
-        return { id, type: b.things.get(id)?.type ?? b.dangers.get(id)?.type };
-      })();
+      const d = recurring(s)!;
+      const t = d.task;
       const it = d.id ? b.things.get(d.id) : undefined;
       const won = s.rt.fights.filter((f) => f.foe === d.type && f.won);
       const armed = ["stone_hatchet", "stone_pick"].some((w) => b.slotOf(w) !== null);
@@ -167,9 +175,14 @@ export const CARDS: Card[] = [
   },
 ];
 
-/** The brief for this moment: the most relevant cards, in the library's order, within a budget of characters. */
+/** Cards that set the scene for the others, and say little on their own: game_look already shows the same. */
+export const FRAME = new Set(["goal", "self", "doing"]);
+
+/** The brief for this moment: the most relevant cards, in the library's order, within a budget of characters. Empty
+ * when no card but the frame applies: a brief that only repeats game_look is cost and no help (measured). */
 export function brief(s: Situation, cards: Card[] = CARDS, budget = 2400): { text: string; cards: string[] } {
   const scored = cards.map((c, i) => ({ c, i, r: c.relevance(s) })).filter((x) => x.r > 0).sort((a, b) => b.r - a.r || a.i - b.i);
+  if (!scored.some((x) => !FRAME.has(x.c.id))) return { text: "", cards: [] };
   const chosen: { i: number; id: string; text: string }[] = [];
   let used = 0;
   for (const x of scored) {

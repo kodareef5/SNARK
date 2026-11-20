@@ -124,7 +124,10 @@ export default function grunt(pi: PiExtensionAPI): void {
       promptSnippet: "game_look: the character's state, surroundings and current task",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       async execute() {
-        return text(json(need().rt.summary()));
+        const rt = need().rt;
+        // Looking while one of the Director's own tasks runs ends the turn: the game tells it when there is news.
+        const busy = rt.current?.by === "director";
+        return { ...text(json(rt.summary()) + (busy ? "\n(A task of yours is running; your turn ends here, and a message comes when it is over or needs you.)" : "")), ...(busy ? { terminate: true } : {}) };
       },
     },
     {
@@ -158,7 +161,8 @@ export default function grunt(pi: PiExtensionAPI): void {
       parameters: { type: "object", properties: {}, additionalProperties: false },
       async execute() {
         const rt = need().rt;
-        return text(json(rt.tasks.slice(-10).map((t) => ({ task: t.id, skill: t.skill, args: t.args, status: t.status, by: t.by, progress: t.progress, result: t.result?.summary }))));
+        const busy = rt.current?.by === "director";
+        return { ...text(json(rt.tasks.slice(-10).map((t) => ({ task: t.id, skill: t.skill, args: t.args, status: t.status, by: t.by, progress: t.progress, result: t.result?.summary })))), ...(busy ? { terminate: true } : {}) };
       },
     },
     {
@@ -227,7 +231,7 @@ export default function grunt(pi: PiExtensionAPI): void {
       }
       if (sub === "brief") {
         const s = situation();
-        return ctx.ui.notify(s ? brief(s).text : "not connected", "info");
+        return ctx.ui.notify(s ? brief(s).text || "no brief now: nothing but the frame (goal, body, task) applies" : "not connected", "info");
       }
       if (sub === "status") {
         if (!mind) return ctx.ui.notify(`grunt ${GRUNT_PACKAGE_VERSION}, protocol ${GRUNT_VERSION} (draft). Not connected: /grunt connect <url> <name>.`, "info");
@@ -254,6 +258,7 @@ export default function grunt(pi: PiExtensionAPI): void {
     if (!s) return;
     const b = brief(s);
     mind!.rt.trace.record("brief", { cards: b.cards, chars: b.text.length });
+    if (!b.text) return;
     return { messages: [...event.messages, { role: "custom", customType: "grunt-brief", content: b.text, display: false, timestamp: Date.now() }] };
   });
 

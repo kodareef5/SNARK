@@ -81,3 +81,24 @@ test("the brief keeps to its budget, dropping the least relevant first", async (
   expect(b.cards).toContain("goal");
   expect(b.cards).not.toContain("idle");
 });
+
+test("while a task runs and nothing is wrong, there is no brief: the frame alone is not sent", async () => {
+  const h = await harness({ me: { items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [{ type: "tree", x: 2, z: -6 }] });
+  h.rt.start("harvest", { kind: "tree" });
+  h.run(1500);
+  expect(h.rt.current?.skill).toBe("harvest");
+  expect(brief(h.situation())).toEqual({ text: "", cards: [] });
+});
+
+test("the recurring-threat card is there while the threat is, and gone once it is dead", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [{ type: "tree", x: 2, z: -12 }, { type: "raptor", x: 2, z: -18 }] });
+  const t = h.rt.start("harvest", { kind: "tree" });
+  h.run(3000, () => t.status === "blocked");
+  expect(t.status).toBe("blocked");
+  expect(brief(h.situation()).cards).toContain("recurring-threat");
+  const raptor = [...h.world.things.values()].find((x) => x.type === "raptor")!;
+  const fight = h.rt.start("fight", { target: raptor.id });
+  h.run(60_000, () => fight.status !== "running");
+  expect(h.world.things.has(raptor.id)).toBe(false);
+  expect(brief(h.situation()).cards).not.toContain("recurring-threat");
+});
