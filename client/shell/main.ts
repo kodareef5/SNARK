@@ -115,6 +115,8 @@ async function boot(): Promise<void> {
   }
   const surfaces = checks ? new checks.SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
+  // The data utility's record of each frame comes as its own file, which the first frame does not wait for (D899).
+  void import("../core/assets/frames.ts").then((m) => (app.frames = new m.FrameRing()));
   const previous=session.onResult;
   session.onResult=(seq,result)=>{previous?.(seq,result);if(createSeq && seq===createSeq && result!==RESULT_OK)createFailed=true;};
   if (params.has("trip")) void import("../core/trip.ts").then(({ TripProbe }) => TripProbe.watch(app, head.counts, globalThis as unknown as Record<string, unknown>, (go) => void requestAnimationFrame(go)));
@@ -264,7 +266,7 @@ async function boot(): Promise<void> {
       app.pressure();
     }
     const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
-    app.drawn(packet, ours, width, height);
+    app.drawn(packet, ours, width, height, renderer.uploadMs);
     device?.frame(now, packet, t0, built);
     if (progress?.frames === 30) loser?.loseContext();
     // The self-check asks for a call and listens for it leaving the volume.

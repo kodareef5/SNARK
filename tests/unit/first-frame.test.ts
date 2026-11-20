@@ -47,10 +47,11 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/selfcheck-report.ts",
     "client/core/selfcheck-surfaces.ts",
     "client/core/activity-selfcheck.ts",
+    "client/core/assets/frames.ts",
   ];
   for (const file of late) expect(files.includes(file), file).toBe(false);
   // The shell fetches them itself.
   const shell = readFileSync(join(CLIENT, "shell/main.ts"), "utf8");
   const fetched = [...shell.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]);
-  expect(fetched).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts"]));
+  expect(fetched).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts"]));
 });

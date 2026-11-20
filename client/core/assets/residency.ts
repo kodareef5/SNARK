@@ -129,8 +129,9 @@ export class Residency {
   /**
    * Requests that failed are `failed` (to be asked again) or `dead` (given up), and by kind `failNet`, `failHash` and
    * `failRange`, with the HTTP status of the last on the network, 0 for no answer. `refused` counts uploads the card refused.
+   * `stale` is bytes that came over the network for a request no longer waited on, which `fetched` leaves out.
    */
-  readonly stats = { requests: 0, cancelled: 0, failed: 0, dead: 0, failNet: 0, failHash: 0, failRange: 0, lastStatus: 0, refused: 0, evicted: 0, wasted: 0, fetched: 0, cached: 0, uploaded: 0, used: 0, skipped: 0, shrunk: 0 };
+  readonly stats = { requests: 0, cancelled: 0, failed: 0, dead: 0, failNet: 0, failHash: 0, failRange: 0, lastStatus: 0, refused: 0, evicted: 0, wasted: 0, fetched: 0, cached: 0, stale: 0, uploaded: 0, used: 0, skipped: 0, shrunk: 0 };
 
   private readonly manifest: Manifest;
   private readonly boot: Pack;
@@ -431,6 +432,20 @@ export class Residency {
     this.spent += bytes;
   }
 
+  /** Bytes of this frame's allowance spent on what is not an asset, for the data utility. */
+  get spentOther(): number {
+    return this.spent;
+  }
+
+  /** Whether something waited in the last frame because the card was over-full, and because the textures' share was. */
+  get cardFull(): boolean {
+    return this.full;
+  }
+
+  get shareShort(): boolean {
+    return this.short;
+  }
+
   private empty(): void {
     this.prev[this.root] = this.next[this.root] = this.mark;
     this.prev[this.mark] = this.next[this.mark] = this.root;
@@ -509,9 +524,14 @@ export class Residency {
     const n = this.port.take(this.arrivals);
     for (let i = 0; i < n; i++) {
       const a = this.arrivals[i]!;
+      // The list is kept from frame to frame, and should not keep what came in it.
+      this.arrivals[i] = null!;
       const slot = a.slot;
       // A previous variant can already be in the worker's outgoing queue when the slot is reused.
-      if (this.state[slot] !== LOADING || a.generation !== this.generation[slot]) continue;
+      if (this.state[slot] !== LOADING || a.generation !== this.generation[slot]) {
+        this.stats.stale += a.fetched;
+        continue;
+      }
       this.land(slot);
       this.stats.fetched += a.fetched;
       this.stats.cached += a.cached;
