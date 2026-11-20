@@ -56,8 +56,13 @@ export default {
   ],
   regions: regions.map(([name, rgb]) => ({ name, sample: nearestColour(palette, rgb >>> 16, (rgb >>> 8) & 255, rgb & 255) })),
   clips: [...loop, ...single].map((name) => ({ name, source: name, loop: loop.includes(name) })),
+  // tex/rex2_normal.png and rex2_packed.png are the source's own (ref/prepare.py); the rest are made by ref/paint.py.
   materials: {
-    rex2: { base: "tex/rex2_base.png", normal: "tex/rex2_normal.png", packed: "tex/rex2_packed.png" },
+    rex2: {
+      base: "tex/rex2_base.png", normal: "tex/rex2_normal.png", packed: "tex/rex2_packed.png",
+      regions: { mask: "tex/rex2_mask.png", mask2: "tex/rex2_mask2.png" },
+      hurt: "tex/rex2_hurt.png", decay: "tex/rex2_decay.png",
+    },
   },
   feet: ["toes_l", "toes_r"],
   // How far the source's Walk_Root and Run_Root travel in one cycle (ref/gait.py).
@@ -65,6 +70,6 @@ export default {
     walk: { stride: 4.23 }, run: { stride: 6.29 },
     swim: { stride: 3.8, stated: "Alternating hindlimb strokes at three metres per second." },
   },
-  budgets: { triangles: [58000, 30000, 14500, 6200, 2600, 1000], texture: { top: 4096, megabytes: 160 } },
+  budgets: { triangles: [58000, 30000, 14500, 6200, 2600, 1000, 300, 112], texture: { top: 4096, megabytes: 64, layer: 256 } },
   flat: 5,
 } satisfies CreatureAsset;

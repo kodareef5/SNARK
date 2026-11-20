@@ -42,9 +42,20 @@ export const REX: readonly Def[] = [
 // Rex v2 while it is built (planning/workstreams/rex2.md). It stands beside the Rex in the paddock and nowhere else:
 // no spawns, eggs, feces, saddle or aliases. When it is done the Rex takes its model and this goes.
 const { breeds: _breeds, aliases: _aliases, feces: _feces, ...rex } = REX[0] as Extract<Def, { type: "species" }>;
+// Its regions' first colours are the palette's nearest browns to the source's own, measured by
+// assets/source/core/creatures/rex2/ref/paint.py, so a wild one looks as the model was painted. Where the nearest is
+// olive (the face and limbs) the brown next to it is first and the olive comes second.
+const regions2 = [
+  region("Flanks", 0x54412e, 0x4f4e32, 0x5e3c28),
+  region("Throat and belly", 0x9a7f5b, 0x7f7970, 0x8b9166),
+  region("Dorsal bars", 0x3a261c, 0x2e2420, 0x442c20),
+  region("Face and nasal ridges", 0x655038, 0x5e5e3e, 0x75524c),
+  region("Limbs and tail bands", 0x54412e, 0x4f4e32, 0x624440),
+  region("Claws and brow scutes", 0x3a261c, 0x442c20, 0x312d2a),
+];
 export const REX2: readonly Def[] = [
   {
-    ...rex, id: "core:rex2", mesh: "core:rex2", skeleton: "rex2",
+    ...rex, id: "core:rex2", mesh: "core:rex2", skeleton: "rex2", regions: regions2, color: regions2[0]!.colors[0][0],
     radius: 1.7, height: 5.6, eyeHeight: 4.9, bite: { ...rex.bite!, reach: 6.2 },
   },
 ];

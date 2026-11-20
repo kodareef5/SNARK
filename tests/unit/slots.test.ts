@@ -26,7 +26,7 @@ artTest("every asset the core content must have is in the pack, its own or the o
   // A vessel's damaged and sunk forms stand as their shapes' boxes until the art has them; no map sets them down till then
   // (content/vehicles/harbour-wrecks.ts).
   const forms = new Set(MARINE_MODELS.flatMap((m) => HARBOUR_WRECK_FORMS.map((f) => hulkOf(m.id, f))));
-  expect(stood.filter((u) => u.owner !== "core:dummy" && !forms.has(u.owner)).map(slotAddress)).toEqual(["core:pteranodon#clip/run", "core:rex2#clip/death"]); // Rex v2 has no death clip until step 4 of planning/workstreams/rex2.md
+  expect(stood.filter((u) => u.owner !== "core:dummy" && !forms.has(u.owner)).map(slotAddress)).toEqual(["core:pteranodon#clip/run"]);
   expect(fillSlot(at("core:dummy#body/f/torso")!, has)).toEqual({ id: "core:mannequin/torso", word: "" });
   expect(new Set(uses.map(slotAddress)).size).toBe(uses.length);
 });

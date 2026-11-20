@@ -102,5 +102,36 @@ head swings down to the ground and the tail curls onto it. Each frame is then lo
 ground. `ref/rest.py` measures the lowest skin point of each part. In `torpor_idle` the hips are 15 cm up, the chest
 38 cm, the head 29 cm and the tail tip 12 cm, and it rests on its left thigh.
 
+## Levels and pictures
+
+| Level | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Triangles | 57,914 | 30,000 | 14,500 | 6,200 | 2,600 | 1,000 | 300 | 112 |
+| Drawn | textured | textured | textured | textured | textured | flat | flat | flat |
+
+Level 0 is the whole source mesh. The game's simplifier makes every other level, and all eight are closed single
+meshes. The two farthest are drawn when the Rex stands under 11 pixels tall, so they don't need the old Rex's
+hand-built silhouettes.
+
+The base and normal maps are 4K, so the ultra tier sees all of the source's detail; medium and high draw them at 1K
+and 2K. The masks and packed map are 2K, and hurt and decay 256. The largest variant measures 58.8 MB, of a 64 MB
+budget.
+
+`ref/paint.py` makes the dye regions and the dyed base:
+
+- Each vertex of the rest pose is given the six regions by the bone that moves it most and the way its skin faces:
+  the underside is throat and belly, bars run across the top of the neck, back and tail, the head is face, legs and
+  arms are limbs (with bands round the last tail segments), and the toe claws, hand tips and brow are claws and
+  brow. Cycles bakes them onto the texture through the model's UVs.
+- The mouth, tongue, teeth and eyes are never dyed. Within the head they are found by colour: the mouth's flesh has
+  less green against blue than the face's skin (green over blue under 1.3, against 1.4 and up on the face).
+- Where a region dyes, the base is grey with the source's lightness, so the game's dye gives the colour and the
+  source gives the scales.
+- Hurt is four parallel claw rakes in three places on the flanks and thigh; decay is a dull grey-brown elsewhere.
+
+A wild Rex v2's first colours are the palette's nearest browns to the source's own mean colours, which `paint.py`
+prints. In the game (`ref/look/head-rex2-dyed-high.png`, with the first colours chosen) it read olive, because the
+face and limb colours fell on olive palette entries, so those regions now start from the brown beside them.
+
 `ref/clipinfo.py` tracks the jaw, head and hips frame by frame. `ref/sheet.py ... around` draws a pose from four
 sides. The sheets are in `ref/compare/`.

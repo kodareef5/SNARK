@@ -1,5 +1,6 @@
-# Saves the source GLB's three pictures as PNGs in tex/, where the build reads them. Run it once after downloading
-# the GLB, or again if the pictures need to be made afresh. It checks the file is the one SOURCES.md describes.
+# Saves the source GLB's three pictures as PNGs in tex/. The normal and packed maps are used as they are. The colour
+# map is saved as rex2_source.png, which ref/paint.py turns into the dyed base. Run it once after downloading the GLB,
+# or again if the pictures need to be made afresh. It checks the file is the one SOURCES.md describes.
 #   blender -b --factory-startup --python-exit-code 1 -P assets/source/core/creatures/rex2/ref/prepare.py
 
 import hashlib
@@ -14,8 +15,8 @@ ROOT = os.path.abspath(os.path.join(FOLDER, "../../../../.."))
 SOURCE = os.path.join(ROOT, "assets/raw/patch/anymove-trex.glb")
 SHA256 = "1ef52f9b3ec54ab812e75ff3c2851f3121ae3d93f80ba953315091faae7355cb"
 
-# The GLB's picture name, and the name the asset's material reads it by.
-PICTURES = {"trex_color": "rex2_base", "trex_normalgl": "rex2_normal", "trex_orm": "rex2_packed"}
+# The GLB's picture name, and the name it is saved under.
+PICTURES = {"trex_color": "rex2_source", "trex_normalgl": "rex2_normal", "trex_orm": "rex2_packed"}
 
 with open(SOURCE, "rb") as f:
     digest = hashlib.sha256(f.read()).hexdigest()
