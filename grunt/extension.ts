@@ -9,7 +9,7 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { brief, type Goal, type Situation } from "./brief.ts";
+import { brief, BriefDelivery, type Goal, type Situation } from "./brief.ts";
 import { socketLink } from "./link.ts";
 import type { PiExtensionAPI, PiTool, PiToolResult } from "./pi.ts";
 import { GRUNT_VERSION } from "./protocol.ts";
@@ -61,10 +61,15 @@ export default function grunt(pi: PiExtensionAPI): void {
   let lastSaid = -Infinity;
   const situation = (): Situation | null => (mind ? { rt: mind.rt, goals, lastSaid, ...(lastError ? { lastError } : {}) } : null);
 
+  const delivery = new BriefDelivery();
   const wake = (r: Report) => {
     if (!WAKES.has(r.kind)) return;
     if (r.kind === "task" && r.data?.by === "arbiter" && r.data?.status === "done") return; // its danger was told already
-    pi.sendMessage({ customType: "grunt", content: `[game] ${r.text}`, display: true, details: r }, { triggerTurn: true, deliverAs: "followUp" });
+    // The brief rides with the message that wakes the model, carrying only what is new to it.
+    const s = situation();
+    const b = s ? delivery.next(s) : { text: "", cards: [] };
+    if (b.cards.length) mind?.rt.trace.record("brief", { cards: b.cards, chars: b.text.length, with: r.kind });
+    pi.sendMessage({ customType: "grunt", content: `[game] ${r.text}${b.text ? `\n\n${b.text}` : ""}`, display: true, details: r }, { triggerTurn: true, deliverAs: "followUp" });
   };
 
   async function connect(url: string, name: string, owners: string[]): Promise<Mind> {
@@ -250,16 +255,6 @@ export default function grunt(pi: PiExtensionAPI): void {
     }
     if (!mind) return;
     event.systemPromptOptions.customPrompt = DIRECTOR;
-  });
-
-  // Before each model call, the brief goes at the end of the request; it is not kept, so the cached prefix holds.
-  pi.on("context", (event) => {
-    const s = situation();
-    if (!s) return;
-    const b = brief(s);
-    mind!.rt.trace.record("brief", { cards: b.cards, chars: b.text.length });
-    if (!b.text) return;
-    return { messages: [...event.messages, { role: "custom", customType: "grunt-brief", content: b.text, display: false, timestamp: Date.now() }] };
   });
 
   pi.on("tool_result", (event) => {

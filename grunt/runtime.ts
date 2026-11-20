@@ -269,7 +269,7 @@ export class Runtime {
       return `. Options: fight it to clear the way (game_do fight {"target": "${d.id}"}${health}${won.length ? `; you have beaten ${won.length} ${d.type} before, losing ${won.at(-1)!.health_lost} health` : ""}), harvest somewhere else, or wait and game_do {"resume": "${task.id}"}.`;
     }
     if (result.data?.reason === "weight") return ". Options: craft something from the materials, or put things in a box.";
-    if (result.data?.reason === "materials") return `. Gather what is short (harvest takes kind and count: a tree gives about 30 wood and 10 thatch, a bush about 12 fiber), then game_do {"resume": "${task.id}"}.`;
+    if (result.data?.reason === "materials") return `. Options: game_do gather {"items": ${JSON.stringify(result.data.bill ?? {})}} gathers the whole list in one task; then game_do {"resume": "${task.id}"}.`;
     return "";
   }
 
@@ -439,7 +439,7 @@ export class Runtime {
       ...(b.age(t.seen) > 3000 ? { seen_s_ago: Math.round(b.age(t.seen) / 1000) } : {}),
     }));
     return {
-      name: this.name, alive: s?.alive ?? null,
+      name: this.name, alive: s?.alive ?? null, axes: "pos is [x, height, z]: x grows to the east, z to the south (north is -z)",
       pos: s ? s.pos.map((v) => Math.round(v * 10) / 10) : null, yaw: s ? Math.round(s.yaw * 100) / 100 : null,
       vitals: s ? Object.fromEntries(Object.entries(s.vitals).map(([k, v]) => [k, `${Math.round(v[0])}/${v[1]}`])) : null,
       held: s?.held?.item ?? null,

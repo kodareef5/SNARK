@@ -137,12 +137,7 @@ export const CARDS: Card[] = [
       const trees = Math.max(Math.ceil(need("wood") / (y.tree.wood ?? 30)), Math.ceil(need("thatch") / (y.tree.thatch ?? 10)));
       const bushes = Math.ceil(need("fiber") / (y.bush.fiber ?? 12));
       const seen = { tree: b.find((x) => x.type === "tree").length, bush: b.find((x) => x.type === "bush").length };
-      const steps = [
-        trees > 0 ? `game_do harvest {"kind": "tree", "count": ${trees * (y.tree.wood ?? 30)}} (about ${trees} trees: wood and thatch come together; you know of ${seen.tree})` : "",
-        bushes > 0 ? `game_do harvest {"kind": "bush", "count": ${need("fiber")}} (about ${bushes} bushes; you know of ${seen.bush})` : "",
-        `game_do {"resume": "${t.id}"} to build`,
-      ].filter(Boolean);
-      return `To build, gather in this order, one task at a time, each when the last is done:\n${steps.map((x, i) => `${i + 1}. ${x}`).join("\n")}${seen.tree < trees || seen.bush < bushes ? "\nYou know of too few: look_around, or walk somewhere new, to find more." : ""}`;
+      return `To build: 1. game_do gather {"items": ${JSON.stringify(bill)}} (one task for the whole list: about ${trees} trees and ${bushes} bushes; you know of ${seen.tree} trees and ${seen.bush} bushes), 2. when it is done, game_do {"resume": "${t.id}"}.${seen.tree < trees || seen.bush < bushes ? " You know of too few: look_around, or walk somewhere new, to find more first." : ""}`;
     },
   },
   {
@@ -180,9 +175,9 @@ export const FRAME = new Set(["goal", "self", "doing"]);
 
 /** The brief for this moment: the most relevant cards, in the library's order, within a budget of characters. Empty
  * when no card but the frame applies: a brief that only repeats game_look is cost and no help (measured). */
-export function brief(s: Situation, cards: Card[] = CARDS, budget = 2400): { text: string; cards: string[] } {
+export function brief(s: Situation, cards: Card[] = CARDS, budget = 2400): { text: string; cards: string[]; parts: { id: string; text: string }[] } {
   const scored = cards.map((c, i) => ({ c, i, r: c.relevance(s) })).filter((x) => x.r > 0).sort((a, b) => b.r - a.r || a.i - b.i);
-  if (!scored.some((x) => !FRAME.has(x.c.id))) return { text: "", cards: [] };
+  if (!scored.some((x) => !FRAME.has(x.c.id))) return { text: "", cards: [], parts: [] };
   const chosen: { i: number; id: string; text: string }[] = [];
   let used = 0;
   for (const x of scored) {
@@ -192,5 +187,25 @@ export function brief(s: Situation, cards: Card[] = CARDS, budget = 2400): { tex
     used += text.length;
   }
   chosen.sort((a, b) => a.i - b.i);
-  return { text: `[brief: the situation now, for this decision. It is not from a player.]\n${chosen.map((c) => c.text).join("\n")}`, cards: chosen.map((c) => c.id) };
+  return { text: `${BRIEF_HEAD}\n${chosen.map((c) => c.text).join("\n")}`, cards: chosen.map((c) => c.id), parts: chosen.map(({ id, text }) => ({ id, text })) };
+}
+
+const BRIEF_HEAD = "[brief: the situation now, for this decision. It is not from a player.]";
+
+/** What a game message should carry of the brief: only cards new or changed since the last delivery, with the frame
+ * (goal, body, task) when any situational card is among them. Messages are kept, so a card the model has seen
+ * unchanged is not sent again, and the conversation only grows at its end (which keeps the provider's cache). */
+export class BriefDelivery {
+  private readonly sent = new Map<string, string>();
+
+  next(s: Situation, cards: Card[] = CARDS): { text: string; cards: string[] } {
+    const b = brief(s, cards);
+    const fresh = b.parts.filter((p) => this.sent.get(p.id) !== p.text);
+    const situational = fresh.filter((p) => !FRAME.has(p.id));
+    for (const p of b.parts) if (!FRAME.has(p.id)) this.sent.set(p.id, p.text);
+    for (const id of [...this.sent.keys()]) if (!b.cards.includes(id)) this.sent.delete(id);
+    if (!situational.length) return { text: "", cards: [] };
+    const out = b.parts.filter((p) => FRAME.has(p.id) || situational.includes(p));
+    return { text: `${BRIEF_HEAD}\n${out.map((p) => p.text).join("\n")}`, cards: out.map((p) => p.id) };
+  }
 }

@@ -89,11 +89,20 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
   if (!(kind in YIELD)) return { status: "failed", summary: `I can't harvest ${kind}` };
   const radius = typeof args.radius === "number" ? args.radius : 25;
   const want = typeof args.count === "number" ? args.count : null;
+  // `until`: inventory counts to reach (gather's way of asking), where `count` is what this task gains of the yield.
+  const until = args.until && typeof args.until === "object" ? (args.until as Record<string, number>) : null;
   const item = YIELD[kind]!;
-  const anchor = (p.anchor ??= b.pos) as [number, number, number];
+  // Where it works: the target asked for, else here, else (none of the kind near) the nearest one it knows of.
+  if (!p.anchor) {
+    const asked0 = typeof args.target === "string" ? b.things.get(args.target) : undefined;
+    const known = b.find((r) => r.type === kind);
+    p.anchor = asked0?.pos ?? (known.some((r) => b.distance(r.pos) <= radius) || !known.length ? b.pos : known[0]!.pos);
+  }
+  let anchor = p.anchor as [number, number, number];
   const unreachable = new Set((p.unreachable ??= []) as string[]);
   const have = () => ((p.gained as Record<string, number> | undefined)?.[item] ?? 0);
-  const enough = () => want !== null && have() >= want;
+  const enough = () => (want !== null && have() >= want) || (!!until && Object.entries(until).every(([i, n]) => b.count(i) >= n));
+  let moves = 0;
   const summary = () => `gathered ${Object.entries((p.gained ?? {}) as Record<string, number>).map(([k, v]) => `${v} ${k}`).join(", ") || "nothing"} from ${Number(p.targets ?? 0)} ${kind}s`;
   p.targets ??= 0;
   const tool = kind === "bush" ? null : yield* holdBest(ctx, TOOLS[kind]!);
@@ -109,8 +118,17 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
         yield* ctx.body.scan();
         continue;
       }
-      const why = want !== null ? `no ${kind}s left near; ${summary()}, short of ${want} ${item}` : summary();
-      return { status: want !== null ? "blocked" : "done", summary: why, data: { gained: p.gained, reason: "none_near" } };
+      // None left here but some known elsewhere, and more wanted: move on to the nearest patch.
+      const other = b.find((r) => r.type === kind && !unreachable.has(r.id) && b.distance(r.pos) < 150)[0];
+      if (other && (want !== null || until) && moves < 3) {
+        moves++;
+        anchor = p.anchor = other.pos;
+        scanned = false;
+        continue;
+      }
+      const shortOf = until ? Object.entries(until).filter(([i, n]) => b.count(i) < n).map(([i, n]) => `${n - b.count(i)} ${i}`).join(", ") : want !== null ? `${want - have()} ${item}` : "";
+      const why = shortOf ? `no ${kind}s left that I know of; ${summary()}, short of ${shortOf}` : summary();
+      return { status: shortOf ? "blocked" : "done", summary: why, data: { gained: p.gained, reason: "none_near" } };
     }
     const candidates = near.map((r) => {
       const danger = b.dangerNear(r.pos);
@@ -202,6 +220,28 @@ function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResu
   return { status: "blocked", summary: "it won't die", data: { swings, won: false, foe: p.foe, weapon, health_lost: lost() } };
 }
 
+/** Where each material comes from. */
+const SOURCE: Record<string, string> = { wood: "tree", thatch: "tree", stone: "rock", flint: "rock", fiber: "bush", berries: "bush" };
+
+/** Gathers until the inventory holds a whole list of materials: trees, then rocks, then bushes, as each is needed. */
+function* gather(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+  const b = ctx.belief, p = ctx.progress;
+  const items = (args.items && typeof args.items === "object" ? args.items : {}) as Record<string, number>;
+  const unknown = Object.keys(items).filter((i) => !(i in SOURCE));
+  if (unknown.length || !Object.keys(items).length) return { status: "failed", summary: `I can gather ${Object.keys(SOURCE).join(", ")}, not ${unknown.join(", ") || "nothing"}` };
+  const short = () => Object.entries(items).filter(([i, n]) => b.count(i) < n);
+  for (const kind of ["tree", "rock", "bush"]) {
+    const want = Object.fromEntries(Object.entries(items).filter(([i]) => SOURCE[i] === kind));
+    if (!Object.keys(want).length || Object.entries(want).every(([i, n]) => b.count(i) >= n)) continue;
+    const sub: SkillContext = { ...ctx, progress: ((p[kind] ??= {}) as Record<string, unknown>) };
+    const r = yield* harvest(sub, { kind, until: want, ...(typeof args.radius === "number" ? { radius: args.radius } : {}) });
+    if (r.status !== "done" && Object.entries(want).some(([i, n]) => b.count(i) < n)) return { status: "blocked", summary: `gathering from ${kind}s: ${r.summary}`, data: { reason: r.data?.reason ?? "none_near", ...(r.data?.danger ? { danger: r.data.danger } : {}), short: Object.fromEntries(short().map(([i, n]) => [i, n - b.count(i)])) } };
+  }
+  const left = short();
+  if (left.length) return { status: "blocked", summary: `still short of ${left.map(([i, n]) => `${n - b.count(i)} ${i}`).join(", ")}`, data: { reason: "none_near" } };
+  return { status: "done", summary: `I have ${Object.keys(items).map((i) => `${b.count(i)} ${i}`).join(", ")}`, data: { items } };
+}
+
 // --- Building ---------------------------------------------------------------------------------------------------
 
 interface Spot {
@@ -289,20 +329,24 @@ function* build(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResu
     const all = Object.entries(bill).map(([item, k]) => `${k} ${item}`).join(", ");
     return { status: "blocked", summary: `the ${name} takes ${all} in all; I'm short of ${short.join(", ")}`, data: { bill, short, reason: "materials" } };
   }
-  for (const [piece, n] of Object.entries(needs)) {
-    const missing = n - b.count(piece);
-    if (missing <= 0) continue;
-    const recipe = b.inventory?.craftable.find((r) => r.item === piece);
-    if (!recipe || recipe.can < missing) {
-      const short = recipe ? Object.entries(recipe.needs).map(([i, k]) => `${k * missing - b.count(i) > 0 ? `${k * missing - b.count(i)} more ${i}` : ""}`).filter(Boolean).join(", ") : "a recipe";
-      return { status: "blocked", summary: `I need ${missing} more ${piece} and can make ${recipe?.can ?? 0}: short of ${short}`, data: { needs, missing: { [piece]: missing } } };
+  // Queue the crafting in the order the pieces go up, and start placing as soon as the first is made: crafting goes
+  // on while the character works, as a player's queue does.
+  const crafting: { piece: string; acted: ReturnType<SkillContext["body"]["act"]> }[] = [];
+  if (!p.queued) {
+    for (const piece of [...new Set(plan.map((x) => x.piece))]) {
+      const missing = (needs[piece] ?? 0) - b.count(piece);
+      if (missing > 0) crafting.push({ piece, acted: ctx.body.act([{ control: "craft", item: piece, count: missing }], `craft ${missing} ${piece}`) });
     }
-    const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "craft", item: piece, count: missing }], `craft ${missing} ${piece}`), recipe.seconds * missing * 1000 + 3000);
-    if (o?.status !== "completed") return { status: "failed", summary: `crafting ${piece} ${o?.status ?? "never finished"}${o?.code ? `: ${o.code}` : ""}` };
-    yield { until: () => b.count(piece) >= n, ms: 2000 };
+    p.queued = true;
   }
+  const craftFailed = () => crafting.find((c) => c.acted.state.outcomes[0] && c.acted.state.outcomes[0].status !== "completed");
   let origin = p.origin as [number, number] | undefined;
+  let placedAt = -Infinity;
   for (const spot of left()) {
+    // A view of the inventory from after the last placement, with the piece in it (or its crafting failed).
+    yield { until: () => (b.inventoryAt > placedAt && b.count(spot.piece) > 0) || !!craftFailed(), ms: 30000 };
+    const bad = craftFailed();
+    if (bad && b.count(spot.piece) === 0) return { status: "failed", summary: `crafting ${bad.piece} failed: ${bad.acted.state.outcomes[0]?.code ?? bad.acted.state.outcomes[0]?.status}`, data: { placed } };
     if (!(yield* hold(ctx, spot.piece))) return { status: "blocked", summary: `I have no ${spot.piece} left`, data: { placed } };
     let want: [number, number, number] | null = null;
     if (origin) {
@@ -333,6 +377,7 @@ function* build(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResu
     const id = o?.detail?.placed;
     if (typeof id !== "string") return { status: "failed", summary: `placing the ${spot.piece} failed: ${o?.code ?? o?.status}`, data: { placed } };
     placed[spot.key] = id;
+    placedAt = b.now;
     if (!origin) origin = p.origin = [pv.pos[0], pv.pos[2]] as [number, number];
     yield { until: () => b.things.has(id), ms: 1500 };
   }
@@ -366,8 +411,12 @@ export const SKILLS: Record<string, Skill> = {
   },
   harvest: {
     name: "harvest", describe: "Gather from trees, rocks or bushes near where it starts (best tool in hand), until none is left near, or until `count` of the main yield.",
-    params: { kind: "tree | rock | bush", target: "entity id (optional): the one to start with", count: "number (optional): stop once this many wood, stone or fiber ITEMS are gathered (a tree gives 30 wood); leave it out to clear every one near", radius: "metres around the start (default 25)" },
+    params: { kind: "tree | rock | bush", target: "entity id (optional): the one to start with", count: "number (optional): stop once this many wood, stone or fiber ITEMS are gathered (a tree gives 30 wood); leave it out to clear every one near", radius: "metres around the start (default 25)", until: "{item: count} (optional): stop when the inventory holds these" },
     body: true, run: harvest,
+  },
+  gather: {
+    name: "gather", describe: "Gather until the inventory holds a whole list of materials (wood, thatch, stone, flint, fiber, berries): it goes to trees, rocks and bushes as each is needed, moving on to the next patch it knows of.",
+    params: { items: "{material: count}, the totals to have", radius: "metres around each patch (default 25)" }, body: true, run: gather,
   },
   flee: { name: "flee", describe: "Run from a threat until it is far or lost.", params: { from: "entity id", yaw: "the world yaw it was heard from" }, body: true, run: flee },
   fight: { name: "fight", describe: "Fight a creature with the best weapon to hand until it is dead or gone.", params: { target: "entity id" }, body: true, run: fight },

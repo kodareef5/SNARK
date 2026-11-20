@@ -70,7 +70,7 @@ test("harvest stops at a count of wood, and is blocked when the trees run out fi
   const more = h.rt.start("harvest", { kind: "tree", count: 500 });
   h.run(120_000, () => more.status !== "running");
   expect(more.status).toBe("blocked");
-  expect(more.result!.summary).toContain("short of 500 wood");
+  expect(more.result!.summary).toMatch(/no trees left that I know of; .*short of \d+ wood/);
 });
 
 test("a raptor that comes hunting puts the harvest aside: the character runs, lives, and goes back to the trees", async () => {

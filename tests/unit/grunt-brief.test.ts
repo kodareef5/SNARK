@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { brief, type Situation } from "../../grunt/brief.ts";
+import { brief, BriefDelivery, type Situation } from "../../grunt/brief.ts";
 import { memoryLink } from "../../grunt/link.ts";
 import { Runtime } from "../../grunt/runtime.ts";
 import { type Clock, Session } from "../../grunt/session.ts";
@@ -49,9 +49,7 @@ test("a build short of materials gets an exact plan: how many trees and bushes, 
   expect(t.status).toBe("blocked");
   const b = brief(h.situation());
   expect(b.cards).toContain("materials");
-  expect(b.text).toContain('1. game_do harvest {"kind": "tree", "count": 300} (about 10 trees: wood and thatch come together; you know of 1)');
-  expect(b.text).toContain('2. game_do harvest {"kind": "bush", "count": 40} (about 4 bushes; you know of 1)');
-  expect(b.text).toContain(`3. game_do {"resume": "${t.id}"} to build`);
+  expect(b.text).toContain(`1. game_do gather {"items": {"wood":297,"thatch":73,"fiber":40}} (one task for the whole list: about 10 trees and 4 bushes; you know of 1 trees and 1 bushes), 2. when it is done, game_do {"resume": "${t.id}"}.`);
   expect(b.text).toContain("You know of too few");
 });
 
@@ -87,7 +85,7 @@ test("while a task runs and nothing is wrong, there is no brief: the frame alone
   h.rt.start("harvest", { kind: "tree" });
   h.run(1500);
   expect(h.rt.current?.skill).toBe("harvest");
-  expect(brief(h.situation())).toEqual({ text: "", cards: [] });
+  expect(brief(h.situation())).toEqual({ text: "", cards: [], parts: [] });
 });
 
 test("the recurring-threat card is there while the threat is, and gone once it is dead", async () => {
@@ -101,4 +99,19 @@ test("the recurring-threat card is there while the threat is, and gone once it i
   h.run(60_000, () => fight.status !== "running");
   expect(h.world.things.has(raptor.id)).toBe(false);
   expect(brief(h.situation()).cards).not.toContain("recurring-threat");
+});
+
+test("delivered with the game's messages, a card is sent when it is new or changed, and not again while it holds", async () => {
+  const h = await harness({ me: { items: { stone_hatchet: 1 } }, things: [{ type: "tree", x: 5, z: -5 }] });
+  const d = new BriefDelivery();
+  const t = h.rt.start("build", { blueprint: "hut_2x2" });
+  h.run(1000, () => t.status !== "running");
+  const first = d.next(h.situation());
+  expect(first.cards).toEqual(["goal", "self", "doing", "materials", "idle"]);
+  h.run(500);
+  expect(d.next(h.situation())).toEqual({ text: "", cards: [] });
+  h.world.say("Bob", "Scout, any wood?");
+  h.run(300);
+  const again = d.next(h.situation());
+  expect(again.cards).toEqual(["goal", "self", "doing", "unanswered"]);
 });

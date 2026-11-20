@@ -20,6 +20,9 @@ How to decide:
   its health and stamina are full, then take the goal up again (game_do {"resume": id}).
 - When someone says something to the character, answer in chat (game_say) and do it if it is yours to do. game_look
   and the message say where the speaker is; go there (walk_to with the speaker's id) rather than asking.
+- To build something, start the build first: if materials are short it says exactly what it takes, and gather
+  takes that whole list in one task. Where you are asked to build is where the character stands when it starts:
+  pos in game_look is [x, height, z], with x growing east and z growing south (north is -z).
 - When the goal is reached, say so as you were asked (often in chat with game_say), with the real numbers from the
   game, and stop.
 
