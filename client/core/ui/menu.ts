@@ -32,13 +32,14 @@ export function menuButton(f: UiFrame, key: number, x: number, y: number, width:
 }
 
 /**
- * The offer to unmute: at the top, in the middle where there is room and otherwise left of the minimap; by touch under
+ * The offer to unmute: at the top (under the compass, `below`), in the middle where there is room and otherwise left of the minimap; by touch under
  * the bar in the top left, where `touch` keeps a row for it. Call it after the screens: where one has a control there
  * (choosing where to rise fills the window) the offer is left out, and the HUD and the menu have it again.
  */
-export function unmuteButton(f: UiFrame, touch: TouchPlan | null, pill: typeof import("./touch.ts").pill | null = null): void {
+export function unmuteButton(f: UiFrame, touch: TouchPlan | null, pill: typeof import("./touch.ts").pill | null = null, below = 0): void {
   const w = Math.ceil(textWidth(UNMUTE_TEXT, S_UNMUTE)) + 32, h = 44, left = f.left + 12;
-  const y = touch ? touch.stackY - 52 : f.top + 12;
+  // Under the compass where it stands at the top.
+  const y = touch ? touch.stackY - 52 : Math.max(f.top + 12, below);
   const x = touch ? left : Math.max(left, Math.min(Math.round((f.width - w) / 2), f.width - f.right - 12 - MINIMAP_SIZE - 10 - w));
   for (let i = 0; i < f.count; i++) {
     const q = f.nodes[i]!;

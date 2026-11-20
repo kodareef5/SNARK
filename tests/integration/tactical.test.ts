@@ -5,7 +5,7 @@ import { App } from "../../client/core/app.ts";
 import { HudModel, updateHud } from "../../client/core/hud.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { Chart, type MapPicture } from "../../client/core/tactical.ts";
-import { IMAGE_MAP, IMAGE_MINIMAP, KEY_MARKER, KEY_MINIMAP, buildHud } from "../../client/core/ui/hud.ts";
+import { IMAGE_MAP, IMAGE_MINIMAP, KEY_MARKER, KEY_SELF_ARROW, KEY_MINIMAP, buildHud } from "../../client/core/ui/hud.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { KEY_MAP_IMAGE, KEY_MAP_LINE, KEY_MAP_PIN, KEY_MAP_TITLE, KEY_MAP_ZOOM, buildMap, mapPointer } from "../../client/core/ui/screens.ts";
 import { chunkAt } from "../../shared/coords.ts";
@@ -271,7 +271,8 @@ test("the minimap is a window on one zoom around its reader, and the map screen 
       buildHud(f, hud);
       if (map) buildMap(f, a, hud);
     });
-  const markers = (): number => f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_MARKER && n.key < KEY_MARKER + 256).length;
+  // Marks on the minimap: the squares, and the reader's arrow.
+  const markers = (): number => f.nodes.slice(0, f.count).filter((n) => (n.key >= KEY_MARKER && n.key < KEY_MARKER + 256) || n.key === KEY_SELF_ARROW).length;
   /** Whether a picture shows the tribe's green where the place (x, z) is, to within a pixel. */
   const green = (p: MapPicture, x: number, z: number): boolean => {
     const N = p.image.width;
@@ -312,8 +313,9 @@ test("the minimap is a window on one zoom around its reader, and the map screen 
   const here = latLonText(hud.lat, hud.lon);
   expect(hud.readout[0]!.startsWith(here)).toBe(true);
   expect(f.find(KEY_MAP_TITLE)!.text).toBe(`Map  ${here}`);
+  // The reader is an arrow; its middle is where the reader stands.
   const self = f.find(KEY_MAP_PIN + 16)!;
-  expect(mapPointer(hud, 2, KEY_MAP_IMAGE, self.x + 4, self.y + 4)).toBe(true);
+  expect(mapPointer(hud, 2, KEY_MAP_IMAGE, self.x + self.w / 2, self.y + self.h / 2)).toBe(true);
   frames(50);
   expect(f.find(KEY_MAP_LINE + 16)!.text).toBe(`zoom 1 of 4   ${here}`);
   // Its button zooms in, the server sends finer cells, and at every zoom the hut and the pin are where their coordinates put them.
@@ -327,7 +329,7 @@ test("the minimap is a window on one zoom around its reader, and the map screen 
     expect(green(full, 124, 112)).toBe(true);
     expect(green(full, 124, 200)).toBe(false);
     const pin = f.find(KEY_MAP_PIN + 16)!;
-    expect(lonOf(hf.dims, xOfU(hf, full.view.u0 + ((pin.x + 4 - image.x) / image.w) * full.view.du))).toBeCloseTo(hud.lon, 6);
+    expect(lonOf(hf.dims, xOfU(hf, full.view.u0 + ((pin.x + pin.w / 2 - image.x) / image.w) * full.view.du))).toBeCloseTo(hud.lon, 6);
   }
   // An arrow moves it a quarter of its window, and a click puts the place clicked at its middle.
   const u0 = full.view.u0;
