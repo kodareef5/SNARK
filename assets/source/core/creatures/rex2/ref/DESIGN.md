@@ -133,5 +133,32 @@ A wild Rex v2's first colours are the palette's nearest browns to the source's o
 prints. In the game (`ref/look/head-rex2-dyed-high.png`, with the first colours chosen) it read olive, because the
 face and limb colours fell on olive palette entries, so those regions now start from the brown beside them.
 
+## Hit capsules, sockets and ragdoll
+
+The build's own capsule fit pulls each end in by 0.6 of the radius. On this Rex's short, wide trunk, neck and shoulder
+bones that left spheres up to 1.3 m across, standing clear of the back. `ref/zones.ts` fits them again from the
+built skin and writes `ref/zones.json`, which `asset.ts` gives outright. Each capsule runs along the line to the next
+joint, its radius holds 65% of its skin (85% on the head and 80% on the feet), and its ends come in by a third of
+the radius. `bun tools/fit-zones.ts core:rex2` measures them from ten sides, standing and biting:
+
+| | Build's fit | Now |
+|---|---:|---:|
+| Pixels whose zone matches the skin drawn there | 89.8% | 88.9% |
+| Head | 94.6% | 97.2% |
+| Hits where no skin is drawn | 21.5% | 22.4% |
+
+The sockets are given as offsets (`ref/caps.ts` prints where they land): the seat mid-back 16 cm above the skin, the
+name tag above it, the vent under the tail root. The head, mouth and bite are found on the skull and jaw, and the
+bite lands at the snout, 6.0 m ahead of the hips.
+
+The ragdoll has the old Rex's bodies (pelvis, skull, two tail sections, and each side's forearm, shank and toes) and
+goes limp at tick 40 of 66 in death, as the roll ends. The thighs, lower legs, upper arms, trunk, neck, jaw and tail
+root ride on the pelvis as contacts, so a fallen Rex rests on them. `bun tools/rex/contact.ts core:rex2` measures:
+
+- The lying clips touch the ground to within 1 mm.
+- Fallen from death on level ground, the deepest skin point is 6.7 cm under (a toe claw); 7.4 cm on a 12% slope and
+  11.9 cm on a 35% slope (claws and the side of the skull). Without the contacts the thigh sank 38 cm.
+- Every fall settles within 3.6 seconds.
+
 `ref/clipinfo.py` tracks the jaw, head and hips frame by frame. `ref/sheet.py ... around` draws a pose from four
 sides. The sheets are in `ref/compare/`.
