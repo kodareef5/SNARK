@@ -1,6 +1,7 @@
 // The HUD and its screens through the whole client, for pictures: `bun run snap -- --hud MODE` (--size WxH).
 // Modes: play, menu, settings, audio, controls, controller, drive, drive-hidden (the minimap hidden, H held), ride, riding, station,
-// creative (the sundial at 17:30, facing the low sun), creative-night (at 22:30) and creative-locked (the password asked).
+// creative (the sundial at 17:30, facing the low sun), creative-night (at 22:30) and creative-locked (the password asked),
+// compass (facing 300 with two tames about, H held) and compass-map (the map screen's arrow).
 
 import type { App } from "../../client/core/app.ts";
 import { BOX_SELF, CMD_MOVE, CMD_STRUCT } from "../../shared/net/protocol.ts";
@@ -9,7 +10,7 @@ import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../../tests/fixtures/arena.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
 
-export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked"] as const;
+export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance", "compass", "compass-map"] as const;
 export type HudMode = (typeof HUD_MODES)[number];
 
 /** The setup for clientPicture (tools/snap.ts): a survivor with things in her hotbar, then the screen or scene `mode` names. */
@@ -52,6 +53,19 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
       app.ui.settings.minimap = false;
       app.key("KeyH", true);
     }
+  } else if (mode === "compass" || mode === "compass-map") {
+    // Facing 300 (west-north-west), a tame ahead and to the right on the tape and one behind, east, pinned to its end.
+    for (const [dx, dz] of [[30, 40], [-60, 5]] as const) {
+      const e = h.host.spawnCreature("core:raptor", x + dx, z + dz, 30);
+      const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+      rec.team = me.team;
+      h.host.creatures.claimed(e);
+      h.host.creatures.mind.stay(e, 0xffffffff);
+    }
+    run(1500);
+    c.yaw = Math.PI / 3;
+    if (mode === "compass") app.key("KeyH", true);
+    else app.key("KeyM", true);
   } else if (mode === "ride" || mode === "riding") {
     const e = h.host.spawnCreature("core:raptor", x, z + 3, 30);
     const rec = h.host.records.byPid.get(ents.pid[e]!)!;
@@ -81,6 +95,14 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
     app.ui.openMenu();
     app.ui.pointer(0, KEY_MENU_CREATIVE, 0, 0, 0, s);
     run(400);
+  } else if (mode === "emotes" || mode === "emote-dance") {
+    // The emote menu open on its dances; or, closed, the survivor dancing as the server has it.
+    s.text("emote robot");
+    run(1200);
+    if (mode === "emotes") {
+      app.ui.emotes.open = true;
+      app.ui.emotes.page = 2;
+    }
   } else if (mode === "station") {
     const fire = h.world.structs.add(id("campfire"), x, g.y + h.reg.halfY[id("campfire")]!, z + 2, 0, me.team, 100);
     const rec = h.host.fixtures.ensure(fire);

@@ -78,6 +78,10 @@ export const MATERIAL_TWO_SIDED = 1;
 export const MATERIAL_CUTOUT = 2;
 /** A material whose glow (`emissive`) is on only from dusk to dawn, as a working street lamp's lens (client/core/render/surface.ts `lampsOn`). */
 export const MATERIAL_NIGHT = 4;
+/** Tinted reflective lens. Drawn after its opaque backing with angle-dependent coverage. */
+export const MATERIAL_LENS = 8;
+/** A self-dimming status light. Limits its own apparent luminance as the eye adapts to darkness. */
+export const MATERIAL_INDICATOR = 16;
 
 export interface PackMaterial {
   id: string;
@@ -255,7 +259,7 @@ export function parsePack(file: Uint8Array): Pack {
   const jsonLength = view.getUint32(8, true);
   if (12 + jsonLength > file.length) throw new Error("pack: truncated header");
   const header = JSON.parse(decodeUtf8(file.subarray(12, 12 + jsonLength))) as PackHeader;
-  const blob = file.subarray(12 + jsonLength);
+  let blob = file.subarray(12 + jsonLength);
   const meshIndex = new Map<string, number>();
   const textures = header.textures ?? [];
   const materials = header.materials ?? [];
@@ -291,7 +295,19 @@ export function parsePack(file: Uint8Array): Pack {
   if (header.paletteOffset + 1024 > blob.length) throw new Error("pack: palette outside the file");
   const d = header.details;
   if (d && !(d.atlas.side >= CELL && d.atlas.side <= ATLAS_MOST && (d.atlas.side & (d.atlas.side - 1)) === 0)) throw new Error(`pack: the details atlas is ${d.atlas.side} pixels across`);
-  if (d && d.atlas.offset + atlasBytes(d.atlas.side) > blob.length) throw new Error("pack: the details atlas is outside the file");
+  if (d) {
+    const { offset, side, planar } = d.atlas, bytes = atlasBytes(side);
+    if (!Number.isInteger(offset) || offset < 0 || offset + bytes > blob.length) throw new Error("pack: the details atlas is outside the file");
+    if (planar) {
+      // A caller may cache, hash or parse the same file again. Own the decoded blob.
+      const planes = blob.subarray(offset, offset + bytes), pixels = bytes / 4;
+      blob = new Uint8Array(blob);
+      for (let c = 0; c < 4; c++) {
+        for (let i = 0; i < pixels; i++) blob[offset + 4 * i + c] = planes[c * pixels + i]!;
+      }
+      delete d.atlas.planar;
+    }
+  }
   return { header, blob, blobAt: 12 + jsonLength, palette: blob.subarray(header.paletteOffset, header.paletteOffset + 1024), meshIndex, clips: decodeClips(header.clips, blob) };
 }
 

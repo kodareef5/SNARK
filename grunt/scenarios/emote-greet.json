@@ -1,0 +1,19 @@
+{
+  "name": "emote-greet",
+  "about": "A friend waves and asks the character to dance: it waves back (its idle answers in kind) and dances with her.",
+  "persona": "cheerful",
+  "world": {
+    "seed": 3,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 0 },
+    "things": [{ "type": "player", "name": "Ana", "x": 0, "z": -4 }]
+  },
+  "owners": ["Ana"],
+  "prompt": "You are Scout, a survivor on a beach, hanging out with your friend Ana. Nothing needs doing right now: just be yourself and be good company.",
+  "script": [
+    { "at_s": 4, "emote": { "from": "Ana", "name": "wave" } },
+    { "at_s": 8, "say": { "from": "Ana", "text": "hey Scout! dance with me?" } },
+    { "at_s": 9, "emote": { "from": "Ana", "name": "disco" } }
+  ],
+  "success": { "all": [{ "emoted": "greeting" }, { "emoted": "dance" }] },
+  "budget": { "seconds": 120 }
+}

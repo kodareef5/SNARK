@@ -58,3 +58,12 @@ What was kept from each archive:
 | [Monster Truck](https://grab3d.com/models/vehicles/monster-truck/), monster-truck.glb | CC0-1.0 | Monster pickup |
 | [Muscle Car](https://grab3d.com/models/vehicles/muscle-car/), muscle-car.glb | CC0-1.0 | Muscle coupe |
 | [Taxi](https://grab3d.com/models/vehicles/taxi/), taxi.glb | CC0-1.0 | City taxi |
+
+## Patch
+
+| Source | License | Used for |
+| --- | --- | --- |
+| [Animated T-rex with 7 clips](https://patch.gg/create/toolbox/assets/anymove:trex), `web` variant, saved as `patch/anymove-trex.glb` (SHA-256 `1ef52f9b3ec54ab812e75ff3c2851f3121ae3d93f80ba953315091faae7355cb`) | CC0-1.0, recorded in the GLB's `asset.copyright` and `asset.extras.license` | The Rex's body, rig and clips (`assets/source/core/creatures/rex/`) |
+
+Downloaded on 2026-11-20. The file says its mesh and motion were made with AI by Patch's anymove
+(github.com/patch-gg/anymove). It is kept unchanged.

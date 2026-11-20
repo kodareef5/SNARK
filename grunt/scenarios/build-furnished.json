@@ -1,0 +1,16 @@
+{
+  "name": "build-furnished",
+  "about": "A first base with a box, a bed and a fire in it, from raw materials: the library's furnished blueprint, things crafted like the pieces.",
+  "world": {
+    "seed": 3,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 0, "items": { "wood": 1400, "thatch": 400, "fiber": 400, "stone": 40, "flint": 5 } }
+  },
+  "prompt": "You are Scout. Set us up a first base just north of here: a small wooden hut with somewhere to store things, a bed and a campfire inside. You have the materials. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      { "base_has": { "foundation": 4, "door": 1, "thing": 3 }, "roofed": true },
+      { "said": "done|built|finished|ready|complete|\\bup\\b|standing" }
+    ]
+  },
+  "budget": { "seconds": 420 }
+}

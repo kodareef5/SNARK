@@ -192,7 +192,7 @@ async function measureCreature(id: string): Promise<void> {
   const zoneOf = new Uint8Array(rig.bones);
   for (let b = 0; b < rig.bones; b++) {
     for (let up = b; up >= 0 && zoneOf[b] === 0; up = rig.parent[up]!) {
-      const z = asset.spec.zones.find((zone) => "covers" in zone && zone.covers.includes(rig.names[up]!));
+      const z = asset.spec.zones.find((zone) => !!zone.covers?.includes(rig.names[up]!));
       if (z) zoneOf[b] = ZONES[z.zone];
     }
   }

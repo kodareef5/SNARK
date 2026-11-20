@@ -1,0 +1,44 @@
+{
+  "name": "build-surprise",
+  "about": "A walled yard going up when a rock lands on a cell it has yet to reach: the build stops and says so; the Director clears it and goes on.",
+  "world": {
+    "seed": 3,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "piece_foundation_wood": 25,
+        "piece_wall_wood": 27,
+        "piece_ceiling_wood": 6,
+        "piece_door_wood": 2,
+        "stone_pick": 1
+      }
+    }
+  },
+  "prompt": "You are Scout. Build the walled yard (the walled_yard blueprint) just north of here, its gate facing south. The pieces are in your bag. Tell me in local chat when it's done.",
+  "script": [
+    {
+      "at_s": 0,
+      "at_built": 6,
+      "drop": "rock"
+    }
+  ],
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "stands": "walled_yard"
+      },
+      {
+        "said": "done|built|finished|ready|complete|\\bup\\b|standing"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 420
+  }
+}

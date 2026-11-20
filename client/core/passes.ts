@@ -142,7 +142,7 @@ export const BENCH_TURN_MS = 15000;
  * with no worn edges, "road" the ground with no wear on asphalt and sand, and "walks" none on a walk (world-surfaces.ts). "nearmesh" draws the
  * near city's pieces as instances, none as a chunk's mesh (render/nearcity.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -159,6 +159,7 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
   let copy = mine.get(key);
   if (!copy) {
     copy = { ...tier };
+    if (off.has("reflections")) copy = { ...copy, reflectionHz: 0 };
     if (off.has("shadows")) copy = { ...copy, shadows: { ...copy.shadows, cascades: 0 } };
     if (off.has("clouds")) copy = { ...copy, clouds: 0 };
     if (off.has("farblocks")) copy = { ...copy, reach: { ...copy.reach, bases: 0 } };

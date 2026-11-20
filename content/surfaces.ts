@@ -104,6 +104,8 @@ export const SURFACE_WEATHERING: Record<SurfaceName, SurfaceWeathering> = {
  * whose cracks are sealed. The beach's macro is its light alone.
  */
 export const ROAD_LOOK = { macro: 0.7, macroRough: 0.6, wheels: 0.07, oil: 0.22, joint: 0.75, gutter: 0.2, patched: 0.18, sealed: 0.3, beach: 0.8 };
+/** The optional dry road look. Albedo is in linear light. Shade is a reduction of daylight fill on shaded asphalt. */
+export const DRY_ASPHALT = { surface: SURFACE_NAMES.indexOf("asphalt"), albedo: 0.36, roughnessFloor: 0.87, roughnessShare: 0.75, shade: 0.28 };
 /**
  * How a poured walk wears (world-surfaces.ts `walkWorn`) by its 1.5 m panels and the joints between them, each panel
  * and each joint's piece by a hash of where it is: a panel's tone either way, the shares of panels stained, cracked and

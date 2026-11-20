@@ -1,0 +1,108 @@
+{
+  "name": "idle-day",
+  "about": "Nothing asked: the standing orders say get a basic loadout first. Bare hands, a beach with trees, rocks and bushes.",
+  "world": {
+    "seed": 6,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "things": [
+      {
+        "type": "tree",
+        "x": 8,
+        "z": -10
+      },
+      {
+        "type": "tree",
+        "x": 11,
+        "z": -13
+      },
+      {
+        "type": "tree",
+        "x": 6,
+        "z": -15
+      },
+      {
+        "type": "tree",
+        "x": 13,
+        "z": -8
+      },
+      {
+        "type": "tree",
+        "x": 9,
+        "z": -18
+      },
+      {
+        "type": "tree",
+        "x": 14,
+        "z": -16
+      },
+      {
+        "type": "rock",
+        "x": -10,
+        "z": -6
+      },
+      {
+        "type": "rock",
+        "x": -14,
+        "z": -9
+      },
+      {
+        "type": "rock",
+        "x": -12,
+        "z": -14
+      },
+      {
+        "type": "bush",
+        "x": -4,
+        "z": 7
+      },
+      {
+        "type": "bush",
+        "x": -6,
+        "z": 9
+      },
+      {
+        "type": "bush",
+        "x": -3,
+        "z": 11
+      },
+      {
+        "type": "bush",
+        "x": -8,
+        "z": 12
+      }
+    ]
+  },
+  "prompt": "You are Scout, a survivor on this beach. Nobody needs anything from you right now: look after yourself.",
+  "success": {
+    "all": [
+      {
+        "have": "stone_pick",
+        "at_least": 1
+      },
+      {
+        "have": "stone_hatchet",
+        "at_least": 1
+      },
+      {
+        "have": "bow",
+        "at_least": 1
+      },
+      {
+        "have": "arrow",
+        "at_least": 20
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 600
+  },
+  "rules": {
+    "skill": "kit",
+    "args": {}
+  }
+}

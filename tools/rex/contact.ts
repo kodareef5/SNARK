@@ -1,4 +1,5 @@
 // Measure actual finest skin against the ground before and after the native limp handoff.
+//   bun tools/rex/contact.ts [asset id, core:rex unless given]
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { writeBones } from "../../client/core/render/characters.ts";
@@ -11,9 +12,10 @@ import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { flatWorld } from "../../tests/fixtures/world.ts";
 import { unpackMeshes } from "../pack/write.ts";
 
-const bytes = readFileSync("assets/source/core/creatures/rex/rex.snpk");
-const pack = parsePack(bytes), rig = buildRig(pack.header.rigs[0]!, pack.clips)!;
-const lod = unpackMeshes(pack).find(m => m.id === "core:rex")!.lods[0]!;
+const id = process.argv[2] ?? "core:rex", name = id.replace(/^core:/, "");
+const bytes = readFileSync(`assets/source/core/creatures/${name}/${name}.snpk`);
+const pack = parsePack(bytes), rig = buildRig(pack.header.rigs.find(r => r.id === id)!, pack.clips)!;
+const lod = unpackMeshes(pack).find(m => m.id === id)!.lods[0]!;
 const matrices = new Float32Array(rig.bones * 12);
 function sample(clip: string, frame: number, out: Solved = rig.solved): void {
   sampleClip(rig.clips.get(clip)!, frame, rig.a);

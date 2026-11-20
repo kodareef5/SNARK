@@ -74,8 +74,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * for the above.
  * 35: a snapshot's margin is told against the tick due on the loop's clock, and it says the ticks the loop gave up.
  * 36: a snapshot says the buttons its tick carried from an input that came after its own tick.
+ * 37: a survivor's emote, its own word beside the pose and the cues in a view (AnimState.packEmote), and CMD_EMOTE.
  */
-export const PROTOCOL_VERSION = 36;
+export const PROTOCOL_VERSION = 37;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -399,6 +400,14 @@ export const CMD_CORPSE = 34;
  * hour it ended on.
  */
 export const CMD_CLOCK = 35;
+/**
+ * Protocol 37. A survivor's emote (shared/anim/emotes.ts, server/emote.ts): the op 2 bits (0 play, 1 stop, 2 join), the
+ * emote's number u16, and the entity it is aimed at plus one as a varint (0 for none). Playing a pair's emote at someone
+ * invites them; their playing its other side back at the one who asked begins it. Joining a dance plays it in step with
+ * the one joined. BUSY within a third of a second of the last, DENIED while the body cannot (moving, swimming, riding,
+ * carrying, acting), FAR beyond reach of the one aimed at.
+ */
+export const CMD_EMOTE = 36;
 export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;

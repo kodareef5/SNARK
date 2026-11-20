@@ -1,0 +1,46 @@
+{
+  "name": "combat-duel",
+  "about": "One raptor stalking the beach; a hatchet. The fight is one call: the assist closes in and swings.",
+  "world": {
+    "seed": 4,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "stone_hatchet": 1
+      },
+      "hold": "stone_hatchet"
+    },
+    "things": [
+      {
+        "type": "raptor",
+        "x": 8,
+        "z": -28
+      }
+    ]
+  },
+  "prompt": "You are Scout, a survivor on a beach. A raptor is stalking the beach to the north. Kill it, and stay alive. Tell me in local chat when it's dead.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "none_near": "raptor",
+        "of": [
+          0,
+          0
+        ],
+        "within": 200
+      },
+      {
+        "said": "dead|killed|clear|gone|safe|done"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 200
+  }
+}

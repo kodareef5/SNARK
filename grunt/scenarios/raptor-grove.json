@@ -1,0 +1,15 @@
+{
+  "name": "raptor-grove",
+  "about": "Rung 4-6: the raptor lives in the grove. Waiting it out never works; the goal needs a decision to deal with it.",
+  "world": {
+    "seed": 11,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 0, "items": { "stone_hatchet": 1 }, "hold": "stone_hatchet" },
+    "things": [
+      { "type": "tree", "x": 3, "z": -14 }, { "type": "tree", "x": -4, "z": -17 }, { "type": "tree", "x": 6, "z": -20 },
+      { "type": "tree", "x": -2, "z": -23 }, { "type": "raptor", "x": 1, "z": -19 }
+    ]
+  },
+  "prompt": "You are Scout, a survivor on a beach. Chop down every tree in the grove just north of you. Stay alive. When the grove is cleared, say in local chat how much wood you got.",
+  "success": { "all": [{ "alive": true }, { "none_near": "tree", "of": [0, -18], "within": 15 }, { "said": "wood" }] },
+  "budget": { "seconds": 420 }
+}

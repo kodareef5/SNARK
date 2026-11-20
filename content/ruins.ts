@@ -1,3 +1,4 @@
+import { GRATE, UTILITY_ENAMEL as BOX } from "./colours.ts";
 import { shapeHalf, type Def, type ShapeBox, type ShapeDef, type StructureDef } from "../shared/content/defs.ts";
 import { leaning, pitchedRoof, slopeShape, slopedSlab, stairFlight, staticOf, wedge } from "../shared/content/slopes.ts";
 import type { HullDef } from "../shared/world/convex.ts";
@@ -32,7 +33,7 @@ const DARK = 83, PANE = 92, METAL = 89, STEEL = 5, CORAL = 113, SIGN = 135, SPAN
 /** A balcony's front in pale render whatever the building's finish, so the coral wall behind it shows. */
 const FRONT = 104;
 // A curb's pale top, a walk's paving, a gutter's dark, a grate, a utility box's grey green, a downpipe's stain, rust.
-const CURB = 102, WALK = 1, GUTTER = 84, GRATE = 11, BOX = 140, STAIN = 96, RUST = 179;
+const CURB = 102, WALK = 1, GUTTER = 84, STAIN = 96, RUST = 179;
 // Growth: a vine's leaves, moss, and weeds in soil.
 const LEAF = 138, MOSS = 150, WEED = 196;
 type Corner = readonly [number, number, number];

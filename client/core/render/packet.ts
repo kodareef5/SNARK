@@ -3,7 +3,7 @@
 
 import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER } from "../../../content/surfaces.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
-import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_LENS, MATERIAL_TWO_SIDED } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
@@ -53,6 +53,12 @@ export const DRAW_TEXTURED = 32;
 export const DRAW_TWO_SIDED = 64;
 /** Nothing shows where the base colour's alpha is under the material's cutoff. */
 export const DRAW_CUTOUT = 128;
+
+export function texturedFlags(flags: number): number {
+  return DRAW_TEXTURED | ((flags & MATERIAL_TWO_SIDED) ? DRAW_TWO_SIDED : 0)
+    | ((flags & MATERIAL_CUTOUT) ? DRAW_CUTOUT : 0) | ((flags & MATERIAL_LENS) ? DRAW_BLEND : 0);
+}
+
 /**
  * A rigid draw whose instances carry their size in colour region SIZE_REGION, in SIZE_UNITS (shared/world/nodes.ts) of the
  * size the mesh was made: a resource node. Each is drawn that size about its origin, and the region gives no colour.
@@ -98,6 +104,8 @@ export const DETAIL_LAMP = 64;
 export const DETAIL_POOL = 128;
 /** A length of wire hung between two poles (street-wires.ts): the pool's flag over shape 1, as a pool has no shape of its own. */
 export const DETAIL_WIRE = DETAIL_POOL | 1;
+export const DETAIL_GLASS = DETAIL_POOL | 2;
+export const DETAIL_TIRE = DETAIL_POOL | 3;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /**
@@ -218,6 +226,7 @@ export const SOURCE_WINDOW = 1;
 
 /** Bodies the frame block holds for contact (contact.ts). */
 export const MAX_CONTACTS = 12;
+export const MAX_TIRE_CONTACTS = 8;
 
 /**
  * Where each value of the frame block (`FramePacket.frame`) is, in floats. The block is what every lit program reads,
@@ -333,8 +342,14 @@ export const FRAME = {
   contact: 164,
   /** Three camera-relative sky lenses follow the contact bodies. */
   eyes: 164 + MAX_CONTACTS * 8,
+  reflection: 188 + MAX_CONTACTS * 8,
+  previousReflection: 192 + MAX_CONTACTS * 8,
+  /** Finish gloss offset, current capture layer, dry asphalt share, shadow fill reduction. */
+  streetLook: 196 + MAX_CONTACTS * 8,
+  /** For each supported wheel, the ground normal X/Z, its camera-relative plane offset, and the global bone index plus one. */
+  tireContacts: 200 + MAX_CONTACTS * 8,
 } as const;
-export const FRAME_FLOATS = FRAME.eyes + 24;
+export const FRAME_FLOATS = FRAME.tireContacts + MAX_TIRE_CONTACTS * 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -343,6 +358,8 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fFacade, fGrade, fFinish;
   highp vec4 fContact[${MAX_CONTACTS * 2}];
   highp vec4 fEyes[6];
+  highp vec4 fReflection, fPreviousReflection, fStreetLook;
+  highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -386,6 +403,8 @@ const NO_ROWS = new Uint16Array(0);
 const NO_OPEN = new Uint8Array(0);
 
 export class FramePacket {
+  previousStreet: import("./street-finish.ts").StreetImage | null = null;
+  street: import("./street-finish.ts").StreetImage | null = null;
   readonly viewProj = new Float32Array(16);
   readonly nearViewProj = new Float32Array(16);
   camX = 0;
@@ -499,6 +518,11 @@ export class FramePacket {
   readonly drawOffset = new Float32Array(MAX_DRAWS * 3);
   /** DRAW_ bits. Draws with DRAW_BLEND come last. */
   readonly drawFlags = new Uint16Array(MAX_DRAWS);
+  /** Optical finish and wheel data for textured draws. Flat draws use their declared fixture, or -1 for a packed vertex label. */
+  readonly drawStreetMaterial = new Float32Array(MAX_DRAWS);
+  readonly drawWheelBones = new Uint32Array(MAX_DRAWS);
+  readonly drawSpokeCrown = new Uint8Array(MAX_DRAWS);
+  readonly drawFixture = new Int8Array(MAX_DRAWS);
   /** For a DRAW_TEXTURED draw: the manifest's material, and the run of indices it covers. */
   readonly drawMaterial = new Uint16Array(MAX_DRAWS);
   readonly drawFirstIndex = new Uint32Array(MAX_DRAWS);
@@ -598,6 +622,10 @@ export class FramePacket {
   }
 
   beginFrame(): void {
+    this.street = this.previousStreet = null;
+    this.frame.fill(0, FRAME.tireContacts, FRAME_FLOATS);
+    this.frame[FRAME.previousReflection + 3] = 0;
+    this.frame[FRAME.reflection + 3] = 0;
     this.uploads.length = 0;
     this.drops.length = 0;
     this.assetUploads.length = 0;

@@ -5,6 +5,8 @@ import { ACTION_DRAW, ACTION_NONE, MAX_MARKERS, MINIMAP_SIZE, type HudModel, typ
 import type { Settings } from "../settings.ts";
 import { filledVital } from "./vitals.ts";
 import { glass } from "./skin.ts";
+import { IMAGE_ARROW, arrowSheet, placeArrow } from "./arrow.ts";
+import { TAPE_HEIGHT, buildCompass, tapeLayout } from "./compass.ts";
 import type { TouchPlan } from "./touch.ts";
 import { MAX_DOTS } from "../render/laser.ts";
 import { K_BAR, K_BUTTON, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
@@ -44,6 +46,10 @@ export const KEY_AMMO = 35;
 export const KEY_HOTBAR = 40;
 /** One mark for each marker on the minimap, MAX_MARKERS at most. */
 export const KEY_MARKER = 4000;
+/** The reader's arrow on the minimap. */
+export const KEY_SELF_ARROW = 6590;
+/** The arrow's side on a minimap MINIMAP_SIZE across. */
+const ARROW_SIZE = 24;
 /** Small driving instruments below the minimap, outside the chat and survivor's vitals. */
 export const KEY_VEHICLE = 3500;
 export const KEY_JET_FUEL = 3520;
@@ -127,7 +133,7 @@ export function hotbarTop(f: UiFrame, slots: number): number {
  * vitals stand in a row at the top, the stack in the top left starts under the bar, the minimap is the plan's size and
  * the prompt loses its key.
  */
-export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minimap" | "diagnostics" | "vitalLabels"> = { minimap: true, diagnostics: false, vitalLabels: false }, controls = true, inspect = false, touch: TouchPlan | null = null): void {
+export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minimap" | "diagnostics" | "vitalLabels" | "compass"> = { minimap: true, diagnostics: false, vitalLabels: false, compass: true }, controls = true, inspect = false, touch: TouchPlan | null = null): void {
   const W = f.width;
   const H = f.height;
   // The corners anchored things keep to, and the minimap's side.
@@ -191,7 +197,15 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
       const u = (k.u - view.u0) / view.du;
       const v = (k.v - view.v0) / view.dv;
       if (u < 0 || u > 1 || v < 0 || v > 1) continue;
-      f.add(KEY_MARKER + shown++, K_PANEL, mapX + Math.max(2, Math.min(MAP - 2, u * MAP)) - 2, mapTop + Math.max(2, Math.min(MAP - 2, v * MAP)) - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
+      const x = mapX + Math.max(2, Math.min(MAP - 2, u * MAP)), y = mapTop + Math.max(2, Math.min(MAP - 2, v * MAP));
+      // The reader is an arrow the way it faces, on top of the rest.
+      if (k.kind === "self") {
+        const side = Math.round((ARROW_SIZE * MAP) / MINIMAP_SIZE);
+        f.images[IMAGE_ARROW] ??= arrowSheet();
+        placeArrow(f.add(KEY_SELF_ARROW, K_IMAGE, x - side / 2, y - side / 2, side, side, S_FRAME), m.dial.heading);
+        continue;
+      }
+      f.add(KEY_MARKER + shown++, K_PANEL, x - 2, y - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
     }
     if (inspect || options.diagnostics) f.text(KEY_CLOCK, mapX, mapTop + MAP + 4, MAP, S_LABEL, m.clock);
     if (mapTools) for (let i = 0; i < 2; i++) {
@@ -199,6 +213,22 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
       b.text = i === 0 ? "−" : "+";
       b.label = i === 0 ? "Zoom out" : "Zoom in";
       b.interactive = true;
+    }
+  }
+
+  // The compass in the middle of the top, between what holds its corners, while the view is the body's own.
+  m.compassBottom = 0;
+  if (options.compass && !m.bare && !m.out && !m.orbit && !(m.scope && m.banner === "")) {
+    // What holds the top left: by touch the bar, else the readout and the voice's lines where they show.
+    let held = touch ? touch.topEnd : left - 8;
+    if (options.diagnostics) held = Math.max(held, left + Math.min(right - left, 400));
+    if (m.voice !== "") held = Math.max(held, left + Math.min(right - left, m.voice === m.voice.toUpperCase() ? 96 : 330));
+    if (m.talkers.length > 0) held = Math.max(held, left + 170);
+    const at = tapeLayout(f, held, options.minimap || touch ? mapX - 2 : right - (mapTools ? 36 : 0) + 8);
+    const degrees = inspect || options.diagnostics;
+    if (at) {
+      buildCompass(f, m, at, degrees);
+      m.compassBottom = at.y + TAPE_HEIGHT + 8 + (degrees ? lineHeight(S_LABEL) : 0);
     }
   }
 

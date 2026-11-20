@@ -306,6 +306,7 @@ export class App {
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
       this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
+      this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
   }
@@ -1296,6 +1297,9 @@ export class App {
     // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.
     body.state.setAction(session.own.act, this.holding >= 0 ? HOLD_CARRY : (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
+    // An emote is the server's to say: the one it plays for this body, as the view has it.
+    body.state.unpackEmote(0);
+    for (let i = 0; i < this.remote.count; i++) if (this.remote.id[i] === body.id) body.state.unpackEmote(this.remote.emote[i]!);
     // While riding, the mount is the body it predicts, drawn from the prediction and always from outside.
     // Its own body is then one more remote body, where the server has it on the seat.
     const riding = alive && session.driving >= 0;
@@ -1449,6 +1453,8 @@ export class App {
     this.ui.settings.kept = keptLine(kept);
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
     this.scene.alternate = alternate;
+    this.scene.finishGloss = this.ui.settings.finishGloss;
+    this.scene.roadFinish = this.ui.settings.roadFinish;
     this.scene.assets.residency.holdBack = this.session.behind;
     const chosen = forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst);
     const governed = tierWithout(this.governor.tier(chosen, this.ui.settings.steady, this.dpr, nowMs), off);
@@ -1474,7 +1480,7 @@ export class App {
     packetWithout(packet, off);
     hud.minimapVisible = this.ui.settings.minimap && !this.ui.menu;
     if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
-    updateHud(hud, session, this.remote, this.fps, this.unit);
+    updateHud(hud, session, this.remote, this.fps, this.unit, nowMs);
     hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     this.feedback.absorb(session, this.reg, nowMs);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers, session.hitMarkers);
@@ -1520,7 +1526,19 @@ export class App {
     }
     const whom = alive ? this.who(world, eyeNow) : ((this.aimedBoat = this.lookedAt = this.target = -1), "");
     this.eggAimed = -1;
-    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
+    // A move for two goes to the survivor the crosshair is on.
+    const emotes = this.ui.emotes;
+    emotes.tick(nowMs);
+    emotes.target = -1;
+    emotes.targetName = "";
+    for (let i = 0; i < this.remote.count; i++) {
+      if (this.remote.id[i] !== this.target || !this.scene!.characters.human(this.remote.kind[i]!)) continue;
+      emotes.target = this.target;
+      emotes.targetName = this.remote.name[i]!;
+    }
+    emotes.has = (n) => this.scene!.characters.emoteKnown(n);
+    if (emotes.open) this.scene!.characters.wantEmotes();
+    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;

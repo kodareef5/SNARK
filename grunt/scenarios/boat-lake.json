@@ -1,0 +1,67 @@
+{
+  "name": "boat-lake",
+  "about": "A lake 800 m wide between here and the goal; a boat at the near shore. Round the lake is long; across is quick.",
+  "world": {
+    "seed": 2,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -650,
+        -1050,
+        650,
+        120
+      ],
+      "features": [
+        {
+          "type": "water",
+          "rect": [
+            -400,
+            -440,
+            400,
+            -40
+          ],
+          "depth": "deep"
+        }
+      ]
+    },
+    "things": [
+      {
+        "type": "boat",
+        "x": 0,
+        "z": -46
+      }
+    ]
+  },
+  "prompt": "You are Scout. Get to x 0, z -480 as quickly as you sensibly can, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -480
+        ],
+        "within": 6
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 420
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -480
+    }
+  }
+}

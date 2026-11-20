@@ -1,0 +1,45 @@
+{
+  "name": "hut-from-materials",
+  "about": "Rung 5: build a 2x2 wood hut from raw materials in the bag: craft the pieces, then place them.",
+  "world": {
+    "seed": 3,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "wood": 900,
+        "thatch": 227,
+        "fiber": 160
+      }
+    },
+    "things": [
+      {
+        "type": "tree",
+        "x": -8,
+        "z": 6
+      },
+      {
+        "type": "rock",
+        "x": 12,
+        "z": 4
+      }
+    ]
+  },
+  "prompt": "You are Scout, a survivor on a beach. Build a small 2x2 wood hut here with what's in your inventory, with a door and a roof. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "stands": "hut_2x2",
+        "tier": "wood"
+      },
+      {
+        "said": "done|built|finished|ready|complete|\\bup\\b|standing"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 400
+  }
+}

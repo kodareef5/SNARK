@@ -5,6 +5,8 @@ from build import HERE, body_parts, hull, box, shell
 import numpy as np
 
 out = HERE.parent / "box_trailer"
+axles = json.loads((HERE.parents[4] / "content/vehicles/trailer-axles.json").read_text())
+radius = axles["radius"]
 donor = body_parts(HERE.parents[3] / "raw/grab3d/semi-truck.glb", -2.90, "_trailer")
 for level, samples in enumerate([90, 35, 15, 8]):
     parts = []
@@ -28,14 +30,14 @@ for level, samples in enumerate([90, 35, 15, 8]):
         result = hull(v, samples)
         if result:
             parts.append((*result, tile, "", ""))
-    for z in [-7.954 + 2.9, -6.654 + 2.9]:
+    for z in axles["z"]:
         for s in [-1, 1]:
             n = [32, 20, 12, 8][level]
             parts.append(
                 shell(
                     [
-                        (s * 0.91 + dx, 0.52, z, r, r)
-                        for dx, r in [(-0.28, 0.45), (-0.22, 0.52), (0.22, 0.52), (0.28, 0.45)]
+                        (s * 0.91 + dx, radius, z, r, r)
+                        for dx, r in [(-0.28, 0.45), (-0.22, radius), (0.22, radius), (0.28, 0.45)]
                     ],
                     "x",
                     n,
@@ -45,7 +47,7 @@ for level, samples in enumerate([90, 35, 15, 8]):
                 )
             )
             parts.append(
-                shell([(x, 0.52, z, 0.29, 0.29) for x in sorted([s * 1.193, s * 1.218])], "x", n, 5, "", "")
+                shell([(x, radius, z, 0.29, 0.29) for x in sorted([s * 1.193, s * 1.218])], "x", n, 5, "", "")
             )
     for s in [-1, 1]:
         # Extend the retractable feet to the same plane as the tyres.

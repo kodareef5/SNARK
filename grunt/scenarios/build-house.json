@@ -1,0 +1,33 @@
+{
+  "name": "build-house",
+  "about": "A 3x3 house from the library, the pieces in the bag: one call to build it, nothing to aim.",
+  "world": {
+    "seed": 3,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "piece_foundation_wood": 9,
+        "piece_wall_wood": 12,
+        "piece_ceiling_wood": 9,
+        "piece_door_wood": 1
+      }
+    }
+  },
+  "prompt": "You are Scout, a survivor on a beach. Build a 3x3 wooden house just north of you, its front door facing south toward the beach, with a window on each side. The pieces are in your bag. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "stands": "house_3x3"
+      },
+      {
+        "said": "done|built|finished|ready|complete|\\bup\\b|standing"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 300
+  }
+}

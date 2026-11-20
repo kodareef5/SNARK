@@ -21,6 +21,7 @@ import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
+import { EmoteMenu } from "./emotes.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { TravelScreen } from "./travel.ts";
 import type { SiteLink } from "../travel.ts";
@@ -40,6 +41,7 @@ export class Ui {
   readonly sheet = new CharacterScreen();
   readonly choosing = new ChoosingScreen();
   readonly structure = new StructMenu();
+  readonly emotes = new EmoteMenu();
   readonly naming = new NamePrompt();
   /** The other servers of the cluster, opened at an obelisk's terminal. */
   readonly travel = new TravelScreen();
@@ -107,7 +109,7 @@ export class Ui {
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open;
+    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open;
   }
 
   openMenu(): void {
@@ -190,6 +192,12 @@ export class Ui {
       if (code === "KeyL" && (this.inspect || this.wantsPointerLock)) { if (down && !repeat) { this.settings.minimap = !this.settings.minimap; this.settings.changed(); } return true; }
       // The structure menu takes its digits and Escape. Opening any other screen closes it.
       if (this.structure.key(code, down, repeat, session)) return true;
+      // The emote menu likewise, and Z opens it from play.
+      if (this.emotes.key(code, down, repeat, session)) return true;
+      if (code === "KeyZ" && this.wantsPointerLock && !this.creating) {
+        if (down && !repeat) this.emotes.toggle();
+        return true;
+      }
       // Chat does not open while the session is in the creator.
       if (CHAT_KEYS[code] !== undefined && !this.creating) {
         if (down && !repeat) chat.begin(CHAT_KEYS[code]!, session);
@@ -301,6 +309,7 @@ export class Ui {
     if (kind === 0 && key !== 0) this.hear?.("click");
     if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
+    if (kind === 0 && this.emotes.click(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
     if (kind === 0 && this.travel.open && this.travel.click(key, session)) return;
@@ -341,6 +350,7 @@ export class Ui {
       if (play) layer!.touchZones(f);
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
+      hud.bare = this.map || this.dead;
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.
@@ -385,6 +395,7 @@ export class Ui {
       else {
         this.inventory.build(f, session, this.registry, this.palette);
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
+        if (session && !this.inventory.open) this.emotes.build(f);
       }
     }
     // The name prompt goes over every other screen, but under the console.
@@ -396,7 +407,7 @@ export class Ui {
     if (plan && this.touchPlay && !this.wantsPointerLock && !this.menu && !this.creating && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
     // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
     // Not while a finger types in the chat box, which has its place.
-    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null);
+    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.creating || this.menu ? 0 : hud.compassBottom);
     if (session) this.console.absorb(session);
     this.console.build(f);
     if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }

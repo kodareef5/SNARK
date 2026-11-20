@@ -17,6 +17,7 @@ import { SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
+import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/emotes.ts";
 import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
@@ -42,6 +43,8 @@ import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 import { MARINE_STORIES, ROAD_STORIES, WEAR_KEY, wearOf } from "./wear.ts";
+import { TireContacts } from "./tire-contact.ts";
+import { Windscreens } from "./windscreens.ts";
 import { RotorBlur } from "./rotor-blur.ts";
 import { CameraBody } from "../camera-body.ts";
 import { PatrolLights } from "./patrol-lights.ts";
@@ -260,6 +263,8 @@ const SLIDE_PIXELS = 2;
 const POSE_EVERY = 8;
 
 export class Characters {
+  readonly tireContacts = new TireContacts();
+  readonly windscreens = new Windscreens();
   readonly rotorBlur = new RotorBlur();
   readonly patrolLights = new PatrolLights();
   readonly anim: HumanAnim;
@@ -315,6 +320,11 @@ export class Characters {
   private readonly extraAt = new Int32Array(EXTRA_KEYS * 4);
   /** Stand-ins made so far, by body set and then by what they do (standIn). */
   private readonly standIns: (StandIn | undefined)[][] = [];
+  /** Stand-ins of survivors in whole-body emotes, by body kind and set and the emote. */
+  private readonly emoteStandIns = new Map<number, StandIn>();
+  /** The manifest's slot of the emotes' clips while they are still to come, else -1; and whether they are wanted. */
+  private emoteSlot = -1;
+  private emotesWanted = false;
   private readonly riderStandIns = new Map<number, Map<number, Map<number, StandIn>>>();
   private readonly riderCounted = new Map<number, Map<number, Set<number>>>();
   private readonly neutralGrip = new RiderGrips();
@@ -380,6 +390,7 @@ export class Characters {
     this.palette = pack.palette;
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
+    this.emoteSlot = assets.table.skeletons.get(EMOTE_GROUP) ?? -1;
     this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
     this.plain = table.count * this.levels;
     this.counts = new Uint32Array(this.plain + EXTRA_KEYS);
@@ -709,6 +720,26 @@ export class Characters {
    */
   private standIn(kind: number, set: number, st: AnimState, seated: boolean, impaled = false, rider?: RiderFit, foot = -1, hand = -1): StandIn {
     const c = this.creatures[kind];
+    // A survivor in a whole-body emote (sitting, lying, dancing) stands in at the middle of it.
+    const emote = !c && !seated && !impaled ? emoteOf(st.emote) : null;
+    if (st.emote !== 0 && !this.anim.emotes[st.emote]) this.wantEmotes();
+    if (emote?.mask === "full") {
+      const key = (kind * 2 + set) * 1024 + st.emote;
+      let e = this.emoteStandIns.get(key);
+      if (e) return e;
+      const like = new AnimState();
+      like.emote = st.emote;
+      like.emoteStart = 0;
+      const frames = this.anim.emotes[st.emote]?.frames ?? 2;
+      humanPose(this.anim, like, Math.floor(frames / 2), this.pose, null);
+      const body = this.kinds[kind]!.sets[set]!;
+      const solved = new Solved(HUMAN_BONES);
+      solve(HUMAN, this.pose, solved, body.rest, null);
+      const rows = new Float32Array(HUMAN_BONES * BONE_FLOATS);
+      writeBones(rows, 0, solved, body.rest, null, 0, 0, 0, 0);
+      this.emoteStandIns.set(key, (e = { rows, solved, counted: -1, written: -1, first: 0 }));
+      return e;
+    }
     const doing = c?.vehicle ? 0 : this.standState(st, seated, impaled);
     const of = (this.standIns[kind * 2 + set] ??= []);
     // Content indices are 16-bit and seats at most 16: this numeric key stays exactly representable and bounded by content.
@@ -947,6 +978,9 @@ export class Characters {
           } else c.oriented.pos[b * 3 + 1]! -= droop;
         }
         writeBones(p.bones, first * BONE_FLOATS, c.oriented, rig.rest, null, x, y, z, 0, size);
+        if (!unseen && p.tier.contact && isWheelVehicle(v.def) && Math.hypot(x,y,z) < 16 + v.def.spec.halfLength * size) {
+          this.tireContacts.consider(p, first, v.wheels, rig.rest, v.def.spec.wheelRadius * size);
+        }
         if (!unseen && v.def.movement === "rotor") {
           for (let r = 0; r < v.def.rotors.length; r++) {
             const b = v.rotors[r]!;
@@ -958,6 +992,7 @@ export class Characters {
       if (!unseen) this.keepHead(c, solved, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
     }
     const def = c.vehicle?.def;
+    if (def && !unseen && !st.dead) this.windscreens.add(p, first, def.id, id, st.hurt);
     if (!unseen && vehicle?.lightMode && def && isWheelVehicle(def) && def.emergencyLights) {
       this.patrolLights.add(p, first, def.emergencyLights, vehicle.lightMode, tick, id, size);
     }
@@ -1168,6 +1203,8 @@ export class Characters {
     this.groundWorld = world;
     this.packet = p ?? this.packet;
     this.count = 0;
+    this.tireContacts.begin();
+    this.windscreens.begin();
     this.rotorBlur.begin();
     this.patrolLights.begin();
     this.posed = 0;
@@ -1188,6 +1225,30 @@ export class Characters {
     if (this.lastHeavy.size > 4096) this.lastHeavy.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
     if (this.waiting.length > 0) this.takeClips();
+    if (this.emoteSlot >= 0 && this.emotesWanted) this.takeEmotes();
+  }
+
+  /** Whether the game has emote `n` here: its clip is in the boot pack, or in the group that streams. */
+  emoteKnown(n: number): boolean {
+    const e = EMOTES[n - 1];
+    return !!e && (!!this.anim.emotes[n] || this.assets.table.has("clip", emoteClipId(e.id)));
+  }
+
+  /** Asks for the emotes' clips, as a body plays one or the emote menu opens. */
+  wantEmotes(): void {
+    if (this.emoteSlot < 0) return;
+    this.emotesWanted = true;
+    this.assets.wantClips(this.emoteSlot);
+  }
+
+  /** The emotes' clips, once come: every body plays them from then, and its whole-body stand-ins are made again. */
+  private takeEmotes(): void {
+    this.assets.wantClips(this.emoteSlot);
+    const set = this.assets.clips(this.emoteSlot);
+    if (!set) return;
+    this.anim.addEmotes(set);
+    this.emoteStandIns.clear();
+    this.emoteSlot = -1;
   }
 
   /**
@@ -1393,7 +1454,10 @@ export class Characters {
       humanPose(this.anim, st, tick, this.pose, g);
       this.seatedPose("impaled", 0, undefined, undefined);
     } else if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount);
-    else humanPose(this.anim, st, tick, this.pose, g);
+    else {
+      if (st.emote !== 0 && !this.anim.emotes[st.emote]) this.wantEmotes();
+      humanPose(this.anim, st, tick, this.pose, g);
+    }
     // Longer legs lift the hips, so the feet stay on the ground.
     if (scales && !seat && !vehicleSeat && !impaled) this.pose.root[1]! += lookLift(scales, set.rest);
     solve(HUMAN, this.pose, solved, set.rest, scales);

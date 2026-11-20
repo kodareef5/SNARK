@@ -3,6 +3,11 @@
 import { expect } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { FRONT } from "../../content/vehicles/windscreens.ts";
+import { PAINT, streetMaterial } from "../../content/street-finishes.ts";
+import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
+import { coreRegistry } from "../fixtures/world.ts";
+import { unpackMeshes } from "../../tools/pack/write.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { findAssets, isNode, type Asset } from "../../tools/art/assets.ts";
 import { checkAsset } from "../../tools/art/check.ts";
@@ -28,5 +33,28 @@ artTest("every asset folder has its pack, named as the folder is, and the pack p
   for (const asset of [...ASSETS, ...EXAMPLES]) {
     expect([asset.id, basename(asset.file), basename(dirname(asset.file)), existsSync(asset.file)]).toEqual([asset.id, `${asset.name}.snpk`, asset.name, true]);
     expect([asset.id, checkAsset(unmeasured(asset), parsePack(new Uint8Array(readFileSync(asset.file)))).faults]).toEqual([asset.id, []]);
+  }
+});
+
+artTest("each road vehicle's exported paint, wheel joints and glass opening fit its declared finish", () => {
+  for (const vehicle of coreRegistry().vehicle) {
+    if (!vehicle || !isWheelVehicle(vehicle)) continue;
+    const asset = ASSETS.find(a => a.id === vehicle.id);
+    expect(asset, vehicle.id).toBeDefined();
+    const pack = parsePack(new Uint8Array(readFileSync(asset!.file)));
+    expect(pack.header.materials?.some(m => streetMaterial(m.id) === PAINT), vehicle.id).toBe(true);
+    const rig = pack.header.rigs?.find(r => r.id === vehicle.id);
+    const wheels = rig?.names?.filter(bone => bone.startsWith("wheel_"));
+    expect(wheels?.length, vehicle.id).toBe((vehicle.spec.axles?.length ?? 2)*2);
+    const mesh = unpackMeshes(pack).find(m => m.id === vehicle.id)!;
+    const pane = FRONT[vehicle.id];
+    expect(pane, vehicle.id).toBeDefined();
+    const pos = mesh.lods[0]!.positions;
+    for (const [y,z,w] of pane!) for (const x of [-w,w]) {
+      let nearest = Infinity;
+      for (let i=0; i<pos.length; i+=3) nearest = Math.min(nearest, (x-pos[i]!)**2 + (y-pos[i+1]!)**2 + (z-pos[i+2]!)**2);
+      // The sheet stops inside its seal. All four corners sit within a decimetre of the painted frame.
+      expect(Math.sqrt(nearest), vehicle.id).toBeLessThan(0.10);
+    }
   }
 });

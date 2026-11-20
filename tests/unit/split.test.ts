@@ -1,6 +1,10 @@
 // A pack split into the file fetched at start, the file fetched a level at a time and the file of creature clips, and the meshes made to load them.
 import { expect, test } from "bun:test";
 import { allClips } from "../../shared/pack/clips.ts";
+import { authoredClips } from "../../shared/anim/authored.ts";
+import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import { buildPack } from "../../tools/pack/write.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -137,7 +141,7 @@ artTest("the boot file holds the survivor's clips, and the clip file each creatu
   const { files, manifest } = splitPack(whole, "core");
   const boot = parsePack(files[0]!.bytes);
   expect([...new Set(boot.header.clips.map((c) => c.id.slice(0, c.id.indexOf("/"))))]).toEqual(["human"]);
-  expect(manifest.clips!.map((e) => [e.rig, e.file, e.clips.map((c) => c.id).sort()])).toEqual(
+  expect(manifest.clips!.filter((e) => e.rig !== EMOTE_GROUP).map((e) => [e.rig, e.file, e.clips.map((c) => c.id).sort()])).toEqual(
     CREATURE_ASSETS.filter(({ spec }) => spec.clips.length > 0).sort((a, b) => a.id.localeCompare(b.id))
       .map(({ id, spec }) => [id, 2, spec.clips.map((c) => `${id}/${c.name}`).sort()]),
   );
@@ -146,6 +150,20 @@ artTest("the boot file holds the survivor's clips, and the clip file each creatu
   const all = allClips(manifest, boot, (f) => files[f]!.bytes, () => new Uint8Array(0));
   expect([all.clips.length, all.hash, manifest.clipHash]).toEqual([pack.clips.clips.length, pack.clips.hash, pack.clips.hash]);
   for (const c of pack.clips.clips) expect(all.clips[all.index.get(c.id)!]).toEqual(c);
+});
+
+test("the survivors' emotes come after the first frame: none in the boot file, one group in the clip file, all of them there", () => {
+  const whole = buildPack([], defaultPalette(), authoredClips());
+  const pack = parsePack(whole);
+  const { files, manifest } = splitPack(whole, "emotes");
+  const boot = parsePack(files[0]!.bytes);
+  expect(boot.header.clips.filter((c) => c.id.startsWith(`${EMOTE_GROUP}/`))).toEqual([]);
+  expect(boot.header.clips.length).toBeGreaterThan(0);
+  const group = manifest.clips!.find((e) => e.rig === EMOTE_GROUP)!;
+  expect(group.clips.map((c) => c.id).sort()).toEqual(pack.header.clips.filter((c) => c.id.startsWith(`${EMOTE_GROUP}/`)).map((c) => c.id).sort());
+  // The server's clips, and their hash, are as before.
+  const all = allClips(manifest, boot, (f) => files[f]!.bytes, () => new Uint8Array(0));
+  expect([all.clips.length, all.hash]).toEqual([pack.clips.clips.length, pack.clips.hash]);
 });
 
 test("the stress meshes: rocks of four times fewer triangles a level, each level its own colour, and a plate past 16 bits", () => {

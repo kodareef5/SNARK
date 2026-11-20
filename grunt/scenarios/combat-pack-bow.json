@@ -1,0 +1,57 @@
+{
+  "name": "combat-pack-bow",
+  "about": "Three raptors in the clearing north of camp; a bow, arrows and a hatchet. From range, one at a time.",
+  "world": {
+    "seed": 4,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "bow": 1,
+        "arrow": 40,
+        "stone_hatchet": 1
+      }
+    },
+    "things": [
+      {
+        "type": "raptor",
+        "x": -8,
+        "z": -45
+      },
+      {
+        "type": "raptor",
+        "x": 0,
+        "z": -50
+      },
+      {
+        "type": "raptor",
+        "x": 8,
+        "z": -45
+      }
+    ]
+  },
+  "prompt": "You are Scout. Three raptors have moved into the clearing north of camp. Clear them out without dying. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "none_near": "raptor",
+        "of": [
+          0,
+          0
+        ],
+        "within": 200
+      },
+      {
+        "said": "dead|killed|clear|gone|safe|done"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 300
+  }
+}

@@ -3,6 +3,10 @@
 import { TICK_RATE } from "../../shared/coords.ts";
 import { DEFAULT_TIER, offeredTiers, startingTier, type Start, type Tier } from "./assets/tiers.ts";
 
+export const DEFAULT_ROAD_FINISH = 1;
+export const DEFAULT_FINISH_GLOSS = 1.35;
+const ROAD_FINISHES = ["Original", "Dry asphalt", "Dry + deeper shade"] as const;
+
 export class Settings {
   /** How much detail is drawn (client/core/assets/tiers.ts). */
   tier: Tier["name"] = DEFAULT_TIER;
@@ -14,6 +18,8 @@ export class Settings {
    * (client/core/governor.ts). It never changes the tier. Off draws the tier exactly.
    */
   steady = true;
+  finishGloss = DEFAULT_FINISH_GLOSS;
+  roadFinish = DEFAULT_ROAD_FINISH;
   /** A touch-first device, which draws a tier as its touch rule says and is offered the tiers it allows (tiers.ts). The shell sets it. */
   touchFirst = false;
   /** The byte budget of a snapshot the server is asked for, one of SNAPSHOT_BYTES. A server may allow less. */
@@ -45,6 +51,8 @@ export class Settings {
   /** The talk key toggles the microphone instead of being held. */
   toggleTalk = false;
   minimap = true;
+  /** The heading tape at the top of the screen. */
+  compass = true;
   diagnostics = false;
   vitalLabels = false;
   minimapZoom = -1;
@@ -76,14 +84,15 @@ export class Settings {
       for (const [key, lo, hi] of SAVED_NUMBERS) if (Number.isFinite(saved[key])) this[key] = Math.max(lo, Math.min(hi, saved[key]));
       this.minimapZoom = Math.round(this.minimapZoom);
       this.padGlyphs = Math.round(this.padGlyphs);
+      this.roadFinish = Math.round(this.roadFinish);
       if (["lowpoly", "medium", "high", "ultra"].includes(saved.tier)) [this.tier, this.chosen] = [saved.tier, true];
       if (SNAPSHOT_BYTES.includes(saved.snapshotBytes)) this.snapshotBytes = saved.snapshotBytes;
     } catch {}
   }
 }
 
-const SAVED_FLAGS = ["minimap", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted"] as const;
-const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1]] as const;
+const SAVED_FLAGS = ["minimap", "compass", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted"] as const;
+const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2]] as const;
 
 export const VOLUME_MAX = 2;
 
@@ -103,7 +112,7 @@ export interface SettingRow {
 
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
-type NumericSetting = "masterVolume" | "soundVolume" | "ambienceVolume" | "musicVolume" | "interfaceVolume" | "voiceVolume" | "sensitivity" | "fov";
+type NumericSetting = "masterVolume" | "soundVolume" | "ambienceVolume" | "musicVolume" | "interfaceVolume" | "voiceVolume" | "sensitivity" | "fov" | "finishGloss";
 function range(label: string, key: NumericSetting, min: number, max: number, step: number): SettingRow {
   const set = (s: Settings, value: number): void => { if (Number.isFinite(value)) s[key] = Number(clamp(min+Math.round((value-min)/step)*step,min,max).toFixed(4)); };
   return { label, value: s => key === "fov" ? `${s[key]} degrees` : `${Math.round(s[key]*100)}%`, step: (s,by)=>set(s,s[key]+by*step), range: { min,max,step,get:s=>s[key],set } };
@@ -136,6 +145,9 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Status labels", value: (s) => s.vitalLabels ? "on" : "off", step: (s) => void (s.vitalLabels = !s.vitalLabels) },
   { label: "Diagnostics", value: (s) => s.diagnostics ? "on" : "off", step: (s) => void (s.diagnostics = !s.diagnostics) },
   { label: "Sound", value: (s) => s.muted ? "off" : "on", step: (s) => void (s.muted = !s.muted) },
+  range("Finish gloss", "finishGloss", 0.5, 2, 0.05),
+  { label: "Road finish", value: s => ROAD_FINISHES[s.roadFinish]!, step: (s, by) => void (s.roadFinish = clamp(s.roadFinish + by, 0, 2)) },
+  { label: "Compass", value: (s) => s.compass ? "on" : "off", step: (s) => void (s.compass = !s.compass) },
 ];
 
 const megabytes = (bytes: number): string => (bytes >= 1048576 * 10 ? `${Math.round(bytes / 1048576)} MB` : `${(bytes / 1048576).toFixed(1)} MB`);

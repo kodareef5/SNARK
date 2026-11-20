@@ -1,0 +1,65 @@
+{
+  "name": "migrate-base",
+  "about": "Moving house: two boxes at the old camp, 40 m east, to the two vaults at the river base, 50 m south. Several trips.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {}
+    },
+    "things": [
+      {
+        "type": "chest",
+        "name": "Old box 1",
+        "x": 40,
+        "z": 0,
+        "items": {
+          "stone": 300,
+          "flint": 80
+        }
+      },
+      {
+        "type": "chest",
+        "name": "Old box 2",
+        "x": 43,
+        "z": 3,
+        "items": {
+          "wood": 400,
+          "fiber": 120
+        }
+      },
+      {
+        "type": "vault",
+        "name": "River vault 1",
+        "x": 0,
+        "z": 50
+      },
+      {
+        "type": "vault",
+        "name": "River vault 2",
+        "x": 4,
+        "z": 52
+      }
+    ]
+  },
+  "prompt": "You are Scout. We're moving to the river base. Move everything from the old camp's boxes (around x 40, z 0) into the river base vaults (around x 0, z 50). Tell me in local chat when the old camp is empty.",
+  "success": {
+    "all": [
+      {
+        "emptied": [
+          "Old box 1",
+          "Old box 2"
+        ]
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 480
+  }
+}

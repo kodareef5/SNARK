@@ -1,0 +1,76 @@
+{
+  "name": "haul-harvester",
+  "about": "An ankylo back from the quarry, its inventory full: stone and flint to the stone vault, metal to the metal vault. Trips, as the bag allows.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "stone_pick": 1
+      }
+    },
+    "things": [
+      {
+        "type": "ankylo",
+        "name": "Bumper",
+        "x": 10,
+        "z": -6,
+        "items": {
+          "stone": 1200,
+          "flint": 300,
+          "metal": 150
+        }
+      },
+      {
+        "type": "vault",
+        "name": "Stone vault",
+        "x": -8,
+        "z": -8
+      },
+      {
+        "type": "vault",
+        "name": "Metal vault",
+        "x": -8,
+        "z": 0
+      },
+      {
+        "type": "chest",
+        "name": "Camp box",
+        "x": 4,
+        "z": 6
+      }
+    ]
+  },
+  "prompt": "You are Scout, at our base. Bumper the ankylo is back from the quarry, full. Empty it: the stone and flint into the Stone vault, the metal into the Metal vault. Say in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "emptied": [
+          "Bumper"
+        ]
+      },
+      {
+        "holds": "Stone vault",
+        "items": {
+          "stone": 1200,
+          "flint": 300
+        }
+      },
+      {
+        "holds": "Metal vault",
+        "items": {
+          "metal": 150
+        }
+      },
+      {
+        "said": "done|empt|clear|stored|moved"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 420
+  }
+}

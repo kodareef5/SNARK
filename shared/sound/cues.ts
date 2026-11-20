@@ -108,6 +108,11 @@ cue("voice/{sex}/gasp", SURVIVOR, "vocal", "ear", "hook", "the eye comes up out 
 cue("voice/{sex}/drown", SURVIVOR, "vocal", "ear", "hook", "oxygen is gone and health falls");
 cue("voice/{sex}/knocked_out", SURVIVOR, "vocal", "ear", "fire", "MF_OUT is set");
 cue("voice/{sex}/wake", SURVIVOR, "vocal", "ear", "fire", "MF_OUT is cleared");
+// What an emote says as it begins (shared/anim/emotes.ts `sound`): the voice bank's lines, a man's or a woman's.
+for (const line of ["greet", "yes", "no", "laugh", "cheer"]) {
+  cue(`voice/male/emote/${line}`, SURVIVOR, "vocal", "body", "fire", `a survivor's emote with sound "${line}" begins (its emote word changes)`, { falls: [`core:voices/${line}/american_man`] });
+  cue(`voice/female/emote/${line}`, SURVIVOR, "vocal", "body", "fire", `a survivor's emote with sound "${line}" begins (its emote word changes)`, { falls: [`core:voices/${line}/american_woman`] });
+}
 cue("voice/{sex}/eat", SURVIVOR, "item", "ear", "fire", "food rises after using an item");
 cue("voice/{sex}/drink", SURVIVOR, "item", "ear", "fire", "water rises after using an item");
 cue("voice/{sex}/cough", SURVIVOR, "vocal", "ear", "waits:weather", "smoke or sickness");

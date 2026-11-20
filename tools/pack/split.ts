@@ -1,6 +1,7 @@
 // Splits a whole pack into the file a client fetches at start, the file it fetches a level at a time, the file it
 // fetches a creature skeleton's clips from and the file of pages, and writes the manifest that says where everything is.
 
+import { EMOTE_GROUP } from "../../shared/anim/emotes.ts";
 import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
 import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshReach, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
@@ -61,7 +62,15 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   if (pack.header.materials) headers[1]!.materials = pack.header.materials;
   if (pack.header.textures) headers[1]!.textures = pack.header.textures;
   const details = pack.header.details;
-  if (details) headers[0]!.details = { ...details, atlas: { ...details.atlas, offset: blobs[0]!.append(detailsAtlas(pack)) } };
+  if (details) {
+    // Keep every mip and texel. Neighbouring bytes of one channel compress together at first paint.
+    const rgba = detailsAtlas(pack), pixels = rgba.length / 4;
+    const planes = new Uint8Array(rgba.length);
+    for (let c = 0; c < 4; c++) {
+      for (let i = 0; i < pixels; i++) planes[c * pixels + i] = rgba[4 * i + c]!;
+    }
+    headers[0]!.details = { ...details, atlas: { side: details.atlas.side, offset: blobs[0]!.append(planes), planar: true } };
+  }
   // A landmark's far mesh is fetched a level at a time like the finer levels of any other.
   const far = new Set((pack.header.landmarks ?? []).map((row) => farMeshId(row.name)));
   const held = (m: (typeof pack.header.meshes)[number], level: number, bytes: number): boolean => !far.has(m.id) && (level === m.lods.length - 1 || bytes <= HELD_LEVEL_BYTES);
@@ -118,6 +127,8 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   const rigOf = (c: PackClip): string => c.id.slice(0, c.id.lastIndexOf("/"));
   const skeletons = new Map<string, PackClip[]>();
   for (const r of pack.header.rigs) if (r.names) skeletons.set(r.id, []);
+  // The survivors' emotes (shared/anim/emotes.ts) come after the first frame too: a body plays one once they have come.
+  skeletons.set(EMOTE_GROUP, []);
   for (const c of pack.header.clips) skeletons.get(rigOf(c))?.push(c);
   const parts: Uint8Array[] = [];
   const streamed: ManifestClips[] = [];

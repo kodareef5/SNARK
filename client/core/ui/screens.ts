@@ -3,9 +3,10 @@ import { latLonText, latOf, lonOf, mapU, mapV, xOfU, zOfV } from "../../../share
 import { MAX_MARKERS, type HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { ZOOMS, wholeMap } from "../tactical.ts";
+import { IMAGE_ARROW, arrowSheet, placeArrow } from "./arrow.ts";
 import { IMAGE_MAP, MARKER_STYLE, MARKER_TINT } from "./hud.ts";
 import { K_BUTTON, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BUTTON, S_FRAME, S_LABEL, S_MARK_DEATH, S_MARK_SELF, S_PANEL, S_TITLE } from "./style.ts";
+import { S_BUTTON, S_FRAME, S_LABEL, S_MARK_DEATH, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_MAP_PANEL = 950;
 export const KEY_MAP_IMAGE = 951;
@@ -78,8 +79,16 @@ export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): voi
   }
   if (line !== "") f.text(KEY_MAP_LINE + 16, x, top + size + 6 + Math.min(deaths.length, 16) * lh, size, S_LABEL, line);
   // A server rule can hide the reader's own position.
-  if (session.mapLocation !== false) pin(KEY_MAP_PIN + 16, mapU(hf, session.own.x), mapV(hf, session.own.z), 4, S_MARK_SELF);
+  // An arrow the way the reader faces.
+  if (session.mapLocation !== false) {
+    const px = (mapU(hf, session.own.x) - view.u0) / view.du, py = (mapV(hf, session.own.z) - view.v0) / view.dv;
+    f.images[IMAGE_ARROW] ??= arrowSheet();
+    if (px >= 0 && px <= 1 && py >= 0 && py <= 1) placeArrow(f.add(KEY_MAP_PIN + 16, K_IMAGE, x + px * size - MAP_ARROW / 2, top + py * size - MAP_ARROW / 2, MAP_ARROW, MAP_ARROW, S_FRAME), hud.dial.heading);
+  }
 }
+
+/** The reader's arrow on the map screen, in units. */
+const MAP_ARROW = 30;
 
 /** The fingers on the map: the one that drags it, where it was last and whether it has moved, and a second that pinches with it. */
 const held = { first: 0, x: 0, y: 0, moved: false, second: 0, x2: 0, y2: 0, apart: 0 };

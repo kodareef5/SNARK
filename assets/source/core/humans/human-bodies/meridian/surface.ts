@@ -23,8 +23,11 @@ export const finish = {
   shoe: 13,
   sink: 14,
   crown: 15,
+  visor: 16, // Same cobalt atlas island as the inlays, drawn as a transmitting lens.
+  palm: 17, // Shares the brass island with hardware, with its own padded UV bounds.
 } as const;
-const palette = [93, 92, 82, 85, 41, 64, 206, 91, 93, 93, 84, 82, 93, 92, 84, 93];
+// Keep the broad ivory plates and slate joins distinct in the palette-only distance mesh.
+const palette = [10, 85, 82, 86, 41, 64, 206, 91, 10, 93, 83, 82, 93, 87, 83, 10];
 const rad = Math.PI / 180;
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 const cross = (a: V, b: V): V => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -75,12 +78,20 @@ export class Surface {
     this.p.push(...point);
     this.n.push(...normal);
     this.b.push(bone);
-    this.c.push(palette[tile]!);
+    const color = tile === finish.palm ? finish.rubber : tile === finish.visor ? finish.glass : tile;
+    this.c.push(palette[color]!);
+    if (tile === finish.visor) tile = finish.glass;
+    if (tile === finish.brass) u = 0.84 + 0.16*u;
+    if (tile === finish.palm) {
+      tile = finish.brass;
+      u *= 0.76;
+    }
     this.uv.push(((tile % 4) + pad + u * (1 - 2 * pad)) / 4, (Math.floor(tile / 4) + pad + v * (1 - 2 * pad)) / 4);
     return i;
   }
   /** Dark textile follows the source mesh exactly, including distal fingertip weights and body-slider seams. */
-  liner(lod: SourceLod) {
+  liner(lod: SourceLod, hand: boolean) {
+    const tile = hand ? finish.palm : finish.knit, scale = hand ? 8 : 3;
     const p = lod.positions,
       ix = lod.indices,
       normals = new Map<string, V>();
@@ -109,20 +120,20 @@ export class Surface {
         top = Math.abs(normal[1]) > 0.78;
       for (const v of tri) {
         const pt = pos(v),
-          u = (side ? pt[2] : pt[0]) + 1,
+          u = (side && !top ? pt[2] : pt[0]) + 1,
           w = (top ? pt[2] : pt[1]) + 0.3;
-        const tu = Math.abs(((u * 3) % 2) - 1),
-          tv = Math.abs(((w * 3) % 2) - 1),
+        const tu = Math.abs(((u * scale) % 2) - 1),
+          tv = Math.abs(((w * scale) % 2) - 1),
           bone = lod.bones![v]!;
         // A corner is the body's vertex with the knit's coordinate there: where two triangles agree on both it is one
         // vertex, where each corner of each triangle was its own.
         const id = `${key(v)}|${bone}|${Math.round(tu * 1e5)}|${Math.round(tv * 1e5)}`;
         let at = this.linerVertices.get(id);
-        if (at === undefined) this.linerVertices.set(id, (at = this.vertex(pt, unit(normals.get(key(v))!), tu, tv, finish.knit, bone)));
+        if (at === undefined) this.linerVertices.set(id, (at = this.vertex(pt, unit(normals.get(key(v))!), tu, tv, tile, bone)));
         this.ix.push(at);
       }
     }
-    this.mark(start, finish.knit);
+    this.mark(start, tile);
   }
   /**
    * Where a panel's columns stand across it, 0 to 1. A lipped panel keeps its lip one of its `n` segments wide at each
@@ -157,13 +168,13 @@ export class Surface {
     return us;
   }
   private mark(start: number, tile: number) {
-    for (let i = start; i < this.ix.length; i += 3) this.slots.push(tile === finish.lamp ? 1 : 0);
+    for (let i = start; i < this.ix.length; i += 3) this.slots.push(tile === finish.lamp ? 1 : tile === finish.visor ? 2 : 0);
   }
   /** A gridded panel with a rolled lip across its angular sides. Rows are ordered bottom to top. */
   panel(form: Form, rows: readonly Row[], tile: number, bone: number, segments = 12, bevel = 0.003) {
     const extent = rows.at(-1)![0] - rows[0]![0];
     if (this.level === 2) {
-      if (extent < 0.013 && tile !== finish.glass) return;
+      if (extent < 0.013 && tile !== finish.glass && tile !== finish.visor) return;
       if (rows.length > 4) rows = rows.filter((_, i) => i === 0 || i === rows.length - 1 || i % 2 === 1);
     }
     const firstIndex = this.ix.length;
@@ -244,13 +255,16 @@ export class Surface {
         next = rings[k]!,
         start = this.b.length,
         first = this.ix.length;
+      // A ring's sloping face has a radial normal component. A flat annulus keeps its axial normal.
+      const slope = (next[1] - prev[1]) / Math.max(0.00001, prev[0] - next[0]);
       for (const [radius, z] of [prev, next])
         for (let j = 0; j <= seg; j++) {
           const a = (j * Math.PI * 2) / seg,
             c = Math.cos(a),
             s = Math.sin(a),
             p = center.map((val, i) => val + radius * (u[i]! * c + v[i]! * s) + z * n[i]!) as V;
-          this.vertex(p, n, 0.5 + (0.48 * c * radius) / rings[0]![0], 0.5 - (0.48 * s * radius) / rings[0]![0], next[2], bone);
+          const normal = unit(n.map((val, i) => val + slope * (u[i]! * c + v[i]! * s)) as V);
+          this.vertex(p, normal, 0.5 + (0.48 * c * radius) / rings[0]![0], 0.5 - (0.48 * s * radius) / rings[0]![0], next[2], bone);
         }
       for (let j = 0; j < seg; j++) {
         const a = start + j,

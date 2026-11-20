@@ -5,11 +5,15 @@
 // one is taken down by how much of the sky the ellipsoid hides from it, as a sphere hides it seen from a surface:
 // the square of its radius over the square of its distance, times the cosine of its way off the surface's normal, the
 // surface moved into the ellipsoid's own frame where it is a sphere of radius 1. A body's own surfaces take none, and
-// nor does the sun's light. Any other tier, and the rasterizer, draw none.
+// nor does the sun's light. A wheeled chassis also occludes indirect light across its floor plan, with a feathered edge.
 
 import { CUE_DEAD } from "../../../shared/anim/pose.ts";
+import { CHUNK_SIZE, YAW_UNITS } from "../../../shared/coords.ts";
+import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
+import { vehicleWeather } from "./street-finish.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { RemoteSample } from "../session.ts";
+import { isWheelVehicle } from "../../../shared/sim/vehicle.ts";
 import { FRAME, MAX_CONTACTS } from "./packet.ts";
 
 /** The most of the sky's light contact takes, where a body hides all of it. */
@@ -27,7 +31,7 @@ const far = new Float64Array(MAX_CONTACTS);
  * `long` gives a kind's half length along its way, where its mesh says, so a long creature (a trike is 8 m nose to
  * tail on a body of 1.25 m radius) is as long as it is.
  * Each is two slots: its middle, camera-relative, and the cosine of its yaw; then its half extents across, up and
- * along, and the sine of its yaw. A list shorter than the slots ends at a half extent of 0.
+ * along, and the sine of its yaw. A negative half length marks an upright, wheeled chassis. A list shorter than the slots ends at a half extent of 0.
  */
 export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">, remote: RemoteSample | null, own: { kind: number; x: number; y: number; z: number; yaw: number } | null, cam: { x: number; y: number; z: number }, long: (kind: number) => number = () => 0): void {
   frame.fill(0, FRAME.contact, FRAME.contact + MAX_CONTACTS * 8);
@@ -54,7 +58,8 @@ export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registr
     const kind = i < n ? remote!.kind[i]! : own!.kind;
     const yaw = i < n ? remote!.yaw[i]! : own!.yaw;
     // A vehicle is the box its driving numbers give, a creature or a player its upright body as long as its mesh.
-    const spec = reg.vehicle[kind]?.spec;
+    const vehicle = reg.vehicle[kind], spec = vehicle?.spec;
+    const upright = i === n || 1 - 2 * (remote!.vehicleQx[i]! ** 2 + remote!.vehicleQz[i]! ** 2) > 0.7;
     const r = reg.bodyRadius[kind]!;
     const up = spec ? spec.height / 2 : reg.bodyHeight[kind]! / 2;
     const o = FRAME.contact + k * 8;
@@ -64,25 +69,110 @@ export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registr
     frame[o + 3] = Math.cos(yaw);
     frame[o + 4] = spec ? spec.halfWidth : r;
     frame[o + 5] = up;
-    frame[o + 6] = spec ? spec.halfLength : Math.max(r, long(kind));
+    const length = spec ? spec.halfLength : Math.max(r, long(kind));
+    frame[o + 6] = vehicle && isWheelVehicle(vehicle) && upright ? -length : length;
     frame[o + 7] = Math.sin(yaw);
+  }
+}
+
+/** Nearby parked vehicles share the moving bodies' contact slots. A changed chunk rebuilds its short list once. */
+export class ParkedContacts {
+  private readonly kinds: Uint8Array;
+  private readonly chunks = new WeakMap<ChunkTable, { shape: number; slots: number[] }>();
+
+  constructor(reg: Registry) {
+    this.kinds = Uint8Array.from(reg.defs, d => {
+      if (d?.type !== "structure" || !vehicleWeather(d.mesh)) return 0;
+      // A rolled shell or a detached tank meets the road on its own envelope.
+      return /(?:_roof|_tipped|_rollover|_cistern|_separated)$/.test(d.mesh) ? 1 : 2;
+    });
+  }
+
+  add(frame: Float32Array, store: StructureStore, meshes: readonly { half: readonly number[]; center: readonly number[] }[], meshOf: Uint16Array, cam: { x: number; y: number; z: number }): void {
+    const { chunksX, chunksZ } = store.dims;
+    const x0 = Math.max(0, Math.floor((cam.x - CONTACT_REACH) / CHUNK_SIZE));
+    const x1 = Math.min(chunksX - 1, Math.floor((cam.x + CONTACT_REACH) / CHUNK_SIZE));
+    const z0 = Math.max(0, Math.floor((cam.z - CONTACT_REACH) / CHUNK_SIZE));
+    const z1 = Math.min(chunksZ - 1, Math.floor((cam.z + CONTACT_REACH) / CHUNK_SIZE));
+    for (let z = z0; z <= z1; z++) {
+      for (let x = x0; x <= x1; x++) {
+        const t = store.chunks[z*chunksX+x];
+        if (!t) continue;
+        let list = this.chunks.get(t);
+        if (!list || list.shape !== t.shape) {
+          const slots: number[] = [];
+          for (let i=0; i<t.high; i++) if (this.kinds[t.kind[i]!]! > 0) slots.push(i);
+          this.chunks.set(t, list = { shape: t.shape, slots });
+        }
+        for (const i of list.slots) {
+          const kind = t.kind[i]!, bounds = meshes[meshOf[kind]!];
+          if (!bounds || bounds.half[0]! <= 0) continue;
+          const { center, half } = bounds, yaw = t.yaw[i]!*(2*Math.PI/YAW_UNITS), c = Math.cos(yaw), s = Math.sin(yaw);
+          const dx = t.x[i]! - cam.x + c * center[0]! + s * center[2]!;
+          const dy = t.y[i]! - cam.y + center[1]!;
+          const dz = t.z[i]! - cam.z + c * center[2]! - s * center[0]!;
+          const distance2 = dx*dx+dy*dy+dz*dz;
+          if (distance2 >= CONTACT_REACH*CONTACT_REACH) continue;
+          const end = FRAME.contact + MAX_CONTACTS*8;
+          let at = FRAME.contact;
+          while (at < end && frame[at+4]! > 0 && frame[at]!**2+frame[at+1]!**2+frame[at+2]!**2 <= distance2) at += 8;
+          if (at === end) continue;
+          frame.copyWithin(at+8,at,end-8);
+          frame[at] = dx;
+          frame[at+1] = dy;
+          frame[at+2] = dz;
+          frame[at+3] = c;
+          frame[at+4] = half[0]!;
+          frame[at+5] = half[1]!;
+          frame[at+6] = this.kinds[kind] === 2 ? -half[2]! : half[2]!;
+          frame[at+7] = s;
+        }
+      }
+    }
   }
 }
 
 /** The share of the sky's light left to a surface at `rel`, camera-relative, facing `n`, by the bodies in `frame`: the twin of the GLSL. */
 export function contactShare(frame: ArrayLike<number>, rel: ArrayLike<number>, n: ArrayLike<number>): number {
+  return contactAt(frame, rel[0]!, rel[1]!, rel[2]!, n[0]!, n[1]!, n[2]!);
+}
+function smooth(x: number): number {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
+}
+export function contactAt(frame: ArrayLike<number>, x: number, y: number, z: number, nx: number, ny: number, nz: number): number {
   let keep = 1;
   for (let k = 0; k < MAX_CONTACTS; k++) {
     const o = FRAME.contact + k * 8;
-    const c = frame[o + 3]!, s = frame[o + 7]!, bx = frame[o + 4]!, by = frame[o + 5]!, bz = frame[o + 6]!;
+    const c = frame[o + 3]!,
+      s = frame[o + 7]!,
+      bx = frame[o + 4]!,
+      by = frame[o + 5]!,
+      length = frame[o + 6]!;
     if (bx <= 0) break;
-    const dx = rel[0]! - frame[o]!, dy = rel[1]! - frame[o + 1]!, dz = rel[2]! - frame[o + 2]!;
-    const qx = (c * dx - s * dz) / bx, qy = dy / by, qz = (s * dx + c * dz) / bz;
+    const bz = Math.abs(length);
+    const dx = x - frame[o]!,
+      dy = y - frame[o + 1]!,
+      dz = z - frame[o + 2]!;
+    const qx = (c * dx - s * dz) / bx,
+      qy = dy / by,
+      qz = (s * dx + c * dz) / bz;
     const l2 = qx * qx + qy * qy + qz * qz;
     if (l2 > 25) continue;
-    const mx = (c * n[0]! - s * n[2]!) * bx, my = n[1]! * by, mz = (s * n[0]! + c * n[2]!) * bz;
-    const cos = -(mx * qx + my * qy + mz * qz) / (Math.hypot(mx, my, mz) * Math.sqrt(l2));
+    const mx = (c * nx - s * nz) * bx,
+      my = ny * by,
+      mz = (s * nx + c * nz) * bz;
+    const cos = -(mx * qx + my * qy + mz * qz) / Math.sqrt(Math.max(1e-8, (mx * mx + my * my + mz * mz) * l2));
     keep *= 1 - (CONTACT_MOST * Math.min(Math.max(cos, 0), 1)) / Math.max(l2, 1);
+    if (length < 0 && ny > 0.45) {
+      const ex = Math.max(0, Math.abs(qx) - 0.78) / 1.02,
+        ez = Math.max(0, Math.abs(qz) - 0.78) / 0.66;
+      const gap = -(dx * nx + (dy + by) * ny + dz * nz);
+      const strength = smooth((ny - 0.45) / 0.4) * smooth((gap + 0.36) / 0.3) * (1 - smooth((gap - 0.06) / 0.94));
+      const distance2 = frame[o]! ** 2 + frame[o + 1]! ** 2 + frame[o + 2]! ** 2;
+      const near = 1 - smooth((distance2 - 45 * 45) / (CONTACT_REACH ** 2 - 45 * 45));
+      keep *= 1 - 0.84 * near * strength * (1 - smooth(Math.hypot(ex, ez)));
+    }
   }
   return keep;
 }
@@ -101,11 +191,20 @@ export const CONTACT_GLSL = `float contact(vec3 rel, vec3 n, float on) {
     if (b.x <= 0.0) break;
     vec3 d = rel - a.xyz;
     float c = a.w, s = b.w;
-    vec3 q = vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z) / b.xyz;
+    vec3 extent = abs(b.xyz);
+    vec3 q = vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z) / extent;
     float l2 = dot(q, q);
     if (l2 > 25.0) continue;
-    vec3 m = normalize(vec3(c * n.x - s * n.z, n.y, s * n.x + c * n.z) * b.xyz);
-    keep *= 1.0 - ${g(CONTACT_MOST)} * clamp(-dot(m, q) * inversesqrt(l2), 0.0, 1.0) / max(l2, 1.0);
+    vec3 m = normalize(vec3(c * n.x - s * n.z, n.y, s * n.x + c * n.z) * extent);
+    keep *= 1.0 - ${g(CONTACT_MOST)} * clamp(-dot(m, q) * inversesqrt(max(l2,1e-8)), 0.0, 1.0) / max(l2, 1.0);
+    if (b.z < 0.0 && n.y > 0.45) {
+      vec2 edge = max(abs(q.xz)-vec2(0.78),vec2(0.0))/vec2(1.02,0.66);
+      // Signed clearance measured on the receiver plane also works on ramps and decks.
+      float gap = -dot(d+vec3(0.0,b.y,0.0),n);
+      float strength = smoothstep(0.45,0.85,n.y)*smoothstep(-0.36,-0.06,gap)*(1.0-smoothstep(0.06,1.0,gap));
+      float near = 1.0-smoothstep(2025.0,${g(CONTACT_REACH*CONTACT_REACH)},dot(a.xyz,a.xyz));
+      keep *= 1.0-0.84*near*strength*(1.0-smoothstep(0.0,1.0,length(edge)));
+    }
   }
   return keep;
 #else

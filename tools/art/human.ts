@@ -3,7 +3,7 @@
 import { join } from "node:path";
 import { BEARD_STYLES, BODY_SCALES, HAIR_STYLES, REGION_CLOTH, REGION_EYE, REGION_HAIR, REGION_MAIN, REGION_SECOND, REGION_SKIN, REGION_TRIM, SEX_IDS } from "../../shared/anim/look.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
+import { MATERIAL_INDICATOR, MATERIAL_LENS, parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { convertHumanClips } from "../pack/anim.ts";
 import { readGltf, type Gltf } from "../pack/gltf.ts";
@@ -86,7 +86,11 @@ export function convertBodies(spec: HumanBodiesAsset, dir: string, finish?: Desc
     if (spec.tailored && finish) {
       for (const mesh of spec.tailored.make(body.meshes, body.rig)) {
         mesh.materials = [finish.material];
-        if (spec.tailored.indicatorEmission) mesh.materials.push({ ...finish.material, id: finish.material.id + "/indicators", emissive: spec.tailored.indicatorEmission });
+        if (spec.tailored.indicatorEmission) mesh.materials.push({ ...finish.material, id: finish.material.id + "/indicators", flags: finish.material.flags | MATERIAL_INDICATOR, emissive: spec.tailored.indicatorEmission });
+        if (spec.tailored.visor) {
+          mesh.materials[1] ??= finish.material;
+          mesh.materials[2] = { ...finish.material, id: finish.material.id + "/visor", flags: finish.material.flags | MATERIAL_LENS };
+        }
         mesh.textures = finish.textures;
         meshes.push(mesh);
       }

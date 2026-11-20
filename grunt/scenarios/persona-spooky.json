@@ -1,0 +1,13 @@
+{
+  "name": "persona-spooky",
+  "about": "A spooky character told to stay put meets a stranger walking up: it menaces with emotes (a stare, a stalk, a roar), and does not attack.",
+  "persona": "spooky",
+  "world": {
+    "seed": 3,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 0 },
+    "things": [{ "type": "player", "name": "Rex", "x": 0, "z": -30, "path": [[0, -30], [0, -7]], "speed": 1.2, "at_s": 2 }]
+  },
+  "prompt": "You are Scout. Stay around here and keep an eye on things; nobody needs anything from you right now.",
+  "success": { "all": [{ "emoted": "scary" }, { "lives": "Rex" }, { "alive": true }] },
+  "budget": { "seconds": 150 }
+}

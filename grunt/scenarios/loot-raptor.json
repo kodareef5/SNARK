@@ -1,0 +1,51 @@
+{
+  "name": "loot-raptor",
+  "about": "Kill a raptor, loot its body, put the meat and hide in the camp box: fight, loot, stash.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "stone_hatchet": 1
+      },
+      "hold": "stone_hatchet"
+    },
+    "things": [
+      {
+        "type": "raptor",
+        "x": 6,
+        "z": -22
+      },
+      {
+        "type": "chest",
+        "name": "Camp box",
+        "x": -3,
+        "z": 3
+      }
+    ]
+  },
+  "prompt": "You are Scout. Kill the raptor by the trees north of camp, then put whatever it drops in the Camp box. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "holds": "Camp box",
+        "items": {
+          "meat": 1,
+          "hide": 1
+        }
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 240
+  }
+}

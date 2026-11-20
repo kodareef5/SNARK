@@ -130,6 +130,8 @@ export class EntityStore {
   anim: Uint32Array;
   /** A creature's cues (AnimState.packCue), sent beside the pose. The server's Creatures sets and clears them. */
   cue: Uint32Array;
+  /** A survivor's emote (AnimState.packEmote), sent beside the pose; 0 for none. The server's Emotes sets and clears it. */
+  emote: Uint32Array;
   /** The rest of the predicted state. See `Body` in character.ts. */
   mode: Uint8Array;
   stance: Uint8Array;
@@ -258,6 +260,7 @@ export class EntityStore {
     this.pitch = new Int16Array(cap);
     this.anim = new Uint32Array(cap);
     this.cue = new Uint32Array(cap);
+    this.emote = new Uint32Array(cap);
     this.pid = new Float64Array(cap);
     this.mode = new Uint8Array(cap);
     this.stance = new Uint8Array(cap);
@@ -339,6 +342,7 @@ export class EntityStore {
     this.pitch[i] = 0;
     this.anim[i] = 0;
     this.cue[i] = 0;
+    this.emote[i] = 0;
     this.pid[i] = 0;
     this.mode[i] = MODE_WALK;
     this.stance[i] = 0;
@@ -400,6 +404,7 @@ export class EntityStore {
     this.pitch = wider(this.pitch, cap);
     this.anim = wider(this.anim, cap);
     this.cue = wider(this.cue, cap);
+    this.emote = wider(this.emote, cap);
     this.pid = wider(this.pid, cap);
     this.mode = wider(this.mode, cap);
     this.stance = wider(this.stance, cap);

@@ -7,10 +7,10 @@ import type { HumanBodiesAsset } from "../../../../../tools/art/spec.ts";
 export default {
   kind: "human-bodies",
   raw: "quaternius",
-  tailored: { material: "meridian", indicatorEmission: 0.72, make: meridian },
+  tailored: { material: "meridian", indicatorEmission: 1.05, visor: true, make: meridian },
   materials: { meridian: {
     base: "meridian/finish.png", normal: "meridian/normal.png", packed: "meridian/orm.png",
-    regions: "meridian/dye.png", tiles: 0.65,
+    regions: "meridian/dye.png", tiles: 0.65, tops: { mask: 512 },
   } },
   triangles: { body: [4400, 1500, 420], hair: [420, 150, 48], armor: [900, 320, 100] },
   bodies: [

@@ -1,0 +1,50 @@
+{
+  "name": "repair-storm",
+  "about": "A storm batters the hut north of camp; the game tells of the damage; the materials are in the bag.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "wood": 900,
+        "thatch": 250,
+        "fiber": 200
+      }
+    },
+    "bases": [
+      {
+        "blueprint": "hut_2x2",
+        "x": 0,
+        "z": -10
+      }
+    ]
+  },
+  "prompt": "You are Scout, at camp. Look after the hut north of camp; tell me in local chat if you do anything to it.",
+  "script": [
+    {
+      "at_s": 3,
+      "damage": {
+        "x": 0,
+        "z": -10,
+        "radius": 5,
+        "amount": 4000
+      }
+    }
+  ],
+  "success": {
+    "all": [
+      {
+        "whole": true
+      },
+      {
+        "said": "repair|fixed|mended"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 240
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "name": "tek-suit-hop",
+  "about": "An outpost past a 30 m cliff wall whose only gap is 550 m east; a tek suit with element in the bag.",
+  "world": {
+    "seed": 2,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "tek_suit": 1,
+        "element": 40
+      }
+    },
+    "terrain": {
+      "bounds": [
+        -650,
+        -400,
+        650,
+        60
+      ],
+      "features": [
+        {
+          "type": "cliff",
+          "from": [
+            -650,
+            -150
+          ],
+          "to": [
+            540,
+            -150
+          ],
+          "width": 8,
+          "height": 30
+        }
+      ]
+    }
+  },
+  "prompt": "You are Scout. Get to the outpost at x 0, z -300, on the far side of the cliff, as quickly as you sensibly can, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -300
+        ],
+        "within": 6
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 240
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -300
+    }
+  }
+}

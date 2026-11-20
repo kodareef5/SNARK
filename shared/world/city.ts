@@ -291,7 +291,8 @@ export interface CityPart {
   /**
    * Per face, which of its borders are outer edges, which the near city's material rounds and wears (world-surfaces.ts
    * `edged`): bit 0 the border from its first corner to its last, bit 1 from its second to its third, bit 2 from its
-   * first to its second, bit 3 from its last to its third. A vertex stores it over its corner of the face (cornerByte).
+   * first to its second, bit 3 from its last to its third. Bits 4–5 hold the optional two-bit material label.
+   * A vertex stores these six bits above its corner (cornerByte).
    */
   readonly edges: Uint8Array;
   readonly faces: number;
@@ -340,7 +341,8 @@ class Out {
       grown.set(this.edges);
       this.edges = grown;
     }
-    this.edges[f] = edges;
+    // The internal merge key keeps the palette in its low byte and the material label above it.
+    this.edges[f] = edges | ((col >>> 8) << 4);
     const p = this.pos;
     const b = this.box;
     for (let k = 0; k < 4; k++) {
@@ -357,7 +359,7 @@ class Out {
       if (z < b[2]!) b[2] = z;
       if (z > b[5]!) b[5] = z;
     }
-    this.color[f] = col;
+    this.color[f] = col & 255;
   }
 
   /** A face of `count` world corners in `c`, in order round it, as quads fanned from its first; one left a triangle repeats its last corner. */
@@ -413,8 +415,8 @@ const FACE_CORNERS = Uint8Array.from(
 class Boxes {
   n = 0;
   f = new Float64Array(8 * 1024);
-  color = new Uint8Array(1024);
-  under = new Uint8Array(1024);
+  color = new Uint16Array(1024);
+  under = new Uint16Array(1024);
   own = new Uint8Array(1024);
 
   push(cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, c: number, s: number, color: number, own: boolean, under = color): void {
@@ -422,10 +424,10 @@ class Boxes {
       const f = new Float64Array(this.f.length * 2);
       f.set(this.f);
       this.f = f;
-      const col = new Uint8Array(this.color.length * 2);
+      const col = new Uint16Array(this.color.length * 2);
       col.set(this.color);
       this.color = col;
-      const below = new Uint8Array(this.under.length * 2);
+      const below = new Uint16Array(this.under.length * 2);
       below.set(this.under);
       this.under = below;
       const o = new Uint8Array(this.own.length * 2);
@@ -469,14 +471,14 @@ class Hulls {
   box = new Float64Array(6 * 64);
   table: HullTable[] = [];
   part = new Uint32Array(64);
-  color = new Uint8Array(64);
-  under = new Uint8Array(64);
+  color = new Uint16Array(64);
+  under = new Uint16Array(64);
   own = new Uint8Array(64);
 
   /** Part `p` of `t` on a piece whose middle is at (cx, cy, cz), turned by the cosine and sine (c, s) as a box is. */
   push(t: HullTable, p: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, under = color): void {
     if (this.n === this.part.length) {
-      const grow = <T extends Float64Array | Uint32Array | Uint8Array>(a: T): T => {
+      const grow = <T extends Float64Array | Uint32Array | Uint16Array | Uint8Array>(a: T): T => {
         const b = new (a.constructor as new (n: number) => T)(a.length * 2);
         b.set(a);
         return b;
@@ -578,7 +580,7 @@ const ring = new Float64Array(3 * MAX_CORNERS);
  * Puts the standing pieces of the chunks round `chunk` that reach within MARGIN of it in `boxes` and `hulls`, as `form`
  * has them, and with `own` its own.
  */
-function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm, far = false): void {
+function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm, far = false, labels?: Uint8Array): void {
   const { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const under = city.under ?? color;
   const cx = chunkCx(dims, chunk);
@@ -597,16 +599,17 @@ function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone,
         if (far && city.near[k] === 1) continue;
         const r = Math.max(halfX[k]!, halfZ[k]!) * 1.5;
         if (x[i]! + r < x0 - MARGIN || x[i]! - r > x0 + CHUNK_SIZE + MARGIN || z[i]! + r < z0 - MARGIN || z[i]! - r > z0 + CHUNK_SIZE + MARGIN) continue;
+        const label = (labels?.[k] ?? 0) << 8;
         const a = (yaw[i]! / YAW_UNITS) * TAU;
-        if (plain[k] === 1) boxes.push(x[i]!, y[i]!, z[i]!, halfX[k]!, halfY[k]!, halfZ[k]!, detCos(a), detSin(a), color[k]!, c === chunk, under[k]!);
+        if (plain[k] === 1) boxes.push(x[i]!, y[i]!, z[i]!, halfX[k]!, halfY[k]!, halfZ[k]!, detCos(a), detSin(a), label | color[k]!, c === chunk, label | under[k]!);
         else {
           const [cs, sn] = [detCos(a), detSin(a)];
           const B = form.box;
           for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
             const own = form.color?.[b / 6] ?? 0;
-            boxes.push(x[i]! + cs * B[b]! + sn * B[b + 2]!, y[i]! + B[b + 1]!, z[i]! + cs * B[b + 2]! - sn * B[b]!, B[b + 3]!, B[b + 4]!, B[b + 5]!, cs, sn, own || color[k]!, c === chunk, own || under[k]!);
+            boxes.push(x[i]! + cs * B[b]! + sn * B[b + 2]!, y[i]! + B[b + 1]!, z[i]! + cs * B[b + 2]! - sn * B[b]!, B[b + 3]!, B[b + 4]!, B[b + 5]!, cs, sn, label | (own || color[k]!), c === chunk, label | (own || under[k]!));
           }
-          pushHulls(form, k, x[i]!, y[i]!, z[i]!, cs, sn, color[k]!, c === chunk, 0, under[k]!);
+          pushHulls(form, k, x[i]!, y[i]!, z[i]!, cs, sn, label | color[k]!, c === chunk, 0, label | under[k]!);
         }
       }
     }
@@ -834,7 +837,7 @@ function framesOf(city: CityStatics, chunk: number, g: Gone): number[] {
  * Puts the standing pieces of `chunk` turned by `f` short of a quarter in `framed`, in the frame turned by (c, s), by their
  * boxes as `form` has them; with `parts`, their convex parts in `hulls` too, placed in the frame. Returns how many boxes.
  */
-function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean, far = false): number {
+function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean, far = false, labels?: Uint8Array): number {
   const { first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const from = first[chunk]!;
   let nb = 0;
@@ -842,20 +845,21 @@ function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: num
     if ((g && g[i - from] === 1) || yaw[i]! % QUARTER !== f) continue;
     const k = kind[i]!;
     if (far && city.near[k] === 1) continue;
+    const label = (labels?.[k] ?? 0) << 8;
     const quarter = Math.floor(yaw[i]! / QUARTER) % 4;
     const odd = quarter % 2 === 1;
     // The world to the frame: the inverse of the turn a piece's vertices are given.
     const lx = c * x[i]! - s * z[i]!;
     const lz = s * x[i]! + c * z[i]!;
     if (plain[k] === 1) {
-      nb = frameBox(nb, lx, y[i]!, lz, odd ? halfZ[k]! : halfX[k]!, halfY[k]!, odd ? halfX[k]! : halfZ[k]!, color[k]!);
+      nb = frameBox(nb, lx, y[i]!, lz, odd ? halfZ[k]! : halfX[k]!, halfY[k]!, odd ? halfX[k]! : halfZ[k]!, label | color[k]!);
       continue;
     }
     // In the frame a shape's boxes and parts are turned by whole quarters.
     const [qc, qs] = [QUARTER_COS[quarter]!, QUARTER_SIN[quarter]!];
     const B = form.box;
     for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
-      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, form.color?.[b / 6] || color[k]!);
+      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, label | (form.color?.[b / 6] || color[k]!));
     }
     if (parts) pushHulls(form, k, lx, y[i]!, lz, qc, qs, color[k]!, true, 0);
   }
@@ -886,20 +890,21 @@ function frameBox(nb: number, fx: number, fy: number, fz: number, hx: number, hy
  * longer than `least` metres are left out. Sloped parts are kept whole, and left out only for being as short. Faces held by
  * another box or part or under the ground go, the neighbouring chunks' pieces holding faces as they stand. A gap below 0
  * merges nothing. With nothing left out pieces are as the near store draws them (a flight's treads), else as walked.
+ * Optional two-bit labels by content kind distinguish otherwise identical colours during merging.
  */
-export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (chunk: number) => Gone, gap: number, least: number): CityPart {
+export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (chunk: number) => Gone, gap: number, least: number, labels?: Uint8Array): CityPart {
   if (city.in(chunk) === 0) return EMPTY_PART;
   const form = least > 0 ? city.walked : city.look;
   boxes.n = 0;
   hulls.n = 0;
-  gather(city, chunk, gone, gap < 0 && least <= 0, form, least > 0);
+  gather(city, chunk, gone, gap < 0 && least <= 0, form, least > 0, labels);
   if (gap >= 0 || least > 0) {
     const g = gone(chunk);
     for (const f of framesOf(city, chunk, g)) {
       const a = (f / YAW_UNITS) * TAU;
       const c = detCos(a);
       const s = detSin(a);
-      let nb = frameBoxes(city, chunk, g, f, c, s, form, false, least > 0);
+      let nb = frameBoxes(city, chunk, g, f, c, s, form, false, least > 0, labels);
       if (gap >= 0) nb = merge(nb, gap);
       for (let b = 0; b < nb; b++) {
         const o = b * 7;
@@ -914,7 +919,9 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (
     for (let i = first[chunk]!; i < first[chunk + 1]!; i++) {
       if ((g && g[i - first[chunk]!] === 1) || plain[kind[i]!] === 1) continue;
       const a = (yaw[i]! / YAW_UNITS) * TAU;
-      pushHulls(form, kind[i]!, x[i]!, y[i]!, z[i]!, detCos(a), detSin(a), color[kind[i]!]!, true, least);
+      const k = kind[i]!;
+      const label = (labels?.[k] ?? 0) << 8;
+      pushHulls(form, k, x[i]!, y[i]!, z[i]!, detCos(a), detSin(a), label | color[k]!, true, least);
     }
   }
   return faces(city.dims, chunk, hf);

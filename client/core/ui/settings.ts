@@ -8,19 +8,20 @@ import { S_MENU_HEADING, S_MENU_NOTE, S_ICE, S_LABEL, S_HUD_HIT, S_HUD_COUNT } f
 export const KEY_SETTINGS_PANEL = 2300;
 export const KEY_SETTINGS_TITLE = 2301;
 export const KEY_SETTINGS_ROW = 2310;
-export const KEY_SETTINGS_MIC = 2390;
+/** The microphone's meter and the Input tab's note: clear of the rows' keys (KEY_SETTINGS_ROW, four a row). */
+export const KEY_SETTINGS_MIC = 5950;
 export const KEY_SETTINGS_TAB = 2270;
 /** Page back, page on, and "1 / 2", shown where a tab's rows do not all fit. */
 export const KEY_SETTINGS_PAGE = 2290;
 const ROW = 52;
 export const KEY_SETTINGS_SLIDER = 5900;
 export const SETTING_GROUPS = [
-  { name: "Display", rows: [11, 12, 2, 0] },
+  { name: "Display", rows: [11, 18, 19, 12, 2, 0] },
   { name: "Audio", rows: [17, 5, 6, 7, 8, 9, 3, 4] },
   { name: "Input", rows: [1] },
-  { name: "Interface", rows: [14, 15, 16, 13, 10] },
+  { name: "Interface", rows: [14, 15, 16, 13, 20, 10] },
 ] as const;
-const TOGGLES = new Set([0,4,12,14,15,16,17]);
+const TOGGLES = new Set([0,4,12,14,15,16,17,20]);
 
 export function buildSettings(f: UiFrame, s: Settings, micLevel = 0, focus = 0): void {
   menuBackdrop(f);

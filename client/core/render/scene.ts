@@ -13,7 +13,7 @@ import { CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz, type MapDims } from "../../../
 import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
-import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "../../../shared/pack/pack.ts";
+import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import { landmarkKinds } from "../../../shared/world/city.ts";
@@ -28,6 +28,10 @@ import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortF64, sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
+import { DEFAULT_FINISH_GLOSS, DEFAULT_ROAD_FINISH } from "../settings.ts";
+import { StreetDraws } from "./street-draws.ts";
+import { streetTextureBytes } from "./street-finish.ts";
+import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
 import { StreetWires } from "./street-wires.ts";
 import type { Falling } from "../rubble.ts";
@@ -53,7 +57,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, quadIndexCount } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount } from "./packet.ts";
 import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
@@ -62,7 +66,7 @@ import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } f
 import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
-import { contactFrame } from "./contact.ts";
+import { ParkedContacts, contactFrame } from "./contact.ts";
 import { lightBytes, lightSamples, postFrame } from "./post.ts";
 import { skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
@@ -517,6 +521,10 @@ export class Scene {
   /** Per mesh and level, the triangles of its sections drawn with bark and of its cut-out ones. */
   private readonly trunkTris: number[][];
   private readonly leafTris: number[][];
+  private readonly streetDraws: StreetDraws;
+  readonly street: StreetReflections;
+  finishGloss = DEFAULT_FINISH_GLOSS;
+  roadFinish = DEFAULT_ROAD_FINISH;
   private readonly world: RenderWorld;
   private readonly batches = new Map<number, ChunkBatch>();
   /** Rigid species keep palette lighting; the static fallback finish belongs to world geometry. */
@@ -632,6 +640,7 @@ export class Scene {
     return m === undefined || m === HIDDEN ? 0 : (this.assets.manifest.meshes[m]?.half[2] ?? 0);
   };
   /** What contact reads of the registry: bodies' sizes and vehicles' (contact.ts). */
+  private readonly parkedContacts: ParkedContacts;
   private readonly sizes: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">;
   private readonly seatTurn = new Float64Array(MAX_VIEW * 9);
   /**
@@ -757,6 +766,7 @@ export class Scene {
     this.birthScale = reg.birthScale;
     this.saddleSeats = reg.saddleSeats;
     this.sizes = reg;
+    this.parkedContacts = new ParkedContacts(reg);
     this.groundFlags = new Uint16Array(table.count);
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
@@ -799,6 +809,8 @@ export class Scene {
     }
     this.cover = new CrownCover(world.dims);
     this.coverLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, treeOf: this.treeOf, side: table.side, low: table.low, high: table.high, hidden: (ref) => this.hiddenNodes.has(ref) };
+    this.streetDraws = new StreetDraws(stream?.manifest ?? pack.header, pack.header.rigs);
+    this.street = new StreetReflections(reg, pack.palette, forms, { meshes: (stream?.manifest ?? pack.header).meshes, kinds: this.meshOfKind, forms: this.meshOfForm });
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
     this.landmarkKinds = landmarkKinds(reg);
@@ -868,7 +880,7 @@ export class Scene {
   private learn(meshes: readonly number[]): void {
     const table = this.assets.table;
     table.materials.forEach((m, k) => {
-      this.materialFlags[k] = DRAW_TEXTURED | ((m.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((m.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
+      this.materialFlags[k] = texturedFlags(m.flags);
       this.barkOf[k] = m.id.endsWith("bark") ? 1 : 0;
     });
     const part = (mesh: number, keep: (material: number) => boolean): number[] => table.sections[mesh]!.map((runs) => runs.reduce((n, _, k) => (k % 3 === 0 && keep(runs[k]!) ? n + runs[k + 2]! / 3 : n), 0));
@@ -966,6 +978,7 @@ export class Scene {
       postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
       p.lightSamples = lightSamples(this.supersampled);
       contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
+      if (p.tier.contact) this.parkedContacts.add(p.frame, this.world.structs, this.assets.manifest.meshes, this.meshOfKind, cam);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance, undefined, true);
     }
     if (!p.lit) p.frame[FRAME.exposure] = 0;
@@ -1043,7 +1056,13 @@ export class Scene {
     this.quadsOnCard();
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
+    p.frame[FRAME.streetLook] = this.finishGloss - 1;
+    p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
+    p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;
+    this.street.frame(p, cam, this.world, remote, this.hiddenNodes, this.now, this.own);
+    this.assets.residency.reserve("street environment", streetTextureBytes(p.tier.reflectionHz));
     this.order();
+    this.streetDraws.write(p);
     markJoins(p);
     // The frame's count, from which the next frame's crowns near take their squeeze.
     this.budget.end(this.now, p.triangles, p.drawCount);
@@ -1618,11 +1637,12 @@ export class Scene {
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
-    const { rotorBlur, patrolLights } = this.characters;
+    const { rotorBlur, patrolLights, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires } = this;
     streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count);
+    tireContacts.build(p, this.world);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count);
     const particles = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
@@ -1631,6 +1651,9 @@ export class Scene {
     streetWires.write(p);
     const street = p.detailCount;
     streetLamps.write(p);
+    const wheelsAndGlass = p.detailCount;
+    tireContacts.write(p);
+    windscreens.write(p);
     // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
@@ -1640,7 +1663,8 @@ export class Scene {
     this.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
     this.drawDetails(lamps, wires - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
-    this.drawDetails(street, seen - street, DRAW_BLEND, streetLamps.passes(cam));
+    this.drawDetails(street, wheelsAndGlass - street, DRAW_BLEND, streetLamps.passes(cam));
+    this.drawDetails(wheelsAndGlass, seen - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
     this.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
   }
@@ -1975,7 +1999,7 @@ export class Scene {
     for (let o = n - 1; o >= 0 && need > budget; o--) {
       const k = order[o]! % MAX_VIEW;
       const i = from[k]!;
-      st.unpack(remote.anim[i]!, remote.cue[i]!);
+      st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!);
       const mount = this.bodyMount[k]!, slot = remote.seatSlot[i]!;
       const saddle = mount === MOUNT_OWN ? this.own!.gear[GEAR_WORN]! : mount >= 0 ? remote.gear[mount * GEAR_COUNT + GEAR_WORN]! : 0;
       // Missing authored sockets can only over-reserve; valid seats match add()'s separate fitted stand-in exactly.
@@ -2038,7 +2062,7 @@ export class Scene {
   private addRemote(remote: RemoteSample, i: number, at: Float64Array, k: number, rigid: boolean, unseen: boolean): void {
     const st = this.state;
     const kind = remote.kind[i]!;
-    st.unpack(remote.anim[i]!, remote.cue[i]!);
+    st.unpack(remote.anim[i]!, remote.cue[i]!, remote.emote[i]!);
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
@@ -2448,6 +2472,7 @@ export class Scene {
       if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk) || this.landmarks?.isFar(chunk))) continue;
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
+      if (base === 0 && p.tier.reflectionHz) this.street.indexChunk(t,x0,z0,cam);
       const own = near ? near.of(chunk, t, statics!, this.city!, this.chunkCells, Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z), p) : null;
       const mesh = own?.mesh ?? null;
       let batch = this.batches.get(id);

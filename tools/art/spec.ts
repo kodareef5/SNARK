@@ -50,6 +50,8 @@ export type ZoneSpec =
       readonly a: Vec3;
       readonly b: Vec3;
       readonly radius: number;
+      /** The bones whose skin it stands for. Only tools/fit-zones.ts reads it, to measure the capsule against that skin. */
+      readonly covers?: readonly string[];
     };
 
 /** Fit convex pieces to the finest skin below a skeletal root. Cell dimensions
@@ -451,6 +453,8 @@ export interface HumanBodiesAsset {
     readonly material: string;
     /** Optional second material section for self-lit indicator lenses, in linear light. */
     readonly indicatorEmission?: number;
+    /** Slot 2 shares the finish maps and transmits the helmet backing. */
+    readonly visor?: boolean;
     readonly make: (body: readonly SourceMesh[], rig: PackRig) => SourceMesh[];
   };
   readonly materials?: Readonly<Record<string, MaterialSpec>>;

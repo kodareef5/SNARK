@@ -1,0 +1,94 @@
+{
+  "name": "nav-explore-camp",
+  "about": "Fog: only what has been seen is on the map. Cliffs make a valley; an enemy camp sits up it. Explore north and report what is there.",
+  "world": {
+    "seed": 1,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -140,
+        -200,
+        140,
+        40
+      ],
+      "map": "fog",
+      "features": [
+        {
+          "type": "cliff",
+          "from": [
+            -30,
+            -20
+          ],
+          "to": [
+            -30,
+            -160
+          ],
+          "width": 3
+        },
+        {
+          "type": "cliff",
+          "from": [
+            30,
+            -20
+          ],
+          "to": [
+            30,
+            -100
+          ],
+          "width": 3
+        },
+        {
+          "type": "cliff",
+          "from": [
+            -30,
+            -160
+          ],
+          "to": [
+            60,
+            -160
+          ],
+          "width": 3
+        }
+      ]
+    },
+    "things": [
+      {
+        "type": "player",
+        "x": 10,
+        "z": -135,
+        "name": "Raider",
+        "hostile": true
+      },
+      {
+        "type": "chest",
+        "x": 0,
+        "z": -140
+      }
+    ]
+  },
+  "prompt": "You are Scout. Explore north of here: the ground is unknown and may be enemy territory. Find out what is up there, keep yourself safe, and tell me in local chat what you found.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "said": "raider|enemy|hostile|player|camp"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 300
+  },
+  "rules": {
+    "skill": "explore",
+    "args": {
+      "toward": "north",
+      "distance": 160
+    }
+  }
+}

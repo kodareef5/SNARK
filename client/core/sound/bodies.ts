@@ -6,6 +6,7 @@
 
 import { LOOK_BYTES, LOOK_SEX } from "../../../shared/anim/look.ts";
 import { AnimState, bodySeed } from "../../../shared/anim/pose.ts";
+import { emoteOf } from "../../../shared/anim/emotes.ts";
 import { MODE_SWIM, MF_OUT, MF_WINDED, STANCE_CROUCH, STANCE_PRONE } from "../../../shared/sim/character.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
@@ -35,6 +36,8 @@ const LAND_VOICE = [VOICE("male", "land"), VOICE("female", "land")];
 const WINDED = [VOICE("male", "winded"), VOICE("female", "winded")];
 const KNOCKED = [VOICE("male", "knocked_out"), VOICE("female", "knocked_out")];
 const WAKE = [VOICE("male", "wake"), VOICE("female", "wake")];
+/** An emote's line, by its `sound` and the voice's sex. */
+const EMOTE_VOICE = new Map(["greet", "yes", "no", "laugh", "cheer"].map((line) => [line, [VOICE("male", `emote/${line}`), VOICE("female", `emote/${line}`)]] as const));
 
 /** Hands an occasion to be heard: `owner` an owner number of the resolver, `key` a cue key, `entity` -1 for none, `flat` at the ear. */
 export type Hear = (owner: number, key: number, entity: number, x: number, y: number, z: number, lift: number, level: number, flat: boolean, delay?: number) => void;
@@ -53,6 +56,8 @@ class Walker {
   fall = 0;
   out = false;
   winded = false;
+  /** The emote word last heard. */
+  emote = 0;
 }
 
 /** The parts of the player's predicted body heard here. */
@@ -83,7 +88,12 @@ export class BodySounds {
     const st = this.st;
     for (let i = 0; i < remote.count; i++) {
       const id = remote.id[i]!;
-      if (id === ownId || !isSurvivor(remote.kind[i]!) || (remote.flags[i]! & 8) !== 0) continue;
+      if (id === ownId && isSurvivor(remote.kind[i]!)) {
+        // The player's own emote is said at the ear.
+        if (remote.emote[i] !== this.own.emote) this.said(remote.emote[i]!, this.own, survivor, -1, 0, 0, 0, selfFemale ? 1 : 0, true, hear);
+        continue;
+      }
+      if (!isSurvivor(remote.kind[i]!) || (remote.flags[i]! & 8) !== 0) continue;
       const x = remote.x[i]!;
       const y = remote.y[i]!;
       const z = remote.z[i]!;
@@ -104,6 +114,7 @@ export class BodySounds {
         w.swimming = st.mode === MODE_SWIM;
       }
       w.seen = frame;
+      if (remote.emote[i] !== w.emote) this.said(remote.emote[i]!, w, survivor, id, x, y, z, remote.look[i * LOOK_BYTES + LOOK_SEX] === 1 ? 1 : 0, false, hear);
       const vy = dt > 0 ? (y - w.y) / dt : 0;
       this.move(w, x, y, z, vy, st.grounded, st.mode === MODE_SWIM, st.stance, false, hf, survivor, id, remote.look[i * LOOK_BYTES + LOOK_SEX] === 1 ? 1 : 0, false, hear);
     }
@@ -131,6 +142,15 @@ export class BodySounds {
     if (winded && !w.winded) hear(survivor, WINDED[sex]!, -1, 0, 0, 0, 0, 0.8, true);
     w.winded = winded;
     this.move(w, self.x, self.y, self.z, self.vy, self.grounded, self.mode === MODE_SWIM, self.stance, out, hf, survivor, -1, sex, true, hear);
+  }
+
+  /** A new emote word: the line its emote says as it begins, if it has one. */
+  private said(word: number, w: Walker, survivor: number, entity: number, x: number, y: number, z: number, sex: number, flat: boolean, hear: Hear): void {
+    w.emote = word;
+    this.st.unpackEmote(word);
+    const line = emoteOf(this.st.emote)?.sound;
+    const keys = line ? EMOTE_VOICE.get(line) : undefined;
+    if (keys) hear(survivor, keys[sex]!, entity, x, y, z, flat ? 0 : 1.6, 0.9, flat);
   }
 
   /** The body moved to (x, y, z): its steps, strokes, jumps and landings. */

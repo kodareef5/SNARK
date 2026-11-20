@@ -4,6 +4,7 @@
 import { quatAxis, quatCopy, quatMul, quatMulConj, quatNormalize, quatRotate } from "../math/quat.ts";
 import { TAU, detSin } from "../math/scalar.ts";
 import { Pose, type Clip } from "./clip.ts";
+import { emoteClips } from "./emote-clips.ts";
 import {
   B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK,
   B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
@@ -91,6 +92,17 @@ export class PoseBuilder {
     return this.store(bone);
   }
 
+  /** Degrees about the bone's own X, then Y, then Z axis (its rest frame as turned): a curl of the fingers whatever way the hand is turned. */
+  local(bone: number, x: number, y = 0, z = 0): this {
+    const q = this.q;
+    for (const [angle, ax, ay, az] of [[x, 1, 0, 0], [y, 0, 1, 0], [z, 0, 0, 1]] as const) {
+      if (angle === 0) continue;
+      quatAxis(q, 0, ax, ay, az, angle * DEG);
+      quatMul(this.world, bone * 4, this.world, bone * 4, q, 0);
+    }
+    return this.store(bone);
+  }
+
   /** Gives a bone its rest orientation in model space, regardless of its parents. A hand set this way holds an item pointing forward and upright. */
   level(bone: number): this {
     const w = this.world;
@@ -139,7 +151,7 @@ export class PoseBuilder {
 }
 
 /** `at` poses each frame, with phase running from 0 to 1. */
-function clip(id: string, frames: number, loop: boolean, at: (b: PoseBuilder, phase: number) => void): Clip {
+export function clip(id: string, frames: number, loop: boolean, at: (b: PoseBuilder, phase: number) => void): Clip {
   const rot = new Float32Array(frames * HUMAN_BONES * 4);
   const root = new Float32Array(frames * 3);
   for (let f = 0; f < frames; f++) {
@@ -227,5 +239,6 @@ export function authoredClips(): readonly Clip[] {
     clip("human/gun_lowered", 1, true, gunLowered),
     clip("human/pistol_aimed", 1, true, pistolAimed),
     clip("human/pistol_lowered", 1, true, pistolLowered),
+    ...emoteClips(),
   ]);
 }

@@ -1,0 +1,81 @@
+{
+  "name": "base-babysit",
+  "about": "Minding the base while the owners are away: the harvester back full, then a storm. The upkeep chore and the damage report, looped through.",
+  "world": {
+    "seed": 6,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "stone_pick": 1,
+        "stone_hatchet": 1,
+        "bow": 1,
+        "arrow": 20,
+        "berries": 12,
+        "wood": 600,
+        "thatch": 200,
+        "fiber": 150
+      }
+    },
+    "bases": [
+      {
+        "blueprint": "hut_2x2",
+        "x": 0,
+        "z": -12
+      }
+    ],
+    "things": [
+      {
+        "type": "vault",
+        "name": "Stone vault",
+        "x": 10,
+        "z": -4
+      },
+      {
+        "type": "ankylo",
+        "name": "Bumper",
+        "x": -9,
+        "z": -3,
+        "items": {
+          "stone": 800,
+          "flint": 200
+        }
+      }
+    ]
+  },
+  "prompt": "You are Scout. We're away for a while: look after the base.",
+  "script": [
+    {
+      "at_s": 70,
+      "damage": {
+        "x": 0,
+        "z": -12,
+        "radius": 5,
+        "amount": 3000
+      }
+    }
+  ],
+  "success": {
+    "all": [
+      {
+        "emptied": [
+          "Bumper"
+        ]
+      },
+      {
+        "whole": true
+      },
+      {
+        "holds": "Stone vault",
+        "items": {
+          "stone": 800
+        }
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 360
+  }
+}

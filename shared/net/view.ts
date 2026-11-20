@@ -5,14 +5,16 @@
 //   count varint, then per op in ascending id order:
 //     id gap varint: this id minus the previous id (first: id + 1), so always >= 1
 //     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
-//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], then its appearance:
+//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], [emote? 1][29],
+//             then its appearance:
 //             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16, on 1],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //             then [vehicle? 1][its parts], the parts a vehicle's: pose 32, wheel 16, ride 32, doors 32, drive 32, rotor 32, systems 32, attitude 64, water 16
 //             (shared/sim/vehicle-body.ts packs each). A seat is the entity, its slot u8 and the entity's generation 12, so
 //             nothing is drawn on a recycled one.
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
-//             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][31]]: the action is sent again with a change of cues
+//             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][31] [emote? 1][29]]: the action is sent again with a
+//             change of cues or of the emote (protocol 37: AnimState.packEmote, what a survivor's emote is and since when)
 //             [vehicle? 1][[part? 1][its bits] for each vehicle part]: only the parts that changed. A new part goes
 //             last, in VEHICLE_PART_BITS, the SentView columns and vehicleParts, and takes a protocol version.
 //
@@ -30,7 +32,7 @@
 // word it has not acknowledged (`Told`), and has more to say of one until it has: an update that changes nothing where a
 // body is back as the baseline has it, a remove where the baseline never had it.
 
-import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK, CUE_BITS } from "../anim/pose.ts";
+import { ANIM_ACTION_BITS, ANIM_ACTION_SHIFT, ANIM_LOOK_BITS, ANIM_LOOK_SHIFT, ANIM_MOTION_BITS, ANIM_MOTION_MASK, CUE_BITS, EMOTE_BITS } from "../anim/pose.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { WORLD_MIN_Y } from "../coords.ts";
 import { GEAR_COUNT } from "../sim/entities.ts";
@@ -185,6 +187,8 @@ export class SentView {
   /** Packed as `AnimState.pack` and `AnimState.packCue` do. */
   anim = new Uint32Array(VIEW_START);
   cue = new Uint32Array(VIEW_START);
+  /** A survivor's emote, as `AnimState.packEmote` packs it; 0 for none. */
+  emote = new Uint32Array(VIEW_START);
   vehiclePose = new Uint32Array(VIEW_START);
   vehicleWheel = new Uint16Array(VIEW_START);
   vehicleRide = new Uint32Array(VIEW_START);
@@ -200,7 +204,7 @@ export class SentView {
   /** Not sent. 1 for an entity whose changes go before the others when a snapshot cannot carry them all: a player, or a mount one drives. */
   urgent = new Uint8Array(VIEW_START);
 
-  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0, vehiclePose = 0, vehicleWheel = 0, vehicleRide = 0, vehicleDoors = 0, vehicleDrive = 0, vehicleRotor = 0, vehicleSystems = 0, vehicleAttitudeA = 0, vehicleAttitudeB = 0, vehicleWater = 0): boolean {
+  push(id: number, gen: number, kind: number, qx: number, qy: number, qz: number, yaw: number, flags: number, anim: number, rev = 0, cue = 0, vehiclePose = 0, vehicleWheel = 0, vehicleRide = 0, vehicleDoors = 0, vehicleDrive = 0, vehicleRotor = 0, vehicleSystems = 0, vehicleAttitudeA = 0, vehicleAttitudeB = 0, vehicleWater = 0, emote = 0): boolean {
     const n = this.count;
     if (n === this.cap && !this.grow()) return false;
     this.id[n] = id;
@@ -213,6 +217,7 @@ export class SentView {
     this.flags[n] = flags;
     this.anim[n] = anim;
     this.cue[n] = cue;
+    this.emote[n] = emote;
     this.vehiclePose[n] = vehiclePose;
     this.vehicleWheel[n] = vehicleWheel;
     this.vehicleRide[n] = vehicleRide;
@@ -229,7 +234,7 @@ export class SentView {
   }
 
   copyFrom(o: SentView, i: number): boolean {
-    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!, o.vehiclePose[i]!, o.vehicleWheel[i]!, o.vehicleRide[i]!, o.vehicleDoors[i]!, o.vehicleDrive[i]!, o.vehicleRotor[i]!, o.vehicleSystems[i]!, o.vehicleAttitudeA[i]!, o.vehicleAttitudeB[i]!, o.vehicleWater[i]!);
+    return this.push(o.id[i]!, o.gen[i]!, o.kind[i]!, o.qx[i]!, o.qy[i]!, o.qz[i]!, o.yaw[i]!, o.flags[i]!, o.anim[i]!, o.rev[i]!, o.cue[i]!, o.vehiclePose[i]!, o.vehicleWheel[i]!, o.vehicleRide[i]!, o.vehicleDoors[i]!, o.vehicleDrive[i]!, o.vehicleRotor[i]!, o.vehicleSystems[i]!, o.vehicleAttitudeA[i]!, o.vehicleAttitudeB[i]!, o.vehicleWater[i]!, o.emote[i]!);
   }
 
   /** Doubles the columns. False when they are at MAX_VIEW. */
@@ -246,6 +251,7 @@ export class SentView {
     this.flags = wider(this.flags, cap);
     this.anim = wider(this.anim, cap);
     this.cue = wider(this.cue, cap);
+    this.emote = wider(this.emote, cap);
     this.vehiclePose = wider(this.vehiclePose, cap);
     this.vehicleWheel = wider(this.vehicleWheel, cap);
     this.vehicleRide = wider(this.vehicleRide, cap);
@@ -581,7 +587,7 @@ function same(ring: ViewRing<SentView>, told: Told, s: number, v: SentView, j: n
   const was = ring.find(told.at[s]!);
   if (!was) return false;
   const i = told.ix[s]!;
-  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.vehiclePose[i] === v.vehiclePose[j] && was.vehicleWheel[i] === v.vehicleWheel[j] && was.vehicleRide[i] === v.vehicleRide[j] && was.vehicleDrive[i] === v.vehicleDrive[j] && was.vehicleRotor[i] === v.vehicleRotor[j] && was.vehicleSystems[i] === v.vehicleSystems[j] && was.vehicleAttitudeA[i] === v.vehicleAttitudeA[j] && was.vehicleAttitudeB[i] === v.vehicleAttitudeB[j] && was.vehicleWater[i] === v.vehicleWater[j] && was.vehicleDoors[i] === v.vehicleDoors[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
+  return was.qx[i] === v.qx[j] && was.qz[i] === v.qz[j] && was.qy[i] === v.qy[j] && was.yaw[i] === v.yaw[j] && was.anim[i] === v.anim[j] && was.cue[i] === v.cue[j] && was.emote[i] === v.emote[j] && was.vehiclePose[i] === v.vehiclePose[j] && was.vehicleWheel[i] === v.vehicleWheel[j] && was.vehicleRide[i] === v.vehicleRide[j] && was.vehicleDrive[i] === v.vehicleDrive[j] && was.vehicleRotor[i] === v.vehicleRotor[j] && was.vehicleSystems[i] === v.vehicleSystems[j] && was.vehicleAttitudeA[i] === v.vehicleAttitudeA[j] && was.vehicleAttitudeB[i] === v.vehicleAttitudeB[j] && was.vehicleWater[i] === v.vehicleWater[j] && was.vehicleDoors[i] === v.vehicleDoors[j] && was.flags[i] === v.flags[j] && was.gen[i] === v.gen[j] && was.rev[i] === v.rev[j];
 }
 
 /**
@@ -698,7 +704,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       opKind[n] = K_CREATE;
       opCur[n] = j;
       opId[n] = cid;
-      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
+      bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + 1 + (cur.emote[j] !== 0 ? EMOTE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
       last = cid + 1;
     } else {
       opBase[n] = i;
@@ -706,7 +712,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (base!.gen[i] !== cur.gen[j] || base!.rev[i] !== cur.rev[j]) {
         // Deferred, it leaves the client the entry it has.
         opKind[n] = K_REPLACE;
-        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
+        bits = createBits(looks, cid) + (cur.cue[j] !== 0 ? CUE_BITS : 0) + 1 + (cur.emote[j] !== 0 ? EMOTE_BITS : 0) + (cur.vehiclePose[j] !== 0 ? VEHICLE_BITS : 0);
         last = cid + 1;
       } else {
         const dx = cur.qx[j]! - base!.qx[i]!;
@@ -714,7 +720,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         const dz = cur.qz[j]! - base!.qz[i]!;
         const moved = dx !== 0 || dy !== 0 || dz !== 0;
         const changed = cur.anim[j]! ^ base!.anim[i]!;
-        const cued = cur.cue[j] !== base!.cue[i];
+        const cued = cur.cue[j] !== base!.cue[i] || cur.emote[j] !== base!.emote[i];
+        const emoted = cur.emote[j] !== base!.emote[i];
         const vehicleBits = vehicleChange(base!, i, cur, j);
         if (!moved && changed === 0 && !cued && vehicleBits === 0 && base!.yaw[i] === cur.yaw[j] && base!.flags[i] === cur.flags[j]) {
           if (th < 0) {
@@ -743,7 +750,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         if (base!.flags[i] !== cur.flags[j]) bits += 4;
         if ((changed & ANIM_MOTION_MASK) !== 0) bits += ANIM_MOTION_BITS;
         if (((changed >>> ANIM_LOOK_SHIFT) & LOOK_MASK) !== 0) bits += ANIM_LOOK_BITS;
-        if (changed >>> ANIM_ACTION_SHIFT !== 0 || cued) bits += ANIM_ACTION_BITS + 1 + (cued ? CUE_BITS : 0);
+        if (changed >>> ANIM_ACTION_SHIFT !== 0 || cued) bits += ANIM_ACTION_BITS + 2 + (cur.cue[j] !== base!.cue[i] ? CUE_BITS : 0) + (emoted ? EMOTE_BITS : 0);
         last = cid + 1;
       }
       opId[n] = cid;
@@ -835,6 +842,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       w.bits(cur.anim[ci]!, ANIM_BITS);
       w.bool(cur.cue[ci] !== 0);
       if (cur.cue[ci] !== 0) w.bits(cur.cue[ci]!, CUE_BITS);
+      w.bool(cur.emote[ci] !== 0);
+      if (cur.emote[ci] !== 0) w.bits(cur.emote[ci]!, EMOTE_BITS);
       w.bool(cur.vehiclePose[ci] !== 0);
       if (cur.vehiclePose[ci] !== 0) writeVehicleParts(w, null, 0, cur, ci);
       w.bits(cur.rev[ci]!, 4);
@@ -884,6 +893,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       }
       const changed = cur.anim[ci]! ^ base!.anim[bi]!;
       const cued = cur.cue[ci] !== base!.cue[bi];
+      const emoted = cur.emote[ci] !== base!.emote[bi];
       let v = 0;
       let n = 1;
       if (cur.yaw[ci] !== base!.yaw[bi]) {
@@ -905,7 +915,7 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
         v = 1 | (((cur.anim[ci]! >>> ANIM_LOOK_SHIFT) & LOOK_MASK) << 1);
         n = 1 + ANIM_LOOK_BITS;
       }
-      const acting = changed >>> ANIM_ACTION_SHIFT !== 0 || cued;
+      const acting = changed >>> ANIM_ACTION_SHIFT !== 0 || cued || emoted;
       if (acting) {
         v |= (1 | ((cur.anim[ci]! >>> ANIM_ACTION_SHIFT) << 1)) << n;
         n += 1 + ANIM_ACTION_BITS;
@@ -914,6 +924,8 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (acting) {
         w.bool(cued);
         if (cued) w.bits(cur.cue[ci]!, CUE_BITS);
+        w.bool(emoted);
+        if (emoted) w.bits(cur.emote[ci]!, EMOTE_BITS);
       }
       const vehicleChanged = vehicleChange(base!, bi, cur, ci) !== 0;
       w.bool(vehicleChanged);
@@ -987,6 +999,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const flags = r.bits(4);
       const anim = r.bits(ANIM_BITS);
       const cue = r.bool() ? r.bits(CUE_BITS) : 0;
+      const emote = r.bool() ? r.bits(EMOTE_BITS) : 0;
       const parts = scratchParts;
       if (r.bool()) readVehicleParts(r, null, 0, parts);
       else parts.fill(0);
@@ -1016,7 +1029,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       const span = young ? r.u32() : 0;
       const grown = young ? r.u32() : 0;
       if (present) i++;
-      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater)) return false;
+      if (kind > 0xffff || level > 0xffff || !next.push(id, gen, kind, qx, qy, qz, yaw, flags, anim, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater, emote)) return false;
       next.appear(rev, level, scratchColors, 0, name, look, gear, on);
       next.belong(team, seat, span, grown, seatSlot, seatGen);
       if (drawn) drawn.copyFrom(next, next.count - 1);
@@ -1044,15 +1057,17 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (r.bool()) anim = (anim & ~ANIM_MOTION_MASK) | r.bits(ANIM_MOTION_BITS);
       if (r.bool()) anim = (anim & ~(LOOK_MASK << ANIM_LOOK_SHIFT)) | (r.bits(ANIM_LOOK_BITS) << ANIM_LOOK_SHIFT);
       let cue = base!.cue[i]!;
+      let emote = base!.emote[i]!;
       if (r.bool()) {
         anim = (anim & ((1 << ANIM_ACTION_SHIFT) - 1)) | (r.bits(ANIM_ACTION_BITS) << ANIM_ACTION_SHIFT);
         if (r.bool()) cue = r.bits(CUE_BITS);
+        if (r.bool()) emote = r.bits(EMOTE_BITS);
       }
       const parts = scratchParts;
       if (r.bool()) readVehicleParts(r, base!, i, parts);
       else vehicleParts(base!, i, parts);
       const [vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater] = parts;
-      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater)) return false;
+      if (!next.push(id, base!.gen[i]!, base!.kind[i]!, qx, qy, qz, yaw, flags, anim >>> 0, 0, cue, vehiclePose, vehicleWheel, vehicleRide, vehicleDoors, vehicleDrive, vehicleRotor, vehicleSystems, vehicleAttitudeA, vehicleAttitudeB, vehicleWater, emote)) return false;
       next.appear(base!.rev[i]!, base!.level[i]!, base!.colors, i * 6, base!.name[i]!, base!.look[i]!, base!.gear[i]!, base!.on[i]!);
       next.belong(base!.team[i]!, base!.seat[i]!, base!.span[i]!, base!.grown[i]!, base!.seatSlot[i]!, base!.seatGen[i]!);
       if (drawn) drawn.copyFrom(next, next.count - 1);

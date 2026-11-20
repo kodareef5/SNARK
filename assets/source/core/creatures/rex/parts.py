@@ -1,4 +1,5 @@
-"""Small original geometry tools: closed anatomical lofts, not imported art."""
+"""Geometry helpers for the saddle: lofted tubes and panels, built in the game's frame (x left, y up, z forward).
+Taken from the earlier Rex's parts.py, less what only its body used."""
 
 import math
 
@@ -7,7 +8,9 @@ import bpy
 import numpy as np
 from mathutils import Vector
 
-from plan import to_blender
+
+def to_blender(v):
+    return Vector((v[0], -v[2], v[1]))
 
 
 def smooth_rows(rows, subdivisions=3):
@@ -27,7 +30,7 @@ def smooth_rows(rows, subdivisions=3):
 
 
 class Part:
-    def __init__(self, name, material="rex_hide", bone=None):
+    def __init__(self, name, material, bone=None):
         self.name, self.material, self.bone = name, material, bone
         self.points, self.faces, self.uvs = [], [], []
 
@@ -88,45 +91,6 @@ class Part:
                 self.face((centre, ring[i], ring[(i + 1) % sides]), [(left, bottom)] * 3)
         return self
 
-    def eye(self, centre, radii, rect, sides, rings):
-        # A shared vertex at each pole survives quantization at every distance.
-        # UVs still fan per face, so the iris wraps cleanly across the seam.
-        left, bottom, right, top = rect
-        def uv(i, j):
-            return (left + (right-left)*i/sides, bottom + (top-bottom)*j/rings)
-        south = self.point((centre[0], centre[1]-radii[1], centre[2]))
-        north = self.point((centre[0], centre[1]+radii[1], centre[2]))
-        rows = []
-        for j in range(1, rings):
-            a = math.pi*(j/rings-.5)
-            rows.append([self.point((centre[0]+radii[0]*math.cos(a)*math.cos(math.tau*i/sides),
-                                     centre[1]+radii[1]*math.sin(a),
-                                     centre[2]-radii[2]*math.cos(a)*math.sin(math.tau*i/sides))) for i in range(sides)])
-        for i in range(sides):
-            k = (i+1)%sides
-            self.face((south, rows[0][k], rows[0][i]), [uv(i+.5,0),uv(i+1,1),uv(i,1)])
-            for j in range(len(rows)-1):
-                self.face((rows[j][i],rows[j][k],rows[j+1][k],rows[j+1][i]),
-                          [uv(i,j+1),uv(i+1,j+1),uv(i+1,j+2),uv(i,j+2)])
-            self.face((rows[-1][i],rows[-1][k],north), [uv(i,rings-1),uv(i+1,rings-1),uv(i+.5,rings)])
-        return self
-
-    def ellipsoid(self, centre, radii, rect, sides=20, rings=10):
-        # Closed pointed rows avoid an open pole after simplification.
-        rows = []
-        for j in range(rings + 1):
-            a = -0.5 * math.pi + math.pi * j / rings
-            rows.append(
-                (
-                    centre[0],
-                    centre[1] + radii[1] * math.sin(a),
-                    centre[2],
-                    max(0.0005, radii[0] * math.cos(a)),
-                    max(0.0005, radii[2] * math.cos(a)),
-                )
-            )
-        return self.loft(rows, sides, rect, 1)
-
     def object(self):
         mesh = bpy.data.meshes.new(self.name)
         obj = bpy.data.objects.new(self.name, mesh)
@@ -149,12 +113,6 @@ class Part:
         if self.bone:
             obj.vertex_groups.new(name=self.bone).add(list(range(len(mesh.vertices))), 1, "REPLACE")
         return obj
-
-
-def activate(obj):
-    bpy.ops.object.select_all(action="DESELECT")
-    obj.select_set(True)
-    bpy.context.view_layer.objects.active = obj
 
 
 def join(objects, name):

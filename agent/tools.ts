@@ -15,7 +15,7 @@ import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../shared/sim/vit
 import { vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import { W_MELEE } from "../shared/sim/weapon.ts";
 import { latOf, lonOf, xOfLon, zOfLat } from "../shared/world/coords.ts";
-import { ON_TOP, ROLE_FOUNDATION, ROLE_THING, makeSockets, poseAt, socketsOf, type Pose } from "../shared/world/snap.ts";
+import { ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, makeSockets, poseAt, socketsOf, turnsOf, type Pose } from "../shared/world/snap.ts";
 import { Found } from "../shared/world/structures.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK } from "../shared/world/upkeep.ts";
 import { Commands, resultWords } from "./commands.ts";
@@ -40,6 +40,8 @@ const CHANNELS: Record<string, number> = { global: TEXT_GLOBAL, local: TEXT_LOCA
 const CHANNEL_WORDS: Record<number, string> = { [TEXT_GLOBAL]: "global", [TEXT_LOCAL]: "local", [TEXT_TRIBE]: "tribe", [TEXT_NOTICE]: "notice" };
 /** A place command's target for open ground, as server/build.ts reads it. */
 const OPEN_GROUND = 0xffffffff;
+/** How far from the eye a piece is set without walking first: the server's reach (BUILD_REACH 9 + 3) less a margin. */
+const PLACE_REACH = 10.5;
 /** Why a survivor without a body chooses, in words. */
 const CHOOSE_WORDS: Record<number, string> = { [CHOOSE_DIED]: "died", [CHOOSE_ARRIVED]: "arrived", [CHOOSE_TRAVEL]: "travelling from a bed" };
 const WORN = ["head", "torso", "hands", "legs", "feet"];
@@ -89,6 +91,13 @@ export class Agent implements ToolHost {
   readonly remote = new RemoteSample();
   readonly controller: Controller;
   private readonly withConsole: boolean;
+  /**
+   * Inputs set from outside (the grunt gateway's move, look, jump and crouch), used while no task runs: the controller
+   * would otherwise hold the body still. Its yaw stays the controller's when it ends, so a task starts from it.
+   */
+  manual: { moveX: number; moveZ: number; yaw: number; pitch: number; buttons: number } | null = null;
+  /** Told of every combat event the session brings, before the agent takes it (the grunt gateway's events). */
+  onEvent: ((ev: ClientSession["events"][number]) => void) | null = null;
   private readonly far: FarLayer | undefined;
   private readonly run: Record<string, (a: Record<string, unknown>, ctx: CallContext) => Answer | Promise<Answer>>;
   /** Each returns true once it has resolved its promise. */
@@ -154,7 +163,9 @@ export class Agent implements ToolHost {
     this.absorb();
     const c = this.controller;
     c.step(now);
-    s.update(now, c.moveX, c.moveZ, c.yaw, c.pitch, c.buttons);
+    const m = this.manual && !c.busy ? this.manual : null;
+    if (m) (c.yaw = m.yaw), (c.pitch = m.pitch);
+    s.update(now, m ? m.moveX : c.moveX, m ? m.moveZ : c.moveZ, c.yaw, c.pitch, m ? m.buttons : c.buttons);
     for (let i = 0; i < this.waiting.length; ) {
       if (this.waiting[i]!(now)) this.waiting.splice(i, 1);
       else i++;
@@ -165,6 +176,7 @@ export class Agent implements ToolHost {
   private absorb(): void {
     const s = this.session;
     for (const ev of s.events) {
+      this.onEvent?.(ev);
       if (ev.kind === EVENT_HIT) {
         this.controller.hit(ev.x, ev.z);
         if (ev.damage > 0) this.tell(`you hit for ${Math.round(ev.damage)}${ev.kill ? ", and killed it" : ""}`);
@@ -745,7 +757,8 @@ export class Agent implements ToolHost {
     if (variant < 0) throw new Bad(`a ${this.nameOf(item)} is set down as ${[...forms].map((k) => this.nameOf(k)).join(" or ")}`);
     const kind = forms[Math.max(0, variant)]!;
     const role = reg.role[kind]!;
-    const free = role === ROLE_FOUNDATION || role === ROLE_THING;
+    // What stands by itself on the ground: a foundation, a pillar (its foot on the ground), a thing.
+    const free = role === ROLE_FOUNDATION || role === ROLE_PILLAR || role === ROLE_THING;
     const on = a.on === undefined ? null : this.target({ id: a.on });
     this.idle();
     if (on && on.ref < 0) throw new Bad(`${on.id} is not something built`);
@@ -755,12 +768,22 @@ export class Agent implements ToolHost {
     // Where it goes: a socket of the piece it joins, or on its top, or on open ground.
     let socket = -1;
     let x = 0, z = 0, y = 0;
+    const turn = whole(a, "turn", 0, 3, 0);
+    if (turn >= turnsOf(role)) return refused(`a ${this.nameOf(kind)} turns ${turnsOf(role)} way${turnsOf(role) === 1 ? "" : "s"} in its place, not ${turn + 1}`);
     if (on && role !== ROLE_THING) {
-      const want = a.side === undefined ? "" : text(a, "side");
-      const picked = this.socket(on.ref, kind, want);
-      if (typeof picked === "string") return refused(picked);
-      socket = picked;
-      poseAt(world.structs, reg, on.ref, kind, socket, 0, this.pose);
+      if (a.socket !== undefined) {
+        // A snap point by its number, for a builder that knows them.
+        const k = whole(a, "socket", 0, 255, 0);
+        const n = socketsOf(world.structs, reg, on.ref, kind, this.sockets);
+        if (k >= n) return refused(n === 0 ? `a ${this.nameOf(kind)} does not join ${on.id}` : `${on.id} has ${n} snap points for a ${this.nameOf(kind)}, 0 to ${n - 1}`);
+        socket = k;
+      } else {
+        const want = a.side === undefined ? "" : text(a, "side");
+        const picked = this.socket(on.ref, kind, want);
+        if (typeof picked === "string") return refused(picked);
+        socket = picked;
+      }
+      poseAt(world.structs, reg, on.ref, kind, socket, turn, this.pose);
       [x, y, z] = [this.pose.x / STRUCT_UNITS, this.pose.y / STRUCT_UNITS, this.pose.z / STRUCT_UNITS];
     } else {
       const at = this.where(a);
@@ -769,13 +792,17 @@ export class Agent implements ToolHost {
     }
     const yaw = Math.round((amount(a, "facing", 0, 360, 0) / 360) * YAW_UNITS) & (YAW_UNITS - 1);
     // Near enough that the eye is in reach, and not in its way: three metres from where it goes, on the side it stands.
+    // With stay, a builder in reach already stays put (inside a house, the way out may be shut), and one too far walks
+    // and places from where it got to if that is in reach.
     const away = Math.hypot(s.own.x - x, s.own.z - z);
-    if (away < 2.4 || away > 6 || Math.abs(s.own.y - y) > 4) {
+    const reachOf = (): number => Math.hypot(s.own.x - x, s.own.y + 1.6 - y, s.own.z - z);
+    const stay = a.stay === true;
+    if (stay ? reachOf() > PLACE_REACH : away < 2.4 || away > 6 || Math.abs(s.own.y - y) > 4) {
       const dx = away > 0.1 ? (s.own.x - x) / away : 0;
       const dz = away > 0.1 ? (s.own.z - z) / away : -1;
       this.controller.walkTo(this.now, this.controller.place(x + dx * 3.2, z + dz * 3.2), 0.8);
       const walked = await this.finish(amount(a, "wait_s", 0, 50, 25), ctx);
-      if (walked.state !== "done") return walked;
+      if (walked.state !== "done" && (!stay || reachOf() > PLACE_REACH + 1)) return walked;
     }
     const held = await this.inHand(item);
     if (held.state !== "done") return held;
@@ -785,7 +812,7 @@ export class Agent implements ToolHost {
       if (socket >= 0) {
         w.u32(on!.ref);
         w.u8(socket);
-        w.u8(0);
+        w.u8(turn);
         return;
       }
       w.u32(on ? on.ref : OPEN_GROUND);
@@ -793,7 +820,8 @@ export class Agent implements ToolHost {
       w.sbits(Math.round(x * STRUCT_UNITS), 32);
       w.sbits(Math.round(z * STRUCT_UNITS), 32);
       w.u16(yaw);
-      if (!on) w.sbits(0, 8);
+      // Lift in eighths of a metre, for a piece on open ground.
+      if (!on) w.sbits(Math.round(amount(a, "lift", -0.5, 1, 0) * 8), 8);
       w.u8(0);
     });
     const code = seq === 0 ? 0 : await this.result(seq);

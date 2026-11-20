@@ -13,6 +13,8 @@ import { TICK_RATE } from "../coords.ts";
 import { MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
 import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
 import { cradle } from "./hold.ts";
+import { emotePose } from "./emote.ts";
+import { EMOTES, emoteClipId } from "./emotes.ts";
 
 /** The three parts of a packed AnimState. Replication sends each part only when it changes. */
 export const ANIM_MOTION_BITS = 12;
@@ -94,6 +96,21 @@ export const CUE_RIVALRY = 1 << CUE_DECAY_SHIFT;
 /** The second decay bit on living survivors marks active chest thrust. */
 export const CUE_JET = 1 << (CUE_DECAY_SHIFT + 1);
 export const CUE_MATING_SHIFT = 28;
+/**
+ * A survivor's emote (protocol 37), its own word beside the pose and the cues: the emote's number in shared/anim/emotes.ts
+ * (0 for none) in the low EMOTE_ID_BITS, the low 16 bits of its first tick, its role (EMOTE_SOLO, EMOTE_SYNCED: in step
+ * with every body playing it so, EMOTE_LEAD and EMOTE_PARTNER: the two sides of a pair), and whether it plays mirrored.
+ */
+export const EMOTE_BITS = 29;
+export const EMOTE_ID_BITS = 10;
+export const EMOTE_START_SHIFT = 10;
+export const EMOTE_ROLE_SHIFT = 26;
+export const EMOTE_MIRROR = 1 << 28;
+export const EMOTE_SOLO = 0;
+export const EMOTE_SYNCED = 1;
+export const EMOTE_LEAD = 2;
+export const EMOTE_PARTNER = 3;
+
 /** The worst hurt and decay stage. 0 is unhurt, or fresh. */
 export const STAGE_WORST = 3;
 /** The last step of a pair's mating: 1 as it begins, rising to this as it ends, 0 when not mating. */
@@ -142,6 +159,11 @@ export class AnimState {
   rivalry = false;
   /** 0, or 1 to MATING_STEPS. */
   mating = 0;
+  /** A survivor's emote: its number (0 for none), the low 16 bits of its first tick, its role and whether mirrored. */
+  emote = 0;
+  emoteStart = 0;
+  emoteRole = EMOTE_SOLO;
+  emoteMirror = false;
 
   /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
@@ -167,6 +189,19 @@ export class AnimState {
     this.actionStart = act === ACT_NONE ? 0 : start & 255;
   }
 
+  /** The emote as one word: EMOTE_BITS describes it. 0 when there is none. */
+  packEmote(): number {
+    if (this.emote === 0) return 0;
+    return ((this.emote & ((1 << EMOTE_ID_BITS) - 1)) | ((this.emoteStart & 0xffff) << EMOTE_START_SHIFT) | ((this.emoteRole & 3) << EMOTE_ROLE_SHIFT) | (this.emoteMirror ? EMOTE_MIRROR : 0)) >>> 0;
+  }
+
+  unpackEmote(word: number): void {
+    this.emote = word & ((1 << EMOTE_ID_BITS) - 1);
+    this.emoteStart = (word >>> EMOTE_START_SHIFT) & 0xffff;
+    this.emoteRole = (word >>> EMOTE_ROLE_SHIFT) & 3;
+    this.emoteMirror = (word & EMOTE_MIRROR) !== 0;
+  }
+
   unpackCue(cue: number): void {
     this.out = (cue & CUE_OUT) !== 0;
     this.cue = (cue >>> 1) & 7;
@@ -182,8 +217,9 @@ export class AnimState {
     this.mating = (cue >>> CUE_MATING_SHIFT) & 7;
   }
 
-  unpack(word: number, cue = 0): void {
+  unpack(word: number, cue = 0, emote = 0): void {
     this.unpackCue(cue);
+    this.unpackEmote(emote);
     this.speed = word & 15;
     if (((word >>> 8) & 3) === ANIM_FLYING) {
       this.mode = MODE_FLYER;
@@ -267,6 +303,8 @@ export class HumanAnim {
   readonly gunLowered: Clip | null;
   readonly pistolAimed: Clip | null;
   readonly pistolLowered: Clip | null;
+  /** Each emote's clip by its number (shared/anim/emotes.ts), null for none or one not loaded. */
+  readonly emotes: (Clip | null)[];
   /** The gaits of each way of moving, slowest first: on foot, crouched, prone and swimming. */
   readonly standing: readonly GaitClip[];
   readonly crouching: readonly GaitClip[];
@@ -303,6 +341,7 @@ export class HumanAnim {
     this.gunLowered = find("human/gun_lowered");
     this.pistolAimed = find("human/pistol_aimed");
     this.pistolLowered = find("human/pistol_lowered");
+    this.emotes = [null, ...EMOTES.map((e) => find(emoteClipId(e.id)))];
     const scratch = new Pose(HUMAN_BONES);
     const solved = new Solved(HUMAN_BONES);
     const gaits = (...list: [Clip | null, number][]): GaitClip[] =>
@@ -312,6 +351,15 @@ export class HumanAnim {
     // A crawl drags its feet and a swimmer has no ground, so their strides are the speed each plays at its own rate.
     this.crawling = gaits([this.proneCrawl, this.proneCrawl ? (PRONE_SPEED * this.proneCrawl.frames) / TICK_RATE : 0]);
     this.swimming = gaits([this.swim, this.swim ? (SWIM_SPEED * this.swim.frames) / TICK_RATE : 0]);
+  }
+
+  /** Takes in emote clips that came later (a client streams them after the first frame). */
+  addEmotes(set: ClipSet): void {
+    EMOTES.forEach((e, i) => {
+      const k = set.index.get(emoteClipId(e.id));
+      const clip = k === undefined ? null : set.clips[k]!;
+      if (clip && clip.bones === HUMAN_BONES) this.emotes[i + 1] = clip;
+    });
   }
 
   /** The gaits that move a body in this state. */
@@ -488,6 +536,14 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
       blendPose(out, out, a, k, UPPER_FROM, UPPER_TO);
       blendPose(out, out, a, k, HANDS_FROM, HUMAN_BONES);
     }
+  }
+
+  // An emote over all that: a whole-body one stands the body straight, and only its neck and head follow the look.
+  if (emotePose(anim.emotes, st, tick, out) > 0) {
+    twistAngle = 0;
+    spineShare = 0;
+    raised = 0;
+    kick = 0;
   }
 
   if (twistAngle !== 0) {
