@@ -38,3 +38,24 @@ tail. Keep all of that.
 - There are no hand or toe bones. The arms are an upper arm and a forearm. The game only needs `jaw` and the sockets.
 - The bone names are close to the game's already: `neck1` becomes `neck_1`, `tail1` becomes `tail_1`, `_L` becomes
   `_l`, `shin` becomes `shank`, `hpaw` becomes `toes`, and `head` becomes `skull`.
+
+## In the game as it is
+
+The asset builds in about ten seconds: `bun tools/art.ts core:rex2 --no-sheet`. `import.py` opens the GLB, gives
+the bones the game's names (the old Rex's where they match), rounds each clip to whole ticks and keeps six clips:
+`idle`, `walk`, `run`, `attack`, `flinch` (Hit) and `call` (Roar). `ref/prepare.py` saves the GLB's three 4K
+pictures to `tex/` once, pixel for pixel.
+
+- All six levels are closed single meshes with no open edges: 57,914, 30,000, 14,500, 6,200, 2,600 and a flat 1,000
+  triangles. Its 4K pictures measure 48 MB in the largest variant.
+- The source gaits are clean. In its Walk_Root and Run_Root clips a planted foot stays within 4 to 6 cm while the
+  body travels 4.23 m and 6.29 m a cycle (`ref/gait.py`), so those are the strides. Run passes the art check. Walk
+  is flagged for 25 to 28 cm: the check counts the foot as planted while it rolls onto its toes. Step 4 sets where
+  each foot plants and lifts.
+
+`bun tools/rex/look.ts OUT --dist CLIENT` takes the same views of each Rex in the game's own page on this Mac's GPU.
+The first set is in `ref/look/`. The new Rex keeps its shape in the game, its jaw closes in idle, and its skin reads
+well close up on the high tier.
+
+For a hands-on look, `bun tools/carbonemys-rex/dev.ts --rex2 --dist var/rex2/client --port 8797` puts both Rexes in
+the paddock. Rex v2 has no saddle yet.

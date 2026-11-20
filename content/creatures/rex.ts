@@ -38,3 +38,13 @@ export const REX: readonly Def[] = [
   ...crafting("core:saddle_rex", { needs: [{ item: "core:hide", count: 380 }, { item: "core:fiber", count: 200 }, { item: "core:ingot", count: 50 }], seconds: 12, xp: 86, at: "core:smithy" }),
   { type: "engram", id: "core:engram-saddle_rex", label: "Rex saddle", level: 74, cost: 40, item: "core:saddle_rex" },
 ];
+
+// Rex v2 while it is built (planning/workstreams/rex2.md). It stands beside the Rex in the paddock and nowhere else:
+// no spawns, eggs, feces, saddle or aliases. When it is done the Rex takes its model and this goes.
+const { breeds: _breeds, aliases: _aliases, feces: _feces, ...rex } = REX[0] as Extract<Def, { type: "species" }>;
+export const REX2: readonly Def[] = [
+  {
+    ...rex, id: "core:rex2", mesh: "core:rex2", skeleton: "rex2",
+    radius: 1.7, height: 5.6, eyeHeight: 4.9, bite: { ...rex.bite!, reach: 6.2 },
+  },
+];
