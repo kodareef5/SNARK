@@ -66,12 +66,23 @@ async function groundOf(id) {
   return grounds.get(id);
 }
 
+const reflectionTiers = new Map();
 function unpack(p, f, blob) {
+  const previous = p.street;
   p.beginFrame();
   for (const [name, value] of Object.entries(f.scalars)) if (name === "tier") p.tier = tierOf(value); else p[name] = value;
+  if (p.tier.reflectionHz !== f.reflectionHz) {
+    const key = p.tier.name + "/" + f.reflectionHz;
+    if (!reflectionTiers.has(key)) reflectionTiers.set(key, { ...p.tier, reflectionHz: f.reflectionHz });
+    p.tier = reflectionTiers.get(key);
+  }
   // An array longer than the packet's own, as the far shadow's rows are, is taken as it comes.
   for (const [name, at, n] of f.arrays) if (n > p[name].length) p[name] = new p[name].constructor(blob.buffer, at, n); else p[name].set(new p[name].constructor(blob.buffer, at, n));
   const data = ([at, n]) => blob.subarray(at, at + n);
+  if (f.street) {
+    const pixels = data(f.street.pixels);
+    p.street = previous && previous.pixels.byteOffset === pixels.byteOffset ? previous : { revision: f.street.revision, pixels };
+  }
   for (const [buffer, at, n] of f.uploads) p.uploads.push({ buffer, data: data([at, n]), slots: new Uint16Array(0) });
   for (const u of f.assetUploads) p.assetUploads.push({ ...u, data: data(u.data) });
   for (const u of f.texUploads) p.texUploads.push({ ...u, data: data(u.data) });
@@ -119,6 +130,14 @@ try {
         unpack(p, frames[k], blob);
         r.draw(p);
         if (!s.read.includes(k)) continue;
+        if (s.repeats) {
+          const pixel = new Uint8Array(4);
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          const start = performance.now();
+          for (let n = 0; n < s.repeats; n++) r.draw(p);
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+          await post("/time/" + s.key + "/" + k, JSON.stringify((performance.now()-start)/s.repeats));
+        }
         const px = new Uint8Array(s.width * s.height * 4);
         gl.readPixels(0, 0, s.width, s.height, gl.RGBA, gl.UNSIGNED_BYTE, px);
         await post("/pixels/" + s.key + "/" + k, px);
@@ -237,14 +256,14 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHE
     for (const s of [...shots, ...raws]) {
       live.set(s.key, s);
       owner.set(s.key, c);
-      awaited[c]! += s.read.length + (s instanceof RawShot && s.timed ? 1 : 0);
+      awaited[c]! += s.read.length * (s instanceof Shot && s.repeats ? 2 : 1) + (s instanceof RawShot && s.timed ? 1 : 0);
     }
     const listed = shots.map((s) => {
       let pack = packIds.get(s.pack!);
       if (pack === undefined) packIds.set(s.pack!, (pack = packs.push(s.pack) - 1));
       if (!grounds.includes(s.ground)) grounds.push(s.ground);
       s.pack = null;
-      return { key: s.key, width: s.width, height: s.height, read: s.read, loseAt: s.loseAt, lookup: s.lookup, manifest: s.manifest !== null, pack, ground: grounds.indexOf(s.ground) };
+      return { key: s.key, width: s.width, height: s.height, read: s.read, loseAt: s.loseAt, repeats: s.repeats, lookup: s.lookup, manifest: s.manifest !== null, pack, ground: grounds.indexOf(s.ground) };
     });
     return { shots: listed, raws: raws.map((s) => ({ key: s.key })) };
   };
@@ -311,9 +330,9 @@ export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHE
       if (kind === "pixels" && shot) {
         pixels.set(`${shot.key}/${frame}`, topFirst(body!, shot.width, shot.height));
         came(shot.key);
-      } else if (kind === "time" && raw) {
-        times.set(raw.key, JSON.parse(new TextDecoder().decode(body!)) as number);
-        came(raw.key);
+      } else if (kind === "time" && shot) {
+        times.set(frame === undefined ? shot.key : `${shot.key}/${frame}`, JSON.parse(new TextDecoder().decode(body!)) as number);
+        came(shot.key);
       } else if (kind === "device") device = JSON.parse(new TextDecoder().decode(body!)) as Device;
       else if (kind === "report") finish(JSON.parse(new TextDecoder().decode(body!)) as { errors: string[] });
       else return new Response("not found", { status: 404 });

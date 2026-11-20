@@ -31,11 +31,11 @@ test("low poly's programs are the pinned flat texts, and every sampler a program
   // The material's five maps and the rest each have a unit, the layer and the details atlas after them, which only the
   // details program reads and which is free outside its draws, where the finish's passes, after every draw, read their
   // sources (post.ts); and the sky's openness and the facades' five past the sixteen: no program reads more than
-  // fourteen, the flat program on a tier that draws facades, two of them in its vertex text and twelve in its
+  // fifteen, the flat program on a tier that draws facades, two of them in its vertex text and thirteen in its
   // fragment's, within the sixteen a fragment text may read.
   const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint, UNIT.atlas, UNIT.layer, UNIT.details, UNIT.open];
   expect([new Set(units).size, Math.max(...units)]).toEqual([17, 16]);
-  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(14);
+  expect(Math.max(...TIERS.flatMap((tier) => Object.values(PROGRAMS).map((make) => Object.keys(make(tier, "bc").samplers).length)))).toBe(15);
   expect(Object.entries(PROGRAMS).filter(([, make]) => Object.values(make(TIERS[1]!, "bc").samplers).includes(UNIT.details)).map(([name]) => name)).toEqual(["details", "bloomDown", "bloomUp", "finish"]);
 });
 
@@ -52,7 +52,8 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   expect(Math.max(...Object.values(FRAME))).toBeLessThan(FRAME_FLOATS);
 
   expect(FRAME_BLOCK).toContain("highp vec4 fEyes[6]");
-  expect(FRAME.eyes + 6 * 4).toBe(FRAME_FLOATS);
+  expect(FRAME.eyes + 6 * 4).toBe(FRAME.reflection);
+  expect(FRAME.reflection + 4).toBe(FRAME_FLOATS);
   const p = new FramePacket();
   p.split = 384;
   p.cascades[0] = 2;
@@ -97,9 +98,11 @@ test("a textured draw is drawn undyed where its material has no masks, and by a 
   // Undyed, a vertex writes neither dye nor the hand-over's distance where it drops nothing: 35 floats become 16.
   const tier = TIERS[2]!;
   const [any, undyed, whole] = [PROGRAMS.surface!(tier, "astc"), PROGRAMS.surfaceUndyed!(tier, "astc"), PROGRAMS.surfaceUndyedWhole!(tier, "astc")];
-  expect([any, PROGRAMS.surfaceWhole!(tier, "astc"), undyed, whole].map((t) => outputs(t.vertex))).toEqual([35, 34, 17, 16]);
+  expect([any, PROGRAMS.surfaceWhole!(tier, "astc"), undyed, whole].map((t) => outputs(t.vertex))).toEqual([36, 35, 18, 17]);
   expect([any, undyed, whole].map((t) => [t.fragment.split("discard").length - 1, t.fragment.split("texture(uMask").length - 1])).toEqual([[2, 2], [2, 0], [0, 0]]);
-  expect(whole.fragment).toContain("vec3 albedo = base.rgb * uTint;\n  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);");
+  expect(whole.fragment).toContain("vec3 albedo = base.rgb * uTint;");
+  expect(whole.fragment).toContain("float paint = uStreetMaterial < 1.5 ? 0.0");
+  expect(whole.fragment).toContain("mix(radiance,mirror*open,coat)");
 });
 
 test("a tier's programs are every one its frames may draw with, each once, the same down the governor's steps", () => {

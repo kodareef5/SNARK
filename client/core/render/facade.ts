@@ -200,11 +200,13 @@ export interface FacadeOut {
   farShare: number;
   /** Whether the pixel mirrors the sky as a picture. */
   sharp: boolean;
+  /** Intact enamel or shutter metal at this pixel. */
+  coated: boolean;
   /** Metres up the face to the top of its opening, where the room's share of the sky is read (ROOM_OPEN_LEAST). */
   roomUp: number;
 }
 export function facadeOut(): FacadeOut {
-  return { albedo: new Float64Array(3), orm: new Float64Array(3), normal: new Float64Array(3), room: new Float64Array(3), far: new Float64Array(3), farShare: 0, sharp: false, roomUp: 0 };
+  return { albedo: new Float64Array(3), orm: new Float64Array(3), normal: new Float64Array(3), room: new Float64Array(3), far: new Float64Array(3), farShare: 0, sharp: false, coated: false, roomUp: 0 };
 }
 
 
@@ -339,6 +341,7 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
   o.far.fill(0);
   o.farShare = 0;
   o.sharp = false;
+  o.coated = false;
   // A shop door's jamb: the door swung open flat against it, 1 m wide in its middle and 2.2 m high; round it, and on a
   // garage's pier at its way in, the reveal keeps its finish, darker toward the head and the foot.
   const ex = kind === KIND.jamb ? x - (w - 1) / 2 : 0;
@@ -349,9 +352,10 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
   if (kind === KIND.jamb) element(first(d.element), ex, y / 2.2, 1, footprint, tier.elements, sample, true);
   else element(first(d.element) + pick, d.w === 0 ? fract(x / 2) : x / w, y / h, d.w === 0 ? 2 : w, footprint, tier.elements, sample, true);
   const a = base[3]!;
+  o.coated = (kind === KIND.sign || kind === KIND.shutter) && a > 0.5;
   for (let c = 0; c < 3; c++) frame[c] = base[c]!;
   frame[3] = packed[0]!;
-  frame[4] = packed[1]!;
+  frame[4] = kind === KIND.sign ? packed[1]! - 0.34 * clamp((0.91-packed[1]!)*5) : packed[1]!;
   frame[5] = packed[2]!;
   const bz = Math.sqrt(Math.max(0, 1 - bump[0]! * bump[0]! - bump[1]! * bump[1]!));
   o.normal[0] = n[0]! * bz + rx * bump[0]!;
@@ -392,7 +396,7 @@ export function facadeSurface(o: FacadeOut, kind: number, x: number, y: number, 
     const through = ((1 - fresnel) * (1 - FILM_HIDES * filmed) * shard + (1 - shard)) * (broken ? 0.5 : 1);
     for (let c = 0; c < 3; c++) o.room[c] = glassRoom[c]! * through * (1 - a);
     ga = FILM_ALBEDO * filmed * shard;
-    gr = shard >= 0.5 ? rough : 1;
+    gr = shard >= 0.5 ? Math.min(1,rough + 0.045*(1+Math.sin(x*2+y*8+seed*17))) : 1;
     // The ray mirrored keeps its way across and up the face and turns back out of it.
     if (shard >= 0.5) share = farSide(far, gx, -vx, -vy, vz, over + gy - y, fract(family * 7.7 + seed * 0.1)) * (1 - a);
     o.sharp = shard >= 0.5 && a < 0.5;
@@ -867,11 +871,12 @@ int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room,
   else facadeElement(int(ke.x) + pick, vec2(ks.y == 0.0 ? fract(x / 2.0) : x / w, y / h), ks.y == 0.0 ? 2.0 : w, footprint, true);
   float a = fBase.a;
   vec3 frame = fBase.rgb, framePacked = fPacked, film = fBase.rgb;
+  if (kind == ${KIND.sign}) framePacked.g -= 0.34*clamp((0.91-framePacked.g)*5.0,0.0,1.0);
   float rough = fPacked.g;
   float bz = sqrt(max(0.0, 1.0 - dot(fBump, fBump)));
   vec3 bent = nn * bz + side * fBump.x + vec3(0.0, fBump.y, 0.0);
   float ga = 0.02, gr = glassy ? 0.5 : rough, share = 0.0, shard = 1.0;
-  int sharp = 1;
+  int sharp = (kind == ${KIND.sign} || kind == ${KIND.shutter}) && a > 0.5 ? 3 : 1;
   vec4 dress = KW[kind];
   float state = fract(seed * 5.77);
   bool broken = state < dress.x, boards = !broken && state < dress.y, blind = !broken && !boards && state > dress.z, drape = !broken && !boards && !blind && state > dress.w;
@@ -906,7 +911,7 @@ int facadePart(inout vec3 albedo, inout vec3 orm, inout vec3 n, inout vec3 room,
     float through = ((1.0 - (0.04 + 0.96 * pow(1.0 - view.z, 5.0))) * (1.0 - ${fl(FILM_HIDES)} * filmed) * shard + (1.0 - shard)) * (broken ? 0.5 : 1.0);
     room = seen * through * (1.0 - a);
     ga = ${fl(FILM_ALBEDO)} * filmed * shard;
-    gr = shard >= 0.5 ? rough : 1.0;
+    gr = shard >= 0.5 ? min(1.0,rough+0.045*(1.0+sin(x*2.0+y*8.0+seed*17.0))) : 1.0;
     if (shard >= 0.5) share = facadeFar(far3, g.x, vec3(-view.x, -view.y, view.z), over + g.y - y, fract(family * 7.7 + seed * 0.1)) * (1.0 - a);
     sharp = shard >= 0.5 && a < 0.5 ? 2 : 1;
   }

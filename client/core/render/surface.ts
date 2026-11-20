@@ -7,6 +7,7 @@
 //
 // Directions are in the world and of length 1. Colours are linear until `shown`.
 
+import { SEED_GLSL, STREET_GLSL } from "./street-finish.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
@@ -375,6 +376,11 @@ layout(location=6) in uint aBone;
 layout(location=7) in vec2 aUv;
 layout(location=8) in vec3 aNormal;
 layout(location=9) in vec4 aTangent;
+
+layout(location=12) in uint iEntity;
+flat out float vFinishSeed;
+uniform vec3 uWorldEye;
+${SEED_GLSL}
 layout(location=10) in uvec4 aBones;
 layout(location=11) in vec4 aWeights;
 uniform mat4 uViewProj;
@@ -392,6 +398,8 @@ ${layered ? "out vec3 vBox;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
 ${dyed ? DYE : ""}${ON_GROUND}void main() {
+
+  vFinishSeed = uSkin > 0.5 ? finishSeed(iEntity,vec3(0.0)) : finishSeed(0u,iPos+uOffset+uWorldEye);
   vec3 l = uCenter + aPos * uHalf;
   vec3 p, n, t;
   if (uSkin > 0.5) {
@@ -608,8 +616,11 @@ in vec2 vUv;
 ${dyed ? "flat in mat3 vDye, vDye2;\n" : ""}uniform sampler2D uBase, uNormal, uMro${dyed ? ", uMask, uMask2" : ""};
 uniform vec3 uTint;
 uniform float uCutoff, uSheet, uSkin, uEmissive;
+
+flat in float vFinishSeed;
+uniform float uStreetMaterial;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -623,7 +634,22 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
   float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
-  o = vec4(shown(lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, skyFrom(reflect(-v, n)), shade) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
+  vec3 ray = reflect(-v,n), mirror = skyFrom(ray);
+  float coat = 0.0;
+
+  float footprint = max(length(dFdx(vUv)),length(dFdy(vUv)));
+  if (uStreetMaterial > 0.5) {
+    float paint = uStreetMaterial < 1.5 ? ${dyed ? "mask.r" : "0.0"} * clamp((0.72-mro.g)*3.5,0.0,1.0) : 0.0;
+    float receives = max(paint,max(clamp(mro.b*1.5,0.0,1.0)*clamp((0.85-mro.g)*3.0,0.0,1.0),clamp((0.34-mro.g)*5.0,0.0,1.0)));
+    if (receives > 0.0) {
+      float wear = coatWear(vUv,vFinishSeed,footprint);
+      mro.g = clamp(mro.g+wear*receives-0.19*paint,0.07,1.0);
+      mirror = streetMirror(mirror,ray,vRel,mro.g,receives);
+      coat = paint*(0.045+0.22*pow(1.0-clamp(dot(n,v),0.0,1.0),5.0))*(1.0-mro.g);
+    }
+  }
+  vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);
+  o = vec4(shown(mix(radiance,mirror*open,coat) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
 }`;
 }
 

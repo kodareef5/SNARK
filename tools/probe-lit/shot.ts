@@ -21,7 +21,7 @@ export interface Device {
 /** What a check gets back: the pixels of a frame of a shot that was read, top row first, and the device. */
 export interface Readback {
   pixels(key: string, frame: number): Uint8Array | null;
-  /** Milliseconds a timed RawShot took to be drawn its `repeat` times more, as the page saw them; null if not timed. */
+  /** Wall time in ms for a repeated raw shot, or per replay of a marked frame (key/frame). Null for an untimed draw. */
   time(key: string): number | null;
   device: Device;
 }
@@ -60,6 +60,8 @@ class Bytes {
 
 /** A frame as the page rebuilds it: its numbers and tier, each array as far as it is used, and its uploads, with where their bytes are. */
 export interface Frame {
+  reflectionHz: number;
+  street: { revision: number; pixels: [number, number] } | null;
   scalars: Record<string, number | boolean | string>;
   arrays: [string, number, number][];
   uploads: number[][];
@@ -93,6 +95,8 @@ export class Shot {
   readonly read: number[] = [];
   /** The frame before which the page loses its context and has it back, or -1. */
   loseAt = -1;
+  /** Replays of each marked, upload-free frame for a synchronized wall-clock measurement. */
+  repeats = 0;
   /** Frames are drawn with the sun's shadows, which only the GPU draws (D203), else with none, as the rasterizer has them. */
   shadows = false;
   /** What the renderer takes compared lookups to give, in place of what the device answers: "hard" or "" for the device's. */
@@ -106,6 +110,8 @@ export class Shot {
   /** Its pack's bytes, until the probe takes them to send the page once (tools/probe-lit.ts). */
   pack: Uint8Array | null;
   private readonly out = new Bytes();
+  private image: FramePacket["street"] = null;
+  private saved: Frame["street"] = null;
 
   constructor(key: string, width: number, height: number, ground: Heightfield, pack: Uint8Array) {
     [this.key, this.width, this.height, this.ground, this.pack] = [key, width, height, ground, pack];
@@ -127,8 +133,14 @@ export class Shot {
       }
     }
     if (!this.shadows) scalars.cascadeCount = 0;
+    if (p.street !== this.image || p.street?.revision !== this.saved?.revision) {
+      this.image = p.street;
+      this.saved = p.street ? { revision: p.street.revision, pixels: ref(p.street.pixels) } : null;
+    }
     if (read) this.read.push(this.frames.length);
     this.frames.push({
+      reflectionHz: p.tier.reflectionHz,
+      street: this.saved,
       scalars,
       arrays,
       uploads: p.uploads.map((u) => [u.buffer, ...ref(u.data)]),

@@ -333,8 +333,9 @@ export const FRAME = {
   contact: 164,
   /** Three camera-relative sky lenses follow the contact bodies. */
   eyes: 164 + MAX_CONTACTS * 8,
+  reflection: 188 + MAX_CONTACTS * 8,
 } as const;
-export const FRAME_FLOATS = FRAME.eyes + 24;
+export const FRAME_FLOATS = FRAME.reflection + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -343,6 +344,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fFacade, fGrade, fFinish;
   highp vec4 fContact[${MAX_CONTACTS * 2}];
   highp vec4 fEyes[6];
+  highp vec4 fReflection;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -386,6 +388,7 @@ const NO_ROWS = new Uint16Array(0);
 const NO_OPEN = new Uint8Array(0);
 
 export class FramePacket {
+  street: import("./street-finish.ts").StreetImage | null = null;
   readonly viewProj = new Float32Array(16);
   readonly nearViewProj = new Float32Array(16);
   camX = 0;
@@ -596,6 +599,8 @@ export class FramePacket {
   }
 
   beginFrame(): void {
+    this.street = null;
+    this.frame[FRAME.reflection + 3] = 0;
     this.uploads.length = 0;
     this.drops.length = 0;
     this.assetUploads.length = 0;

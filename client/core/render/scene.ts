@@ -28,6 +28,8 @@ import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortF64, sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
+import { fixtureKind } from "./street-finish.ts";
+import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
 import { StreetWires } from "./street-wires.ts";
 import type { Falling } from "../rubble.ts";
@@ -495,6 +497,7 @@ export class Scene {
   /** Per mesh and level, the triangles of its sections drawn with bark and of its cut-out ones. */
   private readonly trunkTris: number[][];
   private readonly leafTris: number[][];
+  readonly street: StreetReflections;
   private readonly world: RenderWorld;
   private readonly batches = new Map<number, ChunkBatch>();
   /** Rigid species keep palette lighting; the static fallback finish belongs to world geometry. */
@@ -774,6 +777,7 @@ export class Scene {
       const def = reg.defs[kind];
       if (def?.type === "node" && familyOf(def) === 0 && forms.depleted[f] === 0) this.treeOf[mesh] = 1;
     }
+    this.street = new StreetReflections(reg, pack.palette, forms, { meshes: (stream?.manifest ?? pack.header).meshes, kinds: this.meshOfKind, forms: this.meshOfForm });
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
     this.landmarkKinds = landmarkKinds(reg);
@@ -817,7 +821,7 @@ export class Scene {
     this.far = world.far && colours ? new FarBlocks(world.far, world.dims, world.hf, far, this.farBounds!, colours) : null;
     this.blocksFrom = world.tops && colours ? { tops: world.tops, colours } : null;
     this.makeBlocks();
-    const flat = (k: number): boolean => this.meshOfKind[k] !== missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
+    const flat = (k: number): boolean => !fixtureKind(reg.defs[k]!.id) && this.meshOfKind[k] !== missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
     this.near = this.farBounds ? new NearCity(reg, far, this.landmarkKinds, flat) : null;
     this.startCity();
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.heldGeometry(mesh, table.tris[mesh]!.length - 1);
@@ -1015,6 +1019,8 @@ export class Scene {
     this.quadsOnCard();
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
+    this.street.frame(p, cam, this.world, remote, this.hiddenNodes, this.now);
+    this.assets.residency.reserve("street environment", p.street ? 10924 : p.tier.reflectionHz ? 4 : 0);
     this.order();
     markJoins(p);
     // The frame's count, from which the next frame's crowns near take their squeeze.

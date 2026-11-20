@@ -1,6 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
+import { STREET_HEIGHT, STREET_WIDTH, type StreetImage, fixtureKind, streetMaterial } from "../core/render/street-finish.ts";
 import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
@@ -40,7 +41,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -56,6 +57,7 @@ interface MeshLod {
   skin: boolean;
   /** The buffer and first instance its instance attributes point at. */
   buffer: WebGLBuffer | null;
+  entityIds: boolean;
   first: number;
 }
 
@@ -174,6 +176,13 @@ export class GlRenderer {
   private readonly quads: WebGLBuffer[] = [];
   private readonly quadBytes: number[] = [];
   private transient!: WebGLBuffer;
+  private ids!: WebGLBuffer;
+  private streetTexture: WebGLTexture | null = null;
+  private streetImage: StreetImage | null = null;
+  private streetRevision = -1;
+  private readonly noReflection = new Float32Array(1);
+  private readonly receivers: Uint8Array;
+  private readonly fixtures: Uint8Array;
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
   private detailAtlas: WebGLTexture | null = null;
@@ -215,6 +224,8 @@ export class GlRenderer {
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
+    this.receivers = new Uint8Array(this.materials.length).fill(255);
+    this.fixtures = new Uint8Array(manifest.meshes.length).fill(255);
     // The masks (the weathering's and the road's) are the packed array's layers after the finishes'; their base colour and normal are never drawn.
     for (const m of this.materials) {
       if (!m.id.startsWith(SURFACE_PREFIX)) continue;
@@ -294,6 +305,11 @@ export class GlRenderer {
     // A lost context took every level with it. Core sends them again.
     this.levels.clear();
     this.transient = gl.createBuffer()!;
+    this.ids = gl.createBuffer()!;
+    gl.vertexAttribI4ui(12, 0, 0, 0, 0);
+    this.streetTexture = null;
+    this.streetImage = null;
+    this.streetRevision = -1;
     gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, (this.frame = gl.createBuffer()!));
     gl.bufferData(gl.UNIFORM_BUFFER, FRAME_FLOATS * 4, gl.DYNAMIC_DRAW);
 
@@ -366,7 +382,7 @@ export class GlRenderer {
     const at = u.at ?? 0, end = at + u.data.length, from = Math.max(at, vertices);
     let lod = this.levels.get(u.slot);
     if (at === 0) {
-      lod = { vao: gl.createVertexArray()!, buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, buffer: null, first: 0 };
+      lod = { vao: gl.createVertexArray()!, buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, buffer: null, entityIds: false, first: 0 };
       this.levels.set(u.slot, lod);
       this.vertexArray(lod.vao);
       this.array(lod.buffers[0]!);
@@ -618,6 +634,8 @@ export class GlRenderer {
     }
     this.uniform(prog, U.grey, mat.grey);
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
+    if (this.receivers[m] === 255 && mat.id) this.receivers[m] = streetMaterial(mat.id);
+    this.uniform(prog, U.streetMaterial, this.receivers[m] === 255 ? 0 : this.receivers[m]!);
     this.uniform(prog, U.sheet, mat.sheet ?? 0);
     this.uniform(prog, U.emissive, (mat.flags & MATERIAL_NIGHT) !== 0 ? mat.emissive * this.night : mat.emissive);
     if (last[U.uv] !== mesh) {
@@ -658,8 +676,34 @@ export class GlRenderer {
     this.mappedRoles = roles;
   }
 
+  private streetEnvironment(p: FramePacket): void {
+    const gl = this.gl;
+    if (!p.tier.reflectionHz) {
+      if (this.streetTexture) gl.deleteTexture(this.streetTexture);
+      this.streetTexture = null;
+      this.streetImage = null;
+      this.streetRevision = -1;
+      return;
+    }
+    if (this.streetTexture && this.streetImage === p.street && this.streetRevision === (p.street?.revision ?? 0)) return;
+    gl.activeTexture(gl.TEXTURE0 + UNIT.street);
+    this.streetTexture ??= gl.createTexture();
+    if (!this.streetTexture) return;
+    gl.bindTexture(gl.TEXTURE_2D, this.streetTexture);
+    const img = p.street;
+    if (img && this.streetImage) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, STREET_WIDTH, STREET_HEIGHT, gl.RGBA, gl.UNSIGNED_BYTE, img.pixels);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, img ? STREET_WIDTH : 1, img ? STREET_HEIGHT : 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, img?.pixels ?? null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    this.streetImage = img;
+    this.streetRevision = img?.revision ?? 0;
+  }
+
   draw(p: FramePacket): void {
     const gl = this.gl;
+    this.streetEnvironment(p);
     this.drawCalls = 0;
     this.serial++;
     this.failed.length = this.failedTextures.length = 0;
@@ -756,6 +800,7 @@ export class GlRenderer {
     }
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
+    if (p.street && !this.streetTexture) gl.bufferSubData(gl.UNIFORM_BUFFER, (FRAME.reflection + 3) * 4, this.noReflection);
     this.night = lampsOn(p.frame);
 
     // Resource changes first, in order.
@@ -772,6 +817,11 @@ export class GlRenderer {
     // The length of a view is in its elements, and none would mean the whole of it.
     if (p.transientCount > 0) {
       this.array(this.transient);
+      if (p.lit) {
+        this.array(this.ids);
+        gl.bufferData(gl.ARRAY_BUFFER, p.transientIds, gl.DYNAMIC_DRAW, 0, p.transientCount);
+        this.array(this.transient);
+      }
       gl.bufferData(gl.ARRAY_BUFFER, p.transient, gl.DYNAMIC_DRAW, 0, p.transientCount * INSTANCE_BYTES);
     }
     if (p.detailCount > 0) {
@@ -848,6 +898,9 @@ export class GlRenderer {
       if (textured) this.material(prog, m, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length, p.drawWear[d]!);
       else if ((flags & DRAW_WATER) !== 0) this.maps(this.materials[m], MAP_ROLES.length);
       else {
+        const mesh = p.drawMesh[d]!;
+        if (this.fixtures[mesh] === 255 && this.meshes[mesh]) this.fixtures[mesh] = fixtureKind(this.meshes[mesh]!.id);
+        this.uniform(prog, U.fixture, this.fixtures[mesh] ?? 0);
         this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
         this.uniform(prog, U.alpha, blend && this.finish.row[p.drawMesh[d]!] === 0 ? WATER_ALPHA : 1);
       }
@@ -915,7 +968,9 @@ export class GlRenderer {
       gl.uniform3f(u[U.offset]!, x, y, z);
     }
     this.vertexArray(lod.vao);
-    if (lod.buffer === buffer && lod.first === first) return;
+    const entityIds = !!lod.surface && buffer === this.transient && this.warmed?.lit === true;
+    if (lod.buffer === buffer && lod.first === first && lod.entityIds === entityIds) return;
+    lod.entityIds = entityIds;
     lod.buffer = buffer;
     lod.first = first;
     this.array(buffer);
@@ -925,6 +980,12 @@ export class GlRenderer {
     gl.vertexAttribPointer(3, 1, gl.UNSIGNED_SHORT, true, INSTANCE_BYTES, at + 12);
     gl.vertexAttribIPointer(4, 4, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 14);
     gl.vertexAttribIPointer(5, 2, gl.UNSIGNED_BYTE, INSTANCE_BYTES, at + 18);
+    if (entityIds) {
+      this.array(this.ids);
+      gl.enableVertexAttribArray(12);
+      gl.vertexAttribDivisor(12, 1);
+      gl.vertexAttribIPointer(12, 1, gl.UNSIGNED_INT, 4, first * 4);
+    } else gl.disableVertexAttribArray(12);
   }
 
   /**
@@ -1154,6 +1215,6 @@ export class GlRenderer {
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    return { program, text, at: [], last: new Float64Array(U.offset + 3).fill(NaN), bounds: null };
+    return { program, text, at: [], last: new Float64Array(U.fixture + 1).fill(NaN), bounds: null };
   }
 }
