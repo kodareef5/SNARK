@@ -22,7 +22,7 @@ scene = bpy.context.scene
 scene.render.fps = 30
 sys.path.insert(0, FOLDER)
 sys.dont_write_bytecode = True
-for script in ("import.py", "clips.py"):
+for script in ("import.py", "gaits.py", "clips.py"):
     if os.path.exists(os.path.join(FOLDER, script)):
         runpy.run_path(os.path.join(FOLDER, script), run_name="__main__")
 

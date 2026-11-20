@@ -42,7 +42,7 @@ const single = ["attack", "flinch", "call"];
 export default {
   modelCredit: "Animated T-rex by Patch, made with anymove (https://patch.gg/create/toolbox/assets/anymove:trex), CC0 1.0. Adapted for SNARK",
   kind: "creature",
-  source: { scripts: ["import.py"] },
+  source: { scripts: ["import.py", "gaits.py"] },
   scale: 1,
   skeleton: { id: "rex2", root: "pelvis", bones: 25 },
   zones,

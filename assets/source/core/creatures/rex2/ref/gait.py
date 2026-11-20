@@ -7,13 +7,26 @@ import sys
 
 import bpy
 
+# With "built" in place of a file it measures the asset's own clips, as its build scripts leave them.
 path = sys.argv[sys.argv.index("--") + 1]
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 scene.render.fps = 30
-bpy.ops.import_scene.gltf(filepath=path)
+if path == "built":
+    import os, runpy
+    folder = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, folder)
+    sys.dont_write_bytecode = True
+    for script in ("import.py", "gaits.py", "clips.py"):
+        if os.path.exists(os.path.join(folder, script)):
+            runpy.run_path(os.path.join(folder, script), run_name="__main__")
+    FEET = ["toes_l", "toes_r"]
+else:
+    bpy.ops.import_scene.gltf(filepath=path)
+    FEET = ["hpaw_L", "hpaw_R"]
 rig = next(o for o in scene.objects if o.type == "ARMATURE")
-FEET = ["hpaw_L", "hpaw_R"]
+if rig.animation_data is None:
+    rig.animation_data_create()
 
 
 def track(action):
@@ -29,6 +42,36 @@ def track(action):
         rows.append((f, pelvis.copy(), [p.copy() for p in feet]))
     return rows
 
+
+def as_the_check(name, stride):
+    """The art check's rule (tools/art/check.ts measureGait): a foot is planted while it is within 12% of its rise above
+    its lowest and not moving forward. Prints each planted run and how far the foot moves in it, across and along."""
+    action = bpy.data.actions[name]
+    rows = track(action)[:-1]  # A loop's last frame repeats its first.
+    n = len(rows)
+    for i, foot in enumerate(FEET):
+        y = [r[2][i].z for r in rows]
+        z = [-r[2][i].y for r in rows]
+        x = [r[2][i].x for r in rows]
+        low, rise = min(y), max(y) - min(y)
+        on = [y[f] - low <= rise * 0.12 and (z[f] <= z[(f - 1) % n] + 1e-4 or z[(f + 1) % n] <= z[f] + 1e-4) for f in range(n)]
+        for start in range(n):
+            if not on[start] or on[(start - 1) % n]:
+                continue
+            k = 0
+            xs, zs = [], []
+            while k < n and on[(start + k) % n]:
+                f = (start + k) % n
+                xs.append(x[f])
+                zs.append(z[f] + stride * (start + k) / n)
+                k += 1
+            print(f"  {name} {foot}: planted frames {start}..{(start + k - 1) % n} ({k}), across {max(xs) - min(xs):.3f} m, "
+                  f"along {max(zs) - min(zs):.3f} m; heights {[round(y[(start + j) % n] - low, 3) for j in range(0, k, max(1, k // 6))]}")
+
+
+if len(sys.argv) > sys.argv.index("--") + 2:
+    as_the_check(sys.argv[sys.argv.index("--") + 2], float(sys.argv[sys.argv.index("--") + 3]))
+    raise SystemExit
 
 for name in ["Walk_Root", "Run_Root", "Walk", "Run"]:
     action = bpy.data.actions.get(name)

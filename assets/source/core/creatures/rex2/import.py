@@ -25,8 +25,11 @@ BONES = {
     )},
 }
 
-# Source clip to game clip. Walk_Root and Run_Root move the body forward; the game moves the body itself.
-CLIPS = {"Idle": "idle", "Walk": "walk", "Run": "run", "Attack": "attack", "Hit": "flinch", "Roar": "call"}
+# Source clip to game clip. The gaits come from Walk_Root and Run_Root, which carry the body forward as the feet push
+# it. The game moves the body itself, so their steady forward travel is taken off (in_place). Their own Walk and Run
+# stay in place by holding the pelvis still sideways too, which drags the planted feet across by the body's sway.
+CLIPS = {"Idle": "idle", "Walk_Root": "walk", "Run_Root": "run", "Attack": "attack", "Hit": "flinch", "Roar": "call"}
+GAITS = {"walk", "run"}
 
 
 def check_source():
@@ -79,6 +82,40 @@ def retime(action):
     return ticks
 
 
+def pelvis_means(action):
+    """The pelvis's average place over a clip, one number for each location channel."""
+    start, end = action.frame_range
+    out = {}
+    for fc in fcurves(action):
+        if fc.data_path == 'pose.bones["pelvis"].location':
+            samples = [fc.evaluate(start + (end - start) * i / 64) for i in range(64)]
+            out[fc.array_index] = sum(samples) / len(samples)
+    return out
+
+
+def in_place(action, centre):
+    """Takes the pelvis's travel from the first frame to the last off it evenly over the clip, so the body stays put and
+    the loop closes, while its sway and bob stay. Then moves the whole clip so the pelvis's average place is `centre`,
+    the average of the source's own in-place clip, so the body doesn't jump as the game blends from idle. The pelvis is
+    the root, so its location is the body's place."""
+    start, end = action.frame_range
+    curves = [fc for fc in fcurves(action) if fc.data_path == 'pose.bones["pelvis"].location']
+    for fc in curves:
+        travel = fc.evaluate(end) - fc.evaluate(start)
+        for key in fc.keyframe_points:
+            u = (key.co.x - start) / (end - start)
+            for point in (key.co, key.handle_left, key.handle_right):
+                point.y -= travel * u
+        fc.update()
+    now = pelvis_means(action)
+    for fc in curves:
+        shift = centre[fc.array_index] - now[fc.array_index]
+        for key in fc.keyframe_points:
+            for point in (key.co, key.handle_left, key.handle_right):
+                point.y += shift
+        fc.update()
+
+
 def build():
     check_source()
     bpy.ops.import_scene.gltf(filepath=SOURCE)
@@ -104,12 +141,16 @@ def build():
     for image in list(bpy.data.images):
         bpy.data.images.remove(image)
 
+    # Where the source's in-place Walk and Run hold the pelvis on average, before those clips go.
+    centres = {"walk": pelvis_means(bpy.data.actions["Walk"]), "run": pelvis_means(bpy.data.actions["Run"])}
     for action in list(bpy.data.actions):
         name = CLIPS.get(action.name)
         if name is None:
             bpy.data.actions.remove(action)
             continue
         ticks = retime(action)
+        if name in GAITS:
+            in_place(action, centres[name])
         action.name = name
         print(f"rex2: clip {name} from {[k for k, v in CLIPS.items() if v == name][0]}, {ticks} ticks")
     print(f"rex2: {len(rig.data.bones)} bones, {len(body.data.polygons)} faces, {len(body.data.vertices)} vertices")
