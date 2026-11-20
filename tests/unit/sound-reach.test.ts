@@ -18,14 +18,18 @@ test("what the game fires reaches a creature's own sounds, the shared ones, the 
   }
 });
 
-test("nothing reaches a sound whose cue waits, such as a car's tyres or horn, a creature with no definition or the voice library", () => {
+test("nothing reaches a sound whose cue waits, such as a car's tyres or horn, a creature with no definition or the voice library but for the emotes' lines", () => {
   // A vehicle is asked only the vehicle cues: the helicopter's alarm and landing are not a creature's startle and landing.
   for (const id of ["core:helicopter/sound/flyby", "core:helicopter/sound/alarm", "core:helicopter/sound/land", "core:plane/sound/touchdown", "core:truck/sound/engine/brake", "core:boat/sound/horn", "core:survivor/sound/voice/male/cough", "core:vehicle/sound/horn", "core:vehicle/sound/tire/roll/asphalt"]) {
     expect(ids).toContain(id);
     expect(heard.has(id)).toBe(false);
   }
   expect([...heard].some((id) => id.startsWith("core:spino/"))).toBe(true);
-  expect([...heard].some((id) => id.startsWith("core:allosaur/") || id.startsWith("core:voices/"))).toBe(false);
+  expect([...heard].some((id) => id.startsWith("core:allosaur/"))).toBe(false);
+  // The voice bank is reached only by what an emote says as it begins, five lines in a man's voice and a woman's
+  // (shared/sound/cues.ts).
+  const lines = ["greet", "yes", "no", "laugh", "cheer"].flatMap((line) => [`core:voices/sound/${line}/american_man`, `core:voices/sound/${line}/american_woman`]);
+  expect([...heard].filter((id) => id.startsWith("core:voices/")).sort()).toEqual(lines.sort());
   expect(heard.size).toBeLessThan(ids.length / 4);
 });
 
