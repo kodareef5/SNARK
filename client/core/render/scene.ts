@@ -63,7 +63,7 @@ import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } f
 import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
-import { contactFrame } from "./contact.ts";
+import { ParkedContacts, contactFrame } from "./contact.ts";
 import { lightBytes, lightSamples, postFrame } from "./post.ts";
 import { skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
@@ -615,6 +615,7 @@ export class Scene {
     return m === undefined || m === HIDDEN ? 0 : (this.assets.manifest.meshes[m]?.half[2] ?? 0);
   };
   /** What contact reads of the registry: bodies' sizes and vehicles' (contact.ts). */
+  private readonly parkedContacts: ParkedContacts;
   private readonly sizes: Pick<Registry, "bodyRadius" | "bodyHeight" | "vehicle">;
   private readonly seatTurn = new Float64Array(MAX_VIEW * 9);
   /**
@@ -739,6 +740,7 @@ export class Scene {
     this.birthScale = reg.birthScale;
     this.saddleSeats = reg.saddleSeats;
     this.sizes = reg;
+    this.parkedContacts = new ParkedContacts(reg);
     this.groundFlags = new Uint16Array(table.count);
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
@@ -944,6 +946,7 @@ export class Scene {
       postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
       p.lightSamples = lightSamples(this.supersampled);
       contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
+      if (p.tier.contact) this.parkedContacts.add(p.frame, this.world.structs, this.assets.manifest.meshes, this.meshOfKind, cam);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance, undefined, true);
     }
     if (!p.lit) p.frame[FRAME.exposure] = 0;

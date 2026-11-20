@@ -2,7 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { nearMeshSlot } from "../core/render/nearcity.ts";
-import { streetWidth, type StreetImage, fixtureKind, streetMaterial, wheelBoneMask } from "../core/render/street-finish.ts";
+import { streetWidth, type StreetImage, fixtureKind, StreetMaterials, wheelBoneMask } from "../core/render/street-finish.ts";
 import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
@@ -183,7 +183,7 @@ export class GlRenderer {
   private readonly streetRevisions = [-1, -1];
   private streetWidth = 0;
   private readonly noReflection = new Float32Array(1);
-  private readonly receivers: Uint8Array;
+  private readonly streetMaterials: StreetMaterials;
   private readonly wheelCenters: (Float32Array | null)[];
   private readonly wheelMasks: Uint32Array;
   private readonly fixtures: Uint8Array;
@@ -228,7 +228,7 @@ export class GlRenderer {
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
-    this.receivers = new Uint8Array(this.materials.length).fill(255);
+    this.streetMaterials = new StreetMaterials(this.materials.length, manifest.meshes);
     this.fixtures = new Uint8Array(manifest.meshes.length).fill(255);
     // The masks (the weathering's and the road's) are the packed array's layers after the finishes'; their base colour and normal are never drawn.
     for (const m of this.materials) {
@@ -239,7 +239,7 @@ export class GlRenderer {
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.meshes = manifest.meshes;
     this.wheelCenters = (pack.header.rigs ?? []).map(rig => wheelBoneMask(rig.names) ? Float32Array.from(rig.rest.slice(0,96)) : null);
-    this.wheelMasks = Uint32Array.from(this.meshes, mesh => wheelBoneMask(pack.header.rigs?.[mesh.rig ?? -1]?.names));
+    this.wheelMasks = Uint32Array.from(pack.header.rigs ?? [], rig => wheelBoneMask(rig.names));
     this.finish = finishTable(pack.palette, manifest);
     this.forced = forced;
     this.init();
@@ -639,11 +639,9 @@ export class GlRenderer {
     }
     this.uniform(prog, U.grey, mat.grey);
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
-    if (this.receivers[m] === 255 && mat.id) this.receivers[m] = streetMaterial(mat.id);
-    this.uniform(prog, U.streetMaterial, this.receivers[m] === 255 ? 0 : this.receivers[m]!);
-    const wheels = this.wheelMasks[mesh]!;
+    const rig = this.meshes[mesh]?.rig ?? -1, wheels = this.wheelMasks[rig] ?? 0;
+    this.uniform(prog, U.streetMaterial, this.streetMaterials.code(m, mat.id, mesh, wheels !== 0));
     this.uniform(prog, U.spokeCrown, wheels && this.meshes[mesh]!.id === "core:compact" ? 1 : 0);
-    const rig = this.meshes[mesh]?.rig ?? -1;
     if (wheels && at[U.wheelCenters] && last[U.wheelCenters] !== rig) {
       gl.uniform3fv(at[U.wheelCenters]!, this.wheelCenters[rig]!);
       last[U.wheelCenters] = rig;

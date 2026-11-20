@@ -407,10 +407,11 @@ ${dyed ? DYE : ""}${ON_GROUND}void main() {
   vWheel.w = uSkin > 0.5 && uSkin < 1.5 && aBone < 32u && (uWheelBones & (1u << aBone)) != 0u ? 1.0 : 0.0;
   vFinishSeed = uSkin > 0.5 ? finishSeed(vWheel.w > 0.5 ? iEntity ^ (aBone*2654435761u) : iEntity,vec3(0.0)) : finishSeed(0u,iPos+uOffset+uWorldEye);
   vec3 l = uCenter + aPos * uHalf;
-  vWheelPoint = vec3(0.0);
+  vWheelPoint = l;
   if (vWheel.w > 0.5) {
     vec3 center = uWheelCenters[aBone];
     vWheelPoint = (l-center)/max(0.12,center.y);
+    vWheel.w = center.x < 0.0 ? 1.0 : 2.0;
   }
   vec3 p, n, t;
   if (uSkin > 0.5) {
@@ -666,18 +667,24 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
   float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
+  // The fractional quarter of the material code carries the static vehicle's weather exposure.
+  float age = fract(uStreetMaterial)*4.0;
+  if (age > 0.0) weatherVehicle(albedo,mro,vWheelPoint,vFinishSeed,age);
   float coat = 0.0, chrome = 0.0;
 
   float footprint = max(length(dFdx(vUv)),length(dFdy(vUv)));
   if (vWheel.w > 0.5) {
     float near = (1.0-smoothstep(8.0,24.0,length(vRel)))${layered ? "*(1.0-smoothstep(0.15,0.85,uLevel))" : ""};
-    float rubber = clamp((0.30-mro.b)*5.0,0.0,1.0)*clamp((mro.g-0.45)*5.0,0.0,1.0)*near;
-    chrome = clamp((mro.b-0.45)*3.4,0.0,1.0)*max(${dyed ? "clamp(mask.b*1.8,0.0,1.0)" : "0.0"},clamp((0.35-mro.g)*6.0,0.0,1.0))*clamp((0.85-mro.g)*5.0,0.0,1.0)*near;
+    float radial = length(vWheelPoint.yz);
+    float outboard = vWheelPoint.x*(vWheel.w < 1.5 ? -1.0 : 1.0);
+    float outerMetal = clamp((outboard-0.16)*10.0,0.0,1.0)*clamp((0.83-radial)*12.0,0.0,1.0)*clamp((0.70-mro.g)*6.0,0.0,1.0);
+    float rubber = clamp((0.30-mro.b)*5.0,0.0,1.0)*clamp((mro.g-0.45)*5.0,0.0,1.0)*near*clamp((radial-0.45)*9.0,0.0,1.0);
+    chrome = clamp((mro.b-0.45)*3.4,0.0,1.0)*max(outerMetal,max(${dyed ? "clamp(mask.b*1.8,0.0,1.0)" : "0.0"},clamp((0.35-mro.g)*6.0,0.0,1.0)))*clamp((0.85-mro.g)*5.0,0.0,1.0)*near;
     float dust = clamp((mro.g-0.24)*2.0,0.0,1.0);
     float width = max(length(dFdx(vWheelPoint)),length(dFdy(vWheelPoint)));
     float mould = 0.0;
     if (rubber > 0.0 && width < 0.023) {
-      float r = length(vWheelPoint.yz);
+      float r = radial;
       vec3 ribs = clamp(1.0-abs(vec3(r)-vec3(0.77,0.845,0.885))/0.012,0.0,1.0);
       float shoulder = clamp((r-0.86)*14.0,0.0,1.0);
       float angle = atan(vWheelPoint.y,vWheelPoint.z);
@@ -697,7 +704,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
       vec3 crown = 0.88*(vWheel.xyz - n*dot(vWheel.xyz,n));
       // The compact's five flat castings are 44 mm wide on a 300 mm wheel.
       // Curve the specular normal across each face between the authored bevels.
-      float r = length(vWheelPoint.yz);
+      float r = radial;
       if (uSpokeCrown > 0.5 && r > 0.18 && r < 0.64) {
         float phase = 5.0*atan(vWheelPoint.z,vWheelPoint.y);
         float across = clamp(sin(phase)*r/0.3667,-1.0,1.0);

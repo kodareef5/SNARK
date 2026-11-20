@@ -1,8 +1,9 @@
 // bun tools/snap/street-study.ts <miami.snmap> <built assets directory> <output directory>
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
-import { type MapStatic, MapStatics, parseMap } from "../../shared/world/mapfile.ts";
+import { type MapStatic, MapStatics, mapHeightfield, parseMap } from "../../shared/world/mapfile.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { placedPriority } from "../../client/core/render/street-reflections.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, FRAME, MAX_CONTACTS, type FramePacket } from "../../client/core/render/packet.ts";
@@ -26,6 +27,9 @@ for (let i = 0; i < t.kind.length; i++) {
   if (kind.includes("zutility_") || kind.includes("zdrain_")) counts.set(kind, (counts.get(kind) ?? 0) + 1);
   if (Math.hypot(t.x[i]! - 8600, t.z[i]! - 8000) < 280) rows.push({ kind, x: t.x[i]!, y: t.y[i]!, z: t.z[i]!, yaw: t.yaw[i]! });
 }
+const carX = 8649, carZ = 7898;
+const propName = process.argv.find(arg => arg.startsWith("--prop="))?.slice(7);
+if (propName) rows.push({ kind: "core:"+propName, x: carX, z: carZ, y: mapHeightfield(map).heightAt(carX,carZ), yaw: 0 });
 const hd = process.argv.includes("--hd");
 const width = hd ? 1280 : 560, height = hd ? 720 : 312;
 const v = provingView(width, height, {}, { manifest, files }, { ...map, statics: MapStatics.of(map.dims, rows) });
@@ -36,7 +40,10 @@ const hour = Number(process.argv.find(arg => arg.startsWith("--hour="))?.slice(7
 if (!Number.isFinite(hour) || hour < 0 || hour >= 24) throw new Error("--hour must be in [0,24)");
 scene.hour = hour;
 cam.fovY = 57 * Math.PI / 180;
-const carX = 8649, carZ = 7898;
+const vehicleId = "core:" + (process.argv.find(arg => arg.startsWith("--vehicle="))?.slice(10) ?? "compact");
+const vehicleKind = v.reg.index.get(vehicleId);
+const vehicle = vehicleKind === undefined ? null : v.reg.vehicle[vehicleKind];
+if (!vehicle || !isWheelVehicle(vehicle)) throw new Error("Expected a driveable road vehicle: " + vehicleId);
 function look(x: number, z: number, tx: number, tz: number, ty: number, eye = 1.6): void {
   cam.x = x;
   cam.z = z;
@@ -88,7 +95,7 @@ for (let i = 0; i < population.length; i++) {
 console.log("eligible placed statics", eligible, "of", t.kind.length);
 console.log("Miami fixture census", Object.fromEntries(counts), "statics in study", rows.length);
 const gpu = process.argv.includes("--gpu");
-const view = process.argv.find(arg => arg.startsWith("--view="))?.slice(7);
+const view = propName ? "prop" : process.argv.find(arg => arg.startsWith("--view="))?.slice(7);
 if (!gpu && !view) {
   look(8540, 8073, 8535.5, 8084.54, 7.1);
   shot("storefront");
@@ -103,7 +110,7 @@ if (!gpu && !view) {
 }
 for (let i = 0; i < 2; i++) {
   remote.id[i] = 1701 + i;
-  remote.kind[i] = v.reg.index.get("core:compact")!;
+  remote.kind[i] = i === 0 ? vehicleKind! : v.reg.index.get("core:compact")!;
   remote.x[i] = carX + i * 3.25;
   remote.z[i] = carZ + i * 2.2;
   remote.y[i] = hf.heightAt(remote.x[i]!, remote.z[i]!);
@@ -111,7 +118,8 @@ for (let i = 0; i < 2; i++) {
   remote.flags[i] = 1;
   remote.colors[i * 6] = 41;
 }
-remote.count = 2;
+remote.count = propName ? 0 : 2;
+if (propName && !v.reg.index.has("core:"+propName)) throw new Error("Unknown road prop " + propName);
 look(carX - 4.3, carZ - 3.9, carX + 0.7, carZ + 0.6, hf.heightAt(carX, carZ) + 0.78);
 // Close inspection uses the same authored cars, road and lighting as the wide view.
 if (view) {
@@ -122,9 +130,21 @@ if (view) {
     const from = world(x,z), to = world(tx,tz);
     look(from[0],from[1],to[0],to[1],heightAtCar+ty,heightAtCar+y-hf.heightAt(from[0],from[1]));
   };
-  if (view === "wheel") {
+  if (view === "prop") {
+    remote.yaw[0] = 0;
+    const trailer = propName === "box_trailer", tanker = propName!.startsWith("tanker_");
+    if (trailer) inspect(-7.8,1.5,-7,0,1.20,-3.3);
+    else if (tanker) inspect(-9.0,2.3,7.0,0,1.3,0);
+    else inspect(-4.4,1.2,3.8,0,0.65,0);
+  }
+  else if (view === "wheel") {
     remote.steering[0] = 0.32;
-    inspect(-1.47,0.40,1.78,-0.82,0.30,1.25);
+    const rig = v.pack.header.rigs!.find(r => r.id === vehicle.id)!;
+    const at = (rig.names?.indexOf("wheel_front_right") ?? -1)*3;
+    if (at < 0) throw new Error("Missing front wheel on " + vehicle.id);
+    const [x,y,z] = rig.rest.slice(at,at+3) as [number,number,number];
+    const scale = vehicle.spec.wheelRadius/0.3;
+    inspect(x-0.69*scale,y+0.10*scale,z+0.53*scale,x-0.04*scale,y,z);
   }
   else if (view === "side") inspect(-5.9,1.03,2.75,0,0.57,0);
   else if (view === "front") inspect(-0.15,1.62,3.7,0,1.10,0.04);
@@ -198,6 +218,23 @@ if (gpu) {
         if (!loading && !load.flying && !load.waiting && p.frame[FRAME.reflection + 3] === 1) {
           if (view) {
             shot.add(p, true);
+            if (view === "prop") {
+              const strength = p.frame[FRAME.reflection+3]!;
+              p.frame[FRAME.reflection+3] = 0;
+              shot.add(p,true);
+              p.frame[FRAME.reflection+3] = strength;
+              const saved = p.frame.slice(FRAME.contact, FRAME.contact+8*MAX_CONTACTS);
+              p.frame.fill(0,FRAME.contact,FRAME.contact+8*MAX_CONTACTS);
+              shot.add(p,true);
+              p.frame.set(saved,FRAME.contact);
+              const prop = v.reg.defs[v.reg.index.get("core:"+propName)!]!;
+              if (prop.type !== "structure") throw new Error("Expected a placed vehicle prop");
+              const instances = p.drawInstances.slice(0,p.drawCount);
+              for (let d=0; d<p.drawCount; d++) if (manifest.meshes[p.drawMesh[d]!]!.id === prop.mesh) p.drawInstances[d] = 0;
+              shot.add(p,true);
+              p.drawInstances.set(instances);
+              return [shot];
+            }
             if (view === "wheel" || view === "side") {
               // Same light, geometry and old ellipsoid, with only the chassis footprint switched off.
               const original = p.frame.slice(FRAME.contact,FRAME.contact+8*MAX_CONTACTS);
@@ -296,6 +333,20 @@ if (gpu) {
       const on = back.pixels(shot.key, shot.read[0]!)!, sky = back.pixels(shot.key, shot.read[1]!)!;
       if (view) {
         writeFileSync(join(out, view + ".png"), encodePng(width, height, on));
+        if (view === "prop") {
+          const noContact = back.pixels(shot.key,shot.read[2]!)!;
+          writeFileSync(join(out,"sky-only.png"),encodePng(width,height,sky));
+          writeFileSync(join(out,"no-contact.png"),encodePng(width,height,noContact));
+          const hidden = back.pixels(shot.key,shot.read[3]!)!;
+          let reflected = 0, visible = 0;
+          for (let i=0; i<on.length; i+=4) {
+            if (Math.max(Math.abs(on[i]!-hidden[i]!),Math.abs(on[i+1]!-hidden[i+1]!),Math.abs(on[i+2]!-hidden[i+2]!)) < 8) continue;
+            visible++;
+            if (Math.max(Math.abs(on[i]!-sky[i]!),Math.abs(on[i+1]!-sky[i+1]!),Math.abs(on[i+2]!-sky[i+2]!)) >= 3) reflected++;
+          }
+          const contact = different(on,noContact,3);
+          return { ok: visible > 500 && reflected > 10 && contact > 40, lines: [back.device.renderer, propName+" reflection "+reflected+" of "+visible+" visible prop pixels, ground contact "+contact+" pixels."] };
+        }
         const chassisStudy = view === "wheel" || view === "side";
         const open = chassisStudy ? back.pixels(shot.key,shot.read[3]!)! : sky;
         writeFileSync(join(out, view + "-open.png"), encodePng(width, height, open));

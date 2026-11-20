@@ -117,6 +117,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
   vec3 v = -normalize(vRel);
   // A rough finish mirrors the sky's light, which is a colour; only a smooth one shows the sky's picture.
 #ifdef STREET_FINISH
+  float fixtureShare = 0.8;
   if (vFixture > 0) {
     albedo = vColor;
     n = geometric;
@@ -124,13 +125,21 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
     float grain = 0.055*sin(dot(place,vec3(3.0,9.0,2.0)));
     worldSharp = vFixture == 3;
     orm = vec3(1.0,(vFixture == 1 ? 0.37 : vFixture == 2 ? 0.58 : 0.26)+grain,vFixture == 2 ? 0.78 : 0.0);
+    if (vFixture >= 4) {
+      bool tire = vFixture == 5;
+      worldSharp = vFixture == 4;
+      orm.gb = vFixture == 4 ? vec2(0.14,0.91) : tire ? vec2(0.95,0.0) : vFixture == 6 ? vec2(0.42,0.72) : vec2(0.53,0.08);
+      albedo *= tire ? 0.31+0.8*grain : 1.0;
+      weatherVehicle(albedo,orm,place,0.0,0.32);
+      fixtureShare = tire ? 0.0 : (1.0-orm.g)*(vFixture == 7 ? 0.32 : 1.0);
+    }
   }
 #endif
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
   mirrored = mix(mirrored, far.rgb * skyLight(-geometric), far.a);
 #ifdef STREET_FINISH
-  float receives = vFixture > 0 ? 0.8 : front == 2 ? 1.0 : front == 3 ? clamp((0.85-orm.y)*3.0,0.0,1.0) : 0.0;
+  float receives = vFixture > 0 ? fixtureShare : front == 2 ? 1.0 : front == 3 ? clamp((0.85-orm.y)*3.0,0.0,1.0) : 0.0;
   if (front == 0 && uSolid < 1.5 && uSkin < 0.5 && vFixture == 0) {
     if (vSurface == ${GLASS}) receives = clamp((0.8-orm.y)*2.5,0.0,1.0);
     else if (vSurface == ${STEEL} || vSurface == ${RUST}) receives = clamp((0.85-orm.y)*3.0,0.0,1.0)*orm.z;

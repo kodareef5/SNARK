@@ -8,13 +8,14 @@ import { Heightfield } from "../../shared/world/heightfield.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import { ParkedContacts } from "../../client/core/render/contact.ts";
 import { deflectTire, TireContacts, tireShadow } from "../../client/core/render/tire-contact.ts";
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { BONE_FLOATS, FRAME, FramePacket, MAX_TIRE_CONTACTS } from "../../client/core/render/packet.ts";
 import { streetSilhouette } from "../../client/core/render/street-silhouettes.ts";
 import { StreetReflections } from "../../client/core/render/street-reflections.ts";
 import {
-  FINE_STREET_WIDTH, STREET_WIDTH, streetWidth, wheelBoneMask, wheelFinish, tireMould,
+  FINE_STREET_WIDTH, STREET_WIDTH, streetWidth, wheelBoneMask, wheelFinish, tireMould, vehicleWeather, weatherVehicle, StreetMaterials,
   coatWear,
   finishSeed,
   fixtureFace,
@@ -170,7 +171,8 @@ test("paint wear travels with an entity and fixed fixtures distinguish the plint
   expect(receiver(streetMaterial("core:compact/body"), 1, 0.24, 0)).toBe(1);
   expect(receiver(streetMaterial("core:compact/trim"), 0, 0.88, 0)).toBe(0);
   expect(receiver(streetMaterial("core:street/street"), 0, 0.41, 0.9)).toBe(1);
-  expect(receiver(streetMaterial("core:compact_wreck/body"), 1, 0.3, 0)).toBe(0);
+  expect(receiver(streetMaterial("core:compact_wreck/body"), 1, 0.3, 0)).toBe(1);
+  expect(receiver(streetMaterial("core:compact_wreck/body"), 0, 0.95, 0)).toBe(0);
 });
 
 test("wheel contact follows the nearest supported tires and vanishes when the car lifts or tips", () => {
@@ -221,7 +223,7 @@ test("only wheel joints carry the finish, clean and wiped plating shine differen
   expect(wheelBoneMask(["chassis","wheel_front_left","steering_wheel"])).toBe(2);
   const finish = (rough: number, metal: number, seed: number, mould = 0) => {
     const rgb = new Float64Array([0.1,0.1,0.1]), orm = new Float64Array([1,rough,metal]);
-    const chrome = wheelFinish(rgb,orm,1,1,mould,seed,0.4,0.2,0.001);
+    const chrome = wheelFinish(rgb,orm,1,1,mould,seed,0.845,0.0,0.001);
     return { tone: rgb[0]!, rough: orm[1]!, chrome };
   };
   const clean = finish(0.3,0.95,0.1), wiped = finish(0.3,0.95,0.86);
@@ -234,6 +236,47 @@ test("only wheel joints carry the finish, clean and wiped plating shine differen
   expect(plain.tone).toBeLessThan(0.04);
   expect(ridge.tone).toBeGreaterThan(plain.tone);
   expect(tireMould(0.1,0.845,0,0.05)).toBe(0);
+});
+
+test("unmasked truck rims, painted centres, and brake discs keep distinct finishes", () => {
+  const sample = (rough: number, metal: number, x: number, radius: number) => wheelFinish(new Float64Array(3),Float64Array.of(1,rough,metal),0,1,0,0.42,radius,0,0.001,x);
+  expect(sample(122/255,165/255,0.36,0.52)).toBeGreaterThan(0.6);
+  expect(sample(122/255,165/255,0.03,0.52)).toBe(0);
+  expect(sample(0.85,0.03,0.35,0.98)).toBe(0);
+  const cache = new StreetMaterials(1,[{id:"future:truck"}]);
+  expect(cache.code(0,"",0,true)).toBe(0);
+  expect(cache.code(0,"future:truck/coach",0,true)).toBe(1);
+  expect(cache.code(0,"future:truck/coach",0,false)).toBe(0);
+});
+
+test("salvage leaves some bare metal visible beside rough oxide, with the worst damage on a burnt shell", () => {
+  const values: number[] = [];
+  for(let i=0; i<120; i++) {
+    const orm = Float64Array.of(1,0.47,0.85);
+    weatherVehicle(Float64Array.of(0.22,0.24,0.23),orm,i*0.07,0.6,0.4,0.32,vehicleWeather("core:tanker_burnout"));
+    values.push(orm[2]!);
+  }
+  expect(Math.min(...values)).toBeLessThan(0.1);
+  expect(Math.max(...values)).toBeGreaterThan(0.8);
+  expect(vehicleWeather("core:tanker_burnout")).toBeGreaterThan(vehicleWeather("core:tanker_abandoned"));
+  expect(vehicleWeather("core:veloce")).toBe(0);
+  const trailer = fixtureKind("core:box_trailer");
+  expect([fixtureFace(trailer,82,0.8,-5.1),fixtureFace(trailer,102,0.6,-3.75),fixtureFace(trailer,102,2,0)]).toEqual([5,4,6]);
+});
+
+test("an upright parked vehicle darkens the road and leaves the contact list when removed", () => {
+  const {world,cam,p} = street();
+  const parked = new ParkedContacts(reg);
+  const bounds = [{center:[0,2,0],half:[1.31,2,6.14]}] as const;
+  const meshOf = new Uint16Array(reg.defs.length);
+  const kind = reg.index.get("core:box_trailer")!;
+  const ref = world.structs.add(kind,40,0,43,0,0,100);
+  parked.add(p.frame,world.structs,bounds,meshOf,cam);
+  expect(p.frame[FRAME.contact+6]).toBeCloseTo(-6.14);
+  world.structs.remove(ref);
+  p.frame.fill(0);
+  parked.add(p.frame,world.structs,bounds,meshOf,cam);
+  expect(p.frame[FRAME.contact+4]).toBe(0);
 });
 
 test("the windscreen transmits the road from the driver's seat and gains reflection at a grazing angle", () => {

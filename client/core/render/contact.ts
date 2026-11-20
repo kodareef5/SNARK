@@ -8,6 +8,9 @@
 // nor does the sun's light. A wheeled chassis also occludes indirect light across its floor plan, with a feathered edge.
 
 import { CUE_DEAD } from "../../../shared/anim/pose.ts";
+import { CHUNK_SIZE, YAW_UNITS } from "../../../shared/coords.ts";
+import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
+import { vehicleWeather } from "./street-finish.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { RemoteSample } from "../session.ts";
 import { isWheelVehicle } from "../../../shared/sim/vehicle.ts";
@@ -69,6 +72,63 @@ export function contactFrame(frame: Float32Array, on: boolean, reg: Pick<Registr
     const length = spec ? spec.halfLength : Math.max(r, long(kind));
     frame[o + 6] = vehicle && isWheelVehicle(vehicle) && upright ? -length : length;
     frame[o + 7] = Math.sin(yaw);
+  }
+}
+
+/** Nearby parked vehicles share the moving bodies' contact slots. A changed chunk rebuilds its short list once. */
+export class ParkedContacts {
+  private readonly kinds: Uint8Array;
+  private readonly chunks = new WeakMap<ChunkTable, { shape: number; slots: number[] }>();
+
+  constructor(reg: Registry) {
+    this.kinds = Uint8Array.from(reg.defs, d => {
+      if (d?.type !== "structure" || !vehicleWeather(d.mesh)) return 0;
+      // A rolled shell or a detached tank meets the road on its own envelope.
+      return /(?:_roof|_tipped|_rollover|_cistern|_separated)$/.test(d.mesh) ? 1 : 2;
+    });
+  }
+
+  add(frame: Float32Array, store: StructureStore, meshes: readonly { half: readonly number[]; center: readonly number[] }[], meshOf: Uint16Array, cam: { x: number; y: number; z: number }): void {
+    const { chunksX, chunksZ } = store.dims;
+    const x0 = Math.max(0, Math.floor((cam.x - CONTACT_REACH) / CHUNK_SIZE));
+    const x1 = Math.min(chunksX - 1, Math.floor((cam.x + CONTACT_REACH) / CHUNK_SIZE));
+    const z0 = Math.max(0, Math.floor((cam.z - CONTACT_REACH) / CHUNK_SIZE));
+    const z1 = Math.min(chunksZ - 1, Math.floor((cam.z + CONTACT_REACH) / CHUNK_SIZE));
+    for (let z = z0; z <= z1; z++) {
+      for (let x = x0; x <= x1; x++) {
+        const t = store.chunks[z*chunksX+x];
+        if (!t) continue;
+        let list = this.chunks.get(t);
+        if (!list || list.shape !== t.shape) {
+          const slots: number[] = [];
+          for (let i=0; i<t.high; i++) if (this.kinds[t.kind[i]!]! > 0) slots.push(i);
+          this.chunks.set(t, list = { shape: t.shape, slots });
+        }
+        for (const i of list.slots) {
+          const kind = t.kind[i]!, bounds = meshes[meshOf[kind]!];
+          if (!bounds || bounds.half[0]! <= 0) continue;
+          const { center, half } = bounds, yaw = t.yaw[i]!*(2*Math.PI/YAW_UNITS), c = Math.cos(yaw), s = Math.sin(yaw);
+          const dx = t.x[i]! - cam.x + c * center[0]! + s * center[2]!;
+          const dy = t.y[i]! - cam.y + center[1]!;
+          const dz = t.z[i]! - cam.z + c * center[2]! - s * center[0]!;
+          const distance2 = dx*dx+dy*dy+dz*dz;
+          if (distance2 >= CONTACT_REACH*CONTACT_REACH) continue;
+          const end = FRAME.contact + MAX_CONTACTS*8;
+          let at = FRAME.contact;
+          while (at < end && frame[at+4]! > 0 && frame[at]!**2+frame[at+1]!**2+frame[at+2]!**2 <= distance2) at += 8;
+          if (at === end) continue;
+          frame.copyWithin(at+8,at,end-8);
+          frame[at] = dx;
+          frame[at+1] = dy;
+          frame[at+2] = dz;
+          frame[at+3] = c;
+          frame[at+4] = half[0]!;
+          frame[at+5] = half[1]!;
+          frame[at+6] = this.kinds[kind] === 2 ? -half[2]! : half[2]!;
+          frame[at+7] = s;
+        }
+      }
+    }
   }
 }
 

@@ -5,7 +5,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { nearMeshSlot } from "../../client/core/render/nearcity.ts";
-import { PAINT, coatWear, glossRoughness, wheelFinish, wheelBoneMask, tireMould, finishSeed, fixtureFace, fixtureKind, receiver, streetMaterial, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
+import { weatherVehicle, vehicleWeather, PAINT, coatWear, glossRoughness, wheelFinish, wheelBoneMask, tireMould, finishSeed, fixtureFace, fixtureKind, receiver, streetMaterial, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
@@ -74,6 +74,7 @@ interface Surfaced {
   seed: number;
   wheelBones: number;
   spokeCrown: boolean;
+  weather: number;
   firstBone: number;
   positions: Float32Array;
   rest?: number[];
@@ -277,11 +278,22 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const twice = 2*(nx*eye[0]!+ny*eye[1]!+nz*eye[2]!);
     for (let c=0; c<3; c++) reflected[c] = twice*normal[c]!-eye[c]!;
     const originalRough = (fixture === 1 ? 0.37 : fixture === 2 ? 0.58 : 0.26) + 0.055*Math.sin((rx+p.camX)*3+(rz+p.camZ)*2+(ry+p.camY)*9);
-    const rough = glossRoughness(originalRough, 0.8, p.frame[FRAME.streetLook]!);
-    if (fixture === 3 && look) skyFrom(mirrored,p.frame,reflected,look);
+    let share = 0.8;
+    opened.set([open,originalRough,fixture === 2 ? 0.78 : 0]);
+    if (fixture >= 4) {
+      const tire = fixture === 5;
+      opened[1] = fixture === 4 ? 0.14 : tire ? 0.95 : fixture === 6 ? 0.42 : 0.53;
+      opened[2] = fixture === 4 ? 0.91 : tire ? 0 : fixture === 6 ? 0.72 : 0.08;
+      const wx=rx+p.camX, wy=ry+p.camY, wz=rz+p.camZ;
+      if (tire) for (let c=0;c<3;c++) albedo[c]! *= 0.31+0.044*Math.sin(3*wx+9*wy+2*wz);
+      weatherVehicle(albedo,opened,wx,wy,wz,0,0.32);
+      share = tire ? 0 : (1-opened[1]!)*(fixture === 7 ? 0.32 : 1);
+    }
+    const rough = glossRoughness(opened[1]!, share, p.frame[FRAME.streetLook]!);
+    if ((fixture === 3 || fixture === 4) && look) skyFrom(mirrored,p.frame,reflected,look);
     else skyLight(mirrored,p.frame,reflected);
-    streetMirror(mirrored,p,reflected,rx,ry,rz,rough,0.8);
-    opened.set([open,rough,fixture === 2 ? 0.78 : 0]);
+    streetMirror(mirrored,p,reflected,rx,ry,rz,rough,share);
+    opened[1] = rough;
     lit(light,albedo,opened,normal,eye,p.frame,mirrored);
   } else if (sample) {
     const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light", index = surfaceIndex(colorIndex, ground, city);
@@ -1088,7 +1100,7 @@ export class Rasterizer {
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.edgeFlags = this.ownSeed >= 0 ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
-        const fixture = fixtureFace(packedFixture ? lod.bones[last]! >>> 6 : meshFixture, color);
+        const fixture = fixtureFace(packedFixture ? lod.bones[last]! >>> 6 : meshFixture, color, lod.positions[last*3+1]!, lod.positions[last*3+2]!);
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0, fixture);
       }
     }
@@ -1395,7 +1407,8 @@ export class Rasterizer {
     const box = wear === 0 ? null : lod.positions.map((x, i) => (x - center[i % 3]!) / half[i % 3]!);
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
-    const s: Surfaced = { spokeCrown: mesh.id === "core:compact", firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheelBoneMask(rig?.names) : 0, label: streetMaterial(material.id), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const wheels = wheelBoneMask(rig?.names);
+    const s: Surfaced = { weather: vehicleWeather(mesh.id), spokeCrown: mesh.id === "core:compact", firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: streetMaterial(material.id, wheels !== 0), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1726,6 +1739,7 @@ export class Rasterizer {
       for (let i = 0; i < 6; i++) src[o + 5 + i] = this.frames[v * 6 + i]!;
       src[o + 11] = s.tangents[v * 4 + 3]!;
       for (let i = 0; i < 3; i++) src[o + 12 + i] = s.box ? s.box[v * 3 + i]! : 0;
+      if (s.weather) for (let i = 0; i < 3; i++) src[o+15+i] = s.positions[v*3+i]!;
       if (bone && bone <= 32 && (s.wheelBones & (1 << (bone-1)))) {
         const at = (bone-1)*3, radius = Math.max(0.12, s.rest![at+1]!);
         for (let i = 0; i < 3; i++) src[o+15+i] = (s.positions[v*3+i]! - s.rest![at+i]!) / radius;
@@ -1812,6 +1826,7 @@ export class Rasterizer {
             sample(s.layer, u, v, spread, layer);
             wounded(albedo, mro, layer, s.level, wearLate(s.wear, carried[12]!, carried[13]!, carried[14]!));
           }
+          if (s.weather) weatherVehicle(albedo,mro,carried[15]!,carried[16]!,carried[17]!,s.seed,s.weather);
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
           let coat = 0, chrome = 0;
           if (wheel) {
@@ -1827,7 +1842,7 @@ export class Rasterizer {
             const mould = footprint < 0.023 && mro[2]! < 0.3 && mro[1]! > 0.45 ? tireMould(carried[15]!,carried[16]!,carried[17]!,footprint) : 0;
             const damage = Math.max(0, Math.min(1, (s.level-0.15)/0.7));
             const near = (1-t*t*(3-2*t))*(1-damage*damage*(3-2*damage));
-            chrome = wheelFinish(albedo, mro, mask[2]!, near, mould, seed, carried[16]!, carried[17]!, footprint);
+            chrome = wheelFinish(albedo, mro, mask[2]!, near, mould, seed, carried[16]!, carried[17]!, footprint, carried[15]!*Math.sign(s.rest![(bone-1)*3]!));
             if (chrome > 0) {
               const b = (s.firstBone+bone-1)*BONE_FLOATS, m = p.bones;
               const scale = Math.hypot(m[b]!,m[b+4]!,m[b+8]!);
