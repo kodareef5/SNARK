@@ -49,7 +49,7 @@ test("a build short of materials gets an exact plan: how many trees and bushes, 
   expect(t.status).toBe("blocked");
   const b = brief(h.situation());
   expect(b.cards).toContain("materials");
-  expect(b.text).toContain(`1. game_do gather {"items": {"wood":297,"thatch":73,"fiber":40}} (one task for the whole list: about 10 trees and 4 bushes; you know of 1 trees and 1 bushes), 2. when it is done, game_do {"resume": "${t.id}"}.`);
+  expect(b.text).toContain(`1. game_do gather {"items": {"wood":900,"thatch":227,"fiber":160}} (one task for the whole list: about 6 trees and 4 bushes; you know of 1 trees and 1 bushes), 2. when it is done, game_do {"resume": "${t.id}"}.`);
   expect(b.text).toContain("You know of too few");
 });
 

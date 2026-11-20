@@ -3,6 +3,7 @@
 // in the same process and serve.ts can put it on a WebSocket. Call `afterStep` after each world step: it sends the
 // observations that are due and lets go of the character's controls when the client goes quiet.
 
+import { BUILDING } from "./structures.ts";
 import {
   GRUNT_VERSION, type Ack, type Capabilities, type ChannelName, type ChannelOptions, type ChannelRequest, type Channels,
   type ClientMessage, type GameMessage, type Limits,
@@ -12,9 +13,10 @@ import { TICK_MS, type World, type WorldEvent } from "./world.ts";
 export const LIMITS: Limits = { max_duration_ms: 2000, leash_ms: 1500, max_rate_hz: 20, act_per_s: 20, command_memory_s: 600 };
 export const CAPABILITIES: Capabilities = {
   channels: ["self", "entities", "terrain", "inventory", "chat", "focus"],
-  controls: ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "chat"],
-  events: ["hurt", "died", "chat", "item", "notice", "blocked", "heard", "crafted"],
+  controls: ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "chat", "plan"],
+  events: ["hurt", "died", "chat", "item", "notice", "blocked", "heard", "crafted", "built", "mounted", "dismounted"],
   verbs: ["harvest", "open", "close"],
+  building: BUILDING,
 };
 
 export interface Connection {

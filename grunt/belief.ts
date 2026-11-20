@@ -3,9 +3,7 @@
 // can ask how old it is.
 
 import { NavMap } from "./nav.ts";
-import type {
-  Entity, EntitiesChannel, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, TerrainChannel, Vec3,
-} from "./protocol.ts";
+import type { Building, EntitiesChannel, Entity, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, TerrainChannel, Vec3 } from "./protocol.ts";
 
 export interface Remembered extends Entity {
   /** The game clock (ms) when it was last seen, and its position then. */
@@ -34,6 +32,8 @@ export class Belief {
   terrain: TerrainChannel | null = null;
   /** The ground as the character knows it, for finding ways: the map screen, overwritten by what it has seen. */
   readonly nav = new NavMap();
+  /** The game's build helper, if it has one: its grid, reach, pace and the pieces of each tier. */
+  building: Building | null = null;
   readonly things = new Map<string, Remembered>();
   readonly chat: { t: number; from: string; text: string; channel: string; read: boolean }[] = [];
   readonly heard: Heard[] = [];

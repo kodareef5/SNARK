@@ -141,7 +141,6 @@ The first decision points:
 | `arbiter.interrupt` | interrupt, continue, defer, ask the Director |
 | `threat.respond` | flee, fight, hide, call a tame, ignore |
 | `task.after` (when a task ends) | the next task of the plan, a need, idle, ask the Director |
-| `build.spot` | the snap points the preview offers |
 
 Safety, freshness and verification are not a policy's job: a rule keeps the character out of lava whatever the policy
 says, a stale belief is refreshed before it is acted on, and "done" is checked in the world, not taken from a model's
@@ -172,18 +171,19 @@ by; I ran; back to the trees." It made one decision in the whole sequence.
 
 ### Build a 2×2 wood house from what is in the inventory
 
-The Director starts the goal `build {blueprint: hut_2x2_wood, at: here}`. The Planner expands it: the blueprint lists
-4 foundations, 7 walls, a doorframe and a door, 4 ceilings. It compares the list with the inventory, and with the
-recipes the game says the character can craft, and makes the missing pieces first (`craft`, which is the inventory
-screen's craft button, and its wait). Then, piece by piece, in an order that keeps every piece supported:
+The Director starts `build {blueprint: hut_2x2}` (or writes a layout of rooms: `grunt/builder.md`). The skill lays the
+layout out as pieces on the game's grid (4 foundations, 7 walls, a doorframe and a door, 4 ceilings, in an order that
+keeps every piece supported), and nothing is aimed (D875):
 
-1. Hold the piece (`select` its slot).
-2. Approach the spot and look at it, so that the game's placement preview snaps where the blueprint wants it.
-3. Read the preview in `focus`: what it snapped to, whether it is valid, and why not. Rotate if the blueprint needs it.
-4. Place (`use primary`), and verify: the new structure is in `entities`, joined where it should be.
-
-A spot the game refuses is a decision (`build.spot`: another snap point, clear the obstacle, move the house), and three
-refusals in a row is `blocked` with the reasons, for the Director.
+1. Check the whole plan with the game's build helper (`plan`, `op: check`): a verdict for every piece. Ground that
+   will not do moves the site to the nearest that fits, a cell at a time.
+2. Compare what is still to place with the inventory and the recipes; say the whole bill if materials are short; else
+   queue the crafting of every missing piece at once, in the order the plan needs them.
+3. Place the plan in sections of a few dozen pieces (`op: build`), each from a spot outside the footprint within the
+   helper's reach. The game places them at its pace, from the bag.
+4. A piece that cannot go stops the section, saying which and why: waiting for crafting and stepping out of the way
+   are the skill's own; anything else (a rock rolled onto a cell, a creature) is `blocked` for the Director, with how
+   to clear it. Taken up again, the build goes on from that piece.
 
 ### "Come here"
 
@@ -281,8 +281,8 @@ Playing through a player's inputs needs more than version 0's draft. From the ex
 
 - **Crafting**: a `craft` control (the inventory screen's button, with a count), and `inventory.craftable`: what can be
   made now, and what each needs.
-- **Building**: while a piece is held, `focus.placement`: where the preview stands, what it snapped to, valid or not and
-  why; a `rotate` for the preview.
+- **Building**: the build helper (`plan`): a whole structure checked at once, piece by piece, then placed at the game's
+  pace and reach (D875). A game may also offer the aimed preview a player has (`focus.placement`, `rotate`).
 - **Touch**: a `blocked` event when movement is stopped by something, and what by.
 - **Hearing**: sound events with a direction and loudness, things heard but not seen.
 - **Inspection**: what the interface shows on looking closely (a creature's level, a box's lock), only from where a

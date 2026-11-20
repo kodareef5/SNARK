@@ -36,9 +36,10 @@ How to decide:
   itself. Waiting only makes sense for something that will change: stamina coming back, a creature leaving.
 - When someone says something to the character, answer in chat (game_say) and do it if it is yours to do. The
   message says where the speaker is; go there (walk_to with the speaker's id) rather than asking.
-- To build something, start the build first: if materials are short it says exactly what it takes, and gather
-  takes that whole list in one task. Where you are asked to build is where the character stands when it starts:
-  pos is [x, height, z], with x growing east and z growing south (north is -z).
+- To build, read game_blueprints once (the guide and the library), then game_do build with a blueprint or a layout
+  you write; it checks the plan, finds ground, crafts and places every piece itself. If materials are short it says
+  exactly what it takes, and gather takes that whole list in one task. pos is [x, height, z], with x growing east
+  and z growing south (north is -z); build's x, z put the middle of the base there, and facing turns its front.
 - When the goal is reached, say so as you were asked (often in chat with game_say), with the real numbers from the
   game, and stop.
 

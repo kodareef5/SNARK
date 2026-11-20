@@ -53,7 +53,7 @@ const activeGoals = (s: Situation) => s.goals.filter((g) => g.status === "active
 
 /** Thatch and wood a tree gives, and fiber a bush, from the character's own harvests where it has any. */
 function yields(s: Situation): { tree: Record<string, number>; bush: Record<string, number> } {
-  const out = { tree: { wood: 30, thatch: 10 } as Record<string, number>, bush: { fiber: 12 } as Record<string, number> };
+  const out = { tree: { wood: 150, thatch: 50 } as Record<string, number>, bush: { fiber: 48 } as Record<string, number> };
   for (const t of s.rt.tasks) {
     if (t.skill !== "harvest" || !t.progress.targets) continue;
     const kind = String(t.args.kind ?? "tree") as "tree" | "bush";
@@ -137,7 +137,7 @@ export const CARDS: Card[] = [
       const trees = Math.max(Math.ceil(need("wood") / (y.tree.wood ?? 30)), Math.ceil(need("thatch") / (y.tree.thatch ?? 10)));
       const bushes = Math.ceil(need("fiber") / (y.bush.fiber ?? 12));
       const seen = { tree: b.find((x) => x.type === "tree").length, bush: b.find((x) => x.type === "bush").length };
-      return `To build: 1. game_do gather {"items": ${JSON.stringify(bill)}} (one task for the whole list: about ${trees} trees and ${bushes} bushes; you know of ${seen.tree} trees and ${seen.bush} bushes), 2. when it is done, game_do {"resume": "${t.id}"}.${seen.tree < trees || seen.bush < bushes ? " You know of too few: look_around, or walk somewhere new, to find more first." : ""}`;
+      return `To build: 1. game_do gather {"items": ${JSON.stringify(bill)}} (one task for the whole list: about ${trees} trees and ${bushes} bushes; you know of ${seen.tree} trees and ${seen.bush} bushes), 2. when it is done, game_do {"resume": "${t.id}"}.${seen.tree < trees || seen.bush < bushes ? " You know of too few: explore or walk somewhere new to find more first." : ""}`;
     },
   },
   {

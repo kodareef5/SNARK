@@ -33,7 +33,9 @@ export interface GoOptions {
 }
 
 const STEER_MS = 400;
-const OBSTACLE = new Set(["tree", "rock", "chest", "wood_wall", "wood_doorframe", "wood_door"]);
+const OBSTACLE = new Set(["tree", "rock", "chest"]);
+/** A structure piece in the way: walls, frames, doors, pillars of any tier. */
+const PIECE = /^(wall|doorframe|windowframe|door|pillar)_/;
 
 export class Body {
   readonly belief: Belief;
@@ -247,7 +249,7 @@ export class Body {
     const direct = b.yawTo(p), dist = b.distance(p);
     let worst: { side: number; lateral: number } | null = null;
     for (const t of b.things.values()) {
-      if (t.id === ignore || !OBSTACLE.has(t.type)) continue;
+      if (t.id === ignore || !(OBSTACLE.has(t.type) || PIECE.test(t.type))) continue;
       const d = b.distance(t.pos);
       if (d > Math.min(5, dist) || d < 0.05) continue;
       const rel = wrap(b.yawTo(t.pos) - direct);

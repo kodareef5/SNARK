@@ -8,16 +8,18 @@
 // not a game: numbers are round, and only what grunt's skills need is here.
 
 import type {
-  Action, Craftable, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, Placement,
-  PlacementRefusal, RejectCode, SelfChannel, Slot, TerrainChannel,
+  Action, Craftable, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, Plan,
+  RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../../grunt/protocol.ts";
+import { BUILD_RATE, MAX_PLAN as BUILDING_MAX, type PieceAt, PIECE_RECIPES, Structures } from "./structures.ts";
 import { CHAR, CLIFF, DEEP, LEGEND, SHALLOW, type Feature, type Terrain } from "./terrain.ts";
 
 export const TICK_MS = 50;
 const WALK = 3.5, SPRINT = 6, TURN = 6, PITCH_TURN = 3, BODY_R = 0.4, REACH = 2.5, SIGHT = 60, NEAR = 12;
-const FOV = Math.PI / 3, SWING_MS = 600, PICK_MS = 500, CELL = 3, MAX_HOLD = 2000;
+const FOV = Math.PI / 3, SWING_MS = 600, PICK_MS = 500, MAX_HOLD = 2000;
 /** What the character can carry before it slows: a levelled survivor's, so that a hut's materials fit. */
-const CARRY = 250;
+// Enough for a hut's worth of wood (SNARK-priced pieces), as a levelled character carries.
+const CARRY = 600;
 const RAPTOR = { sees: 20, gives_up: 30, speed: 4.5, wander: 1.2, bite: 8, every_ms: 1000, reach: 1.6, hp: 60 };
 
 /** What can be ridden or driven, and how it goes: speed (m/s), on a road where it is faster, turning (rad/s), and
@@ -45,27 +47,24 @@ const CLIMB = 6, CEILING = 120;
 
 const WEIGHT: Record<string, number> = {
   wood: 0.5, thatch: 0.1, fiber: 0.1, stone: 1, flint: 0.05, berries: 0.1,
-  stone_hatchet: 1, stone_pick: 1, wood_foundation: 4, wood_wall: 3, wood_doorframe: 3, wood_door: 2, wood_ceiling: 3,
+  stone_hatchet: 1, stone_pick: 1,
 };
+/** A piece weighs what SNARK's tier says (content/building.ts): thatch 2, wood 4, stone 6. */
+const weightOf = (item: string) => WEIGHT[item] ?? (item.startsWith("piece_") ? (item.endsWith("_thatch") ? 2 : item.endsWith("_stone") ? 6 : 4) : 1);
 const TOOLS: Record<string, { uses: number; tree: [number, number]; rock: [number, number]; hits: number }> = {
   // [main yield, thatch or flint] per swing, and the damage a swing does to a creature.
-  hands: { uses: 0, tree: [1, 1], rock: [1, 0], hits: 4 },
-  stone_hatchet: { uses: 100, tree: [3, 1], rock: [1, 0], hits: 10 },
-  stone_pick: { uses: 100, tree: [1, 2], rock: [2, 1], hits: 12 },
+  // Yields of the order ARK's: a stone hatchet takes a dozen wood a swing, a tree holds 150, so that pieces priced as
+  // SNARK prices them (a wood foundation is 80 wood) are a few trees' work.
+  hands: { uses: 0, tree: [2, 1], rock: [1, 0], hits: 4 },
+  stone_hatchet: { uses: 100, tree: [12, 4], rock: [3, 0], hits: 10 },
+  stone_pick: { uses: 100, tree: [4, 8], rock: [8, 3], hits: 12 },
 };
-export const PIECES = ["wood_foundation", "wood_wall", "wood_doorframe", "wood_door", "wood_ceiling"] as const;
-export type Piece = (typeof PIECES)[number];
 export const RECIPES: Record<string, { needs: Record<string, number>; seconds: number }> = {
   stone_hatchet: { needs: { wood: 1, flint: 1, stone: 1, thatch: 10 }, seconds: 1 },
   stone_pick: { needs: { wood: 1, stone: 1, thatch: 10 }, seconds: 1 },
-  wood_foundation: { needs: { wood: 25, thatch: 6, fiber: 4 }, seconds: 1.5 },
-  wood_wall: { needs: { wood: 15, thatch: 4, fiber: 2 }, seconds: 1.5 },
-  wood_doorframe: { needs: { wood: 12, thatch: 3, fiber: 2 }, seconds: 1.5 },
-  wood_door: { needs: { wood: 8, thatch: 2 }, seconds: 1 },
-  wood_ceiling: { needs: { wood: 18, thatch: 4, fiber: 2 }, seconds: 1.5 },
+  ...PIECE_RECIPES,
 };
-const STACK = (item: string) => (item in TOOLS ? 1 : (PIECES as readonly string[]).includes(item) ? 20 : 100);
-const isPiece = (item: string | undefined): item is Piece => !!item && (PIECES as readonly string[]).includes(item);
+const STACK = (item: string) => (item in TOOLS ? 1 : 100);
 
 // --- The things in the world --------------------------------------------------------------------------------------
 
@@ -94,7 +93,7 @@ interface Thing {
   stamina?: number;
   // A container's slots; a structure's place.
   slots?: Slot[];
-  piece?: { yaw: number; y: number; cell: string; edge?: string; open?: boolean };
+  piece?: PieceAt;
 }
 
 interface Running {
@@ -145,6 +144,7 @@ export interface CharacterSetup {
 export class World {
   tick = 0;
   readonly things = new Map<string, Thing>();
+  readonly structures = new Structures();
   /** The ground, where the scene has any: flat open ground otherwise. */
   terrain: Terrain | null = null;
   /** Changes to the ground after the start, by game time: the map does not show them. */
@@ -193,7 +193,7 @@ export class World {
     const prefix = kind === "resource" ? "n:" : kind === "structure" ? "s:" : "e:";
     const id = `${prefix}${this.next++}`;
     const base: Record<string, Pick<Thing, "r" | "blocks" | "left">> = {
-      tree: { r: 0.5, blocks: true, left: 30 }, rock: { r: 0.8, blocks: true, left: 20 }, bush: { r: 0.5, blocks: false, left: 12 },
+      tree: { r: 0.5, blocks: true, left: 150 }, rock: { r: 0.8, blocks: true, left: 80 }, bush: { r: 0.5, blocks: false, left: 12 },
       chest: { r: 0.5, blocks: true, left: 0 }, raptor: { r: 0.6, blocks: false, left: RAPTOR.hp }, player: { r: 0.4, blocks: false, left: 100 },
       parasaur: { r: 1.2, blocks: false, left: 300 }, pteranodon: { r: 1.2, blocks: false, left: 200 },
       car: { r: 1.4, blocks: false, left: 500 }, heli: { r: 3, blocks: false, left: 800 }, boat: { r: 2, blocks: false, left: 400 },
@@ -265,7 +265,7 @@ export class World {
   }
 
   private weight(): number {
-    return this.me.slots.reduce((w, s) => w + (WEIGHT[s.item] ?? 1) * s.count, 0);
+    return this.me.slots.reduce((w, s) => w + weightOf(s.item) * s.count, 0);
   }
 
   private heldItem(): string | undefined {
@@ -328,7 +328,7 @@ export class World {
     if (this.dist(t) - t.r > REACH) return [];
     if (t.type === "bush") return ["harvest"];
     if (t.type === "chest") return [this.me.open === t.id ? "close" : "open"];
-    if (t.type === "wood_door") return [t.piece?.open ? "close" : "open"];
+    if (t.piece?.form === "door") return [t.piece.open ? "close" : "open"];
     return [];
   }
 
@@ -345,7 +345,8 @@ export class World {
 
   entitiesChannel(radius = 40, max = 20): EntitiesChannel {
     const seen = [...this.things.values()]
-      .filter((t) => this.perceives(t) && this.dist(t) <= radius)
+      // Of a base, only its doors: the rest is ground, which the terrain channel shows.
+      .filter((t) => (!t.piece || (t.piece.form === "door" && this.dist(t) < 20)) && this.perceives(t) && this.dist(t) <= radius)
       .sort((a, b) => this.dist(a) - this.dist(b));
     const items: Entity[] = seen.slice(0, max).map((t) => ({
       id: t.id, kind: t.kind, type: t.type, ...(t.name ? { name: t.name } : {}),
@@ -369,8 +370,12 @@ export class World {
         const x = ox + c * cell, z = oz + r * cell;
         let ch: string = this.terrain ? CHAR[this.terrain.at(x, z)]! : ".";
         for (const t of this.things.values()) {
+          if (t.piece) {
+            if (this.slab(t, x, z, cell / 2)) ch = "#";
+            continue;
+          }
           if (Math.hypot(t.x - x, t.z - z) > t.r + cell / 2 || !this.perceives(t)) continue;
-          ch = t.type === "tree" ? "T" : t.type === "rock" ? "R" : t.type === "bush" ? "b" : t.kind === "structure" ? (t.blocks ? "#" : "=") : t.kind === "creature" ? "c" : t.kind === "player" ? "P" : t.kind === "vehicle" ? "v" : "B";
+          ch = t.type === "tree" ? "T" : t.type === "rock" ? "R" : t.type === "bush" ? "b" : t.kind === "creature" ? "c" : t.kind === "player" ? "P" : t.kind === "vehicle" ? "v" : "B";
         }
         if (Math.abs(x - this.me.x) < cell / 2 && Math.abs(z - this.me.z) < cell / 2) ch = "@";
         row += ch;
@@ -409,103 +414,47 @@ export class World {
   focusChannel(): FocusChannel {
     const t = this.focusThing();
     const out: FocusChannel = t ? { target: t.id, distance: Math.max(0, Math.round((this.dist(t) - t.r) * 100) / 100), verbs: this.affords(t) } : { target: null };
-    const h = this.heldItem();
-    if (isPiece(h)) out.placement = this.preview(h);
     return out;
   }
 
   // --- Building ---------------------------------------------------------------------------------------------------
 
-  private cellOf(x: number, z: number): string {
-    return `${Math.round(x / CELL)},${Math.round(z / CELL)}`;
+  /** Where the last foundation of the plan being built now will go, if it is still to go (for a scenario's surprise). */
+  planAhead(): { x: number; z: number } | null {
+    const r = this.running.get("hands");
+    if (!r || r.action.control !== "plan") return null;
+    const d = r.done as { at: number; to: number; base?: string };
+    const plan = r.action.plan;
+    const base = this.structures.baseOf(plan, this.things.values());
+    if (!base) return null;
+    for (let k = plan.pieces.length - 1; k > d.at; k--) {
+      const p = plan.pieces[k]!;
+      if (p.form === "foundation") return this.structures.place(base, { ...p, cell: [p.cell[0] + base.off[0], p.cell[1] + base.off[1]] });
+    }
+    return null;
   }
 
-  private pieces(type?: string): Thing[] {
-    return [...this.things.values()].filter((t) => t.kind === "structure" && (!type || t.type === type));
+  /** What the build checks need of the world. */
+  site() {
+    return {
+      terrain: this.terrain, bounds: this.terrain ? ([this.terrain.x0 + 2, this.terrain.z0 + 2, this.terrain.x0 + this.terrain.w - 2, this.terrain.z0 + this.terrain.h - 2] as [number, number, number, number]) : null,
+      things: () => [...this.things.values()].map((t) => ({ ...t, kind: t.kind as string })),
+      me: { id: this.me.id, x: this.me.x, y: this.me.y, z: this.me.z },
+    };
   }
 
-  /** Where the held piece would go, as a player's preview shows it: 3 m ahead, snapped to what is near. */
-  preview(piece: Piece): Placement {
-    const [fx, fz] = this.forward();
-    const px = this.me.x + fx * CELL, pz = this.me.z + fz * CELL;
-    const refuse = (reason: PlacementRefusal, pos: [number, number, number]): Placement =>
-      ({ piece, pos, yaw: 0, snapped: null, valid: false, reason });
-    const foundations = this.pieces("wood_foundation");
-    if (piece === "wood_foundation") {
-      // Beside a foundation, to the cell it borders that is nearest the aim; else on a grid of its own at the aim.
-      let x = Math.round(px / CELL) * CELL, z = Math.round(pz / CELL) * CELL, snapped: Placement["snapped"] = null;
-      let best = 1.6;
-      for (const f of foundations) {
-        for (const [dx, dz, where] of [[0, -CELL, "north"], [CELL, 0, "east"], [0, CELL, "south"], [-CELL, 0, "west"]] as const) {
-          const d = Math.hypot(f.x + dx - px, f.z + dz - pz);
-          if (d < best) (best = d), (x = f.x + dx), (z = f.z + dz), (snapped = { to: f.id, where });
-        }
-      }
-      const pos: [number, number, number] = [x, 0, z];
-      if (foundations.some((f) => this.cellOf(f.x, f.z) === this.cellOf(x, z))) return { ...refuse("occupied", pos), snapped };
-      for (const t of this.things.values()) {
-        if (t.blocks && t.kind !== "structure" && Math.abs(t.x - x) < CELL / 2 + t.r && Math.abs(t.z - z) < CELL / 2 + t.r) return { ...refuse("blocked", pos), snapped };
-      }
-      if (Math.abs(x - this.me.x) < CELL / 2 + BODY_R && Math.abs(z - this.me.z) < CELL / 2 + BODY_R) return { ...refuse("blocked", pos), snapped };
-      return { piece, pos, yaw: 0, snapped, valid: true, reason: null };
-    }
-    if (piece === "wood_wall" || piece === "wood_doorframe") {
-      let best: { f: Thing; ex: number; ez: number; where: string; yaw: number } | undefined, bestD = 2;
-      for (const f of foundations) {
-        for (const [dx, dz, where, yaw] of [[0, -1.5, "north", 0], [1.5, 0, "east", Math.PI / 2], [0, 1.5, "south", 0], [-1.5, 0, "west", Math.PI / 2]] as const) {
-          const d = Math.hypot(f.x + dx - px, f.z + dz - pz);
-          if (d < bestD) (bestD = d), (best = { f, ex: f.x + dx, ez: f.z + dz, where, yaw });
-        }
-      }
-      if (!best) return refuse("no_support", [px, 0, pz]);
-      const pos: [number, number, number] = [best.ex, 0, best.ez];
-      const snapped = { to: best.f.id, where: best.where };
-      const edge = `${best.ex},${best.ez}`;
-      if (this.pieces().some((p) => p.piece?.edge === edge)) return { piece, pos, yaw: best.yaw, snapped, valid: false, reason: "occupied" };
-      return { piece, pos, yaw: best.yaw, snapped, valid: true, reason: null };
-    }
-    if (piece === "wood_door") {
-      let best: Thing | undefined, bestD = 2.5;
-      for (const f of this.pieces("wood_doorframe")) {
-        const d = Math.hypot(f.x - px, f.z - pz);
-        if (d < bestD) (bestD = d), (best = f);
-      }
-      if (!best) return refuse("no_support", [px, 0, pz]);
-      const pos: [number, number, number] = [best.x, 0, best.z];
-      const snapped = { to: best.id, where: "frame" };
-      if (this.pieces("wood_door").some((d) => d.piece?.edge === best!.piece?.edge)) return { piece, pos, yaw: best.piece!.yaw, snapped, valid: false, reason: "occupied" };
-      return { piece, pos, yaw: best.piece!.yaw, snapped, valid: true, reason: null };
-    }
-    // A ceiling goes over a foundation that has a wall on one of its edges, or beside another ceiling.
-    let best: Thing | undefined, bestD = 2.5;
-    for (const f of foundations) {
-      const d = Math.hypot(f.x - px, f.z - pz);
-      if (d < bestD) (bestD = d), (best = f);
-    }
-    if (!best) return refuse("no_support", [px, 3, pz]);
-    const pos: [number, number, number] = [best.x, 3, best.z];
-    const snapped = { to: best.id, where: "above" };
-    const cell = this.cellOf(best.x, best.z);
-    if (this.pieces("wood_ceiling").some((c) => c.piece?.cell === cell)) return { piece, pos, yaw: 0, snapped, valid: false, reason: "occupied" };
-    const edges = [[0, -1.5], [1.5, 0], [0, 1.5], [-1.5, 0]].map(([dx, dz]) => `${best!.x + dx!},${best!.z + dz!}`);
-    const walled = this.pieces().some((p) => p.piece?.edge && edges.includes(p.piece.edge) && p.type !== "wood_door");
-    const beside = this.pieces("wood_ceiling").some((c) => Math.abs(c.x - best!.x) + Math.abs(c.z - best!.z) === CELL);
-    if (!walled && !beside) return { piece, pos, yaw: 0, snapped, valid: false, reason: "no_support" };
-    return { piece, pos, yaw: 0, snapped, valid: true, reason: null };
-  }
-
-  private build(piece: Piece): { placed: string } | { code: RejectCode | "blocked"; reason?: PlacementRefusal | null } {
-    const p = this.preview(piece);
-    if (!p.valid) return { code: "blocked", reason: p.reason };
-    if (!this.take(piece, 1)) return { code: "missing_items" };
-    const edge = piece === "wood_wall" || piece === "wood_doorframe" ? `${p.pos[0]},${p.pos[2]}` : piece === "wood_door" ? this.things.get(p.snapped!.to)?.piece?.edge : undefined;
-    const blocks = piece === "wood_wall" || piece === "wood_door";
-    const id = this.place("structure", piece, p.pos[0], p.pos[2], {
-      r: piece === "wood_foundation" || piece === "wood_ceiling" ? 1.5 : 0.3, blocks, left: 1000,
-      piece: { yaw: p.yaw, y: p.pos[1], cell: this.cellOf(p.pos[0], p.pos[2]), ...(edge ? { edge } : {}) },
+  /** Places one piece of a plan that has passed its check. */
+  private put(base: { id: string; x: number; z: number; turns: number }, p: Plan["pieces"][number]): string {
+    const tier = this.structures.tierOf(p.form, p.item)!;
+    const at = this.structures.place(base, p);
+    const slab = p.form === "wall" || p.form === "windowframe" || p.form === "door";
+    const id = this.place("structure", `${p.form}_${tier}`, at.x, at.z, {
+      r: p.form === "foundation" || p.form === "ceiling" || p.form === "stairs" ? 1.5 : p.form === "pillar" ? 0.25 : 0.3,
+      blocks: slab || p.form === "pillar", left: 10000,
+      piece: { form: p.form, tier, base: base.id, cell: p.cell, level: p.level, ...(p.side ? { side: p.side } : {}), ...(p.up ? { up: p.up } : {}), yaw: at.yaw, y: at.y },
     });
-    this.event("notice", { text: `placed ${piece}`, level: "info", id });
-    return { placed: id };
+    this.event("built", { id, form: p.form, item: p.item, base: base.id });
+    return id;
   }
 
   // --- Acting -----------------------------------------------------------------------------------------------------
@@ -570,6 +519,20 @@ export class World {
       case "crouch":
         this.me.crouch = a.on;
         return instant({ on: a.on });
+      case "plan": {
+        if (!a.plan?.anchor || !Array.isArray(a.plan.pieces) || a.plan.pieces.length > BUILDING_MAX) return "bad_arguments";
+        if (a.op === "check") {
+          const { verdicts, base } = this.structures.check(this.site(), a.plan, false);
+          // What is still to place, against the bag.
+          const need: Record<string, number> = {};
+          a.plan.pieces.forEach((p, k) => verdicts[k]!.status !== "built" && (need[p.item] = (need[p.item] ?? 0) + 1));
+          return instant({ verdicts, base: base?.id || null, need, have: Object.fromEntries(Object.keys(need).map((i) => [i, this.count(i)])) });
+        }
+        if (this.running.has("hands")) this.end("hands", "interrupted", { by: "replaced" });
+        const from = Math.max(0, a.from ?? 0), to = Math.min(a.plan.pieces.length - 1, a.to ?? a.plan.pieces.length - 1);
+        this.running.set("hands", { command, index, action: a, started: this.t, until: Infinity, next: this.t, done: { from, at: from, to, placed: 0, ids: [] } });
+        return null;
+      }
       case "look":
       case "move":
       case "jump":
@@ -810,36 +773,40 @@ export class World {
       }
     }
     for (const t of this.things.values()) {
-      if (!t.blocks || (t.piece?.y ?? 0) > 0) continue;
-      if (t.kind === "structure" && t.piece) {
-        // A wall or door is a thin slab along its edge, 3 m wide.
-        const along = t.piece.yaw === 0 ? Math.abs(x - t.x) : Math.abs(z - t.z);
-        const across = t.piece.yaw === 0 ? Math.abs(z - t.z) : Math.abs(x - t.x);
-        if (along < 1.5 + BODY_R && across < 0.15 + BODY_R) return t.id;
+      if (t.piece) {
+        if (this.slab(t, x, z, BODY_R)) return t.id;
         continue;
       }
-      if (Math.hypot(t.x - x, t.z - z) < t.r + BODY_R) return t.id;
-    }
-    // A doorframe is two slabs with a gap between them.
-    for (const f of this.pieces("wood_doorframe")) {
-      const along = f.piece!.yaw === 0 ? x - f.x : z - f.z;
-      const across = f.piece!.yaw === 0 ? Math.abs(z - f.z) : Math.abs(x - f.x);
-      if (across < 0.15 + BODY_R && Math.abs(along) < 1.5 + BODY_R && Math.abs(along) > 0.6 - BODY_R) return f.id;
+      if (t.blocks && Math.hypot(t.x - x, t.z - z) < t.r + BODY_R) return t.id;
     }
     return null;
+  }
+
+  /** Whether a point (with a body's radius about it) is in a piece standing on the ground storey: a wall, window or
+   * closed door is a thin slab along its edge, 3 m wide; a doorframe two slabs with a gap; a pillar a post. */
+  private slab(t: Thing, x: number, z: number, r: number): boolean {
+    const p = t.piece!;
+    if (p.y > 0 || p.level > 0) return false;
+    if (p.form === "pillar") return Math.hypot(t.x - x, t.z - z) < t.r + r;
+    if (!(p.form === "wall" || p.form === "windowframe" || p.form === "doorframe" || (p.form === "door" && !p.open))) return false;
+    const along = p.yaw === 0 ? x - t.x : z - t.z;
+    const across = p.yaw === 0 ? Math.abs(z - t.z) : Math.abs(x - t.x);
+    if (across >= 0.15 + r || Math.abs(along) >= 1.5 + r) return false;
+    return p.form !== "doorframe" || Math.abs(along) > 0.7 - r;
   }
 
   private hands(): void {
     const r = this.running.get("hands");
     if (!r || r.next === undefined || this.t < r.next) return;
     const a = r.action;
+    if (a.control === "plan") return this.building(r, a.plan);
     if (a.control === "interact") {
       const t = this.things.get(a.target);
       if (!t || this.focusThing()?.id !== t.id) return this.end("hands", "failed", { code: "out_of_reach" });
       r.next = this.t + PICK_MS;
       if (t.type === "bush" && t.left > 0) {
         t.left--;
-        this.gain(r, "fiber", 1);
+        this.gain(r, "fiber", 4);
         if (t.left % 3 === 0) this.gain(r, "berries", 1);
         if (t.left <= 0) this.things.delete(t.id);
       }
@@ -848,16 +815,6 @@ export class World {
     if (a.control !== "use") return;
     r.next = this.t + SWING_MS;
     const held = this.heldItem();
-    if (isPiece(held)) {
-      r.next = Infinity;
-      const built = this.build(held);
-      if ("code" in built) {
-        r.done.reason = built.reason ?? null;
-        return this.end("hands", "failed", { code: built.code });
-      }
-      r.done.placed = built.placed;
-      return;
-    }
     const tool = TOOLS[held && held in TOOLS ? held : "hands"]!;
     const t = this.focusThing();
     r.done.swings = ((r.done.swings as number) ?? 0) + 1;
@@ -882,6 +839,38 @@ export class World {
         this.event("notice", { text: `the ${t.type} is dead`, level: "info", id: t.id });
       }
     }
+  }
+
+  /** The build helper at work: the next piece of the plan, if it can go and is in the bag, at the helper's pace. */
+  private building(r: Running, plan: Plan): void {
+    const d = r.done as { from: number; at: number; to: number; placed: number; ids: string[]; base?: string };
+    while (d.at <= d.to) {
+      const k = d.at;
+      // Laid at a point, the plan finds the base its first piece made (it is on that base's grid).
+      const { verdicts, base } = this.structures.check(this.site(), { anchor: plan.anchor, pieces: plan.pieces.slice(0, k + 1) }, true);
+      const v = verdicts[k]!;
+      if (v.status === "built") {
+        d.at++;
+        continue;
+      }
+      if (v.status !== "ok") {
+        Object.assign(d, { reason: v.status, ...(v.by ? { by: v.by } : {}) });
+        return this.end("hands", "failed", { code: "blocked" });
+      }
+      const p = plan.pieces[k]!;
+      if (!this.take(p.item, 1)) {
+        Object.assign(d, { reason: "missing_items", item: p.item });
+        return this.end("hands", "failed", { code: "missing_items" });
+      }
+      const on = base!.id ? base! : { ...this.structures.newBase(base!), off: [0, 0] as [number, number] };
+      d.base = on.id;
+      d.ids.push(this.put(on, { ...p, cell: [p.cell[0] + on.off[0], p.cell[1] + on.off[1]] }));
+      d.placed++;
+      d.at++;
+      r.next = this.t + 1000 / BUILD_RATE;
+      return;
+    }
+    this.end("hands", "completed");
   }
 
   private gain(r: Running, item: string, n: number): void {

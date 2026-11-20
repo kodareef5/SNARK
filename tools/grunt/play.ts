@@ -9,9 +9,12 @@ import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
+import { BLUEPRINTS } from "../../grunt/blueprints.ts";
+import { compile, type Layout } from "../../grunt/layout.ts";
 import { GameEndpoint } from "./game.ts";
 import { makeWorld, type Scene } from "./scenes.ts";
-import { PIECES, TICK_MS, type World } from "./world.ts";
+import { slot } from "./structures.ts";
+import { TICK_MS, type World } from "./world.ts";
 
 export type Check =
   | { all: Check[] }
@@ -23,6 +26,11 @@ export type Check =
   | { built: Record<string, number> }
   | { hut_2x2: true }
   | { hut_south_of: number }
+  /** A layout (a library name, or one written out) stands, whole, in any turn; in a tier if one is named; its ground
+   * floor south of a line if `south_of` is given. */
+  | { stands: string | Layout; tier?: string; south_of?: number }
+  /** Some base has at least these pieces, and a ceiling over every foundation if `roofed`. */
+  | { base_has: Partial<Record<string, number>>; roofed?: boolean }
   | { at: [number, number]; within: number };
 
 export interface Scenario {
@@ -31,7 +39,9 @@ export interface Scenario {
   world: Scene;
   owners?: string[];
   prompt: string;
-  script?: ({ at_s: number; say: { from: string; text: string } } | { at_s: number; prompt: string })[];
+  /** At a time: a line said, or a prompt from the user; once so many pieces stand: a rock dropped on a foundation's cell
+   * the running build has yet to reach. */
+  script?: ({ at_s: number; say: { from: string; text: string } } | { at_s: number; prompt: string } | { at_s: number; at_built: number; drop: "rock" })[];
   success: Check;
   budget: { seconds: number };
 }
@@ -45,25 +55,53 @@ export function check(c: Check, w: World): boolean {
   if ("near" in c) return [...w.things.values()].some((t) => (t.name === c.near || t.id === c.near) && Math.hypot(t.x - w.me.x, t.z - w.me.z) <= c.within);
   if ("built" in c) return Object.entries(c.built).every(([piece, n]) => [...w.things.values()].filter((t) => t.type === piece).length >= n);
   if ("at" in c) return Math.hypot(w.me.x - c.at[0], w.me.z - c.at[1]) <= c.within;
-  if ("hut_south_of" in c) return [...w.things.values()].filter((t) => t.type === "wood_foundation").every((t) => t.z > c.hut_south_of) && hut(w);
-  return hut(w);
+  if ("hut_south_of" in c) return stands(w, "hut_2x2", undefined, c.hut_south_of);
+  if ("stands" in c) return stands(w, c.stands, c.tier, c.south_of);
+  if ("base_has" in c) {
+    return [...w.structures.bases.values()].some((b) => {
+      const pieces = [...w.things.values()].filter((t) => t.piece?.base === b.id).map((t) => t.piece!);
+      const n = (f: string) => pieces.filter((p) => p.form === f).length;
+      const roofed = !c.roofed || pieces.filter((p) => p.form === "foundation").every((f) => pieces.some((p) => p.form === "ceiling" && p.level === 0 && p.cell[0] === f.cell[0] && p.cell[1] === f.cell[1]) || pieces.some((p) => p.form === "stairs" && p.level === 0 && p.cell[0] === f.cell[0] && p.cell[1] === f.cell[1]));
+      return roofed && Object.entries(c.base_has).every(([f, k]) => n(f) >= (k ?? 0));
+    });
+  }
+  return stands(w, "hut_2x2");
 }
 
-/** Four foundations in a square, every outer edge walled (one a doorframe with its door), and a ceiling over each. */
-function hut(w: World): boolean {
-  const pieces = [...w.things.values()].filter((t) => (PIECES as readonly string[]).includes(t.type));
-  const f = pieces.filter((t) => t.type === "wood_foundation");
-  for (const a of f) {
-    const square = [[0, 0], [3, 0], [0, 3], [3, 3]].map(([dx, dz]) => f.find((b) => b.x === a.x + dx! && b.z === a.z + dz!));
-    if (square.some((x) => !x)) continue;
-    const edges: string[] = [];
-    for (let i = 0; i < 2; i++) {
-      edges.push(`${a.x + i * 3},${a.z - 1.5}`, `${a.x + i * 3},${a.z + 4.5}`, `${a.x - 1.5},${a.z + i * 3}`, `${a.x + 4.5},${a.z + i * 3}`);
+/** Whether a layout stands whole on some base: every piece of it, in some quarter turn and some offset on that base's
+ * grid, of the form it should be (and the tier, if named). */
+export function stands(w: World, what: string | Layout, tier?: string, southOf?: number): boolean {
+  const layout = typeof what === "string" ? BLUEPRINTS[what] : what;
+  if (!layout) return false;
+  const want = compile(layout).pieces;
+  const SIDES = ["n", "e", "s", "w"] as const;
+  for (const base of w.structures.bases.values()) {
+    const pieces = [...w.things.values()].filter((t) => t.piece?.base === base.id);
+    const at = new Map(pieces.map((t) => [slot(t.piece!), t]));
+    const foundations = pieces.filter((t) => t.piece!.form === "foundation");
+    for (let turns = 0; turns < 4; turns++) {
+      const turned = want.map((p) => {
+        let [i, j] = p.cell;
+        let side = p.side;
+        for (let k = 0; k < turns; k++) {
+          [i, j] = [-j, i];
+          if (side) side = SIDES[(SIDES.indexOf(side) + 1) % 4];
+          // A pillar stands at its cell's north-west corner, which a turn moves to another corner.
+          if (p.form === "pillar") i += 1;
+        }
+        return { ...p, cell: [i, j] as [number, number], ...(side ? { side } : {}) };
+      });
+      const first = turned.find((p) => p.form === "foundation");
+      if (!first) continue;
+      for (const f of foundations) {
+        const [oi, oj] = [f.piece!.cell[0] - first.cell[0], f.piece!.cell[1] - first.cell[1]];
+        const all = turned.every((p) => {
+          const t = at.get(slot({ ...p, cell: [p.cell[0] + oi, p.cell[1] + oj] }));
+          return !!t && t.piece!.form === p.form && (!tier || t.piece!.tier === tier);
+        });
+        if (all && (southOf === undefined || foundations.every((t) => t.z > southOf))) return true;
+      }
     }
-    const on = (e: string) => pieces.filter((p) => p.piece?.edge === e);
-    if (!edges.every((e) => on(e).some((p) => p.type === "wood_wall" || p.type === "wood_doorframe"))) continue;
-    if (!edges.some((e) => on(e).some((p) => p.type === "wood_doorframe") && on(e).some((p) => p.type === "wood_door"))) continue;
-    if (square.every((s) => pieces.some((p) => p.type === "wood_ceiling" && p.x === s!.x && p.z === s!.z))) return true;
   }
   return false;
 }
@@ -105,7 +143,7 @@ if (import.meta.main) {
   }, TICK_MS);
 
   // Tools this version of grunt registers: an older one (an arm of a comparison) may lack game_goal, which Pi ignores.
-  const tools = ["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_goal"];
+  const tools = ["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_goal", "game_blueprints"];
   const pi = spawn("pi", ["--mode", "rpc", "--no-session", "-ne", "-ns", "-e", root, "--tools", tools.join(","), "--model", model, "--thinking", thinking], { stdio: ["pipe", "pipe", "pipe"] });
   pi.stderr.on("data", (d) => show && process.stderr.write(d));
   pi.stdin.on("error", () => {});
@@ -169,6 +207,14 @@ if (import.meta.main) {
       const el = (world.t - started) / 1000;
       (sc.script ?? []).forEach((ev, i) => {
         if (done.has(i) || el < ev.at_s) return;
+        if ("drop" in ev) {
+          const spot = [...world.things.values()].filter((t) => t.piece).length >= ev.at_built ? world.planAhead() : null;
+          if (!spot) return;
+          done.add(i);
+          world.place("resource", ev.drop, spot.x, spot.z);
+          if (show) console.log(`${el.toFixed(1)}s [script] dropped a ${ev.drop} at ${spot.x}, ${spot.z}`);
+          return;
+        }
         done.add(i);
         if ("say" in ev) world.say(ev.say.from, ev.say.text, "local", [...world.things.values()].find((t) => t.name === ev.say.from)?.id);
         else send({ type: "prompt", message: ev.prompt, streamingBehavior: "followUp" });

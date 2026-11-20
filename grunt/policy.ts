@@ -65,7 +65,6 @@ export const DEFAULT_RULES: Record<string, Rule> = {
     const best = [...o].sort((a, b) => a.seconds - b.seconds)[0];
     return best ? { choice: best.id, scores: Object.fromEntries(o.map((x) => [x.id, x.seconds])), why: `quickest: about ${best.seconds} s` } : { choice: i.candidates[0]! };
   },
-  "build.spot": (i) => (i.state.valid && Number(i.state.off_m) <= 0.5 ? { choice: "place", why: "the preview is valid where it should be" } : { choice: "skip", why: `the preview ${i.state.valid ? `is ${i.state.off_m} m off` : `is refused: ${i.state.reason}`}` }),
   "threat.respond": (i) => {
     if (!i.state.armed) return { choice: "flee", why: "nothing to fight with" };
     if (num(i.state.health, 1) < 0.3) return { choice: "flee", why: "too hurt to fight" };

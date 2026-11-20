@@ -9,7 +9,9 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { BLUEPRINTS } from "./blueprints.ts";
 import { brief, BriefDelivery, type Goal, type Situation } from "./brief.ts";
+import { compile } from "./layout.ts";
 import { socketLink } from "./link.ts";
 import type { PiExtensionAPI, PiTool, PiToolResult } from "./pi.ts";
 import { GRUNT_VERSION } from "./protocol.ts";
@@ -22,6 +24,7 @@ export const GRUNT_PACKAGE_VERSION = "0.1.0";
 const SPEC = fileURLToPath(new URL("./protocol.md", import.meta.url));
 /** The Director's own system prompt while a character is connected, in place of Pi's coding-assistant one. */
 const DIRECTOR = readFileSync(new URL("./director.md", import.meta.url), "utf8");
+const BUILDER = readFileSync(new URL("./builder.md", import.meta.url), "utf8");
 /** Reports that wake the Director. Notes only wait in `look`. */
 /** How long an idle mind with an open goal is left before it is told, and how often in a row. */
 const IDLE_MS = 20_000, IDLE_NUDGES = 3;
@@ -198,6 +201,25 @@ export default function grunt(pi: PiExtensionAPI): void {
         rt.start("say", { text: String(p.text), channel: p.channel ?? "local" });
         lastSaid = rt.belief.now;
         return text(`said: ${String(p.text)}`);
+      },
+    },
+    {
+      name: "game_blueprints", label: "Blueprints",
+      description: "Building: with no name, the guide to designing a base (how layouts are written, costs, what to do when a build stops) and the library of blueprints; with a name, that blueprint's layout, to build as it is or change and pass to game_do build as layout.",
+      parameters: { type: "object", properties: { name: { type: "string", description: "a blueprint in the library" } }, additionalProperties: false },
+      async execute(_id, p) {
+        if (typeof p.name === "string") {
+          const l = BLUEPRINTS[p.name];
+          if (!l) throw new Error(`no blueprint ${p.name}; the library has ${Object.keys(BLUEPRINTS).join(", ")}`);
+          const c = compile(l);
+          return text(`${p.name}: ${l.about ?? ""}\n${Object.entries(c.counts).map(([f, n]) => `${n} ${f}`).join(", ")}\n${JSON.stringify({ rooms: l.rooms, ...(l.stairs ? { stairs: l.stairs } : {}), ...(l.pillars ? { pillars: l.pillars } : {}) })}`);
+        }
+        const lib = Object.entries(BLUEPRINTS).map(([name, l]) => {
+          const c = compile(l);
+          const storeys = Math.max(...l.rooms.map((r) => (r.level ?? 0) + (r.height ?? 1)));
+          return `- ${name} (${c.bounds[2] - c.bounds[0] + 1} by ${c.bounds[3] - c.bounds[1] + 1}${storeys > 1 ? `, ${storeys} storeys` : ""}, ${c.pieces.length} pieces): ${l.about ?? ""}`;
+        });
+        return text(`${BUILDER}\nThe library:\n${lib.join("\n")}`);
       },
     },
     {

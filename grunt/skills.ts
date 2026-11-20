@@ -4,6 +4,7 @@
 // finds: its progress, and the world as believed.
 
 import { type Belief, compass } from "./belief.ts";
+import { build } from "./build.ts";
 import { type Costs, costsFor, type Danger, type RideKind, rideKind, type Route, WALK } from "./nav.ts";
 import type { Remembered } from "./belief.ts";
 import type { Body, Run } from "./body.ts";
@@ -269,8 +270,11 @@ function* explore(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
 /** Gathers from trees, rocks or bushes near where it started, until none is left there or it has enough. */
 function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const b = ctx.belief, p = ctx.progress;
-  const kind = String(args.kind ?? "tree");
+  // The kind of the target, when one is named and the kind is not.
+  const kind = String(args.kind ?? (typeof args.target === "string" ? b.things.get(args.target)?.type : undefined) ?? "tree");
   if (!(kind in YIELD)) return { status: "failed", summary: `I can't harvest ${kind}` };
+  // Just the one, until it is gone: a rock in the way of a build.
+  const only = args.only === true && typeof args.target === "string" ? args.target : null;
   const radius = typeof args.radius === "number" ? args.radius : 25;
   const want = typeof args.count === "number" ? args.count : null;
   // `until`: inventory counts to reach (gather's way of asking), where `count` is what this task gains of the yield.
@@ -293,6 +297,7 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
   const tool = kind === "bush" ? null : yield* holdBest(ctx, TOOLS[kind]!);
   const first = typeof args.target === "string" && !p.first_done ? args.target : null;
   while (true) {
+    if (only && p.first_done && !b.things.has(only)) return { status: "done", summary: `the ${kind} ${only} is gone; ${summary()}`, data: { gained: p.gained } };
     if (enough()) return { status: "done", summary: summary(), data: { gained: p.gained } };
     if (b.weightFraction() > 0.95) return { status: "blocked", summary: `too heavy to carry more; ${summary()}`, data: { gained: p.gained, reason: "weight" } };
     const near = b.find((r) => r.type === kind && !unreachable.has(r.id) && Math.hypot(r.pos[0] - anchor[0], r.pos[2] - anchor[2]) <= radius);
@@ -312,7 +317,7 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
       const danger = b.dangerNear(r.pos);
       return { id: r.id, distance: Math.round(b.distance(r.pos) * 10) / 10, danger_m: danger ? Math.round(danger.distance) : null };
     });
-    const asked = first && near.some((r) => r.id === first) ? first : null;
+    const asked = only ?? (first && near.some((r) => r.id === first) ? first : null);
     p.first_done = true;
     const target = asked ?? (yield* ctx.decide("harvest.target", [...near.map((r) => r.id), "stop"], { kind, tool, candidates }));
     if (target === "stop") {
@@ -390,6 +395,14 @@ function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResu
       yield { ms: 100 };
       continue;
     }
+    // Something else under the crosshair (a tree between): a step aside for a clear swing, not a swing at the tree.
+    const other = b.focus.target && b.focus.target !== target && b.focusAt > b.now - 300;
+    if (other) {
+      p.side = -Number(p.side ?? 1);
+      ctx.body.act([{ control: "look", yaw: b.yawTo(t.pos), pitch: 0 }, { control: "move", forward: 0, strafe: Number(p.side), duration_ms: 400 }], "clear the line");
+      yield { ms: 400 };
+      continue;
+    }
     ctx.body.act([{ control: "look", yaw: b.yawTo(t.pos), pitch: 0 }, { control: "use", hand: "primary", hold_ms: 600 }], `strike ${target}`);
     swings++;
     p.swings = swings;
@@ -420,148 +433,7 @@ function* gather(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRes
   return { status: "done", summary: `I have ${Object.keys(items).map((i) => `${b.count(i)} ${i}`).join(", ")}`, data: { items } };
 }
 
-// --- Building ---------------------------------------------------------------------------------------------------
-
-interface Spot {
-  key: string;
-  piece: string;
-  /** Where the piece stands, from the first foundation's centre: x east, z south, in cells of 3 m (halves for edges). */
-  at: [number, number];
-  /** Which way is out of the house from it, to stand there and look in. */
-  out: [number, number];
-}
-
-/** A blueprint: pieces in an order that keeps each one supported. */
-const BLUEPRINTS: Record<string, Spot[]> = {
-  hut_2x2: (() => {
-    const spots: Spot[] = [];
-    const cells: [number, number, [number, number]][] = [[0, 0, [-1, -1]], [1, 0, [1, -1]], [0, 1, [-1, 1]], [1, 1, [1, 1]]];
-    for (const [cx, cz, out] of cells) spots.push({ key: `f${cx}${cz}`, piece: "wood_foundation", at: [cx, cz], out });
-    const edges: [string, [number, number], [number, number]][] = [
-      ["n0", [0, -0.5], [0, -1]], ["n1", [1, -0.5], [0, -1]], ["e0", [1.5, 0], [1, 0]], ["e1", [1.5, 1], [1, 0]],
-      ["s1", [1, 1.5], [0, 1]], ["s0", [0, 1.5], [0, 1]], ["w1", [-0.5, 1], [-1, 0]], ["w0", [-0.5, 0], [-1, 0]],
-    ];
-    for (const [key, at, out] of edges) spots.push({ key, piece: key === "s0" ? "wood_doorframe" : "wood_wall", at, out });
-    spots.push({ key: "door", piece: "wood_door", at: [0, 1.5], out: [0, 1] });
-    for (const [cx, cz, out] of cells) spots.push({ key: `c${cx}${cz}`, piece: "wood_ceiling", at: [cx, cz], out });
-    return spots;
-  })(),
-};
-
-type P2 = [number, number];
-
-/** Whether a segment passes through a rectangle (x0, z0, x1, z1): Liang–Barsky clipping. */
-function crosses(a: P2, b: P2, r: [number, number, number, number]): boolean {
-  let t0 = 0, t1 = 1;
-  const d = [b[0] - a[0], b[1] - a[1]];
-  const edges: [number, number][] = [[-d[0]!, a[0] - r[0]], [d[0]!, r[2] - a[0]], [-d[1]!, a[1] - r[1]], [d[1]!, r[3] - a[1]]];
-  for (const [pp, q] of edges) {
-    if (pp === 0) {
-      if (q < 0) return false;
-      continue;
-    }
-    const t = q / pp;
-    if (pp < 0) t0 = Math.max(t0, t);
-    else t1 = Math.min(t1, t);
-    if (t0 > t1) return false;
-  }
-  return t1 - t0 > 1e-6;
-}
-
-/** Ways round a rectangle: through one corner, or two neighbouring ones, the shortest that never cuts through it. */
-function around(from: P2, to: P2, r: [number, number, number, number], margin: number): P2[] {
-  if (!crosses(from, to, r)) return [];
-  const c: P2[] = [[r[0] - margin, r[1] - margin], [r[2] + margin, r[1] - margin], [r[2] + margin, r[3] + margin], [r[0] - margin, r[3] + margin]];
-  const len = (pts: P2[]) => pts.slice(1).reduce((n, q, i) => n + Math.hypot(q[0] - pts[i]![0], q[1] - pts[i]![1]), 0);
-  const ok = (pts: P2[]) => pts.slice(1).every((q, i) => !crosses(pts[i]!, q, r));
-  let best: P2[] | null = null;
-  for (let i = 0; i < 4; i++) {
-    for (const way of [[c[i]!], [c[i]!, c[(i + 1) % 4]!], [c[i]!, c[(i + 3) % 4]!]]) {
-      const pts = [from, ...way, to];
-      if (ok(pts) && (!best || len(pts) < len([from, ...best, to]))) best = way;
-    }
-  }
-  return best ?? [];
-}
-
-function* build(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
-  const b = ctx.belief, p = ctx.progress;
-  const name = String(args.blueprint ?? "hut_2x2");
-  const plan = BLUEPRINTS[name];
-  if (!plan) return { status: "failed", summary: `I don't know the blueprint ${name}: ${Object.keys(BLUEPRINTS).join(", ")}` };
-  const placed = ((p.placed ??= {}) as Record<string, string>);
-  const left = () => plan.filter((s) => !placed[s.key] || !b.things.has(placed[s.key]!));
-  // What is needed that is not in hand: craft it from materials, or say what is short.
-  const needs: Record<string, number> = {};
-  for (const s of left()) needs[s.piece] = (needs[s.piece] ?? 0) + 1;
-  // The whole bill first: what every missing piece takes, against what is in the bag, so the shortage is told once.
-  const bill: Record<string, number> = {};
-  for (const [piece, n] of Object.entries(needs)) {
-    const missing = Math.max(0, n - b.count(piece));
-    const r = b.inventory?.craftable.find((x) => x.item === piece);
-    if (!missing || !r) continue;
-    for (const [item, k] of Object.entries(r.needs)) bill[item] = (bill[item] ?? 0) + k * missing;
-  }
-  const short = Object.entries(bill).filter(([item, k]) => b.count(item) < k).map(([item, k]) => `${k - b.count(item)} more ${item}`);
-  if (short.length) {
-    const all = Object.entries(bill).map(([item, k]) => `${k} ${item}`).join(", ");
-    return { status: "blocked", summary: `the ${name} takes ${all} in all; I'm short of ${short.join(", ")}`, data: { bill, short, reason: "materials" } };
-  }
-  // Queue the crafting in the order the pieces go up, and start placing as soon as the first is made: crafting goes
-  // on while the character works, as a player's queue does.
-  const crafting: { piece: string; acted: ReturnType<SkillContext["body"]["act"]> }[] = [];
-  if (!p.queued) {
-    for (const piece of [...new Set(plan.map((x) => x.piece))]) {
-      const missing = (needs[piece] ?? 0) - b.count(piece);
-      if (missing > 0) crafting.push({ piece, acted: ctx.body.act([{ control: "craft", item: piece, count: missing }], `craft ${missing} ${piece}`) });
-    }
-    p.queued = true;
-  }
-  const craftFailed = () => crafting.find((c) => c.acted.state.outcomes[0] && c.acted.state.outcomes[0].status !== "completed");
-  let origin = p.origin as [number, number] | undefined;
-  let placedAt = -Infinity;
-  for (const spot of left()) {
-    // A view of the inventory from after the last placement, with the piece in it (or its crafting failed).
-    yield { until: () => (b.inventoryAt > placedAt && b.count(spot.piece) > 0) || !!craftFailed(), ms: 30000 };
-    const bad = craftFailed();
-    if (bad && b.count(spot.piece) === 0) return { status: "failed", summary: `crafting ${bad.piece} failed: ${bad.acted.state.outcomes[0]?.code ?? bad.acted.state.outcomes[0]?.status}`, data: { placed } };
-    if (!(yield* hold(ctx, spot.piece))) return { status: "blocked", summary: `I have no ${spot.piece} left`, data: { placed } };
-    let want: [number, number, number] | null = null;
-    if (origin) {
-      want = [origin[0] + spot.at[0] * 3, 0, origin[1] + spot.at[1] * 3];
-      const stand: [number, number, number] = [want[0] + spot.out[0] * 3 / Math.hypot(...spot.out), 0, want[2] + spot.out[1] * 3 / Math.hypot(...spot.out)];
-      // Round the outside of the house, never through it: its walls are in the way once they stand.
-      const foot: [number, number, number, number] = [origin[0] - 1.6, origin[1] - 1.6, origin[0] + 4.6, origin[1] + 4.6];
-      const here = b.pos;
-      let r: string = "arrived";
-      for (const w of [...around([here[0], here[2]], [stand[0], stand[2]], foot, 1.4), [stand[0], stand[2]] as P2]) {
-        const last = w[0] === stand[0] && w[1] === stand[2];
-        r = yield* ctx.body.walkTo(() => [w[0], 0, w[1]], last ? 0.5 : 1.0);
-        if (r !== "arrived") break;
-      }
-      if (r !== "arrived") return { status: "blocked", summary: `I can't get to where the ${spot.piece} goes`, data: { placed } };
-      yield* ctx.body.turnTo(b.yawTo(want));
-    }
-    // Read the preview the game shows, and place only where the blueprint wants the piece.
-    const after = b.now;
-    yield { until: () => b.focusAt > after && b.focus.placement?.piece === spot.piece, ms: 1500 };
-    const pv = b.focus.placement;
-    const off = pv && want ? Math.hypot(pv.pos[0] - want[0], pv.pos[2] - want[2]) : 0;
-    const choice = yield* ctx.decide("build.spot", ["place", "skip"], { piece: spot.piece, spot: spot.key, valid: pv?.valid ?? false, reason: pv?.reason ?? "no preview", off_m: Math.round(off * 100) / 100, snapped: pv?.snapped ?? null });
-    if (choice !== "place" || !pv?.valid || off > 0.5 || pv.piece !== spot.piece) {
-      return { status: "blocked", summary: `the ${spot.piece} won't go at ${spot.key}: ${pv ? (pv.valid ? `the preview is ${off.toFixed(1)} m off` : pv.reason) : "no preview"}`, data: { placed, preview: pv } };
-    }
-    const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "use", hand: "primary" }], `place ${spot.piece} ${spot.key}`), 3000);
-    const id = o?.detail?.placed;
-    if (typeof id !== "string") return { status: "failed", summary: `placing the ${spot.piece} failed: ${o?.code ?? o?.status}`, data: { placed } };
-    placed[spot.key] = id;
-    placedAt = b.now;
-    if (!origin) origin = p.origin = [pv.pos[0], pv.pos[2]] as [number, number];
-    yield { until: () => b.things.has(id), ms: 1500 };
-  }
-  ctx.body.stop("built");
-  return { status: "done", summary: `built the ${name}: ${Object.keys(placed).length} pieces`, data: { placed, origin } };
-}
+// --- Building: grunt/build.ts -------------------------------------------------------------------------------
 
 function* craft(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const item = String(args.item ?? ""), count = Math.max(1, Number(args.count ?? 1));
@@ -598,7 +470,7 @@ export const SKILLS: Record<string, Skill> = {
   },
   harvest: {
     name: "harvest", describe: "Gather from trees, rocks or bushes near where it starts (best tool in hand), until none is left near, or until `count` of the main yield.",
-    params: { kind: "tree | rock | bush", target: "entity id (optional): the one to start with", count: "number (optional): stop once this many wood, stone or fiber ITEMS are gathered (a tree gives 30 wood); leave it out to clear every one near", radius: "metres around the start (default 25)", until: "{item: count} (optional): stop when the inventory holds these" },
+    params: { kind: "tree | rock | bush", target: "entity id (optional): the one to start with", only: "boolean: just the target, until it is gone (to clear it away)", count: "number (optional): stop once this many wood, stone or fiber ITEMS are gathered (a tree gives about 150 wood with a hatchet); leave it out to clear every one near", radius: "metres around the start (default 25)", until: "{item: count} (optional): stop when the inventory holds these" },
     body: true, run: harvest,
   },
   gather: {
@@ -608,8 +480,8 @@ export const SKILLS: Record<string, Skill> = {
   flee: { name: "flee", describe: "Run from a threat until it is far or lost.", params: { from: "entity id", yaw: "the world yaw it was heard from" }, body: true, run: flee },
   fight: { name: "fight", describe: "Fight a creature with the best weapon to hand until it is dead or gone.", params: { target: "entity id" }, body: true, run: fight },
   build: {
-    name: "build", describe: "Build a blueprint where the character stands, the first foundation where its placement preview is: it crafts missing pieces from materials, then places each in order.",
-    params: { blueprint: "hut_2x2" }, body: true, run: build,
+    name: "build", describe: "Build a base from the library (blueprint) or a layout you write (game_blueprints shows both): it checks the whole plan with the game, finds ground where it fits, crafts the pieces and places them section by section through the game's build helper. check: true only checks (fit, what is built, the bill). Stopped on a piece, it says which and why; take it up again with resume.",
+    params: { blueprint: "a library name", layout: "a layout object, in place of blueprint", tier: "thatch | wood | stone (default wood)", x: "number: where its middle goes (default: in front of you)", z: "number", facing: "n | e | s | w: the side its front faces (default: toward you)", check: "boolean: only check", section: "pieces a step (default 30)" }, body: true, run: build,
   },
   craft: { name: "craft", describe: "Craft items from the inventory, by the recipes the inventory screen shows.", params: { item: "item name", count: "number" }, body: false, run: craft },
   say: { name: "say", describe: "Say a line in chat.", params: { text: "string", channel: "local | global | group" }, body: false, run: say },

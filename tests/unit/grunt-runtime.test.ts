@@ -50,9 +50,9 @@ test("harvest finds the trees, walks to each, faces it and swings until it is go
   h.run(120_000, () => task.status !== "running");
   expect(task.status).toBe("done");
   expect([...h.world.things.values()].filter((t) => t.type === "tree")).toEqual([]);
-  expect(h.world.count("wood")).toBe(90);
+  expect(h.world.count("wood")).toBe(450);
   expect(task.progress.targets).toBe(3);
-  expect(task.result!.summary).toContain("90 wood");
+  expect(task.result!.summary).toContain("450 wood");
   // Each swing was a decision, and the targets were chosen nearest first.
   const targets = h.rt.trace.of("decision").filter((d) => d.point === "harvest.target").map((d) => d.choice);
   expect(targets.length).toBe(3);
@@ -62,12 +62,12 @@ test("harvest finds the trees, walks to each, faces it and swings until it is go
 
 test("harvest stops at a count of wood, and is blocked when the trees run out first", async () => {
   const h = await harness(grove);
-  const some = h.rt.start("harvest", { kind: "tree", count: 20 });
+  const some = h.rt.start("harvest", { kind: "tree", count: 60 });
   h.run(60_000, () => some.status !== "running");
   expect(some.status).toBe("done");
-  expect(h.world.count("wood")).toBeGreaterThanOrEqual(20);
-  expect(h.world.count("wood")).toBeLessThan(30);
-  const more = h.rt.start("harvest", { kind: "tree", count: 500 });
+  expect(h.world.count("wood")).toBeGreaterThanOrEqual(60);
+  expect(h.world.count("wood")).toBeLessThan(100);
+  const more = h.rt.start("harvest", { kind: "tree", count: 2000 });
   h.run(120_000, () => more.status !== "running");
   expect(more.status).toBe("blocked");
   expect(more.result!.summary).toMatch(/no trees left that I know of; .*short of \d+ wood/);
@@ -101,7 +101,7 @@ test("a raptor seen by the grove from the start blocks the harvest for the Direc
   h.run(60_000, () => fight.status !== "running");
   expect(h.world.things.has(raptor.id)).toBe(false);
   expect(h.rt.reports.find((r) => r.kind === "clear")!.text).toContain(`harvest ${task.id} goes on by itself`);
-  h.run(120_000, () => task.status === "done");
+  h.run(300_000, () => task.status === "done");
   expect(task.status).toBe("done");
   expect([...h.world.things.values()].some((t) => t.type === "tree")).toBe(false);
 });
@@ -116,15 +116,15 @@ test("a line with the character's name, or from its owner, reaches the Director;
 });
 
 test("craft makes what the inventory screen offers, and says what is missing otherwise", async () => {
-  const h = await harness({ me: { items: { wood: 40, thatch: 10, fiber: 6 } } });
-  const ok = h.rt.start("craft", { item: "wood_foundation", count: 1 });
-  h.run(5000, () => ok.status !== "running");
+  const h = await harness({ me: { items: { wood: 100, thatch: 25, fiber: 20 } } });
+  const ok = h.rt.start("craft", { item: "piece_foundation_wood", count: 1 });
+  h.run(8000, () => ok.status !== "running");
   expect(ok).toMatchObject({ status: "done" });
   h.run(1000);
-  const no = h.rt.start("craft", { item: "wood_foundation", count: 2 });
+  const no = h.rt.start("craft", { item: "piece_foundation_wood", count: 2 });
   h.run(1000, () => no.status !== "running");
   expect(no.status).toBe("blocked");
-  expect(no.result!.summary).toContain("I can make 0 wood_foundation, not 2");
+  expect(no.result!.summary).toContain("I can make 0 piece_foundation_wood, not 2");
 });
 
 test("a raptor that keeps coming back is fought with the hatchet on the third time, and the trees are finished", async () => {
@@ -143,28 +143,83 @@ test("a raptor that keeps coming back is fought with the hatchet on the third ti
   expect(h.rt.reports.some((r) => r.kind === "critical")).toBe(false);
 });
 
-test("build lays a 2x2 hut from the pieces in the bag: each piece placed from outside, by the preview, in support order", async () => {
-  const { check } = await import("../../tools/grunt/play.ts");
-  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { wood_foundation: 4, wood_wall: 7, wood_doorframe: 1, wood_door: 1, wood_ceiling: 4 } } });
-  const task = h.rt.start("build", { blueprint: "hut_2x2" });
-  h.run(300_000, () => task.status !== "running");
-  expect(task.result?.summary).toBe("built the hut_2x2: 17 pieces");
-  expect(check({ hut_2x2: true }, h.world)).toBe(true);
-  expect(h.rt.trace.of("decision").filter((d) => d.point === "build.spot").every((d) => d.choice === "place")).toBe(true);
+const HUT_PIECES = { piece_foundation_wood: 4, piece_wall_wood: 8, piece_door_wood: 1, piece_ceiling_wood: 4 };
+
+test("build puts up a library layout from the pieces in the bag through the helper: one check, then sections, no aiming", async () => {
+  const { stands } = await import("../../tools/grunt/play.ts");
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: HUT_PIECES } });
+  const task = h.rt.start("build", { blueprint: "hut_2x2", section: 10 });
+  h.run(120_000, () => task.status !== "running");
+  expect(task.result?.summary).toBe("built the hut_2x2 (wood) at 0, -6, front facing south: 17 pieces");
+  expect(stands(h.world, "hut_2x2")).toBe(true);
+  const acts = h.rt.trace.of("act").flatMap((r) => r.actions as { control: string; op?: string }[]);
+  expect(acts.filter((x) => x.control === "plan").map((x) => x.op)).toEqual(["check", "build", "build"]);
+  expect(acts.some((x) => x.control === "use")).toBe(false);
+  // Built in front of the character, the front facing back to where it stood.
+  expect(h.world.structures.bases.size).toBe(1);
 });
 
 test("build crafts the pieces it lacks from materials first, and says what is short when it cannot", async () => {
-  const { check } = await import("../../tools/grunt/play.ts");
-  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { wood: 400, thatch: 100, fiber: 60 } } });
+  const { stands } = await import("../../tools/grunt/play.ts");
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { wood: 900, thatch: 227, fiber: 160 } } });
   const task = h.rt.start("build", { blueprint: "hut_2x2" });
   h.run(400_000, () => task.status !== "running");
   expect(task.status).toBe("done");
-  expect(check({ hut_2x2: true }, h.world)).toBe(true);
+  expect(stands(h.world, "hut_2x2", "wood")).toBe(true);
   const poor = await harness({ me: { items: { wood: 30, thatch: 10, fiber: 10 } } });
   const t2 = poor.rt.start("build", { blueprint: "hut_2x2" });
   poor.run(10_000, () => t2.status !== "running");
   expect(t2.status).toBe("blocked");
-  expect(t2.result!.summary).toBe("the hut_2x2 takes 297 wood, 73 thatch, 40 fiber in all; I'm short of 267 more wood, 63 more thatch, 30 more fiber");
+  expect(t2.result!.summary).toBe("the hut_2x2 takes 900 wood, 227 thatch, 160 fiber to craft its 17 missing pieces; I'm short of 870 more wood, 217 more thatch, 150 more fiber");
+  // Only checking: where it would go and what it takes, nothing built.
+  const look = poor.rt.start("build", { blueprint: "house_3x3", tier: "stone", check: true });
+  poor.run(5_000, () => look.status !== "running");
+  expect(look.result!.summary).toMatch(/^the house_3x3 \(stone\) fits at .*: 31 pieces \(9 foundation, 9 ceiling, 10 wall, 1 doorframe, 2 windowframe, 1 door\)|^the house_3x3 \(stone\) fits at/);
+  expect(poor.world.structures.bases.size).toBe(0);
+});
+
+test("a site with trees on it moves to the nearest ground that fits; a tier without a form is refused", async () => {
+  const { stands } = await import("../../tools/grunt/play.ts");
+  const trees = [[-3, -6], [0, -6], [3, -6], [-3, -9], [0, -9], [3, -9]].map(([x, z]) => ({ type: "tree" as const, x: x!, z: z! }));
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: HUT_PIECES }, things: trees });
+  const task = h.rt.start("build", { blueprint: "hut_2x2" });
+  h.run(120_000, () => task.status !== "running");
+  expect(task.status).toBe("done");
+  expect(stands(h.world, "hut_2x2")).toBe(true);
+  expect([...h.world.things.values()].filter((t) => t.type === "tree").length).toBe(6);
+  const thatch = h.rt.start("build", { blueprint: "house_3x3", tier: "thatch" });
+  h.run(2_000, () => thatch.status !== "running");
+  expect(thatch.result!.summary).toBe("thatch has no windowframe: build it in wood or stone, or leave them out");
+});
+
+test("a build stopped by something in the way says which piece and why, and goes on from there when taken up again", async () => {
+  const { stands } = await import("../../tools/grunt/play.ts");
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { piece_foundation_wood: 9, piece_wall_wood: 13, piece_door_wood: 1, piece_ceiling_wood: 9 } } });
+  const task = h.rt.start("build", { blueprint: "house_3x3" });
+  h.run(1_500);
+  // A rock rolls onto the last foundation's cell before it goes down.
+  const base = [...h.world.things.values()].find((t) => t.piece)!;
+  const b = h.world.structures.bases.get(base.piece!.base)!;
+  const rock = h.world.place("resource", "rock", b.x + 6, b.z + 6);
+  h.run(30_000, () => task.status !== "running");
+  expect(task.status).toBe("blocked");
+  expect(task.result!.summary).toBe(`the house_3x3 stopped at piece 8 of 31: the foundation at cell 2,2 storey 0: blocked (${rock})`);
+  // The message says how to clear it.
+  expect(h.rt.reports.at(-1)!.text).toContain(`Options: harvest it away (game_do harvest {"target": "${rock}", "only": true}), then game_do {"resume": "${task.id}"}`);
+  // Taken up again with the rock still there: still blocked, by the same rock, not a broken layout.
+  h.rt.retake(task.id);
+  h.run(5_000, () => task.status !== "running");
+  expect(task.status).toBe("blocked");
+  expect(task.result!.summary).toBe(`the house_3x3 can't go on: the foundation at cell 2,2 storey 0: blocked (${rock})`);
+  // Cleared with the suggested call (a pick for the rock), and taken up again: it goes on from there.
+  h.world.give("stone_pick", 1);
+  const clear = h.rt.start("harvest", { target: rock, only: true });
+  h.run(120_000, () => clear.status !== "running");
+  expect(clear.result!.summary).toStartWith(`the rock ${rock} is gone`);
+  h.rt.retake(task.id);
+  h.run(60_000, () => task.status !== "running");
+  expect(task.status).toBe("done");
+  expect(stands(h.world, "house_3x3")).toBe(true);
 });
 
 test("a blocked task taken up again keeps its place and progress: the harvest goes back to its own grove", async () => {
@@ -180,7 +235,7 @@ test("a blocked task taken up again keeps its place and progress: the harvest go
   h.run(120_000, () => again.status !== "running");
   expect(again.status).toBe("done");
   expect([...h.world.things.values()].some((t) => t.type === "tree")).toBe(false);
-  expect(h.world.count("wood")).toBe(60);
+  expect(h.world.count("wood")).toBe(300);
 });
 
 test("a speaker in sight is told with its id, distance and direction, so the Director can go to it", async () => {

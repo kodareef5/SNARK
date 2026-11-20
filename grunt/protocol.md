@@ -80,7 +80,7 @@ client                                      game
   "capabilities": {
     "channels": ["self", "entities", "terrain", "inventory", "chat", "focus"],
     "controls": ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "rotate", "chat"],
-    "events": ["hurt", "died", "respawn", "chat", "item", "mounted", "dismounted", "notice", "blocked", "heard", "crafted"],
+    "events": ["hurt", "died", "respawn", "chat", "item", "mounted", "dismounted", "notice", "blocked", "heard", "crafted", "built"],
     "verbs": ["open", "harvest", "pick_up", "mount", "talk"]
   },
   "limits": { "max_duration_ms": 2000, "leash_ms": 1500, "max_rate_hz": 20,
@@ -199,7 +199,8 @@ null for the hands. `crafting` is the queue: `[{ "item": "wood_wall", "left": 2,
 **`focus`**: what the character is looking at and could act on now: `{ "target": "n:7.33", "distance": 2.1,
 "verbs": ["harvest"] }` or `{ "target": null }`.
 
-While a structure is held, `focus` also has `placement`, the preview a player sees: `{ "piece": "wood_wall", "pos":
+A game may also offer the aimed way of building a player has (the build helper below is the way grunt builds). While
+a structure is held, `focus` then has `placement`, the preview a player sees: `{ "piece": "wood_wall", "pos":
 [...], "yaw": 1.57, "snapped": { "to": "s:12", "where": "east" }, "valid": true, "reason": null }`. `snapped` is null
 for a piece standing free; `reason` says why an invalid preview is refused (`no_support`, `blocked`, `occupied`,
 `too_far`, `not_flat`, `not_permitted`). `use primary` places the piece where the preview stands, if it is valid.
@@ -283,9 +284,47 @@ the connection is about to close.
 | `craft` | `item`, `count` | The inventory screen's craft button, from `craftable`; the outcome comes when the last is made (`crafted` events between) |
 | `rotate` | `steps` | Turns the held structure's preview, a step being the game's own (90° for most pieces) |
 | `chat` | `channel` (`local`, `global`, `group`), `text` | As a player types it |
+| `plan` | `op` (`check`, `build`), `plan`, `from`, `to` | The build helper, below |
 
 `duration_ms` and `hold_ms` are at most `limits.max_duration_ms`. To keep moving, a client sends again before the
 last one runs out.
+
+### Building: the build helper
+
+A player builds by aiming each piece and reading the preview. A program has no business aiming foundations: where a
+game offers the build helper (`plan` in `controls`, `building` in `capabilities`), the client says the whole
+structure at once, the game checks it, and places it, piece by piece, at a pace and reach the game sets. It is more
+than a player's hands can do, held back on purpose (`rate`, `reach`), and every rule a player's placement keeps
+(support, room, ground, enemies near, the pieces in the bag) still holds.
+
+`capabilities.building` gives the grid and the pieces:
+
+```json
+{ "cell": 3, "storey": 3, "reach": 24, "rate": 2, "max_pieces": 80,
+  "tiers": { "wood": { "foundation": "piece_foundation_wood", "wall": "piece_wall_wood",
+                       "doorframe": "piece_wall_wood", "windowframe": "piece_wall_wood", "ceiling": "piece_ceiling_wood",
+                       "door": "piece_door_wood", "pillar": "piece_pillar_wood", "stairs": "piece_stairs_wood" },
+             "thatch": { "foundation": "…", "wall": "…", "doorframe": "…", "ceiling": "…", "door": "…" } } }
+```
+
+A **plan** is an anchor and pieces in order: `{ "anchor": { "at": [x, z], "turns": 0 }, "pieces": [{ "form":
+"foundation", "item": "piece_foundation_wood", "cell": [0, 0], "level": 0 }, { "form": "wall", "item": "…", "cell":
+[0, 0], "level": 0, "side": "n" }, …] }`. Cells are the plan's own grid: `i` grows east, `j` south; cell 0, 0's
+centre is at the anchor, and `turns` quarter turns clockwise (seen from above) turn the whole grid. A piece on an edge
+(wall, doorframe, windowframe, door) names the cell's `side` (`n`, `e`, `s`, `w`); a ceiling's `level` is the storey
+it roofs; a pillar stands at its cell's north-west corner; stairs give `up`, the way up. An anchor `{ "base": id }`
+lays the plan on the grid of a base already standing; a point on the grid of one of the character's own bases nearby
+joins that base, as a player's pieces snap to what stands.
+
+- `op: "check"` answers at once (`completed`), its `detail` a verdict for every piece, in order, each as though the
+  pieces before it that can go had gone: `ok`, `built` (the same piece already stands there), `occupied` (another
+  piece does), `blocked` (with `by`: a thing or body in the way), `no_support`, `terrain`, `not_in_tier`,
+  `enemy_near`; and `need` (items for the pieces still to place) and `have` (those in the bag).
+- `op: "build"` places pieces `from` … `to` in order, at `rate` a second, each within `reach` of the character,
+  taking each from the bag. A piece already standing is passed over. Its outcome is `completed` with `detail.placed`,
+  `detail.ids` and `detail.base`, or `failed` at the first piece that cannot go: `detail.at` (its index),
+  `detail.reason` (a verdict, `too_far`, or `missing_items` with `item`) and `by`. The client deals with it and sends
+  the plan again from there. `built` events come as pieces go up. `stop` stops it.
 
 ## Staying connected
 
@@ -299,7 +338,7 @@ last one runs out.
 
 ## Not in version 0
 
-Deltas instead of whole snapshots; the map screen; stations' own screens beyond `craft` with `at`; inspecting a
+Deltas instead of whole snapshots; stations' own screens beyond `craft` with `at`; inspecting a
 creature or a structure closely; group (tribe) management; vehicles' own controls; an administrator's channel. An admin's
 powers, if a game offers them, go through a separate, explicitly granted and logged channel, never through the
 player's controls.

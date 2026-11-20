@@ -99,7 +99,8 @@
   "success": {
     "all": [
       {
-        "hut_south_of": -4
+        "stands": "hut_2x2",
+        "south_of": -4
       },
       {
         "said": "done|built|finished|ready|complete|\\bup\\b|standing"
@@ -107,6 +108,6 @@
     ]
   },
   "budget": {
-    "seconds": 600
+    "seconds": 720
   }
 }

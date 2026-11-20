@@ -130,6 +130,7 @@ export class Runtime {
   async connect(name: string): Promise<void> {
     const w = await this.session.hello(name);
     this.name = w.character.name;
+    this.belief.building = w.capabilities.building ?? null;
     this.trace.record("connected", { game: w.game, character: w.character, limits: w.limits });
     // A game with a map screen: it is read now and then (under fog it grows as the character explores), and the ground
     // about the character more often, wider, since finding ways depends on it.
@@ -287,6 +288,13 @@ export class Runtime {
       return `. Options: fight it to clear the way (game_do fight {"target": "${d.id}"}${health}${won.length ? `; you have beaten ${won.length} ${d.type} before, losing ${won.at(-1)!.health_lost} health` : ""}), harvest somewhere else, or wait and game_do {"resume": "${task.id}"}.`;
     }
     if (result.data?.reason === "weight") return ". Options: craft something from the materials, or put things in a box.";
+    // A build with something standing where a piece goes: what to do about that thing, then go on.
+    const by = typeof result.data?.by === "string" ? this.belief.things.get(result.data.by) : undefined;
+    if (task.skill === "build" && by) {
+      const clear = by.kind === "resource" ? `harvest it away (game_do harvest {"target": "${by.id}", "only": true})` : by.kind === "creature" || by.kind === "player" ? `deal with the ${by.type} (fight it, or wait for it to move)` : `move it`;
+      return `. Options: ${clear}, then game_do {"resume": "${task.id}"}; or build elsewhere (game_do build with another x, z).`;
+    }
+    if (task.skill === "build" && result.data?.reason === "terrain") return `. Options: build elsewhere (game_do build with another x, z), or a smaller layout.`;
     if (result.data?.reason === "materials") return `. Options: game_do gather {"items": ${JSON.stringify(result.data.bill ?? {})}} gathers the whole list in one task; then game_do {"resume": "${task.id}"}.`;
     return "";
   }
@@ -331,12 +339,16 @@ export class Runtime {
     }
     this.dead = false;
     if (this.freed) {
+      // Once nothing runs (a fight with the dead creature ends by itself, its win remembered), unless the Director has
+      // started something else meanwhile.
       const f = this.freed, cur = this.current;
-      const over = !cur || !(cur.by === "director" && !(cur.skill === "fight" && cur.args.target === f.danger));
-      if (over && this.tasks.find((t) => t.id === f.id)?.status === "blocked") {
+      const blocked = this.tasks.find((t) => t.id === f.id)?.status === "blocked";
+      const other = !!cur && cur.by === "director" && !(cur.skill === "fight" && cur.args.target === f.danger);
+      if (!blocked || other) this.freed = null;
+      else if (!cur) {
         this.freed = null;
         this.retake(f.id);
-      } else if (!over || this.tasks.find((t) => t.id === f.id)?.status !== "blocked") this.freed = null;
+      }
     }
     const signals = this.monitors.flatMap((m) => m(this.belief, { name: this.name, owners: this.owners }));
     this.arbitrate(signals);

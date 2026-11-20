@@ -9,9 +9,9 @@
       "z": 0,
       "yaw": 0,
       "items": {
-        "wood": 400,
-        "thatch": 100,
-        "fiber": 60
+        "wood": 900,
+        "thatch": 227,
+        "fiber": 160
       }
     },
     "things": [
@@ -31,7 +31,8 @@
   "success": {
     "all": [
       {
-        "hut_2x2": true
+        "stands": "hut_2x2",
+        "tier": "wood"
       },
       {
         "said": "done|built|finished|ready|complete|\\bup\\b|standing"

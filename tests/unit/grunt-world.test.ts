@@ -1,8 +1,11 @@
 import { expect, test } from "bun:test";
+import { BLUEPRINTS } from "../../grunt/blueprints.ts";
+import { compile } from "../../grunt/layout.ts";
 import type { Action, GameMessage, Observation, Outcome } from "../../grunt/protocol.ts";
 import { GameEndpoint, LIMITS } from "../../tools/grunt/game.ts";
+import { stands } from "../../tools/grunt/play.ts";
 import { makeWorld, type Scene } from "../../tools/grunt/scenes.ts";
-import { yawTo } from "../../tools/grunt/world.ts";
+import { BUILDING } from "../../tools/grunt/structures.ts";
 
 /** A client in the same process: raw protocol messages in, every message out kept in order. */
 function open(scene: Scene) {
@@ -62,64 +65,78 @@ test("a tree is chopped only while it is faced and within reach, and is gone whe
   const miss = s.act({ control: "use", hand: "primary", hold_ms: 1200 });
   s.step(30);
   expect(s.outcomes(miss)[0]!.detail).toEqual({ swings: 2 });
-  // Turned to face it, the swings give wood until the tree is gone (30 wood, 3 a swing with the hatchet).
+  // Turned to face it, the swings give wood until the tree is gone (150 wood, 12 a swing with the hatchet).
   const turn = s.act({ control: "look", yaw: 0 });
   s.step(10);
   expect(s.outcomes(turn)[0]).toMatchObject({ status: "completed" });
   const tree = s.observe({ focus: {} }).channels.focus!.target!;
   expect(tree).toStartWith("n:");
-  for (let i = 0; i < 6 && s.world.things.has(tree); i++) {
+  for (let i = 0; i < 12 && s.world.things.has(tree); i++) {
     s.act({ control: "use", hand: "primary", hold_ms: 2000 });
     s.step(42);
   }
   expect(s.world.things.has(tree)).toBe(false);
-  expect(s.world.count("wood")).toBe(30);
-  expect(s.world.count("thatch")).toBe(10);
+  expect(s.world.count("wood")).toBe(150);
+  expect(s.world.count("thatch")).toBe(52);
 });
 
 test("crafting takes the recipe's materials and time, and is refused without them", () => {
-  const s = open({ me: { items: { wood: 40, thatch: 10, fiber: 6 } } });
-  const c = s.act({ control: "craft", item: "wood_foundation", count: 1 });
-  s.step(10);
+  const s = open({ me: { items: { wood: 100, thatch: 25, fiber: 20 } } });
+  const c = s.act({ control: "craft", item: "piece_foundation_wood", count: 1 });
+  s.step(60);
   expect(s.outcomes(c)).toEqual([]);
-  s.step(25);
-  expect(s.outcomes(c)[0]).toMatchObject({ status: "completed", detail: { made: "wood_foundation" } });
-  expect(s.world.count("wood_foundation")).toBe(1);
-  expect(s.world.count("wood")).toBe(15);
+  s.step(50);
+  expect(s.outcomes(c)[0]).toMatchObject({ status: "completed", detail: { made: "piece_foundation_wood" } });
+  expect(s.world.count("piece_foundation_wood")).toBe(1);
+  expect(s.world.count("wood")).toBe(20);
   const inv = s.observe({ inventory: {} }).channels.inventory!;
-  expect(inv.craftable.find((r) => r.item === "wood_foundation")!.can).toBe(0);
-  s.act({ control: "craft", item: "wood_foundation", count: 1 });
+  expect(inv.craftable.find((r) => r.item === "piece_foundation_wood")!.can).toBe(0);
+  s.act({ control: "craft", item: "piece_foundation_wood", count: 1 });
   expect(s.got.at(-1)).toMatchObject({ type: "ack", actions: [{ accepted: false, code: "missing_items" }] });
 });
 
-test("pieces snap as a player's preview does: foundations side by side, a wall on an edge, a ceiling over walls", () => {
-  const s = open({ me: { x: 0, z: 5, yaw: 0, items: { wood_foundation: 2, wood_wall: 1, wood_ceiling: 1 } } });
-  const hold = (item: string) => {
-    s.act({ control: "select", slot: s.world.me.slots.findIndex((x) => x.item === item) });
+test("the build helper checks a plan whole, then places it from the bag at its pace, never aimed", () => {
+  const s = open({ me: { x: 0, z: 9, yaw: 0, items: { piece_foundation_wood: 4, piece_wall_wood: 8, piece_door_wood: 1, piece_ceiling_wood: 3 } }, things: [{ type: "tree", x: 3, z: 3 }] });
+  const tree = [...s.world.things.values()].find((t) => t.type === "tree")!.id;
+  const kit = BUILDING.tiers.wood!;
+  const pieces = compile(BLUEPRINTS.hut_2x2!).pieces.map((p) => ({ ...p, item: kit[p.form]! }));
+  const plan = { anchor: { at: [0, 0] as [number, number] }, pieces };
+  const check = (pl: typeof plan) => {
+    const c = s.act({ control: "plan", op: "check", plan: pl });
+    s.step(1);
+    return s.outcomes(c)[0]!.detail as { verdicts: { status: string; by?: string }[]; need: Record<string, number>; have: Record<string, number> };
   };
-  const place = () => {
-    const c = s.act({ control: "use", hand: "primary" });
-    s.step(8);
-    return s.outcomes(c)[0]!;
-  };
-  hold("wood_foundation");
-  expect(s.observe({ focus: {} }).channels.focus!.placement).toMatchObject({ piece: "wood_foundation", pos: [0, 0, 3], snapped: null, valid: true });
-  expect(place().detail!.placed).toStartWith("s:");
-  // Back up and look at the cell north of the first: the preview snaps to it.
-  s.world.me.z = 2;
-  expect(s.observe({ focus: {} }).channels.focus!.placement).toMatchObject({ pos: [0, 0, 0], snapped: { where: "north" }, valid: true });
-  place();
-  hold("wood_ceiling");
-  expect(s.observe({ focus: {} }).channels.focus!.placement).toMatchObject({ valid: false, reason: "no_support" });
-  expect(place()).toMatchObject({ status: "failed", code: "blocked", detail: { reason: "no_support" } });
-  hold("wood_wall");
-  s.world.me.yaw = yawTo(0, 2, 1.5, 3);
-  expect(s.observe({ focus: {} }).channels.focus!.placement).toMatchObject({ valid: true, snapped: { where: "east" } });
-  place();
-  hold("wood_ceiling");
-  s.world.me.yaw = 0;
-  s.world.me.z = 6;
-  expect(s.observe({ focus: {} }).channels.focus!.placement).toMatchObject({ pos: [0, 3, 3], valid: true });
+  // The tree stands on cell 1, 1: the fourth foundation.
+  const first = check(plan);
+  expect(first.verdicts[3]).toEqual({ status: "blocked", by: tree });
+  // Its two outer walls stand on nothing else: they cannot stand either.
+  expect(first.verdicts.map((v) => v.status).filter((v) => v !== "ok")).toEqual(["blocked", "no_support", "no_support"]);
+  expect(first.need).toEqual({ piece_foundation_wood: 4, piece_wall_wood: 8, piece_door_wood: 1, piece_ceiling_wood: 4 });
+  // A ceiling with nothing under it, a door with no frame: neither stands.
+  expect(check({ ...plan, pieces: [pieces.find((p) => p.form === "ceiling")!, pieces.find((p) => p.form === "door")!] }).verdicts.map((v) => v.status)).toEqual(["no_support", "no_support"]);
+  s.world.things.delete(tree);
+  const c = s.act({ control: "plan", op: "build", plan });
+  s.step(20);
+  const early = [...s.world.things.values()].filter((t) => t.piece).length;
+  expect(early).toBeGreaterThanOrEqual(2);
+  expect(early).toBeLessThanOrEqual(3);
+  s.step(400);
+  // One ceiling short: it stops there, saying so, with the rest standing.
+  expect(s.outcomes(c)[0]).toMatchObject({ status: "failed", code: "missing_items", detail: { at: 16, placed: 16, reason: "missing_items", item: "piece_ceiling_wood" } });
+  const base = (s.outcomes(c)[0]!.detail as { base: string }).base;
+  s.world.give("piece_ceiling_wood", 1);
+  const again = s.act({ control: "plan", op: "build", plan: { anchor: { base }, pieces }, from: 16 });
+  s.step(20);
+  expect(s.outcomes(again)[0]).toMatchObject({ status: "completed", detail: { placed: 1 } });
+  expect(check({ anchor: { base } as never, pieces }).verdicts.every((v) => v.status === "built")).toBe(true);
+  expect(stands(s.world, "hut_2x2")).toBe(true);
+  // The walls are walls: the character cannot walk through the back of the hut.
+  s.world.me.x = 1.5;
+  s.world.me.z = -4;
+  const walk = s.act({ control: "move", forward: -1, strafe: 0, duration_ms: 2000 });
+  s.step(45);
+  expect(s.outcomes(walk)[0]).toMatchObject({ status: "completed" });
+  expect(s.world.me.z).toBeLessThan(-1.9);
 });
 
 test("a quiet client is let go of, and a repeated command is answered, never run again", () => {

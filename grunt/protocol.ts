@@ -46,7 +46,53 @@ export interface Capabilities {
   controls: ControlName[];
   events: string[];
   verbs: string[];
+  /** The build helper (the plan control), where the game has it. */
+  building?: Building;
 }
+
+/** How a game's structures go together, for the plan control: a grid of foundation cells, storeys, the pieces each
+ * tier has (form → the item that places it), and how fast and how far off the helper places them. */
+export interface Building {
+  /** A foundation cell's side, metres. */
+  cell: number;
+  /** A storey's height, metres. */
+  storey: number;
+  /** How far from the character a piece may be placed, metres. */
+  reach: number;
+  /** Pieces placed a second. */
+  rate: number;
+  /** Pieces in one plan, at most. */
+  max_pieces: number;
+  tiers: Record<string, Partial<Record<PieceForm, string>>>;
+}
+
+export type PieceForm = "foundation" | "wall" | "doorframe" | "windowframe" | "ceiling" | "door" | "pillar" | "stairs";
+export type Side = "n" | "e" | "s" | "w";
+
+/** A piece of a plan, on the plan's grid: cell i grows east and j south of cell 0, 0; storey 0 is the ground. A piece
+ * on an edge (wall, doorframe, windowframe, door) names the cell's side it is on; stairs name the way up. A ceiling's
+ * storey is the one it roofs: it is the floor of the storey above. A pillar stands at its cell's north-west corner. */
+export interface PlanPiece {
+  form: PieceForm;
+  item: string;
+  cell: [number, number];
+  level: number;
+  side?: Side;
+  up?: Side;
+}
+
+/** Where a plan's grid lies: cell 0, 0's centre at a point, turned a number of quarter turns clockwise (seen from
+ * above: 1 turns its south to the west), or on the grid of a base already standing. */
+export type PlanAnchor = { at: [number, number]; turns?: number } | { base: EntityId };
+
+export interface Plan {
+  anchor: PlanAnchor;
+  pieces: PlanPiece[];
+}
+
+/** What the game says of each piece of a plan, checked in order as though those before it stood. */
+export type PieceVerdict =
+  | "ok" | "built" | "occupied" | "blocked" | "no_support" | "terrain" | "too_far" | "not_in_tier" | "enemy_near";
 
 export interface Limits {
   max_duration_ms: number;
@@ -263,7 +309,7 @@ export interface GameEvent extends Envelope<"event">, Sequenced {
 // --- Acting -------------------------------------------------------------------------------------------------------
 
 export type ControlName =
-  | "move" | "look" | "jump" | "crouch" | "stop" | "interact" | "use" | "select" | "items" | "craft" | "rotate" | "chat";
+  | "move" | "look" | "jump" | "crouch" | "stop" | "interact" | "use" | "select" | "items" | "craft" | "rotate" | "chat" | "plan";
 
 export type Action =
   | { control: "move"; forward: number; strafe: number; sprint?: boolean; duration_ms: number }
@@ -277,6 +323,10 @@ export type Action =
   | { control: "items"; op: "move" | "drop" | "equip" | "consume"; slot: number; to?: "self" | "open" | "ground"; count?: number }
   | { control: "craft"; item: string; count: number }
   | { control: "rotate"; steps: number }
+  /** The build helper. check: at once, a verdict for every piece and the bill of what is still to place. build: places
+   * the pieces from `from` up to `to` in order, at the game's rate, from the inventory, each within reach; it stops at
+   * the first that cannot go, saying which and why. */
+  | { control: "plan"; op: "check" | "build"; plan: Plan; from?: number; to?: number }
   | { control: "chat"; channel: "local" | "global" | "group"; text: string };
 
 export interface Act extends Envelope<"act"> {
