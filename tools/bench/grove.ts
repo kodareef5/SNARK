@@ -4,7 +4,7 @@
 // and after, and compare.
 //
 //   bun tools/bench/grove.ts [--place 1|2] [--spots -40,-20,0,20,40,80] [--headings 8] [--leaves half|solid]
-//                            [--squeeze 0] [--cells 4] [--out name]
+//                            [--squeeze 0] [--cells 4] [--cover from,per,most] [--against before.json] [--out name]
 //   bun tools/bench/grove.ts --sum file.json
 //
 // A place is a dense wood the tool finds on the map: the densest 3 by 3 chunks of broadleaf trees within 4 km of South
@@ -57,6 +57,10 @@ export interface Tree {
   inView: boolean;
   /** Its 16 m cell, as x * 4096 + z in cells of the tool's world. */
   cell: number;
+  /** The crowns in its way as the scene's grid counts them (client/core/render/cover.ts), where the grid was made; -1 if not. */
+  grid: number;
+  /** Its node, chunk * 65536 + slot, the same from run to run. */
+  key: number;
 }
 
 /** A crown as the map places it: a disc round the trunk from a third of the tree's height to its top. */
@@ -101,12 +105,14 @@ export interface Options {
   leaves: "half" | "solid";
   squeeze: number;
   cells: number;
+  /** Cells of trees behind this many crowns or more drawn as if farther (Tier.nodes.cover); none if not given. */
+  cover?: { from: number; per: number; most: number };
   /** A change to the world before it is drawn: what a phase turns on, for a before and after. */
   setup?: (w: NodeWorld) => void;
 }
 
 /** Every view of the walk, and its trees. */
-export function walk(o: Options): { middle: [number, number]; rows: { spot: number; heading: number; frame: number; far: number; treePx: number; pixels: number; draws: number; trees: Tree[] }[] } {
+export function walk(o: Options): { middle: [number, number]; rows: { buildMs: number; steppedMs: number; spot: number; heading: number; frame: number; far: number; treePx: number; pixels: number; draws: number; trees: Tree[] }[] } {
   const map = parseMap(new Uint8Array(readFileSync(MAP)), false);
   const reg = compileContent(CORE_CONTENT).registry!;
   const mhf = mapHeightfield(map);
@@ -148,6 +154,7 @@ export function walk(o: Options): { middle: [number, number]; rows: { spot: numb
   scene.budget.on = o.squeeze !== 0;
   scene.budget.held = true;
   scene.budget.squeeze = o.squeeze;
+  if (o.cover) scene.assets.tier = { ...scene.assets.tier, nodes: { ...scene.assets.tier.nodes, cover: o.cover } };
   o.setup?.(w);
   const table = scene.assets.table, tris = table.tris;
 
@@ -189,6 +196,26 @@ export function walk(o: Options): { middle: [number, number]; rows: { spot: numb
     const [sx, sz] = [ex + ux * step - ox * CHUNK_SIZE, ez + uz * step - oz * CHUNK_SIZE];
     w.stand(sx, sz);
     const eye = w.hf.heightAt(sx, sz) + EYE;
+    // Settled at the spot first, as a player who walked there would be, past any change of level still fading.
+    w.look(sx, eye, sz, 0, 0);
+    // The last 20 timed: the scene's frame build alone, the rasterizer apart, once the spot's changes are in.
+    let built = 0;
+    for (let f = 0; f < 30; f++) {
+      const t0 = performance.now();
+      // The rasterizer takes what each frame uploads, but draws nothing of these.
+      const p = w.frame(false), [draws, casters, tiles] = [p.drawCount, p.casterCount, p.tileCount];
+      if (f >= 10) built += performance.now() - t0;
+      [p.drawCount, p.casterCount, p.tileCount] = [0, 0, 0];
+      w.raster.render(p);
+      [p.drawCount, p.casterCount, p.tileCount] = [draws, casters, tiles];
+    }
+    // A frame after the eye moves a step, which counts every cell in view again (Scene.coverCells).
+    w.look(sx + 1.5, eye, sz, 0, 0);
+    const t0 = performance.now();
+    const step1 = w.frame(false);
+    const stepped = performance.now() - t0;
+    [step1.drawCount, step1.casterCount, step1.tileCount] = [0, 0, 0];
+    w.raster.render(step1);
     for (let k = 0; k < o.headings; k++) {
       const heading = (k / o.headings) * Math.PI * 2;
       w.look(sx, eye, sz, heading, 0);
@@ -210,12 +237,13 @@ export function walk(o: Options): { middle: [number, number]; rows: { spot: numb
             const at = Math.hypot(view.getFloat32(at0, true) + p.drawOffset[d * 3]!, view.getFloat32(at0 + 4, true) + p.drawOffset[d * 3 + 1]!, view.getFloat32(at0 + 8, true) + p.drawOffset[d * 3 + 2]!);
             const own = byKey.get(key);
             const inView = own ? w.cam.boxVisible(own.x - own.r - sx, own.base - (own.top - own.base) / 2 - eye, own.z - own.r - sz, own.x + own.r - sx, own.top - eye, own.z + own.r - sz) : true;
-            t = { id: reg.defs[w.field.kindAt(chunk, slot)]?.id ?? "?", at, level: 0, leaf: 0, bark: 0, px: 0, crossed: own ? crossed(sx, eye, sz, own) : -1, inView, cell: own ? Math.floor(own.x / 16) * 4096 + Math.floor(own.z / 16) : -1 };
+            t = { key, id: reg.defs[w.field.kindAt(chunk, slot)]?.id ?? "?", at, level: 0, leaf: 0, bark: 0, px: 0, crossed: own ? crossed(sx, eye, sz, own) : -1, grid: own && scene.cover.crowns > 0 ? scene.cover.count(sx, eye, sz, own.x, (own.base + own.top) / 2, own.z, own.r) : -1, inView, cell: own ? Math.floor(own.x / 16) * 4096 + Math.floor(own.z / 16) : -1 };
             trees.set(key, t);
           }
           if ((flags & DRAW_CUTOUT) !== 0) t.leaf += each;
           else t.bark += each;
-          t.level = Math.max(t.level, p.drawLod[d]!);
+          // A cell changing level draws its old level too, fading out (packet.ts drawSwap): its level is the new one.
+          if (p.drawSwap[d]! >= 0) t.level = Math.max(t.level, p.drawLod[d]!);
         }
       }
       const { pickKind, pickId } = w.raster;
@@ -227,7 +255,7 @@ export function walk(o: Options): { middle: [number, number]; rows: { spot: numb
         const t = trees.get((buffer - NODE_BUFFERS) * 65536 + (id % 65536));
         if (t) (t.px++, treePx++);
       }
-      rows.push({ spot: step, heading: Math.round((heading * 180) / Math.PI), frame: p.triangles, far, treePx, pixels: pickKind.length, draws: p.drawCount, trees: [...trees.values()] });
+      rows.push({ buildMs: built / 20, steppedMs: stepped, spot: step, heading: Math.round((heading * 180) / Math.PI), frame: p.triangles, far, treePx, pixels: pickKind.length, draws: p.drawCount, trees: [...trees.values()] });
     }
   }
   return { middle, rows };
@@ -247,6 +275,7 @@ export function summary(g: ReturnType<typeof walk>): string[] {
   const off = wood.filter((t) => !t.inView), hidden = wood.filter((t) => t.inView && t.px === 0), shown = wood.filter((t) => t.px > 0);
   const W = sum(wood, tri);
   out.push(`${H} views: a view ${m(sum(g.rows, (r) => r.frame))} M triangles, near trees ${m(T)} M (leaves ${m(sum(all, (t) => t.leaf))} M), far trees ${m(sum(g.rows, (r) => r.far))} M, ${(all.length / H).toFixed(0)} near trees, ${(sum(g.rows, (r) => r.draws) / H).toFixed(0)} draws; trees cover ${pct(sum(g.rows, (r) => r.treePx), sum(g.rows, (r) => r.pixels))} of the picture`);
+  out.push(`the scene builds a frame in ${(sum(g.rows, (r) => r.buildMs ?? 0) / H).toFixed(2)} ms on this machine, ${(sum(g.rows, (r) => r.steppedMs ?? 0) / H).toFixed(2)} ms after the eye moves a step`);
   out.push(`trees (wood kinds) ${m(W)} M: shown ${pct(sum(shown, tri), W)}, in view but hidden ${pct(sum(hidden, tri), W)}, off screen ${pct(sum(off, tri), W)}`);
   out.push("", "band         trees  shown  tris M  hidden tris  px (1080p) k  tris a px");
   for (let b = 0; b + 1 < BANDS.length; b++) {
@@ -276,6 +305,33 @@ export function summary(g: ReturnType<typeof walk>): string[] {
   return out;
 }
 
+/**
+ * A run against one before it of the same walk: the trees' triangles saved, and of the tree pixels before, the share
+ * that were trees now drawn at coarser levels, and those now drawn finer.
+ */
+export function against(before: ReturnType<typeof walk>, now: ReturnType<typeof walk>): string[] {
+  const tri = (t: Tree): number => t.leaf + t.bark;
+  let [was, is, px, coarser, finer, trees, moved] = [0, 0, 0, 0, 0, 0, 0];
+  before.rows.forEach((r, k) => {
+    const then = new Map(now.rows[k]!.trees.map((t) => [t.key, t]));
+    was += r.trees.reduce((s, t) => s + tri(t), 0);
+    is += now.rows[k]!.trees.reduce((s, t) => s + tri(t), 0);
+    for (const t of r.trees) {
+      const n = then.get(t.key);
+      px += t.px;
+      trees++;
+      if (!n) continue;
+      if (n.level > t.level) (coarser += t.px, moved++);
+      if (n.level < t.level) finer += t.px;
+    }
+  });
+  const H = before.rows.length;
+  return [
+    `near trees ${(was / H / 1e6).toFixed(2)} M a view before, ${(is / H / 1e6).toFixed(2)} M now: ${((100 * (was - is)) / was).toFixed(0)}% fewer`,
+    `${((100 * moved) / trees).toFixed(0)}% of the trees drawn coarser, showing ${((100 * coarser) / px).toFixed(2)}% of the trees' pixels before; ${((100 * finer) / px).toFixed(2)}% drawn finer`,
+  ];
+}
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const value = (flag: string): string | undefined => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined);
@@ -288,12 +344,14 @@ if (import.meta.main) {
       leaves: value("--leaves") === "solid" ? "solid" : "half",
       squeeze: Number(value("--squeeze") ?? 0),
       cells: Number(value("--cells") ?? 4),
+      ...(value("--cover") ? { cover: ((c) => ({ from: c[0]!, per: c[1]!, most: c[2]! }))(value("--cover")!.split(",").map(Number)) } : {}),
     };
     const g = walk(o);
     mkdirSync(OUT, { recursive: true });
     const file = join(OUT, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}-place${o.place}${value("--out") ? `-${value("--out")}` : ""}.json`);
     writeFileSync(file, JSON.stringify(g));
     console.log(summary(g).join("\n"));
+    if (value("--against")) console.log(["", ...against(JSON.parse(readFileSync(value("--against")!, "utf8")), g)].join("\n"));
     console.log(`kept in ${file}`);
   }
 }

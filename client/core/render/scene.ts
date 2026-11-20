@@ -44,6 +44,7 @@ import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budge
 import type { FarCity, CitySource } from "./farcity.ts";
 import type { CityBlocks, BlocksSource } from "./cityblocks.ts";
 import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
+import { CrownCover, coverDistance, type CoverLooks, type CoverRule } from "./cover.ts";
 import { FarNodes, farLevelOf, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { HIDE_PIXELS, Hiding, OCCLUDER } from "./hide.ts";
@@ -144,6 +145,10 @@ const BEAM_COLOR = 8;
 const RUN_TRIANGLES = 4096;
 /** A cell of trees drawn this long ago or less is still on screen, so a change of its level is swapped, not taken at once. */
 const SEEN_MS = 250;
+/** How far a cell's count of crowns in the way must move from the one taken before it is taken again (coverCells). */
+const COVER_MARGIN = 0.75;
+/** How far, in metres, the eye moves before a cell's crowns in the way are counted again: the count is the eye's alone. */
+const COVER_MOVE = 1;
 /** What the card holds for the chunks' instance buffers is reserved under this name. */
 const INSTANCES = "chunk instances";
 const QUAD_INDICES = "quad indices";
@@ -342,6 +347,11 @@ interface ChunkBatch {
   cellWasTrunk: Int8Array;
   cellSince: Float64Array;
   cellSeenAt: Float64Array;
+  /** For trees behind other crowns (cover.ts): per range and cell, the crowns counted in the way last taken, -1 for none yet, and how many times as far its levels are chosen. */
+  cellCount: Float32Array;
+  cellCover: Float32Array;
+  /** Where the eye was when each count was taken: a cell is counted again once it has moved COVER_MOVE. */
+  cellEye: Float32Array;
   /**
    * Per range, and per range and cell, the largest size of the kinds of its nodes, as a multiple of the modelled size, and
    * 1 for pieces. Two kinds may grow as one mesh at different sizes (the young live oak and the elder), and each is drawn
@@ -370,6 +380,9 @@ export class Scene {
   readonly treeFalls = new TreeFalls();
   private readonly hiddenNodes = new Set<number>();
   private readonly hiddenChanged = new Set<number>();
+  /** How many crowns stand in the way of a cell of trees (cover.ts), made from the near node field on tiers that ask. */
+  readonly cover: CrownCover;
+  private readonly coverLooks: CoverLooks;
   hideNode(ref: number, hide: boolean): void {
     if (this.hiddenNodes.has(ref) === hide) return;
     if (hide) this.hiddenNodes.add(ref); else this.hiddenNodes.delete(ref);
@@ -784,6 +797,8 @@ export class Scene {
       const def = reg.defs[kind];
       if (def?.type === "node" && familyOf(def) === 0 && forms.depleted[f] === 0) this.treeOf[mesh] = 1;
     }
+    this.cover = new CrownCover(world.dims);
+    this.coverLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, treeOf: this.treeOf, side: table.side, low: table.low, high: table.high, hidden: (ref) => this.hiddenNodes.has(ref) };
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
     this.landmarkKinds = landmarkKinds(reg);
@@ -861,6 +876,8 @@ export class Scene {
       this.trunkTris[mesh] = part(mesh, (m) => this.barkOf[m] === 1);
       this.leafTris[mesh] = part(mesh, (m) => (this.materialFlags[m]! & DRAW_CUTOUT) !== 0);
     }
+    // A mesh learnt has its extents now, which the crowns' grid is made from. Learnt first before the grid is made.
+    if (meshes.length > 0 && this.cover) this.cover.stale = true;
     this.nodesFar?.learn();
   }
 
@@ -909,6 +926,7 @@ export class Scene {
     const p = this.packet;
     p.beginFrame();
     for (const chunk of this.hiddenChanged) { const batch = this.batches.get(NODE_BUFFERS + chunk); if (batch) batch.shape = -1; }
+    if (this.hiddenChanged.size > 0) this.cover.stale = true;
     this.hiddenChanged.clear();
     this.doubled = 0;
     this.boxed.fill(0);
@@ -2401,6 +2419,8 @@ export class Scene {
     const world = this.world;
     const chunks = store.chunks;
     const band = this.assets.tier.nodes.band[1];
+    // The node field's crowns, for how many stand in the way of each cell of trees.
+    if (sizeOf && this.assets.tier.nodes.cover) this.cover.update(store, this.coverLooks);
     // How far the near plane's corners are from the camera: a room that near may be cut into and seen.
     const slope = Math.tan(cam.fovY / 2);
     const reach = cam.near * Math.sqrt(1 + slope * slope * (1 + cam.aspect * cam.aspect));
@@ -2536,6 +2556,7 @@ export class Scene {
     const scale = crownScale(squeeze), cover = coverScale(squeeze);
     const flags = sized ? DRAW_SIZED : 0;
     const swapMs = sized ? (this.assets.tier.nodes.levels ?? 0) : 0;
+    const rule = sized ? this.assets.tier.nodes.cover : undefined;
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
       if (b.ranges[r + 2] === 0) continue;
@@ -2551,7 +2572,11 @@ export class Scene {
       const light = far <= from && !tree && b.ranges[r + 2]! * this.trisOfMesh[mesh]![near]! <= RUN_TRIANGLES;
       const alike = far <= from && near === this.assets.choose(errors, (far * cover) / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!));
       // Trees that swap are drawn whole only while no cell of them is changing level, or would start to.
-      const one = light || (alike && (!swaps || this.steady(b, q, at0, near, crown, swapMs)));
+      // Trees behind other crowns (cover.ts) take levels by cell, as only some cells are.
+      const behind = tree && rule ? this.coverCells(cam, b, id - NODE_BUFFERS, q, at0, mesh, rule) : false;
+      const one = light || (alike && !behind && (!swaps || this.steady(b, q, at0, near, crown, swapMs)));
+      // A range drawn whole but for cells behind other crowns keeps, in the rest, the levels it would be drawn whole at.
+      const whole = alike && behind, wholeLevel = whole ? near : -1, wholeCrown = whole ? crown : -1;
       if (one) {
         if (swaps) this.shownAll(b, q, at0, near, crown);
         b.level[q] = near;
@@ -2612,8 +2637,23 @@ export class Scene {
             hand = most > from ? HAND_NEAR : 0;
           }
           seen = d / b.cellReach[qc]!;
-          level = levels[qc] = this.assets.choose(errors, seen * cover, levels[qc]!);
-          crown = crowns[qc] = tree ? this.assets.choose(errors, seen * scale, crowns[qc]!) : level;
+          const m = tree && rule ? b.cellCover[qc]! : 1;
+          if (m === 1 && wholeLevel >= 0) {
+            level = wholeLevel;
+            crown = wholeCrown;
+          } else {
+            level = this.assets.choose(errors, seen * cover * m, levels[qc]!);
+            crown = tree ? this.assets.choose(errors, seen * scale * m, crowns[qc]!) : level;
+            if (m > 1) {
+              // Cover takes a cell to no coarser a level than its coarsest drawn with materials, past which only
+              // distance does; and never finer than the range drawn whole would be.
+              const top = this.texturedTop(mesh);
+              level = Math.max(wholeLevel, Math.min(level, Math.max(top, this.assets.choose(errors, seen * cover, -1))));
+              crown = Math.max(wholeCrown, Math.min(crown, Math.max(top, this.assets.choose(errors, seen * scale, -1))));
+            }
+          }
+          levels[qc] = level;
+          crowns[qc] = crown;
           thin = thins[qc] = tree ? thinning(squeeze, d, to, thins[qc]!) : 0;
           if (swaps) swap = this.swapOf(b, qc, level, crown, swapMs);
         }
@@ -2653,7 +2693,9 @@ export class Scene {
         if (runs[k + 6] !== runs[k + 2]) this.assets.wantTextured(mesh, runs[k + 6]!, runs[k + 4]!);
         const d0 = this.packet.drawCount;
         // A cell changing level is drawn at its new levels keeping a share of the pattern, then at its old keeping the rest.
-        const swap = runs[k + 11]!, qc = runs[k + 12]!;
+        // A flat draw's program has no swap: a change of level to or from one drawn flat is taken at once.
+        const qc = runs[k + 12]!;
+        const swap = runs[k + 11] !== 0 && this.texturedAt(mesh, runs[k + 6]!, flags) && this.texturedAt(mesh, b.cellWas[qc]!, flags) ? runs[k + 11]! : 0;
         this.swap = swap;
         for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.draw(mesh, runs[k + 2]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
         if (swap !== 0) {
@@ -3042,6 +3084,9 @@ export class Scene {
       cellWasTrunk: new Int8Array(n * cells).fill(-1),
       cellSince: new Float64Array(n * cells),
       cellSeenAt: new Float64Array(n * cells).fill(-Infinity),
+      cellCount: new Float32Array(n * cells).fill(-1),
+      cellCover: new Float32Array(n * cells).fill(1),
+      cellEye: new Float32Array(n * cells * 3),
       reach: new Float32Array(n).fill(sizeOf ? 0 : 1),
       cellReach: new Float32Array(n * cells).fill(sizeOf ? 0 : 1),
       minX: Infinity,
@@ -3329,6 +3374,64 @@ export class Scene {
       return 0;
     }
     return Math.max(t, 1 / 32);
+  }
+
+  /**
+   * Counts, for each cell of range `q` of trees in view and short of the hand-over's end, the crowns between the eye and
+   * each of its trees' crowns (cover.ts), leaving out the tree's own, and takes the least: a cell is as hidden as its
+   * most open tree. It sets how many times as far the cell's levels are chosen. A count is the eye's alone, so a cell is
+   * counted again only once the eye has moved a metre, and a new count is taken only a margin from the last, so a cell
+   * walked past does not change level back and forth. True if any cell is drawn as if farther.
+   */
+  private coverCells(cam: Camera, b: ChunkBatch, chunk: number, q: number, at0: number, mesh: number, rule: CoverRule): boolean {
+    const t = this.world.nodes?.chunks[chunk];
+    if (!t) return false;
+    const box = b.cellBox, to = this.assets.tier.nodes.band[1], table = this.assets.table;
+    // At its modelled size: its crown's radius, its height, and its top; a crown starts a third of the way up (cover.ts).
+    const side = table.side[mesh]! / Math.SQRT2, height = table.high[mesh]! - Math.max(0, table.low[mesh]!), top = table.high[mesh]!;
+    // A count this far under the rule's start leaves the cell as it stands, so its trees need not all be counted.
+    const open = rule.from - COVER_MARGIN;
+    let any = false;
+    for (let c = 0; c < b.cells; c++) {
+      const v0 = this.firstOf(b, at0, c), v1 = this.firstOf(b, at0, c + 1);
+      if (v1 === v0) continue;
+      const qc = q * b.cells + c, k = qc * 6, e = qc * 3;
+      const tx = Math.min(Math.max(cam.x, box[k]!), box[k + 3]!), tz = Math.min(Math.max(cam.z, box[k + 2]!), box[k + 5]!);
+      if (Math.hypot(tx - cam.x, tz - cam.z) >= to || !this.cellShows(cam, b, q, c, mesh)) continue;
+      const eye = b.cellEye;
+      if (b.cellCount[qc]! < 0 || Math.hypot(cam.x - eye[e]!, cam.y - eye[e + 1]!, cam.z - eye[e + 2]!) > COVER_MOVE) {
+        let least = Infinity;
+        for (let i = v0; i < v1 && least >= open; i++) {
+          const s = b.slots[i]!, k = this.sizeOfForm[b.kinds[i]!]! / SIZE_UNITS;
+          const middle = t.y[s]! + ((height / 3 + top) * k) / 2;
+          least = Math.min(least, this.cover.count(cam.x, cam.y, cam.z, t.x[s]!, middle, t.z[s]!, side * k));
+        }
+        if (b.cellCount[qc]! < 0 || Math.abs(least - b.cellCount[qc]!) > COVER_MARGIN) b.cellCount[qc] = least;
+        eye[e] = cam.x;
+        eye[e + 1] = cam.y;
+        eye[e + 2] = cam.z;
+      }
+      const m = coverDistance(b.cellCount[qc]!, rule);
+      // A cell now less hidden chooses its levels afresh: the margin `choose` keeps would hold it at the coarser level
+      // it took while hidden, which a cell come to from nearer would never be drawn at.
+      if (m < b.cellCover[qc]!) b.cellLevel[qc] = b.cellCrown[qc] = -1;
+      if ((b.cellCover[qc] = m) > 1) any = true;
+    }
+    return any;
+  }
+
+  /** A mesh's coarsest level drawn with materials: its last with sections, else its last. */
+  private texturedTop(mesh: number): number {
+    const sections = this.assets.table.sections[mesh]!;
+    let level = sections.length - 1;
+    while (level > 0 && sections[level]!.length === 0) level--;
+    return level;
+  }
+
+  /** Whether a mesh wanted at `level` is drawn with its materials, as `draw` would draw it now. */
+  private texturedAt(mesh: number, level: number, flags: number): boolean {
+    this.drawable(mesh, level, flags);
+    return this.ready;
   }
 
   /** Whether no cell of range `q` that holds trees is changing level, nor would start to if drawn at `level` and `crown`. */

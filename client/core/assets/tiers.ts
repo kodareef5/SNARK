@@ -70,9 +70,10 @@ export interface Tier {
    * A chunk changes hands no nearer the body than `chunks` chunks, and the camera stands at most 3.5 m from the eye, so
    * the band ends before that and a chunk is drawn alike on both sides of the change. With `levels`, a tree's own levels
    * pass one to the next by the same pattern, over that many ms, where a cell of trees changes level (hand.ts swapKeeps);
-   * without, a cell of trees changes level at once.
+   * without, a cell of trees changes level at once. With `cover`, a cell of trees behind `from` or more crowns (render/cover.ts)
+   * takes its levels as if twice as far, and twice again for each `per` more, to `most` times as far.
    */
-  readonly nodes: { readonly chunks: number; readonly band: readonly [number, number]; readonly levels?: number };
+  readonly nodes: { readonly chunks: number; readonly band: readonly [number, number]; readonly levels?: number; readonly cover?: { readonly from: number; readonly per: number; readonly most: number } };
   /**
    * Sun shadows: how many cascades, each map's side in texels, how far from the camera they reach in metres, how many
    * compared taps a lookup takes, how much of the splits is logarithmic rather than even, and whether the farthest
@@ -175,21 +176,21 @@ export const TIERS: readonly Tier[] = [
   },
   {
     name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, fewest: 0, canvas: 0, anisotropy: 1, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
-    lit: true, split: 384, viewDistance: VIEW, reach: { bases: 2048, city: 2500, trees: 1500, rocks: 700, bushes: 400, parts: 1500 }, fade: 0.25, city: { levels: MEDIUM_CITY }, nodes: { chunks: 3, band: [152, 184], levels: 400 }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light", city: { levels: nearer(MEDIUM_CITY, PHONE_CITY) }, budget: { triangles: 2e6, draws: 1024 }, nodes: { chunks: 3, band: [152, 184] } }, finish: "full", finishes: 512, relief: false, clouds: 2, water: "simple",
+    lit: true, split: 384, viewDistance: VIEW, reach: { bases: 2048, city: 2500, trees: 1500, rocks: 700, bushes: 400, parts: 1500 }, fade: 0.25, city: { levels: MEDIUM_CITY }, nodes: { chunks: 3, band: [152, 184], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light", city: { levels: nearer(MEDIUM_CITY, PHONE_CITY) }, budget: { triangles: 2e6, draws: 1024 }, nodes: { chunks: 3, band: [152, 184] } }, finish: "full", finishes: 512, relief: false, clouds: 2, water: "simple",
     details: { pool: 1536, share: 1, reach: 1, fill: 1 }, budget: { triangles: 4e6, draws: 1024, spend: 1, spendTo: 2.5e6 }, bodyError: 1,
     post: null,
     contact: false,
   },
   {
     name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
-    lit: true, split: 384, viewDistance: 6000, reach: { bases: 2048, city: 3000, trees: 1500, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.25, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248], levels: 400 }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1, viewDistance: VIEW, budget: { triangles: 4e6, draws: 2048 }, nodes: { chunks: 4, band: [216, 248] } }, finish: "full", finishes: 1024, relief: false, clouds: 2, water: "simple",
+    lit: true, split: 384, viewDistance: 6000, reach: { bases: 2048, city: 3000, trees: 1500, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.25, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1, viewDistance: VIEW, budget: { triangles: 4e6, draws: 2048 }, nodes: { chunks: 4, band: [216, 248] } }, finish: "full", finishes: 1024, relief: false, clouds: 2, water: "simple",
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 6e6, draws: 2048, spend: 2, spendTo: 3.5e6 }, bodyError: 1,
     post: { bloom: 1 },
     contact: true,
   },
   {
     name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
-    lit: true, split: 384, viewDistance: 8000, reach: { bases: 2048, city: 3000, trees: 2000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.25, city: { levels: [boxes(1100), lattice(1500), bare(2000), mass(2500, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312], levels: 400 }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: false, clouds: 2, water: "simple",
+    lit: true, split: 384, viewDistance: 8000, reach: { bases: 2048, city: 3000, trees: 2000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.25, city: { levels: [boxes(1100), lattice(1500), bare(2000), mass(2500, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: false, clouds: 2, water: "simple",
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096, spend: 2, spendTo: 5e6 }, bodyError: 1,
     post: { bloom: 1 },
     contact: true,
