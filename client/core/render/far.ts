@@ -13,6 +13,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres, pieceShapes, type FarCells } from "../../../shared/world/tactical.ts";
 import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
+import { columnFaces, type Columns } from "./blocks.ts";
 import { FADE_ORDER } from "./hand.ts";
 import type { Hider } from "./hide.ts";
 import { quadBytes, type FramePacket } from "./packet.ts";
@@ -25,8 +26,12 @@ export const FAR_TILE = 4;
 export const FAR_TILE_METRES = FAR_TILE * CHUNK_SIZE;
 /** Metres from a tile's lowest foot that its blocks may reach. A tower's top is at most 318 m over its ground. */
 export const FAR_HEIGHT = 1024;
-/** Slots of tiles on the card start here, clear of every level, surface and texture of the manifest. */
+/**
+ * Slots of tiles on the card start here, clear of every level, surface and texture of the manifest, FAR_SPAN of them;
+ * the city's blocks take the span after (cityblocks.ts).
+ */
 export const FAR_SLOTS = 1 << 30;
+export const FAR_SPAN = 1 << 29;
 /** The instance buffer every tile is drawn with: one instance at the origin. Clear of chunk indices and the node store's. */
 export const FAR_BUFFER = 2 << 20;
 /** What the far blocks hold on the card, as residency.ts reserves it. */
@@ -46,8 +51,6 @@ const FOOT = 1;
 
 const SIDE = CHUNK_SIZE / TACTICAL_CELL;
 const CELLS = SIDE * SIDE;
-/** The four ways a side can face, as steps to the neighbouring cell. */
-const WAYS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 /**
  * Whether the far fade keeps a fragment `dist` metres off at window pixel (x, y), counted from the bottom left, of a
@@ -84,11 +87,11 @@ export interface FarPart {
   readonly box: readonly number[];
 }
 
-// Scratch for a chunk: each cell's top and foot in metres, which tops are in a face or a roof already, and a queue of cells.
+// Scratch for a chunk: which cells are filled, each one's top and foot in metres, and how close a top is one roof with another.
+const filled = new Uint8Array(CELLS);
 const tops = new Float64Array(CELLS);
 const feet = new Float64Array(CELLS);
-const used = new Uint8Array(CELLS);
-const queue = new Int16Array(CELLS);
+const close = new Float64Array(CELLS);
 
 /** The colour each palette colour is drawn in, the same unless `farColours` says. */
 const SAME_COLOURS = Uint8Array.from({ length: 256 }, (_, i) => i);
@@ -158,9 +161,7 @@ const step = (byte: number): number => (byte > 128 ? 2 : 0.5);
 
 /**
  * The blocks of a chunk whose corner is (x0, z0), in a tile whose corner is (ox, oz), each cell in the colour `colours`
- * gives its own. Tops of one height and colour are merged into rectangles, and a side is drawn where the neighbour in
- * the chunk is lower or empty, merged along its row. A side on the chunk's edge is always drawn, so a chunk's blocks do
- * not depend on its neighbours.
+ * gives its own, as columns of its cells (blocks.ts columnFaces): a chunk's blocks do not depend on its neighbours.
  */
 export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz: number, hf: Heightfield, colours: Uint8Array = SAME_COLOURS, city: Uint8Array | null = null): FarPart {
   // A cell no taller than the map's own pieces make it is the far city's to draw (farcity.ts); one taller is drawn above them.
@@ -168,7 +169,9 @@ export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz:
   const tint = cells.tint.map((t) => colours[t]!);
   const n = Math.round(TACTICAL_CELL / hf.cell);
   for (let c = 0; c < CELLS; c++) {
+    filled[c] = top[c] === 0 ? 0 : 1;
     if (top[c] === 0) continue;
+    close[c] = step(top[c]!);
     const x = x0 + (c % SIDE) * TACTICAL_CELL;
     const z = z0 + Math.floor(c / SIDE) * TACTICAL_CELL;
     const ground = hf.heightAt(x + TACTICAL_CELL / 2, z + TACTICAL_CELL / 2);
@@ -176,119 +179,9 @@ export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz:
     feet[c] = city && city[c]! > 0 ? ground + farTopMetres(city[c]!) : Math.min(ground, lowestUnder(hf, Math.round(x / hf.cell), Math.round(z / hf.cell), n)) - FOOT;
   }
   // A top is kept over the ground at its cell's middle, to a step, so a level roof over rough ground comes in steps.
-  // Touching tops of one colour within a step of the first of them are taken as one roof, at their mean.
-  used.fill(0);
-  for (let c = 0; c < CELLS; c++) {
-    if (top[c] === 0 || used[c]) continue;
-    let count = 1;
-    let head = 0;
-    let sum = 0;
-    queue[0] = c;
-    used[c] = 1;
-    while (head < count) {
-      const q = queue[head++]!;
-      sum += tops[q]!;
-      for (let way = 0; way < 4; way++) {
-        const i = (q % SIDE) + WAYS[way]![0];
-        const j = Math.floor(q / SIDE) + WAYS[way]![1];
-        const r = j * SIDE + i;
-        if (i < 0 || j < 0 || i >= SIDE || j >= SIDE || top[r] === 0 || used[r] || tint[r] !== tint[c]) continue;
-        if (Math.abs(tops[r]! - tops[c]!) > Math.max(step(top[r]!), step(top[c]!))) continue;
-        used[r] = 1;
-        queue[count++] = r;
-      }
-    }
-    for (let k = 0; k < count; k++) tops[queue[k]!] = sum / count;
-  }
-  const pos: number[] = [];
-  const color: number[] = [];
-  const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
-  // A face is a corner and two edges whose cross product points out, as tools/pack/write.ts boxMesh has them.
-  const face = (x: number, y: number, z: number, ux: number, uy: number, uz: number, vx: number, vy: number, vz: number, col: number): void => {
-    x -= ox;
-    z -= oz;
-    pos.push(x, y, z, x + ux, y + uy, z + uz, x + ux + vx, y + uy + vy, z + uz + vz, x + vx, y + vy, z + vz);
-    color.push(col, col, col, col);
-    // The far corner is the corner and both edges; the box takes both ends of each axis.
-    const far = [x + ux + vx, y + uy + vy, z + uz + vz];
-    [x, y, z].forEach((v, a) => {
-      box[a] = Math.min(box[a]!, v, far[a]!);
-      box[a + 3] = Math.max(box[a + 3]!, v, far[a]!);
-    });
-  };
-  const C = TACTICAL_CELL;
-  used.fill(0);
-  for (let j = 0; j < SIDE; j++) {
-    for (let i = 0; i < SIDE; i++) {
-      const c = j * SIDE + i;
-      if (top[c] === 0 || used[c]) continue;
-      const same = (q: number): boolean => used[q] === 0 && top[q] !== 0 && tops[q] === tops[c] && tint[q] === tint[c];
-      let w = 1;
-      while (i + w < SIDE && same(c + w)) w++;
-      let d = 1;
-      grow: while (j + d < SIDE) {
-        for (let k = 0; k < w; k++) if (!same((j + d) * SIDE + i + k)) break grow;
-        d++;
-      }
-      for (let k = 0; k < d; k++) used.fill(1, (j + k) * SIDE + i, (j + k) * SIDE + i + w);
-      face(x0 + i * C, tops[c]!, z0 + j * C, 0, 0, d * C, w * C, 0, 0, tint[c]!);
-    }
-  }
-  for (const way of WAYS) {
-    const di = way[0], dj = way[1];
-    for (let line = 0; line < SIDE; line++) {
-      // The run of sides being merged: where it began, the top, the neighbour's top and the colour each of it has, and
-      // its bottom. A side down to the ground goes to the lowest foot of its run, which is under the ground everywhere.
-      let from = -1;
-      let t = 0;
-      let n = 0;
-      let b = 0;
-      let col = 0;
-      for (let step = 0; step <= SIDE; step++) {
-        let has = false;
-        let st = 0;
-        let sn = 0;
-        let sc = 0;
-        let c = 0;
-        if (step < SIDE) {
-          const i = di !== 0 ? line : step;
-          const j = di !== 0 ? step : line;
-          c = j * SIDE + i;
-          const ni = i + di;
-          const nj = j + dj;
-          const q = nj * SIDE + ni;
-          sn = ni >= 0 && nj >= 0 && ni < SIDE && nj < SIDE && top[q] !== 0 ? tops[q]! : -Infinity;
-          if (top[c] !== 0 && sn < tops[c]!) {
-            has = true;
-            st = tops[c]!;
-            sc = tint[c]!;
-          }
-        }
-        if (from >= 0 && has && st === t && sn === n && sc === col) {
-          b = Math.min(b, Math.max(sn, feet[c]!));
-          continue;
-        }
-        if (from >= 0) {
-          const a = from * C;
-          const e = step * C;
-          const h = t - b;
-          if (di === 1) face(x0 + (line + 1) * C, b, z0 + a, 0, h, 0, 0, 0, e - a, col);
-          else if (di === -1) face(x0 + line * C, b, z0 + e, 0, h, 0, 0, 0, a - e, col);
-          else if (dj === 1) face(x0 + e, b, z0 + (line + 1) * C, 0, h, 0, a - e, 0, 0, col);
-          else face(x0 + a, b, z0 + line * C, 0, h, 0, e - a, 0, 0, col);
-          from = -1;
-        }
-        if (has) {
-          from = step;
-          t = st;
-          n = sn;
-          b = Math.max(sn, feet[c]!);
-          col = sc;
-        }
-      }
-    }
-  }
-  return { pos: Float32Array.from(pos), color: Uint8Array.from(color), faces: color.length / 4, box };
+  const out: Columns = { pos: [], color: [], box: [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity] };
+  columnFaces(SIDE, TACTICAL_CELL, x0, z0, ox, oz, filled, tops, feet, tint, close, out);
+  return { pos: Float32Array.from(out.pos), color: Uint8Array.from(out.color), faces: out.color.length / 4, box: out.box };
 }
 
 interface Tile {
@@ -303,6 +196,9 @@ interface Tile {
   /** Where its vertices' heights start, and the box that holds it, in the world. */
   base: number;
   readonly box: Float64Array;
+  /** The `draw` that last looked at it, and how it drew it: 0 not, 1 whole, 2 fading out at the reach (FarBlocks.shows). */
+  shownAt: number;
+  shownAs: number;
 }
 
 export class FarBlocks {
@@ -336,6 +232,11 @@ export class FarBlocks {
   /** The far city, whose cells these leave to it, and per chunk its count of changes when last looked at. */
   private city: FarCityCells | null;
   private readonly cityStamp: Uint32Array;
+  /** Counts the calls to `draw`, and the camera's place and the reach at the last. */
+  private drawn = 0;
+  private drawnX = 0;
+  private drawnZ = 0;
+  private drawnReach = 0;
 
   /** `bounds` is FAR_MESH's centre and half extent, as the pack has them, and `colours` what farColours gives. */
   constructor(source: FarSource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, colours: Uint8Array = SAME_COLOURS, city: FarCityCells | null = null) {
@@ -440,7 +341,7 @@ export class FarBlocks {
       if (!tile.data) continue;
       if (tile.slot < 0 && this.off(t, x, z) <= reach) {
         tile.slot = FAR_SLOTS + this.next;
-        this.next = (this.next + 1) % FAR_SLOTS;
+        this.next = (this.next + 1) % FAR_SPAN;
         p.assetUploads.push({ slot: tile.slot, mesh: this.mesh, level: 0, data: tile.data, indexCount: tile.indexCount, indexBytes: tile.indexBytes, quads: true });
         budget.spend(tile.data.length);
       }
@@ -461,17 +362,36 @@ export class FarBlocks {
    * A tile whose box `hider` says is hidden is left out.
    */
   draw(cam: Camera, reach: number, share: number, put: (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number) => void, hider?: Hider): void {
+    this.drawn++;
+    this.drawnX = cam.x;
+    this.drawnZ = cam.z;
+    this.drawnReach = reach;
     for (const t of this.tiles.keys()) {
       const tile = this.tiles.get(t)!;
       if (tile.slot < 0) continue;
       const b = tile.box;
       const ax = b[0]! - cam.x, ay = b[1]! - cam.y, az = b[2]! - cam.z, bx = b[3]! - cam.x, by = b[4]! - cam.y, bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
+      const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
+      tile.shownAt = this.drawn;
+      tile.shownAs = near >= reach ? 0 : most < reach * (1 - share) ? 1 : 2;
       if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz) || (hider !== undefined && hider.hides(ax, ay, az, bx, by, bz))) continue;
       const ox = this.cornerX(t), oz = this.cornerZ(t);
-      const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
       put(tile.slot, tile.indexCount / 3, ox - cam.x, tile.base - cam.y, oz - cam.z, cam.passes(ax, ay, az, bx, by, bz), most < reach * (1 - share) ? 0 : reach, near);
     }
+  }
+
+  /**
+   * How `chunk`'s buildings were drawn here in the last `draw` while no far city takes the map's own pieces from these
+   * (cityblocks.ts Shown): -1 whole, the reach where its tile fades out at it, and 0 not. A chunk the far feed has told
+   * of whose tile holds no faces is drawn as nothing, whole, within the reach.
+   */
+  shows(chunk: number): number {
+    if (this.city || !this.on || (this.source.cells.changed[chunk] ?? 0) === 0 || this.source.complete(chunk)) return 0;
+    const t = this.tileOf(chunk), tile = this.tiles.get(t);
+    if (!tile) return this.off(t, this.drawnX, this.drawnZ) < this.drawnReach ? -1 : 0;
+    if (tile.slot < 0 || tile.shownAt !== this.drawn) return 0;
+    return tile.shownAs === 1 ? -1 : tile.shownAs === 2 ? this.drawnReach : 0;
   }
 
   /** Metres from (x, z) to tile `t`'s square. */
@@ -508,7 +428,7 @@ export class FarBlocks {
     const t = this.tileOf(chunk);
     const tile = this.tiles.get(t);
     if (tile) tile.dirty = true;
-    else this.tiles.set(t, { dirty: true, data: null, indexCount: 0, indexBytes: 2, slot: -1, base: 0, box: new Float64Array(6) });
+    else this.tiles.set(t, { dirty: true, data: null, indexCount: 0, indexBytes: 2, slot: -1, base: 0, box: new Float64Array(6), shownAt: 0, shownAs: 0 });
   }
 
   /** The chunks of tile `t`, by calling `each` with each that is on the map. */

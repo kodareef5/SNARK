@@ -16,8 +16,11 @@ export const MAX_TILES = 1024;
 export const TILE_QUADS = 32;
 /** Buffer id for the per-frame instance data carried in the packet itself. */
 export const TRANSIENT_BUFFER = 0xffffffff;
-/** Instances a frame may carry besides entities: water surface tiles, sixteen marker beams, and a piece about to be built. */
-export const MAX_WATER_TILES = 256;
+/**
+ * Instances a frame may carry besides entities: water surface tiles, every one of the 17 by 17 kilometre tiles round the
+ * camera that ultra's 8 km view reaches, sixteen marker beams, and a piece about to be built.
+ */
+export const MAX_WATER_TILES = 289;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**

@@ -2,6 +2,7 @@
 // levels. They are started when the first level is asked for, so their script is not among what the first frame waits on.
 
 import { ThreadedCityMaker, cityThreads, type CityMade, type CityThread } from "../core/render/citymake.ts";
+import type { BlocksMade } from "../core/render/blocks.ts";
 import type { SweepMade } from "../core/render/farshadow.ts";
 
 export class WorkerCityMaker extends ThreadedCityMaker {
@@ -10,7 +11,7 @@ export class WorkerCityMaker extends ThreadedCityMaker {
     super(() => {
       const worker = new Worker(url, { type: "module" });
       const thread: CityThread = { onmessage: null, postMessage: (m, transfer = []) => worker.postMessage(m, transfer) };
-      worker.onmessage = (m: MessageEvent<CityMade | SweepMade>) => thread.onmessage?.(m);
+      worker.onmessage = (m: MessageEvent<CityMade | SweepMade | BlocksMade>) => thread.onmessage?.(m);
       return thread;
     }, count);
   }

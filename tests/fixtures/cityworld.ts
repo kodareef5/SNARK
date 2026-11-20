@@ -4,7 +4,9 @@
 
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
+import { HeldTops } from "../../client/core/render/blocks.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import type { BlocksSource } from "../../client/core/render/cityblocks.ts";
 import type { CityMaker } from "../../client/core/render/citymake.ts";
 import type { CitySource } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
@@ -121,6 +123,8 @@ export interface CityWorldOptions {
   late?: boolean;
   /** Where the far city's levels are made, if not on this thread a frame's budget at a time. */
   maker?: CityMaker;
+  /** The map's tops, as its maker bakes them (shared/world/mapfile.ts mapTops), held from the start: the city past the far city is drawn as blocks. */
+  tops?: boolean;
 }
 
 export type CityWorld = ReturnType<typeof cityWorld>;
@@ -149,23 +153,40 @@ export function cityWorld(options: CityWorldOptions) {
   const whole = new Uint8Array(dims.chunksX * dims.chunksZ);
   const complete = (chunk: number): boolean => whole[chunk] === 1;
   const pack = o.pack ?? farPack();
-  const world: { dims: MapDims; hf: Heightfield; structs: StructureStore; far: { cells: FarStore; complete: typeof complete }; city?: CitySource } = { dims, hf, structs, far: { cells, complete } };
+  const shapes = pieceShapes(reg);
+  const world: { dims: MapDims; hf: Heightfield; structs: StructureStore; far: { cells: FarStore; complete: typeof complete }; city?: CitySource; tops?: BlocksSource } = { dims, hf, structs, far: { cells, complete } };
+  const tops = new HeldTops(dims);
+  if (o.tops) {
+    // As mapTops bakes them, from the server's store.
+    const chunks: number[] = [];
+    const cut: Uint8Array[] = [];
+    for (const c of [...server.held].sort((a, b) => a - b)) {
+      const s = new Summary();
+      bakeChunk(server.chunks[c]!, chunkCx(dims, c) * CHUNK_SIZE, chunkCz(dims, c) * CHUNK_SIZE, shapes, hf, s);
+      if (s.far.filled === 0) continue;
+      chunks.push(c);
+      cut.push(s.far.top.slice(), s.far.tint.slice());
+    }
+    const join = (k: number): Uint8Array => Uint8Array.from(cut.filter((_, i) => i % 2 === k).flatMap((a) => [...a]));
+    tops.take({ chunks: Uint32Array.from(chunks), top: join(0), tint: join(1) });
+    world.tops = { tops, ...(o.maker ? { maker: o.maker } : {}) };
+  }
   const maker = o.maker ? { maker: o.maker } : {};
   if (!o.late) world.city = { statics, complete, ...maker };
   const scene = new Scene(world, reg, pack);
   scene.assets.tier = { ...tierOf("medium"), ...o.tier };
   if (scene.city) scene.city.makeMs = Infinity;
+  if (scene.blocks) scene.blocks.here = Infinity;
   const [W, H] = [o.width ?? 320, o.height ?? 180];
   scene.viewHeight = H;
   const cam = new Camera();
   cam.aspect = W / H;
   const raster = new Rasterizer(W, H, pack, hf);
-  const shapes = pieceShapes(reg);
   const w = new BitWriter(1024);
   const r = new BitReader();
   let now = 0;
   return {
-    reg, dims, hf, statics, server, structs, cells, whole, scene, cam, raster, pack, W, H,
+    reg, dims, hf, statics, server, structs, cells, whole, scene, cam, raster, pack, W, H, tops,
     /** Bakes `chunk`'s far cells from the server's store and hands them to the far store, as S_FAR does. */
     send(chunk: number): void {
       const s = new Summary();

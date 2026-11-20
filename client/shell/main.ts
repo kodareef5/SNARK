@@ -99,6 +99,7 @@ async function boot(): Promise<void> {
     resolveMap: (id, hash) => (id === head.id && hash === head.hash ? hf : null),
     nodes: (ground, content) => nodeLayers(head.dims, ground, content, nodes),
     cityMaker: new WorkerCityMaker(),
+    tops: loader.staged.tops,
     tideEyes: head.tideEyes,
     ...(land ? { landmarks: land.landmarks } : {}),
   });

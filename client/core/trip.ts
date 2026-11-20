@@ -30,7 +30,7 @@ const FINE = ((WINDOW - 1) / 2) * TERRAIN_CELL;
  * Watches the app's frames. Marks: `frame`, the first drawn; `street`, each chunk within one of the body's that the map
  * has statics in whole in the near store, every asset shown at the level and step it is wanted at and nothing on its way,
  * no look for how near the finishes come under way (render/finish-near.ts), and pieces drawn with their materials; `far`, the
- * far city drawn in the view; `colour`, the world's finishes drawn with their base colours, where before those come they
+ * far city drawn in the view; `blocks`, the city's blocks drawn in the view (render/cityblocks.ts); `colour`, the world's finishes drawn with their base colours, where before those come they
  * are drawn as their means (client/shell/gl.ts worldReady), or none to draw; `soft`, no texture shown without its first
  * step; `handed`, the whole map's statics handed
  * to the session, a piece in every chunk its head counts any in; `predicting`, the body predicted; `exact`, the ground the fine terrain draws all the map's own; `jump`, the body
@@ -82,6 +82,7 @@ export class TripProbe {
     for (let d = 0; d < p.drawCount && !textured; d++) textured = (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
     this.set("street", textured && r.flying === 0 && r.waiting === 0 && r.wanting() === 0 && scene.finishNear.through && this.near((c) => this.counts[c] === 0 || world.far.complete(c)));
     this.set("far", (scene.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) > 0);
+    this.set("blocks", (scene.blocks?.stats.draws ?? 0) > 0);
     this.set("colour", p.worldSide[0] === 0 || p.worldLevel[0]! >= 0);
     this.set("soft", r.bare() === 0);
     if (world.city !== this.city) {

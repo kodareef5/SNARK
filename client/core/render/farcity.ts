@@ -211,6 +211,11 @@ export class FarCity {
   private readonly kept = new Uint8Array(CITY_TILE * CITY_TILE);
   private readonly band = new Uint8Array(CITY_TILE * CITY_TILE);
   private readonly nearest = new Float64Array(CITY_TILE * CITY_TILE);
+  /** Per tile, the `draw` that last looked at it and how it drew it: 0 not, 1 whole, 2 fading out at the reach (shows). */
+  private readonly shownAt: Uint32Array;
+  private readonly shownAs: Uint8Array;
+  private drawCount = 0;
+  private shownReach = 0;
 
   /**
    * `bounds` is FAR_MESH's centre and half extent, as the pack has them. `landmark` is 1 by content index for a kind a
@@ -255,6 +260,8 @@ export class FarCity {
       this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0 });
     }
     this.listed = new Uint8Array(this.tiles.length);
+    this.shownAt = new Uint32Array(this.tiles.length);
+    this.shownAs = new Uint8Array(this.tiles.length);
     if (before) this.adopt(before);
   }
 
@@ -408,6 +415,8 @@ export class FarCity {
     stats.coarse = 0;
     const whole = reach * (1 - this.share);
     const { chunkBox: cb, far, from, kept, band, nearest: nears } = this;
+    this.drawCount++;
+    this.shownReach = reach;
     for (const n of this.around) {
       const tile = this.tiles[n]!;
       const b = tile.box;
@@ -418,6 +427,8 @@ export class FarCity {
       const by = b[4]! - cam.y;
       const bz = b[5]! - cam.z;
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
+      this.shownAt[n] = this.drawCount;
+      this.shownAs[n] = near >= reach || !tile.held.some((h) => h !== null) ? 0 : Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz)) < whole ? 1 : 2;
       if (near >= reach || !cam.boxVisible(ax - ACROSS, ay, az - ACROSS, bx + ACROSS, by, bz + ACROSS)) {
         tile.unseen = 0;
         continue;
@@ -502,6 +513,17 @@ export class FarCity {
         }
       }
     }
+  }
+
+  /**
+   * How `chunk`'s pieces were drawn in the last `draw`, for the city's blocks drawn where they are not (cityblocks.ts
+   * Shown): -1 whole, the reach where its tile fades out at it, and 0 where its tile was not drawn, being past the reach
+   * or having nothing made.
+   */
+  shows(chunk: number): number {
+    const n = this.tileOfChunk[chunk]!;
+    if (!this.on || n < 0 || this.shownAt[n] !== this.drawCount) return 0;
+    return this.shownAs[n] === 1 ? -1 : this.shownAs[n] === 2 ? this.shownReach : 0;
   }
 
   /** The form drawn in place of this tier's levels by the last `chosen`, or -1; and whether it chose coarser than wanted. */

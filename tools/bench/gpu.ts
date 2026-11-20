@@ -73,10 +73,13 @@ const CHROME = findChrome();
 const CITY_MAP = process.env.CITY_MAP ?? fileURLToPath(new URL("../../var/maps/miami.snmap", import.meta.url));
 /** The far city, far trees, rocks and bushes, and far bases. */
 const FAR: readonly Effect[] = ["farcity", "farnodes", "farblocks"];
-/** Miami's street and air: on the ground 300 m into downtown's grid (the census's street-300), and 140 m over the far city's hand-over (its air-handover). */
+/**
+ * Miami's street and air: on the ground 300 m into downtown's grid (the census's street-300), and 140 m over the far
+ * city's hand-over (its air-handover), in metres from the 16 km map's centre as the census has them.
+ */
 const CITY_PLACES: Record<View, Place> = {
-  street: { name: "street", east: -2469, north: -639, up: 0 },
-  air: { name: "air", east: -2136, north: -1114, up: 140 },
+  street: { name: "street", east: 859, north: -3007, up: 0 },
+  air: { name: "air", east: 1192, north: -3482, up: 140 },
 };
 
 export function plan(): Run[] {

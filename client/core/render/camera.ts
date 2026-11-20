@@ -8,6 +8,8 @@ export const NEAR_BODY = 0.03;
 export const NEAR_BODY_FAR = 12;
 /** The far depth range begins this share of `split` from the camera, so the two ranges overlap and no pixel falls between them. */
 export const FAR_FROM = 0.98;
+/** The far plane for a view ending `view` metres off: half again past it, for the sea's tiles and what stands over its end, and never nearer than 6 km. */
+export const farPlane = (view: number): number => Math.max(6000, view * 1.5);
 
 /** Sets the depth rows of a view-projection whose other rows are set, for planes `near` and `far` and the view's forward (fx, fy, fz). */
 function depthRows(m: Float32Array, near: number, far: number, fx: number, fy: number, fz: number): void {
@@ -34,6 +36,7 @@ export class Camera {
   nearLimit = Infinity;
   get near(): number { return Math.min(this.requestedNear, this.nearLimit); }
   set near(value: number) { this.requestedNear = value; }
+  /** The far plane, which a scene sets from its view (farPlane). */
   far = 6000;
   /** Metres from the camera at which the far depth range begins, 0 for one range. */
   split = 0;

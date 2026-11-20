@@ -7,8 +7,10 @@
 // again at each ask so a jump goes first to where it lands: the overviews and ground within RING, then the other overviews
 // within CITY_NEAR, then its sectors, then the overviews past it, then the rest, each sector's ground before its statics;
 // URGENT_AT_ONCE at once while what is within RING is wanted, AFTER_AT_ONCE otherwise. Once the overviews, the ground and the statics of every sector within CITY_NEAR of the
-// body have come, those sectors' statics are handed over, for the far city round the body; and once every part has come,
-// all of them. The map's statics are laid out whole from its head's counts, and each sector's set in as it comes, a step
+// body have come, those sectors' statics are handed over, for the far city round the body; and once every part but the
+// tops has come, all of them. The city's tops come with the overviews past CITY_NEAR once the statics round the body have
+// been handed over, each square's after its overview, for the blocks drawn of them (render/cityblocks.ts), and nothing
+// waits for them. The map's statics are laid out whole from its head's counts, and each sector's set in as it comes, a step
 // at a time, and its bytes let go: what is handed over is only ever whole sectors' rows, those round the body copied out
 // and then the whole map's, and nothing of them is read again at the hand-over. A part that fails is asked for again
 // after a wait that grows to a cap, for as long as the page lives, and what has come is kept. One that comes damaged or
@@ -20,6 +22,7 @@ import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { COARSE_STEP, MapStatics, OVERVIEW_CHUNKS, OVERVIEW_STEP, blankLayers, blankStatics, listedRows, partHash, partSteps, readHead, readPart, setGround, setNodes, setStatics, squareOf, type GroundPiece, type MapContent, type MapHead, type MapPart, type MapPiece, type NodeLayer, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { MapWater } from "../../shared/world/water.ts";
 import { fetchBytes, within, type Get } from "./fetched.ts";
+import { HeldTops } from "./render/blocks.ts";
 import { PREDICTED_REACH } from "./session.ts";
 
 /**
@@ -106,14 +109,16 @@ export function handOverParts(head: MapHead): MapPart[] {
 
 /**
  * A map as a client holds it while its parts come: its ground, in which a sample not yet its sector's is its overview's,
- * and one not yet its overview's the head's coarse picture's; its node layers, its water and its landmarks. A sector's
- * ground waits until its overview has come, and is then copied into the heightfield and let go; of a listed node layer's
- * rows, only those are kept.
+ * and one not yet its overview's the head's coarse picture's; its node layers, its water, its landmarks and its city's
+ * tops. A sector's ground waits until its overview has come, and is then copied into the heightfield and let go; of a
+ * listed node layer's rows, only those are kept.
  */
 export class StagedMap {
   readonly head: MapHead;
   readonly hf: Heightfield;
   readonly nodes: NodeLayer[];
+  /** The city's tops as their parts come. */
+  readonly tops: HeldTops;
   /** The landmarks the head places and the definitions the land part adds, or undefined where the head has none. */
   content: MapContent | undefined;
   /** Each sector's come so far that has rows of a listed node layer: those rows, and none of its ground. */
@@ -134,13 +139,14 @@ export class StagedMap {
     this.hf.holdNone();
     this.hf.fill(0, 0, dims.chunksX, dims.chunksZ, COARSE_STEP, coarse.heights, coarse.tint);
     this.nodes = blankLayers(head);
+    this.tops = new HeldTops(dims);
     // Every slot is taken out until its chunk's overview says which stand, so no node stands on the coarse ground.
     for (const layer of this.nodes) if (!("first" in layer)) layer.out!.fill(255);
     this.content = head.landmarks ? { landmarks: head.landmarks, defs: [] } : undefined;
     if (head.water) this.hf.water = coarseWater(head);
   }
 
-  /** Takes in a part read: the land's definitions, an overview's ground, node pictures and water, or a sector's ground and its listed nodes. */
+  /** Takes in a part read: the land's definitions, an overview's ground, node pictures and water, a sector's ground and its listed nodes, or a square's tops. */
   take(piece: MapPiece): void {
     const { dims } = this.head;
     if (piece.kind === "land") {
@@ -166,7 +172,7 @@ export class StagedMap {
       this.listed.push({ kind: "ground", sq: piece.sq, heights: NO_HEIGHTS, tint: NO_TINT, ground: NO_TINT, listed: piece.listed });
       // Listed layer k's rows from the sectors come so far, set in the layer the node source reads.
       this.head.layers.forEach((rule, k) => rule.type === 1 && piece.listed[k]!.count.some((n) => n > 0) && Object.assign(this.nodes[k]!, listedRows(dims, rule.kinds, k, this.listed)));
-    }
+    } else if (piece.kind === "tops") this.tops.take(piece);
   }
 }
 
@@ -293,9 +299,11 @@ export class MapLoader {
   private readonly wait: (ms: number) => Promise<void>;
   private readonly pause: () => Promise<void>;
   private readonly at: (p: MapPart) => string;
-  /** The parts, overviews, ground and statics, not yet asked for, or failed and to be asked for again; and how many are under way. */
+  /** The parts, overviews, ground, statics and tops, not yet asked for, or failed and to be asked for again; and how many are under way. */
   private readonly left: MapPart[];
   private under = 0;
+  /** The parts the whole map's statics are handed over after, besides those the loader waits for before it starts. */
+  private readonly waited: MapPart[];
   /** The overviews and ground come so far, and the statics set in `table`, the map's laid out from its head once the first comes. */
   private readonly came = new Set<MapPart>();
   private table: MapStatics | null = null;
@@ -316,7 +324,8 @@ export class MapLoader {
     this.at = at;
     this.staged = staged;
     const head = staged.head;
-    this.left = handOverParts(head).filter((p) => p.kind !== "land" && !everywhere(head, p));
+    this.waited = handOverParts(head).filter((p) => p.kind !== "land" && !everywhere(head, p));
+    this.left = [...this.waited, ...head.parts.filter((p) => p.kind === "tops")];
   }
 
   /**
@@ -372,11 +381,20 @@ export class MapLoader {
   }
 
   /**
-   * Asks for the nearest parts left until as many are under way as the nearest allows (URGENT_AT_ONCE or AFTER_AT_ONCE, or
-   * one while the game's socket is held back); hands
-   * the statics round the body over once their sectors have come, and all of them once every part has.
+   * Hands the statics round the body over once their sectors have come, and all of them once every part but the tops has;
+   * then asks for the nearest parts left until as many are under way as the nearest allows (URGENT_AT_ONCE or
+   * AFTER_AT_ONCE, or one while the game's socket is held back).
    */
   private pump(): void {
+    const head = this.staged.head;
+    if (this.waited.some((p) => !this.came.has(p))) this.handNear();
+    else if (!this.handed) {
+      this.handed = true;
+      const table = this.table ?? blankStatics(head, false);
+      this.handOver(function* () {
+        return table;
+      }, true);
+    }
     for (let k = this.nearest(); k >= 0 && this.under < (this.held() ? 1 : this.urgent(this.left[k]!) ? URGENT_AT_ONCE : AFTER_AT_ONCE); k = this.nearest()) {
       const p = this.left.splice(k, 1)[0]!;
       this.under++;
@@ -393,17 +411,6 @@ export class MapLoader {
         (e: unknown) => ((this.handed = true), this.asker.say(why(e))),
       );
     }
-    const head = this.staged.head;
-    if (this.under > 0 || this.left.length > 0) {
-      this.handNear();
-      return;
-    }
-    if (this.handed) return;
-    this.handed = true;
-    const table = this.table ?? blankStatics(head, false);
-    this.handOver(function* () {
-      return table;
-    }, true);
   }
 
   /** The statics of the sectors within `near` of the body handed over, once those sectors' overviews, ground and statics have all come. */
@@ -454,16 +461,19 @@ export class MapLoader {
 
   /**
    * Which of the parts left goes next, nearest first within each of these in turn: the overviews and ground within RING;
-   * the overviews within CITY_NEAR and then its sectors, which the far city waits for; the overviews past it; the rest. A
-   * sector's ground goes before its statics; -1 for none.
+   * the overviews within CITY_NEAR and then its sectors, which the far city waits for; the overviews past it and every
+   * square's tops, those once the statics round the body have been handed over; the rest. A sector's ground goes before
+   * its statics and a square's overview before its tops; -1 for none.
    */
   private nearest(): number {
     let best = -1;
     let least = Infinity;
     this.left.forEach((p, k) => {
+      // Nothing the far city round the body waits for shares the link with the tops.
+      if (p.kind === "tops" && !this.handedNear && !this.handed) return;
       const off = this.off(p);
-      const turn = this.urgent(p) ? 0 : (off <= this.near ? 1 : 3) + (p.kind === "overview" ? 0 : 1);
-      const rank = turn * 1e6 + off + (p.kind === "statics" ? 0.5 : 0);
+      const turn = p.kind === "tops" ? 3 : this.urgent(p) ? 0 : (off <= this.near ? 1 : 3) + (p.kind === "overview" ? 0 : 1);
+      const rank = turn * 1e6 + off + (p.kind === "statics" ? 0.5 : p.kind === "tops" ? 0.25 : 0);
       if (rank < least) [best, least] = [k, rank];
     });
     return best;
@@ -528,8 +538,8 @@ function* rowsOf(head: MapHead, table: MapStatics, sectors: readonly MapPart[]):
 /** Rows rowsOf copies between two pauses. */
 const COPY_SLICE = 1 << 16;
 
-/** Metres from (x, z) to the map's part `p`'s square, an overview's or a sector's. */
+/** Metres from (x, z) to the map's part `p`'s square, an overview's (whose tops are of the same square) or a sector's. */
 function offOf(head: MapHead, p: MapPart, x: number, z: number): number {
-  const sq = squareOf(head.dims, p.kind === "overview" ? OVERVIEW_CHUNKS : SECTOR_CHUNKS, p.col, p.row)!;
+  const sq = squareOf(head.dims, p.kind === "overview" || p.kind === "tops" ? OVERVIEW_CHUNKS : SECTOR_CHUNKS, p.col, p.row)!;
   return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
 }

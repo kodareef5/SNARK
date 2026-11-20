@@ -15,10 +15,16 @@ test("a tier's levels are its steps that change something, the light target firs
   const levels = ["levels: half again the error", "levels: twice the error", "levels: three times the error"];
   const city = "the far city's levels to 70% as far";
   const target = "no light target";
-  expect(names("high", 3)).toEqual(["the tier", target, levels[0], city, "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", details]);
+  const view = "the view to 4 km";
+  expect(names("high", 3)).toEqual(["the tier", target, levels[0], city, view, "leaves: the frame's triangles to 75%", "the farther cascade every other frame", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "one cascade fewer", "bodies a level coarser", "85% of the pixels a side", "70% of the pixels a side", details]);
   // A screen of one device pixel a CSS pixel has no pixels to spare; low poly casts nothing.
   expect(names("medium", 1)).not.toContain("85% of the pixels a side");
   expect(names("lowpoly", 1)).toEqual(["the tier", levels[0], city, "leaves: the frame's triangles to 75%", levels[1], "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", levels[2], "bodies a level coarser", details]);
+  // The view comes in to 4 km on high and ultra, which see farther, and the touch rule's high sees no farther than that;
+  // like the far city's levels nearer, it is passed by where the far city draws little.
+  expect(TIERS.map((t) => ladder(t, 1).find((l) => l.name === view)?.tier.viewDistance ?? 0)).toEqual([0, 0, 4000, 4000]);
+  expect(ladder(forTouch(tierOf("high"), true), 3).map((l) => l.name)).not.toContain(view);
+  expect(ladder(tierOf("high"), 3).filter((l) => l.city).map((l) => l.name)).toEqual([city, view]);
   const medium = ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, Math.round(l.tier.threshold * 100) / 100, l.tier.shadows.cascades, l.tier.bodyError, l.tier.pixelRatio, l.tier.details.pool]);
   expect(medium).toEqual([[2e6, 0.22, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.66, 2, 1, 1.5, 1536], [1e6, 0.66, 1, 1, 1.5, 1536], [1e6, 0.66, 1, 2, 1.5, 1536], [1e6, 0.66, 1, 2, 1.27, 1536], [1e6, 0.66, 1, 2, 1.05, 1536], [1e6, 0.66, 1, 2, 1.05, 768]]);
   // The far city's step draws the same forms nearer, so nothing made of them is made again.
@@ -114,14 +120,14 @@ test("main-thread load is not the GPU's, and steps that buy nothing are undone",
   expect(run(5, () => ({ gpu: 8, ours: 25 })).governor.steps).toEqual([]);
   // Frames slowed by something no step touches, and not paced by the display. A step buys nothing, so does the next,
   // and both are undone and passed over; the governor rests 1, 2, 4 and 8 minutes, tries the steps not passed over, and
-  // ends at the tier. With no crowns near to give and no far city, the leaves steps (4 and 8) and the far city's (3) are
-  // passed by.
+  // ends at the tier. With no crowns near to give and no far city, the leaves steps (5 and 9) and the far city's (3 and
+  // 4) are passed by.
   const { governor } = run(20, (t) => ({ gpu: 24 + 3 * Math.sin(t / 37) }));
   expect(governor.level).toBe(0);
   const rests = governor.steps.filter((s) => s.why.includes("not what is slow")).length;
   expect(rests).toBeLessThanOrEqual(5);
   expect(governor.steps.length).toBeLessThanOrEqual(rests * 3);
-  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([1, 5, 7, 10, 12]);
+  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([1, 6, 8, 11, 13]);
   // A step this card does not need is passed for the next, which it does.
   const passed = run(2, (_, level) => ({ gpu: 20 * [1, 0.95, 0.95, 0.8][Math.min(level, 3)]!, crowns: 1, city: 1 })).governor;
   expect(passed.steps.map((s) => s.level)).toEqual([1, 2, 3]);
@@ -145,6 +151,7 @@ test("leaves give where crowns near can and the far city's step where it draws m
 });
 
 test("a scene too heavy for good goes to the last step and stays there, trying the level above rarely", () => {
+  // Only the last of high's levels brings it within the frame.
   const { minutes, governor } = run(40, (_, level) => ({ gpu: 108 * leave(level) }));
   expect(minutes.at(-1)!.level).toBe(ladder(tierOf("high"), 3).length - 1);
   const tries = governor.steps.filter((s) => s.why.includes("with no missed frame")).length;

@@ -1000,7 +1000,7 @@ export class App {
     const budget = this.scene?.budget;
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
-    const city = this.scene?.city?.drawn.reduce((n, t) => n + t, 0) ?? 0;
+    const city = (this.scene?.city?.drawn.reduce((n, t) => n + t, 0) ?? 0) + (this.scene?.blocks?.stats.triangles ?? 0);
     this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle, city * PHONE_MS.triangle);
     this.session.prediction.page(ours, packet, this.scene?.assets.residency, this.governor, this.dpr, width, height);
   }

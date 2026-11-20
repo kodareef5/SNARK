@@ -17,11 +17,12 @@ import { PREDICTED_REACH } from "../../client/core/session.ts";
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { OVERVIEW_CHUNKS, mapHeightfield, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatics, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
+import { OVERVIEW_CHUNKS, mapHeightfield, mapTops, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatics, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { cornerMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { nodePack, nodeRegistry } from "../fixtures/nodeworld.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 
 /** wideMap with a landmark, whose definitions are its land part, and none of its nodes listed (see the test of those below). */
 function landed(): MapData {
@@ -366,6 +367,65 @@ async function trial(fault: (name: string, ask: number) => Fault | null, body = 
 }
 
 /** Whether the statics handed over are the whole map's. */
+test("the city's tops come after everything within the far city's reach, with the overviews past it, each square's after its overview, and nothing waits for them: the whole map's statics are handed over while they are still on their way", async () => {
+  const map = landed();
+  const tops = mapTops(map, coreRegistry());
+  const f = writeMap({ ...map, tops });
+  const h = readHead(f);
+  const parts = h.parts.filter((p) => p.kind === "tops");
+  // The map has statics in more than one overview's square, so more than one part of tops.
+  expect(parts.length).toBeGreaterThan(1);
+  const s = heldServer(f);
+  let loader: MapLoader | null = null;
+  void MapLoader.start(s.get, `map/${h.name}`, NOW).then((l) => (loader = l));
+  await s.drain();
+  expect(s.asked.some((url) => url.includes("/tops."))).toBe(false);
+  const body = { x: 100, z: 448, vx: 0, vz: 0 };
+  const reach = 1200;
+  const handed: boolean[] = [];
+  // Every part is answered as soon as it is asked but the tops, each answered only while nothing else waits.
+  const isTops = (url: string): boolean => parts.some((p) => nameOf(p) === url);
+  let topsCame = 0;
+  let topsLeft = -1;
+  void loader!.follow(() => body, { arrived: (_, all) => (handed.push(all), all && (topsLeft = parts.length - topsCame)), near: reach });
+  await settle();
+  // The order parts were answered in, and how many had been answered when each was asked.
+  const answered: string[] = [];
+  const askedBefore = new Map<string, number>();
+  const note = (): void => s.waiting.forEach((w) => askedBefore.has(w.url) || askedBefore.set(w.url, answered.length));
+  note();
+  while (s.waiting.length > 0) {
+    const k = Math.max(0, s.waiting.findIndex((w) => !isTops(w.url)));
+    if (isTops(s.waiting[k]!.url)) topsCame++;
+    answered.push(s.waiting[k]!.url);
+    await s.answer(k);
+    note();
+  }
+  await settle();
+  // The whole map's statics did not wait for the tops still to come.
+  expect([handed, topsLeft > 0]).toEqual([[false, true], true]);
+  // Each was asked for once everything within the reach had come, the nearest square's first.
+  const squareOff = (p: MapPart): number => {
+    const sq = squareOf(h.dims, OVERVIEW_CHUNKS, p.col, p.row)!;
+    return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - body.x, body.x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - body.z, body.z - sq.cz1 * CHUNK_SIZE, 0));
+  };
+  const asked = (p: MapPart): number => s.asked.indexOf(nameOf(p));
+  const within = h.parts.filter((p) => (p.kind === "overview" || p.kind === "ground" || p.kind === "statics") && off(p, body.x, body.z) <= reach);
+  const first = parts.reduce((a, b) => (asked(a) < asked(b) ? a : b));
+  expect(Math.max(...within.map((p) => answered.indexOf(nameOf(p))))).toBeLessThan(askedBefore.get(nameOf(first))!);
+  expect(squareOff(first)).toBe(Math.min(...parts.map(squareOff)));
+  // A square's tops after its overview, where the first frame did not wait for that.
+  const overviews = h.parts.filter((p) => p.kind === "overview");
+  for (const p of parts) {
+    const o = overviews.find((q) => q.col === p.col && q.row === p.row)!;
+    expect(asked(o) < 0 || asked(o) < asked(p)).toBe(true);
+  }
+  // They came, and the page holds every chunk's cells as the map has them.
+  expect(loader!.staged.tops.version).toBe(parts.length);
+  for (let k = 0; k < tops.chunks.length; k++) expect([...loader!.staged.tops.top(tops.chunks[k]!)!]).toEqual([...tops.top.subarray(k * 256, (k + 1) * 256)]);
+  expect(s.asked.filter(isTops).length).toBe(parts.length);
+});
+
 const wholeStatics = (t: MapStatics | null): boolean => t !== null && [t.first, t.kind, t.x, t.y, t.z, t.yaw].every((col, k) => Bun.deepEquals(col, [whole.statics.first, whole.statics.kind, whole.statics.x, whole.statics.y, whole.statics.z, whole.statics.yaw][k]));
 
 test("a part that fails once, three times or for good, before the first frame or after it, near the body or behind it, ground or statics, is asked for again after a wait that doubles to its cap; what has come is kept; the statics are handed over whole once every part has come", async () => {

@@ -8,14 +8,14 @@
 // is told by kind as the body goes up (client/core/trip.ts `art`).
 // It prints, by the page's clock: the first frame; when every overview was in hand, the far ground and the sea drawn from
 // them where the head's coarse picture stood before; the first in which the street is drawn with its pieces and materials;
-// the first in which the far city is drawn; the last part; after the jump, the time until the body is predicted again,
+// the first in which the far city is drawn, and the city's blocks past it, and when every tops part was in hand; the last part; after the jump, the time until the body is predicted again,
 // until the ground the fine terrain draws is the map's own and until the street there is drawn; whether the failed part
 // came on a later ask and the map was whole at the end; and the page's heap and array memory at the statics' hand-over.
 // A picture is taken at each of those moments, into --out. It prints too when the world's finishes were drawn and when
 // no texture on screen lacked its first step, both as they stood when the body went up, and what the server's tick took
 // and how late its loop ran, since a server that cannot keep its tick answers every file late. The link runs in a
 // process of its own, so its hops never wait on the server's loop. The client must be built (bun run build). --dist
-// names another, --chrome the browser, and --no-fail fails no request.
+// names another, --chrome the browser, --tier the tier the player has chosen, and --no-fail fails no request.
 
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -170,7 +170,7 @@ export function tripPlaces(head: MapHead): { from: { x: number; z: number }; to:
 }
 
 /** One trip over a link of `mbit`: its moments by the page's clock, and its pictures in `out`. */
-export async function trip(opts: { map: string; dist: string; mbit: number; latency: number; out: string; chrome: string; fail: boolean }): Promise<string[]> {
+export async function trip(opts: { map: string; dist: string; mbit: number; latency: number; out: string; chrome: string; fail: boolean; tier?: string }): Promise<string[]> {
   const head = headOf(opts.map);
   const { from, to } = tripPlaces(head);
   const sector = (x: number, z: number) => [Math.floor((head.dims.frameX + Math.floor(x / CHUNK_SIZE)) / SECTOR_CHUNKS), Math.floor((head.dims.frameZ + Math.floor(z / CHUNK_SIZE)) / SECTOR_CHUNKS)] as const;
@@ -220,6 +220,8 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     await page.send("Page.enable");
     // A page keeps 250 resources' timings unless told more, and the game's page fetches more than that.
     await page.send("Page.addScriptToEvaluateOnNewDocument", { source: "performance.setResourceTimingBufferSize(100000)" });
+    // A tier named is the player's chosen one, as the settings keep it (client/core/settings.ts).
+    if (opts.tier) await page.send("Page.addScriptToEvaluateOnNewDocument", { source: `localStorage.setItem("snark.interface", ${JSON.stringify(JSON.stringify({ version: 2, tier: opts.tier }))})` });
     await page.send("Page.navigate", { url: `http://127.0.0.1:${link.port}/?quick=1&name=trip&trip` });
     const look = (): Promise<Seen> =>
       page!.value<Seen>(`({marks: globalThis.snarkTrip?.marks ?? [], now: performance.now(), parts: performance.getEntriesByType("resource").filter((r) => r.name.includes("/map/")).map((r) => ({name: r.name.slice(r.name.lastIndexOf("/") + 1), status: r.responseStatus, end: r.responseEnd, bytes: r.encodedBodySize}))})`);
@@ -329,11 +331,13 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     seen = await look();
     await shot("end", seen.now);
     const whole = await page.value<{ ground: boolean; pieces: number }>("globalThis.snarkTrip?.whole() ?? {ground: false, pieces: 0}");
+    const drawn = await page.value<string>("globalThis.snarkTrip?.app?.scene?.assets.tier.name ?? 'none'");
     writeFileSync(join(opts.out, `${opts.mbit}mbit${fails ? "" : "-whole"}.json`), JSON.stringify({ marks: seen.marks, parts: seen.parts, up: upAt, jump: jumpAt }));
     const statics = head.counts.reduce((n, c) => n + c, 0);
     const lastPart = [...parts].every(came) ? Math.max(...seen.parts.filter((p) => parts.has(p.name) && p.status === 200).map((p) => p.end)) : undefined;
     const far = seen.marks.find((m) => m.what === "far");
-    say(`trip on ${head.id} over ${opts.mbit} Mbit/s, ${opts.latency} ms there and back: joined at ${from.x}, ${from.z}, went ${UP} m up at ${s(upAt)} (${Math.round(upShare * 100)}% of the map in), jumped to ${to.x}, ${to.z} at ${s(jumpAt)} (${Math.round(jumpShare * 100)}% in); ${failing.name}, the ground there, ${fails ? "was answered 503 at its first ask" : "failed at no ask (--no-fail)"}`);
+    const sent = (names: readonly string[]): string => (names.reduce((n, name) => n + statSync(join(partsFolder(opts.map), `${name}.br`)).size, 0) / 1e6).toFixed(2);
+    say(`trip on ${head.id} on ${drawn} over ${opts.mbit} Mbit/s, ${opts.latency} ms there and back: joined at ${from.x}, ${from.z}, went ${UP} m up at ${s(upAt)} (${Math.round(upShare * 100)}% of the map in), jumped to ${to.x}, ${to.z} at ${s(jumpAt)} (${Math.round(jumpShare * 100)}% in); ${failing.name}, the ground there, ${fails ? "was answered 503 at its first ask" : "failed at no ask (--no-fail)"}`);
     /** Bytes of art and of the map the page had in hand at the first `what` mark, or "" where it never came. */
     const bytes = (what: string): string => {
       const m = seen.marks.find((k) => k.what === what);
@@ -349,6 +353,9 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     say(`  street drawn with its materials       ${joined !== undefined && joined < upAt ? s(joined) : `not before the body went up (${street})`}; the street jumped to, ${later(jump === undefined ? undefined : on("street", jump), jump)}${bytes("street")}`);
     say(`  art by kind when the body went up     ${Object.entries(kinds).map(([k, n]) => `${k} ${(n / 1e6).toFixed(1)}`).join(", ")} MB`);
     say(`  far city drawn                        ${at(far)}${bytes("far")}`);
+    const tops = head.parts.filter((p) => p.kind === "tops").map((p) => p.name);
+    const topsAt = tops.length > 0 && tops.every(came) ? Math.max(...seen.parts.filter((p) => tops.includes(p.name) && p.status === 200).map((p) => p.end)) : undefined;
+    say(`  city's blocks drawn                   ${at(seen.marks.find((m) => m.what === "blocks"))}${bytes("blocks")}; every tops part in hand ${s(topsAt)}, ${sent(tops)} MB of Brotli`);
     /** When `what` came, if it held when the body went up, else why not. */
     const held = (what: string): string => {
       const last = seen.marks.filter((m) => (m.what === what || m.what === `-${what}`) && m.at <= upAt).at(-1);
@@ -367,7 +374,6 @@ export async function trip(opts: { map: string; dist: string; mbit: number; late
     say(`  the server's tick                     ${ticks.length} in ${((performance.now() - started) / 1000).toFixed(0)} s, p50 ${quantile(ticks, 0.5)} ms, p90 ${quantile(ticks, 0.9)} ms, most ${Math.max(0, ...ticks).toFixed(1)} ms; its loop late p50 ${quantile(late, 0.5)} ms, p90 ${quantile(late, 0.9)} ms`);
     const before = seen.parts.filter((p) => p.status === 200 && p.end <= (on("frame") ?? -1));
     const rule = [head.name, ...firstFrameParts(head, from.x, from.z).map((p) => p.name)];
-    const sent = (names: readonly string[]): string => (names.reduce((n, name) => n + statSync(join(partsFolder(opts.map), `${name}.br`)).size, 0) / 1e6).toFixed(2);
     say(`  before the first frame               ${before.length} files of the map, ${(before.reduce((n, p) => n + p.bytes, 0) / 1e6).toFixed(2)} MB as sent: ${before.map((p) => p.name.split(".").slice(0, -2).join(".")).join(" ")}`);
     say(`  the build's rule there               ${rule.length} files, ${sent(rule)} MB of Brotli (client/core/mapload.ts firstFrameParts); until the statics are all in hand ${sent([head.name, ...handOverParts(head).map((p) => p.name)])} MB`);
     say(`  in all                                ${seen.parts.filter((p) => parts.has(p.name) && p.status === 200).length} of ${parts.size} parts, ${(seen.parts.reduce((n, p) => n + p.bytes, 0) / 1e6).toFixed(2)} MB of the map as sent`);
@@ -393,7 +399,7 @@ if (import.meta.main) {
   mkdirSync(out, { recursive: true });
   const lines: string[] = [];
   for (const mbit of value("--mbit", "5,20").split(",").map(Number)) {
-    lines.push(...(await trip({ map, dist: resolve(value("--dist", join(ROOT, "client/dist"))), mbit, latency: Number(value("--latency", "100")), out, chrome, fail: !process.argv.includes("--no-fail") })));
+    lines.push(...(await trip({ map, dist: resolve(value("--dist", join(ROOT, "client/dist"))), mbit, latency: Number(value("--latency", "100")), out, chrome, fail: !process.argv.includes("--no-fail"), ...(process.argv.includes("--tier") ? { tier: value("--tier", "") } : {}) })));
   }
   writeFileSync(join(out, `trip${process.argv.includes("--no-fail") ? "-whole" : ""}.txt`), lines.join("\n") + "\n");
   process.exit(0);

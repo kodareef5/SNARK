@@ -65,7 +65,7 @@ const LIGHT_WAIT_MS = 10000;
 const PROBATION_MS = 60000;
 /**
  * A leaves step is passed by where the triangles crowns near could still give were under this share of a frame's work,
- * and the far city's step where the far city's triangles were.
+ * and the far city's steps (its levels nearer, the view) where the far city's triangles and its blocks' were.
  */
 const CROWNS = 0.1;
 const CITY = 0.1;
@@ -90,6 +90,7 @@ interface Knobs {
   ratio?: number;
   farReach?: number;
   city?: number;
+  view?: number;
   fewerCascades?: number;
   details?: number;
   bodies?: number;
@@ -103,7 +104,10 @@ interface Knobs {
  * where at the phone's view most triangles of bodies, vehicles, pieces and rocks are under a pixel; half again takes 10
  * to 17% of a frame's triangles, twice 19 to 27%. Downtown, where the far city is most of a frame and levels find little
  * to take, its levels drawn 70% as far take 7 to 27% of it, the lattice changing a pixel in a hundred where it comes
- * nearer and the mass taking the lattice's place nearer; it is passed by where the far city draws little (CITY). Crowns
+ * nearer and the mass taking the lattice's place nearer; it is passed by where the far city draws little (CITY). The view
+ * to 4 km follows, a step only on high and ultra off a touch-first device: from the air over downtown Miami it takes the
+ * city's blocks past 4 km and the ground and sea under them, the city ending in the haze nearer; from the street it takes
+ * next to nothing, and like the far city's step it is passed by where the far city and its blocks draw little. Crowns
  * follow levels too, but where the frame's budget binds they take back what the rest gives, and there the leaves steps
  * give, each passed by where crowns near could give little (CROWNS). The farther cascade every other frame takes a sixth
  * to a quarter of what is cast. Then far trees, levels looser again, a cascade fewer and bodies' own levels, and only
@@ -119,6 +123,7 @@ export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] 
   { name: "no light target", knobs: { noLightTarget: true } },
   { name: "levels: half again the error", knobs: { levels: 1.5 } },
   { name: "the far city's levels to 70% as far", knobs: { city: 0.7 } },
+  { name: "the view to 4 km", knobs: { view: 4000 } },
   { name: "leaves: the frame's triangles to 75%", knobs: { leaves: 0.75 } },
   { name: "the farther cascade every other frame", knobs: { everyOther: true } },
   { name: "levels: twice the error", knobs: { levels: 2 } },
@@ -142,6 +147,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     threshold: base.threshold * (knobs.levels ?? 1),
     pixelRatio: knobs.ratio && ratio > 1 ? Math.max(1, Math.round(ratio * knobs.ratio * 100) / 100) : base.pixelRatio,
     fewest: knobs.own && base.fewest > ratio ? 0 : base.fewest,
+    viewDistance: knobs.view ? Math.min(base.viewDistance, knobs.view) : base.viewDistance,
     reach: { ...base.reach, trees: base.reach.trees * far, rocks: base.reach.rocks * far, bushes: base.reach.bushes * far },
     city: knobs.city ? { levels: nearer(base.city.levels, knobs.city) } : base.city,
     shadows: s.cascades === 0 || !base.lit ? s : { ...s, everyOther: s.everyOther || (knobs.everyOther === true && s.cascades > 1), cascades: Math.max(1, s.cascades - (knobs.fewerCascades ?? 0)) },
@@ -156,7 +162,7 @@ const same = (a: Tier, b: Tier): boolean => JSON.stringify(a) === JSON.stringify
 
 /**
  * A tier's levels: the tier, then each step that changes something on it, with its name and whether it is a leaves
- * step or the far city's. One list a tier and screen.
+ * step or the far city's (its levels nearer, or the view). One list a tier and screen.
  */
 type Level = { name: string; tier: Tier; leaves: boolean; city: boolean };
 const ladders = new Map<Tier, Map<number, Level[]>>();
@@ -169,7 +175,7 @@ export function ladder(base: Tier, dpr: number): readonly Level[] {
   for (const step of STEPS) {
     knobs = { ...knobs, ...step.knobs };
     const tier = governed(base, knobs, dpr);
-    if (!same(tier, out.at(-1)!.tier)) out.push({ name: step.name, tier, leaves: step.knobs.leaves !== undefined, city: step.knobs.city !== undefined });
+    if (!same(tier, out.at(-1)!.tier)) out.push({ name: step.name, tier, leaves: step.knobs.leaves !== undefined, city: step.knobs.city !== undefined || step.knobs.view !== undefined });
   }
   mine.set(dpr, out);
   return out;
@@ -269,7 +275,7 @@ export class Governor {
   /**
    * A frame drawn at `now`, `interval` ms after the one before, our code's `ours` ms of it, `busy` if it took asset
    * uploads, `work` what it asked of the card (workMs), `crowns` the part of that crowns near took that they could still
-   * give (render/budget.ts), and `city` the part the far city's triangles took.
+   * give (render/budget.ts), and `city` the part the far city's triangles and its blocks' took.
    */
   frame(now: number, interval: number, ours: number, busy: boolean, work: number, crowns = 0, city = 0): void {
     if (this.held !== null || this.base === null) return;

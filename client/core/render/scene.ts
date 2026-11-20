@@ -35,13 +35,14 @@ import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
-import { FAR_FROM, type Camera } from "./camera.ts";
+import { FAR_FROM, farPlane, type Camera } from "./camera.ts";
 import { Characters, riderFitScratch, seatScratch, type RiderFit, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budget.ts";
 import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
+import { CityBlocks, type BlocksSource } from "./cityblocks.ts";
 import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
@@ -85,6 +86,8 @@ export interface RenderWorld {
   readonly farNodes?: FarNodeSource;
   /** The map's own buildings past the near rows (farcity.ts). It may come after the first frame, and is drawn from then on. */
   readonly city?: CitySource;
+  /** The map's tops as they come, of which the city past what the far city draws is drawn as blocks (cityblocks.ts). */
+  readonly tops?: BlocksSource;
   /** The map's statics that move when used, where it has any (motion.ts). */
   readonly motion?: MotionSource;
   /** The map's landmarks, drawn far from their far meshes with the far city (farlandmarks.ts). */
@@ -369,8 +372,20 @@ export class Scene {
   private movingFrom: MapStatics | null = null;
   private moving: Moving[] = [];
   readonly terrain: TerrainLod;
-  /** Metres. Terrain beyond this is not drawn and fog reaches full strength here. */
-  viewDistance = 4000;
+  /**
+   * Metres to the end of the view: the tier's (Tier.viewDistance), or what is set here, as tests and tools hold it. The
+   * ground, the sea, lakes, parts and the city's blocks are not drawn past it, the haze and low poly's fog end there, and
+   * the camera's far plane is set from it (camera.ts farPlane).
+   */
+  get viewDistance(): number {
+    return this.heldView > 0 ? this.heldView : this.assets.tier.viewDistance;
+  }
+
+  set viewDistance(metres: number) {
+    this.heldView = metres;
+  }
+
+  private heldView = 0;
   structureDistance = Infinity;
   /** Hour of the day, 0..24. It sets the sun's position and the brightness. */
   hour = 12;
@@ -607,6 +622,8 @@ export class Scene {
   nearMesh = true;
   /** The map's landmarks where the near store does not hold their pieces' chunks whole, with the far city. */
   landmarks: FarLandmarks | null = null;
+  /** The city past what the far city and the far blocks draw, as blocks from its tops, given them and the far mesh. */
+  readonly blocks: CityBlocks | null;
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
   private readonly farMesh: number;
@@ -769,8 +786,10 @@ export class Scene {
     this.farBounds = far >= 0 ? this.assets.manifest.meshes[far] : undefined;
     // A build works the colours out from every piece. Without them, they are worked out from the pieces the pack holds.
     const shown = (k: number): number => (this.meshOfKind[k] === missing || this.meshOfKind[k] === HIDDEN ? -1 : (pack.meshIndex.get(this.assets.manifest.meshes[this.meshOfKind[k]!]!.id) ?? -1));
-    const colours = this.assets.manifest.farColours;
-    this.far = world.far && this.farBounds ? new FarBlocks(world.far, world.dims, world.hf, far, this.farBounds, colours ? Uint8Array.from(colours) : farColours(reg, pack, shown)) : null;
+    const listed = this.assets.manifest.farColours;
+    const colours = this.farBounds && (world.far || world.tops) ? (listed ? Uint8Array.from(listed) : farColours(reg, pack, shown)) : null;
+    this.far = world.far && colours ? new FarBlocks(world.far, world.dims, world.hf, far, this.farBounds!, colours) : null;
+    this.blocks = world.tops && colours ? new CityBlocks(world.tops, world.dims, world.hf, far, colours, this.landmarkKinds) : null;
     const flat = (k: number): boolean => this.meshOfKind[k] !== missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
     this.near = this.farBounds ? new NearCity(reg, far, this.landmarkKinds, flat) : null;
     this.startCity();
@@ -835,6 +854,7 @@ export class Scene {
     this.near?.reset();
     this.landmarks?.reset();
     this.lakes?.reset();
+    this.blocks?.reset();
     this.cascades.clear();
     this.farShadow?.reset();
   }
@@ -862,6 +882,7 @@ export class Scene {
     this.later.length = 0;
     this.nearAt = 0;
     cam.split = p.split = this.assets.tier.split;
+    cam.far = farPlane(this.viewDistance);
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
     if (this.assets.residency.learned.length > 0) this.learn(this.assets.residency.learned);
@@ -922,6 +943,9 @@ export class Scene {
     this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now);
     p.frame[FRAME.fade] = tier.fade;
     this.far?.update(p, this.assets.residency, cam.x, cam.z, tier.reach.bases);
+    // A tier that draws no far city draws none of its blocks either.
+    const blocksView = tier.reach.city > 0 && tier.city.levels.length > 0 ? this.viewDistance : 0;
+    this.blocks?.update(p, this.assets.residency, cam, blocksView, this.city ? this.citySource!.statics : null, this.city);
     this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier);
     if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
     // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
@@ -948,6 +972,7 @@ export class Scene {
     const hider = this.hiding.on ? this.hiding : undefined;
     this.city?.draw(cam, tier.reach.city, this.drawCity, hider);
     this.far?.draw(cam, tier.reach.bases, tier.fade, this.drawFar, hider);
+    this.blocks?.draw(cam, blocksView, this.shown, this.drawCity, hider);
     this.nodesFar?.draw(cam, this.drawFarNodes, hider);
     if (this.casting) this.groundCast();
     if (remote) this.entities(cam, remote);
@@ -1643,10 +1668,18 @@ export class Scene {
     const tier = this.assets.tier;
     p.frame[FRAME.fade] = tier.fade;
     this.city!.update(p, this.assets.residency, cam, tier.city.levels, tier.reach.city, tier.fade, this.world.structs, this.world.far?.cells ?? null);
-    this.landmarks?.draw(p, cam, this.assets, tier.reach.city, tier.fade, this.drawLandmark);
+    // A landmark is drawn to the end of the view, as the city's blocks leave its cells to it.
+    this.landmarks?.draw(p, cam, this.assets, this.viewDistance, tier.fade, this.drawLandmark);
   }
 
-  /** A run of a far city tile's chunks at one of its levels, `near` metres off: one instance, gone or come at `fade` (farcity.ts). */
+  /** Who draws a chunk's buildings other than the city's blocks this frame (cityblocks.ts Shown). */
+  private readonly shown = (chunk: number): number => {
+    if (this.world.far?.complete(chunk) ?? this.world.city?.complete(chunk)) return -1;
+    const city = this.city?.shows(chunk) ?? 0, far = this.far?.shows(chunk) ?? 0;
+    return city < 0 || far < 0 ? -1 : city || far;
+  };
+
+  /** A run of a far city tile's chunks at one of its levels, or of a tile of the city's blocks, `near` metres off: one instance, gone or come at `fade` (farcity.ts). */
   private readonly drawCity = (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number, near: number): void => {
     const p = this.packet;
     const d = p.drawCount;
@@ -1656,7 +1689,7 @@ export class Scene {
       return;
     }
     this.nearOf[d] = near;
-    p.drawMesh[d] = this.city!.mesh;
+    p.drawMesh[d] = this.farMesh;
     p.drawLod[d] = 0;
     p.drawSlot[d] = slot;
     p.drawBuffer[d] = CITY_BUFFER;
