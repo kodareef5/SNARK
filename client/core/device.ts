@@ -1812,6 +1812,8 @@ export class DeviceRun {
     app.controls.yaw = load.yaw;
     app.controls.pitch = 0;
     const assets = app.scene!.assets;
+    // Each rung and window is judged by what it adds, which crowns filling the room left would hide.
+    app.scene!.budget.spends = false;
     app.scene!.things = [...(load.stress ? this.stressed() : []), ...(load.near + load.far > 0 ? rocks(assets.table, hf, load.near, load.far) : [])];
     [bodies.n, bodies.vehicles] = [load.bodies, load.vehicles ?? 0];
     this.variant(load);

@@ -98,7 +98,7 @@ test("a pass's spread and the frame's, by pass where passes were timed", () => {
 test("a bench run measures once the scene is still, turns its view from then, and reports its frames once", () => {
   const run = new BenchRun();
   const p = new FramePacket();
-  const drawn = { drawCalls: 10, canvas: [100, 100], renderer: "a card", userAgent: "a browser", card: { bytes: 1024, textures: 512 } };
+  const drawn = { drawCalls: 10, canvas: [100, 100], renderer: "a card", userAgent: "a browser", card: { bytes: 1024, textures: 512 }, squeeze: 0 };
   let now = 0;
   let report: ReturnType<BenchRun["frame"]> = null;
   for (let f = 0; f < 60 + BENCH_FRAMES + 10; f++, now += 16.7) {

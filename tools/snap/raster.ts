@@ -10,7 +10,7 @@ import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
-import { nearKeeps } from "../../client/core/render/hand.ts";
+import { nearKeeps, swapKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
 import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
@@ -449,6 +449,8 @@ export class Rasterizer {
   private handFrom = 0;
   private handTo = 0;
   private handAt = 0;
+  /** The draw's swap (packet.ts drawSwap): how far a cell of trees changing level has come, 0 for none. */
+  private swap = 0;
   /** The far nodes' meshes as the card holds them (packet.ts `atlas`). */
   private atlas = new Float32Array(0);
   /** The sky's openness as the card holds it (packet.ts `openMap`), its cells across and down. */
@@ -952,6 +954,7 @@ export class Rasterizer {
     this.ownSeed = -1;
     this.farProgram = p.drawFade[d] !== 0 || p.drawHand[d] !== 0;
     [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
+    this.swap = p.drawSwap[d]!;
     if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) return this.details(p, d);
     if ((p.drawFlags[d]! & DRAW_PULLED) !== 0) return this.pulled(p, d);
     if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) return this.textured(p, d);
@@ -1497,6 +1500,7 @@ export class Rasterizer {
           // A far draw drops its fragment as FAR_FADE does, before anything is kept of it. The pattern counts rows from the bottom.
           if (this.fade !== 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
           if (this.hand !== 0 && nearKeeps(this.handAt, this.handFrom, this.handTo, px, H - 1 - py) !== this.hand > 0) continue;
+          if (this.swap !== 0 && !swapKeeps(this.swap, px, H - 1 - py)) continue;
           if (!blend) {
             this.fragments++;
             this.depth[at] = z;
@@ -1686,6 +1690,7 @@ export class Rasterizer {
           const at = py * W + px;
           if (z >= this.depth[at]!) continue;
           if (this.hand !== 0 && nearKeeps(this.handAt, this.handFrom, this.handTo, px, H - 1 - py) !== this.hand > 0) continue;
+          if (this.swap !== 0 && !swapKeeps(this.swap, px, H - 1 - py)) continue;
           const q0 = e0 * i0, q1 = e1 * i1, q2 = e2 * i2;
           const qs = 1 / (q0 + q1 + q2);
           for (let i = 0; i < CARRIED; i++) carried[i] = (q0 * poly[v0 + i]! + q1 * poly[v1 + i]! + q2 * poly[v2 + i]!) * qs;

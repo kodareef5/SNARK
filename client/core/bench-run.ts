@@ -54,6 +54,8 @@ export interface Drawn {
   userAgent: string;
   /** Bytes the page holds on the card, and of them textures' (assets/residency.ts ledger, texLedger). */
   card: { bytes: number; textures: number };
+  /** The budget's squeeze at the last frame: below none where it spends the room left on finer trees (render/budget.ts). */
+  squeeze: number;
 }
 
 /** A `?bench=1` run: the page flies itself (App.autopilot), or holds its look with `?still`, and reports frame times and the GPU's time by pass. */

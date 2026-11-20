@@ -200,7 +200,7 @@ export function markJoins(p: FramePacket): void {
   const same = (o: Float32Array, a: number, b: number): boolean => o[a * 3] === o[b * 3] && o[a * 3 + 1] === o[b * 3 + 1] && o[a * 3 + 2] === o[b * 3 + 2];
   for (let d = 0; d < p.drawCount; d++) {
     const e = d - 1, flags = p.drawFlags[d]!;
-    const joined = d > 0 && (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 && flags === p.drawFlags[e] && p.drawSlot[d] === p.drawSlot[e] && p.drawMesh[d] === p.drawMesh[e] && p.drawBuffer[d] === p.drawBuffer[e] && p.drawFirst[d] === p.drawFirst[e] && p.drawInstances[d] === p.drawInstances[e] && p.drawPass[d] === p.drawPass[e] && p.drawFade[d] === p.drawFade[e] && p.drawHand[d] === p.drawHand[e] && same(p.drawOffset, d, e);
+    const joined = d > 0 && (flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 && flags === p.drawFlags[e] && p.drawSlot[d] === p.drawSlot[e] && p.drawMesh[d] === p.drawMesh[e] && p.drawBuffer[d] === p.drawBuffer[e] && p.drawFirst[d] === p.drawFirst[e] && p.drawInstances[d] === p.drawInstances[e] && p.drawPass[d] === p.drawPass[e] && p.drawFade[d] === p.drawFade[e] && p.drawHand[d] === p.drawHand[e] && same(p.drawOffset, d, e) && p.drawSwap[d] === p.drawSwap[e];
     p.drawJoined[d] = joined && ((flags & DRAW_TEXTURED) === 0 || (p.drawMaterial[d] === p.drawMaterial[e] && p.drawLayer[d] === p.drawLayer[e] && p.drawWear[d] === p.drawWear[e])) ? 1 : 0;
   }
   // A caster's material is read only to cut it out.
@@ -509,6 +509,8 @@ export class FramePacket {
   readonly drawFade = new Float32Array(MAX_DRAWS);
   /** How a draw of nodes takes part in their hand-over from the near store to the far one: hand.ts HAND_NEAR, HAND_FAR, or 0. */
   readonly drawHand = new Int8Array(MAX_DRAWS);
+  /** How far a draw of a cell of trees that is changing level has come (hand.ts `swapKeeps`): t for the new level, -t for the old, 0 for any other. */
+  readonly drawSwap = new Float32Array(MAX_DRAWS);
   /**
    * For a DRAW_TEXTURED draw of bodies that are hurt or dead, whose material has a layer on the card: the level its layer
    * is drawn at, in LAYER_LEVELS of the whole (surface.ts `wounded`). 0 for any other, which reads no layer.
@@ -608,6 +610,7 @@ export class FramePacket {
     // frame it does not keep, and a row past it kept a far draw's fade for a near draw to take in the next frame.
     this.drawFade.fill(0);
     this.drawHand.fill(0);
+    this.drawSwap.fill(0);
     this.drawLayer.fill(0);
     this.drawWear.fill(0);
     this.drawCount = 0;

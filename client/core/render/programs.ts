@@ -179,7 +179,9 @@ export function drawProgram(p: FramePacket, d: number, material: PackMaterial | 
   if ((flags & DRAW_TEXTURED) !== 0) {
     if (p.drawLayer[d]! > 0) return PROGRAM.surfaceLayer;
     const dyed = !material || material.mask >= 0 || material.mask2 >= 0;
-    return SURFACES[(dyed ? 2 : 0) + (hand !== 0 || (flags & DRAW_CUTOUT) !== 0 ? 1 : 0)]!;
+    // A cell of trees changing level drops fragments as one in the hand-over does (hand.ts swapKeeps).
+    const swapping = p.drawSwap[d] !== 0;
+    return SURFACES[(dyed ? 2 : 0) + (hand !== 0 || swapping || (flags & DRAW_CUTOUT) !== 0 ? 1 : 0)]!;
   }
   if ((flags & DRAW_PULLED) !== 0) return PROGRAM.pulled;
   if (p.drawFade[d] !== 0 || hand !== 0) return PROGRAM.far;

@@ -68,9 +68,11 @@ export interface Tier {
    * Trees, rocks and bushes near: the chunks round the body's the near node field holds, and the band, in metres from the
    * camera to a node's foot, over which the near store's draw of a node hands over to the far store's (render/hand.ts).
    * A chunk changes hands no nearer the body than `chunks` chunks, and the camera stands at most 3.5 m from the eye, so
-   * the band ends before that and a chunk is drawn alike on both sides of the change.
+   * the band ends before that and a chunk is drawn alike on both sides of the change. With `levels`, a tree's own levels
+   * pass one to the next by the same pattern, over that many ms, where a cell of trees changes level (hand.ts swapKeeps);
+   * without, a cell of trees changes level at once.
    */
-  readonly nodes: { readonly chunks: number; readonly band: readonly [number, number] };
+  readonly nodes: { readonly chunks: number; readonly band: readonly [number, number]; readonly levels?: number };
   /**
    * Sun shadows: how many cascades, each map's side in texels, how far from the camera they reach in metres, how many
    * compared taps a lookup takes, how much of the splits is logarithmic rather than even, and whether the farthest
@@ -82,7 +84,7 @@ export interface Tier {
    * whether its settings offer the tier at all. Each value is a phone's report's (planning/decisions.md, M2's rows), but
    * for what no phone has measured yet, which a phone draws as it did: materials read as if seen head on.
    */
-  readonly touch: { readonly shadows?: Tier["shadows"]; readonly budget?: Tier["budget"]; readonly gpuBytes?: number; readonly finish?: Tier["finish"]; readonly city?: Tier["city"]; readonly fewest?: number; readonly anisotropy?: number; readonly viewDistance?: number; readonly offered?: boolean } | null;
+  readonly touch: { readonly shadows?: Tier["shadows"]; readonly budget?: Tier["budget"]; readonly nodes?: Tier["nodes"]; readonly gpuBytes?: number; readonly finish?: Tier["finish"]; readonly city?: Tier["city"]; readonly fewest?: number; readonly anisotropy?: number; readonly viewDistance?: number; readonly offered?: boolean } | null;
   /**
    * The lit tiers' world finish (render/world-surfaces.ts): "full", three hashed cells of a tile with its normal and
    * packed maps and two noises; or "light", one cell, its base map and the large noise alone, which costs about two fifths as much over plain lighting.
@@ -101,9 +103,12 @@ export interface Tier {
   /**
    * What a frame may spend (render/budget.ts): triangles, which crowns near give up for what stands above them in the
    * frame's order, and draws, which are counted and told. From the iPhone's tree order (D423) on medium: the young wood
-   * held 60 a second at 2.1 M triangles and the elder oaks took 6.5 ms more for each million past it.
+   * held 60 a second at 2.1 M triangles and the elder oaks took 6.5 ms more for each million past it. `spend`: how many
+   * whole steps the squeeze may fall below none while the frame is under, each drawing nodes' levels twice as far; none
+   * where left out. `spendTo`: the triangles a frame spending them may come to, short of the budget: on an M5 at 1080 px a
+   * frame took about 10 ms and 1.6 ms more for each million triangles on the tree route (planning/workstreams/trees.md).
    */
-  readonly budget: { readonly triangles: number; readonly draws: number };
+  readonly budget: { readonly triangles: number; readonly draws: number; readonly spend?: number; readonly spendTo?: number };
   /** How many times the tier's threshold a body's level may err by: 1, and more at the governor's bodies step. */
   readonly bodyError: number;
   /** Cloud layers over the dome. */
@@ -170,22 +175,22 @@ export const TIERS: readonly Tier[] = [
   },
   {
     name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, fewest: 0, canvas: 0, anisotropy: 1, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
-    lit: true, split: 384, viewDistance: VIEW, reach: { bases: 2048, city: 2500, trees: 1500, rocks: 700, bushes: 400, parts: 1500 }, fade: 0.25, city: { levels: MEDIUM_CITY }, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light", city: { levels: nearer(MEDIUM_CITY, PHONE_CITY) }, budget: { triangles: 2e6, draws: 1024 } }, finish: "full", finishes: 512, relief: false, clouds: 2, water: "simple",
-    details: { pool: 1536, share: 1, reach: 1, fill: 1 }, budget: { triangles: 4e6, draws: 1024 }, bodyError: 1,
+    lit: true, split: 384, viewDistance: VIEW, reach: { bases: 2048, city: 2500, trees: 1500, rocks: 700, bushes: 400, parts: 1500 }, fade: 0.25, city: { levels: MEDIUM_CITY }, nodes: { chunks: 3, band: [152, 184], levels: 400 }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false }, finish: "light", city: { levels: nearer(MEDIUM_CITY, PHONE_CITY) }, budget: { triangles: 2e6, draws: 1024 }, nodes: { chunks: 3, band: [152, 184] } }, finish: "full", finishes: 512, relief: false, clouds: 2, water: "simple",
+    details: { pool: 1536, share: 1, reach: 1, fill: 1 }, budget: { triangles: 4e6, draws: 1024, spend: 1, spendTo: 2.5e6 }, bodyError: 1,
     post: null,
     contact: false,
   },
   {
     name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
-    lit: true, split: 384, viewDistance: 6000, reach: { bases: 2048, city: 3000, trees: 1500, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.25, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1, viewDistance: VIEW, budget: { triangles: 4e6, draws: 2048 } }, finish: "full", finishes: 1024, relief: false, clouds: 2, water: "simple",
-    details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 6e6, draws: 2048 }, bodyError: 1,
+    lit: true, split: 384, viewDistance: 6000, reach: { bases: 2048, city: 3000, trees: 1500, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.25, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248], levels: 400 }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1, viewDistance: VIEW, budget: { triangles: 4e6, draws: 2048 }, nodes: { chunks: 4, band: [216, 248] } }, finish: "full", finishes: 1024, relief: false, clouds: 2, water: "simple",
+    details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 6e6, draws: 2048, spend: 2, spendTo: 3.5e6 }, bodyError: 1,
     post: { bloom: 1 },
     contact: true,
   },
   {
     name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
-    lit: true, split: 384, viewDistance: 8000, reach: { bases: 2048, city: 3000, trees: 2000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.25, city: { levels: [boxes(1100), lattice(1500), bare(2000), mass(2500, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: false, clouds: 2, water: "simple",
-    details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096 }, bodyError: 1,
+    lit: true, split: 384, viewDistance: 8000, reach: { bases: 2048, city: 3000, trees: 2000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.25, city: { levels: [boxes(1100), lattice(1500), bare(2000), mass(2500, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312], levels: 400 }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: false, clouds: 2, water: "simple",
+    details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096, spend: 2, spendTo: 5e6 }, bodyError: 1,
     post: { bloom: 1 },
     contact: true,
   },

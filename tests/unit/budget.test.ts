@@ -44,7 +44,7 @@ function turns(xs: readonly number[]): number {
 test("the order puts bodies and what a fight shows above anything built, cover above crowns near, and ambient details last", () => {
   expect(ORDER).toEqual(["own", "bodies", "fight", "built", "ground", "cover", "crowns", "far", "ambient"]);
   // Every tier has a number; medium's is the young wood the iPhone held at 60 a second (D423).
-  expect([medium.budget, tierOf("medium").budget]).toEqual([{ triangles: 2e6, draws: 1024 }, { triangles: 4e6, draws: 1024 }]);
+  expect([medium.budget, tierOf("medium").budget]).toEqual([{ triangles: 2e6, draws: 1024 }, { triangles: 4e6, draws: 1024, spend: 1, spendTo: 2.5e6 }]);
 });
 
 test("the squeeze rises while crowns near take more than the frame leaves them, and falls only well under, slowly", () => {
@@ -69,6 +69,46 @@ test("the squeeze rises while crowns near take more than the frame leaves them, 
   // Off, the squeeze is none, whatever the frame.
   at.b.on = false;
   expect(run(0.05, crowns, () => 1e7, at).every((s) => s === 0)).toBe(true);
+});
+
+test("on a desktop's high the squeeze spends what the frame leaves: well under, it falls past none to its spend, and rises back when crowns fill the frame", () => {
+  const high = tierOf("high"), b = new FrameBudget();
+  expect([high.budget.spend, forTouch(high, true).budget.spend, medium.budget.spend]).toEqual([2, undefined, undefined]);
+  // Below none, crowns and cover are drawn as if nearer, a whole step half as far, and no leaf is thinned.
+  expect([crownScale(-1), coverScale(-1), crownScale(-2), coverScale(-0.5)]).toEqual([0.5, 0.5, 0.25, 2 ** -0.5]);
+  expect(thinning(-1, 200, 248, 255)).toBe(0);
+  // A beach: crowns take a tenth of what they may. The squeeze reaches its least and stays there.
+  let t = 0;
+  const frames = (seconds: number, crowns: (squeeze: number) => number, above = 1e6): number[] => {
+    const out: number[] = [];
+    for (const end = t + seconds * 1000; t < end; t += FRAME) {
+      b.begin(high);
+      b.crowns = crowns(b.squeeze);
+      b.end(t, b.crowns + above, 500);
+      out.push(b.squeeze);
+    }
+    return out;
+  };
+  const beach = frames(10, () => 0.5e6);
+  expect(beach.at(-1)).toBe(-2);
+  expect(Math.min(...beach)).toBe(-2);
+  // A grove whose crowns cost four times as much each step nearer: the squeeze rises until they fit, and holds.
+  // Spending, crowns come only to the tier's spendTo, short of its whole budget.
+  const grove = frames(30, (s) => 1.2e6 * 4 ** -s);
+  expect(grove.at(-1)!).toBeGreaterThan(-1);
+  expect(grove.at(-1)!).toBeLessThan(0);
+  expect(1.2e6 * 4 ** -grove.at(-1)! + 1e6).toBeLessThanOrEqual(high.budget.spendTo! * 1.05);
+  expect(turns(grove.slice(-600))).toBeLessThanOrEqual(1);
+  // A frame already past spendTo without its crowns spends nothing, though under its budget.
+  const city = frames(30, () => 0.8e6, 3.2e6);
+  expect(city.slice(-60).every((s) => s >= 0)).toBe(true);
+  // A tier that does not spend never falls below none.
+  b.reset();
+  for (let k = 0; k < 600; k++, t += FRAME) {
+    b.begin(medium);
+    b.end(t, 1e5, 100);
+  }
+  expect(b.squeeze).toBe(0);
 });
 
 test("a count hovering at the limit does not move the squeeze back and forth", () => {

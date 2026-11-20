@@ -41,3 +41,25 @@ bool handGone(float at) {
   return (uHand > 0.0 && at >= fHandTo) || (uHand < 0.0 && at <= fHandFrom);
 }
 `;
+
+/**
+ * A near node's own levels pass one to the next by the same pattern, over a short time rather than a band of distance:
+ * where a cell of trees changes level, it is drawn at both for a moment (Tier.nodes.levels ms), the new level keeping
+ * a share `t` of the pattern's pixels and the old the rest, `t` going from 0 to 1. A draw's swap (packet.ts `drawSwap`)
+ * is `t` for the new level, `-t` for the old, and 0 for neither. Whether it keeps window pixel (x, y); SWAP_GLSL's twin.
+ */
+export function swapKeeps(swap: number, x: number, y: number): boolean {
+  if (swap === 0) return true;
+  const o = FADE_ORDER[(y & 3) * 4 + (x & 3)]! + 0.5;
+  return swap > 0 ? o < swap * 16 : o >= -swap * 16;
+}
+
+/** The swap in GLSL, after HAND_GLSL, whose pattern it shares: swapDrops() says whether to discard the fragment. */
+export const SWAP_GLSL = `uniform float uSwap;
+bool swapDrops() {
+  if (uSwap == 0.0) return false;
+  ivec2 q = ivec2(gl_FragCoord.xy) & 3;
+  float o = FADE_ORDER[q.y * 4 + q.x] + 0.5;
+  return uSwap > 0.0 ? o >= uSwap * 16.0 : o < -uSwap * 16.0;
+}
+`;

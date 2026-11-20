@@ -153,9 +153,10 @@ function line(r: Row): string {
     k(t.nearNodes).padStart(8),
     k(t.farNodes).padStart(8),
     `${((p.card?.bytes ?? 0) / 1048576).toFixed(0)} MB`.padStart(8),
+    (typeof p.squeeze === "number" ? p.squeeze.toFixed(2) : "-").padStart(8),
   ].join("  ");
 }
-const HEAD = ["station".padEnd(34), "frame, median / 95th".padStart(16), "clock".padStart(9), "tris".padStart(8), "cast".padStart(8), "draws".padStart(6), "near trees".padStart(8), "far trees".padStart(8), "card".padStart(8)].join("  ");
+const HEAD = ["station".padEnd(34), "frame, median / 95th".padStart(16), "clock".padStart(9), "tris".padStart(8), "cast".padStart(8), "draws".padStart(6), "near trees".padStart(8), "far trees".padStart(8), "card".padStart(8), "squeeze".padStart(8)].join("  ");
 
 async function run(tier: string, page: string[], name: string, only: string | undefined): Promise<void> {
   const chrome = findChrome();

@@ -142,11 +142,13 @@ const BEAM_MESH = "core:beam";
 const BEAM_COLOR = 8;
 /** A draw costs about what drawing this many more triangles does. Neighbouring cells share a draw when that saves more. */
 const RUN_TRIANGLES = 4096;
+/** A cell of trees drawn this long ago or less is still on screen, so a change of its level is swapped, not taken at once. */
+const SEEN_MS = 250;
 /** What the card holds for the chunks' instance buffers is reserved under this name. */
 const INSTANCES = "chunk instances";
 const QUAD_INDICES = "quad indices";
 /** Numbers a run of cells takes in `runs` (Scene.ranges), and in `castRuns` (Scene.castChunk). */
-const RUN = 11;
+const RUN = 13;
 const CAST_RUN = 5;
 /** Milliseconds a chunk's doors stand other than its rooms were found with before they are found again. */
 const SETTLE = 2000;
@@ -333,6 +335,13 @@ interface ChunkBatch {
   thin: Uint8Array;
   cellCrown: Int8Array;
   cellThin: Uint8Array;
+  /** For trees that swap levels (Scene.swapOf): the crown and trunk levels a cell was last drawn at and when, and the levels it is changing from and since when; -1 for none. */
+  cellShown: Int8Array;
+  cellShownTrunk: Int8Array;
+  cellWas: Int8Array;
+  cellWasTrunk: Int8Array;
+  cellSince: Float64Array;
+  cellSeenAt: Float64Array;
   /**
    * Per range, and per range and cell, the largest size of the kinds of its nodes, as a multiple of the modelled size, and
    * 1 for pieces. Two kinds may grow as one mesh at different sizes (the young live oak and the elder), and each is drawn
@@ -1341,7 +1350,7 @@ export class Scene {
       this.doubled -= copies - 1;
     }
     // The rows let go take what beginFrame gives every row, which draws that leave them alone count on.
-    for (const a of [p.drawFade, p.drawHand, p.drawLayer, p.drawWear]) a.fill(0, kept, p.drawCount);
+    for (const a of [p.drawFade, p.drawHand, p.drawLayer, p.drawWear, p.drawSwap]) a.fill(0, kept, p.drawCount);
     p.drawCount = kept;
     const casts = this.chunkCasts;
     let at = 0, next = 0;
@@ -2526,6 +2535,7 @@ export class Scene {
     const squeeze = sized ? this.budget.squeeze : 0;
     const scale = crownScale(squeeze), cover = coverScale(squeeze);
     const flags = sized ? DRAW_SIZED : 0;
+    const swapMs = sized ? (this.assets.tier.nodes.levels ?? 0) : 0;
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
       if (b.ranges[r + 2] === 0) continue;
@@ -2533,12 +2543,17 @@ export class Scene {
       const errors = this.assets.table.error[mesh]!;
       const reach = b.reach[q]!;
       const tree = sized && this.treeOf[mesh] === 1;
+      // Trees whose cells change level by a swap (swapOf).
+      const swaps = tree && swapMs > 0;
       const near = this.assets.choose(errors, (dist * cover) / reach, b.level[q]!);
       const crown = tree ? this.assets.choose(errors, (dist * scale) / reach, b.crown[q]!) : near;
       // A mesh whose instances here weigh less than a draw at the level the nearest asks for is drawn whole at it.
       const light = far <= from && !tree && b.ranges[r + 2]! * this.trisOfMesh[mesh]![near]! <= RUN_TRIANGLES;
-      const one = light || (far <= from && near === this.assets.choose(errors, (far * cover) / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!)));
+      const alike = far <= from && near === this.assets.choose(errors, (far * cover) / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!));
+      // Trees that swap are drawn whole only while no cell of them is changing level, or would start to.
+      const one = light || (alike && (!swaps || this.steady(b, q, at0, near, crown, swapMs)));
       if (one) {
+        if (swaps) this.shownAll(b, q, at0, near, crown);
         b.level[q] = near;
         b.crown[q] = crown;
         b.thin[q] = tree ? thinning(squeeze, dist, to, b.thin[q]!) : 0;
@@ -2590,7 +2605,7 @@ export class Scene {
           }
           continue;
         }
-        let seen = dist / reach, hand = 0, level = near, crown = b.crown[q]!, thin = b.thin[q]!;
+        let seen = dist / reach, hand = 0, level = near, crown = b.crown[q]!, thin = b.thin[q]!, swap = 0;
         if (!one) {
           if (sized) {
             const most = Math.hypot(Math.max(Math.abs(box[k]! - cam.x), Math.abs(box[k + 3]! - cam.x)), Math.max(Math.abs(box[k + 1]! - cam.y), Math.abs(box[k + 4]! - cam.y)), Math.max(Math.abs(box[k + 2]! - cam.z), Math.abs(box[k + 5]! - cam.z)));
@@ -2600,18 +2615,22 @@ export class Scene {
           level = levels[qc] = this.assets.choose(errors, seen * cover, levels[qc]!);
           crown = crowns[qc] = tree ? this.assets.choose(errors, seen * scale, crowns[qc]!) : level;
           thin = thins[qc] = tree ? thinning(squeeze, d, to, thins[qc]!) : 0;
+          if (swaps) swap = this.swapOf(b, qc, level, crown, swapMs);
         }
         // A run is its first and end instance, its level and the coarsest a cell of it asked for, its nearest distance,
-        // its hand-over, its crown's level and the coarsest a cell asked for, its least thinning, and its first and end cell.
+        // its hand-over, its crown's level and the coarsest a cell asked for, its least thinning, its first and end cell,
+        // and, for a cell changing level, how far it has come and the cell, which is a run of its own.
         const last = runs.length - RUN;
-        if (last >= 0 && next === v0) {
+        if (last >= 0 && next === v0 && swap === 0 && runs[last + 11] === 0) {
           const finer = Math.min(runs[last + 2]!, level), coarser = Math.max(runs[last + 3]!, level);
           const crownFiner = Math.min(runs[last + 6]!, crown), crownCoarser = Math.max(runs[last + 7]!, crown);
           const fuller = Math.min(runs[last + 8]!, thin);
           const had = runs[last + 1]! - runs[last]!;
           const cost = this.cost(mesh, finer, crownFiner, fuller);
           const more = had * (cost - this.cost(mesh, runs[last + 2]!, runs[last + 6]!, runs[last + 8]!)) + n * (cost - this.cost(mesh, level, crown, thin)) + gap * cost;
-          if (coarser - finer <= 1 && crownCoarser - crownFiner <= 1 && more <= RUN_TRIANGLES) {
+          // Cells of trees that swap join only at the same levels, so each is drawn at the levels it changes from.
+          const joinable = swaps ? coarser === finer && crownCoarser === crownFiner : coarser - finer <= 1 && crownCoarser - crownFiner <= 1;
+          if (joinable && more <= RUN_TRIANGLES) {
             runs[last + 1] = next = v1;
             runs[last + 2] = finer;
             runs[last + 3] = coarser;
@@ -2625,7 +2644,7 @@ export class Scene {
             continue;
           }
         }
-        runs.push(v0, v1, level, level, seen, hand, crown, crown, thin, c, c + 1);
+        runs.push(v0, v1, level, level, seen, hand, crown, crown, thin, c, c + 1, swap, qc);
         next = v1;
         gap = 0;
       }
@@ -2633,7 +2652,15 @@ export class Scene {
         this.assets.wantTextured(mesh, runs[k + 2]!, runs[k + 4]!);
         if (runs[k + 6] !== runs[k + 2]) this.assets.wantTextured(mesh, runs[k + 6]!, runs[k + 4]!);
         const d0 = this.packet.drawCount;
+        // A cell changing level is drawn at its new levels keeping a share of the pattern, then at its old keeping the rest.
+        const swap = runs[k + 11]!, qc = runs[k + 12]!;
+        this.swap = swap;
         for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.draw(mesh, runs[k + 2]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
+        if (swap !== 0) {
+          this.swap = -swap;
+          for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.draw(mesh, b.cellWasTrunk[qc]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, b.cellWas[qc]!, leavesAt(runs[k + 8]!));
+        }
+        this.swap = 0;
         this.boxRun(d0, b, q, mesh, runs[k + 9]!, runs[k + 10]!, cam);
       }
     }
@@ -3009,6 +3036,12 @@ export class Scene {
       thin: new Uint8Array(n).fill(255),
       cellCrown: new Int8Array(n * cells).fill(-1),
       cellThin: new Uint8Array(n * cells).fill(255),
+      cellShown: new Int8Array(n * cells).fill(-1),
+      cellShownTrunk: new Int8Array(n * cells).fill(-1),
+      cellWas: new Int8Array(n * cells).fill(-1),
+      cellWasTrunk: new Int8Array(n * cells).fill(-1),
+      cellSince: new Float64Array(n * cells),
+      cellSeenAt: new Float64Array(n * cells).fill(-Infinity),
       reach: new Float32Array(n).fill(sizeOf ? 0 : 1),
       cellReach: new Float32Array(n * cells).fill(sizeOf ? 0 : 1),
       minX: Infinity,
@@ -3212,6 +3245,8 @@ export class Scene {
       p.skipped++;
       return;
     }
+    // A flat draw's program has no swap: a cell changing level while its materials are not on the card changes at once.
+    if (this.swap < 0 && !this.ready) return;
     const sections = this.assets.table.sections[mesh]!;
     let runs = this.ready ? sections[lod]! : FLAT;
     // The crown's level and its runs; where that level is drawn flat, it draws the whole tree.
@@ -3253,6 +3288,7 @@ export class Scene {
       p.drawOffset[d * 3 + 2] = oz;
       p.drawFlags[d] = flags | this.groundFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
+      p.drawSwap[d] = material < 0 ? 0 : this.swap;
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
       p.drawWear[d] = p.drawLayer[d]! > 0 ? Math.floor(layer / WEAR_KEY) : 0;
       const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;
@@ -3267,6 +3303,56 @@ export class Scene {
     this.doubled += draws * (copies - 1);
     p.triangles += tris * count * copies;
     if (this.treeOf[mesh] === 1) this.budget.crowns += crowns * count * copies;
+  }
+
+  /** The swap `draw` gives its draws (packet.ts drawSwap): 0 but while a cell of trees changing level is drawn (`swapOf`). */
+  private swap = 0;
+
+  /**
+   * How far cell `qc` of a range of trees has come in changing level, now that it is drawn with its trunk at `level`
+   * and its crown at `crown`: 0 where it has not changed in the last `ms`, else from just over 0 to 1. A cell first drawn,
+   * or drawn again after it was out of view, takes its level at once, as nothing of it was on screen to change.
+   */
+  private swapOf(b: ChunkBatch, qc: number, level: number, crown: number, ms: number): number {
+    const now = this.now;
+    if (b.cellShown[qc]! >= 0 && now - b.cellSeenAt[qc]! < SEEN_MS && (b.cellShown[qc] !== crown || b.cellShownTrunk[qc] !== level)) {
+      b.cellWas[qc] = b.cellShown[qc]!;
+      b.cellWasTrunk[qc] = b.cellShownTrunk[qc]!;
+      b.cellSince[qc] = now;
+    }
+    b.cellShown[qc] = crown;
+    b.cellShownTrunk[qc] = level;
+    b.cellSeenAt[qc] = now;
+    const t = (now - b.cellSince[qc]!) / ms;
+    if (b.cellWas[qc]! < 0 || t >= 1) {
+      b.cellWas[qc] = -1;
+      return 0;
+    }
+    return Math.max(t, 1 / 32);
+  }
+
+  /** Whether no cell of range `q` that holds trees is changing level, nor would start to if drawn at `level` and `crown`. */
+  private steady(b: ChunkBatch, q: number, at0: number, level: number, crown: number, ms: number): boolean {
+    const now = this.now;
+    for (let c = 0; c < b.cells; c++) {
+      if (this.firstOf(b, at0, c + 1) === this.firstOf(b, at0, c)) continue;
+      const qc = q * b.cells + c;
+      if (b.cellWas[qc]! >= 0 && now - b.cellSince[qc]! < ms) return false;
+      if (b.cellShown[qc]! >= 0 && now - b.cellSeenAt[qc]! < SEEN_MS && (b.cellShown[qc] !== crown || b.cellShownTrunk[qc] !== level)) return false;
+    }
+    return true;
+  }
+
+  /** Every cell of range `q` that holds trees, drawn whole at `level` and `crown`, as swapOf would mark it. */
+  private shownAll(b: ChunkBatch, q: number, at0: number, level: number, crown: number): void {
+    for (let c = 0; c < b.cells; c++) {
+      if (this.firstOf(b, at0, c + 1) === this.firstOf(b, at0, c)) continue;
+      const qc = q * b.cells + c;
+      b.cellShown[qc] = crown;
+      b.cellShownTrunk[qc] = level;
+      b.cellSeenAt[qc] = this.now;
+      b.cellWas[qc] = -1;
+    }
   }
 
   /** Scratch for the draws of a level, four numbers each: material, 1 if from the trunk's level, first index, indices. */
