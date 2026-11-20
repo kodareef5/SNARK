@@ -1,5 +1,5 @@
 // A body that dies goes limp (shared/anim/ragdoll.ts, client/core/ragdoll.ts): from its death clip with no jump, to rest
-// on a slope within three seconds with no joint past its limit and nothing under the ground or inside a structure,
+// on a slope in a time that grows with its size (three seconds for a small one) with no joint past its limit and nothing under the ground or inside a structure,
 // falling again when the floor it lies on is taken away, the same every time. A client draws the bodies the server sends,
 // and each lies alike for every client and for the server.
 import { expect, test } from "bun:test";
@@ -41,6 +41,28 @@ function dolls(): [string, Rig][] {
   const found: [string, Rig][] = CREATURE_ASSETS.flatMap(({ id }) => (rigs.get(id)?.ragdoll ? [[id, rigs.get(id)!] as [string, Rig]] : []));
   return [...found, ["strider", strider()]];
 }
+
+/**
+ * How it is built: on two legs, on four, with wings (a creature that flies), or the one made in a test. A big animal
+ * falls further and swings longer than a small one, and lies across more of what it falls on, so the tests below give
+ * each its own time and a floor, ramp and roof built to its size.
+ */
+type Build = "two legs" | "four legs" | "wings" | "made";
+function build(id: string, rig: Rig): Build {
+  if (id === "strider") return "made";
+  const species = CORE_CONTENT.find((d) => d.type === "species" && d.mesh === id);
+  if (species?.type === "species" && species.fly) return "wings";
+  return rig.feet.length >= 4 ? "four legs" : "two legs";
+}
+
+/**
+ * Sizes, by reach at full size, that the tests must each cover, and how long a doll of each is given to come to rest:
+ * a big animal falls further, swings longer and slides further on what it lies across before it stops. The middling
+ * Parasaur takes 3.6 s to settle on a ramp wide enough to hold it, and the large Rex 3.1 s.
+ */
+const SIZES = [{ name: "small", under: 4, seconds: 3 }, { name: "middling", under: 7, seconds: 4 }, { name: "large", under: Infinity, seconds: 4.5 }] as const;
+const settles = (rig: Rig): number => SIZES.find((c) => rig.reach < c.under)!.seconds;
+const sizeOf = (rig: Rig): string => SIZES.find((c) => rig.reach < c.under)!.name;
 
 /** Ground rising `slope` metres a metre toward +X, and a structure store for what is built on it. */
 function world(slope: number) {
@@ -96,13 +118,19 @@ test("going limp is not a jump: the first pose of the ragdoll is the death clip'
   }
 });
 
-test("a creature dropped on a slope rests within 3 s, with no joint past its limit and no body under the ground", () => {
+test("the ragdolls tested are small, middling and large, and on two legs, on four and with wings", () => {
+  const seen = dolls().filter(([id]) => id !== "strider");
+  expect(SIZES.map((c) => seen.some(([, rig]) => sizeOf(rig) === c.name))).toEqual(SIZES.map(() => true));
+  expect(new Set(seen.map(([id, rig]) => build(id, rig)))).toEqual(new Set(["two legs", "four legs", "wings"]));
+});
+
+test("a creature dropped on a slope rests in its time, with no joint past its limit and no body under the ground", () => {
   const w = world(0.35);
   for (const [id, rig] of dolls()) {
     for (let k = 0; k < 6; k++) {
       const yaw = k * 1.05;
       const d = drop(rig, 60, w.hf.heightAt(60, 64), 64, yaw);
-      const at = rest(d, w, 3);
+      const at = rest(d, w, settles(rig));
       expect([id, yaw, at > 0, past(d) < 1 * DEG, d.deepest(w) < 0.01]).toEqual([id, yaw, true, true, true]);
       // Asleep, it stays where it lies: nothing drags it.
       const x = Float64Array.from(d.x);
@@ -140,17 +168,25 @@ test("a ragdoll on a floor rests on it, falls again when the floor is taken away
   const w = world(0);
   const ceiling = reg.index.get("core:ceiling_wood")!;
   const floor = 2.5;
-  // Four pieces, six metres square, two and a half metres up.
-  const refs = [-1.5, 1.5].flatMap((dx) => [-1.5, 1.5].map((dz) => w.structs.add(ceiling, 60 + dx, floor, 64 + dz, 0, 0, 1)));
+  const side = 2 * reg.halfX[ceiling]!;
+  // A square floor two and a half metres up, of pieces enough to hold the doll lying down: six metres or more across.
+  const lay = (reach: number): number[] => {
+    const n = Math.max(2, Math.ceil(reach / side));
+    const at = (i: number): number => (i - (n - 1) / 2) * side;
+    return Array.from({ length: n * n }, (_, i) => w.structs.add(ceiling, 60 + at(i % n), floor, 64 + at(Math.floor(i / n)), 0, 0, 1));
+  };
   for (const [id, rig] of dolls()) {
-    const d = drop(rig, 60, floor + reg.halfY[ceiling]!, 64, 0.4, id === "strider" ? 1 : 0.8);
-    expect([id, rest(d, w, 3) > 0, d.deepest(w) < 0.01]).toEqual([id, true, true]);
+    const size = id === "strider" ? 1 : 0.8;
+    const refs = lay(rig.reach * size);
+    const d = drop(rig, 60, floor + reg.halfY[ceiling]!, 64, 0.4, size);
+    expect([id, rest(d, w, settles(rig)) > 0, d.deepest(w) < 0.01]).toEqual([id, true, true]);
     const high = d.x[1]!;
     expect(high).toBeGreaterThan(floor);
     for (const ref of refs) w.structs.remove(ref);
     expect(d.step(w, STEP)).toBe(true);
-    expect([id, rest(d, w, 4) > 0, d.deepest(w) < 0.01, d.x[1]! < 1]).toEqual([id, true, true, true]);
-    refs.splice(0, 4, ...[-1.5, 1.5].flatMap((dx) => [-1.5, 1.5].map((dz) => w.structs.add(ceiling, 60 + dx, floor, 64 + dz, 0, 0, 1))));
+    // It fell from the floor to the ground: its hips are at least 2 m lower than they lay on the 2.5 m floor. Not a
+    // fixed height, because a Rex lying on its side has its hips over a metre up.
+    expect([id, rest(d, w, settles(rig) + 1) > 0, d.deepest(w) < 0.01, d.x[1]! < high - 2]).toEqual([id, true, true, true]);
   }
 });
 
@@ -158,22 +194,32 @@ test("a ragdoll lies on a ramp, on the slope of a pitched roof and across its ri
   const w = world(0);
   // A ramp rising a third toward +Z (18 degrees), its top 0.2 m over its middle line; a roof of 32 degrees, 2.75 m high at its
   // ridge along X.
-  w.structs.add(reg.index.get(slopeKind("ramp"))!, 60, 1.5, 64, 0, 0, 1);
+  // The ramp is as many pieces side by side (along X) as the doll needs to lie across it: one, three or more.
+  const rampKind = reg.index.get(slopeKind("ramp"))!, wide = 2 * reg.halfX[rampKind]!;
+  let pieces: number[] = [], across = 0;
+  const lay = (reach: number): void => {
+    for (const ref of pieces) w.structs.remove(ref);
+    // An odd number, so the doll falls on the middle of a piece and not on the seam between two.
+    const n = 2 * Math.ceil(Math.max(0, reach - wide) / (2 * wide)) + 1;
+    pieces = Array.from({ length: n }, (_, i) => w.structs.add(rampKind, 60 + (i - (n - 1) / 2) * wide, 1.5, 64, 0, 0, 1));
+    across = (n * wide) / 2;
+  };
   w.structs.add(reg.index.get(slopeKind("roof"))!, 90, 1.375, 64, 0, 0, 1);
-  const ramp = (x: number, z: number): number => (Math.abs(x - 60) < 2 && Math.abs(z - 64) < 3 ? 1.7 + (z - 64) / 3 : -Infinity);
+  const ramp = (x: number, z: number): number => (Math.abs(x - 60) < across && Math.abs(z - 64) < 3 ? 1.7 + (z - 64) / 3 : -Infinity);
   const roof = (x: number, z: number): number => (Math.abs(x - 90) < 4 && Math.abs(z - 64) < 4 ? 2.75 - (Math.abs(z - 64) * 2.5) / 4 : -Infinity);
   const above = (d: Ragdoll, on: (x: number, z: number) => number): boolean => Array.from({ length: d.n }, (_, i) => d.x[i * 3 + 1]! > on(d.x[i * 3]!, d.x[i * 3 + 2]!)).every((b) => b);
   for (const [id, rig] of dolls()) {
     const size = id === "strider" ? 1 : 0.8;
+    lay(rig.reach * size);
     for (const yaw of [0.4, 1.4, 2.4]) {
-      // On the ramp it rests within the 3 s a slope of terrain gives it.
+      // On the ramp it rests in the time a slope of terrain gives it, on the ramp and not fallen off it.
       const d = drop(rig, 60, ramp(60, 64.5), 64.5, yaw, size);
-      expect([id, yaw, rest(d, w, 3) > 0, d.deepest(w) < 0.01, above(d, ramp)]).toEqual([id, yaw, true, true, true]);
+      expect([id, yaw, rest(d, w, settles(rig)) > 0, d.deepest(w) < 0.01, above(d, ramp), ramp(d.x[0]!, d.x[2]!) > 0]).toEqual([id, yaw, true, true, true, true]);
       // Dropped onto the roof from over its ridge, so that no limb starts under it. A round body may still be creeping, as on
       // terrain as steep, but it is on the roof.
       for (const z of [65.5, 64]) {
         const r = drop(rig, 90, roof(90, 64) + 0.2, z, yaw, size);
-        rest(r, w, 3);
+        rest(r, w, settles(rig));
         expect([id, yaw, z, r.deepest(w) < 0.01, above(r, roof)]).toEqual([id, yaw, z, true, true]);
       }
     }

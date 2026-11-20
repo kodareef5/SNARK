@@ -1,42 +1,199 @@
-# Tyrannosaurus rex
+# Tyrannosaurus
 
-[Striped adult, face and saddle](striped-rex.jpg) · [All seven game LODs](striped-rex-lods.jpg) · [Donor and rebuild instructions](SOURCES.md)
+The Rex is Patch's animated T-rex (described in [SOURCES.md](SOURCES.md)), kept in its own shape, with the game's
+clips, dye regions, hit capsules, ragdoll and saddle added. It replaced an earlier Rex that looked misshapen; the
+plan that made it is [planning/workstreams/rex2.md](../../../../../../planning/workstreams/rex2.md).
 
-The playable adult measures 12.25 m long and 4.56 m tall. Its first four levels retain textured skin at 33,936, 14,500, 6,200 and 2,600 triangles. At 1,000 triangles the engine switches to one palette draw. The authored 288- and 112-triangle silhouettes also use one draw and follow the bite and gait bones. All seven packed meshes close with zero open edges. The head and hide retain 2K base and normal maps. Broad dye and roughness masks stream to 512 px. The checker measures 38.7 MB for the largest complete texture variant, including the saddle.
+It stands 5.76 m tall and 12.0 m long. Its 25 bones are the source's, renamed. Its nearest level is the whole
+57,914-triangle source mesh with 4K maps.
 
-The articulated death and torpor poses stay within 6 mm of the floor. Across eight fall directions per surface, the deepest settled skin point is 5.1 cm below level ground, 4.9 cm below a 12% grade and 9.5 cm below a 35% grade. All 24 falls settled within 2.12 seconds. The pack measured for this refit is `cf5563db724566c3e1460c8143a7f2ab2086dc538e14f9974877cf0812a90355`.
+## Building it
 
-## Original sculpt and development studies
+```sh
+bun tools/art.ts core:rex --no-sheet            # about ten seconds
+```
 
-The review images and measurements below record the earlier coastal adult on the Carbonemys and Rex branch.
+The build needs `assets/raw/patch/anymove-trex.glb` and the pictures in `tex/`, which come with the art. To make the
+pictures afresh from the GLB:
 
-[Native model and saddle review sheet](native-review.png) · [Matched LOD2 profile, quarter and 128 px texture review](resculpt-comparison.png) · [Matched hip in neutral material and production colour](hip-comparison.png)
+```sh
+blender -b --factory-startup --python-exit-code 1 -P assets/source/core/creatures/rex/ref/prepare.py
+blender -b --factory-startup --python-exit-code 1 -P assets/source/core/creatures/rex/ref/paint.py
+bun assets/source/core/creatures/rex/ref/zones.ts    # after a build, if the skin or bones change; then build again
+```
 
-The adult stands 4.56 m tall in the neutral rig. Its 12.25 m outline balances a broad temporal table and roughly 2.45 m cranial region against the long tapering tail. The outer thigh descends from a low iliac crest. Its rear edge slopes back to meet the caudofemoral mass under the tail root. The belly has space for the gastral basket, with the ribcage narrowing into the neck ahead of the shoulders. The Field Museum’s SUE mount and its documented gastralia informed those proportions. [SUE, FMNH PR 2081](https://www.fieldmuseum.org/collection-item-iconic/sue) · [The Field Museum on SUE’s remount](https://www.fieldmuseum.org/blog/fresh-science-makeover-sue)
+The build runs four scripts in Blender:
 
-The textured hide carries small scales across the flanks and neck. The head adds larger coalescing scutes around the orbit and nostril. This is an original interpretation at game resolution. Bell and colleagues documented pebbly scales in preserved patches of adult tyrannosaur skin. The lip margins take their closed profile from the soft-tissue reconstruction discussed by Cullen and colleagues. The dentary angle drops behind the tooth arcade. The nasal vestibule is recessed into the oblique premaxillary face, and the mobile lower jaw pulls a cheek fold beneath the jugal. The broad posterior skull, narrowing nasals and orbit were compared with the museum cast. The game’s long roar opens the lower jaw to expose the tongue, palate and fifty tapering teeth carried by the two jaws. [Museum of the Earth skull cast, Digital Atlas of Ancient Life](https://sketchfab.com/3d-models/vertebrate-tyrannosaurus-rex-skull-mote-cf48487de55d454b8adc92dce2840a0d) · [Bell et al., 2017](https://pmc.ncbi.nlm.nih.gov/articles/PMC5493735/) · [Cullen et al., 2023](https://pubmed.ncbi.nlm.nih.gov/36996202/)
+- `import.py` opens the GLB, checks its hash, renames the bones to the game's, rounds each clip to whole ticks, makes
+  the gaits stay in place, and cuts the bite and flinch to the game's timing.
+- `gaits.py` holds each planted foot still in the walk and run.
+- `clips.py` makes the clips the source lacks.
+- `saddle.py` fits the saddle to the back and checks the rider's sockets in `ref/rider.json`.
 
-Studio Wildcard’s original TLC comparison was the game-art reference for the muscular hip, raised brow and dominant head silhouette. Its Survival Ascended launch artwork also shows the shoulder-mounted rider above the body silhouette and the open jaws in a frontal encounter. The short arms have two separate clawed digits. Each load-bearing foot has three spread toes and a smaller elevated hallux. The nearby Quaternius CC0 comparison has 912 source vertices, no UV set and six actions. The sources here create every vertex, joint, animation and material map for this animal. [Wildcard’s original Rex comparison](https://steamcommunity.com/sharedfiles/filedetails/?id=1267375377) · [Wildcard’s Survival Ascended launch presentation](https://www.youtube.com/watch?v=0gLODoXanog) · [Quaternius Animated Dinosaur Pack](https://quaternius.com/packs/animateddinosaurs.html)
+`bun tools/rex/contact.ts` measures the lying clips and ragdoll falls against the ground. `bun tools/fit-zones.ts
+core:rex` measures the hit capsules. `bun tools/rex/look.ts OUT --dist CLIENT` takes the same views of it in the
+game's own page on this Mac's GPU, and `--ride core:rex` adds a picture from a rider's camera.
 
-## Native asset
+## Why it was replaced
 
-Build with `bun tools/art.ts core:rex --no-sheet`. The authoring pass writes the anatomical paint layout under `var/rex` before shaping the mesh at the hip. Those vertices carry their original UV coordinates through the final edit. To repaint, run `tex/paint.py` with NumPy, SciPy and Pillow after building, then rebuild the pack. Reproduce the pictured frames with `bun tools/rex/review.ts bc` and `bun tools/rex/review.ts astc`. The renderer decodes the production block encoders’ complete mip chains. The left face closeup on the sheet uses BC and the roaring face uses ASTC. The captures use the game’s noon lighting. For the matched sheet, retain the two BC LOD2 views and receipt of the earlier 5a990153 pack, then run the BC review once more with `--medium-mip` on the revised pack. The upper comparisons use identical cameras, crops and shrink factors within each column. The lower closeups show the muzzle with a 128 px ceiling. At that resolution the angled nasal opening, jaw hinge and brow remain legible. Much of the fine scaling and the shallower cheek folds blend into the surrounding colour. The eye-following closeups show the iris at idle frame 0 and full coverage at frame 69. At that magnification the lower fold has a dark, sharply defined free edge.
+Both Rexes in their rest pose, measured from the skin. The pictures are in `ref/compare/`: the
+[new side](compare/side-new.png), the [earlier side](compare/side-old.png), the [front](compare/front-both.png), the
+[top](compare/top-both.png) and a [three-quarter view](compare/quarter-both.png).
 
-The hip comparison pairs two renders of the same resting frame at 6,200 triangles. The neutral material shows the gradual turn over the upper rear thigh and the continuous lower edge into the tail. The colour views use identical BC texture bytes capped at 128 px. Capture the former geometry with `bun tools/rex/review.ts bc --medium-mip --hip --geometry=PATH_TO_D929BC98_PACK`, then repeat without the geometry argument to capture the current asset. `python tools/rex/sheets.py BEFORE_DIRECTORY` checks the receipts and composes all three sheets.
+| | Earlier Rex | This Rex |
+|---|---:|---:|
+| Length | 12.25 m | 12.0 m |
+| Height | 4.56 m | 5.76 m |
+| Width, across the thighs | 2.2 m | 3.2 m |
+| Hip joint height | 3.02 m (25% of length) | 3.6 m (30%) |
+| Belly, lowest point under the chest | 1.84 m | 2.49 m |
+| Head top over the back at the hips | 0.6 m | 1.0 m |
+| Head depth, 10% back from the snout | 1.36 m | 1.79 m |
+| Tail tip height | 1.7 m | 3.0 m |
 
-| Feature | Native measurement or implementation |
-|---|---|
-| Geometry | 34,128 triangles at the finest level. Seven body and four worn-saddle levels. All eleven are closed, consistently oriented meshes. |
-| Rig | 30 bones, 26 hit capsules, 17 sockets and 19 clips at 30 Hz. The rigid upper arcade follows the maxilla. Its narrower contact capsule meets the broader posterior skull capsule. The commissure, palate, orbital rims, moving upper lid and tooth rows have their own surfaces. |
-| Pigment | Six dye channels over the two 2K main materials. The eyes, teeth, tongue and 1K saddle preserve their own colours. Separate 256-pixel hurt and decay pictures supply the combined damage texture. |
-| Motion | 3.36 m per walk cycle and 6.16 m per run cycle. At their authored 2.8 and 8.4 m/s rates, the native checker measures 2.7 cm and 0.2 cm of planted toe travel. The swim covers 3.8 m per cycle at 3 m/s. |
-| Bite | Frames 8–11 of 23 lower the upper bite socket from 2.77 m to 2.22 m. Its forward reach stays between 4.64 and 4.72 m from the animal origin. |
-| Riding | A leather pad follows vertical casts onto the actual back. Two girths follow radial skin samples. The saddle tree, grips and stirrup irons share the chest’s frame with the seat, hand and foot targets. A native ray through the seat centre meets its leather surface 3.7 mm above the socket. Across 52 samples of idle, walk, run, bite, call and swim, the fitted blanket underside clears the central hide by 9.7–22.8 mm. |
+What made the earlier Rex look wrong:
 
-## Ground contact
+- **Low and long.** Its legs are short for its length, so the body hangs low and reads as a long tube.
+- **Head level with the back.** The head barely rises over the shoulders. The neck is as thick as the chest, so there
+  is no neck curve.
+- **Tail runs downhill.** From the hip, the tail slopes down to 1.7 m at the tip. In this Rex it stays near hip
+  height and balances the head.
+- **Thin legs and flat sides.** The thighs barely show from the front, and there is no hip or rib shape.
 
-The death animation hands off at frame 50. The torso, skull, two tail sections, hands, shanks and toes supply ten physical bodies. The transverse pelvis describes the combined support of the two hips. Across every frame of the five collapse, unconscious, eating, recovery and death clips, the finest skinned point stays between 6.0 mm below and 4.4 mm above the ground. In the unconscious idle it stays 0.7 mm above ground.
+This Rex stands upright, with a deep chest, a big head on an S-shaped neck, heavy thighs, long legs and a level tail.
+Keep all of that: change the body only to fix a fault.
 
-Run `bun tools/rex/contact.ts` to measure the packed vertices after the native solver settles. The probe tests eight yaws at each grade and keeps the original 60 Hz simulation step. On a level floor the lowest skin point is 3.3 cm below the surface across those yaws. The corresponding worst point is 3.7 cm below at 12% grade and 5.0 cm below at 35% grade. All 24 falls sleep within 2.40 seconds. The body uses simple capsules, so individual scutes and toes can pass through terrain by the measured amounts.
+In the game (`ref/look/`) it keeps its shape, its jaw closes in idle, and its skin reads well close up on the high
+tier. The source's rest pose has the mouth open, and it has no hand, toe or eye bones.
 
-The complete native pack for these measurements has SHA-256 `36891e64d2bc61a11b77a9a2174aae35e738b332604ec7775ea5eb92ba1566ba`.
+## Bones and weights
+
+The rig stays as it came, renamed. The game reads one bone by name, `jaw` (when the roar sound starts), and the model
+has it. Mirroring needs the `_l` and `_r` names it now has. There are no eye or lid bones, so it does not blink.
+
+`ref/sheet.py` draws each clip in clay at evenly spaced moments, from the side and the front quarter, or close on the
+head with `head`. The sheets in `ref/compare/` (`sheet-act`, `sheet-head`, `sheet-gait`) show no tears or collapsed
+joints in any clip. At the top of the roar the jaw opens wide on a modelled tongue, palate and teeth. The dark line
+behind the jaw is a fold in the sculpt, not a tear. The knees and hips keep their volume through walk and run. No
+weights were changed.
+
+## Clips
+
+All 19 of the game's clips. Six come from the source, one is cut from its jump, and twelve are made in `clips.py`.
+
+| Clip | Ticks | Made from |
+|---|---:|---|
+| idle | 84 | Idle |
+| walk, run | 80, 64 | Walk_Root and Run_Root, less their steady travel, with the feet held (`gaits.py`) |
+| attack | 22 | Attack frames 0 to 44 at double speed: the jaw snaps shut on tick 10, where the bite lands |
+| flinch | 15 | Hit frames 0 to 18: the recoil and return |
+| call | 101 | Roar |
+| land | 24 | The end of Jump: touchdown, crouch and recovery |
+| fall | 40 | The top of Jump, held, with a little tail and leg motion |
+| idle_look, idle_scent, startled, turn | 81, 88, 36, 36 | Idle, with the head, chest or feet turned on top |
+| swim, swim_idle | 38, 72 | Head up, legs paddling, tail sweeping |
+| torpor_in, torpor_idle, torpor_eat, torpor_out, death | 58, 78, 38, 72, 66 | Knees give, then it rolls onto its left side |
+
+How the source clips were fixed:
+
+- **Walk and run.** The source's own in-place gaits hold the pelvis still sideways, so each planted foot is dragged
+  20 cm across. The game's gaits come from the forward-moving clips instead, with the steady travel taken off and
+  centred where the in-place clips stand. Leg IK then holds each foot on its mark while it is down. The art check
+  measures 2 to 9 cm of slide on the walk and 1 to 3 cm on the run.
+- **Attack and flinch.** The game plays the bite over 23 ticks and the flinch over about 15, so each is cut to the
+  part that matters and sped up.
+
+Lying down, it rests on its left side: the lower leg turns in under the flank and the upper leg drapes over it, the
+head swings down to the ground and the tail curls onto it. Each frame is then lowered until the skin touches the
+ground. `ref/rest.py` measures the lowest skin point of each part. In `torpor_idle` the hips are 15 cm up, the chest
+38 cm, the head 29 cm and the tail tip 12 cm, and it rests on its left thigh.
+
+## Levels and pictures
+
+| Level | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Triangles | 57,914 | 30,000 | 14,500 | 6,200 | 2,600 | 1,000 | 300 | 112 |
+| Drawn | textured | textured | textured | textured | textured | flat | flat | flat |
+
+Level 0 is the whole source mesh. The game's simplifier makes every other level, and all eight are closed single
+meshes. The two farthest are drawn when the Rex stands under 11 pixels tall, so they don't need the old Rex's
+hand-built silhouettes.
+
+The base and normal maps are 4K, so the ultra tier sees all of the source's detail; medium and high draw them at 1K
+and 2K. The masks and packed map are 2K, and hurt and decay 256. The largest variant measures 58.8 MB, of a 64 MB
+budget.
+
+`ref/paint.py` makes the dye regions and the dyed base:
+
+- Each vertex of the rest pose is given the six regions by the bone that moves it most and the way its skin faces:
+  the underside is throat and belly, bars run across the top of the neck, back and tail, the head is face, legs and
+  arms are limbs (with bands round the last tail segments), and the toe claws, hand tips and brow are claws and
+  brow. Cycles bakes them onto the texture through the model's UVs.
+- The mouth, tongue, teeth and eyes are never dyed. Within the head they are found by colour: the mouth's flesh has
+  less green against blue than the face's skin (green over blue under 1.3, against 1.4 and up on the face).
+- Where a region dyes, the base is grey with the source's lightness, so the game's dye gives the colour and the
+  source gives the scales.
+- Hurt is four parallel claw rakes in three places on the flanks and thigh; decay is a dull grey-brown elsewhere.
+
+A wild Rex's first colours are the palette's nearest browns to the source's own mean colours, which `paint.py`
+prints. In the game (`ref/look/head-rex-dyed-high.png`, with the first colours chosen) it read olive, because the
+face and limb colours fell on olive palette entries, so those regions now start from the brown beside them.
+
+## Hit capsules, sockets and ragdoll
+
+The build's own capsule fit pulls each end in by 0.6 of the radius. On this Rex's short, wide trunk, neck and shoulder
+bones that left spheres up to 1.3 m across, standing clear of the back. `ref/zones.ts` fits them again from the
+built skin and writes `ref/zones.json`, which `asset.ts` gives outright. Each capsule runs along the line to the next
+joint, its radius holds 65% of its skin (85% on the head, 80% on the feet and the pelvis), and its ends come in by a
+third of the radius. The pelvis is held fuller because a fallen Rex rolls on it: a broader capsule resists rolling
+more. `bun tools/fit-zones.ts core:rex` measures them from ten sides, standing and biting:
+
+| | Build's fit | Now |
+|---|---:|---:|
+| Pixels whose zone matches the skin drawn there | 89.8% | 89.3% |
+| Head | 94.6% | 97.2% |
+| Hits where no skin is drawn | 21.5% | 23.7% |
+
+The sockets are given as offsets (`ref/caps.ts` prints where they land): the seat mid-back 16 cm above the skin, the
+name tag above it, the vent under the tail root. The head, mouth and bite are found on the skull and jaw, and the
+bite lands at the snout, 6.0 m ahead of the hips.
+
+The ragdoll's bodies are the pelvis, skull, the middle of the tail, and each side's forearm, shank and toes. It goes
+limp at tick 46 of 66 in death, when the roll has ended, so it starts lying down. Each joint's limit is a little past
+what the clips bend it. The thighs, lower legs, upper arms, trunk, neck, jaw, tail root and tail end ride on the
+bodies as contacts, so a fallen Rex rests on them. `bun tools/rex/contact.ts core:rex` measures:
+
+- The lying clips touch the ground to within 1 mm.
+- Fallen from death on level ground, the deepest skin point is 2.2 cm under; 5.5 cm on a 12% slope and 11.9 cm on a
+  35% slope (claws and the side of the skull). Without the contacts the thigh sank 38 cm.
+- Every fall settles within 2.9 seconds. `ref/settle.ts` times it at the six headings tests/unit/ragdoll.test.ts uses.
+
+One ragdoll test still fails: dropped onto a 4 by 6 m ramp at one heading, this 12 m animal slides off it for a
+second and a half and settles in 3.7 s, past the test's 3 s. The earlier, smaller Rex stayed on. Making it pass needs
+a decision: a change to the ragdoll, a lying pose that rolls less (it lies on its side; 80 degrees instead of 92 made
+the slopes slower), or a test that allows for large animals.
+
+## Saddle and rider
+
+`saddle.py` builds the old Rex's riding tree on this back: a quilted pad, a dished seat, tree rails, two grip horns,
+stirrups on leathers and two girths, on the old saddle's leather, wood and brass pictures (copied to `tex/`). Every
+height is cast onto the back, the stirrups hang 7 cm outside the flank, and the girths are cast round the chest. The
+pad is a quarter wider than the old one, because this back is broader. The saddle takes the bone weights of the skin
+nearest each vertex, so it bends with the back; the clay sheet (`ref/compare/sheet-saddle.png`) shows it lying on the
+back without sinking through in idle, run and the roar. Its levels are 3,676, 1,600, 550 and 360 triangles; at 240 or
+fewer, one piece of the farthest level turned inside out.
+
+The seat is 1.0 m ahead of the hips and 5.03 m up. `saddle.py` places the seat and the rider's grips, footrests,
+soles and knees, and keeps them in `ref/rider.json`, which `asset.ts` gives. The build stops if the saddle and the
+file disagree by more than a centimetre; `REX_WRITE_SOCKETS=1` writes them afresh. The stirrups hang 0.42 m under
+the seat: lower, the back is so broad that the rider's legs would have to spread a metre to each side.
+
+The saddle item `core:saddle_rex` has a `rider` block, so the rider's hands hold the grips and their feet and knees
+aim for the stirrups. The old Rex's saddle never had one. In the game (`ref/look/ride-rex-high.png`, the rider's own
+camera from `tools/rex/look.ts --ride core:rex`) the rider sits astride the seat with their hands on the grips. Their
+feet rest at the edge of the pad rather than in the irons, which their legs don't reach.
+
+`bun run snap -- --ride` stops with an error for any ground creature, the old Rex too, so it isn't used here.
+
+`ref/clipinfo.py` tracks the jaw, head and hips frame by frame. `ref/sheet.py ... around` draws a pose from four
+sides. The sheets are in `ref/compare/`.

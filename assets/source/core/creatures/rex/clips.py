@@ -1,296 +1,295 @@
-"""30 Hz original Rex behaviours with solved hindlimbs and surface-planted collapse."""
+"""The clips the source doesn't have, made on its rig. Runs after import.py and gaits.py.
+
+Each clip starts from one of the source's own poses (its idle, or the top of its jump) and turns bones from there in
+the body's own terms: dip (a forward-pointing part's tip goes down, a hanging part's tip goes back), swing (a
+forward-pointing tip turns to the Rex's left) and roll (its back turns to its left). Lying down, the whole body is
+lowered until its skin meets the ground, in a pass over the written clip. The earlier Rex's clips set the lengths and
+the timing; its clips.py is in the history before the swap in planning/workstreams/rex2.md.
+
+The landing is the end of the source's Jump, and the fall holds the top of it.
+"""
 
 import math
-import bpy, numpy as np
-from mathutils import Quaternion, Vector
-from plan import BONES, LEGS, mirror, to_blender, point_blender
 
-R = bpy.data.objects["rex"]
-SKIN = bpy.data.objects["rex_model"]
-REST = {n: R.data.bones[n].matrix_local.to_quaternion() for n, _, _, _ in BONES}
-PAR = {n: par for n, par, _, _ in BONES}
-GLOBAL = {}
-SHIFT = Vector((0, 0, 0))
-TAU = math.tau
+import bpy
+import numpy as np
+from mathutils import Matrix, Vector
+
+from curves import Writer, copy, cut, fcurves
+
+TAU = 2 * math.pi
+X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
+SIDES = ("l", "r")
+
+rig = bpy.data.objects["rex"]
+body = bpy.data.objects["rex_body"]
+scene = bpy.context.scene
 
 
-def smooth(x):
-    x = max(0, min(1, x))
-    return x * x * (3 - 2 * x)
+def update():
+    bpy.context.view_layer.update()
+
+
+def smooth(u):
+    u = min(1.0, max(0.0, u))
+    return u * u * (3 - 2 * u)
 
 
 def pulse(t, a, b, c):
+    """0 until a, up to 1 by b, back to 0 by c."""
+    if t <= a or t >= c:
+        return 0.0
     return smooth((t - a) / (b - a)) if t < b else 1 - smooth((t - b) / (c - b))
 
 
-def rot(p=0, y=0, r=0):
-    return (
-        Quaternion(to_blender((0, 1, 0)), math.radians(y))
-        @ Quaternion(to_blender((1, 0, 0)), math.radians(p))
-        @ Quaternion(to_blender((0, 0, 1)), math.radians(r))
-    )
+_poses = {}
 
 
-def absolute(name, q):
-    parent = GLOBAL.get(PAR[name], Quaternion())
-    R.pose.bones[name].rotation_quaternion = REST[name].inverted() @ parent.inverted() @ q @ REST[name]
-    GLOBAL[name] = q
+def source(action_name, frame):
+    """Each bone's location and rotation in a source clip at a frame."""
+    key = (action_name, frame)
+    if key not in _poses:
+        action = bpy.data.actions[action_name]
+        rig.animation_data.action = action
+        rig.animation_data.action_slot = action.slots[0]
+        scene.frame_set(int(frame), subframe=frame % 1)
+        _poses[key] = {pb.name: (pb.location.copy(), pb.rotation_quaternion.copy()) for pb in rig.pose.bones}
+        rig.animation_data.action = None
+    return _poses[key]
 
 
-def turn(n, p=0, y=0, r=0):
-    absolute(n, GLOBAL.get(PAR[n], Quaternion()) @ rot(p, y, r))
+def start(pose):
+    # Scale is set too: a turn's matrix would otherwise leave rounding in it, and that grows from frame to frame.
+    for pb in rig.pose.bones:
+        pb.location, pb.rotation_quaternion = pose[pb.name]
+        pb.scale = (1, 1, 1)
+    update()
 
 
-def reset():
-    GLOBAL.clear()
-    for n, _, _, _ in BONES:
-        pb = R.pose.bones[n]
-        pb.rotation_quaternion = Quaternion()
-        pb.location = (0, 0, 0)
+def turn(bone, axis, degrees):
+    if not degrees:
+        return
+    pb = rig.pose.bones[bone]
+    h = pb.head.copy()
+    pb.matrix = Matrix.Translation(h) @ Matrix.Rotation(math.radians(degrees), 4, axis) @ Matrix.Translation(-h) @ pb.matrix
+    pb.scale = (1, 1, 1)
+    update()
 
 
-def root(drop=0, pitch=0, roll=0, sway=0, forward=0):
-    global SHIFT
-    SHIFT = to_blender((sway, -drop, forward))
-    R.pose.bones["pelvis"].location = REST["pelvis"].inverted() @ SHIFT
-    absolute("pelvis", rot(pitch, 0, roll))
+def dip(bone, degrees):
+    turn(bone, X, degrees)
 
 
-def foot(side, dz=0, lift=0, ankle_pitch=0, toe_pitch=0):
-    sg = 1 if side == "l" else -1
-    hip, knee, ankle, toe = [point_blender(mirror(p, sg)) for p in LEGS]
-    pivot = R.data.bones["pelvis"].head_local
-    origin = pivot + GLOBAL["pelvis"] @ (hip - pivot) + SHIFT
-    q = rot(ankle_pitch)
-    toe_target = toe + to_blender((0, lift, dz))
-    ankle_target = toe_target - q @ (toe - ankle)
-    d = ankle_target - origin
-    length = d.length
-    axis = d.normalized()
-    l1 = (knee - hip).length
-    l2 = (ankle - knee).length
-    if length > l1 + l2 - 0.0001:
-        raise RuntimeError(f"overextension {side} {length - l1 - l2:.3f} m")
-    # The hock can cross the rest thigh direction during a fast recovery. Keep
-    # the knee forward in its sagittal plane through this bend.
-    forward = to_blender((0, 0, 1))
-    pole = forward - axis * forward.dot(axis)
-    pole.normalize()
-    along = (l1 * l1 - l2 * l2 + length * length) / (2 * length)
-    knee_target = origin + axis * along + pole * math.sqrt(max(0, l1 * l1 - along * along))
-    for n, start, end, original in [
-        ("thigh", origin, knee_target, knee - hip),
-        ("shank", knee_target, ankle_target, ankle - knee),
-    ]:
-        absolute(n + "_" + side, original.normalized().rotation_difference((end - start).normalized()))
-    absolute("metatarsus_" + side, q)
-    absolute("toes_" + side, rot(toe_pitch))
+def swing(bone, degrees):
+    turn(bone, Z, degrees)
 
 
-def planted():
-    foot("l")
-    foot("r")
+def roll(bone, degrees):
+    turn(bone, Y, degrees)
 
 
-def tail(t, amp=1):
-    for i in range(1, 6):
-        turn(
-            "tail_" + str(i),
-            0.32 * amp * math.sin(t * TAU - 0.32 * i),
-            amp * (1.75 + 0.32 * i) * math.sin(t * TAU - 0.56 * i),
-        )
+def shift(v):
+    pb = rig.pose.bones["pelvis"]
+    pb.matrix = Matrix.Translation(Vector(v)) @ pb.matrix
+    update()
 
 
-def head(pitch=0, yaw=0, jaw=0):
-    turn("chest")
-    turn("neck_1", pitch * 0.39, yaw * 0.25)
-    turn("neck_2", pitch * 0.38, yaw * 0.39)
-    turn("skull", pitch * 0.23, yaw * 0.36)
-    turn("jaw", jaw)
+def lowest():
+    ev = body.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = ev.to_mesh()
+    co = np.empty(len(mesh.vertices) * 3, np.float32)
+    mesh.vertices.foreach_get("co", co)
+    ev.to_mesh_clear()
+    return float(co[2::3].min())
 
 
-def blink(t, closed=0):
-    a = max(closed, pulse(t, 0.65, 0.69, 0.73))
-    for side, sg in [("l", 1), ("r", -1)]:
-        turn("lid_" + side, r=-sg * 87 * a)
+def ground(action, frames):
+    """Lowers the pelvis on every frame of a written clip until the skin meets the ground. A second pass, after the
+    poses are written: each frame is played and measured, then all are moved together."""
+    # These clips key no scale, so whatever the bones last had would stay.
+    for pb in rig.pose.bones:
+        pb.scale = (1, 1, 1)
+    rig.animation_data.action = action
+    rig.animation_data.action_slot = action.slots[0]
+    unturn = rig.pose.bones["pelvis"].bone.matrix_local.to_3x3().inverted()
+    moves = []
+    for f in range(frames + 1):
+        scene.frame_set(f)
+        moves.append(unturn @ Vector((0, 0, -lowest())))
+    rig.animation_data.action = None
+    for fc in fcurves(action):
+        if fc.data_path != 'pose.bones["pelvis"].location':
+            continue
+        for key in fc.keyframe_points:
+            f = int(round(key.co.x))
+            for point in (key.co, key.handle_left, key.handle_right):
+                point.y += moves[f][fc.array_index]
+        fc.update()
+    return max(abs(m.z) for m in moves)
 
 
-def idle(t):
-    root(0.012 + 0.008 * math.sin(t * TAU))
-    head(0.62 * math.sin(t * TAU), 0.44 * math.sin(t * TAU + 0.3), 2.7 + 0.7 * math.sin(t * TAU))
-    tail(t, 0.53)
-    blink(t)
-    planted()
+IDLE = "idle"
+IDLE_FRAMES = 84
 
 
-def gait(t, run):
-    stride = 6.16 if run else 3.36
-    stance = 0.36 if run else 0.59
-    root(
-        (0.42 if run else 0.16) + (0.055 if run else 0.032) * math.cos(t * TAU * 2),
-        1.9 if run else 0.6,
-        1.55 * math.sin(t * TAU),
-        0.035 * math.sin(t * TAU),
-    )
-    head((4 if run else 0) + 1.13 * math.sin(t * TAU * 2), -0.7 * math.sin(t * TAU))
-    tail(t, 1.52 if run else 1.0)
-    for side, offset in [("l", 0), ("r", 0.5)]:
-        a = (t + offset) % 1
-        if a <= stance:
-            dz = stride * (stance * 0.5 - a)
-            lift = 0
-            ankle = 0
-            tip = 0
-        else:
-            u = (a - stance) / (1 - stance)
-            ph = math.sin(math.pi * u)
-            dz = stride * (-stance * 0.5 + smooth(u) * stance - (1 - stance) * u * (1 - u) * (1 - 2 * u))
-            lift = (0.98 if run else 0.50) * ph**1.35
-            ankle = (20 if run else 13) * math.sin(TAU * u) * ph
-            tip = (23 if run else 14) * math.sin(TAU * u) * ph
-        foot(side, dz, lift, ankle, tip)
-        turn("humerus_" + side, p=6 * math.sin(a * TAU))
-        turn("forearm_" + side, p=5 * math.sin(a * TAU - 0.4))
+def idle_at(t, frames):
+    """The source idle at the same moment it would be at, played from the clip's start."""
+    start(source(IDLE, (t * frames) % IDLE_FRAMES))
 
+
+def head(down=0.0, left=0.0, jaw=0.0):
+    """Turns the neck and head together: down dips them, left swings them, jaw opens the mouth."""
+    for bone, share in (("neck_1", 0.3), ("neck_2", 0.3), ("skull", 0.4)):
+        dip(bone, down * share)
+        swing(bone, left * share)
+    dip("jaw", jaw)
+
+
+def tail_wave(t, amount, along=0.7):
+    for i in range(1, 7):
+        swing(f"tail_{i}", amount * math.sin(TAU * t - i * along))
+
+
+# Idle variants and the startle, over the source idle.
+
+def idle_look(t):
+    idle_at(t, 81)
+    a = pulse(t, 0, 0.39, 1)
+    head(-4 * a, 30 * a)
+
+
+def idle_scent(t):
+    idle_at(t, 88)
+    a = pulse(t, 0, 0.46, 1)
+    head(22 * a + 3 * a * math.sin(TAU * 2.5 * t), 10 * a, 2 * a)
+
+
+def startled(t):
+    idle_at(t, 36)
+    a = pulse(t, 0, 0.21, 1)
+    shift((0, 0.25 * a, 0))
+    dip("chest", -5 * a)
+    head(-16 * a, -18 * a, 16 * a)
+
+
+def turn_in_place(t):
+    idle_at(t, 36)
+    for side, offset in (("l", 0.0), ("r", 0.5)):
+        u = (t - offset) / 0.5
+        lift = math.sin(math.pi * u) if 0 <= u <= 1 else 0
+        dip(f"thigh_{side}", -16 * lift)
+        dip(f"shank_{side}", 30 * lift)
+        dip(f"metatarsus_{side}", -14 * lift)
+    head(0, 8 * math.sin(TAU * t))
+
+
+# Swimming: the body level, the head up, the legs paddling and the tail sweeping.
 
 def swim(t, quiet):
-    root(0.16 + 0.025 * math.sin(t * TAU), -3)
-    head(-13 + 0.9 * math.sin(t * TAU))
-    tail(t, 1.1 if quiet else 2.5)
-    for side, off in [("l", 0), ("r", 0.5)]:
-        b = math.sin((t + off) * TAU)
-        turn("thigh_" + side, 12 + (4 if quiet else 17) * b)
-        turn("shank_" + side, -8 - (5 if quiet else 25) * b)
-        turn("metatarsus_" + side, 12 + (5 if quiet else 20) * b)
-        turn("toes_" + side, 9 + 7 * b)
-        turn("humerus_" + side, 8 + 3 * b)
+    start(source(IDLE, 0))
+    dip("chest", -3)
+    head(-14 + 1.5 * math.sin(TAU * t))
+    for side, offset in (("l", 0.0), ("r", 0.5)):
+        b = math.sin(TAU * (t + offset))
+        k = 0.35 if quiet else 1.0
+        dip(f"thigh_{side}", -10 + 26 * k * b)
+        dip(f"shank_{side}", 14 - 28 * k * b)
+        dip(f"metatarsus_{side}", -10 + 22 * k * b)
+        dip(f"humerus_{side}", -12)
+    tail_wave(t, 3 if quiet else 7)
 
 
-def bite(t):
-    # Open in anticipation and drive the maxilla into the active bite corridor.
-    a = pulse(t, 0, 0.28, 0.53)
-    hit = pulse(t, 0.20, 0.46, 1)
-    root(0.05 + 0.095 * hit, 1.4 * hit, forward=0.12 * hit)
-    head(-7 * a + 24 * hit, 3 * a - 3.5 * hit, 31 * a + 2 * hit)
-    tail(t, 0.90)
-    planted()
+# In the air: the top of the source's jump, held, with the pelvis where the idle has it so the clip doesn't lift
+# the body; the game moves it.
+
+def fall(t):
+    pose = dict(source("_jump", 42))
+    pose["pelvis"] = (source(IDLE, 0)["pelvis"][0], pose["pelvis"][1])
+    start(pose)
+    tail_wave(t, 3, 0.5)
+    for side, sign in (("l", 1), ("r", -1)):
+        dip(f"thigh_{side}", 3 * sign * math.sin(TAU * t))
 
 
-def call(t):
-    a = pulse(t, 0.035, 0.28, 0.93)
-    v = pulse(t, 0.07, 0.31, 0.88)
-    root(0.015 - 0.026 * a, pitch=-1.3 * a)
-    head(-15 * a + 1.1 * a * math.sin(t * TAU * 2), -5.7 * a, 39 * v + 1.7 * v * math.sin(t * TAU * 4))
-    tail(t, 0.64)
-    planted()
+# Lying down. `a` goes from standing (0) to lying on its left side (1). The knees give first, then it rolls over.
+# Rolled onto its left side, the Rex's left (+X) is down: a swing to its left lowers the head. The tail points back,
+# so a swing to the right (negative) carries its tip to the left, onto the ground. The lower leg turns in under the flank, so the foot doesn't prop the body up.
+
+def lie(a, jaw=2.0, breath=0.0, limp=0.0):
+    start(source(IDLE, 0))
+    knees = smooth(a / 0.6)
+    over = smooth((a - 0.25) / 0.75)
+    for side, lower in (("l", True), ("r", False)):
+        dip(f"thigh_{side}", -(30 if lower else 42) * knees)
+        dip(f"shank_{side}", 62 * knees)
+        dip(f"metatarsus_{side}", -(40 if lower else 48) * knees)
+        dip(f"toes_{side}", 22 * knees)
+        dip(f"humerus_{side}", -14 * over)
+        dip(f"forearm_{side}", 18 * over)
+    roll("thigh_l", 20 * over)
+    # The upper leg drapes down over the lower one.
+    roll("thigh_r", -28 * over)
+    dip("chest", breath)
+    dip("spine", breath * 0.5)
+    for i in range(1, 7):
+        swing(f"tail_{i}", -3.5 * over)
+    head((8 + 8 * limp) * over, (40 + 6 * limp) * over, jaw * over)
+    roll("pelvis", 92 * over)
 
 
-def actions(name, t):
-    if name == "attack":
-        bite(t)
-        return
-    if name == "call":
-        call(t)
-        return
-    if name in ("swim", "swim_idle"):
-        swim(t, name == "swim_idle")
-        return
-    if name in ("walk", "run"):
-        gait(t, name == "run")
-        return
-    if name in ("torpor_in", "torpor_idle", "torpor_eat", "torpor_out", "death"):
-        amount = smooth(t / 0.77) if name in ("torpor_in", "death") else 1 - smooth(t) if name == "torpor_out" else 1
-        root(1.5 * amount, pitch=-3.5 * amount, roll=78 * amount)
-        breath = 0.72 * math.sin(t * TAU) if name == "torpor_idle" else 0
-        head(
-            (19 + breath) * amount,
-            -13 * amount,
-            (0.6 + 6.2 * abs(math.sin(t * TAU * 2)) if name == "torpor_eat" else 1.3) * amount,
-        )
-        for n in range(1, 6):
-            turn("tail_" + str(n), -1.8 * amount, (6.8 if n < 4 else 3.4) * amount)
-        for sg, side in [(1, "l"), (-1, "r")]:
-            turn("thigh_" + side, -(40 if sg > 0 else 28) * amount, r=-sg * 14 * amount)
-            turn("shank_" + side, 52 * amount)
-            turn("metatarsus_" + side, -(42 if sg > 0 else 38) * amount)
-            turn("toes_" + side, 17 * amount)
-            turn("humerus_" + side, 9 * amount)
-            turn("forearm_" + side, -15 * amount)
-        blink(t, amount)
-        bpy.context.view_layer.update()
-        obj = SKIN.evaluated_get(bpy.context.evaluated_depsgraph_get())
-        v = np.empty(len(obj.data.vertices) * 3, np.float32)
-        obj.data.vertices.foreach_get("co", v)
-        R.pose.bones["pelvis"].location += REST["pelvis"].inverted() @ Vector((0, 0, -float(v[2::3].min())))
-        return
-    if name == "flinch":
-        a = pulse(t, 0, 0.18, 1)
-        root()
-        head(-8 * a, 13 * a, 4 * a)
-        return
-    if name == "fall":
-        root(0.14, 4)
-        head(-4, 1, 3)
-        tail(t, 0.7)
-        for side, sign in [("l", 1), ("r", -1)]:
-            turn("thigh_" + side, -16 + 2 * sign * math.sin(TAU * t))
-            turn("shank_" + side, 22)
-        return
-    if name == "land":
-        a = pulse(t, 0, 0.19, 1)
-        root(0.38 * a)
-        head(8 * a, 0, 4 * a)
-        tail(t, 0.5)
-        planted()
-        return
-    idle(t)
-    if name == "idle_look":
-        a = pulse(t, 0, 0.39, 1)
-        head(-7 * a, 29 * a, 1.2 * a)
-    if name == "idle_scent":
-        a = pulse(t, 0, 0.46, 1)
-        head(-16 * a + 3 * a * math.sin(t * TAU * 2), 10 * a, 3 * a)
-    if name == "startled":
-        a = pulse(t, 0, 0.21, 1)
-        head(-13 * a, -16 * a, 18 * a)
-    if name == "turn":
-        a = math.sin(t * TAU)
-        head(0, 9 * a)
-        foot("l", 0.10 * a, 0.12 * max(0, a))
-        foot("r", -0.10 * a, 0.12 * max(0, -a))
+def torpor_in(t):
+    lie(smooth(t / 0.8))
+
+
+def torpor_idle(t):
+    lie(1, breath=0.9 * math.sin(TAU * t))
+
+
+def torpor_eat(t):
+    lie(1, jaw=3 + 9 * abs(math.sin(TAU * 2 * t)))
+
+
+def torpor_out(t):
+    # Gets up a little faster than it went down.
+    lie(1 - smooth(t / 0.85))
+
+
+def death(t):
+    a = smooth(t / 0.7)
+    lie(a, jaw=12 * a, limp=a)
+
+
+# Clips whose body rests on the ground: lowered after they are written until the skin meets it.
+GROUNDED = {"torpor_in", "torpor_idle", "torpor_eat", "torpor_out", "death"}
+LOOPS = {"swim": (38, lambda t: swim(t, False)), "swim_idle": (72, lambda t: swim(t, True)), "fall": (40, fall),
+         "torpor_idle": (78, torpor_idle)}
+SINGLES = {"idle_look": (81, idle_look), "idle_scent": (88, idle_scent), "startled": (36, startled),
+           "turn": (36, turn_in_place), "torpor_in": (58, torpor_in), "torpor_eat": (38, torpor_eat),
+           "torpor_out": (72, torpor_out), "death": (66, death)}
 
 
 def build():
-    loops = {"idle": 100, "walk": 36, "run": 22, "swim": 38, "swim_idle": 72, "fall": 40, "torpor_idle": 78}
-    singles = {
-        "idle_look": 81,
-        "idle_scent": 88,
-        "attack": 22,
-        "call": 72,
-        "startled": 36,
-        "flinch": 15,
-        "land": 22,
-        "turn": 36,
-        "torpor_in": 58,
-        "torpor_eat": 38,
-        "torpor_out": 72,
-        "death": 66,
-    }
-    R.animation_data_create()
-    for n, frames in {**loops, **singles}.items():
-        R.animation_data.action = bpy.data.actions.new(n)
+    assert rig.matrix_world == Matrix.Identity(4) and body.matrix_world == Matrix.Identity(4), "the Rex must stand at the origin"
+    rig.animation_data_create()
+    rig.animation_data.action = None
+    for name, (frames, pose) in {**LOOPS, **SINGLES}.items():
+        writer = Writer(rig, name)
         for f in range(frames + 1):
-            bpy.context.scene.frame_set(f)
-            reset()
-            actions(n, f / frames)
-            for b in R.pose.bones:
-                b.keyframe_insert(data_path="rotation_quaternion", frame=f, group=b.name)
-                if b.name == "pelvis":
-                    b.keyframe_insert(data_path="location", frame=f, group=b.name)
-        print("rex clip", n, frames)
-    R.animation_data.action = None
-    reset()
-    bpy.context.scene.frame_set(0)
+            pose(f / frames)
+            writer.key(f)
+        action = writer.done(frames)
+        if name in GROUNDED:
+            ground(action, frames)
+        print(f"rex: clip {name}, {frames} ticks")
+    land = copy(bpy.data.actions["_jump"], "land")
+    cut(land, 57, 93, 24)
+    print("rex: clip land from the end of Jump, 24 ticks")
+    for action in list(bpy.data.actions):
+        if action.name.startswith("_"):
+            bpy.data.actions.remove(action)
+    for pb in rig.pose.bones:
+        pb.location, pb.rotation_quaternion = (0, 0, 0), (1, 0, 0, 0)
+    update()
 
 
 if __name__ == "__main__":

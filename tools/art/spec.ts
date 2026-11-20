@@ -50,6 +50,8 @@ export type ZoneSpec =
       readonly a: Vec3;
       readonly b: Vec3;
       readonly radius: number;
+      /** The bones whose skin it stands for. Only tools/fit-zones.ts reads it, to measure the capsule against that skin. */
+      readonly covers?: readonly string[];
     };
 
 /** Fit convex pieces to the finest skin below a skeletal root. Cell dimensions

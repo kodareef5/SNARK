@@ -1,12 +1,16 @@
 """Pack the binary art and the map kits as release files and pin them in distribution/release.json.
 
-    python3 tools/release/pack.py art OUTPUT [--root ROOT]
+    python3 tools/release/pack.py art OUTPUT [--root ROOT] [--private REPO]
     python3 tools/release/pack.py kits OUTPUT [--from var/kits]
 
 Art is packed one archive to an asset: a creature, a vehicle, a set of sounds. A kit is one file to a city.
 Each file is named for its own bytes (NAME.<12 hex of its SHA-256>.tar.zst), so a release can hold old files
 beside new ones, an asset that did not change is never uploaded again, and a clone at any commit finds
 exactly the files its manifest names. Packing the same files twice gives the same archive.
+
+With --private REPO, an archive the manifest doesn't pin yet (new or changed art) is pinned to REPO's `art` release
+instead of the public one, and an archive pinned there before stays there. It prints the files to upload to each
+repository. tools/private/publish.py won't publish a manifest that pins private archives.
 """
 import argparse
 from collections import defaultdict
@@ -60,7 +64,9 @@ def write_manifest(update):
     MANIFEST.write_text("\n".join(lines) + "\n}\n")
 
 
-def pack_art(output, root):
+def pack_art(output, root, private=None):
+    before = json.loads(MANIFEST.read_text()).get("art", {}).get("files", []) if MANIFEST.exists() else []
+    pinned = {f["file"]: f for f in before}
     groups = defaultdict(list)
     for path in (ROOT / "distribution/source-files.txt").read_text().splitlines():
         groups[asset(path)].append(path)
@@ -84,11 +90,22 @@ def pack_art(output, root):
         digest = sha256(part)
         target = output / f"{name}.{digest[:12]}.tar.zst"
         part.replace(target)
-        files.append({"name": name, "file": target.name, "bytes": target.stat().st_size, "sha256": digest})
+        entry = {"name": name, "file": target.name, "bytes": target.stat().st_size, "sha256": digest}
+        known = pinned.get(target.name)
+        repo = known.get("repository") if known else private
+        if repo:
+            entry["repository"] = repo
+        files.append(entry)
     listing = "\n".join(f'{f["name"]} {f["sha256"]}' for f in files)
     # The id names this exact set of archives. The installer leaves it in assets/.art-installed once all are in place.
     write_manifest({"art": {"release": "art", "id": hashlib.sha256(listing.encode()).hexdigest()[:16], "files": files}})
     print(f'{len(files)} art archives, {sum(f["bytes"] for f in files) / 2**30:.2f} GiB, in {output}')
+    new = [f for f in files if f["file"] not in pinned]
+    for repo in sorted({f.get("repository", "the public repository") for f in new}):
+        names = [f["file"] for f in new if f.get("repository", "the public repository") == repo]
+        print(f"{len(names)} new archives to upload to {repo}'s art release:")
+        for n in names:
+            print(f"  {n}")
 
 
 def pack_kits(output, source):
@@ -113,10 +130,11 @@ def main():
     parser.add_argument("kind", choices=["art", "kits"])
     parser.add_argument("output", type=Path)
     parser.add_argument("--root", type=Path, default=ROOT, help="where the binary inputs are installed (art)")
+    parser.add_argument("--private", metavar="REPO", help="pin new or changed art archives to REPO's art release (art)")
     parser.add_argument("--from", dest="source", type=Path, default=ROOT / "var/kits", help="where kit.ts packed the kits")
     args = parser.parse_args()
     if args.kind == "art":
-        pack_art(args.output, args.root)
+        pack_art(args.output, args.root, args.private)
     else:
         pack_kits(args.output, args.source)
 
