@@ -97,7 +97,8 @@ if (import.meta.main) {
   }, TICK_MS);
 
   const tools = ["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say"];
-  const pi = spawn("pi", ["--mode", "rpc", "--no-session", "-ne", "-ns", "-e", root, "--tools", tools.join(","), "--model", model, "--thinking", thinking], { stdio: ["pipe", "pipe", "inherit"] });
+  const pi = spawn("pi", ["--mode", "rpc", "--no-session", "-ne", "-ns", "-e", root, "--tools", tools.join(","), "--model", model, "--thinking", thinking], { stdio: ["pipe", "pipe", "pipe"] });
+  pi.stderr.on("data", (d) => show && process.stderr.write(d));
   pi.stdin.on("error", () => {});
   const send = (m: object) => pi.stdin.write(JSON.stringify(m) + "\n");
   let modelError = "";
@@ -167,7 +168,9 @@ if (import.meta.main) {
   });
   clearInterval(loop);
   pi.stdin.end();
+  const gone = new Promise((r) => pi.once("exit", r));
   setTimeout(() => pi.kill("SIGTERM"), 500);
+  await Promise.race([gone, new Promise((r) => setTimeout(r, 4000))]);
   server.stop(true);
   const byTool: Record<string, number> = {};
   for (const c of calls) byTool[c.tool] = (byTool[c.tool] ?? 0) + 1;

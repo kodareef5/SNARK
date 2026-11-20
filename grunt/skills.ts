@@ -97,6 +97,7 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
   const summary = () => `gathered ${Object.entries((p.gained ?? {}) as Record<string, number>).map(([k, v]) => `${v} ${k}`).join(", ") || "nothing"} from ${Number(p.targets ?? 0)} ${kind}s`;
   p.targets ??= 0;
   const tool = kind === "bush" ? null : yield* holdBest(ctx, TOOLS[kind]!);
+  const first = typeof args.target === "string" && !p.first_done ? args.target : null;
   let scanned = false;
   while (true) {
     if (enough()) return { status: "done", summary: summary(), data: { gained: p.gained } };
@@ -115,7 +116,9 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
       const danger = b.dangerNear(r.pos);
       return { id: r.id, distance: Math.round(b.distance(r.pos) * 10) / 10, danger_m: danger ? Math.round(danger.distance) : null };
     });
-    const target = yield* ctx.decide("harvest.target", [...near.map((r) => r.id), "stop"], { kind, tool, candidates });
+    const asked = first && near.some((r) => r.id === first) ? first : null;
+    p.first_done = true;
+    const target = asked ?? (yield* ctx.decide("harvest.target", [...near.map((r) => r.id), "stop"], { kind, tool, candidates }));
     if (target === "stop") {
       const d = b.dangerNear(near[0]!.pos)!;
       return { status: "blocked", summary: `every ${kind} left is near the ${d?.type ?? "danger"} I saw ${Math.round((d?.age ?? 0) / 1000)} s ago; ${summary()}`, data: { gained: p.gained, reason: "danger", danger: d } };
@@ -346,7 +349,7 @@ export const SKILLS: Record<string, Skill> = {
   },
   harvest: {
     name: "harvest", describe: "Gather from trees, rocks or bushes near where it starts (best tool in hand), until none is left near, or until `count` of the main yield.",
-    params: { kind: "tree | rock | bush", count: "number (optional): stop at this much wood, stone or fiber", radius: "metres around the start (default 25)" },
+    params: { kind: "tree | rock | bush", target: "entity id (optional): the one to start with", count: "number (optional): stop once this many wood, stone or fiber ITEMS are gathered (a tree gives 30 wood); leave it out to clear every one near", radius: "metres around the start (default 25)" },
     body: true, run: harvest,
   },
   flee: { name: "flee", describe: "Run from a threat until it is far or lost.", params: { from: "entity id", yaw: "the world yaw it was heard from" }, body: true, run: flee },

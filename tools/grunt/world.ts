@@ -15,6 +15,8 @@ import type {
 export const TICK_MS = 50;
 const WALK = 3.5, SPRINT = 6, TURN = 6, PITCH_TURN = 3, BODY_R = 0.4, REACH = 2.5, SIGHT = 60, NEAR = 12;
 const FOV = Math.PI / 3, SWING_MS = 600, PICK_MS = 500, CELL = 3, MAX_HOLD = 2000;
+/** What the character can carry before it slows: a levelled survivor's, so that a hut's materials fit. */
+const CARRY = 250;
 const RAPTOR = { sees: 20, gives_up: 30, speed: 4.5, wander: 1.2, bite: 8, every_ms: 1000, reach: 1.6, hp: 60 };
 
 // --- Items and recipes --------------------------------------------------------------------------------------------
@@ -282,8 +284,8 @@ export class World {
     const held = m.held === null || !h ? null : { item: h, slot: m.held, uses: m.slots[m.held]?.uses ?? null };
     return {
       id: m.id, name: m.name, alive: m.alive, pos: [m.x, 0, m.z], yaw: m.yaw, pitch: m.pitch, vel: [m.vx, 0, m.vz],
-      on: "ground", held, mount: null, status: this.weight() > 100 ? ["encumbered"] : [],
-      vitals: { health: [m.health, 100], stamina: [m.stamina, 100], food: [m.food, 100], water: [m.water, 100], weight: [Math.round(this.weight() * 10) / 10, 100] },
+      on: "ground", held, mount: null, status: this.weight() > CARRY ? ["encumbered"] : [],
+      vitals: { health: [m.health, 100], stamina: [m.stamina, 100], food: [m.food, 100], water: [m.water, 100], weight: [Math.round(this.weight() * 10) / 10, CARRY] },
     };
   }
 
@@ -334,7 +336,7 @@ export class World {
     }));
     const box = m.open ? this.things.get(m.open) : undefined;
     return {
-      slots: m.slots.map((s) => ({ ...s })), capacity: 60, weight: [Math.round(this.weight() * 10) / 10, 100],
+      slots: m.slots.map((s) => ({ ...s })), capacity: 60, weight: [Math.round(this.weight() * 10) / 10, CARRY],
       hotbar: Array.from({ length: 10 }, (_, i) => (i < m.slots.length ? i : null)),
       open: box ? { id: box.id, slots: (box.slots ?? []).map((s) => ({ ...s })) } : null,
       craftable,
@@ -595,7 +597,7 @@ export class World {
     const len = Math.hypot(vx, vz);
     if (len > 1) (vx /= len), (vz /= len);
     const sprinting = !!a.sprint && m.stamina > 1 && a.forward > 0;
-    const speed = (sprinting ? SPRINT : WALK) * (this.weight() > 100 ? 0.3 : 1);
+    const speed = (sprinting ? SPRINT : WALK) * (this.weight() > CARRY ? 0.3 : 1);
     m.stamina = Math.max(0, Math.min(100, m.stamina + (sprinting ? -8 : 4) * dt));
     const nx = m.x + vx * speed * dt, nz = m.z + vz * speed * dt;
     const hit = this.collide(nx, nz);

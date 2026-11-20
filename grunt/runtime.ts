@@ -33,7 +33,7 @@ export interface Task {
 }
 
 export interface Report {
-  kind: "task" | "danger" | "addressed" | "need" | "critical" | "note" | "connection";
+  kind: "task" | "danger" | "clear" | "addressed" | "need" | "critical" | "note" | "connection";
   text: string;
   data?: Record<string, unknown>;
   t: number;
@@ -103,8 +103,14 @@ export class Runtime {
       this.trace.record("observation", { seq: m.seq, channels: Object.keys(m.channels) });
     });
     this.session.on("event", (e: GameEvent) => {
+      const was = typeof e.data.id === "string" ? this.belief.dangers.get(e.data.id) : undefined;
       this.belief.event(e);
       this.trace.record("event", { seq: e.seq, event: e.kind, data: e.data });
+      // A danger that is gone frees what it blocked: the Director hears so, with the tasks it can take up again.
+      if (was && e.kind === "notice" && !this.belief.dangers.has(String(e.data.id))) {
+        const freed = this.tasks.filter((t) => t.status === "blocked" && (t.result?.data?.danger as { id?: string } | undefined)?.id === e.data.id);
+        this.report({ kind: "clear", text: `the ${was.type} is dead${freed.length ? `; what it blocked can go on where it was: ${freed.map((t) => `game_do {"resume": "${t.id}"} for the ${t.skill}`).join(", ")}` : ""}`, data: { id: e.data.id, freed: freed.map((t) => t.id) } });
+      }
     });
     this.session.on("outcome", (o: Outcome) => this.trace.record("outcome", { command: o.command, index: o.index, status: o.status, by: o.by, code: o.code, detail: o.detail }));
   }
@@ -134,6 +140,8 @@ export class Runtime {
   start(skill: string, args: Record<string, unknown> = {}, by: Task["by"] = "director"): Task {
     const s = this.skills[skill];
     if (!s) throw new Error(`no skill ${skill}: ${Object.keys(this.skills).join(", ")}`);
+    const unknown = Object.keys(args).filter((k) => !(k in s.params));
+    if (unknown.length) throw new Error(`${skill} takes ${Object.keys(s.params).join(", ") || "no arguments"}, not ${unknown.join(", ")}: ${JSON.stringify(s.params)}`);
     const task: Task = { id: `t${++this.n}`, skill, args, status: "running", progress: {}, by, started: this.belief.now };
     this.tasks.push(task);
     if (s.body) {
@@ -147,6 +155,28 @@ export class Runtime {
       this.active = this.running(task);
     } else this.side.push(this.running(task));
     this.trace.record("task", { task: task.id, skill, args, status: "started", by });
+    this.advanceAll();
+    return task;
+  }
+
+  /** Takes up an earlier task where it was: same skill, arguments and progress (a harvest keeps the place it works). */
+  retake(id: string): Task {
+    const task = this.tasks.find((t) => t.id === id);
+    if (!task) throw new Error(`no task ${id}`);
+    if (task.status === "running") return task;
+    if (task.status === "done") throw new Error(`${id} (${task.skill}) is done: ${task.result?.summary ?? ""}`);
+    this.suspended = this.suspended.filter((t) => t !== task);
+    if (this.skills[task.skill]!.body) {
+      if (this.active) this.end(this.active, "cancelled", { status: "failed", summary: `replaced by ${task.skill}` });
+      this.restingSince = null;
+    }
+    task.status = "running";
+    delete task.result;
+    delete task.ended;
+    const r = this.running(task);
+    if (this.skills[task.skill]!.body) this.active = r;
+    else this.side.push(r);
+    this.trace.record("task", { task: task.id, skill: task.skill, status: "retaken" });
     this.advanceAll();
     return task;
   }
@@ -215,7 +245,9 @@ export class Runtime {
     task.result = result;
     task.ended = this.belief.now;
     this.trace.record("task", { task: task.id, skill: task.skill, status, result });
-    if (status !== "cancelled" || task.by === "director") this.report({ kind: "task", text: `${task.skill} ${status}: ${result.summary}`, data: { task: task.id, skill: task.skill, status, by: task.by, ...result.data } });
+    // A task the Director replaced or cancelled itself is no news to it: a note, not a report that wakes it.
+    const known = status === "cancelled" && (result.summary === "cancelled" || result.summary.startsWith("replaced by"));
+    if (status !== "cancelled" || task.by === "director") this.report({ kind: known ? "note" : "task", text: `${task.skill} ${status}: ${result.summary}`, data: { task: task.id, skill: task.skill, status, by: task.by, ...result.data } });
     // The arbiter's own task over, what it put aside comes back once the character has caught its breath (tick).
     if (task.by === "arbiter" && !this.swapping && !this.active && this.suspended.length) this.restingSince = this.belief.now;
   }
@@ -320,7 +352,7 @@ export class Runtime {
     for (const s of signals) {
       if (s.kind === "addressed") this.report({ kind: "addressed", text: `${s.detail.from}: ${s.detail.text}`, data: s.detail });
       else if (s.kind === "critical") this.once(`critical`, 30000, { kind: "critical", text: `badly hurt (${Math.round(Number(s.detail.health) * 100)}% health)`, data: s.detail });
-      else if (s.kind === "need") this.once(`need:${s.detail.need}`, 60000, { kind: "need", text: `I need to ${s.detail.need}`, data: s.detail });
+      else if (s.kind === "need") this.once(`need:${s.detail.need}`, 600000, { kind: "need", text: `I need to ${s.detail.need}`, data: s.detail });
     }
   }
 

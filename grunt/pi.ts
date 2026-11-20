@@ -21,6 +21,8 @@ export interface PiCommand {
 export interface PiToolResult {
   content: { type: "text"; text: string }[];
   details: unknown;
+  /** Ends the model's turn after this tool, when every tool of the batch agrees. */
+  terminate?: boolean;
 }
 
 export interface PiTool {

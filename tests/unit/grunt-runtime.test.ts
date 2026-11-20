@@ -147,3 +147,19 @@ test("build crafts the pieces it lacks from materials first, and says what is sh
   expect(t2.status).toBe("blocked");
   expect(t2.result!.summary).toMatch(/I need \d+ more wood_foundation and can make 1: short of \d+ more wood/);
 });
+
+test("a blocked task taken up again keeps its place and progress: the harvest goes back to its own grove", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [{ type: "tree", x: 2, z: -6 }, { type: "tree", x: -3, z: -9 }] });
+  const task = h.rt.start("harvest", { kind: "tree", count: 30 });
+  h.run(60_000, () => task.status !== "running");
+  expect(task.status).toBe("done");
+  const away = h.rt.start("walk_to", { x: 0, z: 60 });
+  h.run(60_000, () => away.status !== "running");
+  h.rt.tasks[0]!.status = "blocked"; // as a danger would have left it
+  h.rt.tasks[0]!.args = { kind: "tree" };
+  const again = h.rt.retake(task.id);
+  h.run(120_000, () => again.status !== "running");
+  expect(again.status).toBe("done");
+  expect([...h.world.things.values()].some((t) => t.type === "tree")).toBe(false);
+  expect(h.world.count("wood")).toBe(60);
+});
