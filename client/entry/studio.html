@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SNARK · Studio</title>
+<style>
+@font-face{font-family:Barlow;src:url(title/barlow.ttf);font-display:swap}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071427;color:#e3edf9;font:14px/1.4 Barlow,"Arial Narrow",system-ui,sans-serif;color-scheme:dark}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab;outline:none}
+canvas:active{cursor:grabbing}
+.bar{position:absolute;left:8px;right:8px;bottom:8px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;padding:6px 10px;border:1px solid #2c5280;border-radius:6px;background:rgba(16,41,74,.82)}
+.bar[hidden],#moves[hidden],#spin[hidden],#note[hidden]{display:none}
+#moves{display:contents}
+select,button{font:inherit;color:inherit;background:#071427;border:1px solid #2c5280;border-radius:4px;padding:3px 8px}
+button{cursor:pointer}button:hover,select:hover{border-color:#8fd0ff}
+#move{max-width:min(16rem,48vw)}
+#time{flex:1 1 7rem;min-width:5rem;accent-color:#8fd0ff}
+output{color:#9db3cf;min-width:5.5rem;font-variant-numeric:tabular-nums}
+label{display:inline-flex;gap:4px;align-items:center;color:#9db3cf}
+#note{position:absolute;inset:0;display:grid;place-items:center;padding:2rem;text-align:center;color:#f0c987}
+</style></head>
+<body><canvas tabindex="0" aria-label="A model drawn by the game"></canvas>
+<div class="bar" role="toolbar" aria-label="Model controls">
+<span id="moves" hidden><select id="move" aria-label="Move"></select><button id="play" type="button" aria-pressed="true">Pause</button><input id="time" type="range" min="0" max="1" step="0.001" value="0" aria-label="Where in the move"><output id="told" aria-live="off"></output><select id="speed" aria-label="Speed"></select><label><input id="loop" type="checkbox" checked>Loop</label></span>
+<span id="spin" hidden><label><input id="spinning" type="checkbox"><span id="spinlabel">Wheels turning</span></label></span>
+<label><input id="turn" type="checkbox" checked>Turn</label><button id="reset" type="button">Reset view</button>
+</div>
+<p id="note" hidden role="alert"></p>
+<script type="module" src="studio.js"></script></body></html>

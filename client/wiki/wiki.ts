@@ -178,3 +178,36 @@ for (const view of all<HTMLElement>("[data-atlas]")) {
     show(box);
   }
 }
+
+// "View in 3D" puts the game's own studio (client/entry/studio.ts) over an entry's picture, one at a time. The picture comes
+// back, with a note, if the studio says it cannot draw here or has not drawn within 45 s.
+let shown: { figure: HTMLElement; frame: HTMLIFrameElement; timer: number } | null = null;
+function closeView(note = ""): void {
+  if (!shown) return;
+  const { figure, frame, timer } = shown;
+  [shown, frame.src] = [null, "about:blank"];
+  clearTimeout(timer);
+  frame.remove();
+  figure.classList.remove("in3d");
+  const b = figure.querySelector<HTMLButtonElement>("[data-view]")!;
+  b.setAttribute("aria-expanded", "false");
+  if (note) b.insertAdjacentHTML("afterend", `<p class="note">${note}</p>`);
+}
+document.addEventListener("click", (event) => {
+  const b = (event.target as Element).closest<HTMLButtonElement>("[data-view]");
+  const figure = b?.closest<HTMLElement>("figure");
+  if (!b || !figure) return;
+  const again = shown?.figure === figure;
+  closeView();
+  if (again) return;
+  const frame = Object.assign(document.createElement("iframe"), { src: b.dataset.view!, title: `${b.dataset.label} in 3D`, className: "studio", allow: "fullscreen" });
+  figure.prepend(frame);
+  figure.classList.add("in3d");
+  b.setAttribute("aria-expanded", "true");
+  shown = { figure, frame, timer: window.setTimeout(() => closeView("The 3D view did not start."), 45_000) };
+});
+addEventListener("message", (event) => {
+  if (event.origin !== location.origin || event.data?.source !== "snark-studio" || event.source !== shown?.frame.contentWindow) return;
+  if (event.data.type === "ready") clearTimeout(shown!.timer);
+  else closeView("3D could not be shown in this browser.");
+});

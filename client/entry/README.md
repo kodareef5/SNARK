@@ -18,6 +18,10 @@ Chrome renders the live map, Pteranodon, saddle and rider from the built asset p
 
 The region pass takes a native aerial picture at each public spawn. The card gallery also uses the map teams’ saved camera views in each city’s `reports/world1` directory. The build sizes those images for the browser.
 
+## The wiki's studio
+
+A wiki entry with a model has a View in 3D button. It opens `studio.html?id=<content id>` over the entry's picture. The page draws that one thing on the title's beach with the game's own renderer, as the flight does, with no server. A creature or the survivor plays any clip it has, the survivor's emotes among them. It plays them through `Characters.override`, which is null in the game. A vehicle can turn its wheels or rotor. Drag or use the arrow keys to turn the view, and the wheel, a pinch or plus and minus to zoom. The logic lives in `client/core/studio`. The page tells the wiki `ready` or `error`, and the wiki keeps its picture where 3D cannot be shown (D894). `bun run probe -- --wiki --shots <dir>` opens it for a creature, the survivor, a vehicle and two items.
+
 ## Survivor activity
 
 The roster shows the world’s level, XP, last login in the viewer’s local time, and cumulative connected play time. Tracking starts on the survivor’s first session with this version. Earlier activity appears as unrecorded. The record travels with the survivor and is shared by its authorized browsers.
