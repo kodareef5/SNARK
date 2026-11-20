@@ -742,7 +742,10 @@ export class GlRenderer {
       road.copy(w[1]! / ROAD_STEP, w[2]! / ROAD_STEP, rw, rh, this.roadRows);
       gl.activeTexture(gl.TEXTURE0 + UNIT.road);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, rw, rh, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, this.roadRows);
-      f.set([drawn, w[1]!, w[2]!, road.version]);
+      f[0] = drawn;
+      f[1] = w[1]!;
+      f[2] = w[2]!;
+      f[3] = road.version;
     }
     // The facades' atlases on their units while the frame names them; none is read until each it names has come (facade.ts).
     for (let k = 0; k < p.facadeSlots.length; k++) {
