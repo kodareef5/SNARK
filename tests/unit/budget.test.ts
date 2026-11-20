@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FrameBudget, LEAVES_LEFT, ORDER, SQUEEZE_MOST, STEPS, coverScale, crownScale, leavesAt, thinning } from "../../client/core/render/budget.ts";
 import { DRAW_CUTOUT, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
@@ -8,7 +8,8 @@ import { artTest } from "../fixtures/needs-art.ts";
 import { nodeWorld } from "../fixtures/nodeworld.ts";
 import { corePack } from "../fixtures/pack.ts";
 
-const medium = tierOf("medium");
+// The phone's medium, held to what the iPhone held (D423); a desktop's medium has room for twice as much (D877).
+const medium = forTouch(tierOf("medium"), true);
 const FRAME = 1000 / 60;
 
 /** A budget and its clock, in ms. */
@@ -43,7 +44,7 @@ function turns(xs: readonly number[]): number {
 test("the order puts bodies and what a fight shows above anything built, cover above crowns near, and ambient details last", () => {
   expect(ORDER).toEqual(["own", "bodies", "fight", "built", "ground", "cover", "crowns", "far", "ambient"]);
   // Every tier has a number; medium's is the young wood the iPhone held at 60 a second (D423).
-  expect(medium.budget).toEqual({ triangles: 2e6, draws: 1024 });
+  expect([medium.budget, tierOf("medium").budget]).toEqual([{ triangles: 2e6, draws: 1024 }, { triangles: 4e6, draws: 1024 }]);
 });
 
 test("the squeeze rises while crowns near take more than the frame leaves them, and falls only well under, slowly", () => {

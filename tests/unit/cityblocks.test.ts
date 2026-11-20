@@ -147,7 +147,7 @@ test("past the far city's reach its buildings are blocks, faded in over the pixe
     w.cam.ray(((i % w.W) + 0.5) / w.W, (Math.floor(i / w.W) + 0.5) / w.H, ray);
     const ground = ray[1]! < 0 ? w.cam.y / -ray[1]! : Infinity;
     const changed = [0, 1, 2].some((k) => w.raster.color[i * 4 + k] !== was[i * 4 + k]);
-    if (ground < reach * 0.9) {
+    if (ground < w.scene.alongGround(reach) * (1 - w.scene.assets.tier.fade)) {
       near++;
       if (!changed) same++;
     }

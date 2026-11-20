@@ -124,8 +124,8 @@ test("no far block stands in a chunk the near store holds whole, and a tile is m
   expect([sum(w.covered().far) > 0, sum(w.covered().near) > 0, farDraws(p), nearDraws(p, a) > 0]).toEqual([true, true, 1, true]);
 });
 
-test("a base's coverage falls from all to none in even steps over the last tenth of reach", () => {
-  const reach = 1000;
+test("a base's coverage falls from all to none in even steps over the last share of its reach", () => {
+  const reach = 1000, share = tierOf("medium").fade;
   // Rows a multiple of 4, so the frame holds the pattern a whole number of times.
   const w = farWorld({ chunks: 24, tier: { reach: { ...tierOf("medium").reach, bases: reach } }, height: 88 });
   // A chunk filled with a block 32 m tall, seen face on through a long lens, so it fills the frame.
@@ -136,14 +136,14 @@ test("a base's coverage falls from all to none in even steps over the last tenth
   w.sendCells(chunkAt(w.dims, MID, MID), cells);
   w.cam.fovY = 2 * Math.atan(10 / reach);
   const coverage: number[] = [];
-  for (let d = 860; d <= 1020; d += 10) {
+  for (let d = reach * (1 - share) - 40; d <= reach + 20; d += 10) {
     w.cam.x = MID;
     w.cam.z = MID - 32 - d;
     w.cam.y = 16;
     w.cam.yaw = w.cam.pitch = 0;
     w.frame();
     coverage.push(sum(w.covered().far) / (w.W * w.H));
-    const kept = Math.min(1, Math.max(0, (reach - d) / (reach * 0.1)));
+    const kept = Math.min(1, Math.max(0, (reach - d) / (reach * share)));
     expect(Math.abs(coverage.at(-1)! - kept)).toBeLessThanOrEqual(1 / 32 + 0.005);
   }
   for (let k = 1; k < coverage.length; k++) expect(coverage[k]!).toBeLessThanOrEqual(coverage[k - 1]!);

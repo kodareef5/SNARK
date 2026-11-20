@@ -363,7 +363,8 @@ test("across a fade between levels a chunk wholly past the one's end draws none 
     p.tileCount = 0;
     w.raster.render(p);
     expect({ tier, both: both >= 3 }).toEqual({ tier, both: true });
-    expect(cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0)).toBeGreaterThan(drawn * 1.15);
+    // Every tile in a fade drawing both levels whole draws more: over a tenth more here, with fades a quarter of their reach.
+    expect(cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0)).toBeGreaterThan(drawn * 1.1);
     let differ = 0;
     for (let i = 0; i < picture.length; i++) if (picture[i] !== w.raster.color[i]) differ++;
     expect({ tier, differ }).toEqual({ tier, differ: 0 });

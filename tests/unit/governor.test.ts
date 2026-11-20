@@ -26,7 +26,7 @@ test("a tier's levels are its steps that change something, the light target firs
   expect(ladder(forTouch(tierOf("high"), true), 3).map((l) => l.name)).not.toContain(view);
   expect(ladder(tierOf("high"), 3).filter((l) => l.city).map((l) => l.name)).toEqual([city, view]);
   const medium = ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, Math.round(l.tier.threshold * 100) / 100, l.tier.shadows.cascades, l.tier.bodyError, l.tier.pixelRatio, l.tier.details.pool]);
-  expect(medium).toEqual([[2e6, 0.22, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [2e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.33, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1.5e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.44, 2, 1, 1.5, 1536], [1e6, 0.66, 2, 1, 1.5, 1536], [1e6, 0.66, 1, 1, 1.5, 1536], [1e6, 0.66, 1, 2, 1.5, 1536], [1e6, 0.66, 1, 2, 1.27, 1536], [1e6, 0.66, 1, 2, 1.05, 1536], [1e6, 0.66, 1, 2, 1.05, 768]]);
+  expect(medium).toEqual([[4e6, 0.22, 2, 1, 1.5, 1536], [4e6, 0.33, 2, 1, 1.5, 1536], [4e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.33, 2, 1, 1.5, 1536], [3e6, 0.44, 2, 1, 1.5, 1536], [3e6, 0.44, 2, 1, 1.5, 1536], [2e6, 0.44, 2, 1, 1.5, 1536], [2e6, 0.66, 2, 1, 1.5, 1536], [2e6, 0.66, 1, 1, 1.5, 1536], [2e6, 0.66, 1, 2, 1.5, 1536], [2e6, 0.66, 1, 2, 1.27, 1536], [2e6, 0.66, 1, 2, 1.05, 1536], [2e6, 0.66, 1, 2, 1.05, 768]]);
   // The far city's step draws the same forms nearer, so nothing made of them is made again.
   const form = ({ to: _, ...f }: { to: number }) => f;
   const [atTier, nearer] = [ladder(tierOf("medium"), 3)[1]!.tier.city.levels, ladder(tierOf("medium"), 3)[2]!.tier.city.levels];

@@ -26,7 +26,7 @@ function frameAt(hour: number, eye = 2, plain = false): Float32Array {
   return f;
 }
 
-test("haze is its density summed along the ray in closed form, to within 0.1% of a 1,000-step sum, and is 3%, 15% and 47% at 200 m, 1 km and 4 km along the sea", () => {
+test("haze is its density summed along the ray in closed form, to within 0.1% of a 1,000-step sum, and is 2%, 10% and 36% at 200 m, 1 km and 4 km along the sea", () => {
   for (const eye of [0, 2, 40, 600]) {
     for (const dist of [10, 300, 4000]) {
       for (const dy of [-0.3, -0.01, 0, 1e-5, 0.002, 0.05, 0.5, 1]) {
@@ -37,7 +37,7 @@ test("haze is its density summed along the ray in closed form, to within 0.1% of
       }
     }
   }
-  expect([200, 1000, 4000].map((d) => Math.round(hazeAmount(HAZE_DENSITY, HAZE_HEIGHT, 0, d, 0) * 100))).toEqual([3, 15, 47]);
+  expect([200, 1000, 4000].map((d) => Math.round(hazeAmount(HAZE_DENSITY, HAZE_HEIGHT, 0, d, 0) * 100))).toEqual([2, 10, 36]);
   expect(hazeAmount(0, HAZE_HEIGHT, 0, 4000, 0)).toBe(0);
 });
 
@@ -224,7 +224,7 @@ test("the rasterizer's light is fogged under water only: above it, the air is th
   p.frame[FRAME.eyeHeight] = -1;
   shown(out, [0.2, 0.2, 0.2], 1000, p);
   expect(out).toEqual([0, 0, 1]);
-  // So a probe that holds the GPU to the rasterizer draws a plain sky: past 12 m the haze lifts a dark leaf by whole levels.
+  // So a probe that holds the GPU to the rasterizer draws a plain sky: by 30 m the haze lifts a dark leaf by whole levels.
   const leaf = [0.012, 0.02, 0.008];
   const lift = (dist: number, plain: boolean): number => {
     const f = frameAt(12, 2, plain);
@@ -237,7 +237,7 @@ test("the rasterizer's light is fogged under water only: above it, the air is th
     return Math.max(...out.map((v, k) => (v - clear[k]!) * 255));
   };
   expect([lift(10, false), lift(20, true)]).toEqual([0, 0]);
-  expect(lift(20, false)).toBeGreaterThan(4);
+  expect(lift(30, false)).toBeGreaterThan(4);
 });
 
 test("on a lit tier the scene fills the air and asks for the sky's pictures each frame; plain, or on low poly, it does neither", () => {

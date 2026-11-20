@@ -17,8 +17,12 @@ import { MOON_RADIUS, SKY_GLSL, SUN_RADIUS, domeLight, hazeColor, hourOfSun, lum
 import { LIGHT, skyFromGlsl } from "./surface.ts";
 import { WORLD_NEAR } from "./world-surfaces.ts";
 
-/** The haze's density at sea level, per metre, and the height over which it thins by e: 3% at 200 m, 15% at 1 km and 47% at 4 km along the sea, tuned to the keys from the plan's 2.5e-4. */
-export const HAZE_DENSITY = 1.6e-4;
+/**
+ * The haze's density at sea level, per metre, and the height over which it thins by e: 2% at 200 m, 10% at 1 km, 36% at
+ * 4 km and 59% at 8 km along the sea. It was 1.6e-4 (47% at 4 km), tuned to the keys from the plan's 2.5e-4, and turned
+ * down a third once the views reached past 4 km (D877).
+ */
+export const HAZE_DENSITY = 1.1e-4;
 export const HAZE_HEIGHT = 400;
 /** The share of the view after which what is drawn fades into the dome, which it has wholly at the view's end. */
 export const VIEW_FADE = 0.8;
