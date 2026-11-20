@@ -6,7 +6,9 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, pieceWeight } from "../../client/core/render/nearcity.ts";
+import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, NearMaking, pieceWeight } from "../../client/core/render/nearcity.ts";
+import { FIXTURE_IRON, FIXTURE_PAINT, SIGN_ENAMEL, fixtureFace, fixtureKind } from "../../client/core/render/street-finish.ts";
+import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { DRAW_CUTOUT, DRAW_RANGED, DRAW_TEXTURED, MAX_CASTERS, MAX_DRAWS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
@@ -18,6 +20,26 @@ import { Rasterizer } from "../../tools/snap/raster.ts";
 import { miamiSlice } from "../fixtures/cityslice.ts";
 import { farPack } from "../fixtures/farworld.ts";
 import { coreRegistry } from "../fixtures/world.ts";
+
+test("a batched cabinet, drain and sign retain their finishes and their concrete supports", () => {
+  const reg = coreRegistry();
+  const dims = { chunksX: 1, chunksZ: 1 };
+  const kinds = ["zutility_concrete", "zdrain_concrete", "zsign_mint", "zpipe4_concrete"];
+  const city = new CityStatics(dims, kinds.map((id, i) => ({ kind: "core:zruin_" + id, x: 6 + i * 12, y: 3, z: 20, yaw: 0 })), reg);
+  const labels = Uint8Array.from(reg.defs, d => d ? fixtureKind(d.id) : 0);
+  const making = new NearMaking(city, 0, { heightAt: () => 0 }, new Uint8Array(kinds.length).fill(1), () => null, 4, labels);
+  while (!making.done) making.step();
+  const { data, faces } = making.finish();
+  const finishes = kinds.map(() => new Set<number>());
+  for (let f = 0; f < faces; f++) {
+    const at = f * 4 * VERTEX_BYTES;
+    const label = data[at + 7]! >>> 6;
+    const palette = data[at + 6]!;
+    for (let v = 1; v < 4; v++) expect(data[at + v * VERTEX_BYTES + 7]! >>> 6).toBe(label);
+    finishes[label]!.add(fixtureFace(label, palette));
+  }
+  expect(finishes).toEqual([new Set([0]), new Set([0, FIXTURE_PAINT]), new Set([0, FIXTURE_IRON]), new Set([SIGN_ENAMEL])]);
+});
 
 /** Chunks either side of the camera's that a client holds whole (server/game.ts structRadius). */
 const RADIUS = 3;

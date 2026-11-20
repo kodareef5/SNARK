@@ -4,6 +4,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
+import { nearMeshSlot } from "../../client/core/render/nearcity.ts";
 import { PAINT, coatWear, glossRoughness, wheelFinish, wheelBoneMask, tireMould, finishSeed, fixtureFace, fixtureKind, receiver, streetMaterial, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
@@ -454,14 +455,12 @@ export class Rasterizer {
 
   private readonly pack: Pack;
   private readonly fixtureLabels: Uint8Array;
-  private fixture(draw: number, palette: number): number {
-    if (draw < 0) return 0;
-    const mesh = this.packet.drawMesh[draw]!;
+  private fixtureOfMesh(mesh: number): number {
     if (this.fixtureLabels[mesh] === 255) {
       const id = (this.manifest ?? this.pack.header).meshes[mesh]?.id;
       if (id) this.fixtureLabels[mesh] = fixtureKind(id);
     }
-    return fixtureFace(this.fixtureLabels[mesh] ?? 0,palette);
+    return this.fixtureLabels[mesh] ?? 0;
   }
   private readonly hf: Heightfield;
   /** The terrain window's size in samples, as the card holds it (terrain.ts groundSize), once asked. */
@@ -545,8 +544,8 @@ export class Rasterizer {
    */
   private readonly deferred: Uint16Array;
   private readonly deferredShade: Float64Array;
-  /** 1 for a deferred pixel of a body, whose foot the sky's openness leaves alone (skyopen.ts). */
-  private readonly deferredBody: Uint8Array;
+  /** Bit 0 marks a body for sky openness. Bits 1–2 retain the visible face's fixture finish until shading. */
+  private readonly deferredSurface: Uint8Array;
   private readonly deferredAt: Float64Array;
   private readonly deferredNormal: Float64Array;
   /** On the ground, the other finish's tint where two meet, or -1, and how much of it is wanted. */
@@ -599,7 +598,7 @@ export class Rasterizer {
     this.cover = new Float32Array(width * height);
     this.deferred = new Uint16Array(width * height);
     this.deferredShade = new Float64Array(width * height);
-    this.deferredBody = new Uint8Array(width * height);
+    this.deferredSurface = new Uint8Array(width * height);
     this.deferredAt = new Float64Array(width * height * 6);
     this.deferredNormal = new Float64Array(width * height * 3);
     this.deferredOther = new Int16Array(width * height);
@@ -716,10 +715,10 @@ export class Rasterizer {
       const g6 = at * 6;
       const ground = (this.deferred[at]! & DEFERRED_GROUND) !== 0;
       if (ground) smoothed.set(this.deferredNormal.subarray(at * 3, at * 3 + 3));
-      const open = this.opened(s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, ground, this.deferredBody[at] === 0);
+      const open = this.opened(s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, ground, (this.deferredSurface[at]! & 1) === 0);
       const own = this.deferredOwn.subarray(at * 4, at * 4 + 4), edge = this.deferredEdge.subarray(at * 4, at * 4 + 4);
       const over = own[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, s[g6]!, s[g6 + 1]!, s[g6 + 2]!) : 0;
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen, ground ? 0 : this.fixture(this.pickDraw[at]!, (this.deferred[at]! & 511)-1));
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen, this.deferredSurface[at]! >>> 1);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
     }
@@ -1033,6 +1032,8 @@ export class Rasterizer {
     // Far blocks, the far city and a landmark's far mesh short of where their reach fades draw with no fade, and are far all the same.
     const far = this.fade !== 0 || p.drawBuffer[d] === FAR_BUFFER || p.drawBuffer[d] === CITY_BUFFER || p.drawBuffer[d] === LANDMARK_BUFFER;
     const weathers = p.lit && p.tier.finish === "full" && !skinned && p.drawFade[d] === 0 && p.drawHand[d] === 0;
+    const packedFixture = nearMeshSlot(p.drawSlot[d]!);
+    const meshFixture = this.fixtureOfMesh(meshIndex);
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
@@ -1087,7 +1088,8 @@ export class Rasterizer {
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.edgeFlags = this.ownSeed >= 0 ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
-        this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0);
+        const fixture = fixtureFace(packedFixture ? lod.bones[last]! >>> 6 : meshFixture, color);
+        this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0, fixture);
       }
     }
   }
@@ -1481,7 +1483,7 @@ export class Rasterizer {
   }
 
   /** Positions are camera-relative. Counter-clockwise faces the viewer. */
-  private triangle(pos: Float32Array, ia: number, ib: number, ic: number, colorIndex: number, solid: boolean, pickKind: number, pickId: number, blend = false): void {
+  private triangle(pos: Float32Array, ia: number, ib: number, ic: number, colorIndex: number, solid: boolean, pickKind: number, pickId: number, blend = false, fixture = 0): void {
     const p = this.packet;
     const ax = pos[ia * 3]!, ay = pos[ia * 3 + 1]!, az = pos[ia * 3 + 2]!;
     const bx = pos[ib * 3]!, by = pos[ib * 3 + 1]!, bz = pos[ib * 3 + 2]!;
@@ -1643,7 +1645,7 @@ export class Rasterizer {
             this.facadeAt(rx, ry, rz, nx, ny, nz, colorIndex, footprint, facadeNow);
             this.deferredFacade.set(facadeNow, at * FACADE_FLOATS);
             this.deferred[at] = (tint + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0) | (this.finishRow << DEFERRED_FINISH);
-            this.deferredBody[at] = this.bone > 0 ? 1 : 0;
+            this.deferredSurface[at] = (fixture << 1) | (this.bone > 0 ? 1 : 0);
             this.deferredShade[at] = footprint;
             s[g6] = rx;
             s[g6 + 1] = ry;
@@ -1675,7 +1677,7 @@ export class Rasterizer {
             this.owned(rx, ry, rz, nx, ny, nz, ownNow);
             const over = ownNow[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz) : 0;
             this.facadeAt(rx, ry, rz, nx, ny, nz, colorIndex, footprint, facadeNow);
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen, this.fixture(this.drawing,colorIndex));
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen, fixture);
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;
             cb = rgb[2]! * 255;

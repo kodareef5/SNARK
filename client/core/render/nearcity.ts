@@ -16,6 +16,7 @@ import { cornerByte, mergedPart, type CityPart, type CityStatics, type Gone, typ
 import type { ChunkTable } from "../../../shared/world/structures.ts";
 import { KindPlates, chunkOccluders } from "./hide.ts";
 import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
+import { fixtureKind } from "./street-finish.ts";
 import { quadBytes, type FramePacket } from "./packet.ts";
 
 /** Strips of a chunk along z, 4 m wide, that bands are made of: a band is 1, 2, 4, 8 or 16 of them in a row. */
@@ -72,6 +73,7 @@ export class NearMaking {
   readonly bands: number;
   private readonly city: CityStatics;
   private readonly ground: Ground;
+  private readonly labels?: Uint8Array;
   private readonly side: number;
   /** Rows of the city: the chunk's pieces in the mesh by band, and by chunk round it the pieces that hold faces. */
   private readonly own: number[][];
@@ -82,7 +84,8 @@ export class NearMaking {
   private readonly beside: number;
   private readonly parts: CityPart[] = [];
 
-  constructor(city: CityStatics, chunk: number, ground: Ground, mine: Uint8Array, holds: (c: number) => Uint8Array | null, side: number) {
+  constructor(city: CityStatics, chunk: number, ground: Ground, mine: Uint8Array, holds: (c: number) => Uint8Array | null, side: number, labels?: Uint8Array) {
+    this.labels = labels;
     this.city = city;
     this.chunk = chunk;
     this.ground = { heightAt: (x, z) => ground.heightAt(x, z) - BURIED };
@@ -138,7 +141,7 @@ export class NearMaking {
     const b = this.parts.length;
     const others: number[] = [];
     for (let k = 0; k < this.bands; k++) if (k !== b) others.push(...this.own[k]!);
-    this.parts.push(mergedPart(view(this.city, this.chunk, this.own[b]!, this.beside, others, this.around), this.chunk, this.ground, none, 0.01, 0));
+    this.parts.push(mergedPart(view(this.city, this.chunk, this.own[b]!, this.beside, others, this.around), this.chunk, this.ground, none, 0.01, 0, this.labels));
   }
 
   /** The mesh, once every band is made: its faces in cell order, stored on the lattice. */
@@ -270,6 +273,8 @@ function view(city: CityStatics, chunk: number, own: readonly number[], beside: 
 /** Slots of meshes on the card start here, past the lakes' (lakes.ts). */
 export const NEAR_SLOTS = LAKE_SLOTS + LAKE_SLOT_SPAN;
 const NEAR_SLOT_SPAN = 2 ** 29;
+/** These generated meshes carry each source fixture's finish in bits 6–7 of the static vertex. */
+export const nearMeshSlot = (slot: number): boolean => slot >= NEAR_SLOTS && slot < NEAR_SLOTS + NEAR_SLOT_SPAN;
 /** A slot of a chunk's instances that no piece takes: the one instance at its corner its mesh is drawn with. */
 export const MESH_SLOT = 0xffff;
 /**
@@ -324,6 +329,7 @@ export class NearCity {
    * shape's boxes and convex parts (shared/world/city.ts), that turns into nothing, moves, or is a landmark's.
    */
   readonly kinds: Uint8Array;
+  private readonly labels: Uint8Array;
   /** Pieces a frame makes the faces of (FRAME_PIECES); Infinity makes every mesh wanted in the frame it is. */
   pieces = FRAME_PIECES;
   /**
@@ -344,6 +350,7 @@ export class NearCity {
   /** `flat(k)` says whether kind k's mesh is drawn flat in its colour, with no material. */
   constructor(reg: Registry, mesh: number, landmark: Uint8Array, flat: (kind: number) => boolean) {
     this.mesh = mesh;
+    this.labels = Uint8Array.from(reg.defs, d => d ? fixtureKind(d.id) : 0);
     const turns = new Set<number>();
     for (let k = 1; k < reg.defs.length; k++) for (const other of [reg.opens[k]!, reg.lights[k]!]) if (other !== 0) turns.add(k).add(other);
     this.kinds = Uint8Array.from(reg.defs, (d, k) => (d?.type === "structure" && d.class === "static" && (d.mesh === "box" || d.mesh === "shape") && !turns.has(k) && reg.motion[k] === null && landmark[k] !== 1 && reg.halfX[k]! > 0 && flat(k) ? 1 : 0));
@@ -423,7 +430,7 @@ export class NearCity {
           const gone = standing.goneOf(n), first = city.first[n]!;
           return Uint8Array.from({ length: city.in(n) }, (_, i) => (this.kinds[city.kind[first + i]!] === 1 && gone?.[i] !== 1 ? 1 : 0));
         };
-        this.making = { m: new NearMaking(city, best, ground, c.mine, holds, side), version: c.version, around: this.stamps(best, city.dims, standing) };
+        this.making = { m: new NearMaking(city, best, ground, c.mine, holds, side, this.labels), version: c.version, around: this.stamps(best, city.dims, standing) };
       }
       const mk = this.making;
       if ((made > 0 || laid > 0) && made + mk.m.next + laid * LAID_SHARE > this.pieces) break;

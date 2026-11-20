@@ -852,7 +852,7 @@ export function worldVertex(vertex: string): string {
   const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, false));
   const lookup = `#ifdef STREET_FINISH\nuniform float uFixture;\nflat out int vFixture;\n#endif\nflat out int vSurface;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
   const light = "  vColor = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));\n";
-  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  vFixture = uFixture == 3.0 ? 3 : (uFixture == 1.0 && i == 140u) ? 1 : (uFixture == 2.0 && i == 11u) ? 2 : 0;\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n${light}  vRel = p;`);
+  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  vFixture = fixture == 3 ? 3 : (fixture == 1 && i == 140u) ? 1 : (fixture == 2 && i == 11u) ? 2 : 0;\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n${light}  vRel = p;`);
 }
 
 /**

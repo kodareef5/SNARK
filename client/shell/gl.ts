@@ -1,6 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
+import { nearMeshSlot } from "../core/render/nearcity.ts";
 import { streetWidth, type StreetImage, fixtureKind, streetMaterial, wheelBoneMask } from "../core/render/street-finish.ts";
 import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
@@ -923,7 +924,7 @@ export class GlRenderer {
       else {
         const mesh = p.drawMesh[d]!;
         if (this.fixtures[mesh] === 255 && this.meshes[mesh]) this.fixtures[mesh] = fixtureKind(this.meshes[mesh]!.id);
-        this.uniform(prog, U.fixture, this.fixtures[mesh] ?? 0);
+        this.uniform(prog, U.fixture, nearMeshSlot(p.drawSlot[d]!) ? -1 : this.fixtures[mesh] ?? 0);
         this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
         this.uniform(prog, U.alpha, blend && this.finish.row[p.drawMesh[d]!] === 0 ? WATER_ALPHA : 1);
       }

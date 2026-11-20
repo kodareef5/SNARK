@@ -29,7 +29,6 @@ import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortF64, sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
 import { DEFAULT_FINISH_GLOSS, DEFAULT_ROAD_FINISH } from "../settings.ts";
-import { fixtureKind } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
 import { StreetWires } from "./street-wires.ts";
@@ -824,7 +823,7 @@ export class Scene {
     this.far = world.far && colours ? new FarBlocks(world.far, world.dims, world.hf, far, this.farBounds!, colours) : null;
     this.blocksFrom = world.tops && colours ? { tops: world.tops, colours } : null;
     this.makeBlocks();
-    const flat = (k: number): boolean => !fixtureKind(reg.defs[k]!.id) && this.meshOfKind[k] !== missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
+    const flat = (k: number): boolean => this.meshOfKind[k] !== missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
     this.near = this.farBounds ? new NearCity(reg, far, this.landmarkKinds, flat) : null;
     this.startCity();
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.heldGeometry(mesh, table.tris[mesh]!.length - 1);
