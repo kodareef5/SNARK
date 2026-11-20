@@ -54,7 +54,7 @@ test("grunt registers /grunt, which answers status, protocol and an unknown subc
 
 test("the Director's tools are the game_ ones, with plain JSON Schema parameters, and refuse to act unconnected", async () => {
   const { tools } = load();
-  expect([...tools.keys()]).toEqual(["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say"]);
+  expect([...tools.keys()]).toEqual(["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_goal"]);
   for (const t of tools.values()) expect(t.parameters).toMatchObject({ type: "object", additionalProperties: false });
   expect((tools.get("game_do")!.parameters.properties as { skill: { enum: string[] } }).skill.enum).toEqual(Object.keys(SKILLS));
   const skills = JSON.parse((await tools.get("game_skills")!.execute("1", {}, undefined, undefined, {})).content[0]!.text);

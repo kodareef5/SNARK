@@ -100,7 +100,8 @@ if (import.meta.main) {
     game.afterStep();
   }, TICK_MS);
 
-  const tools = ["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say"];
+  // Tools this version of grunt registers: an older one (an arm of a comparison) may lack game_goal, which Pi ignores.
+  const tools = ["game_connect", "game_look", "game_skills", "game_do", "game_tasks", "game_stop", "game_say", "game_goal"];
   const pi = spawn("pi", ["--mode", "rpc", "--no-session", "-ne", "-ns", "-e", root, "--tools", tools.join(","), "--model", model, "--thinking", thinking], { stdio: ["pipe", "pipe", "pipe"] });
   pi.stderr.on("data", (d) => show && process.stderr.write(d));
   pi.stdin.on("error", () => {});

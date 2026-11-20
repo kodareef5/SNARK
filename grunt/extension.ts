@@ -9,6 +9,7 @@ import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { brief, type Goal, type Situation } from "./brief.ts";
 import { socketLink } from "./link.ts";
 import type { PiExtensionAPI, PiTool, PiToolResult } from "./pi.ts";
 import { GRUNT_VERSION } from "./protocol.ts";
@@ -54,6 +55,11 @@ function traceFile(name: string): { path: string; sink: (line: string) => void; 
 export default function grunt(pi: PiExtensionAPI): void {
   let mind: Mind | null = null;
   let flusher: ReturnType<typeof setInterval> | null = null;
+  // What the brief is written from, beyond the runtime: the goals given, the last failed call, the last line said.
+  const goals: Goal[] = [];
+  let lastError: Situation["lastError"];
+  let lastSaid = -Infinity;
+  const situation = (): Situation | null => (mind ? { rt: mind.rt, goals, lastSaid, ...(lastError ? { lastError } : {}) } : null);
 
   const wake = (r: Report) => {
     if (!WAKES.has(r.kind)) return;
@@ -169,15 +175,33 @@ export default function grunt(pi: PiExtensionAPI): void {
       description: "Say a line in the game's chat, as the character.",
       parameters: { type: "object", properties: { text: { type: "string" }, channel: { type: "string", enum: ["local", "global", "group"] } }, required: ["text"], additionalProperties: false },
       async execute(_id, p) {
-        need().rt.start("say", { text: String(p.text), channel: p.channel ?? "local" });
+        const rt = need().rt;
+        rt.start("say", { text: String(p.text), channel: p.channel ?? "local" });
+        lastSaid = rt.belief.now;
         return text(`said: ${String(p.text)}`);
+      },
+    },
+    {
+      name: "game_goal", label: "Goal",
+      description: "Mark a goal (the brief lists them, from your instructions) as met or dropped, with a short note; or add one.",
+      parameters: { type: "object", properties: { goal: { type: "string", description: "a goal id from the brief" }, status: { type: "string", enum: ["done", "dropped", "active"] }, note: { type: "string" }, add: { type: "string", description: "a new goal, in place of goal" } }, additionalProperties: false },
+      async execute(_id, p) {
+        if (typeof p.add === "string") {
+          goals.push({ id: `g${goals.length + 1}`, text: p.add, status: "active", at: mind?.rt.belief.now ?? 0 });
+          return text(`added g${goals.length}`);
+        }
+        const g = goals.find((x) => x.id === p.goal);
+        if (!g) throw new Error(`no goal ${String(p.goal)}: ${goals.map((x) => x.id).join(", ") || "none yet"}`);
+        g.status = (p.status as Goal["status"]) ?? "done";
+        if (typeof p.note === "string") g.note = p.note;
+        return text(`${g.id} is ${g.status}`);
       },
     },
   ];
   for (const t of tools) pi.registerTool(t);
 
   pi.registerCommand("grunt", {
-    description: "grunt: play a game as a player (status, connect <url> <name>, disconnect, trace, protocol)",
+    description: "grunt: play a game as a player (status, connect <url> <name>, disconnect, brief, trace, protocol)",
     handler: async (args, ctx) => {
       const [sub = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
       if (sub === "protocol") return ctx.ui.notify(`grunt protocol ${GRUNT_VERSION} (draft): ${SPEC}`, "info");
@@ -201,6 +225,10 @@ export default function grunt(pi: PiExtensionAPI): void {
         const lines = mind.rt.trace.records.filter((r) => r.kind !== "observation").slice(-n).map((r) => `${(r.t / 1000).toFixed(1)}s ${r.kind} ${JSON.stringify({ ...r, at: undefined, t: undefined, kind: undefined }).slice(0, 160)}`);
         return ctx.ui.notify(`${mind.tracePath}\n${lines.join("\n")}`, "info");
       }
+      if (sub === "brief") {
+        const s = situation();
+        return ctx.ui.notify(s ? brief(s).text : "not connected", "info");
+      }
       if (sub === "status") {
         if (!mind) return ctx.ui.notify(`grunt ${GRUNT_PACKAGE_VERSION}, protocol ${GRUNT_VERSION} (draft). Not connected: /grunt connect <url> <name>.`, "info");
         const s = mind.rt.summary();
@@ -212,8 +240,27 @@ export default function grunt(pi: PiExtensionAPI): void {
 
   // While a character is connected the conversation is its Director, not a coding assistant.
   pi.on("before_agent_start", (event) => {
+    // Every instruction given in the conversation is a goal the brief keeps in view until it is marked met.
+    if (event.messageType === "user" && event.prompt && !event.prompt.startsWith("/")) {
+      goals.push({ id: `g${goals.length + 1}`, text: event.prompt.slice(0, 400), status: "active", at: mind?.rt.belief.now ?? 0 });
+    }
     if (!mind) return;
     event.systemPromptOptions.customPrompt = DIRECTOR;
+  });
+
+  // Before each model call, the brief goes at the end of the request; it is not kept, so the cached prefix holds.
+  pi.on("context", (event) => {
+    const s = situation();
+    if (!s) return;
+    const b = brief(s);
+    mind!.rt.trace.record("brief", { cards: b.cards, chars: b.text.length });
+    return { messages: [...event.messages, { role: "custom", customType: "grunt-brief", content: b.text, display: false, timestamp: Date.now() }] };
+  });
+
+  pi.on("tool_result", (event) => {
+    if (!event.toolName.startsWith("game_")) return;
+    if (event.isError) lastError = { tool: event.toolName, args: event.input, message: event.content.map((c) => c.text ?? "").join(" ").slice(0, 300) };
+    else lastError = undefined;
   });
 
   pi.on("session_shutdown", () => {
