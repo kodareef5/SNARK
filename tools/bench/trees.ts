@@ -2,6 +2,7 @@
 // It is how tree changes are judged (planning/workstreams/trees.md): run it before and after, and compare.
 //
 //   bun tools/bench/trees.ts [--tier high] [--page key=value ...] [--out name] [--only part-of-a-station-name]
+//                            [--canvas 1800x962@2]  a window of 1800 by 962 points at 2 pixels a point, a laptop's screen
 //   bun tools/bench/trees.ts --compare a.json b.json
 //
 // Places come from the map: the South Beach spawn, and the densest grove of broadleaf trees (oaks, figs, banyans and
@@ -158,7 +159,8 @@ function line(r: Row): string {
 }
 const HEAD = ["station".padEnd(34), "frame, median / 95th".padStart(16), "clock".padStart(9), "tris".padStart(8), "cast".padStart(8), "draws".padStart(6), "near trees".padStart(8), "far trees".padStart(8), "card".padStart(8), "squeeze".padStart(8)].join("  ");
 
-async function run(tier: string, page: string[], name: string, only: string | undefined): Promise<void> {
+async function run(tier: string, page: string[], name: string, only: string | undefined, canvas = "1920x1080@1"): Promise<void> {
+  const [size, scale] = canvas.split("@"), [width, height] = size!.split("x");
   const chrome = findChrome();
   if (!chrome) throw new Error("no Chrome: name it with CHROME");
   if (!existsSync(MAP)) throw new Error(`no map at ${MAP}: build Miami first, or name one with CITY_MAP`);
@@ -194,7 +196,7 @@ async function run(tier: string, page: string[], name: string, only: string | un
       let timer: ReturnType<typeof setTimeout> | undefined;
       const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), 180000))));
       rmSync(join(profile, "DevToolsActivePort"), { force: true });
-      const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1920,1080", "--force-device-scale-factor=1", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+      const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--window-size=${width},${height}`, `--force-device-scale-factor=${scale ?? 1}`, "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
       const devt = await devtools(profile);
       await devt.send("Page.addScriptToEvaluateOnNewDocument", { source: "performance.setResourceTimingBufferSize(100000)" });
       await devt.send("Page.navigate", { url: link });
@@ -254,6 +256,6 @@ if (import.meta.main) {
   const args = process.argv.slice(2);
   const value = (flag: string): string | undefined => (args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined);
   if (args[0] === "--compare") compare(args[1]!, args[2]!);
-  else await run(value("--tier") ?? "high", args.flatMap((a, i) => (a === "--page" ? [args[i + 1]!] : [])), value("--out") ?? "", value("--only"));
+  else await run(value("--tier") ?? "high", args.flatMap((a, i) => (a === "--page" ? [args[i + 1]!] : [])), value("--out") ?? "", value("--only"), value("--canvas"));
   process.exit(0);
 }

@@ -25,7 +25,7 @@ const picture = (name: string, more: Partial<MaterialSpec> = {}): MaterialSpec =
  * neighbours, to 14 m. A palm's second level carries it to 55 m, and its flat levels take over where it stands 55 and
  * then 20 pixels tall. A broadleaf tree's crown is heads of leaves with cut-out sprays radiating from them (broadleaf.py)
  * on its first four levels (broadleaf.STAGES): its full crown stops at 28 m; its next, the heads gathered to 0.7 with
- * fewer sprays, 40% of the triangles (D882), carries it to 40 m, where its heads gathered to 0.4 take over, 8 times
+ * fewer sprays, 40% of the triangles (D892), carries it to 40 m, where its heads gathered to 0.4 take over, 8 times
  * lighter than the full crown; then where it stands 140 and then 24 pixels tall (from 48 m at least), its heads gathered
  * into a few dozen rounder ones, still with pictures and without sprays, and the same in three flat greens. On every
  * tier the near store hands a tree to the far layer before it is drawn at its flat level (D352: 152 to 184 m on medium),

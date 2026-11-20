@@ -26,7 +26,7 @@ from layout import LEAVES, SPANS, head_cell, leaf_cell, picture_dir, under_cell
 
 # A broadleaf tree's near levels, finest first, by the stage each is built at: the tables keyed by stage (HEAD_LEVELS,
 # each kind's GATHERED, trunk and wood) hold one entry each. Stage 1.5 sits between the full crown (1) and the gathered
-# heads without sprays to speak of (2), 8 times lighter, where a tree stood too long on the heavy level (D882). The
+# heads without sprays to speak of (2), 8 times lighter, where a tree stood too long on the heavy level (D892). The
 # far solid (far.py) is the level after these, built from stage 4.
 STAGES = (0, 1, 1.5, 2, 3, 4)
 FAR_LEVEL = len(STAGES)
