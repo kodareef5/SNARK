@@ -326,6 +326,14 @@ export class NavMap {
     return true;
   }
 
+  /** Whether a straight line between two points crosses no blocked ground the character knows of. */
+  clearLine(a: Vec3, b: Vec3): boolean {
+    if (!this.w) return true;
+    const n = Math.ceil(Math.hypot(b[0] - a[0], b[2] - a[2]) / NAV_CELL);
+    for (let s = 1; s < n; s++) if (this.kindAt(a[0] + ((b[0] - a[0]) * s) / n, a[2] + ((b[2] - a[2]) * s) / n) === BLOCKED) return false;
+    return true;
+  }
+
   /** Cells next to unknown ground that are themselves passable: where exploring goes next. */
   frontier(c: Costs = WALK): number[] {
     const out: number[] = [];
@@ -362,7 +370,9 @@ export class NavMap {
       for (let s = 1; s <= n && gone < within; s++, gone++) {
         const k = this.cellOf(a[0] + ((b[0] - a[0]) * s) / n, a[2] + ((b[2] - a[2]) * s) / n);
         const was = planned.get(k);
-        if (k < 0 || was === undefined) continue;
+        // Only what got worse since the plan: a cell already impassable then (the one the character stands in, among
+        // trees; the one it just bumped) is no news.
+        if (k < 0 || was === undefined || !isFinite(was)) continue;
         const now = this.kindCost(k, c);
         if (!isFinite(now)) return true;
         if (now > was * 2) extra += now - was;

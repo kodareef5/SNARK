@@ -74,19 +74,36 @@ test("harvest stops at a count of wood, and is blocked when the trees run out fi
 });
 
 test("a raptor that comes hunting puts the harvest aside: the character runs, lives, and goes back to the trees", async () => {
-  const h = await harness({ ...grove, things: [...grove.things!, { type: "raptor", x: 20, z: -14 }] });
+  const h = await harness(grove);
   const task = h.rt.start("harvest", { kind: "tree" });
+  h.run(3000);
+  // A raptor comes out of the brush 16 m off, mid-harvest, and hunts.
+  h.world.place("creature", "raptor", h.world.me.x + 16, h.world.me.z);
   h.run(90_000, () => h.rt.trace.of("task").some((r) => r.status === "resumed"));
   const changes = h.rt.trace.of("task").map((r) => `${r.skill}:${r.status}`);
   expect(changes).toContain("harvest:suspended");
   expect(changes).toContain("flee:started");
-  expect(changes).toContain("flee:done");
   expect(changes.at(-1)).toBe("harvest:resumed");
   expect(h.world.me.alive).toBe(true);
   expect(task.status).toBe("running");
   expect(h.rt.reports.some((r) => r.kind === "danger" && r.text.includes("raptor"))).toBe(true);
-  const why = h.rt.trace.of("decision").find((d) => d.point === "arbiter.interrupt")!;
-  expect(why).toMatchObject({ choice: "interrupt", policy: "rules" });
+  expect(h.rt.trace.of("decision").find((d) => d.point === "arbiter.interrupt")!).toMatchObject({ choice: "interrupt", policy: "rules" });
+});
+
+test("a raptor seen by the grove from the start blocks the harvest for the Director, and its death lets it go on", async () => {
+  const h = await harness({ ...grove, things: [...grove.things!, { type: "raptor", x: 6, z: -22 }] });
+  const task = h.rt.start("harvest", { kind: "tree" });
+  h.run(2000, () => task.status !== "running");
+  expect(task.status).toBe("blocked");
+  expect(task.result!.summary).toContain("near the raptor");
+  const raptor = [...h.world.things.values()].find((t) => t.type === "raptor")!;
+  const fight = h.rt.start("fight", { target: raptor.id });
+  h.run(60_000, () => fight.status !== "running");
+  expect(h.world.things.has(raptor.id)).toBe(false);
+  expect(h.rt.reports.find((r) => r.kind === "clear")!.text).toContain(`harvest ${task.id} goes on by itself`);
+  h.run(120_000, () => task.status === "done");
+  expect(task.status).toBe("done");
+  expect([...h.world.things.values()].some((t) => t.type === "tree")).toBe(false);
 });
 
 test("a line with the character's name, or from its owner, reaches the Director; other talk does not", async () => {
@@ -110,9 +127,11 @@ test("craft makes what the inventory screen offers, and says what is missing oth
   expect(no.result!.summary).toContain("I can make 0 wood_foundation, not 2");
 });
 
-test("when it can no longer outrun the raptor it fights with the hatchet, then rests and finishes the trees", async () => {
-  const h = await harness({ ...grove, things: [...grove.things!, { type: "raptor", x: 20, z: -14 }] });
+test("a raptor that keeps coming back is fought with the hatchet on the third time, and the trees are finished", async () => {
+  const h = await harness(grove);
   const task = h.rt.start("harvest", { kind: "tree" });
+  h.run(3000);
+  h.world.place("creature", "raptor", h.world.me.x + 16, h.world.me.z);
   h.run(300_000, () => task.status !== "running" && task.status !== "suspended");
   expect(task.status).toBe("done");
   expect(h.world.me.alive).toBe(true);

@@ -5,6 +5,7 @@ import grunt from "../../grunt/extension.ts";
 import type { NotifyType, PiCommand, PiExtensionAPI, PiTool } from "../../grunt/pi.ts";
 import { GRUNT_VERSION } from "../../grunt/protocol.ts";
 import { SKILLS } from "../../grunt/skills.ts";
+import { NavMap, WALK } from "../../grunt/nav.ts";
 
 const ROOT = join(import.meta.dir, "../..");
 
@@ -60,4 +61,15 @@ test("the Director's tools are the game_ ones, with plain JSON Schema parameters
   const skills = JSON.parse((await tools.get("game_skills")!.execute("1", {}, undefined, undefined, {})).content[0]!.text);
   expect(skills.map((s: { skill: string }) => s.skill)).toContain("harvest");
   expect(tools.get("game_look")!.execute("2", {}, undefined, undefined, {})).rejects.toThrow("not connected");
+});
+
+test("a cell already impassable when a route was planned is not ground that got worse", () => {
+  const nav = new NavMap();
+  nav.fromTerrain({ origin: [-20, -20], cell: 2, size: [20, 20], rows: Array.from({ length: 20 }, (_, j) => (j === 10 ? "..........#........." : "....................")), legend: { ".": "ground", "#": "blocked" } } as never);
+  const start: [number, number, number] = [1, 0, 1];
+  const r = nav.route(start, [1, 0, -15], WALK)!;
+  const snap = nav.snapshot(r.points, start, WALK);
+  expect(nav.dearerAhead(snap, start, r.points, WALK)).toBe(false);
+  nav.bump(1, -3);
+  expect(nav.dearerAhead(nav.snapshot(r.points, start, WALK), start, r.points, WALK)).toBe(false);
 });

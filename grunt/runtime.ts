@@ -2,6 +2,7 @@
 // monitors and the arbiter, and runs them on its own tick (10 a second). The Director (Pi's conversation) starts
 // tasks and hears reports; it never sends controls.
 
+import { CREATURES, WEAPONS } from "./know.ts";
 import { Belief, compass, side } from "./belief.ts";
 import { Body, type Run, type Wait } from "./body.ts";
 import { MONITORS, type Monitor, type Signal } from "./monitors.ts";
@@ -14,7 +15,7 @@ import { Trace } from "./trace.ts";
 export const TICK_MS = 100;
 
 export const SUBSCRIPTION: ChannelRequest = {
-  self: { hz: 10 }, entities: { hz: 5, radius: 80, max: 40 }, focus: { hz: 10 }, inventory: { hz: 2 }, chat: {}, terrain: { hz: 1, radius: 12 },
+  self: { hz: 10 }, entities: { hz: 5, radius: 120, max: 60 }, focus: { hz: 10 }, inventory: { hz: 2 }, chat: {}, terrain: { hz: 1, radius: 12 },
 };
 
 export type TaskStatus = "running" | "suspended" | "done" | "blocked" | "failed" | "cancelled";
@@ -87,6 +88,8 @@ export class Runtime {
   /** When the arbiter's task is over: what was put aside comes back once the character has caught its breath. */
   private restingSince: number | null = null;
   private dead = false;
+  /** A task a dead danger blocked, to take up again on the next tick if nothing of the Director's is running. */
+  private freed: { id: string; danger: string } | null = null;
 
   constructor(o: RuntimeOptions) {
     this.session = o.session;
@@ -111,7 +114,13 @@ export class Runtime {
       // A danger that is gone frees what it blocked: the Director hears so, with the tasks it can take up again.
       if (was && e.kind === "notice" && !this.belief.dangers.has(String(e.data.id))) {
         const freed = this.tasks.filter((t) => t.status === "blocked" && (t.result?.data?.danger as { id?: string } | undefined)?.id === e.data.id);
-        this.report({ kind: "clear", text: `the ${was.type} is dead${freed.length ? `; what it blocked can go on where it was: ${freed.map((t) => `game_do {"resume": "${t.id}"} for the ${t.skill}`).join(", ")}` : ""}`, data: { id: e.data.id, freed: freed.map((t) => t.id) } });
+        // What the danger blocked goes on by itself when nothing else of the Director's is running.
+        // (A fight with the very creature that just died is over, whoever started it.)
+        const busy = (t: Task | null) => !!t && t.by === "director" && !(t.skill === "fight" && t.args.target === e.data.id);
+        const goes = freed.length && !busy(this.current) ? freed.at(-1)! : null;
+        const others = freed.filter((t) => t !== goes);
+        this.report({ kind: "clear", text: `the ${was.type} is dead${goes ? `; ${goes.skill} ${goes.id} goes on by itself` : ""}${others.length ? `; also free to go on: ${others.map((t) => `game_do {"resume": "${t.id}"} for the ${t.skill}`).join(", ")}` : ""}`, data: { id: e.data.id, freed: freed.map((t) => t.id) } });
+        if (goes) this.freed = { id: goes.id, danger: String(e.data.id) };
       }
     });
     this.session.on("outcome", (o: Outcome) => this.trace.record("outcome", { command: o.command, index: o.index, status: o.status, by: o.by, code: o.code, detail: o.detail }));
@@ -129,7 +138,7 @@ export class Runtime {
     const near = { radius: 40, cell: 2 };
     await this.session.subscribe(hasMap ? { ...SUBSCRIPTION, terrain: { hz: 2, ...near }, map: { hz: 0.2, cell: 4 } } : SUBSCRIPTION, ["*"]);
     if (hasMap) await this.session.observe({ map: { cell: 4 }, terrain: near }).then((o) => this.belief.observe(o));
-    await this.session.observe({ self: {}, inventory: {}, entities: { radius: 80, max: 40 }, focus: {} }).then((o) => this.belief.observe(o));
+    await this.session.observe({ self: {}, inventory: {}, entities: { radius: 120, max: 60 }, focus: {} }).then((o) => this.belief.observe(o));
   }
 
   /** Runs the tick on the runtime's clock until `halt`. */
@@ -259,7 +268,10 @@ export class Runtime {
     if (task.skill === "fight" && result.data?.foe) this.fights.push({ foe: String(result.data.foe), won: !!result.data.won, swings: Number(result.data.swings ?? 0), weapon: (result.data.weapon as string | null) ?? null, health_lost: Number(result.data.health_lost ?? 0) });
     // A task the Director replaced or cancelled itself is no news to it: a note, not a report that wakes it.
     const known = status === "cancelled" && (result.summary === "cancelled" || result.summary.startsWith("replaced by"));
-    if (status !== "cancelled" || task.by === "director") this.report({ kind: known ? "note" : "task", text: `${task.skill} ${task.id} ${status}: ${result.summary}${this.options(task, result)}`, data: { task: task.id, skill: task.skill, status, by: task.by, ...result.data } });
+    // A reflex over with nothing put aside to come back: what next is the Director's, and it is told so.
+    const resumes = task.by === "arbiter" && !this.swapping && !this.active && this.suspended.length > 0;
+    const idle = task.by === "arbiter" && !this.swapping && !this.active && !this.suspended.length ? " Nothing was put aside: what next is yours." : "";
+    if (status !== "cancelled" || task.by === "director") this.report({ kind: known ? "note" : "task", text: `${task.skill} ${task.id} ${status}: ${result.summary}${this.options(task, result)}${idle}`, data: { task: task.id, skill: task.skill, status, by: task.by, resumes, ...result.data } });
     // The arbiter's own task over, what it put aside comes back once the character has caught its breath (tick).
     if (task.by === "arbiter" && !this.swapping && !this.active && this.suspended.length) this.restingSince = this.belief.now;
   }
@@ -318,6 +330,14 @@ export class Runtime {
       return;
     }
     this.dead = false;
+    if (this.freed) {
+      const f = this.freed, cur = this.current;
+      const over = !cur || !(cur.by === "director" && !(cur.skill === "fight" && cur.args.target === f.danger));
+      if (over && this.tasks.find((t) => t.id === f.id)?.status === "blocked") {
+        this.freed = null;
+        this.retake(f.id);
+      } else if (!over || this.tasks.find((t) => t.id === f.id)?.status !== "blocked") this.freed = null;
+    }
     const signals = this.monitors.flatMap((m) => m(this.belief, { name: this.name, owners: this.owners }));
     this.arbitrate(signals);
     if (this.restingSince !== null && !this.active && this.suspended.length) {
@@ -392,11 +412,15 @@ export class Runtime {
     const b = this.belief;
     const it = danger.about ? b.things.get(danger.about) : undefined;
     const held = b.self?.held?.item ?? "";
-    const armed = ["stone_hatchet", "stone_pick"].includes(held) || b.slotOf("stone_hatchet") !== null || b.slotOf("stone_pick") !== null;
+    const armed = WEAPONS.includes(held) || WEAPONS.some((w) => b.slotOf(w) !== null);
+    // How often this very creature has had the character running, and whether such a fight is known to be won.
+    const chased = it ? this.tasks.filter((t) => t.skill === "flee" && t.by === "arbiter" && t.args.from === it.id).length : 0;
+    const had = it ? this.fights.filter((f) => f.foe === it.type) : [];
+    const beatable = had.length ? had.some((f) => f.won) : !!(it && CREATURES[it.type]?.beatable);
     const candidates = it ? ["flee", "fight", "ignore"] : ["flee", "ignore"];
     const state = {
       health: Math.round(b.vital("health") * 100) / 100, stamina: Math.round(b.vital("stamina") * 100) / 100, armed,
-      distance: it ? Math.round(b.distance(it.pos) * 10) / 10 : (danger.detail.distance ?? null), its_health: it?.health ?? null, what: it?.type ?? danger.detail.heard ?? null, doing: doing ?? null,
+      distance: it ? Math.round(b.distance(it.pos) * 10) / 10 : (danger.detail.distance ?? null), its_health: it?.health ?? null, what: it?.type ?? danger.detail.heard ?? null, doing: doing ?? null, chased, beatable,
     };
     const r = this.arbiterPolicy.decide({ point: "threat.respond", candidates, state });
     const c = r instanceof Promise ? { choice: "flee", why: "an arbiter policy must answer at once" } : r;
@@ -413,7 +437,7 @@ export class Runtime {
     if (choice === "fight") {
       if (doing !== "flee") this.suspend();
       const t = this.start("fight", { target: danger.about }, "arbiter");
-      this.report({ kind: "danger", text: `${what} ${state.distance ?? "?"} m off${where} and I can't outrun it — handled: fighting (fight ${t.id})${aside()}.`, data: { ...danger.detail, ...state, handled: true } });
+      this.report({ kind: "danger", text: `${what} ${state.distance ?? "?"} m off${where} ${c.why ? `: ${c.why}` : ""} — handled: fighting (fight ${t.id})${aside()}.`, data: { ...danger.detail, ...state, handled: true } });
       return;
     }
     this.suspend();
@@ -435,13 +459,31 @@ export class Runtime {
   }
 
   /** The character as the Director should know it: one compact view. */
+  /** How a fight with a creature of this kind would go, as the character knows: its own fights first, else lore. */
+  odds(type: string): string {
+    const had = this.fights.filter((f) => f.foe === type);
+    if (had.length) {
+      const won = had.filter((f) => f.won);
+      const lost = Math.round(had.reduce((n, f) => n + f.health_lost, 0) / had.length);
+      return `you won ${won.length} of ${had.length} such fights, losing about ${lost} health each`;
+    }
+    const lore = CREATURES[type];
+    if (!lore) return "unknown: you have never fought one";
+    const armed = WEAPONS.some((w) => this.belief.count(w) > 0);
+    return `${armed ? lore.armed : lore.unarmed} (what players know; you have not fought one)`;
+  }
+
   summary(): Record<string, unknown> {
     const b = this.belief, s = b.self;
-    const near = b.find(() => true).slice(0, 15).map((t) => ({
+    // What matters first (the hostile, people, rides, boxes), then the nearest of the rest: the senses reach far now.
+    const rank = (t: { disposition?: string; kind: string; tags?: string[] }) => (t.disposition === "hostile" ? 0 : t.kind === "player" ? 1 : t.tags?.includes("rideable") ? 2 : t.kind === "container" ? 3 : 4);
+    const all = b.find(() => true);
+    const near = [...all.filter((t) => rank(t) < 4), ...all.filter((t) => rank(t) === 4).slice(0, 12)].slice(0, 24).map((t) => ({
       id: t.id, type: t.type, ...(t.name ? { name: t.name } : {}), distance: Math.round(b.distance(t.pos) * 10) / 10,
       dir: compass(b.yawTo(t.pos)), side: side(b.bearingTo(t.pos)), ...(t.disposition ? { disposition: t.disposition } : {}),
       ...(t.kind === "creature" && t.health !== undefined ? { health: `${Math.round(t.health * 100)}%` } : {}),
       ...(t.tags?.includes("hunting") ? { hunting: true } : {}),
+      ...(t.kind === "creature" && t.disposition === "hostile" ? { fight: this.odds(t.type) } : {}),
       ...(b.age(t.seen) > 3000 ? { seen_s_ago: Math.round(b.age(t.seen) / 1000) } : {}),
     }));
     return {

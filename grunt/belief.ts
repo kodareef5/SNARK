@@ -63,14 +63,15 @@ export class Belief {
       this.things.set(item.id, { ...item, seen: t });
       if (item.disposition === "hostile") this.dangers.set(item.id, { type: item.type, pos: item.pos, t });
     }
-    // What should have been in this view and was not is gone: near enough to be perceived whichever way the
-    // character faces, or in front of it and nearer than the farthest thing the view listed.
+    // What should have been in this view and was not is gone. Senses reach all round: anything near is sure to be
+    // seen, and farther, anything with a clear line to it on the ground as known (a thing behind a wall stays
+    // remembered), nearer than the farthest thing the view listed.
     if (!this.self) return;
     const farthest = e.more > 0 ? Math.max(0, ...e.items.map((i) => i.distance)) : Infinity;
     for (const [id, r] of this.things) {
       if (present.has(id)) continue;
-      const d = this.distance(r.pos), b = Math.abs(this.bearingTo(r.pos));
-      if (d <= NEAR_SURE || (b < 0.9 && d < farthest && d < 40)) this.things.delete(id);
+      const d = this.distance(r.pos);
+      if (d <= NEAR_SURE || (d < Math.min(farthest, 50) && this.nav.clearLine(this.pos, r.pos))) this.things.delete(id);
     }
   }
 

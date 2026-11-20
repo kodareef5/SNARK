@@ -72,6 +72,8 @@ export const DEFAULT_RULES: Record<string, Rule> = {
     const d = num(i.state.distance, 99), stamina = num(i.state.stamina, 1);
     if (d <= 6 && stamina < 0.35) return { choice: "fight", why: "it is close and I can't outrun it" };
     if (d <= 2 && num(i.state.its_health, 1) < 0.5) return { choice: "fight", why: "it is close and already hurt" };
+    // The same creature back for the third time, one known to be beaten: end it while fresh rather than run again.
+    if (num(i.state.chased, 0) >= 2 && i.state.beatable === true && num(i.state.health, 1) >= 0.7 && stamina >= 0.5) return { choice: "fight", why: "it keeps coming back, and I can beat it while I'm fresh" };
     return { choice: "flee", why: "I can still outrun it" };
   },
 };

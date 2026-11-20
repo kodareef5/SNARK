@@ -66,6 +66,7 @@ function* holdBest(ctx: SkillContext, tools: string[]): Run<string | null> {
   return null;
 }
 
+/** A look round, for appearance: the character already knows what is about it (its senses reach all round). */
 function* lookAround(ctx: SkillContext): Run<SkillResult> {
   yield* ctx.body.scan();
   const kinds = new Map<string, number>();
@@ -228,8 +229,8 @@ const DIRS: Record<string, [number, number]> = {
 };
 const EXPLORE: Costs = { ...WALK, unknown: 1.05 };
 
-/** Exploring: into ground it does not know, carefully: a leg at a time, a look round after each, and back to report
- * the moment anything hostile is seen. */
+/** Exploring: into ground it does not know, a stretch at a time toward the goal, stopping to report the moment
+ * anything hostile comes within its senses (which reach all round: no stopping to look). */
 function* explore(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const b = ctx.belief, p = ctx.progress;
   const start = (p.start ??= b.pos) as Vec3;
@@ -248,7 +249,7 @@ function* explore(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
     if (b.distance(goal) < 6) break;
     const route = b.nav.route(b.pos, goal, EXPLORE, dangerCosts(b));
     if (!route) return { status: "blocked", summary: `no way on that I can see; found: ${tell(found()) || "nothing"}`, data: { reason: "unreachable", found: found().map((t) => t.id) } };
-    // The next stretch of the route, about 25 m: then a look round before going further.
+    // The next stretch of the route, about 25 m: then the way on is chosen again from what is known by then.
     let acc = 0, stop = route.points.at(-1)!, prev = b.pos;
     for (const pt of route.points) {
       acc += Math.hypot(pt[0] - prev[0], pt[2] - prev[2]);
@@ -261,7 +262,6 @@ function* explore(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
     const r = yield* ctx.body.goTo(() => stop, 2, { costs: EXPLORE, dangers: () => dangerCosts(b), until: () => found().some((t) => t.disposition === "hostile") });
     if (r === "unreachable") continue;
     if (r === "stopped") continue;
-    yield* ctx.body.scan();
   }
   return { status: "done", summary: `explored ${Math.round(Math.hypot(b.pos[0] - start[0], b.pos[2] - start[2]))} m ${dir ? `${args.toward}` : "toward the point"}; found: ${tell(found()) || "nothing of note"}`, data: { found: found().map((t) => t.id) } };
 }
@@ -287,27 +287,21 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
   const have = () => ((p.gained as Record<string, number> | undefined)?.[item] ?? 0);
   const enough = () => (want !== null && have() >= want) || (!!until && Object.entries(until).every(([i, n]) => b.count(i) >= n));
   let moves = 0;
+  // What is about the character is known all at once: no looking round before deciding there is none near.
   const summary = () => `gathered ${Object.entries((p.gained ?? {}) as Record<string, number>).map(([k, v]) => `${v} ${k}`).join(", ") || "nothing"} from ${Number(p.targets ?? 0)} ${kind}s`;
   p.targets ??= 0;
   const tool = kind === "bush" ? null : yield* holdBest(ctx, TOOLS[kind]!);
   const first = typeof args.target === "string" && !p.first_done ? args.target : null;
-  let scanned = false;
   while (true) {
     if (enough()) return { status: "done", summary: summary(), data: { gained: p.gained } };
     if (b.weightFraction() > 0.95) return { status: "blocked", summary: `too heavy to carry more; ${summary()}`, data: { gained: p.gained, reason: "weight" } };
     const near = b.find((r) => r.type === kind && !unreachable.has(r.id) && Math.hypot(r.pos[0] - anchor[0], r.pos[2] - anchor[2]) <= radius);
     if (!near.length) {
-      if (!scanned) {
-        scanned = true;
-        yield* ctx.body.scan();
-        continue;
-      }
       // None left here but some known elsewhere, and more wanted: move on to the nearest patch.
       const other = b.find((r) => r.type === kind && !unreachable.has(r.id) && b.distance(r.pos) < 150)[0];
       if (other && (want !== null || until) && moves < 3) {
         moves++;
         anchor = p.anchor = other.pos;
-        scanned = false;
         continue;
       }
       const shortOf = until ? Object.entries(until).filter(([i, n]) => b.count(i) < n).map(([i, n]) => `${n - b.count(i)} ${i}`).join(", ") : want !== null ? `${want - have()} ${item}` : "";
@@ -587,19 +581,18 @@ function* say(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult
 }
 
 export const SKILLS: Record<string, Skill> = {
-  look_around: { name: "look_around", describe: "Turn the whole way round, so that everything about is seen.", params: {}, body: true, run: lookAround },
   walk_to: {
     name: "walk_to", describe: "An errand: walk to a place (x, z) or a thing or person by id, nearby or in ground you know, by the best way you know.",
     params: { x: "number", z: "number", to: "entity id, in place of x and z", reach: "metres (default 1.5, or 2.5 to a thing)", run: "boolean: sprint" },
     body: true, run: walkTo,
   },
   travel: {
-    name: "travel", describe: "A trek across the map: plans the way over the map, keeps clear of known danger, goes round what turns out blocked, and notes how it goes.",
+    name: "travel", describe: "A trek across the map by the quickest way the character has: on foot or a ride it knows of (it gets on, flies, drives or sails, and gets off where it must). Keeps clear of known danger, goes round what turns out blocked, and notes how it goes.",
     params: { x: "number", z: "number", to: "entity id, in place of x and z", reach: "metres (default 3)", run: "boolean: sprint where it can", by: "a ride's id, or walk (default: the quickest way it has)", dismount: "boolean: get off at the end" },
     body: true, run: travel,
   },
   explore: {
-    name: "explore", describe: "Explore unknown or enemy ground, carefully: a stretch at a time, looking round after each, stopping to report what it finds and anything hostile.",
+    name: "explore", describe: "Explore unknown or enemy ground toward a direction or point, stopping to report the moment anything hostile comes within its senses, and saying what it found.",
     params: { toward: "north | north-east | east | ... (or x and z)", x: "number", z: "number", distance: "metres (default 120)" },
     body: true, run: explore,
   },
@@ -620,4 +613,5 @@ export const SKILLS: Record<string, Skill> = {
   },
   craft: { name: "craft", describe: "Craft items from the inventory, by the recipes the inventory screen shows.", params: { item: "item name", count: "number" }, body: false, run: craft },
   say: { name: "say", describe: "Say a line in chat.", params: { text: "string", channel: "local | global | group" }, body: false, run: say },
+  look_around: { name: "look_around", describe: "Turn the whole way round, for appearance only: you already know everything about you that the senses reach.", params: {}, body: true, run: lookAround },
 };

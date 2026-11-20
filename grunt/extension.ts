@@ -23,6 +23,8 @@ const SPEC = fileURLToPath(new URL("./protocol.md", import.meta.url));
 /** The Director's own system prompt while a character is connected, in place of Pi's coding-assistant one. */
 const DIRECTOR = readFileSync(new URL("./director.md", import.meta.url), "utf8");
 /** Reports that wake the Director. Notes only wait in `look`. */
+/** How long an idle mind with an open goal is left before it is told, and how often in a row. */
+const IDLE_MS = 20_000, IDLE_NUDGES = 3;
 const WAKES = new Set<Report["kind"]>(["task", "danger", "clear", "addressed", "critical", "need", "connection"]);
 
 /** Every skill and its parameters, in one line each: what game_do's description carries. */
@@ -65,7 +67,8 @@ export default function grunt(pi: PiExtensionAPI): void {
   const delivery = new BriefDelivery();
   const wake = (r: Report) => {
     if (!WAKES.has(r.kind)) return;
-    if (r.kind === "task" && r.data?.by === "arbiter" && r.data?.status === "done") return; // its danger was told already
+    // A reflex's end is news only when nothing it put aside comes back by itself (its danger was told already).
+    if (r.kind === "task" && r.data?.by === "arbiter" && r.data?.status === "done" && r.data?.resumes) return;
     // The brief rides with the message that wakes the model, carrying only what is new to it.
     const s = situation();
     const b = s ? delivery.next(s) : { text: "", cards: [] };
@@ -147,10 +150,10 @@ export default function grunt(pi: PiExtensionAPI): void {
     {
       name: "game_do", label: "Do",
       description: `Start a skill as a task. It runs on its own, and your turn ends: a message comes when it ends, is blocked, or something needs you. Starting a skill that uses the body replaces the one using it now, so don't start one to check on another. The skills and their args:\n${SKILL_LINES}`,
-      promptSnippet: "game_do: start a skill (harvest, walk_to, look_around, craft, fight, flee, say)",
+      promptSnippet: "game_do: start a skill (walk_to, travel, explore, gather, harvest, build, craft, fight, say)",
       promptGuidelines: [
         "You play a game character through game_ tools. Never try to steer it step by step: start a skill with game_do and wait to be told how it went. Don't poll with game_look or game_tasks while a task runs; the game tells you.",
-        "Use game_look before deciding when you are unsure what is around. Ids in it are what skills take as targets.",
+        "game_look shows everything the character's senses reach, all round at once; ids in it are what skills take as targets. It never needs to turn round to find things.",
       ],
       parameters: { type: "object", properties: { skill: { type: "string", enum: Object.keys(SKILLS) }, args: { type: "object", description: "the skill's parameters (game_skills lists them)" }, resume: { type: "string", description: "a task id: take that blocked, cancelled or put-aside task up again where it was, in place of skill and args" }, replace: { type: "boolean", description: "stop the task running now for this one, even if it only just started" } }, additionalProperties: false },
       async execute(_id, p) {
@@ -264,13 +267,37 @@ export default function grunt(pi: PiExtensionAPI): void {
     event.systemPromptOptions.customPrompt = DIRECTOR;
   });
 
+  // An idle mind with a goal still open: nothing runs, no turn is under way, and nothing will come to wake it (it chose
+  // to wait, or forgot). Told so after a while, a few times at most, until it does something.
+  let thinking = false, idleSince = Date.now(), nudges = 0;
+  pi.on("agent_start", () => {
+    thinking = true;
+  });
+  pi.on("agent_end", () => {
+    thinking = false;
+    idleSince = Date.now();
+  });
+  const idler = setInterval(() => {
+    const open = goals.filter((g) => g.status === "active");
+    if (!mind || thinking || mind.rt.current || !open.length || nudges >= IDLE_NUDGES || Date.now() - idleSince < IDLE_MS) return;
+    nudges++;
+    idleSince = Date.now();
+    const v = mind.rt.belief.self?.vitals ?? {};
+    const vitals = Object.entries(v).filter(([k]) => k === "health" || k === "stamina").map(([k, [n, max]]) => `${k} ${Math.round((n / max) * 100)}%`).join(", ");
+    wake({ kind: "need", t: mind.rt.belief.now, text: `nothing is running and ${open.map((g) => `goal ${g.id} is still open`).join(", ")}; the character is idle${vitals ? ` (${vitals})` : ""}. Decide what to do now, or say with game_goal why it waits.`, data: { idle: true, nudge: nudges } });
+  }, 2000);
+  (idler as { unref?: () => void }).unref?.();
+
   pi.on("tool_result", (event) => {
     if (!event.toolName.startsWith("game_")) return;
+    // Only starting something ends an idle stretch; saying why it waits does not.
+    if (event.toolName === "game_do" && !event.isError) nudges = 0;
     if (event.isError) lastError = { tool: event.toolName, args: event.input, message: event.content.map((c) => c.text ?? "").join(" ").slice(0, 300) };
     else lastError = undefined;
   });
 
   pi.on("session_shutdown", () => {
+    clearInterval(idler);
     disconnect();
     if (flusher) clearInterval(flusher);
     flusher = null;

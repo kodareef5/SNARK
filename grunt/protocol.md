@@ -12,8 +12,11 @@ These hold for every version.
 
 1. **The game owns the world.** Physics, rules, permissions and persistence stay in the game. A grunt connection is
    one more authenticated player, with exactly a player's restrictions.
-2. **Observations are what the character could perceive.** The game decides what that is (sight, hearing, its own
-   interface), never more. An observation is not the game's internal state.
+2. **Observations are what the character could perceive, all at once.** The game decides what that is: a player's
+   senses (sight, hearing, its own interface), fair but a little heightened, since a program cannot turn its head as
+   quickly as a player's eyes move: all-round awareness of what is near, a little round corners close by, nothing a
+   solid wall hides at a distance. A client never has to turn to learn what is about it; turning is for acting and
+   for looking natural. An observation is not the game's internal state.
 3. **Controls are physical, not intentions.** `move`, `look`, `interact` belong to the protocol. `go to the tree`,
    `gather 200 wood`, `organise the chest` belong to the player program.
 4. **Nothing runs unbounded.** Every continuous control has a duration, and the game lets go of every control when

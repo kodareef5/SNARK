@@ -49,6 +49,7 @@ export interface PiExtensionAPI {
   getActiveTools(): string[];
   setActiveTools(names: string[]): void;
   on(event: "session_shutdown", handler: () => void | Promise<void>): unknown;
+  on(event: "agent_start" | "agent_end", handler: () => void | Promise<void>): unknown;
   on(event: "before_agent_start", handler: (event: { messageType?: "user" | "custom"; prompt?: string; systemPromptOptions: { customPrompt?: string; sections?: Record<string, string> } }) => void | Promise<void>): unknown;
   /** Before each model call: the conversation as it will be sent, for this request only. */
   on(event: "context", handler: (event: { messages: unknown[] }) => { messages?: unknown[] } | void): unknown;

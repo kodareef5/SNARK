@@ -286,14 +286,25 @@ export class World {
     return Math.hypot(t.x - this.me.x, t.z - this.me.z);
   }
 
-  /** What the character perceives: everything near, and what is in front of it farther off. */
+  /** What the character perceives: a player's senses, a little heightened and all at once (grunt/protocol.md):
+   * everything about it out to 60 m whichever way it faces, a little round corners close by, and farther straight
+   * ahead; never what a solid wall hides at any distance. From high up, much further, and over cliffs below it. */
   perceives(t: Thing): boolean {
     const d = this.dist(t);
-    if (t.id === this.me.mount) return true;
-    // From high up a body sees much further, and over cliffs lower than it flies.
+    if (t.id === this.me.mount || d < 2) return true;
     const high = this.me.y > 15;
-    if (!(d <= (high ? 40 : NEAR) || (d <= (high ? 160 : SIGHT) && Math.abs(this.bearing(t.x, t.z)) <= FOV))) return false;
-    return d < 2 || !this.terrain || this.terrain.clear(this.me.x, this.me.z, t.x, t.z, Math.max(1.5, this.me.y));
+    const round = high ? 160 : SIGHT, ahead = high ? 200 : 120;
+    if (d > ahead || (d > round && Math.abs(this.bearing(t.x, t.z)) > FOV)) return false;
+    if (!this.terrain) return true;
+    const over = Math.max(1.5, this.me.y);
+    if (this.terrain.clear(this.me.x, this.me.z, t.x, t.z, over)) return true;
+    // Close by, round a corner a little: as if from a step or two aside (peeking, hearing it move).
+    if (d > NEAR + 3) return false;
+    for (const [ox, oz] of [[3, 0], [-3, 0], [0, 3], [0, -3]] as const) {
+      const vx = this.me.x + ox, vz = this.me.z + oz;
+      if (this.terrain.at(vx, vz) !== CLIFF && this.terrain.clear(this.me.x, this.me.z, vx, vz, over) && this.terrain.clear(vx, vz, t.x, t.z, over)) return true;
+    }
+    return false;
   }
 
   /** What is under the crosshair and within reach. */
@@ -669,9 +680,11 @@ export class World {
 
   private walk(dt: number): void {
     const m = this.me;
-    if (m.mount) return this.ride(dt);
+    // Breath comes back standing or riding (a rider does not run); not while swimming.
+    const rest = (rate: number) => this.terrain?.at(m.x, m.z) !== DEEP && (m.stamina = Math.min(100, m.stamina + rate * dt));
+    if (m.mount) return void rest(5), this.ride(dt);
     const r = this.running.get("move");
-    if (!r || r.action.control !== "move") return;
+    if (!r || r.action.control !== "move") return void rest(6);
     const a = r.action;
     const [fx, fz] = this.forward();
     let vx = fx * a.forward + Math.cos(m.yaw) * a.strafe, vz = fz * a.forward + Math.sin(m.yaw) * a.strafe;
