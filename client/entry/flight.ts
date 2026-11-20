@@ -20,11 +20,13 @@ import { forTouch, startingTier, tierOf } from "../core/assets/tiers.ts";
 import { flightPosition, MIAMI_FLIGHT as route, studioGround } from "../core/title-route.ts";
 
 import "../core/render/city-late.ts";
-import { heroMeshes, shorePalms, shoreLight, prepareShore, type Shore, mountRex, shoreView } from "../core/title-shore.ts";
+import { heroMeshes, shorePalms, shoreLight, prepareShore, type Shore, mountPteranodon, shoreView } from "../core/title-shore.ts";
 import { OPENING_SHOT, validShot } from "../../shared/title-scene.ts";
 
-const still = new URLSearchParams(location.search).has("still");
-const live = new URLSearchParams(location.search).has("set");
+const params = new URLSearchParams(location.search);
+const still = params.has("still");
+const plateSeconds = Number(params.get("still") || 3);
+const live = params.has("set");
 let posterRequest = 0,
   posterPortrait = false;
 let preset = OPENING_SHOT,
@@ -34,9 +36,9 @@ let preset = OPENING_SHOT,
   my = 0;
 const notify = (type: string) => parent.postMessage({ source: "snark-scene", type }, location.origin);
 const canvas = document.querySelector("canvas")!;
-const capture = new URLSearchParams(location.search).has("retake");
+const capture = params.has("retake");
 let shot = capture ? "flight" : "survivor",
-  seconds = live ? (still ? 3 : 0) : (route.poster as number),
+  seconds = live ? (still && Number.isFinite(plateSeconds) ? Math.max(0, Math.min(3600, plateSeconds)) : 0) : (route.poster as number),
   paused = false,
   turn = 0.25,
   yaw = 0,
@@ -147,7 +149,7 @@ async function start() {
   const actors = new RemoteSample(),
     cam = new Camera(),
     flight = new AnimState();
-  const seatHeight = shore ? mountRex(actors, shore, reg) : 0;
+  const cast = shore ? mountPteranodon(actors, shore, reg) : null;
   const focus = shore ? heroMeshes.map((id) => scene.assets.table.find(id)).filter((m) => m >= 0) : undefined;
   const readyToReveal = () => {
     if (!focus?.length) return false;
@@ -187,7 +189,7 @@ async function start() {
     cam.aspect = w / h;
     cam.fovY = 0.88;
     const flying = (shot === "flight" || shot === "splash") && head.id === route.map;
-    if (shore) shoreView(scene, cam, actors, preset, seconds, mx, my, seatHeight);
+    if (cast) shoreView(scene, cam, actors, preset, seconds, mx, my, cast);
     else {
       actors.count = shot === "region" ? 0 : flying ? 2 : 1;
       actors.tick = seconds * 30;

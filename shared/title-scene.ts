@@ -19,7 +19,7 @@ export const OPENING_SHOT: TitleShot = {
   id: "red-tide",
   name: "Red tide at Wynwood",
   set: "wynwood-shore",
-  camera: { side: -1.55, back: 1.8, height: 0.05, pan: 8, tilt: 13, lens: 68, hour: 18.35 },
+  camera: { side: -1.45, back: 4.8, height: 0.25, pan: 5.5, tilt: 15, lens: 58, hour: 18.35 },
 };
 export function validShot(value: unknown): value is TitleShot {
   if (!value || typeof value !== "object") return false;

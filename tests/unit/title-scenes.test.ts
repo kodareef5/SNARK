@@ -7,7 +7,16 @@ import { OPENING_SHOT, validShot } from "../../shared/title-scene.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import type { Scene } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { shoreView } from "../../client/core/title-shore.ts";
+import { KEEL, SEXTANT_PIVOT } from "../../shared/world/tide-eye.ts";
+import profile from "../../shared/world/sextant-profile.json" with { type: "json" };
+import { flatWorld } from "../fixtures/world.ts";
+import { AnimState } from "../../shared/anim/pose.ts";
+import { MODE_FLYER } from "../../shared/sim/character.ts";
+import { GEAR_COUNT, GEAR_WORN } from "../../shared/sim/entities.ts";
+import { HeldTops } from "../../client/core/render/blocks.ts";
+import { writeEyeSky } from "../../client/core/render/tide-eye.ts";
+import { FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
+import { heroMeshes, mountPteranodon, shoreLight, shoreView } from "../../client/core/title-shore.ts";
 const picture = "data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA";
 const write = (store: TitleScenes, data: object) =>
   store.admin(
@@ -42,28 +51,105 @@ test("a cluster publishes camera and loading plates together, protects a newer e
     rmSync(dir, { recursive: true, force: true });
   }
 });
-test("an authored shot keeps its light and camera deterministic while the seated gaze and mechanical index animate independently", () => {
-  const cam = new Camera(),
-    actors = new RemoteSample(),
-    scene = { characters: { seatedHeadTurn: 0 }, eyeIndexOffset: 0, eyeSeconds: 0 } as Scene;
+function beachCast() {
+  const { hf, reg } = flatWorld(8);
+  const eye = { name: "Wynwood", x: 3832, y: 5, z: 3712, yaw: 22790, radius: 64, color: "red", form: "sextant" } as const;
+  const actors = new RemoteSample();
+  const cast = mountPteranodon(actors, { hf, tops: new HeldTops(hf.dims), actor: [404, 498], eye: { ...eye } }, reg);
+  return { actors, cast, reg };
+}
+
+test("the Meridian rider occupies the painted Pteranodon's driver seat throughout a stationary hover", () => {
+  const { actors, cast, reg } = beachCast();
+  const motion = new AnimState();
+  motion.unpack(actors.anim[0]!);
+  expect(motion).toMatchObject({ grounded: false, mode: MODE_FLYER, speed: 0 });
+  expect(actors.kind[0]).toBe(reg.index.get("core:pteranodon"));
+  expect(actors.gear[GEAR_WORN]).toBe(reg.index.get("core:saddle_pteranodon"));
+  expect([...actors.colors.slice(0, 6)]).toEqual([14, 10, 3, 10, 14, 10]);
+  expect(heroMeshes).toContain("core:pteranodon");
+  expect(actors.seat[1]).toBe(actors.id[0]! + 1);
+  expect(actors.seatGen[1]).toBe(actors.gen[0]!);
+  expect(actors.seatSlot[1]).toBe(1);
+  expect(cast.hoverY).toBeCloseTo(7);
+  for (const [i, name] of ["hat", "shirt", "gloves", "pants", "boots"].entries())
+    expect(actors.gear[GEAR_COUNT + GEAR_WORN + i]).toBe(reg.index.get("core:meridian_" + name));
+});
+
+test("the shore clock opens face-on, completes a turn about the keel, and keeps the red beam on its rotating tip", () => {
+  const { cast, actors } = beachCast(), cam = new Camera();
+  const scene = { characters: {} } as Scene;
+  const view = (t: number) => shoreView(scene, cam, actors, OPENING_SHOT, t, 0, 0, cast);
+  cam.aspect = 16 / 9;
+  view(0);
+  const start = cast.eye.yaw;
+  const yaw = start * Math.PI / 32768, bearing = Math.atan2(cam.x - cast.eye.x, cam.z - cast.eye.z);
+  expect(Math.cos(yaw - bearing)).toBeGreaterThan(0.999);
+  // Check the two ends of the cup's opening in screen space with the actual beach-to-Wynwood sightline.
+  const pivotY = cast.eye.y + KEEL + (SEXTANT_PIVOT - KEEL) * scene.sextantScale;
+  const bow = profile.bowX * scene.sextantScale;
+  for (const aspect of [16 / 9, 390 / 844]) {
+    cam.aspect = aspect;
+    view(0);
+    cam.update();
+    const hub = [0, 0, 0], rim = [0, 0, 0];
+    expect(cam.project(cast.eye.x, pivotY, cast.eye.z, hub)).toBe(true);
+    expect(cam.project(cast.eye.x - bow * Math.cos(yaw), pivotY, cast.eye.z + bow * Math.sin(yaw), rim)).toBe(true);
+    expect(rim[0]!).toBeGreaterThan(0.035);
+    expect(hub[0]!).toBeLessThan(0.9);
+    expect((hub[0]! - rim[0]!) * aspect).toBeGreaterThan(0.07);
+    expect(hub[1]!).toBeGreaterThan(0.2);
+    expect(hub[1]!).toBeLessThan(0.7);
+  }
+  const frame = new Float32Array(FRAME_FLOATS);
+  view(45);
+  expect((cast.eye.yaw - start) & 65535).toBe(16384);
+  writeEyeSky(frame, [cast.eye], scene.eyeSeconds, cast.eye.x, 0, cast.eye.z, scene.sextantScale);
+  const theta = cast.eye.yaw * Math.PI / 32768;
+  expect(frame[FRAME.eyes]).toBeCloseTo(19 * scene.sextantScale * Math.cos(theta));
+  expect(frame[FRAME.eyes + 2]).toBeCloseTo(-19 * scene.sextantScale * Math.sin(theta));
+  view(180);
+  expect(cast.eye.yaw).toBe(start);
+});
+
+test("the index and sun ease both ways while parallax, gaze and hover remain reproducible at a given time", () => {
+  const cam = new Camera(), { cast, actors } = beachCast(), scene = { characters: {} } as Scene;
   const view = (t: number, mx = 0) => {
-    shoreView(scene, cam, actors, OPENING_SHOT, t, mx, 0, 5);
-    return [cam.x, cam.y, cam.z, cam.yaw, cam.pitch];
+    shoreView(scene, cam, actors, OPENING_SHOT, t, mx, 0, cast);
+    return [cam.x, cam.y, cam.z, cam.yaw, cam.pitch, actors.y[0], scene.characters.seatedHeadTurn];
   };
   cam.aspect = 16 / 9;
-  const original = view(1),
-    gaze = scene.characters.seatedHeadTurn,
-    step = scene.eyeIndexOffset;
-  expect(view(6)).toEqual(original);
-  expect(scene.characters.seatedHeadTurn).not.toBe(gaze);
-  expect(scene.eyeIndexOffset).not.toBe(step);
-  expect(actors.tick).toBe(180);
+  const start = view(0);
+  view(16);
+  expect(scene.eyeIndexOffset).toBeGreaterThan(0.6);
+  const turn = view(48);
+  expect(scene.eyeIndexOffset).toBeLessThan(-0.6);
+  view(40);
+  expect(scene.hour).toBeCloseTo(OPENING_SHOT.camera.hour + 0.42);
+  view(120);
+  expect(scene.hour).toBeCloseTo(OPENING_SHOT.camera.hour - 0.42);
+  expect(view(48)).toEqual(turn);
+  expect(view(0)).toEqual(start);
+  expect(view(0, 1)).not.toEqual(start);
+  view(1);
+  expect(actors.y[0]).not.toBe(start[5]);
+  expect(actors.y[0]).toBe(actors.y[1]);
+  expect(actors.tick).toBe(30);
   expect(scene.eyeSeconds + 40).toBeGreaterThan(11);
   expect(scene.eyeSeconds + 40).toBeLessThan(21);
-  expect(view(6, 1)).not.toEqual(original);
-  expect(view(6)).toEqual(original);
   cam.aspect = 9 / 16;
-  expect(view(6)).not.toEqual(original);
+  expect(view(0)).not.toEqual(start);
   expect(validShot({ ...OPENING_SHOT, camera: { ...OPENING_SHOT.camera, pan: Infinity } })).toBe(false);
   expect(validShot({ ...OPENING_SHOT, set: "../other" })).toBe(false);
+});
+
+test("the red cloud spill stays bounded after dusk exposure, including a flat frame with exposure disabled", () => {
+  const packet = { frame: new Float32Array(FRAME_FLOATS) } as FramePacket;
+  for (const exposure of [0, 7, 148, 26530]) {
+    packet.frame.fill(0);
+    packet.frame[FRAME.exposure] = exposure;
+    shoreLight(packet);
+    expect(packet.frame.every(Number.isFinite)).toBe(true);
+    expect(packet.frame[FRAME.cloudSun]! * exposure).toBeLessThanOrEqual(1.6001);
+  }
 });

@@ -27,7 +27,7 @@ export function shutterOpening(phase: number, bank: number): number {
   return smooth((phase - 5 - bank * 1.65) / 3.1) * smooth((120 - phase - bank * 1.65) / 3.1);
 }
 
-export function writeEyeSky(frame: Float32Array, sites: readonly TideEyeSite[], seconds: number, x: number, y: number, z: number): void {
+export function writeEyeSky(frame: Float32Array, sites: readonly TideEyeSite[], seconds: number, x: number, y: number, z: number, sextantScale = 1): void {
   frame.fill(0, FRAME.eyes, FRAME.eyes + 8 * EYE_SLOTS);
   let count = 0;
   for (const site of sites) {
@@ -37,9 +37,9 @@ export function writeEyeSky(frame: Float32Array, sites: readonly TideEyeSite[], 
     // Pack the instrument alongside its phase in the existing sky uniform.
     const sextant = site.form === "sextant";
     const yaw = site.yaw * Math.PI / 32768;
-    frame[at] = site.x - x + (sextant ? 19 * Math.cos(yaw) : 0);
+    frame[at] = site.x - x + (sextant ? 19 * sextantScale * Math.cos(yaw) : 0);
     frame[at + 1] = 3450 - y;
-    frame[at + 2] = site.z - z - (sextant ? 19 * Math.sin(yaw) : 0);
+    frame[at + 2] = site.z - z - (sextant ? 19 * sextantScale * Math.sin(yaw) : 0);
     frame[at + 3] = Math.min(phase, EYE_PERIOD - 0.0001) + EYE_FORMS.indexOf(site.form) * EYE_PERIOD;
     frame.set(site.form === "lantern" && site.color === "green" ? emerald : pigments[site.color], at + 4); frame[at + 7] = power;
   }
