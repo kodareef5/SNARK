@@ -39,23 +39,31 @@ def cached(item):
 
 
 def fetch(release, items):
-    """Download what the cache lacks, a batch to each call, and hold every file to its digest."""
+    """Download what the cache lacks, a batch to each call, and hold every file to its digest. An archive is in the
+    manifest's repository unless its own entry names another (art kept private until it is published)."""
     CACHE.mkdir(parents=True, exist_ok=True)
     missing = [item for item in items if not cached(item)]
-    for start in range(0, len(missing), 40):
-        batch = missing[start:start + 40]
+    where = lambda item: item.get("repository", RELEASE["repository"])
+    batches = [(repo, group[start:start + 40])
+               for repo in sorted({where(item) for item in missing})
+               for group in [[item for item in missing if where(item) == repo]]
+               for start in range(0, len(group), 40)]
+    done = 0
+    for repo, batch in batches:
         with tempfile.TemporaryDirectory(dir=CACHE) as staging:
-            command = ["gh", "release", "download", release, "--repo", RELEASE["repository"], "--dir", staging]
+            command = ["gh", "release", "download", release, "--repo", repo, "--dir", staging]
             for item in batch:
                 command += ["--pattern", item["file"]]
             if subprocess.run(command).returncode:
-                raise SystemExit(f'Could not download from the "{release}" release. A draft release is only open to the repository\'s owner.')
+                raise SystemExit(f'Could not download from the "{release}" release of {repo}. A private repository or a draft '
+                                 "release is only open to those it is shared with.")
             for item in batch:
                 part = Path(staging) / item["file"]
                 if not part.is_file() or part.stat().st_size != item["bytes"] or sha256(part) != item["sha256"]:
                     raise SystemExit(f'Checksum mismatch for {item["file"]}.')
                 part.replace(CACHE / item["file"])
-        print(f"  fetched {min(start + 40, len(missing))} of {len(missing)}", flush=True)
+        done += len(batch)
+        print(f"  fetched {done} of {len(missing)}", flush=True)
 
 
 def install_archive(item, replace):
