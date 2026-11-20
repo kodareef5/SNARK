@@ -62,7 +62,15 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   if (pack.header.materials) headers[1]!.materials = pack.header.materials;
   if (pack.header.textures) headers[1]!.textures = pack.header.textures;
   const details = pack.header.details;
-  if (details) headers[0]!.details = { ...details, atlas: { ...details.atlas, offset: blobs[0]!.append(detailsAtlas(pack)) } };
+  if (details) {
+    // Keep every mip and texel. Neighbouring bytes of one channel compress together at first paint.
+    const rgba = detailsAtlas(pack), pixels = rgba.length / 4;
+    const planes = new Uint8Array(rgba.length);
+    for (let c = 0; c < 4; c++) {
+      for (let i = 0; i < pixels; i++) planes[c * pixels + i] = rgba[4 * i + c]!;
+    }
+    headers[0]!.details = { ...details, atlas: { side: details.atlas.side, offset: blobs[0]!.append(planes), planar: true } };
+  }
   // A landmark's far mesh is fetched a level at a time like the finer levels of any other.
   const far = new Set((pack.header.landmarks ?? []).map((row) => farMeshId(row.name)));
   const held = (m: (typeof pack.header.meshes)[number], level: number, bytes: number): boolean => !far.has(m.id) && (level === m.lods.length - 1 || bytes <= HELD_LEVEL_BYTES);

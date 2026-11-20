@@ -18,8 +18,11 @@ import { AnimState, CUE_HELD, CUE_LAND, CUE_TAKEOFF, CUE_TORPOR, LAYER_FLINCH } 
 import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
-import { OCCASIONS, effectOf, type Occasion } from "../../shared/pack/details.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
+import { atlasBytes, CELL, OCCASIONS, effectOf, type Occasion } from "../../shared/pack/details.ts";
+import { detailsAtlas, parsePack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
+import { splitPack } from "../../tools/pack/split.ts";
+import { buildPack } from "../../tools/pack/write.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { ACT_SWING, HOLD_TOOL } from "../../shared/sim/weapon.ts";
@@ -40,6 +43,20 @@ const characters = new Characters(reg, pack, new Assets(reg, pack));
 const animOf = (kind: number) => characters.creature(kind);
 /** A grassy spot beyond the plaza. */
 const [X, Z] = [256, 362];
+
+test("the boot pack restores every RGBA mip without changing the cached wire bytes", () => {
+  const atlas = Uint8Array.from({ length: atlasBytes(CELL) }, (_, i) => (i * 17 + (i >>> 7)) & 255);
+  const header = { atlas: { offset: 0, side: CELL }, pictures: [], effects: [], sheets: [], inputs: "" };
+  const whole = buildPack([], defaultPalette(), [], [], { header, atlas });
+  const boot = splitPack(whole, "test").files[0]!.bytes;
+  const wire = Buffer.from(boot), hash = hashBytes(wire);
+  for (const file of [whole, wire, wire]) {
+    const parsed = parsePack(file);
+    expect(parsed.header.details!.atlas.planar).toBeUndefined();
+    expect(Buffer.compare(detailsAtlas(parsed), atlas)).toBe(0);
+  }
+  expect(hashBytes(wire)).toBe(hash);
+});
 
 artTest("the details pack is as new as the sheets and pictures it is made from", () => {
   const built = parsePack(new Uint8Array(readFileSync(join(SOURCE, "core/details/details.snpk"))));

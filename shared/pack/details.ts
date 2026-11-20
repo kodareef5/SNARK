@@ -107,8 +107,8 @@ export interface DetailSheet {
 }
 
 export interface PackDetails {
-  /** Where the atlas starts in the pack's blob, and its side. */
-  atlas: { offset: number; side: number };
+  /** A boot file can group channel bytes for Brotli. parsePack restores interleaved RGBA. */
+  atlas: { offset: number; side: number; planar?: true };
   pictures: DetailPicture[];
   effects: DetailEffect[];
   sheets: DetailSheet[];
