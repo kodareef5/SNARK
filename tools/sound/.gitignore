@@ -1,5 +1,6 @@
-.venv/
-.venv-*/
-.work/
+# The venvs and the work folder may be links to a place outside the clone, so no trailing slash.
+.venv
+.venv-*
+.work
 __pycache__/
 *.pyc

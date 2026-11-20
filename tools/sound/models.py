@@ -213,6 +213,8 @@ def main():
     if backend() == "torch":
         print("moss code", fetch_moss_code())
         print("moss weights", weights_dir("moss", "torch"))
+        # music.py imports stable_audio_3 from this source; its weights are gated and fetched when it first runs.
+        print("stable code", fetch_stable_code().parents[1])
         return
     link_stable_weights()
     print("stable weights", weights_dir("stable"))

@@ -1,24 +1,28 @@
 #!/bin/sh
-# Sound tools: a local venv, the pinned model code and the models' pinned weights.
+# Sound tools: the venvs, the pinned model code and the models' pinned weights. Not part of the build: run it only on
+# a machine that makes sounds. README.md in this folder is the guide.
 # Weights go to the Hugging Face cache, code and work files to .work/ (git-ignored).
-#   Mac (MLX):    Stable Audio 3 MLX code and both models' MLX weights (about 10 GB); requirements.txt
-#   Linux (CUDA): MOSS-TTS code and the upstream MOSS-SoundEffect v2.0 weights (about 11 GB);
-#                 requirements-cuda.txt, Python 3.12, an NVIDIA GPU with 8 GB or more
+#   Mac (MLX):    .venv from requirements.txt; Stable Audio 3 MLX code and both models' MLX weights (about 10 GB)
+#   Linux (CUDA): .venv from requirements-cuda.txt (MOSS-SoundEffect) and .venv-stable from requirements-stable.txt
+#                 (Stable Audio 3 music, MOSS-VoiceGenerator); the MOSS-TTS and Stable Audio 3 code, and the
+#                 MOSS-SoundEffect v2.0 weights (about 11 GB). Python 3.12, an NVIDIA GPU with 8 GB or more.
 #   tools/sound/setup.sh               PYTHON=... to choose the interpreter
-#   tools/sound/.venv/bin/python tools/sound/generate.py <brief.json>     (Linux: add --model moss)
-#   tools/sound/.venv/bin/python tools/sound/review.py <brief.json>
-#   tools/sound/.venv/bin/python tools/sound/accept.py <brief.json> <picks.json>
-#   tools/sound/.venv/bin/python tools/sound/remake.py <asset sound folder>
+# The venvs and .work may be links to a place outside the clone (README.md, "Setting up a machine").
 set -e
 cd "$(dirname "$0")"
+venv() { # venv DIR REQUIREMENTS
+  if command -v uv >/dev/null; then
+    [ -d "$1" ] || uv venv -q --python "${PYTHON:-3.12}" "$1"
+    uv pip install -q --python "$1/bin/python" --index-strategy unsafe-best-match -r "$2"
+  else
+    [ -d "$1" ] || "${PYTHON:-python3.12}" -m venv "$1"
+    "$1/bin/pip" install -q -r "$2"
+  fi
+}
 if [ "$(uname)" = Darwin ]; then
-  [ -d .venv ] || "${PYTHON:-python3.12}" -m venv .venv
-  .venv/bin/pip install -q -r requirements.txt
-elif command -v uv >/dev/null; then
-  [ -d .venv ] || uv venv -q --python "${PYTHON:-3.12}" .venv
-  uv pip install -q --python .venv/bin/python --index-strategy unsafe-best-match -r requirements-cuda.txt
+  venv .venv requirements.txt
 else
-  [ -d .venv ] || "${PYTHON:-python3.12}" -m venv .venv
-  .venv/bin/pip install -q -r requirements-cuda.txt
+  venv .venv requirements-cuda.txt
+  venv .venv-stable requirements-stable.txt
 fi
 .venv/bin/python models.py
