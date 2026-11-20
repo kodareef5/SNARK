@@ -1,7 +1,7 @@
 // Trees, rocks and bushes past the near store's hand-over band, placed by the client from the map (farnodes.ts, hand.ts).
 import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
-import { FAR_NODE_BUFFERS, PULL_SLOTS, farNodeOf } from "../../client/core/render/farnodes.ts";
+import { FAR_NODE_BUFFERS, PULL_SLOTS, farLevelOf, farNodeOf } from "../../client/core/render/farnodes.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { ATLAS_REGION, DRAW_PULLED, DRAW_TEXTURED, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
@@ -565,4 +565,15 @@ test("reversible predicted tree hiding removes both near and far instances witho
   w.scene.hideNode(ref, false); w.frame();
   expect(drawnNodes(w, w.frame()).get(ref)?.some(d => d.far)).toBe(true);
   expect(drawnNodes(w, w.frame()).get(ref)?.some(d => !d.far)).toBe(true);
+});
+
+test("the far store draws a mesh's last level, and a palm's frond level only when asked and where it fits a far row", () => {
+  const palm = [4000, 1200, 300, 90, 42, 12];
+  expect(farLevelOf("core:palm_2", palm, false)).toBe(5);
+  expect(farLevelOf("core:palm_2", palm, true)).toBe(4);
+  // Not a palm, a felled palm, a frond level too heavy for a row (64 triangles), or a single level.
+  expect(farLevelOf("core:oak_1", [63588, 29528, 3672, 1768, 302, 14], true)).toBe(5);
+  expect(farLevelOf("core:palm_2_depleted", palm, true)).toBe(5);
+  expect(farLevelOf("core:palm_2", [4000, 1200, 300, 90, 65, 12], true)).toBe(5);
+  expect(farLevelOf("core:palm_2", [12], true)).toBe(0);
 });

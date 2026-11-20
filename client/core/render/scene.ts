@@ -44,7 +44,7 @@ import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budge
 import type { FarCity, CitySource } from "./farcity.ts";
 import type { CityBlocks, BlocksSource } from "./cityblocks.ts";
 import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
-import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
+import { FarNodes, farLevelOf, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { HIDE_PIXELS, Hiding, OCCLUDER } from "./hide.ts";
 import { PROGRAM, drawProgram } from "./programs.ts";
@@ -714,7 +714,8 @@ export class Scene {
   private readonly cloudRange = [0, 0];
 
   /** With `stream`, `pack` is the boot pack and other levels are asked of the port as they are wanted. */
-  constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort; pages?: readonly Uint8Array[] }) {
+  /** `opts.farPalms`: the far store draws palms as their frond level, not their solid, for a bench's comparison (farLevelOf). */
+  constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort; pages?: readonly Uint8Array[] }, opts: { farPalms?: boolean } = {}) {
     this.world = world;
     this.terrain = new TerrainLod(world.hf);
     this.assets = new Assets(reg, pack, stream?.manifest, stream?.port, stream?.pages);
@@ -820,7 +821,7 @@ export class Scene {
     const flat = (k: number): boolean => this.meshOfKind[k] !== missing && this.meshOfKind[k] !== HIDDEN && table.sections[this.meshOfKind[k]!]!.every((runs) => runs.length === 0);
     this.near = this.farBounds ? new NearCity(reg, far, this.landmarkKinds, flat) : null;
     this.startCity();
-    const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.heldGeometry(mesh, table.tris[mesh]!.length - 1);
+    const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.heldGeometry(mesh, farLevelOf(this.assets.manifest.meshes[mesh]!.id, table.tris[mesh]!, opts.farPalms ?? false));
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last, known: (mesh) => this.assets.known(mesh) };
     if (world.farNodes) world.farNodes.hidden = ref => this.hiddenNodes.has(ref);
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
@@ -1789,6 +1790,8 @@ export class Scene {
     p.drawBuffer[d] = buffer;
     p.drawFirst[d] = first;
     p.drawInstances[d] = count;
+    // An instance's vertices: the renderer reads them from the slot, and a count (bench-run.ts) from here.
+    p.drawIndexCount[d] = indices;
     p.drawFlags[d] = DRAW_PULLED;
     p.drawOffset[d * 3] = ox;
     p.drawOffset[d * 3 + 1] = oy;

@@ -1,0 +1,124 @@
+// A `?bench=1` run: the page measures itself and reports to the tool that opened it (tools/bench/gpu.ts, trees.ts). Only a
+// bench page fetches this file, so a player's first frame does not wait for it (D873).
+
+import { BENCH_FRAMES, PASSES } from "./passes.ts";
+import { DRAW_PULLED, DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "./render/packet.ts";
+import { NODE_BUFFERS } from "./render/scene.ts";
+
+/** Frames with nothing on its way before the measured frames begin, and the most ms to wait for them. */
+const STILL = 60;
+const SETTLE_MS = 20000;
+
+/** Each pass's median and 95th percentile over `frames` (PassClock.take), where passes were timed, and the frame's, in ms; null for none timed. */
+export function passSpread(frames: readonly number[][]): Record<string, { median: number; p95: number }> | null {
+  if (frames.length === 0) return null;
+  const at = (list: number[], q: number): number => Math.round(list.sort((a, b) => a - b)[Math.floor((list.length - 1) * q)]! * 1000) / 1000;
+  const columns: [string, number[]][] = frames[0]!.length > 1 ? PASSES.map((name, i) => [name, frames.map((f) => f[i]!)]) : [];
+  columns.push(["frame", frames.map((f) => f.reduce((a, b) => a + b, 0))]);
+  return Object.fromEntries(columns.map(([name, list]) => [name, { median: at(list, 0.5), p95: at(list, 0.95) }]));
+}
+
+/**
+ * Of a run that drew every other frame with other effects off (`?ab=`), its frames' ms in order and which were the
+ * others: each kind's median, and the median of each other frame less the mean of its own frames either side, which a
+ * turning view and a card shared with other work change little; null where no frame was another's.
+ */
+export function alternateSpread(frames: readonly number[], other: readonly boolean[]): { own: number; other: number; less: number } | null {
+  const med = (list: number[]): number => Math.round(list.sort((a, b) => a - b)[(list.length - 1) >> 1]! * 1000) / 1000;
+  const less: number[] = [];
+  for (let i = 1; i + 1 < frames.length; i++) if (other[i] && !other[i - 1] && !other[i + 1]) less.push(frames[i]! - (frames[i - 1]! + frames[i + 1]!) / 2);
+  if (less.length === 0) return null;
+  return { own: med(frames.filter((_, i) => !other[i])), other: med(frames.filter((_, i) => other[i])), less: med(less) };
+}
+
+/**
+ * The triangles a frame submits for trees, rocks and bushes, as the scene counts them: the near store's draws, each its
+ * level's triangles (`tris`, by mesh and level) times its instances, and the far store's, each its slot's. A far slot
+ * pads a short row with empty triangles, so the far count is the work the card is given, not what shows.
+ */
+export function nodeTriangles(p: FramePacket, tris: readonly (readonly number[])[]): { near: number; far: number } {
+  let near = 0, far = 0;
+  for (let d = 0; d < p.drawCount; d++) {
+    const b = p.drawBuffer[d]!, n = p.drawInstances[d]!;
+    if (b >= NODE_BUFFERS && b < NODE_BUFFERS * 2) near += ((p.drawFlags[d]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.drawIndexCount[d]! / 3 : (tris[p.drawMesh[d]!]?.[p.drawLod[d]!] ?? 0)) * n;
+    else if ((p.drawFlags[d]! & DRAW_PULLED) !== 0) far += (p.drawIndexCount[d]! / 3) * n;
+  }
+  return { near: Math.round(near), far: Math.round(far) };
+}
+
+/** What the shell knows of the frame besides the packet: the GL calls, the canvas, the renderer, and bytes on the card. */
+export interface Drawn {
+  drawCalls: number;
+  canvas: number[];
+  renderer: string;
+  userAgent: string;
+  /** Bytes the page holds on the card, and of them textures' (assets/residency.ts ledger, texLedger). */
+  card: { bytes: number; textures: number };
+}
+
+/** A `?bench=1` run: the page flies itself (App.autopilot), or holds its look with `?still`, and reports frame times and the GPU's time by pass. */
+export class BenchRun {
+  private readonly intervals: number[] = [];
+  private readonly ours: number[] = [];
+  private readonly gpu: number[][] = [];
+  /** Whether each of `gpu` was drawn with the page's other effects (FramePacket.alternate), which only a clock that times the frame it is told of (`?sync=1`) knows. */
+  private readonly other: boolean[] = [];
+  /** Each measured frame's counts, for their medians over the turn. */
+  private readonly counts: Record<"triangles" | "draws" | "castTriangles" | "castDraws" | "nearNodes" | "farNodes", number[]> = { triangles: [], draws: [], castTriangles: [], castDraws: [], nearNodes: [], farNodes: [] };
+  private first = -1;
+  private started = -1;
+  private previous = -1;
+  private still = 0;
+  private done = false;
+
+  /** ms since the measured frames began, 0 before: the autopilot's clock. */
+  since(now: number): number {
+    return this.started < 0 ? 0 : now - this.started;
+  }
+
+  /**
+   * Each drawn frame, at `now`, our code's `ours` ms of it, and the frames `gpu` timed. Returns the report once, when it
+   * is whole: what the renderer drew in the last frame comes from `drawn`.
+   */
+  frame(now: number, ours: number, gpu: readonly number[][], p: FramePacket, quiet: boolean, drawn: Drawn, tris: readonly (readonly number[])[] = []): ({ frameMs: Record<"median" | "p95" | "p99" | "worst", number> } & Record<string, unknown>) | null {
+    if (this.done) return null;
+    if (this.first < 0) this.first = now;
+    this.still = quiet && p.assetUploads.length + p.texUploads.length === 0 ? this.still + 1 : 0;
+    const measuring = this.previous >= 0;
+    if (!measuring && (this.still >= STILL || now - this.first >= SETTLE_MS)) this.previous = this.started = now;
+    if (!measuring) return null;
+    this.intervals.push(now - this.previous);
+    this.ours.push(ours);
+    this.gpu.push(...gpu);
+    for (const _ of gpu) this.other.push(p.alternate);
+    const nodes = nodeTriangles(p, tris), c = this.counts;
+    c.triangles.push(p.triangles);
+    c.draws.push(p.drawCount);
+    c.castTriangles.push(p.castTriangles);
+    c.castDraws.push(p.castDraws);
+    c.nearNodes.push(nodes.near);
+    c.farNodes.push(nodes.far);
+    this.previous = now;
+    if (this.intervals.length < BENCH_FRAMES) return null;
+    this.done = true;
+    const at = (list: number[], q: number): number => Math.round([...list].sort((a, b) => a - b)[Math.floor((list.length - 1) * q)]! * 100) / 100;
+    const f = this.intervals;
+    return {
+      frames: BENCH_FRAMES,
+      settledMs: Math.round(now - this.first - f.reduce((a, b) => a + b, 0)),
+      frameMs: { median: at(f, 0.5), p95: at(f, 0.95), p99: at(f, 0.99), worst: at(f, 1) },
+      buildAndSubmitMs: { median: at(this.ours, 0.5), p99: at(this.ours, 0.99) },
+      gpuMs: passSpread(this.gpu),
+      // Each frame's, in order, which the view's turn makes the same frame for frame from run to run.
+      gpuFrames: this.gpu.map((f) => Math.round(f.reduce((a, b) => a + b, 0) * 100) / 100),
+      alternate: alternateSpread(this.gpu.map((f) => f.reduce((a, b) => a + b, 0)), this.other),
+      // What the last frame drew, which gpu.ts's rows print.
+      triangles: p.triangles,
+      // The medians over the measured frames: what the frame drew, what the sun's maps took apart from it, and the trees',
+      // rocks' and bushes' triangles by store.
+      turn: Object.fromEntries(Object.entries(this.counts).map(([k, list]) => [k, at(list, 0.5)])),
+      ...drawn,
+      tier: p.tier,
+    };
+  }
+}

@@ -60,6 +60,16 @@ const BUILT_SIDE = CHUNK_SIZE / TACTICAL_CELL;
 /** A draw costs about what drawing this many more triangles does: a cell out of view that weighs less joins the draws either side. */
 const RUN_TRIANGLES = 4096;
 
+/**
+ * The level of a mesh, `id` with `tris` triangles a level, that the far store draws: its last, its coarsest. With
+ * `fronds`, a palm's is the level before, its fronds as blades rather than a three-sided umbrella, where that fits a far
+ * row. A bench page asks for it (`?farpalm=fronds`) to compare the two on the tree route (planning/workstreams/trees.md).
+ */
+export function farLevelOf(id: string, tris: readonly number[], fronds: boolean): number {
+  const last = tris.length - 1;
+  return fronds && last >= 1 && /^core:palm_\d+$/.test(id) && tris[last - 1]! * 3 <= PULL_VERTICES << (SIZES - 1) ? last - 1 : last;
+}
+
 /** Which family a node kind is: trees are cut with wood, rocks with stone, and the rest are picked by hand. */
 export function familyOf(def: NodeDef): number {
   return def.material === "wood" ? 0 : def.material === "stone" ? 1 : 2;
@@ -118,7 +128,7 @@ export interface NodeLooks {
   readonly low: Float32Array;
   readonly high: Float32Array;
   readonly tris: readonly (readonly number[])[];
-  /** A mesh's last level: its vertices in metres from its origin, their palette colours and its triangles' corners, or null where there is none to hand. */
+  /** A mesh's far level (farLevelOf), its last unless asked otherwise: its vertices in metres from its origin, their palette colours and its triangles' corners, or null where there is none to hand. */
   last(mesh: number): { positions: Float32Array; colors: Uint8Array; indices: Uint32Array } | null;
   /** Whether a mesh's row is here. Where not, its page is asked for. */
   known(mesh: number): boolean;
@@ -293,6 +303,7 @@ export class FarNodes {
         const mesh = looks.meshOfForm[f.first[k]! + v * f.steps[k]!]!;
         const weight = sums[v]! - (v > 0 ? sums[v - 1]! : 0);
         if (mesh === NO_MESH) continue;
+        // The last level's triangles, whichever level is drawn (farLevelOf), so a comparison draws the same trees as far.
         sum += looks.tris[mesh]!.at(-1)! * weight;
         weights += weight;
       }

@@ -126,88 +126,10 @@ export class PassClock {
   }
 }
 
-/** Each pass's median and 95th percentile over `frames` (PassClock.take), where passes were timed, and the frame's, in ms; null for none timed. */
-export function passSpread(frames: readonly number[][]): Record<string, { median: number; p95: number }> | null {
-  if (frames.length === 0) return null;
-  const at = (list: number[], q: number): number => Math.round(list.sort((a, b) => a - b)[Math.floor((list.length - 1) * q)]! * 1000) / 1000;
-  const columns: [string, number[]][] = frames[0]!.length > 1 ? PASSES.map((name, i) => [name, frames.map((f) => f[i]!)]) : [];
-  columns.push(["frame", frames.map((f) => f.reduce((a, b) => a + b, 0))]);
-  return Object.fromEntries(columns.map(([name, list]) => [name, { median: at(list, 0.5), p95: at(list, 0.95) }]));
-}
-
-/**
- * Of a run that drew every other frame with other effects off (`?ab=`), its frames' ms in order and which were the
- * others: each kind's median, and the median of each other frame less the mean of its own frames either side, which a
- * turning view and a card shared with other work change little; null where no frame was another's.
- */
-export function alternateSpread(frames: readonly number[], other: readonly boolean[]): { own: number; other: number; less: number } | null {
-  const med = (list: number[]): number => Math.round(list.sort((a, b) => a - b)[(list.length - 1) >> 1]! * 1000) / 1000;
-  const less: number[] = [];
-  for (let i = 1; i + 1 < frames.length; i++) if (other[i] && !other[i - 1] && !other[i + 1]) less.push(frames[i]! - (frames[i - 1]! + frames[i + 1]!) / 2);
-  if (less.length === 0) return null;
-  return { own: med(frames.filter((_, i) => !other[i])), other: med(frames.filter((_, i) => other[i])), less: med(less) };
-}
-
 /** Frames a `?bench=1` run measures, once the scene has had nothing on its way for STILL frames, or after SETTLE_MS whatever. */
 export const BENCH_FRAMES = 900;
 /** The bench's view turns once round in the time 900 frames take at 60 a second (App.autopilot). */
 export const BENCH_TURN_MS = 15000;
-const STILL = 60;
-const SETTLE_MS = 20000;
-
-/** A `?bench=1` run: the page flies itself (App.autopilot) and reports frame times and the GPU's time by pass. */
-export class BenchRun {
-  private readonly intervals: number[] = [];
-  private readonly ours: number[] = [];
-  private readonly gpu: number[][] = [];
-  /** Whether each of `gpu` was drawn with the page's other effects (FramePacket.alternate), which only a clock that times the frame it is told of (`?sync=1`) knows. */
-  private readonly other: boolean[] = [];
-  private first = -1;
-  private started = -1;
-  private previous = -1;
-  private still = 0;
-  private done = false;
-
-  /** ms since the measured frames began, 0 before: the autopilot's clock. */
-  since(now: number): number {
-    return this.started < 0 ? 0 : now - this.started;
-  }
-
-  /**
-   * Each drawn frame, at `now`, our code's `ours` ms of it, and the frames `gpu` timed. Returns the report once, when it
-   * is whole: what the renderer drew in the last frame comes from `drawn`.
-   */
-  frame(now: number, ours: number, gpu: readonly number[][], p: FramePacket, quiet: boolean, drawn: { drawCalls: number; canvas: number[]; renderer: string; userAgent: string }): ({ frameMs: Record<"median" | "p95" | "p99" | "worst", number> } & Record<string, unknown>) | null {
-    if (this.done) return null;
-    if (this.first < 0) this.first = now;
-    this.still = quiet && p.assetUploads.length + p.texUploads.length === 0 ? this.still + 1 : 0;
-    const measuring = this.previous >= 0;
-    if (!measuring && (this.still >= STILL || now - this.first >= SETTLE_MS)) this.previous = this.started = now;
-    if (!measuring) return null;
-    this.intervals.push(now - this.previous);
-    this.ours.push(ours);
-    this.gpu.push(...gpu);
-    for (const _ of gpu) this.other.push(p.alternate);
-    this.previous = now;
-    if (this.intervals.length < BENCH_FRAMES) return null;
-    this.done = true;
-    const at = (list: number[], q: number): number => Math.round([...list].sort((a, b) => a - b)[Math.floor((list.length - 1) * q)]! * 100) / 100;
-    const f = this.intervals;
-    return {
-      frames: BENCH_FRAMES,
-      settledMs: Math.round(now - this.first - f.reduce((a, b) => a + b, 0)),
-      frameMs: { median: at(f, 0.5), p95: at(f, 0.95), p99: at(f, 0.99), worst: at(f, 1) },
-      buildAndSubmitMs: { median: at(this.ours, 0.5), p99: at(this.ours, 0.99) },
-      gpuMs: passSpread(this.gpu),
-      // Each frame's, in order, which the view's turn makes the same frame for frame from run to run.
-      gpuFrames: this.gpu.map((f) => Math.round(f.reduce((a, b) => a + b, 0) * 100) / 100),
-      alternate: alternateSpread(this.gpu.map((f) => f.reduce((a, b) => a + b, 0)), this.other),
-      triangles: p.triangles,
-      ...drawn,
-      tier: p.tier,
-    };
-  }
-}
 
 /**
  * Effects `?off=` names, comma separated, for a before and after. "band" draws the near nodes in the hand-over without
