@@ -170,6 +170,7 @@ A vital is `[value, max]`. A game omits vitals it has none of and may add its ow
 - `health` is a fraction, only where the player's interface would show it.
 - `affords` lists the `interact` verbs the character could use on it from where it stands; a verb the game knows but
   that needs the character nearer is left out.
+- `base`, on a piece of a base (a door, a box set down), is the base it belongs to: what to build on or take down.
 - `more` counts what was left out by `max`.
 
 **`terrain`**: the ground about the character, enough to find a way as a player looking at it could.
@@ -184,6 +185,12 @@ A vital is `[value, max]`. A game omits vitals it has none of and may add its ow
 `origin` is the grid's north-west corner as `[x, z]` (in `frame`'s horizontal axes), rows run north to south and
 columns west to east. `heights`, if asked with `{ "heights": true }`, is a row-major array of ground heights.
 
+**`map`**: the map screen's picture, coarser and much wider: `{ "cell": 8, "origin": [...], "size": [201, 201],
+"rows": [...], "legend": { ".": "walkable", "=": "road", "~": "deep_water", "-": "shallow_water", "#": "blocked" },
+"known": "full" | "explored" }`. Asked with `cell` (metres a letter; a game may give coarser) and `radius` (metres
+about the character a game may keep to on a big map). `known` says whether it is the whole map or, under fog, what
+the character has explored. It shows what a player's map shows: water, roads, slopes too steep, buildings and bases.
+
 **`inventory`**: `{ "slots": [{ "slot": 0, "item": "wood", "count": 40, "uses": null }], "capacity": 30,
 "weight": [31.5, 120], "hotbar": [1, 4, null, ...], "open": null, "craftable": [...], "crafting": [...] }`. While a
 container is open, `open` is `{ "id": "e:…", "slots": [...] }`.
@@ -196,8 +203,10 @@ null for the hands. `crafting` is the queue: `[{ "item": "wood_wall", "left": 2,
 **`chat`**: what the character has heard since the last chat observation: `{ "lines": [{ "channel": "local",
 "from": "Ana", "from_id": "e:310", "text": "come here", "t": 1532001 }] }`.
 
-**`focus`**: what the character is looking at and could act on now: `{ "target": "n:7.33", "distance": 2.1,
-"verbs": ["harvest"] }` or `{ "target": null }`.
+**`focus`**: what the character is looking at (the crosshair) and could act on now: `{ "target": "n:7.33",
+"distance": 2.1, "verbs": ["harvest"] }` or `{ "target": null }`. `distance` is to what the look meets even when it is
+nothing to act on (a wall's face, the ground); `verbs` are those the use key and the structure menu offer from here
+(`open`, `close`, `harvest`, `mount`, `repair`, `lock`, `unlock`).
 
 A game may also offer the aimed way of building a player has (the build helper below is the way grunt builds). While
 a structure is held, `focus` then has `placement`, the preview a player sees: `{ "piece": "wood_wall", "pos":
@@ -309,12 +318,26 @@ than a player's hands can do, held back on purpose (`rate`, `reach`), and every 
 `capabilities.building` gives the grid and the pieces:
 
 ```json
-{ "cell": 3, "storey": 3, "reach": 24, "rate": 2, "max_pieces": 80,
+{ "cell": 3, "storey": 3, "reach": 24, "rate": 2, "max_pieces": 80, "pickup_s": 30,
   "tiers": { "wood": { "foundation": "piece_foundation_wood", "wall": "piece_wall_wood",
                        "doorframe": "piece_wall_wood", "windowframe": "piece_wall_wood", "ceiling": "piece_ceiling_wood",
                        "door": "piece_door_wood", "pillar": "piece_pillar_wood", "stairs": "piece_stairs_wood" },
-             "thatch": { "foundation": "…", "wall": "…", "doorframe": "…", "ceiling": "…", "door": "…" } } }
+             "thatch": { "foundation": "…", "wall": "…", "doorframe": "…", "ceiling": "…", "door": "…" } },
+  "forms": [{ "form": "foundation", "place": "floor", "ground": true }, { "form": "wall", "place": "edge" },
+            { "form": "door", "place": "in_frame", "frame": "doorframe" }, { "form": "pillar", "place": "corner" },
+            { "form": "stairs", "place": "centre" }, { "form": "thing", "place": "thing" }, …],
+  "things": ["storage_box", "vault", "bed", "campfire", …] }
 ```
+
+**Forms are open.** A game lists the forms it has in `forms`, each with its class of place, which is all a client
+needs to lay it out: `floor` (a cell at a height: foundations, ceilings, sloped roofs, hatch frames; `ground` if it
+stands on the ground; `shape: "triangle"` for a half cell, with the piece's `half` naming the side of the square it
+lies against), `edge` (a cell's side: walls, frames, railings, fences and gateways on the ground), `edge_top` (on top
+of an edge piece), `corner` (pillars), `in_frame` (what fills a frame: a door in a doorframe, a gate in a gateway, a
+trapdoor in a hatch frame, as `frame` names), `centre` (stairs, ramps, ladders, with `up`), and `thing` (what is set
+down on a floor: a piece's `item` says which of `things`, and its `spot`, `n` `e` `s` `w` or `c`, where in the cell).
+A form a game adds (fences, gates, triangles, sloped roofs) is one more entry; nothing else changes. A client keeps
+layouts that use forms a game lacks yet, and substitutes or leaves them out until the game lists them.
 
 A **plan** is an anchor and pieces in order: `{ "anchor": { "at": [x, z], "turns": 0 }, "pieces": [{ "form":
 "foundation", "item": "piece_foundation_wood", "cell": [0, 0], "level": 0 }, { "form": "wall", "item": "…", "cell":
@@ -327,13 +350,24 @@ joins that base, as a player's pieces snap to what stands.
 
 - `op: "check"` answers at once (`completed`), its `detail` a verdict for every piece, in order, each as though the
   pieces before it that can go had gone: `ok`, `built` (the same piece already stands there), `occupied` (another
-  piece does), `blocked` (with `by`: a thing or body in the way), `no_support`, `terrain`, `not_in_tier`,
-  `enemy_near`; and `need` (items for the pieces still to place) and `have` (those in the bag).
+  piece does), `blocked` (with `by`: a thing or body in the way), `no_support`, `terrain`, `too_high` (the ground
+  falls away too far under it), `not_in_tier`, `not_in_game` (a form the game does not have), `enemy_near`; each may
+  have `fix`, a hint in words; and `need` (items for the pieces still to place) and `have` (those in the bag).
 - `op: "build"` places pieces `from` … `to` in order, at `rate` a second, each within `reach` of the character,
   taking each from the bag. A piece already standing is passed over. Its outcome is `completed` with `detail.placed`,
   `detail.ids` and `detail.base`, or `failed` at the first piece that cannot go: `detail.at` (its index),
   `detail.reason` (a verdict, `too_far`, or `missing_items` with `item`) and `by`. The client deals with it and sends
   the plan again from there. `built` events come as pieces go up. `stop` stops it.
+- `op: "survey"`, anchored at a base, answers at once with the base as it stands: `pieces` (each as a plan's piece on
+  the base's grid, with its `id` and `health`), `base`, and `frame` (`at`, the protocol position of the grid's cell
+  0, 0, and `turns`). A client reads a base back with it (to copy it, to extend it, to find what is damaged).
+- `op: "remove"` takes down the pieces `ids`: picked up whole within `pickup_s` of placing (the item back), else
+  demolished for part of what it took, as a player's would be. Its outcome's `detail` has `removed` and `refused`.
+- `op: "upgrade"` is reserved (a piece changed to another tier where it stands); a game without it answers
+  `not_permitted`, and a client converges by removing and placing.
+
+A base is named by its id or by the id of any piece of it: an anchor `{ "base": "s:14" }` naming a door finds the base
+the door is part of.
 
 ### Assists: the hands done for the client
 

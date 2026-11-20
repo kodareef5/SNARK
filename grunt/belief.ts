@@ -2,6 +2,7 @@
 // it has been told. A belief is not the game's truth. A thing out of sight is remembered, not known, and every read
 // can ask how old it is.
 
+import type { Layout } from "./layout.ts";
 import { NavMap } from "./nav.ts";
 import type { Assists, Building, ChatLine, EntitiesChannel, Entity, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, Slot, TerrainChannel, Vec3 } from "./protocol.ts";
 
@@ -38,6 +39,8 @@ export class Belief {
   readonly stores = new Map<string, { slots: Slot[]; capacity: number; name?: string; t: number }>();
   /** Pieces of its bases it was told are damaged, and not yet repaired. */
   readonly damaged = new Map<string, { base: string; form: string; pos: Vec3; health: number; t: number }>();
+  /** Layouts captured from bases standing (game_do capture), to build again by name. */
+  readonly layouts: Record<string, Layout> = {};
   /** The game's assists, if it has them, and their limits. */
   assists: Assists | null = null;
   readonly things = new Map<string, Remembered>();

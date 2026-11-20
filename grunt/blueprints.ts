@@ -49,6 +49,36 @@ export const BLUEPRINTS: Record<string, Layout> = {
     ],
     stairs: [{ at: [1, 0], level: 0, up: "w" }, { at: [0, 1], level: 1, up: "e" }],
   },
+  starter_base: {
+    about: "A first base: the 2 by 2 hut with a storage box, a bed and a campfire set in it. Any tier.",
+    rooms: [{ at: [0, 0], size: [2, 2], doors: ["s0"] }],
+    furnish: [{ item: "storage_box", cell: [0, 0], spot: "n" }, { item: "bed", cell: [1, 0], spot: "e" }, { item: "campfire", cell: [1, 1] }],
+  },
+  storage_room: {
+    about: "A store: a 2 by 3 room with vaults along its walls and a door at the front. Vaults are stone work.",
+    rooms: [{ at: [0, 0], size: [2, 3], doors: ["s0"] }],
+    furnish: [{ item: "vault", cell: [0, 0], spot: "w" }, { item: "vault", cell: [1, 0], spot: "e" }, { item: "vault", cell: [0, 1], spot: "w" }, { item: "vault", cell: [1, 1], spot: "e" }],
+  },
+  two_room_house: {
+    about: "A 3 by 2 hall and a 2 by 2 room off it through a door, with stairs up to an open loft with railings over the hall.",
+    rooms: [
+      { at: [0, 0], size: [3, 2], doors: ["s1"], windows: ["w0"] },
+      { at: [3, 0], size: [2, 2], doors: ["w0"], windows: ["e0"] },
+      { at: [0, 0], size: [2, 2], level: 1, roofless: true, railings: true },
+    ],
+    stairs: [{ at: [0, 1], up: "n" }],
+  },
+  fenced_compound: {
+    about: "A 6 by 6 fenced compound with a gate at the front for creatures, and a 2 by 2 hut with a storage box inside.",
+    rooms: [{ at: [2, 1], size: [2, 2], doors: ["s0"] }],
+    fences: [{ at: [0, 0], size: [6, 6], gates: ["s2"] }],
+    furnish: [{ item: "storage_box", cell: [2, 1], spot: "n" }],
+  },
+  watchtower: {
+    about: "A 2 by 2 tower of two storeys under a sloped roof: a ladder up inside, and a hatch out onto the roof.",
+    rooms: [{ at: [0, 0], size: [2, 2], height: 2, doors: ["s0"], windows: ["1:n0", "1:e1", "1:s1", "1:w0"], roof: "sloped", hatches: [[1, 1]] }],
+    stairs: [{ at: [0, 0], up: "s", kind: "ladder" }],
+  },
   walled_yard: {
     about: "A 5 by 5 walled yard with a 3 by 2 house against its back wall: a gate in the front wall, the house door into the yard.",
     rooms: [

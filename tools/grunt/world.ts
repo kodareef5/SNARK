@@ -12,7 +12,7 @@ import type {
   RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../../grunt/protocol.ts";
 import type { WorldEvent } from "../../grunt/endpoint.ts";
-import { BUILD_RATE, BUILD_REACH, MAX_PLAN as BUILDING_MAX, type PieceAt, PIECE_RECIPES, Structures } from "./structures.ts";
+import { BUILD_RATE, BUILD_REACH, MAX_PLAN as BUILDING_MAX, type PieceAt, PICKUP_S, PIECE_HP, PIECE_RECIPES, specOf, Structures, THINGS } from "./structures.ts";
 import { CHAR, CLIFF, DEEP, LEGEND, SHALLOW, type Feature, type Terrain } from "./terrain.ts";
 
 export const TICK_MS = 50;
@@ -37,8 +37,6 @@ export interface Ride {
   /** A mount that fights: its blow's damage, pace and reach (the rider attacks with it). */
   attack?: { damage: number; every_ms: number; reach: number };
 }
-/** A piece's health when whole, as SNARK's (content/building.ts). */
-const PIECE_HP: Record<string, number> = { foundation: 15000, wall: 10000, doorframe: 10000, windowframe: 10000, ceiling: 10000, stairs: 10000, pillar: 6250, door: 6250 };
 /** How fast the repair assist mends, pieces a second; a repair costs half the piece's recipe in the share it lacks. */
 const REPAIR_RATE = 2;
 
@@ -427,7 +425,7 @@ export class World {
     if (RIDES[t.type] && t.tame && !this.me.mount) return ["mount"];
     if (t.type === "bush") return ["harvest"];
     if (t.kind === "container" || (t.tame && t.slots)) return [...(this.me.open === t.id ? ["close"] : ["open"]), ...(RIDES[t.type] && t.tame && !this.me.mount ? ["mount"] : [])];
-    if (t.piece?.form === "door") return [t.piece.open ? "close" : "open"];
+    if (t.piece && specOf(t.piece.form)?.place === "in_frame") return [t.piece.open ? "close" : "open"];
     return [];
   }
 
@@ -445,7 +443,7 @@ export class World {
   entitiesChannel(radius = 40, max = 20): EntitiesChannel {
     const seen = [...this.things.values()]
       // Of a base, only its doors: the rest is ground, which the terrain channel shows.
-      .filter((t) => (!t.piece || (t.piece.form === "door" && this.dist(t) < 20)) && this.perceives(t) && this.dist(t) <= radius)
+      .filter((t) => (!t.piece || t.kind === "container" || (specOf(t.piece.form)?.place === "in_frame" && this.dist(t) < 20)) && this.perceives(t) && this.dist(t) <= radius)
       .sort((a, b) => this.dist(a) - this.dist(b));
     const items: Entity[] = seen.slice(0, max).map((t) => ({
       id: t.id, kind: t.kind, type: t.type, ...(t.name ? { name: t.name } : {}),
@@ -462,6 +460,7 @@ export class World {
       } : {}),
       ...(t.kind === "player" ? { disposition: t.hostile ? ("hostile" as const) : ("neutral" as const) } : {}),
       ...(t.kind === "structure" ? { disposition: "own" as const, tags: t.piece?.open ? ["open"] : [] } : {}),
+      ...(t.piece ? { base: t.piece.base } : {}),
       affords: this.affords(t),
     }));
     return { items, more: Math.max(0, seen.length - max) };
@@ -586,6 +585,46 @@ export class World {
     return instant({ moved, reason });
   }
 
+  /** A base's standing pieces as a plan's pieces on its grid, each with its id and health. */
+  private survey(plan: Plan): Record<string, unknown> {
+    const base = this.structures.baseOf(plan, this.things.values());
+    if (!base?.id) return { pieces: [], base: null };
+    const pieces = [...this.things.values()].filter((t) => t.piece?.base === base.id).map((t) => {
+      const p = t.piece!;
+      const item = p.form === "thing" ? p.item! : `piece_${p.form === "doorframe" || p.form === "windowframe" ? "wall" : p.form}_${p.tier}`;
+      return {
+        form: p.form, item, cell: [p.cell[0] - base.off[0], p.cell[1] - base.off[1]], level: p.level, ...(p.side ? { side: p.side } : {}), ...(p.up ? { up: p.up } : {}),
+        ...(p.half ? { half: p.half } : {}), ...(p.spot ? { spot: p.spot } : {}), id: t.id, health: Math.max(0, t.left) / (PIECE_HP[p.form === "thing" ? "thing" : p.form] ?? 1),
+      };
+    });
+    // The base's grid: cell 0, 0 of the plan's anchor (a point on the grid moves it by whole cells), and its turns.
+    let [ox, oz] = [base.off[0] * 3, base.off[1] * 3];
+    for (let t = 0; t < base.turns; t++) [ox, oz] = [-oz, ox];
+    return { pieces, base: base.id, frame: { at: [base.x + ox, base.z + oz], turns: base.turns } };
+  }
+
+  /** Takes pieces down: whole within the pickup window, else demolished for half of each ingredient. */
+  private removePieces(ids: string[]): Record<string, unknown> {
+    const removed: string[] = [], refused: Record<string, string> = {}, back: Record<string, number> = {};
+    for (const id of ids) {
+      const t = this.things.get(id);
+      if (!t?.piece) {
+        refused[id] = "not a piece of a base";
+        continue;
+      }
+      const p = t.piece;
+      const item = p.form === "thing" ? p.item! : `piece_${p.form === "doorframe" || p.form === "windowframe" ? "wall" : p.form}_${p.tier}`;
+      if (this.t - p.at <= PICKUP_S * 1000) (this.give(item, 1), (back[item] = (back[item] ?? 0) + 1));
+      else for (const [m, n] of Object.entries(PIECE_RECIPES[item]?.needs ?? {})) {
+        const k = Math.floor(n / 2);
+        if (k > 0) this.give(m, k), (back[m] = (back[m] ?? 0) + k);
+      }
+      this.things.delete(id);
+      removed.push(id);
+    }
+    return { removed, refused, back };
+  }
+
   /** What the build checks need of the world. */
   site() {
     return {
@@ -599,11 +638,22 @@ export class World {
   private put(base: { id: string; x: number; z: number; turns: number }, p: Plan["pieces"][number]): string {
     const tier = this.structures.tierOf(p.form, p.item)!;
     const at = this.structures.place(base, p);
-    const slab = p.form === "wall" || p.form === "windowframe" || p.form === "door";
+    const piece: PieceAt = {
+      form: p.form, tier, base: base.id, cell: p.cell, level: p.level, ...(p.side ? { side: p.side } : {}), ...(p.up ? { up: p.up } : {}),
+      ...(p.half ? { half: p.half } : {}), ...(p.spot ? { spot: p.spot } : {}), ...(p.form === "thing" ? { item: p.item } : {}), yaw: at.yaw, y: at.y, at: this.t,
+    };
+    // A thing set down: a box or vault is a container to open; the rest stand where they are.
+    if (p.form === "thing") {
+      const t = THINGS[p.item]!;
+      const id = this.place(t.container ? "container" : "structure", p.item, at.x, at.z, { r: t.r, blocks: t.blocks, left: PIECE_HP.thing!, piece, ...(t.container ? { slots: [] } : {}) });
+      this.event("built", { id, form: p.form, item: p.item, base: base.id });
+      return id;
+    }
+    const place = specOf(p.form)?.place;
     const id = this.place("structure", `${p.form}_${tier}`, at.x, at.z, {
-      r: p.form === "foundation" || p.form === "ceiling" || p.form === "stairs" ? 1.5 : p.form === "pillar" ? 0.25 : 0.3,
-      blocks: slab || p.form === "pillar", left: PIECE_HP[p.form]!,
-      piece: { form: p.form, tier, base: base.id, cell: p.cell, level: p.level, ...(p.side ? { side: p.side } : {}), ...(p.up ? { up: p.up } : {}), yaw: at.yaw, y: at.y },
+      r: place === "floor" || place === "centre" ? 1.5 : place === "corner" ? 0.25 : 0.3,
+      blocks: place === "edge" || place === "corner" || (place === "in_frame" && !!p.side), left: PIECE_HP[p.form] ?? 5000,
+      piece,
     });
     this.event("built", { id, form: p.form, item: p.item, base: base.id });
     return id;
@@ -706,7 +756,9 @@ export class World {
       }
       case "plan": {
         if (!a.plan?.anchor || !Array.isArray(a.plan.pieces) || a.plan.pieces.length > BUILDING_MAX) return "bad_arguments";
-        if (a.op !== "check" && a.op !== "build") return "not_permitted";
+        if (a.op === "upgrade") return "not_permitted";
+        if (a.op === "survey") return instant(this.survey(a.plan));
+        if (a.op === "remove") return instant(this.removePieces(a.ids ?? []));
         if (a.op === "check") {
           const { verdicts, base } = this.structures.check(this.site(), a.plan, false);
           // What is still to place, against the bag.
@@ -996,13 +1048,20 @@ export class World {
    * closed door is a thin slab along its edge, 3 m wide; a doorframe two slabs with a gap; a pillar a post. */
   private slab(t: Thing, x: number, z: number, r: number): boolean {
     const p = t.piece!;
-    if (p.y > 0 || p.level > 0) return false;
-    if (p.form === "pillar") return Math.hypot(t.x - x, t.z - z) < t.r + r;
-    if (!(p.form === "wall" || p.form === "windowframe" || p.form === "doorframe" || (p.form === "door" && !p.open))) return false;
+    if (p.level > 0 || (p.y > 0 && specOf(p.form)?.place !== "edge")) return false;
+    // A thing set down: as big as it is, if it blocks.
+    if (p.form === "thing") return t.blocks && Math.hypot(t.x - x, t.z - z) < t.r + r;
+    const place = specOf(p.form)?.place;
+    if (place === "corner") return Math.hypot(t.x - x, t.z - z) < t.r + r;
+    // A frame leaves a gap (a doorway, a gateway, a behemoth's gateway nearly its whole width); what fills it, closed,
+    // shuts it; anything else on an edge (a wall, a window, a railing, a fence) is a slab.
+    const gap = p.form === "doorframe" ? 0.7 : p.form === "gateway" ? 1.2 : p.form === "behemoth_gateway" ? 1.4 : 0;
+    const shut = place === "in_frame" && !!p.side && !p.open;
+    if (!(place === "edge" || shut)) return false;
     const along = p.yaw === 0 ? x - t.x : z - t.z;
     const across = p.yaw === 0 ? Math.abs(z - t.z) : Math.abs(x - t.x);
     if (across >= 0.15 + r || Math.abs(along) >= 1.5 + r) return false;
-    return p.form !== "doorframe" || Math.abs(along) > 0.7 - r;
+    return gap === 0 || Math.abs(along) > gap - r;
   }
 
   private hands(): void {

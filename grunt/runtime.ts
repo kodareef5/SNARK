@@ -147,8 +147,8 @@ export class Runtime {
     const hasMap = w.capabilities.channels.includes("map");
     // The ground about the character as far as it sees it well (40 m), 2 m a letter: as fine as the nav map.
     const near = { radius: 40, cell: 2 };
-    await this.session.subscribe(hasMap ? { ...SUBSCRIPTION, terrain: { hz: 2, ...near }, map: { hz: 0.2, cell: 4 } } : SUBSCRIPTION, ["*"]);
-    if (hasMap) await this.session.observe({ map: { cell: 4 }, terrain: near }).then((o) => this.belief.observe(o));
+    await this.session.subscribe(hasMap ? { ...SUBSCRIPTION, terrain: { hz: 2, ...near }, map: { hz: 0.2, cell: 4, radius: 800 } } : SUBSCRIPTION, ["*"]);
+    if (hasMap) await this.session.observe({ map: { cell: 4, radius: 800 }, terrain: near }).then((o) => this.belief.observe(o));
     await this.session.observe({ self: {}, inventory: {}, entities: { radius: 120, max: 60 }, focus: {} }).then((o) => this.belief.observe(o));
   }
 
@@ -571,6 +571,7 @@ export class Runtime {
       dir: compass(b.yawTo(t.pos)), side: side(b.bearingTo(t.pos)), ...(t.disposition ? { disposition: t.disposition } : {}),
       ...(t.kind === "creature" && t.health !== undefined ? { health: `${Math.round(t.health * 100)}%` } : {}),
       ...(t.tags?.includes("hunting") ? { hunting: true } : {}),
+      ...(t.base ? { base: t.base } : {}),
       ...(t.kind === "creature" && t.disposition === "hostile" ? { fight: this.odds(t.type) } : {}),
       ...(b.age(t.seen) > 3000 ? { seen_s_ago: Math.round(b.age(t.seen) / 1000) } : {}),
     }));

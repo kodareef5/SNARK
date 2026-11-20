@@ -52,6 +52,7 @@ How to decide:
   you write; it checks the plan, finds ground, crafts and places every piece itself. If materials are short it says
   exactly what it takes, and gather takes that whole list in one task. pos is [x, height, z], with x growing east
   and z growing south (north is -z); build's x, z put the middle of the base there, and facing turns its front.
+  To add to a base, build with its base id (extend it on its grid); capture copies a base, dismantle takes one down.
 - When the goal is reached, say so as you were asked (often in chat with game_say), with the real numbers from the
   game, and stop.
 - Keep your own agenda (game_agenda): work that takes several steps or will outlast this moment goes on it as to-dos

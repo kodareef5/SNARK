@@ -5,12 +5,67 @@
 
 import { BLUEPRINTS } from "./blueprints.ts";
 import type { Run } from "./body.ts";
-import { compile, type Layout } from "./layout.ts";
+import { compile, type Laid, type Layout } from "./layout.ts";
 import { BLOCKED, DEEP } from "./nav.ts";
-import type { Building, PieceForm, PieceVerdict, Plan, PlanPiece, Side, Vec3 } from "./protocol.ts";
+import { BASIC_FORMS, type Building, type PieceForm, type PieceVerdict, type Plan, type PlanPiece, type Side, type Vec3 } from "./protocol.ts";
+import { fetch, stores } from "./haul.ts";
 import type { SkillContext, SkillResult } from "./skills.ts";
 
 const SIDES: Side[] = ["n", "e", "s", "w"];
+/** Classes of place whose pieces nothing else stands on: one that will not go is left out, and the rest goes on. */
+const SKIPPABLE = new Set(["in_frame", "thing"]);
+
+/** What a game and tier can build of a layout's pieces: each form the tier has, its item; one it lacks, a substitute
+ * (a wall for a window, a ceiling for a sloped roof, stairs for a ramp or ladder) or left out, with a note; a thing,
+ * the game's item of that name. Strict: anything lacking is a problem instead. */
+export function adapt(laid: Laid[], caps: Building, tier: string, strict = false): { pieces: PlanPiece[]; notes: string[]; problems: string[] } {
+  const kit = caps.tiers[tier] ?? {};
+  const known = new Set<string>(caps.forms ? caps.forms.map((f) => f.form) : BASIC_FORMS);
+  const things = caps.things;
+  const pieces: PlanPiece[] = [], notes = new Set<string>(), problems = new Set<string>();
+  for (const x of laid) {
+    if (x.form === "thing") {
+      const want = x.item ?? "";
+      const item = !things ? want : things.find((t) => t === want || t === `piece_${want}` || t.endsWith(`_${want}`));
+      if (item) pieces.push({ ...x, item });
+      else (strict ? problems : notes).add(`no ${want} in this game${strict ? "" : ": left out"}`);
+      continue;
+    }
+    if (kit[x.form]) {
+      pieces.push({ ...x, item: kit[x.form]! });
+      continue;
+    }
+    const why = known.has(x.form) ? `${tier} has no ${x.form}` : `this game has no ${x.form} yet`;
+    if (strict) {
+      problems.add(why);
+      continue;
+    }
+    const sub = SUBSTITUTE[x.form];
+    if (sub && kit[sub]) {
+      pieces.push({ ...x, form: sub, item: kit[sub]! });
+      notes.add(`${why}: a ${sub} in its place`);
+    } else notes.add(`${why}: left out`);
+  }
+  return { pieces, notes: [...notes], problems: [...problems] };
+}
+
+/** What stands in for a form a game or tier lacks (none: the piece is left out). */
+const SUBSTITUTE: Record<string, string> = {
+  windowframe: "wall", sloped_roof: "ceiling", hatchframe: "ceiling", ramp: "stairs", ladder: "stairs", behemoth_gateway: "gateway",
+  behemoth_gate: "gate", triangle_foundation: "foundation", triangle_ceiling: "ceiling",
+};
+
+/** "did you mean" for a name not known: the nearest of the names by letters. */
+export function nearest(name: string, names: string[]): string {
+  const d = (a: string, b: string) => {
+    const m = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)] as number[]);
+    for (let j = 1; j <= b.length; j++) m[0]![j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) m[i]![j] = Math.min(m[i - 1]![j]! + 1, m[i]![j - 1]! + 1, m[i - 1]![j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    return m[a.length]![b.length]!;
+  };
+  const best = names.map((n) => [n, d(name, n)] as const).sort((a, b) => a[1] - b[1])[0];
+  return best && best[1] <= Math.max(3, name.length / 3) ? ` (did you mean ${best[0]}?)` : "";
+}
 const OUT: Record<Side, [number, number]> = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] };
 /** Quarter turns that bring a layout's front (its south) round to face a side. */
 const TURNS: Record<Side, number> = { s: 0, w: 1, n: 2, e: 3 };
@@ -51,24 +106,50 @@ const tally = (pieces: { form: PieceForm }[]) => {
 export function* build(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const b = ctx.belief, p = ctx.progress, caps = b.building;
   if (!caps) return { status: "failed", summary: "this game has no build helper" };
-  // What to build.
-  const name = typeof args.blueprint === "string" ? args.blueprint : args.layout ? "the layout" : "hut_2x2";
-  const layout = (args.layout as Layout | undefined) ?? BLUEPRINTS[name];
-  if (!layout) return { status: "failed", summary: `I don't know the blueprint ${name}; the library has ${Object.keys(BLUEPRINTS).join(", ")}` };
+  // What to build: a blueprint of the library or one captured, or a layout written out.
+  const library = { ...BLUEPRINTS, ...b.layouts };
+  const name = typeof args.blueprint === "string" ? args.blueprint : args.layout ? "layout" : "hut_2x2";
+  const layout = (args.layout as Layout | undefined) ?? library[name];
+  if (!layout) return { status: "failed", summary: `I don't know the blueprint ${name}${nearest(name, Object.keys(library))}; the library has ${Object.keys(library).join(", ")}` };
   const laid = compile(layout);
   if (laid.problems.length) return { status: "failed", summary: `the layout has problems: ${laid.problems.join("; ")}`, data: { reason: "layout", problems: laid.problems } };
   const tier = String(args.tier ?? layout.tier ?? "wood");
-  const kit = caps.tiers[tier];
-  if (!kit) return { status: "failed", summary: `there is no ${tier} tier; the game has ${Object.keys(caps.tiers).join(", ")}` };
-  const lacking = [...new Set(laid.pieces.filter((x) => !kit[x.form]).map((x) => x.form))];
-  if (lacking.length) return { status: "failed", summary: `${tier} has no ${lacking.join(" or ")}: build it in ${Object.entries(caps.tiers).filter(([, k]) => lacking.every((f) => k[f])).map(([t]) => t).join(" or ")}, or leave them out`, data: { reason: "tier", lacking } };
-  const pieces: PlanPiece[] = laid.pieces.map((x) => ({ ...x, item: kit[x.form]! }));
+  if (!caps.tiers[tier]) return { status: "failed", summary: `there is no ${tier} tier; the game has ${Object.keys(caps.tiers).join(", ")}` };
+  // The layout as this game and tier can build it: a piece it lacks substituted (a wall for a window) or left out,
+  // with a note, unless strict.
+  const fitted = adapt(laid.pieces, caps, tier, args.strict === true);
+  if (fitted.problems.length) return { status: "failed", summary: `the ${name} cannot be built in ${tier} here: ${fitted.problems.join("; ")}`, data: { reason: "tier", problems: fitted.problems } };
+  const notes = fitted.notes;
+  // Extending a base (named by its id or any piece of it): the layout laid on the base's own grid, its [0, 0] at the
+  // base's cell at_cell, or flush against the base's side `side` (a side of the world: n, e, s, w).
+  const extend = typeof args.base === "string" ? args.base : null;
+  if (extend && !p.base) {
+    const seen = yield* survey(ctx, extend);
+    if (!seen?.base || !seen.frame) return { status: "failed", summary: `I can't find the base ${extend}: give the id of the base or of any piece of it (a door, a wall)`, data: { reason: "base" } };
+    p.base = seen.base;
+    p.grid = seen.frame;
+    let off: [number, number] = Array.isArray(args.at_cell) ? (args.at_cell as [number, number]) : [0, 0];
+    if (typeof args.side === "string" && args.side in TURNS && !Array.isArray(args.at_cell)) {
+      // The base's footprint on its grid (its ground floors, else every piece), and the side asked on that grid.
+      const floors = seen.pieces.filter((x) => x.level === 0 && caps.forms?.find((f) => f.form === x.form)?.place === "floor");
+      const cells = (floors.length ? floors : seen.pieces).map((x) => x.cell);
+      const [bi0, bj0, bi1, bj1] = [Math.min(...cells.map((c) => c[0])), Math.min(...cells.map((c) => c[1])), Math.max(...cells.map((c) => c[0])), Math.max(...cells.map((c) => c[1]))];
+      const [i0, j0, i1, j1] = laid.bounds;
+      const side = SIDES[(SIDES.indexOf(args.side as Side) - seen.frame.turns + 4) % 4]!;
+      off = side === "e" ? [bi1 + 1 - i0, bj0 - j0] : side === "w" ? [bi0 - 1 - i1, bj0 - j0] : side === "s" ? [bi0 - i0, bj1 + 1 - j0] : [bi0 - i0, bj0 - 1 - j1];
+    }
+    p.off = off;
+  }
+  const off = (p.off as [number, number] | undefined) ?? [0, 0];
+  // Where on the grid the layout lies once moved: its footprint, from which the stand spots are found.
+  const bounds: [number, number, number, number] = [laid.bounds[0] + off[0], laid.bounds[1] + off[1], laid.bounds[2] + off[0], laid.bounds[3] + off[1]];
+  const pieces: PlanPiece[] = fitted.pieces.map((x) => ({ ...x, cell: [x.cell[0] + off[0], x.cell[1] + off[1]] as [number, number] }));
   if (pieces.length > 400) return { status: "failed", summary: `${pieces.length} pieces is more than one build: split it` };
 
   // Where: asked for, or where it was put before, or in front of the character with its front facing back to it.
-  const half = [((laid.bounds[2] - laid.bounds[0] + 1) * caps.cell) / 2, ((laid.bounds[3] - laid.bounds[1] + 1) * caps.cell) / 2];
+  const half = [((bounds[2] - bounds[0] + 1) * caps.cell) / 2, ((bounds[3] - bounds[1] + 1) * caps.cell) / 2];
   const turns = typeof args.facing === "string" && args.facing in TURNS ? TURNS[args.facing as Side] : TURNS[facing((b.self?.yaw ?? 0) + Math.PI)];
-  const centreCell: [number, number] = [((laid.bounds[0] + laid.bounds[2]) / 2) * caps.cell, ((laid.bounds[1] + laid.bounds[3]) / 2) * caps.cell];
+  const centreCell: [number, number] = [((bounds[0] + bounds[2]) / 2) * caps.cell, ((bounds[1] + bounds[3]) / 2) * caps.cell];
   const gridFor = (cx: number, cz: number): Grid => {
     const [ox, oz] = rot(centreCell[0], centreCell[1], turns);
     return { at: [cx - ox, cz - oz], turns };
@@ -116,6 +197,18 @@ export function* build(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
     }
   }
   p.grid = grid;
+  // Converging: a piece of another form where the layout wants one (a wall where a doorframe goes) is taken down first.
+  if (args.replace === true && !p.replaced) {
+    // Only standing pieces (by their ids), not pieces of this plan taking each other's place.
+    const ids = [...new Set(verdict.verdicts.filter((v) => v.status === "occupied" && /^s:?\d+$/.test(v.by ?? "")).map((v) => v.by!))];
+    if (ids.length) {
+      const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "plan", op: "remove", plan: plan(grid), ids }], "swap pieces"), ids.length * 3000 + 5000);
+      const removed = ((o?.detail as { removed?: string[] } | undefined)?.removed ?? []).length;
+      notes.push(`swapped ${removed} piece${removed === 1 ? "" : "s"} for what the layout wants`);
+      p.replaced = true;
+      verdict = (yield* check(grid)) ?? verdict;
+    }
+  }
   // Something in the way of a piece of a build already begun (a rock rolled onto it, a creature standing there): say
   // which, so it can be cleared, and go on from there when taken up again.
   const inWay = verdict.verdicts.findIndex(unfit);
@@ -134,8 +227,9 @@ export function* build(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
     return { status: "failed", summary: `the ${name} cannot stand as laid out: ${said}`, data: { reason: "support", problems: unsupported.map(({ v, k }) => ({ piece: pieces[k], ...v })) } };
   }
   const todo = verdict.verdicts.filter((v) => v.status !== "built").length;
-  const [cx, cz] = [grid.at[0] + rot(centreCell[0], centreCell[1], turns)[0], grid.at[1] + rot(centreCell[0], centreCell[1], turns)[1]];
-  const at = `${Math.round(cx)}, ${Math.round(cz)}, front facing ${["south", "west", "north", "east"][turns]}`;
+  const gt = grid.turns;
+  const [cx, cz] = [grid.at[0] + rot(centreCell[0], centreCell[1], gt)[0], grid.at[1] + rot(centreCell[0], centreCell[1], gt)[1]];
+  const at = `${Math.round(cx)}, ${Math.round(cz)}, front facing ${["south", "west", "north", "east"][gt]}`;
 
   // The bill: the pieces still to place against the bag, and what crafting the rest takes.
   const missing: Record<string, number> = {};
@@ -146,11 +240,17 @@ export function* build(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
     if (!r) return { status: "failed", summary: `I can't craft ${item}`, data: { reason: "recipe", item } };
     for (const [m, k] of Object.entries(r.needs)) bill[m] = (bill[m] ?? 0) + k * n;
   }
-  const short = Object.entries(bill).filter(([m, k]) => b.count(m) < k);
+  let short = Object.entries(bill).filter(([m, k]) => b.count(m) < k);
+  // Short: what the stores about hold is fetched first (as a builder pulls from the boxes near).
+  if (short.length && !args.check && stores(b).length && !p.fetched) {
+    p.fetched = true;
+    yield* fetch(ctx, bill);
+    short = Object.entries(bill).filter(([m, k]) => b.count(m) < k);
+  }
   if (args.check) {
     return {
       status: "done",
-      summary: `the ${name} (${tier}) fits at ${at}: ${pieces.length} pieces (${tally(laid.pieces)}), ${pieces.length - todo} already built; ${Object.keys(missing).length ? `to craft: ${Object.entries(missing).map(([i, n]) => `${n} ${i}`).join(", ")}, taking ${Object.entries(bill).map(([m, k]) => `${k} ${m}`).join(", ")}` : "every piece is in the bag"}${short.length ? `; short of ${short.map(([m, k]) => `${k - b.count(m)} ${m}`).join(", ")}` : ""}`,
+      summary: `the ${name} (${tier}) fits at ${at}: ${pieces.length} pieces (${tally(pieces)}), ${pieces.length - todo} already built; ${Object.keys(missing).length ? `to craft: ${Object.entries(missing).map(([i, n]) => `${n} ${i}`).join(", ")}, taking ${Object.entries(bill).map(([m, k]) => `${k} ${m}`).join(", ")}` : "every piece is in the bag"}${short.length ? `; short of ${short.map(([m, k]) => `${k - b.count(m)} ${m}`).join(", ")}` : ""}${notes.length ? `. Note: ${notes.join("; ")}` : ""}`,
       data: { fits: true, pieces: pieces.length, built: pieces.length - todo, missing, bill },
     };
   }
@@ -175,7 +275,7 @@ export function* build(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
   const queued = (item: string) => b.inventoryAt <= Number(p.queuedAt ?? -Infinity) + 250 || !!b.inventory?.crafting.some((c) => c.item === item && c.left > 0);
   // Sections, each placed from one spot within reach of all of it, outside the footprint.
   const per = Math.max(5, Math.min(Number(args.section ?? 30), caps.max_pieces));
-  const fp = footprint(grid, laid.bounds, caps);
+  const fp = footprint(grid, bounds, caps);
   let start = Number(p.next ?? 0), stuck = 0;
   while (start < pieces.length) {
     const end = Math.min(pieces.length, start + per) - 1;
@@ -228,6 +328,13 @@ export function* build(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
     }
     if (o?.status === "interrupted" || !o) return { status: "blocked", summary: `building the ${name} was interrupted at piece ${reached} of ${pieces.length}`, data: { reason: "interrupted", next: reached } };
     const x = pieces[reached]!;
+    // A piece nothing else stands on (a door, a gate, a railing, a thing set down) that will not go: left out and told
+    // at the end, and the rest goes on.
+    if (SKIPPABLE.has(caps.forms?.find((f) => f.form === x.form)?.place ?? (x.form === "thing" ? "thing" : "")) || x.form === "railing") {
+      ((p.skipped ??= []) as string[]).push(`the ${x.form === "thing" ? x.item : x.form} at cell ${x.cell.join(",")}: ${d.reason ?? o.code ?? o.status}${d.by ? ` (${d.by})` : ""}`);
+      p.next = start = reached + 1;
+      continue;
+    }
     return {
       status: "blocked",
       summary: `the ${name} stopped at piece ${reached} of ${pieces.length}: the ${x.form} at cell ${x.cell.join(",")}${x.side ? ` ${x.side} side` : ""} storey ${x.level}: ${d.reason ?? o.code ?? o.status}${d.by ? ` (${d.by})` : ""}`,
@@ -235,5 +342,75 @@ export function* build(ctx: SkillContext, args: Record<string, unknown>): Run<Sk
     };
   }
   ctx.body.stop("built");
-  return { status: "done", summary: `built the ${name} (${tier}) at ${at}: ${pieces.length} pieces`, data: { base: p.base, pieces: pieces.length } };
+  const skipped = (p.skipped ?? []) as string[];
+  return {
+    status: "done",
+    summary: `built the ${name} (${tier}) at ${at}: ${pieces.length - skipped.length} pieces (${tally(pieces)}), base ${p.base ?? "?"}${skipped.length ? `; left out ${skipped.join("; ")}` : ""}${notes.length ? `. Note: ${notes.join("; ")}` : ""}`,
+    data: { base: p.base, pieces: pieces.length, skipped, notes },
+  };
+}
+
+interface Surveyed {
+  pieces: (PlanPiece & { id: string; health: number })[];
+  base: string | null;
+  frame?: Grid;
+}
+
+function* survey(ctx: SkillContext, base: string): Run<Surveyed | null> {
+  const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "plan", op: "survey", plan: { anchor: { base }, pieces: [] } }], "survey"), 3000);
+  return (o?.detail as Surveyed | undefined) ?? null;
+}
+
+/** The order to take pieces down in: what nothing stands on first (things, doors), then from the top storey down,
+ * edges before the floors they stand on. */
+function downOrder(pieces: Surveyed["pieces"], caps: Building): Surveyed["pieces"] {
+  const place = (f: string) => caps.forms?.find((x) => x.form === f)?.place ?? (f === "thing" ? "thing" : "edge");
+  const rank = (p: PlanPiece) => ({ thing: 0, in_frame: 1, centre: 2, edge: 3, edge_top: 3, corner: 4, floor: 5 })[place(p.form)] ?? 3;
+  return [...pieces].sort((a, b) => b.level - a.level || rank(a) - rank(b));
+}
+
+/** Takes a base down (or the pieces named): picked up whole while the game allows, else demolished for part. */
+export function* dismantle(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+  const caps = ctx.belief.building;
+  if (!caps) return { status: "failed", summary: "this game has no build helper" };
+  const base = String(args.base ?? "");
+  const seen = yield* survey(ctx, base);
+  if (!seen?.base) return { status: "failed", summary: `I can't find the base ${base}` };
+  const named = Array.isArray(args.ids) ? (args.ids as string[]) : null;
+  const keepThings = args.keep_things === true;
+  const doomed = downOrder(seen.pieces, caps).filter((p) => (named ? named.includes(p.id) : !(keepThings && p.form === "thing")));
+  if (!doomed.length) return { status: "done", summary: "nothing to take down" };
+  const removed: string[] = [], refused: Record<string, string> = {};
+  for (let k = 0; k < doomed.length; k += 20) {
+    const ids = doomed.slice(k, k + 20).map((p) => p.id);
+    const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "plan", op: "remove", plan: { anchor: { base }, pieces: [] }, ids }], "take down"), ids.length * 3000 + 5000);
+    const d = (o?.detail ?? {}) as { removed?: string[]; refused?: Record<string, string> };
+    removed.push(...(d.removed ?? []));
+    Object.assign(refused, d.refused ?? {});
+  }
+  const left = Object.keys(refused).length;
+  return {
+    status: left ? "blocked" : "done",
+    summary: `took down ${removed.length} piece${removed.length === 1 ? "" : "s"} of ${base}${left ? `; ${left} would not come down (${Object.values(refused).slice(0, 2).join("; ")})` : ""}`,
+    data: { removed: removed.length, refused },
+  };
+}
+
+/** Reads a standing base back as a layout (its pieces as they stand, on its grid), kept by a name to build again. */
+export function* capture(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+  const b = ctx.belief;
+  const base = String(args.base ?? "");
+  const seen = yield* survey(ctx, base);
+  if (!seen?.base || !seen.pieces.length) return { status: "failed", summary: `I can't find the base ${base}` };
+  // Its tier: the one most of its pieces are in.
+  const tiers = new Map<string, number>();
+  for (const p of seen.pieces) {
+    const t = /_([a-z]+)$/.exec(p.item)?.[1];
+    if (t && b.building?.tiers[t]) tiers.set(t, (tiers.get(t) ?? 0) + 1);
+  }
+  const tier = [...tiers].sort((x, y) => y[1] - x[1])[0]?.[0] ?? "wood";
+  const name = typeof args.name === "string" && args.name ? args.name : `base_${base.replace(/\W/g, "")}`;
+  const extra = seen.pieces.map(({ id: _id, health: _health, item, ...p }) => (p.form === "thing" ? { ...p, item: item.replace(/^piece_/, "") } : p));
+  b.layouts[name] = { name, about: `captured from ${base}`, tier, rooms: [], extra };
+  return { status: "done", summary: `captured ${base} as ${name}: ${seen.pieces.length} pieces (${tally(seen.pieces)}), ${tier}; game_do build {"blueprint": "${name}"} builds it again`, data: { name, pieces: seen.pieces.length } };
 }

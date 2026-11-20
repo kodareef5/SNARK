@@ -34,7 +34,8 @@ export interface GameWorld {
   selfChannel(): SelfChannel;
   entitiesChannel(radius?: number, max?: number): EntitiesChannel;
   terrainChannel(radius?: number, cell?: number): TerrainChannel;
-  mapChannel(cell?: number): MapChannel | null;
+  /** The map screen's picture, `cell` metres a letter; a game may give only `radius` metres about the character. */
+  mapChannel(cell?: number, radius?: number): MapChannel | null;
   inventoryChannel(): InventoryChannel;
   focusChannel(): FocusChannel;
   /** The name a hello gives the character, where the game takes one then. */
@@ -201,7 +202,7 @@ export class Endpoint {
       else if (name === "entities") out.entities = w.entitiesChannel(o.radius, o.max);
       else if (name === "terrain") out.terrain = w.terrainChannel(o.radius, o.cell);
       else if (name === "map") {
-        const m = w.mapChannel(o.cell);
+        const m = w.mapChannel(o.cell, o.radius);
         if (m) out.map = m;
       }
       else if (name === "inventory") out.inventory = w.inventoryChannel();

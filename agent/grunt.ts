@@ -19,6 +19,8 @@ import { BTN_CROUCH, BTN_JUMP, BTN_PRIMARY, BTN_SECONDARY, BTN_SPRINT, STAMINA_U
 import { V_FOOD, V_HEALTH, V_WATER } from "../shared/sim/vitals.ts";
 import type { Answer } from "./mcp.ts";
 import { observe, shortName } from "./observe.ts";
+import { focusOf } from "./focus.ts";
+import { MapRaster } from "./map.ts";
 import { Planner } from "./plan.ts";
 import type { Agent } from "./tools.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../shared/coords.ts";
@@ -409,6 +411,11 @@ export class SnarkWorld implements GameWorld {
       return instant({ verdicts, base, need, have });
     }
     if (a.op === "remove") return this.removePieces(command, index, a);
+    if (a.op === "survey") {
+      if (!("base" in a.plan.anchor)) return "bad_arguments";
+      const seen = this.planner.survey(String(a.plan.anchor.base));
+      return seen ? instant(seen) : "unknown_target";
+    }
     this.endTask("replaced");
     const id = ++this.tasks;
     this.task = { command, index, id };
@@ -671,9 +678,10 @@ export class SnarkWorld implements GameWorld {
     return { cell: c, origin: [ox, oz], size: [seen.grid[0]?.length ?? 0, seen.grid.length], rows: seen.grid, heights: null, legend: LEGEND } as TerrainChannel;
   }
 
-  mapChannel(): MapChannel | null {
-    return null;
+  mapChannel(cell?: number, radius?: number): MapChannel | null {
+    return (this.map ??= new MapRaster(this.s)).channel(cell, radius);
   }
+  private map: MapRaster | null = null;
 
   inventoryChannel(): InventoryChannel {
     const s = this.s, reg = s.registry;
@@ -716,7 +724,8 @@ export class SnarkWorld implements GameWorld {
   }
 
   focusChannel(): FocusChannel {
-    return { target: null };
+    const c = this.agent.controller;
+    return focusOf(this.s, this.agent.remote, c.yaw, c.pitch);
   }
 
   named(name: string): void {

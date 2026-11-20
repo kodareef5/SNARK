@@ -237,6 +237,8 @@ export interface Entity {
   health?: number;
   disposition?: "hostile" | "neutral" | "friendly" | "own";
   tags?: string[];
+  /** A piece of a base (a door, a box set down): the base it is part of, to build on or take down. */
+  base?: EntityId;
   affords: string[];
 }
 
@@ -385,7 +387,9 @@ export type Action =
   /** The build helper. check: at once, a verdict for every piece and the bill of what is still to place. build: places
    * the pieces from `from` up to `to` in order, at the game's rate, from the inventory, each within reach; it stops at
    * the first that cannot go, saying which and why. */
-  | { control: "plan"; op: "check" | "build" | "remove" | "upgrade"; plan: Plan; from?: number; to?: number; ids?: EntityId[] }
+  /** survey: at once, a base's standing pieces as a plan's pieces on its grid, each with its id and health (for
+   * reading a base back, taking it down, or seeing what is damaged). */
+  | { control: "plan"; op: "check" | "build" | "remove" | "upgrade" | "survey"; plan: Plan; from?: number; to?: number; ids?: EntityId[] }
   /** An assist: the game works the hands on a target until it is done or an `until` holds. aim: keep the crosshair on
    * it (leading it, with a bow in hand). attack: close in and strike at the weapon's pace; with a bow, keep `range`
    * [near, far] metres, lead and loose. harvest: swing at a tool's pace until it is gone. The client's own move or look

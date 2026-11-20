@@ -1,0 +1,16 @@
+{
+  "name": "build-pen",
+  "about": "A pen for creatures: a fenced area with a gate, from a description (fences and gates are pieces SNARK is still to grow; the mock has them).",
+  "world": {
+    "seed": 3,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 0, "items": { "wood": 3000, "thatch": 800, "fiber": 600 } }
+  },
+  "prompt": "You are Scout. Fence off a pen for our dinos just north of here, about 5 by 5 cells, with a gate on the south side big enough for them. Wood. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      { "base_has": { "fence": 12, "gate": 1 } },
+      { "said": "done|built|finished|ready|complete|\\bup\\b|standing" }
+    ]
+  },
+  "budget": { "seconds": 420 }
+}

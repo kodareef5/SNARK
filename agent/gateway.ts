@@ -18,7 +18,7 @@ import { Agent } from "./tools.ts";
 
 export const SNARK_LIMITS: Limits = { max_duration_ms: 2000, leash_ms: 3000, max_rate_hz: 20, act_per_s: 20, command_memory_s: 600 };
 export const SNARK_CAPABILITIES: Capabilities = {
-  channels: ["self", "entities", "terrain", "inventory", "chat"],
+  channels: ["self", "entities", "terrain", "map", "focus", "inventory", "chat"],
   controls: ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "chat", "assist", "plan"],
   events: ["hurt", "died", "chat", "notice", "struck", "built", "damaged", "repaired"],
   verbs: ["open", "close", "harvest", "mount", "dismount", "lock", "unlock"],

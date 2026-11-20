@@ -20,6 +20,9 @@ and commands a browser sends, and has no powers a player lacks.
 | `join.ts` | Joining a server as a survivor: the clips' hash, the map read whole, the session |
 | `gateway.ts` | The grunt protocol (`grunt/protocol.md`) for a server: a WebSocket at `/grunt`, one survivor a connection |
 | `grunt.ts` | A survivor as a grunt world: its senses as the protocol's channels, the controls as the Agent's inputs and tools |
+| `plan.ts` | The build helper: a plan's pieces resolved to snap points by the pose the game predicts, checked whole on a scratch store |
+| `map.ts` | The map channel: water, roads, steep ground, buildings and bases for hundreds of metres, from the map the client holds |
+| `focus.ts` | The focus channel: what the crosshair is on, by the ray the server casts, and what the use key would do |
 
 The zone may import `shared`, `content`, `client/core` and `grunt` (the
 protocol and its endpoint, for the gateway), and Bun's built-ins. It names nothing of the server's. Ways are found in `shared/world`:
@@ -206,7 +209,20 @@ plays it through the same headless client: the server is not changed and sees a
 player. Positions turn from SNARK's frame (x west, z north) to the protocol's (x
 east, z south). The assists are the Agent's tasks (its attack walks up and
 strikes, or keeps its distance and aims ahead with a bow; its harvest takes the
-right tool in hand). Not yet spoken: the build helper (`plan`), the map and focus
-channels. `tests/integration/grunt-gateway.test.ts` plays one on a server in process;
+right tool in hand).
+
+The build helper (`plan`, `plan.ts`) works with a player's own place command: each
+piece of a plan is matched to a snap point of a piece already standing (or planned
+before it) by the pose `poseAt` predicts, so no table of snap points is kept and a
+piece the content adds is built by the same rule; a whole plan is checked first on
+a scratch copy of the structure store with the server's own checks in its order
+(room, height, enemies, support). A base is known by any of its foundations and its
+grid is that foundation's; any piece of it finds it. `survey` reads a base back as
+plan pieces; `remove` picks up (within the 30 s window) or demolishes; the repair
+assist mends a base's pieces as the cooldown allows, and `damaged`/`repaired`
+events come from the hp the client sees.
+
+`tests/integration/grunt-gateway.test.ts`, `grunt-build.test.ts` and
+`grunt-senses.test.ts` play it on a server in process;
 `bun tools/grunt/live.ts --url ws://127.0.0.1:8771/grunt --name Scout "…"` puts a
 model on it.

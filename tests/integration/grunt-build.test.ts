@@ -9,6 +9,7 @@ import type { Action, GameMessage, Observation, Outcome, PlanPiece, Welcome } fr
 import { SNARK_CAPABILITIES, SNARK_LIMITS } from "../../agent/gateway.ts";
 import { SnarkWorld } from "../../agent/grunt.ts";
 import { Agent } from "../../agent/tools.ts";
+import { slot } from "../../tools/grunt/structures.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -119,6 +120,16 @@ test("a two-storey house goes up with its stairs, and the ceiling over them is l
   expect(st.stairs).toBe(1);
   expect(st.foundation).toBe(9);
   expect(st.ceiling).toBe(17);
+  // Surveyed, the base reads back as the layout: every piece in its place on the grid, the stairs climbing as laid.
+  const base = String(built!.detail!.base);
+  const seen = (await g.outcome(g.act({ control: "plan", op: "survey", plan: { anchor: { base }, pieces: [] } })))!.detail as { pieces: (PlanPiece & { id: string; health: number })[]; frame: { at: [number, number]; turns: number } };
+  const key = (q: PlanPiece) => `${q.form}:${slot(q)}${q.up ? `:${q.up}` : ""}`;
+  // The plan's cells are the base's (its first foundation is the plan's first piece, cell 0, 0).
+  const first = plan.pieces[0]!.cell;
+  const want = plan.pieces.map((q) => key({ ...q, cell: [q.cell[0] - first[0], q.cell[1] - first[1]] })).sort();
+  expect(seen.pieces.map(key).sort()).toEqual(want);
+  expect(seen.pieces.every((q) => q.health === 1)).toBe(true);
+  expect(seen.frame.turns).toBe(0);
 });
 
 test("a base is extended on its own grid, a piece of the wrong form is told as occupied, and a piece picked up comes back whole", async () => {
@@ -135,6 +146,13 @@ test("a base is extended on its own grid, a piece of the wrong form is told as o
   expect(shared.every(([, , , st]) => st === "built")).toBe(true);
   expect(await g.outcome(g.act({ control: "plan", op: "build", plan: room }), 180_000)).toMatchObject({ status: "completed" });
   expect(g.standing().foundation).toBe(6);
+  // The base is found from any piece of it: surveyed by one of its walls, every piece of it.
+  const survey = async (id: string) => ((await g.outcome(g.act({ control: "plan", op: "survey", plan: { anchor: { base: id }, pieces: [] } })))!.detail as { pieces: { id: string }[] }).pieces;
+  const all = await survey(base);
+  const wall = (built!.detail!.ids as string[])[6]!;
+  expect((await survey(wall)).map((x) => x.id).sort()).toEqual(all.map((x) => x.id).sort());
+  // The hut and the room: 2 foundations, 4 walls of its own (the west is the hut's), 2 ceilings.
+  expect(all.length).toBe(17 + 8);
   // The hut's east wall at cell 1,0 wanted as a doorframe: the wall is there.
   const door = { anchor: { base }, pieces: laid({ rooms: [{ at: [0, 0], size: [2, 2], doors: ["e0"] }] }) };
   const v = ((await g.outcome(g.act({ control: "plan", op: "check", plan: door })))!.detail as { verdicts: { status: string; by?: string }[] }).verdicts;

@@ -4,6 +4,7 @@ import { Runtime } from "../../grunt/runtime.ts";
 import { type Clock, Session } from "../../grunt/session.ts";
 import { GameEndpoint } from "../../tools/grunt/game.ts";
 import { makeWorld, type Scene } from "../../tools/grunt/scenes.ts";
+import { stands } from "../../tools/grunt/play.ts";
 
 /** grunt's runtime and the mock world in one process, in lockstep: the runtime's clock is the world's. */
 async function harness(scene: Scene, owners: string[] = []) {
@@ -152,7 +153,7 @@ test("build puts up a library layout from the pieces in the bag through the help
   const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: HUT_PIECES } });
   const task = h.rt.start("build", { blueprint: "hut_2x2", section: 10 });
   h.run(120_000, () => task.status !== "running");
-  expect(task.result?.summary).toBe("built the hut_2x2 (wood) at 0, -6, front facing south: 17 pieces");
+  expect(task.result?.summary).toBe("built the hut_2x2 (wood) at 0, -6, front facing south: 17 pieces (4 foundation, 7 wall, 1 doorframe, 1 door, 4 ceiling), base b:1");
   expect(stands(h.world, "hut_2x2")).toBe(true);
   const acts = h.rt.trace.of("act").flatMap((r) => r.actions as { control: string; op?: string }[]);
   expect(acts.filter((x) => x.control === "plan").map((x) => x.op)).toEqual(["check", "build", "build"]);
@@ -189,9 +190,13 @@ test("a site with trees on it moves to the nearest ground that fits; a tier with
   expect(task.status).toBe("done");
   expect(stands(h.world, "hut_2x2")).toBe(true);
   expect([...h.world.things.values()].filter((t) => t.type === "tree").length).toBe(6);
-  const thatch = h.rt.start("build", { blueprint: "house_3x3", tier: "thatch" });
+  // A tier without a form: a wall where the window was, said so; strict, refused.
+  const thatch = h.rt.start("build", { blueprint: "house_3x3", tier: "thatch", check: true });
   h.run(2_000, () => thatch.status !== "running");
-  expect(thatch.result!.summary).toBe("thatch has no windowframe: build it in wood or stone, or leave them out");
+  expect(thatch.result!.summary).toContain("Note: thatch has no windowframe: a wall in its place");
+  const strict = h.rt.start("build", { blueprint: "house_3x3", tier: "thatch", strict: true });
+  h.run(2_000, () => strict.status !== "running");
+  expect(strict.result!.summary).toBe("the house_3x3 cannot be built in thatch here: thatch has no windowframe");
 });
 
 test("a build stopped by something in the way says which piece and why, and goes on from there when taken up again", async () => {
@@ -464,4 +469,59 @@ test("upkeep looks after a base in one go: repairs with materials fetched from t
   expect(h.world.wholeStructures()).toBe(true);
   expect([...h.world.things.values()].find((x) => x.name === "Bumper")!.slots).toEqual([]);
   expect(t.result!.summary).toMatch(/^looked after the base: repaired 17 pieces of b:1 for .*; emptied Bumper into the stores: 800 stone, 200 flint/);
+});
+
+const BUILDER = { wood: 20000, thatch: 6000, fiber: 6000, stone: 6000, flint: 600 };
+
+test("pieces the game is still to grow stand on the mock: a fenced compound with a gate, a watchtower with a ladder, hatch and sloped roof", async () => {
+  for (const name of ["fenced_compound", "watchtower", "two_room_house", "starter_base"]) {
+    const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: BUILDER } });
+    const t = h.rt.start("build", { blueprint: name });
+    h.run(1_500_000, () => t.status !== "running");
+    expect(t.status).toBe("done");
+    expect(stands(h.world, name)).toBe(true);
+  }
+});
+
+test("a base is extended on its own grid, converged to a new layout by swapping a wall, captured, and dismantled with a refund", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: BUILDER } });
+  const hut = h.rt.start("build", { blueprint: "hut_2x2" });
+  h.run(600_000, () => hut.status !== "running");
+  const base = String(hut.result!.data!.base);
+  // A room on the hut's east side, the hut named by its door (all a player sees of it): on its grid, the wall between
+  // the hut's.
+  const door = [...h.world.things.values()].find((t) => t.piece?.base === base && t.piece.form === "door")!.id;
+  const room = h.rt.start("build", { layout: { rooms: [{ at: [0, 0], size: [1, 2] }] }, base: door, side: "e" });
+  h.run(600_000, () => room.status !== "running");
+  expect(room.status).toBe("done");
+  const foundations = () => [...h.world.things.values()].filter((t) => t.piece?.base === base && t.piece.form === "foundation").length;
+  expect(foundations()).toBe(6);
+  // A door through the hut's east wall: without replace, the wall is in the way; with it, swapped.
+  const through = { rooms: [{ at: [0, 0], size: [2, 2], doors: ["s0", "e0"] }] };
+  const no = h.rt.start("build", { layout: through, base });
+  h.run(600_000, () => no.status !== "running");
+  expect(no.status).toBe("blocked");
+  expect(no.result!.summary).toContain("occupied");
+  const yes = h.rt.start("build", { layout: through, base, replace: true });
+  h.run(600_000, () => yes.status !== "running");
+  expect(yes.status).toBe("done");
+  expect(yes.result!.summary).toContain("swapped 1 piece");
+  // Captured, and built again elsewhere from the capture.
+  const cap = h.rt.start("capture", { base, name: "my_house" });
+  h.run(10_000, () => cap.status !== "running");
+  expect(cap.status).toBe("done");
+  const copy = h.rt.start("build", { blueprint: "my_house", x: 40, z: 0 });
+  h.run(1_500_000, () => copy.status !== "running");
+  expect(copy.status).toBe("done");
+  const other = String(copy.result!.data!.base);
+  expect(other).not.toBe(base);
+  const count = (b: string) => [...h.world.things.values()].filter((t) => t.piece?.base === b).length;
+  expect(count(other)).toBe(count(base));
+  // Taken down at once: every piece back whole.
+  const walls = h.world.count("piece_wall_wood");
+  const down = h.rt.start("dismantle", { base: other });
+  h.run(60_000, () => down.status !== "running");
+  expect(down.status).toBe("done");
+  expect(count(other)).toBe(0);
+  expect(h.world.count("piece_wall_wood")).toBeGreaterThan(walls);
 });

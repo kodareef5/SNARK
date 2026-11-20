@@ -9,6 +9,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { nearest } from "./build.ts";
 import { BLUEPRINTS } from "./blueprints.ts";
 import { Agenda } from "./agenda.ts";
 import { brief, BriefDelivery, type Goal, type Situation } from "./brief.ts";
@@ -267,15 +268,18 @@ export default function grunt(pi: PiExtensionAPI): void {
       description: "Building: with no name, the guide to designing a base (how layouts are written, costs, what to do when a build stops) and the library of blueprints; with a name, that blueprint's layout, to build as it is or change and pass to game_do build as layout.",
       parameters: { type: "object", properties: { name: { type: "string", description: "a blueprint in the library" } }, additionalProperties: false },
       async execute(_id, p) {
+        // The library, and the layouts captured from bases this session.
+        const library = { ...BLUEPRINTS, ...(mind?.rt.belief.layouts ?? {}) };
         if (typeof p.name === "string") {
-          const l = BLUEPRINTS[p.name];
-          if (!l) throw new Error(`no blueprint ${p.name}; the library has ${Object.keys(BLUEPRINTS).join(", ")}`);
+          const l = library[p.name];
+          if (!l) throw new Error(`no blueprint ${p.name}${nearest(p.name, Object.keys(library))}; the library has ${Object.keys(library).join(", ")}`);
           const c = compile(l);
-          return text(`${p.name}: ${l.about ?? ""}\n${Object.entries(c.counts).map(([f, n]) => `${n} ${f}`).join(", ")}\n${JSON.stringify({ rooms: l.rooms, ...(l.stairs ? { stairs: l.stairs } : {}), ...(l.pillars ? { pillars: l.pillars } : {}) })}`);
+          const { name: _n, about: _a, ...shape } = l;
+          return text(`${p.name}: ${l.about ?? ""}\n${Object.entries(c.counts).map(([f, n]) => `${n} ${f}`).join(", ")}\n${JSON.stringify(shape)}`);
         }
-        const lib = Object.entries(BLUEPRINTS).map(([name, l]) => {
+        const lib = Object.entries(library).map(([name, l]) => {
           const c = compile(l);
-          const storeys = Math.max(...l.rooms.map((r) => (r.level ?? 0) + (r.height ?? 1)));
+          const storeys = Math.max(1, ...(l.rooms ?? []).map((r) => (r.level ?? 0) + (r.height ?? 1)));
           return `- ${name} (${c.bounds[2] - c.bounds[0] + 1} by ${c.bounds[3] - c.bounds[1] + 1}${storeys > 1 ? `, ${storeys} storeys` : ""}, ${c.pieces.length} pieces): ${l.about ?? ""}`;
         });
         return text(`${BUILDER}\nThe library:\n${lib.join("\n")}`);

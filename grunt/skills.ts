@@ -4,7 +4,7 @@
 // finds: its progress, and the world as believed.
 
 import { type Belief, compass } from "./belief.ts";
-import { build } from "./build.ts";
+import { build, capture, dismantle } from "./build.ts";
 import { fight } from "./combat.ts";
 import { escort, follow, repair, upkeep } from "./company.ts";
 import { empty, loot, migrate, organize, stash } from "./haul.ts";
@@ -514,10 +514,18 @@ export const SKILLS: Record<string, Skill> = {
   },
   build: {
     name: "build", describe: "Build a base from the library (blueprint) or a layout you write (game_blueprints shows both): it checks the whole plan with the game, finds ground where it fits, crafts the pieces and places them section by section through the game's build helper. check: true only checks (fit, what is built, the bill). Stopped on a piece, it says which and why; take it up again with resume.",
-    params: { blueprint: "a library name", layout: "a layout object, in place of blueprint", tier: "thatch | wood | stone (default wood)", x: "number: where its middle goes (default: in front of you)", z: "number", facing: "n | e | s | w: the side its front faces (default: toward you)", check: "boolean: only check", section: "pieces a step (default 30)" }, body: true, run: build,
+    params: { blueprint: "a library name (or one captured)", layout: "a layout object, in place of blueprint", tier: "thatch | wood | stone (default wood)", x: "number: where its middle goes (default: in front of you)", z: "number", facing: "n | e | s | w: the side its front faces (default: toward you)", base: "extend this base (its id, or any piece of it: a door you see): the layout on its grid", side: "n | e | s | w: with base, the layout goes flush against the base's side", at_cell: "[i, j]: with base, where on its grid the layout's 0, 0 goes", replace: "boolean: swap pieces of another form for the layout's", strict: "boolean: fail rather than substitute what the game or tier lacks", check: "boolean: only check", section: "pieces a step (default 30)" }, body: true, run: build,
   },
   craft: { name: "craft", describe: "Craft items from the inventory, by the recipes the inventory screen shows.", params: { item: "item name", count: "number" }, body: false, run: craft },
   say: { name: "say", describe: "Say a line in chat.", params: { text: "string", channel: "local | global | group" }, body: false, run: say },
+  dismantle: {
+    name: "dismantle", describe: "Take a base down (or the pieces named): picked up whole while the game allows (a full refund), else demolished for part; things and doors first, the top storey down.",
+    params: { base: "base id", ids: "only these pieces", keep_things: "boolean: leave boxes, beds and stations" }, body: true, run: dismantle,
+  },
+  capture: {
+    name: "capture", describe: "Read a standing base back as a layout, kept by a name: build it again elsewhere with game_do build {blueprint: name}.",
+    params: { base: "base id", name: "what to call it" }, body: true, run: capture,
+  },
   kit: { name: "kit", describe: "Make a basic loadout (a pick, a hatchet, a bow, 20 arrows, some food): what is missing, crafted in order, each one's materials gathered first.", params: {}, body: true, run: kit },
   loot: {
     name: "loot", describe: "Loot bodies about (or one container) into the bag, as much as it can carry.",

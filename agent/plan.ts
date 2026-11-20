@@ -120,6 +120,8 @@ export class Planner {
         }
       }
     }
+    // Things set down on a floor (boxes, beds, fires): one form, the item says which.
+    if (things.length) forms.set("thing", { form: "thing", place: "thing" });
     return { cell: SPAN, storey: RISE, reach: 10, rate: 2, max_pieces: 120, tiers, forms: [...forms.values()], pickup_s: 30, things };
   }
 
@@ -156,9 +158,9 @@ export class Planner {
   frame(plan: Plan): Frame | string {
     const s = this.session, world = s.world!;
     if ("base" in plan.anchor) {
-      const ref = Number(String(plan.anchor.base).replace(/^s/, ""));
-      const row = this.row(world.structs, ref);
-      if (!row || this.reg.role[row.kind] !== ROLE_FOUNDATION) return `${plan.anchor.base} is not a foundation of a base`;
+      const ref = this.foundationOf(String(plan.anchor.base));
+      const row = ref < 0 ? null : this.row(world.structs, ref);
+      if (!row) return `${plan.anchor.base} is not a piece of a base`;
       return { x: row.x, z: row.z, y: row.y, turns: this.turnsOf(row.yaw), base: ref, off: [0, 0] };
     }
     const turns = (((plan.anchor.turns ?? 0) % 4) + 4) % 4;
@@ -176,6 +178,25 @@ export class Planner {
       if (Math.abs(ci - Math.round(ci)) < 0.1 && Math.abs(cj - Math.round(cj)) < 0.1) return { x: r.x, z: r.z, y: r.y, turns, base: ref, off: [Math.round(ci), Math.round(cj)] };
     }
     return { x, z, y: NaN, turns, base: -1, off: [0, 0] };
+  }
+
+  /** The foundation a base is known by, from its id or any piece of it (a door, a wall, a box set down): the piece
+   * itself if a foundation, else the nearest foundation of the same owner's under or beside it. -1 if none. */
+  foundationOf(id: string): number {
+    const store = this.session.world!.structs;
+    const ref = Number(String(id).replace(/^s/, ""));
+    const r = Number.isInteger(ref) ? this.row(store, ref) : null;
+    if (!r) return -1;
+    if (this.reg.role[r.kind] === ROLE_FOUNDATION) return ref;
+    const n = store.query(r.x - 8, r.z - 8, r.x + 8, r.z + 8, this.found);
+    let best = -1, bestD = Infinity;
+    for (const f of this.found.refs.slice(0, n)) {
+      const q = this.row(store, f);
+      if (!q || q.owner !== r.owner || this.reg.role[q.kind] !== ROLE_FOUNDATION) continue;
+      const d = Math.hypot(q.x - r.x, q.z - r.z);
+      if (d < bestD) (bestD = d), (best = f);
+    }
+    return best;
   }
 
   private turnsOf(yaw: number): number {
@@ -202,6 +223,89 @@ export class Planner {
     const storey = p.level * RISE;
     const up = p.form === "foundation" ? 0 : place === "floor" ? storey + RISE : place === "thing" ? storey + 0.6 : storey + RISE / 2;
     return { x, z, up };
+  }
+
+  /** A base's standing pieces as a plan's pieces on its grid (the inverse of `expected`): the tribe's pieces joined to
+   * its first foundation, each with its id and health; and the grid, in the protocol's frame. */
+  survey(base: string): { pieces: (PlanPiece & { id: string; health: number })[]; base: string; frame: { at: [number, number]; turns: number } } | null {
+    const reg = this.reg, store = this.session.world!.structs;
+    const ref0 = this.foundationOf(base);
+    const r0 = ref0 < 0 ? null : this.row(store, ref0);
+    if (!r0) return null;
+    const f: Frame = { x: r0.x, z: r0.z, y: r0.y, turns: this.turnsOf(r0.yaw), base: ref0, off: [0, 0] };
+    // The base: the tribe's pieces reached from its foundation, piece to piece within a cell.
+    const seen = new Set([ref0]), todo = [ref0];
+    while (todo.length) {
+      const r = this.row(store, todo.pop()!)!;
+      const n = store.query(r.x - SPAN * 1.2, r.z - SPAN * 1.2, r.x + SPAN * 1.2, r.z + SPAN * 1.2, this.found);
+      for (const ref of this.found.refs.slice(0, n)) {
+        const q = this.row(store, ref);
+        if (seen.has(ref) || !q || q.owner !== r0.owner || Math.hypot(q.x - r.x, q.z - r.z) > SPAN * 1.2) continue;
+        seen.add(ref);
+        todo.push(ref);
+      }
+    }
+    // Back from SNARK's ground to the grid: metres east and south of cell 0, 0, unturned.
+    const unturn = (x: number, z: number): [number, number] => {
+      let [dx, dz] = [f.x - x, f.z - z];
+      for (let t = 0; t < (4 - f.turns) % 4; t++) [dx, dz] = [-dz, dx];
+      return [dx, dz];
+    };
+    const sideOf = (dx: number, dz: number): Side => {
+      const best = (Object.entries(OUT) as [Side, [number, number]][]).sort((a, b) => b[1][0] * dx + b[1][1] * dz - (a[1][0] * dx + a[1][1] * dz))[0]!;
+      return best[0];
+    };
+    const itemOf = (kind: number): string | null => {
+      for (let item = 1; item < reg.ids.length; item++) if (reg.places[item]?.includes(kind)) return shortName(reg.ids[item]);
+      return null;
+    };
+    const rows = [...seen].map((ref) => ({ ref, ...this.row(store, ref)! }));
+    const floors = new Set<string>();
+    const out: (PlanPiece & { id: string; health: number })[] = [];
+    // Floors first, so an edge is told on a cell that has one.
+    rows.sort((a, b) => Number(reg.role[b.kind] === ROLE_FOUNDATION || reg.role[b.kind] === ROLE_CEILING) - Number(reg.role[a.kind] === ROLE_FOUNDATION || reg.role[a.kind] === ROLE_CEILING));
+    for (const r of rows) {
+      const role = reg.role[r.kind]!, item = itemOf(r.kind);
+      if (!item) continue;
+      const name = shortName(reg.ids[r.kind]);
+      const form = role === ROLE_THING ? "thing" : (/^(.*)_[a-z]+$/.exec(name)?.[1] ?? name);
+      const place = role === ROLE_THING ? "thing" : placeOf(role, reg.doorway[r.kind] === 1);
+      const [dx, dz] = unturn(r.x, r.z);
+      const up = r.y - f.y;
+      const piece: PlanPiece & { id: string; health: number } = { form, item, cell: [0, 0], level: 0, id: `s${r.ref}`, health: Math.max(0, r.hp) / (reg.maxHp[r.kind] || 1) };
+      if (place === "floor") {
+        piece.cell = [Math.round(dx / SPAN), Math.round(dz / SPAN)];
+        piece.level = role === ROLE_FOUNDATION ? 0 : Math.max(0, Math.round((up - RISE) / RISE));
+        floors.add(`${piece.cell[0]},${piece.cell[1]},${role === ROLE_FOUNDATION ? 0 : piece.level + 1}`);
+      } else if (place === "corner") {
+        piece.cell = [Math.round((dx + SPAN / 2) / SPAN), Math.round((dz + SPAN / 2) / SPAN)];
+        piece.level = Math.max(0, Math.round((up - RISE / 2) / RISE));
+      } else if (place === "edge" || place === "edge_top" || place === "in_frame") {
+        piece.level = Math.max(0, Math.round((up - RISE / 2) / RISE));
+        const [fx, fz] = [dx / SPAN, dz / SPAN];
+        // Along x between two cells (an east or west side) or along z (north or south): the cell with a floor.
+        const ew = Math.abs(fx - Math.round(fx)) > Math.abs(fz - Math.round(fz));
+        const [a, b]: [[number, number], [number, number]] = ew ? [[Math.floor(fx), Math.round(fz)], [Math.floor(fx) + 1, Math.round(fz)]] : [[Math.round(fx), Math.floor(fz)], [Math.round(fx), Math.floor(fz) + 1]];
+        const hasB = floors.has(`${b[0]},${b[1]},${piece.level}`) && !floors.has(`${a[0]},${a[1]},${piece.level}`);
+        piece.cell = hasB ? b : a;
+        piece.side = hasB ? (ew ? "w" : "n") : ew ? "e" : "s";
+      } else {
+        piece.cell = [Math.round(dx / SPAN), Math.round(dz / SPAN)];
+        piece.level = Math.max(0, Math.round((up - (place === "thing" ? 0.6 : RISE / 2)) / RISE));
+        if (place === "centre") {
+          // Stairs climb along their +Z: SNARK's (sin, cos) of the yaw, the protocol's the other way, unturned.
+          const a = (r.yaw / YAW_UNITS) * Math.PI * 2;
+          const [ux, uz] = unturn(f.x + Math.sin(a), f.z + Math.cos(a));
+          piece.up = sideOf(ux, uz);
+        }
+        if (place === "thing") {
+          const [rx, rz] = [dx - piece.cell[0] * SPAN, dz - piece.cell[1] * SPAN];
+          if (Math.hypot(rx, rz) > 0.45) piece.spot = sideOf(rx, rz);
+        }
+      }
+      out.push(piece);
+    }
+    return { pieces: out, base: `s${ref0}`, frame: { at: [-f.x, -f.z], turns: f.turns } };
   }
 
   // --- One piece ---------------------------------------------------------------------------------------------------
