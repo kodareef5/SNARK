@@ -1,0 +1,76 @@
+{
+  "name": "voice-follow",
+  "about": "Ana, nearby, says aloud \"follow me\" (no name), then walks 60 m east; the character keeps with her.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {}
+    },
+    "things": [
+      {
+        "type": "player",
+        "name": "Ana",
+        "x": 4,
+        "z": 2,
+        "path": [
+          [
+            30,
+            2
+          ],
+          [
+            60,
+            10
+          ]
+        ],
+        "speed": 2.5,
+        "at_s": 8
+      },
+      {
+        "type": "tree",
+        "x": 25,
+        "z": -4
+      },
+      {
+        "type": "rock",
+        "x": 40,
+        "z": 12
+      }
+    ]
+  },
+  "owners": [
+    "Ana"
+  ],
+  "prompt": "You are Scout, a survivor. Ana is your owner. Listen to her.",
+  "script": [
+    {
+      "at_s": 1,
+      "speak": {
+        "from": "Ana",
+        "text": "follow me, I want to show you something"
+      }
+    }
+  ],
+  "success": {
+    "all": [
+      {
+        "where": "Ana",
+        "at": [
+          60,
+          10
+        ],
+        "within": 1
+      },
+      {
+        "near": "Ana",
+        "within": 9
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 120
+  }
+}

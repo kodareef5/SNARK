@@ -1,0 +1,15 @@
+{
+  "name": "chop-raptor",
+  "about": "Rung 4: the same grove with a raptor that comes hunting; keep the goal, stay alive.",
+  "world": {
+    "seed": 3,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 0, "items": { "stone_hatchet": 1 }, "hold": "stone_hatchet" },
+    "things": [
+      { "type": "tree", "x": 2, "z": -6 }, { "type": "tree", "x": -3, "z": -9 }, { "type": "tree", "x": 4, "z": -12 },
+      { "type": "raptor", "x": 20, "z": -14 }
+    ]
+  },
+  "prompt": "You are Scout, a survivor on a beach. Chop down the trees around you until there are none left nearby. Stay alive. When you're done, say in local chat how much wood you got.",
+  "success": { "all": [{ "alive": true }, { "none_near": "tree", "of": [0, 0], "within": 25 }, { "said": "wood" }] },
+  "budget": { "seconds": 400 }
+}

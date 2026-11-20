@@ -1,0 +1,70 @@
+{
+  "name": "fly-canyon",
+  "about": "A 30 m cliff wall right across the way, its only gap 550 m east; a pteranodon stands by.",
+  "world": {
+    "seed": 2,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -650,
+        -1050,
+        650,
+        120
+      ],
+      "features": [
+        {
+          "type": "cliff",
+          "from": [
+            -650,
+            -150
+          ],
+          "to": [
+            540,
+            -150
+          ],
+          "width": 8,
+          "height": 30
+        }
+      ]
+    },
+    "things": [
+      {
+        "type": "pteranodon",
+        "x": 5,
+        "z": 3
+      }
+    ]
+  },
+  "prompt": "You are Scout. Get to x 0, z -300 as quickly as you sensibly can, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -300
+        ],
+        "within": 6
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 420
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -300
+    }
+  }
+}

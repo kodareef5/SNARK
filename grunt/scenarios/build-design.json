@@ -1,0 +1,39 @@
+{
+  "name": "build-design",
+  "about": "No blueprint fits as asked: the Director writes a layout of two rooms with a door between, from a description.",
+  "world": {
+    "seed": 3,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "piece_foundation_wood": 16,
+        "piece_wall_wood": 40,
+        "piece_ceiling_wood": 16,
+        "piece_door_wood": 4
+      }
+    }
+  },
+  "prompt": "You are Scout. Build us a home just north of here: a living room and a bedroom side by side, each about 2 by 2, with a door between them, the front door facing south, and a window in each room. Use the wood pieces in your bag. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "base_has": {
+          "foundation": 6,
+          "door": 2,
+          "doorframe": 2,
+          "windowframe": 2
+        },
+        "roofed": true
+      },
+      {
+        "said": "done|built|finished|ready|complete|\\bup\\b|standing"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 360
+  }
+}

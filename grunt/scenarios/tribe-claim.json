@@ -1,0 +1,97 @@
+{
+  "name": "tribe-claim",
+  "about": "An owner asks the tribe for two jobs; a tribemate takes one first. First who can, does: this character takes the other.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "stone_hatchet": 1
+      },
+      "hold": "stone_hatchet"
+    },
+    "things": [
+      {
+        "type": "player",
+        "name": "Ana",
+        "x": 5,
+        "z": 5
+      },
+      {
+        "type": "player",
+        "name": "Bolt",
+        "x": -5,
+        "z": 6
+      },
+      {
+        "type": "tree",
+        "x": 8,
+        "z": -10
+      },
+      {
+        "type": "tree",
+        "x": 11,
+        "z": -13
+      },
+      {
+        "type": "tree",
+        "x": 6,
+        "z": -15
+      },
+      {
+        "type": "raptor",
+        "x": 10,
+        "z": -70
+      },
+      {
+        "type": "raptor",
+        "x": -10,
+        "z": -75
+      }
+    ]
+  },
+  "owners": [
+    "Ana"
+  ],
+  "prompt": "You are Scout, in a tribe with Ana and Bolt. Keep an eye on the tribe chat and pitch in.",
+  "script": [
+    {
+      "at_s": 1,
+      "say": {
+        "from": "Ana",
+        "text": "Two jobs, anyone: clear the raptors up north, and fetch 300 wood for the workshop.",
+        "channel": "group"
+      }
+    },
+    {
+      "at_s": 1.5,
+      "say": {
+        "from": "Bolt",
+        "text": "on it: clear the raptors up north",
+        "channel": "group"
+      }
+    }
+  ],
+  "success": {
+    "all": [
+      {
+        "have": "wood",
+        "at_least": 300
+      },
+      {
+        "said": "^on it:"
+      },
+      {
+        "not": {
+          "said": "^on it: (clear|kill|deal with)[^.]*raptor"
+        }
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 240
+  }
+}

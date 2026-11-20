@@ -1,0 +1,109 @@
+{
+  "name": "drive-road",
+  "about": "A winding road 900 m north; a car parked beside it. The car is fastest on the road.",
+  "world": {
+    "seed": 2,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -650,
+        -1050,
+        650,
+        120
+      ],
+      "features": [
+        {
+          "type": "road",
+          "points": [
+            [
+              0,
+              20
+            ],
+            [
+              0,
+              -200
+            ],
+            [
+              120,
+              -350
+            ],
+            [
+              120,
+              -600
+            ],
+            [
+              0,
+              -750
+            ],
+            [
+              0,
+              -900
+            ]
+          ],
+          "width": 8
+        },
+        {
+          "type": "cliff",
+          "from": [
+            40,
+            -250
+          ],
+          "to": [
+            40,
+            -700
+          ],
+          "width": 4
+        },
+        {
+          "type": "water",
+          "rect": [
+            -200,
+            -500,
+            -40,
+            -300
+          ],
+          "depth": "shallow"
+        }
+      ]
+    },
+    "things": [
+      {
+        "type": "car",
+        "x": 7,
+        "z": 4
+      }
+    ]
+  },
+  "prompt": "You are Scout. Get to x 0, z -890 as quickly as you sensibly can, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -890
+        ],
+        "within": 6
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 420
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -890
+    }
+  }
+}

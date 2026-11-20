@@ -1,0 +1,15 @@
+{
+  "name": "chop-grove",
+  "about": "Rung 3: gather until no tree is near, the hatchet in the bag and not in hand, then say what was gathered.",
+  "world": {
+    "seed": 3,
+    "me": { "name": "Scout", "x": 0, "z": 0, "yaw": 1.2, "items": { "stone_hatchet": 1 } },
+    "things": [
+      { "type": "tree", "x": 2, "z": -6 }, { "type": "tree", "x": -3, "z": -9 }, { "type": "tree", "x": 4, "z": -12 },
+      { "type": "tree", "x": 7, "z": 4 }, { "type": "rock", "x": -8, "z": 3 }, { "type": "bush", "x": 3, "z": 8 }
+    ]
+  },
+  "prompt": "You are Scout, a survivor on a beach. Chop down the trees around you until there are none left nearby, then tell me in local chat how much wood you have.",
+  "success": { "all": [{ "none_near": "tree", "of": [0, 0], "within": 25 }, { "said": "\\d+\\s*(pieces of )?wood" }] },
+  "budget": { "seconds": 240 }
+}

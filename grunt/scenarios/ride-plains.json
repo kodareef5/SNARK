@@ -1,0 +1,81 @@
+{
+  "name": "ride-plains",
+  "about": "500 m of open ground with a few outcrops; a saddled parasaur stands by. Riding is about twice as quick.",
+  "world": {
+    "seed": 2,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -650,
+        -1050,
+        650,
+        120
+      ],
+      "features": [
+        {
+          "type": "cliff",
+          "from": [
+            -40,
+            -180
+          ],
+          "to": [
+            30,
+            -200
+          ],
+          "width": 6
+        },
+        {
+          "type": "cliff",
+          "from": [
+            20,
+            -330
+          ],
+          "to": [
+            90,
+            -340
+          ],
+          "width": 6
+        }
+      ]
+    },
+    "things": [
+      {
+        "type": "parasaur",
+        "x": 6,
+        "z": 0
+      }
+    ]
+  },
+  "prompt": "You are Scout. Get to x 0, z -500 as quickly as you sensibly can, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -500
+        ],
+        "within": 6
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 420
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -500
+    }
+  }
+}

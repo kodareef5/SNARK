@@ -1,0 +1,113 @@
+{
+  "name": "hut-from-nothing",
+  "about": "Rung 6: a hatchet and nothing else. Gather wood, thatch and fiber, then craft and build a 2x2 hut.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "stone_hatchet": 1
+      }
+    },
+    "things": [
+      {
+        "type": "tree",
+        "x": 8,
+        "z": -6
+      },
+      {
+        "type": "tree",
+        "x": 11,
+        "z": -10
+      },
+      {
+        "type": "tree",
+        "x": 6,
+        "z": -13
+      },
+      {
+        "type": "tree",
+        "x": 14,
+        "z": -4
+      },
+      {
+        "type": "tree",
+        "x": 10,
+        "z": -17
+      },
+      {
+        "type": "tree",
+        "x": 16,
+        "z": -12
+      },
+      {
+        "type": "tree",
+        "x": 4,
+        "z": -19
+      },
+      {
+        "type": "tree",
+        "x": 13,
+        "z": -21
+      },
+      {
+        "type": "tree",
+        "x": 18,
+        "z": -7
+      },
+      {
+        "type": "tree",
+        "x": 7,
+        "z": -24
+      },
+      {
+        "type": "tree",
+        "x": 19,
+        "z": -17
+      },
+      {
+        "type": "bush",
+        "x": -6,
+        "z": 6
+      },
+      {
+        "type": "bush",
+        "x": -9,
+        "z": 8
+      },
+      {
+        "type": "bush",
+        "x": -5,
+        "z": 10
+      },
+      {
+        "type": "bush",
+        "x": -11,
+        "z": 4
+      },
+      {
+        "type": "bush",
+        "x": -8,
+        "z": 12
+      }
+    ]
+  },
+  "prompt": "You are Scout, a survivor on a beach with only a stone hatchet. Build a small 2x2 wood hut with a door and a roof, somewhere in the open south of the trees. You'll have to gather what it takes first. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "stands": "hut_2x2",
+        "south_of": -4
+      },
+      {
+        "said": "done|built|finished|ready|complete|\\bup\\b|standing"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 720
+  }
+}

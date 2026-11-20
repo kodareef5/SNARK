@@ -1,0 +1,103 @@
+{
+  "name": "choose-ride",
+  "about": "A parasaur, a pteranodon and a car at hand; a river with one bridge on the road. Whichever is quickest.",
+  "world": {
+    "seed": 2,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -650,
+        -1050,
+        650,
+        120
+      ],
+      "features": [
+        {
+          "type": "water",
+          "rect": [
+            -650,
+            -360,
+            650,
+            -300
+          ],
+          "depth": "deep"
+        },
+        {
+          "type": "road",
+          "points": [
+            [
+              200,
+              10
+            ],
+            [
+              200,
+              -650
+            ]
+          ],
+          "width": 8
+        },
+        {
+          "type": "bridge",
+          "from": [
+            200,
+            -295
+          ],
+          "to": [
+            200,
+            -365
+          ],
+          "width": 8
+        }
+      ]
+    },
+    "things": [
+      {
+        "type": "parasaur",
+        "x": 6,
+        "z": 0
+      },
+      {
+        "type": "pteranodon",
+        "x": -6,
+        "z": 2
+      },
+      {
+        "type": "car",
+        "x": 3,
+        "z": 7
+      }
+    ]
+  },
+  "prompt": "You are Scout. Get to x 0, z -600 as quickly as you sensibly can, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -600
+        ],
+        "within": 6
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 420
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -600
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "name": "nav-river",
+  "about": "A wide deep river: one bridge far to the east. Swimming across is long and tiring; the bridge is the better way.",
+  "world": {
+    "seed": 1,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -140,
+        -200,
+        140,
+        40
+      ],
+      "features": [
+        {
+          "type": "water",
+          "rect": [
+            -140,
+            -110,
+            140,
+            -50
+          ],
+          "depth": "deep"
+        },
+        {
+          "type": "bridge",
+          "from": [
+            90,
+            -46
+          ],
+          "to": [
+            90,
+            -114
+          ],
+          "width": 5
+        }
+      ]
+    }
+  },
+  "prompt": "You are Scout. Go to x 0, z -160, across the river to the north, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -160
+        ],
+        "within": 5
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 300
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -160
+    }
+  }
+}

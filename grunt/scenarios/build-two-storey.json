@@ -1,0 +1,39 @@
+{
+  "name": "build-two-storey",
+  "about": "A house of two storeys with stairs: the library has one; the Director can take it.",
+  "world": {
+    "seed": 3,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "piece_foundation_wood": 12,
+        "piece_wall_wood": 30,
+        "piece_ceiling_wood": 20,
+        "piece_door_wood": 2,
+        "piece_stairs_wood": 2
+      }
+    }
+  },
+  "prompt": "You are Scout. Build a two-storey wooden house here with stairs up to the second floor, front door facing south. The pieces are in your bag. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "base_has": {
+          "stairs": 1,
+          "foundation": 4,
+          "ceiling": 8
+        },
+        "roofed": true
+      },
+      {
+        "said": "done|built|finished|ready|complete|\\bup\\b|standing"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 400
+  }
+}

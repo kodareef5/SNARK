@@ -1,0 +1,59 @@
+{
+  "name": "nav-raptor-road",
+  "about": "Open ground to the goal, but a raptor sits on the straight way. Seen in time, the way round keeps clear of it.",
+  "world": {
+    "seed": 1,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {
+        "stone_hatchet": 1
+      }
+    },
+    "terrain": {
+      "bounds": [
+        -140,
+        -200,
+        140,
+        40
+      ],
+      "features": []
+    },
+    "things": [
+      {
+        "type": "raptor",
+        "x": 0,
+        "z": -75
+      }
+    ]
+  },
+  "prompt": "You are Scout. Go to x 0, z -160, north of here, without getting into a fight, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -160
+        ],
+        "within": 5
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 300
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -160
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "mounted-clear",
+  "about": "A tame raptor at hand, two wild ones on the ridge: ride and let the mount fight; don't lose it.",
+  "world": {
+    "seed": 5,
+    "me": {
+      "name": "Scout",
+      "x": 0,
+      "z": 0,
+      "yaw": 0,
+      "items": {}
+    },
+    "things": [
+      {
+        "type": "raptor",
+        "name": "Rip",
+        "tame": true,
+        "x": 2,
+        "z": 1
+      },
+      {
+        "type": "raptor",
+        "x": -6,
+        "z": -40
+      },
+      {
+        "type": "raptor",
+        "x": 8,
+        "z": -52
+      }
+    ]
+  },
+  "prompt": "You are Scout. Ride Rip, your tame raptor, and kill the two wild raptors on the ridge north of camp. Don't lose Rip. Tell me in local chat when it's done.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "lives": "Rip"
+      },
+      {
+        "none_hostile": true
+      },
+      {
+        "said": "."
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 240
+  }
+}
