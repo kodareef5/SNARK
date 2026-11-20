@@ -1204,7 +1204,7 @@ export class Rasterizer {
   private pulled(p: FramePacket, d: number): void {
     const buffer = this.buffers.get(p.drawBuffer[d]!);
     if (!buffer) throw new Error(`draw ${d} uses buffer ${p.drawBuffer[d]} which was never uploaded`);
-    const { data } = buffer;
+    const { data, slots } = buffer;
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     const [ox, oy, oz] = [p.drawOffset[d * 3]!, p.drawOffset[d * 3 + 1]!, p.drawOffset[d * 3 + 2]!];
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
@@ -1235,7 +1235,8 @@ export class Rasterizer {
       for (let v = 0; v + 2 < n; v += 3) {
         let color = atlas[row + (v + 3) * 4 + 3]!;
         if (color >= REGION_BASE) color = color - REGION_BASE < ATLAS_REGION ? data[at + 14 + color - REGION_BASE]! : 0;
-        this.triangle(out, v, v + 1, v + 2, color, true, PICK_FAR, p.drawSlot[d]!);
+        // A far node's pixel names it as a near one does, its buffer and slot (farnodes.ts farNodeOf reads them back).
+        this.triangle(out, v, v + 1, v + 2, color, true, PICK_FAR, p.drawBuffer[d]! * 65536 + (slots[inst] ?? 0));
       }
     }
   }
