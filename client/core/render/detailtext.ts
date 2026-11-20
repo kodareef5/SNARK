@@ -5,10 +5,11 @@
 // draws each particle's flat shape, lit as FLAT lights and fogged. A cut-out draw takes coverage from alpha and drops
 // pixels by the far fade's ordered pattern as a particle goes; a see-through one fades near the ground under it.
 
+import { STREET_GLSL } from "./street-finish.ts";
 import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
-import { DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE } from "./packet.ts";
+import { DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE } from "./packet.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
@@ -37,7 +38,8 @@ flat out float vShows, vGrey, vFloor, vHalf;
 flat out uint vFlags;
 void main() {
   vec2 c = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1)) * 2.0 - 1.0;
-  vec3 p = iMiddle + c.x * iAcross + c.y * iAlong;
+  float width = iMisc.y == ${DETAIL_GLASS}u && c.y > 0.0 ? iFloor : 1.0;
+  vec3 p = iMiddle + c.x * width * iAcross + c.y * iAlong;
   float cell = float(iMisc.x);
   vUv = (vec2(mod(cell, uCells), floor(cell / uCells)) + vec2(c.x, -c.y) * 0.5 + 0.5) / uCells;
   vRel = p;
@@ -160,10 +162,28 @@ export const DETAIL_LIT_FRAGMENT = `#version 300 es
 precision highp float;
 ${INS}uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
+  if (vFlags == ${DETAIL_TIRE}u) {
+    float core = max(0.0,1.0-dot(vCorner,vCorner));
+    o = vec4(0.0,0.0,0.0,0.90*core*core*(3.0-2.0*core)*vShows);
+    return;
+  }
+  if (vFlags == ${DETAIL_GLASS}u) {
+    vec3 eye = -normalize(vRel);
+    float nv = dot(vNormal,eye), edge = pow(1.0-min(1.0,abs(nv)),3.0);
+    float reflected = min(0.86,(nv < 0.0 ? 0.014+0.09*edge : 0.07+0.74*edge)*(1.0+0.45*fStreetLook.x));
+    float band = clamp((vCorner.y-0.55)/0.4,0.0,1.0);
+    float tint = (nv < 0.0 ? 0.035 : 0.095)+0.026*vGrey+0.085*band*band;
+    float alpha = reflected+(1.0-reflected)*tint;
+    vec3 ray = reflect(-eye,vNormal);
+    vec3 mirror = streetMirror(skyFrom(ray),ray,vRel,0.12+0.06*vGrey,1.0);
+    vec3 smoked = vec3(0.033,0.066,0.071)*skyLight(vec3(0.0,1.0,0.0));
+    o = vec4(shown(mix(smoked,mirror,reflected/alpha),vRel),alpha*vShows);
+    return;
+  }
   bool rotor = (vFlags & ${DETAIL_ROTOR}u) != 0u;
   bool pool = (vFlags & ${DETAIL_POOL}u) != 0u;
   bool lamp = pool || (vFlags & ${DETAIL_LAMP}u) != 0u;

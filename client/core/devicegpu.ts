@@ -1089,7 +1089,7 @@ void main() {}`);
     if (!made) throw new Error(`the renderer has no program "${name}"`);
     const text = made(tier, this.variant, this.report.compareArray === "hard");
     if (vertex && text.fragment.includes("flat in int vFixture;")) vertex = vertex.replace("void main() {", "flat out int vFixture;\nvoid main() {\n  vFixture = 0;");
-    if (vertex && text.fragment.includes("flat in float vFinishSeed;")) vertex = vertex.replace("void main() {", "flat out float vFinishSeed;\nvoid main() {\n  vFinishSeed = 0.0;");
+    if (vertex && text.fragment.includes("flat in float vFinishSeed;")) vertex = vertex.replace("void main() {", "flat out float vFinishSeed;\nout vec3 vWheelPoint;\nout vec4 vWheel;\nvoid main() {\n  vWheelPoint = vec3(0.0); vWheel = vec4(0.0); vFinishSeed = 0.0;");
     if (vertex && text.fragment.includes("flat in int vSurface;")) vertex = vertex.replace("void main() {", `flat out int vSurface;\nvoid main() {\n  vSurface = ${WALL_FINISH};`);
     // A flat mesh's fragment reads a landmark's finish (glsl.ts finishVertex): none, a surface that is fully rough.
     if (vertex && text.fragment.includes("flat in vec4 vFinish;")) vertex = vertex.replace("void main() {", "flat out vec4 vFinish;\nflat out float vShare;\nvoid main() {\n  vFinish = vec4(1.0, 1.0, 0.0, 0.0);\n  vShare = 1.0;");

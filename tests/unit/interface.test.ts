@@ -338,7 +338,7 @@ test("horizontal value adjustment follows direction, and never invokes the asset
 test("the Display tab exposes independent gloss and road controls and restores old preferences", () => {
   const s = new Settings();
   s.restoreInterface('{"version":2,"tier":"medium"}');
-  expect([s.finishGloss, s.roadFinish]).toEqual([1.35, 0]);
+  expect([s.finishGloss, s.roadFinish]).toEqual([1.35, 1]);
   const rows = SETTING_GROUPS[0].rows.map(i => SETTING_ROWS[i]!);
   const gloss = rows.find(row => row.label === "Finish gloss")!, road = rows.find(row => row.label === "Road finish")!;
   gloss.range!.set(s, 1.97);

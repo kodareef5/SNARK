@@ -37,7 +37,7 @@ export function streetMaterial(id: string): number {
   const [asset, part] = id.split("/");
   if (asset === "core:street") return part === "street" || part === "street_cut" ? FITTINGS : 0;
   if (
-    !/^core:(?:compact|fastback|patrol_sedan|patrol_jeep|taxi|road_van|muscle_car|semi|monster_truck|bus|veloce|berlinetta|tanker|box_trailer)(?:_abandoned)?$/
+    !/^core:(?:compact|fastback|patrol_sedan|patrol_jeep|taxi|panel_van|caravan|road_van|muscle_car|semi|monster_truck|bus|veloce|berlinetta|tanker|box_trailer)(?:_abandoned)?$/
       .test(asset!)
   ) return 0;
   return /^(?:body|coach|coachwork|cruiser|patrol|enamel|paint|livery|shell|exterior|finish)$/.test(part!) ? PAINT : FITTINGS;
@@ -65,6 +65,40 @@ export function receiver(label: number, paintMask: number, rough: number, metal:
 /** The slider changes only the fraction of a texel carrying a reflective finish. */
 export function glossRoughness(rough: number, mask: number, offset: number): number {
   return Math.max(0.07, Math.min(1, rough * (1 - 0.38 * mask * offset)));
+}
+
+/** Only wheel bones carry tire and hub finishes. Door hinges and the steering wheel share trim atlases. */
+export function wheelBoneMask(names?: readonly string[]): number {
+  return (names?.reduce((bits, name, i) => i < 32 && name.startsWith("wheel_") ? bits | (1 << i) : bits, 0) ?? 0) >>> 0;
+}
+
+/** The bead and shoulder moulding in wheel-local radii. A metre of motion carries the pattern with the tire. */
+export function tireMould(x: number, y: number, z: number, footprint: number): number {
+  const radius = Math.hypot(y,z), phase = Math.atan2(y,z);
+  const ridge = (r: number) => clamp(1 - Math.abs(radius-r)/0.012);
+  const shoulder = clamp((radius-0.86)*14);
+  const block = Math.cos(42*phase + 13*Math.abs(x));
+  const groove = clamp((block-0.32)*3) * shoulder;
+  const ribs = ridge(0.77) + ridge(0.845) + 0.65*ridge(0.885);
+  return (0.25*ribs - 0.32*groove + 0.09*shoulder*(1-groove)) * clamp(1-45*footprint);
+}
+
+export function wheelFinish(albedo: Float64Array, orm: Float64Array, wheelMask: number, near: number, mould: number, seed: number, y: number, z: number, footprint: number): number {
+  const metal = orm[2]!, rough = orm[1]!;
+  const rubber = clamp((0.30-metal)*5)*clamp((rough-0.45)*5)*near;
+  const chrome = clamp((metal-0.45)*3.4)*Math.max(clamp(wheelMask*1.8),clamp((0.35-rough)*6))*clamp((0.85-rough)*5)*near;
+  const tone = 1-rubber*(0.75-0.10*clamp((rough-0.24)*2)+0.08*(1-orm[0]!)-1.1*mould);
+  for (let c=0; c<3; c++) albedo[c]! *= tone;
+  orm[1]! += rubber*(Math.max(0,0.90-rough)-0.38*mould);
+  if (chrome > 0) {
+    const wipe = Math.sin(19*z+7*y+9*seed);
+    const grit = Math.sin(151*y)*Math.sin(123*z+13*seed)*clamp(1-70*footprint);
+    const t = clamp((seed-0.30)/0.53), marks = t*t*(3-2*t)*(0.035+0.065*wipe*wipe+0.022*grit);
+    for (let c=0; c<3; c++) albedo[c]! += ((c===0 ? 0.86 : c===1 ? 0.89 : 0.94)-albedo[c]!)*0.96*chrome;
+    orm[1]! += (0.076+marks-orm[1]!)*chrome;
+    orm[2]! += (1-metal)*chrome;
+  }
+  return chrome;
 }
 
 export const SEED_GLSL = `

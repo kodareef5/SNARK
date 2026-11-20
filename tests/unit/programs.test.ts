@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
 import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
@@ -53,7 +53,7 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
 
   expect(FRAME_BLOCK).toContain("highp vec4 fEyes[6]");
   expect(FRAME.eyes + 6 * 4).toBe(FRAME.reflection);
-  expect([FRAME.reflection + 4, FRAME.previousReflection + 4, FRAME.streetLook + 4]).toEqual([FRAME.previousReflection, FRAME.streetLook, FRAME_FLOATS]);
+  expect([FRAME.reflection + 4, FRAME.previousReflection + 4, FRAME.streetLook + 4, FRAME.tireContacts + 4*MAX_TIRE_CONTACTS]).toEqual([FRAME.previousReflection, FRAME.streetLook, FRAME.tireContacts, FRAME_FLOATS]);
   const p = new FramePacket();
   p.split = 384;
   p.cascades[0] = 2;
@@ -95,10 +95,10 @@ test("a textured draw is drawn undyed where its material has no masks, and by a 
   p.split = 0;
   expect(named(drawProgram(p, draw(DRAW_BLEND), undefined))).toBe("flat");
 
-  // Undyed, a vertex writes neither dye nor the hand-over's distance where it drops nothing: 35 floats become 16.
+  // The whole undyed variant skips both dye matrices and the hand-over distance, saving nineteen floats.
   const tier = TIERS[2]!;
   const [any, undyed, whole] = [PROGRAMS.surface!(tier, "astc"), PROGRAMS.surfaceUndyed!(tier, "astc"), PROGRAMS.surfaceUndyedWhole!(tier, "astc")];
-  expect([any, PROGRAMS.surfaceWhole!(tier, "astc"), undyed, whole].map((t) => outputs(t.vertex))).toEqual([36, 35, 18, 17]);
+  expect([any, PROGRAMS.surfaceWhole!(tier, "astc"), undyed, whole].map((t) => outputs(t.vertex))).toEqual([43, 42, 25, 24]);
   expect([any, undyed, whole].map((t) => [t.fragment.split("discard").length - 1, t.fragment.split("texture(uMask").length - 1])).toEqual([[2, 2], [2, 0], [0, 0]]);
   expect(whole.fragment).toContain("vec3 albedo = base.rgb * uTint;");
   expect(whole.fragment).toContain("float paint = uStreetMaterial < 1.5 ? 0.0");

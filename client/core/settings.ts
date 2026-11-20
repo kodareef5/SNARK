@@ -3,6 +3,7 @@
 import { TICK_RATE } from "../../shared/coords.ts";
 import { DEFAULT_TIER, offeredTiers, startingTier, type Start, type Tier } from "./assets/tiers.ts";
 
+export const DEFAULT_ROAD_FINISH = 1;
 export const DEFAULT_FINISH_GLOSS = 1.35;
 const ROAD_FINISHES = ["Original", "Dry asphalt", "Dry + deeper shade"] as const;
 
@@ -18,7 +19,7 @@ export class Settings {
    */
   steady = true;
   finishGloss = DEFAULT_FINISH_GLOSS;
-  roadFinish = 0;
+  roadFinish = DEFAULT_ROAD_FINISH;
   /** A touch-first device, which draws a tier as its touch rule says and is offered the tiers it allows (tiers.ts). The shell sets it. */
   touchFirst = false;
   /** The byte budget of a snapshot the server is asked for, one of SNAPSHOT_BYTES. A server may allow less. */

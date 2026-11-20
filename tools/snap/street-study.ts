@@ -5,7 +5,7 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { type MapStatic, MapStatics, parseMap } from "../../shared/world/mapfile.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { placedPriority } from "../../client/core/render/street-reflections.ts";
-import { FRAME } from "../../client/core/render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { findChrome } from "../chrome.ts";
 import { litProbe } from "../probe-lit.ts";
 import { Shot } from "../probe-lit/shot.ts";
@@ -88,7 +88,8 @@ for (let i = 0; i < population.length; i++) {
 console.log("eligible placed statics", eligible, "of", t.kind.length);
 console.log("Miami fixture census", Object.fromEntries(counts), "statics in study", rows.length);
 const gpu = process.argv.includes("--gpu");
-if (!gpu) {
+const view = process.argv.find(arg => arg.startsWith("--view="))?.slice(7);
+if (!gpu && !view) {
   look(8540, 8073, 8535.5, 8084.54, 7.1);
   shot("storefront");
   look(8524.7, 8077, 8527.49, 8084.40, 6.6);
@@ -112,6 +113,62 @@ for (let i = 0; i < 2; i++) {
 }
 remote.count = 2;
 look(carX - 4.3, carZ - 3.9, carX + 0.7, carZ + 0.6, hf.heightAt(carX, carZ) + 0.78);
+// Close inspection uses the same authored cars, road and lighting as the wide view.
+if (view) {
+  const yaw = remote.yaw[0]!, c = Math.cos(yaw), s = Math.sin(yaw);
+  const world = (x: number, z: number) => [carX + c*x+s*z, carZ - s*x+c*z] as const;
+  const heightAtCar = hf.heightAt(carX, carZ);
+  const inspect = (x: number, y: number, z: number, tx: number, ty: number, tz: number): void => {
+    const from = world(x,z), to = world(tx,tz);
+    look(from[0],from[1],to[0],to[1],heightAtCar+ty,heightAtCar+y-hf.heightAt(from[0],from[1]));
+  };
+  if (view === "wheel") {
+    remote.steering[0] = 0.32;
+    inspect(-1.47,0.40,1.78,-0.82,0.30,1.25);
+  }
+  else if (view === "front") inspect(-0.15,1.62,3.7,0,1.10,0.04);
+  else if (view === "oblique") inspect(-2.1,1.55,1.45,0,1.17,0.50);
+  else if (view === "driver") inspect(0.42,1.11,0.17,0.42,1.14,6.0);
+  else throw new Error("Unknown --view");
+  scene.roadFinish = 1;
+}
+function hideCards(p: FramePacket, flags: number): number {
+  let hidden = 0;
+  for (let i=0; i<p.detailCount; i++) {
+    const at = i*DETAIL_FLOATS+DETAIL.misc;
+    if (((p.detailWords[at]! >>> 8) & 255) !== flags) continue;
+    p.detailWords[at]! &= 0xff00ffff;
+    hidden++;
+  }
+  return hidden;
+}
+function different(a: Uint8Array, b: Uint8Array, least: number): number {
+  let changed = 0;
+  for (let i=0; i<a.length; i+=4) {
+    if (Math.max(Math.abs(a[i]!-b[i]!), Math.abs(a[i+1]!-b[i+1]!), Math.abs(a[i+2]!-b[i+2]!)) >= least) changed++;
+  }
+  return changed;
+}
+if (!gpu && view) {
+  settle(v);
+  scene.now += 510;
+  const p = v.render(), full = Uint8Array.from(raster.color);
+  writeFileSync(join(out,view+"-software.png"),encodePng(width,height,full));
+  hideCards(p,DETAIL_GLASS);
+  raster.render(p);
+  if (view === "wheel") {
+    const shadowed = Uint8Array.from(raster.color);
+    hideCards(p,DETAIL_TIRE);
+    raster.render(p);
+    const bare = Uint8Array.from(raster.color);
+    p.frame.fill(0,FRAME.tireContacts);
+    raster.render(p);
+    const contact = different(shadowed,bare,2), bulge = different(bare,Uint8Array.from(raster.color),2);
+    console.log("software wheel, changed pixels", { contact, bulge });
+    if (contact < 20 || bulge < 20) throw new Error("wheel contact or deformation missing");
+  } else if (different(full,Uint8Array.from(raster.color),3) < 100) throw new Error("windshield missing");
+  process.exit(0);
+}
 if (gpu) {
   const chrome = findChrome();
   if (!chrome) throw new Error("Chrome is required for the WebGL study");
@@ -138,6 +195,18 @@ if (gpu) {
         const loading = p.uploads.length + p.drops.length + p.assetUploads.length + p.assetDrops.length + p.texUploads.length +
           p.texDrops.length;
         if (!loading && !load.flying && !load.waiting && p.frame[FRAME.reflection + 3] === 1) {
+          if (view) {
+            shot.add(p, true);
+            if (!hideCards(p,DETAIL_GLASS)) throw new Error(view + " has no windshield");
+            shot.add(p, true);
+            if (view === "wheel") {
+              hideCards(p,DETAIL_TIRE);
+              shot.add(p,true);
+              p.frame.fill(0,FRAME.tireContacts);
+              shot.add(p,true);
+            }
+            return [shot];
+          }
           if (restoring) {
             shot.add(p, true);
             p.frame[FRAME.reflection + 3] = 0;
@@ -197,15 +266,21 @@ if (gpu) {
     },
     judge(back) {
       const on = back.pixels(shot.key, shot.read[0]!)!, sky = back.pixels(shot.key, shot.read[1]!)!;
+      if (view) {
+        writeFileSync(join(out, view + ".png"), encodePng(width, height, on));
+        writeFileSync(join(out, view + "-open.png"), encodePng(width, height, sky));
+        const changed = different(on,sky,3);
+        if (view === "wheel") {
+          const bare = back.pixels(shot.key, shot.read[2]!)!, unloaded = back.pixels(shot.key,shot.read[3]!)!;
+          writeFileSync(join(out,"wheel-no-contact.png"),encodePng(width,height,bare));
+          writeFileSync(join(out,"wheel-unloaded.png"),encodePng(width,height,unloaded));
+          const contact = different(sky,bare,2), deflection = different(bare,unloaded,2);
+          return { ok: contact > 25 && deflection > 25, lines: [back.device.renderer, "Contact shadow changed "+contact+" pixels. Tire deflection changed "+deflection+" pixels."] };
+        }
+        return { ok: changed > 100, lines: [back.device.renderer, view + " glass changed " + changed + " pixels by at least three channel values"] };
+      }
       writeFileSync(join(out, hd ? "compacts-webgl-hd-local.png" : "compacts-webgl-local.png"), encodePng(width, height, on));
       writeFileSync(join(out, hd ? "compacts-webgl-hd-sky.png" : "compacts-webgl-sky.png"), encodePng(width, height, sky));
-      const different = (a: Uint8Array, b: Uint8Array, least: number): number => {
-        let changed = 0;
-        for (let i = 0; i < a.length; i += 4) {
-          if (Math.max(Math.abs(a[i]! - b[i]!), Math.abs(a[i + 1]! - b[i + 1]!), Math.abs(a[i + 2]! - b[i + 2]!)) >= least) changed++;
-        }
-        return changed;
-      };
       const changed = different(on, sky, 3);
       const seeded = different(on, back.pixels(shot.key, shot.read[8]!)!, 2);
       const fallback = different(back.pixels(shot.key, shot.read[9]!)!, back.pixels(shot.key, shot.read[1]!)!, 3);

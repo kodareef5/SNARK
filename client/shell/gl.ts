@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { STREET_HEIGHT, STREET_WIDTH, type StreetImage, fixtureKind, streetMaterial } from "../core/render/street-finish.ts";
+import { STREET_HEIGHT, STREET_WIDTH, type StreetImage, fixtureKind, streetMaterial, wheelBoneMask } from "../core/render/street-finish.ts";
 import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
@@ -41,7 +41,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -183,6 +183,8 @@ export class GlRenderer {
   private streetWidth = 0;
   private readonly noReflection = new Float32Array(1);
   private readonly receivers: Uint8Array;
+  private readonly wheelCenters: (Float32Array | null)[];
+  private readonly wheelMasks: Uint32Array;
   private readonly fixtures: Uint8Array;
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
@@ -235,6 +237,8 @@ export class GlRenderer {
     }
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.meshes = manifest.meshes;
+    this.wheelCenters = (pack.header.rigs ?? []).map(rig => wheelBoneMask(rig.names) ? Float32Array.from(rig.rest.slice(0,96)) : null);
+    this.wheelMasks = Uint32Array.from(this.meshes, mesh => wheelBoneMask(pack.header.rigs?.[mesh.rig ?? -1]?.names));
     this.finish = finishTable(pack.palette, manifest);
     this.forced = forced;
     this.init();
@@ -636,6 +640,13 @@ export class GlRenderer {
     this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
     if (this.receivers[m] === 255 && mat.id) this.receivers[m] = streetMaterial(mat.id);
     this.uniform(prog, U.streetMaterial, this.receivers[m] === 255 ? 0 : this.receivers[m]!);
+    const wheels = this.wheelMasks[mesh]!;
+    const rig = this.meshes[mesh]?.rig ?? -1;
+    if (wheels && at[U.wheelCenters] && last[U.wheelCenters] !== rig) {
+      gl.uniform3fv(at[U.wheelCenters]!, this.wheelCenters[rig]!);
+      last[U.wheelCenters] = rig;
+    }
+    if (at[U.wheelBones] && last[U.wheelBones] !== wheels) gl.uniform1ui(at[U.wheelBones]!, last[U.wheelBones] = wheels);
     this.uniform(prog, U.sheet, mat.sheet ?? 0);
     this.uniform(prog, U.emissive, (mat.flags & MATERIAL_NIGHT) !== 0 ? mat.emissive * this.night : mat.emissive);
     if (last[U.uv] !== mesh) {
@@ -1226,6 +1237,6 @@ export class GlRenderer {
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    return { program, text, at: [], last: new Float64Array(U.fixture + 1).fill(NaN), bounds: null };
+    return { program, text, at: [], last: new Float64Array(U.wheelCenters + 1).fill(NaN), bounds: null };
   }
 }

@@ -98,6 +98,8 @@ export const DETAIL_LAMP = 64;
 export const DETAIL_POOL = 128;
 /** A length of wire hung between two poles (street-wires.ts): the pool's flag over shape 1, as a pool has no shape of its own. */
 export const DETAIL_WIRE = DETAIL_POOL | 1;
+export const DETAIL_GLASS = DETAIL_POOL | 2;
+export const DETAIL_TIRE = DETAIL_POOL | 3;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /**
@@ -218,6 +220,7 @@ export const SOURCE_WINDOW = 1;
 
 /** Bodies the frame block holds for contact (contact.ts). */
 export const MAX_CONTACTS = 12;
+export const MAX_TIRE_CONTACTS = 8;
 
 /**
  * Where each value of the frame block (`FramePacket.frame`) is, in floats. The block is what every lit program reads,
@@ -337,8 +340,10 @@ export const FRAME = {
   previousReflection: 192 + MAX_CONTACTS * 8,
   /** Finish gloss offset, current capture layer, dry asphalt share, shadow fill reduction. */
   streetLook: 196 + MAX_CONTACTS * 8,
+  /** For each supported wheel, the ground normal X/Z, its camera-relative plane offset, and the global bone index plus one. */
+  tireContacts: 200 + MAX_CONTACTS * 8,
 } as const;
-export const FRAME_FLOATS = FRAME.streetLook + 4;
+export const FRAME_FLOATS = FRAME.tireContacts + MAX_TIRE_CONTACTS * 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -348,6 +353,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fContact[${MAX_CONTACTS * 2}];
   highp vec4 fEyes[6];
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
+  highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -604,6 +610,7 @@ export class FramePacket {
 
   beginFrame(): void {
     this.street = this.previousStreet = null;
+    this.frame.fill(0, FRAME.tireContacts, FRAME_FLOATS);
     this.frame[FRAME.previousReflection + 3] = 0;
     this.frame[FRAME.reflection + 3] = 0;
     this.uploads.length = 0;

@@ -8,9 +8,12 @@ import { Heightfield } from "../../shared/world/heightfield.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { deflectTire, TireContacts, tireShadow } from "../../client/core/render/tire-contact.ts";
+import { paneOptics } from "../../client/core/render/windscreens.ts";
+import { BONE_FLOATS, FRAME, FramePacket, MAX_TIRE_CONTACTS } from "../../client/core/render/packet.ts";
 import { StreetReflections } from "../../client/core/render/street-reflections.ts";
 import {
+  wheelBoneMask, wheelFinish, tireMould,
   coatWear,
   finishSeed,
   fixtureFace,
@@ -167,4 +170,77 @@ test("paint wear travels with an entity and fixed fixtures distinguish the plint
   expect(receiver(streetMaterial("core:compact/trim"), 0, 0.88, 0)).toBe(0);
   expect(receiver(streetMaterial("core:street/street"), 0, 0.41, 0.9)).toBe(1);
   expect(receiver(streetMaterial("core:compact_wreck/body"), 1, 0.3, 0)).toBe(0);
+});
+
+test("wheel contact follows the nearest supported tires and vanishes when the car lifts or tips", () => {
+  const { p, world } = street();
+  const contacts = new TireContacts(), wheels = new Int16Array([0]), rest = [0, 0.3, 0];
+  p.camX = p.camZ = 40;
+  const place = (bone: number, x: number, lift = 0, tipped = false) => {
+    p.bones.set(tipped ? [0,-1,0,x, 1,0,0,0.3, 0,0,1,0] : [1,0,0,x, 0,1,0,lift, 0,0,1,0], bone*BONE_FLOATS);
+    contacts.consider(p, bone, wheels, rest, 0.3);
+  };
+  for (let bone = 0; bone < MAX_TIRE_CONTACTS + 2; bone++) place(bone, 12-bone);
+  contacts.build(p, world);
+  const ids = Array.from({ length: contacts.count }, (_, i) => p.frame[FRAME.tireContacts+i*4+3]!);
+  expect(ids.sort((a,b) => a-b)).toEqual([3,4,5,6,7,8,9,10]);
+  expect(tireShadow(0,0)).toBeCloseTo(0.9);
+  expect(tireShadow(0.8,0)).toBeLessThan(tireShadow(0.5,0));
+  expect(tireShadow(1,0)).toBe(0);
+  contacts.begin();
+  p.beginFrame();
+  place(0, 2, 1);
+  place(1, 2, 0, true);
+  place(2, 20);
+  contacts.build(p,world);
+  expect(contacts.count).toBe(0);
+  expect(p.frame[FRAME.tireContacts+3]).toBe(0);
+});
+
+test("a supported bottom sidewall widens slightly, clears the road and leaves the top and hub alone", () => {
+  const { p } = street(), rest = [0,0.3,0], m = new Float32Array([1,0,0,0, 0,1,0,-0.01, 0,0,1,0]);
+  const positions = new Float32Array([0.1,0,0, 0.1,0.6,0, 0.04,0.29,0]);
+  p.frame.set([0,0,0,1],FRAME.tireContacts);
+  const out = positions.slice();
+  for (let i=0; i<3; i++) out[3*i+1]! -= 0.01;
+  const original = out.slice();
+  for (let i=0; i<3; i++) deflectTire(p.frame,0,0,rest,positions,i,0,0,0,m,out);
+  expect(out[0]!-original[0]!).toBeCloseTo(0.0285,4);
+  expect(out[1]).toBeCloseTo(0.0015,4);
+  expect(out.slice(3)).toEqual(original.slice(3));
+  // Half a spin exchanges these vertices. The part adjacent to the road still carries the load.
+  const spun = new Float32Array([1,0,0,0, 0,-1,0,0.59, 0,0,-1,0]);
+  const topNowAtBottom = new Float32Array([0,0,0, 0.1,-0.01,0]);
+  deflectTire(p.frame,0,0,rest,positions,1,0,0,0,spun,topNowAtBottom);
+  expect(topNowAtBottom[3]).toBeCloseTo(out[0]!,4);
+  expect(topNowAtBottom[4]).toBeCloseTo(out[1]!,4);
+});
+
+test("only wheel joints carry the finish, clean and wiped plating shine differently, and rubber keeps its moulding", () => {
+  expect(wheelBoneMask(["chassis","wheel_front_left","steering_wheel"])).toBe(2);
+  const finish = (rough: number, metal: number, seed: number, mould = 0) => {
+    const rgb = new Float64Array([0.1,0.1,0.1]), orm = new Float64Array([1,rough,metal]);
+    const chrome = wheelFinish(rgb,orm,1,1,mould,seed,0.4,0.2,0.001);
+    return { tone: rgb[0]!, rough: orm[1]!, chrome };
+  };
+  const clean = finish(0.3,0.95,0.1), wiped = finish(0.3,0.95,0.86);
+  expect(clean.chrome).toBe(1);
+  expect(clean.tone).toBeGreaterThan(0.8);
+  expect(clean.rough).toBeLessThan(wiped.rough);
+  expect(finish(0.3,0.95,0.86)).toEqual(wiped);
+  const plain = finish(0.8,0,0.5), ridge = finish(0.8,0,0.5,tireMould(0.1,0.845,0,0.001));
+  expect(plain.chrome).toBe(0);
+  expect(plain.tone).toBeLessThan(0.04);
+  expect(ridge.tone).toBeGreaterThan(plain.tone);
+  expect(tireMould(0.1,0.845,0,0.05)).toBe(0);
+});
+
+test("the windscreen transmits the road from the driver's seat and gains reflection at a grazing angle", () => {
+  const out = new Float64Array(2);
+  const sample = (angle: number, y: number) => { paneOptics(angle,y,0.5,0.35,out); return [...out]; };
+  const [outside, share] = sample(1,0), [inside] = sample(-1,0), [edge, edgeShare] = sample(0.1,0);
+  expect(inside!).toBeLessThan(outside!);
+  expect(outside!).toBeLessThan(0.25);
+  expect(edge!*edgeShare!).toBeGreaterThan(outside!*share!*4);
+  expect(sample(1,0.95)[0]!).toBeGreaterThan(outside!);
 });

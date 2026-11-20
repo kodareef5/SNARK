@@ -42,6 +42,8 @@ import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 import { MARINE_STORIES, ROAD_STORIES, WEAR_KEY, wearOf } from "./wear.ts";
+import { TireContacts } from "./tire-contact.ts";
+import { Windscreens } from "./windscreens.ts";
 import { RotorBlur } from "./rotor-blur.ts";
 import { CameraBody } from "../camera-body.ts";
 import { PatrolLights } from "./patrol-lights.ts";
@@ -260,6 +262,8 @@ const SLIDE_PIXELS = 2;
 const POSE_EVERY = 8;
 
 export class Characters {
+  readonly tireContacts = new TireContacts();
+  readonly windscreens = new Windscreens();
   readonly rotorBlur = new RotorBlur();
   readonly patrolLights = new PatrolLights();
   readonly anim: HumanAnim;
@@ -947,6 +951,9 @@ export class Characters {
           } else c.oriented.pos[b * 3 + 1]! -= droop;
         }
         writeBones(p.bones, first * BONE_FLOATS, c.oriented, rig.rest, null, x, y, z, 0, size);
+        if (!unseen && p.tier.contact && isWheelVehicle(v.def) && Math.hypot(x,y,z) < 16 + v.def.spec.halfLength * size) {
+          this.tireContacts.consider(p, first, v.wheels, rig.rest, v.def.spec.wheelRadius * size);
+        }
         if (!unseen && v.def.movement === "rotor") {
           for (let r = 0; r < v.def.rotors.length; r++) {
             const b = v.rotors[r]!;
@@ -958,6 +965,7 @@ export class Characters {
       if (!unseen) this.keepHead(c, solved, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
     }
     const def = c.vehicle?.def;
+    if (def && !unseen && !st.dead) this.windscreens.add(p, first, def.id, id, st.hurt);
     if (!unseen && vehicle?.lightMode && def && isWheelVehicle(def) && def.emergencyLights) {
       this.patrolLights.add(p, first, def.emergencyLights, vehicle.lightMode, tick, id, size);
     }
@@ -1168,6 +1176,8 @@ export class Characters {
     this.groundWorld = world;
     this.packet = p ?? this.packet;
     this.count = 0;
+    this.tireContacts.begin();
+    this.windscreens.begin();
     this.rotorBlur.begin();
     this.patrolLights.begin();
     this.posed = 0;

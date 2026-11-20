@@ -28,7 +28,7 @@ import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortF64, sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
-import { DEFAULT_FINISH_GLOSS } from "../settings.ts";
+import { DEFAULT_FINISH_GLOSS, DEFAULT_ROAD_FINISH } from "../settings.ts";
 import { fixtureKind } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
@@ -500,7 +500,7 @@ export class Scene {
   private readonly leafTris: number[][];
   readonly street: StreetReflections;
   finishGloss = DEFAULT_FINISH_GLOSS;
-  roadFinish = 0;
+  roadFinish = DEFAULT_ROAD_FINISH;
   private readonly world: RenderWorld;
   private readonly batches = new Map<number, ChunkBatch>();
   /** Rigid species keep palette lighting; the static fallback finish belongs to world geometry. */
@@ -1602,11 +1602,12 @@ export class Scene {
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
-    const { rotorBlur, patrolLights } = this.characters;
+    const { rotorBlur, patrolLights, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires } = this;
     streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count);
+    tireContacts.build(p, this.world);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count);
     const particles = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
@@ -1615,6 +1616,9 @@ export class Scene {
     streetWires.write(p);
     const street = p.detailCount;
     streetLamps.write(p);
+    const wheelsAndGlass = p.detailCount;
+    tireContacts.write(p);
+    windscreens.write(p);
     // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
@@ -1624,7 +1628,8 @@ export class Scene {
     this.drawDetails(particles, lamps - particles, DRAW_BLEND, rotorBlur.passes(cam));
     this.drawDetails(lamps, wires - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
-    this.drawDetails(street, seen - street, DRAW_BLEND, streetLamps.passes(cam));
+    this.drawDetails(street, wheelsAndGlass - street, DRAW_BLEND, streetLamps.passes(cam));
+    this.drawDetails(wheelsAndGlass, seen - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
     this.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
   }

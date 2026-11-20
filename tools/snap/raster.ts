@@ -1,7 +1,9 @@
+import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.ts";
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
-import { PAINT, coatWear, glossRoughness, finishSeed, fixtureFace, fixtureKind, receiver, streetMaterial, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
+import { paneOptics } from "../../client/core/render/windscreens.ts";
+import { PAINT, coatWear, glossRoughness, wheelFinish, wheelBoneMask, tireMould, finishSeed, fixtureFace, fixtureKind, receiver, streetMaterial, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
@@ -16,7 +18,7 @@ import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } fro
 import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
@@ -68,6 +70,10 @@ function surfaceOf(entries: Uint8Array, skin: Uint8Array | null, range: readonly
 interface Surfaced {
   label: number;
   seed: number;
+  wheelBones: number;
+  firstBone: number;
+  positions: Float32Array;
+  rest?: number[];
   maps: Texture[];
   layer: Texture | null;
   level: number;
@@ -130,7 +136,7 @@ function standing(bones: Float32Array, stand: number, bone: number, place: numbe
 }
 const stood = new Float64Array(BONE_FLOATS);
 
-const CARRIED = 15;
+const CARRIED = 18;
 /** A deferred pixel of the ground, which keeps the normal it is lit by. */
 const DEFERRED_GROUND = 2048;
 /** The bits from which a deferred pixel names its landmark's row of finishes (shared/pack/finish.ts), 0 for none. */
@@ -1099,6 +1105,7 @@ export class Rasterizer {
     const poly = this.wide;
     const texel = [0, 0, 0, 0];
     const shape = [0, 0, 0];
+    const optics = new Float64Array(2);
     const [right, below] = [[0, 0], [0, 0]];
     const exposure = p.frame[FRAME.exposure]!;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
@@ -1109,7 +1116,8 @@ export class Rasterizer {
       const half = Math.hypot(f[o + DETAIL.along]!, f[o + DETAIL.along + 1]!, f[o + DETAIL.along + 2]!);
       // The corners in turn round the card, each its place and its corner.
       [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([cx, cy], c) => {
-        for (let i = 0; i < 3; i++) src[c * 5 + i] = f[o + DETAIL.middle + i]! + cx! * f[o + DETAIL.across + i]! + cy! * f[o + DETAIL.along + i]!;
+        const width = flags === DETAIL_GLASS && cy! > 0 ? f[o + DETAIL.floor]! : 1;
+        for (let i = 0; i < 3; i++) src[c * 5 + i] = f[o + DETAIL.middle + i]! + cx! * width * f[o + DETAIL.across + i]! + cy! * f[o + DETAIL.along + i]!;
         [src[c * 5 + 3], src[c * 5 + 4]] = [cx!, cy!];
       });
       const count = this.clip(src, 4, 5, 5, poly, 9);
@@ -1161,6 +1169,26 @@ export class Rasterizer {
             corner(fx, fy + 1, below);
             const footprint = (Math.max(Math.hypot(right[0]! - cx, right[1]! - cy), Math.hypot(below[0]! - cx, below[1]! - cy)) * CELL) / 2;
             const level = Math.min(MOST_LOD, Math.max(0, Math.log2(Math.max(footprint, 1e-6))));
+            if (flags === DETAIL_TIRE) {
+              const transmission = 1 - tireShadow(cx,cy)*shows;
+              for (let c=0; c<3; c++) this.color[at*4+c]! *= transmission;
+              continue;
+            }
+            if (flags === DETAIL_GLASS) {
+              const dist = Math.hypot(rx,ry,rz), vx = -rx/dist, vy = -ry/dist, vz = -rz/dist;
+              const nv = nx*vx + ny*vy + nz*vz;
+              paneOptics(nv, cy, grey, p.frame[FRAME.streetLook]!, optics);
+              reflected.set([2*nv*nx-vx, 2*nv*ny-vy, 2*nv*nz-vz]);
+              skyFrom(mirrored, p.frame, reflected, this.look);
+              streetMirror(mirrored, p, reflected, rx, ry, rz, 0.12+0.06*grey, 1);
+              normal.set([0,1,0]);
+              skyLight(light,p.frame,normal);
+              for (let c = 0; c < 3; c++) light[c] = light[c]! * [0.033,0.066,0.071][c]! * (1-optics[1]!) + mirrored[c]! * optics[1]!;
+              shown(rgb,light,dist,p);
+              const alpha = optics[0]! * shows;
+              for (let c = 0; c < 3; c++) this.color[at*4+c]! += (rgb[c]!*255 - this.color[at*4+c]!) * alpha;
+              continue;
+            }
             if ((flags & (DETAIL_ROTOR | DETAIL_LAMP | DETAIL_POOL)) !== 0) {
               if ((flags & DETAIL_POOL) !== 0) (flags & 7) === (DETAIL_WIRE & 7) ? wireOf(cy, shape) : poolOf(cx, cy, shape);
               else if ((flags & DETAIL_LAMP) !== 0) lampOf(cx, cy, shape);
@@ -1360,7 +1388,9 @@ export class Rasterizer {
     const wear = layer ? p.drawWear[d]! : 0;
     const { center, half } = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const box = wear === 0 ? null : lod.positions.map((x, i) => (x - center[i % 3]!) / half[i % 3]!);
-    const s: Surfaced = { label: streetMaterial(material.id), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
+    const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
+    const s: Surfaced = { firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheelBoneMask(rig?.names) : 0, label: streetMaterial(material.id), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: (material.flags & MATERIAL_NIGHT) !== 0 ? material.emissive * lampsOn(p.frame) : material.emissive, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1376,7 +1406,8 @@ export class Rasterizer {
         view.getFloat32(at,true)+p.drawOffset[d*3]!+p.camX,
         view.getFloat32(at+4,true)+p.drawOffset[d*3+1]!+p.camY,
         view.getFloat32(at+8,true)+p.drawOffset[d*3+2]!+p.camZ);
-      this.pose(p, d, lod, surface, view, at);
+      s.firstBone = view.getUint16(at+12,true);
+      this.pose(p, d, lod, surface, view, at, s);
       this.handAt = Math.hypot(view.getFloat32(at, true) + p.drawOffset[d * 3]!, view.getFloat32(at + 4, true) + p.drawOffset[d * 3 + 1]!, view.getFloat32(at + 8, true) + p.drawOffset[d * 3 + 2]!);
       regionDyes(this.dyes, this.pack.palette, data, at + 14, material.grey);
       // A sized instance's last region is its size, and dyes nothing.
@@ -1394,7 +1425,7 @@ export class Rasterizer {
    * The vertex stage of a textured draw, as SURFACE_VERTEX has it: where an instance's vertices are, camera-relative,
    * into `scratch`, and their normals and tangents into `frames`.
    */
-  private pose(p: FramePacket, d: number, lod: DecodedLod, surface: DecodedSurface, view: DataView, at: number): void {
+  private pose(p: FramePacket, d: number, lod: DecodedLod, surface: DecodedSurface, view: DataView, at: number, s: Surfaced): void {
     const { positions } = lod;
     const { normals, tangents, skin } = surface;
     const n = positions.length / 3;
@@ -1430,6 +1461,8 @@ export class Rasterizer {
       out[v * 3] = m[0]! * lx + m[1]! * ly + m[2]! * lz + m[3]!;
       out[v * 3 + 1] = m[4]! * lx + m[5]! * ly + m[6]! * lz + m[7]!;
       out[v * 3 + 2] = m[8]! * lx + m[9]! * ly + m[10]! * lz + m[11]!;
+      const bone = lod.bones[v]!;
+      if (mode === 1 && s.rest && bone < 32 && (s.wheelBones & (1 << bone))) deflectTire(p.frame,first,bone,s.rest,positions,v,px,py,pz,m,out);
       if (mode === -2) out[v * 3 + 1] = this.onGround(p, out[v * 3]!, out[v * 3 + 1]!, out[v * 3 + 2]!, ly);
       turned(m, normals, v * 3, this.frames, v * 6);
       turned(m, tangents, v * 4, this.frames, v * 6 + 3);
@@ -1667,6 +1700,8 @@ export class Rasterizer {
    */
   private texturedTriangle(s: Surfaced, ia: number, ib: number, ic: number, pickKind: number, pickId: number, bone: number): void {
     const p = this.packet;
+    const wheel = bone > 0 && bone <= 32 && (s.wheelBones & (1 << (bone-1))) !== 0;
+    const seed = wheel ? finishSeed(pickId ^ Math.imul(bone-1,2654435761)) : s.seed;
     const pos = this.scratch;
     const ax = pos[ia * 3]!, ay = pos[ia * 3 + 1]!, az = pos[ia * 3 + 2]!;
     const bx = pos[ib * 3]!, by = pos[ib * 3 + 1]!, bz = pos[ib * 3 + 2]!;
@@ -1686,6 +1721,10 @@ export class Rasterizer {
       for (let i = 0; i < 6; i++) src[o + 5 + i] = this.frames[v * 6 + i]!;
       src[o + 11] = s.tangents[v * 4 + 3]!;
       for (let i = 0; i < 3; i++) src[o + 12 + i] = s.box ? s.box[v * 3 + i]! : 0;
+      if (bone && bone <= 32 && (s.wheelBones & (1 << (bone-1)))) {
+        const at = (bone-1)*3, radius = Math.max(0.12, s.rest![at+1]!);
+        for (let i = 0; i < 3; i++) src[o+15+i] = (s.positions[v*3+i]! - s.rest![at+i]!) / radius;
+      }
     });
 
     // Clip as `triangle` does, with everything a corner carries.
@@ -1769,20 +1808,52 @@ export class Rasterizer {
             wounded(albedo, mro, layer, s.level, wearLate(s.wear, carried[12]!, carried[13]!, carried[14]!));
           }
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
+          let coat = 0, chrome = 0;
+          if (wheel) {
+            const t = Math.max(0, Math.min(1, (dist - 8) / 16));
+            let rightSquared = 0, downSquared = 0;
+            for (let j=15; j<18; j++) {
+              const right = (r0*poly[v0+j]!+r1*poly[v1+j]!+r2*poly[v2+j]!)/(r0+r1+r2)-carried[j]!;
+              const down = (d0*poly[v0+j]!+d1*poly[v1+j]!+d2*poly[v2+j]!)/(d0+d1+d2)-carried[j]!;
+              rightSquared += right*right;
+              downSquared += down*down;
+            }
+            const footprint = Math.sqrt(Math.max(rightSquared,downSquared));
+            const mould = footprint < 0.023 && mro[2]! < 0.3 && mro[1]! > 0.45 ? tireMould(carried[15]!,carried[16]!,carried[17]!,footprint) : 0;
+            const damage = Math.max(0, Math.min(1, (s.level-0.15)/0.7));
+            const near = (1-t*t*(3-2*t))*(1-damage*damage*(3-2*damage));
+            chrome = wheelFinish(albedo, mro, mask[2]!, near, mould, seed, carried[16]!, carried[17]!, footprint);
+            if (chrome > 0) {
+              const b = (s.firstBone+bone-1)*BONE_FLOATS, m = p.bones;
+              const scale = Math.hypot(m[b]!,m[b+4]!,m[b+8]!);
+              const y = carried[16]!/scale, z = carried[17]!/scale;
+              const dx=m[b+1]!*y+m[b+2]!*z, dy=m[b+5]!*y+m[b+6]!*z, dz=m[b+9]!*y+m[b+10]!*z;
+              const dot=normal[0]!*dx+normal[1]!*dy+normal[2]!*dz;
+              normal[0]! += 0.58*chrome*(dx-normal[0]!*dot);
+              normal[1]! += 0.58*chrome*(dy-normal[1]!*dot);
+              normal[2]! += 0.58*chrome*(dz-normal[2]!*dot);
+              const length = Math.hypot(normal[0]!,normal[1]!,normal[2]!);
+              for (let c=0; c<3; c++) normal[c]! /= length;
+            }
+          }
           const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
           for (let i = 0; i < 3; i++) reflected[i] = twice * normal[i]! - eye[i]!;
           skyFrom(mirrored, p.frame, reflected, this.look);
-          let coat = 0;
           if (s.label) {
             const share = receiver(s.label, mask[0]!, mro[1]!, mro[2]!);
             if (share > 0) {
               const paint = s.label === PAINT ? mask[0]!*Math.max(0,Math.min(1,(0.72-mro[1]!)*3.5)) : 0;
-              mro[1] = Math.max(0.07,Math.min(1,mro[1]!+coatWear(u,v,s.seed,2**spread)*share-0.19*paint));
+              mro[1] = Math.max(0.07,Math.min(1,mro[1]!+coatWear(u,v,seed,2**spread)*share*(1-0.96*chrome)-0.19*paint));
               mro[1] = glossRoughness(mro[1]!,share,p.frame[FRAME.streetLook]!);
               streetMirror(mirrored,p,reflected,carried[0]!,carried[1]!,carried[2]!,mro[1]!,share);
               const nv = Math.max(0,Math.min(1,normal[0]!*eye[0]!+normal[1]!*eye[1]!+normal[2]!*eye[2]!));
               coat = (1+0.5*p.frame[FRAME.streetLook]!)*paint*(0.045+0.22*(1-nv)**5)*(1-mro[1]!);
             }
+          }
+          if (chrome > 0) {
+            const sky = FRAME.skyAbove, grey = 0.2126*p.frame[sky]!+0.7152*p.frame[sky+1]!+0.0722*p.frame[sky+2]!;
+            const fill = chrome*(0.12+1.15*2**(-9*Math.abs(reflected[1]!-0.12)));
+            for (let c=0; c<3; c++) mirrored[c]! += (0.55*p.frame[sky+c]!+0.45*grey)*fill;
           }
           const nl = (back ? -1 : 1) / Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
           const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);

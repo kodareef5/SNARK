@@ -11,7 +11,7 @@ import { SEED_GLSL, STREET_GLSL } from "./street-finish.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
-import { BONES_PER_ROW, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
@@ -379,6 +379,10 @@ layout(location=9) in vec4 aTangent;
 
 layout(location=12) in uint iEntity;
 flat out float vFinishSeed;
+out vec3 vWheelPoint;
+out vec4 vWheel;
+uniform vec3 uWheelCenters[32];
+uniform highp uint uWheelBones;
 uniform vec3 uWorldEye;
 ${SEED_GLSL}
 layout(location=10) in uvec4 aBones;
@@ -399,8 +403,15 @@ ${layered ? "out vec3 vBox;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""
 }
 ${dyed ? DYE : ""}${ON_GROUND}void main() {
 
-  vFinishSeed = uSkin > 0.5 ? finishSeed(iEntity,vec3(0.0)) : finishSeed(0u,iPos+uOffset+uWorldEye);
+  vWheel = vec4(0.0);
+  vWheel.w = uSkin > 0.5 && uSkin < 1.5 && aBone < 32u && (uWheelBones & (1u << aBone)) != 0u ? 1.0 : 0.0;
+  vFinishSeed = uSkin > 0.5 ? finishSeed(vWheel.w > 0.5 ? iEntity ^ (aBone*2654435761u) : iEntity,vec3(0.0)) : finishSeed(0u,iPos+uOffset+uWorldEye);
   vec3 l = uCenter + aPos * uHalf;
+  vWheelPoint = vec3(0.0);
+  if (vWheel.w > 0.5) {
+    vec3 center = uWheelCenters[aBone];
+    vWheelPoint = (l-center)/max(0.12,center.y);
+  }
   vec3 p, n, t;
   if (uSkin > 0.5) {
     int first = int(iYaw * 65535.0 + 0.5);
@@ -416,6 +427,25 @@ ${dyed ? DYE : ""}${ON_GROUND}void main() {
       tv = vec4(tv * s, 0.0);
     }
     p = v * m;
+    if (vWheel.w > 0.5) vWheel.xyz = vec4(0.0,vWheelPoint.yz,0.0)*m/max(0.001,length(vec4(1,0,0,0)*m));
+    if (vWheel.w > 0.5 && length(vWheelPoint.yz) > 0.67) {
+      for (int j=0; j<${MAX_TIRE_CONTACTS}; j++) {
+        vec4 floorHit = fTireContacts[j];
+        if (floorHit.w == 0.0) break;
+        if (int(floorHit.w) != first+int(aBone)+1) continue;
+        vec3 up = vec3(floorHit.x,sqrt(max(0.0,1.0-dot(floorHit.xy,floorHit.xy))),floorHit.y);
+        vec3 center = uWheelCenters[aBone], hub = vec4(center+iPos,1.0)*m;
+        vec3 axle = vec4(1,0,0,0)*m;
+        float scale = length(axle), radius = max(0.12,center.y)*scale;
+        float height = dot(hub,up)-floorHit.z, above = dot(p,up)-floorHit.z;
+        float load = clamp((1.20-height/radius)/0.17,0.0,1.0)*clamp((16.0-length(hub))/5.0,0.0,1.0);
+        float low = smoothstep(0.5,0.94,(height-above)/radius)*smoothstep(0.67,0.89,length(vWheelPoint.yz))*load;
+        p += (axle/scale)*(clamp(vWheelPoint.x/0.2,-1.0,1.0)*0.095*radius*low);
+        float drop = min(0.16*radius,max(0.0,height-radius)+0.055*radius);
+        p += up*((max(0.0015,above-drop)-above)*low);
+        break;
+      }
+    }
     n = nv * m;
     t = tv * m;
   } else {
@@ -618,6 +648,8 @@ uniform vec3 uTint;
 uniform float uCutoff, uSheet, uSkin, uEmissive;
 
 flat in float vFinishSeed;
+in vec3 vWheelPoint;
+in vec4 vWheel;
 uniform float uStreetMaterial;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
 ${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
@@ -634,20 +666,53 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
   float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
-  vec3 ray = reflect(-v,n), mirror = skyFrom(ray);
-  float coat = 0.0;
+  float coat = 0.0, chrome = 0.0;
 
   float footprint = max(length(dFdx(vUv)),length(dFdy(vUv)));
+  if (vWheel.w > 0.5) {
+    float near = (1.0-smoothstep(8.0,24.0,length(vRel)))${layered ? "*(1.0-smoothstep(0.15,0.85,uLevel))" : ""};
+    float rubber = clamp((0.30-mro.b)*5.0,0.0,1.0)*clamp((mro.g-0.45)*5.0,0.0,1.0)*near;
+    chrome = clamp((mro.b-0.45)*3.4,0.0,1.0)*max(${dyed ? "clamp(mask.b*1.8,0.0,1.0)" : "0.0"},clamp((0.35-mro.g)*6.0,0.0,1.0))*clamp((0.85-mro.g)*5.0,0.0,1.0)*near;
+    float dust = clamp((mro.g-0.24)*2.0,0.0,1.0);
+    float width = max(length(dFdx(vWheelPoint)),length(dFdy(vWheelPoint)));
+    float mould = 0.0;
+    if (rubber > 0.0 && width < 0.023) {
+      float r = length(vWheelPoint.yz);
+      vec3 ribs = clamp(1.0-abs(vec3(r)-vec3(0.77,0.845,0.885))/0.012,0.0,1.0);
+      float shoulder = clamp((r-0.86)*14.0,0.0,1.0);
+      float angle = atan(vWheelPoint.y,vWheelPoint.z);
+      float groove = clamp((cos(42.0*angle+13.0*abs(vWheelPoint.x))-0.32)*3.0,0.0,1.0)*shoulder;
+      mould = (0.25*dot(ribs,vec3(1.0,1.0,0.65))-0.32*groove+0.09*shoulder*(1.0-groove))*clamp(1.0-45.0*width,0.0,1.0);
+    }
+    albedo *= 1.0-rubber*(0.75-0.10*dust+0.08*(1.0-mro.r)-1.1*mould);
+    mro.g += rubber*(max(0.0,0.90-mro.g)-0.38*mould);
+    if (chrome > 0.0) {
+      float wipe = sin(19.0*vWheelPoint.z + 7.0*vWheelPoint.y + 9.0*vFinishSeed);
+      float grit = sin(151.0*vWheelPoint.y)*sin(123.0*vWheelPoint.z+13.0*vFinishSeed)*clamp(1.0-70.0*width,0.0,1.0);
+      float marks = smoothstep(0.30,0.83,vFinishSeed)*(0.035+0.065*wipe*wipe+0.022*grit);
+      albedo = mix(albedo,vec3(0.86,0.89,0.94),0.96*chrome);
+      mro.g = mix(mro.g,0.076+marks,chrome);
+      mro.b = mix(mro.b,1.0,chrome);
+      // A gently crowned face turns a flat spoke through a range of real reflection directions.
+      n = normalize(n + 0.58*chrome*(vWheel.xyz - n*dot(vWheel.xyz,n)));
+    }
+  }
+  vec3 ray = reflect(-v,n), mirror = skyFrom(ray);
   if (uStreetMaterial > 0.5) {
     float paint = uStreetMaterial < 1.5 ? ${dyed ? "mask.r" : "0.0"} * clamp((0.72-mro.g)*3.5,0.0,1.0) : 0.0;
     float receives = max(paint,max(clamp(mro.b*1.5,0.0,1.0)*clamp((0.85-mro.g)*3.0,0.0,1.0),clamp((0.34-mro.g)*5.0,0.0,1.0)));
     if (receives > 0.0) {
       float wear = coatWear(vUv,vFinishSeed,footprint);
-      mro.g = clamp(mro.g+wear*receives-0.19*paint,0.07,1.0);
+      mro.g = clamp(mro.g+wear*receives*(1.0-0.96*chrome)-0.19*paint,0.07,1.0);
       mro.g = glossRoughness(mro.g,receives);
       mirror = streetMirror(mirror,ray,vRel,mro.g,receives);
       coat = (1.0+0.5*fStreetLook.x)*paint*(0.045+0.22*pow(1.0-clamp(dot(n,v),0.0,1.0),5.0))*(1.0-mro.g);
     }
+  }
+  // Soft horizon fill uses the current sky energy, including at dusk and night.
+  if (chrome > 0.0) {
+    vec3 fill = mix(fSkyAbove.rgb,vec3(dot(fSkyAbove.rgb,vec3(0.2126,0.7152,0.0722))),0.45);
+    mirror += chrome*fill*(0.12+1.15*exp2(-9.0*abs(ray.y-0.12)));
   }
   vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);
   o = vec4(shown(mix(radiance,mirror*open,coat) + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
