@@ -2,6 +2,7 @@
 // has fetched, inflated and checked waits here for the next frame to take.
 
 import type { AssetArrival, AssetPart, AssetPort, AssetRequest } from "../core/assets/port.ts";
+import { StorageInfo } from "../core/assets/storage.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Ask } from "./assets-worker.ts";
 
@@ -9,6 +10,7 @@ export class WorkerPort implements AssetPort {
   cache: AssetPort["cache"] = { used: 0, limit: 0, mode: "memory", filling: 0 };
   /** The page's own until the worker's first fetch says. */
   protocol = (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.nextHopProtocol ?? "";
+  readonly storage = new StorageInfo(navigator.storage);
   private readonly worker = new Worker("assets-worker.js", { type: "module" });
   private readonly manifest: Manifest;
   private readonly folder: string;
@@ -42,8 +44,7 @@ export class WorkerPort implements AssetPort {
   }
 
   fill(parts: readonly { file: number; part: AssetPart }[]): void {
-    // What the player asked to keep should not be the first thing the browser clears when it is short of room.
-    void navigator.storage?.persist?.();
+    this.storage.keep();
     this.worker.postMessage({ fill: parts.map((p) => ({ url: this.url(p.file), part: p.part })) });
   }
 

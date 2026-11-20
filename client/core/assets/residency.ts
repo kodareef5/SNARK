@@ -22,6 +22,7 @@ import { LAST_STEP, STEP0_SIZE, blockOf, pictureBytes, stepBytes, stepOf, topIn,
 import { Rng } from "../../../shared/rng.ts";
 import type { TextureUpload } from "../render/packet.ts";
 import { FAIL_HASH, FAIL_RANGE, levelParts, textureParts, wholePart, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
+import type { StorageInfo } from "./storage.ts";
 
 /**
  * A level to put on the graphics card: its indices and then its vertices, as the pack holds them. With `of` it is a
@@ -943,6 +944,11 @@ export class Residency {
   /** What the port keeps between visits, or null with no port. */
   get cache(): AssetPort["cache"] | null {
     return this.port ? this.port.cache : null;
+  }
+
+  /** What the browser says of keeping the files and of its room for them, or null where nothing asks it. */
+  get storage(): StorageInfo | null {
+    return this.port?.storage ?? null;
   }
 
   /** The graphics card could not take a level or a surface it was sent. */

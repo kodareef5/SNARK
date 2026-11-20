@@ -2,6 +2,7 @@
 // slots from SOUND_SLOT up, and each side takes only what came for its own.
 
 import type { AssetArrival, AssetPart, AssetPort, AssetRequest } from "../assets/port.ts";
+import type { StorageInfo } from "../assets/storage.ts";
 
 export const SOUND_SLOT = 1 << 28;
 
@@ -19,6 +20,10 @@ class Side implements AssetPort {
 
   get protocol(): string {
     return this.split.port.protocol;
+  }
+
+  get storage(): StorageInfo | undefined {
+    return this.split.port.storage;
   }
 
   request(r: AssetRequest): void {

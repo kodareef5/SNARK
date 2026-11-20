@@ -3,6 +3,7 @@
 
 import { storedBytes, storedStep, type ManifestClips, type ManifestLevel, type ManifestTexture } from "../../../shared/pack/manifest.ts";
 import { blockOf, stepBytes, type TextureFormat } from "../../../shared/pack/texture.ts";
+import type { StorageInfo } from "./storage.ts";
 
 /** Why a part did not come: the network, bytes that do not have the hash listed, or a range the file does not have. */
 export const FAIL_NET = 1;
@@ -100,4 +101,6 @@ export interface AssetPort {
   readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number };
   /** How the files come, as the browser names it: "http/1.1", "h2", "h3", or "" while not known. */
   readonly protocol: string;
+  /** What the browser says of keeping the files and of its room for them, where there is a browser. */
+  readonly storage?: StorageInfo;
 }
