@@ -177,6 +177,20 @@ test("the front sends each path to its world and the site to the lowest world, s
   expect(await (await get(`${at}/cluster/admin/`)).text()).toContain("<title>cluster admin</title>");
   expect(await (await get(`${at}/cluster/admin/cluster.js`)).text()).toBe("export {};");
   expect((await get(`${at}/cluster/admin/overview.json`)).status).toBe(404);
+  expect(await (await get(`${at}/cluster/title-scene.json`)).json()).toMatchObject({set:"wynwood-shore"});
+  expect((await get(`${at}/cluster/admin/scenes/`)).status).toBe(401);
+  expect((await get(`${at}/cluster/admin/scenes/api`, { method:"POST" })).status).toBe(401);
+  const director = { authorization: `Basic ${btoa("operator:miami password")}` };
+  expect((await get(`${at}/cluster/admin/scenes/api`, {headers:director})).status).toBe(200);
+  expect((await get(`${at}/cluster/admin/scenes/api`, {method:"POST",headers:{...director,origin:"https://elsewhere.example"}})).status).toBe(403);
+
+  const shot = await (await get(`${at}/cluster/title-scene.json`)).json() as { name: string };
+  const picture = "data:image/webp;base64,UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEADsD+JaQAA3AAAAAA";
+  const published = await get(`${at}/cluster/admin/scenes/api`, { method: "POST", headers: { ...director, origin: at, "content-type": "application/json" },
+    body: JSON.stringify({ revision: 0, shot: { ...shot, name: "Harbor light" }, publish: true, picture, portrait: picture }) });
+  expect(published.status).toBe(200);
+  expect(await (await get(`http://127.0.0.1:${tampa.port}/cluster/title-scene.json`)).json()).toMatchObject({ name: "Harbor light" });
+  expect((await get(`${at}/cluster/title-poster.webp?portrait`)).headers.get("content-type")).toBe("image/webp");
   const good = { headers: { authorization: `Basic ${btoa("x:the password")}` } };
   expect((await get(`${at}/miami/admin/chat.json`, good)).status).toBe(401);
   expect((await get(`${at}/tampa/admin/chat.json`)).status).toBe(401);

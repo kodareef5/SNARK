@@ -452,6 +452,8 @@ export class Scene {
   now = 0;
   /** Seconds on the shared server clock, independent of the local frame clock. */
   eyeSeconds = 0;
+  /** Additional instrument rotation for a directed scene, in radians. */
+  eyeIndexOffset = 0;
   private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number };
   private readonly lanternMesh: { frame: number; shutter: number; lip: number; light: number };
   private readonly sextantMesh: { frame: number; needle: number; indexLight: number; keelLight: number };
@@ -937,7 +939,7 @@ export class Scene {
     return this.characters.prepareCameraBody(own.kind, own.id, own.generation ?? 0, own.x, own.y, own.z, own.yaw, own.state, own.tick);
   }
 
-  build(cam: Camera, remote: RemoteSample | null): FramePacket {
+  build(cam: Camera, remote: RemoteSample | null, focus?: readonly number[], loadTime = this.now): FramePacket {
     const p = this.packet;
     p.beginFrame();
     for (const chunk of this.hiddenChanged) { const batch = this.batches.get(NODE_BUFFERS + chunk); if (batch) batch.shape = -1; }
@@ -955,7 +957,8 @@ export class Scene {
     this.lift = Math.max(0, cam.y - this.world.hf.heightAt(cam.x, cam.z));
     cam.far = farPlane(this.viewDistance);
     cam.update();
-    this.assets.begin(this.now, this.viewHeight, cam.fovY);
+    this.assets.begin(loadTime, this.viewHeight, cam.fovY);
+    if (focus) for (const mesh of focus) if (this.assets.known(mesh)) this.assets.wantTextured(mesh, 0, 1);
     if (this.assets.residency.learned.length > 0) this.learn(this.assets.residency.learned);
     this.budget.begin(this.assets.tier);
     p.tier = this.assets.tier;
@@ -1070,7 +1073,7 @@ export class Scene {
     markJoins(p);
     // The frame's count, from which the next frame's crowns near take their squeeze.
     this.budget.end(this.now, p.triangles, p.drawCount);
-    this.assets.end(p, this.now);
+    this.assets.end(p, loadTime);
     return p;
   }
 
@@ -2201,7 +2204,7 @@ export class Scene {
       }
       if (site.form === "sextant") {
         // The index is authored hanging down. After lifting it sweeps the bow and locks on the upper mark.
-        const angle = -open * (1.82 + 0.13 * eyePower(phase) * Math.sin((phase - 9) * 0.64));
+        const angle = this.eyeIndexOffset - open * (1.82 + 0.13 * eyePower(phase) * Math.sin((phase - 9) * 0.64));
         draw(this.sextantMesh.frame, CROWN_ORIGIN, 221, 1);
         draw(this.sextantMesh.needle, SEXTANT_PIVOT, 157, 1, { roll: angle });
         if (open > 0.3) {

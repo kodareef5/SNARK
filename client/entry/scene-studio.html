@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Scene studio · SNARK</title>
+    <link rel="stylesheet" href="/scene-studio.css" />
+  </head>
+  <body>
+    <header>
+      <a href="/cluster/admin/">← Cluster admin</a>
+      <h1>Scene studio</h1>
+      <a href="/" target="_blank" rel="noopener">Open title ↗</a>
+    </header>
+    <main>
+      <section class="monitor" aria-label="Scene preview">
+        <div
+          id="view"
+          tabindex="0"
+          aria-label="Camera preview. Drag to pan and tilt, shift-drag to move sideways and vertically, scroll to dolly. Arrow keys aim the camera."
+        >
+          <iframe title="Live Miami set" src="/flight.html?set=wynwood-shore" tabindex="-1"></iframe>
+          <div id="guide" hidden aria-hidden="true"></div>
+        </div>
+        <div class="tools">
+          <span id="playback" role="status">Loading set…</span><button id="pause">Pause motion</button
+          ><label><input id="guides" type="checkbox" /> Thirds</label
+          ><label
+            >Frame
+            <select id="aspect">
+              <option value="wide">Landscape</option>
+              <option value="tall">Portrait</option>
+            </select></label
+          >
+        </div>
+        <p class="help">Drag to aim · Shift-drag to truck and lift · Scroll to dolly</p>
+      </section>
+      <aside>
+        <div class="section">
+          <h2>Shots</h2>
+          <label for="shots">Saved shot</label
+          ><select id="shots"></select>
+          <label for="name">Shot name</label><input id="name" maxlength="80" autocomplete="off" />
+          <p id="published"></p>
+        </div>
+        <div class="section">
+          <h2>Camera &amp; light</h2>
+          <div id="controls"></div>
+          <button id="reset">Reset framing</button>
+        </div>
+        <div class="actions">
+          <button id="copy">Duplicate shot</button><button id="save">Save draft</button
+          ><button class="primary" id="publish" disabled>Publish to title</button>
+        </div>
+        <p id="notice" role="status"></p>
+        <button id="reload" hidden>Reload saved shots</button>
+      </aside>
+    </main>
+    <script type="module" src="/scene-studio.js"></script>
+  </body>
+</html>
