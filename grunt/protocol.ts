@@ -48,7 +48,20 @@ export interface Capabilities {
   verbs: string[];
   /** The build helper (the plan control), where the game has it. */
   building?: Building;
+  /** The assists (the assist control), where the game has them. */
+  assists?: Assists;
 }
+
+/** The assists' limits: the hands done for the client no better than a good player's. */
+export interface Assists {
+  kinds: AssistKind[];
+  /** How far behind the target an assist's tracking runs: a player's reaction, ms. */
+  reaction_ms: number;
+  /** A ranged shot's error at a still target, degrees; it grows with how fast the target crosses the line. */
+  spread_deg: number;
+}
+
+export type AssistKind = "aim" | "attack" | "harvest";
 
 /** How a game's structures go together, for the plan control: a grid of foundation cells, storeys, the pieces each
  * tier has (form → the item that places it), and how fast and how far off the helper places them. */
@@ -309,7 +322,7 @@ export interface GameEvent extends Envelope<"event">, Sequenced {
 // --- Acting -------------------------------------------------------------------------------------------------------
 
 export type ControlName =
-  | "move" | "look" | "jump" | "crouch" | "stop" | "interact" | "use" | "select" | "items" | "craft" | "rotate" | "chat" | "plan";
+  | "move" | "look" | "jump" | "crouch" | "stop" | "interact" | "use" | "select" | "items" | "craft" | "rotate" | "chat" | "plan" | "assist";
 
 export type Action =
   | { control: "move"; forward: number; strafe: number; sprint?: boolean; duration_ms: number }
@@ -327,6 +340,11 @@ export type Action =
    * the pieces from `from` up to `to` in order, at the game's rate, from the inventory, each within reach; it stops at
    * the first that cannot go, saying which and why. */
   | { control: "plan"; op: "check" | "build"; plan: Plan; from?: number; to?: number }
+  /** An assist: the game works the hands on a target until it is done or an `until` holds. aim: keep the crosshair on
+   * it (leading it, with a bow in hand). attack: close in and strike at the weapon's pace; with a bow, keep `range`
+   * [near, far] metres, lead and loose. harvest: swing at a tool's pace until it is gone. The client's own move or look
+   * takes over from it. */
+  | { control: "assist"; kind: AssistKind; target: EntityId; range?: [number, number]; until?: { health_below?: number; stamina_below?: number; count?: number; seconds?: number } }
   | { control: "chat"; channel: "local" | "global" | "group"; text: string };
 
 export interface Act extends Envelope<"act"> {

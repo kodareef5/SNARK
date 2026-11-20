@@ -2,7 +2,8 @@
 // monitors and the arbiter, and runs them on its own tick (10 a second). The Director (Pi's conversation) starts
 // tasks and hears reports; it never sends controls.
 
-import { CREATURES, WEAPONS } from "./know.ts";
+import { arms, lore } from "./combat.ts";
+import { CREATURES } from "./know.ts";
 import { Belief, compass, side } from "./belief.ts";
 import { Body, type Run, type Wait } from "./body.ts";
 import { MONITORS, type Monitor, type Signal } from "./monitors.ts";
@@ -119,7 +120,8 @@ export class Runtime {
         const busy = (t: Task | null) => !!t && t.by === "director" && !(t.skill === "fight" && t.args.target === e.data.id);
         const goes = freed.length && !busy(this.current) ? freed.at(-1)! : null;
         const others = freed.filter((t) => t !== goes);
-        this.report({ kind: "clear", text: `the ${was.type} is dead${goes ? `; ${goes.skill} ${goes.id} goes on by itself` : ""}${others.length ? `; also free to go on: ${others.map((t) => `game_do {"resume": "${t.id}"} for the ${t.skill}`).join(", ")}` : ""}`, data: { id: e.data.id, freed: freed.map((t) => t.id) } });
+        // News only when it frees something: a fight's own kills are told when the fight ends.
+        this.report({ kind: freed.length ? "clear" : "note", text: `the ${was.type} is dead${goes ? `; ${goes.skill} ${goes.id} goes on by itself` : ""}${others.length ? `; also free to go on: ${others.map((t) => `game_do {"resume": "${t.id}"} for the ${t.skill}`).join(", ")}` : ""}`, data: { id: e.data.id, freed: freed.map((t) => t.id) } });
         if (goes) this.freed = { id: goes.id, danger: String(e.data.id) };
       }
     });
@@ -131,6 +133,7 @@ export class Runtime {
     const w = await this.session.hello(name);
     this.name = w.character.name;
     this.belief.building = w.capabilities.building ?? null;
+    this.belief.assists = w.capabilities.assists ?? null;
     this.trace.record("connected", { game: w.game, character: w.character, limits: w.limits });
     // A game with a map screen: it is read now and then (under fog it grows as the character explores), and the ground
     // about the character more often, wider, since finding ways depends on it.
@@ -423,8 +426,10 @@ export class Runtime {
   private respond(danger: Signal, doing: string | undefined): void {
     const b = this.belief;
     const it = danger.about ? b.things.get(danger.about) : undefined;
-    const held = b.self?.held?.item ?? "";
-    const armed = WEAPONS.includes(held) || WEAPONS.some((w) => b.slotOf(w) !== null);
+    const a = arms(b);
+    const armed = !!a.melee || a.bow;
+    // How many hostile creatures are close and hunting: a pack is another matter.
+    const pack = b.find((t) => t.kind === "creature" && t.disposition === "hostile" && !!t.tags?.includes("hunting") && b.distance(t.pos) < 30).length;
     // How often this very creature has had the character running, and whether such a fight is known to be won.
     const chased = it ? this.tasks.filter((t) => t.skill === "flee" && t.by === "arbiter" && t.args.from === it.id).length : 0;
     const had = it ? this.fights.filter((f) => f.foe === it.type) : [];
@@ -432,7 +437,7 @@ export class Runtime {
     const candidates = it ? ["flee", "fight", "ignore"] : ["flee", "ignore"];
     const state = {
       health: Math.round(b.vital("health") * 100) / 100, stamina: Math.round(b.vital("stamina") * 100) / 100, armed,
-      distance: it ? Math.round(b.distance(it.pos) * 10) / 10 : (danger.detail.distance ?? null), its_health: it?.health ?? null, what: it?.type ?? danger.detail.heard ?? null, doing: doing ?? null, chased, beatable,
+      distance: it ? Math.round(b.distance(it.pos) * 10) / 10 : (danger.detail.distance ?? null), its_health: it?.health ?? null, what: it?.type ?? danger.detail.heard ?? null, doing: doing ?? null, chased, beatable, ranged: a.bow, pack,
     };
     const r = this.arbiterPolicy.decide({ point: "threat.respond", candidates, state });
     const c = r instanceof Promise ? { choice: "flee", why: "an arbiter policy must answer at once" } : r;
@@ -448,7 +453,7 @@ export class Runtime {
     };
     if (choice === "fight") {
       if (doing !== "flee") this.suspend();
-      const t = this.start("fight", { target: danger.about }, "arbiter");
+      const t = this.start("fight", { target: danger.about, ...(Number(state.pack) > 1 ? { all: true } : {}) }, "arbiter");
       this.report({ kind: "danger", text: `${what} ${state.distance ?? "?"} m off${where} ${c.why ? `: ${c.why}` : ""} — handled: fighting (fight ${t.id})${aside()}.`, data: { ...danger.detail, ...state, handled: true } });
       return;
     }
@@ -479,10 +484,9 @@ export class Runtime {
       const lost = Math.round(had.reduce((n, f) => n + f.health_lost, 0) / had.length);
       return `you won ${won.length} of ${had.length} such fights, losing about ${lost} health each`;
     }
-    const lore = CREATURES[type];
-    if (!lore) return "unknown: you have never fought one";
-    const armed = WEAPONS.some((w) => this.belief.count(w) > 0);
-    return `${armed ? lore.armed : lore.unarmed} (what players know; you have not fought one)`;
+    const many = this.belief.find((t) => t.type === type && t.disposition === "hostile" && this.belief.distance(t.pos) < 40).length;
+    const said = lore(type, arms(this.belief), many);
+    return said ? `${said} (what players know; you have not fought one)` : "unknown: you have never fought one";
   }
 
   summary(): Record<string, unknown> {

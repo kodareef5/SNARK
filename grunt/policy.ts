@@ -59,6 +59,14 @@ export const DEFAULT_RULES: Record<string, Rule> = {
     if (u >= 0.6) return { choice: "interrupt", scores: { interrupt: u, continue: 1 - u }, why: `${i.state.signal} at ${u.toFixed(2)}` };
     return { choice: "continue", scores: { interrupt: u, continue: 1 - u }, why: "not urgent enough" };
   },
+  // Whom to fight next: what hunts the character first, the nearest of those; nothing left, stop.
+  "fight.next": (i) => {
+    const c = (i.state.candidates as { id: string; distance: number; hunting: boolean }[] | undefined) ?? [];
+    const best = [...c].sort((a, b) => Number(b.hunting) - Number(a.hunting) || a.distance - b.distance)[0];
+    return best ? { choice: best.id, why: best.hunting ? "the nearest that hunts me" : "the nearest" } : { choice: "stop", why: "none left" };
+  },
+  // With what: a bow while there are arrows and it is not already at the character's throat; else the best blade.
+  "fight.weapon": (i) => (i.state.bow === true && num(i.state.distance, 99) > 4 ? { choice: "bow", why: "from range" } : { choice: "melee", why: i.state.bow ? "too close for the bow" : "no bow" }),
   // The quickest way; the options come timed.
   "travel.mode": (i) => {
     const o = (i.state.options as { id: string; seconds: number }[] | undefined) ?? [];
@@ -67,6 +75,9 @@ export const DEFAULT_RULES: Record<string, Rule> = {
   },
   "threat.respond": (i) => {
     if (!i.state.armed) return { choice: "flee", why: "nothing to fight with" };
+    // A bow and breath to keep moving: shoot it, keeping range, rather than run (a pack of more than three: run).
+    if (i.state.ranged === true && num(i.state.health, 1) >= 0.5 && num(i.state.stamina, 1) >= 0.4 && num(i.state.pack, 1) <= 3) return { choice: "fight", why: "I can shoot it from range" };
+    if (num(i.state.pack, 1) >= 2) return { choice: "flee", why: "too many to fight hand to hand" };
     if (num(i.state.health, 1) < 0.3) return { choice: "flee", why: "too hurt to fight" };
     const d = num(i.state.distance, 99), stamina = num(i.state.stamina, 1);
     if (d <= 6 && stamina < 0.35) return { choice: "fight", why: "it is close and I can't outrun it" };

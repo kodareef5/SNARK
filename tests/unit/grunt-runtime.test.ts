@@ -53,10 +53,12 @@ test("harvest finds the trees, walks to each, faces it and swings until it is go
   expect(h.world.count("wood")).toBe(450);
   expect(task.progress.targets).toBe(3);
   expect(task.result!.summary).toContain("450 wood");
-  // Each swing was a decision, and the targets were chosen nearest first.
+  // Each tree was chosen (nearest first), and taken with one action: the game's harvest assist swings.
   const targets = h.rt.trace.of("decision").filter((d) => d.point === "harvest.target").map((d) => d.choice);
   expect(targets.length).toBe(3);
-  expect(h.rt.trace.of("decision").some((d) => d.point === "harvest.next")).toBe(true);
+  const acts = h.rt.trace.of("act").flatMap((r) => r.actions as { control: string }[]);
+  expect(acts.filter((a) => a.control === "assist").length).toBe(3);
+  expect(acts.some((a) => a.control === "use")).toBe(false);
   expect(h.rt.reports.at(-1)).toMatchObject({ kind: "task", data: { skill: "harvest", status: "done" } });
 });
 
@@ -244,4 +246,67 @@ test("a speaker in sight is told with its id, distance and direction, so the Dir
   h.world.say("Ana", "Scout, come here please");
   h.run(500);
   expect(h.rt.reports.find((r) => r.kind === "addressed")!.text).toMatch(/^Ana \(e:\d+, an owner, 10 m south-east\): "Scout, come here please"$/);
+});
+
+// --- Combat through the attack assist ---------------------------------------------------------------------------
+
+test("fight takes a raptor down through the attack assist: one action, the win remembered", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [{ type: "raptor", x: 0, z: -12 }] });
+  const raptor = [...h.world.things.values()].find((t) => t.type === "raptor")!.id;
+  const t = h.rt.start("fight", { target: raptor });
+  h.run(60_000, () => t.status !== "running");
+  expect(t.status).toBe("done");
+  expect(t.result!.summary).toMatch(/^the fight is over; 1 killed, 6 hits from 6 swings and 0 arrows; I lost \d+ health$/);
+  const acts = h.rt.trace.of("act").flatMap((r) => r.actions as { control: string }[]);
+  expect(acts.filter((a) => a.control === "assist").length).toBe(1);
+  expect(h.rt.fights.at(-1)).toMatchObject({ foe: "raptor", won: true });
+});
+
+test("with a bow, the reflex shoots a hunting raptor from range rather than running, and goes back to work", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { bow: 1, arrow: 20 } }, things: [{ type: "tree", x: 2, z: -6 }, { type: "tree", x: -3, z: -9 }] });
+  const task = h.rt.start("harvest", { kind: "tree" });
+  h.run(2000);
+  const raptor = h.world.place("creature", "raptor", h.world.me.x + 17, h.world.me.z + 4);
+  h.run(60_000, () => !h.world.things.has(raptor));
+  expect(h.world.things.has(raptor)).toBe(false);
+  const respond = h.rt.trace.of("decision").filter((d) => d.point === "threat.respond");
+  expect(respond[0]).toMatchObject({ choice: "fight", why: "I can shoot it from range" });
+  expect(h.world.me.health).toBeGreaterThan(60);
+  h.run(120_000, () => task.status === "done");
+  expect(task.status).toBe("done");
+});
+
+test("fight all clears a pack of three raptors with a bow, one at a time, keeping its range", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { bow: 1, arrow: 40, stone_hatchet: 1 } }, things: [{ type: "raptor", x: -6, z: -38 }, { type: "raptor", x: 0, z: -42 }, { type: "raptor", x: 6, z: -38 }] });
+  const t = h.rt.start("fight", { all: true });
+  h.run(240_000, () => t.status !== "running");
+  expect(t.status).toBe("done");
+  expect([...h.world.things.values()].some((x) => x.type === "raptor")).toBe(false);
+  expect(h.world.me.alive).toBe(true);
+  expect(t.result!.summary).toStartWith("none is left; 3 killed");
+  expect(h.rt.trace.of("decision").filter((d) => d.point === "fight.next").length).toBe(3);
+});
+
+test("a pack hunting a character with only a hatchet: the reflex runs", async () => {
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" } });
+  for (const dx of [-3, 0, 3]) h.world.place("creature", "raptor", dx, -17);
+  h.run(1000);
+  const respond = h.rt.trace.of("decision").filter((d) => d.point === "threat.respond");
+  expect(respond[0]).toMatchObject({ choice: "flee", why: "too many to fight hand to hand" });
+  expect(h.rt.summary().near).toContainEqual(expect.objectContaining({ type: "raptor", fight: "3 together: a losing fight in melee: run, or fight them from range (what players know; you have not fought one)" }));
+});
+
+test("travel flies a tek suit over a wall when it has the element for it, and walks round when it has not", async () => {
+  const wall = { bounds: [-650, -400, 650, 60] as [number, number, number, number], features: [{ type: "cliff" as const, from: [-650, -150] as [number, number], to: [540, -150] as [number, number], width: 8, height: 30 }] };
+  const h = await harness({ me: { x: 0, z: 0, yaw: 0, items: { tek_suit: 1, element: 40 } }, terrain: wall });
+  const t = h.rt.start("travel", { x: 0, z: -300 });
+  h.run(120_000, () => t.status !== "running");
+  expect(t.result!.summary).toMatch(/^I'm at 0, -300 by the tek suit/);
+  expect(h.rt.reports.some((r) => r.text.startsWith("going the tek suit"))).toBe(true);
+  expect(h.world.count("element")).toBeLessThan(40);
+  expect(h.world.me.y).toBeLessThan(1);
+  const poor = await harness({ me: { x: 0, z: 0, yaw: 0, items: { tek_suit: 1, element: 3 } }, terrain: wall });
+  const w = poor.rt.start("travel", { x: 0, z: -300 });
+  poor.run(2_000);
+  expect(w.progress.way).toBe("walk");
 });

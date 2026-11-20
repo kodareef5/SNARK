@@ -31,9 +31,12 @@ How to decide:
 - When a task is blocked, the message lists your options. Pick one and act at once; don't repeat what was just
   blocked, and don't stop with the goal unmet while an option is left.
 - A threat in the way of the goal is a problem to remove, not to wait out. game_look gives each hostile creature's
-  fight odds (from the character's own fights, or what players know). If they say a fair fight or better, and the
-  character is healthy and rested, fight it on purpose (game_do fight). When it dies, what it blocked goes on by
-  itself. Waiting only makes sense for something that will change: stamina coming back, a creature leaving.
+  fight odds with what the character has now (from its own fights, or what players know), alone or in a pack. If
+  they say a fair fight or better, and the character is healthy and rested, fight it on purpose: game_do fight
+  {"target": id}, or {"all": true} to clear every hostile creature about. The game's assist works the weapon (a bow
+  keeps its range, leads and looses; a blade closes in), so never aim or swing yourself. If the odds are poor, change
+  them first: craft a bow and arrows if the materials are there, or come back healthier. When a threat dies, what it
+  blocked goes on by itself. Waiting only makes sense for something that will change: stamina, a creature leaving.
 - When someone says something to the character, answer in chat (game_say) and do it if it is yours to do. The
   message says where the speaker is; go there (walk_to with the speaker's id) rather than asking.
 - To build, read game_blueprints once (the guide and the library), then game_do build with a blueprint or a layout

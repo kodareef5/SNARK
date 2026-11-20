@@ -80,7 +80,7 @@ client                                      game
   "capabilities": {
     "channels": ["self", "entities", "terrain", "inventory", "chat", "focus"],
     "controls": ["move", "look", "jump", "crouch", "stop", "interact", "use", "select", "items", "craft", "rotate", "chat"],
-    "events": ["hurt", "died", "respawn", "chat", "item", "mounted", "dismounted", "notice", "blocked", "heard", "crafted", "built"],
+    "events": ["hurt", "died", "respawn", "chat", "item", "mounted", "dismounted", "notice", "blocked", "heard", "crafted", "built", "struck"],
     "verbs": ["open", "harvest", "pick_up", "mount", "talk"]
   },
   "limits": { "max_duration_ms": 2000, "leash_ms": 1500, "max_rate_hz": 20,
@@ -285,6 +285,7 @@ the connection is about to close.
 | `rotate` | `steps` | Turns the held structure's preview, a step being the game's own (90° for most pieces) |
 | `chat` | `channel` (`local`, `global`, `group`), `text` | As a player types it |
 | `plan` | `op` (`check`, `build`), `plan`, `from`, `to` | The build helper, below |
+| `assist` | `kind` (`aim`, `attack`, `harvest`), `target`, `range`, `until` | The hands done for the client, below |
 
 `duration_ms` and `hold_ms` are at most `limits.max_duration_ms`. To keep moving, a client sends again before the
 last one runs out.
@@ -325,6 +326,41 @@ joins that base, as a player's pieces snap to what stands.
   `detail.ids` and `detail.base`, or `failed` at the first piece that cannot go: `detail.at` (its index),
   `detail.reason` (a verdict, `too_far`, or `missing_items` with `item`) and `by`. The client deals with it and sends
   the plan again from there. `built` events come as pieces go up. `stop` stops it.
+
+### Assists: the hands done for the client
+
+Some of what a player's hands do is held buttons and a steady aim: chopping a tree to the end, keeping the
+crosshair on a raptor, leading a running target with a bow. A program working those through `look` and `use` twenty
+times a second is slow and brittle, and a model deciding each swing is waste. Where a game offers assists (`assist`
+in `controls`, `assists` in `capabilities`), the client names the job and the target, and the game works the hands
+until it is done, at limits it sets and advertises:
+
+```json
+"assists": { "kinds": ["aim", "attack", "harvest"], "reaction_ms": 150, "spread_deg": 1.5 }
+```
+
+- `aim`: keep the crosshair on the target (leading it, with a bow in hand), until stopped or `until.seconds`.
+- `attack`: close in and strike at the weapon's own pace; with a bow, keep `range` [near, far] metres (turning to run
+  when the target comes inside `near`), lead, and loose. Until the target is dead (`result: "killed"`), or
+  `until.health_below` / `until.stamina_below` (the client's own line to break off at).
+- `harvest`: swing (or pick) at the tool's pace until the thing is used up (`gone`) or `until.count` of its yield.
+
+The outcome's `detail` gives `result` (`killed`, `gone`, `count`, `health`, `stamina`, `weight`, `seconds`, or on
+failure `lost`, `obstructed` with `by`, `ammo`, `out_of_reach`) and the tally: `swings`, `shots`, `hits`, `damage`,
+`gained`. `struck` events come as blows land.
+
+An assist is fair because it is a good player's hands, never more, and never eyes:
+
+1. It works only on what the character perceives: an unseen target is refused, and one lost from sight for 1.5 s
+   ends it.
+2. Its tracking runs `reaction_ms` behind the target (where it was then, carried on as it was moving then): a
+   sudden turn fools it for that long, as it fools a player.
+3. It turns no faster than the body turns, strikes no faster than the weapon swings, draws as long as the bow draws.
+4. A ranged shot has `spread_deg` of error at a still target, growing with how fast the target crosses the line;
+   arrows fly, take time, and are stopped by what is in the way. It hits what a good player hits, not everything.
+5. It never strikes what it is not after: something else under the crosshair ends it (`obstructed`, `by`).
+6. Everything costs what it costs a player: stamina, durability, ammunition.
+7. The client's own `move` or `look` takes over from it at once.
 
 ## Staying connected
 

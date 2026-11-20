@@ -5,6 +5,7 @@
 
 import { type Belief, compass } from "./belief.ts";
 import { build } from "./build.ts";
+import { fight } from "./combat.ts";
 import { type Costs, costsFor, type Danger, type RideKind, rideKind, type Route, WALK } from "./nav.ts";
 import type { Remembered } from "./belief.ts";
 import type { Body, Run } from "./body.ts";
@@ -48,7 +49,7 @@ function addGained(p: Record<string, unknown>, o: Outcome | undefined): number {
 
 /** Takes an item in hand. Slots move when a stack runs out, so the outcome's item is checked, and a stale view of the
  * inventory is waited out before trying again. */
-function* hold(ctx: SkillContext, item: string): Run<boolean> {
+export function* hold(ctx: SkillContext, item: string): Run<boolean> {
   const b = ctx.belief;
   if (b.self?.held?.item === item) return true;
   for (let i = 0; i < 3; i++) {
@@ -62,7 +63,7 @@ function* hold(ctx: SkillContext, item: string): Run<boolean> {
   return false;
 }
 
-function* holdBest(ctx: SkillContext, tools: string[]): Run<string | null> {
+export function* holdBest(ctx: SkillContext, tools: string[]): Run<string | null> {
   for (const tool of tools) if (ctx.belief.slotOf(tool) !== null && (yield* hold(ctx, tool))) return tool;
   return null;
 }
@@ -110,7 +111,13 @@ interface Way {
   seconds: number;
   ride?: Remembered;
   kind?: RideKind;
+  /** Flying in a tek suit. */
+  suit?: boolean;
 }
+
+/** A tek suit's flight: its speed, and a unit of element every two seconds aloft. */
+const SUIT: RideKind = { on: "air", speed: 16 };
+const SUIT_BURN_S = 2;
 
 /** The ways the character could go: on foot, or on each ride it knows of near enough, each timed as a whole (walking
  * to it, the ride, walking on from where it must stop, mounting, climbing and landing). */
@@ -131,6 +138,15 @@ function ways(b: Belief, goal: Vec3): Way[] {
     const overhead = kind.on === "air" ? 16 : 2;
     const seconds = toIt + ridden.cost / 3.5 + rest + overhead;
     if (isFinite(seconds)) out.push({ id: `ride:${r.id}`, how: `the ${r.type} ${r.id}${r.id === riding ? " (riding it)" : ""}`, seconds: Math.round(seconds), ride: r, kind });
+  }
+  // A tek suit, worn or in the bag, with element enough to stay aloft the whole way (and a margin).
+  if (b.count("tek_suit") > 0 || b.self?.status.includes("tek_suit")) {
+    const flown = nav.route(b.pos, goal, costsFor(SUIT), []);
+    if (flown) {
+      const aloft = flown.cost / 3.5 + 10;
+      const burn = Math.ceil(aloft / SUIT_BURN_S) + 2;
+      if (b.count("element") >= burn) out.push({ id: "suit", how: `the tek suit (${burn} element)`, seconds: Math.round(aloft + 6), kind: SUIT, suit: true });
+    }
   }
   return out.sort((x, y) => x.seconds - y.seconds);
 }
@@ -187,6 +203,16 @@ function* travel(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRes
   if (way.ride && way.kind) {
     if (!(yield* board(ctx, way.ride, way.kind))) return { status: "blocked", summary: `I couldn't get on the ${way.ride.type}`, data: { reason: "board" } };
     costs = costsFor(way.kind);
+  } else if (way.suit) {
+    if (b.self?.mount) yield* dismount(ctx);
+    // Into the suit (if it is in the bag), and up.
+    if (!b.self?.status.includes("tek_suit")) {
+      const slot = b.slotOf("tek_suit");
+      if (slot !== null) yield* ctx.body.settle(ctx.body.act([{ control: "items", op: "equip", slot }], "put on the tek suit"), 1500);
+      yield { until: () => !!b.self?.status.includes("tek_suit"), ms: 1000 };
+    }
+    for (let i = 0; i < 12 && (b.self?.pos[1] ?? 0) < 40; i++) yield* ctx.body.settle(ctx.body.act([{ control: "jump", hold_ms: 2000 }], "climb"), 3000);
+    costs = costsFor(SUIT);
   } else if (b.self?.mount) yield* dismount(ctx);
   const air = way.kind?.on === "air";
   const r0 = yield* ctx.body.goTo(point, typeof args.reach === "number" ? args.reach : 3, {
@@ -218,7 +244,7 @@ function* travel(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRes
   if (args.dismount && b.self?.mount) yield* dismount(ctx);
   const walked = Math.round(Math.hypot(b.pos[0] - start[0], b.pos[2] - start[2]));
   const time = Math.round((b.now - t0) / 1000);
-  const by = way.ride ? ` by ${way.how}${b.self?.mount ? " (still on it)" : ""}` : "";
+  const by = way.ride ? ` by ${way.how}${b.self?.mount ? " (still on it)" : ""}` : way.suit ? ` by the tek suit (${b.count("element")} element left)` : "";
   if (r === "arrived") return { status: "done", summary: `I'm at ${label}${by}, after ${time} s${detours ? ` and ${detours} detour${detours > 1 ? "s" : ""}` : ""}`, data: { seconds: time, detours, way: way.id } };
   if (r === "unreachable") return { status: "blocked", summary: `I know no way to ${label} from here (${walked} m from where I set out): explore toward it, or another way of travelling`, data: { reason: "unreachable" } };
   return { status: "blocked", summary: r === "lost" ? `I lost track of ${label}` : `I can't get through to ${label}`, data: { reason: r, detours } };
@@ -332,6 +358,18 @@ function* harvest(ctx: SkillContext, args: Record<string, unknown>): Run<SkillRe
       continue;
     }
     let misses = 0;
+    // The game's assist works the hands: one action takes the thing (or as much as is wanted), at the tool's pace.
+    if (b.assists?.kinds.includes("harvest")) {
+      const left = want !== null ? want - have() : until?.[item] !== undefined ? until[item]! - b.count(item) : undefined;
+      const [o] = yield* ctx.body.settle(ctx.body.act([{ control: "assist", kind: "harvest", target, ...(left !== undefined ? { until: { count: Math.max(1, left) } } : {}) }], `harvest ${target}`), 120_000);
+      addGained(p, o);
+      const res = (o?.detail as { result?: string } | undefined)?.result;
+      if (res === "obstructed" || res === "out_of_reach" || res === "lost") unreachable.add(target), (p.unreachable = [...unreachable]);
+      if (res === "weight") return { status: "blocked", summary: `too heavy to carry more; ${summary()}`, data: { gained: p.gained, reason: "weight" } };
+      if (!b.things.has(target)) p.targets = Number(p.targets) + 1;
+      if (o?.status === "interrupted") return { status: "blocked", summary: `interrupted; ${summary()}`, data: { gained: p.gained, reason: "interrupted" } };
+      continue;
+    }
     while (b.things.has(target) && !enough()) {
       const action = kind === "bush"
         ? { control: "interact" as const, target, verb: "harvest", hold_ms: 2000 }
@@ -378,39 +416,6 @@ function* flee(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResul
 }
 
 /** Fights a creature with the best weapon to hand: closes in, faces it, swings until it is dead or gone. */
-function* fight(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
-  const b = ctx.belief, p = ctx.progress, target = String(args.target ?? "");
-  const weapon = yield* holdBest(ctx, ["stone_pick", "stone_hatchet"]);
-  const start = b.now;
-  p.health0 ??= b.vital("health");
-  p.foe ??= b.things.get(target)?.type ?? "creature";
-  let swings = Number(p.swings ?? 0);
-  const lost = () => Math.round((Number(p.health0) - b.vital("health")) * 100);
-  while (b.now - start < 30000) {
-    const t = b.things.get(target);
-    if (!t) return { status: "done", summary: `the fight is over after ${swings} swings${weapon ? ` with the ${weapon}` : ""}; I lost ${lost()} health`, data: { swings, won: true, foe: p.foe, weapon, health_lost: lost() } };
-    if (b.vital("health") < 0.15) return { status: "blocked", summary: "I'm nearly dead", data: { swings, won: false, foe: p.foe, weapon, health_lost: lost() } };
-    if (b.distance(t.pos) > 1.8) {
-      ctx.body.act([{ control: "look", yaw: b.yawTo(t.pos), pitch: 0 }, { control: "move", forward: 1, strafe: 0, sprint: true, duration_ms: 300 }], "close in");
-      yield { ms: 100 };
-      continue;
-    }
-    // Something else under the crosshair (a tree between): a step aside for a clear swing, not a swing at the tree.
-    const other = b.focus.target && b.focus.target !== target && b.focusAt > b.now - 300;
-    if (other) {
-      p.side = -Number(p.side ?? 1);
-      ctx.body.act([{ control: "look", yaw: b.yawTo(t.pos), pitch: 0 }, { control: "move", forward: 0, strafe: Number(p.side), duration_ms: 400 }], "clear the line");
-      yield { ms: 400 };
-      continue;
-    }
-    ctx.body.act([{ control: "look", yaw: b.yawTo(t.pos), pitch: 0 }, { control: "use", hand: "primary", hold_ms: 600 }], `strike ${target}`);
-    swings++;
-    p.swings = swings;
-    yield { ms: 600 };
-  }
-  return { status: "blocked", summary: "it won't die", data: { swings, won: false, foe: p.foe, weapon, health_lost: lost() } };
-}
-
 /** Where each material comes from. */
 const SOURCE: Record<string, string> = { wood: "tree", thatch: "tree", stone: "rock", flint: "rock", fiber: "bush", berries: "bush" };
 
@@ -478,7 +483,10 @@ export const SKILLS: Record<string, Skill> = {
     params: { items: "{material: count}, the totals to have", radius: "metres around each patch (default 25)" }, body: true, run: gather,
   },
   flee: { name: "flee", describe: "Run from a threat until it is far or lost.", params: { from: "entity id", yaw: "the world yaw it was heard from" }, body: true, run: flee },
-  fight: { name: "fight", describe: "Fight a creature with the best weapon to hand until it is dead or gone.", params: { target: "entity id" }, body: true, run: fight },
+  fight: {
+    name: "fight", describe: "Fight with what the character has: a bow from range (it keeps its distance, leads and looses) or the best blade. The game's assist works the hands; this chooses whom, with what and when to stop. all: clear every hostile creature about, one at a time.",
+    params: { target: "entity id (or all)", all: "boolean: every hostile creature about, hunting and nearest first", retreat: "health fraction to break off at (default 0.3)" }, body: true, run: fight,
+  },
   build: {
     name: "build", describe: "Build a base from the library (blueprint) or a layout you write (game_blueprints shows both): it checks the whole plan with the game, finds ground where it fits, crafts the pieces and places them section by section through the game's build helper. check: true only checks (fit, what is built, the bill). Stopped on a piece, it says which and why; take it up again with resume.",
     params: { blueprint: "a library name", layout: "a layout object, in place of blueprint", tier: "thatch | wood | stone (default wood)", x: "number: where its middle goes (default: in front of you)", z: "number", facing: "n | e | s | w: the side its front faces (default: toward you)", check: "boolean: only check", section: "pieces a step (default 30)" }, body: true, run: build,

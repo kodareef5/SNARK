@@ -151,3 +151,116 @@ test("a quiet client is let go of, and a repeated command is answered, never run
   s.step(10);
   expect(s.world.me.z).toBe(z);
 });
+
+// --- Assists: the hands done for the client, no better than a good player's ------------------------------------
+
+const until = (s: ReturnType<typeof open>, c: string, ticks: number) => {
+  for (let i = 0; i < ticks && !s.outcomes(c).length; i++) s.step(1);
+  return s.outcomes(c)[0];
+};
+
+test("an attack assist closes in on a raptor and kills it with the hatchet at the hatchet's own pace, as one action", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [{ type: "raptor", x: 0, z: -10 }] });
+  const raptor = [...s.world.things.values()].find((t) => t.type === "raptor")!.id;
+  s.send({ type: "subscribe", id: "sub", channels: {}, events: ["struck"] });
+  const t0 = s.world.t;
+  const c = s.act({ control: "assist", kind: "attack", target: raptor });
+  const o = until(s, c, 600)!;
+  expect(o).toMatchObject({ status: "completed", detail: { result: "killed", hits: 6, damage: 60 } });
+  // Never faster than a swing every 600 ms.
+  expect(s.world.t - t0).toBeGreaterThanOrEqual(5 * 600);
+  expect(s.world.things.has(raptor)).toBe(false);
+  expect(s.world.me.alive).toBe(true);
+  expect(s.got.filter((m) => m.type === "event" && m.kind === "struck").length).toBe(6);
+});
+
+test("an assist never strikes what it is not after: a tree in the way stops it, and the tree is untouched", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { stone_pick: 1 }, hold: "stone_pick" }, things: [{ type: "tree", x: 0, z: -1.4 }, { type: "rock", x: 0, z: -3.3 }] });
+  const [tree, rock] = ["tree", "rock"].map((k) => [...s.world.things.values()].find((t) => t.type === k)!);
+  const c = s.act({ control: "assist", kind: "harvest", target: rock!.id });
+  expect(until(s, c, 200)).toMatchObject({ status: "failed", code: "blocked", detail: { result: "obstructed", by: tree!.id } });
+  expect(tree!.left).toBe(150);
+  expect(rock!.left).toBe(80);
+});
+
+test("a harvest assist takes a tree in one action, or stops at a count", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [{ type: "tree", x: 0, z: -2 }, { type: "tree", x: 4, z: -2 }] });
+  const [a, b] = [...s.world.things.values()].filter((t) => t.type === "tree").map((t) => t.id);
+  const some = s.act({ control: "assist", kind: "harvest", target: a!, until: { count: 30 } });
+  expect(until(s, some, 200)).toMatchObject({ status: "completed", detail: { result: "count", gained: { wood: 36, thatch: 12 } } });
+  const all = s.act({ control: "assist", kind: "harvest", target: b! });
+  expect(until(s, all, 400)).toMatchObject({ status: "completed", detail: { result: "gone", swings: 13, gained: { wood: 150, thatch: 52 } } });
+});
+
+test("aim follows a target a reaction behind, at the body's own turn rate: a sudden move fools it for a moment", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0 }, things: [{ type: "raptor", x: 0, z: -40 }] });
+  const r = [...s.world.things.values()].find((t) => t.type === "raptor")!;
+  const c = s.act({ control: "assist", kind: "aim", target: r.id, until: { seconds: 5 } });
+  s.step(20);
+  // It darts from north of the character to its east, in a tick.
+  r.home = [40, 0];
+  r.goal = [40, 0];
+  r.x = 40;
+  r.z = 0;
+  s.step(2);
+  expect(Math.abs(s.world.me.yaw)).toBeLessThan(0.05);
+  s.step(20);
+  expect(Math.abs(s.world.me.yaw - Math.PI / 2)).toBeLessThan(0.1);
+  // An unseen target cannot be assisted at all.
+  const hidden = open({ me: { x: 0, z: 0, yaw: 0 }, things: [{ type: "raptor", x: 0, z: -40 }], terrain: { bounds: [-60, -60, 60, 60], features: [{ type: "cliff", from: [-20, -20], to: [20, -20], width: 2 }] } });
+  const h = [...hidden.world.things.values()].find((t) => t.type === "raptor")!.id;
+  hidden.act({ control: "assist", kind: "aim", target: h });
+  expect(hidden.got.at(-1)).toMatchObject({ type: "ack", actions: [{ accepted: false, code: "out_of_reach" }] });
+  void c;
+});
+
+test("a bow attack keeps its range, leads and looses: the raptor it angers is shot down before it can bite much", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { bow: 1, arrow: 20 }, hold: "bow" }, things: [{ type: "raptor", x: 0, z: -30 }] });
+  const raptor = [...s.world.things.values()].find((t) => t.type === "raptor")!.id;
+  const c = s.act({ control: "assist", kind: "attack", target: raptor, range: [8, 35] });
+  const o = until(s, c, 2400)!;
+  expect(o).toMatchObject({ status: "completed", detail: { result: "killed", hits: 4, damage: 72 } });
+  const shots = Number(o.detail!.shots);
+  expect(shots).toBeGreaterThanOrEqual(4);
+  expect(shots).toBeLessThanOrEqual(8);
+  expect(s.world.count("arrow")).toBe(20 - shots);
+  expect(s.world.me.health).toBeGreaterThan(70);
+});
+
+test("arrows fly and are stopped by what blocks them: a shot through a tree hits the tree", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { bow: 1, arrow: 3 }, hold: "bow" }, things: [{ type: "tree", x: 0, z: -5 }, { type: "raptor", x: 0, z: -15 }] });
+  const raptor = [...s.world.things.values()].find((t) => t.type === "raptor")!;
+  const c = s.act({ control: "use", hand: "primary", hold_ms: 1000 });
+  until(s, c, 60);
+  s.step(20);
+  expect(raptor.left).toBe(60);
+  expect(s.world.count("arrow")).toBe(2);
+});
+
+test("the client's own move takes over from an assist", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { stone_hatchet: 1 }, hold: "stone_hatchet" }, things: [{ type: "raptor", x: 0, z: -15 }] });
+  const raptor = [...s.world.things.values()].find((t) => t.type === "raptor")!.id;
+  const c = s.act({ control: "assist", kind: "attack", target: raptor });
+  s.step(5);
+  s.act({ control: "move", forward: -1, strafe: 0, duration_ms: 500 });
+  s.step(1);
+  expect(s.outcomes(c)[0]).toMatchObject({ status: "interrupted", by: "replaced" });
+});
+
+test("a tek suit flies on element: jump climbs, it goes fast aloft, burns a unit every two seconds, and comes down without", () => {
+  const s = open({ me: { x: 0, z: 0, yaw: 0, items: { tek_suit: 1, element: 3 } } });
+  const slot = s.world.me.slots.findIndex((x) => x.item === "tek_suit");
+  s.act({ control: "items", op: "equip", slot });
+  s.step(1);
+  expect(s.observe({ self: {} }).channels.self!.status).toContain("tek_suit");
+  s.act({ control: "jump", hold_ms: 2000 });
+  s.step(40);
+  expect(s.world.me.y).toBeGreaterThan(9);
+  s.act({ control: "move", forward: 1, strafe: 0, duration_ms: 2000 });
+  s.step(40);
+  expect(s.world.me.z).toBeLessThan(-25);
+  // Out of element after six seconds aloft: down it comes.
+  s.step(140);
+  expect(s.world.count("element")).toBe(0);
+  expect(s.world.me.y).toBeLessThan(0.5);
+});
