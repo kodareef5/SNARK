@@ -1,12 +1,12 @@
-# Paints the Rex's dye regions, its dyed base, and its hurt and decay pictures, from tex/rex2_source.png (ref/prepare.py).
-#   blender -b --factory-startup --python-exit-code 1 -P assets/source/core/creatures/rex2/ref/paint.py [-- preview]
+# Paints the Rex's dye regions, its dyed base, and its hurt and decay pictures, from tex/rex_source.png (ref/prepare.py).
+#   blender -b --factory-startup --python-exit-code 1 -P assets/source/core/creatures/rex/ref/paint.py [-- preview]
 #
 # The regions are worked out on each vertex of the rest pose, from the bone that moves it most and which way its skin
 # faces, then baked onto the texture by Cycles through the model's own UVs. Where a region dyes, the base becomes grey
 # with the source's light and dark: the game multiplies it by the region's colour (client/core/render/surface.ts). The
 # mouth, teeth and eyes are never dyed; they are found by their colour within the head. It prints each region's mean
 # colour in the source; content/creatures/rex.ts gives a wild Rex the palette's nearest browns to them.
-# With "preview", it also writes small pictures of the masks to var/rex2/paint/ to look at.
+# With "preview", it also writes small pictures of the masks to var/rex/paint/ to look at.
 
 import math
 import os
@@ -37,8 +37,8 @@ def open_rest_pose():
     sys.path.insert(0, FOLDER)
     sys.dont_write_bytecode = True
     runpy.run_path(os.path.join(FOLDER, "import.py"), run_name="__main__")
-    body = bpy.data.objects["rex2_body"]
-    for pb in bpy.data.objects["rex2"].pose.bones:
+    body = bpy.data.objects["rex_body"]
+    for pb in bpy.data.objects["rex"].pose.bones:
         pb.location, pb.rotation_quaternion, pb.scale = (0, 0, 0), (1, 0, 0, 0), (1, 1, 1)
     bpy.context.view_layer.update()
     return body
@@ -171,7 +171,7 @@ def save(name, rgba):
     image = bpy.data.images.new(name, w, h, alpha=c == 4)
     image.colorspace_settings.name = "Non-Color"
     image.pixels.foreach_set(full[::-1].ravel())
-    path = os.path.join(TEX, f"{name}.png") if not name.startswith("preview") else os.path.join(ROOT, "var/rex2/paint", f"{name}.png")
+    path = os.path.join(TEX, f"{name}.png") if not name.startswith("preview") else os.path.join(ROOT, "var/rex/paint", f"{name}.png")
     os.makedirs(os.path.dirname(path), exist_ok=True)
     image.filepath_raw = path
     image.file_format = "PNG"
@@ -228,7 +228,7 @@ def main():
     wound = wounds(co, nor)
     baked = bake(body, {"mask": w[:, 0:3], "mask2": w[:, 3:6], "head": np.repeat(head[:, None], 3, 1),
                         "wound": np.repeat(wound[:, None], 3, 1)}, MASK)
-    source = load("rex2_source.png")[:, :, :3]  # sRGB values, 4096
+    source = load("rex_source.png")[:, :, :3]  # sRGB values, 4096
     n = source.shape[0]
     k = n // MASK
     # The mouth, teeth and eyes in the head: pink and red flesh, bright pale teeth, and the saturated orange eye.
@@ -261,21 +261,21 @@ def main():
     luma = (lin * np.array([0.2126, 0.7152, 0.0722])).sum(axis=2)
     grey = to_srgb(luma)[:, :, None].repeat(3, 2)
     base = source * (1 - dyed[:, :, None]) + grey * dyed[:, :, None]
-    save("rex2_base", base)
-    save("rex2_mask", down(masks[:, :, 0:3], k))
-    save("rex2_mask2", down(masks[:, :, 3:6], k))
+    save("rex_base", base)
+    save("rex_mask", down(masks[:, :, 0:3], k))
+    save("rex_mask2", down(masks[:, :, 3:6], k))
     # Hurt: dark red scores where the claws raked. Decay: dull grey-brown everywhere else.
     rake = down(up(baked["wound"][:, :, 0], k), n // LAYER)
     shade = down(luma, n // LAYER)
     hurt = np.zeros((LAYER, LAYER, 4), np.float32)
     hurt[:, :, 0], hurt[:, :, 1], hurt[:, :, 2] = 0.33 + 0.1 * shade, 0.11 + 0.05 * shade, 0.10 + 0.04 * shade
     hurt[:, :, 3] = np.where(rake > 0.08, 0.33 + 0.6 * rake, 0)
-    save("rex2_hurt", hurt)
+    save("rex_hurt", hurt)
     decay = np.zeros_like(hurt)
     decay[:, :, 0], decay[:, :, 1], decay[:, :, 2] = 0.27 + 0.1 * shade, 0.25 + 0.1 * shade, 0.19 + 0.08 * shade
     noise = np.random.default_rng(7).random((LAYER, LAYER)).astype(np.float32)
     decay[:, :, 3] = np.where(hurt[:, :, 3] > 0, 0, 0.18 + 0.25 * noise)
-    save("rex2_decay", decay)
+    save("rex_decay", decay)
     if PREVIEW:
         save("preview_mask", down(masks[:, :, 0:3], 4 * k))
         save("preview_mask2", down(masks[:, :, 3:6], 4 * k))

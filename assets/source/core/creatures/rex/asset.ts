@@ -1,103 +1,79 @@
-import { distanceLods } from "./distance.ts";
+// The Tyrannosaurus, built from Patch's animated T-rex (ref/SOURCES.md, ref/DESIGN.md). The plan that made it is
+// planning/workstreams/rex2.md.
 import { defaultPalette, nearestColour } from "../../../../../shared/pack/palette.ts";
-import type { CreatureAsset, MaterialSpec, SocketSpec, Vec3, ZoneName, ZoneSpec } from "../../../../../tools/art/spec.ts";
+import type { CreatureAsset, ZoneSpec } from "../../../../../tools/art/spec.ts";
+import rider from "./ref/rider.json";
+import fitted from "./ref/zones.json";
 
 const palette = defaultPalette();
-const pigments = [
-  ["Flanks", 0x777348], ["Throat and belly", 0xc0a477], ["Dorsal bars", 0x49483b],
-  ["Face and nasal ridges", 0x99664a], ["Limbs and tail bands", 0x62644c], ["Claws and brow scutes", 0x92774f],
+// The six dye regions, named as the earlier Rex's were so a saved animal keeps its colours. Each sample is the
+// region's first wild colour (content/creatures/rex.ts), for the review sheet.
+const regions = [
+  ["Flanks", 0x54412e], ["Throat and belly", 0x9a7f5b], ["Dorsal bars", 0x3a261c],
+  ["Face and nasal ridges", 0x655038], ["Limbs and tail bands", 0x54412e], ["Claws and brow scutes", 0x3a261c],
 ] as const;
 
-function material(name: string, living = true): MaterialSpec {
-  const picture = (role: string) => `tex/${name}_${role}.png`;
-  return {
-    base: picture("base"), normal: picture("normal"), packed: picture("packed"), height: picture("height"),
-    ...(name === "rex_hide" || name === "rex_head" ? { tops: { mask: 512, mask2: 512, mro: 512 } } : {}),
-    regions: { mask: picture("mask"), mask2: picture("mask2") },
-    ...(living ? { hurt: picture("hurt"), decay: picture("decay") } : {}),
-  };
-}
-
-function capsule(zone: ZoneName, on: string, a: Vec3, b: Vec3, radius: number): ZoneSpec {
-  return { zone, on, a, b, radius };
-}
-
-function limbs(): ZoneSpec[] {
-  const result: ZoneSpec[] = [];
-  for (const [suffix, region, sign] of [["l", "L", 1], ["r", "R", -1]] as const) {
-    result.push(
-      capsule(`leg${region}`, `thigh_${suffix}`, [.040 * sign, -.02, -.10], [.136 * sign, -.91, .67], .455),
-      capsule(`leg${region}`, `shank_${suffix}`, [0, -.12, -.11], [-.08 * sign, -.90, -.81], .280),
-      capsule(`leg${region}`, `metatarsus_${suffix}`, [0, -.06, .03], [0, -.69, .37], .167),
-      capsule(`foot${region}`, `toes_${suffix}`, [0, .015, -.04], [.003 * sign, -.022, .81], .30),
-      capsule(`arm${region}`, `humerus_${suffix}`, [0, 0, 0], [.12 * sign, -.34, -.18], .104),
-      capsule(`arm${region}`, `forearm_${suffix}`, [0, 0, 0], [.075 * sign, -.055, .52], .09),
-      capsule(`hand${region}`, `manus_${suffix}`, [0, 0, 0], [.02 * sign, -.124, .221], .103),
-    );
-  }
-  return result;
-}
-
-function socket(name: string, bone: string, offset: Vec3): SocketSpec { return { name, bone, offset }; }
+// Hit capsules fitted to the built skin by ref/zones.ts, along each bone.
+const zones = fitted as ZoneSpec[];
 
 const loop = ["idle", "walk", "run", "swim", "swim_idle", "fall", "torpor_idle"];
 const single = ["idle_look", "idle_scent", "attack", "call", "startled", "flinch", "land", "turn", "torpor_in", "torpor_eat", "torpor_out", "death"];
 
 export default {
+  modelCredit: "Animated T-rex by Patch, made with anymove (https://patch.gg/create/toolbox/assets/anymove:trex), CC0 1.0. Adapted for SNARK",
   kind: "creature",
-  source: { scripts: ["rig.py", "model.py", "clips.py", "saddle.py"] },
+  source: { scripts: ["import.py", "gaits.py", "clips.py", "saddle.py"] },
   scale: 1,
-  skeleton: { id: "rex", root: "pelvis", bones: 30 },
-  zones: [
-    // The ilia support the fallen hip across its width. Neighbouring tail and chest cover its longitudinal axis.
-    capsule("torso", "pelvis", [-.45, -.01, .26], [.45, -.01, .26], .77),
-    capsule("torso", "chest", [0, -.06, -.04], [0, .015, .89], .82),
-    capsule("torso", "neck_1", [0, .10, -.03], [0, .31, .70], .55),
-    capsule("torso", "neck_2", [0, .10, -.08], [0, .30, .56], .53),
-    // The wide temporal table and the narrower tooth arcade require separate fitted sections.
-    capsule("head", "skull", [0, .22, .161], [0, .102, .93], .75),
-    capsule("head", "maxilla", [0, .07, .16], [0, -.10, 1.02], .38),
-    capsule("head", "jaw", [0, -.19, .073], [0, -.084, 1.65], .375),
-    capsule("torso", "tail_1", [0, .08, -.49], [0, -.09, -1.22], .61),
-    capsule("torso", "tail_2", [0, .01, 0], [0, -.32, -1.17], .422),
-    capsule("torso", "tail_3", [0, -.005, -.03], [0, -.39, -1.17], .30),
-    capsule("torso", "tail_4", [0, .02, 0], [0, -.33, -1.20], .157),
-    capsule("torso", "tail_5", [0, .038, .02], [0, -.095, -1.178], .122),
-    ...limbs(),
-  ],
+  skeleton: { id: "rex", root: "pelvis", bones: 25 },
+  zones,
+  // Offsets are from each bone's joint at rest, in metres (ref/caps.ts prints where they land). The seat and the
+  // rider's grips, footrests, soles and knees are placed by saddle.py and kept in ref/rider.json. The vent is under the
+  // root of the tail.
   sockets: [
-    socket("seat", "chest", [0, 1.126, .21]), socket("vent", "pelvis", [0, -.45, -.48]),
-    socket("overhead", "chest", [0, 1.64, .17]), socket("head", "skull", [0, .37, .40]),
-    socket("bite", "skull", [0, -.144, 1.60]), socket("mouth", "jaw", [0, .035, 1.45]),
-    ...(["l", "r"] as const).flatMap((s) => {
-      const k = s === "l" ? 1 : -1;
-      return [
-        socket(`grip_${s}`, "chest", [k * .19, 1.416, .58]),
-        socket(`rest_${s}`, "chest", [k * .646, .675, .50]),
-        socket(`sole_${s}`, "chest", [k * .656, .604, .55]),
-        socket(`knee_${s}`, "chest", [k * .47, .98, .65]),
-        socket(`breath_${s}`, "skull", [k * .39, .288, 1.642]),
-        socket(`foot_${s}`, `toes_${s}`, [0, -.105, .27]),
-      ];
-    }),
+    ...Object.entries(rider).map(([name, offset]) => ({ name, bone: "spine", offset: offset as [number, number, number] })),
+    { name: "overhead", bone: "spine", offset: [0, 2.4, 0.3] },
+    { name: "head", bone: "skull", of: ["skull"], at: "top" },
+    { name: "mouth", bone: "jaw", of: ["jaw"], at: "front" },
+    { name: "bite", bone: "skull", of: ["skull"], at: "front" },
+    { name: "vent", bone: "pelvis", offset: [0, -0.85, -1.0] },
   ],
-  regions: pigments.map(([name, rgb]) => ({ name, sample: nearestColour(palette, rgb >>> 16, (rgb >>> 8) & 255, rgb & 255) })),
-  clips: [...loop, ...single].map(name => ({ name, source: name, loop: loop.includes(name) })),
-  materials: { rex_hide: material("rex_hide"), rex_head: material("rex_head"), rex_detail: material("rex_detail") },
+  regions: regions.map(([name, rgb]) => ({ name, sample: nearestColour(palette, rgb >>> 16, (rgb >>> 8) & 255, rgb & 255) })),
+  clips: [...loop, ...single].map((name) => ({ name, source: name, loop: loop.includes(name) })),
+  // tex/rex_normal.png and rex_packed.png are the source's own (ref/prepare.py); the rest are made by ref/paint.py.
+  materials: {
+    rex: {
+      base: "tex/rex_base.png", normal: "tex/rex_normal.png", packed: "tex/rex_packed.png",
+      regions: { mask: "tex/rex_mask.png", mask2: "tex/rex_mask2.png" },
+      hurt: "tex/rex_hurt.png", decay: "tex/rex_decay.png",
+    },
+  },
   feet: ["toes_l", "toes_r"],
-  gaits: { walk: { stride: 3.36 }, run: { stride: 6.16 }, swim: { stride: 3.8, stated: "Alternating hindlimb strokes at three metres per second." } },
-  budgets: { triangles: [36000, 14500, 6200, 2600, 1000, 288, 112], texture: { top: 2048, megabytes: 40, layer: 256 } },
-  flat: 4,
-  distanceLods,
-  ragdoll: { limp: 50, bodies: [
-    { bone: "pelvis", mass: .4 }, { bone: "skull", mass: .08, swing: 45, twist: 40 },
-    { bone: "tail_3", mass: .05, swing: 50, twist: 32 }, { bone: "tail_5", mass: .032, swing: 40, twist: 25 },
-    ...(["l", "r"] as const).flatMap(side => [
-      { bone: `manus_${side}`, mass: .012, swing: 55, twist: 40 },
-      { bone: `shank_${side}`, mass: .12, swing: 85, twist: 60 },
-      { bone: `toes_${side}`, mass: .10, swing: 35, twist: 20 },
+  // How far the source's Walk_Root and Run_Root travel in one cycle (ref/gait.py).
+  gaits: {
+    walk: { stride: 4.23 }, run: { stride: 6.29 },
+    swim: { stride: 3.8, stated: "Alternating hindlimb strokes at three metres per second." },
+  },
+  budgets: { triangles: [58000, 30000, 14500, 6200, 2600, 1000, 300, 112], texture: { top: 4096, megabytes: 64, layer: 256 } },
+  flat: 5,
+  // Limp as the death clip's roll ends, at tick 46, so it settles quickly from lying. Each limit is a little past what
+  // the clips bend that joint.
+  ragdoll: { limp: 46, bodies: [
+    { bone: "pelvis", mass: 0.4 }, { bone: "skull", mass: 0.08, swing: 62, twist: 18 },
+    { bone: "tail_3", mass: 0.082, swing: 33, twist: 13 },
+    ...(["l", "r"] as const).flatMap((side) => [
+      { bone: `forearm_${side}`, mass: 0.012, swing: 51, twist: 58 },
+      { bone: `shank_${side}`, mass: 0.12, swing: 76, twist: 28 },
+      { bone: `toes_${side}`, mass: 0.1, swing: 75, twist: 45 },
     ]),
-  ] },
-  worn: [{ item: "core:saddle_rex", object: "saddle", materials: { rex_saddle: material("rex_saddle", false) },
-    budgets: { triangles: [4800, 1600, 550, 160] }, flat: 2 }],
+  ],
+  // The thighs are wider than the hips, and the trunk and tail root carry the body on the ground. Their capsules ride
+  // on the pelvis body, so a fallen Rex rests on them and its thigh doesn't sink. The tail's end rides on the middle of
+  // the tail: as a body of its own, light and long, it kept swinging after the rest had settled.
+  contacts: ["thigh_l", "thigh_r", "metatarsus_l", "metatarsus_r", "humerus_l", "humerus_r", "spine", "chest", "neck_1", "neck_2", "jaw", "tail_1", "tail_2", "tail_4", "tail_5"] },
+  // Its saddle, fitted by saddle.py.
+  worn: [{
+    item: "core:saddle_rex", object: "saddle",
+    materials: { rex_saddle: { base: "tex/rex_saddle_base.png", normal: "tex/rex_saddle_normal.png", packed: "tex/rex_saddle_packed.png" } },
+    budgets: { triangles: [4800, 1600, 550, 360] }, flat: 2,
+  }],
 } satisfies CreatureAsset;

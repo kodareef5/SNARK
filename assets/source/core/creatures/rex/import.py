@@ -44,13 +44,13 @@ def check_source():
     with open(SOURCE, "rb") as f:
         digest = hashlib.sha256(f.read()).hexdigest()
     if digest != SHA256:
-        raise SystemExit(f"rex2: {SOURCE} is not the file ref/SOURCES.md describes (sha256 {digest})")
+        raise SystemExit(f"rex: {SOURCE} is not the file ref/SOURCES.md describes (sha256 {digest})")
 
 
 def rename_bones(rig, body):
     missing = sorted(set(BONES) - {b.name for b in rig.data.bones})
     if missing:
-        raise SystemExit(f"rex2: the source has no bones {missing}")
+        raise SystemExit(f"rex: the source has no bones {missing}")
     for old, new in BONES.items():
         rig.data.bones[old].name = new
     # Blender renames the vertex groups of a mesh bound to the armature with the bone. Make sure.
@@ -129,8 +129,8 @@ def build():
         rig.parent = None
         rig.matrix_world = world
         bpy.data.objects.remove(pivot)
-    rig.name, rig.data.name = "rex2", "rex2"
-    body.name, body.data.name = "rex2_body", "rex2_body"
+    rig.name, rig.data.name = "rex", "rex"
+    body.name, body.data.name = "rex_body", "rex_body"
     if rig.animation_data:
         rig.animation_data.action = None
         # The importer also lays each clip on an NLA track. They would keep playing under every pose made here, and the
@@ -141,7 +141,7 @@ def build():
     rename_bones(rig, body)
 
     material = body.data.materials[0]
-    material.name = "rex2"
+    material.name = "rex"
     for image in list(bpy.data.images):
         bpy.data.images.remove(image)
 
@@ -159,8 +159,8 @@ def build():
             cut(action, *CUTS[name])
             ticks = CUTS[name][2]
         action.name = name
-        print(f"rex2: clip {name} from {[k for k, v in CLIPS.items() if v == name][0]}, {ticks} ticks")
-    print(f"rex2: {len(rig.data.bones)} bones, {len(body.data.polygons)} faces, {len(body.data.vertices)} vertices")
+        print(f"rex: clip {name} from {[k for k, v in CLIPS.items() if v == name][0]}, {ticks} ticks")
+    print(f"rex: {len(rig.data.bones)} bones, {len(body.data.polygons)} faces, {len(body.data.vertices)} vertices")
 
 
 if __name__ == "__main__":

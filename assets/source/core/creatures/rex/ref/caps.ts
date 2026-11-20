@@ -1,5 +1,5 @@
 // Lists a creature pack's hit capsules (the bone each rides on, its zone, length and radius) and where its sockets are.
-//   bun assets/source/core/creatures/rex2/ref/caps.ts assets/source/core/creatures/rex2/rex2.snpk
+//   bun assets/source/core/creatures/rex/ref/caps.ts assets/source/core/creatures/rex/rex.snpk
 import { readFileSync } from "node:fs";
 import { parsePack } from "../../../../../../shared/pack/pack.ts";
 

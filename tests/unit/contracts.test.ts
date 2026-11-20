@@ -81,7 +81,7 @@ test("the new columns change nothing for content that does not use them", () => 
     if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
     // The pteranodon is carried as 149 of drag weight by what can lift it, its mass is 190, and its kind takes fright with
     // it within 15 m. A vehicle's mass is its curb mass.
-    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:brachio": [0, 1100, 26000, 0, 0], "core:carbonemys": [12, 250, 800, 0, 0], "core:rex": [0, 550, 8300, 0, 0], "core:rex2": [0, 550, 8300, 0, 0], "core:pteranodon": [15, 149, 190, 0, 0], "core:trike": [22, 300, 6000, 0, 0], "core:spino": [0, 550, 6200, 0, 0], "core:stego": [15, 250, 5000, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
+    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:brachio": [0, 1100, 26000, 0, 0], "core:carbonemys": [12, 250, 800, 0, 0], "core:rex": [0, 550, 8300, 0, 0], "core:pteranodon": [15, 149, 190, 0, 0], "core:trike": [22, 300, 6000, 0, 0], "core:spino": [0, 550, 6200, 0, 0], "core:stego": [15, 250, 5000, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
@@ -290,7 +290,7 @@ test("a flyer's clips are named among a rig's, each once, and asked for of a spe
   const uses = slotsOf(CORE_CONTENT);
   expect(uses.filter((u) => u.slot === "flight").map((u) => u.owner).every((o) => o === "core:pteranodon")).toBe(true);
   expect(uses.filter((u) => u.slot === "flight").length).toBe(flight.length);
-  expect(uses.filter((u) => u.slot === "saddled").map((u) => [u.owner, u.id]).sort()).toEqual([["core:brachio", "core:brachio/saddled"], ["core:carbonemys", "core:carbonemys/saddled"], ["core:dodo", "core:dodo/saddled"], ["core:parasaur", "core:parasaur/saddled"], ["core:pteranodon", "core:pteranodon/saddled"], ["core:raptor", "core:raptor/saddled"], ["core:rex", "core:rex/saddled"], ["core:rex2", "core:rex2/saddled"], ["core:spino", "core:spino/saddled"], ["core:stego", "core:stego/saddled"], ["core:trike", "core:trike/saddled"]]);
+  expect(uses.filter((u) => u.slot === "saddled").map((u) => [u.owner, u.id]).sort()).toEqual([["core:brachio", "core:brachio/saddled"], ["core:carbonemys", "core:carbonemys/saddled"], ["core:dodo", "core:dodo/saddled"], ["core:parasaur", "core:parasaur/saddled"], ["core:pteranodon", "core:pteranodon/saddled"], ["core:raptor", "core:raptor/saddled"], ["core:rex", "core:rex/saddled"], ["core:spino", "core:spino/saddled"], ["core:stego", "core:stego/saddled"], ["core:trike", "core:trike/saddled"]]);
   expect(classRow("item/saddle")!.slots.worn!.from).toBe("{id}/worn");
 });
 
@@ -302,7 +302,7 @@ test("flight remains exclusive to the pteranodon while the Stego also defends eg
   for (let i = 1; i < reg.defs.length; i++) {
     if (i === ptera) continue;
     if (reg.move[i]) expect([reg.ids[i], reg.move[i]!]).toMatchObject([reg.ids[i], none]);
-    expect([reg.ids[i], reg.flies[i], reg.grabDrag[i], reg.grabReach[i], reg.defendsEgg[i], reg.riderWeight[i], reg.biteStamina[i], reg.rollDamage[i], reg.missileMul[i], reg.biteStructureMul[i]]).toEqual([reg.ids[i], 0, 0, 0, ["core:stego", "core:carbonemys"].includes(reg.ids[i]!) ? 1 : 0, 1, reg.ids[i] === "core:carbonemys" ? 6000 : ["core:stego", "core:rex", "core:rex2", "core:spino", "core:brachio"].includes(reg.ids[i]!) ? 12000 : 0, 0, 1, 1]);
+    expect([reg.ids[i], reg.flies[i], reg.grabDrag[i], reg.grabReach[i], reg.defendsEgg[i], reg.riderWeight[i], reg.biteStamina[i], reg.rollDamage[i], reg.missileMul[i], reg.biteStructureMul[i]]).toEqual([reg.ids[i], 0, 0, 0, ["core:stego", "core:carbonemys"].includes(reg.ids[i]!) ? 1 : 0, 1, reg.ids[i] === "core:carbonemys" ? 6000 : ["core:stego", "core:rex", "core:spino", "core:brachio"].includes(reg.ids[i]!) ? 12000 : 0, 0, 1, 1]);
   }
   // ARK's roll does 50 to what it passes, and a rider weighs 0.85 on it (FL2).
   expect([reg.rollDamage[ptera], reg.riderWeight[ptera]]).toEqual([50, Math.fround(0.85)]);

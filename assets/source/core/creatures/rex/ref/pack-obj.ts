@@ -1,5 +1,5 @@
 // Writes one mesh's finest level from a pack as an OBJ, in its rest pose, so Blender can show it beside the new Rex.
-//   bun assets/source/core/creatures/rex2/ref/pack-obj.ts assets/source/core/creatures/rex/rex.snpk core:rex old-rex.obj
+//   bun assets/source/core/creatures/rex/ref/pack-obj.ts assets/source/core/creatures/rex/rex.snpk core:rex old-rex.obj
 import { readFileSync, writeFileSync } from "node:fs";
 import { parsePack } from "../../../../../../shared/pack/pack.ts";
 import { unpackMeshes } from "../../../../../../tools/pack/write.ts";

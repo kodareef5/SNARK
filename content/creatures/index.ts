@@ -10,7 +10,7 @@
 
 import type { Def } from "../../shared/content/defs.ts";
 import { CARBONEMYS } from "./carbonemys.ts";
-import { REX, REX2 } from "./rex.ts";
+import { REX } from "./rex.ts";
 import { DODO } from "./dodo.ts";
 import { GRAZER } from "./grazer.ts";
 import { PARASAUR } from "./parasaur.ts";
@@ -21,4 +21,4 @@ import { STEGO } from "./stego.ts";
 import { BRACHIO } from "./brachio.ts";
 import { SPINO } from "./spino.ts";
 
-export const CREATURES: readonly Def[] = [...DODO, ...GRAZER, ...PARASAUR, ...PTERANODON, ...RAPTOR, ...TRIKE, ...STEGO, ...CARBONEMYS, ...REX, ...REX2, ...SPINO, ...BRACHIO];
+export const CREATURES: readonly Def[] = [...DODO, ...GRAZER, ...PARASAUR, ...PTERANODON, ...RAPTOR, ...TRIKE, ...STEGO, ...CARBONEMYS, ...REX, ...SPINO, ...BRACHIO];

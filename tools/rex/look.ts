@@ -1,15 +1,15 @@
-// Pictures of the Rexes drawn by the game's own page on this machine's GPU, from fixed cameras around each, so the old
-// and new Rex are judged on the same views:
+// Pictures of creatures drawn by the game's own page on this machine's GPU, from fixed cameras around each, so a
+// change is judged on the same views each time:
 //
-//   bun tools/rex/look.ts <out folder> --dist <built client> [--species core:rex,core:rex2] [--tiers high,ultra]
-//                         [--views side,front,quarter,head,far,saddle] [--seconds 25] [--hour 14] [--ride core:rex2]
+//   bun tools/rex/look.ts <out folder> --dist <built client> [--species core:rex,core:trike] [--tiers high,ultra]
+//                         [--views side,front,quarter,head,far,saddle] [--seconds 25] [--hour 14] [--ride core:rex]
 //
-// The client is one built apart, such as the paddock's (`bun tools/carbonemys-rex/dev.ts --rex2 --dist DIR`). A server
-// on the Rex paddock places each Rex wild in a row and holds it still, facing east. It answers each view's /__look with
-// its orders and holds the survivor there as a ghost. One headless Chrome, muted, opens each view on each tier and keeps
-// <out>/<view>-<species>-<tier>.png. With --ride, a second page's survivor is tamed that Rex, saddles it and sits on it,
-// and that page's own riding camera is <out>/ride-<species>-<tier>.png. Two pages share the GPU, so the camera page's
-// pictures are then drawn coarser.
+// The client is one built apart, such as the paddock's (`bun tools/carbonemys-rex/dev.ts --dist DIR`). A server on the
+// Rex paddock places each creature wild in a row and holds it still, facing east; the cameras are set for a Rex's size.
+// It answers each view's /__look with its orders and holds the survivor there as a ghost. One headless Chrome, muted,
+// opens each view on each tier and keeps <out>/<view>-<species>-<tier>.png. With --ride, a second page's survivor is
+// tamed that creature, saddles it and sits on it, and that page's own riding camera is <out>/ride-<species>-<tier>.png.
+// Two pages share the GPU, so the camera page's pictures are then drawn coarser.
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -24,7 +24,7 @@ import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
-    dist: { type: "string" }, species: { type: "string", default: "core:rex,core:rex2" }, tiers: { type: "string", default: "high" },
+    dist: { type: "string" }, species: { type: "string", default: "core:rex" }, tiers: { type: "string", default: "high" },
     views: { type: "string", default: "side,front,quarter,head,far" }, seconds: { type: "string", default: "25" }, hour: { type: "string", default: "14" },
     ride: { type: "string" },
   },

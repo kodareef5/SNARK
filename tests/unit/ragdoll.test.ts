@@ -149,7 +149,9 @@ test("a ragdoll on a floor rests on it, falls again when the floor is taken away
     expect(high).toBeGreaterThan(floor);
     for (const ref of refs) w.structs.remove(ref);
     expect(d.step(w, STEP)).toBe(true);
-    expect([id, rest(d, w, 4) > 0, d.deepest(w) < 0.01, d.x[1]! < 1]).toEqual([id, true, true, true]);
+    // It fell from the floor to the ground: its hips are at least 2 m lower than they lay on the 2.5 m floor. Not a
+    // fixed height, because a Rex lying on its side has its hips over a metre up.
+    expect([id, rest(d, w, 4) > 0, d.deepest(w) < 0.01, d.x[1]! < high - 2]).toEqual([id, true, true, true]);
     refs.splice(0, 4, ...[-1.5, 1.5].flatMap((dx) => [-1.5, 1.5].map((dz) => w.structs.add(ceiling, 60 + dx, floor, 64 + dz, 0, 0, 1))));
   }
 });

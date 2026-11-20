@@ -118,7 +118,7 @@ def hold(rig, action, stride):
     for s in FEET:
         weight, goal = targets(tracks[s], stride)
         worst = max(((after[s][f][0] - goal[f]).length for f in range(n) if weight[f] >= 0.999), default=0)
-        print(f"rex2: {action.name} {FEET[s]} held within {worst * 100:.1f} cm of its mark")
+        print(f"rex: {action.name} {FEET[s]} held within {worst * 100:.1f} cm of its mark")
 
 
 def build():

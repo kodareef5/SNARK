@@ -1,5 +1,5 @@
 // Fits the Rex's hit capsules to its built skin and writes them to ref/zones.json, which asset.ts gives outright.
-//   bun assets/source/core/creatures/rex2/ref/zones.ts
+//   bun assets/source/core/creatures/rex/ref/zones.ts
 //
 // The build's own fit (tools/pack/creature.ts fitCapsule) pulls each end in by 0.6 of the radius. On the Rex's short,
 // wide trunk, neck and shoulder bones that leaves no length, so they became spheres up to 1.3 m across that stand well
@@ -20,7 +20,7 @@ const END_IN = 1 / 3;
 // `share` is how much of the skin the radius holds, where it isn't RADIUS_SHARE: the head and feet are held fuller.
 type Want = { zone: ZoneName; on: string; covers: string[]; to?: string; share?: number };
 const wants: Want[] = [
-  { zone: "torso", on: "pelvis", covers: ["pelvis"], to: "spine" },
+  { zone: "torso", on: "pelvis", covers: ["pelvis"], to: "spine", share: 0.8 },
   { zone: "torso", on: "spine", covers: ["spine"], to: "chest" },
   { zone: "torso", on: "chest", covers: ["chest"], to: "neck_1" },
   { zone: "torso", on: "neck_1", covers: ["neck_1"], to: "neck_2" },
@@ -42,9 +42,9 @@ const wants: Want[] = [
   }),
 ];
 
-const pack = parsePack(readFileSync(join(HERE, "../rex2.snpk")));
-const rig = pack.header.rigs.find((r) => r.id === "core:rex2")!;
-const lod = unpackMeshes(pack).find((m) => m.id === "core:rex2")!.lods[0]!;
+const pack = parsePack(readFileSync(join(HERE, "../rex.snpk")));
+const rig = pack.header.rigs.find((r) => r.id === "core:rex")!;
+const lod = unpackMeshes(pack).find((m) => m.id === "core:rex")!.lods[0]!;
 const names = rig.names!;
 const pos = lod.positions;
 const count = pos.length / 3;

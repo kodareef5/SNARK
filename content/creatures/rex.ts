@@ -2,13 +2,16 @@ import type { Def } from "../../shared/content/defs.ts";
 import { crafting } from "../craft.ts";
 import { eggs, region } from "../creature-traits.ts";
 
+// Each region's first colour is the palette's nearest brown to the model's own, measured by
+// assets/source/core/creatures/rex/ref/paint.py, so a wild Rex looks as the model was painted. Where the nearest is olive
+// (the face and limbs) the brown beside it comes first and the olive second.
 const regions = [
-  region("Flanks", 0x777348, 0x6d6354, 0x697863),
-  region("Throat and belly", 0xc0a477, 0xa99b80, 0xbeae88),
-  region("Dorsal bars", 0x49483b, 0x53463d, 0x38413c),
-  region("Face and nasal ridges", 0x99664a, 0x826c4d, 0x91645d),
-  region("Limbs and tail bands", 0x62644c, 0x635e54, 0x5a665a),
-  region("Claws and brow scutes", 0x92774f, 0x897b64, 0x796a58),
+  region("Flanks", 0x54412e, 0x4f4e32, 0x5e3c28),
+  region("Throat and belly", 0x9a7f5b, 0x7f7970, 0x8b9166),
+  region("Dorsal bars", 0x3a261c, 0x2e2420, 0x442c20),
+  region("Face and nasal ridges", 0x655038, 0x5e5e3e, 0x75524c),
+  region("Limbs and tail bands", 0x54412e, 0x4f4e32, 0x624440),
+  region("Claws and brow scutes", 0x3a261c, 0x442c20, 0x312d2a),
 ];
 const color = regions[0]!.colors[0][0];
 
@@ -16,9 +19,10 @@ export const REX: readonly Def[] = [
   {
     type: "species", class: "creature", id: "core:rex", tag: "rex", aliases: ["Rex_Character_BP_C"],
     mesh: "core:rex", skeleton: "rex", color, regions,
-    radius: 1.42, height: 4.48, eyeHeight: 3.62, mass: 8300, drag: 550,
+    // It stands 5.76 m to the top of its head. The bite reaches its snout, 6.0 m ahead of its hips.
+    radius: 1.7, height: 5.6, eyeHeight: 4.9, mass: 8300, drag: 550,
     walkSpeed: 2.8, sprintMul: 3, swimSpeed: 3, turn: 49, strafe: false, jumpSpeed: 0,
-    fists: 62, bite: { harvest: "carrion", reach: 5.1, ticks: 23, lands: 10, stamina: 12 },
+    fists: 62, bite: { harvest: "carrion", reach: 6.2, ticks: 23, lands: 10, stamina: 12 },
     roar: { range: 12, maxDrag: 200, cooldown: 8, immunity: 12, interrupt: 1 },
     temper: "hunts", sight: 32, leash: 75, takes: { bullet: .7 },
     slots: 200, keeps: 4, torporDrain: .725, killXp: 120,
@@ -33,35 +37,12 @@ export const REX: readonly Def[] = [
     stats: { health: [1100, .2, .054], stamina: [420, .1, .1], oxygen: [150, .1, .1], food: [3000, .1, .1], weight: [500, .02, .04], melee: [1, .05, .017], speed: [1, 0, .01], torpidity: [1550, .06, 0] },
   },
   ...eggs("rex", "xl", color, .18, .48, 15, 80),
+  // The seat and the rider's hands, feet and knees are the asset's sockets (assets/source/core/creatures/rex/ref/rider.json);
+  // the anchor is where the seat is at rest.
   { type: "item", class: "saddle", id: "core:saddle_rex", label: "Rex saddle", color: 3, stack: 1, weight: 20,
-    saddle: { fits: "core:rex", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 4.12, .49], entry: [2.1, 0, .49] }] } },
-  ...crafting("core:saddle_rex", { needs: [{ item: "core:hide", count: 380 }, { item: "core:fiber", count: 200 }, { item: "core:ingot", count: 50 }], seconds: 12, xp: 86, at: "core:smithy" }),
-  { type: "engram", id: "core:engram-saddle_rex", label: "Rex saddle", level: 74, cost: 40, item: "core:saddle_rex" },
-];
-
-// Rex v2 while it is built (planning/workstreams/rex2.md). It stands beside the Rex in the paddock and nowhere else:
-// no spawns, eggs, feces or aliases, and its saddle is made nowhere. When it is done the Rex takes its model and this goes.
-const { breeds: _breeds, aliases: _aliases, feces: _feces, ...rex } = REX[0] as Extract<Def, { type: "species" }>;
-// Its regions' first colours are the palette's nearest browns to the source's own, measured by
-// assets/source/core/creatures/rex2/ref/paint.py, so a wild one looks as the model was painted. Where the nearest is
-// olive (the face and limbs) the brown next to it is first and the olive comes second.
-const regions2 = [
-  region("Flanks", 0x54412e, 0x4f4e32, 0x5e3c28),
-  region("Throat and belly", 0x9a7f5b, 0x7f7970, 0x8b9166),
-  region("Dorsal bars", 0x3a261c, 0x2e2420, 0x442c20),
-  region("Face and nasal ridges", 0x655038, 0x5e5e3e, 0x75524c),
-  region("Limbs and tail bands", 0x54412e, 0x4f4e32, 0x624440),
-  region("Claws and brow scutes", 0x3a261c, 0x442c20, 0x312d2a),
-];
-export const REX2: readonly Def[] = [
-  {
-    ...rex, id: "core:rex2", mesh: "core:rex2", skeleton: "rex2", regions: regions2, color: regions2[0]!.colors[0][0],
-    radius: 1.7, height: 5.6, eyeHeight: 4.9, bite: { ...rex.bite!, reach: 6.2 },
-  },
-  // Its saddle, which the paddock gives it. The seat and the rider's hands, feet and knees are its asset's sockets
-  // (assets/source/core/creatures/rex2/ref/rider.json); the anchor is where the seat is at rest.
-  { type: "item", class: "saddle", id: "core:saddle_rex2", label: "Rex v2 saddle", color: 3, stack: 1, weight: 20,
-    saddle: { fits: "core:rex2", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 5.025, 1.0], entry: [2.6, 0, 1.0],
+    saddle: { fits: "core:rex", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 5.025, 1.0], entry: [2.6, 0, 1.0],
       rider: { hands: ["grip_l", "grip_r"], feet: ["rest_l", "rest_r"], knees: ["knee_l", "knee_r"],
         soles: { sockets: ["sole_l", "sole_r"], half: [.15, .13] }, grips: { radius: .027, span: [-.12, .13], forearmAlignment: 75 } } }] } },
+  ...crafting("core:saddle_rex", { needs: [{ item: "core:hide", count: 380 }, { item: "core:fiber", count: 200 }, { item: "core:ingot", count: 50 }], seconds: 12, xp: 86, at: "core:smithy" }),
+  { type: "engram", id: "core:engram-saddle_rex", label: "Rex saddle", level: 74, cost: 40, item: "core:saddle_rex" },
 ];

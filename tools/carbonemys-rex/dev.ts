@@ -31,9 +31,7 @@ export function requireDinosaurReviewArt(dist: string, species: readonly string[
     const rig = body?.rig === undefined ? undefined : boot.header.rigs[body.rig];
     const saddle = CORE_CONTENT.find(item => item.type === "item" && item.saddle?.fits === def.id);
     const worn = saddle && manifest.meshes.find(mesh => mesh.id === `${saddle.id}/worn`);
-    // Rex v2 has no saddle yet (planning/workstreams/rex2.md); every other species must bring its fitted saddle.
-    const saddled = !saddle || (worn && worn.rig === body?.rig);
-    if (!rig?.names?.length || rig.id !== def.mesh || body?.skeleton !== rig.skeleton || !saddled) {
+    if (!rig?.names?.length || rig.id !== def.mesh || body?.skeleton !== rig.skeleton || !worn || worn.rig !== body.rig) {
       throw new Error(`Dinosaur review requires the original ${def.id} body, rig and fitted saddle. Rebuild the client from assets/source or use a prepared full-art build.`);
     }
   }
@@ -78,8 +76,7 @@ export function seedDinosaurPreview(host: Host, owner: EntityRecord, species: re
     let owned = false;
     for (const rec of records.byPid.values()) if (rec.kind === kind && rec.team === owner.team && !rec.dead && rec.corpse === null) { owned = true; break; }
     if (owned) continue;
-    const rex = id === "core:rex" || id === "core:rex2";
-    const frontRow = rex && species.every(s => s === "core:rex" || s === "core:rex2");
+    const frontRow = species.length === 1 && id === "core:rex";
     const pad = frontRow
       ? { x: DINOSAUR_COURSE.spawn.x, z: DINOSAUR_COURSE.spawn.z + 13, yaw: 45056 }
       : DINOSAUR_COURSE.pads[index % DINOSAUR_COURSE.pads.length]!;
@@ -87,11 +84,11 @@ export function seedDinosaurPreview(host: Host, owner: EntityRecord, species: re
     if (e < 0) continue;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
     if (!host.taming.give(rec, owner, 0, "forced")) throw new Error(`Preview tame refused for ${id}`);
-    rec.name = `${id === "core:rex2" ? "T. rex v2" : rex ? "T. rex" : "Carbonemys"} review`;
+    rec.name = `${id === "core:rex" ? "T. rex" : "Carbonemys"} review`;
     rec.yaw = world.ents.yaw[e] = host.creatures.mind.look[e] = pad.yaw;
     const saddle = reg.saddleFits.indexOf(kind);
     if (saddle > 0) rec.saddle = saddle; // Same out-of-ledger worn gear path as gmsummon.
-    host.items.mint(rec, reg.index.get(rex ? "core:meat" : "core:berry")!, 100);
+    host.items.mint(rec, reg.index.get(id === "core:rex" ? "core:meat" : "core:berry")!, 100);
     records.dirty.add(rec.pid); host.refreshBody(rec); made++;
   }
   return made;
@@ -115,8 +112,7 @@ if (import.meta.main) {
   if (args.includes("--built")) {
     if (!existsSync(resolve(dist, "assets/manifest.json")) || !existsSync(resolve(dist, "main.js"))) throw new Error("No prepared client build. Run without --built first.");
   } else await buildDinosaurReviewClient({ quick: true, dist });
-  // --rex2 puts Rex v2 beside the Rex while it is built.
-  const species = args.includes("--rex2") ? ["core:rex", "core:rex2"] : args.includes("--rex-only") ? ["core:rex"] : REVIEW_SPECIES;
+  const species = args.includes("--rex-only") ? ["core:rex"] : REVIEW_SPECIES;
   requireDinosaurReviewArt(dist, species);
   const folder = value("--config") ?? DEV_CONFIG, { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
