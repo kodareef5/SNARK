@@ -356,6 +356,8 @@ interface ChunkBatch {
   cellCover: Float32Array;
   /** Where the eye was when each count was taken: a cell is counted again once it has moved COVER_MOVE. */
   cellEye: Float32Array;
+  /** Which making of the crowns' grid each count was taken from (CrownCover.made): a cell is counted again on a new one. */
+  cellMade: Uint32Array;
   /**
    * Per range, and per range and cell, the largest size of the kinds of its nodes, as a multiple of the modelled size, and
    * 1 for pieces. Two kinds may grow as one mesh at different sizes (the young live oak and the elder), and each is drawn
@@ -3112,6 +3114,7 @@ export class Scene {
       cellCount: new Float32Array(n * cells).fill(-1),
       cellCover: new Float32Array(n * cells).fill(1),
       cellEye: new Float32Array(n * cells * 3),
+      cellMade: new Uint32Array(n * cells),
       reach: new Float32Array(n).fill(sizeOf ? 0 : 1),
       cellReach: new Float32Array(n * cells).fill(sizeOf ? 0 : 1),
       minX: Infinity,
@@ -3405,8 +3408,9 @@ export class Scene {
    * Counts, for each cell of range `q` of trees in view and short of the hand-over's end, the crowns between the eye and
    * each of its trees' crowns (cover.ts), leaving out the tree's own, and takes the least: a cell is as hidden as its
    * most open tree. It sets how many times as far the cell's levels are chosen. A count is the eye's alone, so a cell is
-   * counted again only once the eye has moved a metre, and a new count is taken only a margin from the last, so a cell
-   * walked past does not change level back and forth. True if any cell is drawn as if farther.
+   * counted again only once the eye has moved a metre or the crowns' grid has been made again (a tree felled or grown
+   * back), and a new count is taken only a margin from the last, so a cell walked past does not change level back and
+   * forth. True if any cell is drawn as if farther.
    */
   private coverCells(cam: Camera, b: ChunkBatch, chunk: number, q: number, at0: number, mesh: number, rule: CoverRule): boolean {
     const t = this.world.nodes?.chunks[chunk];
@@ -3424,7 +3428,7 @@ export class Scene {
       const tx = Math.min(Math.max(cam.x, box[k]!), box[k + 3]!), tz = Math.min(Math.max(cam.z, box[k + 2]!), box[k + 5]!);
       if (Math.hypot(tx - cam.x, tz - cam.z) >= to || !this.cellShows(cam, b, q, c, mesh)) continue;
       const eye = b.cellEye;
-      if (b.cellCount[qc]! < 0 || Math.hypot(cam.x - eye[e]!, cam.y - eye[e + 1]!, cam.z - eye[e + 2]!) > COVER_MOVE) {
+      if (b.cellCount[qc]! < 0 || b.cellMade[qc] !== this.cover.made || Math.hypot(cam.x - eye[e]!, cam.y - eye[e + 1]!, cam.z - eye[e + 2]!) > COVER_MOVE) {
         let least = Infinity;
         for (let i = v0; i < v1 && least >= open; i++) {
           const s = b.slots[i]!, k = this.sizeOfForm[b.kinds[i]!]! / SIZE_UNITS;
@@ -3435,6 +3439,7 @@ export class Scene {
         eye[e] = cam.x;
         eye[e + 1] = cam.y;
         eye[e + 2] = cam.z;
+        b.cellMade[qc] = this.cover.made;
       }
       const m = coverDistance(b.cellCount[qc]!, rule);
       // A cell now less hidden chooses its levels afresh: the margin `choose` keeps would hold it at the coarser level

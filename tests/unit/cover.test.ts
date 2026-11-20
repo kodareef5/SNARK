@@ -132,3 +132,32 @@ test("an oak behind a wall of crowns is drawn coarser than with nothing in the w
   const top = Math.max(...sections.map((levels) => levels.findLastIndex((runs) => runs.length > 0)));
   for (const [at, level] of shut) expect(level, at).toBeLessThanOrEqual(Math.max(top, open.get(at) ?? 0));
 });
+
+test("an oak behind a wall is drawn finer once the wall is felled, and coarser again once it grows back, with the eye still", () => {
+  const wall: [number, number][] = Array.from({ length: 8 }, (_, i): [number, number] => [80 + i * 3, 150 + i * 12]);
+  const high = tierOf("high");
+  // The oak in front still stands in the line to the one behind, so the rule starts past one crown.
+  const w = oaks([...wall, [60, 192], [150, 192]], { ...high, nodes: { ...high.nodes, cover: { from: 2, per: 1, most: 4 } } });
+  // A second of frames, so a change of level has dissolved to its end.
+  const settled = (): Map<string, number> => {
+    for (let f = 0; f < 60; f++) w.frame();
+    return levels(w);
+  };
+  const shut = settled().get("150,192")!;
+  // Each oak of the wall, by its chunk and its place among that chunk's (the source's order).
+  const slots = new Map<number, number>();
+  const fell = (standing: boolean): void => {
+    slots.clear();
+    for (const [x, z] of wall) {
+      const chunk = Math.floor(z / CHUNK_SIZE) * 6 + Math.floor(x / CHUNK_SIZE), slot = slots.get(chunk) ?? 0;
+      slots.set(chunk, slot + 1);
+      w.field.set(chunk, slot, standing);
+    }
+  };
+  fell(false);
+  const open = settled();
+  expect(w.scene.cover.crowns).toBe(2);
+  expect(open.get("150,192")!).toBeLessThan(shut);
+  fell(true);
+  expect(settled().get("150,192")).toBe(shut);
+});
