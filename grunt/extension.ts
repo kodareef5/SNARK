@@ -1,26 +1,207 @@
-// grunt: a Pi extension that plays a game as a player, through the grunt protocol (protocol.md). Pi loads this file
-// (package.json's `pi.extensions`) under Node, so nothing here uses Bun's own APIs (tools/check.ts).
-// Version 0.0: the package and the protocol's types. Connecting comes with the mock game server.
+// grunt in Pi: the conversation is the character's Director. Pi loads this file (package.json's `pi.extensions`) under
+// Node, so nothing here uses Bun's own APIs (tools/check.ts).
+//
+// The model gets a few coarse tools (look, skills, do, tasks, stop, say) and never sends a control: it starts skills,
+// which run as tasks on the runtime's own tick, and it hears back through messages that start a turn when something
+// needs it (a task over, danger, a line said to the character). The operator has /grunt.
 
+import { appendFileSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { PiExtensionAPI } from "./pi.ts";
+import { socketLink } from "./link.ts";
+import type { PiExtensionAPI, PiTool, PiToolResult } from "./pi.ts";
 import { GRUNT_VERSION } from "./protocol.ts";
+import { type Report, Runtime } from "./runtime.ts";
+import { Session } from "./session.ts";
+import { SKILLS } from "./skills.ts";
+import { Trace } from "./trace.ts";
 
-export const GRUNT_PACKAGE_VERSION = "0.0.1";
+export const GRUNT_PACKAGE_VERSION = "0.1.0";
 const SPEC = fileURLToPath(new URL("./protocol.md", import.meta.url));
+/** Reports that wake the Director. Notes only wait in `look`. */
+const WAKES = new Set<Report["kind"]>(["task", "danger", "addressed", "critical", "need", "connection"]);
+
+interface Mind {
+  rt: Runtime;
+  session: Session;
+  url: string;
+  tracePath: string;
+  flush: () => void;
+}
+
+const text = (t: string, details: unknown = null): PiToolResult => ({ content: [{ type: "text", text: t }], details });
+const json = (v: unknown) => JSON.stringify(v, null, 1);
+
+function traceFile(name: string): { path: string; sink: (line: string) => void; flush: () => void } {
+  const dir = process.env.GRUNT_TRACES ?? join(homedir(), ".pi", "agent", "grunt", "traces");
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${name.replace(/[^\w-]/g, "_")}-${new Date().toISOString().replace(/[:.]/g, "-")}.jsonl`);
+  let buf: string[] = [];
+  const flush = () => {
+    if (!buf.length) return;
+    appendFileSync(path, buf.join("\n") + "\n");
+    buf = [];
+  };
+  return { path, sink: (line) => void buf.push(line), flush };
+}
 
 export default function grunt(pi: PiExtensionAPI): void {
-  pi.registerCommand("grunt", {
-    description: "grunt: play a game as a player (status, protocol)",
-    handler: async (args, ctx) => {
-      const sub = args.trim().split(/\s+/)[0] || "status";
-      if (sub === "protocol") {
-        ctx.ui.notify(`grunt protocol ${GRUNT_VERSION} (draft): ${SPEC}`, "info");
-      } else if (sub === "status") {
-        ctx.ui.notify(`grunt ${GRUNT_PACKAGE_VERSION}, protocol ${GRUNT_VERSION} (draft). Not connected: no game speaks it yet.`, "info");
-      } else {
-        ctx.ui.notify(`grunt: unknown subcommand "${sub}". Try /grunt status or /grunt protocol.`, "warning");
-      }
+  let mind: Mind | null = null;
+  let flusher: ReturnType<typeof setInterval> | null = null;
+
+  const wake = (r: Report) => {
+    if (!WAKES.has(r.kind)) return;
+    if (r.kind === "task" && r.data?.by === "arbiter" && r.data?.status === "done") return; // its danger was told already
+    pi.sendMessage({ customType: "grunt", content: `[game] ${r.text}`, display: true, details: r }, { triggerTurn: true, deliverAs: "followUp" });
+  };
+
+  async function connect(url: string, name: string, owners: string[]): Promise<Mind> {
+    disconnect();
+    const link = await socketLink(url);
+    const session = new Session(link);
+    const t = traceFile(name);
+    const rt = new Runtime({ session, owners, trace: new Trace(t.sink), onReport: wake });
+    link.onClose((why) => {
+      if (mind?.rt !== rt) return;
+      rt.halt();
+      wake({ kind: "connection", text: `the game connection closed: ${why}`, t: rt.belief.now });
+      mind = null;
+    });
+    await rt.connect(name);
+    rt.run();
+    flusher ??= setInterval(() => mind?.flush(), 1000);
+    mind = { rt, session, url, tracePath: t.path, flush: t.flush };
+    // A character plays through the game tools alone: the coding tools are put away for this session.
+    pi.setActiveTools(pi.getActiveTools().filter((n) => n.startsWith("game_")));
+    return mind;
+  }
+
+  function disconnect(): void {
+    if (!mind) return;
+    mind.rt.halt();
+    mind.flush();
+    try {
+      mind.session.close();
+    } catch {
+      // already closed
+    }
+    mind = null;
+  }
+
+  const need = (): Mind => {
+    if (!mind) throw new Error("not connected to a game: game_connect first (or /grunt connect <url> <name>)");
+    return mind;
+  };
+
+  const tools: PiTool[] = [
+    {
+      name: "game_connect", label: "Join a game",
+      description: "Join a game that speaks the grunt protocol, as a character. Afterwards the character's senses, skills and chat are yours through the other game_ tools.",
+      parameters: { type: "object", properties: { url: { type: "string", description: "ws://host:port/path of the game's grunt endpoint" }, name: { type: "string", description: "the character's name" }, owners: { type: "array", items: { type: "string" }, description: "players whose instructions the character follows" } }, required: ["url", "name"], additionalProperties: false },
+      async execute(_id, p) {
+        const m = await connect(String(p.url), String(p.name), Array.isArray(p.owners) ? p.owners.map(String) : []);
+        return text(`Connected as ${m.rt.name}.\n${json(m.rt.summary())}`, { trace: m.tracePath });
+      },
     },
+    {
+      name: "game_look", label: "Look",
+      description: "What the character knows right now: itself (position, vitals, what it holds), its inventory and what it could craft, the things near it with distance and bearing, and what it is doing.",
+      promptSnippet: "game_look: the character's state, surroundings and current task",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      async execute() {
+        return text(json(need().rt.summary()));
+      },
+    },
+    {
+      name: "game_skills", label: "Skills",
+      description: "The skills the character can run with game_do, with their parameters.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      async execute() {
+        return text(json(Object.values(SKILLS).map((s) => ({ skill: s.name, does: s.describe, params: s.params }))));
+      },
+    },
+    {
+      name: "game_do", label: "Do",
+      description: "Start a skill as a task. It runs on its own: you hear back when it ends, is blocked, or something needs you. Starting a skill that uses the body replaces the one using it now.",
+      promptSnippet: "game_do: start a skill (harvest, walk_to, look_around, craft, fight, flee, say)",
+      promptGuidelines: [
+        "You play a game character through game_ tools. Never try to steer it step by step: start a skill with game_do and wait to be told how it went.",
+        "Use game_look before deciding when you are unsure what is around. Ids in it are what skills take as targets.",
+      ],
+      parameters: { type: "object", properties: { skill: { type: "string", enum: Object.keys(SKILLS) }, args: { type: "object", description: "the skill's parameters (game_skills lists them)" } }, required: ["skill"], additionalProperties: false },
+      async execute(_id, p) {
+        const t = need().rt.start(String(p.skill), (p.args ?? {}) as Record<string, unknown>);
+        return text(t.status === "running" ? `started ${t.skill} as ${t.id}` : `${t.skill} ${t.status}: ${t.result?.summary ?? ""}`, { task: t.id });
+      },
+    },
+    {
+      name: "game_tasks", label: "Tasks",
+      description: "The character's tasks: running, put aside, and the last ones finished, with progress and results.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+      async execute() {
+        const rt = need().rt;
+        return text(json(rt.tasks.slice(-10).map((t) => ({ task: t.id, skill: t.skill, args: t.args, status: t.status, by: t.by, progress: t.progress, result: t.result?.summary }))));
+      },
+    },
+    {
+      name: "game_stop", label: "Stop",
+      description: "Cancel a task (the one using the body if no id is given).",
+      parameters: { type: "object", properties: { task: { type: "string" } }, additionalProperties: false },
+      async execute(_id, p) {
+        const t = need().rt.cancel(typeof p.task === "string" ? p.task : undefined);
+        return text(t ? `cancelled ${t.id} (${t.skill})` : "nothing to cancel");
+      },
+    },
+    {
+      name: "game_say", label: "Say",
+      description: "Say a line in the game's chat, as the character.",
+      parameters: { type: "object", properties: { text: { type: "string" }, channel: { type: "string", enum: ["local", "global", "group"] } }, required: ["text"], additionalProperties: false },
+      async execute(_id, p) {
+        need().rt.start("say", { text: String(p.text), channel: p.channel ?? "local" });
+        return text(`said: ${String(p.text)}`);
+      },
+    },
+  ];
+  for (const t of tools) pi.registerTool(t);
+
+  pi.registerCommand("grunt", {
+    description: "grunt: play a game as a player (status, connect <url> <name>, disconnect, trace, protocol)",
+    handler: async (args, ctx) => {
+      const [sub = "status", ...rest] = args.trim().split(/\s+/).filter(Boolean);
+      if (sub === "protocol") return ctx.ui.notify(`grunt protocol ${GRUNT_VERSION} (draft): ${SPEC}`, "info");
+      if (sub === "connect") {
+        const [url, name, ...owners] = rest;
+        if (!url || !name) return ctx.ui.notify("usage: /grunt connect <ws://…> <name> [owner…]", "warning");
+        try {
+          const m = await connect(url, name, owners);
+          return ctx.ui.notify(`connected to ${url} as ${m.rt.name}; trace ${m.tracePath}`, "info");
+        } catch (err) {
+          return ctx.ui.notify(`could not connect: ${err instanceof Error ? err.message : String(err)}`, "error");
+        }
+      }
+      if (sub === "disconnect") {
+        disconnect();
+        return ctx.ui.notify("disconnected", "info");
+      }
+      if (sub === "trace") {
+        if (!mind) return ctx.ui.notify("not connected", "warning");
+        const n = Number(rest[0] ?? 15);
+        const lines = mind.rt.trace.records.filter((r) => r.kind !== "observation").slice(-n).map((r) => `${(r.t / 1000).toFixed(1)}s ${r.kind} ${JSON.stringify({ ...r, at: undefined, t: undefined, kind: undefined }).slice(0, 160)}`);
+        return ctx.ui.notify(`${mind.tracePath}\n${lines.join("\n")}`, "info");
+      }
+      if (sub === "status") {
+        if (!mind) return ctx.ui.notify(`grunt ${GRUNT_PACKAGE_VERSION}, protocol ${GRUNT_VERSION} (draft). Not connected: /grunt connect <url> <name>.`, "info");
+        const s = mind.rt.summary();
+        return ctx.ui.notify(`grunt ${GRUNT_PACKAGE_VERSION}: ${mind.rt.name} on ${mind.url}, ${s.doing ? `doing ${(s.doing as { skill: string }).skill}` : "idle"}; ${json({ pos: s.pos, vitals: s.vitals })}`, "info");
+      }
+      ctx.ui.notify(`grunt: unknown subcommand "${sub}". Try /grunt status, connect, disconnect, trace or protocol.`, "warning");
+    },
+  });
+
+  pi.on("session_shutdown", () => {
+    disconnect();
+    if (flusher) clearInterval(flusher);
+    flusher = null;
   });
 }

@@ -19,7 +19,7 @@ const world = makeWorld(scene);
 const game = new GameEndpoint(world);
 
 type Socket = { send(s: string): void; data: { conn?: ReturnType<GameEndpoint["connect"]> } };
-const server = Bun.serve<{ conn?: ReturnType<GameEndpoint["connect"]> }, undefined>({
+const server = Bun.serve<{ conn?: ReturnType<GameEndpoint["connect"]> }>({
   hostname: "127.0.0.1",
   port,
   fetch(req, srv) {

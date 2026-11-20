@@ -196,22 +196,22 @@ harvest is suspended, the Director gets the line and starts `approach {target: t
 
 Pi is the Director, and the host of everything else: the runtime runs inside the extension, beside the conversation.
 
-**The tools the model sees** are few and coarse, and the skills are found through a registry, not listed as dozens of
+**The tools the model sees** (and `game_connect`) are few and coarse, and the skills are found through a registry, not listed as dozens of
 tools:
 
 | Tool | Does |
 | --- | --- |
-| `look` | what the character knows now, summarised: itself, what is near, what it holds, what is running |
-| `skills` | the skills it can run, with their parameters and preconditions |
-| `do` | starts a skill as a task: `do {skill: "harvest", args: {...}}` |
-| `tasks` | what is running, suspended, done, with progress |
-| `stop` | cancels or suspends a task |
-| `say` | a chat line |
-| `recall` | memory: places, creatures, people, what happened |
+| `game_look` | what the character knows now, summarised: itself, what is near, what it holds, what is running |
+| `game_skills` | the skills it can run, with their parameters and preconditions |
+| `game_do` | starts a skill as a task: `game_do {skill: "harvest", args: {...}}` |
+| `game_tasks` | what is running, suspended, done, with progress |
+| `game_stop` | cancels or suspends a task |
+| `game_say` | a chat line |
+| `game_recall` | memory: places, creatures, people, what happened (not yet) |
 
 **Events reach the model** through `pi.sendMessage(…, { triggerTurn: true })`, only for what the Director must answer
 (a task done or blocked, a decision escalated, a line addressed to the character, danger). Everything else waits in
-`look` and `tasks`.
+`game_look` and `game_tasks`.
 
 **The operator** has `/grunt connect <url> <name>`, `/grunt status`, `/grunt trace`, `/grunt role <file>`,
 `/grunt pause`. A role is a file: who the character is, who it obeys, what it may do, how it talks.

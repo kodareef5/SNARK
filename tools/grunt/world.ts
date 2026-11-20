@@ -15,7 +15,7 @@ import type {
 export const TICK_MS = 50;
 const WALK = 3.5, SPRINT = 6, TURN = 6, PITCH_TURN = 3, BODY_R = 0.4, REACH = 2.5, SIGHT = 60, NEAR = 12;
 const FOV = Math.PI / 3, SWING_MS = 600, PICK_MS = 500, CELL = 3, MAX_HOLD = 2000;
-const RAPTOR = { sees: 20, gives_up: 35, speed: 5, wander: 1.2, bite: 8, every_ms: 1000, reach: 1.6, hp: 60 };
+const RAPTOR = { sees: 20, gives_up: 30, speed: 4.5, wander: 1.2, bite: 8, every_ms: 1000, reach: 1.6, hp: 60 };
 
 // --- Items and recipes --------------------------------------------------------------------------------------------
 
