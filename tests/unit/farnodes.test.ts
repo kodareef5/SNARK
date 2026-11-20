@@ -1,7 +1,7 @@
 // Trees, rocks and bushes past the near store's hand-over band, placed by the client from the map (farnodes.ts, hand.ts).
 import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
-import { FAR_NODE_BUFFERS, PULL_SLOTS, farNodeOf } from "../../client/core/render/farnodes.ts";
+import { FAR_NODE_BUFFERS, PULL_SLOTS, farLevelOf, farNodeOf } from "../../client/core/render/farnodes.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { ATLAS_REGION, DRAW_PULLED, DRAW_TEXTURED, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
@@ -13,6 +13,7 @@ import { SIZE_UNITS, formOf, mix, scatterNodes, type NodeForms, type NodeSource 
 import { FarCells, farTopByte } from "../../shared/world/tactical.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { HELD, WOOD, nodeWorld, type NodeWorld } from "../fixtures/nodeworld.ts";
+import { PICK_FAR, PICK_STRUCTURE } from "../../tools/snap/raster.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 /** A node as a draw of a frame draws it: its mesh, level, place in the world, turn and size, which store, and its hand-over. */
@@ -63,11 +64,115 @@ const wood = (): NodeWorld => nodeWorld({ chunksX: 24, chunksZ: 12, kinds: [WOOD
 /** How far a drawn node's foot is from the camera. */
 const off = (w: NodeWorld, n: Drawn): number => Math.hypot(n.x - w.cam.x, n.y - w.cam.y, n.z - w.cam.z);
 
-/** The draws of a node that keep any of it: one fading out keeps nothing past the band, and one fading in nothing short of it. */
-function shown(w: NodeWorld, draws: readonly Drawn[]): Drawn[] {
+/**
+ * The draws of a node that keep any of it: one fading out keeps nothing past the band, and one fading in nothing short of
+ * it. Given the node's kind, a far draw past that kind's reach keeps nothing either, as the shader puts it out of view.
+ */
+function shown(w: NodeWorld, draws: readonly Drawn[], kind = -1): Drawn[] {
   const [from, to] = w.scene.assets.tier.nodes.band;
-  return draws.filter((n) => (n.hand === HAND_NEAR ? off(w, n) < to : n.hand === HAND_FAR ? off(w, n) > from : true));
+  const reach = kind >= 0 ? w.scene.nodesFar!.reachOf(kind) : Infinity;
+  return draws.filter((n) => (n.hand === HAND_NEAR ? off(w, n) < to : n.far ? off(w, n) < reach && (n.hand !== HAND_FAR || off(w, n) > from) : true));
 }
+
+/** Every node the rasterizer's picture shows, by chunk * 65536 + slot, read from its pick ids, whichever store drew it. */
+function pictured(w: NodeWorld): Set<number> {
+  const out = new Set<number>();
+  const { pickKind, pickId } = w.raster;
+  for (let i = 0; i < pickKind.length; i++) {
+    const id = pickId[i]!, buffer = Math.floor(id / 65536), slot = id % 65536;
+    if (pickKind[i] === PICK_STRUCTURE && buffer >= NODE_BUFFERS && buffer < NODE_BUFFERS * 2) out.add((buffer - NODE_BUFFERS) * 65536 + slot);
+    if (pickKind[i] === PICK_FAR) {
+      const [chunk, s] = farNodeOf(w.dims, buffer, slot);
+      if (chunk >= 0) out.add(chunk * 65536 + s);
+    }
+  }
+  return out;
+}
+
+/** What a band of distance holds of the trees standing in view: how many, how many the picture shows, and how many it hides. */
+interface Counted {
+  band: string;
+  standing: number;
+  shown: number;
+  /** Not shown, and behind something nearer at every pixel round where it stands. */
+  hidden: number;
+}
+
+/**
+ * The trees standing in view, in their kind's reach and short of its fade, by how far off they stand: short of the hand-over
+ * band, in it, and past it to `farthest`. A tree the picture does not show is hidden if every pixel in the 5 by 5 round its
+ * crown is nearer than it; any other is a hole.
+ */
+function treesShown(w: NodeWorld, farthest: number): Counted[] {
+  const seen = pictured(w), [from, to] = w.scene.assets.tier.nodes.band, fade = w.scene.assets.tier.fade;
+  const trees = new Set([w.kind(WOOD), w.kind("core:tree")]);
+  const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const m = w.cam.viewProj;
+  const bands = [
+    { band: `5 to ${from} m`, lo: 5, hi: from, standing: 0, shown: 0, hidden: 0 },
+    { band: `${from} to ${to} m`, lo: from, hi: to, standing: 0, shown: 0, hidden: 0 },
+    { band: `${to} to ${farthest} m`, lo: to, hi: farthest, standing: 0, shown: 0, hidden: 0 },
+  ];
+  for (let chunk = 0; chunk < w.dims.chunksX * w.dims.chunksZ; chunk++) {
+    for (let slot = 0; slot < w.source.perChunk; slot++) {
+      w.source.at(chunk, slot, spot);
+      if (!trees.has(spot.kind)) continue;
+      // Camera-relative, 2 m up its trunk.
+      const [x, y, z] = [spot.x - w.cam.x, spot.y + 2 - w.cam.y, spot.z - w.cam.z];
+      const d = Math.hypot(x, y, z), band = bands.find((b) => d >= b.lo && d < b.hi);
+      if (!band || d >= w.scene.nodesFar!.reachOf(spot.kind) * (1 - fade) || !w.cam.boxVisible(x - 1, y - 1, z - 1, x + 1, y + 1, z + 1)) continue;
+      band.standing++;
+      if (seen.has(chunk * 65536 + slot)) {
+        band.shown++;
+        continue;
+      }
+      // Where it stands in the picture, as the rasterizer projects it, and its depth there.
+      const cw = m[3]! * x + m[7]! * y + m[11]! * z;
+      const px = Math.floor((((m[0]! * x + m[4]! * y + m[8]! * z) / cw) * 0.5 + 0.5) * w.W);
+      const py = Math.floor((0.5 - ((m[1]! * x + m[5]! * y + m[9]! * z) / cw) * 0.5) * w.H);
+      const depth = (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / cw;
+      let behind = true;
+      for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (!(w.raster.depth[(py + j) * w.W + px + i]! < depth)) behind = false;
+      if (behind) band.hidden++;
+    }
+  }
+  return bands.map(({ band, standing, shown, hidden }) => ({ band, standing, shown, hidden }));
+}
+
+test("every tree in view and in its reach is in the picture or behind something nearer, short of the band, in it and past it", () => {
+  // A sparse wood on flat ground, seen from 6 m up along a row of chunks, on medium and on a wider near field and band.
+  const look = (tier: Tier): NodeWorld => {
+    const w = nodeWorld({ chunksX: 24, chunksZ: 12, kinds: [WOOD, WOOD, "core:tree", "core:rock", "core:bush"], perChunk: 6, tier, width: 960, height: 540 });
+    const z = 6 * CHUNK_SIZE + 20;
+    w.stand(4 * CHUNK_SIZE + 60, z);
+    w.look(4 * CHUNK_SIZE + 60, 26, z, Math.PI / 2, -0.06);
+    w.scene.nodesFar!.makes = Infinity;
+    for (let f = 0; f < 4; f++) w.frame(true);
+    return w;
+  };
+  const accounted = (c: Counted): number => (c.shown + c.hidden) / c.standing;
+  for (const tier of [tierOf("medium"), { ...tierOf("medium"), nodes: { chunks: 4, band: [152, 248] as const } }]) {
+    for (const c of treesShown(look(tier), 420)) {
+      expect(c.standing, c.band).toBeGreaterThan(5);
+      // A few partly hidden trees are counted neither shown nor hidden; a hole would be many.
+      expect(accounted(c), `${JSON.stringify(tier.nodes)} ${c.band}`).toBeGreaterThanOrEqual(0.9);
+    }
+  }
+  // The count would see a hole: trees taken out of the picture short of the band and in it are neither shown nor hidden.
+  const w = look(tierOf("medium"));
+  const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  for (let chunk = 0; chunk < w.dims.chunksX * w.dims.chunksZ; chunk++) {
+    for (let slot = 0; slot < w.source.perChunk; slot++) {
+      w.source.at(chunk, slot, spot);
+      const d = Math.hypot(spot.x - w.cam.x, spot.z - w.cam.z);
+      if ((spot.kind === w.kind(WOOD) || spot.kind === w.kind("core:tree")) && d > 40 && d < 184) w.scene.hideNode(chunk * 65536 + slot, true);
+    }
+  }
+  for (let f = 0; f < 3; f++) w.frame(true);
+  const [short, band] = treesShown(w, 420);
+  expect(Math.max(accounted(short!), accounted(band!))).toBeLessThan(0.5);
+});
+
 
 test("across the hand-over band both stores draw a node, each fading the other way, at the same spot, turn and size; short of it only the near store, past it only the far", () => {
   const w = wood();
@@ -80,8 +185,8 @@ test("across the hand-over band both stores draw a node, each fading the other w
   w.frame();
   let [both, near, far] = [0, 0, 0];
   const meshes = new Set<number>();
-  for (const all of drawnNodes(w, w.frame()).values()) {
-    const draws = shown(w, all);
+  for (const [key, all] of drawnNodes(w, w.frame())) {
+    const draws = shown(w, all, w.field.kindAt(Math.floor(key / 65536), key % 65536));
     const d = off(w, all[0]!);
     if (draws.length === 1) {
       const [one] = draws;
@@ -92,10 +197,13 @@ test("across the hand-over band both stores draw a node, each fading the other w
       else near++;
       continue;
     }
-    // The near store leaves out a node out of view, where the far store may draw it among the cells it bridges.
+    // The near store leaves out a node out of view, where the far store may draw it among the cells it bridges; and the far
+    // store's draw keeps nothing of a node past its kind's reach, which it sends whole with its tile.
     if (draws.length === 0) {
       const n = all[0]!, t = w.scene.assets.table, k = n.size / SIZE_UNITS, r = t.side[n.mesh]! * k;
-      expect(w.cam.boxVisible(n.x - r - w.cam.x, n.y + t.low[n.mesh]! * k - w.cam.y, n.z - r - w.cam.z, n.x + r - w.cam.x, n.y + t.high[n.mesh]! * k - w.cam.y, n.z + r - w.cam.z)).toBe(false);
+      const inView = w.cam.boxVisible(n.x - r - w.cam.x, n.y + t.low[n.mesh]! * k - w.cam.y, n.z - r - w.cam.z, n.x + r - w.cam.x, n.y + t.high[n.mesh]! * k - w.cam.y, n.z + r - w.cam.z);
+      const pastReach = d >= w.scene.nodesFar!.reachOf(w.field.kindAt(Math.floor(key / 65536), key % 65536));
+      expect(!inView || pastReach).toBe(true);
       continue;
     }
     expect(draws.length).toBe(2);
@@ -457,4 +565,15 @@ test("reversible predicted tree hiding removes both near and far instances witho
   w.scene.hideNode(ref, false); w.frame();
   expect(drawnNodes(w, w.frame()).get(ref)?.some(d => d.far)).toBe(true);
   expect(drawnNodes(w, w.frame()).get(ref)?.some(d => !d.far)).toBe(true);
+});
+
+test("the far store draws a mesh's last level, and a palm's frond level only when asked and where it fits a far row", () => {
+  const palm = [4000, 1200, 300, 90, 42, 12];
+  expect(farLevelOf("core:palm_2", palm, false)).toBe(5);
+  expect(farLevelOf("core:palm_2", palm, true)).toBe(4);
+  // Not a palm, a felled palm, a frond level too heavy for a row (64 triangles), or a single level.
+  expect(farLevelOf("core:oak_1", [63588, 29528, 3672, 1768, 302, 14], true)).toBe(5);
+  expect(farLevelOf("core:palm_2_depleted", palm, true)).toBe(5);
+  expect(farLevelOf("core:palm_2", [4000, 1200, 300, 90, 65, 12], true)).toBe(5);
+  expect(farLevelOf("core:palm_2", [12], true)).toBe(0);
 });

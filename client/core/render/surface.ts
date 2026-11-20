@@ -15,7 +15,7 @@ import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../../content/street-finishes.ts
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
-import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
+import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
 import { BONES_PER_ROW, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
@@ -655,13 +655,13 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
 }
 void main() {
-${drops ? "  if (handDrops()) discard;\n" : ""}  if (int(uStreetMaterial) == ${EXHAUST}) {
+${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetMaterial) == ${EXHAUST}) {
     vec4 gas = exhaustLight(vUv,dot(normalize(vNormal),-normalize(vRel)),fEffects.x,fSunColor.w);
     o = vec4(shown(gas.rgb,vRel),gas.a);
     return;

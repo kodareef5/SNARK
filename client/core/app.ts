@@ -191,6 +191,8 @@ export class App {
   steer = true;
   /** The dome drawn as the sky table alone and nothing hazed, as the rasterizer draws, so the self-check's colours are the twins'. */
   plainSky = false;
+  /** A bench page's `?farpalm=fronds`: far palms drawn as their frond level (render/farnodes.ts farLevelOf). */
+  private farPalms = false;
   /** Keeps the frame steady under the tier chosen (governor.ts). The shell tells it what each frame took. */
   readonly governor = new Governor();
   /**
@@ -987,6 +989,7 @@ export class App {
     this.artEyeTime = pinned && Number.isFinite(orders?.eyeSeconds) ? orders!.eyeSeconds! : null;
     this.held = look.length === 2 && look.every((v) => typeof v === "number" && Number.isFinite(v)) ? [look[0] as number, look[1] as number] : null;
     if (!pinned) return;
+    this.farPalms = get("farpalm") === "fronds";
     this.governor.held = Number(get("level") ?? 0);
     this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
     // Such a page runs unattended, often behind someone's other work, and its music would start at full volume. It is
@@ -1123,7 +1126,7 @@ export class App {
     if (!this.scene) {
       // Sounds share the asset port, each side taking only what it asked for.
       this.split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
-      this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream);
+      this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.farPalms });
       this.scene.shots = this.shots;
       this.scene.plainSky = this.plainSky;
       if (this.stress) {

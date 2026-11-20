@@ -54,7 +54,7 @@ SPECS = {f["name"]: f for f in FIGS}
 # How far apart the heads of leaves stand over the crown (heads.py), each 2 to 3 m across, a fig's leaves being large;
 # on the coarser levels they are gathered into so many against the finest's count, or so many in all.
 SPACING = 2.6
-GATHERED = {2: 0.45, 3: 34, 4: 12}
+GATHERED = {1.5: 0.72, 2: 0.45, 3: 34, 4: 12}
 # Half the width of what each swallows, so a window opens to just inside its face.
 HALF = {"column": 0.225, "pole": 0.15, "sign": 0.04}
 
@@ -230,38 +230,40 @@ def swallowed(m, spec, lod, cut=None):
 
 
 def fig(name, lod):
+    """Level `lod` of a fig, built at its stage (broadleaf.STAGES)."""
     spec = SPECS[name]
-    if lod == far.LEVEL:
-        return far.crown(fig(name, 4), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
-    m = Mesh(lod <= 3)
-    rng = rng_for(name, "level", lod)
+    if lod == bl.FAR_LEVEL:
+        return far.crown(fig(name, bl.LEVEL_OF[4]), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
+    stage = bl.STAGES[lod]
+    m = Mesh(stage <= 3)
+    rng = rng_for(name, "level", stage)
     limbs, stub, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
     heads, _ = bl.heads_of(name, limbs, lobes, shade, SPACING, roof=True, under=1.15)
-    if lod in (2, 3):
-        heads = bl.gathered(heads, GATHERED[lod], name)
+    if stage in (1.5, 2, 3):
+        heads = bl.gathered(heads, GATHERED[stage], name)
     ribbons = wall(spec)
-    sides, rings = {0: (48, 24), 1: (24, 8), 2: (10, 4), 3: (8, 3), 4: (6, 2)}[lod]
+    sides, rings = {0: (48, 24), 1: (24, 8), 1.5: (16, 6), 2: (10, 4), 3: (8, 3), 4: (6, 2)}[stage]
     under = buried(ribbons)
     fork = spec["fork"]
     hs = [under, -0.1] + [mix(0.0, fork + 0.5, (i / (rings - 1)) ** 1.2) for i in range(rings)]
-    bl.fluted(m, hs, ribbons.radius if lod <= 2 else (lambda az, h: ribbons.base(h) * 1.12), sides, BARK, STEM)
-    if lod <= 2:
-        swallowed(m, spec, lod)
-    if lod <= 1:
+    bl.fluted(m, hs, ribbons.radius if stage <= 2 else (lambda az, h: ribbons.base(h) * 1.12), sides, BARK, STEM)
+    if stage <= 2:
+        swallowed(m, spec, stage)
+    if stage <= 1:
         for rope in ropes(spec, ribbons):
-            bl.bark_tube(m, bl.coarser(rope, {0: 10, 1: 4}[lod]), {0: 6, 1: 4}[lod], BARK, STEM, caps=(True, True))
-    order_sides, keep, least = {0: ((14, 9, 5, 3), (16, 9, 5, 3), 0.0), 1: ((8, 5, 3, 3), (8, 4, 3, 2), 0.07), 2: ((4, 3, 0, 0), (3, 1, 1, 1), 0.2),
-                                3: ((4, 3, 0, 0), (3, 1, 1, 1), 0.25), 4: ((4, 0, 0, 0), (2, 1, 1, 1), 0.3)}[lod]
+            bl.bark_tube(m, bl.coarser(rope, {0: 10, 1: 4}[stage]), {0: 6, 1: 4}[stage], BARK, STEM, caps=(True, True))
+    order_sides, keep, least = {0: ((14, 9, 5, 3), (16, 9, 5, 3), 0.0), 1: ((8, 5, 3, 3), (8, 4, 3, 2), 0.07), 1.5: ((6, 4, 3, 0), (5, 2, 2, 1), 0.12),
+                                2: ((4, 3, 0, 0), (3, 1, 1, 1), 0.2), 3: ((4, 3, 0, 0), (3, 1, 1, 1), 0.25), 4: ((4, 0, 0, 0), (2, 1, 1, 1), 0.3)}[stage]
     bl.wood(m, limbs, order_sides, keep, BARK, STEM, least)
-    if stub is not None and lod <= 3:
-        bl.bark_tube(m, bl.coarser(stub, {0: 5, 1: 3, 2: 2, 3: 1}[lod]), order_sides[0], BARK, STEM, caps=(True, True))
-    if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, CROWN, shade, solid=1.2)
-        if lod <= 1:
-            curtains(m, spec["name"], limbs, lobes, lod, count=(14, 18), reach=(2.0, 5.0))
+    if stub is not None and stage <= 3:
+        bl.bark_tube(m, bl.coarser(stub, {0: 5, 1: 3, 1.5: 2, 2: 2, 3: 1}[stage]), order_sides[0], BARK, STEM, caps=(True, True))
+    if stage <= 3:
+        bl.head_crown(m, heads, stage, rng, ATLAS, CROWN, shade, solid=1.2)
+        if stage <= 1:
+            curtains(m, spec["name"], limbs, lobes, stage, count=(14, 18), reach=(2.0, 5.0))
     else:
-        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
+        bl.flat_heads(m, heads, stage, (LIGHT, MID, DARK), GATHERED[stage], name)
     return m
 
 
@@ -355,4 +357,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else far.LEVEL + 1
+    return 4 if piece.endswith("_depleted") else bl.FAR_LEVEL + 1

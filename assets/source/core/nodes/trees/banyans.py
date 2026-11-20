@@ -62,7 +62,7 @@ SPECS = {b["name"]: b for b in BANYANS}
 # How far apart the heads of leaves stand over the roof (heads.py), as the fig's; on the coarser levels they are
 # gathered into so many against the finest's count, or so many in all.
 SPACING = 2.2
-GATHERED = {2: 0.45, 3: 34, 4: 11}
+GATHERED = {1.5: 0.72, 2: 0.45, 3: 34, 4: 11}
 # The share of each level's sprays a head of the roof carries: it has many heads, and its sprays cost a pixel as much as any.
 SPRAYS = 0.75
 # The flat levels draw only the pillars this thick or more.
@@ -239,54 +239,56 @@ def car(m, lod):
 
 
 def banyan(name, lod):
+    """Level `lod` of a banyan, built at its stage (broadleaf.STAGES)."""
     spec = SPECS[name]
-    if lod == far.LEVEL:
+    if lod == bl.FAR_LEVEL:
         pillars = skeleton(spec)[1]
         # The largest of the pillars the flat levels draw, if they draw any.
         drawn = [p for p in pillars if p.r >= FAR_PILLAR]
         big = max(drawn, key=lambda p: p.r) if drawn else None
         post = ((big.foot[0], big.foot[2]), big.r * 2.0, big.under()) if big else None
-        return far.crown(banyan(name, 4), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name, posts=[post] if post else ())
-    m = Mesh(lod <= 3)
-    rng = rng_for(name, "level", lod)
+        return far.crown(banyan(name, bl.LEVEL_OF[4]), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name, posts=[post] if post else ())
+    stage = bl.STAGES[lod]
+    m = Mesh(stage <= 3)
+    rng = rng_for(name, "level", stage)
     beams, pillars, stub, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
     heads, _ = bl.heads_of(name, beams, lobes, shade, SPACING, roof=True, under=1.05, tall=(0.34, 0.52), low=(0.2, 0.3), lean=0.15, size=(0.95, 1.4))
-    if lod in (2, 3):
-        heads = bl.gathered(heads, GATHERED[lod], name)
+    if stage in (1.5, 2, 3):
+        heads = bl.gathered(heads, GATHERED[stage], name)
     wall = trunk_wall(spec)
-    sides, rings = {0: (48, 20), 1: (24, 8), 2: (10, 4), 3: (8, 3), 4: (6, 2)}[lod]
+    sides, rings = {0: (48, 20), 1: (24, 8), 1.5: (16, 6), 2: (10, 4), 3: (8, 3), 4: (6, 2)}[stage]
     under = -0.6 * (spec["stem"] * 1.4) - 0.1
     fork = spec["fork"]
     hs = [under, -0.1] + [mix(0.0, fork + 0.5, (i / (rings - 1)) ** 1.2) for i in range(rings)]
-    bl.fluted(m, hs, wall.radius if lod <= 2 else (lambda az, h: wall.base(h) * 1.15), sides, BARK, STEM)
-    if lod == 0:
+    bl.fluted(m, hs, wall.radius if stage <= 2 else (lambda az, h: wall.base(h) * 1.15), sides, BARK, STEM)
+    if stage == 0:
         for rope in figs.ropes({"name": spec["name"], "fork": fork, "stem": spec["stem"], "windows": [], "ropes": 14}, wall):
             bl.bark_tube(m, bl.coarser(rope, 10), 6, BARK, STEM, caps=(True, True))
-    psides, prings = {0: (14, 9), 1: (8, 4), 2: (5, 2), 3: (4, 2), 4: (3, 2)}[lod]
+    psides, prings = {0: (14, 9), 1: (8, 4), 1.5: (6, 3), 2: (5, 2), 3: (4, 2), 4: (3, 2)}[stage]
     for p in pillars:
-        if lod >= 3 and p.r < FAR_PILLAR:
+        if stage >= 3 and p.r < FAR_PILLAR:
             continue
         p.mesh(m, psides, prings, BARK, STEM)
-    order_sides, keep, least = {0: ((14, 9, 5, 3), (16, 9, 5, 3), 0.0), 1: ((8, 5, 3, 3), (8, 4, 3, 2), 0.07), 2: ((4, 3, 0, 0), (3, 1, 1, 1), 0.2),
-                                3: ((4, 3, 0, 0), (3, 1, 1, 1), 0.25), 4: ((4, 0, 0, 0), (1, 1, 1, 1), 0.3)}[lod]
+    order_sides, keep, least = {0: ((14, 9, 5, 3), (16, 9, 5, 3), 0.0), 1: ((8, 5, 3, 3), (8, 4, 3, 2), 0.07), 1.5: ((6, 4, 3, 0), (5, 2, 2, 1), 0.12),
+                                2: ((4, 3, 0, 0), (3, 1, 1, 1), 0.2), 3: ((4, 3, 0, 0), (3, 1, 1, 1), 0.25), 4: ((4, 0, 0, 0), (1, 1, 1, 1), 0.3)}[stage]
     bl.wood(m, beams, order_sides, keep, BARK, STEM, least)
-    if stub is not None and lod <= 3:
+    if stub is not None and stage <= 3:
         if m.textured:
             # Snapped off long ago, its end grown over with bark. (A fourth material, the cut wood, is one more than a
             # level may be drawn with beside the car's.)
-            s = bl.coarser(stub, {0: 8, 1: 4, 2: 2, 3: 2}[lod])
+            s = bl.coarser(stub, {0: 8, 1: 4, 1.5: 3, 2: 2, 3: 2}[stage])
             tube(m, s.pts, s.radii, order_sides[0], BARK, uv=(0.0, 2.0, 0.0, 2.0), caps=(True, True), cap_uv=lambda p, c, e1, e2: (0.5 + dot(sub(p, c), e1), 0.5 + dot(sub(p, c), e2)))
         else:
             bl.bark_tube(m, bl.coarser(stub, 1), order_sides[0], BARK, STEM, caps=(True, True))
-    if spec.get("car") and lod <= 2:
-        car(m, lod)
-    if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, figs.CROWN, shade, SPRAYS, solid=1.35)
-        if lod <= 1:
-            figs.curtains(m, spec["name"], beams, lobes, lod, count=spec["curtains"], reach=(2.0, 5.0))
+    if spec.get("car") and stage <= 2:
+        car(m, stage)
+    if stage <= 3:
+        bl.head_crown(m, heads, stage, rng, ATLAS, figs.CROWN, shade, SPRAYS, solid=1.35)
+        if stage <= 1:
+            figs.curtains(m, spec["name"], beams, lobes, stage, count=spec["curtains"], reach=(2.0, 5.0))
     else:
-        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
+        bl.flat_heads(m, heads, stage, (LIGHT, MID, DARK), GATHERED[stage], name)
     return m
 
 
@@ -348,4 +350,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else far.LEVEL + 1
+    return 4 if piece.endswith("_depleted") else bl.FAR_LEVEL + 1

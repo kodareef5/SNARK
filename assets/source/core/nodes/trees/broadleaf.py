@@ -24,7 +24,13 @@ import heads as hd
 from kit import UP, Mesh, add, cross, dot, horizontal, interp, length, lerp, mix, mul, rng_for, rotate, smooth, sub, tube, unit
 from layout import LEAVES, SPANS, head_cell, leaf_cell, picture_dir, under_cell
 
-LEVELS = 5
+# A broadleaf tree's near levels, finest first, by the stage each is built at: the tables keyed by stage (HEAD_LEVELS,
+# each kind's GATHERED, trunk and wood) hold one entry each. Stage 1.5 sits between the full crown (1) and the gathered
+# heads without sprays to speak of (2), 8 times lighter, where a tree stood too long on the heavy level (D892). The
+# far solid (far.py) is the level after these, built from stage 4.
+STAGES = (0, 1, 1.5, 2, 3, 4)
+FAR_LEVEL = len(STAGES)
+LEVEL_OF = {stage: level for level, stage in enumerate(STAGES)}
 
 
 # The skeleton ----------------------------------------------------------------------------------------------------------
@@ -684,6 +690,7 @@ LEAFY = 0.55
 HEAD_LEVELS = {
     0: {"own": 0.62, "rings": 0, "inner": 1, "core": 0.55, "dim": 0.55, "jag": 1.4, "puff": 1.0, "sprays": 18, "loose": 0.7, "largest": 1.5, "more": 1.8, "low": -0.9, "spray": 1.18, "cut": 0.58, "coarse": False},
     1: {"own": 0.62, "rings": 1, "inner": 2, "core": 0.55, "dim": 0.5, "jag": 1.4, "puff": 1.0, "sprays": 12, "loose": 0.5, "largest": 1.5, "more": 1.8, "low": -0.9, "spray": 1.2, "cut": 0.58, "coarse": True},
+    1.5: {"own": 0.62, "rings": 1.5, "inner": 4, "core": 0.62, "dim": 0.33, "jag": 1.2, "puff": 1.07, "sprays": 9, "loose": 0.25, "largest": 1.8, "more": 1.4, "low": -0.7, "spray": 1.15, "cut": 0.54, "coarse": True},
     2: {"own": 0.62, "rings": 2, "inner": 4, "core": 0.7, "dim": 0.15, "jag": 1.0, "puff": 1.15, "sprays": 6, "loose": 0.0, "largest": 2.2, "more": 1.0, "low": -0.5, "spray": 1.1, "cut": 0.5, "coarse": True},
     3: {"own": 0.62, "rings": 4, "inner": 4, "core": 0.8, "dim": 0.0, "jag": 1.0, "puff": 1.25, "sprays": 4, "loose": 0.0, "largest": 2.8, "more": 1.0, "low": -0.3, "spray": 1.05, "cut": 0.45, "coarse": True},
 }

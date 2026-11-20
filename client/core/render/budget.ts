@@ -6,7 +6,9 @@
 // have given two whole steps, and then give a step for each of theirs. The squeeze follows the last frame's count: it
 // rises while the frame is over, and falls only once the frame has been well under for a second, never back to where it
 // was over in the last twenty seconds; and a crown's level and share keep a margin before they move. So nothing goes back
-// and forth while the count hovers at the limit.
+// and forth while the count hovers at the limit. Where the tier lets it spend (Tier.budget.spend), the squeeze falls past
+// none while the frame is well under: crowns, trunks, stones and bushes are then drawn as if nearer, each whole step half
+// as far, so their finer levels reach farther with the triangles the frame leaves.
 
 import type { Tier } from "../assets/tiers.ts";
 
@@ -47,12 +49,14 @@ const WAIT = 60;
  */
 const FORGET_MS = 20000;
 const FORGET_MOST = 320000;
+/** How long a squeeze below none that spent past the tier's spendTo is not spent past again. */
+const SPENT_MS = 4000;
 /** A frame over within this long of the squeeze falling was over because it fell. */
 const FELL_MS = 2000;
 
 /** How many times as far as they stand crowns, and trunks, stones and bushes, are drawn at a squeeze. */
-export const crownScale = (squeeze: number): number => (squeeze > 1 ? 2 ** (squeeze - 1) : 1);
-export const coverScale = (squeeze: number): number => (squeeze > COVER_FROM ? 2 ** (squeeze - COVER_FROM) : 1);
+export const crownScale = (squeeze: number): number => (squeeze > 1 ? 2 ** (squeeze - 1) : squeeze < 0 ? 2 ** squeeze : 1);
+export const coverScale = (squeeze: number): number => (squeeze > COVER_FROM ? 2 ** (squeeze - COVER_FROM) : squeeze < 0 ? 2 ** squeeze : 1);
 
 /**
  * The thinning of a crown `metres` off at a squeeze, from 0 for none to STEPS for all of LEAVES_LEFT: it sweeps in from
@@ -74,6 +78,14 @@ export class FrameBudget {
   held = false;
   /** The squeeze the frame being built draws crowns at. */
   squeeze = 0;
+  /** The least the squeeze may fall to: the tier's spend, below none; and the triangles a frame spending may come to. */
+  least = 0;
+  spendTo = 0;
+  /**
+   * Off, the squeeze never falls below none, as on a phone, whatever the tier lets it spend: for the device page, whose
+   * rungs and windows are each judged by what they add, which a squeeze that fills the room left would hide.
+   */
+  spends = true;
   /** What the tier allows a frame, as the governor leaves it. */
   triangles = 0;
   draws = 0;
@@ -84,14 +96,15 @@ export class FrameBudget {
   readonly last = { triangles: 0, crowns: 0, ambient: 0, draws: 0, room: 0 };
   private under = 0;
   /** The squeeze not gone back under, until when, for how long the next time, and when it last fell. */
-  private floor = 0;
+  private floor = -Infinity;
   private floorUntil = 0;
   private forget = FORGET_MS;
   private fellAt = -Infinity;
 
   /** Starts again from no squeeze, as a new scene does. */
   reset(): void {
-    this.squeeze = this.floor = this.under = this.floorUntil = 0;
+    this.squeeze = this.under = this.floorUntil = 0;
+    this.floor = -Infinity;
     this.forget = FORGET_MS;
     this.fellAt = -Infinity;
   }
@@ -100,7 +113,10 @@ export class FrameBudget {
     this.triangles = tier.budget.triangles;
     this.draws = tier.budget.draws;
     this.crowns = this.ambient = 0;
+    this.least = this.spends && tier.budget.spend ? -tier.budget.spend : 0;
+    this.spendTo = tier.budget.spendTo ?? this.triangles;
     if (!this.on) this.squeeze = 0;
+    else if (!this.held) this.squeeze = Math.max(this.least, this.squeeze);
   }
 
   /** What ambient details may spend this frame: what the last frame left under the tier's number once all above them was drawn. */
@@ -114,18 +130,28 @@ export class FrameBudget {
     const room = Math.max(0, this.triangles - above);
     Object.assign(this.last, { triangles, crowns: this.crowns, ambient: this.ambient, draws, room });
     if (!this.on || this.held) return;
-    if (now >= this.floorUntil) this.floor = 0;
-    if (this.crowns > room) {
+    if (now >= this.floorUntil) this.floor = -Infinity;
+    // Below none crowns spend only to the tier's spendTo, which leaves the rest of the budget for what needs it.
+    const spending = this.squeeze <= 0, spendRoom = Math.max(0, Math.min(this.spendTo, this.triangles) - above);
+    const over = this.crowns > room, overSpent = spending && this.squeeze < 0 && this.crowns > spendRoom;
+    if (over) {
       this.under = 0;
       if (now - this.fellAt < FELL_MS) this.forget = Math.min(this.forget * 2, FORGET_MOST);
       this.squeeze = Math.min(SQUEEZE_MOST, this.squeeze + UP);
       this.floor = Math.max(this.floor, this.squeeze);
       this.floorUntil = now + this.forget;
-    } else if (this.crowns < room * LOW) {
+    } else if (overSpent) {
+      // Spent past the ceiling: given back, and not spent again for a moment, which is all it takes to keep it from
+      // going back and forth, as only the extra detail is at stake.
+      this.under = 0;
+      this.squeeze = Math.min(0, this.squeeze + UP);
+      this.floor = Math.max(this.floor, this.squeeze);
+      this.floorUntil = Math.max(this.floorUntil, now + SPENT_MS);
+    } else if (this.crowns < (spending ? spendRoom : room) * LOW) {
       if (++this.under < WAIT || this.squeeze <= this.floor) return;
-      this.squeeze = Math.max(0, this.floor, this.squeeze - DOWN);
+      this.squeeze = Math.max(spending ? this.least : 0, this.floor, this.squeeze - DOWN);
       this.fellAt = now;
-      if (this.squeeze === 0) this.forget = FORGET_MS;
+      if (this.squeeze <= 0) this.forget = FORGET_MS;
     } else this.under = 0;
   }
 }

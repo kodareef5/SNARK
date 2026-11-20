@@ -20,9 +20,15 @@ SIZE = 1.25
 FOV_X = math.radians(102)
 
 
-def starts(height, palm):
-    """Where the medium tier first draws each level after the finest, as asset.ts states the errors."""
-    return [0.0] + [d * SIZE for d in ((14, 55, height * 771 / 55, height * 771 / 20) if palm else (14, 40, height * 771 / 100, height * 771 / 24))]
+def starts(height, kind):
+    """Where the medium tier first draws each near level after the finest, as asset.ts states the errors."""
+    if kind == "palms":
+        at = (14, 55, height * 771 / 55, height * 771 / 20)
+    elif kind == "mangroves":
+        at = (14, 40, max(48, height * 771 / 140), height * 771 / 24)
+    else:
+        at = (14, 28, 40, max(48, height * 771 / 140), height * 771 / 24)
+    return [0.0] + [d * SIZE for d in at]
 
 
 def cost(module, pieces):
@@ -39,7 +45,7 @@ def cost(module, pieces):
         for j in range(40):
             x, z = -160 + 8 * i + rng.uniform(0, 8), -160 + 8 * j + rng.uniform(0, 8)
             trees.append((x, z, rng.choice(pieces)))
-    by_level = [0.0] * 5
+    by_level = [0.0] * len(starts(1.0, module.__name__))
     for k in range(8):
         yaw = k * math.pi / 4
         for x, z, name in trees:
@@ -50,7 +56,7 @@ def cost(module, pieces):
             ang = (ang + math.pi) % (2 * math.pi) - math.pi
             if abs(ang) > FOV_X / 2 + math.atan2(10, max(1.0, math.hypot(x, z))):
                 continue
-            s = starts(heights[name], module.__name__ == "palms")
+            s = starts(heights[name], module.__name__)
             level = max(i for i, at in enumerate(s) if d >= at)
             by_level[level] += tris[name][level] / 8
     return sum(by_level), by_level

@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { HAND_NEAR } from "../../client/core/render/hand.ts";
 import { DRAW_BLEND, DRAW_WATER, FRAME, FramePacket } from "../../client/core/render/packet.ts";
-import { BENCH_FRAMES, BenchRun, PASSES, PASS_CASTERS, PASS_DOME, PASS_NEAR, PassClock, alternateSpread, effectsOff, packetWithout, passSpread, tierWithout, type QueryGl } from "../../client/core/passes.ts";
+import { BENCH_FRAMES, PASSES, PASS_CASTERS, PASS_DOME, PASS_NEAR, PassClock, effectsOff, packetWithout, tierWithout, type QueryGl } from "../../client/core/passes.ts";
+import { BenchRun, alternateSpread, passSpread } from "../../client/core/bench-run.ts";
 
 /** A card that runs each query `ms` long and has its result two frames later, or never where `timed` is false. */
 function card(ms: (pass: number) => number, timed = true) {
@@ -97,7 +98,7 @@ test("a pass's spread and the frame's, by pass where passes were timed", () => {
 test("a bench run measures once the scene is still, turns its view from then, and reports its frames once", () => {
   const run = new BenchRun();
   const p = new FramePacket();
-  const drawn = { drawCalls: 10, canvas: [100, 100], renderer: "a card", userAgent: "a browser" };
+  const drawn = { drawCalls: 10, canvas: [100, 100], renderer: "a card", userAgent: "a browser", card: { bytes: 1024, textures: 512 }, squeeze: 0 };
   let now = 0;
   let report: ReturnType<BenchRun["frame"]> = null;
   for (let f = 0; f < 60 + BENCH_FRAMES + 10; f++, now += 16.7) {

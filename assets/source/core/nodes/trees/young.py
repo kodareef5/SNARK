@@ -52,10 +52,10 @@ SPECS = {y["name"]: y for y in YOUNG}
 # How far apart the heads of leaves stand over the crown (heads.py), each 1.3 to 1.9 m across; on the coarser levels
 # they are gathered into so many against the finest's count, or so many in all.
 SPACING = 1.5
-GATHERED = {2: 0.5, 3: 14, 4: 9}
+GATHERED = {1.5: 0.75, 2: 0.5, 3: 14, 4: 9}
 # The share of each level's sprays a young tree's heads carry: it is the common tree, the wood a player walks in, so it
 # pays for fewer, and its smaller heads need fewer to break their outlines.
-SPRAYS = {0: 0.5, 1: 0.48, 2: 0.35, 3: 0.35}
+SPRAYS = {0: 0.5, 1: 0.48, 1.5: 0.42, 2: 0.35, 3: 0.35}
 
 
 def lean(spec):
@@ -112,27 +112,29 @@ def trunk_mesh(m, spec, sides, rings, cut=None, cap_material=None, cap_uv=None):
 
 
 def young(name, lod):
+    """Level `lod` of a young tree, built at its stage (broadleaf.STAGES)."""
     spec = SPECS[name]
-    if lod == far.LEVEL:
-        return far.crown(young(name, 4), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
-    m = Mesh(lod <= 3)
-    rng = rng_for(name, "level", lod)
+    if lod == bl.FAR_LEVEL:
+        return far.crown(young(name, bl.LEVEL_OF[4]), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
+    stage = bl.STAGES[lod]
+    m = Mesh(stage <= 3)
+    rng = rng_for(name, "level", stage)
     limbs, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
     heads, balls = bl.heads_of(name, limbs, lobes, shade, SPACING)
-    if lod in (2, 3):
-        heads = bl.gathered(heads, GATHERED[lod], name)
-    sides, rings = {0: (16, 8), 1: (10, 4), 2: (6, 3), 3: (5, 2), 4: (4, 2)}[lod]
+    if stage in (1.5, 2, 3):
+        heads = bl.gathered(heads, GATHERED[stage], name)
+    sides, rings = {0: (16, 8), 1: (10, 4), 1.5: (8, 3), 2: (6, 3), 3: (5, 2), 4: (4, 2)}[stage]
     trunk_mesh(m, spec, sides, rings)
-    order_sides, keep, least = {0: ((10, 6, 4), (12, 6, 4), 0.0), 1: ((6, 4, 3), (6, 3, 2), 0.03), 2: ((4, 3, 0), (3, 2, 1), 0.06),
-                                3: ((4, 0, 0), (2, 1, 1), 0.08), 4: ((3, 0, 0), (1, 1, 1), 0.1)}[lod]
+    order_sides, keep, least = {0: ((10, 6, 4), (12, 6, 4), 0.0), 1: ((6, 4, 3), (6, 3, 2), 0.03), 1.5: ((5, 3, 0), (4, 2, 1), 0.045),
+                                2: ((4, 3, 0), (3, 2, 1), 0.06), 3: ((4, 0, 0), (2, 1, 1), 0.08), 4: ((3, 0, 0), (1, 1, 1), 0.1)}[stage]
     bl.wood(m, limbs, order_sides, keep, BARK, STEM, least)
-    if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, CROWN, shade, SPRAYS[lod])
-        if lod <= 1:
-            oaks.epiphytes(m, spec, limbs, shade, lobes, lod, beards=(3, 2), ferns=False)
+    if stage <= 3:
+        bl.head_crown(m, heads, stage, rng, ATLAS, CROWN, shade, SPRAYS[stage])
+        if stage <= 1:
+            oaks.epiphytes(m, spec, limbs, shade, lobes, stage, beards=(3, 2), ferns=False)
     else:
-        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
+        bl.flat_heads(m, heads, stage, (LIGHT, MID, DARK), GATHERED[stage], name)
     return m
 
 
@@ -191,4 +193,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else far.LEVEL + 1
+    return 4 if piece.endswith("_depleted") else bl.FAR_LEVEL + 1

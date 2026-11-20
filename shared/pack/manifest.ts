@@ -15,7 +15,7 @@ import type { ClipSet } from "../anim/clip.ts";
 import type { LandmarkFarRow } from "./far.ts";
 import { joinedRows, type JoinedAt } from "./join.ts";
 import { checkIcons, type ManifestIcons } from "./icons.ts";
-import { CLIP_ROOT_BYTES, MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
+import { CLIP_ROOT_BYTES, MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, decodeClips, decodeUtf8, lodVertices, meshReach, type Pack, type PackClip, type PackMaterial } from "./pack.ts";
 import { soundFault, type ManifestSound } from "./sound.ts";
 import { unfilterPart } from "./stored.ts";
 import { ASTC_BLOCKS, STEP0_SIZE, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, blockOf, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
@@ -100,6 +100,8 @@ export interface ManifestMesh {
   id: string;
   center: [number, number, number];
   half: [number, number, number];
+  /** How far it reaches sideways from its origin at any level, in metres (pack.ts meshReach). Absent where not measured. */
+  reach?: number;
   skeleton?: string;
   /** Index into the boot pack's rigs. */
   rig?: number;
@@ -222,7 +224,7 @@ export const skeletonClips = (e: ManifestClips, part: Uint8Array): ClipSet => de
 /** The manifest of one pack that holds everything. `hash` is given by tools, which can hash, and left out by the client. */
 export function describePack(pack: Pack, file: { name: string; bytes: number }, hash: (part: Uint8Array) => string = () => ""): Manifest {
   const meshes = pack.header.meshes.map((m): ManifestMesh => {
-    const out: ManifestMesh = { id: m.id, center: m.center, half: m.half, levels: [] };
+    const out: ManifestMesh = { id: m.id, center: m.center, half: m.half, reach: meshReach(pack, m), levels: [] };
     if (m.skeleton !== undefined) out.skeleton = m.skeleton;
     if (m.rig !== undefined) out.rig = m.rig;
     // Every vertex of a one-bone mesh names the same bone, so the first says which.

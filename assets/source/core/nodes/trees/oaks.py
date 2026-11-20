@@ -59,7 +59,7 @@ SPECS = {o["name"]: o for o in OAKS}
 # How far apart the heads of leaves stand over the crown (heads.py), each 1.6 to 2.4 m across; on the coarser levels
 # they are gathered into so many against the finest's count, or so many in all.
 SPACING = 2.3
-GATHERED = {2: 0.4, 3: 34, 4: 12}
+GATHERED = {1.5: 0.7, 2: 0.4, 3: 34, 4: 12}
 
 
 def skeleton(spec):
@@ -117,30 +117,32 @@ def interp_h(h, fork):
 
 
 def oak(name, lod):
+    """Level `lod` of an oak, built at its stage (broadleaf.STAGES)."""
     spec = SPECS[name]
-    if lod == far.LEVEL:
-        return far.crown(oak(name, 4), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
-    m = Mesh(lod <= 3)
-    rng = rng_for(name, "level", lod)
+    if lod == bl.FAR_LEVEL:
+        return far.crown(oak(name, bl.LEVEL_OF[4]), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
+    stage = bl.STAGES[lod]
+    m = Mesh(stage <= 3)
+    rng = rng_for(name, "level", stage)
     limbs, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
     heads, balls = bl.heads_of(name, limbs, lobes, shade, SPACING)
-    if lod in (2, 3):
-        heads = bl.gathered(heads, GATHERED[lod], name)
-    trunk_sides, trunk_rings = {0: (32, 14), 1: (16, 6), 2: (8, 3), 3: (6, 3), 4: (5, 2)}[lod]
+    if stage in (1.5, 2, 3):
+        heads = bl.gathered(heads, GATHERED[stage], name)
+    trunk_sides, trunk_rings = {0: (32, 14), 1: (16, 6), 1.5: (12, 4), 2: (8, 3), 3: (6, 3), 4: (5, 2)}[stage]
     trunk_mesh(m, spec, trunk_sides, trunk_rings)
-    # Sides of each order of wood at each level, how many points each keeps, and the thinnest drawn.
-    sides, keep, least = {0: ((12, 8, 5, 3), (16, 9, 5, 3), 0.0), 1: ((7, 5, 3, 3), (8, 4, 3, 2), 0.07), 2: ((4, 3, 0, 0), (3, 1, 1, 1), 0.2),
-                          3: ((4, 0, 0, 0), (3, 1, 1, 1), 0.25), 4: ((4, 0, 0, 0), (2, 1, 1, 1), 0.3)}[lod]
+    # Sides of each order of wood at each stage, how many points each keeps, and the thinnest drawn.
+    sides, keep, least = {0: ((12, 8, 5, 3), (16, 9, 5, 3), 0.0), 1: ((7, 5, 3, 3), (8, 4, 3, 2), 0.07), 1.5: ((5, 4, 3, 0), (5, 2, 2, 1), 0.12),
+                          2: ((4, 3, 0, 0), (3, 1, 1, 1), 0.2), 3: ((4, 0, 0, 0), (3, 1, 1, 1), 0.25), 4: ((4, 0, 0, 0), (2, 1, 1, 1), 0.3)}[stage]
     bl.wood(m, limbs, sides, keep, BARK, STEM, least)
     if spec.get("collar") is not None:
-        collar(m, spec, lod)
-    if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, CROWN, shade)
-        if lod <= 1:
-            epiphytes(m, spec, limbs, shade, lobes, lod)
+        collar(m, spec, stage)
+    if stage <= 3:
+        bl.head_crown(m, heads, stage, rng, ATLAS, CROWN, shade)
+        if stage <= 1:
+            epiphytes(m, spec, limbs, shade, lobes, stage)
     else:
-        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
+        bl.flat_heads(m, heads, stage, (LIGHT, MID, DARK), GATHERED[stage], name)
     return m
 
 
@@ -152,7 +154,7 @@ def collar(m, spec, lod):
     at = add((0.0, spec["fork"] - 0.3, 0.0), mul(out, r * 0.85))
     path = [sub(at, mul(out, 0.25)), at, add(at, mul(out, 0.12))]
     rr = r * 0.42
-    sides = {0: 12, 1: 8, 2: 6, 3: 4, 4: 4}[lod]
+    sides = {0: 12, 1: 8, 1.5: 7, 2: 6, 3: 4, 4: 4}[lod]
     if m.textured:
         # Healed over: its end is bark, drawn in toward the hollow. (The cut wood would be a fourth material.)
         tube(m, path, [rr * 0.9, rr, rr * 0.85], sides, BARK, uv=(0.0, 2.0, 0.0, SPANS[BARK]), caps=(True, True),
@@ -274,4 +276,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else far.LEVEL + 1
+    return 4 if piece.endswith("_depleted") else bl.FAR_LEVEL + 1

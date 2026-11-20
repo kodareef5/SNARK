@@ -13,7 +13,7 @@ import { App } from "../core/app.ts";
 import { fetchBytes, fetchContent, fetchJson, fetchSounds, fetchText, nextTask, withLandmarks } from "../core/fetched.ts";
 import { MapLoader } from "../core/mapload.ts";
 import { loadIdentity } from "../core/identity.ts";
-import { BenchRun, PassClock } from "../core/passes.ts";
+import { PassClock } from "../core/passes.ts";
 import { giveSky, SKY_FILE } from "../core/render/sky.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
@@ -36,7 +36,8 @@ const selfcheck = params.has("selfcheck");
 const checks = selfcheck ? await import("../core/selfcheck-tools.ts") : null;
 const driveCheck = selfcheck && params.has("urbanDrive");
 /** A measurement run. The camera flies itself and the page reports frame times and the GPU's by pass. */
-const bench = params.has("bench") ? new BenchRun() : null;
+// The bench's own code comes only to a page told ?bench (D873).
+const bench = params.has("bench") ? new (await import("../core/bench-run.ts")).BenchRun() : null;
 // The far city and the city's blocks come as their own file, which the first frame does not wait for (D873).
 void import("../core/render/city-late.ts");
 /** A device probe (tools/device.ts). The page measures itself and reports. */
@@ -227,7 +228,7 @@ async function boot(): Promise<void> {
     app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
     if (app.ui.touch && !app.ui.layer && !layering) { layering = true; void import("../core/ui/touch.ts").then((m) => (app.ui.layer = m), () => (layering = false)); }
     if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
-    if (bench) app.autopilot(bench.since(now));
+    if (bench && !params.has("still")) app.autopilot(bench.since(now));
     drivingCheck?.step(app, now);
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
@@ -273,7 +274,7 @@ async function boot(): Promise<void> {
     }
     if (progress?.frames === 45) loser?.restoreContext();
     const r = app.scene!.assets.residency;
-    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent });
+    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze }, app.scene!.assets.table.tris);
     if (result) document.title = `SNARK ${result.frameMs.median} ms`;
     if (result) void fetch("__bench", { method: "POST", body: JSON.stringify(result) });
 
