@@ -30,7 +30,7 @@ const dome = (hour: number, elevation: number, around: number): number[] => {
   return out;
 };
 
-test("the sun rises in the east, stands where low poly's does at noon, sets in the west, and moves in steps of 0.05 degrees", () => {
+test("the sun rises in the east, stands where low poly's does at noon, sets in the west, and moves in steps of 0.005 degrees", () => {
   const at = (hour: number): number[] => {
     const s = [0, 0, 0];
     sunDirection(hour, s);
@@ -45,9 +45,9 @@ test("the sun rises in the east, stands where low poly's does at noon, sets in t
   expect(noon[1]).toBeCloseTo(1 / flat, 9);
   expect(noon[2]).toBeCloseTo(0.43 / flat, 9);
   expect(sunHeight(12)).toBeCloseTo(66.73, 2);
-  for (const hour of [0.3, 7.77, 13.01, 19.5]) expect((sunTravel(hour) / 0.05) % 1).toBeCloseTo(0, 6);
-  // Two moments within a step share a direction.
-  expect(at(9)).toEqual(at(9 + 0.001));
+  for (const hour of [0.3, 7.77, 13.01, 19.5]) expect((sunTravel(hour) / 0.005) % 1).toBeCloseTo(0, 5);
+  // Two moments within a step (0.005 degrees, 1.2 s of game time) share a direction.
+  expect(at(9)).toEqual(at(9 + 0.0001));
   for (const h of [2, 15, 35, -8]) expect(sunHeight(hourOfSun(h, true))).toBeCloseTo(h, 1);
 });
 

@@ -15,8 +15,12 @@ import { graded, linearToSrgb, lit, srgbToLinear, tone } from "./surface.ts";
 
 /** How far the sun's path leans toward +Z: its noon height is atan(1 / 0.43), low poly's, 66.7 degrees. */
 const TILT = Math.atan(0.43);
-/** Degrees of the sun's travel the light's direction moves by at a time, so shadows step rarely and evenly. */
-export const SUN_STEP = 0.05;
+/**
+ * Degrees of the sun's travel the light's direction moves by at a time. Each step turns the shadow cascades' grid: at
+ * 0.05 a step every 0.4 s turned it up to a texel at the edge of ultra's cascades and every shadow jumped at once; at this
+ * a step moves an edge a tenth of a texel, which the shadow filter turns into a slow, smooth drift (D878).
+ */
+export const SUN_STEP = 0.005;
 /** The highest the sun climbs, in degrees: the table's slices run from this far below the horizon to this far above. */
 export const SUN_TOP = (Math.asin(Math.cos(TILT)) * 180) / Math.PI;
 /** Texels along the table's two sides across the sky: round from the sun, and up from the horizon. */
