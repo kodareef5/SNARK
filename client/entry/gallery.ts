@@ -10,6 +10,11 @@ export interface WorldCard {
   max: number;
   password?: boolean;
   online?: boolean;
+  /** What a directory's listing adds (shared/listing.ts); a cluster's own worlds give none of it. */
+  pve?: boolean;
+  about?: string;
+  discord?: string;
+  tags?: Record<string, string | number>;
 }
 export interface MapArt {
   label: string;
@@ -33,11 +38,14 @@ export function imageTile(src: string | undefined, extra = "") {
     '<span aria-hidden="true" class="tile-image ' + extra + '">' + (src ? '<img src="' + esc(src) + '" loading="lazy" alt="">' : "") + "</span>"
   );
 }
+/** A server in the list: the card that opens it, and beside it its Discord, a link of its own since a button holds none. */
 export function serverCard(w: WorldCard) {
   const art = mapArt(w.mapId, w.map),
-    live = w.online !== false;
+    live = w.online !== false,
+    tags = Object.entries(w.tags ?? {}).slice(0, 4),
+    access = w.password === true ? "Password required" : w.password === false ? "Open access" : "Server details";
   return (
-    '<button type="button" class="server-card" data-action="world" data-world="' +
+    '<div class="server-entry"><button type="button" class="server-card" data-action="world" data-world="' +
     esc(w.address) +
     '">' +
     imageTile(art?.cover) +
@@ -45,11 +53,16 @@ export function serverCard(w: WorldCard) {
     esc(w.map) +
     "</span><strong>" +
     esc(w.name) +
-    '</strong><span class="occupancy">' +
+    "</strong>" +
+    (w.about ? '<span class="server-about">' + esc(w.about) + "</span>" : "") +
+    (tags.length ? '<span class="server-tags">' + tags.map(([k, v]) => "<i>" + esc(k) + " " + esc(v) + "</i>").join("") + "</span>" : "") +
+    '<span class="occupancy">' +
     (live ? "<i></i>" + esc(w.players) + " / " + esc(w.max) + " players" : "Offline") +
     '</span></span><span class="card-foot">' +
-    (w.password === true ? "Password required" : w.password === false ? "Open access" : "Server details") +
-    '<span aria-hidden="true">↗</span></span></button>'
+    (w.pve === undefined ? access : (w.pve ? "PvE" : "PvP") + " · " + access) +
+    '<span aria-hidden="true">↗</span></span></button>' +
+    (w.discord ? '<a class="server-link" href="' + esc(w.discord) + '" target="_blank" rel="noopener noreferrer">Discord ↗</a>' : "") +
+    "</div>"
   );
 }
 export function mapChoices(worlds: WorldCard[], selected: string) {

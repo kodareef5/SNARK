@@ -1,7 +1,7 @@
 // The real server on real sockets: who may open one.
 
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { originAllowed, startServer } from "../../server/main.ts";
@@ -49,6 +49,33 @@ test("a page on another site may not open a socket, the server's own page and a 
   }
   // A proxy that passes the Host on needs no listing. Case and a closing slash do not matter.
   expect([originAllowed("https://Play.Example", "play.example", ""), originAllowed("https://play.example", "10.0.0.5:8787", ""), originAllowed("https://play.example", "10.0.0.5:8787", "HTTPS://PLAY.EXAMPLE/")]).toEqual([true, false, true]);
+});
+
+test("a world hosts a server directory only when its operator asks, and a search of it writes nothing", async () => {
+  const dir = clientFolder();
+  const log = console.log;
+  console.log = () => {};
+  const saves = mkdtempSync(join(tmpdir(), "snark-directory-save-"));
+  const plain = startServer({ port: 0, clientDir: dir, dbPath: join(saves, "plain.db"), noBackups: true });
+  const hosting = startServer({ port: 0, clientDir: dir, dbPath: join(saves, "hosting.db"), noBackups: true, directory: true });
+  const ask = (port: number, init?: RequestInit) => fetch(`http://localhost:${port}/directory`, init);
+  const announce = (address: string) => ({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "announce", address }) });
+  const says = async (port: number) => ((await (await fetch(`http://localhost:${port}/entry-world.json`)).json()) as { listed: boolean }).listed;
+  try {
+    expect([(await ask(plain.port!)).status, (await ask(plain.port!, announce("https://play.example.org/"))).status]).toEqual([404, 404]);
+    expect(await (await ask(hosting.port!)).json()).toEqual([]);
+    expect((await ask(hosting.port!, announce("http://play.example.org/"))).status).toBe(400);
+    expect([existsSync(join(saves, "plain.db.directory.sqlite")), existsSync(join(saves, "hosting.db.directory.sqlite"))]).toEqual([false, false]);
+    // A world asks to be listed only when it is listed somewhere.
+    expect([await says(plain.port!), await says(hosting.port!)]).toEqual([false, true]);
+    expect(await (await fetch(`http://localhost:${hosting.port}/entry-world.json`)).json()).toMatchObject({ pve: false, about: "", discord: "", tags: {} });
+  } finally {
+    console.log = log;
+    plain.stop();
+    hosting.stop();
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(saves, { recursive: true, force: true });
+  }
 });
 
 test("a development server takes a socket and answers its own routes only for a browser that asked for this machine: localhost, an address, or its public address's host", async () => {

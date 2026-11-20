@@ -2,7 +2,6 @@ import { Harness, testKey } from "../fixtures/net.ts";
 import { SESSION_CREATING, SESSION_ALIVE, REJECT_NAME, REJECT_PASSWORD } from "../../shared/net/protocol.ts";
 import { expect, test } from "bun:test";
 import { SurvivorActivity } from "../../server/survivor-activity.ts";
-import { ServerDirectory } from "../../server/directory.ts";
 import { EntityRecord, hashKey } from "../../server/records.ts";
 import { SurvivorAccess, ownsSurvivor } from "../../server/survivor-access.ts";
 import type { Host } from "../../server/host.ts";
@@ -19,42 +18,7 @@ const post = (d: object) =>
     headers: { "content-type": "application/json" },
     body: JSON.stringify(d),
   });
-test("verified listings survive restart, advertise access and go private independently of their world", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "snark-directory-")),
-    file = join(dir, "registry.sqlite");
-  let txt = "";
-  let service = new ServerDirectory(file, async () => [[txt]]);
-  const address = "https://play.example.org/miami/",
-    ask = (data: object) => service.answer(post({ ...data, address }), "host"),
-    search = async () => (await (await service.answer(new Request("https://directory.example/directory"), "reader")).json()) as Record<string, unknown>[];
-  try {
-    for (const address of ["http://play.example.org/", "https://play.example.org:8787/"])
-      expect((await service.answer(post({ action: "claim", address }), "host")).status).toBe(400);
-    const { ticket, txt: proof } = (await (await ask({ action: "claim" })).json()) as { ticket: string; txt: string };
-    expect((await ask({ action: "verify", ticket })).status).toBe(409);
-    txt = proof;
-    const { token } = (await (await ask({ action: "verify", ticket })).json()) as { token: string };
-    expect(token).toBeString();
-    expect((await ask({ action: "verify", ticket })).status).toBe(403);
-    expect((await ask({ action: "update", token: "other", name: "Stolen", map: "Miami", listed: true })).status).toBe(403);
-    await ask({ action: "update", token, name: "Reef", map: "Miami", listed: true, password: true });
-    await ask({ action: "heartbeat", token, players: 2, max: 10 });
-    service.close();
-    service = new ServerDirectory(file);
-    const rows = await search();
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ address, map: "Miami", players: 2, password: true, online: true });
-    expect(rows[0].owner).toBeUndefined();
-    await ask({ action: "update", token, name: "Reef", map: "Miami", listed: false });
-    expect(await search()).toEqual([]);
-    for (let i = 0; i < 8; i++) expect((await ask({ action: "claim" })).status).toBe(200);
-    expect((await ask({ action: "claim" })).status).toBe(429);
-    expect((await service.answer(post({ action: "claim", address }), "another operator")).status).toBe(200);
-  } finally {
-    service.close();
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+
 test("browser approval is scoped to a survivor, survives a new access service and recovery consumes its secret", async () => {
   const owner = "11".repeat(16),
     other = "22".repeat(16),

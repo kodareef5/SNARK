@@ -500,12 +500,50 @@ dt,
 .card-foot span {
   font-size: 1.15rem;
 }
-.server-card:only-child {
+/* A row's cards are as tall as its tallest, their feet in line; a Discord link stands under its card. */
+.server-entry {
+  grid-row: span 2;
+  display: grid;
+  grid-template-rows: subgrid;
+  row-gap: 6px;
+}
+.server-entry > .server-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+.server-about {
+  color: #d6eaff;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.server-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.server-tags i {
+  font-style: normal;
+  font-size: 0.8rem;
+  color: #d6eaff;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+.server-link {
+  justify-self: end;
+  font-size: 0.9rem;
+  color: #b6d9ff;
+  padding: 6px 8px;
+  margin: -6px 0;
+}
+.server-entry:only-child > .server-card {
   display: grid;
   grid-template-columns: 1.3fr 1fr;
   grid-template-rows: 1fr auto;
 }
-.server-card:only-child > .tile-image {
+.server-entry:only-child > .server-card > .tile-image {
   grid-row: 1/3;
   aspect-ratio: 2.1;
   height: 100%;
@@ -767,10 +805,10 @@ body:has(.opening) main {
   .region-caption i {
     flex: none;
   }
-  .server-card:only-child {
+  .server-entry:only-child > .server-card {
     display: block;
   }
-  .server-card:only-child > .tile-image {
+  .server-entry:only-child > .server-card > .tile-image {
     height: auto;
     min-height: 0;
     aspect-ratio: 2.4;

@@ -65,7 +65,8 @@ public server, and it takes a socket only for a browser that asked for this mach
 (`admin/routes.ts`, `client/admin`): the server's health from the loop's own timing, its survivors and a live map of them.
 `/sounds.html` is the sound board (`sound-board.ts`), every sound by owner and occasion with the briefs and recipes behind
 them. Both are open on a `--dev` server, and on any other only to a browser that gives `ServerAdminPassword` at its
-sign-in (any name), behind one gate (`admin/gate.ts`). `--cert` and `--key` serve over TLS, which a browser asks for
+sign-in (any name), behind one gate (`admin/gate.ts`). `--directory` hosts a server directory at `/directory` (`directory.ts`), and `SNARK_DIRECTORY_URL` names the
+directories a world announces itself to; without them it hosts none and is listed nowhere. `--cert` and `--key` serve over TLS, which a browser asks for
 before it gives a page a microphone anywhere but `localhost`. A login name is not authentication; accounts do not exist yet.
 
 ## A cluster

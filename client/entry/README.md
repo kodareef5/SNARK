@@ -22,8 +22,27 @@ The region pass takes a native aerial picture at each public spawn. The card gal
 
 The roster shows the world’s level, XP, last login in the viewer’s local time, and cumulative connected play time. Tracking starts on the survivor’s first session with this version. Earlier activity appears as unrecorded. The record travels with the survivor and is shared by its authorized browsers.
 
-## Registering a private server
+## Listing a server
 
-In **Find a server → Register your server**, enter the public HTTPS world URL on port 443. Publish the displayed TXT record at `_snark.<your-hostname>`, then select **Check DNS record**. Save the management token and set the name, map, visibility and password indicator. An unlisted world can share its direct world URL. The game enforces its configured password at login.
+**Find a server** lists the worlds of the directories a world names, as ARK's server list does. A world is listed by
+announcing itself, so there is nothing to register. Give it its public HTTPS address on port 443 and the directories
+to be listed in:
 
-A directory endpoint is served at `/directory`. For durable registrations, run it with a saved world. Worlds in the same cluster share its directory database. To use a different directory, set `SNARK_DIRECTORY_URL` to its full endpoint. For live occupancy, set that variable and `SNARK_LISTING_TOKEN` on the registered world and start it with its public, absolute `--public-url`. It announces every minute. Search marks the listing offline after three minutes without an announcement.
+```sh
+SNARK_DIRECTORY_URL="https://one.example/directory https://two.example/directory" \
+  bun server/main.ts --public-url https://play.example.org/miami --db var/world.db
+```
+
+Every minute it announces that address to each directory, and its `entry-world.json` then says it asks to be listed. A
+directory reads that file at that address itself, for the name, map, players and whether a password is asked, so an
+announcement can list nothing the world does not say, and no world that did not ask. Its card also shows PvE or PvP
+(from `serverPVE`), a blurb (`ServerDescription`), a Discord invite (`DiscordUrl`) and short tags for sorting and
+filtering later (`ServerTags`: `rates=3x, region=eu`), all in `[SnarkSettings]` and checked by `shared/listing.ts`
+wherever they pass. A listing is offline three minutes
+after its last announcement and gone a week after. Its title searches the same directories. A world given none is
+listed nowhere, and its server list shows only its cluster. The game enforces its configured password at login.
+
+`--directory` makes a world host a directory of its own at `/directory`. It lists itself there, and its title searches
+it too. The file is beside the save (`<save>.directory.sqlite`), or `directory.sqlite` in a cluster's folder, which its
+worlds share. Its operator keeps a world out of it for good with `bun server/directory.ts <file> hide <address>`;
+`bun server/directory.ts <file>` lists them all.

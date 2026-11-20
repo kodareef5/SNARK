@@ -7,10 +7,10 @@ import { readLaunch, launchKey, savedName, validName, type EntrySurvivor, type L
 import { appearanceFields, bodyFields, identityFields, stepper, button, esc, field } from "./forms.ts";
 import { preloadWorld } from "./preload.ts";
 import { sceneFor } from "./scenery.ts";
-import { directoryView, directoryAction, directoryRows, type Listing } from "./registration.ts";
+import { listingsOf, mergeListings, type Listing } from "../core/directories.ts";
 
 type Screen =
-  "title" | "servers" | "roster" | "create" | "spawn" | "link" | "approve" | "backup" | "recover" | "direct" | "register" | "password";
+  "title" | "servers" | "roster" | "create" | "spawn" | "link" | "approve" | "backup" | "recover" | "direct" | "password";
 interface Details extends World {
   spawns: { name: string; x: number; z: number }[];
   width: number;
@@ -20,7 +20,8 @@ const root = document.querySelector<HTMLElement>("#entry-root")!,
   status = document.querySelector<HTMLElement>("#loading")!;
 const home = worldUrl("./", location.href),
   direct = document.body.dataset.world === "true";
-const dir = () => document.body.dataset.directory || new URL("directory", home).href;
+// The server directories the world names, its own ("directory") among them if it hosts one; none if it names none (D872).
+const dirs = () => (document.body.dataset.directory ?? "").split(" ").filter(Boolean).map((d) => new URL(d, home).href);
 const memory = new Map<string, string>();
 const read = (k: string) => {
   try {
@@ -217,18 +218,18 @@ async function worldsRefresh() {
     const rows: World[] = await json(new URL("entry-worlds.json", home).href);
     worlds = rows.map((w) => ({ ...w, address: worldUrl(w.address, home) }));
   } catch {}
-  if (screen !== "servers") return;
-  void directoryRows(dir())
-    .then((rows) => {
-      listed = rows;
-      directoryOffline = false;
-      refreshFilters();
-    })
-    .catch(() => {
-      directoryOffline = true;
-      refreshFilters();
-    });
-  if (screen === "servers") refreshFilters();
+  if (screen !== "servers" || !dirs().length) return;
+  const ask = (url: string) =>
+    fetch(url, { signal: AbortSignal.timeout(4000) })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(listingsOf, () => null);
+  void Promise.all(dirs().map(ask)).then((got) => {
+    const rows = mergeListings(got);
+    directoryOffline = rows === null;
+    if (rows) listed = rows;
+    refreshFilters();
+  });
+  refreshFilters();
 }
 function nav(next: Screen) {
   if (screen === "link" && code && next !== "link") void owner("cancel", { code }).catch(() => {});
@@ -412,7 +413,6 @@ function render() {
         (directoryOffline ? "" : "hidden") +
         '>Public directory unavailable. Cluster worlds and direct joins are available.</p><div class="support">' +
         button("direct", "Join by address", "quiet") +
-        button("register", "Register your server", "quiet") +
         "</div>",
       "wide",
     );
@@ -526,7 +526,6 @@ function render() {
         field("recovery", "Saved recovery code", "", 'autocomplete="off"') +
         button("restore", "Recover survivor", "primary"),
     );
-  else if (screen === "register") html = panel("Register your server", directoryView());
   else if (screen === "password")
     html = panel(
       "Server password",
@@ -596,7 +595,7 @@ async function action(a: string, b: HTMLElement) {
     if (screen === "spawn") nav("create");
     else if (screen === "password" && pending?.intent === "create") nav("spawn");
     else if (["create", "link", "approve", "backup", "password", "recover"].includes(screen)) nav("roster");
-    else if (["register", "direct"].includes(screen) || (screen === "roster" && fromWorld)) nav("servers");
+    else if (screen === "direct" || (screen === "roster" && fromWorld)) nav("servers");
     else nav("title");
     return;
   }
@@ -752,7 +751,7 @@ async function action(a: string, b: HTMLElement) {
     return;
   }
   if (a === "backup") backup = "";
-  if (["direct", "register", "link", "approve", "recover", "backup"].includes(a)) {
+  if (["direct", "link", "approve", "recover", "backup"].includes(a)) {
     nav(a as Screen);
     return;
   }
@@ -778,11 +777,6 @@ async function action(a: string, b: HTMLElement) {
     const r = await owner("recover", { name: getInput("who"), code: getInput("recovery") });
     await selectWorld(selected!, "roster", r.survivor.name);
     return;
-  }
-  if (a.startsWith("registry-")) {
-    await directoryAction(a, dir(), getInput);
-    render();
-    void worldsRefresh();
   }
 }
 root.addEventListener("click", async (e) => {

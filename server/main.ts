@@ -1,4 +1,5 @@
-import { ServerDirectory } from "./directory.ts";
+import { ServerDirectory, listingAddress } from "./directory.ts";
+import { ABOUT_MAX, discordOf, plain, tagsOf } from "../shared/listing.ts";
 import type { Server, ServerWebSocket } from "bun";
 import { SurvivorAccess, entryReply } from "./survivor-access.ts";
 // bun server/main.ts [--dev] [--client-dir folder] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
@@ -53,6 +54,17 @@ export interface ServerOptions {
   dbPath?: string;
   /** With a save: skip the backups made beside it at every autosave mark. */
   noBackups?: boolean;
+  /**
+   * Host a server directory at /directory, which worlds announce themselves to and titles search (server/directory.ts).
+   * Off unless the operator asks for it.
+   */
+  directory?: boolean;
+  /**
+   * The server directories this world is listed in and its title searches (SNARK_DIRECTORY_URL, any number). It
+   * announces its --public-url, which must be HTTPS on port 443, to each every minute, and its entry-world.json says it
+   * asks to be listed; each directory reads the rest from there.
+   */
+  directories?: readonly string[];
   /** Directory holding the built client. */
   clientDir?: string;
   /** A fixed scene for the boot probe: no wandering herd, nothing woken, and one creature standing at the spot the self-check looks at. */
@@ -305,11 +317,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
   const access = new SurvivorAccess(host);
   const entryBuilt = existsSync(join(clientDir,"entry.js"));
-  const directory = process.env.SNARK_DIRECTORY_URL ?? "";
-  const listings = new ServerDirectory(host.cluster ? join(host.cluster.folder.root,"directory.sqlite") : opts.dbPath ? opts.dbPath+".directory.sqlite" : ":memory:");
+  // Directories: the ones this world is listed in, and its own if it hosts one. Its title searches them all.
+  const listings = opts.directory ? new ServerDirectory(host.cluster ? join(host.cluster.folder.root,"directory.sqlite") : opts.dbPath ? opts.dbPath+".directory.sqlite" : ":memory:") : null;
+  const directories = opts.directories ?? [];
+  const directory = [...directories, ...(listings ? ["directory"] : [])].join(" ");
+  const listed = directories.length > 0 || !!listings;
+  const self = (() => { try { return listed && opts.publicUrl ? listingAddress(opts.publicUrl).href : ""; } catch { return ""; } })();
+  if (listed && !self) console.log("directory: this world is listed nowhere until --public-url gives its public HTTPS address on port 443");
   const announce = () => {
-    if (!directory || !process.env.SNARK_LISTING_TOKEN || !opts.publicUrl) return;
-    void fetch(directory,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"heartbeat",address:opts.publicUrl,token:process.env.SNARK_LISTING_TOKEN,players:host.game.playerCount,max:host.game.opts.maxClients}),signal:AbortSignal.timeout(8000)}).catch(()=>{});
+    if (!self) return;
+    for (const to of directories) void fetch(to,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"announce",address:self}),signal:AbortSignal.timeout(8000)}).catch(()=>{});
+    if (listings) void listings.announce(self, "this world").catch(() => {});
   };
   const heartbeat = setInterval(announce,60000); announce();
   const mapRoute = mapRoutes(opts.map ?? host.mapFile!, host.world.mapId, host.world.mapHash);
@@ -410,7 +428,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       const { at, path } = placeOf(base, url.pathname);
       if (at === "slash") return new Response(null, { status: 308, headers: { location: `${base}/${url.search}` } });
       const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
-      if (path === "/directory") return listings.answer(req, who);
+      if (path === "/directory") return listings ? listings.answer(req, who) : new Response("this world hosts no server directory", { status: 404 });
       const same = alike(path, req.headers.get("host") ?? "");
       if (same) return same;
       if (at === "site") {
@@ -424,7 +442,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         if (!local || !originAllowed(req.headers.get("origin"),req.headers.get("host"),"")) return entryReply({error:"Use this world’s own address"},403);
         return access.answer(req,who);
       }
-      if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, players:host.game.playerCount, max:host.game.opts.maxClients, spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
+      if (path === "/entry-world.json") return entryReply({ name:host.rules.text("SessionName") || mapLabel(registry,host.world.mapId), map:mapLabel(registry,host.world.mapId), mapId:host.world.mapId, password:!!host.game.opts.password, players:host.game.playerCount, max:host.game.opts.maxClients, listed, pve:host.rules.on("serverPVE"), about:plain(host.rules.text("ServerDescription")).slice(0,ABOUT_MAX), discord:discordOf(host.rules.text("DiscordUrl")), tags:tagsOf(host.rules.text("ServerTags")), spawns:host.world.spawns.map(p=>({name:p.name,x:p.x,z:p.z})), width:host.world.hf.sizeX,height:host.world.hf.sizeZ });
       if (entryBuilt && (path === "/" || path === "/index.html") && [...url.searchParams.keys()].every(k => ["screen","invite"].includes(k))) return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""),links(),{world:true,directory}));
       if (path === "/ws" || path === "/voice") {
         if (!local) {
@@ -591,7 +609,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       return skipped;
     },
     stop() {
-      clearInterval(heartbeat); listings.close();
+      clearInterval(heartbeat); listings?.close();
       stopTicks();
       server.stop(true);
       host.shutdown();
@@ -642,6 +660,8 @@ if (import.meta.main) {
     allowMissingContent: args.includes("--allow-missing-content"),
     dbPath: value("--db"),
     noBackups: args.includes("--no-backups"),
+    directory: args.includes("--directory"),
+    directories: (process.env.SNARK_DIRECTORY_URL ?? "").split(/[\s,]+/).filter(Boolean),
     modules,
     cert: value("--cert"),
     key: value("--key"),
