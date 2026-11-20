@@ -5,7 +5,9 @@
 // search must find a raptor, a map's layer must load when its box is ticked, a page opened
 // for a world on config/boosted-50x must show that world's figures, and with a cluster of two worlds behind the pages, the
 // front page, the maps page and a map's own page must show the worlds on their maps first and every other map as not
-// running. It prints what each page fetched. With `--shots <folder>` it keeps a picture of each page there.
+// running. It prints what each page fetched. With `--shots <folder>` it keeps a picture of each page there. Then, at a
+// desktop's width, "View in 3D" on a creature, the survivor, a vehicle and an item must open the studio
+// (client/entry/studio.ts), which must say it is ready, play the move asked of it and raise no error; its picture is kept too.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -39,6 +41,14 @@ const PAGES = [
   "/wiki/creatures/pteranodon/?world=/fifty",
 ];
 const WIDTHS = [1280, 390];
+/** Pages whose model the studio opens, and the move each is asked to play ("" for none: a vehicle, an item). */
+const STUDIO: readonly [path: string, move: string][] = [
+  ["/wiki/creatures/raptor/", "walk"],
+  ["/wiki/characters/survivor/", "emote:wave"],
+  ["/wiki/vehicles/compact/", ""],
+  ["/wiki/items/piece_foundation_wood/", ""],
+  ["/wiki/items/pistol/", ""],
+];
 
 export async function wikiProbe(chrome: string): Promise<boolean> {
   if (!existsSync(join(DIST, "wiki/index.html"))) throw new Error("client/dist/wiki is missing: run bun run build, then bun run wiki");
@@ -57,7 +67,8 @@ export async function wikiProbe(chrome: string): Promise<boolean> {
   const worlds: Record<string, object> = { "/settings.json": { name: "Miami", map: "core:miami", settings: {} }, "/fifty/settings.json": fifty, "/worlds.json": cluster };
   const server = Bun.serve({ port: 0, fetch: (req) => worlds[new URL(req.url).pathname] ? Response.json(worlds[new URL(req.url).pathname]) : serveFile(DIST, req) });
   const profile = mkdtempSync(join(tmpdir(), "snark-pages-"));
-  const flags = ["--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", "--autoplay-policy=no-user-gesture-required"];
+  // WebGL 2 from the CPU, for the studio, where the machine has no GPU Chrome will use headless.
+  const flags = ["--headless=new", ...CHROME_FLAGS, "--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--mute-audio", "--no-first-run", "--disable-extensions", "--remote-debugging-port=0", "--autoplay-policy=no-user-gesture-required"];
   const browser = Bun.spawn([chrome, ...flags, `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
   const faults: string[] = [];
   try {
@@ -144,6 +155,43 @@ export async function wikiProbe(chrome: string): Promise<boolean> {
         }
         // A fresh page each time: what it fetches is counted as a first visit's.
         await send("Network.clearBrowserCache");
+      }
+    }
+    for (const width of WIDTHS) for (const [path, move] of STUDIO) {
+      // On a phone the survivor alone: its bar has the most to hold.
+      if (width < 500 && !path.includes("survivor")) continue;
+      await send("Emulation.setDeviceMetricsOverride", { width, height: width > 500 ? 900 : 844, deviceScaleFactor: 1, mobile: width < 500 });
+      errors.length = 0;
+      await send("Page.navigate", { url: `http://localhost:${server.port}${path}` });
+      await Bun.sleep(300);
+      await run(settled);
+      // Pressed, the studio must say it is ready within a minute; then it plays the move asked and is let run a moment.
+      const said = await run(`new Promise((r) => {
+        addEventListener('message', (e) => e.data?.source === 'snark-studio' && r(e.data.type + (e.data.detail ? ': ' + e.data.detail : '')));
+        const b = document.querySelector('[data-view]');
+        if (!b) return r('no button');
+        b.click();
+        setTimeout(() => r('silent'), 60000);
+      })`);
+      if (said !== "ready") faults.push(`${path}: the studio said ${said}, not ready`);
+      const inside = "document.querySelector('iframe.studio').contentDocument";
+      const played = said === "ready" ? await run(`(async () => {
+        const d = ${inside}, list = d.getElementById('move');
+        // A build without the art has no clips for a creature, and offers it no moves: nothing to ask of it then.
+        if (${JSON.stringify(move)} && list.options.length) {
+          if (![...list.options].some((o) => o.value === ${JSON.stringify(move)} && !o.disabled)) return 'not offered: ' + [...list.options].map((o) => o.value).join(' ');
+          list.value = ${JSON.stringify(move)};
+          list.dispatchEvent(new Event('change'));
+        }
+        await new Promise((r) => setTimeout(r, 1500));
+        return [list.options.length, d.getElementById('told').value, d.body.dataset.error ?? ''].join(' | ');
+      })()`) : "";
+      console.log(`  studio ${path.padEnd(34)} ${String(width).padStart(4)} px  ${said}${played ? `  (${played})` : ""}`);
+      if (move && played.startsWith("not offered")) faults.push(`${path}: ${played}`);
+      faults.push(...errors.map((e) => `${path} in 3D: ${e}`));
+      if (shots) {
+        const shot = await send("Page.captureScreenshot", { format: "png" });
+        writeFileSync(join(shots, `studio-${path.replace(/[/?=]+/g, "-").replace(/^-|-$/g, "")}-${width}.png`), Buffer.from(shot.data, "base64"));
       }
     }
     ws.close();

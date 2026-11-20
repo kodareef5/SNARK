@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import { parseManifest } from "../shared/pack/manifest.ts";
 
-/** The title has its own small initial bundle. The native scene is requested only when it is shown. */
+/** The title has its own small initial bundle. The native scene is requested only when it is shown, and the wiki's studio (studio.html) when a page's 3D view is opened. */
 export async function buildEntry(dist: string): Promise<void> {
   const source = resolve(import.meta.dir, "../client/entry"),
     assets = join(dist, "assets");
@@ -12,7 +12,7 @@ export async function buildEntry(dist: string): Promise<void> {
   const named = (prefix: string) => "assets/" + files.find((n) => n.startsWith(prefix) && !n.endsWith(".br"));
   const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
   const result = await Bun.build({
-    entrypoints: [join(source, "entry.ts"), join(source, "flight.ts")],
+    entrypoints: [join(source, "entry.ts"), join(source, "flight.ts"), join(source, "studio.ts")],
     outdir: dist,
     target: "browser",
     minify: true,
@@ -20,7 +20,7 @@ export async function buildEntry(dist: string): Promise<void> {
     define: { __SKY_FILE__: JSON.stringify(named("sky.")), __HUD_ATLAS_URL__: JSON.stringify(named("hud.")) },
   });
   if (!result.success) throw Error(result.logs.map(String).join("\n"));
-  for (const name of ["entry.css", "flight.html"]) cpSync(join(source, name), join(dist, name));
+  for (const name of ["entry.css", "flight.html", "studio.html"]) cpSync(join(source, name), join(dist, name));
   const media = join(source, "media");
   if (existsSync(media)) {
     mkdirSync(join(dist, "title"), { recursive: true });
@@ -45,7 +45,7 @@ export async function buildEntry(dist: string): Promise<void> {
     font: font ? "assets/" + font : null,
   };
   writeFileSync(join(dist, "entry-media.json"), JSON.stringify(data));
-  for (const name of ["entry.js", "flight.js", "entry.css"])
+  for (const name of ["entry.js", "flight.js", "studio.js", "entry.css"])
     writeFileSync(join(dist, name + ".br"), brotliCompressSync(readFileSync(join(dist, name))));
 }
 if (import.meta.main) await buildEntry(resolve(process.argv[2] ?? "client/dist"));

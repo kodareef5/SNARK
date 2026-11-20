@@ -245,6 +245,54 @@ footer {
   max-width: 50%;
 }
 
+/* The studio over the picture (client/entry/studio.ts), at the picture's own 4:3; the pictures wait under it. */
+.views .studio {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ground);
+}
+
+.views.in3d img {
+  display: none;
+}
+
+/* On a phone the studio's controls take more of its foot, so it stands taller. */
+@media (max-width: 600px) {
+  .views .studio {
+    aspect-ratio: 4 / 5;
+  }
+}
+
+.view3d {
+  margin: 0.5rem 0 0.25rem;
+  font: inherit;
+  color: var(--accent);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+}
+
+.view3d:hover,
+.view3d:focus-visible {
+  border-color: var(--accent);
+}
+
+/* Open, the button closes it. */
+.view3d[aria-expanded="true"] {
+  font-size: 0;
+  color: var(--warm);
+}
+
+.view3d[aria-expanded="true"]::after {
+  content: "Close 3D";
+  font-size: 1rem;
+}
+
 figcaption {
   color: var(--muted);
   font-size: 0.85rem;

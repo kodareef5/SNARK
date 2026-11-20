@@ -178,6 +178,9 @@ const WIKI_BUDGETS: Record<string, number> = {
   "wiki: the heaviest page before it can be read": 400 * KB,
   "wiki: its largest picture": 320 * KB,
   "wiki: its largest card's picture": 64 * KB,
+  // Fetched only when "View in 3D" is pressed (D894): the studio's page and script, and what it draws with before the
+  // subject's own meshes come: the manifest, the boot pack, the content, the sky and the font.
+  "wiki: what the studio fetches before it draws": 1200 * KB,
 };
 
 /** Prints the wiki's rows against their budgets; false if any is over. */
@@ -211,8 +214,13 @@ export function weighWiki(dist: string): boolean {
   });
   const media = [...new Bun.Glob("wiki/media/*.png").scanSync({ cwd: dist })].map((f): [string, number] => [f, sent(f)]);
   const most = (list: [string, number][]): [string, number] => list.reduce((a, b) => (b[1] > a[1] ? b : a), ["", 0]);
+  const media3d = existsSync(join(dist, "entry-media.json")) ? (JSON.parse(readFileSync(join(dist, "entry-media.json"), "utf8")) as Record<string, string | null>) : {};
+  const studio = ["studio.html", "studio.js", "assets/manifest.json", "title/barlow.ttf", media3d.boot, media3d.content, media3d.sky]
+    .filter((f): f is string => !!f && existsSync(join(dist, f)))
+    .reduce((n, f) => n + sent(f), 0);
   const rows: [string, [string, number]][] = [
     ["wiki: the heaviest page before it can be read", most(pages)],
+    ["wiki: what the studio fetches before it draws", ["studio.html", studio]],
     ["wiki: its largest picture", most(media)],
     ["wiki: its largest card's picture", most(media.filter(([f]) => f.endsWith(".card.png")))],
   ];

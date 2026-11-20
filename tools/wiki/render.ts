@@ -11,6 +11,11 @@ import { BASE, SOURCE, esc, heading, img, page, pager, slug, type Assets } from 
 import type { Drawn } from "./posters.ts";
 import type { Command, Setting } from "./reference.ts";
 
+/** The kinds whose page opens its model in the studio: bodies, vehicles and items (a structure's item shows the structure). */
+const STUDIO_KINDS: ReadonlySet<string> = new Set(["creatures", "characters", "vehicles", "items"]);
+/** The studio's page, at the root of the client beside the wiki's folder. */
+const STUDIO = `${BASE.replace(/wiki\/$/, "")}studio.html`;
+
 export interface Sound {
   id: string;
   owner: string;
@@ -200,7 +205,9 @@ ${missing}`;
     const p = site.pictures.get(e.id);
     const credit = site.credits.get(e.id);
     const pictures = p ? p.views.map((view, k) => img(view, k === 0 ? e.label : `${e.label} from the side`, k > 0)).join("") : "";
-    const figure = pictures ? `<figure class="views">${pictures}${credit ? `<figcaption>${esc(credit)}</figcaption>` : ""}</figure>` : "";
+    // A body, a vehicle or an item opens in the game's own studio (client/entry/studio.ts) over its picture.
+    const studio = pictures && STUDIO_KINDS.has(e.kind) ? `<button type="button" class="view3d" data-view="${STUDIO}?id=${encodeURIComponent(e.id)}" data-label="${esc(e.label)}" aria-expanded="false">${e.kind === "characters" ? "View in 3D, with every move and emote" : e.kind === "creatures" ? "View in 3D, with every move" : "View in 3D"}</button>` : "";
+    const figure = pictures ? `<figure class="views">${pictures}${studio}${credit ? `<figcaption>${esc(credit)}</figcaption>` : ""}</figure>` : "";
     const facts = join(e.facts, (f) => `<dt>${esc(f.label)}</dt><dd>${f.value.map(cell).join("")}</dd>`);
     const line = e.console
       ? `<p class="console"><code id="console">${esc(e.console)}</code><button type="button" data-copy="console">Copy</button></p><p class="note">In the console, with cheats on.</p>`
