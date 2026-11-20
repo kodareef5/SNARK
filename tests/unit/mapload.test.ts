@@ -9,7 +9,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
 import { nextTask, type Get } from "../../client/core/fetched.ts";
-import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, StagedMap, URGENT_AT_ONCE, firstFrameParts, type Place } from "../../client/core/mapload.ts";
+import { AFTER_AT_ONCE, CITY_NEAR, DAMAGED_MOST, FIRST_REACH, MapLoader, RETRY_FIRST, RETRY_MOST, RING, ROAD_REACH, StagedMap, URGENT_AT_ONCE, firstFrameParts, handOverParts, type Place } from "../../client/core/mapload.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
@@ -19,6 +19,7 @@ import { Rng } from "../../shared/rng.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { OVERVIEW_CHUNKS, mapHeightfield, mapTops, nodeLayers, parseMap, partsOf, readHead, readPart, squareOf, writeMap, type MapData, type MapPart, type MapStatics, type NodeLayer, type OverviewPiece } from "../../shared/world/mapfile.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
+import { ROAD_PLANES, roadSamples } from "../../shared/world/roadframe.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
 import { cornerMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { nodePack, nodeRegistry } from "../fixtures/nodeworld.ts";
@@ -235,6 +236,50 @@ test("the page asks for the head, then the land, then nothing until it knows whe
   await s.drain();
   expect([staged.hf.heights, staged.hf.tint, [...staged.nodes]]).toEqual([whole.heights, whole.tint, [...whole.nodes]]);
   expect(wholeStatics(handed)).toBe(true);
+});
+
+test("a map's roads' frame is asked for only once the first frame's parts have come, for the sectors within ROAD_REACH of the body, held a sector at a time, and let go a sector past it", async () => {
+  const m = landed();
+  const nx = m.dims.chunksX * 32 + 1, cells = roadSamples(nx), n = cells * roadSamples(m.dims.chunksZ * 32 + 1);
+  const plane = (v: number): Uint8Array => new Uint8Array(n).fill(v);
+  const framed = writeMap({ ...m, road: { across: plane(128), along: plane(4), half: plane(40), lanes: plane(2) } });
+  const h = readHead(framed), roads = h.parts.filter((p) => p.kind === "road");
+  // Nothing the first frame or the hand-over waits for is a road part.
+  expect([firstFrameParts(h, 300, 600).some((p) => p.kind === "road"), handOverParts(h).some((p) => p.kind === "road")]).toEqual([false, false]);
+  const off = (p: MapPart, x: number, z: number): number => {
+    const sq = squareOf(h.dims, SECTOR_CHUNKS, p.col, p.row)!;
+    return Math.hypot(Math.max(sq.cx0 * CHUNK_SIZE - x, x - sq.cx1 * CHUNK_SIZE, 0), Math.max(sq.cz0 * CHUNK_SIZE - z, z - sq.cz1 * CHUNK_SIZE, 0));
+  };
+  const s = heldServer(framed);
+  let loader: MapLoader | null = null;
+  // The looks at the roads wait for nothing here: each is taken when the test takes it.
+  void MapLoader.start(s.get, `map/${h.name}`, { wait: () => new Promise(() => {}) }).then((l) => (loader = l));
+  await s.drain();
+  const body = { x: 300, z: 600, vx: 0, vz: 0 };
+  let near = false;
+  void loader!.follow(() => body).then(() => (near = true));
+  await settle();
+  while (!near) await s.answer();
+  expect(s.asked.slice(0, s.answered).some((url) => url.includes("/road."))).toBe(false);
+  await settle();
+  const within = roads.filter((p) => off(p, 300, 600) <= ROAD_REACH);
+  expect(new Set(s.asked.filter((url) => url.includes("/road.")))).toEqual(new Set(within.map(nameOf)));
+  expect(within.length).toBeLessThan(roads.length);
+  await s.drain();
+  const held = loader!.staged.hf.road!, cellsOf = (p: MapPart): number => (readPart(h, p, framed.subarray(p.at, p.at + p.length)) as { road: { across: Uint8Array } }).road.across.length;
+  expect(held.bytes).toBe(within.reduce((k, p) => k + cellsOf(p) * ROAD_PLANES, 0));
+  // Gone east, the sectors a sector past ROAD_REACH are let go and those now within it asked for; one let go while it
+  // was under way is not held when it comes.
+  [body.x, body.z] = [4000, 600];
+  loader!.lookRoads();
+  const kept = roads.filter((p) => held.has(p.col * 4096 + p.row));
+  expect(kept.every((p) => off(p, 4000, 600) <= ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE)).toBe(true);
+  const east = roads.filter((p) => off(p, 4000, 600) <= ROAD_REACH);
+  expect(east.every((p) => s.waiting.some((w) => w.url === nameOf(p)) || held.has(p.col * 4096 + p.row))).toBe(true);
+  [body.x, body.z] = [300, 600];
+  loader!.lookRoads();
+  await s.drain();
+  expect(east.filter((p) => off(p, 300, 600) > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE).some((p) => held.has(p.col * 4096 + p.row))).toBe(false);
 });
 
 test("the first frame on this map waits for its head, its land, the overviews within reach and at most four sectors' ground, as firstFrameParts says: counted, not timed", async () => {

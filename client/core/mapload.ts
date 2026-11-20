@@ -24,6 +24,9 @@ import { MapWater } from "../../shared/world/water.ts";
 import { fetchBytes, within, type Get } from "./fetched.ts";
 import { HeldTops } from "./render/blocks.ts";
 import { PREDICTED_REACH } from "./session.ts";
+import { holdRoad, type RoadPiece } from "../../shared/world/mapfile.ts";
+import { RoadSectors } from "../../shared/world/roadframe.ts";
+import { WINDOW, WINDOW_MOVE } from "./render/terrain.ts";
 
 /**
  * Parts asked for at once before the first frame: as many as a browser opens to a host over HTTP/1.1, so that on a link of
@@ -48,6 +51,12 @@ export const RING = 600;
 export const LEAD = 2;
 /** Metres round the body whose sectors' statics are handed over before the rest: as far as any tier draws the far city. */
 export const CITY_NEAR = 4096;
+/**
+ * Metres round the body whose sectors' road parts are held: as far as the terrain window, which alone draws them, reaches
+ * from where it is filled round the body. One a sector further is let go, and they are looked at every ROAD_EVERY ms.
+ */
+export const ROAD_REACH = ((WINDOW - 1) * TERRAIN_CELL) / 2 + WINDOW_MOVE;
+export const ROAD_EVERY = 1000;
 /** Milliseconds before a part that failed is asked for again: RETRY_FIRST, doubled at each failure in a row, to RETRY_MOST. */
 export const RETRY_FIRST = 500;
 export const RETRY_MOST = 8000;
@@ -100,11 +109,12 @@ export function firstFrameParts(head: MapHead, x: number, z: number): MapPart[] 
 }
 
 /**
- * The parts the map's statics are handed over after, besides the head: every part but the tops, so that the far city, the
- * near city and the far shadow are made on exact ground. The map's build says what that is at its heaviest first frame.
+ * The parts the map's statics are handed over after, besides the head: every part but the tops and the roads' frame, so
+ * that the far city, the near city and the far shadow are made on exact ground. The map's build says what that is at its
+ * heaviest first frame.
  */
 export function handOverParts(head: MapHead): MapPart[] {
-  return head.parts.filter((p) => p.kind !== "tops");
+  return head.parts.filter((p) => p.kind !== "tops" && p.kind !== "road");
 }
 
 /**
@@ -378,6 +388,7 @@ export class MapLoader {
     this.arrived = then.arrived;
     this.arriving = then.arriving;
     this.pump();
+    void this.followRoads();
   }
 
   /**
@@ -502,6 +513,38 @@ export class MapLoader {
     } else this.staged.take(got.value);
     this.came.add(p);
     return 0;
+  }
+
+  /** The road parts held or asked for. */
+  private readonly roads = new Set<MapPart>();
+
+  /** For as long as the page lives, the roads' frame of the sectors round the body, a look every ROAD_EVERY ms, where the map has one. */
+  private async followRoads(): Promise<void> {
+    if (!this.staged.head.parts.some((p) => p.kind === "road")) return;
+    this.staged.hf.road ??= new RoadSectors();
+    for (;;) {
+      this.lookRoads();
+      await this.wait(ROAD_EVERY);
+    }
+  }
+
+  /**
+   * One look at the roads' frame: each road part within ROAD_REACH of the body asked for, once at a time, and held once it
+   * comes if it is still wanted; each held past a sector further let go. Nothing else waits for them.
+   */
+  lookRoads(): void {
+    const road = this.staged.hf.road!;
+    for (const p of this.staged.head.parts) {
+      if (p.kind !== "road") continue;
+      const off = this.off(p);
+      if (off <= ROAD_REACH && !this.roads.has(p)) {
+        this.roads.add(p);
+        void this.asker.ask(p.name, this.at(p), (bytes) => readPart(this.staged.head, p, bytes)).then(
+          (got) => ("wait" in got ? this.roads.delete(p) : this.roads.has(p) && holdRoad(road, got.value as RoadPiece)),
+          () => this.roads.delete(p),
+        );
+      } else if (off > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE && this.roads.delete(p)) road.drop(p.col * 4096 + p.row);
+    }
   }
 }
 

@@ -1202,7 +1202,7 @@ if (import.meta.main) {
   }
   const source = resolve(arg("source") ?? SOURCE);
   const mapPath = arg("map");
-  const mapFile = mapPath ? parseMap(new Uint8Array(readFileSync(mapPath))) : undefined;
+  const mapFile = mapPath ? parseMap(new Uint8Array(readFileSync(mapPath)), true, true) : undefined;
   const look = (arg("view") ?? "corner") as HouseView;
   if (!HOUSE_VIEWS.includes(look)) throw new Error(`--view takes ${HOUSE_VIEWS.join(", ")}, not "${look}"`);
   /** Puts what the flags ask for in front of the view's camera. */

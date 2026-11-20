@@ -97,10 +97,13 @@ export const SURFACE_WEATHERING: Record<SurfaceName, SurfaceWeathering> = {
 };
 
 /**
- * How asphalt wears (world-surfaces.ts `roadWorn`), each a share of the most: its macro's light and roughness, and of
- * each 8 m square, the share patched and the share whose cracks are sealed. The beach's macro is its light alone.
+ * How asphalt wears (world-surfaces.ts `roadWorn`), each a share of the most: its macro's light and roughness; along a
+ * carriageway's frame, a darker, smoother wheel path under each pair of wheels of a lane and a stripe of oil between
+ * them, the more the more worn its class, the share of the joints between its lanes sealed and the dirt of its gutters;
+ * and of each repair's cell, a lane by 8 m along a road and an 8 m square elsewhere, the share patched and the share
+ * whose cracks are sealed. The beach's macro is its light alone.
  */
-export const ROAD_LOOK = { macro: 0.7, macroRough: 0.6, patched: 0.18, sealed: 0.3, beach: 0.8 };
+export const ROAD_LOOK = { macro: 0.7, macroRough: 0.6, wheels: 0.07, oil: 0.22, joint: 0.75, gutter: 0.2, patched: 0.18, sealed: 0.3, beach: 0.8 };
 /**
  * How a poured walk wears (world-surfaces.ts `walkWorn`) by its 1.5 m panels and the joints between them, each panel
  * and each joint's piece by a hash of where it is: a panel's tone either way, the shares of panels stained, cracked and

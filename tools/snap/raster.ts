@@ -1,10 +1,11 @@
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
+import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
-import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadWorn, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
@@ -158,6 +159,9 @@ const facadeNow = new Float32Array(FACADE_FLOATS);
 const edgeNow = new Float32Array(4);
 /** The frame's finishes' `early` as the rasterizer holds their maps (FramePacket `worldEarly`): 1 while only the base colours have come. */
 let finishesEarly = 1;
+/** The roads' frame of the ground drawn, which asphalt wears along (world-surfaces.ts roadFrameAt), and the frame at a point. */
+let roadsOf: RoadSectors | null = null;
+const roadAt = new Float64Array(ROAD_FRAME);
 /** What a pixel was before the weathering or an edge, which come up with the packed maps: `risenTo` takes `risen` of what they made. */
 const before = new Float64Array(9);
 function risenFrom(albedo: ArrayLike<number>, orm: ArrayLike<number>, normal: ArrayLike<number>): void {
@@ -184,7 +188,8 @@ function risenTo(albedo: Float64Array | number[], orm: Float64Array | number[], 
  */
 function wornGround(albedo: Float64Array, orm: Float64Array, normal: Float64Array, id: number, x: number, z: number, footprint: number, city: ArrayLike<number>, sample: WorldSample, road: boolean, walks: boolean): void {
   risenFrom(albedo, orm, normal);
-  if (road) roadWorn(albedo, orm, id, x, z, footprint, sample);
+  if (road && roadsOf) roadFrameAt(roadsOf, x, z, roadAt);
+  if (road) roadWorn(albedo, orm, id, x, z, footprint, sample, roadsOf ? roadAt : null);
   if (walks) walkWorn(albedo, orm, normal, id, x, z, footprint, city, sample);
   risenTo(albedo, orm, normal, 1 - finishesEarly);
 }
@@ -602,6 +607,7 @@ export class Rasterizer {
       this.worldFinest[k] = side > 0 && level >= 0 ? level + packet.worldLeast[k]! - Math.log2(side) : -Infinity;
     }
     if (this.finishesMeant) finishesEarly = 2;
+    roadsOf = this.hf.road;
     const facades = Array.from(packet.facadeSlots, (t) => (t >= 0 ? this.textures.get(t) ?? null : undefined));
     this.facadeSample = packet.lit && facades.some((t) => t) && facades.every((t) => t !== null) ? (k, u, v, lod, out) => sample(facades[k]!, u, v, lod - (facades[k]!.pictures.length - 1), out) : null;
     if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {

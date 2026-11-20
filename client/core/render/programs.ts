@@ -24,9 +24,10 @@ import { WATER_FRAGMENT } from "./water.ts";
  * terrain window's heights and tints, 13 the far nodes' meshes (packet.ts `atlas`), 14 a body's hurt and decay layer.
  * 15 holds the details atlas for the details draws alone, and is free outside them: a program that does not read it may
  * bind something else there. 16, the first past the sixteen a program may read at most, holds the sky's openness
- * (skyopen.ts); WebGL2 has 32 units at the least, and no program reads more than twelve.
+ * (skyopen.ts); 17 to 21 a facade's atlases, and 22 the terrain window's roads' frame. WebGL2 has 32 units at the
+ * least, and no program reads more than twelve.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -87,13 +88,13 @@ const MAKE = {
   flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
   // Where the tier reads the finishes in full, asphalt, sand and walks wear (world-surfaces.ts `roadWorn`, `walkWorn`).
   terrain: (tier, format, hard = false, light = false) => {
-    const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, GROUND, LIT_TERRAIN_VERTEX);
+    const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, tier.lit ? { ...GROUND, uRoad: UNIT.road } : GROUND, LIT_TERRAIN_VERTEX);
     return tier.lit && tier.finish === "full" ? { ...t, defines: `#define WORLD_ROAD\n${t.defines}` } : t;
   },
-  // The same, for the tiles that read the window round the camera (terrain.ts).
+  // The same, for the tiles that read the window round the camera (terrain.ts), where asphalt wears along the roads' frame.
   terrainWindow: (tier, format, hard, light): ProgramText => {
     const t = MAKE.terrain(tier, format, hard, light);
-    return { ...t, samplers: { ...t.samplers, ...WINDOW } };
+    return { ...t, defines: tier.lit && tier.finish === "full" ? `#define GROUND_ROAD\n${t.defines}` : t.defines, samplers: { ...t.samplers, ...WINDOW } };
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.

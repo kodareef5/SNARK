@@ -25,6 +25,8 @@ import { makeNodes, ZONE_CELL } from "./nodes.ts";
 import { gradeTransferDecks, placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf, type StaticPiece } from "./statics.ts";
 import { SPAWN_CLEAR, isFurniture } from "./street-furniture.ts";
+import { streetGraph } from "./street-graph.ts";
+import { roadFrame } from "./road-frame.ts";
 import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
@@ -262,6 +264,9 @@ export async function buildMap(named: string, release = false, output = join(ROO
   lap(`${aircraft.length} found aircraft at surveyed service sites and industrial yards; ${boats.length} boats at mapped waterfronts`);
   map = { ...map, tops: mapTops(map, reg) };
   lap(`the far feed's cells of ${map.tops!.chunks.length} chunks, for the overviews' tops`);
+  // The roads' frame, for drawing the wear of their lanes (road-frame.ts), from the street data's pieces.
+  map = { ...map, road: roadFrame(streetGraph(site), nx, nz, x0, z0) };
+  lap(`the roads' frame on ${map.road!.across.reduce((n, v) => n + (v > 0 ? 1 : 0), 0)} of its 4 m samples`);
   const bytes = writeMap(map);
   // The file is the map from here on (the numbers below read it back): the map as built is let go first.
   map = undefined as unknown as typeof map;

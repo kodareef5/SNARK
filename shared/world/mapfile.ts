@@ -86,6 +86,9 @@
 //               row by row, ascending; then 256 bytes each, its 4 m cells' tops row by row from its corner (farTopByte in
 //               shared/world/tactical.ts, 0 for an empty cell); then 256 each of their palette colours. What a far block is
 //               drawn from where a sector's statics are not held. Nothing waits for it; it comes after every other part.
+//   6 road      a sector's roads' frame (shared/world/roadframe.ts), where a road runs in it: at its ground classes' cells,
+//               a plane a byte each after another: across (0 where no road runs), along, half width and lanes. For
+//               drawing alone: a page asks for those its terrain window reaches, and a server reads past them.
 //
 // A part's file is `<kind>.<column>-<row>.<hash>.part` (partName); the land's and the head's have no square.
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
@@ -102,8 +105,14 @@ import { formOf, mix, nodeForms, placedNodes, resolveSlots, type KindsAt, type N
 import { MAX_SLOTS_PER_CHUNK, StructureStore } from "./structures.ts";
 import { FarCells, Summary, TACTICAL_CELL, bakeChunk, pieceShapes } from "./tactical.ts";
 import { MAX_WATER_BODIES, MapWater, type WaterBody } from "./water.ts";
+import { ROAD_PLANES, RoadSectors, type MapRoad } from "./roadframe.ts";
 
-export const MAP_VERSION = 10;
+export const MAP_VERSION = 11;
+/**
+ * The version before the roads' frame, whose files are this one's with no road part: they are read as maps whose roads
+ * have no frame, drawn without lane wear until they are built again.
+ */
+const ROADLESS_VERSION = 10;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 56;
 /** Chunks a side of an overview's square, 4,096 m. */
@@ -121,7 +130,7 @@ const FAR_CELLS = (CHUNK_SIZE / TACTICAL_CELL) * (CHUNK_SIZE / TACTICAL_CELL);
 /** Statics read between yields when read a step at a time: about a millisecond's work here, a few on a phone. */
 const SLICE = 1 << 15;
 /** A part's kinds, by their number in the file less one. */
-const PART_KINDS = ["land", "overview", "ground", "statics", "tops"] as const;
+const PART_KINDS = ["land", "overview", "ground", "statics", "tops", "road"] as const;
 export type PartKind = (typeof PART_KINDS)[number];
 
 /** What `steps` comes to, run without a pause. */
@@ -358,6 +367,11 @@ export interface MapData {
    * ground. The build sets it from the surface it made each sample (tools/mapworld/ground.ts).
    */
   readonly ground?: Uint8Array;
+  /**
+   * Its roads' frame, for drawing (shared/world/roadframe.ts): left out, no road has one. A file read whole keeps it only
+   * where it is drawn from (parseMap's `drawn`); a server reads past it.
+   */
+  readonly road?: MapRoad;
   /** As a file gives them back, or a list in the map's order, which every reader takes alike. */
   readonly statics: MapStatics | readonly MapStatic[];
   readonly nodes: readonly NodeLayer[];
@@ -462,6 +476,7 @@ function check(m: MapData): void {
   const sizeZ = chunksZ * CHUNK_SIZE;
   const samples = (sizeX / TERRAIN_CELL + 1) * (sizeZ / TERRAIN_CELL + 1);
   if (m.ground && m.ground.length !== (sizeX / TERRAIN_CELL / 2 + 1) * (sizeZ / TERRAIN_CELL / 2 + 1)) fail(`its ground classes are ${m.ground.length}, and its size takes a cell each two samples a side`);
+  if (m.road && roadPlanes(m.road).some((plane) => plane.length !== (sizeX / TERRAIN_CELL / 2 + 1) * (sizeZ / TERRAIN_CELL / 2 + 1))) fail("its roads' frame is not a cell each two samples a side");
   if (m.heights.length !== samples || m.tint.length !== samples) fail(`it has ${m.heights.length} heights and ${m.tint.length} tints, and its size takes ${samples} of each`);
   const inside = (x: number, z: number): boolean => x >= 0 && x <= sizeX && z >= 0 && z <= sizeZ;
   if (!whole(m.spawns.length, 1, MAX_SPAWNS)) fail(`it has ${m.spawns.length} spawn points, and a map has 1 to ${MAX_SPAWNS}`);
@@ -1247,6 +1262,11 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   for (const sq of sectors) parts.push({ kind: "ground", sq, bytes: groundPart(m, dims, layers, sq) });
   const statics = sectorStatics(m.statics, dims, sectors);
   sectors.forEach((sq, s) => statics.parts[s] && parts.push({ kind: "statics", sq, bytes: statics.parts[s] }));
+  // Each sector's roads' frame, where a road runs in it.
+  for (const sq of m.road ? sectors : []) {
+    const bytes = roadPart(m.road!, dims, sq);
+    if (bytes) parts.push({ kind: "road", sq, bytes });
+  }
   const tops = m.tops;
   if (tops) {
     for (const sq of squaresOf(dims, OVERVIEW_CHUNKS)) {
@@ -1352,7 +1372,7 @@ export function readHead(file: Uint8Array, verify = true): MapHead {
   const v = new DataView(file.buffer, file.byteOffset, file.byteLength);
   if (file.length < 16 || v.getUint32(0, true) !== MAGIC) throw new Error("map: this is not a map file");
   const version = v.getUint16(4, true);
-  if (version !== MAP_VERSION) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
+  if (version !== MAP_VERSION && version !== ROADLESS_VERSION) throw new Error(`map: version ${version} is not one this build reads: build the map again`);
   const bytes = v.getUint32(12, true);
   if (bytes < HEADER_BYTES || bytes > file.length) throw new Error("map: it is cut short");
   const hash = v.getUint32(8, true);
@@ -1562,7 +1582,14 @@ export interface TopsPiece extends MapTops {
   readonly sq: Square;
 }
 
-export type MapPiece = LandPiece | OverviewPiece | GroundPiece | StaticsPiece | TopsPiece;
+/** A sector's roads' frame (roadframe.ts), its planes at its ground classes' cells row by row, as views of the part's bytes. */
+export interface RoadPiece {
+  readonly kind: "road";
+  readonly sq: Square;
+  readonly road: MapRoad;
+}
+
+export type MapPiece = LandPiece | OverviewPiece | GroundPiece | StaticsPiece | TopsPiece | RoadPiece;
 
 /**
  * A part read a step at a time, given its head: a sector's statics yield every SLICE pieces, so a page reads a city's
@@ -1576,6 +1603,7 @@ export function* partSteps(head: MapHead, part: MapPart, bytes: Uint8Array, veri
     if (part.kind === "land") return { kind: "land", defs: JSON.parse(decodeUtf8(bytes)) as Def[] };
     if (part.kind === "statics") return yield* readStatics(head, sq!, s);
     if (part.kind === "tops") return readTops(head, sq!, s);
+    if (part.kind === "road") return readRoad(sq!, s);
     return part.kind === "overview" ? readOverview(head, sq!, s) : readGround(head, sq!, s);
   })();
   for (;;) {
@@ -1663,6 +1691,11 @@ function readGround(head: MapHead, sq: Square, s: In): GroundPiece {
   return { kind: "ground", sq, heights, tint, ground, listed };
 }
 
+function readRoad(sq: Square, s: In): RoadPiece {
+  const cells = ((sq.cx1 - sq.cx0) * CHUNK_SAMPLES) / 2 + 1, n = cells * (((sq.cz1 - sq.cz0) * CHUNK_SAMPLES) / 2 + 1);
+  return { kind: "road", sq, road: { across: s.take(n), along: s.take(n), half: s.take(n), lanes: s.take(n) } };
+}
+
 function readTops(head: MapHead, sq: Square, s: In): TopsPiece {
   const square = chunksOf(head.dims, sq);
   const chunks = new Uint32Array(s.u16());
@@ -1727,6 +1760,24 @@ export function setGround(dims: MapDims, heights: Uint16Array, tint: Uint8Array,
   }
 }
 const NO_GROUND = new Uint8Array(0);
+
+/** A frame's planes in the order a part holds them. */
+const roadPlanes = (r: MapRoad): readonly Uint8Array[] => [r.across, r.along, r.half, r.lanes];
+/** A sector's roads' frame (RoadPiece) held where it is drawn from (Heightfield `road`), by its square. */
+export function holdRoad(road: RoadSectors, piece: RoadPiece): void {
+  const { sq } = piece;
+  road.put(sq.col * 4096 + sq.row, (sq.cx0 * CHUNK_SAMPLES) / 2, (sq.cz0 * CHUNK_SAMPLES) / 2, ((sq.cx1 - sq.cx0) * CHUNK_SAMPLES) / 2 + 1, piece.road);
+}
+/** The bytes of a sector's road part: its square's cells of the map's frame, or null where no road runs in it. */
+function roadPart(road: MapRoad, dims: FramedDims, sq: Square): Uint8Array | null {
+  const cells = (dims.chunksX * CHUNK_SAMPLES) / 2 + 1;
+  const [w, d] = [((sq.cx1 - sq.cx0) * CHUNK_SAMPLES) / 2 + 1, ((sq.cz1 - sq.cz0) * CHUNK_SAMPLES) / 2 + 1];
+  const planes = roadPlanes(road).map((plane) => samplesOf(plane, cells, (sq.cx0 * CHUNK_SAMPLES) / 2, (sq.cz0 * CHUNK_SAMPLES) / 2, w, d, 1));
+  if (planes[0]!.every((v) => v === 0)) return null;
+  const out = new Uint8Array(w * d * ROAD_PLANES);
+  planes.forEach((plane, p) => out.set(plane, p * w * d));
+  return out;
+}
 
 /** Sets an overview's pictures and its slots' bits of where nodes stand into the map's node layers, as `blankLayers` made them. */
 export function setNodes(dims: MapDims, layers: readonly NodeLayer[], piece: OverviewPiece): void {
@@ -1868,11 +1919,13 @@ export function* joinStatics(head: MapHead, pieces: readonly StaticsPiece[], ord
  * overview and every sector's ground make all of it but its statics, which come of the statics pieces among them, in the
  * head's order: without them it is the map with none, which a client draws from while they come.
  */
-export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = true): MapFile {
+export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = true, drawn = false): MapFile {
   const { dims } = head;
   const n = (dims.chunksX * CHUNK_SAMPLES + 1) * (dims.chunksZ * CHUNK_SAMPLES + 1);
   const [heights, tint] = [new Uint16Array(n), new Uint8Array(n)];
-  const ground = new Uint8Array(((dims.chunksX * CHUNK_SAMPLES) / 2 + 1) * ((dims.chunksZ * CHUNK_SAMPLES) / 2 + 1));
+  const gx = (dims.chunksX * CHUNK_SAMPLES) / 2 + 1, cells = gx * ((dims.chunksZ * CHUNK_SAMPLES) / 2 + 1);
+  const ground = new Uint8Array(cells);
+  const road = drawn && head.parts.some((p) => p.kind === "road") ? { across: new Uint8Array(cells), along: new Uint8Array(cells), half: new Uint8Array(cells), lanes: new Uint8Array(cells) } : null;
   const nodes = blankLayers(head);
   const grounds: GroundPiece[] = [];
   const statics: StaticsPiece[] = [];
@@ -1887,6 +1940,12 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
     } else if (p.kind === "ground") {
       setGround(dims, heights, tint, p, ground);
       grounds.push(p);
+    } else if (p.kind === "road") {
+      if (!road) continue;
+      const gw = ((p.sq.cx1 - p.sq.cx0) * CHUNK_SAMPLES) / 2 + 1, at = ((p.sq.cz0 * CHUNK_SAMPLES) / 2) * gx + (p.sq.cx0 * CHUNK_SAMPLES) / 2;
+      roadPlanes(p.road).forEach((plane, k) => {
+        for (let j = 0; j < plane.length / gw; j++) roadPlanes(road)[k]!.set(plane.subarray(j * gw, j * gw + gw), at + j * gx);
+      });
     } else if (p.kind === "tops") tops.push(p);
     else statics.push(p);
   }
@@ -1895,7 +1954,7 @@ export function joinParts(head: MapHead, pieces: readonly MapPiece[], order = tr
   const content = head.landmarks ? { content: { landmarks: head.landmarks, defs } } : {};
   const { id, minY, stepY, seaLevel, spawns, regions, vehicles, hash } = head;
   // A map whose ground is plain everywhere reads back with no classes, as it was written: the same map, and no grid held.
-  return { id, dims, minY, stepY, seaLevel, heights, tint, ...(ground.some((v) => v !== 0) ? { ground } : {}), statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(head.tideEyes ? { tideEyes: head.tideEyes } : {}), ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
+  return { id, dims, minY, stepY, seaLevel, heights, tint, ...(ground.some((v) => v !== 0) ? { ground } : {}), ...(road && road.across.some((v) => v !== 0) ? { road } : {}), statics: finish(joinStatics(head, statics, order)), nodes, spawns, ...(head.tideEyes ? { tideEyes: head.tideEyes } : {}), ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(mapWater ? { water: mapWater } : {}), ...content, ...(tops.length > 0 ? { tops: joinTops(tops) } : {}), hash };
 }
 
 /** The water of a map's overviews (OverviewPiece.water) as the map's, every overview's given, or null where its head has no WATR. */
@@ -1971,14 +2030,15 @@ export function mapTops(map: MapData, reg: Registry): MapTops {
 
 /**
  * The map in a file: its head and every part read and joined. Throws with a reason if the file is not a map this build can
- * play on; a part that is damaged is named. Without `verify` its hashes are taken on trust.
+ * play on; a part that is damaged is named. Without `verify` its hashes are taken on trust. Its roads' frame is kept
+ * where it is `drawn` from, and read past elsewhere.
  */
-export function parseMap(file: Uint8Array, verify = true): MapFile {
+export function parseMap(file: Uint8Array, verify = true, drawn = false): MapFile {
   const head = readHead(file, verify);
   const end = head.parts.reduce((at, p) => Math.max(at, p.at + p.length), head.bytes);
   if (file.length < end) throw new Error("map: it is cut short");
   if (file.length > end) throw new Error("map: it runs on past its last part");
-  const map = joinParts(head, head.parts.map((p) => readPart(head, p, file.subarray(p.at, p.at + p.length), verify)));
+  const map = joinParts(head, head.parts.map((p) => readPart(head, p, file.subarray(p.at, p.at + p.length), verify)), true, drawn);
   if (head.counts.some((n, c) => map.statics.first[c + 1]! - map.statics.first[c]! !== n)) throw new Error("map: its statics are not as many a chunk as its head counts");
   const held = map.water?.chunks() ?? new Uint32Array(0);
   if (held.length !== head.coarse.water.length || held.some((c, k) => c !== head.coarse.water[k])) throw new Error("map: its head's chunks of water are not those its overviews hold");
@@ -1995,6 +2055,10 @@ export function mapHeightfield(map: MapData): Heightfield {
   const hf = new Heightfield(map.dims, TERRAIN_CELL, map.minY, map.stepY, map.heights, map.tint, map.ground);
   hf.seaLevel = map.seaLevel;
   hf.water = map.water ?? null;
+  if (map.road) {
+    hf.road = new RoadSectors();
+    hf.road.put(0, 0, 0, (map.dims.chunksX * CHUNK_SAMPLES) / 2 + 1, map.road);
+  }
   return hf;
 }
 

@@ -5,6 +5,7 @@
 // picture, then from its overview, and each sector then sets its own. `exact` says which chunks hold the map's own
 // samples, and `changes` where samples changed.
 
+import type { RoadSectors } from "./roadframe.ts";
 import { CHUNK_SIZE, chunkCount, framed, type FramedDims, type MapDims } from "../coords.ts";
 import type { MapWater } from "./water.ts";
 
@@ -32,6 +33,8 @@ export class Heightfield {
    * Empty where a map gives none: every place is then plain ground.
    */
   readonly ground: Uint8Array;
+  /** Its roads' frame, used only for drawing (shared/world/roadframe.ts), as far as it is held; null for a server's ground and wherever nothing draws it. */
+  road: RoadSectors | null = null;
   readonly groundX: number;
   /** Height of the sea's surface, set by the code that builds the map. -Infinity for a map with no sea. */
   seaLevel = -Infinity;

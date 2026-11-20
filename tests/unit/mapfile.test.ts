@@ -2,12 +2,13 @@ import { expect, test } from "bun:test";
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, frameKey, framed, type MapDims } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { CityStatics, cityTops } from "../../shared/world/city.ts";
-import { MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, joinParts, joinStatics, mapHeightfield, mapNodes, mapTops, parseMap, partSteps, placeStatics, readHead, readPart, resolveNodes, setGround, setStatics, topsOf, writeMap, type GroundPiece, type MapData, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece, type TopsPiece } from "../../shared/world/mapfile.ts";
+import { MapStatics, OVERVIEW_STEP, blankLayers, blankStatics, joinParts, joinStatics, mapHeightfield, mapNodes, mapTops, parseMap, partSteps, placeStatics, holdRoad, readHead, readPart, resolveNodes, setGround, setStatics, topsOf, writeMap, type GroundPiece, type MapData, type RoadPiece, type NodeScatter, type NodeZoned, type OverviewPiece, type StaticsPiece, type TopsPiece } from "../../shared/world/mapfile.ts";
 import { FarCells, Summary, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { SEA_DRY, SEA_UNDER, formOf, mix, nodeForms, scatterNodes, type NodeForms, type NodeSource, type NodeSpot, type SlotsTaken } from "../../shared/world/nodes.ts";
 import { MapWater, seaHere } from "../../shared/world/water.ts";
 import { Rng } from "../../shared/rng.ts";
+import { ROAD_PLANES, RoadSectors, roadSamples } from "../../shared/world/roadframe.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap, wideMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -72,6 +73,54 @@ test("a map written in parts and read back is the map it was made of: every heig
   expect([w.chunks(), w.bodies, w.cell]).toEqual([v.chunks(), v.bodies, v.cell]);
   for (const c of v.chunks()) expect(w.squares.subarray(w.block[c]!, w.block[c]! + 64)).toEqual(v.squares.subarray(v.block[c]!, v.block[c]! + 64));
   expect(writeMap(back)).toEqual(file);
+});
+
+test("a map built before the roads' frame is read as one whose roads have none, and an older or newer one is refused", () => {
+  const plain = writeMap(wideMap());
+  const as = (version: number): Uint8Array<ArrayBuffer> => {
+    const f = plain.slice();
+    new DataView(f.buffer).setUint16(4, version, true);
+    return f;
+  };
+  // The version is outside what the head's hash covers, so a road-less file of this version is a file of the last.
+  const old = parseMap(as(10), true, true);
+  expect(old.road).toBeUndefined();
+  expect(old.heights).toEqual(parseMap(plain).heights);
+  for (const v of [9, 12]) expect(() => readHead(as(v))).toThrow(`map: version ${v} is not one this build reads`);
+});
+
+test("a map's roads' frame rides in a part of its own for each sector a road runs in, is read whole only where it is drawn from, and is held a sector at a time", () => {
+  const map = wideMap();
+  const nx = map.dims.chunksX * 32 + 1, nz = map.dims.chunksZ * 32 + 1, cells = roadSamples(nx), n = cells * roadSamples(nz);
+  // A frame on the first 100 rows of cells only: the sectors past them have no road part.
+  const plane = (k0: number): Uint8Array => Uint8Array.from({ length: n }, (_, k) => (k < 100 * cells ? ((k * 7 + k0) % 255) + 1 : 0));
+  const road = { across: plane(0), along: plane(1), half: plane(2), lanes: plane(3) };
+  const file = writeMap({ ...map, road }), plain = writeMap(map);
+  const head = readHead(file), parts = head.parts.filter((p) => p.kind === "road");
+  // Every other part is as a map without a frame has it, the head but for its table of parts.
+  const others = (f: Uint8Array): string[] => readHead(f).parts.filter((p) => p.kind !== "road").map((p) => p.name);
+  expect(others(file)).toEqual(others(plain));
+  expect(parts.length).toBeGreaterThan(0);
+  expect(parts.length).toBeLessThan(head.parts.filter((q) => q.kind === "ground").length);
+  // A server's read keeps none of it; a drawing read keeps it whole, and writes the same bytes again.
+  expect(parseMap(file).road).toBeUndefined();
+  const drawn = parseMap(file, true, true);
+  expect(drawn.road).toEqual(road);
+  expect(writeMap(drawn)).toEqual(file);
+  const whole = new Uint8Array(ROAD_PLANES);
+  expect(mapHeightfield(drawn).road!.cell(1000 % cells, Math.floor(1000 / cells), whole, 0)).toBe(true);
+  expect([...whole]).toEqual([road.across[1000]!, road.along[1000]!, road.half[1000]!, road.lanes[1000]!]);
+  // A sector's part read alone is held by its square, gives its cells and no other, and is let go with it.
+  const p = parts[1]!, piece = readPart(head, p, file.subarray(p.at, p.at + p.length)) as RoadPiece;
+  const held = new RoadSectors();
+  holdRoad(held, piece);
+  const i0 = (piece.sq.cx0 * 32) / 2, j0 = (piece.sq.cz0 * 32) / 2, k = (j0 + 3) * cells + i0 + 5, cell = new Uint8Array(ROAD_PLANES);
+  expect(held.cell(i0 + 5, j0 + 3, cell, 0)).toBe(true);
+  expect([...cell]).toEqual([road.across[k]!, road.along[k]!, road.half[k]!, road.lanes[k]!]);
+  expect(held.cell(i0 - 1, j0, cell, 0)).toBe(false);
+  expect(held.bytes).toBe(piece.road.across.length * ROAD_PLANES);
+  held.drop(p.col * 4096 + p.row);
+  expect([held.bytes, held.cell(i0 + 5, j0 + 3, cell, 0)]).toEqual([0, false]);
 });
 
 test("each part reads alone given the head, and sets into what the game holds", () => {

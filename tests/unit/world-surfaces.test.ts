@@ -2,11 +2,12 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadWorn, walkMeet, walkWorn, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, weatherFrame, weathered, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
 import { srgbToLinear } from "../../client/core/render/surface.ts";
+import { ROAD_WEAR_SHIFT, RoadSectors, roadAcross, roadAlong, roadHalf } from "../../shared/world/roadframe.ts";
 import { FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX } from "../../client/core/render/glsl.ts";
 import type { PackMaterial, PackTexture } from "../../shared/pack/pack.ts";
 import { WORLD_ART, paintedOf, worldMaterials } from "../../tools/surfaces/build.ts";
@@ -464,6 +465,40 @@ test("asphalt wears by its macro and its repairs in 8 m squares, sand by the bea
   const squares = Array.from({ length: 64 }, (_, k) => at("asphalt", 4 + (k % 8) * 8, 4 + Math.floor(k / 8) * 8)[0]!);
   expect(squares.some((v) => v < 0.1)).toBe(true);
   expect(squares.some((v) => v === 0.2)).toBe(true);
+});
+
+test("along a road's frame asphalt wears by its lanes: a wheel path under each pair of wheels, dirt in its gutters, and its repairs a lane wide", () => {
+  // A two-way street of two lanes along x, 5 m either side of z = 40, on 33 cells a side 4 m apart.
+  const cells = 33, planes = [0, 1, 2, 3].map(() => new Uint8Array(cells * cells));
+  for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) {
+    const across = j * 4 - 40, k = j * cells + i;
+    if (Math.abs(across) > 8) continue;
+    [roadAcross(across), roadAlong(i * 4), roadHalf(5), 2 | (2 << ROAD_WEAR_SHIFT)].forEach((v, p) => (planes[p]![k] = v));
+  }
+  const road = new RoadSectors();
+  road.put(0, 0, 0, cells, { across: planes[0]!, along: planes[1]!, half: planes[2]!, lanes: planes[3]! });
+  const frame = new Float64Array(ROAD_FRAME);
+  roadFrameAt(road, 50, 41, frame);
+  expect([...frame].map((v) => Number(v.toFixed(4)))).toEqual([50, 1, 1, 1, 0, 0, 1, 5, 2, 0, Number((2 / 6).toFixed(4))]);
+  // Off the road, and where the four cells are not one carriageway's, there is no frame.
+  roadFrameAt(road, 50, 60, frame);
+  expect(frame[2]).toBe(0);
+  const id = (SURFACE_NAMES as readonly string[]).indexOf("asphalt");
+  let masks = { road: [0.5, 0.5, 0.5, 0.5], repairs: [0, 0, 0, 0] };
+  const sample: WorldSample = (_role, layer, _u, _v, _spread, out) => out.set(layer === ROAD_LAYER ? masks.road : masks.repairs);
+  const at = (x: number, z: number): number => {
+    const albedo = Float64Array.of(0.2, 0.2, 0.2), orm = Float64Array.of(1, 0.8, 0), f = new Float64Array(ROAD_FRAME);
+    roadFrameAt(road, x, z, f);
+    roadWorn(albedo, orm, id, x, z, 0.002, sample, f);
+    return albedo[0]!;
+  };
+  // A lane is 5 m from the kerb at z = 35: its wheel path at 0.27 of it is darker than between the paths, and so is the gutter.
+  expect(at(50, 35 + 0.27 * 5)).toBeLessThan(at(50, 35 + 0.4 * 5));
+  expect(at(50, 35.25)).toBeLessThan(at(50, 35 + 0.4 * 5));
+  // With every repair patched where its cell is, the two lanes' cells side by side differ somewhere along the road.
+  masks = { road: [0.5, 0.5, 0.5, 0.5], repairs: [1, 0, 0, 0] };
+  const lanes = Array.from({ length: 12 }, (_, k) => [at(4 + k * 8, 37.5), at(4 + k * 8, 42.5)]);
+  expect(lanes.some(([a, b]) => a !== b)).toBe(true);
 });
 
 test("a walk wears by its 1.5 m panels and their joints, each by where it is, and nothing else does", () => {

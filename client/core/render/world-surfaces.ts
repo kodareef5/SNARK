@@ -2,6 +2,7 @@
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
+import { ROAD_ACROSS, ROAD_ALONG, ROAD_CELL, ROAD_HALF, ROAD_ONE_WAY, ROAD_PLANES, ROAD_STEP, ROAD_WEAR_SHIFT, ROAD_WRAP, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
@@ -669,7 +670,62 @@ const roadMask = new Float64Array(4);
  * macro and its repairs in 8 m squares on the world's axes, each square with its own share of patches and of sealed
  * cracks and its own place in their tile, by a hash of where it is; open cracks are in every square.
  */
-export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number, footprint: number, sample: WorldSample): void {
+/**
+ * Floats of a road's frame at a point (roadFrameAt): along and across in metres, how sure, along's and across's rise a
+ * metre along x and z, then the carriageway's half width in metres, its lanes, 1 where it is one way, and how worn its
+ * class is from 0 to 1.
+ */
+export const ROAD_FRAME = 11;
+
+const corners = new Uint8Array(4 * ROAD_PLANES);
+
+/**
+ * The road's frame at map point (x, z) from what is held of a map's (Heightfield `road`), into `out`: along and across
+ * between its four cells round the point, along unwrapped from the first's; how sure the four are one road's (0 to 1): 0
+ * off a road or where none is held, where they are not one carriageway's, or where they do not lie in one plane, as where
+ * two roads' frames meet at a crossing; along's and across's rise a metre along x and z there; and the carriageway's own.
+ */
+export function roadFrameAt(held: RoadSectors, x: number, z: number, out: Float64Array): void {
+  out.fill(0);
+  const qx = x / ROAD_CELL, qz = z / ROAD_CELL, i = Math.floor(qx), j = Math.floor(qz);
+  const road = corners, a = 0, b = ROAD_PLANES, c = 2 * ROAD_PLANES, d = 3 * ROAD_PLANES;
+  if (!held.cell(i, j, road, a) || !held.cell(i + 1, j, road, b) || !held.cell(i, j + 1, road, c) || !held.cell(i + 1, j + 1, road, d)) return;
+  const fx = qx - i, fz = qz - j;
+  if (road[a] === 0 || road[b] === 0 || road[c] === 0 || road[d] === 0) return;
+  for (const k of [b, c, d]) if (road[k + 2] !== road[a + 2] || road[k + 3] !== road[a + 3]) return;
+  const ca = (road[a]! - 128) / ROAD_ACROSS, cb = (road[b]! - 128) / ROAD_ACROSS, cc = (road[c]! - 128) / ROAD_ACROSS, cd = (road[d]! - 128) / ROAD_ACROSS;
+  const la = road[a + 1]! / ROAD_ALONG;
+  const on = (v: number): number => la + ((((v / ROAD_ALONG - la + ROAD_WRAP / 2) % ROAD_WRAP) + ROAD_WRAP) % ROAD_WRAP) - ROAD_WRAP / 2;
+  const lb = on(road[b + 1]!), lc = on(road[c + 1]!), ld = on(road[d + 1]!);
+  const bent = Math.abs(ca + cd - cb - cc) + Math.abs(la + ld - lb - lc);
+  out[3] = ((lb - la) * (1 - fz) + (ld - lc) * fz) / ROAD_CELL;
+  out[4] = ((lc - la) * (1 - fx) + (ld - lb) * fx) / ROAD_CELL;
+  out[5] = ((cb - ca) * (1 - fz) + (cd - cc) * fz) / ROAD_CELL;
+  out[6] = ((cc - ca) * (1 - fx) + (cd - cb) * fx) / ROAD_CELL;
+  out[0] = (la * (1 - fx) + lb * fx) * (1 - fz) + (lc * (1 - fx) + ld * fx) * fz;
+  out[1] = (ca * (1 - fx) + cb * fx) * (1 - fz) + (cc * (1 - fx) + cd * fx) * fz;
+  out[2] = clamp(2 - 2 * bent) * clamp(1 - Math.abs(Math.sqrt(out[5] * out[5] + out[6] * out[6]) - 1) * 4);
+  out[7] = road[a + 2]! / ROAD_HALF;
+  out[8] = road[a + 3]! & 7;
+  out[9] = road[a + 3]! & ROAD_ONE_WAY ? 1 : 0;
+  out[10] = (road[a + 3]! >> ROAD_WEAR_SHIFT) / 6;
+}
+
+/** A band of `g` round `centre`, `half` either side, spread over `blur` where that is wider, its weight kept. */
+const roadBand = (g: number, centre: number, half: number, blur: number): number => {
+  const w = Math.max(half, blur);
+  return (1 - smooth(w * 0.5, w, Math.abs(g - centre))) * (half / w);
+};
+
+/**
+ * The ground's wear at map point (x, z) where its finish `id` is asphalt or sand, a pixel `footprint` metres wide, onto
+ * albedo and orm (worldSurface's). Sand takes the beach's macro, two copies at angles. Asphalt takes a used road's
+ * macro and its repairs. Where the road's frame (roadFrameAt) is sure they lie along the carriageway, its lanes laid out
+ * from its edge, with a wheel path under each pair of wheels of a lane and oil between them, sealed joints between its
+ * lanes, dirt in its gutters, and its repairs a lane wide by 8 m; elsewhere, as on a lot, in 8 m squares on the world's
+ * axes. Each cell has its own share of patches and sealed cracks and its own place in their tile, by where it is.
+ */
+export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number, footprint: number, sample: WorldSample, frame: Numbers | null = null): void {
   const level = (metres: number): number => Math.log2(Math.max(footprint / metres, 1e-9));
   if (id === SAND) {
     sample(2, ROAD_LAYER, x / ROAD_MACRO, z / ROAD_MACRO, level(ROAD_MACRO), roadMask);
@@ -680,20 +736,46 @@ export function roadWorn(albedo: Out, orm: Out, id: number, x: number, z: number
     return;
   }
   if (id !== ASPHALT) return;
-  sample(2, ROAD_LAYER, x / ROAD_MACRO, z / ROAD_MACRO, level(ROAD_MACRO), roadMask);
-  const shade = 1 + (roadMask[0]! - 0.5) * ROAD_LOOK.macro;
+  // Along a sure frame, u is across the carriageway and v along it; elsewhere x and z.
+  const sure = frame ? frame[2]! : 0, along = sure > 0.5;
+  const u = along ? frame![1]! : x, v = along ? frame![0]! : z;
+  sample(2, ROAD_LAYER, u / ROAD_MACRO, v / ROAD_MACRO, level(ROAD_MACRO), roadMask);
+  let shade = 1 + (roadMask[0]! - 0.5) * ROAD_LOOK.macro;
   let rough = orm[1]! * (1 + (roadMask[2]! - 0.5) * 0.25 * ROAD_LOOK.macroRough);
-  const ku = Math.floor(x / ROAD_REPAIRS), kv = Math.floor(z / ROAD_REPAIRS);
-  const h = surfaceHash(ku * 8, kv * 14);
-  const edge = smooth(0, 0.4, Math.min(x - ku * ROAD_REPAIRS, (ku + 1) * ROAD_REPAIRS - x, z - kv * ROAD_REPAIRS, (kv + 1) * ROAD_REPAIRS - z));
-  sample(2, REPAIRS_LAYER, x / ROAD_REPAIRS + fract(h * 7.13), z / ROAD_REPAIRS + fract(h * 3.71), level(ROAD_REPAIRS), roadMask);
+  let wide = ROAD_REPAIRS, from0 = 0, joint = 0;
+  if (along) {
+    const s = smooth(0.5, 1, sure), half = frame![7]!, lane = (2 * half) / frame![8]!, worn = (0.4 + 0.6 * frame![10]!) * s * smooth(0, 0.3, half - Math.abs(u));
+    const t = (u + half) / lane, k = Math.floor(t), g = t - k, blur = footprint / lane;
+    const wheels = roadBand(g, 0.27, 0.075, blur) + roadBand(g, 0.73, 0.075, blur);
+    const oil = roadBand(g, 0.5, 0.07, blur) * (0.4 + 1.2 * surfaceNoise(v / 5.3, k * 3.1));
+    const gutter = roadBand(Math.abs(u), half - 0.25, 0.25, footprint) * s;
+    shade *= (1 - wheels * ROAD_LOOK.wheels * worn) * (1 - oil * ROAD_LOOK.oil * worn) * (1 - gutter * ROAD_LOOK.gutter);
+    rough += gutter * 0.1 - (wheels * 0.06 + oil * 0.1) * worn;
+    // The joint between two lanes nearest, sealed along some of its 8 m, by where each 8 m's middle is.
+    const kb = Math.round(t), cell = Math.floor(v / ROAD_REPAIRS), mid = (cell + 0.5) * ROAD_REPAIRS;
+    const jx = x + frame![3]! * (mid - v) + frame![5]! * ((kb - t) * lane), jz = z + frame![4]! * (mid - v) + frame![6]! * ((kb - t) * lane);
+    if (kb >= 1 && kb < frame![8]! && surfaceHash(Math.floor(jx / ROAD_REPAIRS) * 7 + kb, Math.floor(jz / ROAD_REPAIRS) * 13 + 977) < ROAD_LOOK.joint) {
+      joint = roadBand((t - kb) * lane + (surfaceNoise(v / 3.1, kb * 5.5) - 0.5) * 0.08, 0, 0.035, footprint) * s;
+    }
+    wide = lane;
+    from0 = -half;
+  }
+  // The repairs of this lane's or this square's 8 m: where in their tile, and whether patched and sealed, by where its middle is.
+  const ku = Math.floor((u - from0) / wide), kv = Math.floor(v / ROAD_REPAIRS);
+  const mu = from0 + (ku + 0.5) * wide, mv = (kv + 0.5) * ROAD_REPAIRS;
+  const h = along
+    ? surfaceHash(Math.floor((x + frame![3]! * (mv - v) + frame![5]! * (mu - u)) / ROAD_REPAIRS) * 7 + ku, Math.floor((z + frame![4]! * (mv - v) + frame![6]! * (mu - u)) / ROAD_REPAIRS) * 13 + kv)
+    : surfaceHash(ku * 8, kv * 14);
+  const edge = smooth(0, 0.4, Math.min(u - from0 - ku * wide, from0 + (ku + 1) * wide - u, v - kv * ROAD_REPAIRS, (kv + 1) * ROAD_REPAIRS - v));
+  sample(2, REPAIRS_LAYER, u / ROAD_REPAIRS + fract(h * 7.13), v / ROAD_REPAIRS + fract(h * 3.71), level(ROAD_REPAIRS), roadMask);
   const patched = h < ROAD_LOOK.patched ? edge : 0, sealed = fract(h * 13.7) < ROAD_LOOK.sealed ? edge : 0, from = 0.35 + 0.4 * fract(h * 5.3);
   const patch = roadMask[0]! * patched, seam = roadMask[1]! * patched, seal = smooth(from, from + 0.15, roadMask[2]!) * sealed;
   const dim = shade * (1 - 0.2 * patch) * (1 - 0.3 * roadMask[3]! * edge);
   rough -= 0.08 * patch;
-  const tar = Math.max(seam, seal) * 0.9;
+  // A lane joint's seal is as rough as the road round it, and lighter than a patch's: it does not mirror the sky.
+  const sealant = Math.max(seam, seal) * 0.9, tar = Math.max(joint * 0.6, sealant);
   for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! * dim * (1 - tar) + TAR[c]! * tar;
-  orm[1] = clamp(rough * (1 - tar) + TAR_ROUGH * tar, 0.12, 1);
+  orm[1] = clamp(rough * (1 - sealant) + TAR_ROUGH * sealant, 0.12, 1);
 }
 
 /** Dirt and grass in a walk's joints, as light, and the metres either side of a joint's line the most of each reaches. */
@@ -1139,7 +1221,35 @@ float walkMeet(float share, float footprint) {
 export const ROAD_GLSL = `#ifdef WORLD_ROAD
 const vec3 TAR = vec3(${TAR.map(fl).join(",")});
 // Wear onto a finish id's albedo and orm at world point p, and p's change a pixel across and down.
-void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec3 dpx, vec3 dpy) {
+float roadBand(float g, float centre, float wide, float blur) {
+  float w = max(wide, blur);
+  return (1.0 - smoothstep(w * 0.5, w, abs(g - centre))) * (wide / w);
+}
+#ifdef GROUND_ROAD
+uniform highp usampler2D uRoad;
+// The road's frame at window sample point at (roadFrameAt's twin): along and across into frame, their rise a metre along
+// x and z into rise, the carriageway's half width, lanes, one way and wear into road; and how sure.
+float roadFrame(vec2 at, out vec2 frame, out vec4 rise, out vec4 road) {
+  vec2 q = at / ${fl(ROAD_STEP)};
+  ivec2 i = clamp(ivec2(floor(q)), ivec2(0), textureSize(uRoad, 0) - 2);
+  vec2 f = clamp(q - vec2(i), 0.0, 1.0);
+  uvec4 a = texelFetch(uRoad, i, 0), b = texelFetch(uRoad, i + ivec2(1, 0), 0), c = texelFetch(uRoad, i + ivec2(0, 1), 0), d = texelFetch(uRoad, i + ivec2(1, 1), 0);
+  frame = vec2(0.0);
+  rise = vec4(0.0);
+  road = vec4(0.0);
+  if (a.x == 0u || b.x == 0u || c.x == 0u || d.x == 0u || any(notEqual(uvec4(b.zw, c.zw), a.zwzw)) || any(notEqual(d.zw, a.zw))) return 0.0;
+  vec4 across = (vec4(a.x, b.x, c.x, d.x) - 128.0) / ${fl(ROAD_ACROSS)};
+  vec4 along = vec4(a.y, b.y, c.y, d.y) / ${fl(ROAD_ALONG)};
+  along.yzw = along.x + mod(along.yzw - along.x + ${fl(ROAD_WRAP / 2)}, ${fl(ROAD_WRAP)}) - ${fl(ROAD_WRAP / 2)};
+  float bent = abs(across.x + across.w - across.y - across.z) + abs(along.x + along.w - along.y - along.z);
+  rise = vec4((along.y - along.x) * (1.0 - f.y) + (along.w - along.z) * f.y, (along.z - along.x) * (1.0 - f.x) + (along.w - along.y) * f.x,
+    (across.y - across.x) * (1.0 - f.y) + (across.w - across.z) * f.y, (across.z - across.x) * (1.0 - f.x) + (across.w - across.y) * f.x) / ${fl(ROAD_CELL)};
+  frame = vec2(mix(mix(along.x, along.y, f.x), mix(along.z, along.w, f.x), f.y), mix(mix(across.x, across.y, f.x), mix(across.z, across.w, f.x), f.y));
+  road = vec4(float(a.z) / ${fl(ROAD_HALF)}, float(a.w & 7u), (a.w & ${ROAD_ONE_WAY}u) != 0u ? 1.0 : 0.0, float(a.w >> ${ROAD_WEAR_SHIFT}u) / 6.0);
+  return clamp(2.0 - 2.0 * bent, 0.0, 1.0) * clamp(1.0 - abs(length(rise.zw) - 1.0) * 4.0, 0.0, 1.0);
+}
+#endif
+void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec2 at, vec3 dpx, vec3 dpy) {
   if (mod(fFacade.w, 2.0) > 0.5 || (id != ${SAND} && id != ${ASPHALT})) return;
   if (id == ${SAND}) {
     vec2 tx = vec2(dpx.x - dpx.z, dpx.x + dpx.z) * ${fl(BEACH_TURN / BEACH_SECOND)}, ty = vec2(dpy.x - dpy.z, dpy.x + dpy.z) * ${fl(BEACH_TURN / BEACH_SECOND)};
@@ -1148,17 +1258,45 @@ void roadWear(inout vec3 albedo, inout vec3 orm, int id, vec3 p, vec3 dpx, vec3 
     albedo *= (1.0 + (first - 0.5) * ${fl(ROAD_LOOK.beach)}) * (1.0 + (second - 0.5) * ${fl(ROAD_LOOK.beach * 0.5)});
     return;
   }
-  vec4 m = worldOrm(p.xz / ${fl(ROAD_MACRO)}, ${ROAD_LAYER}, dpx.xz / ${fl(ROAD_MACRO)}, dpy.xz / ${fl(ROAD_MACRO)});
+  vec2 frame = vec2(0.0);
+  vec4 rise = vec4(0.0), road = vec4(0.0);
+  float sure = 0.0, footprint = max(length(dpx.xz), length(dpy.xz));
+#ifdef GROUND_ROAD
+  sure = roadFrame(at, frame, rise, road);
+#endif
+  // Along a sure frame, w is across the carriageway and along it, with its steps a pixel across and down; elsewhere x and z.
+  bool along = sure > 0.5;
+  vec2 w = along ? frame.yx : p.xz;
+  vec2 gx = along ? vec2(dot(rise.zw, dpx.xz), dot(rise.xy, dpx.xz)) : dpx.xz, gy = along ? vec2(dot(rise.zw, dpy.xz), dot(rise.xy, dpy.xz)) : dpy.xz;
+  vec4 m = worldOrm(w / ${fl(ROAD_MACRO)}, ${ROAD_LAYER}, gx / ${fl(ROAD_MACRO)}, gy / ${fl(ROAD_MACRO)});
+  float shade = 1.0 + (m.r - 0.5) * ${fl(ROAD_LOOK.macro)};
   float rough = orm.y * (1.0 + (m.b - 0.5) * ${fl(0.25 * ROAD_LOOK.macroRough)});
-  vec2 k = floor(p.xz / ${fl(ROAD_REPAIRS)});
-  float h = surfaceHash(ivec2(k) * ivec2(8, 14));
-  vec2 inside = min(p.xz - k * ${fl(ROAD_REPAIRS)}, (k + 1.0) * ${fl(ROAD_REPAIRS)} - p.xz);
+  float wide = ${fl(ROAD_REPAIRS)}, from0 = 0.0, joint = 0.0;
+  if (along) {
+    float s = smoothstep(0.5, 1.0, sure), lane = 2.0 * road.x / road.y, worn = (0.4 + 0.6 * road.w) * s * smoothstep(0.0, 0.3, road.x - abs(w.x));
+    float t = (w.x + road.x) / lane, k = floor(t), g = t - k, blur = footprint / lane;
+    float wheels = roadBand(g, 0.27, 0.075, blur) + roadBand(g, 0.73, 0.075, blur);
+    float oil = roadBand(g, 0.5, 0.07, blur) * (0.4 + 1.2 * surfaceNoise(vec2(w.y / 5.3, k * 3.1)));
+    float gutter = roadBand(abs(w.x), road.x - 0.25, 0.25, footprint) * s;
+    shade *= (1.0 - wheels * ${fl(ROAD_LOOK.wheels)} * worn) * (1.0 - oil * ${fl(ROAD_LOOK.oil)} * worn) * (1.0 - gutter * ${fl(ROAD_LOOK.gutter)});
+    rough += gutter * 0.1 - (wheels * 0.06 + oil * 0.1) * worn;
+    float kb = floor(t + 0.5), cell = floor(w.y / ${fl(ROAD_REPAIRS)}), mid = (cell + 0.5) * ${fl(ROAD_REPAIRS)};
+    vec2 j = p.xz + rise.xy * (mid - w.y) + rise.zw * ((kb - t) * lane);
+    if (kb >= 1.0 && kb < road.y && surfaceHash(ivec2(floor(j / ${fl(ROAD_REPAIRS)})) * ivec2(7, 13) + ivec2(int(kb), 977)) < ${fl(ROAD_LOOK.joint)})
+      joint = roadBand((t - kb) * lane + (surfaceNoise(vec2(w.y / 3.1, kb * 5.5)) - 0.5) * 0.08, 0.0, 0.035, footprint) * s;
+    wide = lane;
+    from0 = -road.x;
+  }
+  // The repairs of this lane's or this square's 8 m: where in their tile, and whether patched and sealed, by where its middle is.
+  vec2 size = vec2(wide, ${fl(ROAD_REPAIRS)}), k = floor((w - vec2(from0, 0.0)) / size), mid = vec2(from0, 0.0) + (k + 0.5) * size;
+  float h = along ? surfaceHash(ivec2(floor((p.xz + rise.xy * (mid.y - w.y) + rise.zw * (mid.x - w.x)) / ${fl(ROAD_REPAIRS)})) * ivec2(7, 13) + ivec2(k)) : surfaceHash(ivec2(k) * ivec2(8, 14));
+  vec2 inside = min(w - vec2(from0, 0.0) - k * size, vec2(from0, 0.0) + (k + 1.0) * size - w);
   float edge = smoothstep(0.0, 0.4, min(inside.x, inside.y));
-  vec4 r = worldOrm(p.xz / ${fl(ROAD_REPAIRS)} + vec2(fract(h * 7.13), fract(h * 3.71)), ${REPAIRS_LAYER}, dpx.xz / ${fl(ROAD_REPAIRS)}, dpy.xz / ${fl(ROAD_REPAIRS)});
+  vec4 r = worldOrm(w / ${fl(ROAD_REPAIRS)} + vec2(fract(h * 7.13), fract(h * 3.71)), ${REPAIRS_LAYER}, gx / ${fl(ROAD_REPAIRS)}, gy / ${fl(ROAD_REPAIRS)});
   float patched = h < ${fl(ROAD_LOOK.patched)} ? edge : 0.0, sealed = fract(h * 13.7) < ${fl(ROAD_LOOK.sealed)} ? edge : 0.0, from = 0.35 + 0.4 * fract(h * 5.3);
-  float fill = r.r * patched, tar = max(r.g * patched, smoothstep(from, from + 0.15, r.b) * sealed) * 0.9;
-  albedo = mix(albedo * (1.0 + (m.r - 0.5) * ${fl(ROAD_LOOK.macro)}) * (1.0 - 0.2 * fill) * (1.0 - 0.3 * r.a * edge), TAR, tar);
-  orm.y = clamp(mix(rough - 0.08 * fill, ${fl(TAR_ROUGH)}, tar), 0.12, 1.0);
+  float fill = r.r * patched, sealant = max(r.g * patched, smoothstep(from, from + 0.15, r.b) * sealed) * 0.9, tar = max(joint * 0.6, sealant);
+  albedo = mix(albedo * shade * (1.0 - 0.2 * fill) * (1.0 - 0.3 * r.a * edge), TAR, tar);
+  orm.y = clamp(mix(rough - 0.08 * fill, ${fl(TAR_ROUGH)}, sealant), 0.12, 1.0);
 }
 const vec3 DIRT = vec3(${DIRT.map(fl).join(",")}), GRASS = vec3(${GRASS.map(fl).join(",")});
 float covered(float d, float width, float footprint) {
@@ -1209,11 +1347,11 @@ void walkWear(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec3 p, v
   orm.y = clamp(rough, 0.12, 1.0);
 }
 // The ground's wear reads the packed array's masks, so it comes up with them as the weathering does (uWorldReady 1 to 2).
-void groundWorn(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec3 p, vec3 dpx, vec3 dpy) {
+void groundWorn(inout vec3 albedo, inout vec3 orm, inout vec3 n, int id, vec3 p, vec2 at, vec3 dpx, vec3 dpy) {
   float risen = 2.0 - uWorldReady;
   if (risen <= 0.0) return;
   vec3 a0 = albedo, o0 = orm, n0 = n;
-  roadWear(albedo, orm, id, p, dpx, dpy);
+  roadWear(albedo, orm, id, p, at, dpx, dpy);
   walkWear(albedo, orm, n, id, p, dpx, dpy);
   if (risen < 1.0) {
     albedo = mix(a0, albedo, risen);

@@ -22,6 +22,7 @@ import { CELL, mipOffset } from "../../shared/pack/details.ts";
 import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, MATERIAL_NIGHT, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { ROAD_PLANES, ROAD_STEP, roadSamples } from "../../shared/world/roadframe.ts";
 
 interface Program {
   program: WebGLProgram;
@@ -190,6 +191,9 @@ export class GlRenderer {
   /** The terrain's pictures (terrain.ts), and the two copies of the window's pair, heights then tints. */
   private readonly ground: GroundSize;
   private windows: WebGLTexture[] = [];
+  /** The roads' frame of the window drawn (Heightfield `road`), every second sample; what it holds (the window, its corner and the frame's version); and the rows it is copied through. */
+  private readonly roadFor = Int32Array.of(-1, 0, 0, -1);
+  private roadRows = new Uint8Array(0);
   /** The heightfield's changes the whole map's pair on the card holds. */
   private mapSeen = 0;
   private readonly materials: readonly PackMaterial[];
@@ -276,6 +280,8 @@ export class GlRenderer {
     texture(UNIT.heights, gl.R16UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_SHORT, coarse.heights);
     texture(UNIT.tint, gl.R8UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_BYTE, coarse.tint);
     this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
+    texture(UNIT.road, gl.RGBA8UI, roadSamples(g.width[SOURCE_WINDOW]!), roadSamples(g.height[SOURCE_WINDOW]!), gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
+    this.roadRows = new Uint8Array(roadSamples(g.width[SOURCE_WINDOW]!) * roadSamples(g.height[SOURCE_WINDOW]!) * ROAD_PLANES);
     // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit, as tall as the tier's bones.
     texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = 1), gl.RGBA, gl.FLOAT, null);
     texture(UNIT.atlas, gl.RGBA32F, ATLAS_WIDTH, ATLAS_ROWS, gl.RGBA, gl.FLOAT, null);
@@ -729,6 +735,15 @@ export class GlRenderer {
       gl.bindTexture(gl.TEXTURE_2D, this.windows[drawn * 2 + k] ?? null);
     }
     gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+    // The roads' frame of the window drawn, copied again whenever the window drawn or the frame held changes.
+    const road = this.hf.road, f = this.roadFor;
+    if (road && drawn >= 0 && (f[0] !== drawn || f[1] !== w[1] || f[2] !== w[2] || f[3] !== road.version)) {
+      const rw = roadSamples(this.ground.width[SOURCE_WINDOW]!), rh = roadSamples(this.ground.height[SOURCE_WINDOW]!);
+      road.copy(w[1]! / ROAD_STEP, w[2]! / ROAD_STEP, rw, rh, this.roadRows);
+      gl.activeTexture(gl.TEXTURE0 + UNIT.road);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, rw, rh, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, this.roadRows);
+      f.set([drawn, w[1]!, w[2]!, road.version]);
+    }
     // The facades' atlases on their units while the frame names them; none is read until each it names has come (facade.ts).
     for (let k = 0; k < p.facadeSlots.length; k++) {
       const t = p.facadeSlots[k]!, texture = t >= 0 ? this.textures.get(t) : undefined;

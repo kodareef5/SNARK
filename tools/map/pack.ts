@@ -27,7 +27,7 @@ export const PACK_LANES = Math.max(2, Math.min(8, availableParallelism()));
  * build's copies. An everyday build's are 16 to 20% larger and are held to the same, so a map that passes one passes as a
  * release. The tops are not waited for and count in no first frame.
  */
-export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20 };
+export const PART_BUDGETS: Readonly<Record<PartKind | "head", number>> = { head: 1 << 20, land: 4 << 20, overview: 2 << 20, ground: 1 << 20, statics: 1 << 20, tops: 1 << 20, road: 256 << 10 };
 /**
  * Brotli bytes of the heaviest first frame on a map: its head and the parts the page's first frame waits for where it
  * waits longest (client/core/mapload.ts firstFrameParts): the landmarks' definitions, the ground of the sectors within

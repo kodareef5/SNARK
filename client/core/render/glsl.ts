@@ -293,7 +293,7 @@ void main() {
   if (uWorldReady > 0.5) {
     float h = worldSurface(albedo, orm, n, geometric, groundSurface(tint), vRel, dx, dy), share;
 #ifdef WORLD_ROAD
-    groundWorn(albedo, orm, n, groundSurface(tint), vRel + uWorldEye, dx, dy);
+    groundWorn(albedo, orm, n, groundSurface(tint), vRel + uWorldEye, vAt, dx, dy);
     worldSharp = orm.y < ${f(WORLD_SHARP)};
 #endif
     // Where it meets another finish, the higher of the two shows through the other, and a walk meets it on a line.
@@ -305,7 +305,7 @@ void main() {
       float h2 = worldSurface(albedo2, orm2, n2, geometric, groundSurface(other), vRel, dx, dy);
       float b = straight ? share : higher(h, h2, share, ${f(GROUND_SCALE)}, ${f(GROUND_BAND)});
 #ifdef WORLD_ROAD
-      groundWorn(albedo2, orm2, n2, groundSurface(other), vRel + uWorldEye, dx, dy);
+      groundWorn(albedo2, orm2, n2, groundSurface(other), vRel + uWorldEye, vAt, dx, dy);
 #endif
       albedo = mix(albedo, albedo2, b);
       orm = mix(orm, orm2, b);
