@@ -2,6 +2,10 @@
   "name": "snark",
   "private": true,
   "type": "module",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./grunt/extension.ts"]
+  },
   "engines": {
     "bun": "1.4.3"
   },

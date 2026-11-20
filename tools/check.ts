@@ -75,9 +75,12 @@ const ZONES: Zone[] = [
   { dir: "modules", may: ["shared", "server/api", "modules"], builtins: false },
   // A player that is a program: headless core on a socket, with tools in place of keys. It names nothing of the server's.
   { dir: "agent", may: ["shared", "content", "client/core", "agent"], builtins: true },
+  // A Pi package that plays a game as a player, through the grunt protocol (D873). It names nothing of the game's: a game
+  // speaks its protocol. Pi loads it under Node, so it uses Node's built-ins and none of Bun's.
+  { dir: "grunt", may: ["grunt"], builtins: true },
   { dir: "tools", may: "*", builtins: true },
   // Tests never touch the DOM zones. Logic that needs a test belongs in client/core.
-  { dir: "tests", may: ["shared", "content", "client/core", "server", "server/api", "modules", "agent", "tools", "tests"], builtins: true },
+  { dir: "tests", may: ["shared", "content", "client/core", "server", "server/api", "modules", "agent", "grunt", "tools", "tests"], builtins: true },
 ];
 
 /** Directories where results must be bit-identical on JavaScriptCore and V8. */
@@ -185,6 +188,9 @@ function checkPolicy(): void {
     if (zone.dir === "client/wiki") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/wiki has no tests; move logic into client/core/wiki`);
       wikiLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    }
+    if (zone.dir === "grunt" && (/\bBun\./.test(src) || /from\s*['"]bun(:[^'"]*)?['"]/.test(src))) {
+      fail(`${rel}: grunt runs in Pi under Node, so it may not use Bun's own APIs`);
     }
     if (zone.dir === "client/admin") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/admin has no tests; move logic into client/core/admin`);
