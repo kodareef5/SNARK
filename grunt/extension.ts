@@ -152,10 +152,16 @@ export default function grunt(pi: PiExtensionAPI): void {
         "You play a game character through game_ tools. Never try to steer it step by step: start a skill with game_do and wait to be told how it went. Don't poll with game_look or game_tasks while a task runs; the game tells you.",
         "Use game_look before deciding when you are unsure what is around. Ids in it are what skills take as targets.",
       ],
-      parameters: { type: "object", properties: { skill: { type: "string", enum: Object.keys(SKILLS) }, args: { type: "object", description: "the skill's parameters (game_skills lists them)" }, resume: { type: "string", description: "a task id: take that blocked, cancelled or put-aside task up again where it was, in place of skill and args" } }, additionalProperties: false },
+      parameters: { type: "object", properties: { skill: { type: "string", enum: Object.keys(SKILLS) }, args: { type: "object", description: "the skill's parameters (game_skills lists them)" }, resume: { type: "string", description: "a task id: take that blocked, cancelled or put-aside task up again where it was, in place of skill and args" }, replace: { type: "boolean", description: "stop the task running now for this one, even if it only just started" } }, additionalProperties: false },
       async execute(_id, p) {
         const rt = need().rt;
         if (!p.resume && !p.skill) throw new Error("give a skill (with its args) or resume: a task id");
+        // Two body skills started in one breath: the second would only cancel the first. Wait for the first's word.
+        const cur = rt.current;
+        const body = p.skill ? SKILLS[String(p.skill)]?.body : true;
+        if (body && !p.replace && cur && cur.by === "director" && rt.belief.now - cur.started < 5000) {
+          throw new Error(`${cur.skill} ${cur.id} was started a moment ago and is running; wait for its result, or pass replace: true to stop it for this`);
+        }
         const t = p.resume ? rt.retake(String(p.resume)) : rt.start(String(p.skill), (p.args ?? {}) as Record<string, unknown>);
         if (t.status !== "running") return text(`${t.skill} ${t.status}: ${t.result?.summary ?? ""}`, { task: t.id });
         return { ...text(`started ${t.skill} as ${t.id}. It runs on its own; you will get a message when it is over or something needs you.`, { task: t.id }), terminate: true };

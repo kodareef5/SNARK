@@ -114,7 +114,7 @@ export class Body {
         return "blocked";
       }
       // Following a planned route, solid ground in the way is for the route to go round, not for wriggling.
-      if (opts.quick && b.since(startT, "blocked").some((e) => e.data.by === "terrain")) {
+      if (opts.quick && b.since(startT, "blocked").some((e) => e.data.by === "terrain" || e.data.by === "land" || e.data.by === "water")) {
         this.stop("bumped");
         return "blocked";
       }
@@ -175,7 +175,9 @@ export class Body {
         // A danger seen near the rest of the way stops the leg where it is, so the way is planned again in time.
         const rest = r.points.slice(i);
         let warned = false;
-        const res = yield* this.walkTo(last ? () => target() ?? wp : () => wp, last ? reach : 1.6, {
+        // The last leg makes for the target itself, unless this way of going cannot reach it (a boat stops at the bank).
+        const toGoal = last && !r.near;
+        const res = yield* this.walkTo(toGoal ? () => target() ?? wp : () => wp, toGoal ? reach : last ? 2 : 1.6, {
           ...opts, quick: true, ms: (d / 1.5 + 10) * 1000,
           until: () => {
             if (opts.until?.()) return true;
@@ -202,7 +204,8 @@ export class Body {
         else if (opts.dangers && this.newDangerAhead(r.points.slice(i + 1), planned)) (again = true), (why = "danger ahead");
         else {
           const t = target();
-          if (t && Math.hypot(t[0] - r.points.at(-1)![0], t[2] - r.points.at(-1)![2]) > 6) (again = true), (why = "target moved");
+          // Against where the target was when the way was planned (a route's end may be short of it on purpose).
+          if (t && Math.hypot(t[0] - goal[0], t[2] - goal[2]) > 6) (again = true), (why = "target moved");
         }
         if (!again && !last) {
           let left = 0;
