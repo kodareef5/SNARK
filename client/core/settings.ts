@@ -51,6 +51,8 @@ export class Settings {
   /** The talk key toggles the microphone instead of being held. */
   toggleTalk = false;
   minimap = true;
+  /** The heading tape at the top of the screen. */
+  compass = true;
   diagnostics = false;
   vitalLabels = false;
   minimapZoom = -1;
@@ -89,7 +91,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2]] as const;
 
 export const VOLUME_MAX = 2;
@@ -145,6 +147,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Sound", value: (s) => s.muted ? "off" : "on", step: (s) => void (s.muted = !s.muted) },
   range("Finish gloss", "finishGloss", 0.5, 2, 0.05),
   { label: "Road finish", value: s => ROAD_FINISHES[s.roadFinish]!, step: (s, by) => void (s.roadFinish = clamp(s.roadFinish + by, 0, 2)) },
+  { label: "Compass", value: (s) => s.compass ? "on" : "off", step: (s) => void (s.compass = !s.compass) },
 ];
 
 const megabytes = (bytes: number): string => (bytes >= 1048576 * 10 ? `${Math.round(bytes / 1048576)} MB` : `${(bytes / 1048576).toFixed(1)} MB`);

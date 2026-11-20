@@ -118,14 +118,16 @@ test("two thumbs play: the stick walks and sprints, a drag turns, Attack strikes
   app.pointer(1, KEY_ZONE_MOVE, 150, 280, 0, 1);
   expect([app.controls.moveZ, app.controls.buttons]).toEqual([0, 0]);
   // Attack and Jump are held while a finger is on them, and the glass lights.
+  // Nodes are reused by place in the list from frame to frame, so the keys are copied before frames are run.
   const attack = f.find(KEY_TOUCH_BUTTON + T_ATTACK)!, jump = f.find(KEY_TOUCH_BUTTON + T_JUMP)!;
-  app.pointer(0, attack.key, attack.x + 5, attack.y + 5, 0, 3);
-  app.pointer(0, jump.key, jump.x + 5, jump.y + 5, 0, 4);
+  const [attackKey, jumpKey] = [attack.key, jump.key];
+  app.pointer(0, attackKey, attack.x + 5, attack.y + 5, 0, 3);
+  app.pointer(0, jumpKey, jump.x + 5, jump.y + 5, 0, 4);
   expect(app.controls.buttons).toBe(BTN_PRIMARY | BTN_JUMP);
   run(50);
   expect(app.touch.held(T_ATTACK)).toBe(true);
-  app.pointer(1, attack.key, 0, 0, 0, 3);
-  app.pointer(1, jump.key, 0, 0, 0, 4);
+  app.pointer(1, attackKey, 0, 0, 0, 3);
+  app.pointer(1, jumpKey, 0, 0, 0, 4);
   expect(app.controls.buttons).toBe(0);
   // The bag: its screen opens, and the zones and the cluster give way to it.
   app.pointer(0, KEY_TOUCH_BUTTON + T_BAG, 0, 0, 0, 3);

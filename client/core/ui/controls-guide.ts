@@ -9,7 +9,7 @@ const KEYS: Readonly<Record<string,Binding>>={
   Mouse0:b(1,"Attack","Hold to use the equipped weapon. While building, place the preview."),Mouse2:b(1,"Aim / alternate attack"),MouseMove:b(0,"Look","Move the mouse to aim and steer the camera."),
   KeyR:b(1,"Reload"),KeyG:b(1,"Melee / lower bow"),KeyN:b(0,"Movement modifier","Used by movement and mount abilities."),
   KeyE:b(2,"Use / ride","Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions."),KeyF:b(2,"Creature inventory","Opens the owned creature you are riding or looking at."),
-  KeyI:b(2,"Inventory"),KeyP:b(2,"Character","Stats, engrams and crafting."),KeyM:b(2,"Map"),KeyL:b(2,"Minimap","Toggle visibility."),KeyH:b(2,"Inspect HUD","Hold for values and minimap controls. Release to return to play."),
+  KeyI:b(2,"Inventory"),KeyP:b(2,"Character","Stats, engrams and crafting."),KeyM:b(2,"Map"),KeyL:b(2,"Minimap","Toggle visibility."),KeyH:b(2,"Inspect HUD","Hold for values, the heading in degrees and minimap controls. Release to return to play."),
   Minus:b(2,"Zoom out","Zoom the open map, or the minimap during play."),Equal:b(2,"Zoom in","Zoom the open map, or the minimap during play."),
   KeyV:b(2,"View","Switch first / third person when the server allows it."),KeyO:b(2,"Settings"),Escape:b(5,"Back / menu","Close one layer at a time."),Tab:b(2,"Console"),Slash:b(2,"Tribe chat"),Backquote:b(2,"Console"),Enter:b(2,"Chat"),KeyB:b(2,"Voice","Hold to talk, or use the toggle preference in Audio."),
   KeyT:b(2,"Follow: one","Whistle to the creature you are looking at."),KeyY:b(2,"Stay: one","Whistle to the creature you are looking at."),KeyJ:b(2,"Follow: all"),KeyU:b(2,"Stay: all"),
