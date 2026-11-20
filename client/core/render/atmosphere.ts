@@ -22,6 +22,13 @@ export const HAZE_DENSITY = 1.6e-4;
 export const HAZE_HEIGHT = 400;
 /** The share of the view after which what is drawn fades into the dome, which it has wholly at the view's end. */
 export const VIEW_FADE = 0.8;
+/**
+ * Where a tier's view starts to fade into the dome: at this share of it, and on a long view no later than this many
+ * metres along the ground (about three miles), past which the city is cheap blocks. A long, slow fade to the view's end
+ * reads as distance rather than an edge.
+ */
+export const FADE_SHARE = 0.6;
+export const FADE_FROM = 4800;
 /** Degrees above the horizon the haze takes its colour from. */
 export const HAZE_UP = 3;
 
@@ -112,12 +119,13 @@ const GLOW_DIM = 0.7;
  * with that sun low it is the colour of the sky's glow 3 degrees up toward it, as the light reaching a cloud has come
  * the glow's long way through the air, and as the art director's light.py lights a sunset cloud. `plain` leaves out
  * the haze and all that is drawn over the table, as the rasterizer draws. The frame block's sky must be filled first.
+ * What is drawn fades into the dome from `from` metres to the view's end.
  */
-export function airFrame(frame: Float32Array, sky: Sky, hour: number, camX: number, camZ: number, seconds: number, view: number, layers: number, plain: boolean): void {
+export function airFrame(frame: Float32Array, sky: Sky, hour: number, camX: number, camZ: number, seconds: number, view: number, layers: number, plain: boolean, from = view * VIEW_FADE): void {
   frame[FRAME.haze] = plain ? 0 : HAZE_DENSITY;
   frame[FRAME.hazeHeight] = HAZE_HEIGHT;
   frame[FRAME.skyDetail] = plain ? 0 : 1 + layers;
-  frame[FRAME.ends] = plain ? 0 : view * VIEW_FADE;
+  frame[FRAME.ends] = plain ? 0 : from;
   frame[FRAME.ends + 1] = plain ? 0 : view;
   for (let n = 0; n < 2; n++) {
     const layer = n === 0 ? LOW : HIGH, at = FRAME.clouds + n * 2;

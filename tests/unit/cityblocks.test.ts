@@ -4,8 +4,8 @@
 
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { BLOCK, BLOCK_TILE_METRES, FAR_BLOCK, TOP_CELLS, blocksBounds, makeBlocks, type BlocksJob, type BlocksMade } from "../../client/core/render/blocks.ts";
-import { BLOCK_SLOTS, COARSER_FROM, CityBlocks } from "../../client/core/render/cityblocks.ts";
+import { BLOCK, BLOCK_TILE_METRES, FAR_BLOCK, FARTHEST_BLOCK, TOP_CELLS, blocksBounds, makeBlocks, type BlocksJob, type BlocksMade } from "../../client/core/render/blocks.ts";
+import { BLOCK_SLOTS, COARSER_FROM, COARSEST_FROM, CityBlocks } from "../../client/core/render/cityblocks.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { HeldTops } from "../../client/core/render/blocks.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
@@ -238,7 +238,7 @@ test("on the far city's threads a tile of blocks is made apart from the levels, 
   expect([maker.built(), maker.built(), maker.take(levels), made]).toEqual([back, null, 0, 0]);
 });
 
-test("a tile of blocks past 4 km is made of 16 m blocks and made again of 8 m ones as the camera comes near it, with no tile let go of meanwhile", () => {
+test("a tile of blocks past 4 km is made of coarser blocks, 32 m past 4.8 km, and made again of 8 m ones as the camera comes near it, with no tile let go of meanwhile", () => {
   const dims = { chunksX: 128, chunksZ: 16 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
   hf.heights.fill(64 * 64);
@@ -264,9 +264,10 @@ test("a tile of blocks past 4 km is made of 16 m blocks and made again of 8 m on
   };
   frames(10, 4);
   const sizes = (): [number, number][] => jobs.map((j) => [j.chunks[0]!, j.size]);
-  expect(sizes()).toEqual([[16, BLOCK], [112, FAR_BLOCK]]);
-  expect(COARSER_FROM).toBe(4000);
-  // Nearer the far tile, past the turn back: it is made again of 8 m blocks, the near one now past 4 km of 16 m ones.
+  expect(sizes()).toEqual([[16, BLOCK], [112, FARTHEST_BLOCK]]);
+  expect([COARSER_FROM, COARSEST_FROM]).toEqual([4000, 4800]);
+  // Nearer the far tile, past the turn back: it is made again of 8 m blocks, and the near one, its edge now 4.95 km off,
+  // of 16 m ones: past 4 km but short of 4.8 km and the margin that keeps a tile from flickering between sizes.
   jobs.length = 0;
   p.beginFrame();
   frames(7000, 4);

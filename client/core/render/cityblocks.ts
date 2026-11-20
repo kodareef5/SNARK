@@ -15,7 +15,7 @@ import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts"
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
 import { cityTops, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
-import { BLOCK, BLOCK_TILE, BLOCK_TILE_METRES, FAR_BLOCK, TOP_CELLS, blocksBounds, makeBlocks, type BlocksJob, type BlocksMade, type HeldTops } from "./blocks.ts";
+import { BLOCK, BLOCK_TILE, BLOCK_TILE_METRES, FAR_BLOCK, FARTHEST_BLOCK, TOP_CELLS, blocksBounds, makeBlocks, type BlocksJob, type BlocksMade, type HeldTops } from "./blocks.ts";
 import type { Camera } from "./camera.ts";
 import type { CityMaker } from "./citymake.ts";
 import { FAR_SLOTS, FAR_SPAN } from "./far.ts";
@@ -42,7 +42,12 @@ const GROUND = BLOCK_TILE_METRES / BLOCK + 1;
  * A tile changes back this share nearer, and out this share farther.
  */
 export const COARSER_FROM = 4000;
+/** Metres past which the blocks are FARTHEST_BLOCK across: about three miles, where the view starts to fade out. */
+export const COARSEST_FROM = 4800;
 const HYSTERESIS = 1.1;
+/** The block sizes, nearest first, and the distance each after the first starts at. */
+const SIZES = [BLOCK, FAR_BLOCK, FARTHEST_BLOCK];
+const FROM = [COARSER_FROM, COARSEST_FROM];
 
 /** What the blocks are drawn from: the map's tops as they come, and where tiles are made (here, without a maker that makes them). */
 export interface BlocksSource {
@@ -324,7 +329,10 @@ export class CityBlocks {
 
   /** The side of the blocks `tile`, `off` metres from the camera, is made of. */
   private size(tile: Tile, off: number): number {
-    return off > COARSER_FROM * (tile.size === FAR_BLOCK ? 1 / HYSTERESIS : HYSTERESIS) ? FAR_BLOCK : BLOCK;
+    // A tile changes size a little past each line going out and a little short of it coming back, so it does not flicker.
+    let k = 0;
+    for (let i = 0; i < FROM.length; i++) if (off > FROM[i]! * (tile.size > SIZES[i]! ? 1 / HYSTERESIS : HYSTERESIS)) k = i + 1;
+    return SIZES[k]!;
   }
 
   /** What tile `t` is made of now, of blocks `size` metres across, or null where none of its chunks has cells, which then holds nothing. */

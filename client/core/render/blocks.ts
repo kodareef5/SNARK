@@ -19,6 +19,8 @@ import { quadBytes } from "./packet.ts";
  */
 export const BLOCK = 8;
 export const FAR_BLOCK = 16;
+/** Past about three miles, where the haze has most of it, a block is 32 m across (cityblocks.ts COARSEST_FROM). */
+export const FARTHEST_BLOCK = 32;
 /** Chunks along a tile of blocks' side, and its side in metres. */
 export const BLOCK_TILE = 16;
 export const BLOCK_TILE_METRES = BLOCK_TILE * CHUNK_SIZE;

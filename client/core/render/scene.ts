@@ -57,7 +57,7 @@ import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-sur
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
-import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
+import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } from "./atmosphere.ts";
 import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
@@ -393,6 +393,15 @@ export class Scene {
 
   /** The camera's height over the ground under it, set each frame. */
   private lift = 0;
+
+  /**
+   * Metres from the eye where what is drawn starts to fade into the sky, along the ground as the view is: at FADE_SHARE
+   * of the tier's view, and no later than FADE_FROM (atmosphere.ts). A view a test or tool holds fades over its last fifth.
+   */
+  get fadeFrom(): number {
+    if (this.heldView > 0) return this.heldView * VIEW_FADE;
+    return this.alongGround(Math.min(this.assets.tier.viewDistance * FADE_SHARE, FADE_FROM));
+  }
 
   set viewDistance(metres: number) {
     this.heldView = metres;
@@ -925,7 +934,7 @@ export class Scene {
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
-      airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
+      airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky, this.fadeFrom);
       postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
       p.lightSamples = lightSamples(this.supersampled);
       contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
