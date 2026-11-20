@@ -107,7 +107,7 @@ export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(RO
     }
     const fontFile = built.asset(/^hud-font\.\w+\.ttf$/, true);
     const font = fontFile ? `/assets/${fontFile}` : "";
-    const sheet = `/assets/${built.asset(/^hud\.\w+\.png$/)}`;
+    const sheet = `/assets/${built.asset(/^hud\.\w+\.(?:webp|png)$/)}`;
     const glass = `${(GLASS_X / (SKIN_WIDTH - GLASS_SIZE)) * 100}% ${(GLASS_Y / (SKIN_HEIGHT - GLASS_SIZE)) * 100}% / ${(SKIN_WIDTH / GLASS_SIZE) * 100}% ${(SKIN_HEIGHT / GLASS_SIZE) * 100}%`;
     const css = readFileSync(join(import.meta.dir, "wiki/wiki.css"), "utf8").replace("HUD_FONT_SOURCE", font ? `url("${font}") format("truetype")` : 'local("Arial")').replace('url("HUD_SHEET") GLASS', `url("${sheet}") ${glass}`);
     const cssName = `wiki.${partHash(new TextEncoder().encode(css))}.css`;

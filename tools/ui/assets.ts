@@ -1,5 +1,6 @@
 // Builds the small UI sheet independently of world materials. Source art and fonts never ship at their source size.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import { GLASS_SIZE, GLASS_X, GLASS_Y, SKIN_WIDTH, skinPixels } from "../../client/core/ui/skin.ts";
@@ -41,8 +42,12 @@ export function uiSheet(): ReturnType<typeof skinPixels> {
 export function buildUiAssets(dist: string): { atlas: string; touch: string; font: string; bytes: number; decodedBytes: number } {
   mkdirSync(join(dist, "assets"), { recursive: true });
   const sheet = uiSheet(), png = encodePng(sheet.width, sheet.height, sheet.data, 9);
-  const atlasName = `assets/hud.${partHash(png)}.png`;
-  writeFileSync(join(dist, atlasName), png);
+  // Keep transparent RGB as well as coverage. The world and the wiki sample this same sheet.
+  const webp = spawnSync("cwebp", ["-quiet", "-exact", "-lossless", "-m", "6", "-o", "-", "--", "-"], { input: png });
+  const useWebp = webp.status === 0 && webp.stdout.length > 0 && webp.stdout.length < png.length;
+  const atlas = useWebp ? webp.stdout : png;
+  const atlasName = `assets/hud.${partHash(atlas)}.${useWebp ? "webp" : "png"}`;
+  writeFileSync(join(dist, atlasName), atlas);
   // The touch sheet as tools/ui/touch-art.ts left it: the smaller copy where it made one.
   let touch = "";
   const shipped = [TOUCH_SHIPPED, TOUCH_SHEET].find((file) => existsSync(file));
@@ -53,11 +58,11 @@ export function buildUiAssets(dist: string): { atlas: string; touch: string; fon
   }
   const fontSource = resolve(import.meta.dir, "../../assets/raw/fonts/barlow");
   const fontFile = join(fontSource, "BarlowSemiCondensed-Medium.ttf");
-  if (!existsSync(fontFile)) return { atlas: atlasName, touch, font: "", bytes: png.length, decodedBytes: sheet.data.byteLength };
+  if (!existsSync(fontFile)) return { atlas: atlasName, touch, font: "", bytes: atlas.length, decodedBytes: sheet.data.byteLength };
   const font = readFileSync(fontFile), fontName = `assets/hud-font.${partHash(font)}.ttf`;
   writeFileSync(join(dist, fontName), font);
   const compressed = brotliCompressSync(font);
   writeFileSync(join(dist, `${fontName}.br`), compressed);
   copyFileSync(join(fontSource, "OFL.txt"), join(dist, "assets/hud-font-license.txt"));
-  return { atlas: atlasName, touch, font: fontName, bytes: png.length + compressed.length, decodedBytes: sheet.data.byteLength };
+  return { atlas: atlasName, touch, font: fontName, bytes: atlas.length + compressed.length, decodedBytes: sheet.data.byteLength };
 }

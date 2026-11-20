@@ -101,7 +101,7 @@ export function firstFrame(dist: string): { script: string[]; fetched: string[];
   const page = readFileSync(join(dist, "index.html"), "utf8");
   const script = [...page.matchAll(/rel="modulepreload" href="([^"]+)"/g)].map((x) => `${x[1]}.br`);
   const fetched = (JSON.parse(/for \(const href of (\[[^\]]*\])\)/.exec(page)![1]!) as string[]).filter((n) => existsSync(join(dist, n))).map((n) => `${n}.br`);
-  const hud = readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.png$|^hud-font\.\w+\.ttf\.br$/.test(n)).map((n) => `assets/${n}`);
+  const hud = readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.(?:webp|png)$|^hud-font\.\w+\.ttf\.br$/.test(n)).map((n) => `assets/${n}`);
   return { script, fetched, first: ["index.html.br", ...script, "assets-worker.js.br", ...fetched, ...hud].reduce((s, n) => s + size(n), 0) };
 }
 
