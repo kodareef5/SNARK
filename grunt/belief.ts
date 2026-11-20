@@ -2,6 +2,7 @@
 // it has been told. A belief is not the game's truth. A thing out of sight is remembered, not known, and every read
 // can ask how old it is.
 
+import { NavMap } from "./nav.ts";
 import type {
   Entity, EntitiesChannel, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, TerrainChannel, Vec3,
 } from "./protocol.ts";
@@ -31,6 +32,8 @@ export class Belief {
   focus: FocusChannel = { target: null };
   focusAt = -Infinity;
   terrain: TerrainChannel | null = null;
+  /** The ground as the character knows it, for finding ways: the map screen, overwritten by what it has seen. */
+  readonly nav = new NavMap();
   readonly things = new Map<string, Remembered>();
   readonly chat: { t: number; from: string; text: string; channel: string; read: boolean }[] = [];
   readonly heard: Heard[] = [];
@@ -47,7 +50,8 @@ export class Belief {
     if (c.self) (this.self = c.self), (this.selfAt = o.t);
     if (c.inventory) (this.inventory = c.inventory), (this.inventoryAt = o.t);
     if (c.focus) (this.focus = c.focus), (this.focusAt = o.t);
-    if (c.terrain) this.terrain = c.terrain;
+    if (c.terrain) (this.terrain = c.terrain), this.nav.fromTerrain(c.terrain);
+    if (c.map) this.nav.fromMap(c.map);
     if (c.entities) this.see(c.entities, o.t);
     if (c.chat) for (const l of c.chat.lines) if (!this.chat.some((x) => x.t === l.t && x.text === l.text)) this.chat.push({ t: l.t, from: l.from, text: l.text, channel: l.channel, read: false });
   }

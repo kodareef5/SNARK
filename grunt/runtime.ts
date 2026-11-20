@@ -14,7 +14,7 @@ import { Trace } from "./trace.ts";
 export const TICK_MS = 100;
 
 export const SUBSCRIPTION: ChannelRequest = {
-  self: { hz: 10 }, entities: { hz: 5, radius: 40, max: 30 }, focus: { hz: 10 }, inventory: { hz: 2 }, chat: {}, terrain: { hz: 1, radius: 12 },
+  self: { hz: 10 }, entities: { hz: 5, radius: 80, max: 40 }, focus: { hz: 10 }, inventory: { hz: 2 }, chat: {}, terrain: { hz: 1, radius: 12 },
 };
 
 export type TaskStatus = "running" | "suspended" | "done" | "blocked" | "failed" | "cancelled";
@@ -122,7 +122,13 @@ export class Runtime {
     const w = await this.session.hello(name);
     this.name = w.character.name;
     this.trace.record("connected", { game: w.game, character: w.character, limits: w.limits });
-    await this.session.subscribe(SUBSCRIPTION, ["*"]);
+    // A game with a map screen: it is read now and then (under fog it grows as the character explores), and the ground
+    // about the character more often, wider, since finding ways depends on it.
+    const hasMap = w.capabilities.channels.includes("map");
+    // The ground about the character as far as it sees it well (40 m), 2 m a letter: as fine as the nav map.
+    const near = { radius: 40, cell: 2 };
+    await this.session.subscribe(hasMap ? { ...SUBSCRIPTION, terrain: { hz: 2, ...near }, map: { hz: 0.2, cell: 4 } } : SUBSCRIPTION, ["*"]);
+    if (hasMap) await this.session.observe({ map: { cell: 4 }, terrain: near }).then((o) => this.belief.observe(o));
     await this.session.observe({ self: {}, inventory: {}, entities: { radius: 40, max: 30 }, focus: {} }).then((o) => this.belief.observe(o));
   }
 

@@ -3,9 +3,10 @@
 // started again with the same progress (a resumed task restarts its skill), so each is written to pick up from what it
 // finds: its progress, and the world as believed.
 
-import type { Belief } from "./belief.ts";
+import { type Belief, compass } from "./belief.ts";
+import { type Costs, type Danger, type Route, WALK } from "./nav.ts";
 import type { Body, Run } from "./body.ts";
-import type { Outcome } from "./protocol.ts";
+import type { Outcome, Vec3 } from "./protocol.ts";
 
 export interface SkillContext {
   belief: Belief;
@@ -71,15 +72,110 @@ function* lookAround(ctx: SkillContext): Run<SkillResult> {
   return { status: "done", summary: `I see ${[...kinds].map(([k, n]) => `${n} ${k}`).join(", ") || "nothing"}`, data: Object.fromEntries(kinds) };
 }
 
+/** Remembered dangers as costs on the ground near them: a way that keeps clear of them is worth some extra metres. */
+export function dangerCosts(b: Belief): Danger[] {
+  // 35 m: wider than a hunter notices a body (about 20 m for a raptor), so a way round is not a way into it.
+  return [...b.dangers.values()].filter((d) => b.now - d.t < 120000).map((d) => ({ pos: d.pos, radius: 35, cost: 40 }));
+}
+
+/** Metres of a route by kind, as words: "180 m: 140 ground, 40 bridge". */
+function describeRoute(r: Route): string {
+  const parts = Object.entries(r.metres).sort((a, b) => b[1] - a[1]).map(([k, m]) => `${m} ${k}`);
+  return `${r.length} m (${parts.join(", ")})`;
+}
+
+function destination(b: Belief, args: Record<string, unknown>): { point: () => Vec3 | null; to: string | null; label: string } {
+  const to = typeof args.to === "string" ? args.to : null;
+  const point = to ? () => b.things.get(to)?.pos ?? null : () => [Number(args.x), 0, Number(args.z)] as Vec3;
+  return { point, to, label: to ? (b.things.get(to)?.name ?? to) : `${Number(args.x)}, ${Number(args.z)}` };
+}
+
+/** An errand: somewhere it knows, by the best way it knows. */
 function* walkTo(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
   const b = ctx.belief;
-  const to = typeof args.to === "string" ? args.to : null;
+  const { point, to, label } = destination(b, args);
   const reach = typeof args.reach === "number" ? args.reach : to ? 2.5 : 1.5;
-  const point = to ? () => b.things.get(to)?.pos ?? null : () => [Number(args.x), 0, Number(args.z)] as [number, number, number];
   if (!point()) return { status: "failed", summary: `I don't know where ${to} is` };
-  const r = yield* ctx.body.walkTo(point, reach, { ...(to ? { ignore: to } : {}), sprint: !!args.run });
-  if (r === "arrived") return { status: "done", summary: to ? `I'm at ${b.things.get(to)?.name ?? to}` : `I'm at ${Number(args.x)}, ${Number(args.z)}` };
-  return { status: "blocked", summary: r === "lost" ? `I lost sight of ${to}` : "something is in the way and I can't get round it" };
+  const r = yield* ctx.body.goTo(point, reach, { ...(to ? { ignore: to } : {}), sprint: !!args.run, dangers: () => dangerCosts(b) });
+  if (r === "arrived") return { status: "done", summary: `I'm at ${label}` };
+  return { status: "blocked", summary: r === "lost" ? `I lost sight of ${to}` : r === "unreachable" ? `I know no way to ${label}` : "something is in the way and I can't get round it", data: { reason: r } };
+}
+
+/** A trek: a long way, over the map, in legs, keeping clear of known danger, and saying how the way goes. */
+function* travel(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+  const b = ctx.belief, p = ctx.progress;
+  const { point, to, label } = destination(b, args);
+  if (!point()) return { status: "failed", summary: `I don't know where ${to} is` };
+  const start = b.pos, t0 = b.now;
+  let told = Infinity, detours = Number(p.detours ?? 0);
+  const r = yield* ctx.body.goTo(point, typeof args.reach === "number" ? args.reach : 3, {
+    ...(to ? { ignore: to } : {}), sprint: !!args.run, dangers: () => dangerCosts(b),
+    onRoute: (route, replans, why) => {
+      const said: Record<string, string> = {
+        bumped: "something the map does not show is in the way", "blocked ahead": "the way ahead turned out blocked",
+        "worse ground ahead": "the ground ahead is not what the map shows (water where a bridge was, or worse)",
+        "danger ahead": "I saw danger near the way", "target moved": `${label} moved`,
+      };
+      if (replans === 0 && !p.route) ctx.note(`on my way to ${label}: ${describeRoute(route)}`);
+      else if (replans > 0) (p.detours = ++detours), ctx.note(`${said[why ?? "bumped"]}; new way: ${describeRoute(route)} from here`);
+      p.route = describeRoute(route);
+    },
+    onLeg: (left) => {
+      if (left < told * 0.66 && left > 30) {
+        told = left;
+        ctx.note(`${left} m to go to ${label}`);
+      }
+    },
+  });
+  const walked = Math.round(Math.hypot(b.pos[0] - start[0], b.pos[2] - start[2]));
+  const time = Math.round((b.now - t0) / 1000);
+  if (r === "arrived") return { status: "done", summary: `I'm at ${label}, after ${time} s${detours ? ` and ${detours} detour${detours > 1 ? "s" : ""}` : ""}`, data: { seconds: time, detours } };
+  if (r === "unreachable") return { status: "blocked", summary: `I know no way to ${label} from here (${walked} m from where I set out): explore toward it, or another way of travelling`, data: { reason: "unreachable" } };
+  return { status: "blocked", summary: r === "lost" ? `I lost track of ${label}` : `I can't get through to ${label}`, data: { reason: r, detours } };
+}
+
+const DIRS: Record<string, [number, number]> = {
+  north: [0, -1], "north-east": [0.71, -0.71], east: [1, 0], "south-east": [0.71, 0.71],
+  south: [0, 1], "south-west": [-0.71, 0.71], west: [-1, 0], "north-west": [-0.71, -0.71],
+};
+const EXPLORE: Costs = { ...WALK, unknown: 1.05 };
+
+/** Exploring: into ground it does not know, carefully: a leg at a time, a look round after each, and back to report
+ * the moment anything hostile is seen. */
+function* explore(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult> {
+  const b = ctx.belief, p = ctx.progress;
+  const start = (p.start ??= b.pos) as Vec3;
+  const dir = typeof args.toward === "string" ? DIRS[args.toward] : undefined;
+  const far = typeof args.distance === "number" ? args.distance : 120;
+  const goal: Vec3 | null = dir ? [start[0] + dir[0] * far, 0, start[2] + dir[1] * far]
+    : typeof args.x === "number" && typeof args.z === "number" ? [args.x, 0, args.z] : null;
+  if (!goal) return { status: "failed", summary: `explore takes toward (${Object.keys(DIRS).join(", ")}) or x and z` };
+  // What was known before the exploring began, kept with the task, so a find is still a find after a pause.
+  const known0 = new Set((p.known0 ??= [...b.things.keys()]) as string[]);
+  const found = () => [...b.things.values()].filter((t) => !known0.has(t.id) && (t.kind === "creature" || t.kind === "player" || t.kind === "structure" || t.kind === "vehicle" || t.kind === "container"));
+  const tell = (list: ReturnType<typeof found>) => list.map((t) => `${t.type}${t.name ? ` ${t.name}` : ""} ${t.id} ${Math.round(Math.hypot(t.pos[0] - start[0], t.pos[2] - start[2]))} m ${compass(Math.atan2(t.pos[0] - start[0], -(t.pos[2] - start[2])))} of where I set out${t.disposition === "hostile" ? " (hostile)" : ""}`).join("; ");
+  for (let leg = 0; leg < 40; leg++) {
+    const hostile = found().filter((t) => t.disposition === "hostile");
+    if (hostile.length) return { status: "blocked", summary: `stopped exploring: ${tell(hostile)}. Also found: ${tell(found().filter((t) => t.disposition !== "hostile")) || "nothing else"}`, data: { reason: "hostile", found: found().map((t) => t.id) } };
+    if (b.distance(goal) < 6) break;
+    const route = b.nav.route(b.pos, goal, EXPLORE, dangerCosts(b));
+    if (!route) return { status: "blocked", summary: `no way on that I can see; found: ${tell(found()) || "nothing"}`, data: { reason: "unreachable", found: found().map((t) => t.id) } };
+    // The next stretch of the route, about 25 m: then a look round before going further.
+    let acc = 0, stop = route.points.at(-1)!, prev = b.pos;
+    for (const pt of route.points) {
+      acc += Math.hypot(pt[0] - prev[0], pt[2] - prev[2]);
+      prev = pt;
+      if (acc >= 25) {
+        stop = pt;
+        break;
+      }
+    }
+    const r = yield* ctx.body.goTo(() => stop, 2, { costs: EXPLORE, dangers: () => dangerCosts(b), until: () => found().some((t) => t.disposition === "hostile") });
+    if (r === "unreachable") continue;
+    if (r === "stopped") continue;
+    yield* ctx.body.scan();
+  }
+  return { status: "done", summary: `explored ${Math.round(Math.hypot(b.pos[0] - start[0], b.pos[2] - start[2]))} m ${dir ? `${args.toward}` : "toward the point"}; found: ${tell(found()) || "nothing of note"}`, data: { found: found().map((t) => t.id) } };
 }
 
 /** Gathers from trees, rocks or bushes near where it started, until none is left there or it has enough. */
@@ -405,9 +501,19 @@ function* say(ctx: SkillContext, args: Record<string, unknown>): Run<SkillResult
 export const SKILLS: Record<string, Skill> = {
   look_around: { name: "look_around", describe: "Turn the whole way round, so that everything about is seen.", params: {}, body: true, run: lookAround },
   walk_to: {
-    name: "walk_to", describe: "Walk to a place (x, z) or to a thing or person by id, steering round what is in the way.",
+    name: "walk_to", describe: "An errand: walk to a place (x, z) or a thing or person by id, nearby or in ground you know, by the best way you know.",
     params: { x: "number", z: "number", to: "entity id, in place of x and z", reach: "metres (default 1.5, or 2.5 to a thing)", run: "boolean: sprint" },
     body: true, run: walkTo,
+  },
+  travel: {
+    name: "travel", describe: "A trek across the map: plans the way over the map, keeps clear of known danger, goes round what turns out blocked, and notes how it goes.",
+    params: { x: "number", z: "number", to: "entity id, in place of x and z", reach: "metres (default 3)", run: "boolean: sprint where it can" },
+    body: true, run: travel,
+  },
+  explore: {
+    name: "explore", describe: "Explore unknown or enemy ground, carefully: a stretch at a time, looking round after each, stopping to report what it finds and anything hostile.",
+    params: { toward: "north | north-east | east | ... (or x and z)", x: "number", z: "number", distance: "metres (default 120)" },
+    body: true, run: explore,
   },
   harvest: {
     name: "harvest", describe: "Gather from trees, rocks or bushes near where it starts (best tool in hand), until none is left near, or until `count` of the main yield.",

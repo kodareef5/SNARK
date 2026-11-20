@@ -1,0 +1,71 @@
+{
+  "name": "nav-maze",
+  "about": "Two cliffs across the way, each with one gap at opposite ends: the straight line is walled twice.",
+  "world": {
+    "seed": 1,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -140,
+        -200,
+        140,
+        40
+      ],
+      "features": [
+        {
+          "type": "cliff",
+          "from": [
+            -140,
+            -50
+          ],
+          "to": [
+            95,
+            -50
+          ],
+          "width": 3
+        },
+        {
+          "type": "cliff",
+          "from": [
+            -95,
+            -110
+          ],
+          "to": [
+            140,
+            -110
+          ],
+          "width": 3
+        }
+      ]
+    }
+  },
+  "prompt": "You are Scout. Go to the spot at x 0, z -160, a long way north of here, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "at": [
+          0,
+          -160
+        ],
+        "within": 5
+      },
+      {
+        "said": "there|here|arrived|made it|reached"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 300
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -160
+    }
+  }
+}

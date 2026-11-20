@@ -1,0 +1,99 @@
+{
+  "name": "nav-bridge-out",
+  "about": "The same river, but the near bridge is gone, which the map does not show: found only on getting near. Another bridge stands far to the west; swimming is long and tiring.",
+  "world": {
+    "seed": 1,
+    "me": {
+      "x": 0,
+      "z": 0,
+      "yaw": 0
+    },
+    "terrain": {
+      "bounds": [
+        -140,
+        -200,
+        140,
+        40
+      ],
+      "features": [
+        {
+          "type": "water",
+          "rect": [
+            -140,
+            -110,
+            140,
+            -50
+          ],
+          "depth": "deep"
+        },
+        {
+          "type": "bridge",
+          "from": [
+            50,
+            -46
+          ],
+          "to": [
+            50,
+            -114
+          ],
+          "width": 5
+        },
+        {
+          "type": "bridge",
+          "from": [
+            -120,
+            -46
+          ],
+          "to": [
+            -120,
+            -114
+          ],
+          "width": 5
+        }
+      ],
+      "changes": [
+        {
+          "at_s": 0.1,
+          "feature": {
+            "type": "water",
+            "rect": [
+              44,
+              -112,
+              57,
+              -48
+            ],
+            "depth": "deep"
+          }
+        }
+      ]
+    }
+  },
+  "prompt": "You are Scout. Go to x 0, z -160, across the river to the north, and say in local chat when you are there.",
+  "success": {
+    "all": [
+      {
+        "alive": true
+      },
+      {
+        "at": [
+          0,
+          -160
+        ],
+        "within": 5
+      },
+      {
+        "said": "there|here|arrived|made it|reached|across"
+      }
+    ]
+  },
+  "budget": {
+    "seconds": 300
+  },
+  "rules": {
+    "skill": "travel",
+    "args": {
+      "x": 0,
+      "z": -160
+    }
+  }
+}

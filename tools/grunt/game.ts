@@ -104,7 +104,7 @@ export class GameEndpoint {
       this.send({
         grunt: GRUNT_VERSION, type: "welcome", ...(re ? { re } : {}), session: this.session!, seq: ++this.seq, game: this.game,
         character: { id: me.id, name: me.name, alive: me.alive }, frame: { units: "m", up: "+y", east: "+x", south: "+z" },
-        capabilities: CAPABILITIES, limits: LIMITS,
+        capabilities: this.world.terrain ? { ...CAPABILITIES, channels: [...CAPABILITIES.channels, "map"] } : CAPABILITIES, limits: LIMITS,
       });
       return;
     }
@@ -125,7 +125,7 @@ export class GameEndpoint {
         this.subs.clear();
         const granted: ChannelRequest = {};
         for (const [name, opts] of Object.entries(m.channels ?? {}) as [ChannelName, ChannelOptions][]) {
-          if (!CAPABILITIES.channels.includes(name)) continue;
+          if (!CAPABILITIES.channels.includes(name) && !(name === "map" && this.world.terrain)) continue;
           const hz = opts.hz ? Math.min(opts.hz, LIMITS.max_rate_hz) : null;
           this.subs.set(name, { opts, hz, due: this.world.t });
           granted[name] = { ...opts, ...(hz ? { hz } : {}) };
@@ -163,7 +163,11 @@ export class GameEndpoint {
     for (const [name, o] of Object.entries(req ?? {}) as [ChannelName, ChannelOptions][]) {
       if (name === "self") out.self = w.selfChannel();
       else if (name === "entities") out.entities = w.entitiesChannel(o.radius, o.max);
-      else if (name === "terrain") out.terrain = w.terrainChannel(o.radius);
+      else if (name === "terrain") out.terrain = w.terrainChannel(o.radius, o.cell);
+      else if (name === "map") {
+        const m = w.mapChannel(o.cell);
+        if (m) out.map = m;
+      }
       else if (name === "inventory") out.inventory = w.inventoryChannel();
       else if (name === "focus") out.focus = w.focusChannel();
       else if (name === "chat") {

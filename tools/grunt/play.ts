@@ -22,7 +22,8 @@ export type Check =
   | { near: string; within: number }
   | { built: Record<string, number> }
   | { hut_2x2: true }
-  | { hut_south_of: number };
+  | { hut_south_of: number }
+  | { at: [number, number]; within: number };
 
 export interface Scenario {
   name: string;
@@ -43,6 +44,7 @@ export function check(c: Check, w: World): boolean {
   if ("said" in c) return w.said.some((s) => new RegExp(c.said, "i").test(s.text));
   if ("near" in c) return [...w.things.values()].some((t) => (t.name === c.near || t.id === c.near) && Math.hypot(t.x - w.me.x, t.z - w.me.z) <= c.within);
   if ("built" in c) return Object.entries(c.built).every(([piece, n]) => [...w.things.values()].filter((t) => t.type === piece).length >= n);
+  if ("at" in c) return Math.hypot(w.me.x - c.at[0], w.me.z - c.at[1]) <= c.within;
   if ("hut_south_of" in c) return [...w.things.values()].filter((t) => t.type === "wood_foundation").every((t) => t.z > c.hut_south_of) && hut(w);
   return hut(w);
 }

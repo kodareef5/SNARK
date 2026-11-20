@@ -8,9 +8,10 @@
 // not a game: numbers are round, and only what grunt's skills need is here.
 
 import type {
-  Action, Craftable, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, Placement,
+  Action, Craftable, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, Placement,
   PlacementRefusal, RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../../grunt/protocol.ts";
+import { CHAR, CLIFF, DEEP, LEGEND, SHALLOW, type Feature, type Terrain } from "./terrain.ts";
 
 export const TICK_MS = 50;
 const WALK = 3.5, SPRINT = 6, TURN = 6, PITCH_TURN = 3, BODY_R = 0.4, REACH = 2.5, SIGHT = 60, NEAR = 12;
@@ -59,6 +60,8 @@ interface Thing {
   /** A resource's yield left, a creature's health. */
   left: number;
   name?: string;
+  /** A player who is an enemy. */
+  hostile?: boolean;
   // A creature's mind.
   hunting?: boolean;
   home?: [number, number];
@@ -117,6 +120,10 @@ export interface CharacterSetup {
 export class World {
   tick = 0;
   readonly things = new Map<string, Thing>();
+  /** The ground, where the scene has any: flat open ground otherwise. */
+  terrain: Terrain | null = null;
+  /** Changes to the ground after the start, by game time: the map does not show them. */
+  changes: { at: number; feature: Feature }[] = [];
   readonly me = {
     id: "e:1", name: "Scout", alive: true, x: 0, z: 0, yaw: 0, pitch: 0, vx: 0, vz: 0,
     health: 100, stamina: 100, food: 100, water: 100, slots: [] as Slot[], held: null as number | null,
@@ -253,7 +260,9 @@ export class World {
   /** What the character perceives: everything near, and what is in front of it farther off. */
   perceives(t: Thing): boolean {
     const d = this.dist(t);
-    return d <= NEAR || (d <= SIGHT && Math.abs(this.bearing(t.x, t.z)) <= FOV);
+    if (!(d <= NEAR || (d <= SIGHT && Math.abs(this.bearing(t.x, t.z)) <= FOV))) return false;
+    // A cliff between hides what is behind it.
+    return d < 2 || !this.terrain || this.terrain.clear(this.me.x, this.me.z, t.x, t.z);
   }
 
   /** What is under the crosshair and within reach. */
@@ -284,7 +293,7 @@ export class World {
     const held = m.held === null || !h ? null : { item: h, slot: m.held, uses: m.slots[m.held]?.uses ?? null };
     return {
       id: m.id, name: m.name, alive: m.alive, pos: [m.x, 0, m.z], yaw: m.yaw, pitch: m.pitch, vel: [m.vx, 0, m.vz],
-      on: "ground", held, mount: null, status: this.weight() > CARRY ? ["encumbered"] : [],
+      on: this.terrain?.at(m.x, m.z) === DEEP ? "water" : "ground", held, mount: null, status: this.weight() > CARRY ? ["encumbered"] : [],
       vitals: { health: [m.health, 100], stamina: [m.stamina, 100], food: [m.food, 100], water: [m.water, 100], weight: [Math.round(this.weight() * 10) / 10, CARRY] },
     };
   }
@@ -297,7 +306,7 @@ export class World {
       id: t.id, kind: t.kind, type: t.type, ...(t.name ? { name: t.name } : {}),
       pos: [t.x, t.piece?.y ?? 0, t.z], distance: Math.round(this.dist(t) * 100) / 100, bearing: this.bearing(t.x, t.z),
       ...(t.kind === "creature" ? { health: t.left / RAPTOR.hp, disposition: "hostile" as const, tags: t.hunting ? ["hunting"] : ["wild"] } : {}),
-      ...(t.kind === "player" ? { disposition: "neutral" as const } : {}),
+      ...(t.kind === "player" ? { disposition: t.hostile ? ("hostile" as const) : ("neutral" as const) } : {}),
       ...(t.kind === "structure" ? { disposition: "own" as const, tags: t.piece?.open ? ["open"] : [] } : {}),
       affords: this.affords(t),
     }));
@@ -312,7 +321,7 @@ export class World {
       let row = "";
       for (let c = 0; c < n; c++) {
         const x = ox + c * cell, z = oz + r * cell;
-        let ch = ".";
+        let ch: string = this.terrain ? CHAR[this.terrain.at(x, z)]! : ".";
         for (const t of this.things.values()) {
           if (Math.hypot(t.x - x, t.z - z) > t.r + cell / 2 || !this.perceives(t)) continue;
           ch = t.type === "tree" ? "T" : t.type === "rock" ? "R" : t.type === "bush" ? "b" : t.kind === "structure" ? (t.blocks ? "#" : "=") : t.kind === "creature" ? "c" : t.kind === "player" ? "P" : "B";
@@ -324,8 +333,15 @@ export class World {
     }
     return {
       cell, origin: [ox, oz], size: [n, n], rows, heights: null,
-      legend: { ".": "walkable", "#": "blocked", "=": "floor", T: "tree", R: "rock", b: "bush", B: "container", c: "creature", P: "player", "@": "self" },
+      legend: { ...LEGEND, ".": "walkable", "#": "blocked", T: "tree", R: "rock", b: "bush", B: "container", c: "creature", P: "player", "@": "self" },
     };
+  }
+
+  /** The map screen: the whole map as drawn at the start (under fog, only what has been explored). */
+  mapChannel(cell = 4): MapChannel | null {
+    if (!this.terrain) return null;
+    const m = this.terrain.map(cell);
+    return { ...m, legend: LEGEND, known: this.terrain.fog ? "explored" : "full" };
   }
 
   inventoryChannel(): InventoryChannel {
@@ -558,6 +574,15 @@ export class World {
   private once(): void {
     this.tick++;
     const dt = TICK_MS / 1000, m = this.me;
+    while (this.changes.length && this.changes[0]!.at <= this.t) this.terrain?.paint(this.changes.shift()!.feature);
+    if (this.terrain && m.alive) {
+      this.terrain.explore(m.x, m.z, 24);
+      // Deep water: a swimmer tires, and drowns when it can swim no more.
+      if (this.terrain.at(m.x, m.z) === DEEP) {
+        m.stamina = Math.max(0, m.stamina - 3 * dt);
+        if (m.stamina <= 0 && this.tick % 20 === 0) this.hurt(4, "water");
+      }
+    }
     if (m.alive) {
       this.turn(dt);
       this.walk(dt);
@@ -596,8 +621,10 @@ export class World {
     let vx = fx * a.forward + Math.cos(m.yaw) * a.strafe, vz = fz * a.forward + Math.sin(m.yaw) * a.strafe;
     const len = Math.hypot(vx, vz);
     if (len > 1) (vx /= len), (vz /= len);
-    const sprinting = !!a.sprint && m.stamina > 1 && a.forward > 0;
-    const speed = (sprinting ? SPRINT : WALK) * (this.weight() > CARRY ? 0.3 : 1);
+    const ground = this.terrain?.at(m.x, m.z);
+    const sprinting = !!a.sprint && m.stamina > 1 && a.forward > 0 && ground !== DEEP;
+    const wading = ground === SHALLOW ? 0.6 : ground === DEEP ? 0.4 : 1;
+    const speed = (sprinting ? SPRINT : WALK) * (this.weight() > CARRY ? 0.3 : 1) * wading;
     m.stamina = Math.max(0, Math.min(100, m.stamina + (sprinting ? -8 : 4) * dt));
     const nx = m.x + vx * speed * dt, nz = m.z + vz * speed * dt;
     const hit = this.collide(nx, nz);
@@ -619,6 +646,12 @@ export class World {
 
   /** What would be in the way of the body at (x, z): an id, or null. */
   private collide(x: number, z: number): string | null {
+    if (this.terrain) {
+      for (let i = 0; i < 8; i++) {
+        const a = (i * Math.PI) / 4;
+        if (this.terrain.at(x + Math.cos(a) * BODY_R, z + Math.sin(a) * BODY_R) === CLIFF) return "terrain";
+      }
+    }
     for (const t of this.things.values()) {
       if (!t.blocks || (t.piece?.y ?? 0) > 0) continue;
       if (t.kind === "structure" && t.piece) {
@@ -768,7 +801,8 @@ export class World {
   private hurt(amount: number, by: string): void {
     const m = this.me;
     m.health = Math.max(0, m.health - amount);
-    this.event("hurt", { amount, health: m.health, by: this.perceives(this.things.get(by)!) ? by : null, kind: "melee" });
+    const t = this.things.get(by);
+    this.event("hurt", { amount, health: m.health, by: t && this.perceives(t) ? by : null, kind: t ? "melee" : by === "water" ? "drown" : "other" });
     if (m.health <= 0) {
       m.alive = false;
       this.releaseAll("died");

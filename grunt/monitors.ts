@@ -25,7 +25,7 @@ export type Monitor = (b: Belief, ctx: MonitorContext) => Signal[];
 /** Hostile creatures seen near and closing, being hurt, and hunters heard but not seen. */
 export const threat: Monitor = (b) => {
   const out: Signal[] = [];
-  for (const t of b.find((r) => r.kind === "creature" && r.disposition === "hostile" && b.age(r.seen) < 3000)) {
+  for (const t of b.find((r) => (r.kind === "creature" || r.kind === "player") && r.disposition === "hostile" && b.age(r.seen) < 3000)) {
     const d = b.distance(t.pos);
     if (d > 25) continue;
     let u = Math.max(0, Math.min(1, (25 - d) / 20));

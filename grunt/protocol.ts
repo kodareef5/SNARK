@@ -74,10 +74,12 @@ export interface Refused extends Envelope<"refused"> {
 
 // --- Observing ----------------------------------------------------------------------------------------------------
 
-export type ChannelName = "self" | "entities" | "terrain" | "inventory" | "chat" | "focus" | "image";
+export type ChannelName = "self" | "entities" | "terrain" | "inventory" | "chat" | "focus" | "image" | "map";
 
 export interface ChannelOptions {
   hz?: number;
+  /** The map's metres a letter. */
+  cell?: number;
   radius?: number;
   max?: number;
   heights?: boolean;
@@ -161,6 +163,17 @@ export interface TerrainChannel {
   heights: number[] | null;
 }
 
+/** The map screen: the whole map coarsely, as the game's map shows it; under fog only what has been explored. It is
+ * the map as drawn, not the ground as it is now: what changed since is seen only in `terrain`, up close. */
+export interface MapChannel {
+  cell: number;
+  origin: [number, number];
+  size: [number, number];
+  rows: string[];
+  legend: Record<string, string>;
+  known: "full" | "explored";
+}
+
 export interface Slot {
   slot: number;
   item: string;
@@ -235,6 +248,7 @@ export interface Channels {
   chat: ChatChannel;
   focus: FocusChannel;
   image: ImageChannel;
+  map: MapChannel;
 }
 
 export interface Observation extends Envelope<"observation">, Sequenced {

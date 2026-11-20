@@ -1,6 +1,7 @@
 // A mock world described as data, so a scenario (grunt/scenarios/*.json) can say what it starts from.
 
 import type { EntityKind } from "../../grunt/protocol.ts";
+import { Terrain, type TerrainSpec } from "./terrain.ts";
 import { type CharacterSetup, World } from "./world.ts";
 
 export interface SceneThing {
@@ -10,12 +11,16 @@ export interface SceneThing {
   name?: string;
   /** A chest's contents. */
   items?: Record<string, number>;
+  /** A player who is an enemy. */
+  hostile?: boolean;
 }
 
 export interface Scene {
   seed?: number;
   me?: CharacterSetup;
   things?: SceneThing[];
+  /** Ground with cliffs, water, roads and bridges; open flat ground without it. */
+  terrain?: TerrainSpec;
 }
 
 const KIND: Record<SceneThing["type"], EntityKind> = {
@@ -24,9 +29,13 @@ const KIND: Record<SceneThing["type"], EntityKind> = {
 
 export function makeWorld(scene: Scene = {}): World {
   const w = new World(scene.seed ?? 1);
+  if (scene.terrain) {
+    w.terrain = new Terrain(scene.terrain);
+    w.changes = (scene.terrain.changes ?? []).map((c) => ({ at: c.at_s * 1000, feature: c.feature })).sort((a, b) => a.at - b.at);
+  }
   for (const t of scene.things ?? []) {
     const slots = t.items ? Object.entries(t.items).map(([item, count], slot) => ({ slot, item, count })) : t.type === "chest" ? [] : undefined;
-    w.place(KIND[t.type], t.type, t.x, t.z, { ...(t.name ? { name: t.name } : {}), ...(slots ? { slots } : {}) });
+    w.place(KIND[t.type], t.type, t.x, t.z, { ...(t.name ? { name: t.name } : {}), ...(slots ? { slots } : {}), ...(t.hostile ? { hostile: true } : {}) });
   }
   w.setup(scene.me ?? {});
   return w;
