@@ -27,6 +27,8 @@ export class AssetTable {
   readonly radius: Float32Array;
   /** How far, in metres, the mesh reaches from its origin sideways at any turn, and its lowest and highest points. */
   readonly side: Float32Array;
+  /** How far its vertices reach sideways from its origin at any level, as measured when it was packed (manifest `reach`); its bounds' corner, `side`, where not measured. Never more than `side`. */
+  readonly reach: Float32Array;
   readonly low: Float32Array;
   readonly high: Float32Array;
   /** The skeleton each mesh follows, or "". */
@@ -56,6 +58,7 @@ export class AssetTable {
     this.materials = manifest.materials ?? [];
     this.radius = new Float32Array(this.count);
     this.side = new Float32Array(this.count);
+    this.reach = new Float32Array(this.count);
     this.low = new Float32Array(this.count);
     this.high = new Float32Array(this.count);
     this.skeleton = meshes.map((m) => m.skeleton ?? "");
@@ -80,6 +83,7 @@ export class AssetTable {
     this.flat[mesh] = m.flat ?? 0;
     this.radius[mesh] = Math.hypot(m.half[0], m.half[1], m.half[2]) + Math.hypot(m.center[0], m.center[1], m.center[2]);
     this.side[mesh] = Math.hypot(Math.abs(m.center[0]) + m.half[0], Math.abs(m.center[2]) + m.half[2]);
+    this.reach[mesh] = Math.min(this.side[mesh]!, m.reach ?? Infinity);
     this.low[mesh] = m.center[1] - m.half[1];
     this.high[mesh] = m.center[1] + m.half[1];
   }

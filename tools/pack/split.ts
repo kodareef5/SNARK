@@ -2,7 +2,7 @@
 // fetches a creature skeleton's clips from and the file of pages, and writes the manifest that says where everything is.
 
 import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
-import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, meshReach, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
 import { farMeshId } from "../../shared/pack/far.ts";
 import { PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION } from "../../shared/pack/stored.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
@@ -157,7 +157,7 @@ export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = 
   if (pages.length > 0) files.push({ name: `${name}.page.snpt`, role: "page", bytes: new Uint8Array(PARTS_HEADER_BYTES) });
   const blobAt = files.slice(0, 2).map((f) => parsePack(f.bytes).blobAt);
   const meshes = pack.header.meshes.map((m, i): ManifestMesh => {
-    const out: ManifestMesh = { id: m.id, center: m.center, half: m.half, levels: [] };
+    const out: ManifestMesh = { id: m.id, center: m.center, half: m.half, reach: meshReach(pack, m), levels: [] };
     if (m.skeleton !== undefined) out.skeleton = m.skeleton;
     if (m.rig !== undefined) out.rig = m.rig;
     if (m.skeleton !== undefined && m.lods[0]!.vertexCount > 0) out.bone = lodVertices(pack, m.lods[0]!)[7]!;

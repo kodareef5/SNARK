@@ -356,6 +356,30 @@ export function lodVertices(pack: Pack, lod: PackLod): Uint8Array {
   return pack.blob.subarray(lod.vertexOffset, lod.vertexOffset + lod.vertexCount * VERTEX_BYTES);
 }
 
+/**
+ * How far a mesh reaches sideways from its origin at any of its levels, in metres, as its vertices stand: the radius a
+ * turn about its upright axis keeps it within, never more than its bounds' corner. Rounded up to a centimetre.
+ */
+export function meshReach(pack: Pack, m: PackMesh): number {
+  const known = reaches.get(m);
+  if (known !== undefined) return known;
+  let most = 0;
+  for (const lod of m.lods) {
+    const v = lodVertices(pack, lod), view = new DataView(v.buffer, v.byteOffset, v.byteLength);
+    for (let i = 0; i < lod.vertexCount; i++) {
+      const x = m.center[0] + (Math.max(-32767, view.getInt16(i * VERTEX_BYTES, true)) / 32767) * m.half[0];
+      const z = m.center[2] + (Math.max(-32767, view.getInt16(i * VERTEX_BYTES + 4, true)) / 32767) * m.half[2];
+      most = Math.max(most, x * x + z * z);
+    }
+  }
+  const reach = Math.ceil(Math.sqrt(most) * 100) / 100;
+  reaches.set(m, reach);
+  return reach;
+}
+
+/** Each mesh's reach once measured: a pack's meshes are described again for every scene a test makes. */
+const reaches = new WeakMap<PackMesh, number>();
+
 export function lodIndices(pack: Pack, lod: PackLod): Uint8Array {
   return pack.blob.subarray(lod.indexOffset, lod.indexOffset + lod.indexCount * lod.indexBytes);
 }

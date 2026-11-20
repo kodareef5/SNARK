@@ -42,6 +42,8 @@ const BEACH = [1180, 5682] as const;
 const SIDE = 12;
 const EYE = 1.7;
 const BANDS = [0, 10, 20, 30, 45, 60, 80, 110, 150, 200, 260];
+/** Crowns between a tree and the sun, by the grid's count, at which the cast triangles are split. */
+const SUN_BINS = [0, 2, 4, 6, 8, 12, 20];
 
 /** A drawn tree: its kind, how far its foot is, its crown's level, its triangles, its pixels, and what stands in its way. */
 export interface Tree {
@@ -105,6 +107,8 @@ export interface Options {
   leaves: "half" | "solid";
   squeeze: number;
   cells: number;
+  /** The hour of the day, for the sun's height. */
+  hour: number;
   /** Cells of trees behind this many crowns or more drawn as if farther (Tier.nodes.cover); none if not given. */
   cover?: { from: number; per: number; most: number };
   /** A change to the world before it is drawn: what a phase turns on, for a before and after. */
@@ -112,7 +116,7 @@ export interface Options {
 }
 
 /** Every view of the walk, and its trees. */
-export function walk(o: Options): { middle: [number, number]; rows: { buildMs: number; steppedMs: number; spot: number; heading: number; frame: number; far: number; treePx: number; pixels: number; draws: number; trees: Tree[] }[] } {
+export function walk(o: Options): { middle: [number, number]; rows: { cast: number; castBySun: number[]; buildMs: number; steppedMs: number; spot: number; heading: number; frame: number; far: number; treePx: number; pixels: number; draws: number; trees: Tree[] }[] } {
   const map = parseMap(new Uint8Array(readFileSync(MAP)), false);
   const reg = compileContent(CORE_CONTENT).registry!;
   const mhf = mapHeightfield(map);
@@ -137,6 +141,7 @@ export function walk(o: Options): { middle: [number, number]; rows: { buildMs: n
   });
   const scene = w.scene;
   scene.chunkCells = o.cells;
+  scene.hour = o.hour;
   // Stand-in maps on the rasterizer's card, pictures smallest first as mips are.
   const picture = (side: number): Uint8Array => {
     const texels: number[] = [];
@@ -255,7 +260,28 @@ export function walk(o: Options): { middle: [number, number]; rows: { buildMs: n
         const t = trees.get((buffer - NODE_BUFFERS) * 65536 + (id % 65536));
         if (t) (t.px++, treePx++);
       }
-      rows.push({ buildMs: built / 20, steppedMs: stepped, spot: step, heading: Math.round((heading * 180) / Math.PI), frame: p.triangles, far, treePx, pixels: pickKind.length, draws: p.drawCount, trees: [...trees.values()] });
+      // What the trees cast into the sun's maps, each tree's into every map it reaches, by how many crowns stand between it
+      // and the sun (from 300 m toward the sun down to its crown's middle, its own left out), where the grid is made.
+      const sun = (scene as unknown as { sunAt: Float64Array }).sunAt;
+      const castBySun = SUN_BINS.map(() => 0);
+      let cast = 0;
+      for (let e = 0; e < p.casterCount; e++) {
+        const buffer = p.casterBuffer[e]!, flags = p.casterFlags[e]!, n = p.casterInstances[e]!, c = p.casterCascades[e]!;
+        const maps = (c & 1) + ((c >> 1) & 1) + ((c >> 2) & 1) + ((c >> 3) & 1);
+        const each = ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.casterIndexCount[e]! / 3 : tris[p.casterMesh[e]!]![p.casterLod[e]!]!) * maps;
+        if (buffer < NODE_BUFFERS || buffer >= NODE_BUFFERS * 2) continue;
+        const card = w.card.get(buffer);
+        if (!card) continue;
+        for (let i = p.casterFirst[e]!; i < p.casterFirst[e]! + n; i++) {
+          const own = byKey.get((buffer - NODE_BUFFERS) * 65536 + card.slots[i]!);
+          cast += each;
+          if (!own || scene.cover.crowns === 0) continue;
+          const y = (own.base + own.top) / 2;
+          const count = scene.cover.count(own.x + sun[0]! * 300, y + sun[1]! * 300, own.z + sun[2]! * 300, own.x, y, own.z, own.r);
+          castBySun[SUN_BINS.findLastIndex((b) => count >= b)]! += each;
+        }
+      }
+      rows.push({ cast, castBySun, buildMs: built / 20, steppedMs: stepped, spot: step, heading: Math.round((heading * 180) / Math.PI), frame: p.triangles, far, treePx, pixels: pickKind.length, draws: p.drawCount, trees: [...trees.values()] });
     }
   }
   return { middle, rows };
@@ -277,6 +303,10 @@ export function summary(g: ReturnType<typeof walk>): string[] {
   out.push(`${H} views: a view ${m(sum(g.rows, (r) => r.frame))} M triangles, near trees ${m(T)} M (leaves ${m(sum(all, (t) => t.leaf))} M), far trees ${m(sum(g.rows, (r) => r.far))} M, ${(all.length / H).toFixed(0)} near trees, ${(sum(g.rows, (r) => r.draws) / H).toFixed(0)} draws; trees cover ${pct(sum(g.rows, (r) => r.treePx), sum(g.rows, (r) => r.pixels))} of the picture`);
   out.push(`the scene builds a frame in ${(sum(g.rows, (r) => r.buildMs ?? 0) / H).toFixed(2)} ms on this machine, ${(sum(g.rows, (r) => r.steppedMs ?? 0) / H).toFixed(2)} ms after the eye moves a step`);
   out.push(`trees (wood kinds) ${m(W)} M: shown ${pct(sum(shown, tri), W)}, in view but hidden ${pct(sum(hidden, tri), W)}, off screen ${pct(sum(off, tri), W)}`);
+  const castAll = sum(g.rows, (r) => r.cast ?? 0);
+  if (castAll > 0) {
+    out.push(`trees cast ${m(castAll)} M triangles a view into the sun's maps; by crowns between the tree and the sun (the grid's count): ` + SUN_BINS.map((b, k) => `${b}+ ${pct(sum(g.rows, (r) => r.castBySun?.[k] ?? 0), castAll)}`).join(", "));
+  }
   out.push("", "band         trees  shown  tris M  hidden tris  px (1080p) k  tris a px");
   for (let b = 0; b + 1 < BANDS.length; b++) {
     const ts = all.filter((t) => t.at >= BANDS[b]! && t.at < BANDS[b + 1]!);
@@ -311,7 +341,7 @@ export function summary(g: ReturnType<typeof walk>): string[] {
  */
 export function against(before: ReturnType<typeof walk>, now: ReturnType<typeof walk>): string[] {
   const tri = (t: Tree): number => t.leaf + t.bark;
-  let [was, is, px, coarser, finer, trees, moved] = [0, 0, 0, 0, 0, 0, 0];
+  let [was, is, px, coarser, finer, trees, moved, lost] = [0, 0, 0, 0, 0, 0, 0, 0];
   before.rows.forEach((r, k) => {
     const then = new Map(now.rows[k]!.trees.map((t) => [t.key, t]));
     was += r.trees.reduce((s, t) => s + tri(t), 0);
@@ -320,7 +350,10 @@ export function against(before: ReturnType<typeof walk>, now: ReturnType<typeof 
       const n = then.get(t.key);
       px += t.px;
       trees++;
-      if (!n) continue;
+      if (!n) {
+        lost += t.px;
+        continue;
+      }
       if (n.level > t.level) (coarser += t.px, moved++);
       if (n.level < t.level) finer += t.px;
     }
@@ -328,7 +361,7 @@ export function against(before: ReturnType<typeof walk>, now: ReturnType<typeof 
   const H = before.rows.length;
   return [
     `near trees ${(was / H / 1e6).toFixed(2)} M a view before, ${(is / H / 1e6).toFixed(2)} M now: ${((100 * (was - is)) / was).toFixed(0)}% fewer`,
-    `${((100 * moved) / trees).toFixed(0)}% of the trees drawn coarser, showing ${((100 * coarser) / px).toFixed(2)}% of the trees' pixels before; ${((100 * finer) / px).toFixed(2)}% drawn finer`,
+    `${((100 * moved) / trees).toFixed(0)}% of the trees drawn coarser, showing ${((100 * coarser) / px).toFixed(2)}% of the trees' pixels before; ${((100 * finer) / px).toFixed(2)}% drawn finer; ${((100 * lost) / px).toFixed(3)}% on trees no longer drawn`,
   ];
 }
 
@@ -344,6 +377,7 @@ if (import.meta.main) {
       leaves: value("--leaves") === "solid" ? "solid" : "half",
       squeeze: Number(value("--squeeze") ?? 0),
       cells: Number(value("--cells") ?? 4),
+      hour: Number(value("--hour") ?? 12),
       ...(value("--cover") ? { cover: ((c) => ({ from: c[0]!, per: c[1]!, most: c[2]! }))(value("--cover")!.split(",").map(Number)) } : {}),
     };
     const g = walk(o);

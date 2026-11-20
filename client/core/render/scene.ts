@@ -2844,7 +2844,7 @@ export class Scene {
     for (let c = c0; c < c1; c++) {
       const k = (q * cells + c) * 6;
       if (box[k]! > box[k + 3]!) continue;
-      const spread = b.sized ? this.assets.table.side[mesh]! * b.cellReach[q * cells + c]! : 0;
+      const spread = b.sized ? this.assets.table.reach[mesh]! * b.cellReach[q * cells + c]! : 0;
       x0 = Math.min(x0, box[k]! - spread);
       y0 = Math.min(y0, box[k + 1]!);
       z0 = Math.min(z0, box[k + 2]! - spread);
@@ -2906,7 +2906,7 @@ export class Scene {
     const shown = this.cellSeen[c]!;
     if (shown !== 1) return shown === 2;
     const k = (q * b.cells + c) * 6, box = b.cellBox;
-    const spread = b.sized ? this.assets.table.side[mesh]! * b.cellReach[q * b.cells + c]! : 0;
+    const spread = b.sized ? this.assets.table.reach[mesh]! * b.cellReach[q * b.cells + c]! : 0;
     return cam.boxVisible(box[k]! - spread - cam.x, box[k + 1]! - cam.y, box[k + 2]! - spread - cam.z, box[k + 3]! + spread - cam.x, box[k + 4]! - cam.y, box[k + 5]! + spread - cam.z);
   }
 
@@ -3126,7 +3126,7 @@ export class Scene {
       kinds[i] = kind;
       // A node is held by its mesh's own bounds at its size, which for a tall tree are far tighter sideways than a sphere.
       const k = sizeOf ? sizeOf[kind]! / SIZE_UNITS : 1;
-      const r = sizeOf ? this.assets.table.side[mesh]! * k : this.radiusOfMesh[mesh]!;
+      const r = sizeOf ? this.assets.table.reach[mesh]! * k : this.radiusOfMesh[mesh]!;
       const lo = sizeOf ? y + this.assets.table.low[mesh]! * k : y - r;
       const hi = sizeOf ? y + this.assets.table.high[mesh]! * k : y + r;
       if (x - r < b.minX) b.minX = x - r;
