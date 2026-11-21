@@ -1,19 +1,24 @@
-// Open the local Miami build at an authored camera and return control to the player.
+// Open a local city build at an authored camera and return control to the player.
 // bun tools/mapworld/tide-eye-review.ts [map.snmap] [built-client] [port] [review.db]
-// For matching stills run tools/mapworld/gpu-views.ts with assets/source/maps/miami/look/tide-eye.json.
+// The cameras are the city's own, assets/source/maps/<city>/look/tide-eye.json, the city named by the map's id.
+// For matching stills run tools/mapworld/gpu-views.ts with that file.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DEV_CONFIG, startServer } from "../../server/main.ts";
 import { loadConfigFolder } from "../../server/settings/config.ts";
+import { readHead } from "../../shared/world/mapfile.ts";
 import { placeFileCameras } from "./obelisk-cameras.ts";
 interface ReviewCamera {
   obelisk?: string; fromSpawn?: string;
   hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; holdPhase?: boolean; onFoot?: boolean;
   name: string; x: number; z: number; y?: number; up?: number; look: [number, number, number];
 }
-const cameras: { hour: number; views: ReviewCamera[] } = JSON.parse(readFileSync(resolve(import.meta.dir, "../../assets/source/maps/miami/look/tide-eye.json"), "utf8"));
 
 const [map = "var/maps/miami.snmap", dist = "client/dist", port = "8817", db = "var/tide-eye-review.db"] = process.argv.slice(2);
+const file = Bun.file(map);
+const prefix = new DataView(await file.slice(0, 16).arrayBuffer());
+const city = readHead(new Uint8Array(await file.slice(0, prefix.getUint32(12, true)).arrayBuffer()), false).id.replace(/^core:/, "");
+const cameras: { hour: number; views: ReviewCamera[] } = JSON.parse(readFileSync(resolve(import.meta.dir, `../../assets/source/maps/${city}/look/tide-eye.json`), "utf8"));
 const byName = new Map((await placeFileCameras(cameras.views, map)).map(view => [view.name, view]));
 // Catch a missing build before opening the review address.
 readFileSync(resolve(dist, "index.html"), "utf8");
@@ -36,6 +41,4 @@ const server = startServer({
     });
   },
 });
-for (const view of ["blue-instrument", "red-sextant", "red-ignition", "red-deck", "green-lantern", "green-shutters", "green-ignition", "green-deck"]) {
-  console.log(`http://127.0.0.1:${server.port}/?quick&look=${view}`);
-}
+for (const view of byName.keys()) console.log(`http://127.0.0.1:${server.port}/?quick&look=${view}`);

@@ -9,7 +9,8 @@ import { flatMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 import { placeCamera } from "../../tools/mapworld/obelisk-cameras.ts";
-import { placeObelisks, gradeTransferDecks } from "../../tools/mapworld/places.ts";
+import { obeliskMarks } from "../../tools/wiki/atlas.ts";
+import { DECK_RELIEF, placeObelisks, gradeTransferDecks } from "../../tools/mapworld/places.ts";
 import { gridAt } from "../../tools/mapworld/base.ts";
 import { S, type Ground, type World } from "../../tools/mapworld/ground.ts";
 
@@ -211,6 +212,29 @@ test("the storm hides the beam's end for as long as the beam is lit, and lightni
   expect(channel(new Float32Array(FRAME_FLOATS), 0, 0, 0)).toBe(0);
 });
 
+test("on a deck 662 m up, as Las Vegas's are, or on Griffith's hill, the beam still leaves its emitter, ends in the storm and lights the channels", () => {
+  for (const y of [343, 662]) for (const site of SITES) {
+    const high = { ...site, y }, form = EYE_FORMS.indexOf(site.form);
+    // The observer stands on the deck, at its height: the sky's heights are over the datum, the instrument's over its deck.
+    const frame = new Float32Array(FRAME_FLOATS);
+    writeEyeSky(frame, [high], at(site, 0, 60), 0, y + 1.7, 0);
+    expect(lanes(frame)).toMatchObject({ power: 0, open: 1 });
+    expect(lanes(frame).foot).toBeCloseTo(KEEL + EMITTERS[form]!.h - 1.7, 3);
+    // The knot the beam ends in is still well over the emitter, which on Miami's decks it is by 2,100 m and here by 1,400.
+    expect(2790 - (y + KEEL + EMITTERS[form]!.h)).toBeGreaterThan(1300);
+    const [x, z] = form === 2 ? [site.x + LANTERN_MASTS[0]![0]!, site.z + LANTERN_MASTS[0]![1]!] : [site.x + EMITTERS[form]!.x, site.z];
+    const beam = (up: number): number => toward(frame, x, up, z).light.reduce((s, v) => s + v, 0);
+    frame[FRAME.eyes + 11] = 0;
+    expect(beam(lanes(frame).foot + 400)).toBeGreaterThan(0.2);
+    expect(beam(lanes(frame).foot - 30)).toBe(0);
+    // With the storm, its end is hidden in the knot from the deck.
+    writeEyeSky(frame, [high], at(site, 3, 20), 0, y + 1.7, 0);
+    expect(toward(frame, x + 40, 3300 - y, z).through).toBeLessThan(0.2);
+    // And the channels up the instrument are lit by where they are over its deck, not over the sea.
+    expect(channel(frame, site.x, KEEL + 130 - 1.7, site.z)).toBeGreaterThan(0.25);
+  }
+});
+
 test("the storm is cloud lit as the sky lights it, grey and not the instrument's colour, in a spiral that turns as the seconds pass", () => {
   const [blue] = SITES;
   const grey = [0.45, 0.52, 0.62];
@@ -377,10 +401,68 @@ test("a transfer deck and its graded edge stay clear of a road and an inland lak
   expect(height.filter((_, i) => surface[i] === S.STREET || body[i]! > 0)).toEqual(before.filter((_, i) => surface[i] === S.STREET || body[i]! > 0));
 });
 
+test("on a hillside a transfer deck goes where the ground is level, and as small as it must where it is told", () => {
+  // Level at 100 m to the 180th column, then a hill rising 15 m in every 100 east of it; the place is named on the hill.
+  const grid = gridAt([-256, -256, 256, 256]);
+  const n = grid.nx * grid.nz, height = new Float32Array(n), surface = new Uint8Array(n).fill(S.GREEN);
+  for (let i = 0; i < n; i++) height[i] = 100 + Math.max(0, (i % grid.nx) - 180) * 0.3;
+  const ground = { grid, height, surface, water: new Uint8Array(n) } as unknown as Ground;
+  const place = (deck?: number) => {
+    const world = { obelisks: [{ name: "Hill", at: [220, 128], face: [220, 129], color: "red", form: "sextant", ...(deck ? { deck } : {}) }] } as unknown as World;
+    const [site] = placeObelisks(ground, world, (c, r) => [c, r], new Uint8Array(n));
+    const col = (grid.x1 - site!.x) / 2, half = (site!.radius! + 6) / 2;
+    // The ground over the square round the deck and its edge rises no more than the relief allowed.
+    const rise = (Math.min(col + half, grid.nx - 1) - 180) * 0.3;
+    return { radius: site!.radius!, col, rise };
+  };
+  const wide = place();
+  expect(wide.radius).toBe(70);
+  expect(wide.rise).toBeLessThanOrEqual(DECK_RELIEF);
+  // Its nearest place to the hill is as far up it as that relief lets it go.
+  expect(wide.col).toBeGreaterThan(150);
+  const small = place(30);
+  expect(small.radius).toBe(30);
+  expect(small.rise).toBeLessThanOrEqual(DECK_RELIEF);
+  expect(small.col).toBeGreaterThan(wide.col + 15);
+});
+
+test("a deck graded into a slope is flat, its bank no steeper than 1 in 1.5 over the ground's own fall, and nothing past its margin moves", () => {
+  const grid = gridAt([-128, -128, 128, 128]);
+  const n = grid.nx * grid.nz, height = new Float32Array(n);
+  // 10 m in every 100, east to west: 3 m over and under the deck's middle at its edge, and 3.6 m at its margin's, as
+  // steep as the relief a deck is placed on lets the ground be.
+  for (let i = 0; i < n; i++) height[i] = 50 + (i % grid.nx) * 0.2;
+  const ground = { grid, height } as unknown as Ground;
+  const site = { name: "Slope", color: "blue", radius: 30, yaw: 0, x: grid.x1 - 64 * 2, z: grid.z1 - 64 * 2 } as const;
+  const before = height.slice();
+  gradeTransferDecks(ground, [site], 0, 1 / 64);
+  const at = (c: number, r: number) => height[r * grid.nx + c]!;
+  let steepest = 0;
+  for (let r = 1; r < grid.nz; r++) for (let c = 1; c < grid.nx; c++) {
+    const d = Math.hypot(c - 64, r - 64) * 2;
+    if (d <= 30) expect(at(c, r)).toBe(at(64, 64));
+    if (d >= 36) expect(at(c, r)).toBe(before[r * grid.nx + c]!);
+    steepest = Math.max(steepest, Math.abs(at(c, r) - at(c - 1, r)), Math.abs(at(c, r) - at(c, r - 1)));
+  }
+  // A 2 m sample's step: the bank's 2 / 1.5 and a little where it meets the ground; a 4 m shoulder made it 1.9.
+  expect(steepest).toBeLessThan(1.45);
+});
+
 test("review cameras track the generated site and can watch from a named spawn", () => {
   const head = { tideEyes: [{ name: "Wynwood", x: 170, z: 230, y: 2, yaw: 0, color: "red", radius: 28 }], spawns: [{ name: "Bayfront Park", x: 45, z: 68, yaw: 0 }] } as const;
   const view = { obelisk: "Wynwood", x: 4, z: -2, look: [1, 2, 400] as [number, number, number] };
   expect(placeCamera(view, head)).toMatchObject({ x: 174, z: 228, look: [171, 232, 400] });
   expect(placeCamera({ ...view, fromSpawn: "Bayfront Park" }, head)).toMatchObject({ x: 49, z: 66, look: [171, 232, 400] });
   expect(() => placeCamera(view, { spawns: [] })).toThrow("Wynwood");
+  // A height over the deck holds where the deck is not near the sea: Las Vegas's stand 600 m and more up.
+  const high = { ...head, tideEyes: [{ ...head.tideEyes[0], y: 662 }] };
+  expect(placeCamera({ ...view, over: 450 }, high)).toMatchObject({ y: 1112 });
+  expect(placeCamera({ ...view, y: 442 }, high)).toMatchObject({ y: 442 });
+});
+
+test("a map's page marks each instrument where its deck stands, and an old column where its city names it", () => {
+  const mark = (name: string, x: number, z: number) => ({ name, x: x / 10, y: z / 10 });
+  const named = [{ name: "Ybor City", at: [-82.4394, 27.9604] as [number, number] }];
+  expect(obeliskMarks([{ name: "Ybor City", x: 5300, z: 7100 }], named, mark, () => [1, 2])).toEqual([{ name: "Ybor City", x: 530, y: 710 }]);
+  expect(obeliskMarks(undefined, named, mark, () => [1, 2])).toEqual([{ name: "Ybor City", x: 1, y: 2 }]);
 });

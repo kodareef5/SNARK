@@ -90,9 +90,19 @@ to the build's code (`tools/mapworld`, `tools/map`, the shared world code) build
 reaches a stage reading the downloads (prepare to ways) makes `city.ts` fetch them first. A kit made at another commit
 still unpacks: the stages whose code differs run again. Make kits again after a change to a stage before the build.
 
-## Miami's transfer terminals
+## The cities' transfer terminals
 
-Miami's `city.json` assigns the red Sextant to Wynwood, the green Louver Lantern to Miami Beach Golf Club and the blue Tide Eye to Virginia Key. The build finds dry ground near each site, grades the deck and places the travel terminal at its centre. The review cameras in `look/tide-eye.json` follow the sites stored in the generated map.
+Each city's `city.json` gives its three obelisks one red Sextant, one green Louver Lantern and one blue Tide Eye (`color`, and `form`: `sextant`, `lantern` or none), each with its `why`:
+
+| City | Red Sextant | Green Louver Lantern | Blue Tide Eye |
+| --- | --- | --- | --- |
+| Miami | Wynwood | Miami Beach Golf Club | Virginia Key |
+| Tampa | Raymond James Stadium | Ybor City | Davis Islands |
+| San Francisco | Embarcadero | Panhandle | Marina Green |
+| Los Angeles | Griffith Observatory | Hollywood and Highland | Lake Hollywood Park |
+| Las Vegas | The Strat | Welcome to Fabulous Las Vegas | Sphere |
+
+The build finds a deck of dry, open and level enough ground near each site, grades it and places the travel terminal at its centre ([mapworld](../mapworld/README.md), Obelisks): an entry's `deck` caps its radius in metres and `relief` allows more than 4 m of rise under it (Virginia Key's hill). The terminal faces `face`, and so does the broadside of the Sextant and of the Tide Eye's fork. The review cameras in each city's `look/tide-eye.json` follow the sites stored in the generated map; a camera's height over the deck is `over`, so it holds where the decks stand hundreds of metres up.
 
 ## Vehicles in a fresh city
 

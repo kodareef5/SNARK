@@ -3,7 +3,7 @@
 // found from the ground: dodos and parasaurs on each stretch of beach, and the jungle's herds and hunters in the
 // hammocks, the gardens and the ruins.
 
-import { DECK_RADIUS } from "../../shared/world/tide-eye.ts";
+import { DECK_RADIUS, eyeCollision, type TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { distanceField } from "./raster.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { ObeliskPlace } from "../../shared/world/obelisks.ts";
@@ -104,11 +104,72 @@ export function staticCover(pieces: readonly StaticPiece[], reg: Registry, grid:
 
 /** Samples from an obelisk's middle to where its user stands before the terminal: 7 m (shared/world/obelisks.ts). */
 const STAND = 3.5;
+/**
+ * The most a transfer deck's ground may rise, in metres from its lowest to its highest, over a square round the deck and
+ * its graded edge. On a slope the deck is smaller, or found where the ground is more level, so it is cut into the hill
+ * and built up from it by no more than this.
+ */
+export const DECK_RELIEF = 4;
+/** Metres between a deck's edge and the nearest street, footprint, piece or water: room for its graded bank. */
+const DECK_MARGIN = 6;
+/** A graded bank's run, metres for each it climbs or falls: 1 in 1.5, an earthwork a survivor walks up. */
+const BANK = 1.5;
+/** The deck radii tried, largest first, each against the relief of the square round it and its margin. */
+const DECK_STEPS = [70, 64, 58, 52, 46, 40, 34, 28, 22, 16] as const;
+
+/**
+ * An obelisk as a city names it, with the most radius its transfer deck may take (DECK_RADIUS unless it says less) and
+ * the most relief it may stand on (DECK_RELIEF unless it says more).
+ */
+type Named = NonNullable<World["obelisks"]>[number] & { readonly deck?: number; readonly relief?: number };
+
+/** Metres from an instrument's axis to the farthest of its pieces in the air, and a hull's half more: the map must hold them. */
+function reachOf(form: TideEyeSite["form"]): number {
+  const pieces = eyeCollision({ name: "", form, color: "blue", radius: DECK_RADIUS, x: 0, y: 0, z: 0, yaw: 0 });
+  return Math.ceil(Math.max(...pieces.map((p) => Math.hypot(p.x, p.z))) + 12);
+}
+
+/**
+ * The lowest and highest of `h` over the square of `half` samples either way round each sample, `w` by `w`: a running
+ * minimum and maximum along each row, then along each column. NaN takes no part.
+ */
+function squareRange(h: Float32Array, w: number, half: number): { low: Float32Array; high: Float32Array } {
+  const pass = (src: Float32Array, out: Float32Array, step: number, lines: number, lineStep: number, sign: number): void => {
+    const keep = new Int32Array(w);
+    for (let line = 0; line < lines; line++) {
+      const base = line * lineStep;
+      let head = 0, tail = 0;
+      // A queue of the samples that may still be the extreme of a window, their values in order.
+      for (let i = 0, next = 0; i < w; i++) {
+        for (; next < w && next <= i + half; next++) {
+          const v = src[base + next * step]!;
+          if (v !== v) continue;
+          while (tail > head && sign * src[base + keep[tail - 1]! * step]! <= sign * v) tail--;
+          keep[tail++] = next;
+        }
+        while (tail > head && keep[head]! < i - half) head++;
+        out[base + i * step] = tail > head ? src[base + keep[head]! * step]! : NaN;
+      }
+    }
+  };
+  const low = new Float32Array(w * w), high = new Float32Array(w * w), row = new Float32Array(w * w);
+  pass(h, row, 1, w, w, -1);
+  pass(row, low, w, w, 1, -1);
+  pass(h, row, 1, w, w, 1);
+  pass(row, high, w, w, 1, 1);
+  return { low, high };
+}
 
 /**
  * Each obelisk the world file names, on the nearest ground where it stands level and its user has room: open, dry ground
  * level to a quarter metre under the obelisk turned any way, and to half a metre round the terminal and before it, with no
  * static piece within 10 m of its middle or 6 m of where its user stands. The terminal turns toward the place named.
+ *
+ * An instrument (one with a colour) takes the largest transfer deck within 750 m, up to 70 m in radius or the `deck` it
+ * names, and of those the nearest: a disc of open ground, no street, lot, path or water and no piece within 6 m of its
+ * edge, whose ground rises no more than DECK_RELIEF (or the `relief` it names) over it and its edge, so that grading it
+ * flat neither cuts a cliff into a hill nor stands it on a wall, and far enough in from the map's edge to hold its
+ * pieces in the air.
  */
 export function placeObelisks(ground: Ground, world: World, toSample: (lon: number, lat: number) => [number, number], cover: Uint8Array): ObeliskPlace[] {
   const { height, surface } = ground;
@@ -130,28 +191,46 @@ export function placeObelisks(ground: Ground, world: World, toSample: (lon: numb
     }
     return true;
   };
-  return (world.obelisks ?? []).map((o) => {
+  return (world.obelisks ?? []).map((o: Named) => {
     const [c0, r0] = toSample(o.at[0], o.at[1]).map(Math.round) as [number, number];
     const [fc, fr] = toSample(o.face[0], o.face[1]);
     if (o.color) {
       // Find a full walkable disc clear of mapped streets, ruins, water and trees' exclusions. Work on a
       // local distance field so dense urban sites can search several blocks without rescanning each disc.
       const span = 420, width = span * 2 + 1;
+      const wet = (x: number, z: number, at: number): boolean => x < 0 || z < 0 || x >= nx || z >= nz || !!ground.water[at] || !!ground.lakes?.body[at] || height[at]! < 0.4;
       const clearance = distanceField(i => {
         const x = c0 + i % width - span, z = r0 + Math.floor(i / width) - span;
         const at = z * nx + x;
-        return x < 0 || z < 0 || x >= nx || z >= nz || !!cover[at] || !!ground.water[at] || !!ground.lakes?.body[at]
-          || height[at]! < 0.4 || !DECK_GROUND.has(surface[at]!);
+        return wet(x, z, at) || !!cover[at] || !DECK_GROUND.has(surface[at]!);
       }, width, width);
+      // The dry ground's heights round the place, for how much each deck would have to cut and fill.
+      const local = new Float32Array(width * width);
+      for (let i = 0; i < local.length; i++) {
+        const x = c0 + i % width - span, z = r0 + Math.floor(i / width) - span;
+        local[i] = wet(x, z, z * nx + x) ? NaN : height[z * nx + x]!;
+      }
+      const most = Math.min(DECK_RADIUS, o.deck ?? DECK_RADIUS);
+      // The steps from the smallest that holds the largest deck it may take.
+      const steps = DECK_STEPS.slice(Math.max(0, DECK_STEPS.findLastIndex((r) => r >= most)));
+      const ranges = steps.map((r) => squareRange(local, width, (r + DECK_MARGIN) / 2));
+      const relief = o.relief ?? DECK_RELIEF;
+      // Its pieces in the air stay over the map: the Sextant's bow and its hulls reach 162 m from its axis.
+      const reach = Math.ceil(reachOf(o.form) / 2);
       let best = -1, radius = 0, distance = Infinity;
       for (let i = 0; i < clearance.length; i++) {
         const dc = i % width - span, dr = Math.floor(i / width) - span;
         if (Math.max(Math.abs(dc), Math.abs(dr)) > span - 45) continue;
-        const fit = Math.min(DECK_RADIUS, Math.floor((Math.sqrt(clearance[i]!) * 2 - 6) / 2) * 2);
+        if (c0 + dc < reach || r0 + dr < reach || c0 + dc >= nx - reach || r0 + dr >= nz - reach) continue;
+        let fit = Math.min(most, Math.floor((Math.sqrt(clearance[i]!) * 2 - DECK_MARGIN) / 2) * 2);
+        if (fit <= radius && (fit < radius || dc * dc + dr * dr >= distance)) continue;
+        // As large as the most level of the squares round it lets it be: on level ground, all it fits.
+        const level = steps.findIndex((_, k) => ranges[k]!.high[i]! - ranges[k]!.low[i]! <= relief);
+        fit = level < 0 ? 0 : Math.min(fit, steps[level]!);
         const d = dc * dc + dr * dr;
         if (fit > radius || (fit === radius && d < distance)) { best = i; radius = fit; distance = d; }
       }
-      if (radius < 16) throw new Error(`no walkable transfer deck fits near ${o.name}`);
+      if (radius < 16) throw new Error(`no walkable transfer deck fits near ${o.name}: none of 16 m or more on ground level to ${relief} m within 750 m`);
       const c = c0 + best % width - span, r = r0 + Math.floor(best / width) - span;
       const yaw = Math.round(Math.atan2(c - fc, r - fr) * 32768 / Math.PI) & 65535;
       return { name: o.name, color: o.color, ...(o.form ? { form: o.form } : {}), radius, yaw, x: x1 - c * 2, z: z1 - r * 2 };
@@ -217,7 +296,12 @@ export function placeRegions(ground: Ground, spawns: readonly Spawn[] = [], easy
   return placed.map((r) => ({ ...r, x: Math.round(r.x * 2) / 2, z: Math.round(r.z * 2) / 2 }));
 }
 
-/** Grade the physical heightfield into each disc, blending a short shoulder back into the surrounding terrain. */
+/**
+ * Grade the physical heightfield into each disc, blending a shoulder back into the surrounding terrain: 4 m wide where
+ * the ground is near the deck's height, and as wide as a bank of 1 in 1.5 needs where a slope leaves it further over or
+ * under, up to the deck's margin (6 m), so a deck on a hillside is cut into it and built out from it by a bank that is
+ * walked, never a cliff.
+ */
 export function gradeTransferDecks(ground: Ground, places: readonly ObeliskPlace[], minY: number, stepY: number): void {
   const { nx, nz, x1, z1, cell } = ground.grid;
   for (const site of places) {
@@ -225,10 +309,12 @@ export function gradeTransferDecks(ground: Ground, places: readonly ObeliskPlace
     const cx = Math.round((x1 - site.x) / cell), cz = Math.round((z1 - site.z) / cell);
     const y = minY + Math.round((ground.height[cz * nx + cx]! - minY) / stepY) * stepY;
     const radius = site.radius ?? DECK_RADIUS;
-    const span = Math.ceil((radius + 4) / cell);
+    const span = Math.ceil((radius + DECK_MARGIN) / cell);
     for (let z = Math.max(0, cz - span); z <= Math.min(nz - 1, cz + span); z++) for (let x = Math.max(0, cx - span); x <= Math.min(nx - 1, cx + span); x++) {
-      const mix = Math.min(1, Math.max(0, (radius + 4 - cell * Math.hypot(x - cx, z - cz)) / 4));
-      if (mix) ground.height[z * nx + x]! += (y - ground.height[z * nx + x]!) * mix;
+      const h = ground.height[z * nx + x]!;
+      const bank = Math.min(DECK_MARGIN, Math.max(4, BANK * Math.abs(h - y)));
+      const mix = Math.min(1, Math.max(0, (radius + bank - cell * Math.hypot(x - cx, z - cz)) / bank));
+      if (mix) ground.height[z * nx + x]! += (y - h) * mix;
     }
   }
 }
