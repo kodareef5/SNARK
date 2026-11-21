@@ -82,11 +82,12 @@ test("the scene drawn at a share fills the corner of a target made for its share
   expect([1, 0.9, 0.85, 0.75, 0.5].map((s) => Math.round(sharpenAt(s) * 100) / 100)).toEqual([SHARPEN, 0.37, 0.43, 0.55, 0.55]);
 });
 
-test("a frame on high at a laptop's canvas is drawn at its share, which the card's ledger counts the target at; medium's at the canvas's own", () => {
+test("a frame on high at a laptop's canvas is drawn at its share, the governor's steps less of the same target, which the card's ledger counts at its share; medium's at the canvas's own", () => {
   const view = provingView(640, 360);
   const s = view.scene;
   [s.canvasWidth, s.canvasHeight, s.share] = [3600, 1924, sceneShare(tierOf("high"), 0, 3600 * 1924)];
-  for (const [tier, room, share] of [[tierOf("high"), 0.85, 0.85], [tierOf("medium"), 1, 1]] as const) {
+  const levels = ladder(tierOf("high"), 2);
+  for (const [tier, room, share] of [[tierOf("high"), 0.85, 0.85], [levels[1]!.tier, 0.85, 0.765], [levels[3]!.tier, 0.85, 0.595], [tierOf("medium"), 1, 1]] as const) {
     s.assets.tier = tier;
     const p = s.build(view.cam, view.remote);
     expect([p.room, Math.round(p.share * 1000) / 1000]).toEqual([room, share]);

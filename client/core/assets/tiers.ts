@@ -128,9 +128,9 @@ export interface Tier {
    * `bloom` the share of bloom's levels kept, the narrowest first (0 for no bloom); or null, each shader toning its own
    * light onto the canvas as medium has always drawn. `pixels`: the most pixels the scene is drawn at where the player
    * leaves the render resolution to the game, the finish taking it up to the canvas (post.ts sceneShare); 0 for the
-   * canvas's own.
+   * canvas's own. `scale`: the share a side of that the governor's steps draw, 1 where left out.
    */
-  readonly post: { readonly bloom: number; readonly pixels: number } | null;
+  readonly post: { readonly bloom: number; readonly pixels: number; readonly scale?: number } | null;
   /** Whether bodies that move take the sky's light from what is under them (render/contact.ts). */
   readonly contact: boolean;
 }

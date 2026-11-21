@@ -967,7 +967,7 @@ export class Scene {
     this.budget.begin(this.assets.tier);
     p.tier = this.assets.tier;
     p.lit = p.tier.lit;
-    [p.room, p.share] = p.tier.post ? [this.share, this.share] : [1, 1];
+    [p.room, p.share] = p.tier.post ? [this.share, this.share * (p.tier.post.scale ?? 1)] : [1, 1];
     p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
     p.farViewProj.set(cam.ranges[PASS_FAR]);
     p.nearViewProj.set(cam.nearViewProj);

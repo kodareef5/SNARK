@@ -3,7 +3,7 @@
 // tier with a light target (Tier.post) the scene is drawn as light instead, exposed but not toned, into a multisampled
 // float target of the shell's, which is resolved and finished in one pass for what needs a pass: bloom, then the same
 // gain, tone curve and grade over light that bloom has moved, a slight sharpen and dither. The governor gives the
-// target back first of all (governor.ts), and the frame keeps its grade.
+// scene's pixels first and the target near its last step (governor.ts), and without it the frame keeps its grade.
 //
 // Bloom spreads what is truly bright: the part of a pixel's light past BLOOM_FROM, which grows from nothing there, so
 // no line is drawn where it starts. It is a chain of targets, each half the one before from a quarter of the canvas
