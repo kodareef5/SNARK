@@ -5905,6 +5905,8 @@ assets/source/core/structures/thatch/tex/wood/wood_orm.png
 assets/source/core/structures/thatch/thatch.snpk
 assets/source/core/structures/tide-eye/tex/base.png
 assets/source/core/structures/tide-eye/tex/height.png
+assets/source/core/structures/tide-eye/tex/lantern-base.png
+assets/source/core/structures/tide-eye/tex/lantern-orm.png
 assets/source/core/structures/tide-eye/tex/livery-base.png
 assets/source/core/structures/tide-eye/tex/livery-height.png
 assets/source/core/structures/tide-eye/tex/livery-normal.png
@@ -5914,6 +5916,8 @@ assets/source/core/structures/tide-eye/tex/orm.png
 assets/source/core/structures/tide-eye/tex/regions.png
 assets/source/core/structures/tide-eye/tex/scan-a.png
 assets/source/core/structures/tide-eye/tex/scan-b.png
+assets/source/core/structures/tide-eye/tex/sextant-base.png
+assets/source/core/structures/tide-eye/tex/sextant-orm.png
 assets/source/core/structures/tide-eye/tide-eye.snpk
 assets/source/core/structures/wood/tex/boards/boards_base.png
 assets/source/core/structures/wood/tex/boards/boards_height.png
@@ -5974,6 +5978,10 @@ assets/source/core/vehicles/belvedere_sunk/tex/hull_base.png
 assets/source/core/vehicles/belvedere_sunk/tex/hull_mask.png
 assets/source/core/vehicles/belvedere_sunk/tex/hull_packed.png
 assets/source/core/vehicles/berlinetta/berlinetta.snpk
+assets/source/core/vehicles/berlinetta_abandoned/berlinetta_abandoned.snpk
+assets/source/core/vehicles/berlinetta_abandoned/tex/coachwork_base.png
+assets/source/core/vehicles/berlinetta_abandoned/tex/coachwork_mask.png
+assets/source/core/vehicles/berlinetta_abandoned/tex/coachwork_packed.png
 assets/source/core/vehicles/boat/boat.snpk
 assets/source/core/vehicles/boat/details/foam-study.png
 assets/source/core/vehicles/boat/details/foam.png
@@ -6040,7 +6048,9 @@ assets/source/core/vehicles/bus/lod3.json.gz
 assets/source/core/vehicles/bus/lod4.json.gz
 assets/source/core/vehicles/bus/lod5.json.gz
 assets/source/core/vehicles/bus/orm.png
+assets/source/core/vehicles/bus_abandoned/bus_abandoned.snpk
 assets/source/core/vehicles/caravan/caravan.snpk
+assets/source/core/vehicles/caravan_abandoned/caravan_abandoned.snpk
 assets/source/core/vehicles/compact/compact.snpk
 assets/source/core/vehicles/compact/tex/bakes/body_occlusion.png
 assets/source/core/vehicles/compact/tex/bakes/cabin_occlusion.png
@@ -6097,6 +6107,13 @@ assets/source/core/vehicles/fastback/tex/enamel_decay.png
 assets/source/core/vehicles/fastback/tex/enamel_hurt.png
 assets/source/core/vehicles/fastback/tex/enamel_mask.png
 assets/source/core/vehicles/fastback/tex/enamel_orm.png
+assets/source/core/vehicles/fastback_abandoned/fastback_abandoned.snpk
+assets/source/core/vehicles/fastback_abandoned/tex/detail_base.png
+assets/source/core/vehicles/fastback_abandoned/tex/detail_mask.png
+assets/source/core/vehicles/fastback_abandoned/tex/detail_packed.png
+assets/source/core/vehicles/fastback_abandoned/tex/enamel_base.png
+assets/source/core/vehicles/fastback_abandoned/tex/enamel_mask.png
+assets/source/core/vehicles/fastback_abandoned/tex/enamel_packed.png
 assets/source/core/vehicles/heavy_road/review.jpg
 assets/source/core/vehicles/helicopter/details/metal_shard-clean.png
 assets/source/core/vehicles/helicopter/details/metal_shard.png
@@ -6252,6 +6269,7 @@ assets/source/core/vehicles/monster_truck/lod4.json.gz
 assets/source/core/vehicles/monster_truck/lod5.json.gz
 assets/source/core/vehicles/monster_truck/monster_truck.snpk
 assets/source/core/vehicles/monster_truck/orm.png
+assets/source/core/vehicles/monster_truck_abandoned/monster_truck_abandoned.snpk
 assets/source/core/vehicles/motor_yachts/tex/teak_base.png
 assets/source/core/vehicles/motor_yachts/tex/teak_decay.png
 assets/source/core/vehicles/motor_yachts/tex/teak_height.png
@@ -6273,6 +6291,7 @@ assets/source/core/vehicles/muscle_car/lod4.json.gz
 assets/source/core/vehicles/muscle_car/lod5.json.gz
 assets/source/core/vehicles/muscle_car/muscle_car.snpk
 assets/source/core/vehicles/muscle_car/orm.png
+assets/source/core/vehicles/muscle_car_abandoned/muscle_car_abandoned.snpk
 assets/source/core/vehicles/needle/needle.snpk
 assets/source/core/vehicles/needle/tex/shell_base.png
 assets/source/core/vehicles/needle/tex/shell_decay.png
@@ -6290,6 +6309,16 @@ assets/source/core/vehicles/needle_sunk/tex/shell_base.png
 assets/source/core/vehicles/needle_sunk/tex/shell_mask.png
 assets/source/core/vehicles/needle_sunk/tex/shell_packed.png
 assets/source/core/vehicles/panel_van/panel_van.snpk
+assets/source/core/vehicles/panel_van_abandoned/panel_van_abandoned.snpk
+assets/source/core/vehicles/parked_common/tex/road_van_cabin_base.png
+assets/source/core/vehicles/parked_common/tex/road_van_cabin_mask.png
+assets/source/core/vehicles/parked_common/tex/road_van_cabin_packed.png
+assets/source/core/vehicles/parked_common/tex/road_van_coach_base.png
+assets/source/core/vehicles/parked_common/tex/road_van_coach_mask.png
+assets/source/core/vehicles/parked_common/tex/road_van_coach_packed.png
+assets/source/core/vehicles/parked_common/tex/road_van_fittings_base.png
+assets/source/core/vehicles/parked_common/tex/road_van_fittings_mask.png
+assets/source/core/vehicles/parked_common/tex/road_van_fittings_packed.png
 assets/source/core/vehicles/patrol_jeep/patrol_jeep.snpk
 assets/source/core/vehicles/patrol_jeep/tex/decay.png
 assets/source/core/vehicles/patrol_jeep/tex/height.png
@@ -6298,6 +6327,10 @@ assets/source/core/vehicles/patrol_jeep/tex/normal.png
 assets/source/core/vehicles/patrol_jeep/tex/patrol.png
 assets/source/core/vehicles/patrol_jeep/tex/regions.png
 assets/source/core/vehicles/patrol_jeep/tex/surface.png
+assets/source/core/vehicles/patrol_jeep_abandoned/patrol_jeep_abandoned.snpk
+assets/source/core/vehicles/patrol_jeep_abandoned/tex/patrol_base.png
+assets/source/core/vehicles/patrol_jeep_abandoned/tex/patrol_mask.png
+assets/source/core/vehicles/patrol_jeep_abandoned/tex/patrol_packed.png
 assets/source/core/vehicles/patrol_sedan/patrol_sedan.snpk
 assets/source/core/vehicles/patrol_sedan/tex/base.png
 assets/source/core/vehicles/patrol_sedan/tex/decay.png
@@ -6306,6 +6339,10 @@ assets/source/core/vehicles/patrol_sedan/tex/hurt.png
 assets/source/core/vehicles/patrol_sedan/tex/mask.png
 assets/source/core/vehicles/patrol_sedan/tex/normal.png
 assets/source/core/vehicles/patrol_sedan/tex/packed.png
+assets/source/core/vehicles/patrol_sedan_abandoned/patrol_sedan_abandoned.snpk
+assets/source/core/vehicles/patrol_sedan_abandoned/tex/cruiser_base.png
+assets/source/core/vehicles/patrol_sedan_abandoned/tex/cruiser_mask.png
+assets/source/core/vehicles/patrol_sedan_abandoned/tex/cruiser_packed.png
 assets/source/core/vehicles/performance_marine/tex/hardware_base.png
 assets/source/core/vehicles/performance_marine/tex/hardware_decay.png
 assets/source/core/vehicles/performance_marine/tex/hardware_height.png
@@ -6356,6 +6393,7 @@ assets/source/core/vehicles/semi/lod4.json.gz
 assets/source/core/vehicles/semi/lod5.json.gz
 assets/source/core/vehicles/semi/orm.png
 assets/source/core/vehicles/semi/semi.snpk
+assets/source/core/vehicles/semi_abandoned/semi_abandoned.snpk
 assets/source/core/vehicles/solstice/solstice.snpk
 assets/source/core/vehicles/solstice/tex/hull_base.png
 assets/source/core/vehicles/solstice/tex/hull_decay.png
@@ -6425,6 +6463,7 @@ assets/source/core/vehicles/taxi/lod4.json.gz
 assets/source/core/vehicles/taxi/lod5.json.gz
 assets/source/core/vehicles/taxi/orm.png
 assets/source/core/vehicles/taxi/taxi.snpk
+assets/source/core/vehicles/taxi_abandoned/taxi_abandoned.snpk
 assets/source/core/vehicles/thunderbolt/tex/shell_base.png
 assets/source/core/vehicles/thunderbolt/tex/shell_decay.png
 assets/source/core/vehicles/thunderbolt/tex/shell_height.png
@@ -6463,6 +6502,10 @@ assets/source/core/vehicles/van_common/tex/fittings-mask.png
 assets/source/core/vehicles/van_common/tex/fittings-normal.png
 assets/source/core/vehicles/van_common/tex/fittings-packed.png
 assets/source/core/vehicles/veloce/veloce.snpk
+assets/source/core/vehicles/veloce_abandoned/tex/coachwork_base.png
+assets/source/core/vehicles/veloce_abandoned/tex/coachwork_mask.png
+assets/source/core/vehicles/veloce_abandoned/tex/coachwork_packed.png
+assets/source/core/vehicles/veloce_abandoned/veloce_abandoned.snpk
 assets/source/core/water/long.png
 assets/source/core/water/pictures/beach-dawn-to-afternoon.jpg
 assets/source/core/water/pictures/beach-golden-to-night.jpg
