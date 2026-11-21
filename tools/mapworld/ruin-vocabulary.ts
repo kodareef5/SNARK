@@ -62,7 +62,10 @@ export interface Vocabulary {
  * road's half width a junction keeps its corners open, and one walk in `boxEvery` with a utility box at its back;
  * `returns`, the corners where two streets meet, rounded on the ground and given curb returns (corners.ts).
  */
-/** With `bent`, the street's edge is bent sections by street class (bent-walks.ts) in place of the walk kit and its returns. */
+/**
+ * With `bent`, where the map has the streets' lines, the street's edge is bent sections laid on their kerb lines
+ * (bent-walks.ts) in place of the walk kit and its returns, but on the street types it leaves `without`.
+ */
 export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; boxEvery: number; returns?: ReturnRules; bent?: BentRules }
 export interface Rule {
   event?: { travel: [number, number]; exposure: number; shelter: number };

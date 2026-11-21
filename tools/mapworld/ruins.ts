@@ -301,8 +301,9 @@ export function makeRuins(site: Site): StaticPiece[] {
   // The walks first, so the street's wrecks and furniture stand clear of them.
   // A walk is cut where a way in to a building crosses it, and nowhere else for the routes inside buildings.
   const ways = corridorIndex(records.flatMap((r) => r.approaches.map((a) => ({ a: [a.street.x, a.street.z] as const, b: [a.door.x, a.door.z] as const, width: 3, low: a.door.y - .5, high: a.door.y + 2.5 }))));
-  // Where the rules ask, the street's edge is bent sections (bent-walks.ts) in place of the walk kit.
-  const walks = (v.street.walks?.bent ? makeBentWalks : makeWalks)(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (box) => crosses(box, ways), obstacles, roads, roadGround, entrances);
+  // Where the rules ask and the map has the streets' lines, the street's edge is bent sections on their kerb lines
+  // (bent-walks.ts) in place of the walk kit.
+  const walks = (v.street.walks?.bent && site.ground.streets ? makeBentWalks : makeWalks)(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (box) => crosses(box, ways), obstacles, roads, roadGround, entrances);
   const carGround = carGroundOf(site, data.places);
   const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads, roadGround, carGround);
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.

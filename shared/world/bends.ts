@@ -406,17 +406,22 @@ export interface HitPiece { readonly kind: string; readonly x: number; readonly 
 
 /**
  * The collision pieces under a bent piece: boxes from the kerb's face to its walk's back at the kerb's height, or under a
- * flush kerb a ramp up from the road at the face to the walk behind it; along a straight the longest length that fits,
+ * flush kerb a ramp up from the road at the face to the walk behind it, and a walk wider than the widest box in bands of
+ * boxes side by side, the first the kerb's; along a straight the longest length that fits,
  * end to end and overlapping within it, and along a curve on chords short enough that each misses the curve by no more
  * than 2 cm at the face, so a wheel meets the kerb within that of where it is drawn. None reaches past the piece's ends.
  */
 export function underPiece(p: BentPiece): HitPiece[] {
   const b = p.bend, phi = b.turn1 - b.turn0, length = arcLength(b.half, phi);
-  const ramp = p.kerb === "flush", width = hitWidth(b.walk);
+  // Bands across, as few as the widest box allows, each as wide as the walk needs, rounded up, the first at the face and
+  // the last at the walk's back.
+  const most = HIT_WIDTHS[HIT_WIDTHS.length - 1], bands = Math.max(1, Math.ceil(b.walk / most - 1e-6));
+  const width = bands === 1 ? hitWidth(b.walk) : HIT_WIDTHS.find((w) => w >= b.walk / bands - 1e-6) ?? most;
+  const across = (j: number): number => (bands === 1 ? width / 2 : width / 2 + ((b.walk - width) * j) / (bands - 1));
   // Chords of the curve, each missing it by under 2 cm.
   const radius = Math.abs(phi) > 1e-4 ? length / Math.abs(phi) : Infinity;
-  const most = radius === Infinity ? STRAIGHT_MOST : Math.min(STRAIGHT_MOST, Math.sqrt(8 * radius * 0.02));
-  const chords = Math.max(1, Math.ceil(length / most - 1e-9));
+  const longest = radius === Infinity ? STRAIGHT_MOST : Math.min(STRAIGHT_MOST, Math.sqrt(8 * radius * 0.02));
+  const chords = Math.max(1, Math.ceil(length / longest - 1e-9));
   const a = (p.yaw * PI) / 180, cs = detCos(a), sn = detSin(a);
   const out: HitPiece[] = [];
   const pa = [0, 0, 0, 0], pb = [0, 0, 0, 0];
@@ -429,15 +434,15 @@ export function underPiece(p: BentPiece): HitPiece[] {
     let size: number = HIT_LENGTHS[0];
     for (const l of HIT_LENGTHS) if (l <= chord + 1e-6) size = l;
     const count = Math.max(1, Math.ceil(chord / size - 1e-6));
-    for (let q = 0; q < count; q++) {
+    for (let q = 0; q < count; q++) for (let j = 0; j < bands; j++) {
       const along = count === 1 ? chord / 2 : size / 2 + ((chord - size) * q) / (count - 1);
       // In the piece's frame: along the chord, then across to the middle of the box's width.
-      const lx = pa[0]! + ux * along - uz * (width / 2), lz = pa[1]! + uz * along + ux * (width / 2);
+      const lx = pa[0]! + ux * along - uz * across(j), lz = pa[1]! + uz * along + ux * across(j);
       const t = (k + along / chord) / chords;
       const y = p.y + b.rise * (2 * t - 1) + KERB_HEIGHT / 2;
       // The world: x along (cs, -sn), z across (sn, cs).
       const yaw = p.yaw + (detAtan2(-uz, ux) * 180) / PI;
-      out.push({ kind: hitKind(ramp, width, size), x: p.x + cs * lx + sn * lz, y, z: p.z - sn * lx + cs * lz, yaw: ((yaw % 360) + 360) % 360 });
+      out.push({ kind: hitKind(p.kerb === "flush" && j === 0, width, size), x: p.x + cs * lx + sn * lz, y, z: p.z - sn * lx + cs * lz, yaw: ((yaw % 360) + 360) % 360 });
     }
   }
   return out;
