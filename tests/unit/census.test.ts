@@ -2,6 +2,8 @@
 // D423) and the HUD in every mode it has; a real city's downtown on every tier is in census.slow.test.ts.
 
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { HudModel, VehicleTelemetry } from "../../client/core/hud.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -23,6 +25,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 
 const MEDIUM = forTouch(tierOf("medium"), true);
 const HEADINGS = 4;
+const PER_CHUNK = (JSON.parse(readFileSync(join(import.meta.dir, "../../tools/mapworld/rules/default.json"), "utf8")) as { street: { cars: { perChunk: number } } }).street.cars.perChunk;
 
 /** A flat map of 16 by 16 chunks holding `lay`'s pieces, on medium at the iPhone's view, levels drawn with their materials. */
 function flat(lay: (structs: StructureStore) => void): { scene: Scene; cam: Camera } {
@@ -59,10 +62,14 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
     scene.assets.tier = MEDIUM;
     scenes[`${name} wood`] = turn(scene, cam, ground, 40, true, HEADINGS).frames;
   }
-  // A street of wrecks, 20 a chunk along both kerbs, over the 7 by 7 chunks round the camera, which stands in it.
-  const kinds = Object.values(WRECK_KINDS).flat().map((id) => coreRegistry().index.get(id)!);
+  // A street of wrecks, 20 a chunk along both kerbs, over the 7 by 7 chunks round the camera, which stands in it: each
+  // chunk's of as many of the street cars' looks as a chunk may hold (street.cars.perChunk), in their paints.
+  const looks = Object.values(WRECK_KINDS).map((ids) => ids.map((id) => coreRegistry().index.get(id)!));
   const street = flat((structs) => {
-    for (let cz = 5; cz < 12; cz++) for (let cx = 5; cx < 12; cx++) for (let k = 0; k < 20; k++) structs.add(kinds[(cz * 16 + cx + k) % kinds.length]!, cx * 64 + 1.6 + (k >> 1) * 6.4, 0, cz * 64 + 28 + (k & 1) * 8, 16384, 0, 8000);
+    for (let cz = 5; cz < 12; cz++) for (let cx = 5; cx < 12; cx++) for (let k = 0; k < 20; k++) {
+      const kinds = looks[(cz * 16 + cx + (k % PER_CHUNK) * 7) % looks.length]!;
+      structs.add(kinds[(cx + k) % kinds.length]!, cx * 64 + 1.6 + (k >> 1) * 6.4, 0, cz * 64 + 28 + (k & 1) * 8, 16384, 0, 8000);
+    }
   });
   [street.cam.x, street.cam.z] = [8.5 * 64, 8.5 * 64 - 0.5];
   scenes.street = headings(street.scene, street.cam, Array.from({ length: HEADINGS }, (_, k) => (k / HEADINGS) * Math.PI * 2));
@@ -79,8 +86,10 @@ artTest("a frame on medium at the iPhone's view keeps within medium's draws and 
   // two until nodes were scattered by their chunks' frame keys (shared/coords.ts), which moves every tree, rock and bush.
   // The native Parasaur adds 29,528 shadow triangles to each woodland fight on top of the feathered Raptor. The first two
   // were 393,476 and 1,871,612 until a cell's reach sideways was its meshes' measured reach (pack.ts meshReach), not
-  // their bounds' corner: fewer cells reach a cascade they cannot shade.
-  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([364236, 1590572, 138704]);
+  // their bounds' corner: fewer cells reach a cascade they cannot shade. The street's was 138,704 while its cars were the
+  // compact's five looks; as six looks a chunk of the fleet's (the jeep's 24,000 and the semi's 20,564 finest among them,
+  // content/vehicles/wrecks.ts) it casts this.
+  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([364236, 1590572, 259860]);
 });
 
 artTest("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {
