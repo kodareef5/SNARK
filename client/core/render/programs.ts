@@ -159,7 +159,7 @@ void main() {
 #ifdef LIGHT_TARGET
   o = vec4(light, 1.);
 #else
-  o = vec4(1.-exp(-1.2*light), 1.);
+  o = vec4(1.-exp(-light), 1.);
 #endif
 }`, defines: drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "", samplers: MESH }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),

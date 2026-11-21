@@ -718,7 +718,7 @@ ${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetM
 #ifdef LIGHT_TARGET
     o = vec4(e,1.0);
 #else
-    o = vec4(1.0-exp(-1.2*e),1.0);
+    o = vec4(1.0-exp(-e),1.0);
 #endif
     return;
   }

@@ -1702,7 +1702,7 @@ export class Rasterizer {
             const facing = Math.abs(nx * rx + ny * ry + nz * rz) / Math.max(dist, 1e-6);
             if (p.frame[FRAME.eyes + 3]! > 0) eyeEnergy(p.frame, rx, ry, rz, NaN, 0.85 * Math.sqrt(Math.max(0, 1 - facing * facing)), footprint || dist * 0.0015, energy);
             else for (let k = 0; k < 3; k++) energy[k] = (pal[colorIndex * 4 + k]! / 255) ** 2;
-            for (let k = 0; k < 3; k++) this.color[at * 4 + k] = 255 * (1 - Math.exp(-1.2 * energy[k]!));
+            for (let k = 0; k < 3; k++) this.color[at * 4 + k] = 255 * (1 - Math.exp(-energy[k]!));
             continue;
           }
           if (p.lit && !blend) {
@@ -1889,7 +1889,7 @@ export class Rasterizer {
             const row = 8 * (1 - v), band = Math.floor(row), strip = band === CHANNEL_STRIP;
             const across = strip ? 2 * Math.max(0, Math.min(1, (row - band - 0.04) / 0.92)) - 1 : Math.sqrt(Math.max(0, 1 - facing * facing));
             eyeEnergy(p.frame, carried[0]!, carried[1]!, carried[2]!, strip ? NaN : u * 32, across, dist * 0.0015, energy);
-            for (let c = 0; c < 3; c++) this.color[at * 4 + c] = 255 * (1 - Math.exp(-1.2 * energy[c]! * (band === CHANNEL_DIM ? 0.3 : 1)));
+            for (let c = 0; c < 3; c++) this.color[at * 4 + c] = 255 * (1 - Math.exp(-energy[c]! * (band === CHANNEL_DIM ? 0.3 : 1)));
             continue;
           }
           // The picture to sample is chosen by how far the texture coordinate moves to the next pixel right and to the next down.

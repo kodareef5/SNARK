@@ -171,6 +171,8 @@ export const CHANNEL_STRIP = 4, CHANNEL_DIM = 7;
 /** How far the energy in an instrument's channels has run by a site's clock, in metres: on at 2.2 m a second, and 20 m more over the charge. It only grows. */
 const energyRun = (t: number, phase: number): number => 2.2 * t + 20 * sstep(4, 13, phase);
 const ENERGY_WHITE = [1, 0.96, 0.9];
+/** The channels' light after exposure: as bright as the old glow's, which was 2 to 3 where it was lit and more in a strike. */
+const ENERGY_GAIN = 2.4;
 /**
  * An instrument's own light at a camera-relative point of one of its channels, into `out` as light after exposure: energy
  * held in the channel, hot at its middle and falling off softly to its walls, threaded with filaments that run along it
@@ -218,7 +220,7 @@ export function eyeEnergy(frame: Float32Array, x: number, y: number, z: number, 
     const e = pulse * (0.45 + 0.55 * threads + (0.7 + 0.9 * charge + 0.3 * power) * packet + 1.2 * spark) * beads;
     const core = Math.exp(-across * across * 8), body = Math.exp(-across * across * 2.6);
     const hot = e * core, white = 0.55 * hot * hot;
-    for (let c = 0; c < 3; c++) out[c] = frame[at + 4 + c]! * e * body * 1.45 + ENERGY_WHITE[c]! * white;
+    for (let c = 0; c < 3; c++) out[c] = ENERGY_GAIN * (frame[at + 4 + c]! * e * body * 1.45 + ENERGY_WHITE[c]! * white);
   }
 }
 
@@ -594,7 +596,7 @@ vec3 eyeEnergy(vec3 rel, float along, float across, float footprint) {
     float pulse = foot.w*(.62+.12*sin(1.25*t)+.3*tint.w+(.2+.7*charge)*surge+1.3*lit);
     float e = pulse*(.45+.55*threads+(.7+.9*charge+.3*tint.w)*packet+1.2*spark)*beads;
     float hot = e*exp(-across*across*8.);
-    light = tint.rgb*e*exp(-across*across*2.6)*1.45+vec3(${ENERGY_WHITE.map(g).join(",")})*.55*hot*hot;
+    light = ${g(ENERGY_GAIN)}*(tint.rgb*e*exp(-across*across*2.6)*1.45+vec3(${ENERGY_WHITE.map(g).join(",")})*.55*hot*hot);
   }
   return light;
 }`;
