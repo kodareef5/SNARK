@@ -1,7 +1,7 @@
 // The wiki's map of each world, from the map file a server is started with (var/maps/<name>.snmap): the ground as the
 // game colours it, where each kind of resource grows, the regions each creature is kept stocked in, where survivors
-// arrive and vehicles stand, the landmarks it places, and from the map's world.json its obelisks and districts. A map that
-// has no file is left out.
+// arrive and vehicles stand, the landmarks it places, its obelisks (an instrument where its deck stands, from the map's
+// head; an old column from world.json) and from the map's world.json its districts. A map that has no file is left out.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -93,6 +93,18 @@ interface WorldPlaces {
 }
 
 const at1 = (n: number): number => Math.round(n * 10) / 10;
+
+/**
+ * Where a map's page marks its obelisks: each instrument at the middle of its deck as the map's head has it, which the
+ * build may set hundreds of metres from the place its city names; with none, each old column at its named place.
+ */
+export function obeliskMarks(eyes: readonly { name: string; x: number; z: number }[] | undefined, named: readonly { name: string; at: [number, number] }[], mark: (name: string, x: number, z: number) => Mark, fromLonLat: (lon: number, lat: number) => [number, number]): Mark[] {
+  if (eyes?.length) return eyes.map((e) => mark(e.name, e.x, e.z));
+  return named.map((o) => {
+    const [x, y] = fromLonLat(o.at[0], o.at[1]);
+    return { name: o.name, x, y };
+  });
+}
 
 /** The species each spawn table may add, those that wait for a feature left out. */
 function speciesOf(def: SpawnsDef): string[] {
@@ -270,10 +282,7 @@ export function buildAtlases(reg: Registry, palette: Uint8Array, maps: string, o
       const at = points.reduce((s, p) => [s[0] + p[0] / points.length, s[1] + p[1] / points.length], [0, 0]);
       return { name: d.name, points, at: { name: d.name, x: Math.round(at[0]), y: Math.round(at[1]) } };
     });
-    const obelisks = (world.obelisks ?? []).map((o) => {
-      const [x, y] = fromLonLat(o.at[0], o.at[1]);
-      return { name: o.name, x, y };
-    });
+    const obelisks = obeliskMarks(map.tideEyes, world.obelisks ?? [], mark, fromLonLat);
     const notes = existsSync(join(source, "SOURCES.md")) ? readFileSync(join(source, "SOURCES.md"), "utf8") : "";
     const table = notes.split("\n").filter((l) => /^\|(?!\s*-)/.test(l)).slice(1);
     const sources = table.map((l) => l.split("|")[1]!.trim()).filter((s) => s !== "");

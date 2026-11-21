@@ -1,4 +1,6 @@
-// Review cameras use metre offsets from a named site so a new cut or a different clear deck keeps the shot.
+// Review cameras use metre offsets from a named site so a new cut or a different clear deck keeps the shot. A camera's
+// height is `y` over the datum, `up` over the ground under it, or `over` over the instrument's deck, which is the one
+// that holds on a city whose decks are not near the sea (Las Vegas's stand 600 m up).
 import { readHead, type MapHead } from "../../shared/world/mapfile.ts";
 
 interface Camera {
@@ -6,6 +8,8 @@ interface Camera {
   fromSpawn?: string;
   x?: number;
   z?: number;
+  y?: number;
+  over?: number;
   look?: [number, number, number?];
 }
 
@@ -17,6 +21,7 @@ export function placeCamera<T extends Camera>(view: T, head: Pick<MapHead, "tide
   if (!from) throw new Error(`Map has no camera spawn named ${view.fromSpawn}`);
   const look = view.look;
   return { ...view, x: from.x + (view.x ?? 0), z: from.z + (view.z ?? 0),
+    ...(view.over !== undefined ? { y: eye.y + view.over } : {}),
     ...(look ? { look: [eye.x + look[0], eye.z + look[1], look[2] ?? 0] } : {}) };
 }
 
