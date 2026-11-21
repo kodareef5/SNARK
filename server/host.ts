@@ -761,6 +761,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     park: (id, x, z, yaw) => parkVehicle(id, x, z, 0, yaw, "cast"),
     places: (parsed?.content?.landmarks ?? []).map((l) => ({ name: l.name, kind: "landmark", x: l.x, z: l.z })),
     ...(typeof opts.cast === "object" ? { settings: opts.cast } : {}),
+    logDir: opts.dbPath ? join(dirname(resolve(opts.dbPath)), "cast") : null,
   }) : null;
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;

@@ -2,7 +2,11 @@
 // bodies as the stage asks for them (civilians made, walked, turned, emoting and speaking through the creature systems,
 // the emotes and the chat). The host makes one, steps it each tick and hears every line survivors say.
 
+import { DecisionLog } from "./decide.ts";
 import { Cast } from "./engine.ts";
+import type { PlayerView } from "./intent.ts";
+import { ModelGate, openRouter, type Ask } from "./model.ts";
+import { Planner } from "./planner.ts";
 import { CastStage, type CastBodies, type StagePlayer } from "./stage.ts";
 import type { CastPlace, CastWorld } from "./world.ts";
 import type { Chat } from "../chat.ts";
@@ -55,12 +59,21 @@ export interface CastHostContext {
   places: readonly CastPlace[];
   seed: number;
   settings?: Partial<CastSettings>;
+  /** The planner's model, when there is a key: an OpenRouter key (or a stand-in for tests). None keeps Cast on rules. */
+  ask?: Ask | null;
+  /** Folder of the decision log; none keeps it in memory. */
+  logDir?: string | null;
 }
 
 export class CastHost {
   readonly cast: Cast;
   readonly stage: CastStage;
+  readonly planner: Planner;
+  readonly gate: ModelGate;
+  readonly log: DecisionLog;
   private readonly ctx: CastHostContext;
+  /** Each survivor's last few lines, for the planner's read of what it is up to. */
+  private readonly said = new Map<string, string[]>();
   private readonly kind: number;
   private readonly players: StagePlayer[] = [];
 
@@ -72,7 +85,20 @@ export class CastHost {
     this.cast = new Cast(this.worldView(), CAST_CATALOGUE, ctx.seed, CAST_CAN, { ...DEFAULT_SETTINGS, ...ctx.settings });
     this.stage = new CastStage(this.cast, this.bodyView(), ctx.seed ^ 0x2545f491);
     this.cast.stage = this.stage;
-    ctx.chat.listeners.push((speaker, _channel, x, z, text) => this.stage.hear(speaker, x, z, text));
+    ctx.chat.listeners.push((speaker, _channel, x, z, text) => {
+      this.stage.hear(speaker, x, z, text);
+      const lines = this.said.get(speaker) ?? [];
+      lines.push(text);
+      if (lines.length > 3) lines.shift();
+      this.said.set(speaker, lines);
+    });
+    const settings = this.cast.settings;
+    const key = process.env.OPENROUTER_API_KEY ?? "";
+    this.gate = new ModelGate(ctx.ask !== undefined ? ctx.ask : key && settings.model ? openRouter(key, settings.model) : null, { callsPerHour: settings.callsPerHour, tokensPerHour: settings.callsPerHour * 6000 });
+    this.log = new DecisionLog(ctx.logDir ?? null);
+    this.planner = new Planner(this.cast, this.gate, this.log, () => Date.now());
+    this.planner.model = settings.model;
+    this.planner.views = () => this.views();
     // A blow on one of Cast's people is an attack it answers; a shot that hits anywhere near is heard as one.
     const nameOf = (pid: unknown) => (typeof pid === "number" && pid !== 0 ? ctx.records.byPid.get(pid)?.name || null : null);
     ctx.bus.on("cast", "damaged", (e) => {
@@ -113,6 +139,27 @@ export class CastHost {
     if (this.ctx.world.tick % (5 * TICK_RATE) === 0) this.homes();
     this.cast.step();
     this.stage.step(this.livePlayers());
+    this.planner.step();
+  }
+
+  /** The survivors as the planner reads them: speed, whether driving, the classes of what they carry, their last lines. */
+  private views(): PlayerView[] {
+    const { game, world, records } = this.ctx, ents = world.ents, reg = world.reg;
+    const out: PlayerView[] = [];
+    for (const c of game.clients) {
+      if (!c?.active || c.closed || c.ent < 0) continue;
+      const carries: Record<string, number> = {};
+      const inv = records.byPid.get(c.pid)?.inv;
+      if (inv) for (let k = 0; k < inv.cap; k++) {
+        const item = inv.item[k]!;
+        if (!item) continue;
+        const cls = (reg.defs[item] as { class?: string } | undefined)?.class ?? "item";
+        carries[cls] = (carries[cls] ?? 0) + inv.count[k]!;
+      }
+      const e = c.drive >= 0 ? c.drive : c.ent;
+      out.push({ name: c.name, speed: Math.hypot(ents.vx[e]!, ents.vz[e]!), driving: c.drive >= 0, carries, said: this.said.get(c.name) ?? [] });
+    }
+    return out;
   }
 
   /** Which survivors are home: near a building of their own or their tribe's. */
