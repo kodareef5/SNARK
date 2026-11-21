@@ -327,7 +327,20 @@ export class FarShadow {
   roof: RoofMap | null = null;
   /** Whether the last frame's tier takes the sky's light down under roofs. */
   private roofs = false;
-  private readonly goneOf = (chunk: number): Gone => this.standing.goneOf(chunk);
+  /**
+   * What stands of a chunk as the far map and the map of what stands overhead take it: as the far city follows it, and
+   * with every piece that stands in the air with nothing under it (city.ts floatingKinds) taken as gone, since both are
+   * made of columns from the ground up.
+   */
+  private readonly goneOf = (chunk: number): Gone => {
+    const gone = this.standing.goneOf(chunk);
+    if (!this.floats?.has(chunk)) return gone;
+    const from = this.city.first[chunk]!;
+    return Uint8Array.from(this.floating!.subarray(from, this.city.first[chunk + 1]!), (f, i) => (f === 1 || gone?.[i] === 1 ? 1 : 0));
+  };
+  /** A byte a piece of the map, 1 for one that stands in the air (floatingKinds), and the chunks that hold any; null for a map with none. */
+  private readonly floating: Uint8Array | null;
+  private readonly floats: ReadonlySet<number> | null;
   private readonly city: CityStatics;
   private readonly hf: Heightfield;
   private readonly standing: Standing;
@@ -371,14 +384,26 @@ export class FarShadow {
 
   /**
    * `held` says the near store holds a chunk whole, whose pieces cast into the cascades; `own` is 1 for each kind a
-   * landmark of the map brings, whose pieces cast the sun's shadow and hide no sky.
+   * landmark of the map brings, whose pieces cast the sun's shadow and hide no sky; `floating` is 1 for each kind that
+   * stands in the air with nothing under it (city.ts floatingKinds), which casts no far shadow.
    */
-  constructor(city: CityStatics, hf: Heightfield, standing: Standing, maker: CityMaker | null, held: (chunk: number) => boolean, own: Uint8Array | null = null) {
+  constructor(city: CityStatics, hf: Heightfield, standing: Standing, maker: CityMaker | null, held: (chunk: number) => boolean, own: Uint8Array | null = null, floating: Uint8Array | null = null) {
     this.city = city;
     const landmarks = own ? cityReach(city, own).landmarks : null;
     let skip: Uint8Array | null = null;
     for (const c of landmarks?.keys() ?? []) (skip ??= new Uint8Array(city.count)).set(landmarks!.get(c)!, city.first[c]!);
     this.skip = skip;
+    let floats: Uint8Array | null = null;
+    const chunks = new Set<number>();
+    for (let c = 0; floating && c < chunkCount(city.dims); c++) {
+      for (let i = city.first[c]!; i < city.first[c + 1]!; i++) {
+        if (floating[city.kind[i]!] !== 1) continue;
+        (floats ??= new Uint8Array(city.count))[i] = 1;
+        chunks.add(c);
+      }
+    }
+    this.floating = floats;
+    this.floats = floats ? chunks : null;
     this.hf = hf;
     this.standing = standing;
     this.held = held;
@@ -482,9 +507,9 @@ export class FarShadow {
     const solid = this.solid, bare = this.bare;
     if (!solid || this.changed.length === 0) return;
     for (const c of this.changed) {
-      const tops = this.standing.topsOf(c);
+      const tops = this.floats?.has(c) ? cityTops(this.city, c, this.hf, this.goneOf(c)) : this.standing.topsOf(c);
       chunkSolid(solid, this.city.dims, this.hf.minY, c, tops, this.hf);
-      if (bare) chunkSolid(bare, this.city.dims, this.hf.minY, c, this.city.in(c) > 0 ? cityTops(this.city, c, this.hf, leftOut(this.city, c, this.standing.goneOf(c), this.skip!)) : null, this.hf);
+      if (bare) chunkSolid(bare, this.city.dims, this.hf.minY, c, this.city.in(c) > 0 ? cityTops(this.city, c, this.hf, leftOut(this.city, c, this.goneOf(c), this.skip!)) : null, this.hf);
     }
     this.changed.length = 0;
     this.stale = true;
@@ -514,7 +539,7 @@ export class FarShadow {
     const start = clock();
     const ground = job.ground ?? new Uint16Array(this.city.dims.chunksX * this.city.dims.chunksZ * SIDE * SIDE);
     const bare = job.solid ? job.bare : this.skip ? new Uint16Array(ground.length) : null;
-    const solid = job.solid ?? makeSolid(this.city, this.hf, (c) => this.standing.goneOf(c), ground, bare ?? undefined, this.skip ?? undefined);
+    const solid = job.solid ?? makeSolid(this.city, this.hf, this.goneOf, ground, bare ?? undefined, this.skip ?? undefined);
     const made = sweepOf(this.city.dims, { ...job, open: false }, solid, ground, bare);
     const swept = clock();
     const measure = open ? openMeasure(bare ?? solid, ground, this.city.dims.chunksX * SIDE, this.city.dims.chunksZ * SIDE, job.k, TOP_CELL, UNIT) : null;
@@ -556,7 +581,7 @@ export class FarShadow {
     const job = { first: yield* copy(c.first), kind: yield* copy(c.kind), yaw: yield* copy(c.yaw), x: yield* copy(c.x), y: yield* copy(c.y), z: yield* copy(c.z), skip: this.skip ? yield* copy(this.skip) : null, heights: yield* copy(this.hf.heights) };
     let gone: Uint8Array | null = null;
     for (let k = 0; k < chunkCount(c.dims); k++) {
-      const g = this.standing.goneOf(k);
+      const g = this.goneOf(k);
       if (g) (gone ??= new Uint8Array(c.count)).set(g, c.first[k]!);
     }
     return { ...job, gone };

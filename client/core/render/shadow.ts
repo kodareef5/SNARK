@@ -10,6 +10,14 @@ export const MAX_CASCADES = 4;
 export const MAX_REACH = 192;
 /** A caster whose radius is under this many of a cascade's texels is left out of that cascade. */
 export const SMALLEST_CASTER = 1.5;
+/**
+ * Metres a map's filter may blur either way, at most, for a standing tree to be cast into it only at a level that cuts
+ * its leaves out (Cascades.entries): a flat level's error measures how far its surface lies from the leaf cards', not
+ * the light the leaves let through, so in a sharper map a flat crown cast a shadow of a few big triangles, and where the
+ * dither handed over to it from a map that cut the leaves out, both showed at once (D953). Past it the leaves' light is
+ * blurred away, as in high's farthest cascade (54 cm), and a flat crown is cast as before.
+ */
+export const LEAF_BLUR = 0.25;
 /** The share of its radius the farthest cascade's square grows by when it is drawn every other frame. */
 export const KEPT_MARGIN = 1 / 16;
 /** Steps of a 16-bit depth map. */
@@ -290,15 +298,18 @@ export class Cascades {
   /**
    * The caster entries a mesh needs in the cascades of `mask`: one per level, at the level `casterLevel` gives for what
    * each cascade's filter blurs, with the cascades that take it. Writes level and mask pairs to `out` and returns how
-   * many. `scale` is the most times its modelled size the mesh is drawn at, which scales its errors.
+   * many. `scale` is the most times its modelled size the mesh is drawn at, which scales its errors. `leafy` is a
+   * standing tree's levels that cut its leaves out and can be cut out now, a bit each, which a map that blurs LEAF_BLUR
+   * or less takes in place of `held`; 0 for any other mesh.
    */
-  entries(mask: number, errors: readonly number[], held: number, out: Uint8Array, scale = 1): number {
+  entries(mask: number, errors: readonly number[], held: number, out: Uint8Array, scale = 1, leafy = 0): number {
     let n = 0;
     for (let i = 0; i <= MAX_CASCADES; i++) {
       const bit = 1 << i;
       if ((mask & bit) === 0 || (i >= this.count && i < MAX_CASCADES)) continue;
       // The lamp's map is filtered by two taps an axis (shadowtext.ts `lampFilter`).
-      const level = casterLevel(errors, i < MAX_CASCADES ? (this.texel[i]! * this.blur) / scale : (this.lampTexel * 2) / scale, held);
+      const blur = i < MAX_CASCADES ? this.texel[i]! * this.blur : this.lampTexel * 2;
+      const level = casterLevel(errors, blur / scale, leafy !== 0 && blur <= LEAF_BLUR ? leafy : held);
       if (level < 0) continue;
       let k = 0;
       while (k < n && out[k * 2] !== level) k++;

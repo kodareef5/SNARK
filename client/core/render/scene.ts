@@ -16,7 +16,7 @@ import type { Manifest } from "../../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
-import { landmarkKinds } from "../../../shared/world/city.ts";
+import { floatingKinds, landmarkKinds } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
@@ -525,6 +525,15 @@ export class Scene {
   private readonly radiusOfMesh: Float32Array;
   /** Per material, the flags of a draw with it, and 1 for bark: a tree's trunk and limbs. */
   private readonly materialFlags: Uint8Array;
+  /**
+   * Per mesh, a standing tree's levels that cut out its leaves, a bit each (a palm's fronds among them); 0 for any other
+   * mesh, a car whose glass cuts out or a bush (Scene.castable).
+   */
+  private readonly foliageOf: Uint16Array;
+  /** Per mesh, what `leafy` found and the frame it found it in (`castFrame`, counted by `fit`). */
+  private readonly leafyOf: Uint16Array;
+  private readonly leafyFrame: Int32Array;
+  private castFrame = 0;
   private readonly barkOf: Uint8Array;
   /** What a frame may spend, what it has, and the squeeze crowns near are drawn at (budget.ts). */
   readonly budget = new FrameBudget();
@@ -701,6 +710,8 @@ export class Scene {
   static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks; RoofMap: typeof RoofMap } | null = null;
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
+  /** Per content index, 1 for a kind that stands in the air with nothing under it, which casts no far shadow (city.ts floatingKinds). */
+  private readonly floatingKinds: Uint8Array;
   private readonly farMesh: number;
   private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
   /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
@@ -847,6 +858,7 @@ export class Scene {
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
     this.landmarkKinds = landmarkKinds(reg);
+    this.floatingKinds = floatingKinds(reg);
     this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
@@ -854,6 +866,9 @@ export class Scene {
     this.barkOf = new Uint8Array(table.materials.length);
     this.trunkTris = table.sections.map(() => []);
     this.leafTris = table.sections.map(() => []);
+    this.foliageOf = new Uint16Array(table.sections.length);
+    this.leafyOf = new Uint16Array(table.sections.length);
+    this.leafyFrame = new Int32Array(table.sections.length).fill(-1);
     this.learn(table.sections.map((_, mesh) => mesh));
     this.counts = new Uint32Array(table.count);
     this.cursor = new Uint32Array(table.count);
@@ -920,7 +935,9 @@ export class Scene {
     const part = (mesh: number, keep: (material: number) => boolean): number[] => table.sections[mesh]!.map((runs) => runs.reduce((n, _, k) => (k % 3 === 0 && keep(runs[k]!) ? n + runs[k + 2]! / 3 : n), 0));
     for (const mesh of meshes) {
       this.trunkTris[mesh] = part(mesh, (m) => this.barkOf[m] === 1);
-      this.leafTris[mesh] = part(mesh, (m) => (this.materialFlags[m]! & DRAW_CUTOUT) !== 0);
+      const leaves = (this.leafTris[mesh] = part(mesh, (m) => (this.materialFlags[m]! & DRAW_CUTOUT) !== 0));
+      // A standing tree's levels that cut out its leaves, a bit each.
+      if (this.treeOf[mesh] === 1) this.foliageOf[mesh] = leaves.reduce((bits, n, l) => (n > 0 ? bits | (1 << l) : bits), 0);
     }
     // A mesh learnt has its extents now, which the crowns' grid is made from. Learnt first before the grid is made.
     if (meshes.length > 0 && this.cover) this.cover.stale = true;
@@ -1121,6 +1138,7 @@ export class Scene {
     const p = this.packet;
     const c = this.cascades;
     const setup = p.tier.shadows;
+    this.castFrame++;
     this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
     if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(...sceneSize(this.canvasWidth, this.canvasHeight, p.room), lightSamples(this.supersampled)) : 0);
     this.casting = false;
@@ -1262,7 +1280,7 @@ export class Scene {
       mask &= some;
       if (mask === 0) continue;
       const tris = this.trisOfMesh[mesh]!;
-      const n = c.entries(mask, this.assets.table.error[mesh]!, this.assets.held(mesh), out, scale);
+      const n = c.entries(mask, this.assets.table.error[mesh]!, this.assets.held(mesh), out, scale, this.leafy(mesh));
       for (let e = 0; e < n; e++) {
         const level = out[e * 2]!, bits = out[e * 2 + 1]!;
         if ((every & bits) === bits || b.ranges[r + 2]! * tris[level]! <= RUN_TRIANGLES) {
@@ -1304,6 +1322,20 @@ export class Scene {
         }
       }
     }
+  }
+
+  /**
+   * A standing tree's levels (`foliageOf`) that cut its leaves out and can be cut out in a depth map now, a bit each,
+   * which a sharp enough map casts it at (shadow.ts LEAF_BLUR, D953); 0 for any other mesh, or while none can.
+   */
+  private leafy(mesh: number): number {
+    if (this.foliageOf[mesh] === 0) return 0;
+    // What is on the card does not change within a frame: found once a frame for each mesh.
+    if (this.leafyFrame[mesh] === this.castFrame) return this.leafyOf[mesh]!;
+    let ok = 0;
+    for (let l = 0, m = this.foliageOf[mesh]! & this.assets.held(mesh); m !== 0; l++, m >>>= 1) if ((m & 1) !== 0 && this.assets.heldCutouts(mesh, l)) ok |= 1 << l;
+    this.leafyFrame[mesh] = this.castFrame;
+    return (this.leafyOf[mesh] = ok);
   }
 
   /**
@@ -1823,7 +1855,7 @@ export class Scene {
     this.clearAt.fill(NaN, 0, 3);
     this.clearAt[3] = 0;
     this.city = new Scene.late.FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
-    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds);
+    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds, this.floatingKinds);
     this.farShadow.roof = new Scene.late.RoofMap();
     this.farShadow.roof.palette = this.groundPalette;
     this.far?.leaveTo(this.city);

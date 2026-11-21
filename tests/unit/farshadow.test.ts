@@ -12,7 +12,7 @@ import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, fa
 import { CAST_AT, FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { OPEN_BYTES, openMeasure } from "../../client/core/render/skyopen.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
-import { CityStatics, cityTops, type Gone } from "../../shared/world/city.ts";
+import { CityStatics, cityTops, floatingKinds, landmarkKinds, type Gone } from "../../shared/world/city.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapStatic } from "../../shared/world/mapfile.ts";
 import { asWritten, building } from "../fixtures/cityworld.ts";
@@ -438,4 +438,35 @@ test("within the cascades the far map is looked up past the chunks the near stor
   none.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
   expect(nearLead(p.frame, rb[0]!, rb[2]!)).toBe(0);
   expect(p.frame[FRAME.nearFromX]! > p.frame[FRAME.nearToX]!).toBe(true);
+});
+
+test("a piece that stands in the air with nothing under it, a tide eye's collider, casts no far shadow: as a column from the ground it would be a tower where there is open air", () => {
+  const reg = farRegistry();
+  const dims: MapDims = { chunksX: 8, chunksZ: 8 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
+  const tower = [160, 160], spar = [352, 352];
+  const statics: MapStatic[] = asWritten([...building(tower[0]!, tower[1]!, 0, 12), { kind: "core:zztide_eye_spar", x: spar[0]!, y: 300, z: spar[1]!, yaw: 0 }]);
+  const city = new CityStatics(dims, statics, reg);
+  const standing = { goneOf: (): Gone => null, goneVersion: new Uint32Array(chunkCount(dims)), topsOf: (c: number) => (city.in(c) > 0 ? cityTops(city, c, hf, null) : null) };
+  const sun = sunAt(35, 200);
+  const shadeOf = (floating: Uint8Array | null): ((x: number, z: number) => number) => {
+    const shadow = new FarShadow(city, hf, standing, null, () => false, landmarkKinds(reg), floating);
+    const p = new FramePacket();
+    p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 256 } };
+    p.lit = true;
+    p.beginFrame();
+    shadow.update(p, allowance(1e9), 0, 0, 0, sun);
+    expect(p.farRows).toBe(256);
+    const map = Uint16Array.from(p.farMap!);
+    return (x, z) => farLookup(map, 256, p.frame, x, 0.2, z, 0, 0);
+  };
+  // 20 m behind each along the ground, away from the sun: the tower's shadow, and where a column under the spar would fall.
+  const flat = Math.hypot(sun[0]!, sun[2]!);
+  const behind = (at: number[]): [number, number] => [at[0]! - (20 * sun[0]!) / flat, at[1]! - (20 * sun[2]!) / flat];
+  const kept = shadeOf(floatingKinds(reg)), columns = shadeOf(null);
+  expect(kept(...behind(tower))).toBe(0);
+  expect(columns(...behind(tower))).toBe(0);
+  expect(columns(...behind(spar))).toBe(0);
+  expect(kept(...behind(spar))).toBe(1);
 });
