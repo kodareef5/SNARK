@@ -149,6 +149,21 @@ cue("bounce", "prop", "hit", "body", "waits:polish", "a live grenade's velocity 
 cue("zap", "prop", "weapon", "world", "hook", "a shock dart's buff on a body", { falls: ["core:weapon/zap"] });
 cue("ball/keep", "prop", "item", "world", "fire", "EVENT_BALL with its bit set: a tame goes into a soul ball", { falls: ["core:tech/shimmer"] });
 cue("ball/loose", "prop", "item", "world", "fire", "EVENT_BALL with its bit clear: a tame comes out of a soul ball", { falls: ["core:tech/pulse"] });
+// A supply drop (planning/workstreams/supply.md). Nothing is sent for these: each client hears a drop from the list it
+// is told (S_SUPPLY) and the pose its ticks give (client/core/sound/supply.ts). The supply family's six takes are its
+// own; the rest are the tech family's, the banging family's and the weather's.
+cue("supply/call", "prop", "item", "world", "fire", "a supply drop has just been called: its shaft comes up", { falls: ["core:tech/chime"] });
+cue("supply/shaft", "prop", "build", "world", "fire", "a drop's shaft within hearing, nearest the ear along its height", { loop: true, falls: ["core:supply/shaft", "core:tech/obelisk"] });
+cue("supply/release", "prop", "item", "world", "fire", "a drop's cast leaves its sender: the knot's strike, heard as late as its distance makes it", { falls: ["core:weather/thunder/far"] });
+cue("supply/pass", "prop", "vehicle", "world", "fire", "a capsule in flight is most of the way to its shaft", { falls: ["core:supply/pass", "core:explosion/rocket/launch"] });
+cue("supply/ignite", "prop", "weapon", "world", "fire", "a capsule's jets light, where it starts to brake", { falls: ["core:supply/ignite", "core:explosion/shockwave"] });
+cue("supply/jet", "prop", "vehicle", "world", "fire", "a capsule's jets burn: as it brakes, and as it goes", { loop: true, falls: ["core:supply/jet", "core:weapon/flare/burn"] });
+cue("supply/cut", "prop", "item", "world", "fire", "a capsule's jets cut as it lands", { falls: ["core:supply/cut", "core:tech/pulse"] });
+cue("supply/land", "prop", "hit", "world", "fire", "a capsule touches down", { falls: ["core:supply/land", "core:bang/crate"] });
+cue("supply/settle", "prop", "build", "world", "fire", "a landed capsule's louvres start to open", { falls: ["core:bang/lid"] });
+cue("supply/count", "prop", "item", "world", "fire", "a chime for each step of a drop's tier, as its lantern opens", { falls: ["core:tech/chime"] });
+cue("supply/open", "prop", "item", "world", "fire", "a capsule's hatch is first opened", { falls: ["core:bang/gate"] });
+cue("supply/gone", "prop", "item", "world", "fire", "a capsule shuts and goes", { falls: ["core:tech/pulse"] });
 cue("hit/marker", "ui", "ui", "ear", "fire", "EVENT_HIT for the attacker", { falls: ["core:weapon/hit/marker"] });
 cue("hit/head", "ui", "ui", "ear", "fire", "EVENT_HIT on the head zone", { falls: ["core:weapon/hit/head"] });
 cue("kill", "ui", "ui", "ear", "fire", "EVENT_HIT with the killed bit, or EVENT_KILL", { falls: ["core:weapon/kill"] });

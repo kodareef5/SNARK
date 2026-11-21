@@ -305,8 +305,22 @@ export interface FoundSheet {
   sheet: SoundSheet;
 }
 
-/** Every `sound/sounds.json` under `root`. The owner is the pack (the first folder) and the asset's folder: `core:dodo`. */
+/**
+ * Every `sound/sounds.json` under `root` whose takes are here. The owner is the pack (the first folder) and the asset's
+ * folder: `core:dodo`. Git carries a sheet and not its takes, so a branch's new family reaches a clone before its takes
+ * are in the art release: a sheet with none of its takes installed is left out whole (`waitingSheets` names it), and
+ * the occasions it would answer play their stand-ins. A sheet with some of its takes is a fault, which the build says.
+ */
 export function findSheets(root: string = SOURCE): FoundSheet[] {
+  return everySheet(root).filter((s) => installed(s));
+}
+
+/** The owners of the sheets under `root` that none of their takes are installed for. */
+export function waitingSheets(root: string = SOURCE): string[] {
+  return everySheet(root).filter((s) => !installed(s)).map((s) => s.owner);
+}
+
+function everySheet(root: string): FoundSheet[] {
   return filesUnder(root, "sounds.json")
     .filter((f) => basename(dirname(f)) === "sound")
     .map((f) => {
@@ -314,6 +328,12 @@ export function findSheets(root: string = SOURCE): FoundSheet[] {
       const pack = relative(root, dir).split(sep)[0]!;
       return { owner: `${pack}:${basename(dirname(dir))}`, dir, sheet: JSON.parse(readFileSync(f, "utf8")) as SoundSheet };
     });
+}
+
+/** Whether any take a sheet names is in its folder: a sheet that names none is kept, for the build to fault. */
+function installed(s: FoundSheet): boolean {
+  const takes = Object.values(s.sheet.sounds ?? {}).flatMap((cue) => (Array.isArray(cue.takes) ? cue.takes : []));
+  return takes.length === 0 || takes.some((take) => existsSync(join(s.dir, take.file)));
 }
 
 export interface SoundReport {

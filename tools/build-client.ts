@@ -35,7 +35,7 @@ import { landmarkArt, landmarkPack } from "./pack/far.ts";
 import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
-import { SOUND_RATES, buildSounds, findSheets, type SoundReport } from "./pack/sound.ts";
+import { SOUND_RATES, buildSounds, findSheets, waitingSheets, type SoundReport } from "./pack/sound.ts";
 import { bootManifest, splitLandmark, splitPack, writePages, type SplitFile } from "./pack/split.ts";
 import { storeParts, type StoreReport } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
@@ -211,6 +211,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // can reach. The rest go in a file of their own for the sound board, which lists them from loose.json.
   t0 = performance.now();
   const ids = findSheets().flatMap((s) => Object.keys(s.sheet.sounds).map((name) => `${s.owner}/sound/${name}`));
+  for (const owner of waitingSheets()) console.log(`sounds       ${owner}'s takes are not installed: its occasions play their stand-ins`);
   const sounds = buildSounds(manifest.files.length, undefined, undefined, soundsHeard(ids, registry!));
   if (sounds) {
     manifest.files.push({ name: "core.snsd", role: "sound", bytes: sounds.bytes.length });

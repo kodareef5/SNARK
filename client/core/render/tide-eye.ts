@@ -684,17 +684,17 @@ float eyeBolt(float u, float v, float id, float len, float w) {
   float fork = v > at ? abs(u-wob-side*(v-at)*.55-(eyeNoise(vec2(v*.05,id*2.3),7.)-.5)*30.) : 1.e9;
   return (exp(-main/w)+.12*exp(-main/(w*14.)))*(1.-smoothstep(len*.7,len,v))+.7*exp(-fork/(w*.8))*(1.-smoothstep(at+(len-at)*.5,len,v));
 }
-vec4 eyeStorm(vec3 d, vec3 s, float seed, float dir, float t, float storm, float power, float open, vec3 tint, vec3 behind, float px, vec4 cast) {
+vec4 eyeStorm(vec3 d, vec3 s, float seed, float dir, float t, float storm, float power, float open, vec3 tint, vec3 behind, float px, vec4 strike) {
   vec3 light = vec3(0.);
   float held = 1.;
   if (storm <= .001) return vec4(light, held);
   float reach = 1.2+1.5*smoothstep(5.,12.,t), camY = ${g(EYE_SKY)}-s.y, id, flash = eyeStrike(t,seed,power,storm,open,id);
   vec2 at = (vec2(eyeHash(vec2(id,11.),2.),eyeHash(vec2(id,13.),2.))-.5)*1.5*reach;
   // A supply drop's cast leaving the knot is a strike of its own, toward where the drop goes (supply-sky.ts).
-  if (cast.z > flash) {
-    flash = cast.z;
-    id = cast.w;
-    at = cast.xy*.22*reach;
+  if (strike.z > flash) {
+    flash = strike.z;
+    id = strike.w;
+    at = strike.xy*.22*reach;
   }
   float adapt = (.35+.65*smoothstep(2.,10.,log2(max(1.,fSunColor.w))))*flash, side = length(EYE_WAY.xz);
   for (int k=0; k<${STORM_SHEETS.length}; k++) {

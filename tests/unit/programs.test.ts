@@ -128,3 +128,25 @@ test("a tier's programs are every one its frames may draw with, each once, the s
     }
   }
 });
+
+// The words GLSL ES 3.00 keeps for itself and gives no meaning (its specification, 3.9 Keywords, "reserved for future
+// use"). A text that names a value with one compiles nowhere, and nothing but a GPU says so: the sky's text once named
+// a strike `cast`, and every frame on a real card was black while the software renderer's twin drew it.
+const RESERVED = "attribute varying coherent volatile restrict readonly writeonly resource atomic_uint noperspective patch sample subroutine common partition active asm class union enum typedef template this goto inline noinline public static extern external interface long short double half fixed unsigned superp input output hvec2 hvec3 hvec4 dvec2 dvec3 dvec4 fvec2 fvec3 fvec4 sampler3DRect filter sizeof cast namespace using".split(" ");
+
+test("no program names a value with a word GLSL keeps for itself", () => {
+  const reserved = new Set(RESERVED);
+  const found = new Set<string>();
+  for (const tier of TIERS) {
+    for (const format of TEXTURE_FORMATS) {
+      for (const [name, make] of Object.entries(PROGRAMS)) {
+        const p = make(tier, format);
+        for (const [stage, text] of [["vertex", p.vertex], ["fragment", p.fragment]] as const) {
+          const code = text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, " ");
+          for (const m of code.matchAll(/[A-Za-z_]\w*/g)) if (reserved.has(m[0])) found.add(`${name} ${stage}: ${m[0]}`);
+        }
+      }
+    }
+  }
+  expect([...found]).toEqual([]);
+});

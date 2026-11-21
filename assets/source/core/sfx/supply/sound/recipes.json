@@ -1,0 +1,979 @@
+{
+  "takes": {
+    "takes/shaft/moss-pt-27901-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "shaft",
+      "prompt_id": "v1-27900",
+      "prompt": "A tall column of pure light hums: a steady airy electrical tone with a soft glassy shimmer and a slow gentle pulse, calm and bright, unchanging. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27901,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27901.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A tall column of pure light hums: a steady airy electrical tone with a soft glassy shimmer and a slow gentle pulse, calm and bright, unchanging. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c7efc1d6099d2fdad253a848191078cdd27f4a4e0287b0ac0d281c3b9f4497e2",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8f9f71bcd235967a773c16bd06a25ea5223681f7c223e29c5bf2324bb7687402",
+      "cut": {
+        "source_file": "moss-pt-27901.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/pass/moss-pt-27912-06325.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "pass",
+      "prompt_id": "v1-27910",
+      "prompt": "Three separate fly-bys with pauses of silence between them: each time a small meteor passes fast overhead, a tearing whoosh that rises quickly, roars past and falls away into a low rumble. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27912,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27912.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Three separate fly-bys with pauses of silence between them: each time a small meteor passes fast overhead, a tearing whoosh that rises quickly, roars past and falls away into a low rumble. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3a31e05713e82748e8c26ce6e6f0f9dbb1a435ed478ed9ee65f23794b77c49c1",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f0a73ea48f0fd59259200bb7a178c1d642450184b5b3dc68dea73502d6f742ea",
+      "cut": {
+        "source_file": "moss-pt-27912.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          301200,
+          489937
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/pass/moss-pt-27912-15760.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "pass",
+      "prompt_id": "v1-27910",
+      "prompt": "Three separate fly-bys with pauses of silence between them: each time a small meteor passes fast overhead, a tearing whoosh that rises quickly, roars past and falls away into a low rumble. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27912,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27912.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Three separate fly-bys with pauses of silence between them: each time a small meteor passes fast overhead, a tearing whoosh that rises quickly, roars past and falls away into a low rumble. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8e45497fc9203e867ec2edf9712da628d50afe14644c4134ece7ac764fc1c017",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f0a73ea48f0fd59259200bb7a178c1d642450184b5b3dc68dea73502d6f742ea",
+      "cut": {
+        "source_file": "moss-pt-27912.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          754080,
+          1006464
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/pass/moss-pt-27911-19815.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "pass",
+      "prompt_id": "v1-27910",
+      "prompt": "Three separate fly-bys with pauses of silence between them: each time a small meteor passes fast overhead, a tearing whoosh that rises quickly, roars past and falls away into a low rumble. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27911,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27911.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Three separate fly-bys with pauses of silence between them: each time a small meteor passes fast overhead, a tearing whoosh that rises quickly, roars past and falls away into a low rumble. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "39d0d994b6dd79ee2468963e85d552262274a12eb78ad0b5f589b078bb494d28",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "77e4a53f394fecc94c54da7ebb92a79b028ee7f1a608a5078a364d02be9cc8db",
+      "cut": {
+        "source_file": "moss-pt-27911.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          948720,
+          1192320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/ignite/moss-pt-27982-03375.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "ignite",
+      "prompt_id": "v2-27980",
+      "prompt": "Five separate short bursts with long pauses of silence between them: each time a gas burner lights with a sharp pop and a whump, a brief one-second burst of flame, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27982,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27982.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Five separate short bursts with long pauses of silence between them: each time a gas burner lights with a sharp pop and a whump, a brief one-second burst of flame, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "752019a8d7d2110ec180724aeebbf1223fe9f3be06902dd413b93750eccee8ed",
+      "worker": {
+        "takes": 7,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 231.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 7.1,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d47f40d20ff295012ad77c2db1c772e9cc82b42bdf77eb04a182dd3f5add97f1",
+      "cut": {
+        "source_file": "moss-pt-27982.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          159600,
+          248880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/ignite/moss-pt-27982-09660.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "ignite",
+      "prompt_id": "v2-27980",
+      "prompt": "Five separate short bursts with long pauses of silence between them: each time a gas burner lights with a sharp pop and a whump, a brief one-second burst of flame, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27982,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27982.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Five separate short bursts with long pauses of silence between them: each time a gas burner lights with a sharp pop and a whump, a brief one-second burst of flame, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2d5e999f4ddfc6f108a43ac0cab91736db08782e46b6249c8f806e59fc09082f",
+      "worker": {
+        "takes": 7,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 231.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 7.1,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d47f40d20ff295012ad77c2db1c772e9cc82b42bdf77eb04a182dd3f5add97f1",
+      "cut": {
+        "source_file": "moss-pt-27982.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          461280,
+          585360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/ignite/moss-pt-27982-24815.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "ignite",
+      "prompt_id": "v2-27980",
+      "prompt": "Five separate short bursts with long pauses of silence between them: each time a gas burner lights with a sharp pop and a whump, a brief one-second burst of flame, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27982,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27982.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Five separate short bursts with long pauses of silence between them: each time a gas burner lights with a sharp pop and a whump, a brief one-second burst of flame, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "15e13948ad4fa10c3cd6809b3087bef48e5e02d1c14073061ce9c16c78052d94",
+      "worker": {
+        "takes": 7,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 231.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 7.1,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d47f40d20ff295012ad77c2db1c772e9cc82b42bdf77eb04a182dd3f5add97f1",
+      "cut": {
+        "source_file": "moss-pt-27982.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1188720,
+          1324800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/jet/moss-pt-27930-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "jet",
+      "prompt_id": "v1-27930",
+      "prompt": "Small rocket engines burning steadily: a continuous roaring hiss with a deep flutter, steady thrust, unchanging. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27930,
+      "seconds": 12,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27930.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Small rocket engines burning steadily: a continuous roaring hiss with a deep flutter, steady thrust, unchanging. Close-miked, dry, no music, no voices, quiet background. duration: 12.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2be598296ef55b924b9b33e11aed49bdb0e6b3f5827f5dab854b9bdefd55d1f3",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6e74722f13df9c5f0156e2f4462d2741f36a5ae3a63c1c5601beded873dcf333",
+      "cut": {
+        "source_file": "moss-pt-27930.wav",
+        "source_frames": 576000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          492000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/cut/moss-pt-27941-08805.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "cut",
+      "prompt_id": "v1-27940",
+      "prompt": "Three separate shutdowns with pauses of silence between them: each time roaring rocket engines stop abruptly with a short falling hiss, a pop, and the ticking of hot metal. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27941,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27941.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Three separate shutdowns with pauses of silence between them: each time roaring rocket engines stop abruptly with a short falling hiss, a pop, and the ticking of hot metal. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "af6459a73775945560cc23dabd375106fa940bdc3504154c693c4c344eb95541",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0f622280b8ba0ef4320065abf0f1a051b68b4f87aa85485a68ca4088117def63",
+      "cut": {
+        "source_file": "moss-pt-27941.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          420239,
+          732000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/cut/moss-pt-27941-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "cut",
+      "prompt_id": "v1-27940",
+      "prompt": "Three separate shutdowns with pauses of silence between them: each time roaring rocket engines stop abruptly with a short falling hiss, a pop, and the ticking of hot metal. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27941,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27941.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Three separate shutdowns with pauses of silence between them: each time roaring rocket engines stop abruptly with a short falling hiss, a pop, and the ticking of hot metal. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ae3eb6fddb2225c69326c48fea404ec8ebc77926b119cb7da6dba57fc58e55b4",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0f622280b8ba0ef4320065abf0f1a051b68b4f87aa85485a68ca4088117def63",
+      "cut": {
+        "source_file": "moss-pt-27941.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          342000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/moss-pt-27952-07680.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "land",
+      "prompt_id": "v1-27950",
+      "prompt": "Three separate landings with pauses of silence between them: each time a heavy metal capsule drops onto three legs on hard ground with a deep thud, a metallic clank and a short hydraulic hiss. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27952,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27952.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Three separate landings with pauses of silence between them: each time a heavy metal capsule drops onto three legs on hard ground with a deep thud, a metallic clank and a short hydraulic hiss. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3d5de2bedf24477dc5fdb51270f8b83d9badb8a99caaff35bfa787bda559befd",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "715b771032bee532d6acb645f687d32025bbd1735269d62fa842f8fb0e2e1137",
+      "cut": {
+        "source_file": "moss-pt-27952.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          366240,
+          415200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/moss-pt-27952-16000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "land",
+      "prompt_id": "v1-27950",
+      "prompt": "Three separate landings with pauses of silence between them: each time a heavy metal capsule drops onto three legs on hard ground with a deep thud, a metallic clank and a short hydraulic hiss. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27952,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27952.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Three separate landings with pauses of silence between them: each time a heavy metal capsule drops onto three legs on hard ground with a deep thud, a metallic clank and a short hydraulic hiss. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6b238d1d5bd40236bb6769957a2b2c43799ecf6ad317247345dcbad952226b25",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "715b771032bee532d6acb645f687d32025bbd1735269d62fa842f8fb0e2e1137",
+      "cut": {
+        "source_file": "moss-pt-27952.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          765600,
+          821760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/moss-pt-27952-21875.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "land",
+      "prompt_id": "v1-27950",
+      "prompt": "Three separate landings with pauses of silence between them: each time a heavy metal capsule drops onto three legs on hard ground with a deep thud, a metallic clank and a short hydraulic hiss. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 27952,
+      "seconds": 30,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-21",
+      "file": "moss-pt-27952.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Three separate landings with pauses of silence between them: each time a heavy metal capsule drops onto three legs on hard ground with a deep thud, a metallic clank and a short hydraulic hiss. Close-miked, dry, no music, no voices, quiet background. duration: 30.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5e90447042a3ba86dc398abe7123b8eeb82980157f27cb62b1202db6b7700fc5",
+      "worker": {
+        "takes": 16,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 531.3,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 11.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "715b771032bee532d6acb645f687d32025bbd1735269d62fa842f8fb0e2e1137",
+      "cut": {
+        "source_file": "moss-pt-27952.wav",
+        "source_frames": 1440000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1047600,
+          1097040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}
