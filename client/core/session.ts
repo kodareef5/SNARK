@@ -90,6 +90,7 @@ import {
   S_TEXT,
   S_TRAVEL,
   S_MOTION,
+  S_SUPPLY,
   S_WELCOME,
   REJECT_TRAVEL,
   TICKET_BYTES,
@@ -102,6 +103,7 @@ import {
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
+import { readSupply, type SupplyList } from "../../shared/sim/supply.ts";
 import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
@@ -403,6 +405,9 @@ export class ClientSession {
   /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
   travelled: { ticket: Uint8Array; world: number } | null = null;
 
+  /** The supply drops live on the map as the server last told them (S_SUPPLY), whole, and a count raised each time it does. */
+  supply: SupplyList = { tiers: [], classes: [], rows: [] };
+  supplyVersion = 0;
   /** Every moving static's state as the server last told it (S_MOTION), by ref: all after a welcome, then each as it is thrown. */
   readonly motions = new Map<number, MotionState>();
   /** Sparse exact launch/resume state, keyed by generation-qualified entity handle. Kept across packet/snapshot ordering. */
@@ -1266,6 +1271,13 @@ export class ClientSession {
     else if (type === S_MOTION) {
       const told = readMotions(r);
       if (told) for (const [ref, s] of told) this.motions.set(ref, s);
+    }
+    else if (type === S_SUPPLY) {
+      const told = readSupply(r);
+      if (told) {
+        this.supply = told;
+        this.supplyVersion++;
+      }
     }
     else if (type === S_CORPSE) {
       const motion = readCorpseMotion(r);

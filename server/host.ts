@@ -92,6 +92,9 @@ import { settle, settleNear } from "./place.ts";
 import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
 import { CarReturn, DEADLINE_CAR } from "./car-return.ts";
+import { starterBook } from "../content/supply/starter.ts";
+import { DEADLINE_SUPPLY, Supply } from "./supply.ts";
+import { BookStore } from "./supply/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
@@ -217,6 +220,9 @@ export interface Host {
   readonly spawner: Spawner | null;
   /** Null for a map that parks no car. */
   readonly carReturn: CarReturn | null;
+  /** Supply drops, and the drop book they are rolled from (server/supply.ts). */
+  readonly supply: Supply;
+  readonly supplyBook: BookStore;
   /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
   readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
@@ -1032,6 +1038,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     carReturn.begin(persistence && !loaded!.fresh ? (persistence.store.meta("carReturn") as string | null) : null);
     persistence?.sidecar("carReturn", carReturn.saved);
   }
+  // Supply drops (server/supply.ts). The drop book is a file beside the save, which a wipe of the world leaves; the
+  // drops that are live are the save's, written in the commit that writes their capsules.
+  const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, starterBook, say);
+  const supply = new Supply({ world, game, records, items, death, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, quality: () => 1, say });
+  supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
+  persistence?.sidecar("supply", supply.saved);
 
   // A name belongs to the first device key that takes a body under it.
   game.sameCreation=(name,key,request)=>{
@@ -1201,6 +1213,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       else if (kind === DEADLINE_CORPSE) corpses.due(pid, stamp);
       else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
       else if (kind === DEADLINE_CAR) carReturn?.due(pid, stamp);
+      else if (kind === DEADLINE_SUPPLY) supply.due(pid, stamp);
     });
     refreshInventories();
     parts.mark(PART.deadlines);
@@ -1208,6 +1221,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     entangle.step(tick);
     creatureTraits.step(creatures.awake, creatures.awakeCount);
     death.step();
+    supply.step();
     parts.mark(PART.life);
     // Riders move with their mounts before combat aims at either.
     urban.step();
@@ -1383,6 +1397,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     syncOwn(own, c);
     harvest?.sync(c);
     tactical.sync(c);
+    supply.sync(c);
   };
   game.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
   const corpseReplication = new CorpseReplication(game, corpses);
@@ -1547,6 +1562,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     hurt,
     spawner,
     carReturn,
+    supply,
+    supplyBook,
     beds,
     cluster,
     settled,

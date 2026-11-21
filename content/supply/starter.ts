@@ -41,7 +41,10 @@ export const TIERS: readonly TierDoc[] = [
   { key: "meridian", name: "Meridian", rgb: 0x60f0e0, level: 80, target: 12800, quality: [4.5, 13], staple: "staple.meridian", floor: "staple.meridian" },
 ];
 
-/** The top-marks, as sea-marks wear them (shared/sim/supply.ts MARKS): can, saltire, diamond, sphere, cross, cone down, cone up. */
+/**
+ * The top-marks, as sea-marks wear them (shared/sim/supply.ts MARKS): bar, saltire, buckler, hourglass, cross, cone
+ * down, cone up. These seven were kept by measuring which read apart as silhouettes eight pixels high.
+ */
 export const CLASSES: readonly ClassDoc[] = [
   { key: "shelter", name: "Shelter", mark: 0, fill: "fill.shelter" },
   { key: "arms", name: "Arms", mark: 1, fill: "fill.arms" },

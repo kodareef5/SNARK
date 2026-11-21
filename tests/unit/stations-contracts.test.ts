@@ -41,9 +41,10 @@ test("protocol 17 and record format 7 are the stations wave's, and it took no co
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([36, 17, 8, 10]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
   expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 25]);
-  // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found cars' return.
+  // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found
+  // cars' return and 12 the supply drops'.
   const deadlines = readdirSync(join(root, "server")).filter((f) => f.endsWith(".ts")).flatMap((f) => [...readFileSync(join(root, "server", f), "utf8").matchAll(/export const DEADLINE_\w+ = (\d+);/g)].map((m) => Number(m[1])));
-  expect([deadlines.sort((a, b) => a - b), DEADLINE_FIRE, DEADLINE_CRAFT]).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15], 6, 4]);
+  expect([deadlines.sort((a, b) => a - b), DEADLINE_FIRE, DEADLINE_CRAFT]).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15], 6, 4]);
 });
 
 test("the fields: a station's own fuel is built, the forge's (S1) are built, and the rest are stubs that wait for stations, each its project's", () => {

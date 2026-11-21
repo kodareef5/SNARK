@@ -235,6 +235,12 @@ export const S_TRAVEL = 14;
 export const S_MOTION = 15;
 /** Protocol 25. Sparse, generation-qualified corpse motion checkpoint; shared/net/corpse.ts defines its bounded payload. */
 export const S_CORPSE = 16;
+/**
+ * Protocol 41. The supply drops that are live on the map, whole, to every session after its welcome and again whenever
+ * one is called, lands, is first opened or goes: what each tier and class among them shows, then a row a drop
+ * (shared/sim/supply.ts writeSupply). A session works out where each is from its ticks, so nothing more is sent as it flies.
+ */
+export const S_SUPPLY = 17;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
