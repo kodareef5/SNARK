@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { Assets, HYSTERESIS } from "../../client/core/assets/assets.ts";
 import { DEFAULT_TIER, TIERS, forTouch, offeredTiers, startingTier, tierOf } from "../../client/core/assets/tiers.ts";
-import { SETTING_ROWS, Settings, keptLine } from "../../client/core/settings.ts";
+import { DOWNLOAD_ROW, SETTING_ROWS, Settings } from "../../client/core/settings.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -153,15 +153,18 @@ test("a desktop with a GPU and a light target starts on high; a phone, the CPU d
   expect(s.tier).toBe("lowpoly");
 });
 
-test("the settings screen says what is kept of the assets between visits, and asks for all of them when told", () => {
-  expect(keptLine(null)).toBe("all here");
-  expect(keptLine({ used: 0, mode: "memory", filling: 0 })).toBe("not kept");
-  expect(keptLine({ used: 3.5 * 1048576, mode: "disk", filling: 0 })).toBe("3.5 MB kept");
-  expect(keptLine({ used: 1200 * 1048576, mode: "disk", filling: 0 })).toBe("1200 MB kept");
-  expect(keptLine({ used: 1048576, mode: "disk", filling: 14 })).toBe("14 to fetch");
+test("Download all goes on, pauses and resumes, and is remembered between visits with its pause", () => {
   const s = new Settings();
-  const row = SETTING_ROWS.find((r) => r.label === "Keep all assets")!;
-  expect(s.download).toBe(false);
+  const row = SETTING_ROWS[DOWNLOAD_ROW]!;
+  expect([row.label, row.value(s)]).toEqual(["Download all", "off"]);
+  const seen: string[] = [];
+  for (let k = 0; k < 3; k++) {
+    row.step(s, 1);
+    seen.push(row.value(s));
+  }
+  expect(seen).toEqual(["on", "paused", "on"]);
   row.step(s, 1);
-  expect(s.download).toBe(true);
+  const later = new Settings();
+  later.restoreInterface(s.interfacePreferences());
+  expect([later.keepAll, later.keepPaused, row.value(later)]).toEqual([true, true, "paused"]);
 });

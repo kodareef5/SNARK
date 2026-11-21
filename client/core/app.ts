@@ -10,7 +10,7 @@ import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tie
 import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
 import type { FrameRing } from "./assets/frames.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
-import { VOLUME_MAX, keptLine } from "./settings.ts";
+import { VOLUME_MAX } from "./settings.ts";
 import { toggleMonitor } from "./settings.ts";
 import { MONITOR_KIT } from "./ui/monitor-kit.ts";
 import { stressThings, type Mark } from "./stress.ts";
@@ -20,7 +20,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { MountCameraPivot } from "./mount-camera.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
-import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
+import { MODE_FLYER, MODE_SWIM, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -32,7 +32,7 @@ import { Controls, LOOK_SPEED } from "./controls.ts";
 import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
-import { seatScratch, type VehicleRenderPose } from "./render/characters.ts";
+import { seatScratch } from "./render/characters.ts";
 import { SQUEEZE_MOST } from "./render/budget.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
@@ -47,7 +47,9 @@ import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
 import { SeatedAim } from "./seated-aim.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
-import { rayVehicle, vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
+import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
+import { lookAt, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
+import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -75,7 +77,8 @@ import { SplitPort } from "./sound/split.ts";
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
 import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
-import { canvasHeight } from "./ui/nodes.ts";
+import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
+import { glass } from "./ui/skin.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
@@ -163,7 +166,6 @@ export class App {
   /** Where a passenger sits, for its camera (Characters.seat), and the pose of the creature it sits on. */
   private readonly seatSpot = new Float64Array(12);
   private readonly seated = seatScratch();
-  private readonly rayPose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   private readonly mountState = new AnimState();
   readonly shots: Shots;
   /** Null until the world arrives. */
@@ -249,7 +251,6 @@ export class App {
   private eye = -1;
   private helicopterViewHost = -1;
   private readonly aim = [0, 0, 0];
-  private readonly seatAt = [0, 0, 0];
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
   /** The session's registry. It is content as written until the welcome, then as the server tuned it. */
@@ -291,6 +292,8 @@ export class App {
     this.ui.local = (line) => (line === "monitor" ? toggleMonitor(this.ui.settings) : this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
+    // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
+    void import("./ui/storage.ts").then((m) => (this.ui.storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
     this.shots = new Shots(reg, pack);
     const nodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
     session.onNode = (chunk, index, used, crushed, priorForm) => {
@@ -311,7 +314,8 @@ export class App {
       this.ui.inventory.serviceResult(seq, code);
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
-      this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
+      // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
+      if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
       this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
@@ -319,6 +323,10 @@ export class App {
 
   readonly builder = new Builder();
   readonly vehiclePlacement = new VehiclePlacement();
+  /** Why the server refused the last press of the use key on a seat. */
+  readonly seatNotice = new SeatNotice();
+  /** What the prompt's look is on, as a seat would be ridden: a vehicle, a saddled creature, or null. */
+  private promptRidden: Ridden | null = null;
   /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
   page: Page | null = null;
   /** The page is on its way to another server, or has said it arrived. */
@@ -451,6 +459,7 @@ export class App {
     // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
     if (code === "KeyE") {
       if (down && !repeat) {
+        this.seatNotice.pressed(this.seatPress());
         this.useDownAt = this.nowMs;
         this.useKept = this.aimed >= 0;
       } else if (!down) {
@@ -685,13 +694,20 @@ export class App {
     return flyer;
   }
 
-  private lookHit(i: number, ox: number, oy: number, oz: number): number {
-    const r = this.remote, d = this.aim, kind = r.kind[i]!, hull = this.reg.vehicle[kind];
-    if (hull?.movement === "boat") return rayVehicle(hull, r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!, ox, oy, oz,
-      d[0]!, d[1]!, d[2]!, hull.spec.height, remoteVehiclePose(r, i, this.rayPose));
-    const size = this.sizeOf(i), radius = this.reg.bodyRadius[kind]! * size;
-    return rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - radius, r.y[i]!, r.z[i]! - radius,
-      r.x[i]! + radius, r.y[i]! + this.reg.bodyHeight[kind]! * size, r.z[i]! + radius);
+  /** With `use`, as the use key meets body `i`; else as a name tag does. */
+  private lookHit(i: number, ox: number, oy: number, oz: number, use = false): number {
+    return lookAt(this.reg, this.remote, i, ox, oy, oz, this.aim, this.sizeOf(i), use);
+  }
+
+  /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
+  private seatPress(): Ridden | null {
+    const s = this.session, r = this.remote;
+    if (s.driving >= 0) return riddenOf(this.reg, s.bodyKind, true);
+    if (s.own.seat > 0 && s.own.seatSlot !== 0 && s.own.seatSlot !== IMPALE_SLOT) {
+      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1) return riddenOf(this.reg, r.kind[i]!, true);
+      return "creature";
+    }
+    return this.promptRidden;
   }
 
   /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
@@ -847,6 +863,7 @@ export class App {
     const ox = s.own.x;
     const oy = s.own.y + eye;
     const oz = s.own.z;
+    this.promptRidden = null;
     if (s.own.seat > 0 && s.own.seatSlot === IMPALE_SLOT) return "Impaled: held by a Stegosaurus";
     if (s.driving >= 0) {
       const combat = this.reg.combat[s.bodyKind];
@@ -869,7 +886,7 @@ export class App {
     for (let i = 0; i < r.count; i++) {
       // What is in someone's arms is no mark for the use key, a blow or a whistle.
       if ((r.cue[i]! & CUE_HELD) !== 0) continue;
-      const t = this.lookHit(i, ox, oy, oz);
+      const t = this.lookHit(i, ox, oy, oz, true);
       if (t < best) {
         best = t;
         hit = i;
@@ -880,31 +897,13 @@ export class App {
       if (r.seatSlot[hit] !== 0) for (let j = 0; j < r.count; j++) {
         if (r.id[j] === r.seat[hit]! - 1 && r.gen[j] === r.seatGen[hit]) { hit = j; break; }
       }
-      const car = this.reg.vehicle[r.kind[hit]!];
-      if (car) {
-        const frame = { ...remoteVehiclePose(r, hit), x: r.x[hit]!, y: r.y[hit]!, z: r.z[hit]!, yaw: r.yaw[hit]! };
-        if (car.movement === "boat") {
-          vehiclePoint(frame, car.seats[0]!.entry, this.seatAt);
-          if (Math.hypot(ox - this.seatAt[0]!, oz - this.seatAt[2]!) > 2) return "Board at the stern";
-          for (let slot = 1; slot <= car.seats.length; slot++) {
-            let occupied = false;
-            for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === slot) occupied = true;
-            if (!occupied) return car.seats[slot - 1]!.driver ? "E  take helm" : "E  board as passenger";
-          }
-          return "Boat full";
-        }
-        let slot = 0, near = Infinity;
-        for (let j = 0; j < car.seats.length; j++) {
-          vehiclePoint(frame, car.seats[j]!.entry, this.seatAt);
-          const d = Math.hypot(ox - this.seatAt[0]!, oz - this.seatAt[2]!);
-          if (d < near) { near = d; slot = j; }
-        }
-        let occupied = false;
-        for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === slot + 1) occupied = true;
-        return occupied ? car.seats[slot]!.driver ? "E  carjack driver" : "Passenger seat occupied" : car.seats[slot]!.driver ? "E  enter driver seat" : "E  enter passenger seat";
+      if (this.reg.vehicle[r.kind[hit]!]) {
+        this.promptRidden = riddenOf(this.reg, r.kind[hit]!, false);
+        return vehiclePrompt(this.reg, r, hit, ox, s.own.y, oz, world.hf.waterAt(ox, oz), s.own.mode === MODE_SWIM);
       }
       // A saddled creature of the tribe, grown and awake, is ridden: its steering seat if it is free, else a passenger's.
       const seats = this.reg.saddleSeats[r.gear[hit * GEAR_COUNT + GEAR_WORN]!];
+      if (seats) this.promptRidden = "creature";
       if (seats && s.tribe.team !== 0 && r.team[hit] === s.tribe.team && r.grown[hit] === 0 && (r.cue[hit]! & CUE_OUT) === 0) {
         const taken = (k: number): boolean => {
           for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === k + 1) return true;
@@ -1087,6 +1086,7 @@ export class App {
     ui.canTalk = this.voice !== null && this.voice.notice === "";
     ui.creatureAhead = this.lookedAt >= 0;
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
+    ui.storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
     const session = this.session;
     const hud = this.hud;
     const c = this.controls;
@@ -1459,13 +1459,6 @@ export class App {
     if (this.playEye && this.artEyeAt === null && alive && this.script.length === 0) this.artEyeAt = nowMs;
     this.scene.eyeSeconds = this.artEyeTime === null ? session.renderClock / TICK_RATE
       : this.artEyeTime + (this.artEyeAt === null ? 0 : (nowMs - this.artEyeAt) / 1000);
-    const kept = this.scene.assets.residency.cache;
-    if (this.ui.settings.download) {
-      this.scene.assets.residency.download();
-      this.sounds?.library.download();
-    }
-    this.ui.settings.download = false;
-    this.ui.settings.kept = keptLine(kept);
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
     this.scene.alternate = alternate;
     this.scene.finishGloss = this.ui.settings.finishGloss;
@@ -1534,6 +1527,7 @@ export class App {
     }
     const menu = this.ui.structure;
     menu.tick(nowMs);
+    this.seatNotice.tick(nowMs);
     const built = alive && !b.active && !v.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
       menu.begin(this.aimed);
@@ -1555,7 +1549,7 @@ export class App {
     }
     emotes.has = (n) => this.scene!.characters.emoteKnown(n);
     if (emotes.open) this.scene!.characters.wantEmotes();
-    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built;
+    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;

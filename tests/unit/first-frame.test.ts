@@ -52,14 +52,16 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/activity-selfcheck.ts",
     "client/core/assets/frames.ts",
     "client/core/assets/inspect.ts",
+    "client/core/ui/storage.ts",
+    "client/core/assets/keeping.ts",
     ...MONITOR_FILES,
   ];
   for (const file of late) expect(files.includes(file), file).toBe(false);
   // The resource monitor's files import nothing the first frame holds, which would cut its script into more pieces: what
   // they use of it comes to them in a kit (client/core/ui/monitor-kit.ts).
   for (const file of MONITOR_FILES) for (const dep of valueImports(join(ROOT, file))) expect(files.includes(relative(ROOT, dep)), `${file} imports ${relative(ROOT, dep)}`).toBe(false);
-  // The shell fetches them itself.
-  const shell = readFileSync(join(CLIENT, "shell/main.ts"), "utf8");
-  const fetched = [...shell.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]);
-  expect(fetched).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts"]));
+  // The shell fetches them itself, and the app the Storage tab's page and the resource monitor.
+  const fetchedBy = (file: string): string[] => [...readFileSync(join(CLIENT, file), "utf8").matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]!);
+  expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts"]));
+  expect(fetchedBy("core/app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./ui/monitor.ts"]));
 });

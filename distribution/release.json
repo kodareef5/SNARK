@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "a3a94c87dd87bc47",
+    "id": "9c7f302a5c1cbc2b",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -73,7 +73,7 @@
       {"name": "core-nodes-rocks", "file": "core-nodes-rocks.bde420975ec5.tar.zst", "bytes": 464540124, "sha256": "bde420975ec56d258b1572fe0a85f2f5bdb2b7c135d21b1715c6bf2b682a0708"},
       {"name": "core-nodes-trees", "file": "core-nodes-trees.34307f9cf0db.tar.zst", "bytes": 602402195, "sha256": "34307f9cf0db78bc92a0d17e1acd1c723509e160d72c3de27ceede8ea5ff6209"},
       {"name": "core-props-eggs", "file": "core-props-eggs.981f91f8390a.tar.zst", "bytes": 4354020, "sha256": "981f91f8390adf10e8850975bd935a2353a08a850cace92a90c52331a3031c23"},
-      {"name": "core-props-street", "file": "core-props-street.6f394a11137d.tar.zst", "bytes": 37712581, "sha256": "6f394a11137d7086a79a892ef233c9b67c2d612f7866c7765a46637b48db4018"},
+      {"name": "core-props-street", "file": "core-props-street.9bbff10b2095.tar.zst", "bytes": 37733361, "sha256": "9bbff10b20955c12fdfa2816d7c7baa0fa872ed75ecbc62ac74e02b51b7d7b6c"},
       {"name": "core-sfx-ballistic", "file": "core-sfx-ballistic.3dfca30e5921.tar.zst", "bytes": 3264832, "sha256": "3dfca30e59218de9f6d6a441cc1bae1f1f83fd5107cc6a8e73b262ccf4d721f2"},
       {"name": "core-sfx-bang", "file": "core-sfx-bang.14aec4792430.tar.zst", "bytes": 3641823, "sha256": "14aec4792430f888c3be2570a19cbc6f5fff98daa77e2758c9b3a1a13cbc8ae4"},
       {"name": "core-sfx-bicycle", "file": "core-sfx-bicycle.6a82b5bd7618.tar.zst", "bytes": 4742455, "sha256": "6a82b5bd7618dedfaf322f813508e7fc8ab97b339e07282f8661d0c45c0e7925"},

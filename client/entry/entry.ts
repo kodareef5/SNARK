@@ -1,3 +1,4 @@
+import { mountChangelog } from "./changelog.ts";
 import { imageTile, loadGallery, mapArt, mapChoices, regionTiles, serverCard, survivorStats, type WorldCard as World } from "./gallery.ts";
 import { worldUrl } from "./address.ts";
 import { defaultLook, LOOK_SEX, LOOK_BEARD, randomLook, setRegion } from "../../shared/anim/look.ts";
@@ -384,7 +385,7 @@ function render() {
   let html = "";
   if (screen === "title") {
     html =
-      '<section class="home"><div class="wordmark"><b>SNARK</b><small>Miami Devolved</small></div><div class="home-actions">' +
+      '<section class="home"><img class="title-emblem" src="title/snark-emblem.webp" alt="SNARK · Miami Devolved" width="480" height="480"><div class="home-actions">' +
       (last ? button("last", "Continue as " + last.name, "primary") : "") +
       button("servers", "Find a server", last ? "" : "primary") +
       button("all", "My survivors", "") +
@@ -871,6 +872,7 @@ async function start() {
   } else if (screen === "title" && !root.querySelector(".opening")) render();
 }
 if (!location.hash.startsWith("#travel=")) {
+  mountChangelog();
   syncScene();
   let seen = false;
   try {

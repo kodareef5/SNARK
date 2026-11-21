@@ -11,6 +11,7 @@ export class WorkerPort implements AssetPort {
   /** The page's own until the worker's first fetch says. */
   protocol = (performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined)?.nextHopProtocol ?? "";
   readonly storage = new StorageInfo(navigator.storage);
+  named = 0;
   private readonly worker = new Worker("assets-worker.js", { type: "module" });
   private readonly manifest: Manifest;
   private readonly folder: string;
@@ -44,8 +45,20 @@ export class WorkerPort implements AssetPort {
   }
 
   fill(parts: readonly { file: number; part: AssetPart }[]): void {
-    this.storage.keep();
+    this.named += parts.length;
     this.worker.postMessage({ fill: parts.map((p) => ({ url: this.url(p.file), part: p.part })) });
+  }
+
+  keep(mode: number, reset = false): void {
+    this.worker.postMessage({ keep: { mode, reset } });
+  }
+
+  clear(): void {
+    this.worker.postMessage({ clear: true });
+  }
+
+  limit(bytes: number): void {
+    this.worker.postMessage({ limit: bytes });
   }
 
   cancel(slot: number): void {

@@ -7,7 +7,7 @@
 import type { TextureRole } from "../../../shared/pack/texture.ts";
 import type { Residency } from "./residency.ts";
 // Copies of the residency's and the textures' numbers, as the resource monitor, which fetches this file, imports
-// nothing of the first frame's script (copied.ts, D912).
+// nothing of the first frame's script (copied.ts, D915).
 import { ABSENT, ARRIVED, DEAD, LAST_STEP, LOADING, MAPS, RESIDENT, RIDING, STEP0_SIZE, WHY_ALLOWANCE, WHY_FIRSTS, WHY_FULL, WHY_LANES, WHY_LARGE, WHY_LEVEL, WHY_NONE, WHY_RETRY, WHY_SHARE, WHY_WAITING, stepFor, stepOf, topIn } from "./copied.ts";
 
 export type SlotState = "absent" | "loading" | "arrived" | "resident" | "dead" | "riding";

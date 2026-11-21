@@ -9,7 +9,7 @@
 //
 // The app fetches this file once Diagnostics is first "monitor" (F3, the console's `monitor`, or Settings, Interface),
 // so none of it is in the script the first frame waits for, and while it is off the HUD only sets two numbers. It and
-// the files it imports take what they use of that script from the kit the app hands them (ui/monitor-kit.ts, D912).
+// the files it imports take what they use of that script from the kit the app hands them (ui/monitor-kit.ts, D915).
 
 import type { App } from "../app.ts";
 import type { FrameRing } from "../assets/frames.ts";
