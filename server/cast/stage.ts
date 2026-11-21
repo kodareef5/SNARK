@@ -9,6 +9,7 @@ import type { Archetype, Catalogue, Response, Scene, Step, Stimulus, Target } fr
 import { Queue } from "../../shared/cast/queue.ts";
 import type { Character, Part, Story } from "../../shared/cast/state.ts";
 import { Rng } from "../../shared/rng.ts";
+import { keys, route, type CarState, type Route } from "./drive.ts";
 import type { Cast, Stage } from "./engine.ts";
 import type { CastPlayer, CastWorld } from "./world.ts";
 
@@ -44,6 +45,17 @@ export interface CastBodies {
   emote(pid: number, id: string): boolean;
   stopEmote(pid: number): void;
   say(pid: number, name: string, text: string): void;
+  /** A vehicle of a species at (x, z) facing yaw, nobody's; its pid, or -1. */
+  spawnCar(kind: string, x: number, z: number, yaw: number): number;
+  removeCar(car: number): void;
+  /** Where its driver's door is. */
+  door(car: number): { x: number; z: number } | null;
+  /** Begins getting in at the wheel; false if it cannot. */
+  board(pid: number, car: number): boolean;
+  seated(pid: number): boolean;
+  alight(pid: number): boolean;
+  car(car: number): CarState | null;
+  drive(car: number, moveX: number, moveZ: number, handbrake: boolean): void;
 }
 
 /** A player as the stage sees it: where it is, where it looks (radians, along (sin, cos)), the emote it plays. */
@@ -74,6 +86,16 @@ interface Body {
   reacted: Map<string, number>;
   stareSince: Map<string, number>;
   served: boolean;
+  /** Its car, while it has one, and the route it drives with where on it it is; and where it was a moment ago, to
+   * know when it is stuck. */
+  car: number;
+  route: Route | null;
+  next: number;
+  boarding: boolean;
+  lastX: number;
+  lastZ: number;
+  lastT: number;
+  backUntil: number;
 }
 
 export class CastStage implements Stage {
@@ -89,7 +111,7 @@ export class CastStage implements Stage {
   private readonly rng: Rng;
   /** Counts for the admin page and tests: bodies brought in, sent away, reactions, lines said; and every place a
    * body came into or left the world, with whether a player could see it (a test checks none could). */
-  readonly counts = { entered: 0, left: 0, reactions: 0, said: 0, slept: 0 };
+  readonly counts = { entered: 0, left: 0, reactions: 0, said: 0, slept: 0, cars: 0, arrived: 0 };
   readonly log: { pid: number; what: "in" | "out"; x: number; z: number; seen: boolean; t: number }[] = [];
   /** Keep the log of comings and goings (tests); off in a server. */
   logging = false;
@@ -162,12 +184,27 @@ export class CastStage implements Stage {
       // A role comes in together, from one place.
       let at = entries.get(part.role);
       if (!at) {
-        const found = this.hidden(s.x, s.z, players);
+        const drives = sc.script[part.role]![this.next(sc, s, part.role, -1)]!.do === "drive";
+        const found = this.hidden(s.x, s.z, players, drives ? 3 : 0.35);
         if (!found) return;
         entries.set(part.role, (at = found));
       }
       const k = s.parts.indexOf(part);
-      let x = at.x + (k % 3) * 0.9, z = at.z + (Math.floor(k / 3) % 3) * 0.9;
+      const first = sc.script[part.role]![this.next(sc, s, part.role, -1)]!;
+      // One that drives comes in its car: the car out of sight, the person at its door, getting in.
+      let car = -1;
+      if (first.do === "drive") {
+        const kinds = sc.vehicles?.length ? sc.vehicles : ["core:compact"];
+        const yaw = Math.atan2(s.x - at.x, s.z - at.z);
+        car = this.bodies.spawnCar(kinds[this.rng.int(kinds.length)]!, at.x + k * 7 * Math.cos(yaw), at.z - k * 7 * Math.sin(yaw), yaw);
+        if (car < 0) {
+          if (tick - s.since > STEP_MOST * this.world.rate) part.gone = true;
+          continue;
+        }
+        this.counts.cars++;
+      }
+      const door = car >= 0 ? this.bodies.door(car) : null;
+      let x = door ? door.x : at.x + (k % 3) * 0.9, z = door ? door.z : at.z + (Math.floor(k / 3) % 3) * 0.9;
       let pid = this.bodies.spawn(c, a, x, z, Math.atan2(s.x - x, s.z - z));
       // No room just there (a bin, a parked car): a few metres about, still out of sight.
       for (let tries = 0; pid < 0 && tries < 4; tries++) {
@@ -178,6 +215,7 @@ export class CastStage implements Stage {
         pid = this.bodies.spawn(c, a, x, z, Math.atan2(s.x - x, s.z - z));
       }
       if (pid < 0) {
+        if (car >= 0) this.bodies.removeCar(car);
         if (tick - s.since > STEP_MOST * this.world.rate) part.gone = true;
         continue;
       }
@@ -185,7 +223,8 @@ export class CastStage implements Stage {
       part.pid = pid;
       part.since = tick;
       part.step = this.next(sc, s, part.role, -1);
-      this.byPid.set(pid, { pid, c, story: s, part, begun: false, until: 0, tx: 0, tz: 0, outX: 0, outZ: 0, out: false, aside: 0, lastReact: -Infinity, reacted: new Map(), stareSince: new Map(), served: false });
+      if (car >= 0) this.bodies.board(pid, car);
+      this.byPid.set(pid, { pid, c, story: s, part, begun: false, until: 0, tx: 0, tz: 0, outX: 0, outZ: 0, out: false, aside: 0, lastReact: -Infinity, reacted: new Map(), stareSince: new Map(), served: false, car, route: null, next: 0, boarding: car >= 0, lastX: x, lastZ: z, lastT: tick, backUntil: 0 });
       this.counts.entered++;
       if (this.logging) this.log.push({ pid, what: "in", x, z, seen: this.world.seen(x, z), t: tick });
     }
@@ -197,7 +236,7 @@ export class CastStage implements Stage {
 
   /** The nearest dry, open place from (x, z) that no player can see, searched outward, the side away from players
    * first; null if there is none within a kilometre. */
-  hidden(x: number, z: number, players: readonly CastPlayer[]): { x: number; z: number } | null {
+  hidden(x: number, z: number, players: readonly CastPlayer[], room = 0.35): { x: number; z: number } | null {
     let ax = 0, az = 0;
     for (const p of players) {
       const d = Math.hypot(x - p.x, z - p.z) || 1;
@@ -211,7 +250,7 @@ export class CastStage implements Stage {
         const a = away + (k % 2 === 0 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 6);
         const px = x + Math.sin(a) * r, pz = z + Math.cos(a) * r;
         if (px < 4 || pz < 4 || px > w.sizeX - 4 || pz > w.sizeZ - 4) continue;
-        if (w.seen(px, pz) || w.ground(px, pz) < 0 || w.water(px, pz) > 0.2 || w.blocked(px, pz)) continue;
+        if (w.seen(px, pz) || w.ground(px, pz) < 0 || w.water(px, pz) > 0.2 || w.blocked(px, pz, room)) continue;
         return { x: px, z: pz };
       }
     }
@@ -230,6 +269,7 @@ export class CastStage implements Stage {
     const at = this.bodies.at(b.pid);
     if (this.logging && at) this.log.push({ pid: b.pid, what: "out", x: at.x, z: at.z, seen: this.world.seen(at.x, at.z), t: tick });
     this.bodies.remove(b.pid);
+    if (b.car >= 0) this.bodies.removeCar(b.car);
     this.byPid.delete(b.pid);
     for (const q of this.queues.values()) q.leave(b.c.id);
     if (b.part) {
@@ -390,7 +430,9 @@ export class CastStage implements Stage {
         if (!waiting.length) this.advance(b, tick);
         return;
       }
-      // Holding a weapon, driving and attacking come with their parts of the engine; until then they are passed over.
+      case "drive":
+        return this.driveTo(b, tick, players, this.target(b, st.to, players), true);
+      // Holding a weapon and attacking come with hostility; until then they are passed over.
       default:
         return this.advance(b, tick);
     }
@@ -400,6 +442,20 @@ export class CastStage implements Stage {
   private leave(b: Body, tick: number, players: readonly StagePlayer[], pace?: string): void {
     const at = this.bodies.at(b.pid);
     if (!at) return this.gone(b, tick);
+    // Out by car where it has one: back to it, in, and away; gone once the car is out of every player's sight.
+    const car = b.car >= 0 ? this.bodies.car(b.car) : null;
+    if (car) {
+      if (!this.world.seen(car.x, car.z) && (this.bodies.seated(b.pid) || !this.world.seen(at.x, at.z))) return this.gone(b, tick);
+      if (!b.out) {
+        const out = this.hidden(car.x, car.z, players, 3) ?? { x: car.x, z: car.z };
+        b.tx = out.x;
+        b.tz = out.z;
+        b.out = true;
+        b.route = null;
+      }
+      this.driveTo(b, tick, players, { x: b.tx, z: b.tz }, false);
+      return;
+    }
     if (!this.world.seen(at.x, at.z)) return this.gone(b, tick);
     if (!b.out) {
       const out = this.hidden(at.x, at.z, players) ?? { x: at.x, z: at.z };
@@ -413,6 +469,94 @@ export class CastStage implements Stage {
     else this.carry(b, pace === "run" ? PACE.run : PACE.walk);
   }
 
+  /**
+   * Drives its car to a point: to the car and in first if it is out of it, then along a route with a driver's keys, out
+   * of the car at the end when `alight`. A car stuck (barely moved for two seconds) backs off a moment and finds its way
+   * again. With no car it walks.
+   */
+  private driveTo(b: Body, tick: number, players: readonly StagePlayer[], t: { x: number; z: number }, alight: boolean): void {
+    const car = b.car >= 0 ? this.bodies.car(b.car) : null;
+    if (!car) {
+      if (!b.begun) {
+        b.tx = t.x;
+        b.tz = t.z;
+        this.walk(b, PACE.walk);
+        b.begun = true;
+      }
+      if (this.there(b, 1.5)) this.advance(b, tick);
+      else this.carry(b, PACE.walk);
+      return;
+    }
+    if (!this.bodies.seated(b.pid)) {
+      if (b.boarding) return;
+      // Out of it: walk to its door and get in.
+      const door = this.bodies.door(b.car);
+      const at = this.bodies.at(b.pid);
+      if (door && at && Math.hypot(door.x - at.x, door.z - at.z) < 2.5) {
+        b.boarding = this.bodies.board(b.pid, b.car);
+        return;
+      }
+      if (door) this.bodies.goTo(b.pid, door.x, door.z, PACE.walk);
+      return;
+    }
+    b.boarding = false;
+    if (!b.route) {
+      b.route = route(this.world, car.x, car.z, t.x, t.z);
+      b.next = 0;
+      b.lastX = car.x;
+      b.lastZ = car.z;
+      b.lastT = tick;
+      if (!b.route) {
+        // No way by road: it gets out and goes on foot.
+        if (alight && this.bodies.alight(b.pid)) this.advance(b, tick);
+        return;
+      }
+    }
+    if (tick < b.backUntil) {
+      this.bodies.drive(b.car, 60, -70, false);
+      return;
+    }
+    const k = keys(car, b.route, b.next, this.ahead(b, car, players));
+    b.next = k.next;
+    if (k.done) {
+      this.bodies.drive(b.car, 0, 0, true);
+      if (!alight) return;
+      this.counts.arrived++;
+      if (this.bodies.alight(b.pid) || !this.bodies.seated(b.pid)) {
+        b.route = null;
+        this.advance(b, tick);
+      }
+      return;
+    }
+    this.bodies.drive(b.car, k.moveX, k.moveZ, k.handbrake);
+    if (tick - b.lastT >= 2 * this.world.rate) {
+      const moved = Math.hypot(car.x - b.lastX, car.z - b.lastZ);
+      if (moved < 0.6 && k.moveZ > 20) {
+        b.backUntil = tick + Math.round(1.2 * this.world.rate);
+        b.route = null;
+      }
+      b.lastX = car.x;
+      b.lastZ = car.z;
+      b.lastT = tick;
+    }
+  }
+
+  /** Someone, or another of the stage's bodies, in front of the car within its stopping distance. */
+  private ahead(b: Body, car: CarState, players: readonly StagePlayer[]): boolean {
+    const reach = 4 + car.speed * 1.2;
+    const near = (x: number, z: number) => {
+      const dx = x - car.x, dz = z - car.z, d = Math.hypot(dx, dz);
+      return d > 1 && d < reach && Math.abs(angle(Math.atan2(dx, dz) - car.yaw)) < 0.45;
+    };
+    for (const p of players) if (near(p.x, p.z)) return true;
+    for (const o of this.byPid.values()) {
+      if (o === b || (o.car >= 0 && o.car === b.car) || this.bodies.seated(o.pid)) continue;
+      const at = this.bodies.at(o.pid);
+      if (at && near(at.x, at.z)) return true;
+    }
+    return false;
+  }
+
   private walk(b: Body, pace: number): void {
     this.bodies.stopEmote(b.pid);
     this.bodies.goTo(b.pid, b.tx, b.tz, pace);
@@ -420,7 +564,7 @@ export class CastStage implements Stage {
 
   /** A sleeping body is walked by the stage, straight, at its pace: nobody is there to see it. */
   private carry(b: Body, pace: number): void {
-    if (this.bodies.awake(b.pid)) return;
+    if (this.bodies.awake(b.pid) || (b.car >= 0 && this.bodies.seated(b.pid))) return;
     const at = this.bodies.at(b.pid);
     if (!at) return;
     const dx = b.tx - at.x, dz = b.tz - at.z, d = Math.hypot(dx, dz);

@@ -13,6 +13,7 @@ import type { GameServer } from "../game.ts";
 import type { Items } from "../items.ts";
 import { placeFree } from "../place.ts";
 import type { Records } from "../records.ts";
+import type { Urban } from "../urban.ts";
 import { worldHour, type ServerWorld } from "../world.ts";
 import { GOAL_NONE, TEMPER_DEFENDS } from "../behavior.ts";
 import { CAST_CATALOGUE } from "../../content/cast/index.ts";
@@ -22,13 +23,14 @@ import { DEFAULT_SETTINGS } from "../../shared/cast/state.ts";
 import { EMOTES, EMOTE_NUMBER } from "../../shared/anim/emotes.ts";
 import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
+import { BTN_JUMP } from "../../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE } from "../../shared/sim/entities.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 
 /** The rec.extra component a Cast body carries: the id of the person it is (server/persist/codec.ts lists it). */
 export const COMP_CAST = 90;
 /** What the engine can do in this build: a scene needing more waits (driving and weapons come in their phases). */
-export const CAST_CAN: readonly Capability[] = ["walk", "emote", "speech", "queue"];
+export const CAST_CAN: readonly Capability[] = ["walk", "emote", "speech", "queue", "drive"];
 
 export interface CastHostContext {
   world: ServerWorld;
@@ -38,6 +40,9 @@ export interface CastHostContext {
   emotes: Emotes;
   chat: Chat;
   items: Items;
+  urban: Urban;
+  /** Parks a vehicle of a species at (x, z) facing yaw (radians), nobody's; its entity, or -1 (the host's own). */
+  park: (id: string, x: number, z: number, yaw: number) => number;
   /** Named places on the map beside its spawn points (its landmarks). */
   places: readonly CastPlace[];
   seed: number;
@@ -107,7 +112,7 @@ export class CastHost {
       players: () => (self.players.length ? self.players : self.livePlayers()),
       ground: (x, z) => (x < 0 || z < 0 || x >= hf.sizeX || z >= hf.sizeZ ? -1 : hf.groundClassAt(x, z)),
       water: (x, z) => (x < 0 || z < 0 || x >= hf.sizeX || z >= hf.sizeZ ? 0 : hf.waterAt(x, z) - hf.heightAt(x, z)),
-      blocked: (x, z) => x < 1 || z < 1 || x >= hf.sizeX - 1 || z >= hf.sizeZ - 1 || !placeFree(world, x, groundUnder(hf, x, z, 0.35), z, 0.35, 1.7),
+      blocked: (x, z, r = 0.35) => x < 1 || z < 1 || x >= hf.sizeX - 1 || z >= hf.sizeZ - 1 || !placeFree(world, x, groundUnder(hf, x, z, r) + 0.3, z, r, 1.5),
       seen: (x, z) => {
         const w = world.dims.chunksX, reach = game.opts.entityRadius + 1;
         const cx = Math.floor(x / CHUNK_SIZE), cz = Math.floor(z / CHUNK_SIZE);
@@ -199,6 +204,48 @@ export class CastHost {
       say: (pid, name, text) => {
         const e = ent(pid);
         if (e >= 0) chat.npcSay(name, ents.x[e]!, ents.y[e]!, ents.z[e]!, text);
+      },
+      spawnCar: (kind, x, z, yaw) => {
+        const e = this.ctx.park(kind, x, z, yaw);
+        if (e < 0) return -1;
+        const rec = records.byPid.get(ents.pid[e]!)!;
+        rec.extra.set(COMP_CAST, new TextEncoder().encode("car"));
+        return rec.pid;
+      },
+      removeCar: (car) => {
+        const e = ent(car);
+        if (e >= 0) creatures.remove(e);
+        records.delete(car);
+      },
+      door: (car) => {
+        const e = ent(car), def = e >= 0 ? reg.vehicle[ents.kind[e]!] : undefined;
+        const seat = def?.seats.find((s) => s.driver);
+        if (!seat) return null;
+        const out = [0, 0, 0];
+        this.ctx.urban.door(e, seat, reg.move[this.kind]!.radius, out);
+        return { x: out[0]!, z: out[2]! };
+      },
+      board: (pid, car) => {
+        const e = ent(pid), v = ent(car), def = v >= 0 ? reg.vehicle[ents.kind[v]!] : undefined;
+        const seat = def?.seats.find((s) => s.driver);
+        return e >= 0 && !!seat && this.ctx.urban.seatNpc(e, v, seat.id) === RESULT_OK;
+      },
+      seated: (pid) => {
+        const e = ent(pid);
+        return e >= 0 && this.ctx.urban.seatedNpc(e);
+      },
+      alight: (pid) => {
+        const e = ent(pid);
+        return e >= 0 && this.ctx.urban.alightNpc(e) === RESULT_OK;
+      },
+      car: (car) => {
+        const e = ent(car);
+        if (e < 0 || ents.vrow[e]! < 0) return null;
+        return { x: ents.x[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[ents.vrow[e]!]!, speed: Math.hypot(ents.vx[e]!, ents.vz[e]!) };
+      },
+      drive: (car, moveX, moveZ, handbrake) => {
+        const e = ent(car);
+        if (e >= 0) this.ctx.urban.drive(e, moveX, moveZ, handbrake ? BTN_JUMP : 0);
       },
     };
   }

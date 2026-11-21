@@ -59,6 +59,27 @@ class FakeBodies implements CastBodies {
   say(_pid: number, name: string, text: string) {
     this.said.push(`${name}: ${text}`);
   }
+  // No cars in these tests: scenes that drive are not cast without the capability.
+  spawnCar() {
+    return -1;
+  }
+  removeCar() {}
+  door() {
+    return null;
+  }
+  board() {
+    return false;
+  }
+  seated() {
+    return false;
+  }
+  alight() {
+    return false;
+  }
+  car() {
+    return null;
+  }
+  drive() {}
   /** Each body walks toward its goal a tick's worth at its pace. */
   move() {
     for (const b of this.at_.values()) {

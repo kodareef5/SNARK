@@ -132,6 +132,8 @@ export interface Scene {
   lines?: Record<LineKey, string[]>;
   /** It may start a fight with a player (CastHostility 2). */
   hostile?: boolean;
+  /** The vehicles a role that drives may come in (a species each); a compact unless given. */
+  vehicles?: string[];
   placeholder?: boolean;
 }
 
@@ -250,6 +252,7 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
     for (const [name, n] of syncs) if (n !== s.roles.length) out.push(`scene ${s.id}: sync ${name} must be in every role's script once (it is in ${n} of ${s.roles.length})`);
     if (s.hostile && !s.tags.includes("hostile")) out.push(`scene ${s.id}: a hostile scene is tagged hostile`);
     if (s.needs.includes("drive") && !s.tags.includes("vehicle")) out.push(`scene ${s.id}: a scene that drives is tagged vehicle`);
+    for (const v of s.vehicles ?? []) if (!known.species.has(v)) out.push(`scene ${s.id}: vehicle ${v} is not in the content`);
   }
   for (const t of c.reactions) {
     unique("reactions", t.id);

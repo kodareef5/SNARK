@@ -38,7 +38,8 @@ export class CastCity implements CastWorld {
   water(x: number): number {
     return x >= SEA ? 2 : 0;
   }
-  blocked(x: number, z: number): boolean {
+  blocked(x: number, z: number, r = 0.35): boolean {
+    if (r > 1) return this.blocked(x - r, z) || this.blocked(x + r, z) || this.blocked(x, z - r) || this.blocked(x, z + r);
     if (x >= BEACH || x < 0 || z < 0 || x >= CITY || z >= CITY) return false;
     const mx = x % BLOCK, mz = z % BLOCK;
     if (mx < ROAD + WALK || mz < ROAD + WALK || mx > BLOCK - WALK || mz > BLOCK - WALK) return false;

@@ -160,7 +160,7 @@ export const SCENES: Scene[] = [
       driver: [{ do: "drive", to: "place" }, { do: "sync", name: "met" }, { do: "say", line: "greet" }, { do: "wait", s: [3, 6] }, { do: "leave", pace: "drive" }],
       friend: [{ do: "goto", to: "place" }, { do: "emote", emote: "check_wrist" }, { do: "sync", name: "met" }, { do: "emote", emote: "wave" }, { do: "leave" }],
     },
-    tags: ["calm", "vehicle"], needs: ["walk", "drive", "speech"], weight: 2, cooldown: 300, most: 360,
+    tags: ["calm", "vehicle"], needs: ["walk", "drive", "speech"], weight: 2, cooldown: 300, most: 360, vehicles: ["core:compact", "core:fastback", "core:taxi"],
   },
   {
     id: "cast:fender_bender", name: "Fender bender", about: "Two cars meet at a junction a little too closely; the drivers get out, argue or apologise, and drive off.",
@@ -169,7 +169,7 @@ export const SCENES: Scene[] = [
       a: [{ do: "drive", to: "place" }, { do: "sync", name: "bump" }, { do: "say", line: "angry" }, { do: "emote", emote: "point" }, { do: "emote", emote: "facepalm", when: { mood: "argue" } }, { do: "wait", s: [4, 10] }, { do: "leave", pace: "drive" }],
       b: [{ do: "drive", to: "place" }, { do: "sync", name: "bump" }, { do: "say", line: "apology", when: { mood: "sorry" } }, { do: "say", line: "angry", when: { mood: "argue" } }, { do: "emote", emote: "shrug" }, { do: "wait", s: [4, 10] }, { do: "leave", pace: "drive" }],
     },
-    choices: { mood: ["sorry", "argue"] }, tags: ["comic", "vehicle"], needs: ["drive", "speech", "emote"], weight: 1.5, cooldown: 600, most: 240,
+    choices: { mood: ["sorry", "argue"] }, tags: ["comic", "vehicle"], needs: ["drive", "speech", "emote"], weight: 1.5, cooldown: 600, most: 240, vehicles: ["core:compact", "core:fastback", "core:panel_van"],
   },
   {
     id: "cast:drive_by", name: "Drive-by", about: "A gang car slows past a rival corner or a player and its passenger opens fire. Waits on passengers that can aim from a seat.",
@@ -179,7 +179,7 @@ export const SCENES: Scene[] = [
       driver: [{ do: "drive", to: "place" }, { do: "sync", name: "pass" }, { do: "leave", pace: "drive" }],
       shooter: [{ do: "hold", item: PISTOL }, { do: "sync", name: "pass" }, { do: "attack", target: "player", when: { target: "player" } }, { do: "leave", pace: "drive" }],
     },
-    choices: { target: ["rival", "player"] }, tags: ["hostile", "vehicle", "tense"], needs: ["drive", "weapon"], weight: 0, cooldown: 2400, most: 120, hostile: true, placeholder: true,
+    choices: { target: ["rival", "player"] }, tags: ["hostile", "vehicle", "tense"], needs: ["drive", "weapon"], weight: 0, cooldown: 2400, most: 120, hostile: true, placeholder: true, vehicles: ["core:muscle_car", "core:berlinetta"],
   },
   {
     id: "cast:lost_family", name: "Lost tourists", about: "Tourists on the wrong side of town, map in hand, asking anyone the way. Waits on children's bodies and a gang reaction.",

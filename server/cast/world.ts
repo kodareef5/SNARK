@@ -29,8 +29,9 @@ export interface CastWorld {
   ground(x: number, z: number): number;
   /** Metres of water over the ground; 0 or less is dry. */
   water(x: number, z: number): number;
-  /** A building or the map's own piece stands there. */
-  blocked(x: number, z: number): boolean;
+  /** Something stands there that a body of radius `r` (a person's 0.35 m unless given) would not fit by: a building,
+   * the map's own piece, a tree or a rock. */
+  blocked(x: number, z: number, r?: number): boolean;
   /** Some player is sent the bodies there (within its ring of chunks, and one more): nothing appears or goes there. */
   seen(x: number, z: number): boolean;
   places(): readonly CastPlace[];
