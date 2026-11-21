@@ -4,7 +4,7 @@
 
 import type { Layout } from "./layout.ts";
 import { NavMap } from "./nav.ts";
-import type { EmoteSpec, Assists, Building, ChatLine, EntitiesChannel, Entity, FocusChannel, GameEvent, InventoryChannel, Observation, SelfChannel, Slot, TerrainChannel, Vec3 } from "./protocol.ts";
+import type { EmoteSpec, Assists, Building, ChatLine, EntitiesChannel, Entity, FocusChannel, GameEvent, InventoryChannel, MapPlace, Observation, SelfChannel, Slot, TerrainChannel, Vec3 } from "./protocol.ts";
 
 export interface Remembered extends Entity {
   /** The game clock (ms) when it was last seen, and its position then. */
@@ -48,6 +48,8 @@ export class Belief {
   /** The game's assists, if it has them, and their limits. */
   assists: Assists | null = null;
   readonly things = new Map<string, Remembered>();
+  /** The named places the map shows (obelisks, landmarks), as last read from it. */
+  places: MapPlace[] = [];
   readonly chat: { t: number; from: string; from_id?: string; text: string; channel: string; voice?: ChatLine["voice"]; read: boolean }[] = [];
   readonly heard: Heard[] = [];
   readonly events: GameEvent[] = [];
@@ -68,7 +70,10 @@ export class Belief {
     }
     if (c.focus) (this.focus = c.focus), (this.focusAt = o.t);
     if (c.terrain) (this.terrain = c.terrain), this.nav.fromTerrain(c.terrain);
-    if (c.map) this.nav.fromMap(c.map);
+    if (c.map) {
+      this.nav.fromMap(c.map);
+      if (c.map.places) this.places = c.map.places;
+    }
     if (c.entities) this.see(c.entities, o.t);
     if (c.chat) for (const l of c.chat.lines) if (!this.chat.some((x) => x.t === l.t && x.text === l.text)) this.chat.push({ t: l.t, from: l.from, ...(l.from_id ? { from_id: l.from_id } : {}), text: l.text, channel: l.channel, ...(l.voice ? { voice: l.voice } : {}), read: false });
   }

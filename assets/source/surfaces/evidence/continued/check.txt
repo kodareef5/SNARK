@@ -34,9 +34,9 @@ error: Failed to start server. Is port 0 in use?
    errno: 0,
     code: "EADDRINUSE"
 
-      at startServer (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/server/main.ts:229:22)
-      at answers (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/server/listen.test.ts:27:18)
-      at <anonymous> (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/server/listen.test.ts:47:16)
+      at startServer (server/main.ts:229:22)
+      at answers (server/listen.test.ts:27:18)
+      at <anonymous> (server/listen.test.ts:47:16)
 (fail) a development server answers this machine and no other, unless it is given an address to listen on [474.90ms]
 
 tests/server/modules.test.ts:
@@ -65,8 +65,8 @@ error: Failed to start server. Is port 0 in use?
    errno: 0,
     code: "EADDRINUSE"
 
-      at startServer (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/server/main.ts:229:22)
-      at <anonymous> (/home/user/dev/SNARK/.claude/worktrees/artist-surfaces/tests/server/sockets.test.ts:21:18)
+      at startServer (server/main.ts:229:22)
+      at <anonymous> (server/sockets.test.ts:21:18)
 (fail) a page on another site may not open a socket, the server's own page and a program that is no browser may, and an operator lists the rest [234.09ms]
 
 tests/creatures/spawner-play.test.ts:

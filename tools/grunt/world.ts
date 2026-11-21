@@ -8,7 +8,7 @@
 // not a game: numbers are round, and only what grunt's skills need is here.
 
 import type {
-  Action, Craftable, EmoteSpec, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, Plan,
+  Action, Craftable, EmoteSpec, EntitiesChannel, Entity, EntityKind, FocusChannel, InventoryChannel, Interruption, MapChannel, MapPlace, Plan,
   RejectCode, SelfChannel, Slot, TerrainChannel,
 } from "../../grunt/protocol.ts";
 import type { WorldEvent } from "../../grunt/endpoint.ts";
@@ -239,6 +239,9 @@ export class World {
   private readonly arrows: { x: number; z: number; vx: number; vz: number; left: number; tally?: Record<string, unknown> }[] = [];
   /** The ground, where the scene has any: flat open ground otherwise. */
   terrain: Terrain | null = null;
+  /** Named places the map screen shows (an obelisk, a landmark), and what a new player is told of the world. */
+  places: MapPlace[] = [];
+  about = "";
   /** Changes to the ground after the start, by game time: the map does not show them. */
   changes: { at: number; feature: Feature }[] = [];
   readonly me = {
@@ -525,7 +528,7 @@ export class World {
   mapChannel(cell = 4): MapChannel | null {
     if (!this.terrain) return null;
     const m = this.terrain.map(cell);
-    return { ...m, legend: LEGEND, known: this.terrain.fog ? "explored" : "full" };
+    return { ...m, legend: LEGEND, known: this.terrain.fog ? "explored" : "full", ...(this.places.length ? { places: this.places } : {}) };
   }
 
   inventoryChannel(): InventoryChannel {

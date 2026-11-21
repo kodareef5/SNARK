@@ -34,7 +34,7 @@ const BUILDER = readFileSync(new URL("./builder.md", import.meta.url), "utf8");
 const IDLE_MS = 20_000, IDLE_NUDGES = 3;
 /** How long the same due items wait before the idle character is told of them again. */
 const AUTONOMY_MS = 180_000;
-const WAKES = new Set<Report["kind"]>(["task", "danger", "clear", "addressed", "critical", "need", "connection"]);
+const WAKES = new Set<Report["kind"]>(["task", "danger", "clear", "addressed", "overheard", "critical", "need", "connection"]);
 
 /** Every skill and its parameters, in one line each: what game_do's description carries. */
 const SKILL_LINES = Object.values(SKILLS).map((s) => `${s.name}(${Object.entries(s.params).map(([k, v]) => `${k}: ${v}`).join("; ")}): ${s.describe}`).join("\n");
@@ -154,7 +154,10 @@ export default function grunt(pi: PiExtensionAPI): void {
     // A character plays through the game tools alone: the coding tools are put away for this session.
     pi.setActiveTools(pi.getActiveTools().filter((n) => n.startsWith("game_")));
     // The conversation is told it is connected, so the model never goes looking for a game it already has.
-    pi.sendMessage({ customType: "grunt", content: `[game] You are connected to ${url} as ${rt.name}, and play as ${rt.name}. game_look shows where you are and what is near; game_do starts a skill.`, display: true }, { deliverAs: "nextTurn" });
+    // And told what world it is in, as the game tells a new player: the sort of game, the place, who else is there.
+    const game = session.welcome?.game;
+    const world = game?.about ? `\n\nThe world, as ${game.name} tells it${game.world ? ` (this one is ${game.world})` : ""}: ${game.about}` : "";
+    pi.sendMessage({ customType: "grunt", content: `[game] You are connected to ${url} as ${rt.name}, and play as ${rt.name}. game_look shows where you are and what is near; game_do starts a skill.${world}`, display: true }, { deliverAs: "nextTurn" });
     return mind;
   }
 

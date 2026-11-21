@@ -130,3 +130,17 @@ test("the crosshair names what it is on: a tree to harvest, a box set down to op
   const seen = g.observe({ focus: {} }).channels.focus!;
   expect(seen).toHaveProperty("target");
 });
+
+test("the map names the obelisks and landmarks a player's map shows, in the protocol's frame", () => {
+  const g = gateway();
+  const w = g.s.world!;
+  // The map file's places, as agent/join.ts hands them to the session.
+  (w as { tideEyes?: unknown }).tideEyes = [{ name: "Wynwood", color: "red", form: "sextant", x: 7672, y: 5, z: 8576, yaw: 0, radius: 70 }];
+  (w as { landmarks?: unknown }).landmarks = [{ name: "koru", x: 6710.4, y: 2, z: 5112.6, yaw: 0 }];
+  const m = g.observe({ map: { cell: 8, radius: 400 } }).channels.map!;
+  expect(m.places!.map(({ name, kind, x, z }) => ({ name, kind, x, z }))).toEqual([
+    { name: "red obelisk", kind: "obelisk", x: -7672, z: -8576 },
+    { name: "koru", kind: "landmark", x: -6710, z: -5113 },
+  ]);
+  expect(m.places![0]!.about).toContain("Wynwood");
+});

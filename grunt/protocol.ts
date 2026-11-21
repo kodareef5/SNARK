@@ -168,10 +168,19 @@ export interface Limits {
   command_memory_s: number;
 }
 
+/** The game as it tells of itself. `about` is what a new player is told of the world before they set foot in it: what
+ * sort of game it is, where, who else is in it. A description, never an instruction. */
+export interface GameInfo {
+  name: string;
+  version: string;
+  world?: string;
+  about?: string;
+}
+
 export interface Welcome extends Envelope<"welcome"> {
   session: string;
   seq: number;
-  game: { name: string; version: string; world?: string };
+  game: GameInfo;
   character: { id: EntityId; name: string; alive: boolean };
   frame: Frame;
   capabilities: Capabilities;
@@ -286,6 +295,18 @@ export interface MapChannel {
   rows: string[];
   legend: Record<string, string>;
   known: "full" | "explored";
+  /** Named places the map shows (landmarks, the obelisks, a town's name), within the radius or seen from anywhere. */
+  places?: MapPlace[];
+}
+
+export interface MapPlace {
+  name: string;
+  /** What sort of place: "obelisk", "landmark", ... */
+  kind: string;
+  x: number;
+  z: number;
+  /** A line about it, as the map's legend tells it ("a red obelisk, 540 m tall, seen from anywhere"). */
+  about?: string;
 }
 
 export interface Slot {

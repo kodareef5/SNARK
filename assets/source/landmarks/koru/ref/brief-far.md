@@ -11,9 +11,9 @@ should be the most handsome thing in the harbour at every one of those distances
 whole way: nothing about it should change shade, lose a part or break up as the player walks away from it.
 
 ## Where it falls short today
-Measured on main with the probe below. The sheet is `/home/user/dev/SNARK/var/lod-study/koru/compare-distance.png`: the
+Measured on main with the probe below. The sheet is `var/lod-study/koru/compare-distance.png`: the
 yacht now on medium, now on high, and an all-textured reference, at 150 to 1,500 m. The pictures behind it are under
-`/home/user/dev/SNARK/var/lod-study/koru/` (`now/`, `reference/`, `sails/`).
+`var/lod-study/koru/` (`now/`, `reference/`, `sails/`).
 
 - **Only its finest level has materials** (`flat: 1` in `asset.ts`). They go at 88 m on medium and 138 m on high. A
   125 m hull under 70 m masts is first seen whole from about 100 m, so on medium the whole yacht is never seen with its
@@ -44,7 +44,7 @@ yacht now on medium, now on high, and an all-textured reference, at 150 to 1,500
   range), so a finish need not live in one atlas at 33 texels a metre.
 - Medium loads textures to 1,024, high to 2,048, ultra to 4,096.
 - The ship beside it had the same far faults and is the example of the far mesh done right:
-  `/home/user/dev/SNARK/var/lod-study/far-draw/compare-miami.png`.
+  `var/lod-study/far-draw/compare-miami.png`.
 
 ## What is yours to change
 - Everything in the asset: `model.py`, `parts.py`, the painter and the atlas, `materials.json`, `asset.ts`, how many
@@ -84,19 +84,19 @@ yacht now on medium, now on high, and an all-textured reference, at 150 to 1,500
 - Near, it is better than `ref/pictures/` shows it today, and nothing that was accepted there is lost.
 - It looks like the yacht in `ref/photos/`.
 - Report what it costs at each stop: the yacht's triangles and draws, the frame's totals beside today's
-  (`/home/user/dev/SNARK/var/lod-study/koru/now/report.json`), texture bytes on the card on medium and high, the pack's
+  (`var/lod-study/koru/now/report.json`), texture bytes on the card on medium and high, the pack's
   size, and the first frame's wait before and after.
 
 When you think it is done, look again at the worst picture you have and ask whether it is nice. If it is not, it is
 not done.
 
 ## Looking
-    bun /home/user/dev/SNARK/.claude/work/lod/probe-landmark.ts --landmark koru --map course --starboard --tiers medium,high --out <folder>
+    bun probe-landmark.ts --landmark koru --map course --starboard --tiers medium,high --out <folder>
 
 Shots a to j: 40, 90, 150, 250, 400, 700 and 1,500 m broadside, a bow quarter, the sun deck, the stern. `--only c,e`
 picks some. `--sails` sets the sails first. `--all-near --threshold 0.0001` gives the all-textured reference. It writes a
 picture, a picture coloured by what drew each pixel (green textured, yellow and orange near flat, red and purple the far
-mesh) and counts. `/home/user/dev/SNARK/.claude/work/lod/montage.ts` lays pictures out in a sheet. Copy and change both
+mesh) and counts. `montage.ts` lays pictures out in a sheet. Copy and change both
 as you need. `bun tools/map/cityviews.ts` draws the accepted pictures at its Miami berth.
 
 Everything here is drawn by the software rasterizer, which does not antialias. Say in your report what you would want
@@ -106,4 +106,4 @@ looked at in a real browser.
 - The asset rebuilt, with its README saying how it is now made and the rules its levels follow.
 - `ref/pictures/` made again, with a sheet of the yacht at each distance beside the reference, at full size.
 - This brief, copied to `assets/source/landmarks/koru/ref/brief-far.md`.
-- Working pictures go under `/home/user/dev/SNARK/var/lod-study/koru-art/`, not in the repo.
+- Working pictures go under `var/lod-study/koru-art/`, not in the repo.

@@ -47,5 +47,8 @@ export async function joinServer(url: string, name: string, key: Uint8Array, reg
     // The map's own pieces everywhere, as a browser has them for its far city: the skyline a flight keeps over.
     city: (content) => new CityStatics(map.dims, map.statics, content),
     statics: map.statics,
+    // What the map screen names: the obelisks seen from anywhere and the map's landmarks (agent/map.ts's places).
+    ...(map.tideEyes ? { tideEyes: map.tideEyes } : {}),
+    ...(map.content?.landmarks.length ? { landmarks: map.content.landmarks } : {}),
   });
 }
