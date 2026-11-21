@@ -515,6 +515,8 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
   const h = new Harness({}, 1, 60, { dev: true });
   const pack = corePack();
   const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  // She chose to look from the eye, so her own body is drawn as first person draws it.
+  app.ui.settings.thirdPerson = false;
   let packet = app.frame(0, 1280, 720);
   const run = (ms: number, w = 1280, ht = 720): void => h.run(ms, (now) => (packet = app.frame(now, w, ht)));
   run(500);
@@ -620,6 +622,8 @@ artTest("the client draws what is worn and held, and the hotbar and inventory sc
   // Seen by another, the hat hides the hair and the shirt replaces the bare torso.
   app.key("Digit2", true);
   const bo = new App(h.join("bo", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  // He looks from the eye too, so his own body is not among what he sees of her.
+  bo.ui.settings.thirdPerson = false;
   let seen = bo.frame(0, 1280, 720);
   h.say(bo.session, "enablecheats");
   h.run(600, (now) => {

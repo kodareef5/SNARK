@@ -797,6 +797,8 @@ export function clientPicture(width: number, height: number, look: Uint8Array | 
   const h = new Harness({}, 1, 60, { dev: true, ...(game?.host ?? {}) }, game?.reg);
   const pack = parsePack(game?.pack ?? corePackBytes());
   const app = new App(h.join("ada", {}, { manual: true, look }), h.reg, pack);
+  // A picture is taken from the eye, as a page that takes pictures does; a setup that wants the view from behind sets it.
+  app.fromEye = true;
   let packet = app.frame(0, width, height);
   const run = (ms: number): void => h.run(ms, (now) => (packet = app.frame(now, width, height)));
   run(500);

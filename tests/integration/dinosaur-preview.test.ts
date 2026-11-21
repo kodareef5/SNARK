@@ -41,6 +41,7 @@ for (const [connection, outage] of [["normal input", 0], ["a lost windup", 1500]
     try {
       installDinosaurPreview(h.host, ["core:trike"]);
       const s = h.join("rider", {}, { manual: true }), app = new App(s, h.reg, pack);
+      app.fromEye = true; // as the shell sets it for a ?selfcheck page
       const frame = (now: number) => app.frame(now, 800, 600);
       h.run(500, frame);
       const c = h.client(s)!, ents = h.world.ents;
