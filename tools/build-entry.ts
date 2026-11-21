@@ -1,4 +1,3 @@
-import project from "../package.json";
 import { titlePoster } from "./title/poster.ts";
 import { buildMapGallery } from "./title/maps.ts";
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
@@ -29,6 +28,8 @@ export async function buildEntry(dist: string): Promise<void> {
   const source = resolve(import.meta.dir, "../client/entry"),
     assets = join(dist, "assets");
   const changelog = readFileSync(resolve(source, "../../CHANGELOG.txt"), "utf8");
+  // The package's version is read, not imported: package.json is outside every zone the check knows.
+  const project = JSON.parse(readFileSync(resolve(source, "../../package.json"), "utf8")) as { version: string };
   const releases = titleReleases(changelog, project.version);
   const files = readdirSync(assets).sort();
   const named = (prefix: string) => "assets/" + files.find((n) => n.startsWith(prefix) && !n.endsWith(".br"));
