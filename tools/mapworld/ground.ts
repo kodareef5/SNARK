@@ -3,7 +3,8 @@ import type { EyeColor, TideEyeSite } from "../../shared/world/tide-eye.ts";
 // the shoreline survey marks, water passages under mapped bridges, authored broken spans and drowned streets.
 // Footprints reserve the city floor; statics supply its ruins. Heights are metres above the sea.
 
-import { BEACH_LAND, BEACH_SEA, shapeBeach } from "./beach.ts";
+import { BEACH_LAND, BEACH_SEA, shapeBeach } from "../../shared/world/beach.ts";
+import { BANK_FIXED, BANK_LAND, BANK_WATER, shapeBanks } from "../../shared/world/banks.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { GROUND_CLASS } from "../../shared/world/vehicle-surface.ts";
 import { join } from "node:path";
@@ -110,6 +111,9 @@ export interface Ground {
   readonly shore: Float32Array;
   /** Marine samples in the sandy swash zone, kept sparse until the tint is baked. */
   readonly beachBed?: ReadonlySet<number>;
+  /** Samples of bed at the foot of a graded soft bank, and samples the grading took out of the water (shared/world/banks.ts). */
+  readonly bankBed?: ReadonlySet<number>;
+  readonly bankEdge?: ReadonlySet<number>;
   /** Per sample of a container stack, which container it is, for its colour. */
   readonly container: Uint8Array;
   /** Metres from each sample to the nearest real beach. */
@@ -494,5 +498,37 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     }, i => beachBed.add(i));
     log(`ground: graded ${count} sandy foreshore samples`);
   }
-  return { grid, height, surface, district, heaps, shore, beachBed, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
+  const banks = gradeBanks(height, surface, grid, world.sea !== false, lakes, (i) => roads[i] !== 0 || built[i]! > 0 || gaps[i] !== 0 || beachBed.has(i));
+  log(`ground: graded ${banks.moved} samples of soft banks, ${banks.edge.size} of them out of the water and ${banks.bed.size} of bed at their foot`);
+  return { grid, height, surface, district, heaps, shore, beachBed, bankBed: banks.bed, bankEdge: banks.edge, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
+}
+
+/** Ground a bank may be graded on: what grows, open ground and the desert's. */
+const SOFT_BANK = new Set<number>([S.GREEN, S.CANOPY, S.OPEN, S.MANGROVE, S.MARSH, S.DESERT]);
+/** A bed the banks may move: the sea's and a lake's, and a marsh's pools. */
+const SOFT_BED = new Set<number>([S.SHALLOW, S.FLAT, S.DEEP, S.CHANNEL, S.MANGROVE, S.MARSH]);
+
+/**
+ * The soft banks of the sea (where the map has one) and of the lakes, graded (shared/world/banks.ts). Water is ground
+ * under the sea's level, or under its lake's surface in a lake; every sample takes the level of the water nearest it.
+ * `kept` is ground that counts but is never moved: roads, footprints, bridges' gaps and the beach's bed.
+ */
+function gradeBanks(height: Float32Array, surface: Uint8Array, grid: Grid, sea: boolean, lakes: Lakes | null, kept: (i: number) => boolean): { moved: number; bed: Set<number>; edge: Set<number> } {
+  const { nx, nz, cell } = grid;
+  const N = nx * nz;
+  const surfaceOf = (i: number): number => (lakes && lakes.body[i] ? lakes.bodies[lakes.body[i]! - 1]!.surface : 0);
+  const wet = (i: number): boolean => (lakes && lakes.body[i] ? height[i]! < surfaceOf(i) : sea && height[i]! < 0);
+  const nearest = new Int32Array(N);
+  distanceField(wet, nx, nz, nearest);
+  const levelAt = (i: number): number => (nearest[i]! >= 0 ? surfaceOf(nearest[i]!) : 0);
+  const kind = new Uint8Array(N);
+  for (let i = 0; i < N; i++) {
+    if (nearest[i]! < 0) continue;
+    const s = surface[i]!;
+    if (wet(i)) kind[i] = SOFT_BED.has(s) && !kept(i) ? BANK_WATER : BANK_WATER | BANK_FIXED;
+    else if (height[i]! >= levelAt(i)) kind[i] = SOFT_BANK.has(s) && !kept(i) ? BANK_LAND : BANK_LAND | BANK_FIXED;
+  }
+  const bed = new Set<number>(), edge = new Set<number>();
+  const moved = shapeBanks(height, nx, nz, cell, (i) => kind[i]!, levelAt, (i) => bed.add(i), (i) => edge.add(i));
+  return { moved, bed, edge };
 }
