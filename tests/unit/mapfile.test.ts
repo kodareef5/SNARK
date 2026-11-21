@@ -426,6 +426,8 @@ test("whether each node stands, and as what, is decided as a map is made, and it
       before[layer]!.at(c, slot, b);
       const bit = c * 32 + slot;
       if (layer === 1 && (scatter.out![bit >> 3]! >> (bit & 7)) & 1) expect(a.kind).toBe(0);
+      // A heap of rubble keeps apart from its neighbours (nodes.test.ts), so it may be another variant, at its own size.
+      else if (a.kind !== 0 && forms.apart[a.kind]! > 0) expect([a.kind, a.x, a.y, a.z, a.yaw, forms.size[a.form]]).toEqual([b.kind, b.x, b.y, b.z, b.yaw, forms.size[b.form]]);
       else expect(a.kind === 0 ? [0] : a).toEqual(b.kind === 0 ? [0] : b);
       if (a.kind !== 0) stood.set(a.kind, (stood.get(a.kind) ?? 0) + 1);
     }

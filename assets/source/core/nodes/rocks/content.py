@@ -17,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 KINDS = {
     "core:rock": {"names": [f"rock_{k}" for k in range(1, 7)], "weights": [4, 3, 3, 2, 3, 1], "size": [0.8, 1.25]},
     "core:metal_rock": {"names": [f"metal_rock_{k}" for k in range(1, 4)], "weights": [2, 2, 2], "size": [0.75, 1.2]},
-    "core:rubble": {"names": [f"rubble_{k}" for k in range(1, 4)], "weights": [2, 2, 2], "size": [0.85, 1.15]},
+    "core:rubble": {"names": [f"rubble_{k}" for k in range(1, 9)], "weights": [2, 2, 2, 2, 2, 2, 2, 2], "size": [0.85, 1.15]},
 }
 FOOTING = 4.0
 

@@ -232,6 +232,16 @@ const RUBBLE: NodeVariant[] = [
     depleted: { mesh: "core:rubble_2_depleted", boxes: [{ at: [0.01, -0.05, 0.0], half: [0.9, 0.25, 0.75] }, { at: [-0.04, -0.1, 0.0], half: [1.15, 0.2, 0.45] }, { at: [0.06, -0.1, -0.05], half: [0.45, 0.2, 1.0] }, { at: [-0.34, -0.03, -0.05], half: [0.35, 0.28, 0.3] }, { at: [0.06, -0.12, -0.05], half: [1.15, 0.17, 0.6] }] } },
   { mesh: "core:rubble_3", weight: 2, boxes: [{ at: [-0.11, 0.2, -0.14], half: [1.35, 0.5, 0.65] }, { at: [0.39, 0.33, -0.09], half: [0.95, 0.62, 0.3] }, { at: [-0.21, 0.17, -0.14], half: [0.45, 0.47, 0.95] }, { at: [-0.31, 0.28, -0.19], half: [0.95, 0.57, 0.3] }],
     depleted: { mesh: "core:rubble_3_depleted", boxes: [{ at: [-0.01, -0.05, -0.01], half: [1.15, 0.25, 0.85] }, { at: [0.04, -0.1, -0.01], half: [1.6, 0.2, 0.65] }, { at: [-0.01, -0.1, -0.01], half: [0.75, 0.2, 1.05] }, { at: [-0.01, -0.03, -0.01], half: [0.75, 0.28, 0.45] }, { at: [0.09, -0.07, 0.14], half: [1.35, 0.23, 0.5] }] } },
+  { mesh: "core:rubble_4", weight: 2, boxes: [{ at: [-0.45, 0.05, -0.07], half: [1.3, 0.35, 0.55] }, { at: [0.15, -0.05, -0.02], half: [1.2, 0.25, 0.7] }, { at: [-1.25, 0.1, -0.07], half: [0.5, 0.4, 0.45] }, { at: [-0.1, -0.1, -0.02], half: [1.75, 0.2, 0.5] }, { at: [-0.75, 0.07, -0.02], half: [1.0, 0.38, 0.3] }],
+    depleted: { mesh: "core:rubble_4_depleted", boxes: [{ at: [-0.0, -0.1, -0.05], half: [1.35, 0.2, 0.6] }, { at: [0.05, -0.07, -0.1], half: [0.9, 0.23, 0.45] }, { at: [0.1, -0.12, -0.05], half: [1.05, 0.17, 0.7] }, { at: [0.05, -0.12, -0.05], half: [1.7, 0.17, 0.4] }, { at: [-0.3, 0.0, -0.6], half: [0.15, 0.3, 0.15] }] } },
+  { mesh: "core:rubble_5", weight: 2, boxes: [{ at: [0.09, 0.35, -0.04], half: [0.85, 0.65, 0.7] }, { at: [0.04, 0.23, 0.01], half: [0.5, 0.53, 0.85] }, { at: [-0.01, 0.48, 0.01], half: [0.35, 0.79, 0.45] }, { at: [-0.06, 0.23, 0.16], half: [1.0, 0.53, 0.3] }, { at: [-0.01, 0.68, 0.01], half: [0.15, 0.97, 0.25] }],
+    depleted: { mesh: "core:rubble_5_depleted", boxes: [{ at: [0.09, -0.05, -0.03], half: [0.85, 0.25, 0.75] }, { at: [-0.06, -0.03, -0.03], half: [0.5, 0.28, 0.45] }, { at: [-0.06, -0.05, -0.53], half: [1.1, 0.25, 0.15] }, { at: [-0.01, -0.12, -0.03], half: [0.65, 0.17, 0.95] }, { at: [0.04, -0.12, 0.12], half: [1.1, 0.17, 0.5] }] } },
+  { mesh: "core:rubble_6", weight: 2, boxes: [{ at: [0.03, -0.12, 0.02], half: [1.15, 0.17, 0.85] }, { at: [-0.37, 0.05, -0.28], half: [0.35, 0.35, 0.15] }, { at: [0.63, 0.05, 0.32], half: [0.25, 0.35, 0.15] }, { at: [0.03, -0.05, -0.28], half: [0.15, 0.25, 0.65] }, { at: [1.18, -0.03, -0.48], half: [0.2, 0.28, 0.15] }],
+    depleted: { mesh: "core:rubble_6_depleted", boxes: [{ at: [0.06, -0.12, 0.01], half: [1.1, 0.17, 0.8] }, { at: [0.06, -0.1, -0.29], half: [0.3, 0.2, 0.6] }, { at: [1.21, -0.05, -0.44], half: [0.25, 0.25, 0.15] }, { at: [0.71, -0.05, 0.36], half: [0.25, 0.25, 0.15] }, { at: [0.06, -0.05, 0.16], half: [0.2, 0.25, 0.15] }] } },
+  { mesh: "core:rubble_7", weight: 2, boxes: [{ at: [0.17, 0.28, 0.03], half: [1.0, 0.57, 0.9] }, { at: [-0.38, 0.35, -0.02], half: [0.35, 0.65, 0.65] }, { at: [-0.53, 0.38, -0.32], half: [0.5, 0.68, 0.15] }, { at: [0.87, 0.25, -0.02], half: [0.2, 0.55, 1.05] }, { at: [0.17, 0.25, 0.03], half: [1.1, 0.55, 0.4] }],
+    depleted: { mesh: "core:rubble_7_depleted", boxes: [{ at: [0.07, -0.07, -0.05], half: [1.0, 0.23, 0.75] }, { at: [-0.03, -0.03, 0.0], half: [0.7, 0.28, 0.4] }, { at: [0.33, -0.1, -0.05], half: [0.75, 0.2, 0.85] }, { at: [0.97, -0.07, -0.75], half: [0.3, 0.23, 0.25] }, { at: [0.03, -0.12, -0.05], half: [1.15, 0.17, 0.45] }] } },
+  { mesh: "core:rubble_8", weight: 2, boxes: [{ at: [-0.04, 0.17, -0.01], half: [0.55, 0.47, 0.35] }],
+    depleted: { mesh: "core:rubble_8_depleted", boxes: [{ at: [0.06, -0.05, -0.01], half: [0.7, 0.25, 0.55] }, { at: [-0.14, -0.07, -0.46], half: [0.6, 0.23, 0.2] }, { at: [-0.09, -0.03, 0.04], half: [0.35, 0.28, 0.3] }, { at: [0.51, -0.05, 0.44], half: [0.35, 0.25, 0.2] }, { at: [0.01, -0.12, -0.11], half: [0.85, 0.17, 0.35] }] } },
 ];
 const METAL_ROCKS: NodeVariant[] = [
   { mesh: "core:metal_rock_1", weight: 2, boxes: [{ at: [-0.11, 0.45, -0.14], half: [1.15, 0.75, 0.85] }, { at: [0.14, 0.26, 0.11], half: [1.1, 0.56, 0.7] }, { at: [-0.11, 0.55, -0.39], half: [0.75, 0.85, 0.5] }, { at: [-0.11, 0.32, -0.19], half: [1.25, 0.62, 0.4] }],
@@ -257,9 +267,12 @@ const NODES: NodeDef[] = [
   // A stone base reaches at most 3.15 m out (the widest limestone at its largest), so the ground under these three kinds is
   // judged 4 m out, two of its samples. It may fall away there by the least of a kind's burials for its reach: 1.2 m for
   // 2.52 m in the limestone, 1.05 m for 2.26 m in the rubble, 0.8 m for 1.62 m in the metal rocks. Where it falls further,
-  // nothing grows.
+  // nothing grows. The five later heaps of rubble are each buried at least half as deep as they reach, so the rubble's
+  // 1.85 m holds for them too (content.py would allow 2.0).
   { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: REGROW, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.8, 1.25], variants: ROCKS, footing: { reach: 4, fall: 1.9 } },
-  { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.85, 1.15], variants: RUBBLE, footing: { reach: 4, fall: 1.85 } },
+  // Heaps of rubble lie side by side in the ruins; two within 12 m of each other in a chunk, as one view holds them, are
+  // never the same heap.
+  { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.85, 1.15], variants: RUBBLE, footing: { reach: 4, fall: 1.85 }, apart: 12 },
   // A metal rock, darker and veined, which a player learns to spot. It is harder than limestone, and a pick gets its ore.
   // It gives obsidian too, at a reduced rate: "Mountain-rocks which yield Metal now also yield Obsidian at a reduced rate"
   // (Obsidian, patch 171.8). Ours is the only metal rock, so every one does. The rate is unverified and chosen: none to one

@@ -20,7 +20,7 @@ from meshio import read_obj  # noqa: E402
 
 LIMESTONE = [f"rock_{k}" for k in range(1, 7)]
 ORE = [f"metal_rock_{k}" for k in range(1, 4)]
-RUBBLE = [f"rubble_{k}" for k in range(1, 4)]
+RUBBLE = [f"rubble_{k}" for k in range(1, 9)]
 
 
 def material(name):
