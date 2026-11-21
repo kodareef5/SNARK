@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
-import { CombatModel, Feedback, HURT_MS, MARK_MS, NUMBER_BODY, NUMBER_HEAD, NUMBER_KILL, NUMBER_MS } from "../../client/core/feedback.ts";
+import { CombatModel, Feedback, HURT_MS, MARK_MS } from "../../client/core/feedback.ts";
+import { DAMAGE_HEAD, DAMAGE_KILL, DamageNumbers, LIFE_MS } from "../../client/core/render/damage-numbers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { RemoteSample, type ClientSession, type CombatEvent } from "../../client/core/session.ts";
 import { handleIndex } from "../../shared/ids.ts";
-import { KEY_BLOOD, KEY_DAMAGE, KEY_HIT_MARK, KEY_HURT, KEY_NOTICE, buildCombat } from "../../client/core/ui/combat.ts";
+import { KEY_BLOOD, KEY_HIT_MARK, KEY_HURT, KEY_NOTICE, buildCombat } from "../../client/core/ui/combat.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
-import { S_DAMAGE_HEAD, S_HIT_KILL } from "../../client/core/ui/style.ts";
+import { S_HIT_KILL } from "../../client/core/ui/style.ts";
 import type { Blow } from "../../server/combat.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { HumanAnim, AnimState, humanPose } from "../../shared/anim/pose.ts";
@@ -395,9 +396,12 @@ test("what the server reports is shown and fades: a mark, a number over the plac
   cam.y = 1.6;
   cam.update();
   const f = new UiFrame();
+  // The numbers are the renderer's (render/damage-numbers.ts): a card each, drawn with the world.
+  const numbers = new DamageNumbers();
   const show = (now: number, alive = true): void => {
-    fb.absorb(session, reg, now);
+    fb.absorb(session, reg, now, numbers);
     fb.fill(m, cam, 0, alive, now);
+    numbers.build(cam, now);
     f.begin(16 / 9);
     buildCombat(f, m);
   };
@@ -407,34 +411,26 @@ test("what the server reports is shown and fades: a mark, a number over the plac
   session.events.push(event(EVENT_HIT, { x: 0, y: 1.6, z: 5, zone: ZONE_HEAD, damage: 24 }));
   show(1000);
   expect(session.events.length).toBe(0);
-  expect([m.mark, m.markHead, m.markKill, m.numberCount]).toEqual([1, true, false, 1]);
-  expect(m.numbers[0]).toMatchObject({ text: "24", kind: NUMBER_HEAD, alpha: 1 });
-  expect(m.numbers[0]!.u).toBeCloseTo(0.5, 3);
-  expect(m.numbers[0]!.v).toBeCloseTo(0.5, 3);
+  expect([m.mark, m.markHead, m.markKill, numbers.count]).toEqual([1, true, false, 1]);
+  const head = numbers.born.findIndex((b) => b === 1000);
+  expect([numbers.damage[head], numbers.kind[head]]).toEqual([24, DAMAGE_HEAD]);
   for (let i = 0; i < 4; i++) expect(f.find(KEY_HIT_MARK + i)).not.toBeNull();
-  const number = f.find(KEY_DAMAGE)!;
-  expect([number.text, number.style]).toEqual(["24", S_DAMAGE_HEAD]);
-  expect(number.x + number.w / 2).toBeCloseTo(f.width / 2, 0);
-  // The mark goes first. The number rises, and fades over the second half of NUMBER_MS.
+  // The mark goes first; the number lasts its life, then is gone.
   show(1000 + MARK_MS + 1);
   expect(m.mark).toBe(0);
   expect(f.find(KEY_HIT_MARK)).toBeNull();
-  expect(m.numbers[0]!.v).toBeLessThan(0.5);
-  show(1000 + NUMBER_MS * 0.75);
-  expect(m.numbers[0]!.alpha).toBeCloseTo(0.5, 2);
-  expect(f.find(KEY_DAMAGE)!.alpha).toBeCloseTo(0.5, 2);
-  show(1000 + NUMBER_MS);
-  expect(m.numberCount).toBe(0);
-  // A hit behind the camera gets a mark and no number.
+  expect(numbers.count).toBe(1);
+  show(1000 + LIFE_MS);
+  expect(numbers.count).toBe(0);
+  // A hit behind the camera gets a mark and no number drawn.
   session.events.push(event(EVENT_HIT, { x: 0, y: 1.6, z: -5, zone: ZONE_TORSO, damage: 8 }));
   show(5000);
-  expect([m.mark, m.numberCount]).toEqual([1, 0]);
+  expect([m.mark, numbers.count]).toEqual([1, 0]);
   session.events.push(event(EVENT_HIT, { x: 0, y: 1.6, z: 5, zone: ZONE_TORSO, damage: 3, kill: true }), event(EVENT_KILL, { name: "grazer", level: 7, xp: 6.4 }));
   show(6000);
   expect(f.find(KEY_HIT_MARK)!.style).toBe(S_HIT_KILL);
-  expect(m.numbers[m.numberCount - 1]!.kind).toBe(NUMBER_KILL);
+  expect(numbers.kind[numbers.born.findIndex((b) => b === 6000)]).toBe(DAMAGE_KILL);
   expect(f.find(KEY_NOTICE)!.text).toBe("Killed grazer (level 7)  +6.4 xp");
-  expect(NUMBER_BODY).toBe(0);
 
   // Bearing 64 is harm from the left of this camera.
   session.events.push(event(EVENT_HURT, { damage: 25, bearing: 64, zone: ZONE_TORSO }));

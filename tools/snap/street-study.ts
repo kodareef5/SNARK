@@ -12,6 +12,7 @@ import { litProbe } from "../probe-lit.ts";
 import { Shot } from "../probe-lit/shot.ts";
 import { provingView, settle } from "../snap.ts";
 import { encodePng } from "./png.ts";
+import { PICK_ENTITY } from "./raster.ts";
 
 const [mapPath, assets, out] = process.argv.slice(2);
 if (!mapPath || !assets || !out) throw new Error("Expected Miami map, built assets directory and output directory");
@@ -40,10 +41,21 @@ const hour = Number(process.argv.find(arg => arg.startsWith("--hour="))?.slice(7
 if (!Number.isFinite(hour) || hour < 0 || hour >= 24) throw new Error("--hour must be in [0,24)");
 scene.hour = hour;
 cam.fovY = 57 * Math.PI / 180;
-const vehicleId = "core:" + (process.argv.find(arg => arg.startsWith("--vehicle="))?.slice(10) ?? "compact");
+const vehicleName = process.argv.find(arg => arg.startsWith("--vehicle="))?.slice(10) ?? "compact";
+const vehicleId = "core:" + vehicleName;
 const vehicleKind = v.reg.index.get(vehicleId);
 const vehicle = vehicleKind === undefined ? null : v.reg.vehicle[vehicleKind];
 if (!vehicle || !isWheelVehicle(vehicle)) throw new Error("Expected a driveable road vehicle: " + vehicleId);
+// The studied car's paint, a palette index: 41 is blue, 230 black.
+const paint = Number(process.argv.find(arg => arg.startsWith("--paint="))?.slice(8) ?? 41);
+if (!Number.isInteger(paint) || paint < 1 || paint > 255) throw new Error("--paint must be a palette index from 1 to 255");
+/** The front right wheel's rest centre on the studied car's rig, and its bone. */
+function frontRight(): { bone: number; at: readonly [number, number, number] } {
+  const rig = v.pack.header.rigs!.find(r => r.id === vehicle!.id)!;
+  const bone = rig.names?.indexOf("wheel_front_right") ?? -1;
+  if (bone < 0) throw new Error("Missing front wheel on " + vehicle!.id);
+  return { bone, at: rig.rest.slice(bone*3,bone*3+3) as [number,number,number] };
+}
 function look(x: number, z: number, tx: number, tz: number, ty: number, eye = 1.6): void {
   cam.x = x;
   cam.z = z;
@@ -116,7 +128,7 @@ for (let i = 0; i < 2; i++) {
   remote.y[i] = hf.heightAt(remote.x[i]!, remote.z[i]!);
   remote.yaw[i] = -0.22;
   remote.flags[i] = 1;
-  remote.colors[i * 6] = 41;
+  remote.colors[i * 6] = i === 0 ? paint : 41;
 }
 remote.count = propName ? 0 : 2;
 if (propName && !v.reg.index.has("core:"+propName)) throw new Error("Unknown road prop " + propName);
@@ -139,12 +151,17 @@ if (view) {
   }
   else if (view === "wheel") {
     remote.steering[0] = 0.32;
-    const rig = v.pack.header.rigs!.find(r => r.id === vehicle.id)!;
-    const at = (rig.names?.indexOf("wheel_front_right") ?? -1)*3;
-    if (at < 0) throw new Error("Missing front wheel on " + vehicle.id);
-    const [x,y,z] = rig.rest.slice(at,at+3) as [number,number,number];
+    const [x,y,z] = frontRight().at;
     const scale = vehicle.spec.wheelRadius/0.3;
     inspect(x-0.69*scale,y+0.10*scale,z+0.53*scale,x-0.04*scale,y,z);
+  }
+  else if (view === "arch") {
+    // Low, behind and outside the front right wheel, steered so the tyre swings out and shows the arch behind it:
+    // the sill in front, the door's shut line, the arch's lip and inside, the tyre and the rim.
+    remote.steering[0] = 0.32;
+    const [x,y,z] = frontRight().at;
+    const scale = vehicle.spec.wheelRadius/0.3, side = Math.sign(x) || -1;
+    inspect(x+1.17*side*scale,y+0.25*scale,z-0.95*scale,x+0.02*side*scale,y+0.03*scale,z-0.15*scale);
   }
   else if (view === "side") inspect(-5.9,1.03,2.75,0,0.57,0);
   else if (view === "front") inspect(-0.15,1.62,3.7,0,1.10,0.04);
@@ -169,6 +186,46 @@ function different(a: Uint8Array, b: Uint8Array, least: number): number {
     if (Math.max(Math.abs(a[i]!-b[i]!), Math.abs(a[i+1]!-b[i+1]!), Math.abs(a[i+2]!-b[i+2]!)) >= least) changed++;
   }
   return changed;
+}
+// The arch study's pictures are named for the car, its paint and the hour, so one folder can hold all of them.
+const archName = `arch-${vehicleName}-${paint}-${String(Math.floor(hour)).padStart(2,"0")}${String(Math.round(hour%1*60)).padStart(2,"0")}`;
+/** Which pixels of the studied car's picture are its front right wheel (1) and the rest of it (2), from the software render. */
+let archParts: Uint8Array | null = null;
+/** 8-bit luma at quantiles of the pixels of `picture` that `parts` marks `part`, near the wheel on screen. */
+function archLuma(picture: Uint8Array, part: number): string {
+  let x0 = width, x1 = 0, y0 = height, y1 = 0;
+  for (let i = 0; i < archParts!.length; i++) {
+    if (archParts![i] !== 1) continue;
+    const x = i % width, y = Math.floor(i / width);
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y);
+  }
+  // The body round the wheel: its box on screen grown by a third each way.
+  const gx = (x1 - x0) / 3, gy = (y1 - y0) / 3, lumas: number[] = [];
+  for (let i = 0; i < archParts!.length; i++) {
+    const x = i % width, y = Math.floor(i / width);
+    if (archParts![i] !== part || x < x0 - gx || x > x1 + gx || y < y0 - gy || y > y1 + gy) continue;
+    lumas.push(0.2126*picture[i*4]! + 0.7152*picture[i*4+1]! + 0.0722*picture[i*4+2]!);
+  }
+  lumas.sort((a, b) => a - b);
+  const at = (q: number) => Math.round(lumas[Math.min(lumas.length-1, Math.floor(q*lumas.length))] ?? 0);
+  return `${lumas.length} px, luma p10 ${at(0.1)} p25 ${at(0.25)} median ${at(0.5)} p90 ${at(0.9)} p99 ${at(0.99)}`;
+}
+if (view === "arch") {
+  settle(v);
+  scene.now += 510;
+  v.render();
+  const wheel = frontRight().bone + 1;
+  archParts = new Uint8Array(width * height);
+  for (let i = 0; i < archParts.length; i++) {
+    if (raster.pickKind[i] !== PICK_ENTITY || raster.pickId[i] !== 1701) continue;
+    archParts[i] = raster.pickBone[i] === wheel ? 1 : 2;
+  }
+  const picture = Uint8Array.from(raster.color);
+  writeFileSync(join(out, archName + "-software.png"), encodePng(width, height, picture));
+  console.log(archName, "software wheel", archLuma(picture, 1), "| body round it", archLuma(picture, 2));
+  if (!gpu) process.exit(0);
+  // The same scene goes to the GPU from the start, as after a lost context.
+  scene.resetUploads();
 }
 if (!gpu && view) {
   settle(v);
@@ -218,6 +275,7 @@ if (gpu) {
         if (!loading && !load.flying && !load.waiting && p.frame[FRAME.reflection + 3] === 1) {
           if (view) {
             shot.add(p, true);
+            if (view === "arch") return [shot];
             if (view === "prop") {
               const strength = p.frame[FRAME.reflection+3]!;
               p.frame[FRAME.reflection+3] = 0;
@@ -330,7 +388,14 @@ if (gpu) {
       throw new Error("Miami WebGL scene did not settle");
     },
     judge(back) {
-      const on = back.pixels(shot.key, shot.read[0]!)!, sky = back.pixels(shot.key, shot.read[1]!)!;
+      const on = back.pixels(shot.key, shot.read[0]!)!;
+      if (view === "arch") {
+        writeFileSync(join(out, archName + ".png"), encodePng(width, height, on));
+        const wheel = archLuma(on, 1), body = archLuma(on, 2);
+        const enough = (line: string) => Number(line.split(" ")[0]) > 1500;
+        return { ok: enough(wheel) && enough(body), lines: [back.device.renderer, archName + " wheel " + wheel, archName + " body round it " + body] };
+      }
+      const sky = back.pixels(shot.key, shot.read[1]!)!;
       if (view) {
         writeFileSync(join(out, view + ".png"), encodePng(width, height, on));
         if (view === "prop") {

@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { Details } from "../../client/core/details/details.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
+import { wakeFoam } from "../../client/core/render/detailtext.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { FramePacket } from "../../client/core/render/packet.ts";
+import { DETAIL_WAKE, FramePacket } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { AnimState, LAYER_FLINCH } from "../../shared/anim/pose.ts";
@@ -85,4 +86,33 @@ test("a floating hull surface cue starts on visible water rather than its submer
   const state = new AnimState(); state.layer = LAYER_FLINCH; state.layerStart = 1;
   remote.anim[0] = state.pack(); remote.cue[0] = state.packCue(); frame(1);
   expect(details.pool.count).toBe(1); expect(details.pool.y[0]).toBeCloseTo(3.025, 4);
+});
+
+test("stern foam is seeded and flows out of the hull, with the outside wake and bow spray stronger through a turn", () => {
+  const effects = [...art.effects];
+  effects[0] = { ...effects[0]!, face: "flat", pass: "blend", speed: [0.2,0.2] };
+  effects[1] = { ...effects[1]!, speed: [2,2], up: .6 };
+  const { details, remote, frame } = fixture({...art, effects});
+  frame(0);
+  let count = 0;
+  for (let i=1;i<=5;i++) {
+    const a=i*.13;
+    remote.x[0]=64+8*(1-Math.cos(a)); remote.z[0]=64+8*Math.sin(a);
+    remote.yaw[0]=a;remote.vehicleQy[0]=Math.sin(a/2);remote.vehicleQw[0]=Math.cos(a/2);
+    count = details.pool.count; frame(i*4);
+  }
+  const pool = details.pool;
+  expect(pool.count-count).toBe(4);
+  for(let i=count;i<count+2;i++) {
+    expect(pool.flags[i]).toBe(DETAIL_WAKE);
+    expect(pool.widthScale[i]).toBeLessThan(.7);
+  }
+  const outward=(i:number)=>pool.vx[i]!*Math.cos(.65)-pool.vz[i]!*Math.sin(.65);
+  expect(outward(count)).toBeGreaterThan(0);
+  expect(outward(count+1)).toBeLessThan(-outward(count));
+  expect(pool.vy[count+3]).toBeGreaterThan(pool.vy[count+2]!);
+  const a=[0,0,0],b=[0,0,0];
+  wakeFoam(0,.4,.2,a);wakeFoam(0,.4,.82,b);
+  expect(Math.abs(a[0]!-b[0]!)).toBeGreaterThan(.01);
+  wakeFoam(0,1,.2,a);expect(a[0]).toBe(0);
 });

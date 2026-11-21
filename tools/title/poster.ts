@@ -41,7 +41,7 @@ export async function titlePoster(dist: string) {
     [
       chrome,
       ...CHROME_FLAGS,
-      "--headless=new",
+      "--headless=new", "--mute-audio",
       "--remote-debugging-port=0",
       "--user-data-dir=" + profile,
       "--no-first-run",

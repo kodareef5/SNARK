@@ -16,7 +16,7 @@ import { BONE_FLOATS, FRAME, FramePacket, MAX_TIRE_CONTACTS } from "../../client
 import { streetSilhouette } from "../../client/core/render/street-silhouettes.ts";
 import { StreetReflections } from "../../client/core/render/street-reflections.ts";
 import {
-  FINE_STREET_WIDTH, STREET_WIDTH, streetTextureBytes, streetWidth, wheelBoneMask, wheelFinish, tireMould, vehicleWeather, weatherVehicle, StreetMaterials,
+  FINE_STREET_WIDTH, STREET_WIDTH, streetTextureBytes, streetWidth, wheelBoneMask, wheelFinish, tireMould, tireRelief, rubberShare, vehicleWeather, weatherVehicle, StreetMaterials,
   coatWear,
   finishSeed,
   fixtureFace,
@@ -243,9 +243,9 @@ test("a supported bottom sidewall widens slightly, clears the road and leaves th
 
 test("only wheel joints carry the finish, clean and wiped plating shine differently, and rubber keeps its moulding", () => {
   expect(wheelBoneMask(["chassis","wheel_front_left","steering_wheel"])).toBe(2);
-  const finish = (rough: number, metal: number, seed: number, mould = 0) => {
-    const rgb = new Float64Array([0.1,0.1,0.1]), orm = new Float64Array([1,rough,metal]);
-    const chrome = wheelFinish(rgb,orm,1,1,mould,seed,0.845,0.0,0.001);
+  const finish = (rough: number, metal: number, seed: number, y = 0.845, x = 0.1, z = 0, base = 0.1) => {
+    const rgb = new Float64Array([base,base,base]), orm = new Float64Array([1,rough,metal]);
+    const chrome = wheelFinish(rgb,orm,1,rubberShare(metal,rough,Math.hypot(y,z)),1,x,y,z,seed,0.001);
     return { tone: rgb[0]!, rough: orm[1]!, chrome };
   };
   const clean = finish(0.3,0.95,0.1), wiped = finish(0.3,0.95,0.86);
@@ -253,15 +253,31 @@ test("only wheel joints carry the finish, clean and wiped plating shine differen
   expect(clean.tone).toBeGreaterThan(0.8);
   expect(clean.rough).toBeLessThan(wiped.rough);
   expect(finish(0.3,0.95,0.86)).toEqual(wiped);
-  const plain = finish(0.8,0,0.5), ridge = finish(0.8,0,0.5,tireMould(0.1,0.845,0,0.001));
+  const plain = finish(0.8,0,0.5,0.81), ridge = finish(0.8,0,0.5);
   expect(plain.chrome).toBe(0);
-  expect(plain.tone).toBeLessThan(0.04);
   expect(ridge.tone).toBeGreaterThan(plain.tone);
   expect(tireMould(0.1,0.845,0,0.05)).toBe(0);
+  // Rubber is two to four per cent whatever shade it was painted, rougher on its dressed wall than on its worn tread,
+  // and never smooth enough to take the rim's reflection.
+  for (const base of [0.01,0.017,0.03,0.1]) {
+    const wall = finish(0.84,0.02,0.5,0.81,0.3,0,base), tread = finish(0.84,0.02,0.5,0.99,0.02,0.05,base);
+    expect(wall.tone).toBeGreaterThan(0.018);
+    expect(wall.tone).toBeLessThan(0.04);
+    expect(tread.rough).toBeLessThan(wall.rough);
+    expect(tread.rough).toBeGreaterThanOrEqual(0.5);
+  }
+  // The ribs stand out from the wall, and the shoulder's grooves sink in: the slope changes sign across each.
+  const slope = new Float64Array(3);
+  tireRelief(slope,0.3,0.845-0.006,0,0.001);
+  expect(slope[1]).toBeGreaterThan(0);
+  tireRelief(slope,0.3,0.845+0.006,0,0.001);
+  expect(slope[1]).toBeLessThan(0);
+  tireRelief(slope,0.3,0.845+0.006,0,0.05);
+  expect(Math.abs(slope[1]!)).toBe(0);
 });
 
 test("unmasked truck rims, painted centres, and brake discs keep distinct finishes", () => {
-  const sample = (rough: number, metal: number, x: number, radius: number) => wheelFinish(new Float64Array(3),Float64Array.of(1,rough,metal),0,1,0,0.42,radius,0,0.001,x);
+  const sample = (rough: number, metal: number, x: number, radius: number) => wheelFinish(new Float64Array(3),Float64Array.of(1,rough,metal),0,0,1,x,radius,0,0.42,0.001,x);
   expect(sample(122/255,165/255,0.36,0.52)).toBeGreaterThan(0.6);
   expect(sample(122/255,165/255,0.03,0.52)).toBe(0);
   expect(sample(0.85,0.03,0.35,0.98)).toBe(0);

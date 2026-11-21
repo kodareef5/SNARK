@@ -3,14 +3,17 @@
 // reflected to, by Fresnel's term, and glints where it mirrors the sun and the moon. Under that is the water itself:
 // clear in the shallows and the deep blue of open sea, by how deep the water is there, read from the terrain's own
 // heights, and see-through over its last 30 cm at the shore, where foam lies on it in a broken line that the wind
-// moves and that thins out as the water deepens. The sun's shadow falls on its glint and on the light in it. Then haze,
-// exposure and the tone curve, as everything lit is shown. A lake's surface (lakes.ts) is drawn by the same program:
+// moves and that thins out as the water deepens. Close to a sloping beach the wash retreats over a wet film; nearby
+// hulls, swimmers and low flyers leave bounded creases in the reflecting surface. The sun's shadow falls on its glint and on the light in it.
+// Then haze, exposure and the tone curve, as everything lit is shown. A lake's surface (lakes.ts) is drawn by the same program:
 // the depth is the height of the pixel's own surface over the ground, whatever level that stands at.
 //
 // The maths is here twice, as GLSL and as functions on numbers, written from the same constants. The rasterizer does
 // not draw it (D264): the twins are what the lit probe holds a GPU's pictures to. Under water, and in a plain sky, the
 // sea is drawn as it always was.
 
+import { SWASH_GLSL, swashFrame } from "./swash.ts";
+import { WATER_TRAILS_GLSL } from "./water-trails.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { AIR, hazed } from "./atmosphere.ts";
 import { SEE_THROUGH_SPLIT } from "./glsl.ts";
@@ -84,7 +87,7 @@ export const WATER_ASKED = { pixels: 4096, distance: 50 };
 /**
  * A picture's red and green are the slopes along its x and y, -SLOPE_MOST at 1 and SLOPE_MOST at 255, 128 level; its
  * blue the mean of their squares, SQUARE_MOST at 255, so that a coarser picture, being the mean of finer ones, also
- * says how much slope it has lost; alpha the height, which nothing reads yet. Each is made with RMS_SLOPE.
+ * says how much slope it has lost; alpha the height used to break up hull turbulence. Each is made with RMS_SLOPE.
  */
 export const SLOPE_MOST = 0.4;
 export const SQUARE_MOST = 0.1;
@@ -137,6 +140,7 @@ export function waveStrength(height: number): number {
  * holds at 0; how strong the waves are at the hour. Core works these out in double precision.
  */
 export function seaFrame(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, x: number, z: number, seconds: number, y = Infinity): void {
+  swashFrame(frame, x, z, seconds);
   over(LONG, x, z, seconds, frame, FRAME.waves);
   over(SHORT, x, z, seconds, frame, FRAME.waves + 2);
   over(SWELL, x, z, seconds, frame, FRAME.swell);
@@ -223,7 +227,7 @@ function foamLayer(frame: Float32Array, layer: WaveLayer, at: number, n: number,
  * surface (the length of the GPU's fwidth of it) and `deep` metres of depth (its fwidth).
  */
 export function seaFoam(frame: Float32Array, rx: number, rz: number, depth: number, fine: number, wide: number, deep: number): number {
-  if (depth >= FOAM || fine <= 0) return 0;
+  if (depth <= 0 || depth >= FOAM || fine <= 0) return 0;
   const kl = unit(2 - (2 * wide * FOAM_CELLS.long) / LONG.span), ks = unit(2 - (2 * wide * FOAM_CELLS.short) / SHORT.span);
   const mean = 0.5 + foamLayer(frame, LONG, FRAME.waves, FOAM_CELLS.long, rx, rz, kl) + foamLayer(frame, SHORT, FRAME.waves + 2, FOAM_CELLS.short, rx, rz, ks);
   const bar = FOAM_BAR[0] + (FOAM_BAR[1] - FOAM_BAR[0]) * Math.sqrt(depth / FOAM);
@@ -236,6 +240,8 @@ export function seaFoam(frame: Float32Array, rx: number, rz: number, depth: numb
 export interface SeaPixel {
   light: number[];
   cover: number;
+  /** Share of the still-visible bed darkened by the drained film. */
+  film?: number;
 }
 
 const mirror = [0, 0, 0];
@@ -343,7 +349,7 @@ export function seaShown(px: SeaPixel, rel: Vec, below: Vec, frame: Float32Array
   const e = frame[FRAME.exposure]!;
   const shown = [0, 0, 0];
   shownSky(air.map((c) => c * e), shown, frame);
-  return shown.map((c, k) => c * px.cover + below[k]! * (1 - px.cover));
+  return shown.map((c, k) => c * px.cover + below[k]! * (1 - px.cover) * (1 - (px.film ?? 0)));
 }
 
 const g = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
@@ -431,15 +437,30 @@ float seaFoam(vec2 rel, float depth, float fine, float wide, float deep) {
   float soft = ${g(FOAM_SOFT)} + ${g(FOAM_SPREAD)} * (1.0 - 0.5 * (kl + ks));
   return ${g(FOAM_MOST)} * smoothstep(bar - soft, bar + soft, mean) * clamp(depth / max(${g(FOAM_EDGE)}, deep), 0.0, 1.0) * clamp((${g(FOAM)} / max(deep, 1e-6) - 1.0) * 0.5, 0.0, 1.0) * fine;
 }
+${SWASH_GLSL}
+#ifdef LOCAL_WAKES
+${WATER_TRAILS_GLSL}
+#endif
 void main() {
   dropNearer();
   float fine;
   float depth = seaDepth(vRel, fine);
   // A pixel's footprint on the surface and in depth, read while every pixel of its quad still runs.
   float deep = fwidth(depth), wide = length(fwidth(vRel.xz));
+  vec2 dx=dFdx(vRel.xz), dz=dFdy(vRel.xz), dd=vec2(dFdx(depth),dFdy(depth));
   if (depth <= 0.0) discard;
-  float foam = depth < ${g(FOAM)} && fine > 0.0 ? seaFoam(vRel.xz, depth, fine, wide, deep) : 0.0;
-  float dist = length(vRel);
+  float dist = length(vRel), film=0., lace=1.;
+  vec2 localSlope=vec2(0.);
+  if (depth<1.1 && fine>0. && dist<110.) {
+    float det=dx.x*dz.y-dx.y*dz.x;
+    vec2 grad=abs(det)>.00000001 ? vec2(dd.x*dz.y-dd.y*dx.y,dx.x*dd.y-dz.x*dd.x)/det : vec2(0.);
+    beachWash(vRel.xz,grad,fine,dist,depth,localSlope,film,lace);
+  }
+  float foam = depth < ${g(FOAM)} && fine > 0.0 ? lace*seaFoam(vRel.xz, depth, fine, wide, deep) : 0.0;
+#ifdef LOCAL_WAKES
+  float churn, wakeFoam=0., foamHeight=.5;
+  waterTrails(vRel,depth,wide,localSlope,wakeFoam,churn);
+#endif
   vec3 v = -vRel / dist;
   // The waves: each picture's slopes, and how much of their mean square its coarser pictures have lost to distance.
   vec3 n = vec3(0.0, 1.0, 0.0);
@@ -454,9 +475,30 @@ void main() {
     vec2 sw = ${slopes(SWELL, "ww")};
     float swell = ${g(SWELL_SHARE / (RMS_SLOPE * RMS_SLOPE))} * spread;
     spread = spread * ${g(1 - SWELL_SHARE)} + swell * max(ww.z * ${g(SQUARE_MOST)} - dot(sw, sw), 0.0);
+#ifdef LOCAL_WAKES
+    // Read turbulence from the short waves already in cache. Broken bubbles follow the rough wake and fade into the wind ripples.
+    foamHeight=.74*ws.a+.26*wl.a;
+    if (churn > 0.) {
+      sb *= 1.+2.4*churn;
+      spread += .014*churn;
+      float bubbles = smoothstep(.35,.67,foamHeight);
+      wakeFoam = max(wakeFoam,.50*churn*bubbles);
+    }
+#endif
     vec2 s = sa + sb + sqrt(swell) * sw;
     n = normalize(vec3(-s.x, 1.0, -s.y));
   }
+#ifdef LOCAL_WAKES
+  // Aerated water separates into cells as it spreads. Break up the joined wake once per covered fragment.
+  if (wakeFoam>.006) {
+    vec2 rel=vRel.xz;
+    float fineFoam=foamNoise((${tiles(SHORT, "fWaves.zw")})*32.,32);
+    float flecks=smoothstep(.33,.64,.77*fineFoam+.23*foamHeight);
+    float coverage=mix(.09+1.48*flecks,.8,smoothstep(.12,.32,wide));
+    foam=max(foam,min(.87,wakeFoam*coverage));
+  }
+#endif
+  if (any(notEqual(localSlope,vec2(0.)))) n=normalize(n-vec3(localSlope.x,0.,localSlope.y)*n.y);
   float nv = clamp(dot(n, v), 0.001, 1.0);
   float a2 = ${g(Math.pow(SEA_ROUGH, 4) + DISC * DISC)} + spread;
   // The twin of facing: the facet seen, leaning toward the eye, mirrors the sky.
@@ -482,5 +524,10 @@ void main() {
   // The foam lies over the water, which lies over what is under it.
   float shore = clamp(depth / ${g(SHORE)}, 0.0, 1.0);
   float held = foam + (1.0 - foam) * cover * shore;
-  o = vec4(shown((foam * ${g(FOAM_WHITE)} * lit + (1.0 - foam) * shore * light) / max(held, 1e-4), vRel), held);
+  vec3 water=shown((foam * ${g(FOAM_WHITE)} * lit + (1.0 - foam) * shore * light) / max(held, 1e-4), vRel);
+  o=vec4(water,held);
+  if (film>0.) {
+    float alpha=held+(1.-held)*film;
+    o=vec4(water*(held/max(alpha,.0001)),alpha);
+  }
 }`;

@@ -9,7 +9,8 @@ import { STREET_GLSL } from "./street-finish.ts";
 import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
-import { DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE } from "./packet.ts";
+import { DIGITS_GLSL } from "./digits.ts";
+import { DETAIL_DIGITS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE } from "./packet.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
@@ -135,7 +136,18 @@ const POOL_SHAPE = `vec3 poolOf(vec2 c) {
 vec3 wireOf(vec2 c) {
   return vec3(1.0 - smoothstep(0.35, 1.0, abs(c.y)), 0.0, 1.0);
 }
+vec3 wakeOf(vec2 c, float seed) {
+  float phase=6.283185*seed;
+  float spine=c.x-.30*sin(2.8*c.y+phase)-.12*sin(7.*c.y-2.*phase);
+  float edge=1.-smoothstep(.48,1.,abs(c.y));
+  float veil=1.-smoothstep(.06,.52,abs(spine));
+  float lace=sin(8.*spine+1.9*sin(4.*c.y+phase))+.72*sin(10.*c.y+2.*phase);
+  float holes=smoothstep(-.55,.8,lace);
+  float fringe=(1.-smoothstep(.02,.18,abs(spine-.34)))*smoothstep(-.5,.7,sin(7.*c.y-phase));
+  return vec3(edge*(veil*(.12+.73*holes)+.36*fringe),0.,.90+.10*holes);
+}
 vec3 pooled(vec2 c) {
+  if (vFlags == ${DETAIL_WAKE}u) return wakeOf(c,vGrey);
   return (vFlags & 7u) == ${DETAIL_WIRE & 7}u ? wireOf(c) : poolOf(c);
 }
 `;
@@ -146,7 +158,13 @@ ${INS}uniform vec3 uSun, uSky;
 uniform vec2 uFog;
 uniform float uLight;
 out vec4 o;
-${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}void main() {
+${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}void main() {
+  if (vFlags == ${DETAIL_DIGITS}u) {
+    vec3 g = digitsOf(vCorner);
+    if (g.x * vShows < 0.004) discard;
+    o = vec4(mix(DIGITS_OUTLINE, vA * g.z, g.y), g.x * vShows);
+    return;
+  }
   vec3 s = (vFlags & ${DETAIL_POOL}u) != 0u ? pooled(vCorner) : (vFlags & ${DETAIL_LAMP}u) != 0u ? lampOf(vCorner)
          : (vFlags & ${DETAIL_ROTOR}u) != 0u ? rotorOf(vCorner, vGrey) : shapeOf(vFlags & 7u, vCorner);
   float a = covers(s.x);
@@ -162,10 +180,17 @@ export const DETAIL_LIT_FRAGMENT = `#version 300 es
 precision highp float;
 ${INS}uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
+  // A damage number shows its own colours as the HUD would, whatever the light, and is never fogged: it is 2 m off.
+  if (vFlags == ${DETAIL_DIGITS}u) {
+    vec3 g = digitsOf(vCorner);
+    if (g.x * vShows < 0.004) discard;
+    o = vec4(shown(mix(linear(DIGITS_OUTLINE), linear(vA) * g.z, g.y) / fSunColor.w, vRel), g.x * vShows);
+    return;
+  }
   if (vFlags == ${DETAIL_TIRE}u) {
     float core = max(0.0,1.0-dot(vCorner,vCorner));
     o = vec4(0.0,0.0,0.0,0.90*core*core*(3.0-2.0*core)*vShows);
@@ -196,7 +221,7 @@ void main() {
   if (a < 0.004) discard;
   vec3 v = -normalize(vRel);
   vec3 n = facing(v);
-  vec3 albedo = linear(vec3(t.r)) * mix(mix(linear(vA), linear(vB), t.g) / (rotor ? 1.0 : vGrey), vec3(1.0), t.b);
+  vec3 albedo = linear(vec3(t.r)) * mix(mix(linear(vA), linear(vB), t.g) / (rotor || vFlags == ${DETAIL_WAKE}u ? 1.0 : vGrey), vec3(1.0), t.b);
   vec3 light = (vFlags & ${DETAIL_LIT}u) != 0u ? lit(albedo, vec3(1.0, 1.0, 0.0), n, v, vec3(0.0), sunShadow(vRel, n)) : albedo / fSunColor.w;
   o = vec4(shown(light, vRel), a);
 }`;
@@ -208,6 +233,22 @@ export function poolOf(x: number, y: number, out: Float64Array | number[]): void
   out[0] = a * a;
   out[1] = 0;
   out[2] = 1;
+}
+
+/** Seeded streak of foam stretched along the flow at a stern socket. Twin of wakeOf in the detail shaders. */
+export function wakeFoam(x: number, y: number, seed: number, out: Float64Array | number[]): void {
+  const smooth = (a: number, b: number, v: number) => {
+    const t = Math.max(0, Math.min(1, (v - a) / (b - a)));
+    return t*t*(3-2*t);
+  };
+  const phase = 6.283185 * seed;
+  const spine = x - .30*Math.sin(2.8*y+phase) - .12*Math.sin(7*y-2*phase);
+  const edge = 1-smooth(.48,1,Math.abs(y)), veil=1-smooth(.06,.52,Math.abs(spine));
+  const lace = Math.sin(8*spine+1.9*Math.sin(4*y+phase))+.72*Math.sin(10*y+2*phase);
+  const holes = smooth(-.55,.8,lace);
+  const fringe=(1-smooth(.02,.18,Math.abs(spine-.34)))*smooth(-.5,.7,Math.sin(7*y-phase));
+  out[0] = edge*(veil*(.12+.73*holes)+.36*fringe);
+  out[1] = 0; out[2] = .90+.10*holes;
 }
 
 /** Twin of a wire's width in both shader tiers: `y` across it. */

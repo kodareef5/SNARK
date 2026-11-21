@@ -64,8 +64,8 @@ test("Meridian sits in the grounded Rex’s driver seat and the loader prioritiz
   const motion = new AnimState();
   motion.unpack(actors.anim[0]!);
   expect(motion).toMatchObject({ grounded: true, mode: MODE_WALK, speed: 0 });
-  expect(actors.kind[0]).toBe(reg.index.get("core:rex"));
-  expect(actors.gear[GEAR_WORN]).toBe(reg.index.get("core:saddle_rex"));
+  expect(actors.kind[0]).toBe(reg.index.get("core:rex")!);
+  expect(actors.gear[GEAR_WORN]).toBe(reg.index.get("core:saddle_rex")!);
   expect([...actors.colors.slice(0, 6)]).toEqual([8, 7, 14, 6, 9, 3]);
   expect(heroMeshes).toContain("core:rex");
   expect(actors.seat[1]).toBe(actors.id[0]! + 1);
@@ -74,7 +74,7 @@ test("Meridian sits in the grounded Rex’s driver seat and the loader prioritiz
   expect(actors.y[0]).toBeCloseTo(0);
   expect(heroMeshes).toContain("core:saddle_rex/worn");
   for (const [i, name] of ["hat", "shirt", "gloves", "pants", "boots"].entries())
-    expect(actors.gear[GEAR_COUNT + GEAR_WORN + i]).toBe(reg.index.get("core:meridian_" + name));
+    expect(actors.gear[GEAR_COUNT + GEAR_WORN + i]).toBe(reg.index.get("core:meridian_" + name)!);
 });
 
 test("the shore clock opens face-on, completes a turn about the keel, and keeps the red beam on its rotating tip", () => {
