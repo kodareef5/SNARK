@@ -201,12 +201,12 @@ test("the storm hides the beam's end for as long as the beam is lit, and lightni
     // The instrument's own lights: never dark while it is open, never past their cap, and brighter in a strike.
     const light = channel(frame, 3000, 400, 4000);
     expect(light).toBeGreaterThan(0.25);
-    expect(light).toBeLessThan(15);
+    expect(light).toBeLessThan(30);
     most = Math.max(most, light);
-    if (light > 3.6) strikes++;
+    if (light > 8) strikes++;
   }
   expect(strikes).toBeGreaterThan(2);
-  expect(most).toBeGreaterThan(3.6);
+  expect(most).toBeGreaterThan(8);
   // With no site lit they give nothing, and the glow program shows them in their plain colour.
   expect(channel(new Float32Array(FRAME_FLOATS), 0, 0, 0)).toBe(0);
 });

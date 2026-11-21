@@ -1886,7 +1886,7 @@ export class Rasterizer {
             const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!);
             const n = Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
             const facing = Math.abs(carried[0]! * carriedNormal[0]! + carried[1]! * carriedNormal[1]! + carried[2]! * carriedNormal[2]!) / Math.max(1e-10, dist * n);
-            const row = 8 * (1 - v), band = Math.floor(row), strip = band === CHANNEL_STRIP;
+            const row = 8 * v, band = Math.floor(row), strip = band === CHANNEL_STRIP;
             const across = strip ? 2 * Math.max(0, Math.min(1, (row - band - 0.04) / 0.92)) - 1 : Math.sqrt(Math.max(0, 1 - facing * facing));
             eyeEnergy(p.frame, carried[0]!, carried[1]!, carried[2]!, strip ? NaN : u * 32, across, dist * 0.0015, energy);
             for (let c = 0; c < 3; c++) this.color[at * 4 + c] = 255 * (1 - Math.exp(-energy[c]! * (band === CHANNEL_DIM ? 0.3 : 1)));

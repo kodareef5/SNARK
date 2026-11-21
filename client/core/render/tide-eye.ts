@@ -172,7 +172,7 @@ export const CHANNEL_STRIP = 4, CHANNEL_DIM = 7;
 const energyRun = (t: number, phase: number): number => 2.2 * t + 20 * sstep(4, 13, phase);
 const ENERGY_WHITE = [1, 0.96, 0.9];
 /** The channels' light after exposure: as bright as the old glow's, which was 2 to 3 where it was lit and more in a strike. */
-const ENERGY_GAIN = 2.4;
+const ENERGY_GAIN = 3.2;
 /**
  * An instrument's own light at a camera-relative point of one of its channels, into `out` as light after exposure: energy
  * held in the channel, hot at its middle and falling off softly to its walls, threaded with filaments that run along it
@@ -217,9 +217,9 @@ export function eyeEnergy(frame: Float32Array, x: number, y: number, z: number, 
     const sparkAt = (a - 9 * run) / 2.5, cell = Math.floor(sparkAt), into = (sparkAt - cell) * 2.5;
     const spark = eyeHash(cell, 23, 6) < 0.35 ? Math.exp(-(((into - 0.4 - 1.7 * eyeHash(cell, 29, 6)) / 0.12) ** 2) - (((across - 1.6 * eyeHash(cell, 31, 6) + 0.8) / 0.15) ** 2)) * sstep(0.15, 0.04, footprint) : 0;
     const pulse = open * (0.62 + 0.12 * Math.sin(1.25 * t) + 0.3 * power + (0.2 + 0.7 * charge) * surge + 1.3 * lit);
-    const e = pulse * (0.45 + 0.55 * threads + (0.7 + 0.9 * charge + 0.3 * power) * packet + 1.2 * spark) * beads;
-    const core = Math.exp(-across * across * 8), body = Math.exp(-across * across * 2.6);
-    const hot = e * core, white = 0.55 * hot * hot;
+    const e = pulse * (0.3 + 1.1 * threads + (0.9 + 0.9 * charge + 0.3 * power) * packet + 1.4 * spark) * beads;
+    const core = Math.exp(-across * across * 6), body = Math.exp(-across * across * 2.2);
+    const hot = e * core, white = 0.9 * hot * hot;
     for (let c = 0; c < 3; c++) out[c] = ENERGY_GAIN * (frame[at + 4 + c]! * e * body * 1.45 + ENERGY_WHITE[c]! * white);
   }
 }
@@ -292,7 +292,7 @@ function stormCloud(qx: number, qz: number, sheet: number, seed: number, dir: nu
   const arm = 0.5 + 0.5 * Math.cos((3 + Math.floor(fract(seed * 17.9) * 2)) * Math.atan2(wz, wx + 1e-10) + 2 * heap);
   const wall = 1 - sstep(0.25, 0.9, r), env = 1 - sstep(reach * 0.4, reach * 0.85, r);
   // As the storm thins its thinnest cloud goes first, down to the knot.
-  const c = Math.max(clamp(cover * 1.5 - 0.9 * (1 - storm)) * mix(mix(0.25, 1, sstep(0.15, 0.7, arm)), 1, wall) * env, sstep(0.45, 0.15, r) * storm);
+  const c = Math.max(clamp(cover * 2.1 - 0.9 * (1 - storm)) * mix(mix(0.3, 1, sstep(0.08, 0.6, arm)), 1, wall) * env, sstep(0.45, 0.15, r) * storm);
   out[0] = c * Math.min(1, storm * 3);
   out[1] = Math.max(heap * (0.4 + 0.6 * wall) * env, sstep(0.3, 0.1, r));
 }
@@ -594,9 +594,9 @@ vec3 eyeEnergy(vec3 rel, float along, float across, float footprint) {
     float sx = (into-.4-1.7*eyeHash(vec2(cell,29.),6.))/.12, sy = (across-1.6*eyeHash(vec2(cell,31.),6.)+.8)/.15;
     float spark = eyeHash(vec2(cell,23.),6.) < .35 ? exp(-sx*sx-sy*sy)*smoothstep(.15,.04,footprint) : 0.;
     float pulse = foot.w*(.62+.12*sin(1.25*t)+.3*tint.w+(.2+.7*charge)*surge+1.3*lit);
-    float e = pulse*(.45+.55*threads+(.7+.9*charge+.3*tint.w)*packet+1.2*spark)*beads;
-    float hot = e*exp(-across*across*8.);
-    light = ${g(ENERGY_GAIN)}*(tint.rgb*e*exp(-across*across*2.6)*1.45+vec3(${ENERGY_WHITE.map(g).join(",")})*.55*hot*hot);
+    float e = pulse*(.3+1.1*threads+(.9+.9*charge+.3*tint.w)*packet+1.4*spark)*beads;
+    float hot = e*exp(-across*across*6.);
+    light = ${g(ENERGY_GAIN)}*(tint.rgb*e*exp(-across*across*2.2)*1.45+vec3(${ENERGY_WHITE.map(g).join(",")})*.9*hot*hot);
   }
   return light;
 }`;
@@ -644,7 +644,7 @@ vec2 eyeStormCloud(vec2 q, float sheet, float seed, float dir, float t, float st
   float heap = clamp(max(max(s1.y,s2.y),s3.y)*1.2+.15*(s1.y+s2.y+s3.y),0.,1.);
   float arm = .5+.5*cos((3.+floor(fract(seed*17.9)*2.))*atan(w.y,w.x+1.e-10)+2.*heap);
   float wall = 1.-smoothstep(.25,.9,r), env = 1.-smoothstep(reach*.4,reach*.85,r);
-  float c = max(clamp(cover*1.5-.9*(1.-storm),0.,1.)*mix(mix(.25,1.,smoothstep(.15,.7,arm)),1.,wall)*env,smoothstep(.45,.15,r)*storm);
+  float c = max(clamp(cover*2.1-.9*(1.-storm),0.,1.)*mix(mix(.3,1.,smoothstep(.08,.6,arm)),1.,wall)*env,smoothstep(.45,.15,r)*storm);
   return vec2(c*min(1.,storm*3.),max(heap*(.4+.6*wall)*env,smoothstep(.3,.1,r)));
 }
 float eyeBolt(float u, float v, float id, float len, float w) {
