@@ -7,17 +7,18 @@
 // fading where it stands. Each ignition takes a seed from the site and the cycle's number on the server's clock, so every
 // observer sees the same one: the seed picks one of three figures for that instrument, never the one before, and its
 // hand, size, pace and bearing.
-import { EMITTERS, EYE_COLORS, EYE_FORMS, KEEL, LANTERN_MASTS, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { EMITTERS, EYE_COLORS, EYE_FORMS, EYE_KNOT, EYE_PERIOD, KEEL, LANTERN_MASTS, aperture, eyePhase, eyePower, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
 import { FRAME, FRAME_BLOCK } from "./packet.ts";
 
-export const EYE_PERIOD = 120;
+// The site's clock is shared with the server, which times a supply drop's cast by it (shared/world/tide-eye.ts).
+export { EYE_PERIOD, aperture, eyePhase, eyePower };
 export const EYE_SLOTS = 3;
 /** Floats a site: where its figure's centre is, its phase and kind; its tint and power; its clock, bloom, seed and storm; its beam's foot, its heading and how lit it is. */
 export const EYE_FLOATS = 16;
 /** Metres over the datum of the figure's first sheet. */
 export const EYE_SKY = 3450;
 /** Metres over the datum of the storm's sheets under the figure: the knot the beam ends in, then the storm's three. */
-const STORM_SHEETS = [2790, 3000, 3150, 3300] as const;
+const STORM_SHEETS = [EYE_KNOT, 3000, 3150, 3300] as const;
 const KNOT_SHEET = STORM_SHEETS[0];
 /** How hard the storm's turn winds its cloud into a spiral: radians a step of e in its distance from the axis. */
 const STORM_WIND = 0.8;
@@ -42,18 +43,6 @@ const fract = (v: number): number => v - Math.floor(v);
 const mod = (a: number, b: number): number => a - b * Math.floor(a / b);
 const mix = (a: number, b: number, t: number): number => a + (b - a) * t;
 
-/** Seconds within one site's cycle. Off, align, charge, ignite, hold and fade; every observer reads the server clock. */
-export function eyePhase(seconds: number, site: TideEyeSite): number {
-  return ((seconds + EYE_COLORS.indexOf(site.color) * 40) % EYE_PERIOD + EYE_PERIOD) % EYE_PERIOD;
-}
-/** How open the mechanism is, and with it whether the beam is lit. */
-export function aperture(phase: number): number {
-  return smooth((phase - 6) / 4) * smooth((120 - phase) / 4);
-}
-/** The figure's brightness: up over five seconds from the ninth, held, and fading from the twenty-eighth to the thirty-eighth. */
-export function eyePower(phase: number): number {
-  return smooth((phase - 9) / 5) * (1 - smooth((phase - 28) / 10));
-}
 /** The figure's size. It never shrinks: it opens fast, then drifts on outward as it fades. */
 export function eyeBloom(phase: number): number {
   const a = Math.max(0, phase - 9);

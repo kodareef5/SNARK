@@ -11,6 +11,8 @@ import { offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { mapHeightfield, mapNodes, mapTops, parseMap, placeStatics, resolveNodes, writeMap, type MapData, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
+import { OBELISK } from "../shared/world/obelisks.ts";
+import type { TideEyeSite } from "../shared/world/tide-eye.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_POOL, PROVING_SEA_LEVEL, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodeLayers } from "../shared/world/proving.ts";
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
@@ -35,6 +37,12 @@ export interface ServerWorld extends CollisionWorld {
   readonly spawns: readonly { readonly name: string; readonly x: number; readonly z: number; readonly yaw: number }[];
   /** The spawn zones of the map's definition, in its order, then the spawn regions of its file. */
   readonly zones: readonly MapZone[];
+  /**
+   * The map's obelisks with a display (the map file's head), in its order, whose clocks time a supply drop's cast; and
+   * every obelisk's place, those first and then the ones that are still plain blocks, which a drop is cast from.
+   */
+  tideEyes: readonly TideEyeSite[];
+  obelisks: readonly { readonly x: number; readonly z: number; readonly eye: number }[];
   /** `nodes` (from CollisionWorld) is this field's store. */
   readonly nodeField: NodeField | null;
   /** The field's nodes in chunks nobody has loaded, which placements test too (server/place.ts). */
@@ -88,6 +96,8 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     spawns: spawns ?? [{ name: "Spawn", ...spawn }],
     zones,
     tick: 0,
+    tideEyes: [],
+    obelisks: [],
     dayOffset: offsetForHour(0, 9),
   };
 }
@@ -127,6 +137,15 @@ export function createMapWorld(reg: Registry, map: MapFile, opts: WorldOptions =
   const world = createWorld(reg, map.dims, hf, map.id, map.hash, map.spawns[0]!, opts.entityMax ?? ENTITY_LIMIT, map.spawns, mapNodes(map, hf, reg) ?? undefined, zones, opts.entityStart);
   placeStatics(map, world.structs, reg);
   world.statics = map.statics.unordered();
+  world.tideEyes = map.tideEyes ?? [];
+  // A plain obelisk is three blocks one on another: one place for the three.
+  const places = world.tideEyes.map((site, eye) => ({ x: site.x, z: site.z, eye }));
+  const { kinds, kind, x, z } = world.statics;
+  const plain = kinds.indexOf(OBELISK);
+  for (let i = 0; plain >= 0 && i < kind.length; i++) {
+    if (kind[i] === plain && !places.some((p) => Math.abs(p.x - x[i]!) < 1 && Math.abs(p.z - z[i]!) < 1)) places.push({ x: x[i]!, z: z[i]!, eye: -1 });
+  }
+  world.obelisks = places;
   return world;
 }
 
