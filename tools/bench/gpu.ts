@@ -131,7 +131,7 @@ export function plan(): Run[] {
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
   for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) for (const ab of ["roofs", "bounce"] as const) runs.push({ scene: "city", view: "street", tier, scale, ab });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
-  if (process.env.CITY_MARINA) for (const tier of ["medium", "high"]) runs.push({ scene: "city", view: "marina", tier, scale: 1 }, { scene: "city", view: "marina", tier, scale: 1, clock: true });
+  if (process.env.CITY_MARINA) for (const tier of ["medium", "high"]) for (const scale of [1, 2]) runs.push({ scene: "city", view: "marina", tier, scale });
   return runs;
 }
 
