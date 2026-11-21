@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "df318826372e7ecc",
+    "id": "ee6e872d6ede9cc5",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -125,7 +125,7 @@
       {"name": "core-structures-stations", "file": "core-structures-stations.410055be0c5a.tar.zst", "bytes": 15740402, "sha256": "410055be0c5a211be6a8fd74e95b6b95a6cc9a5c501e03ba229748105d466ed8"},
       {"name": "core-structures-stone", "file": "core-structures-stone.771d1db1a386.tar.zst", "bytes": 138436122, "sha256": "771d1db1a3862aefd28fa334b0816c3bb7c2405b211cfe6c0d723f895a9c3f9d"},
       {"name": "core-structures-thatch", "file": "core-structures-thatch.c03fae60de49.tar.zst", "bytes": 185571995, "sha256": "c03fae60de49a8039410d1c5d018d14190a977af1935307b9aa97d07a36e4628"},
-      {"name": "core-structures-tide-eye", "file": "core-structures-tide-eye.872ce6cb1a8d.tar.zst", "bytes": 40637568, "sha256": "872ce6cb1a8d35eb5977571244d807f0d3ccba27aedf250b97dfab0e7bd51eb8"},
+      {"name": "core-structures-tide-eye", "file": "core-structures-tide-eye.36424480ff9a.tar.zst", "bytes": 40681444, "sha256": "36424480ff9a883c61e1fd0b4984d9f9d16a6942ee6a932419c37810b2bbe218"},
       {"name": "core-structures-wood", "file": "core-structures-wood.5f76c32dad28.tar.zst", "bytes": 111477830, "sha256": "5f76c32dad287ff0f09deb7f1bace555f06e80b95fde52e90795d7a3e3152788"},
       {"name": "core-vehicles-belvedere", "file": "core-vehicles-belvedere.d889f00cd392.tar.zst", "bytes": 48319648, "sha256": "d889f00cd392779650690630ca126b81d085e7b0619534df987755ad644be58d"},
       {"name": "core-vehicles-belvedere_damaged", "file": "core-vehicles-belvedere_damaged.08f29a289bca.tar.zst", "bytes": 23873939, "sha256": "08f29a289bcae79238101d7305033e625e715200d4a05eb42200bc0ce2074147"},
