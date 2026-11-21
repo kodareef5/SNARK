@@ -130,39 +130,47 @@
     "obelisks": [
       {
         "name": "Welcome to Fabulous Las Vegas",
+        "color": "green",
+        "form": "lantern",
         "at": [
+          -115.17373,
+          36.07987
+        ],
+        "face": [
           -115.17262,
           36.0812
         ],
-        "face": [
-          -115.17277,
-          36.08206
-        ],
-        "why": "on the sign's parking in the boulevard's median, facing it"
+        "deck": 28,
+        "why": "on the Bali Hai golf course west of the boulevard, 260 m from the sign in its median, which holds no deck: a lantern at the Strip's south gate, facing the sign"
       },
       {
         "name": "Sphere",
+        "color": "blue",
         "at": [
-          -115.1601,
-          36.1213
+          -115.16138,
+          36.12304
         ],
         "face": [
-          -115.16207,
-          36.12124
+          -115.1741,
+          36.1128
         ],
-        "why": "on the Sphere's parking lot A, facing it"
+        "deck": 28,
+        "why": "on open ground 200 m north of the Sphere, whose lots hold no deck: an eye beside the Sphere, which shows one, broadside to the Strip"
       },
       {
         "name": "The Strat",
+        "color": "red",
+        "form": "sextant",
         "at": [
-          -115.16,
-          36.1476
+          -115.15796,
+          36.14523
         ],
         "face": [
-          -115.15552,
-          36.14741
+          -115.1682,
+          36.1176
         ],
-        "why": "at the east end of Chester Stupak Park, facing the tower"
+        "deck": 16,
+        "why": "on a lot 330 m south-west of the tower, clear of its 350 m: broadside down the Strip, its index swinging as the tower's rides do"
       }
     ]
   },

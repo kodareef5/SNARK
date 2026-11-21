@@ -170,6 +170,19 @@ slots, keeps plants 14 m off, and lists the places in `stats.json`.
 terminal's front and walks it with the survivor's capsule; move an obelisk it
 cannot reach.
 
+An obelisk with a `color` (and a `form`: `sextant`, `lantern`, or none for the
+Tide Eye) is one of the instruments, and stands over a transfer deck with its
+terminal at the deck's middle. The deck is the largest disc within 750 m of
+`at`, up to 70 m across or the `deck` the entry names (its most radius in
+metres), and of the largest the nearest: open ground (no street, lot, path or
+water) with no piece within 6 m of its edge, whose ground rises no more than
+4 m over a square round it and those 6 m (`DECK_RELIEF`, `places.ts`). On a
+slope it is smaller, or found where the ground is more level. The build grades
+it flat at the height of its middle and blends its edge back into the ground
+over 4 m, or as wide as a bank of 1 in 1.5 needs, up to the 6 m, so a deck on a
+hillside is cut into it and built out from it by a bank a survivor walks up.
+On level ground, as Miami's three are, this places and grades them as before.
+
 The first input for each footprint is `blocks/labels.json`. Supplied heights
 win over levels and research. Missing values use supplied neighbours, then the
 map's district and area rules. `blocks/research.json` accepts era, style,
