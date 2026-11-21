@@ -101,9 +101,7 @@ export class GlRenderer {
    * What the light target is made of, `w` by `h`: the scene's framebuffer, multisampled, then its resolved copy's and
    * each bloom level's, with their textures; `drawn`, its corner the frame's scene fills; a pass's read (passExtent).
    */
-  private post = { size: "", w: 0, h: 0, fbs: [] as WebGLFramebuffer[], tex: [] as WebGLTexture[], bufs: [] as WebGLRenderbuffer[] };
-  private drawn: [number, number] = [0, 0];
-  private readonly extent = new Float32Array(4);
+  private post = { size: "", w: 0, h: 0, drawn: [0, 0] as [number, number], extent: new Float32Array(4), fbs: [] as WebGLFramebuffer[], tex: [] as WebGLTexture[], bufs: [] as WebGLRenderbuffer[] };
   /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
@@ -259,7 +257,7 @@ export class GlRenderer {
     const most = (f: number): number => (gl.getExtension("EXT_color_buffer_float") ? ((gl.getInternalformatParameter(gl.RENDERBUFFER, f, gl.SAMPLES) as Int32Array | null)?.[0] ?? 0) : 0);
     this.light = LIGHT_FORMATS.find((f) => most(f) > 0) ?? 0;
     this.samples = this.light && Math.min(LIGHT_SAMPLES, most(this.light));
-    this.post = { size: "", w: 0, h: 0, fbs: [], tex: [], bufs: [] };
+    this.post = { size: "", w: 0, h: 0, drawn: [0, 0], extent: this.post.extent, fbs: [], tex: [], bufs: [] };
     this.shadow = { texture: null, targets: [], size: 0 };
     this.open = { texture: null, size: 0 };
     this.programs.clear();
@@ -903,7 +901,7 @@ export class GlRenderer {
     if (this.post.size !== (finish ? `${tw} ${th} ${samples}` : "") && (finish || !p.alternate)) this.targets(finish ? tw : 0, th, samples);
     this.shadows(p, finish ? this.post.fbs[0]! : null);
     // Into the light target, the scene goes in the corner its share fills, which the finish takes up to the canvas.
-    gl.viewport(0, 0, ...(this.drawn = sceneSize(gl.drawingBufferWidth, gl.drawingBufferHeight, finish ? p.share : 1)));
+    gl.viewport(0, 0, ...(this.post.drawn = sceneSize(gl.drawingBufferWidth, gl.drawingBufferHeight, finish ? p.share : 1)));
     const sky = finish ? p.sky : p.skyShown;
     gl.clearColor(sky[0]!, sky[1]!, sky[2]!, this.transparentStage ? 0 : 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -1119,7 +1117,7 @@ export class GlRenderer {
 
   /** The finish (post.ts): the scene resolved, bloom's chain down and then up, adding, and the finish into the canvas. */
   private toCanvas(p: FramePacket): void {
-    const gl = this.gl, t = this.post, levels = Math.min(p.frame[FRAME.levels]!, t.tex.length - 1), [w, h] = this.drawn;
+    const gl = this.gl, t = this.post, levels = Math.min(p.frame[FRAME.levels]!, t.tex.length - 1), [w, h] = this.post.drawn;
     this.passes?.mark(PASS_FINISH);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0]!);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbs[1]!);
@@ -1142,14 +1140,14 @@ export class GlRenderer {
 
   /** A pass of the finish with program `n`, from level `from` (0 the scene) into level `to`'s corner the scene fills, or into the whole canvas for -1. */
   private pass(p: FramePacket, n: number, from: number, to: number): void {
-    const gl = this.gl, t = this.post, [w, h] = this.drawn, cw = gl.drawingBufferWidth, ch = gl.drawingBufferHeight;
+    const gl = this.gl, t = this.post, [w, h] = this.post.drawn, cw = gl.drawingBufferWidth, ch = gl.drawingBufferHeight;
     const prog = this.use(n, p);
     gl.bindFramebuffer(gl.FRAMEBUFFER, to < 0 ? null : t.fbs[to + 1]!);
     gl.viewport(0, 0, to < 0 ? cw : Math.max(1, w >> levelShift(to)), to < 0 ? ch : Math.max(1, h >> levelShift(to)));
     gl.activeTexture(gl.TEXTURE0 + UNIT.details);
     gl.bindTexture(gl.TEXTURE_2D, t.tex[from]!);
     gl.uniform4f(prog.at[U.pass]!, 1 / Math.max(1, t.w >> tapShift(from, to)), 1 / Math.max(1, t.h >> tapShift(from, to)), from === 0 ? 1 : 0, w < cw || h < ch ? 1 : 0);
-    gl.uniform4fv(prog.at[U.extent]!, passExtent(w, h, t.w, t.h, from, to, this.extent));
+    gl.uniform4fv(prog.at[U.extent]!, passExtent(w, h, t.w, t.h, from, to, this.post.extent));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.drawCalls++;
   }
