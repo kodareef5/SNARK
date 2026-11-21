@@ -11,7 +11,7 @@
 import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
 import type { LootDef } from "../shared/content/defs.ts";
 import { hashString } from "../shared/hash.ts";
-import { S_SUPPLY } from "../shared/net/protocol.ts";
+import { S_SUPPLY, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { rollLoot, type LootDrop } from "../shared/sim/loot.ts";
@@ -285,6 +285,7 @@ export class Supply {
     this.calls++;
     this.ctx.deadlines.push(d.land, DEADLINE_SUPPLY, d.id, d.land);
     this.changed();
+    if (rules.announce === "chat") this.tell(d);
     return d;
   }
 
@@ -300,6 +301,30 @@ export class Supply {
     if (d.left > 0) {
       if (stamp === d.left + LEAVE_SECONDS * TICK_RATE) this.forget(d);
     } else if (!d.landed && stamp === d.land) this.land(d);
+  }
+
+  /** Tells every survivor in the world of a drop just called, each how far off it is and which way: the book's "chat". */
+  private tell(d: Drop): void {
+    const { game, world } = this.ctx;
+    const what = `A ${d.ringed ? "ringed " : ""}${d.tierName} ${d.clsName} drop`;
+    for (const c of game.clients) {
+      if (!c?.active || c.closed) continue;
+      if (c.ent < 0) {
+        game.sendText(c, TEXT_NOTICE, `${what} is coming down.`);
+        continue;
+      }
+      // The map's x runs west and its z north (shared/world/coords.ts).
+      const east = world.ents.x[c.ent]! - d.x;
+      const north = d.z - world.ents.z[c.ent]!;
+      const far = Math.hypot(east, north);
+      // The eight winds, by which of the two is the greater and whether the lesser is more than its tangent of 22.5 degrees.
+      const ns = north >= 0 ? "north" : "south";
+      const ew = east >= 0 ? "east" : "west";
+      const a = Math.abs(north);
+      const b = Math.abs(east);
+      const way = a > b * 2.414 ? ns : b > a * 2.414 ? ew : `${ns}-${ew}`;
+      game.sendText(c, TEXT_NOTICE, far < 50 ? `${what} is coming down here.` : `${what} is coming down ${far < 950 ? `${Math.round(far / 10) * 10} m` : `${(far / 1000).toFixed(1)} km`} to the ${way}.`);
+    }
   }
 
   /** The survivors in the world now, where each stands. */
@@ -501,7 +526,9 @@ export class Supply {
     d.end = land + (d.end - d.land);
     d.land = land;
     // Its cast has left already where there is no time for it to leave and fly: it is seen part of the way, or arriving.
-    d.release = land - flight;
+    // In a world younger than a flight it left at the world's first tick, and flies the faster.
+    d.release = Math.max(0, land - flight);
+    d.brake = Math.max(1, Math.min(d.brake, land - d.release - 1));
     d.called = Math.min(d.called, d.release);
     this.ctx.deadlines.push(d.land, DEADLINE_SUPPLY, d.id, d.land);
     this.changed();

@@ -273,12 +273,15 @@ test("the console brings a drop down, takes one away, and says what it cannot do
   expect(h.say(ada, "supply call 300 300 meridian voyage plain")[0]).toMatch(/^called 2: meridian voyage at 300 300/);
   const [a, b] = h.host.supply.drops as [Drop, Drop];
   expect(h.say(ada, "supply land 1 3")).toEqual(["drop 1 lands in 3 s"]);
-  expect([a.land - h.world.tick <= 3 * TICK_RATE + 1, a.land - a.release, a.release >= a.called, ada.supply]).toEqual([true, 30 * TICK_RATE, true, told(h)]);
+  // This world is younger than a flight, so its cast left at the world's first tick and flies the faster.
+  expect([a.land - h.world.tick <= 3 * TICK_RATE + 1, a.release, a.land - a.release < 30 * TICK_RATE, a.release >= a.called, ada.supply]).toEqual([true, 0, true, true, told(h)]);
   // Its cast is under way already, seen arriving.
   expect(["flying", "braking"]).toContain(h.host.supply.state(a));
   h.run(3500);
   expect([a.landed, b.landed, capsules(h).length]).toEqual([true, false, 1]);
   expect(h.say(ada, "supply land all")).toEqual(["drop 2 lands in 0 s"]);
+  // In a world younger than a flight the cast left at its first tick: no tick of a drop is before the world's.
+  expect([b.release >= 0, b.called >= 0, b.brake < b.land - b.release, ada.supply.rows.every((r) => r.called >= 0 && r.called < 1e9)]).toEqual([true, true, true, true]);
   h.run(300);
   expect([b.landed, capsules(h).length, h.say(ada, "supply land all")]).toEqual([true, 2, ["none of them is pending"]]);
   expect(h.say(ada, "supply list")).toEqual([expect.stringMatching(/^1: ringed red stable at 250 250, landed, \d+ s left$/), expect.stringMatching(/^2: meridian voyage at 300 300, landed, \d+ s left$/)]);

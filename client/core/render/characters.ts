@@ -1611,9 +1611,10 @@ export class Characters {
    * Queues a rigid mesh that has its own position and direction, such as an arrow in the air. Its origin goes to (x, y, z)
    * relative to the camera and its +Z along the unit direction (dx, dy, dz), stretched `length` times along it and `wide`
    * times across. It is drawn through the bone path with one bone, which gives it a tilt and a size as well as a facing.
+   * `region0` is the palette colour of its first colour region, for a mesh that has one.
    * False when the frame has no room left, and then it is counted dropped.
    */
-  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1): boolean {
+  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1, region0 = 0): boolean {
     const first = this.room(p, 1, 1);
     if (first < 0) return false;
     // Right is level and square to the direction. Up is the direction crossed with right, so the basis keeps its handedness.
@@ -1650,6 +1651,7 @@ export class Characters {
     this.firstBone[n] = first;
     this.region0[n] = 0;
     this.colors.fill(0, n * 6, n * 6 + 6);
+    this.colors[n * 6] = region0;
     this.id[n] = 0;
     this.near[n] = SEEN;
     this.mask[n] = 0;

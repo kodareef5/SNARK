@@ -65,7 +65,7 @@ export const IMAGE_MAP = 2;
 
 export { MINIMAP_SIZE };
 const MARGIN = 12;
-export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH };
+export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH, drop: S_MARK_SELF, dropPip: S_MARK_SELF };
 /** Colours of the kinds that have no style of their own. */
 export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a };
 
@@ -246,7 +246,9 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
         placeArrow(f.add(KEY_SELF_ARROW, K_IMAGE, x - side / 2, y - side / 2, side, side, S_FRAME), m.dial.heading);
         continue;
       }
-      f.add(KEY_MARKER + shown++, K_PANEL, x - 2, y - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
+      // A drop told of on the compass alone is not on the map, the small one either.
+      if (k.kind === "dropPip") continue;
+      f.add(KEY_MARKER + shown++, K_PANEL, x - 2, y - 2, 4, 4, MARKER_STYLE[k.kind]).tint = (k.tint ?? -1) >= 0 ? k.tint! : (MARKER_TINT[k.kind] ?? -1);
     }
     if (inspect || options.diagnostics) f.text(KEY_CLOCK, mapX, mapTop + MAP + 4, MAP, S_LABEL, m.clock);
     if (mapTools) for (let i = 0; i < 2; i++) {

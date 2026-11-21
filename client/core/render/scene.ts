@@ -38,6 +38,7 @@ import { StreetWires } from "./street-wires.ts";
 import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
+import type { SupplyView } from "../supply.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
 import { FAR_FROM, farPlane, type Camera } from "./camera.ts";
@@ -518,6 +519,8 @@ export class Scene {
   private readonly birthScale: Float32Array;
   /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
   shots: Shots | null = null;
+  /** The supply drops live on the map, drawn from the list the server tells (client/core/supply.ts). The app sets it. */
+  supply: SupplyView | null = null;
   shotTick = 0;
   /** Structures falling after a removal. The app sets it. */
   falling: Falling | null = null;
@@ -2020,8 +2023,9 @@ export class Scene {
       }
       ch.corpses(p, cam, remote, this.world);
     }
-    // Then the shots in the air.
+    // Then the shots in the air, and the supply drops' shafts and capsules.
     this.shots?.draw(ch, p, cam, this.shotTick);
+    this.supply?.draw(ch, p, cam);
     if (remote) {
       this.vehicleSeats.fill(undefined, 0, remote.count);
       this.seated.fill(0, 0, remote.count);

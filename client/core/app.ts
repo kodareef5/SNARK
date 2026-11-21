@@ -39,6 +39,7 @@ import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
+import { SupplyView } from "./supply.ts";
 import { Falling } from "./rubble.ts";
 import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
@@ -175,6 +176,7 @@ export class App {
   private readonly seated = seatScratch();
   private readonly mountState = new AnimState();
   readonly shots: Shots;
+  readonly supply: SupplyView;
   /** Null until the world arrives. */
   falling: Falling | null = null;
   /** Eased toward what the held weapon and the aim button ask for. */
@@ -311,6 +313,7 @@ export class App {
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
     void import("./ui/storage.ts").then((m) => (this.ui.storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
     this.shots = new Shots(reg, pack);
+    this.supply = new SupplyView(reg, pack);
     const nodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
     session.onNode = (chunk, index, used, crushed, priorForm) => {
       const field = session.nodeField;
@@ -1008,6 +1011,10 @@ export class App {
           return `E  take ${r.name[hit]}${r.grown[hit] !== 0 ? `  ${left} to hatch` : ""}`;
         }
         if (r.grown[hit] !== 0) return `${r.name[hit]}  hatches in ${left}`;
+        // A supply drop's capsule opens at its tier's level: below it the prompt says the level, and no key.
+        const drop = this.reg.takeOnly[r.kind[hit]!] === 1 ? s.supply.rows.find((d) => d.landed && d.left === 0 && Math.abs(d.x - r.x[hit]!) < 0.5 && Math.abs(d.z - r.z[hit]!) < 0.5) : undefined;
+        const level = drop ? (s.supply.tiers[drop.tier]?.level ?? 0) : 0;
+        if (!s.open && s.progress.level < level) return `${r.name[hit]}  opens at level ${level}`;
         return `E  ${s.open ? "close" : "open"} ${r.name[hit]}`;
       }
       if (r.team[hit] === 0 && r.grown[hit] !== 0) {
@@ -1231,6 +1238,7 @@ export class App {
       this.split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
       this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream, { farPalms: this.farPalms });
       this.scene.shots = this.shots;
+      this.scene.supply = this.supply;
       this.scene.plainSky = this.plainSky;
       if (this.stress) {
         const made = stressThings(this.scene.assets, world.hf, PROVING_SPAWN, world.hf.heightAt(PROVING_SPAWN.x, PROVING_SPAWN.z) + 1.62);
@@ -1558,6 +1566,8 @@ export class App {
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
+    this.supply.list = session.supply;
+    this.supply.tick = session.tickClock;
     this.falling!.absorb(session.rubble, nowMs, cam.x, cam.y, cam.z);
     this.falling!.step(nowMs);
     const beams = this.scene.beams;
