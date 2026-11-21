@@ -42,6 +42,11 @@ export function supplyCommands(): ConsoleCommand[] {
             `${book.tiers.length} tiers (${book.tiers.map((t) => t.key).join(", ")}), ${book.classes.length} classes (${book.classes.map((k) => k.key).join(", ")})`,
             `${c.tables.size} tables, ${c.report.dormant.length} dormant, ${c.report.waiting.length} ids waiting for the game to have them`,
             `${book.circuits.length} circuits, ${book.sites.length} sites; ${supply.live()} drops live, ${supply.calls} called and ${supply.landings} landed since the start`,
+            ...book.circuits.map((k) => {
+              const st = supply.circuits.get(k.key);
+              return `circuit ${k.key}: ${!k.on || !st ? "off" : `looks in ${secs(st.due - tick)}${st.why === "" ? "" : `; last time, ${st.why}`}`}, ${k.sites.length === 0 ? "open ground" : `${k.sites.length} sites`}`;
+            }),
+            ...(supply.overrides.size === 0 ? [] : [`ConfigOverrideSupplyCrateItems gives the tables of ${[...supply.overrides].map(([tier, t]) => `${tier}${t.plain && t.ringed ? "" : t.ringed ? " (ringed)" : " (plain)"}`).join(", ")}`]),
           ].join("\n");
         }
         if (verb === "call") {

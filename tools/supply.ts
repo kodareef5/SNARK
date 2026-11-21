@@ -88,6 +88,10 @@ if (import.meta.main) {
     process.exit(1);
   }
   const what = args[0] ?? "report";
+  if (what === "sites") {
+    await (await import("./supply/sites.ts")).sitesCommand(args.slice(1));
+    process.exit(0);
+  }
   const pct = (v: number, of: number): string => `${Math.round((v / of) * 100)}%`.padStart(4);
   if (what === "fit") {
     const { scales, stuck } = fit(catalog);

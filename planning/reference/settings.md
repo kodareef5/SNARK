@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 536 of them: 164 take effect,
-183 wait for a feature that is not built yet, and 189 have no meaning in this
+is listed here, 536 of them: 170 take effect,
+177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -33,6 +33,7 @@ may change a setting without a restart.
 | `OverrideOfficialDifficulty` | 0 | The difficulty itself, when above 0: 5.0 gives wild creatures up to level 150. *A patch note says the most is 5; hosts recommend up to 6. Not verified.* | no |
 | `DinoCountMultiplier` | 1 | How many wild creatures each spawn region keeps. Higher is more. *Each region holds its number times this, rounded. A region already over it is not thinned.* | no |
 | `ServerAutoForceRespawnWildDinosInterval` | 0 | At a start, every wild creature is replaced if this many seconds have passed since a start last did so. 0 is never. *Seconds of the wall clock, as official servers use it for weekly respawns. The reference does not say what it counts from; here, from the last start that replaced them, or the first start that kept the count.* | no |
+| `RandomSupplyCratePoints` | False | Supply drops land on open ground drawn at random, and not at the drop book's sites. | yes |
 | `PlayerDamageMultiplier` | 1 | Damage survivors deal. Higher is more. | yes |
 | `PlayerResistanceMultiplier` | 1 | Damage survivors take. Higher takes more: 0.5 halves it. | yes |
 | `DinoDamageMultiplier` | 1 | Damage wild creatures deal. Higher is more. | yes |
@@ -63,6 +64,8 @@ may change a setting without a restart.
 | `StructurePickupTimeAfterPlacement` | 30 | Seconds after it is set down that a piece may be taken back. | yes |
 | `ForceAllStructureLocking` | False | Everything that can be locked is locked when it is built. | yes |
 | `PreventOutOfTribePinCodeUse` | False | A PIN opens nothing for those outside the tribe. | yes |
+| `PvEAllowStructuresAtSupplyDrops` | False | On a PvE server, building within 30 m of a place the drop book lands drops at. | yes |
+| `AllowCrateSpawnsOnTopOfStructures` | False | Supply drops may land on what a tribe built, and near it: a floor there counts as ground, and the drop book's distance from a base is not asked. | yes |
 | `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away. | yes |
 | `AllowThirdPersonPlayer` | True | The body may be looked at from outside: over the shoulder (V) and in the orbit camera (K). | yes; clients are told |
 | `ServerCrosshair` | True | A crosshair is shown. | yes; clients are told |
@@ -161,6 +164,9 @@ may change a setting without a restart.
 | `FuelConsumptionIntervalMultiplier` | 1 | How long a piece of fuel burns. Higher is longer. *Direction taken from the name; the reference gives none.* | no |
 | `ConfigOverrideItemCraftingCosts` | none | What a thing is made of: `(ItemClassString="core:hatchet",BaseCraftingResourceRequirements=((ResourceItemTypeString="core:thatch",BaseResourceRequirement=1.0,bCraftingRequireExactResourceType=false),…))`. | no; clients are told |
 | `ConfigOverrideItemMaxQuantity` | none | One thing's stack size: `(ItemClassString="core:arrow_stone",Quantity=(MaxItemQuantity=543,bIgnoreMultiplier=True))`. | no; clients are told |
+| `SupplyCrateLootQualityMultiplier` | 1 | Quality of what supply drops hold, from 1 to 5: every quality band of the drop book, and of ConfigOverrideSupplyCrateItems, is multiplied by it. | yes |
+| `bDisableLootCrates` | False | No supply drops: the drop book's circuits call none. One called from the console or the admin page still comes. | yes |
+| `ConfigOverrideSupplyCrateItems` | none | What a supply drop holds, in ARK's own form, a crate to an entry: `(SupplyCrateClassString="SupplyCrate_Level25_C",MinItemSets=1,MaxItemSets=2,ItemSets=((MinNumItems=1,MaxNumItems=2,ItemEntries=((EntryWeight=1,ItemClassStrings=("core:bow"),ItemsWeights=(1),MinQuantity=1,MaxQuantity=1,MinQuality=1,MaxQuality=2,ChanceToBeBlueprintOverride=0.25))))))`. The crate's level picks the tier (the highest that opens at or under it), `_Double` its ringed drops, and the table replaces the drop book's for every class of that tier. *Read at start. The admin page shows such a tier's tables locked, and can copy them into the drop book.* | no |
 | `WildDinoCharacterFoodDrainMultiplier` | 1 | How fast wild creatures hunger. Higher is faster. | no |
 | `TamedDinoCharacterFoodDrainMultiplier` | 1 | How fast tamed creatures hunger. Higher is faster. *How it combines with DinoCharacterFoodDrainMultiplier is not documented; they are multiplied.* | no |
 | `WildDinoTorporDrainMultiplier` | 1 | How fast wild creatures shake off torpor. Higher is faster. | no |
@@ -351,18 +357,12 @@ what is built next.
 
 | Setting | Default | What it does | Where |
 | --- | --- | --- | --- |
-| `RandomSupplyCratePoints` | False | Supply drops land in random places. | GameUserSettings.ini |
-| `PvEAllowStructuresAtSupplyDrops` | False | Building near supply drops in PvE. | GameUserSettings.ini |
-| `AllowCrateSpawnsOnTopOfStructures` | False | Supply drops may land on what is built. | GameUserSettings.ini |
 | `ClampItemStats` | False | ItemStatClamps apply. | GameUserSettings.ini |
 | `CraftingSkillBonusMultiplier` | 1 | What the crafting stat adds to what is made. | Game.ini |
 | `CustomRecipeEffectivenessMultiplier` | 1 | How good a recipe of a survivor's own is. | Game.ini |
 | `CustomRecipeSkillMultiplier` | 1 | What the crafting stat adds to such a recipe. | Game.ini |
 | `bAllowCustomRecipes` | True | Survivors may write recipes of their own. | Game.ini |
-| `SupplyCrateLootQualityMultiplier` | 1 | Quality of what supply drops hold, from 1 to 5. | Game.ini |
 | `FishingLootQualityMultiplier` | 1 | Quality of what is fished up, from 1 to 5. | Game.ini |
-| `bDisableLootCrates` | False | No supply drops. | Game.ini |
-| `ConfigOverrideSupplyCrateItems` | none | What a supply drop holds. | Game.ini |
 | `ExcludeItemIndices` | none | Things never found in supply drops, by ARK's numbering. | Game.ini |
 | `ItemStatClamps[n]` | 0 each | The most each stat of a thing may be: 0 quality, 1 armor, 2 durability, 3 weapon damage, 4 clip, 5 cold, 6 weight, 7 heat. Needs ClampItemStats. *Rewrites things that exist, for good.* | Game.ini |
 

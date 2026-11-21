@@ -8,16 +8,18 @@
 // wholly landed. Its loot is rolled as it lands, from a seed fixed when it was called, so a server stopped while it was
 // in the air lands the same loot on the same tick.
 
-import { TICK_RATE } from "../shared/coords.ts";
+import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
+import type { LootDef } from "../shared/content/defs.ts";
 import { hashString } from "../shared/hash.ts";
 import { S_SUPPLY } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
+import { rollLoot, type LootDrop } from "../shared/sim/loot.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { ANNOUNCES, LEAVE_SECONDS, POSE_NAMES, SENDER_ZENITH, SUPPLY_MOST, newPose, quantise, supplyPose, supplyTimes, writeSupply, type SupplyList, type SupplyRow } from "../shared/sim/supply.ts";
-import { tableKey, type SupplyBook } from "../shared/supply/book.ts";
+import { tableKey, type CircuitDoc, type SiteDoc, type SupplyBook } from "../shared/supply/book.ts";
 import { catalogOf, type Catalog } from "../shared/supply/catalog.ts";
-import { compileBook, rollTable, type Compiled } from "../shared/supply/compile.ts";
+import { cellsOf, compileBook, rollTable, type Compiled } from "../shared/supply/compile.ts";
 import { HIT_NONE, castWorld, rayHit } from "../shared/world/ray.ts";
 import { EYE_KNOT } from "../shared/world/tide-eye.ts";
 import type { Death } from "./death.ts";
@@ -27,6 +29,9 @@ import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { Progression } from "./progression.ts";
 import type { EntityRecord, Records } from "./records.ts";
+import type { Rules } from "./settings/rules.ts";
+import type { ArkTables } from "./supply/ark.ts";
+import { siteFault, type FitOptions } from "./supply/ground.ts";
 import type { BookStore } from "./supply/store.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -38,6 +43,19 @@ export const SUPPLY_TAG = 0x647270;
 const SEED = 109;
 /** Metres over the ground a landing is looked for from: over any roof, under the cast's own height. */
 const LAND_FROM = 600;
+/** A circuit's deadline carries this and its place in the order the circuits were first met, where a drop's carries its id. */
+const CIRCUIT_BASE = 0x10000;
+/** Seconds before a circuit that found nobody to call a drop for, or no place for one, looks again. */
+export const RETRY_SECONDS = 60;
+/** Metres from a survivor within which a circuit calls a drop, where the book does not say (BookRules.reach). */
+export const REACH = 2500;
+/** Metres from a live drop within which a circuit calls no other. */
+export const APART = 60;
+/** Metres from a site of the book within which nothing is built on a PvE server, unless PvEAllowStructuresAtSupplyDrops. */
+export const SITE_CLEAR = 30;
+/** Places a circuit tries before it gives up until its next look. */
+const SITE_DRAWS = 8;
+const OPEN_DRAWS = 16;
 
 const CALL = event("supply.call");
 const LANDED = event("supply.landed");
@@ -78,6 +96,16 @@ export interface CallOptions {
   site?: string;
   /** Seconds from now to the landing at the least, in place of the book's notice. */
   notice?: number;
+  /** The chance it is ringed where `ringed` is left out, in place of the book's: a circuit's own. */
+  chance?: number;
+}
+
+/** A circuit as it runs: the tick it next looks, how many times it has, and why it last called nothing ("" if it called one). */
+export interface CircuitState {
+  due: number;
+  n: number;
+  stamp: number;
+  why: string;
 }
 
 export interface SupplyContext {
@@ -92,8 +120,8 @@ export interface SupplyContext {
   book: BookStore;
   /** The world's seed. */
   seed: number;
-  /** What every quality band is multiplied by: SupplyCrateLootQualityMultiplier. */
-  quality: () => number;
+  /** ARK's settings for drops are read as they stand, so a change from the console takes effect at the next call. */
+  rules: Rules;
   say: (line: string) => void;
 }
 
@@ -118,6 +146,19 @@ export class Supply {
   private version = 1;
   private readonly told = new WeakMap<Connection, number>();
   private compiledOf: { book: SupplyBook; quality: number; compiled: Compiled } | null = null;
+  /** What ConfigOverrideSupplyCrateItems gives, by tier key: it wins over the book's tables (server/supply/ark.ts). */
+  overrides: ReadonlyMap<string, ArkTables> = new Map();
+  /** The circuits of the book that are on, by key. */
+  readonly circuits = new Map<string, CircuitState>();
+  /** Every circuit key a deadline was ever pushed for, in the order met: a deadline names one by its place here. */
+  private readonly order: string[] = [];
+  private stamps = 0;
+  /** The book the circuits and the sites below were last taken from. */
+  private planned: SupplyBook | null = null;
+  private readonly siteByKey = new Map<string, SiteDoc>();
+  /** The book's sites by the chunk each is in. */
+  private readonly siteGrid = new Map<number, SiteDoc[]>();
+  private readonly scaled = new WeakMap<LootDef, { quality: number; def: LootDef }>();
   private readonly catalog: Catalog;
   private readonly pose = newPose();
 
@@ -133,7 +174,7 @@ export class Supply {
   /** The book in force, compiled against the game's items: again whenever the book or the quality setting changes. */
   compiled(): Compiled {
     const book = this.ctx.book.book;
-    const quality = this.ctx.quality();
+    const quality = this.ctx.rules.num("SupplyCrateLootQualityMultiplier");
     if (this.compiledOf?.book !== book || this.compiledOf.quality !== quality) this.compiledOf = { book, quality, compiled: compileBook(book, this.catalog, { quality }) };
     return this.compiledOf.compiled;
   }
@@ -194,7 +235,7 @@ export class Supply {
     const seed = hashString(`${o.circuit ?? ""}/${n}`, (this.ctx.seed + SEED) >>> 0);
     const rng = new Rng(seed);
     // Drawn whether or not it is asked for, so that asking does not move what the seed gives after it.
-    const drawn = rng.float() < rules.ringedChance;
+    const drawn = rng.float() < (o.chance ?? rules.ringedChance);
     // The nearest obelisk sends it, from the knot of storm its beam ends in.
     let sender = SENDER_ZENITH;
     let near = Infinity;
@@ -249,11 +290,189 @@ export class Supply {
 
   /** A DEADLINE_SUPPLY came due: a pending drop lands, and one that left is forgotten. A stamp that is no longer its tick is stale. */
   due(id: number, stamp: number): void {
+    if (id >= CIRCUIT_BASE) {
+      const key = this.order[id - CIRCUIT_BASE];
+      if (key !== undefined) this.look(key, stamp);
+      return;
+    }
     const d = this.get(id);
     if (!d) return;
     if (d.left > 0) {
       if (stamp === d.left + LEAVE_SECONDS * TICK_RATE) this.forget(d);
     } else if (!d.landed && stamp === d.land) this.land(d);
+  }
+
+  /** The survivors in the world now, where each stands. */
+  private survivors(): { x: number; z: number }[] {
+    const { game, world } = this.ctx;
+    const out: { x: number; z: number }[] = [];
+    for (const c of game.clients) if (c?.active && !c.closed && c.ent >= 0) out.push({ x: world.ents.x[c.ent]!, z: world.ents.z[c.ent]! });
+    return out;
+  }
+
+  /**
+   * Takes the book's circuits and sites up again: a circuit new to it waits its first delay, one that is gone or off
+   * is forgotten, and the rest keep the tick they were due at.
+   */
+  private plan(): void {
+    const { world } = this.ctx;
+    const book = this.ctx.book.book;
+    this.planned = book;
+    this.siteByKey.clear();
+    this.siteGrid.clear();
+    for (const s of book.sites) {
+      this.siteByKey.set(s.key, s);
+      const cell = Math.floor(s.z / CHUNK_SIZE) * 65536 + Math.floor(s.x / CHUNK_SIZE);
+      const list = this.siteGrid.get(cell);
+      if (list) list.push(s);
+      else this.siteGrid.set(cell, [s]);
+    }
+    for (const key of [...this.circuits.keys()]) if (!book.circuits.some((c) => c.key === key && c.on)) this.circuits.delete(key);
+    for (const c of book.circuits) {
+      if (!c.on) continue;
+      let st = this.circuits.get(c.key);
+      if (!st) {
+        const rng = new Rng(hashString(`${c.key}#first`, (this.ctx.seed + SEED) >>> 0));
+        st = { due: world.tick + Math.round(rng.range(c.firstDelay[0], c.firstDelay[1]) * TICK_RATE), n: 0, stamp: 0, why: "" };
+        this.circuits.set(c.key, st);
+      }
+      this.arm(c.key, st);
+    }
+    this.saved.dirty = true;
+  }
+
+  private arm(key: string, st: CircuitState): void {
+    let at = this.order.indexOf(key);
+    if (at < 0) at = this.order.push(key) - 1;
+    st.stamp = ++this.stamps;
+    this.ctx.deadlines.push(Math.max(st.due, this.ctx.world.tick + 1), DEADLINE_SUPPLY, CIRCUIT_BASE + at, st.stamp);
+  }
+
+  /**
+   * A circuit's look: it calls a drop of a tier and class drawn by its weights at one of its sites, or on open ground,
+   * unless drops are off, nobody is in the world, the map or the circuit has all it may, or no place is fit. What it
+   * draws comes from the world's seed, its key and how many looks it has had, so a world run again looks alike.
+   */
+  private look(key: string, stamp: number): void {
+    const st = this.circuits.get(key);
+    if (!st || st.stamp !== stamp) return;
+    const { world, rules } = this.ctx;
+    const book = this.ctx.book.book;
+    const c = book.circuits.find((v) => v.key === key);
+    if (!c || !c.on) {
+      this.circuits.delete(key);
+      return;
+    }
+    const rng = new Rng(hashString(`${key}#${st.n}`, (this.ctx.seed + SEED) >>> 0));
+    st.n++;
+    const eyes = this.survivors();
+    let mine = 0;
+    for (const d of this.drops) if (d.left === 0 && d.circuit === key) mine++;
+    let why = "";
+    if (rules.on("bDisableLootCrates")) why = "drops are off (bDisableLootCrates)";
+    else if (eyes.length < book.rules.minPlayers) why = "nobody is in the world";
+    else if (this.live() >= Math.min(book.rules.maxLive, SUPPLY_MOST)) why = "the map has all the drops it may";
+    else if (mine >= c.maxLive) why = "the circuit has all the drops it may";
+    else {
+      const cells = cellsOf(this.compiled(), c);
+      let total = 0;
+      for (const cell of cells) total += cell.weight;
+      let pick = rng.float() * total;
+      const cell = cells.find((v) => (pick -= v.weight) < 0) ?? cells[cells.length - 1];
+      const at = cell ? this.place(c, rng, eyes) : null;
+      if (!cell) why = "none of its tiers has a table to call";
+      else if (!at) why = "no fit place";
+      else {
+        const made = this.call({ x: at.x, z: at.z, tier: book.tiers[cell.table.tier]!.key, cls: book.classes[cell.table.cls]!.key, source: "circuit", circuit: key, site: at.site, chance: c.ringedChance });
+        if (typeof made === "string") why = made;
+      }
+    }
+    st.why = why;
+    const wait = why === "nobody is in the world" || why === "no fit place" || why.startsWith("drops are off") ? RETRY_SECONDS : rng.range(c.interval[0], c.interval[1]);
+    st.due = world.tick + Math.max(1, Math.round(wait * TICK_RATE));
+    this.arm(key, st);
+    this.saved.dirty = true;
+  }
+
+  /** Why nothing lands at (x, z) for a circuit, or "": the place itself (server/supply/ground.ts), or a live drop too near. */
+  siteFault(x: number, z: number): string {
+    const { world, rules } = this.ctx;
+    for (const d of this.drops) if (d.left === 0 && Math.hypot(d.x - x, d.z - z) < APART) return "taken";
+    const fit: FitOptions = { onBuilt: rules.on("AllowCrateSpawnsOnTopOfStructures"), baseExclusion: this.ctx.book.book.rules.baseExclusion };
+    return siteFault(world, x, z, fit);
+  }
+
+  /**
+   * A place for a circuit's drop: one of its sites drawn by weight among those within the book's reach of a survivor,
+   * or, for a circuit with no sites and under RandomSupplyCratePoints, open ground within that reach (and within the
+   * circuit's area, where it has one). Null if none tried is fit.
+   */
+  private place(c: CircuitDoc, rng: Rng, eyes: readonly { x: number; z: number }[]): { x: number; z: number; site: string } | null {
+    const { world, rules } = this.ctx;
+    const reach = this.ctx.book.book.rules.reach ?? REACH;
+    // With nobody in the world there is nobody to be near: a book that calls drops for nobody calls them anywhere.
+    const near = (x: number, z: number): boolean => reach <= 0 || eyes.length === 0 || eyes.some((p) => (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z) <= reach * reach);
+    if (c.sites.length > 0 && !rules.on("RandomSupplyCratePoints")) {
+      const pool: SiteDoc[] = [];
+      for (const k of c.sites) {
+        const s = this.siteByKey.get(k);
+        if (s && near(s.x, s.z)) pool.push(s);
+      }
+      for (let t = 0; t < SITE_DRAWS && pool.length > 0; t++) {
+        let total = 0;
+        for (const s of pool) total += s.weight ?? 1;
+        let pick = rng.float() * total;
+        let at = pool.findIndex((s) => (pick -= s.weight ?? 1) < 0);
+        if (at < 0) at = pool.length - 1;
+        const [s] = pool.splice(at, 1);
+        if (this.siteFault(s!.x, s!.z) === "") return { x: s!.x, z: s!.z, site: s!.key };
+      }
+      return null;
+    }
+    for (let t = 0; t < OPEN_DRAWS; t++) {
+      // A point in a disc, with no sine: drawn in its square until it falls inside.
+      let dx = 0;
+      let dz = 0;
+      do {
+        dx = rng.range(-1, 1);
+        dz = rng.range(-1, 1);
+      } while (dx * dx + dz * dz > 1);
+      let x: number;
+      let z: number;
+      if (c.area) {
+        x = c.area.at[0] + dx * c.area.radius;
+        z = c.area.at[1] + dz * c.area.radius;
+      } else if (reach > 0 && eyes.length > 0) {
+        const eye = eyes[rng.int(eyes.length)]!;
+        x = eye.x + dx * reach;
+        z = eye.z + dz * reach;
+      } else {
+        x = (dx * 0.5 + 0.5) * world.hf.sizeX;
+        z = (dz * 0.5 + 0.5) * world.hf.sizeZ;
+      }
+      x = Math.round(x);
+      z = Math.round(z);
+      if (near(x, z) && this.siteFault(x, z) === "") return { x, z, site: "" };
+    }
+    return null;
+  }
+
+  /**
+   * Why nothing may be built at (x, z), or "": on a PvE server nothing is built near a place drops land at, as on
+   * ARK's, unless PvEAllowStructuresAtSupplyDrops.
+   */
+  buildFault(x: number, z: number): string {
+    const { rules } = this.ctx;
+    if (!rules.on("serverPVE") || rules.on("PvEAllowStructuresAtSupplyDrops")) return "";
+    if (this.planned !== this.ctx.book.book) this.plan();
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    for (let j = cz - 1; j <= cz + 1; j++) {
+      for (let i = cx - 1; i <= cx + 1; i++) {
+        for (const s of this.siteGrid.get(j * 65536 + i) ?? []) if (Math.hypot(s.x - x, s.z - z) < SITE_CLEAR) return `Supply drops land here: nothing can be built within ${SITE_CLEAR} m of the place.`;
+      }
+    }
+    return "";
   }
 
   /**
@@ -262,6 +481,8 @@ export class Supply {
    */
   step(): void {
     const { records, death } = this.ctx;
+    // A book saved since the last tick: its circuits and sites are taken up.
+    if (this.planned !== this.ctx.book.book) this.plan();
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i]!;
       if (d.pid === 0) continue;
@@ -324,8 +545,9 @@ export class Supply {
     const seed = hashString(`${d.circuit}/${d.n}`, (this.ctx.seed + SEED) >>> 0);
     const rng = new Rng(seed);
     rng.float();
-    // A table the book no longer has gives nothing, and a drop of nothing does not land.
-    const rolled = table ? rollTable(table, d.ringed, rng, this.catalog, table.dormant) : [];
+    // ARK's override for the tier wins. A table the book no longer has gives nothing, and a drop of nothing does not land.
+    const over = this.overrides.get(d.tierKey)?.[d.ringed ? "ringed" : "plain"];
+    const rolled = over ? this.rollArk(over, rng) : table ? rollTable(table, d.ringed, rng, this.catalog, table.dormant) : [];
     const box = records.create(this.capsule, `${d.ringed ? "Ringed " : ""}${d.tierName} ${d.clsName} drop`.slice(0, 60));
     box.extra.set(SUPPLY_TAG, Uint8Array.of(d.id & 0xff, d.id >> 8));
     const mint = (list: typeof rolled): number => {
@@ -356,6 +578,22 @@ export class Supply {
     this.changed();
     // The slots it fills: one roll of a thing that does not stack is several, and two of one thing that join are one.
     bus.after(LANDED, { id: d.id, pid: box.pid, x: d.x, y: d.y, z: d.z, tier: d.tierKey, class: d.clsKey, ringed: d.ringed ? 1 : 0, stacks: items.inv(box).used(), source: d.source });
+  }
+
+  /** A roll of one of ARK's tables, its quality multiplied as the book's is, and left off what quality does nothing for. */
+  private rollArk(def: LootDef, rng: Rng): LootDrop[] {
+    const quality = this.ctx.rules.num("SupplyCrateLootQualityMultiplier");
+    let use = def;
+    if (quality !== 1) {
+      const have = this.scaled.get(def);
+      if (have?.quality === quality) use = have.def;
+      else {
+        use = { ...def, from: def.from.map((s) => ({ ...s, entries: s.entries.map((e) => (e.quality ? { ...e, quality: [e.quality[0] * quality, e.quality[1] * quality] as const } : e)) })) };
+        this.scaled.set(def, { quality, def: use });
+      }
+    }
+    const { catalog } = this;
+    return rollLoot(use, rng, (id) => catalog.byId.get(id)?.index ?? 0, catalog.blueprints).map((r) => (catalog.byIndex[r.item]?.quality ? r : { ...r, quality: 0, rating: 0 }));
   }
 
   /** Why `c` may not open a capsule, or "": the tier's level, as it stood when the drop was called. */
@@ -444,7 +682,9 @@ export class Supply {
       const { tier: _t, cls: _c, landed: _l, left: _f, opened, ...rest } = d;
       drops.push({ ...rest, opened: opened ? 1 : 0 });
     }
-    return JSON.stringify({ n: this.n, next: this.nextId, drops });
+    const circuits: Record<string, [number, number]> = {};
+    for (const [key, st] of this.circuits) circuits[key] = [st.due, st.n];
+    return JSON.stringify({ n: this.n, next: this.nextId, drops, circuits });
   }
 
   /**
@@ -453,7 +693,8 @@ export class Supply {
    */
   begin(saved: string | null): void {
     const { world, records, death, deadlines } = this.ctx;
-    const was = JSON.parse(saved ?? "{}") as { n?: number; next?: number; drops?: Saved[] };
+    const was = JSON.parse(saved ?? "{}") as { n?: number; next?: number; drops?: Saved[]; circuits?: Record<string, [number, number]> };
+    for (const [key, [due, n]] of Object.entries(was.circuits ?? {})) this.circuits.set(key, { due, n, stamp: 0, why: "" });
     this.n = was.n ?? 0;
     this.nextId = was.next ?? 1;
     for (const s of was.drops ?? []) {
@@ -476,6 +717,7 @@ export class Supply {
       death.remove(rec);
     }
     if (this.mended > 0) this.ctx.say(`supply drops: ${this.mended} put right at load, a capsule with no drop or a drop with no capsule`);
+    this.plan();
     this.saved.dirty = this.mended > 0;
     this.version++;
   }

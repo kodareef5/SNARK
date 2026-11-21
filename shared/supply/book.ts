@@ -32,6 +32,11 @@ export interface BookRules {
   maxLive: number;
   /** Survivors that must be in the world for a circuit to call one. */
   minPlayers: number;
+  /**
+   * Metres from a survivor within which a circuit calls a drop, so that drops land where somebody may see them come
+   * down: a city is sixteen kilometres across and a shaft is seen from four. 0 calls them anywhere. 2,500 where not given.
+   */
+  reach?: number;
   announce: Announce;
   /** Chance that a drop is ringed, where its circuit does not say. */
   ringedChance: number;
@@ -249,6 +254,7 @@ export function bookFaults(book: unknown): BookFault[] {
     num("rules.baseExclusion", r.baseExclusion, 0, 1000, "metres");
     num("rules.maxLive", r.maxLive, 0, 32, "drops live at once");
     num("rules.minPlayers", r.minPlayers, 0, 255, "survivors");
+    if (r.reach !== undefined) num("rules.reach", r.reach, 0, 100000, "metres");
     if (!["none", "compass", "map", "chat"].includes(r.announce as string)) bad("rules.announce", "one of none, compass, map, chat");
     num("rules.ringedChance", r.ringedChance, 0, 1, "a chance");
     num("rules.ringedQuality", r.ringedQuality, 1, 5, "a multiple");

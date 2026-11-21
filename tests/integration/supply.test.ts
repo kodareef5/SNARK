@@ -264,7 +264,9 @@ test("the console brings a drop down, takes one away, and says what it cannot do
     "drop book revision 0 (the starter book), not kept: this world has no save",
     "7 tiers (white, green, blue, purple, yellow, red, meridian), 7 classes (shelter, arms, armour, stable, works, provisions, voyage)",
     expect.stringMatching(/^49 tables, 0 dormant, \d+ ids waiting for the game to have them$/),
-    expect.stringMatching(/^\d+ circuits, \d+ sites; 0 drops live, 0 called and 0 landed since the start$/),
+    "1 circuits, 0 sites; 0 drops live, 0 called and 0 landed since the start",
+    // A map with no list of sites has the one circuit over open ground, which a Harness keeps from calling.
+    expect.stringMatching(/^circuit open: looks in \d+ s(; last time, drops are off \(bDisableLootCrates\))?, open ground$/),
   ]);
   // Called where she stands, four minutes out by the book; brought down in three seconds, then at once.
   expect(h.say(ada, "supply call here red stable ringed")[0]).toMatch(/^called 1: ringed red stable at 250 250, coming, lands in (2[4-9]\d|3[0-5]\d) s$/);

@@ -93,7 +93,10 @@ import { settle, settleNear } from "./place.ts";
 import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
 import { CarReturn, DEADLINE_CAR } from "./car-return.ts";
+import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
+import { catalogOf } from "../shared/supply/catalog.ts";
+import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
 import { DEADLINE_SUPPLY, Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
@@ -1055,10 +1058,19 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   // Supply drops (server/supply.ts). The drop book is a file beside the save, which a wipe of the world leaves; the
   // drops that are live are the save's, written in the commit that writes their capsules.
-  const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, starterBook, say);
-  const supply = new Supply({ world, game, records, items, death, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, quality: () => 1, say });
+  // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
+  const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
+  const supply = new Supply({ world, game, records, items, death, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
+  {
+    // ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects.
+    const loot = catalogOf(reg);
+    const ark = arkCrates(rules.list(ARK_CRATES), supplyBook.book.tiers, (name) => lists.ids(ARK_CRATES, name, "item"), (id) => loot.byId.get(id)?.never !== true);
+    supply.overrides = ark.tables;
+    for (const line of ark.passed) say(line);
+  }
   supply.begin(persistence && !loaded!.fresh ? (persistence.store.meta("supply") as string | null) : null);
   persistence?.sidecar("supply", supply.saved);
+  build.keepClear = (x, z) => supply.buildFault(x, z);
 
   // A name belongs to the first device key that takes a body under it.
   game.sameCreation=(name,key,request)=>{
