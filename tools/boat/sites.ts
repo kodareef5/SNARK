@@ -13,9 +13,11 @@ import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { BuildingLabel, PublicPlace } from "../mapworld/labels.ts";
 import { meets, type Box } from "../mapworld/ruin-obstacles.ts";
+import type { DockRules, MooredRules, Slip } from "./marinas.ts";
 import type { HarbourWreckRules } from "./wrecks.ts";
 
-export interface BoatSite { id: string; kind: "civilian" | "rescue" | "police"; x: number; z: number; radius: number; waterfront?: "marina" | "pier" }
+/** `building` says a marina's point lies in a mapped building's footprint: a terminal, not a basin, which gets no walkway of its own. */
+export interface BoatSite { id: string; kind: "civilian" | "rescue" | "police"; x: number; z: number; radius: number; waterfront?: "marina" | "pier"; building?: boolean }
 const TYPES = { civilian: "core:boat", rescue: "core:boat_rescue", police: "core:boat_police" } as const;
 
 /** Weights by a vessel's content id. */
@@ -34,6 +36,8 @@ export interface Harbours {
   kinds: { marina: Mix; pier: Mix }; styles: Record<string, Mix>; districts: Record<string, Mix>;
   condition: Band[]; fuel: Band[];
   wrecks: HarbourWreckRules;
+  /** How a marina's docks are laid out and what moors at them (tools/boat/marinas.ts). */
+  docks: DockRules; moored: MooredRules;
 }
 export const HARBOURS: Harbours = JSON.parse(readFileSync(join(import.meta.dir, "../mapworld/rules/default.json"), "utf8")).harbours;
 /** The district a point of the map stands in or looks onto, or null. */
@@ -57,7 +61,7 @@ export function mappedBoatSites(places: readonly PublicPlace[], labels: Readonly
     // it and a marina's `#` and berth after it; the name gives way to the place, which keeps it unique.
     const head = `place/${p.kind}/`, at = `@${p.e},${p.n}`;
     const name = (p.name ?? "unnamed").normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\x21-\x7e]+/g, "_").slice(0, Math.max(0, 80 - "boat/".length - head.length - at.length - 3));
-    result.push({ id: `${head}${name}${at}`, kind, x, z, radius: p.kind === "marina" ? 120 : 48, ...(p.kind === "pier" || p.kind === "marina" ? { waterfront: p.kind } : {}) });
+    result.push({ id: `${head}${name}${at}`, kind, x, z, radius: p.kind === "marina" ? 120 : 48, ...(p.kind === "pier" || p.kind === "marina" ? { waterfront: p.kind } : {}), ...(p.kind === "marina" && (p.in_footprint ?? null) !== null ? { building: true } : {}) });
   }
   for (const [id, p] of Object.entries(labels)) {
     const kind = p.kind === "police_station" ? "police" : p.kind === "fire_station" || /coast guard station/i.test(p.name ?? "") ? "rescue" : null;
@@ -99,10 +103,12 @@ export interface Berthed extends MapVehicle { id: string; site: string; district
 /**
  * Sparse stable records, a site's in the order of its hash. Each service site holds one of its own livery, up to four of
  * each; each marina several and a share of piers one, drawn from the harbour's weights as its district changes them, each
- * tested where it lies for its own draught, hull and room. Its condition and fuel are ranges the server rolls once a
- * world (server/vehicle-service.ts, foundVehicle); a berth whose vessel has gone gets another (server/car-return.ts).
+ * tested where it lies for its own draught, hull and room. A marina whose docks are laid out (tools/boat/marinas.ts)
+ * has its vessels in the `slips` held for them, each tested there for its draught and hull, its dock its way aboard.
+ * Its condition and fuel are ranges the server rolls once a world (server/vehicle-service.ts, foundVehicle); a berth
+ * whose vessel has gone gets another (server/car-return.ts).
  */
-export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[], rules: Harbours = HARBOURS, districtAt: DistrictAt = () => null): Berthed[] {
+export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[], rules: Harbours = HARBOURS, districtAt: DistrictAt = () => null, slips: readonly Slip[] = []): Berthed[] {
   const hf = mapHeightfield(map), structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   placeStatics(map, structs, reg);
   const source = mapNodes(map, hf, reg), nodes = source ? new NodeField(map.dims, reg, source) : null;
@@ -145,6 +151,20 @@ export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[
     }
     return null;
   };
+  /** A slip the marina's layout held for a found vessel: where it lies, if it floats there clear of everything. */
+  const inSlip = (slip: Slip, def: BoatVehicleDefinition): [number, number, number, number] | null => {
+    const { x, z } = slip, heading = slip.yaw * Math.PI / 180, water = hf.waterAt(x, z);
+    if (x < 8 || z < 8 || x > hf.sizeX - 8 || z > hf.sizeZ - 8 || (map.vehicles ?? []).some(v => Math.hypot(v.x - x, v.z - z) < 16)) return null;
+    if (!Number.isFinite(water) || water - hf.heightAt(x, z) < def.spec.draft + .2) return null;
+    if (found.some(v => meets(hull(def, x, z, heading, 0), hull(v.def, v.x, v.z, v.heading, 0)))) return null;
+    const chunk = chunkAt(map.dims, x, z); nodes?.retain(chunk, 1, 1, () => false);
+    try {
+      const y = boatRestY(def.spec, water), move = reg.move[reg.index.get(def.id)!]!;
+      return vehicleFitsWorld(world, x, y, z, heading, def) && capsuleFree(world, x, y, z, move.radius, move.height) ? [x, y, z, heading] : null;
+    } finally { nodes?.retain(chunk, 1, -1, () => false); }
+  };
+  const held = new Map<string, Slip[]>();
+  for (const s of slips) if (s.found) { if (!held.has(s.site)) held.set(s.site, []); held.get(s.site)!.push(s); }
   const counts = { rescue: 0, police: 0 };
   // The rarer service sites first, then the marinas, so the piers' single craft keep off both.
   const rank = (s: BoatSite): number => s.kind !== "civilian" ? 0 : s.waterfront === "marina" ? 1 : 2;
@@ -152,6 +172,20 @@ export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[
   for (const site of order) {
     if (site.kind !== "civilian" && counts[site.kind] >= 4) continue;
     const district = districtAt(site.x, site.z), mix = siteMix(site, rules, district, (id) => defOf(id).spec.halfLength * 2);
+    // A marina laid out with docks has its found vessels in the slips held for them; its dock is the way aboard.
+    const mine = held.get(site.id);
+    if (mine) {
+      for (const [k, slip] of mine.entries()) {
+        const at = inSlip(slip, defOf(slip.vessel));
+        if (!at) continue;
+        const [x, y, z, heading] = at;
+        const [cl, ch] = pick(rules.condition.map(b => [b, b[2]] as const), hashString(`${site.id}#${k}`, 1231));
+        const [fl, fh] = pick(rules.fuel.map(b => [b, b[2]] as const), hashString(`${site.id}#${k}`, 1237));
+        found.push({ id: `boat/${site.id}${k ? `#${k}` : ""}`, kind: slip.vessel, x, y, z, yaw: Math.round(heading * 65536 / (Math.PI * 2)) & 65535, condition: [cl, ch], fuel: [fl, fh],
+          site: site.id, district: slip.district, def: defOf(slip.vessel), heading });
+      }
+      continue;
+    }
     const want = site.kind !== "civilian" || !site.waterfront ? 1 : site.waterfront === "pier" ? Number(hashString(site.id, 211) / 4294967296 < rules.pier.share)
       : rules.marina.least + hashString(site.id, 223) % Math.max(1, rules.marina.most - rules.marina.least + 1);
     for (let k = 0; k < want; k++) {

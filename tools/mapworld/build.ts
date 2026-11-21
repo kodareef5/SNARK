@@ -6,7 +6,7 @@
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
 // bytes. Its copies for the wire take a few seconds; --release writes the tightest, as a map that ships has (tools/map/pack.ts).
 
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -33,6 +33,8 @@ import { vocabulary } from "./ruin-vocabulary.ts";
 import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
 import { boatSites, HARBOURS, mappedBoatSites } from "../boat/sites.ts";
 import { harbourWrecks, vehicleMeshes } from "../boat/wrecks.ts";
+import { layMarinas, marinaDocks } from "../boat/marinas.ts";
+import { pathsOf, readWays } from "./ways.ts";
 import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 import { landmarkDefs, landmarksOf, layLandmarkGround, placeLandmarks } from "./landmarks.ts";
@@ -127,12 +129,31 @@ export async function buildMap(named: string, release = false, output = join(ROO
   };
   const chunkOf = (x: number, z: number): number => Math.floor((z - z0) / 64) * chunksX + Math.floor((x - x0) / 64);
   const meshes = vehicleMeshes();
-  const wrecks = harbourWrecks(mappedBoatSites(waterfrontPlaces, waterfrontLabels, site.toLattice), harbours, reg, statics, {
-    waterAt: site.waterAt, groundAt: site.groundAt, inside: (x, z, reach) => Math.min(x - x0, z - z0, x1 - x, z1 - z) > reach,
-    room: (x, z) => pieceCounts[chunkOf(x, z)]! < budget - 1,
-  }, districtAt, (mesh) => meshes.has(mesh));
+  const inside = (x: number, z: number, reach: number): boolean => Math.min(x - x0, z - z0, x1 - x, z1 - z) > reach;
+  // The marinas' docks and what moors at them (tools/boat/marinas.ts), then the wrecks, which keep clear of both.
+  const latticeSites = mappedBoatSites(waterfrontPlaces, waterfrontLabels, site.toLattice);
+  const docks = marinaDocks(site, harbours.docks), docked = new Set([...docks.values()].flat().map((p) => p.way.id));
+  const report = join(source, "reports", world.ruins?.report ?? "ruins");
+  const records = existsSync(join(report, "bridges.json")) ? JSON.parse(readFileSync(join(report, "bridges.json"), "utf8")) as BridgeRecord[] : null;
+  const piersBuilt = records ? new Set(records.filter((r) => r.kind === "pier" && r.status === "built").map((r) => r.id)) : null;
+  const piers = pathsOf(readWays(source), grid).paths.filter((p) => p.way.kind === "pier" && !docked.has(p.way.id) && (piersBuilt?.has(p.way.id) ?? true));
+  // The swim lanes under the bridges' decks, which the bridge walk swims: as the ruins deepen them (ruins.ts), 3 m either
+  // side of the line and 2 m past each end, from 2.5 m under the water to a metre over it.
+  const lanes = (records ?? []).flatMap((r) => r.swim.map((s) => ({ x: s.x, y: -.75, z: s.z, yaw: Math.atan2(s.dx, s.dz) * 180 / Math.PI, size: [6, 3.5, s.distance * 2 + 4] as const })));
+  const marinas = layMarinas(latticeSites, docks, piers, harbours, reg, statics, {
+    waterAt: site.waterAt, groundAt: site.groundAt, inside, chunk: chunkOf,
+    room: (x, z) => pieceCounts[chunkOf(x, z)]! < budget - 2, took: (x, z) => { pieceCounts[chunkOf(x, z)]!++; },
+  }, districtAt, (mesh) => meshes.has(mesh), lanes);
+  // The street's furniture where a dock comes ashore is taken up, the last first so the others keep their places.
+  for (const i of [...new Set(marinas.cleared)].sort((a, b) => b - a)) { pieceCounts[chunkOf(statics[i]!.x, statics[i]!.z)]!--; statics.splice(i, 1); }
+  for (const p of marinas.pieces) statics.push(p);
+  lap(`${marinas.runs.length} runs of dock and ${marinas.slips.length} boats moored at ${docks.size} marinas' mapped piers and ${marinas.slipped.size} marinas in all; ${marinas.pieces.length} pieces`);
+  const wrecks = harbourWrecks(latticeSites, harbours, reg, statics, {
+    waterAt: site.waterAt, groundAt: site.groundAt, inside, room: (x, z) => pieceCounts[chunkOf(x, z)]! < budget - 1,
+  }, districtAt, (mesh) => meshes.has(mesh), undefined, marinas.slipped);
   for (const w of wrecks) { statics.push({ kind: w.kind, x: w.x, y: w.y, z: w.z, yaw: w.yaw }); pieceCounts[chunkOf(w.x, w.z)]!++; }
-  lap(`${wrecks.length} wrecks in the harbours`);
+  wrecks.push(...marinas.wrecks);
+  lap(`${wrecks.length} wrecks in the harbours, ${marinas.wrecks.length} of them in slips`);
   const maxChunk = Math.max(...pieceCounts);
   if (maxChunk > budget) throw new Error(`Static chunk budget ${budget} exceeded after obelisks: ${maxChunk}`);
   lap(`${obelisks.length} obelisks`);
@@ -254,12 +275,23 @@ export async function buildMap(named: string, release = false, output = join(ROO
   // After the parked cars, which keep their places in the list, and clear of them; the boats clear of both.
   const parked = map.vehicles ?? [];
   const aircraft = helicopterSites(map, reg, aircraftSites);
-  const berthed = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, (e, n) => { const [x, z] = site.toLattice(e, n); return [x - x0, z - z0]; }), harbours, (x, z) => districtAt(x + x0, z + z0));
+  const slips = marinas.slips.map((s) => ({ ...s, x: s.x - x0, z: s.z - z0, dock: s.dock ? { ...s.dock, x: s.dock.x - x0, z: s.dock.z - z0 } : null }));
+  const berthed = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, (e, n) => { const [x, z] = site.toLattice(e, n); return [x - x0, z - z0]; }), harbours, (x, z) => districtAt(x + x0, z + z0), slips);
   const boats = berthed.map(({ site: _site, district: _district, ...v }) => v);
-  if (world.heaps === false) writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "harbours.json"), JSON.stringify({
-    vessels: berthed.map(({ id, kind, site: at, district, x, z, condition, fuel }) => ({ id, kind, site: at, district, x: Math.round(x), z: Math.round(z), condition, fuel })),
-    wrecks: wrecks.map(({ kind, vessel, form, site: at, district, offshore, x, z }) => ({ kind, vessel, form, site: at, district, offshore, x: Math.round(x - x0), z: Math.round(z - z0) })),
-  }, null, 1) + "\n");
+  if (world.heaps === false) {
+    writeFileSync(join(report, "harbours.json"), JSON.stringify({
+      vessels: berthed.map(({ id, kind, site: at, district, x, z, condition, fuel }) => ({ id, kind, site: at, district, x: Math.round(x), z: Math.round(z), condition, fuel })),
+      wrecks: wrecks.map(({ kind, vessel, form, site: at, district, offshore, x, z }) => ({ kind, vessel, form, site: at, district, offshore, x: Math.round(x - x0), z: Math.round(z - z0) })),
+    }, null, 1) + "\n");
+    // What the dock walk (tools/mapworld/dock-walk.ts) walks and boards: each run's deck points, and each slip with the
+    // place on its dock a survivor boards from, in the map's metres; which slips' vessels are found, by their berth.
+    const at = (p: { x: number; z: number }): [number, number] => [Math.round(p.x * 100) / 100, Math.round(p.z * 100) / 100];
+    writeFileSync(join(report, "marinas.json"), JSON.stringify({
+      refused: marinas.refused,
+      runs: marinas.runs.map((r) => ({ ...r, points: r.points.map((p) => [...at({ x: p.x - x0, z: p.z - z0 }), Math.round(p.y * 64) / 64]) })),
+      slips: slips.map((s) => ({ ...s, x: at(s)[0], z: at(s)[1], dock: s.dock ? [...at(s.dock), s.dock.y] : null, held: s.found ? berthed.find((b) => b.site === s.site && Math.hypot(b.x - s.x, b.z - s.z) < .01)?.id ?? null : undefined })),
+    }) + "\n");
+  }
   if (aircraft.length + boats.length > 0) {
     const all = [...parked, ...aircraft, ...boats];
     map = { ...map, vehicles: all };

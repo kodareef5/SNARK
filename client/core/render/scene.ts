@@ -512,6 +512,8 @@ export class Scene {
   private readonly pitched: Uint8Array;
   /** Per mesh, DRAW_GROUND where a kind of paint on the ground is drawn with it, which casts no shadow; else 0. */
   private readonly groundFlags: Uint16Array;
+  /** Per mesh, what a static's distance is divided by when its level is chosen: 1, or less for a coarse kind's. */
+  private readonly reachOfStatic: Float32Array;
   /** Per species. The size a newborn is drawn at, as a share of a grown one. */
   private readonly birthScale: Float32Array;
   /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
@@ -541,9 +543,12 @@ export class Scene {
   private readonly treeOf: Uint8Array;
   /**
    * Per mesh, the flags a draw of it in palette colours carries besides its own: DRAW_PLAIN for a landmark's, whose flat
-   * levels are its art's own colours and take neither the world finish nor the checker.
+   * levels are its art's own colours and take neither the world finish nor the checker, and for a vehicle's that a static
+   * draws (a marina's moored hulls, content/docks.ts), as the vehicle itself is drawn.
    */
   readonly flatFlags: Uint16Array;
+  /** Per structure kind, five bytes: the palette colours of its mesh's regions 1 to 5 (StructureDef.colors), 0 where it gives none. */
+  private readonly regionsOfKind: Uint8Array;
   /** Per mesh and level, the triangles of its sections drawn with bark and of its cut-out ones. */
   private readonly trunkTris: number[][];
   private readonly leafTris: number[][];
@@ -812,6 +817,9 @@ export class Scene {
     this.sizes = reg;
     this.parkedContacts = new ParkedContacts(reg);
     this.groundFlags = new Uint16Array(table.count);
+    this.reachOfStatic = new Float32Array(table.count).fill(1);
+    this.regionsOfKind = new Uint8Array(reg.defs.length * 5);
+    const vehicleMeshes = new Set<number>();
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
@@ -825,6 +833,13 @@ export class Scene {
       this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
       this.colorOfKind[k] = d.color;
       if (mesh >= 0 && d.type === "structure" && d.paint) this.groundFlags[mesh] = DRAW_GROUND;
+      // A static whose levels are chosen farther off than it stands: every static of its mesh is (StructureDef.coarse).
+      if (mesh >= 0 && d.type === "structure" && d.coarse) this.reachOfStatic[mesh] = Math.min(this.reachOfStatic[mesh]!, 1 / d.coarse);
+      if (d.type === "structure" && d.colors) this.regionsOfKind.set(d.colors, k * 5);
+      if (mesh >= 0 && d.type === "structure" && d.mesh !== "shape") {
+        const of = reg.defs[reg.index.get(d.mesh) ?? 0];
+        if (of?.type === "species" && of.vehicle) vehicleMeshes.add(mesh);
+      }
     }
     this.finder = new RoomFinder(reg, this.meshOfKind, (stream?.manifest ?? pack.header).meshes, table.error);
     this.twinOf = new Int32Array(table.count).fill(-1);
@@ -859,7 +874,7 @@ export class Scene {
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
     this.landmarkKinds = landmarkKinds(reg);
     this.floatingKinds = floatingKinds(reg);
-    this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : 0));
+    this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m, mesh) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : vehicleMeshes.has(mesh) ? DRAW_PLAIN : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
     this.materialFlags = new Uint8Array(table.materials.length);
@@ -3142,6 +3157,7 @@ export class Scene {
         b.maxZ = Math.max(b.maxZ, z + rad);
       }
       data[at * INSTANCE_BYTES + 14] = colorOf[kind]!;
+      if (colorOf === this.colorOfKind) data.set(this.regionsOfKind.subarray(kind * 5, kind * 5 + 5), at * INSTANCE_BYTES + 15);
       kinds[at] = kind;
       const open = this.finder.door(kind), opened = this.finder.door(was);
       if (open < 0 || opened < 0) continue;
@@ -3270,6 +3286,7 @@ export class Scene {
       for (let c = 0; c < blocks; c++) b.cellFirst[q * (blocks + 1) + c] = this.cellCursor[m * blocks + c]!;
       b.cellFirst[q * (blocks + 1) + blocks] = ranges[q * 3 + 1]! + ranges[q * 3 + 2]!;
       this.cursor[m] = q;
+      if (!sizeOf && this.reachOfStatic[m] !== 1) { b.reach[q] = this.reachOfStatic[m]!; b.cellReach.fill(this.reachOfStatic[m]!, q * cells, (q + 1) * cells); }
     }
     const box = b.cellBox, zone = b.zone;
     for (let s = 0; s < t.high; s++) {
@@ -3284,6 +3301,7 @@ export class Scene {
       const i = this.cellCursor[mesh * blocks + block]!++;
       w.set(i, x - x0, y, z - z0, t.yaw[s]!, colorOf[kind]!);
       if (sizeOf) w.size(i, sizeOf[kind]!);
+      else w.bytes.set(this.regionsOfKind.subarray(kind * 5, kind * 5 + 5), i * INSTANCE_BYTES + 15);
       slots[i] = s;
       kinds[i] = kind;
       // A node is held by its mesh's own bounds at its size, which for a tall tree are far tighter sideways than a sphere.

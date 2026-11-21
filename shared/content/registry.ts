@@ -509,6 +509,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.under !== undefined && !(Number.isInteger(d.under) && d.under > 0 && d.under < REGION_BASE)) errors.push(`${d.id}: under must be a fixed palette colour`);
       if (d.near !== undefined && d.near !== true) errors.push(`${d.id}: near is true or left out`);
       if (d.paint !== undefined && d.paint !== true) errors.push(`${d.id}: paint is true or left out`);
+      if (d.coarse !== undefined && !(d.coarse >= 1 && d.coarse <= 16)) errors.push(`${d.id}: coarse is from 1 to 16`);
+      if (d.colors !== undefined && !(Array.isArray(d.colors) && d.colors.length <= 5 && d.colors.every((c) => Number.isInteger(c) && c > 0 && c < REGION_BASE))) errors.push(`${d.id}: colors are up to five fixed palette colours`);
       if (d.motion !== undefined) errors.push(...motionFaults(d));
       if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);

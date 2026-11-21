@@ -1,10 +1,12 @@
 // The street's edge as modelled (assets/source/core/props/street/curb.py): each walk piece is drawn where the content
-// walks it, and a coarser level says how far it lies from the finest, as a measure of points cannot.
+// walks it, and a coarser level says how far it lies from the finest, as a measure of points cannot. A marina's dock
+// modules (dock.py) are drawn where they are walked too.
 
 import { expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { DOCK } from "../../content/docks.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { unpackMeshes, type SourceMesh } from "../../tools/pack/write.ts";
 import { artTest, fromArt } from "../fixtures/needs-art.ts";
@@ -33,6 +35,26 @@ artTest("each walk piece is drawn where it is walked: above the ground its mesh 
     // Its far level is about what the near city drew of the old boxes, and stands no more than its joints off the first.
     expect([name, mesh.lods[1]!.indices.length / 3 <= 20, mesh.lods[1]!.error]).toEqual([name, true, 0.009]);
   }
+});
+
+artTest("each dock module is drawn where it is walked: its deck's top at its origin, as wide and as long as the content's deck, its piles going down", () => {
+  for (const [part, width] of [["walk", DOCK.walk], ["finger", DOCK.finger], ["ramp", DOCK.walk]] as const) {
+    const mesh = meshes.find((m) => m.id === `core:zzzzdock_${part}`)!;
+    expect([part, mesh.lods.length >= 3]).toEqual([part, true]);
+    const p = mesh.lods[0]!.positions, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (let v = 0; v < p.length; v += 3) for (let k = 0; k < 3; k++) [lo[k], hi[k]] = [Math.min(lo[k]!, p[v + k]!), Math.max(hi[k]!, p[v + k]!)];
+    expect([part, Math.abs(hi[0]! - width / 2) < 0.015, Math.abs(lo[0]! + width / 2) < 0.015, Math.abs(hi[2]! - DOCK.length / 2) < 0.015]).toEqual([part, true, true, true]);
+    // The deck's top, at its boards' ends against the fascias' inner faces 5 cm in from its sides: at the origin, or for
+    // the ramp a quarter metre falling through it. The cleats and rails stand over it, off those faces.
+    let top = -Infinity; for (let v = 1; v < p.length; v += 3) if (Math.abs(p[v + 1]!) < 0.3 && Math.abs(Math.abs(p[v - 1]!) - (width / 2 - 0.05)) < 0.001) top = Math.max(top, p[v]!);
+    const most = part === "ramp" ? DOCK.fall * 0.3 / DOCK.length : 0;
+    expect([part, top > -0.01 && top < most + 0.01]).toEqual([part, true]);
+    expect([part, lo[1]! < -DOCK.foot + 0.01]).toEqual([part, true]);
+    for (let l = 1; l < mesh.lods.length; l++) expect([part, l, mesh.lods[l]!.indices.length < mesh.lods[l - 1]!.indices.length]).toEqual([part, l, true]);
+  }
+  const pile = meshes.find((m) => m.id === "core:zzzzdock_pile")!;
+  let top = -Infinity; for (let v = 1; v < pile.lods[0]!.positions.length; v += 3) top = Math.max(top, pile.lods[0]!.positions[v]!);
+  expect(Math.abs(top - DOCK.top) < 0.01).toBe(true);
 });
 
 artTest("each curb return's levels state at least the sagitta of their chord at the gutter's edge, and its finest fills the content's walked parts", () => {

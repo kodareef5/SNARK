@@ -55,7 +55,7 @@ type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 type Scene = "base" | "wood" | "flock" | "city";
-type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front";
+type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front" | "marina";
 /** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off or the far layers. On the city, where and at how many device pixels to one, and how many times slower the page's processor is made. */
 interface Run {
   scene: Scene;
@@ -94,6 +94,9 @@ const CITY_PLACES: Record<View, Place> = {
   // behind its mast, two cars on the road under it, the body 6 m along the road from under its lens.
   "lamp-cars": { name: "lamp-cars", east: 1091, north: -2588, up: 0 },
   "lamp-front": { name: "lamp-front", east: -875, north: 2131, up: 0 },
+  // On a marina's walkway among its moored boats (tools/boat/marinas.ts), where CITY_MARINA puts it on the map benched:
+  // "east,north,y", metres from its centre and the dock's deck. Only then are its rows run.
+  marina: ((at) => ({ name: "marina", east: at[0] ?? 0, north: at[1] ?? 0, y: at[2] ?? 0.7 }))((process.env.CITY_MARINA ?? "").split(",").map(Number)),
 };
 
 export function plan(): Run[] {
@@ -138,6 +141,7 @@ export function plan(): Run[] {
   // busy lamp's row of five parked cars by night.
   for (const [tier, scale] of [["high", 1], ["high", 2], ["medium", 1]] as const) runs.push({ scene: "city", view: "street", tier, scale, ab: "glass" });
   for (const tier of ["high", "medium"]) runs.push({ scene: "city", view: "lamp-cars", tier, scale: 1, window: [1920, 1167], ab: "glass", hour: 22 });
+  if (process.env.CITY_MARINA) for (const tier of ["medium", "high"]) for (const scale of [1, 2]) runs.push({ scene: "city", view: "marina", tier, scale });
   return runs;
 }
 
