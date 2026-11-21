@@ -2,7 +2,7 @@
   "repository": "kodareef5/SNARK",
   "art": {
     "release": "art",
-    "id": "7a97882dd9877306",
+    "id": "914c53f22ec3d3d0",
     "files": [
       {"name": "core-creatures-allosaur", "file": "core-creatures-allosaur.5eb2682fdf0a.tar.zst", "bytes": 2833562, "sha256": "5eb2682fdf0abb902fa1807673cf9dc46c3111e728eda23299b3a910d74129e2"},
       {"name": "core-creatures-ankylo", "file": "core-creatures-ankylo.d19e9025be7c.tar.zst", "bytes": 1901178, "sha256": "d19e9025be7ccaeb84f4bf80f6554f9e9a6a2971b062a6666ab9f50e8901146b"},
@@ -56,6 +56,7 @@
       {"name": "core-humans-human-bodies", "file": "core-humans-human-bodies.7cd10cc94252.tar.zst", "bytes": 18682302, "sha256": "7cd10cc942523ed246185b42f62b8c6ca6973bc7280f69e26f91b7e4a5f47455"},
       {"name": "core-humans-human-clips", "file": "core-humans-human-clips.20a98a447d46.tar.zst", "bytes": 23882, "sha256": "20a98a447d463106d83038cd080a71f43e15e0bc49e97c97241904cec6faa3e0"},
       {"name": "core-humans-survivor", "file": "core-humans-survivor.8a07f7a455e2.tar.zst", "bytes": 8378528, "sha256": "8a07f7a455e20ceaecf8f7a6a8c3a739a791148a9a600c0050a0d60f30443b1d"},
+      {"name": "core-items-soul-ball", "file": "core-items-soul-ball.78fb5fb54f31.tar.zst", "bytes": 36713, "sha256": "78fb5fb54f31dc3cfa0b18a1ec411f80c368674222766cf5002b4bbd52bbec28"},
       {"name": "core-items-stone-tools", "file": "core-items-stone-tools.fb143b2816f1.tar.zst", "bytes": 34000573, "sha256": "fb143b2816f17894fb76cb3022894e093094a73346fe705da1076f75d8ecc414"},
       {"name": "core-items-weapons", "file": "core-items-weapons.2b679b6fdd81.tar.zst", "bytes": 8004901, "sha256": "2b679b6fdd818275bfe1b35d1b1bf9a47649add084eae1118eb8c047f6d6fc40"},
       {"name": "core-music-apex", "file": "core-music-apex.b8a7de0e58b5.tar.zst", "bytes": 3830635, "sha256": "b8a7de0e58b51cc2c2dcb9a766f961a10e9e35539ecc7641032cadbcc48db082"},
