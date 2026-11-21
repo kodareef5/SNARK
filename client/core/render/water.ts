@@ -458,8 +458,8 @@ void main() {
   }
   float foam = depth < ${g(FOAM)} && fine > 0.0 ? lace*seaFoam(vRel.xz, depth, fine, wide, deep) : 0.0;
 #ifdef LOCAL_WAKES
-  float churn;
-  waterTrails(vRel,depth,wide,localSlope,foam,churn);
+  float churn, wakeFoam=0., foamHeight=.5;
+  waterTrails(vRel,depth,wide,localSlope,wakeFoam,churn);
 #endif
   vec3 v = -vRel / dist;
   // The waves: each picture's slopes, and how much of their mean square its coarser pictures have lost to distance.
@@ -476,16 +476,28 @@ void main() {
     float swell = ${g(SWELL_SHARE / (RMS_SLOPE * RMS_SLOPE))} * spread;
     spread = spread * ${g(1 - SWELL_SHARE)} + swell * max(ww.z * ${g(SQUARE_MOST)} - dot(sw, sw), 0.0);
 #ifdef LOCAL_WAKES
-    // Read turbulence from the short waves already in cache. Only the hull track broadens the glint or leaves bubbles.
+    // Read turbulence from the short waves already in cache. Broken bubbles follow the rough wake and fade into the wind ripples.
+    foamHeight=.74*ws.a+.26*wl.a;
     if (churn > 0.) {
       sb *= 1.+2.4*churn;
       spread += .014*churn;
-      foam = max(foam,.26*churn*smoothstep(.43,.69,ws.a));
+      float bubbles = smoothstep(.35,.67,foamHeight);
+      wakeFoam = max(wakeFoam,.50*churn*bubbles);
     }
 #endif
     vec2 s = sa + sb + sqrt(swell) * sw;
     n = normalize(vec3(-s.x, 1.0, -s.y));
   }
+#ifdef LOCAL_WAKES
+  // Aerated water separates into cells as it spreads. Break up the joined wake once per covered fragment.
+  if (wakeFoam>.006) {
+    vec2 rel=vRel.xz;
+    float fineFoam=foamNoise((${tiles(SHORT, "fWaves.zw")})*32.,32);
+    float flecks=smoothstep(.33,.64,.77*fineFoam+.23*foamHeight);
+    float coverage=mix(.09+1.48*flecks,.8,smoothstep(.12,.32,wide));
+    foam=max(foam,min(.87,wakeFoam*coverage));
+  }
+#endif
   if (any(notEqual(localSlope,vec2(0.)))) n=normalize(n-vec3(localSlope.x,0.,localSlope.y)*n.y);
   float nv = clamp(dot(n, v), 0.001, 1.0);
   float a2 = ${g(Math.pow(SEA_ROUGH, 4) + DISC * DISC)} + spread;

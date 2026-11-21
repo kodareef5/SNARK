@@ -19,7 +19,7 @@ import { join, resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
 import { airFrame } from "../../client/core/render/atmosphere.ts";
-import { WATER_DURATIONS, WATER_BOUNDS, WATER_MARKS, WATER_MARK_COUNT, MAX_WATER_MARKS, DRAW_WATER, FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
+import { WATER_PATHS, WATER_BOUNDS, WATER_MARKS, WATER_MARK_COUNT, MAX_WATER_MARKS, DRAW_WATER, FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, hourOfSun, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { groundSize } from "../../client/core/render/terrain.ts";
@@ -587,7 +587,7 @@ async function timeWater(chrome: string): Promise<Record<string, number | string
     f.splice(WATER_BOUNDS, 4, -8, 0, 8, 16);
     for (let i = 0; i < count; i++) {
       f.splice(WATER_MARKS + 8 * i, 8, (i % 3 - 1) * 3, 2 + Math.floor(i / 3) * 3.2, 0.3, 1.8, -10, i * 0.18, 1, 0.5);
-      f[WATER_DURATIONS + i] = 0.43;
+      f.splice(WATER_PATHS + 4 * i, 4, 0.43, -0.22, 0.18, 3);
     }
     const fragment = count ? water.fragment.replace("#version 300 es", "#version 300 es\n#define LOCAL_WAKES") : water.fragment;
     runs.push({ name: `WATER, close hull, ${count} marks`, vertex: close, fragment, samplers: water.samplers, frame: f, waves: true });

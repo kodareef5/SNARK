@@ -4,7 +4,7 @@ import type { OwnBody } from "../../client/core/render/scene.ts";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { WaterTrails } from "../../client/core/render/water-trails.ts";
 import { beachWash, swashFrame } from "../../client/core/render/swash.ts";
-import { FRAME_FLOATS, WATER_MARKS, WATER_MARK_COUNT } from "../../client/core/render/packet.ts";
+import { FRAME_FLOATS, WATER_MARKS, WATER_MARK_COUNT, WATER_PATHS } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
@@ -221,9 +221,54 @@ test("on touch a swimmer treading water or a pilot high overhead leaves the wake
 
 test("the governor gives back wake work without spending beyond the device's original budget", () => {
   for (const base of [tierOf("high"), forTouch(tierOf("high"), true), tierOf("lowpoly")]) {
-    const budgets = ladder(base, 2).map(step => step.tier.waterMarks);
+    const budgets = ladder(base, 2).map((step) => step.tier.waterMarks);
     expect(budgets[0]).toBe(base.waterMarks);
     expect(budgets.at(-1)).toBe(0);
     for (let i = 1; i < budgets.length; i++) expect(budgets[i]!).toBeLessThanOrEqual(budgets[i - 1]!);
   }
+});
+
+test("a swimmer's live trail stays at the rendered body between samples and a skimming pilot has its own pressure profile", () => {
+  for (const jet of [false, true]) {
+    const { r, f, eye, step } = coast(false),
+      state = new AnimState();
+    state.mode = jet ? 0 : MODE_SWIM;
+    state.jet = jet;
+    state.grounded = false;
+    state.setMotion(0, 4, 0, 0);
+    r.anim[0] = state.pack();
+    r.cue[0] = state.packCue();
+    r.y[0] = jet ? 3.35 : 2.3;
+    step(0);
+    r.z[0] = 40.5;
+    step(0.125);
+    r.z[0] = 40.75;
+    step(0.1875);
+    expect(f[WATER_MARK_COUNT]).toBe(1);
+    expect(f[WATER_MARKS + 1]! + f[WATER_MARKS + 3]! + eye.z).toBeCloseTo(40.75);
+    expect(f[WATER_MARKS + 7]).toBeGreaterThan(0.45);
+    expect(f[WATER_PATHS + 3]).toBe(jet ? 2 : 1);
+  }
+});
+
+test("a hull section ends at the stern and consecutive sections carry the turn, including across the yaw wrap", () => {
+  const { r, reg, f, eye, step } = coast();
+  const spec = reg.vehicle[r.kind[0]!]!;
+  if (spec.movement !== "boat") throw Error("expected hull");
+  const radius = 8,
+    stern = 0.9 * spec.spec.halfLength;
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 8,
+      yaw = 2.95 + t * 0.8;
+    r.x[0] = 40 - radius * Math.cos(yaw);
+    r.z[0] = 40 + radius * Math.sin(yaw);
+    r.yaw[0] = Math.atan2(Math.sin(yaw), Math.cos(yaw));
+    step(t);
+  }
+  expect(f[WATER_MARK_COUNT]).toBeGreaterThan(3);
+  const yaw = r.yaw[0]!;
+  expect(f[WATER_MARKS]! + f[WATER_MARKS + 2]! + eye.x).toBeCloseTo(r.x[0]! - stern * Math.sin(yaw), 4);
+  expect(f[WATER_MARKS + 1]! + f[WATER_MARKS + 3]! + eye.z).toBeCloseTo(r.z[0]! - stern * Math.cos(yaw), 4);
+  expect(f[WATER_PATHS + 3]).toBe(3);
+  expect(Math.abs(f[WATER_PATHS + 6]! - f[WATER_PATHS + 5]!)).toBeGreaterThan(0.1);
 });

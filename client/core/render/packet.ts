@@ -106,6 +106,8 @@ export const DETAIL_POOL = 128;
 export const DETAIL_WIRE = DETAIL_POOL | 1;
 export const DETAIL_GLASS = DETAIL_POOL | 2;
 export const DETAIL_TIRE = DETAIL_POOL | 3;
+/** A sunlit aerated streak at the stern. Its grey byte seeds the shape. */
+export const DETAIL_WAKE = DETAIL_POOL | DETAIL_LIT | 4;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /**
@@ -356,9 +358,9 @@ export const WATER_PHASE = FRAME.exhaustPhase + 1;
 export const WATER_MARK_COUNT = FRAME.exhaustPhase + 3;
 export const WATER_BOUNDS = FRAME.exhaustPhase + 4;
 export const WATER_MARKS = WATER_BOUNDS + 4;
-/** Seconds taken to lay each segment, four per vec4, so the crests meet through a change of boat speed. */
-export const WATER_DURATIONS = WATER_MARKS + MAX_WATER_MARKS * 8;
-export const FRAME_FLOATS = WATER_DURATIONS + MAX_WATER_MARKS;
+/** Per segment: duration, incoming and outgoing cross-track slopes, and wake family. */
+export const WATER_PATHS = WATER_MARKS + MAX_WATER_MARKS * 8;
+export const FRAME_FLOATS = WATER_PATHS + 4 * MAX_WATER_MARKS;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -369,7 +371,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fEyes[6];
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
   highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
-  highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterDurations[${MAX_WATER_MARKS / 4}];
+  highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterPaths[${MAX_WATER_MARKS}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
