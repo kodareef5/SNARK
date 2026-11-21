@@ -15,8 +15,12 @@ import { Ui } from "../../client/core/ui/ui.ts";
 import * as mine from "../../client/core/ui/monitor-style.ts";
 import * as nodes from "../../client/core/ui/nodes.ts";
 import * as style from "../../client/core/ui/style.ts";
-import { fakeApp, fitsClear, glassBox, stripFits } from "../fixtures/monitor.ts";
-import { KEY_CARD } from "../../client/core/ui/monitor.ts";
+import * as panel from "../../client/core/ui/monitor-panel.ts";
+import * as hudKeys from "../../client/core/ui/hud.ts";
+import { fakeApp, fitsClear, glassBox, meets, stripFits } from "../fixtures/monitor.ts";
+import { KEY_CARD, KEY_STRIP_OPEN } from "../../client/core/ui/monitor.ts";
+import { CHART_SECONDS, ChartData, SERIES, chartBox, columnAt, scaleText } from "../../client/core/ui/monitor-chart.ts";
+import { KEY_CHART_PICK, KEY_CLOSE, KEY_COLUMN_BACK, KEY_FREEZE, KEY_PANEL, KEY_TAB } from "../../client/core/ui/monitor-panel.ts";
 import { textureWords } from "../../client/core/ui/monitor-card.ts";
 import type { TextureInspection } from "../../client/core/assets/inspect.ts";
 import * as copied from "../../client/core/assets/copied.ts";
@@ -25,9 +29,10 @@ import * as texture from "../../shared/pack/texture.ts";
 
 test("the monitor's copies of the first frame's numbers are the numbers", () => {
   const copies: [number, number][] = [[mine.K_PANEL, nodes.K_PANEL], [mine.K_TEXT, nodes.K_TEXT], [mine.K_BAR, nodes.K_BAR], [mine.K_BUTTON, nodes.K_BUTTON], [mine.K_HOLD, nodes.K_HOLD]];
-  for (const name of ["S_TEXT", "S_LABEL", "S_DARK", "S_MENU", "S_MENU_NOTE", "S_HUD_HIT", "S_HUD_COUNT", "S_ICE", "S_MENU_HEADING", "S_WARNING", "S_KEY", "S_MENU_WARN"] as const) copies.push([mine[name], style[name]]);
+  for (const name of ["S_TEXT", "S_LABEL", "S_DARK", "S_MENU", "S_MENU_NOTE", "S_HUD_HIT", "S_HUD_COUNT", "S_ICE", "S_MENU_HEADING", "S_WARNING", "S_KEY", "S_MENU_WARN", "S_UNMUTE"] as const) copies.push([mine[name], style[name]]);
   copies.push([mine.LINE, nodes.lineHeight(style.S_MENU_NOTE)], [mine.LINE, nodes.lineHeight(style.S_TEXT)], [mine.SMALL_LINE, nodes.lineHeight(style.S_LABEL)], [mine.SMALL_LINE, nodes.lineHeight(style.S_HUD_COUNT)], [mine.HEADING_LINE, nodes.lineHeight(style.S_MENU_HEADING)]);
   for (const [copy, real] of copies) expect(copy).toBe(real);
+  expect([panel.KEY_COMPASS, panel.KEY_MINIMAP_FRAME, panel.KEY_CLOCK, panel.KEY_MINIMAP_TOGGLE]).toEqual([KEY_COMPASS, hudKeys.KEY_MINIMAP_FRAME, hudKeys.KEY_CLOCK, hudKeys.KEY_MINIMAP_TOGGLE]);
   for (const name of ["ABSENT", "LOADING", "ARRIVED", "RESIDENT", "DEAD", "RIDING", "MAPS", "WHY_NONE", "WHY_LANES", "WHY_WAITING", "WHY_RETRY", "WHY_FIRSTS", "WHY_SHARE", "WHY_LEVEL", "WHY_LARGE", "WHY_ALLOWANCE", "WHY_FULL"] as const) expect(copied[name], name).toBe(residency[name]);
   for (const name of ["STEP0_SIZE", "LAST_STEP", "RGBA_TOP"] as const) expect(copied[name], name).toBe(texture[name]);
   for (let px = 0; px <= 5000; px += 37) for (let most = 0; most <= 6; most++) expect(copied.stepFor(px, most)).toBe(residency.stepFor(px, most));
@@ -129,5 +134,98 @@ test("the strip stands under the readout at every window, pushes the compass, an
       expect(card.x + card.w <= f.width / 2 - 2 || card.x >= f.width / 2 + 2 || card.y >= f.height / 2 + 40, `${where}: card over the crosshair`).toBe(true);
       expect(card.y + card.h <= strip.y || card.y >= strip.y + hud.stripH || card.x >= strip.x + hud.stripW, `${where}: card over the strip`).toBe(true);
     } else expect(glassBox(f, KEY_CARD), where).toBeNull();
+  }
+});
+
+test("the chart reads the last minute's buckets, oldest first, its top the least scale that holds the tallest", () => {
+  const ring = new FrameRing(), stats = { fetched: 0, stale: 0, cached: 0, disk: 0, uploaded: 0 };
+  const r = { stats, spentOther: 0, flying: 0, flyingLarge: 0, waiting: 0, wanting: () => 0, ledger: 0, texLedger: 0, cardFull: false, shareShort: false, holdBack: false };
+  // Ninety seconds; in second 80 three megabytes come over the network and one frame takes 83 ms.
+  for (let t = 0; t < 90000; t += 50) {
+    const second = Math.floor(t / 1000);
+    stats.fetched += second === 80 ? 150000 : 1000;
+    stats.uploaded += 500;
+    ring.record(t, second === 80 && t % 1000 === 0 ? 83 : 50, 4, 0, r as never, null);
+  }
+  const chart = new ChartData();
+  chart.read(ring);
+  // The latest column is second 89, the oldest second 30.
+  expect([chart.second[CHART_SECONDS - 1], chart.second[0]]).toEqual([89, 30]);
+  const col = CHART_SECONDS - 1 - 9;
+  expect(chart.second[col]).toBe(80);
+  expect(chart.bytes[col * SERIES]).toBe(20 * 150000);
+  expect([chart.slow[col], chart.worst[col], chart.slow[col - 1]]).toEqual([1, 83, 0]);
+  expect(chart.scale).toBe(4 * 1048576);
+  expect(scaleText(chart.scale)).toBe("4 MB/s");
+  const box = chartBox(100, 50, 248, 100, { x: 0, y: 0, w: 0, h: 0, column: 0 });
+  expect([columnAt(box, 100 + 4), columnAt(box, 100 + 4 + 4 * 60 - 1), columnAt(box, 90)]).toEqual([0, 59, -1]);
+  // Frozen, it keeps what it showed.
+  const still = new ChartData();
+  still.copy(chart);
+  expect(Array.from(still.bytes)).toEqual(Array.from(chart.bytes));
+});
+
+test("the panel opens from the strip while H is held, closes by its button, Escape and F3, and frees the mouse while open", () => {
+  const ui = new Ui(), hud = new HudModel();
+  const m = new Monitor(fakeApp(new FrameRing()), MONITOR_KIT);
+  ui.monitor = m;
+  ui.settings.diagnostics = ui.settings.monitor = true;
+  ui.build(16 / 9, hud, null);
+  expect(ui.frame.find(KEY_STRIP_OPEN)).toBeNull();
+  ui.key("KeyH", true, false, null);
+  ui.build(16 / 9, hud, null);
+  expect(ui.frame.find(KEY_STRIP_OPEN)!.interactive).toBe(true);
+  ui.pointer(0, KEY_STRIP_OPEN, 100, 100, 0, null);
+  ui.key("KeyH", false, false, null);
+  expect([m.open, ui.wantsPointerLock, ui.captureKeyboard]).toEqual([true, false, false]);
+  ui.build(16 / 9, hud, null);
+  expect(glassBox(ui.frame, KEY_PANEL)).not.toBeNull();
+  // The readout gives way to the panel, and so does the strip.
+  expect(ui.frame.find(KEY_READOUT)).toBeNull();
+  expect(glassBox(ui.frame, KEY_MONITOR)).toBeNull();
+  ui.pointer(0, KEY_TAB + 1, 0, 0, 0, null);
+  expect(m.tab).toBe(1);
+  ui.build(16 / 9, hud, null);
+  ui.pointer(0, KEY_COLUMN_BACK, 0, 0, 0, null);
+  expect(m.column).toBe(CHART_SECONDS - 1);
+  ui.pointer(0, KEY_COLUMN_BACK, 0, 0, 0, null);
+  expect(m.column).toBe(CHART_SECONDS - 2);
+  const pick = ui.frame.find(KEY_CHART_PICK)!;
+  ui.pointer(0, KEY_CHART_PICK, pick.x + 6, pick.y + 10, 0, null);
+  expect(m.column).toBe(0);
+  ui.pointer(0, KEY_FREEZE, 0, 0, 0, null);
+  expect(m.frozen).toBe(true);
+  ui.key("Escape", true, false, null);
+  expect([m.open, ui.wantsPointerLock, ui.menu]).toEqual([false, true, false]);
+  ui.pointer(0, KEY_STRIP_OPEN, 0, 0, 0, null);
+  ui.pointer(0, KEY_CLOSE, 0, 0, 0, null);
+  expect(m.open).toBe(false);
+  // Turned off, the monitor's panel is gone with it.
+  m.open = true;
+  ui.key("F3", true, false, null);
+  expect(ui.wantsPointerLock).toBe(true);
+  ui.build(16 / 9, hud, null);
+  expect(glassBox(ui.frame, KEY_PANEL)).toBeNull();
+});
+
+test("the panel and its chart fit every window, each tab: words fit, controls apart, clear of the compass, the minimap and the unmute offer", () => {
+  const ring = new FrameRing(), stats = { fetched: 0, stale: 0, cached: 0, disk: 0, uploaded: 0 };
+  const r = { stats, spentOther: 0, flying: 0, flyingLarge: 0, waiting: 0, wanting: () => 0, ledger: 0, texLedger: 0, cardFull: false, shareShort: false, holdBack: false };
+  for (let t = 0; t < 70000; t += 20) { stats.fetched += 3000; stats.disk += 800; stats.cached += 900; stats.uploaded += 2000; ring.record(t, t % 9000 === 0 ? 80 : 20, 4, 0, r as never, null); }
+  const app = fakeApp(ring);
+  (app as unknown as { nowMs: number }).nowMs = 70000;
+  const ui = new Ui(), hud = new HudModel(), m = new Monitor(app, MONITOR_KIT);
+  ui.monitor = m;
+  ui.settings.diagnostics = ui.settings.monitor = true;
+  const windows: [number, number][] = [[405, 720], [960, 720], [1280, 720], [1680, 720], [2560, 720], [1056, 488], [834, 469], [710, 400], [1280, 576]];
+  for (const [w, h] of windows) for (const muted of [true, false]) for (let tab = 0; tab < 3; tab++) {
+    ui.canvasHeight = h; ui.settings.muted = muted;
+    m.open = true; m.tab = tab; m.column = tab === 1 ? 40 : -1; m.refreshNow();
+    ui.build(w / h, hud, null);
+    const f = ui.frame, where = `${w}x${h}${muted ? " muted" : ""} tab ${tab}`;
+    // A screen covers the middle of the HUD, as the inventory does: the crosshair, its cone and what shows under it.
+    fitsClear(f, KEY_PANEL, where, (n) => n.key >= 24 && n.key <= 35);
+    const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive);
+    for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) expect(meets(controls[i]!, controls[j]!), `${where}: ${controls[i]!.key} over ${controls[j]!.key}`).toBe(false);
   }
 });

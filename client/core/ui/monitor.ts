@@ -1,29 +1,38 @@
 // The resource monitor: a strip in the HUD's top-left column, under the readout, that says what the game is fetching
-// over the network, reading from the disk and sending to the graphics card each second, and how much is downloading,
-// asked for and waiting for the card. While H is held a card beside the crosshair says what is looked at and where its
-// model and textures stand (ui/monitor-card.ts); by touch, where nothing is held, the strip's last line says it. Its
-// numbers come from the record of frames (assets/frames.ts) and the residency's counters, and are made again ten times
-// a second, not every frame; between, the monitor is drawn from the words already made.
+// over the network, reading from the disk and sending to the graphics card each second, how much is downloading, asked
+// for and waiting for the card, and the last minute as a chart with its slow frames marked (ui/monitor-chart.ts).
+// While H is held a card beside the crosshair says what is looked at and where its model and textures stand
+// (ui/monitor-card.ts), and the strip opens the monitor's panel (ui/monitor-panel.ts); by touch, where nothing is
+// held, the strip's last line says what is looked at, and a tap opens the panel. Its numbers come from the record of
+// frames (assets/frames.ts) and the residency's counters, and are made again ten times a second, not every frame;
+// between, the monitor is drawn from the words and columns already made.
 //
 // The app fetches this file once Diagnostics is first "monitor" (F3, the console's `monitor`, or Settings, Interface),
 // so none of it is in the script the first frame waits for, and while it is off the HUD only sets two numbers. It and
-// the files it imports take what they use of that script from the kit the app hands them (ui/monitor-kit.ts, D902).
+// the files it imports take what they use of that script from the kit the app hands them (ui/monitor-kit.ts, D912).
 
 import type { App } from "../app.ts";
 import type { FrameRing } from "../assets/frames.ts";
 import { emptyPick, pickLook } from "../assets/look.ts";
 import type { HudModel } from "../hud.ts";
 import { cardWords, pickLine } from "./monitor-card.ts";
+import { AXIS_H, ChartData, buildAxis, buildChart, chartBox, type ChartBox } from "./monitor-chart.ts";
 import type { MonitorKit } from "./monitor-kit.ts";
-import { LINE, S_HUD_COUNT, S_MENU_NOTE, S_TEXT } from "./monitor-style.ts";
+import { PanelWords, buildPanel, layPanel, panelClick, panelWords } from "./monitor-panel.ts";
+import { K_BUTTON, LINE, S_HUD_COUNT, S_HUD_HIT, S_MENU_NOTE, S_TEXT } from "./monitor-style.ts";
 import type { UiFrame } from "./nodes.ts";
 import type { TouchPlan } from "./touch.ts";
 
-/** The monitor's keys, clear of every other screen's: the strip from here, the card from KEY_CARD. */
+/**
+ * The monitor's keys, clear of every other screen's: the strip from here, the card from KEY_CARD, the panel's from 8100
+ * (ui/monitor-panel.ts), the strip's chart from KEY_STRIP_CHART.
+ */
 export const KEY_MONITOR = 8000;
 const KEY_STRIP = KEY_MONITOR;
 const KEY_STRIP_TEXT = KEY_MONITOR + 1;
+export const KEY_STRIP_OPEN = KEY_MONITOR + 20;
 export const KEY_CARD = KEY_MONITOR + 30;
+const KEY_STRIP_CHART = KEY_MONITOR + 700;
 
 /** How often the words are made again, in ms. */
 export const REFRESH_MS = 100;
@@ -34,6 +43,9 @@ export const STRIP_W = 400;
 const PAD = 10;
 /** Room before each rate for a painted icon (network, disk, card) once the monitor has its art; none yet. */
 const ICON_W = 0;
+/** The strip's chart well's height, and the gap over it. */
+export const STRIP_CHART_H = 30;
+const CHART_GAP = 4;
 /** The readout's three lines over the strip, and the gap under them (ui/hud.ts). */
 const READOUT_H = 3 * LINE + 4;
 /**
@@ -82,6 +94,17 @@ export function lastSecond(ring: FrameRing, out: Float64Array): void {
 export class Monitor {
   readonly app: App;
   readonly kit: MonitorKit;
+  /** The panel is open, which tab it shows (0 Now, 1 Chart, 2 Assets), and whether its chart is held still. */
+  open = false;
+  tab = 0;
+  frozen = false;
+  /** The chart's column chosen, -1 for none, and the page of the panel's list. */
+  column = -1;
+  page = 0;
+  /** The chart as it stands, and as it stood when frozen; the panel's words. */
+  readonly live = new ChartData();
+  readonly still = new ChartData();
+  readonly words = new PanelWords();
   /** What the crosshair is on, as last found. */
   readonly pick = emptyPick();
   /** When the words were last made, by the app's clock. */
@@ -100,6 +123,8 @@ export class Monitor {
   private h = 0;
   private alone = false;
   private lookLine = false;
+  private charted = true;
+  private readonly box: ChartBox = { x: 0, y: 0, w: 0, h: 0, column: 1 };
   /** The card's place beside the crosshair. */
   private readonly cardAt = { x: 0, y: 0, w: 0, h: 0 };
 
@@ -108,20 +133,32 @@ export class Monitor {
     this.kit = kit;
   }
 
-  /** Tells the HUD the room the strip takes, before the HUD is built. */
+  /** The chart the strip and the panel show: as it stands, or as it stood when frozen. */
+  get chart(): ChartData {
+    return this.frozen ? this.still : this.live;
+  }
+
+  /** Tells the HUD the room the strip takes, before the HUD is built; while the panel is open, none, and the readout gives way to the panel. */
   reserve(f: UiFrame, hud: HudModel, plan: TouchPlan | null): void {
     const touch = plan !== null;
     this.x = f.left + MARGIN;
     this.w = Math.min(STRIP_W, f.width - f.right - MARGIN - this.x);
+    if (this.open) {
+      hud.stripAlone = true;
+      hud.stripH = 0;
+      return;
+    }
     // By touch on a canvas as short as a phone's on its side, the readout and the strip under it would come down to the
-    // crosshair or to where the stick rests over the hotbar: the strip stands in the readout's place, and where even
-    // that is too low, without the line of what is looked at.
+    // crosshair or to where the stick rests over the hotbar: the strip stands in the readout's place, then without its
+    // chart, then without the line of what is looked at.
     const top = touch ? plan.stackY : f.top + MARGIN;
     const limit = Math.min(f.height / 2 - 8, touch ? f.height - f.bottom - STICK_ROOM : f.height);
-    for (let shape = 0; shape < SHAPES; shape++) {
-      this.alone = shape > 0;
-      this.lookLine = touch && shape < 2;
-      this.h = PAD + (this.lookLine ? 3 : 2) * LINE + 2;
+    for (let shape = 0; shape < SHAPES.length; shape++) {
+      const s = SHAPES[shape]!;
+      this.charted = (s & CHARTED) !== 0;
+      this.alone = (s & ALONE) !== 0;
+      this.lookLine = touch && (s & LOOKED) !== 0;
+      this.h = PAD + (this.lookLine ? 3 : 2) * LINE + 2 + (this.charted ? CHART_GAP + STRIP_CHART_H + AXIS_H : 0);
       if (top + (this.alone ? 0 : READOUT_H) + this.h <= limit) break;
     }
     hud.stripAlone = this.alone;
@@ -135,8 +172,10 @@ export class Monitor {
     this.madeAt = nowMs;
     const app = this.app, r = app.scene?.assets.residency ?? null, ring = app.frames, kit = this.kit;
     const s = this.sums;
-    if (ring) lastSecond(ring, s);
-    else s.fill(0);
+    if (ring) {
+      lastSecond(ring, s);
+      this.live.read(ring);
+    } else s.fill(0);
     this.rates[0] = rateText(s[0]!);
     this.rates[1] = rateText(s[1]!);
     this.rates[2] = rateText(s[2]!);
@@ -149,10 +188,17 @@ export class Monitor {
     if (inspect || touch) pickLook(app, kit, this.pick);
     this.looked = touch ? kit.fitText(pickLine(r, this.pick), inner, S_MENU_NOTE) : "";
     if (inspect && !touch) this.cardWords(f);
+    if (this.open) panelWords(this, nowMs, touch);
+  }
+
+  /** Has the words made again at the next build, after a press changed what they show. */
+  refreshNow(): void {
+    this.madeAt = -Infinity;
   }
 
   /** The strip, where the HUD left room for it, and while H is held the card beside the crosshair. */
-  build(f: UiFrame, hud: HudModel, _controls: boolean, inspect: boolean, plan: TouchPlan | null): void {
+  build(f: UiFrame, hud: HudModel, controls: boolean, inspect: boolean, plan: TouchPlan | null): void {
+    if (this.open) return;
     const touch = plan !== null;
     this.refresh(f, this.app["nowMs"], inspect, touch);
     const x = this.x, y = hud.stripY;
@@ -168,8 +214,37 @@ export class Monitor {
     line += LINE;
     f.text(KEY_STRIP_TEXT + 6, x + PAD, line, inner, S_MENU_NOTE, this.queue);
     line += LINE;
+    if (this.charted) {
+      chartBox(x + PAD - 4, line + CHART_GAP, inner + 8, STRIP_CHART_H, this.box);
+      buildChart(f, this.kit, KEY_STRIP_CHART, this.box, this.chart, -1, false);
+      buildAxis(f, KEY_STRIP_CHART + 250, this.box, this.chart);
+      line += CHART_GAP + STRIP_CHART_H + AXIS_H;
+    }
     if (this.lookLine) f.text(KEY_STRIP_TEXT + 7, x + PAD, line, inner, S_MENU_NOTE, this.looked);
+    // While the mouse is free, or by touch, the strip opens the panel.
+    if (controls && (inspect || touch)) {
+      const b = f.add(KEY_STRIP_OPEN, K_BUTTON, x, y, this.w, this.h, S_HUD_HIT);
+      b.label = "Open the resource monitor";
+      b.interactive = true;
+    }
     if (inspect && !touch) this.buildCard(f);
+  }
+
+  /** A press of one of the monitor's controls; false for any other key. */
+  click(key: number, x: number, _y: number): boolean {
+    if (key === KEY_STRIP_OPEN) {
+      this.open = true;
+      this.refreshNow();
+      return true;
+    }
+    return this.open && panelClick(this, key, x);
+  }
+
+  /** The panel, as a screen: left of the world, or by touch a page of its own; clear of the compass and of the unmute offer. */
+  panel(f: UiFrame, plan: TouchPlan | null, hud: HudModel, muted: boolean): void {
+    if (layPanel(this, f, plan, hud.compassBottom, muted)) this.refreshNow();
+    this.refresh(f, this.app["nowMs"], false, plan !== null);
+    buildPanel(this, f, plan !== null);
   }
 
   /** The card's lines, fitted to its width, and its place: above the crosshair and to its right, clear of the prompt under it and of the minimap. */
@@ -208,5 +283,9 @@ export class Monitor {
 }
 
 const RATE_LABELS = ["Network", "Disk", "To card"];
-/** The strip's shapes, tried in turn: under the readout, in its place, in its place without the line of what is looked at. */
-const SHAPES = 3;
+/**
+ * The strip's shapes, tried in turn: with its chart and (by touch) the line of what is looked at, under the readout,
+ * then in the readout's place; then without the chart, under it and in its place; then without the line as well.
+ */
+const CHARTED = 1, ALONE = 2, LOOKED = 4;
+const SHAPES = [CHARTED | LOOKED, CHARTED | ALONE | LOOKED, LOOKED, ALONE | LOOKED, ALONE];

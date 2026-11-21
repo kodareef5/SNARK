@@ -7,6 +7,7 @@
 
 import type { App } from "../app.ts";
 import type { MonitorKit } from "../ui/monitor-kit.ts";
+import { STEP0_SIZE } from "./copied.ts";
 import type { Residency } from "./residency.ts";
 
 /** shared/world/ray.ts's kinds of hit. */
@@ -192,4 +193,26 @@ export function pickLook(app: App, kit: MonitorKit, out: LookPick): LookPick {
   if (out.id === "" && out.mesh >= 0) out.id = assets.manifest.meshes[out.mesh]!.id;
   if (out.mesh >= 0 && out.wanted >= 0) out.shown = assets.heldLevel(out.mesh, out.wanted);
   return out;
+}
+
+const ROLE_NAMES: Readonly<Record<string, string>> = { base: "colour", normal: "normal", mro: "packed map", mask: "mask", mask2: "second mask", layer: "wear layer" };
+
+/**
+ * What a residency slot is, in words: "Tall palm, model level 0", "Bark colour 1024 px" (at step `step`, a texture's),
+ * "Rows of models, page 12". `pair` is a level asked for with its surface.
+ */
+export function slotName(r: Residency, slot: number, step: number, pair = false): string {
+  const m = r["manifest"], levels = r["levels"];
+  if (slot >= r["pageBase"]) return `Rows of models, page ${slot - r["pageBase"]}`;
+  if (slot >= r["clipBase"]) return `${plainName(m.clips?.[slot - r["clipBase"]]?.rig ?? "")} clips`;
+  if (slot >= r["texBase"]) {
+    const t = m.textures?.[slot - r["texBase"]];
+    if (!t) return "A texture";
+    const parts = t.id.split("/");
+    return `${plainName(parts.length > 1 ? parts[parts.length - 2]! : t.id)} ${ROLE_NAMES[t.role] ?? t.role} ${STEP0_SIZE << step} px`;
+  }
+  const level = slot < levels ? slot : slot - levels;
+  const name = meshName(m.meshes[r["meshOf"][level]!]?.id ?? "");
+  const l = r["levelOf"][level]!;
+  return slot >= levels ? `${name}, level ${l} surface` : `${name}, model level ${l}${pair ? " and surface" : ""}`;
 }

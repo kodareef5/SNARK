@@ -81,6 +81,8 @@ export class Ui {
   creatureAhead = false;
   touchShown = 0;
   get touch(): boolean { return this.inputDevice === 2; }
+  /** The resource monitor's panel is open, which is a screen: the mouse is free and the keyboard walks. */
+  get monitorOpen(): boolean { return this.settings.monitor && this.monitor !== null && this.monitor.open; }
   inspect = false;
   reconnectRequested = false;
   leftWorld = false;
@@ -111,7 +113,7 @@ export class Ui {
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open;
+    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !this.monitorOpen;
   }
 
   openMenu(): void {
@@ -193,6 +195,7 @@ export class Ui {
       if (code === "Escape" && this.inspect) { if (down && !repeat) this.inspect = false; return true; }
       if (code === "KeyL" && (this.inspect || this.wantsPointerLock)) { if (down && !repeat) { this.settings.minimap = !this.settings.minimap; this.settings.changed(); } return true; }
       if (code === "F3") { if (down && !repeat) toggleMonitor(this.settings); return true; }
+      if (code === "Escape" && this.monitorOpen) { if (down && !repeat) this.monitor!.open = false; return true; }
       // The structure menu takes its digits and Escape. Opening any other screen closes it.
       if (this.structure.key(code, down, repeat, session)) return true;
       // The emote menu likewise, and Z opens it from play.
@@ -296,6 +299,7 @@ export class Ui {
       this.openMenu();
       return;
     }
+    if (kind === 0 && this.monitor?.click(key, x, y)) return;
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_TAG) {
       this.chat.cycle(session);
@@ -400,6 +404,7 @@ export class Ui {
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
       else if (this.travel.open && session) this.travel.build(f, session);
+      else if (this.monitorOpen && !this.inventory.open) this.monitor!.panel(f, plan, hud, this.settings.muted);
       else {
         this.inventory.build(f, session, this.registry, this.palette);
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
