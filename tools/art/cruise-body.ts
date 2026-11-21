@@ -2,23 +2,29 @@
 // This samples actual rendering transforms; it is not a certificate over every creator/animation state.
 import { readFileSync } from "node:fs";
 import { writeBones } from "../../client/core/render/characters.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { Gait } from "../../shared/anim/gait.ts";
 import { HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { defaultLook, lookLift, lookScales, REGION_COUNT, setRegion } from "../../shared/anim/look.ts";
 import { AnimState, HumanAnim, humanPose } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
+import { slotsOf } from "../../shared/content/slots.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { unpackMeshes } from "../pack/write.ts";
 
 export interface CruiseBodyPose { value: number; mesh: string; sex: string; speed: number; phase: number; pitch: number; direction: number; }
 export interface CruiseBodyVertex { mesh: string; vertex: number; profile: number; at: readonly number[]; }
 
+// An armor piece's vents (the Meridian cuirass vanes and the boot jet exhaust) are drawn only in powered flight off the
+// ground (client/core/render/characters.ts), never on a walking body, so they are not part of these poses.
+const FLIGHT_ONLY = new Set(slotsOf(CORE_CONTENT).filter(u => u.slot === "vents" && u.id !== "").map(u => u.id));
+
 /** Feasible creator profiles through the renderer's exact matrices, used to distinguish a real strike from an interval overlap. */
 export function cruiseBodyVertices(sample: CruiseBodyPose, inspect?: (vertex: CruiseBodyVertex) => void, profiles = Array.from({ length: 3 + REGION_COUNT * 2 }, (_, i) => i)) {
   const bodies = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-bodies/human-bodies.snpk", import.meta.url))));
   const clips = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/humans/human-clips/human-clips.snpk", import.meta.url))));
-  const anim = new HumanAnim(clips.clips), selected = unpackMeshes(bodies).filter(m => m.id.startsWith(`core:human_${sample.sex}/`));
+  const anim = new HumanAnim(clips.clips), selected = unpackMeshes(bodies).filter(m => m.id.startsWith(`core:human_${sample.sex}/`) && !FLIGHT_ONLY.has(m.id));
   const rest = Float32Array.from(bodies.header.rigs.find(r => r.id === `human_${sample.sex}`)!.rest);
   const pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES), scales = new Float32Array(HUMAN_BONES * 3), matrices = new Float32Array(HUMAN_BONES * 12);
   const result = { minimum: [Infinity, Infinity, Infinity], maximum: [-Infinity, -Infinity, -Infinity], witnesses: ["", "", "", "", "", ""] };

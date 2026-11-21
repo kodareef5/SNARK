@@ -32,7 +32,7 @@ export function hasBrowserHash(rec: EntityRecord, h: Uint8Array): boolean {
 }
 
 /** Small browser requests only. Count actual bytes even when there is no Content-Length. */
-export async function readEntryJson(req: Request): Promise<Record<string, unknown>> {
+export async function readEntryJson(req: Request, limit = 4096): Promise<Record<string, unknown>> {
   if (!req.headers.get("content-type")?.startsWith("application/json")) throw Error("Expected JSON");
   const reader = req.body?.getReader();
   if (!reader) throw Error("Empty request");
@@ -42,7 +42,7 @@ export async function readEntryJson(req: Request): Promise<Record<string, unknow
     const { value, done } = await reader.read();
     if (done) break;
     size += value.length;
-    if (size > 4096) {
+    if (size > limit) {
       await reader.cancel();
       throw Error("Request too large");
     }

@@ -1,4 +1,4 @@
-import { CROWN_ORIGIN, DECK_RADIUS, EYE_DYE, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { CROWN_ORIGIN, DECK_RADIUS, EYE_DYE, KEEL, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
 import { aperture, eyePhase, eyePower, shutterOpening, writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
@@ -33,6 +33,7 @@ import { StreetDraws } from "./street-draws.ts";
 import { streetTextureBytes } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
+import { DamageNumbers } from "./damage-numbers.ts";
 import { StreetWires } from "./street-wires.ts";
 import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
@@ -72,6 +73,7 @@ import { lightBytes, lightSamples, postFrame } from "./post.ts";
 import { skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
+import { WaterTrails } from "./water-trails.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 import type { MapLandmark, MapStatics } from "../../../shared/world/mapfile.ts";
 import { landmarkFars } from "../../../shared/pack/far.ts";
@@ -450,8 +452,14 @@ export class Scene {
   alternate = false;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
   now = 0;
+  /** Damage numbers (damage-numbers.ts): struck by Feedback, drawn as detail cards over everything else. */
+  readonly damage = new DamageNumbers();
   /** Seconds on the shared server clock, independent of the local frame clock. */
   eyeSeconds = 0;
+  /** Additional instrument rotation for a directed scene, in radians. */
+  eyeIndexOffset = 0;
+  /** Directed shots can enlarge the sextant above its fixed keel. Map views use the authored dimensions. */
+  sextantScale = 1;
   private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number };
   private readonly lanternMesh: { frame: number; shutter: number; lip: number; light: number };
   private readonly sextantMesh: { frame: number; needle: number; indexLight: number; keelLight: number };
@@ -624,6 +632,7 @@ export class Scene {
   private readonly vehiclePose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   /** Small details: feathers knocked loose, dust thrown up. */
   readonly details: Details;
+  private readonly waterTrails: WaterTrails;
   /** Smoke and gas: each prop/cloud drawn as puffs over its reach, with the details (clouds.ts). */
   readonly clouds: Clouds;
   /** A bag of one stack, drawn as its item lying (dropped.ts). */
@@ -838,6 +847,7 @@ export class Scene {
     this.characters = new Characters(reg, pack, this.assets);
     this.streetLamps = new StreetLamps(reg);
     this.streetWires = new StreetWires(reg);
+    this.waterTrails = new WaterTrails(reg);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
@@ -937,7 +947,7 @@ export class Scene {
     return this.characters.prepareCameraBody(own.kind, own.id, own.generation ?? 0, own.x, own.y, own.z, own.yaw, own.state, own.tick);
   }
 
-  build(cam: Camera, remote: RemoteSample | null): FramePacket {
+  build(cam: Camera, remote: RemoteSample | null, focus?: readonly number[], loadTime = this.now): FramePacket {
     const p = this.packet;
     p.beginFrame();
     for (const chunk of this.hiddenChanged) { const batch = this.batches.get(NODE_BUFFERS + chunk); if (batch) batch.shape = -1; }
@@ -955,7 +965,8 @@ export class Scene {
     this.lift = Math.max(0, cam.y - this.world.hf.heightAt(cam.x, cam.z));
     cam.far = farPlane(this.viewDistance);
     cam.update();
-    this.assets.begin(this.now, this.viewHeight, cam.fovY);
+    this.assets.begin(loadTime, this.viewHeight, cam.fovY);
+    if (focus) for (const mesh of focus) if (this.assets.known(mesh)) this.assets.wantTextured(mesh, 0, 1);
     if (this.assets.residency.learned.length > 0) this.learn(this.assets.residency.learned);
     this.budget.begin(this.assets.tier);
     p.tier = this.assets.tier;
@@ -985,7 +996,7 @@ export class Scene {
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance, undefined, true);
     }
     if (!p.lit) p.frame[FRAME.exposure] = 0;
-    writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z);
+    writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale);
     this.fit(cam);
 
     // Under water, the sea's or a lake's where the camera is, the view is short and the fog is the water's colour, dimmed.
@@ -1028,6 +1039,7 @@ export class Scene {
     if (this.lakes) waves = this.showLakes(cam, lit) || waves;
     if (waves) {
       seaFrame(p.frame, this.world.hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000, cam.y);
+      this.waterTrails.frame(p.frame, this.world.hf, cam, this.own, remote, this.now / 1000, tier.waterMarks);
       if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
     }
     // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
@@ -1070,7 +1082,7 @@ export class Scene {
     markJoins(p);
     // The frame's count, from which the next frame's crowns near take their squeeze.
     this.budget.end(this.now, p.triangles, p.drawCount);
-    this.assets.end(p, this.now);
+    this.assets.end(p, loadTime);
     return p;
   }
 
@@ -1646,7 +1658,8 @@ export class Scene {
     streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count);
+    this.damage.build(cam, this.now);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count + this.damage.count);
     const particles = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
@@ -1658,6 +1671,10 @@ export class Scene {
     const wheelsAndGlass = p.detailCount;
     tireContacts.write(p);
     windscreens.write(p);
+    // The damage numbers' cards, drawn last of all below, over the clouds too.
+    const numbers = p.detailCount;
+    this.damage.write(p);
+    const glassAndNumbers = p.detailCount;
     // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
@@ -1668,9 +1685,10 @@ export class Scene {
     this.drawDetails(lamps, wires - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
     this.drawDetails(street, wheelsAndGlass - street, DRAW_BLEND, streetLamps.passes(cam));
-    this.drawDetails(wheelsAndGlass, seen - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
+    this.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
     this.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
+    this.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
   }
 
   /** `count` of the packet's details from `first`, one draw in the depth ranges `passes`. */
@@ -2148,7 +2166,7 @@ export class Scene {
         const distance = Math.max(1, Math.hypot(cx, cy, cz) - r);
         const errors = this.assets.table.error[mesh]!;
         const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris || mesh === this.sextantMesh.frame || mesh === this.sextantMesh.needle || mesh === this.lanternMesh.frame || mesh === this.lanternMesh.shutter);
-        const level = skyline ? Math.max(0, errors.length - 1) : this.assets.choose(errors, distance / Math.max(0.03, scale), -1);
+        const level = skyline && scale === 1 ? Math.max(0, errors.length - 1) : this.assets.choose(errors, distance / Math.max(0.03, scale), -1);
         if (skyline || glow) this.assets.want(mesh, level, distance);
         else this.assets.wantTextured(mesh, level, distance);
         let flags = DRAW_PLAIN | (glow ? DRAW_EMISSIVE : 0) | (skyline ? DRAW_SKYLINE : 0);
@@ -2201,12 +2219,14 @@ export class Scene {
       }
       if (site.form === "sextant") {
         // The index is authored hanging down. After lifting it sweeps the bow and locks on the upper mark.
-        const angle = -open * (1.82 + 0.13 * eyePower(phase) * Math.sin((phase - 9) * 0.64));
-        draw(this.sextantMesh.frame, CROWN_ORIGIN, 221, 1);
-        draw(this.sextantMesh.needle, SEXTANT_PIVOT, 157, 1, { roll: angle });
+        const angle = this.eyeIndexOffset - open * (1.82 + 0.13 * eyePower(phase) * Math.sin((phase - 9) * 0.64));
+        const scale = this.sextantScale, origin = KEEL + (CROWN_ORIGIN - KEEL) * scale;
+        const pivot = KEEL + (SEXTANT_PIVOT - KEEL) * scale;
+        draw(this.sextantMesh.frame, origin, 221 * scale, scale);
+        draw(this.sextantMesh.needle, pivot, 157 * scale, scale, { roll: angle });
         if (open > 0.3) {
-          draw(this.sextantMesh.keelLight, CROWN_ORIGIN, 202, 1, { glow: true });
-          draw(this.sextantMesh.indexLight, SEXTANT_PIVOT, 157, 1, { roll: angle, glow: true });
+          draw(this.sextantMesh.keelLight, origin, 202 * scale, scale, { glow: true });
+          draw(this.sextantMesh.indexLight, pivot, 157 * scale, scale, { roll: angle, glow: true });
         }
         continue;
       }

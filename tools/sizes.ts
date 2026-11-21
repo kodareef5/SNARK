@@ -53,7 +53,7 @@ export function weigh(dist: string): boolean {
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
   const rows: [string, number][] = [
-    ["title script, style, font, catalogue and poster", ["entry.js.br", "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/miami-flight.webp"]
+    ["title script, style, font, catalogue and poster", ["entry.js.br", "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/red-tide.webp"]
       .filter(n => existsSync(join(dist, n))).reduce((total, n) => total + size(n), 0)],
     ["game loading poster", existsSync(join(dist, "title/miami-splash.webp")) ? size("title/miami-splash.webp") : 0],
     ["the page's script, Brotli", script.reduce((s, n) => s + size(n), 0)],

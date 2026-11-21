@@ -16,6 +16,14 @@ const manifest = fileURLToPath(new URL("../../distribution/release.json", import
 export const ART = existsSync(receipt) && existsSync(manifest)
   && readFileSync(receipt, "utf8").trim() === JSON.parse(readFileSync(manifest, "utf8")).art?.id;
 
+/**
+ * A module of an art folder's own (its builder's shapes and finishes), by its path under assets/source. The art is
+ * outside every zone, so nothing may import it by name; a test that checks a builder loads it through here.
+ */
+export async function artModule(path: string): Promise<Record<string, any>> {
+  return import(join(SOURCE, path));
+}
+
 /** Every file under `dir` whose name ends in `ending`, in name order, so every machine finds them in the same order. */
 export function filesUnder(dir: string, ending: string, out: string[] = []): string[] {
   if ((dir === SOURCE && !ART) || !existsSync(dir)) return out;

@@ -3,6 +3,7 @@
 import { expect, test } from "bun:test";
 import { FAIL_NET, type AssetArrival } from "../../client/core/assets/port.ts";
 import { FIRST, IN_FLIGHT_HELD, OVERFLOW, SMALL_LANES_HELD } from "../../client/core/assets/residency.ts";
+import { inspectMesh, inspectTexture, type LevelInspection, type TextureInspection } from "../../client/core/assets/inspect.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { MANIFEST_VERSION, parseManifest, type Manifest, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
@@ -536,4 +537,74 @@ test("a texture asked for by itself climbs to the step it is shown at, and keeps
   const { requests, fetched } = w.r.stats;
   for (let f = 0; f < 120; f++) frame(f < 60 ? 32 : 256);
   expect([w.r.holds(BASE), w.r.stats.requests - requests, w.r.stats.fetched - fetched, drops, w.r.wanting()]).toEqual([2, 0, 0, 0, 0]);
+});
+
+test("the inspector says what the card shows of a texture, what it was authored at, and what is wanted: a map authored a step under shows all it has", () => {
+  const w = world([{ mesh: 0, z: 0 }]);
+  w.run(8, -3.5);
+  // At 3.5 m the hide's base colour wants its 512, which it was authored at; its packed map, authored at 256, shows 256.
+  const base = inspectTexture(w.r, BASE), mro = inspectTexture(w.r, MRO);
+  expect([base.showing, base.wanted, base.authored, base.most, base.lowered, base.why, base.state, base.onScreen]).toEqual([512, 512, 512, 512, false, "", "absent", true]);
+  expect([mro.showing, mro.wanted, mro.authored, mro.variant, mro.tier]).toEqual([256, 256, 256, 256, 1024]);
+  // Its bytes are those the card holds; more came over the network, as each copy brings the steps under it.
+  expect([base.bytes, base.fetched >= base.bytes, base.coming, base.comingBytes]).toEqual([w.card.textures.get(BASE)!.bytes, true, 0, 0]);
+  // The scene showed it 294 pixels across, and the first step as wide is the 512.
+  expect(Math.round(base.asked)).toBe(294);
+});
+
+test("a texture whose step failed for good is told from one authored smaller: it shows less than it was authored at and is wanted at, and says it was lowered", () => {
+  const set: Set = { files: SET.files, manifest: JSON.parse(JSON.stringify(SET.manifest)) as Manifest };
+  set.manifest.textures![MAPS + BASE]!.in.bc!.hash[2] = "0000000000000000";
+  const w = world([0, 1].map((i) => ({ mesh: i, x: 3 * i, z: 0 })), { latencyMs: 20 }, {}, set);
+  w.run(8, -3.5);
+  const failed = inspectTexture(w.r, MAPS + BASE), fine = inspectTexture(w.r, BASE);
+  expect([failed.showing, failed.wanted, failed.most, failed.variant, failed.authored, failed.lowered, failed.why]).toEqual([128, 256, 128, 512, 512, true, ""]);
+  expect([fine.lowered, fine.most]).toEqual([false, 512]);
+});
+
+test("the inspector says why a texture waits: for a lane, for its share of the card, and, once arrived, for the frame's bytes for the card", () => {
+  // In the first frame six requests go and the rest wait for a lane.
+  const busy = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 0 })), { latencyMs: 200 });
+  busy.frame(-3.5);
+  const all = Array.from({ length: 3 * MAPS }, (_, t) => inspectTexture(busy.r, t));
+  expect(all.filter((x) => x.state === "loading").length).toBeGreaterThan(0);
+  expect([...new Set(all.filter((x) => x.state === "absent").map((x) => x.why))]).toEqual(["lanes"]);
+  // With room for every first step and a little more, each texture shows 64 and waits for its share to climb. With less,
+  // some first step does not come, and every climb waits for it.
+  const firsts = SET.manifest.textures!.slice(0, 3 * MAPS).reduce((n, tex) => n + stepBytes("bc", tex.role, 0, blockOf("bc", tex.in.bc!)), 0);
+  const climbing = (room: number): TextureInspection => {
+    const w = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 0 })), {}, { textureShare: room / tierOf("medium").gpuBytes });
+    w.run(4, -3.5);
+    return inspectTexture(w.r, MAPS + BASE);
+  };
+  const share = climbing(firsts + 1024), first = climbing(firsts - 1024);
+  expect([share.showing, share.wanted, share.why, first.why]).toEqual([64, 512, "share", "firsts"]);
+  // On a frame's bytes of 2 KB a copy that has arrived goes up a few rows a frame, and says so while it does.
+  const slow = world([{ mesh: 0, z: 0 }], {}, { uploadBytes: 2 * 1024 });
+  let seen: TextureInspection | null = null;
+  for (let f = 0; f < 600 && !seen; f++) {
+    slow.frame(-3.5);
+    const x = inspectTexture(slow.r, BASE);
+    if (x.state === "arrived" && x.sent > 0 && x.showing > 0) seen = x;
+  }
+  expect(seen).not.toBeNull();
+  expect([seen!.why, seen!.coming > seen!.showing, seen!.sent < seen!.comingBytes]).toEqual(["allowance", true, true]);
+});
+
+test("the inspector says of a model each level's state, its surface, and its materials' textures, and why a level waits while it goes up in pieces", () => {
+  const [level, surface, skin] = SET.manifest.meshes[0]!.levels[0]!.parts.map((p) => p.bytes);
+  const w = world([{ mesh: 0, z: 0 }], {}, { uploadBytes: Math.floor(level! / 3) });
+  let piece: LevelInspection | null = null;
+  for (let f = 0; f < 600 && !piece; f++) {
+    w.frame(-3.5);
+    const l = inspectMesh(w.r, 0).levels[0]!;
+    if (l.state === "arrived" && l.sent > 0) piece = l;
+  }
+  expect(piece).not.toBeNull();
+  expect([piece!.why, piece!.bytes, piece!.sent < piece!.bytes]).toEqual(["allowance", level, true]);
+  w.run(8, -3.5);
+  const m = inspectMesh(w.r, 0);
+  expect([m.id, m.known, m.page, m.pageState]).toEqual(["t:body_0", true, -1, null]);
+  expect(m.levels.map((l) => [l.state, l.held, l.surface?.state ?? null, l.surface?.bytes ?? 0])).toEqual([["resident", false, "resident", surface! + skin!], ["absent", false, "absent", SET.manifest.meshes[0]!.levels[1]!.parts.slice(1).reduce((n, p) => n + p.bytes, 0)], ["resident", true, null, 0]]);
+  expect(m.levels[0]!.materials).toEqual([{ material: 0, id: "t:hide_0", maps: [BASE, NORMAL, MRO, MASK, MASK2], layer: -1 }, { material: 1, id: "t:horn_0", maps: [HORN, -1, -1, -1, -1], layer: -1 }]);
 });

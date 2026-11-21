@@ -30,10 +30,11 @@ const ROOT = resolve(import.meta.dir, "..");
 const WORKER_HEAP_RAM = 500_000_000;
 /**
  * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares 250 among round 8's phases; 50
- * hold the executor's mirror of the card's state, which sends a frame's changes alone; the last 100 are for the maps
- * round's far shadow, filtering and map loader (D748).
+ * hold the executor's mirror of the card's state, which sends a frame's changes alone; 100 are for the maps round's far
+ * shadow, filtering and map loader (D748); the last 5 time the assets' uploads and fetch the data utility's record of
+ * frames (D899).
  */
-const SHELL_MAX_LINES = 1600;
+const SHELL_MAX_LINES = 1605;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */

@@ -1,120 +1,142 @@
-import { MIAMI_FLIGHT } from "../core/title-route.ts";
 const box = document.querySelector<HTMLElement>("#scenery")!,
   motion = document.querySelector<HTMLButtonElement>("#motion")!;
 const reduce = matchMedia("(prefers-reduced-motion: reduce)");
-let paused = true,
+const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+const constrained = connection?.saveData || ["2g", "slow-2g"].includes(connection?.effectiveType ?? "");
+let allow = !reduce.matches && !constrained,
+  paused = !allow,
+  title = false,
+  human = false;
+let world = "",
   frame: HTMLIFrameElement | null = null,
-  video: HTMLVideoElement | null = null,
-  source = "",
-  rotation = 0,
-  offset = 0,
-  tilt = 0,
+  url = "",
+  failed = false,
+  ready = false;
+let look: number[] = [],
   spawn = 0,
-  preview = false;
-let look: number[] = [];
-let subjectLeft = true;
-let videoFailed = false;
-const send = () =>
+  turn = 0,
+  subjectLeft = true,
+  mx = 0,
+  my = 0;
+function send() {
   frame?.contentWindow?.postMessage(
-    { source: "snark-title", shot: preview ? "survivor" : "flight", paused, subjectLeft, turn: rotation, yaw: offset, pitch: tilt, spawn, look },
+    {
+      source: "snark-title",
+      shot: human ? "survivor" : "set",
+      paused: document.hidden || human || (title && paused),
+      subjectLeft,
+      turn,
+      spawn,
+      look,
+      mx,
+      my,
+    },
     location.origin,
   );
-const update = () => {
-  motion.hidden = preview || videoFailed;
-  motion.textContent = paused ? "Play flyover" : "Pause flyover";
-  motion.setAttribute("aria-pressed", String(!paused));
-  if (video) {
-    if (paused || document.hidden || preview) video.pause();
-    else void video.play().catch(() => {});
-  }
-  send();
-};
-function fallback() {
-  if (!video && !videoFailed && !paused && !preview) {
-    video = document.createElement("video");
-    video.preload = "none";
-    video.src = "title/miami-flight.webm";
-    video.poster = "title/miami-flight.webp";
-    video.muted = true;
-    video.loop = true;
-    video.playsInline = true;
-    video.setAttribute("aria-hidden", "true");
-    video.onerror = () => {
-      videoFailed = true;
-      video?.remove();
-      video = null;
-      update();
-    };
-    box.prepend(video);
-  }
-  update();
 }
-export function sceneFor(world: string, human: boolean, appearance: Uint8Array, at: number, turn: number, left = true) {
-  subjectLeft = left;
-  box.classList.toggle("portrait", human);
-  box.classList.toggle("left", left);
-  preview = human;
-  look = Array.from(appearance);
-  spawn = at;
-  rotation = turn;
-  const url = human && world && new URL(world).origin === location.origin ? new URL("flight.html", world).href : "";
-  if (url !== source) {
+function sync() {
+  const portrait = human && world && new URL(world).origin === location.origin;
+  const next = portrait
+    ? new URL("flight.html", world).href
+    : title && allow && !failed
+      ? new URL("flight.html?set=wynwood-shore", document.baseURI).href
+      : "";
+  if (next !== url) {
     frame?.remove();
     frame = null;
-    source = url;
+    url = next;
+    ready = false;
     if (url) {
       frame = document.createElement("iframe");
-      frame.title = "Native scene";
+      frame.title = title ? "Wynwood at sunset" : "Survivor preview";
       frame.tabIndex = -1;
       frame.src = url;
       frame.onload = send;
       box.append(frame);
     }
   }
-  fallback();
+  motion.hidden = !title;
+  motion.textContent = failed ? "Retry live scene" : paused ? "Play live scene" : "Pause live scene";
+  motion.setAttribute("aria-pressed", String(!!url && !paused));
+  if (title) document.body.dataset.titleScene = failed ? "failed" : ready ? "live" : url ? "loading" : "still";
+  else delete document.body.dataset.titleScene;
+  send();
+}
+export function sceneFor(
+  address: string,
+  portrait: boolean,
+  appearance: Uint8Array,
+  at: number,
+  angle: number,
+  left = true,
+  opening = false,
+) {
+  if (opening !== title || portrait !== human || address !== world) failed = false;
+  title = opening;
+  human = portrait;
+  world = address;
+  look = Array.from(appearance);
+  spawn = at;
+  turn = angle;
+  subjectLeft = left;
+  box.classList.toggle("portrait", human);
+  box.classList.toggle("left", left);
+  sync();
 }
 addEventListener("message", (e) => {
-  if (e.origin !== location.origin || e.source !== frame?.contentWindow || e.data?.source !== "snark-scene") return;
-  if (e.data.type === "frame") send();
+  if (e.origin !== location.origin || !frame || e.source !== frame.contentWindow || e.data?.source !== "snark-scene") return;
   if (e.data.type === "ready") {
-    frame?.classList.add("visible");
-    update();
+    ready = true;
+    if (title) document.body.dataset.titleScene = "live";
+    frame.classList.add("visible");
   }
+  if (e.data.type === "frame") send();
   if (e.data.type === "failed") {
-    frame?.remove();
-    frame = null;
-    source = "";
-    fallback();
+    failed = true;
+    paused = true;
+    if (human) {
+      frame.remove();
+      frame = null;
+    } else sync();
   }
 });
 motion.onclick = () => {
-  paused = !paused;
-  fallback();
+  if (failed || !allow) {
+    failed = false;
+    allow = true;
+    paused = false;
+  } else paused = !paused;
+  sync();
 };
-document.addEventListener("visibilitychange", update);
+document.addEventListener("visibilitychange", send);
 reduce.addEventListener("change", () => {
-  if (reduce.matches) paused = true;
-  update();
+  if (reduce.matches) {
+    allow = false;
+    paused = true;
+    mx = my = 0;
+    sync();
+  }
 });
-let held = false,
-  x = 0,
-  y = 0;
-box.onpointerdown = (e) => {
-  held = true;
-  x = e.clientX;
-  y = e.clientY;
-  box.setPointerCapture(e.pointerId);
-};
-box.onpointermove = (e) => {
-  if (!held) return;
-  offset = Math.max(-MIAMI_FLIGHT.camera.yawLimit, Math.min(MIAMI_FLIGHT.camera.yawLimit, offset + (e.clientX - x) * 0.004));
-  tilt = Math.max(-MIAMI_FLIGHT.camera.pitchLimit, Math.min(MIAMI_FLIGHT.camera.pitchLimit, tilt + (e.clientY - y) * 0.003));
-  x = e.clientX;
-  y = e.clientY;
-  send();
-};
-box.onpointerup = box.onpointercancel = () => {
-  held = false;
-  offset = tilt = 0;
-  send();
-};
+let queued = false;
+function parallax(x: number, y: number) {
+  mx = x;
+  my = y;
+  if (!queued) {
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      if (title && ready) frame?.contentWindow?.postMessage({ source: "snark-title", mx, my }, location.origin);
+    });
+  }
+}
+document.addEventListener(
+  "pointermove",
+  (e) => {
+    if (title && ready && !paused && e.pointerType !== "touch")
+      parallax((2 * e.clientX) / innerWidth - 1, 1 - (2 * e.clientY) / innerHeight);
+  },
+  { passive: true },
+);
+document.documentElement.addEventListener("pointerleave", () => {
+  if (title && ready) parallax(0, 0);
+});

@@ -22,6 +22,7 @@ import { LAST_STEP, STEP0_SIZE, blockOf, pictureBytes, stepBytes, stepOf, topIn,
 import { Rng } from "../../../shared/rng.ts";
 import type { TextureUpload } from "../render/packet.ts";
 import { FAIL_HASH, FAIL_RANGE, levelParts, textureParts, wholePart, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
+import type { StorageInfo } from "./storage.ts";
 
 /**
  * A level to put on the graphics card: its indices and then its vertices, as the pack holds them. With `of` it is a
@@ -70,7 +71,7 @@ export const IDLE_FRAMES = 30;
 /** When one frame draws more than the budget, the card may hold this many times the budget and no more. */
 export const OVERFLOW = 1.25;
 /** The textures a material may name: its base colour, normal, packed map and two masks. It is not drawn without its base colour and its masks. */
-const MAPS = 5;
+export const MAPS = 5;
 const NEEDED: readonly number[] = [0, 3, 4];
 /** Step 0 of what a material is not drawn without is more urgent than anything else, by this much and again by how near it is. */
 export const FIRST = 1e6;
@@ -86,19 +87,38 @@ const KEEP = 1.25;
 const RETRY_MS: readonly number[] = [1000, 2000, 4000, 8000];
 const RETRY_SLOW_MS = 30000;
 
-const ABSENT = 0;
-const LOADING = 1;
-const ARRIVED = 2;
-const RESIDENT = 3;
-const DEAD = 4;
+export const ABSENT = 0;
+export const LOADING = 1;
+export const ARRIVED = 2;
+export const RESIDENT = 3;
+export const DEAD = 4;
 /** A surface that is coming in its level's request. */
-const RIDING = 5;
+export const RIDING = 5;
+
+/**
+ * Why a slot wanted in the last frame was not asked for, or one that had arrived did not yet go on the card (`why`, read
+ * by inspect.ts). LANES: as many requests are under way as may be. WAITING: WAITING_LIMIT bytes have arrived and wait for
+ * the card. RETRY: it failed and waits to be asked again. FIRSTS: it would climb, and a texture on screen lacks its first
+ * step. SHARE: the textures' share of the card is spoken for. LEVEL: a surface whose level is neither here nor coming,
+ * or not yet on the card. LARGE: the lanes for large parts are full. ALLOWANCE: the frame's bytes for the card are spent.
+ * FULL: the card is over-full.
+ */
+export const WHY_NONE = 0;
+export const WHY_LANES = 1;
+export const WHY_WAITING = 2;
+export const WHY_RETRY = 3;
+export const WHY_FIRSTS = 4;
+export const WHY_SHARE = 5;
+export const WHY_LEVEL = 6;
+export const WHY_LARGE = 7;
+export const WHY_ALLOWANCE = 8;
+export const WHY_FULL = 9;
 
 const STEPS = LAST_STEP + 1;
 const NONE: readonly number[] = [];
 
 /** The first step whose pictures are at least `px` pixels across, and `most` if none before it is. */
-function stepFor(px: number, most: number): number {
+export function stepFor(px: number, most: number): number {
   let step = 0;
   while (step < most && STEP0_SIZE << step < px) step++;
   return step;
@@ -128,8 +148,10 @@ export class Residency {
   /**
    * Requests that failed are `failed` (to be asked again) or `dead` (given up), and by kind `failNet`, `failHash` and
    * `failRange`, with the HTTP status of the last on the network, 0 for no answer. `refused` counts uploads the card refused.
+   * `stale` is bytes that came over the network for a request no longer waited on, which `fetched` leaves out. Of
+   * `cached`, `memory` and `disk` are the bytes from each, where the port tells them apart.
    */
-  readonly stats = { requests: 0, cancelled: 0, failed: 0, dead: 0, failNet: 0, failHash: 0, failRange: 0, lastStatus: 0, refused: 0, evicted: 0, wasted: 0, fetched: 0, cached: 0, uploaded: 0, used: 0, skipped: 0, shrunk: 0 };
+  readonly stats = { requests: 0, cancelled: 0, failed: 0, dead: 0, failNet: 0, failHash: 0, failRange: 0, lastStatus: 0, refused: 0, evicted: 0, wasted: 0, fetched: 0, cached: 0, memory: 0, disk: 0, stale: 0, uploaded: 0, used: 0, skipped: 0, shrunk: 0 };
 
   private readonly manifest: Manifest;
   private readonly boot: Pack;
@@ -178,6 +200,8 @@ export class Residency {
   private readonly apart: Uint8Array;
   /** Bytes the card has been handed of a level or a surface going up in pieces. From the first of them it holds the whole. */
   private readonly given: Uint32Array;
+  /** A WHY_ number for each slot, written as the last frame's end passed it over. */
+  private readonly why: Uint8Array;
   private readonly data: (Uint8Array | null)[];
   /**
    * Two rings, one of levels and surfaces through `root` and one of textures through `texRoot`: what is resident and
@@ -200,18 +224,26 @@ export class Residency {
   private readonly matSeen: Uint32Array;
   /** Per material: its hurt and decay layer, -1 for none. */
   private readonly matLayer: Int32Array;
-  /** Per texture: the step the card draws with and the step of the copy on its way, -1 for none, and the last step that can be had. */
+  /**
+   * Per texture: the step the card draws with and the step of the copy on its way, -1 for none, and the last step that
+   * can be had, which is set lower where a step failed for good, and then `lowered`.
+   */
   private readonly has: Int8Array;
   private readonly goal: Int8Array;
   private readonly limit: Int8Array;
+  private readonly lowered: Uint8Array;
   /** Bytes of a texture with steps 0 to k, at `t * STEPS + k`. */
   private readonly through: Uint32Array;
   /** How many bytes of the copy on its way the card has been handed. From the first of them the card holds that copy whole. */
   private readonly gone: Uint32Array;
   /** Bytes of each texture that came over the network, every copy of it. */
   private readonly texFetched: Float64Array;
-  /** The most pixels across that anything showed a texture at this frame, and the frame it joined `wants`. */
+  /**
+   * The most pixels across that anything showed a texture at this frame, the same before the tier's and its authoring's
+   * caps, and the frame it joined `wants`.
+   */
   private readonly px: Float32Array;
+  private readonly askedPx: Float32Array;
   private readonly queued: Uint32Array;
   /** Set while the copy on its way is smaller than the one drawn. */
   private readonly down: Uint8Array;
@@ -300,6 +332,7 @@ export class Residency {
     this.spared = new Uint8Array(slots);
     this.apart = new Uint8Array(this.levels);
     this.given = new Uint32Array(this.texBase);
+    this.why = new Uint8Array(slots);
     this.data = new Array<Uint8Array | null>(slots).fill(null);
     this.prev = new Int32Array(slots + 4);
     this.next = new Int32Array(slots + 4);
@@ -319,10 +352,12 @@ export class Residency {
     this.has = new Int8Array(textures.length).fill(-1);
     this.goal = new Int8Array(textures.length).fill(-1);
     this.limit = new Int8Array(textures.length);
+    this.lowered = new Uint8Array(textures.length);
     this.through = new Uint32Array(textures.length * STEPS);
     this.gone = new Uint32Array(textures.length);
     this.texFetched = new Float64Array(textures.length);
     this.px = new Float32Array(textures.length);
+    this.askedPx = new Float32Array(textures.length);
     this.queued = new Uint32Array(textures.length);
     this.down = new Uint8Array(textures.length);
     this.retable();
@@ -338,6 +373,7 @@ export class Residency {
   private learnTexture(t: number): void {
     const tex = this.manifest.textures![t]!;
     this.limit[t] = this.port && tex.in[this.made] ? stepOf(topIn(this.made, tex.top)) : -1;
+    this.lowered[t] = 0;
     const block = blockOf(this.made, tex.in[this.made] ?? {});
     for (let k = 0, bytes = 0; k <= this.limit[t]!; k++) this.through[t * STEPS + k] = bytes += stepBytes(this.made, tex.role, k, block);
   }
@@ -430,6 +466,20 @@ export class Residency {
     this.spent += bytes;
   }
 
+  /** Bytes of this frame's allowance spent on what is not an asset, for the data utility. */
+  get spentOther(): number {
+    return this.spent;
+  }
+
+  /** Whether something waited in the last frame because the card was over-full, and because the textures' share was. */
+  get cardFull(): boolean {
+    return this.full;
+  }
+
+  get shareShort(): boolean {
+    return this.short;
+  }
+
   private empty(): void {
     this.prev[this.root] = this.next[this.root] = this.mark;
     this.prev[this.mark] = this.next[this.mark] = this.root;
@@ -508,12 +558,19 @@ export class Residency {
     const n = this.port.take(this.arrivals);
     for (let i = 0; i < n; i++) {
       const a = this.arrivals[i]!;
+      // The list is kept from frame to frame, and should not keep what came in it.
+      this.arrivals[i] = null!;
       const slot = a.slot;
       // A previous variant can already be in the worker's outgoing queue when the slot is reused.
-      if (this.state[slot] !== LOADING || a.generation !== this.generation[slot]) continue;
+      if (this.state[slot] !== LOADING || a.generation !== this.generation[slot]) {
+        this.stats.stale += a.fetched;
+        continue;
+      }
       this.land(slot);
       this.stats.fetched += a.fetched;
       this.stats.cached += a.cached;
+      this.stats.memory += a.memory ?? 0;
+      this.stats.disk += a.disk ?? 0;
       if (this.isTexture(slot)) this.texFetched[slot - this.texBase]! += a.fetched;
       const rider = slot < this.levels && this.state[this.levels + slot] === RIDING ? this.levels + slot : -1;
       // A port that brings fewer bytes than were asked for has failed, whatever it says.
@@ -563,6 +620,7 @@ export class Residency {
         } else if (this.isTexture(slot)) {
           // The texture stays at the step before.
           this.limit[slot - this.texBase] = this.goal[slot - this.texBase]! - 1;
+          this.lowered[slot - this.texBase] = 1;
           this.state[slot] = ABSENT;
           this.rehashed[slot] = 0;
           if (this.goal[slot - this.texBase] === 0) for (let s = 0; s < this.levels; s++) this.can[s] = this.canDraw(s);
@@ -639,7 +697,8 @@ export class Residency {
     const shown = pixels < most ? pixels : most;
     for (let r = 0; r < roles; r++) {
       const t = this.matTex[m * MAPS + r]!;
-      if (t >= 0) this.texture(t, shown / (1 << this.matUnder[m * MAPS + r]!), WEIGHT[r]! / distance, needed || r === 0 || r >= 3);
+      const under = 1 << this.matUnder[m * MAPS + r]!;
+      if (t >= 0) this.texture(t, shown / under, WEIGHT[r]! / distance, needed || r === 0 || r >= 3, pixels / under);
     }
   }
 
@@ -653,7 +712,7 @@ export class Residency {
     const t = this.matLayer[m]!;
     if (this.cap < 0 || t < 0) return false;
     const most = STEP0_SIZE << (this.matTop[m]! < this.cap ? this.matTop[m]! : this.cap);
-    this.texture(t, pixels < most ? pixels : most, 1 / distance, true);
+    this.texture(t, pixels < most ? pixels : most, 1 / distance, true, pixels);
     return true;
   }
 
@@ -663,7 +722,7 @@ export class Residency {
    * the others, and `needed` makes its first step as urgent as a base colour's.
    */
   shown(t: number, px: number, weight: number, needed: boolean): void {
-    if (this.cap >= 0) this.texture(t, Math.min(px, STEP0_SIZE << this.cap), weight, needed);
+    if (this.cap >= 0) this.texture(t, Math.min(px, STEP0_SIZE << this.cap), weight, needed, px);
   }
 
   /** Whether a material's layer can be drawn with this frame. */
@@ -699,24 +758,28 @@ export class Residency {
   }
 
   /**
-   * A texture shown `px` pixels across. Its first step is as urgent as FIRST where `first`, else its pixels times `weight`;
-   * after it, the climb to the step it is shown at is as urgent as the pixels that adds, times `weight`, for each
-   * CLIMB_BYTES of the climb.
+   * A texture shown `px` pixels across, and `asked` before the caps. Its first step is as urgent as FIRST where `first`,
+   * else its pixels times `weight`; after it, the climb to the step it is shown at is as urgent as the pixels that adds,
+   * times `weight`, for each CLIMB_BYTES of the climb.
    */
-  private texture(t: number, px: number, weight: number, first: boolean): void {
+  private texture(t: number, px: number, weight: number, first: boolean, asked: number): void {
     const slot = this.texBase + t;
     const have = this.has[t]!;
     if (this.seen[slot] !== this.frame) {
       this.seen[slot] = this.frame;
       this.urgency[slot] = 0;
       this.px[t] = px;
+      this.askedPx[t] = asked;
       if (have < 0 && this.limit[t]! >= 0) this.unstarted++;
       if (have >= 0) {
         this.unlink(slot);
         this.toTail(slot, this.texRoot);
         this.texMarked += this.through[t * STEPS + have]!;
       }
-    } else if (px > this.px[t]!) this.px[t] = px;
+    } else {
+      if (px > this.px[t]!) this.px[t] = px;
+      if (asked > this.askedPx[t]!) this.askedPx[t] = asked;
+    }
     if (have >= this.limit[t]!) return;
     let urgency: number;
     if (have < 0) urgency = first ? FIRST * (1 + weight) : STEP0_SIZE * weight;
@@ -848,7 +911,7 @@ export class Residency {
       if (t < 0 || this.seen[at] === this.frame) continue;
       this.seen[at] = this.frame;
       this.urgency[at] = 0;
-      this.px[t] = 0;
+      this.px[t] = this.askedPx[t] = 0;
       this.unlink(at);
       this.toTail(at, this.texRoot);
       this.texMarked += this.through[t * STEPS + this.has[t]!]!;
@@ -945,6 +1008,11 @@ export class Residency {
     return this.port ? this.port.cache : null;
   }
 
+  /** What the browser says of keeping the files and of its room for them, or null where nothing asks it. */
+  get storage(): StorageInfo | null {
+    return this.port?.storage ?? null;
+  }
+
   /** The graphics card could not take a level or a surface it was sent. */
   failed(slot: number): void {
     this.stats.refused++;
@@ -1028,6 +1096,7 @@ export class Residency {
       const left = this.uploadBytes - sent;
       const room = left > 0 ? left : sent > this.spent ? 0 : SMALL_PART;
       if ((slot >= this.levels && this.state[slot - this.levels] !== RESIDENT) || room === 0) {
+        this.why[slot] = room === 0 ? WHY_ALLOWANCE : WHY_LEVEL;
         this.under[kept++] = slot;
         continue;
       }
@@ -1039,20 +1108,35 @@ export class Residency {
         // What this frame draws already fills the card past its overflow. It waits, and everything is asked for coarser.
         if (this.ledger + bytes > this.budget * OVERFLOW) this.full = true;
         if (this.ledger + bytes > this.budget * OVERFLOW || (slot >= this.levels && this.state[slot - this.levels] !== RESIDENT)) {
+          this.why[slot] = this.ledger + bytes > this.budget * OVERFLOW ? WHY_FULL : WHY_LEVEL;
           this.under[kept++] = slot;
           continue;
         }
       }
       sent += this.take(slot, uploads, room);
       if (pair >= 0) sent += this.take(pair, uploads, room);
+      // What is left of either goes up as later frames' bytes allow.
+      this.why[slot] = WHY_ALLOWANCE;
+      if (pair >= 0) this.why[pair] = WHY_ALLOWANCE;
       if (this.state[slot] === ARRIVED) this.under[kept++] = slot;
       else if (pair < 0 && slot < this.levels && this.state[this.levels + slot] === ARRIVED) this.apart[slot] = 1;
     }
     this.under.length = kept;
 
-    for (const slot of this.wants.sort(byUrgency)) {
-      if (this.flying >= this.inFlight || this.waiting >= WAITING_LIMIT) break;
-      if (this.state[slot] !== ABSENT || this.retryAt[slot]! > nowMs) continue;
+    const wants = this.wants.sort(byUrgency);
+    for (let i = 0; i < wants.length; i++) {
+      const slot = wants[i]!;
+      if (this.flying >= this.inFlight || this.waiting >= WAITING_LIMIT) {
+        // What is left waits for the same reason.
+        const why = this.flying >= this.inFlight ? WHY_LANES : WHY_WAITING;
+        for (let k = i; k < wants.length; k++) this.why[wants[k]!] = why;
+        break;
+      }
+      if (this.state[slot] !== ABSENT) continue;
+      if (this.retryAt[slot]! > nowMs) {
+        this.why[slot] = WHY_RETRY;
+        continue;
+      }
       let bytes = this.size[slot]!;
       let rider = -1;
       let goal = 0;
@@ -1060,17 +1144,24 @@ export class Residency {
         // A texture comes at its first step, then climbs in one request to the step it is shown at, once no texture
         // shown lacks its first, and only into room that is not spoken for.
         const t = slot - this.texBase, have = this.has[t]!;
-        if (have >= 0 && this.unstarted > 0) continue;
+        if (have >= 0 && this.unstarted > 0) {
+          this.why[slot] = WHY_FIRSTS;
+          continue;
+        }
         goal = have < 0 ? 0 : Math.max(have + 1, stepFor(this.px[t]!, this.limit[t]!));
         bytes = this.through[(slot - this.texBase) * STEPS + goal]!;
         if (this.texMarked + this.texComing + bytes > this.texBudget) {
           this.short = true;
+          this.why[slot] = WHY_SHARE;
           continue;
         }
       } else if (slot >= this.levels && slot < this.texBase) {
         // A surface is asked for by itself when its level is here or coming. Otherwise it comes in its level's request.
         const level = this.state[slot - this.levels]!;
-        if (level !== LOADING && level !== ARRIVED && level !== RESIDENT) continue;
+        if (level !== LOADING && level !== ARRIVED && level !== RESIDENT) {
+          this.why[slot] = WHY_LEVEL;
+          continue;
+        }
       } else if (slot < this.levels) {
         // A surface that follows its level in the file comes with it, so that the two arrive together.
         const s = this.levels + slot;
@@ -1079,7 +1170,10 @@ export class Residency {
           bytes += this.size[s]!;
         }
       }
-      if (bytes > SMALL_PART && this.flyingLarge >= this.inFlight - this.smallLanes) continue;
+      if (bytes > SMALL_PART && this.flyingLarge >= this.inFlight - this.smallLanes) {
+        this.why[slot] = WHY_LARGE;
+        continue;
+      }
       if (slot >= this.pageBase) this.askPages(slot, nowMs);
       else this.ask(slot, rider, goal);
     }
@@ -1182,6 +1276,8 @@ export class Residency {
     const tex = this.manifest.textures![t]!;
     const block = blockOf(this.made, tex.in[this.made]!);
     let at = this.gone[t]!;
+    // What the frame's bytes do not reach waits for the next frame's.
+    this.why[slot] = WHY_ALLOWANCE;
     if (at === 0) {
       // A copy is begun in a frame that has bytes left for its first row.
       if (sent > this.spent && sent + pictureBytes(this.made, tex.role, 1, block) > this.uploadBytes) return sent;
@@ -1190,11 +1286,13 @@ export class Residency {
       this.texRoom(whole, share, texDrops);
       if (this.texLedger + whole > share) {
         this.short = true;
+        this.why[slot] = WHY_SHARE;
         return sent;
       }
       this.makeRoom(whole, drops);
       if (this.ledger + whole > this.budget * OVERFLOW) {
         this.full = true;
+        this.why[slot] = WHY_FULL;
         return sent;
       }
       this.ledger += whole;

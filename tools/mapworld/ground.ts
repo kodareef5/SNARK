@@ -3,6 +3,7 @@ import type { EyeColor, TideEyeSite } from "../../shared/world/tide-eye.ts";
 // the shoreline survey marks, water passages under mapped bridges, authored broken spans and drowned streets.
 // Footprints reserve the city floor; statics supply its ruins. Heights are metres above the sea.
 
+import { BEACH_LAND, BEACH_SEA, shapeBeach } from "./beach.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { GROUND_CLASS } from "../../shared/world/vehicle-surface.ts";
 import { join } from "node:path";
@@ -106,6 +107,8 @@ export interface Ground {
   readonly heaps: Heaps;
   /** Metres from each land sample to the water, and from each water sample to the land. */
   readonly shore: Float32Array;
+  /** Marine samples in the sandy swash zone, kept sparse until the tint is baked. */
+  readonly beachBed?: ReadonlySet<number>;
   /** Per sample of a container stack, which container it is, for its colour. */
   readonly container: Uint8Array;
   /** Metres from each sample to the nearest real beach. */
@@ -472,5 +475,14 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     }
   }
   log(`ground: ${Math.round(stacks * 4)} square metres of container stacks`);
-  return { grid, height, surface, district, heaps, shore, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
+  const beachBed = new Set<number>();
+  if (world.sea !== false) {
+    const count = shapeBeach(height, nx, nz, cell, i => {
+      const s = surface[i]!;
+      if (s === S.BEACH || s === S.WET_SAND || s === S.DUNE) return BEACH_LAND;
+      return s === S.SHALLOW && water[i] && !roads[i] && !built[i] && !gaps[i] && !lakes?.body[i] ? BEACH_SEA : 0;
+    }, i => beachBed.add(i));
+    log(`ground: graded ${count} sandy foreshore samples`);
+  }
+  return { grid, height, surface, district, heaps, shore, beachBed, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
 }

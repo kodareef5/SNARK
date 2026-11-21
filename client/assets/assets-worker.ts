@@ -2,7 +2,7 @@
 // hash, and keeps them as stored, in memory and on disk, off the page's thread. What to fetch and when is decided in
 // client/core/assets. This file joins those decisions to the browser.
 
-import { FAIL_HASH, FAIL_NET, FAIL_RANGE, rangeAsk, type AssetPart } from "../core/assets/port.ts";
+import { FAIL_HASH, FAIL_NET, FAIL_RANGE, rangeAsk, type AssetPart, type WorkerTotals } from "../core/assets/port.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
 
 interface Scope {
@@ -72,8 +72,30 @@ const toFill: { url: string; part: AssetPart }[] = [];
 let filling = 0;
 /** How the files come, as the browser names it (http/1.1, h2, h3), from the first fetch that says. */
 let protocol = "";
+/** What this worker has done (WorkerTotals), why the disk is not used where it is not, and the disk writes under way. */
+const totals: WorkerTotals = { memoryParts: 0, memoryBytes: 0, diskParts: 0, diskReadBytes: 0, netParts: 0, netBytes: 0, timeouts: 0, fillAsked: 0, fillDone: 0, fillBytes: 0, fillFailed: 0, fillTimeouts: 0 };
+let off: "" | "none" | "full" = "";
+let writing = 0;
+/** The page hears how things stand at most once a second, when it was last told, and whether a report waits to go. */
+const REPORT_MS = 1000;
+let reportedAt = -Infinity;
+let toldWriting = 0;
+let due = false;
 
-const report = (): void => scope.postMessage({ cache: { used: diskBytes, limit: diskLimit, mode: disk ? "disk" : "memory", filling: toFill.length + filling, protocol } });
+function post(): void {
+  due = false;
+  reportedAt = performance.now();
+  toldWriting = writing;
+  scope.postMessage({ cache: { used: diskBytes, limit: diskLimit, mode: disk ? "disk" : "memory", filling: toFill.length + filling, off, writing, totals, protocol } });
+}
+
+function report(): void {
+  // The page hears at once that writes have begun, so that it never takes the disk for still while one is under way.
+  if (writing > 0 && toldWriting === 0) return post();
+  if (due) return;
+  due = true;
+  setTimeout(() => due && post(), Math.max(0, reportedAt + REPORT_MS - performance.now()));
+}
 
 new PerformanceObserver((list, watch) => {
   for (const e of list.getEntries() as PerformanceResourceTiming[]) {
@@ -100,6 +122,7 @@ function openDisk(limit: number, touch: boolean): void {
 /** Counts what is on disk, behind the requests. */
 async function count(folder: Folder | null): Promise<void> {
   disk = folder;
+  if (!folder) off = "none";
   if (folder) {
     trim();
     try {
@@ -163,7 +186,17 @@ async function fromDisk(hash: string): Promise<Bytes | null> {
   }
 }
 
-async function toDisk(hash: string, data: Bytes, again = true): Promise<void> {
+/** Writes a part to disk where it is not there already. True where it is there after. */
+async function toDisk(hash: string, data: Bytes): Promise<boolean> {
+  writing++;
+  report();
+  await write(hash, data, true);
+  writing--;
+  report();
+  return onDisk.has(hash);
+}
+
+async function write(hash: string, data: Bytes, again: boolean): Promise<void> {
   await opened;
   if (!disk || onDisk.has(hash) || data.length > diskLimit) return;
   await forget(diskLimit - data.length);
@@ -178,17 +211,19 @@ async function toDisk(hash: string, data: Bytes, again = true): Promise<void> {
     // The browser has less room than was hoped. A quarter of what is kept goes and it is tried once more, and then memory must do.
     if (again) {
       await forget(diskBytes * 0.75);
-      await toDisk(hash, data, false);
-    } else disk = null;
+      await write(hash, data, false);
+    } else {
+      disk = null;
+      off = "full";
+    }
   }
-  report();
 }
 
 /** Fetches what was asked for only to be kept, behind what the scene is waiting for: two runs at a time, each of parts that follow one another in a file. */
 async function fill(): Promise<void> {
   await opened;
   if (filling >= 2) return;
-  while (toFill.length > 0 && onDisk.has(toFill[0]!.part.hash)) toFill.shift();
+  for (; toFill.length > 0 && onDisk.has(toFill[0]!.part.hash); totals.fillDone++) toFill.shift();
   const first = toFill.shift();
   if (!first) return;
   const run = [first.part];
@@ -200,12 +235,24 @@ async function fill(): Promise<void> {
   }
   filling++;
   if (disk) {
-    const got = await fetchRun(first.url, run, new AbortController().signal).catch(() => null);
-    for (let k = 0; got?.data && k < run.length; k++) {
+    // A run is given the time limit for each megabyte of it, so a slow link still brings it and a stalled one lets go.
+    const stop = new AbortController();
+    const timer = setTimeout(() => stop.abort(), TIMEOUT_MS * Math.max(1, run.reduce((n, p) => n + p.length, 0) / MB));
+    const got = await fetchRun(first.url, run, stop.signal).catch(() => null);
+    clearTimeout(timer);
+    totals.netBytes += got?.fetched ?? 0;
+    if (!got?.data && stop.signal.aborted) totals.fillTimeouts += run.length;
+    for (let k = 0; k < run.length; k++) {
       const p = run[k]!;
-      if (await open(got.data[k]!, p, new Uint8Array(p.inflated ?? p.length))) await toDisk(p.hash, got.data[k]!);
+      const kept = got?.data ? (await open(got.data[k]!, p, new Uint8Array(p.inflated ?? p.length))) && (await toDisk(p.hash, got.data[k]!)) : false;
+      if (kept) {
+        totals.netParts++;
+        totals.fillDone++;
+        totals.fillBytes += p.length;
+      } else totals.fillFailed++;
     }
-  }
+    // Without a disk nothing asked to be kept can be, and the page hears why (`off`).
+  } else totals.fillFailed += run.length;
   filling--;
   report();
   void fill();
@@ -304,10 +351,16 @@ async function answer(a: Ask): Promise<void> {
   const memory = a.fresh ? [] : a.parts.map((p) => fromMemory(p.hash));
   const stored = a.fresh ? new Array<Bytes | null>(n).fill(null) : await Promise.all(a.parts.map((p, k) => memory[k] ?? fromDisk(p.hash)));
   let cached = 0;
+  /** Of `cached`, the bytes memory held. */
+  let remembered = 0;
   let fetched = 0;
   let fail = 0;
   let status = 0;
-  const timer = setTimeout(() => stop.abort(), TIMEOUT_MS);
+  let late = false;
+  const timer = setTimeout(() => {
+    late = true;
+    stop.abort();
+  }, TIMEOUT_MS);
   /** Fetches the parts not yet had, each run of them with one range, and opens each into the answer. */
   const network = async (have: readonly boolean[]): Promise<void> => {
     const runs: { k: number; got: Promise<Run> }[] = [];
@@ -324,6 +377,7 @@ async function answer(a: Ask): Promise<void> {
     for (const run of runs) {
       const got = await run.got;
       fetched += got.fetched;
+      totals.netBytes += got.fetched;
       if (fail !== 0) continue;
       fail = got.fail;
       status = got.status;
@@ -331,6 +385,7 @@ async function answer(a: Ask): Promise<void> {
         const k = run.k + j;
         if (!(await open(got.data[j]!, a.parts[k]!, into(k)))) fail = FAIL_HASH;
         else {
+          totals.netParts++;
           keep(a.parts[k]!.hash, got.data[j]!);
           void toDisk(a.parts[k]!.hash, got.data[j]!);
         }
@@ -344,9 +399,16 @@ async function answer(a: Ask): Promise<void> {
       const s = stored[k];
       if (!s) continue;
       good[k] = await open(s, a.parts[k]!, into(k));
-      if (good[k]) {
+      if (good[k] && memory[k]) {
         cached += s.length;
-        if (!memory[k]) keep(a.parts[k]!.hash, s);
+        remembered += s.length;
+        totals.memoryParts++;
+        totals.memoryBytes += s.length;
+      } else if (good[k]) {
+        cached += s.length;
+        totals.diskParts++;
+        totals.diskReadBytes += s.length;
+        keep(a.parts[k]!.hash, s);
       } else {
         // Bytes kept that do not come back are no use, and are fetched afresh.
         unkeep(a.parts[k]!.hash);
@@ -362,8 +424,10 @@ async function answer(a: Ask): Promise<void> {
   // Cancelled: the page no longer wants it and must not be told of it.
   if (under.get(a.slot) !== stop) return;
   under.delete(a.slot);
-  if (fail !== 0) scope.postMessage({ slot: a.slot, generation: a.generation, data: null, fail, fetched, cached, status });
-  else scope.postMessage({ slot: a.slot, generation: a.generation, data, fail: 0, fetched, cached }, [data.buffer]);
+  if (fail !== 0 && late) totals.timeouts++;
+  const read = cached - remembered;
+  if (fail !== 0) scope.postMessage({ slot: a.slot, generation: a.generation, data: null, fail, fetched, cached, memory: remembered, disk: read, status });
+  else scope.postMessage({ slot: a.slot, generation: a.generation, data, fail: 0, fetched, cached, memory: remembered, disk: read }, [data.buffer]);
 }
 
 scope.onmessage = (e) => {
@@ -371,6 +435,7 @@ scope.onmessage = (e) => {
   if (m.net) net = m.net;
   if (m.open) openDisk(m.open.keep, m.open.touch);
   if (m.fill) {
+    totals.fillAsked += m.fill.length;
     toFill.push(...m.fill);
     void fill();
     void fill();

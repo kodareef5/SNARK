@@ -41,7 +41,7 @@ body {
   z-index: -3;
 }
 #scenery {
-  background: #1d3e60 url("title/miami-flight.webp") center/cover no-repeat;
+  background: #1d3e60 url("/cluster/title-poster.webp") center/cover no-repeat;
   overflow: clip;
   touch-action: pan-y;
 }
@@ -779,8 +779,14 @@ body:has(.opening) main {
     margin-top: clamp(100px, 25svh, 240px);
   }
   .home {
-    align-self: center;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 0 0 0.5rem;
   }
+  .home .wordmark { font-size: clamp(60px, 17vw, 88px); }
+  .home-actions { margin-top: auto; }
   .brand b {
     font-size: 2rem;
   }
@@ -937,4 +943,11 @@ summary:focus-visible {
   .map-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+#scene-loading { display: none; }
+body[data-title-scene="loading"] #scene-loading { display: inline; }
+
+@media (orientation: portrait) {
+  #scenery:not(.portrait) { background-image: url("/cluster/title-poster.webp?portrait"); }
 }

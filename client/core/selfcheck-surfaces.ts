@@ -30,6 +30,7 @@ export class SelfcheckSurfaces implements AssetPort {
 
   get cache(): AssetPort["cache"] { return this.port.cache; }
   get protocol(): string { return this.port.protocol; }
+  get storage(): AssetPort["storage"] { return this.port.storage; }
   get done(): boolean { return this.started && this.left === 0; }
   get state(): SurfaceReference { return { ready: this.sample !== null, format: "rgba", error: this.error, fetched: this.fetched, cached: this.cached }; }
   request(r: AssetRequest): void { this.port.request(r); }

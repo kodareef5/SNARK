@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
-import { contour, finish, Surface } from "../../assets/source/core/humans/human-bodies/meridian/surface.ts";
 import { exhaustLight, exhaustPhase } from "../../client/core/render/suit-finish.ts";
+import { artModule } from "../../tools/art/source.ts";
+
+const { contour, finish, Surface } = await artModule("core/humans/human-bodies/meridian/surface.ts");
 
 test("both shoulder plates close with opposite winding on either side of every edge", () => {
   for (const side of [-1, 1]) {

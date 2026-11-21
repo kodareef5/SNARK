@@ -19,10 +19,11 @@ import { join, resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
 import { airFrame } from "../../client/core/render/atmosphere.ts";
-import { DRAW_WATER, FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
+import { WATER_PATHS, WATER_BOUNDS, WATER_MARKS, WATER_MARK_COUNT, MAX_WATER_MARKS, DRAW_WATER, FRAME, FRAME_FLOATS, type FramePacket } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, hourOfSun, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { groundSize } from "../../client/core/render/terrain.ts";
+import { beachWash } from "../../client/core/render/swash.ts";
 import { SHORE, WATER_MATERIAL, seaDepth, seaFoam, seaFrame, seaPixel, seaShown } from "../../client/core/render/water.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -161,6 +162,7 @@ function surfaceAt(cam: Camera, y0: number, sea: number, x: number, y: number): 
 }
 
 const held: Held[] = [];
+let rippleFrame = -1;
 const pictured: { key: string; frame: number; name: string }[] = [];
 
 /** Builds a frame of `w` and has the rasterizer draw it with the sea left out, so that it shows what is under it. */
@@ -178,9 +180,9 @@ function build(w: World, now: number): FramePacket {
 }
 
 /** Proof frames of a world in a shot: three frames a view, the last read back and kept, held at the water's surface `surface`. */
-function prove(shot: Shot, w: World, name: string, kind: Held["kind"], surface = w.hf.seaLevel): void {
+function prove(shot: Shot, w: World, name: string, kind: Held["kind"], surface = w.hf.seaLevel, offsetMs = 0): void {
   for (let f = 0; f < 3; f++) {
-    const p = build(w, (shot.frames.length + 1) * (1000 / 60));
+    const p = build(w, offsetMs + (shot.frames.length + 1) * (1000 / 60));
     shot.add(p, f === 2);
     if (f < 2) continue;
     const c = w.cam;
@@ -205,6 +207,19 @@ export const waterCheck: LitCheck = {
       [flat.cam.x, flat.cam.z, flat.cam.y, flat.cam.yaw, flat.cam.pitch] = [256, 200, 12, 0.3, -0.9];
       prove(p1, flat, `plate 2 m down, ${name}`, "plate");
     }
+    // The same pixels with a localized splash, then with the splash on a different lake level.
+    flat.cam.yaw = 0;
+    flat.cam.pitch = -Math.atan2(12, 9);
+    for (let i = 0; i < 5; i++) {
+      const p = build(flat, 2400);
+      if (i >= 3) {
+        p.frame[WATER_MARK_COUNT] = 1;
+        p.frame.set([-4, 5, 4, 13], WATER_BOUNDS);
+        p.frame.set([0, 9, 0, 0, i === 3 ? -12 : -9, 0.8, 0.22, -0.8], WATER_MARKS);
+      }
+      p1.add(p, i >= 2);
+      if (i === 2) rippleFrame = p1.frames.length - 1;
+    }
     shots.push(p1);
     // The same, a pond's surface 20 m up on a map with no sea: its depth is its own surface's over the ground.
     const lake = pond(pack);
@@ -219,6 +234,7 @@ export const waterCheck: LitCheck = {
       isle.scene.hour = hour;
       onBeach(isle, 2.2, 5, 1.7, -0.32);
       prove(p2, isle, `shore, ${name}`, "shore");
+      prove(p2, isle, `returning wash, ${name}`, "shore", isle.hf.seaLevel, 3000);
       onBeach(isle, 2.2, 5, 1.7, 0.005);
       prove(p2, isle, `open sea level, ${name}`, "grazing");
       // A row the split crosses has its middle on one side or the other: four heights between them see both.
@@ -308,7 +324,29 @@ export const waterCheck: LitCheck = {
 
   judge(back: Readback): { ok: boolean; lines: string[] } {
     const lines = [`a calm sea held to water.ts's twin over what the rasterizer draws under it, each within ${NEAR} at 99 points in 100`];
-    let ok = true;
+    const plain = back.pixels("water-plate", rippleFrame);
+    const impact = back.pixels("water-plate", rippleFrame + 1);
+    const above = back.pixels("water-plate", rippleFrame + 2);
+    let affected = 0, outside = 0, wrongLevel = 0;
+    if (plain && impact && above) {
+      const cam = new Camera();
+      cam.aspect = W / H;
+      cam.pitch = -Math.atan2(12, 9);
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          const delta = Math.max(...[0, 1, 2].map(k => Math.abs(impact[i + k]! - plain[i + k]!)));
+          if (delta > 2) {
+            affected++;
+            const rel = surfaceAt(cam, 12, 0, x, y);
+            if (Math.abs(rel[0]!) > 4.1 || Math.abs(rel[2]! - 9) > 4.1) outside++;
+          }
+          if ([0, 1, 2].some(k => above[i + k] !== plain[i + k])) wrongLevel++;
+        }
+      }
+    }
+    let ok = affected > 100 && outside === 0 && wrongLevel === 0;
+    lines.push(`surface impact: ${affected} altered pixels, ${outside} outside its bounds, ${wrongLevel} on another water level: ${ok ? "ok" : "FAIL"}`);
     const table = theSky().table;
     for (const h of held) {
       const gpu = back.pixels(h.key, h.frame);
@@ -363,9 +401,15 @@ export const waterCheck: LitCheck = {
           // The foam's footprints, as the GPU's fwidth takes them from the next pixel across and down.
           const [across, down] = [surfaceAt(cam, h.cam.y, sea, x + 1, y), surfaceAt(cam, h.cam.y, sea, x, y + 1)];
           const wide = Math.hypot(Math.abs(across[0]! - rel[0]!) + Math.abs(down[0]! - rel[0]!), Math.abs(across[2]! - rel[2]!) + Math.abs(down[2]! - rel[2]!));
-          const deep = Math.abs(seaDepth(h.block, hf, size, h.window, across[0]!, across[2]!, across[1]!) - depth) + Math.abs(seaDepth(h.block, hf, size, h.window, down[0]!, down[2]!, down[1]!) - depth);
-          const foam = seaFoam(h.block, rel[0]!, rel[2]!, depth, share[0]!, wide, deep);
-          const px = seaPixel(h.block, table, [0, 1, 0], r.map((c) => -c), depth, 0, 1, foam);
+          const ddx = seaDepth(h.block, hf, size, h.window, across[0]!, across[2]!, across[1]!) - depth;
+          const ddy = seaDepth(h.block, hf, size, h.window, down[0]!, down[2]!, down[1]!) - depth;
+          const ax = across[0]! - rel[0]!, az = across[2]! - rel[2]!, bx = down[0]! - rel[0]!, bz = down[2]! - rel[2]!;
+          const det = ax * bz - az * bx;
+          const wash = beachWash(h.block, rel[0]!, rel[2]!, depth, share[0]!, (ddx * bz - ddy * az) / det, (ax * ddy - bx * ddx) / det, t);
+          const foam = wash.lace * seaFoam(h.block, rel[0]!, rel[2]!, wash.depth, share[0]!, wide, Math.abs(ddx) + Math.abs(ddy));
+          const n = Math.hypot(wash.slopeX, 1, wash.slopeZ);
+          const px = seaPixel(h.block, table, [-wash.slopeX / n, 1 / n, -wash.slopeZ / n], r.map((c) => -c), wash.depth, 0, 1, foam);
+          px.film = wash.film;
           foamed += foam;
           const shown = seaShown(px, rel, below, h.block, table);
           const off = Math.max(...[0, 1, 2].map((k) => Math.abs(gpu[at * 4 + k]! - shown[k]!)));
@@ -525,7 +569,7 @@ async function timeWater(chrome: string): Promise<Record<string, number | string
     return [...f];
   };
   // The sea 10 m under the eye, spread over the screen from 20 m to 420 m off.
-  const vertex = `#version 300 es\nout vec3 vRel;\nflat out vec3 vColor;\nflat out int vSurface;\nvoid main() {\n  vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;\n  vRel = vec3(at.x * 200.0, -10.0, at.y * 200.0 + 220.0);\n  gl_Position = vec4(at, 0.5, 1.0);\n  vColor = vec3(0.24, 0.43, 0.67);\n  vSurface = 0;\n}`;
+  const vertex = `#version 300 es\nout vec3 vRel;\nflat out vec3 vColor;\nflat out int vSurface;\nflat out vec4 vFinish; flat out float vShare;\nvoid main() {\n  vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;\n  vRel = vec3(at.x * 200.0, -10.0, at.y * 200.0 + 220.0);\n  gl_Position = vec4(at, 0.5, 1.0);\n  vColor = vec3(0.24, 0.43, 0.67);\n  vSurface = 0; vFinish = vec4(0); vShare = 0.0;\n}`;
   const water = PROGRAMS.water!(tierOf("medium"), "rgba");
   const lit = PROGRAMS.flat!(tierOf("medium"), "rgba");
   const runs = [
@@ -535,6 +579,19 @@ async function timeWater(chrome: string): Promise<Record<string, number | string
     { name: "WATER, waves, 15 cm deep, foam", vertex, fragment: water.fragment, samplers: water.samplers, frame: frame(true, 0.15), waves: true },
     { name: "LIT, hazed, same place", vertex, fragment: lit.fragment, samplers: lit.samplers, frame: frame(true), waves: false },
   ];
+  // A nearby hull covers the view. Measure empty, touch and desktop budgets with identical pixels and wave maps.
+  const close = vertex.replace("at.x * 200.0", "at.x * 7.0").replace("at.y * 200.0 + 220.0", "at.y * 6.0 + 8.0");
+  for (const count of [0, 4, MAX_WATER_MARKS]) {
+    const f = frame(true);
+    f[WATER_MARK_COUNT] = count;
+    f.splice(WATER_BOUNDS, 4, -8, 0, 8, 16);
+    for (let i = 0; i < count; i++) {
+      f.splice(WATER_MARKS + 8 * i, 8, (i % 3 - 1) * 3, 2 + Math.floor(i / 3) * 3.2, 0.3, 1.8, -10, i * 0.18, 1, 0.5);
+      f.splice(WATER_PATHS + 4 * i, 4, 0.43, -0.22, 0.18, 3);
+    }
+    const fragment = count ? water.fragment.replace("#version 300 es", "#version 300 es\n#define LOCAL_WAKES") : water.fragment;
+    runs.push({ name: `WATER, close hull, ${count} marks`, vertex: close, fragment, samplers: water.samplers, frame: f, waves: true });
+  }
   const mips = { long: packedMips(readPicture(join(ROOT, "assets/source/core/water/long.png"))), short: packedMips(readPicture(join(ROOT, "assets/source/core/water/short.png"))) };
   let finish: (r: Record<string, number | string | boolean>) => void = () => {};
   const finished = new Promise<Record<string, number | string | boolean>>((r) => (finish = r));

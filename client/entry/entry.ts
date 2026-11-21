@@ -55,6 +55,7 @@ function remembered(): Remembered[] {
     return [];
   }
 }
+let waitingForDirectScreen = direct && ["roster","link","create"].includes(new URLSearchParams(location.search).get("screen") ?? "");
 let screen: Screen = "title",
   worlds: World[] = [],
   listed: Listing[] = [],
@@ -232,6 +233,7 @@ async function worldsRefresh() {
   refreshFilters();
 }
 function nav(next: Screen) {
+  if (next === "title") waitingForDirectScreen = false;
   if (screen === "link" && code && next !== "link") void owner("cancel", { code }).catch(() => {});
   if (next === "title" || next === "servers") {
     prep?.abort();
@@ -253,7 +255,7 @@ function nav(next: Screen) {
 function syncScene() {
   const saved = screen === "roster" && fromWorld ? selectedRow()?.look : null;
   const portrait = screen === "create" || !!saved;
-  sceneFor(selected?.address ?? "", portrait, saved ? Uint8Array.from(saved) : look, spawn, turn, screen === "create");
+  sceneFor(selected?.address ?? "", portrait, saved ? Uint8Array.from(saved) : look, spawn, turn, screen === "create", screen === "title" && !waitingForDirectScreen);
 }
 function panel(title: string, inside: string, style = "", back = "back") {
   return (
@@ -869,6 +871,7 @@ async function start() {
   } else if (screen === "title" && !root.querySelector(".opening")) render();
 }
 if (!location.hash.startsWith("#travel=")) {
+  syncScene();
   let seen = false;
   try {
     seen = !!sessionStorage.getItem("snark.intro");

@@ -106,6 +106,13 @@ export const DETAIL_POOL = 128;
 export const DETAIL_WIRE = DETAIL_POOL | 1;
 export const DETAIL_GLASS = DETAIL_POOL | 2;
 export const DETAIL_TIRE = DETAIL_POOL | 3;
+/** A sunlit aerated streak at the stern. Its grey byte seeds the shape. */
+export const DETAIL_WAKE = DETAIL_POOL | DETAIL_LIT | 4;
+/**
+ * A damage number (damage-numbers.ts): its glyphs drawn by their distance (digits.ts), filled with its first colour and
+ * outlined in deep navy, the glyphs packed in its second colour's three bytes. Unlit and unfogged, as the HUD is.
+ */
+export const DETAIL_DIGITS = DETAIL_POOL | 5;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /**
@@ -226,6 +233,7 @@ export const SOURCE_WINDOW = 1;
 
 /** Bodies the frame block holds for contact (contact.ts). */
 export const MAX_CONTACTS = 12;
+export const MAX_WATER_MARKS = 12;
 export const MAX_TIRE_CONTACTS = 8;
 
 /**
@@ -351,7 +359,13 @@ export const FRAME = {
   /** fEffects.x: periodic exhaust phase in radians. */
   exhaustPhase: 200 + MAX_CONTACTS * 8 + MAX_TIRE_CONTACTS * 4,
 } as const;
-export const FRAME_FLOATS = FRAME.exhaustPhase + 4;
+export const WATER_PHASE = FRAME.exhaustPhase + 1;
+export const WATER_MARK_COUNT = FRAME.exhaustPhase + 3;
+export const WATER_BOUNDS = FRAME.exhaustPhase + 4;
+export const WATER_MARKS = WATER_BOUNDS + 4;
+/** Per segment: duration, incoming and outgoing cross-track slopes, and wake family. */
+export const WATER_PATHS = WATER_MARKS + MAX_WATER_MARKS * 8;
+export const FRAME_FLOATS = WATER_PATHS + 4 * MAX_WATER_MARKS;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -362,7 +376,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fEyes[6];
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
   highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
-  highp vec4 fEffects;
+  highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterPaths[${MAX_WATER_MARKS}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -627,6 +641,7 @@ export class FramePacket {
   beginFrame(): void {
     this.street = this.previousStreet = null;
     this.frame.fill(0, FRAME.tireContacts, FRAME.exhaustPhase);
+    this.frame[WATER_MARK_COUNT] = 0;
     this.frame[FRAME.previousReflection + 3] = 0;
     this.frame[FRAME.reflection + 3] = 0;
     this.uploads.length = 0;

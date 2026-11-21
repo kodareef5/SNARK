@@ -162,6 +162,8 @@ export class GlRenderer {
   private culling = false;
   private covering = false;
   private offsetting = false;
+  /** The ms this frame took to hand the card the assets' levels, surfaces and texture rows, and to drop theirs it let go. */
+  uploadMs = 0;
   /** Slots, and textures, this frame found uploads could not be given memory for. The shell tells core. */
   readonly failed: number[] = [];
   readonly failedTextures: number[] = [];
@@ -768,6 +770,7 @@ export class GlRenderer {
       this.unaskedSlots.length = this.unaskedTextures.length = 0;
       this.unaskedSince = -1;
     }
+    const uploading = performance.now();
     for (const slot of p.assetDrops) this.drop(slot);
     for (const u of p.assetUploads) {
       if (u.of === undefined) this.take(u);
@@ -775,6 +778,7 @@ export class GlRenderer {
     }
     for (const t of p.texDrops) this.forget(t);
     for (const u of p.texUploads) this.fill(u);
+    this.uploadMs = performance.now() - uploading;
     for (const u of p.assetUploads) this.unaskedSlots.push(u.slot);
     for (const u of p.texUploads) if (!this.unaskedTextures.includes(u.slot)) this.unaskedTextures.push(u.slot);
     if (this.unaskedSince < 0 && this.unaskedSlots.length + this.unaskedTextures.length > 0) this.unaskedSince = now;
