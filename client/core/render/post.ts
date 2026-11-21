@@ -3,7 +3,7 @@
 // tier with a light target (Tier.post) the scene is drawn as light instead, exposed but not toned, into a multisampled
 // float target of the shell's, which is resolved and finished in one pass for what needs a pass: bloom, then the same
 // gain, tone curve and grade over light that bloom has moved, a slight sharpen and dither. The governor gives the
-// target back first of all (governor.ts), and the frame keeps its grade.
+// scene's pixels first and the target near its last step (governor.ts), and without it the frame keeps its grade.
 //
 // Bloom spreads what is truly bright: the part of a pixel's light past BLOOM_FROM, which grows from nothing there, so
 // no line is drawn where it starts. It is a chain of targets, each half the one before from a quarter of the canvas
@@ -11,6 +11,10 @@
 // the smallest up each is filtered up with a tent and added to the one above. The first level then holds every level's
 // blur of the same light, and over their count is a blur that keeps its energy. The finish takes BLOOM of the bright
 // part from where it is and puts the same share of the blur in its place, so light is moved and none is made.
+//
+// The scene may be drawn at a share of the canvas a side (sceneShare): into the corner of the light target that share
+// fills, bloom's levels likewise, and the finish, at the canvas's own size, takes it up with a Catmull-Rom filter held
+// within its neighbours, then the sharpen. The interface is the page's, over the canvas, and keeps its own pixels.
 
 import { GRADE, type GradeKey } from "../../../content/grade.ts";
 import type { Tier } from "../assets/tiers.ts";
@@ -47,6 +51,12 @@ export const tapShift = (from: number, to: number): number => (from === 0 && to 
 export const BLOOM_FROM = 2;
 export const BLOOM = 0.3;
 export const SHARPEN = 0.25;
+/**
+ * The sharpen of a scene taken up from fewer pixels, more by as much as 0.3 at three quarters a side and under: it
+ * gives back a little of a leaf's or a letter's edge, held within the neighbours' light, so nothing rings.
+ */
+const UPSCALED_SHARPEN = 0.3;
+export const sharpenAt = (share: number): number => SHARPEN + UPSCALED_SHARPEN * Math.min(1, Math.max(0, 1 - share) * 4);
 const SMALLEST = 16;
 /** Bloom's levels at most: the smallest is 1 / 256 of the canvas, which at 4,320 pixels tall is the SMALLEST's 16. */
 const MOST_LEVELS = 7;
@@ -62,6 +72,43 @@ export const lightBytes = (width: number, height: number, samples: number): numb
 
 /** Whether a frame of `tier` is drawn into the light target, on a device whose target's format is `light` (0 for none). */
 export const drawsLight = (tier: Tier, light: number | boolean): boolean => tier.post !== null && light !== 0 && light !== false;
+
+/**
+ * The render resolutions a player may choose (Settings.resolution): the game's, the canvas's own pixels, or a share of
+ * them a side. Each is of a frame drawn into the light target; a tier without one draws the canvas's own.
+ */
+export const RESOLUTIONS: readonly { readonly label: string; readonly share: number }[] = [{ label: "auto", share: 0 }, { label: "native", share: 1 }, { label: "75%", share: 0.75 }, { label: "50%", share: 0.5 }];
+/** The game's share is a whole number of twentieths, and never under a half. */
+const TWENTIETHS = 20;
+const LEAST_SHARE = 0.5;
+
+/**
+ * The share of the canvas a side a frame of `tier` draws its scene at before the governor's steps, on a canvas of
+ * `pixels` at the screen's own pixels a CSS pixel: `choice` where the player chose one (RESOLUTIONS), else the most
+ * that keeps the scene within the tier's `post.pixels`, in twentieths. 1 on a tier with no light target or no cap.
+ */
+export function sceneShare(tier: Tier, choice: number, pixels: number): number {
+  if (!tier.post) return 1;
+  if (choice > 0) return choice;
+  const cap = tier.post.pixels;
+  return cap > 0 && pixels > cap ? Math.max(LEAST_SHARE, Math.floor(Math.sqrt(cap / pixels) * TWENTIETHS) / TWENTIETHS) : 1;
+}
+
+/** The scene's pixels across and down at `share` of a canvas `width` by `height` a side. */
+export const sceneSize = (width: number, height: number, share: number): [number, number] => [Math.max(1, Math.round(width * share)), Math.max(1, Math.round(height * share))];
+
+/**
+ * What a pass from level `from` into `to` (the canvas for -1) reads, with the scene drawn `w` by `h` in the corner of a
+ * light target `roomW` by `roomH`: the share of the source's texture the drawn part fills, across and down, then the
+ * farthest a read may go and stay in it, half a texel short of its edge, of the source or, for the finish, of bloom's
+ * first level. Its near edges are the texture's own, which hold a read there.
+ */
+export function passExtent(w: number, h: number, roomW: number, roomH: number, from: number, to: number, out = new Float32Array(4)): Float32Array {
+  const part = (n: number, k: number): number => Math.max(1, n >> levelShift(k)), k = to < 0 ? 1 : from;
+  [out[0], out[1]] = [part(w, from) / part(roomW, from), part(h, from) / part(roomH, from)];
+  [out[2], out[3]] = [(part(w, k) - 0.5) / part(roomW, k), (part(h, k) - 0.5) / part(roomH, k)];
+  return out;
+}
 
 /** Bloom's levels on a canvas `height` pixels tall, `share` of them kept (Tier.post): the smallest no fewer than SMALLEST tall. */
 export function bloomLevels(height: number, share: number): number {
@@ -80,11 +127,11 @@ export function gradeAt(height: number): GradeKey {
 }
 
 /**
- * Fills the frame block's finish (packet.ts fGrade, fFinish) for a frame of `tier` at `hour` on a canvas `height` pixels
- * tall: the grade on every lit tier, which each shader takes where there is no light target and the finish where there
- * is, and bloom and the sharpen with a light target alone.
+ * Fills the frame block's finish (packet.ts fGrade, fFinish) for a frame of `tier` at `hour` into a light target
+ * `height` pixels tall, its scene drawn at `share` of the canvas a side: the grade on every lit tier, which each shader
+ * takes where there is no light target and the finish where there is, and bloom and the sharpen with a light target alone.
  */
-export function postFrame(frame: Float32Array, tier: Tier, hour: number, height: number): void {
+export function postFrame(frame: Float32Array, tier: Tier, hour: number, height: number, share = 1): void {
   frame.fill(0, FRAME.grade, FRAME.levels + 1);
   if (!tier.lit) return;
   const k = gradeAt(sunHeight(hour));
@@ -93,7 +140,7 @@ export function postFrame(frame: Float32Array, tier: Tier, hour: number, height:
   frame[FRAME.gamma] = k.gamma;
   if (!tier.post) return;
   frame[FRAME.bloom] = BLOOM;
-  frame[FRAME.sharpen] = SHARPEN;
+  frame[FRAME.sharpen] = sharpenAt(share);
   frame[FRAME.levels] = bloomLevels(height, tier.post.bloom);
 }
 
@@ -114,15 +161,18 @@ void main() {
   gl_Position = vec4(vUv * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-/** What a step of the chain reads: its source on its unit, and `uPass`, a texel of the source across and down, then 1 on the first level. */
+/**
+ * What a step of the chain reads: its source on its unit, `uPass`, a texel of the source across and down, then 1 on
+ * the first level, and `uExtent`, the part of the source the scene's share fills and how far a read may go (passExtent).
+ */
 const READ = `#version 300 es
 precision highp float;
 uniform sampler2D uSource;
-uniform vec4 uPass;
+uniform vec4 uPass, uExtent;
 in vec2 vUv;
 out vec4 o;
 vec3 at(float x, float y) {
-  return texture(uSource, vUv + vec2(x, y) * uPass.xy).rgb;
+  return texture(uSource, min(vUv * uExtent.xy + vec2(x, y) * uPass.xy, uExtent.zw)).rgb;
 }
 `;
 
@@ -157,16 +207,30 @@ export const BLOOM_UP = `${READ}void main() {
  * then graded; the sharpen, the pixel's toned
  * brightness pushed from the mean of its four neighbours' by fFinish's strength and held within theirs, which takes it
  * nowhere on a smooth surface; then shown, with a step of dither each way against banding in the sky. `uPass` is a
- * texel of the scene.
+ * texel of the scene, then 1 where the scene is drawn at fewer pixels than the canvas: it is then taken up by
+ * Catmull-Rom from five reads, held within the light of the middle read and the four neighbours, so that a bright edge
+ * rings nowhere, and the sharpen, stronger (sharpenAt), takes its neighbours a texel of the scene off. `uExtent` is
+ * passExtent's.
  */
 export const FINISH = `#version 300 es
 precision highp float;
 uniform sampler2D uScene, uBloom;
-uniform vec4 uPass;
+uniform vec4 uPass, uExtent;
 in vec2 vUv;
 out vec4 o;
-${FRAME_BLOCK}${TONE}${GRADED}${BRIGHT}float toned(vec2 at) {
-  return dot(tone(texture(uScene, vUv + at * uPass.xy).rgb * fGrade.rgb), vec3(0.2126, 0.7152, 0.0722));
+${FRAME_BLOCK}${TONE}${GRADED}${BRIGHT}vec3 scene(vec2 at) {
+  return texture(uScene, min(at, uExtent.xy - 0.5 * uPass.xy)).rgb;
+}
+float toned(vec3 c) {
+  return dot(tone(c * fGrade.rgb), vec3(0.2126, 0.7152, 0.0722));
+}
+vec3 upscaled(vec2 at, out vec3 middle) {
+  vec2 p = at / uPass.xy - 0.5, c = floor(p), f = p - c;
+  vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f)), w1 = 1.0 + f * f * (-2.5 + 1.5 * f), w2 = f * (0.5 + f * (2.0 - 1.5 * f)), w3 = f * f * (-0.5 + 0.5 * f);
+  vec2 w12 = w1 + w2, t0 = (c - 0.5) * uPass.xy, t3 = (c + 2.5) * uPass.xy, t12 = (c + 0.5 + w2 / w12) * uPass.xy;
+  middle = scene(t12);
+  vec3 s = (scene(vec2(t12.x, t0.y)) * w0.y + scene(vec2(t12.x, t3.y)) * w3.y) * w12.x + (scene(vec2(t0.x, t12.y)) * w0.x + scene(vec2(t3.x, t12.y)) * w3.x) * w12.y + middle * w12.x * w12.y;
+  return s / (w12.x * (w0.y + w3.y) + w12.y * (w0.x + w3.x) + w12.x * w12.y);
 }
 float hash(uvec3 v) {
   uint h = v.x * 1664525u + v.y * 22695477u + v.z * 2654435761u;
@@ -175,10 +239,13 @@ float hash(uvec3 v) {
   return float(h ^ (h >> 16u)) / 4294967295.0;
 }
 void main() {
-  vec3 c = texture(uScene, vUv).rgb;
-  if (fFinish.w > 0.0) c += fFinish.y * (texture(uBloom, vUv).rgb / fFinish.w - bright(c));
+  vec2 uv = vUv * uExtent.xy;
+  vec3 cn = scene(uv + vec2(uPass.x, 0.0)), cs = scene(uv - vec2(uPass.x, 0.0)), ce = scene(uv + vec2(0.0, uPass.y)), cw = scene(uv - vec2(0.0, uPass.y)), c, middle;
+  if (uPass.w > 0.5) c = clamp(upscaled(uv, middle), min(middle, min(min(cn, cs), min(ce, cw))), max(middle, max(max(cn, cs), max(ce, cw))));
+  else c = scene(uv);
+  float l = toned(c), n = toned(cn), s = toned(cs), e = toned(ce), w = toned(cw);
+  if (fFinish.w > 0.0) c += fFinish.y * (texture(uBloom, min(uv, uExtent.zw)).rgb / fFinish.w - bright(c));
   vec3 t = tone(c * fGrade.rgb);
-  float l = toned(vec2(0.0)), n = toned(vec2(1.0, 0.0)), s = toned(vec2(-1.0, 0.0)), e = toned(vec2(0.0, 1.0)), w = toned(vec2(0.0, -1.0));
   float sharp = clamp(l + fFinish.z * (l - 0.25 * (n + s + e + w)), min(l, min(min(n, s), min(e, w))), max(l, max(max(n, s), max(e, w))));
   t = graded(t * (l > 0.0 ? sharp / l : 1.0));
   uvec3 at = uvec3(gl_FragCoord.xy, 0u);

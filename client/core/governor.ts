@@ -87,6 +87,7 @@ interface Knobs {
   levels?: number;
   leaves?: number;
   everyOther?: boolean;
+  scale?: number;
   ratio?: number;
   farReach?: number;
   city?: number;
@@ -114,13 +115,18 @@ interface Knobs {
  * then pixels, which a phone bound by triangles buys least with: the screen's own. Then what a fight shows, last. No step
  * takes the sun's shadows, which would change the light of the whole picture where a step may cost only detail; and
  * shadows less far is no step: a nearer cascade's finer texels ask finer casters, and it cast more. Before
- * all of these a desktop gives back what it was given beyond a phone: first the pixels ultra draws past the screen's
- * own, a quarter of its pixels on a screen of one device pixel to one, then the light target (render/post.ts), which no
- * phone draws: the frame keeps its grade and contact and loses bloom and the sharpen, and 3 to 4 ms of a desktop's card.
+ * all of these a desktop gives back what it was given beyond a phone: first the pixels a tier draws past the screen's
+ * own, which none does now, then the scene's pixels in three steps, which the finish takes up to the canvas
+ * (render/post.ts): at a laptop's canvas a desktop's frame is bound by its pixels, not its triangles
+ * (planning/workstreams/pixels.md). Where the light target is drawn the pixel steps near the end are of the scene too. The light target itself goes last but for small details: without it a frame on an M5 is 1 to 2 ms
+ * dearer at 1080p, and draws the canvas's own pixels. A touch-first device draws no light target, so none of these is
+ * a step of a phone's.
  */
 export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] = [
   { name: "no more pixels than the screen's own", knobs: { own: true } },
-  { name: "no light target", knobs: { noLightTarget: true } },
+  { name: "the scene at 90% a side", knobs: { scale: 0.9 } },
+  { name: "the scene at 80% a side", knobs: { scale: 0.8 } },
+  { name: "the scene at 70% a side", knobs: { scale: 0.7 } },
   { name: "levels: half again the error", knobs: { levels: 1.5 } },
   { name: "the far city's levels to 70% as far", knobs: { city: 0.7 } },
   { name: "the view to 4 km", knobs: { view: 4000 } },
@@ -134,18 +140,23 @@ export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] 
   { name: "bodies a level coarser", knobs: { bodies: 2 } },
   { name: "85% of the pixels a side", knobs: { ratio: 0.85 } },
   { name: "70% of the pixels a side", knobs: { ratio: 0.7 } },
+  { name: "no light target", knobs: { noLightTarget: true } },
   { name: "small details: half the pool, of each burst and of the fill", knobs: { details: 0.5 } },
 ];
 
-/** `base` with `knobs`, for a screen of `dpr` device pixels a CSS pixel. */
+/**
+ * `base` with `knobs`, for a screen of `dpr` device pixels a CSS pixel. Where the light target is drawn, the pixels a
+ * side are the scene's, which the finish takes up to the canvas; elsewhere the canvas's, which the browser stretches.
+ */
 function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
   const s = base.shadows;
   const ratio = base.pixelRatio > 0 ? Math.min(dpr, base.pixelRatio) : dpr;
   const far = knobs.farReach ?? 1;
+  const post = knobs.noLightTarget || !base.post ? null : knobs.scale || knobs.ratio ? { ...base.post, scale: (knobs.scale ?? 1) * (knobs.ratio ?? 1) } : base.post;
   return {
     ...base,
     threshold: base.threshold * (knobs.levels ?? 1),
-    pixelRatio: knobs.ratio && ratio > 1 ? Math.max(1, Math.round(ratio * knobs.ratio * 100) / 100) : base.pixelRatio,
+    pixelRatio: knobs.ratio && ratio > 1 && !post ? Math.max(1, Math.round(ratio * knobs.ratio * 100) / 100) : base.pixelRatio,
     fewest: knobs.own && base.fewest > ratio ? 0 : base.fewest,
     viewDistance: knobs.view ? Math.min(base.viewDistance, knobs.view) : base.viewDistance,
     reach: { ...base.reach, trees: base.reach.trees * far, rocks: base.reach.rocks * far, bushes: base.reach.bushes * far },
@@ -156,7 +167,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     waterMarks: Math.min(base.waterMarks, knobs.details ? 0 : knobs.bodies ? 3 : knobs.levels ? 6 : base.waterMarks),
     reflectionHz: Math.min(base.reflectionHz, knobs.details ? 0 : knobs.bodies ? 1 : knobs.levels ? 2 : base.reflectionHz),
     bodyError: base.bodyError * (knobs.bodies ?? 1),
-    post: knobs.noLightTarget ? null : base.post,
+    post,
   };
 }
 

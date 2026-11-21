@@ -2,6 +2,7 @@
 
 import { TICK_RATE } from "../../shared/coords.ts";
 import { DEFAULT_TIER, offeredTiers, startingTier, type Start, type Tier } from "./assets/tiers.ts";
+import { RESOLUTIONS } from "./render/post.ts";
 
 export const DEFAULT_ROAD_FINISH = 1;
 export const DEFAULT_FINISH_GLOSS = 1.35;
@@ -18,6 +19,13 @@ export class Settings {
    * (client/core/governor.ts). It never changes the tier. Off draws the tier exactly.
    */
   steady = true;
+  /**
+   * "Render resolution": the pixels the scene is drawn at where the frame has a light target, the finish taking them up
+   * to the canvas (render/post.ts RESOLUTIONS): the game's choice, the canvas's own, or a share of them a side. And the
+   * share the game's choice comes to on this canvas and tier, which the app writes each frame for the row to show.
+   */
+  resolution = 0;
+  autoShare = 1;
   finishGloss = DEFAULT_FINISH_GLOSS;
   roadFinish = DEFAULT_ROAD_FINISH;
   /** A touch-first device, which draws a tier as its touch rule says and is offered the tiers it allows (tiers.ts). The shell sets it. */
@@ -91,6 +99,7 @@ export class Settings {
       this.minimapZoom = Math.round(this.minimapZoom);
       this.padGlyphs = Math.round(this.padGlyphs);
       this.roadFinish = Math.round(this.roadFinish);
+      this.resolution = Math.round(this.resolution);
       if (["lowpoly", "medium", "high", "ultra"].includes(saved.tier)) [this.tier, this.chosen] = [saved.tier, true];
       if (SNAPSHOT_BYTES.includes(saved.snapshotBytes)) this.snapshotBytes = saved.snapshotBytes;
     } catch {}
@@ -98,7 +107,7 @@ export class Settings {
 }
 
 const SAVED_FLAGS = ["minimap", "compass", "diagnostics", "monitor", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
-const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2]] as const;
+const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
 
@@ -165,6 +174,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   range("Finish gloss", "finishGloss", 0.5, 2, 0.05),
   { label: "Road finish", value: s => ROAD_FINISHES[s.roadFinish]!, step: (s, by) => void (s.roadFinish = clamp(s.roadFinish + by, 0, 2)) },
   { label: "Compass", value: (s) => s.compass ? "on" : "off", step: (s) => void (s.compass = !s.compass) },
+  { label: "Render resolution", value: (s) => RESOLUTIONS[s.resolution]!.label + (s.resolution === 0 && s.autoShare < 1 ? `, ${Math.round(s.autoShare * 100)}%` : ""), step: (s, by) => void (s.resolution = clamp(s.resolution + by, 0, RESOLUTIONS.length - 1)) },
 ];
 
 /** F3 and the console's `monitor`: Diagnostics to "monitor", or back to what it was before. Returns what the console says. */
