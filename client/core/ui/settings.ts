@@ -4,6 +4,7 @@ import { glass } from "./skin.ts";
 import { slider } from "./slider.ts";
 import { KEY_MENU_BACK, menuBackdrop, smallButton } from "./menu.ts";
 import { S_MENU_HEADING, S_MENU_NOTE, S_ICE, S_LABEL, S_HUD_HIT, S_HUD_COUNT } from "./style.ts";
+import type { StoragePage } from "./storage.ts";
 
 export const KEY_SETTINGS_PANEL = 2300;
 export const KEY_SETTINGS_TITLE = 2301;
@@ -19,14 +20,19 @@ export const SETTING_GROUPS = [
   { name: "Display", rows: [11, 18, 19, 12, 2, 0] },
   { name: "Audio", rows: [17, 5, 6, 7, 8, 9, 3, 4] },
   { name: "Input", rows: [1] },
-  { name: "Interface", rows: [14, 15, 16, 13, 20, 10] },
+  { name: "Interface", rows: [14, 15, 16, 13, 20] },
+  // Its one row, Download all, is the page's own buttons (ui/storage.ts).
+  { name: "Storage", rows: [10] },
 ] as const;
+export const STORAGE_TAB = 4;
 const TOGGLES = new Set([0,4,12,14,15,16,17,20]);
 
-export function buildSettings(f: UiFrame, s: Settings, micLevel = 0, focus = 0): void {
+/** `storage` is the Storage tab's page, once it has come (ui/storage.ts). */
+export function buildSettings(f: UiFrame, s: Settings, micLevel = 0, focus = 0, storage: StoragePage | null = null): void {
   menuBackdrop(f);
   // As tall as the canvas lets it be: a phone on its side pages the rows a taller window shows at once.
-  const w = Math.min(f.width-f.left-f.right-32,780), h = Math.min(560,f.height-f.top-f.bottom-16), x = Math.round((f.width-w)/2), y = Math.max(f.top+8,Math.min(80,Math.round((f.height-h)/2))), narrow = w<580;
+  // Centred between the screen's edges, so a phone's home bar does not take the panel's foot.
+  const w = Math.min(f.width-f.left-f.right-32,780), h = Math.min(560,f.height-f.top-f.bottom-16), x = Math.round((f.width-w)/2), y = Math.max(f.top+8,Math.min(80,f.top+Math.round((f.height-f.top-f.bottom-h)/2))), narrow = w<580;
   const right=x+w-24, inner=w-48;
   f.add(KEY_SETTINGS_PANEL,K_PANEL,x,y,w,h,S_HUD_HIT);
   glass(f,KEY_SETTINGS_PANEL,x,y,w,h);
@@ -44,6 +50,7 @@ export function buildSettings(f: UiFrame, s: Settings, micLevel = 0, focus = 0):
     for(let k=0;k<2;k++)smallButton(f,KEY_SETTINGS_PAGE+k,right-200+k*88,y+16,36,36,k?"›":"‹",k?"Next page":"Previous page",focus===KEY_SETTINGS_PAGE+k);
     f.text(KEY_SETTINGS_PAGE+2,right-160,y+25,44,S_HUD_COUNT,`${s.page+1} / ${pages}`);
   }
+  if(s.tab===STORAGE_TAB)return storage?.build(f,s,x,y,w,h,focus);
   group.rows.forEach((i,at)=>{
     const rowAt=at-s.page*perPage;
     if(rowAt<0 || rowAt>=perPage)return;
@@ -60,8 +67,6 @@ export function buildSettings(f: UiFrame, s: Settings, micLevel = 0, focus = 0):
       // The complete value is a button. Its underline reads as an action, not a fake slider track.
       smallButton(f,key+3,valueX,ry,106,30,"",`Change ${row.label}: ${row.value(s)}`,focus===key+3);
       f.add(60000+key,K_PANEL,valueX+8,ry+28,90,1,S_ICE).alpha=.4;
-    } else if(i===10) {
-      smallButton(f,key+3,narrow?x+24:right-76,narrow?ry+22:ry-3,76,30,"Download","Download all assets",focus===key+3);
     } else {
       for(let k=0;k<2;k++)smallButton(f,key+2+k,right-68+k*36,controlsY,32,30,k?"›":"‹",`${k?"Next":"Previous"} ${row.label}`,focus===key+2+k);
     }

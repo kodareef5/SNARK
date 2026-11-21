@@ -20,6 +20,7 @@ import { buildMap } from "./screens.ts";
 import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
+import type { StoragePage } from "./storage.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { EmoteMenu } from "./emotes.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
@@ -70,6 +71,8 @@ export class Ui {
    * used, and until it comes the HUD is drawn as for a mouse. Null on a page never touched, which never pays for it.
    */
   layer: typeof import("./touch.ts") | null = null;
+  /** The Storage tab's page (ui/storage.ts), which the app fetches after the first frame. */
+  storage: StoragePage | null = null;
   flyer = false;
   /** A piece is being built, or a vehicle set down: the touch cluster is then the builder's. The app sets both. */
   building = false;
@@ -285,7 +288,7 @@ export class Ui {
         else if (this.help && key >= KEY_CONTROLS_DEVICE && key <= KEY_CONTROLS_DEVICE + 2) this.helpDevice = key - KEY_CONTROLS_DEVICE;
         else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;
         else if (this.help && key === KEY_CONTROL_GLYPHS) { this.settings.padGlyphs=1-this.settings.padGlyphs; this.settings.changed(); }
-        else if (this.options) settingsClick(key, this.settings);
+        else if (this.options && !settingsClick(key, this.settings)) this.storage?.click(key, this.settings);
       }
       return;
     }
@@ -379,7 +382,7 @@ export class Ui {
     if (!this.console.open && !this.chat.open) {
       if (this.menu) {
         if (this.options) {
-          buildSettings(f, this.settings, hud.micLevel, this.menuFocus);
+          buildSettings(f, this.settings, hud.micLevel, this.menuFocus, this.storage);
         } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus, this.helpGroup, this.settings.padGlyphs);
         else if (creative && session) {
           this.creativeScreen.build(f, session, hud, this.menuFocus);

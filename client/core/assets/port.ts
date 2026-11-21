@@ -3,6 +3,7 @@
 
 import { storedBytes, storedStep, type ManifestClips, type ManifestLevel, type ManifestTexture } from "../../../shared/pack/manifest.ts";
 import { blockOf, stepBytes, type TextureFormat } from "../../../shared/pack/texture.ts";
+import type { KeepReport } from "./bulk.ts";
 import type { StorageInfo } from "./storage.ts";
 
 /** Why a part did not come: the network, bytes that do not have the hash listed, or a range the file does not have. */
@@ -112,9 +113,8 @@ export interface WorkerTotals {
   /** Requests given up at the time limit, which the page hears of as network failures with no status. */
   timeouts: number;
   /**
-   * Parts asked to be kept (`fill`); those on disk after it, and the bytes it wrote of them; and those not kept, of
-   * them those whose fetch ran out of time. A part asked for is in the end kept or not, so `fillAsked` less the two is
-   * what is still to come.
+   * Parts named to keep (`fill`); those the bulk fill fetched and wrote to disk, and their bytes; those it gave up after
+   * their tries; and fetches of its runs that ran out of time, a part each. What is still to come is in `keep`.
    */
   fillAsked: number;
   fillDone: number;
@@ -128,17 +128,29 @@ export interface AssetPort {
   cancel(slot: number): void;
   /** Moves what has arrived since the last call into `out`. Returns how many. */
   take(out: AssetArrival[]): number;
-  /** Fetches parts into the cache and hands none of them over, so that they need not be fetched while playing. */
+  /**
+   * Names parts the player may ask to keep: everything the tier can fetch (Residency.download). The port counts them,
+   * keeps them over other parts when it makes room, and fetches those it lacks while `keep` says to. None is handed over.
+   */
   fill(parts: readonly { file: number; part: AssetPart }[]): void;
   /**
-   * Bytes kept between visits and the most that may be, where they are kept, and how many parts asked for with `fill`
-   * are still to come. A port in a browser says besides why the disk is not used, if it is not: "none" where the
+   * Bytes kept between visits and the most that may be, where they are kept, and how many parts named are still to
+   * come while keeping. A port in a browser says besides why the disk is not used, if it is not: "none" where the
    * browser gives no folder (a private window, or no file system), "full" where writes failed twice; how many disk
-   * writes are under way; and what it has done since it was opened.
+   * writes are under way; what it has done since it was opened; and how the parts named stand.
    */
-  readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number; off?: "" | "none" | "full"; writing?: number; totals?: WorkerTotals };
+  readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number; off?: "" | "none" | "full"; writing?: number; totals?: WorkerTotals; keep?: KeepReport };
   /** How the files come, as the browser names it: "http/1.1", "h2", "h3", or "" while not known. */
   readonly protocol: string;
   /** What the browser says of keeping the files and of its room for them, where there is a browser. */
   readonly storage?: StorageInfo;
+  /**
+   * The Storage tab's controls, where the port has a disk. `keep`: a KEEP_ mode (bulk.ts) for the parts named, and with
+   * `reset` they are forgotten first, for a new set. `clear` deletes every saved part. `limit` sets the most bytes the
+   * disk keeps. `named` counts the parts given to `fill`, which `cache.totals.fillAsked` reaches once the port has them all.
+   */
+  keep?(mode: number, reset?: boolean): void;
+  clear?(): void;
+  limit?(bytes: number): void;
+  readonly named?: number;
 }
