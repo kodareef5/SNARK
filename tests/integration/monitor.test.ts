@@ -12,7 +12,8 @@ import * as layout from "../../client/core/ui/touch.ts";
 import { fitsClear, meets, stripFits } from "../fixtures/monitor.ts";
 import { KEY_STRIP_OPEN } from "../../client/core/ui/monitor.ts";
 import { KEY_PANEL, KEY_TAB } from "../../client/core/ui/monitor-panel.ts";
-import { KEY_TOUCH_BUTTON, T_CLOSE } from "../../client/core/touch.ts";
+import { KEY_TOUCH_BUTTON, T_CLOSE, T_MAP } from "../../client/core/touch.ts";
+import { KEY_CLOCK, KEY_MINIMAP, KEY_READOUT } from "../../client/core/ui/hud.ts";
 
 const pack = parsePack(corePackBytes());
 
@@ -83,5 +84,27 @@ test("by touch a tap on the strip opens the monitor as a page of its own, under 
     app.pointer(1, KEY_TOUCH_BUTTON + T_CLOSE, 0, 0, 0, 1);
     net.run(50, (now) => app.frame(now, w, h));
     expect(app.ui.monitor!.open, where).toBe(false);
+  }
+});
+
+test("on a phone upright the strip stands across the canvas under the minimap and its clock, clear of the readout and the thumbs", () => {
+  for (const [name, w, h, insets] of WINDOWS) {
+    if (w >= h) continue;
+    const net = new Harness(), app = monitored(net, "upright", true);
+    insets.forEach((v, i) => (app.insets[i] = v));
+    app.ui.settings.muted = false;
+    net.run(600, (now) => app.frame(now, w, h));
+    const f = app.ui.frame, box = stripFits(f, name), map = f.find(KEY_MINIMAP)!, clock = f.find(KEY_CLOCK)!;
+    // Across the canvas between its margins, and under the minimap where its button is, at the top.
+    expect(box.x, name).toBeCloseTo(f.left + 12, 5);
+    expect(box.x + box.w, name).toBeCloseTo(f.width - f.right - 12, 5);
+    expect(map.y, name).toBeLessThan(f.top + 20);
+    expect(box.y, name).toBeGreaterThanOrEqual(clock.y + clock.h);
+    const button = f.find(KEY_TOUCH_BUTTON + T_MAP)!;
+    expect(meets(button, map), name).toBe(true);
+    for (let i = 0; i < 3; i++) {
+      const line = f.find(KEY_READOUT + i);
+      if (line) expect(line.y + line.h <= box.y && line.x + line.w <= map.x, `${name}: readout ${i}`).toBe(true);
+    }
   }
 });

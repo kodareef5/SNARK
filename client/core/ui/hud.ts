@@ -164,8 +164,9 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   if (m.scope && m.banner === "") buildReticle(f, W, H);
   // The readout, and under it the resource monitor's strip (ui/monitor.ts), which on a canvas too short for both stands
   // in its place; the voice's lines under them.
-  const readout = options.diagnostics && !m.stripAlone;
-  if (readout) for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, left, top + i * lh, Math.min(right - left, 400), S_TEXT, fitText(m.readout[i]!, Math.min(right - left, 400), S_TEXT));
+  // By touch on a narrow canvas the readout keeps left of the minimap, which keeps its place at the top.
+  const readout = options.diagnostics && !m.stripAlone, readW = Math.min(right - left - (touch && W < 640 && options.minimap ? MAP + 8 : 0), 400);
+  if (readout) for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, left, top + i * lh, readW, S_TEXT, fitText(m.readout[i]!, readW, S_TEXT));
   const voiceY = (m.stripY = readout ? top + m.readout.length * lh + 4 : top) + (m.stripH && m.stripH + 6);
   if (m.voice !== "") {
     // A voice state is in capitals and is lit. Anything else is a sentence saying what is wrong, drawn plain.
@@ -183,7 +184,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
 
   // On a narrow canvas the minimap moves below the readout instead of beside it.
   const mapX = right - MAP;
-  const mapY = options.diagnostics && W < 640 ? voiceY + 8 : f.top + MARGIN;
+  const mapY = options.diagnostics && W < 640 && !touch ? voiceY + 8 : f.top + MARGIN;
   const mapTools = controls && (inspect || touch !== null);
   if (options.minimap) {
     const mapTop = mapY;

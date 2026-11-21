@@ -20,7 +20,7 @@ import { cardWords, pickLine } from "./monitor-card.ts";
 import { AXIS_H, ChartData, buildAxis, buildChart, chartBox, type ChartBox } from "./monitor-chart.ts";
 import type { MonitorKit } from "./monitor-kit.ts";
 import { PanelWords, buildPanel, layPanel, panelClick, panelWords } from "./monitor-panel.ts";
-import { K_BUTTON, K_PANEL, LINE, S_HUD_HIT, S_MENU, S_MENU_NOTE, S_TEXT } from "./monitor-style.ts";
+import { K_BUTTON, K_PANEL, LINE, S_HUD_HIT, S_MENU, S_MENU_NOTE, S_TEXT, SMALL_LINE } from "./monitor-style.ts";
 import type { UiFrame } from "./nodes.ts";
 import type { TouchPlan } from "./touch.ts";
 
@@ -49,6 +49,8 @@ const RATE_LABEL_W = 50;
 /** The strip's chart well's height, and the gap over it. */
 export const STRIP_CHART_H = 30;
 const CHART_GAP = 4;
+/** A canvas narrower than this is a phone upright's by touch, where the HUD's column is no wider than the strip (ui/hud.ts). */
+const NARROW = 640;
 /** The readout's three lines over the strip, and the gap under them (ui/hud.ts). */
 const READOUT_H = 3 * LINE + 4;
 /**
@@ -129,6 +131,9 @@ export class Monitor {
   private alone = false;
   private lookLine = false;
   private charted = true;
+  /** By touch on a phone upright, it stands across the canvas under the minimap, at `y`, not in the HUD's column. */
+  private belowMap = false;
+  private y = 0;
   private readonly box: ChartBox = { x: 0, y: 0, w: 0, h: 0, column: 1 };
   /** The card's place beside the crosshair. */
   private readonly cardAt = { x: 0, y: 0, w: 0, h: 0 };
@@ -148,15 +153,19 @@ export class Monitor {
     const touch = plan !== null;
     this.x = f.left + MARGIN;
     this.w = Math.min(STRIP_W, f.width - f.right - MARGIN - this.x);
+    this.belowMap = false;
     if (this.open) {
       hud.stripAlone = true;
       hud.stripH = 0;
       return;
     }
-    // By touch on a canvas as short as a phone's on its side, the readout and the strip under it would come down to the
-    // crosshair or to where the stick rests over the hotbar: the strip stands in the readout's place, then without its
-    // chart, then without the line of what is looked at.
-    const top = touch ? plan.stackY : f.top + MARGIN;
+    // By touch on a phone upright it stands across the canvas, under the minimap and its clock and under the readout left
+    // of the minimap; elsewhere in the HUD's column under the readout. Where that would come down to the crosshair, or
+    // by touch to where the stick rests over the hotbar, it stands in the readout's place, then without its chart, then
+    // without the line of what is looked at.
+    this.belowMap = touch && f.width < NARROW;
+    if (this.belowMap) this.w = f.width - f.right - MARGIN - this.x;
+    const top = touch ? plan.stackY : f.top + MARGIN, mapFoot = touch ? f.top + MARGIN + plan.map + 4 + SMALL_LINE + 6 : 0;
     const limit = Math.min(f.height / 2 - 8, touch ? f.height - f.bottom - STICK_ROOM : f.height);
     for (let shape = 0; shape < SHAPES.length; shape++) {
       const s = SHAPES[shape]!;
@@ -164,11 +173,13 @@ export class Monitor {
       this.alone = (s & ALONE) !== 0;
       this.lookLine = touch && (s & LOOKED) !== 0;
       this.h = PAD + (this.lookLine ? 3 : 2) * LINE + 2 + (this.charted ? CHART_GAP + STRIP_CHART_H + AXIS_H : 0);
-      if (top + (this.alone ? 0 : READOUT_H) + this.h <= limit) break;
+      const under = top + (this.alone ? 0 : READOUT_H);
+      this.y = this.belowMap ? Math.max(mapFoot, under + 6) : under;
+      if (this.y + this.h <= limit) break;
     }
     hud.stripAlone = this.alone;
     hud.stripW = this.w;
-    hud.stripH = this.h;
+    hud.stripH = this.belowMap ? 0 : this.h;
   }
 
   /** The words, made again where they are older than REFRESH_MS: the card's too while H is held, and by touch the line of what is looked at. */
@@ -216,7 +227,7 @@ export class Monitor {
     if (this.open) return;
     const touch = plan !== null;
     this.refresh(f, this.app["nowMs"], inspect, touch);
-    const x = this.x, y = hud.stripY;
+    const x = this.x, y = this.belowMap ? this.y : hud.stripY;
     // A shade under the glass, as the menus' backdrop is, so that the words read over a bright sky.
     f.add(KEY_STRIP_SHADE, K_PANEL, x, y, this.w, this.h, S_MENU);
     this.kit.glass(f, KEY_STRIP, x, y, this.w, this.h, 0.9);
