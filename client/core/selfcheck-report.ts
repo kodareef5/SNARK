@@ -20,10 +20,15 @@ export class SelfcheckProgress {
   readonly times: number[] = [];
   private keptBefore = 0;
 
-  advance(ms: number, kept: number, enabled: boolean, voiced: boolean, played: number, driveFinished: boolean): boolean {
+  /**
+   * One frame drawn, `ms` long, with the port's cache as it last said. The report waits until what the disk keeps has
+   * been still for 30 frames with no write under way: the worker tells of its writes at most once a second, but at once
+   * when they begin.
+   */
+  advance(ms: number, cache: Pick<AssetPort["cache"], "used" | "writing">, enabled: boolean, voiced: boolean, played: number, driveFinished: boolean): boolean {
     this.times.push(ms);
-    this.still = kept === this.keptBefore ? this.still + 1 : 0;
-    this.keptBefore = kept;
+    this.still = cache.used === this.keptBefore && !cache.writing ? this.still + 1 : 0;
+    this.keptBefore = cache.used;
     if (!enabled || this.frames < 0 || ++this.frames < 90 || this.still < 30 || !driveFinished || (voiced && played < 50 && this.frames < 690)) return false;
     this.frames = -1;
     return true;

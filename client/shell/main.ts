@@ -284,7 +284,7 @@ async function boot(): Promise<void> {
     // second of played voice, or for ten seconds to report that none was.
     const voiced = voiceCheck || voiceListen;
     // Parts are written to disk a little after they arrive. The report waits until that has been still for half a second.
-    if (checks && progress && drivingCheck && progress.advance(performance.now() - t0, port.cache.used, !packet.lit || surfaces!.done, voiced, voice.report.played, drivingCheck.finished)) {
+    if (checks && progress && drivingCheck && progress.advance(performance.now() - t0, port.cache,!packet.lit || surfaces!.done, voiced, voice.report.played, drivingCheck.finished)) {
       const report = checks.selfcheckReport(app, pack, manifest, hf, packet, {
         has: name => params.has(name), voiced, voiceListen, voice: voice.report,
         driveCheck, drive, dinosaur: drivingCheck.dinosaur?.data, restored, misplaced: view.misplaced(app.ui.frame), sound: sound ? { peak: sound.peak } : null,

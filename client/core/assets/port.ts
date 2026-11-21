@@ -83,11 +83,44 @@ export interface AssetArrival {
   /** Every part of the request, one after another in the order asked. Null when any failed, and `fail` says how: a FAIL_ code. */
   data: Uint8Array | null;
   fail: number;
-  /** Bytes that came over the network, and bytes that came from the disk cache, as they are stored. */
+  /** Bytes that came over the network, and bytes that came from the port's cache, as they are stored. */
   fetched: number;
   cached: number;
+  /** Of `cached`, the bytes from memory and those from the disk, where the port tells them apart. */
+  memory?: number;
+  disk?: number;
   /** For a request that failed on the network, the HTTP status the server answered, or 0 for no answer. */
   status?: number;
+}
+
+/**
+ * What the asset worker has done since the page opened it (client/assets/assets-worker.ts), sent with its report at
+ * most once a second. Bytes are as stored, before they are inflated.
+ */
+export interface WorkerTotals {
+  /**
+   * Parts that came from memory, from the disk and over the network, and their bytes. The network's bytes are counted
+   * for every fetch that ended, a failed or cancelled request's and the bulk fill's too, so the page's own counts of what
+   * it took are less; a fetch cut off part way says none.
+   */
+  memoryParts: number;
+  memoryBytes: number;
+  diskParts: number;
+  diskReadBytes: number;
+  netParts: number;
+  netBytes: number;
+  /** Requests given up at the time limit, which the page hears of as network failures with no status. */
+  timeouts: number;
+  /**
+   * Parts asked to be kept (`fill`); those on disk after it, and the bytes it wrote of them; and those not kept, of
+   * them those whose fetch ran out of time. A part asked for is in the end kept or not, so `fillAsked` less the two is
+   * what is still to come.
+   */
+  fillAsked: number;
+  fillDone: number;
+  fillBytes: number;
+  fillFailed: number;
+  fillTimeouts: number;
 }
 
 export interface AssetPort {
@@ -97,8 +130,13 @@ export interface AssetPort {
   take(out: AssetArrival[]): number;
   /** Fetches parts into the cache and hands none of them over, so that they need not be fetched while playing. */
   fill(parts: readonly { file: number; part: AssetPart }[]): void;
-  /** Bytes kept between visits and the most that may be, where they are kept, and how many parts asked for with `fill` are still to come. */
-  readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number };
+  /**
+   * Bytes kept between visits and the most that may be, where they are kept, and how many parts asked for with `fill`
+   * are still to come. A port in a browser says besides why the disk is not used, if it is not: "none" where the
+   * browser gives no folder (a private window, or no file system), "full" where writes failed twice; how many disk
+   * writes are under way; and what it has done since it was opened.
+   */
+  readonly cache: { used: number; limit: number; mode: "disk" | "memory" | "none"; filling: number; off?: "" | "none" | "full"; writing?: number; totals?: WorkerTotals };
   /** How the files come, as the browser names it: "http/1.1", "h2", "h3", or "" while not known. */
   readonly protocol: string;
   /** What the browser says of keeping the files and of its room for them, where there is a browser. */

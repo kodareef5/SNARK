@@ -81,8 +81,12 @@ export class SoundLibrary {
   budget = SOUND_BUDGET;
   used = 0;
   flying = 0;
-  /** `fetched` and `cached` are bytes that came over the network and from the port's cache, as stored, and `stale` those that came over the network for a sound no longer asked for. */
-  readonly stats = { requests: 0, loaded: 0, failed: 0, dead: 0, evicted: 0, cancelled: 0, fetched: 0, cached: 0, stale: 0 };
+  /**
+   * `fetched` and `cached` are bytes that came over the network and from the port's cache, as stored, `memory` and
+   * `disk` those of `cached` from each where the port tells them apart, and `stale` those that came over the network
+   * for a sound no longer asked for.
+   */
+  readonly stats = { requests: 0, loaded: 0, failed: 0, dead: 0, evicted: 0, cancelled: 0, fetched: 0, cached: 0, memory: 0, disk: 0, stale: 0 };
   private readonly port: AssetPort | null;
   private readonly state: Uint8Array;
   /** The last time each sound was wanted or played, how urgently it was wanted then, and when it may be asked for again. */
@@ -196,6 +200,8 @@ export class SoundLibrary {
       }
       this.stats.fetched += a.fetched;
       this.stats.cached += a.cached;
+      this.stats.memory += a.memory ?? 0;
+      this.stats.disk += a.disk ?? 0;
       this.flying--;
       const takes = this.sounds[s]!.takes.slice(this.held[s]!, this.held[s]! + this.asking[s]!);
       if (a.data && a.data.length === takes.reduce((sum, t) => sum + t.bytes, 0)) {

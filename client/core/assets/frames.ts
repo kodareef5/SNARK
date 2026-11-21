@@ -20,6 +20,7 @@ export const FLAG_HELD = 4;
 const FETCHED = 0;
 const CACHED = 1;
 const UPLOADED = 2;
+const DISK = 3;
 
 export class FrameRing {
   /** Rows written, ever: the latest is at `(rows - 1) % FRAME_ROWS`. */
@@ -32,9 +33,13 @@ export class FrameRing {
   readonly uploaded = new Float64Array(FRAME_ROWS);
   readonly spent = new Float64Array(FRAME_ROWS);
   readonly uploadMs = new Float32Array(FRAME_ROWS);
-  /** Bytes, as stored, of what arrived for the assets and the sounds: over the network, answers no longer waited on among them, and from the port's cache. */
+  /**
+   * Bytes, as stored, of what arrived for the assets and the sounds: over the network, answers no longer waited on
+   * among them; from the port's cache; and of those, from the disk where the port tells (the rest came from memory).
+   */
   readonly fetched = new Float64Array(FRAME_ROWS);
   readonly cached = new Float64Array(FRAME_ROWS);
+  readonly disk = new Float64Array(FRAME_ROWS);
   /** After the frame: requests under way, of them those for large parts, and sounds'; bytes arrived and waiting for the card; slots wanted and neither held nor coming; bytes on the card and of them textures'. */
   readonly flying = new Uint16Array(FRAME_ROWS);
   readonly flyingLarge = new Uint16Array(FRAME_ROWS);
@@ -58,9 +63,10 @@ export class FrameRing {
   readonly bucketUploadMs = new Float32Array(BUCKETS);
   readonly bucketFetched = new Float64Array(BUCKETS);
   readonly bucketCached = new Float64Array(BUCKETS);
+  readonly bucketDisk = new Float64Array(BUCKETS);
 
   /** The totals the last row was the change of. A total that falls (a new scene, a new library) starts again from 0. */
-  private readonly totals = new Float64Array(3);
+  private readonly totals = new Float64Array(4);
 
   /** The row of the frame `back` frames before the latest, or -1 where it is not kept. */
   row(back: number): number {
@@ -81,6 +87,7 @@ export class FrameRing {
     const s = assets?.stats, h = sounds?.stats;
     const fetched = this.change(FETCHED, (s ? s.fetched + s.stale : 0) + (h ? h.fetched + h.stale : 0));
     const cached = this.change(CACHED, (s ? s.cached : 0) + (h ? h.cached : 0));
+    const disk = this.change(DISK, (s ? s.disk : 0) + (h ? h.disk : 0));
     const uploaded = this.change(UPLOADED, s ? s.uploaded : 0);
     const spent = assets ? assets.spentOther : 0;
     this.at[k] = at;
@@ -91,6 +98,7 @@ export class FrameRing {
     this.uploadMs[k] = uploadMs;
     this.fetched[k] = fetched;
     this.cached[k] = cached;
+    this.disk[k] = disk;
     this.flying[k] = assets ? assets.flying : 0;
     this.flyingLarge[k] = assets ? assets.flyingLarge : 0;
     this.sounds[k] = sounds ? sounds.flying : 0;
@@ -106,7 +114,7 @@ export class FrameRing {
       const b = t % BUCKETS;
       this.bucketSecond[b] = t;
       this.bucketFrames[b] = this.bucketSlow[b] = this.bucketWorst[b] = 0;
-      this.bucketUploaded[b] = this.bucketSpent[b] = this.bucketUploadMs[b] = this.bucketFetched[b] = this.bucketCached[b] = 0;
+      this.bucketUploaded[b] = this.bucketSpent[b] = this.bucketUploadMs[b] = this.bucketFetched[b] = this.bucketCached[b] = this.bucketDisk[b] = 0;
     }
     if (second > this.second) this.second = second;
     const b = this.second % BUCKETS;
@@ -118,6 +126,7 @@ export class FrameRing {
     this.bucketUploadMs[b]! += uploadMs;
     this.bucketFetched[b]! += fetched;
     this.bucketCached[b]! += cached;
+    this.bucketDisk[b]! += disk;
   }
 
   /** How much a running total has grown since the last row. */
