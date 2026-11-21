@@ -24,8 +24,9 @@ import { cityReach, cityTops, type CityStatics, type Gone } from "../../../share
 import { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { CityKinds, CityMaker } from "./citymake.ts";
-import { FRAME, type FramePacket } from "./packet.ts";
+import { FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
 import { SkyOpen, openMeasure, type OpenMap } from "./skyopen.ts";
+import { RoofMap } from "./roof.ts";
 
 /** Metres a side of the cells solid heights are made in: the tops' own (shared/world/tactical.ts). */
 export const TOP_CELL = TACTICAL_CELL;
@@ -317,8 +318,10 @@ const clock = (): number => (globalThis as { performance?: { now(): number } }).
 export class FarShadow {
   /** Sweeps made, and the last one's milliseconds where it was made here. */
   readonly stats = { sweeps: 0, ms: 0 };
-  /** The sky's openness, made from the same solid heights. */
+  /** The sky's openness, made from the same solid heights, and what stands overhead round the camera, from the same pieces. */
   readonly open = new SkyOpen();
+  readonly roof = new RoofMap();
+  private readonly goneOf = (chunk: number): Gone => this.standing.goneOf(chunk);
   private readonly city: CityStatics;
   private readonly hf: Heightfield;
   private readonly standing: Standing;
@@ -381,6 +384,7 @@ export class FarShadow {
   reset(): void {
     this.layerSize = 0;
     this.open.reset();
+    this.roof.reset();
   }
 
   /**
@@ -393,6 +397,8 @@ export class FarShadow {
   update(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, cx: number, cy: number, cz: number, sun: ArrayLike<number> | null, now = 0): void {
     const f = p.frame;
     f[FRAME.farScale] = 0;
+    f[ROOF_AT + 3] = 0;
+    if (p.lit && p.tier.roofs) this.roof.update(p, budget, this.city, this.hf, this.goneOf, cx, cz, clock);
     const { cascades, size } = p.tier.shadows;
     if (!p.lit || size <= 0) {
       this.layerSize = 0;
@@ -467,6 +473,7 @@ export class FarShadow {
     this.changed.length = 0;
     this.stale = true;
     this.open.changed();
+    this.roof.changed();
   }
 
   /** Asks for the map for `sun` where it is not null, and for the openness with `open`, where levels are made, else here. */

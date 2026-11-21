@@ -21,6 +21,7 @@ import { nearKeeps, swapKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
 import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
+import { roofOpen } from "../../client/core/render/roof.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -527,6 +528,9 @@ export class Rasterizer {
   private open = new Uint8Array(0);
   private openWidth = 0;
   private openHeight = 0;
+  /** What stands overhead as the card holds it (packet.ts `roofMap`), and its cells a side, 0 for none. */
+  private roof = new Uint8Array(0);
+  private roofSide = 0;
   private scratch = new Float32Array(3 * 1024);
   // Clip scratch: a triangle, then up to 5 vertices of (camera-relative x, y, z, screen x, y, 1/w, NDC depth), and room between clips.
   private readonly tri = new Float64Array(3 * 7);
@@ -687,6 +691,8 @@ export class Rasterizer {
       this.open = new Uint8Array(this.openWidth * this.openHeight * OPEN_BYTES);
     }
     if (packet.openRows > 0) this.open.set(packet.openMap, packet.openRow * this.openWidth * OPEN_BYTES);
+    if (packet.roofMap.length > 0) this.roof = Uint8Array.from(packet.roofMap);
+    this.roofSide = packet.roofSide;
     if (packet.atlasRows > 0) {
       const rows = packet.atlas.subarray(0, packet.atlasRows * ATLAS_WIDTH * 4);
       if (this.atlas.length < rows.length) this.atlas = new Float32Array(rows.length);
@@ -830,15 +836,17 @@ export class Rasterizer {
   /**
    * The share of the sky's light the sky's openness leaves a camera-relative point with that face's normal, as the lit
    * programs take it (skyopen.ts): the ground's as the ground's, else at its height over the ground, with its foot
-   * taken down where it `stands`.
+   * taken down where it `stands`; and under what stands overhead, on a tier with roofs (roof.ts).
    */
   private readonly roomOpen: RoomOpen = (rx, rz, nx, ny, nz, over) => skyOpen(this.open, this.openWidth, this.openHeight, this.packet.frame, rx, rz, nx, ny, nz, over, 0);
 
   private opened(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, ground: boolean, stands: boolean): number {
     const p = this.packet;
     const contact = (ground || stands) && p.tier.contact ? contactAt(p.frame, rx, ry, rz, nx, ny, nz) : 1;
-    if (ground) return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0);
-    return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, nx, ny, nz, overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz), stands ? 1 : 0);
+    const roofs = p.lit && p.tier.roofs && this.roofSide > 0;
+    if (ground) return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0) * (roofs ? roofOpen(this.roof, this.roofSide, p.frame, rx, rz, 0, 1, 0, 0) : 1);
+    const over = overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz);
+    return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, nx, ny, nz, over, stands ? 1 : 0) * (roofs ? roofOpen(this.roof, this.roofSide, p.frame, rx, rz, nx, ny, nz, over) : 1);
   }
 
   /**

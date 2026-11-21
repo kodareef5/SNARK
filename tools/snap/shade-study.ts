@@ -4,8 +4,10 @@
 // slab 8 m wide standing 4 m out over the walk with its underside 2.7 m up, so at noon the sun is in front of it and the
 // walk before it is sunlit. A white compact stands nose in, half under it, and a survivor in a white shirt stands on its
 // edge. Two views, from the street and from under the arcade looking out, at each hour asked for (noon and 17:00 by
-// default). It writes `<view>-<hhmm>-software.png`, and with --gpu `<view>-<hhmm>.png` drawn by the shell's renderer
-// with the sun's shadows, which the software render has not. For each it prints the sRGB of a few probes, each the
+// default), each in the states of STATES, one folder each: the frame as built, and with what was added since the study
+// was made switched off in its frame block, as the lit programs drew it before. It writes `<state>/<view>-<hhmm>-software.png`,
+// and with --gpu `<state>/<view>-<hhmm>.png` drawn by the shell's renderer with the sun's shadows, which the software
+// render has not. For each it prints the sRGB of a few probes, each the
 // median of a 5 by 5 window round where a point of the scene falls on screen: the floor under the arcade and the walk
 // in the sun, the car's flank and roof under it and out of it, the shirt, the arcade's ceiling near its edge and deep
 // under it, and the shop's wall at its back. `-probes.png` marks where they fall. It draws on high.
@@ -14,7 +16,7 @@ import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { type MapStatic, MapStatics, parseMap } from "../../shared/world/mapfile.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FRAME } from "../../client/core/render/packet.ts";
+import { FRAME, ROOF_AT, type FramePacket } from "../../client/core/render/packet.ts";
 import { findChrome } from "../chrome.ts";
 import { litProbe } from "../probe-lit.ts";
 import { Shot } from "../probe-lit/shot.ts";
@@ -102,6 +104,24 @@ const PROBES: readonly (readonly [string, number, number, number])[] = [
   ["ceiling deep", 1.0, 2.69, -0.3],
   ["back wall", 3.0, 1.0, 0.95],
 ];
+/**
+ * Each state: its folder, and what the frame block's fRoof.w is set to, or null for as built: 0 is before what stands
+ * overhead took the sky's light down (render/roof.ts).
+ */
+const STATES: readonly { readonly name: string; readonly roof: number | null }[] = [
+  { name: "before", roof: 0 },
+  { name: "roofs", roof: null },
+];
+for (const state of STATES) mkdirSync(join(out, state.name), { recursive: true });
+/** Calls `draw` with the packet in each state in turn, and leaves it as built. */
+function inEach(p: FramePacket, draw: (name: string) => void): void {
+  const built = p.frame[ROOF_AT + 3]!;
+  for (const state of STATES) {
+    p.frame[ROOF_AT + 3] = state.roof ?? built;
+    draw(state.name);
+  }
+  p.frame[ROOF_AT + 3] = built;
+}
 const hhmm = (h: number): string => String(Math.floor(h)).padStart(2, "0") + String(Math.round((h % 1) * 60)).padStart(2, "0");
 
 /** Where each probe falls on screen with the packet's view, or null behind the camera or off it. */
@@ -153,10 +173,13 @@ for (const hour of hours) {
     const p = v.render();
     const at = probeAt(p);
     places.push(at);
-    const name = `${view.name}-${hhmm(hour)}`;
-    writeFileSync(join(out, name + "-software.png"), encodePng(width, height, raster.color));
-    writeFileSync(join(out, name + "-probes.png"), encodePng(width, height, marked(raster.color, at)));
-    measure(raster.color, at).forEach((m, k) => report.push(`${name} software ${PROBES[k]![0].padEnd(16)} ${m}`));
+    inEach(p, (state) => {
+      raster.render(p);
+      const name = `${state}/${view.name}-${hhmm(hour)}`;
+      writeFileSync(join(out, name + "-software.png"), encodePng(width, height, raster.color));
+      writeFileSync(join(out, name + "-probes.png"), encodePng(width, height, marked(raster.color, at)));
+      measure(raster.color, at).forEach((m, k) => report.push(`${name} software ${PROBES[k]![0].padEnd(16)} ${m}`));
+    });
   }
 }
 console.log(report.join("\n"));
@@ -188,8 +211,10 @@ const passed = await litProbe(chrome, [{
           p.drawCount = p.tileCount = p.casterCount = 0;
           shot.add(p);
         }
-        shot.add(scene.packet, true);
-        names.push(`${view.name}-${hhmm(hour)}`);
+        inEach(scene.packet, (state) => {
+          shot.add(scene.packet, true);
+          names.push(`${state}/${view.name}-${hhmm(hour)}`);
+        });
       }
     }
     return [shot];
@@ -199,9 +224,9 @@ const passed = await litProbe(chrome, [{
     names.forEach((name, k) => {
       const picture = back.pixels(shot.key, shot.read[k]!)!;
       writeFileSync(join(out, name + ".png"), encodePng(width, height, picture));
-      measure(picture, places[k]!).forEach((m, j) => lines.push(`${name} gpu ${PROBES[j]![0].padEnd(16)} ${m}`));
+      measure(picture, places[Math.floor(k / STATES.length)]!).forEach((m, j) => lines.push(`${name} gpu ${PROBES[j]![0].padEnd(16)} ${m}`));
     });
-    return { ok: names.length === hours.length * VIEWS.length, lines };
+    return { ok: names.length === hours.length * VIEWS.length * STATES.length, lines };
   },
 }]);
 process.exit(passed ? 0 : 1);

@@ -103,6 +103,7 @@ export class GlRenderer {
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
   private open = { texture: null as WebGLTexture | null, size: 0 };
+  private roof: WebGLTexture | null = null;
   private boneRows = 0;
   /**
    * Each tier's programs by number, as client/core/render/programs.ts numbers them, all begun when a frame of that tier
@@ -257,6 +258,7 @@ export class GlRenderer {
     this.post = { size: "", fbs: [], tex: [], bufs: [] };
     this.shadow = { texture: null, targets: [], size: 0 };
     this.open = { texture: null, size: 0 };
+    this.roof = null;
     this.programs.clear();
     this.linked.clear();
     this.neutral = [];
@@ -867,6 +869,16 @@ export class GlRenderer {
       for (const q of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) if (open > 0) gl.texParameteri(gl.TEXTURE_2D, q[0], q[1]);
     }
     if (p.openRows > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, p.openRow, p.openWidth, p.openRows, gl.RGBA, gl.UNSIGNED_BYTE, p.openMap);
+    // What stands overhead (roof.ts) on its unit, made with the first map, and each map whole.
+    if (p.roofMap.length > 0) {
+      gl.activeTexture(gl.TEXTURE0 + UNIT.roof);
+      if (!this.roof) {
+        gl.bindTexture(gl.TEXTURE_2D, (this.roof = gl.createTexture()));
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, p.roofSide, p.roofSide);
+        for (const q of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, q[0], q[1]);
+      }
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, p.roofSide, p.roofSide, gl.RGBA, gl.UNSIGNED_BYTE, p.roofMap);
+    }
     gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
     if (boneRows(p.tier.bones) !== this.boneRows) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = boneRows(p.tier.bones)), 0, gl.RGBA, gl.FLOAT, null);
     if (p.boneCount > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, Math.ceil(p.boneCount / BONES_PER_ROW), gl.RGBA, gl.FLOAT, p.bones);

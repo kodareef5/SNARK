@@ -21,6 +21,7 @@ import { BONES_PER_ROW, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FR
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
+import { ROOF_GLSL } from "./roof.ts";
 import { WEAR_GLSL, wearAlpha } from "./wear.ts";
 
 /** What a surface that is not metal reflects head on. */
@@ -657,7 +658,7 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -675,7 +676,8 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   vec3 n = bumped(bump);
   vec3 face = normalize(gl_FrontFacing ? vNormal : -vNormal);
   float shade = sunShadow(vRel, sunward(face, uSheet));
-  float open = skyOpen(vRel, face, overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, face, uSkin > 0.5 ? 0.0 : 1.0);
+  float over = overGround(vRel);
+  float open = skyOpen(vRel, face, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, face, uSkin > 0.5 ? 0.0 : 1.0) * roofOpen(vRel, face, over);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
   // The fractional quarter of the material code carries the static vehicle's weather exposure.
   float age = fract(uStreetMaterial)*4.0;

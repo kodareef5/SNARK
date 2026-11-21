@@ -9,7 +9,7 @@
 
 import type { Tier } from "./assets/tiers.ts";
 import { HAND_NEAR } from "./render/hand.ts";
-import { DRAW_WATER, FRAME, type FramePacket } from "./render/packet.ts";
+import { DRAW_WATER, FRAME, ROOF_AT, type FramePacket } from "./render/packet.ts";
 
 /** A frame's passes in the order the shell draws them. The dome is drawn at the start of the far see-through step; the finish (render/post.ts) last, where a frame has one. */
 export const PASSES = ["uploads", "casters", "near", "far", "dome", "far see-through", "near see-through", "body", "finish"] as const;
@@ -140,9 +140,10 @@ export const BENCH_TURN_MS = 15000;
  * draws what the frame finds wholly hidden (render/hide.ts), and "order" draws an opaque step's draws by what they bind
  * alone and its ground first, as they went before they went nearest first (render/scene.ts order). "edges" draws walls
  * with no worn edges, "road" the ground with no wear on asphalt and sand, and "walks" none on a walk (world-surfaces.ts). "nearmesh" draws the
- * near city's pieces as instances, none as a chunk's mesh (render/nearcity.ts).
+ * near city's pieces as instances, none as a chunk's mesh (render/nearcity.ts). "roofs" takes no light down under what
+ * stands overhead (render/roof.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -179,10 +180,11 @@ export function sceneWithout(scene: { hide: boolean; nearFirst: boolean; nearMes
   scene.nearMesh = !off.has("nearmesh");
 }
 
-/** The effects that live in a built frame: the haze, bodies' contact, the facades, the edges and the road's wear in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
+/** The effects that live in a built frame: the haze, bodies' contact, what stands overhead, the facades, the edges and the road's wear in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
   if (off.has("contact")) p.frame.fill(0, FRAME.contact, FRAME.eyes);
+  if (off.has("roofs")) p.frame[ROOF_AT + 3] = 0;
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
   if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
   p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0);
