@@ -242,11 +242,11 @@
   "kits": {
     "release": "map-kits",
     "files": [
-      {"city": "las-vegas", "cut": "4948f371fa", "file": "las-vegas-4948f371fa.4c203938ba03.tar.gz", "bytes": 111184014, "sha256": "4c203938ba03e32b42522bf6e9c816c159bcc89bbf7c48a453ed035f508d9820", "made": "2026-11-19T01:50:30.910Z"},
-      {"city": "los-angeles", "cut": "0c695cae58", "file": "los-angeles-0c695cae58.84d68f76298f.tar.gz", "bytes": 169318693, "sha256": "84d68f76298f271405ff473428b8213651757c19336a2a0798d6400eb3a2ae7c", "made": "2026-11-19T01:50:29.181Z"},
-      {"city": "miami", "cut": "5ec081a160", "file": "miami-5ec081a160.84e39326f56b.tar.gz", "bytes": 103202109, "sha256": "84e39326f56b0fb1cd4714ffa9104ef0ecc6ec3c36eac8d9ccadae9c59770e4e", "made": "2026-11-19T01:50:28.592Z"},
-      {"city": "san-francisco", "cut": "62218c62e8", "file": "san-francisco-62218c62e8.98712aed89fb.tar.gz", "bytes": 118096981, "sha256": "98712aed89fb970cfbc21fbcdc7a586ed0d73cc8e1525143eddc81a0d65bde87", "made": "2026-11-19T01:50:30.192Z"},
-      {"city": "tampa", "cut": "58c2224125", "file": "tampa-58c2224125.0ca2008b1883.tar.gz", "bytes": 103881570, "sha256": "0ca2008b1883a2631b4996e91ca683a20318b51b8fa5a10a164c1ccd7d3e823b", "made": "2026-11-19T01:50:28.030Z"}
+      {"city": "las-vegas", "cut": "4948f371fa", "file": "las-vegas-4948f371fa.42962b7dba06.tar.gz", "bytes": 111157783, "sha256": "42962b7dba06874b67f82ed08121341b2082ba8deada289ecc2516f92a39c06e", "made": "2026-11-21T17:47:34.614Z"},
+      {"city": "los-angeles", "cut": "0c695cae58", "file": "los-angeles-0c695cae58.6e1c966f0296.tar.gz", "bytes": 169272918, "sha256": "6e1c966f0296d478210203038f4b411682131b379ef7077bb5d6d0d736cafdfa", "made": "2026-11-21T17:47:24.680Z"},
+      {"city": "miami", "cut": "5ec081a160", "file": "miami-5ec081a160.4961547c97df.tar.gz", "bytes": 103175959, "sha256": "4961547c97dfb6959cb12cc42db3ae053d66acfb8c979c8b6ed4af2ffcc5cf75", "made": "2026-11-21T17:47:21.520Z"},
+      {"city": "san-francisco", "cut": "62218c62e8", "file": "san-francisco-62218c62e8.449c5f1c14f7.tar.gz", "bytes": 118062839, "sha256": "449c5f1c14f76737d3e6cecffb4fc512880833719734ac3e378cddce59de6530", "made": "2026-11-21T17:47:30.312Z"},
+      {"city": "tampa", "cut": "58c2224125", "file": "tampa-58c2224125.fb80bad50840.tar.gz", "bytes": 103863688, "sha256": "fb80bad50840d3c07f8a621682bce0d45af350ac601143ecfb7d3505ce2ed569", "made": "2026-11-21T17:47:18.645Z"}
     ]
   }
 }

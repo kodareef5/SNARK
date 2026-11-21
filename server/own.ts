@@ -37,6 +37,14 @@ function asked(ctx: OwnContext, c: Client, ev: number, data: Record<string, numb
 
 /** What a survivor is told when it would part with a piece of the suit it was issued (server/suit.ts). */
 export const ISSUED_STAYS = "Your Meridian suit was issued to you: it stays with you, and cannot be dropped, stored or given away.";
+/** And when it would part with the soul ball of its starter mount (server/mount.ts). */
+export const ISSUED_BALL_STAYS = "This soul ball was issued to you with your pteranodon: it stays with you, and cannot be dropped, stored or given away.";
+
+/** What a survivor is told when it would part with the issued `item`. */
+function issuedStays(ctx: OwnContext, item: number): string {
+  const reg = ctx.world.reg;
+  return reg.ballFull[item] !== 0 || reg.ballEmpty[item] !== 0 ? ISSUED_BALL_STAYS : ISSUED_STAYS;
+}
 
 /** What a survivor is told when it would put something into a supply drop's capsule. */
 export const TAKE_ONLY = "A supply drop is only taken from: nothing can be put into it.";
@@ -383,7 +391,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (src.item[fromSlot] !== expect || expect === 0) return RESULT_STALE;
     // An issued piece moves about its survivor's own inventory only, and is not swapped out of it either.
     if (a !== b && (ctx.items.issued(a, fromSlot) || ctx.items.issued(b, toSlot))) {
-      ctx.game.sendText(c, TEXT_NOTICE, ISSUED_STAYS);
+      ctx.game.sendText(c, TEXT_NOTICE, issuedStays(ctx, ctx.items.issued(a, fromSlot) ? expect : ctx.items.inv(b).item[toSlot]!));
       return RESULT_DENIED;
     }
     // Nothing is put into a supply capsule, nor swapped into one.
@@ -562,7 +570,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (slot >= own.inv.cap) return RESULT_INVALID;
     if (own.inv.item[slot] !== expect || expect === 0) return RESULT_STALE;
     if (ctx.items.issued(own.rec, slot)) {
-      ctx.game.sendText(c, TEXT_NOTICE, ISSUED_STAYS);
+      ctx.game.sendText(c, TEXT_NOTICE, issuedStays(ctx, expect));
       return RESULT_DENIED;
     }
     if (!asked(ctx, c, ITEM_DROP, { byPid: c.pid, item: reg.ids[expect]!, n: count === 0 ? own.inv.count[slot]! : count })) return RESULT_DENIED;

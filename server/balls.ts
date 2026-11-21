@@ -3,11 +3,12 @@
 // time stood still (EntityRecord.stored), and the ball becomes a full one that stands for that record (Inventory.ref), as
 // a fertilised egg taken up stands for its young (server/eggs.ts). A click with a full ball looses the tame where the
 // survivor looks. A full ball's spoil clock is its charge: run out, or the ball lost any other way, the tame is gone too.
+// A survivor's starter mount has an issued ball of its own, which keeps only that tame (server/mount.ts).
 
 import { rebaseTicks } from "./persist/codec.ts";
 import { EVENT_BALL, S_EVENT } from "../shared/net/protocol.ts";
 import { KEEP_REACH, LOOSE_REACH } from "../shared/sim/balls.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { STAMINA_UNITS, stanceEye } from "../shared/sim/character.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { groundUnder } from "../shared/world/collide.ts";
@@ -48,6 +49,8 @@ const NO_ROOM = "There is no room for it there.";
 const NO_BODY = "The world has no room for another creature now.";
 const CARGO = "What it carried lies in a bag where it stood.";
 const NOT_A_BALL = "That is not a soul ball to do that with.";
+const ONLY_ITS_OWN = "This soul ball was issued with your pteranodon, and keeps only that one.";
+const ITS_OWN_BALL = "It goes only into the soul ball it was issued with.";
 
 export interface BallsContext {
   readonly world: ServerWorld;
@@ -113,16 +116,22 @@ export class Balls {
     else if (reg.ballEmpty[item] !== 0) this.loose(c, me, slot);
   }
 
-  /** Why the creature with body `e` may not be kept by `me`, or "" if it may. */
-  refusal(me: EntityRecord, e: number): string {
-    const { world, records, tribes, riding, carry, buffs } = this.ctx;
+  /**
+   * Why the creature with body `e` may not be kept by `me` in the ball in `slot`, or "" if it may. A starter mount goes only
+   * into the issued ball of the survivor it was issued to, and into that one whatever tribe it is in now (server/mount.ts).
+   */
+  refusal(me: EntityRecord, e: number, slot: number): string {
+    const { world, records, items, tribes, riding, carry, buffs } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     if (e < 0 || (ents.flags[e]! & (F_ALIVE | F_PROP)) !== F_ALIVE) return NOTHING;
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec || records.entOf.get(rec.pid) !== e || rec.keyHash !== null || rec.egg !== null || rec.dead || reg.defs[rec.kind]?.type !== "species" || reg.vehicle[rec.kind]) return NOT_A_TAME;
     if (rec.team === 0) return NOT_A_TAME;
-    if (!tribes.may(me, rec.team)) return NOT_YOURS;
+    const issued = items.issued(me, slot);
+    if (issued && rec.issuedTo !== me.pid) return ONLY_ITS_OWN;
+    if (!issued && rec.issuedTo !== 0) return ITS_OWN_BALL;
+    if (!issued && !tribes.may(me, rec.team)) return NOT_YOURS;
     // The sickness knocks it out, and is the reason to give of the two.
     if (this.sick !== 0 && buffs.has(rec, this.sick)) return SICK;
     if (rec.out || rec.tame) return NOT_AWAKE;
@@ -143,24 +152,34 @@ export class Balls {
    * changed nothing, or "".
    */
   keepIn(me: EntityRecord, slot: number, e: number): string {
-    const { world, game, records, items, survival, breeding, death } = this.ctx;
-    const ents = world.ents;
+    const { world, records, items } = this.ctx;
     const reg = world.reg;
     const full = reg.ballFull[items.inv(me).item[slot]!] ?? 0;
     if (full === 0) return NOT_A_BALL;
-    const why = this.refusal(me, e);
+    const why = this.refusal(me, e, slot);
     if (why !== "") return why;
-    const rec = records.byPid.get(ents.pid[e]!)!;
+    const rec = records.byPid.get(world.ents.pid[e]!)!;
+    // The ball is made full first: if it cannot be, nothing has changed.
+    if (!items.turn(me, slot, full, rec.pid)) return NOT_A_BALL;
+    if (this.stow(rec, e)) this.ctx.notice(me.pid, CARGO);
+    this.kept++;
+    return "";
+  }
+
+  /**
+   * The body `e` of tame `rec` leaves the world as it goes into a ball, all within one tick, and its record stays with its
+   * time stood still. Nothing holds it and nobody has it open as it goes. What it carried is left in a bag where it stood,
+   * and true is returned then. Its saddle is on its record, and goes with it. The caller names it in a ball, or deletes it.
+   */
+  stow(rec: EntityRecord, e: number): boolean {
+    const { world, game, survival, breeding, death } = this.ctx;
+    const ents = world.ents;
     const x = ents.x[e]!;
     const y = ents.y[e]!;
     const z = ents.z[e]!;
-    // The ball is made full first: if it cannot be, nothing has changed.
-    if (!items.turn(me, slot, full, rec.pid)) return NOT_A_BALL;
-    // Nothing holds it and nobody has it open as it goes.
     this.ctx.release(rec);
     for (const other of game.clients) if (other?.active && other.open === rec.pid) death.close(other);
-    // What it carries stays in the world, in a bag where it stood. Its saddle is on its record, and goes with it.
-    if (death.dropAll(rec, x, y, z)) this.ctx.notice(me.pid, CARGO);
+    const cargo = death.dropAll(rec, x, y, z) !== null;
     // Its time stops here: every clock it has is as of this tick, and nothing of it is due while it is kept.
     const tick = Math.max(1, world.tick);
     rec.vitals?.rebase(tick);
@@ -173,10 +192,9 @@ export class Balls {
     survival.forget(rec.pid);
     rec.flying = false;
     rec.stored = tick;
-    records.dirty.add(rec.pid);
-    this.kept++;
+    this.ctx.records.dirty.add(rec.pid);
     this.show(true, x, y, z, rec.kind);
-    return "";
+    return cargo;
   }
 
   /** The full ball in `slot` of `me` lets its tame out where `me` looks. */
@@ -227,7 +245,9 @@ export class Balls {
       this.mended++;
       return "";
     }
-    const limit = taming.full(me.team);
+    // A starter mount's issued ball is never held back: no tame limit counts it, and loosing it neither chills nor sickens.
+    const issued = items.issued(me, slot);
+    const limit = issued ? "" : taming.full(me.team);
     if (limit !== "") return limit;
     if (ents.room < STORE_RESERVE) return NO_BODY;
     const p = reg.tamedMove[rec.kind] ?? reg.move[rec.kind];
@@ -268,10 +288,12 @@ export class Balls {
     breeding.loosed(rec);
     taming.meal(rec);
     this.ctx.refresh(rec);
+    // A starter comes out rested: a new body has 100 stamina whatever its most, and a mount for travel wants all of it.
+    if (issued) ents.stamina[e] = ents.staminaMax[e]! * STAMINA_UNITS;
     this.loosed++;
     // ARK's cryo sickness: loosed within the survivor's wait after the last, it is knocked out and takes ten times the harm.
     // It is always so on PvP, and on PvE only where the server says (EnableCryoSicknessPVE).
-    if (this.chill !== 0 && this.sick !== 0 && (!rules.on("serverPVE") || rules.on("EnableCryoSicknessPVE"))) {
+    if (!issued && this.chill !== 0 && this.sick !== 0 && (!rules.on("serverPVE") || rules.on("EnableCryoSicknessPVE"))) {
       if (buffs.has(me, this.chill)) {
         buffs.give(rec, this.sick, me.pid);
         survival.add(rec, V_TORPOR, 1e9);

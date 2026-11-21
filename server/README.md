@@ -61,7 +61,8 @@ run in the [operator's guide](../planning/reference/operators.md).
 `--dev` enables the self-check report endpoint and `enablecheats` without a password, and
 reads `config/dev` when no other folder is named. Without it a server still gives every survivor cheats and the Creative
 entry as it enters, unless its files set `CreativeForAll` or `bShowCreativeMode` off (`creative.ts`), and dresses each in
-the Meridian set as it comes to life unless `bDisableDefaultMapItemSets` is set (`suit.ts`). It must not be used on a
+the Meridian set as it comes to life unless `bDisableDefaultMapItemSets` is set (`suit.ts`), with a starter pteranodon
+in an issued soul ball unless `StarterMount` is off (`mount.ts`). It must not be used on a
 public server, and it takes a socket only for a browser that asked for this machine by
 `localhost`, an address, or the host of `--public-url` (`namesThisMachine`). `/admin/` is the admin page
 (`admin/routes.ts`, `client/admin`): the server's health from the loop's own timing, its survivors and a live map of them.
