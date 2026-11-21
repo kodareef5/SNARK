@@ -13,7 +13,9 @@
 //   the walk's panels and wear go on round it. A drive is a flush stretch, joined to the kerb either side by a flare; a
 //   run that ends at a junction with no arc is let down to the road by one.
 // - Under every piece lie its collision pieces (underPiece); a piece and its collision go into the map as a whole or not.
+// - The walk kit's storm drains and utility boxes stand on the straight lengths, as often as the kit has them.
 
+import { BREAK_AT } from "../../content/ruins.ts";
 import { bentJoin, packBend, placeKerb, underPiece, wrapped, type BentKerb, type BentPiece, type Kerb, type KerbLine, type Section } from "../../shared/world/bends.ts";
 import { cornersOf, type Corner } from "./corners.ts";
 import { S } from "./ground.ts";
@@ -44,7 +46,7 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
   const rules = v.street.walks!; const bent = rules.bent!;
   let placing = 0;
   const laidIn: number[] = [];
-  const out: Record<string, number> = { pieces: 0, curved: 0, joins: 0, collision: 0, arcs: 0, runs: 0, flush: 0, refused: 0, lines: 0 };
+  const out: Record<string, number> = { pieces: 0, curved: 0, joins: 0, collision: 0, arcs: 0, runs: 0, flush: 0, refused: 0, lines: 0, drains: 0, boxes: 0 };
   const { nx, x0, z0, x1, z1 } = site.ground.grid;
   // The map's streets reach past its edges; what lies within a sample of them is laid.
   const inside = (x: number, z: number, margin = 2): boolean => x >= x0 + margin && x <= x1 - margin && z >= z0 + margin && z <= z1 - margin;
@@ -246,13 +248,41 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     });
     // The line's pieces and then their collision, so that a statics part's rows that follow one another are alike and pack
     // small; where the chunks' budgets refuse the line whole, a piece at a time.
-    if (!lay(laid)) for (const p of laid) lay([p]);
+    fixtures(lay(laid) ? laid : laid.filter((p) => lay([p])), seed);
   }
   // What placing took, the street model's part to come: kerb lines to pieces and their collision, for each chunk with some.
   // Said, not kept in the report, which a build must give the same each time.
   const chunks = new Set<number>(laidIn);
   console.log(`bent walks: ${out.pieces} pieces in ${chunks.size} chunks, placed in ${((placing * 1000) / Math.max(1, chunks.size)).toFixed(0)} us a chunk`);
   return out;
+
+  /**
+   * The walk kit's storm drains and utility boxes on a line's straight lengths of raised or worn kerb, as the kit has them:
+   * a drain in the gutter where it runs lowest, in one 32 m of the line in `gutterEvery`, and a box at the walk's back
+   * about one 8 m in `boxEvery`. Each stands on its piece's chord, which is the kerb's face, at the piece's height there.
+   */
+  function fixtures(pieces: readonly BentPiece[], seed: number): void {
+    let along = 0;
+    pieces.forEach((p, k) => {
+      const length = p.bend.half * 2, mid = along + length / 2;
+      along += length;
+      if (!/_(raised|worn)_s$/.test(p.kind) || length < 3) return;
+      const before = pieces[k - 1]?.y ?? Infinity, after = pieces[k + 1]?.y ?? Infinity;
+      if (p.y <= before && p.y <= after && hash3(seed, Math.floor(mid / 32), v.seed + 3) % rules.gutterEvery === 0 && fixture(p, "zdrain", 0, BREAK_AT.zdrain![2]!)) out.drains!++;
+      // A box 2 m on from the middle where the piece is long enough, as the kit's is from its slab's.
+      const d = length >= 6 ? 2 : 0;
+      if (hash3(Math.round(p.x), Math.round(p.z), v.seed + 7) % rules.boxEvery < Math.max(1, Math.round(length / SLOT)) && fixture(p, "zutility", d, p.bend.walk - 0.4)) out.boxes!++;
+    });
+  }
+
+  /** A shape of the walk kit `d` along piece `p`'s chord from its middle and `back` from the kerb's face, at the chord's height there. */
+  function fixture(p: BentPiece, shape: "zdrain" | "zutility", d: number, back: number): boolean {
+    const a = (p.yaw * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a), mid = BREAK_AT[shape]!;
+    const [x, z] = [p.x + c * d + s * back, p.z - s * d + c * back];
+    const m = new Mason({ x: x + c * mid[0]!, z: z - s * mid[0]!, yaw: p.yaw, c, s, width: 8, depth: 3, rings: [] }, p.y + (p.bend.rise * d) / p.bend.half);
+    m.put(shape, 0, mid[1]!, 0, "concrete");
+    return accept(m);
+  }
 
   /** Turns piece `k` of `pieces` into a flare from one kerb to another where the kit has one, cut down to FLARE long from its end. */
   function join(pieces: BentPiece[], k: number, a: BentKerb, b: BentKerb): void {
