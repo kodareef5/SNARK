@@ -6,4 +6,4 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "parked_common"))
 from parked import build
 
-build("semi", "semi_abandoned", ("abandoned",))
+build("semi", "semi_abandoned", ("abandoned",), levels=(2, 3, 4, 5))

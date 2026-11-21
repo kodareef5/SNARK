@@ -110,8 +110,47 @@ def _low(o):
     return min(v.co.z for v in o.data.vertices)
 
 
-def build(vehicle, name, looks=("abandoned",), belt=0.95, steer=0.18):
-    """Leaves an object `name` (and `name`_stripped, `name`_roof for those looks) for build.py to write.
+def _authored(vehicle, name, levels, pose):
+    """The heavy road vehicle's own coarser levels (../<vehicle>/lod<n>.json.gz, made by hand in its palette) as the
+    abandoned look's `name`_LOD1 and on, posed as its finest is: each face in the palette colour of its tile."""
+    import gzip
+    import json
+
+    folder = os.path.join(VEHICLES, vehicle)
+    with open(os.path.join(folder, "palette.json")) as f:
+        palette = json.load(f)
+    mats = []
+    for i, (r, g, b) in enumerate(palette):
+        m = bpy.data.materials.get(f"{name}_tile_{i}") or bpy.data.materials.new(f"{name}_tile_{i}")
+        # glTF writes the Principled shader's base colour, which the pack reads the palette colour from (box_trailer).
+        linear = tuple(c / 255 / 12.92 if c / 255 <= 0.04045 else ((c / 255 + 0.055) / 1.055) ** 2.4 for c in (r, g, b))
+        m.diffuse_color = linear + (1,)
+        m.use_nodes = True
+        m.node_tree.nodes.get("Principled BSDF").inputs["Base Color"].default_value = linear + (1,)
+        mats.append(m)
+    for k, level in enumerate(levels, 1):
+        with open(os.path.join(folder, f"lod{level}.json.gz"), "rb") as f:
+            parts = json.loads(gzip.decompress(f.read()))
+        verts, faces, tiles = [], [], []
+        for _bone, tile, v, tris in parts:
+            n = len(verts)
+            verts.extend((v[i], -v[i + 2], v[i + 1]) for i in range(0, len(v), 3))
+            faces.extend((n + tris[i], n + tris[i + 1], n + tris[i + 2]) for i in range(0, len(tris), 3))
+            tiles.extend([tile] * (len(tris) // 3))
+        data = bpy.data.meshes.new(f"{name}_LOD{k}")
+        data.from_pydata(verts, [], faces)
+        for m in mats:
+            data.materials.append(m)
+        for poly, tile in zip(data.polygons, tiles):
+            poly.material_index = tile
+        data.transform(pose)
+        data.update()
+        bpy.context.scene.collection.objects.link(bpy.data.objects.new(f"{name}_LOD{k}", data))
+
+
+def build(vehicle, name, looks=("abandoned",), belt=0.95, steer=0.18, levels=()):
+    """Leaves an object `name` (and `name`_stripped, `name`_roof for those looks) for build.py to write; with `levels`,
+    the heavy road vehicle's own coarser levels as the abandoned look's.
     Blender's frame: the vehicle faces -Y, +Z up, the driver's side +X, as every model of the fleet is built."""
     parts, joints = _model(vehicle)
     front = [b for b in joints if b.startswith("wheel_front")]
@@ -140,6 +179,9 @@ def build(vehicle, name, looks=("abandoned",), belt=0.95, steer=0.18):
     for b in front:
         _turn(parts, b, steer, joints[b])
     car = _joined(parts, name)
-    car.data.transform(Matrix.Translation((0, 0, -0.04)) @ Matrix.Rotation(math.radians(-1.0), 4, "Y"))
+    pose = Matrix.Translation((0, 0, -0.04)) @ Matrix.Rotation(math.radians(-1.0), 4, "Y")
+    car.data.transform(pose)
     car.data.update()
+    if levels:
+        _authored(vehicle, name, levels, pose)
     print(f"parked: {name} from {vehicle}, {', '.join(looks)}")
