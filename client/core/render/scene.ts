@@ -525,6 +525,11 @@ export class Scene {
   private readonly radiusOfMesh: Float32Array;
   /** Per material, the flags of a draw with it, and 1 for bark: a tree's trunk and limbs. */
   private readonly materialFlags: Uint8Array;
+  /**
+   * Per mesh, a standing tree's levels that cut out its leaves, a bit each (a palm's fronds among them); 0 for any other
+   * mesh, a car whose glass cuts out or a bush (Scene.castable).
+   */
+  private readonly foliageOf: Uint16Array;
   private readonly barkOf: Uint8Array;
   /** What a frame may spend, what it has, and the squeeze crowns near are drawn at (budget.ts). */
   readonly budget = new FrameBudget();
@@ -857,6 +862,7 @@ export class Scene {
     this.barkOf = new Uint8Array(table.materials.length);
     this.trunkTris = table.sections.map(() => []);
     this.leafTris = table.sections.map(() => []);
+    this.foliageOf = new Uint16Array(table.sections.length);
     this.learn(table.sections.map((_, mesh) => mesh));
     this.counts = new Uint32Array(table.count);
     this.cursor = new Uint32Array(table.count);
@@ -923,7 +929,9 @@ export class Scene {
     const part = (mesh: number, keep: (material: number) => boolean): number[] => table.sections[mesh]!.map((runs) => runs.reduce((n, _, k) => (k % 3 === 0 && keep(runs[k]!) ? n + runs[k + 2]! / 3 : n), 0));
     for (const mesh of meshes) {
       this.trunkTris[mesh] = part(mesh, (m) => this.barkOf[m] === 1);
-      this.leafTris[mesh] = part(mesh, (m) => (this.materialFlags[m]! & DRAW_CUTOUT) !== 0);
+      const leaves = (this.leafTris[mesh] = part(mesh, (m) => (this.materialFlags[m]! & DRAW_CUTOUT) !== 0));
+      // A standing tree's levels that cut out its leaves, a bit each.
+      if (this.treeOf[mesh] === 1) this.foliageOf[mesh] = leaves.reduce((bits, n, l) => (n > 0 ? bits | (1 << l) : bits), 0);
     }
     // A mesh learnt has its extents now, which the crowns' grid is made from. Learnt first before the grid is made.
     if (meshes.length > 0 && this.cover) this.cover.stale = true;
@@ -1265,7 +1273,7 @@ export class Scene {
       mask &= some;
       if (mask === 0) continue;
       const tris = this.trisOfMesh[mesh]!;
-      const n = c.entries(mask, this.assets.table.error[mesh]!, this.assets.held(mesh), out, scale);
+      const n = c.entries(mask, this.assets.table.error[mesh]!, this.assets.held(mesh), out, scale, this.leafy(mesh));
       for (let e = 0; e < n; e++) {
         const level = out[e * 2]!, bits = out[e * 2 + 1]!;
         if ((every & bits) === bits || b.ranges[r + 2]! * tris[level]! <= RUN_TRIANGLES) {
@@ -1307,6 +1315,16 @@ export class Scene {
         }
       }
     }
+  }
+
+  /**
+   * A standing tree's levels (`foliageOf`) that cut its leaves out and can be cut out in a depth map now, a bit each,
+   * which a sharp enough map casts it at (shadow.ts LEAF_BLUR, D953); 0 for any other mesh, or while none can.
+   */
+  private leafy(mesh: number): number {
+    let ok = 0;
+    for (let l = 0, m = this.foliageOf[mesh]! & this.assets.held(mesh); m !== 0; l++, m >>>= 1) if ((m & 1) !== 0 && this.assets.heldCutouts(mesh, l)) ok |= 1 << l;
+    return ok;
   }
 
   /**

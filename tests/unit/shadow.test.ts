@@ -319,6 +319,11 @@ test("a caster's level is the coarsest the card holds within what the shadow fil
   expect(Array.from(out.subarray(0, 2 * c.entries(0b1110, errors, 0b00111, out)))).toEqual([2, 0b1110]);
   expect(Array.from(out.subarray(0, 2 * c.entries(0b0101, [0, 0.001], 0b11, out)))).toEqual([1, 0b0101]);
   expect(c.entries(0b1111, errors, 0, out)).toBe(0);
+  // A standing tree whose levels 0 to 2 cut its leaves out and 3 and 4 are flat crowns: a map blurring 25 cm or less
+  // casts it only where its leaves are cut out, the farthest (80 cm) at its coarsest within the blur as before. With no
+  // leafy level held, it is cast as any mesh is.
+  expect(Array.from(out.subarray(0, 2 * c.entries(0b1111, errors, all, out, 1, 0b00111)))).toEqual([2, 0b0111, 4, 0b1000]);
+  expect(Array.from(out.subarray(0, 2 * c.entries(0b1111, errors, all, out, 1, 0)))).toEqual([2, 0b0001, 3, 0b0110, 4, 0b1000]);
 });
 
 test("drawn every other frame, the farthest cascade keeps its square while that holds its slice", () => {

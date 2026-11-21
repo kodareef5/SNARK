@@ -11,7 +11,11 @@
 // - far: the far map alone (every cascade's sphere made a point, so every pixel lies past them).
 // - coarse: the farthest cascade alone wherever its sphere holds a pixel, as the dithered hand-over between cascades
 //   and the far parts of the view see it.
+// - second: the nearest cascade taken away, so a pixel within the second's sphere takes the second: the casters there
+//   at the second's levels where the first's would be seen, as they are seen over the dithered hand-over between them.
 // - roofless: the map of what stands overhead off (roof.ts), and with it the light from the ground it tints.
+// - bounceless: the light from the ground as the sky's table has it, the roof's shade kept: the map's baked sun share
+//   alone is what this takes away.
 // - unshaded: no shadow from the light that owns the cascades at all.
 // - lampless (by night where a lamp lights): the street lamp's light off.
 //
@@ -24,11 +28,12 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { type MapStatic, MapStatics, mapHeightfield, parseMap } from "../../shared/world/mapfile.ts";
-import { tierOf, type TierName } from "../../client/core/assets/tiers.ts";
-import { CAST_AT, FRAME, LAMP_AT, MAX_CASCADES, ROOF_AT, type FramePacket } from "../../client/core/render/packet.ts";
+import { tierOf } from "../../client/core/assets/tiers.ts";
+import { CAST_AT, DRAW_CUTOUT, DRAW_TEXTURED, FRAME, LAMP_AT, MAX_CASCADES, ROOF_AT, type FramePacket } from "../../client/core/render/packet.ts";
+import { MATERIAL_CUTOUT } from "../../shared/pack/pack.ts";
 import { findChrome } from "../chrome.ts";
-import { litProbe, type LitCheck } from "../probe-lit.ts";
-import { Shot } from "../probe-lit/shot.ts";
+import { litProbe } from "../probe-lit.ts";
+import { Shot, type LitCheck } from "../probe-lit/shot.ts";
 import { provingView } from "../snap.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./font.ts";
 import { encodePng } from "./png.ts";
@@ -40,7 +45,7 @@ const hours = (arg("hours") ?? "9,12,17,17.7,22").split(",").map(Number);
 if (hours.some((h) => !Number.isFinite(h) || h < 0 || h >= 24)) throw new Error("--hours must be hours in [0,24)");
 const only = arg("only")?.split(",");
 const viewsOnly = arg("views")?.split(",");
-const tier = (arg("tier") ?? "high") as TierName;
+const tier = (arg("tier") ?? "high") as Parameters<typeof tierOf>[0];
 /** Every state's picture at full size, not "all"'s alone beside the sheet. */
 const full = process.argv.includes("--full");
 const map = parseMap(Bun.mmap(mapPath), true, true);
@@ -92,7 +97,8 @@ for (const s of SITES.filter((s) => !only || only.includes(s.name))) {
     console.log(`${s.name}: no ${s.kind} on this map`);
     continue;
   }
-  const eye = s.name === "eye" ? map.tideEyes.reduce((a, e) => (Math.hypot(e.x - t.x[best]!, e.z - t.z[best]!) < Math.hypot(a.x - t.x[best]!, a.z - t.z[best]!) ? e : a), map.tideEyes[0]!) : null;
+  const eyes = map.tideEyes ?? [];
+  const eye = s.name === "eye" && eyes.length > 0 ? eyes.reduce((a, e) => (Math.hypot(e.x - t.x[best]!, e.z - t.z[best]!) < Math.hypot(a.x - t.x[best]!, a.z - t.z[best]!) ? e : a), eyes[0]!) : null;
   const x = eye ? eye.x : t.x[best]!, z = eye ? eye.z : t.z[best]!;
   found.set(s.name, { x, z, ground: hf.heightAt(x, z) });
   console.log(`${s.name}: ${s.kind} at ${x.toFixed(1)}, ${z.toFixed(1)}, ground ${hf.heightAt(x, z).toFixed(1)}`);
@@ -128,7 +134,9 @@ const STATES: readonly State[] = [
   { name: "cascades", edit: (f) => void (f[FRAME.farScale] = -Math.abs(f[FRAME.farScale]!)) },
   { name: "far", edit: (f) => { for (let i = 0; i < MAX_CASCADES; i++) f[FRAME.spheres + i * 4 + 3] = 1e-6; } },
   { name: "coarse", edit: (f, n) => { for (let i = 0; i < n - 1; i++) f[FRAME.spheres + i * 4 + 3] = 1e-6; } },
+  { name: "second", edit: (f) => void (f[FRAME.spheres + 3] = 1e-6) },
   { name: "roofless", edit: (f) => void (f[ROOF_AT + 3] = 0) },
+  { name: "bounceless", edit: (f) => void (f[ROOF_AT + 3] = Math.min(f[ROOF_AT + 3]!, 1)) },
   { name: "unshaded", edit: (f) => void (f[CAST_AT + 3] = 0) },
   { name: "lampless", edit: (f) => void (f[LAMP_AT + 3] = 0), lamp: true },
 ];
@@ -164,10 +172,38 @@ function coarseCasters(p: FramePacket): string[] {
     row.cast.add(p.casterLod[e]!);
     by.set(mesh, row);
   }
-  return [...by].map(([mesh, row]) => {
-    const m = manifest.meshes[mesh]!, tris = (l: number): number => m.levels[l]?.tris ?? 0;
+  const lines = [...by].map(([mesh, row]) => {
+    const m = manifest.meshes[mesh]!, tris = (l: number): number => scene.assets.table.tris[mesh]?.[l] ?? 0;
     return `${m.id} drawn ${drawn.get(mesh)} (${tris(drawn.get(mesh)!)} tris) cast ${[...row.cast].join(",")} (${[...row.cast].map(tris).join(",")} tris) in ${row.n}`;
   });
+  // Cut-out sections cast whole, as where the level cast has not its surface on the card to cut them out by.
+  const solid = new Map<number, Set<number>>();
+  for (let e = 0; e < p.casterCount; e++) {
+    const mat = p.casterMaterial[e]!;
+    if ((p.casterFlags[e]! & DRAW_TEXTURED) === 0 || (scene.assets.table.materials[mat]!.flags & MATERIAL_CUTOUT) === 0 || (p.casterFlags[e]! & DRAW_CUTOUT) !== 0) continue;
+    (solid.get(p.casterMesh[e]!) ?? solid.set(p.casterMesh[e]!, new Set()).get(p.casterMesh[e]!)!).add(p.casterLod[e]!);
+  }
+  for (const [mesh, levels] of solid) lines.push(`${manifest.meshes[mesh]!.id} cut-outs cast solid at ${[...levels].join(",")}`);
+  // Why a mesh named in SHADOW_HUNT_WHY takes the levels it does: what is held, what cuts out, what the view draws textured.
+  if (process.env.SHADOW_HUNT_WHY === "share") {
+    const leaf = (scene as unknown as { leafTris: number[][] }).leafTris, seen = new Set<number>();
+    for (let e = 0; e < p.casterCount; e++) {
+      const mesh = p.casterMesh[e]!;
+      if (seen.has(mesh) || !(leaf[mesh]?.[0])) continue;
+      seen.add(mesh);
+      lines.push(`share ${manifest.meshes[mesh]!.id}: ${((100 * leaf[mesh]![0]!) / scene.assets.table.tris[mesh]![0]!).toFixed(0)}% of ${scene.assets.table.tris[mesh]![0]} cut out at L0`);
+    }
+  }
+  for (const id of (process.env.SHADOW_HUNT_WHY ?? "").split(",").filter((s) => s.includes(":"))) {
+    const mesh = manifest.meshes.findIndex((m) => m.id === id);
+    if (mesh < 0) continue;
+    const a = scene.assets, held = a.held(mesh), levels = a.table.error[mesh]!.length;
+    const bits = (f: (l: number) => boolean): string => Array.from({ length: levels }, (_, l) => (f(l) ? "1" : "0")).join("");
+    let textured = 0, flat = 0;
+    for (let d = 0; d < p.drawCount; d++) if (p.drawMesh[d] === mesh) (p.drawFlags[d]! & DRAW_TEXTURED) !== 0 ? textured++ : flat++;
+    lines.push(`${id}: held ${bits((l) => ((held >>> l) & 1) === 1)} cut-outs held ${bits((l) => a.heldCutouts(mesh, l))} textured ${bits((l) => a.textured(mesh, l))}; draws ${textured} textured, ${flat} flat`);
+  }
+  return lines;
 }
 
 /** A picture a quarter its size, a label over its corner, into `sheet` at (x0, y0). */
@@ -236,7 +272,7 @@ function siteCheck(s: Site): LitCheck {
           }
           p.frame.set(built);
           taken.push({ name: `${view.name}-${hhmm(hour)}`, states: states.map((st) => st.name), casters: coarseCasters(p), cascades: p.cascadeCount });
-          if (process.argv.includes("--dry")) console.log(`${s.name} ${view.name}-${hhmm(hour)}: ${p.drawCount} draws, ${p.casterCount} casters, lamp ${lamp}, ${taken.at(-1)!.casters.length} meshes cast coarse${taken.at(-1)!.casters.map((c) => "\n  " + c).join("")}`);
+          if (process.argv.includes("--dry")) console.log(`${s.name} ${view.name}-${hhmm(hour)}: ${p.drawCount} draws, ${p.casterCount} casters, ${p.castTriangles} cast triangles, lamp ${lamp}, ${taken.at(-1)!.casters.length} meshes cast coarse${taken.at(-1)!.casters.map((c) => "\n  " + c).join("")}`);
         }
       }
       return [shot];
@@ -257,9 +293,13 @@ function siteCheck(s: Site): LitCheck {
         view.states.forEach((st, i) => place(sheet, sw, got.get(st)!, (i % 3) * (width / 2), Math.floor(i / 3) * (height / 2), st));
         writeFileSync(join(out, s.name, `${view.name}.png`), encodePng(sw, sh, sheet));
         const all = got.get("all")!, cascades = got.get("cascades")!, unshaded = got.get("unshaded")!, roofless = got.get("roofless")!, coarse = got.get("coarse")!;
-        let farLit = 0, roofLit = 0, roofAll = 0, farAll = 0, coarseOff = 0, shaded = 0;
+        const bounceless = got.get("bounceless");
+        let farLit = 0, roofLit = 0, roofAll = 0, farAll = 0, coarseOff = 0, shaded = 0, bounceAll = 0, bounceLit = 0;
         for (let i = 0; i < width * height; i++) {
           const c = luma(unshaded, i) - luma(cascades, i), f = luma(cascades, i) - luma(all, i), r = luma(roofless, i) - luma(all, i);
+          const b = bounceless ? luma(bounceless, i) - luma(all, i) : 0;
+          if (b > 6) bounceAll++;
+          if (b > 6 && c < 3) bounceLit++;
           if (c > 6) shaded++;
           if (f > 8) farAll++;
           if (r > 8) roofAll++;
@@ -268,7 +308,7 @@ function siteCheck(s: Site): LitCheck {
           if (Math.abs(luma(coarse, i) - luma(all, i)) > 16) coarseOff++;
         }
         const share = (n: number): string => `${((100 * n) / (width * height)).toFixed(2)}%`;
-        lines.push(`${s.name} ${view.name}: cascades ${view.cascades}, cascade shade ${share(shaded)}, far ${share(farAll)} (far lit ${share(farLit)}), roof ${share(roofAll)} (roof lit ${share(roofLit)}), coarse differs ${share(coarseOff)}`);
+        lines.push(`${s.name} ${view.name}: cascades ${view.cascades}, cascade shade ${share(shaded)}, far ${share(farAll)} (far lit ${share(farLit)}), roof ${share(roofAll)} (roof lit ${share(roofLit)}), bounce ${share(bounceAll)} (bounce lit ${share(bounceLit)}), coarse differs ${share(coarseOff)}`);
         for (const c of view.casters) lines.push(`  coarse caster: ${c}`);
       }
       return { ok: k > 0, lines };
