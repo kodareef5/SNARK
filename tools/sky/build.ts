@@ -11,6 +11,7 @@ import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { CARD, LIGHT_FLOATS, MOON_RADIUS, SKY_SIZE, SKY_SLICES, SUN_TOP, aroundCoord, aroundOf, cardExposure, cardTakes, decodeTexel, discUp, elevationOf, encodeTexel, hourOfSun, luminance, skyFrame, sliceCoord, sliceHeight, slotHeight, sunHeight, texelAt, upCoord } from "../../client/core/render/sky.ts";
+import { GROUND, OPEN } from "../../client/core/render/roof.ts";
 import { skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import { encodePng } from "../snap/png.ts";
 import { Atmosphere, EARTH, type Air } from "./atmosphere.ts";
@@ -25,13 +26,8 @@ import { fill, keySkies, untone, type KeySky } from "./keys.ts";
 export const AIR: Air = { ...EARTH, mieScatter: EARTH.mieScatter * 5, mieExtinct: EARTH.mieExtinct * 5 };
 /** The full moon's light against the sun's. */
 export const MOON = 2.5e-6;
-/** The share of the light on it the ground sends back, and what stands on it: grass, sand and pale stone. */
-export const GROUND = 0.3;
-/**
- * The share of what a face on land sees above the horizon that is open sky. The rest is the land about it and what
- * stands on it, hills, trees, rocks and walls, which send back the ground's light.
- */
-export const OPEN = 0.6;
+/** The ground's share of its light sent back, and the open sky's of what a face on land sees: the lit tiers' too (roof.ts). */
+export { GROUND, OPEN };
 /** What a grey 128 card standing in the shade at noon shows, as light: 70 of 255 (D155). Sunlit and head on, it shows 128. */
 export const SHADED = srgbToLinear(70 / 255);
 /** Degrees under the horizon at which the afterglow is at its full share, and by which it is gone. */

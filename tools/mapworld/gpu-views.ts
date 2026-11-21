@@ -3,6 +3,10 @@
 //
 //   bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client> [--tiers high,medium]
 //                                   [--seconds 40] [--only name,name] [--off effect,effect] [--hide-hud] [--film]
+//                                   [--canvas 1920x1080@1] [--page key=value] [--suffix name]
+//
+// --canvas is the page in points and the device pixels a point (1800x962@2 is a laptop's 3,600 by 1,924 canvas), --page
+// adds to each page's address (`scale=1`, client/core/app.ts address), and --suffix ends each picture's name.
 //
 // The client is one built apart (`bun run build -- --dist DIR`), never the checkout's client/dist. A server on the map
 // answers each view's /__look with its orders (cheats, the hour, the way to face) and holds the survivor there as a ghost,
@@ -25,7 +29,8 @@ import { placeFileCameras } from "./obelisk-cameras.ts";
 
 interface Camera { obelisk?: string; fromSpawn?: string; hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; replayDuration?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { film: { type: "boolean" }, "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" } } });
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { film: { type: "boolean" }, "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" }, canvas: { type: "string", default: "1920x1080@1" }, page: { type: "string", multiple: true, default: [] }, suffix: { type: "string", default: "" } } });
+const [size, dpr = "1"] = values.canvas!.split("@"), [winW, winH] = size!.split("x").map(Number), scale = Number(dpr);
 const [map, list, out] = positionals;
 if (!map || !list || !out || !values.dist) throw new Error("bun tools/mapworld/gpu-views.ts <file.snmap> <cameras.json> <out folder> --dist <built client>");
 if (!existsSync(join(values.dist, "main.js"))) throw new Error(`no built client in ${values.dist}`);
@@ -99,7 +104,7 @@ const hold = setInterval(() => {
 
 const profile = join(work, "profile");
 const port = 9300 + Math.floor(Math.random() * 500);
-const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=1920,1080", "--force-device-scale-factor=1", "--enable-gpu", "--ignore-gpu-blocklist", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
+const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--window-size=${winW},${winH}`, `--force-device-scale-factor=${scale}`, "--enable-gpu", "--ignore-gpu-blocklist", `--user-data-dir=${profile}`, `--remote-debugging-port=${port}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
 // Ended early, it takes its browser with it.
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => { browser.kill(); server.stop(); process.exit(1); });
 const report: Record<string, unknown>[] = [];
@@ -124,7 +129,7 @@ try {
   const send = (method: string, params: object = {}): Promise<any> => new Promise((r) => { waiting.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
   await send("Runtime.enable");
   await send("Page.enable");
-  await send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+  await send("Emulation.setDeviceMetricsOverride", { width: winW!, height: winH!, deviceScaleFactor: scale, mobile: false });
   // One survivor for the run, which each view moves.
   const who = Math.floor(Math.random() * 1e6);
   let first = true;
@@ -132,7 +137,7 @@ try {
     for (const v of views) {
       lines.length = 0;
       at = orders.get(v.name)!.at;
-      await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.film && v.replayEyeSeconds !== undefined ? "&trip" : ""}${values.off ? `&off=${values.off}` : ""}` });
+      await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.film && v.replayEyeSeconds !== undefined ? "&trip" : ""}${values.off ? `&off=${values.off}` : ""}${values.page!.map((p) => `&${p}`).join("")}` });
       // The first view fetches the map and the art as well.
       await Bun.sleep((first ? 2 : 1) * seconds * 1000);
       first = false;
@@ -140,7 +145,7 @@ try {
         await send("Runtime.evaluate", { expression: 'document.getElementById("ui").style.visibility = "hidden"' });
       }
       const shot = await send("Page.captureScreenshot", { format: "png" });
-      const name = `${v.name}-${tier}${values.off ? `-off-${values.off.replaceAll(",", "-")}` : ""}.png`;
+      const name = `${v.name}-${tier}${values.off ? `-off-${values.off.replaceAll(",", "-")}` : ""}${values.suffix}.png`;
       writeFileSync(join(out, name), Buffer.from(shot.data, "base64"));
       if (values.film && v.replayEyeSeconds !== undefined) {
         await recordIgnition(send, v.replayEyeSeconds, v.replayDuration ?? 20, join(out, `${v.name}-${tier}.mp4`));

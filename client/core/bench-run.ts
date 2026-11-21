@@ -121,6 +121,8 @@ export class BenchRun {
       turn: Object.fromEntries(Object.entries(this.counts).map(([k, list]) => [k, at(list, 0.5)])),
       ...drawn,
       tier: p.tier,
+      // The share of the canvas a side the last frame's scene was drawn at (render/post.ts sceneShare).
+      share: p.share,
     };
   }
 }

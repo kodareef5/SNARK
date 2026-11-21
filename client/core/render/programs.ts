@@ -24,10 +24,10 @@ import { WATER_FRAGMENT } from "./water.ts";
  * terrain window's heights and tints, 13 the far nodes' meshes (packet.ts `atlas`), 14 a body's hurt and decay layer.
  * 15 holds the details atlas for the details draws alone, and is free outside them: a program that does not read it may
  * bind something else there. 16, the first past the sixteen a program may read at most, holds the sky's openness
- * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame and 23 the local reflection. WebGL2 has 32 units at the
- * least, and no program reads more than fifteen.
+ * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection and 24 what stands
+ * overhead (roof.ts). WebGL2 has 32 units at the least, and no program reads more than sixteen.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -48,10 +48,11 @@ const GROUND = { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint
 const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
 
 /**
- * What a lit program defines: on a tier with contact, the contact of bodies (contact.ts), and where its frame is drawn
- * into the light target (post.ts), that it shows light, which the finish tones and grades.
+ * What a lit program defines: on a tier with contact, the contact of bodies (contact.ts), on one with roofs, what stands
+ * overhead (roof.ts), and where its frame is drawn into the light target (post.ts), that it shows light, which the
+ * finish tones and grades.
  */
-const out = (tier: Tier, light: boolean): string => (tier.contact ? "#define CONTACT\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
+const out = (tier: Tier, light: boolean): string => (tier.contact ? "#define CONTACT\n" : "") + (tier.roofs ? "#define ROOF\n" : "") + (drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "");
 
 /**
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
@@ -66,12 +67,12 @@ function flatOr(tier: Tier, format: TextureFormat, hard: boolean, light: boolean
   const facades = weathers ? FACADE_TIERS[tier.name] : null;
   const own = weathers ? ownVertex(worldVertex(vertex)) : worldVertex(vertex);
   const facadeUnits: Record<string, number> = facades ? { uFacadeBase: UNIT.facade, uFacadeNormal: UNIT.facade + 1, uFacadeOrm: UNIT.facade + 2, uFacadeRooms: UNIT.facade + 3, uFacadeMarks: UNIT.facade + 4 } : {};
-  return { vertex: litVertex ?? (facades ? facadeVertex(own) : FACADE_TIERS[tier.name] && vertex === FAR_MESH_VERTEX ? facadeFarVertex(own) : own), fragment: streetText((facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), weather && tier.lit), defines: (weather ? "#define STREET_FINISH\n" : "") + (weather && tier.lit ? "#define STREET\n" : "") + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + `#define WORLD_TAPS ${Math.max(1, tier.anisotropy).toFixed(1)}\n` + (weathers ? `#define WORLD_WEATHER\n${tier.finishes >= 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits, ...(weather && tier.lit ? { uStreetEnv: UNIT.street } : {}) } };
+  return { vertex: litVertex ?? (facades ? facadeVertex(own) : FACADE_TIERS[tier.name] && vertex === FAR_MESH_VERTEX ? facadeFarVertex(own) : own), fragment: streetText((facades ? lit.replaceAll("FACADE_NORMAL", format === "astc" ? "ra" : "rg") : lit.replace(FACADE_GLSL, "")).replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), weather && tier.lit), defines: (weather ? "#define STREET_FINISH\n" : "") + (weather && tier.lit ? "#define STREET\n" : "") + (tier.finish === "light" ? "#define WORLD_LIGHT\n" : tier.relief ? "#define WORLD_RELIEF\n" : "") + `#define WORLD_TAPS ${Math.max(1, tier.anisotropy).toFixed(1)}\n` + (weathers ? `#define WORLD_WEATHER\n${tier.finishes >= 1024 ? "#define WORLD_EDGES\n" : "#define WORLD_EDGE_LINE\n"}` : "") + (facades ? `#define FACADE\n${facades.reflect ? "#define FACADE_ROOMS\n" : ""}` : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uRoof: UNIT.roof, ...(litVertex ? {} : { uGroundHeight: UNIT.heights }), ...facadeUnits, ...(weather && tier.lit ? { uStreetEnv: UNIT.street } : {}) } };
 }
 
 /** A SURFACE program of a variant: a material's maps on their units, and the masks and palette only where it is dyed. */
 function surface(tier: Tier, format: TextureFormat, hard: boolean, light: boolean, variant: SurfaceVariant): ProgramText {
-  const samplers: Record<string, number> = { uBones: UNIT.bones, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uGroundHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights };
+  const samplers: Record<string, number> = { uBones: UNIT.bones, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uSkyOpen: UNIT.open, uRoof: UNIT.roof, uGroundHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights };
   if (tier.lit) samplers.uStreetEnv = UNIT.street;
   if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
   if (variant.layered) samplers.uLayer = UNIT.layer;

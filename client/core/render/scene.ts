@@ -49,6 +49,7 @@ import { CITY_BUFFER, FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSourc
 import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budget.ts";
 import type { FarCity, CitySource } from "./farcity.ts";
 import type { CityBlocks, BlocksSource } from "./cityblocks.ts";
+import type { RoofMap } from "./roofmap.ts";
 import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
 import { CrownCover, coverDistance, type CoverLooks, type CoverRule } from "./cover.ts";
 import { FarNodes, farLevelOf, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
@@ -69,7 +70,7 @@ import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
-import { lightBytes, lightSamples, postFrame } from "./post.ts";
+import { lightBytes, lightSamples, postFrame, sceneSize } from "./post.ts";
 import { skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
@@ -448,6 +449,8 @@ export class Scene {
   canvasWidth = 1280;
   canvasHeight = 720;
   supersampled = false;
+  /** The share of the canvas a side a frame with a light target draws its scene at before the governor's steps (post.ts sceneShare). The app sets it. */
+  share = 1;
   /** Whether this frame is drawn with the page's other effects off (FramePacket.alternate). */
   alternate = false;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
@@ -694,7 +697,7 @@ export class Scene {
   /** What the city's blocks are made from, until the late code (city-late.ts) has come to make them. */
   private blocksFrom: { tops: BlocksSource; colours: Uint8Array } | null;
   /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
-  static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks } | null = null;
+  static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks; RoofMap: typeof RoofMap } | null = null;
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
   private readonly farMesh: number;
@@ -753,6 +756,8 @@ export class Scene {
     if (left !== 0) this.cast(mesh, view, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, left);
   };
   /** Linear RGB of the open sky and of deep water. */
+  /** The pack's colours, four bytes each, which the map of what stands overhead takes the ground's colour from (roof.ts). */
+  private readonly groundPalette: Uint8Array;
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
   /** The nearest and farthest depth the clouds' puffs reach this frame. */
@@ -762,6 +767,7 @@ export class Scene {
   /** `opts.farPalms`: the far store draws palms as their frond level, not their solid, for a bench's comparison (farLevelOf). */
   constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort; pages?: readonly Uint8Array[] }, opts: { farPalms?: boolean } = {}) {
     this.world = world;
+    this.groundPalette = pack.palette;
     this.terrain = new TerrainLod(world.hf);
     this.assets = new Assets(reg, pack, stream?.manifest, stream?.port, stream?.pages);
     // The renderer holds the sky table on every tier.
@@ -973,6 +979,7 @@ export class Scene {
     this.budget.begin(this.assets.tier);
     p.tier = this.assets.tier;
     p.lit = p.tier.lit;
+    p.room = p.tier.post ? this.share : 1; p.share = p.tier.post ? this.share * (p.tier.post.scale ?? 1) : 1;
     p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
     p.farViewProj.set(cam.ranges[PASS_FAR]);
     p.nearViewProj.set(cam.nearViewProj);
@@ -991,7 +998,7 @@ export class Scene {
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky, this.fadeFrom);
-      postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
+      postFrame(p.frame, p.tier, this.hour, Math.round(this.canvasHeight * p.room), p.share);
       p.lightSamples = lightSamples(this.supersampled);
       contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
       if (p.tier.contact) this.parkedContacts.add(p.frame, this.world.structs, this.assets.manifest.meshes, this.meshOfKind, cam);
@@ -1097,7 +1104,7 @@ export class Scene {
     const c = this.cascades;
     const setup = p.tier.shadows;
     this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
-    if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(this.canvasWidth, this.canvasHeight, lightSamples(this.supersampled)) : 0);
+    if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(...sceneSize(this.canvasWidth, this.canvasHeight, p.room), lightSamples(this.supersampled)) : 0);
     this.casting = false;
     this.characters.shadows = null;
     if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {
@@ -1765,6 +1772,8 @@ export class Scene {
     this.clearAt[3] = 0;
     this.city = new Scene.late.FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
     this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds);
+    this.farShadow.roof = new Scene.late.RoofMap();
+    this.farShadow.roof.palette = this.groundPalette;
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];
     if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));

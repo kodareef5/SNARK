@@ -128,11 +128,18 @@ export interface Tier {
   /**
    * The frame's finish (render/post.ts): drawn as light into a target of the shell's and finished in one pass, with
    * `bloom` the share of bloom's levels kept, the narrowest first (0 for no bloom); or null, each shader toning its own
-   * light onto the canvas as medium has always drawn.
+   * light onto the canvas as medium has always drawn. `pixels`: the most pixels the scene is drawn at where the player
+   * leaves the render resolution to the game, the finish taking it up to the canvas (post.ts sceneShare); 0 for the
+   * canvas's own. `scale`: the share a side of that the governor's steps draw, 1 where left out.
    */
-  readonly post: { readonly bloom: number } | null;
+  readonly post: { readonly bloom: number; readonly pixels: number; readonly scale?: number } | null;
   /** Whether bodies that move take the sky's light from what is under them (render/contact.ts). */
   readonly contact: boolean;
+  /**
+   * Whether what stands overhead takes the sky's light down under it (render/roof.ts): a texture read more on each lit
+   * pixel, so not on a phone.
+   */
+  readonly roofs: boolean;
 }
 
 const MB = 1024 * 1024;
@@ -169,6 +176,10 @@ const PHONE_CITY = 0.7;
 const VIEW = 4000;
 // Ultra draws the screen's own pixels: drawn twice a side, a light target of its size cost 10 ms more than ultra's whole
 // frame on an M5 (planning/architecture/rendering.md), and its multisampling is the light target's.
+// High draws its scene at no more than 5.1 M pixels and the finish takes it up to the canvas: a laptop's 3,600 by 1,924
+// is drawn at 85% a side, where three quarters read softer up close, and 1,600p and under whole
+// (planning/workstreams/pixels.md).
+const HIGH_PIXELS = 5.1e6;
 
 export const TIERS: readonly Tier[] = [
   {
@@ -177,6 +188,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 384, share: 0.5, reach: 0.6, fill: 0.5 }, budget: { triangles: 2e6, draws: 2048 }, bodyError: 1,
     post: null,
     contact: false,
+    roofs: false,
   },
   {
     name: "medium", reflectionHz: 1, texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, fewest: 0, canvas: 0, anisotropy: 1, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
@@ -184,20 +196,23 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 1536, share: 1, reach: 1, fill: 1 }, budget: { triangles: 4e6, draws: 1024, spend: 1, spendTo: 2.5e6 }, bodyError: 1,
     post: null,
     contact: false,
+    roofs: true,
   },
   {
     name: "high", reflectionHz: 4, texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
     lit: true, split: 384, viewDistance: 6000, reach: { bases: 2048, city: 3000, trees: 1500, rocks: 900, bushes: 500, parts: 2000 }, fade: 0.25, city: { levels: HIGH_CITY }, nodes: { chunks: 4, band: [216, 248], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false }, gpuBytes: PHONE_HIGH_CARD, finish: "light", city: { levels: nearer(HIGH_CITY, PHONE_CITY) }, anisotropy: 1, viewDistance: VIEW, budget: { triangles: 4e6, draws: 2048 }, nodes: { chunks: 4, band: [216, 248] } }, finish: "full", finishes: 1024, relief: false, clouds: 2, water: "simple", waterMarks: 12,
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 6e6, draws: 2048, spend: 2, spendTo: 3.5e6 }, bodyError: 1,
-    post: { bloom: 1 },
+    post: { bloom: 1, pixels: HIGH_PIXELS },
     contact: true,
+    roofs: true,
   },
   {
     name: "ultra", reflectionHz: 4, texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
     lit: true, split: 384, viewDistance: 8000, reach: { bases: 2048, city: 3000, trees: 2000, rocks: 1200, bushes: 600, parts: 3000 }, fade: 0.25, city: { levels: [boxes(1100), lattice(1500), bare(2000), mass(2500, 4), mass(Infinity, 8)] }, nodes: { chunks: 5, band: [280, 312], levels: 400, cover: { from: 8, per: 3, most: 8 } }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false, fewest: 0, anisotropy: 1 }, finish: "full", finishes: 2048, relief: false, clouds: 2, water: "simple", waterMarks: 12,
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096, spend: 2, spendTo: 5e6 }, bodyError: 1,
-    post: { bloom: 1 },
+    post: { bloom: 1, pixels: 0 },
     contact: true,
+    roofs: true,
   },
 ];
 
@@ -252,14 +267,15 @@ const touched = new Map<Tier, Tier>();
 
 /**
  * The rule for touch-first devices: a tier as one draws it, the same copy each time, since the renderer keeps programs
- * by the tier. It draws no light target (render/post.ts): the finish is for a desktop's spare frame, not a phone's.
+ * by the tier. It draws no light target (render/post.ts): the finish is for a desktop's spare frame, not a phone's. Nor
+ * does it take the sky's light down under roofs (render/roof.ts), whose texture read a phone's pixels would pay.
  */
 export function forTouch(tier: Tier, touchFirst: boolean): Tier {
   if (!touchFirst || !tier.touch) return tier;
   const had = touched.get(tier);
   if (had) return had;
   const { offered: _, ...values } = tier.touch;
-  return touched.set(tier, { ...tier, ...values, waterMarks: Math.min(4, tier.waterMarks), reflectionHz: Math.min(1, tier.reflectionHz), post: null, contact: false }).get(tier)!;
+  return touched.set(tier, { ...tier, ...values, waterMarks: Math.min(4, tier.waterMarks), reflectionHz: Math.min(1, tier.reflectionHz), post: null, contact: false, roofs: false }).get(tier)!;
 }
 
 /** The tiers the settings offer: on a touch-first device, those whose touch rule does not leave them out. */
