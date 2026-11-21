@@ -11,6 +11,8 @@
     {"name": "drop-4km", "x": 4210, "z": 2380, "up": 160, "look": [7038, 5200, 320], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
     {"name": "drop-4km-night", "hour": 22, "x": 4210, "z": 2380, "up": 160, "look": [7038, 5200, 320], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
     {"name": "cast-site", "hour": 18.6, "eyeSeconds": 0, "cast": {"before": 5, "after": 12}, "x": 3440, "z": 3840, "up": 2, "look": [3422, 2742, 1700], "run": ["supply cancel all", "supply call 3470 3900 purple stable ringed"]},
-    {"name": "cast-far", "hour": 18.6, "eyeSeconds": 0, "cast": {"before": 5, "after": 12}, "x": 6340, "z": 4470, "up": 70, "look": [4400, 3300, 1300], "run": ["supply cancel all", "supply call 3470 3900 purple stable ringed"]}
+    {"name": "cast-far", "hour": 18.6, "eyeSeconds": 0, "cast": {"before": 5, "after": 12}, "x": 6340, "z": 4470, "up": 70, "look": [4400, 3300, 1300], "run": ["supply cancel all", "supply call 3470 3900 purple stable ringed"]},
+    {"name": "landing-near", "eyeSeconds": 0, "cast": {"before": -18, "after": 14}, "x": 7031, "z": 5175, "up": 1.7, "look": [7038, 5181, 9], "run": ["supply cancel all", "supply call 7038 5181 yellow works plain"]},
+    {"name": "landing-above", "eyeSeconds": 0, "cast": {"before": -14, "after": 10}, "x": 7010, "z": 5150, "up": 95, "look": [7038, 5181, 30], "run": ["supply cancel all", "supply call 7038 5181 yellow works plain"]}
   ]
 }

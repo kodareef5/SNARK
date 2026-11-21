@@ -68,6 +68,42 @@ export function haloAt(seconds: number, k: number, out: { height: number; streng
   out.strength = smooth(t / 5) * (1 - smooth((t - HALO_CLIMB + 14) / 12));
 }
 
+// The jets: a plume under each bell, modelled a metre long.
+/** Metres a plume is long at no thrust and at full, and how much of its strength flutters. */
+export const JET_LEAST = 0.45;
+export const JET_MOST = 3.1;
+export const JET_FLUTTER = 0.14;
+/** Metres from the eye within which its jets and its dust are drawn. */
+export const JET_REACH = 320;
+/** Seconds between the puffs of dust its jets raise while they play on the ground, and how near the ground that is. */
+export const WASH_EVERY = 0.22;
+export const WASH_HEIGHT = 9;
+/** Metres it sinks on its legs as it takes its weight, and how fast that rings out. */
+export const SQUASH = 0.055;
+
+/** How far a capsule is below where it stands, `since` seconds after it landed: down on its legs and up again, once. */
+export function squash(since: number): number {
+  return since < 0 || since > 1.6 ? 0 : SQUASH * Math.sin(13 * since) * Math.exp(-4.5 * since);
+}
+
+/** How long bell `k`'s plume is at `thrust`, `seconds` on, with `room` metres under the bell to the ground. */
+export function jetLength(thrust: number, seconds: number, k: number, room: number): number {
+  const flutter = 1 + JET_FLUTTER * Math.sin(seconds * 41 + k * 2.1) * Math.sin(seconds * 17.3 + k);
+  return Math.max(0.05, Math.min(room + 0.35, (JET_LEAST + (JET_MOST - JET_LEAST) * thrust) * flutter));
+}
+
+/** Where bell `k`'s mouth is, as the capsule stands: writes x, y and z to `out`. */
+export function bellAt(out: Float32Array | number[], s: CapsuleStance, k: number): void {
+  const t = (TAU * (k + 0.5)) / profile.legs;
+  const lx = profile.bells.radius * Math.cos(t);
+  const lz = profile.bells.radius * Math.sin(t);
+  const c = Math.cos(s.yaw);
+  const n = Math.sin(s.yaw);
+  out[0] = s.x + lx * c + lz * n;
+  out[1] = s.y + profile.bells.exit;
+  out[2] = s.z - lx * n + lz * c;
+}
+
 /** Metres from the eye within which a flying capsule's trail is drawn as a piece of light wherever its streak is; and the most it is long. */
 export const TRAIL_REACH = 1500;
 export const TRAIL_MOST = 140;

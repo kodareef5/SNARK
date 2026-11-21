@@ -39,7 +39,7 @@ import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { SupplyView } from "../supply.ts";
-import { TRAIL_MOST, TRAIL_REACH, alongBone, CAPSULE, CAPSULE_REACH, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "./supply.ts";
+import { JET_REACH, WASH_EVERY, WASH_HEIGHT, bellAt, jetLength, squash, TRAIL_MOST, TRAIL_REACH, alongBone, CAPSULE, CAPSULE_REACH, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "./supply.ts";
 import { packEffect } from "./supply-light.ts";
 import { TRAIL_SECONDS, writeDropSky } from "./supply-sky.ts";
 import { MARKS, POSE_COMING, POSE_FLYING, POSE_GONE, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
@@ -536,6 +536,10 @@ export class Scene {
   private readonly capsuleRows = new Float32Array(BONE_FLOATS);
   private readonly capsuleTints = new Map<number, number>();
   private readonly capsuleHalo = { height: 0, strength: 0 };
+  private readonly capsuleBell = new Float32Array(3);
+  /** By drop: the tick its jets last raised dust, and the state it was last seen in, for the burst as it lands. */
+  private readonly capsuleWash = new Map<number, number>();
+  private readonly capsuleState = new Map<number, number>();
   shotTick = 0;
   /** Structures falling after a removal. The app sets it. */
   falling: Falling | null = null;
@@ -2322,6 +2326,11 @@ export class Scene {
     };
     const seconds = view.tick / TICK_RATE;
     const halo = this.capsuleHalo;
+    // What is kept by drop is let go with its drop.
+    if (this.capsuleState.size > list.rows.length + 8) {
+      this.capsuleState.clear();
+      this.capsuleWash.clear();
+    }
     for (const row of list.rows) {
       supplyPose(row, view.tick, TICK_RATE, pose);
       if (pose.state === POSE_GONE) continue;
@@ -2400,6 +2409,35 @@ export class Scene {
         supplyPose(row, view.tick, TICK_RATE, pose);
       }
       if (far > CAPSULE_REACH || !cam.boxVisible(s.x - 1.6, s.y - 0.2, s.z - 1.6, s.x + 1.6, s.y + 2.9, s.z + 1.6)) continue;
+      // Its jets: a plume under each bell while it brakes, a moment after it stands, and as it goes; and the dust they
+      // raise while they play on the ground, with a burst as it touches down.
+      const over = pose.y - row.y;
+      if (pose.thrust > 0.01 && far < JET_REACH) {
+        s.yaw = (row.look / 256) * 2 * Math.PI;
+        this.effect[0] = seconds;
+        this.effect[1] = rgb;
+        this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
+        for (let k = 0; k < CAPSULE.legs; k++) {
+          bellAt(this.capsuleBell, s, k);
+          const long = jetLength(pose.thrust, seconds, k, over + CAPSULE.bells.exit);
+          this.effect[2] = pose.thrust;
+          uprightBone(rows, 0, this.capsuleBell[0]!, this.capsuleBell[1]!, this.capsuleBell[2]!, 1 + 0.5 * pose.thrust, long);
+          piece(PIECE.jet, true, long + 1, 0);
+        }
+        this.effect.fill(0);
+        if (over < WASH_HEIGHT && view.tick - (this.capsuleWash.get(row.id) ?? -Infinity) > WASH_EVERY * TICK_RATE) {
+          this.capsuleWash.set(row.id, view.tick);
+          this.details.groundDust(row.id, row.x, row.y, row.z, view.tick, 1.2 + 1.6 * (1 - over / WASH_HEIGHT), 3, 6);
+        }
+      }
+      if (far < JET_REACH) {
+        // The touchdown itself, once, as it is seen to land.
+        const was = this.capsuleState.get(row.id);
+        if (was !== undefined && was !== POSE_LANDED && pose.state === POSE_LANDED && pose.since < 0.5) this.details.groundDust(row.id + 65536, row.x, row.y, row.z, view.tick, 2.6, 22, 30);
+        this.capsuleState.set(row.id, pose.state);
+      }
+      // It sinks on its legs as it takes its weight, and comes up again.
+      if (pose.state === POSE_LANDED) s.y -= squash(pose.since);
       let dye = this.capsuleTints.get(rgb);
       if (dye === undefined) this.capsuleTints.set(rgb, (dye = nearestColour(this.groundPalette, (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)));
       this.capsuleDye = dye;

@@ -2,7 +2,7 @@
 // capsule's stance, held to the measurements its model is built to (shared/world/supply-capsule.json).
 
 import { expect, test } from "bun:test";
-import { CAPSULE, HALOS, HALO_CLIMB, PIECE, PIECES, SHAFT_FADE_FROM, SHAFT_FADE_TO, SHAFT_HAZE, SHAFT_PIXELS, SHAFT_RADIUS, SHEATH_WIDER, SLATS, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, slatOpen, uprightBone, type CapsuleStance } from "../../client/core/render/supply.ts";
+import { JET_LEAST, JET_MOST, SQUASH, bellAt, jetLength, squash, CAPSULE, HALOS, HALO_CLIMB, PIECE, PIECES, SHAFT_FADE_FROM, SHAFT_FADE_TO, SHAFT_HAZE, SHAFT_PIXELS, SHAFT_RADIUS, SHEATH_WIDER, SLATS, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, slatOpen, uprightBone, type CapsuleStance } from "../../client/core/render/supply.ts";
 import { MARKS } from "../../shared/sim/supply.ts";
 
 const TAU = 2 * Math.PI;
@@ -160,4 +160,31 @@ test("a ringed drop's halos climb its shaft one after another, each out of the f
 test("a piece of light stands upright where it is put, as wide and as tall as it is told", () => {
   uprightBone(rows, 0, 5, -2, 30, 0.42, 0.5);
   expect([through(rows, 1, 600, 0), through(rows, 0, 0, 1)].map((p) => p.map((v) => Math.round(v * 1e5) / 1e5))).toEqual([[5.42, 298, 30], [5, -2, 30.42]]);
+});
+
+test("a jet's plume is under its bell, between the legs, grows with its thrust and never reaches under the ground; the capsule sinks on its legs once as it lands", () => {
+  const at = [0, 0, 0];
+  const mouths: number[][] = [];
+  for (let k = 0; k < CAPSULE.legs; k++) {
+    bellAt(at, stance({ x: 5, y: 10, z: -3 }), k);
+    mouths.push([...at]);
+    expect([Math.abs(Math.hypot(at[0]! - 5, at[2]! + 3) - CAPSULE.bells.radius) < 1e-6, Math.abs(at[1]! - 10 - CAPSULE.bells.exit) < 1e-6]).toEqual([true, true]);
+    // Half way between two legs' hinges, round the axis.
+    legBone(rows, 0, stance({ x: 5, y: 10, z: -3 }), k);
+    const hinge = through(rows, 0, 0, 0);
+    const turn = Math.atan2(at[2]! + 3, at[0]! - 5) - Math.atan2(hinge[2] + 3, hinge[0] - 5);
+    expect(Math.abs(((turn + 3 * TAU) % TAU) - TAU / 6)).toBeLessThan(1e-6);
+  }
+  // Turned with the capsule.
+  bellAt(at, stance({ yaw: TAU / 4 }), 0);
+  bellAt(mouths[0]!, stance(), 0);
+  expect([at[0]! - mouths[0]![2]!, at[2]! + mouths[0]![0]!].every((v) => Math.abs(v) < 1e-6)).toBe(true);
+  for (const seconds of [0, 0.7, 3.33, 91]) {
+    const [idle, full] = [jetLength(0, seconds, 1, 50), jetLength(1, seconds, 1, 50)];
+    expect([idle > JET_LEAST * 0.8 && idle < JET_LEAST * 1.2, full > JET_MOST * 0.8 && full < JET_MOST * 1.2, jetLength(1, seconds, 1, 0.4) <= 0.75, jetLength(0.5, seconds, 0, 50) > idle]).toEqual([true, true, true, true]);
+  }
+  // On its legs: down at once, back up, and still within two seconds, never more than its measure.
+  let deepest = 0;
+  for (let t = 0; t < 2; t += 0.01) deepest = Math.max(deepest, squash(t));
+  expect([squash(-1), squash(0), deepest > 0.03 && deepest <= SQUASH, Math.abs(squash(1.5)) < 0.001, squash(2)]).toEqual([0, 0, true, true, 0]);
 });
