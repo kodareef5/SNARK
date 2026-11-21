@@ -713,7 +713,7 @@ ${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetM
     // tube by how it faces the eye, a band across its width; along a tube it is metres along the run, in strips of 32.
     float row = 8.0*(1.0-vUv.y), band = floor(row), v = clamp((row-band-0.04)/0.92,0.0,1.0);
     float facing = abs(dot(normalize(vNormal), normalize(vRel)));
-    vec3 e = eyeEnergy(vRel, band == ${CHANNEL_STRIP}.0 ? -2.0e9 : vUv.x*32.0, band == ${CHANNEL_STRIP}.0 ? abs(2.0*v-1.0) : sqrt(max(0.0,1.0-facing*facing)), length(fwidth(vRel)));
+    vec3 e = eyeEnergy(vRel, band == ${CHANNEL_STRIP}.0 ? -2.0e9 : vUv.x*32.0, band == ${CHANNEL_STRIP}.0 ? 2.0*v-1.0 : sqrt(max(0.0,1.0-facing*facing)), length(fwidth(vRel)));
     e *= band == ${CHANNEL_DIM}.0 ? 0.3 : 1.0;
 #ifdef LIGHT_TARGET
     o = vec4(e,1.0);

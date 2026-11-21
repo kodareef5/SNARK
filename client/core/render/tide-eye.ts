@@ -177,7 +177,8 @@ const ENERGY_WHITE = [1, 0.96, 0.9];
  * and carried by packets that climb the instrument to its emitter (on the deck, run in to the console), closer and
  * quicker as it charges, breathing, surging at ignition and flickering with each strike by the site's pulse. Its colour
  * is the site's, white where it is hottest. `along` is metres along the channel, or NaN to take it from where the point
- * is on the instrument; `across` is 0 at the channel's middle and 1 at its walls; `footprint` the metres a pixel spans.
+ * is on the instrument; `across` is 0 at the channel's middle and -1 and 1 at its walls (a tube's, by how it faces the
+ * eye, is never under 0); `footprint` the metres a pixel spans.
  * With no site lit, nothing: the glow program then shows the light in its own colour.
  */
 export function eyeEnergy(frame: Float32Array, x: number, y: number, z: number, along: number, across: number, footprint: number, out: Float64Array | number[]): void {
@@ -210,8 +211,11 @@ export function eyeEnergy(frame: Float32Array, x: number, y: number, z: number, 
     const packet = Math.exp(-(1 - k) * 4) * sstep(1, 0.95, k) * (0.35 + 0.65 * eyeHash(Math.floor(wave), 17, 5));
     const surge = Math.pow(0.5 + 0.5 * Math.sin((a - 25 * run) * 0.039), 4);
     const beads = 0.92 + 0.08 * Math.cos(a * 31.4) * sstep(0.08, 0.02, footprint);
+    // Sparks racing along it four times as fast, one in three lengths of 2.5 m, each somewhere across; seen close.
+    const sparkAt = (a - 9 * run) / 2.5, cell = Math.floor(sparkAt), into = (sparkAt - cell) * 2.5;
+    const spark = eyeHash(cell, 23, 6) < 0.35 ? Math.exp(-(((into - 0.4 - 1.7 * eyeHash(cell, 29, 6)) / 0.12) ** 2) - (((across - 1.6 * eyeHash(cell, 31, 6) + 0.8) / 0.15) ** 2)) * sstep(0.15, 0.04, footprint) : 0;
     const pulse = open * (0.62 + 0.12 * Math.sin(1.25 * t) + 0.3 * power + (0.2 + 0.7 * charge) * surge + 1.3 * lit);
-    const e = pulse * (0.45 + 0.55 * threads + (0.7 + 0.9 * charge + 0.3 * power) * packet) * beads;
+    const e = pulse * (0.45 + 0.55 * threads + (0.7 + 0.9 * charge + 0.3 * power) * packet + 1.2 * spark) * beads;
     const core = Math.exp(-across * across * 8), body = Math.exp(-across * across * 2.6);
     const hot = e * core, white = 0.55 * hot * hot;
     for (let c = 0; c < 3; c++) out[c] = frame[at + 4 + c]! * e * body * 1.45 + ENERGY_WHITE[c]! * white;
@@ -584,8 +588,11 @@ vec3 eyeEnergy(vec3 rel, float along, float across, float footprint) {
     float packet = exp(-(1.-k)*4.)*smoothstep(1.,.95,k)*(.35+.65*eyeHash(vec2(floor(wave),17.),5.));
     float surge = pow(.5+.5*sin((a-25.*run)*.039),4.);
     float beads = .92+.08*cos(a*31.4)*smoothstep(.08,.02,footprint);
+    float sparkAt = (a-9.*run)/2.5, cell = floor(sparkAt), into = (sparkAt-cell)*2.5;
+    float sx = (into-.4-1.7*eyeHash(vec2(cell,29.),6.))/.12, sy = (across-1.6*eyeHash(vec2(cell,31.),6.)+.8)/.15;
+    float spark = eyeHash(vec2(cell,23.),6.) < .35 ? exp(-sx*sx-sy*sy)*smoothstep(.15,.04,footprint) : 0.;
     float pulse = foot.w*(.62+.12*sin(1.25*t)+.3*tint.w+(.2+.7*charge)*surge+1.3*lit);
-    float e = pulse*(.45+.55*threads+(.7+.9*charge+.3*tint.w)*packet)*beads;
+    float e = pulse*(.45+.55*threads+(.7+.9*charge+.3*tint.w)*packet+1.2*spark)*beads;
     float hot = e*exp(-across*across*8.);
     light = tint.rgb*e*exp(-across*across*2.6)*1.45+vec3(${ENERGY_WHITE.map(g).join(",")})*.55*hot*hot;
   }
