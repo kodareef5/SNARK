@@ -10,7 +10,8 @@ import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
 import { DIGITS_GLSL } from "./digits.ts";
-import { DETAIL_DIGITS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE } from "./packet.ts";
+import { DETAIL_DIGITS, DETAIL_TIRE, DETAIL_GLASS, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_SHADED_POOL, DETAIL_WAKE, DETAIL_WIRE, MAX_CONTACTS } from "./packet.ts";
+import { POOL_ACROSS, POOL_UP, poolShadeGlsl } from "./lamp.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
@@ -34,7 +35,7 @@ uniform mat4 uViewProj;
 uniform float uCells;
 out vec3 vRel;
 out vec2 vUv, vCorner;
-flat out vec3 vA, vB, vNormal;
+flat out vec3 vA, vB, vNormal, vLens;
 flat out float vShows, vGrey, vFloor, vHalf;
 flat out uint vFlags;
 void main() {
@@ -47,6 +48,8 @@ void main() {
   vCorner = c;
   vA = iA.rgb;
   vB = iB.rgb;
+  // A shaded pool's lens, from where its second colour holds it from its middle (lamp.ts lensWord).
+  vLens = iMiddle + (iB.rgb - vec3(0.5, 0.0, 0.5)) * vec3(${f(POOL_ACROSS)}, ${f(POOL_UP)}, ${f(POOL_ACROSS)});
   vNormal = normalize(cross(iAcross, iAlong));
   vShows = float(iMisc.z) / 255.0;
   vGrey = float(iMisc.w) / 255.0;
@@ -178,9 +181,10 @@ ${SHAPES}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}void main
 
 export const DETAIL_LIT_FRAGMENT = `#version 300 es
 precision highp float;
-${INS}uniform sampler2D uDetails;
+${INS}flat in vec3 vLens;
+uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${STREET_GLSL}${poolShadeGlsl(MAX_CONTACTS)}${ROTOR_SHAPE}${LAMP_SHAPE}${POOL_SHAPE}${KEEPS}${DIGITS_GLSL}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
@@ -217,7 +221,7 @@ void main() {
     vec3 s = pool ? pooled(vCorner) : lamp ? lampOf(vCorner) : rotorOf(vCorner, vGrey);
     t = vec4(s.z, s.y, 0.0, s.x);
   } else t = texture(uDetails, vUv);
-  float a = covers(t.a);
+  float a = covers(t.a) * (vFlags == ${DETAIL_SHADED_POOL}u ? poolShade(vRel, vLens) : 1.0);
   if (a < 0.004) discard;
   vec3 v = -normalize(vRel);
   vec3 n = facing(v);

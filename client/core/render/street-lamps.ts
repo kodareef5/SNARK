@@ -5,15 +5,17 @@
 // as a light too (lamp.ts): its pool card fades out as its light fades in, and when another lamp is the nearest the
 // light fades back into the first one's card before the next one's card fades into its light, so one lamp lights at a
 // time. There every lamp's pool card is laid out as the light's pool is and shows on the road as the light does, so
-// the light going into a card and out of another changes little but the light on what stands in it.
+// the light going into a card and out of another changes little but the light on what stands in it. Where the tier's
+// shadows say so (medium, high and ultra off a phone), every pool card takes the shadows of the bodies and cars of the
+// frame's contact list (lamp.ts poolShade), so each lamp's pool has the shadows a player looks for, not the one lamp's.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import type { Camera } from "./camera.ts";
-import { LAMP_FADE, LAMP_HOLD, LAMP_LONG, LAMP_OUT, LAMP_POOL, LAMP_REACH, LAMP_WIDE } from "./lamp.ts";
-import { DETAIL, DETAIL_POOL, type FramePacket } from "./packet.ts";
+import { LAMP_FADE, LAMP_HOLD, LAMP_LONG, LAMP_OUT, LAMP_POOL, LAMP_REACH, LAMP_WIDE, lensWord } from "./lamp.ts";
+import { DETAIL, DETAIL_POOL, DETAIL_SHADED_POOL, type FramePacket } from "./packet.ts";
 import { lampsOn } from "./surface.ts";
 import { VehicleCards } from "./vehicle-cards.ts";
 
@@ -54,6 +56,8 @@ export class StreetLamps extends VehicleCards {
   on = true;
   /** Whether the nearest lamp may light as a light (passes.ts `lamp`), where the frame's tier lets it. */
   light = true;
+  /** Whether the pool cards take the shadows of the bodies near them (passes.ts `pools`), where the frame's tier lets them. */
+  shaded = true;
   /**
    * The lamp whose light lights, by its lens in the world and the way its head faces (x and z), while one is held; how
    * much of its light shows, 0 to 1, rising and falling over LAMP_FADE seconds; and the scene's clock at the frame
@@ -81,9 +85,12 @@ export class StreetLamps extends VehicleCards {
   /**
    * The cards for this frame, the camera at `cam` and the scene's clock at `now` ms: none by day, or where the content
    * has no lit lamp. With `lights`, where the tier lets a lamp light, the pool cards laid out as its light is, each on
-   * the ground `hf` has under its middle out over the road, and the lamp that lights (`lens`, `way` and `shows`).
+   * the ground `hf` has under its middle out over the road, and the lamp that lights (`lens`, `way` and `shows`). With
+   * `pools`, where the tier's shadows say so, each pool card takes the shadows of the bodies of the frame's contact list
+   * (lamp.ts `poolShade`), and holds where its lens is from its middle for that. The lamp that lights is the one nearest
+   * `focus`, the viewer's own body where it has one: in third person the camera stands metres behind it.
    */
-  build(p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number, now = 0, lights = false, hf: Heightfield | null = null): void {
+  build(p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number, now = 0, lights = false, hf: Heightfield | null = null, pools = false, focus: { readonly x: number; readonly z: number } = cam): void {
     this.begin();
     this.shows = 0;
     const step = this.last < 0 ? 0 : Math.min(0.1, Math.max(0, (now - this.last) / 1000));
@@ -104,8 +111,10 @@ export class StreetLamps extends VehicleCards {
         if (d < REACH) near.push(d, r * chunksX + c, i);
       }
     }
-    // The nearest first, as many as there is room for.
-    const order = Array.from({ length: near.length / 3 }, (_, k) => k).sort((a, b) => near[a * 3]! - near[b * 3]!).slice(0, MAX_LIT_LAMPS);
+    // The nearest first, as many as there is room for. Where more are near than that, they fade to nothing by the
+    // distance of the first left out, as they fade by REACH, so none is cut off as another comes nearer.
+    const all = Array.from({ length: near.length / 3 }, (_, k) => k).sort((a, b) => near[a * 3]! - near[b * 3]!);
+    const order = all.slice(0, MAX_LIT_LAMPS), edge = all.length > MAX_LIT_LAMPS ? near[all[MAX_LIT_LAMPS]! * 3]! : REACH;
     /** Lamp k's lens over the road and the way its head faces: local +z is (sin yaw, cos yaw). */
     const lensOf = (k: number, out: Float64Array): void => {
       const lamps = this.chunks.get(near[k * 3 + 1]!)!.lamps, i = near[k * 3 + 2]!, yaw = lamps[i + 3]!;
@@ -115,14 +124,14 @@ export class StreetLamps extends VehicleCards {
       out[1] = lamps[i + 1]! + LENS[1];
       out[2] = lamps[i + 2]! + out[4] * LENS[2];
     };
-    if (lights && this.light) this.hand(this.choose(order, lensOf, cam), lensOf, step);
-    const lens = this.lens, at = this.at, shared = lights && this.light && this.holding ? eased(this.share) : 0;
+    if (lights && this.light) this.hand(this.choose(order, lensOf, focus), lensOf, step);
+    const lens = this.lens, at = this.at, shared = lights && this.light && this.holding ? eased(this.share) : 0, shaded = pools && this.shaded;
     // The eye's right and up (camera.ts), for the glow turned to it.
     const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw), sp = Math.sin(cam.pitch), cp = Math.cos(cam.pitch);
     const rx = -cy, rz = sy, ux = -sy * sp, uy = cp, uz = -cy * sp;
     for (const k of order) {
       const d = near[k * 3]!, lamps = this.chunks.get(near[k * 3 + 1]!)!.lamps, i = near[k * 3 + 2]!;
-      const fade = on * Math.min(1, Math.max(0, (REACH - d) / (REACH - FADE_FROM)));
+      const fade = on * Math.min(1, Math.max(0, (edge - d) / ((edge * (REACH - FADE_FROM)) / REACH)));
       lensOf(k, at);
       // The lamp that lights shows as much less of its pool as its light shows.
       const lit = shared > 0 && this.same(at, this.held) ? shared : 0;
@@ -132,11 +141,11 @@ export class StreetLamps extends VehicleCards {
       // under it leans either way, which may stand higher or lower than the ground at the mast and rise across it.
       if (lights) {
         const mx = at[0]! + wx * LAMP_OUT, mz = at[2]! + wz * LAMP_OUT, ax = (wx * LAMP_WIDE) / 2, az = (wz * LAMP_WIDE) / 2, bx = (wz * LAMP_LONG) / 2, bz = (-wx * LAMP_LONG) / 2;
-        const my = hf ? hf.heightAt(mx, mz) - cam.y : y;
+        const my = (hf ? hf.heightAt(mx, mz) - cam.y : y) + CARD_LIFT;
         const ay = hf ? hf.heightAt(mx + ax, mz + az) - hf.heightAt(mx - ax, mz - az) : 0, by = hf ? hf.heightAt(mx + bx, mz + bz) - hf.heightAt(mx - bx, mz - bz) : 0;
-        this.card(mx - cam.x, my + CARD_LIFT, mz - cam.z, 2 * ax, ay, 2 * az, 2 * bx, by, 2 * bz, POOL_COLOUR, Math.round(LIT_POOL_SHOWS * fade * (1 - lit)));
-      } else this.card(lx, y + 0.04, lz, 0, 0, POOL, POOL, 0, 0, POOL_COLOUR, Math.round(POOL_SHOWS * fade * (1 - lit)));
-      this.card(lx, ly - 0.25, lz, rx * GLOW, 0, rz * GLOW, ux * GLOW, uy * GLOW, uz * GLOW, GLOW_COLOUR, Math.round(GLOW_SHOWS * fade));
+        this.card(mx - cam.x, my, mz - cam.z, 2 * ax, ay, 2 * az, 2 * bx, by, 2 * bz, POOL_COLOUR, Math.round(LIT_POOL_SHOWS * fade * (1 - lit)), shaded ? lensWord(lx - mx + cam.x, ly - my, lz - mz + cam.z) : -1);
+      } else this.card(lx, y + 0.04, lz, 0, 0, POOL, POOL, 0, 0, POOL_COLOUR, Math.round(POOL_SHOWS * fade * (1 - lit)), shaded ? lensWord(0, ly - y - 0.04, 0) : -1);
+      this.card(lx, ly - 0.25, lz, rx * GLOW, 0, rz * GLOW, ux * GLOW, uy * GLOW, uz * GLOW, GLOW_COLOUR, Math.round(GLOW_SHOWS * fade), -1);
     }
     lens[0] = this.held[0]! - cam.x;
     lens[1] = this.held[1]! - cam.y;
@@ -152,16 +161,16 @@ export class StreetLamps extends VehicleCards {
   }
 
   /**
-   * The lamp of this frame's (`order`) whose light should light, -1 for none: the one whose pool's middle is nearest the
-   * camera along the ground, within LAMP_REACH; but the one held while its pool is within reach and no other's is
+   * The lamp of this frame's (`order`) whose light should light, -1 for none: the one whose pool's middle is nearest
+   * `focus` along the ground, within LAMP_REACH; but the one held while its pool is within reach and no other's is
    * LAMP_HOLD metres nearer.
    */
-  private choose(order: readonly number[], lensOf: (k: number, out: Float64Array) => void, cam: Camera): number {
+  private choose(order: readonly number[], lensOf: (k: number, out: Float64Array) => void, focus: { readonly x: number; readonly z: number }): number {
     const at = this.at;
     let best = -1, nearest = LAMP_REACH, kept = -1, keptAt = Infinity;
     for (const k of order) {
       lensOf(k, at);
-      const d = Math.hypot(at[0]! + at[3]! * LAMP_OUT - cam.x, at[2]! + at[4]! * LAMP_OUT - cam.z);
+      const d = Math.hypot(at[0]! + at[3]! * LAMP_OUT - focus.x, at[2]! + at[4]! * LAMP_OUT - focus.z);
       if (d < nearest) {
         best = k;
         nearest = d;
@@ -189,16 +198,19 @@ export class StreetLamps extends VehicleCards {
     this.share = 0;
   }
 
-  /** A card at (x, y, z) from the camera with half axes across and along it, its face where across x along points. */
-  private card(x: number, y: number, z: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number, colour: number, shows: number): void {
+  /**
+   * A card at (x, y, z) from the camera with half axes across and along it, its face where across x along points; a
+   * shaded pool where `lens` is where its lens is from its middle (lamp.ts lensWord), else -1.
+   */
+  private card(x: number, y: number, z: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number, colour: number, shows: number, lens: number): void {
     if (shows <= 0) return;
     const i = this.next(), card = this.cards;
     card[i] = x; card[i + 1] = y; card[i + 2] = z;
     card[i + DETAIL.across] = ax; card[i + DETAIL.across + 1] = ay; card[i + DETAIL.across + 2] = az;
     card[i + DETAIL.along] = bx; card[i + DETAIL.along + 1] = by; card[i + DETAIL.along + 2] = bz;
     this.words[i + DETAIL.colourA] = colour;
-    this.words[i + DETAIL.colourB] = colour;
-    this.words[i + DETAIL.misc] = ((255 << 24) | (Math.min(255, shows) << 16) | (DETAIL_POOL << 8)) >>> 0;
+    this.words[i + DETAIL.colourB] = lens >= 0 ? lens : colour;
+    this.words[i + DETAIL.misc] = ((255 << 24) | (Math.min(255, shows) << 16) | ((lens >= 0 ? DETAIL_SHADED_POOL : DETAIL_POOL) << 8)) >>> 0;
   }
 
   /** A chunk's lit lamps, read again only when its table has changed. */

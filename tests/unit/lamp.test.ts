@@ -1,17 +1,18 @@
 // The street lamp that lights as a light by night (render/lamp.ts): its pool and fall, its view from the lens, its
 // cards laid out as its light is, the hand over from one lamp to the next through their cards, and a frame of it: where
-// it lights, what casts into its map, and where nothing does.
+// it lights, what casts into its map, and where nothing does. And the shadows in every lamp's pool card of the bodies
+// near it (lamp.ts poolShade), and the lamps past the list's room fading out by distance.
 import { expect, test } from "bun:test";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { poolOf } from "../../client/core/render/detailtext.ts";
-import { LAMP_BIT, LAMP_COLOUR, LAMP_CORNER, LAMP_FADE, LAMP_GROUND, LAMP_HOLD, LAMP_LONG, LAMP_NEAR, LAMP_OUT, LAMP_POOL, LAMP_RANGE, LAMP_REACH, LAMP_TAN, LAMP_WIDE, LampView, lampFrame, lampLight, lampPool, lampReach, lampSees } from "../../client/core/render/lamp.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_POOL, FRAME, FRAME_FLOATS, FramePacket, LAMP_AT, MAX_CASCADES } from "../../client/core/render/packet.ts";
+import { DETAIL_LIT_FRAGMENT, DETAIL_VERTEX, poolOf } from "../../client/core/render/detailtext.ts";
+import { LAMP_BIT, LAMP_COLOUR, LAMP_CORNER, LAMP_FADE, LAMP_GROUND, LAMP_HOLD, LAMP_LONG, LAMP_NEAR, LAMP_OUT, LAMP_POOL, LAMP_RANGE, LAMP_REACH, LAMP_TAN, LAMP_WIDE, LampView, POOL_FROM, POOL_TO, lampFrame, lampLight, lampPool, lampReach, lampSees, lensOfWord, lensWord, poolShade } from "../../client/core/render/lamp.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_POOL, DETAIL_SHADED_POOL, FRAME, FRAME_FLOATS, FramePacket, LAMP_AT, MAX_CASCADES, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { shadowLayer, shadowLayers } from "../../client/core/render/shadowtext.ts";
 import { hourOfSun } from "../../client/core/render/sky.ts";
-import { LIT_POOL_SHOWS, StreetLamps } from "../../client/core/render/street-lamps.ts";
+import { LIT_POOL_SHOWS, MAX_LIT_LAMPS, StreetLamps } from "../../client/core/render/street-lamps.ts";
 import { lit } from "../../client/core/render/surface.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -272,10 +273,11 @@ let made: ReturnType<typeof parsePack> | null = null;
 const pack = () => (made ??= parsePack(buildPack([...grayboxMeshes(CORE_CONTENT), tubeMesh()], defaultPalette(), tubeClips(), [TUBE_RIG])));
 
 /** A flat map with one working lamp, its lens over (120, 130.9), a body under it, and the camera 10 m off looking at it. */
-function lampWorld(tier: ReturnType<typeof tierOf>) {
+function lampWorld(tier: ReturnType<typeof tierOf>, ground = -64) {
   const reg = sceneRegistry();
   const dims = { chunksX: 4, chunksZ: 4 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  hf.heights.fill(Math.round((ground + 64) * 64));
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   structs.add(reg.index.get(LIT)!, 120, 0, 128, 0, 0, 1);
   const scene = new Scene({ dims, hf, structs }, reg, pack());
@@ -334,4 +336,134 @@ test("by day, at dusk before the lamps are on, on medium and on a phone, no lamp
   }
   // Only high and ultra off a phone hold its layer.
   expect([tierOf("medium"), tierOf("high"), tierOf("ultra"), forTouch(tierOf("high"), true)].map((t) => shadowLayers(t.shadows))).toEqual([3, 5, 6, 4]);
+});
+
+/** A frame block whose contact list holds `boxes`: each its middle, camera-relative, its yaw and its half extents across, up and along. */
+function contacts(boxes: readonly (readonly [number, number, number, number, number, number, number])[]): Float32Array {
+  const f = new Float32Array(FRAME_FLOATS);
+  boxes.forEach(([x, y, z, yaw, across, up, along], k) => f.set([x, y, z, Math.cos(yaw), across, up, along, Math.sin(yaw)], FRAME.contact + k * 8));
+  return f;
+}
+
+test("a body between the ground and a lamp's lens takes the pool's light there, softly at the shadow's edge, and fades as it leaves the contact list's reach", () => {
+  // A survivor 1.8 m tall 3 m along x from under a lens 8.85 m up: its shadow reaches 0.77 m past its far side.
+  const f = contacts([[0, 0.9, 0, 0, 0.3, 0.9, 0.3]]);
+  const shade = (x: number, z: number, frame = f, shift = 0): number => poolShade(frame, FRAME.contact, MAX_CONTACTS, x + shift, 0, z, -3 + shift, LAMP_GROUND, 0);
+  expect(shade(0.6, 0)).toBe(0);
+  expect(shade(0, 0)).toBe(0);
+  for (const [x, z] of [[1.2, 0], [0.6, 1], [-1, 0], [-3, 0], [0.6, -1]] as const) expect(shade(x, z)).toBe(1);
+  // The edge: from none of the light near the body's foot to all of it past the shadow's tip, never back.
+  let last = 0, between = 0;
+  for (let x = 0.3; x <= 1.3; x += 0.01) {
+    const k = shade(x, 0);
+    expect(k).toBeGreaterThanOrEqual(last - 1e-9);
+    if (k > 0.05 && k < 0.95) between++;
+    last = k;
+  }
+  expect(between).toBeGreaterThan(2);
+  expect(last).toBe(1);
+  // Out toward the end of the list's reach from the camera it casts less, then nothing.
+  const far = (d: number): Float32Array => contacts([[d, 0.9, 0, 0, 0.3, 0.9, 0.3]]), mid = (POOL_FROM + POOL_TO) / 2;
+  expect(shade(0.6, 0, far(mid), mid)).toBeGreaterThan(0.2);
+  expect(shade(0.6, 0, far(mid), mid)).toBeLessThan(0.8);
+  expect(shade(0.6, 0, far(POOL_TO + 1), POOL_TO + 1)).toBe(1);
+  // A car turned a quarter round, long along x: its box, not its middle, throws the shadow.
+  const car = contacts([[0, 0.7, 0, Math.PI / 2, 0.9, 0.7, -2.2]]);
+  expect(poolShade(car, FRAME.contact, MAX_CONTACTS, 2.5, 0, 0, -5, LAMP_GROUND, 0)).toBe(0);
+  expect(poolShade(car, FRAME.contact, MAX_CONTACTS, 0, 0, 1.6, -5, LAMP_GROUND, 0)).toBe(1);
+  // An empty list, nothing.
+  expect(shade(0.6, 0, new Float32Array(FRAME_FLOATS))).toBe(1);
+});
+
+test("a pool card holds where its lens is from its middle within a few centimetres, and the lit shader reads it", () => {
+  const out = [0, 0, 0];
+  for (const d of [[0, 8.81, 0], [-2, 8.77, 0], [1.4, 9.3, -1.4], [0, 7.9, 2]] as const) {
+    lensOfWord(lensWord(d[0], d[1], d[2]), out);
+    expect(Math.abs(out[0]! - d[0])).toBeLessThan(0.02);
+    expect(Math.abs(out[1]! - d[1])).toBeLessThan(0.03);
+    expect(Math.abs(out[2]! - d[2])).toBeLessThan(0.02);
+  }
+  expect(DETAIL_VERTEX).toContain("vLens = iMiddle");
+  expect(DETAIL_LIT_FRAGMENT).toContain(`vFlags == ${DETAIL_SHADED_POOL}u ? poolShade(vRel, vLens)`);
+  expect(DETAIL_LIT_FRAGMENT).toContain("float poolShade(vec3 p, vec3 l)");
+});
+
+/** The street lamps' pool cards of a frame, lying on the ground: their flags, how much shows, and the lens each holds, camera-relative. */
+function poolCards(p: FramePacket): { flags: number; shows: number; lens: number[] }[] {
+  const out: { flags: number; shows: number; lens: number[] }[] = [];
+  for (let d = 0; d < p.detailCount; d++) {
+    const o = d * DETAIL_FLOATS, misc = p.detailWords[o + DETAIL.misc]!, flags = (misc >>> 8) & 255;
+    if ((flags !== DETAIL_POOL && flags !== DETAIL_SHADED_POOL) || Math.abs(p.details[o + DETAIL.across + 1]!) > 1 || Math.hypot(p.details[o + DETAIL.across]!, p.details[o + DETAIL.across + 2]!) < 1) continue;
+    const lens = [0, 0, 0];
+    lensOfWord(p.detailWords[o + DETAIL.colourB]!, lens);
+    out.push({ flags, shows: (misc >>> 16) & 255, lens: lens.map((v, k) => v + p.details[o + k]!) });
+  }
+  return out;
+}
+
+test("by night on medium, high and ultra the pool cards take the shadows of the bodies near them; not by day, not on a phone, not with `pools` off", () => {
+  for (const name of ["medium", "high", "ultra"] as const) {
+    // The lamp on the ground, as on a map, where the pool card is laid.
+    const w = lampWorld(tierOf(name), 0);
+    // On high and ultra with no lamp lighting as a light (`?ab=lamp`), so that it is its card there too.
+    w.cam.x = 92;
+    w.scene.streetLamps.light = false;
+    const p = w.frames(0);
+    const cards = poolCards(p);
+    expect(cards.map((c) => c.flags)).toEqual([DETAIL_SHADED_POOL]);
+    // Its lens is the lamp's, 2.9 m out over the road from the mast at (120, 128), 8.85 m up.
+    [120 - 92, 8.85 - 1.7, 128 + 2.9 - 130].forEach((v, k) => expect(Math.abs(cards[0]!.lens[k]! - v)).toBeLessThan(0.05));
+    // The body under it is in the contact list.
+    expect(p.frame[FRAME.contact + 4]).toBeGreaterThan(0);
+    expect(p.frame[FRAME.contact]).toBeCloseTo(121 - 92, 4);
+    // Off every other frame (`?ab=pools`): a plain pool.
+    w.scene.streetLamps.shaded = false;
+    expect(poolCards(w.frames(0, 1)).map((c) => c.flags)).toEqual([DETAIL_POOL]);
+  }
+  // By day on medium no contact is held for it; on a phone the cards stay as they were and no contact is held.
+  expect(lampWorld(tierOf("medium")).frames(12).frame[FRAME.contact + 4]).toBe(0);
+  const night = lampWorld(forTouch(tierOf("medium"), true)).frames(0);
+  expect(poolCards(night).map((c) => c.flags)).toEqual([DETAIL_POOL]);
+  expect(night.frame[FRAME.contact + 4]).toBe(0);
+});
+
+test("the lamp that lights is the one nearest the viewer's own body, not the camera behind it", () => {
+  const { lamps, structs } = twoLamps();
+  const cam = new Camera(), p = new FramePacket();
+  p.frame[FRAME.moon + 1] = 1;
+  [cam.x, cam.y, cam.z] = [103, 1.7, 124];
+  for (let k = 0; k < 90; k++) {
+    p.detailCount = 0;
+    lamps.build(p, cam, structs, 4, 4, (k * 1000) / 60, true, null, false, { x: 119, z: 126 });
+  }
+  expect([Math.round(lamps.lens[0]! + cam.x), lamps.shows]).toEqual([120, 1]);
+});
+
+test("lamps past the list's room fade out by distance as the camera moves, none cut off", () => {
+  const reg = sceneRegistry();
+  const dims = { chunksX: 4, chunksZ: 4 };
+  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  // A lamp every 2 m along x, many more than the list holds within its reach.
+  for (let k = 0; k < 2 * MAX_LIT_LAMPS; k++) structs.add(reg.index.get(LIT)!, 10 + 2 * k, 0, 128, 0, 0, 1);
+  const lamps = new StreetLamps(reg), cam = new Camera(), p = new FramePacket();
+  p.frame[FRAME.moon + 1] = 1;
+  let before: Map<number, number> | null = null, most = 0;
+  // Among them, so that lamps go out of the list behind and come into it ahead as it moves.
+  let changed = 0;
+  for (let step = 0; step <= 80; step++) {
+    [cam.x, cam.y, cam.z] = [100 + step * 0.05, 1.7, 124];
+    p.detailCount = 0;
+    lamps.build(p, cam, structs, dims.chunksX, dims.chunksZ, 0, false);
+    lamps.write(p);
+    const shows = pools(p, cam.x);
+    expect(shows.size).toBeLessThanOrEqual(MAX_LIT_LAMPS);
+    if (before) for (const x of new Set([...shows.keys(), ...before.keys()])) {
+      most = Math.max(most, Math.abs((shows.get(x) ?? 0) - (before.get(x) ?? 0)));
+      if (shows.has(x) !== before.has(x)) changed++;
+    }
+    before = shows;
+  }
+  // At 5 cm a frame, no card's strength steps by more than a few of 255, though the list changed.
+  expect(changed).toBeGreaterThan(0);
+  expect(most).toBeLessThan(8);
 });

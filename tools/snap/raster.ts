@@ -25,9 +25,9 @@ import { EYE_FLOATS, EYE_SLOTS, eyeGlint, eyePulse, eyeRadiance } from "../../cl
 const eyeAmbient = [0, 0, 0];
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
-import { lampSees } from "../../client/core/render/lamp.ts";
+import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -1163,6 +1163,7 @@ export class Rasterizer {
     const texel = [0, 0, 0, 0];
     const shape = [0, 0, 0];
     const optics = new Float64Array(2);
+    const lens = new Float64Array(3);
     const [right, below] = [[0, 0], [0, 0]];
     const exposure = p.frame[FRAME.exposure]!;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
@@ -1278,6 +1279,11 @@ export class Rasterizer {
               [texel[0], texel[1], texel[2], texel[3]] = [shape[2]!, shape[1]!, 0, shape[0]!];
             }
             let alpha = texel[3]!;
+            // A shaded pool loses its light where a body of the contact list stands between it and the lens (lamp.ts).
+            if (flags === DETAIL_SHADED_POOL) {
+              lensOfWord(b, lens);
+              alpha *= poolShade(p.frame, FRAME.contact, MAX_CONTACTS, rx, ry, rz, f[o]! + lens[0]!, f[o + 1]! + lens[1]!, f[o + 2]! + lens[2]!);
+            }
             if (blend) {
               alpha *= shows * ((flags & DETAIL_PUFF) !== 0 ? Math.min(1, Math.max(0, (ry - f[o + DETAIL.floor]!) / (0.5 * half))) : 1);
               if (alpha < 0.004) continue;

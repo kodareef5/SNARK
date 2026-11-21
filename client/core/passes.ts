@@ -146,8 +146,9 @@ export const BENCH_TURN_MS = 15000;
  * light alone. "moon" draws no cascades by night, as before the moon cast through them (render/sky.ts `castLight`), and
  * "lamp" lights by every street lamp's cards alone, the nearest's too, with no lamp's map drawn (render/lamp.ts).
  * "glass" draws a vehicle's panes solid, as they were before they were seen through (render/vehicle-glass.ts).
+ * "pools" draws the lamps' pool cards with no body's shadow in them (render/lamp.ts `poolShade`).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {

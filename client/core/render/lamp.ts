@@ -65,8 +65,93 @@ export const LAMP_SEES = [0.6, 0.4, 0] as const;
 export const LAMP_WASH = 0.8;
 /** Seconds the lamp's light takes to fade into its card, or out of it, eased at both ends. */
 export const LAMP_FADE = 0.4;
+/**
+ * The shadows in a lamp's pool card (street-lamps.ts, packet.ts DETAIL_SHADED_POOL), where the tier's shadows say so
+ * (Tier.shadows.pools): each body of the frame's contact list (contact.ts fContact, the bodies and parked cars nearest
+ * the camera, each a box) takes the pool's light where the way from the ground to the lens runs through its box, all of
+ * it once the way runs POOL_SOFT metres inside, so the shadow's edge is soft where the way only grazes the box. A body
+ * casts less from POOL_FROM metres from the camera and nothing at the list's reach, POOL_TO, so it fades as it leaves.
+ */
+export const POOL_SOFT = 0.35;
+export const POOL_FROM = 45;
+export const POOL_TO = 60;
+/** How the lens's place from a pool card's middle is held in the card's second colour, which a pool's shape does not use: x and z across ±POOL_ACROSS / 2, y up to POOL_UP. */
+export const POOL_ACROSS = 8;
+export const POOL_UP = 12;
 
 type Numbers = ArrayLike<number>;
+
+const step = (a: number, b: number, x: number): number => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+/** A body's box's frame: the point, the way to the lens and the half extents, in it. */
+const inBox = new Float64Array(3), toLens = new Float64Array(3), half = new Float64Array(3);
+
+/**
+ * The share of a card lamp's pool left at camera-relative (x, y, z) by the frame's contact list, its lens at
+ * camera-relative (lx, ly, lz): the twin of `poolShadeGlsl`.
+ */
+export function poolShade(frame: Numbers, contact: number, slots: number, x: number, y: number, z: number, lx: number, ly: number, lz: number): number {
+  let keep = 1;
+  const dx = lx - x, dy = ly - y, dz = lz - z, span = Math.hypot(dx, dy, dz);
+  for (let k = 0; k < slots; k++) {
+    const o = contact + k * 8;
+    if (frame[o + 4]! <= 0) break;
+    const c = frame[o + 3]!, s = frame[o + 7]!, ox = x - frame[o]!, oy = y - frame[o + 1]!, oz = z - frame[o + 2]!;
+    inBox[0] = c * ox - s * oz; inBox[1] = oy; inBox[2] = s * ox + c * oz;
+    toLens[0] = c * dx - s * dz; toLens[1] = dy; toLens[2] = s * dx + c * dz;
+    half[0] = frame[o + 4]!; half[1] = frame[o + 5]!; half[2] = Math.abs(frame[o + 6]!);
+    let enter = 0, leave = 1;
+    for (let i = 0; i < 3; i++) {
+      const ri = Math.abs(toLens[i]!) < 1e-5 ? 1e-5 : toLens[i]!, t0 = (-half[i]! - inBox[i]!) / ri, t1 = (half[i]! - inBox[i]!) / ri;
+      enter = Math.max(enter, Math.min(t0, t1));
+      leave = Math.min(leave, Math.max(t0, t1));
+    }
+    if (leave <= enter) continue;
+    const far = frame[o]! ** 2 + frame[o + 1]! ** 2 + frame[o + 2]! ** 2;
+    keep *= 1 - step(0, POOL_SOFT, (leave - enter) * span) * (1 - step(POOL_FROM * POOL_FROM, POOL_TO * POOL_TO, far));
+  }
+  return keep;
+}
+
+/**
+ * A pool card's lens from its middle as its second colour's bytes (RGBA, least significant first): see POOL_ACROSS. -1
+ * where it lies farther than they hold, as over ground far under the lamp's foot, which then takes no shadows.
+ */
+export function lensWord(dx: number, dy: number, dz: number): number {
+  if (Math.abs(dx) > POOL_ACROSS / 2 || Math.abs(dz) > POOL_ACROSS / 2 || dy <= 0 || dy > POOL_UP) return -1;
+  const byte = (v: number): number => Math.round(Math.min(1, Math.max(0, v)) * 255);
+  return (byte(dx / POOL_ACROSS + 0.5) | (byte(dy / POOL_UP) << 8) | (byte(dz / POOL_ACROSS + 0.5) << 16) | (255 << 24)) >>> 0;
+}
+
+/** The lens's place from the middle, from a pool card's second colour (`lensWord`), into `out`. */
+export function lensOfWord(word: number, out: Float64Array | number[]): void {
+  out[0] = ((word & 255) / 255 - 0.5) * POOL_ACROSS;
+  out[1] = (((word >>> 8) & 255) / 255) * POOL_UP;
+  out[2] = (((word >>> 16) & 255) / 255 - 0.5) * POOL_ACROSS;
+}
+
+const gl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
+
+/** `poolShade` in GLSL, after the frame block, `slots` the contact list's (packet.ts MAX_CONTACTS). */
+export const poolShadeGlsl = (slots: number): string => `float poolShade(vec3 p, vec3 l) {
+  float keep = 1.0;
+  vec3 d = l - p;
+  float span = length(d);
+  for (int k = 0; k < ${slots}; k++) {
+    vec4 a = fContact[k * 2], b = fContact[k * 2 + 1];
+    if (b.x <= 0.0) break;
+    vec3 m = p - a.xyz;
+    vec3 q = vec3(a.w * m.x - b.w * m.z, m.y, b.w * m.x + a.w * m.z), r = vec3(a.w * d.x - b.w * d.z, d.y, b.w * d.x + a.w * d.z);
+    r = mix(r, vec3(1e-5), lessThan(abs(r), vec3(1e-5)));
+    vec3 e = abs(b.xyz), t0 = (-e - q) / r, t1 = (e - q) / r, lo = min(t0, t1), hi = max(t0, t1);
+    float inside = min(min(hi.x, hi.y), min(hi.z, 1.0)) - max(max(lo.x, lo.y), max(lo.z, 0.0));
+    if (inside > 0.0) keep *= 1.0 - smoothstep(0.0, ${gl(POOL_SOFT)}, inside * span) * (1.0 - smoothstep(${gl(POOL_FROM * POOL_FROM)}, ${gl(POOL_TO * POOL_TO)}, dot(a.xyz, a.xyz)));
+  }
+  return keep;
+}
+`;
 
 /**
  * Writes the lamp's part of the frame block: its lens camera-relative and its range in fLamp, its light a metre off in
