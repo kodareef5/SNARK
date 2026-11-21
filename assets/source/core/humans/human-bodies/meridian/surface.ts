@@ -298,8 +298,11 @@ export class Surface {
       for (const t of [0.15, 0.26, 0.55, 0.66, 0.77, 0.86]) for (const side of [-1, 1]) {
         const z = mix(heel, toe, t), outer = (right - left) * Math.sqrt(1 - (2*t - 1)**2) * 0.40;
         const near = mid + side * 0.006, far = mid + side * outer;
-        const face: V[] = [[near, y-0.003, z-0.012], [far, y-0.003, z+0.002],
-          [far, y-0.003, z+0.014], [near, y-0.003, z+0.002]];
+        // The ball's lugs stand a millimetre proud of the heel's and the toe's, so the sole's lowest point is under
+        // the ball of the foot, inside a saddle's tread, and not on the rear heel lug behind it.
+        const low = y - (t === 0.55 || t === 0.66 ? 0.003 : 0.002);
+        const face: V[] = [[near, low, z-0.012], [far, low, z+0.002],
+          [far, low, z+0.014], [near, low, z+0.002]];
         if (side < 0) face.reverse();
         const at = face.map(p => vertex(p, down, finish.rubber));
         this.ix.push(at[0]!, at[1]!, at[2]!, at[0]!, at[2]!, at[3]!);
