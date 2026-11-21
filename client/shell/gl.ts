@@ -278,13 +278,13 @@ export class GlRenderer {
     // A level without skin entries leaves the SURFACE program's four bones at this, which must be whole numbers.
     gl.vertexAttribI4ui(10, 0, 0, 0, 0);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    const texture = (unit: number, internal: number, w: number, h: number, format: number, type: number, data: ArrayBufferView | null): WebGLTexture => {
+    const texture = (unit: number, internal: number, w: number, h: number, format: number, type: number, data: ArrayBufferView | null, filter: number = gl.NEAREST): WebGLTexture => {
       const t = gl.createTexture()!;
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, t);
       gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, type, data);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
       return t;
     };
     const g = this.ground, coarse = coarseGround(this.hf);
@@ -294,6 +294,8 @@ export class GlRenderer {
     texture(UNIT.tint, gl.R8UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_BYTE, coarse.tint);
     this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
     texture(UNIT.road, gl.RGBA8UI, roadSamples(g.width[SOURCE_WINDOW]!), roadSamples(g.height[SOURCE_WINDOW]!), gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
+    // What stands overhead (roof.ts), filtered, on its unit alone: each map is put on it as it comes.
+    texture(UNIT.roof, gl.RGBA8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
     this.roadRows = new Uint8Array(roadSamples(g.width[SOURCE_WINDOW]!) * roadSamples(g.height[SOURCE_WINDOW]!) * ROAD_PLANES);
     // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit, as tall as the tier's bones.
     texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = 1), gl.RGBA, gl.FLOAT, null);
@@ -867,6 +869,8 @@ export class GlRenderer {
       for (const q of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) if (open > 0) gl.texParameteri(gl.TEXTURE_2D, q[0], q[1]);
     }
     if (p.openRows > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, p.openRow, p.openWidth, p.openRows, gl.RGBA, gl.UNSIGNED_BYTE, p.openMap);
+    // What stands overhead and the ground's colour (roof.ts) on its unit, one layer over the other, each map whole.
+    if (p.roofMap.length > 0) { gl.activeTexture(gl.TEXTURE0 + UNIT.roof); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, p.roofSide, p.roofMap.length / (4 * p.roofSide), 0, gl.RGBA, gl.UNSIGNED_BYTE, p.roofMap); }
     gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
     if (boneRows(p.tier.bones) !== this.boneRows) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = boneRows(p.tier.bones)), 0, gl.RGBA, gl.FLOAT, null);
     if (p.boneCount > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, Math.ceil(p.boneCount / BONES_PER_ROW), gl.RGBA, gl.FLOAT, p.bones);

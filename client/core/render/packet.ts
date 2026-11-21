@@ -365,7 +365,12 @@ export const WATER_BOUNDS = FRAME.exhaustPhase + 4;
 export const WATER_MARKS = WATER_BOUNDS + 4;
 /** Per segment: duration, incoming and outgoing cross-track slopes, and wake family. */
 export const WATER_PATHS = WATER_MARKS + MAX_WATER_MARKS * 8;
-export const FRAME_FLOATS = WATER_PATHS + 4 * MAX_WATER_MARKS;
+/**
+ * fRoof: the map of what stands overhead round the camera (roof.ts), its corner camera-relative, x and z, its side in
+ * metres, and 1 while it is on the card, else 0.
+ */
+export const ROOF_AT = WATER_PATHS + 4 * MAX_WATER_MARKS;
+export const FRAME_FLOATS = ROOF_AT + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -377,6 +382,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
   highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
   highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterPaths[${MAX_WATER_MARKS}];
+  highp vec4 fRoof;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -493,6 +499,12 @@ export class FramePacket {
   openMap: Uint8Array = NO_OPEN;
   openRow = 0;
   openRows = 0;
+  /**
+   * What stands overhead round the camera (roof.ts), on its own unit: its cells a side while one is on the card, 0 for
+   * none, and the whole map to put on it the frame it is made, else empty. The scene owns the map.
+   */
+  roofSide = 0;
+  roofMap: Uint8Array = NO_OPEN;
   /** The draw before which the dome goes, on a lit frame. */
   skyAt = 0;
   /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
@@ -676,6 +688,8 @@ export class FramePacket {
     this.farRows = 0;
     this.openMap = NO_OPEN;
     this.openRows = this.openWidth = this.openHeight = 0;
+    this.roofMap = NO_OPEN;
+    this.roofSide = 0;
     this.triangles = 0;
     this.detailCount = 0;
     this.detailFill = 0;

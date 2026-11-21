@@ -133,6 +133,11 @@ export interface Tier {
   readonly post: { readonly bloom: number } | null;
   /** Whether bodies that move take the sky's light from what is under them (render/contact.ts). */
   readonly contact: boolean;
+  /**
+   * Whether what stands overhead takes the sky's light down under it (render/roof.ts): a texture read more on each lit
+   * pixel, so not on a phone.
+   */
+  readonly roofs: boolean;
 }
 
 const MB = 1024 * 1024;
@@ -177,6 +182,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 384, share: 0.5, reach: 0.6, fill: 0.5 }, budget: { triangles: 2e6, draws: 2048 }, bodyError: 1,
     post: null,
     contact: false,
+    roofs: false,
   },
   {
     name: "medium", reflectionHz: 1, texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, fewest: 0, canvas: 0, anisotropy: 1, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
@@ -184,6 +190,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 1536, share: 1, reach: 1, fill: 1 }, budget: { triangles: 4e6, draws: 1024, spend: 1, spendTo: 2.5e6 }, bodyError: 1,
     post: null,
     contact: false,
+    roofs: true,
   },
   {
     name: "high", reflectionHz: 4, texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
@@ -191,6 +198,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 3072, share: 1, reach: 1, fill: 1.5 }, budget: { triangles: 6e6, draws: 2048, spend: 2, spendTo: 3.5e6 }, bodyError: 1,
     post: { bloom: 1 },
     contact: true,
+    roofs: true,
   },
   {
     name: "ultra", reflectionHz: 4, texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, fewest: 0, canvas: 0, anisotropy: 16, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
@@ -198,6 +206,7 @@ export const TIERS: readonly Tier[] = [
     details: { pool: 6144, share: 1, reach: 1.25, fill: 2 }, budget: { triangles: 8e6, draws: 4096, spend: 2, spendTo: 5e6 }, bodyError: 1,
     post: { bloom: 1 },
     contact: true,
+    roofs: true,
   },
 ];
 
@@ -252,14 +261,15 @@ const touched = new Map<Tier, Tier>();
 
 /**
  * The rule for touch-first devices: a tier as one draws it, the same copy each time, since the renderer keeps programs
- * by the tier. It draws no light target (render/post.ts): the finish is for a desktop's spare frame, not a phone's.
+ * by the tier. It draws no light target (render/post.ts): the finish is for a desktop's spare frame, not a phone's. Nor
+ * does it take the sky's light down under roofs (render/roof.ts), whose texture read a phone's pixels would pay.
  */
 export function forTouch(tier: Tier, touchFirst: boolean): Tier {
   if (!touchFirst || !tier.touch) return tier;
   const had = touched.get(tier);
   if (had) return had;
   const { offered: _, ...values } = tier.touch;
-  return touched.set(tier, { ...tier, ...values, waterMarks: Math.min(4, tier.waterMarks), reflectionHz: Math.min(1, tier.reflectionHz), post: null, contact: false }).get(tier)!;
+  return touched.set(tier, { ...tier, ...values, waterMarks: Math.min(4, tier.waterMarks), reflectionHz: Math.min(1, tier.reflectionHz), post: null, contact: false, roofs: false }).get(tier)!;
 }
 
 /** The tiers the settings offer: on a touch-first device, those whose touch rule does not leave them out. */

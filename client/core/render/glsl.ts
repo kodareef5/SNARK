@@ -12,6 +12,7 @@ import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE
 import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
+import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
 import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
@@ -53,7 +54,8 @@ void main() {
 /**
  * Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. Its vertex text gives the colour
  * as light (world-surfaces.ts `worldVertex`). The sky's light is taken down where the sky is hidden and at the foot of
- * what stands, but a body's (skyopen.ts).
+ * what stands, but a body's (skyopen.ts), and under what stands overhead (roof.ts), and its light from the ground is
+ * the ground's it sees (roof.ts roofBounce).
  */
 export const LIT_FRAGMENT = `#version 300 es
 precision highp float;
@@ -75,7 +77,7 @@ flat in int vFacade;
 #endif
 uniform float uSolid, uAlpha, uSkin;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}${STREET_GLSL}void main() {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${FACADE_GLSL}${STREET_GLSL}void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   vec3 n = geometric;
@@ -84,7 +86,8 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${AIR}${WORLD_GLSL.repl
   float painted = 0.0;
   if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
   float over = overGround(vRel);
-  float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0);
+  float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0) * roofOpen(vRel, geometric, over);
+  roofBounce(vRel, geometric, over);
   // The weathering and the edges read the packed maps, so they come up with them (uWorldReady 2 is the base colours alone).
   float risen = 2.0 - uWorldReady;
 #ifdef WORLD_WEATHER
@@ -304,7 +307,7 @@ uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${ROAD_GLSL}vec3 groundColour(int tint) {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${ROAD_GLSL}vec3 groundColour(int tint) {
   vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
@@ -357,7 +360,7 @@ void main() {
   if (dry > 0.0) worldSharp = orm.y < ${f(WORLD_SHARP)};
   float daylight = smoothstep(0.0,0.25,fTrueSun.y);
   orm.x *= (1.0-${f(DRY_ASPHALT.shade)}*dry*fStreetLook.w*(1.0-shade)*daylight)
-    * skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0);
+    * skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0) * roofOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0);
   vec3 v = -normalize(vRel);
   vec3 r = reflect(-v,n);
   vec3 mirrored = orm.y >= 1.0 ? vec3(0.0) : worldSharp ? skyFrom(r) : skyLight(r);
