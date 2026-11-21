@@ -87,7 +87,7 @@ test("saved preferences bound numeric values and never restore transient actions
   settings.restoreInterface('{"version":2,"sensitivity":99,"fov":-1,"masterVolume":0,"minimapZoom":30,"snapshotBytes":999999,"tier":"bogus","download":true,"tab":3}');
   const copy = new Settings(); copy.restoreInterface(settings.interfacePreferences());
   expect([copy.minimap,copy.vitalLabels,copy.diagnostics,copy.sensitivity,copy.fov,copy.masterVolume,copy.minimapZoom]).toEqual([false,true,true,3,50,0,3]);
-  expect([copy.snapshotBytes,copy.tier,copy.chosen,copy.download,copy.tab]).toEqual([1100,"medium",false,false,0]);
+  expect([copy.snapshotBytes,copy.tier,copy.chosen,copy.keepAll,copy.tab]).toEqual([1100,"medium",false,false,0]);
   // A tier is saved only once chosen, and a chosen tier is kept over the device's start.
   expect(JSON.parse(copy.interfacePreferences()).tier).toBeUndefined();
   copy.restoreInterface('{"version":2,"tier":"lowpoly"}');
@@ -129,8 +129,8 @@ test("every menu, settings group and device layout fits from phone portrait to u
   const ui=new Ui(),hud=new HudModel();
   // The links the menu shows beneath Controls, which make it taller.
   ui.links=siteLinks({wiki:"/wiki/",repository:"https://git.example.com/a/long/way/down/to/the/repository/of/the/game"});
-  for (const aspect of [9/16,4/3,16/9,21/9,32/9]) for (const mode of [0,1,2,3,4,5,6]) for(const context of (mode>=5?[0,1,2,3,4,5]:[0])) for(const glyphs of (mode===6?[0,1]:[0])) {
-    ui.menu=true; ui.options=mode>=1 && mode<=4; ui.settings.tab=mode-1; ui.help=mode>=5; ui.helpDevice=mode-5;
+  for (const aspect of [9/16,4/3,16/9,21/9,32/9]) for (const mode of [0,1,2,3,4,5,6,7]) for(const context of (mode>=6?[0,1,2,3,4,5]:[0])) for(const glyphs of (mode===7?[0,1]:[0])) {
+    ui.menu=true; ui.options=mode>=1 && mode<=5; ui.settings.tab=mode-1; ui.help=mode>=6; ui.helpDevice=mode-6;
     ui.helpGroup=context;ui.settings.padGlyphs=glyphs;ui.build(aspect,hud,null);
     const nodes=ui.frame.nodes.slice(0,ui.frame.count), keys=new Set<number>();
     for (const n of nodes) {
@@ -154,8 +154,8 @@ test("a phone on its side: the menu, every settings tab and page, and the contro
   // With the links the menu shows beneath Controls, which a short canvas has to make room for.
   ui.links=siteLinks({wiki:"/wiki/",repository:"https://git.example.com/code"});
   let paged=0;
-  for (const [w,h] of [[1056,488],[834,469],[710,400],[1280,576]] as const) for (const mode of [0,1,2,3,4,5,6,7]) {
-    ui.canvasHeight=h;ui.menu=true;ui.options=mode>=1 && mode<=4;ui.settings.tab=mode-1;ui.settings.page=0;ui.help=mode>=5;ui.helpDevice=mode-5;
+  for (const [w,h] of [[1056,488],[834,469],[710,400],[1280,576]] as const) for (const mode of [0,1,2,3,4,5,6,7,8]) {
+    ui.canvasHeight=h;ui.menu=true;ui.options=mode>=1 && mode<=5;ui.settings.tab=mode-1;ui.settings.page=0;ui.help=mode>=6;ui.helpDevice=mode-6;
     for (let page=0;page<4;page++) {
       ui.build(w/h,hud,null);
       const f=ui.frame,nodes=f.nodes.slice(0,f.count),where=`${w}x${h} mode=${mode} page=${page}`;
@@ -173,7 +173,7 @@ test("a phone on its side: the menu, every settings tab and page, and the contro
         expect(a.x<b.x+b.w && b.x<a.x+a.w && a.y<b.y+b.h && b.y<a.y+a.h,`${where}: overlap ${a.key}/${b.key}`).toBe(false);
       }
       // On so short a canvas the controls are the touch page, whichever was asked for.
-      if (mode>=5 && h<640) expect(nodes.some(n=>n.text==="Left side") && !nodes.some(n=>n.label==="Controller"),where).toBe(true);
+      if (mode>=6 && h<640) expect(nodes.some(n=>n.text==="Left side") && !nodes.some(n=>n.label==="Controller"),where).toBe(true);
       // Every row of a tab is on one of its pages.
       if (!ui.options || !f.find(KEY_SETTINGS_PAGE)) break;
       const was=ui.settings.page;
@@ -184,7 +184,7 @@ test("a phone on its side: the menu, every settings tab and page, and the contro
   }
   expect(paged).toBeGreaterThanOrEqual(2);
   // A full window, and a phone upright, show every tab whole: no tab pages there.
-  for (const [aspect,height] of [[16/9,720],[9/16,720],[405/876,876]] as const) for (let tab=0;tab<4;tab++) {
+  for (const [aspect,height] of [[16/9,720],[9/16,720],[405/876,876]] as const) for (let tab=0;tab<SETTING_GROUPS.length;tab++) {
     ui.canvasHeight=height;ui.options=true;ui.help=false;ui.settings.tab=tab;ui.settings.page=0;ui.build(aspect,hud,null);
     expect(ui.frame.find(KEY_SETTINGS_PAGE),`tab ${tab} at ${height}`).toBeNull();
   }
@@ -331,8 +331,8 @@ test("horizontal value adjustment follows direction, and never invokes the asset
   ui.menuFocus=2310+11*4+2; // Graphics' previous button remains focused for both directions.
   ui.settings.tier="medium";expect(ui.adjustFocused(-1)).toBe(true);expect(String(ui.settings.tier)).toBe("lowpoly");
   expect(ui.adjustFocused(1)).toBe(true);expect(ui.settings.tier).toBe("medium");
-  ui.settings.tab=3;ui.build(16/9,hud,null);ui.menuFocus=2310+10*4+3;
-  expect(ui.adjustFocused(1)).toBe(false);expect(ui.settings.download).toBe(false);
+  ui.settings.tab=4;ui.build(16/9,hud,null);ui.menuFocus=2310+10*4+3;
+  expect(ui.adjustFocused(1)).toBe(false);expect(ui.settings.keepAll).toBe(false);
 });
 
 test("the Display tab exposes independent gloss and road controls and restores old preferences", () => {

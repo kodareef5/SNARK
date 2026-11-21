@@ -10,7 +10,7 @@ import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tie
 import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
 import type { FrameRing } from "./assets/frames.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
-import { VOLUME_MAX, keptLine } from "./settings.ts";
+import { VOLUME_MAX } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -73,7 +73,8 @@ import { SplitPort } from "./sound/split.ts";
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
 import { IMAGE_MAP, IMAGE_MINIMAP, KEY_HOTBAR, KEY_MINIMAP_TOGGLE, KEY_MINIMAP_OUT, KEY_MINIMAP_IN, KEY_VITAL } from "./ui/hud.ts";
-import { canvasHeight } from "./ui/nodes.ts";
+import { canvasHeight, textWidth, wrapText } from "./ui/nodes.ts";
+import { glass } from "./ui/skin.ts";
 import { TouchPlay, type TouchTarget } from "./touch.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
@@ -288,6 +289,8 @@ export class App {
     this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
+    // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D903).
+    void import("./ui/storage.ts").then((m) => (this.ui.storage = new m.StoragePage({ textWidth, wrapText, glass })), () => {});
     this.shots = new Shots(reg, pack);
     const nodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
     session.onNode = (chunk, index, used, crushed, priorForm) => {
@@ -1084,6 +1087,7 @@ export class App {
     ui.canTalk = this.voice !== null && this.voice.notice === "";
     ui.creatureAhead = this.lookedAt >= 0;
     this.touch.frame(nowMs, ui.touch ? ui.touchShown : 0, this.touchTarget);
+    ui.storage?.step(ui, forTouch(tierOf(ui.settings.tier), ui.settings.touchFirst), this.stream?.port ?? null, this.scene?.assets.residency ?? null, this.sounds?.library ?? null, nowMs);
     const session = this.session;
     const hud = this.hud;
     const c = this.controls;
@@ -1451,13 +1455,6 @@ export class App {
     if (this.playEye && this.artEyeAt === null && alive && this.script.length === 0) this.artEyeAt = nowMs;
     this.scene.eyeSeconds = this.artEyeTime === null ? session.renderClock / TICK_RATE
       : this.artEyeTime + (this.artEyeAt === null ? 0 : (nowMs - this.artEyeAt) / 1000);
-    const kept = this.scene.assets.residency.cache;
-    if (this.ui.settings.download) {
-      this.scene.assets.residency.download();
-      this.sounds?.library.download();
-    }
-    this.ui.settings.download = false;
-    this.ui.settings.kept = keptLine(kept);
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
     this.scene.alternate = alternate;
     this.scene.finishGloss = this.ui.settings.finishGloss;

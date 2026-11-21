@@ -3,6 +3,7 @@
 // client/core/assets. This file joins those decisions to the browser.
 
 import { FAIL_HASH, FAIL_NET, FAIL_RANGE, rangeAsk, type AssetPart, type WorkerTotals } from "../core/assets/port.ts";
+import { BulkFill, FILL_LANES, KEEP_ON, type KeepPart } from "../core/assets/bulk.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
 
 interface Scope {
@@ -36,8 +37,6 @@ let keepMemory = KEEP_MEMORY;
 const kept = new Map<string, Bytes>();
 let keptBytes = 0;
 const under = new Map<number, AbortController>();
-/** Parts asked for only to be kept are fetched in runs of those that follow one another in a file, up to this many bytes. */
-const FILL_RUN = 8 * MB;
 
 // The disk cache is a folder in the browser's private file system for this site: one file for each part, as stored, named by its hash.
 interface PartHandle {
@@ -59,6 +58,8 @@ interface Folder {
   values(): AsyncIterable<FileEntry>;
 }
 let disk: Folder | null = null;
+/** The folder, kept after the disk goes off, so the player can resume or clear it. */
+let home: Folder | null = null;
 /** Bytes of each part on disk by hash, least lately used first. Whoever adds a part counts its bytes. */
 const onDisk = new Map<string, number>();
 let diskBytes = 0;
@@ -67,9 +68,11 @@ let diskLimit = 0;
 let found: Promise<Folder | null> = Promise.resolve(null);
 let opened: Promise<void> = Promise.resolve();
 let counted = false;
-/** Parts asked for only to be kept, and how many runs of them are being fetched. */
-const toFill: { url: string; part: AssetPart }[] = [];
-let filling = 0;
+/** Parts named to keep, and the bulk fill that fetches them (client/core/assets/bulk.ts); its runs under way, to stop them. */
+const bulk = new BulkFill();
+const runs = new Set<AbortController>();
+let waking: ReturnType<typeof setTimeout> | 0 = 0;
+const onDiskHas = (hash: string): boolean => onDisk.has(hash);
 /** How the files come, as the browser names it (http/1.1, h2, h3), from the first fetch that says. */
 let protocol = "";
 /** What this worker has done (WorkerTotals), why the disk is not used where it is not, and the disk writes under way. */
@@ -86,7 +89,8 @@ function post(): void {
   due = false;
   reportedAt = performance.now();
   toldWriting = writing;
-  scope.postMessage({ cache: { used: diskBytes, limit: diskLimit, mode: disk ? "disk" : "memory", filling: toFill.length + filling, off, writing, totals, protocol } });
+  const keep = bulk.report(onDiskHas);
+  scope.postMessage({ cache: { used: diskBytes, limit: diskLimit, mode: disk ? "disk" : "memory", filling: keep.mode === KEEP_ON ? keep.missing : 0, off, writing, totals, protocol, keep } });
 }
 
 function report(): void {
@@ -121,7 +125,7 @@ function openDisk(limit: number, touch: boolean): void {
 
 /** Counts what is on disk, behind the requests. */
 async function count(folder: Folder | null): Promise<void> {
-  disk = folder;
+  disk = home = folder;
   if (!folder) off = "none";
   if (folder) {
     trim();
@@ -141,13 +145,36 @@ async function count(folder: Folder | null): Promise<void> {
   report();
 }
 
+/** Removes parts, least lately used first, until `downTo` bytes are left: the parts the player asked to keep last. */
 async function forget(downTo: number): Promise<void> {
-  for (const [old, bytes] of onDisk) {
-    if (diskBytes <= downTo || !disk) break;
-    await disk.removeEntry(old).catch(() => {});
-    onDisk.delete(old);
-    diskBytes -= bytes;
+  for (const pinned of [false, true]) {
+    for (const [old, bytes] of onDisk) {
+      if (diskBytes <= downTo || !disk) return;
+      if (bulk.pinned(old) !== pinned) continue;
+      await disk.removeEntry(old).catch(() => {});
+      onDisk.delete(old);
+      diskBytes -= bytes;
+    }
   }
+}
+
+/** Removes every saved part, and turns the disk back on if it was full. */
+async function clear(): Promise<void> {
+  for (const stop of runs) stop.abort();
+  const folder = await found;
+  if (!folder) return;
+  await opened;
+  disk = null;
+  try {
+    for await (const entry of folder.values()) if (entry.kind === "file") await folder.removeEntry(entry.name).catch(() => {});
+  } catch {
+    // The folder went while it was read: what is left is found missing when it is read.
+  }
+  onDisk.clear();
+  diskBytes = 0;
+  disk = home = folder;
+  off = "";
+  report();
 }
 
 async function dropFromDisk(hash: string): Promise<void> {
@@ -219,43 +246,54 @@ async function write(hash: string, data: Bytes, again: boolean): Promise<void> {
   }
 }
 
-/** Fetches what was asked for only to be kept, behind what the scene is waiting for: two runs at a time, each of parts that follow one another in a file. */
+/**
+ * Fetches the parts the player asked to keep and are not on disk, two runs at a time, each of parts that follow one
+ * another in a file. A run starts only while the game has asked for nothing for QUIET_MS, so play comes first. Without
+ * a disk nothing is fetched, and the page hears why (`off`).
+ */
 async function fill(): Promise<void> {
   await opened;
-  if (filling >= 2) return;
-  for (; toFill.length > 0 && onDisk.has(toFill[0]!.part.hash); totals.fillDone++) toFill.shift();
-  const first = toFill.shift();
-  if (!first) return;
-  const run = [first.part];
-  for (let bytes = first.part.length, next = toFill[0]; next; next = toFill[0]) {
-    const last = run[run.length - 1]!;
-    if (next.url !== first.url || next.part.offset !== last.offset + last.length || onDisk.has(next.part.hash) || bytes + next.part.length > FILL_RUN) break;
-    run.push(toFill.shift()!.part);
-    bytes += next.part.length;
+  const wait = bulk.wait(performance.now(), under.size);
+  if (bulk.running >= FILL_LANES || !disk || wait < 0) return;
+  if (wait > 0) {
+    if (!waking) waking = setTimeout(() => {
+      waking = 0;
+      void fill();
+    }, wait);
+    return;
   }
-  filling++;
-  if (disk) {
-    // A run is given the time limit for each megabyte of it, so a slow link still brings it and a stalled one lets go.
-    const stop = new AbortController();
-    const timer = setTimeout(() => stop.abort(), TIMEOUT_MS * Math.max(1, run.reduce((n, p) => n + p.length, 0) / MB));
-    const got = await fetchRun(first.url, run, stop.signal).catch(() => null);
-    clearTimeout(timer);
-    totals.netBytes += got?.fetched ?? 0;
-    if (!got?.data && stop.signal.aborted) totals.fillTimeouts += run.length;
-    for (let k = 0; k < run.length; k++) {
-      const p = run[k]!;
-      const kept = got?.data ? (await open(got.data[k]!, p, new Uint8Array(p.inflated ?? p.length))) && (await toDisk(p.hash, got.data[k]!)) : false;
-      if (kept) {
-        totals.netParts++;
-        totals.fillDone++;
-        totals.fillBytes += p.length;
-      } else totals.fillFailed++;
-    }
-    // Without a disk nothing asked to be kept can be, and the page hears why (`off`).
-  } else totals.fillFailed += run.length;
-  filling--;
+  const run = bulk.next(onDiskHas, diskLimit);
+  if (!run) return report();
+  // A run is given the time limit for each megabyte of it, so a slow link still brings it and a stalled one lets go.
+  const stop = new AbortController();
+  runs.add(stop);
+  void fill();
+  const parts = run.map((p) => p.part), began = performance.now();
+  const timer = setTimeout(() => stop.abort(), TIMEOUT_MS * Math.max(1, parts.reduce((n, p) => n + p.length, 0) / MB));
+  const got = await fetchRun(run[0]!.url, parts, stop.signal).catch(() => null), ms = performance.now() - began;
+  clearTimeout(timer);
+  runs.delete(stop);
+  totals.netBytes += got?.fetched ?? 0;
+  if (!got?.data && stop.signal.aborted) totals.fillTimeouts += run.length;
+  const kept: boolean[] = [];
+  for (let k = 0; k < run.length; k++) {
+    const p = parts[k]!;
+    kept.push(got?.data ? (await open(got.data[k]!, p, new Uint8Array(p.inflated ?? p.length))) && (await toDisk(p.hash, got.data[k]!)) : false);
+    if (!kept[k]) continue;
+    totals.netParts++;
+    totals.fillDone++;
+    totals.fillBytes += p.length;
+  }
+  // Where the disk went off, the parts were not at fault and lose no try.
+  totals.fillFailed += bulk.ended(run, kept, ms, got?.fetched ?? 0, disk !== null);
   report();
   void fill();
+}
+
+/** The game's request has ended: once none is left, the bulk fill may go on. */
+function quiet(): void {
+  bulk.quiet(performance.now());
+  if (under.size === 0) void fill();
 }
 /** A made-up link for trying things by hand: milliseconds of delay, kilobytes a second, and failures in a hundred. */
 let net: number[] = [];
@@ -424,6 +462,7 @@ async function answer(a: Ask): Promise<void> {
   // Cancelled: the page no longer wants it and must not be told of it.
   if (under.get(a.slot) !== stop) return;
   under.delete(a.slot);
+  quiet();
   if (fail !== 0 && late) totals.timeouts++;
   const read = cached - remembered;
   if (fail !== 0) scope.postMessage({ slot: a.slot, generation: a.generation, data: null, fail, fetched, cached, memory: remembered, disk: read, status });
@@ -431,18 +470,36 @@ async function answer(a: Ask): Promise<void> {
 }
 
 scope.onmessage = (e) => {
-  const m = e.data as { ask?: Ask; cancel?: number; net?: number[]; open?: { keep: number; touch: boolean }; fill?: { url: string; part: AssetPart }[] };
+  const m = e.data as { ask?: Ask; cancel?: number; net?: number[]; open?: { keep: number; touch: boolean }; fill?: KeepPart[]; keep?: { mode: number; reset: boolean }; clear?: boolean; limit?: number };
   if (m.net) net = m.net;
   if (m.open) openDisk(m.open.keep, m.open.touch);
+  // The disk's limit follows the tier: parts past it go as the next ones are written, and a fill it stopped goes on.
+  if (m.limit !== undefined) {
+    diskLimit = m.limit;
+    bulk.capped = false;
+  }
+  if (m.keep) {
+    if (m.keep.reset) bulk.reset();
+    bulk.setMode(m.keep.mode);
+    // Resumed after the disk filled: it is tried again.
+    if (m.keep.mode === KEEP_ON && off === "full" && home) {
+      disk = home;
+      off = "";
+    }
+  }
   if (m.fill) {
     totals.fillAsked += m.fill.length;
-    toFill.push(...m.fill);
-    void fill();
-    void fill();
+    bulk.name(m.fill);
   }
+  if (m.keep || m.fill || m.limit !== undefined) {
+    void fill();
+    report();
+  }
+  if (m.clear) void clear();
   if (m.cancel !== undefined) {
     under.get(m.cancel)?.abort();
     under.delete(m.cancel);
+    quiet();
   }
   if (m.ask) void answer(m.ask);
 };
