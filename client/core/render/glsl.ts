@@ -16,6 +16,7 @@ import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
 import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
@@ -307,7 +308,7 @@ uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${ROAD_GLSL}vec3 groundColour(int tint) {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${ROAD_GLSL}${WET_GLSL}vec3 groundColour(int tint) {
   vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
@@ -358,6 +359,13 @@ void main() {
   albedo *= mix(1.0,${f(DRY_ASPHALT.albedo)},dry);
   orm.y = mix(orm.y,max(orm.y,${f(DRY_ASPHALT.roughnessFloor)}),${f(DRY_ASPHALT.roughnessShare)}*dry);
   if (dry > 0.0) worldSharp = orm.y < ${f(WORLD_SHARP)};
+  // Just over the sea and under it the ground is wet (bank.ts shoreWet): darker, and glossier.
+  float wet = shoreWet(vRel.y + fHaze.z, geometric, groundSurface(tint));
+  if (wet > 0.0) {
+    albedo *= 1.0 - ${f(1 - WET_DARK)} * wet;
+    orm.y *= 1.0 - ${f(1 - WET_ROUGH)} * wet;
+    worldSharp = orm.y < ${f(WORLD_SHARP)};
+  }
   float daylight = smoothstep(0.0,0.25,fTrueSun.y);
   orm.x *= (1.0-${f(DRY_ASPHALT.shade)}*dry*fStreetLook.w*(1.0-shade)*daylight)
     * skyOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0, 0.0) * contact(vRel, geometric, 1.0) * roofOpen(vRel, vec3(0.0, 1.0, 0.0), 0.0);

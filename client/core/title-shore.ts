@@ -2,6 +2,7 @@ import { nodeForms, SIZE_UNITS } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { BEACH_LAND, BEACH_SEA, shapeBeach } from "../../shared/world/beach.ts";
 import { HeldTops, TOP_CELLS } from "./render/blocks.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import type { MapDims } from "../../shared/coords.ts";
@@ -28,16 +29,23 @@ export interface Shore extends Ground {
   close: Ground & { x: number; z: number };
   skyline: number[];
 }
+/** Samples along a side of the foreground strip: three chunks at 2 m, and the far edge (tools/title/shore.ts). */
+const CLOSE = 97;
 export function prepareShore(s: Shore) {
   const hf = new Heightfield(s.dims, TERRAIN_CELL, s.minY, s.stepY);
   hf.holdNone();
   hf.fill(0, 0, s.dims.chunksX, s.dims.chunksZ, 32, Uint16Array.from(s.heights), Uint8Array.from(s.tint));
   const c = s.close;
-  // Dress the narrow foreground strip with the Miami beach palette, preserving the surveyed shoreline and relief.
+  // On the map the foreground strip is a built bank that drops into the bay in one sample. Near the actor it is dressed
+  // as one of Miami's beaches: its land is sand, and its waterline is graded as the map's build grades a sandy shore, so
+  // the water meets it with the same wash, foam and wet sand. Its line on the map stays where it was.
+  const metres = Float32Array.from(c.heights, (q) => s.minY + q * s.stepY);
+  const near = (i: number) => Math.hypot(c.x * 64 + (i % CLOSE) * 2 - s.actor[0], c.z * 64 + Math.floor(i / CLOSE) * 2 - s.actor[1]) < 72;
+  shapeBeach(metres, CLOSE, CLOSE, TERRAIN_CELL, (i) => (metres[i]! < s.seaLevel ? BEACH_SEA : near(i) && metres[i]! < 3.5 ? BEACH_LAND : 0), () => {});
   for (let i = 0; i < c.tint.length; i++) {
-    const y = s.minY + c.heights[i]! * s.stepY;
-    if (Math.hypot(c.x * 64 + (i % 97) * 2 - s.actor[0], c.z * 64 + Math.floor(i / 97) * 2 - s.actor[1]) < 72 && y < 3.5)
-      c.tint[i] = y < 0.25 ? 122 : y < 0.55 ? 121 : 125;
+    const y = metres[i]!;
+    c.heights[i] = Math.round((y - s.minY) / s.stepY);
+    if (near(i) && y < 3.5) c.tint[i] = y < -0.2 ? 123 : y < 0.25 ? 122 : y < 0.55 ? 121 : 125;
   }
   hf.fill(c.x, c.z, c.x + 3, c.z + 3, 1, Uint16Array.from(c.heights), Uint8Array.from(c.tint));
   hf.hold(0, 0, s.dims.chunksX, s.dims.chunksZ);

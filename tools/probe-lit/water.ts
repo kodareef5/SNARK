@@ -24,7 +24,8 @@ import { PROGRAMS, UNIT } from "../../client/core/render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, hourOfSun, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { groundSize } from "../../client/core/render/terrain.ts";
 import { beachWash } from "../../client/core/render/swash.ts";
-import { SHORE, WATER_MATERIAL, seaDepth, seaFoam, seaFrame, seaPixel, seaShown } from "../../client/core/render/water.ts";
+import { FOAM, SHORE, WATER_MATERIAL, seaBank, seaDepth, seaFoam, seaFrame, seaPixel, seaShown } from "../../client/core/render/water.ts";
+import { type Bank, bankFoamGain, bankFoamScale, bankNear, bankWash } from "../../client/core/render/bank.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
@@ -49,6 +50,7 @@ const ROOT = resolve(import.meta.dir, "../..");
 const [W, H] = [640, 360];
 /** Steps of 255 a GPU's sea pixel may be from the twin's. */
 const NEAR = 5;
+const bank: Bank = { soft: 0, built: 0, still: 0, muddy: 0, grade: 0 };
 
 /** The waves' pictures as the rgba variant sends them, in the frame given, as `fill` in the shell takes them. */
 function sendWaves(p: FramePacket, pack: Uint8Array): void {
@@ -405,10 +407,14 @@ export const waterCheck: LitCheck = {
           const ddy = seaDepth(h.block, hf, size, h.window, down[0]!, down[2]!, down[1]!) - depth;
           const ax = across[0]! - rel[0]!, az = across[2]! - rel[2]!, bx = down[0]! - rel[0]!, bz = down[2]! - rel[2]!;
           const det = ax * bz - az * bx;
-          const wash = beachWash(h.block, rel[0]!, rel[2]!, depth, share[0]!, (ddx * bz - ddy * az) / det, (ax * ddy - bx * ddx) / det, t);
-          const foam = wash.lace * seaFoam(h.block, rel[0]!, rel[2]!, wash.depth, share[0]!, wide, Math.abs(ddx) + Math.abs(ddy));
+          const gx = (ddx * bz - ddy * az) / det, gz = (ax * ddy - bx * ddx) / det;
+          // What the water meets (bank.ts), from the window's samples as the GPU reads them.
+          seaBank(h.block, hf, size, h.window, rel[0]!, rel[2]!, rel[1]!, depth < 1.1 ? share[0]! * bankNear(t) : 0, bank);
+          const wash = t < 110 ? beachWash(h.block, rel[0]!, rel[2]!, depth, share[0]! * bankWash(bank), gx, gz, t) : { depth, film: 0, slopeX: 0, slopeZ: 0, lace: 1 };
+          const lap = bankFoamScale(bank, FOAM);
+          const foam = wash.lace * bankFoamGain(bank) * seaFoam(h.block, rel[0]!, rel[2]!, wash.depth * lap, share[0]!, wide, (Math.abs(ddx) + Math.abs(ddy)) * lap);
           const n = Math.hypot(wash.slopeX, 1, wash.slopeZ);
-          const px = seaPixel(h.block, table, [-wash.slopeX / n, 1 / n, -wash.slopeZ / n], r.map((c) => -c), wash.depth, 0, 1, foam);
+          const px = seaPixel(h.block, table, [-wash.slopeX / n, 1 / n, -wash.slopeZ / n], r.map((c) => -c), wash.depth, 0, 1, foam, bank);
           px.film = wash.film;
           foamed += foam;
           const shown = seaShown(px, rel, below, h.block, table);

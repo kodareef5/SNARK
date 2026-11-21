@@ -383,7 +383,12 @@ export const CAST_AT = ROOF_AT + 4;
  * faces out over the road along the ground, x and z.
  */
 export const LAMP_AT = CAST_AT + 4;
-export const FRAME_FLOATS = LAMP_AT + 28;
+/**
+ * fShore: 1 where the frame has a sea and the camera is out of the water, so the lit ground knows its height over the
+ * sea from its own and is wet just over it (bank.ts shoreWet), else 0. Its other lanes are free.
+ */
+export const SHORE_AT = LAMP_AT + 28;
+export const FRAME_FLOATS = SHORE_AT + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -398,6 +403,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fRoof, fCast, fLamp, fLampColor;
   highp mat4 fLampShadow;
   highp vec4 fLampWay;
+  highp vec4 fShore;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
