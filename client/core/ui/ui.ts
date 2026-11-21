@@ -18,8 +18,9 @@ import { InventoryScreen } from "./inventory.ts";
 import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { buildMap } from "./screens.ts";
 import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
-import { Settings } from "../settings.ts";
+import { Settings, toggleMonitor } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
+import type { StoragePage } from "./storage.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { EmoteMenu } from "./emotes.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
@@ -70,6 +71,10 @@ export class Ui {
    * used, and until it comes the HUD is drawn as for a mouse. Null on a page never touched, which never pays for it.
    */
   layer: typeof import("./touch.ts") | null = null;
+  /** The resource monitor (ui/monitor.ts), which the app fetches once Diagnostics is first "monitor"; null until then. */
+  monitor: import("./monitor.ts").Monitor | null = null;
+  /** The Storage tab's page (ui/storage.ts), which the app fetches after the first frame. */
+  storage: StoragePage | null = null;
   flyer = false;
   /** A piece is being built, or a vehicle set down: the touch cluster is then the builder's. The app sets both. */
   building = false;
@@ -79,6 +84,8 @@ export class Ui {
   creatureAhead = false;
   touchShown = 0;
   get touch(): boolean { return this.inputDevice === 2; }
+  /** The resource monitor's panel is open, which is a screen: the mouse is free and the keyboard walks. */
+  get monitorOpen(): boolean { return this.settings.monitor && this.monitor !== null && this.monitor.open; }
   inspect = false;
   reconnectRequested = false;
   leftWorld = false;
@@ -109,7 +116,7 @@ export class Ui {
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open;
+    return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !this.monitorOpen;
   }
 
   openMenu(): void {
@@ -190,6 +197,8 @@ export class Ui {
       if (code === "KeyH" && (this.inspect || this.wantsPointerLock)) { this.inspect = down; return true; }
       if (code === "Escape" && this.inspect) { if (down && !repeat) this.inspect = false; return true; }
       if (code === "KeyL" && (this.inspect || this.wantsPointerLock)) { if (down && !repeat) { this.settings.minimap = !this.settings.minimap; this.settings.changed(); } return true; }
+      if (code === "F3") { if (down && !repeat) toggleMonitor(this.settings); return true; }
+      if (code === "Escape" && this.monitorOpen) { if (down && !repeat) this.monitor!.open = false; return true; }
       // The structure menu takes its digits and Escape. Opening any other screen closes it.
       if (this.structure.key(code, down, repeat, session)) return true;
       // The emote menu likewise, and Z opens it from play.
@@ -285,7 +294,7 @@ export class Ui {
         else if (this.help && key >= KEY_CONTROLS_DEVICE && key <= KEY_CONTROLS_DEVICE + 2) this.helpDevice = key - KEY_CONTROLS_DEVICE;
         else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;
         else if (this.help && key === KEY_CONTROL_GLYPHS) { this.settings.padGlyphs=1-this.settings.padGlyphs; this.settings.changed(); }
-        else if (this.options) settingsClick(key, this.settings);
+        else if (this.options && !settingsClick(key, this.settings)) this.storage?.click(key, this.settings);
       }
       return;
     }
@@ -293,6 +302,7 @@ export class Ui {
       this.openMenu();
       return;
     }
+    if (kind === 0 && this.monitor?.click(key, x, y)) return;
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_TAG) {
       this.chat.cycle(session);
@@ -351,7 +361,12 @@ export class Ui {
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
       hud.bare = this.map || this.dead;
+      // The resource monitor takes its room in the HUD's top-left column, and stands in it.
+      const monitor = this.settings.monitor ? this.monitor : null;
+      if (monitor) monitor.reserve(f, hud, plan);
+      else this.monitor?.off(hud);
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
+      monitor?.build(f, hud, controls, this.inspect, plan, this.settings.muted);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.
       if (session) {
@@ -379,7 +394,7 @@ export class Ui {
     if (!this.console.open && !this.chat.open) {
       if (this.menu) {
         if (this.options) {
-          buildSettings(f, this.settings, hud.micLevel, this.menuFocus);
+          buildSettings(f, this.settings, hud.micLevel, this.menuFocus, this.storage);
         } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus, this.helpGroup, this.settings.padGlyphs);
         else if (creative && session) {
           this.creativeScreen.build(f, session, hud, this.menuFocus);
@@ -392,6 +407,7 @@ export class Ui {
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
       else if (this.travel.open && session) this.travel.build(f, session);
+      else if (this.monitorOpen && !this.inventory.open) this.monitor!.panel(f, plan, hud, this.settings.muted);
       else {
         this.inventory.build(f, session, this.registry, this.palette);
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
@@ -407,7 +423,7 @@ export class Ui {
     if (plan && this.touchPlay && !this.wantsPointerLock && !this.menu && !this.creating && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
     // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
     // Not while a finger types in the chat box, which has its place.
-    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.creating || this.menu ? 0 : hud.compassBottom);
+    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.creating || this.menu ? 0 : hud.compassBottom, this.creating || this.menu ? null : hud);
     if (session) this.console.absorb(session);
     this.console.build(f);
     if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }

@@ -151,6 +151,8 @@ export class Residency {
    * `stale` is bytes that came over the network for a request no longer waited on, which `fetched` leaves out. Of
    * `cached`, `memory` and `disk` are the bytes from each, where the port tells them apart.
    */
+  /** The resource monitor's record of requests (requests.ts), told of each as it is asked, taken in and sent to the card; null while the monitor is off. */
+  log: import("./requests.ts").RequestLog | null = null;
   readonly stats = { requests: 0, cancelled: 0, failed: 0, dead: 0, failNet: 0, failHash: 0, failRange: 0, lastStatus: 0, refused: 0, evicted: 0, wasted: 0, fetched: 0, cached: 0, memory: 0, disk: 0, stale: 0, uploaded: 0, used: 0, skipped: 0, shrunk: 0 };
 
   private readonly manifest: Manifest;
@@ -178,8 +180,9 @@ export class Residency {
   private readonly run: Uint16Array;
   /** Meshes whose pages came in this frame's `begin`, for what keeps what it read of a mesh. */
   readonly learned: number[] = [];
-  /** Set by `download`: each page that comes has its meshes' parts kept as well. */
+  /** Set by `download`: every page is wanted, and each that comes names its meshes' parts to the port, textures to step `keepCap`. */
   private keepAll = false;
+  private keepCap = -1;
   /** Bytes of a level or a surface. For a texture, bytes of the copy on its way. */
   private readonly size: Uint32Array;
   /** Set on a level the boot pack or a page that has come holds, and on a surface the boot pack holds, and the first part of such a level. */
@@ -567,6 +570,7 @@ export class Residency {
         continue;
       }
       this.land(slot);
+      this.log?.came(slot, a, nowMs, slot >= this.clipBase);
       this.stats.fetched += a.fetched;
       this.stats.cached += a.cached;
       this.stats.memory += a.memory ?? 0;
@@ -958,40 +962,50 @@ export class Residency {
   }
 
   /**
-   * Asks the port to keep everything this tier may fetch, so nothing need be fetched while playing: every page, every
-   * level that is not held and, where there are textures, its surface and every texture as far as the tier takes it,
-   * and every skeleton's clips. A page asked for from now brings its meshes' parts the same way. Returns the bytes
-   * asked for of what is known.
+   * Names to the port everything a tier whose widest texture is `widest` pixels may fetch (0 for none; the tier drawn
+   * where not given), so the player can keep it and nothing need be fetched while playing: every page, every level that
+   * is not held and, where there are textures, its surface and every texture as far as the tier takes it, and every
+   * skeleton's clips. From now every page is asked for, and each brings its meshes' parts the same way. Returns the
+   * bytes named of what is known.
    */
-  download(): number {
+  download(widest?: number): number {
     this.keepAll = true;
+    this.keepCap = widest === undefined ? this.cap : stepOf(widest);
     const meshes: number[] = [];
     for (let i = 0; i < this.knownMesh.length; i++) if (this.knownMesh[i] === 1) meshes.push(i);
     return this.keepParts(meshes, Array.from(this.limit, (_, t) => t), true);
   }
 
-  private keepParts(meshes: readonly number[], textures: readonly number[], clips: boolean): number {
+  /** Pages neither here nor given up: until none is left, `download` has not named everything. */
+  get pagesLeft(): number {
+    let left = 0;
+    for (let slot = this.pageBase; slot < this.size.length; slot++) if (this.state[slot] !== RESIDENT && this.state[slot] !== DEAD) left++;
+    return left;
+  }
+
+  private keepParts(meshes: readonly number[], textures: readonly number[], whole: boolean): number {
     const parts: { file: number; part: AssetPart }[] = [];
     let bytes = 0;
     const add = (file: number, part: AssetPart): void => {
       parts.push({ file, part });
       bytes += part.length;
     };
+    const cap = this.keepCap;
     for (const i of meshes) {
       for (let slot = this.first[i]!; slot < this.first[i + 1]!; slot++) {
         const level = this.levelAt(slot);
         if (this.inBoot[slot] === 0) for (const p of levelParts(level, 0, 1)) add(level.file, p);
-        if (this.cap < 0 || this.inBoot[this.levels + slot] === 1) continue;
+        if (cap < 0 || this.inBoot[this.levels + slot] === 1) continue;
         for (const p of levelParts(level, 1, level.parts.length)) add((level.surface ?? level).file, p);
       }
     }
-    if (clips) for (const e of this.manifest.clips ?? []) add(e.file, wholePart(e));
-    if (this.cap >= 0) {
+    if (whole) for (const e of [...(this.manifest.clips ?? []), ...(this.manifest.pages ?? [])]) add(e.file, wholePart(e));
+    if (cap >= 0) {
       // A texture is taken as far as the material that shows it widest would.
       const most = new Int8Array(this.has.length).fill(-1);
       for (let k = 0; k < this.matTex.length; k++) {
         const t = this.matTex[k]!;
-        if (t >= 0) most[t] = Math.max(most[t]!, Math.min(this.limit[t]!, Math.max(0, Math.min(this.cap, this.matTop[Math.floor(k / MAPS)]!) - this.matUnder[k]!)));
+        if (t >= 0) most[t] = Math.max(most[t]!, Math.min(this.limit[t]!, Math.max(0, Math.min(cap, this.matTop[Math.floor(k / MAPS)]!) - this.matUnder[k]!)));
       }
       for (const t of textures) {
         const tex = this.manifest.textures![t]!;
@@ -1235,6 +1249,7 @@ export class Residency {
     if (this.asked(slot) > SMALL_PART) this.flyingLarge++;
     this.under.push(slot);
     this.stats.requests++;
+    this.log?.asked(this, slot, rider, goal, this.now);
   }
 
   /**
@@ -1247,6 +1262,7 @@ export class Residency {
     const bytes = Math.min(size - at, room);
     if (at === 0) this.ledger += size;
     this.upload(slot, this.data[slot]!.subarray(at, at + bytes), uploads, at, size);
+    this.log?.sent(slot, this.now, at + bytes >= size);
     this.given[slot] = at + bytes < size ? at + bytes : 0;
     if (at + bytes < size) return bytes;
     this.apart[slot < this.levels ? slot : slot - this.levels] = 0;
@@ -1325,6 +1341,7 @@ export class Residency {
     this.waiting -= at - this.gone[t]!;
     this.stats.uploaded += at - this.gone[t]!;
     this.gone[t] = at;
+    this.log?.sent(slot, this.now, at === whole);
     const had = this.has[t]!;
     // The copy drawn with is not let go in a frame that has sent rows of the new one.
     if (had >= 0) this.unlink(slot);

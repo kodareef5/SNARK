@@ -24,10 +24,12 @@ export class Settings {
   touchFirst = false;
   /** The byte budget of a snapshot the server is asked for, one of SNAPSHOT_BYTES. A server may allow less. */
   snapshotBytes = 1100;
-  /** What is kept of the assets between visits, in words. The app writes it each frame. */
-  kept = "";
-  /** Set by the settings screen to ask for every asset to be fetched and kept. The app takes it. */
-  download = false;
+  /**
+   * The player pressed "Download all" on the Storage tab: the game keeps everything the chosen tier needs on this
+   * device, and on later visits fetches what an update changed. `keepPaused` holds that back until Resume.
+   */
+  keepAll = false;
+  keepPaused = false;
   /** Applies only if the server allows it. */
   damageNumbers = true;
   /** A multiple of the default. */
@@ -54,6 +56,10 @@ export class Settings {
   /** The heading tape at the top of the screen. */
   compass = true;
   diagnostics = false;
+  /** Diagnostics' third value: the readout and under it the resource monitor (ui/monitor.ts). F3 and the console's `monitor` turn it on and off. */
+  monitor = false;
+  /** Whether the readout was on before F3 turned the monitor on, so that F3 again leaves it as it was. Not saved. */
+  numbersBefore = false;
   vitalLabels = false;
   minimapZoom = -1;
   padGlyphs = 0;
@@ -91,7 +97,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "diagnostics", "monitor", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2]] as const;
 
 export const VOLUME_MAX = 2;
@@ -121,6 +127,9 @@ const volume = (label: string, key: NumericSetting): SettingRow => range(label,k
 
 const TIER_LABEL: Readonly<Record<Tier["name"], string>> = { lowpoly: "low poly", medium: "medium", high: "high", ultra: "ultra" };
 
+/** The row of "Download all", which the Storage tab shows as its buttons. */
+export const DOWNLOAD_ROW = 10;
+
 export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Damage numbers", value: (s) => (s.damageNumbers ? "on" : "off"), step: (s) => void (s.damageNumbers = !s.damageNumbers) },
   range("Mouse sensitivity","sensitivity",SENSITIVITY_MIN,SENSITIVITY_MAX,.1),
@@ -132,7 +141,11 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   volume("Ambience volume", "ambienceVolume"),
   volume("Music volume", "musicVolume"),
   volume("Interface volume", "interfaceVolume"),
-  { label: "Keep all assets", value: (s) => s.kept, step: (s) => void (s.download = true) },
+  // The Storage tab draws this one as its own buttons (ui/storage.ts): Download all, Pause, Resume.
+  { label: "Download all", value: (s) => (!s.keepAll ? "off" : s.keepPaused ? "paused" : "on"), step: (s) => {
+      s.keepPaused = s.keepAll && !s.keepPaused;
+      s.keepAll = true;
+    } },
   { label: "Graphics", value: (s) => TIER_LABEL[s.tier], step: (s, by) => {
       // A tier not offered here is above those that are.
       const [list, at] = [offeredTiers(s.touchFirst), offeredTiers(s.touchFirst).findIndex((t) => t.name === s.tier)];
@@ -143,18 +156,22 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Connection", value: (s) => `${Math.round((s.snapshotBytes * TICK_RATE) / 1000)} KB/s`, step: (s, by) => void (s.snapshotBytes = SNAPSHOT_BYTES[clamp(SNAPSHOT_BYTES.indexOf(s.snapshotBytes) + by, 0, SNAPSHOT_BYTES.length - 1)]!) },
   { label: "Minimap", value: (s) => s.minimap ? "on" : "off", step: (s) => void (s.minimap = !s.minimap) },
   { label: "Status labels", value: (s) => s.vitalLabels ? "on" : "off", step: (s) => void (s.vitalLabels = !s.vitalLabels) },
-  { label: "Diagnostics", value: (s) => s.diagnostics ? "on" : "off", step: (s) => void (s.diagnostics = !s.diagnostics) },
+  { label: "Diagnostics", value: (s) => (s.monitor ? "monitor" : s.diagnostics ? "numbers" : "off"), step: (s, by) => {
+      const v = ((s.monitor ? 2 : s.diagnostics ? 1 : 0) + by + 3) % 3;
+      s.diagnostics = v > 0;
+      s.monitor = v > 1;
+    } },
   { label: "Sound", value: (s) => s.muted ? "off" : "on", step: (s) => void (s.muted = !s.muted) },
   range("Finish gloss", "finishGloss", 0.5, 2, 0.05),
   { label: "Road finish", value: s => ROAD_FINISHES[s.roadFinish]!, step: (s, by) => void (s.roadFinish = clamp(s.roadFinish + by, 0, 2)) },
   { label: "Compass", value: (s) => s.compass ? "on" : "off", step: (s) => void (s.compass = !s.compass) },
 ];
 
-const megabytes = (bytes: number): string => (bytes >= 1048576 * 10 ? `${Math.round(bytes / 1048576)} MB` : `${(bytes / 1048576).toFixed(1)} MB`);
-
-/** What is kept of the assets between visits, for the settings screen. */
-export function keptLine(cache: { used: number; mode: "disk" | "memory" | "none"; filling: number } | null): string {
-  if (!cache || cache.mode === "none") return "all here";
-  if (cache.filling > 0) return `${cache.filling} to fetch`;
-  return cache.mode === "disk" ? `${megabytes(cache.used)} kept` : "not kept";
+/** F3 and the console's `monitor`: Diagnostics to "monitor", or back to what it was before. Returns what the console says. */
+export function toggleMonitor(s: Settings): string {
+  if (!s.monitor) s.numbersBefore = s.diagnostics;
+  s.monitor = !s.monitor;
+  s.diagnostics = s.monitor || s.numbersBefore;
+  s.changed();
+  return `resource monitor ${s.monitor ? "on" : "off"}`;
 }

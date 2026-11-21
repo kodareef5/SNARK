@@ -691,7 +691,8 @@ PAINTS = 4
 class Part:
     """
     One piece of a rubble heap, in its own frame: a slab or wall of concrete broken at its edges, a sawn coral block, a
-    hollow cinder block, or a column drum lying along x. A wall carries its stucco and paint on its +z face.
+    hollow cinder block, a column drum lying along x, or a beam along x, cast square and broken off at both ends. A wall
+    carries its stucco and paint on its +z face.
     """
 
     def __init__(self, kind, at, size, turn=(0, 0, 0), seed=0, paint=None, bites=4):
@@ -704,7 +705,7 @@ class Part:
         rng = np.random.default_rng(seed + 501)
         # Bites broken out of a slab's edges and corners.
         self.bites = []
-        if kind in ("slab", "wall", "drum"):
+        if kind in ("slab", "wall", "drum", "beam"):
             for _ in range(bites):
                 # A plane cutting off a corner or a stretch of edge, at a slant through the slab.
                 v = np.array([rng.choice([-1, 1]) * rng.uniform(0.3, 1), rng.choice([-1, 1]) * rng.uniform(0.3, 1), rng.uniform(-0.6, 0.6)])
@@ -729,6 +730,9 @@ class Part:
             # Broken edges: the sides are rough and wander; the cast faces stay flat.
             edge = np.maximum(np.abs(q[:, 0]) - s[0], np.abs(q[:, 1]) - s[1])
             d = np.maximum(d, edge + n.fbm(q, 0.12, 3, seed=2) * 0.06 + np.clip(n.ridged(q, 0.08, 2, seed=3), 0, 1) ** 2 * 0.03)
+        if self.kind == "beam":
+            # Broken across at both ends; its four long faces stay as they were cast.
+            d = np.maximum(d, np.abs(q[:, 0]) - s[0] + n.fbm(q, 0.1, 3, seed=2) * 0.05 + np.clip(n.ridged(q, 0.06, 2, seed=3), 0, 1) ** 2 * 0.03)
         if self.kind == "cinder":
             # Two square cores, open top and bottom.
             for cx in (-s[0] * 0.5, s[0] * 0.5):
@@ -743,12 +747,14 @@ class Part:
         s = self.size
         if self.kind == "drum":
             return smooth(s[0] * 0.75, s[0] * 0.85, q[:, 0])
-        if self.kind not in ("slab", "wall"):
+        if self.kind not in ("slab", "wall", "beam"):
             return np.zeros(len(q), np.float32)
-        face = smooth(s[2] * 0.75, s[2] * 0.95, np.abs(q[:, 2]))
         bitten = np.zeros(len(q), np.float32)
         for v, o in self.bites:
             bitten = np.maximum(bitten, smooth(-0.03, 0.0, q @ v - o))
+        if self.kind == "beam":
+            return np.maximum(smooth(s[0] - 0.12, s[0] - 0.04, np.abs(q[:, 0])), bitten)
+        face = smooth(s[2] * 0.75, s[2] * 0.95, np.abs(q[:, 2]))
         return np.maximum(1 - face, bitten)
 
     def painted(self, q):
@@ -787,14 +793,16 @@ class Rubble:
     """
     A heap of a fallen building: parts (`Part`) lying on and in a pile of broken lumps of concrete, coral stone and
     block, rebar out of their broken edges. `mound` is (radii, height of its middle): the pile is highest in the middle
-    and runs out to nothing at its edge. `lumps` is how many broken pieces make it.
+    and runs out to nothing at its edge. `lumps` is how many broken pieces make it, and `scale` how big they are. A
+    `lean` of other than 0 heaps the pile toward one end, -x for a lean below 0, as stuff spilled from a wall lies.
     """
 
-    def __init__(self, seed, parts, mound, rebar=(), burial=0.8, foot=0.04, lumps=90, scale=1.0):
+    def __init__(self, seed, parts, mound, rebar=(), burial=0.8, foot=0.04, lumps=90, scale=1.0, lean=0.0):
         self.seed = seed
         self.n = Noise(seed)
         self.parts = parts
         self.mound = (np.asarray(mound[0], np.float32), mound[1])
+        self.lean = lean
         self.rebar = rebar
         self.burial = burial
         self.foot = foot
@@ -831,7 +839,7 @@ class Rubble:
         r, zc = self.mound
         parts = [p for p in self.parts if p.kind in ("coral", "cinder") and p.at[2] < 0.3]
         for k, part in enumerate(self.parts):
-            if part.kind not in ("wall", "slab", "drum"):
+            if part.kind not in ("wall", "slab", "drum", "beam"):
                 continue
             for j in range(2 if part.paint is not None else 1):
                 a = rng.uniform(0, 2 * np.pi)
@@ -855,7 +863,10 @@ class Rubble:
         """The pile's height over the ground: highest in the middle, nothing at its edge, steep nowhere."""
         r, zc = self.mound
         reach = np.sqrt((xy[:, 0] / r[0]) ** 2 + (xy[:, 1] / r[1]) ** 2)
-        return (r[2] + zc) * np.clip(1 - reach ** 2.2, 0, 1)
+        top = (r[2] + zc) * np.clip(1 - reach ** 2.2, 0, 1)
+        if self.lean:
+            top = top * np.clip(1 + self.lean * xy[:, 0] / r[0], 0, None)
+        return top
 
     def heap(self, p):
         n = self.n
@@ -909,6 +920,8 @@ class Rubble:
         r, zc = self.mound
         lo = np.minimum(lo, -r - 0.1)
         hi = np.maximum(hi, r + 0.1 + np.array([0, 0, zc]))
+        if self.lean:
+            hi[2] = max(hi[2], (r[2] + zc) * (1 + abs(self.lean)) + 0.1)
         for part in self.parts:
             reach = float(np.linalg.norm(part.size)) + 0.05
             lo = np.minimum(lo, part.at - reach)
@@ -932,7 +945,7 @@ class Rubble:
         broken = np.ones(len(p), np.float32) * 0.7
         paint = np.zeros(len(p), np.float32)
         tone = np.zeros(len(p), np.float32)
-        kinds = {"slab": CONCRETE, "wall": CONCRETE, "drum": CONCRETE, "coral": CORAL, "cinder": CINDER}
+        kinds = {"slab": CONCRETE, "wall": CONCRETE, "drum": CONCRETE, "beam": CONCRETE, "coral": CORAL, "cinder": CINDER}
         for k, part in enumerate(self.parts):
             sel = (which == k) & (on_part > 0.5)
             if not sel.any():

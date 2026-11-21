@@ -4,8 +4,11 @@
 // script the first frame waits for (D900): it reads the residency's own arrays by name (`r["has"]`), which TypeScript
 // checks as it does any other read, and it writes nothing.
 
-import { LAST_STEP, STEP0_SIZE, stepOf, topIn, type TextureRole } from "../../../shared/pack/texture.ts";
-import { ABSENT, ARRIVED, DEAD, LOADING, MAPS, RESIDENT, RIDING, WHY_ALLOWANCE, WHY_FIRSTS, WHY_FULL, WHY_LANES, WHY_LARGE, WHY_LEVEL, WHY_NONE, WHY_RETRY, WHY_SHARE, WHY_WAITING, stepFor, type Residency } from "./residency.ts";
+import type { TextureRole } from "../../../shared/pack/texture.ts";
+import type { Residency } from "./residency.ts";
+// Copies of the residency's and the textures' numbers, as the resource monitor, which fetches this file, imports
+// nothing of the first frame's script (copied.ts, D915).
+import { ABSENT, ARRIVED, DEAD, LAST_STEP, LOADING, MAPS, RESIDENT, RIDING, STEP0_SIZE, WHY_ALLOWANCE, WHY_FIRSTS, WHY_FULL, WHY_LANES, WHY_LARGE, WHY_LEVEL, WHY_NONE, WHY_RETRY, WHY_SHARE, WHY_WAITING, stepFor, stepOf, topIn } from "./copied.ts";
 
 export type SlotState = "absent" | "loading" | "arrived" | "resident" | "dead" | "riding";
 /**

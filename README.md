@@ -2,7 +2,7 @@
 
 # SNARK · Miami Devolved
 
-ARK-style dinosaur survival and GTA-style vehicles in a persistent multiplayer browser game.
+ARK-style dinosaur survival and GTA-style vehicles in a persistent multiplayer browser game. [Changelog](CHANGELOG.txt)
 
 - **Any city** · A procedural map pipeline turns public data into a playable city, with room for agents to add to it. Launching with Miami and four more real cities: Tampa, Las Vegas, Los Angeles, San Francisco. About 66 km² each.
 - **Survival** · Form tribes, unlock engrams, craft gear, snap bases together. Knock out, tame, breed and ride dinosaurs.
