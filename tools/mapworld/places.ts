@@ -215,7 +215,7 @@ export function placeObelisks(ground: Ground, world: World, toSample: (lon: numb
       const steps = DECK_STEPS.slice(Math.max(0, DECK_STEPS.findLastIndex((r) => r >= most)));
       const ranges = steps.map((r) => squareRange(local, width, (r + DECK_MARGIN) / 2));
       const relief = o.relief ?? DECK_RELIEF;
-      // Its pieces in the air stay over the map: the Sextant's bow reaches 160 m from its axis.
+      // Its pieces in the air stay over the map: the Sextant's bow and its hulls reach 162 m from its axis.
       const reach = Math.ceil(reachOf(o.form) / 2);
       let best = -1, radius = 0, distance = Infinity;
       for (let i = 0; i < clearance.length; i++) {
