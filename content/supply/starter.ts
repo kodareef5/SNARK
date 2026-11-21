@@ -173,7 +173,8 @@ prize("voyage", "yellow", 1, 1, some("gasoline", 80, 120), some("polymer", 15, 2
 // ---- Tier 6, red: ARK's level 60 lists.
 kit("shelter", "red", some(piece("foundation", "metal"), 2, 3), some(piece("wall", "metal"), 3, 5, ballast));
 prize("shelter", "red", 1, 1, some(piece("ceiling", "metal"), 3, 5), some(piece("stairs", "metal"), 2, 3, w(0.6)), some(piece("pillar", "metal"), 4, 6, w(0.6)), some("piece_bunk_bed", 1, 2, w(0.6)), plan("piece_vault", w(0.5)), some("piece_vault", 1, 1, w(0.1)));
-kit("arms", "red", some("dart_tranq", 10, 16), some("round_advanced", 20, 30), some("round_rifle", 30, 50, ballast), some("grenade", 2, 4));
+// Rounds for what its prize may be: the fabricated pistol's and the assault rifle's.
+kit("arms", "red", some("dart_tranq", 10, 16), some("round_advanced", 20, 30), some("round_advanced_rifle", 20, 30), some("round_rifle", 30, 50, ballast), some("grenade", 2, 4));
 // The fabricated guns as they are made, at no quality: one is a prize of this tier whole. The compound bow and the
 // rocket launcher are ahead of it, and come as blueprints.
 prize("arms", "red", 1, 1, fine("rifle"), fine("shotgun"), fine("pistol", w(0.7)), some("laser", 1, 1, w(0.7)), some("flashlight", 1, 2, w(0.5)), some("grenade_poison", 4, 6, w(0.5)), some("pistol_fabricated", 1, 1, w(0.6)), some("shotgun_pump", 1, 1, w(0.4)), some("rifle_assault", 1, 1, w(0.3)), plan("bow_compound", w(0.3)), some("c4", 1, 3, w(0.5)), plan("rocket_launcher", w(0.2)));
@@ -194,7 +195,8 @@ prize("voyage", "red", 1, 1, some("gasoline", 200, 300), some("polymer", 40, 60)
 // ---- Tier 7, Meridian: as ARK's deep sea crates, few things and fine.
 kit("shelter", "meridian", some(piece("foundation", "metal"), 4, 6), some(piece("wall", "metal"), 6, 10, ballast));
 prize("shelter", "meridian", 1, 1, some(piece("ceiling", "metal"), 6, 10), some(piece("stairs", "metal"), 4, 6, w(0.6)), some("piece_vault", 1, 1, w(0.5)), some("piece_bunk_bed", 2, 3, w(0.5)), some("piece_soul_vault", 1, 1, w(0.5)));
-kit("arms", "meridian", some("dart_shock", 10, 16), some("dart_tranq", 20, 30), some("round_advanced_rifle", 40, 60), some("round_rifle", 60, 90, ballast));
+// And here the sniper's and the compound bow's, so that neither prize comes with nothing to fire.
+kit("arms", "meridian", some("dart_shock", 10, 16), some("dart_tranq", 20, 30), some("round_advanced_rifle", 40, 60), some("round_advanced_sniper", 6, 10), some("arrow_metal", 10, 16), some("round_rifle", 60, 90, ballast));
 prize("arms", "meridian", 1, 1, fine("rifle"), fine("shotgun"), fine("pistol", { weight: 0.6, blueprint: 0 }), some("laser", 2, 2, w(0.5)), some("rifle_assault", 1, 1, w(0.8)), some("shotgun_pump", 1, 1, w(0.6)), some("rifle_sniper", 1, 1, w(0.3)), some("bow_compound", 1, 1, w(0.4)), plan("prod", w(0.3)), plan("rocket_launcher", w(0.5)), some("rocket", 2, 4, w(0.3)));
 kit("armour", "meridian", fine(suit("flak")), fine(suit("flak")), some("electronics", 30, 50, ballast), some("crystal", 30, 50));
 // Riot pieces as they are made, two of them: one at this tier's quality would be the whole drop's worth.
