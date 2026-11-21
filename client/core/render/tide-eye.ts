@@ -1,6 +1,6 @@
-// World-space sky optics. Over each instrument a beam leaves its emitter, enters a storm cell 3,300 m up and feeds a
-// figure of light on three sheets above it. Positions are relative to the actual observer, including a rider above the
-// crown.
+// World-space sky optics, and the instruments' own lights. Over each instrument a beam leaves its emitter, ends in the
+// knot of a storm 2,790 to 3,300 m up and feeds a figure of light on three sheets above it. Positions are relative to the
+// actual observer, including a rider above the crown.
 //
 // Nothing here runs backwards and no two ignitions are alike. Every moving term is a turn that only advances or a flow
 // that only travels outward on the site's clock; a figure's size follows a bloom that never shrinks, and it ends by
@@ -14,9 +14,19 @@ export const EYE_PERIOD = 120;
 export const EYE_SLOTS = 3;
 /** Floats a site: where its figure's centre is, its phase and kind; its tint and power; its clock, bloom, seed and storm; its beam's foot, its heading and how lit it is. */
 export const EYE_FLOATS = 16;
-/** Metres over the datum of the figure's first sheet, and how far under it the storm cell's sheet is. */
+/** Metres over the datum of the figure's first sheet. */
 export const EYE_SKY = 3450;
-const CELL_UNDER = 150;
+/** Metres over the datum of the storm's sheets under the figure: the knot the beam ends in, then the storm's three. */
+const STORM_SHEETS = [2790, 3000, 3150, 3300] as const;
+const KNOT_SHEET = STORM_SHEETS[0];
+/** How hard the storm's turn winds its cloud into a spiral: radians a step of e in its distance from the axis. */
+const STORM_WIND = 0.8;
+/** The optical depth of the storm's thickest cloud, as the dome's cloudLit takes it: four times the low layer's, so it is heavier. */
+export const STORM_DEPTH = 36;
+/** How much of the figure's light comes through the storm under it where nothing of the sky does: it lights the cloud from above. */
+const FIGURE_THROUGH = 0.12;
+/** The colour of lightning in the cloud, and of a bolt. */
+const FLASH = [0.72, 0.8, 1], BOLT = [0.85, 0.9, 1];
 /** Lightning's clock: ticks a second. A tick may strike. */
 const STRIKE_RATE = 1.7;
 /** Octaves of the storm's noise where a tier does not say (`#define EYE_OCTAVES`). */
@@ -151,24 +161,84 @@ function strike(t: number, seed: number, power: number, storm: number, open: num
 }
 
 const struck = { id: 0 };
-/** How bright an instrument's own lights are at a camera-relative point: the nearest lit site's breath, the bands that climb it as it charges, its surge, and a flicker with each strike. 1 with no site lit. */
-export function eyePulse(frame: Float32Array, x: number, y: number, z: number): number {
-  let best = Infinity, pulse = 1;
+
+/**
+ * The rows of an instrument's atlas its lights are built on (assets/source/core/structures/tide-eye/instrument.py): on
+ * the glass a light is a tube, lit across by how it faces the eye; on the paving's a band lit across its width; on the
+ * weathered porcelain's a dim divider.
+ */
+export const CHANNEL_STRIP = 4, CHANNEL_DIM = 7;
+/** How far the energy in an instrument's channels has run by a site's clock, in metres: on at 2.2 m a second, and 20 m more over the charge. It only grows. */
+const energyRun = (t: number, phase: number): number => 2.2 * t + 20 * sstep(4, 13, phase);
+const ENERGY_WHITE = [1, 0.96, 0.9];
+/** The channels' light after exposure: as bright as the old glow's, which was 2 to 3 where it was lit and more in a strike. */
+const ENERGY_GAIN = 3.2;
+/**
+ * An instrument's own light at a camera-relative point of one of its channels, into `out` as light after exposure: energy
+ * held in the channel, hot at its middle and falling off softly to its walls, threaded with filaments that run along it
+ * and carried by packets that climb the instrument to its emitter (on the deck, run in to the console), closer and
+ * quicker as it charges, breathing, surging at ignition and flickering with each strike by the site's pulse. Its colour
+ * is the site's, white where it is hottest. `along` is metres along the channel, or NaN to take it from where the point
+ * is on the instrument; `across` is 0 at the channel's middle and -1 and 1 at its walls (a tube's, by how it faces the
+ * eye, is never under 0); `footprint` the metres a pixel spans.
+ * With no site lit, nothing: the glow program then shows the light in its own colour.
+ */
+export function eyeEnergy(frame: Float32Array, x: number, y: number, z: number, along: number, across: number, footprint: number, out: Float64Array | number[]): void {
+  let best = Infinity;
+  out[0] = out[1] = out[2] = 0;
   for (let i = 0; i < EYE_SLOTS; i++) {
     const at = FRAME.eyes + i * EYE_FLOATS, stamp = frame[at + 3]!;
     if (stamp <= 0) continue;
     const dx = x - frame[at]!, dz = z - frame[at + 2]!, dd = dx * dx + dz * dz;
     if (dd >= best) continue;
     best = dd;
-    const phase = mod(stamp, EYE_PERIOD), t = frame[at + 8]!, power = frame[at + 7]!, open = frame[at + 15]!;
-    const up = clamp(1 - (frame[at + 12]! - y) / 660);
+    const kind = Math.floor(stamp / EYE_PERIOD), phase = stamp - kind * EYE_PERIOD, form = kind % 3;
+    const t = frame[at + 8]!, power = frame[at + 7]!, seed = frame[at + 10]!, open = frame[at + 15]!, cs = frame[at + 13]!, sn = frame[at + 14]!;
+    const height = y - frame[at + 12]!;
     const charge = sstep(4, 9, phase) * (1 - sstep(9, 13, phase));
-    const breath = 0.78 + 0.14 * Math.sin(1.25 * t);
-    // Bands of light climb the instrument to its emitter; on the deck, far under it, they run in to the console.
-    const climb = Math.pow(0.5 + 0.5 * Math.sin(up < 0.03 ? Math.sqrt(dd) * 0.13 + (2.2 + 5 * charge) * t : 26 * up - (2.2 + 5 * charge) * t), 3);
-    pulse = open * (breath + (0.25 + 0.9 * charge) * climb + 0.35 * power + 1.3 * strike(t, frame[at + 10]!, power, frame[at + 11]!, open, struck));
+    const run = energyRun(t, phase), lit = strike(t, seed, power, frame[at + 11]!, open, struck);
+    // Filaments: thin lines where two noises cross their middles, wandering as they run. A packet every 7 m with a hard
+    // front and a long tail, and a surge 160 m long climbing the whole height; sparks racing along four times as fast,
+    // one in three lengths of 2.5 m, each somewhere across; diodes under the glass. Sparks and diodes are seen close.
+    let a = along, side = across * 2.6 + 13 * seed, turns = 1;
+    let n1 = 0, n2 = 0, wave = 0, sparkAt = 0;
+    if (Number.isNaN(a)) {
+      // From where the point is: up the instrument, the filaments lying by where it is across it; and on the deck round
+      // each ring and in along each spoke, as fronts of a spiral closing on the console, the filaments in a frame that
+      // turns with them, so that nothing has a seam.
+      const ex = EMITTERS[form]!.x, mx = dx + ex * cs, mz = dz - ex * sn, r = Math.hypot(mx, mz);
+      a = height < -640 ? -r : height;
+      side = 0.37 * (mx - mz);
+      if (height < -640) {
+        const th = Math.atan2(mz, mx + 1e-10), turn = th - 2.3 * run / Math.max(r, 3), turn2 = th - 4.1 * run / Math.max(r, 3);
+        n1 = noise(r * Math.cos(turn) * 0.45, r * Math.sin(turn) * 0.45, 3);
+        n2 = noise(r * Math.cos(turn2) * 1.3 + 7, r * Math.sin(turn2) * 1.3, 4);
+        wave = 24 * th / TAU - r / 7 - 4.5 * run / 7;
+        sparkAt = 96 * th / TAU - r / 2.5 - 9 * run / 2.5;
+        turns = 24;
+      }
+    }
+    if (turns === 1) {
+      n1 = noise(a * 0.45 - 2.3 * run, side * 2.2, 3);
+      n2 = noise(a * 1.3 - 4.1 * run, side * 3.7 + 7, 4);
+      wave = (a - 4.5 * run) / 7;
+      sparkAt = (a - 9 * run) / 2.5;
+    }
+    const beads = turns === 1 ? 0.92 + 0.08 * Math.cos(a * 31.4) * sstep(0.08, 0.02, footprint) : 1;
+    const fil = 1 - Math.abs(2 * n1 - 1), fil2 = 1 - Math.abs(2 * n2 - 1);
+    const threads = 0.7 * fil ** 6 + 0.5 * fil2 ** 8;
+    const k = fract(wave);
+    // Round a ring the fronts are counted round, so a packet is the same packet either side of where the count starts.
+    const packet = Math.exp(-(1 - k) * 4) * sstep(1, 0.95, k) * (0.35 + 0.65 * eyeHash(mod(Math.floor(wave), turns === 1 ? 1e6 : turns), 17, 5));
+    const surge = Math.pow(0.5 + 0.5 * Math.sin((a - 25 * run) * 0.039), 4);
+    const cell = mod(Math.floor(sparkAt), turns === 1 ? 1e6 : 4 * turns), into = fract(sparkAt) * 2.5;
+    const spark = eyeHash(cell, 23, 6) < 0.35 ? Math.exp(-(((into - 0.4 - 1.7 * eyeHash(cell, 29, 6)) / 0.12) ** 2) - (((across - 1.6 * eyeHash(cell, 31, 6) + 0.8) / 0.15) ** 2)) * sstep(0.15, 0.04, footprint) : 0;
+    const pulse = open * (0.62 + 0.12 * Math.sin(1.25 * t) + 0.3 * power + (0.2 + 0.7 * charge) * surge + 1.3 * lit);
+    const e = pulse * (0.3 + 1.1 * threads + (0.9 + 0.9 * charge + 0.3 * power) * packet + 1.4 * spark) * beads;
+    const core = Math.exp(-across * across * 6), body = Math.exp(-across * across * 2.2);
+    const hot = e * core, white = 0.9 * hot * hot;
+    for (let c = 0; c < 3; c++) out[c] = ENERGY_GAIN * (frame[at + 4 + c]! * e * body * 1.45 + ENERGY_WHITE[c]! * white);
   }
-  return pulse;
 }
 
 /** The light an instrument's own display sends down on it, for a mirrored ray at a camera-relative point: the nearest site's tint by its power, most from straight up, in light before exposure. Nothing farther than 500 m from a site. */
@@ -197,10 +267,140 @@ function beam(dx: number, dy: number, dz: number, ax: number, az: number, footY:
   return (Math.exp(-r / w) + 0.22 * Math.exp(-r / (5 * w))) * body * beads * (1 + 1.6 * Math.exp(-up / 45));
 }
 
-const NO_AMBIENT = [0, 0, 0];
+/**
+ * How a cloud of the storm is lit, as the dome lights its own (atmosphere.ts cloudLit, `CloudLights`): `lit` puts its light
+ * into `out` for its thickness, 0 to 1, its slope toward the light, the ray and the sky behind it; `way` is where the
+ * light comes from and `relief` how much the slope toward it counts.
+ */
+export interface StormLit {
+  readonly way: ArrayLike<number>;
+  readonly relief: number;
+  lit(out: number[], thick: number, relief: number, ray: ArrayLike<number>, behind: ArrayLike<number>): void;
+}
+/** Where nothing lights it as the dome lights its clouds: the sky behind it, darker where it is thick. */
+const plainLit: StormLit = { way: [0, 1, 0], relief: 0, lit(out, thick, _relief, _ray, behind) {
+  for (let c = 0; c < 3; c++) out[c] = behind[c]! * (0.9 - 0.55 * thick);
+} };
+
+/** The low layer's picture in cover and thickness where the dome has it, and its stand-in where not: value noise heaped as it heaps. */
+function cumulus(u: number, v: number, k: number, octaves: number, out: number[]): void {
+  const n = fbm(u * 7 + k * 17, v * 7 + k * 17, k * 5, octaves);
+  out[0] = sstep(0.48, 0.68, n);
+  out[1] = clamp((n - 0.5) * 2.6);
+}
+const reads = [[0, 0], [0, 0], [0, 0]];
+/**
+ * The storm's cloud over a point `qx, qz` km from its axis on sheet `sheet`, into `out` as how much it covers and how
+ * thick it is, 0 to 1: the sky's heaped cloud, three reads of it at sizes from 2.4 to 5.9 km a picture, gathered about
+ * the beam's end and wound into a spiral by a turn that only advances and is quicker near the middle; densest in a
+ * wall about the knot, in arms further out, and no further than `reach`.
+ */
+function stormCloud(qx: number, qz: number, sheet: number, seed: number, dir: number, t: number, storm: number, reach: number, octaves: number, out: number[]): void {
+  const r = Math.hypot(qx, qz);
+  const a = dir * (STORM_WIND * Math.log(r + 0.3) - (0.02 + 0.035 * Math.exp(-1.6 * r)) * t) + TAU * fract(seed * 5.31 + sheet * 0.37);
+  const ca = Math.cos(a), sa = Math.sin(a), wx = ca * qx - sa * qz, wz = sa * qx + ca * qz;
+  const ox = fract(seed * 3.7 + sheet * 0.137) * 9, oz = fract(seed * 1.9 + sheet * 0.291) * 9;
+  const s1 = reads[0]!, s2 = reads[1]!, s3 = reads[2]!;
+  cumulus(wx * 0.17 + ox, wz * 0.17 + oz, 1, octaves, s1);
+  cumulus((0.6 * wx - 0.8 * wz) * 0.32 + oz, (0.8 * wx + 0.6 * wz) * 0.32 + ox, 2, octaves, s2);
+  cumulus((-0.5 * wx - 0.87 * wz) * 0.24 + ox * 0.7, (0.87 * wx - 0.5 * wz) * 0.24 + oz * 0.7, 3, octaves, s3);
+  const cover = 1 - (1 - s1[0]!) * (1 - s2[0]!) * (1 - s3[0]!);
+  const heap = clamp(Math.max(s1[1]!, s2[1]!, s3[1]!) * 1.2 + 0.15 * (s1[1]! + s2[1]! + s3[1]!));
+  const arm = 0.5 + 0.5 * Math.cos((3 + Math.floor(fract(seed * 17.9) * 2)) * Math.atan2(wz, wx + 1e-10) + 2 * heap);
+  const wall = 1 - sstep(0.25, 0.9, r), env = 1 - sstep(reach * 0.4, reach * 0.85, r);
+  // As the storm thins its thinnest cloud goes first, down to the knot.
+  const c = Math.max(clamp(cover * 2.1 - 0.9 * (1 - storm)) * mix(mix(0.3, 1, sstep(0.08, 0.6, arm)), 1, wall) * env, sstep(0.45, 0.15, r) * storm);
+  out[0] = c * Math.min(1, storm * 3);
+  out[1] = Math.max(heap * (0.4 + 0.6 * wall) * env, sstep(0.3, 0.1, r));
+}
+/** A bolt `u` metres beside its path at `v` metres along it, of length `len` and core width `w`: never quite straight, forking once. */
+function bolt(u: number, v: number, id: number, len: number, w: number): number {
+  if (v < 0 || v > len) return 0;
+  const wob = (noise(v * 0.012, id * 3.1, 5) - 0.5) * 90 + (noise(v * 0.045, id * 1.7, 6) - 0.5) * 30 + (noise(v * 0.16, id * 0.7, 4) - 0.5) * 9;
+  const main = Math.abs(u - wob);
+  const at = len * (0.3 + 0.3 * eyeHash(id, 21, 3)), side = eyeHash(id, 23, 3) < 0.5 ? 1 : -1;
+  const fork = v > at ? Math.abs(u - wob - side * (v - at) * 0.55 - (noise(v * 0.05, id * 2.3, 7) - 0.5) * 30) : 1e9;
+  return (Math.exp(-main / w) + 0.12 * Math.exp(-main / (w * 14))) * (1 - sstep(len * 0.7, len, v)) + 0.7 * Math.exp(-fork / (w * 0.8)) * (1 - sstep(at + (len - at) * 0.5, len, v));
+}
+const sheetLit = [0, 0, 0], here = [0, 0], there = [0, 0], ray3 = [0, 0, 0];
+/**
+ * The storm over a site whose figure's middle is at `x, sky, z` from the eye, along ray `dx, dy, dz`: its light into
+ * `out`, and how much of what is behind it shows. Four sheets from the lowest up, each the heaped cloud of the dome
+ * lit as the dome lights its own (`lit`): the knot at the beam's end, and the storm 3,000, 3,150 and 3,300 m up, the
+ * higher only where it is thick, so its heaps stand up toward the middle. Lightning on the site's strike clock lights
+ * the cloud from inside about the strike, most where it is thin, crawls under the storm from the knot to the strike and
+ * hangs from its edge; the beam lights the knot and the cloud over it in the site's colour.
+ */
+function stormLight(dx: number, dy: number, dz: number, x: number, sky: number, z: number, seed: number, dir: number, t: number, storm: number, power: number, open: number, tint: readonly number[], exposure: number, behind: ArrayLike<number>, lit: StormLit, px: number, octaves: number, out: number[]): number {
+  out[0] = out[1] = out[2] = 0;
+  if (storm <= 0.001) return 1;
+  const reach = 1.2 + 1.5 * sstep(5, 12, t), camY = EYE_SKY - sky;
+  ray3[0] = dx;
+  ray3[1] = dy;
+  ray3[2] = dz;
+  const flash = strike(t, seed, power, storm, open, struck), id = struck.id;
+  const ax = (eyeHash(id, 11, 2) - 0.5) * 1.5 * reach, az = (eyeHash(id, 13, 2) - 0.5) * 1.5 * reach;
+  const adapt = (0.35 + 0.65 * sstep(2, 10, Math.log2(Math.max(1, exposure)))) * flash;
+  let held = 1;
+  for (let k = 0; k < STORM_SHEETS.length; k++) {
+    const tt = (STORM_SHEETS[k]! - camY) / dy;
+    if (tt <= 0) continue;
+    const qx = (dx * tt - x) / 1000, qz = (dz * tt - z) / 1000, r = Math.hypot(qx, qz);
+    if (r > reach) continue;
+    let cover: number, thick: number, relief = 0;
+    if (k === 0) {
+      // The knot: dense where the beam ends, lumped by a little noise.
+      cover = sstep(0.42, 0.12, r) * Math.min(1, storm * 3);
+      thick = 0.55 + 0.45 * sstep(0.4, 0.1, r) - 0.25 * noise(qx * 14 + seed * 9, qz * 14, 8);
+    } else {
+      stormCloud(qx, qz, k, seed, dir, t, storm, reach, octaves, here);
+      cover = here[0]!;
+      thick = here[1]!;
+      if (k > 1) cover *= sstep(0.2 + 0.25 * (k - 1), 0.5 + 0.25 * (k - 1), thick + 0.35 * sstep(1.1, 0.3, r));
+      const side = Math.hypot(lit.way[0]!, lit.way[2]!);
+      if (cover > 0.004 && lit.relief > 0 && side > 0.001) {
+        // The slope toward the light, as the dome reads it off its own layer: thicker here than 120 m toward the light.
+        stormCloud(qx + 0.12 * lit.way[0]! / side, qz + 0.12 * lit.way[2]! / side, k, seed, dir, t, storm, reach, octaves, there);
+        relief = Math.max(-0.7, Math.min(0.7, (thick - there[1]!) * 3.5 * side)) * lit.relief;
+      }
+    }
+    if (cover < 0.004) continue;
+    lit.lit(sheetLit, thick, relief, ray3, behind);
+    const glow = adapt * (3.2 * Math.exp(-Math.hypot(qx - ax, qz - az) / 0.45) + 0.12) * (0.35 + 0.65 * Math.exp(-1.5 * thick));
+    const beamGlow = (0.5 + 0.9 * power) * open * (k === 0 ? 2.6 : k === 1 ? 1.2 : 0.3) * Math.exp(-r / (k === 0 ? 0.11 : 0.22));
+    const a = cover * 0.95;
+    for (let c = 0; c < 3; c++) out[c]! += held * a * (sheetLit[c]! * (k === 0 ? 0.55 : 1) + FLASH[c]! * glow + tint[c]! * beamGlow);
+    held *= 1 - a;
+  }
+  if (flash > 0 && octaves > 2) {
+    // Under the storm, a bolt crawls from the knot out to the strike.
+    const tb = (STORM_SHEETS[1]! - 25 - camY) / dy;
+    if (tb > 0) {
+      const bx = dx * tb - x, bz = dz * tb - z, len = Math.hypot(ax, az) * 1000 + 200;
+      const ux = ax * 1000 / Math.max(1, len - 200), uz = az * 1000 / Math.max(1, len - 200);
+      const b = flash * 2.2 * bolt(bx * uz - bz * ux, bx * ux + bz * uz - 120, id, len, Math.max(3, 0.8 * tb * px));
+      for (let c = 0; c < 3; c++) out[c]! += b * BOLT[c]!;
+    }
+    // And with most strikes another hangs from its edge, seen from wherever the eye is on the side nearer it.
+    const ee = dx * dx + dz * dz, rb = 780 * reach, fb = -(x * dx + z * dz), disc = fb * fb - ee * (x * x + z * z - rb * rb);
+    if (eyeHash(id, 31, 4) < 0.6 && ee > 1e-8 && disc > 0) {
+      const tc = (-fb - Math.sqrt(disc)) / ee;
+      if (tc > 0) {
+        const hx = dx * tc - x, hz = dz * tc - z, th = Math.atan2(hz, hx) - Math.atan2(az, ax);
+        const b = flash * 2.2 * bolt(Math.atan2(Math.sin(th), Math.cos(th)) * rb, STORM_SHEETS[1]! + 40 - dy * tc - camY, id + 7, 700 + 500 * eyeHash(id, 33, 4), Math.max(3, 0.8 * tc * px));
+        for (let c = 0; c < 3; c++) out[c]! += held * b * BOLT[c]!;
+      }
+    }
+  }
+  return held;
+}
+
+const NO_SKY = [0, 0, 0];
+const stormOut = [0, 0, 0];
 // Called only on unobstructed sky pixels. Adds a ray's light to `out` and returns how much of the sky behind shows.
-// `ambient` is the light a cloud up there would show, in the units `out` is in.
-export function eyeRadiance(frame: Float32Array, ray: ArrayLike<number>, out: Float64Array, ambient: ArrayLike<number> = NO_AMBIENT, octaves = OCTAVES): number {
+// `behind` is the sky's light behind the ray and `lit` how a cloud up there is lit (the dome's cloudLit, atmosphere.ts),
+// in the units `out` is in; `px` is the angle a pixel spans.
+export function eyeRadiance(frame: Float32Array, ray: ArrayLike<number>, out: Float64Array, behind: ArrayLike<number> = NO_SKY, octaves = OCTAVES, lit: StormLit = plainLit, px = 0.0015): number {
   let transmission = 1;
   const dx = ray[0]!, dy = ray[1]!, dz = ray[2]!;
   if (dy <= 0.002) return 1;
@@ -318,51 +518,20 @@ export function eyeRadiance(frame: Float32Array, ray: ArrayLike<number>, out: Fl
         white += power * fold * (1.85 * Math.exp(-Math.abs(bolt) / 0.009) + 0.17 * veil * stream);
       }
     }
-    // The storm cell under it: a swirl of cloud, a knot at its middle, and lightning.
-    const top = sky - CELL_UNDER, sd = top / dy;
-    const qx = (dx * sd - x) / 1000, qz = (dz * sd - z) / 1000, rq = Math.hypot(qx, qz);
-    let cover = 0, thick = 0, flash = 0, fork = 0;
-    if (storm > 0.001 && sd > 0 && rq < 3.4) {
-      const ang = dir * 0.03 * t + 1.3 * Math.log(rq + 0.25), ca = Math.cos(ang), sa = Math.sin(ang);
-      const n = 0.7 * fbm((ca * qx - sa * qz) * 1.9 + seed * 37, (sa * qx + ca * qz) * 1.9 + seed * 37, 3, octaves)
-        + 0.3 * fbm(qx * 4.3 - dir * 0.021 * t + 11, qz * 4.3 - dir * 0.013 * t + 11, 9, octaves);
-      const reach = 1.2 + 1.5 * sstep(5, 12, t), th = mix(0.66, 0.4, storm) + 0.2 * rq / reach;
-      const body = n + 0.5 * (1 - sstep(0.16, 0.5, rq));
-      cover = sstep(th, th + 0.26, body) * (1 - sstep(reach * 0.72, reach, rq)) * Math.min(1, storm * 3);
-      thick = clamp((body - th) / 0.42);
-      const lit = strike(t, seed, power, storm, open, struck);
-      if (lit > 0) {
-        const id = struck.id;
-        const ax = (eyeHash(id, 11, 2) - 0.5) * 1.5 * reach, az = (eyeHash(id, 13, 2) - 0.5) * 1.5 * reach;
-        flash = lit * Math.exp(-Math.hypot(qx - ax, qz - az) / 0.5);
-        if (octaves > 2) {
-          // A bolt crawls from the knot out toward the strike, never quite straight, and forks part way.
-          const a0 = Math.atan2(qz, qx + 1e-10) - Math.atan2(az, ax + 1e-10), a = Math.atan2(Math.sin(a0), Math.cos(a0));
-          const len = Math.hypot(ax, az) + 0.25;
-          const wob = (noise(rq * 9, id * 3.1, 5) - 0.5) * 0.34 + (noise(rq * 31, id * 1.7, 6) - 0.5) * 0.1;
-          const across = Math.abs(a * rq + wob * sstep(0, 0.3, rq));
-          const branch = Math.abs((a - 0.35 * sstep(len * 0.35, len, rq)) * rq + wob * 0.8);
-          const run = sstep(0.03, 0.1, rq) * (1 - sstep(len * 0.85, len, rq));
-          fork = lit * run * (Math.exp(-across / 0.006) + 0.6 * Math.exp(-branch / 0.005) * (rq >= len * 0.35 ? 1 : 0));
-        }
-      }
-    }
-    // The beam, in front of all that: one from the emitter, or the Lantern's three from its masts.
+    // The storm under it, then the beam in front of all that, which ends in the storm's knot: one from the emitter, or
+    // the Lantern's three from its masts.
+    const held = stormLight(dx, dy, dz, x, sky, z, seed, dir, t, storm, power, open, tint, frame[FRAME.exposure]!, behind, lit, px, octaves, stormOut);
+    const top = sky - (EYE_SKY - KNOT_SHEET);
     let shaft = 0;
-    const lit = (0.5 + 0.9 * power) * open;
+    const beamLit = (0.5 + 0.9 * power) * open;
     if (form === 2) for (let b = 0; b < LANTERN_MASTS.length; b++) {
       const mx = LANTERN_MASTS[b]![0], mz = LANTERN_MASTS[b]![1];
       shaft += beam(dx, dy, dz, x + mx * cs + mz * sn, z - mx * sn + mz * cs, footY, top, power, phase, t, 0.7);
     }
     else shaft = beam(dx, dy, dz, x, z, footY, top, power, phase, t, 1);
-    shaft *= lit;
-    const under = open * 0.9 * Math.exp(-rq / 0.3) * (0.35 + 0.65 * thick) + power * 0.7 * (1 - thick) * (1 - thick);
-    for (let c = 0; c < 3; c++) {
-      const figureLight = tint[c]! * glow + white + fringe[c]!;
-      const cloud = ambient[c]! * (0.5 - 0.38 * thick) + tint[c]! * under + ([0.72, 0.8, 1][c]! + 0.35 * tint[c]!) * flash * 2.4;
-      out[c]! += transmission * (figureLight * (1 - 0.85 * cover) + cloud * cover + ([0.85, 0.9, 1][c]! + 0.3 * tint[c]!) * fork) + tint[c]! * shaft + 0.3 * power * Math.min(1, shaft * shaft);
-    }
-    transmission *= pupil * (1 - cover);
+    shaft *= beamLit;
+    for (let c = 0; c < 3; c++) out[c]! += transmission * (stormOut[c]! + (held + FIGURE_THROUGH * (1 - held)) * (tint[c]! * glow + white + fringe[c]!)) + tint[c]! * shaft + 0.3 * power * Math.min(1, shaft * shaft);
+    transmission *= pupil * held;
   }
   return transmission;
 }
@@ -388,6 +557,11 @@ float eyeStrike(float t, float seed, float power, float storm, float open, out f
   float chance = mix(.06,.8,clamp(power*1.2,0.,1.))*smoothstep(.3,.6,storm)+.04*open;
   if (eyeHash(vec2(id,7.),floor(seed*4096.)) >= chance) return 0.;
   return exp(-f*7.)*(.55+.45*step(.5,fract(f*9.+eyeHash(vec2(id,3.),1.))));
+}
+float eyeNoise(vec2 p, float k) {
+  vec2 c = floor(p), f = p-c;
+  f = f*f*(3.-2.*f);
+  return mix(mix(eyeHash(c,k),eyeHash(c+vec2(1.,0.),k),f.x),mix(eyeHash(c+vec2(0.,1.),k),eyeHash(c+vec2(1.,1.),k),f.x),f.y);
 }`;
 
 /** `eyeGlint` as GLSL, after the frame block. */
@@ -406,31 +580,60 @@ vec3 eyeGlint(vec3 rel, vec3 ray) {
   return glint/max(fSunColor.w,1.e-6);
 }`;
 
-/** `eyePulse` as GLSL, after the frame block and EYE_STRIKE_GLSL. */
-export const EYE_PULSE_GLSL = `
-float eyePulse(vec3 rel) {
-  float best = 1.e30, pulse = 1.;
+/** `eyeEnergy` as GLSL, after the frame block and EYE_STRIKE_GLSL: the light, and `along` below -1e9 to take it from where the point is. */
+export const EYE_ENERGY_GLSL = `
+vec3 eyeEnergy(vec3 rel, float along, float across, float footprint) {
+  float best = 1.e30;
+  vec3 light = vec3(0.);
   for (int i=0; i<3; i++) {
     vec4 s = fEyes[i*4], tint = fEyes[i*4+1], life = fEyes[i*4+2], foot = fEyes[i*4+3];
     vec2 away = rel.xz-s.xz;
     float dd = dot(away,away);
     if (s.w <= 0. || dd >= best) continue;
     best = dd;
-    float phase = mod(s.w,120.), t = life.x, id;
-    float up = clamp(1.-(foot.x-rel.y)/660.,0.,1.);
+    float kind = floor(s.w/120.), phase = s.w-120.*kind, form = kind-3.*floor(kind/3.), t = life.x, id;
+    float height = rel.y-foot.x, a = along, side = across*2.6+13.*life.z, turns = 1., n1, n2, wave, sparkAt;
     float charge = smoothstep(4.,9.,phase)*(1.-smoothstep(9.,13.,phase));
-    float climb = pow(.5+.5*sin(up < .03 ? sqrt(dd)*.13+(2.2+5.*charge)*t : 26.*up-(2.2+5.*charge)*t),3.);
-    pulse = foot.w*(.78+.14*sin(1.25*t)+(.25+.9*charge)*climb+.35*tint.w+1.3*eyeStrike(t,life.z,tint.w,life.w,foot.w,id));
+    float run = 2.2*t+20.*smoothstep(4.,13.,phase), lit = eyeStrike(t,life.z,tint.w,life.w,foot.w,id);
+    if (a < -1.e9) {
+      float ex = form < .5 ? ${g(EMITTERS[0].x)} : form < 1.5 ? ${g(EMITTERS[1].x)} : ${g(EMITTERS[2].x)};
+      vec2 m = away+ex*vec2(foot.y,-foot.z);
+      float r = length(m);
+      a = height < -640. ? -r : height;
+      side = .37*(m.x-m.y);
+      if (height < -640.) {
+        float th = atan(m.y,m.x+1.e-10), turn = th-2.3*run/max(r,3.), turn2 = th-4.1*run/max(r,3.);
+        n1 = eyeNoise(r*vec2(cos(turn),sin(turn))*.45,3.);
+        n2 = eyeNoise(r*vec2(cos(turn2),sin(turn2))*1.3+vec2(7.,0.),4.);
+        wave = 24.*th/6.2831853-r/7.-4.5*run/7.;
+        sparkAt = 96.*th/6.2831853-r/2.5-9.*run/2.5;
+        turns = 24.;
+      }
+    }
+    if (turns == 1.) {
+      n1 = eyeNoise(vec2(a*.45-2.3*run,side*2.2),3.);
+      n2 = eyeNoise(vec2(a*1.3-4.1*run,side*3.7+7.),4.);
+      wave = (a-4.5*run)/7.;
+      sparkAt = (a-9.*run)/2.5;
+    }
+    float fil = 1.-abs(2.*n1-1.), fil2 = 1.-abs(2.*n2-1.);
+    float threads = .7*pow(fil,6.)+.5*pow(fil2,8.);
+    float k = fract(wave), every = turns == 1. ? 1.e6 : turns;
+    float packet = exp(-(1.-k)*4.)*smoothstep(1.,.95,k)*(.35+.65*eyeHash(vec2(mod(floor(wave),every),17.),5.));
+    float surge = pow(.5+.5*sin((a-25.*run)*.039),4.);
+    float beads = turns == 1. ? .92+.08*cos(a*31.4)*smoothstep(.08,.02,footprint) : 1.;
+    float cell = mod(floor(sparkAt),turns == 1. ? 1.e6 : 4.*turns), into = fract(sparkAt)*2.5;
+    float sx = (into-.4-1.7*eyeHash(vec2(cell,29.),6.))/.12, sy = (across-1.6*eyeHash(vec2(cell,31.),6.)+.8)/.15;
+    float spark = eyeHash(vec2(cell,23.),6.) < .35 ? exp(-sx*sx-sy*sy)*smoothstep(.15,.04,footprint) : 0.;
+    float pulse = foot.w*(.62+.12*sin(1.25*t)+.3*tint.w+(.2+.7*charge)*surge+1.3*lit);
+    float e = pulse*(.3+1.1*threads+(.9+.9*charge+.3*tint.w)*packet+1.4*spark)*beads;
+    float hot = e*exp(-across*across*6.);
+    light = ${g(ENERGY_GAIN)}*(tint.rgb*e*exp(-across*across*2.2)*1.45+vec3(${ENERGY_WHITE.map(g).join(",")})*.9*hot*hot);
   }
-  return pulse;
+  return light;
 }`;
 
 export const EYE_SKY_GLSL = `${EYE_STRIKE_GLSL}
-float eyeNoise(vec2 p, float k) {
-  vec2 c = floor(p), f = p-c;
-  f = f*f*(3.-2.*f);
-  return mix(mix(eyeHash(c,k),eyeHash(c+vec2(1.,0.),k),f.x),mix(eyeHash(c+vec2(0.,1.),k),eyeHash(c+vec2(1.,1.),k),f.x),f.y);
-}
 float eyeFbm(vec2 p, float k) {
   float a = .5, s = 0.;
   for (int o=0; o<EYE_OCTAVES; o++) {
@@ -448,10 +651,99 @@ float eyeBeam(vec3 d, vec2 axis, float footY, float top, float power, float phas
   float body = (1.-smoothstep(front-60.,front,up))*(1.-smoothstep(span-300.,span-30.,up));
   return (exp(-r/w)+.22*exp(-r/(5.*w)))*body*(.78+.22*sin(.05*up-5.2*t))*(1.+1.6*exp(-up/45.));
 }
-vec4 eyeOptics(vec3 d, vec3 ambient) {
+#ifndef EYE_LIT
+vec3 eyeCloudLit(float thick, float relief, vec3 d, vec3 behind) { return behind*(.9-.55*thick); }
+#define EYE_WAY vec3(0.,1.,0.)
+#define EYE_RELIEF 0.
+#endif
+const float EYE_SHEETS[${STORM_SHEETS.length}] = float[${STORM_SHEETS.length}](${STORM_SHEETS.map(g).join(",")});
+bool eyePictured = false;
+vec2 eyeCumulus(vec2 uv, float k, float lod) {
+#ifdef EYE_PICTURE
+  if (eyePictured) return textureLod(uLow, uv, lod).rg;
+#endif
+  float n = eyeFbm(uv*7.+k*17.,k*5.);
+  return vec2(smoothstep(.48,.68,n),clamp((n-.5)*2.6,0.,1.));
+}
+vec2 eyeStormCloud(vec2 q, float sheet, float seed, float dir, float t, float storm, float reach, float lod) {
+  float r = length(q);
+  float a = dir*(${g(STORM_WIND)}*log(r+.3)-(.02+.035*exp(-1.6*r))*t)+6.2831853*fract(seed*5.31+sheet*.37);
+  vec2 w = mat2(cos(a),sin(a),-sin(a),cos(a))*q, o = fract(vec2(seed*3.7+sheet*.137,seed*1.9+sheet*.291))*9.;
+  vec2 s1 = eyeCumulus(w*.17+o,1.,lod+${g(Math.log2(0.17 / 0.32))});
+  vec2 s2 = eyeCumulus(mat2(.6,.8,-.8,.6)*w*.32+o.yx,2.,lod);
+  vec2 s3 = eyeCumulus(mat2(-.5,.87,-.87,-.5)*w*.24+o*.7,3.,lod+${g(Math.log2(0.24 / 0.32))});
+  float cover = 1.-(1.-s1.x)*(1.-s2.x)*(1.-s3.x);
+  float heap = clamp(max(max(s1.y,s2.y),s3.y)*1.2+.15*(s1.y+s2.y+s3.y),0.,1.);
+  float arm = .5+.5*cos((3.+floor(fract(seed*17.9)*2.))*atan(w.y,w.x+1.e-10)+2.*heap);
+  float wall = 1.-smoothstep(.25,.9,r), env = 1.-smoothstep(reach*.4,reach*.85,r);
+  float c = max(clamp(cover*2.1-.9*(1.-storm),0.,1.)*mix(mix(.3,1.,smoothstep(.08,.6,arm)),1.,wall)*env,smoothstep(.45,.15,r)*storm);
+  return vec2(c*min(1.,storm*3.),max(heap*(.4+.6*wall)*env,smoothstep(.3,.1,r)));
+}
+float eyeBolt(float u, float v, float id, float len, float w) {
+  if (v < 0. || v > len) return 0.;
+  float wob = (eyeNoise(vec2(v*.012,id*3.1),5.)-.5)*90.+(eyeNoise(vec2(v*.045,id*1.7),6.)-.5)*30.+(eyeNoise(vec2(v*.16,id*.7),4.)-.5)*9.;
+  float main = abs(u-wob), at = len*(.3+.3*eyeHash(vec2(id,21.),3.)), side = eyeHash(vec2(id,23.),3.) < .5 ? 1. : -1.;
+  float fork = v > at ? abs(u-wob-side*(v-at)*.55-(eyeNoise(vec2(v*.05,id*2.3),7.)-.5)*30.) : 1.e9;
+  return (exp(-main/w)+.12*exp(-main/(w*14.)))*(1.-smoothstep(len*.7,len,v))+.7*exp(-fork/(w*.8))*(1.-smoothstep(at+(len-at)*.5,len,v));
+}
+vec4 eyeStorm(vec3 d, vec3 s, float seed, float dir, float t, float storm, float power, float open, vec3 tint, vec3 behind, float px) {
   vec3 light = vec3(0.);
-  float transmission = 1.;
+  float held = 1.;
+  if (storm <= .001) return vec4(light, held);
+  float reach = 1.2+1.5*smoothstep(5.,12.,t), camY = ${g(EYE_SKY)}-s.y, id, flash = eyeStrike(t,seed,power,storm,open,id);
+  vec2 at = (vec2(eyeHash(vec2(id,11.),2.),eyeHash(vec2(id,13.),2.))-.5)*1.5*reach;
+  float adapt = (.35+.65*smoothstep(2.,10.,log2(max(1.,fSunColor.w))))*flash, side = length(EYE_WAY.xz);
+  for (int k=0; k<${STORM_SHEETS.length}; k++) {
+    float tt = (EYE_SHEETS[k]-camY)/d.y;
+    vec2 q = (d.xz*tt-s.xz)*.001;
+    float r = length(q);
+    if (tt <= 0. || r > reach) continue;
+    float cover, thick, relief = 0.;
+    if (k == 0) {
+      cover = smoothstep(.42,.12,r)*min(1.,storm*3.);
+      thick = .55+.45*smoothstep(.4,.1,r)-.25*eyeNoise(vec2(q.x*14.+seed*9.,q.y*14.),8.);
+    } else {
+      float lod = log2(max(1.e-6,tt*px*.655));
+      vec2 here = eyeStormCloud(q,float(k),seed,dir,t,storm,reach,lod);
+      cover = here.x;
+      thick = here.y;
+      if (k > 1) cover *= smoothstep(.2+.25*float(k-1),.5+.25*float(k-1),thick+.35*smoothstep(1.1,.3,r));
+      if (cover > .004 && EYE_RELIEF > 0. && side > .001) relief = clamp((thick-eyeStormCloud(q+.12*EYE_WAY.xz/side,float(k),seed,dir,t,storm,reach,lod+1.).y)*3.5*side,-.7,.7)*EYE_RELIEF;
+    }
+    if (cover < .004) continue;
+    float glow = adapt*(3.2*exp(-length(q-at)/.45)+.12)*(.35+.65*exp(-1.5*thick));
+    float beam = (.5+.9*power)*open*(k == 0 ? 2.6 : k == 1 ? 1.2 : .3)*exp(-r/(k == 0 ? .11 : .22));
+    float a = cover*.95;
+    light += held*a*(eyeCloudLit(thick,relief,d,behind)*(k == 0 ? .55 : 1.)+vec3(${FLASH.map(g).join(",")})*glow+tint*beam);
+    held *= 1.-a;
+  }
+#if EYE_OCTAVES > 2
+  if (flash > 0.) {
+    float tb = (${g(STORM_SHEETS[1] - 25)}-camY)/d.y;
+    if (tb > 0.) {
+      vec2 b = d.xz*tb-s.xz;
+      float len = length(at)*1000.+200.;
+      vec2 u = at*1000./max(1.,len-200.);
+      light += flash*2.2*eyeBolt(b.x*u.y-b.y*u.x,dot(b,u)-120.,id,len,max(3.,.8*tb*px))*vec3(${BOLT.map(g).join(",")});
+    }
+    float ee = dot(d.xz,d.xz), rb = 780.*reach, fb = -dot(s.xz,d.xz), disc = fb*fb-ee*(dot(s.xz,s.xz)-rb*rb);
+    if (eyeHash(vec2(id,31.),4.) < .6 && ee > 1.e-8 && disc > 0.) {
+      float tc = (-fb-sqrt(disc))/ee;
+      vec2 h = d.xz*tc-s.xz;
+      float th = atan(h.y,h.x)-atan(at.y,at.x);
+      if (tc > 0.) light += held*flash*2.2*eyeBolt(atan(sin(th),cos(th))*rb,${g(STORM_SHEETS[1] + 40)}-d.y*tc-camY,id+7.,700.+500.*eyeHash(vec2(id,33.),4.),max(3.,.8*tc*px))*vec3(${BOLT.map(g).join(",")});
+    }
+  }
+#endif
+  return vec4(light, held);
+}
+vec4 eyeOptics(vec3 d, vec3 behind) {
+  vec3 light = vec3(0.);
+  float transmission = 1., px = length(fwidth(d));
   if (fEyes[0].w <= 0. || d.y <= .002) return vec4(light, transmission);
+#ifdef EYE_PICTURE
+  eyePictured = fHaze.w > 1.5 && textureSize(uLow, 0).x >= 512;
+#endif
   for (int i=0; i<3; i++) {
     vec4 s = fEyes[i*4], tint = fEyes[i*4+1], life = fEyes[i*4+2], foot = fEyes[i*4+3];
     if (s.w <= 0.) continue;
@@ -554,39 +846,14 @@ vec4 eyeOptics(vec3 d, vec3 ambient) {
         white += power*fold*(1.85*exp(-abs(bolt)/.009)+.17*veil*stream);
       }
     }
-    float top = s.y-${g(CELL_UNDER)}, sd = top/d.y;
-    vec2 q = (d.xz*sd-s.xz)*.001;
-    float rq = length(q), cover = 0., thick = 0., flash = 0., fork = 0.;
-    if (storm > .001 && sd > 0. && rq < 3.4) {
-      float ang = dir*.03*t+1.3*log(rq+.25), ca = cos(ang), sa = sin(ang);
-      float n = .7*eyeFbm(vec2(ca*q.x-sa*q.y,sa*q.x+ca*q.y)*1.9+seed*37.,3.)+.3*eyeFbm(q*4.3-dir*vec2(.021,.013)*t+11.,9.);
-      float reach = 1.2+1.5*smoothstep(5.,12.,t), th = mix(.66,.4,storm)+.2*rq/reach;
-      float body = n+.5*(1.-smoothstep(.16,.5,rq));
-      cover = smoothstep(th,th+.26,body)*(1.-smoothstep(reach*.72,reach,rq))*min(1.,storm*3.);
-      thick = clamp((body-th)/.42,0.,1.);
-      float id, lit = eyeStrike(t,seed,power,storm,open,id);
-      if (lit > 0.) {
-        vec2 at = (vec2(eyeHash(vec2(id,11.),2.),eyeHash(vec2(id,13.),2.))-.5)*1.5*reach;
-        flash = lit*exp(-length(q-at)/.5);
-#if EYE_OCTAVES > 2
-        float a0 = atan(q.y,q.x+1.e-10)-atan(at.y,at.x+1.e-10), a = atan(sin(a0),cos(a0));
-        float len = length(at)+.25;
-        float wob = (eyeNoise(vec2(rq*9.,id*3.1),5.)-.5)*.34+(eyeNoise(vec2(rq*31.,id*1.7),6.)-.5)*.1;
-        float across = abs(a*rq+wob*smoothstep(0.,.3,rq));
-        float branch = abs((a-.35*smoothstep(len*.35,len,rq))*rq+wob*.8);
-        float run = smoothstep(.03,.1,rq)*(1.-smoothstep(len*.85,len,rq));
-        fork = lit*run*(exp(-across/.006)+.6*exp(-branch/.005)*step(len*.35,rq));
-#endif
-      }
-    }
-    float shaft = 0.;
+    vec4 st = eyeStorm(d, s.xyz, seed, dir, t, storm, power, open, tint.rgb, behind, px);
+    float top = s.y-${g(EYE_SKY - KNOT_SHEET)}, shaft = 0.;
     if (form == 2.) {
       ${MASTS_GLSL}
     } else shaft = eyeBeam(d, s.xz, foot.x, top, power, phase, t, 1.);
     shaft *= (.5+.9*power)*open;
-    vec3 cloud = ambient*(.5-.38*thick)+tint.rgb*(open*.9*exp(-rq/.3)*(.35+.65*thick)+power*.7*(1.-thick)*(1.-thick))+(vec3(.72,.8,1.)+.35*tint.rgb)*flash*2.4;
-    light += transmission*((tint.rgb*glow+white+fringe)*(1.-.85*cover)+cloud*cover+(vec3(.85,.9,1.)+.3*tint.rgb)*fork)+tint.rgb*shaft+.3*power*min(1.,shaft*shaft);
-    transmission *= pupil*(1.-cover);
+    light += transmission*(st.rgb+(st.a+${g(FIGURE_THROUGH)}*(1.-st.a))*(tint.rgb*glow+white+fringe))+tint.rgb*shaft+.3*power*min(1.,shaft*shaft);
+    transmission *= pupil*st.a;
   }
   return vec4(light, transmission);
 }`;
@@ -610,6 +877,6 @@ uniform vec3 uSky;
 out vec4 o;
 ${FRAME_BLOCK}${EYE_SKY_GLSL}
 void main() {
-  vec4 lens = fHaze.z < 0. ? vec4(0., 0., 0., 1.) : eyeOptics(normalize(vRay), uSky * .8);
+  vec4 lens = fHaze.z < 0. ? vec4(0., 0., 0., 1.) : eyeOptics(normalize(vRay), uSky);
   o = vec4(mix(uSky * lens.a, vec3(1.), 1. - exp(-lens.rgb)), 1.);
 }`;

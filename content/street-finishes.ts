@@ -2,7 +2,7 @@
 import trailer from "./vehicles/trailer-axles.json" with { type: "json" };
 import { GRATE, UTILITY_ENAMEL } from "./colours.ts";
 
-export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3, LENS = 4, ENAMEL_ARMOR = 5, EXHAUST = 6, INSTRUMENT = 7;
+export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3, LENS = 4, ENAMEL_ARMOR = 5, EXHAUST = 6, INSTRUMENT = 7, CHANNEL = 8;
 const materials = new Map<string, number>();
 for (const part of [
   "berlinetta/coachwork", "bus/livery", "compact/body", "compact_abandoned/body",

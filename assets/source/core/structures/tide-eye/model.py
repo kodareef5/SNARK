@@ -9,7 +9,7 @@ the beam leaves the finial on the tall prong's tip (the profile's `emitter`).
 import math
 import json
 from pathlib import Path
-from instrument import Mesh, TAU, STRIP_M, arc, beam, box, cable, courses, finial, flare, lay, plate, quad_box, ring
+from instrument import Mesh, STRIP, TAU, STRIP_M, arc, beam, box, cable, courses, finial, flare, lay, plate, quad_box, ring
 from mathutils import Vector
 
 profile = json.loads(
@@ -201,8 +201,10 @@ def lights(m):
     sides = 3
 
     def run(points, r):
+        # One run of light, its strip going on unbroken from each length to the next, so what travels along it does.
+        start = 0.0
         for a, b in zip(points, points[1:]):
-            beam(m, a, b, r, r, GLASS, sides)
+            start = beam(m, a, b, r, r, GLASS, sides, start=start)
 
     for path, s, upto in [(profile["left"], -1, 170), (profile["right"], 1, 300)]:
         stops = [h for h in [96, 112, 145, 166, 205, 264, 291, 297, 300] if h <= upto and h <= path[-1][0]]
@@ -332,12 +334,14 @@ def deck_lights(m):
     """The deck's light: a channel in each brass inlay, eight spokes in to the console's apron, and a ring round the
     apron. A pulse runs in along them before each ignition."""
     n = (96, 48, 24)[m.level]
+    # Each a band of glass let into the deck, its top 1 to 2 cm over the paving round it, so it reads as a channel and
+    # not as a bar laid on the deck.
     for r, w in [(64.95, 0.32), (41.95, 0.3), (24.95, 0.3), (8.95, 0.26)]:
-        ring(m, r, w, 0.13, 0.05, GLASS, n)
+        ring(m, r, w, 0.088, 0.024, STRIP, n)
     if m.level < 2:
         for j in range(8):
             t = TAU * (j + 0.5) / 8
-            box(m, (16.6 * math.cos(t), 0.105, 16.6 * math.sin(t)), (7.4, 0.025, 0.12), t, GLASS)
+            box(m, (16.6 * math.cos(t), 0.08, 16.6 * math.sin(t)), (7.4, 0.01, 0.12), t, STRIP)
 
 
 def console(m):
@@ -388,7 +392,7 @@ def glow(m):
     # Prismatic edge pick-up on both faces. The open intervals between the blocks index its slow rotation.
     n = (96, 48, 24)[m.level]
     for z in [-7.55, 7.55]:
-        ring(m, 37.6, 1.9, z, 0.52, 3, n, True)
+        ring(m, 37.6, 1.9, z, 0.52, STRIP, n, True)
         ring(m, 36.25, 0.48, math.copysign(8.0, z), 0.24, 7, n, True)
         for i in range(12):
             a = i * TAU / 12
@@ -401,12 +405,12 @@ def glow(m):
                 return Vector((rad * math.cos(t), rad * math.sin(t), depth))
 
             segments = (5, 3, 2)[m.level]
-            profile = [(R, z - hh, 3), (R, z + hh, 3), (r, z + hh, 3), (r, z - hh, 3)]
+            profile = [(R, z - hh, STRIP), (R, z + hh, STRIP), (r, z + hh, STRIP), (r, z - hh, STRIP)]
             arc(m, profile, segments, True, start=start, end=end)
             for t, sgn in [(start, -1), (end, 1)]:
                 m.face(
                     [pt(rad, t, depth) for rad, depth, _ in profile],
-                    3,
+                    STRIP,
                     (-sgn * math.sin(t), sgn * math.cos(t), 0),
                 )
 
@@ -421,6 +425,6 @@ for name, fn, offset in [
     ("console", console, 0),
 ]:
     for level in range(3):
-        m = Mesh(level, offset, seed=len(name) * 131 + 7)
+        m = Mesh(level, offset, seed=len(name) * 131 + 7, glow=name.startswith("glow"))
         fn(m)
         m.build(name if not level else f"{name}_LOD{level}")

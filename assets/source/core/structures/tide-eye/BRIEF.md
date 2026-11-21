@@ -18,6 +18,12 @@ dark steel, optical glass (dyed by the site), paving, a brass register, a vented
 `livery` is carmine enamel, the same chipped, the keel's lozenges, the bow's scale blocks, and four of copper.
 A face says which way its strip runs by the order of its points: read the head of `instrument.py` before adding one.
 
+**The lights** (2026-11-21, D946). The objects named `glow...` carry the instrument atlas's strip coordinates and
+normals like the rest, but the client never samples the atlas on them: the band says how a light is lit across (on
+GLASS a round tube, by how it faces the eye; on STRIP, the paving's band, a band lit across its width; on WORN a dim
+divider), and along a tube the strip is metres along its run, unbroken from one length to the next (`beam(..., start=)`).
+Every light's tube is round, whatever its sides. Its coarsest level is flat, in the site's glass colour.
+
 **The scans.** `tex/scan-a.png` and `tex/scan-b.png` are four flat-lit material scans each, generated for this asset
 with an image model from the concept plates (no third party's pictures). `paint.py` takes a strip's weathering from
 them and paints everything with a shape itself, in metres, with the height, roughness and metal. To change a

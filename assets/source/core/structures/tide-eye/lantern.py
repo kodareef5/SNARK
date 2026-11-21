@@ -218,8 +218,8 @@ def inner_light(m):
 
     for lo, hi in [(-45, -27), (-25, -3.5), (3.5, 25), (27, 45)]:
         mid = (lo + hi) * 0.5
-        beam(m, lip(lo), lip(mid), 0.52, 0.92, GLASS, 5)
-        beam(m, lip(mid), lip(hi), 0.92, 0.49, GLASS, 5)
+        start = beam(m, lip(lo), lip(mid), 0.52, 0.92, GLASS, 5, start=lo + 45)
+        beam(m, lip(mid), lip(hi), 0.92, 0.49, GLASS, 5, start=start)
 
 
 def lamp(m):
@@ -260,8 +260,9 @@ def masts(m):
         stops = [60, 96, 144, 180, 248, 278, 344]
         if m.level == 2:
             stops = [60, 180, 344]
+        start = 0.0
         for a, b in zip(stops, stops[1:]):
-            beam(m, rail(i, a) - out * (size_at(a) * 0.86 + 0.4), rail(i, b) - out * (size_at(b) * 0.86 + 0.4), 0.36, 0.36, GLASS, 3)
+            start = beam(m, rail(i, a) - out * (size_at(a) * 0.86 + 0.4), rail(i, b) - out * (size_at(b) * 0.86 + 0.4), 0.36, 0.36, GLASS, 3, start=start)
     # A lamp under the keel's tip.
     beam(m, (0, -1.4, 0), (0, 1.6, 0), 0.12, 0.7, GLASS, 6)
 
@@ -274,6 +275,6 @@ for name, fn, offset in [
     ("glow_masts", masts, 190),
 ]:
     for lod in range(3):
-        mesh = Mesh(lod, offset, seed=len(name) * 173 + 11)
+        mesh = Mesh(lod, offset, seed=len(name) * 173 + 11, glow=name.startswith("glow"))
         fn(mesh)
         mesh.build(name if lod == 0 else f"{name}_LOD{lod}")

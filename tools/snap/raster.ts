@@ -5,7 +5,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { glassAt, glassCovers, glassReflected, opticsGlass } from "../../client/core/render/vehicle-glass.ts";
-import { ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
+import { CHANNEL, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
 import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireRelief, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import { bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
@@ -20,9 +20,10 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps, swapKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
-import { EYE_FLOATS, EYE_SLOTS, eyeGlint, eyePulse, eyeRadiance } from "../../client/core/render/tide-eye.ts";
+import { CHANNEL_DIM, CHANNEL_STRIP, EYE_FLOATS, EYE_SLOTS, STORM_DEPTH, eyeEnergy, eyeGlint, eyeRadiance, type StormLit } from "../../client/core/render/tide-eye.ts";
+import { cloudLights, cloudLit } from "../../client/core/render/atmosphere.ts";
 
-const eyeAmbient = [0, 0, 0];
+const eyeBehind = [0, 0, 0], energy = [0, 0, 0];
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
@@ -899,6 +900,10 @@ export class Rasterizer {
     }
     const inv = this.domeInverse;
     const under = p.frame[FRAME.eyeHeight]! < 0;
+    // The storm over an instrument is lit as the dome lights its clouds, and read as finely as a pixel spans.
+    const lights = p.lit ? cloudLights(p.frame, this.skyTable, this.sun) : null;
+    const storm: StormLit | undefined = lights ? { way: lights.way, relief: lights.relief, lit: (o, thick, relief, d, behind) => cloudLit(o, thick, STORM_DEPTH, relief, 0, d, behind, lights) } : undefined;
+    const px = (2 * Math.hypot(inv[1]!, inv[4]!, inv[7]!)) / (this.height * Math.hypot(inv[2]!, inv[5]!, inv[8]!));
     for (let at = 0; at < this.width * this.height; at++) {
       if (this.depth[at] !== Infinity) continue;
       const o = at * 4;
@@ -915,17 +920,14 @@ export class Rasterizer {
             const exposure = p.frame[FRAME.exposure]!;
             if (p.frame[FRAME.eyes + 3]! > 0 && exposure > 0) {
               albedo2.fill(0);
-              // A cloud up there shows the sky behind it, greyed, as the dome's program gives it.
-              const grey = 0.2126 * mirrored[0]! + 0.7152 * mirrored[1]! + 0.0722 * mirrored[2]!;
-              for (let i = 0; i < 3; i++) eyeAmbient[i] = (mirrored[i]! + (grey - mirrored[i]!) * 0.6) * exposure;
-              const transmission = eyeRadiance(p.frame, reflected, albedo2, eyeAmbient);
+              for (let i = 0; i < 3; i++) eyeBehind[i] = mirrored[i]! * exposure;
+              const transmission = eyeRadiance(p.frame, reflected, albedo2, eyeBehind, undefined, storm, px);
               for (let i = 0; i < 3; i++) mirrored[i] = mirrored[i]! * transmission + albedo2[i]! / exposure;
             }
             shown(rgb, mirrored, 0, p);
           } else {
             albedo2.fill(0);
-            for (let i = 0; i < 3; i++) eyeAmbient[i] = p.sky[i]! * 0.8;
-            const transmission = eyeRadiance(p.frame, reflected, albedo2, eyeAmbient, 2);
+            const transmission = eyeRadiance(p.frame, reflected, albedo2, p.sky, 2, undefined, px);
             for (let i = 0; i < 3; i++) rgb[i] = 1 - (1 - p.sky[i]! * transmission) * Math.exp(-albedo2[i]!);
           }
           for (let i = 0; i < 3; i++) this.domeColor[o + i] = rgb[i]! * 255;
@@ -1712,9 +1714,11 @@ export class Rasterizer {
           }
           if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_EMISSIVE)) {
             this.deferred[at] = 0;
-            // An instrument's light by its site's pulse, as the signal program shows it with no light target.
-            const pulse = eyePulse(p.frame, rx, ry, rz);
-            for (let k=0;k<3;k++) this.color[at*4+k] = Math.min(255, Math.min(255,pal[colorIndex*4+k]!*1.18+30.6) * (0.5 + 0.5 * Math.min(pulse, 1)) + 76.5 * Math.max(0, pulse - 1));
+            // An instrument's light, energy along the instrument, as the signal program shows it with no light target.
+            const facing = Math.abs(nx * rx + ny * ry + nz * rz) / Math.max(dist, 1e-6);
+            if (p.frame[FRAME.eyes + 3]! > 0) eyeEnergy(p.frame, rx, ry, rz, NaN, 0.85 * Math.sqrt(Math.max(0, 1 - facing * facing)), footprint || dist * 0.0015, energy);
+            else for (let k = 0; k < 3; k++) energy[k] = (pal[colorIndex * 4 + k]! / 255) ** 2;
+            for (let k = 0; k < 3; k++) this.color[at * 4 + k] = 255 * (1 - Math.exp(-energy[k]!));
             continue;
           }
           if (p.lit && !blend) {
@@ -1883,6 +1887,25 @@ export class Rasterizer {
               this.color[channel] = this.color[channel]! * (1-alpha) + 255*rgb[c]!*alpha;
             }
             this.fragments++;
+            continue;
+          }
+          if (s.label === CHANNEL) {
+            // An instrument's own light by where its strip says it is, as SURFACE draws it with no light target.
+            this.fragments++;
+            this.depth[at] = z;
+            this.deferred[at] = 0;
+            this.pickKind[at] = pickKind;
+            this.pickId[at] = pickId;
+            this.pickBone[at] = bone;
+            this.pickDraw[at] = this.drawing;
+            this.cover[at] = 1;
+            const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!);
+            const n = Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
+            const facing = Math.abs(carried[0]! * carriedNormal[0]! + carried[1]! * carriedNormal[1]! + carried[2]! * carriedNormal[2]!) / Math.max(1e-10, dist * n);
+            const row = 8 * v, band = Math.floor(row), strip = band === CHANNEL_STRIP;
+            const across = strip ? 2 * Math.max(0, Math.min(1, (row - band - 0.04) / 0.92)) - 1 : Math.sqrt(Math.max(0, 1 - facing * facing));
+            eyeEnergy(p.frame, carried[0]!, carried[1]!, carried[2]!, strip ? NaN : u * 32, across, dist * 0.0015, energy);
+            for (let c = 0; c < 3; c++) this.color[at * 4 + c] = 255 * (1 - Math.exp(-energy[c]! * (band === CHANNEL_DIM ? 0.3 : 1)));
             continue;
           }
           // The picture to sample is chosen by how far the texture coordinate moves to the next pixel right and to the next down.
