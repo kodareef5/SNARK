@@ -6,14 +6,15 @@
 // but not more often than it should; and only the desktop tiers' lit programs read it. Its second layer is the ground's
 // colour, the tint's or a flat piece's lying on it, and the light a face gets from the ground takes the colour of the
 // ground it sees, before it or, under the roof, toward the open side, and loses the sun's part where that is not lit.
-// Through the scene, the rasterizer darkens the ground under a slab and leaves the open ground as it was.
+// Through the scene, the rasterizer darkens the ground under a slab and leaves the open ground as it was. The second
+// layer also holds how much of each cell's ground the sun is on, softened, made again as the sun moves.
 
 import { expect, test } from "bun:test";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FramePacket, ROOF_AT } from "../../client/core/render/packet.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { BOUNCE_LEAST, BOUNCE_SUN, GROUND, OPEN, ROOF_LAST, ROOF_BYTES, ROOF_LAYERS, ROOF_LEAST, ROOF_SIDE, roofBounce, roofOpen } from "../../client/core/render/roof.ts";
-import { ROOF_EVERY, ROOF_MOVE, RoofMap, roofSteps } from "../../client/core/render/roofmap.ts";
+import { ROOF_EVERY, ROOF_MOVE, RoofMap, SUN_MOVE, roofSteps } from "../../client/core/render/roofmap.ts";
 import { FRAME } from "../../client/core/render/packet.ts";
 import { bounce, skyOn } from "../../client/core/render/surface.ts";
 import * as skyBuild from "../../tools/sky/build.ts";
@@ -169,15 +170,48 @@ test("a face's light from the ground: the ground's colour it sees, the sun's par
   // Under the slab's east edge a face turned down sees the walk past it, out toward the open side; deep under, the asphalt.
   const edge = at(131.5, 128.5, [0, -1, 0], 2.5)[0]! * ROOF_LAST[4]!, deep = at(125.5, 128.5, [0, -1, 0], 2.5)[0]! * ROOF_LAST[4]!;
   expect([edge > 1, deep < 1]).toEqual([true, true]);
-  // The sun's share lit is what the shadows give, never under BOUNCE_LEAST.
-  expect(at(150.5, 20.5, [1, 0, 0], 1, 0)[3]).toBeCloseTo(BOUNCE_LEAST, 12);
-  expect(at(150.5, 20.5, [1, 0, 0], 1, 0.5)[3]).toBeCloseTo(BOUNCE_LEAST + (1 - BOUNCE_LEAST) * 0.5, 12);
+  // Low over the ground the sun's share lit is what the shadows give, never under BOUNCE_LEAST; high over it, the map's.
+  expect(at(150.5, 20.5, [1, 0, 0], 0.3, 0)[3]).toBeCloseTo(BOUNCE_LEAST, 12);
+  expect(at(150.5, 20.5, [1, 0, 0], 0.3, 0.5)[3]).toBeCloseTo(BOUNCE_LEAST + (1 - BOUNCE_LEAST) * 0.5, 12);
+  expect(at(150.5, 20.5, [1, 0, 0], 2, 0)[3]).toBe(1);
   // A face up, the roof alone (fRoof.w 1) and past the window are neutral.
   expect(at(150.5, 20.5, [0, 1, 0], 1)).toEqual([1, 1, 1, 1]);
   frame[ROOF_AT + 3] = 1;
   expect(at(150.5, 20.5, [1, 0, 0], 1)).toEqual([1, 1, 1, 1]);
   frame[ROOF_AT + 3] = 2;
   expect(at(-20, 20.5, [1, 0, 0], 1)).toEqual([1, 1, 1, 1]);
+});
+
+test("the sun's share of each cell's ground: none under the slab or in its shadow, all of it in the open, softened between, and made again as the sun moves", () => {
+  const low = [1 / Math.hypot(1, 0.4), 0.4 / Math.hypot(1, 0.4), 0];
+  const lit = new Uint8Array(ROOF_SIDE * ROOF_SIDE * ROOF_BYTES * ROOF_LAYERS);
+  const steps = roofSteps(city, hf, none, 0, 0, ROOF_SIDE, lit, palette, new Float32Array(ROOF_SIDE * ROOF_SIDE), low);
+  while (!steps.next().done);
+  const share = (x: number, z: number): number => lit[((ROOF_SIDE + z) * ROOF_SIDE + x) * ROOF_BYTES + 3]!;
+  // The sun low in +x: the plate's top is 3.2 m up, so its shadow runs 8 m to -x of it.
+  expect(share(128, 128)).toBeLessThan(20);
+  expect(share(120, 128)).toBeLessThan(40);
+  expect([share(108, 128), share(140, 128), share(20, 20)].every((v) => v > 215)).toBe(true);
+  // Softened: between the shadow's edge and the open it falls off over a few cells.
+  expect(share(114, 128)).toBeGreaterThan(share(118, 128));
+  // With no sun up it is all lit.
+  expect(share(128, 128) < 255 && map[((ROOF_SIDE + 128) * ROOF_SIDE + 128) * ROOF_BYTES + 3] === 255).toBe(true);
+  // The map lights its ground again when the sun has moved SUN_MOVE, not before.
+  const roof = new RoofMap();
+  const p = new FramePacket();
+  p.tier = tierOf("high");
+  const budget = { left: 1 << 20, spend: () => {} };
+  let now = 0;
+  const frame = (sun: readonly number[]): void => {
+    p.beginFrame();
+    roof.update(p, budget, city, hf, none, 128, 128, (now += 1000 / 60), () => 0, sun);
+  };
+  for (let k = 0; k < 500 && !roof.whole; k++) frame(low);
+  const turned = (a: number): number[] => [Math.cos(a) * low[0]! - Math.sin(a) * low[2]!, low[1]!, Math.sin(a) * low[0]! + Math.cos(a) * low[2]!];
+  frame(turned(SUN_MOVE * 0.5));
+  expect([roof.stats.made, roof.stats.lit, roof.whole]).toEqual([1, 0, true]);
+  for (let k = 0; k < 500 && roof.stats.lit === 0; k++) frame(turned(SUN_MOVE * 2));
+  expect([roof.stats.made, roof.stats.lit, p.roofMap.length]).toEqual([1, 1, lit.length]);
 });
 
 test("the light from below loses the sun's part of the ground's light where the ground is not lit, and takes its colour; neutral, it is the sky table's", () => {

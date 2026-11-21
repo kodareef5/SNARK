@@ -23,14 +23,17 @@
 //   or down, never under ROOF_LEAST. Over the last ROOF_FADE metres of the window it fades to nothing.
 // - The ground's light sent back (the frame block's fSkyBelow, which the sky's table makes as a grey ground in the sun
 //   everywhere) is the ground's a face sees: the ground before the face as far as the face stands over it, under a roof
-//   out toward its open side, looked up in the sun's shadow maps at four points along that way for how much of it the
-//   sun is on, which takes the sun's part of that light (BOUNCE_SUN) off where it is not, down to BOUNCE_LEAST of it, what
-//   lit ground and walls further off send back; and in the map's second layer, where the way leads, for its colour
-//   against the grey, half its hue and half its lightness. A car's floor sees the ground it shades, a wall over a sunlit
+//   out toward its open side. How much of it the sun is on takes the sun's part of that light (BOUNCE_SUN) off where it
+//   is not, down to BOUNCE_LEAST of it, what lit ground and walls further off send back; its colour against the grey
+//   tints it, half its hue and half its lightness. Both are the map's second layer where the way leads, the sun's share
+//   softened over a couple of metres (roofmap.ts), so a ceiling over a shaded floor grades smoothly and shows no copy of
+//   the shadows on it. A face low over the ground (BOUNCE_LOW) takes the sun's share from the shadow maps as well, four
+//   compared reads along the way, so a car's floor and sills see the shadow the car itself casts. A wall over a sunlit
 //   walk gets the walk's warm light and one over a shaded street does not. Under a roof the light from below is this
-//   and not the roof's share of it as well. The software rasterizer has no shadow maps, so for it the ground is lit.
+//   and not the roof's share of it as well. The software rasterizer has no shadow maps, so for it the shadow maps' part
+//   is lit and the map's part is as baked.
 // - The second layer: the colour of the ground in each cell, as sRGB, from the ground's own tint or the flat piece
-//   lying on it, a walk's slab or a floor.
+//   lying on it, a walk's slab or a floor; and how much of it the sun is on.
 //
 // The map is made in roofmap.ts, which the first frame's script does not carry. The lookups are here twice, as
 // functions on numbers for the software rasterizer and as GLSL for the lit programs, which the rasterizer is held to.
@@ -62,7 +65,9 @@ export const ROOF_LAYERS = 2;
 const BOUNCE_OUT = 3;
 const BOUNCE_LIFT = 0.15;
 /** The least share of the sun's part of the ground's light kept where the ground a face sees is in shade. */
-export const BOUNCE_LEAST = 0.25;
+export const BOUNCE_LEAST = 0.45;
+/** Metres over the ground below which a face takes the sun's share from the shadow maps, wholly at the first. */
+const BOUNCE_LOW = [0.6, 1.6] as const;
 /** The zero of a cell's sideways shares, and their steps to a whole share. */
 export const SIDE_ZERO = 128;
 export const SIDE_STEPS = 127;
@@ -121,9 +126,9 @@ export function roofOpen(map: Uint8Array, side: number, frame: ArrayLike<number>
 /**
  * After `roofOpen` for the same point, how its light from the ground is changed (surface.ts `bounce`) into `out`: the
  * ground's colour against the sky table's grey, red, green and blue, over the share roofOpen kept, and the share of the
- * sun's part of that light that is lit, from `lit`, the share of the ground the sun is on (1 for a software render,
- * which has no shadow maps). Neutral, all 1, on a frame without it (fRoof.w not 2), past the window, and on a face
- * turned up. The twin of ROOF_GLSL's `roofBounce`.
+ * sun's part of that light that is lit, from the map's share of the ground the sun is on and, for a face low over the
+ * ground, `lit`, the shadow maps' (1 for a software render, which has none). Neutral, all 1, on a frame without it
+ * (fRoof.w not 2), past the window, and on a face turned up. The twin of ROOF_GLSL's `roofBounce`.
  */
 export function roofBounce(out: Float64Array, map: Uint8Array, side: number, frame: ArrayLike<number>, rx: number, rz: number, nx: number, ny: number, nz: number, over: number, lit = 1): void {
   out.fill(1);
@@ -138,14 +143,17 @@ export function roofBounce(out: Float64Array, map: Uint8Array, side: number, fra
   out[0] = 1 + ((0.5 * (bright + r * scale)) / kept - 1) * inside;
   out[1] = 1 + ((0.5 * (bright + g * scale)) / kept - 1) * inside;
   out[2] = 1 + ((0.5 * (bright + b * scale)) / kept - 1) * inside;
-  out[3] = 1 + (BOUNCE_LEAST + (1 - BOUNCE_LEAST) * lit - 1) * inside;
+  const t = Math.min(1, Math.max(0, (over - BOUNCE_LOW[0]) / (BOUNCE_LOW[1] - BOUNCE_LOW[0]))), low = 1 - t * t * (3 - 2 * t);
+  const sunlit = m[3]! + (lit - m[3]!) * low;
+  out[3] = 1 + (BOUNCE_LEAST + (1 - BOUNCE_LEAST) * sunlit - 1) * inside;
 }
 
 /**
  * `roofOpen` and `roofBounce` as GLSL, which a lit program includes after the frame block and SHADOW_GLSL, with ROOF
  * defined on a tier that has roofs. `groundSun` is how much of the sun the ground gets along a way, `q` its middle and
  * `reach` half of it: four compared reads, at a quarter and three quarters of each half, in the finest cascade that
- * holds the middle, and the far map's there past the near store's pieces; 1 past the cascades.
+ * holds the middle, and the far map's there past the near store's pieces; 1 past the cascades. Only a face low over
+ * the ground reads it.
  */
 export const ROOF_GLSL = `#ifdef ROOF
 uniform highp sampler2D uRoof;
@@ -196,12 +204,13 @@ void roofBounce(vec3 rel, vec3 normal, float over) {
   if (fRoof.w <= 1.5 || gRoof.w <= 0.0 || 0.5 - 0.5 * normal.y < 0.05) return;
   vec2 way = normal.xz * clamp(over, 0.5, 3.0) + gRoof.xy * ${g(BOUNCE_OUT)};
   vec2 uv = clamp((rel.xz + way - fRoof.xy) / fRoof.z, 0.5 / fRoof.z, 1.0 - 0.5 / fRoof.z);
-  vec3 c = texture(uRoof, vec2(uv.x, 0.5 + 0.5 * uv.y)).rgb;
-  c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
+  vec4 ground = texture(uRoof, vec2(uv.x, 0.5 + 0.5 * uv.y));
+  vec3 c = mix(ground.rgb / 12.92, pow((ground.rgb + 0.055) / 1.055, vec3(2.4)), step(0.04045, ground.rgb));
   float grey = dot(c, vec3(0.2126, 0.7152, 0.0722));
   float bright = 0.5 + 0.5 * grey / ${g(GROUND)};
   vec3 tint = 0.5 * (bright + c * (bright / max(grey, 0.02))) / gRoofKept;
-  float lit = groundSun(vec3(rel.x + way.x, rel.y - over + ${g(BOUNCE_LIFT)}, rel.z + way.y), vec3(way.x, 0.0, way.y) * 0.5);
+  float low = 1.0 - smoothstep(${g(BOUNCE_LOW[0])}, ${g(BOUNCE_LOW[1])}, over), lit = ground.a;
+  if (low > 0.0) lit = mix(lit, groundSun(vec3(rel.x + way.x, rel.y - over + ${g(BOUNCE_LIFT)}, rel.z + way.y), vec3(way.x, 0.0, way.y) * 0.5), low);
   gBounce = mix(vec4(1.0), vec4(tint, ${g(BOUNCE_LEAST)} + ${g(1 - BOUNCE_LEAST)} * lit), gRoof.w);
 }
 #else

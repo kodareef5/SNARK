@@ -412,7 +412,7 @@ export class FarShadow {
     f[FRAME.farScale] = 0;
     f[ROOF_AT + 3] = 0;
     this.roofs = p.lit && p.tier.roofs;
-    if (this.roofs) this.roof?.update(p, budget, this.city, this.hf, this.goneOf, cx, cz, now, clock);
+    if (this.roofs) this.roof?.update(p, budget, this.city, this.hf, this.goneOf, cx, cz, now, clock, sun);
     const { cascades, size } = p.tier.shadows;
     if (!p.lit || size <= 0) {
       this.layerSize = 0;
