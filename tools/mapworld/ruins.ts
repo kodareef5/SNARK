@@ -578,14 +578,15 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
         const d = start + 4;
         const [fx, fz] = [s.ax + ux * d, s.az + uz * d];
         const below = site.groundAt(...curb(d, 0.3));
+        // The road's raster runs a sample or so past its edge, so the curb's corners may stand on street.
+        const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [...curb(d + a, b), b] as const));
         const meets = Math.abs(start - (from ?? -99)) < 0.01 ? first : Math.abs(start + 8 - (to ?? -99)) < 0.01 ? last : undefined;
-        const y = meets && Math.abs(meets.y - below) <= rules.flat ? meets.y : below;
+        const level = meets !== undefined && corners.every(([x, z]) => Math.abs(site.groundAt(x, z) - meets.y) <= rules.flat);
+        const y = meets && level && Math.abs(meets.y - below) <= rules.flat ? meets.y : below;
         const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
         const slot: Slot = { start, y, gutter, state: "walk" };
         // A junction a return turns is not kept clear: the run begins at the return.
         if ((from === undefined || d > length / 2) && (to === undefined || d < length / 2) && junctionAt(site, fx, fz, s.half + rules.fromJunction)) return { ...slot, state: "junction" };
-        // The road's raster runs a sample or so past its edge, so the curb's corners may stand on street.
-        const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [...curb(d + a, b), b] as const));
         if (y < 0.1 || corners.some(([x, z, b]) => !(open.has(site.ground.surface[at(x, z)]!) || b < 1 && site.ground.surface[at(x, z)] === S.STREET) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) return { ...slot, state: "bare" };
         // Nor within a sample of the road ground graded to a bridge.
         if ([-4, 0, 4].some((a) => [-1.5, 0.3, 1.5, rules.width + 1.5].some((b) => { const [x, z] = curb(d + a, b); return graded.has(at(x, z)) || onWay(x, z); }))) return { ...slot, state: "bare" };
