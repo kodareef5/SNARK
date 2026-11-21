@@ -1226,7 +1226,7 @@ float walkMeet(float share, float footprint) {
 
 /** The finishes a street's band may draw over: what the ground of a street, a verge or a walk is made of. Any other among a cell's four is left as it is drawn. */
 const STREET_SOFT = ["asphalt", "sidewalk", "grass", "dirt", "gravel", "paving", "sand"].map((n) => SURFACE_NAMES.indexOf(n as (typeof SURFACE_NAMES)[number]));
-/** The tint a band takes where none of a cell's four samples is of its finish: a verge's by its kind, a beyond's rough grass. */
+/** The tint a verge takes where none of a cell's four samples is of its finish and its kind names none: rough grass. */
 const BEYOND_TINT = 150;
 /** The verges that are rough (streets.ts VERGES: grass, dirt, gravel), whose far edge is ragged. */
 const STREET_ROUGH = [2, 3, 5];
@@ -1252,7 +1252,7 @@ export function alongOf(b: number, out: Float64Array): void {
  * band across its nearer edge and that one's tint, and how much of it is wanted, half on the edge and none half a pixel
  * `footprint` metres wide from it: so each edge is a straight line. A band's tint is the one of its finish among the four
  * with most weight, else the band's own (STREET_TINT, a verge's VERGE_TINTS, WALK_TINT); past the bands, the four's cover
- * with no street's or walk's tint in it. False, and nothing set, where one of the four is of a finish no band draws over
+ * with no street's or walk's tint in it, or as it is where all four are paved. False, and nothing set, where one of the four is of a finish no band draws over
  * (a footprint's, the water's). Into `out`: band, tint, other band, other tint, share.
  */
 export function streetCover(a: number, b: number, c: number, d: number, fx: number, fz: number, e: ArrayLike<number>, kinds: number, footprint: number, finish: (tint: number) => number, out: Float64Array, x = 0, z = 0): boolean {
@@ -1283,7 +1283,9 @@ export function streetCover(a: number, b: number, c: number, d: number, fx: numb
     if (bd === 0) { const t = most(SURFACE_NAMES.indexOf("asphalt")); return t >= 0 ? t : STREET_TINT; }
     if (bd === 1) { const own = VERGE_TINTS[kind]?.[0] ?? BEYOND_TINT, t = most(finish(own)); return t >= 0 ? t : own; }
     if (bd === 2) { const t = most(GROUND_WALK); return t >= 0 ? t : WALK_TINT; }
-    // Past the bands: the four's cover with each street's and walk's tint taken as the other tint with most weight.
+    // Past the bands: the four's cover with each street's and walk's tint taken as the other tint with most weight, so
+    // the samples' stepped street stops at the line. Where all four are paved, that is a car park's, a plaza's or more
+    // road's ground, drawn as it is.
     let other = -1, top = 0;
     for (let k = 0; k < 4; k++) {
       if (f[k] === GROUND_WALK || f[k] === SURFACE_NAMES.indexOf("asphalt")) continue;
@@ -1291,7 +1293,7 @@ export function streetCover(a: number, b: number, c: number, d: number, fx: numb
       for (let j = 0; j < 4; j++) if (tints[j] === tints[k]) sum += w[j]!;
       if (sum > top) { top = sum; other = tints[k]!; }
     }
-    if (other < 0) return kind > 0 ? VERGE_TINTS[kind]![0]! : BEYOND_TINT;
+    if (other < 0) return groundCover(a, b, c, d, fx, fz);
     const kept = tints.map((t, k) => (f[k] === GROUND_WALK || f[k] === SURFACE_NAMES.indexOf("asphalt") ? other : t));
     return groundCover(kept[0]!, kept[1]!, kept[2]!, kept[3]!, fx, fz);
   };
@@ -1362,7 +1364,7 @@ int streetTint(int band, ivec4 t, ivec4 f, vec4 w, vec2 at, int kind) {
   if (sums.y > top) { other = t.y; top = sums.y; }
   if (sums.z > top) { other = t.z; top = sums.z; }
   if (sums.w > top) other = t.w;
-  if (other < 0) return kind > 0 ? VERGE_TINT[kind] : ${BEYOND_TINT};
+  if (other < 0) return groundCover(t, at);
   ivec4 kept = ivec4(paved.x ? other : t.x, paved.y ? other : t.y, paved.z ? other : t.z, paved.w ? other : t.w);
   return groundCover(kept, at);
 }

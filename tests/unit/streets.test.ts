@@ -181,6 +181,9 @@ test("the ground's cover from the streets: the band's tint, the one across its n
   streetCover(85, 1, 1, 101, 0.1, 0.1, [4, 4, 2], kindsByte(0, WALK, RAISED), 0.05, finish, out);
   expect(out[0]).toBe(3);
   expect(out[1]).toBe(101);
+  // Past the walk with all four paved, a car park's asphalt: drawn as it is, not taken for the street's.
+  streetCover(84, 84, 84, 84, 0.5, 0.5, [6, 6, 4], kindsByte(0, WALK, RAISED), 0.05, finish, out);
+  expect([out[0], out[1]]).toEqual([3, 84]);
   // A footprint's tint among the four: the streets do not draw there.
   expect(streetCover(85, 104, 1, 101, 0.5, 0.5, [0.25, -1.25, -3.25], kindsByte(PLANTED, WALK, RAISED), 0.05, finish, out)).toBe(false);
 });
