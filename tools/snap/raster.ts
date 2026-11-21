@@ -6,7 +6,8 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../content/street-finishes.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
-import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, tireMould, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
+import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireRelief, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
+import { bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
@@ -95,6 +96,10 @@ interface Surfaced {
   twoSided: boolean;
   uvs: Float32Array;
   tangents: Float32Array;
+  /** Its vertices' rest normals, and its mesh's box, for a wheeled body's shade on itself (vehicle-shade.ts). */
+  normals: Float32Array;
+  center: readonly number[];
+  half: readonly number[];
 }
 
 /** What a draw reads where its material has no texture: one pixel of NEUTRAL. */
@@ -142,7 +147,9 @@ function standing(bones: Float32Array, stand: number, bone: number, place: numbe
 }
 const stood = new Float64Array(BONE_FLOATS);
 
-const CARRIED = 18;
+// Position, texture coordinate, normal, tangent and its side, the wear box, the rest or wheel-local point, and a
+// wheeled body's rest normal.
+const CARRIED = 21;
 /** A deferred pixel of the ground, which keeps the normal it is lit by. */
 const DEFERRED_GROUND = 2048;
 /** The bits from which a deferred pixel names its landmark's row of finishes (shared/pack/finish.ts), 0 for none. */
@@ -155,6 +162,7 @@ const texel = TEXTURE_ROLES.map(() => new Float64Array(4));
 const albedo = new Float64Array(3);
 const worldOrm = new Float64Array(3);
 const normal = new Float64Array(3);
+const relief = new Float64Array(3);
 const eye = new Float64Array(3);
 const light = new Float64Array(3);
 const rgb = new Float64Array(3);
@@ -1430,7 +1438,7 @@ export class Rasterizer {
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
     const wheels = p.drawWheelBones[d]!, finish = p.drawStreetMaterial[d]!;
-    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: p.drawSpokeCrown[d] === 1, firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: p.drawSpokeCrown[d] === 1, firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1762,7 +1770,8 @@ export class Rasterizer {
       for (let i = 0; i < 6; i++) src[o + 5 + i] = this.frames[v * 6 + i]!;
       src[o + 11] = s.tangents[v * 4 + 3]!;
       for (let i = 0; i < 3; i++) src[o + 12 + i] = s.box ? s.box[v * 3 + i]! : 0;
-      if (s.weather) for (let i = 0; i < 3; i++) src[o+15+i] = s.positions[v*3+i]!;
+      if (s.weather || s.wheelBones) for (let i = 0; i < 3; i++) src[o+15+i] = s.positions[v*3+i]!;
+      for (let i = 0; i < 3; i++) src[o+18+i] = s.wheelBones ? s.normals[v*3+i]! : 0;
       if (bone && bone <= 32 && (s.wheelBones & (1 << (bone-1)))) {
         const at = (bone-1)*3, radius = Math.max(0.12, s.rest![at+1]!);
         for (let i = 0; i < 3; i++) src[o+15+i] = (s.positions[v*3+i]! - s.rest![at+i]!) / radius;
@@ -1867,7 +1876,7 @@ export class Rasterizer {
           }
           if (s.weather) weatherVehicle(albedo,mro,carried[15]!,carried[16]!,carried[17]!,s.seed,s.weather,s.label === BURNT_SHEET);
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
-          let coat = 0, chrome = 0;
+          let coat = 0, chrome = 0, own = 1;
           if (wheel) {
             const t = Math.max(0, Math.min(1, (dist - 8) / 16));
             let rightSquared = 0, downSquared = 0;
@@ -1878,15 +1887,32 @@ export class Rasterizer {
               downSquared += down*down;
             }
             const footprint = Math.sqrt(Math.max(rightSquared,downSquared));
-            const mould = footprint < 0.023 && mro[2]! < 0.3 && mro[1]! > 0.45 ? tireMould(carried[15]!,carried[16]!,carried[17]!,footprint) : 0;
             const damage = Math.max(0, Math.min(1, (s.level-0.15)/0.7));
             const near = (1-t*t*(3-2*t))*(1-damage*damage*(3-2*damage));
-            chrome = wheelFinish(albedo, mro, mask[2]!, near, mould, seed, carried[16]!, carried[17]!, footprint, carried[15]!*Math.sign(s.rest![(bone-1)*3]!));
+            const radial = Math.hypot(carried[16]!, carried[17]!), outboard = carried[15]!*Math.sign(s.rest![(bone-1)*3]!);
+            // The wheel's way out from its hub, as SURFACE_VERTEX turns it into the world, and its axle.
+            const b = (s.firstBone+bone-1)*BONE_FLOATS, m = p.bones;
+            const scale = Math.hypot(m[b]!,m[b+4]!,m[b+8]!);
+            const y = carried[16]!/scale, z = carried[17]!/scale;
+            const dx=m[b+1]!*y+m[b+2]!*z, dy=m[b+5]!*y+m[b+6]!*z, dz=m[b+9]!*y+m[b+10]!*z;
+            const rubber = rubberShare(mro[2]!, mro[1]!, radial);
+            own = tyreOpen(dy, outboard, rubber);
+            mro[0]! += (1-mro[0]!)*rubber;
+            chrome = wheelFinish(albedo, mro, mask[2]!, rubber*near, near, carried[15]!, carried[16]!, carried[17]!, seed, footprint, outboard);
+            if (rubber*near > 0 && footprint < 0.023) {
+              // The relief's slope turned into the world, along the face, as SURFACE has it from its derivatives.
+              tireRelief(relief, carried[15]!, carried[16]!, carried[17]!, footprint);
+              const sx = (m[b]!*relief[0]! + m[b+1]!*relief[1]! + m[b+2]!*relief[2]!)/scale;
+              const sy = (m[b+4]!*relief[0]! + m[b+5]!*relief[1]! + m[b+6]!*relief[2]!)/scale;
+              const sz = (m[b+8]!*relief[0]! + m[b+9]!*relief[1]! + m[b+10]!*relief[2]!)/scale;
+              const across = (sx*nx + sy*ny + sz*nz)/(nx*nx + ny*ny + nz*nz), k = rubber*near;
+              normal[0]! -= k*(sx - nx*across);
+              normal[1]! -= k*(sy - ny*across);
+              normal[2]! -= k*(sz - nz*across);
+              const length = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
+              for (let c=0; c<3; c++) normal[c]! /= length;
+            }
             if (chrome > 0) {
-              const b = (s.firstBone+bone-1)*BONE_FLOATS, m = p.bones;
-              const scale = Math.hypot(m[b]!,m[b+4]!,m[b+8]!);
-              const y = carried[16]!/scale, z = carried[17]!/scale;
-              const dx=m[b+1]!*y+m[b+2]!*z, dy=m[b+5]!*y+m[b+6]!*z, dz=m[b+9]!*y+m[b+10]!*z;
               const dot=normal[0]!*dx+normal[1]!*dy+normal[2]!*dz;
               let bend = 0;
               const radius = Math.hypot(carried[16]!, carried[17]!);
@@ -1907,6 +1933,11 @@ export class Rasterizer {
             }
           }
           const nl = (back ? -1 : 1) / Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
+          if (!wheel && s.wheelBones) {
+            const side = back ? -1 : 1;
+            own = bodyOpen(carried[15]!, carried[16]!, carried[17]!, carried[18]!*side, carried[19]!*side, carried[20]!*side, -carriedNormal[1]!*nl, s.rest!, s.wheelBones, s.center, s.half);
+          }
+          mro[0] = Math.min(mro[0]!, own);
           const lens = s.label === LENS, armor = s.label === ENAMEL_ARMOR;
           const polished = lens ? 1 : armor ? polishMask(mro[1]!) : 0;
           let opticalNormal = normal, specularLayer = 0;
@@ -1973,7 +2004,7 @@ export class Rasterizer {
           const open = this.opened(carried[0]!, carried[1]!, carried[2]!, carriedNormal[0]! * nl, carriedNormal[1]! * nl, carriedNormal[2]! * nl, false, bone === 0);
           opened.set([mro[0]! * open, mro[1]!, mro[2]!]);
           lit(light, albedo, opened, normal, eye, p.frame, mirrored);
-          for (let c=0; c<3; c++) light[c] = light[c]!*(1-coat)+mirrored[c]!*open*coat;
+          for (let c=0; c<3; c++) light[c] = light[c]!*(1-coat)+mirrored[c]!*open*own*coat;
           if (specularLayer > 0) {
             let variance = 0;
             for (let k = 5; k < 8; k++) {
