@@ -1,16 +1,18 @@
 // The HUD and its screens through the whole client, for pictures: `bun run snap -- --hud MODE` (--size WxH).
 // Modes: play, menu, settings, audio, controls, controller, drive, drive-hidden (the minimap hidden, H held), ride, riding, station,
 // creative (the sundial at 17:30, facing the low sun), creative-night (at 22:30) and creative-locked (the password asked),
-// compass (facing 300 with two tames about, H held) and compass-map (the map screen's arrow).
+// compass (facing 300 with two tames about, H held), compass-map (the map screen's arrow) and damage (numbers near and far,
+// a head hit, a kill, a burst of eight merged into one, a blocked hit).
 
 import type { App } from "../../client/core/app.ts";
+import { DAMAGE_BLOCKED, DAMAGE_BODY, DAMAGE_HEAD, DAMAGE_KILL } from "../../client/core/render/damage-numbers.ts";
 import { BOX_SELF, CMD_MOVE, CMD_STRUCT } from "../../shared/net/protocol.ts";
 import { KEY_MENU_CREATIVE } from "../../client/core/ui/menu.ts";
 import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../../tests/fixtures/arena.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
 
-export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance", "compass", "compass-map"] as const;
+export const HUD_MODES = ["play", "menu", "settings", "audio", "controls", "controller", "drive", "drive-hidden", "ride", "riding", "station", "creative", "creative-night", "creative-locked", "emotes", "emote-dance", "compass", "compass-map", "damage"] as const;
 export type HudMode = (typeof HUD_MODES)[number];
 
 /** The setup for clientPicture (tools/snap.ts): a survivor with things in her hotbar, then the screen or scene `mode` names. */
@@ -53,6 +55,20 @@ export function hudScene(app: App, run: (ms: number) => void, h: Harness, mode: 
       app.ui.settings.minimap = false;
       app.key("KeyH", true);
     }
+  } else if (mode === "damage") {
+    // Numbers are the server's to allow (ShowFloatingDamageText, off by default as in ARK). Then struck as the server would
+    // report them, a moment ago, so each has popped and settled.
+    if (h.host.setSetting("ShowFloatingDamageText", "True") !== "") throw new Error("damage numbers would not come on");
+    run(300);
+    const y = h.world.ents.y[h.ent(s)]!, at = app.scene!.now;
+    const hit = (dx: number, dy: number, dz: number, damage: number, kind: number): void => app.scene!.damage.hit(x + dx, y + dy, z + dz, damage, kind, at);
+    hit(0.4, 1.1, 4, 37, DAMAGE_BODY);
+    hit(-2.2, 1.7, 7, 112, DAMAGE_HEAD);
+    hit(4, 1.2, 14, 1250, DAMAGE_KILL);
+    hit(-12, 3, 90, 9, DAMAGE_BODY);
+    for (let i = 0; i < 8; i++) hit(-1.1 + i * 0.03, 0.7, 3.2, 12, DAMAGE_BODY);
+    hit(2.6, 0.8, 6, 4, DAMAGE_BLOCKED);
+    run(150);
   } else if (mode === "compass" || mode === "compass-map") {
     // Facing 300 (west-north-west), a tame ahead and to the right on the tape and one behind, east, pinned to its end.
     for (const [dx, dz] of [[30, 40], [-60, 5]] as const) {

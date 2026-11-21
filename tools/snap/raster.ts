@@ -23,7 +23,8 @@ import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
@@ -1190,7 +1191,7 @@ export class Rasterizer {
             if (z >= this.depth[at]!) continue;
             const [q0, q1, q2] = [e0 * poly[v0 + 7]!, e1 * poly[v1 + 7]!, e2 * poly[v2 + 7]!];
             const qs = 1 / (q0 + q1 + q2);
-            if (blend && (flags & (DETAIL_ROTOR | DETAIL_LAMP | DETAIL_POOL)) !== 0 && qs < this.from) continue;
+            if (blend && flags !== DETAIL_DIGITS && (flags & (DETAIL_ROTOR | DETAIL_LAMP | DETAIL_POOL)) !== 0 && qs < this.from) continue;
             const carry = (j: number): number => (q0 * poly[v0 + j]! + q1 * poly[v1 + j]! + q2 * poly[v2 + j]!) * qs;
             const [rx, ry, rz, cx, cy] = [carry(0), carry(1), carry(2), carry(3), carry(4)];
             // The level the pixel's footprint in the picture asks for, from the corner a pixel right and a pixel down, as derivatives give it.
@@ -1206,6 +1207,25 @@ export class Rasterizer {
             corner(fx, fy + 1, below);
             const footprint = (Math.max(Math.hypot(right[0]! - cx, right[1]! - cy), Math.hypot(below[0]! - cx, below[1]! - cy)) * CELL) / 2;
             const level = Math.min(MOST_LOD, Math.max(0, Math.log2(Math.max(footprint, 1e-6))));
+            if (flags === DETAIL_DIGITS) {
+              // A damage number (render/damage-numbers.ts), as both shaders draw it: its own colours, outlined, unlit.
+              const pixel = Math.max(Math.hypot((right[0]! - cx) * halfWidth(b & 7), (right[1]! - cy) * HALF_HEIGHT), Math.hypot((below[0]! - cx) * halfWidth(b & 7), (below[1]! - cy) * HALF_HEIGHT));
+              digitsOf(b, cx, cy, pixel, shape);
+              const alpha = shape[0]! * shows;
+              if (alpha < 0.004) continue;
+              for (let c = 0; c < 3; c++) {
+                // The shade on the fill's own value: linear on the lit tier, sRGB on low poly, as each shader has it.
+                const fill = ((a >>> (c * 8)) & 255) / 255, line = OUTLINE_RGB[c]!;
+                if (p.lit) light[c] = (srgbToLinear(line) * (1 - shape[1]!) + srgbToLinear(fill) * shape[2]! * shape[1]!) / exposure;
+                else rgb[c] = (line * (1 - shape[1]!) + fill * shape[2]! * shape[1]!) * 255;
+              }
+              if (p.lit) {
+                shown(rgb, light, Math.hypot(rx, ry, rz), p);
+                for (let c = 0; c < 3; c++) rgb[c]! *= 255;
+              }
+              for (let c = 0; c < 3; c++) this.color[at * 4 + c]! += (rgb[c]! - this.color[at * 4 + c]!) * alpha;
+              continue;
+            }
             if (flags === DETAIL_TIRE) {
               const transmission = 1 - tireShadow(cx,cy)*shows;
               for (let c=0; c<3; c++) this.color[at*4+c]! *= transmission;

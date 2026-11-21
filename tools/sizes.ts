@@ -41,6 +41,7 @@ export function weigh(dist: string): boolean {
   readPages(m, (f) => new Uint8Array(readFileSync(join(dist, "assets", m.files[f]!.name))), (stored) => new Uint8Array(inflateRawSync(stored)));
   if (m.soundRows) m.sounds = JSON.parse(readFileSync(join(dist, "assets", m.soundRows), "utf8")) as ManifestSound[];
   const size = (name: string): number => statSync(join(dist, name)).size;
+  const titleBytes = (files: string[]): number => files.filter(n => existsSync(join(dist, n))).reduce((total, n) => total + size(n), 0);
   const fileOf = (role: string, format?: TextureFormat): number => m.files.filter((f) => f.role === role && (!format || f.format === format)).reduce((s, f) => s + f.bytes, 0);
   const boot = `assets/${m.files[m.boot]!.name}`;
   const { script, fetched, first } = firstFrame(dist);
@@ -53,9 +54,8 @@ export function weigh(dist: string): boolean {
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
   const rows: [string, number][] = [
-    ["title script, style, font, catalogue and poster", ["entry.js.br", "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/red-tide.webp"]
-      .filter(n => existsSync(join(dist, n))).reduce((total, n) => total + size(n), 0)],
-    ["game loading poster", existsSync(join(dist, "title/miami-splash.webp")) ? size("title/miami-splash.webp") : 0],
+    ["title script, style, font, catalogue and poster", titleBytes(["entry.js.br", "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/red-tide.webp", "title/snark-emblem.webp"])],
+    ["game loading poster", titleBytes(["title/miami-splash.webp", "title/snark-emblem.webp"])],
     ["the page's script, Brotli", script.reduce((s, n) => s + size(n), 0)],
     ["the content, Brotli", fetched.filter((n) => n.includes("/content.")).reduce((s, n) => s + size(n), 0)],
     ["manifest, Brotli", size("assets/manifest.json.br")],

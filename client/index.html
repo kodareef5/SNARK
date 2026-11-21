@@ -20,8 +20,7 @@
   body { box-sizing: border-box; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
   #boot-splash { position:fixed; inset:0; z-index:2; pointer-events:none; display:flex; justify-content:flex-end; align-items:flex-start; flex-direction:column; padding:5vh max(6vw,env(safe-area-inset-left)) max(8vh,env(safe-area-inset-bottom)); background:linear-gradient(0deg,#08151df5,transparent 75%),url("title/miami-splash.webp") 58% center/cover,#122e3e; color:#f5f2e6; font-family:Hud,Arial,sans-serif; }
   .probe #boot-splash { display:none; }
-  #boot-splash b { font-size:clamp(3.5rem,8vw,7rem); line-height:.92; letter-spacing:-.045em; }
-  #boot-splash small { margin-top:.5rem; color:#d1e2de; font-size:clamp(.8rem,1.4vw,1.15rem); text-transform:uppercase; letter-spacing:.27em; }
+  #boot-splash img { width:clamp(96px,min(20vw,25vh),208px); height:auto; }
   #boot-line { border-left:3px solid #74cebc; margin-top:clamp(1.5rem,4vh,3rem); padding:.2rem .8rem; font-size:clamp(.95rem,1.6vw,1.1rem); max-width:38em; overflow-wrap:anywhere; }
   #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
   /* Every child is one interface node; client/shell/ui.ts sets where it goes and how it looks. */
@@ -42,7 +41,7 @@
 </head>
 <body>
 <canvas id="view"></canvas>
-<div id="boot-splash"><b>SNARK</b><small>Miami Devolved</small><span id="boot-line" role="status">Preparing world…</span></div>
+<div id="boot-splash"><img src="title/snark-emblem.webp" loading="lazy" width="480" height="480" alt="SNARK · Miami Devolved"><span id="boot-line" role="status">Preparing world…</span></div>
 <div id="ui">Preparing world…</div><a id="entry-back" href="./?screen=roster" hidden style="position:fixed;z-index:3;top:3em;left:1em;color:#a7d8ff;font:16px sans-serif">Return to survivors</a>
 <script type="module" src="main.js"></script>
 </body>

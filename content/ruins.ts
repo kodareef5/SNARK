@@ -121,14 +121,27 @@ const clad4 = (last: readonly Part[], every: readonly Part[] = CLAD): Part[] => 
 const ATTIC: Part[] = up(-0.05, [[-4, 4, 0, 2.4, -0.32, 0.37], [-4, 4, 2.4, 2.55, -0.36, 0.42, FRONT]]);
 const STEP_UP: Part[] = up(-0.05, [[-4, 4, 0, 1.25, -0.32, 0.37], [-4, 4, 1.25, 1.4, -0.36, 0.42, FRONT]]);
 const SCREEN: Part[] = [[-4, 4, 0, 3.6, -0.3, 0.3], bevelX([-4, 4, 3.6, 3.75, -0.35, 0.4], 0.06, "uoui")];
+/**
+ * What gives a shop's front its depth, drawn only and all within the bounds its parts had, so that its middle
+ * (FACADE_AT), and with it every map that set one down, stays where it was: a steel frame round the display, 8 cm a
+ * member, standing 5 to 7 cm off its glass with a mullion at a third; a pale sill under the glass standing 12 cm out
+ * past the riser; and a drip under the sign band's front, its lower edge cut, which shades the head of the recess. The
+ * frame's members and the sill are no facade part's size (facade.ts KINDS), so the display is still painted whole
+ * behind them.
+ */
+const SHOP_FRAME: Part[] = [
+  [-3.6, 1.4, 2.82, 2.9, -0.15, -0.08, METAL], [-3.6, -3.52, 0.6, 2.82, -0.15, -0.08, METAL], [1.32, 1.4, 0.6, 2.82, -0.15, -0.08, METAL],
+  [-1.97, -1.89, 0.6, 2.82, -0.15, -0.1, METAL], [-3.6, 1.4, 0.52, 0.6, -0.15, -0.08, METAL], [-3.6, 1.4, 0.44, 0.52, -0.15, 0.17, FRONT],
+];
+const drip = (to: number): Part => bevelX([-3.6, to, 2.76, 2.9, 0.25, 0.4], 0.06, "do");
 /** A shop's front: half piers, a sign band standing proud of them, a dark display on a low riser and a 2 m door set back. */
-const SHOP: Part[] = [bevelY([-4, -3.6, 0, 4, -0.3, 0.3], 0.1, "+"), bevelY([3.6, 4, 0, 4, -0.3, 0.3], 0.1, "-"), [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 1.4, 0, 0.5, -0.25, 0.05], [-3.6, 1.4, 0.5, 2.9, -0.25, -0.15, DARK], [1.4, 1.6, 0, 2.9, -1.2, 0.05]];
+const SHOP: Part[] = [bevelY([-4, -3.6, 0, 4, -0.3, 0.3], 0.1, "+"), bevelY([3.6, 4, 0, 4, -0.3, 0.3], 0.1, "-"), [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 1.4, 0, 0.5, -0.25, 0.05], [-3.6, 1.4, 0.5, 2.9, -0.25, -0.15, DARK], [1.4, 1.6, 0, 2.9, -1.2, 0.05], ...SHOP_FRAME, drip(3.6)];
 /** Beside a failure: the sign band and its head cut back different lengths and the pier at the break broken off. */
-const SHOP_CUT: Part[] = [SHOP[0]!, [3.6, 4, 0, 2.4, -0.3, 0.3], [-3.6, 0.9, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 2.2, 3.8, 4, -0.25, 0.25], SHOP[4]!, SHOP[5]!, SHOP[6]!];
+const SHOP_CUT: Part[] = [SHOP[0]!, [3.6, 4, 0, 2.4, -0.3, 0.3], [-3.6, 0.9, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 2.2, 3.8, 4, -0.25, 0.25], SHOP[4]!, SHOP[5]!, SHOP[6]!, ...SHOP_FRAME, drip(0.9)];
 const SHOP_CUT_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 2.4, -0.3, 0.3], [-3.6, 0.9, 2.9, 3.8, -0.25, 0.4], [-3.6, 2.2, 3.8, 4, -0.25, 0.25], [-3.6, 1.6, 0, 2.9, -0.25, 0.05]];
 const SHOP_WALKED: Part[] = [[-4, -3.6, 0, 4, -0.3, 0.3], [3.6, 4, 0, 4, -0.3, 0.3], [-3.6, 3.6, 2.9, 4, -0.25, 0.4], [-3.6, 1.6, 0, 2.9, -0.25, 0.05]];
 /** The same front with a blue-grey shutter down over display and door. */
-const SHUTTER: Part[] = [SHOP[0]!, SHOP[1]!, [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 3.6, 0, 2.9, 0, 0.1, STEEL]];
+const SHUTTER: Part[] = [SHOP[0]!, SHOP[1]!, [-3.6, 3.6, 2.9, 3.8, -0.25, 0.4, SIGN], [-3.6, 3.6, 3.8, 4, -0.25, 0.25], [-3.6, 3.6, 0, 2.9, 0, 0.1, STEEL], drip(3.6)];
 /** A garage's open deck: columns at the bay's ends and a weathered spandrel over the slab's edge. */
 const DECK: Part[] = [[-4, -3.65, 0, 3.6, -0.35, 0.35], [3.65, 4, 0, 3.6, -0.35, 0.35], [-3.65, 3.65, -0.4, 1.05, 0, 0.25, SPANDREL]];
 /** The deck above's edge beam, a lip under its slab. */

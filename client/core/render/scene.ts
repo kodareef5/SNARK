@@ -33,6 +33,7 @@ import { StreetDraws } from "./street-draws.ts";
 import { streetTextureBytes } from "./street-finish.ts";
 import { StreetReflections } from "./street-reflections.ts";
 import { StreetLamps } from "./street-lamps.ts";
+import { DamageNumbers } from "./damage-numbers.ts";
 import { StreetWires } from "./street-wires.ts";
 import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
@@ -452,6 +453,8 @@ export class Scene {
   alternate = false;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
   now = 0;
+  /** Damage numbers (damage-numbers.ts): struck by Feedback, drawn as detail cards over everything else. */
+  readonly damage = new DamageNumbers();
   /** Seconds on the shared server clock, independent of the local frame clock. */
   eyeSeconds = 0;
   /** Additional instrument rotation for a directed scene, in radians. */
@@ -1659,7 +1662,8 @@ export class Scene {
     streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count);
+    this.damage.build(cam, this.now);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? NO_SHOTS, this.own, this.world.hf, this.assets.tier, this.now, this.world, tireContacts.count + windscreens.count + rotorBlur.count + patrolLights.count + streetLamps.count + streetWires.count + this.damage.count);
     const particles = p.detailCount;
     rotorBlur.write(p);
     const lamps = p.detailCount;
@@ -1671,6 +1675,10 @@ export class Scene {
     const wheelsAndGlass = p.detailCount;
     tireContacts.write(p);
     windscreens.write(p);
+    // The damage numbers' cards, drawn last of all below, over the clouds too.
+    const numbers = p.detailCount;
+    this.damage.write(p);
+    const glassAndNumbers = p.detailCount;
     // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
@@ -1681,9 +1689,10 @@ export class Scene {
     this.drawDetails(lamps, wires - lamps, DRAW_BLEND, patrolLights.passes(cam));
     this.drawDetails(wires, street - wires, DRAW_BLEND, streetWires.passes(cam));
     this.drawDetails(street, wheelsAndGlass - street, DRAW_BLEND, streetLamps.passes(cam));
-    this.drawDetails(wheelsAndGlass, seen - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
+    this.drawDetails(wheelsAndGlass, numbers - wheelsAndGlass, DRAW_BLEND, tireContacts.passes(cam) | windscreens.passes(cam));
     this.drawDetails(seen, solid, DRAW_CUTOUT, far);
     this.drawDetails(seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far);
+    this.drawDetails(numbers, glassAndNumbers - numbers, DRAW_BLEND, this.damage.passes(cam));
   }
 
   /** `count` of the packet's details from `first`, one draw in the depth ranges `passes`. */

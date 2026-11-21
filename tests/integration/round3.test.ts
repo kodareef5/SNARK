@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { FOV_MAX, SENSITIVITY_MIN, Settings, VOLUME_MAX } from "../../client/core/settings.ts";
-import { KEY_DAMAGE, KEY_HIT_MARK } from "../../client/core/ui/combat.ts";
+import { KEY_HIT_MARK } from "../../client/core/ui/combat.ts";
 import { KEY_SETTINGS_MIC, KEY_SETTINGS_PANEL, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, buildSettings, settingsClick } from "../../client/core/ui/settings.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { createHost } from "../../server/host.ts";
@@ -431,10 +431,12 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   };
   strike();
   expect(app.ui.frame.find(KEY_HIT_MARK)).not.toBeNull();
-  expect(app.ui.frame.find(KEY_DAMAGE)!.text).toBe("8");
+  // Its number is a card the renderer draws (render/damage-numbers.ts).
+  expect(app.scene!.damage.count).toBe(1);
+  expect(app.scene!.damage.damage[app.scene!.damage.born.indexOf(Math.max(...app.scene!.damage.born))]).toBe(8);
   run(1500);
   app.ui.settings.damageNumbers = false;
   strike();
   expect(app.ui.frame.find(KEY_HIT_MARK)).not.toBeNull();
-  expect(app.ui.frame.find(KEY_DAMAGE)).toBeNull();
+  expect(app.scene!.damage.count).toBe(0);
 });
