@@ -16,9 +16,9 @@ import { BREAK_AT, RUIN_BLOCKS, RUIN_BREAKS, RUIN_SHAPES } from "../../content/r
 import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
 import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
-import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
+import { WRECK_KINDS, wreckLook } from "../../content/vehicles/wrecks.ts";
 import { extentOf, meets, type Box } from "./ruin-obstacles.ts";
-import { carPicker } from "./street-cars.ts";
+import { carPicker, type CarGround } from "./street-cars.ts";
 import { CityStatics, boxPart, cellPart } from "../../shared/world/city.ts";
 import { chunkAt } from "../../shared/coords.ts";
 
@@ -263,17 +263,39 @@ test("every assembly refers to an available box and every choice resolves a form
 
 test("a wreck stands on its origin, cars nose to tail meet only when closer than their length, and a place's car is the same every time", () => {
   for (const kinds of Object.values(WRECK_KINDS)) for (const kind of kinds) { const e = extentOf(kind); expect(e.at[1] - e.size[1] / 2).toBeCloseTo(0); }
+  // The far city draws a look's boxes: a few each, as the compact's.
+  for (const kinds of Object.values(WRECK_KINDS)) expect(wreckLook(kinds[0]!)!.boxes.length).toBeLessThanOrEqual(12);
+  for (const l of Object.keys(WRECK_KINDS).map((mesh) => wreckLook(WRECK_KINDS[mesh]![0]!)!)) if (l.body !== "tanker") expect([l.mesh, l.boxes.length <= 4]).toEqual([l.mesh, true]);
   const car = (z: number, yaw: number): Box => ({ x: 0, y: .75, z, yaw, size: [1.84, 1.5, 4] });
   expect(meets(car(0, 0), car(4.1, 0))).toBe(false);
   expect(meets(car(0, 0), car(3.9, 0))).toBe(true);
   expect(meets(car(0, 30), { x: 1.5, y: .75, z: 1.2, yaw: 30, size: [1.84, 1.5, 4] })).toBe(true);
-  const v = vocabulary(source); const pick = carPicker(v.street.cars, v.seed);
+  const v = vocabulary(source);
+  const ground = (style: string, station = false): CarGround => ({ styleAt: () => style, near: (_x, _z, kinds) => station && kinds.includes("police_station") });
   const places = Array.from({ length: 400 }, (_, i) => [100 + i * 7.3, 200 + i * 3.1] as const);
-  const kinds = places.map(([x, z]) => pick(x, z, "upright"));
-  expect(places.map(([x, z]) => pick(x, z, "upright"))).toEqual(kinds);
+  const street = (family: string, style = "residential", station = false): string[] => {
+    const pick = carPicker(v.street.cars, v.seed, ground(style, station));
+    return places.map(([x, z]) => { pick.begin(); const kind = pick(x, z, family); pick.placed([{ kind, x, y: 0, z, yaw: 0 }]); return kind; });
+  };
+  const kinds = street("upright");
+  expect(street("upright")).toEqual(kinds);
   const allowed = new Set([...v.street.cars.looks.upright!, ...v.street.cars.looks.fire!].flatMap(([look]) => WRECK_KINDS[look]!));
   expect(kinds.every((k) => allowed.has(k))).toBe(true);
   expect(new Set(kinds).size).toBeGreaterThan(12);
+  // A street's cars are many bodies, by its district: vans among works, taxis downtown, patrol cars by a station.
+  const bodies = (list: string[]): Record<string, number> => { const out: Record<string, number> = {}; for (const k of list) { const b = wreckLook(k)!.body; out[b] = (out[b] ?? 0) + 1; } return out; };
+  const homes = bodies(street("any")), works = bodies(street("any", "industrial")), downtown = bodies(street("any", "concrete")), station = bodies(street("any", "concrete", true));
+  expect(Object.keys(homes).length).toBeGreaterThanOrEqual(5);
+  expect((works.panel_van ?? 0) > (homes.panel_van ?? 0) && (homes.caravan ?? 0) > (works.caravan ?? 0)).toBe(true);
+  expect((downtown.taxi ?? 0) > (homes.taxi ?? 0) && (station.patrol_sedan ?? 0) > (downtown.patrol_sedan ?? 0)).toBe(true);
+  expect(bodies(street("big", "industrial")).tanker).toBeGreaterThan(0);
+  // No two cars within `apart` of each other are one kind where another will do; no chunk holds more than `perChunk` looks.
+  const list = street("any"); const { apart, perChunk } = v.street.cars;
+  const same = places.filter(([x, z], i) => places.some(([u, w], j) => j < i && Math.hypot(u - x, w - z) < apart && list[j] === list[i])).length;
+  expect(same).toBe(0);
+  const chunks = new Map<string, Set<string>>();
+  places.forEach(([x, z], i) => { const k = `${Math.floor(x / 64)},${Math.floor(z / 64)}`; if (!chunks.has(k)) chunks.set(k, new Set()); chunks.get(k)!.add(wreckLook(list[i]!)!.mesh); });
+  expect(Math.max(...[...chunks.values()].map((s) => s.size))).toBeLessThanOrEqual(perChunk);
 });
 
 test("a neighbouring facade yields to a room route while its floor and stair support survive", async () => {

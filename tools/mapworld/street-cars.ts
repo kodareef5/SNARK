@@ -1,8 +1,9 @@
-// Cars in a city's streets: which way a street runs at a point, from the centrelines of base/roads.geojson; which wreck
-// of the compact a car is, by a hash of where it stands; and where drivable ones of the road fleet are parked.
+// Cars in a city's streets: which way a street runs at a point, from the centrelines of base/roads.geojson; which of the
+// fleet's street cars a car is, by its district, what stands near and a hash of where it stands; and where drivable ones
+// of the road fleet are parked.
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { WRECK_KINDS, WRECK_PAINTS } from "../../content/vehicles/wrecks.ts";
+import { STREET_KINDS, STREET_LOOKS, wreckLook } from "../../content/vehicles/wrecks.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { S } from "./ground.ts";
 import { binKey, hash3 } from "./raster.ts";
@@ -13,16 +14,22 @@ import type { Site, StaticPiece } from "./statics.ts";
 interface Segment { ax: number; az: number; bx: number; bz: number; half: number; mtfcc: string; line: number; }
 /** The nearest stretch to a point: its unit direction, the foot of the point on it, and how far off and to which side. */
 export interface Near { segment: Segment; dx: number; dz: number; fx: number; fz: number; distance: number; right: boolean; }
-/** Weights by a vehicle's content id. */
+/** Weights by a vehicle's content id, or by a body's name. */
 type Mix = Record<string, number>;
+/** Weights by family that hold within `within` metres of a public place of the kinds listed (labels.ts). */
+export interface NearRule<T> { places: string[]; within: number; weights: T }
 export interface Cars {
-  spacing: number; cell: number; fires: number; slewed: number;
-  looks: Record<string, [string, number][]>; paints: Record<string, number>;
+  spacing: number; cell: number; fires: number; burnt: number; slewed: number;
+  /** A family's bodies by their weights, changed by the district's style and then near places (README, "Cars"). */
+  bodies: Record<string, Mix>; styles: Record<string, Record<string, Mix>>; near: NearRule<Record<string, Mix>>[];
+  looks: Record<string, [string, number][]>; paints: Record<string, number>; bodyPaints: Record<string, Mix>;
+  /** Metres within which no two cars are one kind where another will do, and the most meshes of cars a chunk holds. */
+  apart: number; perChunk: number;
   parked: {
     perKm: number; least: number; most: number; apart: number; junction: number; clear: number; fromSpawn: number; classes: string[];
     lots: { classes: string[]; least: number; most: number; apart: number; perDistrict: number };
     trailers?: { styles: string[]; perDistrict: number };
-    kinds: Mix; styles: Record<string, Mix>; districts: Record<string, Mix>;
+    kinds: Mix; styles: Record<string, Mix>; districts: Record<string, Mix>; near: NearRule<Mix>[];
     hurt: { share: number; condition: [number, number] };
     /** Bands of a tank's fraction as [from, to, weight]. */
     fuel: [number, number, number][];
@@ -91,20 +98,94 @@ export function roadIndex(site: Site): { near: (x: number, z: number, reach: num
 /** The yaw in degrees of a frame whose u runs along (dx, dz) (ruin-geometry.ts worldPoint). */
 export const frameYaw = (dx: number, dz: number): number => ((Math.atan2(-dz, dx) * 180 / Math.PI) % 360 + 360) % 360;
 
+/** What the street pass knows of where a car stands: its district's style, and whether a place of the kinds is near. */
+export interface CarGround { styleAt(x: number, z: number): string | undefined; near(x: number, z: number, places: readonly string[], within: number): boolean }
+/** A car's kind where it stands; `begin` before an assembly's cars are picked, `placed` with its pieces once it is set down. */
+export interface CarPicker { (x: number, z: number, family: string): string; begin(): void; placed(pieces: readonly StaticPiece[]): void }
+interface Car { x: number; z: number; kind: string; mesh: string }
+
 /**
- * Which kind of wreck a car of `family` is where it stands: a look by the family's weights, and a paint by the paints'.
- * A cell where a fire went through takes the family "fire" in place of any.
+ * Which kind of street car a car of `family` is where it stands (README, "Cars"): a body by the family's weights, changed
+ * by the district's style and near places; a look of that body by the family's looks; and a paint by the paints'. A cell
+ * where a fire went through takes the looks of "fire" in place of a car's family. A chunk holds the meshes of at most
+ * `perChunk` looks: a car whose look would be one more takes one of those it holds that its family may be. A car is not
+ * the kind of one within `apart` metres where another paint, or another look its family may be, will do.
  */
-export function carPicker(cars: Cars, seed: number): (x: number, z: number, family: string) => string {
-  const paints = WRECK_PAINTS.map((p, i) => [i, cars.paints[p.name] ?? 1] as [number, number]);
-  return (x, z, family) => {
-    const burnt = hash3(Math.floor(x / cars.cell), Math.floor(z / cars.cell), seed + 991) / 4294967296 < cars.fires;
+export function carPicker(cars: Cars, seed: number, ground: CarGround): CarPicker {
+  const bodyOf = new Map(STREET_LOOKS.map((l) => [l.mesh, l.body]));
+  for (const [family, rows] of Object.entries(cars.looks)) for (const [mesh] of rows) if (!STREET_KINDS[mesh]) throw new Error(`street.cars.looks.${family} names ${mesh}, which is no street car's look`);
+  const placed = new Map<number, Car[]>(); const pending: Car[] = []; const chunks = new Map<number, Set<string>>();
+  const bin = (x: number, z: number): number => binKey(Math.floor(x / 16), Math.floor(z / 16));
+  const chunkOf = (x: number, z: number): number => binKey(Math.floor(x / 64), Math.floor(z / 64));
+  const near = (x: number, z: number): Car[] => {
+    const out = pending.filter((c) => Math.hypot(c.x - x, c.z - z) < cars.apart);
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) for (const c of placed.get(binKey(Math.floor(x / 16) + dx, Math.floor(z / 16) + dz)) ?? []) if (Math.hypot(c.x - x, c.z - z) < cars.apart) out.push(c);
+    return out;
+  };
+  const held = (x: number, z: number): Set<string> => new Set([...(chunks.get(chunkOf(x, z)) ?? []), ...pending.filter((c) => chunkOf(c.x, c.z) === chunkOf(x, z)).map((c) => c.mesh)]);
+  /** The looks a car of `family` may be at (x, z), each with its weight: its body's times its look's. */
+  const choices = (x: number, z: number, family: string, burnt: boolean): [string, number][] => {
     const rows = cars.looks[burnt ? "fire" : family] ?? (family.startsWith("core:") ? [[family, 1] as [string, number]] : undefined);
     if (!rows) throw new Error(`no cars of the family "${family}" in street.cars.looks`);
-    const look = pick(rows, hash3(Math.round(x * 4), Math.round(z * 4), seed + 977));
-    const kinds = WRECK_KINDS[look]; if (!kinds) throw new Error(`no wreck look "${look}"`);
-    return kinds.length === 1 ? kinds[0]! : kinds[pick(paints, hash3(Math.round(z * 4), Math.round(x * 4), seed + 983))]!;
+    const weights = cars.bodies[family];
+    if (burnt || !weights) return rows;
+    const style = ground.styleAt(x, z);
+    let mix: Mix = { ...weights, ...(style ? cars.styles[style]?.[family] : undefined) };
+    for (const rule of cars.near) if (rule.weights[family] && ground.near(x, z, rule.places, rule.within)) mix = { ...mix, ...rule.weights[family] };
+    // Each body's looks share its weight by their own.
+    const share = new Map<string, number>();
+    for (const [mesh, w] of rows) share.set(bodyOf.get(mesh)!, (share.get(bodyOf.get(mesh)!) ?? 0) + w);
+    return rows.flatMap(([mesh, w]): [string, number][] => { const body = bodyOf.get(mesh)!; const b = mix[body] ?? 0; return b > 0 ? [[mesh, (b * w) / share.get(body)!]] : []; });
   };
+  const paintsOf = (mesh: string): [string, number][] => {
+    const weights = cars.bodyPaints[bodyOf.get(mesh)!] ?? cars.paints;
+    const out = STREET_KINDS[mesh]!.map((k): [string, number] => [k.id, weights[k.paint!] ?? (cars.bodyPaints[bodyOf.get(mesh)!] ? 0 : 1)]).filter(([, w]) => w > 0);
+    return out.length > 0 ? out : STREET_KINDS[mesh]!.map((k): [string, number] => [k.id, 1]);
+  };
+  const picker = ((x: number, z: number, family: string): string => {
+    // In a cell a fire went through, a share `burnt` of the cars burnt out; the rest left as they stood.
+    const burnt = family !== "big" && hash3(Math.floor(x / cars.cell), Math.floor(z / cars.cell), seed + 991) / 4294967296 < cars.fires
+      && hash3(Math.round(x * 4), Math.round(z * 4), seed + 997) / 4294967296 < cars.burnt;
+    let rows = choices(x, z, family, burnt);
+    if (rows.length === 0) throw new Error(`no car of the family "${family}" may stand at ${x.toFixed(0)}, ${z.toFixed(0)}`);
+    // A full chunk's car is one of the looks it holds, where its family may be one.
+    const meshes = held(x, z);
+    const kept = rows.filter(([mesh]) => meshes.has(mesh));
+    if (meshes.size >= cars.perChunk && kept.length > 0) rows = kept;
+    const others = near(x, z);
+    const taken = new Set(others.map((c) => c.kind));
+    let mesh = pick(rows, hash3(Math.round(x * 4), Math.round(z * 4), seed + 977));
+    const kindOf = (look: string): string => {
+      const kinds = STREET_KINDS[look]!;
+      if (kinds.length === 1) return kinds[0]!.id;
+      const paints = paintsOf(look);
+      const first = pick(paints, hash3(Math.round(z * 4), Math.round(x * 4), seed + 983));
+      if (!taken.has(first)) return first;
+      // The next paint along by weight, from where the hash fell, that none near has.
+      const order = [...paints].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+      const from = order.findIndex(([id]) => id === first);
+      for (let k = 1; k < order.length; k++) { const id = order[(from + k) % order.length]![0]; if (!taken.has(id)) return id; }
+      return first;
+    };
+    let kind = kindOf(mesh);
+    if (taken.has(kind)) {
+      // An unpainted look, or every paint near: another look the car may be, that none near is.
+      const free = rows.filter(([m]) => m !== mesh && !others.some((c) => c.mesh === m));
+      if (free.length > 0) { mesh = pick(free, hash3(Math.round(x * 4), Math.round(z * 4), seed + 979)); kind = kindOf(mesh); }
+    }
+    pending.push({ x, z, kind, mesh });
+    return kind;
+  }) as CarPicker;
+  picker.begin = () => { pending.length = 0; };
+  picker.placed = (pieces) => {
+    pending.length = 0;
+    for (const p of pieces) {
+      const look = wreckLook(p.kind); if (!look) continue;
+      const k = bin(p.x, p.z); if (!placed.has(k)) placed.set(k, []); placed.get(k)!.push({ x: p.x, z: p.z, kind: p.kind, mesh: look.mesh });
+      const c = chunkOf(p.x, p.z); if (!chunks.has(c)) chunks.set(c, new Set()); chunks.get(c)!.add(look.mesh);
+    }
+  };
+  return picker;
 }
 
 /** A parked vehicle where it stands, with the ranges its condition (none for a whole one) and its fuel are rolled in. */
@@ -116,22 +197,26 @@ export interface Fleet { id: string; def: WheelVehicleDefinition; }
  * Drivable cars a new world parks, owned by nobody (README, "Cars"): at the right kerb of a street or a car park's road
  * of the listed classes, turned along it, away from junctions, on dry street ground level enough for the kind to drive
  * off, its envelope, door room and a margin clear of every piece, every reserved route and every other parked car. Each
- * place's kind is drawn by the weights of its district. A district takes a few car parks first, each holding several,
+ * place's kind is drawn by the weights of its district and the places near it. A district takes a few car parks first, each holding several,
  * then so many a kilometre of street, within its least and most, chosen by a hash and spread apart; intact streets, with
  * fewest pieces near, first. A share of them are hurt, and each one's fuel is drawn from a band.
  */
-export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: ReturnType<typeof roadIndex>, cars: Cars, seed: number, fleet: readonly Fleet[]): Parked[] {
+export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: ReturnType<typeof roadIndex>, cars: Cars, seed: number, fleet: readonly Fleet[], near: CarGround["near"] = () => false): Parked[] {
   const rules = cars.parked; const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid;
   const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   const named = new Map(fleet.map((v) => [v.id, v]));
-  for (const id of new Set([rules.kinds, ...Object.values(rules.styles), ...Object.values(rules.districts)].flatMap(Object.keys))) if (!named.has(id)) throw new Error(`street.cars.parked weighs ${id}, which is not a car of the fleet`);
+  for (const id of new Set([rules.kinds, ...Object.values(rules.styles), ...Object.values(rules.districts), ...rules.near.map((r) => r.weights)].flatMap(Object.keys))) if (!named.has(id)) throw new Error(`street.cars.parked weighs ${id}, which is not a car of the fleet`);
   if (rules.fuel.length === 0) throw new Error("street.cars.parked.fuel has no bands");
-  // A district's weights are the defaults changed by its style's, then by its own.
-  const mixes = new Map<number, [Fleet, number][]>();
-  const mixOf = (index: number): [Fleet, number][] => {
+  // A district's weights are the defaults changed by its style's, then by its own, then by the places near (x, z).
+  const mixes = new Map<string, [Fleet, number][]>();
+  const mixOf = (index: number, x: number, z: number): [Fleet, number][] => {
     const district = site.world.districts[index - 1]!;
-    if (!mixes.has(index)) mixes.set(index, Object.entries({ ...rules.kinds, ...rules.styles[district.style], ...rules.districts[district.name] }).filter(([, w]) => w > 0).map(([id, w]) => [named.get(id)!, w]));
-    return mixes.get(index)!;
+    const close = rules.near.map((r) => near(x, z, r.places, r.within));
+    const key = `${index}|${close.map(Number).join("")}`;
+    const weights: Mix = { ...rules.kinds, ...rules.styles[district.style], ...rules.districts[district.name] };
+    for (const [i, r] of rules.near.entries()) if (close[i]) Object.assign(weights, r.weights);
+    if (!mixes.has(key)) mixes.set(key, Object.entries(weights).filter(([, w]) => w > 0).map(([id, w]) => [named.get(id)!, w]));
+    return mixes.get(key)!;
   };
   // Each kind's envelope with the door room its seats' entries need, and the margin round both.
   const rooms = new Map(fleet.map(({ id, def }) => {
@@ -173,7 +258,7 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
   const tryPlace = (x: number, z: number, dx: number, dz: number, lot: boolean, line: number, under: ReadonlySet<number>, chosen?: string, stallHalfLength = Infinity): void => {
     const index = ground.district[at(x, z)]!; const district = site.world.districts[index - 1]?.name ?? "";
     if (!district) return;
-    const districtMix = mixOf(index);
+    const districtMix = mixOf(index, x, z);
     // The bumper can overhang the painted end by half a metre if the whole body and door room are clear.
     const mix = Number.isFinite(stallHalfLength) ? districtMix.filter(([kind]) => kind.def.spec.halfLength <= stallHalfLength + .5) : districtMix;
     if (mix.length === 0) return;
@@ -220,7 +305,7 @@ export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: Retu
       // A car park's road may take a car at every step, a street one step in six.
       if ((!lot && hash3(Math.round(cx), Math.round(cz), seed + 1201) % 6 !== 0) || roads.junction(cx, cz, rules.junction)) continue;
       // At the right kerb of the way it was drawn, nose along it: the kind's half width in from the kerb.
-      const mix = mixOf(index); if (mix.length === 0) continue;
+      const mix = mixOf(index, cx, cz); if (mix.length === 0) continue;
       const { id } = pick(mix, hash3(Math.round(cz), Math.round(cx), seed + 1207)); const { spec } = rooms.get(id)!;
       const off = s.half - spec.halfWidth - .3;
       tryPlace(cx - dz * off, cz + dx * off, dx, dz, lot, s.line, STREETS, id);

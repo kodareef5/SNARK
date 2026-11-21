@@ -709,75 +709,11 @@
       "kerb": 1.5,
       "parts": [
         [
-          "zbus",
-          0.0,
-          1.4,
-          0.0,
-          "rust",
-          0
-        ],
-        [
-          "zsign",
-          -3.0,
-          1.9,
-          -1.3,
-          "blue",
-          0
-        ],
-        [
-          "zsign",
-          -3.0,
-          1.9,
-          1.3,
-          "blue",
-          0
-        ],
-        [
-          "zsign",
-          0.0,
-          1.9,
-          -1.3,
-          "blue",
-          0
-        ],
-        [
-          "zsign",
-          0.0,
-          1.9,
-          1.3,
-          "blue",
-          0
-        ],
-        [
-          "zsign",
-          3.0,
-          1.9,
-          -1.3,
-          "blue",
-          0
-        ],
-        [
-          "zsign",
-          3.0,
-          1.9,
-          1.3,
-          "blue",
-          0
-        ],
-        [
-          "zcover",
-          -3.0,
-          0.45,
-          0.0,
-          "steel",
-          90
-        ],
-        [
-          "zcover",
-          3.0,
-          0.45,
-          0.0,
-          "steel",
+          "car",
+          0,
+          0,
+          0,
+          "big",
           90
         ]
       ]
@@ -1307,75 +1243,11 @@
       "role": "street cluster",
       "parts": [
         [
-          "zbus",
-          -7.0,
-          1.4,
-          0.0,
-          "clay",
-          28
-        ],
-        [
-          "zsign",
-          -10.25916,
-          1.9,
-          0.26058,
-          "blue",
-          28
-        ],
-        [
-          "zsign",
-          -9.03853,
-          1.9,
-          2.55625,
-          "blue",
-          28
-        ],
-        [
-          "zsign",
-          -7.61031,
-          1.9,
-          -1.14783,
-          "blue",
-          28
-        ],
-        [
-          "zsign",
-          -6.38969,
-          1.9,
-          1.14783,
-          "blue",
-          28
-        ],
-        [
-          "zsign",
-          -4.96147,
-          1.9,
-          -2.55625,
-          "blue",
-          28
-        ],
-        [
-          "zsign",
-          -3.74084,
-          1.9,
-          -0.26058,
-          "blue",
-          28
-        ],
-        [
-          "zcover",
-          -9.64884,
-          0.45,
-          1.40841,
-          "steel",
-          118
-        ],
-        [
-          "zcover",
-          -4.35116,
-          0.45,
-          -1.40841,
-          "steel",
+          "car",
+          -7.71,
+          0,
+          0.38,
+          "big",
           118
         ],
         [
@@ -1670,30 +1542,66 @@
       "pile-up"
     ],
     "cars": {
-      "about": "A car part's family picks a look by these weights, and a painted look a paint by its weight (1 where unlisted). Cells of `cell` metres where a fire went through, a share `fires` of them, take `fire` in place of any family. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a district first takes up to `perDistrict` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles` and then by its name in `districts` (0 takes a kind out). A share `hurt.share` of the cars have their condition rolled in `hurt.condition`, the rest are whole; each car's fuel is rolled in a band of `fuel`, [from, to, weight], as fractions of its tank.",
+      "about": "A car part's family picks a body by the weights of `bodies`, changed by the district's style in `styles` and then where a public place of the kinds a rule of `near` lists is within `within` metres (0 takes a body out); then a look of that body by the family's `looks`, a body's looks sharing its weight by theirs; then a painted look a paint by `paints`, or by the body's own in `bodyPaints` (1 where unlisted). A family without bodies picks a look by its looks alone. In cells of `cell` metres where a fire went through, a share `fires` of them, a share `burnt` of the cars take the looks of `fire` in place of any family but `big`. A chunk holds the meshes of at most `perChunk` looks: a car that would be one more is one of those its chunk holds that its family may be. No car is the kind of one within `apart` metres where another paint or look will do. A share `slewed` of kerbside cars stand out of line. `parked`: drivable cars per kilometre of street of the classes, at least and at most so many a district, `apart` metres from each other, `junction` metres from one, `clear` metres of margin round body and doors, and `fromSpawn` metres from a spawn point or an obelisk. `lots`: a district first takes up to `perDistrict` car parks, a road of the lot classes each, holding `least` to `most` cars `apart` metres from each other. Each place's kind is drawn by the weights of `kinds`, changed by the district's style in `styles`, then by its name in `districts` (which a city's vocabulary may add), then within `within` metres of a public place of the kinds a rule of `near` lists (0 takes a kind out). A share `hurt.share` of the cars have their condition rolled in `hurt.condition`, the rest are whole; each car's fuel is rolled in a band of `fuel`, [from, to, weight], as fractions of its tank.",
       "cell": 160,
       "fires": 0.18,
+      "burnt": 0.65,
       "slewed": 0.15,
-      "looks": {
-        "any": [["core:compact_abandoned", 10], ["core:compact_abandoned_stripped", 4], ["core:compact_wreck", 3], ["core:compact_abandoned_roof", 0.5], ["core:compact_wreck_tipped", 0.5]],
-        "upright": [["core:compact_abandoned", 6], ["core:compact_abandoned_stripped", 3], ["core:compact_wreck", 2]],
-        "thrown": [["core:compact_wreck", 2], ["core:compact_abandoned_stripped", 1], ["core:compact_abandoned_roof", 1], ["core:compact_wreck_tipped", 1]],
-        "fire": [["core:compact_wreck", 8], ["core:compact_wreck_tipped", 1], ["core:compact_abandoned_stripped", 2]]
+      "apart": 14,
+      "perChunk": 6,
+      "bodies": {
+        "any": { "compact": 26, "fastback": 20, "caravan": 18, "panel_van": 8, "taxi": 2, "muscle_car": 3, "patrol_sedan": 0.8, "patrol_jeep": 0.6, "monster_truck": 0.6, "veloce": 0.4, "berlinetta": 0.4 },
+        "upright": { "compact": 32, "fastback": 20, "caravan": 14, "panel_van": 7, "taxi": 2, "muscle_car": 2, "patrol_sedan": 0.6 },
+        "thrown": { "compact": 3, "fastback": 1 },
+        "big": { "bus": 10, "panel_van": 6, "caravan": 2, "semi": 1 }
       },
-      "paints": { "white": 4, "silver": 4, "black": 3, "red": 2, "blue": 2 },
+      "styles": {
+        "industrial": { "any": { "compact": 26, "fastback": 10, "caravan": 8, "panel_van": 30, "monster_truck": 3, "taxi": 0, "veloce": 0, "berlinetta": 0 }, "upright": { "panel_van": 20 }, "big": { "semi": 12, "tanker": 6, "bus": 1, "panel_van": 8 } },
+        "mural": { "any": { "panel_van": 18, "caravan": 12, "muscle_car": 5 }, "big": { "panel_van": 10, "semi": 2 } },
+        "concrete": { "any": { "fastback": 24, "caravan": 10, "panel_van": 9, "taxi": 10, "patrol_sedan": 2, "veloce": 1, "berlinetta": 1 }, "upright": { "taxi": 8 }, "big": { "bus": 16 } },
+        "terracotta": { "any": { "caravan": 20, "panel_van": 10, "muscle_car": 5, "taxi": 3 }, "big": { "bus": 10 } },
+        "residential": { "any": { "caravan": 26, "panel_van": 5, "muscle_car": 4, "monster_truck": 2, "taxi": 0.6 }, "big": { "bus": 3, "caravan": 6, "panel_van": 4, "monster_truck": 2 } },
+        "deco": { "any": { "fastback": 24, "caravan": 10, "muscle_car": 5, "taxi": 5, "veloce": 3, "berlinetta": 3 }, "big": { "bus": 10 } }
+      },
+      "near": [
+        { "places": ["police_station"], "within": 160, "weights": { "any": { "patrol_sedan": 30, "patrol_jeep": 12 }, "upright": { "patrol_sedan": 10 } } },
+        { "places": ["school"], "within": 120, "weights": { "big": { "bus": 40 } } },
+        { "places": ["station"], "within": 120, "weights": { "big": { "bus": 30 } } }
+      ],
+      "looks": {
+        "any": [["core:compact_abandoned", 10], ["core:compact_abandoned_stripped", 4], ["core:compact_wreck", 3], ["core:compact_abandoned_roof", 0.5], ["core:compact_wreck_tipped", 0.5],
+          ["core:fastback_abandoned", 10], ["core:fastback_abandoned_stripped", 3], ["core:fastback_abandoned_roof", 0.4], ["core:caravan_abandoned", 10], ["core:caravan_abandoned_stripped", 3],
+          ["core:panel_van_abandoned", 10], ["core:panel_van_abandoned_stripped", 3], ["core:taxi_abandoned", 1], ["core:muscle_car_abandoned", 1], ["core:patrol_sedan_abandoned", 1],
+          ["core:patrol_jeep_abandoned", 1], ["core:monster_truck_abandoned", 1], ["core:veloce_abandoned", 1], ["core:berlinetta_abandoned", 1]],
+        "upright": [["core:compact_abandoned", 6], ["core:compact_abandoned_stripped", 3], ["core:compact_wreck", 2], ["core:fastback_abandoned", 6], ["core:fastback_abandoned_stripped", 2],
+          ["core:caravan_abandoned", 6], ["core:caravan_abandoned_stripped", 2], ["core:panel_van_abandoned", 6], ["core:panel_van_abandoned_stripped", 2], ["core:taxi_abandoned", 1],
+          ["core:muscle_car_abandoned", 1], ["core:patrol_sedan_abandoned", 1]],
+        "thrown": [["core:compact_wreck", 2], ["core:compact_abandoned_stripped", 1], ["core:compact_abandoned_roof", 1], ["core:compact_wreck_tipped", 1], ["core:fastback_abandoned_roof", 1], ["core:fastback_abandoned_stripped", 1]],
+        "fire": [["core:compact_wreck", 8], ["core:compact_wreck_tipped", 1], ["core:compact_abandoned_stripped", 2]],
+        "big": [["core:bus_abandoned", 1], ["core:semi_abandoned", 1], ["core:panel_van_abandoned", 3], ["core:panel_van_abandoned_stripped", 1], ["core:caravan_abandoned", 3], ["core:caravan_abandoned_stripped", 1],
+          ["core:monster_truck_abandoned", 1], ["core:tanker_abandoned", 4], ["core:tanker_stripped", 2], ["core:tanker_rollover", 1], ["core:tanker_burnout", 2]]
+      },
+      "paints": { "white": 23, "black": 13, "charcoal": 9, "grey": 8, "silver": 11, "blue": 5, "navy": 3, "red": 5, "maroon": 2, "beige": 3, "green": 2, "teal": 1, "mustard": 1, "copper": 1,
+        "faded_red": 2, "faded_blue": 2, "faded_green": 1, "scarlet": 4, "crimson": 2, "orange": 2, "yellow": 3, "lime": 1 },
+      "bodyPaints": {
+        "panel_van": { "white": 40, "silver": 8, "grey": 6, "charcoal": 3, "red": 2, "navy": 2, "beige": 2, "faded_blue": 2 },
+        "veloce": { "orange": 4, "yellow": 4, "lime": 2, "white": 3, "black": 3, "scarlet": 3 },
+        "berlinetta": { "scarlet": 6, "crimson": 3, "yellow": 2, "silver": 2, "black": 2 }
+      },
       "parked": {
         "perKm": 0.4, "least": 2, "most": 4, "apart": 150, "junction": 15, "clear": 1, "fromSpawn": 40, "classes": ["S1400", "S1200"],
         "lots": { "classes": ["S1780"], "least": 2, "most": 4, "apart": 9, "perDistrict": 2 },
-        "kinds": { "core:compact": 40, "core:caravan": 24, "core:fastback": 18, "core:panel_van": 12, "core:veloce": 3, "core:berlinetta": 3, "core:patrol_sedan": 3, "core:patrol_jeep": 2, "core:taxi": 6, "core:muscle_car": 3 },
+        "kinds": { "core:compact": 30, "core:caravan": 20, "core:fastback": 16, "core:panel_van": 12, "core:taxi": 7, "core:muscle_car": 5, "core:patrol_sedan": 4, "core:patrol_jeep": 3, "core:veloce": 3, "core:berlinetta": 3, "core:monster_truck": 2 },
         "styles": {
-          "industrial": { "core:semi": 23, "core:tanker": 5, "core:monster_truck": 3, "core:panel_van": 45, "core:caravan": 10, "core:fastback": 6, "core:veloce": 0, "core:berlinetta": 0 },
-          "mural": { "core:panel_van": 30 },
-          "concrete": { "core:bus": 12, "core:taxi": 10, "core:panel_van": 22, "core:veloce": 5, "core:berlinetta": 5 },
-          "terracotta": { "core:bus": 8, "core:panel_van": 18 },
-          "residential": { "core:bus": 12, "core:caravan": 34, "core:panel_van": 6 },
-          "deco": { "core:fastback": 24, "core:veloce": 8, "core:berlinetta": 8, "core:panel_van": 8 }
+          "industrial": { "core:semi": 20, "core:tanker": 5, "core:monster_truck": 5, "core:panel_van": 40, "core:caravan": 8, "core:fastback": 6, "core:taxi": 0, "core:veloce": 0, "core:berlinetta": 0 },
+          "mural": { "core:panel_van": 24, "core:muscle_car": 8 },
+          "concrete": { "core:bus": 8, "core:taxi": 14, "core:panel_van": 16, "core:patrol_sedan": 6, "core:veloce": 5, "core:berlinetta": 5 },
+          "terracotta": { "core:bus": 6, "core:panel_van": 16, "core:muscle_car": 7 },
+          "residential": { "core:bus": 4, "core:caravan": 30, "core:panel_van": 6, "core:monster_truck": 4, "core:muscle_car": 6 },
+          "deco": { "core:fastback": 22, "core:veloce": 9, "core:berlinetta": 9, "core:panel_van": 6, "core:muscle_car": 7, "core:taxi": 8 }
         },
         "districts": {},
+        "near": [{ "places": ["police_station"], "within": 200, "weights": { "core:patrol_sedan": 40, "core:patrol_jeep": 20 } }, { "places": ["school"], "within": 100, "weights": { "core:bus": 10 } }],
         "trailers": { "styles": ["industrial"], "perDistrict": 2 },
         "hurt": { "share": 0.2, "condition": [0.35, 0.7] },
         "fuel": [[0.03, 0.15, 3], [0.15, 0.5, 1]]

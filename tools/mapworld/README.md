@@ -238,31 +238,52 @@ required city streets and interiors.
 
 ## Cars: wrecks and parked ones
 
-A street's cars are the compact's own meshes: statics of the kinds
+A street's cars are the road fleet's own meshes: statics of the kinds
 `content/vehicles/wrecks.ts` makes, one piece each, standing on the ground with
-their yaw. A kind is a look and a paint. The looks are posed meshes, since a
-piece has only a yaw: abandoned (dusty, faded, a few knocks, on soft tyres),
-stripped (no wheels, steering wheel or driver's door, down on its sills), on its
-roof, burnt out, and burnt out on its side
-(`assets/source/core/vehicles/compact_abandoned/` and `compact_wreck/`). A
-painted look comes in the car's twelve paints, the static's colour dyeing its
-paint as the species' colour dyes the drivable car's. A kind's `shape` is its
-collider in the car's frame (origin on the ground under its middle, nose along
-+z), so the far city draws its boxes and the prop checks take its size from it
-(`ruin-obstacles.ts`).
+their yaw. A kind is a body, a look and a paint. The looks are posed meshes, since
+a piece has only a yaw. The compact's: abandoned (dusty, faded, a few knocks, on
+soft tyres), stripped (no wheels, steering wheel or driver's door, down on its
+sills), on its roof, burnt out, and burnt out on its side
+(`assets/source/core/vehicles/compact_abandoned/` and `compact_wreck/`). Every
+other body of the fleet but the tanker is abandoned where it stopped, and the
+fastback, the caravan and the panel van stripped too, the fastback on its roof
+as well: each the live vehicle's own model posed at rest as one piece, its first
+knocks and rust showing (`assets/source/core/vehicles/<vehicle>_abandoned/`,
+`parked_common/`). The tanker stands as its salvage (`tanker-wrecks.ts`). A
+painted look comes in the paints of its body, the static's colour dyeing its
+paint as the species' colour dyes the drivable car's; the taxi, the patrol cars,
+the muscle car, the monster truck, the bus and the semi keep their liveries, a
+kind each. A kind's `shape` is its collider in the car's frame (origin on the
+ground under its middle, nose along +z), fitted to the mesh
+(`parked_common/bounds.ts`, `abandoned-bounds.json`), so the far city draws its
+boxes and the prop checks take its size from it (`ruin-obstacles.ts`). The kinds
+added after the compact's first 38 have ids that sort after every other core id
+(`core:zzzzroad_...`), so no index moves.
 
 An assembly part `["car", u, 0, v, family, yaw]` is one car. Which kind it is
-comes from a hash of where it stands (`street-cars.ts`): a look by the weights of
-`street.cars.looks[family]` and a paint by `street.cars.paints`; in a cell where
-a fire went through, the family is `fire`. The street pass (`makeStreetPieces` in
-`ruins.ts`) keeps its 8 m grid and its hashes. Along a street an assembly faces
+comes from where it stands (`street-cars.ts`): a body by the weights of
+`street.cars.bodies[family]`, changed by its district's style in `styles` (vans
+and trucks among works, taxis and buses downtown, caravans and pickups among
+homes, sports cars few and most by the beaches) and near a public place a rule
+of `near` lists (patrol cars by a police station, buses by a school or a
+station); a look of that body by `street.cars.looks[family]`; and a paint by
+`paints`, or by the body's own in `bodyPaints`, each by a hash of where it
+stands. The families: `any` at a kerb, `upright` and `thrown` in a pile-up, and
+`big` in a bus's place, which may hold a van, a semi or the tanker's salvage
+too. In a cell where a fire went through, a share `burnt` of the cars of any
+family but `big` take the looks of `fire`. Two rules bound and spread the mix: a chunk holds the meshes
+of at most `perChunk` looks, a car that would be one more being one of the looks
+its chunk holds (each mesh in a chunk is a draw and a set of casters); and no car
+is the kind of one within `apart` metres where another paint, or another look
+its family may be, will do. The street pass (`makeStreetPieces` in `ruins.ts`)
+keeps its 8 m grid and its hashes. Along a street an assembly faces
 the way traffic on its side runs, by the nearest centreline of
 `base/roads.geojson`, and a car or a bus is set in from the kerb, a few cars
 slewed out of line. On a verge a car has run off the road; in a yard it is parked
 in a row or left at any angle. A pile-up turns along its street, its cars nosed
 into each other either side of the gap left through it. Every piece stands clear
 of the pieces already set down, and a car on its own ground, level enough under
-every corner. Buses and trucks stay boxes until they have models.
+every corner.
 
 Cars a survivor can drive away go in `vehicles.json`
 (`[{ "kind": "core:compact", "x": 240, "z": 270, "yaw": 90 }]`, through the
@@ -275,10 +296,11 @@ by `street.cars.parked`:
   district's style in `styles` (vans where there are shops and works, and the
   tanker, the semi and the monster pickup among the works; caravans among homes;
   buses among homes and where the blocks are concrete or terracotta, and taxis
-  where they are concrete; sports cars few, most by the beaches) and then by
-  the district's
-  name in `districts`, which a city's vocabulary may add; a weight of 0 takes a
-  kind out. The place is then tested for that kind alone.
+  and patrol sedans where they are concrete; sports cars few, most by the
+  beaches), then by the district's name in `districts`, which a city's
+  vocabulary may add, then near a public place a rule of `near` lists (patrol
+  cars by a police station, a bus by a school); a weight of 0 takes a kind out.
+  The place is then tested for that kind alone.
 - At the kerb on the right of travel of a centreline of the listed classes (local
   and secondary streets), or of a car park's road (`lots.classes`), turned along
   it, on street ground, its room inside the map.

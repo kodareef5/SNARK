@@ -9,6 +9,12 @@ for (const part of [
   "fastback/enamel", "monster_truck/livery", "muscle_car/livery", "patrol_jeep/patrol", "patrol_sedan/cruiser",
   "road_van/coach", "semi/livery", "tanker/livery", "tanker_wrecks/livery", "taxi/livery", "veloce/coachwork",
 ]) materials.set("core:" + part, PAINT);
+// The fleet's abandoned statics (assets/source/core/vehicles/<vehicle>_abandoned): the live vehicles' atlases, weathered.
+for (const part of [
+  "berlinetta_abandoned/coachwork", "bus_abandoned/livery", "fastback_abandoned/enamel", "monster_truck_abandoned/livery",
+  "muscle_car_abandoned/livery", "patrol_jeep_abandoned/patrol", "patrol_sedan_abandoned/cruiser", "road_van_abandoned/coach",
+  "semi_abandoned/livery", "taxi_abandoned/livery", "veloce_abandoned/coachwork",
+]) materials.set("core:" + part, PAINT);
 materials.set("core:compact_wreck/body", BURNT_SHEET);
 materials.set("core:human-bodies/meridian", ENAMEL_ARMOR);
 // The Miami instruments: glazed ceramic and fired enamel under a clear coat, cast and brushed metal that keeps its own colour, cut glass.
@@ -16,6 +22,7 @@ for (const atlas of ["instrument", "livery"]) materials.set("core:tide-eye/" + a
 for (const part of [
   "compact/cabin", "compact/trim", "compact_abandoned/cabin", "compact_abandoned/trim", "compact_wreck/cabin",
   "compact_wreck/trim", "fastback/detail", "road_van/cabin", "road_van/fittings", "street/street", "street/street_cut",
+  "fastback_abandoned/detail", "road_van_abandoned/cabin", "road_van_abandoned/fittings",
 ]) materials.set("core:" + part, FITTINGS);
 
 export function streetMaterial(id: string, wheeledRig = false): number {
@@ -26,7 +33,11 @@ export function streetMaterial(id: string, wheeledRig = false): number {
 const exposure = new Map<string, number>();
 for (const [age, models] of [
   [0.32, ["box_trailer"]],
-  [0.55, ["compact_abandoned", "compact_abandoned_roof", "compact_abandoned_stripped", "tanker_abandoned"]],
+  [0.55, ["compact_abandoned", "compact_abandoned_roof", "compact_abandoned_stripped", "tanker_abandoned",
+    "berlinetta_abandoned", "bus_abandoned", "caravan_abandoned", "caravan_abandoned_stripped", "fastback_abandoned",
+    "fastback_abandoned_roof", "fastback_abandoned_stripped", "monster_truck_abandoned", "muscle_car_abandoned",
+    "panel_van_abandoned", "panel_van_abandoned_stripped", "patrol_jeep_abandoned", "patrol_sedan_abandoned", "semi_abandoned",
+    "taxi_abandoned", "veloce_abandoned"]],
   [0.78, ["tanker_impact", "tanker_rear_crush", "tanker_rollover", "tanker_separated", "tanker_stripped", "tanker_cistern"]],
   [1, ["compact_wreck", "compact_wreck_tipped", "tanker_burnout"]],
 ] as const) for (const model of models) exposure.set("core:" + model, age);
