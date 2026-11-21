@@ -10,13 +10,15 @@
 //   or the side has no walk (a pair's median), the kerb stands alone;
 // - its seed is its stretch's, its wear its type's (the type's `wear` in the street rules), its panels the kerb's;
 // - a line is laid where it stands on open ground: in the map, off water, off a bridge's deck and its way on, and clear of
-//   what stands there already; a stretch's kerb that ends short of a corner's arc is drawn on to the arc's end, and an
+//   what stands there already, where the ground behind its face is level with the road and the street no steeper than
+//   one in eight; where the ground across its walk is not level, a way in to a building crosses it or something the city
+//   set down stands on it, its kerb stands alone; a stretch's kerb that ends short of a corner's arc is drawn on to the arc's end, and an
 //   end that meets no other kerb is let down to the road by a flare;
 // - under every piece lie its collision pieces (underPiece); a piece and its collision go into the map as a whole or not;
 // - the walk kit's storm drains and utility boxes stand on the straight lengths, as often as the kit has them.
 
 import { BREAK_AT } from "../../content/ruins.ts";
-import { bentJoin, KERB_BACK, packBend, placeKerb, underPiece, wrapped, type BentKerb, type BentPiece, type Section } from "../../shared/world/bends.ts";
+import { bentJoin, bentKind, KERB_BACK, packBend, placeKerb, underPiece, wrapped, type BentKerb, type BentPiece, type Section } from "../../shared/world/bends.ts";
 import { kerbLines, kerbOf, walkOf, type KerbLine as StreetKerb } from "../../shared/world/streets.ts";
 import { S } from "./ground.ts";
 import { binKey, hash3 } from "./raster.ts";
@@ -38,6 +40,8 @@ const SLOT = 8;
 const PANEL = { raised: 1.5, worn: 1.2 } as const;
 /** The most a stretch's kerb is drawn on to meet a corner's arc. */
 const SNAP = 1.3;
+/** The steepest street a kerb is laid along, its rise over its length. */
+const STEEPEST = 0.125;
 /** A verge narrower than this at the kerb is taken as walk, as the walk kit takes it (ruins.ts sectionRefuses). */
 const VERGE_LEAST = 0.5;
 
@@ -45,9 +49,9 @@ const VERGE_LEAST = 0.5;
 interface Run { x: number[]; y: number[]; z: number[]; s: number[]; side: 1 | -1; section: Section; corner: boolean }
 
 /** Lays the bent kerbs on the street model's kerb lines, and says how many of each kind of thing for the build's report. */
-export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, _way: (box: Box) => boolean, obstacles: { hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean }, _roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
+export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (box: Box) => boolean, obstacles: { hits: (box: Box, gap?: number, skip?: (p: StaticPiece) => boolean) => boolean }, _roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
   const rules = v.street.walks!, bent = rules.bent!;
-  const out: Record<string, number> = { pieces: 0, curved: 0, joins: 0, collision: 0, lines: 0, runs: 0, alone: 0, snapped: 0, ends: 0, refused: 0, blocked: 0, drains: 0, boxes: 0 };
+  const out: Record<string, number> = { pieces: 0, curved: 0, joins: 0, collision: 0, lines: 0, runs: 0, alone: 0, unlevel: 0, unlaid: 0, ways: 0, snapped: 0, ends: 0, refused: 0, blocked: 0, drains: 0, boxes: 0 };
   const held = site.ground.streets;
   if (!held) return out;
   let placing = 0;
@@ -81,17 +85,38 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     const alone = walkOf(k.kinds) === 0 || k.verge >= VERGE_LEAST;
     if (alone) out.alone!++;
     const section: Section = { kerb, walk: alone ? 0 : k.verge + k.walk, panel: PANEL[kerb], seed: k.seed & 255, wear: street.types[type]?.section.wear ?? 0.4 };
-    const side = walkSide(k, part.corners);
+    const side = walkSide(k, part.corners), n = k.stations.length;
+    const kerbAlone: Section = { ...section, walk: 0 };
     let run: Run | null = null;
-    for (let q = 0; q < k.stations.length; q++) {
+    for (let q = 0; q < n; q++) {
       const x = k.xz[q * 2]! + x0, z = k.xz[q * 2 + 1]! + z0;
       if (!open(x, z)) {
         run = null;
         continue;
       }
-      if (!run) runs.push((run = { x: [], y: [], z: [], s: [], side, section, corner: k.corner >= 0 }));
+      // A kerb stands where the ground behind its face is level with the road and the street is no steeper than one in
+      // eight; a walk stands level across, so where the ground across it rises or falls more than the walk kit's rule
+      // allows, the kerb stands alone there and the ground's walk takes it up.
+      const y = site.groundAt(x, z);
+      const a = Math.max(0, q - 1), b = Math.min(n - 1, q + 1), ex = k.xz[b * 2]! - k.xz[a * 2]!, ez = k.xz[b * 2 + 1]! - k.xz[a * 2 + 1]!, l = Math.hypot(ex, ez) || 1;
+      const nx = (-ez / l) * side, nz = (ex / l) * side;
+      const steep = Math.abs(site.groundAt(k.xz[b * 2]! + x0, k.xz[b * 2 + 1]! + z0) - site.groundAt(k.xz[a * 2]! + x0, k.xz[a * 2 + 1]! + z0)) > l * STEEPEST;
+      if (steep || Math.abs(site.groundAt(x + nx * 0.5, z + nz * 0.5) - y) > rules.flat) {
+        out.unlaid!++;
+        run = null;
+        continue;
+      }
+      let here = section;
+      if (section.walk > 0) for (const back of [section.walk / 2, section.walk]) if (Math.abs(site.groundAt(x + nx * back, z + nz * back) - y) > rules.flat) here = kerbAlone;
+      if (run && run.section !== here) {
+        // The two kerbs meet at this point: it ends the one and begins the other.
+        const was: Run = run, last = was.x.length - 1;
+        runs.push((run = { x: [was.x[last]!], y: [was.y[last]!], z: [was.z[last]!], s: [was.s[last]!], side, section: here, corner: k.corner >= 0 }));
+        out.unlevel!++;
+      }
+      if (!run) runs.push((run = { x: [], y: [], z: [], s: [], side, section: here, corner: k.corner >= 0 }));
       run.x.push(x);
-      run.y.push(site.groundAt(x, z));
+      run.y.push(y);
       run.z.push(z);
       run.s.push(k.stations[q]!);
     }
@@ -152,6 +177,16 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
       if (alone(r.x[first]!, r.z[first]!) && join(pieces, 0, "flush", kerb)) out.ends!++;
       if (alone(r.x[last]!, r.z[last]!) && join(pieces, pieces.length - 1, kerb, "flush")) out.ends!++;
     }
+    // Where a way in to a building crosses a piece's walk, or something the city set down stands on it (a stair's foot,
+    // a stoop, a column), its kerb stands alone, so the way in and what stands there meet the ground at its height.
+    for (let q = 0; q < pieces.length; q++) {
+      const p = pieces[q]!;
+      if (p.bend.walk <= KERB_BACK + 0.01) continue;
+      const box = walkBox(p, p.bend.walk);
+      if (!way(box) && !obstacles.hits(box, -0.1, rubble)) continue;
+      pieces[q] = { ...p, kind: bentKind("median", p.kind.endsWith("_c")), kerb: "median", bend: { ...p.bend, walk: KERB_BACK, panel: 0 } };
+      out.ways!++;
+    }
     // Runs of pieces clear of what stands there, each laid whole where the chunks' budgets let it, else a piece at a time.
     let group: BentPiece[] = [];
     const flush = (): void => {
@@ -177,9 +212,13 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
    * walk (a stoop, a column, an awning's post) stands on it, as on a walk drawn by the ground.
    */
   function blocked(p: BentPiece): boolean {
-    const back = Math.max(KERB_BACK, Math.min(0.6, p.bend.walk)), a = (p.yaw * Math.PI) / 180;
-    const box: Box = { x: p.x + Math.sin(a) * back / 2, y: p.y + 0.075, z: p.z + Math.cos(a) * back / 2, yaw: p.yaw, size: [p.bend.half * 2, 0.15, back] };
-    return obstacles.hits(box, -0.1, rubble);
+    return obstacles.hits(walkBox(p, Math.max(KERB_BACK, Math.min(0.6, p.bend.walk))), -0.1, rubble);
+  }
+
+  /** The box of a piece's chord from its kerb's face `back` metres into its walk, at the kerb's height. */
+  function walkBox(p: BentPiece, back: number): Box {
+    const a = (p.yaw * Math.PI) / 180;
+    return { x: p.x + (Math.sin(a) * back) / 2, y: p.y + 0.075, z: p.z + (Math.cos(a) * back) / 2, yaw: p.yaw, size: [p.bend.half * 2, 0.15, back] };
   }
 
   /**

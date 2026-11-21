@@ -392,6 +392,8 @@ export const HIT_LENGTHS = [0.5, 1, 2, 4, 8] as const;
 export const HIT_WIDTHS = [0.3, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5] as const;
 /** A flush kerb's ramp: from the road at its face to the walk's height this far behind it. */
 export const FLUSH_FACE = 0.03, FLUSH_APRON = 0.75;
+/** The most a collision box's end stands off a sloping walk. */
+const SLOPE_MISS = 0.04;
 export const hitKind = (ramp: boolean, width: number, length: number): string => `core:zzzzzbendhit_${ramp ? "ramp" : "box"}_${Math.round(width * 100)}_${Math.round(length * 100)}`;
 
 /** The nearest width the collision pieces come in to `walk`. */
@@ -408,8 +410,8 @@ export interface HitPiece { readonly kind: string; readonly x: number; readonly 
  * The collision pieces under a bent piece: boxes from the kerb's face to its walk's back at the kerb's height, or under a
  * flush kerb a ramp up from the road at the face to the walk behind it, and a walk wider than the widest box in bands of
  * boxes side by side, the first the kerb's; along a straight the longest length that fits,
- * end to end and overlapping within it, and along a curve on chords short enough that each misses the curve by no more
- * than 2 cm at the face, so a wheel meets the kerb within that of where it is drawn. None reaches past the piece's ends.
+ * end to end and overlapping within it, short enough on a slope that a box's ends stand within 4 cm of it, and along a
+ * curve on chords short enough that each misses the curve by no more than 2 cm at the face, so a wheel meets the kerb within that of where it is drawn. None reaches past the piece's ends.
  */
 export function underPiece(p: BentPiece): HitPiece[] {
   const b = p.bend, phi = b.turn1 - b.turn0, length = arcLength(b.half, phi);
@@ -422,6 +424,8 @@ export function underPiece(p: BentPiece): HitPiece[] {
   const radius = Math.abs(phi) > 1e-4 ? length / Math.abs(phi) : Infinity;
   const longest = radius === Infinity ? STRAIGHT_MOST : Math.min(STRAIGHT_MOST, Math.sqrt(8 * radius * 0.02));
   const chords = Math.max(1, Math.ceil(length / longest - 1e-9));
+  // A box is level along its length: on a slope none is so long that its ends stand more than 4 cm off the walk.
+  const grade = Math.abs((2 * b.rise) / Math.max(length, 1e-6)), level = grade > 1e-4 ? (2 * SLOPE_MISS) / grade : Infinity;
   const a = (p.yaw * PI) / 180, cs = detCos(a), sn = detSin(a);
   const out: HitPiece[] = [];
   const pa = [0, 0, 0, 0], pb = [0, 0, 0, 0];
@@ -432,7 +436,7 @@ export function underPiece(p: BentPiece): HitPiece[] {
     const ux = ex / chord, uz = ez / chord;
     // The longest length that fits the chord, and as many as cover it.
     let size: number = HIT_LENGTHS[0];
-    for (const l of HIT_LENGTHS) if (l <= chord + 1e-6) size = l;
+    for (const l of HIT_LENGTHS) if (l <= chord + 1e-6 && l <= level + 1e-6) size = l;
     const count = Math.max(1, Math.ceil(chord / size - 1e-6));
     for (let q = 0; q < count; q++) for (let j = 0; j < bands; j++) {
       const along = count === 1 ? chord / 2 : size / 2 + ((chord - size) * q) / (count - 1);
