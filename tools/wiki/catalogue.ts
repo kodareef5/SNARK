@@ -134,9 +134,11 @@ function tamingTable(d: SpeciesDef, defs: readonly Def[]): Table | null {
 function dropTable(d: SpeciesDef, tools: readonly ItemDef[]): Table | null {
   if (!d.drops?.length) return null;
   const total = d.drops.reduce((n, x) => n + (x.weight ?? 1), 0);
-  const rows = d.drops.map((x): Cell[] => {
+  const rows = d.drops.map((x): (Cell | Cell[])[] => {
     const favoured = tools.filter((t) => t.tool!.on === x.favoured);
-    return [{ id: x.item }, rate("body", `${x.min} ${x.max}`), pct((x.weight ?? 1) / total), ...(favoured.length ? favoured.map((t): Cell => ({ id: t.id })) : [""])];
+    // One cell, whichever tools favour it: two that work the same thing (a stone hatchet and a metal one) are a list in it.
+    const by: Cell | Cell[] = favoured.length === 0 ? "" : favoured.length === 1 ? { id: favoured[0]!.id } : favoured.map((t): Cell => ({ id: t.id }));
+    return [{ id: x.item }, rate("body", `${x.min} ${x.max}`), pct((x.weight ?? 1) / total), by];
   });
   const note: Cell[] = d.corpse
     ? ["A grown body takes ", rate("health", d.corpse.health), ` harvest damage before it is used up, a roll for every ${num(d.corpse.roll)}. A favoured tool picks its drop half as often again.`]
@@ -185,7 +187,8 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
   const byId = new Map(defs.map((d) => [d.id, d]));
   const of = <T extends Def["type"]>(type: T): Extract<Def, { type: T }>[] => defs.filter((d): d is Extract<Def, { type: T }> => d.type === type);
   const items = of("item");
-  const tools = items.filter((d) => d.tool);
+  // The weakest first, so a table's columns read from bare hands up.
+  const tools = items.filter((d) => d.tool).sort((a, b) => a.tool!.power - b.tool!.power);
   const engramOf = new Map(of("engram").map((e: EngramDef) => [e.item, e]));
   const placer = new Map<string, ItemDef>();
   for (const d of items) for (const s of d.places ?? []) if (!placer.has(s)) placer.set(s, d);

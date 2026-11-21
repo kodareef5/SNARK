@@ -1,6 +1,7 @@
 // The weapons program's contracts (planning/reference/weapons-plan.md, W0): the numbers it took, the wire fields it added,
 // and the stubs later projects build on, each read by nothing yet. A project that builds one moves its pin here in the same
 // change.
+import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -120,7 +121,10 @@ test("every weapon and round today compiles as it did: no stub in its timings, a
   const blows = new Set(["core:bow", "core:crossbow", "core:rifle", "core:pistol", "core:shotgun"]);
   // W3's: only the shotgun's shell is shot, and falls off.
   const shot = new Set(["core:round_shotgun"]);
+  // What is blocked out has numbers of its own, held by tests/unit/blockouts.test.ts.
+  const blocked = new Set(BLOCKED_OUT);
   for (let i = 1; i < reg.defs.length; i++) {
+    if (blocked.has(reg.ids[i]!)) continue;
     const w = reg.weapon[i];
     if (w) expect([reg.ids[i], "auto" in w || "reloadEach" in w]).toEqual([reg.ids[i], false]);
     const blow = blows.has(reg.ids[i]!);

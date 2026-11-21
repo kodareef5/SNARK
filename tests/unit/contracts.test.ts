@@ -84,15 +84,17 @@ test("the new columns change nothing for content that does not use them", () => 
     if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
     // The pteranodon is carried as 149 of drag weight by what can lift it, its mass is 190, and its kind takes fright with
     // it within 15 m. A vehicle's mass is its curb mass.
-    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:brachio": [0, 1100, 26000, 0, 0], "core:carbonemys": [12, 250, 800, 0, 0], "core:rex": [0, 550, 8300, 0, 0], "core:pteranodon": [15, 149, 190, 0, 0], "core:trike": [22, 300, 6000, 0, 0], "core:spino": [0, 550, 6200, 0, 0], "core:stego": [15, 250, 5000, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
+    const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:trilobite": [12, 30, 30, 1, 0], "core:brachio": [0, 1100, 26000, 0, 0], "core:carbonemys": [12, 250, 800, 0, 0], "core:rex": [0, 550, 8300, 0, 0], "core:pteranodon": [15, 149, 190, 0, 0], "core:trike": [22, 300, 6000, 0, 0], "core:spino": [0, 550, 6200, 0, 0], "core:stego": [15, 250, 5000, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
-    if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
+    // The blocked-out metal pick and electric prod have theirs (tests/unit/blockouts.test.ts).
+    if (!["core:survivor", "core:club", "core:pick", "core:pick_metal", "core:prod"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
     // Prime meat (content/corpses.ts) is what the young give in place of raw meat.
     if (d.id !== "core:meat") expect(reg.youngItem[i]).toBe(0);
     // Eggs, feces, prime meat and jerky (decomposesin 120, Cooked Meat Jerky, Prime Meat Jerky) lie on the ground for a time;
     // nothing else declares one yet.
-    const prime = ["core:meat_prime", "core:meat_prime_cooked", "core:jerky", "core:jerky_prime"].includes(d.id);
+    // The stimulant too, blocked out (Stimulant: gone from the ground in 120 s).
+    const prime = ["core:meat_prime", "core:meat_prime_cooked", "core:jerky", "core:jerky_prime", "core:stimulant"].includes(d.id);
     if (!(d.type === "item" && (d.class === "egg" || d.class === "feces")) && !prime) expect(reg.decomposeTicks[i]).toBe(0);
   }
 });

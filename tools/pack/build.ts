@@ -20,6 +20,7 @@ import { importGlb } from "./glb.ts";
 import { mannequinMeshes } from "./mannequin.ts";
 import { ballMeshes } from "./balls.ts";
 import { supplyMeshes } from "./supply.ts";
+import { blockoutMeshes } from "./blockout.ts";
 import { gliderMeshes } from "./glider.ts";
 import { weaponMeshes } from "./weapons.ts";
 import { boxMesh, buildPack, type SourceLod, type SourceMesh } from "./write.ts";
@@ -212,7 +213,7 @@ export function withArt(made: readonly SourceMesh[], art: readonly SourceMesh[])
 
 /** `landmarks` are the rows of landmark far meshes among `extra` (tools/pack/far.ts). */
 export function buildCorePack(extra: SourceMesh[] = [], landmarks: readonly LandmarkFarRow[] = []): Uint8Array {
-  const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes(), ...gliderMeshes(), ...ballMeshes(), ...supplyMeshes()];
+  const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes(), ...gliderMeshes(), ...ballMeshes(), ...supplyMeshes(), ...blockoutMeshes()];
   const art = coreArt();
   const rigs = new Map(art.rigs.map((rig) => [rig.id, rig]));
   const available = new Set([...made, ...art.meshes, ...extra].map((m) => m.id));

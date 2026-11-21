@@ -1,6 +1,7 @@
 // The stations wave's contracts (planning/reference/stations-plan.md, S0): the numbers it took, OWN_STATION's layout, the
 // save's new fields, the stubs later projects build on, and the two built with no content using them, a station's own
 // fuel and a lit station counted as the station it is out. A project that builds one moves its pin here in the same change.
+import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +26,9 @@ import * as P from "../../shared/net/protocol.ts";
 import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
+
+// What is blocked out is made at stations too: tests/unit/blockouts.test.ts holds where and of what.
+const BLOCKED = new Set(BLOCKED_OUT);
 
 const reg = compileContent(CORE_CONTENT).registry!;
 const root = join(import.meta.dir, "../..");
@@ -110,7 +114,7 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([byIndex([...both, ...bin, ...vault]), byIndex([...both, ...vault])]);
   expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"], ["core:jerky", "core:preserving_bin"], ["core:jerky_prime", "core:preserving_bin"]], [["core:wood", "core:charcoal"]]]);
   // Sparkpowder is made at the mortar, as before, and since S6 the narcotic, cementing paste and gunpowder (tests/unit/ark-stations.test.ts).
-  expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]).sort()]).toEqual([id(reg, "mortar"), ["core:gunpowder", "core:narcotic", "core:paste", "core:sparkpowder"]]);
+  expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]!).filter((n) => !BLOCKED.has(n)).sort()]).toEqual([id(reg, "mortar"), ["core:gunpowder", "core:narcotic", "core:paste", "core:sparkpowder"]]);
 });
 
 /** A test station that lights, named by its unlit and lit ids, burning only sparkpowder 2 s a piece, and a loaf made at it. */

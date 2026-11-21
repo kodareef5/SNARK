@@ -280,7 +280,7 @@ const NODES: NodeDef[] = [
   // a hit, times the pick's 3, a quarter of the ore it gives.
   { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }, { item: "core:obsidian", min: 0, max: 1, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
   // Berry bushes, their berries red. How many narcoberries each picking gives is chosen, as the wiki gives no figure.
-  plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }, { item: "core:narcoberry", min: 0, max: 2 }], [0.8, 1.2], BUSHES),
+  plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }, { item: "core:narcoberry", min: 0, max: 2 }, { item: "core:stimberry", min: 0, max: 2 }], [0.8, 1.2], BUSHES),
   // Saw palmetto bears a few berries. A fern bears none.
   plant("palmetto", 17, 4, [0.7, 0.5, 0.7], [{ item: "core:fiber", min: 3, max: 6 }, { item: "core:berry", min: 1, max: 3 }, { item: "core:narcoberry", min: 0, max: 1 }], [0.75, 1.25], PALMETTOS),
   plant("fern", 7, 3, [0.45, 0.35, 0.45], [{ item: "core:fiber", min: 3, max: 6 }], [0.75, 1.3], FERNS),

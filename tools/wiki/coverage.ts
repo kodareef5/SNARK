@@ -54,7 +54,7 @@ const body: Rule = (d, c) => {
 
 /** By class: how each of its definitions is ruled. Abstract classes have no definitions and no row. */
 export const RULINGS: Readonly<Record<string, Rule>> = {
-  "item/resource": entry, "item/consumable": entry, "item/weapon": entry, "item/ammo": entry, "item/attachment": entry,
+  "item/resource": entry, "item/consumable": entry, "item/weapon": entry, "item/ammo": entry, "item/attachment": entry, "item/instrument": entry,
   "item/armor": entry, "item/saddle": entry, "item/structure": entry, "item/vehicle": entry, "item/egg": entry,
   "item/feces": entry, "item/glider": entry, "item/shield": entry, "item/costume": entry, "item/skin": entry, "item/dye": entry, "item/artifact": entry,
   // A full soul ball is the same ball with a tame in it, on the ball's page.

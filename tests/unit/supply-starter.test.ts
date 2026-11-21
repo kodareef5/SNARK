@@ -26,13 +26,9 @@ test("the starter book is sound, and what it waits for is a list that only shrin
   expect(today.report.waiting.filter((w) => w.why !== "future")).toEqual([]);
   for (const [id, f] of Object.entries(book.future)) expect([id, f.ark.length > 0, f.worth! > 0, f.page!.startsWith("https://ark.wiki.gg/wiki/")]).toEqual([id, true, true, true]);
   // The backlog. When an item here is made, this list loses it: take it out of FUTURE too, or leave it and the game's wins.
-  expect(today.report.waiting.map((w) => w.id.slice(5))).toEqual([
-    "bow_compound", "c4", "canteen", "compass", "fur_boots", "fur_gloves", "fur_hat", "fur_pants", "fur_shirt", "ghillie_boots", "ghillie_gloves", "ghillie_hat", "ghillie_pants", "ghillie_shirt",
-    "gps", "grappling_hook", "hatchet_metal", "magnifying_glass", "pick_metal", "piece_air_conditioner", "piece_chemistry_bench", "piece_cooker_industrial", "piece_cooking_pot", "piece_fireplace",
-    "piece_forge_industrial", "piece_generator", "piece_grinder", "piece_refrigerator", "piece_standing_torch", "pike", "pistol_fabricated", "prod", "radio", "raft_assembly", "rifle_assault",
-    "rifle_sniper", "riot_boots", "riot_gloves", "riot_hat", "riot_pants", "riot_shirt", "rocket_launcher", "round_advanced", "scuba_flippers", "scuba_leggings", "scuba_mask", "scuba_tank",
-    "shotgun_pump", "sickle", "spyglass", "stimulant", "sword", "torch", "water_jar",
-  ]);
+  // Fifty-three of the fifty-four it once waited for are blocked out (content/items/blockouts.ts). The raft is left: a
+  // vehicle that is built on.
+  expect(today.report.waiting.map((w) => w.id.slice(5))).toEqual(["raft_assembly"]);
   // With those counted, nothing waits and nothing is left empty.
   expect([designed.report.waiting, designed.report.emptySets]).toEqual([[], []]);
 });

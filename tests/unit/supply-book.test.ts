@@ -20,7 +20,10 @@ const id = (name: string): number => reg.index.get(`core:${name}`)!;
 const dir = mkdtempSync(join(tmpdir(), "snark-supply-book-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-/** A small book: two tiers, two classes, and a table for each pair of the same slots. */
+/**
+ * A small book: two tiers, two classes, and a table for each pair of the same slots. What it waits for are things of
+ * ARK's the game has not and has not blocked out: a fishing rod, a harpoon launcher, a lance, a whip, and the raft.
+ */
 function book(): SupplyBook {
   const b: SupplyBook = {
     format: BOOK_FORMAT,
@@ -42,20 +45,20 @@ function book(): SupplyBook {
       "fill.arms": { all: true, entries: [{ items: ["core:flint"], min: 5, max: 5 }] },
       "fill.voyage": { all: true, entries: [{ items: ["core:fiber"], min: 5, max: 5 }] },
       "kit.arms.white": { all: true, entries: [{ items: ["core:spear"], min: 1, max: 2 }, { items: ["core:slingshot"], min: 1, max: 1 }, { items: ["core:stone"], min: 10, max: 20 }] },
-      "prize.arms.white": { min: 1, max: 1, entries: [{ items: ["core:bow"], min: 1, max: 1, quality: "tier", blueprint: 0.2 }, { items: ["core:bola"], min: 2, max: 4 }, { items: ["core:pike"], min: 1, max: 1, quality: "tier" }] },
+      "prize.arms.white": { min: 1, max: 1, entries: [{ items: ["core:bow"], min: 1, max: 1, quality: "tier", blueprint: 0.2 }, { items: ["core:bola"], min: 2, max: 4 }, { items: ["core:lance"], min: 1, max: 1, quality: "tier" }] },
       "kit.arms.green": { all: true, entries: [{ items: ["core:bow"], min: 1, max: 1 }, { items: ["core:arrow_stone"], min: 15, max: 25 }] },
-      "prize.arms.green": { min: 1, max: 1, entries: [{ items: ["core:crossbow"], min: 1, max: 1, quality: "tier", blueprint: 0.2 }, { items: ["core:sword"], min: 1, max: 1, quality: "tier", weight: 0.5 }] },
-      "kit.voyage.white": { all: true, entries: [{ items: ["core:compass"], min: 1, max: 1 }, { items: ["core:spyglass"], min: 1, max: 1 }] },
+      "prize.arms.green": { min: 1, max: 1, entries: [{ items: ["core:crossbow"], min: 1, max: 1, quality: "tier", blueprint: 0.2 }, { items: ["core:whip"], min: 1, max: 1, quality: "tier", weight: 0.5 }] },
+      "kit.voyage.white": { all: true, entries: [{ items: ["core:fishing_rod"], min: 1, max: 1 }, { items: ["core:harpoon_launcher"], min: 1, max: 1 }] },
       "prize.voyage.white": { min: 1, max: 1, entries: [{ items: ["core:raft_assembly"], min: 1, max: 1 }] },
       "kit.voyage.green": { all: true, entries: [{ items: ["core:frond_glider"], min: 1, max: 1, quality: "tier" }, { items: ["core:flare_gun"], min: 1, max: 2 }] },
       "prize.voyage.green": { min: 1, max: 1, entries: [{ items: ["core:boat_assembly"], min: 1, max: 1, jackpot: true, weight: 0.05 }, { items: ["core:flare_gun"], min: 2, max: 3 }] },
     },
     tables: {},
     future: {
-      "core:pike": { ark: "Pike", level: 25, worth: 110, quality: true },
-      "core:sword": { ark: "Sword", level: 30, worth: 330, quality: true },
-      "core:compass": { ark: "Compass", level: 8, worth: 40 },
-      "core:spyglass": { ark: "Spyglass", level: 7, worth: 45 },
+      "core:lance": { ark: "Lance", level: 25, worth: 110, quality: true },
+      "core:whip": { ark: "Whip", level: 30, worth: 330, quality: true },
+      "core:fishing_rod": { ark: "Fishing Rod", level: 8, worth: 40 },
+      "core:harpoon_launcher": { ark: "Harpoon Launcher", level: 7, worth: 45 },
       "core:raft_assembly": { ark: "Wooden Raft", level: 16, like: "core:bow", scale: 9, blueprint: false },
     },
     circuits: [{ key: "shore", on: true, sites: ["a"], maxLive: 2, firstDelay: [60, 120], interval: [300, 600], tierWeights: { white: 3, green: 1 } }],
@@ -99,7 +102,7 @@ test("a sound book has no faults, and what is wrong with one is said at its path
   expect(paths((b) => void (b.rules.flightSeconds = 300))).toEqual(["rules.flightSeconds", "rules.noticeSeconds"]);
   expect(paths((b) => void (b.circuits[0]!.sites = ["b"]))).toEqual(["circuits.0.sites.0"]);
   expect(paths((b) => void (b.circuits[0]!.tierWeights = { red: 1 }))).toEqual(["circuits.0.tierWeights.red"]);
-  expect(paths((b) => void (b.future["core:pike"] = { ark: "Pike", level: 25 }))).toEqual(["future.core:pike"]);
+  expect(paths((b) => void (b.future["core:lance"] = { ark: "Lance", level: 25 }))).toEqual(["future.core:lance"]);
   expect(paths((b) => void ((b as { format: number }).format = 2))).toEqual(["format"]);
   // An item the game does not have is never a fault of the book.
   expect(paths((b) => void b.sets["kit.arms.white"]!.entries.push({ items: ["core:no_such_thing", "mod:other"], min: 1, max: 1 }))).toEqual([]);
@@ -109,11 +112,11 @@ test("a book is forgiving: what the game lacks waits, an entry, a set and a slot
   const c = compileBook(book(), catalog);
   // The five future items wait, each with the sets that name it, and nothing else does.
   expect(c.report.waiting.map((w) => [w.id, w.why, w.sets])).toEqual([
-    ["core:compass", "future", ["kit.voyage.white"]],
-    ["core:pike", "future", ["prize.arms.white"]],
+    ["core:fishing_rod", "future", ["kit.voyage.white"]],
+    ["core:harpoon_launcher", "future", ["kit.voyage.white"]],
+    ["core:lance", "future", ["prize.arms.white"]],
     ["core:raft_assembly", "future", ["prize.voyage.white"]],
-    ["core:spyglass", "future", ["kit.voyage.white"]],
-    ["core:sword", "future", ["prize.arms.green"]],
+    ["core:whip", "future", ["prize.arms.green"]],
   ]);
   // White voyage has nothing of its own: both its sets are empty, its two slots of them leave, and it is dormant.
   expect(c.report.emptySets).toEqual(["kit.voyage.white", "prize.voyage.white"]);
@@ -122,7 +125,7 @@ test("a book is forgiving: what the game lacks waits, an entry, a set and a slot
   expect(c.report.dormant).toEqual(["white/voyage"]);
   const voyage = c.tables.get("white/voyage")!;
   expect([voyage.plain.map((s) => s.name), voyage.dormant, voyage.fill !== null]).toEqual([["staple"], true, true]);
-  // The pike left the white prize, which draws from the bow and the bola alone; the sword left the green one.
+  // The lance left the white prize, which draws from the bow and the bola alone; the whip left the green one.
   const arms = c.tables.get("white/arms")!;
   expect(arms.plain[1]!.def.from[0]!.entries.map((e) => e.items)).toEqual([["core:bow"], ["core:bola"]]);
   expect(c.tables.get("green/arms")!.plain[1]!.def.from[0]!.entries.map((e) => e.items)).toEqual([["core:crossbow"]]);
@@ -183,7 +186,7 @@ test("worth: a recipe in weighted raw resources, quality at what it costs to cra
   // spear: 12 fiber, 8 wood, 2 flint. bow: 50 fiber, 15 wood. ingot: 2 ore at 3, fired.
   expect([w.of("core:spear"), w.of("core:bow"), w.of("core:ingot"), w.of("core:no_such")]).toEqual([22, 65, 6, 0]);
   // A future item is worth its guess, or what it is like; an override is the worth outright.
-  expect([w.of("core:pike"), w.of("core:raft_assembly")]).toEqual([110, 585]);
+  expect([w.of("core:lance"), w.of("core:raft_assembly")]).toEqual([110, 585]);
   const said = book();
   said.worth.items["core:bow"] = 70;
   expect(compileBook(said, catalog).worth.of("core:bow")).toBe(70);
