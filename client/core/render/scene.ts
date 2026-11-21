@@ -72,6 +72,7 @@ import { lightBytes, lightSamples, postFrame } from "./post.ts";
 import { skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
+import { WaterTrails } from "./water-trails.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 import type { MapLandmark, MapStatics } from "../../../shared/world/mapfile.ts";
 import { landmarkFars } from "../../../shared/pack/far.ts";
@@ -628,6 +629,7 @@ export class Scene {
   private readonly vehiclePose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   /** Small details: feathers knocked loose, dust thrown up. */
   readonly details: Details;
+  private readonly waterTrails: WaterTrails;
   /** Smoke and gas: each prop/cloud drawn as puffs over its reach, with the details (clouds.ts). */
   readonly clouds: Clouds;
   /** A bag of one stack, drawn as its item lying (dropped.ts). */
@@ -842,6 +844,7 @@ export class Scene {
     this.characters = new Characters(reg, pack, this.assets);
     this.streetLamps = new StreetLamps(reg);
     this.streetWires = new StreetWires(reg);
+    this.waterTrails = new WaterTrails(reg);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
@@ -1033,6 +1036,7 @@ export class Scene {
     if (this.lakes) waves = this.showLakes(cam, lit) || waves;
     if (waves) {
       seaFrame(p.frame, this.world.hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000, cam.y);
+      this.waterTrails.frame(p.frame, this.world.hf, cam, this.own, remote, this.now / 1000, tier.waterMarks);
       if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
     }
     // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.

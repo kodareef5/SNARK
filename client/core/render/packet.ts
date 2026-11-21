@@ -226,6 +226,7 @@ export const SOURCE_WINDOW = 1;
 
 /** Bodies the frame block holds for contact (contact.ts). */
 export const MAX_CONTACTS = 12;
+export const MAX_WATER_MARKS = 12;
 export const MAX_TIRE_CONTACTS = 8;
 
 /**
@@ -351,7 +352,13 @@ export const FRAME = {
   /** fEffects.x: periodic exhaust phase in radians. */
   exhaustPhase: 200 + MAX_CONTACTS * 8 + MAX_TIRE_CONTACTS * 4,
 } as const;
-export const FRAME_FLOATS = FRAME.exhaustPhase + 4;
+export const WATER_PHASE = FRAME.exhaustPhase + 1;
+export const WATER_MARK_COUNT = FRAME.exhaustPhase + 3;
+export const WATER_BOUNDS = FRAME.exhaustPhase + 4;
+export const WATER_MARKS = WATER_BOUNDS + 4;
+/** Seconds taken to lay each segment, four per vec4, so the crests meet through a change of boat speed. */
+export const WATER_DURATIONS = WATER_MARKS + MAX_WATER_MARKS * 8;
+export const FRAME_FLOATS = WATER_DURATIONS + MAX_WATER_MARKS;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -362,7 +369,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fEyes[6];
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
   highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
-  highp vec4 fEffects;
+  highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterDurations[${MAX_WATER_MARKS / 4}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -627,6 +634,7 @@ export class FramePacket {
   beginFrame(): void {
     this.street = this.previousStreet = null;
     this.frame.fill(0, FRAME.tireContacts, FRAME.exhaustPhase);
+    this.frame[WATER_MARK_COUNT] = 0;
     this.frame[FRAME.previousReflection + 3] = 0;
     this.frame[FRAME.reflection + 3] = 0;
     this.uploads.length = 0;

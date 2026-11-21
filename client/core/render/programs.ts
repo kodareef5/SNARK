@@ -10,7 +10,7 @@ import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./deta
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
 import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX } from "./tide-eye.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, type FramePacket } from "./packet.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -87,6 +87,15 @@ const post = (fragment: string, samplers: Record<string, number>): ProgramText =
 /** A flat mesh program, whose vertices on a lit tier take their landmark's finishes (glsl.ts `finishVertex`). */
 const mesh = (tier: Tier, made: ProgramText): ProgramText => (tier.lit ? { ...made, vertex: finishVertex(made.vertex) } : made);
 
+function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): ProgramText {
+  return {
+    vertex: FLAT_MESH_VERTEX,
+    fragment: WATER_FRAGMENT,
+    defines: shadowDefines(tier.shadows, hard) + out(tier, light) + (wakes ? "#define LOCAL_WAKES\n" : ""),
+    samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
+  };
+}
+
 const MAKE = {
   flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
   // Where the tier reads the finishes in full, asphalt, sand and walks wear (world-surfaces.ts `roadWorn`, `walkWorn`).
@@ -120,12 +129,8 @@ const MAKE = {
     ? { vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: out(tier, light), samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }
     : { vertex: EYE_DOME_VERTEX, fragment: EYE_DOME_FRAGMENT, defines: "", samplers: {} },
   // The sea seen from above on a lit tier: the flat mesh's tiles, the waves as a material's two masks, the ground's heights to know how deep it is, and the sun's shadow.
-  water: (tier, _, hard = false, light = false) => ({
-    vertex: FLAT_MESH_VERTEX,
-    fragment: WATER_FRAGMENT,
-    defines: shadowDefines(tier.shadows, hard) + out(tier, light),
-    samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
-  }),
+  water: (tier, _, hard = false, light = false) => water(tier, hard, light, false),
+  waterWake: (tier, _, hard = false, light = false) => water(tier, hard, light, true),
   // Small details (packet.ts DRAW_DETAILS): on a lit tier their pictures, lit and in the sun's shadow; on low poly their flat shapes.
   details: (tier, _, hard = false, light = false): ProgramText =>
     tier.lit
@@ -188,6 +193,6 @@ export function drawProgram(p: FramePacket, d: number, material: PackMaterial | 
   }
   if ((flags & DRAW_PULLED) !== 0) return PROGRAM.pulled;
   if (p.drawFade[d] !== 0 || hand !== 0) return PROGRAM.far;
-  if ((flags & DRAW_WATER) !== 0) return PROGRAM.water;
+  if ((flags & DRAW_WATER) !== 0) return p.frame[WATER_MARK_COUNT]! > 0 ? PROGRAM.waterWake : PROGRAM.water;
   return (flags & DRAW_BLEND) !== 0 && p.split > 0 ? PROGRAM.seeThrough : PROGRAM.flat;
 }
