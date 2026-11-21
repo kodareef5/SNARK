@@ -464,8 +464,10 @@ export class Scene {
   eyeIndexOffset = 0;
   /** Directed shots can enlarge the sextant above its fixed keel. Map views use the authored dimensions. */
   sextantScale = 1;
-  private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number };
-  private readonly lanternMesh: { frame: number; shutter: number; lip: number; light: number };
+  /** A directed scene's display held at full power on a clock of its own: seconds that only run forward (tide-eye.ts writeEyeSky). */
+  eyeHold: number | null = null;
+  private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number; light: number; deckLight: number };
+  private readonly lanternMesh: { frame: number; shutter: number; lip: number; light: number; masts: number };
   private readonly sextantMesh: { frame: number; needle: number; indexLight: number; keelLight: number };
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
   plainSky = false;
@@ -785,8 +787,8 @@ export class Scene {
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
     const eye = (part: string) => table.find("core:tide_eye/" + part);
-    this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow") };
-    this.lanternMesh = { frame: eye("lantern"), shutter: eye("shutter"), lip: eye("shutter_light"), light: eye("well_light") };
+    this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow"), light: eye("crown_light"), deckLight: eye("deck_light") };
+    this.lanternMesh = { frame: eye("lantern"), shutter: eye("shutter"), lip: eye("shutter_light"), light: eye("well_light"), masts: eye("mast_light") };
     this.sextantMesh = { frame: eye("sextant"), needle: eye("needle"), indexLight: eye("index_light"), keelLight: eye("keel_light") };
     this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
@@ -1016,7 +1018,7 @@ export class Scene {
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance, undefined, true);
     }
     if (!p.lit) p.frame[FRAME.exposure] = 0;
-    writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale);
+    writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale, this.eyeHold);
     // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, before what casts is chosen.
     const shadows = p.tier.shadows;
     this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true);
@@ -2262,14 +2264,16 @@ export class Scene {
         this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, passes);
       };
       draw(this.eyeMesh.deck, 0, site.radius + 1, site.radius / DECK_RADIUS);
+      if (open > 0) draw(this.eyeMesh.deckLight, 0, site.radius + 1, site.radius / DECK_RADIUS, { glow: true });
       if (site.form === "lantern") {
         draw(this.lanternMesh.frame, CROWN_ORIGIN, 235, 1);
+        if (open > 0) draw(this.lanternMesh.masts, CROWN_ORIGIN, 240, 1, { glow: true });
         for (let i = 0; i < LANTERN_BANKS.length; i++) {
           const bank = LANTERN_BANKS[i]!, opened = shutterOpening(phase, i);
           for (let j = 0; j < bank.slats.length; j++) {
             const shutter = bank.slats[j]!, reach = 52 * shutter.width + 15, tilt = -1.34 * opened;
             draw(this.lanternMesh.shutter, shutter.h, reach, 1, { shutter, tilt });
-            if (opened > 0.2 && j % 2 === 0) draw(this.lanternMesh.lip, shutter.h, reach, 1, { shutter, tilt, glow: true });
+            if (opened > 0.05 && j % 2 === 0) draw(this.lanternMesh.lip, shutter.h, reach, 1, { shutter, tilt, glow: true });
           }
           if (opened > 0.10) {
             const size = (bank.radius + 4) / 10 * opened;
@@ -2285,7 +2289,7 @@ export class Scene {
         const pivot = KEEL + (SEXTANT_PIVOT - KEEL) * scale;
         draw(this.sextantMesh.frame, origin, 221 * scale, scale);
         draw(this.sextantMesh.needle, pivot, 157 * scale, scale, { roll: angle });
-        if (open > 0.3) {
+        if (open > 0) {
           draw(this.sextantMesh.keelLight, origin, 202 * scale, scale, { glow: true });
           draw(this.sextantMesh.indexLight, pivot, 157 * scale, scale, { roll: angle, glow: true });
         }
@@ -2298,7 +2302,10 @@ export class Scene {
           draw(this.eyeMesh.iris, LENS_HEIGHT, 36, 1 - 0.94 * open, { roll: bearing + open * 0.88, hinge: bearing });
         }
       }
-      if (open > 0.3) draw(this.eyeMesh.glow, LENS_HEIGHT, 46, 1, { roll: phase * 0.045 + eyePower(phase) * 0.7, glow: true });
+      if (open > 0) {
+        draw(this.eyeMesh.glow, LENS_HEIGHT, 46, 1, { roll: phase * 0.045 + eyePower(phase) * 0.7, glow: true });
+        draw(this.eyeMesh.light, CROWN_ORIGIN, 216, 1, { glow: true });
+      }
     }
   }
 

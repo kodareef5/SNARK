@@ -348,16 +348,16 @@ export const FRAME = {
   levels: 163,
   /** fContact: the bodies whose contact takes the sky's light down, two slots each (contact.ts). */
   contact: 164,
-  /** Three camera-relative sky lenses follow the contact bodies. */
+  /** Three camera-relative sky lenses follow the contact bodies, four vectors each (tide-eye.ts EYE_FLOATS): where the figure's centre is and its phase and kind; its tint and power; its clock, bloom, seed and storm; its beam's foot, its heading and how lit it is. */
   eyes: 164 + MAX_CONTACTS * 8,
-  reflection: 188 + MAX_CONTACTS * 8,
-  previousReflection: 192 + MAX_CONTACTS * 8,
+  reflection: 212 + MAX_CONTACTS * 8,
+  previousReflection: 216 + MAX_CONTACTS * 8,
   /** Finish gloss offset, current capture layer, dry asphalt share, shadow fill reduction. */
-  streetLook: 196 + MAX_CONTACTS * 8,
+  streetLook: 220 + MAX_CONTACTS * 8,
   /** For each supported wheel, the ground normal X/Z, its camera-relative plane offset, and the global bone index plus one. */
-  tireContacts: 200 + MAX_CONTACTS * 8,
+  tireContacts: 224 + MAX_CONTACTS * 8,
   /** fEffects.x: periodic exhaust phase in radians. */
-  exhaustPhase: 200 + MAX_CONTACTS * 8 + MAX_TIRE_CONTACTS * 4,
+  exhaustPhase: 224 + MAX_CONTACTS * 8 + MAX_TIRE_CONTACTS * 4,
 } as const;
 export const WATER_PHASE = FRAME.exhaustPhase + 1;
 export const WATER_MARK_COUNT = FRAME.exhaustPhase + 3;
@@ -390,7 +390,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp mat4 fCascades[${MAX_CASCADES}];
   highp vec4 fSkySide, fSkySun, fSkyAlong, fLook, fFacade, fGrade, fFinish;
   highp vec4 fContact[${MAX_CONTACTS * 2}];
-  highp vec4 fEyes[6];
+  highp vec4 fEyes[12];
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
   highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
   highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterPaths[${MAX_WATER_MARKS}];

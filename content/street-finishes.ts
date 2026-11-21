@@ -2,7 +2,7 @@
 import trailer from "./vehicles/trailer-axles.json" with { type: "json" };
 import { GRATE, UTILITY_ENAMEL } from "./colours.ts";
 
-export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3, LENS = 4, ENAMEL_ARMOR = 5, EXHAUST = 6;
+export const PAINT = 1, FITTINGS = 2, BURNT_SHEET = 3, LENS = 4, ENAMEL_ARMOR = 5, EXHAUST = 6, INSTRUMENT = 7;
 const materials = new Map<string, number>();
 for (const part of [
   "berlinetta/coachwork", "bus/livery", "compact/body", "compact_abandoned/body",
@@ -11,6 +11,8 @@ for (const part of [
 ]) materials.set("core:" + part, PAINT);
 materials.set("core:compact_wreck/body", BURNT_SHEET);
 materials.set("core:human-bodies/meridian", ENAMEL_ARMOR);
+// The Miami instruments: glazed ceramic and fired enamel under a clear coat, cast and brushed metal that keeps its own colour, cut glass.
+for (const atlas of ["instrument", "livery"]) materials.set("core:tide-eye/" + atlas, INSTRUMENT);
 for (const part of [
   "compact/cabin", "compact/trim", "compact_abandoned/cabin", "compact_abandoned/trim", "compact_wreck/cabin",
   "compact_wreck/trim", "fastback/detail", "road_van/cabin", "road_van/fittings", "street/street", "street/street_cut",

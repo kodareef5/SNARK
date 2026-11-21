@@ -11,7 +11,8 @@ export { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { MATERIAL_INDICATOR, MATERIAL_NIGHT, type PackMaterial } from "../../../shared/pack/pack.ts";
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { EXHAUST_GLSL, POLISHED_SKY } from "./suit-finish.ts";
-import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../../content/street-finishes.ts";
+import { ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street-finishes.ts";
+import { EYE_GLINT_GLSL } from "./tide-eye.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import { VEHICLE_SHADE_GLSL, VEHICLE_SHADE_UNIFORMS } from "./vehicle-shade.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
@@ -694,7 +695,7 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -763,10 +764,12 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   mro.r = min(mro.r,own);
   bool lens = int(uStreetMaterial) == ${LENS};
   bool armor = int(uStreetMaterial) == ${ENAMEL_ARMOR};
-  float polished = lens ? 1.0 : armor ? polishMask(mro.g) : 0.0;
+  // An instrument's glaze, enamel and glass wear the same clear coat, and its metal the same sky, but keep their own colour.
+  bool instrument = int(uStreetMaterial) == ${INSTRUMENT};
+  float polished = lens ? 1.0 : armor || instrument ? polishMask(mro.g) : 0.0;
   float specularLayer = 0.0;
   float coatA2 = 0.00104976; // 0.18 perceptual roughness, to the fourth power for GGX.
-  if (armor || lens) {
+  if (armor || lens || instrument) {
     vec3 dx = dFdx(vNormal), dy = dFdy(vNormal);
     coatA2 += min(0.024,0.16*(dot(dx,dx)+dot(dy,dy)));
   }
@@ -781,9 +784,12 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
       albedo = mix(albedo*(1.0-0.12*specularLayer),mix(albedo,vec3(0.85,0.89,0.94),0.77),polished*metal);
       mro.g = mix(mro.g,glossRoughness(max(0.095,mro.g*0.58),1.0),polished*metal);
     }
+    if (instrument) mro.g = mix(mro.g,glossRoughness(max(0.095,mro.g*0.7),1.0),polished*metal);
   }
   vec3 ray = reflect(-v,coatNormal), mirror = skyFrom(ray);
   float edge = 1.0-clamp(dot(coatNormal,v),0.0,1.0);
+  // Its own display overhead shows in it, in the site's colour.
+  if (instrument) mirror += eyeGlint(vRel,ray);
   if (polished > 0.0) {
     float coatRough = glossRoughness(lens ? 0.12 : mix(mro.g,0.20,specularLayer),1.0);
     mirror = streetMirror(polishedSky(mirror,ray,coatRough),ray,vRel,coatRough,polished);
@@ -794,9 +800,10 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
       mirror *= mix(vec3(0.21,0.70,1.30),vec3(0.85,0.94,1.08),edge*edge);
     } else {
       mirror = mix(mirror,vec3(dot(mirror,vec3(0.2126,0.7152,0.0722))),0.18*specularLayer);
-      coat = specularLayer*(0.16+0.51*edge*edge);
+      // An instrument's glaze is a thinner coat than the suit's lacquer: its colour holds face on, and it mirrors at a glance.
+      coat = specularLayer*(instrument ? 0.055+0.45*edge*edge*edge : 0.16+0.51*edge*edge);
     }
-  } else if (!armor && uStreetMaterial > 0.5) {
+  } else if (!armor && !instrument && uStreetMaterial > 0.5) {
     float paint = ${dyed ? "(uStreetMaterial < 1.5 || burntSheet) ? mask.r * clamp((0.72-mro.g)*3.5,0.0,1.0) : 0.0" : "0.0"};
     float receives = max(paint,max(clamp(mro.b*1.5,0.0,1.0)*clamp((0.85-mro.g)*3.0,0.0,1.0),clamp((0.34-mro.g)*5.0,0.0,1.0)));
     if (receives > 0.0) {
