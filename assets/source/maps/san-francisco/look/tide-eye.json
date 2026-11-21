@@ -1,0 +1,32 @@
+{
+  "hour": 15,
+  "views": [
+    {"name": "blue-deck", "onFoot": true, "x": 8.8, "z": -15.2, "up": 1.7, "look": [-30, 52, 14], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Marina Green"},
+    {"name": "blue-console", "onFoot": true, "x": 1.2, "z": -2.1, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 20, "obelisk": "Marina Green"},
+    {"name": "blue-overhead", "onFoot": true, "x": -9.9, "z": 17.1, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Marina Green"},
+    {"name": "blue-near", "x": -250, "z": 433, "up": 40, "look": [0, 0, 300], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Marina Green"},
+    {"name": "blue-crown", "x": -200, "z": 346.4, "up": 70, "look": [0, 0, 330], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Marina Green"},
+    {"name": "blue-instrument", "x": -46.1, "z": 319.8, "over": 450, "look": [0, 0, 455], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Marina Green"},
+    {"name": "blue-beam", "x": -233.9, "z": 165.2, "over": 620, "look": [0, 0, 650], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Marina Green"},
+    {"name": "blue-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1279], "eyeSeconds": 20, "holdPhase": true, "replayEyeSeconds": 5, "obelisk": "Marina Green", "fromSpawn": "Alcatraz Island"},
+    {"name": "blue-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Marina Green", "fromSpawn": "Alcatraz Island"},
+    {"name": "red-deck", "onFoot": true, "x": -10.7, "z": 7, "up": 1.7, "look": [50.3, -32.7, 14], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Embarcadero"},
+    {"name": "red-console", "onFoot": true, "x": -2, "z": 1.3, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 100, "obelisk": "Embarcadero"},
+    {"name": "red-overhead", "onFoot": true, "x": 12.1, "z": -7.8, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Embarcadero"},
+    {"name": "red-near", "x": 419.3, "z": -272.3, "up": 40, "look": [0, 0, 300], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Embarcadero"},
+    {"name": "red-crown", "x": 335.5, "z": -217.9, "up": 70, "look": [0, 0, 330], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Embarcadero"},
+    {"name": "red-instrument", "x": 186.2, "z": -264, "over": 450, "look": [0, 0, 455], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Embarcadero"},
+    {"name": "red-beam", "x": 283.4, "z": -41, "over": 620, "look": [0, 0, 650], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Embarcadero"},
+    {"name": "red-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1800], "eyeSeconds": 100, "holdPhase": true, "replayEyeSeconds": 85, "obelisk": "Embarcadero", "fromSpawn": "Alamo Square"},
+    {"name": "red-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Embarcadero", "fromSpawn": "Alamo Square"},
+    {"name": "green-deck", "onFoot": true, "x": 10.6, "z": -14.1, "up": 1.7, "look": [-36.1, 47.9, 14], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Panhandle"},
+    {"name": "green-console", "onFoot": true, "x": 1.4, "z": -1.9, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 60, "obelisk": "Panhandle"},
+    {"name": "green-overhead", "onFoot": true, "x": -11.9, "z": 15.8, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Panhandle"},
+    {"name": "green-near", "x": -300.9, "z": 399.3, "up": 40, "look": [0, 0, 300], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Panhandle"},
+    {"name": "green-crown", "x": -240.7, "z": 319.5, "up": 70, "look": [0, 0, 330], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Panhandle"},
+    {"name": "green-instrument", "x": -84.7, "z": 311.8, "over": 450, "look": [0, 0, 455], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Panhandle"},
+    {"name": "green-beam", "x": -252.3, "z": 135.4, "over": 620, "look": [0, 0, 650], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Panhandle"},
+    {"name": "green-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1310], "eyeSeconds": 60, "holdPhase": true, "replayEyeSeconds": 45, "obelisk": "Panhandle", "fromSpawn": "Lafayette Park"},
+    {"name": "green-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Panhandle", "fromSpawn": "Lafayette Park"}
+  ]
+}

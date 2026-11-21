@@ -1,0 +1,32 @@
+{
+  "hour": 15,
+  "views": [
+    {"name": "red-deck", "onFoot": true, "x": 27.7, "z": 16, "up": 1.7, "look": [-52, -30, 14], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Raymond James Stadium"},
+    {"name": "red-console", "onFoot": true, "x": 2.1, "z": 1.2, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 100, "obelisk": "Raymond James Stadium"},
+    {"name": "red-overhead", "onFoot": true, "x": -31.2, "z": -18, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Raymond James Stadium"},
+    {"name": "red-near", "x": -433, "z": -250, "up": 40, "look": [0, 0, 300], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Raymond James Stadium"},
+    {"name": "red-crown", "x": -346.4, "z": -200, "up": 70, "look": [0, 0, 330], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Raymond James Stadium"},
+    {"name": "red-instrument", "x": -319.8, "z": -46.1, "over": 450, "look": [0, 0, 455], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Raymond James Stadium"},
+    {"name": "red-beam", "x": -165.2, "z": -233.9, "over": 620, "look": [0, 0, 650], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Raymond James Stadium"},
+    {"name": "red-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1800], "eyeSeconds": 100, "holdPhase": true, "replayEyeSeconds": 85, "obelisk": "Raymond James Stadium", "fromSpawn": "Water Works Park"},
+    {"name": "red-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Raymond James Stadium", "fromSpawn": "Water Works Park"},
+    {"name": "green-deck", "onFoot": true, "x": 0.4, "z": 12.8, "up": 1.7, "look": [-2.1, -60, 14], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Ybor City"},
+    {"name": "green-console", "onFoot": true, "x": 0.1, "z": 2.4, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 60, "obelisk": "Ybor City"},
+    {"name": "green-overhead", "onFoot": true, "x": -0.5, "z": -14.4, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Ybor City"},
+    {"name": "green-near", "x": -17.4, "z": -499.7, "up": 40, "look": [0, 0, 300], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Ybor City"},
+    {"name": "green-crown", "x": -14, "z": -399.8, "up": 70, "look": [0, 0, 330], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Ybor City"},
+    {"name": "green-instrument", "x": -130.4, "z": -295.6, "over": 450, "look": [0, 0, 455], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Ybor City"},
+    {"name": "green-beam", "x": 110.9, "z": -264, "over": 620, "look": [0, 0, 650], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Ybor City"},
+    {"name": "green-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1742], "eyeSeconds": 60, "holdPhase": true, "replayEyeSeconds": 45, "obelisk": "Ybor City", "fromSpawn": "Harbour Island"},
+    {"name": "green-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Ybor City", "fromSpawn": "Harbour Island"},
+    {"name": "blue-deck", "onFoot": true, "x": -44.1, "z": -34.5, "up": 1.7, "look": [47.3, 36.9, 14], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Davis Islands"},
+    {"name": "blue-console", "onFoot": true, "x": -1.9, "z": -1.5, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 20, "obelisk": "Davis Islands"},
+    {"name": "blue-overhead", "onFoot": true, "x": 49.6, "z": 38.8, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Davis Islands"},
+    {"name": "blue-near", "x": 394, "z": 307.8, "up": 40, "look": [0, 0, 300], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Davis Islands"},
+    {"name": "blue-crown", "x": 315.2, "z": 246.3, "up": 70, "look": [0, 0, 330], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Davis Islands"},
+    {"name": "blue-instrument", "x": 310.3, "z": 90.1, "over": 450, "look": [0, 0, 455], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Davis Islands"},
+    {"name": "blue-beam", "x": 131, "z": 254.6, "over": 620, "look": [0, 0, 650], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Davis Islands"},
+    {"name": "blue-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1382], "eyeSeconds": 20, "holdPhase": true, "replayEyeSeconds": 5, "obelisk": "Davis Islands", "fromSpawn": "Bayshore"},
+    {"name": "blue-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Davis Islands", "fromSpawn": "Bayshore"}
+  ]
+}
