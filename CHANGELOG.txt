@@ -1,3 +1,30 @@
+v0.0.9 — 2026-11-21
+
+Rendering
+- Added light under roofs, moon shadows and a shadow-casting street lamp. Lamp pools shade nearby bodies and cars.
+- Added a render scale with a sharp upscale, and a Render resolution setting.
+- Trees cast their real leaves in the near shadow maps. Steadied far street lamps.
+- Made parked cars' glass see-through.
+
+Streets & water
+- Rounded street corners with curb returns. Modelled walks, curbs and shop fronts. Added eight rubble heaps.
+- Added twelve more car bodies to the streets in 22 paints, mixed by district.
+- Laid docks and slips at marinas and moored boats in them.
+- Matched the water's edge to grass banks, marsh, mangrove and walls. Graded the title's beach.
+
+Obelisks
+- Replaced the tinted cloud with a spiral storm and lightning. Reworked the channel lights as moving energy.
+
+Play
+- Added the frond glider and the soul ball.
+- New survivors start in third person in the Meridian set, with cheats and Creative on by default.
+- Added /help and slash commands in chat, with a welcome message. Hid the crosshair in third person.
+- Fixed boarding and leaving boats. Kept the first-person body out of the eye's view.
+
+Interface
+- Added the resource monitor, the inspect card and the Storage tab.
+- The loading screen shows the title's opening shot.
+
 v0.0.8 — 2026-11-20
 
 Water

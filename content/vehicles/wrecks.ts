@@ -47,6 +47,8 @@ const BURNT = 230;
  * The fleet's bodies besides the compact, as the street holds them: each look's mesh (`<body>_abandoned`, and its
  * `_stripped` and `_roof`), the paints a painted body comes in, or the one colour the far city draws an unpainted one
  * in (its livery's). The tanker's are its salvage (content/vehicles/tanker-wrecks.ts), whose kinds are its own.
+ * The taxi and the bus are listed yellow (48), not orange (3), which is the wood pieces': far blocks draw every kind
+ * listed in a colour in the one mean of them all (far.ts farColours), and two yellow liveries moved far wood.
  */
 const BODIES: readonly { body: string; looks: readonly string[]; paints?: readonly string[]; color?: number }[] = [
   { body: "fastback", looks: ["", "_stripped", "_roof"], paints: STREET },
@@ -54,12 +56,12 @@ const BODIES: readonly { body: string; looks: readonly string[]; paints?: readon
   { body: "panel_van", looks: ["", "_stripped"], paints: ["white", "silver", "grey", "charcoal", "red", "navy", "beige", "faded_blue"] },
   { body: "veloce", looks: [""], paints: ["orange", "yellow", "lime", "white", "black", "scarlet"] },
   { body: "berlinetta", looks: [""], paints: ["scarlet", "crimson", "yellow", "silver", "black"] },
-  { body: "taxi", looks: [""], color: 3 },
+  { body: "taxi", looks: [""], color: 48 },
   { body: "muscle_car", looks: [""], color: 203 },
   { body: "monster_truck", looks: [""], color: 28 },
   { body: "patrol_sedan", looks: [""], color: 83 },
   { body: "patrol_jeep", looks: [""], color: 84 },
-  { body: "bus", looks: [""], color: 3 },
+  { body: "bus", looks: [""], color: 48 },
   { body: "semi", looks: [""], color: 41 },
 ];
 const TANKER_LOOKS = ["abandoned", "stripped", "burnout", "rollover"];
