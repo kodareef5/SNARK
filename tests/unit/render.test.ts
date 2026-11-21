@@ -11,6 +11,7 @@ import { Viewpoint } from "../../client/core/viewpoint.ts";
 import { Pose } from "../../shared/anim/clip.ts";
 import { B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_LOWER_LEG_R, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, humanPose } from "../../shared/anim/pose.ts";
+import { STANCE_CROUCH } from "../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
 import { artTest } from "../fixtures/needs-art.ts";
 import { flatWorld } from "../fixtures/world.ts";
@@ -408,6 +409,20 @@ artTest("in first person a suit keeps out of the eye's way as the body does: loo
       // A hide shirt's collar has a flap at the jaw on the head's bone, which a look a little down sees 10 cm off.
       if (seen.nearest < 0.25 && !(set === "hide" && pitch === -0.4)) near.push(`${set} ${pitch}: ${seen.nearest.toFixed(2)} m`);
       if (pitch === -1.5) expect([set, seen.chest, seen.hand, seen.foot]).toEqual([set, true, true, true]);
+    }
+  }
+  // Crouched the eye is a quarter of a metre over the head as a crouch poses it, and the tops of the shoulders lean in under it.
+  own.state.stance = STANCE_CROUCH;
+  view.cam.y = own.y + reg.move[own.kind]!.crouchEye;
+  for (const set of ["meridian", "hide"]) {
+    ["hat", "shirt", "gloves", "pants", "boots"].forEach((piece, k) => (own.gear[1 + k] = reg.index.get(`core:${set}_${piece}`)!));
+    for (const pitch of [-0.6, -0.9]) {
+      view.cam.pitch = pitch;
+      own.state.setMotion(0, 0, 0, pitch);
+      view.render();
+      const seen = ownView(raster, 7);
+      // The hide shirt's shoulder rises to the jaw, where its flap is, 13 cm off at 34 degrees down.
+      if (seen.nearest < 0.18 && !(set === "hide" && pitch === -0.6)) near.push(`crouched ${set} ${pitch}: ${seen.nearest.toFixed(2)} m`);
     }
   }
   expect(near).toEqual([]);

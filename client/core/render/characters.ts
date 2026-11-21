@@ -14,7 +14,7 @@ import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import { isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
-import { B_NECK, B_PROP_L, B_PROP_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
+import { B_NECK, B_PROP_L, B_PROP_R, B_SHOULDER_L, B_SHOULDER_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
@@ -77,6 +77,20 @@ const HEAVY_RELAX = 3;
 const OPENING_AHEAD = 0.16;
 const OPENING_BELOW = 0.02;
 const VIEW_MARGIN = 0.05;
+/**
+ * Beside the opening, the tops of the shoulders, which a crouch leans forward under the eye: points SHOULDER_UP over each
+ * shoulder's joint and SHOULDER_OUT out from it, where a suit's or a shirt's shoulder comes nearest the head.
+ */
+const SHOULDER_UP = 0.06;
+const SHOULDER_OUT = 0.09;
+/**
+ * How far forward point `at` of a body, its origin `y` under the eye, would have to go back along its facing to lie
+ * behind a bottom edge of the view that leans `lean` (the cotangent of its angle below level); 0 where it is already.
+ */
+function pastEdge(at: Float64Array, y: number, lean: number): number {
+  const below = -(at[1]! + y);
+  return below > 0 ? Math.max(0, at[2]! - below * lean) : 0;
+}
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents and a held item. */
 const PARTS = SLOT_COUNT + 6;
 const PLAIN = defaultLook();
@@ -1512,18 +1526,23 @@ export class Characters {
 
   /**
    * How far back along its facing the viewer's body in first person is drawn from where it stands, its posed bones in
-   * `solved` on `rest`, its origin `y` under the camera: just as far as puts the front of its neck's opening behind the
-   * bottom edge of the view, and nothing while that is out of view already. The eye is over its origin, as on foot it is.
+   * `solved` on `rest`, its origin `y` under the camera: just as far as puts the front of its neck's opening and the tops
+   * of its shoulders behind the bottom edge of the view, and nothing while they are out of view already. The eye is over
+   * its origin, as on foot it is.
    */
   private eyeRoom(solved: Solved, rest: Float32Array, y: number): number {
     const c = B_UPPER_CHEST * 3, n = B_NECK * 3, at = this.opening;
-    boneToModel(solved, B_UPPER_CHEST, -rest[c]!, rest[n + 1]! - OPENING_BELOW - rest[c + 1]!, rest[n + 2]! + OPENING_AHEAD - rest[c + 2]!, at);
-    // How far the opening's front is ahead of the eye along the body's facing, and how far below it.
-    const ahead = at[2]!, below = -(at[1]! + y);
     // The bottom edge of the view goes down at `edge` below level; past a quarter turn it leans back under the eye.
     const edge = this.eye.half - this.eye.pitch + VIEW_MARGIN;
-    if (below <= 0 || edge <= 0 || edge >= Math.PI) return 0;
-    return Math.max(0, ahead - (below * Math.cos(edge)) / Math.sin(edge));
+    if (edge <= 0 || edge >= Math.PI) return 0;
+    const lean = Math.cos(edge) / Math.sin(edge);
+    boneToModel(solved, B_UPPER_CHEST, -rest[c]!, rest[n + 1]! - OPENING_BELOW - rest[c + 1]!, rest[n + 2]! + OPENING_AHEAD - rest[c + 2]!, at);
+    let back = pastEdge(at, y, lean);
+    for (let side = 1; side >= -1; side -= 2) {
+      boneToModel(solved, side > 0 ? B_SHOULDER_L : B_SHOULDER_R, side * SHOULDER_OUT, SHOULDER_UP, 0, at);
+      back = Math.max(back, pastEdge(at, y, lean));
+    }
+    return back;
   }
 
   /**
