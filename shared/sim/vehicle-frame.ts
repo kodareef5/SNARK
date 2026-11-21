@@ -50,6 +50,19 @@ export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: numb
   return rayBox(cs * rx - sn * rz, oy - y, sn * rx + cs * rz, cs * dx - sn * dz, dy, sn * dx + cs * dz, -s.halfWidth, 0, -s.halfLength, s.halfWidth, top, s.halfLength);
 }
 
+/**
+ * Distance along a ray to where the use key meets a vehicle, or Infinity: a boat by its whole hull, keel to roof, so its
+ * open cockpit and a catamaran's tunnel are looked at too, and anything else by its hull as rayVehicle has it. Shots and
+ * name tags meet only a boat's solid parts.
+ */
+export function useVehicle(def: VehicleDefinition, x: number, y: number, z: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, attitude?: Pick<VehicleFrame, "pitch" | "roll" | "qx" | "qy" | "qz" | "qw" | "steering">): number {
+  const s = def.spec, parts = rayVehicle(def, x, y, z, yaw, ox, oy, oz, dx, dy, dz, s.height, attitude);
+  if (def.movement !== "boat") return parts;
+  // rayVehicle has just put the ray in the hull's frame.
+  return Math.min(parts, rayBox(rayOrigin[0]!, rayOrigin[1]!, rayOrigin[2]!, rayDirection[0]!, rayDirection[1]!, rayDirection[2]!,
+    -s.halfWidth, 0, -s.halfLength, s.halfWidth, s.height, s.halfLength));
+}
+
 /** A two-sided authored triangle, tested in chassis space so inversion needs no special case. */
 function panelTriangle(a: ArrayLike<number>, b: ArrayLike<number>, c: ArrayLike<number>): number {
   const dx = rayDirection[0]!, dy = rayDirection[1]!, dz = rayDirection[2]!;

@@ -13,7 +13,7 @@ import { CHUNK_SIZE, TICK_DT, TICK_RATE } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { quatRotate } from '../shared/math/quat.ts';
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
 import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
 import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
@@ -23,6 +23,7 @@ import { V_HEALTH } from '../shared/sim/vitals.ts';
 import { Found } from '../shared/world/structures.ts';
 import { capsuleBox, capsuleFree, groundUnder, push, stepOnto } from '../shared/world/collide.ts';
 import { boatMeetsCapsule } from '../shared/world/boat.ts';
+import { BOARD_HIGH, BOARD_OK, boatBoarding, type BoatBoard } from '../shared/sim/boat-boarding.ts';
 import { helicopterMeetsCapsule } from '../shared/world/helicopter.ts';
 import { carMeetsCapsule } from '../shared/world/vehicle.ts';
 import { vehiclePointVelocity } from '../shared/sim/vehicle-rigid.ts';
@@ -108,6 +109,10 @@ export class Urban {
   private readonly pose = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
   private readonly exitFound = new Found();
+  private readonly board: BoatBoard = { x: 0, y: 0, z: 0, top: 0 };
+  /** Where bodies leaving a seat this tick are to be set down, at tick `grantedAt`: two never share one. */
+  private readonly granted: Point[] = [];
+  private grantedAt = -1;
   private readonly seatAt = new Float64Array(3);
   private readonly seatRotation = new Float64Array(4);
   private readonly seatOrigin = new Float64Array(3);
@@ -138,7 +143,7 @@ export class Urban {
         return valid && record ? { handle: host.handle, ready: !record.dead && !ctx.tangled?.(record),
           speed: Math.hypot(ctx.world.ents.vx[e]!, ctx.world.ents.vz[e]!) } : null;
       },
-      check: action => this.check(action),
+      check: (action, phase) => this.checked(action, phase),
       canControl: (actor, host) => this.entity(actor) >= 0 && this.hosts.has(host) && this.allowed(actor, host, 0),
     }, { runtimeEpoch: 1, maxHosts: MAX_HOSTS, maxActors: MAX_ACTORS });
   }
@@ -619,10 +624,11 @@ export class Urban {
     const pid = ents.pid[e]!, host = this.hosts.get(pid)!;
     const state = this.state(e);
     if (isBoatVehicle(host.definition)) {
-      const ladder = [0, 0, 0]; vehiclePoint(state, (host.definition.boarding ?? LAUNCH_BOARDING).water, ladder);
-      if (Math.hypot(ents.x[c.ent]! - ladder[0]!, ents.z[c.ent]! - ladder[2]!) > 2) return RESULT_FAR;
+      const x = ents.x[c.ent]!, y = ents.y[c.ent]!, z = ents.z[c.ent]!;
+      const reach = boatBoarding(host.definition, state, x, y, z, world.hf.waterAt(x, z), ents.mode[c.ent] === MODE_SWIM, this.footing(c.ent), this.board);
+      if (reach !== BOARD_OK) return reach === BOARD_HIGH ? RESULT_TOO_HIGH : RESULT_FAR;
       if (!this.allowed(c.pid, pid, 0)) return RESULT_NOT_YOURS;
-      // One ladder serves the whole crew. A second press must find a free passenger seat, not displace the pilot.
+      // Every way aboard serves the whole crew. A second press must find a free passenger seat, not displace the pilot.
       for (const seat of host.definition.seats) {
         if (this.occupancy.occupant(pid, seat.id)) continue;
         const result = this.begin(c.pid, pid, seat.id, 'enter');
@@ -848,9 +854,12 @@ export class Urban {
     const result = this.occupancy.begin({ actor, actorEpoch: scope.epoch, requestId: scope.request++, host, seat, kind }, this.ctx.world.tick, ticks);
     if (result.ok) return RESULT_OK;
     if (result.reason === 'too-far') return RESULT_FAR;
+    if (result.reason === 'too-high') return RESULT_TOO_HIGH;
     if (result.reason === 'not-yours') return RESULT_NOT_YOURS;
     if (result.reason === 'claimed' || result.reason === 'occupied' || result.reason === 'victim-claimed') return RESULT_BUSY;
     if (result.reason.includes('blocked') || result.reason === 'landing-required') return RESULT_OBSTRUCTED;
+    // It moves or flies: not now, but once it has stopped or landed.
+    if (result.reason === 'host-moving' || result.reason === 'boat-moving' || result.reason === 'airborne') return RESULT_WAIT;
     return RESULT_DENIED;
   }
   private state(e: number): VehicleState & { qx?: number; qy?: number; qz?: number; qw?: number } {
@@ -858,6 +867,22 @@ export class Urban {
     return { qx: ents.vehicleQx[v]!, qy: ents.vehicleQy[v]!, qz: ents.vehicleQz[v]!, qw: ents.vehicleQw[v]!, x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[v]!, pitch: ents.vehiclePitch[v]!, roll: ents.vehicleRoll[v]!,
       vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[v]!, pitchRate: ents.vehiclePitchRate[v]!, rollRate: ents.vehicleRollRate[v]!, groundPitch: ents.vehicleGroundPitch[v]!, groundRoll: ents.vehicleGroundRoll[v]!, rideOffset: ents.vehicleRideOffset[v]!, rideVelocity: ents.vehicleRideVelocity[v]!, steering: ents.steering[v]!, wheelAngle: ents.wheelAngle[v]!, fuel: ents.fuel[v]!, gear: ents.vehicleGear[v]!, engineRpm: ents.vehicleRpm[v]!, shiftTime: ents.vehicleShiftTime[v]!, payloadMass: ents.vehiclePayloadMass[v]! };
   }
+  /** An action's check, and at its commit the place it sets a body down taken for the rest of the tick. */
+  private checked(action: Readonly<OccupancyAction>, phase: 'begin' | 'commit'): OccupancyApproval {
+    const approval = this.check(action);
+    if (approval.ok && approval.landing && phase === 'commit') {
+      if (this.grantedAt !== this.ctx.world.tick) { this.granted.length = 0; this.grantedAt = this.ctx.world.tick; }
+      this.granted.push({ x: approval.landing.x, y: approval.landing.y, z: approval.landing.z });
+    }
+    return approval;
+  }
+
+  /** Whether a body of `radius` and `height` set down at `p` keeps clear of every body set down this tick. */
+  private spare(p: Point, radius: number, height: number): boolean {
+    if (this.grantedAt !== this.ctx.world.tick) return true;
+    return this.granted.every(q => Math.hypot(q.x - p.x, q.z - p.z) >= radius * 2 || Math.abs(q.y - p.y) >= height);
+  }
+
   private check(action: Readonly<OccupancyAction>): OccupancyApproval {
     const { world, game } = this.ctx, ents = world.ents;
     const host = this.hosts.get(action.host), ae = this.entity(action.actor);
@@ -939,10 +964,11 @@ export class Urban {
     } else if (!corridor(entry, foot, action.actor, action.host)) return { ok: false, reason: 'seat-blocked' };
     if (action.kind === 'enter') return { ok: true };
     const landed = action.victim || action.actor;
-    for (const offset of [0, 0.8, -0.8, 1.4, -1.4]) {
-      vehiclePoint(state, [seat.entry[0] + (seat.entry[0] >= 0 ? 1.1 : -1.1), 0, seat.entry[2] + offset], out);
+    // Out by the door, then further out: a crowd leaving by one door at once is set down beside each other.
+    for (const out1 of [1.1, 1.9, 2.7]) for (const offset of [0, 0.8, -0.8, 1.6, -1.6]) {
+      vehiclePoint(state, [seat.entry[0] + (seat.entry[0] >= 0 ? out1 : -out1), 0, seat.entry[2] + offset], out);
       const landing = supported({ x: out[0]!, y: out[1]!, z: out[2]! });
-      if (landing && seating.free(landing, landed, [landed]) && corridor(entry, landing, landed, action.host)) return { ok: true, landing: { ...landing, yaw: state.yaw } };
+      if (landing && this.spare(landing, move.radius, move.height) && seating.free(landing, landed, [landed]) && corridor(entry, landing, landed, action.host)) return { ok: true, landing: { ...landing, yaw: state.yaw } };
     }
     return { ok: false, reason: 'landing-blocked' };
   }
@@ -955,52 +981,81 @@ export class Urban {
     return { x: out[0]!, y: Math.max(ground, Number.isFinite(water) ? water - move.height * .75 : out[1]!), z: out[2]! };
   }
 
+  /** Whether body `e` has its feet on something of the world: a dock, a shore, a floor. */
+  private footing(e: number): boolean {
+    const { world } = this.ctx, ents = world.ents, move = world.reg.move[ents.kind[e]!]!;
+    return !capsuleFree(world, ents.x[e]!, ents.y[e]! - .08, ents.z[e]!, move.radius, move.height);
+  }
+
+  /**
+   * Getting aboard a boat or off it. Aboard: from wherever along the hull the body can climb over (shared/sim/boat-boarding.ts),
+   * across to the hull's side, onto it and on to the seat. Off: over the side by the seat, onto a dock or a shore where
+   * one is beside the hull, else into the water, keeping the hull's speed. A tilted or flooded boat is escaped instead.
+   */
   private boatAction(action: Readonly<OccupancyAction>, host: HostSeat, ae: number): OccupancyApproval {
-    const { world } = this.ctx, ents = world.ents, state = this.state(host.entity);
+    const { world } = this.ctx, ents = world.ents, state = this.state(host.entity), def = host.definition;
+    if (!isBoatVehicle(def)) return { ok: false, reason: 'missing' };
     const tilted = Math.abs(state.pitch) > .35 || Math.abs(state.roll) > .45 ||
       1 - 2 * ((state.qx ?? 0) ** 2 + (state.qz ?? 0) ** 2) < .7;
     const flooded = ents.vehicleFlooding[ents.vrow[host.entity]!]! >= .5;
     // An overturned or sinking open boat must not hold its crew underwater until the hull dies.
     // The ordinary action still commits against a fresh, bounded route and a clear exterior landing.
     if (action.kind === 'exit' && (tilted || flooded)) return this.boatEscape(action, host, ae);
-    if (Math.hypot(state.vx, state.vy, state.vz) > .55 || Math.hypot(state.yawRate, state.pitchRate, state.rollRate) > .2 ||
-      tilted || flooded) return { ok: false, reason: 'boat-moving' };
-    const seat = host.definition.seats.find(s => s.id === action.seat)!;
-    if (!isBoatVehicle(host.definition)) return { ok: false, reason: 'missing' };
-    const route = host.definition.boarding ?? LAUNCH_BOARDING;
-    const entry = this.boatPoint(ae, host, route.water), point = [0, 0, 0];
+    // Nobody climbs aboard a boat under way. Anyone may leave one, as a car is left.
+    if (action.kind !== 'exit' && (Math.hypot(state.vx, state.vy, state.vz) > .55 || Math.hypot(state.yawRate, state.pitchRate, state.rollRate) > .2 ||
+      tilted || flooded)) return { ok: false, reason: 'boat-moving' };
+    const seat = def.seats.find(s => s.id === action.seat)!, route = def.boarding ?? LAUNCH_BOARDING, point = [0, 0, 0], move = world.reg.move[ents.kind[ae]!]!;
     const at = (anchor: readonly number[]): Point => { vehiclePoint(state, anchor, point); return { x: point[0]!, y: point[1]!, z: point[2]! }; };
-    const ladder = at(route.ladder), deck = at(route.deck);
-    const occupied = host.definition.seats.map(s => this.occupancy.occupant(action.host, s.id));
-    const ignored = [action.actor, ...occupied];
-    const start = { x: ents.x[ae]!, y: ents.y[ae]!, z: ents.z[ae]! };
-    const move = world.reg.move[ents.kind[ae]!]!;
-    const dock = action.kind !== 'exit' && (ents.flags[ae]! & F_GROUNDED) !== 0 && ents.mode[ae] !== MODE_SWIM &&
-      start.y >= world.hf.waterAt(start.x, start.z) - .05 &&
-      this.seating.free(start, action.actor, ignored) && !capsuleFree(world, start.x, start.y - .08, start.z, move.radius, move.height);
-    if (action.kind !== 'exit' && (Math.hypot(start.x - entry.x, start.z - entry.z) > 2 || Math.abs(start.y - (dock ? ladder.y : entry.y)) > 1.3)) return { ok: false, reason: 'too-far' };
-    if (dock) {
-      // Walk clear of the dock edge at its own height, then step onto the physical ladder. Routing a dry actor
-      // through the swimming foot position would first ask them to descend through the dock's floor.
-      const approach = { ...ladder, y: Math.max(start.y, ladder.y) };
-      if (!this.seating.corridor(start, approach, action.actor, ignored, action.host) ||
-        !this.seating.corridor(approach, ladder, action.actor, ignored, action.host)) return { ok: false, reason: 'corridor-blocked' };
-    } else {
-      if (!this.seating.free(entry, action.actor, ignored)) return { ok: false, reason: 'ladder-blocked' };
-      if (action.kind !== 'exit' && !this.seating.corridor(start, entry, action.actor, ignored)) return { ok: false, reason: 'corridor-blocked' };
-      if (!this.seating.corridor(entry, ladder, action.actor, ignored, action.host)) return { ok: false, reason: 'ladder-blocked' };
+    const ignored = [action.actor, ...def.seats.map(s => this.occupancy.occupant(action.host, s.id))];
+    const seatFoot = at([seat.anchor[0], def.boarding ? seat.anchor[1] - .55 : route.deck[1], seat.anchor[2]]);
+    const length = boatRouteLength(def);
+    // A route of straight runs, each clear of everything but the boat itself and its crew.
+    const clear = (who: number, ...points: Point[]): boolean => points.every((p, i) => i === 0 ||
+      this.seating.corridor(points[i - 1]!, p, who, ignored, action.host, undefined, length));
+    if (action.kind !== 'exit') {
+      const start = { x: ents.x[ae]!, y: ents.y[ae]!, z: ents.z[ae]! }, board = this.board;
+      const reach = boatBoarding(def, state, start.x, start.y, start.z, world.hf.waterAt(start.x, start.z), ents.mode[ae] === MODE_SWIM, this.footing(ae), board);
+      if (reach !== BOARD_OK) return { ok: false, reason: reach === BOARD_HIGH ? 'too-high' : 'too-far' };
+      const over = Math.max(start.y, board.y);
+      return clear(action.actor, start, { x: board.x, y: start.y, z: board.z }, { x: board.x, y: over, z: board.z }, seatFoot)
+        ? { ok: true } : { ok: false, reason: 'corridor-blocked' };
     }
-    const seatFoot = at([seat.anchor[0], host.definition.boarding ? seat.anchor[1] - .55 : route.deck[1], seat.anchor[2]]);
-    if (!this.seating.corridor(ladder, deck, action.actor, ignored, action.host) ||
-      !this.seating.corridor(deck, seatFoot, action.actor, ignored, action.host, undefined, boatRouteLength(host.definition))) return { ok: false, reason: 'ladder-blocked' };
-    if (action.kind === 'enter') return { ok: true };
     const landed = action.victim || action.actor;
-    for (const offset of [0, .8, -.8, 1.4, -1.4]) {
-      const anchor = route.water;
-      const landing = this.boatPoint(ae, host, [anchor[0] + offset, anchor[1], anchor[2] - .25]);
-      if (this.seating.free(landing, landed, [landed]) && this.seating.corridor(entry, landing, landed, ignored, action.host)) return { ok: true, landing: { ...landing, yaw: state.yaw } };
+    for (const landing of this.boatLandings(ae, host, seat.anchor, route.water)) {
+      // Over the hull's side where the landing is, at the higher of the deck and the landing.
+      const edge = at([landing.edge[0], 0, landing.edge[1]]), over = Math.max(seatFoot.y, landing.y) + .02;
+      if (this.spare(landing, move.radius, move.height) && this.seating.free(landing, landed, [landed]) && clear(landed, seatFoot, { ...edge, y: over }, { ...landing, y: over }, landing)) {
+        return { ok: true, landing: { x: landing.x, y: landing.y, z: landing.z, yaw: state.yaw } };
+      }
     }
     return { ok: false, reason: 'landing-blocked' };
+  }
+
+  /**
+   * Where the crew of a boat may be set down off it, nearest its seat at `anchor` first: beside the hull on the seat's
+   * side, then the other side, then astern by `stern`; first every one with a dock or a shore there, then every one in
+   * the water. `edge` is where in the hull's frame (x, z) each is left over the side, just inside it.
+   */
+  private boatLandings(e: number, host: HostSeat, anchor: readonly number[], stern: readonly number[]): (Point & { edge: [number, number] })[] {
+    const { world } = this.ctx, ents = world.ents, move = world.reg.move[ents.kind[e]!]!, spec = host.definition.spec, out = [0, 0, 0];
+    const state = this.state(host.entity), seatSide = anchor[0]! >= 0 ? 1 : -1, w = spec.halfWidth + move.radius + .25, inside = spec.halfWidth - .3;
+    const places: { at: [number, number]; edge: [number, number] }[] = [];
+    for (const side of [seatSide, -seatSide]) for (const along of [anchor[2]!, anchor[2]! - 1.2, anchor[2]! + 1.2, 0]) places.push({ at: [side * w, along], edge: [side * inside, along] });
+    for (const offset of [0, .8, -.8, 1.4, -1.4]) {
+      const x = stern[0]! + offset;
+      places.push({ at: [x, stern[2]! - .25], edge: [Math.max(-inside, Math.min(inside, x)), -spec.halfLength + .3] });
+    }
+    const dry: (Point & { edge: [number, number] })[] = [], wet: (Point & { edge: [number, number] })[] = [];
+    for (const { at: [x, z], edge } of places) {
+      vehiclePoint(state, [x, 0, z], out);
+      const water = world.hf.waterAt(out[0]!, out[2]!), ground = groundUnder(world.hf, out[0]!, out[2]!, move.radius);
+      // A dock or a floor there, between the water and the top of the hull.
+      const floor = stepOnto(world, out[0]!, out[2]!, Number.isFinite(water) ? water - .05 : ground, state.y + spec.height, move.radius, move.height, move.slopeCos);
+      const top = Math.max(ground, Number.isNaN(floor) ? -Infinity : floor);
+      if (!Number.isFinite(water) || top >= water - .05) dry.push({ x: out[0]!, y: top, z: out[2]!, edge });
+      else wet.push({ x: out[0]!, y: Math.max(ground, water - move.height * .75), z: out[2]!, edge });
+    }
+    return [...dry, ...wet];
   }
 
   /** A ditched or rolled crew leaves through a freshly checked local route, retaining its current depth/height. */
@@ -1045,7 +1100,7 @@ export class Urban {
       const landing = { x: out[0]!, y: Math.max(ground + .05, wet ? Math.min(start.y, water - move.height * .75) : start.y), z: out[2]! };
       const meets = isRotorVehicle(host.definition) ? helicopterMeetsCapsule(host.definition, state, landing.x, landing.y, landing.z, move.radius, move.height)
         : carMeetsCapsule(host.definition.spec, state, landing.x, landing.y, landing.z, move.radius, move.height);
-      if (!this.seating.free(landing, action.actor, ignored, action.host) || meets ||
+      if (!this.spare(landing, move.radius, move.height) || !this.seating.free(landing, action.actor, ignored, action.host) || meets ||
         !this.seating.corridor(start, landing, action.actor, ignored, action.host)) continue;
       return { ok: true, landing: { ...landing, yaw: state.yaw } };
     }
@@ -1067,7 +1122,7 @@ export class Urban {
       const water = world.hf.waterAt(landing.x, landing.z);
       if (!Number.isFinite(water) || water - groundUnder(world.hf, landing.x, landing.z, move.radius) < move.height * .25) continue;
       // Seating's ordinary chassis envelope is upright. Check this tilted boat's actual hull and steered motor instead.
-      if (!this.seating.free(landing, action.actor, ignored, action.host) ||
+      if (!this.spare(landing, move.radius, move.height) || !this.seating.free(landing, action.actor, ignored, action.host) ||
         boatMeetsCapsule(host.definition, state, landing.x, landing.y, landing.z, move.radius, move.height) ||
         !this.seating.corridor(start, landing, action.actor, ignored, action.host, undefined, boatRouteLength(host.definition))) continue;
       return { ok: true, landing: { ...landing, yaw: state.yaw } };
