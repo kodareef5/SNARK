@@ -4,7 +4,7 @@
 
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
-import { FLAG_BLUEPRINT, FLAG_ISSUED, FLAG_ON, GEAR_SLOTS, Inventory, QUALITY_MUL, carried, fitsSlot, moveSlot, type ItemTable } from "../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, FLAG_ISSUED, FLAG_ON, GEAR_SLOTS, CHARGED, Inventory, QUALITY_MUL, carried, clockMoved, fitsSlot, moveSlot, type ItemTable } from "../shared/sim/items.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -124,6 +124,7 @@ export class Items {
       inv = rec.inv = new Inventory(bag + (def?.type === "species" && (def as SpeciesDef).equips ? GEAR_SLOTS : 0), bag);
     }
     inv.keep = this.reg.keeps[rec.kind]!;
+    inv.charges = this.reg.charges[rec.kind] === 1;
     // A burning fire is worked out first, so cooking happens before the leftovers spoil.
     if (rec.fire && this.onFire) this.onFire(rec);
     this.settle(rec, inv, this.world.tick, this.table);
@@ -177,11 +178,13 @@ export class Items {
       const inv = rec.inv;
       if (!inv) continue;
       inv.keep = this.reg.keeps[rec.kind]!;
+      inv.charges = this.reg.charges[rec.kind] === 1;
       const before = inv.version;
       this.settle(rec, inv, tick, old);
       for (let s = 0; s < inv.cap; s++) {
         const at = inv.spoilAt[s]!;
-        if (at <= tick || inv.item[s] === 0) continue;
+        // A charge held full has no time left to rescale.
+        if (at <= tick || at === CHARGED || inv.item[s] === 0) continue;
         const next = tick + leftAtPeriod(at - tick, was, is);
         inv.spoilAt[s] = next > 0xffffffff ? 0xffffffff : next;
         inv.mod[s] = ++inv.version;
@@ -201,15 +204,23 @@ export class Items {
     const inv = rec.inv;
     const was = this.reg.keeps[from]!;
     const is = this.reg.keeps[to]!;
+    // The two kinds may also differ in whether they hold a charge full (a soul vault burning and out): a charge is held
+    // from `t` where `to` does, and runs down from full from `t` where only `from` did.
+    const held = this.reg.charges[from] === 1;
+    const holds = this.reg.charges[to] === 1;
     if (!inv) return;
-    if (was !== is) {
+    if (was !== is || held !== holds) {
       const before = inv.version;
       inv.keep = was;
+      inv.charges = held;
       this.settle(rec, inv, t, this.table);
+      const there = inv.charges;
+      inv.charges = holds;
       for (let s = 0; s < inv.cap; s++) {
         const at = inv.spoilAt[s]!;
-        if (at === 0 || inv.item[s] === 0) continue;
-        const next = carried(at, t, was, is);
+        const item = inv.item[s]!;
+        if (at === 0 || item === 0) continue;
+        const next = this.table.charge?.[item] === 1 ? inv.chargeFrom(there ? CHARGED : at, t, this.table.spoilTicks[item]!) : carried(at, t, was, is);
         if (next === at) continue;
         inv.spoilAt[s] = next;
         inv.mod[s] = ++inv.version;
@@ -217,6 +228,7 @@ export class Items {
       if (inv.version !== before) this.changed(rec);
     }
     inv.keep = is;
+    inv.charges = holds;
   }
 
   /** Settles spoilage up to tick `at` and no further, for a caller replaying an earlier moment. */
@@ -224,6 +236,7 @@ export class Items {
     const inv = rec.inv;
     if (!inv) return;
     inv.keep = this.reg.keeps[rec.kind]!;
+    inv.charges = this.reg.charges[rec.kind] === 1;
     this.settle(rec, inv, at, this.table);
   }
 
@@ -253,23 +266,45 @@ export class Items {
   }
 
   /**
-   * Creates one of a kind standing for record `ref` in a free bag slot of `rec`. Returns the slot, or -1 if there is
-   * none or the item stacks: only an item that stacks to 1 may stand for a record.
+   * Creates one of a kind standing for record `ref` in a free bag slot of `rec`, or in its empty slot `at` where that is
+   * given. Returns the slot, or -1 if there is none, `at` is taken or does not take the item, or the item stacks: only an
+   * item that stacks to 1 may stand for a record.
    */
-  mintRef(rec: EntityRecord, item: number, ref: number): number {
+  mintRef(rec: EntityRecord, item: number, ref: number, at = -1): number {
     if (this.table.stack[item] !== 1 || ref === 0) return -1;
     const inv = this.inv(rec);
-    const slot = inv.free();
+    const slot = at < 0 ? inv.free() : at < inv.cap && inv.item[at] === 0 && fitsSlot(inv, at, item, this.table) ? at : -1;
     if (slot < 0) return -1;
     inv.set(slot, item, 1, 0, this.maxDur(item, 0), 0);
     inv.setRef(slot, ref);
-    // Its spoil clock starts as any new item's does.
+    // Its spoil clock starts as any new item's does, and a charge's full.
     const spoil = this.table.spoilTicks[item]!;
-    if (spoil > 0) inv.spoilAt[slot] = Math.min(0xffffffff, this.world.tick + Math.round(spoil * inv.keep));
+    if (spoil > 0) inv.spoilAt[slot] = this.table.charge?.[item] === 1 ? inv.chargeFrom(0, this.world.tick, spoil) : Math.min(0xffffffff, this.world.tick + Math.round(spoil * inv.keep));
     this.minted[item] = this.minted[item]! + 1;
     this.dirty = true;
     this.changed(rec);
     return slot;
+  }
+
+  /**
+   * The one item in `slot` of `rec` becomes one `into`, where it lies: a soul ball that takes a tame in or lets it out
+   * (server/balls.ts). The old item is burned and the new one minted in the ledger, new, with a new item's clock, and it
+   * stands for record `ref` where one is given. What the old one stood for is forgotten, not told it is gone. False,
+   * changing nothing, unless the slot holds one unflagged item that stacks to 1 and `into` stacks to 1 too.
+   */
+  turn(rec: EntityRecord, slot: number, into: number, ref = 0): boolean {
+    const inv = this.inv(rec);
+    const was = slot < inv.cap ? inv.item[slot]! : 0;
+    if (was === 0 || inv.count[slot] !== 1 || inv.flags[slot] !== 0 || this.table.stack[was] !== 1 || this.table.stack[into] !== 1 || !fitsSlot(inv, slot, into, this.table)) return false;
+    const spoil = this.table.spoilTicks[into]!;
+    const clock = spoil === 0 ? 0 : this.table.charge?.[into] === 1 ? inv.chargeFrom(0, this.world.tick, spoil) : Math.min(0xffffffff, this.world.tick + Math.round(spoil * inv.keep));
+    inv.set(slot, into, 1, 0, this.maxDur(into, 0), clock);
+    if (ref !== 0) inv.setRef(slot, ref);
+    this.burned[was] = this.burned[was]! + 1;
+    this.minted[into] = this.minted[into]! + 1;
+    this.dirty = true;
+    this.changed(rec);
+    return true;
   }
 
   /**
@@ -513,7 +548,7 @@ export class Items {
     for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
       if (src.item[s] !== item || (src.flags[s]! & (FLAG_BLUEPRINT | FLAG_ISSUED)) !== 0) continue;
       const k = Math.min(n, src.count[s]!);
-      const spoilAt = carried(src.spoilAt[s]!, tick, src.keep, dst.keep);
+      const spoilAt = clockMoved(src, s, dst, tick, this.table);
       if (this.table.stack[item] === 1) {
         const to = dst.free();
         if (to < 0) throw new Error("room was checked");

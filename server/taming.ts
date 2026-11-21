@@ -136,7 +136,7 @@ export class Taming {
   /** Sets the tick an owned creature next eats from what it carries. Call it when its inventory may have changed, and after each meal. */
   meal(rec: EntityRecord): void {
     const { world, survival, deadlines } = this.ctx;
-    if (rec.team === 0 || rec.tame || rec.dead || !rec.vitals) return;
+    if (rec.team === 0 || rec.tame || rec.dead || !rec.vitals || rec.stored !== 0) return;
     const k = this.best(rec);
     if (k < 0) {
       rec.mealDue = 0;
@@ -266,7 +266,7 @@ export class Taming {
   due(pid: number, stamp: number): void {
     const { world, records, items, survival, rules } = this.ctx;
     const rec = records.byPid.get(pid);
-    if (rec && !rec.tame && rec.team !== 0 && rec.mealDue === stamp) {
+    if (rec && !rec.tame && rec.team !== 0 && rec.stored === 0 && rec.mealDue === stamp) {
       // An owned creature's meal.
       rec.mealDue = 0;
       const k = this.best(rec);
@@ -357,7 +357,8 @@ export class Taming {
     let all = 0;
     let ours = 0;
     for (const r of this.ctx.records.byPid.values()) {
-      if (r.team === 0 || r.keyHash !== null || r.egg !== null || r.dead || reg.defs[r.kind]?.type !== "species" || !r.vitals) continue;
+      // One kept in a soul ball is not counted until it is loosed, as ARK counts none in a cryopod (server/balls.ts).
+      if (r.team === 0 || r.keyHash !== null || r.egg !== null || r.dead || r.stored !== 0 || reg.defs[r.kind]?.type !== "species" || !r.vitals) continue;
       all++;
       if (r.team === team) ours++;
     }

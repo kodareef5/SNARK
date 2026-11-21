@@ -139,10 +139,108 @@ function eggLoop(dbPath: string, seed: number): never {
   }
 }
 
+/** Journal ops of the "balls" mode: a tame was kept in a soul ball, loosed from one, a full ball was passed on, and one was destroyed. */
+export const OP_KEEP = 41;
+export const OP_LOOSE = 42;
+export const OP_PASS = 43;
+export const OP_BREAK = 44;
+/** The tames of the "balls" mode, which its test counts after each kill. */
+export const BALL_TAMES = 6;
+
+/**
+ * The "balls" mode. Survivors with no session hold soul balls and own raptors: they keep them, loose them, pass full balls
+ * to each other and now and then destroy one, which loses its tame. Time passes, in ticks and in jumps. Each step is
+ * committed and acknowledged. A tame is named for its number, so that the test can say which are left.
+ */
+function ballLoop(dbPath: string, seed: number): never {
+  const reg = coreRegistry();
+  const host = createHost(reg, { dbPath });
+  const p = host.persistence!;
+  const { records, items, balls } = host;
+  const [survivor, raptor, ball, full] = ["survivor", "raptor", "soul_ball", "soul_ball_full"].map((n) => reg.index.get(`core:${n}`)!) as [number, number, number, number];
+  const rng = new Rng(seed);
+  const [cx, cz] = host.world.zones[0]!.at;
+  if (host.loaded!.fresh) {
+    const holders = [];
+    for (let i = 0; i < 3; i++) {
+      const rec = records.create(survivor, `keeper${i}`);
+      rec.team = records.newTeam();
+      p.bindSurvivor(rec.name, rec.pid);
+      items.mint(rec, ball, 4);
+      holders.push(rec);
+    }
+    for (let made = 0, tries = 0; made < BALL_TAMES && tries < 1000; tries++) {
+      const e = host.spawnCreature("core:raptor", cx + rng.range(-20, 20), cz + rng.range(-20, 20), 5);
+      if (e < 0) continue;
+      const rec = records.byPid.get(host.world.ents.pid[e]!)!;
+      if (!host.taming.give(rec, holders[made % holders.length]!, 0.5, "forced")) continue;
+      rec.name = `tame${made}`;
+      rec.saddle = reg.index.get("core:saddle_raptor")!;
+      items.mint(rec, reg.index.get("core:stone")!, 10 + made);
+      made++;
+    }
+    p.commit();
+  }
+  const w = new BitWriter(8);
+  const note = (op: number): void => {
+    w.reset();
+    w.u8(op);
+    p.journal(op, w.bytes());
+  };
+  const holders = [...p.survivors.values()].map((pid) => records.byPid.get(pid)!);
+  const slotsOf = (rec: (typeof holders)[number], item: number): number[] => {
+    const inv = items.inv(rec);
+    const out: number[] = [];
+    for (let s = 0; s < inv.cap; s++) if (inv.item[s] === item) out.push(s);
+    return out;
+  };
+  writeSync(1, "ready\n");
+  for (;;) {
+    // Nothing harms a tame here, so that one is lost only with its ball: rival tribes' raptors stand side by side, and
+    // one loosed twice in five minutes is sick.
+    for (const r of records.byPid.values()) if (r.kind === raptor) host.survival.gods.add(r.pid);
+    for (let n = 1 + rng.int(4); n > 0; n--) {
+      const me = holders[rng.int(holders.length)]!;
+      const k = rng.int(10);
+      if (k < 4) {
+        // Keeps one of its tribe's that stands in the world.
+        const mine = [...records.byPid.values()].filter((r) => r.kind === raptor && r.team === me.team && r.stored === 0 && records.entOf.has(r.pid));
+        const empty = slotsOf(me, ball);
+        if (mine.length > 0 && empty.length > 0 && balls.keepIn(me, empty[rng.int(empty.length)]!, records.entOf.get(mine[rng.int(mine.length)]!.pid)!) === "") note(OP_KEEP);
+      } else if (k < 8) {
+        const held = slotsOf(me, full);
+        if (held.length > 0) {
+          const x = cx + rng.range(-20, 20);
+          const z = cz + rng.range(-20, 20);
+          const tame = records.byPid.get(items.inv(me).refOf(held[0]!));
+          if (balls.looseAt(me, held[rng.int(held.length)]!, x, host.world.hf.heightAt(x, z), z, rng.int(65536)) === "" && tame) note(OP_LOOSE);
+        }
+      } else if (k === 8) {
+        // A full ball changes hands: whoever looses it will own its tame.
+        const to = holders[rng.int(holders.length)]!;
+        if (to !== me && items.give(me, to, full, 1)) note(OP_PASS);
+      } else if (rng.int(6) === 0) {
+        // A full ball is destroyed, and its tame with it. The ball is made again empty, so that the play goes on.
+        const held = slotsOf(me, full);
+        if (held.length > 0 && items.burn(me, held[0]!, 1, true)) {
+          items.mint(me, ball, 1);
+          note(OP_BREAK);
+        }
+      }
+    }
+    for (let t = 1 + rng.int(20); t > 0; t--) host.game.tick();
+    // Now and then a jump of up to two minutes, which a kept tame does not feel. No longer: nobody here eats.
+    if (rng.int(6) === 0) host.world.tick += 1 + rng.int(3600);
+    p.commit();
+    writeSync(1, `acked ${p.durableSeq + p.commits}\n`);
+  }
+}
+
 if (import.meta.main) {
   const [dbPath, seed, mode] = process.argv.slice(2);
   if (mode === "death") deathLoop(dbPath!, Number(seed));
   if (mode === "eggs") eggLoop(dbPath!, Number(seed));
+  if (mode === "balls") ballLoop(dbPath!, Number(seed));
   const reg = coreRegistry();
   const host = createHost(reg, { dbPath: dbPath! });
   const p = host.persistence!;

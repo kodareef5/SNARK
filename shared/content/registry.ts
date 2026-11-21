@@ -82,6 +82,15 @@ export interface Registry {
   readonly stack: Uint16Array;
   readonly weight: Float32Array;
   readonly spoilTicks: Uint32Array;
+  /** Per item: 1 where its spoil clock is a charge (ItemDef.charge). Per structure kind, `charges`: 1 where it holds one full. */
+  readonly charge: Uint8Array;
+  readonly charges: Uint8Array;
+  /**
+   * Soul balls (ItemDef.ball): per item, the item an empty one becomes when it holds a tame, and the item a full one is
+   * again when it holds none. 0 for anything else.
+   */
+  readonly ballFull: Uint16Array;
+  readonly ballEmpty: Uint16Array;
   /** Radius and height of a species or prop. Zero otherwise. */
   readonly bodyRadius: Float32Array;
   readonly bodyHeight: Float32Array;
@@ -341,6 +350,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const renames = all.filter((d): d is RenameDef => d.type === "rename");
   const input = all.filter((d): d is Exclude<Def, RenameDef> => d.type !== "rename");
   const typeOf = new Map(input.map((d) => [d.id, d.type]));
+  const defOf = new Map(input.map((d) => [d.id, d]));
   for (const r of renames) {
     errors.push(...defFaults(r));
     if (!ID.test(r.id)) errors.push(`"${r.id}": id must look like "namespace:name"`);
@@ -572,12 +582,23 @@ export function compileContent(all: readonly Def[]): CompileResult {
         // Its wear is the slot's durability, which one of a kind has.
         if (d.stack !== 1 || d.weapon || d.wear || d.tool || d.use?.holds) errors.push(`${d.id}: a glider stacks to 1 and wears no other durability`);
       }
+      if (d.charge && (d.spoilHours === undefined || d.stack !== 1)) errors.push(`${d.id}: only an item that spoils and stacks to 1 has a charge`);
+      if (d.ball) {
+        // An empty ball names its full form and a full one its empty, and each is the other's.
+        const other = d.ball.full ?? d.ball.empty;
+        const o = other === undefined ? undefined : defOf.get(other);
+        if ((d.ball.full === undefined) === (d.ball.empty === undefined)) errors.push(`${d.id}: a ball names its full item or its empty one, and not both`);
+        else if (o?.type !== "item" || !o.ball || (d.ball.full !== undefined ? o.ball.empty : o.ball.full) !== d.id) errors.push(`${d.id}: ${other} is not the ball that names it back`);
+        if (d.stack !== 1 || d.weapon?.kind !== "thrown") errors.push(`${d.id}: a ball stacks to 1 and is thrown`);
+        if (d.ball.empty !== undefined && (!d.charge || d.spoilsInto !== d.ball.empty || d.craft)) errors.push(`${d.id}: a full ball has a charge, spoils into its empty item and is never made`);
+      }
       const w = d.weapon;
       if (w) {
         positive(d, "weapon.uses", w.uses, 60000);
         // A thrown weapon with an ammo facet of its own flies and hits with that facet's damage, which may be none (the bola);
         // one that bursts into a cloud may do no harm of its own (smoke, poison: W5).
-        if ((w.kind === "melee" || (w.kind === "thrown" && !d.ammo && !w.cloud)) && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
+        // A soul ball is thrown, and harms nothing (ItemDef.ball).
+        if ((w.kind === "melee" || (w.kind === "thrown" && !d.ammo && !w.cloud && !d.ball)) && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
         if (d.ammo && !(w.kind === "thrown" && d.ammo.speed !== undefined)) errors.push(`${d.id}: a weapon with an ammo facet of its own is thrown, and flies at its ammo.speed`);
         if (d.ammo && w.fuse !== undefined) errors.push(`${d.id}: a thrown weapon that flies and hits has no fuse`);
         if ((w.kind === "bow" || w.kind === "gun") && !(w.ammo && w.ammo.length > 0)) errors.push(`${d.id}: a ${w.kind} needs the ammunition it takes`);
@@ -702,6 +723,10 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const stack = new Uint16Array(n);
   const weight = new Float32Array(n);
   const spoilTicks = new Uint32Array(n);
+  const charge = new Uint8Array(n);
+  const charges = new Uint8Array(n);
+  const ballFull = new Uint16Array(n);
+  const ballEmpty = new Uint16Array(n);
   const bodyRadius = new Float32Array(n);
   const bodyHeight = new Float32Array(n);
   const soft = new Uint8Array(n);
@@ -847,6 +872,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.cooks !== false) stationCooks[i] = 1;
         structKeeps[i] = d.keeps ?? 1;
         keeps[i] = structKeeps[i]!;
+        if (d.charges) charges[i] = 1;
         if (d.powered) powered[i] = 1;
         if (d.dry) dry[i] = 1;
       }
@@ -901,6 +927,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       // At least 1 tick, because 0 means the item never spoils.
       spoilTicks[i] = d.spoilHours !== undefined ? Math.max(1, Math.round(d.spoilHours * GAME_HOUR_TICKS)) : 0;
       decomposeTicks[i] = d.decomposeHours !== undefined ? Math.max(1, Math.round(d.decomposeHours * GAME_HOUR_TICKS)) : 0;
+      if (d.charge) charge[i] = 1;
       if (d.wear) wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
       uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? d.glide?.uses ?? 0;
       if (d.glide) {
@@ -1015,6 +1042,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
         cookTicks[i] = Math.max(1, Math.round(d.cooks.seconds * TICK_RATE));
       }
       if (d.spoilsInto !== undefined) spoilsInto[i] = index.get(d.spoilsInto)!;
+      if (d.ball?.full !== undefined) ballFull[i] = index.get(d.ball.full)!;
+      if (d.ball?.empty !== undefined) ballEmpty[i] = index.get(d.ball.empty)!;
       if (d.burnsInto !== undefined) burnsInto[i] = index.get(d.burnsInto)!;
     }
     if (d.type === "structure" && d.burns) {
@@ -1049,7 +1078,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
   const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
-  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
+  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, charge, charges, ballFull, ballEmpty, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;

@@ -167,7 +167,8 @@ test("the fabricator makes the shock dart, the flashlight and laser, the poison 
   for (const name of Object.keys(FABRICATOR)) expect([name, made(name)]).toEqual([name, FABRICATOR[name]!]);
   // What it makes, lit or out, includes these, S2's materials and SNARK's original vehicle assemblies.
   const makes = (kind: string): string[] => stationRecipes(reg, at(kind)).map((k) => reg.ids[k]!.slice(5)).sort();
-  const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly",
+  // The soul ball and its vault are ARK's Cryopod and Cryofridge, whose numbers tests/integration/balls.test.ts holds.
+  const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly", "soul_ball", "piece_soul_vault",
     ...["hat", "shirt", "gloves", "pants", "boots"].map(piece => `meridian_${piece}`)].sort();
   expect([makes("fabricator"), makes("fabricator_lit")]).toEqual([expected, expected]);
   // The vault weighs 20 and stacks to 1 (Vault).

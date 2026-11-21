@@ -147,6 +147,8 @@ cue("blast/far", "prop", "weapon", "world", "fire", "EVENT_BLAST beyond 120 m", 
 cue("fuse", "prop", "weapon", "body", "hook", "a live grenade lies in view", { loop: true, falls: ["core:weapon/fuse"] });
 cue("bounce", "prop", "hit", "body", "waits:polish", "a live grenade's velocity turns", { falls: ["core:weapon/bounce"] });
 cue("zap", "prop", "weapon", "world", "hook", "a shock dart's buff on a body", { falls: ["core:weapon/zap"] });
+cue("ball/keep", "prop", "item", "world", "fire", "EVENT_BALL with its bit set: a tame goes into a soul ball", { falls: ["core:tech/shimmer"] });
+cue("ball/loose", "prop", "item", "world", "fire", "EVENT_BALL with its bit clear: a tame comes out of a soul ball", { falls: ["core:tech/pulse"] });
 cue("hit/marker", "ui", "ui", "ear", "fire", "EVENT_HIT for the attacker", { falls: ["core:weapon/hit/marker"] });
 cue("hit/head", "ui", "ui", "ear", "fire", "EVENT_HIT on the head zone", { falls: ["core:weapon/hit/head"] });
 cue("kill", "ui", "ui", "ear", "fire", "EVENT_HIT with the killed bit, or EVENT_KILL", { falls: ["core:weapon/kill"] });

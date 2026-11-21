@@ -107,6 +107,12 @@ export class EntityRecord {
   mealDue = 0;
   /** Content index of its saddle, or 0. */
   saddle = 0;
+  /**
+   * For a tame kept in a soul ball (server/balls.ts): the tick it was kept, 0 for any other record. A kept tame has no body
+   * and its time stands still: every tick it holds is as of this one, and is moved on by the time it was kept when it is
+   * loosed (rebaseTicks). The full ball that holds it names this record (Inventory.ref).
+   */
+  stored = 0;
   jetSpent = 0;
   /** Selected ground-combat plate mode; transient attacks are never saved. */
   creatureMode = 0;

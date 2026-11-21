@@ -1940,6 +1940,7 @@ assets/source/core/humans/survivor/sound/takes/voice/male/wake/moss-pt-2570-0148
 assets/source/core/humans/survivor/sound/takes/voice/male/wake/moss-pt-2570-05520.wav
 assets/source/core/humans/survivor/sound/takes/voice/male/winded/moss-pt-2530-07005.wav
 assets/source/core/items/frond-glider/frond-glider.snpk
+assets/source/core/items/soul-ball/soul-ball.snpk
 assets/source/core/items/stone-tools/ref/concept/.start
 assets/source/core/items/stone-tools/stone-tools.snpk
 assets/source/core/items/stone-tools/tex/lashing/lashing_base_1024.png

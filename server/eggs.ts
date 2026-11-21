@@ -315,7 +315,8 @@ export class Eggs {
       if (!inv?.ref) continue;
       for (let s = 0; s < inv.cap; s++) {
         const ref = inv.ref[s]!;
-        if (ref === 0 || inv.item[s] === 0) continue;
+        // A full soul ball stands for a kept tame, and is its own module's to check (server/balls.ts).
+        if (ref === 0 || inv.item[s] === 0 || world.reg.ballEmpty[inv.item[s]!] !== 0) continue;
         const egg = records.byPid.get(ref);
         if (egg && held(egg) && !named.has(ref) && world.reg.propFertile[egg.kind] === inv.item[s]) {
           named.add(ref);
