@@ -14,6 +14,9 @@ import type { BookFault } from "../../shared/supply/book.ts";
 import { MOST } from "../../shared/supply/book.ts";
 import { catalogOf } from "../../shared/supply/catalog.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { hashString } from "../../shared/hash.ts";
+import { bandsOf, findSites } from "../../shared/supply/sites.ts";
+import { BANDS, bandDocs } from "../../content/supply/sites.ts";
 import { sameOrigin } from "./gate.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
@@ -129,6 +132,15 @@ export class SupplyRoutes {
         mended: supply.mended,
         acts: this.acts,
       });
+    }
+    if (what === "found") {
+      // Starter sites for this map as it stands, by the rule the cities' lists were made by (shared/supply/sites.ts): a
+      // place to each square wherever a drop may land now, in three bands by how far each is from where survivors rise.
+      // It is a proposal: the page puts it in its draft, and nothing is saved until the draft is.
+      const { sites, faults } = findSites({ sizeX: world.hf.sizeX, sizeZ: world.hf.sizeZ, spawns: world.spawns, fault: (x, z) => supply.siteFault(x, z) }, hashString(world.mapId));
+      const bands = bandsOf(sites, BANDS.map((b) => b.share));
+      const docs = BANDS.map((band, k) => bandDocs(band, bands[k]!.flatMap((s) => [s.x, s.z])));
+      return json({ sites: docs.flatMap((d) => d.sites), circuits: docs.filter((d) => d.sites.length > 0).map((d) => d.circuit), faults });
     }
     if (what === "revisions") return json(store.revisions().map((r) => ({ revision: r.revision, at: r.at, by: r.by, note: r.note })));
     if (what === "revision") {

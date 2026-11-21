@@ -32,7 +32,7 @@ if (values.shots) {
   if (!chrome) throw new Error("no Chrome to picture the page in");
   // A drop to see in the live views.
   server.host.console.exec({ host: server.host, client: null }, `supply call ${(server.host.world.hf.sizeX / 2).toFixed(0)} ${(server.host.world.hf.sizeZ / 2).toFixed(0)} blue arms ringed`);
-  const views = (process.env.PAGE_VIEWS ?? "tables,tables/blue/voyage,waiting,sim/purple/arms").split(",");
+  const views = (process.env.PAGE_VIEWS ?? "tables,tables/blue/voyage,tables/white/arms/edit,waiting,sim/purple/arms,tiers,map,circuits").split(",");
   for (const view of views) {
     const out = join(dist, `${view.replace(/\//g, "-")}.png`);
     const run = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--hide-scrollbars", "--no-first-run", "--disable-extensions", "--window-size=1500,1300", "--virtual-time-budget=6000", `--screenshot=${out}`, `${at}#${view}`], { stdout: "ignore", stderr: "ignore" });

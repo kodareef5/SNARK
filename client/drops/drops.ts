@@ -3,55 +3,14 @@
 // is decided in client/core/drops; this file fetches, draws and listens.
 
 import { esc } from "../core/admin/format.ts";
-import { addEntry, addSlot, changes, differs, faultsAt, moveAt, parseBook, pathText, read, removeAt, setAt, show, type Kind, type Path } from "../core/drops/edit.ts";
+import { addEntry, addSlot, changes, differs, ensureAt, moveAt, parseBook, read, removeAt, setAt, type Kind, type Path } from "../core/drops/edit.ts";
+import { addCircuit, removeSite } from "../core/drops/place.ts";
+import { $, S, TABS, ask, field, post, say, type BookWire, type Tab } from "./state.ts";
+import { circuitsHtml, dropPlace, mapDraw, mapHtml, mapListen, mapRead, tiersHtml } from "./world.ts";
+import type { CircuitDoc, SiteDoc } from "../../shared/supply/book.ts";
 import { catalogOfWire, css, load, matrix, nameOf, num, pct, simulation, tableDetail, waitingRows, type CatalogWire, type Loaded, type SlotView } from "../core/drops/view.ts";
 import { MARKS } from "../../shared/sim/supply.ts";
-import { bookFaults, type BookFault, type SupplyBook } from "../../shared/supply/book.ts";
-import type { Catalog } from "../../shared/supply/catalog.ts";
-
-const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
-
-/** What book.json carries (server/admin/supply-routes.ts). */
-interface BookWire {
-  revision: number;
-  starter: boolean;
-  kept: boolean;
-  map: string;
-  book: SupplyBook;
-  overrides: { tier: string; plain: boolean; ringed: boolean }[];
-  settings: { off: boolean; quality: number; random: boolean };
-}
-
-const TABS = [["tables", "Tables"], ["waiting", "Waiting"], ["sim", "Simulator"]] as const;
-type Tab = (typeof TABS)[number][0];
-
-/** The page's state. */
-const S = {
-  wire: null as BookWire | null,
-  catalog: null as Catalog | null,
-  l: null as Loaded | null,
-  /** The book being edited: a copy of the book in force until something is changed, and its faults. */
-  draft: null as SupplyBook | null,
-  faults: [] as BookFault[],
-  /** Whether the opened table shows fields, and the revision a save lost to, if one did. */
-  editing: false,
-  conflict: -1,
-  tab: "tables" as Tab,
-  /** The table opened in the matrix, and what the simulator rolls. */
-  open: "",
-  sim: { key: "", ringed: false, n: 5000, seed: 1, designed: false },
-};
-
-const say = (text: string, cls = "dim"): void => {
-  $("said").className = cls;
-  $("said").textContent = text;
-};
-
-async function ask<T>(path: string): Promise<T> {
-  const r = await fetch(`supply/${path}`, { cache: "no-store" });
-  if (!r.ok) throw new Error(`${path} answered ${r.status}`);
-  return (await r.json()) as T;
-}
+import { bookFaults, type BookFault } from "../../shared/supply/book.ts";
 
 /** A mark's shape as a few strokes, for a class's column: the seven top-marks (shared/sim/supply.ts MARKS). */
 const GLYPH: Readonly<Record<string, string>> = { bar: "▬", saltire: "✕", buckler: "◯", hourglass: "⧗", cross: "✚", cone_down: "▼", cone_up: "▲" };
@@ -66,17 +25,6 @@ function head(): void {
   for (const o of w.overrides) chips.push(`<span class="chip warn" title="ConfigOverrideSupplyCrateItems gives this tier's tables: the book's are not rolled for it.">${esc(o.tier)} is the server's own</span>`);
   $("chips").innerHTML = chips.join("");
   $("tabs").innerHTML = TABS.map(([key, name]) => `<button data-tab="${key}" class="${S.tab === key ? "on" : ""}">${name}</button>`).join("");
-}
-
-/** A field of the draft: its place, what it holds, and its faults, which redden it. */
-function field(path: Path, kind: Kind, width = 64, blank = true): string {
-  const d = S.draft!;
-  let at: unknown = d;
-  for (const key of path) at = (at as Record<string | number, unknown> | undefined)?.[key];
-  const faults = faultsAt(S.faults, path);
-  const common = `data-path="${esc(JSON.stringify(path))}" data-kind="${kind}"${blank ? "" : ' data-need="1"'} title="${esc(faults.length ? faults.map((f) => f.message).join("; ") : pathText(path))}"${faults.length ? ' class="wrong"' : ""}`;
-  if (kind === "flag") return `<input type="checkbox" ${common}${at === true ? " checked" : ""}>`;
-  return `<input ${common} value="${esc(show(kind, at))}" style="width:${width}px"${kind === "ids" ? ' list="things"' : ""}>`;
 }
 
 /** What stands between the draft and the book in force: its changes, its faults, and the ways to save or leave them. */
@@ -216,7 +164,13 @@ function draw(): void {
   // What is typed in the note outlives a redraw.
   const note = document.getElementById("note") as HTMLInputElement | null;
   const kept = note?.value ?? "";
-  $("main").innerHTML = barHtml() + (S.tab === "tables" ? tablesHtml(S.l) : S.tab === "waiting" ? waitingHtml(S.l) : simHtml(S.l));
+  const view: Record<Tab, (l: Loaded) => string> = { tables: tablesHtml, waiting: waitingHtml, sim: simHtml, tiers: tiersHtml, map: mapHtml, circuits: circuitsHtml };
+  $("main").innerHTML = barHtml() + view[S.tab](S.l);
+  if (S.tab === "map") {
+    // The map's picture and what is live are read the first time it is looked at.
+    if (S.map.live) mapDraw(S.l);
+    else void mapRead().then(draw, (err: unknown) => say(err instanceof Error ? err.message : String(err), "bad"));
+  }
   const again = document.getElementById("note") as HTMLInputElement | null;
   if (again) again.value = kept;
   if (!document.getElementById("things")) document.body.insertAdjacentHTML("beforeend", `<datalist id="things">${[...S.catalog!.byId.values()].map((i) => `<option value="${esc(i.id)}">${esc(i.label)}</option>`).join("")}</datalist>`);
@@ -227,11 +181,6 @@ function changed(): void {
   S.faults = bookFaults(S.draft!).filter((f) => !f.warn);
   if (S.faults.length === 0) S.l = load(S.draft!, S.catalog!);
   draw();
-}
-
-async function post(what: string, body: unknown): Promise<{ status: number; answer: Record<string, unknown> }> {
-  const r = await fetch(`supply/${what}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  return { status: r.status, answer: (await r.json().catch(() => ({}))) as Record<string, unknown> };
 }
 
 /** Saves the draft over `revision`, and reads the book in force again, or says why it was not saved. */
@@ -262,6 +211,24 @@ async function act(at: HTMLElement): Promise<void> {
   else if (what === "del") removeAt(d, path);
   else if (what === "up" || what === "down") moveAt(d, path, what === "up" ? -1 : 1);
   else if (what === "discard") [S.draft, S.conflict] = [structuredClone(S.wire!.book), -1];
+  else if (what === "unsite") [, S.map.site] = [removeSite(d, S.map.site), ""];
+  else if (what === "circuit") {
+    if (!addCircuit(d, $<HTMLInputElement>("newCircuit").value.trim())) return say("a circuit's key is small letters, digits, _ and -, and not one taken", "warn");
+  } else if (what === "found") {
+    // The server's proposal for this map as it stands replaces the draft's sites and circuits; Save keeps it.
+    say("finding a place in every square…");
+    const made = await ask<{ sites: SiteDoc[]; circuits: CircuitDoc[]; faults: Record<string, number> }>("found.json");
+    if (made.sites.length === 0) return say("no place a drop may land was found", "warn");
+    [d.sites, d.circuits] = [made.sites, made.circuits];
+    say(`${made.sites.length} sites found in ${made.circuits.length} circuits: not saved yet`);
+  } else if (what === "drop" || what === "landall" || what === "cancel" || what === "relive") {
+    // What is done to the world is done now, by the book in force: none of it is the draft's.
+    const where = dropPlace();
+    const sent = what === "drop" && where ? await post("call", { x: where[0], z: where[1], tier: S.map.tier, cls: S.map.cls, ringed: S.map.ringed }) : what === "landall" ? await post("land", { id: "all", seconds: 0 }) : what === "cancel" ? await post("cancel", { id: Number(at.dataset.id) }) : null;
+    say(sent ? String(sent.answer.said ?? sent.answer.error ?? "").split("\n")[0]! : "", sent && sent.status !== 200 ? "warn" : "dim");
+    await mapRead();
+    return draw();
+  }
   else if (what === "save") return save("book", S.wire!.revision);
   else if (what === "over") return save("book", S.conflict);
   else if (what === "starter") return confirm("Put the starter book back, as the next revision?") ? save("reset", S.wire!.revision) : undefined;
@@ -304,13 +271,26 @@ document.addEventListener("change", (e) => {
       say("read from the file: not saved yet");
       changed();
     });
+  } else if (at.name === "circuit" || at.id.startsWith("map") || at.id.startsWith("drop")) {
+    // The map's own choices, which are the page's and not the draft's.
+    const m = S.map;
+    if (at.name === "circuit") m.circuit = at.value;
+    else if (at.id === "mapAdd") m.adding = at.checked;
+    else if (at.id === "mapZoom") m.zoom = Number(at.value) || 1;
+    else if (at.id === "dropTier") m.tier = at.value;
+    else if (at.id === "dropCls") m.cls = at.value;
+    else if (at.id === "dropRinged") m.ringed = at.checked;
+    draw();
   } else if (at.dataset.path) {
     const got = read(at.dataset.kind as Kind, at.type === "checkbox" ? String(at.checked) : at.value, at.dataset.need !== "1");
     if (!got.ok) {
       at.classList.add("wrong");
       return say("that is not what this field takes", "warn");
     }
-    setAt(S.draft!, JSON.parse(at.dataset.path) as Path, got.value);
+    const path = JSON.parse(at.dataset.path) as Path;
+    // A first weight makes the list it is put in.
+    if (got.value !== undefined) ensureAt(S.draft!, path);
+    setAt(S.draft!, path, got.value);
     say("");
     changed();
   } else if (at.id.startsWith("sim")) {
@@ -334,6 +314,7 @@ async function start(said = ""): Promise<void> {
   draw();
 }
 
+mapListen(changed, draw);
 addEventListener("hashchange", () => {
   fromHash();
   draw();

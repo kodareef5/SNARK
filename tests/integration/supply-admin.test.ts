@@ -5,6 +5,9 @@ import { expect, test } from "bun:test";
 import { PAGE, SupplyRoutes } from "../../server/admin/supply-routes.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import type { SupplyBook } from "../../shared/supply/book.ts";
+import { moveSite } from "../../client/core/drops/place.ts";
+import { writeMap } from "../../shared/world/mapfile.ts";
+import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -85,4 +88,44 @@ test("a draft that names what the game lacks is saved and forgiven; one with a f
   const one = await get<{ revision: number; book: SupplyBook }>("revision.json?n=1");
   expect([one.revision, one.book.sets["kit.arms.white"]!.entries.at(-1)!.items]).toEqual([1, ["mod:laser_sword"]]);
   expect((await get<{ error: string }>("revision.json?n=9")).error).toBe("Revision 9 is not kept.");
+});
+
+test("a site moved on the map takes the next drop: the circuit's drops land where the saved book has its site", async () => {
+  // Level ground 512 m on a side, Ada in its middle, and a book with one circuit of one site that looks every few seconds.
+  const h = new Harness({}, 1, 60, { dev: true, map: writeMap(flatMap(8)), log: () => {} });
+  const ada = h.join("ada");
+  h.run(500);
+  h.say(ada, "enablecheats");
+  h.say(ada, "tp 250 250");
+  h.run(300);
+  const routes = new SupplyRoutes(h.host);
+  const at = "http://localhost";
+  const get = async <T>(what: string): Promise<T> => (await (await routes.answer(new Request(`${at}/admin/supply/${what}`), `/admin/supply/${what}`, new URL(`${at}/admin/supply/${what}`))!).json()) as T;
+  const post = async (what: string, body: unknown): Promise<Record<string, unknown>> =>
+    (await (await routes.answer(new Request(`${at}/admin/supply/${what}`, { method: "POST", headers: { "content-type": "application/json", origin: at, host: "localhost" }, body: JSON.stringify(body) }), `/admin/supply/${what}`, new URL(`${at}/admin/supply/${what}`))!).json()) as Record<string, unknown>;
+  const read = await get<{ revision: number; book: SupplyBook }>("book.json");
+  const draft = structuredClone(read.book);
+  Object.assign(draft.rules, { noticeSeconds: 12, flightSeconds: 5, brakeSeconds: 2, lifeSeconds: 30 });
+  draft.sites = [{ key: "c/001", x: 200, z: 220 }];
+  draft.circuits = [{ key: "c", on: true, sites: ["c/001"], maxLive: 1, firstDelay: [1, 2], interval: [2, 3], tierWeights: { white: 1 } }];
+  expect(await post("book", { revision: read.revision, book: draft, note: "one site" })).toEqual({ revision: 1 });
+  expect(h.host.setSetting("bDisableLootCrates", "False")).toBe("");
+  h.run(6000);
+  const first = h.host.supply.drops[0]!;
+  expect([h.host.supply.drops.length, first.x, first.z, first.site, first.circuit]).toEqual([1, 200, 220, "c/001", "c"]);
+  // The page moves the site (as a drag on its map does to the draft) and saves; the drop in the air keeps its place.
+  const moved = structuredClone(h.host.supplyBook.book);
+  moveSite(moved, "c/001", 300.4, 310.6);
+  expect(await post("book", { revision: 1, book: moved, note: "moved" })).toEqual({ revision: 2 });
+  expect([first.x, first.z]).toEqual([200, 220]);
+  // Its capsule lands, lasts its half minute and goes; the circuit's next drop is at the site's new place.
+  h.run(60000);
+  const next = h.host.supply.drops.find((d) => d.id !== first.id)!;
+  expect([next.x, next.z, next.site, next.id > first.id]).toEqual([300, 311, "c/001", true]);
+  // The page's live view has the circuit's count and the drop where it is.
+  const live = await get<{ drops: { id: number; x: number; z: number }[]; circuits: { key: string; on: boolean; called: number }[] }>("live.json");
+  expect([live.circuits.map((c) => [c.key, c.on, c.called >= 2]), live.drops.some((d) => d.id === next.id && d.x === 300 && d.z === 311)]).toEqual([[["c", true, true]], true]);
+  // The server's own proposal for this ground: a place to each square a drop may land in, in bands, and nothing saved.
+  const found = await get<{ sites: { key: string; x: number; z: number }[]; circuits: { key: string; sites: string[] }[] }>("found.json");
+  expect([found.sites.length > 0, found.circuits.every((c) => c.sites.length > 0), found.sites.every((s) => s.x >= 0 && s.x <= 512 && s.z >= 0 && s.z <= 512), h.host.supplyBook.book.revision]).toEqual([true, true, true, 2]);
 });

@@ -29,6 +29,15 @@ export function setAt(book: SupplyBook, path: Path, value: unknown): void {
   else (parent as Record<string | number, unknown>)[key] = value;
 }
 
+/** Makes the records on the way to `path` that are not there, so that a first weight may be put in a list of none. */
+export function ensureAt(book: SupplyBook, path: Path): void {
+  let at = book as unknown as Record<string | number, unknown>;
+  for (const key of path.slice(0, -1)) {
+    if (typeof at[key] !== "object" || at[key] === null) at[key] = {};
+    at = at[key] as Record<string | number, unknown>;
+  }
+}
+
 /** Takes a line out of a list, or a key out of a record. */
 export function removeAt(book: SupplyBook, path: Path): void {
   const parent = getAt(book, path.slice(0, -1));

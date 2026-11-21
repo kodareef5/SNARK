@@ -91,6 +91,11 @@
       .line label, .slot label { color: var(--dim); font-size: 13px; white-space: nowrap; }
       input.wrong { border-color: var(--bad); background: rgba(236, 106, 82, 0.14); }
       input[type="checkbox"] { padding: 0; vertical-align: -2px; }
+      /* The map beside what it shows of a site and of the world. */
+      .mapgrid { display: grid; grid-template-columns: minmax(0, 880px) minmax(260px, 1fr); gap: 14px; margin-top: 8px; }
+      .mapbox { overflow: auto; max-height: 880px; border: 1px solid var(--edge); background: #0b1622; }
+      #map { display: block; cursor: crosshair; touch-action: none; }
+      @media (max-width: 1100px) { .mapgrid { grid-template-columns: 1fr; } }
       /* The simulator. */
       .bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 6px 0; }
       .bars i { flex: 1 1 0; background: var(--ice); min-height: 1px; opacity: 0.85; }
