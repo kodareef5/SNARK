@@ -6,12 +6,16 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { type MapStatic, MapStatics, mapHeightfield, parseMap } from "../../shared/world/mapfile.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { placedPriority } from "../../client/core/render/street-reflections.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, FRAME, MAX_CONTACTS, type FramePacket } from "../../client/core/render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, DRAW_TEXTURED, FRAME, MAX_CONTACTS, type FramePacket } from "../../client/core/render/packet.ts";
 import { findChrome } from "../chrome.ts";
 import { litProbe } from "../probe-lit.ts";
 import { Shot } from "../probe-lit/shot.ts";
 import { provingView, settle } from "../snap.ts";
 import { encodePng } from "./png.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import type { Def } from "../../shared/content/defs.ts";
+import { effectsOff, packetWithout, sceneWithout, tierWithout } from "../../client/core/passes.ts";
 
 const [mapPath, assets, out] = process.argv.slice(2);
 if (!mapPath || !assets || !out) throw new Error("Expected Miami map, built assets directory and output directory");
@@ -30,9 +34,25 @@ for (let i = 0; i < t.kind.length; i++) {
 const carX = 8649, carZ = 7898;
 const propName = process.argv.find(arg => arg.startsWith("--prop="))?.slice(7);
 if (propName) rows.push({ kind: "core:"+propName, x: carX, z: carZ, y: mapHeightfield(map).heightAt(carX,carZ), yaw: 0 });
+// --rows=FILE puts rows into the study and takes rows out of it, to judge a piece before any map holds it: each
+// {kind, x, z, yaw} with yaw in degrees, standing `up` metres over the ground at its middle (a walk's 0.075 where not
+// given), or {kind, x, z, drop: true} for the study's row of that kind within half a metre. A kind the content does not
+// have is a study piece: a static `half` big, drawn as the pack's mesh of that id, and in no game's content.
+const studyDefs: Def[] = [];
+for (const row of JSON.parse(readFileSync(process.argv.find(arg => arg.startsWith("--rows="))?.slice(7) ?? "/dev/null", "utf8") || "[]") as { kind: string; x: number; z: number; yaw?: number; up?: number; drop?: boolean; half?: [number, number, number] }[]) {
+  if (row.drop) {
+    const at = rows.findIndex((r) => r.kind === row.kind && Math.hypot(r.x - row.x, r.z - row.z) < 0.5);
+    if (at < 0) throw new Error(`--rows: no ${row.kind} at ${row.x}, ${row.z} to take out`);
+    rows.splice(at, 1);
+    continue;
+  }
+  if (row.half && !studyDefs.some((d) => d.id === row.kind)) studyDefs.push({ type: "structure", class: "static", id: row.kind, mesh: "box", half: row.half, color: 102, hp: 16000, material: "core:mat_stone", near: true });
+  rows.push({ kind: row.kind, x: row.x, z: row.z, y: mapHeightfield(map).heightAt(row.x, row.z) + (row.up ?? 0.075), yaw: Math.round(((row.yaw ?? 0) / 360) * 65536) & 0xffff });
+}
+const studyReg = studyDefs.length > 0 ? { reg: compileContent([...CORE_CONTENT, ...studyDefs]).registry!, pack: new Uint8Array() } : undefined;
 const hd = process.argv.includes("--hd");
 const width = hd ? 1280 : 560, height = hd ? 720 : 312;
-const v = provingView(width, height, {}, { manifest, files }, { ...map, statics: MapStatics.of(map.dims, rows) });
+const v = provingView(width, height, {}, { manifest, files }, { ...map, statics: MapStatics.of(map.dims, rows) }, studyReg);
 const { cam, scene, remote, hf, raster } = v;
 scene.assets.tier = tierOf("high");
 scene.viewHeight = height;
@@ -96,7 +116,9 @@ console.log("eligible placed statics", eligible, "of", t.kind.length);
 console.log("Miami fixture census", Object.fromEntries(counts), "statics in study", rows.length);
 const gpu = process.argv.includes("--gpu");
 const view = propName ? "prop" : process.argv.find(arg => arg.startsWith("--view="))?.slice(7);
-if (!gpu && !view) {
+const looksFile = process.argv.find((arg) => arg.startsWith("--looks="))?.slice(8);
+const looks = looksFile ? JSON.parse(readFileSync(looksFile, "utf8")) as { name: string; at: [number, number, number]; to: [number, number, number]; cars?: boolean }[] : null;
+if (!gpu && !view && !looks) {
   look(8540, 8073, 8535.5, 8084.54, 7.1);
   shot("storefront");
   look(8524.7, 8077, 8527.49, 8084.40, 6.6);
@@ -121,6 +143,58 @@ for (let i = 0; i < 2; i++) {
 remote.count = propName ? 0 : 2;
 if (propName && !v.reg.index.has("core:"+propName)) throw new Error("Unknown road prop " + propName);
 look(carX - 4.3, carZ - 3.9, carX + 0.7, carZ + 0.6, hf.heightAt(carX, carZ) + 0.78);
+// --looks=FILE draws each camera of the file on the GPU, as <name>.png, in place of the reflection study: {name, at: [x,
+// z, eye over the ground], to: [x, z, height over the ground there], cars?: false}, at --hour, with --off= effects off
+// as a page's ?off= has them (client/core/passes.ts). Each says the frame's draws and triangles, and the walk kit's; the
+// study has no near city, so every static is drawn as an instance and its draws are not a client's (tools/bench/census.ts).
+if (looks) {
+  const chrome = findChrome();
+  if (!chrome) throw new Error("Chrome is required for the looks");
+  const off = effectsOff(process.argv.find((arg) => arg.startsWith("--off="))?.slice(6) ?? "");
+  scene.assets.tier = tierWithout(tierOf("high"), off);
+  sceneWithout(scene, off);
+  const shot = new Shot("street-looks", width, height, hf, files[0]!);
+  shot.manifest = manifest;
+  shot.shadows = true;
+  const load = scene.assets.residency, lines: string[] = [];
+  const kit = /zwalk8|zcurbramp|zzzcurb/;
+  const passed = await litProbe(chrome, [{
+    name: "Street looks",
+    shots() {
+      for (const l of looks) {
+        look(l.at[0], l.at[1], l.to[0], l.to[1], hf.heightAt(l.to[0], l.to[1]) + l.to[2], l.at[2]);
+        remote.count = l.cars === false ? 0 : 2;
+        for (let frame = 0; ; frame++) {
+          if (frame > 900) throw new Error(l.name + " did not settle");
+          scene.now += 1000 / 60;
+          v.port!.advance(scene.now);
+          const p = scene.build(cam, remote);
+          const loading = p.uploads.length + p.drops.length + p.assetUploads.length + p.assetDrops.length + p.texUploads.length + p.texDrops.length;
+          if (frame > 30 && !loading && !load.flying && !load.waiting && (p.tier.reflectionHz === 0 || p.frame[FRAME.reflection + 3] === 1)) {
+            packetWithout(p, off);
+            let draws = 0, tris = 0;
+            for (let d = 0; d < p.drawCount; d++) {
+              if (!kit.test(manifest.meshes[p.drawMesh[d]!]?.id ?? "")) continue;
+              draws++;
+              tris += ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0 ? p.drawIndexCount[d]! / 3 : scene.assets.table.tris[p.drawMesh[d]!]![p.drawLod[d]!]!) * p.drawInstances[d]!;
+            }
+            lines.push(`${l.name}: ${p.drawCount} draws, ${p.triangles} triangles, ${p.casterCount} casters; the walk kit drawn as instances ${draws} draws, ${tris} triangles`);
+            shot.add(p, true);
+            break;
+          }
+          p.drawCount = p.tileCount = p.casterCount = 0;
+          shot.add(p);
+        }
+      }
+      return [shot];
+    },
+    judge(back) {
+      looks.forEach((l, i) => writeFileSync(join(out, l.name + ".png"), encodePng(width, height, back.pixels(shot.key, shot.read[i]!)!)));
+      return { ok: true, lines: [back.device.renderer, ...lines] };
+    },
+  }]);
+  process.exit(passed ? 0 : 1);
+}
 // Close inspection uses the same authored cars, road and lighting as the wide view.
 if (view) {
   const yaw = remote.yaw[0]!, c = Math.cos(yaw), s = Math.sin(yaw);
