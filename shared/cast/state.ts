@@ -100,7 +100,8 @@ export interface Spot {
   tags: string[];
   /** People at once. */
   cap: number;
-  /** A queue: the way the line runs from its head (radians, world yaw) and the metres between people in it. */
+  /** A queue: the way the line runs from its head (radians, as shared/cast/queue.ts has it), the metres between people
+   * in it, and seconds to serve each. */
   queue?: { yaw: number; spacing: number; serve: number };
   /** A name, for an authored or landmark spot. */
   name?: string;
