@@ -25,7 +25,7 @@ import { reportPaths } from "./report-path.ts";
 
 /** A run as the report writes it: [x, z, y] a module, from its root, in the map's metres. */
 export interface WalkedRun { site: string; id: string; finger: boolean; landed: boolean; points: [number, number, number][]; joins?: string[] }
-export interface WalkedSlip { id: string; site: string; vessel: string; x: number; z: number; yaw: number; found: boolean; how: string; dock: [number, number, number] | null; held?: string | null }
+export interface WalkedSlip { id: string; site: string; vessel: string; x: number; z: number; yaw: number; found: boolean; how: string; dock: [number, number, number] | null; run?: string; held?: string | null }
 
 /** A survivor's walk on a built map: set down at a point, then point to point, each within 0.4 m and 0.65 m of its height. */
 export function walker(map: MapData, reg = withContent(compileContent(CORE_CONTENT).registry!, map.content?.defs ?? [])) {
@@ -112,7 +112,8 @@ if (import.meta.main) {
     const v = s.held ? vehicles.get(s.held) : undefined;
     if (!s.dock) { results.push({ site: s.site, what, ok: false, message: "held with no dock" }); continue; }
     if (!v) { results.push({ site: s.site, what, ok: true, message: "no vessel fitted the slip, which stays empty" }); continue; }
-    const run = report.runs.filter((r) => r.site === s.site && reached.has(r)).sort((a, b) => foot(a, s.dock![0], s.dock![1]).d - foot(b, s.dock![0], s.dock![1]).d)[0];
+    // Out from the walkway its finger stands on, or failing that the nearest run reached.
+    const run = report.runs.find((r) => r.site === s.site && r.id === s.run && reached.has(r)) ?? report.runs.filter((r) => r.site === s.site && reached.has(r)).sort((a, b) => foot(a, s.dock![0], s.dock![1]).d - foot(b, s.dock![0], s.dock![1]).d)[0];
     if (!run) { results.push({ site: s.site, what, ok: false, message: "no reached run near its dock" }); continue; }
     const f = foot(run, s.dock[0], s.dock[1]);
     const { message, body } = walk([run.points[f.k]!, f.at, [s.dock[0], s.dock[1], s.dock[2]]]);
