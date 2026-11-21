@@ -101,6 +101,8 @@ export class Buffs {
    * so they are worked out again from the buffs it has.
    */
   restore(rec: EntityRecord, unrated: boolean): void {
+    // A tame kept in a soul ball has its buffs as they stood, and none ends while it is kept (server/balls.ts).
+    if (rec.stored !== 0) return;
     if (rec.buffs.length === 0 && !unrated) return;
     for (const b of rec.buffs) if (b.until > 0) this.deadlines.push(b.until, DEADLINE_BUFF, rec.pid, b.until);
     this.apply(rec);
@@ -109,7 +111,7 @@ export class Buffs {
   /** A DEADLINE_BUFF entry came due. */
   due(pid: number, _stamp: number): void {
     const rec = this.records.byPid.get(pid);
-    if (!rec) return;
+    if (!rec || rec.stored !== 0) return;
     const now = this.world.tick;
     const on = rec.buffs;
     let kept = 0;

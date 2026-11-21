@@ -103,7 +103,11 @@ artTest("the content hangs together: every engram can be reached, every thing th
   for (const e of engrams) expect(e.level, e.id).toBeLessThanOrEqual(100);
   const points = levels.type === "levels" ? levels.engramPoints.reduce((a, b) => a + b, 0) : 0;
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
-  const weapons = items.filter((d) => d.weapon);
+  // A soul ball is held and swung as a thrown weapon is, and harms nothing (content/items/balls.ts): the full one is never
+  // made, an empty one becomes it. tests/integration/balls.test.ts holds them; here, that their meshes follow a hand.
+  const weapons = items.filter((d) => d.weapon && !d.ball);
+  const balls = items.filter((d) => d.ball);
+  expect(balls.map((d) => [d.id.slice(5), d.weapon?.kind, d.craft !== undefined, pack.header.meshes[pack.meshIndex.get(d.weapon!.mesh!)!]!.skeleton])).toEqual([["soul_ball", "thrown", true, "human"], ["soul_ball_full", "thrown", false, "human"]]);
   expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bola", "bow", "club", "crossbow", "flare_gun", "grenade", "grenade_poison", "grenade_smoke", "hatchet", "pick", "pistol", "rifle", "shotgun", "slingshot", "spear"]);
   // Ammunition is made, or gathered as a slingshot's stone is.
   const gathered = new Set(reg.defs.flatMap((d) => (d?.type === "node" ? d.yields.map((y) => y.item) : [])));

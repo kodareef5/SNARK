@@ -98,8 +98,23 @@ export class Breeding {
         const at = rec.egg.hatchAt > world.tick ? rec.egg.hatchAt : world.tick + 1;
         rec.egg.hatchAt = at;
         deadlines.push(at, DEADLINE_BREED, rec.pid, at);
-      } else if (rec.grown !== 0) this.next(rec);
+      } else if (rec.grown !== 0 && rec.stored === 0) this.next(rec);
     }
+  }
+
+  /**
+   * `rec` goes into a soul ball (server/balls.ts). Any mating it was in is over, and young it carried unborn are lost, as
+   * ARK ends a pregnancy when a female is put in a cryopod (ark.wiki.gg, Cryopod, 2026-11-21).
+   */
+  kept(rec: EntityRecord): void {
+    this.pairs.delete(rec.pid);
+    for (const female of [...this.pairs.keys()]) if (this.pairs.get(female)!.male === rec.pid) this.pairs.delete(female);
+    for (const young of [...this.ctx.records.byPid.values()]) if (young.egg !== null && young.egg.carrier === rec.pid && young.pid !== rec.pid) this.discard(young);
+  }
+
+  /** `rec` is back in the world from a soul ball: if it is growing, its next step is due again. */
+  loosed(rec: EntityRecord): void {
+    if (rec.grown !== 0 && rec.egg === null) this.next(rec);
   }
 
   /** Whether `rec`, with body `e`, would mate now given a partner. */
@@ -377,6 +392,8 @@ export class Breeding {
     const grew = this.grew;
     for (const rec of records.byPid.values()) {
       const egg = rec.egg;
+      // A tame kept in a soul ball keeps the pace it was kept at: its clocks are as of then, not of this tick.
+      if (rec.stored !== 0) continue;
       if (egg && held(rec)) {
         // A held egg's hatchAt is the time it has left.
         if (hatch === speed(was.hatch) || !fertile(rec)) continue;

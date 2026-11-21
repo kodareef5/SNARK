@@ -5,7 +5,7 @@ import { Assets } from "./assets/assets.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
-import { EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
+import { EVENT_BALL, EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -21,6 +21,8 @@ import type { ClientSession, RemoteSample } from "./session.ts";
 
 export const TRACER_MS = 90;
 export const BLAST_MS = 220;
+/** Milliseconds the flash of a tame going into a soul ball or coming out is drawn. */
+export const BALL_MS = 320;
 /**
  * A round from a gun flashes at the muzzle, unless its gun has a silencer: others see "no muzzle flash" (Silencer
  * Attachment). The flash is the blast's cube at this many metres across, for FLASH_MS (ours).
@@ -63,9 +65,13 @@ export class Shots {
   readonly flying: Flying[] = [];
   readonly tracers: Tracer[] = [];
   readonly blasts: { x: number; y: number; z: number; radius: number; born: number }[] = [];
+  /** A tame going into a soul ball or coming out of one (EVENT_BALL): the middle of its body and its size. */
+  readonly balls: { x: number; y: number; z: number; size: number; into: boolean; born: number }[] = [];
   /** Muzzle flashes of rounds from guns with no silencer. */
   readonly flashes: { x: number; y: number; z: number; born: number }[] = [];
   private readonly blastMesh: number;
+  /** The flash of a tame going into a soul ball or coming out (tools/pack/balls.ts), or the blast's where a pack has none. */
+  private readonly ballMesh: number;
   private now = 0;
   private readonly meshOfAmmo: Int32Array;
   private readonly tracerMesh: number;
@@ -82,6 +88,8 @@ export class Shots {
     this.meshOfAmmo = Int32Array.from(reg.defs, (d) => (d?.type === "item" && d.ammo ? bind.own(d.id, "shot") : -1));
     this.tracerMesh = table.find("core:tracer");
     this.blastMesh = table.find("core:blast");
+    const flash = table.find("core:soul_flash");
+    this.ballMesh = flash >= 0 ? flash : this.blastMesh;
   }
 
   absorb(session: ClientSession, world: CollisionWorld, nowMs: number): void {
@@ -123,6 +131,12 @@ export class Shots {
       if (ev.kind === EVENT_BLAST) {
         if (this.blasts.length >= MAX_TRACERS) this.blasts.shift();
         this.blasts.push({ x: ev.x, y: ev.y, z: ev.z, radius: ev.far, born: nowMs });
+        continue;
+      }
+      if (ev.kind === EVENT_BALL) {
+        if (this.balls.length >= MAX_TRACERS) this.balls.shift();
+        // Half as large again as the body, so that it closes over it or opens round it.
+        this.balls.push({ x: ev.x, y: ev.y + ev.vy / 2, z: ev.z, size: 1.5 * Math.max(2 * ev.far, ev.vy), into: ev.kill, born: nowMs });
         continue;
       }
       if (ev.kind !== EVENT_SHOT) {
@@ -193,6 +207,7 @@ export class Shots {
   step(world: CollisionWorld, remote: RemoteSample | null, tick: number, nowMs: number): void {
     while (this.tracers.length > 0 && nowMs >= this.tracers[0]!.until) this.tracers.shift();
     while (this.blasts.length > 0 && nowMs >= this.blasts[0]!.born + BLAST_MS) this.blasts.shift();
+    while (this.balls.length > 0 && nowMs >= this.balls[0]!.born + BALL_MS) this.balls.shift();
     while (this.flashes.length > 0 && nowMs >= this.flashes[0]!.born + FLASH_MS) this.flashes.shift();
     this.now = nowMs;
     const whole = Math.floor(tick);
@@ -248,6 +263,14 @@ export class Shots {
     for (const b of this.blasts) {
       const size = b.radius * (0.25 + 0.75 * Math.min(1, (this.now - b.born) / BLAST_MS)) * 0.9;
       if (this.blastMesh >= 0 && !ch.loose(p, this.blastMesh, b.x - cam.x, b.y - cam.y, b.z - cam.z, 0, 0, 1, size, size)) return;
+    }
+    // A tame into a ball is a flash its size that closes to nothing; one out of a ball opens from nothing to its size.
+    for (const b of this.balls) {
+      const t = Math.min(1, (this.now - b.born) / BALL_MS);
+      const size = b.size * (b.into ? 1 - t : t);
+      // It turns as it goes, a quarter turn over its life.
+      const a = (t * Math.PI) / 2;
+      if (this.ballMesh >= 0 && size > 0.01 && !ch.loose(p, this.ballMesh, b.x - cam.x, b.y - cam.y, b.z - cam.z, Math.sin(a), 0, Math.cos(a), size, size)) return;
     }
     for (const f of this.flashes) if (this.blastMesh >= 0 && !ch.loose(p, this.blastMesh, f.x - cam.x, f.y - cam.y, f.z - cam.z, 0, 0, 1, FLASH_SIZE, FLASH_SIZE)) return;
     if (this.tracerMesh < 0) return;

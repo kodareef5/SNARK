@@ -366,6 +366,9 @@ export class Client {
   sentLook: Uint8Array | null = null;
   sentHeld = -2;
   sentBuffs = -1;
+  /** Whether the session was last told of a kept tame in its own inventory, and in the box it has open (OWN_KEPT). */
+  sentKept = false;
+  sentKeptOpen = false;
   sentRules = -1;
   /** inviteUntil is the tick the invitation it was shown expires, or 0. */
   sentTribe = -1;
@@ -423,6 +426,7 @@ export class Client {
     this.sentLook = null;
     this.sentHeld = -2;
     this.sentBuffs = -1;
+    this.sentKept = this.sentKeptOpen = false;
     this.sentRules = -1;
     this.sentTribe = -1;
     this.inviteUntil = 0;

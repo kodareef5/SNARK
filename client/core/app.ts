@@ -49,6 +49,8 @@ import { VehiclePlacement } from "./vehicle-placement.ts";
 import { SeatedAim } from "./seated-aim.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
 import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
+import { loosePrompt } from "./balls.ts";
+import { KEEP_REACH } from "../../shared/sim/balls.ts";
 import { lookAt, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
 import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
@@ -858,6 +860,52 @@ export class App {
     return { up: seat ? seat.anchor[1] + 0.75 : this.reg.bodyHeight[kind]! + 0.5, boom: 1.5 + 1.2 * size, forward: 0 };
   }
 
+  /** The use button's prompt, and before it what a click of the soul ball in hand would do. */
+  private handPrompt(world: CollisionWorld, eye: number): string {
+    const use = this.prompt(world, eye);
+    const ball = this.ballPrompt(world, eye);
+    return ball && use ? `${ball}    ${use}` : ball || use;
+  }
+
+  /**
+   * With a soul ball in hand, what a click would do (server/balls.ts): a full one looses the tame it holds, an empty one
+   * keeps the tribe's creature looked at within KEEP_REACH. "" with anything else in hand, or nothing a click would keep.
+   */
+  private ballPrompt(world: CollisionWorld, eye: number): string {
+    const s = this.session;
+    const r = this.remote;
+    const reg = this.reg;
+    const inv = s.inventory;
+    if (!inv || s.held < 0 || inv.hotbar < 0 || s.driving >= 0 || s.own.seat > 0 || this.holding >= 0) return "";
+    const slot = inv.hotbar + s.held;
+    const item = inv.item[slot]!;
+    if (item === 0) return "";
+    if (reg.ballEmpty[item] !== 0) return loosePrompt(reg, s.kept[0].get(slot));
+    if (reg.ballFull[item] === 0) return "";
+    const d = this.aim;
+    const ox = s.own.x;
+    const oy = s.own.y + eye;
+    const oz = s.own.z;
+    lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
+    const struck = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, KEEP_REACH);
+    let best = struck === HIT_NONE ? KEEP_REACH : rayHit.t;
+    let hit = -1;
+    for (let i = 0; i < r.count; i++) {
+      if ((r.cue[i]! & CUE_HELD) !== 0) continue;
+      const t = this.lookHit(i, ox, oy, oz, true);
+      if (t < best) {
+        best = t;
+        hit = i;
+      }
+    }
+    // Only a creature of the tribe's: not a thing lying there, a vehicle, a survivor, or another tribe's.
+    if (hit < 0 || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0 || reg.vehicle[r.kind[hit]!] || r.kind[hit] === s.ownKind || reg.defs[r.kind[hit]!]?.type !== "species") return "";
+    if (s.tribe.team === 0 || r.team[hit] !== s.tribe.team) return "";
+    const id = reg.ids[r.kind[hit]!] ?? "";
+    const name = r.name[hit] || `the ${id.slice(id.indexOf(":") + 1)}`;
+    return (r.cue[hit]! & CUE_OUT) !== 0 ? `${name} must be awake to go into a soul ball` : `click  keep ${name}`;
+  }
+
   /** Labels what the use button would act on, with the same ray the server casts. The server's answer is the one that counts. */
   private prompt(world: CollisionWorld, eye: number): string {
     const s = this.session;
@@ -1562,7 +1610,7 @@ export class App {
     }
     emotes.has = (n) => this.scene!.characters.emoteKnown(n);
     if (emotes.open) this.scene!.characters.wantEmotes();
-    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built;
+    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.handPrompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;

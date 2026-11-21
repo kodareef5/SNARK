@@ -1,6 +1,7 @@
 // Every action is a command, and the grids show what the server last said, so nothing here can get out of step with it.
 // A click picks a stack up or puts it down, a middle click picks up half, and a right click eats, uses or puts on.
 
+import { ballInfo } from "../balls.ts";
 import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
 import { makeHandle } from "../../../shared/ids.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
@@ -543,6 +544,8 @@ export class InventoryScreen {
       const q = inv.quality[shown]!;
       if (q > 0 && !info.startsWith(QUALITY_NAMES[q]!)) info = `${QUALITY_NAMES[q]} ${info}`;
       if ((inv.flags[shown]! & FLAG_BLUEPRINT) !== 0) info = blueprintInfo(reg, item, q);
+      // A soul ball says what it holds and the charge it has left (client/core/balls.ts).
+      if (reg.ballFull[item] !== 0 || reg.ballEmpty[item] !== 0) info = ballInfo(reg, item, session.kept[shownBox === BOX_OPEN ? 1 : 0]!.get(shown), spoil, tick);
     }
     // A picked-up blueprint can be made from, in the bag or in the station it belongs to.
     const deploy = this.onDeploy && this.heldBox === BOX_SELF && this.held >= 0 && heldInv && reg.vehicleDeploy[heldInv.item[this.held]!] && !(heldInv.flags[this.held]! & FLAG_BLUEPRINT);

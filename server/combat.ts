@@ -209,6 +209,8 @@ export class Combat {
   onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
   /** A thrown item left `c`'s hand. `draw` is how long a charged throw was held, 0 to 1, and 1 for any other. */
   onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number, draw: number) => void) | null = null;
+  /** The strike of a click with the soul ball in `slot` of `rec` in hand. */
+  onBall: ((c: Client, rec: EntityRecord, slot: number) => void) | null = null;
   /** Gives a hit's buff, reading its bola fields (server/entangle.ts). Unset, the buff is given as it is. `by` is a pid or 0. */
   entangle: ((victim: EntityRecord, buff: number, by: number) => void) | null = null;
   /** Hits landed on structures. `lastStructure` holds the last one, and its `left` is 0 if the structure is gone. */
@@ -523,6 +525,11 @@ export class Combat {
     if (!rec) return;
     const slot = this.heldSlot(rec);
     const inv = items.inv(rec);
+    // A soul ball's click keeps or looses a tame, and the ball stays in the hand (server/balls.ts).
+    if (slot >= 0 && (world.reg.ballFull[inv.item[slot]!] !== 0 || world.reg.ballEmpty[inv.item[slot]!] !== 0)) {
+      this.onBall?.(c, rec, slot);
+      return;
+    }
     if (slot >= 0 && world.reg.weapon[inv.item[slot]!]?.kind === W_THROWN) {
       this.throwIt(c, rec, slot);
       return;

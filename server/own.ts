@@ -3,7 +3,7 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import { fitBytes, type BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, OWN_KEPT, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CREATIVE, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { FLAG_BLUEPRINT, FLAG_ISSUED, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -111,6 +111,29 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
   ctx.game.endOwn(c);
 }
 
+/**
+ * Sends the tames kept in the soul balls of `inv` (OWN_KEPT), whole, if it holds one or `told` says the session was last
+ * told of one. Returns whether it holds one now. Call after the box's slots are sent.
+ */
+function sendKept(ctx: OwnContext, c: Client, box: number, inv: Inventory, told: boolean): boolean {
+  const reg = ctx.world.reg;
+  const slots: number[] = [];
+  for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0 && reg.ballEmpty[inv.item[s]!] !== 0 && ctx.records.byPid.get(inv.refOf(s))?.stored) slots.push(s);
+  if (slots.length === 0 && !told) return false;
+  const w = ctx.game.beginOwn(OWN_KEPT);
+  w.bits(box, 1);
+  w.varint(slots.length);
+  for (const s of slots) {
+    const tame = ctx.records.byPid.get(inv.refOf(s))!;
+    w.varint(s);
+    w.u16(tame.kind);
+    w.u16(tame.genome ? tame.genome.level : 1);
+    w.string(tame.name);
+  }
+  ctx.game.endOwn(c);
+  return slots.length > 0;
+}
+
 export function syncOwn(ctx: OwnContext, c: Client): void {
   const rec = ctx.records.byPid.get(c.pid);
   if (!rec) return;
@@ -137,6 +160,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
   if (inv.version !== c.sentInv) {
     sendSlots(ctx, c, BOX_SELF, inv, c.sentInv, c.sentInv < 0);
     c.sentInv = inv.version;
+    c.sentKept = sendKept(ctx, c, BOX_SELF, inv, c.sentKept);
     // The load changes how the body moves, and others see its gear.
     if (c.ent >= 0) ctx.refresh(rec);
   }
@@ -264,8 +288,11 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
   if (open) {
     const box = ctx.items.inv(open);
     if (box.version !== c.sentOpenVersion) {
-      sendSlots(ctx, c, BOX_OPEN, box, c.sentOpenVersion, c.sentOpenVersion < 0);
+      // A box newly opened was told nothing of yet, and the client forgot what the last one held.
+      const fresh = c.sentOpenVersion < 0;
+      sendSlots(ctx, c, BOX_OPEN, box, c.sentOpenVersion, fresh);
       c.sentOpenVersion = box.version;
+      c.sentKeptOpen = sendKept(ctx, c, BOX_OPEN, box, c.sentKeptOpen && !fresh);
     }
   }
   // An open station's queue follows its slots.

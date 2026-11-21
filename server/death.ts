@@ -503,6 +503,8 @@ export class Death {
 
   /** A built container asks keepsBuilt. A creature that is awake asks canOpen. Anything else lying open is anyone's. */
   private allowed(c: Client, box: EntityRecord): boolean {
+    // A tame kept in a soul ball has no body, and is not a thing lying open.
+    if (box.stored !== 0) return false;
     if (box.at >= 0) return this.keepsBuilt?.(c, box.at) ?? true;
     const e = this.ctx.records.entOf.get(box.pid);
     if (e !== undefined && this.isBoat(e)) return this.keepsBoatCargo?.(c, e) ?? false;

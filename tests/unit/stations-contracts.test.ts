@@ -32,13 +32,15 @@ const id = (r: Registry, name: string): number => r.index.get(name.includes(":")
 
 test("protocol 17 and record format 7 are the stations wave's, and it took no command, own component, event, saved component or deadline", () => {
   // 16 is the flyers', and 18, after this wave's 17, the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([38, 16]);
+  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([39, 16]);
   // 19 adds rotorcraft state and CMD_VEHICLE (32), 22 CMD_STATICS (33), 25 CMD_CORPSE (34), 34 CMD_CLOCK (35), 35 the ticks given up in a snapshot, 36 a late input's buttons carried, 37 a survivor's emote and CMD_EMOTE (36).
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([36, 16, 7, 10]);
+  // 39 is the soul balls': OWN_KEPT (17), EVENT_BALL (8), and the saved mark of a tame kept in one (COMP_STORED, 25), which a
+  // record not kept does not write (tests/integration/balls.test.ts, tests/unit/creature-save.test.ts).
+  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([36, 17, 8, 10]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
-  expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 24]);
+  expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 25]);
   // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found cars' return.
   const deadlines = readdirSync(join(root, "server")).filter((f) => f.endsWith(".ts")).flatMap((f) => [...readFileSync(join(root, "server", f), "utf8").matchAll(/export const DEADLINE_\w+ = (\d+);/g)].map((m) => Number(m[1])));
   expect([deadlines.sort((a, b) => a - b), DEADLINE_FIRE, DEADLINE_CRAFT]).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15], 6, 4]);
@@ -85,11 +87,17 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   const both = [...forge, ...fabricator].sort((a, b) => a - b);
   expect([reg.stationBase[id(reg, "campfire")], reg.stationBase[id(reg, "campfire_lit")], reg.stationBase[id(reg, "mortar")], reg.stationBase[id(reg, "stone")]]).toEqual([id(reg, "campfire"), id(reg, "campfire"), id(reg, "mortar"), 0]);
   const bin = [id(reg, "preserving_bin"), id(reg, "preserving_bin_lit")];
-  expect(structures.filter((k) => k !== id(reg, "campfire_lit") && k !== forge[1] && k !== fabricator[1] && k !== bin[1] && reg.stationBase[k] !== k)).toEqual([]);
+  // The soul vault (content/items/balls.ts): gasoline alone, an hour a piece; it makes and cooks nothing, keeps food no
+  // longer, and is not powered, having no jobs. Its burning kind alone holds a charge (Registry.charges).
+  const vault = [id(reg, "soul_vault"), id(reg, "soul_vault_lit")];
+  expect(structures.filter((k) => k !== id(reg, "campfire_lit") && k !== forge[1] && k !== fabricator[1] && k !== bin[1] && k !== vault[1] && reg.stationBase[k] !== k)).toEqual([]);
   const byIndex = (ks: number[]): number[] => [...ks].sort((a, b) => a - b);
   // S2's fabricator: gasoline alone, powered, not lit under water, and it cooks nothing (stations-plan.md, S2).
   // S3's preserving bin: sparkpowder alone, half an hour a piece (Preserving Bin), and it cooks nothing.
-  expect(reg.stationFuel.flatMap((t, k) => (t === null ? [] : [k]))).toEqual(byIndex([...fabricator, ...bin]));
+  expect(reg.stationFuel.flatMap((t, k) => (t === null ? [] : [k]))).toEqual(byIndex([...fabricator, ...bin, ...vault]));
+  expect([reg.stationFuel[vault[0]!]![id(reg, "gasoline")], reg.stationFuel[vault[0]!]!.filter((v) => v !== 0).length]).toEqual([3600 * TICK_RATE, 1]);
+  expect(vault.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.structKeeps[k], reg.keeps[k], reg.powered[k], reg.dry[k], reg.charges[k]])).toEqual([[vault[0], 0, 1, 1, 0, 1, 0], [vault[0], 0, 1, 1, 0, 1, 1]]);
+  expect(structures.filter((k) => reg.charges[k] !== 0)).toEqual([vault[1]!]);
   expect(structures.filter((k) => reg.structKeeps[k] !== 1 || reg.powered[k] !== 0)).toEqual(byIndex([...fabricator, bin[1]!]));
   expect(fabricator.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.powered[k], reg.dry[k]])).toEqual(fabricator.map(() => [fabricator[0], 0, 1, 1]));
   expect([reg.stationFuel[bin[0]!]![id(reg, "sparkpowder")], reg.stationFuel[bin[0]!]!.filter((v) => v !== 0).length]).toEqual([1800 * TICK_RATE, 1]);
@@ -97,7 +105,7 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   expect(bin.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.structKeeps[k], reg.keeps[k], reg.powered[k], reg.dry[k]])).toEqual([[bin[0], 0, 1, 1, 0, 0], [bin[0], 0, 10, 10, 0, 0]]);
   // S1's forge: it burns every item's own fuel, is not powered, is dry and does not cook; the ingot and gasoline are fired
   // at it, and wood leaves charcoal. Since S6 the preserving bin makes both jerkies (tests/unit/ark-stations.test.ts).
-  expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([byIndex([...both, ...bin]), both]);
+  expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([byIndex([...both, ...bin, ...vault]), byIndex([...both, ...vault])]);
   expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"], ["core:jerky", "core:preserving_bin"], ["core:jerky_prime", "core:preserving_bin"]], [["core:wood", "core:charcoal"]]]);
   // Sparkpowder is made at the mortar, as before, and since S6 the narcotic, cementing paste and gunpowder (tests/unit/ark-stations.test.ts).
   expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]).sort()]).toEqual([id(reg, "mortar"), ["core:gunpowder", "core:narcotic", "core:paste", "core:sparkpowder"]]);

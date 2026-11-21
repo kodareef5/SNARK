@@ -84,7 +84,16 @@ export interface ItemTable {
   readonly spoilTicks: Uint32Array;
   /** The armor slot an item is worn in (0 to 4), or -1 for anything not worn. */
   readonly wearSlot: Int8Array;
+  /**
+   * 1 for an item whose spoil clock is a charge, as a full soul ball's is (planning/workstreams/soul-ball.md). A charge
+   * is not stretched by where it lies (`Inventory.keep`); an inventory that `charges` holds it full, at CHARGED; and
+   * taken out of one it runs down from full. Absent, no item is one.
+   */
+  readonly charge?: Uint8Array;
 }
+
+/** The clock of a charge held full: the last tick a clock can name, which never comes. */
+export const CHARGED = 0xffffffff;
 
 export class Inventory {
   readonly cap: number;
@@ -113,6 +122,8 @@ export class Inventory {
   version = 0;
   /** How many times as long things keep here before they spoil. Whoever holds the inventory sets it (server/items.ts). */
   keep = 1;
+  /** Whether a charge (ItemTable.charge) is held full here, as in a burning soul vault. Set as `keep` is. */
+  charges = false;
   /**
    * For an item that is one of a kind (a fertilised egg): the record it stands for, by pid, or 0. Such an item stacks to 1,
    * moves with its slot and is never sent. Null until a slot has one.
@@ -249,7 +260,7 @@ export class Inventory {
     if (t.stack[item] === 0) return n;
     const stack = stackOf(item, flags, t);
     const spoil = flags !== 0 ? 0 : t.spoilTicks[item]!;
-    const clock = spoil === 0 ? 0 : spoilAt > 0 ? spoilAt : clock32(now + Math.round(spoil * this.keep));
+    const clock = spoil === 0 ? 0 : t.charge?.[item] === 1 ? this.chargeFrom(spoilAt, now, spoil) : spoilAt > 0 ? spoilAt : clock32(now + Math.round(spoil * this.keep));
     if (stack > 1) {
       for (let s = 0; s < this.bag && n > 0; s++) {
         if (this.item[s] !== item || this.quality[s] !== quality || this.flags[s] !== flags) continue;
@@ -268,6 +279,14 @@ export class Inventory {
       n -= fit;
     }
     return n;
+  }
+
+  /**
+   * The clock a charge of `spoil` ticks has here, coming with the clock `at` (0 for a new one): held full where this
+   * inventory charges, running down from full where it comes new or from being held, and otherwise as it was.
+   */
+  chargeFrom(at: number, now: number, spoil: number): number {
+    return this.charges ? CHARGED : at === 0 || at === CHARGED ? clock32(now + spoil) : at;
   }
 
   /** The first empty bag slot, or -1. */
@@ -298,7 +317,7 @@ export class Inventory {
       const at = this.spoilAt[s]!;
       if (at === 0 || at > now || this.item[s] === 0) continue;
       const item = this.item[s]!;
-      const interval = Math.round(t.spoilTicks[item]! * this.keep) || 1;
+      const interval = Math.round(t.spoilTicks[item]! * (t.charge?.[item] === 1 ? 1 : this.keep)) || 1;
       const gone = Math.min(this.count[s]!, 1 + Math.floor((now - at) / interval));
       lost(item, gone, this.refOf(s), at);
       if (gone === this.count[s]) this.set(s, 0, 0, 0, 0, 0);
@@ -331,6 +350,17 @@ export function carried(at: number, now: number, from: number, to: number): numb
 }
 
 /**
+ * The clock the stack in slot `sa` of `a` has once it lies in `b`: scaled by how the two keep things, or, for a charge,
+ * held full where `b` charges and run down from full where it leaves `a` that did.
+ */
+export function clockMoved(a: Inventory, sa: number, b: Inventory, now: number, t: ItemTable): number {
+  const at = a.spoilAt[sa]!;
+  const item = a.item[sa]!;
+  if (at !== 0 && t.charge?.[item] === 1) return b.chargeFrom(a.charges ? CHARGED : at, now, t.spoilTicks[item]!);
+  return carried(at, now, a.keep, b.keep);
+}
+
+/**
  * Moves up to `n` items (0 means the whole stack) into an empty slot or onto a matching stack. A whole stack moved onto a
  * different item swaps with it. Returns how many moved. 0 means the move was refused and nothing changed. `now` is needed
  * only between inventories that keep things for different times.
@@ -346,7 +376,7 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   const flags = a.flags[sa]! & ~FLAG_ON;
   // An armor slot takes only its own kind of piece, and an item swapped back must fit its slot too.
   if (!fitsSlot(b, sb, item, t, flags) || (other !== 0 && (other !== item || b.flags[sb] !== flags) && !fitsSlot(a, sa, other, t, b.flags[sb]!))) return 0;
-  const sp = carried(a.spoilAt[sa]!, now, a.keep, b.keep);
+  const sp = clockMoved(a, sa, b, now, t);
   const ref = a.refOf(sa);
   if (other === 0) {
     b.set(sb, item, n, a.quality[sa]!, a.dur[sa]!, sp, flags);
@@ -376,7 +406,7 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   const loaded = a.loaded[sa]!;
   const attach = a.attach[sa]!;
   const otherRef = b.refOf(sb);
-  a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, carried(b.spoilAt[sb]!, now, b.keep, a.keep), b.flags[sb]! & ~FLAG_ON);
+  a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, clockMoved(b, sb, a, now, t), b.flags[sb]! & ~FLAG_ON);
   a.setGear(sa, b.ammo[sb]!, b.loaded[sb]!, b.attach[sb]!);
   a.setRef(sa, otherRef);
   b.set(sb, item, have, q, d, sp, flags);

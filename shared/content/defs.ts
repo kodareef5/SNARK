@@ -431,6 +431,11 @@ export interface StructureDef extends Named {
    */
   readonly keeps?: number;
   /**
+   * It holds a charge full while this is its kind (ItemDef.charge): a soul vault's lit kind only, so a full soul ball in
+   * it loses nothing while it burns, and runs down from full from the tick it goes out (Items.rekeep).
+   */
+  readonly charges?: boolean;
+  /**
    * Its jobs run only while it burns (M5): no job is taken while it is out, and a unit under way when it goes out waits with
    * its ticks left (Job.rest) until it is lit again. Both kinds of a lit pair say it.
    */
@@ -450,7 +455,7 @@ export interface MaterialDef extends Named {
 
 export interface ItemDef extends Named {
   readonly type: "item";
-  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact";
+  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact" | "ball";
   readonly id: string;
   /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
@@ -516,6 +521,17 @@ export interface ItemDef extends Named {
   readonly blueprint?: boolean;
   /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
   readonly use?: UseFacet;
+  /**
+   * A soul ball (planning/workstreams/soul-ball.md): on the empty one, `full` names the item it becomes when a tame is
+   * kept in it; on the full one, `empty` names the item it is again once the tame is loosed or lost. A full one stands
+   * for its tame's record (Inventory.ref) and stacks to 1.
+   */
+  readonly ball?: { readonly full?: string; readonly empty?: string };
+  /**
+   * Its spoil clock is a charge: where it lies does not stretch it (a structure's `keeps`), a structure that `charges`
+   * holds it full, and taken out of one it runs down from full. Only an item that spoils and stacks to 1 has one.
+   */
+  readonly charge?: boolean;
   /**
    * False for a thing that may not leave its server, as ARK's Element, tributes and boss trophies may not: a survivor carrying
    * one is refused travel until it puts it down (ark.wiki.gg CrossARK Transfers, 2026-11-15). Omitted, it travels.
