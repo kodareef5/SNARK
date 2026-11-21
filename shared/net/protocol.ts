@@ -79,8 +79,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 39: the glider on the owner's body (the grade carried, open or not, and its keys as last sampled), behind one bit; under an
  * open glider CUE_JET is set and the motion bits' mode field holds ANIM_GLIDE and the phase (planning/workstreams/glider.md).
  * 40: the tames kept in a box's soul balls (OWN_KEPT), and a tame going into or coming out of one (EVENT_BALL).
+ * 41: supply drops (planning/workstreams/supply.md): OWN_OPEN says what kind of box is open (OPEN_TAKE_ONLY), and S_SUPPLY
+ * tells every session the drops that are live.
  */
-export const PROTOCOL_VERSION = 40;
+export const PROTOCOL_VERSION = 41;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -479,8 +481,13 @@ export const SLOT_BLUEPRINT = 1;
  */
 export const SLOT_ON = 2;
 
-/** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
+/**
+ * open 1 bit, and if open: capacity varint, name string, and since protocol 41 flags u8 (OPEN_ bits). Its slots follow as
+ * OWN_SLOTS for the open box.
+ */
 export const OWN_OPEN = 4;
+/** The open box is only taken from (a supply drop's capsule): the client offers no way to put a stack in. */
+export const OPEN_TAKE_ONLY = 1;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
 export const OWN_MARKERS = 5;
 /**

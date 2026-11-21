@@ -15,6 +15,7 @@ export const LEFT_OUT = {
   unmade: "road paving, which nothing makes or learns",
   remains: "what bodies and dropped things lie in on the ground",
   flight: "things in flight (a thrown grenade, a fired flare, an arrow where it fell, a grenade's cloud)",
+  capsule: "the supply drop's capsule, until drops have a page of their own",
   loot: "loot and crates, which nothing in the world opens yet",
   damage: "damage types, which each figure names",
   game: "what a game names once, which code finds by id",
@@ -77,7 +78,7 @@ export const RULINGS: Readonly<Record<string, Rule>> = {
   "prop/container": out("remains"),
   "prop/projectile": out("flight"),
   "prop/cloud": out("flight"),
-  "prop/crate": out("loot"),
+  "prop/crate": out("capsule"),
   damage: out("damage"),
   loot: out("loot"),
   // A spawn table is the regions each creature is kept in, on each map's page.

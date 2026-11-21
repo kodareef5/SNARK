@@ -10,8 +10,8 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 46 classes: 33 built, 5 partly built, and 8 stubs that
-wait for a feature. The core pack holds 1779 definitions.
+There are 46 classes: 34 built, 5 partly built, and 7 stubs that
+wait for a feature. The core pack holds 1780 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -234,14 +234,14 @@ Packs may add to: `yields`.
 | `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 3 |
 | `prop/egg` | a laid or dropped egg, fertilised or not | built | `mesh`, `color`, `radius`, `height` | `size`, `item`, `fertile` | 10 |
 | `prop/cloud` | the gas and smoke actors of grenades | built | `mesh`, `color`, `radius`, `height` |  | 2 |
-| `prop/crate` | SupplyCrate_ | stub: loot | `mesh`, `color`, `radius`, `height` | `slots` | 0 |
+| `prop/crate` | SupplyCrate_ | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 1 |
 
 - **`prop`** on shelf `props`. Stands in the world and neither moves nor lives.
 - **`prop/container`** on shelf `props/containers`. Holds what was dropped or left by the dead.
 - **`prop/projectile`** on shelf `props/projectiles`. Something loosed or thrown, where it lies. How it flies is on the ammunition.
 - **`prop/egg`** on shelf `props/eggs`. An egg where it lies: taken up as its item, and hatching where it lies if fertilised.
 - **`prop/cloud`** on shelf `props/clouds`. Smoke or gas that stays where a grenade burst, as far as its radius and as high as its height, for its grenade's seconds, giving its buff to the survivors inside it every half second (server/clouds.ts). It has no body, and is drawn as puffs over that reach (client/core/render/clouds.ts); its mesh is not drawn.
-- **`prop/crate`** on shelf `props/crates`. Comes down with loot and goes when it is emptied.
+- **`prop/crate`** on shelf `props/crates`. A supply drop's capsule where it landed: it holds what was rolled for it, is only ever taken from, and goes when it is emptied or its time is up (server/supply.ts).
 
 Asset slots:
 
@@ -353,7 +353,7 @@ built.
 
 - **Taming bonuses in a tame's stats, passive taming, mate boost, unfertilised eggs.** `species.tameBonus`, `species.tamedHealth`.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
-- **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot` (partly built), `species.loot`.
+- **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `loot` (partly built), `species.loot`.
 - **Flyers.** `species.grab`, `species.missiles`, `species.structures`.
 - **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
 - **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
@@ -426,6 +426,8 @@ built.
 **`prop/egg`** (10): egg_dodo, egg_parasaur, egg_pteranodon, egg_raptor, egg_trike, egg_stego, egg_carbonemys, egg_rex, egg_spino, egg_brachio.
 
 **`prop/cloud`** (2): cloud_smoke, cloud_poison.
+
+**`prop/crate`** (1): supply_capsule.
 
 **`buff`** (13): mending, entangled, entangle_spent, poisoned, ball_chill, ball_sick, burning, tranquilized, drugged, stunned, injured, fed, god.
 

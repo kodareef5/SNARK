@@ -53,6 +53,7 @@ import {
   OWN_LOOK,
   OWN_MARKERS,
   OWN_OPEN,
+  OPEN_TAKE_ONLY,
   OWN_STATION,
   OWN_PROGRESSION,
   OWN_RESPAWN,
@@ -493,7 +494,7 @@ export class ClientSession {
   /** What the server tells of the creature the survivor looks at (OWN_OVERHEAD), or null. Shares are 0 to 1, or -1 where it tells nothing. */
   looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
-  open: { name: string; inventory: Inventory } | null = null;
+  open: { name: string; inventory: Inventory; takeOnly: boolean } | null = null;
   /** The tames kept in the soul balls of the own inventory and of the open box, by slot (OWN_KEPT). */
   readonly kept: [Map<number, Kept>, Map<number, Kept>] = [new Map(), new Map()];
   /**
@@ -1466,7 +1467,8 @@ export class ClientSession {
       else {
         const cap = r.varint();
         const name = r.string(64);
-        if (!r.overflow) this.open = { name, inventory: new Inventory(cap) };
+        const flags = r.u8();
+        if (!r.overflow) this.open = { name, inventory: new Inventory(cap), takeOnly: (flags & OPEN_TAKE_ONLY) !== 0 };
       }
     } else if (component === OWN_MARKERS) {
       const count = r.u8();

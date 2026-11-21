@@ -443,6 +443,10 @@ const ALL: readonly Def[] = [
   { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // Holds items dropped on the ground.
   { type: "prop", class: "container", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
+  // A supply drop's capsule where it landed (planning/workstreams/supply.md): what a survivor looks at and opens. The
+  // client draws the capsule, its shaft and its landing from the list of drops it is sent, and passes this over. Its 60
+  // slots are CAPSULE_SLOTS of shared/supply/book.ts, which the starter book's fullest roll fits with room.
+  { type: "prop", class: "crate", id: "core:supply_capsule", mesh: "box", color: 10, radius: 0.7, height: 2.2, slots: 60 },
   // A flame arrow's burn: "approximately 22 damage per second to players" for 8 seconds (ark.wiki.gg, Flame Arrow,
   // 2026-11-15), as fire, so a body takes its own share of it. ARK's grows with the creature's size (DEV28).
   { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -22, damage: "fire" },

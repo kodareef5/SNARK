@@ -1569,7 +1569,7 @@ if (import.meta.main) {
         const needs = view.reg.recipeOf[item]!;
         for (let k = 0; k + 1 < needs.length && free < slots.cap; k += 2) if (slots.total(needs[k]!) === 0) slots.set(free++, needs[k]!, Math.min(view.reg.stack[needs[k]!]!, needs[k + 1]! * 3), 0, 0, 0);
       }
-      session.open = { name: stationId.slice(stationId.indexOf(":") + 1).replace(/_/g, " "), inventory: slots };
+      session.open = { name: stationId.slice(stationId.indexOf(":") + 1).replace(/_/g, " "), inventory: slots, takeOnly: false };
       session.station = { kind, ref: 0, out: view.reg.burning[kind] === 1 ? session.serverTick + 900 * TICK_RATE : 0, lanes: [], jobs: [] };
       session.progress.engrams.push(...view.reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : [])));
       session.progress.level = 100;

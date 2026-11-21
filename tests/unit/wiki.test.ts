@@ -121,7 +121,7 @@ test("every class of definition is ruled on: each has its entry, is shown within
     else if ("within" in ruling) expect([def.id, ids.has(ruling.within) || pages.has(ruling.within)]).toEqual([def.id, true]);
   }
   for (const l of LANDMARKS) expect(ids.has(l.name)).toBe(true);
-  expect(leftOut(rulings).map((l) => l.why)).toEqual(["scenery", "form", "standIn", "target", "unmade", "remains", "flight", "noFile"]);
+  expect(leftOut(rulings).map((l) => l.why)).toEqual(["scenery", "form", "standIn", "target", "unmade", "remains", "flight", "capsule", "noFile"]);
   expect(leftOut(rulings).find((l) => l.why === "noFile")!.names).toEqual(["Tampa", "San Francisco", "Los Angeles"]);
   expect(() => coverage({ defs: [{ type: "prop", class: "seat", id: "wiki:chair" } as unknown as Def], landmarks: [], has: () => true, maps: new Set() })).toThrow("no ruling on prop/seat");
 });

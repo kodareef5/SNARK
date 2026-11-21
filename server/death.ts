@@ -28,7 +28,7 @@ export const OP_DEATH = 3;
 export const CACHE_TICKS = 15 * 60 * TICK_RATE;
 export const BAG_TICKS = 2 * 60 * TICK_RATE;
 /** Places in the entity store a dropped bag may not take. */
-const STORE_RESERVE = 256;
+export const STORE_RESERVE = 256;
 /** Bags and spill caches one survivor may have lying at once. */
 const LYING_MOST = 12;
 export const MAX_MARKERS = 5;
@@ -70,6 +70,15 @@ export class Death {
   offMount: ((c: Client) => void) | null = null;
   onRide: ((c: Client, e: number) => number) | null = null;
   onShut: ((rec: EntityRecord) => void) | null = null;
+  /**
+   * Why `c` may not open the thing lying there, or "": a rule of the game's own, asked at every use (a supply drop's
+   * level, server/supply.ts). It is not a `container.open` handler: the bus is the modules', and switches one off that fails.
+   */
+  gate: ((c: Client, box: EntityRecord) => string) | null = null;
+  /** `c` opened `box`. */
+  onOpened: ((c: Client, box: EntityRecord) => void) | null = null;
+  /** `box` is about to be removed: emptied, out of time, or cleared away. Its record is still whole. */
+  onRemoved: ((box: EntityRecord) => void) | null = null;
   /** Where a creature's body goes when it dies. Without it the creature leaves a cache of what it carried. */
   corpses: Corpses | null = null;
   /** Ref of the structure the last target() call hit, or -1. */
@@ -480,6 +489,7 @@ export class Death {
   remove(cache: EntityRecord): void {
     const { world, records, items, game } = this.ctx;
     for (const c of game.clients) if (c?.open === cache.pid) this.close(c);
+    this.onRemoved?.(cache);
     if (cache.inv) items.burnAll(cache);
     const e = records.entOf.get(cache.pid);
     if (e !== undefined) world.ents.destroy(e);
@@ -508,6 +518,7 @@ export class Death {
     if (box.at >= 0) return this.keepsBuilt?.(c, box.at) ?? true;
     const e = this.ctx.records.entOf.get(box.pid);
     if (e !== undefined && this.isBoat(e)) return this.keepsBoatCargo?.(c, e) ?? false;
+    if (e !== undefined && (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 && this.gate && this.gate(c, box) !== "") return false;
     if (e === undefined || (this.ctx.world.ents.flags[e]! & F_PROP) !== 0 || box.out) return true;
     return this.canOpen?.(c, box) ?? false;
   }
@@ -621,7 +632,12 @@ export class Death {
     const pid = hit >= 0 && there?.egg == null && ((ents.flags[hit]! & F_PROP) !== 0 || (there !== undefined && there.keyHash === null && (there.out || (this.canOpen?.(c, there) ?? false)))) ? ents.pid[hit]! : 0;
     const box = pid !== 0 ? there : undefined;
     if (box && c.open !== pid) {
-      if (this.ctx.game.mayOpen(c, pid)) c.open = pid;
+      const why = (ents.flags[hit]! & F_PROP) !== 0 && this.gate ? this.gate(c, box) : "";
+      if (why !== "") this.ctx.game.sendText(c, TEXT_NOTICE, why);
+      else if (this.ctx.game.mayOpen(c, pid)) {
+        c.open = pid;
+        this.onOpened?.(c, box);
+      }
       return;
     }
     // A structure with nothing in front of it, such as a door or a box. A refusal code is sent to the session.
