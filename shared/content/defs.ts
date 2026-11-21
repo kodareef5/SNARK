@@ -390,6 +390,11 @@ export interface StructureDef extends Named {
    * scenery of many alike that a heavy mesh draws, a marina's moored hulls, finest only close by.
    */
   readonly coarse?: number;
+  /**
+   * Fixed palette colours of its mesh's colour regions after the first, which `color` gives: up to five, as a moored hull
+   * takes its vessel's stripe and upholstery. Without it those regions draw as the missing colour.
+   */
+  readonly colors?: readonly number[];
   /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
   readonly half: readonly [number, number, number];
   /** A shape id, if it is more than one box or not centred on its origin. `half` must equal the box that holds the shape. */

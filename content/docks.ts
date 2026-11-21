@@ -91,6 +91,8 @@ export const MOORED_PAINTS: Readonly<Record<string, readonly (readonly [number, 
   for (const c of own) rows.set(c, (rows.get(c) ?? 0) + (c === own[0] ? 2 : 1));
   return [s.id, [...rows.entries()]];
 }));
+/** A vessel's colours past its paint, its stripe, seats and so on: each region's likeliest, or 0 for a region it has not. */
+const TRIMS = new Map([BOAT_SPECIES, ...MARINE_FLEET].map((s) => [s.id, s.regions!.slice(1, 6).map((r) => (r ? [...r.colors].sort((a, b) => b[1] - a[1])[0]![0] : 0))]));
 /** How many times farther off a moored hull's levels are chosen than a found vessel's (StructureDef.coarse). */
 export const MOORED_COARSE = 3;
 /** The static of a vessel moored in a paint. */
@@ -106,6 +108,8 @@ const LAUNCH_SHAPE: ShapeDef = { type: "shape", id: "core:zzzzhullshape_boat", r
 const MOORED: readonly StructureDef[] = [{ id: BOAT_SPECIES.id, shape: LAUNCH_SHAPE.id, boxes: LAUNCH_SHAPE.boxes }, ...MARINE_MODELS.map((m) => ({ id: m.id, shape: hulkOf(m.id).replace("core:", "core:shape_"), boxes: hulkBoxes(m.boxes) }))]
   .flatMap(({ id, shape, boxes }) => MOORED_PAINTS[id]!.map(([paint]): StructureDef => ({
     type: "structure", class: "static", id: mooredKind(id, paint), mesh: id, shape, half: shapeHalf(boxes), color: paint, hp: 8000, material: "core:mat_metal",
+    // Its stripe and seats as its vessel has them; a region it has not, in its paint.
+    colors: TRIMS.get(id)!.map((c) => c || paint),
     // A marina holds many: its hulls take their coarser levels at a third of the distance a found vessel does, so only
     // those near are textured, still within half a pixel of the finest (client/core/render/scene.ts).
     coarse: MOORED_COARSE,
