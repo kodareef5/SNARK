@@ -89,7 +89,7 @@ may change a setting without a restart.
 
 | Setting | Default | What it does | While running |
 | --- | --- | --- | --- |
-| `Message` | none | Said to each survivor who joins. \n begins a new line. | no |
+| `Message` | `Welcome to SNARK. Press Enter to chat.` | Said in the chat box to each survivor who joins, from when it is in the world. \n begins a new line. | no |
 | `Duration` | 20 | Seconds it is shown. | no; clients are told |
 
 ### GameUserSettings.ini `[/Script/Engine.GameSession]`

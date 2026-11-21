@@ -254,6 +254,8 @@ export class App {
   private eye = -1;
   private helicopterViewHost = -1;
   private readonly aim = [0, 0, 0];
+  /** Whether the survivor was on its own feet last frame, to know the frame it rises or gets out of a vehicle, a seat or a saddle. */
+  private wasOnFoot = false;
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
   /** The session's registry. It is content as written until the welcome, then as the server tuned it. */
@@ -538,7 +540,11 @@ export class App {
       return true;
     }
     if (code === "KeyV") {
-      if (down && !repeat && this.session.thirdPerson) this.view.thirdPerson = !this.view.thirdPerson;
+      // On foot the choice is kept (Settings.thirdPerson). In a helicopter or a boat V picks the cockpit or the chase view, for that ride only.
+      if (down && !repeat && this.session.thirdPerson) {
+        this.view.thirdPerson = !this.view.thirdPerson;
+        if (this.wasOnFoot) { this.ui.settings.thirdPerson = this.view.thirdPerson; this.ui.settings.changed(); }
+      }
       return true;
     }
     // Arms round a creature do not lie down with it.
@@ -1238,6 +1244,11 @@ export class App {
     this.orbitFree = alive && session.thirdPerson && subject !== -1;
     if (!this.orbitFree) this.orbit.set(false);
     if (!alive || car || (session.driving < 0 && (!chase || passengerFullAttitude))) this.mountCamera.reset();
+    // On foot the view is the one the player chose: from behind unless it chose the eye (Settings.thirdPerson). A survivor
+    // rises in it, and comes back to it out of a vehicle, a seat or a saddle, whose views are their own.
+    const onFoot = alive && session.driving < 0 && !passenger;
+    if (onFoot && !this.wasOnFoot) this.view.thirdPerson = this.ui.settings.thirdPerson;
+    this.wasOnFoot = onFoot;
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.

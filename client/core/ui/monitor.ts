@@ -49,7 +49,7 @@ const RATE_LABEL_W = 50;
 /** The strip's chart well's height, and the gap over it. */
 export const STRIP_CHART_H = 30;
 const CHART_GAP = 4;
-/** A canvas narrower than this is a phone upright's by touch, where the HUD's column is no wider than the strip (ui/hud.ts). */
+/** A canvas narrower than this is a phone upright's, or a window as narrow, where the HUD's column is no wider than the strip (ui/hud.ts). */
 const NARROW = 640;
 /** The readout's three lines over the strip, and the gap under them (ui/hud.ts). */
 const READOUT_H = 3 * LINE + 4;
@@ -133,7 +133,7 @@ export class Monitor {
   private alone = false;
   private lookLine = false;
   private charted = true;
-  /** By touch on a phone upright, it stands across the canvas under the minimap, at `y`, not in the HUD's column. */
+  /** On a phone upright, or a window as narrow, it stands across the canvas under the minimap, at `y`, not in the HUD's column. */
   private belowMap = false;
   private y = 0;
   private readonly box: ChartBox = { x: 0, y: 0, w: 0, h: 0, column: 1 };
@@ -155,40 +155,52 @@ export class Monitor {
     return this.frozen ? this.still : this.live;
   }
 
-  /** Tells the HUD the room the strip takes, before the HUD is built; while the panel is open, none, and the readout gives way to the panel. */
-  reserve(f: UiFrame, hud: HudModel, plan: TouchPlan | null): void {
+  /**
+   * Tells the HUD the room the strip takes, before the HUD is built; while the panel is open, none, and the readout gives
+   * way to the panel. `room` is what the HUD gives it (ui/hud.ts stripRoom): the top of its column, the minimap's side
+   * (0 while hidden), and the room the panel under the minimap (a vehicle's instruments, the jet fuel) needs under the strip.
+   */
+  reserve(f: UiFrame, hud: HudModel, plan: TouchPlan | null, room: { top: number; map: number; below: number }): void {
     const touch = plan !== null;
     this.x = f.left + MARGIN;
     this.w = Math.min(STRIP_W, f.width - f.right - MARGIN - this.x);
     this.belowMap = false;
+    hud.stripFoot = 0;
     if (this.open) {
       hud.stripAlone = true;
       hud.stripH = 0;
       return;
     }
-    // By touch on a phone upright it stands across the canvas, under the minimap and its clock and under the readout left
-    // of the minimap; elsewhere in the HUD's column under the readout. Where that would come down to the crosshair, or
-    // by touch to where the stick rests over the hotbar, it stands in the readout's place, then without its chart, then
-    // without the line of what is looked at.
-    this.belowMap = touch && f.width < NARROW;
+    // On a phone upright, or a window as narrow, it stands across the canvas, under the minimap and its clock and under
+    // the readout left of the minimap; elsewhere in the HUD's column under the readout. Where that, with the panel under
+    // the minimap under it, would come down to the crosshair, or by touch to where the stick rests over the hotbar, it
+    // stands in the readout's place, then without its chart, then without the line of what is looked at. Where even that
+    // would, it gives way: on a phone on its side under a vehicle's instruments and the offer to unmute, with the readout.
+    this.belowMap = f.width < NARROW;
     this.lined = touch || f.width - f.right - MARGIN - CARD_RIGHT - (f.width / 2 + 24) < CARD_LEAST;
     // Across, its right edge on the minimap frame's, which stands 2 units past the picture (ui/hud.ts).
     if (this.belowMap) this.w = f.width - f.right - MARGIN + 2 - this.x;
-    const top = touch ? plan.stackY : f.top + MARGIN, mapFoot = touch ? f.top + MARGIN + plan.map + 4 + SMALL_LINE + 6 : 0;
-    const limit = Math.min(f.height / 2 - 8, touch ? f.height - f.bottom - STICK_ROOM : f.height);
-    for (let shape = 0; shape < SHAPES.length; shape++) {
+    const top = room.top, mapFoot = room.map > 0 ? f.top + MARGIN + room.map + 4 + SMALL_LINE + 6 : 0;
+    const limit = Math.min(f.height / 2 - 8, touch ? f.height - f.bottom - STICK_ROOM : f.height) - room.below;
+    let fits = false;
+    for (let shape = 0; shape < SHAPES.length && !fits; shape++) {
       const s = SHAPES[shape]!;
+      // Across under the minimap, the readout's place raises the strip only where the readout reaches lower than the minimap.
+      if ((s & ALONE) !== 0 && this.belowMap && top + READOUT_H + 6 <= mapFoot) continue;
       this.charted = (s & CHARTED) !== 0;
       this.alone = (s & ALONE) !== 0;
       this.lookLine = this.lined && (s & LOOKED) !== 0;
       this.h = PAD + (this.lookLine ? 3 : 2) * LINE + 2 + (this.charted ? CHART_GAP + STRIP_CHART_H + AXIS_H : 0);
       const under = top + (this.alone ? 0 : READOUT_H);
       this.y = this.belowMap ? Math.max(mapFoot, under + 6) : under;
-      if (this.y + this.h <= limit) break;
+      fits = this.y + this.h <= limit;
     }
+    // Across, the readout stands left of the minimap, out of the way, and stays.
+    if (!fits) { this.h = 0; this.alone = !this.belowMap; }
     hud.stripAlone = this.alone;
     hud.stripW = this.w;
     hud.stripH = this.belowMap ? 0 : this.h;
+    if (this.belowMap && fits) hud.stripFoot = this.y + this.h;
   }
 
   /** The words, made again where they are older than REFRESH_MS: the card's too while H is held, and by touch the line of what is looked at. */
@@ -220,7 +232,7 @@ export class Monitor {
 
   /** The monitor is off: the HUD leaves no room for it, and the residency tells it nothing, so that it costs nothing. */
   off(hud: HudModel): void {
-    hud.stripH = 0;
+    hud.stripH = hud.stripFoot = 0;
     hud.stripAlone = false;
     const r = this.app.scene?.assets.residency;
     if (r) r.log = null;
@@ -233,7 +245,7 @@ export class Monitor {
 
   /** The strip, where the HUD left room for it, and while H is held the card beside the crosshair. */
   build(f: UiFrame, hud: HudModel, controls: boolean, inspect: boolean, plan: TouchPlan | null, muted = false): void {
-    if (this.open) return;
+    if (this.open || this.h === 0) return;
     const touch = plan !== null;
     // The card's words are made the frame H is pressed, not up to a tenth of a second later.
     if (inspect && !this.inspected) this.refreshNow();
@@ -329,7 +341,8 @@ export class Monitor {
 const RATE_LABELS = ["Network", "Disk", "To card"];
 /**
  * The strip's shapes, tried in turn: with its chart and (by touch) the line of what is looked at, under the readout,
- * then in the readout's place; then without the chart, under it and in its place; then without the line as well.
+ * then in the readout's place; then without the chart, under it and in its place; then without the line as well, under
+ * it and in its place.
  */
 const CHARTED = 1, ALONE = 2, LOOKED = 4;
-const SHAPES = [CHARTED | LOOKED, CHARTED | ALONE | LOOKED, LOOKED, ALONE | LOOKED, ALONE];
+const SHAPES = [CHARTED | LOOKED, CHARTED | ALONE | LOOKED, LOOKED, ALONE | LOOKED, 0, ALONE];

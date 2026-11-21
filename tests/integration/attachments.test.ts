@@ -376,6 +376,8 @@ test("a laser's dot lies where its beam meets the ground or a body, faint far of
 test("in the whole client: N with a laser fitted draws its dot in the middle of the view, and aiming through a scope zooms three times and shows the reticle", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  // From the eye, whose middle is where the gun points: a survivor rises seen from behind unless it chose so.
+  app.ui.settings.thirdPerson = false;
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(600);
   const s = app.session;

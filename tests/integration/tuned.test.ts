@@ -4,7 +4,8 @@
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { CLOSED_BAD_CONTENT, type ClientSession } from "../../client/core/session.ts";
-import { KEY_CHAT_ROW } from "../../client/core/ui/chat.ts";
+import { KEY_CHAT_PANEL, KEY_CHAT_ROW } from "../../client/core/ui/chat.ts";
+import { defaultLook } from "../../shared/anim/look.ts";
 import { KEY_CROSS, KEY_STATUS } from "../../client/core/ui/hud.ts";
 import { contentFor, createHost } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
@@ -13,14 +14,14 @@ import { createProvingWorld } from "../../server/world.ts";
 import type { EngramDef, LevelsDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
-import { CMD_CRAFT, CMD_LEARN, EVENT_HIT, MARKER_DEATH, REJECT_CONTENT, REJECT_PASSWORD, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
+import { CMD_CRAFT, CMD_LEARN, EVENT_HIT, MARKER_DEATH, REJECT_CONTENT, REJECT_PASSWORD, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT, SESSION_ALIVE, SESSION_CREATING, TEXT_GLOBAL } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { BTN_SPRINT } from "../../shared/sim/character.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { nodesOf, standFacing } from "../fixtures/gather.ts";
-import { Harness } from "../fixtures/net.ts";
+import { Harness, asShipped } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -317,8 +318,7 @@ test("what a client shows by the server's leave: the body from behind, the cross
     run(34);
   };
   const seen = () => ({ third: app.view.thirdPerson, cross: app.ui.frame.find(KEY_CROSS) !== null, mark: app.hud.combat.mark > 0, self: app.hud.markers.some((m) => m.kind === "self"), beams: app.scene!.beams.length / 3 });
-  // ARK's defaults allow all of them.
-  tap("KeyV");
+  // ARK's defaults allow all of them, and a survivor rises seen from behind.
   stir();
   expect([s.thirdPerson, s.crosshair, s.hitMarkers, s.mapLocation, s.corpseLocator]).toEqual([true, true, true, true, true]);
   expect(seen()).toEqual({ third: true, cross: true, mark: true, self: true, beams: 1 });
@@ -351,7 +351,9 @@ test("the server's name and message of the day stay up for as long as the server
     return out;
   };
   run(1000);
+  // The host's own message in place of the game's welcome, under the server's name, and the box behind them.
   expect([app.session.motdSeconds, rows()]).toEqual([30, ["The Proving Ground", "Welcome", "Be kind"]]);
+  expect(app.ui.frame.find(KEY_CHAT_PANEL)).not.toBeNull();
   app.session.chat(TEXT_GLOBAL, "hello");
   run(1000);
   expect(rows()).toEqual(["The Proving Ground", "Welcome", "Be kind", "ada: hello"]);
@@ -359,7 +361,40 @@ test("the server's name and message of the day stay up for as long as the server
   run(14000);
   expect(rows()).toEqual(["The Proving Ground", "Welcome", "Be kind"]);
   run(16000);
-  expect(rows()).toEqual([]);
+  expect([rows(), app.ui.frame.find(KEY_CHAT_PANEL)]).toEqual([[], null]);
+});
+
+test("as shipped, the chat box welcomes a survivor who joins: it stands behind the welcome for the server's twenty seconds and fades with it; a new survivor's waits until it has made itself", () => {
+  const welcome = "Welcome to SNARK. Press Enter to chat.";
+  for (const made of [true, false]) {
+    const h = new Harness({}, 1, 60, { config: asShipped() });
+    const app = new App(h.join("ada", {}, { manual: true, ...(made ? {} : { look: null }) }), reg, pack);
+    const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
+    const shown = (): [string[], number] => {
+      const f = app.ui.frame, rows: string[] = [];
+      for (let i = 0; i < f.count; i++) if (f.nodes[i]!.key >= KEY_CHAT_ROW && f.nodes[i]!.key < KEY_CHAT_ROW + 14) rows.push(f.nodes[i]!.text);
+      return [rows, f.find(KEY_CHAT_PANEL)?.alpha ?? 0];
+    };
+    run(1000);
+    if (!made) {
+      // Half a minute in the creator, where nothing of the chat shows, and the welcome is still to come.
+      run(30000);
+      expect(app.session.sessionState).toBe(SESSION_CREATING);
+      app.session.create(defaultLook());
+      run(1000);
+      expect(app.session.sessionState).toBe(SESSION_ALIVE);
+    }
+    expect([app.session.motdSeconds, app.ui.chat.open, shown()]).toEqual([20, false, [[welcome], 1]]);
+    run(16000);
+    expect(shown()).toEqual([[welcome], 1]);
+    // In its last two seconds the line and the box fade together.
+    run(2400);
+    const [, alpha] = shown(), row = app.ui.frame.find(KEY_CHAT_ROW)!;
+    expect(alpha > 0 && alpha < 1 && row.alpha === alpha).toBe(true);
+    run(2000);
+    expect(shown()).toEqual([[], 0]);
+    h.host.shutdown();
+  }
 });
 
 test("what of the settings names nothing here, or makes no sense, is passed over and said; and a world made before its host must be made of the host's content", () => {

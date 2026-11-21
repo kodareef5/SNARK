@@ -13,7 +13,7 @@ import { K_HOLD, MIN_WIDTH, SCALE_FLOOR, textWidth } from "../../client/core/ui/
 import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_SPRINT } from "../../shared/sim/character.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
-import { Harness } from "../fixtures/net.ts";
+import { Harness, asShipped } from "../fixtures/net.ts";
 // The touch layer's layout, which a page fetches when a finger is first used; here it is at hand.
 import * as layout from "../../client/core/ui/touch.ts";
 
@@ -307,14 +307,16 @@ test("More turns the cluster's page and back, a way of going is held on by its b
   expect([app.touch.shifted, app.controls.buttons & BTN_SPRINT, has(T_SHIFT)]).toEqual([false, 0, false]);
 });
 
-test("chat by touch: the bar opens the box at the top, where a keyboard does not cover it, and Send says it", () => {
+test("chat by touch: the welcome is a line of the shut log, with no box over the stick; the bar opens the box at the top, where a keyboard does not cover it, and Send says it", () => {
   for (const [name, w, hh, insets] of WINDOWS) {
-    const h = new Harness(), app = phone(h, "talker");
+    const h = new Harness({}, 1, 60, { config: asShipped() }), app = phone(h, "talker");
     insets.forEach((v, i) => (app.insets[i] = v));
     const run = (ms: number) => h.run(ms, (now) => app.frame(now, w, hh));
     const press = (key: number): void => { app.pointer(0, key, 0, 0, 0, 1); app.pointer(1, key, 0, 0, 0, 1); run(60); };
     run(600);
     const f = app.ui.frame;
+    const log = (): string[] => f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_CHAT_ROW && n.key < KEY_CHAT_ROW + 14).map((n) => n.text);
+    expect([log(), f.find(KEY_CHAT_PANEL)], name).toEqual([["Welcome to SNARK. Press Enter to chat."], null]);
     expect([app.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, null]);
     press(KEY_TOUCH_BUTTON + T_CHAT);
     const field = f.find(KEY_CHAT_INPUT)!, send = f.find(KEY_CHAT_SEND)!, tag = f.find(KEY_CHAT_TAG)!, unit = hh / f.height;

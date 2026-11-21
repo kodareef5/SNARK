@@ -180,9 +180,10 @@ artTest("a new name arrives in the creator with no body; it makes a look, and th
   expect(f.find(KEY_CREATOR_PANEL)).toBeNull();
   expect(f.find(KEY_CROSS)).not.toBeNull();
   expect(ui.wantsPointerLock).toBe(true);
-  expect(app.scene!.own!.firstPerson).toBe(true);
+  // The new survivor rises seen from behind, its body drawn as it was made.
+  expect([app.view.thirdPerson, app.scene!.own!.firstPerson]).toEqual([true, false]);
   expect([...app.scene!.own!.look!]).toEqual([...made]);
-  expect(app.cam.y).toBeCloseTo(session.own.y + 1.62, 5);
+  expect(Math.hypot(app.cam.x - session.own.x, app.cam.z - session.own.z)).toBeGreaterThan(1);
 
   const bo = h.join("bo", { latencyMs: 20 });
   run(600);
