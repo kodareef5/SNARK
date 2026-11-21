@@ -178,10 +178,10 @@ artTest("a new name arrives in the creator with no body; it makes a look, and th
   expect([...h.world.ents.looks.get(e)!]).toEqual([...made]);
   expect([...session.ownLook!]).toEqual([...made]);
   expect(f.find(KEY_CREATOR_PANEL)).toBeNull();
-  expect(f.find(KEY_CROSS)).not.toBeNull();
   expect(ui.wantsPointerLock).toBe(true);
-  // The new survivor rises seen from behind, its body drawn as it was made.
+  // The new survivor rises seen from behind, its body drawn as it was made, and on foot from behind there is no crosshair.
   expect([app.view.thirdPerson, app.scene!.own!.firstPerson]).toEqual([true, false]);
+  expect(f.find(KEY_CROSS)).toBeNull();
   expect([...app.scene!.own!.look!]).toEqual([...made]);
   expect(Math.hypot(app.cam.x - session.own.x, app.cam.z - session.own.z)).toBeGreaterThan(1);
 

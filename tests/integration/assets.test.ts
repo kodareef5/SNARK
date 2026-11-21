@@ -39,6 +39,8 @@ function scene(saddled = false) {
   const pack = saddled ? saddledFrozenPack("worn") : frozenPack();
   const h = new Harness({}, 1, 60, { dev: true, clips: pack.clips, rigs: pack.header.rigs });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
+  // A measure, so he looks from the eye, as a page that measures does (App.fromEye).
+  app.fromEye = true;
   const bob = h.join("bob");
   const frame = (now: number): void => void app.frame(now, 1280, 720);
   h.run(800, frame);

@@ -201,6 +201,11 @@ export class App {
   steer = true;
   /** The dome drawn as the sky table alone and nothing hazed, as the rasterizer draws, so the self-check's colours are the twins'. */
   plainSky = false;
+  /**
+   * A page that measures or takes pictures (the self-check, a bench, the device page, a tool's look, a trip): the survivor
+   * rises looking from the eye, whatever Settings.thirdPerson says, so these pages keep measuring the view they always did.
+   */
+  fromEye = false;
   /** A bench page's `?farpalm=fronds`: far palms drawn as their frond level (render/farnodes.ts farLevelOf). */
   private farPalms = false;
   /** Keeps the frame steady under the tier chosen (governor.ts). The shell tells it what each frame took. */
@@ -1268,9 +1273,10 @@ export class App {
     if (!this.orbitFree) this.orbit.set(false);
     if (!alive || car || (session.driving < 0 && (!chase || passengerFullAttitude))) this.mountCamera.reset();
     // On foot the view is the one the player chose: from behind unless it chose the eye (Settings.thirdPerson). A survivor
-    // rises in it, and comes back to it out of a vehicle, a seat or a saddle, whose views are their own.
+    // rises in it, and comes back to it out of a vehicle, a seat or a saddle, whose views are their own. A page that
+    // measures rises at the eye (fromEye).
     const onFoot = alive && session.driving < 0 && !passenger;
-    if (onFoot && !this.wasOnFoot) this.view.thirdPerson = this.ui.settings.thirdPerson;
+    if (onFoot && !this.wasOnFoot) this.view.thirdPerson = this.ui.settings.thirdPerson && !this.fromEye;
     this.wasOnFoot = onFoot;
     // A server rule can forbid third person. A rider still sees its mount from behind.
     // From the eye a glider's wings are overhead and out of sight, so the view stands back as one is thrown open, where the

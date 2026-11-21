@@ -121,6 +121,8 @@ export function client(stream?: { manifest: Manifest; port: AssetPort }) {
   const h = new Harness();
   const pack = corePack();
   const app = new App(h.join("phone", { latencyMs: 20 }, { manual: true }), h.reg, pack, stream);
+  // As the shell sets it for a ?device page: the survivor looks from the eye.
+  app.fromEye = true;
   hashes ??= Object.fromEntries(deviceScenarios(h.reg, pack.header.rigs, pack.clips).map(([name, f]) => [name, f()]));
   return { h, pack, app, expected: { ...hashes } };
 }

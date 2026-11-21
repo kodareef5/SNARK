@@ -16,6 +16,7 @@ const pack = parsePack(corePackBytes());
 function walk(watched: boolean): { frames: number[]; probe: TripProbe | null } {
   const h = new Harness();
   const app = new App(h.join("trip", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  app.fromEye = true; // as the shell sets it for a ?trip page
   const probe = watched ? new TripProbe(app, new Uint16Array(chunkCount(h.world.dims))) : null;
   const frames: number[] = [];
   app.key("KeyW", true);

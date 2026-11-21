@@ -143,7 +143,7 @@ async function boot(): Promise<void> {
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
   app.steer = driveCheck || selfcheck && params.has("dinosaur") || !selfcheck && !device;
-  app.plainSky = selfcheck;
+  app.plainSky = selfcheck; app.fromEye = measured || params.has("look") || params.has("trip");
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
   if (app.ui.settings.touchFirst) app.ui.inputDevice = 2;
   // What the screen's own edges take (a notch, a home bar), which the page's padding measures: the interface keeps clear of them.

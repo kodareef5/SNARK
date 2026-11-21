@@ -11,6 +11,7 @@ test("an address sends no line the player did not type and holds no view; a tool
     const sent = (tool: boolean): [string[], number, number] => {
       const session = h.join(tool ? "tool" : "player", {}, { manual: true });
       const app = new App(session, h.reg, corePack());
+      app.fromEye = tool; // as the shell sets it for a tool's ?look page
       const lines: string[] = [];
       const text = session.text.bind(session);
       session.text = (line: string): number => (lines.push(line), text(line));

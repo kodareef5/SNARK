@@ -16,6 +16,7 @@ function probeScene(): Harness {
 
 function browser(h: Harness) {
   const app = new App(h.join("probe", {}, { manual: true }), h.reg, corePack()), drive = new VehicleSelfcheck();
+  app.fromEye = true; // as the shell sets it for a ?selfcheck page
   const frame = (now: number) => { drive.step(app, now); app.frame(now, 800, 457); drive.observe(app); };
   return { app, drive, frame };
 }
