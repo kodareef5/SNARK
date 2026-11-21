@@ -8,6 +8,7 @@ import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tiers.ts";
 import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
+import type { FrameRing } from "./assets/frames.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { VOLUME_MAX, keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
@@ -195,6 +196,8 @@ export class App {
   private farPalms = false;
   /** Keeps the frame steady under the tier chosen (governor.ts). The shell tells it what each frame took. */
   readonly governor = new Governor();
+  /** What each frame took and what came in it, for the data utility's monitor (assets/frames.ts), once the shell has fetched it. */
+  frames: FrameRing | null = null;
   /**
    * Whether the card has linked every program a tier draws with, beginning those it has not (the shell's `ready`). A
    * tier chosen or stepped to is drawn once it has, and the one before until then; null draws it at once.
@@ -999,8 +1002,12 @@ export class App {
     this.ui.settings.masterVolume = Number.isFinite(volume) ? Math.max(0, Math.min(VOLUME_MAX, volume)) : MEASURED_VOLUME;
   }
 
-  /** After the frame is handed to WebGL: our code took `ours` ms of it, on a canvas of `width` by `height` device pixels. */
-  drawn(packet: FramePacket, ours: number, width = 0, height = 0): void {
+  /**
+   * After the frame is handed to WebGL: our code took `ours` ms of it, `uploadMs` of them handing the assets' bytes to
+   * the card, on a canvas of `width` by `height` device pixels.
+   */
+  drawn(packet: FramePacket, ours: number, width = 0, height = 0, uploadMs = 0): void {
+    this.frames?.record(this.nowMs, this.interval, ours, uploadMs, this.scene?.assets.residency ?? null, this.sounds?.library ?? null);
     const budget = this.scene?.budget;
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);

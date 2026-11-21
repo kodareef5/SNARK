@@ -173,9 +173,11 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
     port,
     ...(hostname ? { hostname } : {}),
     async fetch(req, srv) {
-      // The worlds take nothing but these from a page, and a development world its page's record of play (server/playlog.ts).
-      if (req.method !== "GET" && req.method !== "HEAD" && !((req.method === "POST" || req.method === "OPTIONS") && /\/(survivors|directory|__play)$/.test(new URL(req.url).pathname))) return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
       const url = new URL(req.url);
+      const worldWrite = (req.method === "POST" || req.method === "OPTIONS") && /\/(survivors|directory|__play)$/.test(url.pathname);
+      const shotWrite = req.method === "POST" && url.pathname === "/cluster/admin/scenes/api";
+      if (req.method !== "GET" && req.method !== "HEAD" && !worldWrite && !shotWrite)
+        return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
       const to = frontRoute(worlds(), url.pathname);
       if (!to) return new Response("no world of this cluster is running", { status: 503, headers: { "retry-after": "10" } });
       // The world believes who the client is from a proxy on its own machine (clientAddress).

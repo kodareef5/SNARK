@@ -264,6 +264,8 @@ const SLIDE_PIXELS = 2;
 const POSE_EVERY = 8;
 
 export class Characters {
+  /** Directed gaze on a mounted actor, in radians relative to the saddle. */
+  seatedHeadTurn = 0;
   readonly tireContacts = new TireContacts();
   readonly windscreens = new Windscreens();
   readonly rotorBlur = new RotorBlur();
@@ -1478,7 +1480,7 @@ export class Characters {
     else if (impaled) {
       humanPose(this.anim, st, tick, this.pose, g);
       this.seatedPose("impaled", 0, undefined, undefined);
-    } else if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount);
+    } else if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount, this.seatedHeadTurn);
     else {
       if (st.emote !== 0 && !this.anim.emotes[st.emote]) this.wantEmotes();
       humanPose(this.anim, st, tick, this.pose, g);
