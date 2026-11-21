@@ -53,7 +53,7 @@ type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 type Scene = "base" | "wood" | "flock" | "city";
-type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front";
+type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front" | "marina";
 /** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off or the far layers. On the city, where and at how many device pixels to one, and how many times slower the page's processor is made. */
 interface Run {
   scene: Scene;
@@ -92,6 +92,9 @@ const CITY_PLACES: Record<View, Place> = {
   // behind its mast, two cars on the road under it, the body 6 m along the road from under its lens.
   "lamp-cars": { name: "lamp-cars", east: 1091, north: -2588, up: 0 },
   "lamp-front": { name: "lamp-front", east: -875, north: 2131, up: 0 },
+  // On a marina's walkway among its moored boats (tools/boat/marinas.ts), where CITY_MARINA puts it on the map benched:
+  // "east,north,y", metres from its centre and the dock's deck. Only then are its rows run.
+  marina: ((at) => ({ name: "marina", east: at[0] ?? 0, north: at[1] ?? 0, y: at[2] ?? 0.7 }))((process.env.CITY_MARINA ?? "").split(",").map(Number)),
 };
 
 export function plan(): Run[] {
@@ -128,6 +131,7 @@ export function plan(): Run[] {
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
   for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) for (const ab of ["roofs", "bounce"] as const) runs.push({ scene: "city", view: "street", tier, scale, ab });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
+  if (process.env.CITY_MARINA) for (const tier of ["medium", "high"]) runs.push({ scene: "city", view: "marina", tier, scale: 1 }, { scene: "city", view: "marina", tier, scale: 1, clock: true });
   return runs;
 }
 

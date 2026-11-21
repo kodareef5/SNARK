@@ -9,6 +9,7 @@ import { roadEntrances, roadRunout, roadRunoutClearance, surveyRoadShoulder, typ
 import { roadIndex } from "./street-cars.ts";
 import { pathsOf, readWays, type Path } from "./ways.ts";
 import { makeSuspension, SUSPENDED } from "./suspension.ts";
+import { marinaDocks } from "../boat/marinas.ts";
 
 export interface DeckPoint { x: number; y: number; z: number; yaw: number; gap: boolean; }
 export interface BridgeRecord {
@@ -54,7 +55,9 @@ export function roadDeckSlab(deck: readonly DeckPoint[], index: number, terminal
 
 export function makeBridges(site: Site, accept: (m: Mason) => boolean): { records: BridgeRecord[]; corridors: Corridor[]; outlines: { id: number; status: string }[] } {
   const grid = site.ground.grid; const { nx, nz, x0, z0, x1, z1 } = grid;
-  const { paths, outlines } = pathsOf(readWays(site.source), grid);
+  // A marina's piers are its docks, which the build lays out with the dock kit (tools/boat/marinas.ts).
+  const docks = new Set([...marinaDocks(site).values()].flat().map((p) => p.way.id));
+  const { paths: all, outlines } = pathsOf(readWays(site.source), grid), paths = all.filter((p) => !docks.has(p.way.id));
   const roads = roadIndex(site);
   const at = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   // The sea's water or a lake's, which an approach or a ramp does not go down into.

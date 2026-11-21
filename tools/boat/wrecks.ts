@@ -67,8 +67,11 @@ function pieceIndex(pieces: readonly StaticPiece[], reg: Registry): (box: Box) =
   };
 }
 
-/** `sites` in the pieces' metres. A form whose mesh `made` does not have stands as its vessel's intact hull. */
-export function harbourWrecks(sites: readonly BoatSite[], rules: Harbours, reg: Registry, pieces: readonly StaticPiece[], ground: WreckGround, districtAt: DistrictAt, made: (mesh: string) => boolean, waterlines: ReadonlyMap<string, Waterline> = formWaterlines()): HarbourWreck[] {
+/**
+ * `sites` in the pieces' metres. A form whose mesh `made` does not have stands as its vessel's intact hull. A marina in
+ * `slipped` has its wrecks among its slips already (tools/boat/marinas.ts), so only the one off it is set down here.
+ */
+export function harbourWrecks(sites: readonly BoatSite[], rules: Harbours, reg: Registry, pieces: readonly StaticPiece[], ground: WreckGround, districtAt: DistrictAt, made: (mesh: string) => boolean, waterlines: ReadonlyMap<string, Waterline> = formWaterlines(), slipped: ReadonlySet<string> = new Set()): HarbourWreck[] {
   const w = rules.wrecks, hits = pieceIndex(pieces, reg), out: HarbourWreck[] = [];
   const defOf = (id: string): BoatVehicleDefinition => {
     const def = reg.vehicle[reg.index.get(id) ?? -1];
@@ -83,6 +86,7 @@ export function harbourWrecks(sites: readonly BoatSite[], rules: Harbours, reg: 
     if (mix.length === 0) continue;
     const [atBerths, offshore] = site.waterfront === "marina" ? w.marina : w.pier;
     for (const off of [false, true]) {
+      if (!off && slipped.has(site.id)) continue;
       const salt = `${site.id}#wreck${off ? "/off" : ""}`;
       if (hashString(salt, 307) / 4294967296 >= (off ? offshore : atBerths)) continue;
       const vessel = pick(mix, hashString(salt, 311)), def = defOf(vessel), spec = def.spec;
