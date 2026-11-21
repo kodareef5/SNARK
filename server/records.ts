@@ -113,6 +113,11 @@ export class EntityRecord {
    * loosed (rebaseTicks). The full ball that holds it names this record (Inventory.ref).
    */
   stored = 0;
+  /**
+   * For a starter mount (server/mount.ts): the pid of the survivor it was issued to, 0 for any other record. It goes only
+   * into that survivor's issued ball, keeps its saddle, does not mate, and leaves nothing to take when it dies.
+   */
+  issuedTo = 0;
   jetSpent = 0;
   /** Selected ground-combat plate mode; transient attacks are never saved. */
   creatureMode = 0;

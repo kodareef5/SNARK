@@ -245,6 +245,7 @@ test("she travels between beds in the Meridian set she was issued: the bag at th
   const suit = ["hat", "shirt", "gloves", "pants", "boots"].map((piece) => id(`meridian_${piece}`));
   const inv = items.inv(rec);
   expect([...inv.item.slice(inv.armor, inv.armor + 5)]).toEqual(suit);
+  const mount = h.host.mounts.of(rec)!.pid;
   // The helmet taken off, and the boots worn down.
   expect(items.move(rec, inv.armor, rec, inv.free(), 0)).toBe(1);
   items.wear(rec, inv.armor + 4, 100);
@@ -258,7 +259,8 @@ test("she travels between beds in the Meridian set she was issued: the bag at th
   const now = items.inv(rec);
   expect([...now.item.slice(now.armor, now.armor + 5)]).toEqual(suit);
   expect([...now.dur.slice(now.armor, now.armor + 5)]).toEqual(suit.map((piece) => items.maxDur(piece, 0)));
-  expect([now.used(), suit.map((piece) => items.total(piece)), items.audit()]).toEqual([5, [1, 1, 1, 1, 1], []]);
+  // Beside it, the soul ball of her starter mount, which went with her and holds the same pteranodon (server/mount.ts).
+  expect([now.used(), now.item[now.hotbar], now.refOf(now.hotbar), suit.map((piece) => items.total(piece)), items.audit()]).toEqual([6, id("soul_ball_full"), mount, [1, 1, 1, 1, 1], []]);
 });
 
 test("a bed destroyed, walled in by another tribe, or no longer hers because she was put out of the tribe while she chose is not risen at, and the list she is sent loses it", () => {

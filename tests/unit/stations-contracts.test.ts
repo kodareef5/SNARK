@@ -37,10 +37,11 @@ test("protocol 17 and record format 7 are the stations wave's, and it took no co
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   // 40 is the soul balls': OWN_KEPT (17), EVENT_BALL (8), and the saved mark of a tame kept in one (COMP_STORED, 25), which a
-  // record not kept does not write (tests/integration/balls.test.ts, tests/unit/creature-save.test.ts).
+  // record not kept does not write (tests/integration/balls.test.ts, tests/unit/creature-save.test.ts). 26 is the starter
+  // mount's mark (COMP_ISSUED), which only a starter writes, in the same protocol (tests/integration/starter-mount.test.ts).
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([36, 17, 8, 10]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
-  expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 25]);
+  expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 26]);
   // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found cars' return.
   const deadlines = readdirSync(join(root, "server")).filter((f) => f.endsWith(".ts")).flatMap((f) => [...readFileSync(join(root, "server", f), "utf8").matchAll(/export const DEADLINE_\w+ = (\d+);/g)].map((m) => Number(m[1])));
   expect([deadlines.sort((a, b) => a - b), DEADLINE_FIRE, DEADLINE_CRAFT]).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15], 6, 4]);

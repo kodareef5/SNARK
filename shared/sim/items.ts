@@ -28,9 +28,10 @@ export const FLAG_BLUEPRINT = 1;
  */
 export const FLAG_ON = 2;
 /**
- * The piece was issued to the survivor that holds it as it came to life: the Meridian set (server/suit.ts, D957). It never
- * leaves that survivor's inventory and is never spent; it goes when the survivor dies or leaves the world. Only the server
- * keeps this bit. A client is not sent it, so the protocol has no SLOT_ bit for it.
+ * The piece was issued to the survivor that holds it as it came to life: the Meridian set (server/suit.ts, D957), and the
+ * soul ball of its starter mount (server/mount.ts). It never leaves that survivor's inventory and is never spent; it goes
+ * when the survivor dies or leaves the world. Only the server keeps this bit. A client is not sent it, so the protocol has
+ * no SLOT_ bit for it.
  */
 export const FLAG_ISSUED = 4;
 /** Slots that are never spent: a blueprint, and an issued piece. */
@@ -351,10 +352,12 @@ export function carried(at: number, now: number, from: number, to: number): numb
 
 /**
  * The clock the stack in slot `sa` of `a` has once it lies in `b`: scaled by how the two keep things, or, for a charge,
- * held full where `b` charges and run down from full where it leaves `a` that did.
+ * held full where `b` charges and run down from full where it leaves `a` that did. Within one inventory it stays as it is,
+ * so an issued ball's charge, held full anywhere (server/mount.ts), stays held as it is moved about.
  */
 export function clockMoved(a: Inventory, sa: number, b: Inventory, now: number, t: ItemTable): number {
   const at = a.spoilAt[sa]!;
+  if (a === b) return at;
   const item = a.item[sa]!;
   if (at !== 0 && t.charge?.[item] === 1) return b.chargeFrom(a.charges ? CHARGED : at, now, t.spoilTicks[item]!);
   return carried(at, now, a.keep, b.keep);

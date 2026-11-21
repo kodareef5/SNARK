@@ -49,6 +49,8 @@ const COMP_CREATURE_MODE = 23;
 const COMP_JET_SPENT = 24;
 /** The tick a tame was kept in a soul ball (EntityRecord.stored). Only a kept one has it. */
 const COMP_STORED = 25;
+/** The survivor a starter mount was issued to (EntityRecord.issuedTo). Only a starter has it. */
+const COMP_ISSUED = 26;
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
 /** How an operator goes on from a save that uses content the build lacks. */
@@ -171,8 +173,9 @@ export class RecordCodec {
     const hasTame = !!rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander;
     let refs = 0;
     for (let slot = 0; inv?.ref && slot < inv.cap; slot++) if (inv.item[slot] !== 0 && inv.ref[slot] !== 0) refs++;
-    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (hasTame ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + (rec.creatureMode !== 0 ? 1 : 0) + (rec.jetSpent > 0 ? 1 : 0) + (rec.stored !== 0 ? 1 : 0) + rec.extra.size);
+    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (hasTame ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + (rec.creatureMode !== 0 ? 1 : 0) + (rec.jetSpent > 0 ? 1 : 0) + (rec.stored !== 0 ? 1 : 0) + (rec.issuedTo !== 0 ? 1 : 0) + rec.extra.size);
     if (rec.stored !== 0) { c.reset(); c.uint53(rec.stored); this.part(COMP_STORED); }
+    if (rec.issuedTo !== 0) { c.reset(); c.uint53(rec.issuedTo); this.part(COMP_ISSUED); }
     if (rec.jetSpent > 0) { c.reset(); c.u16(rec.jetSpent); this.part(COMP_JET_SPENT); }
     if (rec.creatureMode !== 0) { c.reset(); c.u8(rec.creatureMode); this.part(COMP_CREATURE_MODE); }
     if (rec.buffs.length > 0) {
@@ -512,6 +515,9 @@ export class RecordCodec {
       } else if (component === COMP_STORED) {
         rec.stored = c.uint53();
         if (rec.stored === 0) return null;
+      } else if (component === COMP_ISSUED) {
+        rec.issuedTo = c.uint53();
+        if (rec.issuedTo === 0) return null;
       } else if (component === COMP_STATE) {
         rec.dead = c.bool();
         rec.expiresAt = c.uint53();

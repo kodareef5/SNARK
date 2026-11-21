@@ -1342,7 +1342,8 @@ export class Combat {
     this.died = true;
     const { world, records, progression, game } = this.ctx;
     const killer = by !== 0 ? records.byPid.get(by) : undefined;
-    if (!killer || killer === rec || killer.dead) return;
+    // A starter mount is worth nothing killed: a new one is issued at its survivor's next rise (server/mount.ts).
+    if (!killer || killer === rec || killer.dead || rec.issuedTo !== 0) return;
     const reg = world.reg;
     const def = reg.defs[rec.kind] as SpeciesDef;
     const level = rec.kind === this.survivor ? progression.levelOf(rec.xp) : (rec.genome?.level ?? 1);
