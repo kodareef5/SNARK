@@ -5,7 +5,8 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { glassAt, glassCovers, glassReflected, opticsGlass } from "../../client/core/render/vehicle-glass.ts";
-import { CHANNEL, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
+import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
+import { dropGlow, dropLight } from "../../client/core/render/supply-light.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
 import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireRelief, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import { bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
@@ -1716,7 +1717,10 @@ export class Rasterizer {
             this.deferred[at] = 0;
             // An instrument's light, energy along the instrument, as the signal program shows it with no light target.
             const facing = Math.abs(nx * rx + ny * ry + nz * rz) / Math.max(dist, 1e-6);
-            if (p.frame[FRAME.eyes + 3]! > 0) eyeEnergy(p.frame, rx, ry, rz, NaN, 0.85 * Math.sqrt(Math.max(0, 1 - facing * facing)), footprint || dist * 0.0015, energy);
+            const fx = p.drawEffect, o = this.drawing * 4;
+            // A supply drop's lights drawn flat are its own, which the draw's effect says.
+            if (fx[o + 1]! > 0) dropLight(energy, 0, Math.sqrt(Math.max(0, 1 - facing * facing)), fx[o]!, fx[o + 1]!, fx[o + 2]!, fx[o + 3]!);
+            else if (p.frame[FRAME.eyes + 3]! > 0) eyeEnergy(p.frame, rx, ry, rz, NaN, 0.85 * Math.sqrt(Math.max(0, 1 - facing * facing)), footprint || dist * 0.0015, energy);
             else for (let k = 0; k < 3; k++) energy[k] = (pal[colorIndex * 4 + k]! / 255) ** 2;
             for (let k = 0; k < 3; k++) this.color[at * 4 + k] = 255 * (1 - Math.exp(-energy[k]!));
             continue;
@@ -1887,6 +1891,36 @@ export class Rasterizer {
               this.color[channel] = this.color[channel]! * (1-alpha) + 255*rgb[c]!*alpha;
             }
             this.fragments++;
+            continue;
+          }
+          if (s.label === DROP_GLOW) {
+            // A supply drop's light with no surface (supply-light.ts dropGlow), blended over what is behind it.
+            const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!);
+            const n = Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
+            const facing = Math.abs(carried[0]! * carriedNormal[0]! + carried[1]! * carriedNormal[1]! + carried[2]! * carriedNormal[2]!) / Math.max(1e-10, dist * n);
+            const fx = p.drawEffect, o = this.drawing * 4;
+            const alpha = dropGlow(energy, Math.floor(8 * v), u, facing, fx[o]!, fx[o + 1]!, fx[o + 2]!, fx[o + 3]!);
+            for (let c = 0; c < 3; c++) {
+              const channel = at * 4 + c;
+              this.color[channel] = this.color[channel]! * (1 - alpha) + 255 * (1 - Math.exp(-energy[c]!)) * alpha;
+            }
+            this.fragments++;
+            continue;
+          }
+          if (s.label === DROP_LIGHT) {
+            // Its capsule's lit strip (dropLight), a surface: by which row of the strip it is and where across it.
+            this.fragments++;
+            this.depth[at] = z;
+            this.deferred[at] = 0;
+            this.pickKind[at] = pickKind;
+            this.pickId[at] = pickId;
+            this.pickBone[at] = bone;
+            this.pickDraw[at] = this.drawing;
+            this.cover[at] = 1;
+            const row = 8 * v, band = Math.floor(row);
+            const fx = p.drawEffect, o = this.drawing * 4;
+            dropLight(energy, band, 2 * Math.max(0, Math.min(1, (row - band - 0.04) / 0.92)) - 1, fx[o]!, fx[o + 1]!, fx[o + 2]!, fx[o + 3]!);
+            for (let c = 0; c < 3; c++) this.color[at * 4 + c] = 255 * (1 - Math.exp(-energy[c]!));
             continue;
           }
           if (s.label === CHANNEL) {

@@ -1525,6 +1525,7 @@ export class Scene {
     }
     // The rows let go take what beginFrame gives every row, which draws that leave them alone count on.
     for (const a of [p.drawFade, p.drawHand, p.drawLayer, p.drawWear, p.drawSwap]) a.fill(0, kept, p.drawCount);
+    p.drawEffect.fill(0, kept * 4, p.drawCount * 4);
     p.drawCount = kept;
     const casts = this.chunkCasts;
     let at = 0, next = 0;
@@ -3518,6 +3519,7 @@ export class Scene {
       p.drawFlags[d] = flags | this.groundFlags[mesh]! | (material < 0 ? this.flatFlags[mesh]! : this.materialFlags[material]!);
       p.drawHand[d] = hand;
       p.drawSwap[d] = material < 0 ? 0 : this.swap;
+      p.drawEffect.set(this.effect, d * 4);
       p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer % WEAR_KEY : 0;
       p.drawWear[d] = p.drawLayer[d]! > 0 ? Math.floor(layer / WEAR_KEY) : 0;
       const made = material < 0 ? this.trisOfMesh[mesh]![top]! : indices / 3;
@@ -3534,6 +3536,8 @@ export class Scene {
     if (this.treeOf[mesh] === 1) this.budget.crowns += crowns * count * copies;
   }
 
+  /** The effect `draw` gives its draws (packet.ts drawEffect): all 0 but while a supply drop's lights are drawn. */
+  private readonly effect = new Float32Array(4);
   /** The swap `draw` gives its draws (packet.ts drawSwap): 0 but while a cell of trees changing level is drawn (`swapOf`). */
   private swap = 0;
 
