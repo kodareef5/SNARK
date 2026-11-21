@@ -162,8 +162,11 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     n.alpha = d.alpha;
   }
   if (m.scope && m.banner === "") buildReticle(f, W, H);
-  if (options.diagnostics) for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, left, top + i * lh, Math.min(right - left, 400), S_TEXT, fitText(m.readout[i]!, Math.min(right - left, 400), S_TEXT));
-  const voiceY = options.diagnostics ? top + m.readout.length * lh + 4 : top;
+  // The readout, and under it the resource monitor's strip (ui/monitor.ts), which on a canvas too short for both stands
+  // in its place; the voice's lines under them.
+  const readout = options.diagnostics && !m.stripAlone;
+  if (readout) for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, left, top + i * lh, Math.min(right - left, 400), S_TEXT, fitText(m.readout[i]!, Math.min(right - left, 400), S_TEXT));
+  const voiceY = (m.stripY = readout ? top + m.readout.length * lh + 4 : top) + (m.stripH && m.stripH + 6);
   if (m.voice !== "") {
     // A voice state is in capitals and is lit. Anything else is a sentence saying what is wrong, drawn plain.
     const live = m.voice === m.voice.toUpperCase();
@@ -221,7 +224,8 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   if (options.compass && !m.bare && !m.out && !m.orbit && !(m.scope && m.banner === "")) {
     // What holds the top left: by touch the bar, else the readout and the voice's lines where they show.
     let held = touch ? touch.topEnd : left - 8;
-    if (options.diagnostics) held = Math.max(held, left + Math.min(right - left, 400));
+    if (readout) held = Math.max(held, left + Math.min(right - left, 400));
+    if (m.stripH) held = Math.max(held, left + m.stripW);
     if (m.voice !== "") held = Math.max(held, left + Math.min(right - left, m.voice === m.voice.toUpperCase() ? 96 : 330));
     if (m.talkers.length > 0) held = Math.max(held, left + 170);
     const at = tapeLayout(f, held, options.minimap || touch ? mapX - 2 : right - (mapTools ? 36 : 0) + 8);

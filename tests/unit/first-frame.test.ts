@@ -33,6 +33,9 @@ function firstFrameFiles(): Set<string> {
   return seen;
 }
 
+/** The resource monitor's files, which the app fetches once it is first turned on. */
+const MONITOR_FILES = ["client/core/ui/monitor.ts", "client/core/ui/monitor-style.ts"];
+
 test("code a page needs only after its first frame is not in the script the first frame waits for", () => {
   const files = [...firstFrameFiles()].map((f) => relative(ROOT, f));
   // The walk does reach the page's game.
@@ -49,8 +52,12 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/activity-selfcheck.ts",
     "client/core/assets/frames.ts",
     "client/core/assets/inspect.ts",
+    ...MONITOR_FILES,
   ];
   for (const file of late) expect(files.includes(file), file).toBe(false);
+  // The resource monitor's files import nothing the first frame holds, which would cut its script into more pieces: what
+  // they use of it comes to them in a kit (client/core/ui/monitor-kit.ts).
+  for (const file of MONITOR_FILES) for (const dep of valueImports(join(ROOT, file))) expect(files.includes(relative(ROOT, dep)), `${file} imports ${relative(ROOT, dep)}`).toBe(false);
   // The shell fetches them itself.
   const shell = readFileSync(join(CLIENT, "shell/main.ts"), "utf8");
   const fetched = [...shell.matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]);

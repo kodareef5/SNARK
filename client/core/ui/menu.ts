@@ -36,11 +36,17 @@ export function menuButton(f: UiFrame, key: number, x: number, y: number, width:
  * the bar in the top left, where `touch` keeps a row for it. Call it after the screens: where one has a control there
  * (choosing where to rise fills the window) the offer is left out, and the HUD and the menu have it again.
  */
-export function unmuteButton(f: UiFrame, touch: TouchPlan | null, pill: typeof import("./touch.ts").pill | null = null, below = 0): void {
-  const w = Math.ceil(textWidth(UNMUTE_TEXT, S_UNMUTE)) + 32, h = 44, left = f.left + 12;
+export function unmuteButton(f: UiFrame, touch: TouchPlan | null, pill: typeof import("./touch.ts").pill | null = null, below = 0, hud: HudModel | null = null): void {
+  const w = Math.ceil(textWidth(UNMUTE_TEXT, S_UNMUTE)) + 32, h = 44, left = f.left + 12, room = f.width - f.right - 12 - MINIMAP_SIZE - 10 - w;
   // Under the compass where it stands at the top.
-  const y = touch ? touch.stackY - 52 : Math.max(f.top + 12, below);
-  const x = touch ? left : Math.max(left, Math.min(Math.round((f.width - w) / 2), f.width - f.right - 12 - MINIMAP_SIZE - 10 - w));
+  let y = touch ? touch.stackY - 52 : Math.max(f.top + 12, below);
+  let x = touch ? left : Math.max(left, Math.min(Math.round((f.width - w) / 2), room));
+  // Beside the resource monitor's strip, or under it where there is no room beside it.
+  const strip = hud?.stripH ? hud : null;
+  if (!touch && strip && x < left + strip.stripW + 10 && y < strip.stripY + strip.stripH) {
+    if (left + strip.stripW + 10 <= room) x = left + strip.stripW + 10;
+    else y = strip.stripY + strip.stripH + 6;
+  }
   for (let i = 0; i < f.count; i++) {
     const q = f.nodes[i]!;
     if (q.interactive && q.kind !== K_HOLD && x < q.x + q.w && q.x < x + w && y < q.y + q.h && q.y < y + h) return;

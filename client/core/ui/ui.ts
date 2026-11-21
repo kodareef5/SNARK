@@ -18,7 +18,7 @@ import { InventoryScreen } from "./inventory.ts";
 import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
 import { buildMap } from "./screens.ts";
 import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
-import { Settings } from "../settings.ts";
+import { Settings, toggleMonitor } from "../settings.ts";
 import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { EmoteMenu } from "./emotes.ts";
@@ -70,6 +70,8 @@ export class Ui {
    * used, and until it comes the HUD is drawn as for a mouse. Null on a page never touched, which never pays for it.
    */
   layer: typeof import("./touch.ts") | null = null;
+  /** The resource monitor (ui/monitor.ts), which the app fetches once Diagnostics is first "monitor"; null until then. */
+  monitor: import("./monitor.ts").Monitor | null = null;
   flyer = false;
   /** A piece is being built, or a vehicle set down: the touch cluster is then the builder's. The app sets both. */
   building = false;
@@ -190,6 +192,7 @@ export class Ui {
       if (code === "KeyH" && (this.inspect || this.wantsPointerLock)) { this.inspect = down; return true; }
       if (code === "Escape" && this.inspect) { if (down && !repeat) this.inspect = false; return true; }
       if (code === "KeyL" && (this.inspect || this.wantsPointerLock)) { if (down && !repeat) { this.settings.minimap = !this.settings.minimap; this.settings.changed(); } return true; }
+      if (code === "F3") { if (down && !repeat) toggleMonitor(this.settings); return true; }
       // The structure menu takes its digits and Escape. Opening any other screen closes it.
       if (this.structure.key(code, down, repeat, session)) return true;
       // The emote menu likewise, and Z opens it from play.
@@ -351,7 +354,12 @@ export class Ui {
       // Marks over creatures are under the rest of the HUD.
       buildOverhead(f, hud.overhead);
       hud.bare = this.map || this.dead;
+      // The resource monitor takes its room in the HUD's top-left column, and stands in it.
+      const monitor = this.settings.monitor ? this.monitor : null;
+      if (monitor) monitor.reserve(f, hud, plan);
+      else { hud.stripH = 0; hud.stripAlone = false; }
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
+      monitor?.build(f, hud, controls, this.inspect, plan);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.
       if (session) {
@@ -407,7 +415,7 @@ export class Ui {
     if (plan && this.touchPlay && !this.wantsPointerLock && !this.menu && !this.creating && !this.dead && !this.console.open) this.touchShown |= layer!.touchClose(f, this.touchPlay);
     // The offer to unmute is over every screen, where a free pointer, a finger or the pad's focus reaches it.
     // Not while a finger types in the chat box, which has its place.
-    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.creating || this.menu ? 0 : hud.compassBottom);
+    if (this.settings.muted && !this.console.open && !(plan && this.chat.open)) unmuteButton(f, plan, layer?.pill ?? null, this.creating || this.menu ? 0 : hud.compassBottom, this.creating || this.menu ? null : hud);
     if (session) this.console.absorb(session);
     this.console.build(f);
     if (this.focusNext) { const node = f.find(this.focusNext); if (node) node.focus = true; this.focusNext = 0; }
