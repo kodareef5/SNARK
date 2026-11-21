@@ -484,6 +484,12 @@ export class FramePacket {
   /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
   lightSamples = 0;
   /**
+   * On a frame drawn into the light target, the share of the canvas a side the target is made for,
+   * and the share its scene is drawn at, the governor's steps taken: no more, so that a step makes nothing again.
+   */
+  room = 1;
+  share = 1;
+  /**
    * Whether the frame is drawn with the page's other effects off (`?ab=`, passes.ts), every other frame for a before
    * and after: the shell keeps what the frames between need, and the card's reservations stand as they set them.
    */

@@ -68,7 +68,7 @@ import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
-import { lightBytes, lightSamples, postFrame } from "./post.ts";
+import { lightBytes, lightSamples, postFrame, sceneSize } from "./post.ts";
 import { skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
@@ -446,6 +446,8 @@ export class Scene {
   canvasWidth = 1280;
   canvasHeight = 720;
   supersampled = false;
+  /** The share of the canvas a side a frame with a light target draws its scene at, 1 unless the app sets it. */
+  share = 1;
   /** Whether this frame is drawn with the page's other effects off (FramePacket.alternate). */
   alternate = false;
   /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
@@ -965,6 +967,7 @@ export class Scene {
     this.budget.begin(this.assets.tier);
     p.tier = this.assets.tier;
     p.lit = p.tier.lit;
+    [p.room, p.share] = p.tier.post ? [this.share, this.share] : [1, 1];
     p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
     p.farViewProj.set(cam.ranges[PASS_FAR]);
     p.nearViewProj.set(cam.nearViewProj);
@@ -983,7 +986,7 @@ export class Scene {
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky, this.fadeFrom);
-      postFrame(p.frame, p.tier, this.hour, this.canvasHeight);
+      postFrame(p.frame, p.tier, this.hour, Math.round(this.canvasHeight * p.room), p.share);
       p.lightSamples = lightSamples(this.supersampled);
       contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
       if (p.tier.contact) this.parkedContacts.add(p.frame, this.world.structs, this.assets.manifest.meshes, this.meshOfKind, cam);
@@ -1088,7 +1091,7 @@ export class Scene {
     const c = this.cascades;
     const setup = p.tier.shadows;
     this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
-    if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(this.canvasWidth, this.canvasHeight, lightSamples(this.supersampled)) : 0);
+    if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(...sceneSize(this.canvasWidth, this.canvasHeight, p.room), lightSamples(this.supersampled)) : 0);
     this.casting = false;
     this.characters.shadows = null;
     if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {

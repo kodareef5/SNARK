@@ -10,7 +10,7 @@ import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } 
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
-import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, tapShift } from "../core/render/post.ts";
+import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift } from "../core/render/post.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, lampsOn, materialEmission, skinMode } from "../core/render/surface.ts";
@@ -41,7 +41,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, spokeCrown: 39, swap: 40 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, spokeCrown: 39, swap: 40, extent: 41 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -97,8 +97,14 @@ export class GlRenderer {
   private samples = 0;
   /** The most anisotropy the card filters with, 0 for none: asked once, since asking waits for the card. */
   private mostAnisotropy = 0;
-  /** What the light target is made of for a canvas: the scene's framebuffer, multisampled, then its resolved copy's and each bloom level's, with their textures. */
-  private post = { size: "", fbs: [] as WebGLFramebuffer[], tex: [] as WebGLTexture[], bufs: [] as WebGLRenderbuffer[] };
+  /**
+   * What the light target is made of, `w` by `h`: the scene's framebuffer, multisampled, then its resolved copy's and
+   * each bloom level's, with their textures; the corner of it the frame's scene is drawn in, `drawn`; and what a pass
+   * of the finish reads of its source (post.ts passExtent).
+   */
+  private post = { size: "", w: 0, h: 0, fbs: [] as WebGLFramebuffer[], tex: [] as WebGLTexture[], bufs: [] as WebGLRenderbuffer[] };
+  private drawn: [number, number] = [0, 0];
+  private readonly extent = new Float32Array(4);
   /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
@@ -254,7 +260,7 @@ export class GlRenderer {
     const most = (f: number): number => (gl.getExtension("EXT_color_buffer_float") ? ((gl.getInternalformatParameter(gl.RENDERBUFFER, f, gl.SAMPLES) as Int32Array | null)?.[0] ?? 0) : 0);
     this.light = LIGHT_FORMATS.find((f) => most(f) > 0) ?? 0;
     this.samples = this.light && Math.min(LIGHT_SAMPLES, most(this.light));
-    this.post = { size: "", fbs: [], tex: [], bufs: [] };
+    this.post = { size: "", w: 0, h: 0, fbs: [], tex: [], bufs: [] };
     this.shadow = { texture: null, targets: [], size: 0 };
     this.open = { texture: null, size: 0 };
     this.programs.clear();
@@ -889,11 +895,12 @@ export class GlRenderer {
     }
     this.worldReady = p.worldSide[0] === 0 ? 0 : base ? 1 + (full ? p.worldEarly : 1) : p.worldComing ? 3 : 0;
     const finish = drawsLight(p.tier, this.light);
-    const samples = Math.min(this.samples, p.lightSamples);
+    const samples = Math.min(this.samples, p.lightSamples), [tw, th] = sceneSize(gl.drawingBufferWidth, gl.drawingBufferHeight, finish ? p.room : 1);
     // A frame drawn without it every other frame (FramePacket.alternate) leaves it for the frames either side.
-    if (this.post.size !== (finish ? `${gl.drawingBufferWidth} ${gl.drawingBufferHeight} ${samples}` : "") && (finish || !p.alternate)) this.targets(finish ? gl.drawingBufferWidth : 0, gl.drawingBufferHeight, samples);
+    if (this.post.size !== (finish ? `${tw} ${th} ${samples}` : "") && (finish || !p.alternate)) this.targets(finish ? tw : 0, th, samples);
     this.shadows(p, finish ? this.post.fbs[0]! : null);
-    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    // Into the light target, the scene goes in the corner its share fills, which the finish takes up to the canvas.
+    gl.viewport(0, 0, ...(this.drawn = sceneSize(gl.drawingBufferWidth, gl.drawingBufferHeight, finish ? p.share : 1)));
     const sky = finish ? p.sky : p.skyShown;
     gl.clearColor(sky[0]!, sky[1]!, sky[2]!, this.transparentStage ? 0 : 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -1088,7 +1095,7 @@ export class GlRenderer {
     for (const f of new Set(t.fbs.splice(0))) gl.deleteFramebuffer(f);
     for (const x of t.tex.splice(0)) gl.deleteTexture(x);
     for (const b of t.bufs.splice(0)) gl.deleteRenderbuffer(b);
-    t.size = w > 0 ? `${w} ${h} ${samples}` : "";
+    [t.size, t.w, t.h] = [w > 0 ? `${w} ${h} ${samples}` : "", w, h];
     for (let k = samples > 0 ? -1 : 0; k <= levels && w > 0; k++) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, (t.fbs[k + 1] = gl.createFramebuffer()!));
       // The scene's colour and depth where it has samples, its depth alone where it is drawn into its texture.
@@ -1109,7 +1116,7 @@ export class GlRenderer {
 
   /** The finish (post.ts): the scene resolved, bloom's chain down and then up, adding, and the finish into the canvas. */
   private toCanvas(p: FramePacket): void {
-    const gl = this.gl, t = this.post, levels = Math.min(p.frame[FRAME.levels]!, t.tex.length - 1), w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+    const gl = this.gl, t = this.post, levels = Math.min(p.frame[FRAME.levels]!, t.tex.length - 1), [w, h] = this.drawn;
     this.passes?.mark(PASS_FINISH);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, t.fbs[0]!);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, t.fbs[1]!);
@@ -1130,15 +1137,19 @@ export class GlRenderer {
     gl.enable(gl.DEPTH_TEST);
   }
 
-  /** A pass of the finish with program `n`, from level `from` (0 the scene) into level `to`, or into the canvas for -1. */
+  /**
+   * A pass of the finish with program `n`, from level `from` (0 the scene) into level `to`, or into the canvas for -1:
+   * each level's corner the scene's share fills, and the canvas whole.
+   */
   private pass(p: FramePacket, n: number, from: number, to: number): void {
-    const gl = this.gl, t = this.post;
+    const gl = this.gl, t = this.post, [w, h] = this.drawn, [cw, ch] = [gl.drawingBufferWidth, gl.drawingBufferHeight];
     const prog = this.use(n, p);
     gl.bindFramebuffer(gl.FRAMEBUFFER, to < 0 ? null : t.fbs[to + 1]!);
-    gl.viewport(0, 0, Math.max(1, gl.drawingBufferWidth >> levelShift(to)), Math.max(1, gl.drawingBufferHeight >> levelShift(to)));
+    gl.viewport(0, 0, to < 0 ? cw : Math.max(1, w >> levelShift(to)), to < 0 ? ch : Math.max(1, h >> levelShift(to)));
     gl.activeTexture(gl.TEXTURE0 + UNIT.details);
     gl.bindTexture(gl.TEXTURE_2D, t.tex[from]!);
-    gl.uniform4f(prog.at[U.pass]!, 1 / Math.max(1, gl.drawingBufferWidth >> tapShift(from, to)), 1 / Math.max(1, gl.drawingBufferHeight >> tapShift(from, to)), from === 0 ? 1 : 0, 0);
+    gl.uniform4f(prog.at[U.pass]!, 1 / Math.max(1, t.w >> tapShift(from, to)), 1 / Math.max(1, t.h >> tapShift(from, to)), from === 0 ? 1 : 0, w < cw || h < ch ? 1 : 0);
+    gl.uniform4fv(prog.at[U.extent]!, passExtent(w, h, t.w, t.h, from, to, this.extent));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.drawCalls++;
   }
@@ -1242,6 +1253,6 @@ export class GlRenderer {
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    return { program, text, at: [], last: new Float64Array(U.swap + 1).fill(NaN), bounds: null };
+    return { program, text, at: [], last: new Float64Array(U.extent + 1).fill(NaN), bounds: null };
   }
 }

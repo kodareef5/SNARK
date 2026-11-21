@@ -10,7 +10,8 @@ import { FRAME, FRAME_FLOATS, FramePacket } from "../../client/core/render/packe
 import { RemoteSample } from "../../client/core/session.ts";
 import { CUE_DEAD } from "../../shared/anim/pose.ts";
 import { coreRegistry } from "../fixtures/world.ts";
-import { BLOOM, SHARPEN, bloomLevels, drawsLight, gradeAt, levelShift, lightBytes, lightSamples, postFrame, tapShift } from "../../client/core/render/post.ts";
+import { BLOOM, SHARPEN, bloomLevels, drawsLight, gradeAt, levelShift, lightBytes, lightSamples, passExtent, postFrame, sceneSize, sharpenAt, tapShift } from "../../client/core/render/post.ts";
+import { provingView } from "../../tools/snap.ts";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { skyFrame, sunHeight, theSky } from "../../client/core/render/sky.ts";
 import { graded, shown, skyShown, tone, ungraded, untone } from "../../client/core/render/surface.ts";
@@ -47,6 +48,37 @@ test("bloom's levels run from a quarter of the canvas down to a level no fewer t
   expect([tapShift(0, 1), tapShift(1, 2), tapShift(2, 1), tapShift(0, -1)]).toEqual([1, 2, 3, 0]);
   expect([lightSamples(false), lightSamples(true)]).toEqual([2, 0]);
   expect([lightBytes(2560, 1440, 2), lightBytes(2560, 1440, 4), lightBytes(3840, 1986, 0)].map((b) => Math.round(b / 1e6))).toEqual([119, 207, 94]);
+});
+
+test("the scene drawn at a share fills the corner of a target made for its share before the governor's steps, and each pass reads only that corner, its far edges held half a texel in", () => {
+  expect([sceneSize(3600, 1924, 1), sceneSize(3600, 1924, 0.75), sceneSize(3600, 1924, 0.75 * 0.9), sceneSize(3, 2, 0.1)]).toEqual([[3600, 1924], [2700, 1443], [2430, 1299], [1, 1]]);
+  const near = (a: Float32Array): number[] => [...a].map((v) => Math.round(v * 1e6) / 1e6);
+  // At the canvas's own pixels a read is held where the texture's own edge holds it: nothing moves.
+  expect(near(passExtent(1920, 1080, 1920, 1080, 0, 1))).toEqual(near(Float32Array.of(1, 1, 1 - 0.5 / 1920, 1 - 0.5 / 1080)));
+  expect(near(passExtent(1920, 1080, 1920, 1080, 0, -1))).toEqual(near(Float32Array.of(1, 1, 1 - 0.5 / 480, 1 - 0.5 / 270)));
+  // The governor's step to 90% of three quarters: the scene 2,430 by 1,299 in a target of 2,700 by 1,443, bloom's first
+  // level 607 by 324 of 675 by 360, its second 303 by 162 of 337 by 180.
+  expect(near(passExtent(2430, 1299, 2700, 1443, 0, 1))).toEqual(near(Float32Array.of(2430 / 2700, 1299 / 1443, 2429.5 / 2700, 1298.5 / 1443)));
+  expect(near(passExtent(2430, 1299, 2700, 1443, 1, 2))).toEqual(near(Float32Array.of(607 / 675, 324 / 360, 606.5 / 675, 323.5 / 360)));
+  expect(near(passExtent(2430, 1299, 2700, 1443, 2, 1))).toEqual(near(Float32Array.of(303 / 337, 162 / 180, 302.5 / 337, 161.5 / 180)));
+  // The finish reads the scene's corner, and bloom's first level held within its own.
+  expect(near(passExtent(2430, 1299, 2700, 1443, 0, -1))).toEqual(near(Float32Array.of(2430 / 2700, 1299 / 1443, 606.5 / 675, 323.5 / 360)));
+  // The sharpen is the canvas's own at its own pixels, and more for a scene taken up, to 0.55 at three quarters and under.
+  expect([1, 0.9, 0.85, 0.75, 0.5].map((s) => Math.round(sharpenAt(s) * 100) / 100)).toEqual([SHARPEN, 0.37, 0.43, 0.55, 0.55]);
+});
+
+test("a frame on high at a laptop's canvas is drawn at its share, which the card's ledger counts the target at; medium's at the canvas's own", () => {
+  const view = provingView(640, 360);
+  const s = view.scene;
+  [s.canvasWidth, s.canvasHeight, s.share] = [3600, 1924, 0.85];
+  for (const [tier, room, share] of [[tierOf("high"), 0.85, 0.85], [tierOf("medium"), 1, 1]] as const) {
+    s.assets.tier = tier;
+    const p = s.build(view.cam, view.remote);
+    expect([p.room, Math.round(p.share * 1000) / 1000]).toEqual([room, share]);
+    expect(s.assets.residency["reserves"].get("light target") ?? 0).toBe(tier.post ? lightBytes(3060, 1635, 2) : 0);
+    // Bloom's levels are counted from the target's height, and the sharpen from the scene's share.
+    if (tier.post) expect([p.frame[FRAME.levels], p.frame[FRAME.sharpen]]).toEqual([bloomLevels(1635, 1), Math.fround(sharpenAt(p.share))]);
+  }
 });
 
 test("the grade is content's keys, blended by the sun's height, filled in on every lit tier, and bloom and the sharpen on a tier with a light target alone", () => {
