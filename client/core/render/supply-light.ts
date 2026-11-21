@@ -149,11 +149,14 @@ export function dropGlow(out: Float32Array | number[], row: number, u: number, f
 
 const f = (v: number): string => (Number.isInteger(v) ? `${v}.0` : String(v));
 
-/** The same in GLSL, for a fragment text that declares `uniform vec4 uEffect`. */
-export const DROP_GLSL = `
+/** A tier's colour as light, in GLSL: for the sky's text too (supply-sky.ts). */
+export const DROP_TINT_GLSL = `
 vec3 dropTint(float rgb) {
   return pow(vec3(floor(rgb/65536.0), mod(floor(rgb/256.0),256.0), mod(rgb,256.0))/255.0, vec3(2.2));
-}
+}`;
+
+/** The same in GLSL, for a fragment text that declares `uniform vec4 uEffect`. */
+export const DROP_GLSL = `${DROP_TINT_GLSL}
 float lampBeat(float seconds, float count) {
   float t = mod(seconds, ${f(LAMP_PERIOD)});
   float k = floor(t/${f(LAMP_BEAT)}), within = fract(t/${f(LAMP_BEAT)});

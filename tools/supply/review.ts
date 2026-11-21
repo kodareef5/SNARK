@@ -14,7 +14,8 @@ import { defaultLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { POSE_NAMES } from "../../shared/sim/supply.ts";
+import { POSE_NAMES, newPose, supplyPose } from "../../shared/sim/supply.ts";
+import { DROPS_AT, FRAME } from "../../client/core/render/packet.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { FakeNet } from "../../tests/fixtures/assetnet.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
@@ -198,6 +199,45 @@ if (import.meta.main) {
     shoot("night", "the same at ten at night, from 34 m");
     stand(X - 330, Z - 300, X, Z, 0.25);
     shoot("night-far", "and from 450 m");
+
+    // The cast, unhurried, at dusk: the sender's knot strikes as it leaves, and the streak crosses the sky to the shaft.
+    session.text("supply cancel all");
+    run(300);
+    session.text("settime 19");
+    run(400);
+    stand(X - 60, Z - 40, X, Z, 0.4);
+    // From her own eye, so that her body is not between it and the sky.
+    if (app.view.thirdPerson) tap("KeyV");
+    run(300);
+    must("the view is from her eye", !app.view.thirdPerson);
+    session.text(`supply call ${X} ${Z} green works plain 45`);
+    run(400);
+    const cast = supply.drops[supply.drops.length - 1]!;
+    must("a green Works drop is called, sent by the obelisk", cast !== undefined && cast.tierKey === "green" && cast.eye === 0 && cast.left === 0);
+    const aim = (x: number, y: number, z: number): void => {
+      const [ex, ey, ez] = [session.own.x, session.own.y + 1.6, session.own.z];
+      app.controls.yaw = Math.atan2(x - ex, z - ez);
+      app.controls.pitch = Math.atan2(y - ey, Math.hypot(x - ex, z - ez));
+      run(200);
+    };
+    const where = newPose();
+    const capsule = (): void => {
+      supplyPose(cast, h.world.tick, TICK_RATE, where);
+      aim(where.x, where.y, where.z);
+    };
+    h.run(Math.max(0, ((cast.release - h.world.tick) / TICK_RATE) * 1000 - 450), frame);
+    aim(cast.ox, cast.oy, cast.oz);
+    h.run(Math.max(0, ((cast.release - h.world.tick) / TICK_RATE) * 1000 + 120), frame);
+    if (process.env.PROBE) console.log("probe cast", [...packet!.frame.subarray(DROPS_AT + 32, DROPS_AT + 44)].map((v) => Math.round(v * 1000) / 1000), "eyes", [...packet!.frame.subarray(FRAME.eyes, FRAME.eyes + 16)].map((v) => Math.round(v * 100) / 100), "tick", h.world.tick, cast.release, "exposure", packet!.frame[FRAME.exposure]);
+    shoot("strike", "looking up at the sender's knot of storm as the cast leaves it: the strike, toward where the drop goes");
+    must("the cast has just left", supply.state(cast) === "flying");
+    h.run(7000, frame);
+    capsule();
+    shoot("streak", "seven seconds on: the streak crossing the sky, white at its head and green behind");
+    must("a streak is written for the dome", packet!.frame[DROPS_AT + 3]! > 0.9 && last().state === "flying");
+    h.run(Math.max(0, ((cast.land - cast.brake - h.world.tick) / TICK_RATE) * 1000 - 3500), frame);
+    capsule();
+    shoot("streak-late", "three seconds before its jets light: coming down toward the head of its shaft");
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ generated: new Date().toISOString(), pipeline: "Harness server, App with its own keys, streamed pack, Rasterizer", tier, size: [width, height], stacks: held, shots }, null, 2));
     console.log(`${out}: ${shots.length} pictures of one drop from its call to its going`);
   } finally {

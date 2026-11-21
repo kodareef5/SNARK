@@ -68,6 +68,41 @@ export function haloAt(seconds: number, k: number, out: { height: number; streng
   out.strength = smooth(t / 5) * (1 - smooth((t - HALO_CLIMB + 14) / 12));
 }
 
+/** Metres from the eye within which a flying capsule's trail is drawn as a piece of light wherever its streak is; and the most it is long. */
+export const TRAIL_REACH = 1500;
+export const TRAIL_MOST = 140;
+
+/**
+ * A piece of light whose own +Y lies along a unit way (dx, dy, dz) from where it is put, `long` times its modelled
+ * length along it and `wide` times across: a jet's plume, which is modelled a metre down from its bell, turned to
+ * trail behind a capsule.
+ */
+export function alongBone(out: Float32Array, at: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, wide: number, long: number): void {
+  // Right is level and square to the way; the third axis is the way crossed with it.
+  let rx = dz;
+  let rz = -dx;
+  const rl = Math.hypot(rx, rz);
+  if (rl < 1e-6) {
+    rx = 1;
+    rz = 0;
+  } else {
+    rx /= rl;
+    rz /= rl;
+  }
+  out[at] = rx * wide;
+  out[at + 1] = dx * long;
+  out[at + 2] = -dy * rz * wide;
+  out[at + 3] = x;
+  out[at + 4] = 0;
+  out[at + 5] = dy * long;
+  out[at + 6] = (dx * rz - dz * rx) * wide;
+  out[at + 7] = y;
+  out[at + 8] = rz * wide;
+  out[at + 9] = dz * long;
+  out[at + 10] = dy * rx * wide;
+  out[at + 11] = z;
+}
+
 /**
  * A piece of light that stands upright where it is put and is sized by its bone: `wide` times its modelled size
  * across and `tall` times up.

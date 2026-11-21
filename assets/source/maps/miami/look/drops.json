@@ -4,11 +4,13 @@
     {"name": "drop-near", "x": 7028, "z": 5170, "up": 1.7, "look": [7038, 5181, 1.5], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
     {"name": "drop-under", "x": 7034, "z": 5177, "up": 1.7, "look": [7038, 5181, 30], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
     {"name": "drop-ringed", "x": 7030, "z": 5231, "up": 1.7, "look": [7038, 5241, 2.2], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
-    {"name": "drop-150", "x": 6890, "z": 5200, "up": 2, "look": [7038, 5210, 60], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
-    {"name": "drop-150-dusk", "hour": 18.4, "x": 6890, "z": 5200, "up": 2, "look": [7038, 5210, 60], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
-    {"name": "drop-150-night", "hour": 22, "x": 6890, "z": 5200, "up": 2, "look": [7038, 5210, 60], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
-    {"name": "drop-1km", "x": 6040, "z": 5200, "up": 12, "look": [7038, 5210, 200], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
-    {"name": "drop-4km", "x": 3040, "z": 5200, "up": 30, "look": [7038, 5210, 300], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
-    {"name": "drop-4km-night", "hour": 22, "x": 3040, "z": 5200, "up": 30, "look": [7038, 5210, 300], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]}
+    {"name": "drop-150", "x": 6930, "z": 5080, "up": 34, "look": [7038, 5200, 70], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-150-dusk", "hour": 18.4, "x": 6930, "z": 5080, "up": 34, "look": [7038, 5200, 70], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-150-night", "hour": 22, "x": 6930, "z": 5080, "up": 34, "look": [7038, 5200, 70], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-1km", "x": 6340, "z": 4470, "up": 70, "look": [7038, 5200, 220], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-4km", "x": 4210, "z": 2380, "up": 160, "look": [7038, 5200, 320], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-4km-night", "hour": 22, "x": 4210, "z": 2380, "up": 160, "look": [7038, 5200, 320], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "cast-site", "hour": 18.6, "eyeSeconds": 0, "cast": {"before": 5, "after": 12}, "x": 3440, "z": 3840, "up": 2, "look": [3422, 2742, 1700], "run": ["supply cancel all", "supply call 3470 3900 purple stable ringed"]},
+    {"name": "cast-far", "hour": 18.6, "eyeSeconds": 0, "cast": {"before": 5, "after": 12}, "x": 6340, "z": 4470, "up": 70, "look": [4400, 3300, 1300], "run": ["supply cancel all", "supply call 3470 3900 purple stable ringed"]}
   ]
 }

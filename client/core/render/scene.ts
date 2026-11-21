@@ -39,9 +39,10 @@ import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { SupplyView } from "../supply.ts";
-import { CAPSULE, CAPSULE_REACH, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "./supply.ts";
+import { TRAIL_MOST, TRAIL_REACH, alongBone, CAPSULE, CAPSULE_REACH, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "./supply.ts";
 import { packEffect } from "./supply-light.ts";
-import { MARKS, POSE_COMING, POSE_GONE, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
+import { TRAIL_SECONDS, writeDropSky } from "./supply-sky.ts";
+import { MARKS, POSE_COMING, POSE_FLYING, POSE_GONE, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
 import { nearestColour } from "../../../shared/pack/palette.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
@@ -1077,6 +1078,7 @@ export class Scene {
     }
     if (!p.lit) p.frame[FRAME.exposure] = 0;
     writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale, this.eyeHold);
+    writeDropSky(p.frame, this.supply?.list ?? null, this.supply?.tick ?? 0, TICK_RATE, cam.x, cam.y, cam.z, this.world.tideEyes ?? [], this.eyeSeconds);
     // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, the one by the viewer's own
     // body, before what casts is chosen.
     const shadows = p.tier.shadows;
@@ -2377,6 +2379,26 @@ export class Scene {
       s.y = pose.y - cam.y;
       s.z = pose.z - cam.z;
       const far = Math.hypot(s.x, s.y, s.z);
+      if (pose.state === POSE_FLYING && (far < TRAIL_REACH || s.y < -0.01 * far) && far < cam.far * 0.9) {
+        // In flight it trails light. The sky's streak is this from afar (supply-sky.ts); near, and from above where
+        // the sky is not behind it, it is a plume turned to lie along the way it came.
+        const speed = pose.speed, along = pose.along;
+        const hx = pose.x, hy = pose.y, hz = pose.z;
+        supplyPose(row, Math.max(row.release, view.tick - TRAIL_SECONDS * TICK_RATE * 0.2), TICK_RATE, pose);
+        const wx = hx - pose.x, wy = hy - pose.y, wz = hz - pose.z, went = Math.hypot(wx, wy, wz);
+        if (went > 0.01) {
+          const wide = Math.max(0.8, far * 0.0016) / 0.11;
+          this.effect[0] = seconds;
+          this.effect[1] = rgb;
+          this.effect[2] = Math.min(1, (view.tick - row.release) / (0.5 * TICK_RATE)) * (1 - Math.max(0, (along - 0.93) / 0.07));
+          this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
+          const long = Math.min(TRAIL_MOST, speed * 0.3);
+          alongBone(rows, 0, s.x, s.y, s.z, wx / went, wy / went, wz / went, wide, long);
+          piece(PIECE.jet, true, long, 0);
+          this.effect.fill(0);
+        }
+        supplyPose(row, view.tick, TICK_RATE, pose);
+      }
       if (far > CAPSULE_REACH || !cam.boxVisible(s.x - 1.6, s.y - 0.2, s.z - 1.6, s.x + 1.6, s.y + 2.9, s.z + 1.6)) continue;
       let dye = this.capsuleTints.get(rgb);
       if (dye === undefined) this.capsuleTints.set(rgb, (dye = nearestColour(this.groundPalette, (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)));

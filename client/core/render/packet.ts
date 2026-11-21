@@ -409,7 +409,16 @@ export const LAMP_AT = CAST_AT + 4;
  */
 export const GLASS_AT = LAMP_AT + 28;
 export const SHORE_AT = GLASS_AT + 4;
-export const FRAME_FLOATS = SHORE_AT + 4;
+/**
+ * fDrops: the supply drops' casts in the sky (supply-sky.ts). Two lanes a streak, four streaks: the unit way to its
+ * head from the eye and its strength, then the unit way to where its tail ends and its tier's colour as 0xRRGGBB. Then
+ * a lane for each obelisk's place in fEyes: the way its cast's bolt runs from the knot along the ground (x and z, a
+ * unit), how strongly it flashes, 0 to 1, and which strike it is.
+ */
+export const DROPS_AT = SHORE_AT + 4;
+export const DROP_STREAKS = 4;
+export const DROP_LANES = DROP_STREAKS * 2 + 3;
+export const FRAME_FLOATS = DROPS_AT + DROP_LANES * 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -425,6 +434,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp mat4 fLampShadow;
   highp vec4 fLampWay, fGlass;
   highp vec4 fShore;
+  highp vec4 fDrops[${4 * 2 + 3}];
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

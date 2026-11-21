@@ -7,6 +7,7 @@ import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { glassAt, glassCovers, glassReflected, opticsGlass } from "../../client/core/render/vehicle-glass.ts";
 import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
 import { dropGlow, dropLight } from "../../client/core/render/supply-light.ts";
+import { dropStreaks } from "../../client/core/render/supply-sky.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
 import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireRelief, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import { bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
@@ -29,7 +30,7 @@ import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyope
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -905,6 +906,8 @@ export class Rasterizer {
     const lights = p.lit ? cloudLights(p.frame, this.skyTable, this.sun) : null;
     const storm: StormLit | undefined = lights ? { way: lights.way, relief: lights.relief, lit: (o, thick, relief, d, behind) => cloudLit(o, thick, STORM_DEPTH, relief, 0, d, behind, lights) } : undefined;
     const px = (2 * Math.hypot(inv[1]!, inv[4]!, inv[7]!)) / (this.height * Math.hypot(inv[2]!, inv[5]!, inv[8]!));
+    let streaked = false;
+    for (let k = 0; k < DROP_STREAKS; k++) if (p.frame[DROPS_AT + k * 8 + 3]! > 0) streaked = true;
     for (let at = 0; at < this.width * this.height; at++) {
       if (this.depth[at] !== Infinity) continue;
       const o = at * 4;
@@ -925,10 +928,19 @@ export class Rasterizer {
               const transmission = eyeRadiance(p.frame, reflected, albedo2, eyeBehind, undefined, storm, px);
               for (let i = 0; i < 3; i++) mirrored[i] = mirrored[i]! * transmission + albedo2[i]! / exposure;
             }
+            // A supply drop's cast crossing the sky (supply-sky.ts), as the dome adds it.
+            if (streaked && exposure > 0) {
+              dropStreaks(p.frame, reflected[0]!, reflected[1]!, reflected[2]!, px, energy);
+              for (let i = 0; i < 3; i++) mirrored[i]! += energy[i]! / exposure;
+            }
             shown(rgb, mirrored, 0, p);
           } else {
             albedo2.fill(0);
             const transmission = eyeRadiance(p.frame, reflected, albedo2, p.sky, 2, undefined, px);
+            if (streaked) {
+              dropStreaks(p.frame, reflected[0]!, reflected[1]!, reflected[2]!, px, energy);
+              for (let i = 0; i < 3; i++) albedo2[i]! += energy[i]!;
+            }
             for (let i = 0; i < 3; i++) rgb[i] = 1 - (1 - p.sky[i]! * transmission) * Math.exp(-albedo2[i]!);
           }
           for (let i = 0; i < 3; i++) this.domeColor[o + i] = rgb[i]! * 255;

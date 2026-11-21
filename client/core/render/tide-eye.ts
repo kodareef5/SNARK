@@ -8,7 +8,8 @@
 // observer sees the same one: the seed picks one of three figures for that instrument, never the one before, and its
 // hand, size, pace and bearing.
 import { EMITTERS, EYE_COLORS, EYE_FORMS, EYE_KNOT, EYE_PERIOD, KEEL, LANTERN_MASTS, aperture, eyePhase, eyePower, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
-import { FRAME, FRAME_BLOCK } from "./packet.ts";
+import { DROPS_AT, DROP_STREAKS, FRAME, FRAME_BLOCK } from "./packet.ts";
+import { DROP_SKY_GLSL } from "./supply-sky.ts";
 
 // The site's clock is shared with the server, which times a supply drop's cast by it (shared/world/tide-eye.ts).
 export { EYE_PERIOD, aperture, eyePhase, eyePower };
@@ -320,15 +321,22 @@ const sheetLit = [0, 0, 0], here = [0, 0], there = [0, 0], ray3 = [0, 0, 0];
  * the cloud from inside about the strike, most where it is thin, crawls under the storm from the knot to the strike and
  * hangs from its edge; the beam lights the knot and the cloud over it in the site's colour.
  */
-function stormLight(dx: number, dy: number, dz: number, x: number, sky: number, z: number, seed: number, dir: number, t: number, storm: number, power: number, open: number, tint: readonly number[], exposure: number, behind: ArrayLike<number>, lit: StormLit, px: number, octaves: number, out: number[]): number {
+function stormLight(dx: number, dy: number, dz: number, x: number, sky: number, z: number, seed: number, dir: number, t: number, storm: number, power: number, open: number, tint: readonly number[], exposure: number, behind: ArrayLike<number>, lit: StormLit, px: number, octaves: number, out: number[], cast: ArrayLike<number> = NO_CAST, castAt = 0): number {
   out[0] = out[1] = out[2] = 0;
   if (storm <= 0.001) return 1;
   const reach = 1.2 + 1.5 * sstep(5, 12, t), camY = EYE_SKY - sky;
   ray3[0] = dx;
   ray3[1] = dy;
   ray3[2] = dz;
-  const flash = strike(t, seed, power, storm, open, struck), id = struck.id;
-  const ax = (eyeHash(id, 11, 2) - 0.5) * 1.5 * reach, az = (eyeHash(id, 13, 2) - 0.5) * 1.5 * reach;
+  let flash = strike(t, seed, power, storm, open, struck), id = struck.id;
+  let ax = (eyeHash(id, 11, 2) - 0.5) * 1.5 * reach, az = (eyeHash(id, 13, 2) - 0.5) * 1.5 * reach;
+  // A supply drop's cast leaving the knot is a strike of its own, toward where the drop goes (supply-sky.ts).
+  if (cast[castAt + 2]! > flash) {
+    flash = cast[castAt + 2]!;
+    id = cast[castAt + 3]!;
+    ax = cast[castAt]! * 0.22 * reach;
+    az = cast[castAt + 1]! * 0.22 * reach;
+  }
   const adapt = (0.35 + 0.65 * sstep(2, 10, Math.log2(Math.max(1, exposure)))) * flash;
   let held = 1;
   for (let k = 0; k < STORM_SHEETS.length; k++) {
@@ -385,6 +393,7 @@ function stormLight(dx: number, dy: number, dz: number, x: number, sky: number, 
 }
 
 const NO_SKY = [0, 0, 0];
+const NO_CAST = [0, 0, 0, 0];
 const stormOut = [0, 0, 0];
 // Called only on unobstructed sky pixels. Adds a ray's light to `out` and returns how much of the sky behind shows.
 // `behind` is the sky's light behind the ray and `lit` how a cloud up there is lit (the dome's cloudLit, atmosphere.ts),
@@ -509,7 +518,7 @@ export function eyeRadiance(frame: Float32Array, ray: ArrayLike<number>, out: Fl
     }
     // The storm under it, then the beam in front of all that, which ends in the storm's knot: one from the emitter, or
     // the Lantern's three from its masts.
-    const held = stormLight(dx, dy, dz, x, sky, z, seed, dir, t, storm, power, open, tint, frame[FRAME.exposure]!, behind, lit, px, octaves, stormOut);
+    const held = stormLight(dx, dy, dz, x, sky, z, seed, dir, t, storm, power, open, tint, frame[FRAME.exposure]!, behind, lit, px, octaves, stormOut, frame, DROPS_AT + (DROP_STREAKS * 2 + i) * 4);
     const top = sky - (EYE_SKY - KNOT_SHEET);
     let shaft = 0;
     const beamLit = (0.5 + 0.9 * power) * open;
@@ -675,12 +684,18 @@ float eyeBolt(float u, float v, float id, float len, float w) {
   float fork = v > at ? abs(u-wob-side*(v-at)*.55-(eyeNoise(vec2(v*.05,id*2.3),7.)-.5)*30.) : 1.e9;
   return (exp(-main/w)+.12*exp(-main/(w*14.)))*(1.-smoothstep(len*.7,len,v))+.7*exp(-fork/(w*.8))*(1.-smoothstep(at+(len-at)*.5,len,v));
 }
-vec4 eyeStorm(vec3 d, vec3 s, float seed, float dir, float t, float storm, float power, float open, vec3 tint, vec3 behind, float px) {
+vec4 eyeStorm(vec3 d, vec3 s, float seed, float dir, float t, float storm, float power, float open, vec3 tint, vec3 behind, float px, vec4 cast) {
   vec3 light = vec3(0.);
   float held = 1.;
   if (storm <= .001) return vec4(light, held);
   float reach = 1.2+1.5*smoothstep(5.,12.,t), camY = ${g(EYE_SKY)}-s.y, id, flash = eyeStrike(t,seed,power,storm,open,id);
   vec2 at = (vec2(eyeHash(vec2(id,11.),2.),eyeHash(vec2(id,13.),2.))-.5)*1.5*reach;
+  // A supply drop's cast leaving the knot is a strike of its own, toward where the drop goes (supply-sky.ts).
+  if (cast.z > flash) {
+    flash = cast.z;
+    id = cast.w;
+    at = cast.xy*.22*reach;
+  }
   float adapt = (.35+.65*smoothstep(2.,10.,log2(max(1.,fSunColor.w))))*flash, side = length(EYE_WAY.xz);
   for (int k=0; k<${STORM_SHEETS.length}; k++) {
     float tt = (EYE_SHEETS[k]-camY)/d.y;
@@ -835,7 +850,7 @@ vec4 eyeOptics(vec3 d, vec3 behind) {
         white += power*fold*(1.85*exp(-abs(bolt)/.009)+.17*veil*stream);
       }
     }
-    vec4 st = eyeStorm(d, s.xyz, seed, dir, t, storm, power, open, tint.rgb, behind, px);
+    vec4 st = eyeStorm(d, s.xyz, seed, dir, t, storm, power, open, tint.rgb, behind, px, fDrops[${DROP_STREAKS * 2}+i]);
     float top = s.y-${g(EYE_SKY - KNOT_SHEET)}, shaft = 0.;
     if (form == 2.) {
       ${MASTS_GLSL}
@@ -864,8 +879,9 @@ precision highp float;
 in vec3 vRay;
 uniform vec3 uSky;
 out vec4 o;
-${FRAME_BLOCK}${EYE_SKY_GLSL}
+${FRAME_BLOCK}${EYE_SKY_GLSL}${DROP_SKY_GLSL}
 void main() {
   vec4 lens = fHaze.z < 0. ? vec4(0., 0., 0., 1.) : eyeOptics(normalize(vRay), uSky);
+  if (fHaze.z >= 0.) lens.rgb += dropStreaks(normalize(vRay), length(fwidth(vRay))/max(1.e-6, length(vRay)));
   o = vec4(mix(uSky * lens.a, vec3(1.), 1. - exp(-lens.rgb)), 1.);
 }`;

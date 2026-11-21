@@ -21,7 +21,7 @@ import { tableKey, type CircuitDoc, type SiteDoc, type SupplyBook } from "../sha
 import { catalogOf, type Catalog } from "../shared/supply/catalog.ts";
 import { cellsOf, compileBook, rollTable, type Compiled } from "../shared/supply/compile.ts";
 import { HIT_NONE, castWorld, rayHit } from "../shared/world/ray.ts";
-import { EYE_KNOT } from "../shared/world/tide-eye.ts";
+import { EYE_KNOT, eyeKnot } from "../shared/world/tide-eye.ts";
 import type { Death } from "./death.ts";
 import { event, type Bus } from "./events/bus.ts";
 import type { Connection } from "../shared/net/transport.ts";
@@ -248,6 +248,7 @@ export class Supply {
     });
     const from = world.obelisks[sender];
     const eye = from && from.eye >= 0 ? from.eye : SENDER_ZENITH;
+    const knot = eye === SENDER_ZENITH ? null : eyeKnot(world.tideEyes[eye]!);
     const times = supplyTimes(world.tick, eye === SENDER_ZENITH ? null : world.tideEyes[eye]!.color, o.notice ?? rules.noticeSeconds, rules.flightSeconds, rules.brakeSeconds, rules.lifeSeconds, TICK_RATE);
     const d: Drop = {
       ...times,
@@ -261,9 +262,10 @@ export class Supply {
       sender,
       eye,
       look: seed & 0xff,
-      ox: quantise(from ? from.x : x),
+      // From the knot of storm over the sender's emitter, where it has a display; from over a plain obelisk; or from overhead.
+      ox: quantise(knot ? knot.x : from ? from.x : x),
       oy: quantise(EYE_KNOT),
-      oz: quantise(from ? from.z : z),
+      oz: quantise(knot ? knot.z : from ? from.z : z),
       x,
       y: quantise(this.groundAt(x, z)),
       z,

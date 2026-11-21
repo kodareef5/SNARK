@@ -16,10 +16,10 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { BTN_USE } from "../../shared/sim/character.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
-import { LEAVE_SECONDS, SENDER_ZENITH, SUPPLY_MOST, readSupply, writeSupply, type SupplyList } from "../../shared/sim/supply.ts";
+import { LEAVE_SECONDS, SENDER_ZENITH, SUPPLY_MOST, quantise, readSupply, writeSupply, type SupplyList } from "../../shared/sim/supply.ts";
 import type { SupplyBook } from "../../shared/supply/book.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
-import { CAST_PHASE, EYE_KNOT, eyePhase, type TideEyeSite } from "../../shared/world/tide-eye.ts";
+import { CAST_PHASE, EYE_KNOT, eyeKnot, eyePhase, type TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { SUPPLY_TAKERS } from "../fixtures/crash-child.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { listener } from "../fixtures/module.ts";
@@ -95,8 +95,10 @@ test("a drop from the console: its shaft stands, its cast leaves the obelisk at 
   expect(h.say(ada, "supply list")).toEqual(["no drops are live"]);
   expect(h.say(ada, "supply call 250 252 white arms plain 20")[0]).toMatch(/^called 1: white arms at 250 252, coming, lands in \d+ s$/);
   const d = h.host.supply.drops[0]!;
-  // Sent by the map's one obelisk, from the knot of storm over it, at its cast phase: at full power, never shut.
-  expect([d.sender, d.eye, d.ox, d.oy, d.oz, d.x, d.y, d.z]).toEqual([0, 0, 64, EYE_KNOT, 64, 250, 0, 252]);
+  // Sent by the map's one obelisk, from the knot of storm over its emitter, at its cast phase: at full power, never shut.
+  const knot = eyeKnot(BLUE);
+  expect([d.sender, d.eye, d.ox, d.oy, d.oz, d.x, d.y, d.z]).toEqual([0, 0, quantise(knot.x), EYE_KNOT, quantise(knot.z), 250, 0, 252]);
+  expect(Math.hypot(knot.x - BLUE.x, knot.z - BLUE.z)).toBeGreaterThan(1);
   expect(Math.abs(eyePhase(d.release / TICK_RATE, BLUE) - CAST_PHASE)).toBeLessThan(1e-6);
   const wait = (d.land - d.called) / TICK_RATE;
   expect([wait >= 20, wait < 140, d.land - d.release, d.brake, d.end - d.land]).toEqual([true, true, 30 * TICK_RATE, 7 * TICK_RATE, 1200 * TICK_RATE]);

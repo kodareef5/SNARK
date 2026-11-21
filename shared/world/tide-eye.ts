@@ -95,6 +95,17 @@ export const EMITTERS = [
 ] as const;
 export const LANTERN_MASTS = lantern.corners.map(([x, z]) => [x! * 380, z! * 380] as const);
 
+/**
+ * Where the knot of storm a site's beam ends in is over the map: over its emitter, which stands off its deck's axis
+ * as its form has it and its heading turns it. A supply drop's cast leaves from there (server/supply.ts), and the
+ * display stands its figure there (client/core/render/tide-eye.ts writeEyeSky).
+ */
+export function eyeKnot(site: Pick<TideEyeSite, "x" | "z" | "yaw" | "form">): { x: number; z: number } {
+  const off = EMITTERS[EYE_FORMS.indexOf(site.form)]!.x;
+  const yaw = (site.yaw * Math.PI) / 32768;
+  return { x: site.x + off * detCos(yaw), z: site.z - off * detSin(yaw) };
+}
+
 export const EYE_COLLIDERS = new Set(Object.keys(HULLS).map(name => "core:zztide_eye_" + name));
 
 export function eyeCollision(site: TideEyeSite): MapStatic[] {

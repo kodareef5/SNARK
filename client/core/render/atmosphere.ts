@@ -12,6 +12,7 @@
 // a bright rim toward the sun, the sky's light round it, and haze in front of it.
 
 import { EYE_SKY_GLSL, STORM_DEPTH } from "./tide-eye.ts";
+import { DROP_SKY_GLSL } from "./supply-sky.ts";
 import { FRAME, FRAME_BLOCK, FRAME_FLOATS } from "./packet.ts";
 import { MOON_RADIUS, SKY_GLSL, SUN_RADIUS, domeLight, hazeColor, hourOfSun, luminance, skyFrame, sunHeight, trueSun, upCoord, type Sky } from "./sky.ts";
 import { LIGHT, skyFromGlsl } from "./surface.ts";
@@ -572,7 +573,7 @@ vec4 layer(sampler2D map, vec3 d, vec3 behind, vec4 shape, vec2 at, bool heaped)
 vec3 eyeCloudLit(float thick, float relief, vec3 d, vec3 behind) {
   return cloudLit(thick, ${g(STORM_DEPTH)}, relief, 0.0, d, behind);
 }
-${EYE_SKY_GLSL}
+${EYE_SKY_GLSL}${DROP_SKY_GLSL}
 void main() {
   vec3 d = normalize(vRay);
   if (fHaze.z < 0.0) {
@@ -598,5 +599,7 @@ void main() {
     }
   }
   if (fHaze.w <= 0.) c = c * optics.a + optics.rgb;
+  // A supply drop's cast crossing the sky, over the clouds: it is light, and nothing of the sky hides it.
+  c += dropStreaks(d, length(fwidth(d)));
   o = vec4(display(c) + (hash(uvec3(gl_FragCoord.xy, 3u)) - 0.5) * SHOWN_STEP * min(fHaze.w, 1.0), 1.0);
 }`;

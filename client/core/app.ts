@@ -1580,6 +1580,8 @@ export class App {
     if (this.playEye && this.artEyeAt === null && alive && this.script.length === 0) this.artEyeAt = nowMs;
     this.scene.eyeSeconds = this.artEyeTime === null ? session.renderClock / TICK_RATE
       : this.artEyeTime + (this.artEyeAt === null ? 0 : (nowMs - this.artEyeAt) / 1000);
+    // A picture tool that holds the obelisks' clock holds the drops' with it: a cast leaves by that clock.
+    if (this.artEyeTime !== null) this.supply.tick = this.scene.eyeSeconds * TICK_RATE;
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = alternate ? this.other! : this.off;
     this.scene.alternate = alternate;
     this.scene.finishGloss = this.ui.settings.finishGloss;
