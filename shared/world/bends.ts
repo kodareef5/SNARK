@@ -5,7 +5,7 @@
 // static stands at the middle of the chord between its two ends, at the road's height there, turned along the chord.
 // Its bend says how long the chord is, which way the street runs at each end (so the piece follows a straight, an arc
 // or an S between them), how far its end rises over its start, where it starts along its kerb line, how wide its walk
-// is, its panels' length, and a seed and a wear, which its variety reads (client/core/render/bend.ts BENT_WEAR).
+// is, its panels' length, and a seed and a wear, which its variety reads (client/core/render/bend.ts bentWear).
 //
 // The map's build lays the pieces (placeKerb, from a kerb line with stations and a section) and, under them, collision
 // pieces of plain boxes and ramps drawn as nothing (underPiece, content/bends.ts), which servers, vehicles and the walk
@@ -214,7 +214,7 @@ export interface BentPiece {
   readonly z: number;
   readonly yaw: number;
   readonly bend: Bend;
-  /** Its pieces' kerb kind, and whether it is curved, for its collision (underPiece). */
+  /** Its kerb, which its collision follows (underPiece): a flare to or from a flush kerb is walked as flush. */
   readonly kerb: Kerb | "median";
 }
 
@@ -222,7 +222,7 @@ export interface BentPiece {
 export const BENT_KERBS = ["raised", "worn", "flush", "median"] as const;
 export type BentKerb = (typeof BENT_KERBS)[number];
 export const bentKind = (kerb: BentKerb, curved: boolean): string => `core:zzzzzbend_${kerb}_${curved ? "c" : "s"}`;
-/** The pieces that join two kerbs: raised or worn to flush, and raised to worn, along their length. */
+/** The pieces that join two kerbs along their length, each way round: raised or worn and flush, raised and worn. */
 export const bentJoin = (from: BentKerb, to: BentKerb): string => `core:zzzzzbend_${from}_${to}`;
 /** Segments along a curved piece, and the most a piece of each runs. */
 export const CURVE_SEGMENTS = 8;

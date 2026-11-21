@@ -180,6 +180,26 @@ function corner(): KerbLine {
   return { x, z, y: x.map(() => 0), dx, dz };
 }
 
+test("a corner's walk is under its collision pieces all along it, from just behind the kerb's face to its back", () => {
+  const pieces = placeKerb(corner(), 1, SECTION);
+  const hits = pieces.flatMap(underPiece);
+  const covered = (x: number, z: number): boolean => hits.some((h) => {
+    // Its width and length, in centimetres, from its kind's id (bends.ts hitKind).
+    const [w, l] = /_(\d+)_(\d+)$/.exec(h.kind)!.slice(1).map(Number) as [number, number];
+    const a = (h.yaw * Math.PI) / 180, dx = x - h.x, dz = z - h.z;
+    // In the box's frame: x along (cos a, -sin a), z across (sin a, cos a).
+    return Math.abs(dx * Math.cos(a) - dz * Math.sin(a)) <= l / 200 + 1e-3 && Math.abs(dx * Math.sin(a) + dz * Math.cos(a)) <= w / 200 + 1e-3;
+  });
+  let missed = 0, tried = 0;
+  for (const p of pieces) for (let q = 0; q <= 8; q++) for (const across of [0.05, 0.6, 1.2, 1.8]) {
+    // A point of the walk, `across` of the model's 2 m (the section's 3 m stretched from the kerb's back).
+    const [x, , z] = faceAt(p, q / 8, across);
+    tried++;
+    if (!covered(x, z)) missed++;
+  }
+  expect([tried, missed]).toEqual([tried, 0]);
+});
+
 /** A flat world with a bent kerb's collision pieces laid as the build lays them. */
 function kerbWorld(section: Section): ReturnType<typeof flatWorld> {
   const w = flatWorld(4);

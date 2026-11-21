@@ -1,7 +1,7 @@
 // Bent street sections (shared/world/bends.ts, planning/workstreams/bent-sections.md): a few modelled lengths of kerb,
 // gutter and walk, each drawn bent along the street by its instance's bend, and the plain pieces a map lays under them to
 // be walked and driven on. A bent kind is drawn as its mesh in the street pieces asset
-// (assets/source/core/props/street/curb.py `bent`, which keeps these numbers) and walked as nothing (StructureDef.bent);
+// (assets/source/core/props/street/bent.py, which keeps these numbers) and walked as nothing (StructureDef.bent);
 // its shape is the box of its modelled 4 m, which nothing draws or walks. A collision piece is drawn as nothing near and
 // as its boxes past the near rows, where the far city takes it for the kerb: a box from the kerb's face to the walk's
 // back at the kerb's height, or a flush kerb's ramp. Every id sorts after every other core id, so no index moves.
