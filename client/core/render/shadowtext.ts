@@ -14,7 +14,7 @@
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./farshadow.ts";
-import { LAMP_INNER, LAMP_NEAREST, LAMP_OUTER, LAMP_TAN } from "./lamp.ts";
+import { LAMP_CORNER, LAMP_GROUND, LAMP_LONG, LAMP_NEAREST, LAMP_OUT, LAMP_TAN, LAMP_WIDE } from "./lamp.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 
 /** Texels of the receiver's cascade the lookup is moved along its normal, at most, where the surface runs along the light. */
@@ -154,8 +154,8 @@ function filterText(m: number): string {
  * pixel is shaded by the far map too, looked up where its ray to the sun leaves the chunks the near store holds
  * (`farBeyond`, farshadow.ts `nearLead`), so the far city's shadows reach near the camera and the near pieces' are not
  * cast twice. With LAMP, `sunShadow` first finds how much of the street lamp's light reaches the point (`lampSees`, the
- * twin of lamp.ts `lampReach` but for the shadow): by distance, cone and facing, and by four compared taps of the
- * lamp's map in its layer, moved off the surface as the cascades' are; LIGHT's `lit` adds it from gLamp.
+ * twin of lamp.ts `lampReach` but for the shadow): by its pool, distance and facing, and by four compared taps of the
+ * lamp's map in its corner of its layer, moved off the surface as the cascades' are; LIGHT's `lit` adds it from gLamp.
  */
 export const SHADOW_GLSL = `#define fFarAt fSwell.zw
 #define fFarScale fLook.w
@@ -215,15 +215,21 @@ void lampSees(vec3 rel, vec3 normal) {
   if (fLamp.w <= 0.0) return;
   vec3 d = fLamp.xyz - rel;
   float far = dot(d, d);
-  if (far >= fLamp.w * fLamp.w) return;
+  if (far >= fLamp.w * fLamp.w || d.y <= 0.0) return;
+  vec2 o = d.xz * (${g(-LAMP_GROUND)} / d.y);
+  float ahead = dot(o, fLampWay.xy);
+  float q = (ahead - ${g(LAMP_OUT)}) * (ahead - ${g(LAMP_OUT)}) / ${g(LAMP_WIDE * LAMP_WIDE)} + (dot(o, o) - ahead * ahead) / ${g(LAMP_LONG * LAMP_LONG)};
+  if (q >= 1.0) return;
+  float t = sqrt(q);
+  float pool = 1.0 - t * t * (3.0 - 2.0 * t);
   vec3 l = d * inversesqrt(far);
-  float cone = clamp((l.y - ${g(LAMP_OUTER)}) / ${g(LAMP_INNER - LAMP_OUTER)}, 0.0, 1.0);
   float w = 1.0 - far * far / (fLamp.w * fLamp.w * fLamp.w * fLamp.w);
   float facing = dot(normal, l);
-  float reach = cone * cone * (3.0 - 2.0 * cone) * w * w / max(far, ${g(LAMP_NEAREST * LAMP_NEAREST)}) * clamp(facing * 20.0, 0.0, 1.0);
+  float deep = max(d.y, ${g(LAMP_NEAREST)});
+  float reach = pool * pool * w * w * sqrt(far) / (deep * deep * deep) * clamp(facing * 20.0, 0.0, 1.0);
   if (reach <= 0.0) return;
   if (fLampColor.w >= 0.0) {
-    float texel = ${g(2 * LAMP_TAN)} * d.y / SHADOW_SIZE;
+    float texel = ${g((2 * LAMP_TAN) / LAMP_CORNER)} * d.y / SHADOW_SIZE;
     vec3 p = rel + normal * (${g(LAMP_OFFSET)} * texel * sqrt(max(1.0 - facing * facing, 0.0))) + l * texel;
     vec4 c = fLampShadow * vec4(p, 1.0);
     vec3 at = c.xyz / c.w * 0.5 + 0.5;

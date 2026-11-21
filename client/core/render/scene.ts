@@ -1021,7 +1021,7 @@ export class Scene {
     writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale, this.eyeHold);
     // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, before what casts is chosen.
     const shadows = p.tier.shadows;
-    this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true);
+    this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true, this.world.hf);
     this.fit(cam);
     this.fitLamp(cam);
 
@@ -1172,11 +1172,11 @@ export class Scene {
     if (!p.lit || !setup.lamp || setup.cascades <= 0 || lamps.shows <= 0 || !cam.boxVisible(x - LAMP_ACROSS, y - LAMP_RANGE, z - LAMP_ACROSS, x + LAMP_ACROSS, y, z + LAMP_ACROSS)) {
       lamp.off();
       c.lampTexel = 0;
-      lampFrame(p.frame, null, 0, -1);
+      lampFrame(p.frame, null, lamps.way, 0, -1);
       return;
     }
     lamp.set(x, y, z, setup.size);
-    lampFrame(p.frame, lamps.lens, lamps.shows, shadowLayer(MAX_CASCADES, setup.cascades));
+    lampFrame(p.frame, lamps.lens, lamps.way, lamps.shows, shadowLayer(MAX_CASCADES, setup.cascades));
     p.frame.set(lamp.matrix, LAMP_AT + 8);
     p.maps.set(lamp.matrix, MAX_CASCADES * 16);
     c.lampTexel = lamp.texel;

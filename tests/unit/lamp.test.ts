@@ -1,16 +1,17 @@
-// The street lamp that lights as a light by night (render/lamp.ts): its cone and fall, its view from the lens, the hand
-// over from one lamp to the next through their cards, and a frame of it: where it lights, what casts into its map, and
-// where nothing does.
+// The street lamp that lights as a light by night (render/lamp.ts): its pool and fall, its view from the lens, its
+// cards laid out as its light is, the hand over from one lamp to the next through their cards, and a frame of it: where
+// it lights, what casts into its map, and where nothing does.
 import { expect, test } from "bun:test";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { LAMP_BIT, LAMP_FADE, LAMP_NEAR, LAMP_RANGE, LAMP_REACH, LAMP_TAN, LampView, lampFrame, lampLight, lampReach, lampSees } from "../../client/core/render/lamp.ts";
+import { poolOf } from "../../client/core/render/detailtext.ts";
+import { LAMP_BIT, LAMP_COLOUR, LAMP_CORNER, LAMP_FADE, LAMP_GROUND, LAMP_HOLD, LAMP_LONG, LAMP_NEAR, LAMP_OUT, LAMP_POOL, LAMP_RANGE, LAMP_REACH, LAMP_TAN, LAMP_WIDE, LampView, lampFrame, lampLight, lampPool, lampReach, lampSees } from "../../client/core/render/lamp.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_POOL, FRAME, FRAME_FLOATS, FramePacket, LAMP_AT, MAX_CASCADES } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { shadowLayer, shadowLayers } from "../../client/core/render/shadowtext.ts";
 import { hourOfSun } from "../../client/core/render/sky.ts";
-import { StreetLamps } from "../../client/core/render/street-lamps.ts";
+import { LIT_POOL_SHOWS, StreetLamps } from "../../client/core/render/street-lamps.ts";
 import { lit } from "../../client/core/render/surface.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -27,31 +28,49 @@ const LIT = "core:zzstreet_lamp_lit";
 /** Where a lamp's lens stands in its own frame (street-lamps.ts LENS): over the road, +z. */
 const LENS = [0, 8.85, 2.9] as const;
 
-test("the lamp's light falls off as its card does, and none reaches above the lens, past its range or a face turned away", () => {
-  const f = new Float32Array(FRAME_FLOATS);
-  lampFrame(f, [0, 8.85, 0], 1, 4);
+/** The light on flat ground LAMP_GROUND under the lens at (u, v) from under it, as a share of the light at the pool's middle. */
+function ground(f: Float32Array, u: number, v: number): number {
   const way = [0, 0, 0];
-  const under = lampReach(f, 0, 0, 0, 0, 1, 0, way);
-  expect(way).toEqual([0, 1, 0]);
-  // The card (street-lamps.ts POOL) shows 71% of itself a quarter of its 13 m out, a quarter at half and nothing at its
-  // edge; the light on the road, with the road's own turn from it, much as that.
-  const onRoad = (r: number): number => (lampReach(f, r, 0, 0, 0, 1, 0, way) * way[1]!) / under;
-  expect(onRoad(3.25)).toBeGreaterThan(0.7);
-  expect(onRoad(6.5)).toBeGreaterThan(0.1);
-  expect(onRoad(6.5)).toBeLessThan(0.3);
-  expect(onRoad(9.75)).toBeLessThan(0.01);
-  for (let r = 0; r < 14; r += 0.25) expect(onRoad(r + 0.25)).toBeLessThanOrEqual(onRoad(r) + 1e-9);
+  return lampReach(f, u, 0, v, 0, 1, 0, way) * way[1]! * LAMP_GROUND * LAMP_GROUND;
+}
+
+test("the lamp's pool lies out over the road from under the lens and reaches farther along it than across, and none reaches above the lens, past its range or a face turned away", () => {
+  const f = new Float32Array(FRAME_FLOATS);
+  lampFrame(f, [0, LAMP_GROUND, 0], [0, 1], 1, 4);
+  // On the ground, the pool's light: all of it at its middle, LAMP_OUT out over the road, but for the range's fall,
+  // and as much less elsewhere as lampPool says.
+  expect(ground(f, 0, LAMP_OUT)).toBeGreaterThan(0.9);
+  expect(ground(f, 0, LAMP_OUT)).toBeLessThanOrEqual(1);
+  for (const [u, v] of [[0, 0], [3, 1], [-5, 6], [6, -2]] as const) expect(ground(f, u, v) / lampPool(u, v, 0, 1)).toBeGreaterThan(0.75);
+  // Less of it back over the walk than as far out over the road from the middle, and farther along the road than across.
+  expect(ground(f, 0, -3)).toBeLessThan(ground(f, 0, 3) * 0.6);
+  for (const d of [2, 4, 6]) expect(ground(f, 0, LAMP_OUT - d)).toBeCloseTo(ground(f, 0, LAMP_OUT + d), 1);
+  expect(ground(f, 0.9 * LAMP_LONG, LAMP_OUT)).toBeGreaterThan(0);
+  expect(ground(f, 0, LAMP_OUT + 1.01 * LAMP_WIDE)).toBe(0);
+  expect(ground(f, 0, LAMP_OUT - 1.01 * LAMP_WIDE)).toBe(0);
+  for (let r = 0; r < 14; r += 0.25) expect(ground(f, r + 0.25, LAMP_OUT)).toBeLessThanOrEqual(ground(f, r, LAMP_OUT) + 1e-9);
+  // All of it within the map's view.
+  expect(Math.max(LAMP_OUT + LAMP_WIDE, LAMP_LONG) / LAMP_GROUND).toBeLessThan(LAMP_TAN);
+  // A car's roof 1.5 m up under the pool's middle takes the middle's light, the more for being nearer the lens.
+  const way = [0, 0, 0];
+  const roof = lampReach(f, 0, 1.5, LAMP_OUT * (1 - 1.5 / LAMP_GROUND), 0, 1, 0, way) * way[1]! * LAMP_GROUND * LAMP_GROUND;
+  expect(roof / ground(f, 0, LAMP_OUT)).toBeCloseTo((LAMP_GROUND / (LAMP_GROUND - 1.5)) ** 2, 1);
   expect(lampReach(f, 0, 9, 0, 0, -1, 0, way)).toBe(0);
-  expect(lampReach(f, 0, 8.85 - LAMP_RANGE - 0.1, 0, 0, 1, 0, way)).toBe(0);
-  expect(lampReach(f, 0, 0, 0, 0, -1, 0, way)).toBe(0);
-  // Its light is light after exposure: as bright on the screen whatever the night's exposure.
+  expect(lampReach(f, 0, LAMP_GROUND - LAMP_RANGE - 0.1, 0, 0, 1, 0, way)).toBe(0);
+  expect(lampReach(f, 0, 0, LAMP_OUT, 0, -1, 0, way)).toBe(0);
+  // Its head turned the other way, the pool turns with it.
   const g = new Float32Array(FRAME_FLOATS);
+  lampFrame(g, [0, LAMP_GROUND, 0], [0, -1], 1, 4);
+  expect(ground(g, 0, -LAMP_OUT)).toBeCloseTo(ground(f, 0, LAMP_OUT), 6);
+  expect(ground(g, 0, 3)).toBeCloseTo(ground(f, 0, -3), 6);
+  // Its light is light after exposure: as bright on the screen whatever the night's exposure.
   g[FRAME.exposure] = 4;
-  lampFrame(g, [0, 8.85, 0], 0.5, 4);
+  lampFrame(g, [0, LAMP_GROUND, 0], [0, 1], 0.5, 4);
   for (let k = 0; k < 3; k++) expect(g[LAMP_AT + 4 + k]).toBeCloseTo((f[LAMP_AT + 4 + k]! * 0.5) / 4, 6);
-  expect([g[LAMP_AT + 3], g[LAMP_AT + 7], f[LAMP_AT + 7]]).toEqual([LAMP_RANGE, 4, 4]);
-  lampFrame(g, null, 1, 4);
+  expect([g[LAMP_AT + 3], g[LAMP_AT + 7], f[LAMP_AT + 7], f[LAMP_AT + 24], f[LAMP_AT + 25]]).toEqual([LAMP_RANGE, 4, 4, 0, 1]);
+  lampFrame(g, null, [0, 1], 1, 4);
   expect(Array.from(g.subarray(LAMP_AT, LAMP_AT + 8))).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+  expect(Array.from(g.subarray(LAMP_AT + 24, LAMP_AT + 28))).toEqual([0, 0, 0, 0]);
 });
 
 test("the software render adds the lamp's light where lampSees finds it, and none where the frame has no lamp", () => {
@@ -59,23 +78,27 @@ test("the software render adds the lamp's light where lampSees finds it, and non
   f[FRAME.exposure] = 1;
   const grey = [0.2, 0.2, 0.2], rough = [1, 1, 0], up = [0, 1, 0], none = [0, 0, 0];
   const dark = [0, 0, 0], litUp = [0, 0, 0];
-  lampFrame(f, [0, 8.85, 0], 1, -1);
+  lampFrame(f, [0, LAMP_GROUND, 0], [0, 1], 1, -1);
   lampSees(f, 0, 0, 0, 0, 1, 0);
   lit(litUp, grey, rough, up, up, f, none);
-  // Lambert on a grey card: its colour times the light a metre off over the square of the distance, cut a little by the
-  // range's edge, and a fully rough highlight's few hundredths besides.
+  // Lambert on a grey card under the lens: its colour times the pool's light there, cut a little by the range's edge,
+  // and a fully rough highlight's few hundredths besides.
   for (let k = 0; k < 3; k++) {
-    const lambert = (0.2 * f[LAMP_AT + 4 + k]!) / (8.85 * 8.85);
+    const lambert = 0.2 * LAMP_COLOUR[k]! * LAMP_POOL * lampPool(0, 0, 0, 1);
     expect(litUp[k]! / lambert).toBeGreaterThan(0.95);
     expect(litUp[k]! / lambert).toBeLessThan(1.05);
   }
-  lampFrame(f, null, 0, -1);
+  // Grass sends back near enough the lamp's own hue, as under a sodium lamp, not twice the green a grey card does.
+  const grass = [0.089, 0.149, 0.015], green = [0, 0, 0];
+  lit(green, grass, rough, up, up, f, none);
+  expect(green[1]! / green[0]! / (litUp[1]! / litUp[0]!)).toBeLessThan(1.15);
+  lampFrame(f, null, [0, 1], 0, -1);
   lit(dark, grey, rough, up, up, f, none);
   expect(dark).toEqual([0, 0, 0]);
   lampLight.fill(0);
 });
 
-test("the map's view from the lens: straight down, square to LAMP_TAN either way, from its near plane to its range, and what may stand in it", () => {
+test("the map's view from the lens: straight down, square to LAMP_TAN either way, in a corner of its layer, from its near plane to its range, and what may stand in it", () => {
   const l = new LampView();
   expect(l.box(-1, -1, -1, 1, 1, 1)).toBe(0);
   l.set(3, 8, -2, 2048);
@@ -84,17 +107,20 @@ test("the map's view from the lens: straight down, square to LAMP_TAN either way
     for (let r = 0; r < 4; r++) out[r] = m[r]! * x + m[4 + r]! * y + m[8 + r]! * z + m[12 + r]!;
     return out.map((v) => v / out[3]!);
   };
-  // Straight under the lens is the middle; the near plane and the range are the depth's ends; the edge of its square is LAMP_TAN out.
-  for (const v of clip(3, 0, -2).slice(0, 2)) expect(v).toBeCloseTo(0, 6);
+  // Straight under the lens is the middle of its corner, LAMP_CORNER of the layer's side; the near plane and the range
+  // are the depth's ends; the edge of its square is LAMP_TAN out, at the corner's edge.
+  const middle = LAMP_CORNER - 1, edge = 2 * LAMP_CORNER - 1;
+  for (const v of clip(3, 0, -2).slice(0, 2)) expect(v).toBeCloseTo(middle, 6);
   expect(clip(3, 8 - LAMP_NEAR, -2)[2]).toBeCloseTo(-1, 5);
   expect(clip(3, 8 - LAMP_RANGE, -2)[2]).toBeCloseTo(1, 5);
-  expect(clip(3 + LAMP_TAN * 5, 3, -2)[0]).toBeCloseTo(1, 5);
-  expect(clip(3, 3, -2 - LAMP_TAN * 5)[1]).toBeCloseTo(1, 5);
+  expect(clip(3 + LAMP_TAN * 5, 3, -2)[0]).toBeCloseTo(edge, 5);
+  expect(clip(3 - LAMP_TAN * 5, 3, -2)[0]).toBeCloseTo(-1, 5);
+  expect(clip(3, 3, -2 - LAMP_TAN * 5)[1]).toBeCloseTo(edge, 5);
   // The map's x and y and its depth make the hand a cascade's do, so the same faces are its back faces.
   const [a, b, c] = [clip(3, 0, -2), clip(4, 0, -2), clip(3, 0, -3)];
   const cross = (b[0]! - a[0]!) * (c[1]! - a[1]!) - (b[1]! - a[1]!) * (c[0]! - a[0]!);
   expect(cross).toBeGreaterThan(0);
-  expect(l.texel).toBeCloseTo((2 * LAMP_TAN * 9) / 2048, 9);
+  expect(l.texel).toBeCloseTo((2 * LAMP_TAN * LAMP_GROUND) / (2048 * LAMP_CORNER), 9);
   // Under it, within reach: in. Over the lens, past its range, or wide of it: out.
   expect(l.box(2, 0, -3, 4, 1.5, -1)).toBe(LAMP_BIT);
   expect(l.box(2, 8.5, -3, 4, 9, -1)).toBe(0);
@@ -131,7 +157,7 @@ function pools(p: FramePacket, camX: number): Map<number, number> {
   const out = new Map<number, number>();
   for (let d = 0; d < p.detailCount; d++) {
     const o = d * DETAIL_FLOATS, misc = p.detailWords[o + DETAIL.misc]!;
-    if (((misc >>> 8) & 255) !== DETAIL_POOL || Math.abs(p.details[o + DETAIL.across + 2]!) < 1) continue;
+    if (((misc >>> 8) & 255) !== DETAIL_POOL || Math.hypot(p.details[o + DETAIL.across]!, p.details[o + DETAIL.across + 2]!) < 1) continue;
     out.set(Math.round(p.details[o]! + camX), (misc >>> 16) & 255);
   }
   return out;
@@ -142,43 +168,104 @@ test("the nearest working lamp within LAMP_REACH lights, its pool card gone whil
   let now = 0;
   frame(103, now);
   expect(lamps.shows).toBe(0);
-  for (let k = 0; k < 20; k++) frame(103, (now += 1000 / 60));
+  for (let k = 0; k < 40; k++) frame(103, (now += 1000 / 60));
   expect(lamps.shows).toBe(1);
-  expect([lamps.lens[0], lamps.lens[1], lamps.lens[2]]).toEqual([100 + LENS[0] - 103, LENS[1] - 1.7, 128 + LENS[2] - 124]);
+  expect([lamps.lens[0], lamps.lens[1], lamps.lens[2], lamps.way[0], lamps.way[1]]).toEqual([100 + LENS[0] - 103, LENS[1] - 1.7, 128 + LENS[2] - 124, 0, 1]);
   const p = frame(103, (now += 1000 / 60));
-  expect(pools(p, 103)).toEqual(new Map([[120, 210]]));
-  // Lights off (the tier, or `?ab=lamp`): every pool card shows, and what it held it still holds after.
-  expect(pools(frame(103, (now += 1000 / 60), false), 103)).toEqual(new Map([[100, 210], [120, 210]]));
+  expect(pools(p, 103)).toEqual(new Map([[120, LIT_POOL_SHOWS]]));
+  // Lights off (`?ab=lamp`): every pool card shows, and what it held it still holds after.
+  lamps.light = false;
+  expect(pools(frame(103, (now += 1000 / 60)), 103)).toEqual(new Map([[100, LIT_POOL_SHOWS], [120, LIT_POOL_SHOWS]]));
   expect(lamps.shows).toBe(0);
+  lamps.light = true;
   frame(103, (now += 1000 / 60));
   expect(lamps.shows).toBe(1);
+  // A tier where no lamp lights keeps its cards as they were: round the lens, wider and stronger.
+  const kept = frame(103, (now += 1000 / 60), false);
+  expect(pools(kept, 103)).toEqual(new Map([[100, 210], [120, 210]]));
+  expect(lamps.shows).toBe(0);
   // Nothing within reach: what it held fades out.
-  for (let k = 0; k < 20; k++) frame(100 - LAMP_REACH - 5, (now += 1000 / 60));
+  for (let k = 0; k < 40; k++) frame(100 - LAMP_REACH - 5, (now += 1000 / 60));
   expect(lamps.shows).toBe(0);
   // By day nothing.
-  for (let k = 0; k < 20; k++) frame(103, (now += 1000 / 60), true, 12);
+  for (let k = 0; k < 40; k++) frame(103, (now += 1000 / 60), true, 12);
   expect([lamps.shows, frame(103, now, true, 12).detailCount]).toEqual([0, 0]);
 });
 
-test("the light goes from one lamp to the next through their cards over twice LAMP_FADE, one lamp lighting at a time", () => {
+test("where a lamp lights, its pool card lies where its light falls and shows on the road as its light does", () => {
+  const { frame } = twoLamps();
+  // Far from both, so neither lights and both are cards.
+  const p = frame(110, 0, true);
+  let card = -1;
+  for (let d = 0; d < p.detailCount; d++) {
+    const o = d * DETAIL_FLOATS;
+    if (((p.detailWords[o + DETAIL.misc]! >>> 8) & 255) === DETAIL_POOL && Math.round(p.details[o]! + 110) === 100 && Math.hypot(p.details[o + DETAIL.across]!, p.details[o + DETAIL.across + 2]!) > 1) card = o;
+  }
+  expect(card).toBeGreaterThanOrEqual(0);
+  const f = new Float32Array(FRAME_FLOATS);
+  lampFrame(f, [0, LAMP_GROUND, 0], [0, 1], 1, -1);
+  const shape = [0, 0, 0];
+  const across = [p.details[card + DETAIL.across]!, p.details[card + DETAIL.across + 2]!], along = [p.details[card + DETAIL.along]!, p.details[card + DETAIL.along + 2]!];
+  // The card's middle and its lens, from the camera: the lens is 2.9 m out from the mast at (100, 128).
+  const mx = p.details[card]!, mz = p.details[card + 2]!, lx = 100 - 110, lz = 128 + LENS[2] - 124;
+  for (const [u, v] of [[0, 0], [0, LAMP_OUT], [3, 4], [-6, 1], [0, -4], [9, 2]] as const) {
+    // The ground point (u, v) from under the lens, in the card's own measure: its share of each half axis.
+    const rx = lx + u - mx, rz = lz + v - mz;
+    const cx = (rx * across[0]! + rz * across[1]!) / (across[0]! ** 2 + across[1]! ** 2), cy = (rx * along[0]! + rz * along[1]!) / (along[0]! ** 2 + along[1]! ** 2);
+    poolOf(cx, cy, shape);
+    expect(shape[0]!).toBeCloseTo(lampPool(u, v, 0, 1), 6);
+  }
+  // At its middle the card shows the share of its colour, the light's, that the road's asphalt sends back of the light
+  // there seen low along the street from 10 m off, its gloss and all: its finish's reflectance and roughness.
+  const road = [0, 0, 0], low = Math.hypot(1.7, 10), up = [0, 1, 0];
+  f[FRAME.exposure] = 1;
+  lampFrame(f, [0, LAMP_GROUND, 0], [0, 1], 1, -1);
+  lampSees(f, 0, 0, LAMP_OUT, 0, 1, 0);
+  lit(road, [0.034, 0.035, 0.028], [1, 0.864, 0], up, [0, 1.7 / low, -10 / low], f, [0, 0, 0]);
+  lampLight.fill(0);
+  expect(road[0]! / LAMP_COLOUR[0] / (LIT_POOL_SHOWS / 255)).toBeCloseTo(1, 1);
+});
+
+test("the light goes from one lamp to the next through their cards over twice LAMP_FADE, eased, one lamp lighting at a time", () => {
   const { lamps, frame } = twoLamps();
   let now = 0;
-  for (let k = 0; k < 20; k++) frame(103, (now += 1000 / 60));
+  for (let k = 0; k < 40; k++) frame(103, (now += 1000 / 60));
   const seen: { shows: number; at: number; first: number; second: number }[] = [];
-  for (let k = 0; k < 30; k++) {
+  for (let k = 0; k < 60; k++) {
     const p = frame(117, (now += 1000 / 60));
     const card = pools(p, 117);
     seen.push({ shows: lamps.shows, at: Math.round(lamps.lens[0]! + 117), first: card.get(100) ?? 0, second: card.get(120) ?? 0 });
   }
   // The first lamp's light falls as its card comes back, then the second's card goes as its light comes.
   const out = seen.findIndex((s) => s.shows === 0);
-  expect(out).toBeGreaterThan(5);
+  expect(out).toBeGreaterThan(15);
   expect(seen.slice(0, out).every((s) => s.at === 100)).toBe(true);
   expect(seen.slice(out + 1).every((s) => s.at === 120)).toBe(true);
-  for (let k = 1; k < seen.length; k++) expect(Math.abs(seen[k]!.shows - seen[k - 1]!.shows)).toBeLessThan(0.15);
-  for (const s of seen) expect(s.at === 100 ? s.first : s.second).toBeCloseTo(210 * (1 - s.shows), -0.5);
+  for (let k = 1; k < seen.length; k++) expect(Math.abs(seen[k]!.shows - seen[k - 1]!.shows)).toBeLessThan(0.07);
+  // Eased: it starts and ends slowly.
+  expect(1 - seen[0]!.shows).toBeLessThan(0.01);
+  for (const s of seen) expect(s.at === 100 ? s.first : s.second).toBeCloseTo(LIT_POOL_SHOWS * (1 - s.shows), -0.5);
   const whole = seen.findIndex((s, k) => k > out && s.shows === 1);
   expect(((whole + 1) * 1000) / 60 / 1000).toBeCloseTo(2 * LAMP_FADE, 1);
+});
+
+test("the light changes hands only once the next lamp's pool is LAMP_HOLD nearer, and does not go back and forth", () => {
+  const { lamps, frame } = twoLamps();
+  let now = 0;
+  for (let k = 0; k < 40; k++) frame(103, (now += 1000 / 60));
+  // The pools' middles are 2 m out from the lenses, 10.9 m from the camera's line: just past halfway the first holds.
+  const middle = (x: number, lamp: number): number => Math.hypot(lamp - x, 128 + LENS[2] + LAMP_OUT - 124);
+  expect(middle(113, 100) - middle(113, 120)).toBeLessThan(LAMP_HOLD);
+  for (let round = 0; round < 3; round++) for (const x of [107, 113]) for (let k = 0; k < 40; k++) {
+    frame(x, (now += 1000 / 60));
+    expect([Math.round(lamps.lens[0]! + x), lamps.shows]).toEqual([100, 1]);
+  }
+  expect(middle(117, 100) - middle(117, 120)).toBeGreaterThan(LAMP_HOLD);
+  for (let k = 0; k < 60; k++) frame(117, (now += 1000 / 60));
+  expect([Math.round(lamps.lens[0]! + 117), lamps.shows]).toEqual([120, 1]);
+  // And back past halfway it stays with the second.
+  for (let k = 0; k < 60; k++) frame(107, (now += 1000 / 60));
+  expect([Math.round(lamps.lens[0]! + 107), lamps.shows]).toEqual([120, 1]);
 });
 
 let made: ReturnType<typeof parsePack> | null = null;
@@ -199,7 +286,7 @@ function lampWorld(tier: ReturnType<typeof tierOf>) {
   const remote = new RemoteSample();
   [remote.id[0], remote.kind[0], remote.x[0], remote.y[0], remote.z[0], remote.yaw[0], remote.flags[0]] = [100, reg.index.get(TUBE)!, 121, 0, 131, 0, 1];
   remote.count = 1;
-  const frames = (hour: number, n = 20): FramePacket => {
+  const frames = (hour: number, n = 40): FramePacket => {
     scene.hour = hour;
     let p!: FramePacket;
     for (let k = 0; k < n; k++) {
@@ -211,12 +298,12 @@ function lampWorld(tier: ReturnType<typeof tierOf>) {
   return { scene, cam, frames, tube: scene.assets.table.find(TUBE) };
 }
 
-test("a frame at night on high: the lamp's lens and light in the frame block, its map drawn after the far map's, and what stands under it casting into it", () => {
+test("a frame at night on high: the lamp's lens, light and way in the frame block, its map drawn after the far map's, and what stands under it casting into it", () => {
   const { frames, tube } = lampWorld(tierOf("high"));
   const p = frames(0);
   const f = p.frame;
   [10, 8.85 - 1.7, 0.9].forEach((v, k) => expect(f[LAMP_AT + k]).toBeCloseTo(v, 4));
-  expect([f[LAMP_AT + 3], f[LAMP_AT + 7]]).toEqual([LAMP_RANGE, shadowLayer(MAX_CASCADES, 3)]);
+  expect([f[LAMP_AT + 3], f[LAMP_AT + 7], f[LAMP_AT + 24], f[LAMP_AT + 25]]).toEqual([LAMP_RANGE, shadowLayer(MAX_CASCADES, 3), 0, 1]);
   expect(shadowLayer(MAX_CASCADES, 3)).toBe(shadowLayers(tierOf("high").shadows) - 1);
   expect(p.cascadesDrawn & LAMP_BIT).toBe(LAMP_BIT);
   expect(Array.from(p.maps.subarray(MAX_CASCADES * 16))).toEqual(Array.from(f.subarray(LAMP_AT + 8, LAMP_AT + 24)));

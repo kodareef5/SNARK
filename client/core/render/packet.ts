@@ -377,12 +377,13 @@ export const ROOF_AT = WATER_PATHS + 4 * MAX_WATER_MARKS;
  */
 export const CAST_AT = ROOF_AT + 4;
 /**
- * fLamp, fLampColor and fLampShadow: the street lamp that lights as a light this frame (lamp.ts), its lens
+ * fLamp, fLampColor, fLampShadow and fLampWay: the street lamp that lights as a light this frame (lamp.ts), its lens
  * camera-relative and the range of its light (0 for no lamp), its light a metre off and the layer of the shadow array
- * its map is in (-1 for none), and the matrix from camera-relative space to its map's clip space.
+ * its map is in (-1 for none), the matrix from camera-relative space to its map's clip space, and the way its head
+ * faces out over the road along the ground, x and z.
  */
 export const LAMP_AT = CAST_AT + 4;
-export const FRAME_FLOATS = LAMP_AT + 24;
+export const FRAME_FLOATS = LAMP_AT + 28;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -396,6 +397,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterPaths[${MAX_WATER_MARKS}];
   highp vec4 fRoof, fCast, fLamp, fLampColor;
   highp mat4 fLampShadow;
+  highp vec4 fLampWay;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

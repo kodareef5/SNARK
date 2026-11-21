@@ -19,7 +19,7 @@ import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
 import { BONES_PER_ROW, CAST_AT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
-import { lampLight } from "./lamp.ts";
+import { LAMP_SEES, LAMP_WASH, lampAlbedo, lampLight } from "./lamp.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
@@ -232,7 +232,7 @@ export function direct(out: Out, frame: Numbers, way: number, colour: number, al
   }
 }
 
-const sky = new Float64Array(3);
+const sky = new Float64Array(3), sodium = new Float64Array(3);
 
 /**
  * Whether the moon owns the shadow cascades this frame (packet.ts CAST_AT, sky.ts `castLight`), so that their shade
@@ -262,8 +262,12 @@ export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numb
     const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
     out[c] = mro[0]! * (sky[c]! * albedo[c]! * (1 - metal) + (f0 * parts[0]! + (1 - f0) * parts[1]!) * (mirror[c]! * (1 - a) + sky[c]! * a));
   }
-  // The street lamp's light where it reaches the point being lit (lamp.ts `lampSees`), unshadowed here.
-  if (frame[LAMP_AT + 3]! > 0) direct(out, lampLight, 0, 4, albedo, metal, a * a, n, v, nv);
+  // The street lamp's light where it reaches the point being lit (lamp.ts `lampSees`), unshadowed here, on the
+  // colour its narrow band finds.
+  if (frame[LAMP_AT + 3]! > 0) {
+    lampAlbedo(sodium, albedo);
+    direct(out, lampLight, 0, 4, sodium, metal, a * a, n, v, nv);
+  }
   const moon = moonCasts(frame);
   direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv, moon ? 1 : shade);
   direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv, moon ? shade : 1);
@@ -551,11 +555,11 @@ vec3 encoded(vec3 c) {
 /**
  * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
  * `skyShare`, `skyOn`, `skyLight`, `direct`, `lit`, `tone` and `shown`; `keyShade` is `moonCasts` as the sun's share
- * of a shade and the moon's. `shown` takes where the point is from the eye, and the air
- * between (atmosphere.ts `hazed`, which a program defines after this) above water; under water, today's fog. What
- * lights includes SHADOW_GLSL after it, for `lit`'s shade. With LIGHT_TARGET defined (post.ts) it shows light as it
- * is after exposure, for the finishing pass to tone and grade, and the fog's colour as light; `SHOWN_STEP` is a
- * display step, which a text dithering what it shows takes, and 0 there.
+ * of a shade and the moon's, and `lit`'s `sodium` is lamp.ts `lampAlbedo`. `shown` takes where the point is from the
+ * eye, and the air between (atmosphere.ts `hazed`, which a program defines after this) above water; under water,
+ * today's fog. What lights includes SHADOW_GLSL after it, for `lit`'s shade. With LIGHT_TARGET defined (post.ts) it
+ * shows light as it is after exposure, for the finishing pass to tone and grade, and the fog's colour as light;
+ * `SHOWN_STEP` is a display step, which a text dithering what it shows takes, and 0 there.
  */
 export const LIGHT = `${FRAME_BLOCK}${CONTACT_GLSL}uniform vec3 uSky;
 uniform vec2 uFog;
@@ -599,7 +603,10 @@ vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, mro.b);
   vec3 light = mro.r * (sky * albedo * (1.0 - mro.b) + skyShare(f0, rough, nv) * mix(mirrored, sky, a));
 #ifdef LAMP
-  if (gLamp.w > 0.0) light += direct(gLamp.xyz, fLampColor.rgb * gLamp.w, albedo, mro.b, a * a, n, v, nv);
+  if (gLamp.w > 0.0) {
+    vec3 sodium = mix(albedo, vec3(dot(albedo, vec3(${LAMP_SEES.map(f).join(", ")}))), ${f(LAMP_WASH)});
+    light += direct(gLamp.xyz, fLampColor.rgb * gLamp.w, sodium, mro.b, a * a, n, v, nv);
+  }
 #endif
   vec2 key = keyShade(shade);
   return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) * key.x + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv) * key.y;

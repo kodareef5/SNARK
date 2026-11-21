@@ -57,8 +57,8 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   expect([FRAME.reflection + 4, FRAME.previousReflection + 4, FRAME.streetLook + 4, FRAME.tireContacts + 4*MAX_TIRE_CONTACTS]).toEqual([FRAME.previousReflection, FRAME.streetLook, FRAME.tireContacts, FRAME.exhaustPhase]);
   expect(FRAME.exhaustPhase + 4).toBe(WATER_BOUNDS);
   expect(WATER_MARKS + 8 * MAX_WATER_MARKS).toBe(WATER_PATHS);
-  expect([WATER_PATHS + 4 * MAX_WATER_MARKS, ROOF_AT + 4, CAST_AT + 4, LAMP_AT + 8 + 16]).toEqual([ROOF_AT, CAST_AT, LAMP_AT, FRAME_FLOATS]);
-  expect(FRAME_BLOCK).toContain("highp vec4 fRoof, fCast, fLamp, fLampColor;\n  highp mat4 fLampShadow;\n};");
+  expect([WATER_PATHS + 4 * MAX_WATER_MARKS, ROOF_AT + 4, CAST_AT + 4, LAMP_AT + 8 + 16 + 4]).toEqual([ROOF_AT, CAST_AT, LAMP_AT, FRAME_FLOATS]);
+  expect(FRAME_BLOCK).toContain("highp vec4 fRoof, fCast, fLamp, fLampColor;\n  highp mat4 fLampShadow;\n  highp vec4 fLampWay;\n};");
   expect(FRAME_BLOCK).toContain(`fWaterMarks[${2 * MAX_WATER_MARKS}]`);
   const p = new FramePacket();
   p.split = 384;
