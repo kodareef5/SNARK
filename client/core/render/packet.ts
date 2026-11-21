@@ -108,6 +108,11 @@ export const DETAIL_GLASS = DETAIL_POOL | 2;
 export const DETAIL_TIRE = DETAIL_POOL | 3;
 /** A sunlit aerated streak at the stern. Its grey byte seeds the shape. */
 export const DETAIL_WAKE = DETAIL_POOL | DETAIL_LIT | 4;
+/**
+ * A damage number (damage-numbers.ts): its glyphs drawn by their distance (digits.ts), filled with its first colour and
+ * outlined in deep navy, the glyphs packed in its second colour's three bytes. Unlit and unfogged, as the HUD is.
+ */
+export const DETAIL_DIGITS = DETAIL_POOL | 5;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /**
