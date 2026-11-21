@@ -58,6 +58,8 @@ interface Moment {
   readonly up?: number;
   readonly steps?: number;
   readonly part?: readonly [number, number, number, number];
+  /** Degrees the look turns across the strip, a step at a time, as a player's mouse turns it. */
+  readonly turn?: number;
 }
 
 const MOMENTS: readonly Moment[] = [
@@ -72,6 +74,8 @@ const MOMENTS: readonly Moment[] = [
   { name: "far-still", near: [7013.8, 10173.9], from: [-2, 4], to: [-2, 4], up: 1.7, steps: 24, part: [0.2, 0.3, 0.6, 0.3] },
   { name: "far-creep", near: [7013.8, 10173.9], from: [-2, 4], to: [-3.5, 4], up: 1.7, steps: 31, part: [0.2, 0.3, 0.6, 0.3] },
   { name: "far-fly", near: [7013.8, 10173.9], from: [-2, 4], to: [-4.5, 4], up: 15, steps: 21, part: [0.2, 0.3, 0.6, 0.3] },
+  // Standing on the road, the look turning slowly, a twentieth of a degree a step: the lamps far off move a pixel or two.
+  { name: "far-turn", near: [7013.8, 10173.9], from: [-2, 4], to: [-2, 4], up: 1.7, steps: 21, part: [0.2, 0.3, 0.6, 0.3], turn: 1 },
 ];
 
 const map = Bun.mmap(mapPath);
@@ -243,11 +247,12 @@ try {
         const lamps = lampsNear(eyeAt(0)[0], eyeAt(0)[2], 330), points = lamps.flatMap((l) => [l.lens, l.pool]);
         const shots: Picture[] = [], places: ([number, number] | null)[][] = [];
         for (let k = 0; k < m.steps!; k++) {
-          const [ex, ey, ez] = eyeAt(k);
+          const [ex, ey, ez] = eyeAt(k), look = yaw + (((m.turn ?? 0) * Math.PI) / 180) * (k / Math.max(1, m.steps! - 1));
           place(ex, ey - 1.62, ez, true);
+          if (m.turn) await evaluate(`(() => { snarkTrip.app.held = [${look}, ${pitch}]; return true; })()`);
           for (let w = 0; w < 40; w++) {
-            const c = await evaluate("(() => { const c = snarkTrip.app.cam; return [c.x, c.y, c.z]; })()");
-            if (c && Math.hypot(c[0] - ex, c[2] - ez) < 0.005) break;
+            const c = await evaluate("(() => { const c = snarkTrip.app.cam; return [c.x, c.y, c.z, c.yaw]; })()");
+            if (c && Math.hypot(c[0] - ex, c[2] - ez) < 0.005 && Math.abs(Math.atan2(Math.sin(c[3] - look), Math.cos(c[3] - look))) < 1e-4) break;
             await Bun.sleep(50);
           }
           states.push(await evaluate(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(${STATE}))))`));
@@ -264,7 +269,7 @@ try {
         const lampRows = seen.map(({ l, i }) => {
           const lens = shots.map((s, k) => windowLuma(s, places[k]![2 * i]![0], places[k]![2 * i]![1], LENS_W, LENS_W));
           const pool = shots.map((s, k) => (places[k]![2 * i + 1] ? windowLuma(s, places[k]![2 * i + 1]![0], places[k]![2 * i + 1]![1], POOL_W, POOL_H) : NaN));
-          const still = m.from![0] === m.to![0] && m.from![1] === m.to![1];
+          const still = m.from![0] === m.to![0] && m.from![1] === m.to![1] && !m.turn;
           return { metres: Math.round(Math.hypot(l.lens[0] - eyeAt(0)[0], l.lens[2] - eyeAt(0)[2])), lensJump: jumpiness(lens, still), poolJump: pool.every(Number.isFinite) ? jumpiness(pool, still) : NaN, lens: lens.map(Math.round), pool: pool.map(Math.round) };
         });
         const tile = LENS_W * ZOOM, sheet = new Uint8Array(m.steps! * tile * seen.length * tile * 4);
