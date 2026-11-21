@@ -310,7 +310,8 @@ export class Residency {
     this.run = new Uint16Array(manifest.pages?.length ?? 0);
     this.size = new Uint32Array(slots);
     this.inBoot = new Uint8Array(slots);
-    this.heldBytes = new Array<Uint8Array | null>(this.levels).fill(null);
+    // A level's own bytes, and after them every level's surface's where the boot pack holds that too.
+    this.heldBytes = new Array<Uint8Array | null>(this.levels * 2).fill(null);
     this.runs = new Array<readonly number[]>(this.levels).fill(NONE);
     manifest.meshes.forEach((m, i) => {
       m.levels.forEach((_, l) => {
@@ -406,7 +407,11 @@ export class Residency {
       const from = level.at - this.boot.blobAt;
       this.heldBytes[slot] = level.file === this.manifest.boot ? this.boot.blob.subarray(from, from + bytes) : role === "page" ? blob!.subarray(level.at, level.at + bytes) : null;
       this.inBoot[slot] = this.heldBytes[slot] ? 1 : 0;
-      this.inBoot[this.levels + slot] = (level.surface ?? level).file === this.manifest.boot ? 1 : 0;
+      // A surface the boot pack holds follows its level's first part there (a whole pack, which nothing is fetched
+      // for): a level whose materials have no picture is drawn with them from such a pack, and so needs it.
+      const surface = this.size[this.levels + slot]!;
+      this.heldBytes[this.levels + slot] = !level.surface && level.file === this.manifest.boot && surface > 0 ? this.boot.blob.subarray(from + bytes, from + bytes + surface) : null;
+      this.inBoot[this.levels + slot] = this.heldBytes[this.levels + slot] ? 1 : 0;
       this.runs[slot] = level.sections ?? NONE;
     });
     this.knownMesh[i] = 1;

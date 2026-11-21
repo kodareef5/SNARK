@@ -72,7 +72,8 @@ artTest("the whole client: a drop's shaft from near and from far, its capsule in
   h.run(((d.land - d.brake - h.world.tick) / TICK_RATE) * 1000 + 2000, (now) => void app.frame(now, 1280, 720));
   expect([app.supply.stateOf(row()), app.supply.shafts, app.supply.capsules]).toEqual([POSE_BRAKING, 1, 1]);
   h.run(((d.land - h.world.tick) / TICK_RATE) * 1000 + 1000, (now) => void app.frame(now, 1280, 720));
-  expect([d.landed, app.supply.stateOf(row()), app.supply.shafts, app.supply.capsules]).toEqual([true, POSE_LANDED, 1, 0]);
+  // Landed near her: the capsule is its model where the pack has one, and where it has none the server's prop, which this does not draw.
+  expect([d.landed, app.supply.stateOf(row()), app.supply.shafts, app.supply.capsules]).toEqual([true, POSE_LANDED, 1, app.supply.modelled ? 1 : 0]);
   // From far off there is no prop in her view, and the capsule is drawn in its place.
   stand(X - 300, Z, X, Z, 0);
   expect([app.supply.shafts, app.supply.capsules]).toEqual([1, 1]);

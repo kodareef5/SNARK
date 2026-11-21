@@ -129,6 +129,12 @@ if (import.meta.main) {
     h.run(Math.max(0, ((d.land - h.world.tick) / TICK_RATE) * 1000 + 1500), frame);
     must("it has landed as a capsule", d.landed && h.host.records.byPid.has(d.pid) && session.supply.rows[0]!.landed);
 
+    // Stood back from, to see the whole of it; and from the other side.
+    stand(X + 4.2, Z - 4.2, X, Z, -0.12);
+    run(6500);
+    shoot("standing", "six metres off, eight seconds after it landed: legs splayed, louvres open, its collars and its top-mark");
+    stand(X - 3.2, Z + 3.6, X, Z, -0.1);
+    shoot("around", "from its other side");
     // Walked up to, below its level: the prompt says the level, and E does nothing.
     stand(X, Z - 3.2, X, Z, -0.3);
     shoot("landed", "three metres from it, at level 1: the prompt names it and the level it opens at");

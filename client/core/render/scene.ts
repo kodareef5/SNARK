@@ -9,7 +9,7 @@ import { remoteVehiclePose } from "../vehicle-view.ts";
 // the same way, each as the mesh of its form (shared/world/nodes.ts) at its size.
 
 import { MAX_MOVING_REACH, type Registry } from "../../../shared/content/registry.ts";
-import { CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
+import { TICK_RATE, CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
@@ -39,6 +39,10 @@ import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { SupplyView } from "../supply.ts";
+import { CAPSULE, CAPSULE_REACH, HOOP_RATE, PIECES as CAPSULE_PIECES, SLAT_REACH, collarBone, fixedBone, hatchBone, hoopBone, legBone, markBone, slatBone, type CapsuleStance } from "./supply.ts";
+import { packEffect } from "./supply-light.ts";
+import { MARKS, POSE_COMING, POSE_GONE, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
+import { nearestColour } from "../../../shared/pack/palette.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
 import { FAR_FROM, farPlane, type Camera } from "./camera.ts";
@@ -521,6 +525,13 @@ export class Scene {
   shots: Shots | null = null;
   /** The supply drops live on the map, drawn from the list the server tells (client/core/supply.ts). The app sets it. */
   supply: SupplyView | null = null;
+  /** The capsule's pieces' meshes in the order of supply.ts PIECES, and the kind of the server's prop, which the model stands in for (-1 with no model). */
+  private readonly capsuleMesh: Int32Array;
+  private readonly capsuleKind: number;
+  private readonly capsuleStance: CapsuleStance = { x: 0, y: 0, z: 0, yaw: 0, legs: 0, shutters: 0, hatch: 0, hoop: 0 };
+  private readonly capsulePose = newPose();
+  private readonly capsuleRows = new Float32Array(BONE_FLOATS);
+  private readonly capsuleTints = new Map<number, number>();
   shotTick = 0;
   /** Structures falling after a removal. The app sets it. */
   falling: Falling | null = null;
@@ -809,6 +820,9 @@ export class Scene {
     this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow"), light: eye("crown_light"), deckLight: eye("deck_light") };
     this.lanternMesh = { frame: eye("lantern"), shutter: eye("shutter"), lip: eye("shutter_light"), light: eye("well_light"), masts: eye("mast_light") };
     this.sextantMesh = { frame: eye("sextant"), needle: eye("needle"), indexLight: eye("index_light"), keelLight: eye("keel_light") };
+    // The supply capsule's pieces (supply.ts), each -1 in a pack without its model, which draws the stand-in.
+    this.capsuleMesh = Int32Array.from(CAPSULE_PIECES, (piece) => table.find("core:supply_capsule/" + piece));
+    this.capsuleKind = this.capsuleMesh[0]! >= 0 ? (reg.index.get("core:supply_capsule") ?? -1) : -1;
     this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -1114,6 +1128,7 @@ export class Scene {
     }
     // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
     if (this.world.tideEyes) this.showTideEyes(cam, this.world.tideEyes);
+    if (this.supply?.list && this.capsuleKind >= 0) this.showSupply(cam, this.supply);
     if (this.world.motion && this.motionReg) this.showMotion(cam, this.world.motion);
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
@@ -2267,6 +2282,94 @@ export class Scene {
     p.transientCount = total;
   }
 
+  /**
+   * The supply capsules, each from its drop's pose (shared/sim/supply.ts) and in pieces, each piece a draw with one
+   * bone (supply.ts): the hull, its legs folding out as it brakes, the louvres' slats opening one after another once it
+   * stands, the hatch ajar once it has been opened, a collar for each step of its tier, its class's top-mark, the hoop
+   * of a ringed one turning, and its own lit strips, which take the drop's effect. Past CAPSULE_REACH its shaft is all
+   * there is of it.
+   */
+  private showSupply(cam: Camera, view: SupplyView): void {
+    const p = this.packet;
+    const list = view.list!;
+    const pose = this.capsulePose, s = this.capsuleStance, rows = this.capsuleRows, mesh = this.capsuleMesh;
+    view.modelled = true;
+    view.capsules = 0;
+    const piece = (which: number, glow = false): void => {
+      const m = mesh[which]!;
+      if (m < 0 || p.transientCount >= p.transientIds.length || p.drawCount + this.doubled >= MAX_DRAWS || p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return;
+      const cx = rows[3]!, cy = rows[7]!, cz = rows[11]!;
+      const r = this.radiusOfMesh[m]! + 0.5;
+      if (!cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r)) return;
+      const first = p.transientCount++;
+      const distance = Math.max(1, Math.hypot(cx, cy, cz) - r);
+      const level = this.assets.choose(this.assets.table.error[m]!, distance, -1);
+      this.assets.wantTextured(m, level, distance);
+      const bone = p.boneCount++;
+      p.bones.set(rows, bone * BONE_FLOATS);
+      this.transient.setSkinned(first, bone, this.capsuleDye);
+      p.transientIds[first] = 0;
+      this.draw(m, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_PLAIN | DRAW_SKINNED | (glow ? DRAW_EMISSIVE : 0), cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r));
+    };
+    for (const row of list.rows) {
+      supplyPose(row, view.tick, TICK_RATE, pose);
+      if (pose.state === POSE_COMING || pose.state === POSE_GONE) continue;
+      s.x = pose.x - cam.x;
+      s.y = pose.y - cam.y;
+      s.z = pose.z - cam.z;
+      const far = Math.hypot(s.x, s.y, s.z);
+      if (far > CAPSULE_REACH || !cam.boxVisible(s.x - 1.6, s.y - 0.2, s.z - 1.6, s.x + 1.6, s.y + 2.9, s.z + 1.6)) continue;
+      const tier = list.tiers[row.tier];
+      const rgb = tier?.rgb ?? 0xffffff;
+      let dye = this.capsuleTints.get(rgb);
+      if (dye === undefined) this.capsuleTints.set(rgb, (dye = nearestColour(this.groundPalette, (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)));
+      this.capsuleDye = dye;
+      s.yaw = (row.look / 256) * 2 * Math.PI;
+      s.legs = pose.legs;
+      s.shutters = pose.shutters;
+      s.hatch = row.opened && pose.state === POSE_LANDED ? Math.min(1, Math.max(0, pose.since)) : 0;
+      s.hoop = (view.tick / TICK_RATE) * HOOP_RATE + row.look;
+      view.capsules++;
+      fixedBone(rows, 0, s);
+      piece(0);
+      for (let k = 0; k < CAPSULE.legs; k++) {
+        legBone(rows, 0, s, k);
+        piece(1);
+      }
+      if (far < SLAT_REACH) {
+        for (let k = 0; k < CAPSULE.legs; k++) for (let j = 0; j < CAPSULE.lantern.slats; j++) {
+          slatBone(rows, 0, s, k, j);
+          piece(2);
+        }
+      }
+      hatchBone(rows, 0, s);
+      piece(3);
+      const count = Math.min(CAPSULE.collar.most, tier?.count ?? 1);
+      for (let k = 0; k < count; k++) {
+        collarBone(rows, 0, s, k);
+        piece(4);
+      }
+      if (row.ringed) {
+        hoopBone(rows, 0, s);
+        piece(5);
+      }
+      const mark = list.classes[row.cls]?.mark ?? 0;
+      markBone(rows, 0, s);
+      piece(7 + (mark < MARKS.length ? mark : 0));
+      // Its lit strips: the seconds since it landed, its colour, how far its lantern is open, and its count.
+      this.effect[0] = (view.tick - row.land) / TICK_RATE;
+      this.effect[1] = rgb;
+      this.effect[2] = pose.shutters;
+      this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, pose.state === POSE_LANDED, row.look);
+      fixedBone(rows, 0, s);
+      piece(6, true);
+      this.effect.fill(0);
+    }
+  }
+
+  /** The palette colour nearest the tier of the capsule being drawn: its glass's dye. */
+  private capsuleDye = 0;
+
   private showTideEyes(cam: Camera, sites: readonly TideEyeSite[]): void {
     const p = this.packet;
     for (const site of sites) {
@@ -3378,7 +3481,7 @@ export class Scene {
     for (let i = 0; i < remote.count; i++) {
       if (p.lit && this.speciesKind[remote.kind[i]!] !== Number(plain)) continue;
       // A cloud has no mesh of its own: it is puffs among the details (clouds.ts).
-      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0 || this.clouds.kinds[remote.kind[i]!] !== 0) continue;
+      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0 || this.clouds.kinds[remote.kind[i]!] !== 0 || remote.kind[i] === this.capsuleKind) continue;
       // A bag of one stack is drawn as its item, where the item has a lying mesh.
       const lies = this.dropped.item(remote.kind[i]!, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[remote.kind[i]!]!;
@@ -3398,7 +3501,8 @@ export class Scene {
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
       if (p.lit && this.speciesKind[kind] !== Number(plain)) continue;
-      if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0) continue;
+      // A supply capsule is drawn from its drop, in pieces (showSupply), where the pack has its model.
+      if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0 || kind === this.capsuleKind) continue;
       const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;

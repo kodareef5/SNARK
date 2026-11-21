@@ -33,6 +33,8 @@ export class SupplyView {
   /** How many shafts and capsules the last frame drew. */
   shafts = 0;
   capsules = 0;
+  /** The scene draws the capsules from their model (render/scene.ts showSupply), and this the shafts alone. */
+  modelled = false;
   private readonly box: number;
   private readonly beam: number;
   private readonly palette = defaultPalette();
@@ -58,7 +60,8 @@ export class SupplyView {
   }
 
   draw(ch: Characters, p: FramePacket, cam: Camera): void {
-    this.shafts = this.capsules = 0;
+    this.shafts = 0;
+    if (!this.modelled) this.capsules = 0;
     const list = this.list;
     if (!list || this.beam < 0) return;
     const pose = this.pose;
@@ -73,13 +76,15 @@ export class SupplyView {
       // The shaft: thinner as it comes up and as it goes, and never under two pixels wide.
       if (pose.shaft > 0.02) {
         const wide = Math.max(SHAFT_WIDTH, far * SHAFT_FLOOR) * pose.shaft;
+        // Over a capsule drawn from its model it starts at the mast's head, so that the capsule is seen.
+        const foot = this.modelled && pose.state !== POSE_COMING && far < 450 ? 2.7 : 0;
         if (cam.boxVisible(x - wide, y, z - wide, x + wide, y + SHAFT_HEIGHT, z + wide)) {
-          if (!ch.loose(p, this.beam, x, y, z, 0, 1, 0, SHAFT_HEIGHT, wide, tint)) return;
+          if (!ch.loose(p, this.beam, x, y + foot, z, 0, 1, 0, SHAFT_HEIGHT - foot, wide, tint)) return;
           this.shafts++;
         }
       }
       // The capsule: in the air, and on the ground where the server's prop is not in sight to be drawn.
-      if (this.box < 0 || pose.state === POSE_COMING) continue;
+      if (this.modelled || this.box < 0 || pose.state === POSE_COMING) continue;
       if (pose.state === POSE_LANDED && Math.hypot(x, y, z) < PROP_RANGE) continue;
       const cx = pose.x - cam.x;
       const cy = pose.y - cam.y;
