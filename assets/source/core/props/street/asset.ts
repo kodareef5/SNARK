@@ -4,7 +4,8 @@
 // their painted parts in tex/parts (ref/SOURCES.md says how each was made). "street" is opaque; "street_cut" is drawn
 // where its alpha is over half: chain-link, broken glass, torn vinyl. The script makes every level; the flat ones are
 // in the colours of what their faces were laid on, the last the piece's masses in a dozen to seventy triangles. The
-// crosswalk bars are laid on the atlas's road paint, their last level a flat patch of four triangles.
+// crosswalk bars are laid on the atlas's road paint, their last level a flat patch of four triangles. curb.py makes the
+// street's edge on the same atlas (EDGE below).
 
 import type { PiecesAsset } from "../../../../../tools/art/spec.ts";
 
@@ -90,10 +91,36 @@ const STATED: Readonly<Record<string, readonly number[]>> = Object.fromEntries(
   Object.entries(PIECES).filter(([name, levels]) => name.startsWith("crosswalk") && levels.length > 1).map(([name]) => [name, [0.1]]),
 );
 
+/**
+ * The street's edge, under the walk kit's own ids (content/ruins.ts street()), and a curb return no content has yet,
+ * which the street study sets down (tools/snap/street-study.ts --rows): curb.py makes them on the atlas's concrete
+ * strip. Each is its object, its triangles a level and each coarser level's error, stated in metres, as a measure of
+ * points does not see a groove filled or an arc's chord:
+ * - A walk or a ramp's finest level has the curb's top edge rounded to 2.5 cm in four, its face leaning back 1.2 cm, the
+ *   walk in 1.6 m panels with joints 4 cm wide and 6 mm deep, and a gutter pan before it where the content has one.
+ *   Its second is its box with the face's lean: 12 triangles (20 with a gutter), fewer than the old boxes had before the
+ *   near city left out their hidden faces. It stands 9 mm off the first, where the edge is squared, so on medium it is
+ *   drawn from 32 m and on high from 50 m.
+ * - The return, 6 m at its face, has a quarter in 24, 16, 12, 6 and 3 pieces. Each coarser level's error is its chord's
+ *   sagitta at the gutter's edge, 6.45 m out, 6.45 (1 - cos(45 / n degrees)), or its edge's, whichever is more:
+ *   8 mm (16, the edge in two), 14 mm (12, the edge a chamfer and the joints filled), 56 mm and 220 mm. On medium
+ *   they are first drawn at 28, 49, 196 and 771 m.
+ */
+const EDGE: readonly { id: string; object: string; triangles: number[]; errors: number[] }[] = [
+  { id: "core:zruin_zwalk8_concrete", object: "zwalk8", triangles: [92, 12], errors: [0.009] },
+  { id: "core:zruin_zwalk8g_concrete", object: "zwalk8g", triangles: [100, 20], errors: [0.009] },
+  { id: "core:zruin_zcurbramp_concrete", object: "zcurbramp", triangles: [44, 12], errors: [0.009] },
+  { id: "core:zruin_zcurbrampl_concrete", object: "zcurbrampl", triangles: [44, 12], errors: [0.009] },
+  { id: "core:zzzcurb_r6", object: "curb_r6", triangles: [696, 404, 178, 66, 36], errors: [0.008, 0.014, 0.056, 0.22] },
+];
+
 export default {
   kind: "pieces",
-  source: { scripts: ["model.py"] },
-  pieces: Object.entries(PIECES).map(([name, triangles]) => ({ id: `core:zzstreet_${name}`, object: name, triangles, ...(STATED[name] ? { errors: STATED[name] } : {}) })),
+  source: { scripts: ["model.py", "curb.py"] },
+  pieces: [
+    ...Object.entries(PIECES).map(([name, triangles]) => ({ id: `core:zzstreet_${name}`, object: name, triangles, ...(STATED[name] ? { errors: STATED[name] } : {}) })),
+    ...EDGE,
+  ],
   materials: {
     street: { base: "tex/street_base.png", normal: "tex/street_normal.png", packed: "tex/street_packed.png", height: "tex/street_height.png" },
     // A working lamp's lens, which gives out light from dusk to dawn (paint.py; client/core/render/surface.ts `glow`).
