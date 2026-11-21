@@ -85,6 +85,12 @@
       .entry { display: grid; grid-template-columns: 46px 1fr auto; gap: 2px 8px; padding: 3px 0; border-top: 1px solid rgba(168, 204, 234, 0.08); font-size: 14px; }
       .entry.gone { color: var(--faint); text-decoration: line-through; }
       .entry .tag { font-size: 12px; color: var(--dim); text-decoration: none; display: inline-block; }
+      /* The fields of an opened table, and one that holds what it may not. */
+      .slots.one { grid-template-columns: 1fr; margin-top: 8px; }
+      .line { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; padding: 4px 0; border-top: 1px solid rgba(168, 204, 234, 0.08); font-size: 14px; }
+      .line label, .slot label { color: var(--dim); font-size: 13px; white-space: nowrap; }
+      input.wrong { border-color: var(--bad); background: rgba(236, 106, 82, 0.14); }
+      input[type="checkbox"] { padding: 0; vertical-align: -2px; }
       /* The simulator. */
       .bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 6px 0; }
       .bars i { flex: 1 1 0; background: var(--ice); min-height: 1px; opacity: 0.85; }

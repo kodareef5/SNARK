@@ -3,9 +3,10 @@
 // is decided in client/core/drops; this file fetches, draws and listens.
 
 import { esc } from "../core/admin/format.ts";
+import { addEntry, addSlot, changes, differs, faultsAt, moveAt, parseBook, pathText, read, removeAt, setAt, show, type Kind, type Path } from "../core/drops/edit.ts";
 import { catalogOfWire, css, load, matrix, nameOf, num, pct, simulation, tableDetail, waitingRows, type CatalogWire, type Loaded, type SlotView } from "../core/drops/view.ts";
 import { MARKS } from "../../shared/sim/supply.ts";
-import { bookFaults, type SupplyBook } from "../../shared/supply/book.ts";
+import { bookFaults, type BookFault, type SupplyBook } from "../../shared/supply/book.ts";
 import type { Catalog } from "../../shared/supply/catalog.ts";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -29,6 +30,12 @@ const S = {
   wire: null as BookWire | null,
   catalog: null as Catalog | null,
   l: null as Loaded | null,
+  /** The book being edited: a copy of the book in force until something is changed, and its faults. */
+  draft: null as SupplyBook | null,
+  faults: [] as BookFault[],
+  /** Whether the opened table shows fields, and the revision a save lost to, if one did. */
+  editing: false,
+  conflict: -1,
   tab: "tables" as Tab,
   /** The table opened in the matrix, and what the simulator rolls. */
   open: "",
@@ -61,6 +68,31 @@ function head(): void {
   $("tabs").innerHTML = TABS.map(([key, name]) => `<button data-tab="${key}" class="${S.tab === key ? "on" : ""}">${name}</button>`).join("");
 }
 
+/** A field of the draft: its place, what it holds, and its faults, which redden it. */
+function field(path: Path, kind: Kind, width = 64, blank = true): string {
+  const d = S.draft!;
+  let at: unknown = d;
+  for (const key of path) at = (at as Record<string | number, unknown> | undefined)?.[key];
+  const faults = faultsAt(S.faults, path);
+  const common = `data-path="${esc(JSON.stringify(path))}" data-kind="${kind}"${blank ? "" : ' data-need="1"'} title="${esc(faults.length ? faults.map((f) => f.message).join("; ") : pathText(path))}"${faults.length ? ' class="wrong"' : ""}`;
+  if (kind === "flag") return `<input type="checkbox" ${common}${at === true ? " checked" : ""}>`;
+  return `<input ${common} value="${esc(show(kind, at))}" style="width:${width}px"${kind === "ids" ? ' list="things"' : ""}>`;
+}
+
+/** What stands between the draft and the book in force: its changes, its faults, and the ways to save or leave them. */
+function barHtml(): string {
+  const w = S.wire!, d = S.draft!;
+  const changed = differs(w.book, d);
+  const lines = changed ? changes(w.book, d, 12) : [];
+  const faults = S.faults.length === 0 ? "" : `<div class="bad">${S.faults.slice(0, 8).map((f) => `${esc(f.path)}: ${esc(f.message)}`).join("<br>")}${S.faults.length > 8 ? `<br>and ${S.faults.length - 8} more` : ""}</div>`;
+  const conflict = S.conflict < 0 ? "" : `<div class="warn">Another editor saved revision ${S.conflict} since this page read the book. <button data-do="theirs">Read theirs, and lose these changes</button> <button data-do="over" class="risk">Save over revision ${S.conflict}</button></div>`;
+  const tools = `<button data-do="export" title="The draft as a file.">Export JSON</button><button data-do="import" title="A book from a file becomes the draft; nothing is saved until Save.">Import JSON</button><button data-do="starter" class="risk" title="The starter book again, as the next revision."${changed ? " disabled" : ""}>The starter again</button><input type="file" id="file" accept="application/json,.json" hidden>`;
+  if (!changed) return `<section class="glass"><div class="row"><span class="dim">The book in force, revision ${w.revision}. A change here is a draft until it is saved.</span><span class="grow"></span>${tools}</div>${conflict}</section>`;
+  return `<section class="glass"><div class="row"><h2>Not saved</h2><span class="dim">${lines.length} ${lines.length === 1 ? "change" : "changes"} to revision ${w.revision}</span><span class="grow"></span>
+    <input id="note" placeholder="what this save is for" maxlength="200" style="width:320px"><button data-do="save" class="go"${S.faults.length ? " disabled" : ""}>Save</button><button data-do="discard">Discard</button>${tools}</div>
+    <div class="faint" style="font-size:13px;margin-top:6px">${lines.map(esc).join("<br>")}</div>${faults}${conflict}</section>`;
+}
+
 function tablesHtml(l: Loaded): string {
   const m = matrix(l);
   const heads = l.book.classes.map((c) => `<th title="${esc(c.key)}">${GLYPH[MARKS[c.mark] ?? ""] ?? ""} ${esc(c.name)}</th>`).join("");
@@ -81,6 +113,27 @@ function tablesHtml(l: Loaded): string {
     ${r.lints.length === 0 ? "" : `<p class="warn">${r.lints.map((f) => `${esc(f.path)}: ${esc(f.message)}`).join("<br>")}</p>`}</section>${S.open === "" ? "" : detailHtml(l, S.open)}`;
 }
 
+/** A slot of the opened table with fields in place of words: its chances, each set's measure, each line. */
+function slotEdit(table: string, k: number, slot: SlotView): string {
+  const at = ["tables", table, "slots", k] as const;
+  const sets = slot.sets.map((set, f) => {
+    const doc = S.draft!.sets[set.key];
+    if (!doc) return `<div class="bad">no set ${esc(set.key)}</div>`;
+    const sp = ["sets", set.key] as const;
+    const lines = doc.entries.map((_, e) => {
+      const ep = [...sp, "entries", e] as const;
+      const where = esc(JSON.stringify(ep));
+      return `<div class="line">${field([...ep, "items"], "ids", 210, false)} ${field([...ep, "min"], "whole", 44, false)}–${field([...ep, "max"], "whole", 44, false)}
+        <label title="How often it is drawn among its set's lines.">weight ${field([...ep, "weight"], "number", 44)}</label><label title="tier, or a rating range such as 1.25 to 3.25; empty for none">quality ${field([...ep, "quality"], "quality", 78)}</label>
+        <label title="How often it comes as a blueprint, in hundredths.">blueprint % ${field([...ep, "blueprint"], "share", 44)}</label><label>always ${field([...ep, "forceBlueprint"], "flag")}</label><label title="Kept apart from the table's worth.">jackpot ${field([...ep, "jackpot"], "flag")}</label>
+        <button data-do="up" data-at="${where}" title="Up">↑</button><button data-do="down" data-at="${where}" title="Down">↓</button><button data-do="del" data-at="${where}" class="risk" title="Take this line out">×</button></div>`;
+    });
+    return `<div style="margin-top:6px"><b title="${esc(set.key)}">${esc(set.name)}</b> <label>pick weight ${field([...at, "from", f, "weight"], "number", 44)}</label> <label>every line ${field([...sp, "all"], "flag")}</label> <label>draws ${field([...sp, "min"], "whole", 40)}–${field([...sp, "max"], "whole", 40)}</label>
+      ${lines.join("")}<button data-do="line" data-set="${esc(set.key)}">Add a line</button></div>`;
+  });
+  return `<div class="slot wide"><div class="row"><h3>${field([...at, "name"], "text", 120)}</h3><label>chance % ${field([...at, "chance"], "share", 50)}</label><label title="Where a ringed drop differs.">ringed % ${field([...at, "ringed"], "share", 50)}</label><span class="grow"></span><button data-do="del" data-at="${esc(JSON.stringify(at))}" class="risk">Take this slot out</button></div>${sets.join("")}</div>`;
+}
+
 function slotHtml(slot: SlotView): string {
   const chance = slot.chance === slot.ringed ? pct(slot.chance) : `${pct(slot.chance)} plain, ${pct(slot.ringed)} ringed`;
   const sets = slot.sets.map((set) => {
@@ -98,8 +151,9 @@ function slotHtml(slot: SlotView): string {
 function detailHtml(l: Loaded, key: string): string {
   const slots = tableDetail(l, key);
   const note = l.book.tables[key]?.note;
-  return `<section class="glass"><div class="row"><h2>${esc(key)}</h2><span class="dim">its slots in order: each a chance, a pick among its sets, and what the set gives</span><span class="grow"></span><button data-sim="${esc(key)}">Roll it in the simulator</button><button data-open="">Close</button></div>
-    ${note ? `<p class="dim">${esc(note)}</p>` : ""}<div class="slots" style="margin-top:8px">${slots.map(slotHtml).join("")}</div></section>`;
+  const body = S.editing ? `<div class="slots one">${slots.map((slot, k) => slotEdit(key, k, slot)).join("")}</div><div class="row" style="margin-top:8px"><select id="newSlot">${Object.keys(S.draft!.sets).map((k) => `<option>${esc(k)}</option>`).join("")}</select><button data-do="slot" data-table="${esc(key)}">Add a slot drawing from this set</button></div>` : `<div class="slots" style="margin-top:8px">${slots.map(slotHtml).join("")}</div>`;
+  return `<section class="glass"><div class="row"><h2>${esc(key)}</h2><span class="dim">its slots in order: each a chance, a pick among its sets, and what the set gives</span><span class="grow"></span><button data-do="edit" class="${S.editing ? "on" : ""}">${S.editing ? "Done editing" : "Edit"}</button><button data-sim="${esc(key)}">Roll it in the simulator</button><button data-open="">Close</button></div>
+    ${note ? `<p class="dim">${esc(note)}</p>` : ""}${body}</section>`;
 }
 
 function waitingHtml(l: Loaded): string {
@@ -147,17 +201,80 @@ function simHtml(l: Loaded): string {
 function fromHash(): void {
   const [tab, ...rest] = decodeURIComponent(location.hash.slice(1)).split("/");
   if (TABS.some(([key]) => key === tab)) S.tab = tab as Tab;
-  const key = rest.join("/");
+  // A table's address may end in /edit, which opens it with its fields.
+  S.editing = rest[rest.length - 1] === "edit";
+  const key = (S.editing ? rest.slice(0, -1) : rest).join("/");
   if (S.tab === "tables") S.open = key;
   if (S.tab === "sim" && key !== "") S.sim.key = key;
 }
 
 function draw(): void {
   if (!S.wire || !S.l) return;
-  const hash = `#${S.tab}${S.tab === "tables" && S.open !== "" ? `/${S.open}` : S.tab === "sim" && S.sim.key !== "" ? `/${S.sim.key}` : ""}`;
+  const hash = `#${S.tab}${S.tab === "tables" && S.open !== "" ? `/${S.open}${S.editing ? "/edit" : ""}` : S.tab === "sim" && S.sim.key !== "" ? `/${S.sim.key}` : ""}`;
   if (location.hash !== hash) history.replaceState(null, "", hash);
   head();
-  $("main").innerHTML = S.tab === "tables" ? tablesHtml(S.l) : S.tab === "waiting" ? waitingHtml(S.l) : simHtml(S.l);
+  // What is typed in the note outlives a redraw.
+  const note = document.getElementById("note") as HTMLInputElement | null;
+  const kept = note?.value ?? "";
+  $("main").innerHTML = barHtml() + (S.tab === "tables" ? tablesHtml(S.l) : S.tab === "waiting" ? waitingHtml(S.l) : simHtml(S.l));
+  const again = document.getElementById("note") as HTMLInputElement | null;
+  if (again) again.value = kept;
+  if (!document.getElementById("things")) document.body.insertAdjacentHTML("beforeend", `<datalist id="things">${[...S.catalog!.byId.values()].map((i) => `<option value="${esc(i.id)}">${esc(i.label)}</option>`).join("")}</datalist>`);
+}
+
+/** The draft changed: it is checked, and worked out again if it is sound. With faults the last sound figures stand. */
+function changed(): void {
+  S.faults = bookFaults(S.draft!).filter((f) => !f.warn);
+  if (S.faults.length === 0) S.l = load(S.draft!, S.catalog!);
+  draw();
+}
+
+async function post(what: string, body: unknown): Promise<{ status: number; answer: Record<string, unknown> }> {
+  const r = await fetch(`supply/${what}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  return { status: r.status, answer: (await r.json().catch(() => ({}))) as Record<string, unknown> };
+}
+
+/** Saves the draft over `revision`, and reads the book in force again, or says why it was not saved. */
+async function save(what: "book" | "reset", revision: number): Promise<void> {
+  const note = (document.getElementById("note") as HTMLInputElement | null)?.value ?? "";
+  const { status, answer } = await post(what, { revision, book: S.draft, note });
+  if (status === 200) {
+    S.conflict = -1;
+    await start(`saved as revision ${String(answer.revision)}`);
+  } else if (status === 409) {
+    S.conflict = Number(answer.revision);
+    say("not saved: another editor saved first", "warn");
+    draw();
+  } else if (status === 422) {
+    S.faults = (answer.faults as BookFault[] | undefined) ?? [];
+    say("not saved: the book has faults", "bad");
+    draw();
+  } else say(`not saved: ${String(answer.error ?? status)}`, "bad");
+}
+
+/** A button of the save bar or of an opened table. */
+async function act(at: HTMLElement): Promise<void> {
+  const d = S.draft!, what = at.dataset.do!;
+  const path = at.dataset.at ? (JSON.parse(at.dataset.at) as Path) : [];
+  if (what === "edit") S.editing = !S.editing;
+  else if (what === "line") addEntry(d, at.dataset.set!);
+  else if (what === "slot") addSlot(d, at.dataset.table!, $<HTMLSelectElement>("newSlot").value);
+  else if (what === "del") removeAt(d, path);
+  else if (what === "up" || what === "down") moveAt(d, path, what === "up" ? -1 : 1);
+  else if (what === "discard") [S.draft, S.conflict] = [structuredClone(S.wire!.book), -1];
+  else if (what === "save") return save("book", S.wire!.revision);
+  else if (what === "over") return save("book", S.conflict);
+  else if (what === "starter") return confirm("Put the starter book back, as the next revision?") ? save("reset", S.wire!.revision) : undefined;
+  else if (what === "theirs") return start("read again");
+  else if (what === "export") {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([`${JSON.stringify(d, null, 1)}\n`], { type: "application/json" }));
+    a.download = `drops-${S.wire!.map.replace(/[^a-z0-9]+/gi, "-") || "world"}-r${S.wire!.revision}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    return;
+  } else if (what === "import") return $<HTMLInputElement>("file").click();
+  changed();
 }
 
 /** Reads the simulator's form into the state. */
@@ -166,8 +283,9 @@ function simRead(): void {
 }
 
 document.addEventListener("click", (e) => {
-  const at = (e.target as HTMLElement).closest<HTMLElement>("[data-tab],[data-open],[data-sim],#simGo");
+  const at = (e.target as HTMLElement).closest<HTMLElement>("[data-tab],[data-open],[data-sim],[data-do],#simGo");
   if (!at) return;
+  if (at.dataset.do) return void act(at).catch((err: unknown) => say(err instanceof Error ? err.message : String(err), "bad"));
   if (at.dataset.tab) S.tab = at.dataset.tab as Tab;
   else if (at.dataset.open !== undefined) S.open = S.open === at.dataset.open ? "" : at.dataset.open;
   else if (at.dataset.sim) [S.tab, S.sim.key] = ["sim", at.dataset.sim];
@@ -175,21 +293,43 @@ document.addEventListener("click", (e) => {
   draw();
 });
 document.addEventListener("change", (e) => {
-  if ((e.target as HTMLElement).id.startsWith("sim")) {
+  const at = e.target as HTMLInputElement;
+  if (at.id === "file" && at.files?.[0]) {
+    // A book from a file becomes the draft, to be looked at and then saved or discarded.
+    void at.files[0].text().then((text) => {
+      const made = parseBook(text);
+      if ("error" in made) return say(`not read: ${made.error}`, "bad");
+      [made.book.revision, made.book.map] = [S.wire!.revision, S.wire!.book.map];
+      S.draft = made.book;
+      say("read from the file: not saved yet");
+      changed();
+    });
+  } else if (at.dataset.path) {
+    const got = read(at.dataset.kind as Kind, at.type === "checkbox" ? String(at.checked) : at.value, at.dataset.need !== "1");
+    if (!got.ok) {
+      at.classList.add("wrong");
+      return say("that is not what this field takes", "warn");
+    }
+    setAt(S.draft!, JSON.parse(at.dataset.path) as Path, got.value);
+    say("");
+    changed();
+  } else if (at.id.startsWith("sim")) {
     simRead();
     draw();
   }
 });
 
-async function start(): Promise<void> {
+async function start(said = ""): Promise<void> {
   say("reading the book…");
   const [wire, catalog] = await Promise.all([ask<BookWire>("book.json"), ask<CatalogWire>("catalog.json")]);
   S.wire = wire;
   S.catalog = catalogOfWire(catalog);
   const faults = bookFaults(wire.book).filter((f) => !f.warn);
   if (faults.length > 0) throw new Error(`the book in force has faults: ${faults[0]!.path}: ${faults[0]!.message}`);
-  S.l = load(wire.book, S.catalog);
-  say("");
+  S.draft = structuredClone(wire.book);
+  S.faults = [];
+  S.l = load(S.draft, S.catalog);
+  say(said);
   fromHash();
   draw();
 }
