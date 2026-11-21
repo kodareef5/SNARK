@@ -1,8 +1,9 @@
-// Everything here is drawn from CombatModel (client/core/feedback.ts).
+// Everything here is drawn from CombatModel (client/core/feedback.ts). Damage numbers are the renderer's
+// (render/damage-numbers.ts), drawn in the world's own frame.
 
-import { NUMBER_HEAD, NUMBER_KILL, type CombatModel } from "../feedback.ts";
-import { K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BLOOD, S_DAMAGE, S_DAMAGE_HEAD, S_DAMAGE_KILL, S_HIT, S_HIT_KILL, S_NOTICE } from "./style.ts";
+import type { CombatModel } from "../feedback.ts";
+import { K_PANEL, fitText, type UiFrame } from "./nodes.ts";
+import { S_BLOOD, S_HIT, S_HIT_KILL, S_NOTICE } from "./style.ts";
 
 /** Four strokes about the crosshair. */
 export const KEY_HIT_MARK = 2000;
@@ -11,8 +12,6 @@ export const KEY_BLOOD = 2010;
 /** One mark per direction harm came from. */
 export const KEY_HURT = 2020;
 export const KEY_NOTICE = 2040;
-/** One number per hit. */
-export const KEY_DAMAGE = 2100;
 
 /** Distance from the crosshair of the hit marks and of the harm marks, in canvas units. */
 const MARK_REACH = 9;
@@ -57,13 +56,6 @@ export function buildCombat(f: UiFrame, m: CombatModel): void {
       const y = cy + (i & 2 ? reach : -reach) - size / 2;
       f.add(KEY_HIT_MARK + i, K_PANEL, x, y, size, size, style).alpha = m.mark;
     }
-  }
-
-  for (let i = 0; i < m.numberCount; i++) {
-    const d = m.numbers[i]!;
-    const style = d.kind === NUMBER_KILL ? S_DAMAGE_KILL : d.kind === NUMBER_HEAD ? S_DAMAGE_HEAD : S_DAMAGE;
-    const w = 90;
-    f.text(KEY_DAMAGE + i, d.u * W - w / 2, d.v * H - lineHeight(style) / 2, w, style, d.text).alpha = d.alpha;
   }
 
   if (m.noticeAlpha > 0 && m.notice !== "") {

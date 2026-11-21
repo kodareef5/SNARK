@@ -106,6 +106,11 @@ export const DETAIL_POOL = 128;
 export const DETAIL_WIRE = DETAIL_POOL | 1;
 export const DETAIL_GLASS = DETAIL_POOL | 2;
 export const DETAIL_TIRE = DETAIL_POOL | 3;
+/**
+ * A damage number (damage-numbers.ts): its glyphs drawn by their distance (digits.ts), filled with its first colour and
+ * outlined in deep navy, the glyphs packed in its second colour's three bytes. Unlit and unfogged, as the HUD is.
+ */
+export const DETAIL_DIGITS = DETAIL_POOL | 4;
 /** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
 export const DRAW_RANGED = 4096;
 /**
