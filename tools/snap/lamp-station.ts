@@ -1,8 +1,9 @@
-// bun tools/snap/lamp-station.ts <miami.snmap> <built assets directory>
+// bun tools/snap/lamp-station.ts <miami.snmap> <built assets directory> [east north]
 //
-// The GPU bench's lamp station (tools/bench/gpu.ts CITY_PLACES.lamp) at 22:00 on high, the view turned round in
-// eight steps as the bench's turns: for each, whether the street lamp lights (render/lamp.ts), and what its map takes,
-// casters and triangles, against the cascades'.
+// The GPU bench's lamp station (tools/bench/gpu.ts CITY_PLACES.lamp), or the place of another of its stations in metres
+// from the map's centre as the bench gives them, at 22:00 on high, the view turned round in eight steps as the bench's
+// turns: for each, whether the street lamp lights (render/lamp.ts), and what its map takes, casters and triangles,
+// against the cascades'.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
@@ -19,7 +20,8 @@ const hf = mapHeightfield(map);
 const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
 const files = manifest.files.map((f) => (f.format && f.format !== "rgba" ? new Uint8Array() : Bun.mmap(join(assets, f.name))));
 const centre = (map.dims.chunksX * 64) / 2;
-const [x, z] = [centre - 889, centre - 2961];
+const [east, north] = process.argv.length > 5 ? [Number(process.argv[4]), Number(process.argv[5])] : [889, -2961];
+const [x, z] = [centre - east, centre + north];
 const t = map.statics, rows: MapStatic[] = [];
 for (let i = 0; i < t.kind.length; i++) if (Math.hypot(t.x[i]! - x, t.z[i]! - z) < 260) rows.push({ kind: t.kinds[t.kind[i]!]!, x: t.x[i]!, y: t.y[i]!, z: t.z[i]!, yaw: t.yaw[i]! });
 const v = provingView(640, 360, {}, { manifest, files }, { ...map, statics: MapStatics.of(map.dims, rows) }, undefined, 0, true);

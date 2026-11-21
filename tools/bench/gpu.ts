@@ -53,7 +53,7 @@ type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 type Scene = "base" | "wood" | "flock" | "city";
-type View = "street" | "air" | "lamp";
+type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front";
 /** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off or the far layers. On the city, where and at how many device pixels to one, and how many times slower the page's processor is made. */
 interface Run {
   scene: Scene;
@@ -87,6 +87,11 @@ const CITY_PLACES: Record<View, Place> = {
   air: { name: "air", east: 1192, north: -3482, up: 140 },
   // 48 m west of the street, 6 m along the road from under the lens of a working lamp, which lights there by night.
   lamp: { name: "lamp", east: 889, north: -2961, up: 0 },
+  // Two working lamps whose light is busy: one over a row of five abandoned cars at the kerb, 450 m north-west of the
+  // street, the body 8 m out over the road and 6 m along it from the mast; and one before a three-storey front 3 m
+  // behind its mast, two cars on the road under it, the body 6 m along the road from under its lens.
+  "lamp-cars": { name: "lamp-cars", east: 1091, north: -2588, up: 0 },
+  "lamp-front": { name: "lamp-front", east: -875, north: 2131, up: 0 },
 };
 
 export function plan(): Run[] {
@@ -113,8 +118,9 @@ export function plan(): Run[] {
   // The moon's shadows (render/sky.ts castLight) at 22:00, on a canvas of 1,920 by 1,080 and on a laptop's 3,600 by 1,924.
   for (const tier of ["medium", "high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, window: [1920, 1167], ab: "moon", hour: 22 });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 2, window: [1800, 1049], ab: "moon", hour: 22 });
-  // The street lamp that lights as a light (render/lamp.ts), by one at 22:00, as both canvases; and at noon, when it is out.
-  for (const tier of ["high", "ultra"]) for (const [scale, window] of [[1, [1920, 1167]], [2, [1800, 1049]]] as const) runs.push({ scene: "city", view: "lamp", tier, scale, window, ab: "lamp", hour: 22 });
+  // The street lamp that lights as a light (render/lamp.ts), by one at 22:00, as both canvases, and by two whose light
+  // falls on cars and a building's front; and at noon, when it is out.
+  for (const view of ["lamp", "lamp-cars", "lamp-front"] as const) for (const tier of ["high", "ultra"]) for (const [scale, window] of [[1, [1920, 1167]], [2, [1800, 1049]]] as const) runs.push({ scene: "city", view, tier, scale, window, ab: "lamp", hour: 22 });
   runs.push({ scene: "city", view: "lamp", tier: "high", scale: 1, window: [1920, 1167], ab: "lamp", hour: 12 });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "wires" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "road" });

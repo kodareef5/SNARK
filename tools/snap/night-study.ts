@@ -1,4 +1,5 @@
 // bun tools/snap/night-study.ts <miami.snmap> <built assets directory> <output directory> [--gpu] [--hour=22] [--only=name]
+//   [--states=name]
 //
 // The night moments (planning/workstreams/night-light.md), each drawn in the states the moment has: as main drew it,
 // with the moon's shadows (render/sky.ts castLight), and with the street lamp that lights as a light as well
@@ -11,11 +12,15 @@
 //   road) and a survivor standing at the kerb under it.
 // - handover: the camera stepped across the road from the first lamp's side of the pair to the second's, and the frames a twentieth, a
 //   tenth and three twentieths of a second on, as the first lamp's light fades into its card and the second's card into
-//   its light.
+//   its light (fade); the same step, and the frames a little and a while after, where it is too short for the light to
+//   change hands (step); and a step from the first lamp's kerb to the second's, nearer the lamps, and the frames over
+//   the second after it (cross).
+// - cars, front: the GPU bench's two busy lamps (tools/bench/gpu.ts), over a row of parked cars and before a front.
 //
 // It writes `<state>/<scene>-<view>-software.png`, and with --gpu `<state>/<scene>-<view>.png` drawn by the shell's
 // renderer with the shadows, which the software render has not, and prints the sRGB of a few probes, each the median of
-// a 5 by 5 window round where a point of the scene falls on screen. It draws on high.
+// a 5 by 5 window round where a point of the scene falls on screen. It draws on high; --states names the states drawn,
+// of each scene's.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
@@ -33,6 +38,7 @@ if (!mapPath || !assets || !out) throw new Error("Expected Miami map, built asse
 const gpu = process.argv.includes("--gpu");
 const hour = Number(process.argv.find((a) => a.startsWith("--hour="))?.slice(7) ?? 22);
 const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7)?.split(",");
+const statesOnly = process.argv.find((a) => a.startsWith("--states="))?.slice(9)?.split(",");
 const map = parseMap(Bun.mmap(mapPath), true, true);
 const hf = mapHeightfield(map);
 const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
@@ -51,6 +57,9 @@ function pieceAt(kind: string, x: number, z: number): Frame {
 const ARCADE = pieceAt("core:zruin_zroof8_rose", 7633.2, 7463.5);
 /** A pair of working lamps either side of a road, 20 m apart: the first's frame, +z out over the road, which runs along x. */
 const LAMP = pieceAt("core:zzstreet_lamp_lit", 6700.5, 11397.3);
+/** The GPU bench's two busy lamps (tools/bench/gpu.ts CITY_PLACES): over a row of parked cars, and before a building's front. */
+const CARS = pieceAt("core:zzstreet_lamp_lit", 7075.5, 5564.8);
+const FRONT = pieceAt("core:zzstreet_lamp_lit", 9032.5, 10297.5);
 
 interface View {
   readonly name: string;
@@ -111,7 +120,8 @@ const SCENES: readonly Scene[] = [
     probes: [
       { name: "road under", x: 0, y: 0.02, z: 2.9 },
       { name: "road beyond", x: 0, y: 0.02, z: 7 },
-      { name: "walk", x: -2, y: 0.05, z: 0.8 },
+      { name: "grass at mast", x: -2, y: 0.05, z: 0.8 },
+      { name: "walk", x: -5, y: 0.05, z: -0.6 },
       { name: "chest", x: 1.8, y: 1.3, z: 1.25 },
     ],
     states: [BEFORE, MOON, AFTER],
@@ -122,10 +132,18 @@ const SCENES: readonly Scene[] = [
     parked: [],
     // The second lamp stands across the road, 20 m off, facing the first; the camera, 12 m along the road, steps across
     // its middle from the first lamp's side to the second's, looking along it between them.
-    views: [{ name: "fade", from: [-12, 1.7, 8.5], eye: [-12, 1.7, 11.5], at: [0, 0.6, 10], after: [0.05, 0.1, 0.15, 0.2, 0.3], bodies: [[MAN, 0, 6, Math.PI / 2], [CAR, 1, 14, Math.PI / 2]] }],
+    views: [
+      { name: "fade", from: [-12, 1.7, 8.5], eye: [-12, 1.7, 11.5], at: [0, 0.6, 10], after: [0.05, 0.1, 0.15, 0.2, 0.3], bodies: [[MAN, 0, 6, Math.PI / 2], [CAR, 1, 14, Math.PI / 2]] },
+      { name: "step", from: [-12, 1.7, 8.5], eye: [-12, 1.7, 11.5], at: [0, 0.6, 10], after: [0.15, 0.6], bodies: [[MAN, 0, 6, Math.PI / 2], [CAR, 1, 14, Math.PI / 2]] },
+      { name: "cross", from: [-7, 1.7, 3], eye: [-7, 1.7, 17], at: [3, 0.4, 8], after: [0.02, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.8, 1], bodies: [[MAN, 0, 6, Math.PI / 2], [CAR, 1, 14, Math.PI / 2]] },
+    ],
     probes: [],
     states: [AFTER],
   },
+  // The bench's busy lamps, from near their stations: five abandoned cars along the kerb under one, and a three-storey
+  // front 3 m behind the other's mast with two cars on the road before it.
+  { name: "cars", frame: CARS, parked: [], views: [{ name: "row", eye: [14, 1.7, 10], at: [0, 0.8, 3] }], probes: [], states: [MOON, AFTER] },
+  { name: "front", frame: FRONT, parked: [], views: [{ name: "face", eye: [12, 1.7, 10], at: [0, 2.5, -3] }], probes: [], states: [MOON, AFTER] },
 ];
 
 const width = 1280, height = 720;
@@ -241,7 +259,7 @@ function pictures(frame: (p: FramePacket, keep: string | null) => void): Picture
       const ground = look(s, view);
       if (!view.after) settled((p) => frame(p, null));
       const clock = scene.now;
-      for (const state of view.after ? [last] : s.states) {
+      for (const state of view.after ? [last] : s.states.filter((t) => !statesOnly || statesOnly.includes(t.name))) {
         stateOf(state);
         if (view.after) {
           let since = 0;
