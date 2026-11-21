@@ -64,6 +64,8 @@ export class Cast {
   /** What the engine can do now: a scene needing more is never cast. */
   readonly can: Set<Capability>;
   stage: Stage | null = null;
+  /** Stories a player engaged with since the planner last looked: it takes them first (server/cast/planner.ts). */
+  readonly wakes = new Set<string>();
   /** Counts for the admin page and tests. */
   readonly counts = { planned: 0, woken: 0, filled: 0, done: 0, letGo: 0 };
   private nextStory = 1;
@@ -340,6 +342,11 @@ export class Cast {
       if ((!this.stage || !watched) && age > Math.min(sc.most, timedLength(sc))) this.finish(s, tick);
       else if (age > sc.most) this.finish(s, tick);
     }
+  }
+
+  /** A player engaged with one of a story's people. */
+  engaged(s: Story): void {
+    this.wakes.add(s.id);
   }
 
   /** A story is over: its people are free again, and the stage sends any still about away. */

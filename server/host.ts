@@ -15,6 +15,8 @@ import { Build } from "./build.ts";
 import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
+import { CastHost } from "./cast/host.ts";
+import type { CastSettings } from "../shared/cast/state.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Urban } from "./urban.ts";
@@ -126,6 +128,8 @@ export interface HostOptions {
   store?: StoreOptions;
   /** Keep the map's spawn regions stocked with wild creatures (server/spawner.ts), as a running server does. Off where not given. */
   wild?: boolean;
+  /** Cast's background people (server/cast): settings over its defaults, or true for them as they are. Off unless given. */
+  cast?: boolean | Partial<CastSettings>;
   /** For a new world: wild creatures scattered near the spawn point, their species (core:grazer by default), and hunters further off. */
   startingCreatures?: number;
   startingSpecies?: string;
@@ -201,6 +205,8 @@ export interface Host {
   readonly taming: Taming;
   readonly riding: Riding;
   readonly urban: Urban;
+  /** The city's background people (server/cast), when the host was asked for them. */
+  readonly cast: CastHost | null;
   readonly vehicles: VehicleService;
   readonly entangle: Entangle;
   readonly breeding: Breeding;
@@ -750,6 +756,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     hurt.harmed(victim, points);
   };
   const chat = new Chat({ game, records, rules, tribes, bus });
+  const castHost = opts.cast ? new CastHost({
+    world, game, records, creatures, emotes, chat, items, seed: (opts.seed ?? 1) + 907,
+    places: (parsed?.content?.landmarks ?? []).map((l) => ({ name: l.name, kind: "landmark", x: l.x, z: l.z })),
+    ...(typeof opts.cast === "object" ? { settings: opts.cast } : {}),
+  }) : null;
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
@@ -1248,6 +1259,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     parts.mark(PART.contacts);
     impale.step();
     spawner?.step(tick);
+    castHost?.step();
     parts.mark(PART.spawner);
     build.step();
     parts.mark(PART.build);
@@ -1551,6 +1563,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     taming,
     riding,
     urban,
+    cast: castHost,
     vehicles,
     entangle,
     breeding,

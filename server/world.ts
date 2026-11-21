@@ -7,7 +7,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import type { MapDims } from "../shared/coords.ts";
 import { ENTITY_LIMIT, EntityStore } from "../shared/sim/entities.ts";
-import { offsetForHour } from "../shared/sim/clock.ts";
+import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import type { CollisionWorld } from "../shared/world/collide.ts";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { mapHeightfield, mapNodes, mapTops, parseMap, placeStatics, resolveNodes, writeMap, type MapData, type MapFile, type MapStatic, type MapStatics } from "../shared/world/mapfile.ts";
@@ -163,4 +163,9 @@ export function provingFile(reg: Registry): Uint8Array<ArrayBuffer> {
 
 export function createProvingWorld(reg: Registry, opts: WorldOptions = {}): ServerWorld {
   return createMapWorld(reg, parseMap(provingFile(reg)), opts);
+}
+
+/** The game's hour now, 0 to 24, for anything that only needs to know it (Cast's scenes by hour). */
+export function worldHour(world: ServerWorld): number {
+  return hourOfDay(world.tick, world.dayOffset, world.clock);
 }
