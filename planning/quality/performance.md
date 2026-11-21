@@ -553,8 +553,8 @@ with the catalogue and are printed, not held; each asset is held to its own budg
 | --- | --- | --- |
 | The page's script; the content; the manifest (raw) | 316 KB; 23 KB; 9.8 KB (65 KB) | |
 | The boot pack | 174 KB | |
-| Everything before the first frame | 636 KB | 1,024 KB |
-| The same on Miami, with the yacht's manifest and boot file (15 KB) | 651 KB | 1,024 KB |
+| Everything before the first frame | 636 KB | 1,088 KB |
+| The same on Miami, with the yacht's manifest and boot file (15 KB) | 651 KB | 1,088 KB |
 | The page file; the mesh file; the clip file | 538 KB; 19.6 MB; 118 KB | |
 | Textures to 1,024, ASTC and BC; to 2,048 | 124.8, 229.5 MB; 337.8, 572.4 MB | |
 | The world's finishes to 1,024, ASTC and BC | 1,498, 3,039 KB | |

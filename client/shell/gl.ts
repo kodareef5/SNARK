@@ -99,8 +99,7 @@ export class GlRenderer {
   private mostAnisotropy = 0;
   /**
    * What the light target is made of, `w` by `h`: the scene's framebuffer, multisampled, then its resolved copy's and
-   * each bloom level's, with their textures; the corner of it the frame's scene is drawn in, `drawn`; and what a pass
-   * of the finish reads of its source (post.ts passExtent).
+   * each bloom level's, with their textures; `drawn`, its corner the frame's scene fills; a pass's read (passExtent).
    */
   private post = { size: "", w: 0, h: 0, fbs: [] as WebGLFramebuffer[], tex: [] as WebGLTexture[], bufs: [] as WebGLRenderbuffer[] };
   private drawn: [number, number] = [0, 0];
@@ -1099,7 +1098,7 @@ export class GlRenderer {
     for (const f of new Set(t.fbs.splice(0))) gl.deleteFramebuffer(f);
     for (const x of t.tex.splice(0)) gl.deleteTexture(x);
     for (const b of t.bufs.splice(0)) gl.deleteRenderbuffer(b);
-    [t.size, t.w, t.h] = [w > 0 ? `${w} ${h} ${samples}` : "", w, h];
+    t.size = w > 0 ? `${w} ${h} ${samples}` : ""; t.w = w; t.h = h;
     for (let k = samples > 0 ? -1 : 0; k <= levels && w > 0; k++) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, (t.fbs[k + 1] = gl.createFramebuffer()!));
       // The scene's colour and depth where it has samples, its depth alone where it is drawn into its texture.
@@ -1141,12 +1140,9 @@ export class GlRenderer {
     gl.enable(gl.DEPTH_TEST);
   }
 
-  /**
-   * A pass of the finish with program `n`, from level `from` (0 the scene) into level `to`, or into the canvas for -1:
-   * each level's corner the scene's share fills, and the canvas whole.
-   */
+  /** A pass of the finish with program `n`, from level `from` (0 the scene) into level `to`'s corner the scene fills, or into the whole canvas for -1. */
   private pass(p: FramePacket, n: number, from: number, to: number): void {
-    const gl = this.gl, t = this.post, [w, h] = this.drawn, [cw, ch] = [gl.drawingBufferWidth, gl.drawingBufferHeight];
+    const gl = this.gl, t = this.post, [w, h] = this.drawn, cw = gl.drawingBufferWidth, ch = gl.drawingBufferHeight;
     const prog = this.use(n, p);
     gl.bindFramebuffer(gl.FRAMEBUFFER, to < 0 ? null : t.fbs[to + 1]!);
     gl.viewport(0, 0, to < 0 ? cw : Math.max(1, w >> levelShift(to)), to < 0 ? ch : Math.max(1, h >> levelShift(to)));
