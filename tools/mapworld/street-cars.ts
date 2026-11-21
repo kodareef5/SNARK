@@ -106,8 +106,9 @@ interface Car { x: number; z: number; kind: string; mesh: string }
 
 /**
  * Which kind of street car a car of `family` is where it stands (README, "Cars"): a body by the family's weights, changed
- * by the district's style and near places; a look of that body by the family's looks; and a paint by the paints'. A cell
- * where a fire went through takes the looks of "fire" in place of a car's family. A chunk holds the meshes of at most
+ * by the district's style and near places; a look of that body by the family's looks; and a paint by the paints'. In a
+ * cell where a fire went through, a share `burnt` of the cars take the looks of "fire" in place of their family's, but
+ * for a big vehicle's. A chunk holds the meshes of at most
  * `perChunk` looks: a car whose look would be one more takes one of those it holds that its family may be. A car is not
  * the kind of one within `apart` metres where another paint, or another look its family may be, will do.
  */
