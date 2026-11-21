@@ -11,6 +11,7 @@ bun tools/mapworld/walk.ts var/maps/<name>.snmap
 bun tools/mapworld/ruin-walk.ts var/maps/<name>.snmap --all
 bun tools/mapworld/access-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/bridge-walk.ts var/maps/<name>.snmap
+bun tools/mapworld/dock-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/room-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/obelisk-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/server-bench.ts var/maps/<name>.snmap
@@ -227,7 +228,7 @@ Atomic building admission enforces both chunk and city piece budgets.
 After admission, circulation removes conflicting overhangs from neighbouring
 buildings. Street grading reserves enough width for its slopes and rejects
 crossings with incompatible levels. Bridge decks constrain the final ground.
-`verify.ts` runs all six proofs in sequence and exits; it opens no server socket.
+`verify.ts` runs all nine proofs in sequence and exits; it opens no server socket.
 
 Large inventories are generated, not committed. Keep counts, test summaries,
 cameras, selection records and the rasterizer images. The report tool makes a
@@ -325,7 +326,11 @@ aircraft and clear of both. `boatSites` in `tools/boat/sites.ts` chooses them by
 
 - A beach or a fire or Coast Guard station holds one rescue launch, a police
   station one police launch, up to four of each, before any civilian site.
-- A marina holds `marina.least` to `marina.most` vessels within 120 m of its point;
+- A marina laid out with docks (below, "Marinas") has its vessels in the slips
+  the layout held for them, `marina.least` to `marina.most`, each tested there for
+  its draught and hull and 16 m from any car or aircraft; its dock is its way
+  aboard, so no bank is asked for.
+- A marina with no docks holds `marina.least` to `marina.most` vessels within 120 m of its point;
   then a share `pier.share` of piers hold one, of `pier.longest` metres or less,
   within 48 m. Which vessel each berth gets is drawn by a hash from the weights of
   `kinds.marina` or `kinds.pier`, changed by the style of the district its water
@@ -352,7 +357,9 @@ aircraft and clear of both. `boatSites` in `tools/boat/sites.ts` chooses them by
 A harbour's wrecks are statics of `content/vehicles/harbour-wrecks.ts`, set down
 before the found vessels, which keep clear of them (`tools/boat/wrecks.ts`, by
 `harbours.wrecks`). `marina` and `pier` give for each the share of such sites with a
-wreck among their berths and the share with one in the water `out` metres off.
+wreck among their berths and the share with one in the water `out` metres off; a
+marina laid out with docks has its wrecks in its slips instead (below) and only the
+one off it from here.
 Its vessel is drawn from the site's own weights (of the ten, the launch's wreck
 being its corpse's), and it is sunk at the share `sunk` and otherwise damaged.
 A damaged one rides low, its keel 1.25 times its draught under the water, where
@@ -365,3 +372,45 @@ vessel's form `core:<vessel>_damaged` or `core:<vessel>_sunk`, where the art und
 `assets/source/core/vehicles` has that mesh; until then it is `core:hulk_<vessel>`,
 the intact hull. A destroyed vessel's corpse draws its `wreck`, its sunk form, and
 its intact hull until the pack has that. `harbours.json` lists the wrecks too.
+
+## Marinas
+
+A marina of `blocks/places.json` is laid out as a place (`tools/boat/marinas.ts`,
+by `harbours.docks` and `harbours.moored`), after the landmarks and before the
+harbours' wrecks, on the ground as it is: nothing moves the bank or the water
+(planning/workstreams/marinas.md).
+
+- Its docks: each pier way OpenStreetMap maps whose middle is within `docks.reach`
+  of the marina's point, nearer it than any other marina's, no longer than
+  `longest`, over the water for `wet` of its length, and no wider than `widest`
+  unless it is an area no building stands in (a dock and its slips outlined as
+  one), is the marina's, and the bridge layer leaves it alone. A marina that has
+  none, and whose point is not in a building, gets one walkway from the bank
+  nearest its point out along the bearing with most open water.
+- A dock is the kit of `content/docks.ts`: a fixed timber dock on piles in
+  modules 3 m long, its deck `DOCK.height` (0.7 m) over the water and at least
+  0.1 m over the ground, never more than a ramp's 0.25 m fall from one module's end
+  to the next, so it comes down from the bank on ramp modules. A main walkway
+  mapped to stop short of the bank reaches back to it, and the street's furniture
+  where it comes ashore gives way to it; a run that reaches neither the land nor
+  another run is joined to the nearest within 30 m, or else taken up.
+- Off each side of a walkway's level stretch over the water, slips of one class
+  (`docks.classes`, drawn by the weights of the vessels in each): a finger of the
+  class's length every slip's pitch (its widest boat's beam, `gap` either side and
+  a finger), a mooring pile at each tip, and between two fingers a boat of the
+  class, bow-in, `moored.sternTo` of them stern-to, where `fairway` of its row's
+  longest stays clear past the slip's mouth. The big ones (`alongside`) lie along a
+  walkway end to end; a walkway's outer end over deep water gets a T-head with a
+  big one across its face. A mapped finger holds a boat alongside each side.
+- `moored.fill` of the slips hold a boat, in its vessel's paints by
+  `MOORED_PAINTS`. Of those on docks a survivor walks to, `found` are held for found
+  vessels (at least `marina.least`, at most `marina.most`; `tools/boat/sites.ts`
+  sets them there), `wrecked` are wrecks, damaged or sunk in their slip, and the
+  rest are statics of the vessels' own hulls (`core:zzzzhull_<vessel>_<paint>`). A
+  chunk holds at most `perChunk.boats` of them, of at most `perChunk.meshes` meshes.
+- Beside the other piers, `piers.share` hold up to `piers.most` boats alongside, of
+  at most `piers.longest` metres; off `anchored.share` of the marinas a few lie at
+  anchor in water `anchored.depth` deep, heading into the wind.
+- `reports/<ruins>/marinas.json` lists each run of dock and each slip, with the
+  place on its dock a survivor boards from, and `tools/mapworld/dock-walk.ts`
+  walks every run from the land and boards every found vessel from its dock.
