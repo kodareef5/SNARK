@@ -1,5 +1,5 @@
 // bun tools/snap/night-study.ts <miami.snmap> <built assets directory> <output directory> [--gpu] [--hour=22] [--only=name]
-//   [--states=name]
+//   [--states=name] [--tier=high] [--view=name]
 //
 // The night moments (planning/workstreams/night-light.md), each drawn in the states the moment has: as main drew it,
 // with the moon's shadows (render/sky.ts castLight), and with the street lamp that lights as a light as well
@@ -19,8 +19,10 @@
 //
 // It writes `<state>/<scene>-<view>-software.png`, and with --gpu `<state>/<scene>-<view>.png` drawn by the shell's
 // renderer with the shadows, which the software render has not, and prints the sRGB of a few probes, each the median of
-// a 5 by 5 window round where a point of the scene falls on screen. It draws on high; --states names the states drawn,
-// of each scene's.
+// a 5 by 5 window round where a point of the scene falls on screen. It draws on high, or the tier --tier names; --states
+// names the states drawn, of each scene's, and --view the one view of a scene's. In the states without the lamp's light,
+// every lamp is its cards, which take the shadows of the bodies and cars in their pools (render/lamp.ts poolShade); in
+// `plain` they take none, as before that (`?ab=pools`).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
@@ -38,7 +40,9 @@ if (!mapPath || !assets || !out) throw new Error("Expected Miami map, built asse
 const gpu = process.argv.includes("--gpu");
 const hour = Number(process.argv.find((a) => a.startsWith("--hour="))?.slice(7) ?? 22);
 const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7)?.split(",");
+const viewOnly = process.argv.find((a) => a.startsWith("--view="))?.slice(7);
 const statesOnly = process.argv.find((a) => a.startsWith("--states="))?.slice(9)?.split(",");
+const tierName = process.argv.find((a) => a.startsWith("--tier="))?.slice(7) ?? "high";
 const map = parseMap(Bun.mmap(mapPath), true, true);
 const hf = mapHeightfield(map);
 const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
@@ -73,7 +77,7 @@ interface View {
   readonly from?: readonly [number, number, number];
 }
 interface Probe { readonly name: string; readonly x: number; readonly y: number; readonly z: number }
-interface State { readonly name: string; readonly moon: boolean; readonly lamp: boolean }
+interface State { readonly name: string; readonly moon: boolean; readonly lamp: boolean; readonly shaded?: boolean }
 interface Scene {
   readonly name: string;
   readonly frame: Frame;
@@ -88,6 +92,8 @@ interface Scene {
 const BEFORE: State = { name: "before", moon: false, lamp: false };
 const MOON: State = { name: "moon", moon: true, lamp: false };
 const AFTER: State = { name: "after", moon: true, lamp: true };
+/** The moon's shadows and every lamp its cards, which take no body's shadow. */
+const PLAIN: State = { name: "plain", moon: true, lamp: false, shaded: false };
 const CAR = "core:compact", MAN = "core:survivor";
 const SCENES: readonly Scene[] = [
   {
@@ -124,7 +130,7 @@ const SCENES: readonly Scene[] = [
       { name: "walk", x: -5, y: 0.05, z: -0.6 },
       { name: "chest", x: 1.8, y: 1.3, z: 1.25 },
     ],
-    states: [BEFORE, MOON, AFTER],
+    states: [BEFORE, PLAIN, MOON, AFTER],
   },
   {
     name: "handover",
@@ -155,7 +161,7 @@ for (const scene of SCENES) for (const [x, z, turn, kind] of scene.parked) {
 }
 const v = provingView(width, height, {}, { manifest, files }, { ...map, statics: MapStatics.of(map.dims, rows) }, undefined, 0, true);
 const { cam, scene, remote, raster } = v;
-scene.assets.tier = tierOf("high");
+scene.assets.tier = tierOf(tierName);
 scene.viewHeight = height;
 scene.hour = hour;
 cam.fovY = (57 * Math.PI) / 180;
@@ -192,6 +198,7 @@ function look(s: Scene, view: View, eye = view.eye): number {
 function stateOf(state: State): void {
   scene.moonShadows = state.moon;
   scene.streetLamps.light = state.lamp;
+  scene.streetLamps.shaded = state.shaded !== false;
 }
 
 /** Where each probe falls on screen with the packet's view, or null behind the camera or off it. */
@@ -249,7 +256,7 @@ interface Picture { readonly name: string; readonly scene: Scene; readonly place
 function pictures(frame: (p: FramePacket, keep: string | null) => void): Picture[] {
   const made: Picture[] = [];
   for (const s of SCENES.filter((s) => !only || only.includes(s.name))) {
-    for (const view of s.views) {
+    for (const view of s.views.filter((v) => !viewOnly || v.name === viewOnly)) {
       const last = s.states[s.states.length - 1]!;
       stateOf(last);
       if (view.from) {

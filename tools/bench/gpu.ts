@@ -17,12 +17,13 @@
 // the turning view and other work on the card move little, and which a timer query on this card reads too long. The
 // street lamps' light (render/street-lamps.ts) is turned off so on the street at night, at 22:00, on high and ultra, the
 // moon's shadows (render/sky.ts castLight) there too on medium, high and ultra, at 1,920 by 1,080 and a laptop's 3,600 by
-// 1,924, and the
+// 1,924, the street lamp that lights as a light (render/lamp.ts) and the shadows in the lamps' pool cards by the
+// lamps' stations, and the
 // wires between the poles (render/street-wires.ts) by day, and what stands overhead and the light from the ground
 // (render/roof.ts) on the street on high at one and two and on ultra at two. A city row's GL draws and triangles are of the frame its run
 // ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
-// process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
+// process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words|another's]` runs these alone, each `runs` times (3), and
 // prints each row's range.
 //
 // Miami's street on high is also run with the page's processor slowed four and six times by the browser's own
@@ -122,6 +123,10 @@ export function plan(): Run[] {
   // falls on cars and a building's front; and at noon, when it is out.
   for (const view of ["lamp", "lamp-cars", "lamp-front"] as const) for (const tier of ["high", "ultra"]) for (const [scale, window] of [[1, [1920, 1167]], [2, [1800, 1049]]] as const) runs.push({ scene: "city", view, tier, scale, window, ab: "lamp", hour: 22 });
   runs.push({ scene: "city", view: "lamp", tier: "high", scale: 1, window: [1920, 1167], ab: "lamp", hour: 12 });
+  // The shadows of the bodies and cars in every lamp's pool card (render/lamp.ts poolShade), on medium and high at both
+  // canvases by the three lamps at 22:00, and at noon, when there are no cards.
+  for (const view of ["lamp", "lamp-cars", "lamp-front"] as const) for (const tier of ["medium", "high"]) for (const [scale, window] of [[1, [1920, 1167]], [2, [1800, 1049]]] as const) runs.push({ scene: "city", view, tier, scale, window, ab: "pools", hour: 22 });
+  runs.push({ scene: "city", view: "lamp", tier: "medium", scale: 1, window: [1920, 1167], ab: "pools", hour: 12 });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "wires" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "road" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "walks" });
@@ -429,7 +434,7 @@ if (import.meta.main) {
   if (!CHROME) throw new Error("no Chrome: set CHROME");
   const times = Number(process.argv[2] ?? 3);
   const only = process.argv[3];
-  const runs = runnable(console.log).filter((r) => !only || nameOf(r).startsWith(only));
+  const runs = runnable(console.log).filter((r) => !only || only.split("|").some((o) => nameOf(r).startsWith(o)));
   console.log(`${runs.length} runs, ${times} each, load ${loadavg()[0]!.toFixed(1)}`);
   const reports = await measure(runs, times, (line) => console.log(`  ${line}`));
   writeFileSync(join(tmpdir(), "snark-gpu-bench.json"), JSON.stringify([...reports]));
