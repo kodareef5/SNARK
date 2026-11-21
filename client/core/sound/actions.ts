@@ -6,7 +6,7 @@
 import { ZONE_HEAD, ZONE_NONE } from "../../../shared/anim/human.ts";
 import { AnimState } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { EVENT_BLAST, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, EVENT_SHOT } from "../../../shared/net/protocol.ts";
+import { EVENT_BALL, EVENT_BLAST, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, EVENT_SHOT } from "../../../shared/net/protocol.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../../../shared/sim/entities.ts";
 import { V_FOOD, V_HEALTH, V_WATER, type Vitals } from "../../../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_EQUIP, ACT_RELOAD, ACT_SWING, FISTS, HOLD_NAMES, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW } from "../../../shared/sim/weapon.ts";
@@ -53,6 +53,8 @@ const K = {
   respawn: cueKey("respawn"),
   dead: cueKey("dead"),
   tamed: cueKey("tame/done"),
+  ballKeep: cueKey("ball/keep"),
+  ballLoose: cueKey("ball/loose"),
 };
 const VOICE = (n: string): number[] => [cueKey(`voice/male/${n}`), cueKey(`voice/female/${n}`)];
 /** By hold, what the item in hand makes; and what a blow or a shot of it lands as. */
@@ -210,6 +212,8 @@ export class ActionSounds {
       } else if (e.kind === EVENT_BLAST) {
         const d = Math.hypot(e.x - ex, e.y - ey, e.z - ez);
         hear(survivor, d <= BLAST_NEAR ? K.near : K.blastFar, -1, e.x, e.y, e.z, 0, 1, false);
+      } else if (e.kind === EVENT_BALL) {
+        hear(survivor, e.kill ? K.ballKeep : K.ballLoose, -1, e.x, e.y + e.vy / 2, e.z, 0, 1, false);
       }
     }
     this.events.length = 0;

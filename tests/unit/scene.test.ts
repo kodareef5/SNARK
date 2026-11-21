@@ -555,8 +555,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // until the view was measured along the ground (Scene.alongGround): low poly's fog ends a little farther off with the
   // camera up; with the view as a distance from the eye it is that again. It was 48987352 until the street corners' curb
   // returns (content/curbs.ts) added their grey meshes; without them it is that again. It was 2365985713 until a
-  // marina's dock kit (content/docks.ts) added its grey meshes; without them it is that again.
-  expect(hash).toBe(3112871861);
+  // marina's dock kit (content/docks.ts) and the soul balls and their flash (tools/pack/balls.ts) added their grey
+  // meshes (3112871861 with the docks alone, 3364631049 with the balls alone); without them it is that again.
+  expect(hash).toBe(3725999613);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -592,8 +593,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // speed limits, as above, 102222647 until the yield signs, as above, and 2142902571 until a low roofline's, the street
   // list's and the ivy, as above, and 1161881608 until the cladding, the plant room's louvres and the shrub's shape,
   // and 1911735803 until the view was measured along the ground, as above, and 801807325 until the curb returns, as above,
-  // and 307392466 until a marina's dock kit, as above.
-  expect(saddled.hash).toBe(3681705146);
+  // and 307392466 until a marina's dock kit and the soul balls' meshes, as above (3681705146 with the docks alone,
+  // 2882051178 with the balls alone).
+  expect(saddled.hash).toBe(3143791074);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

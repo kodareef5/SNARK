@@ -80,6 +80,8 @@ import {
   EVENT_NAME_BYTES,
   EVENT_SHOT,
   EVENT_BLAST,
+  EVENT_BALL,
+  OWN_KEPT,
   S_OWN,
   S_REJECT,
   S_RESULT,
@@ -115,6 +117,7 @@ import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/si
 import { F_PROP, GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { FootContacts, FootVehicles } from "../../shared/sim/foot-contact.ts";
 import { Inventory } from "../../shared/sim/items.ts";
+import type { Kept } from "./balls.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -344,7 +347,11 @@ export interface CombatEvent {
   silenced: boolean;
   /** Who killed this body, or what this body killed. */
   name: string;
-  /** The killing item's content index (0 for bare hands), and the range in metres. For a blast, `far` is its reach. */
+  /**
+   * The killing item's content index (0 for bare hands), and the range in metres. For a blast, `far` is its reach. For a
+   * soul ball's (EVENT_BALL), (x, y, z) is the tame's feet, `far` its body's radius, `vy` its height, and `kill` whether it
+   * went in.
+   */
   item: number;
   far: number;
   /** The killed body's level, and the experience the kill gave. */
@@ -487,6 +494,8 @@ export class ClientSession {
   looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
   open: { name: string; inventory: Inventory } | null = null;
+  /** The tames kept in the soul balls of the own inventory and of the open box, by slot (OWN_KEPT). */
+  readonly kept: [Map<number, Kept>, Map<number, Kept>] = [new Map(), new Map()];
   /**
    * The open container when it is a crafting station (OWN_STATION), or null. `kind` is the station's structure kind and `ref`
    * the structure; `out` the tick its fire is due to go out (0 when it does not burn); `lanes` what its fire makes by itself,
@@ -1412,6 +1421,15 @@ export class ClientSession {
         inv.set(slot, item, n, quality, dur, spoilAt, flags);
         if (holds) inv.setGear(slot, ammo, loaded, attach);
       }
+    } else if (component === OWN_KEPT) {
+      const box = r.bits(1);
+      const count = r.varint();
+      const got: [number, Kept][] = [];
+      for (let k = 0; k < count && !r.overflow; k++) got.push([r.varint(), { kind: r.u16(), level: r.u16(), name: r.string(MAX_NAME_BYTES * 3) }]);
+      if (r.overflow) return;
+      const kept = this.kept[box === BOX_SELF ? 0 : 1]!;
+      kept.clear();
+      for (const [slot, tame] of got) kept.set(slot, tame);
     } else if (component === OWN_SUBJECT) {
       if (!r.bool()) this.subject = null;
       else {
@@ -1441,8 +1459,9 @@ export class ClientSession {
       for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32(), rest: r.u32() });
       if (!r.overflow) this.station = kind === 0 ? null : { kind, ref, out, lanes, jobs };
     } else if (component === OWN_OPEN) {
-      // A station's queue comes after it is opened.
+      // A station's queue comes after it is opened, and so does what its soul balls hold.
       this.station = null;
+      this.kept[1].clear();
       if (!r.bool()) this.open = null;
       else {
         const cap = r.varint();
@@ -1579,6 +1598,14 @@ export class ClientSession {
       ev.y = r.f32();
       ev.z = r.f32();
       ev.far = r.f32();
+    } else if (kind === EVENT_BALL) {
+      // A tame into a soul ball (`kill`: it left the world) or out of one: its feet, its body's radius and its height.
+      ev.kill = r.bool();
+      ev.x = r.f32();
+      ev.y = r.f32();
+      ev.z = r.f32();
+      ev.far = r.f32();
+      ev.vy = r.f32();
     } else if (kind === EVENT_HIT) {
       ev.x = r.f32();
       ev.y = r.f32();

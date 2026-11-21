@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Rng } from "../../shared/rng.ts";
-import { Inventory, moveSlot } from "../../shared/sim/items.ts";
+import { CHARGED, Inventory, clockMoved, moveSlot } from "../../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, Vitals } from "../../shared/sim/vitals.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -129,6 +129,56 @@ test("spoilage: one item per interval, the same whether looked at once or every 
   a.set(1, berry, 5, 0, 0, 2000);
   moveSlot(a, 1, a, 0, 0, reg);
   expect([a.count[0], a.spoilAt[0]]).toEqual([25, 2000]);
+});
+
+test("a charge is a spoil clock no container stretches: held full where an inventory charges, and running down from full on leaving one", () => {
+  const full = reg.index.get("core:soul_ball_full")!;
+  const meat = reg.index.get("core:meat")!;
+  const D = reg.spoilTicks[full]!;
+  const M = reg.spoilTicks[meat]!;
+  expect([reg.charge[full], reg.charge[meat], reg.charge[berry], D]).toEqual([1, 0, 0, 30 * 86400 * 30]);
+  // In the hand, in a box that keeps food ten times as long, and in one that charges.
+  const hand = new Inventory(4);
+  const bin = new Inventory(4);
+  bin.keep = 10;
+  const vault = new Inventory(4);
+  vault.charges = true;
+  // A new one starts full wherever it is made, and is held where that charges. Food beside it keeps as the box keeps food.
+  expect(hand.add(full, 1, 0, 0, 1000, reg)).toBe(0);
+  expect(bin.add(full, 1, 0, 0, 1000, reg)).toBe(0);
+  expect(vault.add(full, 1, 0, 0, 1000, reg)).toBe(0);
+  expect(bin.add(meat, 1, 0, 0, 1000, reg)).toBe(0);
+  expect(vault.add(meat, 1, 0, 0, 1000, reg)).toBe(0);
+  expect([hand.spoilAt[0], bin.spoilAt[0], vault.spoilAt[0], bin.spoilAt[1], vault.spoilAt[1]]).toEqual([1000 + D, 1000 + D, CHARGED, 1000 + 10 * M, 1000 + M]);
+  // Between two that do not charge it has the time it had, whatever either keeps food.
+  expect([clockMoved(hand, 0, bin, 5000, reg), clockMoved(bin, 0, hand, 5000, reg)]).toEqual([1000 + D, 1000 + D]);
+  expect(clockMoved(bin, 1, hand, 5000, reg)).toBe(5000 + Math.floor((1000 + 10 * M - 5000) / 10));
+  // Into one that charges it is held; out of one it is full from that tick.
+  expect([clockMoved(hand, 0, vault, 5000, reg), clockMoved(vault, 0, hand, 7000, reg), clockMoved(vault, 0, bin, 7000, reg)]).toEqual([CHARGED, 7000 + D, 7000 + D]);
+  expect(moveSlot(hand, 0, vault, 2, 1, reg, 5000)).toBe(1);
+  expect([vault.item[2], vault.spoilAt[2], hand.item[0]]).toEqual([full, CHARGED, 0]);
+  expect(moveSlot(vault, 0, hand, 3, 1, reg, 7000)).toBe(1);
+  expect([hand.item[3], hand.spoilAt[3]]).toEqual([full, 7000 + D]);
+  // A swap gives each its own clock by where it lands: the held one out, the running one in.
+  hand.set(1, full, 1, 0, 0, 9000 + D);
+  expect(moveSlot(hand, 1, vault, 2, 1, reg, 12000)).toBe(1);
+  expect([hand.item[1], hand.spoilAt[1], vault.item[2], vault.spoilAt[2]]).toEqual([full, 12000 + D, full, CHARGED]);
+
+  // Held, it never ends, and its tick is not one that comes. Running, it ends at its tick and not before, alone in its slot.
+  const lost: number[][] = [];
+  vault.settle(0xfffffffe, reg, (item, n) => lost.push([item, n]));
+  expect(lost.filter(([item]) => item === full)).toEqual([]);
+  expect(vault.total(full)).toBe(1);
+  // In a box that keeps food ten times as long it ends at the same tick as in the hand.
+  for (const inv of [hand, bin]) {
+    inv.set(0, full, 1, 0, 0, 1000 + D);
+    inv.setRef(0, 4242);
+    const gone: number[][] = [];
+    inv.settle(1000 + D - 1, reg, (item, n, ref) => gone.push([item, n, ref]));
+    expect([gone.filter(([item]) => item === full), inv.item[0]]).toEqual([[], full]);
+    inv.settle(1000 + D, reg, (item, n, ref, at) => gone.push([item, n, ref, at]));
+    expect([gone.filter(([item]) => item === full), inv.item[0], inv.refOf(0)]).toEqual([[[full, 1, 4242, 1000 + D]], 0, 0]);
+  }
 });
 
 test("a vital read once equals the same vital stepped every tick, and says when it will run out", () => {

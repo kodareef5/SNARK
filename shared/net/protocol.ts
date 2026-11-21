@@ -78,8 +78,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 38: the owner's powered maneuvers, button edges, tap windows and recovery. CUE_JET selects the powered motion layout for observers.
  * 39: the glider on the owner's body (the grade carried, open or not, and its keys as last sampled), behind one bit; under an
  * open glider CUE_JET is set and the motion bits' mode field holds ANIM_GLIDE and the phase (planning/workstreams/glider.md).
+ * 40: the tames kept in a box's soul balls (OWN_KEPT), and a tame going into or coming out of one (EVENT_BALL).
  */
-export const PROTOCOL_VERSION = 39;
+export const PROTOCOL_VERSION = 40;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -547,6 +548,12 @@ export const OWN_OVERHEAD = 15;
  * want of fuel u32 (0 for one that is not).
  */
 export const OWN_STATION = 16;
+/**
+ * Protocol 40. The tames kept in the soul balls of a box (server/balls.ts), sent whole after that box's slots whenever a
+ * ball in it changed: box 1 bit, count varint, then per full ball: slot varint, species content index u16, level u16, name
+ * string (empty for one not named). A session is told only of balls in its own inventory and in the box it has open.
+ */
+export const OWN_KEPT = 17;
 
 export const MARKER_DEATH = 1;
 
@@ -578,6 +585,11 @@ export const EVENT_BLAST = 6;
  * for one claimed as young, not tamed). The client then asks for a name.
  */
 export const EVENT_TAMED = 7;
+/**
+ * Protocol 40. BALL, to clients nearby: a tame went into a soul ball (1 bit set) or came out of one, the place of its feet
+ * (3 x f32), and its body's radius and height in metres (2 x f32).
+ */
+export const EVENT_BALL = 8;
 
 /** A removal older than this many ticks is sent as taken, without its cause. */
 export const REMOVAL_NEWS_TICKS = 60;

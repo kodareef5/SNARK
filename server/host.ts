@@ -35,6 +35,7 @@ import { CorpseReplication } from "./corpse-motion.ts";
 import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
 import { issueSuit } from "./suit.ts";
+import { Balls } from "./balls.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
 import { DEADLINE_FECES, Feces } from "./feces.ts";
@@ -209,6 +210,7 @@ export interface Host {
   readonly emotes: Emotes;
   readonly feces: Feces;
   readonly eggs: Eggs;
+  readonly balls: Balls;
   readonly overhead: Overhead;
   readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
@@ -630,6 +632,40 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const emotes = new Emotes({ world, game });
   const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
+  const balls = new Balls({
+    world, game, records, items, rules, creatures, survival, buffs, taming, breeding, tribes, riding, carry, death,
+    detach: (rec, e) => {
+      const ents = world.ents;
+      rec.x = ents.x[e]!;
+      rec.y = ents.y[e]!;
+      rec.z = ents.z[e]!;
+      rec.yaw = ents.yaw[e]!;
+      rec.creatureMode = ents.creatureMode[e]!;
+      persistence?.detach(rec.pid);
+    },
+    attach: (rec, e) => {
+      persistence?.attach(rec, e);
+      // What its body's load makes of it is worked out at the next tick, as it is for every body a load brings back.
+      inventoryChanged.add(rec);
+    },
+    release: (rec) => {
+      impale.release(rec.pid);
+      carry.release(rec.pid);
+      creatureTraits.remove(rec);
+    },
+    refresh: (rec) => refreshBody(rec),
+    notice: (pid, text) => notice(pid, text),
+    tell: (team, text) => {
+      for (const c of game.clients) if (c?.active && !c.closed && records.byPid.get(c.pid)?.team === team) game.sendText(c, TEXT_NOTICE, text);
+    },
+  });
+  // What a slot stood for goes with its item: an egg's young (server/eggs.ts), or a soul ball's tame.
+  const eggGone = items.onRefGone;
+  items.onRefGone = (ref) => {
+    eggGone?.(ref);
+    balls.gone(ref);
+  };
+  combat.onBall = (c, rec, slot) => balls.click(c, rec, slot);
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
   game.onMountSecondary = e => roars.use(e);
@@ -901,6 +937,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const [first, ...rest] = formatReport(report, rules);
     return [`${LIVE_FILE} read again: ${first!.slice("settings: ".length)}`, ...rest];
   };
+  // What refreshBody works with, made before the load: a buff restored there refreshes its body, and a saddled creature
+  // saved with a buff on it (a tame ball sick, or poisoned) stopped the start when these were made after it.
+  const gear = new Uint16Array(GEAR_COUNT);
+  /** The held slot of each record at its last refresh. */
+  const inHand = new Map<number, number>();
   if (loaded && !loaded.fresh) {
     // Bodies saved under other rates are rated again as they load.
     survival.rerate = RATES.some((name) => wasAt(name) !== rules.num(name));
@@ -912,8 +953,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
         survival.restore(rec, false);
         continue;
       }
-      // A structure's record has no entity, and neither has carried young.
-      if (rec.at >= 0 || reg.defs[rec.kind]?.type === "structure" || (rec.egg !== null && rec.egg.carrier !== 0)) continue;
+      // A structure's record has no entity, and neither has carried young, nor a tame kept in a soul ball.
+      if (rec.at >= 0 || reg.defs[rec.kind]?.type === "structure" || (rec.egg !== null && rec.egg.carrier !== 0) || rec.stored !== 0) continue;
       if (reg.defs[rec.kind]?.type === "prop") death.place(rec);
       else {
         const e = creatures.adopt(rec);
@@ -928,6 +969,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Their records stay in the save, and get bodies at a start that allows more.
     if (bodiless > 0) say(`no body for ${bodiless} of the creatures and things in the save, which stay in it without one: the world holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
     refusedTold = world.ents.refused;
+    // Before the rest resume: a kept tame that no ball names is set back in the world here, and is theirs to resume as
+    // any other with a body is.
+    balls.resume();
     survival.rerate = false;
     // The hour of day survives a change of clock pace, so the offset is recomputed for the new pace.
     const pace = { cycle: wasAt("DayCycleSpeedScale"), day: wasAt("DayTimeSpeedScale"), night: wasAt("NightTimeSpeedScale") };
@@ -1437,9 +1481,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       world.ents.setGear(e, gear);
     }
   }
-  const gear = new Uint16Array(GEAR_COUNT);
-  /** The held slot of each record at its last refresh. */
-  const inHand = new Map<number, number>();
   refreshInventories();
 
   const con = new Console();
@@ -1501,6 +1542,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     emotes,
     feces,
     eggs,
+    balls,
     overhead,
     hurt,
     spawner,
