@@ -130,6 +130,8 @@
     "obelisks": [
       {
         "name": "Welcome to Fabulous Las Vegas",
+        "color": "green",
+        "form": "lantern",
         "at": [
           -115.17262,
           36.0812
@@ -142,6 +144,7 @@
       },
       {
         "name": "Sphere",
+        "color": "blue",
         "at": [
           -115.1601,
           36.1213
@@ -154,6 +157,8 @@
       },
       {
         "name": "The Strat",
+        "color": "red",
+        "form": "sextant",
         "at": [
           -115.16,
           36.1476

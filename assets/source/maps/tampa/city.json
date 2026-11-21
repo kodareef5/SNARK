@@ -93,6 +93,8 @@
     "obelisks": [
       {
         "name": "Raymond James Stadium",
+        "color": "red",
+        "form": "sextant",
         "at": [
           -82.499,
           27.9745
@@ -104,6 +106,8 @@
       },
       {
         "name": "Ybor City",
+        "color": "green",
+        "form": "lantern",
         "at": [
           -82.4394,
           27.9604
@@ -115,6 +119,7 @@
       },
       {
         "name": "Davis Islands",
+        "color": "blue",
         "at": [
           -82.4487,
           27.916

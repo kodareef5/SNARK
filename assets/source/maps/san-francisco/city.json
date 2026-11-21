@@ -80,6 +80,7 @@
     "obelisks": [
       {
         "name": "Marina Green",
+        "color": "blue",
         "at": [
           -122.4372,
           37.8061
@@ -91,6 +92,8 @@
       },
       {
         "name": "Embarcadero",
+        "color": "red",
+        "form": "sextant",
         "at": [
           -122.3962,
           37.7942
@@ -102,6 +105,8 @@
       },
       {
         "name": "Panhandle",
+        "color": "green",
+        "form": "lantern",
         "at": [
           -122.4455,
           37.7726

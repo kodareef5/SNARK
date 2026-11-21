@@ -87,6 +87,8 @@
     "obelisks": [
       {
         "name": "Griffith Observatory",
+        "color": "red",
+        "form": "sextant",
         "at": [
           -118.3005,
           34.1203
@@ -99,6 +101,8 @@
       },
       {
         "name": "Hollywood and Highland",
+        "color": "green",
+        "form": "lantern",
         "at": [
           -118.33802,
           34.1016
@@ -110,6 +114,7 @@
       },
       {
         "name": "Lake Hollywood Park",
+        "color": "blue",
         "at": [
           -118.3262,
           34.1265
