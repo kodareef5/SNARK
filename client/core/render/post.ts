@@ -12,7 +12,7 @@
 // blur of the same light, and over their count is a blur that keeps its energy. The finish takes BLOOM of the bright
 // part from where it is and puts the same share of the blur in its place, so light is moved and none is made.
 //
-// The scene may be drawn at a share of the canvas a side (FramePacket.share): into the corner of the light target that share
+// The scene may be drawn at a share of the canvas a side (sceneShare): into the corner of the light target that share
 // fills, bloom's levels likewise, and the finish, at the canvas's own size, takes it up with a Catmull-Rom filter held
 // within its neighbours, then the sharpen. The interface is the page's, over the canvas, and keeps its own pixels.
 
@@ -72,6 +72,27 @@ export const lightBytes = (width: number, height: number, samples: number): numb
 
 /** Whether a frame of `tier` is drawn into the light target, on a device whose target's format is `light` (0 for none). */
 export const drawsLight = (tier: Tier, light: number | boolean): boolean => tier.post !== null && light !== 0 && light !== false;
+
+/**
+ * The render resolutions a player may choose (Settings.resolution): the game's, the canvas's own pixels, or a share of
+ * them a side. Each is of a frame drawn into the light target; a tier without one draws the canvas's own.
+ */
+export const RESOLUTIONS: readonly { readonly label: string; readonly share: number }[] = [{ label: "auto", share: 0 }, { label: "native", share: 1 }, { label: "75%", share: 0.75 }, { label: "50%", share: 0.5 }];
+/** The game's share is a whole number of twentieths, and never under a half. */
+const TWENTIETHS = 20;
+const LEAST_SHARE = 0.5;
+
+/**
+ * The share of the canvas a side a frame of `tier` draws its scene at before the governor's steps, on a canvas of
+ * `pixels` at the screen's own pixels a CSS pixel: `choice` where the player chose one (RESOLUTIONS), else the most
+ * that keeps the scene within the tier's `post.pixels`, in twentieths. 1 on a tier with no light target or no cap.
+ */
+export function sceneShare(tier: Tier, choice: number, pixels: number): number {
+  if (!tier.post) return 1;
+  if (choice > 0) return choice;
+  const cap = tier.post.pixels;
+  return cap > 0 && pixels > cap ? Math.max(LEAST_SHARE, Math.floor(Math.sqrt(cap / pixels) * TWENTIETHS) / TWENTIETHS) : 1;
+}
 
 /** The scene's pixels across and down at `share` of a canvas `width` by `height` a side. */
 export const sceneSize = (width: number, height: number, share: number): [number, number] => [Math.max(1, Math.round(width * share)), Math.max(1, Math.round(height * share))];

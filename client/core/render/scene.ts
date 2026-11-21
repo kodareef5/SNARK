@@ -446,7 +446,7 @@ export class Scene {
   canvasWidth = 1280;
   canvasHeight = 720;
   supersampled = false;
-  /** The share of the canvas a side a frame with a light target draws its scene at, 1 unless the app sets it. */
+  /** The share of the canvas a side a frame with a light target draws its scene at before the governor's steps (post.ts sceneShare). The app sets it. */
   share = 1;
   /** Whether this frame is drawn with the page's other effects off (FramePacket.alternate). */
   alternate = false;

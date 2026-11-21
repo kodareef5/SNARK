@@ -484,7 +484,7 @@ export class FramePacket {
   /** The samples the light target is drawn with (post.ts lightSamples), on a frame drawn into one. */
   lightSamples = 0;
   /**
-   * On a frame drawn into the light target, the share of the canvas a side the target is made for,
+   * On a frame drawn into the light target, the share of the canvas a side the target is made for (post.ts sceneShare),
    * and the share its scene is drawn at, the governor's steps taken: no more, so that a step makes nothing again.
    */
   room = 1;

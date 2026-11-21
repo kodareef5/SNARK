@@ -10,6 +10,7 @@ import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tie
 import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
 import type { FrameRing } from "./assets/frames.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
+import { RESOLUTIONS, sceneShare } from "./render/post.ts";
 import { VOLUME_MAX, keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -240,6 +241,8 @@ export class App {
   /** A tool's look at a place (`address`): the commands still to send, and the facing held. */
   private script: string[] = [];
   private held: [number, number] | null = null;
+  /** The scene's share a page that measures asks (`?scale=`, render/post.ts sceneShare), in place of the setting's; 0 for none. */
+  private shareAsked = 0;
   private releaseLook = false;
   private lineAt = 0;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
@@ -976,7 +979,8 @@ export class App {
 
   /**
    * What the page's address asks: `off`, effects turned off for a before and after (passes.ts). A page that pins pictures
-   * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier`. It plays at
+   * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier` and the scene's
+   * share of the canvas a side, `scale` (1 for the canvas's own). It plays at
    * MEASURED_VOLUME, or at `volume`. A tool's look at a place is such a page, and its `orders` are what the server the
    * tool started for it gave it, never the address's: `run`, lines sent as typed once the body is in the world, and
    * `look`, the way it faces held, yaw and pitch in radians. Any other page sends no line it was not typed and holds no view.
@@ -995,6 +999,8 @@ export class App {
     this.farPalms = get("farpalm") === "fronds";
     this.governor.held = Number(get("level") ?? 0);
     this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
+    const share = Number(get("scale"));
+    this.shareAsked = share > 0 && share <= 1 ? share : 0;
     // Such a page runs unattended, often behind someone's other work, and its music would start at full volume. It is
     // not muted, since nobody is there to unmute it and the self-check listens for a sound.
     this.ui.settings.muted = false;
@@ -1474,6 +1480,10 @@ export class App {
     const ratio = canvasRatio(this.scene.assets.tier, this.dpr, width, height);
     [this.scene.canvasWidth, this.scene.canvasHeight] = [Math.floor(width * ratio), Math.floor(height * ratio)];
     this.scene.supersampled = ratio > ownRatio(this.scene.assets.tier, this.dpr);
+    // The scene's share is of the canvas the chosen tier draws at the screen's own pixels; the governor's steps take
+    // their shares of it (governor.ts).
+    const own = width * height * ownRatio(chosen, this.dpr) ** 2;
+    [this.scene.share, this.ui.settings.autoShare] = [sceneShare(chosen, this.shareAsked || (RESOLUTIONS[this.ui.settings.resolution]?.share ?? 0), own), sceneShare(chosen, 0, own)];
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
     session.askFar(this.scene.assets.tier.reach.bases);
     session.holdNodes(this.scene.assets.tier.nodes.chunks);

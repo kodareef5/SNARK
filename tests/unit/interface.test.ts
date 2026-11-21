@@ -348,3 +348,20 @@ test("the Display tab exposes independent gloss and road controls and restores o
   restored.restoreInterface(s.interfacePreferences());
   expect([gloss.value(restored), road.value(restored), restored.tier]).toEqual(["195%", "Dry + deeper shade", "medium"]);
 });
+
+test("the Display tab's render resolution is the game's by default, says what the game chose where it draws fewer pixels, steps through native, 75% and 50%, and is kept", () => {
+  const s = new Settings();
+  const row = SETTING_GROUPS[0].rows.map(i => SETTING_ROWS[i]!).find(r => r.label === "Render resolution")!;
+  expect([s.resolution, row.value(s)]).toEqual([0, "auto"]);
+  s.autoShare = 0.85;
+  expect(row.value(s)).toBe("auto, 85%");
+  const seen = [row.value(s)];
+  for (let k = 0; k < 4; k++) { row.step(s, 1); seen.push(row.value(s)); }
+  expect(seen).toEqual(["auto, 85%", "native", "75%", "50%", "50%"]);
+  row.step(s, -1);
+  const restored = new Settings();
+  restored.restoreInterface(s.interfacePreferences());
+  expect(row.value(restored)).toBe("75%");
+  restored.restoreInterface('{"version":2,"resolution":9}');
+  expect(restored.resolution).toBe(3);
+});
