@@ -30,7 +30,9 @@ export const SHAFT_HEIGHT = 600;
 export const SHAFT_RADIUS = 0.42;
 export const SHEATH_WIDER = 2.7;
 /** The fewest pixels wide it is drawn, however far off. */
-export const SHAFT_PIXELS = 2;
+export const SHAFT_PIXELS = 3;
+/** How many times a far shaft's width its sheath is: a ringed drop is a wider column from across the map. */
+export const SHEATH_FAR = 3;
 /** The most shafts a frame draws, the nearest first as the server lists them. */
 export const SHAFTS_MOST = 16;
 /** Metres from the eye over which the farthest shafts fade out. */
@@ -52,7 +54,16 @@ export const FOOT_REACH = 6;
 /** How wide a shaft is drawn `far` metres off, as a radius in metres: its own, or what SHAFT_PIXELS pixels are there. */
 export function shaftRadius(far: number, fovY: number, pixelsTall: number, wider = 1): number {
   const floor = (far * fovY * SHAFT_PIXELS) / (2 * Math.max(1, pixelsTall));
-  return Math.max(SHAFT_RADIUS * wider, floor * (wider > 1 ? 1.6 : 1));
+  return Math.max(SHAFT_RADIUS * wider, floor * (wider > 1 ? SHEATH_FAR : 1));
+}
+
+/**
+ * How flat a shaft `far` metres off is lit, 0 to 1 (supply-light.ts packEffect): not at all while it is its own width,
+ * and wholly by where it is drawn twice as wide as it is to hold its pixels.
+ */
+export function shaftFlat(far: number, fovY: number, pixelsTall: number): number {
+  const floor = (far * fovY * SHAFT_PIXELS) / (2 * Math.max(1, pixelsTall));
+  return Math.max(0, Math.min(1, floor / SHAFT_RADIUS - 1));
 }
 
 /** How much of its light a shaft keeps `far` metres off, through haze that takes `fog` (0 to 1) of what is there. */

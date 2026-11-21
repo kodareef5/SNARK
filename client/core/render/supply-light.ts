@@ -44,9 +44,16 @@ export const STANDING_FULL = 1.8;
 /** Metres from its head over which a shaft fades into the sky. */
 export const SHAFT_TOP = 90;
 
-/** A draw's `w`: the tier's place among the tiers (1 to 15), ringed, and its look. */
-export function packEffect(count: number, ringed: boolean, look: number): number {
-  return Math.max(0, Math.min(15, count)) + (ringed ? 16 : 0) + 32 * (look & 255);
+/** The steps `flat` is kept in. */
+export const FLAT_STEPS = 7;
+
+/**
+ * A draw's `w`: the tier's place among the tiers (1 to 15), ringed, its look, and how flat a tube is lit, 0 to 1. A
+ * shaft far off is a few pixels wide, and light that fell to its edge by how its side faces the eye would leave one
+ * pixel of it lit and that one broken: `flat` lights it evenly across, in its tier's colour.
+ */
+export function packEffect(count: number, ringed: boolean, look: number, flat = 0): number {
+  return Math.max(0, Math.min(15, count)) + (ringed ? 16 : 0) + 32 * (look & 255) + 8192 * Math.round(FLAT_STEPS * clamp(flat));
 }
 
 const fract = (v: number): number => v - Math.floor(v);
@@ -114,14 +121,18 @@ export function dropGlow(out: Float32Array | number[], row: number, u: number, f
   const along = row === GLOW_JET || row === GLOW_FOOT ? u : u * GLOW_METRES;
   dropTint(ey, out);
   const count = ew % 16;
-  const look = Math.floor(ew / 32);
+  const look = Math.floor(ew / 32) % 256;
+  const even = Math.floor(ew / 8192) / FLAT_STEPS;
   if (row === GLOW_FOOT) {
     // The glow on the ground at its foot: strongest under the capsule, gone at its rim. It is a sheet of two sides, each drawn.
     const fall = clamp(1 - along);
     for (let c = 0; c < 3; c++) out[c] = out[c]! * (0.5 + 1.3 * fall);
     return ez * 0.3 * fall * fall;
   }
-  // A column of light is thickest through its middle: it falls off to its edge by how its surface faces the eye.
+  // A column of light is thickest through its middle: it falls off to its edge by how its surface faces the eye. A
+  // tube far off is lit evenly across the few pixels it has.
+  const tube = row === GLOW_SHAFT || row === GLOW_SHEATH;
+  if (tube) facing += (1 - facing) * even;
   const body = facing * facing;
   const core = smooth(0.55, 1, facing);
   if (row === GLOW_JET) {
@@ -132,7 +143,6 @@ export function dropGlow(out: Float32Array | number[], row: number, u: number, f
     for (let c = 0; c < 3; c++) out[c] = out[c]! * (0.4 + 2.6 * fuel * body) + 5 * heart * heart;
     return ez * fuel * fuel * (3 - 2 * fuel) * Math.min(0.96, 1.4 * body) * (0.8 + 0.2 * bands);
   }
-  const tube = row === GLOW_SHAFT || row === GLOW_SHEATH;
   // The set that runs down fades once it has landed, and the standing set climbs from the foot behind its own front.
   const inbound = 1 - smooth(0, INBOUND_FADE, ex);
   const front = clamp((PULSE_SPEED * Math.max(ex, 0) - along) / 8 + 1);
@@ -141,8 +151,9 @@ export function dropGlow(out: Float32Array | number[], row: number, u: number, f
   // A shaft fades into the sky over its last stretch.
   const strength = (row === GLOW_SHEATH ? 0.35 : row === GLOW_SHAFT ? 1 : 0.7) * (tube ? 1 - smooth(600 - SHAFT_TOP, 600, along) : 1);
   const glow = strength * (0.6 + 2.1 * pulse + 0.12 * filament);
-  // The colour is the tier's, which is what the shaft is for: its white heart is narrow, and widens in a pulse.
-  const heart = core * core * core * core;
+  // The colour is the tier's, which is what the shaft is for: its white heart is narrow, and widens in a pulse. Lit
+  // flat it keeps a fifth of its heart, or far off every tier would be white.
+  const heart = core * core * core * core * (1 - 0.8 * even);
   for (let c = 0; c < 3; c++) out[c] = out[c]! * glow * (0.7 + 2.2 * body) + (row === GLOW_SHEATH ? 0 : heart * (0.25 + 1.3 * pulse));
   return ez * strength * Math.min(0.92, (0.24 + 0.5 * pulse) * (0.25 + 0.75 * body) + 0.32 * core);
 }
@@ -179,11 +190,13 @@ vec3 dropLight(float row, float across, vec4 e) {
 vec4 dropGlow(float row, float u, float facing, vec4 e) {
   vec3 tint = dropTint(e.y);
   float along = row == ${f(GLOW_JET)} || row == ${f(GLOW_FOOT)} ? u : u*${f(GLOW_METRES)};
-  float count = mod(e.w,16.0), look = floor(e.w/32.0);
+  float count = mod(e.w,16.0), look = mod(floor(e.w/32.0),256.0), even = floor(e.w/8192.0)/${f(FLAT_STEPS)};
   if (row == ${f(GLOW_FOOT)}) {
     float fall = clamp(1.0-along,0.0,1.0);
     return vec4(tint*(0.5 + 1.3*fall), e.z*0.3*fall*fall);
   }
+  bool tube = row == ${f(GLOW_SHAFT)} || row == ${f(GLOW_SHEATH)};
+  if (tube) facing += (1.0-facing)*even;
   float body = facing*facing, core = smoothstep(0.55,1.0,facing);
   if (row == ${f(GLOW_JET)}) {
     float fuel = clamp(1.0-along,0.0,1.0);
@@ -191,14 +204,13 @@ vec4 dropGlow(float row, float u, float facing, vec4 e) {
     float heart = fuel*fuel*core*(0.6 + 0.4*bands);
     return vec4(tint*(0.4 + 2.6*fuel*body) + 5.0*heart*heart, e.z*fuel*fuel*(3.0-2.0*fuel)*min(0.96,1.4*body)*(0.8 + 0.2*bands));
   }
-  bool tube = row == ${f(GLOW_SHAFT)} || row == ${f(GLOW_SHEATH)};
   float inbound = 1.0 - smoothstep(0.0,${f(INBOUND_FADE)},e.x);
   float front = clamp((${f(PULSE_SPEED)}*max(e.x,0.0) - along)/8.0 + 1.0,0.0,1.0);
   float pulse = tube ? inbound*shaftPulse(along, e.x, count, false) + smoothstep(${f(STANDING_FROM)},${f(STANDING_FULL)},e.x)*front*shaftPulse(along, e.x, count, true) : 0.0;
   float filament = pow(0.5 + 0.5*cos(along*0.9 + 6.2831853*fract(look*0.618034) + 2.2*body), 6.0);
   float strength = (row == ${f(GLOW_SHEATH)} ? 0.35 : row == ${f(GLOW_SHAFT)} ? 1.0 : 0.7)*(tube ? 1.0 - smoothstep(${f(600 - SHAFT_TOP)},600.0,along) : 1.0);
   float glow = strength*(0.6 + 2.1*pulse + 0.12*filament);
-  float heart = core*core*core*core;
+  float heart = core*core*core*core*(1.0-0.8*even);
   return vec4(tint*glow*(0.7 + 2.2*body) + (row == ${f(GLOW_SHEATH)} ? 0.0 : heart*(0.25 + 1.3*pulse)),
               e.z*strength*min(0.92,(0.24 + 0.5*pulse)*(0.25 + 0.75*body) + 0.32*core));
 }`;

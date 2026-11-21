@@ -39,7 +39,7 @@ import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { SupplyView } from "../supply.ts";
-import { JET_REACH, WASH_EVERY, WASH_HEIGHT, bellAt, jetLength, squash, TRAIL_MOST, TRAIL_REACH, alongBone, CAPSULE, CAPSULE_REACH, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "./supply.ts";
+import { JET_REACH, WASH_EVERY, WASH_HEIGHT, bellAt, jetLength, squash, TRAIL_MOST, TRAIL_REACH, alongBone, CAPSULE, CAPSULE_REACH, shaftFlat, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "./supply.ts";
 import { packEffect } from "./supply-light.ts";
 import { TRAIL_SECONDS, writeDropSky } from "./supply-sky.ts";
 import { MARKS, POSE_COMING, POSE_FLYING, POSE_GONE, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
@@ -2353,7 +2353,8 @@ export class Scene {
         this.effect[0] = (view.tick - row.land) / TICK_RATE;
         this.effect[1] = rgb;
         this.effect[2] = power;
-        this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
+        // The tubes are lit flat where they are a few pixels wide; the figures and halos are not tubes.
+        this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look, shaftFlat(reach, cam.fovY, this.viewHeight));
         uprightBone(rows, 0, sx, sy, sz, wide, near);
         // The tube is as wide as its bone makes it, whatever the reach of the mesh it is sized from.
         if (shaftSeen(cam, sx, sy, sz, wide, SHAFT_HEIGHT * near) && piece(PIECE.shaft, true, Math.max(wide, 1), SHAFT_HEIGHT * near)) view.shafts++;
@@ -2369,14 +2370,16 @@ export class Scene {
           const sheath = shaftRadius(reach, cam.fovY, this.viewHeight, SHEATH_WIDER) * near;
           uprightBone(rows, 0, sx, sy, sz, sheath, near);
           piece(PIECE.sheath, true, Math.max(sheath, 1), SHAFT_HEIGHT * near);
-          for (let k = 0; k < HALOS && reach < 500; k++) {
+          // Low poly draws light as flat colour that hides what is behind it: a halo would be a slab, so it has none.
+          for (let k = 0; k < HALOS && reach < 500 && p.lit; k++) {
             haloAt(seconds + row.look, k, halo);
             this.effect[2] = power * halo.strength;
             uprightBone(rows, 0, sx, sy + halo.height, sz, sheath * 1.2, 1);
             piece(PIECE.halo, true, sheath * 1.2, 0.4);
           }
         }
-        if (pose.state !== POSE_COMING && reach < 400) {
+        // Nor the glow on the ground at its foot, which would be a disc of paint.
+        if (pose.state !== POSE_COMING && reach < 400 && p.lit) {
           this.effect[2] = power * (0.4 + 0.6 * pose.standing);
           uprightBone(rows, 0, sx, sy, sz, FOOT_REACH, 1);
           piece(PIECE.foot, true, FOOT_REACH, 0.1);

@@ -2,7 +2,7 @@
 // capsule's stance, held to the measurements its model is built to (shared/world/supply-capsule.json).
 
 import { expect, test } from "bun:test";
-import { JET_LEAST, JET_MOST, SQUASH, bellAt, jetLength, squash, CAPSULE, HALOS, HALO_CLIMB, PIECE, PIECES, SHAFT_FADE_FROM, SHAFT_FADE_TO, SHAFT_HAZE, SHAFT_PIXELS, SHAFT_RADIUS, SHEATH_WIDER, SLATS, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, slatOpen, uprightBone, type CapsuleStance } from "../../client/core/render/supply.ts";
+import { JET_LEAST, JET_MOST, SQUASH, bellAt, jetLength, squash, CAPSULE, HALOS, HALO_CLIMB, PIECE, PIECES, SHAFT_FADE_FROM, SHAFT_FADE_TO, SHAFT_HAZE, SHAFT_PIXELS, SHAFT_RADIUS, SHEATH_FAR, SHEATH_WIDER, shaftFlat, SLATS, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, slatOpen, uprightBone, type CapsuleStance } from "../../client/core/render/supply.ts";
 import { MARKS } from "../../shared/sim/supply.ts";
 
 const TAU = 2 * Math.PI;
@@ -121,14 +121,18 @@ test("the whole capsule goes where its stance puts it and turns as it is turned:
   expect([turned[0] - 12, turned[1] + 3, turned[2] - 40].map((v) => Math.round(v * 1e5) / 1e5)).toEqual([plain[2], plain[1], -plain[0]].map((v) => Math.round(v * 1e5) / 1e5));
 });
 
-test("a shaft is its own width at hand and never under two pixels wide however far off; the haze takes at most a little over half of it, and it fades out between six and eight kilometres", () => {
+test("a shaft is its own width at hand and never under three pixels wide however far off, where it is lit flat; the haze takes at most a little over half of it, and it fades out between six and eight kilometres", () => {
   const fov = 1.2217, tall = 1080;
   expect([shaftRadius(5, fov, tall), shaftRadius(150, fov, tall), shaftRadius(5, fov, tall, SHEATH_WIDER)]).toEqual([SHAFT_RADIUS, SHAFT_RADIUS, SHAFT_RADIUS * SHEATH_WIDER]);
   for (const far of [1000, 4000, 7900]) {
     // Its width in pixels: its diameter over what a pixel is there.
     const pixels = (2 * shaftRadius(far, fov, tall)) / ((far * fov) / tall);
-    expect([far, Math.abs(pixels - SHAFT_PIXELS) < 1e-9, shaftRadius(far, fov, tall, SHEATH_WIDER) > shaftRadius(far, fov, tall) * 1.5]).toEqual([far, true, true]);
+    // A ringed drop's sheath is three times as wide there: a wider column from across the map.
+    expect([far, Math.abs(pixels - SHAFT_PIXELS) < 1e-9, shaftRadius(far, fov, tall, SHEATH_WIDER) / shaftRadius(far, fov, tall), shaftFlat(far, fov, tall)]).toEqual([far, true, SHEATH_FAR, 1]);
   }
+  // Lit by how its side faces the eye while it is its own width, and flat by where it is drawn twice as wide.
+  const own = (SHAFT_RADIUS * 2 * tall) / (fov * SHAFT_PIXELS);
+  expect([shaftFlat(5, fov, tall), shaftFlat(own, fov, tall), shaftFlat(own * 1.5, fov, tall), shaftFlat(own * 2, fov, tall)].map((v) => Math.round(v * 1e6) / 1e6)).toEqual([0, 0, 0.5, 1]);
   // A taller picture has smaller pixels: the floor is narrower in metres.
   expect(shaftRadius(4000, fov, 2160)).toBeCloseTo(shaftRadius(4000, fov, 1080) / 2, 9);
   expect([shaftKeeps(100, 0), shaftKeeps(3000, 1), shaftKeeps(3000, 0.5), shaftKeeps(SHAFT_FADE_FROM, 0), shaftKeeps(SHAFT_FADE_TO, 0), shaftKeeps(9000, 0)]).toEqual([1, 1 - SHAFT_HAZE, 0.75, 1, 0, 0]);

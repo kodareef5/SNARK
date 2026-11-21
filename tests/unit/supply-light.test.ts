@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_TEXTURED, FramePacket, moved, texturedFlags } from "../../client/core/render/packet.ts";
 import { StreetDraws } from "../../client/core/render/street-draws.ts";
-import { DROP_GLSL, GLOW_FIGURE, GLOW_FOOT, GLOW_JET, GLOW_METRES, GLOW_SHAFT, GLOW_SHEATH, INBOUND_FADE, LAMP_BEAT, LAMP_PERIOD, LIGHT_LAMP, LIGHT_LANTERN, LIGHT_SEAM, PULSE_GAP, PULSE_REST, PULSE_SPEED, SHAFT_TOP, STANDING_FULL, dropGlow, dropLight, dropTint, lampBeat, packEffect, shaftPulse } from "../../client/core/render/supply-light.ts";
+import { DROP_GLSL, FLAT_STEPS, GLOW_FIGURE, GLOW_FOOT, GLOW_JET, GLOW_METRES, GLOW_SHAFT, GLOW_SHEATH, INBOUND_FADE, LAMP_BEAT, LAMP_PERIOD, LIGHT_LAMP, LIGHT_LANTERN, LIGHT_SEAM, PULSE_GAP, PULSE_REST, PULSE_SPEED, SHAFT_TOP, STANDING_FULL, dropGlow, dropLight, dropTint, lampBeat, packEffect, shaftPulse } from "../../client/core/render/supply-light.ts";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { CHANNEL, DROP_GLOW, DROP_LIGHT, INSTRUMENT, streetMaterial } from "../../content/street-finishes.ts";
 import { starterBook } from "../../content/supply/starter.ts";
@@ -24,11 +24,12 @@ const glow = (row: number, u: number, facing: number, e: readonly [number, numbe
 };
 const sum = (v: readonly number[]): number => v[0]! + v[1]! + v[2]!;
 
-test("a draw's effect packs the tier's count, ringed and its look in one number a float holds whole", () => {
-  for (const [count, ringed, look] of [[1, false, 0], [7, true, 255], [15, true, 128], [3, false, 1]] as const) {
-    const w = packEffect(count, ringed, look);
-    expect([Math.fround(w), w % 16, Math.floor(w / 16) % 2 === 1, Math.floor(w / 32)]).toEqual([w, count, ringed, look]);
+test("a draw's effect packs the tier's count, ringed, its look and how flat it is lit in one number a float holds whole", () => {
+  for (const [count, ringed, look, flat] of [[1, false, 0, 0], [7, true, 255, 1], [15, true, 128, 3 / 7], [3, false, 1, 0]] as const) {
+    const w = packEffect(count, ringed, look, flat);
+    expect([Math.fround(w), w % 16, Math.floor(w / 16) % 2 === 1, Math.floor(w / 32) % 256, Math.floor(w / 8192)]).toEqual([w, count, ringed, look, Math.round(flat * FLAT_STEPS)]);
   }
+  expect([packEffect(3, false, 9, 0.5), packEffect(3, false, 9, 2), packEffect(3, false, 9)]).toEqual([3 + 32 * 9 + 8192 * 4, 3 + 32 * 9 + 8192 * 7, 3 + 32 * 9]);
   // A tier's colour is light as it is: every tier of the starter book keeps its hue's order, and a float holds it whole.
   for (const tier of starterBook().tiers) {
     const t = [0, 0, 0];
@@ -112,6 +113,12 @@ test("the light with no surface: nothing where it has no power, thickest through
   const rest = 400 / GLOW_METRES;
   expect([glow(GLOW_SHAFT, rest, 1, e(1)).a > 3 * glow(GLOW_SHAFT, rest, 0.05, e(1)).a, glow(GLOW_SHAFT, rest, 1, e(0.5)).a]).toEqual([true, glow(GLOW_SHAFT, rest, 1, e(1)).a / 2]);
   expect(glow(GLOW_SHEATH, rest, 0.6, e(1)).a).toBeLessThan(glow(GLOW_SHAFT, rest, 0.6, e(1)).a);
+  // Far off a tube is a few pixels wide and lit flat: its edge as its middle, the tier's colour kept (a fifth of the
+  // white heart), and the rows that are not tubes untouched.
+  const flat = [3, BLUE, 1, packEffect(4, true, 40, 1)] as const;
+  const [edge, middle, lit] = [glow(GLOW_SHAFT, rest, 0.05, flat), glow(GLOW_SHAFT, rest, 1, flat), glow(GLOW_SHAFT, rest, 1, e(1))];
+  expect([edge.a, edge.rgb, middle.a, middle.rgb[0]! < lit.rgb[0]! - 0.15, middle.rgb[2]! > 3 * middle.rgb[0]!]).toEqual([middle.a, middle.rgb, lit.a, true, true]);
+  expect([glow(GLOW_SHEATH, rest, 0.05, flat).a, glow(GLOW_FIGURE, 0.3, 0.3, flat), glow(GLOW_JET, 0.3, 0.3, flat)]).toEqual([glow(GLOW_SHEATH, rest, 1, flat).a, glow(GLOW_FIGURE, 0.3, 0.3, e(1)), glow(GLOW_JET, 0.3, 0.3, e(1))]);
   // The white heart is the shaft's alone: the sheath stays the tier's colour.
   const [shaft, sheath] = [glow(GLOW_SHAFT, rest, 1, e(1)).rgb, glow(GLOW_SHEATH, rest, 1, e(1)).rgb];
   expect([shaft[0]! > sheath[0]! + 0.2, sheath[0]! < 0.2 * sheath[2]!, shaft[2]! > shaft[0]!]).toEqual([true, true, true]);

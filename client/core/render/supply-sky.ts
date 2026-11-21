@@ -114,6 +114,12 @@ export function writeDropSky(frame: Float32Array, list: SupplyList | null, tick:
 
 const tint = [0, 0, 0];
 
+/**
+ * How many of its widths from a streak's arc and from its head a ray is past which the streak adds nothing: its halo is
+ * a six-hundredth of itself there. Most of the sky is past it, and is spared the rest of the streak's sums.
+ */
+export const STREAK_PAST = 45;
+
 /** The light the streaks add along a ray from the eye, into `out`: `px` is the angle a pixel spans. */
 export function dropStreaks(frame: Float32Array, dx: number, dy: number, dz: number, px: number, out: Float64Array | number[]): void {
   out[0] = out[1] = out[2] = 0;
@@ -128,8 +134,9 @@ export function dropStreaks(frame: Float32Array, dx: number, dy: number, dz: num
     const cx = tx + s * ax, cy = ty + s * ay, cz = tz + s * az, cl = Math.hypot(cx, cy, cz) || 1;
     const off = Math.hypot(dx - cx / cl, dy - cy / cl, dz - cz / cl);
     const w = Math.max(STREAK_WIDTH, STREAK_PIXELS * px);
-    const trail = Math.exp(-(off * off) / (w * w)) * s * s;
     const gap = (dx - hx) ** 2 + (dy - hy) ** 2 + (dz - hz) ** 2;
+    if (Math.min(off * off, gap) > STREAK_PAST * STREAK_PAST * w * w) continue;
+    const trail = Math.exp(-(off * off) / (w * w)) * s * s;
     const tip = Math.exp(-gap / (4 * w * w));
     const halo = Math.exp(-Math.sqrt(gap) / (STREAK_HALO * w));
     dropTint(frame[at + 7]!, tint);
@@ -149,8 +156,9 @@ vec3 dropStreaks(vec3 d, float px) {
     vec3 ab = h.xyz - t.xyz;
     float s = clamp(dot(d - t.xyz, ab)/max(1.0e-9, dot(ab, ab)), 0.0, 1.0);
     float off = length(d - normalize(t.xyz + s*ab)), w = max(${f(STREAK_WIDTH)}, ${f(STREAK_PIXELS)}*px);
-    float trail = exp(-off*off/(w*w))*s*s;
     float gap = dot(d - h.xyz, d - h.xyz);
+    if (min(off*off, gap) > ${f(STREAK_PAST * STREAK_PAST)}*w*w) continue;
+    float trail = exp(-off*off/(w*w))*s*s;
     float tip = exp(-gap/(4.0*w*w)), halo = exp(-sqrt(gap)/(${f(STREAK_HALO)}*w));
     light += h.w*(dropTint(t.w)*(2.4*trail + 1.2*tip + 0.5*halo) + 3.2*tip + 0.5*trail*s*s);
   }

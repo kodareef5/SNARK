@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import { DROPS_AT, DROP_LANES, DROP_STREAKS, FRAME_BLOCK, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { CAST_FALL, CAST_FLICKER, CAST_STRIKE, DROP_SKY_GLSL, STREAK_PIXELS, STREAK_WIDTH, TRAIL_SECONDS, castFlash, dropStreaks, eyeSlot, writeDropSky } from "../../client/core/render/supply-sky.ts";
+import { CAST_FALL, CAST_FLICKER, CAST_STRIKE, DROP_SKY_GLSL, STREAK_PAST, STREAK_PIXELS, STREAK_WIDTH, TRAIL_SECONDS, castFlash, dropStreaks, eyeSlot, writeDropSky } from "../../client/core/render/supply-sky.ts";
 import { alongBone } from "../../client/core/render/supply.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { newPose, supplyPose, supplyTimes, type SupplyList, type SupplyRow } from "../../shared/sim/supply.ts";
@@ -97,6 +97,14 @@ test("the scene writes a streak for a drop in flight from its tail to its head, 
   // It is never thinner than its pixels: seen with coarse pixels it is wider.
   const near = unit([head[0]! + 0.003, head[1]!, head[2]!]);
   expect(Math.max(...light(frame, near, 0.004))).toBeGreaterThan(2.5 * Math.max(...light(frame, near, 0.0005)));
+  // Past forty-five of its widths from its head and its arc it adds nothing at all, which spares most of the sky its
+  // sums; just inside, what is cut is too little to see.
+  const w = Math.max(STREAK_WIDTH, STREAK_PIXELS * 0.001);
+  // Square off its arc: across the plane its head and tail lie in.
+  const across = unit([head[1]! * tail[2]! - head[2]! * tail[1]!, head[2]! * tail[0]! - head[0]! * tail[2]!, head[0]! * tail[1]! - head[1]! * tail[0]!]);
+  const off = (widths: number): number[] => unit(head.map((v, i) => v + widths * w * across[i]!));
+  const inside = Math.max(...light(frame, off(STREAK_PAST - 6)));
+  expect([light(frame, off(STREAK_PAST + 6)), inside > 0, inside < 0.01]).toEqual([[0, 0, 0], true, true]);
   // It comes up as it leaves and goes as it nears its shaft, where the jets take it up.
   writeDropSky(frame, list(d), d.release + 3, R, ...eye, SITES, 0);
   const rising = lanes(frame, 0)[3]!;
