@@ -3,6 +3,7 @@ import { TIERS } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket } from "../../client/core/render/packet.ts";
 import { hashString } from "../../shared/hash.ts";
+import { BEND_GLSL, BEND_PLACE } from "../../client/core/render/bend.ts";
 import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, parsePack, type PackHeader, type PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_HEADER_BYTES, blockOf, pictureBytes, stepBytes, stepOf, stepOffset, stepSize, textureBytes, topIn } from "../../shared/pack/texture.ts";
@@ -116,8 +117,14 @@ test("the flat renderer's shader text is the text low poly was always drawn with
   // became paint; nothing else changed, so the text without it is as it was.
   const sizing = "    if (uSkin < -0.5 && uSkin > -1.5) l *= float(iRegB.y) / 64.0;\n";
   expect(FLAT_MESH_VERTEX).toContain(sizing);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(2880639374);
-  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(1010688119);
+  // The bent street sections added the bend's function and one line that calls it (client/core/render/bend.ts), since low
+  // poly draws a map's kerbs too. Without those two the text is as it was; with them it is 2539154211.
+  expect(FLAT_MESH_VERTEX).toContain(BEND_GLSL);
+  expect(FLAT_MESH_VERTEX).toContain(BEND_PLACE);
+  const unbent = FLAT_MESH_VERTEX.replace(BEND_GLSL, "").replace(BEND_PLACE, "");
+  expect(hashString(FLAT_FRAGMENT + unbent.replace(sizing, "") + FLAT_TERRAIN_VERTEX)).toBe(2880639374);
+  expect(hashString(FLAT_FRAGMENT + unbent + FLAT_TERRAIN_VERTEX)).toBe(1010688119);
+  expect(hashString(FLAT_FRAGMENT + FLAT_MESH_VERTEX + FLAT_TERRAIN_VERTEX)).toBe(2539154211);
 });
 
 test("draw flags are one bit each, a frame starts with no texture work, and the tiers ask for more as they go up", () => {
