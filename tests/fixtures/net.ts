@@ -4,6 +4,8 @@ import type { CityMaker } from "../../client/core/render/citymake.ts";
 import { ClientSession } from "../../client/core/session.ts";
 import type { GameOptions, GameServer } from "../../server/game.ts";
 import { createHost, type Host, type HostOptions } from "../../server/host.ts";
+import { rowOf } from "../../server/settings/catalog.ts";
+import { Rules } from "../../server/settings/rules.ts";
 import { backlog } from "../../shared/net/transport.ts";
 import type { ServerWorld } from "../../server/world.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -59,6 +61,30 @@ export function forcedLink(spec: string): LinkOptions {
 
 const FORCED = forcedLink(process.env.SNARK_NET ?? "");
 
+/**
+ * What a server gives every survivor unless its host says not: the menu's Creative entry with the admin role for all (D956),
+ * and the Meridian set at every spawn (D957). The tests of everything else were written for a survivor with neither, so a
+ * Harness leaves both out: each of these settings its rules still hold at the default is put as here. `asShipped` keeps them.
+ */
+const PLAIN: readonly (readonly [name: string, value: boolean])[] = [["bShowCreativeMode", false], ["CreativeForAll", false], ["bDisableDefaultMapItemSets", true]];
+const SHIPPED = new WeakSet<Rules>();
+
+/** Rules a Harness leaves as the server ships them: everyone's cheats and the suit at spawn on. */
+export function asShipped(rules = new Rules()): Rules {
+  SHIPPED.add(rules);
+  return rules;
+}
+
+/** `rules`, or new ones, with what PLAIN names put as there, unless they are asShipped. */
+export function plainRules(rules = new Rules()): Rules {
+  if (SHIPPED.has(rules)) return rules;
+  for (const [name, value] of PLAIN) {
+    const row = rowOf(name)!;
+    if (rules.sourceOf(row) === "default") rules.put(row, value, "default");
+  }
+  return rules;
+}
+
 export interface JoinOptions {
   intent?: "create"|"resume";
   createRequest?: Uint8Array;
@@ -104,7 +130,7 @@ export class Harness {
 
   constructor(opts: Partial<GameOptions> = {}, seed = 1, clientFps = 60, host: HostOptions = {}, reg: Registry = coreRegistry()) {
     // The host uses the real pack's clips and rigs, as a server started from the built client does, unless given others.
-    this.host = createHost(reg, { ...host, clips: host.clips ?? corePack().clips, rigs: host.rigs ?? corePack().header.rigs, game: opts });
+    this.host = createHost(reg, { ...host, config: plainRules(host.config), clips: host.clips ?? corePack().clips, rigs: host.rigs ?? corePack().header.rigs, game: opts });
     this.world = this.host.world;
     this.map = parseMap(this.host.mapFile!);
     // A map with landmarks adds their definitions, as a browser compiles them from the map it fetched.

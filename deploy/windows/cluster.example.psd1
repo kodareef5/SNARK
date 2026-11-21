@@ -18,7 +18,8 @@
   # so give the whole path when bun was installed for one user.
   Bun = 'bun'
 
-  # A folder of config\ (ARK's GameUserSettings.ini and Game.ini) every world starts from. Empty: the defaults.
+  # A folder of config\ (ARK's GameUserSettings.ini and Game.ini) every world starts from. Empty: the defaults, under which
+  # everyone who joins has cheats. config/official gives nobody cheats without the password below.
   ServerConfig = 'config/official'
 
   # ARK's ?Key=Value and -Flag settings given to every world, such as '?MaxPlayers=70'.

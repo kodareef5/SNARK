@@ -283,7 +283,7 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
       const examples = c.examples.length ? `<br>${c.examples.map((x) => `<code>${esc(x)}</code>`).join(" ")}` : "";
       return `<dt><code>${esc(c.name)}${c.usage ? ` ${esc(c.usage)}` : ""}</code>${c.admin ? ' <i class="tag">Admin</i>' : ""}</dt><dd>${esc(c.help)}${examples}</dd>`;
     };
-    const lede = "Typed in the console. An admin command needs cheats on: enablecheats and the server's password.";
+    const lede = "Typed in the console. An admin command needs cheats on. A server as it comes gives every survivor cheats as it joins; on one that does not, enablecheats and the server's password turn them on.";
     const families = join([...groupBy(site.commands, (c) => c.family)], ([family, list]) => `<section><h2>${esc(family)}</h2><dl class="commands">${join(list, command)}</dl></section>`);
     return `${heading("Commands", `${site.commands.length} commands`, lede)}${families}`;
   };

@@ -1,10 +1,10 @@
-// The only code that edits inventories. Items enter only through `mint` and leave only through `burn` (spoilage is a burn, and
-// what spoils into something mints it), so stacks sum to minted minus burned for every item. An edit marks each record it
-// touches in one tick, so a move lands in one commit.
+// The only code that edits inventories. Items enter only through `mint` (or `mintRef`, or `issue`) and leave only through
+// `burn` (spoilage is a burn, and what spoils into something mints it), so stacks sum to minted minus burned for every item.
+// An edit marks each record it touches in one tick, so a move lands in one commit.
 
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
-import { FLAG_BLUEPRINT, FLAG_ON, GEAR_SLOTS, Inventory, QUALITY_MUL, carried, moveSlot, type ItemTable } from "../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, FLAG_ISSUED, FLAG_ON, GEAR_SLOTS, Inventory, QUALITY_MUL, carried, fitsSlot, moveSlot, type ItemTable } from "../shared/sim/items.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -66,11 +66,14 @@ export class Items {
     this.sent = new Float64Array(world.reg.defs.length);
   }
 
-  /** What a record holds, by item: stacks and blueprints, rounds loaded in weapons, and attachments fitted to them. */
-  held(rec: EntityRecord, into: Map<number, number> = new Map()): Map<number, number> {
+  /**
+   * What a record holds, by item: stacks and blueprints, rounds loaded in weapons, and attachments fitted to them. With
+   * `travelling`, only what may go with it to another server: an issued piece stays (server/suit.ts).
+   */
+  held(rec: EntityRecord, into: Map<number, number> = new Map(), travelling = false): Map<number, number> {
     const inv = rec.inv;
     for (let s = 0; inv && s < inv.cap; s++) {
-      if (inv.item[s] === 0) continue;
+      if (inv.item[s] === 0 || (travelling && (inv.flags[s]! & FLAG_ISSUED) !== 0)) continue;
       into.set(inv.item[s]!, (into.get(inv.item[s]!) ?? 0) + inv.count[s]!);
       if (inv.loaded[s]! > 0) into.set(inv.ammo[s]!, (into.get(inv.ammo[s]!) ?? 0) + inv.loaded[s]!);
       if (inv.attach[s] !== 0) into.set(inv.attach[s]!, (into.get(inv.attach[s]!) ?? 0) + 1);
@@ -270,6 +273,40 @@ export class Items {
   }
 
   /**
+   * Mints one new `item` into the empty slot `slot` of `rec`, issued (FLAG_ISSUED): a piece of the set a survivor comes to life
+   * wearing (server/suit.ts). A module is asked about it as about any mint, `why` saying where it comes from. False, changing
+   * nothing, if the slot is taken or does not take the item, the item stacks, or a module refused it.
+   */
+  issue(rec: EntityRecord, slot: number, item: number, why = "issued"): boolean {
+    const inv = this.inv(rec);
+    if (!this.isItem(item) || this.table.stack[item] !== 1 || slot >= inv.cap || inv.item[slot] !== 0 || !fitsSlot(inv, slot, item, this.table)) return false;
+    if (this.bus.n[ITEM_GAIN] !== 0) {
+      const asked = { pid: rec.pid, item: this.reg.ids[item]!, why, n: 1 };
+      if (this.bus.before(ITEM_GAIN, asked) !== "" || !(Number(asked.n) >= 1)) return false;
+    }
+    const spoil = this.table.spoilTicks[item]!;
+    inv.set(slot, item, 1, 0, this.maxDur(item, 0), spoil > 0 ? Math.min(0xffffffff, this.world.tick + Math.round(spoil * inv.keep)) : 0, FLAG_ISSUED);
+    this.minted[item] = this.minted[item]! + 1;
+    this.dirty = true;
+    this.changed(rec);
+    return true;
+  }
+
+  /** Whether slot `slot` of `rec` holds an issued piece (FLAG_ISSUED). */
+  issued(rec: EntityRecord, slot: number): boolean {
+    const inv = rec.inv;
+    return inv !== null && slot >= 0 && slot < inv.cap && inv.item[slot] !== 0 && (inv.flags[slot]! & FLAG_ISSUED) !== 0;
+  }
+
+  /** Burns every issued piece `rec` holds, through the ledger: its survivor dies or leaves. Returns how many. */
+  burnIssued(rec: EntityRecord): number {
+    const inv = rec.inv;
+    let n = 0;
+    for (let s = 0; inv && s < inv.cap; s++) if (this.issued(rec, s) && this.burn(rec, s, inv.count[s]!, true)) n++;
+    return n;
+  }
+
+  /**
    * Returns false, changing nothing, if the slot holds fewer than `n`. `raw` skips settling the inventory first. A blueprint is
    * never eaten, used or fed, so only a raw burn, of what empties a whole inventory, takes one.
    */
@@ -435,7 +472,7 @@ export class Items {
     if (inv.ref) {
       // Last slots first, as Inventory.take goes, one slot at a time so that what each stood for goes with it.
       for (let s = inv.cap - 1; s >= 0 && n > 0; s--) {
-        if (inv.item[s] !== item || (inv.flags[s]! & FLAG_BLUEPRINT) !== 0) continue;
+        if (inv.item[s] !== item || (inv.flags[s]! & (FLAG_BLUEPRINT | FLAG_ISSUED)) !== 0) continue;
         const k = Math.min(n, inv.count[s]!);
         this.burn(rec, s, k, true);
         n -= k;
@@ -454,8 +491,9 @@ export class Items {
     for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) this.burn(rec, s, inv.count[s]!, true);
   }
 
-  /** Within one record or across two. Returns how many moved. */
+  /** Within one record or across two. Returns how many moved. An issued piece never goes to another record, moved or swapped. */
   move(a: EntityRecord, sa: number, b: EntityRecord, sb: number, n: number): number {
+    if (a !== b && (this.issued(a, sa) || this.issued(b, sb))) return 0;
     const moved = moveSlot(this.inv(a), sa, this.inv(b), sb, n, this.table, this.world.tick);
     if (moved > 0) {
       this.changed(a);
@@ -464,7 +502,7 @@ export class Items {
     return moved;
   }
 
-  /** Moves `n` of an item to another record, wherever it fits. All or nothing. Blueprints of it stay. */
+  /** Moves `n` of an item to another record, wherever it fits. All or nothing. Blueprints of it stay, and so do issued pieces. */
   give(from: EntityRecord, to: EntityRecord, item: number, n: number): boolean {
     if (from === to || !(n > 0) || !Number.isInteger(n)) return false;
     const src = this.inv(from);
@@ -473,7 +511,7 @@ export class Items {
     // Each stack keeps its spoil time, scaled if the other keeps things longer, and an unstackable item keeps its rounds and attachment.
     const tick = this.world.tick;
     for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
-      if (src.item[s] !== item || (src.flags[s]! & FLAG_BLUEPRINT) !== 0) continue;
+      if (src.item[s] !== item || (src.flags[s]! & (FLAG_BLUEPRINT | FLAG_ISSUED)) !== 0) continue;
       const k = Math.min(n, src.count[s]!);
       const spoilAt = carried(src.spoilAt[s]!, tick, src.keep, dst.keep);
       if (this.table.stack[item] === 1) {

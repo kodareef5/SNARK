@@ -22,8 +22,9 @@ next `up` has a new address.
 
 Both are in `test.config.cjs`. `SNARK_TEST_MAPS` names other maps (`miami,tampa`), `FRONT_PORT` another port,
 `CONFIG` another settings folder; the default is `config/dev`, whose rates make taming and raising quick. The
-world is a real server, not a development one (`--dev`): the tunnel is public, so `enablecheats` asks the password
-in `var/admin-password.txt`, which `up` makes the first time.
+world is a real server, not a development one (`--dev`), and the tunnel is public. `config/dev` leaves creative mode
+on, as a server does unless told not to, so everyone who joins has cheats; under `CONFIG=config/official`, `enablecheats`
+asks the password in `var/admin-password.txt`, which `up` makes the first time.
 
 The world runs the checkout it is in, as built. After pulling or changing branch, `test.sh build` again, then
 `down` and `up`.

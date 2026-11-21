@@ -13,14 +13,16 @@ import { K_SECRET } from "../../client/core/ui/nodes.ts";
 import { S_MENU_WARN } from "../../client/core/ui/style.ts";
 import { KEY_SUNDIAL, angleOfHour } from "../../client/core/ui/sundial.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
+import { refused, type AdminGate } from "../../server/admin/gate.ts";
 import { OP_ADMIN } from "../../server/console.ts";
 import { WorldStore } from "../../server/persist/store.ts";
 import { loadConfig } from "../../server/settings/config.ts";
+import { Rules } from "../../server/settings/rules.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { CMD_CLOCK, REJECT_DENIED, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
 import { CLOCK_SHARES, UNIT_CLOCK, hourOfDay, shareOfHour } from "../../shared/sim/clock.ts";
 import { listener } from "../fixtures/module.ts";
-import { Harness } from "../fixtures/net.ts";
+import { Harness, asShipped } from "../fixtures/net.ts";
 
 const root = resolve(import.meta.dir, "../..");
 
@@ -287,4 +289,31 @@ test("with creative mode off a server is as it was: no entry, no rule bit, and n
   expect([plain[1], off[1], on[1]]).toEqual([false, false, true]);
   // The bit rides in the rules' flags every client was sent before.
   expect([off[0], on[0]]).toEqual([plain[0], plain[0]]);
+});
+
+test("a server as it comes gives a stranger cheats and the Creative entry as it joins, with no --dev and no password; its files can say not; the admin pages still ask", () => {
+  const stranger = (rules: Rules) => {
+    const h = new Harness({}, 1, 60, { config: asShipped(rules) });
+    const s = h.join("stranger");
+    h.run(500);
+    return { h, s };
+  };
+  const { h, s } = stranger(new Rules());
+  expect([h.host.dev, h.host.adminPassword, s.admin, s.creative]).toEqual([false, null, true, true]);
+  // From the start it gives itself things, sets the hour, and is told it has nothing more to turn on.
+  expect(h.say(s, "give stone 5")[0]).toContain("gave 5");
+  expect(h.say(s, "settime 6")).toEqual(["time is 06:00"]);
+  expect(h.say(s, "enablecheats")).toEqual(["cheats are already enabled"]);
+  expect(h.host.exec("who")).toBe("stranger  alive  admin");
+  // The admin pages are not the role's: with no password they open only on a development server, as before.
+  const gate: AdminGate = { dev: h.host.dev, password: h.host.adminPassword, guesses: h.host.game.cheatGuesses, tick: () => h.world.tick };
+  expect(refused(new Request("http://play.example/admin/"), "203.0.113.9", gate)?.status).toBe(404);
+
+  // A host that wants a strict server says so in its files: without CreativeForAll the entry asks for the password, and
+  // without creative mode there is neither the entry nor the role.
+  const strict = stranger(rulesOf([], ["[SnarkSettings]", "CreativeForAll=False"]));
+  expect([strict.s.admin, strict.s.creative, strict.h.say(strict.s, "give stone 5")]).toEqual([false, true, ["denied: cheats are not enabled for you"]]);
+  expect(strict.h.say(strict.s, "enablecheats")).toEqual(["cheats are disabled on this server"]);
+  const off = stranger(rulesOf(["bShowCreativeMode=False"]));
+  expect([off.s.admin, off.s.creative]).toEqual([false, false]);
 });
