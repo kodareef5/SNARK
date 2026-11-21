@@ -494,6 +494,9 @@ function crosses(box: Box, index: ReturnType<typeof corridorIndex>): boolean {
   });
 }
 
+/** A curb ramp's length along the curb (content/ruins.ts street()). */
+const RAMP = 1.8;
+
 /**
  * A street's edges: along each road of the listed classes, on each side, an 8 m walk with its curb on the road's edge every
  * 8 m, where the ground beside the road is open and level and nothing of the city stands, clear of junctions; a gutter on
@@ -597,15 +600,19 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
       else if (to === undefined) for (let start = from!; start + 8 <= length; start += 8) slots.push(judge(start));
       else if (from === undefined) for (let start = to - 8; start >= 0; start -= 8) slots.unshift(judge(start));
       else {
-        // Between two returns the run meets both: laid on from the first, the eight metres it does not fill are left where
-        // its first break is (a slot not walked), the slots past it laid on from there; with no break, its middle slot is
-        // cut, with a ramp down each side.
+        // Between two returns the run meets both: laid on from the first, the metres short of eight it does not fill are
+        // left where its first break is (a slot not walked), the slots past it laid on from there. With no break they are
+        // a driveway at its middle, a ramp down each side, where they hold two ramps; where they do not, the middle slot
+        // is cut with them.
         const count = Math.floor((to - from) / 8); const left = to - from - 8 * count;
         for (let k = 0; k < count; k++) slots.push(judge(from + 8 * k));
         if (left > 0.01 && count > 0) {
-          let seam = slots.findIndex((q) => q.state !== "walk");
-          if (seam < 0) { seam = Math.floor(count / 2); slots[seam]!.state = "seam"; }
+          const broken = slots.findIndex((q) => q.state !== "walk");
+          const apart = broken < 0 && count > 1 && left >= 2 * RAMP + 0.2;
+          const seam = broken >= 0 ? broken : Math.floor(count / 2) - (apart ? 1 : 0);
+          if (broken < 0 && !apart) slots[seam]!.state = "seam";
           for (let k = seam + 1; k < count; k++) slots[k] = judge(from + 8 * k + left);
+          if (apart) slots.splice(seam + 1, 0, { start: from + 8 * (seam + 1), y: slots[seam]!.y, gutter: false, state: "seam" });
         }
       }
       for (const [k, slot] of slots.entries()) {

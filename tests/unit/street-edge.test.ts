@@ -47,7 +47,7 @@ artTest("each curb return's levels state at least the sagitta of their chord at 
     // Drawn where it is walked: its finest level's top over the content's wedges to a centimetre, and as wide.
     const def = CORE_CONTENT.find((d) => d.id === mesh.id)!;
     const shape = CORE_CONTENT.find((d) => d.type === "shape" && def.type === "structure" && d.id === def.shape)!;
-    if (shape.type !== "shape") throw new Error(mesh.id);
+    if (shape.type !== "shape" || def.type !== "structure") throw new Error(mesh.id);
     const p = mesh.lods[0]!.positions;
     let top = -Infinity; for (let v = 1; v < p.length; v += 3) top = Math.max(top, p[v]!);
     const walked = Math.max(...shape.hulls!.flatMap((h) => h.corners.map((c) => c[1])));
