@@ -27,7 +27,7 @@ const poses = new Map<string, readonly CruiseBodyVertex[]>();
 export function cruiseFitSources(): Record<string, string> {
   const files = ["content/landmarks/cruise-layout.json", "assets/source/landmarks/cruise/cruise.snpk",
     "assets/source/core/humans/human-bodies/human-bodies.snpk", "assets/source/core/humans/human-clips/human-clips.snpk",
-    "tools/art/cruise-body.ts", "tools/art/cruise-fit.ts", "client/core/render/characters.ts",
+    "tools/art/cruise-body.ts", "tools/art/cruise-fit.ts", "client/core/render/characters.ts", "content/core.ts",
     "shared/anim/pose.ts", "shared/anim/look.ts", "shared/anim/gait.ts", "shared/anim/skeleton.ts", "shared/anim/human.ts",
     "shared/world/convex.ts", "shared/world/frame.ts", "shared/world/collide.ts"];
   return Object.fromEntries(files.map(path => [path, createHash("sha256").update(readFileSync(resolve(import.meta.dir, "../..", path))).digest("hex")]));

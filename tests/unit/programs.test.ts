@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { TIERS, forTouch } from "../../client/core/assets/tiers.ts";
 import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "../../client/core/render/glsl.ts";
 import { HAND_FAR, HAND_NEAR } from "../../client/core/render/hand.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, FRAME, FRAME_BLOCK, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_TIRE_CONTACTS, MAX_CONTACTS, MAX_WATER_MARKS, WATER_MARK_COUNT, WATER_PATHS, WATER_BOUNDS, WATER_MARKS } from "../../client/core/render/packet.ts";
 import { PROGRAMS, UNIT, drawProgram, tierPrograms } from "../../client/core/render/programs.ts";
 import type { PackMaterial } from "../../shared/pack/pack.ts";
 import { TEXTURE_FORMATS } from "../../shared/pack/texture.ts";
@@ -54,7 +54,10 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   expect(FRAME_BLOCK).toContain("highp vec4 fEyes[6]");
   expect(FRAME.eyes + 6 * 4).toBe(FRAME.reflection);
   expect([FRAME.reflection + 4, FRAME.previousReflection + 4, FRAME.streetLook + 4, FRAME.tireContacts + 4*MAX_TIRE_CONTACTS]).toEqual([FRAME.previousReflection, FRAME.streetLook, FRAME.tireContacts, FRAME.exhaustPhase]);
-  expect(FRAME.exhaustPhase + 4).toBe(FRAME_FLOATS);
+  expect(FRAME.exhaustPhase + 4).toBe(WATER_BOUNDS);
+  expect(WATER_MARKS + 8 * MAX_WATER_MARKS).toBe(WATER_PATHS);
+  expect(WATER_PATHS + 4 * MAX_WATER_MARKS).toBe(FRAME_FLOATS);
+  expect(FRAME_BLOCK).toContain(`fWaterMarks[${2 * MAX_WATER_MARKS}]`);
   const p = new FramePacket();
   p.split = 384;
   p.cascades[0] = 2;
@@ -96,6 +99,8 @@ test("a textured draw is drawn undyed where its material has no masks, and by a 
   p.split = 0;
   expect(named(drawProgram(p, draw(DRAW_BLEND), undefined))).toBe("flat");
 
+  p.frame[WATER_MARK_COUNT] = 1;
+  expect(named(drawProgram(p, draw(DRAW_WATER | DRAW_BLEND), undefined))).toBe("waterWake");
   // The whole undyed variant skips both dye matrices and the hand-over distance, saving nineteen floats.
   const tier = TIERS[2]!;
   const [any, undyed, whole] = [PROGRAMS.surface!(tier, "astc"), PROGRAMS.surfaceUndyed!(tier, "astc"), PROGRAMS.surfaceUndyedWhole!(tier, "astc")];
