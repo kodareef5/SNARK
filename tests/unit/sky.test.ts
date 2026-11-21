@@ -2,9 +2,9 @@
 // card as bright as low poly shows it.
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { SKY_SIZE, SKY_SLICES, aroundOf, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, giveSky, hourOfSun, luminance, sampleSky, shownSky, skyFile, skyFrame, sliceHeight, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { linearToSrgb, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
+import { CAST_AT, FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
+import { MOON_IN, SKY_SIZE, SKY_SLICES, SUN_RADIUS, aroundOf, castLight, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, giveSky, hourOfSun, luminance, sampleSky, shownSky, skyFile, skyFrame, sliceHeight, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
+import { linearToSrgb, moonCasts, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
 import { apart, basePoints, cardColours, domeApart, hueApart, keyCards } from "../../tools/sky/fit.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -240,6 +240,34 @@ test("through twilight the sun's slot carries the afterglow from 2 degrees up to
   const s = [0, 0, 0];
   sunDirection(10, s);
   for (let k = 0; k < 3; k++) expect(day[F.sun + k]).toBeCloseTo(s[k]!, 6);
+});
+
+test("one light owns the shadow cascades at a time: the sun while its disc is up, then the moon, each casting from nothing where they change hands", () => {
+  const cast = (h: number): number[] => {
+    const f = new Float32Array(FRAME_FLOATS);
+    const sun = [0.6, Math.sin((h * Math.PI) / 180), 0.3];
+    castLight(h, sun, f);
+    return [f[CAST_AT]!, f[CAST_AT + 1]!, f[CAST_AT + 2]!, f[CAST_AT + 3]!];
+  };
+  let last = cast(5);
+  expect(last.slice(0, 3)).toEqual([0.6, Math.sin((5 * Math.PI) / 180), 0.3].map(Math.fround));
+  expect(last[3]).toBe(1);
+  for (let h = 5; h >= -6; h -= 0.01) {
+    const now = cast(h);
+    // Its strength never leaps, and its way turns round only where neither casts.
+    expect(Math.abs(now[3]! - last[3]!)).toBeLessThan(0.02);
+    if (Math.sign(now[0]!) !== Math.sign(last[0]!)) expect(Math.max(now[3]!, last[3]!)).toBeLessThan(0.001);
+    last = now;
+  }
+  expect(cast(-SUN_RADIUS)[3]).toBe(0);
+  expect(cast(-SUN_RADIUS - MOON_IN)[3]).toBe(1);
+  expect(cast(-30).slice(0, 2)).toEqual([-0.6, -Math.sin((-30 * Math.PI) / 180)].map(Math.fround));
+  // A frame block at midnight is cast from the moon, at noon from the true sun, as strongly as fSun.w says.
+  const night = frameAt(0), noon = frameAt(12);
+  expect(moonCasts(night)).toBe(true);
+  expect(moonCasts(noon)).toBe(false);
+  for (let k = 0; k < 3; k++) [expect(night[CAST_AT + k]).toBe(night[F.moon + k]!), expect(noon[CAST_AT + k]).toBe(-noon[F.moon + k]!)];
+  expect([night[CAST_AT + 3], noon[CAST_AT + 3], noon[F.casting]]).toEqual([1, 1, 1]);
 });
 
 test("at dusk the dome is brightest low toward fTrueSun, 8 degrees down, and read by the held fSun it would be another sky", () => {

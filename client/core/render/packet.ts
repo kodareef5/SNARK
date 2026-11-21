@@ -370,7 +370,13 @@ export const WATER_PATHS = WATER_MARKS + MAX_WATER_MARKS * 8;
  * metres, and 1 while it is on the card, else 0.
  */
 export const ROOF_AT = WATER_PATHS + 4 * MAX_WATER_MARKS;
-export const FRAME_FLOATS = ROOF_AT + 4;
+/**
+ * fCast: the unit vector toward the light the shadow cascades are cast from this frame, and how strongly it casts, 0 to
+ * 1 (sky.ts `castLight`): the true sun by day, when its strength is fSun.w, and the moon by night. One light owns the
+ * cascades at a time, and whichever owns them takes their shade (surface.ts `keyShade`).
+ */
+export const CAST_AT = ROOF_AT + 4;
+export const FRAME_FLOATS = CAST_AT + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -382,7 +388,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
   highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
   highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterPaths[${MAX_WATER_MARKS}];
-  highp vec4 fRoof;
+  highp vec4 fRoof, fCast;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

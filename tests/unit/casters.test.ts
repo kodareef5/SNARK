@@ -2,13 +2,14 @@
 // for their shadows, the ground that casts, and a cascade's depth map drawn from the list by the software rasterizer.
 import { expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
-import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
+import { forTouch, tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { DRAW_CUTOUT, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, MAX_CASTERS, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_CUTOUT, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, MAX_CASTERS, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { DEPTH_STEPS } from "../../client/core/render/shadow.ts";
 import { hourOfSun } from "../../client/core/render/sky.ts";
+import { moonCasts } from "../../client/core/render/surface.ts";
 import { COARSE } from "../../client/core/render/terrain.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -228,13 +229,24 @@ function picture(raster: Rasterizer, map: Float32Array, size: number): Uint8Arra
   return encodePng(width, height, rgba);
 }
 
-test("no caster at midnight, none in the afterglow once the sun is under, and none on low poly", () => {
-  for (const [tier, hour] of [[tierOf("ultra"), 0], [tierOf("medium"), hourOfSun(-1.5, true)], [tierOf("lowpoly"), 12]] as const) {
+test("at midnight the moon casts through the cascades, its shadows fall away from it; a phone's tier, the moon turned off and low poly cast nothing", () => {
+  for (const [tier, hour, moon] of [[tierOf("ultra"), 0, true], [forTouch(tierOf("high"), true), 0, true], [tierOf("ultra"), 0, false], [tierOf("lowpoly"), 12, true]] as const) {
     const w = world(tier);
     w.scene.hour = hour;
+    w.scene.moonShadows = moon;
     w.pillar(110, 128);
     w.body(105, 128);
     const p = w.frame();
+    if (tier === tierOf("ultra") && moon) {
+      expect(moonCasts(p.frame)).toBe(true);
+      expect([p.cascadeCount, p.cascadesDrawn]).toEqual([4, 15]);
+      expect(p.casterCount).toBeGreaterThan(0);
+      // The cascades' light space looks along the moon: its depth axis, the matrix's third row, is the way away from it.
+      const m = p.cascades;
+      const away = Math.hypot(m[2]!, m[6]!, m[10]!);
+      for (let k = 0; k < 3; k++) expect(-m[2 + 4 * k]! / away).toBeCloseTo(p.frame[FRAME.moon + k]!, 4);
+      continue;
+    }
     expect([p.cascadeCount, p.cascadesDrawn, p.casterCount, p.casterDropped]).toEqual([0, 0, 0, 0]);
     for (let t = 0; t < p.tileCount; t++) expect(p.tilePass[t]! < TILE_CASTS && p.tilePass[t]! > 0).toBe(true);
   }

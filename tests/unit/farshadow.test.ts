@@ -9,7 +9,7 @@ import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { ThreadedCityMaker, cityKinds, type CityThread } from "../../client/core/render/citymake.ts";
 import { FAR_SPAN, FarShadow, TOP_CELL, chunkSolid, doSweep, farBeyondLookup, farCell, farLookup, makeSolid, nearLead, sweep, sweepBuffers, tipMoves, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
-import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
+import { CAST_AT, FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { OPEN_BYTES, openMeasure } from "../../client/core/render/skyopen.ts";
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
 import { CityStatics, cityTops, type Gone } from "../../shared/world/city.ts";
@@ -364,7 +364,7 @@ test("the lookup leaves a building's own sunlit walls and roof lit wherever they
   const cam = [100, 30, 80];
   for (const [elevation, azimuth] of [[35, 200], [15, 70], [60, 330]] as const) {
     const sun = sunAt(elevation, azimuth);
-    for (let k = 0; k < 3; k++) p.frame[FRAME.moon + k] = -sun[k]!;
+    for (let k = 0; k < 3; k++) [p.frame[FRAME.moon + k], p.frame[CAST_AT + k]] = [-sun[k]!, sun[k]!];
     const shadow = new FarShadow(city, hf, standing, null, () => false);
     p.beginFrame();
     shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
@@ -409,7 +409,7 @@ test("within the cascades the far map is looked up past the chunks the near stor
   p.tier = { ...tierOf("high"), shadows: { ...tierOf("high").shadows, size: 128 } };
   p.lit = true;
   const sun = sunAt(35, 200);
-  for (let k = 0; k < 3; k++) p.frame[FRAME.moon + k] = -sun[k]!;
+  for (let k = 0; k < 3; k++) [p.frame[FRAME.moon + k], p.frame[CAST_AT + k]] = [-sun[k]!, sun[k]!];
   const cam = [b[0]! - 20, 20, b[1]! - 40];
   shadow.update(p, allowance(1e9), cam[0]!, cam[1]!, cam[2]!, sun);
   const f = p.frame;

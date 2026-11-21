@@ -15,7 +15,9 @@
 // target, its bloom and bodies' contact are each turned off every other frame on high and ultra at one, as the walls'
 // worn edges, the facades, the road's wear and the walks' are on the street, on the page's clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
 // the turning view and other work on the card move little, and which a timer query on this card reads too long. The
-// street lamps' light (render/street-lamps.ts) is turned off so on the street at night, at 22:00, on high and ultra, and the
+// street lamps' light (render/street-lamps.ts) is turned off so on the street at night, at 22:00, on high and ultra, the
+// moon's shadows (render/sky.ts castLight) there too on medium, high and ultra, at 1,920 by 1,080 and a laptop's 3,600 by
+// 1,924, and the
 // wires between the poles (render/street-wires.ts) by day, and what stands overhead and the light from the ground
 // (render/roof.ts) on the street on high at one and two and on ultra at two. A city row's GL draws and triangles are of the frame its run
 // ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
@@ -67,6 +69,8 @@ interface Run {
   cpu?: number;
   /** The hour the world is set to, where not the server's. */
   hour?: number;
+  /** The window in points, where not 1,920 by 1,080: headless Chrome keeps 87 of its points for itself, so 1,800 by 1,049 at 2 is a canvas of 3,600 by 1,924. */
+  window?: readonly [number, number];
 }
 const BASE_PIECES = 1024;
 
@@ -104,6 +108,9 @@ export function plan(): Run[] {
   // The facades' parts and marks, off every other frame, read again whenever the atlases or a room's light change.
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "facades" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "lamps", hour: 22 });
+  // The moon's shadows (render/sky.ts castLight) at 22:00, on a canvas of 1,920 by 1,080 and on a laptop's 3,600 by 1,924.
+  for (const tier of ["medium", "high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, window: [1920, 1167], ab: "moon", hour: 22 });
+  for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 2, window: [1800, 1049], ab: "moon", hour: 22 });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "wires" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "road" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "walks" });
@@ -244,7 +251,7 @@ export function flock(server: ReturnType<typeof startServer>): number {
   return n;
 }
 
-const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}${r.hour !== undefined ? `, at ${r.hour}:00` : ""}`;
+const nameOf = (r: Run): string => `${r.scene}${r.view ? ` ${r.view}` : ""} ${r.tier}${r.scale ? ` x${r.scale}` : ""}${r.window ? ` in ${r.window.join("x")}` : ""}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off === "far" ? "far layers" : r.off} off` : ""}${r.cpu ? `, processor ${r.cpu} times slower` : ""}${r.ab ? `, ${r.ab} off every other frame` : ""}${r.clock ? ", on the page's clock" : ""}${r.hour !== undefined ? `, at ${r.hour}:00` : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
 async function measure(runs: Run[], times: number, say: (line: string) => void): Promise<Map<string, Record<string, any>[]>> {
@@ -285,7 +292,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}`;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), 150000 * (r.cpu ?? 1)))));
-        const pixels = r.view ? ["--window-size=1920,1080", `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
+        const pixels = r.view ? [`--window-size=${(r.window ?? [1920, 1080]).join(",")}`, `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
         // The world's own hour for every other run.
         const w = server.host.world;

@@ -5,7 +5,7 @@
 // four texels in the shader, as a device whose compared lookups come back hard does, and after a lost context. Under a
 // 15 degree sun no pixel on the slab, seams included, is 10 steps darker than sunlit. The room's floor seen through its
 // doorway reads shaded. A pixel on the edge of the block's shadow holds within 2 steps while the camera moves 30 times
-// along its view by under a texel. At midnight, when nothing casts, the room's floor reads as the rasterizer has it
+// along its view by under a texel. At midnight, with the moon's shadows off so that nothing casts, the room's floor reads as the rasterizer has it
 // within 3 steps and a survivor in the room within 7, and the floor is set beside low poly's. With PROBE_PICTURES naming
 // a folder, what a player sees is written there with materials, each with shadows off beside it: the thatch house with
 // a survivor and a dodo at 10:00, noon and 17:30, a wall's foot, the wall and ceiling joints from inside at 10:00 and
@@ -365,8 +365,9 @@ function judgedShots(): Shot[] {
       frames(w, shot, 1, true);
       made.edge.frames.push(shot.frames.length - 1);
     }
-    // Midnight: a survivor in the room, at medium and then at low poly.
+    // Midnight: a survivor in the room, at medium and then at low poly, the moon's shadows off so that nothing casts.
     w.scene.hour = 0;
+    w.scene.moonShadows = false;
     bodies(w, [["core:survivor", ROOM.x + 1.6, FLOOR, ROOM.z - 1, Math.PI]]);
     look(w.cam, [ROOM.x + 1.5, FLOOR + 1.6, ROOM.z - 4], [ROOM.x + 1.5, FLOOR + 0.7, ROOM.z - 0.5]);
     frames(w, shot, 3, true);
@@ -393,6 +394,7 @@ function judgedShots(): Shot[] {
     frames(w, shot, 4, true);
     made.night.low = shot.frames.length - 1;
     w.scene.assets.tier = tierOf("medium");
+    w.scene.moonShadows = true;
     bodies(w, []);
     // A lost context: the maps and the programs are made again, and every cascade drawn again.
     shot.loseAt = shot.frames.length;

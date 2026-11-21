@@ -3,7 +3,7 @@
 
 import { Camera } from "../../client/core/render/camera.ts";
 import { writeBones } from "../../client/core/render/characters.ts";
-import { BONE_FLOATS, texturedFlags, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, CAST_AT, texturedFlags, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { AMBIENT, DIFFUSE } from "../../client/core/render/shading.ts";
 import { SKY_SIZE, SKY_SLICES, decodeTexel, encodeTexel } from "../../client/core/render/sky.ts";
 import { DIELECTRIC, skyShare, srgbToLinear } from "../../client/core/render/surface.ts";
@@ -41,10 +41,11 @@ export function evenSky(frame: Float32Array, sun: ArrayLike<number>): void {
   for (let k = 0; k < 3; k++) {
     frame[FRAME.sun + k] = sun[k]!;
     frame[FRAME.moon + k] = -sun[k]!;
+    frame[CAST_AT + k] = sun[k]!;
     frame[FRAME.sunColor + k] = light;
     frame[FRAME.skyAbove + k] = frame[FRAME.skyBelow + k] = sky;
   }
-  frame[FRAME.casting] = frame[FRAME.exposure] = 1;
+  frame[FRAME.casting] = frame[CAST_AT + 3] = frame[FRAME.exposure] = 1;
   frame[FRAME.skyScale] = sky / EVEN_UNIT;
   frame[FRAME.eyeHeight] = 1;
 }

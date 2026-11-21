@@ -60,7 +60,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount } from "./packet.ts";
+import { BONE_FLOATS, CAST_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount } from "./packet.ts";
 import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
@@ -71,8 +71,8 @@ import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
 import { lightBytes, lightSamples, postFrame, sceneSize } from "./post.ts";
-import { skyShown } from "./surface.ts";
-import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
+import { moonCasts, skyShown } from "./surface.ts";
+import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WaterTrails } from "./water-trails.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
@@ -705,10 +705,17 @@ export class Scene {
   /** Sun shadows: the cascades fitted this frame, and past them the far map of the city's outline, with the far city, which makes the sky's openness too. */
   readonly cascades = new Cascades();
   farShadow: FarShadow | null = null;
-  /** Whether anything casts this frame, how far the true sun climbs (its unit vector's y), and frames fitted, for a cascade drawn every other frame. */
+  /**
+   * Whether anything casts this frame, how far the light the cascades are cast from climbs (its unit vector's y, as
+   * `sunAt`, which is the sun's by day and the moon's by night), whether that light is the sun, and frames fitted, for a
+   * cascade drawn every other frame.
+   */
   private casting = false;
   private sunY = 1;
+  private sunCasts = false;
   private fitted = 0;
+  /** Whether the moon casts through the cascades by night where the tier's shadows say it may, which a bench turns off every other frame (`?ab=moon`). */
+  moonShadows = true;
   /** The lowest a receiver in any cascade's sphere can be. A caster's shadow reaches as far as its top stands over this. */
   private floor = 0;
   /** Metres past where a caster's shadow falls that a lookup of it may reach (Scene.shadeHidden). */
@@ -1030,7 +1037,7 @@ export class Scene {
     // The map's statics handed over again: the far city is made of them, taking over what it can of the one before.
     if (this.city && this.world.city !== this.citySource) this.startCity(this.city);
     if (this.city ?? this.startCity()) this.farCity(cam);
-    this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now);
+    this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now, p.cascadeCount > 0 && this.sunCasts ? this.sunAt : null);
     p.frame[FRAME.fade] = tier.fade;
     this.far?.update(p, this.assets.residency, cam.x, cam.z, tier.reach.bases);
     // A tier that draws no far city draws none of its blocks either.
@@ -1094,8 +1101,9 @@ export class Scene {
   }
 
   /**
-   * Fits the shadow cascades to the view, for the sun where it is (sky.ts `trueSun`) while it casts at all, and finds
-   * the floor: the ground under each cascade's sphere, but no lower than the sphere reaches.
+   * Fits the shadow cascades to the view, for the light they are cast from (sky.ts `castLight`: the sun, or by night the
+   * moon where the tier's shadows say it casts and `moonShadows` is on) while it casts at all, and finds the floor: the
+   * ground under each cascade's sphere, but no lower than the sphere reaches.
    */
   private fit(cam: Camera): void {
     const p = this.packet;
@@ -1105,11 +1113,14 @@ export class Scene {
     if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(...sceneSize(this.canvasWidth, this.canvasHeight, p.room), lightSamples(this.supersampled)) : 0);
     this.casting = false;
     this.characters.shadows = null;
-    if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {
+    this.sunCasts = false;
+    if (p.lit && moonCasts(p.frame) && !(setup.moon && this.moonShadows)) p.frame[CAST_AT + 3] = 0;
+    if (!p.lit || setup.cascades <= 0 || p.frame[CAST_AT + 3]! <= 0) {
       c.clear();
       return;
     }
-    trueSun(p.frame, this.sunAt);
+    for (let k = 0; k < 3; k++) this.sunAt[k] = p.frame[CAST_AT + k]!;
+    this.sunCasts = !moonCasts(p.frame);
     this.camera = cam;
     c.fit(cam, this.sunAt[0]!, this.sunAt[1]!, this.sunAt[2]!, setup, this.fitted++);
     p.cascadeCount = c.count;

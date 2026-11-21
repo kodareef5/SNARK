@@ -17,7 +17,7 @@ import { VEHICLE_SHADE_GLSL, VEHICLE_SHADE_UNIFORMS } from "./vehicle-shade.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
-import { BONES_PER_ROW, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, CAST_AT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
@@ -233,12 +233,21 @@ export function direct(out: Out, frame: Numbers, way: number, colour: number, al
 const sky = new Float64Array(3);
 
 /**
+ * Whether the moon owns the shadow cascades this frame (packet.ts CAST_AT, sky.ts `castLight`), so that their shade
+ * falls on the moon's light and not the sun's. The twin of LIGHT's `keyShade`.
+ */
+export function moonCasts(frame: Numbers): boolean {
+  return frame[CAST_AT]! * frame[FRAME.moon]! + frame[CAST_AT + 1]! * frame[FRAME.moon + 1]! + frame[CAST_AT + 2]! * frame[FRAME.moon + 2]! > 0;
+}
+
+/**
  * The light a pixel sends to the eye, from the frame block `frame`. `mro` is occlusion, roughness and metalness, `n`
  * the normal, `v` the way to the eye, and `mirror` the sky's light from where the eye's ray is reflected to. The sun
  * and the moon each light by `direct`. The sky lights from all round as `skyLight` has it, less where the surface is
  * occluded: the colour under the highlight, and the highlight itself, which shows `mirror` where the surface is smooth
- * and turns to the same light as the colour's as it roughens. `shade` is how much of the sun reaches the pixel, which
- * only the GPU's shadow maps know (shadowtext.ts), so the rasterizer leaves it 1.
+ * and turns to the same light as the colour's as it roughens. `shade` is how much of the light the shadow cascades are
+ * cast from reaches the pixel, the sun's by day and the moon's by night, which only the GPU's shadow maps know
+ * (shadowtext.ts), so the rasterizer leaves it 1.
  */
 export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numbers, frame: Numbers, mirror: Numbers, shade = 1): void {
   const rough = Math.max(mro[1]!, SMOOTHEST);
@@ -251,8 +260,9 @@ export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numb
     const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
     out[c] = mro[0]! * (sky[c]! * albedo[c]! * (1 - metal) + (f0 * parts[0]! + (1 - f0) * parts[1]!) * (mirror[c]! * (1 - a) + sky[c]! * a));
   }
-  direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv, shade);
-  direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv);
+  const moon = moonCasts(frame);
+  direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv, moon ? 1 : shade);
+  direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv, moon ? shade : 1);
 }
 
 const behind = new Float64Array(3);
@@ -260,14 +270,15 @@ const behind = new Float64Array(3);
 /**
  * A thin sheet's light from behind, added to `out`: `sheet` of what its other face, facing away from `n`, takes from the
  * sky, the sun and the moon, as a face that is not metal and fully rough would show it (shared/pack/finish.ts). `shade`
- * is how much of the sun reaches that face.
+ * is how much of the light the cascades are cast from reaches that face, as `lit` has it.
  */
 export function through(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, frame: Numbers, sheet: number, shade = 1): void {
   if (sheet <= 0) return;
   for (let c = 0; c < 3; c++) behind[c] = -n[c]!;
   skyLight(sky, frame, behind);
-  const sun = Math.max(behind[0]! * frame[FRAME.sun]! + behind[1]! * frame[FRAME.sun + 1]! + behind[2]! * frame[FRAME.sun + 2]!, 0) * shade;
-  const moon = Math.max(behind[0]! * frame[FRAME.moon]! + behind[1]! * frame[FRAME.moon + 1]! + behind[2]! * frame[FRAME.moon + 2]!, 0);
+  const owned = moonCasts(frame);
+  const sun = Math.max(behind[0]! * frame[FRAME.sun]! + behind[1]! * frame[FRAME.sun + 1]! + behind[2]! * frame[FRAME.sun + 2]!, 0) * (owned ? 1 : shade);
+  const moon = Math.max(behind[0]! * frame[FRAME.moon]! + behind[1]! * frame[FRAME.moon + 1]! + behind[2]! * frame[FRAME.moon + 2]!, 0) * (owned ? shade : 1);
   for (let c = 0; c < 3; c++) out[c]! += sheet * mro[0]! * albedo[c]! * (1 - mro[2]!) * (sky[c]! + frame[FRAME.sunColor + c]! * sun + frame[FRAME.moonColor + c]! * moon);
 }
 
@@ -535,7 +546,8 @@ vec3 encoded(vec3 c) {
 
 /**
  * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
- * `skyShare`, `skyOn`, `skyLight`, `direct`, `lit`, `tone` and `shown`. `shown` takes where the point is from the eye, and the air
+ * `skyShare`, `skyOn`, `skyLight`, `direct`, `lit`, `tone` and `shown`; `keyShade` is `moonCasts` as the sun's share
+ * of a shade and the moon's. `shown` takes where the point is from the eye, and the air
  * between (atmosphere.ts `hazed`, which a program defines after this) above water; under water, today's fog. What
  * lights includes SHADOW_GLSL after it, for `lit`'s shade. With LIGHT_TARGET defined (post.ts) it shows light as it
  * is after exposure, for the finishing pass to tone and grade, and the fog's colour as light; `SHOWN_STEP` is a
@@ -569,6 +581,9 @@ vec3 direct(vec3 l, vec3 colour, vec3 albedo, float metal, float a2, vec3 n, vec
   vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, metal);
   return colour * nl * (albedo * (1.0 - metal) + gloss * (f0 + (1.0 - f0) * pow(1.0 - vh, 5.0)));
 }
+vec2 keyShade(float shade) {
+  return dot(fCast.xyz, fMoon.xyz) > 0.0 ? vec2(1.0, shade) : vec2(shade, 1.0);
+}
 vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   float rough = max(mro.g, ${f(SMOOTHEST)});
   float a = rough * rough;
@@ -576,7 +591,8 @@ vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored, float shade) {
   vec3 sky = skyLight(n);
   vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, mro.b);
   vec3 light = mro.r * (sky * albedo * (1.0 - mro.b) + skyShare(f0, rough, nv) * mix(mirrored, sky, a));
-  return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) * shade + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv);
+  vec2 key = keyShade(shade);
+  return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) * key.x + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv) * key.y;
 }
 ${TONE}${GRADED}vec3 skyAsLight() {
   return mix(uSky / 12.92, pow((uSky + 0.055) / 1.055, vec3(2.4)), step(0.04045, uSky));
@@ -607,16 +623,17 @@ vec3 shown(vec3 light, vec3 rel) {
 `;
 
 /**
- * `through` as GLSL, after LIGHT, and `sunward`, the face of a sheet the sun's shadow is looked up from: the one the sun
- * is on, which for a sheet lit from behind is its far face.
+ * `through` as GLSL, after LIGHT, and `sunward`, the face of a sheet the shadow is looked up from: the one the light the
+ * cascades are cast from is on, which for a sheet lit from behind is its far face.
  */
 export const THROUGH = `vec3 through(vec3 albedo, vec3 mro, vec3 n, float sheet, float shade) {
   if (sheet <= 0.0) return vec3(0.0);
   vec3 b = -n;
-  return sheet * mro.r * albedo * (1.0 - mro.b) * (skyLight(b) + fSunColor.rgb * max(dot(b, fSun.xyz), 0.0) * shade + fMoonColor.rgb * max(dot(b, fMoon.xyz), 0.0));
+  vec2 key = keyShade(shade);
+  return sheet * mro.r * albedo * (1.0 - mro.b) * (skyLight(b) + fSunColor.rgb * max(dot(b, fSun.xyz), 0.0) * key.x + fMoonColor.rgb * max(dot(b, fMoon.xyz), 0.0) * key.y);
 }
 vec3 sunward(vec3 n, float sheet) {
-  return sheet > 0.0 && dot(n, fTrueSun) < 0.0 ? -n : n;
+  return sheet > 0.0 && dot(n, fCast.xyz) < 0.0 ? -n : n;
 }
 `;
 
@@ -796,7 +813,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);
   radiance = mix(radiance,mirror*open*own,coat);
   if (specularLayer > 0.0) {
-    radiance += specularLayer*shade*direct(fSun.xyz,fSunColor.rgb,vec3(0.065),1.0,coatA2,coatNormal,v,max(0.001,1.0-edge));
+    radiance += specularLayer*keyShade(shade).x*direct(fSun.xyz,fSunColor.rgb,vec3(0.065),1.0,coatA2,coatNormal,v,max(0.001,1.0-edge));
   }
   o = vec4(shown(radiance + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
 }`;

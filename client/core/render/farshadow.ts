@@ -24,7 +24,7 @@ import { cityReach, cityTops, type CityStatics, type Gone } from "../../../share
 import { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { CityKinds, CityMaker } from "./citymake.ts";
-import { FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
+import { CAST_AT, FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
 import { SkyOpen, openMeasure, type OpenMap } from "./skyopen.ts";
 import type { RoofMap } from "./roofmap.ts";
 
@@ -171,12 +171,13 @@ export function tipMoves(a: ArrayLike<number>, b: ArrayLike<number>, rise: numbe
 /**
  * How much of the sun the far map gives a camera-relative point with that normal, 0 to 1: the twin of SHADOW_GLSL's
  * `farShadow`, a compared lookup filtered over the four texels about it. `map` is the layer, `size` a side, and the
- * frame block says where the camera is on it and where the sun is.
+ * frame block says where the camera is on it and where the light the cascades are cast from is (fCast: the sun by day,
+ * the moon by night, which the map is then swept toward).
  */
 export function farLookup(map: Uint16Array, size: number, frame: Float32Array, rx: number, ry: number, rz: number, nx: number, nz: number): number {
   const scale = frame[FRAME.farScale]!;
   if (scale <= 0) return 1;
-  const sx = -frame[FRAME.moon]!, sy = -frame[FRAME.moon + 1]!, sz = -frame[FRAME.moon + 2]!;
+  const sx = frame[CAST_AT]!, sy = frame[CAST_AT + 1]!, sz = frame[CAST_AT + 2]!;
   const lead = FAR_LEAD / (scale * Math.max(Math.hypot(sx, sz), FLAT_LEAST));
   const px = rx + (nx * FAR_OUT) / scale + sx * lead, py = ry + sy * lead, pz = rz + (nz * FAR_OUT) / scale + sz * lead;
   const tx = px * scale + frame[FRAME.farAt]!, tz = pz * scale + frame[FRAME.farAt + 1]!;
@@ -193,7 +194,7 @@ export function farLookup(map: Uint16Array, size: number, frame: Float32Array, r
  * looked up that far on along the ray, past what casts into them. The twin of SHADOW_GLSL's `farBeyond`.
  */
 export function nearLead(frame: Float32Array, rx: number, rz: number): number {
-  const sx = -frame[FRAME.moon]!, sz = -frame[FRAME.moon + 2]!;
+  const sx = frame[CAST_AT]!, sz = frame[CAST_AT + 2]!;
   const flat = Math.max(Math.hypot(sx, sz), FLAT_LEAST);
   let dx = sx / flat, dz = sz / flat;
   if (Math.abs(dx) < 1e-6) dx = 1e-6;
@@ -210,7 +211,7 @@ export function nearLead(frame: Float32Array, rx: number, rz: number): number {
  * chunks along its ray to the sun.
  */
 export function farBeyondLookup(map: Uint16Array, size: number, frame: Float32Array, rx: number, ry: number, rz: number, nx: number, nz: number): number {
-  const sx = -frame[FRAME.moon]!, sy = -frame[FRAME.moon + 1]!, sz = -frame[FRAME.moon + 2]!;
+  const sx = frame[CAST_AT]!, sy = frame[CAST_AT + 1]!, sz = frame[CAST_AT + 2]!;
   const along = nearLead(frame, rx, rz) / Math.max(Math.hypot(sx, sz), FLAT_LEAST);
   return farLookup(map, size, frame, rx + sx * along, ry + sy * along, rz + sz * along, nx, nz);
 }
@@ -401,18 +402,19 @@ export class FarShadow {
   }
 
   /**
-   * Each frame, with the unit vector toward the sun while it casts, else null, and the scene's clock in milliseconds:
-   * makes the map and the openness again where they are due, puts rows of them on the card from `budget`'s allowance,
-   * and says in the frame block where the camera (cx, cy, cz) is on their grid, and whether the map is to be looked up.
-   * A frame with no shadow array on the card, as low poly's, leaves the layer empty; one with no shadow maps at all
-   * looks nothing up.
+   * Each frame, with the unit vector toward the light the cascades are cast from while it casts (the sun, or the moon
+   * by night), else null, and the scene's clock in milliseconds: makes the map and the openness again where they are
+   * due, puts rows of them on the card from `budget`'s allowance, and says in the frame block where the camera (cx, cy,
+   * cz) is on their grid, and whether the map is to be looked up. A frame with no shadow array on the card, as low
+   * poly's, leaves the layer empty; one with no shadow maps at all looks nothing up. The map of what stands overhead
+   * lights its ground for `daySun`, the sun while it is the light that casts, else null.
    */
-  update(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, cx: number, cy: number, cz: number, sun: ArrayLike<number> | null, now = 0): void {
+  update(p: FramePacket, budget: { readonly left: number; spend(bytes: number): void }, cx: number, cy: number, cz: number, sun: ArrayLike<number> | null, now = 0, daySun = sun): void {
     const f = p.frame;
     f[FRAME.farScale] = 0;
     f[ROOF_AT + 3] = 0;
     this.roofs = p.lit && p.tier.roofs;
-    if (this.roofs) this.roof?.update(p, budget, this.city, this.hf, this.goneOf, cx, cz, now, clock, sun);
+    if (this.roofs) this.roof?.update(p, budget, this.city, this.hf, this.goneOf, cx, cz, now, clock, daySun);
     const { cascades, size } = p.tier.shadows;
     if (!p.lit || size <= 0) {
       this.layerSize = 0;

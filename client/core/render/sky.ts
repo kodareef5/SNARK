@@ -8,7 +8,7 @@
 // the light of the sun, the moon and the sky above and below. Low poly keeps its own light, `flatLight`, and its own
 // sky colour.
 
-import { FRAME, FRAME_FLOATS } from "./packet.ts";
+import { CAST_AT, FRAME, FRAME_FLOATS } from "./packet.ts";
 import { AMBIENT, DIFFUSE, NIGHT_LIGHT } from "./shading.ts";
 import { SKY_LIGHTS, SKY_TABLE } from "./skytable.ts";
 import { graded, linearToSrgb, lit, srgbToLinear, tone } from "./surface.ts";
@@ -364,6 +364,29 @@ export function discUp(height: number, radius = SUN_RADIUS): number {
   return t * t * (3 - 2 * t);
 }
 
+/**
+ * Degrees of the sun's fall over which the moon's shadows come in, once the sun is SUN_RADIUS under the horizon and its
+ * own shadows have gone (`discUp`). The moon stands opposite the sun, so it is then as far up. One light owns the shadow
+ * cascades at a time, and each fades from nothing where they change hands, so neither shadow pops.
+ */
+export const MOON_IN = 2;
+
+/** How strongly the moon casts at a sun height, 0 to 1: nothing while the sun casts, all of it MOON_IN degrees on. */
+export function moonCasting(height: number): number {
+  const t = Math.max(0, Math.min(1, (-height - SUN_RADIUS) / MOON_IN));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * The light the shadow cascades are cast from at a sun height, `sun` the unit vector toward the sun, into the frame
+ * block's fCast: the sun and its casting strength while any of its disc is up, else the moon, opposite it, and its own.
+ */
+export function castLight(height: number, sun: ArrayLike<number>, frame: Float32Array): void {
+  const moon = height <= -SUN_RADIUS;
+  for (let k = 0; k < 3; k++) frame[CAST_AT + k] = moon ? -sun[k]! : sun[k]!;
+  frame[CAST_AT + 3] = moon ? moonCasting(height) : discUp(height);
+}
+
 /** The way the light in the sun's slot comes from with the sun at a height: from the sun, or held GLOW_HOLD degrees up toward it. */
 export function slotHeight(height: number): number {
   return Math.max(height, GLOW_HOLD);
@@ -449,7 +472,7 @@ export function trueSun(frame: Float32Array, out: Float32Array | Float64Array | 
 
 /**
  * Fills the sky's part of a frame block for an hour: the sun's slot and the moon's, their light and the sky's,
- * exposure, and the table's scale. The moon stands opposite the sun, so the sun itself, for its disc and for looking
+ * exposure, the table's scale, and the light the shadows are cast from. The moon stands opposite the sun, so the sun itself, for its disc and for looking
  * the table up, is `trueSun`; the sun's slot is the light from the sun's side, held GLOW_HOLD degrees up through
  * twilight, when it carries the afterglow and casts nothing.
  */
@@ -474,6 +497,7 @@ export function skyFrame(hour: number, sky: Sky, frame: Float32Array): void {
     frame[f.skyAlong + k] = light[18 + k]!;
   }
   frame[f.casting] = discUp(h);
+  castLight(h, sunAt, frame);
   frame[f.skyScale] = blend[LIGHT_FLOATS - 1]!;
   frame[f.look] = sunAt[0]! / Math.max(flat, 1e-6);
   frame[f.look + 1] = sunAt[2]! / Math.max(flat, 1e-6);
