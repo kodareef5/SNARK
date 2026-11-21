@@ -4,6 +4,8 @@ import { expect } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { FRONT } from "../../content/vehicles/windscreens.ts";
+import { GLASS } from "../../content/vehicles/glass.ts";
+import { glassAt, glassSet } from "../../client/core/render/vehicle-glass.ts";
 import { PAINT, streetMaterial } from "../../content/street-finishes.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -57,4 +59,34 @@ artTest("each road vehicle's exported paint, wheel joints and glass opening fit 
       expect(Math.sqrt(nearest), vehicle.id).toBeLessThan(0.10);
     }
   }
+});
+
+artTest("each vehicle's glass cells name materials the packs hold, and hold faces of their meshes' finest levels", () => {
+  const faces = new Map<string, number>();
+  for (const asset of ASSETS.filter((a) => a.file.includes("/vehicles/"))) {
+    for (const mesh of unpackMeshes(parsePack(new Uint8Array(readFileSync(asset.file))))) {
+      const lod = mesh.lods[0]!;
+      const { uvs, sections, normals, indices } = lod;
+      if (!mesh.materials || !uvs || !sections || !normals) continue;
+      mesh.materials.forEach((material, k) => {
+        const set = glassSet(material.id);
+        if (!set) return;
+        let n = faces.get(material.id) ?? 0;
+        for (let t = 0; t < indices.length / 3; t++) {
+          if (sections[t] !== k) continue;
+          let u = 0, v = 0, forward = 0;
+          for (let c = 0; c < 3; c++) {
+            const i = indices[t * 3 + c]!;
+            u += uvs[i * 2]! / 3;
+            v += uvs[i * 2 + 1]! / 3;
+            forward += normals[i * 3 + 2]! / 3;
+          }
+          if (glassAt(set, u, v, forward)) n++;
+        }
+        faces.set(material.id, n);
+      });
+    }
+  }
+  // When written: the vans' 160 and 370, the fastback's 586, the jeep's 92 and the abandoned compacts' 79.
+  for (const id of GLASS.flatMap((g) => g.materials)) expect([id, (faces.get(id) ?? 0) >= 10]).toEqual([id, true]);
 });

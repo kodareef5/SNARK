@@ -10,6 +10,7 @@
 import type { Tier } from "./assets/tiers.ts";
 import { HAND_NEAR } from "./render/hand.ts";
 import { DRAW_WATER, FRAME, ROOF_AT, type FramePacket } from "./render/packet.ts";
+import { withoutGlass } from "./render/vehicle-glass.ts";
 
 /** A frame's passes in the order the shell draws them. The dome is drawn at the start of the far see-through step; the finish (render/post.ts) last, where a frame has one. */
 export const PASSES = ["uploads", "casters", "near", "far", "dome", "far see-through", "near see-through", "body", "finish"] as const;
@@ -144,8 +145,9 @@ export const BENCH_TURN_MS = 15000;
  * stands overhead (render/roof.ts) and leaves the light from the ground as the sky's table has it; "bounce" leaves that
  * light alone. "moon" draws no cascades by night, as before the moon cast through them (render/sky.ts `castLight`), and
  * "lamp" lights by every street lamp's cards alone, the nearest's too, with no lamp's map drawn (render/lamp.ts).
+ * "glass" draws a vehicle's panes solid, as they were before they were seen through (render/vehicle-glass.ts).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -182,7 +184,7 @@ export function sceneWithout(scene: { hide: boolean; nearFirst: boolean; nearMes
   scene.nearMesh = !off.has("nearmesh");
 }
 
-/** The effects that live in a built frame: the haze, bodies' contact, what stands overhead, the facades, the edges and the road's wear in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
+/** The effects that live in a built frame: the haze, bodies' contact, what stands overhead, the facades, the edges and the road's wear in its block, the sea's detail, the hand-over's discard, bodies' layers and vehicles' glass in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
   if (off.has("contact")) p.frame.fill(0, FRAME.contact, FRAME.eyes);
@@ -195,5 +197,6 @@ export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;
     if (off.has("layers")) p.drawLayer[d] = 0;
+    if (off.has("glass")) withoutGlass(p, d);
   }
 }

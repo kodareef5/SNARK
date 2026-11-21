@@ -19,11 +19,12 @@
 // moon's shadows (render/sky.ts castLight) there too on medium, high and ultra, at 1,920 by 1,080 and a laptop's 3,600 by
 // 1,924, and the
 // wires between the poles (render/street-wires.ts) by day, and what stands overhead and the light from the ground
-// (render/roof.ts) on the street on high at one and two and on ultra at two. A city row's GL draws and triangles are of the frame its run
+// (render/roof.ts) on the street on high at one and two and on ultra at two, and vehicles' glass seen through
+// (render/vehicle-glass.ts) on the street and over the busy lamp's parked cars. A city row's GL draws and triangles are of the frame its run
 // ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
-// process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
-// prints each row's range.
+// process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]...` runs these alone (a row's whole name ended
+// with "$" runs that row alone), each `runs` times (3), and prints each row's range.
 //
 // Miami's street on high is also run with the page's processor slowed four and six times by the browser's own
 // throttle, for our code's time. After a city run's report its GL calls are counted over COUNT_FRAMES frames by kind,
@@ -128,6 +129,10 @@ export function plan(): Run[] {
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
   for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) for (const ab of ["roofs", "bounce"] as const) runs.push({ scene: "city", view: "street", tier, scale, ab });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
+  // Vehicles' glass seen through (render/vehicle-glass.ts) off every other frame: on the street by day, and over the
+  // busy lamp's row of five parked cars by night.
+  for (const [tier, scale] of [["high", 1], ["high", 2], ["medium", 1]] as const) runs.push({ scene: "city", view: "street", tier, scale, ab: "glass" });
+  for (const tier of ["high", "medium"]) runs.push({ scene: "city", view: "lamp-cars", tier, scale: 1, window: [1920, 1167], ab: "glass", hour: 22 });
   return runs;
 }
 
@@ -428,8 +433,9 @@ export async function benchGpu(section: Section, record: Row, times = 1): Promis
 if (import.meta.main) {
   if (!CHROME) throw new Error("no Chrome: set CHROME");
   const times = Number(process.argv[2] ?? 3);
-  const only = process.argv[3];
-  const runs = runnable(console.log).filter((r) => !only || nameOf(r).startsWith(only));
+  // Each word after the runs is a row's first words, or a row's whole name ended with "$".
+  const only = process.argv.slice(3);
+  const runs = runnable(console.log).filter((r) => only.length === 0 || only.some((o) => (o.endsWith("$") ? nameOf(r) === o.slice(0, -1) : nameOf(r).startsWith(o))));
   console.log(`${runs.length} runs, ${times} each, load ${loadavg()[0]!.toFixed(1)}`);
   const reports = await measure(runs, times, (line) => console.log(`  ${line}`));
   writeFileSync(join(tmpdir(), "snark-gpu-bench.json"), JSON.stringify([...reports]));
