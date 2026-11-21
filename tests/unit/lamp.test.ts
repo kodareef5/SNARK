@@ -511,3 +511,15 @@ test("far off, a working lamp's lens gives up its glow to its glow card, which i
   expect(glows.get(460)!.shows).toBeLessThan(200);
   expect(poolCards(p).length).toBe(1);
 });
+
+test("a lamp whose chunk comes later, as the world streams in, fades in, where those there from the first frame show at once", () => {
+  const { structs, frame } = twoLamps();
+  expect(pools(frame(110, 0, false), 110)).toEqual(new Map([[100, 210], [120, 210]]));
+  // A third lamp in a chunk that had none.
+  structs.add(sceneRegistry().index.get(LIT)!, 150, 0, 128, 0, 0, 1);
+  const at = (ms: number): number => pools(frame(110, ms, false), 110).get(150) ?? 0;
+  expect(at(1000)).toBe(0);
+  expect(at(1250)).toBeGreaterThan(60);
+  expect(at(1250)).toBeLessThan(150);
+  expect(at(1600)).toBe(210);
+});

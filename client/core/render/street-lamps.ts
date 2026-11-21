@@ -30,6 +30,8 @@ const REACH = 140, FADE_FROM = 100;
  * between pixels. Where the lens has given up its glow, the card shows FAR_GLOW_SHOWS of its colour, of 255, for it.
  */
 const GLOW_REACH = 500, GLOW_FADE_FROM = 420, GLOW_PIXELS = 2, FAR_GLOW_SHOWS = 200;
+/** Seconds a lamp takes to fade in once its chunk comes, as the world streams in, so that it does not pop on. */
+const LAMP_APPEAR = 0.5;
 /**
  * Where a lamp's lens is in the lamp's own frame (its head over the road, +z), and the radius of its pool and its glow: a
  * cobra head at nearly 9 m lights the road about one and a half times its height each way.
@@ -58,8 +60,11 @@ const eased = (s: number): number => s * s * (3 - 2 * s);
 
 export class StreetLamps extends VehicleCards {
   private readonly kind: number;
-  /** The lit lamps of each chunk: x, y, z and yaw (radians), four numbers each, as of the chunk's version. */
-  private readonly chunks = new Map<number, { version: number; lamps: Float64Array }>();
+  /**
+   * The lit lamps of each chunk: x, y, z and yaw (radians), four numbers each, as of the chunk's version; and when, by
+   * the scene's clock, the chunk came with lamps in it, from which they fade in over LAMP_APPEAR seconds.
+   */
+  private readonly chunks = new Map<number, { version: number; lamps: Float64Array; since: number }>();
   private readonly near: number[] = [];
   /** Whether the frame draws their light (passes.ts `lamps`). */
   on = true;
@@ -103,7 +108,7 @@ export class StreetLamps extends VehicleCards {
   build(p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number, now = 0, lights = false, hf: Heightfield | null = null, pools = false, focus: { readonly x: number; readonly z: number } = cam, rows = 0): void {
     this.begin();
     this.shows = 0;
-    const step = this.last < 0 ? 0 : Math.min(0.1, Math.max(0, (now - this.last) / 1000));
+    const step = this.last < 0 ? 0 : Math.min(0.1, Math.max(0, (now - this.last) / 1000)), first = this.last < 0;
     this.last = now;
     const on = lampsOn(p.frame);
     if (!this.on || this.kind < 0 || on <= 0.004) {
@@ -115,7 +120,7 @@ export class StreetLamps extends VehicleCards {
     const c0 = Math.max(0, Math.floor((cam.x - GLOW_REACH) / CHUNK_SIZE)), c1 = Math.min(chunksX - 1, Math.floor((cam.x + GLOW_REACH) / CHUNK_SIZE));
     const r0 = Math.max(0, Math.floor((cam.z - GLOW_REACH) / CHUNK_SIZE)), r1 = Math.min(chunksZ - 1, Math.floor((cam.z + GLOW_REACH) / CHUNK_SIZE));
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
-      const lamps = this.lampsOf(structs, r * chunksX + c);
+      const lamps = this.lampsOf(structs, r * chunksX + c, first ? -Infinity : now);
       for (let i = 0; i < lamps.length; i += 4) {
         const d = Math.hypot(lamps[i]! - cam.x, lamps[i + 2]! - cam.z);
         if (d < GLOW_REACH) near.push(d, r * chunksX + c, i);
@@ -143,9 +148,11 @@ export class StreetLamps extends VehicleCards {
     const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw), sp = Math.sin(cam.pitch), cp = Math.cos(cam.pitch);
     const rx = -cy, rz = sy, ux = -sy * sp, uy = cp, uz = -cy * sp;
     for (const k of order) {
-      const d = near[k * 3]!, lamps = this.chunks.get(near[k * 3 + 1]!)!.lamps, i = near[k * 3 + 2]!;
-      const fade = on * Math.min(1, Math.max(0, (poolEdge - d) / ((poolEdge * (REACH - FADE_FROM)) / REACH)));
-      const glowFade = on * Math.min(1, Math.max(0, (glowEdge - d) / ((glowEdge * (GLOW_REACH - GLOW_FADE_FROM)) / GLOW_REACH)));
+      const d = near[k * 3]!, held = this.chunks.get(near[k * 3 + 1]!)!, lamps = held.lamps, i = near[k * 3 + 2]!;
+      // A lamp whose chunk has just come, as the world streams in round the camera, fades in.
+      const shown = on * Math.min(1, Math.max(0, (now - held.since) / (LAMP_APPEAR * 1000)));
+      const fade = shown * Math.min(1, Math.max(0, (poolEdge - d) / ((poolEdge * (REACH - FADE_FROM)) / REACH)));
+      const glowFade = shown * Math.min(1, Math.max(0, (glowEdge - d) / ((glowEdge * (GLOW_REACH - GLOW_FADE_FROM)) / GLOW_REACH)));
       lensOf(k, at);
       // The lamp that lights shows as much less of its pool as its light shows.
       const lit = shared > 0 && this.same(at, this.held) ? shared : 0;
@@ -235,8 +242,11 @@ export class StreetLamps extends VehicleCards {
     this.words[i + DETAIL.misc] = ((255 << 24) | (Math.min(255, shows) << 16) | ((lens >= 0 ? DETAIL_SHADED_POOL : DETAIL_POOL) << 8)) >>> 0;
   }
 
-  /** A chunk's lit lamps, read again only when its table has changed. */
-  private lampsOf(structs: StructureStore, chunk: number): Float64Array {
+  /**
+   * A chunk's lit lamps, read again only when its table has changed; `now` when they come where there were none, the
+   * scene's clock, or -Infinity for the first frame's, which are there from the start.
+   */
+  private lampsOf(structs: StructureStore, chunk: number, now: number): Float64Array {
     const t = structs.chunks[chunk];
     const version = t ? t.version : -1;
     const had = this.chunks.get(chunk);
@@ -244,7 +254,7 @@ export class StreetLamps extends VehicleCards {
     const found: number[] = [];
     if (t) for (let s = 0; s < t.high; s++) if (t.kind[s] === this.kind) found.push(t.x[s]!, t.y[s]!, t.z[s]!, (t.yaw[s]! / 65536) * 2 * Math.PI);
     const lamps = new Float64Array(found);
-    this.chunks.set(chunk, { version, lamps });
+    this.chunks.set(chunk, { version, lamps, since: had && had.lamps.length > 0 ? had.since : now });
     return lamps;
   }
 }
