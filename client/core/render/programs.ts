@@ -25,10 +25,11 @@ import { WATER_FRAGMENT } from "./water.ts";
  * terrain window's heights and tints, 13 the far nodes' meshes (packet.ts `atlas`), 14 a body's hurt and decay layer.
  * 15 holds the details atlas for the details draws alone, and is free outside them: a program that does not read it may
  * bind something else there. 16, the first past the sixteen a program may read at most, holds the sky's openness
- * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection and 24 what stands
- * overhead (roof.ts). WebGL2 has 32 units at the least, and no program reads more than sixteen.
+ * (skyopen.ts); 17 to 21 a facade's atlases, 22 the terrain window's roads' frame, 23 the local reflection, 24 what stands
+ * overhead (roof.ts), and 25 and 26 the streets' distances and kinds round the camera (streets.ts). WebGL2 has 32 units
+ * at the least, and no program reads more than sixteen.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14, details: 15, open: 16, facade: 17, road: 22, street: 23, roof: 24, streets: 25, streetKinds: 26 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -103,13 +104,14 @@ const MAKE = {
   flat: (tier, format, hard = false, light = false) => mesh(tier, flatOr(tier, format, hard, light, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_MESH_FRAGMENT, MESH, undefined, true)),
   // Where the tier reads the finishes in full, asphalt, sand and walks wear (world-surfaces.ts `roadWorn`, `walkWorn`).
   terrain: (tier, format, hard = false, light = false) => {
-    const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, tier.lit ? { ...GROUND, uRoad: UNIT.road } : GROUND, LIT_TERRAIN_VERTEX);
+    const t = flatOr(tier, format, hard, light, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_TERRAIN_FRAGMENT, tier.lit ? { ...GROUND, uRoad: UNIT.road, uStreets: UNIT.streets, uStreetKinds: UNIT.streetKinds } : GROUND, LIT_TERRAIN_VERTEX);
     return tier.lit && tier.finish === "full" ? { ...t, defines: `#define WORLD_ROAD\n${t.defines}` } : t;
   },
-  // The same, for the tiles that read the window round the camera (terrain.ts), where asphalt wears along the roads' frame.
+  // The same, for the tiles that read the window round the camera (terrain.ts), where asphalt wears along the roads' frame
+  // and, near the camera, the streets' edges are drawn from their lines (streets.ts).
   terrainWindow: (tier, format, hard, light): ProgramText => {
-    const t = MAKE.terrain(tier, format, hard, light);
-    return { ...t, defines: tier.lit && tier.finish === "full" ? `#define GROUND_ROAD\n${t.defines}` : t.defines, samplers: { ...t.samplers, ...WINDOW } };
+    const t = MAKE.terrain(tier, format, hard, light), full = tier.lit && tier.finish === "full";
+    return { ...t, defines: full ? `#define GROUND_ROAD\n#define GROUND_STREETS\n${t.defines}` : t.defines, samplers: { ...t.samplers, ...WINDOW } };
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.

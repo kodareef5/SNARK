@@ -13,6 +13,8 @@ import type { Base, Grid } from "./base.ts";
 import { makeHeaps, readBuildings, PART_COURT, PART_FLOOR, PART_HEAP, PART_POOL, PART_SPILL, PART_WALL, type Heaps } from "./heaps.ts";
 import { carveLakes, readLakes, type LakeRules, type Lakes } from "./lakes.ts";
 import { roundGround, type Corner } from "./corners.ts";
+import { paintStreets } from "./streets/paint.ts";
+import type { StreetSectors } from "../../shared/world/streets.ts";
 import { blur, distanceField, fbm, fillPolygon, hash3, regions, share } from "./raster.ts";
 
 /** What a sample's ground is, for its colour and for what lives on it. */
@@ -116,6 +118,10 @@ export interface Ground {
   readonly bankEdge?: ReadonlySet<number>;
   /** Per sample of a container stack, which container it is, for its colour. */
   readonly container: Uint8Array;
+  /** Per sample in a street's verge, the verge's kind (shared/world/streets.ts VERGES), or 0: for its colour. */
+  readonly verge?: Uint8Array;
+  /** The streets the ground was painted from (streets/plan.ts), in the map's metres, for what stands along them. */
+  readonly streets?: StreetSectors;
   /** Metres from each sample to the nearest real beach. */
   readonly sand: Float32Array;
   /** The sea's water, 1 a sample. Lakes are in `lakes`. */
@@ -152,7 +158,7 @@ export function groundClasses(g: Ground): Uint8Array {
  * The ground of a map, its `corners` (corners.ts) rounded: the street and the sidewalk painted round each corner's arc
  * where the road burn left a mitre.
  */
-export function makeGround(base: Base, world: World, log: (line: string) => void, corners: readonly Corner[] = []): Ground {
+export function makeGround(base: Base, world: World, log: (line: string) => void, corners: readonly Corner[] = [], streets: StreetSectors | null = null): Ground {
   const { grid } = base;
   const { nx, nz, cell, west, north } = grid;
   const N = nx * nz;
@@ -166,7 +172,14 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const wrecks = base.bytes("wrecks");
   // A folder made before the streets stage has no use.png: its ground is as it was.
   const use = existsSync(join(base.folder, "base", "use.png")) ? base.bytes("use") : new Uint8Array(N);
-  if (corners.length > 0) {
+  // The streets' sections paint the street, its verges and its walks, round its corners too (streets/paint.ts); a build
+  // without them rounds the corners alone.
+  const verge = new Uint8Array(N);
+  if (streets) {
+    const footprints = base.bytes("buildings");
+    const painted = paintStreets(streets, grid, roads, use, verge, (i) => water[i] === 0 && footprints[i] === 0);
+    log(`ground: the streets' sections painted ${painted.road} samples street, ${painted.verge} verge and ${painted.walk} walk, and took up ${painted.cleared} samples of walk past them`);
+  } else if (corners.length > 0) {
     const footprints = base.bytes("buildings");
     const painted = roundGround(corners, grid, roads, use, (i) => water[i] === 0 && footprints[i] === 0 && use[i] !== USE.CROSSING);
     log(`ground: ${corners.length} street corners rounded, ${painted.road} samples painted street and ${painted.walk} sidewalk round them`);
@@ -500,7 +513,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   }
   const banks = gradeBanks(height, surface, grid, world.sea !== false, lakes, (i) => roads[i] !== 0 || built[i]! > 0 || gaps[i] !== 0 || beachBed.has(i));
   log(`ground: graded ${banks.moved} samples of soft banks, ${banks.edge.size} of them out of the water and ${banks.bed.size} of bed at their foot`);
-  return { grid, height, surface, district, heaps, shore, beachBed, bankBed: banks.bed, bankEdge: banks.edge, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
+  return { grid, height, surface, district, heaps, shore, beachBed, bankBed: banks.bed, bankEdge: banks.edge, container, ...(streets ? { verge, streets } : {}), sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
 }
 
 /** Ground a bank may be graded on: what grows, open ground and the desert's. */

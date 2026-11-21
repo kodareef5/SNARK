@@ -9,6 +9,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { Camera } from "./camera.ts";
 import { MAX_TILES, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./packet.ts";
 import { groundCover, groundWander } from "./world-surfaces.ts";
+import { StreetRegion } from "./streets.ts";
 
 /** The whole map's pair takes every fourth sample: 1,025 a side on an 8 km map. */
 export const COARSE = 4;
@@ -292,8 +293,11 @@ export class TerrainLod {
   }
 
   /** After a lost context the card holds no window, and the next frame fills one whole. */
+  /** The streets' pictures round the camera (streets.ts), for the desktop's lit tiers' straight street edges. */
+  readonly streets = new StreetRegion();
   reset(): void {
     this.drawn = this.fill = -1;
+    this.streets.reset();
   }
 
   /**
@@ -303,6 +307,8 @@ export class TerrainLod {
   select(cam: Camera, packet: FramePacket, viewDistance: number, budget?: GroundBudget, casts?: CastTest): void {
     this.take();
     this.follow(cam, packet, budget);
+    // Only the tiers that read the finishes in full draw the streets' edges (programs.ts GROUND_STREETS).
+    this.streets.follow(packet.tier.lit && packet.tier.finish === "full" ? this.hf.streets : null, cam.x, cam.z, packet);
     this.coarser = 0;
     this.walk(cam, packet, viewDistance, casts ?? null, false);
   }

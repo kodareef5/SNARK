@@ -24,8 +24,9 @@ import { MapWater } from "../../shared/world/water.ts";
 import { fetchBytes, within, type Get } from "./fetched.ts";
 import { HeldTops } from "./render/blocks.ts";
 import { PREDICTED_REACH } from "./session.ts";
-import { holdRoad, type RoadPiece } from "../../shared/world/mapfile.ts";
+import { holdRoad, holdStreets, type RoadPiece, type StreetsPiece } from "../../shared/world/mapfile.ts";
 import { RoadSectors } from "../../shared/world/roadframe.ts";
+import { StreetSectors } from "../../shared/world/streets.ts";
 import { WINDOW, WINDOW_MOVE } from "./render/terrain.ts";
 
 /**
@@ -109,12 +110,13 @@ export function firstFrameParts(head: MapHead, x: number, z: number): MapPart[] 
 }
 
 /**
- * The parts the map's statics are handed over after, besides the head: every part but the tops and the roads' frame, so
+ * The parts the map's statics are handed over after, besides the head: every part but the tops, the roads' frame and the
+ * streets' lines, so
  * that the far city, the near city and the far shadow are made on exact ground. The map's build says what that is at its
  * heaviest first frame.
  */
 export function handOverParts(head: MapHead): MapPart[] {
-  return head.parts.filter((p) => p.kind !== "tops" && p.kind !== "road");
+  return head.parts.filter((p) => p.kind !== "tops" && p.kind !== "road" && p.kind !== "streets");
 }
 
 /**
@@ -515,13 +517,18 @@ export class MapLoader {
     return 0;
   }
 
-  /** The road parts held or asked for. */
+  /** The road and streets parts held or asked for. */
   private readonly roads = new Set<MapPart>();
 
-  /** For as long as the page lives, the roads' frame of the sectors round the body, a look every ROAD_EVERY ms, where the map has one. */
+  /**
+   * For as long as the page lives, the roads' frame and the streets' lines of the sectors round the body, a look every
+   * ROAD_EVERY ms, where the map has them.
+   */
   private async followRoads(): Promise<void> {
-    if (!this.staged.head.parts.some((p) => p.kind === "road")) return;
-    this.staged.hf.road ??= new RoadSectors();
+    const parts = this.staged.head.parts;
+    if (!parts.some((p) => p.kind === "road" || p.kind === "streets")) return;
+    if (parts.some((p) => p.kind === "road")) this.staged.hf.road ??= new RoadSectors();
+    if (parts.some((p) => p.kind === "streets")) this.staged.hf.streets ??= new StreetSectors();
     for (;;) {
       this.lookRoads();
       await this.wait(ROAD_EVERY);
@@ -529,21 +536,27 @@ export class MapLoader {
   }
 
   /**
-   * One look at the roads' frame: each road part within ROAD_REACH of the body asked for, once at a time, and held once it
-   * comes if it is still wanted; each held past a sector further let go. Nothing else waits for them.
+   * One look at the roads' frame and the streets: each road and streets part within ROAD_REACH of the body asked for, once
+   * at a time, and held once it comes if it is still wanted; each held past a sector further let go. Nothing else waits
+   * for them. The streets reach as far: they draw the ground's edges round the camera and give the page's own car its
+   * grip at a street's edge.
    */
   lookRoads(): void {
-    const road = this.staged.hf.road!;
+    const hf = this.staged.hf;
     for (const p of this.staged.head.parts) {
-      if (p.kind !== "road") continue;
+      if (p.kind !== "road" && p.kind !== "streets") continue;
       const off = this.off(p);
+      const hold = (piece: MapPiece): void => {
+        if (piece.kind === "road") holdRoad(hf.road!, piece as RoadPiece);
+        else holdStreets(hf.streets!, piece as StreetsPiece);
+      };
       if (off <= ROAD_REACH && !this.roads.has(p)) {
         this.roads.add(p);
         void this.asker.ask(p.name, this.at(p), (bytes) => readPart(this.staged.head, p, bytes)).then(
-          (got) => ("wait" in got ? this.roads.delete(p) : this.roads.has(p) && holdRoad(road, got.value as RoadPiece)),
+          (got) => ("wait" in got ? this.roads.delete(p) : this.roads.has(p) && hold(got.value as MapPiece)),
           () => this.roads.delete(p),
         );
-      } else if (off > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE && this.roads.delete(p)) road.drop(p.col * 4096 + p.row);
+      } else if (off > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE && this.roads.delete(p)) (p.kind === "road" ? hf.road : hf.streets)?.drop(p.col * 4096 + p.row);
     }
   }
 }

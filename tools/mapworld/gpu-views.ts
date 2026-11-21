@@ -134,14 +134,18 @@ try {
   await send("Runtime.enable");
   await send("Page.enable");
   await send("Emulation.setDeviceMetricsOverride", { width: winW!, height: winH!, deviceScaleFactor: scale, mobile: false });
-  // One survivor for the run, which each view moves.
+  // Each view logs in as one of NAMES survivors in turn, so it comes in as the first view does. With one survivor for the
+  // run, the next page came back within the 5 s a body lingers and took the session over, and every view after the first
+  // was taken from where the first had been. Four views on, the name's session has ended and the name logs in afresh. More
+  // names would run into the server's 8 new names an hour from one machine (NEW_NAMES in server/game.ts).
   const who = Math.floor(Math.random() * 1e6);
-  let first = true;
+  const NAMES = 4;
+  let first = true, taken = 0;
   for (const tier of values.tiers!.split(",")) {
     for (const v of views) {
       lines.length = 0;
       at = orders.get(v.name)!.at;
-      await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.film && (v.replayEyeSeconds !== undefined || v.cast) ? "&trip" : ""}${values.off ? `&off=${values.off}` : ""}${values.page!.map((p) => `&${p}`).join("")}` });
+      await send("Page.navigate", { url: `http://127.0.0.1:${server.port}/?quick&name=look${who}v${taken++ % NAMES}&tier=${tier}&look=${encodeURIComponent(v.name)}${values.film && (v.replayEyeSeconds !== undefined || v.cast) ? "&trip" : ""}${values.off ? `&off=${values.off}` : ""}${values.page!.map((p) => `&${p}`).join("")}` });
       // The first view fetches the map and the art as well.
       await Bun.sleep((first ? 2 : 1) * seconds * 1000);
       first = false;
