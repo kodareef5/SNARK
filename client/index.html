@@ -18,7 +18,9 @@
   /* The page is the game: a drag, a pinch or a long press does nothing to it. The body's padding is the screen's own edges, which the shell reads. */
   html, body { margin: 0; height: 100%; background: #111; overflow: hidden; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
   body { box-sizing: border-box; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
-  #boot-splash { position:fixed; inset:0; z-index:2; pointer-events:none; display:flex; justify-content:flex-end; align-items:flex-start; flex-direction:column; padding:5vh max(6vw,env(safe-area-inset-left)) max(8vh,env(safe-area-inset-bottom)); background:linear-gradient(0deg,#08151df5,transparent 75%),url("title/miami-splash.webp") 58% center/cover,#122e3e; color:#f5f2e6; font-family:Hud,Arial,sans-serif; }
+  #boot-splash { position:fixed; inset:0; z-index:2; pointer-events:none; display:flex; justify-content:flex-end; align-items:flex-start; flex-direction:column; padding:5vh max(6vw,env(safe-area-inset-left)) max(8vh,env(safe-area-inset-bottom)); background:linear-gradient(0deg,#08151df5,transparent 75%),url("title/red-tide.webp") center/cover,#122e3e; color:#f5f2e6; font-family:Hud,Arial,sans-serif; }
+  /* The title's opening shot, as the title bakes it for a wide and for a tall screen (tools/title/poster.ts). */
+  @media (orientation: portrait) { #boot-splash { background-image:linear-gradient(0deg,#08151df5,transparent 75%),url("title/red-tide-portrait.webp"); } }
   .probe #boot-splash { display:none; }
   #boot-splash img { width:clamp(96px,min(20vw,25vh),208px); height:auto; }
   #boot-line { border-left:3px solid #74cebc; margin-top:clamp(1.5rem,4vh,3rem); padding:.2rem .8rem; font-size:clamp(.95rem,1.6vw,1.1rem); max-width:38em; overflow-wrap:anywhere; }

@@ -15,7 +15,8 @@
 #
 # Each world listens on this machine only, from port 8798 up in the order given, keeps its save in var/cluster/<map>.db
 # and reads var/maps/<map>.snmap. Build first: bun run build, bun tools/mapworld/build.ts <map> for each, bun run wiki.
-# The one line of var/admin-password.txt is the password enablecheats asks for; without the file cheats are off.
+# The one line of var/admin-password.txt is the password enablecheats asks for; without the file cheats are off. That is
+# config/official's way: a settings folder that leaves creative mode on, as config/dev does, gives everyone cheats as they join.
 # With DEV=1 every world is a development server (--dev): enablecheats asks no password, so anyone who has the address
 # can cheat, and a world takes a page only at this machine's own names or at the tunnel's, which it is told.
 # CONFIG names the folder of settings every world starts from (config/official). Logs go to var/logs/<cluster>/.

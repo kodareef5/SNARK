@@ -14,7 +14,7 @@ import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
 import { Motion } from "./motion.ts";
 import { Fixtures } from "./fixtures.ts";
-import { Beds } from "./beds.ts";
+import { Beds, type Place } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Urban } from "./urban.ts";
@@ -34,6 +34,7 @@ import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
 import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
+import { issueSuit } from "./suit.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
 import { DEADLINE_FECES, Feces } from "./feces.ts";
@@ -713,22 +714,29 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   progression.onNotice = (pid, text) => notice(pid, text);
   // A preserving bin keeps food longer only while lit: its clocks are rescaled at the tick it swaps.
   wirePreserve(stations, items);
+  // A death refills the survivor. One that arrives or travels comes as it left.
+  function rise(c: Client, p: Place, why: number): number {
+    const at = Number.isNaN(p.y) ? undefined : p.y;
+    if (why === CHOOSE_DIED) return death.respawn(c, p.x, p.z, p.yaw, at);
+    if (why === CHOOSE_ARRIVED && cluster) return cluster.rise(c, p.x, p.z, p.yaw, at);
+    const rec = records.byPid.get(c.pid);
+    if (!rec) return RESULT_INVALID;
+    rec.dead = false;
+    if (!game.revive(c, p.x, p.z, p.yaw, at)) {
+      rec.dead = true;
+      return RESULT_INVALID;
+    }
+    records.dirty.add(rec.pid);
+    return RESULT_OK;
+  }
   const beds = new Beds({
     world, game, records, tribes, fixtures, rules, bus,
-    // A death refills the survivor. One that arrives or travels comes as it left.
+    // Whyever it rises, it comes to life in the Meridian set.
     rise: (c, p, why) => {
-      const at = Number.isNaN(p.y) ? undefined : p.y;
-      if (why === CHOOSE_DIED) return death.respawn(c, p.x, p.z, p.yaw, at);
-      if (why === CHOOSE_ARRIVED && cluster) return cluster.rise(c, p.x, p.z, p.yaw, at);
+      const code = rise(c, p, why);
       const rec = records.byPid.get(c.pid);
-      if (!rec) return RESULT_INVALID;
-      rec.dead = false;
-      if (!game.revive(c, p.x, p.z, p.yaw, at)) {
-        rec.dead = true;
-        return RESULT_INVALID;
-      }
-      records.dirty.add(rec.pid);
-      return RESULT_OK;
+      if (code === RESULT_OK && rec) issueSuit(items, reg, rules, rec);
+      return code;
     },
     mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : urban.riding(c) ? "get out of the vehicle first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
     drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
@@ -1038,6 +1046,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       records.entOf.set(rec.pid, c.ent);
       world.ents.pid[c.ent] = rec.pid;
     }
+    // A new survivor comes to life in the Meridian set, as it does at each rise after (the beds' rise above). One that logs
+    // back in, or stops spectating, wears what it wore.
+    if (first) issueSuit(items, reg, rules, rec);
     refreshBody(rec);
     survival.suspend(rec, false);
     // A save from a server that stopped without standing its drivers down has them inside their cars.
