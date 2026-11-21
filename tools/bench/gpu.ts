@@ -85,7 +85,8 @@ const FAR: readonly Effect[] = ["farcity", "farnodes", "farblocks"];
  * city's hand-over (its air-handover), in metres from the 16 km map's centre as the census has them.
  */
 const CITY_PLACES: Record<View, Place> = {
-  street: { name: "street", east: 859, north: -3007, up: 0 },
+  // CITY_STREET "east,north" puts it elsewhere, metres from the centre of the map benched: a cut's street.
+  street: ((at) => ({ name: "street", east: at.length === 2 ? at[0]! : 859, north: at.length === 2 ? at[1]! : -3007, up: 0 }))((process.env.CITY_STREET ?? "").split(",").filter((v) => v !== "").map(Number)),
   air: { name: "air", east: 1192, north: -3482, up: 140 },
   // 48 m west of the street, 6 m along the road from under the lens of a working lamp, which lights there by night.
   lamp: { name: "lamp", east: 889, north: -2961, up: 0 },
@@ -134,6 +135,8 @@ export function plan(): Run[] {
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "wires" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "road" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "walks" });
+  // The bent kerbs' wear (render/bend.ts bentWear), on the canvases of 1,920 by 1,080 and 3,600 by 1,924.
+  for (const [tier, scale] of [["medium", 1], ["high", 1], ["high", 2], ["medium", 2]] as const) runs.push({ scene: "city", view: "street", tier, scale, ...(scale === 2 ? { window: [1800, 1049] as [number, number] } : {}), ab: "kerbs" });
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
   for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) for (const ab of ["roofs", "bounce"] as const) runs.push({ scene: "city", view: "street", tier, scale, ab });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });

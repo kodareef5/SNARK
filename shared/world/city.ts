@@ -21,7 +21,7 @@ import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz, type MapDims } fro
 import { TAU, detCos, detSin, len3 } from "../math/scalar.ts";
 import { MAX_CORNERS, hullPoint, hullSteps, type HullDef, type HullTable } from "./convex.ts";
 import type { Heightfield } from "./heightfield.ts";
-import { MapStatics, type MapStatic } from "./mapfile.ts";
+import { MapStatics, type ChunkBends, type MapStatic } from "./mapfile.ts";
 import { TACTICAL_CELL, farTopByte } from "./tactical.ts";
 import { EYE_COLLIDERS } from "./tide-eye.ts";
 
@@ -52,11 +52,15 @@ export class CityStatics {
   /** Every kind's boxes and convex parts as walked (the registry's parts), and as drawn near. */
   readonly walked: CityForm;
   readonly look: CityForm;
+  /** The map's bent pieces' bends by chunk and slot (mapfile.ts MapStatics.bends), which the near store draws them by. */
+  readonly bends: Map<number, ChunkBends>;
 
   /** `rows`, where given, are what CityStatics.steps made of `statics` with `reg`. */
   constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[], reg: Registry, rows?: CityRows) {
     this.dims = dims;
-    ({ first: this.first, kind: this.kind, yaw: this.yaw, x: this.x, y: this.y, z: this.z } = rows ?? finish(rowSteps(dims, MapStatics.of(dims, statics), reg)));
+    const table = MapStatics.of(dims, statics);
+    this.bends = table.bends;
+    ({ first: this.first, kind: this.kind, yaw: this.yaw, x: this.x, y: this.y, z: this.z } = rows ?? finish(rowSteps(dims, table, reg)));
     this.halfX = reg.halfX;
     this.halfY = reg.halfY;
     this.halfZ = reg.halfZ;

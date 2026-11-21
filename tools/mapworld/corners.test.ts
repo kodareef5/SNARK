@@ -72,11 +72,13 @@ test("a return's walked parts are its walk's top round the arc, the ramp falling
     expect(returnTop(radius, Math.PI / 4, radius)).toBeCloseTo(CURB_RETURN.height - CURB_RETURN.drop, 9);
     expect(returnTop(radius, 0, radius)).toBe(CURB_RETURN.height);
   }
-  // Every return sorts after every core id there was before it, so no index moves; only the street cars' later kinds
-  // (content/vehicles/wrecks.ts) sort after it.
-  const ids = CORE_CONTENT.map((d) => d.id).sort().filter((id) => !id.startsWith("core:zzzzroad_"));
+  // Every return sorts after every core id there was before it, so no index moves; only kinds added since sort after it:
+  // the moored hulls and the docks (content/docks.ts), the street cars (content/vehicles/wrecks.ts) and the bent sections
+  // (content/bends.ts).
+  const later = (id: string): boolean => /^core:(zzzzhull|zzzzdock|zzzzroad_|zzzzzbend)/.test(id);
+  const ids = CORE_CONTENT.map((d) => d.id).sort().filter((id) => !later(id));
   expect(ids.slice(-6).every((id) => id.startsWith("core:zzzcurb"))).toBe(true);
-  expect(CORE_CONTENT.map((d) => d.id).sort().slice(ids.length).every((id) => id.startsWith("core:zzzzroad_"))).toBe(true);
+  expect(CORE_CONTENT.map((d) => d.id).sort().slice(ids.length).every(later)).toBe(true);
 });
 
 /** A 6 m return in a flat world, its kerbs' corner at (100, 100) and the block toward +x and +z. */

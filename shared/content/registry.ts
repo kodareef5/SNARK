@@ -531,6 +531,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.mesh === "shape" && d.shape === undefined) errors.push(`${d.id}: a mesh of "shape" needs a shape`);
       if (d.mesh === "box" && d.shape !== undefined) errors.push(`${d.id}: a mesh of "box" is its half extents, and takes no shape`);
       if (d.mesh === "none" && (d.class !== "static" || d.shape === undefined)) errors.push(`${d.id}: only a static with a shape is drawn as nothing`);
+      if (d.bent !== undefined && (d.bent !== true || d.class !== "static" || d.shape === undefined || ["box", "shape", "none"].includes(d.mesh))) errors.push(`${d.id}: only a static of a pack's mesh with a shape is drawn bent`);
       if (d.burns !== undefined) {
         if (!Array.isArray(d.burns) || d.burns.length === 0) errors.push(`${d.id}: burns names at least one fuel`);
         for (const b of Array.isArray(d.burns) ? d.burns : []) positive(d, "a fuel's seconds", b?.seconds, MAX_BURN_SECONDS);
@@ -857,7 +858,10 @@ export function compileContent(all: readonly Def[]): CompileResult {
       halfZ[i] = d.half[2];
       // Collision parts are the shape's boxes, or else the one box.
       const shape = d.type === "structure" && d.shape !== undefined ? shapes.get(d.shape)! : null;
-      if (shape) {
+      // A bent piece is walked as the pieces laid under it, and has none of its own.
+      if (d.type === "structure" && d.bent) {
+        // Nothing.
+      } else if (shape) {
         // A map's static is joined to nothing, so it is no building piece whatever its shape's role: nothing snaps to it,
         // and it is never judged for support, as a static of one box is not.
         if (d.type === "structure" && d.class !== "static") role[i] = PIECE_ROLES.indexOf(shape.role);
@@ -982,7 +986,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   // Convex parts, only if some shape has them, so content without them is compiled as it always was.
   const hullsOf = (k: number): readonly HullDef[] => {
     const d = defs[k];
-    return d?.type === "structure" && d.shape !== undefined ? (shapes.get(d.shape)!.hulls ?? []) : [];
+    return d?.type === "structure" && d.shape !== undefined && !d.bent ? (shapes.get(d.shape)!.hulls ?? []) : [];
   };
   const anyHull = defs.some((_, k) => hullsOf(k).length > 0);
   const parts: PartTable = { vehicleSurface: defs.map(d => d?.type === "structure" && d.vehicleSurface ? Object.freeze({ ...d.vehicleSurface }) : null), start: partStart, box: Float32Array.from(partBox), ...(anyHull ? { hulls: hullTable(n, hullsOf) } : {}) };

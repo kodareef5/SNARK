@@ -146,9 +146,10 @@ export const BENCH_TURN_MS = 15000;
  * light alone. "moon" draws no cascades by night, as before the moon cast through them (render/sky.ts `castLight`), and
  * "lamp" lights by every street lamp's cards alone, the nearest's too, with no lamp's map drawn (render/lamp.ts).
  * "glass" draws a vehicle's panes solid, as they were before they were seen through (render/vehicle-glass.ts).
- * "pools" draws the lamps' pool cards with no body's shadow in them (render/lamp.ts `poolShade`).
+ * "pools" draws the lamps' pool cards with no body's shadow in them (render/lamp.ts `poolShade`). "kerbs" draws the bent
+ * kerbs with none of their wear (render/bend.ts `bentWear`).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "kerbs"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -193,7 +194,7 @@ export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("bounce")) p.frame[ROOF_AT + 3] = Math.min(1, p.frame[ROOF_AT + 3]!);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
   if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
-  p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0);
+  p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0) + (off.has("kerbs") ? 4 : 0);
   for (let d = 0; d < p.drawCount; d++) {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;

@@ -76,7 +76,8 @@ function surface(tier: Tier, format: TextureFormat, hard: boolean, light: boolea
   if (tier.lit) samplers.uStreetEnv = UNIT.street;
   if (variant.dyed) Object.assign(samplers, { uPalette: UNIT.palette, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 });
   if (variant.layered) samplers.uLayer = UNIT.layer;
-  return { vertex: surfaceVertex(variant), fragment: streetText(surfaceFragment(format, AIR, variant), tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers };
+  // A bent piece's wear (bend.ts) where the tier reads the finishes in full.
+  return { vertex: surfaceVertex(variant), fragment: streetText(surfaceFragment(format, AIR, variant), tier.lit), defines: (tier.lit ? "#define STREET\n" : "") + (tier.lit && tier.finish === "full" ? "#define BENT_WEAR\n" : "") + shadowDefines(tier.shadows, hard) + out(tier, light), samplers };
 }
 
 /** `tier`, the texture variant, whether compared lookups come back hard, and whether the device has a light target (post.ts). */

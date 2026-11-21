@@ -19,13 +19,14 @@ import { VEHICLE_GLASS_GLSL } from "./vehicle-glass.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
-import { BONES_PER_ROW, CAST_AT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, CAST_AT, DRAW_BENT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, LAMP_AT, MAX_TIRE_CONTACTS, type FramePacket } from "./packet.ts";
 import { LAMP_SEES, LAMP_WASH, lampAlbedo, lampLight } from "./lamp.ts";
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { BOUNCE_SUN, ROOF_GLSL } from "./roof.ts";
 import { WEAR_GLSL, wearAlpha } from "./wear.ts";
+import { BENT_WEAR_GLSL, BEND_GLSL, STRIP_METRES } from "./bend.ts";
 
 /** What a surface that is not metal reflects head on. */
 export const DIELECTRIC = 0.04;
@@ -386,12 +387,13 @@ export function skyShown(p: FramePacket): void {
 
 /**
  * How a draw's vertices are placed, which is `uSkin`: 0 a rigid mesh turned by its yaw, -1 the same at the size its instance
- * carries (DRAW_SIZED), -2 the same each vertex on the ground under it (DRAW_GROUND, which only a textured draw follows),
+ * carries (DRAW_SIZED), -2 the same each vertex on the ground under it (DRAW_GROUND, which only a textured draw follows), -3
+ * the same bent along its instance's bend first (DRAW_BENT, bend.ts),
  * 1 each vertex on its own bone, 2 each on its own bone of the pose the draw stands in (DRAW_ONE_BONE) and then on the
  * instance's first bone, 3 each on up to four bones by its skin entry. `entries` says the level has those.
  */
 export function skinMode(flags: number, entries: boolean): number {
-  if ((flags & DRAW_SKINNED) === 0) return (flags & DRAW_SIZED) !== 0 ? -1 : (flags & DRAW_GROUND) !== 0 ? -2 : 0;
+  if ((flags & DRAW_SKINNED) === 0) return (flags & DRAW_SIZED) !== 0 ? -1 : (flags & DRAW_GROUND) !== 0 ? -2 : (flags & DRAW_BENT) !== 0 ? -3 : 0;
   return (flags & DRAW_ONE_BONE) !== 0 ? 2 : entries ? 3 : 1;
 }
 
@@ -452,7 +454,7 @@ ${layered ? "out vec3 vBox;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
-${dyed ? DYE : ""}${ON_GROUND}void main() {
+${dyed ? DYE : ""}${ON_GROUND}${BEND_GLSL}void main() {
 
   // A body's rest normal, which its own shade reads (vehicle-shade.ts); on a wheel, its way out from the hub.
   vWheel = vec4(aNormal, 0.0);
@@ -505,15 +507,24 @@ ${dyed ? DYE : ""}${ON_GROUND}void main() {
     float a = iYaw * 6.283185307;
     float s = sin(a), c = cos(a);
     mat3 r = mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c);
+    vec3 bn = aNormal, bt = aTangent.xyz;
+    if (uSkin < -2.5) l = bent(l, bn, bt);
     p = r * (uSkin < -0.5 && uSkin > -1.5 ? l * (float(iRegB.y) / ${f(SIZE_UNITS)}) : l) + iPos + uOffset;
-    if (uSkin < -1.5) p.y = onGround(p, l.y);
-    n = r * aNormal;
-    t = r * aTangent.xyz;
+    if (uSkin < -1.5 && uSkin > -2.5) p.y = onGround(p, l.y);
+    n = r * bn;
+    t = r * bt;
   }
 ${dyed ? "  vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));\n  vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 && uSkin > -1.5 ? 0u : iRegB.y));\n" : ""}  vRel = p;
 ${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
   vTangent = vec4(normalize(t), aTangent.w);
   vUv = uUv.xy + aUv * uUv.zw;
+  // A bent piece's faces along it take the strip by the station, and its wear what it is and where (BENT_WEAR_GLSL).
+  if (uSkin < -2.5) {
+    if (abs(aNormal.x) < 0.5) vUv.x = gBent.x / ${f(STRIP_METRES)};
+    vWheelPoint = gBent;
+    vWheel = vec4(iBendB.yz * 0.001, 0.0, 0.0);
+    vFinishSeed = iBendB.w;
+  }
 ${layered ? "  vBox = aPos;\n" : ""}  gl_Position = ${drops ? "handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : " : ""}uViewProj * vec4(p, 1.0);
 }`;
 
@@ -732,7 +743,7 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uOptics;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -773,6 +784,9 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float age = fract(uStreetMaterial)*4.0;
   bool burntSheet = int(uStreetMaterial) == ${BURNT_SHEET};
   if (age > 0.0) weatherVehicle(albedo,mro,vWheelPoint,vFinishSeed,age,burntSheet);
+#ifdef BENT_WEAR
+  if (uSkin < -2.5 && mod(floor(fFacade.w / 4.0), 2.0) < 0.5) bentWear(albedo, mro, vWheelPoint, face.y, vFinishSeed, vWheel.xy, fwidth(vWheelPoint.x));
+#endif
   float coat = 0.0, chrome = 0.0;
   // How much of the sky a wheeled body's own arches, floor and tyres leave it (vehicle-shade.ts).
   float own = 1.0;

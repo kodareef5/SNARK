@@ -4,6 +4,7 @@ import type { RuinFinish, RuinShape } from "../../content/ruins.ts";
 import type { Footprint } from "./statics.ts";
 import type { Cars } from "./street-cars.ts";
 import type { ReturnRules } from "./corners.ts";
+import type { BentRules } from "./bent-walks.ts";
 import type { Harbours } from "../boat/sites.ts";
 import type { Facts } from "./labels.ts";
 import { rand3 } from "./raster.ts";
@@ -61,7 +62,8 @@ export interface Vocabulary {
  * road's half width a junction keeps its corners open, and one walk in `boxEvery` with a utility box at its back;
  * `returns`, the corners where two streets meet, rounded on the ground and given curb returns (corners.ts).
  */
-export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; boxEvery: number; returns?: ReturnRules }
+/** With `bent`, the street's edge is bent sections by street class (bent-walks.ts) in place of the walk kit and its returns. */
+export interface Walks { classes: string[]; width: number; gutterEvery: number; flat: number; fromJunction: number; boxEvery: number; returns?: ReturnRules; bent?: BentRules }
 export interface Rule {
   event?: { travel: [number, number]; exposure: number; shelter: number };
   party?: number[];

@@ -111,6 +111,13 @@ const STATED: Readonly<Record<string, readonly number[]>> = Object.fromEntries(
  *   mm; 6 m: 8, 14, 56 and 220 mm; 8 m: 8, 19, 73 and 288 mm. On medium a level of 8 mm is first drawn at 28 m, of
  *   56 mm at 196 m; the last is past the near city's 288 m at 1080 rows on every tier.
  */
+/** Each bent piece's triangles by level, as bent.py makes them. */
+const BENT_TRIANGLES: Readonly<Record<string, number[]>> = {
+  raised_s: [56, 44, 20], raised_c: [266, 116, 32], worn_s: [56, 44, 20], worn_c: [266, 116, 32], flush_s: [56, 44, 20], flush_c: [266, 116, 32],
+  median_s: [52, 28, 16], median_c: [248, 76, 26],
+  raised_flush: [86, 44, 20], flush_raised: [86, 44, 20], worn_flush: [86, 44, 20], flush_worn: [86, 44, 20], raised_worn: [86, 44, 20], worn_raised: [86, 44, 20],
+};
+
 const EDGE: readonly { id: string; object: string; triangles: number[]; errors: number[] }[] = [
   { id: "core:zruin_zwalk8_concrete", object: "zwalk8", triangles: [92, 12], errors: [0.009] },
   { id: "core:zruin_zwalk8g_concrete", object: "zwalk8g", triangles: [100, 20], errors: [0.009] },
@@ -119,6 +126,27 @@ const EDGE: readonly { id: string; object: string; triangles: number[]; errors: 
   { id: "core:zzzcurb_r4", object: "curb_r4", triangles: [680, 444, 190, 86, 20], errors: [0.01, 0.022, 0.086, 0.339] },
   { id: "core:zzzcurb_r6", object: "curb_r6", triangles: [792, 540, 246, 106, 28], errors: [0.008, 0.014, 0.056, 0.22] },
   { id: "core:zzzcurb_r8", object: "curb_r8", triangles: [904, 492, 246, 86, 28], errors: [0.008, 0.019, 0.073, 0.288] },
+];
+
+/**
+ * The bent street sections (content/bends.ts), which bent.py makes on the concrete strip: each kerb a straight of one
+ * length of rings and a curve of eight, and the joins between two kerbs. Each coarser level's error is stated, as a
+ * measure of points does not see an edge's round or a curve's chord: a straight's is its top edge in one chamfer, then
+ * square with its joints filled and its gutter's face gone, its outer edge 12 mm over the road (the raised kerb's 2.5 cm
+ * round 8 mm off as a chamfer, 36 mm square with the gutter, as measured; the worn kerb's 6 cm round 18 and 38 mm; the
+ * median's back 53 mm square); a curve's is its chords' sagitta at the walk's back of a walk
+ * on the outside of a bend, its eight segments' being under 4 mm at the face (shared/world/bends.ts) and so under 7 mm
+ * there, four times that in four segments and sixteen in two, or its edge's where that is more.
+ */
+const BENT: readonly { id: string; object: string; triangles: number[]; errors: number[] }[] = [
+  ...(["raised", "worn", "flush", "median"] as const).flatMap((kerb) => {
+    const edge = kerb === "worn" ? [0.018, 0.038] : kerb === "flush" ? [0.004, 0.036] : kerb === "median" ? [0.008, 0.053] : [0.008, 0.036];
+    return [
+      { id: `core:zzzzzbend_${kerb}_s`, object: `bent_${kerb}_s`, triangles: BENT_TRIANGLES[`${kerb}_s`]!, errors: edge },
+      { id: `core:zzzzzbend_${kerb}_c`, object: `bent_${kerb}_c`, triangles: BENT_TRIANGLES[`${kerb}_c`]!, errors: [Math.max(edge[0]!, 0.028), 0.11] },
+    ];
+  }),
+  ...["raised_flush", "flush_raised", "worn_flush", "flush_worn", "raised_worn", "worn_raised"].map((join) => ({ id: `core:zzzzzbend_${join}`, object: `bent_${join}`, triangles: BENT_TRIANGLES[join]!, errors: [0.018, 0.04] })),
 ];
 
 /**
@@ -132,11 +160,12 @@ const DOCK: readonly { id: string; object: string; triangles: number[] }[] = Obj
 
 export default {
   kind: "pieces",
-  source: { scripts: ["model.py", "curb.py", "dock.py"] },
+  source: { scripts: ["model.py", "curb.py", "dock.py", "bent.py"] },
   pieces: [
     ...Object.entries(PIECES).map(([name, triangles]) => ({ id: `core:zzstreet_${name}`, object: name, triangles, ...(STATED[name] ? { errors: STATED[name] } : {}) })),
     ...EDGE,
     ...DOCK,
+    ...BENT,
   ],
   materials: {
     street: { base: "tex/street_base.png", normal: "tex/street_normal.png", packed: "tex/street_packed.png", height: "tex/street_height.png" },
