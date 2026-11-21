@@ -13,6 +13,8 @@ const HELICOPTER_BINDINGS: Record<string, number> = { Space: BTN_JUMP, ControlLe
 const MOVE_KEYS = new Set(["KeyW", "KeyA", "KeyS", "KeyD"]);
 /** A press toggles the stance. */
 const STANCE_KEYS: Record<string, number> = { KeyC: BTN_CROUCH, KeyX: BTN_PRONE };
+/** Ticks a press of the glider's key is held for the step to sample. */
+const GLIDE_PULSE = 2;
 const MOUSE: readonly number[] = [BTN_PRIMARY, 0, BTN_SECONDARY];
 
 export class Controls {
@@ -32,6 +34,26 @@ export class Controls {
   wing = false;
   private flyer = false;
   private helicopter = false;
+  /**
+   * On foot in the air with a glider carried (planning/workstreams/glider.md): C is the glider's key, not a stance, and no
+   * stance is sent. A press is held until the step has had GLIDE_PULSE ticks to see it, so a tap that comes and goes between
+   * two frames, as a touch button's and a pad's do, is not lost.
+   */
+  private gliding = false;
+  private glideUntil = -1;
+  private tick = 0;
+
+  /** Call it each frame with the tick the prediction has reached. */
+  glider(on: boolean, tick: number): void {
+    this.tick = tick;
+    const over = this.glideUntil >= 0 && tick > this.glideUntil;
+    if (on === this.gliding && !over) return;
+    if (over || !on) this.glideUntil = -1;
+    // A stance chosen on the ground is not kept through a fall.
+    if (on && !this.gliding) this.stance = 0;
+    this.gliding = on;
+    this.refresh();
+  }
   /** Direct control uses the same rotor physics with body-rate cyclic and held collective. */
   directFlight = false;
 
@@ -78,6 +100,9 @@ export class Controls {
     const stance = this.flyer || this.helicopter ? undefined : STANCE_KEYS[code];
     if (this.helicopter && code === "KeyC") {
       if (down && !held.has(code)) this.directFlight = !this.directFlight;
+    } else if (this.gliding && stance !== undefined) {
+      // Neither stance is taken in the air under a glider, and C throws it open or folds it.
+      if (down && !held.has(code) && code === "KeyC") this.glideUntil = this.tick + GLIDE_PULSE;
     } else if (stance !== undefined) {
       // The held set swallows key repeats, so holding the key toggles once.
       if (down && !held.has(code)) this.stance = this.stance === stance ? 0 : stance;
@@ -136,6 +161,7 @@ export class Controls {
     this.moveX = Math.max(-1,Math.min(1,(k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0) + this.analogX + this.touchX));
     this.moveZ = Math.max(-1,Math.min(1,(k.has("KeyW") ? 1 : 0) - (k.has("KeyS") ? 1 : 0) + this.analogZ + this.touchZ));
     let buttons = this.mouse | this.padMouse | this.stance | (this.wing ? BTN_JUMP : 0) | (this.helicopter && this.directFlight ? BTN_MOD : 0);
+    if (this.gliding && (this.glideUntil >= 0 || k.has("KeyC") || this.padHeld.has("KeyC"))) buttons |= BTN_CROUCH;
     const bindings = this.helicopter ? HELICOPTER_BINDINGS : this.flyer ? FLYER_BINDINGS : BINDINGS;
     for (const code of k) buttons |= bindings[code] ?? 0;
     for (const code of this.padHeld) buttons |= bindings[code] ?? 0;

@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot).
+// Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
 // with its landmarks; --moved 1 draws their moving statics at their second state (a yacht's sails set).
@@ -24,6 +24,7 @@ import { Falling } from "../client/core/rubble.ts";
 import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
 import { AnimState, CUE_DEAD, CUE_TORPOR, HumanAnim, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
+import { GLIDE_DIVING, GLIDE_FLARED, GLIDE_TRIM } from "../shared/sim/character.ts";
 import { EMOTES, EMOTE_NUMBER } from "../shared/anim/emotes.ts";
 import { sizeSpan } from "../shared/anim/corpse.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
@@ -553,6 +554,47 @@ export function statesScene(view: ProvingView, which: string, tick: number, faci
   cam.y = view.hf.heightAt(x0, z0) + 0.35 + far * Math.tan(0.12);
   cam.yaw = 0;
   cam.pitch = -0.12;
+}
+
+/**
+ * A survivor under its glider (planning/workstreams/glider.md), four times across: at its trim, slipping to its left, in a
+ * dive and flared.
+ */
+export function glideScene(view: ProvingView, tick: number, facing: number): void {
+  const r = view.remote;
+  r.count = 0;
+  r.tick = tick;
+  const kind = view.reg.index.get("core:survivor")!;
+  const st = new AnimState();
+  // Speed, dir and phase.
+  const rows = [[15, 0, GLIDE_TRIM], [10, 4, GLIDE_TRIM], [15, 0, GLIDE_DIVING], [0, 0, GLIDE_FLARED]] as const;
+  rows.forEach((row, i) => {
+    const n = r.count++;
+    r.id[n] = idWithSeed(i * 7) + 1024 * (n + 1);
+    r.kind[n] = kind;
+    r.x[n] = 256 + (1.5 - i) * 4.6;
+    r.z[n] = 230;
+    r.y[n] = view.hf.heightAt(r.x[n]!, r.z[n]!) + 1.2;
+    r.yaw[n] = facing;
+    st.speed = row[0];
+    st.dir = row[1];
+    st.pitch = 0;
+    st.mode = 1;
+    st.stance = 0;
+    st.grounded = false;
+    st.setAction(ACT_NONE, HOLD_HANDS, 0);
+    st.setJet(0, 0);
+    st.setGlide(true, row[2]);
+    r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+    r.flags[n] = 0;
+    r.anim[n] = st.pack();
+    r.cue[n] = st.packCue();
+  });
+  const cam = view.cam;
+  cam.x = 256;
+  cam.z = 206;
+  cam.y = view.hf.heightAt(cam.x, cam.z) + 5.2;
+  cam.fovY = 0.42;
 }
 
 export function posesScene(view: ProvingView, tick: number, first: number, facing: number): void {
@@ -1312,6 +1354,7 @@ if (import.meta.main) {
     }
     if (args.includes("--emotes")) emotesScene(view, arg("emotes") ?? "0", Number(arg("tick") ?? 2000), (Number(arg("face") ?? 180) * Math.PI) / 180);
     if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
+    if (args.includes("--glide")) glideScene(view, Number(arg("tick") ?? 0), (Number(arg("face") ?? 150) * Math.PI) / 180);
     if (saddles) {
       // In the colours its asset is reviewed in.
       const own = (await findAssets(source)).find((a) => a.id === species)?.spec;

@@ -17,6 +17,8 @@ const JUNGLE_TREES = 14;
 /** Metres above the ground at which wind is heard, and blows hard. */
 const WIND_LIGHT = 12;
 const WIND_STRONG = 35;
+/** Metres per second at which the air over a glider is at its loudest: its dive. */
+const GLIDER_LOUD = 17;
 
 const BIOMES = ["beach", "jungle", "grass"];
 const BED = BIOMES.map((b) => [cueKey(`bed/${b}/day`), cueKey(`bed/${b}/night`)]);
@@ -26,6 +28,7 @@ const K = {
   shore: cueKey("shore"),
   windLight: cueKey("wind/light"),
   windStrong: cueKey("wind/strong"),
+  glider: cueKey("glider/air"),
   dawn: cueKey("stinger/dawn"),
   dusk: cueKey("stinger/dusk"),
 };
@@ -49,9 +52,10 @@ export class WorldSounds {
 
   /**
    * One frame at the ear (x, y, z), `hour` of the day; `trees(x, z, r)` counts trees within r metres. An hour `turned` by a
-   * setting or the sundial crosses sunrise or sunset without its stinger, however often it is swept across.
+   * setting or the sundial crosses sunrise or sunset without its stinger, however often it is swept across. `glide` is the
+   * speed of the player's own body under an open glider, in metres per second, or 0.
    */
-  update(nowMs: number, hf: Heightfield, x: number, y: number, z: number, hour: number, trees: (x: number, z: number, r: number) => number, loop: Loop, once: (key: number) => void, turned = false): void {
+  update(nowMs: number, hf: Heightfield, x: number, y: number, z: number, hour: number, trees: (x: number, z: number, r: number) => number, loop: Loop, once: (key: number) => void, turned = false, glide = 0): void {
     if (nowMs >= this.recheckMs) {
       this.recheckMs = nowMs + 1000;
       let wet = 0;
@@ -75,6 +79,8 @@ export class WorldSounds {
     const above = y - Math.max(hf.heightAt(x, z), hf.waterAt(x, z));
     loop(WORLD_LOOPS + 13, K.windLight, Math.min(1, (above - WIND_LIGHT) / WIND_LIGHT), !under && above > WIND_LIGHT && above <= WIND_STRONG);
     loop(WORLD_LOOPS + 14, K.windStrong, 1, !under && above > WIND_STRONG);
+    // The air over the own body's wings: `glide` is its speed under an open glider, 0 with none open.
+    loop(WORLD_LOOPS + 15, K.glider, Math.min(1, 0.25 + (0.75 * glide) / GLIDER_LOUD), !under && glide > 0);
     if (this.hour >= 0 && !under && !turned) {
       if (this.hour < SUNRISE && hour >= SUNRISE && hour < SUNRISE + 1) once(K.dawn);
       if (this.hour < SUNSET && hour >= SUNSET && hour < SUNSET + 1) once(K.dusk);

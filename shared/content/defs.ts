@@ -450,7 +450,7 @@ export interface MaterialDef extends Named {
 
 export interface ItemDef extends Named {
   readonly type: "item";
-  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact";
+  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "vehicle" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact" | "glider";
   readonly id: string;
   /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
@@ -516,6 +516,8 @@ export interface ItemDef extends Named {
   readonly blueprint?: boolean;
   /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
   readonly use?: UseFacet;
+  /** A glider, flown from anywhere in the bag (planning/workstreams/glider.md). */
+  readonly glide?: GlideFacet;
   /**
    * False for a thing that may not leave its server, as ARK's Element, tributes and boss trophies may not: a survivor carrying
    * one is refused travel until it puts it down (ark.wiki.gg CrossARK Transfers, 2026-11-15). Omitted, it travels.
@@ -540,6 +542,19 @@ export interface UseFacet {
    * and not swimming. It stacks to 1 and holds its water as the slot's durability. Made, it is empty.
    */
   readonly holds?: { readonly water: number; readonly each: number };
+}
+
+/**
+ * A glider (planning/workstreams/glider.md), which stands where ARK's Parachute does and flies as no parachute does. The
+ * best serviceable one a survivor carries, anywhere in its inventory, is the one it flies: opened in the air with Crouch, or
+ * with Jump out of the cuirass, and flown by the numbers of its grade (shared/sim/character.ts). It wears as it is flown
+ * and is charged as it folds, never in the air: one use for each `seconds` it was open, and at least one a flight.
+ */
+export interface GlideFacet {
+  /** 1 to 3. Only 1, the frond glider's, has numbers today. */
+  readonly grade: number;
+  readonly uses: number;
+  readonly seconds: number;
 }
 
 /** How an item is made. ARK keeps this on the item too. */

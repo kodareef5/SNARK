@@ -1067,6 +1067,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
     inHand.delete(c.pid);
+    glidingSince.delete(c.pid);
     if (persistence) persistence.detach(c.pid);
     else {
       const rec = records.byPid.get(c.pid);
@@ -1281,6 +1282,34 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const rec = records.byPid.get(c.pid);
     if (rec && !(world.ents.jetGear[c.ent]! & JET_BOOTS)) survival.landed(rec, speed);
   };
+  // A glider wears as it is flown and is charged as it folds, never in the air: one use for each of its `seconds` it was
+  // open, and at least one a flight (GlideFacet). The one charged is the one refreshBody says it flies.
+  const glidingSince = new Map<number, number>();
+  /** The slot of the best serviceable glider `rec` carries, the first of them, or -1. */
+  function gliderSlot(rec: EntityRecord): number {
+    const inv = rec.inv;
+    let best = -1;
+    if (inv) for (let s = 0; s < inv.cap; s++) {
+      const grade = reg.glide[inv.item[s]!]!;
+      if (grade > 0 && inv.dur[s]! > 0 && (best < 0 || grade > reg.glide[inv.item[best]!]!)) best = s;
+    }
+    return best;
+  }
+  game.onGlide = (c, opened) => {
+    if (opened) {
+      glidingSince.set(c.pid, world.tick);
+      return;
+    }
+    const since = glidingSince.get(c.pid);
+    glidingSince.delete(c.pid);
+    const rec = records.byPid.get(c.pid);
+    const slot = rec ? gliderSlot(rec) : -1;
+    if (!rec || since === undefined || slot < 0) return;
+    const item = rec.inv!.item[slot]!;
+    const used = Math.max(1, Math.ceil((world.tick - since) / reg.glideTicks[item]!));
+    const def = reg.defs[item];
+    if (items.wear(rec, slot, used) === 0) notice(c.pid, `Your ${(def?.type === "item" && def.label) || "glider"} has come apart.`);
+  };
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, tribes, voice,
     use,
@@ -1372,6 +1401,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       }
       const helmetChanged = ((ents.jetGear[e]! ^ suit) & JET_HELMET) !== 0;
       ents.jetGear[e] = suit;
+      // The glider it flies is the best serviceable one it carries, wherever it lies. Arms round a creature fly none.
+      const flown = arms < 0 ? gliderSlot(rec) : -1;
+      ents.glideGear[e] = flown >= 0 ? reg.glide[inv.item[flown]!]! : 0;
       if (!(suit & JET_CUIRASS)) ents.jetThrust[e] = ents.jetKeys[e] = ents.jetJumpTap[e] = ents.jetSprintTap[e] = 0;
       // Its air under water follows the helmet at once, not at the vitals' next deadline.
       if (helmetChanged) survival.touch(rec);

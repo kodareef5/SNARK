@@ -270,7 +270,7 @@ export class Sounds {
       if (view.own.alive) this.actions.ahead(view.own, this.ui, this.survivor, this.ahead);
       this.bodies.update(dt, remote, hf, ear.x, ear.y, ear.z, view.ownId, view.body, view.own.female, this.survivor, this.isSurvivor, this.hear);
       this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
-      this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true), view.turned ?? false);
+      this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true), view.turned ?? false, view.body && view.body.glide !== 0 ? Math.hypot(view.body.vx, view.body.vy, view.body.vz) : 0);
     }
     this.actions.nowMs = nowMs;
     this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);

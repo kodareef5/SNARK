@@ -9,6 +9,7 @@ import { Pose, sampleClip, type Clip } from "../../shared/anim/clip.ts";
 import { buildRig, type Rig } from "../../shared/anim/rigs.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
 import { Solved, boneToModel, rayZones, solve, zoneHit } from "../../shared/anim/skeleton.ts";
+import { GLIDER_ROOT_IN, GLIDER_ROOT_UP } from "../../shared/anim/glide-clips.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
@@ -645,7 +646,7 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false, others: r
       else report.faults.push(`${piece.id}: not in the pack`);
       if (mesh && PIECES.has(piece.id)) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!));
       else if (mesh && landmarkOf(asset) !== null) report.faults.push(...pieceFaults(mesh, report.meshes[report.meshes.length - 1]!, piece.budget ?? (LANDMARK_CELL.test(piece.id) ? (spec.budgets.cells ?? LANDMARK_TRIANGLES) : PIECE_TRIANGLES)));
-      if (mesh && piece.hold) report.faults.push(...heldFaults(mesh, piece.hold));
+      if (mesh && piece.hold) report.faults.push(...heldFaults(mesh, piece.hold, piece.wing === true));
       if (piece.dropped === undefined) continue;
       const lying = meshes.find((m) => m.id === `${piece.id}/dropped`);
       if (!lying) {
@@ -702,7 +703,7 @@ export function pieceFaults(mesh: SourceMesh, facts: MeshFacts, most: readonly (
  * bone of its hand; its grip, the origin, is within its bounds; and in the right hand its length runs along +Z, its
  * longest extent and reaching further forward than back, while in the left hand, a bow's, its limbs run along Y.
  */
-export function heldFaults(mesh: SourceMesh, hold: NonNullable<PieceSpec["hold"]>): string[] {
+export function heldFaults(mesh: SourceMesh, hold: NonNullable<PieceSpec["hold"]>, wing = false): string[] {
   const faults: string[] = [];
   const bone = HOLD_BONES[hold];
   if (mesh.skeleton !== HUMAN.id) faults.push(`${mesh.id}: it is held, and is not on the human skeleton`);
@@ -713,7 +714,17 @@ export function heldFaults(mesh: SourceMesh, hold: NonNullable<PieceSpec["hold"]
   if (missed.some((m) => m > GRIP_SLACK)) faults.push(`${mesh.id}: its grip, the origin, lies ${cm(Math.max(...missed))} cm outside it, and a held piece is modelled with its grip at the origin (within ${cm(GRIP_SLACK)} cm)`);
   const size = [0, 1, 2].map((k) => hi[k]! - lo[k]!);
   const across = `it spans ${size.map((v) => cm(v)).join(", ")} cm across x, y and z`;
-  if (hold === "prop_l") {
+  if (wing) {
+    // A glider's wing reaches out to its own side from the lashing over the head, which lies toward the body's middle
+    // from the grip and above it (shared/anim/glide-clips.ts): the left hand's toward +X, the right's toward -X.
+    const side = hold === "prop_l" ? 1 : -1;
+    const out = side > 0 ? hi[0]! : -lo[0]!, inward = side > 0 ? -lo[0]! : hi[0]!;
+    if (size[0]! < size[1]! || size[0]! < size[2]!) faults.push(`${mesh.id}: a wing, it does not span along X: ${across}`);
+    if (out < 1 || out > 2.6) faults.push(`${mesh.id}: a wing, its tip is ${cm(out)} cm out from its grip, and a wing reaches 100 to 260 cm`);
+    // Its innermost fronds may lie across the middle, over the other wing's.
+    if (inward < GLIDER_ROOT_IN - 0.06 || inward > GLIDER_ROOT_IN + 0.4) faults.push(`${mesh.id}: a wing, it reaches ${cm(inward)} cm toward the body's middle from its grip, and its root at the lashing is ${cm(GLIDER_ROOT_IN)} cm there`);
+    if (hi[1]! < GLIDER_ROOT_UP - 0.03) faults.push(`${mesh.id}: a wing, its top is ${cm(hi[1]!)} cm over its grip, and its root at the lashing is ${cm(GLIDER_ROOT_UP)} cm above it`);
+  } else if (hold === "prop_l") {
     // The left hand holds a bow as tools/pack/weapons.ts draws one: its limbs along Y, either side of the grip, and it
     // shoots along +X. Its longest extent is along Y; which way it reaches is the bow's own.
     if (size[1]! < size[0]! || size[1]! < size[2]!) faults.push(`${mesh.id}: held in the left hand, its limbs do not run along Y: ${across}`);

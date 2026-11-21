@@ -10,7 +10,7 @@ import { B_FOOT_R, B_UPPER_ARM_L, B_UPPER_ARM_R, B_LOWER_ARM_L, B_LOWER_ARM_R, B
 import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
-import { bootThrust, JET_DASH, JET_FIST, JET_UP, JET_HOVER, JET_LIFT, MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
+import { bootThrust, GLIDE_DIVING, GLIDE_FLARED, GLIDE_TRIM, JET_DASH, JET_FIST, JET_UP, JET_HOVER, JET_LIFT, MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
 import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
 import { cradle } from "./hold.ts";
 import { emotePose } from "./emote.ts";
@@ -93,8 +93,13 @@ export const CUE_HURT_SHIFT = 24;
 export const CUE_DECAY_SHIFT = 26;
 /** On a living creature only. A corpse uses these bits for its decay stage. */
 export const CUE_RIVALRY = 1 << CUE_DECAY_SHIFT;
-/** The second decay bit on living survivors marks active chest thrust. */
+/**
+ * The second decay bit on living survivors marks a body whose motion bits are laid out for the air: active chest thrust,
+ * with its mode less one in three bits from bit 8, or an open glider, with ANIM_GLIDE and its phase there.
+ */
 export const CUE_JET = 1 << (CUE_DECAY_SHIFT + 1);
+/** The mode field's value for a glider at trim; the two above it are its dive and its flare. The jet's modes end at 4. */
+export const ANIM_GLIDE = 5;
 export const CUE_MATING_SHIFT = 28;
 /**
  * A survivor's emote (protocol 37), its own word beside the pose and the cues: the emote's number in shared/anim/emotes.ts
@@ -158,11 +163,21 @@ export class AnimState {
   jet = false;
   jetMode = JET_LIFT;
   bootJets = false;
+  /** Under an open glider (planning/workstreams/glider.md), and how it flies: GLIDE_TRIM, GLIDE_DIVING or GLIDE_FLARED. */
+  glide = false;
+  glidePhase = GLIDE_TRIM;
 
   setJet(mode: number, gear: number): void {
     this.jet = mode !== 0;
     this.jetMode = mode || JET_LIFT;
     this.bootJets = bootThrust(mode, gear, this.speed * SPEED_STEP);
+  }
+
+  /** Call it after setJet: an open glider keeps the jet quiet, and takes its place in the word. */
+  setGlide(open: boolean, phase: number): void {
+    this.glide = open;
+    this.glidePhase = open ? phase : GLIDE_TRIM;
+    if (open) this.jet = false;
   }
   rivalry = false;
   /** 0, or 1 to MATING_STEPS. */
@@ -176,7 +191,9 @@ export class AnimState {
   /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
     const motion =
-      this.jet && !this.grounded && this.mode === MODE_WALK
+      this.glide && !this.grounded && this.mode === MODE_WALK
+        ? this.speed | (this.dir << 4) | ((ANIM_GLIDE + this.glidePhase) << 8)
+        : this.jet && !this.grounded && this.mode === MODE_WALK
         ? this.speed | (this.dir << 4) | ((this.jetMode-1) << 8) | (this.bootJets ? 1 << 11 : 0)
         : this.mode === MODE_FLYER
         ? this.speed | ((this.bank & 15) << 4) | (ANIM_FLYING << 8) | ((this.climb & 3) << 10)
@@ -188,7 +205,7 @@ export class AnimState {
   packCue(): number {
     const cue = this.cue === CUE_NONE ? 0 : (this.cue << 1) | ((this.cueStart & 255) << 4);
     const layer = this.layer === LAYER_NONE ? 0 : (this.layer << 12) | ((this.layerStart & 255) << 14);
-    const condition = this.dead ? (this.decay & 3) << CUE_DECAY_SHIFT : (this.rivalry ? CUE_RIVALRY : 0) | (this.jet ? CUE_JET : 0);
+    const condition = this.dead ? (this.decay & 3) << CUE_DECAY_SHIFT : (this.rivalry ? CUE_RIVALRY : 0) | (this.jet || this.glide ? CUE_JET : 0);
     const lasting = (this.held ? CUE_HELD : 0) | (this.dead ? CUE_DEAD : 0) | ((this.hurt & 3) << CUE_HURT_SHIFT) | condition | ((this.mating & 7) << CUE_MATING_SHIFT);
     return ((this.out ? CUE_OUT : 0) | cue | layer | lasting) >>> 0;
   }
@@ -223,6 +240,7 @@ export class AnimState {
     this.hurt = (cue >>> CUE_HURT_SHIFT) & 3;
     this.decay = this.dead ? (cue >>> CUE_DECAY_SHIFT) & 3 : 0;
     this.jet = !this.dead && (cue & CUE_JET) !== 0;
+    this.glide = false;
     this.rivalry = !this.dead && (cue & CUE_RIVALRY) !== 0;
     this.mating = (cue >>> CUE_MATING_SHIFT) & 7;
   }
@@ -233,10 +251,19 @@ export class AnimState {
     this.speed = word & 15;
     this.jetMode = JET_LIFT;
     this.bootJets = false;
+    this.glidePhase = GLIDE_TRIM;
     if (this.jet) {
       this.dir = (word >>> 4) & 15;
-      this.jetMode = ((word >>> 8) & 7) + 1;
-      this.bootJets = (word & (1 << 11)) !== 0;
+      const air = (word >>> 8) & 7;
+      if (air >= ANIM_GLIDE) {
+        // The same bit, and the modes the jet leaves free: under a glider, with no thrust.
+        this.jet = false;
+        this.glide = true;
+        this.glidePhase = air - ANIM_GLIDE;
+      } else {
+        this.jetMode = air + 1;
+        this.bootJets = (word & (1 << 11)) !== 0;
+      }
       this.mode = MODE_WALK;
       this.grounded = false;
       this.stance = STANCE_STAND;
@@ -324,6 +351,11 @@ export class HumanAnim {
   readonly gunLowered: Clip | null;
   readonly pistolAimed: Clip | null;
   readonly pistolLowered: Clip | null;
+  /** Under a glider: at its trim, in a dive, flared, and as it is thrown open (shared/anim/glide-clips.ts). */
+  readonly glide: Clip | null;
+  readonly glideDive: Clip | null;
+  readonly glideFlare: Clip | null;
+  readonly glideFolded: Clip | null;
   /** Each emote's clip by its number (shared/anim/emotes.ts), null for none or one not loaded. */
   readonly emotes: (Clip | null)[];
   /** The gaits of each way of moving, slowest first: on foot, crouched, prone and swimming. */
@@ -362,6 +394,10 @@ export class HumanAnim {
     this.gunLowered = find("human/gun_lowered");
     this.pistolAimed = find("human/pistol_aimed");
     this.pistolLowered = find("human/pistol_lowered");
+    this.glide = find("human/glide");
+    this.glideDive = find("human/glide_dive");
+    this.glideFlare = find("human/glide_flare");
+    this.glideFolded = find("human/glide_folded");
     this.emotes = [null, ...EMOTES.map((e) => find(emoteClipId(e.id)))];
     const scratch = new Pose(HUMAN_BONES);
     const solved = new Solved(HUMAN_BONES);
@@ -432,6 +468,20 @@ const GUN_LOWER = 5;
 const KICK = 0.09;
 const KICK_TICKS = 5;
 
+/** Seconds a glider's wings take to spread once thrown open, and how fast its lean follows its dive or flare, a second. */
+const WING_OPEN_SECONDS = 0.3;
+const WING_LEAN_RATE = 3.5;
+/**
+ * Its roll into a turn: radians of roll for each radian a second its way turns, the most turn counted, the seconds the
+ * rate is eased over, and the metres it must have moved since it was last drawn for its way to be read.
+ */
+const WING_BANK = 0.3;
+const WING_TURN_MOST = 3;
+const WING_TURN_EASE = 0.2;
+const WING_MOVED = 0.02;
+/** A gliding body rolls about its wings' lashing (GLIDER_LASHING's height). */
+const GLIDE_PIVOT = 1.99;
+
 const a = new Pose(HUMAN_BONES);
 const b = new Pose(HUMAN_BONES);
 const q = new Float64Array(4);
@@ -444,13 +494,46 @@ const v = new Float64Array(3);
 export function advanceHuman(anim: HumanAnim, g: Gait, st: AnimState, tick: number, x: number, z: number, yaw: number): void {
   const gaits = anim.gaitsOf(st);
   const elapsed = (tick - g.tick) / TICK_RATE;
+  const fromX = g.x, fromZ = g.z;
   const metres = g.track(x, z, yaw, tick, st.speed * SPEED_STEP, FOOT_RADIUS, 1);
-  if (st.jet && !st.grounded) {
+  if ((st.jet || st.glide) && !st.grounded) {
     const travel = st.speed / SPEED_MAX, direction = st.dir * TAU / DIR_STEPS;
     const fresh = !g.flightJoints || metres < 0;
     const joints = g.flightJoints ??= new FlightJoints();
     joints.step(travel*detCos(direction), travel*detSin(direction), fresh ? -1 : elapsed);
   } else if (g.flightJoints) g.flightJoints = undefined;
+  if (st.glide && !st.grounded) {
+    const lean = st.glidePhase === GLIDE_DIVING ? 1 : st.glidePhase === GLIDE_FLARED ? -1 : 0;
+    if (metres < 0 || !(elapsed >= 0)) {
+      // Come into view already flying, it is open.
+      g.wingOpen = 1;
+      g.wingLean = lean;
+    } else {
+      g.wingOpen = g.wingOpen === g.wingOpen ? Math.min(1, g.wingOpen + elapsed / WING_OPEN_SECONDS) : 0;
+      const was = g.wingLean === g.wingLean ? g.wingLean : lean;
+      g.wingLean = was + clamp(lean - was, -elapsed * WING_LEAN_RATE, elapsed * WING_LEAN_RATE);
+    }
+    // How fast its way over the ground turns, for the roll into a turn: from where it was drawn last to where it is now.
+    const dx = x - fromX, dz = z - fromZ;
+    let rate = 0;
+    if (metres < 0 || !(elapsed > 0)) {
+      g.wingTurn = 0;
+      g.wingHeading = Number.NaN;
+    } else if (dx * dx + dz * dz > WING_MOVED * WING_MOVED) {
+      const heading = detAtan2(dx, dz);
+      if (g.wingHeading === g.wingHeading) {
+        let turn = heading - g.wingHeading;
+        if (turn > PI) turn -= TAU;
+        else if (turn < -PI) turn += TAU;
+        rate = clamp(turn / elapsed, -WING_TURN_MOST, WING_TURN_MOST);
+      }
+      g.wingHeading = heading;
+    }
+    if (elapsed > 0) g.wingTurn += ((rate - g.wingTurn) * elapsed) / (WING_TURN_EASE + elapsed);
+  } else {
+    g.wingOpen = g.wingLean = g.wingHeading = Number.NaN;
+    g.wingTurn = 0;
+  }
   const stride = gaitShares(gaits, g.speed, true, anim.w);
   if (metres < 0) g.phase = tickPhase(tick + st.seed, g.speed, stride);
   else g.step(metres, stride);
@@ -533,6 +616,37 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     }
     spineShare = 0.09;
     twistAngle = 0;
+  } else if (st.glide && !st.grounded && anim.glide) {
+    // Hung from its two wings (shared/anim/glide-clips.ts): at its trim, leaned into a dive or a flare, and spreading from
+    // shut as it is thrown open. A pose with no gait, the server's, is the state's own.
+    const open = gait && gait.wingOpen === gait.wingOpen ? gait.wingOpen : 1;
+    const lean = gait && gait.wingLean === gait.wingLean ? gait.wingLean : st.glidePhase === GLIDE_DIVING ? 1 : st.glidePhase === GLIDE_FLARED ? -1 : 0;
+    loop(anim.glide, t, out);
+    if (lean > 0 && anim.glideDive) {
+      loop(anim.glideDive, t, a);
+      blendPose(out, out, a, lean);
+    } else if (lean < 0 && anim.glideFlare) {
+      sampleClip(anim.glideFlare, 0, a);
+      blendPose(out, out, a, -lean);
+    }
+    if (open < 1 && anim.glideFolded) {
+      sampleClip(anim.glideFolded, 0, a);
+      // Out fast and settling, as a thing thrown open is.
+      const k = 1 - open;
+      blendPose(out, out, a, k * k);
+    }
+    // It rolls about the lashing over its head, body and wings as one: into a turn, by how fast its way turns, and a
+    // little into a slip; and it swings a little under its wings as its speed changes.
+    const travel = st.speed / SPEED_MAX, direction = st.dir * TAU / DIR_STEPS;
+    const left = travel * detSin(direction);
+    const joints = gait?.flightJoints?.bend;
+    const rollLag = clamp((joints?.[1] ?? left) - left, -0.3, 0.3);
+    const swing = clamp((joints?.[0] ?? 0) - travel * detCos(direction), -0.3, 0.3);
+    const carve = gait ? clamp(gait.wingTurn * WING_BANK, -0.6, 0.6) : 0;
+    turnRoot(out, 0, 0, 1, -(carve + left * 0.24 + rollLag * 0.4), GLIDE_PIVOT);
+    if (swing !== 0) turnRoot(out, 1, 0, 0, swing * 0.35, GLIDE_PIVOT);
+    spineShare = 0;
+    twistAngle = 0;
   } else if (!st.grounded) {
     loop(anim.fall, t, out);
     twistAngle = 0;
@@ -549,7 +663,8 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
   }
 
   const act = st.action & 7;
-  const hold = st.action >>> 3;
+  // Both hands are on a glider's handles, whatever the body had in them.
+  const hold = st.glide && !st.grounded ? HOLD_HANDS : st.action >>> 3;
   // Ticks since the act began. A pose drawn a moment before the act's first tick wraps above 250, and that counts as 0.
   let e = act === ACT_NONE ? 0 : (tick - st.actionStart) % 256;
   if (e < 0) e += 256;

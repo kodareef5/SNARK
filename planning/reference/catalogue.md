@@ -10,8 +10,8 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 44 classes: 31 built, 5 partly built, and 8 stubs that
-wait for a feature. The core pack holds 1555 definitions.
+There are 45 classes: 32 built, 5 partly built, and 8 stubs that
+wait for a feature. The core pack holds 1557 definitions.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
 several values: `core:raptor#clip/walk`. Levels of detail are inside the asset
@@ -40,6 +40,7 @@ share a `tag`.
 | `item/vehicle` | a deployable vehicle assembly | built | `stack`, `deploys` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 2 |
 | `item/egg` | PrimalItemConsumable_Egg_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `eat`, `spoilHours`, `spoilsInto` | 20 |
 | `item/feces` | the feces items, small to massive | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto`, `fuel` | 4 |
+| `item/glider` | PrimalItemConsumable_Parachute, and the Glider Suit skin | built | `stack`, `glide` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 1 |
 | `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 | `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 | `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
@@ -59,6 +60,7 @@ share a `tag`.
 - **`item/vehicle`** on shelf `items/vehicles`. A completed assembly placed as a vehicle on a clear supporting surface.
 - **`item/egg`** on shelf `items/eggs`. An egg in the hand, eaten or set down. A fertilised one stacks to 1, keeps its young and does not hatch while held.
 - **`item/feces`** on shelf `items/feces`. What a creature leaves when it defecates, a size for each kind of creature.
+- **`item/glider`** on shelf `items/gliders`. Carried anywhere in the bag, and opened in the air to glide: a wing for each hand, and folded in the hand when chosen.
 - **`item/shield`** on shelf `items/shields`. Held in the other hand to block.
 - **`item/costume`** on shelf `items/costumes`. Worn for its look alone.
 - **`item/skin`** on shelf `items/skins`. Changes the look of the item it is put on.
@@ -78,13 +80,14 @@ Asset slots:
 - `item/vehicle`: `#preview` mesh, may, from `{deploys}`, else `box`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/egg`: `#held` mesh, may, from `{id}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/feces`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
+- `item/glider`: `#held` mesh, may, from `{id}`, else `none`; `#wing_r` mesh, may, from `{id}/wing_r`, else `none`; `#wing_l` mesh, may, from `{id}/wing_l`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/shield`: `#held` mesh, may, from `{id}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/costume`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/skin`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/dye`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/artifact`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 
-ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `youngFor` is prime meat from the young in place of raw meat; `eat` is UseItemAddCharacterStatusValues; `burnsInto` is the charcoal a fire leaves for each piece of wood burnt out; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `deploys` is the vehicle an assembly deploys; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is whether it may be a blueprint (a crafted item may, unless false); `use` is UseItemAddCharacterStatusValues and the buffs a consumable gives; `travels` is bPreventUpload, inverted.
+ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `youngFor` is prime meat from the young in place of raw meat; `eat` is UseItemAddCharacterStatusValues; `burnsInto` is the charcoal a fire leaves for each piece of wood burnt out; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `deploys` is the vehicle an assembly deploys; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is whether it may be a blueprint (a crafted item may, unless false); `use` is UseItemAddCharacterStatusValues and the buffs a consumable gives; `glide` is none of its own: the Parachute's slow fall and the Glider Suit's glide, as one thing carried; `travels` is bPreventUpload, inverted.
 
 What names what: `youngFor` names a `item`; `burnsInto` names a `item`; `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item`; `weapon.fits[]` names a `item/attachment`; `weapon.cloud.prop` names a `prop/cloud`; `weapon.cloud.buff` names a `buff`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `deploys` names a `species/vehicle`; `craft.needs[].item` names a `item`; `craft.at` names a `structure/station`; `spoilsInto` names a `item`; `use.buffs[]` names a `buff`.
 
@@ -94,7 +97,7 @@ Packs may add to: `weapon`, `places`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 103 |
+| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 104 |
 
 - **`engram`** on shelf `engrams`. Learned with points at a level, for good. Its one item can then be made.
 
@@ -379,7 +382,9 @@ built.
 
 **`item/feces`** (4): feces_small, feces_medium, feces_large, feces_massive.
 
-**`engram`** (103): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_sleeping_bag, engram-piece_bed, engram-saddle_parasaur, engram-saddle_pteranodon, engram-saddle_raptor, engram-saddle_trike, engram-saddle_stego, engram-saddle_carbonemys, engram-saddle_rex, engram-saddle_spino, engram-saddle_brachio, engram-boat_assembly, engram-helicopter_assembly, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-piece_forge, engram-piece_smithy, engram-piece_fabricator, engram-piece_preserving_bin, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-shotgun, engram-flare_gun, engram-arrow_stone, engram-arrow_tranq, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-round_shotgun, engram-dart_tranq, engram-dart_shock, engram-scope, engram-silencer, engram-flashlight, engram-laser, engram-grenade, engram-bola, engram-grenade_smoke, engram-grenade_poison, engram-paste, engram-polymer, engram-electronics, engram-meridian_hat, engram-meridian_shirt, engram-meridian_gloves, engram-meridian_pants, engram-meridian_boots, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
+**`item/glider`** (1): frond_glider.
+
+**`engram`** (104): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_sleeping_bag, engram-piece_bed, engram-saddle_parasaur, engram-saddle_pteranodon, engram-saddle_raptor, engram-saddle_trike, engram-saddle_stego, engram-saddle_carbonemys, engram-saddle_rex, engram-saddle_spino, engram-saddle_brachio, engram-boat_assembly, engram-helicopter_assembly, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-piece_forge, engram-piece_smithy, engram-piece_fabricator, engram-piece_preserving_bin, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-shotgun, engram-flare_gun, engram-arrow_stone, engram-arrow_tranq, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-round_shotgun, engram-dart_tranq, engram-dart_shock, engram-scope, engram-silencer, engram-flashlight, engram-laser, engram-grenade, engram-bola, engram-grenade_smoke, engram-grenade_poison, engram-paste, engram-polymer, engram-electronics, engram-frond_glider, engram-meridian_hat, engram-meridian_shirt, engram-meridian_gloves, engram-meridian_pants, engram-meridian_boots, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
 
 **`levels`** (1): levels.
 

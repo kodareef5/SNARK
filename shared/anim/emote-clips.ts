@@ -15,7 +15,7 @@ import {
 
 type V = [number, number, number];
 /** 1 the body's left (+X), -1 its right. */
-type Side = 1 | -1;
+export type Side = 1 | -1;
 
 const rest = (bone: number): V => [HUMAN.rest[bone * 3]!, HUMAN.rest[bone * 3 + 1]!, HUMAN.rest[bone * 3 + 2]!];
 const between = (a: number, b: number): number => {
@@ -49,7 +49,7 @@ const bounce = (p: number, beats: number): number => (1 - cwave(p, beats)) / 2;
 // --- Reaching ----------------------------------------------------------------------------------------------------
 
 /** Puts the end of a two-bone limb (upper, lower) at `target`, the middle joint bending toward `pole`. */
-function reach(b: PoseBuilder, upper: number, lower: number, a: number, c: number, target: V, pole: V, roll = 0): void {
+export function reach(b: PoseBuilder, upper: number, lower: number, a: number, c: number, target: V, pole: V, roll = 0): void {
   const r = b.joint(upper);
   let dx = target[0] - r[0], dy = target[1] - r[1], dz = target[2] - r[2];
   let d = Math.sqrt(dx * dx + dy * dy + dz * dz);
@@ -72,7 +72,7 @@ function reach(b: PoseBuilder, upper: number, lower: number, a: number, c: numbe
 }
 
 /** The wrist at `at` (x outward from the body's middle on that side), the elbow toward `pole` (x outward too). */
-function hand(b: PoseBuilder, s: Side, at: V, pole: V = [0.6, -0.5, -0.4], roll = 0): void {
+export function hand(b: PoseBuilder, s: Side, at: V, pole: V = [0.6, -0.5, -0.4], roll = 0): void {
   const m = arm(s);
   reach(b, m.upper, m.lower, UPPER_ARM, FOREARM, [at[0] * s, at[1], at[2]], [pole[0] * s, pole[1], pole[2]], roll * s);
 }
@@ -90,7 +90,7 @@ function relax(b: PoseBuilder, s: Side, swing = 0, out = 0): void {
 }
 
 /** Curls a hand's fingers (0 open to 1 a fist), and its thumb by `thumb`. */
-function fist(b: PoseBuilder, s: Side, k = 1, thumb = k): void {
+export function fist(b: PoseBuilder, s: Side, k = 1, thumb = k): void {
   const m = arm(s);
   b.local(m.fingers, 0, 0, -s * 70 * k).local(m.tips, 0, 0, -s * 80 * k).local(m.thumb, 0, -s * 45 * thumb, 0);
 }

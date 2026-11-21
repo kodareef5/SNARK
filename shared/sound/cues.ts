@@ -108,6 +108,9 @@ cue("voice/{sex}/gasp", SURVIVOR, "vocal", "ear", "hook", "the eye comes up out 
 cue("voice/{sex}/drown", SURVIVOR, "vocal", "ear", "hook", "oxygen is gone and health falls");
 cue("voice/{sex}/knocked_out", SURVIVOR, "vocal", "ear", "fire", "MF_OUT is set");
 cue("voice/{sex}/wake", SURVIVOR, "vocal", "ear", "fire", "MF_OUT is cleared");
+// The glider (planning/workstreams/glider.md), heard from the movement family's takes until it has its own.
+cue("glider/open", SURVIVOR, "hit", "body", "fire", "a glider is thrown open: the glide in a body's word begins, or in the own body", { falls: ["core:movement/parachute"] });
+cue("glider/fold", SURVIVOR, "hit", "body", "fire", "it folds: by its key, on landing, in water or with stamina spent", { falls: ["core:movement/parachute@1.7"] });
 // What an emote says as it begins (shared/anim/emotes.ts `sound`): the voice bank's lines, a man's or a woman's.
 for (const line of ["greet", "yes", "no", "laugh", "cheer"]) {
   cue(`voice/male/emote/${line}`, SURVIVOR, "vocal", "body", "fire", `a survivor's emote with sound "${line}" begins (its emote word changes)`, { falls: [`core:voices/${line}/american_man`] });
@@ -205,6 +208,7 @@ cue("underwater", "world", "bed", "ear", "fire", "the eye below sea level", { lo
 cue("shore", "world", "bed", "ear", "fire", "the ear near the edge of the sea", { loop: true, falls: ["core:world/shore"] });
 cue("wind/light", "world", "bed", "ear", "fire", "the ear well above the ground", { loop: true, falls: ["core:world/wind/light"] });
 cue("wind/strong", "world", "bed", "ear", "fire", "the ear high above the ground", { loop: true, falls: ["core:world/wind/strong"] });
+cue("glider/air", "world", "bed", "ear", "fire", "the own body is under an open glider, louder the faster it flies", { loop: true, falls: ["core:movement/fall"] });
 cue("stinger/dawn", "world", "bed", "ear", "fire", "the clock passes sunrise", { falls: ["core:world/stinger/dawn"] });
 cue("stinger/dusk", "world", "bed", "ear", "fire", "the clock passes sunset", { falls: ["core:world/stinger/dusk"] });
 cue("rain/light", "world", "bed", "ear", "waits:weather", "rain", { loop: true, falls: ["core:world/rain/light"] });

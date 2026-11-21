@@ -136,7 +136,7 @@ test("a survivor's steps come a stride apart and softer crouched, a jump is brea
   const remote = new RemoteSample();
   const x0 = 380;
   const z = 380;
-  const self = { x: x0, y: hf.heightAt(x0, z), z, vy: 0, grounded: true, mode: 0, stance: 0, mflags: 0 };
+  const self = { x: x0, y: hf.heightAt(x0, z), z, vx: 0, vy: 0, vz: 0, grounded: true, mode: 0, stance: 0, mflags: 0, glide: 0 };
   const step = (): void => b.update(1 / 30, remote, hf, self.x, self.y + 1.6, self.z, -1, self, false, 0, () => false, hear);
   step();
   for (let k = 0; k < 30; k++) {
@@ -157,6 +157,19 @@ test("a survivor's steps come a stride apart and softer crouched, a jump is brea
   self.vy = 0;
   step();
   expect(heard.map((h) => h[1])).toEqual(["voice/male/jump", "land/grass", "voice/male/land"]);
+  heard.length = 0;
+  // A glider thrown open in the air, and folded as it lands softly: heard at the ear, the fold the quieter.
+  self.grounded = false;
+  self.vy = -2;
+  step();
+  self.glide = 1;
+  step();
+  self.glide = 0;
+  self.grounded = true;
+  self.vy = 0;
+  step();
+  expect(heard.map((h) => [h[1], h[2]])).toEqual([["glider/open", true], ["glider/fold", true]]);
+  expect(heard[1]![0]).toBeLessThan(heard[0]![0]);
   heard.length = 0;
   self.mode = MODE_SWIM;
   step();

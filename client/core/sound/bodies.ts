@@ -28,6 +28,8 @@ const STEP_REACH = 25;
 const STEP = GROUND_NAMES.map((g) => cueKey(`step/${g}`));
 const LAND = GROUND_NAMES.map((g) => cueKey(`land/${g}`));
 const SPLASH_IN = cueKey("splash/in");
+const GLIDER_OPEN = cueKey("glider/open");
+const GLIDER_FOLD = cueKey("glider/fold");
 const SPLASH_OUT = cueKey("splash/out");
 const SWIM = cueKey("swim");
 const VOICE = (sex: string, n: string): number => cueKey(`voice/${sex}/${n}`);
@@ -56,6 +58,7 @@ class Walker {
   fall = 0;
   out = false;
   winded = false;
+  gliding = false;
   /** The emote word last heard. */
   emote = 0;
 }
@@ -65,11 +68,15 @@ export interface OwnBody {
   x: number;
   y: number;
   z: number;
+  vx: number;
   vy: number;
+  vz: number;
   grounded: boolean;
   mode: number;
   stance: number;
   mflags: number;
+  /** Whether its glider is open (Body.glide). */
+  glide: number;
 }
 
 export class BodySounds {
@@ -112,8 +119,12 @@ export class BodySounds {
         w.z = z;
         w.grounded = st.grounded;
         w.swimming = st.mode === MODE_SWIM;
+        w.gliding = st.glide;
       }
       w.seen = frame;
+      // A glider thrown open over its head, or folded.
+      if (st.glide !== w.gliding) hear(survivor, st.glide ? GLIDER_OPEN : GLIDER_FOLD, id, x, y, z, 1.9, st.glide ? 1 : 0.5, false);
+      w.gliding = st.glide;
       if (remote.emote[i] !== w.emote) this.said(remote.emote[i]!, w, survivor, id, x, y, z, remote.look[i * LOOK_BYTES + LOOK_SEX] === 1 ? 1 : 0, false, hear);
       const vy = dt > 0 ? (y - w.y) / dt : 0;
       this.move(w, x, y, z, vy, st.grounded, st.mode === MODE_SWIM, st.stance, false, hf, survivor, id, remote.look[i * LOOK_BYTES + LOOK_SEX] === 1 ? 1 : 0, false, hear);
@@ -134,7 +145,11 @@ export class BodySounds {
       w.swimming = self.mode === MODE_SWIM;
       w.out = (self.mflags & MF_OUT) !== 0;
       w.winded = (self.mflags & MF_WINDED) !== 0;
+      w.gliding = self.glide !== 0;
     }
+    const gliding = self.glide !== 0;
+    if (gliding !== w.gliding) hear(survivor, gliding ? GLIDER_OPEN : GLIDER_FOLD, -1, 0, 0, 0, 0, gliding ? 0.9 : 0.45, true);
+    w.gliding = gliding;
     const out = (self.mflags & MF_OUT) !== 0;
     if (out !== w.out) hear(survivor, out ? KNOCKED[sex]! : WAKE[sex]!, -1, 0, 0, 0, 0, 1, true);
     w.out = out;

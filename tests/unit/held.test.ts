@@ -14,6 +14,7 @@ import { convertPieces, heldOn, packOf, type Built } from "../../tools/art/build
 import { GRIP_SLACK, checkAsset, heldFaults, lyingFaults, measureSurface } from "../../tools/art/check.ts";
 import type { PiecesAsset } from "../../tools/art/spec.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
+import { gliderMeshes } from "../../tools/pack/glider.ts";
 import { boundsOf, lying, thinnest } from "../../tools/pack/lying.ts";
 import { mannequinMeshes } from "../../tools/pack/mannequin.ts";
 import { splitPack } from "../../tools/pack/split.ts";
@@ -208,4 +209,20 @@ test("an item that is no weapon is drawn in the hand by its held piece where its
   };
   expect(ids.map((id) => w.mesh(id) >= 0)).toEqual([true, true, true]);
   expect(ids.map(inHand)).toEqual([true, true, false]);
+});
+
+test("a glider's wing is held by its handle and spans to its own side from the lashing; a tool is no wing, and a wing no tool", () => {
+  const [left, right] = gliderMeshes();
+  expect([left!.id, right!.id]).toEqual(["core:frond_glider/wing_l", "core:frond_glider/wing_r"]);
+  expect(heldFaults(left!, "prop_l", true)).toEqual([]);
+  expect(heldFaults(right!, "prop_r", true)).toEqual([]);
+  // Each is on its own hand's bone, and reaches the other way from the other.
+  expect(heldFaults(left!, "prop_r", true).join("\n")).toMatch(/not on the prop bone/);
+  expect(boundsOf(left!.lods[0]!)[1][0]!).toBeGreaterThan(1);
+  expect(boundsOf(right!.lods[0]!)[0][0]!).toBeLessThan(-1);
+  // Held as a tool is, a wing's length does not run along +Z.
+  expect(heldFaults(right!, "prop_r").join("\n")).toMatch(/does not run along \+Z/);
+  const stick = heldOn({ id: "t:stick", lods: [STICK[0]!] }, "prop_r");
+  expect(heldFaults(stick, "prop_r")).toEqual([]);
+  expect(heldFaults(stick, "prop_r", true).join("\n")).toMatch(/does not span along X/);
 });

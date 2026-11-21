@@ -2,7 +2,7 @@
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
-import { TAU, detCos, detSin } from "../math/scalar.ts";
+import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
 import { SKIN, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
@@ -76,6 +76,50 @@ export const BTN_ROLL = BTN_CROUCH;
 /** Stamina is stored in thousandths of a point, so it steps in exact integers. */
 export const STAMINA_UNITS = 1000;
 
+/**
+ * A glider carried and opened in the air (planning/workstreams/glider.md): the frond glider, grade 1 of Body.glideGear's
+ * three. The numbers are chosen, not ARK's, whose parachute this stands for. With the stick forward it flies GLIDE_SPEED
+ * metres per second and sinks GLIDE_SINK, 4.5 forward for each one lost; sideways it slips at GLIDE_SIDE. With no stick it
+ * comes straight down. The stick back is a flare, which stops it and sinks GLIDE_FLARE_SINK. Sprint is a dive, GLIDE_DIVE
+ * forward and GLIDE_DIVE_SINK down, and the speed a dive leaves it with floats it level as it bleeds away (GLIDE_FLOAT
+ * metres per second of sink lost for each one above GLIDE_SPEED). Its speed moves toward the one wished at GLIDE_ACCEL,
+ * so it carries speed, and under way its velocity turns toward the way wished at GLIDE_TURN. Sinking more than GLIDE_HARD faster than it should, it is braked at GLIDE_BRAKE,
+ * the fastest fall in a second and 30 m, and the rest of the way at GLIDE_SETTLE. It never climbs: rising, the body is
+ * under gravity alone.
+ */
+export const GLIDE_SPEED = 10;
+export const GLIDE_SIDE = 6;
+export const GLIDE_DIVE = 16;
+export const GLIDE_SINK = 2.2;
+export const GLIDE_FLARE_SINK = 1.5;
+export const GLIDE_DIVE_SINK = 7;
+export const GLIDE_FLOAT = 0.55;
+export const GLIDE_ACCEL = 6;
+/** Radians a second its velocity swings toward the way wished, 100 degrees, once both are above GLIDE_STEER metres per second. */
+export const GLIDE_TURN = 1.7453292519943295;
+export const GLIDE_STEER = 1.5;
+export const GLIDE_BRAKE = 60;
+export const GLIDE_SETTLE = 25;
+export const GLIDE_HARD = 3;
+/** Stamina units a tick under an open glider, 1.6 points a second, and in a dive, 3.2. None comes back in the air. */
+export const GLIDE_STAMINA = 53;
+export const GLIDE_DIVE_STAMINA = 107;
+/** Ticks on the ground or in water after a glide before stamina comes back (Body.regenWait). */
+export const GLIDE_REGEN_WAIT = 30;
+/** Bits of Body.glideKeys: Jump and Crouch as last sampled. */
+export const GLIDE_KEY_JUMP = 1;
+export const GLIDE_KEY_CROUCH = 2;
+/** How an open glider flies, for the pose and the sound (glidePhase). */
+export const GLIDE_TRIM = 0;
+export const GLIDE_DIVING = 1;
+export const GLIDE_FLARED = 2;
+
+/** GLIDE_TRIM, GLIDE_DIVING or GLIDE_FLARED from the velocity alone, so that every observer reads the same one. */
+export function glidePhase(vx: number, vy: number, vz: number): number {
+  if (vy < -(GLIDE_SINK + GLIDE_DIVE_SINK) / 2) return GLIDE_DIVING;
+  return vy > -(GLIDE_SINK + GLIDE_FLARE_SINK) / 2 && vx * vx + vz * vz < 4 ? GLIDE_FLARED : GLIDE_TRIM;
+}
+
 /** Bits of Body.mflags. The server sets all but MF_WINDED, which the step sets and clears. */
 export const MF_NO_SPRINT = 1;
 export const MF_NO_JUMP = 2;
@@ -105,6 +149,9 @@ export const stepOut = {
   tookOff: false,
   setDown: false,
   rolled: false,
+  /** A glider opened this tick, or folded: by its keys, on landing, in water, or with its stamina spent. */
+  glideOpened: false,
+  glideFolded: false,
 };
 
 export interface MoveParams {
@@ -273,6 +320,14 @@ export class Body {
    */
   regenWait = 0;
   rollWait = 0;
+  /**
+   * The glider (planning/workstreams/glider.md): the grade of the best serviceable one it carries, 0 for none, set by the
+   * server from its inventory; whether it is open; and Jump and Crouch as the step last sampled them (GLIDE_KEY_), so a
+   * press is told from a hold on both sides. Not saved: a body saved in the air loads falling.
+   */
+  glideGear = 0;
+  glide = 0;
+  glideKeys = 0;
   /** Ground creature mode, secondary cooldown, and charge strength, predicted with its action. */
   creatureMode = 0;
   creatureCooldown = 0;
@@ -348,6 +403,9 @@ export class Body {
     this.jetRecovery = o.jetRecovery;
     this.regenWait = o.regenWait;
     this.rollWait = o.rollWait;
+    this.glideGear = o.glideGear;
+    this.glide = o.glide;
+    this.glideKeys = o.glideKeys;
     this.creatureMode = o.creatureMode;
     this.creatureCooldown = o.creatureCooldown;
     this.creaturePrimaryCooldown = o.creaturePrimaryCooldown;
@@ -417,6 +475,7 @@ export class Body {
       this.jetGear === o.jetGear && this.jetSpent === o.jetSpent && this.jetThrust === o.jetThrust &&
       this.jetKeys === o.jetKeys && this.jetJumpTap === o.jetJumpTap && this.jetSprintTap === o.jetSprintTap && this.jetRecovery === o.jetRecovery &&
       this.regenWait === o.regenWait &&
+      this.glideGear === o.glideGear && this.glide === o.glide && this.glideKeys === o.glideKeys &&
       this.creatureMode === o.creatureMode &&
       this.creatureCooldown === o.creatureCooldown &&
       this.creaturePrimaryCooldown === o.creaturePrimaryCooldown &&
@@ -508,6 +567,14 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   stepOut.tookOff = false;
   stepOut.setDown = false;
   stepOut.rolled = false;
+  stepOut.glideOpened = false;
+  stepOut.glideFolded = false;
+  // A glider is flown in the walking step alone. Any other mode folds it and forgets its keys.
+  if (b.mode !== MODE_WALK) {
+    if (b.glide) stepOut.glideFolded = true;
+    b.glide = 0;
+    b.glideKeys = 0;
+  }
   if (b.mode === MODE_NONE) {
     b.vx = 0;
     b.vy = 0;
@@ -554,6 +621,20 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   // An unconscious body lies prone and ignores every button.
   const out = (flags & MF_OUT) !== 0;
   if (out) buttons = 0;
+  // The glider's keys: Crouch pressed in the air opens it and folds it, and Jump too, which opens it only without the
+  // cuirass, whose jet is Jump's in the air. In the air a body that carries one does not crouch, so the key is the glider's.
+  const wasGliding = b.glide !== 0;
+  let glide = 0;
+  if (b.glideGear !== 0 && !b.seat) {
+    const keys = ((buttons & BTN_JUMP) !== 0 ? GLIDE_KEY_JUMP : 0) | ((buttons & BTN_CROUCH) !== 0 ? GLIDE_KEY_CROUCH : 0);
+    const pressed = keys & ~b.glideKeys;
+    b.glideKeys = keys;
+    if (!b.grounded && (flags & (MF_OUT | MF_ROOTED)) === 0) {
+      buttons &= ~(BTN_CROUCH | BTN_PRONE);
+      if (wasGliding) glide = pressed !== 0 ? 0 : 1;
+      else if (((pressed & GLIDE_KEY_CROUCH) !== 0 || ((pressed & GLIDE_KEY_JUMP) !== 0 && (b.jetGear & JET_CUIRASS) === 0)) && b.stance === STANCE_STAND && (flags & MF_WINDED) === 0 && b.stamina > 0) glide = 1;
+    }
+  } else b.glideKeys = 0;
   // The same buttons are a flyer's roll/brake in the air; only suppress their ground stance meaning.
   if (!p.lowStance) buttons &= ~(BTN_CROUCH | BTN_PRONE);
   const want = out || (buttons & BTN_PRONE) !== 0 ? STANCE_PRONE : (buttons & BTN_CROUCH) !== 0 ? STANCE_CROUCH : STANCE_STAND;
@@ -580,15 +661,49 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const jetEquipped = (b.jetGear & JET_CUIRASS) !== 0 && !b.seat;
   const jetReady = jetEquipped && standing && (flags & (MF_OUT | MF_ROOTED | MF_NO_JUMP)) === 0;
   if (jetEquipped && b.grounded) b.jetSpent = Math.max(0, b.jetSpent - (b.jetGear === JET_FULL_SUIT ? 2 : 1));
-  b.jetThrust = jetMode(b, priorThrust, buttons, jetReady, m2 > 0.025);
-  const sprint = !b.jetThrust && m2 > 0 && standing && canSprint(b, buttons);
-  let stamina = spendStamina(b, p, sprint, m2 > 0 ? p.staminaWalk : 0);
+  // An open glider keeps the jet quiet. Jump folds it, and the jet answers that same press.
+  b.jetThrust = jetMode(b, priorThrust, buttons, jetReady && glide === 0, m2 > 0.025);
+  const diving = glide !== 0 && (buttons & BTN_SPRINT) !== 0;
+  const sprint = glide === 0 && !b.jetThrust && m2 > 0 && standing && canSprint(b, buttons);
+  // None comes back in the air once it has glided, nor for a moment after it lands.
+  if (glide !== 0 && b.regenWait < GLIDE_REGEN_WAIT) b.regenWait = GLIDE_REGEN_WAIT;
+  let stamina = spendStamina(b, p, sprint, glide !== 0 ? (diving ? GLIDE_DIVE_STAMINA : GLIDE_STAMINA) : m2 > 0 ? p.staminaWalk : 0);
+  // Spent, it folds, and the body falls.
+  if (glide !== 0 && stamina <= 0) glide = 0;
   const fastCruise = b.jetThrust === JET_HOVER && (b.jetGear & JET_GREAVES) !== 0 && !(flags & MF_NO_SPRINT);
   const speed = b.jetThrust ? (fastCruise ? 10 : 6) :
     p.walkSpeed * (b.speedQ / 1000) * (sprint ? p.sprintMul * ((b.jetGear & JET_GREAVES) !== 0 ? JET_STRIDE : 1) : standing ? 1 : stance === STANCE_CROUCH ? p.crouchMul : p.proneMul);
   let dvx = (s * mz - c * mx) * speed - b.vx;
   let dvz = (c * mz + s * mx) * speed - b.vz;
-  const maxDv = (b.jetThrust ? 18 : b.grounded ? p.accelGround : p.accelAir) * dt;
+  let maxDv = (b.jetThrust ? 18 : b.grounded ? p.accelGround : p.accelAir) * dt;
+  if (glide !== 0) {
+    // Forward by the stick, faster in a dive, and slipping sideways. The stick back wishes it still, and stops it sooner.
+    const forward = mz > 0 ? mz * (diving ? GLIDE_DIVE : GLIDE_SPEED) : 0;
+    const side = mx * GLIDE_SIDE;
+    const wx = s * forward - c * side;
+    const wz = c * forward + s * side;
+    const want = Math.sqrt(wx * wx + wz * wz);
+    const have = Math.sqrt(b.vx * b.vx + b.vz * b.vz);
+    maxDv = GLIDE_ACCEL * (mz < 0 ? 1 - mz : 1) * dt;
+    if (want > GLIDE_STEER && have > GLIDE_STEER) {
+      // Under way, it turns: its velocity swings toward the way wished at GLIDE_TURN and keeps its speed, which moves toward
+      // the speed wished. So a turn is flown round at full speed, where a velocity pulled straight across would stall in it.
+      const heading = detAtan2(b.vx, b.vz);
+      let turn = detAtan2(wx, wz) - heading;
+      if (turn > PI) turn -= TAU;
+      else if (turn < -PI) turn += TAU;
+      const most = GLIDE_TURN * dt;
+      if (turn > most) turn = most;
+      else if (turn < -most) turn = -most;
+      const speed = want > have ? (want - have > maxDv ? have + maxDv : want) : have - want > maxDv ? have - maxDv : want;
+      dvx = detSin(heading + turn) * speed - b.vx;
+      dvz = detCos(heading + turn) * speed - b.vz;
+      maxDv = Infinity;
+    } else {
+      dvx = wx - b.vx;
+      dvz = wz - b.vz;
+    }
+  }
   const dv2 = dvx * dvx + dvz * dvz;
   if (dv2 > maxDv * maxDv) {
     const k = maxDv / Math.sqrt(dv2);
@@ -628,6 +743,22 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     const target = b.jetThrust === JET_HOVER ? 0 : 4;
     const impulse = 24 * dt;
     vy += Math.max(-impulse, Math.min(impulse, target - vy));
+  } else if (glide !== 0) {
+    // It sinks at its trim, less in a flare and more in a dive, and what speed a dive left it floats it level for a moment.
+    let sink = diving ? GLIDE_DIVE_SINK : mz < 0 ? GLIDE_SINK + (GLIDE_SINK - GLIDE_FLARE_SINK) * mz : GLIDE_SINK;
+    const over = Math.sqrt(vx * vx + vz * vz) - GLIDE_SPEED;
+    if (!diving && over > 0) {
+      sink -= GLIDE_FLOAT * over;
+      if (sink < 0) sink = 0;
+    }
+    if (vy > -sink) {
+      // Rising, or sinking slower than it should: gravity alone, so it never climbs and is no higher a jump.
+      vy -= p.gravity * dt;
+      if (vy < -sink) vy = -sink;
+    } else {
+      vy += (vy < -sink - GLIDE_HARD ? GLIDE_BRAKE : GLIDE_SETTLE) * dt;
+      if (vy > -sink) vy = -sink;
+    }
   } else if (!wasGrounded || jumped) {
     vy -= p.gravity * dt;
     if (vy < -TERMINAL_SPEED) vy = -TERMINAL_SPEED;
@@ -923,7 +1054,10 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       vy = 0;
     }
   }
-  if (grounded) b.jetThrust = 0;
+  if (grounded) {
+    b.jetThrust = 0;
+    glide = 0;
+  }
   if (grounded && !wasGrounded) stepOut.landSpeed = fall;
 
   // Deep enough to float, the body swims from the next tick, and a swimmer has no stance.
@@ -933,8 +1067,12 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     stance = STANCE_STAND;
     grounded = false;
     b.jetThrust = 0;
+    glide = 0;
     stepOut.landSpeed = 0;
   }
+  if (glide !== 0 && !wasGliding) stepOut.glideOpened = true;
+  else if (glide === 0 && wasGliding) stepOut.glideFolded = true;
+  b.glide = glide;
 
   // Round to float32, the stored and transmitted precision. Both sides do this.
   b.x = Math.fround(x);

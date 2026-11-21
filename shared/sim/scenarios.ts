@@ -13,7 +13,7 @@ import { compileContent, type Registry } from "../content/registry.ts";
 import { deriveRegistry, type Tuning } from "../content/tuning.ts";
 import { TICK_DT } from "../coords.ts";
 import { Rng } from "../rng.ts";
-import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stepBody } from "./character.ts";
+import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, JET_CUIRASS, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stepBody } from "./character.ts";
 import { Heightfield, TERRAIN_CELL } from "../world/heightfield.ts";
 import { Fall, SETTLE_TICKS, layCorpse } from "../anim/corpse.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world/proving.ts";
@@ -115,6 +115,21 @@ export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; 
   const flies = ptera === undefined ? [] : [reg.move[ptera]!, reg.tamedMove[ptera]!];
   const air = new Rng(20261115);
   const flown = flyers.map(() => [127, 0, 0, BTN_JUMP]);
+  // Survivors carrying a glider (planning/workstreams/glider.md), let go high over the plaza, the pool and the slopes on
+  // their own stream of inputs: opening and folding it with either key, steering, flaring and diving, one in the cuirass
+  // whose jet takes Jump, one that tires within seconds. Each is lifted again a second after it lands or swims.
+  const gliders = [[250, 244, 70], [205, 258, 45], [288, 276, 110], [262, 270, 25]].map(([x, z, up], i) => {
+    const b = new Body();
+    b.x = x!;
+    b.z = z!;
+    b.y = hf.heightAt(b.x, b.z) + up!;
+    b.glideGear = 1;
+    if (i === 2) b.jetGear = JET_CUIRASS;
+    if (i === 3) b.staminaMax = 9;
+    return b;
+  });
+  const wind = new Rng(20261121);
+  const glided = gliders.map(() => [0, 127, 0, 0, 0]);
   const f = new Float32Array(6);
   const bytes = new Uint8Array(f.buffer);
   let h1 = 0x811c9dc5;
@@ -163,6 +178,28 @@ export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; 
       mix(b);
       h1 = Math.imul(h1 ^ (b.yaw | (b.regenWait << 16)), 0x01000193);
       h2 = Math.imul(h2 + b.rollWait, 0x85ebca6b) ^ (h2 >>> 13);
+    }
+    for (let i = 0; i < gliders.length; i++) {
+      const b = gliders[i]!;
+      const inp = glided[i]!;
+      if (wind.int(12) === 0) {
+        inp[0] = wind.int(255) - 127;
+        inp[1] = wind.int(3) === 0 ? wind.int(255) - 127 : 127;
+        inp[2] = wind.int(65536);
+        inp[3] = (wind.int(4) === 0 ? BTN_JUMP : 0) | (wind.int(4) === 0 ? BTN_CROUCH : 0) | (wind.int(3) === 0 ? BTN_SPRINT : 0);
+      }
+      if (b.grounded || b.mode === MODE_SWIM) {
+        if (++inp[4]! > 30) {
+          inp[4] = 0;
+          b.mode = MODE_WALK;
+          b.y = Math.fround(b.y + 60);
+          b.grounded = false;
+        }
+      }
+      stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, 0, inp[3]!, p, TICK_DT);
+      mix(b);
+      h1 = Math.imul(h1 ^ (b.glide | (b.glideKeys << 1) | (b.regenWait << 3) | (b.jetThrust << 13)), 0x01000193);
+      h2 = Math.imul(h2 + b.jetSpent, 0x85ebca6b) ^ (h2 >>> 13);
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
