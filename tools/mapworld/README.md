@@ -137,7 +137,8 @@ ground (`ground.ts`):
   8 m filter finds the line, and the ground slopes up to the bank's top over
   3 m inland and down to its foot (15 to 80 cm deep) over 5 m out. A sample
   the grading takes out of the water is tinted mud, and the bed at the bank's
-  foot silt. A bank more than 1 m over its water, a road, a footprint, a
+  foot silt, as is the sea's bed within 5 m of any shore more than 40 m from a
+  beach (a quay's or a wall's too). A bank more than 1 m over its water, a road, a footprint, a
   bridge's gap and the beach's bed count for the line but are never moved.
 
 Both run on every city with a sea; the banks' pass runs on lakes without one.
