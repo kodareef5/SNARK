@@ -530,6 +530,10 @@ export class Scene {
    * mesh, a car whose glass cuts out or a bush (Scene.castable).
    */
   private readonly foliageOf: Uint16Array;
+  /** Per mesh, what `leafy` found and the frame it found it in (`castFrame`, counted by `fit`). */
+  private readonly leafyOf: Uint16Array;
+  private readonly leafyFrame: Int32Array;
+  private castFrame = 0;
   private readonly barkOf: Uint8Array;
   /** What a frame may spend, what it has, and the squeeze crowns near are drawn at (budget.ts). */
   readonly budget = new FrameBudget();
@@ -863,6 +867,8 @@ export class Scene {
     this.trunkTris = table.sections.map(() => []);
     this.leafTris = table.sections.map(() => []);
     this.foliageOf = new Uint16Array(table.sections.length);
+    this.leafyOf = new Uint16Array(table.sections.length);
+    this.leafyFrame = new Int32Array(table.sections.length).fill(-1);
     this.learn(table.sections.map((_, mesh) => mesh));
     this.counts = new Uint32Array(table.count);
     this.cursor = new Uint32Array(table.count);
@@ -1132,6 +1138,7 @@ export class Scene {
     const p = this.packet;
     const c = this.cascades;
     const setup = p.tier.shadows;
+    this.castFrame++;
     this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
     if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(...sceneSize(this.canvasWidth, this.canvasHeight, p.room), lightSamples(this.supersampled)) : 0);
     this.casting = false;
@@ -1322,9 +1329,13 @@ export class Scene {
    * which a sharp enough map casts it at (shadow.ts LEAF_BLUR, D953); 0 for any other mesh, or while none can.
    */
   private leafy(mesh: number): number {
+    if (this.foliageOf[mesh] === 0) return 0;
+    // What is on the card does not change within a frame: found once a frame for each mesh.
+    if (this.leafyFrame[mesh] === this.castFrame) return this.leafyOf[mesh]!;
     let ok = 0;
     for (let l = 0, m = this.foliageOf[mesh]! & this.assets.held(mesh); m !== 0; l++, m >>>= 1) if ((m & 1) !== 0 && this.assets.heldCutouts(mesh, l)) ok |= 1 << l;
-    return ok;
+    this.leafyFrame[mesh] = this.castFrame;
+    return (this.leafyOf[mesh] = ok);
   }
 
   /**
