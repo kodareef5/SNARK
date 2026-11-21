@@ -1,8 +1,8 @@
 // Resolve the authored finish once per material or mesh and put each draw's optical inputs in the frame.
-import { crownedSpokes, fixtureKind, EXHAUST, LENS } from "../../../content/street-finishes.ts";
+import { crownedSpokes, fixtureKind, CHANNEL, EXHAUST, LENS } from "../../../content/street-finishes.ts";
 import { MATERIAL_EXHAUST, MATERIAL_LENS, type PackHeader } from "../../../shared/pack/pack.ts";
 import { nearMeshSlot } from "./nearcity.ts";
-import { DRAW_TEXTURED, type FramePacket } from "./packet.ts";
+import { DRAW_EMISSIVE, DRAW_TEXTURED, type FramePacket } from "./packet.ts";
 import { StreetMaterials, wheelBoneMask } from "./street-finish.ts";
 
 interface DrawArt {
@@ -34,7 +34,8 @@ export class StreetDraws {
       const m = p.drawMaterial[d]!;
       const material = this.art.materials?.[m];
       const flags = material?.flags ?? 0;
-      p.drawStreetMaterial[d] = flags & MATERIAL_EXHAUST ? EXHAUST : flags & MATERIAL_LENS ? LENS
+      // An instrument's own light wears its atlas for the strip alone, and is drawn as energy in a channel.
+      p.drawStreetMaterial[d] = (p.drawFlags[d]! & DRAW_EMISSIVE) !== 0 ? CHANNEL : flags & MATERIAL_EXHAUST ? EXHAUST : flags & MATERIAL_LENS ? LENS
         : this.materials.code(m, material?.id ?? "", mesh, wheels !== 0);
     }
   }

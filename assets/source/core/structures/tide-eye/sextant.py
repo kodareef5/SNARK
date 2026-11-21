@@ -245,14 +245,16 @@ def index_light(m):
 
 
 def keel_light(m):
-    for h, k in zip(profile["keel"], profile["keel"][1:]):
-        for side in (-1, 1):
+    for side in (-1, 1):
 
-            def edge(row):
-                y, x, w, d = row
-                return (x + w * 0.55, y, side * (d + 0.28))
+        def edge(row):
+            y, x, w, d = row
+            return (x + w * 0.55, y, side * (d + 0.28))
 
-            beam(m, edge(h), edge(k), 0.72, 0.59, GLASS, 5)
+        # Each edge one run of light, unbroken from length to length.
+        start = 0.0
+        for h, k in zip(profile["keel"], profile["keel"][1:]):
+            start = beam(m, edge(h), edge(k), 0.72, 0.59, GLASS, 5, start=start)
     ex, eh = profile["emitter"]
     flare(m, (ex, 0), eh)
     # A lamp under the keel's tip.
@@ -266,6 +268,6 @@ for name, fn, offset in [
     ("glow_keel", keel_light, 190),
 ]:
     for level in range(3):
-        mesh = Mesh(level, offset, seed=len(name) * 257 + 3)
+        mesh = Mesh(level, offset, seed=len(name) * 257 + 3, glow=name.startswith("glow"))
         fn(mesh)
         mesh.build(name if not level else f"{name}_LOD{level}")

@@ -11,8 +11,8 @@ export { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { MATERIAL_INDICATOR, MATERIAL_NIGHT, type PackMaterial } from "../../../shared/pack/pack.ts";
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { EXHAUST_GLSL, POLISHED_SKY } from "./suit-finish.ts";
-import { ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street-finishes.ts";
-import { EYE_GLINT_GLSL } from "./tide-eye.ts";
+import { CHANNEL, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street-finishes.ts";
+import { CHANNEL_DIM, CHANNEL_STRIP, EYE_ENERGY_GLSL, EYE_GLINT_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import { VEHICLE_SHADE_GLSL, VEHICLE_SHADE_UNIFORMS } from "./vehicle-shade.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
@@ -702,13 +702,27 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
 }
 void main() {
-${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetMaterial) == ${EXHAUST}) {
+${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetMaterial) == ${CHANNEL}) {
+    // An instrument's own light (tide-eye.ts eyeEnergy). Its strip's row is the band that says how it is lit across, a
+    // tube by how it faces the eye, a band across its width; along a tube it is metres along the run, in strips of 32.
+    float row = 8.0*(1.0-vUv.y), band = floor(row), v = clamp((row-band-0.04)/0.92,0.0,1.0);
+    float facing = abs(dot(normalize(vNormal), normalize(vRel)));
+    vec3 e = eyeEnergy(vRel, band == ${CHANNEL_STRIP}.0 ? -2.0e9 : vUv.x*32.0, band == ${CHANNEL_STRIP}.0 ? abs(2.0*v-1.0) : sqrt(max(0.0,1.0-facing*facing)), length(fwidth(vRel)));
+    e *= band == ${CHANNEL_DIM}.0 ? 0.3 : 1.0;
+#ifdef LIGHT_TARGET
+    o = vec4(e,1.0);
+#else
+    o = vec4(1.0-exp(-1.2*e),1.0);
+#endif
+    return;
+  }
+  if (int(uStreetMaterial) == ${EXHAUST}) {
     vec4 gas = exhaustLight(vUv,dot(normalize(vNormal),-normalize(vRel)),fEffects.x,fSunColor.w);
     o = vec4(shown(gas.rgb,vRel),gas.a);
     return;

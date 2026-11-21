@@ -11,7 +11,7 @@
 // director's light.py proposes: light through it by its thickness, a slope toward the light from a coarse picture,
 // a bright rim toward the sun, the sky's light round it, and haze in front of it.
 
-import { EYE_SKY_GLSL } from "./tide-eye.ts";
+import { EYE_SKY_GLSL, STORM_DEPTH } from "./tide-eye.ts";
 import { FRAME, FRAME_BLOCK, FRAME_FLOATS } from "./packet.ts";
 import { MOON_RADIUS, SKY_GLSL, SUN_RADIUS, domeLight, hazeColor, hourOfSun, luminance, skyFrame, sunHeight, trueSun, upCoord, type Sky } from "./sky.ts";
 import { LIGHT, skyFromGlsl } from "./surface.ts";
@@ -390,7 +390,7 @@ flat in float vRelief, vStars;
 flat in vec2 vTurn;
 uniform sampler2D uMoon, uLow, uHigh;
 out vec4 o;
-${LIGHT}${AIR}${EYE_SKY_GLSL}
+${LIGHT}${AIR}
 float hash(uvec3 v) {
   uint h = v.x * ${HASH[0]}u + v.y * ${HASH[1]}u + v.z * ${HASH[2]}u;
   h = (h ^ (h >> 15u)) * ${HASH[3]}u;
@@ -564,6 +564,15 @@ vec4 layer(sampler2D map, vec3 d, vec3 behind, vec4 shape, vec2 at, bool heaped)
   // The haze between, and the clear air above it, which fades cloud many kilometres off.
   return vec4(mix(behind, c, (1.0 - hazeAmount(t, d.y)) * exp(-t / ${g(CLEAR_AIR)})), cover);
 }
+// The storm over an instrument is the low layer's heaped cloud, lit as the layer is (tide-eye.ts eyeStorm).
+#define EYE_LIT
+#define EYE_PICTURE
+#define EYE_WAY vWay
+#define EYE_RELIEF vRelief
+vec3 eyeCloudLit(float thick, float relief, vec3 d, vec3 behind) {
+  return cloudLit(thick, ${g(STORM_DEPTH)}, relief, 0.0, d, behind);
+}
+${EYE_SKY_GLSL}
 void main() {
   vec3 d = normalize(vRay);
   if (fHaze.z < 0.0) {
@@ -571,7 +580,7 @@ void main() {
     return;
   }
   vec3 behind = skyFrom(d) * fSunColor.w;
-  vec4 optics = eyeOptics(d, mix(behind, vec3(dot(behind, vec3(0.2126, 0.7152, 0.0722))), 0.6));
+  vec4 optics = eyeOptics(d, behind);
   vec3 c = behind;
   if (fHaze.w > 0.0) {
     vec3 dx = dFdx(d), dy = dFdy(d);

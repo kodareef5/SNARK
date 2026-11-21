@@ -2230,7 +2230,7 @@ export class Scene {
         const errors = this.assets.table.error[mesh]!;
         const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris || mesh === this.sextantMesh.frame || mesh === this.sextantMesh.needle || mesh === this.lanternMesh.frame || mesh === this.lanternMesh.shutter);
         const level = skyline && scale === 1 ? Math.max(0, errors.length - 1) : this.assets.choose(errors, distance / Math.max(0.03, scale), -1);
-        if (skyline || glow) this.assets.want(mesh, level, distance);
+        if (skyline) this.assets.want(mesh, level, distance);
         else this.assets.wantTextured(mesh, level, distance);
         let flags = DRAW_PLAIN | (glow ? DRAW_EMISSIVE : 0) | (skyline ? DRAW_SKYLINE : 0);
         if (articulated) {
@@ -3612,11 +3612,12 @@ export class Scene {
   /**
    * The level of a mesh to draw for `wanted`, or -1: the nearest held, and while that cannot be drawn with its materials
    * a finer one that can, so that a thing does not turn flat on its way from one level to the next. What is see-through
-   * is drawn flat. Sets `ready`.
+   * is drawn flat. An instrument's light is drawn with its strip where it has one, which says where on the light a
+   * point is (programs.ts drawProgram). Sets `ready`.
    */
   private drawable(mesh: number, wanted: number, flags: number): number {
     const held = this.assets.level(mesh, wanted);
-    const textured = (flags & (DRAW_BLEND | DRAW_SKYLINE | DRAW_EMISSIVE)) === 0 ? this.assets.texturedLevel(mesh, wanted, held) : -1;
+    const textured = (flags & (DRAW_BLEND | DRAW_SKYLINE)) === 0 ? this.assets.texturedLevel(mesh, wanted, held) : -1;
     this.ready = textured >= 0;
     return this.ready ? textured : held;
   }

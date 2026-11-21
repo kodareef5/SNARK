@@ -37,6 +37,8 @@ COLORS = [
     (70, 132, 110),
 ]
 GLASS = 3
+# The paving's band, which on a light (Mesh.glow) is a band lit across its width.
+STRIP = 4
 
 
 def material(name, rgb):
@@ -61,8 +63,13 @@ def clamp(x, lo, hi):
 
 
 class Mesh:
-    def __init__(self, level, offset=0, seed=1):
+    def __init__(self, level, offset=0, seed=1, glow=False):
         self.level, self.offset = level, offset
+        # A light of the instrument's own (an object named glow...): its strip's coordinates say where a point is along
+        # the light, in strips of 32 m from the start of its run, and across it, which the client's channel light reads
+        # (client/core/render/tide-eye.ts eyeEnergy). On GLASS it is a tube, lit across by how it faces the eye; on
+        # STRIP a band lit across its width; on WORN a dim divider.
+        self.glow = glow
         self.verts, self.faces, self.uvs, self.slots = [], [], [], []
         # One normal a vertex, as Blender has them, or None where the face's own is meant.
         self.normals = []
@@ -111,7 +118,7 @@ class Mesh:
         mesh.update()
         obj = bpy.data.objects.new(name, mesh)
         bpy.context.collection.objects.link(obj)
-        if self.level != 2 and not name.startswith("glow"):
+        if self.level != 2:
             # The atlases it wears, in their order, and each face's among them.
             worn = sorted({band // 8 for band in self.slots})
             for a in worn:
@@ -136,7 +143,8 @@ class Mesh:
             for mat in flats:
                 mesh.materials.append(mat)
             for poly, slot in zip(mesh.polygons, self.slots):
-                poly.material_index = slot
+                # Drawn flat, a light is the site's glass whatever band says how it is lit across.
+                poly.material_index = GLASS if self.glow and slot == STRIP else slot
 
 
 def frame_of(v):
@@ -145,7 +153,9 @@ def frame_of(v):
     return p, v.cross(p)
 
 
-def beam(m, a, b, r, s, band, sides=6, caps=True):
+def beam(m, a, b, r, s, band, sides=6, caps=True, start=0.0):
+    """A bar from `a` to `b`, `r` thick at `a` and `s` at `b`. On a light it is round whatever its sides, and its strip
+    begins `start` metres along the run it is part of: it returns where the run goes on from."""
     a, b = Vector(a), Vector(b)
     v = (b - a).normalized()
     p, q = frame_of(v)
@@ -154,22 +164,24 @@ def beam(m, a, b, r, s, band, sides=6, caps=True):
         for i in range(sides)
     ]
     # A strut, a tie or an axle of five sides or more is a round bar and is lit as one; of four it is a square bar.
-    round_bar = sides >= 5
-    shift = m.random.random()
+    round_bar = sides >= 5 or m.glow
+    length = (b - a).length
+    shift = start / STRIP_M if m.glow else m.random.random()
     for i, d in enumerate(rays):
         e = rays[(i + 1) % sides]
         m.face(
             [a + r * d, b + s * d, b + s * e, a + r * e],
             band,
             d + e,
+            repeat=length / STRIP_M if m.glow else None,
             normals=[d, d, e, e] if round_bar else None,
             shift=shift,
         )
-    if not caps:
-        return
-    for c, rad, out in [(a, r, -v), (b, s, v)]:
-        for i in range(1, sides - 1):
-            m.face([c + rad * rays[j] for j in (0, i, i + 1)], band, out, repeat=0.02)
+    if caps:
+        for c, rad, out in [(a, r, -v), (b, s, v)]:
+            for i in range(1, sides - 1):
+                m.face([c + rad * rays[j] for j in (0, i, i + 1)], band, out, repeat=0.02)
+    return start + length
 
 
 def cable(m, a, b, r=0.22, band=2):
@@ -384,7 +396,7 @@ def flare(m, at, top, size=1.0):
     """The light at an emitter: a collar round the spire's tip and the first metres of the beam, so the beam, which is
     drawn in the sky, is seen to leave something."""
     x, z = at
-    ring(m, 1.25 * size, 0.5 * size, top + 0.1, 0.5, GLASS, (12, 8, 6)[m.level], center=(x, 0, z))
+    ring(m, 1.25 * size, 0.5 * size, top + 0.1, 0.5, STRIP, (12, 8, 6)[m.level], center=(x, 0, z))
     beam(m, (x, top - 0.6, z), (x, top + 5.0, z), 0.5 * size, 0.14, GLASS, 6)
 
 

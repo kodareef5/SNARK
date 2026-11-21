@@ -2,7 +2,7 @@
 import { expect, test } from "bun:test";
 import { OBELISK, OBELISK_PIECES, TRAVEL_TERMINAL, obeliskStatics } from "../../shared/world/obelisks.ts";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { EYE_PERIOD, aperture, eyeBloom, eyeFigure, eyePhase, eyePower, eyePulse, eyeRadiance, eyeSeed, shutterOpening, writeEyeSky } from "../../client/core/render/tide-eye.ts";
+import { EYE_PERIOD, aperture, eyeBloom, eyeEnergy, eyeFigure, eyePhase, eyePower, eyeRadiance, eyeSeed, shutterOpening, writeEyeSky } from "../../client/core/render/tide-eye.ts";
 import { parseMap, readHead, writeMap } from "../../shared/world/mapfile.ts";
 import { EMITTERS, EYE_COLORS, EYE_FORMS, KEEL, LANTERN_MASTS, LENS_HEIGHT, type TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -182,26 +182,88 @@ test("each beam stands on its emitter whatever the heading, rises as it charges,
   }
 });
 
-test("the storm cell hides the beam's end for as long as the beam is lit, and lightning lights the cell and the instrument together", () => {
+/** How bright an instrument's own light is at a channel's middle, as luma of light after exposure. */
+const channel = (frame: Float32Array, x: number, y: number, z: number, across = 0): number => {
+  const e = [0, 0, 0];
+  eyeEnergy(frame, x, y, z, NaN, across, 0.05, e);
+  return 0.2126 * e[0]! + 0.7152 * e[1]! + 0.0722 * e[2]!;
+};
+
+test("the storm hides the beam's end for as long as the beam is lit, and lightning lights the storm and the instrument together", () => {
   const [blue] = SITES;
   let strikes = 0, most = 0;
   for (let phase = 10; phase < 116; phase += 0.11) {
     const frame = new Float32Array(FRAME_FLOATS);
     writeEyeSky(frame, [blue], at(blue, 3, phase), 0, 0, 0);
     expect(lanes(frame).storm).toBeGreaterThan(0.3);
-    // Looking up the beam from the deck, the knot at the cell's middle lets through next to nothing.
+    // Looking up the beam from the deck, the knot at the storm's middle lets through next to nothing.
     expect(toward(frame, 3000 + EMITTERS[0].x + 40, 3300, 4000).through).toBeLessThan(0.2);
     // The instrument's own lights: never dark while it is open, never past their cap, and brighter in a strike.
-    const pulse = eyePulse(frame, 3000, 400, 4000);
-    expect(pulse).toBeGreaterThan(0.5);
-    expect(pulse).toBeLessThan(4);
-    most = Math.max(most, pulse);
-    if (pulse > 1.9) strikes++;
+    const light = channel(frame, 3000, 400, 4000);
+    expect(light).toBeGreaterThan(0.1);
+    expect(light).toBeLessThan(6);
+    most = Math.max(most, light);
+    if (light > 1.5) strikes++;
   }
   expect(strikes).toBeGreaterThan(2);
-  expect(most).toBeGreaterThan(1.9);
-  // With no site lit the lights are at their plain brightness.
-  expect(eyePulse(new Float32Array(FRAME_FLOATS), 0, 0, 0)).toBe(1);
+  expect(most).toBeGreaterThan(1.5);
+  // With no site lit they give nothing, and the glow program shows them in their plain colour.
+  expect(channel(new Float32Array(FRAME_FLOATS), 0, 0, 0)).toBe(0);
+});
+
+test("the storm is cloud lit as the sky lights it, grey and not the instrument's colour, in a spiral that turns as the seconds pass", () => {
+  const [blue] = SITES;
+  const grey = [0.45, 0.52, 0.62];
+  /** The storm alone (the figure left out) toward a point on its 3,000 m sheet, `r` m from the axis at bearing `a`. */
+  const storm = (seconds: number, r: number, a: number) => {
+    const frame = new Float32Array(FRAME_FLOATS);
+    writeEyeSky(frame, [blue], seconds, 0, 0, 0);
+    frame[FRAME.eyes + 7] = 0;
+    const x = 3000 + EMITTERS[0].x + r * Math.cos(a), z = 4000 + r * Math.sin(a), l = Math.hypot(x, 3000, z);
+    const light = new Float64Array(3);
+    const through = eyeRadiance(frame, [x / l, 3000 / l, z / l], light, grey);
+    return { through, light };
+  };
+  // Away from the beam it is the sky's grey, not the instrument's blue: no channel much stronger than the others.
+  let covered = 0;
+  for (let a = 0; a < 24; a++) {
+    const { through, light } = storm(at(blue, 3, 20), 1300, a * Math.PI / 12);
+    if (through > 0.5) continue;
+    covered++;
+    expect(Math.max(...light) / Math.max(1e-6, Math.min(...light))).toBeLessThan(1.8);
+  }
+  expect(covered).toBeGreaterThan(6);
+  // It turns as the seconds pass.
+  const before = Array.from({ length: 72 }, (_, a) => storm(at(blue, 3, 20), 900, a * Math.PI / 36).through);
+  const after = Array.from({ length: 72 }, (_, a) => storm(at(blue, 3, 24), 900, a * Math.PI / 36).through);
+  expect(before.some((v, a) => Math.abs(v - after[a]!) > 0.1)).toBe(true);
+});
+
+test("the energy in an instrument's channels only runs forward, hot at the middle and soft to the walls", () => {
+  const [blue] = SITES;
+  const frame = new Float32Array(FRAME_FLOATS);
+  writeEyeSky(frame, [blue], at(blue, 3, 20), 0, 0, 0);
+  // Brightest at the middle, falling to next to nothing at the walls, and whiter where hot than toward the walls.
+  const middle = channel(frame, 3000, 400, 4000, 0), half = channel(frame, 3000, 400, 4000, 0.5), wall = channel(frame, 3000, 400, 4000, 1);
+  expect(middle).toBeGreaterThan(half);
+  expect(half).toBeGreaterThan(wall);
+  expect(wall).toBeLessThan(middle * 0.12);
+  const e = [0, 0, 0];
+  const tint = (across: number) => {
+    eyeEnergy(frame, 3000, 400, 4000, NaN, across, 0.05, e);
+    return e[0]! / e[2]!;
+  };
+  expect(tint(0)).toBeGreaterThan(tint(0.6));
+  // Along a channel the energy travels up the instrument: a pattern seen at one height is seen higher a moment on.
+  const along = (seconds: number) => {
+    const f = new Float32Array(FRAME_FLOATS);
+    writeEyeSky(f, [blue], at(blue, 3, seconds), 0, 0, 0);
+    return Array.from({ length: 400 }, (_, i) => channel(f, 3000, 300 + i * 0.1, 4000));
+  };
+  const now = along(30), later = along(30.2);
+  const shift = (k: number) => now.slice(0, 300).reduce((s, v, i) => s + Math.abs(v - later[i + k]!), 0);
+  const best = [...Array(100).keys()].reduce((b, k) => (shift(k) < shift(b) ? k : b), 0);
+  expect(best).toBeGreaterThan(0);
 });
 
 test("a rebuilt Wynwood keeps its Sextant bow and transfer point, while an older red header keeps the fork", () => {
