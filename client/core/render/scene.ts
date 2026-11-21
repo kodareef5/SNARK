@@ -72,7 +72,7 @@ import { shadowBytes, shadowLayer } from "./shadowtext.ts";
 import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
 import { lightBytes, lightSamples, postFrame, sceneSize } from "./post.ts";
-import { moonCasts, skyShown } from "./surface.ts";
+import { lampsOn, moonCasts, skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WaterTrails } from "./water-trails.ts";
@@ -1013,15 +1013,19 @@ export class Scene {
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky, this.fadeFrom);
       postFrame(p.frame, p.tier, this.hour, Math.round(this.canvasHeight * p.room), p.share);
       p.lightSamples = lightSamples(this.supersampled);
-      contactFrame(p.frame, p.tier.contact, this.sizes, remote, this.own, cam, this.halfLength);
-      if (p.tier.contact) this.parkedContacts.add(p.frame, this.world.structs, this.assets.manifest.meshes, this.meshOfKind, cam);
+      // The bodies nearest the camera, for their contact and, by night where the tier's shadows say so, for the shadows in
+      // the lamps' pool cards (lamp.ts poolShade), which a tier without contact reads for nothing else.
+      const contacts = p.tier.contact || (p.tier.shadows.pools === true && this.streetLamps.on && this.streetLamps.shaded && lampsOn(p.frame) > 0.004);
+      contactFrame(p.frame, contacts, this.sizes, remote, this.own, cam, this.halfLength);
+      if (contacts) this.parkedContacts.add(p.frame, this.world.structs, this.assets.manifest.meshes, this.meshOfKind, cam);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance, undefined, true);
     }
     if (!p.lit) p.frame[FRAME.exposure] = 0;
     writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale, this.eyeHold);
-    // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, before what casts is chosen.
+    // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, the one by the viewer's own
+    // body, before what casts is chosen.
     const shadows = p.tier.shadows;
-    this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true, this.world.hf);
+    this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true, this.world.hf, p.lit && shadows.pools === true, this.own ?? cam);
     this.fit(cam);
     this.fitLamp(cam);
 

@@ -106,6 +106,11 @@ export const DETAIL_POOL = 128;
 export const DETAIL_WIRE = DETAIL_POOL | 1;
 export const DETAIL_GLASS = DETAIL_POOL | 2;
 export const DETAIL_TIRE = DETAIL_POOL | 3;
+/**
+ * A street lamp's pool on the ground that takes the shadows of the bodies near it (lamp.ts poolShade): its second colour,
+ * which a pool's shape does not use, holds where its lens is from its middle (lamp.ts lensWord).
+ */
+export const DETAIL_SHADED_POOL = DETAIL_POOL | 6;
 /** A sunlit aerated streak at the stern. Its grey byte seeds the shape. */
 export const DETAIL_WAKE = DETAIL_POOL | DETAIL_LIT | 4;
 /**

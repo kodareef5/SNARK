@@ -143,9 +143,10 @@ export const BENCH_TURN_MS = 15000;
  * near city's pieces as instances, none as a chunk's mesh (render/nearcity.ts). "roofs" takes no light down under what
  * stands overhead (render/roof.ts) and leaves the light from the ground as the sky's table has it; "bounce" leaves that
  * light alone. "moon" draws no cascades by night, as before the moon cast through them (render/sky.ts `castLight`), and
- * "lamp" lights by every street lamp's cards alone, the nearest's too, with no lamp's map drawn (render/lamp.ts).
+ * "lamp" lights by every street lamp's cards alone, the nearest's too, with no lamp's map drawn (render/lamp.ts), and
+ * "pools" draws the lamps' pool cards with no body's shadow in them (render/lamp.ts `poolShade`).
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "pools"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
