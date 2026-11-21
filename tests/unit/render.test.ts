@@ -1,7 +1,7 @@
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { expect, test } from "bun:test";
 import { Found } from "../../shared/world/structures.ts";
-import { Camera } from "../../client/core/render/camera.ts";
+import { Camera, NEAR_BODY, NEAR_BODY_FAR } from "../../client/core/render/camera.ts";
 import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_WATER, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
 import { sunDirection } from "../../client/core/render/sky.ts";
@@ -9,7 +9,7 @@ import { lit, shown } from "../../client/core/render/surface.ts";
 import { NODE_BUFFERS, bodySeed, type OwnBody } from "../../client/core/render/scene.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
 import { Pose } from "../../shared/anim/clip.ts";
-import { B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_LOWER_LEG_R, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
+import { B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_LOWER_LEG_R, B_UPPER_CHEST, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, humanPose } from "../../shared/anim/pose.ts";
 import { Solved, boneToModel, solve } from "../../shared/anim/skeleton.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -25,6 +25,23 @@ import { PICK_ENTITY, PICK_SKY, PICK_STRUCTURE, PICK_TERRAIN, Rasterizer } from 
 
 const W = 320;
 const H = 180;
+
+/**
+ * What of body `id`, the viewer's own, the last picture shows: whether any of its chest, a hand or a foot, and the
+ * nearest any of it comes along the view, in metres, from the depth its own pass keeps (camera.ts NEAR_BODY planes).
+ */
+function ownView(raster: Rasterizer, id: number): { chest: boolean; hand: boolean; foot: boolean; nearest: number } {
+  const seen = new Set<number>();
+  let nearest = Infinity;
+  for (let i = 0; i < raster.width * raster.height; i++) {
+    if (raster.pickKind[i] !== PICK_ENTITY || raster.pickId[i] !== id) continue;
+    seen.add(raster.pickBone[i]! - 1);
+    const z = raster.depth[i]!;
+    nearest = Math.min(nearest, (2 * NEAR_BODY_FAR * NEAR_BODY) / (NEAR_BODY_FAR + NEAR_BODY - z * (NEAR_BODY_FAR - NEAR_BODY)));
+  }
+  const any = (...bones: number[]): boolean => bones.some((b) => seen.has(b));
+  return { chest: any(B_CHEST, B_UPPER_CHEST), hand: any(B_HAND_L, B_HAND_R), foot: any(B_FOOT_L, B_FOOT_R), nearest };
+}
 
 /** Ref of the structure centred exactly at (x, z). */
 function refAt(view: ReturnType<typeof provingView>, x: number, z: number): number {
@@ -333,6 +350,7 @@ artTest("the viewer's own body is drawn last and in front: headless from its own
   view.cam.z = own.z;
   view.cam.y = own.y + 1.62;
   view.cam.pitch = -1.35;
+  own.state.setMotion(0, 0, 0, -1.35);
   const packet = view.render();
   const flags = [...packet.drawFlags.subarray(0, packet.drawCount)];
   const near = flags.filter((f) => (f & DRAW_NEAR) !== 0);
@@ -341,9 +359,10 @@ artTest("the viewer's own body is drawn last and in front: headless from its own
   expect(flags.slice(-4)).toEqual(near);
   const hidden = ["core:human_m/head", "core:human_m/hair/buzzed"].map((id) => view.pack.meshIndex.get(id)!);
   for (let d = packet.drawCount - 4; d < packet.drawCount; d++) expect(hidden).not.toContain(packet.drawMesh[d]!);
-  const mid = Math.floor(0.6 * H) * W + W / 2;
-  expect(raster.pickKind[mid]).toBe(PICK_ENTITY);
-  expect(raster.pickId[mid]).toBe(7);
+  // Looking down it sees its chest, a hand and its feet below it, and nothing of it comes near the eye.
+  expect(ownView(raster, 7)).toEqual({ chest: true, hand: true, foot: true, nearest: expect.any(Number) });
+  expect(ownView(raster, 7).nearest).toBeGreaterThan(0.3);
+  own.state.setMotion(0, 0, 0, 0);
   view.cam.pitch = 0;
   view.render();
   let own_pixels = 0;
@@ -366,6 +385,32 @@ artTest("the viewer's own body is drawn last and in front: headless from its own
   expect(view.cam.z).toBeLessThan(own.z - 3);
   expect(view.cam.x).toBeLessThan(own.x - 0.4);
   expect(out[0]!).toBeLessThan(0.5);
+});
+
+artTest("in first person a suit keeps out of the eye's way as the body does: looking down, its chest, gloves and boots below and nothing near", () => {
+  const view = provingView(W, H);
+  const { raster, reg } = view;
+  const own: OwnBody = { kind: reg.index.get("core:survivor")!, x: 256, y: view.hf.heightAt(256, 240), z: 240, yaw: 0.4, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(6), id: 7 };
+  view.scene.own = own;
+  view.remote.count = 0;
+  view.cam.x = own.x;
+  view.cam.z = own.z;
+  view.cam.y = own.y + 1.62;
+  view.cam.yaw = own.yaw;
+  const near: string[] = [];
+  for (const set of ["meridian", "hide"]) {
+    ["hat", "shirt", "gloves", "pants", "boots"].forEach((piece, k) => (own.gear[1 + k] = reg.index.get(`core:${set}_${piece}`)!));
+    for (const pitch of [-0.4, -0.8, -1.1, -1.5]) {
+      view.cam.pitch = pitch;
+      own.state.setMotion(0, 0, 0, pitch);
+      view.render();
+      const seen = ownView(raster, 7);
+      // A hide shirt's collar has a flap at the jaw on the head's bone, which a look a little down sees 10 cm off.
+      if (seen.nearest < 0.25 && !(set === "hide" && pitch === -0.4)) near.push(`${set} ${pitch}: ${seen.nearest.toFixed(2)} m`);
+      if (pitch === -1.5) expect([set, seen.chest, seen.hand, seen.foot]).toEqual([set, true, true, true]);
+    }
+  }
+  expect(near).toEqual([]);
 });
 
 test("the third-person camera is pulled in by whatever is behind the body, and first person ignores it", () => {

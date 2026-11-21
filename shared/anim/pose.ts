@@ -478,8 +478,12 @@ function turn(pose: Pose, bone: number, ax: number, ay: number, az: number, angl
   quatMul(pose.rot, bone * 4, q, 0, pose.rot, bone * 4);
 }
 
-/** `tick` may fall between ticks, for drawing. With `gait` the legs are where that says, and without it where the tick puts them. */
-export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null = null): void {
+/**
+ * `tick` may fall between ticks, for drawing. With `gait` the legs are where that says, and without it where the tick puts them.
+ * `upright` keeps the back as its clip has it, and only the neck and head and raised arms follow the look, as a prone body's
+ * do: the viewer's own body in first person, whose eye does not bend over with its back (client/core/render/characters.ts).
+ */
+export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null = null, upright = false): void {
   const t = tick + st.seed;
   const speed = gait ? gait.speed : st.speed * SPEED_STEP;
   const phase = gait ? gait.phase : Number.NaN;
@@ -598,6 +602,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     raised = 0;
     kick = 0;
   }
+  if (upright) spineShare = 0;
 
   if (twistAngle !== 0) {
     // The hips turn toward the direction of travel and the spine turns back to where the body faces.
