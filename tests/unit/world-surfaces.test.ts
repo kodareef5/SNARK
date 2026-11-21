@@ -113,7 +113,10 @@ test("the textured mesh vertex variants carry semantic IDs while low-poly shader
   }
   expect([FLAT_TERRAIN_VERTEX.includes("uTint"), LIT_TERRAIN_VERTEX.includes("uTint")]).toEqual([true, false]);
   expect(LIT_TERRAIN_FRAGMENT).toContain("worldSurface(albedo, orm, n, geometric, groundSurface(tint), vRel, dx, dy)");
-  expect(LIT_TERRAIN_FRAGMENT).toContain("int other = groundMeet(tint, tints, s - vec2(i), share);");
+  expect(LIT_TERRAIN_FRAGMENT).toContain("int other = streets ? streetOther : groundMeet(tint, tints, s - vec2(i), share);");
+  // Near a street, on the tiers that draw them, the cover is the street's band's and meets the next on its line.
+  expect(LIT_TERRAIN_FRAGMENT).toContain("streets = streetsAt(world, streetE, streetK);");
+  expect(LIT_TERRAIN_FRAGMENT).toContain("streets = streetCover(tints, s - vec2(i), streetE, streetK, world, footprint, tint, streetOther, streetShare);");
 });
 
 test("the ground takes the cover with most of the bilinear weight, so an edge between two curves through a cell and a corner's cover is a rounded bite", () => {

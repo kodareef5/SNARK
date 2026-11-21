@@ -7,6 +7,9 @@ import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_EXHAUST, MATERIAL_LENS, MATER
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
+import { STREET_TILE_BYTES, STREET_TILES_FRAME } from "./streets.ts";
+// What the shell puts the streets' tiles on the card by.
+export { STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE } from "./streets.ts";
 
 /** Layers of the world finishes' arrays: a finish each, then the masks' (content/surfaces.ts MASK_MATERIALS). */
 export const WORLD_LAYERS = WEATHER_LAYER + MASK_MATERIALS.length;
@@ -627,6 +630,15 @@ export class FramePacket {
    * rows and how many. A renderer copies them from the heightfield before it draws.
    */
   readonly groundWindow = Int32Array.of(-1, 0, 0, -1, 0, 0, 0, 0);
+  /**
+   * Chunk tiles of the streets' pictures round the camera to put on the card before this frame's draws (streets.ts
+   * StreetRegion): `streetTiles` of them, each its corner in the pictures' texels (x, y) in `streetAt`, and its bytes of
+   * the distances' picture and of the kinds' one after another in `streetDist` and `streetKinds`. The card keeps them.
+   */
+  streetTiles = 0;
+  readonly streetAt = new Int32Array(STREET_TILES_FRAME * 2);
+  readonly streetDist = new Uint8Array(STREET_TILES_FRAME * STREET_TILE_BYTES);
+  readonly streetKinds = new Uint8Array(STREET_TILES_FRAME * STREET_TILE_BYTES);
 
   transientCount = 0;
   readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
@@ -714,6 +726,7 @@ export class FramePacket {
     this.atlasRows = 0;
     this.tileCount = 0;
     this.groundWindow[3] = -1;
+    this.streetTiles = 0;
     this.transientCount = 0;
     this.boneCount = 0;
     this.casterCount = 0;
