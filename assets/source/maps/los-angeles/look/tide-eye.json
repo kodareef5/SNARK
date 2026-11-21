@@ -1,0 +1,32 @@
+{
+  "hour": 15,
+  "views": [
+    {"name": "red-deck", "onFoot": true, "x": -0.8, "z": 22.4, "up": 1.7, "look": [2.1, -60, 14], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Griffith Observatory"},
+    {"name": "red-console", "onFoot": true, "x": -0.1, "z": 2.4, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 100, "obelisk": "Griffith Observatory"},
+    {"name": "red-overhead", "onFoot": true, "x": 0.9, "z": -25.2, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Griffith Observatory"},
+    {"name": "red-near", "x": 17.4, "z": -499.7, "up": 40, "look": [0, 0, 300], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Griffith Observatory"},
+    {"name": "red-crown", "x": 14, "z": -399.8, "up": 70, "look": [0, 0, 330], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Griffith Observatory"},
+    {"name": "red-instrument", "x": -109.5, "z": -304, "over": 450, "look": [0, 0, 455], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Griffith Observatory"},
+    {"name": "red-beam", "x": 129, "z": -255.7, "over": 620, "look": [0, 0, 650], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Griffith Observatory"},
+    {"name": "red-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1009], "eyeSeconds": 100, "holdPhase": true, "replayEyeSeconds": 85, "obelisk": "Griffith Observatory", "fromSpawn": "Barnsdall Art Park"},
+    {"name": "red-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 100, "holdPhase": true, "obelisk": "Griffith Observatory", "fromSpawn": "Barnsdall Art Park"},
+    {"name": "green-deck", "onFoot": true, "x": 17.9, "z": -26.5, "up": 1.7, "look": [-33.6, 49.7, 14], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Hollywood and Highland"},
+    {"name": "green-console", "onFoot": true, "x": 1.3, "z": -2, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 60, "obelisk": "Hollywood and Highland"},
+    {"name": "green-overhead", "onFoot": true, "x": -20.1, "z": 29.8, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Hollywood and Highland"},
+    {"name": "green-near", "x": -279.6, "z": 414.5, "up": 40, "look": [0, 0, 300], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Hollywood and Highland"},
+    {"name": "green-crown", "x": -223.7, "z": 331.6, "up": 70, "look": [0, 0, 330], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Hollywood and Highland"},
+    {"name": "green-instrument", "x": -68.3, "z": 315.8, "over": 450, "look": [0, 0, 455], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Hollywood and Highland"},
+    {"name": "green-beam", "x": -244.9, "z": 148.4, "over": 620, "look": [0, 0, 650], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Hollywood and Highland"},
+    {"name": "green-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1295], "eyeSeconds": 60, "holdPhase": true, "replayEyeSeconds": 45, "obelisk": "Hollywood and Highland", "fromSpawn": "Paramount Pictures Studio Tour"},
+    {"name": "green-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 60, "holdPhase": true, "obelisk": "Hollywood and Highland", "fromSpawn": "Paramount Pictures Studio Tour"},
+    {"name": "blue-deck", "onFoot": true, "x": -5.6, "z": 13.3, "up": 1.7, "look": [23.4, -55.2, 14], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Lake Hollywood Park"},
+    {"name": "blue-console", "onFoot": true, "x": -0.9, "z": 2.2, "up": 1.7, "look": [0, 0, 0.95], "eyeSeconds": 20, "obelisk": "Lake Hollywood Park"},
+    {"name": "blue-overhead", "onFoot": true, "x": 6.3, "z": -14.9, "up": 1.7, "look": [0, 0, 330], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Lake Hollywood Park"},
+    {"name": "blue-near", "x": 195.4, "z": -460.3, "up": 40, "look": [0, 0, 300], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Lake Hollywood Park"},
+    {"name": "blue-crown", "x": 156.3, "z": -368.2, "up": 70, "look": [0, 0, 330], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Lake Hollywood Park"},
+    {"name": "blue-instrument", "x": 6.8, "z": -323, "over": 450, "look": [0, 0, 455], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Lake Hollywood Park"},
+    {"name": "blue-beam", "x": 212.1, "z": -192.4, "over": 620, "look": [0, 0, 650], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Lake Hollywood Park"},
+    {"name": "blue-far", "hour": 18.4, "x": 0, "z": 0, "up": 20, "look": [0, 0, 1541], "eyeSeconds": 20, "holdPhase": true, "replayEyeSeconds": 5, "obelisk": "Lake Hollywood Park", "fromSpawn": "Hollywood/Highland"},
+    {"name": "blue-far-day", "x": 0, "z": 0, "up": 20, "look": [0, 0, 420], "eyeSeconds": 20, "holdPhase": true, "obelisk": "Lake Hollywood Park", "fromSpawn": "Hollywood/Highland"}
+  ]
+}
