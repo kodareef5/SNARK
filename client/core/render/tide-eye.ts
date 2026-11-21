@@ -195,26 +195,43 @@ export function eyeEnergy(frame: Float32Array, x: number, y: number, z: number, 
     const kind = Math.floor(stamp / EYE_PERIOD), phase = stamp - kind * EYE_PERIOD, form = kind % 3;
     const t = frame[at + 8]!, power = frame[at + 7]!, seed = frame[at + 10]!, open = frame[at + 15]!, cs = frame[at + 13]!, sn = frame[at + 14]!;
     const height = y - frame[at + 12]!;
-    let a = along, side = across * 2.6 + 13 * seed;
-    if (Number.isNaN(a)) {
-      // From where the point is: up the instrument, and on the deck in toward its middle, so a ring lights as the energy
-      // running in passes it. The filaments lie by where it is across the instrument.
-      const ex = EMITTERS[form]!.x, mx = dx + ex * cs, mz = dz - ex * sn;
-      a = height < -640 ? -Math.hypot(mx, mz) : height;
-      side = 0.37 * (mx - mz);
-    }
     const charge = sstep(4, 9, phase) * (1 - sstep(9, 13, phase));
     const run = energyRun(t, phase), lit = strike(t, seed, power, frame[at + 11]!, open, struck);
     // Filaments: thin lines where two noises cross their middles, wandering as they run. A packet every 7 m with a hard
-    // front and a long tail, and a surge 160 m long climbing the whole height; diodes under the glass, seen close.
-    const fil = 1 - Math.abs(2 * noise(a * 0.45 - 2.3 * run, side * 2.2, 3) - 1), fil2 = 1 - Math.abs(2 * noise(a * 1.3 - 4.1 * run, side * 3.7 + 7, 4) - 1);
+    // front and a long tail, and a surge 160 m long climbing the whole height; sparks racing along four times as fast,
+    // one in three lengths of 2.5 m, each somewhere across; diodes under the glass. Sparks and diodes are seen close.
+    let a = along, side = across * 2.6 + 13 * seed, turns = 1;
+    let n1 = 0, n2 = 0, wave = 0, sparkAt = 0;
+    if (Number.isNaN(a)) {
+      // From where the point is: up the instrument, the filaments lying by where it is across it; and on the deck round
+      // each ring and in along each spoke, as fronts of a spiral closing on the console, the filaments in a frame that
+      // turns with them, so that nothing has a seam.
+      const ex = EMITTERS[form]!.x, mx = dx + ex * cs, mz = dz - ex * sn, r = Math.hypot(mx, mz);
+      a = height < -640 ? -r : height;
+      side = 0.37 * (mx - mz);
+      if (height < -640) {
+        const th = Math.atan2(mz, mx + 1e-10), turn = th - 2.3 * run / Math.max(r, 3), turn2 = th - 4.1 * run / Math.max(r, 3);
+        n1 = noise(r * Math.cos(turn) * 0.45, r * Math.sin(turn) * 0.45, 3);
+        n2 = noise(r * Math.cos(turn2) * 1.3 + 7, r * Math.sin(turn2) * 1.3, 4);
+        wave = 24 * th / TAU - r / 7 - 4.5 * run / 7;
+        sparkAt = 96 * th / TAU - r / 2.5 - 9 * run / 2.5;
+        turns = 24;
+      }
+    }
+    if (turns === 1) {
+      n1 = noise(a * 0.45 - 2.3 * run, side * 2.2, 3);
+      n2 = noise(a * 1.3 - 4.1 * run, side * 3.7 + 7, 4);
+      wave = (a - 4.5 * run) / 7;
+      sparkAt = (a - 9 * run) / 2.5;
+    }
+    const beads = turns === 1 ? 0.92 + 0.08 * Math.cos(a * 31.4) * sstep(0.08, 0.02, footprint) : 1;
+    const fil = 1 - Math.abs(2 * n1 - 1), fil2 = 1 - Math.abs(2 * n2 - 1);
     const threads = 0.7 * fil ** 6 + 0.5 * fil2 ** 8;
-    const wave = (a - 4.5 * run) / 7, k = fract(wave);
-    const packet = Math.exp(-(1 - k) * 4) * sstep(1, 0.95, k) * (0.35 + 0.65 * eyeHash(Math.floor(wave), 17, 5));
+    const k = fract(wave);
+    // Round a ring the fronts are counted round, so a packet is the same packet either side of where the count starts.
+    const packet = Math.exp(-(1 - k) * 4) * sstep(1, 0.95, k) * (0.35 + 0.65 * eyeHash(mod(Math.floor(wave), turns === 1 ? 1e6 : turns), 17, 5));
     const surge = Math.pow(0.5 + 0.5 * Math.sin((a - 25 * run) * 0.039), 4);
-    const beads = 0.92 + 0.08 * Math.cos(a * 31.4) * sstep(0.08, 0.02, footprint);
-    // Sparks racing along it four times as fast, one in three lengths of 2.5 m, each somewhere across; seen close.
-    const sparkAt = (a - 9 * run) / 2.5, cell = Math.floor(sparkAt), into = (sparkAt - cell) * 2.5;
+    const cell = mod(Math.floor(sparkAt), turns === 1 ? 1e6 : 4 * turns), into = fract(sparkAt) * 2.5;
     const spark = eyeHash(cell, 23, 6) < 0.35 ? Math.exp(-(((into - 0.4 - 1.7 * eyeHash(cell, 29, 6)) / 0.12) ** 2) - (((across - 1.6 * eyeHash(cell, 31, 6) + 0.8) / 0.15) ** 2)) * sstep(0.15, 0.04, footprint) : 0;
     const pulse = open * (0.62 + 0.12 * Math.sin(1.25 * t) + 0.3 * power + (0.2 + 0.7 * charge) * surge + 1.3 * lit);
     const e = pulse * (0.3 + 1.1 * threads + (0.9 + 0.9 * charge + 0.3 * power) * packet + 1.4 * spark) * beads;
@@ -575,22 +592,37 @@ vec3 eyeEnergy(vec3 rel, float along, float across, float footprint) {
     if (s.w <= 0. || dd >= best) continue;
     best = dd;
     float kind = floor(s.w/120.), phase = s.w-120.*kind, form = kind-3.*floor(kind/3.), t = life.x, id;
-    float height = rel.y-foot.x, a = along, side = across*2.6+13.*life.z;
+    float height = rel.y-foot.x, a = along, side = across*2.6+13.*life.z, turns = 1., n1, n2, wave, sparkAt;
+    float charge = smoothstep(4.,9.,phase)*(1.-smoothstep(9.,13.,phase));
+    float run = 2.2*t+20.*smoothstep(4.,13.,phase), lit = eyeStrike(t,life.z,tint.w,life.w,foot.w,id);
     if (a < -1.e9) {
       float ex = form < .5 ? ${g(EMITTERS[0].x)} : form < 1.5 ? ${g(EMITTERS[1].x)} : ${g(EMITTERS[2].x)};
       vec2 m = away+ex*vec2(foot.y,-foot.z);
-      a = height < -640. ? -length(m) : height;
+      float r = length(m);
+      a = height < -640. ? -r : height;
       side = .37*(m.x-m.y);
+      if (height < -640.) {
+        float th = atan(m.y,m.x+1.e-10), turn = th-2.3*run/max(r,3.), turn2 = th-4.1*run/max(r,3.);
+        n1 = eyeNoise(r*vec2(cos(turn),sin(turn))*.45,3.);
+        n2 = eyeNoise(r*vec2(cos(turn2),sin(turn2))*1.3+vec2(7.,0.),4.);
+        wave = 24.*th/6.2831853-r/7.-4.5*run/7.;
+        sparkAt = 96.*th/6.2831853-r/2.5-9.*run/2.5;
+        turns = 24.;
+      }
     }
-    float charge = smoothstep(4.,9.,phase)*(1.-smoothstep(9.,13.,phase));
-    float run = 2.2*t+20.*smoothstep(4.,13.,phase), lit = eyeStrike(t,life.z,tint.w,life.w,foot.w,id);
-    float fil = 1.-abs(2.*eyeNoise(vec2(a*.45-2.3*run,side*2.2),3.)-1.), fil2 = 1.-abs(2.*eyeNoise(vec2(a*1.3-4.1*run,side*3.7+7.),4.)-1.);
+    if (turns == 1.) {
+      n1 = eyeNoise(vec2(a*.45-2.3*run,side*2.2),3.);
+      n2 = eyeNoise(vec2(a*1.3-4.1*run,side*3.7+7.),4.);
+      wave = (a-4.5*run)/7.;
+      sparkAt = (a-9.*run)/2.5;
+    }
+    float fil = 1.-abs(2.*n1-1.), fil2 = 1.-abs(2.*n2-1.);
     float threads = .7*pow(fil,6.)+.5*pow(fil2,8.);
-    float wave = (a-4.5*run)/7., k = fract(wave);
-    float packet = exp(-(1.-k)*4.)*smoothstep(1.,.95,k)*(.35+.65*eyeHash(vec2(floor(wave),17.),5.));
+    float k = fract(wave), every = turns == 1. ? 1.e6 : turns;
+    float packet = exp(-(1.-k)*4.)*smoothstep(1.,.95,k)*(.35+.65*eyeHash(vec2(mod(floor(wave),every),17.),5.));
     float surge = pow(.5+.5*sin((a-25.*run)*.039),4.);
-    float beads = .92+.08*cos(a*31.4)*smoothstep(.08,.02,footprint);
-    float sparkAt = (a-9.*run)/2.5, cell = floor(sparkAt), into = (sparkAt-cell)*2.5;
+    float beads = turns == 1. ? .92+.08*cos(a*31.4)*smoothstep(.08,.02,footprint) : 1.;
+    float cell = mod(floor(sparkAt),turns == 1. ? 1.e6 : 4.*turns), into = fract(sparkAt)*2.5;
     float sx = (into-.4-1.7*eyeHash(vec2(cell,29.),6.))/.12, sy = (across-1.6*eyeHash(vec2(cell,31.),6.)+.8)/.15;
     float spark = eyeHash(vec2(cell,23.),6.) < .35 ? exp(-sx*sx-sy*sy)*smoothstep(.15,.04,footprint) : 0.;
     float pulse = foot.w*(.62+.12*sin(1.25*t)+.3*tint.w+(.2+.7*charge)*surge+1.3*lit);
