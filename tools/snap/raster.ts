@@ -4,7 +4,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
-import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../content/street-finishes.ts";
+import { ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
 import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireRelief, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import { bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
@@ -19,7 +19,9 @@ import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { LANDMARK_BUFFER } from "../../client/core/render/farlandmarks.ts";
 import { nearKeeps, swapKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
-import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
+import { EYE_FLOATS, EYE_SLOTS, eyeGlint, eyePulse, eyeRadiance } from "../../client/core/render/tide-eye.ts";
+
+const eyeAmbient = [0, 0, 0];
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
@@ -557,7 +559,7 @@ export class Rasterizer {
   private domeColor = new Uint8ClampedArray(0);
   private domeDone = new Uint8Array(0);
   private domeTable: Uint8Array | null = null;
-  private readonly domeKey = new Float64Array(16 + FRAME.ends + 5 + 24);
+  private readonly domeKey = new Float64Array(16 + FRAME.ends + 5 + EYE_FLOATS * EYE_SLOTS);
   private readonly domeInverse = new Float64Array(9);
   /**
    * Per pixel, a lit palette draw's colour and flags, projection footprint, position and geometric normal, and on the
@@ -858,7 +860,7 @@ export class Rasterizer {
     for (let i = 0; i < 16; i++) take(i, p.viewProj[i]!);
     for (let i = 0; i < FRAME.ends; i++) take(16 + i, p.frame[i]!);
     [p.sky[0]!, p.sky[1]!, p.sky[2]!, p.fogStart, p.fogEnd].forEach((v, i) => take(16 + FRAME.ends + i, v));
-    for (let i = 0; i < 24; i++) take(16 + FRAME.ends + 5 + i, p.frame[FRAME.eyes + i]!);
+    for (let i = 0; i < EYE_FLOATS * EYE_SLOTS; i++) take(16 + FRAME.ends + 5 + i, p.frame[FRAME.eyes + i]!);
     if (!same) {
       if (this.domeColor.length !== this.color.length) this.domeColor = new Uint8ClampedArray(this.color.length);
       this.domeDone = new Uint8Array(this.width * this.height);
@@ -888,13 +890,17 @@ export class Rasterizer {
             const exposure = p.frame[FRAME.exposure]!;
             if (p.frame[FRAME.eyes + 3]! > 0 && exposure > 0) {
               albedo2.fill(0);
-              const transmission = eyeRadiance(p.frame, reflected, albedo2);
+              // A cloud up there shows the sky behind it, greyed, as the dome's program gives it.
+              const grey = 0.2126 * mirrored[0]! + 0.7152 * mirrored[1]! + 0.0722 * mirrored[2]!;
+              for (let i = 0; i < 3; i++) eyeAmbient[i] = (mirrored[i]! + (grey - mirrored[i]!) * 0.6) * exposure;
+              const transmission = eyeRadiance(p.frame, reflected, albedo2, eyeAmbient);
               for (let i = 0; i < 3; i++) mirrored[i] = mirrored[i]! * transmission + albedo2[i]! / exposure;
             }
             shown(rgb, mirrored, 0, p);
           } else {
             albedo2.fill(0);
-            const transmission = eyeRadiance(p.frame, reflected, albedo2);
+            for (let i = 0; i < 3; i++) eyeAmbient[i] = p.sky[i]! * 0.8;
+            const transmission = eyeRadiance(p.frame, reflected, albedo2, eyeAmbient, 2);
             for (let i = 0; i < 3; i++) rgb[i] = 1 - (1 - p.sky[i]! * transmission) * Math.exp(-albedo2[i]!);
           }
           for (let i = 0; i < 3; i++) this.domeColor[o + i] = rgb[i]! * 255;
@@ -1673,7 +1679,9 @@ export class Rasterizer {
           }
           if (this.drawing >= 0 && (p.drawFlags[this.drawing]! & DRAW_EMISSIVE)) {
             this.deferred[at] = 0;
-            for (let k=0;k<3;k++) this.color[at*4+k] = Math.min(255,pal[colorIndex*4+k]!*1.18+30.6);
+            // An instrument's light by its site's pulse, as the signal program shows it with no light target.
+            const pulse = eyePulse(p.frame, rx, ry, rz);
+            for (let k=0;k<3;k++) this.color[at*4+k] = Math.min(255, Math.min(255,pal[colorIndex*4+k]!*1.18+30.6) * (0.5 + 0.5 * Math.min(pulse, 1)) + 76.5 * Math.max(0, pulse - 1));
             continue;
           }
           if (p.lit && !blend) {
@@ -1938,8 +1946,8 @@ export class Rasterizer {
             own = bodyOpen(carried[15]!, carried[16]!, carried[17]!, carried[18]!*side, carried[19]!*side, carried[20]!*side, -carriedNormal[1]!*nl, s.rest!, s.wheelBones, s.center, s.half);
           }
           mro[0] = Math.min(mro[0]!, own);
-          const lens = s.label === LENS, armor = s.label === ENAMEL_ARMOR;
-          const polished = lens ? 1 : armor ? polishMask(mro[1]!) : 0;
+          const lens = s.label === LENS, armor = s.label === ENAMEL_ARMOR, instrument = s.label === INSTRUMENT;
+          const polished = lens ? 1 : armor || instrument ? polishMask(mro[1]!) : 0;
           let opticalNormal = normal, specularLayer = 0;
           const gloss = p.frame[FRAME.streetLook]!;
           if (polished > 0) {
@@ -1959,11 +1967,17 @@ export class Rasterizer {
               }
               mro[1]! += plated*(glossRoughness(Math.max(0.095, mro[1]!*0.58), 1, gloss) - mro[1]!);
             }
+            if (instrument) mro[1]! += polished*metal*(glossRoughness(Math.max(0.095, mro[1]!*0.7), 1, gloss) - mro[1]!);
           }
           const twice = 2 * (opticalNormal[0]! * eye[0]! + opticalNormal[1]! * eye[1]! + opticalNormal[2]! * eye[2]!);
           const edge = 1 - Math.max(0, Math.min(1, twice*0.5));
           for (let i = 0; i < 3; i++) reflected[i] = twice * opticalNormal[i]! - eye[i]!;
           skyFrom(mirrored, p.frame, reflected, this.look);
+          if (instrument) {
+            albedo2.fill(0);
+            eyeGlint(p.frame, albedo2, carried[0]!, carried[2]!, reflected[1]!);
+            for (let c = 0; c < 3; c++) mirrored[c]! += albedo2[c]!;
+          }
           let alpha = 1;
           if (polished > 0) {
             const rough = glossRoughness(lens ? 0.12 : mro[1]! + (0.20-mro[1]!)*specularLayer, 1, gloss);
@@ -1977,9 +1991,9 @@ export class Rasterizer {
             } else {
               const grey = 0.2126*mirrored[0]! + 0.7152*mirrored[1]! + 0.0722*mirrored[2]!;
               for (let c = 0; c < 3; c++) mirrored[c]! += (grey-mirrored[c]!)*0.18*specularLayer;
-              coat = specularLayer*(0.16 + 0.51*edge2);
+              coat = specularLayer*(instrument ? 0.055 + 0.45*edge2*edge : 0.16 + 0.51*edge2);
             }
-          } else if (!armor && s.label) {
+          } else if (!armor && !instrument && s.label) {
             const share = receiver(s.label, mask[0]!, mro[1]!, mro[2]!);
             if (share > 0) {
               const paint = s.label === PAINT || s.label === BURNT_SHEET ? mask[0]!*Math.max(0,Math.min(1,(0.72-mro[1]!)*3.5)) : 0;

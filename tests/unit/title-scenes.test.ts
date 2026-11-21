@@ -107,8 +107,9 @@ test("the shore clock opens face-on, completes a turn about the keel, and keeps 
   expect((cast.eye.yaw - start) & 65535).toBe(16384);
   writeEyeSky(frame, [cast.eye], scene.eyeSeconds, cast.eye.x, 0, cast.eye.z, scene.sextantScale);
   const theta = cast.eye.yaw * Math.PI / 32768;
-  expect(frame[FRAME.eyes]).toBeCloseTo(19 * scene.sextantScale * Math.cos(theta));
-  expect(frame[FRAME.eyes + 2]).toBeCloseTo(-19 * scene.sextantScale * Math.sin(theta));
+  // The figure stands over the keel's finial, where the beam leaves (the profile's emitter).
+  expect(frame[FRAME.eyes]).toBeCloseTo(profile.emitter[0]! * scene.sextantScale * Math.cos(theta));
+  expect(frame[FRAME.eyes + 2]).toBeCloseTo(-profile.emitter[0]! * scene.sextantScale * Math.sin(theta));
   view(180);
   expect(cast.eye.yaw).toBe(start);
 });
@@ -140,6 +141,18 @@ test("the clock and seated gaze move while the shoulder camera holds steady in t
   expect(actors.tick).toBe(30);
   expect(scene.eyeSeconds + 40).toBeGreaterThan(11);
   expect(scene.eyeSeconds + 40).toBeLessThan(21);
+  // The sky's display is held at full power and its own clock only runs forward: nothing in it plays back.
+  const lanes = [0, 1, 30, 92, 600].map((t) => {
+    view(t);
+    const frame = new Float32Array(FRAME_FLOATS);
+    writeEyeSky(frame, [cast.eye], scene.eyeSeconds, cast.eye.x, 0, cast.eye.z, scene.sextantScale, scene.eyeHold);
+    return [frame[FRAME.eyes + 7]!, frame[FRAME.eyes + 8]!, frame[FRAME.eyes + 9]!];
+  });
+  for (let i = 1; i < lanes.length; i++) {
+    expect(lanes[i]![0]).toBe(1);
+    expect(lanes[i]![1]!).toBeGreaterThan(lanes[i - 1]![1]!);
+    expect(lanes[i]![2]).toBe(lanes[0]![2]!);
+  }
   cam.aspect = 9 / 16;
   expect(view(0)).not.toEqual(start);
   expect(validShot({ ...OPENING_SHOT, camera: { ...OPENING_SHOT.camera, pan: Infinity } })).toBe(false);
