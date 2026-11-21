@@ -9,7 +9,7 @@
 // a build's, kept on a machine that does map work and fetched again where they are gone.
 
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -52,7 +52,7 @@ const COMMON = join(LEGACY, "common.py");
 // A stage's key is the stage before it's, its code, and what it reads beyond the city's settings (`own`: authored files
 // in the city's folder and settings sections no stage before it reads). Too eager is safe; a key that misses an input
 // keeps a stale layer, so a section goes in `own` only where one stage alone reads it.
-const STAGES: { name: string; run: (work: string, city: string) => string[]; code: string[]; own?: { files: string[]; sections: string[] } }[] = [
+const STAGES: { name: string; run: (work: string, city: string) => string[]; code: string[]; own?: { files: string[]; sections: string[]; folders?: string[] } }[] = [
   { name: "frame", run: py("frame.py", "--force"), code: [join(LEGACY, "frame.py")] },
   { name: "fetch", run: py("fetch.py", "tiger", "dem", "nlcd", "fema", "bathymetry", "osm"), code: [join(LEGACY, "fetch.py"), join(LEGACY, "osm_local.py"), ...["buildings", "features", "osm", "streets", "ways"].map((q) => join(LEGACY, `${q}.overpassql`))] },
   { name: "prepare", run: py("prepare.py"), code: [join(LEGACY, "prepare.py"), join(LEGACY, "streets.py")] },
@@ -66,7 +66,8 @@ const STAGES: { name: string; run: (work: string, city: string) => string[]; cod
   { name: "world", run: py("world.py", "--accept"), code: [join(LEGACY, "world.py")], own: { files: ["world.json"], sections: ["world"] } },
   { name: "vocabulary", run: py("vocabulary.py"), code: [join(LEGACY, "vocabulary.py"), join(HERE, "rules/tables.json"), join(ROOT, "tools/mapworld/rules/default.json")],
     own: { files: ["rules.json", "places.json", "compositions.json", "districts.json"], sections: ["ruins"] } },
-  { name: "build", run: (work) => ["bun", join(ROOT, "tools/mapworld/build.ts"), work], code: importGraph(join(ROOT, "tools/mapworld/build.ts")) },
+  // The build reads the city's street overlay (streets/*.jsonl) alone, so an entry there builds the map again and no stage before it.
+  { name: "build", run: (work) => ["bun", join(ROOT, "tools/mapworld/build.ts"), work], code: importGraph(join(ROOT, "tools/mapworld/build.ts")), own: { files: [], sections: [], folders: ["streets"] } },
 ];
 
 const readJson = (path: string): Json => JSON.parse(readFileSync(path, "utf8")) as Json;
@@ -195,6 +196,10 @@ function main(): void {
     if (existsSync(join(source, from))) write(to, readFileSync(join(source, from), "utf8"));
   }
   if (existsSync(join(source, "look"))) cpSync(join(source, "look"), join(work, "look"), { recursive: true });
+  // The street overlay as written, its files alone: one taken out of the city's folder is taken out here too.
+  const overlay = (dir: string): string[] => (existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort() : []);
+  for (const f of overlay(join(work, "streets"))) if (!existsSync(join(source, "streets", f))) unlinkSync(join(work, "streets", f));
+  for (const f of overlay(join(source, "streets"))) write(join("streets", f), readFileSync(join(source, "streets", f), "utf8"));
 
   const keysPath = join(work, "stages.json");
   const keys = (existsSync(keysPath) ? readJson(keysPath) : {}) as Record<string, string>;
@@ -208,7 +213,8 @@ function main(): void {
   const now: Record<string, string> = {};
   for (const [i, stage] of STAGES.entries()) {
     const own = stage.own ? [JSON.stringify(stage.own.sections.map((s) => settings[s] ?? null)),
-      ...stage.own.files.map((f) => (existsSync(join(source, f)) ? readFileSync(join(source, f)) : `no ${f}`))] : [];
+      ...stage.own.files.map((f) => (existsSync(join(source, f)) ? readFileSync(join(source, f)) : `no ${f}`)),
+      ...(stage.own.folders ?? []).flatMap((d) => overlay(join(source, d)).flatMap((f) => [`${d}/${f}`, readFileSync(join(source, d, f))]))] : [];
     const code = stage.code.some((f) => f.endsWith(".py")) ? [...stage.code, COMMON] : stage.code;
     const key = sha(chain, stage.name, ...code.map((f) => readFileSync(f)), ...own);
     chain = key;

@@ -5,6 +5,7 @@
 
 import { S, type Ground, type World } from "./ground.ts";
 import { fbm, hash3 } from "./raster.ts";
+import { VERGE_TINTS } from "../../shared/world/streets.ts";
 
 /** Each surface's colours: the first is the most common, and noise picks among the rest. */
 const GROUND: Record<number, readonly number[]> = {
@@ -67,6 +68,9 @@ const RUIN: Record<string, readonly number[]> = {
   industrial: [102, 89, 179, 101],
 };
 
+/** The surfaces a verge's kind recolours: ground that grows, lies open or is paved as a plaza. */
+const VERGE_GROUND = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT, S.PLAZA, S.MARSH]);
+
 /** Shipping containers, a colour each. */
 const CONTAINERS = [179, 181, 41, 89, 205, 196, 53];
 
@@ -126,7 +130,9 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
       tint[i] = CONTAINERS[ground.container[i]! % CONTAINERS.length]!;
       continue;
     }
-    const list = s === S.WALKWAY && parkShare(c, r) > 0.4 ? PARK_PATH : table[s] ?? [15];
+    // A street's verge by its kind (streets/paint.ts), where it is ground that grows or lies open.
+    const kind = ground.verge?.[i] ?? 0;
+    const list = kind > 0 && VERGE_GROUND.has(s) ? VERGE_TINTS[kind]! : s === S.WALKWAY && parkShare(c, r) > 0.4 ? PARK_PATH : table[s] ?? [15];
     let k = list[0]!;
     if (list.length > 1) {
       const wet = s === S.FLAT || s === S.DEEP || s === S.CHANNEL || s === S.SHALLOW;
