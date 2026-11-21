@@ -123,6 +123,27 @@ Tampa) builds the same bytes as before. A mapped pier or breakwater over a lake
 stands over its surface as one over the sea does over the sea. `stats.json`
 lists each lake made and each left, with its reason.
 
+## Shores
+
+The ground's samples are each land or water, so a waterline across them steps
+from sample to sample. The build rounds it in two passes at the end of the
+ground (`ground.ts`):
+
+- A sandy sea shore is graded as a beach (`shared/world/beach.ts`): a 12 m
+  filter finds the line between the surveyed sand and the sea bed and slopes
+  the foreshore through it. The bed it reaches is tinted sand.
+- Every other low soft bank of the sea or of a lake (grass, open ground,
+  canopy, mangrove, marsh, desert) is graded too (`shared/world/banks.ts`): an
+  8 m filter finds the line, and the ground slopes up to the bank's top over
+  3 m inland and down to its foot (15 to 80 cm deep) over 5 m out. A sample
+  the grading takes out of the water is tinted mud, and the bed at the bank's
+  foot silt, as is the sea's bed within 5 m of any shore more than 40 m from a
+  beach (a quay's or a wall's too). A bank more than 1 m over its water, a road, a footprint, a
+  bridge's gap and the beach's bed count for the line but are never moved.
+
+Both run on every city with a sea; the banks' pass runs on lakes without one.
+The heights they move are the collision bed too.
+
 ## Obelisks
 
 Where survivors leave for another server of the cluster. `world.json` lists

@@ -3,7 +3,8 @@
 // reflected to, by Fresnel's term, and glints where it mirrors the sun and the moon. Under that is the water itself:
 // clear in the shallows and the deep blue of open sea, by how deep the water is there, read from the terrain's own
 // heights, and see-through over its last 30 cm at the shore, where foam lies on it in a broken line that the wind
-// moves and that thins out as the water deepens. Close to a sloping beach the wash retreats over a wet film; nearby
+// moves and that thins out as the water deepens. Close to a sloping beach the wash retreats over a wet film; at another
+// bank the foam is a thin line and the water murkier (bank.ts); nearby
 // hulls, swimmers and low flyers leave bounded creases in the reflecting surface. The sun's shadow falls on its glint and on the light in it.
 // Then haze, exposure and the tone curve, as everything lit is shown. A lake's surface (lakes.ts) is drawn by the same program:
 // the depth is the height of the pixel's own surface over the ground, whatever level that stands at.
@@ -12,6 +13,7 @@
 // not draw it (D264): the twins are what the lit probe holds a GPU's pictures to. Under water, and in a plain sky, the
 // sea is drawn as it always was.
 
+import { type Bank, BANK_FAR, MURK, MURK_CLEAR, bankFade, bankGlsl, bankMurk, bankShade, shoreBank } from "./bank.ts";
 import { SWASH_GLSL, swashFrame } from "./swash.ts";
 import { WATER_TRAILS_GLSL } from "./water-trails.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
@@ -196,6 +198,29 @@ export function seaDepth(frame: Float32Array, hf: Heightfield, size: GroundSize,
   return (frame[FRAME.sea]! - h) * frame[FRAME.sea + 1]! + (frame[FRAME.eyeHeight]! + ry);
 }
 
+const corners = [0, 0, 0, 0], cornerTints = [0, 0, 0, 0];
+
+/**
+ * The bank round the point of the water `rx`, `rz` metres from the camera, as the WATER program reads it from the
+ * window's samples (bank.ts shoreBank), its surface `ry` from the camera as for seaDepth, where `fine` of its depth is
+ * the window's.
+ */
+export function seaBank(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, rx: number, rz: number, ry: number, fine: number, out: Bank): Bank {
+  out.soft = out.built = out.still = out.muddy = out.grade = 0;
+  if (window[0]! < 0 || fine <= 0) return out;
+  const last = [size.width[SOURCE_WINDOW]! - 1, size.height[SOURCE_WINDOW]! - 1];
+  const cu = Math.max(0, Math.min(last[0]!, frame[FRAME.ground]! + rx * frame[FRAME.sea + 2]!));
+  const cv = Math.max(0, Math.min(last[1]!, frame[FRAME.ground + 1]! + rz * frame[FRAME.sea + 2]!));
+  const i = Math.min(Math.floor(cu), last[0]! - 1), j = Math.min(Math.floor(cv), last[1]! - 1);
+  for (let k = 0; k < 4; k++) {
+    const at = (window[2]! + j + (k >> 1)) * hf.nx + window[1]! + i + (k & 1);
+    corners[k] = hf.heights[at]!;
+    cornerTints[k] = hf.tint[at]!;
+  }
+  const level = frame[FRAME.sea]! + (frame[FRAME.eyeHeight]! + ry) / frame[FRAME.sea + 1]!;
+  return shoreBank(corners, cornerTints, cu - i, cv - j, level, size.cell[SOURCE_WINDOW]!, hf.stepY, fine, out);
+}
+
 /** A hash of the cell `x`, `y` of a noise of `n` cells a side that tiles, `n` a power of two, 0 to 1. */
 function foamHash(x: number, y: number, n: number): number {
   let h = (Math.imul(x & (n - 1), 1597334677) ^ Math.imul(y & (n - 1), 3812015801)) >>> 0;
@@ -246,6 +271,7 @@ export interface SeaPixel {
 
 const mirror = [0, 0, 0];
 const sky = [0, 0, 0];
+const NO_BANK: Bank = { soft: 0, built: 0, still: 0, muddy: 0, grade: 0 };
 const reflected = [0, 0, 0];
 const sun = [0, 0, 0];
 
@@ -293,9 +319,9 @@ const seen = [0, 0, 0];
  * The twin of the WATER program for a pixel whose surface normal is `n` (straight up for a calm sea), seen along `v`,
  * the way to the eye, over water `depth` metres deep, its waves' slopes having lost `spread` of their mean square to
  * distance, `shade` of the light the cascades are cast from reaching it (the sun's, or the moon's by night), `foam` of
- * it foam (seaFoam). `table` is the sky table.
+ * it foam (seaFoam), at a bank `bank` (seaBank). `table` is the sky table.
  */
-export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec, depth: number, spread: number, shade = 1, foam = 0): SeaPixel {
+export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec, depth: number, spread: number, shade = 1, foam = 0, bank: Bank = NO_BANK): SeaPixel {
   const nv = Math.min(Math.max(n[0]! * v[0]! + n[1]! * v[1]! + n[2]! * v[2]!, 0.001), 1);
   const a2 = Math.pow(SEA_ROUGH, 4) + DISC * DISC + spread;
   facing(seen, n, v, spread);
@@ -306,7 +332,8 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   domeLight(table, sun, r, reflected);
   skyOn(sky, frame, seen[1]!);
   const a = Math.min(Math.sqrt(a2), 1);
-  for (let k = 0; k < 3; k++) mirror[k] = f * (reflected[k]! * frame[FRAME.skyScale]! * (1 - a) + sky[k]! * a);
+  const wall = 1 - bankShade(bank, depth);
+  for (let k = 0; k < 3; k++) mirror[k] = f * (reflected[k]! * frame[FRAME.skyScale]! * (1 - a) + sky[k]! * a) * wall;
   const shine = [0, 0, 0];
   // The shade falls on the light the cascades are cast from: the sun's by day, the moon's by night.
   const owned = moonCasts(frame), sunShade = owned ? 1 : shade, moonShade = owned ? shade : 1;
@@ -318,7 +345,8 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   const d = Math.max(depth, 0);
   const up = Math.abs(v[1]!);
   const steep = Math.sqrt(1 - (1 - up * up) / (BEND * BEND));
-  const through = Math.exp(-CLEAR * d * (1 + 1 / steep));
+  const murk = bankMurk(bank);
+  const through = Math.exp(-CLEAR * (1 + MURK_CLEAR * murk) * d * (1 + 1 / steep));
   const deep = 1 - Math.exp(-d / TURN);
   skyOn(sky, frame, 1);
   const light = [0, 0, 0];
@@ -326,7 +354,8 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   let peak = 0;
   for (let k = 0; k < 3; k++) {
     const lit = sky[k]! + frame[FRAME.sunColor + k]! * Math.max(frame[FRAME.sun + 1]!, 0) * sunShade + frame[FRAME.moonColor + k]! * Math.max(frame[FRAME.moon + 1]!, 0) * moonShade;
-    const body = (SHALLOW[k]! + (DEEP[k]! - SHALLOW[k]!) * deep) * lit;
+    const water = SHALLOW[k]! + (DEEP[k]! - SHALLOW[k]!) * deep;
+    const body = (water + (MURK[k]! - water) * murk) * lit;
     light[k] = mirror[k]! + shine[k]! + (1 - f) * (1 - through) * body;
     white[k] = FOAM_WHITE * lit;
     peak = Math.max(peak, (mirror[k]! + shine[k]!) * frame[FRAME.exposure]!);
@@ -335,7 +364,7 @@ export function seaPixel(frame: Float32Array, table: Uint8Array, n: Vec, v: Vec,
   const glare = Math.max(0, Math.min(1, (peak - GLARE) / GLARE));
   const cover = under + (1 - under) * glare;
   // The foam lies over the water, which lies over what is under it.
-  const shore = Math.max(0, Math.min(1, d / SHORE));
+  const shore = Math.max(0, Math.min(1, d / bankFade(bank, SHORE)));
   const held = foam + (1 - foam) * cover * shore;
   return { light: light.map((c, k) => (foam * white[k]! + (1 - foam) * shore * c) / Math.max(held, 1e-4)), cover: held };
 }
@@ -441,6 +470,7 @@ float seaFoam(vec2 rel, float depth, float fine, float wide, float deep) {
   return ${g(FOAM_MOST)} * smoothstep(bar - soft, bar + soft, mean) * clamp(depth / max(${g(FOAM_EDGE)}, deep), 0.0, 1.0) * clamp((${g(FOAM)} / max(deep, 1e-6) - 1.0) * 0.5, 0.0, 1.0) * fine;
 }
 ${SWASH_GLSL}
+${bankGlsl(FOAM)}
 #ifdef LOCAL_WAKES
 ${WATER_TRAILS_GLSL}
 #endif
@@ -452,14 +482,20 @@ void main() {
   float deep = fwidth(depth), wide = length(fwidth(vRel.xz));
   vec2 dx=dFdx(vRel.xz), dz=dFdy(vRel.xz), dd=vec2(dFdx(depth),dFdy(depth));
   if (depth <= 0.0) discard;
-  float dist = length(vRel), film=0., lace=1.;
+  float dist = length(vRel), film=0., lace=1., grade=0.;
   vec2 localSlope=vec2(0.);
-  if (depth<1.1 && fine>0. && dist<110.) {
-    float det=dx.x*dz.y-dx.y*dz.x;
-    vec2 grad=abs(det)>.00000001 ? vec2(dd.x*dz.y-dd.y*dx.y,dx.x*dd.y-dz.x*dd.x)/det : vec2(0.);
-    beachWash(vRel.xz,grad,fine,dist,depth,localSlope,film,lace);
+  // What the water meets here (bank.ts): the beach keeps its wash and foam, another bank laps in a thin line.
+  vec4 bank=vec4(0.);
+  if (depth<1.1 && fine>0. && dist<${g(BANK_FAR)}) {
+    bank=shoreBank(vRel,fine*(1.-smoothstep(${g(BANK_FAR * 0.75)},${g(BANK_FAR)},dist)),grade);
+    if (dist<110.) {
+      float det=dx.x*dz.y-dx.y*dz.x;
+      vec2 grad=abs(det)>.00000001 ? vec2(dd.x*dz.y-dd.y*dx.y,dx.x*dd.y-dz.x*dd.x)/det : vec2(0.);
+      beachWash(vRel.xz,grad,fine*bankWash(bank),dist,depth,localSlope,film,lace);
+    }
   }
-  float foam = depth < ${g(FOAM)} && fine > 0.0 ? lace*seaFoam(vRel.xz, depth, fine, wide, deep) : 0.0;
+  float lap=bankFoamScale(bank,grade);
+  float foam = depth*lap < ${g(FOAM)} && fine > 0.0 ? lace*bankFoamGain(bank)*seaFoam(vRel.xz, depth*lap, fine, wide, deep*lap) : 0.0;
 #ifdef LOCAL_WAKES
   float churn, wakeFoam=0., foamHeight=.5;
   waterTrails(vRel,depth,wide,localSlope,wakeFoam,churn);
@@ -511,21 +547,22 @@ void main() {
   float mv = dot(m, v);
   float f = ${g(SEA_F0)} + ${g(1 - SEA_F0)} * pow(1.0 - clamp(mv, 0.0, 1.0), 5.0);
   float a = min(sqrt(a2), 1.0);
-  vec3 mirror = f * mix(skyFrom(reflect(-v, m)), skyOn(m.y), a);
+  vec3 mirror = f * mix(skyFrom(reflect(-v, m)), skyOn(m.y), a) * (1.0 - bankShade(bank, depth, grade));
   // The sun's glint where the sun is, as much as its disc is up and as it is not in shadow; the moon's; neither past GLINT_MOST.
   vec2 key = keyShade(sunShadow(vRel, vec3(0.0, 1.0, 0.0)));
   vec3 shine = glint(fTrueSun, fSunColor.rgb * (fSun.w * key.x), a2, n, v, nv) + glint(fMoon.xyz, fMoonColor.rgb * key.y, a2, n, v, nv);
   shine *= min(1.0, ${g(GLINT_MOST)} / max(max(shine.r, max(shine.g, shine.b)) * fSunColor.w, 1e-6));
   float up = abs(v.y);
-  float through = exp(-${g(CLEAR)} * depth * (1.0 + 1.0 / sqrt(1.0 - (1.0 - up * up) / ${g(BEND * BEND)})));
+  float murk = bankMurk(bank);
+  float through = exp(-${g(CLEAR)} * (1.0 + ${g(MURK_CLEAR)} * murk) * depth * (1.0 + 1.0 / sqrt(1.0 - (1.0 - up * up) / ${g(BEND * BEND)})));
   vec3 lit = skyOn(1.0) + fSunColor.rgb * (max(fSun.y, 0.0) * key.x) + fMoonColor.rgb * (max(fMoon.y, 0.0) * key.y);
-  vec3 body = mix(${vec3([...SHALLOW])}, ${vec3([...DEEP])}, 1.0 - exp(-depth / ${g(TURN)})) * lit;
+  vec3 body = mix(mix(${vec3([...SHALLOW])}, ${vec3([...DEEP])}, 1.0 - exp(-depth / ${g(TURN)})), ${vec3([...MURK])}, murk) * lit;
   vec3 light = mirror + shine + (1.0 - f) * (1.0 - through) * body;
   vec3 top = (mirror + shine) * fSunColor.w;
   float under = 1.0 - (1.0 - f) * through;
   float cover = under + (1.0 - under) * clamp((max(top.r, max(top.g, top.b)) - ${g(GLARE)}) / ${g(GLARE)}, 0.0, 1.0);
   // The foam lies over the water, which lies over what is under it.
-  float shore = clamp(depth / ${g(SHORE)}, 0.0, 1.0);
+  float shore = clamp(depth / bankFade(bank, ${g(SHORE)}), 0.0, 1.0);
   float held = foam + (1.0 - foam) * cover * shore;
   vec3 water=shown((foam * ${g(FOAM_WHITE)} * lit + (1.0 - foam) * shore * light) / max(held, 1e-4), vRel);
   o=vec4(water,held);

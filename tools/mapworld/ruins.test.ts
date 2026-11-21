@@ -245,6 +245,22 @@ test("mapped water on both sides removes a wide earth bridge bank but keeps its 
   expect(height[50 * n + 10]).toBe(2);
 });
 
+test("a slanting bridge's cut channel leaves no spike of land standing in it", async () => {
+  const { cutBridgeWater } = await import("./ways.ts");
+  const n = 101; const height = new Float32Array(n * n).fill(2.5); const water = new Uint8Array(n * n);
+  for (let row = 0; row < n; row++) for (let col = 0; col < n; col++) if (row < 30 || row > 70) water[row * n + col] = 1;
+  const way: import("./ways.ts").Way = { id: 1, kind: "road_bridge", name: null, class: "primary", lanes: 2, layer: 1, width_m: null, closed: false, length_m: 110, points: [] };
+  cutBridgeWater([{ way, points: [[55, 55], [145, 145]], width: 12, outline: false }], height, water, gridAt([-100, -100, 100, 100]));
+  let spikes = 0;
+  for (let row = 1; row < n - 1; row++) for (let col = 1; col < n - 1; col++) {
+    const i = row * n + col;
+    if (height[i]! <= 0) continue;
+    const low = [i - 1, i + 1, i - n, i + n, i - n - 1, i - n + 1, i + n - 1, i + n + 1].filter((j) => height[j]! <= -3).length;
+    if (low >= 6) spikes++;
+  }
+  expect(spikes).toBe(0);
+});
+
 test("every assembly refers to an available box and every choice resolves a form and damage rule", () => {
   const v = vocabulary(source); const reg = flatWorld().reg;
   // A car part names a family of street.cars.looks, and every look a family names has kinds the content has.

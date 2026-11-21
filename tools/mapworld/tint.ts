@@ -46,6 +46,10 @@ const PARK = new Set<number>([S.GREEN, S.CANOPY, S.OPEN, S.MANGROVE, S.MARSH, S.
 const PARK_PATH = [101, 100];
 const PATH_REACH = 6;
 
+/** Metres out from a shore over which the sea's bed is silt, and metres from the nearest beach past which it is. */
+const SILT_REACH = 5;
+const SILT_BEACH = 40;
+
 /** A dry city's open ground and courts are gravel, dust and paving, not grass; its weeds are dry. */
 const DRY: Record<number, readonly number[]> = {
   [S.OPEN]: [101, 123, 100, 122],
@@ -106,6 +110,16 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
     }
     if (s === S.SHALLOW && ground.beachBed?.has(i)) {
       tint[i] = ground.height[i]! > -0.2 ? 122 : 123;
+      continue;
+    }
+    // A graded soft bank (shared/world/banks.ts): the strip it took out of the water is mud, and the bed at its foot silt.
+    if (ground.bankEdge?.has(i)) {
+      tint[i] = fbm(x, z, 6, 310, 2) > 0.55 ? 117 : 118;
+      continue;
+    }
+    // So is the sea's bed within a few metres of any shore that is no beach, a quay's or a wall's too.
+    if (ground.bankBed?.has(i) || (s === S.SHALLOW && ground.shore[i]! < SILT_REACH && ground.sand[i]! > SILT_BEACH)) {
+      tint[i] = fbm(x, z, 12, 311, 2) > 0.5 ? 128 : 129;
       continue;
     }
     if (s === S.CONTAINER) {

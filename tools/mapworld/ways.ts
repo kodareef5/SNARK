@@ -62,6 +62,7 @@ export function pathsOf(ways: Way[], grid: Grid): { paths: Path[]; outlines: { i
 export function cutBridgeWater(paths: Path[], height: Float32Array, water: Uint8Array, grid: Grid): number {
   const { nx, x0, z0, x1, z1 } = grid; let cut = 0;
   const shore = water.slice();
+  const made = new Uint8Array(height.length);
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
   for (const p of paths) {
     if (!/bridge/.test(p.way.kind)) continue;
@@ -84,8 +85,23 @@ export function cutBridgeWater(paths: Path[], height: Float32Array, water: Uint8
           if (i < 0 || i >= height.length || (!water[i] && !across)) continue;
           if (height[i]! > -3) { height[i] = -3; cut++; }
           water[i] = 1;
+          made[i] = 1;
         }
       }
+    }
+  }
+  // Steps of 2 m along a slanting bridge and across it, each rounded to a sample, miss a sample here and there, which
+  // stood out of the cut channel as a spike of land 5 m tall. One whose neighbours were nearly all cut is cut too.
+  for (let pass = 0; pass < 2; pass++) {
+    const holes: number[] = [];
+    for (let i = nx + 1; i < height.length - nx - 1; i++) {
+      if (made[i] || made[i - 1]! + made[i + 1]! + made[i - nx]! + made[i + nx]! < 3) continue;
+      if (made[i - 1]! + made[i + 1]! + made[i - nx]! + made[i + nx]! + made[i - nx - 1]! + made[i - nx + 1]! + made[i + nx - 1]! + made[i + nx + 1]! >= 6) holes.push(i);
+    }
+    for (const i of holes) {
+      if (height[i]! > -3) { height[i] = -3; cut++; }
+      water[i] = 1;
+      made[i] = 1;
     }
   }
   return cut;

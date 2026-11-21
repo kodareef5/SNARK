@@ -386,9 +386,12 @@ export const LAMP_AT = CAST_AT + 4;
 /**
  * fGlass: 1 where the frame's opaque pass has samples for a vehicle's glass to cover a share of (vehicle-glass.ts), 0
  * where it is drawn without, as a supersampled light target is.
+ * fShore: 1 where the frame has a sea and the camera is out of the water, so the lit ground knows its height over the
+ * sea from its own and is wet just over it (bank.ts shoreWet), else 0. Its other lanes are free.
  */
 export const GLASS_AT = LAMP_AT + 28;
-export const FRAME_FLOATS = GLASS_AT + 4;
+export const SHORE_AT = GLASS_AT + 4;
+export const FRAME_FLOATS = SHORE_AT + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -403,6 +406,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fRoof, fCast, fLamp, fLampColor;
   highp mat4 fLampShadow;
   highp vec4 fLampWay, fGlass;
+  highp vec4 fShore;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)

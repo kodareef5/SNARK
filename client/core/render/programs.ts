@@ -94,7 +94,7 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
     fragment: WATER_FRAGMENT,
     // The sea is lit by its own glint and not `lit`, so the street lamp's light is not looked up for it.
     defines: shadowDefines(tier.shadows, hard, false) + out(tier, light) + (wakes ? "#define LOCAL_WAKES\n" : ""),
-    samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
+    samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWindowTint: UNIT.windowTint, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
   };
 }
 
@@ -130,7 +130,7 @@ const MAKE = {
   sky: (tier, _, __, light = false): ProgramText => tier.lit
     ? { vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: out(tier, light), samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }
     : { vertex: EYE_DOME_VERTEX, fragment: EYE_DOME_FRAGMENT, defines: "", samplers: {} },
-  // The sea seen from above on a lit tier: the flat mesh's tiles, the waves as a material's two masks, the ground's heights to know how deep it is, and the sun's shadow.
+  // The sea seen from above on a lit tier: the flat mesh's tiles, the waves as a material's two masks, the ground's heights to know how deep it is, the window's tints to know what its bank is, and the sun's shadow.
   water: (tier, _, hard = false, light = false) => water(tier, hard, light, false),
   waterWake: (tier, _, hard = false, light = false) => water(tier, hard, light, true),
   // Small details (packet.ts DRAW_DETAILS): on a lit tier their pictures, lit and in the sun's shadow; on low poly their flat shapes.

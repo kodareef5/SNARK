@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { BEACH_LAND, BEACH_SEA, shapeBeach } from "../../tools/mapworld/beach.ts";
+import { BEACH_LAND, BEACH_SEA, shapeBeach } from "../../shared/world/beach.ts";
 
 test("the sandy waterline rounds a stepped survey across tile boundaries and leaves the deep bed and built bank intact", () => {
   const n = 81,

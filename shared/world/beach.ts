@@ -40,7 +40,7 @@ export function shapeBeach(
     for (let x = -r; x <= r; x++) {
       const d2 = ((x * x + y * y) * cell * cell) / (reach * reach);
       if (d2 >= 1) continue;
-      const w = (1 - d2) ** 2;
+      const w = (1 - d2) * (1 - d2);
       kernel.push({ x, y, w });
       mass += w;
     }
