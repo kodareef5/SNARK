@@ -38,6 +38,10 @@ const FILES: Readonly<Record<string, [string, string]>> = {
   "/admin/index.html": ["index.html", "text/html; charset=utf-8"],
   "/admin/admin.js": ["admin.js", "text/javascript"],
   "/admin/admin.js.map": ["admin.js.map", "application/json"],
+  // The drop book's page (client/drops): its requests are supply-routes.ts's.
+  "/admin/drops.html": ["drops.html", "text/html; charset=utf-8"],
+  "/admin/drops.js": ["drops.js", "text/javascript"],
+  "/admin/drops.js.map": ["drops.js.map", "application/json"],
 };
 
 export interface AdminOptions {

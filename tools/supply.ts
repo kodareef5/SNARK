@@ -13,40 +13,17 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { QUALITY_NAMES } from "../shared/sim/items.ts";
-import { bookFaults, tableKey, type SupplyBook } from "../shared/supply/book.ts";
+import { bookFaults } from "../shared/supply/book.ts";
 import { catalogOf, withFuture, type Catalog } from "../shared/supply/catalog.ts";
-import { compileBook, type Compiled } from "../shared/supply/compile.ts";
-import { simulate, type SimStats } from "../shared/supply/simulate.ts";
+import { compileBook } from "../shared/supply/compile.ts";
+import { MEASURE_ROLLS, MEASURE_SEED, measure } from "../shared/supply/measure.ts";
+import { simulate } from "../shared/supply/simulate.ts";
 
 const ROOT = join(import.meta.dir, "..");
-const ROLLS = 6000;
-const SEED = 20261121;
+const ROLLS = MEASURE_ROLLS;
+const SEED = MEASURE_SEED;
 
-export interface Cell {
-  readonly key: string;
-  readonly target: number;
-  readonly designed: SimStats;
-  readonly today: SimStats;
-  readonly ringed: SimStats;
-  readonly dormant: boolean;
-}
-
-/** Every table of `book` measured as designed (its future items counted), as it is today, and ringed. */
-export function measure(book: SupplyBook, catalog: Catalog, rolls = ROLLS, seed = SEED): { cells: Cell[]; today: Compiled; designed: Compiled } {
-  const today = compileBook(book, catalog);
-  const designed = compileBook(book, withFuture(catalog, book));
-  const cells: Cell[] = [];
-  for (const tier of book.tiers) {
-    for (const cls of book.classes) {
-      const key = tableKey(tier.key, cls.key);
-      const d = designed.tables.get(key);
-      const t = today.tables.get(key);
-      if (!d || !t) continue;
-      cells.push({ key, target: tier.target, designed: simulate(designed, d, false, rolls, seed), today: simulate(today, t, false, rolls, seed), ringed: simulate(designed, d, true, rolls, seed), dormant: t.dormant });
-    }
-  }
-  return { cells, today, designed };
-}
+export { measure, type Cell } from "../shared/supply/measure.ts";
 
 /** What each kit's ballast line is multiplied by to bring its table, as designed, to its target. */
 export function fit(catalog: Catalog, rolls = ROLLS): { scales: Record<string, number>; stuck: string[] } {
