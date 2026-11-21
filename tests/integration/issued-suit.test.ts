@@ -107,6 +107,8 @@ artTest("from its first frames a new survivor is drawn in the suit, in first per
   const pack = corePack();
   const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, pack);
   const bo = new App(h.join("bo", { latencyMs: 20 }, { manual: true }), h.reg, pack);
+  // Both have chosen the eye's own view (a survivor rises seen from behind unless it chose so), so each draws only the other whole.
+  app.ui.settings.thirdPerson = bo.ui.settings.thirdPerson = false;
   let mine = app.frame(0, 1280, 720), seen = bo.frame(0, 1280, 720);
   const run = (ms: number): void => h.run(ms, (now) => ((mine = app.frame(now, 1280, 720)), (seen = bo.frame(now, 1280, 720))));
   run(800);

@@ -341,6 +341,8 @@ export class HudModel {
   stripH = 0;
   stripY = 0;
   stripAlone = false;
+  /** On a narrow canvas the strip stands across under the minimap, out of the column: where it ends, or 0. */
+  stripFoot = 0;
   /** Time of day, "06:30". */
   clock = "";
   /** Hours since midnight as the sky shows them (client/core/sky.ts), set by the app each frame. */

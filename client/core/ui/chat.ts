@@ -110,7 +110,14 @@ export class ChatState {
     }
   }
 
-  /** Lays the box out between `top` and `bottom`, newest line lowest. Shut, it shows only recent lines, which fade. */
+  /**
+   * The message of the day waits while the survivor has no body to play, in the creator or choosing where to rise: its
+   * time starts when it is in the world.
+   */
+  wait(now: number): void {
+    for (const line of this.lines) if (line.channel === TEXT_MOTD && line.at !== now) { line.at = now; this.version++; }
+  }
+
   /**
    * The log, and the box while it is open, between `top` and `bottom`. With `touch` the field and its buttons are a
    * finger's size and a Send button stands beside the field.
@@ -146,9 +153,10 @@ export class ChatState {
     }
     let y = rowsBottom - shown * lh;
     // Shut, the box stands behind its lines while the server's welcome is among them, and fades with it: a survivor who
-    // has just joined sees where chat is.
+    // has just joined sees where chat is. By touch the shut lines stand over the stick at rest, which a box would hide,
+    // and the bar's Chat button opens the box at the top: there the welcome is a line like any other.
     let welcome = 0;
-    for (let k = 0; k < shown && !this.open; k++) {
+    for (let k = 0; k < shown && !this.open && !touch; k++) {
       const row = this.rows[live[k]!]!;
       if (row.channel === TEXT_MOTD) welcome = Math.max(welcome, Math.min(1, (row.hold - (now - row.at)) / FADE_TICKS));
     }

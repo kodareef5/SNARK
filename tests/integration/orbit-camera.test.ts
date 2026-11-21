@@ -6,7 +6,7 @@ import { ORBIT_NOTCH } from "../../client/core/orbit.ts";
 import { ORBIT_BACK } from "../../client/core/viewpoint.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { KEY_CROSS } from "../../client/core/ui/hud.ts";
-import { CMD_VEHICLE, RESULT_OK, SESSION_ALIVE } from "../../shared/net/protocol.ts";
+import { CMD_RESPAWN, CMD_VEHICLE, RESULT_OK, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
@@ -50,8 +50,10 @@ test("K on foot swings the camera round the body without turning it, the wheel m
   try {
     const c = app.controls;
     c.yaw = .4; c.pitch = -.1;
-    run(300);
-    // First person: the camera is at the eye, and that eye is the orbit's pivot.
+    // First person, which V chooses: the camera is at the eye, and that eye is the orbit's pivot.
+    tap(app, run, "KeyV");
+    run(600);
+    expect(app.view.thirdPerson).toBe(false);
     const eye = camAt(app);
     expect(app.wheel(100)).toBe(false);
     expect(app.ui.frame.find(KEY_CROSS)).not.toBeNull();
@@ -102,6 +104,77 @@ test("K on foot swings the camera round the body without turning it, the wheel m
     expect(app.cam.pitch).toBeCloseTo(-.1 - 20 * Math.PI / 180, 6);
     expect(gap(camAt(app), eye)).toBeCloseTo(ORBIT_BACK * ORBIT_NOTCH ** 2, 1);
     expect([c.yaw, c.pitch]).toEqual([.4, -.1]);
+  } finally { h.host.shutdown(); }
+});
+
+test("a survivor rises from behind, and after each death in the view V last chose on foot; a saddle's, a car's and a helicopter's views are their own; the rule against third person wins", () => {
+  const { h, app, s, run, g } = world();
+  try {
+    const client = h.client(s)!, me = h.host.records.byPid.get(client.pid)!;
+    const behind = (): boolean => Math.hypot(app.cam.x - s.own.x, app.cam.z - s.own.z) > 1;
+    const rise = (): void => {
+      s.text("suicide");
+      run(300);
+      expect(s.sessionState).toBe(SESSION_DEAD);
+      s.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(s.placesList)));
+      run(1200);
+      expect(s.sessionState).toBe(SESSION_ALIVE);
+      s.text(`tp ${g.x + 20} ${g.z + 20}`);
+      run(600);
+    };
+    // As every new survivor: from behind, its body drawn, with the crosshair.
+    expect([app.view.thirdPerson, app.ui.settings.thirdPerson, behind(), app.scene!.own!.firstPerson, app.ui.frame.find(KEY_CROSS) !== null]).toEqual([true, true, true, false, true]);
+    rise();
+    expect([app.view.thirdPerson, behind()]).toEqual([true, true]);
+    // V on foot chooses the eye, and the choice is kept through a death.
+    tap(app, run, "KeyV");
+    expect([app.view.thirdPerson, app.ui.settings.thirdPerson]).toEqual([false, false]);
+    rise();
+    expect([app.view.thirdPerson, behind()]).toEqual([false, false]);
+    // A saddle is seen from behind; getting off gives the eye back.
+    const tame = h.host.spawnCreature("core:parasaur", s.own.x + 2, s.own.z, 1), rec = h.host.records.byPid.get(h.world.ents.pid[tame]!)!;
+    rec.team = me.team; rec.saddle = h.reg.index.get("core:saddle_parasaur")!;
+    h.host.refreshBody(rec); h.host.creatures.claimed(tame); h.host.creatures.mind.stay(tame, 0xffffffff);
+    run(200);
+    expect(h.host.riding.mount(client, tame)).toBe(RESULT_OK);
+    run(900);
+    expect([s.driving, behind()]).toEqual([tame, true]);
+    h.host.riding.dismount(client);
+    run(900);
+    expect([s.driving, app.view.thirdPerson, app.ui.settings.thirdPerson]).toEqual([-1, false, false]);
+    // So does a car's chase view.
+    const car = h.host.spawnVehicle("core:compact", s.own.x - 1.6, s.own.z - .12, me.team, 0);
+    expect(h.host.urban.mount(client, car)).toBe(RESULT_OK);
+    run(1200);
+    expect([s.driving, app.view.thirdPerson]).toEqual([car, true]);
+    h.host.urban.dismount(client);
+    run(1500);
+    expect([s.driving, app.view.thirdPerson]).toEqual([-1, false]);
+    // In a helicopter V chooses the cockpit or the chase for that flight only: the choice on foot stands.
+    s.text(`tp ${g.x + 20} ${g.z + 20}`);
+    run(600);
+    const heli = h.host.spawnVehicle("core:helicopter", g.x + 26, g.z + 20, me.team), entry = h.reg.vehicle[h.world.ents.kind[heli]!]!.seats[0]!.entry;
+    h.world.ents.setPosition(client.ent, g.x + 26 + entry[0], g.y + entry[1], g.z + 20 + entry[2]);
+    h.world.history.untrack(client.ent); h.world.history.track(client.ent);
+    expect(h.host.urban.mount(client, heli)).toBe(RESULT_OK);
+    run(1200);
+    expect([s.driving, app.view.thirdPerson]).toEqual([heli, true]);
+    tap(app, run, "KeyV");
+    expect([app.view.thirdPerson, app.ui.settings.thirdPerson]).toEqual([false, false]);
+    tap(app, run, "KeyV");
+    expect([app.view.thirdPerson, app.ui.settings.thirdPerson]).toEqual([true, false]);
+    h.host.urban.dismount(client);
+    run(1500);
+    expect([s.driving, app.view.thirdPerson]).toEqual([-1, false]);
+    // Back to third person; then a server that forbids it has the survivor rise at the eye all the same, and V does nothing.
+    tap(app, run, "KeyV");
+    expect([app.view.thirdPerson, app.ui.settings.thirdPerson]).toEqual([true, true]);
+    s.text("setting AllowThirdPersonPlayer False");
+    run(300);
+    rise();
+    expect([app.view.thirdPerson, behind()]).toEqual([false, false]);
+    tap(app, run, "KeyV");
+    expect([app.view.thirdPerson, app.ui.settings.thirdPerson]).toEqual([false, true]);
   } finally { h.host.shutdown(); }
 });
 
@@ -172,8 +245,8 @@ test("the rule against third person forbids the orbit and ends one under way; fr
   try {
     const c = app.controls;
     c.yaw = -.7; c.pitch = 0;
-    tap(app, run, "KeyV");
     run(200);
+    // Risen from behind, as every survivor is unless it chose the eye.
     expect(app.view.thirdPerson).toBe(true);
     const shoulder = camAt(app);
     tap(app, run, "KeyK");

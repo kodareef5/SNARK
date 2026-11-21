@@ -9,11 +9,13 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
 import * as layout from "../../client/core/ui/touch.ts";
-import { fitsClear, meets, stripFits, within } from "../fixtures/monitor.ts";
-import { KEY_STRIP_OPEN } from "../../client/core/ui/monitor.ts";
+import { fitsClear, glassBox, meets, stripFits, within } from "../fixtures/monitor.ts";
+import { KEY_MONITOR, KEY_STRIP_OPEN } from "../../client/core/ui/monitor.ts";
 import { KEY_PANEL, KEY_TAB } from "../../client/core/ui/monitor-panel.ts";
 import { KEY_TOUCH_BUTTON, T_CLOSE, T_MAP } from "../../client/core/touch.ts";
-import { KEY_CLOCK, KEY_MINIMAP, KEY_READOUT } from "../../client/core/ui/hud.ts";
+import { KEY_CLOCK, KEY_MINIMAP, KEY_READOUT, KEY_VEHICLE } from "../../client/core/ui/hud.ts";
+import type { UiNode } from "../../client/core/ui/nodes.ts";
+import { JET_FULL_SUIT } from "../../shared/sim/character.ts";
 
 const pack = parsePack(corePackBytes());
 
@@ -40,8 +42,8 @@ export function monitored(h: Harness, name: string, finger: boolean): App {
   return app;
 }
 
-test("by touch the strip fits every phone and tablet, clear of the bar, the vitals, the minimap and the thumbs", () => {
-  for (const [name, w, h, insets] of WINDOWS) for (const muted of [true, false]) {
+test("by touch the strip fits every phone and tablet, clear of the bar, the vitals, the minimap, the thumbs and a vehicle's instruments or the jet fuel under it", () => {
+  for (const [name, w, h, insets] of WINDOWS) for (const muted of [true, false]) for (const under of ["", "jets", "car", "boat", "helicopter"]) {
     const net = new Harness(), app = monitored(net, "strip", true);
     insets.forEach((v, i) => (app.insets[i] = v));
     app.ui.settings.muted = muted;
@@ -49,8 +51,20 @@ test("by touch the strip fits every phone and tablet, clear of the bar, the vita
     const hud = app.hud;
     hud.prompt = "E  ride a raptor with a long name";
     while (hud.hotbar.length < 10) hud.hotbar.push({ tint: -1, label: "", number: "" });
+    if (under === "jets") hud.jetGear = JET_FULL_SUIT;
+    else if (under) hud.vehicle = Object.assign(app.vehicleTelemetry, { active: true, rotor: under === "helicopter", boat: under === "boat" });
     app.ui.build(w / h, hud, app.session);
-    stripFits(app.ui.frame, `${name}${muted ? ", muted" : ""}`);
+    const f = app.ui.frame, where = `${name}${muted ? ", muted" : ""}${under && `, ${under}`}`;
+    // A vehicle's instruments may leave the strip no room above the crosshair and the stick: on a phone on its side,
+    // where they stand under the bar, the strip and the readout give way; upright, the strip alone.
+    if (glassBox(f, KEY_MONITOR) === null) {
+      expect([under !== "" && under !== "jets", f.find(KEY_READOUT) === null], where).toEqual([true, w > h]);
+      continue;
+    }
+    stripFits(f, where);
+    // A vehicle's instruments stand clear of everything but the zones a finger plays in, the strip (which is clear of them) and their own.
+    const own = (n: UiNode): boolean => (n.key >= KEY_VEHICLE && n.key < KEY_VEHICLE + 12) || (n.key >= 2000000 + KEY_VEHICLE * 16 && n.key < 2000000 + (KEY_VEHICLE + 12) * 16);
+    if (under !== "" && under !== "jets") fitsClear(f, KEY_VEHICLE, where, own);
   }
 });
 

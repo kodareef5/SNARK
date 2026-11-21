@@ -53,24 +53,32 @@ test("the card says of a texture what is shown, what is wanted, what it was auth
   expect(textureWords("Hide mask", { ...t, showing: 0, wanted: 0, state: "absent", why: "", onScreen: false })).toEqual(["Hide mask none yet", "not asked for: drawn without it"]);
 });
 
-test("Diagnostics has three values, off, numbers and monitor, saved; F3 and the console's word turn the monitor on and back", () => {
+test("Diagnostics has three values, off, numbers and monitor, saved, and is monitor at first start; F3 and the console's word turn the monitor off and back", () => {
   const s = new Settings(), row = SETTING_ROWS.find((r) => r.label === "Diagnostics")!;
+  expect([row.value(s), s.diagnostics, s.monitor]).toEqual(["monitor", true, true]);
   const seen: string[] = [];
   for (let i = 0; i < 4; i++) { seen.push(row.value(s)); row.step(s, 1); }
-  expect(seen).toEqual(["off", "numbers", "monitor", "off"]);
-  // Back from numbers, past off, to monitor.
+  expect(seen).toEqual(["monitor", "off", "numbers", "monitor"]);
+  // Off is kept over the start's monitor.
+  const off = new Settings();
+  off.restoreInterface(s.interfacePreferences());
+  expect([off.diagnostics, off.monitor, row.value(off)]).toEqual([false, false, "off"]);
+  // Back from off, past monitor, to numbers; and on again to monitor.
   row.step(s, -1); row.step(s, -1);
-  expect([row.value(s), s.diagnostics, s.monitor]).toEqual(["monitor", true, true]);
+  expect([row.value(s), s.diagnostics, s.monitor]).toEqual(["numbers", true, false]);
+  row.step(s, 1);
   const copy = new Settings();
   copy.restoreInterface(s.interfacePreferences());
   expect([copy.diagnostics, copy.monitor, row.value(copy)]).toEqual([true, true, "monitor"]);
-  // F3 from off turns it on, readout and all, and again back off; from numbers, back to numbers.
+  // F3 at first start turns the monitor off, readout and all, and again back on; from numbers, back to numbers.
   const ui = new Ui(), hud = new HudModel();
   expect(ui.key("F3", true, false, null)).toBe(true);
-  expect([ui.settings.monitor, ui.settings.diagnostics]).toEqual([true, true]);
+  expect([ui.settings.monitor, ui.settings.diagnostics]).toEqual([false, false]);
   ui.key("F3", true, true, null);
-  expect(ui.settings.monitor).toBe(true);
+  expect(ui.settings.monitor).toBe(false);
   ui.key("F3", false, false, null); ui.key("F3", true, false, null);
+  expect([ui.settings.monitor, ui.settings.diagnostics]).toEqual([true, true]);
+  ui.key("F3", true, false, null);
   expect([ui.settings.monitor, ui.settings.diagnostics]).toEqual([false, false]);
   ui.settings.diagnostics = true;
   ui.key("F3", true, false, null); ui.key("F3", true, false, null);
@@ -97,7 +105,7 @@ test("the strip's rates are the last second of the record of frames, and its wor
   const app = { scene: { assets: { residency: r } }, frames: ring, sounds: { library: { flying: 1 } }, nowMs: 0 } as unknown as App;
   const m = new Monitor(app, MONITOR_KIT), f = new Ui().frame, hud = new HudModel();
   f.begin(16 / 9);
-  m.reserve(f, hud, null);
+  m.reserve(f, hud, null, { top: 12, map: 0, below: 0 });
   m.refresh(f, 1000, false, false);
   expect([m.rates[0], m.rates[1], m.rates[2], m.queue]).toEqual(["1.0 MB/s", "500 KB/s", "1.5 MB/s", "4 downloading · 14 asked · 3.1 MB waiting for the card"]);
   // The monitor hands the residency its record of requests while it is on, and takes it back when it is off.

@@ -5,7 +5,11 @@ import { KEY_CONTROL_DETAIL, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "../..
 import { KEY_CONTROL_PAD } from "../../client/core/ui/controller.ts";
 import { KEY_SETTINGS_PAGE, KEY_SETTINGS_ROW, KEY_SETTINGS_TAB, SETTING_GROUPS } from "../../client/core/ui/settings.ts";
 import { siteLinks } from "../../client/core/travel.ts";
-import { KEY_BUFF, KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY_VEHICLE, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_BUFF, KEY_CLOCK, KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY_VEHICLE, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { FrameRing } from "../../client/core/assets/frames.ts";
+import { KEY_MONITOR, Monitor } from "../../client/core/ui/monitor.ts";
+import { MONITOR_KIT } from "../../client/core/ui/monitor-kit.ts";
+import { fakeApp, glassBox, meets } from "../fixtures/monitor.ts";
 import { KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LINK, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE } from "../../client/core/ui/menu.ts";
 import { K_HOLD, K_IMAGE, K_SLIDER, UiFrame, textWidth, type UiImage } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
@@ -18,6 +22,8 @@ import { bindTextInput } from "../../client/core/ui/events.ts";
 test("the quiet HUD keeps ten numbered slots fixed when status and contextual vitals change", () => {
   for (const aspect of [9 / 16, 4 / 3, 16 / 9, 32 / 9]) {
     const ui = new Ui(), hud = new HudModel();
+    // Quiet: the readout and the monitor, on at first start, turned off.
+    ui.settings.diagnostics = ui.settings.monitor = false;
     hud.hotbar.push(...Array.from({ length: 10 }, () => ({ tint: -1, label: "", number: "" })));
     ui.build(aspect, hud, null);
     expect(ui.frame.find(KEY_READOUT)).toBeNull();
@@ -80,13 +86,14 @@ test("inspection releases the camera and exposes details only until its key is r
 test("saved preferences bound numeric values and never restore transient actions", () => {
   const settings = new Settings();
   for (const bad of [null, "{", "null", "[]", '{"version":99,"minimap":false}', '{"minimap":"false","diagnostics":3}']) settings.restoreInterface(bad);
-  expect([settings.minimap,settings.diagnostics]).toEqual([true,false]);
+  // At first start the view is from behind and the readout and the monitor are on; a saved choice wins over each.
+  expect([settings.minimap, settings.thirdPerson, settings.diagnostics, settings.monitor]).toEqual([true, true, true, true]);
   settings.restoreInterface('{"version":1,"minimap":false,"tier":"ultra"}');
   expect([settings.minimap, settings.tier, settings.chosen]).toEqual([true, "medium", false]);
-  settings.restoreInterface('{"version":2,"minimap":false,"vitalLabels":true,"diagnostics":true}');
+  settings.restoreInterface('{"version":2,"minimap":false,"vitalLabels":true,"thirdPerson":false,"diagnostics":false,"monitor":false}');
   settings.restoreInterface('{"version":2,"sensitivity":99,"fov":-1,"masterVolume":0,"minimapZoom":30,"snapshotBytes":999999,"tier":"bogus","download":true,"tab":3}');
   const copy = new Settings(); copy.restoreInterface(settings.interfacePreferences());
-  expect([copy.minimap,copy.vitalLabels,copy.diagnostics,copy.sensitivity,copy.fov,copy.masterVolume,copy.minimapZoom]).toEqual([false,true,true,3,50,0,3]);
+  expect([copy.minimap,copy.vitalLabels,copy.thirdPerson,copy.diagnostics,copy.monitor,copy.sensitivity,copy.fov,copy.masterVolume,copy.minimapZoom]).toEqual([false,true,false,false,false,3,50,0,3]);
   expect([copy.snapshotBytes,copy.tier,copy.chosen,copy.keepAll,copy.tab]).toEqual([1100,"medium",false,false,0]);
   // A tier is saved only once chosen, and a chosen tier is kept over the device's start.
   expect(JSON.parse(copy.interfacePreferences()).tier).toBeUndefined();
@@ -285,30 +292,47 @@ test("a range field's position reaches its slider through the shell's binding as
   expect(ui.settings.sensitivity).toBe(1.6);
 });
 
-test("the dashboard sits under the minimap, or in its place with the show button beside it, and stays clear of buffs", () => {
+test("the dashboard sits under the minimap, or in its place with the show button beside it, clear of the readout, the monitor, the vitals and the buffs", () => {
   const v = new VehicleTelemetry();
   v.active = true; v.speed = 12; v.gear = 3; v.rpm = 3400; v.redline = 6500; v.fuel = .72;
-  for (const [aspect, minimap] of [[16 / 9, true], [16 / 9, false], [9 / 19.5, true], [9 / 19.5, false]] as const) {
-    const ui = new Ui(), hud = new HudModel();
-    hud.vehicle = v;
-    hud.buffs.push(...Array.from({ length: 16 }, () => ({ label: "Buff", seconds: 10, tint: 0x335577 })));
-    ui.settings.minimap = minimap;
-    ui.inspect = true;
-    ui.build(aspect, hud, null);
-    const f = ui.frame, nodes = f.nodes.slice(0, f.count);
-    const dash = nodes.filter((n) => n.key >= KEY_VEHICLE && n.key < KEY_VEHICLE + 8);
-    const top = Math.min(...dash.map((n) => n.y)), bottom = Math.max(...dash.map((n) => n.y + n.h)), left = Math.min(...dash.map((n) => n.x));
-    expect(dash.length).toBe(8);
-    for (const n of dash) {
-      expect(n.x).toBeGreaterThanOrEqual(0);
-      expect(n.x + n.w).toBeLessThanOrEqual(f.width);
-      if (n.text) expect(textWidth(n.text, n.style), n.text).toBeLessThanOrEqual(n.w);
+  // The readout and the monitor's strip as a player meets them, on at first start, and turned off.
+  for (const kind of ["car", "boat", "helicopter"]) for (const aspect of [16 / 9, 9 / 16, 9 / 19.5]) for (const numbers of [true, false]) for (const minimap of [true, false]) {
+    v.rotor = kind === "helicopter"; v.boat = kind === "boat";
+    const build = (map: boolean): UiFrame => {
+      const ui = new Ui(), hud = new HudModel();
+      ui.monitor = new Monitor(fakeApp(new FrameRing()), MONITOR_KIT);
+      if (!numbers) ui.settings.diagnostics = ui.settings.monitor = false;
+      hud.vehicle = v;
+      hud.readout.fill("25.8 N 80.2 W  NE 41");
+      // Every vital shows: oxygen short, torpor up.
+      hud.vitals[4]!.fraction = hud.vitals[5]!.fraction = .5;
+      hud.buffs.push(...Array.from({ length: 16 }, () => ({ label: "Buff", seconds: 10, tint: 0x335577 })));
+      ui.settings.minimap = map;
+      ui.inspect = true;
+      ui.build(aspect, hud, null);
+      return ui.frame;
+    };
+    const f = build(minimap), nodes = f.nodes.slice(0, f.count), where = `${kind} ${aspect.toFixed(2)}${numbers ? " numbers" : ""}${minimap ? " minimap" : ""}`;
+    const dash = nodes.filter((n) => n.key >= KEY_VEHICLE && n.key < KEY_VEHICLE + 11);
+    const box = glassBox(f, KEY_VEHICLE)!, top = box.y, bottom = box.y + box.h, left = box.x;
+    if (kind === "car") expect(dash.length, where).toBe(8);
+    for (const n of [...dash, box]) {
+      expect(n.x, where).toBeGreaterThanOrEqual(0);
+      expect(n.x + n.w, where).toBeLessThanOrEqual(f.width);
     }
-    if (minimap) expect(top).toBeGreaterThan(f.find(KEY_MINIMAP)!.y + f.find(KEY_MINIMAP)!.h);
-    else expect(top).toBeLessThan(40);
+    for (const n of dash) if (n.text) expect(textWidth(n.text, n.style), `${where}: ${n.text}`).toBeLessThanOrEqual(n.w);
+    // Hidden, the minimap leaves its place; on a narrow canvas the readout and the strip take its width, and the panel stands under them.
+    const map = minimap ? f : build(true), picture = map.find(KEY_MINIMAP)!, clock = map.find(KEY_CLOCK), strip = glassBox(f, KEY_MONITOR);
+    if (minimap) expect(top, where).toBeGreaterThanOrEqual((clock ?? picture).y + (clock ?? picture).h);
+    else expect(top, where).toBeCloseTo(f.width < 640 && strip ? strip.y + strip.h + 8 : picture.y, 5);
     const toggle = f.find(KEY_MINIMAP_TOGGLE)!;
-    expect(toggle.x + toggle.w <= left - 2 || toggle.y + toggle.h <= top || toggle.y >= bottom).toBe(true);
-    for (const n of nodes) if (n.key >= KEY_BUFF && n.key < KEY_BUFF + 16) expect(n.y >= bottom || n.x + n.w <= left, `buff ${n.key}`).toBe(true);
+    expect(toggle.x + toggle.w <= left - 2 || toggle.y + toggle.h <= top || toggle.y >= bottom, where).toBe(true);
+    for (const n of nodes) if (n.key >= KEY_BUFF && n.key < KEY_BUFF + 16) expect(n.y >= bottom || n.x + n.w <= left, `${where}: buff ${n.key}`).toBe(true);
+    // Nothing else of the HUD's corners is under it: the readout, the strip, the vitals and their labels. The strip shows
+    // with the numbers, but on a narrow canvas it may give way to the panel, where both would not fit above the crosshair.
+    if (!numbers || f.width >= 640) expect(strip !== null, where).toBe(numbers);
+    if (strip) expect(meets(strip, box), `${where}: the strip`).toBe(false);
+    for (const n of nodes) if ((n.key >= KEY_READOUT && n.key < KEY_READOUT + 3) || (n.key >= KEY_VITAL && n.key < KEY_VITAL + 12)) expect(meets(n, box), `${where}: ${n.key} "${n.text || n.label}"`).toBe(false);
   }
 });
 

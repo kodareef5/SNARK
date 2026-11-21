@@ -128,6 +128,46 @@ export function hotbarTop(f: UiFrame, slots: number): number {
   return f.height - f.bottom - MARGIN - hotbarCell(f, slots);
 }
 
+/** A canvas narrower than this is a phone's upright, or a window as narrow: the minimap keeps the top right, and the readout keeps left of it. */
+const NARROW = 640;
+
+/** The jet fuel panel's width, and its height while jets are worn and no vehicle's instruments show: taller for the full suit's line, which a narrow canvas leaves out. */
+const JET_W = 210;
+const jetHeight = (f: UiFrame, m: HudModel): number => (m.jetGear && !m.vehicle?.active ? (m.jetGear === JET_FULL_SUIT && f.width >= NARROW ? 83 : 63) : 0);
+
+/**
+ * The panel under the minimap: a vehicle's instruments, or else the jet fuel while jets are worn. Its width and height,
+ * and whether it stands under the bar instead (`aside`): on a phone on its side the thumb's cluster has the place under
+ * the minimap, which a vehicle's instruments leave it. A finger's buttons say what they do, so by touch a vehicle's
+ * panel loses its lines of keys and says what to touch (`lean`).
+ */
+function panelOf(f: UiFrame, m: HudModel, touch: TouchPlan | null): { w: number; h: number; lean: boolean; aside: boolean } | null {
+  const dash = m.vehicle?.active ? m.vehicle : null, lean = touch !== null, jet = jetHeight(f, m);
+  if (!dash && !jet) return null;
+  return {
+    w: !dash ? JET_W : dash.rotor ? HELI_W : dash.boat ? BOAT_W : DASH_W,
+    h: !dash ? jet : lean ? (dash.rotor ? 124 : dash.boat ? 106 : 88) : dash.rotor ? HELI_H : dash.boat ? BOAT_H : DASH_H,
+    lean,
+    aside: dash !== null && touch !== null && f.width > f.height,
+  };
+}
+
+/** The top of the HUD's column in the top left, where the readout starts: by touch under the bar, and under the panel where it stands there. */
+function columnTop(f: UiFrame, m: HudModel, touch: TouchPlan | null): number {
+  const p = panelOf(f, m, touch);
+  return touch ? touch.stackY + (p?.aside ? p.h + 8 : 0) : f.top + MARGIN;
+}
+
+/**
+ * What the resource monitor's strip is given (ui/monitor.ts reserve): the top of the HUD's column, the minimap's side
+ * (0 while it is hidden), and the room the panel under the minimap takes under the strip, where on a narrow canvas the
+ * strip stands across under the minimap and the panel under it.
+ */
+export function stripRoom(f: UiFrame, m: HudModel, touch: TouchPlan | null, minimap: boolean): { top: number; map: number; below: number } {
+  const p = panelOf(f, m, touch);
+  return { top: columnTop(f, m, touch), map: minimap ? (touch ? touch.map : MINIMAP_SIZE) : 0, below: p && !p.aside && f.width < NARROW ? p.h + 8 : 0 };
+}
+
 /**
  * The HUD, inside the canvas's insets. With `touch` (ui/touch.ts touchPlan) it makes room for a finger's controls: the
  * vitals stand in a row at the top, the stack in the top left starts under the bar, the minimap is the plan's size and
@@ -139,12 +179,9 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   // The corners anchored things keep to, and the minimap's side.
   const left = f.left + MARGIN, right = W - f.right - MARGIN, foot = H - f.bottom - MARGIN;
   const MAP = touch ? touch.map : MINIMAP_SIZE;
-  // A vehicle's instruments. A finger's buttons say what they do, so by touch the panels lose their lines of keys (`lean`);
-  // and on a phone on its side the thumb's cluster has the place under the minimap, so they stand under the bar (`aside`).
-  const dash = m.vehicle?.active ? m.vehicle : null, lean = touch !== null, aside = touch !== null && dash !== null && W > H;
-  const dashW = dash?.rotor ? HELI_W : dash?.boat ? BOAT_W : DASH_W;
-  const dashH = lean ? (dash?.rotor ? 124 : dash?.boat ? 106 : 88) : dash?.rotor ? HELI_H : dash?.boat ? BOAT_H : DASH_H;
-  const top = touch ? touch.stackY + (aside ? dashH + 8 : 0) : f.top + MARGIN;
+  const dash = m.vehicle?.active ? m.vehicle : null, panel = panelOf(f, m, touch);
+  const dashW = panel?.w ?? DASH_W, dashH = panel?.h ?? DASH_H, lean = panel?.lean ?? false, aside = panel?.aside ?? false;
+  const top = columnTop(f, m, touch);
   const lh = lineHeight(S_TEXT);
   // The dark panel goes first, under everything else, and a holo-scope's tint with it.
   if (m.out) f.add(KEY_OUT, K_PANEL, 0, 0, W, H, S_DARK).alpha = 0.82;
@@ -164,10 +201,11 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   if (m.scope && m.banner === "") buildReticle(f, W, H);
   // The readout, and under it the resource monitor's strip (ui/monitor.ts), which on a canvas too short for both stands
   // in its place; the voice's lines under them.
-  // By touch on a narrow canvas the readout keeps left of the minimap, which keeps its place at the top.
-  const readout = options.diagnostics && !m.stripAlone, readW = Math.min(right - left - (touch && W < 640 && options.minimap ? MAP + 8 : 0), 400);
+  // On a narrow canvas the readout keeps left of the minimap, which keeps its place at the top, and the strip stands across under both.
+  const readout = options.diagnostics && !m.stripAlone, readW = Math.min(right - left - (W < NARROW && options.minimap ? MAP + 8 : 0), 400);
   if (readout) for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, left, top + i * lh, readW, S_TEXT, fitText(m.readout[i]!, readW, S_TEXT));
-  const voiceY = (m.stripY = readout ? top + m.readout.length * lh + 4 : top) + (m.stripH && m.stripH + 6);
+  const columnFoot = readout ? top + m.readout.length * lh + 4 : top;
+  const voiceY = Math.max((m.stripY = columnFoot) + (m.stripH && m.stripH + 6), m.stripFoot && m.stripFoot + 6);
   if (m.voice !== "") {
     // A voice state is in capitals and is lit. Anything else is a sentence saying what is wrong, drawn plain.
     const live = m.voice === m.voice.toUpperCase();
@@ -182,9 +220,8 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     n.text = m.talkers[i]!;
   }
 
-  // On a narrow canvas the minimap moves below the readout instead of beside it.
   const mapX = right - MAP;
-  const mapY = options.diagnostics && W < 640 && !touch ? voiceY + 8 : f.top + MARGIN;
+  const mapY = f.top + MARGIN;
   const mapTools = controls && (inspect || touch !== null);
   if (options.minimap) {
     const mapTop = mapY;
@@ -238,8 +275,11 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   }
 
   // The car's instruments sit under the minimap and its clock, or in the minimap's place while it is hidden. A
-  // helicopter's and a boat's are taller, with their state and their keys.
-  const dashY = aside ? touch.stackY : options.minimap ? mapY + MAP + 28 : mapY, dashX = aside ? left : right - dashW;
+  // helicopter's and a boat's are taller, with their state and their keys. The jet fuel stands there too, without a
+  // vehicle. On a narrow canvas they stand under the strip across it, and under the readout where it has the minimap's width.
+  let dashY = aside && touch ? touch.stackY : options.minimap ? mapY + MAP + 28 : mapY;
+  if (W < NARROW && !aside) dashY = Math.max(dashY, m.stripFoot + 8, options.minimap || !readout ? 0 : columnFoot + 8);
+  const dashX = aside ? left : right - dashW;
   if (mapTools) {
     const beside = dash && !options.minimap ? dashW + 4 : 0;
     const toggle = f.add(KEY_MINIMAP_TOGGLE, K_BUTTON, right - 32 - beside, mapY + (options.minimap ? MAP - 32 : 0), 32, 32, S_HUD_HIT);
@@ -248,12 +288,12 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     toggle.interactive = true;
   }
   if (m.jetGear && !dash) {
-    const width = 210, x = right - width, y = dashY + (mapTools && !options.minimap ? 36 : 0);
+    const width = JET_W, x = dashX, y = dashY + (mapTools && !options.minimap && !aside ? 36 : 0);
     const left = Math.max(0, JET_CAPACITY - m.jetSpent);
     const status = m.jetThrust === JET_UP ? "Vertical burst" : m.jetThrust === JET_DASH ? "Greave dash" : m.jetThrust === JET_FIST ? "Gauntlet lunge" : m.jetThrust === JET_HOVER ? "Level flight" : m.jetThrust ? "Climbing" :
       m.jetGrounded && m.jetSpent ? "Recharging" : !left ? "Empty · land to recharge" : touch ? "Hold Jump, stick at its rim to hover" : "Hold Space · add Shift to hover";
-    const linked = m.jetGear === JET_FULL_SUIT;
-    glass(f, KEY_JET_FUEL, x, y, width, linked ? 83 : 63);
+    const linked = m.jetGear === JET_FULL_SUIT && W >= NARROW;
+    glass(f, KEY_JET_FUEL, x, y, width, dashH);
     f.text(KEY_JET_FUEL + 1, x + 10, y + 6, width - 20, S_HUD_COUNT, `Jet fuel   ${(left / TICK_RATE).toFixed(1)} s`);
     f.add(KEY_JET_FUEL + 2, K_BAR, x + 10, y + 29, width - 20, 6, left <= 2 * TICK_RATE ? S_WARNING : S_OXYGEN).value = left / JET_CAPACITY;
     f.text(KEY_JET_FUEL + 3, x + 10, y + 39, width - 20, S_MENU_NOTE, status);
@@ -337,7 +377,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   const buffW = barW + labelW;
   const buffH = lineHeight(S_BUFF) + 2;
   let by = foot - HOTBAR_CELL - 64 - buffH;
-  const buffTop = dash ? Math.max(200, dashY + dashH + 4) : 200;
+  const buffTop = panel ? Math.max(200, dashY + dashH + 4) : 200;
   for (let i = 0; i < m.buffs.length && i < 16 && by > buffTop; i++) {
     const b = m.buffs[i]!;
     const n = f.add(KEY_BUFF + i, K_PANEL, touch ? left : Math.max(left, right - buffW - 58), by, buffW, buffH, S_BUFF);

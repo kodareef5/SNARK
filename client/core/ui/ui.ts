@@ -8,7 +8,7 @@ import { CharacterScreen } from "./character.ts";
 import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_SEND, KEY_CHAT_TAG } from "./chat.ts";
 import { CreatorScreen } from "./creator.ts";
 import { buildCombat } from "./combat.ts";
-import { buildHud, chatBand, hotbarCell, hotbarLeft, hotbarTop } from "./hud.ts";
+import { buildHud, chatBand, hotbarCell, hotbarLeft, hotbarTop, stripRoom } from "./hud.ts";
 import type { TouchPlay } from "../touch.ts";
 import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
 import { CONTROL_GROUPS } from "./controls-guide.ts";
@@ -353,6 +353,7 @@ export class Ui {
     this.dead = session?.sessionState === SESSION_DEAD;
     // A survivor still in the creator has no vitals, no position and nothing to aim at.
     if (session) this.chat.absorb(session);
+    if (session && (this.creating || this.dead)) this.chat.wait(session.serverTick);
     if (!this.creating && !this.menu) {
       const controls = (this.wantsPointerLock || this.inspect) && !session?.open;
       // A finger's zones lie under the whole HUD while the body is being played.
@@ -363,7 +364,7 @@ export class Ui {
       hud.bare = this.map || this.dead;
       // The resource monitor takes its room in the HUD's top-left column, and stands in it.
       const monitor = this.settings.monitor ? this.monitor : null;
-      if (monitor) monitor.reserve(f, hud, plan);
+      if (monitor) monitor.reserve(f, hud, plan, stripRoom(f, hud, plan, this.settings.minimap));
       else this.monitor?.off(hud);
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
       monitor?.build(f, hud, controls, this.inspect, plan, this.settings.muted);
