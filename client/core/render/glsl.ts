@@ -54,7 +54,8 @@ void main() {
 /**
  * Palette geometry on textured tiers: world-projected finishes share SURFACE's lighting. Its vertex text gives the colour
  * as light (world-surfaces.ts `worldVertex`). The sky's light is taken down where the sky is hidden and at the foot of
- * what stands, but a body's (skyopen.ts), and under what stands overhead (roof.ts).
+ * what stands, but a body's (skyopen.ts), and under what stands overhead (roof.ts), and its light from the ground is
+ * the ground's it sees (roof.ts roofBounce).
  */
 export const LIT_FRAGMENT = `#version 300 es
 precision highp float;
@@ -86,6 +87,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
   float over = overGround(vRel);
   float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0) * roofOpen(vRel, geometric, over);
+  roofBounce(vRel, geometric, over);
   // The weathering and the edges read the packed maps, so they come up with them (uWorldReady 2 is the base colours alone).
   float risen = 2.0 - uWorldReady;
 #ifdef WORLD_WEATHER

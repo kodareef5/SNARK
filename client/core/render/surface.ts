@@ -21,7 +21,7 @@ import { BONES_PER_ROW, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FR
 import { CONTACT_GLSL } from "./contact.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
-import { ROOF_GLSL } from "./roof.ts";
+import { BOUNCE_SUN, ROOF_GLSL } from "./roof.ts";
 import { WEAR_GLSL, wearAlpha } from "./wear.ts";
 
 /** What a surface that is not metal reflects head on. */
@@ -175,12 +175,21 @@ function skyParts(rough: number, nv: number): void {
 }
 
 /**
+ * How the ground's light sent back is changed where the pixel being lit is (roof.ts `roofBounce`): the ground's colour
+ * against the sky table's grey, red, green and blue, and the share of the sun's part of that light the ground there has
+ * lit. All 1 leaves the frame block's light as it is. The software rasterizer sets it for a pixel and puts it back
+ * after; the GLSL twin is LIGHT's gBounce, which a program sets for its pixel.
+ */
+export const bounce = new Float64Array([1, 1, 1, 1]);
+
+/**
  * The sky's light on a surface whose normal is `up` high, -1 to 1: the frame block's light from above on a surface
- * facing up and from below on one facing down, mixed by how much of each it faces.
+ * facing up and from below on one facing down, mixed by how much of each it faces; the light from below as `bounce` has it.
  */
 export function skyOn(out: Out, frame: Numbers, up: number): void {
   const t = 0.5 + 0.5 * up;
-  for (let c = 0; c < 3; c++) out[c] = frame[FRAME.skyBelow + c]! * (1 - t) + frame[FRAME.skyAbove + c]! * t;
+  const unlit = BOUNCE_SUN * Math.max(frame[FRAME.sun + 1]!, 0) * (1 - bounce[3]!);
+  for (let c = 0; c < 3; c++) out[c] = (frame[FRAME.skyBelow + c]! - frame[FRAME.sunColor + c]! * unlit) * bounce[c]! * (1 - t) + frame[FRAME.skyAbove + c]! * t;
 }
 
 /**
@@ -540,8 +549,9 @@ vec3 skyShare(vec3 f0, float rough, float nv) {
   float edge = pow(1.0 - nv, 5.0 - ${f(FIT_EDGE)} * rough) / ((1.0 + ${f(FIT_DULL)} * a) * (1.0 + ${f(FIT_DULL)} * a));
   return f0 * whole + (1.0 - f0) * edge;
 }
+vec4 gBounce = vec4(1.0);
 vec3 skyOn(float up) {
-  return mix(fSkyBelow.rgb, fSkyAbove.rgb, 0.5 + 0.5 * up);
+  return mix((fSkyBelow.rgb - fSunColor.rgb * (${f(BOUNCE_SUN)} * max(fSun.y, 0.0) * (1.0 - gBounce.a))) * gBounce.rgb, fSkyAbove.rgb, 0.5 + 0.5 * up);
 }
 vec3 skyLight(vec3 n) {
   float toward = dot(n.xz, fLook.xy);
@@ -678,6 +688,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   float shade = sunShadow(vRel, sunward(face, uSheet));
   float over = overGround(vRel);
   float open = skyOpen(vRel, face, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, face, uSkin > 0.5 ? 0.0 : 1.0) * roofOpen(vRel, face, over);
+  roofBounce(vRel, face, over);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
   // The fractional quarter of the material code carries the static vehicle's weather exposure.
   float age = fract(uStreetMaterial)*4.0;

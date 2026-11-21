@@ -141,9 +141,10 @@ export const BENCH_TURN_MS = 15000;
  * alone and its ground first, as they went before they went nearest first (render/scene.ts order). "edges" draws walls
  * with no worn edges, "road" the ground with no wear on asphalt and sand, and "walks" none on a walk (world-surfaces.ts). "nearmesh" draws the
  * near city's pieces as instances, none as a chunk's mesh (render/nearcity.ts). "roofs" takes no light down under what
- * stands overhead (render/roof.ts).
+ * stands overhead (render/roof.ts) and leaves the light from the ground as the sky's table has it; "bounce" leaves that
+ * light alone.
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -185,6 +186,7 @@ export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
   if (off.has("contact")) p.frame.fill(0, FRAME.contact, FRAME.eyes);
   if (off.has("roofs")) p.frame[ROOF_AT + 3] = 0;
+  if (off.has("bounce")) p.frame[ROOF_AT + 3] = Math.min(1, p.frame[ROOF_AT + 3]!);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
   if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
   p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0);

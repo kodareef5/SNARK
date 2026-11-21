@@ -2,15 +2,15 @@
 //
 // The arcade moment (planning/workstreams/shade-light.md): a pink arcade on the north face of a building in Miami, a
 // slab 8 m wide standing 4 m out over the walk with its underside 2.7 m up, so at noon the sun is in front of it and the
-// walk before it is sunlit. A white compact stands nose in, half under it, and a survivor in a white shirt stands on its
-// edge. Two views, from the street and from under the arcade looking out, at each hour asked for (noon and 17:00 by
+// walk before it is sunlit. A white compact stands nose in, half under it, and a survivor stands under it facing out
+// (bare, as a body with no look and no gear is). Two views, from the street and from under the arcade looking out, at each hour asked for (noon and 17:00 by
 // default), each in the states of STATES, one folder each: the frame as built, and with what was added since the study
 // was made switched off in its frame block, as the lit programs drew it before. It writes `<state>/<view>-<hhmm>-software.png`,
 // and with --gpu `<state>/<view>-<hhmm>.png` drawn by the shell's renderer with the sun's shadows, which the software
 // render has not. For each it prints the sRGB of a few probes, each the
 // median of a 5 by 5 window round where a point of the scene falls on screen: the floor under the arcade and the walk
-// in the sun, the car's flank and roof under it and out of it, the shirt, the arcade's ceiling near its edge and deep
-// under it, and the shop's wall at its back. `-probes.png` marks where they fall. It draws on high.
+// in the sun, the car's flank under it and out of it, its roof under it and its boot out of it, the survivor's chest,
+// the arcade's ceiling near its edge and deep under it, and the shop's wall at its back. `-probes.png` marks where they fall. It draws on high.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
@@ -49,15 +49,16 @@ const yaw = (t.yaw[slab]! / 65536) * 2 * Math.PI, c = Math.cos(yaw), s = Math.si
 const world = (x: number, z: number): [number, number] => [t.x[slab]! + c * x + s * z, t.z[slab]! - s * x + c * z];
 
 const width = 1280, height = 720;
-const v = provingView(width, height, {}, { manifest, files }, { ...map, statics: MapStatics.of(map.dims, rows) });
+// The map's statics are the city too, as a client's are, so the far shadow, the sky's openness and the roofs come.
+const v = provingView(width, height, {}, { manifest, files }, { ...map, statics: MapStatics.of(map.dims, rows) }, undefined, 0, true);
 const { cam, scene, remote, hf, raster } = v;
 scene.assets.tier = tierOf("high");
 scene.viewHeight = height;
 cam.fovY = (57 * Math.PI) / 180;
 const ground = hf.heightAt(...world(0, -3));
 
-// The car nose in toward the wall with its middle on the edge, white; the survivor on the edge further along, facing out.
-const car = world(-1.6, -3), man = world(2.3, -2.9);
+// The car nose in toward the wall, its back metre out past the edge, white; the survivor under it further along, facing out.
+const car = world(-1.6, -1.9), man = world(2.3, -1.6);
 const placeBody = (n: number, id: number, kind: string, at: [number, number], turn: number): void => {
   const k = v.reg.index.get(kind);
   if (k === undefined) throw new Error("No " + kind);
@@ -78,7 +79,7 @@ remote.count = 2;
 interface View { readonly name: string; readonly eye: [number, number, number]; readonly at: [number, number, number] }
 /** From the street, out and to the open end; and from under the arcade by the wall, looking out past the car. */
 const VIEWS: readonly View[] = [
-  { name: "street", eye: [-6.5, 1.6, -13.5], at: [0.3, 1.0, -2.2] },
+  { name: "street", eye: [-5.5, 1.6, -10.5], at: [0.2, 1.0, -1.6] },
   { name: "under", eye: [3.4, 1.45, 0.25], at: [-1.6, 1.05, -7.5] },
 ];
 function look(view: View): void {
@@ -93,24 +94,25 @@ function look(view: View): void {
 
 /** Points measured, in the arcade's frame: x along, height over its ground, z out. */
 const PROBES: readonly (readonly [string, number, number, number])[] = [
-  ["floor under", 1.2, 0.02, -1.4],
+  ["floor under", 1.2, 0.02, -0.6],
   ["walk in sun", 1.2, 0.05, -4.6],
-  ["car flank under", -2.5, 0.72, -2.1],
-  ["car flank out", -2.5, 0.72, -3.9],
-  ["car roof under", -1.6, 1.42, -2.3],
-  ["car roof out", -1.6, 1.42, -3.8],
-  ["shirt", 2.3, 1.3, -3.08],
+  ["car flank under", -2.5, 0.72, -0.6],
+  ["car flank out", -2.5, 0.72, -3.7],
+  ["car roof under", -1.6, 1.42, -1.4],
+  ["car boot out", -1.6, 1.0, -3.8],
+  ["chest", 2.3, 1.3, -1.78],
   ["ceiling edge", 1.0, 2.69, -2.6],
   ["ceiling deep", 1.0, 2.69, -0.3],
   ["back wall", 3.0, 1.0, 0.95],
 ];
 /**
  * Each state: its folder, and what the frame block's fRoof.w is set to, or null for as built: 0 is before what stands
- * overhead took the sky's light down (render/roof.ts).
+ * overhead took the sky's light down (render/roof.ts), 1 before the light from the ground was the ground's it sees.
  */
 const STATES: readonly { readonly name: string; readonly roof: number | null }[] = [
   { name: "before", roof: 0 },
-  { name: "roofs", roof: null },
+  { name: "roofs", roof: 1 },
+  { name: "bounce", roof: null },
 ];
 for (const state of STATES) mkdirSync(join(out, state.name), { recursive: true });
 /** Calls `draw` with the packet in each state in turn, and leaves it as built. */
@@ -121,6 +123,19 @@ function inEach(p: FramePacket, draw: (name: string) => void): void {
     draw(state.name);
   }
   p.frame[ROOF_AT + 3] = built;
+}
+/** Whether the sky's openness is all on the card and the map of what stands overhead is made, which the scene does over frames. */
+const ready = (): boolean => !!scene.farShadow?.whole;
+/** Frames that carry uploads and draw nothing until `ready`. */
+function readied(): void {
+  for (let k = 0; k < 2000 && !ready(); k++) {
+    scene.now += 1000 / 60;
+    v.port!.advance(scene.now);
+    const p = scene.build(cam, remote);
+    p.drawCount = p.tileCount = 0;
+    raster.render(p);
+  }
+  if (!ready()) throw new Error("the sky's openness or the roof map did not come");
 }
 const hhmm = (h: number): string => String(Math.floor(h)).padStart(2, "0") + String(Math.round((h % 1) * 60)).padStart(2, "0");
 
@@ -169,6 +184,8 @@ for (const hour of hours) {
   for (const view of VIEWS) {
     look(view);
     settle(v);
+    readied();
+    settle(v);
     scene.now += 510;
     const p = v.render();
     const at = probeAt(p);
@@ -183,6 +200,8 @@ for (const hour of hours) {
   }
 }
 console.log(report.join("\n"));
+const roofs = scene.farShadow?.roof?.stats;
+if (roofs) console.log(`maps of what stands overhead made ${roofs.made}, the last in ${roofs.ms.toFixed(1)} ms of slices`);
 if (!gpu) process.exit(0);
 
 const chrome = findChrome();
@@ -206,7 +225,7 @@ const passed = await litProbe(chrome, [{
           const p = scene.build(cam, remote);
           const loading = p.uploads.length + p.drops.length + p.assetUploads.length + p.assetDrops.length + p.texUploads.length + p.texDrops.length;
           const load = scene.assets.residency;
-          settled = !loading && !load.flying && !load.waiting && p.frame[FRAME.reflection + 3] === 1 ? settled + 1 : 0;
+          settled = !loading && !load.flying && !load.waiting && ready() && p.frame[FRAME.reflection + 3] === 1 ? settled + 1 : 0;
           if (settled >= 30) break;
           p.drawCount = p.tileCount = p.casterCount = 0;
           shot.add(p);

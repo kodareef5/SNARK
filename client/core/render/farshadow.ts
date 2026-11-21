@@ -26,7 +26,7 @@ import { TACTICAL_CELL, farTopMetres } from "../../../shared/world/tactical.ts";
 import type { CityKinds, CityMaker } from "./citymake.ts";
 import { FRAME, ROOF_AT, type FramePacket } from "./packet.ts";
 import { SkyOpen, openMeasure, type OpenMap } from "./skyopen.ts";
-import { RoofMap } from "./roof.ts";
+import type { RoofMap } from "./roofmap.ts";
 
 /** Metres a side of the cells solid heights are made in: the tops' own (shared/world/tactical.ts). */
 export const TOP_CELL = TACTICAL_CELL;
@@ -318,9 +318,14 @@ const clock = (): number => (globalThis as { performance?: { now(): number } }).
 export class FarShadow {
   /** Sweeps made, and the last one's milliseconds where it was made here. */
   readonly stats = { sweeps: 0, ms: 0 };
-  /** The sky's openness, made from the same solid heights, and what stands overhead round the camera, from the same pieces. */
+  /**
+   * The sky's openness, made from the same solid heights, and what stands overhead round the camera, from the same
+   * pieces, which the scene gives it from the late script (roofmap.ts), none until then.
+   */
   readonly open = new SkyOpen();
-  readonly roof = new RoofMap();
+  roof: RoofMap | null = null;
+  /** Whether the last frame's tier takes the sky's light down under roofs. */
+  private roofs = false;
   private readonly goneOf = (chunk: number): Gone => this.standing.goneOf(chunk);
   private readonly city: CityStatics;
   private readonly hf: Heightfield;
@@ -380,11 +385,19 @@ export class FarShadow {
     this.seen = new Uint32Array(chunkCount(city.dims));
   }
 
+  /**
+   * Whether the sky's openness is all on the card and, on a tier with roofs, the map of what stands overhead round the
+   * camera too, so that a frame is lit as it will go on being.
+   */
+  get whole(): boolean {
+    return this.open.whole && (!this.roofs || (this.roof?.whole ?? false));
+  }
+
   /** After a lost context: the layer and the openness's texture are empty, and the latest of each goes on the card again. */
   reset(): void {
     this.layerSize = 0;
     this.open.reset();
-    this.roof.reset();
+    this.roof?.reset();
   }
 
   /**
@@ -398,7 +411,8 @@ export class FarShadow {
     const f = p.frame;
     f[FRAME.farScale] = 0;
     f[ROOF_AT + 3] = 0;
-    if (p.lit && p.tier.roofs) this.roof.update(p, budget, this.city, this.hf, this.goneOf, cx, cz, clock);
+    this.roofs = p.lit && p.tier.roofs;
+    if (this.roofs) this.roof?.update(p, budget, this.city, this.hf, this.goneOf, cx, cz, now, clock);
     const { cascades, size } = p.tier.shadows;
     if (!p.lit || size <= 0) {
       this.layerSize = 0;
@@ -473,7 +487,7 @@ export class FarShadow {
     this.changed.length = 0;
     this.stale = true;
     this.open.changed();
-    this.roof.changed();
+    this.roof?.changed();
   }
 
   /** Asks for the map for `sun` where it is not null, and for the openness with `open`, where levels are made, else here. */

@@ -49,6 +49,7 @@ import type { TextureRole } from "../shared/pack/texture.ts";
 import { Heightfield } from "../shared/world/heightfield.ts";
 import { NodeField, formOf, mix, type NodeSpot } from "../shared/world/nodes.ts";
 import { mapHeightfield, mapNodes, parseMap, placeStatics, type MapFile } from "../shared/world/mapfile.ts";
+import { CityStatics } from "../shared/world/city.ts";
 import { NodeChanges } from "../client/core/render/farnodes.ts";
 import { chunkAt } from "../shared/coords.ts";
 import { PROVING_DIMS, PROVING_OBELISK, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
@@ -289,9 +290,10 @@ export interface ProvingView {
  * The proving ground with a camera at the spawn point and two bodies standing in view. With `net`, the scene has only
  * the boot pack at start and fetches other levels over that network, and the rasterizer draws only what was uploaded.
  * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them. `game` is content and a pack
- * of its own in place of the core's.
+ * of its own in place of the core's. With `city`, a map's statics are the world's city as well, as a client's are, all
+ * of them held whole by the near store: the far shadow, the sky's openness and what stands overhead come with it.
  */
-export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile, game?: { reg: Registry; pack: Uint8Array }, moved = 0): ProvingView {
+export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile, game?: { reg: Registry; pack: Uint8Array }, moved = 0, city = false): ProvingView {
   const reg = game?.reg ?? withContent(compileContent(CORE_CONTENT).registry!, map?.content?.defs ?? []);
   const dims = map?.dims ?? PROVING_DIMS;
   const hf = map ? mapHeightfield(map) : buildProvingHeightfield();
@@ -310,7 +312,8 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   if (map) for (const t of movingOf(reg, map.statics)) states.set(t.ref, { from: moved * MOTION_STEPS, to: moved as 0 | 1, at: 0 });
   const motion = map ? { motion: { states: () => states, tick: () => 0, statics: () => map.statics } } : {};
   const tideEyes = map ? map.tideEyes : [{ ...PROVING_OBELISK, color: "blue" as const, radius: 14, y: hf.heightAt(PROVING_OBELISK.x, PROVING_OBELISK.z) }];
-  const scene = new Scene({ mapId: map?.id, tideEyes, dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  const held = map && city ? { city: { statics: new CityStatics(dims, map.statics, reg), complete: () => true } } : {};
+  const scene = new Scene({ mapId: map?.id, tideEyes, dims, hf, structs, nodes: nodes.store, ...farNodes, ...motion, ...held }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
   cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;

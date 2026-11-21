@@ -48,6 +48,7 @@ import { CITY_BUFFER, FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSourc
 import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budget.ts";
 import type { FarCity, CitySource } from "./farcity.ts";
 import type { CityBlocks, BlocksSource } from "./cityblocks.ts";
+import type { RoofMap } from "./roofmap.ts";
 import { FarLandmarks, LANDMARK_BUFFER } from "./farlandmarks.ts";
 import { CrownCover, coverDistance, type CoverLooks, type CoverRule } from "./cover.ts";
 import { FarNodes, farLevelOf, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
@@ -689,7 +690,7 @@ export class Scene {
   /** What the city's blocks are made from, until the late code (city-late.ts) has come to make them. */
   private blocksFrom: { tops: BlocksSource; colours: Uint8Array } | null;
   /** The far city and the city's blocks, once city-late.ts has loaded. Until then a scene draws neither. */
-  static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks } | null = null;
+  static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks; RoofMap: typeof RoofMap } | null = null;
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
   private readonly farMesh: number;
@@ -748,6 +749,8 @@ export class Scene {
     if (left !== 0) this.cast(mesh, view, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, left);
   };
   /** Linear RGB of the open sky and of deep water. */
+  /** The pack's colours, four bytes each, which the map of what stands overhead takes the ground's colour from (roof.ts). */
+  private readonly groundPalette: Uint8Array;
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
   /** The nearest and farthest depth the clouds' puffs reach this frame. */
@@ -757,6 +760,7 @@ export class Scene {
   /** `opts.farPalms`: the far store draws palms as their frond level, not their solid, for a bench's comparison (farLevelOf). */
   constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort; pages?: readonly Uint8Array[] }, opts: { farPalms?: boolean } = {}) {
     this.world = world;
+    this.groundPalette = pack.palette;
     this.terrain = new TerrainLod(world.hf);
     this.assets = new Assets(reg, pack, stream?.manifest, stream?.port, stream?.pages);
     // The renderer holds the sky table on every tier.
@@ -1754,6 +1758,8 @@ export class Scene {
     this.clearAt[3] = 0;
     this.city = new Scene.late.FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
     this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds);
+    this.farShadow.roof = new Scene.late.RoofMap();
+    this.farShadow.roof.palette = this.groundPalette;
     this.far?.leaveTo(this.city);
     const placed = this.world.landmarks ?? [];
     if (placed.length > 0) this.landmarks = new FarLandmarks(source, this.world.dims, placed, landmarkFars(this.assets.manifest));

@@ -16,8 +16,8 @@
 // worn edges, the facades, the road's wear and the walks' are on the street, on the page's clock (`?sync=1&ab=`): what each costs is the median of a frame without it less the frames with it either side, which
 // the turning view and other work on the card move little, and which a timer query on this card reads too long. The
 // street lamps' light (render/street-lamps.ts) is turned off so on the street at night, at 22:00, on high and ultra, and the
-// wires between the poles (render/street-wires.ts) by day, and what stands overhead (render/roof.ts) on the street on
-// high at one and two and on ultra at two. A city row's GL draws and triangles are of the frame its run
+// wires between the poles (render/street-wires.ts) by day, and what stands overhead and the light from the ground
+// (render/roof.ts) on the street on high at one and two and on ultra at two. A city row's GL draws and triangles are of the frame its run
 // ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
 // process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words]` runs these alone, each `runs` times (3), and
@@ -108,7 +108,7 @@ export function plan(): Run[] {
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "road" });
   for (const tier of ["high", "ultra"]) runs.push({ scene: "city", view: "street", tier, scale: 1, ab: "walks" });
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
-  for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) runs.push({ scene: "city", view: "street", tier, scale, ab: "roofs" });
+  for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) for (const ab of ["roofs", "bounce"] as const) runs.push({ scene: "city", view: "street", tier, scale, ab });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
   return runs;
 }
