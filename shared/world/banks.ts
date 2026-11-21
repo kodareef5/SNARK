@@ -31,7 +31,10 @@ const smooth = (lo: number, hi: number, v: number): number => {
 const TABLE = 400;
 const SHARE = (() => {
   const steps = 4000, column: number[] = [];
-  for (let k = 0; k <= steps; k++) column.push(Math.pow(Math.max(0, 1 - (-1 + (2 * k) / steps) ** 2), 2.5));
+  for (let k = 0; k <= steps; k++) {
+    const u = -1 + (2 * k) / steps, a = Math.max(0, 1 - u * u);
+    column.push(a * a * Math.sqrt(a));
+  }
   const sum: number[] = [0];
   for (let k = 1; k <= steps; k++) sum.push(sum[k - 1]! + (column[k - 1]! + column[k]!) / 2);
   const all = sum[steps]!;
@@ -82,7 +85,7 @@ export function shapeBanks(height: Float32Array, nx: number, nz: number, cell: n
     for (let x = -r; x <= r; x++) {
       const d2 = ((x * x + y * y) * cell * cell) / (BANK_REACH * BANK_REACH);
       if (d2 >= 1) continue;
-      const w = (1 - d2) ** 2;
+      const w = (1 - d2) * (1 - d2);
       kernel.push({ x, y, w });
       mass += w;
     }
