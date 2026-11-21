@@ -6,19 +6,22 @@ import { join, resolve } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 import { parseManifest } from "../shared/pack/manifest.ts";
 
-/** Only the newest edition travels in the opening bundle. The archive is served byte for byte beside it. */
-export function titleRelease(text: string, version: string) {
-  const [latest] = text.trim().replaceAll("\r\n", "\n").split(/\n(?=v\d+\.\d+\.\d+ — )/, 1);
-  const [header, ...entries] = latest!.trimEnd().split(/\n\s*\n/);
-  const label = /^(v\d+\.\d+\.\d+) — \d{4}-\d{2}-\d{2}$/.exec(header ?? "")?.[1];
-  if (label !== "v" + version || !entries.length)
-    throw Error("Start CHANGELOG.txt with the package version, an em dash and the release date, then a blank line before the notes.");
-  const notes = entries.map((entry) => {
-    const [title, ...lines] = entry.split("\n");
-    if (!title || !lines.length) throw Error("Each changelog note needs a title and a paragraph.");
-    return { title, body: lines.join(" ") };
+/** The title and the downloadable archive use the same releases, newest first. */
+export function titleReleases(text: string, version: string) {
+  const releases = text.trim().replaceAll("\r\n", "\n").split(/\n(?=v\d+\.\d+\.\d+ — )/).map((edition) => {
+    const [header, ...blocks] = edition.trim().split(/\n\s*\n/);
+    const match = /^(v\d+\.\d+\.\d+) — (\d{4}-\d{2}-\d{2})$/.exec(header ?? "");
+    if (!match || !blocks.length) throw Error("Each changelog release needs a version, date and feature groups.");
+    const groups = blocks.map((block) => {
+      const [feature, ...lines] = block.split("\n");
+      if (!feature || !lines.length || lines.some(line => !/^- \S/.test(line)))
+        throw Error("Each changelog group needs a feature name and one or more '- ' bullets.");
+      return { feature, bullets: lines.map(line => line.slice(2)) };
+    });
+    return { version: match[1]!, date: match[2]!, groups };
   });
-  return { version: label, notes };
+  if (releases[0]!.version !== "v" + version) throw Error("The first changelog release must match the package version.");
+  return releases;
 }
 
 /** The title has its own small initial bundle. The title, the wiki model viewer, and the admin camera studio open their native views on demand. */
@@ -26,7 +29,7 @@ export async function buildEntry(dist: string): Promise<void> {
   const source = resolve(import.meta.dir, "../client/entry"),
     assets = join(dist, "assets");
   const changelog = readFileSync(resolve(source, "../../CHANGELOG.txt"), "utf8");
-  const release = titleRelease(changelog, project.version);
+  const releases = titleReleases(changelog, project.version);
   const files = readdirSync(assets).sort();
   const named = (prefix: string) => "assets/" + files.find((n) => n.startsWith(prefix) && !n.endsWith(".br"));
   const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
@@ -36,7 +39,7 @@ export async function buildEntry(dist: string): Promise<void> {
     target: "browser",
     minify: true,
     naming: "[name].[ext]",
-    define: { __TITLE_RELEASE__: JSON.stringify(release), __SKY_FILE__: JSON.stringify(named("sky.")), __HUD_ATLAS_URL__: JSON.stringify(named("hud.")) },
+    define: { __TITLE_RELEASES__: JSON.stringify(releases), __SKY_FILE__: JSON.stringify(named("sky.")), __HUD_ATLAS_URL__: JSON.stringify(named("hud.")) },
   });
   if (!result.success) throw Error(result.logs.map(String).join("\n"));
   for (const name of ["entry.css", "flight.html", "studio.html", "scene-studio.css"]) cpSync(join(source, name), join(dist, name));

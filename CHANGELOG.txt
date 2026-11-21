@@ -1,19 +1,111 @@
 v0.0.8 — 2026-11-20
 
-Biscayne Bay
-Take a speedboat into a hard turn and its wake draws the corner behind you. Along the beach, the wash runs up the sand and drains away. Swim through it or skim it with the Meridian’s jets and you leave your own trail.
+Water
+- Smoothed sandy shorelines. Shore wash now follows the beach grade.
+- Curved stern wakes through turns. Stronger spray on the outside of the hull.
+- Boosted swimmer trails and low-altitude jet wash at the source.
 
-Above Wynwood
-The title opens over a Meridian rider’s shoulder. The Rex breathes, the red sextant turns over Wynwood, and its light reaches into the sunset. Cluster admins can move the camera and publish their own shot.
+Rendering
+- Added local street reflections, tinted glass and chrome across the road fleet.
+- Darkened tires and chassis shadows. Added rust and grime to parked wrecks.
+- Blended tree LODs. Fixed stale canopy density after felling and regrowth.
 
-The Meridian suit
-White armor sits over dark padding. Chrome catches the sun, blue jets fire from the boots, and the rider leans into flight. Double-tap jump to burst upward, or use the orbit camera to watch a teammate dance.
+Characters
+- Refit the Rex saddle and rider grips. Added gestures, dances and paired emotes.
+- Split Meridian armor, visor and padding finishes. Added directional flight, boot jets and double-tap jump burst.
 
-Streets with names
-Miami’s road markings follow the grade. Street signs face approaching traffic, asphalt wears along the lanes, and nearby cars catch the street in their paint and glass. The map pipeline also builds Tampa, Las Vegas, Los Angeles and San Francisco.
+Title & tools
+- Added the live Rex title, rotating Wynwood sextant and admin camera studio.
+- Added the S emblem and scrollable release history. Added a 3D model viewer to the wiki.
+- Connected headless agents to the game for navigation, crafting and hauling.
 
-Keys to the city
-Drive a race car, haul cargo in a truck, cross the bay by boat or lift off in a helicopter. Vehicles carry passengers and remember where you parked them.
+v0.0.7 — 2026-11-19
 
-The first camp
-Gather wood, learn an engram and snap a shelter together. Bring a friend into your tribe, tame a dinosaur and fit its saddle. A pair of tames can start a bloodline that grows up alongside the camp.
+Streaming
+- Prioritized nearby terrain and city overviews at join. Spread static mesh uploads across frames.
+- Prioritized game packets over art requests when the connection stalls.
+
+Touch
+- Added contextual controls for building, driving and inventory. Added touch chat and pinch-to-zoom maps.
+
+Servers
+- Added opt-in server listings with PvE/PvP, tags and password status.
+- Added tick diagnostics to distinguish simulation time from scheduling stalls.
+
+v0.0.6 — 2026-11-18
+
+City
+- Added raised sidewalks, curb cuts, rooftop equipment and weathered facades.
+- Placed signs, crossings, signals and parking meters from street data.
+
+Fleet & camera
+- Added the tanker, monster pickup, muscle coupe, city taxi, district bus and freight tractor.
+- Added K-key orbit around survivors and mounts. Kept aim independent of camera rotation.
+
+Survivors & admin
+- Added named survivor slots, browser linking, recovery codes and spawn previews.
+- Added survivor activity timelines, map playback and a creative-mode sundial.
+- Fixed admin login with non-ASCII passwords.
+
+v0.0.5 — 2026-11-17
+
+Maps & lighting
+- Expanded Miami Coast from Bear Cut to Surfside. Added distant skyline data to map overviews.
+- Streamed landmark meshes after the first frame. Added sky occlusion under cover.
+
+Driving & mounts
+- Added patrol vehicles, synchronized warning lights and long-travel suspension.
+- Fixed traffic handoff and parking-brake replication. Added collision recovery.
+- Added the coastal Parasaur, locomotion clips and fitted saddle.
+
+v0.0.4 — 2026-11-16
+
+Waterfront
+- Berthed the cruise ship in Miami with a walkable shore approach.
+- Added Koru yacht deck fittings and rigging. Fixed cruise deck seams and interior floor caps.
+
+Audio & loading
+- Added survivor voices and engine, tire, hull and cabin loops. Loaded sound takes on demand.
+- Parallelized asset requests over HTTP/2 and HTTP/3. Reused cached art on return visits.
+
+Wiki
+- Added static wiki builds with audio previews and an agent API reference.
+
+v0.0.3 — 2026-11-15
+
+Worlds & travel
+- Built Miami, Tampa, Las Vegas, Los Angeles and San Francisco from city data.
+- Added cross-server survivor and gear transfers with crash recovery and duplicate-claim checks.
+
+Vehicles & flyers
+- Added driveable cars, boats and helicopters with fuel, seats and persistent parking.
+- Added Pteranodon takeoff, flight and landing clips. Fixed boat placement previews on dry land.
+
+Survival & input
+- Added the blue-glass HUD, menus and controller input.
+- Enabled drinking from seas and lakes. Blocked submerged beds and extinguished fires underwater.
+
+v0.0.2 — 2026-11-14
+
+Renderer
+- Added skinned, textured meshes and material sections. Added terrain detail near the camera.
+- Added graphics tiers, shadow budgets and sky exposure. Streamed mesh levels from asset packs.
+
+Tools & fixes
+- Added a headless survivor and stdio agent tools.
+- Fixed stuck movement after input loss, slope placement after reload and meat stack spoilage.
+- Added escalating delays for incorrect door PINs.
+
+v0.0.1 — 2026-11-13
+
+Engine & netcode
+- Added the WebGL2 client, authoritative simulation, replication and persistent world saves.
+- Added stackable content packs and server tuning through ARK-style INI files.
+
+Survival & combat
+- Added harvesting, inventory, engrams, crafting, vitals, swimming, death caches and respawn.
+- Added hit zones, localized armor, torpor and tranquilizers.
+
+Tribes & creatures
+- Added tribes, proximity voice, snap building, PIN locks and storage.
+- Added wild AI, knockout taming, ridden mounts, eggs and offspring growth.

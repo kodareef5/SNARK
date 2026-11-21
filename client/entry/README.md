@@ -6,7 +6,7 @@ The title opens on a live shot across Biscayne Bay toward the red Wynwood sextan
 
 ## Updating the title changelog
 
-The title shows the newest edition of the plain-text [changelog](../../CHANGELOG.txt). To release an update, set `version` in the root `package.json` and prepend a heading such as `v0.0.9 — 2026-11-24` to the text file. Leave a blank line after the heading. Give each note a short title on one line and its paragraph below. Separate notes and editions with a blank line. The entry build checks that the package and newest heading agree, and ships the full file at `title/changelog.txt`. To refresh an existing client build, run `bun tools/build-entry.ts client/dist`.
+The title displays [CHANGELOG.txt](../../CHANGELOG.txt) newest first. The first eight versions group the initial development history by date. For a new release, update `version` in the root `package.json` and prepend its heading, for example `v0.0.9 — 2026-11-24`. Under each feature name, write one `- ` bullet per change. Leave a blank line between the release heading and each feature group. The build checks the newest version against the package and serves the original text at `title/changelog.txt`. To refresh an existing client build, run `bun tools/build-entry.ts client/dist`.
 
 ## Directing the title
 
