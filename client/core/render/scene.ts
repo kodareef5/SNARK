@@ -2062,6 +2062,8 @@ export class Scene {
       for (let k = 0; k < n; k++) this.addRemote(remote, from[k]!, place, k, this.bodyRigid[k] !== 0, false);
     }
     if (own && ch.has(own.kind)) {
+      ch.eye.pitch = cam.pitch;
+      ch.eye.half = cam.fovY / 2;
       let seat: VehicleSeatPose | undefined;
       let saddled = false, impaled = false;
       this.ownRiderFit.profile = 0;

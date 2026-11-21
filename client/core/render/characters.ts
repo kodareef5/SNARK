@@ -14,7 +14,7 @@ import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import { isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
-import { SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
+import { B_NECK, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
@@ -22,7 +22,7 @@ import { EMOTES, EMOTE_GROUP, emoteClipId, emoteOf } from "../../../shared/anim/
 import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
-import { MODE_FLYER, MODE_SWIM, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
+import { MODE_FLYER, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose, creatureFootfallDomain, FOOTFALL_NONE, type FootfallGait } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
@@ -66,6 +66,17 @@ const HEAVY_OUTFIT = 2;
  * is not drawn at all: the body's own part stands in for it in the outfit's colours.
  */
 const HEAVY_RELAX = 3;
+/**
+ * In first person the eye is where the head would be, and the head and what is on it are left out (`add`'s `headless`),
+ * so what has no head over it is the opening at the top of the torso, where the neck comes out of the body or the
+ * suit. Looking down, the camera would look into it from above. Its front is taken as the point OPENING_AHEAD in front of
+ * the neck's joint and OPENING_BELOW under it, on the upper chest: past the front of every collar and cowl the survivors
+ * wear (the Meridian's reaches 0.15 m there, a shirt's or a hide's 0.13). VIEW_MARGIN is radians kept between it and
+ * the bottom edge of the view.
+ */
+const OPENING_AHEAD = 0.16;
+const OPENING_BELOW = 0.02;
+const VIEW_MARGIN = 0.05;
 /** The most meshes one body queues: its slots, hair, a beard, a piece worn on its head, deployed vents and a held item. */
 const PARTS = SLOT_COUNT + 6;
 const PLAIN = defaultLook();
@@ -279,6 +290,8 @@ export class Characters {
    */
   override: { id: number; clip: Clip; frame: number } | null = null;
   fresh = 0;
+  /** The camera's pitch and half the height of its view, in radians, which the scene sets for the viewer's body (eyeRoom). */
+  readonly eye = { pitch: 0, half: 0 };
   /** Set while the sun casts. Null leaves every body out of the shadows. */
   shadows: BodyShadows | null = null;
   private readonly kinds: (BodyKind | null)[];
@@ -305,6 +318,7 @@ export class Characters {
   private readonly steer = new Float64Array(4);
   private readonly seatState = new AnimState();
   private readonly origin = new Float64Array(3);
+  private readonly opening = new Float64Array(3);
   private readonly lookColor = new Uint8Array(6);
   /** Scratch: a body's look, a vehicle's frame for its turn, a seat's place and what a seated body is posed from. */
   private readonly lookView = new Uint8Array(LOOK_BYTES);
@@ -1362,7 +1376,9 @@ export class Characters {
       if (g.riderProfile !== (rider?.profile ?? 0)) { g.form = -1; g.riderProfile = rider?.profile ?? 0; }
       const form = kind * 8 + at * 4 + (seat ? 1 : 0) + (impaled ? 2 : 0);
       const over = this.override !== null && this.override.id === id ? this.override : null;
-      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null)) this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over);
+      // The viewer's own body in first person, up on its feet or swimming: its eye does not bend over with its back.
+      const eyeOwn = own && headless && !seat && !vehicleSeat && !impaled && st.stance !== STANCE_PRONE && !st.out && !st.dead;
+      if (this.due(g, form, id, Math.sqrt(x * x + y * y + z * z), unseen, seat || !st.grounded ? 0 : g.speed, own || vehicleSeat !== undefined || over !== null)) this.posing(st, tick, g, seat, seatAt, yaw, vehicleSeat, steers, scales, set, solved, impaled, rider, soles, grips, over, eyeOwn);
       if (seat) {
         // A rider sits in its seat's whole frame, and leans, pitches and banks as the seat does.
         writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, 0, 0, 0, 0);
@@ -1376,7 +1392,14 @@ export class Characters {
         orientSolved(solved, this.rotation, this.mounted);
         x = this.origin[0]!; y = this.origin[1]!; z = this.origin[2]!; yaw = 0;
         writeBones(p.bones, first * BONE_FLOATS, this.mounted, set.rest, scales, x, y, z, 0);
-      } else writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, x, y, z, yaw);
+      } else {
+        if (eyeOwn) {
+          const back = this.eyeRoom(solved, set.rest, y);
+          x -= Math.sin(yaw) * back;
+          z -= Math.cos(yaw) * back;
+        }
+        writeBones(p.bones, first * BONE_FLOATS, solved, set.rest, scales, x, y, z, yaw);
+      }
       this.posed++;
       if (st.action >>> 3 === HOLD_CARRY) {
         // Where the palms are drawn, for the creature in them.
@@ -1472,10 +1495,27 @@ export class Characters {
   }
 
   /**
-   * Works out a survivor's pose into `solved`: from its state at `tick` and its gait, seated in a saddle `seat` or a
-   * vehicle's, aiming from there, and stretched by its look's `scales`.
+   * How far back along its facing the viewer's body in first person is drawn from where it stands, its posed bones in
+   * `solved` on `rest`, its origin `y` under the camera: just as far as puts the front of its neck's opening behind the
+   * bottom edge of the view, and nothing while that is out of view already. The eye is over its origin, as on foot it is.
    */
-  private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved, impaled = false, rider?: RiderFit, soles: Float64Array | null = null, grips: Float64Array | null = null, over: { clip: Clip; frame: number } | null = null): void {
+  private eyeRoom(solved: Solved, rest: Float32Array, y: number): number {
+    const c = B_UPPER_CHEST * 3, n = B_NECK * 3, at = this.opening;
+    boneToModel(solved, B_UPPER_CHEST, -rest[c]!, rest[n + 1]! - OPENING_BELOW - rest[c + 1]!, rest[n + 2]! + OPENING_AHEAD - rest[c + 2]!, at);
+    // How far the opening's front is ahead of the eye along the body's facing, and how far below it.
+    const ahead = at[2]!, below = -(at[1]! + y);
+    // The bottom edge of the view goes down at `edge` below level; past a quarter turn it leans back under the eye.
+    const edge = this.eye.half - this.eye.pitch + VIEW_MARGIN;
+    if (below <= 0 || edge <= 0 || edge >= Math.PI) return 0;
+    return Math.max(0, ahead - (below * Math.cos(edge)) / Math.sin(edge));
+  }
+
+  /**
+   * Works out a survivor's pose into `solved`: from its state at `tick` and its gait, seated in a saddle `seat` or a
+   * vehicle's, aiming from there, and stretched by its look's `scales`. On foot, `upright` keeps its back out of its look
+   * (humanPose).
+   */
+  private posing(st: AnimState, tick: number, g: Stride, seat: Float64Array | null, seatAt: number, yaw: number, vehicleSeat: VehicleSeatPose | undefined, steers: boolean, scales: Float32Array | null, set: BodySet, solved: Solved, impaled = false, rider?: RiderFit, soles: Float64Array | null = null, grips: Float64Array | null = null, over: { clip: Clip; frame: number } | null = null, upright = false): void {
     if (over) sampleClip(over.clip, over.frame, this.pose);
     else if (impaled) {
       humanPose(this.anim, st, tick, this.pose, g);
@@ -1483,7 +1523,7 @@ export class Characters {
     } else if (vehicleSeat || seat) occupantPose(this.anim, st, tick, this.pose, vehicleSeat, seat, seatAt, yaw, steers, this.mount, this.seatedHeadTurn);
     else {
       if (st.emote !== 0 && !this.anim.emotes[st.emote]) this.wantEmotes();
-      humanPose(this.anim, st, tick, this.pose, g);
+      humanPose(this.anim, st, tick, this.pose, g, upright);
     }
     // Longer legs lift the hips, so the feet stay on the ground.
     if (scales && !seat && !vehicleSeat && !impaled) this.pose.root[1]! += lookLift(scales, set.rest);
