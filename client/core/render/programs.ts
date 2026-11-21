@@ -9,8 +9,8 @@ import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./detailtext.ts";
 import { FACADE_GLSL, FACADE_TIERS, facadeFarVertex, facadeVertex } from "./facade.ts";
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_MESH_FRAGMENT, LIT_SPLIT_FRAGMENT, LIT_TERRAIN_FRAGMENT, LIT_TERRAIN_VERTEX, PULLED_VERTEX, finishVertex } from "./glsl.ts";
-import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX } from "./tide-eye.ts";
-import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
+import { EYE_DOME_FRAGMENT, EYE_DOME_VERTEX, EYE_PULSE_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
+import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_SKYLINE, FRAME_BLOCK, SKYLINE_MAX_FOG, DRAW_CUTOUT, DRAW_PULLED, DRAW_TEXTURED, DRAW_WATER, WATER_MARK_COUNT, type FramePacket } from "./packet.ts";
 import { BLOOM_DOWN, BLOOM_UP, FINISH, POST_VERTEX, drawsLight } from "./post.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_ANY, surfaceFragment, surfaceVertex, type SurfaceVariant } from "./surface.ts";
@@ -141,11 +141,23 @@ const MAKE = {
   depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps } }),
   depthTerrain: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: GROUND }),
   skyline: () => ({ vertex: FLAT_MESH_VERTEX, fragment: FLAT_FRAGMENT.replace("fog * fog", `min(fog * fog, ${SKYLINE_MAX_FOG})`), defines: "", samplers: MESH }),
-  signal: () => ({ vertex: FLAT_MESH_VERTEX, fragment: `#version 300 es
+  // An instrument's own lights (packet.ts DRAW_EMISSIVE): their colour by the site's pulse (tide-eye.ts eyePulse), as
+  // light that blooms where the frame is drawn into the light target, and never fogged.
+  signal: (tier, _, __, light = false) => ({ vertex: FLAT_MESH_VERTEX, fragment: `#version 300 es
 precision highp float;
+in vec3 vRel;
 flat in vec3 vColor;
 out vec4 o;
-void main() { o = vec4(min(vec3(1.), vColor*1.18+vec3(.12)), 1.); }`, defines: "", samplers: MESH }),
+${FRAME_BLOCK}${EYE_STRIKE_GLSL}${EYE_PULSE_GLSL}
+void main() {
+  float pulse = eyePulse(vRel);
+  vec3 c = min(vec3(1.), vColor*1.18+vec3(.12));
+#ifdef LIGHT_TARGET
+  o = vec4(c*c*(.5+2.7*pulse), 1.);
+#else
+  o = vec4(min(vec3(1.), c*(.5+.5*min(pulse,1.))+vec3(.3)*max(0.,pulse-1.)), 1.);
+#endif
+}`, defines: drawsLight(tier, light) ? "#define LIGHT_TARGET\n" : "", samplers: MESH }),
   depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),
   // The finish (post.ts): bloom's chain down and up, and the pass into the canvas.
   bloomDown: () => post(BLOOM_DOWN, { uSource: UNIT.details }),

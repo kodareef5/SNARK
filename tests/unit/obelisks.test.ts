@@ -2,9 +2,9 @@
 import { expect, test } from "bun:test";
 import { OBELISK, OBELISK_PIECES, TRAVEL_TERMINAL, obeliskStatics } from "../../shared/world/obelisks.ts";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { aperture, eyePhase, eyePower, eyeRadiance, shutterOpening, writeEyeSky } from "../../client/core/render/tide-eye.ts";
+import { EYE_PERIOD, aperture, eyeBloom, eyeFigure, eyePhase, eyePower, eyePulse, eyeRadiance, eyeSeed, shutterOpening, writeEyeSky } from "../../client/core/render/tide-eye.ts";
 import { parseMap, readHead, writeMap } from "../../shared/world/mapfile.ts";
-import { LENS_HEIGHT, type TideEyeSite } from "../../shared/world/tide-eye.ts";
+import { EMITTERS, EYE_COLORS, EYE_FORMS, KEEL, LANTERN_MASTS, LENS_HEIGHT, type TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -44,24 +44,164 @@ test("a Tide Eye streams its site in the map head and keeps the deck centre and 
   }
 });
 
+/** A frame's lanes for one site: its phase and kind, power, clock, bloom, seed and storm, as writeEyeSky leaves them. */
+const lanes = (frame: Float32Array) => {
+  const at = FRAME.eyes, stamp = frame[at + 3]!, kind = Math.floor(stamp / EYE_PERIOD);
+  return { phase: stamp - kind * EYE_PERIOD, form: kind % 3, figure: Math.floor(kind / 3), power: frame[at + 7]!, clock: frame[at + 8]!, bloom: frame[at + 9]!, seed: frame[at + 10]!, storm: frame[at + 11]!, foot: frame[at + 12]!, open: frame[at + 15]! };
+};
+/** The light on the ray from the eye to a point that many metres east, up and north of it. */
+const toward = (frame: Float32Array, x: number, y: number, z: number): { light: Float64Array; through: number } => {
+  const light = new Float64Array(3), l = Math.hypot(x, y, z);
+  return { through: eyeRadiance(frame, [x / l, y / l, z / l], light), light };
+};
+const SITES: readonly [TideEyeSite, TideEyeSite, TideEyeSite] = [
+  { name: "Blue", color: "blue", x: 3000, z: 4000, y: 4, yaw: 0, radius: 70 },
+  { name: "Red", color: "red", form: "sextant", x: 3000, z: 4000, y: 4, yaw: 0, radius: 70 },
+  { name: "Green", color: "green", form: "lantern", x: 3000, z: 4000, y: 4, yaw: 0, radius: 70 },
+];
+/** The second, on the server's clock, that is `phase` into a site's cycle `cycle`. */
+const at = (site: TideEyeSite, cycle: number, phase: number): number => cycle * EYE_PERIOD + phase - EYE_COLORS.indexOf(site.color) * 40;
+
 test("three observers share each site's ignition clock, and the sky optics follow the landmark through parallax", () => {
-  const blue = { name: "Blue", color: "blue", x: 3000, z: 4000, y: 4, yaw: 0, radius: 70 } as const;
-  expect([blue, { ...blue, color: "red" }, { ...blue, color: "green" }].map(site => eyePhase(15, site as TideEyeSite))).toEqual([15, 55, 95]);
-  expect([aperture(2), eyePower(15), aperture(32), eyePower(32)]).toEqual([0, 1, 1, 0]);
+  const [blue] = SITES;
+  expect(SITES.map((site) => eyePhase(15, { ...blue, color: site.color }))).toEqual([15, 55, 95]);
+  expect([aperture(2), eyePower(15), aperture(32), eyePower(40)]).toEqual([0, 1, 1, 0]);
   const frame = new Float32Array(FRAME_FLOATS);
   writeEyeSky(frame, [blue], 15, 0, 0, 0);
-  expect([...frame.slice(FRAME.eyes, FRAME.eyes + 4)]).toEqual([3000, 3450, 4000, 15]);
-  const ray = [3 / Math.sqrt(26), 1 / Math.sqrt(26), 4 / Math.sqrt(26)];
-  const light = new Float64Array(3);
-  eyeRadiance(frame, ray, light);
-  expect(light[2]!).toBeGreaterThan(light[0]!);
-  const skyDistance = Math.hypot(3000, 3450, 4000);
-  expect(eyeRadiance(frame, [3000 / skyDistance, 3450 / skyDistance, 4000 / skyDistance], light)).toBeCloseTo(0.22, 3);
-  expect(eyeRadiance(frame, [-1, 0, 0], light)).toBe(1);
+  // The figure stands over the tall prong's finial, 55 m off the deck's axis, and the beam's foot is on it.
+  expect([...frame.slice(FRAME.eyes, FRAME.eyes + 3)]).toEqual([3000 + EMITTERS[0].x, 3450, 4000]);
+  expect(lanes(frame)).toMatchObject({ phase: 15, form: 0, power: 1, clock: 15, open: 1, foot: 4 + KEEL + EMITTERS[0].h });
+  // Low toward the site the sky is the site's colour; at the figure's middle the cell hides nearly all behind it; and
+  // nothing is drawn under the horizon.
+  const low = toward(frame, 3000, 1000, 4000);
+  expect(low.light[2]!).toBeGreaterThan(low.light[0]!);
+  expect(toward(frame, 3000 + EMITTERS[0].x, 3450, 4000).through).toBeLessThan(0.3);
+  expect(toward(frame, -1, 0, 0).through).toBe(1);
+  // Another observer, a cycle on: the same clock, the same seed for that cycle, and the figure moved by where they stand.
+  const other = new Float32Array(FRAME_FLOATS);
   writeEyeSky(frame, [blue], 135, 10, 2000, 30);
-  expect([...frame.slice(FRAME.eyes, FRAME.eyes + 4)]).toEqual([2990, 1450, 3970, 15]);
+  writeEyeSky(other, [blue], 135, -400, 0, 900);
+  expect([...frame.slice(FRAME.eyes, FRAME.eyes + 3)]).toEqual([2990 + EMITTERS[0].x, 1450, 3970]);
+  expect(lanes(other)).toMatchObject({ ...lanes(frame), foot: lanes(frame).foot + 2000 });
   writeEyeSky(frame, [blue], 2, 0, 0, 0);
   expect(frame.slice(FRAME.eyes).every(v => v === 0)).toBe(true);
+});
+
+test("no figure follows itself, every figure comes round, and an ignition's seed is its site's and its cycle's own", () => {
+  for (const site of SITES) {
+    const seen = new Set<number>(), seeds = new Set<number>();
+    for (let cycle = -40; cycle < 400; cycle++) {
+      const figure = eyeFigure(site, cycle);
+      expect(figure).not.toBe(eyeFigure(site, cycle + 1));
+      expect([0, 1, 2]).toContain(figure);
+      seen.add(figure);
+      seeds.add(eyeSeed(site, cycle));
+      const frame = new Float32Array(FRAME_FLOATS);
+      writeEyeSky(frame, [site], at(site, cycle, 20), 0, 0, 0);
+      expect(lanes(frame)).toMatchObject({ figure, seed: Math.fround(eyeSeed(site, cycle)) });
+    }
+    expect(seen.size).toBe(3);
+    expect(seeds.size).toBeGreaterThan(400);
+  }
+  expect(eyeSeed(SITES[0], 7)).not.toBe(eyeSeed(SITES[1], 7));
+});
+
+test("nothing in the sky runs backwards: the clock only advances, the figure never shrinks, and it fades where it stands", () => {
+  let before = 0;
+  for (let phase = 0; phase <= EYE_PERIOD; phase += 0.25) {
+    expect(eyeBloom(phase)).toBeGreaterThanOrEqual(before);
+    before = eyeBloom(phase);
+  }
+  for (const site of SITES) {
+    const figures = new Set<number>();
+    for (let cycle = 0; figures.size < 3; cycle++) {
+      if (figures.has(eyeFigure(site, cycle))) continue;
+      figures.add(eyeFigure(site, cycle));
+      // How far out the figure reaches, second by second from its ignition to the end of its fade, with the cell
+      // and the beam left out: the farthest ring on which it is a tenth as bright as its brightest ring. A figure is
+      // not round (the Sextant's arc is an oval that turns, the Lantern's curtains are lobed), so the measure wanders
+      // by up to 400 m as it turns; what it never does is come back in, as the old display did by 660 m.
+      let reach = 0, clock = 0, full = 0;
+      for (let phase = 10; phase <= 36; phase++) {
+        const frame = new Float32Array(FRAME_FLOATS);
+        writeEyeSky(frame, [site], at(site, cycle, phase), site.x + EMITTERS[EYE_FORMS.indexOf(site.form)]!.x, 0, site.z);
+        expect(lanes(frame).clock).toBeGreaterThan(clock);
+        clock = lanes(frame).clock;
+        frame[FRAME.eyes + 11] = 0;
+        frame[FRAME.eyes + 15] = 0;
+        const rings = Array.from({ length: 56 }, (_, i) => {
+          const r = 150 + i * 50;
+          let most = 0;
+          for (let a = 0; a < 72; a++) most = Math.max(most, toward(frame, r * Math.cos(a * Math.PI / 36), 3450, r * Math.sin(a * Math.PI / 36)).light.reduce((sum, v) => sum + v, 0));
+          return most;
+        });
+        const brightest = Math.max(...rings);
+        expect(brightest).toBeGreaterThan(0);
+        const now = 150 + 50 * rings.findLastIndex((v) => v > brightest * 0.1);
+        expect(now).toBeGreaterThanOrEqual(reach - 400);
+        reach = Math.max(reach, now);
+        if (phase === 16) full = now;
+        // Through its fade it stands at least as far out as it did at full power.
+        if (phase >= 28) expect(now).toBeGreaterThanOrEqual(full - 400);
+      }
+      expect(full).toBeGreaterThan(700);
+      expect(reach).toBeGreaterThanOrEqual(full);
+    }
+  }
+});
+
+test("each beam stands on its emitter whatever the heading, rises as it charges, and is gone before the cell it enters", () => {
+  for (const site of SITES) for (const yaw of [0, 9000, 30000, 51111]) {
+    const turned = { ...site, yaw }, form = EYE_FORMS.indexOf(site.form), a = yaw * Math.PI / 32768;
+    const frame = new Float32Array(FRAME_FLOATS);
+    // Idle: the figure is over and the beam alone is lit. The cell is left out, to see the beam by itself.
+    writeEyeSky(frame, [turned], at(site, 0, 60), 0, 0, 0);
+    expect(lanes(frame)).toMatchObject({ power: 0, open: 1, foot: 4 + KEEL + EMITTERS[form]!.h });
+    frame[FRAME.eyes + 11] = 0;
+    // An emitter stands where the scene draws the model's: a point across and deep of the axis, turned by the heading.
+    const place = (across: number, deep: number): [number, number] => [site.x + across * Math.cos(a) + deep * Math.sin(a), site.z - across * Math.sin(a) + deep * Math.cos(a)];
+    const emitters = form === 2 ? LANTERN_MASTS.map(([across, deep]) => place(across, deep)) : [place(EMITTERS[form]!.x, 0)];
+    const foot = lanes(frame).foot, top = 3450 - 150;
+    for (const [x, z] of emitters) {
+      const sum = (y: number, dx = 0): number => toward(frame, x + dx, y, z).light.reduce((s, v) => s + v, 0);
+      expect(sum(foot + 400)).toBeGreaterThan(0.2);
+      // Under its foot there is none, 120 m aside next to none (where no other mast's beam is behind), and it has
+      // faded out before the cell's sheet.
+      expect(sum(foot - 30)).toBe(0);
+      if (form !== 2) expect(sum(foot + 400, 120)).toBeLessThan(0.01);
+      // (From here two of the Lantern's masts nearly line up, and one's beam shows faintly behind the other's top.)
+      expect(sum(top - 20)).toBeLessThan(form === 2 ? 0.02 : 0.005);
+    }
+    // As it charges the beam has risen part way: lit low, not yet lit high.
+    writeEyeSky(frame, [turned], at(site, 0, 7.5), 0, 0, 0);
+    frame[FRAME.eyes + 11] = 0;
+    const [x, z] = emitters[0]!;
+    const sum = (y: number): number => toward(frame, x, y, z).light.reduce((s, v) => s + v, 0);
+    expect(sum(foot + 200)).toBeGreaterThan(0);
+    expect(sum(top - 600)).toBe(0);
+  }
+});
+
+test("the storm cell hides the beam's end for as long as the beam is lit, and lightning lights the cell and the instrument together", () => {
+  const [blue] = SITES;
+  let strikes = 0, most = 0;
+  for (let phase = 10; phase < 116; phase += 0.11) {
+    const frame = new Float32Array(FRAME_FLOATS);
+    writeEyeSky(frame, [blue], at(blue, 3, phase), 0, 0, 0);
+    expect(lanes(frame).storm).toBeGreaterThan(0.3);
+    // Looking up the beam from the deck, the knot at the cell's middle lets through next to nothing.
+    expect(toward(frame, 3000 + EMITTERS[0].x + 40, 3300, 4000).through).toBeLessThan(0.2);
+    // The instrument's own lights: never dark while it is open, never past their cap, and brighter in a strike.
+    const pulse = eyePulse(frame, 3000, 400, 4000);
+    expect(pulse).toBeGreaterThan(0.5);
+    expect(pulse).toBeLessThan(4);
+    most = Math.max(most, pulse);
+    if (pulse > 1.9) strikes++;
+  }
+  expect(strikes).toBeGreaterThan(2);
+  expect(most).toBeGreaterThan(1.9);
+  // With no site lit the lights are at their plain brightness.
+  expect(eyePulse(new Float32Array(FRAME_FLOATS), 0, 0, 0)).toBe(1);
 });
 
 test("a rebuilt Wynwood keeps its Sextant bow and transfer point, while an older red header keeps the fork", () => {
@@ -83,18 +223,28 @@ test("a rebuilt Wynwood keeps its Sextant bow and transfer point, while an older
   expect(fork.some(p => p.x < site.x - 140)).toBe(false);
 });
 
-test("the Sextant's moving white index leads an open red arc above the player's flight ceiling", () => {
+test("the Sextant's white sight leads its red figure above the player's flight ceiling, whichever figure it is", () => {
   const site = { name: "Wynwood", form: "sextant", color: "red", x: 200, z: 340, y: 5, yaw: 0, radius: 64 } as const;
+  const figures = new Set<number>();
+  for (let cycle = 0; figures.size < 3; cycle++) {
+    if (figures.has(eyeFigure(site, cycle))) continue;
+    figures.add(eyeFigure(site, cycle));
+    const frame = new Float32Array(FRAME_FLOATS);
+    writeEyeSky(frame, [site], at(site, cycle, 15.5), site.x + EMITTERS[1].x, 0, site.z);
+    expect([...frame.slice(FRAME.eyes, FRAME.eyes + 3)]).toEqual([0, 3450, 0]);
+    expect(lanes(frame)).toMatchObject({ phase: 15.5, form: 1 });
+    // The cell left out, to see the figure itself: somewhere on it a white sight, and red light about it.
+    frame[FRAME.eyes + 11] = 0;
+    let white = 0, red = 0;
+    for (let r = 300; r <= 1900; r += 25) for (let a = 0; a < 180; a++) {
+      const { light } = toward(frame, r * Math.cos(a * Math.PI / 90), 3450, r * Math.sin(a * Math.PI / 90));
+      white = Math.max(white, Math.min(light[0]!, light[1]!, light[2]!));
+      red = Math.max(red, light[0]! - light[2]!);
+    }
+    expect(white).toBeGreaterThan(1.5);
+    expect(red).toBeGreaterThan(1);
+  }
   const frame = new Float32Array(FRAME_FLOATS);
-  writeEyeSky(frame, [site], 95.5, site.x + 19, 0, site.z);
-  expect([...frame.slice(FRAME.eyes, FRAME.eyes + 4)]).toEqual([0, 3450, 0, 135.5]);
-  const theta = 0.54 * (15.5 - 9);
-  const radius = 1.09 + 0.055 * Math.sin(2 * theta) - 0.014 * Math.sin(9 * theta - 15.5 * 0.64);
-  const x = 1000 * radius * Math.cos(theta), z = 1000 * radius * Math.sin(theta) / 1.16;
-  const length = Math.hypot(x, 3450, z);
-  const light = new Float64Array(3);
-  expect(eyeRadiance(frame, [x / length, 3450 / length, z / length], light)).toBe(1);
-  expect(light[2]!).toBeGreaterThan(2);
   writeEyeSky(frame, [site], 85, site.x, 0, site.z);
   expect(frame.slice(FRAME.eyes).every(v => v === 0)).toBe(true);
 });
@@ -119,21 +269,28 @@ test("the Lantern streams on rebuilt maps with three banks of shutters, solid up
   expect(openness(119)[0]!).toBeGreaterThan(openness(119)[2]!);
 });
 
-test("the Lantern curtains surround a dark centre, with green folds above the flight ceiling", () => {
+test("the Lantern's green figure surrounds a dark centre above the flight ceiling, whichever figure it is", () => {
   const site = { name: "Golf", color: "green", form: "lantern", x: 0, y: 3, z: 0, radius: 64, yaw: 0 } as const;
-  const frame = new Float32Array(FRAME_FLOATS);
-  writeEyeSky(frame, [site], 55.5, 0, 3000, 0);
-  expect([...frame.slice(FRAME.eyes,FRAME.eyes+4)]).toEqual([0,450,0,255.5]);
-  const middle = new Float64Array(3);
-  expect(eyeRadiance(frame,[0,1,0],middle)).toBeCloseTo(.18,3);
-  expect(middle[1]).toBe(0);
-  const ring = Array.from({length: 90}, (_, i) => {
-    const a = i * Math.PI / 45, length = Math.hypot(1000,450), light = new Float64Array(3);
-    eyeRadiance(frame,[1000*Math.cos(a)/length,450/length,1000*Math.sin(a)/length],light);
-    return light[1]! - light[0]!;
-  });
-  expect(Math.max(...ring)).toBeGreaterThan(1);
-  expect(Math.min(...ring)).toBeLessThan(.3);
+  const figures = new Set<number>();
+  for (let cycle = 0; figures.size < 3; cycle++) {
+    if (figures.has(eyeFigure(site, cycle))) continue;
+    figures.add(eyeFigure(site, cycle));
+    const frame = new Float32Array(FRAME_FLOATS);
+    writeEyeSky(frame, [site], at(site, cycle, 15.5), 0, 3000, 0);
+    expect([...frame.slice(FRAME.eyes,FRAME.eyes+3)]).toEqual([0,450,0]);
+    expect(lanes(frame)).toMatchObject({ phase: 15.5, form: 2 });
+    // Straight up through its middle next to nothing of the sky behind shows.
+    expect(toward(frame, 0, 1, 0).through).toBeLessThan(0.25);
+    // The cell left out, to see the figure itself: green folds, and gaps between them.
+    frame[FRAME.eyes + 11] = 0;
+    const greens: number[] = [];
+    for (let r = 300; r <= 1700; r += 100) for (let a = 0; a < 90; a++) {
+      const { light } = toward(frame, r * Math.cos(a * Math.PI / 45), 450, r * Math.sin(a * Math.PI / 45));
+      greens.push(light[1]! - light[0]!);
+    }
+    expect(Math.max(...greens)).toBeGreaterThan(1);
+    expect(Math.min(...greens)).toBeLessThan(.3);
+  }
 });
 
 test("a transfer deck and its graded edge stay clear of a road and an inland lake", () => {

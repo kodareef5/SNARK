@@ -91,7 +91,7 @@ function mix(a: number, b: number, c: number): number {
 }
 
 /** The foot view's stone or the lineup's, by mesh, each at the middle of its sizes, and the turn of the first row. */
-const HEROES = arg("kinds", FOOT ? "core:rock_1" : [1, 2, 3, 4, 5, 6].map((k) => `core:rock_${k}`).concat([1, 2, 3].map((k) => `core:metal_rock_${k}`), [1, 2, 3].map((k) => `core:rubble_${k}`)).join(",")).split(",");
+const HEROES = arg("kinds", FOOT ? "core:rock_1" : [1, 2, 3, 4, 5, 6].map((k) => `core:rock_${k}`).concat([1, 2, 3].map((k) => `core:metal_rock_${k}`), [1, 2, 3, 4, 5, 6, 7, 8].map((k) => `core:rubble_${k}`)).join(",")).split(",");
 const TURN = Number(arg("turn", "30"));
 const formFor = (mesh: string): number => {
   for (let f = 1; f < forms.count; f++) if (forms.mesh[f] === mesh && forms.depleted[f] !== 1) return f + Math.floor(forms.steps[forms.kind[f]!]! / 2);

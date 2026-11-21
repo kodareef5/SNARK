@@ -570,8 +570,8 @@ void main() {
     o = vec4(fogShown(), 1.0);
     return;
   }
-  vec4 optics = eyeOptics(d);
   vec3 behind = skyFrom(d) * fSunColor.w;
+  vec4 optics = eyeOptics(d, mix(behind, vec3(dot(behind, vec3(0.2126, 0.7152, 0.0722))), 0.6));
   vec3 c = behind;
   if (fHaze.w > 0.0) {
     vec3 dx = dFdx(d), dy = dFdy(d);

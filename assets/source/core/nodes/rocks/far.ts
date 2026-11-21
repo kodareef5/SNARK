@@ -27,7 +27,7 @@ import { REGION_BASE, defaultPalette } from "../../../../../shared/pack/palette.
 import { unpackMeshes, type SourceLod } from "../../../../../tools/pack/write.ts";
 
 const HERE = import.meta.dir;
-const STONES = ["rock_1", "rock_2", "rock_3", "rock_4", "rock_5", "rock_6", "metal_rock_1", "metal_rock_2", "metal_rock_3", "rubble_1", "rubble_2", "rubble_3"];
+const STONES = ["rock_1", "rock_2", "rock_3", "rock_4", "rock_5", "rock_6", "metal_rock_1", "metal_rock_2", "metal_rock_3", ...[1, 2, 3, 4, 5, 6, 7, 8].map((k) => `rubble_${k}`)];
 /** The level drawn in the band on medium, which the far one takes over from. */
 const NEAR = 3;
 /** Pixels across the stone in each view of the fit. */

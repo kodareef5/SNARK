@@ -97,19 +97,21 @@ export function skinPart(f: UiFrame, key: number, x: number, y: number, w: numbe
   return n;
 }
 
+/** Where each of the glass's three slices a side starts in the sheet, and how long it is. */
+const SLICE_AT = [0, GLASS_INSET, GLASS_SIZE - GLASS_INSET], SLICE = [GLASS_INSET, GLASS_SIZE - GLASS_INSET * 2, GLASS_INSET];
+
 /** Nine fixed-corner slices preserve hairline edges at every panel size. Keys live outside interactive node ranges. */
 export function glass(f: UiFrame, key: number, x: number, y: number, w: number, h: number, alpha = 1): void {
   const d = Math.min(5, w / 3, h / 3);
-  const sizesX = [d, w - d * 2, d], sizesY = [d, h - d * 2, d];
-  const source = [0, GLASS_INSET, GLASS_SIZE - GLASS_INSET];
-  const size = [GLASS_INSET, GLASS_SIZE - GLASS_INSET * 2, GLASS_INSET];
   let dy = y;
   for (let row = 0; row < 3; row++) {
+    const sh = row === 1 ? h - d * 2 : d;
     let dx = x;
     for (let col = 0; col < 3; col++) {
-      skinPart(f, 2000000 + key * 16 + row * 3 + col, dx, dy, sizesX[col]!, sizesY[row]!, GLASS_X + source[col]!, GLASS_Y + source[row]!, size[col]!, size[row]!).alpha = alpha;
-      dx += sizesX[col]!;
+      const sw = col === 1 ? w - d * 2 : d;
+      skinPart(f, 2000000 + key * 16 + row * 3 + col, dx, dy, sw, sh, GLASS_X + SLICE_AT[col]!, GLASS_Y + SLICE_AT[row]!, SLICE[col]!, SLICE[row]!).alpha = alpha;
+      dx += sw;
     }
-    dy += sizesY[row]!;
+    dy += sh;
   }
 }

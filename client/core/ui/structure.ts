@@ -43,7 +43,7 @@ export const STRUCT_REASONS: Readonly<Record<number, string>> = {
   [RESULT_FULL]: "No room to carry it",
   [RESULT_SHORT]: "Not enough for that",
   [RESULT_LOCKED]: "It is locked",
-  [RESULT_DENIED]: "That is not its PIN",
+  [RESULT_DENIED]: "That cannot be done now",
   [RESULT_NOT_EMPTY]: "Empty it first",
   [RESULT_OBSTRUCTED]: "Something is in the way",
 };
@@ -212,6 +212,7 @@ export class StructMenu {
   /**
    * For a command this menu sent, a refusal shows its reason, a PIN that worked is remembered and one that failed is
    * forgotten. `seq` 0 is an unasked result about the piece at `aimed`. RESULT_PIN then sends a remembered PIN or asks for one.
+   * Only a command that gave a PIN is refused for a wrong one: RESULT_DENIED to anything else is no word about a PIN.
    */
   result(seq: number, code: number, nowMs: number, session: ClientSession | null = null, aimed = -1): void {
     if (seq === 0) {
@@ -224,15 +225,16 @@ export class StructMenu {
     }
     if (seq !== this.asked) return;
     this.asked = 0;
-    if (this.askedPin !== NO_PIN) {
+    const gave = this.askedPin !== NO_PIN;
+    if (gave) {
       if (code === RESULT_OK) this.pins.set(this.askedRef, this.askedPin);
       else this.pins.delete(this.askedRef);
     }
-    if (code !== RESULT_OK) this.say(code, nowMs);
+    if (code !== RESULT_OK) this.say(code, nowMs, gave);
   }
 
-  private say(code: number, nowMs: number): void {
-    this.notice = STRUCT_REASONS[code] ?? "That cannot be done";
+  private say(code: number, nowMs: number, gavePin = false): void {
+    this.notice = gavePin && code === RESULT_DENIED ? "That is not its PIN" : STRUCT_REASONS[code] ?? "That cannot be done";
     this.noticeUntil = nowMs + 2500;
   }
 

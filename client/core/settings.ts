@@ -56,6 +56,10 @@ export class Settings {
   /** The heading tape at the top of the screen. */
   compass = true;
   diagnostics = false;
+  /** Diagnostics' third value: the readout and under it the resource monitor (ui/monitor.ts). F3 and the console's `monitor` turn it on and off. */
+  monitor = false;
+  /** Whether the readout was on before F3 turned the monitor on, so that F3 again leaves it as it was. Not saved. */
+  numbersBefore = false;
   vitalLabels = false;
   minimapZoom = -1;
   padGlyphs = 0;
@@ -93,7 +97,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "diagnostics", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "diagnostics", "monitor", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2]] as const;
 
 export const VOLUME_MAX = 2;
@@ -152,9 +156,22 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Connection", value: (s) => `${Math.round((s.snapshotBytes * TICK_RATE) / 1000)} KB/s`, step: (s, by) => void (s.snapshotBytes = SNAPSHOT_BYTES[clamp(SNAPSHOT_BYTES.indexOf(s.snapshotBytes) + by, 0, SNAPSHOT_BYTES.length - 1)]!) },
   { label: "Minimap", value: (s) => s.minimap ? "on" : "off", step: (s) => void (s.minimap = !s.minimap) },
   { label: "Status labels", value: (s) => s.vitalLabels ? "on" : "off", step: (s) => void (s.vitalLabels = !s.vitalLabels) },
-  { label: "Diagnostics", value: (s) => s.diagnostics ? "on" : "off", step: (s) => void (s.diagnostics = !s.diagnostics) },
+  { label: "Diagnostics", value: (s) => (s.monitor ? "monitor" : s.diagnostics ? "numbers" : "off"), step: (s, by) => {
+      const v = ((s.monitor ? 2 : s.diagnostics ? 1 : 0) + by + 3) % 3;
+      s.diagnostics = v > 0;
+      s.monitor = v > 1;
+    } },
   { label: "Sound", value: (s) => s.muted ? "off" : "on", step: (s) => void (s.muted = !s.muted) },
   range("Finish gloss", "finishGloss", 0.5, 2, 0.05),
   { label: "Road finish", value: s => ROAD_FINISHES[s.roadFinish]!, step: (s, by) => void (s.roadFinish = clamp(s.roadFinish + by, 0, 2)) },
   { label: "Compass", value: (s) => s.compass ? "on" : "off", step: (s) => void (s.compass = !s.compass) },
 ];
+
+/** F3 and the console's `monitor`: Diagnostics to "monitor", or back to what it was before. Returns what the console says. */
+export function toggleMonitor(s: Settings): string {
+  if (!s.monitor) s.numbersBefore = s.diagnostics;
+  s.monitor = !s.monitor;
+  s.diagnostics = s.monitor || s.numbersBefore;
+  s.changed();
+  return `resource monitor ${s.monitor ? "on" : "off"}`;
+}

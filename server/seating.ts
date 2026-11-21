@@ -42,18 +42,20 @@ export class Seating {
 
   /**
    * Whether `actor`'s body, `height` tall (its standing height when omitted), fits at `p`: clear of the world and of every
-   * other live body and car but those `ignored` and `ignoredHost`.
+   * other live body and car but those `ignored`, `ignoredHost` and the bodies still sitting on it. One who has just got
+   * out keeps its seat's place until its leaving is applied, after every seat action of the tick is settled.
    */
   free(p: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number): boolean {
     const { world, records } = this, ents = world.ents;
     const ae = this.entity(actor), move = ae >= 0 ? world.reg.move[ents.kind[ae]!] : null;
     if (!move || !capsuleFree(world, p.x, p.y, p.z, move.radius, height ?? move.height)) return false;
+    const on = ignoredHost ? this.entity(ignoredHost) + 1 : 0;
     const pad = move.radius + this.reach;
     const x0 = Math.max(0, Math.floor((p.x - pad) / CHUNK_SIZE)), x1 = Math.min(world.dims.chunksX - 1, Math.floor((p.x + pad) / CHUNK_SIZE));
     const z0 = Math.max(0, Math.floor((p.z - pad) / CHUNK_SIZE)), z1 = Math.min(world.dims.chunksZ - 1, Math.floor((p.z + pad) / CHUNK_SIZE));
     for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
       const pid = ents.pid[e]!;
-      if (pid === 0 || records.entOf.get(pid) !== e || ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0) continue;
+      if (pid === 0 || records.entOf.get(pid) !== e || ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0 || (on > 0 && ents.seat[e] === on)) continue;
       const vehicle = world.reg.vehicle[ents.kind[e]!];
       const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
       if (vehicle?.movement === "boat" && vehicle.boarding && dx * dx + dz * dz > pad * pad) continue;

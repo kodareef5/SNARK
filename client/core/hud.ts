@@ -333,6 +333,14 @@ export class HudModel {
   private readonly inView = new Uint8Array(MAX_MARKS);
   /** Lines at the top left, rewritten a few times a second. */
   readonly readout: string[] = ["", "", ""];
+  /**
+   * The room the resource monitor's strip takes under them (ui/monitor.ts), 0 high while it is off, and its top, which
+   * the HUD sets. `stripAlone` has it stand in their place, where the canvas is too short for both.
+   */
+  stripW = 0;
+  stripH = 0;
+  stripY = 0;
+  stripAlone = false;
   /** Time of day, "06:30". */
   clock = "";
   /** Hours since midnight as the sky shows them (client/core/sky.ts), set by the app each frame. */

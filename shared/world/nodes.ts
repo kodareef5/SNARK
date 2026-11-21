@@ -72,6 +72,8 @@ export interface NodeForms {
   readonly footElse: Uint16Array;
   /** Per content index: where it grows against the sea, SEA_DRY, SEA_UNDER or SEA_EITHER. */
   readonly sea: Uint8Array;
+  /** Per content index: how near, in metres, two of its nodes in a chunk are kept from being one variant (NodeDef.apart), or 0. */
+  readonly apart: Float32Array;
 }
 
 export function mix(a: number, b: number, c: number): number {
@@ -106,6 +108,7 @@ function buildForms(reg: Registry): NodeForms {
   const footFall = new Float32Array(n);
   const footElse = new Uint16Array(n);
   const sea = new Uint8Array(n);
+  const apart = new Float32Array(n);
   const kind = [0];
   const variant = [0];
   const size = [0];
@@ -132,6 +135,7 @@ function buildForms(reg: Registry): NodeForms {
     const d = reg.defs[k];
     if (d?.type !== "node") continue;
     sea[k] = d.sea === "under" ? SEA_UNDER : d.sea === "either" ? SEA_EITHER : SEA_DRY;
+    apart[k] = d.apart ?? 0;
     if (d.footing) {
       footReach[k] = d.footing.reach;
       footFall[k] = d.footing.fall;
@@ -189,6 +193,7 @@ function buildForms(reg: Registry): NodeForms {
     footFall,
     footElse,
     sea,
+    apart,
   };
 }
 
@@ -310,25 +315,64 @@ export function resolveSlots(dims: MapDims, hf: Heightfield, seed: number, perCh
  * Nodes scattered by a hash as resolveSlots draws them, standing where `out` and `other` say: none where `out` is set, its
  * footing's other kind where `other` is, else the kind drawn. Its variant and size come from a third hash, so a node stands
  * where it did when its map is widened. Only a node's height reads `hf`.
+ *
+ * A kind that keeps apart (NodeDef.apart) is the exception: slot by slot through its chunk, a node whose variant a nearer
+ * one of its kind in the chunk already is takes the next variant along that none of them is, at its own size. So two
+ * heaps side by side are two different heaps, but for two in neighbouring chunks.
  */
 export function placedNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: KindsAt, out: Uint8Array, other: Uint8Array): NodeSource {
   const d: Drawn = { x: 0, z: 0, ux: 0, uz: 0, g: 0, key: 0 };
+  /** The kind a slot grows as, 0 for none, with `d` drawn for it. */
+  const kindOf = (chunk: number, index: number): number => {
+    const bit = chunk * perChunk + index;
+    if (isSet(out, bit)) return 0;
+    draw(dims, seed, chunk, index, d);
+    const kind = drawnKind(kindsAt, d);
+    return kind !== 0 && isSet(other, bit) ? forms.footElse[kind]! : kind;
+  };
+  // The forms of the last chunk asked for whose slots keep apart, worked out together.
+  let held = -1;
+  const kept = new Uint16Array(perChunk);
+  const kinds = new Uint16Array(perChunk);
+  const xs = new Float64Array(perChunk);
+  const zs = new Float64Array(perChunk);
+  const taken = new Uint8Array(256);
+  const apartIn = (chunk: number): Uint16Array => {
+    if (held === chunk) return kept;
+    held = chunk;
+    for (let i = 0; i < perChunk; i++) {
+      const kind = (kinds[i] = kindOf(chunk, i));
+      xs[i] = d.x;
+      zs[i] = d.z;
+      kept[i] = 0;
+      if (kind === 0 || !(forms.apart[kind]! > 0)) continue;
+      const own = formOf(forms, kind, mix(d.g, d.key, seed));
+      const first = forms.first[kind]!, steps = forms.steps[kind]!, count = forms.sums[kind]!.length, reach = forms.apart[kind]! * forms.apart[kind]!;
+      taken.fill(0, 0, count);
+      for (let j = 0; j < i; j++) {
+        if (kinds[j] !== kind) continue;
+        const dx = xs[j]! - xs[i]!, dz = zs[j]! - zs[i]!;
+        if (dx * dx + dz * dz < reach) taken[forms.variant[kept[j]!]!] = 1;
+      }
+      let variant = forms.variant[own]!;
+      for (let k = 0; k < count && taken[variant] === 1; k++) variant = (variant + 1) % count;
+      kept[i] = first + variant * steps + ((own - first) % steps);
+    }
+    return kept;
+  };
   return {
     perChunk,
     at(chunk, index, spot) {
       spot.kind = 0;
-      const bit = chunk * perChunk + index;
-      if (isSet(out, bit)) return;
-      draw(dims, seed, chunk, index, d);
-      let kind = drawnKind(kindsAt, d);
-      if (kind !== 0 && isSet(other, bit)) kind = forms.footElse[kind]!;
+      const kind = kindOf(chunk, index);
       if (kind === 0) return;
+      const x = d.x, z = d.z, yaw = (d.g >>> 8) & 0xffff;
       spot.kind = kind;
-      spot.form = formOf(forms, kind, mix(d.g, d.key, seed));
-      spot.x = d.x;
-      spot.y = hf.heightAt(d.x, d.z);
-      spot.z = d.z;
-      spot.yaw = (d.g >>> 8) & 0xffff;
+      spot.form = forms.apart[kind]! > 0 ? apartIn(chunk)[index]! : formOf(forms, kind, mix(d.g, d.key, seed));
+      spot.x = x;
+      spot.y = hf.heightAt(x, z);
+      spot.z = z;
+      spot.yaw = yaw;
     },
   };
 }
