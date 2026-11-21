@@ -416,7 +416,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
 
   // Through a scope its reticle (built under the rest) stands in for the crosshair. A holo-scope's crosshair shows whatever
   // the rules say of the crosshair, coloured by what it is on.
-  if (!m.orbit && !(m.scope && m.banner === "") && (m.crosshair || (m.holo && m.banner === ""))) {
+  if (!m.orbit && !m.behind && !(m.scope && m.banner === "") && (m.crosshair || (m.holo && m.banner === ""))) {
     const cross = f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
     if (m.holo) cross.tint = m.crossTint;
     if (m.cone >= 0) {

@@ -1,6 +1,6 @@
 // The server decides who reads a line.
 
-import { MAX_CHAT_CHARS, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
+import { MAX_CHAT_CHARS, TEXT_CONSOLE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
 import { lineHeight, wrapText, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
 import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_TRIBE, S_INPUT } from "./style.ts";
@@ -24,6 +24,14 @@ const TAG_WIDTH = 62;
 /** Ticks a line stays up with the box shut, and the ticks at the end of that over which it fades. */
 const SHOW_TICKS = 12 * 30;
 const FADE_TICKS = 2 * 30;
+/** What `/help` says, each line held this long, and the ticks after a slash command over which the console's answer shows here. */
+const HELP: readonly string[] = [
+  "Enter opens chat; Tab in the box changes channel (Global, Local, Tribe).",
+  "A line that begins with / is a command: /who, /pos, /time, /help give. The ` key opens the console.",
+  "V changes the view, F3 the monitor, O opens Settings, I the inventory, M the map.",
+];
+const HELP_TICKS = 20 * 30;
+const ANSWER_TICKS = 4 * 30;
 
 const CHANNELS: readonly number[] = [TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE];
 const TAG: Record<number, string> = { [TEXT_GLOBAL]: "Global", [TEXT_LOCAL]: "Local", [TEXT_TRIBE]: "Tribe" };
@@ -50,6 +58,8 @@ export class ChatState {
   private readonly rows: Row[] = [];
   private rowsFor = "";
   private version = 0;
+  /** The tick until which the console's lines show here: the answer to a slash command. */
+  private answers = 0;
 
   private usable(channel: number, session: ClientSession | null): boolean {
     if (!session) return true;
@@ -82,7 +92,21 @@ export class ChatState {
     this.input = "";
     this.open = false;
     if (line === "") return;
+    if (line.startsWith("/")) return this.command(line.slice(1).trim(), session);
     if (!session || (session.chat(this.channel, line) === 0 && session.state !== "active")) this.print(TEXT_NOTICE, "Not connected; nothing was said.", session ? session.serverTick : 0);
+  }
+
+  /**
+   * A line that began with a slash, without it: `help` alone says what the keys and commands are; anything else is the
+   * console's line of that name (so `/help give` is the server's own), and its answer shows here for a few seconds.
+   */
+  private command(line: string, session: ClientSession | null): void {
+    const at = session ? session.serverTick : 0;
+    if (line === "" || line === "help") {
+      for (const text of HELP) this.print(TEXT_NOTICE, text, at, HELP_TICKS);
+    } else if (!session || (session.text(line) === 0 && session.state !== "active")) {
+      this.print(TEXT_NOTICE, "Not connected; nothing was done.", at);
+    } else this.answers = at + ANSWER_TICKS;
   }
 
   close(): void {
@@ -107,6 +131,7 @@ export class ChatState {
       // The message of the day stays up for the server's motdSeconds.
       if (l.channel === TEXT_MOTD) this.print(l.channel, l.text, session.serverTick, session.motdSeconds * 30);
       else if (l.channel >= TEXT_NOTICE && l.channel <= TEXT_TRIBE) this.print(l.channel, l.text, session.serverTick);
+      else if (l.channel === TEXT_CONSOLE && session.serverTick < this.answers) for (const text of l.text.split("\n")) this.print(TEXT_NOTICE, text, session.serverTick);
     }
   }
 

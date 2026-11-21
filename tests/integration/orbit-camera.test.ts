@@ -122,8 +122,8 @@ test("a survivor rises from behind, and after each death in the view V last chos
       s.text(`tp ${g.x + 20} ${g.z + 20}`);
       run(600);
     };
-    // As every new survivor: from behind, its body drawn, with the crosshair.
-    expect([app.view.thirdPerson, app.ui.settings.thirdPerson, behind(), app.scene!.own!.firstPerson, app.ui.frame.find(KEY_CROSS) !== null]).toEqual([true, true, true, false, true]);
+    // As every new survivor: from behind, its body drawn, and no crosshair, which is the eye's.
+    expect([app.view.thirdPerson, app.ui.settings.thirdPerson, behind(), app.scene!.own!.firstPerson, app.ui.frame.find(KEY_CROSS) !== null]).toEqual([true, true, true, false, false]);
     rise();
     expect([app.view.thirdPerson, behind()]).toEqual([true, true]);
     // V on foot chooses the eye, and the choice is kept through a death.

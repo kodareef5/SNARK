@@ -1263,6 +1263,7 @@ export class App {
     // screen is not where a shot goes, so the crosshair is hidden while it is in use. The aim itself is the body's.
     const orbiting = this.orbit.inUse, sighting = aiming && !orbiting;
     hud.orbit = orbiting;
+    hud.behind = alive && third && session.driving < 0 && !passenger;
     const held = session.inventory && session.inventory.hotbar >= 0 && session.held >= 0 ? session.inventory.hotbar + session.held : -1;
     const scoped = aiming && scopeFitted(this.reg, session.inventory, held);
     let lookYaw = c.yaw;

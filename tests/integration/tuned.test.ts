@@ -321,7 +321,8 @@ test("what a client shows by the server's leave: the body from behind, the cross
   // ARK's defaults allow all of them, and a survivor rises seen from behind.
   stir();
   expect([s.thirdPerson, s.crosshair, s.hitMarkers, s.mapLocation, s.corpseLocator]).toEqual([true, true, true, true, true]);
-  expect(seen()).toEqual({ third: true, cross: true, mark: true, self: true, beams: 1 });
+  // From behind no crosshair is drawn: a shot goes along the eye's line, not through the middle of the screen.
+  expect(seen()).toEqual({ third: true, cross: false, mark: true, self: true, beams: 1 });
   set("AllowThirdPersonPlayer", "False");
   set("ServerCrosshair", "False");
   set("AllowHitMarkers", "False");
@@ -335,9 +336,12 @@ test("what a client shows by the server's leave: the body from behind, the cross
   set("AllowThirdPersonPlayer", "True");
   set("ServerCrosshair", "True");
   set("bUseCorpseLocator", "True");
+  // From the eye the crosshair shows again; from behind there is still none.
+  stir();
+  expect(seen()).toEqual({ third: false, cross: true, mark: false, self: false, beams: 1 });
   tap("KeyV");
   stir();
-  expect(seen()).toEqual({ third: true, cross: true, mark: false, self: false, beams: 1 });
+  expect(seen()).toEqual({ third: true, cross: false, mark: false, self: false, beams: 1 });
 });
 
 test("the server's name and message of the day stay up for as long as the server says, whatever is said after them", () => {
@@ -365,7 +369,7 @@ test("the server's name and message of the day stay up for as long as the server
 });
 
 test("as shipped, the chat box welcomes a survivor who joins: it stands behind the welcome for the server's twenty seconds and fades with it; a new survivor's waits until it has made itself", () => {
-  const welcome = "Welcome to SNARK. Press Enter to chat.";
+  const welcome = "Welcome to SNARK. Type /help";
   for (const made of [true, false]) {
     const h = new Harness({}, 1, 60, { config: asShipped() });
     const app = new App(h.join("ada", {}, { manual: true, ...(made ? {} : { look: null }) }), reg, pack);

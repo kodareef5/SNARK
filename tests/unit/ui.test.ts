@@ -867,8 +867,9 @@ test("the chat box: a key for each channel, Tab to change it, Enter to say the l
   ui.input(KEY_CHAT_INPUT, "never mind");
   expect(ui.key("Escape", true, false, session)).toBe(true);
   expect([ui.chat.open, ui.chat.input]).toEqual([false, ""]);
+  // The slash key opens the box with the slash typed, for a command; Tab reaches the tribe's channel.
   ui.key("Slash", true, false, session);
-  expect(ui.chat.channel).toBe(TEXT_TRIBE);
+  expect([ui.chat.open, ui.chat.input]).toEqual([true, "/"]);
   ui.input(KEY_CHAT_INPUT, "   ");
   ui.key("Enter", true, false, session);
   expect(ui.chat.open).toBe(false);

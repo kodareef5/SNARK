@@ -274,7 +274,10 @@ test("two whole clients form a tribe, talk on three channels through the chat bo
 
   say(ada, "Enter", "hello, island");
   say(bob, "Insert", "right behind you");
-  expect(bob.key("Slash", true)).toBe(true);
+  // The tribe's channel is two Tabs on from Global in the open box.
+  expect(bob.key("Enter", true)).toBe(true);
+  bob.key("Tab", true);
+  bob.key("Tab", true);
   run(50);
   expect(bob.ui.frame.find(KEY_CHAT_TAG)!.text).toBe("Tribe");
   expect(bob.ui.captureKeyboard).toBe(true);

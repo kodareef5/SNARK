@@ -316,7 +316,7 @@ test("chat by touch: the welcome is a line of the shut log, with no box over the
     run(600);
     const f = app.ui.frame;
     const log = (): string[] => f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_CHAT_ROW && n.key < KEY_CHAT_ROW + 14).map((n) => n.text);
-    expect([log(), f.find(KEY_CHAT_PANEL)], name).toEqual([["Welcome to SNARK. Press Enter to chat."], null]);
+    expect([log(), f.find(KEY_CHAT_PANEL)], name).toEqual([["Welcome to SNARK. Type /help"], null]);
     expect([app.ui.typing, f.find(KEY_CHAT_SEND)], name).toEqual([false, null]);
     press(KEY_TOUCH_BUTTON + T_CHAT);
     const field = f.find(KEY_CHAT_INPUT)!, send = f.find(KEY_CHAT_SEND)!, tag = f.find(KEY_CHAT_TAG)!, unit = hh / f.height;

@@ -356,6 +356,8 @@ export class HudModel {
   crosshair = true;
   /** The orbit camera is in use: the middle of the screen is not where the body aims, so no crosshair is drawn there. */
   orbit = false;
+  /** The view is from behind a body on foot: a shot goes along the eye's line, not through the middle of the screen, so no crosshair is drawn. */
+  behind = false;
   /**
    * The held weapon's cone about the crosshair, as a share of half the view's height (the tangent of the cone over that of
    * half the field of view), or -1 for nothing held that has one.

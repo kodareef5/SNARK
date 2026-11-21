@@ -26,10 +26,10 @@ import { EmoteMenu } from "./emotes.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { TravelScreen } from "./travel.ts";
 import type { SiteLink } from "../travel.ts";
-import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
+import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL } from "../../../shared/net/protocol.ts";
 
 /** The channel each key opens the chat box on. */
-const CHAT_KEYS: Record<string, number> = { Enter: TEXT_GLOBAL, NumpadEnter: TEXT_GLOBAL, Insert: TEXT_LOCAL, Slash: TEXT_TRIBE };
+const CHAT_KEYS: Record<string, number> = { Enter: TEXT_GLOBAL, NumpadEnter: TEXT_GLOBAL, Insert: TEXT_LOCAL, Slash: TEXT_GLOBAL };
 
 export class Ui {
   /** Hears an occasion of the interface by its cue (shared/sound/cues.ts): set by the app where there is sound. */
@@ -209,7 +209,8 @@ export class Ui {
       }
       // Chat does not open while the session is in the creator.
       if (CHAT_KEYS[code] !== undefined && !this.creating) {
-        if (down && !repeat) chat.begin(CHAT_KEYS[code]!, session);
+        // The slash key opens the box with the slash typed, for a command (chat.ts); Tab in the box reaches the tribe's channel.
+        if (down && !repeat) { chat.begin(CHAT_KEYS[code]!, session); if (code === "Slash") chat.input = "/"; }
         return true;
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
