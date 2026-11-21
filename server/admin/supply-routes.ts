@@ -17,6 +17,9 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { hashString } from "../../shared/hash.ts";
 import { bandsOf, findSites } from "../../shared/supply/sites.ts";
 import { BANDS, bandDocs } from "../../content/supply/sites.ts";
+import { parseIni } from "../settings/ini.ts";
+import { Lists } from "../settings/lists.ts";
+import { SETTING, arkCrates, arkDocs } from "../supply/ark.ts";
 import { sameOrigin } from "./gate.ts";
 
 const JSON_HEADERS = { "content-type": "application/json", "cache-control": "no-store" };
@@ -131,6 +134,8 @@ export class SupplyRoutes {
         landings: supply.landings,
         mended: supply.mended,
         acts: this.acts,
+        // What the drops themselves did: landed, first opened and by whom, gone and why.
+        log: supply.log,
       });
     }
     if (what === "found") {
@@ -192,6 +197,12 @@ export class SupplyRoutes {
       if (id === null || (b.seconds !== undefined && seconds === null)) return json({ error: "Name a drop by its number, or all." }, 400);
       return json({ said: this.console(`supply ${what} ${id}${what === "land" && seconds !== null ? ` ${seconds}` : ""}`) });
     }
+    if (what === "ark") {
+      // ARK's own override, as pasted from a Game.ini: what it would make of this book, and what it names that this
+      // build lacks. Nothing is changed: the page puts the sets and tables in its draft.
+      if (typeof b.text !== "string" || b.text.length > 600000) return json({ error: "Paste ConfigOverrideSupplyCrateItems lines." }, 400);
+      return json(this.ark(b.text));
+    }
     return json({ error: "No such act." }, 404);
   }
 
@@ -208,5 +219,25 @@ export class SupplyRoutes {
     this.host.persistence?.journal(OP_ADMIN, new TextEncoder().encode(`${PAGE}\t${what}`));
     this.acts.push({ at: Math.floor(this.now() / 1000), tick: this.host.world.tick, what });
     if (this.acts.length > ACTS_KEPT) this.acts.splice(0, this.acts.length - ACTS_KEPT);
+  }
+
+  /** A pasted override read as the server reads its own (server/supply/ark.ts), into the book's documents. */
+  private ark(text: string): unknown {
+    const { supplyBook: store, world, rules } = this.host;
+    // A line with no key is ARK's value alone: it is read as the setting's.
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l !== "").map((l) => (l.startsWith("(") ? `${SETTING}=${l}` : l));
+    const ini = parseIni(lines.join("\n"));
+    const entries = ini.entries.filter((e) => e.key.toLowerCase() === SETTING.toLowerCase()).map((e) => e.value);
+    const lists = new Lists(rules, world.reg);
+    const loot = catalogOf(world.reg);
+    const made = arkCrates(entries, store.book.tiers, (name) => lists.ids(SETTING, name, "item"), (id) => loot.byId.get(id)?.never !== true);
+    const docs = arkDocs(made.tables, store.book.classes);
+    return {
+      crates: entries.length,
+      ...docs,
+      said: [...ini.faults.map((f) => `line ${f.line}: ${f.why}`), ...made.passed],
+      missing: [...new Set(lists.missing.map((m) => m.name))],
+      unclear: lists.unclear.map((u) => ({ name: u.name, could: [...u.could] })),
+    };
   }
 }

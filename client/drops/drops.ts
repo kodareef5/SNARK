@@ -5,7 +5,8 @@
 import { esc } from "../core/admin/format.ts";
 import { addEntry, addSlot, changes, differs, ensureAt, moveAt, parseBook, read, removeAt, setAt, type Kind, type Path } from "../core/drops/edit.ts";
 import { addCircuit, removeSite } from "../core/drops/place.ts";
-import { $, S, TABS, ask, field, post, say, type BookWire, type Tab } from "./state.ts";
+import { arkHtml, liveHtml } from "./live.ts";
+import { $, S, TABS, ask, field, post, say, type ArkWire, type BookWire, type RevisionWire, type Tab } from "./state.ts";
 import { circuitsHtml, dropPlace, mapDraw, mapHtml, mapListen, mapRead, tiersHtml } from "./world.ts";
 import type { CircuitDoc, SiteDoc } from "../../shared/supply/book.ts";
 import { catalogOfWire, css, load, matrix, nameOf, num, pct, simulation, tableDetail, waitingRows, type CatalogWire, type Loaded, type SlotView } from "../core/drops/view.ts";
@@ -164,13 +165,15 @@ function draw(): void {
   // What is typed in the note outlives a redraw.
   const note = document.getElementById("note") as HTMLInputElement | null;
   const kept = note?.value ?? "";
-  const view: Record<Tab, (l: Loaded) => string> = { tables: tablesHtml, waiting: waitingHtml, sim: simHtml, tiers: tiersHtml, map: mapHtml, circuits: circuitsHtml };
+  const view: Record<Tab, (l: Loaded) => string> = { tables: tablesHtml, waiting: waitingHtml, sim: simHtml, tiers: tiersHtml, map: mapHtml, circuits: circuitsHtml, live: liveHtml, ark: arkHtml };
   $("main").innerHTML = barHtml() + view[S.tab](S.l);
+  const failed = (err: unknown): void => say(err instanceof Error ? err.message : String(err), "bad");
   if (S.tab === "map") {
     // The map's picture and what is live are read the first time it is looked at.
     if (S.map.live) mapDraw(S.l);
-    else void mapRead().then(draw, (err: unknown) => say(err instanceof Error ? err.message : String(err), "bad"));
+    else void mapRead().then(draw, failed);
   }
+  if (S.tab === "live" && (!S.map.live || S.revisions === null)) void Promise.all([mapRead(), ask<RevisionWire[]>("revisions.json").then((r) => void (S.revisions = r))]).then(draw, failed);
   const again = document.getElementById("note") as HTMLInputElement | null;
   if (again) again.value = kept;
   if (!document.getElementById("things")) document.body.insertAdjacentHTML("beforeend", `<datalist id="things">${[...S.catalog!.byId.values()].map((i) => `<option value="${esc(i.id)}">${esc(i.label)}</option>`).join("")}</datalist>`);
@@ -221,10 +224,32 @@ async function act(at: HTMLElement): Promise<void> {
     if (made.sites.length === 0) return say("no place a drop may land was found", "warn");
     [d.sites, d.circuits] = [made.sites, made.circuits];
     say(`${made.sites.length} sites found in ${made.circuits.length} circuits: not saved yet`);
-  } else if (what === "drop" || what === "landall" || what === "cancel" || what === "relive") {
+  } else if (what === "arkread") {
+    // ARK's own override, read by the server as it reads its own setting: nothing is changed by reading it.
+    S.ark.text = $<HTMLTextAreaElement>("arkText").value;
+    const got = await post("ark", { text: S.ark.text });
+    if (got.status !== 200) return say(String(got.answer.error ?? got.status), "warn");
+    S.ark.got = got.answer as unknown as ArkWire;
+    return draw();
+  } else if (what === "arkput") {
+    Object.assign(d.sets, structuredClone(S.ark.got!.sets));
+    Object.assign(d.tables, structuredClone(S.ark.got!.tables));
+    say(`ARK's tables for ${S.ark.got!.tiers.map((t) => t.tier).join(", ")} are in the draft: not saved yet`);
+    S.tab = "tables";
+  } else if (what === "compare") {
+    const old = await ask<{ revision: number; book: BookWire["book"] }>(`revision.json?n=${at.dataset.id}`);
+    S.compared = { revision: old.revision, lines: changes(old.book, d, 60) };
+    return draw();
+  } else if (what === "restore") {
+    if (!confirm(`Bring revision ${at.dataset.id} back, as the next revision?`)) return;
+    const got = await post("restore", { revision: S.wire!.revision, to: Number(at.dataset.id) });
+    if (got.status !== 200) return say(`not restored: ${String(got.answer.error ?? got.status)}`, "warn");
+    S.revisions = null;
+    return start(`revision ${at.dataset.id} is revision ${String(got.answer.revision)} now`);
+  } else if (what === "drop" || what === "landall" || what === "landone" || what === "cancel" || what === "relive") {
     // What is done to the world is done now, by the book in force: none of it is the draft's.
     const where = dropPlace();
-    const sent = what === "drop" && where ? await post("call", { x: where[0], z: where[1], tier: S.map.tier, cls: S.map.cls, ringed: S.map.ringed }) : what === "landall" ? await post("land", { id: "all", seconds: 0 }) : what === "cancel" ? await post("cancel", { id: Number(at.dataset.id) }) : null;
+    const sent = what === "drop" && where ? await post("call", { x: where[0], z: where[1], tier: S.map.tier, cls: S.map.cls, ringed: S.map.ringed }) : what === "landall" ? await post("land", { id: "all", seconds: 0 }) : what === "landone" ? await post("land", { id: Number(at.dataset.id), seconds: 0 }) : what === "cancel" ? await post("cancel", { id: Number(at.dataset.id) }) : null;
     say(sent ? String(sent.answer.said ?? sent.answer.error ?? "").split("\n")[0]! : "", sent && sent.status !== 200 ? "warn" : "dim");
     await mapRead();
     return draw();
@@ -308,6 +333,7 @@ async function start(said = ""): Promise<void> {
   if (faults.length > 0) throw new Error(`the book in force has faults: ${faults[0]!.path}: ${faults[0]!.message}`);
   S.draft = structuredClone(wire.book);
   S.faults = [];
+  S.revisions = null;
   S.l = load(S.draft, S.catalog);
   say(said);
   fromHash();
@@ -315,6 +341,11 @@ async function start(said = ""): Promise<void> {
 }
 
 mapListen(changed, draw);
+// What is live is read again every few seconds while it is being looked at.
+setInterval(() => {
+  if (S.tab !== "live" || !S.l || document.hidden) return;
+  void mapRead().then(draw, () => {});
+}, 4000);
 addEventListener("hashchange", () => {
   fromHash();
   draw();

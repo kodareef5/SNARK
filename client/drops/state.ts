@@ -33,9 +33,29 @@ export interface LiveWire {
   landings: number;
   mended: number;
   acts: { at: number; tick: number; what: string }[];
+  log: { tick: number; what: string }[];
 }
 
-export const TABS = [["tables", "Tables"], ["waiting", "Waiting"], ["sim", "Simulator"], ["tiers", "Tiers and classes"], ["map", "Map and sites"], ["circuits", "Circuits and rules"]] as const;
+/** A revision as revisions.json lists it. */
+export interface RevisionWire {
+  revision: number;
+  at: number;
+  by: string;
+  note: string;
+}
+
+/** What a pasted ARK override would make of the book (server/admin/supply-routes.ts, ark). */
+export interface ArkWire {
+  crates: number;
+  sets: SupplyBook["sets"];
+  tables: SupplyBook["tables"];
+  tiers: { tier: string; plain: number; ringed: number }[];
+  said: string[];
+  missing: string[];
+  unclear: { name: string; could: string[] }[];
+}
+
+export const TABS = [["tables", "Tables"], ["waiting", "Waiting"], ["sim", "Simulator"], ["tiers", "Tiers and classes"], ["map", "Map and sites"], ["circuits", "Circuits and rules"], ["live", "Live and log"], ["ark", "ARK paste"]] as const;
 export type Tab = (typeof TABS)[number][0];
 
 /** The page's state. */
@@ -54,6 +74,10 @@ export const S = {
   open: "",
   sim: { key: "", ringed: false, n: 5000, seed: 1, designed: false },
   /** The map: the circuit new sites join, the site chosen, the place last clicked, how far it is zoomed, and what is live. */
+  /** The book's saves, one of them compared with the draft, and what was pasted of ARK's and what came of it. */
+  revisions: null as RevisionWire[] | null,
+  compared: null as { revision: number; lines: string[] } | null,
+  ark: { text: "", got: null as ArkWire | null },
   map: { circuit: "", site: "", at: null as [number, number] | null, zoom: 1, adding: false, terrain: null as HTMLCanvasElement | null, live: null as LiveWire | null, tier: "", cls: "", ringed: false },
 };
 

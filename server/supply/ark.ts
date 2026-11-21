@@ -11,7 +11,7 @@
 
 import type { LootCount, LootDef, LootEntry, LootSet } from "../../shared/content/defs.ts";
 import { MOST_LOOT, POWER_MOST, POWER_STEPS, lootFaults } from "../../shared/sim/loot.ts";
-import type { TierDoc } from "../../shared/supply/book.ts";
+import type { ClassDoc, SetDoc, SlotDoc, TableDoc, TierDoc } from "../../shared/supply/book.ts";
 import { field, isList, toNumber, toSwitch, unquote, type IniList, type IniNode } from "../settings/ini.ts";
 
 export const SETTING = "ConfigOverrideSupplyCrateItems";
@@ -141,4 +141,54 @@ export function arkCrates(entries: readonly IniNode[], tiers: readonly TierDoc[]
     tables.set(crate.tier.key, of);
   }
   return { tables, passed };
+}
+
+/** What a pasted override would make of a book: the sets and tables to put in it, and the tiers they are for. */
+export interface ArkDocs {
+  sets: Record<string, SetDoc>;
+  tables: Record<string, TableDoc>;
+  tiers: { tier: string; plain: number; ringed: number }[];
+}
+
+/**
+ * ARK's tables as the book's own documents, so that an override can be made the book's and edited: a set for each of
+ * a crate's item sets, and for every class of the crate's tier a table of one slot that picks among them as ARK's
+ * crate does. Where a tier has a ringed crate too, the plain slot is a plain drop's alone and the ringed one a ringed
+ * drop's. ARK has no classes, so every class of the tier gets the same table.
+ */
+export function arkDocs(tables: ReadonlyMap<string, ArkTables>, classes: readonly ClassDoc[]): ArkDocs {
+  const out: ArkDocs = { sets: {}, tables: {}, tiers: [] };
+  for (const [tier, t] of tables) {
+    const slots: SlotDoc[] = [];
+    for (const which of ["plain", "ringed"] as const) {
+      const def = t[which];
+      if (!def) continue;
+      const from = def.from.map((set, n) => {
+        const key = `ark.${tier}.${which}.${n + 1}`;
+        out.sets[key] = {
+          name: `ARK's ${which === "ringed" ? "ringed " : ""}${tier} set ${n + 1}`,
+          min: set.min,
+          max: set.max,
+          ...(set.power !== undefined ? { power: set.power } : {}),
+          ...(set.replace ? { replace: true } : {}),
+          entries: set.entries.map((e) => ({
+            items: [...e.items],
+            ...(e.weights ? { weights: [...e.weights] } : {}),
+            ...(e.weight !== undefined ? { weight: e.weight } : {}),
+            min: e.min,
+            max: e.max,
+            ...(e.quality ? { quality: [e.quality[0], e.quality[1]] as [number, number] } : {}),
+            ...(e.forceBlueprint ? { forceBlueprint: true } : e.blueprint !== undefined ? { blueprint: e.blueprint } : {}),
+          })),
+        };
+        return { set: key, ...(set.weight !== undefined ? { weight: set.weight } : {}) };
+      });
+      const chances = which === "ringed" ? { chance: 0, ringed: 1 } : t.ringed ? { ringed: 0 } : {};
+      slots.push({ name: which === "ringed" ? "ARK's ringed crate" : "ARK's crate", ...chances, pick: { min: def.sets?.min ?? 1, max: def.sets?.max ?? 1, ...(def.sets?.power !== undefined ? { power: def.sets.power } : {}), ...(def.sets?.replace ? { replace: true } : {}) }, from });
+    }
+    if (slots.length === 0) continue;
+    for (const cls of classes) out.tables[`${tier}/${cls.key}`] = { tier, cls: cls.key, slots: JSON.parse(JSON.stringify(slots)) as SlotDoc[], note: "From ConfigOverrideSupplyCrateItems, as pasted." };
+    out.tiers.push({ tier, plain: t.plain?.from.length ?? 0, ringed: t.ringed?.from.length ?? 0 });
+  }
+  return out;
 }

@@ -129,3 +129,51 @@ test("a site moved on the map takes the next drop: the circuit's drops land wher
   const found = await get<{ sites: { key: string; x: number; z: number }[]; circuits: { key: string; sites: string[] }[] }>("found.json");
   expect([found.sites.length > 0, found.circuits.every((c) => c.sites.length > 0), found.sites.every((s) => s.x >= 0 && s.x <= 512 && s.z >= 0 && s.z <= 512), h.host.supplyBook.book.revision]).toEqual([true, true, true, 2]);
 });
+
+test("an ARK override pasted is read as the server reads its own, mapped to the book's tiers, and put in the book it drops", async () => {
+  const { h, get, post, held, mid } = world();
+  const read = await get<{ revision: number; book: SupplyBook }>("book.json");
+  // Three crates as a Game.ini has them: blue's (ARK's level 25) with a thing this build lacks, blue's ringed one, a
+  // cave's, which is no drop here; and a line that is no setting at all.
+  const text = [
+    "[/script/shootergame.shootergamemode]",
+    'ConfigOverrideSupplyCrateItems=(SupplyCrateClassString="SupplyCrate_Level25_C",MinItemSets=1,MaxItemSets=1,ItemSets=((MinNumItems=2,MaxNumItems=2,bItemsRandomWithoutReplacement=true,ItemEntries=((EntryWeight=1,ItemClassStrings=("core:crossbow"),MinQuantity=1,MaxQuantity=1,MinQuality=2,MaxQuality=2),(ItemClassStrings=("core:arrow_stone"),MinQuantity=40,MaxQuantity=40),(ItemClassStrings=("PrimalItem_WeaponTekRifle_C"),MinQuantity=1,MaxQuantity=1)))))',
+    '(SupplyCrateClassString="SupplyCrate_Level25_Double_C",MinItemSets=1,MaxItemSets=1,ItemSets=((MinNumItems=1,MaxNumItems=1,ItemEntries=((ItemClassStrings=("core:stone"),MinQuantity=77,MaxQuantity=77)))))',
+    'ConfigOverrideSupplyCrateItems=(SupplyCrateClassString="ArtifactCrate_1_C",MinItemSets=1,MaxItemSets=1,ItemSets=((MinNumItems=1,MaxNumItems=1,ItemEntries=((ItemClassStrings=("core:stone"),MinQuantity=1,MaxQuantity=1)))))',
+    "this is not a line of an ini",
+  ].join("\n");
+  const got = (await post("ark", { text })).answer as unknown as { crates: number; sets: SupplyBook["sets"]; tables: SupplyBook["tables"]; tiers: { tier: string; plain: number; ringed: number }[]; said: string[]; missing: string[] };
+  expect([got.crates, got.tiers, got.missing]).toEqual([3, [{ tier: "blue", plain: 1, ringed: 1 }], ["PrimalItem_WeaponTekRifle_C"]]);
+  expect(got.said.map((s) => s.slice(0, 60))).toEqual([
+    "line 5: not a Key=Value line",
+    'ConfigOverrideSupplyCrateItems: 1 of the things "SupplyCrate',
+    'ConfigOverrideSupplyCrateItems: "ArtifactCrate_1_C" is no su',
+  ]);
+  // Its documents: a set for each of ARK's, and for every class of blue one table of two slots, plain's and ringed's.
+  expect([Object.keys(got.sets), Object.keys(got.tables).length, got.tables["blue/arms"]!.slots.map((s) => [s.name, s.chance ?? 1, s.ringed ?? s.chance ?? 1, s.from.map((f) => f.set)])]).toEqual([
+    ["ark.blue.plain.1", "ark.blue.ringed.1"],
+    7,
+    [["ARK's crate", 1, 0, ["ark.blue.plain.1"]], ["ARK's ringed crate", 0, 1, ["ark.blue.ringed.1"]]],
+  ]);
+  expect(got.sets["ark.blue.plain.1"]).toEqual({ name: "ARK's blue set 1", min: 2, max: 2, entries: [{ items: ["core:crossbow"], min: 1, max: 1, quality: [2, 2] }, { items: ["core:arrow_stone"], min: 40, max: 40 }] });
+  // Reading it changed nothing. Put in the draft and saved, it is what blue holds, plain and ringed, whatever the class.
+  expect(h.host.supplyBook.book.revision).toBe(0);
+  const draft = structuredClone(read.book);
+  Object.assign(draft.sets, got.sets);
+  Object.assign(draft.tables, got.tables);
+  expect((await post("book", { revision: 0, book: draft, note: "ARK's blue" })).answer).toEqual({ revision: 1 });
+  const plain = await post("call", { x: mid[0] - 60, z: mid[1], tier: "blue", cls: "voyage", seconds: 0 });
+  const ringed = await post("call", { x: mid[0] + 60, z: mid[1], tier: "blue", cls: "armour", ringed: true, seconds: 0 });
+  await post("land", { id: "all", seconds: 0 });
+  h.run(1000);
+  expect([held(h.host.supply.get(plain.answer.id as number)!.pid), held(h.host.supply.get(ringed.answer.id as number)!.pid)]).toEqual([{ "core:crossbow": 1, "core:arrow_stone": 40 }, { "core:stone": 77 }]);
+  // The drops' own log has each landing, and the page's has what was done from it.
+  const live = await get<{ log: { what: string }[]; acts: { what: string }[] }>("live.json");
+  expect([live.log.map((x) => x.what.replace(/ at .*/, "")), live.acts.length]).toEqual([["drop 1 landed: blue voyage", "drop 2 landed: ringed blue armour"], 4]);
+  // Cancelled, a landed drop goes, and the log says why.
+  await post("cancel", { id: "all" });
+  h.run(500);
+  expect((await get<{ log: { what: string }[] }>("live.json")).log.slice(-2).map((x) => x.what)).toEqual(["drop 1 gone: cancelled", "drop 2 gone: cancelled"]);
+  // Text that is not an override at all is read as nothing, and says so.
+  expect((await post("ark", { text: "hello" })).answer).toMatchObject({ crates: 0, tiers: [], said: ["line 1: not a Key=Value line"] });
+});

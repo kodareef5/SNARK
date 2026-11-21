@@ -136,6 +136,8 @@ export class Supply {
   /** Since the server started. */
   calls = 0;
   landings = 0;
+  /** What the drops have lately done, newest last, for an admin to read: landed, first opened and by whom, gone and why. */
+  readonly log: { tick: number; what: string }[] = [];
   readonly saved = { dirty: false, serialize: (): string => this.serialize() };
   private readonly ctx: SupplyContext;
   private readonly capsule: number;
@@ -547,6 +549,7 @@ export class Supply {
       return;
     }
     this.ctx.bus.after(GONE, { id: d.id, tier: d.tierKey, class: d.clsKey, why, landed: d.landed ? 1 : 0, opened: d.opened ? 1 : 0 });
+    this.note(`drop ${d.id} gone: ${why}`);
     this.forget(d);
   }
 
@@ -591,6 +594,7 @@ export class Supply {
       records.delete(box.pid);
       this.ctx.say(`drop ${d.id} (${d.tierKey} ${d.clsKey}) had nothing to hold, and did not land`);
       bus.after(GONE, { id: d.id, tier: d.tierKey, class: d.clsKey, why: "empty", landed: 0, opened: 0 });
+      this.note(`drop ${d.id} gone: it had nothing to hold`);
       this.forget(d);
       return;
     }
@@ -607,6 +611,13 @@ export class Supply {
     this.changed();
     // The slots it fills: one roll of a thing that does not stack is several, and two of one thing that join are one.
     bus.after(LANDED, { id: d.id, pid: box.pid, x: d.x, y: d.y, z: d.z, tier: d.tierKey, class: d.clsKey, ringed: d.ringed ? 1 : 0, stacks: items.inv(box).used(), source: d.source });
+    this.note(`drop ${d.id} landed: ${d.ringed ? "ringed " : ""}${d.tierKey} ${d.clsKey} at ${d.x.toFixed(0)} ${d.z.toFixed(0)}, ${items.inv(box).used()} stacks`);
+  }
+
+  /** A line for the log, which keeps its last two hundred. */
+  private note(what: string): void {
+    this.log.push({ tick: this.ctx.world.tick, what });
+    if (this.log.length > 200) this.log.splice(0, this.log.length - 200);
   }
 
   /** A roll of one of ARK's tables, its quality multiplied as the book's is, and left off what quality does nothing for. */
@@ -638,6 +649,7 @@ export class Supply {
     if (!d) return;
     this.ctx.bus.after(OPENED, { id: d.id, pid: box.pid, byPid: c.pid, tier: d.tierKey, class: d.clsKey, first: d.opened ? 0 : 1 });
     if (d.opened) return;
+    this.note(`drop ${d.id} first opened by ${c.name}`);
     d.opened = true;
     this.openedBy.set(d.id, c.pid);
     this.changed();
@@ -657,6 +669,7 @@ export class Supply {
     d.pid = 0;
     this.ctx.deadlines.push(d.left + LEAVE_SECONDS * TICK_RATE, DEADLINE_SUPPLY, d.id, d.left + LEAVE_SECONDS * TICK_RATE);
     this.ctx.bus.after(GONE, { id: d.id, tier: d.tierKey, class: d.clsKey, why, landed: 1, opened: d.opened ? 1 : 0 });
+    this.note(`drop ${d.id} gone: ${why}`);
     this.changed();
   }
 
