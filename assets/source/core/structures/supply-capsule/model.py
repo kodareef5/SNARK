@@ -327,10 +327,12 @@ def jet(m):
 def foot(m):
     """The glow on the ground at its foot: a sheet a metre in radius, its upper side and, back to back with it, its under."""
     n = (24, 16, 12, 8)[m.level]
+    middle = Vector((0, 0.03, 0))
     pts = [at(1, 0.03, TAU * i / n) for i in range(n)]
-    for i in range(1, n - 1):
+    for i in range(n):
         for up in (1, -1):
-            m.face([pts[0], pts[i], pts[i + 1]], FOOT, (0, up, 0), repeat=0.0, shift=0.0)
+            # Its strip runs from 0 at the middle to 1 at the rim.
+            m.face([middle, pts[i], pts[(i + 1) % n]], FOOT, (0, up, 0), repeat=1.0, shift=0.0)
 
 
 for name, fn in [("hull", hull), ("leg", leg), ("shutter", shutter), ("hatch", hatch), ("collar", collar), ("hoop", hoop), ("lights", lights)]:

@@ -135,6 +135,10 @@ if (import.meta.main) {
     shoot("standing", "six metres off, eight seconds after it landed: legs splayed, louvres open, its collars and its top-mark");
     stand(X - 3.2, Z + 3.6, X, Z, -0.1);
     shoot("around", "from its other side");
+    stand(X - 3, Z - 3, X, Z, 1.1);
+    shoot("under", "from under its shaft, looking up it: its pulses climbing, its class's figure twelve metres up");
+    stand(X - 110, Z - 100, X, Z, 0.35);
+    shoot("shaft", "from 150 m: the whole of the shaft's lower half, and the capsule at its foot");
     // Walked up to, below its level: the prompt says the level, and E does nothing.
     stand(X, Z - 3.2, X, Z, -0.3);
     shoot("landed", "three metres from it, at level 1: the prompt names it and the level it opens at");
@@ -172,6 +176,28 @@ if (import.meta.main) {
     shoot("gone", "the ground bare again");
     must("nothing is drawn of it", last().shafts === 0 && last().capsules === 0 && last().state === "none");
     must("nothing was made or lost", h.host.items.audit().length === 0);
+
+    // A ringed drop of the highest tier, for its sheath, its halos and its hoop: by day, and at night.
+    session.text(`supply call ${X} ${Z} meridian voyage ringed 90`);
+    run(400);
+    const ringed = supply.drops[0]!;
+    must("a ringed Meridian drop is called", ringed !== undefined && ringed.ringed && ringed.tierKey === "meridian");
+    session.text(`supply land ${ringed.id} 11`);
+    run(300);
+    stand(X - 14, Z - 12, X, Z, 0.75);
+    h.run(Math.max(0, ((ringed.land - ringed.brake - h.world.tick) / TICK_RATE) * 1000 + 4200), frame);
+    shoot("ringed-braking", "eighteen metres off as a ringed drop brakes: legs coming out, the sheath round its shaft");
+    must("it is braking", last().state === "braking" && last().capsules === 1);
+    h.run(Math.max(0, ((ringed.land - h.world.tick) / TICK_RATE) * 1000 + 7000), frame);
+    stand(X + 5, Z - 5.5, X, Z, -0.02);
+    shoot("ringed", "a ringed Meridian drop standing: seven collars, the hoop turning, halos climbing its shaft");
+    must("it stands, ringed", last().state === "landed" && session.supply.rows[0]!.ringed);
+    session.text("settime 22");
+    run(600);
+    stand(X + 26, Z - 22, X, Z, 0.3);
+    shoot("night", "the same at ten at night, from 34 m");
+    stand(X - 330, Z - 300, X, Z, 0.25);
+    shoot("night-far", "and from 450 m");
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ generated: new Date().toISOString(), pipeline: "Harness server, App with its own keys, streamed pack, Rasterizer", tier, size: [width, height], stacks: held, shots }, null, 2));
     console.log(`${out}: ${shots.length} pictures of one drop from its call to its going`);
   } finally {

@@ -731,7 +731,7 @@ uniform float uCutoff, uSheet, uSkin, uEmissive;
 flat in float vFinishSeed;
 in vec3 vWheelPoint;
 in vec4 vWheel;
-uniform float uStreetMaterial, uOptics;
+uniform float uStreetMaterial, uOptics, uFrom;
 uniform vec4 uEffect;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
 ${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
@@ -771,8 +771,12 @@ ${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetM
     return;
   }
   if (int(uStreetMaterial) == ${DROP_GLOW}) {
-    // Its light with no surface: a tube seen by how its side faces the eye, blended over what is behind it.
+    // Its light with no surface: a tube seen by how its side faces the eye, blended over what is behind it. Across
+    // the two depth ranges it is drawn in each, and in the far one what the near one drew adds nothing (glsl.ts
+    // SEE_THROUGH_SPLIT, without the drop: this program never drops a fragment).
     vec4 g = dropGlow(floor(8.0*vUv.y), vUv.x, abs(dot(normalize(vNormal), normalize(vRel))), uEffect);
+    float depth = 1.0/gl_FragCoord.w;
+    if (depth + 0.5*fwidth(depth) < uFrom) g = vec4(0.0);
 #ifdef LIGHT_TARGET
     o = vec4(g.rgb, g.a);
 #else

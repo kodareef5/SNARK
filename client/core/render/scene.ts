@@ -39,7 +39,7 @@ import type { Falling } from "../rubble.ts";
 import type { ShotEnd } from "../occasions.ts";
 import type { Shots } from "../shots.ts";
 import type { SupplyView } from "../supply.ts";
-import { CAPSULE, CAPSULE_REACH, HOOP_RATE, PIECES as CAPSULE_PIECES, SLAT_REACH, collarBone, fixedBone, hatchBone, hoopBone, legBone, markBone, slatBone, type CapsuleStance } from "./supply.ts";
+import { CAPSULE, CAPSULE_REACH, FIGURE_FAR_SIZE, FIGURE_NEAR, FIGURE_UNDER_HEAD, FOOT_REACH, HALOS, HOOP_RATE, PIECE, PIECES as CAPSULE_PIECES, SHAFTS_MOST, SHAFT_HEIGHT, SHEATH_WIDER, SLAT_REACH, collarBone, fixedBone, haloAt, hatchBone, hoopBone, legBone, markBone, shaftKeeps, shaftRadius, slatBone, uprightBone, type CapsuleStance } from "./supply.ts";
 import { packEffect } from "./supply-light.ts";
 import { MARKS, POSE_COMING, POSE_GONE, POSE_LANDED, newPose, supplyPose } from "../../../shared/sim/supply.ts";
 import { nearestColour } from "../../../shared/pack/palette.ts";
@@ -173,6 +173,8 @@ const CAST_RUN = 5;
 const SETTLE = 2000;
 /** A node form with nothing to draw: what is left of a used-up node whose mesh no pack has. */
 const HIDDEN = 0xffff;
+/** Whether a shaft of light `wide` in radius and `tall` high, its foot camera-relative, is in the view. */
+const shaftSeen = (cam: Camera, x: number, y: number, z: number, wide: number, tall: number): boolean => cam.boxVisible(x - wide, y, z - wide, x + wide, y + tall, z + wide);
 /** The one run of a level drawn flat: no material, and all its indices. */
 const FLAT: readonly number[] = [-1, 0, 0];
 const NEAR = 1 << PASS_NEAR;
@@ -532,6 +534,7 @@ export class Scene {
   private readonly capsulePose = newPose();
   private readonly capsuleRows = new Float32Array(BONE_FLOATS);
   private readonly capsuleTints = new Map<number, number>();
+  private readonly capsuleHalo = { height: 0, strength: 0 };
   shotTick = 0;
   /** Structures falling after a removal. The app sets it. */
   falling: Falling | null = null;
@@ -2294,33 +2297,87 @@ export class Scene {
     const list = view.list!;
     const pose = this.capsulePose, s = this.capsuleStance, rows = this.capsuleRows, mesh = this.capsuleMesh;
     view.modelled = true;
-    view.capsules = 0;
-    const piece = (which: number, glow = false): void => {
+    view.capsules = view.shafts = 0;
+    // `size` is how many times its modelled size a piece of light is drawn, and `tall` how far up from its origin it
+    // reaches. Whether it is in the view and was drawn.
+    const piece = (which: number, glow = false, size = 1, tall = 0): boolean => {
       const m = mesh[which]!;
-      if (m < 0 || p.transientCount >= p.transientIds.length || p.drawCount + this.doubled >= MAX_DRAWS || p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return;
-      const cx = rows[3]!, cy = rows[7]!, cz = rows[11]!;
-      const r = this.radiusOfMesh[m]! + 0.5;
-      if (!cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r)) return;
+      if (m < 0 || p.transientCount >= p.transientIds.length || p.drawCount + this.doubled >= MAX_DRAWS || p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return false;
+      const cx = rows[3]!, cy = rows[7]! + tall / 2, cz = rows[11]!;
+      const r = (this.radiusOfMesh[m]! + 0.5) * size;
+      const up = Math.max(r, tall / 2);
+      if (!cam.boxVisible(cx - r, cy - up, cz - r, cx + r, cy + up, cz + r)) return false;
       const first = p.transientCount++;
-      const distance = Math.max(1, Math.hypot(cx, cy, cz) - r);
+      const distance = Math.max(1, Math.hypot(cx, rows[7]!, cz) - r) / size;
       const level = this.assets.choose(this.assets.table.error[m]!, distance, -1);
       this.assets.wantTextured(m, level, distance);
       const bone = p.boneCount++;
       p.bones.set(rows, bone * BONE_FLOATS);
       this.transient.setSkinned(first, bone, this.capsuleDye);
       p.transientIds[first] = 0;
-      this.draw(m, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_PLAIN | DRAW_SKINNED | (glow ? DRAW_EMISSIVE : 0), cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r));
+      this.draw(m, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_PLAIN | DRAW_SKINNED | (glow ? DRAW_EMISSIVE : 0), cam.passes(cx - r, cy - up, cz - r, cx + r, cy + up, cz + r));
+      return true;
     };
+    const seconds = view.tick / TICK_RATE;
+    const halo = this.capsuleHalo;
     for (const row of list.rows) {
       supplyPose(row, view.tick, TICK_RATE, pose);
-      if (pose.state === POSE_COMING || pose.state === POSE_GONE) continue;
+      if (pose.state === POSE_GONE) continue;
+      const tier = list.tiers[row.tier];
+      const rgb = tier?.rgb ?? 0xffffff;
+      // The shaft, where the drop will land or has: a tube of light sized by its bone, never thinner than two pixels,
+      // brought in to the edge of the view where it stands beyond it, and kept through the haze. Its pulses, its
+      // sheath and halos (a ringed drop's), its class's figure near its foot and under its head, the glow at its foot.
+      let sx = row.x - cam.x, sy = row.y - cam.y, sz = row.z - cam.z;
+      const reach = Math.hypot(sx, sz);
+      const fog = Math.max(0, Math.min(1, (reach - p.fogStart) / Math.max(1, p.fogEnd - p.fogStart)));
+      const power = pose.shaft * shaftKeeps(reach, fog);
+      if (power > 0.01 && view.shafts < SHAFTS_MOST) {
+        // Past nine tenths of the far plane it is drawn there, as wide and as tall as it then looks.
+        const near = reach > 0.9 * cam.far ? (0.9 * cam.far) / reach : 1;
+        sx *= near;
+        sy *= near;
+        sz *= near;
+        const wide = shaftRadius(reach, cam.fovY, this.viewHeight) * near;
+        this.effect[0] = (view.tick - row.land) / TICK_RATE;
+        this.effect[1] = rgb;
+        this.effect[2] = power;
+        this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
+        uprightBone(rows, 0, sx, sy, sz, wide, near);
+        // The tube is as wide as its bone makes it, whatever the reach of the mesh it is sized from.
+        if (shaftSeen(cam, sx, sy, sz, wide, SHAFT_HEIGHT * near) && piece(PIECE.shaft, true, Math.max(wide, 1), SHAFT_HEIGHT * near)) view.shafts++;
+        const mark = list.classes[row.cls]?.mark ?? 0;
+        const figure = PIECE.figure + (mark < MARKS.length ? mark : 0);
+        if (reach < 700) {
+          uprightBone(rows, 0, sx, sy + FIGURE_NEAR, sz, 1, 1);
+          piece(figure, true, 1, 3);
+        }
+        uprightBone(rows, 0, sx, sy + (SHAFT_HEIGHT - FIGURE_UNDER_HEAD) * near, sz, FIGURE_FAR_SIZE * near, FIGURE_FAR_SIZE * near);
+        piece(figure, true, FIGURE_FAR_SIZE * near, 30 * near);
+        if (row.ringed) {
+          const sheath = shaftRadius(reach, cam.fovY, this.viewHeight, SHEATH_WIDER) * near;
+          uprightBone(rows, 0, sx, sy, sz, sheath, near);
+          piece(PIECE.sheath, true, Math.max(sheath, 1), SHAFT_HEIGHT * near);
+          for (let k = 0; k < HALOS && reach < 500; k++) {
+            haloAt(seconds + row.look, k, halo);
+            this.effect[2] = power * halo.strength;
+            uprightBone(rows, 0, sx, sy + halo.height, sz, sheath * 1.2, 1);
+            piece(PIECE.halo, true, sheath * 1.2, 0.4);
+          }
+        }
+        if (pose.state !== POSE_COMING && reach < 400) {
+          this.effect[2] = power * (0.4 + 0.6 * pose.standing);
+          uprightBone(rows, 0, sx, sy, sz, FOOT_REACH, 1);
+          piece(PIECE.foot, true, FOOT_REACH, 0.1);
+        }
+        this.effect.fill(0);
+      }
+      if (pose.state === POSE_COMING) continue;
       s.x = pose.x - cam.x;
       s.y = pose.y - cam.y;
       s.z = pose.z - cam.z;
       const far = Math.hypot(s.x, s.y, s.z);
       if (far > CAPSULE_REACH || !cam.boxVisible(s.x - 1.6, s.y - 0.2, s.z - 1.6, s.x + 1.6, s.y + 2.9, s.z + 1.6)) continue;
-      const tier = list.tiers[row.tier];
-      const rgb = tier?.rgb ?? 0xffffff;
       let dye = this.capsuleTints.get(rgb);
       if (dye === undefined) this.capsuleTints.set(rgb, (dye = nearestColour(this.groundPalette, (rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255)));
       this.capsuleDye = dye;
@@ -2353,14 +2410,14 @@ export class Scene {
         hoopBone(rows, 0, s);
         piece(5);
       }
-      const mark = list.classes[row.cls]?.mark ?? 0;
+      const worn = list.classes[row.cls]?.mark ?? 0;
       markBone(rows, 0, s);
-      piece(7 + (mark < MARKS.length ? mark : 0));
+      piece(PIECE.mark + (worn < MARKS.length ? worn : 0));
       // Its lit strips: the seconds since it landed, its colour, how far its lantern is open, and its count.
       this.effect[0] = (view.tick - row.land) / TICK_RATE;
       this.effect[1] = rgb;
       this.effect[2] = pose.shutters;
-      this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, pose.state === POSE_LANDED, row.look);
+      this.effect[3] = packEffect(tier?.count ?? 1, row.ringed, row.look);
       fixedBone(rows, 0, s);
       piece(6, true);
       this.effect.fill(0);

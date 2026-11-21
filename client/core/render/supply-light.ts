@@ -6,8 +6,11 @@
 // The effect is four numbers a draw: x seconds since the drop landed (negative before, and it runs on while the
 // capsule leaves), y its tier's colour as 0xRRGGBB (0 says the draw is no drop's), z its power from 0 to 1 (how far the
 // lantern is open for a strip, how strongly the shaft stands, the thrust of a jet), and w the tier's count, whether the
-// drop is ringed, whether its pulses stand or run down, and eight bits of its seed, packed (`packEffect`). The colour is
-// the drop's own and not a table's, so a tier of any colour an admin gives it is drawn with no change here.
+// drop is ringed and eight bits of its seed, packed (`packEffect`). The colour is the drop's own and not a table's, so
+// a tier of any colour an admin gives it is drawn with no change here.
+//
+// A shaft's pulses run down it while its drop is coming. As it lands they fade where they are, and a new set climbs
+// from the foot: the seconds since landing say which, with no switch for anything to flip on.
 //
 // The functions are written twice: GLSL for the surface programs and the signal program, and the same arithmetic in
 // TypeScript for the software renderer (tools/snap/raster.ts) and the tests. Nothing in them runs backwards: a pulse
@@ -34,9 +37,16 @@ export const PULSE_GAP = 9;
 export const PULSE_REST = 36;
 export const PULSE_SPEED = 22;
 
-/** A draw's `w`: the tier's place among the tiers (1 to 15), ringed, standing, and its look. */
-export function packEffect(count: number, ringed: boolean, standing: boolean, look: number): number {
-  return Math.max(0, Math.min(15, count)) + (ringed ? 16 : 0) + (standing ? 32 : 0) + 64 * (look & 255);
+/** Seconds the pulses running down take to fade once a drop has landed, and the seconds from which the standing set shows. */
+export const INBOUND_FADE = 1.2;
+export const STANDING_FROM = 0.3;
+export const STANDING_FULL = 1.8;
+/** Metres from its head over which a shaft fades into the sky. */
+export const SHAFT_TOP = 90;
+
+/** A draw's `w`: the tier's place among the tiers (1 to 15), ringed, and its look. */
+export function packEffect(count: number, ringed: boolean, look: number): number {
+  return Math.max(0, Math.min(15, count)) + (ringed ? 16 : 0) + 32 * (look & 255);
 }
 
 const fract = (v: number): number => v - Math.floor(v);
@@ -65,8 +75,9 @@ export function lampBeat(seconds: number, count: number): number {
 }
 
 /**
- * How bright the shaft is `metres` up it at `seconds`, from its pulses: groups of `count`, PULSE_GAP apart, a rest
- * between groups, running down while it is not `standing` and up once it is. 0 between pulses to 1 at the middle of one.
+ * How bright a set of pulses makes the shaft `metres` up it at `seconds`: groups of `count`, PULSE_GAP apart, a rest
+ * between groups, running down for the set of a drop that is coming and up for the `standing` one's. 0 between pulses
+ * to 1 at the middle of one.
  */
 export function shaftPulse(metres: number, seconds: number, count: number, standing: boolean): number {
   const span = count * PULSE_GAP + PULSE_REST;
@@ -100,11 +111,16 @@ export function dropLight(out: Float32Array | number[], row: number, across: num
  * at its edge to 1, and `e` the draw's effect.
  */
 export function dropGlow(out: Float32Array | number[], row: number, u: number, facing: number, ex: number, ey: number, ez: number, ew: number): number {
-  const along = row === GLOW_JET ? u : u * GLOW_METRES;
+  const along = row === GLOW_JET || row === GLOW_FOOT ? u : u * GLOW_METRES;
   dropTint(ey, out);
   const count = ew % 16;
-  const standing = Math.floor(ew / 32) % 2 === 1;
-  const look = Math.floor(ew / 64);
+  const look = Math.floor(ew / 32);
+  if (row === GLOW_FOOT) {
+    // The glow on the ground at its foot: strongest under the capsule, gone at its rim. It is a sheet of two sides, each drawn.
+    const fall = clamp(1 - along);
+    for (let c = 0; c < 3; c++) out[c] = out[c]! * (0.5 + 1.3 * fall);
+    return ez * 0.3 * fall * fall;
+  }
   // A column of light is thickest through its middle: it falls off to its edge by how its surface faces the eye.
   const body = facing * facing;
   const core = smooth(0.55, 1, facing);
@@ -116,12 +132,19 @@ export function dropGlow(out: Float32Array | number[], row: number, u: number, f
     for (let c = 0; c < 3; c++) out[c] = out[c]! * (0.4 + 2.6 * fuel * body) + 5 * heart * heart;
     return ez * fuel * fuel * (3 - 2 * fuel) * Math.min(0.96, 1.4 * body) * (0.8 + 0.2 * bands);
   }
-  const pulse = row === GLOW_SHAFT || row === GLOW_SHEATH ? shaftPulse(along, ex, count, standing) : 0;
+  const tube = row === GLOW_SHAFT || row === GLOW_SHEATH;
+  // The set that runs down fades once it has landed, and the standing set climbs from the foot behind its own front.
+  const inbound = 1 - smooth(0, INBOUND_FADE, ex);
+  const front = clamp((PULSE_SPEED * Math.max(ex, 0) - along) / 8 + 1);
+  const pulse = tube ? inbound * shaftPulse(along, ex, count, false) + smooth(STANDING_FROM, STANDING_FULL, ex) * front * shaftPulse(along, ex, count, true) : 0;
   const filament = Math.pow(0.5 + 0.5 * Math.cos(along * 0.9 + 6.2831853 * fract(look * 0.618034) + 2.2 * body), 6);
-  const strength = row === GLOW_SHEATH ? 0.35 : row === GLOW_SHAFT ? 1 : 0.7;
-  const glow = strength * (0.45 + 1.9 * pulse + 0.12 * filament);
-  for (let c = 0; c < 3; c++) out[c] = out[c]! * glow * (0.5 + 1.6 * body) + (row === GLOW_SHEATH ? 0 : 2.4 * core * core * (0.35 + pulse));
-  return ez * strength * Math.min(0.92, (0.2 + 0.5 * pulse) * (0.25 + 0.75 * body) + 0.5 * core);
+  // A shaft fades into the sky over its last stretch.
+  const strength = (row === GLOW_SHEATH ? 0.35 : row === GLOW_SHAFT ? 1 : 0.7) * (tube ? 1 - smooth(600 - SHAFT_TOP, 600, along) : 1);
+  const glow = strength * (0.6 + 2.1 * pulse + 0.12 * filament);
+  // The colour is the tier's, which is what the shaft is for: its white heart is narrow, and widens in a pulse.
+  const heart = core * core * core * core;
+  for (let c = 0; c < 3; c++) out[c] = out[c]! * glow * (0.7 + 2.2 * body) + (row === GLOW_SHEATH ? 0 : heart * (0.25 + 1.3 * pulse));
+  return ez * strength * Math.min(0.92, (0.24 + 0.5 * pulse) * (0.25 + 0.75 * body) + 0.32 * core);
 }
 
 const f = (v: number): string => (Number.isInteger(v) ? `${v}.0` : String(v));
@@ -152,9 +175,12 @@ vec3 dropLight(float row, float across, vec4 e) {
 }
 vec4 dropGlow(float row, float u, float facing, vec4 e) {
   vec3 tint = dropTint(e.y);
-  float along = row == ${f(GLOW_JET)} ? u : u*${f(GLOW_METRES)};
-  float count = mod(e.w,16.0), look = floor(e.w/64.0);
-  bool standing = mod(floor(e.w/32.0),2.0) == 1.0;
+  float along = row == ${f(GLOW_JET)} || row == ${f(GLOW_FOOT)} ? u : u*${f(GLOW_METRES)};
+  float count = mod(e.w,16.0), look = floor(e.w/32.0);
+  if (row == ${f(GLOW_FOOT)}) {
+    float fall = clamp(1.0-along,0.0,1.0);
+    return vec4(tint*(0.5 + 1.3*fall), e.z*0.3*fall*fall);
+  }
   float body = facing*facing, core = smoothstep(0.55,1.0,facing);
   if (row == ${f(GLOW_JET)}) {
     float fuel = clamp(1.0-along,0.0,1.0);
@@ -162,10 +188,14 @@ vec4 dropGlow(float row, float u, float facing, vec4 e) {
     float heart = fuel*fuel*core*(0.6 + 0.4*bands);
     return vec4(tint*(0.4 + 2.6*fuel*body) + 5.0*heart*heart, e.z*fuel*fuel*(3.0-2.0*fuel)*min(0.96,1.4*body)*(0.8 + 0.2*bands));
   }
-  float pulse = row == ${f(GLOW_SHAFT)} || row == ${f(GLOW_SHEATH)} ? shaftPulse(along, e.x, count, standing) : 0.0;
+  bool tube = row == ${f(GLOW_SHAFT)} || row == ${f(GLOW_SHEATH)};
+  float inbound = 1.0 - smoothstep(0.0,${f(INBOUND_FADE)},e.x);
+  float front = clamp((${f(PULSE_SPEED)}*max(e.x,0.0) - along)/8.0 + 1.0,0.0,1.0);
+  float pulse = tube ? inbound*shaftPulse(along, e.x, count, false) + smoothstep(${f(STANDING_FROM)},${f(STANDING_FULL)},e.x)*front*shaftPulse(along, e.x, count, true) : 0.0;
   float filament = pow(0.5 + 0.5*cos(along*0.9 + 6.2831853*fract(look*0.618034) + 2.2*body), 6.0);
-  float strength = row == ${f(GLOW_SHEATH)} ? 0.35 : row == ${f(GLOW_SHAFT)} ? 1.0 : 0.7;
-  float glow = strength*(0.45 + 1.9*pulse + 0.12*filament);
-  return vec4(tint*glow*(0.5 + 1.6*body) + (row == ${f(GLOW_SHEATH)} ? 0.0 : 2.4*core*core*(0.35 + pulse)),
-              e.z*strength*min(0.92,(0.2 + 0.5*pulse)*(0.25 + 0.75*body) + 0.5*core));
+  float strength = (row == ${f(GLOW_SHEATH)} ? 0.35 : row == ${f(GLOW_SHAFT)} ? 1.0 : 0.7)*(tube ? 1.0 - smoothstep(${f(600 - SHAFT_TOP)},600.0,along) : 1.0);
+  float glow = strength*(0.6 + 2.1*pulse + 0.12*filament);
+  float heart = core*core*core*core;
+  return vec4(tint*glow*(0.7 + 2.2*body) + (row == ${f(GLOW_SHEATH)} ? 0.0 : heart*(0.25 + 1.3*pulse)),
+              e.z*strength*min(0.92,(0.24 + 0.5*pulse)*(0.25 + 0.75*body) + 0.32*core));
 }`;

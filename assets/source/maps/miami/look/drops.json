@@ -1,0 +1,14 @@
+{
+  "hour": 14,
+  "views": [
+    {"name": "drop-near", "x": 7028, "z": 5170, "up": 1.7, "look": [7038, 5181, 1.5], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-under", "x": 7034, "z": 5177, "up": 1.7, "look": [7038, 5181, 30], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-ringed", "x": 7030, "z": 5231, "up": 1.7, "look": [7038, 5241, 2.2], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-150", "x": 6890, "z": 5200, "up": 2, "look": [7038, 5210, 60], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-150-dusk", "hour": 18.4, "x": 6890, "z": 5200, "up": 2, "look": [7038, 5210, 60], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-150-night", "hour": 22, "x": 6890, "z": 5200, "up": 2, "look": [7038, 5210, 60], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-1km", "x": 6040, "z": 5200, "up": 12, "look": [7038, 5210, 200], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-4km", "x": 3040, "z": 5200, "up": 30, "look": [7038, 5210, 300], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]},
+    {"name": "drop-4km-night", "hour": 22, "x": 3040, "z": 5200, "up": 30, "look": [7038, 5210, 300], "run": ["supply cancel all", "supply call 7038 5181 red arms plain", "supply call 7038 5241 meridian voyage ringed", "supply land all"]}
+  ]
+}

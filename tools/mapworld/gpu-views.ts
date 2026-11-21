@@ -13,7 +13,8 @@
 // and one headless Chrome, muted, opens each view on each tier and keeps a screenshot as <out>/<view>-<tier>.png, or with
 // effects off (client/core/passes.ts EFFECTS) as <out>/<view>-<tier>-off-<effects>.png. The cameras file is
 // { hour, views: [{ name, x, z, up | y, look: [x, z, metres over the ground] | yaw and pitch in degrees }] } in engine
-// metres, x west and z north (assets/source/maps/miami/look/route.json). With --film, a camera with replayEyeSeconds
+// metres, x west and z north (assets/source/maps/miami/look/route.json). A view's `run` is console lines the survivor types
+// once there, as an admin: a supply drop to call and bring down (assets/source/maps/miami/look/drops.json). With --film, a camera with replayEyeSeconds
 // also produces a 12 fps clip from that time. replayDuration gives its length in seconds and defaults to 20.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -27,7 +28,7 @@ import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
 import { placeFileCameras } from "./obelisk-cameras.ts";
 
-interface Camera { obelisk?: string; fromSpawn?: string; hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; replayDuration?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
+interface Camera { run?: string[]; obelisk?: string; fromSpawn?: string; hour?: number; eyeSeconds?: number; replayEyeSeconds?: number; replayDuration?: number; name: string; x: number; z: number; up?: number; y?: number; look?: [number, number, number?]; yaw?: number; pitch?: number }
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { film: { type: "boolean" }, "hide-hud": { type: "boolean" }, dist: { type: "string" }, tiers: { type: "string", default: "high,medium" }, seconds: { type: "string", default: "40" }, only: { type: "string" }, off: { type: "string" }, canvas: { type: "string", default: "1920x1080@1" }, page: { type: "string", multiple: true, default: [] }, suffix: { type: "string", default: "" } } });
 const [size, dpr = "1"] = values.canvas!.split("@"), [winW, winH] = size!.split("x").map(Number), scale = Number(dpr);
@@ -84,7 +85,7 @@ for (const v of views) {
     pitch = Math.atan2(ground(lx, lz) + lup - eye, Math.hypot(lx - v.x, lz - v.z));
   }
   // A body's place is its feet, 1.62 m under its eye.
-  orders.set(v.name, { eyeSeconds: v.eyeSeconds, run: ["enablecheats", `settime ${v.hour ?? file.hour ?? 14}`], look: [yaw, pitch], at: [v.x, eye - 1.62, v.z] });
+  orders.set(v.name, { eyeSeconds: v.eyeSeconds, run: ["enablecheats", `settime ${v.hour ?? file.hour ?? 14}`, ...(v.run ?? [])], look: [yaw, pitch], at: [v.x, eye - 1.62, v.z] });
 }
 // Every survivor is held at the view being taken, still, as a ghost: a line typed on arrival would move it only after the
 // page had placed its camera.

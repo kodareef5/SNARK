@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { PROGRAMS } from "../../client/core/render/programs.ts";
 import { DRAW_BLEND, DRAW_EMISSIVE, DRAW_TEXTURED, FramePacket, moved, texturedFlags } from "../../client/core/render/packet.ts";
 import { StreetDraws } from "../../client/core/render/street-draws.ts";
-import { DROP_GLSL, GLOW_FIGURE, GLOW_JET, GLOW_METRES, GLOW_SHAFT, GLOW_SHEATH, LAMP_BEAT, LAMP_PERIOD, LIGHT_LAMP, LIGHT_LANTERN, LIGHT_SEAM, PULSE_GAP, PULSE_REST, PULSE_SPEED, dropGlow, dropLight, dropTint, lampBeat, packEffect, shaftPulse } from "../../client/core/render/supply-light.ts";
+import { DROP_GLSL, GLOW_FIGURE, GLOW_FOOT, GLOW_JET, GLOW_METRES, GLOW_SHAFT, GLOW_SHEATH, INBOUND_FADE, LAMP_BEAT, LAMP_PERIOD, LIGHT_LAMP, LIGHT_LANTERN, LIGHT_SEAM, PULSE_GAP, PULSE_REST, PULSE_SPEED, SHAFT_TOP, STANDING_FULL, dropGlow, dropLight, dropTint, lampBeat, packEffect, shaftPulse } from "../../client/core/render/supply-light.ts";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { CHANNEL, DROP_GLOW, DROP_LIGHT, INSTRUMENT, streetMaterial } from "../../content/street-finishes.ts";
 import { starterBook } from "../../content/supply/starter.ts";
@@ -24,10 +24,10 @@ const glow = (row: number, u: number, facing: number, e: readonly [number, numbe
 };
 const sum = (v: readonly number[]): number => v[0]! + v[1]! + v[2]!;
 
-test("a draw's effect packs the tier's count, ringed, standing and its look in one number a float holds whole", () => {
-  for (const [count, ringed, standing, look] of [[1, false, false, 0], [7, true, false, 255], [15, true, true, 128], [3, false, true, 1]] as const) {
-    const w = packEffect(count, ringed, standing, look);
-    expect([Math.fround(w), w % 16, Math.floor(w / 16) % 2 === 1, Math.floor(w / 32) % 2 === 1, Math.floor(w / 64)]).toEqual([w, count, ringed, standing, look]);
+test("a draw's effect packs the tier's count, ringed and its look in one number a float holds whole", () => {
+  for (const [count, ringed, look] of [[1, false, 0], [7, true, 255], [15, true, 128], [3, false, 1]] as const) {
+    const w = packEffect(count, ringed, look);
+    expect([Math.fround(w), w % 16, Math.floor(w / 16) % 2 === 1, Math.floor(w / 32)]).toEqual([w, count, ringed, look]);
   }
   // A tier's colour is light as it is: every tier of the starter book keeps its hue's order, and a float holds it whole.
   for (const tier of starterBook().tiers) {
@@ -90,17 +90,17 @@ test("the shaft's pulses come in groups of the tier's count, run down while it i
 });
 
 test("a lit strip is the tier's colour, brighter as the lantern opens and hottest along its middle; the lamp keeps its beat", () => {
-  const shut = light(LIGHT_LANTERN, 0, [5, BLUE, 0, packEffect(3, false, true, 9)]);
-  const open = light(LIGHT_LANTERN, 0, [5, BLUE, 1, packEffect(3, false, true, 9)]);
-  const edge = light(LIGHT_LANTERN, 0.95, [5, BLUE, 1, packEffect(3, false, true, 9)]);
+  const shut = light(LIGHT_LANTERN, 0, [5, BLUE, 0, packEffect(3, false, 9)]);
+  const open = light(LIGHT_LANTERN, 0, [5, BLUE, 1, packEffect(3, false, 9)]);
+  const edge = light(LIGHT_LANTERN, 0.95, [5, BLUE, 1, packEffect(3, false, 9)]);
   expect([sum(open) > 3 * sum(shut), sum(open) > 1.5 * sum(edge), shut[2]! > shut[0]!, edge[2]! > edge[0]!, sum(shut) > 0]).toEqual([true, true, true, true, true]);
   // The lamp: lit on a flash, dim between groups, whatever the lantern does.
-  const e = (seconds: number, power: number) => [seconds, BLUE, power, packEffect(3, false, true, 9)] as const;
+  const e = (seconds: number, power: number) => [seconds, BLUE, power, packEffect(3, false, 9)] as const;
   expect([sum(light(LIGHT_LAMP, 0, e(0.12, 0))) > 4 * sum(light(LIGHT_LAMP, 0, e(4, 0))), light(LIGHT_LAMP, 0, e(0.12, 0)), light(LIGHT_SEAM, 0, e(1, 0))]).toEqual([true, light(LIGHT_LAMP, 0, e(0.12, 1)), light(LIGHT_SEAM, 0, e(77, 1))]);
 });
 
 test("the light with no surface: nothing where it has no power, thickest through its middle, a sheath fainter than its shaft, a jet gone by its end", () => {
-  const e = (power: number, standing = true) => [3, BLUE, power, packEffect(4, true, standing, 40)] as const;
+  const e = (power: number, seconds = 3) => [seconds, BLUE, power, packEffect(4, true, 40)] as const;
   for (const row of [GLOW_SHAFT, GLOW_SHEATH, GLOW_FIGURE, GLOW_JET]) {
     expect(glow(row, 0.3, 0.8, e(0)).a).toBe(0);
     for (const facing of [0, 0.3, 0.7, 1]) for (const u of [0, 0.2, 0.5, 0.9, 3.3]) {
@@ -108,13 +108,34 @@ test("the light with no surface: nothing where it has no power, thickest through
       expect([g.a >= 0, g.a <= 0.96, g.rgb.every((c) => c >= 0 && Number.isFinite(c))]).toEqual([true, true, true]);
     }
   }
-  // Through its middle against its edge, in a dark stretch of the shaft and in a pulse.
-  const rest = (4 * PULSE_GAP + PULSE_REST / 2 + PULSE_SPEED * 3) / GLOW_METRES;
+  // Through its middle against its edge, in a stretch of the shaft the standing pulses have not reached.
+  const rest = 400 / GLOW_METRES;
   expect([glow(GLOW_SHAFT, rest, 1, e(1)).a > 3 * glow(GLOW_SHAFT, rest, 0.05, e(1)).a, glow(GLOW_SHAFT, rest, 1, e(0.5)).a]).toEqual([true, glow(GLOW_SHAFT, rest, 1, e(1)).a / 2]);
   expect(glow(GLOW_SHEATH, rest, 0.6, e(1)).a).toBeLessThan(glow(GLOW_SHAFT, rest, 0.6, e(1)).a);
   // The white heart is the shaft's alone: the sheath stays the tier's colour.
   const [shaft, sheath] = [glow(GLOW_SHAFT, rest, 1, e(1)).rgb, glow(GLOW_SHEATH, rest, 1, e(1)).rgb];
-  expect([shaft[0]! > 0.5, sheath[0]! < 0.2 * sheath[2]!]).toEqual([true, true]);
+  expect([shaft[0]! > sheath[0]! + 0.2, sheath[0]! < 0.2 * sheath[2]!, shaft[2]! > shaft[0]!]).toEqual([true, true, true]);
+  // Coming, its pulses run down it. Landed, they fade where they are while the standing set climbs from the foot:
+  // at no moment is the shaft without light, and nothing of it turns.
+  const pulseAt = (metres: number, seconds: number): number => glow(GLOW_SHAFT, metres / GLOW_METRES, 0.5, e(1, seconds)).a - glow(GLOW_SHAFT, rest, 0.5, e(1, -1000.123)).a;
+  const brightest = (seconds: number, from: number, to: number): number => {
+    let best = from;
+    for (let m = from; m < to; m += 0.05) if (glow(GLOW_SHAFT, m / GLOW_METRES, 0.5, e(1, seconds)).a > glow(GLOW_SHAFT, best / GLOW_METRES, 0.5, e(1, seconds)).a) best = m;
+    return best;
+  };
+  void pulseAt;
+  const before = brightest(-20, 200, 200 + 4 * PULSE_GAP + PULSE_REST);
+  expect(brightest(-19.5, before - 30, before + 5) - before).toBeCloseTo(-PULSE_SPEED / 2, 0);
+  // Two seconds after landing: no pulse 300 m up, where the climbing front has not come, and pulses near the foot that climb.
+  const high = (s: number): number => Math.max(...Array.from({ length: 400 }, (_, k) => glow(GLOW_SHAFT, (300 + k * 0.2) / GLOW_METRES, 0.5, e(1, s)).a));
+  const low = (s: number): number => Math.max(...Array.from({ length: 150 }, (_, k) => glow(GLOW_SHAFT, (k * 0.2) / GLOW_METRES, 0.5, e(1, s)).a));
+  const dark = glow(GLOW_SHAFT, rest, 0.5, e(1, STANDING_FULL + 1)).a;
+  expect([high(-5) > dark * 1.5, Math.abs(high(INBOUND_FADE + 0.5) - dark) < 1e-6, low(STANDING_FULL + 1) > dark * 1.5]).toEqual([true, true, true]);
+  const after = brightest(20, 100, 100 + 4 * PULSE_GAP + PULSE_REST);
+  expect(brightest(20.5, after - 5, after + 30) - after).toBeCloseTo(PULSE_SPEED / 2, 0);
+  // It fades into the sky over its last stretch, and the glow at its foot is strongest under the capsule and gone at its rim.
+  expect([glow(GLOW_SHAFT, 600 / GLOW_METRES, 1, e(1)).a, glow(GLOW_SHAFT, (600 - SHAFT_TOP / 2) / GLOW_METRES, 1, e(1)).a < glow(GLOW_SHAFT, rest, 1, e(1)).a]).toEqual([0, true]);
+  expect([glow(GLOW_FOOT, 0, 1, e(1)).a > glow(GLOW_FOOT, 0.5, 1, e(1)).a, glow(GLOW_FOOT, 1, 1, e(1)).a, glow(GLOW_FOOT, 0, 0.05, e(1)).a === glow(GLOW_FOOT, 0, 1, e(1)).a]).toEqual([true, 0, true]);
   // A jet: brightest at the bell, nothing at its end, and its bands travel outward.
   expect([glow(GLOW_JET, 0.05, 1, e(1)).a > 0.6, glow(GLOW_JET, 0.6, 1, e(1)).a < glow(GLOW_JET, 0.2, 1, e(1)).a, glow(GLOW_JET, 1, 1, e(1)).a, glow(GLOW_JET, 1.4, 1, e(1)).a]).toEqual([true, true, 0, 0]);
 });
@@ -162,7 +183,7 @@ test("a frame clears every draw's effect, and the programs that draw a drop's li
     expect([text.includes("uniform vec4 uEffect;"), text.includes("uEffect.y > 0. ? dropLight(")]).toEqual([true, true]);
   }
   // The text is the arithmetic the software renderer runs: each constant is written into it from the one it reads.
-  for (const v of [LAMP_PERIOD, LAMP_BEAT, PULSE_GAP, PULSE_REST, PULSE_SPEED, GLOW_METRES]) expect(DROP_GLSL).toContain(Number.isInteger(v) ? `${v}.0` : String(v));
+  for (const v of [LAMP_PERIOD, LAMP_BEAT, PULSE_GAP, PULSE_REST, PULSE_SPEED, GLOW_METRES, INBOUND_FADE, STANDING_FULL, 600 - SHAFT_TOP]) expect(DROP_GLSL).toContain(Number.isInteger(v) ? `${v}.0` : String(v));
 });
 
 test("a renderer sets a program's vector only when it has moved: the numbers it keeps are made the draw's as they are compared", () => {
