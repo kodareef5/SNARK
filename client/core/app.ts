@@ -18,7 +18,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { MountCameraPivot } from "./mount-camera.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
-import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
+import { MODE_FLYER, MODE_SWIM, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -46,7 +46,8 @@ import { VehiclePlacement } from "./vehicle-placement.ts";
 import { SeatedAim } from "./seated-aim.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
 import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
-import { lookAt, vehiclePrompt } from "./vehicle-prompt.ts";
+import { lookAt, riddenOf, vehiclePrompt } from "./vehicle-prompt.ts";
+import { SeatNotice, type Ridden } from "./seat-notice.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -307,7 +308,8 @@ export class App {
       this.ui.inventory.serviceResult(seq, code);
       this.builder.result(seq, code, this.nowMs);
       this.vehiclePlacement.result(seq, code, this.nowMs);
-      this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
+      // An unasked result answers the last press of the use key: on a seat it is the seat's, else the built piece's.
+      if (!this.seatNotice.result(seq, code, this.nowMs)) this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
       this.ui.emotes.result(seq, code, this.nowMs);
       if (code === RESULT_LOCKED) this.ui.hear?.("door/locked");
     };
@@ -315,6 +317,10 @@ export class App {
 
   readonly builder = new Builder();
   readonly vehiclePlacement = new VehiclePlacement();
+  /** Why the server refused the last press of the use key on a seat. */
+  readonly seatNotice = new SeatNotice();
+  /** What the prompt's look is on, as a seat would be ridden: a vehicle, a saddled creature, or null. */
+  private promptRidden: Ridden | null = null;
   /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
   page: Page | null = null;
   /** The page is on its way to another server, or has said it arrived. */
@@ -447,6 +453,7 @@ export class App {
     // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
     if (code === "KeyE") {
       if (down && !repeat) {
+        this.seatNotice.pressed(this.seatPress());
         this.useDownAt = this.nowMs;
         this.useKept = this.aimed >= 0;
       } else if (!down) {
@@ -681,8 +688,20 @@ export class App {
     return flyer;
   }
 
-  private lookHit(i: number, ox: number, oy: number, oz: number): number {
-    return lookAt(this.reg, this.remote, i, ox, oy, oz, this.aim, this.sizeOf(i));
+  /** With `use`, as the use key meets body `i`; else as a name tag does. */
+  private lookHit(i: number, ox: number, oy: number, oz: number, use = false): number {
+    return lookAt(this.reg, this.remote, i, ox, oy, oz, this.aim, this.sizeOf(i), use);
+  }
+
+  /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
+  private seatPress(): Ridden | null {
+    const s = this.session, r = this.remote;
+    if (s.driving >= 0) return riddenOf(this.reg, s.bodyKind, true);
+    if (s.own.seat > 0 && s.own.seatSlot !== 0 && s.own.seatSlot !== IMPALE_SLOT) {
+      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1) return riddenOf(this.reg, r.kind[i]!, true);
+      return "creature";
+    }
+    return this.promptRidden;
   }
 
   /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
@@ -838,6 +857,7 @@ export class App {
     const ox = s.own.x;
     const oy = s.own.y + eye;
     const oz = s.own.z;
+    this.promptRidden = null;
     if (s.own.seat > 0 && s.own.seatSlot === IMPALE_SLOT) return "Impaled: held by a Stegosaurus";
     if (s.driving >= 0) {
       const combat = this.reg.combat[s.bodyKind];
@@ -860,7 +880,7 @@ export class App {
     for (let i = 0; i < r.count; i++) {
       // What is in someone's arms is no mark for the use key, a blow or a whistle.
       if ((r.cue[i]! & CUE_HELD) !== 0) continue;
-      const t = this.lookHit(i, ox, oy, oz);
+      const t = this.lookHit(i, ox, oy, oz, true);
       if (t < best) {
         best = t;
         hit = i;
@@ -871,9 +891,13 @@ export class App {
       if (r.seatSlot[hit] !== 0) for (let j = 0; j < r.count; j++) {
         if (r.id[j] === r.seat[hit]! - 1 && r.gen[j] === r.seatGen[hit]) { hit = j; break; }
       }
-      if (this.reg.vehicle[r.kind[hit]!]) return vehiclePrompt(this.reg, r, hit, ox, oz);
+      if (this.reg.vehicle[r.kind[hit]!]) {
+        this.promptRidden = riddenOf(this.reg, r.kind[hit]!, false);
+        return vehiclePrompt(this.reg, r, hit, ox, s.own.y, oz, world.hf.waterAt(ox, oz), s.own.mode === MODE_SWIM);
+      }
       // A saddled creature of the tribe, grown and awake, is ridden: its steering seat if it is free, else a passenger's.
       const seats = this.reg.saddleSeats[r.gear[hit * GEAR_COUNT + GEAR_WORN]!];
+      if (seats) this.promptRidden = "creature";
       if (seats && s.tribe.team !== 0 && r.team[hit] === s.tribe.team && r.grown[hit] === 0 && (r.cue[hit]! & CUE_OUT) === 0) {
         const taken = (k: number): boolean => {
           for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === k + 1) return true;
@@ -1498,6 +1522,7 @@ export class App {
     }
     const menu = this.ui.structure;
     menu.tick(nowMs);
+    this.seatNotice.tick(nowMs);
     const built = alive && !b.active && !v.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
       menu.begin(this.aimed);
@@ -1519,7 +1544,7 @@ export class App {
     }
     emotes.has = (n) => this.scene!.characters.emoteKnown(n);
     if (emotes.open) this.scene!.characters.wantEmotes();
-    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built;
+    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;

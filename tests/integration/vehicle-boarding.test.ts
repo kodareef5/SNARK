@@ -5,9 +5,11 @@
 
 import { expect, test } from "bun:test";
 import type { Client } from "../../server/game.ts";
+import { App } from "../../client/core/app.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
+import { SeatNotice } from "../../client/core/seat-notice.ts";
 import { StructMenu } from "../../client/core/ui/structure.ts";
-import { lookAt, vehiclePrompt } from "../../client/core/vehicle-prompt.ts";
+import { lookAt, riddenOf, vehiclePrompt } from "../../client/core/vehicle-prompt.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { CUE_HELD } from "../../shared/anim/pose.ts";
 import { RESULT_NOT_YOURS, RESULT_OK } from "../../shared/net/protocol.ts";
@@ -24,6 +26,8 @@ import { castWorld, HIT_NONE, HIT_STRUCTURE, rayHit } from "../../shared/world/r
 import { carMeetsCapsule } from "../../shared/world/vehicle.ts";
 import { LAUNCH_BOARDING } from "../../content/vehicles/boat-art.ts";
 import { Harness } from "../fixtures/net.ts";
+import { artTest } from "../fixtures/needs-art.ts";
+import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -112,22 +116,27 @@ function prompt(h: Harness, i: number): { line: string; piece: number } {
   let best = struck === HIT_NONE ? REACH : rayHit.t, hit = -1;
   for (let j = 0; j < sample.count; j++) {
     if ((sample.cue[j]! & CUE_HELD) !== 0) continue;
-    const t = lookAt(h.reg, sample, j, ox, oy, oz, d, 1);
+    const t = lookAt(h.reg, sample, j, ox, oy, oz, d, 1, true);
     if (t < best) { best = t; hit = j; }
   }
   if (hit >= 0 && sample.seatSlot[hit] !== 0) for (let j = 0; j < sample.count; j++) if (sample.id[j] === sample.seat[hit]! - 1 && sample.gen[j] === sample.seatGen[hit]) { hit = j; break; }
-  const line = hit >= 0 && h.reg.vehicle[sample.kind[hit]!] ? vehiclePrompt(h.reg, sample, hit, ox, oz) : "";
+  const line = hit >= 0 && h.reg.vehicle[sample.kind[hit]!] ? vehiclePrompt(h.reg, sample, hit, ox, s.own.y, oz, world.hf.waterAt(ox, oz), s.own.mode === MODE_SWIM) : "";
   return { line, piece };
 }
-/** What the client shows for a result no command asked for, as client/core/app.ts routes one, the crosshair on `piece`. */
-function shown(code: number, piece: number): string {
-  const menu = new StructMenu();
+/**
+ * What the client shows for a result no command asked for, as client/core/app.ts routes one: the answer to a press of the
+ * use key on a seat of the vehicle, the crosshair on the built piece `piece`.
+ */
+function shown(code: number, piece: number, def: VehicleDefinition): string {
+  const notice = new SeatNotice(), menu = new StructMenu();
+  notice.pressed(riddenOf(reg, reg.index.get(def.id)!, false));
+  if (notice.result(0, code, 0)) return notice.notice;
   menu.result(0, code, 0, null, piece);
   return menu.notice;
 }
 /** Every unasked answer session `i` has had since `from`, as the client words it, the crosshair on `piece`. */
 function words(c: Crew, i: number, from: number, piece: number): string[] {
-  return c.seen[i]!.slice(from).filter(r => r.seq === 0).map(r => shown(r.code, piece));
+  return c.seen[i]!.slice(from).filter(r => r.seq === 0).map(r => shown(r.code, piece, c.def));
 }
 
 /** Where survivor `i` gets in: by its seat's door, half a metre out from the hull, looking at the door. */
@@ -253,12 +262,8 @@ function boxBeside(c: Crew, at: readonly number[], pin: boolean): number {
   return box;
 }
 
-/** What the test showed was wrong before this change, which the next makes right. */
-const FAILING = new Set(["belvedere", "boat", "boat_police", "boat_rescue", "bus", "helicopter", "helicopter_police", "helicopter_rescue", "jon_boat",
-  "lagoon", "manta", "meridian", "needle", "riptide", "solstice", "sovereign", "tanker", "thunderbolt"].map(n => `core:${n}`));
-const FAILING_BOATS = test.failing;
 for (const id of KINDS) {
-  (FAILING.has(id) ? test.failing : test)(`${id}: boarded from where a survivor can be, driven, and every seat left by its owner, a mate and a stranger`, () => {
+  test(`${id}: boarded from where a survivor can be, driven, and every seat left by its owner, a mate and a stranger`, () => {
     const c = crew(id), { h, def, e } = c, ents = h.world.ents, pilot = h.pilots[0]!;
     try {
       // In, one by one, each by its own way in.
@@ -299,7 +304,7 @@ for (const id of KINDS) {
 }
 
 const BOATS = KINDS.filter(id => isBoatVehicle(reg.vehicle[reg.index.get(id)!]!));
-FAILING_BOATS("every boat is left while it still makes way, into the water beside it, and nobody is told of a PIN", () => {
+test("every boat is left while it still makes way, and nobody is told of a PIN", () => {
   for (const id of BOATS) {
     const c = crew(id, 1), { h, e } = c, ents = h.world.ents, client = c.clients[0]!, pilot = h.pilots[0]!;
     try {
@@ -307,13 +312,17 @@ FAILING_BOATS("every boat is left while it still makes way, into the water besid
       put(h, client, p.at); ents.mode[client.ent] = MODE_SWIM; h.run(300);
       expect(h.host.urban.mount(client, e)).toBe(RESULT_OK); h.run(1500);
       expect(client.drive).toBe(e);
-      pilot.moveZ = 1; h.run(3000); pilot.moveZ = 0;
+      // Flat out until it makes a good walking pace: seconds for a launch, longer for the biggest yacht.
+      pilot.moveZ = 1;
+      for (let t = 0; t < 60 && Math.hypot(ents.vx[e]!, ents.vz[e]!) < 1; t++) h.run(250);
+      pilot.moveZ = 0;
       const speed = Math.hypot(ents.vx[e]!, ents.vz[e]!), from = c.seen[0]!.length;
       expect(speed).toBeGreaterThan(.55);
       press(h, 0); h.run(2500);
       expect(`${id}: ${words(c, 0, from, -1).join("; ")}`).toBe(`${id}: `);
       expect(`${id}: ${ents.seat[client.ent] === 0 ? "out" : "still aboard"}`).toBe(`${id}: out`);
-      expect(ents.mode[client.ent]).toBe(MODE_SWIM);
+      // In the water, or on the dock for a yacht that has not yet drawn clear of it.
+      expect(`${id}: ${ents.mode[client.ent] === MODE_SWIM || (ents.flags[client.ent]! & F_GROUNDED) !== 0 ? "swimming or standing" : "falling"}`).toBe(`${id}: swimming or standing`);
     } finally { h.host.shutdown(); }
   }
 });
@@ -332,6 +341,46 @@ test("on PvE a stranger is told the vehicle is not its tribe's, and nobody is to
       expect(h.host.urban.occupancy.seatOf(c.clients[i]!.pid)).toBeNull();
       expect(c.seen[i]!.slice(from).filter(r => r.seq === 0).map(r => r.code)).toEqual([RESULT_NOT_YOURS]);
       expect(words(c, i, from, -1)).toEqual(["That is not your tribe's"]);
+    } finally { h.host.shutdown(); }
+  }
+});
+
+artTest("in the whole client: the open skiff is offered from its stern, and a passenger asking to leave a hovering helicopter is told to land", () => {
+  for (const id of ["core:jon_boat", "core:helicopter"]) {
+    const h = new Harness({}, 1, 60, { dev: true, map: harbour(id) });
+    try {
+      const owner = h.join("owner"), app = new App(h.join("passenger", {}, { manual: true }), h.reg, corePack());
+      const run = (ms: number): void => h.run(ms, now => void app.frame(now, 1280, 720));
+      run(600);
+      const records = h.host.records, kind = h.reg.index.get(id)!, def = h.reg.vehicle[kind]!;
+      const e = records.entOf.get([...records.byPid.values()].find(r => r.kind === kind)!.pid)!, ents = h.world.ents;
+      const pilot = h.client(owner)!, passenger = h.client(app.session)!;
+      const c = { h, def, e, sessions: [owner, app.session], clients: [pilot, passenger], seen: [[], []] } as Crew;
+      if (isBoatVehicle(def)) {
+        // Swimming behind the skiff and looking into it, over its low transom.
+        const p = berth(c, "swimming at the stern");
+        put(h, passenger, p.at); run(600);
+        const eye = app.session.own.y + stanceEye(h.reg.move[app.session.ownKind]!, app.session.own.stance);
+        app.controls.yaw = Math.atan2(p.look[0]! - app.session.own.x, p.look[2]! - app.session.own.z);
+        app.controls.pitch = Math.atan2(p.look[1]! - eye, Math.hypot(p.look[0]! - app.session.own.x, p.look[2]! - app.session.own.z));
+        run(300);
+        expect(app.hud.prompt).toBe("E  take helm");
+        app.key("KeyE", true); run(80); app.key("KeyE", false); run(1500);
+        expect(h.host.urban.occupancy.seatOf(passenger.pid)?.seat).toBe("pilot");
+        expect(app.hud.prompt).toBe("E  exit vehicle");
+        continue;
+      }
+      for (const [client, i] of [[pilot, 0], [passenger, 1]] as const) {
+        const d = door(c, i); put(h, client, d.at); run(400);
+        expect(h.host.urban.mount(client, e)).toBe(RESULT_OK); run(1500);
+      }
+      h.pilots[0]!.buttons = BTN_JUMP; run(5000);
+      expect(ents.flags[e]! & F_GROUNDED).toBe(0);
+      expect(app.hud.prompt).toBe("E  exit passenger seat");
+      app.key("KeyE", true); run(80); app.key("KeyE", false); run(600);
+      expect(app.hud.prompt).toBe("Land first");
+      expect(h.host.urban.occupancy.seatOf(passenger.pid)?.seat).toBe("front");
+      expect(app.ui.structure.open).toBe(false);
     } finally { h.host.shutdown(); }
   }
 });
