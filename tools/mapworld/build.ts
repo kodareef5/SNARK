@@ -26,6 +26,7 @@ import { gradeTransferDecks, placeObelisks, placeRegions, placeSpawns, staticCov
 import { STATIC_LAYERS, siteOf, type StaticPiece } from "./statics.ts";
 import { SPAWN_CLEAR, isFurniture } from "./street-furniture.ts";
 import { streetGraph } from "./street-graph.ts";
+import { cornersOf } from "./corners.ts";
 import { roadFrame } from "./road-frame.ts";
 import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
@@ -67,7 +68,10 @@ export async function buildMap(named: string, release = false, output = join(ROO
   if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
   const reg = compiled.registry;
 
-  const ground = makeGround(base, world, lap);
+  // Where two streets meet the corner is rounded (corners.ts): on the ground here, and by a curb return the walks set down.
+  const returns = world.heaps === false ? vocabulary(source).street.walks?.returns : undefined;
+  const corners = returns ? cornersOf({ source, toLattice: (e, n) => [grid.east + x0 - e, n - (grid.south - z0)] }, returns) : [];
+  const ground = makeGround(base, world, lap, corners);
   // A step's own working arrays let go before the next takes its own: the ground's are some 26 full-frame arrays, the
   // ruins' their whole city's plans, and without a collection between them the next step's peak was laid on theirs.
   Bun.gc(true);

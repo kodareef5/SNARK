@@ -35,14 +35,26 @@ artTest("each walk piece is drawn where it is walked: above the ground its mesh 
   }
 });
 
-artTest("the curb return's levels each state at least the sagitta of their chord at the gutter's edge", () => {
-  const mesh = meshes.find((m) => m.id === "core:zzzcurb_r6")!;
-  const segments = [24, 16, 12, 6, 3];
-  expect(mesh.lods.length).toBe(segments.length);
-  for (let l = 1; l < segments.length; l++) {
-    const sagitta = 6.45 * (1 - Math.cos(Math.PI / 4 / segments[l]!));
-    expect([l, mesh.lods[l]!.error! >= sagitta - 1e-4, mesh.lods[l]!.error! > (mesh.lods[l - 1]!.error ?? 0)]).toEqual([l, true, true]);
+artTest("each curb return's levels state at least the sagitta of their chord at the gutter's edge, and its finest fills the content's walked parts", () => {
+  const RETURNS: Record<number, number[]> = { 4: [20, 12, 8, 4, 2], 6: [24, 16, 12, 6, 3], 8: [28, 18, 12, 6, 3] };
+  for (const [radius, segments] of Object.entries(RETURNS).map(([r, s]) => [Number(r), s] as const)) {
+    const mesh = meshes.find((m) => m.id === `core:zzzcurb_r${radius}`)!;
+    expect([radius, mesh.lods.length]).toEqual([radius, segments.length]);
+    for (let l = 1; l < segments.length; l++) {
+      const sagitta = (radius + 0.45) * (1 - Math.cos(Math.PI / 4 / segments[l]!));
+      expect([radius, l, mesh.lods[l]!.error! >= sagitta - 1e-4, mesh.lods[l]!.error! > (mesh.lods[l - 1]!.error ?? 0)]).toEqual([radius, l, true, true]);
+    }
+    // Drawn where it is walked: its finest level's top over the content's wedges to a centimetre, and as wide.
+    const def = CORE_CONTENT.find((d) => d.id === mesh.id)!;
+    const shape = CORE_CONTENT.find((d) => d.type === "shape" && def.type === "structure" && d.id === def.shape)!;
+    if (shape.type !== "shape" || def.type !== "structure") throw new Error(mesh.id);
+    const p = mesh.lods[0]!.positions;
+    let top = -Infinity; for (let v = 1; v < p.length; v += 3) top = Math.max(top, p[v]!);
+    const walked = Math.max(...shape.hulls!.flatMap((h) => h.corners.map((c) => c[1])));
+    expect([radius, Math.abs(top - walked) < 0.01]).toEqual([radius, true]);
+    for (const k of [0, 2]) {
+      let lo = Infinity, hi = -Infinity; for (let v = k; v < p.length; v += 3) { lo = Math.min(lo, p[v]!); hi = Math.max(hi, p[v]!); }
+      expect([radius, k, Math.abs(hi - def.half[k]!) < 0.015, Math.abs(lo + def.half[k]!) < 0.015]).toEqual([radius, k, true, true]);
+    }
   }
-  // A static of no content: nothing in the game sets it down yet (tools/snap/street-study.ts --rows does).
-  expect(CORE_CONTENT.some((d) => d.id === mesh.id)).toBe(false);
 });

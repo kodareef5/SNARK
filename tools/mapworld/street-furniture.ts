@@ -33,6 +33,8 @@ import { boxOf, meets, obstacleIndex, type Box } from "./ruin-obstacles.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import type { Site, StaticLayer, StaticPiece } from "./statics.ts";
 import { nodeKey, streetGraph, type Marked, type Segment } from "./street-graph.ts";
+import { cornersOf, filletIndex, returnIndex, type Corner } from "./corners.ts";
+import { CURB_RETURN, isCurbReturn } from "../../content/curbs.ts";
 
 /** A rule's kinds by their names after "core:zzstreet_", with their weights. */
 type Forms = readonly (readonly [string, number])[];
@@ -183,7 +185,7 @@ export function routeCheck(reserved: readonly Reserved[], margin: number): (b: B
   };
 }
 
-export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules: Furniture, maxChunk: number, uses: ReadonlyMap<number, string> = new Map(), reserved: readonly Reserved[] = []): { pieces: StaticPiece[]; summary: FurnitureSummary } {
+export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules: Furniture, maxChunk: number, uses: ReadonlyMap<number, string> = new Map(), reserved: readonly Reserved[] = [], rounded: readonly Corner[] = []): { pieces: StaticPiece[]; summary: FurnitureSummary } {
   const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid; const chunksX = ground.grid.sizeX / 64;
   const sample = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   const { clear } = rules; const seed = rules.seed;
@@ -214,9 +216,11 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     const b = boxOf(p); const k = binKey(Math.floor(b.x / 16), Math.floor(b.z / 16));
     if (!walkBins.has(k)) walkBins.set(k, []); walkBins.get(k)!.push(b);
   }
+  // The curb returns at the corners (corners.ts), which a piece stands on as on a walk, and the rounded corners' road.
+  const returnAt = returnIndex(placed); const fillet = filletIndex(rounded);
   /** The top of a walk at (x, z), or -Infinity where none is. */
   const walkTop = (x: number, z: number): number => {
-    let top = -Infinity;
+    let top = returnAt(x, z)?.top ?? -Infinity;
     for (let bz = Math.floor(z / 16) - 1; bz <= Math.floor(z / 16) + 1; bz++) for (let bx = Math.floor(x / 16) - 1; bx <= Math.floor(x / 16) + 1; bx++) {
       for (const b of walkBins.get(binKey(bx, bz)) ?? []) {
         const a = b.yaw / DEG; const c = Math.cos(a); const sn = Math.sin(a); const dx = x - b.x; const dz = z - b.z;
@@ -240,7 +244,18 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
    */
   const put = (rule: string, name: string, x: number, z: number, yaw: number, between = clear.between, road = clear.road): boolean => {
     const shape = PARTS.get(name); if (!shape) throw new Error(`furniture.forms names ${name}, which is no street piece`);
-    const foot = worldBox(shape.foot, x, 0, z, yaw); const corners = footprint(foot);
+    let foot = worldBox(shape.foot, x, 0, z, yaw); let corners = footprint(foot);
+    // Where a corner is rounded its kerbs' corner is road: a piece set there stands back toward the arc's centre, a third
+    // of the way in from the back of the walk round it, and none stands where the ramp at a return's middle falls.
+    const into = corners.map(([px, pz]) => fillet(px, pz)).find((c) => c !== null);
+    if (into) {
+      const dx = x - into.cx, dz = z - into.cz, l = Math.hypot(dx, dz) || 1;
+      const r = into.radius - CURB_RETURN.walk + 0.35 + Math.max(shape.foot.hi[0] - shape.foot.lo[0], shape.foot.hi[2] - shape.foot.lo[2]) / 2;
+      x = into.cx + (dx / l) * r; z = into.cz + (dz / l) * r;
+      foot = worldBox(shape.foot, x, 0, z, yaw); corners = footprint(foot);
+      if (corners.some(([px, pz]) => fillet(px, pz))) return refuse(rule, "lane");
+    }
+    if (corners.some(([px, pz]) => (returnAt(px, pz)?.drop ?? 0) > 0.03)) return refuse(rule, "crossing");
     if (corners.some(([px, pz]) => Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge)) return refuse(rule, "edge");
     if (corners.some(([px, pz]) => inLane(px, pz, road))) return refuse(rule, "lane");
     if (corners.some(([px, pz]) => graph.onCrossing(px, pz, clear.crossing))) return refuse(rule, "crossing");
@@ -251,7 +266,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     if (Math.max(...heights) - Math.min(...heights) > clear.rise) return refuse(rule, "slope");
     const y = walk > -Infinity ? Math.max(walk, Math.min(...heights)) : Math.min(...heights);
     const boxes = shape.parts.map((q) => worldBox(q, x, y, z, yaw));
-    if (boxes.some((b) => obstacles.hits(b, clear.piece, isWalk))) return refuse(rule, "piece");
+    if (boxes.some((b) => obstacles.hits(b, clear.piece, (p) => isWalk(p) || isCurbReturn(p.kind)))) return refuse(rule, "piece");
     if (onRoute({ ...foot, y: y + foot.size[1] / 2 })) return refuse(rule, "route");
     const near = new Set<Box>();
     for (const b of boxes) for (let bz = Math.floor((b.z - 12) / 16); bz <= Math.floor((b.z + 12) / 16); bz++) for (let bx = Math.floor((b.x - 12) / 16); bx <= Math.floor((b.x + 12) / 16); bx++) for (const o of mine.get(binKey(bx, bz)) ?? []) near.add(o);
@@ -971,7 +986,8 @@ export function makeFurniture(site: Site, placed: readonly StaticPiece[]): Stati
   if (!v.furniture) return [];
   // Room is left in each chunk for the obelisks and the harbours' wrecks, which come after.
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
-  const { pieces, summary } = placeFurniture(site, placed, v.furniture, v.budgets.maxChunk - 8, readUses(site.source), bridgeWays(folder));
+  const returns = v.street.walks?.returns;
+  const { pieces, summary } = placeFurniture(site, placed, v.furniture, v.budgets.maxChunk - 8, readUses(site.source), bridgeWays(folder), returns ? cornersOf(site, returns) : []);
   writeFileSync(join(folder, "furniture.json"), `${JSON.stringify({ pieces: pieces.length, ...summary }, null, 2)}\n`);
   console.log(`furniture: ${pieces.length} pieces, ${Object.entries(summary.byRule).map(([r, n]) => `${n} ${r}`).join(", ")}`);
   return pieces;
