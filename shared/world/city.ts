@@ -158,6 +158,20 @@ export function landmarkKinds(reg: Registry): Uint8Array {
   return kinds;
 }
 
+const floatingOf = new WeakMap<Registry, Uint8Array>();
+
+/**
+ * Per content index, 1 for a kind that stands in the air with nothing under it: a tide eye's collider, 270 m and more
+ * over its deck. What is made of the city as columns from the ground up, the far shadow's solid heights and the tops
+ * the map of what stands overhead lights its ground by, takes such a piece as not there, as the far feed does
+ * (tactical.ts pieceShapes): as a column it would be a tower 318 m tall where there is open air.
+ */
+export function floatingKinds(reg: Registry): Uint8Array {
+  let kinds = floatingOf.get(reg);
+  if (!kinds) floatingOf.set(reg, (kinds = Uint8Array.from(reg.defs, (def) => (def && EYE_COLLIDERS.has(def.id) ? 1 : 0))));
+  return kinds;
+}
+
 /** `steps` run to their end. */
 function finish<T>(steps: Generator<void, T>): T {
   for (let s = steps.next(); ; s = steps.next()) if (s.done) return s.value;

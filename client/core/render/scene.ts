@@ -16,7 +16,7 @@ import type { Manifest } from "../../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
-import { landmarkKinds } from "../../../shared/world/city.ts";
+import { floatingKinds, landmarkKinds } from "../../../shared/world/city.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
@@ -701,6 +701,8 @@ export class Scene {
   static late: { FarCity: typeof FarCity; CityBlocks: typeof CityBlocks; RoofMap: typeof RoofMap } | null = null;
   /** Per content index, 1 for a kind a landmark brings, which the far city leaves to the landmark's far mesh. */
   private readonly landmarkKinds: Uint8Array;
+  /** Per content index, 1 for a kind that stands in the air with nothing under it, which casts no far shadow (city.ts floatingKinds). */
+  private readonly floatingKinds: Uint8Array;
   private readonly farMesh: number;
   private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
   /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
@@ -847,6 +849,7 @@ export class Scene {
     // A landmark's definitions and meshes are in its namespace, and its definitions are the map's own (withContent).
     const landmarks = new Set([...reg.own].map((k) => reg.defs[k]!.id.split(":")[0]));
     this.landmarkKinds = landmarkKinds(reg);
+    this.floatingKinds = floatingKinds(reg);
     this.flatFlags = Uint16Array.from(this.assets.manifest.meshes, (m) => (landmarks.has(m.id.split(":")[0]) ? DRAW_PLAIN | (m.seeThrough ? DRAW_BLEND : 0) : 0));
     this.trisOfMesh = table.tris;
     this.radiusOfMesh = table.radius;
@@ -1823,7 +1826,7 @@ export class Scene {
     this.clearAt.fill(NaN, 0, 3);
     this.clearAt[3] = 0;
     this.city = new Scene.late.FarCity(source, this.world.dims, this.world.hf, this.farMesh, this.farBounds, this.landmarkKinds, before);
-    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds);
+    this.farShadow = new FarShadow(source.statics, this.world.hf, this.city, source.maker ?? null, source.complete, this.landmarkKinds, this.floatingKinds);
     this.farShadow.roof = new Scene.late.RoofMap();
     this.farShadow.roof.palette = this.groundPalette;
     this.far?.leaveTo(this.city);
