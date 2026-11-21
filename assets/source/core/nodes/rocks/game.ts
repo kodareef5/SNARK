@@ -40,7 +40,7 @@ const kinds: Def[] = rocks.map((name) => ({ type: "node", id: `rocks:${name}`, m
 const FAMILIES: Record<string, string[]> = {
   "core:rock": [1, 2, 3, 4, 5, 6].map((k) => `core:rock_${k}`),
   "core:metal_rock": [1, 2, 3].map((k) => `core:metal_rock_${k}`),
-  "core:rubble": [1, 2, 3].map((k) => `core:rubble_${k}`),
+  "core:rubble": [1, 2, 3, 4, 5, 6, 7, 8].map((k) => `core:rubble_${k}`),
 };
 const content = CORE_CONTENT.map((d) => (d.type === "node" && FAMILIES[d.id] ? ({ ...d, variants: FAMILIES[d.id]!.map((mesh) => ({ mesh })) } as Def) : d));
 const compiled = compileContent([...content, ...kinds]);

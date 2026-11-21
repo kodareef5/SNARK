@@ -9,7 +9,7 @@ import type { MaterialSpec, PiecesAsset } from "../../../../../tools/art/spec.ts
 const ROCKS = [
   ...["rock_1", "rock_2", "rock_3", "rock_4", "rock_5", "rock_6"],
   ...["metal_rock_1", "metal_rock_2", "metal_rock_3"],
-  ...["rubble_1", "rubble_2", "rubble_3"],
+  ...["rubble_1", "rubble_2", "rubble_3", "rubble_4", "rubble_5", "rubble_6", "rubble_7", "rubble_8"],
 ];
 
 /**
@@ -35,5 +35,6 @@ export default {
   materials: Object.fromEntries(ROCKS.flatMap((name) => [name, `${name}_depleted`]).map((name) => [name, baked(name)])),
   // The finest level has the pictures; the rest are flat, coloured triangle by triangle from them.
   flat: 1,
-  budgets: { triangles: [3600, 1000, 320, 100, 20, 8], texture: { top: 2048, megabytes: 280 } },
+  // 272 MB held the twelve stones in the rgba variant; the five more heaps of rubble take about 100 MB more (D908).
+  budgets: { triangles: [3600, 1000, 320, 100, 20, 8], texture: { top: 2048, megabytes: 380 } },
 } satisfies PiecesAsset;

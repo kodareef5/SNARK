@@ -205,7 +205,7 @@ ARK's names: `takes` is the structure settings' damage by type; `decayDays` is D
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted`, `footing`, `sea` | 18 |
+| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted`, `footing`, `sea`, `apart` | 18 |
 
 - **`node`** on shelf `nodes`. A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place.
 

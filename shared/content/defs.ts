@@ -766,6 +766,11 @@ export interface NodeDef extends Named {
    * node stands where it is listed.
    */
   readonly sea?: "under" | "either";
+  /**
+   * Metres within which two of its nodes in one chunk of a scattered layer are not the same variant while it has another
+   * to give (shared/world/nodes.ts placedNodes), so heaps side by side differ. Without it, each slot's own hash decides.
+   */
+  readonly apart?: number;
 }
 
 export interface EngramDef extends Named {

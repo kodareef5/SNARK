@@ -168,6 +168,56 @@ test("each node is one of its kind's variants by weight, at one of its sizes, tu
   for (const q of quarters) expect(Math.abs(q / n - 0.25)).toBeLessThan(0.02);
 });
 
+test("heaps of rubble side by side are different heaps: never one variant within 12 m of each other in a chunk, and seldom across chunks", () => {
+  // Level ground where one slot in three grows a heap, about 21 a chunk, as in the ruins' rubble zones. The same field
+  // with each slot's variant its own hash's, as before the heaps kept apart.
+  const dims = { chunksX: 8, chunksZ: 8 };
+  const flat = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
+  for (let j = 0; j < flat.nz; j++) for (let i = 0; i < flat.nx; i++) flat.setSample(i, j, 5);
+  const rubble = kind("core:rubble");
+  expect([forms.apart[rubble], forms.sums[rubble]!.length]).toEqual([12, 8]);
+  const plainReg = compileContent(CORE_CONTENT.map((d): Def => (d.type === "node" && d.id === "core:rubble" ? { ...d, apart: undefined } : d))).registry!;
+  const plainForms = nodeForms(plainReg);
+  const kept = scatterNodes(dims, flat, 5, 64, forms, () => [rubble, 0, 0]);
+  const plain = scatterNodes(dims, flat, 5, 64, plainForms, () => [plainReg.index.get("core:rubble")!, 0, 0]);
+  const [s, p] = [spot(), spot()];
+  const heaps: { chunk: number; x: number; z: number; variant: number; was: number }[] = [];
+  const used = new Array<number>(8).fill(0);
+  for (let chunk = 0; chunk < 64; chunk++) {
+    for (let i = 0; i < 64; i++) {
+      kept.at(chunk, i, s);
+      plain.at(chunk, i, p);
+      // Only the variant may differ: the place, the turn and the size are each slot's own.
+      expect([s.kind !== 0, s.x, s.z, s.yaw, forms.size[s.form]]).toEqual([p.kind !== 0, p.x, p.z, p.yaw, plainForms.size[p.form]]);
+      if (s.kind === 0) continue;
+      heaps.push({ chunk, x: s.x, z: s.z, variant: forms.variant[s.form]!, was: plainForms.variant[p.form]! });
+      used[forms.variant[s.form]!]!++;
+    }
+  }
+  let [pairs, crossing, same, sameCrossing, wasSame] = [0, 0, 0, 0, 0];
+  for (let a = 0; a < heaps.length; a++) {
+    for (let b = a + 1; b < heaps.length; b++) {
+      const [h, k] = [heaps[a]!, heaps[b]!];
+      if (Math.hypot(h.x - k.x, h.z - k.z) >= 12) continue;
+      pairs++;
+      if (h.chunk !== k.chunk) crossing++;
+      if (h.variant === k.variant) {
+        if (h.chunk === k.chunk) same++;
+        else sameCrossing++;
+      }
+      if (h.was === k.was) wasSame++;
+    }
+  }
+  expect([heaps.length > 1200, pairs > 1200, crossing > 150]).toEqual([true, true, true]);
+  // Within a chunk never; across a chunk's edge about one pair in eight, as every pair was before.
+  expect(same).toBe(0);
+  expect(sameCrossing / crossing).toBeLessThan(0.25);
+  expect(Math.abs(wasSame / pairs - 1 / 8)).toBeLessThan(0.04);
+  expect((same + sameCrossing) / pairs).toBeLessThan(0.05);
+  // Every heap still about as common as the others.
+  for (const n of used) expect(Math.abs(n / heaps.length - 1 / 8)).toBeLessThan(0.03);
+});
+
 test("a node's boxes turn and grow with its picture: what the shader draws at a place is what bodies and rays meet there", () => {
   const vreg = variantRegistry();
   const vforms = nodeForms(vreg);
