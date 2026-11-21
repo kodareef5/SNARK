@@ -108,45 +108,19 @@ footer button {
 #loading {
   margin-left: auto;
 }
-.brand,
-.wordmark,
-.opening {
+.brand, .opening {
   display: flex;
-  flex-direction: column;
-  line-height: 0.91;
   width: fit-content;
-  color: #f7fbff;
-  text-decoration: none;
+  flex-direction: column;
 }
-.brand b,
-.wordmark b,
-.opening b {
-  letter-spacing: -0.065em;
-  font-weight: 900;
+.title-emblem {
+  display: block;
+  width: clamp(130px, min(18vw, 26svh), 248px);
+  height: auto;
+  filter: drop-shadow(0 3px 9px #07101999);
 }
-.brand b {
-  font-size: 2.45rem;
-}
-.brand small,
-.wordmark small,
-.opening small {
-  text-transform: uppercase;
-  letter-spacing: 0.25em;
-  color: inherit;
-}
-.brand small {
-  font-size: 0.52rem;
-  margin: 6px 0 0 2px;
-}
-.wordmark,
-.opening {
-  font-size: clamp(96px, 10.7vw, 172px);
-  text-shadow: 0 6px 35px #04132680;
-}
-.wordmark small,
-.opening small {
-  font-size: 0.16em;
-  margin: 12px 0 0 5px;
+.brand .title-emblem {
+  width: 46px;
 }
 #world-label {
   color: #e6f1ff;
@@ -785,11 +759,9 @@ body:has(.opening) main {
     justify-content: space-between;
     padding: 0 0 0.5rem;
   }
-  .home .wordmark { font-size: clamp(60px, 17vw, 88px); }
+  .home .title-emblem { width: clamp(104px, 31vw, 155px); }
   .home-actions { margin-top: auto; }
-  .brand b {
-    font-size: 2rem;
-  }
+  .brand .title-emblem { width: 36px; }
   h1 {
     font-size: 38px;
     margin-bottom: 16px;
@@ -838,6 +810,97 @@ body:has(.opening) main {
   .sliders {
     gap: 5px 15px;
   }
+}
+/* The foreground is a normal scrolling document over the viewport-fixed scenery. */
+.entry-shell { display: contents; }
+body:has(.home, .opening) {
+  --notes-width: 27vw;
+  --notes-inset: 3vw;
+  --notes-peek: clamp(4.8rem, 9svh, 6rem);
+  --title-height: calc(100svh - env(safe-area-inset-top, 0px));
+}
+body:has(.home, .opening) .entry-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: var(--title-height);
+}
+body:has(.opening) main { justify-content: flex-start; }
+body:has(.home, .opening) footer {
+  margin-inline-end: calc(var(--notes-width) + var(--notes-inset));
+  justify-content: flex-start;
+}
+@media (min-width: 761px) and (any-pointer: fine) {
+  body:has(.home, .opening) .entry-shell {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    margin-inline-end: calc(var(--notes-width) + var(--notes-inset));
+  }
+  body:has(.home, .opening) footer { margin-inline-end: 0; }
+}
+body:has(.home, .opening) footer :is(#loading, #scene-loading):empty { display: none; }
+#title-changelog, .release-link { display: none; }
+body:has(.home, .opening) .release-link { display: inline; }
+body:has(.home, .opening) #title-changelog:not([hidden]) {
+  display: block;
+  width: var(--notes-width);
+  align-self: end;
+  margin-inline-end: var(--notes-inset);
+  margin-top: calc(-1 * var(--notes-peek));
+  /* At the end of the page the last line can sit just below the top of the picture. */
+  padding-bottom: calc(100dvh - 3rem);
+  color: #faf4e9;
+  text-shadow: 0 1px 4px rgb(12 9 14 / 85%);
+}
+#release-heading {
+  margin: 0 0 0.25rem;
+  color: #c3e9e5;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+#title-changelog section + section { margin-top: 1.6rem; }
+#title-changelog h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0;
+  color: #ffe3b9;
+  font-size: 1.25rem;
+  line-height: 1.2;
+}
+#title-changelog time {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #d9e0df;
+}
+#title-changelog h4 {
+  font-size: 0.95rem;
+  line-height: 1.2;
+  margin: 0.4rem 0 0.1rem;
+}
+#title-changelog ul {
+  margin: 0;
+  padding-inline-start: 1.1rem;
+  font-size: 0.95rem;
+  line-height: 1.32;
+}
+#title-changelog li + li { margin-top: 0.12rem; }
+@media (max-width: 680px) and (orientation: portrait) {
+  body:has(.home, .opening) { --notes-width: min(82vw, 24rem); --notes-inset: 18px; }
+  body:has(.home, .opening) .entry-shell { min-height: calc(var(--title-height) - var(--notes-peek)); }
+  body:has(.home, .opening) #title-changelog:not([hidden]) { margin-top: 0; }
+  body:has(.home, .opening) footer { margin-inline-end: 0; gap: 0.55rem; }
+  body:has(.home, .opening) header { min-height: 0; padding-block: 3px; }
+  body:has(.home, .opening) header .brand { display: none; }
+  .home-actions { width: min(100%, max(14rem, 64vw)); margin-top: auto; }
+  .home > p { margin-block: 0.4rem 0; }
+}
+@media (orientation: landscape) and (max-height: 540px) {
+  body:has(.home, .opening) header { min-height: 0; padding-block: 3px; }
+  body:has(.home, .opening) header .brand { display: none; }
+  .home { padding: 0; }
+  .home .title-emblem, .opening .title-emblem { width: clamp(65px, 24svh, 120px); }
+  .home-actions { margin-top: 0.5rem; }
 }
 @media (max-width: 360px) {
   .panel,
