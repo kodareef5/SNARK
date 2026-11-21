@@ -242,7 +242,7 @@ new Sheet(SERVER_ROWS, "session", "Admin and session")
 new Sheet(SERVER_ROWS, "gamesession", "Admin and session").i("MaxPlayers", 70, "The most survivors at once.", live({ min: 1, max: 1000 }));
 
 new Sheet(SERVER_ROWS, "motd", "Admin and session")
-  .t("Message", "", "Said to each survivor who joins. \\n begins a new line.", live())
+  .t("Message", "Welcome to SNARK. Press Enter to chat.", "Said to each survivor who joins, in the chat box, which shows for as long. \\n begins a new line.", live())
   .i("Duration", 20, "Seconds it is shown.", live({ client: true }));
 
 new Sheet(SERVER_ROWS, "map", "Other")

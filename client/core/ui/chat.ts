@@ -145,6 +145,14 @@ export class ChatState {
       f.add(KEY_CHAT_PANEL, K_PANEL, x0 - 4, bottom - h + 4, w + 8, h, S_CHAT_PANEL);
     }
     let y = rowsBottom - shown * lh;
+    // Shut, the box stands behind its lines while the server's welcome is among them, and fades with it: a survivor who
+    // has just joined sees where chat is.
+    let welcome = 0;
+    for (let k = 0; k < shown && !this.open; k++) {
+      const row = this.rows[live[k]!]!;
+      if (row.channel === TEXT_MOTD) welcome = Math.max(welcome, Math.min(1, (row.hold - (now - row.at)) / FADE_TICKS));
+    }
+    if (welcome > 0) f.add(KEY_CHAT_PANEL, K_PANEL, x0 - 4, y - 4, w + 8, shown * lh + 8, S_CHAT_PANEL).alpha = welcome;
     for (let k = 0; k < shown; k++) {
       const row = this.rows[live[k]!]!;
       const n = f.text(KEY_CHAT_ROW + k, x0, y, w - 8, ROW_STYLE[row.channel] ?? S_CHAT, row.text);

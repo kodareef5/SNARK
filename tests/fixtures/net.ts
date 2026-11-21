@@ -65,8 +65,9 @@ const FORCED = forcedLink(process.env.SNARK_NET ?? "");
  * What a server gives every survivor unless its host says not: the menu's Creative entry with the admin role for all (D956),
  * and the Meridian set at every spawn (D957). The tests of everything else were written for a survivor with neither, so a
  * Harness leaves both out: each of these settings its rules still hold at the default is put as here. `asShipped` keeps them.
+ * The welcome said to each who joins is left out the same way: the tests count the lines a survivor is sent.
  */
-const PLAIN: readonly (readonly [name: string, value: boolean])[] = [["bShowCreativeMode", false], ["CreativeForAll", false], ["bDisableDefaultMapItemSets", true]];
+const PLAIN: readonly (readonly [name: string, value: boolean | string])[] = [["bShowCreativeMode", false], ["CreativeForAll", false], ["bDisableDefaultMapItemSets", true], ["Message", ""]];
 const SHIPPED = new WeakSet<Rules>();
 
 /** Rules a Harness leaves as the server ships them: everyone's cheats and the suit at spawn on. */

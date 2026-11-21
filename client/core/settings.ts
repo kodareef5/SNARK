@@ -63,9 +63,11 @@ export class Settings {
   minimap = true;
   /** The heading tape at the top of the screen. */
   compass = true;
-  diagnostics = false;
+  /** The view a survivor rises in: from behind, or from the eye. V changes it, and it is kept. */
+  thirdPerson = true;
+  diagnostics = true;
   /** Diagnostics' third value: the readout and under it the resource monitor (ui/monitor.ts). F3 and the console's `monitor` turn it on and off. */
-  monitor = false;
+  monitor = true;
   /** Whether the readout was on before F3 turned the monitor on, so that F3 again leaves it as it was. Not saved. */
   numbersBefore = false;
   vitalLabels = false;
@@ -106,7 +108,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "diagnostics", "monitor", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "monitor", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;

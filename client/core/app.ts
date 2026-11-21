@@ -254,6 +254,8 @@ export class App {
   private eye = -1;
   private helicopterViewHost = -1;
   private readonly aim = [0, 0, 0];
+  /** Whether the session had a living body last frame, to know the frame it rises. */
+  private wasAlive = false;
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
   /** The session's registry. It is content as written until the welcome, then as the server tuned it. */
@@ -538,7 +540,7 @@ export class App {
       return true;
     }
     if (code === "KeyV") {
-      if (down && !repeat && this.session.thirdPerson) this.view.thirdPerson = !this.view.thirdPerson;
+      if (down && !repeat && this.session.thirdPerson) { this.ui.settings.thirdPerson = this.view.thirdPerson = !this.view.thirdPerson; this.ui.settings.changed(); }
       return true;
     }
     // Arms round a creature do not lie down with it.
@@ -1238,6 +1240,9 @@ export class App {
     this.orbitFree = alive && session.thirdPerson && subject !== -1;
     if (!this.orbitFree) this.orbit.set(false);
     if (!alive || car || (session.driving < 0 && (!chase || passengerFullAttitude))) this.mountCamera.reset();
+    // A survivor rises in the view it last chose: from behind, unless it chose the eye (Settings.thirdPerson).
+    if (alive && !this.wasAlive) this.view.thirdPerson = this.ui.settings.thirdPerson;
+    this.wasAlive = alive;
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.
