@@ -158,6 +158,17 @@ if (import.meta.main) {
     must("it landed", session.own.grounded && session.own.glide === 0);
     must("unhurt", session.vitals.at(V_HEALTH, session.serverTick) === hp);
     must(`the prediction agreed throughout (${session.stats.corrections - corrections} corrections)`, session.stats.corrections === corrections);
+    // Chosen on the hotbar, it is in the hand, folded and tied.
+    const rec = h.host.records.byPid.get(h.client(session)!.pid)!, inv = h.host.items.inv(rec);
+    const slot = inv.item.indexOf(reg.index.get("core:frond_glider")!);
+    must("it is still carried, and worn by its flight", slot >= 0 && inv.dur[slot]! < 100 && inv.dur[slot]! > 80);
+    h.host.items.move(rec, slot, rec, inv.hotbar, 0);
+    run(200);
+    tap("Digit1");
+    tap("KeyV");
+    app.controls.pitch = -0.2;
+    run(900);
+    shoot("in-hand", "chosen on the hotbar: the glider folded and tied, in the hand");
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ generated: new Date().toISOString(), pipeline: "Harness server, App with its own keys, streamed pack, Rasterizer", tier, modelled, size: [width, height], shots }, null, 2));
     console.log(`${out}: ${shots.length} pictures of one glide${modelled ? "" : " (the stand-in wings: build core:frond-glider for the modelled ones)"}`);
   } finally {
