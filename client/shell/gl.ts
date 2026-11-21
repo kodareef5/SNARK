@@ -41,7 +41,7 @@ interface Program {
 
 /** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, spokeCrown: 39, swap: 40, extent: 41 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -655,7 +655,7 @@ export class GlRenderer {
     const gl = this.gl, at = prog.at, last = prog.last;
     const wheels = p.drawWheelBones[d]!, rig = this.meshes[p.drawMesh[d]!]!.rig ?? -1;
     this.uniform(prog, U.streetMaterial, p.drawStreetMaterial[d]!);
-    this.uniform(prog, U.spokeCrown, p.drawSpokeCrown[d]!);
+    this.uniform(prog, U.optics, p.drawOptics[d]!);
     if (wheels && at[U.wheelCenters] && last[U.wheelCenters] !== rig) {
       gl.uniform3fv(at[U.wheelCenters]!, this.wheelCenters[rig]!);
       last[U.wheelCenters] = rig;

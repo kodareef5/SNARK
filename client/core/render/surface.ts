@@ -15,6 +15,7 @@ import { ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street
 import { EYE_GLINT_GLSL } from "./tide-eye.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import { VEHICLE_SHADE_GLSL, VEHICLE_SHADE_UNIFORMS } from "./vehicle-shade.ts";
+import { VEHICLE_GLASS_GLSL } from "./vehicle-glass.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
@@ -673,6 +674,17 @@ vec3 skyFrom(vec3 r) {
 `;
 
 /**
+ * In a cut-out draw, a texel of a pane of a vehicle's glass (vehicle-glass.ts) covers half the pixel. `reflected` is what
+ * the glass sends back of the light by the angle it is seen at, and -1 off a pane.
+ */
+const GLASS_COVER = `  float reflected = -1.0;
+  if (uOptics > 1.5 && vWheel.w < 0.5 && cover > 0.0 && glassAt((int(uOptics) >> 1) & 63, vUv, vWheel.z)) {
+    reflected = glassReflected(dot(normalize(vNormal), v));
+    cover = glassCovers();
+  }
+`;
+
+/**
  * The fragment text for a variant of the textures: `astc` keeps a normal's x in the colour channels and its y in
  * alpha, the others keep them in red and green. The base colour is an sRGB texture, so it is sampled as light, and
  * every texture repeats, since a material may run along a mesh more than once. `uCutoff` is the material's for a
@@ -700,9 +712,9 @@ uniform float uCutoff, uSheet, uSkin, uEmissive;
 flat in float vFinishSeed;
 in vec3 vWheelPoint;
 in vec4 vWheel;
-uniform float uStreetMaterial, uSpokeCrown;
+uniform float uStreetMaterial, uOptics;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -716,7 +728,8 @@ ${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetM
   vec4 base = texture(uBase, vUv);
 ${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2, vUv).rgb;\n" : ""}  vec3 mro = texture(uMro, vUv).rgb;
   vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
-${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n  if (cover == 0.0) discard;\n" : "  float cover = 1.0;\n"}  vec3 v = -normalize(vRel);
+  vec3 v = -normalize(vRel);
+${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n" + GLASS_COVER + "  if (cover == 0.0) discard;\n" : "  float cover = 1.0, reflected = -1.0;\n"}
   vec3 n = bumped(bump);
   vec3 face = normalize(gl_FrontFacing ? vNormal : -vNormal);
   float shade = sunShadow(vRel, sunward(face, uSheet));
@@ -758,7 +771,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
       // The compact's five flat castings are 44 mm wide on a 300 mm wheel.
       // Curve the specular normal across each face between the authored bevels.
       float r = radial;
-      if (uSpokeCrown > 0.5 && r > 0.18 && r < 0.64) {
+      if (mod(uOptics, 2.0) > 0.5 && r > 0.18 && r < 0.64) {
         float phase = 5.0*atan(vWheelPoint.z,vWheelPoint.y);
         float across = clamp(sin(phase)*r/0.3667,-1.0,1.0);
         float ends = smoothstep(0.18,0.25,r)*(1.0-smoothstep(0.57,0.64,r));
@@ -838,6 +851,8 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   if (specularLayer > 0.0) {
     radiance += specularLayer*keyShade(shade).x*direct(fSun.xyz,fSunColor.rgb,vec3(0.065),1.0,coatA2,coatNormal,v,max(0.001,1.0-edge));
   }
+  // A pane's half shows the glass as lit, and the mirror by what the glass sends back over the half it covers.
+  if (reflected >= 0.0) radiance = mix(radiance,mirror*open,min(1.0,2.0*reflected));
   o = vec4(shown(radiance + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
 }`;
 }

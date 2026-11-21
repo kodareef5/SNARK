@@ -4,6 +4,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
+import { glassAt, glassCovers, glassReflected, opticsGlass } from "../../client/core/render/vehicle-glass.ts";
 import { ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
 import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireRelief, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
@@ -26,7 +27,7 @@ import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyope
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
@@ -81,6 +82,8 @@ interface Surfaced {
   seed: number;
   wheelBones: number;
   spokeCrown: boolean;
+  /** The material's glass set (vehicle-glass.ts), 0 for none. */
+  glass: number;
   weather: number;
   firstBone: number;
   positions: Float32Array;
@@ -1461,7 +1464,7 @@ export class Rasterizer {
     const mesh = (this.manifest ?? this.pack.header).meshes[p.drawMesh[d]!]!;
     const rig = this.pack.header.rigs?.[mesh.rig ?? -1];
     const wheels = p.drawWheelBones[d]!, finish = p.drawStreetMaterial[d]!;
-    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: p.drawSpokeCrown[d] === 1, firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half };
+    const s: Surfaced = { weather: (finish - Math.floor(finish))*4, spokeCrown: (p.drawOptics[d]! & 1) === 1, glass: opticsGlass(p.drawOptics[d]!), firstBone: 0, positions: lod.positions, rest: rig?.rest, wheelBones: skinMode(flags,surface.skin !== undefined) === 1 ? wheels : 0, label: Math.floor(finish), seed: 0, maps, layer, level: level / LAYER_LEVELS, wear, box, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, sheet: material.sheet ?? 0, emissive: materialEmission(material, lampsOn(p.frame), p.frame[FRAME.exposure]!), twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents, normals: surface.normals, center, half };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1797,7 +1800,7 @@ export class Rasterizer {
       src[o + 11] = s.tangents[v * 4 + 3]!;
       for (let i = 0; i < 3; i++) src[o + 12 + i] = s.box ? s.box[v * 3 + i]! : 0;
       if (s.weather || s.wheelBones) for (let i = 0; i < 3; i++) src[o+15+i] = s.positions[v*3+i]!;
-      for (let i = 0; i < 3; i++) src[o+18+i] = s.wheelBones ? s.normals[v*3+i]! : 0;
+      for (let i = 0; i < 3; i++) src[o+18+i] = s.wheelBones || s.glass ? s.normals[v*3+i]! : 0;
       if (bone && bone <= 32 && (s.wheelBones & (1 << (bone-1)))) {
         const at = (bone-1)*3, radius = Math.max(0.12, s.rest![at+1]!);
         for (let i = 0; i < 3; i++) src[o+15+i] = (s.positions[v*3+i]! - s.rest![at+i]!) / radius;
@@ -1879,6 +1882,15 @@ export class Rasterizer {
           const spread = Math.log2(Math.max(Math.hypot(ux, vx), Math.hypot(uy, vy)));
           sample(s.maps[0]!, u, v, spread, base);
           if (base[3]! < s.cutoff) continue;
+          // A pane of a vehicle's glass keeps every other pixel (vehicle-glass.ts), as a frame without samples has it;
+          // where the frame has them the GPU's pane covers half of every pixel's, so its pixels are marked half covered.
+          const glass = s.glass > 0 && !wheel && glassAt(s.glass, u, v, carried[20]!);
+          let glassBack = 0;
+          if (glass) {
+            if (glassCovers(false, px, H - 1 - py) === 0) continue;
+            const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!), n = Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
+            glassBack = glassReflected(-(carried[0]!*carriedNormal[0]! + carried[1]!*carriedNormal[1]! + carried[2]!*carriedNormal[2]!) / Math.max(1e-10, dist*n), p.frame[FRAME.streetLook]!);
+          }
           this.fragments++;
           if (s.label !== LENS) {
             this.depth[at] = z;
@@ -1887,7 +1899,7 @@ export class Rasterizer {
             this.pickId[at] = pickId;
             this.pickBone[at] = bone;
             this.pickDraw[at] = this.drawing;
-            this.cover[at] = s.cutoff > 0 ? covered(s.maps[0]!, base[3]!, s.cutoff, u, v, ux, vx, uy, vy, spread) : 1;
+            this.cover[at] = glass && p.frame[GLASS_AT]! > 0.5 ? 0.5 : s.cutoff > 0 ? covered(s.maps[0]!, base[3]!, s.cutoff, u, v, ux, vx, uy, vy, spread) : 1;
           }
           sample(s.maps[1]!, u, v, spread, bump);
           sample(s.maps[2]!, u, v, spread, mro);
@@ -2047,6 +2059,7 @@ export class Rasterizer {
             direct(light, p.frame, FRAME.sun, FRAME.sunColor, coatingF0, 1, 0.00104976 + Math.min(0.024, 0.16*variance),
               opticalNormal, eye, Math.max(0.001, 1-edge), specularLayer);
           }
+          if (glass) for (let c = 0; c < 3; c++) light[c] = light[c]! + (mirrored[c]!*open - light[c]!)*Math.min(1, 2*glassBack);
           through(light, albedo, mro, normal, p.frame, s.sheet);
           bounce.fill(1);
           if (s.emissive) for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * s.emissive;

@@ -383,7 +383,12 @@ export const CAST_AT = ROOF_AT + 4;
  * faces out over the road along the ground, x and z.
  */
 export const LAMP_AT = CAST_AT + 4;
-export const FRAME_FLOATS = LAMP_AT + 28;
+/**
+ * fGlass: 1 where the frame's opaque pass has samples for a vehicle's glass to cover a share of (vehicle-glass.ts), 0
+ * where it is drawn without, as a supersampled light target is.
+ */
+export const GLASS_AT = LAMP_AT + 28;
+export const FRAME_FLOATS = GLASS_AT + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -397,7 +402,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterPaths[${MAX_WATER_MARKS}];
   highp vec4 fRoof, fCast, fLamp, fLampColor;
   highp mat4 fLampShadow;
-  highp vec4 fLampWay;
+  highp vec4 fLampWay, fGlass;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -573,7 +578,8 @@ export class FramePacket {
   /** Optical finish and wheel data for textured draws. Flat draws use their declared fixture, or -1 for a packed vertex label. */
   readonly drawStreetMaterial = new Float32Array(MAX_DRAWS);
   readonly drawWheelBones = new Uint32Array(MAX_DRAWS);
-  readonly drawSpokeCrown = new Uint8Array(MAX_DRAWS);
+  /** 1 for a wheel's crowned spokes, plus twice its material's glass set, and OPTICS_CUT where cut out for it alone (vehicle-glass.ts). */
+  readonly drawOptics = new Uint8Array(MAX_DRAWS);
   readonly drawFixture = new Int8Array(MAX_DRAWS);
   /** For a DRAW_TEXTURED draw: the manifest's material, and the run of indices it covers. */
   readonly drawMaterial = new Uint16Array(MAX_DRAWS);

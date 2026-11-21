@@ -322,7 +322,7 @@ const DRAW_KINDS: readonly DrawKind[] = [
 ];
 const NONE_OF_THEM = DRAW_DETAILS | DRAW_WATER | DRAW_BLEND | DRAW_NEAR;
 /** A draw's and a caster's rows in a packet, but for their offsets and instances. */
-const DRAW_ROWS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount", "drawPass", "drawFade", "drawHand", "drawLayer", "drawWear", "drawStreetMaterial", "drawWheelBones", "drawSpokeCrown", "drawFixture"] as const;
+const DRAW_ROWS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount", "drawPass", "drawFade", "drawHand", "drawLayer", "drawWear", "drawStreetMaterial", "drawWheelBones", "drawOptics", "drawFixture"] as const;
 const CASTER_ROWS = ["casterMesh", "casterLod", "casterSlot", "casterBuffer", "casterFirst", "casterFlags", "casterMaterial", "casterFirstIndex", "casterIndexCount"] as const;
 
 /** The finish of the probe's walls (linked's vSurface, concrete) and the default city's dials, which LIT's finishes read. */
