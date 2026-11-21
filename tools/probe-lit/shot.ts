@@ -1,7 +1,7 @@
 // What a check of the lit probe (tools/probe-lit.ts) makes and is given back: shots of frames as core built them, and
 // the pixels the page read of them.
 
-import { ATLAS_WIDTH, BONE_FLOATS, DETAIL_FLOATS, MAX_CASTERS, MAX_DRAWS, MAX_TILES, type FramePacket } from "../../client/core/render/packet.ts";
+import { ATLAS_WIDTH, BONE_FLOATS, DETAIL_FLOATS, LAMP_AT, MAX_CASTERS, MAX_DRAWS, MAX_TILES, type FramePacket } from "../../client/core/render/packet.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -125,14 +125,15 @@ export class Shot {
     const arrays: Frame["arrays"] = [];
     for (const [name, value] of Object.entries(p)) {
       if (typeof value === "number" || typeof value === "boolean") scalars[name] = value;
-      // The cascades' arrays are views of the frame block, which goes whole.
+      // The cascades' arrays are views of the frame block, which goes whole: without shadows, its street lamp lights
+      // with no shadow map, as the rasterizer has it.
       else if (ArrayBuffer.isView(value) && (value.buffer !== p.frame.buffer || value === p.frame)) {
-        const a = value as Uint8Array;
+        const a = (value === p.frame && !this.shadows ? p.frame.slice().fill(-1, LAMP_AT + 7, LAMP_AT + 8) : value) as Uint8Array;
         const n = used(p, name, a.length);
         arrays.push([name, out.add(a.subarray(0, n)), n]);
       }
     }
-    if (!this.shadows) scalars.cascadeCount = 0;
+    if (!this.shadows) scalars.cascadeCount = scalars.cascadesDrawn = 0;
     const image = (img: FramePacket["street"]): Frame["street"] => {
       if (!img) return null;
       let saved = this.images.get(img);

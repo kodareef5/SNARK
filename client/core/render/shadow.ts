@@ -126,8 +126,13 @@ export function casterLevel(errors: readonly number[], blur: number, held: numbe
 export class Cascades {
   /** Cascades fitted this frame. 0 while the sun casts nothing, and then every mask is 0. */
   count = 0;
-  /** Bit i: cascade i is drawn this frame. A cascade not drawn keeps its map and its square from the frame it was. */
+  /**
+   * Bit i: cascade i is drawn this frame. A cascade not drawn keeps its map and its square from the frame it was. Bit
+   * MAX_CASCADES is the street lamp's map (lamp.ts LAMP_BIT), which the scene sets, with its texel in metres at the
+   * ground under it in `lampTexel`, 0 while no lamp casts: its casters are levelled as a cascade's are (`fits`, `entries`).
+   */
   drawn = 0;
+  lampTexel = 0;
   /** View depths of the slices, count + 1 of them. */
   readonly splits = new Float64Array(MAX_CASCADES + 1);
   /** The light space's axes, as lightBasis gives them. */
@@ -241,13 +246,15 @@ export class Cascades {
   clear(): void {
     this.count = 0;
     this.drawn = 0;
+    this.lampTexel = 0;
     this.half.fill(0);
   }
 
-  /** The cascades drawn this frame whose texels are fine enough for a caster of this radius. */
+  /** The cascades drawn this frame, and the lamp's map, whose texels are fine enough for a caster of this radius. */
   fits(radius: number): number {
     let bits = 0;
     for (let i = 0; i < this.count; i++) if (radius >= SMALLEST_CASTER * this.texel[i]!) bits |= 1 << i;
+    if (this.lampTexel > 0 && radius >= SMALLEST_CASTER * this.lampTexel) bits |= 1 << MAX_CASCADES;
     return bits & this.drawn;
   }
 
@@ -287,10 +294,11 @@ export class Cascades {
    */
   entries(mask: number, errors: readonly number[], held: number, out: Uint8Array, scale = 1): number {
     let n = 0;
-    for (let i = 0; i < this.count; i++) {
+    for (let i = 0; i <= MAX_CASCADES; i++) {
       const bit = 1 << i;
-      if ((mask & bit) === 0) continue;
-      const level = casterLevel(errors, (this.texel[i]! * this.blur) / scale, held);
+      if ((mask & bit) === 0 || (i >= this.count && i < MAX_CASCADES)) continue;
+      // The lamp's map is filtered by two taps an axis (shadowtext.ts `lampFilter`).
+      const level = casterLevel(errors, i < MAX_CASCADES ? (this.texel[i]! * this.blur) / scale : (this.lampTexel * 2) / scale, held);
       if (level < 0) continue;
       let k = 0;
       while (k < n && out[k * 2] !== level) k++;

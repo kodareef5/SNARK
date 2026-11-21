@@ -376,7 +376,13 @@ export const ROOF_AT = WATER_PATHS + 4 * MAX_WATER_MARKS;
  * cascades at a time, and whichever owns them takes their shade (surface.ts `keyShade`).
  */
 export const CAST_AT = ROOF_AT + 4;
-export const FRAME_FLOATS = CAST_AT + 4;
+/**
+ * fLamp, fLampColor and fLampShadow: the street lamp that lights as a light this frame (lamp.ts), its lens
+ * camera-relative and the range of its light (0 for no lamp), its light a metre off and the layer of the shadow array
+ * its map is in (-1 for none), and the matrix from camera-relative space to its map's clip space.
+ */
+export const LAMP_AT = CAST_AT + 4;
+export const FRAME_FLOATS = LAMP_AT + 24;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -388,7 +394,8 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fReflection, fPreviousReflection, fStreetLook;
   highp vec4 fTireContacts[${MAX_TIRE_CONTACTS}];
   highp vec4 fEffects, fWaterBounds, fWaterMarks[${MAX_WATER_MARKS * 2}], fWaterPaths[${MAX_WATER_MARKS}];
-  highp vec4 fRoof, fCast;
+  highp vec4 fRoof, fCast, fLamp, fLampColor;
+  highp mat4 fLampShadow;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -484,10 +491,12 @@ export class FramePacket {
   readonly spheres = this.frame.subarray(FRAME.spheres, FRAME.spheres + MAX_CASCADES * 4);
   readonly cascades = this.frame.subarray(FRAME.cascades, FRAME.cascades + MAX_CASCADES * 16);
   /**
-   * Which cascades' maps are drawn this frame, a bit each. Any other keeps the map it has, and its matrix stays the one
-   * that map was drawn with, moved with the camera.
+   * Which cascades' maps are drawn this frame, a bit each, and the street lamp's (lamp.ts LAMP_BIT). Any other keeps the
+   * map it has, and its matrix stays the one that map was drawn with, moved with the camera.
    */
   cascadesDrawn = 0;
+  /** The matrices the maps are drawn with, 16 floats each by their bits in `cascadesDrawn`: each cascade's, then the lamp's. */
+  readonly maps = new Float32Array((MAX_CASCADES + 1) * 16);
   /**
    * Rows of the far shadow's map (farshadow.ts) to put in the shadow array's layer after the cascades' before they are
    * drawn: `farRows` of its layer's side from row `farRow`, none while it is empty. The scene owns the map.

@@ -207,8 +207,8 @@ const OWN = 1;
 const CASTS = 2;
 /** One the frame had no draw left for, counted dropped. */
 const NONE = 3;
-/** Cascade masks an instance may have: a bit each for up to four. */
-const MASKS = 16;
+/** Cascade masks an instance may have: a bit each for up to four, and one for the street lamp's map (lamp.ts LAMP_BIT). */
+const MASKS = 32;
 
 /**
  * A body's gait, the frame it was last drawn in and the frame its gait last moved, a survivor's look with the bone scales

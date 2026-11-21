@@ -77,7 +77,7 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
       // The ground's asphalt and sand wear where the finishes are read in full (world-surfaces.ts roadWorn).
       const road = name === "terrain" && tier.finish === "full" ? "#define WORLD_ROAD\n" : "";
       const street = name === "flat" || name === "seeThrough" ? "#define STREET_FINISH\n#define STREET\n" : name === "surface" ? "#define STREET\n" : "";
-      expect(p.defines).toBe(`${road}${street}${relief}${slant}${weather}${facades}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n${tier.contact ? "#define CONTACT\n" : ""}${tier.roofs ? "#define ROOF\n" : ""}`);
+      expect(p.defines).toBe(`${road}${street}${relief}${slant}${weather}${facades}#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.sqrt(taps)}\n#define SHADOW_SIZE ${size}.0\n${tier.shadows.lamp ? "#define LAMP\n" : ""}${tier.contact ? "#define CONTACT\n" : ""}${tier.roofs ? "#define ROOF\n" : ""}`);
       expect(p.samplers.uShadow).toBe(UNIT.shadow);
       expect(PROGRAMS[name]!(tier, "rgba", true).defines).toContain(`${size}.0\n#define SHADOW_HARD\n`);
       // One cascade fewer, none, or shadows turned off: the lookup stops at the frame's cascades, and nothing is compiled again.
@@ -95,8 +95,8 @@ test("the lit tiers look the sun's shadow up as their tier says, with the same t
   expect(PROGRAMS.depthTerrainWindow!(tierOf("medium"), "rgba").samplers.uHeight).toBe(UNIT.windowHeights);
 });
 
-test("a tier's maps are a 16-bit layer a cascade and the far map's, 24, 32 and 40 MB, and come off the card's budget on the lit tiers", () => {
-  expect(TIERS.map((t) => shadowBytes(t.shadows) / 2 ** 20)).toEqual([0, 24, 32, 40]);
+test("a tier's maps are a 16-bit layer a cascade, the far map's and on high and ultra the street lamp's, 24, 40 and 48 MB, and come off the card's budget on the lit tiers", () => {
+  expect(TIERS.map((t) => shadowBytes(t.shadows) / 2 ** 20)).toEqual([0, 24, 40, 48]);
   const reg = compileContent(CORE_CONTENT).registry!;
   const dims = { chunksX: 1, chunksZ: 1 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);

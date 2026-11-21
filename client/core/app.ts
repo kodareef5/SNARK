@@ -1493,8 +1493,9 @@ export class App {
     // The street lamps' light and the wires between the poles, which a bench turns off every other frame (`?ab=lamps`, `wires`).
     this.scene.streetLamps.on = !off.has("lamps");
     this.scene.streetWires.on = !off.has("wires");
-    // The moon's shadows by night, which a bench turns off every other frame (`?ab=moon`).
+    // The moon's shadows by night and the street lamp that lights as a light, which a bench turns off every other frame (`?ab=moon`, `lamp`).
     this.scene.moonShadows = !off.has("moon");
+    this.scene.streetLamps.light = !off.has("lamp");
     // Damage numbers are drawn with the world, where the server's rule and the reader's setting let them.
     this.scene.damage.enabled = session.damageNumbers && this.ui.settings.damageNumbers;
     const packet = this.scene.build(cam, this.remote);

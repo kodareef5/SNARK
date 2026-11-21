@@ -1,48 +1,70 @@
 // bun tools/snap/night-study.ts <miami.snmap> <built assets directory> <output directory> [--gpu] [--hour=22] [--only=name]
 //
-// The night moments (planning/workstreams/night-light.md), each drawn as it was before and as built, from the same frame
-// where the frame block can say so. The moon: the rose arcade of the shade study (shade-study.ts), with cars parked at
-// the kerb before it, under the moon at 22:00, before the moon cast through the cascades and after. It writes
-// `<state>/<scene>-<view>-software.png`, and with --gpu `<state>/<scene>-<view>.png` drawn by the shell's renderer with
-// the shadows, which the software render has not, and prints the sRGB of a few probes, each the median of a 5 by 5
-// window round where a point of the scene falls on screen. It draws on high.
+// The night moments (planning/workstreams/night-light.md), each drawn in the states the moment has: as main drew it,
+// with the moon's shadows (render/sky.ts castLight), and with the street lamp that lights as a light as well
+// (render/lamp.ts). Each state is a frame built with the scene's switches for it (`moonShadows`, the street lamps'
+// `light`) at the same moment of the scene's clock.
+//
+// - moon: the rose arcade of the shade study (shade-study.ts), with cars parked at the kerb before it, at 22:00, the moon
+//   52 degrees up.
+// - lamp: a working lamp of a pair either side of a road, a white compact driven past under it (three places along the
+//   road) and a survivor standing at the kerb under it.
+// - handover: the camera stepped across the road from the first lamp's side of the pair to the second's, and the frames a twentieth, a
+//   tenth and three twentieths of a second on, as the first lamp's light fades into its card and the second's card into
+//   its light.
+//
+// It writes `<state>/<scene>-<view>-software.png`, and with --gpu `<state>/<scene>-<view>.png` drawn by the shell's
+// renderer with the shadows, which the software render has not, and prints the sRGB of a few probes, each the median of
+// a 5 by 5 window round where a point of the scene falls on screen. It draws on high.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
-import { type MapStatic, MapStatics, parseMap } from "../../shared/world/mapfile.ts";
-import { mapHeightfield } from "../../shared/world/mapfile.ts";
+import { type MapStatic, MapStatics, mapHeightfield, parseMap } from "../../shared/world/mapfile.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { CAST_AT, FRAME, type FramePacket } from "../../client/core/render/packet.ts";
+import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { findChrome } from "../chrome.ts";
 import { litProbe } from "../probe-lit.ts";
 import { Shot } from "../probe-lit/shot.ts";
-import { provingView, settle } from "../snap.ts";
+import { provingView } from "../snap.ts";
 import { encodePng } from "./png.ts";
 
 const [mapPath, assets, out] = process.argv.slice(2);
 if (!mapPath || !assets || !out) throw new Error("Expected Miami map, built assets directory and output directory");
 const gpu = process.argv.includes("--gpu");
 const hour = Number(process.argv.find((a) => a.startsWith("--hour="))?.slice(7) ?? 22);
-const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
+const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7)?.split(",");
 const map = parseMap(Bun.mmap(mapPath), true, true);
 const hf = mapHeightfield(map);
 const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
 const files = manifest.files.map((f) => (f.format && f.format !== "rgba" ? new Uint8Array() : Bun.mmap(join(assets, f.name))));
 
-/** A place in a frame of its own: an origin, a turn, and x along, z out from it. */
-interface Frame { readonly x: number; readonly z: number; readonly c: number; readonly s: number }
-const frameAt = (x: number, z: number, yaw: number): Frame => ({ x, z, c: Math.cos(yaw), s: Math.sin(yaw) });
-const at = (f: Frame, x: number, z: number): [number, number] => [f.x + f.c * x + f.s * z, f.z - f.s * x + f.c * z];
-
-/** The rose arcade of the shade study: x along it, z out from its middle, its outer edge at z -3 and the wall at z +1. */
+/** A place in a frame of its own: an origin, a turn, and x along, z out from it, as a piece's own frame has them. */
+interface Frame { readonly x: number; readonly z: number; readonly yaw: number }
+const at = (f: Frame, x: number, z: number): [number, number] => [f.x + Math.cos(f.yaw) * x + Math.sin(f.yaw) * z, f.z - Math.sin(f.yaw) * x + Math.cos(f.yaw) * z];
 const t = map.statics;
-let slab = -1;
-for (let i = 0; i < t.kind.length && slab < 0; i++) if (Math.hypot(t.x[i]! - 7633.2, t.z[i]! - 7463.5) < 2 && t.kinds[t.kind[i]!] === "core:zruin_zroof8_rose") slab = i;
-if (slab < 0) throw new Error("The rose arcade is not on this map");
-const ARCADE = frameAt(t.x[slab]!, t.z[slab]!, (t.yaw[slab]! / 65536) * 2 * Math.PI);
+/** The piece of a kind nearest a point, within 2 m, as a frame. */
+function pieceAt(kind: string, x: number, z: number): Frame {
+  for (let i = 0; i < t.kind.length; i++) if (Math.hypot(t.x[i]! - x, t.z[i]! - z) < 2 && t.kinds[t.kind[i]!] === kind) return { x: t.x[i]!, z: t.z[i]!, yaw: (t.yaw[i]! / 65536) * 2 * Math.PI };
+  throw new Error(`No ${kind} near ${x}, ${z} on this map`);
+}
+/** The rose arcade of the shade study: x along it, z out from its middle, its outer edge at z -3 and the wall at z +1. */
+const ARCADE = pieceAt("core:zruin_zroof8_rose", 7633.2, 7463.5);
+/** A pair of working lamps either side of a road, 20 m apart: the first's frame, +z out over the road, which runs along x. */
+const LAMP = pieceAt("core:zzstreet_lamp_lit", 6700.5, 11397.3);
 
-interface View { readonly name: string; readonly eye: readonly [number, number, number]; readonly at: readonly [number, number, number] }
+interface View {
+  readonly name: string;
+  readonly eye: readonly [number, number, number];
+  readonly at: readonly [number, number, number];
+  /** The bodies' places for this view, in the scene's frame: x, z and turn from the frame's, by kind. */
+  readonly bodies?: readonly (readonly [string, number, number, number])[];
+  /** Pictures taken this many seconds after the view is taken up, each a view of its own, `<view>-<ms>`. */
+  readonly after?: readonly number[];
+  /** Where the camera stood before, settled there, for the views `after` takes: the scene's frame's x, height and z. */
+  readonly from?: readonly [number, number, number];
+}
 interface Probe { readonly name: string; readonly x: number; readonly y: number; readonly z: number }
+interface State { readonly name: string; readonly moon: boolean; readonly lamp: boolean }
 interface Scene {
   readonly name: string;
   readonly frame: Frame;
@@ -51,10 +73,13 @@ interface Scene {
   readonly views: readonly View[];
   /** Heights over the frame's ground at its origin. */
   readonly probes: readonly Probe[];
-  /** Each state's folder, and what it changes in a built frame. */
-  readonly states: readonly { readonly name: string; readonly set: (p: FramePacket) => void }[];
+  readonly states: readonly State[];
 }
 
+const BEFORE: State = { name: "before", moon: false, lamp: false };
+const MOON: State = { name: "moon", moon: true, lamp: false };
+const AFTER: State = { name: "after", moon: true, lamp: true };
+const CAR = "core:compact", MAN = "core:survivor";
 const SCENES: readonly Scene[] = [
   {
     name: "moon",
@@ -71,21 +96,44 @@ const SCENES: readonly Scene[] = [
       { name: "car roof", x: -3.6, y: 1.4, z: -6.6 },
       { name: "back wall", x: 3.0, y: 1.0, z: 0.95 },
     ],
-    states: [
-      // Before: the moon lights everything as if nothing stood in its way, as main drew it.
-      { name: "before", set: (p) => void (p.frame[CAST_AT + 3] = 0) },
-      { name: "after", set: () => {} },
+    states: [{ ...BEFORE, lamp: true }, { ...AFTER }],
+  },
+  {
+    name: "lamp",
+    frame: LAMP,
+    parked: [],
+    views: [-5, -1.2, 3].map((x, k) => ({
+      name: `car${k + 1}`,
+      eye: [-10, 1.7, -2.5] as const,
+      at: [0.5, 0.6, 3.6] as const,
+      bodies: [[CAR, x, 4.4, Math.PI / 2], [MAN, 1.8, 1.4, Math.PI]] as const,
+    })),
+    probes: [
+      { name: "road under", x: 0, y: 0.02, z: 2.9 },
+      { name: "road beyond", x: 0, y: 0.02, z: 7 },
+      { name: "walk", x: -2, y: 0.05, z: 0.8 },
+      { name: "chest", x: 1.8, y: 1.3, z: 1.25 },
     ],
+    states: [BEFORE, MOON, AFTER],
+  },
+  {
+    name: "handover",
+    frame: LAMP,
+    parked: [],
+    // The second lamp stands across the road, 20 m off, facing the first; the camera, 12 m along the road, steps across
+    // its middle from the first lamp's side to the second's, looking along it between them.
+    views: [{ name: "fade", from: [-12, 1.7, 8.5], eye: [-12, 1.7, 11.5], at: [0, 0.6, 10], after: [0.05, 0.1, 0.15, 0.2, 0.3], bodies: [[MAN, 0, 6, Math.PI / 2], [CAR, 1, 14, Math.PI / 2]] }],
+    probes: [],
+    states: [AFTER],
   },
 ];
 
 const width = 1280, height = 720;
 const rows: MapStatic[] = [];
-for (let i = 0; i < t.kind.length; i++) if (Math.hypot(t.x[i]! - ARCADE.x, t.z[i]! - ARCADE.z) < 260) rows.push({ kind: t.kinds[t.kind[i]!]!, x: t.x[i]!, y: t.y[i]!, z: t.z[i]!, yaw: t.yaw[i]! });
+for (let i = 0; i < t.kind.length; i++) if (SCENES.some((s) => Math.hypot(t.x[i]! - s.frame.x, t.z[i]! - s.frame.z) < 260)) rows.push({ kind: t.kinds[t.kind[i]!]!, x: t.x[i]!, y: t.y[i]!, z: t.z[i]!, yaw: t.yaw[i]! });
 for (const scene of SCENES) for (const [x, z, turn, kind] of scene.parked) {
   const [wx, wz] = at(scene.frame, x, z);
-  const yaw = Math.atan2(scene.frame.s, scene.frame.c) + turn;
-  rows.push({ kind, x: wx, y: hf.heightAt(wx, wz), z: wz, yaw: Math.round((yaw / (2 * Math.PI)) * 65536) & 0xffff });
+  rows.push({ kind, x: wx, y: hf.heightAt(wx, wz), z: wz, yaw: Math.round(((scene.frame.yaw + turn) / (2 * Math.PI)) * 65536) & 0xffff });
 }
 const v = provingView(width, height, {}, { manifest, files }, { ...map, statics: MapStatics.of(map.dims, rows) }, undefined, 0, true);
 const { cam, scene, remote, raster } = v;
@@ -93,18 +141,39 @@ scene.assets.tier = tierOf("high");
 scene.viewHeight = height;
 scene.hour = hour;
 cam.fovY = (57 * Math.PI) / 180;
-remote.count = 0;
 
-function look(s: Scene, view: View): number {
+/** Puts the camera at `eye` looking at `look`, and the view's bodies in place, in the scene's frame; its ground's height. */
+function look(s: Scene, view: View, eye = view.eye): number {
   const ground = hf.heightAt(s.frame.x, s.frame.z);
-  const e = at(s.frame, view.eye[0], view.eye[2]), a = at(s.frame, view.at[0], view.at[2]);
+  const e = at(s.frame, eye[0], eye[2]), a = at(s.frame, view.at[0], view.at[2]);
   cam.x = e[0];
   cam.z = e[1];
-  cam.y = ground + view.eye[1];
+  cam.y = ground + eye[1];
   cam.yaw = Math.atan2(a[0] - e[0], a[1] - e[1]);
   cam.pitch = Math.atan2(ground + view.at[1] - cam.y, Math.hypot(a[0] - e[0], a[1] - e[1]));
   v.nodes.retain(Math.floor(cam.z / 64) * map.dims.chunksX + Math.floor(cam.x / 64), 64, 3, () => false);
+  remote.count = 0;
+  for (const [kind, x, z, turn] of view.bodies ?? []) {
+    const n = remote.count++;
+    const [wx, wz] = at(s.frame, x, z);
+    remote.id[n] = 1700 + n;
+    remote.kind[n] = v.reg.index.get(kind)!;
+    remote.x[n] = wx;
+    remote.z[n] = wz;
+    remote.y[n] = hf.heightAt(wx, wz);
+    remote.yaw[n] = s.frame.yaw + turn;
+    remote.flags[n] = 1;
+    remote.anim[n] = 0;
+    remote.colors.fill(0, n * 6, n * 6 + 6);
+    remote.colors[n * 6] = 10;
+  }
   return ground;
+}
+
+/** Sets the scene's switches for a state. */
+function stateOf(state: State): void {
+  scene.moonShadows = state.moon;
+  scene.streetLamps.light = state.lamp;
 }
 
 /** Where each probe falls on screen with the packet's view, or null behind the camera or off it. */
@@ -138,43 +207,81 @@ function measure(picture: Uint8Array | Uint8ClampedArray, places: ([number, numb
 
 /** Whether the sky's openness and the map of what stands overhead are on the card, which the scene does over frames. */
 const ready = (): boolean => !!scene.farShadow?.whole;
-function readied(): void {
-  for (let k = 0; k < 2000 && !ready(); k++) {
+/** Frames on, `each` handed each frame built, until the card holds what the view asks for and the maps are made. */
+function settled(each: (p: FramePacket, last: boolean) => void, most = 900): void {
+  let still = 0;
+  for (let frame = 0; frame < most && still < 30; frame++) {
     scene.now += 1000 / 60;
     v.port!.advance(scene.now);
     const p = scene.build(cam, remote);
-    p.drawCount = p.tileCount = 0;
-    raster.render(p);
+    const loading = p.uploads.length + p.drops.length + p.assetUploads.length + p.assetDrops.length + p.texUploads.length + p.texDrops.length;
+    const load = scene.assets.residency;
+    still = !loading && !load.flying && !load.waiting && ready() && p.frame[FRAME.reflection + 3] === 1 ? still + 1 : 0;
+    each(p, still >= 30);
   }
-  if (!ready()) throw new Error("the sky's openness or the roof map did not come");
 }
 
-const chosen = SCENES.filter((s) => !only || s.name === only);
-for (const s of chosen) for (const state of s.states) mkdirSync(join(out, state.name), { recursive: true });
-const report: string[] = [];
-const places: ([number, number] | null)[][] = [];
-for (const s of chosen) {
-  for (const view of s.views) {
-    const ground = look(s, view);
-    settle(v);
-    readied();
-    settle(v);
-    scene.now += 510;
-    const p = v.render();
-    const where = probeAt(s, ground, p);
-    places.push(where);
-    const kept = p.frame.slice();
-    for (const state of s.states) {
-      state.set(p);
-      raster.render(p);
-      const name = `${state.name}/${s.name}-${view.name}`;
-      writeFileSync(join(out, name + "-software.png"), encodePng(width, height, raster.color));
-      measure(raster.color, where).forEach((m, k) => report.push(`${name} software ${s.probes[k]!.name.padEnd(14)} ${m}`));
-      p.frame.set(kept);
+/** Each picture: its name, its scene, and the probes' places. */
+interface Picture { readonly name: string; readonly scene: Scene; readonly places: ([number, number] | null)[] }
+/**
+ * Takes every picture of the scenes chosen: `frame` is handed every frame built, with the picture's name for one to be
+ * kept. A view is settled once in the last state, then each state drawn at the same clock; a view with `after` steps the
+ * clock on in the last state.
+ */
+function pictures(frame: (p: FramePacket, keep: string | null) => void): Picture[] {
+  const made: Picture[] = [];
+  for (const s of SCENES.filter((s) => !only || only.includes(s.name))) {
+    for (const view of s.views) {
+      const last = s.states[s.states.length - 1]!;
+      stateOf(last);
+      if (view.from) {
+        look(s, view, view.from);
+        settled((p) => frame(p, null));
+      }
+      const ground = look(s, view);
+      if (!view.after) settled((p) => frame(p, null));
+      const clock = scene.now;
+      for (const state of view.after ? [last] : s.states) {
+        stateOf(state);
+        if (view.after) {
+          let since = 0;
+          for (const after of view.after) {
+            for (; since < after - 1e-6; since += 1 / 60) {
+              scene.now += 1000 / 60;
+              frame(scene.build(cam, remote), null);
+            }
+            const p = scene.build(cam, remote);
+            const name = `${state.name}/${s.name}-${view.name}-${Math.round(after * 1000)}ms`;
+            made.push({ name, scene: s, places: probeAt(s, ground, p) });
+            frame(p, name);
+          }
+          continue;
+        }
+        scene.now = clock;
+        const p = scene.build(cam, remote);
+        const name = `${state.name}/${s.name}-${view.name}`;
+        made.push({ name, scene: s, places: probeAt(s, ground, p) });
+        frame(p, name);
+      }
+      stateOf(last);
     }
   }
+  return made;
 }
-console.log(report.join("\n"));
+
+const soft = new Map<string, Uint8ClampedArray>();
+const made = pictures((p, keep) => {
+  if (!keep) {
+    p.drawCount = p.tileCount = 0;
+    raster.render(p);
+    return;
+  }
+  raster.render(p);
+  soft.set(keep, Uint8ClampedArray.from(raster.color));
+  mkdirSync(join(out, keep.split("/")[0]!), { recursive: true });
+  writeFileSync(join(out, keep + "-software.png"), encodePng(width, height, raster.color));
+});
+for (const m of made) measure(soft.get(m.name)!, m.places).forEach((r, j) => console.log(`${m.name} software ${m.scene.probes[j]!.name.padEnd(14)} ${r}`));
 if (!gpu) process.exit(0);
 
 const chrome = findChrome();
@@ -183,48 +290,24 @@ scene.resetUploads();
 const shot = new Shot("night-light", width, height, hf, files[0]!);
 shot.manifest = manifest;
 shot.shadows = true;
-const names: string[] = [];
-const probes: Probe[][] = [];
+let taken: Picture[] = [];
 const passed = await litProbe(chrome, [{
   name: "Night light",
   shots() {
-    for (const s of chosen) {
-      for (const view of s.views) {
-        look(s, view);
-        let settled = 0;
-        for (let frame = 0; frame < 900 && settled < 30; frame++) {
-          scene.now += 1000 / 60;
-          v.port!.advance(scene.now);
-          const p = scene.build(cam, remote);
-          const loading = p.uploads.length + p.drops.length + p.assetUploads.length + p.assetDrops.length + p.texUploads.length + p.texDrops.length;
-          const load = scene.assets.residency;
-          settled = !loading && !load.flying && !load.waiting && ready() && p.frame[FRAME.reflection + 3] === 1 ? settled + 1 : 0;
-          if (settled >= 30) break;
-          p.drawCount = p.tileCount = p.casterCount = 0;
-          shot.add(p);
-        }
-        const p = scene.packet, kept = p.frame.slice();
-        for (const state of s.states) {
-          state.set(p);
-          shot.add(p, true);
-          p.frame.set(kept);
-          names.push(`${state.name}/${s.name}-${view.name}`);
-          probes.push(s.probes as Probe[]);
-        }
-      }
-    }
+    taken = pictures((p, keep) => {
+      if (!keep) p.drawCount = p.tileCount = p.casterCount = 0;
+      shot.add(p, keep !== null);
+    });
     return [shot];
   },
   judge(back) {
     const lines = [back.device.renderer];
-    let view = -1;
-    names.forEach((name, k) => {
+    taken.forEach((m, k) => {
       const picture = back.pixels(shot.key, shot.read[k]!)!;
-      writeFileSync(join(out, name + ".png"), encodePng(width, height, picture));
-      if (k === 0 || names[k - 1]!.split("/")[1] !== name.split("/")[1]) view++;
-      measure(picture, places[view]!).forEach((m, j) => lines.push(`${name} gpu ${probes[k]![j]!.name.padEnd(14)} ${m}`));
+      writeFileSync(join(out, m.name + ".png"), encodePng(width, height, picture));
+      measure(picture, m.places).forEach((r, j) => lines.push(`${m.name} gpu ${m.scene.probes[j]!.name.padEnd(14)} ${r}`));
     });
-    return { ok: names.length > 0, lines };
+    return { ok: taken.length > 0, lines };
   },
 }]);
 process.exit(passed ? 0 : 1);

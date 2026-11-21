@@ -2,7 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -11,7 +11,7 @@ import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift } from "../core/render/post.ts";
-import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
+import { POLYGON_OFFSET, shadowLayer, shadowLayers } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, lampsOn, materialEmission, skinMode } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseArea, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
@@ -1024,26 +1024,28 @@ export class GlRenderer {
   }
 
   /**
-   * The sun's shadow maps, made for the tier and kept bound on their unit, and each cascade the frame draws, from the
-   * sun into its layer: the ground that casts into it, then its casters, back faces only unless a material shows both.
+   * The shadow maps, made for the tier and kept bound on their unit, and each map the frame draws into its layer
+   * (shadowtext.ts `shadowLayer`), a cascade's from the light it is cast from or the street lamp's from its lens: the
+   * ground that casts into it, then its casters, back faces only unless a material shows both. Every layer has a target,
+   * the far map's too, which nothing draws into.
    */
   private shadows(p: FramePacket, into: WebGLFramebuffer | null): void {
     const gl = this.gl;
     const map = this.shadow;
-    const cascades = p.lit ? p.tier.shadows.cascades : 0, size = p.lit ? p.tier.shadows.size : 0;
+    const cascades = p.lit ? p.tier.shadows.cascades : 0, size = p.lit ? p.tier.shadows.size : 0, layers = p.lit ? shadowLayers(p.tier.shadows) : 0;
     this.passes?.mark(PASS_CASTERS);
-    if (map.size !== size || map.targets.length !== cascades) {
+    if (map.size !== size || map.targets.length !== layers) {
       gl.deleteTexture(map.texture);
       for (const t of map.targets.splice(0)) gl.deleteFramebuffer(t);
       map.size = size;
       gl.activeTexture(gl.TEXTURE0 + UNIT.shadow);
       gl.bindTexture(gl.TEXTURE_2D_ARRAY, (map.texture = cascades > 0 ? gl.createTexture() : null));
       if (cascades > 0) {
-        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT16, size, size, cascades + 1);
+        gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT16, size, size, layers);
         const filter = this.shadowLookup === "hard" ? gl.NEAREST : gl.LINEAR;
         for (const p of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE], [gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL]] as const) gl.texParameteri(gl.TEXTURE_2D_ARRAY, p[0], p[1]);
       }
-      for (let k = 0; k < cascades; k++) {
+      for (let k = 0; k < layers; k++) {
         const target = gl.createFramebuffer()!;
         map.targets.push(target);
         gl.bindFramebuffer(gl.FRAMEBUFFER, target);
@@ -1056,12 +1058,12 @@ export class GlRenderer {
     gl.viewport(0, 0, size, size);
     gl.polygonOffset(POLYGON_OFFSET[0], POLYGON_OFFSET[1]);
     gl.cullFace(gl.FRONT);
-    for (let k = 0; k < p.cascadeCount; k++) {
+    for (let k = 0; k <= MAX_CASCADES; k++) {
       if ((p.cascadesDrawn & (1 << k)) === 0) continue;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, map.targets[k]!);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, map.targets[shadowLayer(k, cascades)]!);
       gl.clear(gl.DEPTH_BUFFER_BIT);
       this.view = this.serial * 16 + 8 + k;
-      this.matrix = p.cascades;
+      this.matrix = p.maps;
       this.matrixAt = k * 16;
       this.tiles(p, TILE_CASTS << k, PROGRAM.depthTerrain, PROGRAM.depthTerrainWindow);
       for (let e = 0; e < p.casterCount; e++) {

@@ -1,12 +1,15 @@
 // The light of the street lamps that still work (content/street.ts `lamp_lit`), as the lamps are on (surface.ts
 // `lampsOn`): round each one near enough, a soft warm disc on the ground under its head, and a glow about its lens
 // turned to the eye; see-through detail cards (packet.ts DETAIL_POOL), the cheapest light that reads. The lens itself
-// glows on the lamp's own mesh (its material's emissive).
+// glows on the lamp's own mesh (its material's emissive). Where the tier lets it, the nearest within LAMP_REACH lights
+// as a light too (lamp.ts): its pool card fades out as its light fades in, and when another lamp is the nearest the
+// light fades back into the first one's card before the next one's card fades into its light, so one lamp lights at a time.
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import type { Camera } from "./camera.ts";
+import { LAMP_FADE, LAMP_REACH } from "./lamp.ts";
 import { DETAIL, DETAIL_POOL, type FramePacket } from "./packet.ts";
 import { lampsOn } from "./surface.ts";
 import { VehicleCards } from "./vehicle-cards.ts";
@@ -33,17 +36,41 @@ export class StreetLamps extends VehicleCards {
   private readonly near: number[] = [];
   /** Whether the frame draws their light (passes.ts `lamps`). */
   on = true;
+  /** Whether the nearest lamp may light as a light (passes.ts `lamp`), where the frame's tier lets it. */
+  light = true;
+  /**
+   * The lamp whose light lights, by its lens in the world, while one is held; how much of its light shows, 0 to 1, rising
+   * and falling over LAMP_FADE seconds; and the scene's clock at the frame before, in ms.
+   */
+  private readonly held = new Float64Array(3);
+  private readonly wanted = new Float64Array(3);
+  private holding = false;
+  private share = 0;
+  private last = -1;
+  /** This frame's: the lens of the lamp that lights, camera-relative, and how much of its light shows, 0 for none. */
+  readonly lens = new Float64Array(3);
+  shows = 0;
 
   constructor(reg: Registry) {
     super(MAX_LIT_LAMPS * 2);
     this.kind = reg.index.get("core:zzstreet_lamp_lit") ?? -1;
   }
 
-  /** The cards for this frame, the camera at `cam`: none by day, or where the content has no lit lamp. */
-  build(p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number): void {
+  /**
+   * The cards for this frame, the camera at `cam` and the scene's clock at `now` ms: none by day, or where the content
+   * has no lit lamp. With `lights`, where the tier lets a lamp light, the lamp that does (`lens` and `shows`).
+   */
+  build(p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number, now = 0, lights = false): void {
     this.begin();
+    this.shows = 0;
+    const step = this.last < 0 ? 0 : Math.min(0.1, Math.max(0, (now - this.last) / 1000));
+    this.last = now;
     const on = lampsOn(p.frame);
-    if (!this.on || this.kind < 0 || on <= 0.004) return;
+    if (!this.on || this.kind < 0 || on <= 0.004) {
+      this.holding = false;
+      this.share = 0;
+      return;
+    }
     const near = this.near; near.length = 0;
     const c0 = Math.max(0, Math.floor((cam.x - REACH) / CHUNK_SIZE)), c1 = Math.min(chunksX - 1, Math.floor((cam.x + REACH) / CHUNK_SIZE));
     const r0 = Math.max(0, Math.floor((cam.z - REACH) / CHUNK_SIZE)), r1 = Math.min(chunksZ - 1, Math.floor((cam.z + REACH) / CHUNK_SIZE));
@@ -56,19 +83,46 @@ export class StreetLamps extends VehicleCards {
     }
     // The nearest first, as many as there is room for.
     const order = Array.from({ length: near.length / 3 }, (_, k) => k).sort((a, b) => near[a * 3]! - near[b * 3]!).slice(0, MAX_LIT_LAMPS);
+    const lensOf = (k: number, out: Float64Array | number[]): void => {
+      const lamps = this.chunks.get(near[k * 3 + 1]!)!.lamps, i = near[k * 3 + 2]!, yaw = lamps[i + 3]!;
+      // The lens over the road: local +z is (sin yaw, cos yaw).
+      out[0] = lamps[i]! + Math.sin(yaw) * LENS[2];
+      out[1] = lamps[i + 1]! + LENS[1];
+      out[2] = lamps[i + 2]! + Math.cos(yaw) * LENS[2];
+    };
+    if (lights && this.light) this.hand(order.length > 0 && near[order[0]! * 3]! < LAMP_REACH ? order[0]! : -1, lensOf, step);
+    const lens = this.lens, shared = lights && this.light && this.holding ? this.share : 0;
     // The eye's right and up (camera.ts), for the glow turned to it.
     const sy = Math.sin(cam.yaw), cy = Math.cos(cam.yaw), sp = Math.sin(cam.pitch), cp = Math.cos(cam.pitch);
     const rx = -cy, rz = sy, ux = -sy * sp, uy = cp, uz = -cy * sp;
     for (const k of order) {
       const d = near[k * 3]!, lamps = this.chunks.get(near[k * 3 + 1]!)!.lamps, i = near[k * 3 + 2]!;
       const fade = on * Math.min(1, Math.max(0, (REACH - d) / (REACH - FADE_FROM)));
-      const x = lamps[i]! - cam.x, y = lamps[i + 1]! - cam.y, z = lamps[i + 2]! - cam.z, yaw = lamps[i + 3]!;
-      // The lens over the road: local +z is (sin yaw, cos yaw).
-      const lx = x + Math.sin(yaw) * LENS[2], lz = z + Math.cos(yaw) * LENS[2], ly = y + LENS[1];
+      lensOf(k, lens);
+      // The lamp that lights shows as much less of its pool as its light shows.
+      const lit = shared > 0 && Math.hypot(lens[0]! - this.held[0]!, lens[2]! - this.held[2]!) < 0.5 ? shared : 0;
+      const lx = lens[0]! - cam.x, ly = lens[1]! - cam.y, lz = lens[2]! - cam.z, y = lamps[i + 1]! - cam.y;
       // Lying flat, its face up: across along z and along x, so that across x along is up.
-      this.card(lx, y + 0.04, lz, 0, 0, POOL, POOL, 0, 0, POOL_COLOUR, Math.round(POOL_SHOWS * fade));
+      this.card(lx, y + 0.04, lz, 0, 0, POOL, POOL, 0, 0, POOL_COLOUR, Math.round(POOL_SHOWS * fade * (1 - lit)));
       this.card(lx, ly - 0.25, lz, rx * GLOW, 0, rz * GLOW, ux * GLOW, uy * GLOW, uz * GLOW, GLOW_COLOUR, Math.round(GLOW_SHOWS * fade));
     }
+    for (let k = 0; k < 3; k++) lens[k] = this.held[k]! - (k === 0 ? cam.x : k === 1 ? cam.y : cam.z);
+    this.shows = shared * on;
+  }
+
+  /**
+   * Hands the light on toward lamp `want` of this frame's (-1 for none), its lens by `lensOf`, `step` seconds on: the lamp
+   * held brightens while it is the one wanted and dims while it is not, and once it is out the one wanted is held.
+   */
+  private hand(want: number, lensOf: (k: number, out: Float64Array | number[]) => void, step: number): void {
+    const at = this.wanted;
+    if (want >= 0) lensOf(want, at);
+    const same = this.holding && want >= 0 && Math.hypot(at[0]! - this.held[0]!, at[2]! - this.held[2]!) < 0.5;
+    this.share = Math.min(1, Math.max(0, this.share + (same ? step : -step) / LAMP_FADE));
+    if (same || (this.holding && this.share > 0)) return;
+    this.holding = want >= 0;
+    this.held.set(at);
+    this.share = 0;
   }
 
   /** A card at (x, y, z) from the camera with half axes across and along it, its face where across x along points. */

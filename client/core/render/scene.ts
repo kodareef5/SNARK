@@ -60,7 +60,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
-import { BONE_FLOATS, CAST_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount } from "./packet.ts";
+import { BONE_FLOATS, CAST_AT, LAMP_AT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount } from "./packet.ts";
 import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
@@ -68,7 +68,8 @@ import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } from "./atmosphere.ts";
 import { FarShadow } from "./farshadow.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
-import { shadowBytes } from "./shadowtext.ts";
+import { shadowBytes, shadowLayer } from "./shadowtext.ts";
+import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
 import { lightBytes, lightSamples, postFrame, sceneSize } from "./post.ts";
 import { moonCasts, skyShown } from "./surface.ts";
@@ -735,11 +736,16 @@ export class Scene {
    * light as its top stands over the floor, while that shadow can fall in view.
    */
   private readonly castBox: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => this.castsBy(minX, minY, minZ, maxX, maxY, maxZ, -1);
+  /** The same for the ground, which casts into the cascades alone: under the street lamp it is what receives. */
+  private readonly groundCasts: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => this.castsBy(minX, minY, minZ, maxX, maxY, maxZ, -1) & ~LAMP_BIT;
+  /** The street lamp that lights this frame, seen from its lens (lamp.ts). */
+  readonly lamp = new LampView();
   private readonly bodyShadows: BodyShadows = {
     body: (x, y, z, r) => {
-      if (Math.hypot(x, y, z) - r > this.castRange) return 0;
+      const lamp = this.lamp.sphere(x, y, z, r);
+      if (this.cascades.count === 0 || Math.hypot(x, y, z) - r > this.castRange) return lamp;
       const stretch = this.stretch(x - r, z - r, x + r, z + r, y + r);
-      return this.inView(x - r, y - r, z - r, x + r, y + r, z + r, stretch) ? this.cascades.sphereMask(x, y, z, r, stretch) : 0;
+      return (this.inView(x - r, y - r, z - r, x + r, y + r, z + r, stretch) ? this.cascades.sphereMask(x, y, z, r, stretch) : 0) | lamp;
     },
     mesh: (mesh) => this.cascades.fits(this.radiusOfMesh[mesh]!),
   };
@@ -1011,7 +1017,11 @@ export class Scene {
     }
     if (!p.lit) p.frame[FRAME.exposure] = 0;
     writeEyeSky(p.frame, this.world.tideEyes ?? [], this.eyeSeconds, cam.x, cam.y, cam.z, this.sextantScale);
+    // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, before what casts is chosen.
+    const shadows = p.tier.shadows;
+    this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true);
     this.fit(cam);
+    this.fitLamp(cam);
 
     // Under water, the sea's or a lake's where the camera is, the view is short and the fog is the water's colour, dimmed.
     // Out of it the air is measured from the sea, or from 0 over a map with none.
@@ -1030,7 +1040,7 @@ export class Scene {
     }
     skyShown(p);
 
-    this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.castBox : undefined);
+    this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.groundCasts : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
     const tier = this.assets.tier;
@@ -1045,7 +1055,7 @@ export class Scene {
     this.makeBlocks();
     this.blocks?.update(p, this.assets.residency, cam, blocksView, this.city ? this.citySource!.statics : null, this.city);
     this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier);
-    if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
+    if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.groundCasts)) p.casterDropped++;
     // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
     // See-through draws go as made, and the sea is made first of them, so that a yacht's wires show over it.
     const lit = p.lit && !this.plainSky && !under;
@@ -1147,6 +1157,34 @@ export class Scene {
   }
 
   /**
+   * The street lamp that lights this frame (street-lamps.ts, lamp.ts), after the cascades are fitted: its view from the
+   * lens and its part of the frame block, its map's bit among the maps drawn, so that what stands in its view casts into
+   * it; and the matrices the shell draws the maps with, the cascades' and the lamp's. A lamp none of whose light can be
+   * seen (all of it falls within LAMP_ACROSS of its lens across and LAMP_RANGE under it) draws nothing: its card is out
+   * of sight with it.
+   */
+  private fitLamp(cam: Camera): void {
+    const p = this.packet, c = this.cascades, lamp = this.lamp, lamps = this.streetLamps, setup = p.tier.shadows;
+    const x = lamps.lens[0]!, y = lamps.lens[1]!, z = lamps.lens[2]!;
+    p.maps.set(p.cascades);
+    if (!p.lit || !setup.lamp || setup.cascades <= 0 || lamps.shows <= 0 || !cam.boxVisible(x - LAMP_ACROSS, y - LAMP_RANGE, z - LAMP_ACROSS, x + LAMP_ACROSS, y, z + LAMP_ACROSS)) {
+      lamp.off();
+      c.lampTexel = 0;
+      lampFrame(p.frame, null, 0, -1);
+      return;
+    }
+    lamp.set(x, y, z, setup.size);
+    lampFrame(p.frame, lamps.lens, lamps.shows, shadowLayer(MAX_CASCADES, setup.cascades));
+    p.frame.set(lamp.matrix, LAMP_AT + 8);
+    p.maps.set(lamp.matrix, MAX_CASCADES * 16);
+    c.lampTexel = lamp.texel;
+    c.drawn |= LAMP_BIT;
+    p.cascadesDrawn = c.drawn;
+    this.casting = true;
+    this.characters.shadows = this.bodyShadows;
+  }
+
+  /**
    * How far along the light the shadow of a camera-relative box whose top is `top` can reach: as far as the top stands
    * over the floor, or over the lowest ground where a shadow that long could fall, whichever is the shorter.
    */
@@ -1158,12 +1196,16 @@ export class Scene {
     return low > this.floor ? reach(top + p.camY - low, this.sunY) : most;
   }
 
-  /** As `castBox`, the box's shadow reaching `stretch` metres along the light, or as far as `stretch()` finds where that is under 0. */
+  /**
+   * As `castBox`, the box's shadow reaching `stretch` metres along the light, or as far as `stretch()` finds where that is
+   * under 0; and the lamp's map where the box stands in the lamp's view.
+   */
   private castsBy(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, stretch: number): number {
+    const lamp = this.lamp.box(minX, minY, minZ, maxX, maxY, maxZ);
     const dx = Math.max(minX, -maxX, 0), dy = Math.max(minY, -maxY, 0), dz = Math.max(minZ, -maxZ, 0);
-    if (dx * dx + dy * dy + dz * dz > this.castRange * this.castRange) return 0;
+    if (this.cascades.count === 0 || dx * dx + dy * dy + dz * dz > this.castRange * this.castRange) return lamp;
     if (stretch < 0) stretch = this.stretch(minX, minZ, maxX, maxZ, maxY);
-    return this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0;
+    return (this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0) | lamp;
   }
 
   /**
@@ -1228,7 +1270,7 @@ export class Scene {
         // Each cascade's runs, five numbers each: first and end instance as if each cell's shell and interior lay
         // together, the cascades that take it, and its first and end cell.
         runs.length = 0;
-        for (let i = 0; i < c.count; i++) {
+        for (let i = 0; i <= MAX_CASCADES; i++) {
           const bit = 1 << i;
           if ((bits & bit) === 0) continue;
           let open = -1, gap = 0;
@@ -1304,7 +1346,7 @@ export class Scene {
     p.casterIndexCount[n] = indexCount;
     p.casterCascades[n] = cascades;
     p.casterCount = n + 1;
-    const maps = (cascades & 1) + ((cascades >> 1) & 1) + ((cascades >> 2) & 1) + ((cascades >> 3) & 1);
+    const maps = this.maps(cascades);
     p.castDraws += maps;
     p.castTriangles += ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? indexCount / 3 : this.trisOfMesh[mesh]![level]!) * count * maps;
   }
@@ -1441,7 +1483,7 @@ export class Scene {
 
   /** The cascades of a caster's bits, counted. */
   private maps(cascades: number): number {
-    return (cascades & 1) + ((cascades >> 1) & 1) + ((cascades >> 2) & 1) + ((cascades >> 3) & 1);
+    return (cascades & 1) + ((cascades >> 1) & 1) + ((cascades >> 2) & 1) + ((cascades >> 3) & 1) + ((cascades >> 4) & 1);
   }
 
   /** Moves draw `from` of the frame to `to`, an earlier row. */
@@ -1673,7 +1715,6 @@ export class Scene {
     const p = this.packet;
     const { rotorBlur, patrolLights, windscreens, tireContacts } = this.characters;
     const { streetLamps, streetWires } = this;
-    streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     streetWires.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ);
     tireContacts.build(p, this.world);
     this.damage.build(cam, this.now);
@@ -2565,7 +2606,8 @@ export class Scene {
       const castFrom = p.casterCount;
       if (casts !== 0) this.castChunk(batch, id, ox, oy, oz, casts, all);
       if (casts !== 0 && batch.mesh) this.castMesh(batch, id, ox, oy, oz);
-      if (p.casterCount === castFrom) continue;
+      // What casts into the lamp's map is not left out for where its shadow from the sun would fall.
+      if (p.casterCount === castFrom || (casts & LAMP_BIT) !== 0) continue;
       // What the chunk's casters shade lies in its box swept from the sun as far as its shadow reaches.
       const sx = -this.sunAt[0]! * this.zoneStretch, sy = -this.sunAt[1]! * this.zoneStretch, sz = -this.sunAt[2]! * this.zoneStretch;
       this.chunkCasts.push(castFrom, p.casterCount, Math.min(ax, ax + sx), Math.min(ay, ay + sy), Math.min(az, az + sz), Math.max(bx, bx + sx), Math.max(by, by + sy), Math.max(bz, bz + sz));
@@ -2858,7 +2900,7 @@ export class Scene {
     if (m.slot < 0) return;
     const runs = this.castRuns;
     runs.length = 0;
-    for (let i = 0; i < this.cascades.count; i++) {
+    for (let i = 0; i <= MAX_CASCADES; i++) {
       const bit = 1 << i;
       let open = -1, gap = 0;
       for (let c = 0; c < b.cells; c++) {

@@ -92,7 +92,8 @@ function water(tier: Tier, hard: boolean, light: boolean, wakes: boolean): Progr
   return {
     vertex: FLAT_MESH_VERTEX,
     fragment: WATER_FRAGMENT,
-    defines: shadowDefines(tier.shadows, hard) + out(tier, light) + (wakes ? "#define LOCAL_WAKES\n" : ""),
+    // The sea is lit by its own glint and not `lit`, so the street lamp's light is not looked up for it.
+    defines: shadowDefines(tier.shadows, hard, false) + out(tier, light) + (wakes ? "#define LOCAL_WAKES\n" : ""),
     samplers: { ...MESH, uSkyTable: UNIT.sky, uShadow: UNIT.shadow, uMapHeight: UNIT.heights, uWindowHeight: UNIT.windowHeights, uWaveLong: UNIT.maps + 3, uWaveShort: UNIT.maps + 4 },
   };
 }

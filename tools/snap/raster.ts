@@ -22,6 +22,7 @@ import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } fro
 import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
+import { lampSees } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
@@ -845,6 +846,8 @@ export class Rasterizer {
 
   private opened(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, ground: boolean, stands: boolean): number {
     const p = this.packet;
+    // The street lamp's light on the pixel, which `lit` adds, as a lit program's sunShadow finds it (lamp.ts).
+    lampSees(p.frame, rx, ry, rz, nx, ny, nz);
     const contact = (ground || stands) && p.tier.contact ? contactAt(p.frame, rx, ry, rz, nx, ny, nz) : 1;
     const roofs = p.lit && p.tier.roofs && this.roofSide > 0;
     if (ground) return contact * skyOpen(this.open, this.openWidth, this.openHeight, p.frame, rx, rz, 0, 1, 0, 0, 0) * (roofs ? roofOpen(this.roof, this.roofSide, p.frame, rx, rz, 0, 1, 0, 0) : 1);
@@ -1280,8 +1283,10 @@ export class Rasterizer {
                 albedo[c] = shade * (dye * (1 - texel[2]!) + texel[2]!);
               }
               [eye[0], eye[1], eye[2]] = [vx, vy, vz];
-              if ((flags & DETAIL_LIT) !== 0) lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
-              else for (let c = 0; c < 3; c++) light[c] = albedo[c]! / exposure;
+              if ((flags & DETAIL_LIT) !== 0) {
+                lampSees(p.frame, rx, ry, rz, normal[0]!, normal[1]!, normal[2]!);
+                lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
+              } else for (let c = 0; c < 3; c++) light[c] = albedo[c]! / exposure;
               shown(rgb, light, dist, p);
               for (let c = 0; c < 3; c++) rgb[c]! *= 255;
             } else {

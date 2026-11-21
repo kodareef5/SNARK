@@ -14,6 +14,7 @@
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { FAR_LEAD, FAR_OUT, FAR_RISE, FAR_SPAN, FLAT_LEAST } from "./farshadow.ts";
+import { LAMP_INNER, LAMP_NEAREST, LAMP_OUTER, LAMP_TAN } from "./lamp.ts";
 import { BONES_PER_ROW, MAX_CASCADES } from "./packet.ts";
 
 /** Texels of the receiver's cascade the lookup is moved along its normal, at most, where the surface runs along the light. */
@@ -35,6 +36,11 @@ export const SLOPE_MOST = 8;
 export const SLOPE_SLACK = 0.5;
 /** Steps of a 16-bit depth a compared depth is moved toward the sun, for the map's rounding. */
 export const DEPTH_SLACK = 1.5;
+/**
+ * Texels of the street lamp's map (lamp.ts) a lookup of it is moved along the surface's normal, at most, where the
+ * surface runs along the lamp's light; it is moved a texel toward the lens besides.
+ */
+export const LAMP_OFFSET = 1.5;
 
 /**
  * Compared taps along one axis, for one, two and three taps an axis (1, 4 and 9 a lookup). With `s` the lookup's place
@@ -94,20 +100,31 @@ export function shadowCascade(px: number, py: number, pz: number, spheres: Array
   return { cascade: k, fade: k + 1 < count ? 0 : Math.min(1, Math.max(0, (t - 1 + EDGE) / EDGE)) };
 }
 
-/** Bytes a tier's shadow maps hold on the card: a 16-bit layer a cascade, and the far map's. */
+/**
+ * The layers of a tier's shadow array: a cascade's each, the far map's, and on a tier whose street lamp casts
+ * (lamp.ts) the lamp's after it; none without cascades.
+ */
+export function shadowLayers(shadows: Tier["shadows"]): number {
+  return shadows.cascades > 0 ? shadows.cascades + 1 + (shadows.lamp ? 1 : 0) : 0;
+}
+
+/** The layer the map of bit `k` of a frame's maps (packet.ts `cascadesDrawn`) is drawn into: a cascade's own, or the lamp's after the far map's. */
+export const shadowLayer = (k: number, cascades: number): number => (k < MAX_CASCADES ? k : cascades + 1);
+
+/** Bytes a tier's shadow maps hold on the card: a 16-bit layer a cascade, the far map's and the lamp's. */
 export function shadowBytes(shadows: Tier["shadows"]): number {
-  return shadows.cascades > 0 ? (shadows.cascades + 1) * shadows.size * shadows.size * 2 : 0;
+  return shadowLayers(shadows) * shadows.size * shadows.size * 2;
 }
 
 /**
  * The lines put before a lit program's texts for a tier's shadows, and with `hard` for a device whose compared lookups
  * do not filter. A lookup runs over the frame's cascades (`uCascades`), up to MAX_CASCADES, so the texts are the same
  * with fewer cascades or none, as the governor's steps and the effects turned off have them, and nothing is compiled
- * again for them.
+ * again for them. Where the tier's street lamp casts, LAMP: a program that lights by `lit` takes its light (`lights`).
  */
-export function shadowDefines(shadows: Tier["shadows"], hard: boolean): string {
+export function shadowDefines(shadows: Tier["shadows"], hard: boolean, lights = true): string {
   if (shadows.size <= 0) return "";
-  return `#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.round(Math.sqrt(shadows.taps))}\n#define SHADOW_SIZE ${shadows.size.toFixed(1)}\n${hard ? "#define SHADOW_HARD\n" : ""}`;
+  return `#define SHADOW_CASCADES ${MAX_CASCADES}\n#define SHADOW_TAPS ${Math.round(Math.sqrt(shadows.taps))}\n#define SHADOW_SIZE ${shadows.size.toFixed(1)}\n${hard ? "#define SHADOW_HARD\n" : ""}${lights && shadows.lamp ? "#define LAMP\n" : ""}`;
 }
 
 /** A number as GLSL writes it. */
@@ -136,7 +153,9 @@ function filterText(m: number): string {
  * openness (skyopen.ts) reads them too. Within the cascades, which the near store's pieces cast into and the far city does not, a
  * pixel is shaded by the far map too, looked up where its ray to the sun leaves the chunks the near store holds
  * (`farBeyond`, farshadow.ts `nearLead`), so the far city's shadows reach near the camera and the near pieces' are not
- * cast twice.
+ * cast twice. With LAMP, `sunShadow` first finds how much of the street lamp's light reaches the point (`lampSees`, the
+ * twin of lamp.ts `lampReach` but for the shadow): by distance, cone and facing, and by four compared taps of the
+ * lamp's map in its layer, moved off the surface as the cascades' are; LIGHT's `lit` adds it from gLamp.
  */
 export const SHADOW_GLSL = `#define fFarAt fSwell.zw
 #define fFarScale fLook.w
@@ -187,7 +206,38 @@ float farBeyond(vec3 rel, vec3 normal) {
   float lead = fNearFrom.x <= fNearTo.x && leave >= max(max(lo.x, lo.y), 0.0) ? leave : 0.0;
   return farShadow(rel + fCast.xyz * (lead / ground), normal);
 }
+#ifdef LAMP
+float lampFilter(vec3 at, float layer) {
+  vec2 slope = vec2(0.0);
+${filterText(2)}}
+void lampSees(vec3 rel, vec3 normal) {
+  gLamp = vec4(0.0);
+  if (fLamp.w <= 0.0) return;
+  vec3 d = fLamp.xyz - rel;
+  float far = dot(d, d);
+  if (far >= fLamp.w * fLamp.w) return;
+  vec3 l = d * inversesqrt(far);
+  float cone = clamp((l.y - ${g(LAMP_OUTER)}) / ${g(LAMP_INNER - LAMP_OUTER)}, 0.0, 1.0);
+  float w = 1.0 - far * far / (fLamp.w * fLamp.w * fLamp.w * fLamp.w);
+  float facing = dot(normal, l);
+  float reach = cone * cone * (3.0 - 2.0 * cone) * w * w / max(far, ${g(LAMP_NEAREST * LAMP_NEAREST)}) * clamp(facing * 20.0, 0.0, 1.0);
+  if (reach <= 0.0) return;
+  if (fLampColor.w >= 0.0) {
+    float texel = ${g(2 * LAMP_TAN)} * d.y / SHADOW_SIZE;
+    vec3 p = rel + normal * (${g(LAMP_OFFSET)} * texel * sqrt(max(1.0 - facing * facing, 0.0))) + l * texel;
+    vec4 c = fLampShadow * vec4(p, 1.0);
+    vec3 at = c.xyz / c.w * 0.5 + 0.5;
+    at.xy *= SHADOW_SIZE;
+    at.z -= ${g(DEPTH_SLACK)} / 65535.0;
+    reach *= lampFilter(at, fLampColor.w);
+  }
+  gLamp = vec4(l, reach);
+}
+#endif
 float sunShadow(vec3 rel, vec3 normal) {
+#ifdef LAMP
+  lampSees(rel, normal);
+#endif
   if (uCascades == 0 || fCast.w <= 0.0) return 1.0;
   int k = 0;
   float t = shadowShare(rel, 0);
