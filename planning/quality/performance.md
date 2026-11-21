@@ -656,6 +656,22 @@ The build's figure is the page's: at the trip's street 8 files and 3.37 MB on Mi
 var/maps/los-angeles.snmap`, at 7136, 352) 7 and 2.75 MB, as the rule says there; the heaviest place is 3.69 MB on
 Miami and 3.36 on Los Angeles.
 
+## Cast's people (2026-11-21, Linux, i9-13980HX x32)
+
+`bun tools/bench/cast.ts`: four survivors on flat ground, a beach crowd of Cast's people walked in from out of sight
+(240 s), then 60 s measured, against the same world with Cast off.
+
+| Row | Cast off | Cast on | Budget |
+| --- | --- | --- | --- |
+| Tick, median; 99th | 0.03; 0.06 ms | 0.26; 0.31 ms | 8; 16 |
+| Sent to each survivor | 1.7 KB/s | 21.3 KB/s | 34 to 36 |
+| Cast's bodies in the world, most | 0 | 207 | 200 a crowd (CastCrowdMax) |
+
+On Miami's built map (16.3 km a side) with one survivor at the spawn, Cast enabled at activity 1.5: a region's spots read
+in under a millisecond, 298 stories planned over three minutes, 15 bodies at once, and the tick at 0.80 ms median, 3.74
+ms 99th, 7.3 ms at worst. Most of the crowd lies or sits (an emote held), which is what keeps it this cheap; a crowd that
+all walked would cost more and has not been measured.
+
 ## Where the limits are
 
 Reasoned from the rows, in the order a growing world meets them.
