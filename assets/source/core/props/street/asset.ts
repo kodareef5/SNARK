@@ -92,26 +92,33 @@ const STATED: Readonly<Record<string, readonly number[]>> = Object.fromEntries(
 );
 
 /**
- * The street's edge, under the walk kit's own ids (content/ruins.ts street()), and a curb return no content has yet,
- * which the street study sets down (tools/snap/street-study.ts --rows): curb.py makes them on the atlas's concrete
- * strip. Each is its object, its triangles a level and each coarser level's error, stated in metres, as a measure of
- * points does not see a groove filled or an arc's chord:
+ * The street's edge, under the walk kit's own ids (content/ruins.ts street()), and the curb returns a map sets down at
+ * its corners (content/curbs.ts): curb.py makes them on the atlas's concrete strip. Each is its object, its triangles a
+ * level and each coarser level's error, stated in metres, as a measure of points does not see a groove filled or an
+ * arc's chord:
  * - A walk or a ramp's finest level has the curb's top edge rounded to 2.5 cm in four, its face leaning back 1.2 cm, the
  *   walk in 1.6 m panels with joints 4 cm wide and 6 mm deep, and a gutter pan before it where the content has one.
  *   Its second is its box with the face's lean: 12 triangles (20 with a gutter), fewer than the old boxes had before the
  *   near city left out their hidden faces. It stands 9 mm off the first, where the edge is squared, so on medium it is
  *   drawn from 32 m and on high from 50 m.
- * - The return, 6 m at its face, has a quarter in 24, 16, 12, 6 and 3 pieces. Each coarser level's error is its chord's
- *   sagitta at the gutter's edge, 6.45 m out, 6.45 (1 - cos(45 / n degrees)), or its edge's, whichever is more:
- *   8 mm (16, the edge in two), 14 mm (12, the edge a chamfer and the joints filled), 56 mm and 220 mm. On medium
- *   they are first drawn at 28, 49, 196 and 771 m.
+ * - The curb returns (content/curbs.ts), 4, 6 and 8 m at the face, with a ramp at the arc's middle and a straight end
+ *   past each end for the walk's end to lie over. A quarter is in 20, 12, 8, 4 and 2 pieces at 4 m; 24, 16, 12, 6 and 3
+ *   at 6 m; 28, 18, 12, 6 and 3 at 8 m, the ramp's ends always among them. Each coarser level's error is its chord's
+ *   sagitta at the gutter's edge, (r + 0.45) (1 - cos(45 / n degrees)), rounded up, or its edge's where that is more
+ *   (2 mm with the edge in two, 7 mm as a chamfer with the joints filled, 9 mm square). The fourth leaves out the
+ *   straight ends, which leaves the 6 cm of each the walk does not cover open, about its chord's error; the last is the
+ *   arc's mass alone, without the ramp's 14 cm fall or the pan, less than its chord's sagitta. 4 m: 10, 22, 86 and 339
+ *   mm; 6 m: 8, 14, 56 and 220 mm; 8 m: 8, 19, 73 and 288 mm. On medium a level of 8 mm is first drawn at 28 m, of
+ *   56 mm at 196 m; the last is past the near city's 288 m at 1080 rows on every tier.
  */
 const EDGE: readonly { id: string; object: string; triangles: number[]; errors: number[] }[] = [
   { id: "core:zruin_zwalk8_concrete", object: "zwalk8", triangles: [92, 12], errors: [0.009] },
   { id: "core:zruin_zwalk8g_concrete", object: "zwalk8g", triangles: [100, 20], errors: [0.009] },
   { id: "core:zruin_zcurbramp_concrete", object: "zcurbramp", triangles: [44, 12], errors: [0.009] },
   { id: "core:zruin_zcurbrampl_concrete", object: "zcurbrampl", triangles: [44, 12], errors: [0.009] },
-  { id: "core:zzzcurb_r6", object: "curb_r6", triangles: [696, 404, 178, 66, 36], errors: [0.008, 0.014, 0.056, 0.22] },
+  { id: "core:zzzcurb_r4", object: "curb_r4", triangles: [680, 444, 190, 86, 20], errors: [0.01, 0.022, 0.086, 0.339] },
+  { id: "core:zzzcurb_r6", object: "curb_r6", triangles: [792, 540, 246, 106, 28], errors: [0.008, 0.014, 0.056, 0.22] },
+  { id: "core:zzzcurb_r8", object: "curb_r8", triangles: [904, 492, 246, 86, 28], errors: [0.008, 0.019, 0.073, 0.288] },
 ];
 
 export default {

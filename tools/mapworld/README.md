@@ -78,7 +78,11 @@ these modules.
 
 `statics.ts` is the seam. A `StaticLayer.make(site, placed)` returns kind, centre
 and yaw for each box, given the pieces the layers before it set down: the ruins,
-then the street furniture (`street-furniture.ts`, planning/reference/maps.md). The
+then the street furniture (`street-furniture.ts`, planning/reference/maps.md).
+Where two streets meet, `corners.ts` rounds the corner by `street.walks.returns`
+(rules/README.md): the ground is painted round its arc before the surfaces are
+worked out, the walks set a curb return there and begin their runs at its ends,
+and the furniture stands behind it. The
 site exposes footprints, district data, ground samples and plant clearing masks. The ground builder leaves the footprints bare when
 `world.heaps` is false. Resource nodes are placed after all static layers:
 whether each slot's node stands, and as what, is decided once on the finished

@@ -11,6 +11,7 @@ import { cutBridgeWater, pathsOf, readWays } from "./ways.ts";
 import type { Base, Grid } from "./base.ts";
 import { makeHeaps, readBuildings, PART_COURT, PART_FLOOR, PART_HEAP, PART_POOL, PART_SPILL, PART_WALL, type Heaps } from "./heaps.ts";
 import { carveLakes, readLakes, type LakeRules, type Lakes } from "./lakes.ts";
+import { roundGround, type Corner } from "./corners.ts";
 import { blur, distanceField, fbm, fillPolygon, hash3, regions, share } from "./raster.ts";
 
 /** What a sample's ground is, for its colour and for what lives on it. */
@@ -143,7 +144,11 @@ export function groundClasses(g: Ground): Uint8Array {
   return out;
 }
 
-export function makeGround(base: Base, world: World, log: (line: string) => void): Ground {
+/**
+ * The ground of a map, its `corners` (corners.ts) rounded: the street and the sidewalk painted round each corner's arc
+ * where the road burn left a mitre.
+ */
+export function makeGround(base: Base, world: World, log: (line: string) => void, corners: readonly Corner[] = []): Ground {
   const { grid } = base;
   const { nx, nz, cell, west, north } = grid;
   const N = nx * nz;
@@ -157,6 +162,11 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const wrecks = base.bytes("wrecks");
   // A folder made before the streets stage has no use.png: its ground is as it was.
   const use = existsSync(join(base.folder, "base", "use.png")) ? base.bytes("use") : new Uint8Array(N);
+  if (corners.length > 0) {
+    const footprints = base.bytes("buildings");
+    const painted = roundGround(corners, grid, roads, use, (i) => water[i] === 0 && footprints[i] === 0 && use[i] !== USE.CROSSING);
+    log(`ground: ${corners.length} street corners rounded, ${painted.road} samples painted street and ${painted.walk} sidewalk round them`);
+  }
   const dem = base.elevation();
   const model = base.bathymetry();
   const bathy = model ? blur(model, nx, nz, 2, 3) : null;

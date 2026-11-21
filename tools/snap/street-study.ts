@@ -26,11 +26,14 @@ const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8
 const files = manifest.files.map((f) => f.format && f.format !== "rgba" ? new Uint8Array() : Bun.mmap(join(assets, f.name)));
 const rows: MapStatic[] = [], counts = new Map<string, number>();
 const t = map.statics, population = new Uint32Array(t.kinds.length);
+// The statics within 280 m of the study's middle, Miami's (8600, 8000) unless --centre=x,z names another, as a map cut
+// from Miami's has it (its own metres).
+const [centreX, centreZ] = (process.argv.find((arg) => arg.startsWith("--centre="))?.slice(9) ?? "8600,8000").split(",").map(Number) as [number, number];
 for (let i = 0; i < t.kind.length; i++) {
   const kind = t.kinds[t.kind[i]!]!;
   population[t.kind[i]!]!++;
   if (kind.includes("zutility_") || kind.includes("zdrain_")) counts.set(kind, (counts.get(kind) ?? 0) + 1);
-  if (Math.hypot(t.x[i]! - 8600, t.z[i]! - 8000) < 280) rows.push({ kind, x: t.x[i]!, y: t.y[i]!, z: t.z[i]!, yaw: t.yaw[i]! });
+  if (Math.hypot(t.x[i]! - centreX, t.z[i]! - centreZ) < 280) rows.push({ kind, x: t.x[i]!, y: t.y[i]!, z: t.z[i]!, yaw: t.yaw[i]! });
 }
 const carX = 8649, carZ = 7898;
 const propName = process.argv.find(arg => arg.startsWith("--prop="))?.slice(7);
