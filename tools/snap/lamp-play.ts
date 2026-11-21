@@ -76,6 +76,9 @@ const MOMENTS: readonly Moment[] = [
   { name: "far-fly", near: [7013.8, 10173.9], from: [-2, 4], to: [-4.5, 4], up: 15, steps: 21, part: [0.2, 0.3, 0.6, 0.3] },
   // Standing on the road, the look turning slowly, a twentieth of a degree a step: the lamps far off move a pixel or two.
   { name: "far-turn", near: [7013.8, 10173.9], from: [-2, 4], to: [-2, 4], up: 1.7, steps: 21, part: [0.2, 0.3, 0.6, 0.3], turn: 1 },
+  // As the owner most likely looked: on foot in third person on the walk, still, then walking along it at 3 m/s.
+  { name: "third-still", near: [7013.8, 10173.9], from: [-2, -1.5], to: [-2, -1.5], up: 1.7, steps: 21, part: [0.2, 0.25, 0.6, 0.3], third: true },
+  { name: "third-walk", near: [7013.8, 10173.9], from: [-2, -1.5], to: [-3, -1.5], up: 1.7, steps: 21, part: [0.2, 0.25, 0.6, 0.3], third: true },
 ];
 
 const map = Bun.mmap(mapPath);
@@ -223,7 +226,7 @@ try {
       };
       if (m.from) {
         const [ex, ey, ez] = eyeAt(0), [lx, lz] = at(f, -400, m.from[1]);
-        place(ex, ey - 1.62, ez, true);
+        place(ex, ey - 1.62, ez, !m.third);
         yaw = Math.atan2(lx - ex, lz - ez);
         pitch = Math.atan2(ground(lx, lz) + 1 - ey, 400);
       }
@@ -239,7 +242,8 @@ try {
       }
       first = false;
       if (m.from) {
-        // Each step: the ghost moved, the page's camera waited for where it was put, then the part of the screen kept.
+        // Each step: the ghost, or in third person the body on foot, moved, the page's camera waited for where it was
+        // put, or in third person till it stood still, then the part of the screen kept.
         const dir = join(out, `${m.name}-${tier}${tag}`), states: unknown[] = [];
         mkdirSync(dir, { recursive: true });
         const [px, py, pw, ph] = m.part!;
@@ -248,11 +252,14 @@ try {
         const shots: Picture[] = [], places: ([number, number] | null)[][] = [];
         for (let k = 0; k < m.steps!; k++) {
           const [ex, ey, ez] = eyeAt(k), look = yaw + (((m.turn ?? 0) * Math.PI) / 180) * (k / Math.max(1, m.steps! - 1));
-          place(ex, ey - 1.62, ez, true);
+          place(ex, ey - 1.62, ez, !m.third);
           if (m.turn) await evaluate(`(() => { snarkTrip.app.held = [${look}, ${pitch}]; return true; })()`);
+          let before: number[] | null = null;
           for (let w = 0; w < 40; w++) {
             const c = await evaluate("(() => { const c = snarkTrip.app.cam; return [c.x, c.y, c.z, c.yaw]; })()");
-            if (c && Math.hypot(c[0] - ex, c[2] - ez) < 0.005 && Math.abs(Math.atan2(Math.sin(c[3] - look), Math.cos(c[3] - look))) < 1e-4) break;
+            const placed = c && (m.third ? before !== null && Math.hypot(c[0] - before[0]!, c[1] - before[1]!, c[2] - before[2]!) < 0.0005 && w > 4 : Math.hypot(c[0] - ex, c[2] - ez) < 0.005);
+            if (c && placed && Math.abs(Math.atan2(Math.sin(c[3] - look), Math.cos(c[3] - look))) < 1e-4) break;
+            before = c;
             await Bun.sleep(50);
           }
           states.push(await evaluate(`new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done(${STATE}))))`));
