@@ -121,12 +121,22 @@ const EDGE: readonly { id: string; object: string; triangles: number[]; errors: 
   { id: "core:zzzcurb_r8", object: "curb_r8", triangles: [904, 492, 246, 86, 28], errors: [0.008, 0.019, 0.073, 0.288] },
 ];
 
+/**
+ * A marina's dock kit (content/docks.ts), which dock.py makes on the atlas's wood and galvanised strips: the walkway's
+ * module, its ramp down from the bank, a finger's module and the mooring pile, each its triangles a level: boards and
+ * cleats and the ramp's rails; a plain deck; flat, the small parts gone; the deck's mass. Their levels are measured.
+ */
+const DOCK: readonly { id: string; object: string; triangles: number[] }[] = Object.entries({
+  walk: [470, 170, 90, 24], ramp: [720, 320, 90, 24], finger: [420, 150, 70, 24], pile: [150, 80, 40, 24],
+}).map(([part, triangles]) => ({ id: `core:zzzzdock_${part}`, object: `dock_${part}`, triangles }));
+
 export default {
   kind: "pieces",
-  source: { scripts: ["model.py", "curb.py"] },
+  source: { scripts: ["model.py", "curb.py", "dock.py"] },
   pieces: [
     ...Object.entries(PIECES).map(([name, triangles]) => ({ id: `core:zzstreet_${name}`, object: name, triangles, ...(STATED[name] ? { errors: STATED[name] } : {}) })),
     ...EDGE,
+    ...DOCK,
   ],
   materials: {
     street: { base: "tex/street_base.png", normal: "tex/street_normal.png", packed: "tex/street_packed.png", height: "tex/street_height.png" },

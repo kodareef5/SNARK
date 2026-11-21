@@ -512,6 +512,8 @@ export class Scene {
   private readonly pitched: Uint8Array;
   /** Per mesh, DRAW_GROUND where a kind of paint on the ground is drawn with it, which casts no shadow; else 0. */
   private readonly groundFlags: Uint16Array;
+  /** Per mesh, what a static's distance is divided by when its level is chosen: 1, or less for a coarse kind's. */
+  private readonly reachOfStatic: Float32Array;
   /** Per species. The size a newborn is drawn at, as a share of a grown one. */
   private readonly birthScale: Float32Array;
   /** Shots in the air, and the moment to draw them at, in ticks. The app sets both. */
@@ -801,6 +803,7 @@ export class Scene {
     this.sizes = reg;
     this.parkedContacts = new ParkedContacts(reg);
     this.groundFlags = new Uint16Array(table.count);
+    this.reachOfStatic = new Float32Array(table.count).fill(1);
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
@@ -814,6 +817,8 @@ export class Scene {
       this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
       this.colorOfKind[k] = d.color;
       if (mesh >= 0 && d.type === "structure" && d.paint) this.groundFlags[mesh] = DRAW_GROUND;
+      // A static whose levels are chosen farther off than it stands: every static of its mesh is (StructureDef.coarse).
+      if (mesh >= 0 && d.type === "structure" && d.coarse) this.reachOfStatic[mesh] = Math.min(this.reachOfStatic[mesh]!, 1 / d.coarse);
     }
     this.finder = new RoomFinder(reg, this.meshOfKind, (stream?.manifest ?? pack.header).meshes, table.error);
     this.twinOf = new Int32Array(table.count).fill(-1);
@@ -3227,6 +3232,7 @@ export class Scene {
       for (let c = 0; c < blocks; c++) b.cellFirst[q * (blocks + 1) + c] = this.cellCursor[m * blocks + c]!;
       b.cellFirst[q * (blocks + 1) + blocks] = ranges[q * 3 + 1]! + ranges[q * 3 + 2]!;
       this.cursor[m] = q;
+      if (!sizeOf && this.reachOfStatic[m] !== 1) { b.reach[q] = this.reachOfStatic[m]!; b.cellReach.fill(this.reachOfStatic[m]!, q * cells, (q + 1) * cells); }
     }
     const box = b.cellBox, zone = b.zone;
     for (let s = 0; s < t.high; s++) {
