@@ -264,6 +264,32 @@ not kept: `marine/bake.py` and the three scripts make them again.
   static's colour. Their finest level is made from the model to 6,000 triangles,
   as a street holds many.
 
+### Abandoned road vehicles
+
+The rest of the fleet stands in a city's streets too, each body as its own pieces
+asset `core/vehicles/<vehicle>_abandoned/`: fastback, veloce, berlinetta, panel
+van, caravan, patrol sedan and jeep, taxi, muscle car, monster truck, bus and the
+semi's tractor. `parked_common/parked.py` runs the live vehicle's own `model.py`
+in Blender, takes its rig off and joins its parts at rest into one rigid mesh: where
+it stopped (front wheels a little turned, 4 cm down on soft tyres, a degree of
+list), and for the fastback, the panel van and the caravan stripped (wheels,
+steering wheel and driver's door taken, the passenger's door ajar where it is
+hinged, down on its sills), the fastback on its roof as well. Their pictures are
+the live vehicle's, made over by `parked_common/paint.py` (Python 3 with NumPy and
+Pillow; run it before `bun run art`): a static dyes region 0 only, so the
+upholstery and the wheels are painted in at the vehicle's sample colours, the
+mask keeps the paint alone, and the first third of the hurt and decay pictures
+show as knocks and rust with no paint on them. The heavy road vehicles' liveries
+have no paint region and are drawn as the live vehicle's. As the compact's, each
+finest level is made from the model to 6,000 triangles (7,000 for the bus and the
+semi) and drawn with its materials, the rest flat. `parked_common/bounds.ts`
+fits each look's collision boxes to its finest level, into
+`content/vehicles/abandoned-bounds.json`.
+
+    python3 assets/source/core/vehicles/parked_common/paint.py
+    bun run art -- core:fastback_abandoned   (and so on, each by itself)
+    bun assets/source/core/vehicles/parked_common/bounds.ts
+
 A vehicle modelled as hundreds of separate closed parts (pressings, tubes, castings
 joined into one object) cannot keep all of them in its flat levels: a 6,400 triangle
 level of a 947-part jeep has under seven triangles a part. Which parts go is the

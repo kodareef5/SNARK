@@ -72,6 +72,15 @@ test("a district parks the fleet by its weights: the defaults, changed by its st
   expect(park(site, rules(MANY))).toEqual(cars);
 });
 
+test("near a place a rule lists, its weights change the district's: patrol cars by a police station", () => {
+  const site = fixture(streets(100, 900, 100));
+  const near = (x: number, _z: number, places: readonly string[]): boolean => places.includes("police_station") && x < 500;
+  const cars = parkCars(site, [], roadIndex(site), rules({ ...MANY, near: [{ places: ["police_station"], within: 200, weights: { "core:patrol_sedan": 20 } }] }), 7, FLEET, near);
+  const by = cars.filter((p) => p.x < 500), away = cars.filter((p) => p.x >= 500);
+  expect(count(by, "core:patrol_sedan") / by.length).toBeGreaterThan(.6);
+  expect(count(away, "core:patrol_sedan")).toBe(0);
+});
+
 test("the default rules weigh only cars of the fleet, and a kind they misname stops the build", () => {
   const site = fixture(streets(100, 300, 100));
   const cars = park(site, DEFAULTS);

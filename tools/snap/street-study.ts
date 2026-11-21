@@ -35,7 +35,8 @@ for (let i = 0; i < t.kind.length; i++) {
   if (kind.includes("zutility_") || kind.includes("zdrain_")) counts.set(kind, (counts.get(kind) ?? 0) + 1);
   if (Math.hypot(t.x[i]! - centreX, t.z[i]! - centreZ) < 280) rows.push({ kind, x: t.x[i]!, y: t.y[i]!, z: t.z[i]!, yaw: t.yaw[i]! });
 }
-const carX = 8649, carZ = 7898;
+// The studied cars stand at Miami's (8649, 7898) turned -0.22 radians, unless --car=x,z,yaw names another place.
+const [carX, carZ, carYaw] = (process.argv.find((arg) => arg.startsWith("--car="))?.slice(6) ?? "8649,7898,-0.22").split(",").map(Number) as [number, number, number];
 const propName = process.argv.find(arg => arg.startsWith("--prop="))?.slice(7);
 if (propName) rows.push({ kind: "core:"+propName, x: carX, z: carZ, y: mapHeightfield(map).heightAt(carX,carZ), yaw: 0 });
 // --rows=FILE puts rows into the study and takes rows out of it, to judge a piece before any map holds it: each
@@ -132,7 +133,7 @@ console.log("Miami fixture census", Object.fromEntries(counts), "statics in stud
 const gpu = process.argv.includes("--gpu");
 const view = propName ? "prop" : process.argv.find(arg => arg.startsWith("--view="))?.slice(7);
 const looksFile = process.argv.find((arg) => arg.startsWith("--looks="))?.slice(8);
-const looks = looksFile ? JSON.parse(readFileSync(looksFile, "utf8")) as { name: string; at: [number, number, number]; to: [number, number, number]; cars?: boolean }[] : null;
+const looks = looksFile ? JSON.parse(readFileSync(looksFile, "utf8")) as { name: string; at: [number, number, number]; to: [number, number, number]; cars?: boolean | number }[] : null;
 if (!gpu && !view && !looks) {
   look(8540, 8073, 8535.5, 8084.54, 7.1);
   shot("storefront");
@@ -151,7 +152,7 @@ for (let i = 0; i < 2; i++) {
   remote.x[i] = carX + i * 3.25;
   remote.z[i] = carZ + i * 2.2;
   remote.y[i] = hf.heightAt(remote.x[i]!, remote.z[i]!);
-  remote.yaw[i] = -0.22;
+  remote.yaw[i] = carYaw;
   remote.flags[i] = 1;
   remote.colors[i * 6] = i === 0 ? paint : 41;
 }
@@ -159,7 +160,8 @@ remote.count = propName ? 0 : 2;
 if (propName && !v.reg.index.has("core:"+propName)) throw new Error("Unknown road prop " + propName);
 look(carX - 4.3, carZ - 3.9, carX + 0.7, carZ + 0.6, hf.heightAt(carX, carZ) + 0.78);
 // --looks=FILE draws each camera of the file on the GPU, as <name>.png, in place of the reflection study: {name, at: [x,
-// z, eye over the ground], to: [x, z, height over the ground there], cars?: false}, at --hour, with --off= effects off
+// z, eye over the ground], to: [x, z, height over the ground there], cars?: false or how many of the studied cars stand
+// (two where not given)}, at --hour, with --off= effects off
 // as a page's ?off= has them (client/core/passes.ts). Each says the frame's draws and triangles, and the walk kit's; the
 // study has no near city, so every static is drawn as an instance and its draws are not a client's (tools/bench/census.ts).
 if (looks) {
@@ -178,7 +180,7 @@ if (looks) {
     shots() {
       for (const l of looks) {
         look(l.at[0], l.at[1], l.to[0], l.to[1], hf.heightAt(l.to[0], l.to[1]) + l.to[2], l.at[2]);
-        remote.count = l.cars === false ? 0 : 2;
+        remote.count = l.cars === false ? 0 : typeof l.cars === "number" ? l.cars : 2;
         for (let frame = 0; ; frame++) {
           if (frame > 900) throw new Error(l.name + " did not settle");
           scene.now += 1000 / 60;
