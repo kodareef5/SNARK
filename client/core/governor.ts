@@ -153,6 +153,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     shadows: s.cascades === 0 || !base.lit ? s : { ...s, everyOther: s.everyOther || (knobs.everyOther === true && s.cascades > 1), cascades: Math.max(1, s.cascades - (knobs.fewerCascades ?? 0)) },
     budget: { ...base.budget, triangles: base.budget.triangles * (knobs.leaves ?? 1) },
     details: knobs.details ? { ...base.details, pool: Math.round(base.details.pool * knobs.details), share: base.details.share * knobs.details, fill: base.details.fill * knobs.details } : base.details,
+    waterMarks: Math.min(base.waterMarks, knobs.details ? 0 : knobs.bodies ? 3 : knobs.levels ? 6 : base.waterMarks),
     reflectionHz: Math.min(base.reflectionHz, knobs.details ? 0 : knobs.bodies ? 1 : knobs.levels ? 2 : base.reflectionHz),
     bodyError: base.bodyError * (knobs.bodies ?? 1),
     post: knobs.noLightTarget ? null : base.post,

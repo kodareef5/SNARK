@@ -104,6 +104,10 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
       tint[i] = k;
       continue;
     }
+    if (s === S.SHALLOW && ground.beachBed?.has(i)) {
+      tint[i] = ground.height[i]! > -0.2 ? 122 : 123;
+      continue;
+    }
     if (s === S.CONTAINER) {
       tint[i] = CONTAINERS[ground.container[i]! % CONTAINERS.length]!;
       continue;

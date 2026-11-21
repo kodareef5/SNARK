@@ -29,6 +29,8 @@ export class Pool {
   /** The floor it lands on: a height, or NaN to follow the ground. */
   readonly plane: Float64Array;
   readonly size: Float32Array;
+  /** Fraction of the authored card width, for foam drawn out along the hull wash. */
+  readonly widthScale: Float32Array;
   /** Its heading, its pitch, and the phases of its rocking and its sway, in radians, and the way it sways. */
   readonly heading: Float32Array;
   readonly pitch: Float32Array;
@@ -61,6 +63,7 @@ export class Pool {
     this.end = f32();
     this.landed = f32();
     this.size = f32();
+    this.widthScale = f32();
     this.heading = f32();
     this.pitch = f32();
     this.phase = f32();
@@ -72,7 +75,7 @@ export class Pool {
     this.grey = new Uint8Array(room);
     this.colourA = new Uint32Array(room);
     this.colourB = new Uint32Array(room);
-    this.columns = [this.x, this.y, this.z, this.plane, this.vx, this.vy, this.vz, this.age, this.end, this.landed, this.size, this.heading, this.pitch, this.phase, this.swayTo, this.effect, this.cell, this.flags, this.grey, this.colourA, this.colourB];
+    this.columns = [this.x, this.y, this.z, this.plane, this.vx, this.vy, this.vz, this.age, this.end, this.landed, this.size, this.widthScale, this.heading, this.pitch, this.phase, this.swayTo, this.effect, this.cell, this.flags, this.grey, this.colourA, this.colourB];
   }
 
   /** Room for one more, its index, or -1. */

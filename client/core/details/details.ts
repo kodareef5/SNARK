@@ -27,7 +27,7 @@ import { Occasions, type DrawnGait, type Happening, type ShotEnd, type Viewer } 
 import { corpseDownAt, type Corpse } from "../ragdoll.ts";
 import { LOW } from "../render/atmosphere.ts";
 import type { Camera } from "../render/camera.ts";
-import { DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, MAX_DETAILS, type FramePacket } from "../render/packet.ts";
+import { DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DETAIL_WAKE, MAX_DETAILS, type FramePacket } from "../render/packet.ts";
 import type { RemoteSample } from "../session.ts";
 import { GROUND_WATER, dustColour, groundAt } from "./ground.ts";
 import { Pool } from "./pool.ts";
@@ -75,6 +75,7 @@ interface Waiting {
   index: number;
   /** Sustained emitters already resolved their complete vehicle frame and supporting surface. */
   origin?: { x: number; y: number; z: number; floor: number };
+  wash?: { speed: number; side: number; outside: number };
 }
 
 export class Details {
@@ -111,7 +112,7 @@ export class Details {
   private readonly birth: Float32Array;
   private readonly rotorKinds: Uint8Array;
   private readonly boatKinds: Uint8Array;
-  private readonly emissions = new Map<number, { wash: number; smoke: number; seen: number; tick: number; x: number; z: number; speed: number }>();
+  private readonly emissions = new Map<number, { wash: number; smoke: number; seen: number; tick: number; x: number; z: number; speed: number; yaw: number; turn: number; travel: number }>();
   private emissionFrame = 0;
   private readonly rotation = new Float64Array(4);
   private readonly up = new Float64Array(3);
@@ -257,11 +258,19 @@ export class Details {
     const kind = r.kind[i]!;
     const key = r.id[i]! + r.gen[i]! * 1048576;
     let seen = this.emissions.get(key);
-    if (!seen) this.emissions.set(key, seen = { wash: -1, smoke: -1, seen: frameNumber, tick: r.tick, x: r.x[i]!, z: r.z[i]!, speed: 0 });
+    if (!seen) this.emissions.set(key, seen = { wash: -1, smoke: -1, seen: frameNumber, tick: r.tick, x: r.x[i]!, z: r.z[i]!, speed: 0, yaw: r.yaw[i]!, turn: 0, travel: 0 });
     seen.seen = frameNumber;
     if (r.tick > seen.tick) {
       const elapsed = (r.tick - seen.tick) / TICK_RATE;
-      seen.speed = elapsed < .5 ? Math.hypot(r.x[i]! - seen.x, r.z[i]! - seen.z) / elapsed : 0;
+      const moved = Math.hypot(r.x[i]! - seen.x, r.z[i]! - seen.z);
+      seen.speed = elapsed < .5 ? moved / elapsed : 0;
+      const yaw = r.yaw[i]!, angle = yaw - seen.yaw;
+      if (elapsed < .5 && seen.speed < 60) {
+        const rate = Math.atan2(Math.sin(angle), Math.cos(angle)) / elapsed;
+        seen.turn += (rate - seen.turn) * Math.min(1, elapsed * 6);
+        seen.travel = Math.min(3, seen.travel + moved);
+      } else { seen.turn = 0; seen.travel = 0; }
+      seen.yaw = yaw;
       seen.tick = r.tick; seen.x = r.x[i]!; seen.z = r.z[i]!;
     }
     const frame = this.machine;
@@ -271,13 +280,17 @@ export class Details {
       const beat = Math.floor(r.tick / (TICK_RATE / 8));
       vehicleRotation(frame, this.rotation); quatRotate(this.rotation, 0, 0, 1, 0, this.up, 0);
       const water = hf.waterAt(frame.x, frame.z), draft = water - frame.y;
-      if (beat !== seen.wash && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < (book.vehicle?.movement === "boat" ? book.vehicle.spec.draft + .6 : .95) && water > hf.heightAt(frame.x, frame.z) + .15) {
-        seen.wash = beat;
+      if (beat !== seen.wash && seen.travel >= .75 && seen.speed > .6 && seen.speed < 60 && this.up[1]! > .5 && draft > -.08 && draft < (book.vehicle?.movement === "boat" ? book.vehicle.spec.draft + .6 : .95) && water > hf.heightAt(frame.x, frame.z) + .15) {
+        seen.wash = beat; seen.travel = 0;
         for (const wake of WAKES) {
           if (seen.speed < wake.speed) continue;
           for (const socket of wake.sockets) if (this.socketAt(r, i, book, socket)) {
             const x = this.emitter[0]!, z = this.emitter[2]!, surface = hf.waterAt(x, z);
-            if (Number.isFinite(surface) && Math.abs(surface - water) < .05 && surface > hf.heightAt(x, z) + .1 && Math.abs(this.emitter[1]! - surface) < .9) this.emit(r, i, book, wake.occasion, x, surface + .025, z, surface, socket);
+            if (Number.isFinite(surface) && Math.abs(surface - water) < .05 && surface > hf.heightAt(x, z) + .1 && Math.abs(this.emitter[1]! - surface) < .9) {
+              const side = Math.sign((x - frame.x) * Math.cos(frame.yaw) - (z - frame.z) * Math.sin(frame.yaw));
+              const outside = Math.max(-1, Math.min(1, -side * seen.speed * seen.turn / 5));
+              this.emit(r, i, book, wake.occasion, x, surface + .025, z, surface, socket, { speed: seen.speed, side, outside });
+            }
           }
         }
       }
@@ -324,7 +337,7 @@ export class Details {
   }
 
   /** Queues the answers of the machine `i` (machinery) to `occasion` at a place, those from `socket` alone where it is given. */
-  private emit(r: RemoteSample, i: number, book: Book, occasion: "rotor_wash" | "engine_smoke" | "boat_wake" | "boat_spray", x: number, y: number, z: number, floor: number, socket?: string): void {
+  private emit(r: RemoteSample, i: number, book: Book, occasion: "rotor_wash" | "engine_smoke" | "boat_wake" | "boat_spray", x: number, y: number, z: number, floor: number, socket?: string, wash?: Waiting["wash"]): void {
     const answers = book.answers[occasion];
     if (!answers) return;
     const frame = this.machine;
@@ -332,7 +345,7 @@ export class Details {
     for (let index = 0; index < answers.length; index++) {
       const answer = answers[index]!;
       if (socket && answer.entry.from !== socket) continue;
-      if (this.waiting.length < MOST_WAITING) this.waiting.push({ h, answer, due: r.tick, index, origin: { x, y, z, floor } });
+      if (this.waiting.length < MOST_WAITING) this.waiting.push({ h, answer, due: r.tick, index, wash, origin: { x, y, z, floor } });
     }
   }
 
@@ -562,11 +575,36 @@ export class Details {
       pool.pitch[i] = (rng.float() - 0.5) * 0.8;
       pool.phase[i] = rng.float() * Math.PI * 2;
       pool.swayTo[i] = rng.float() * Math.PI * 2;
+      pool.widthScale[i] = 1;
+      if (w.wash) {
+        const { side, outside, speed: travel } = w.wash;
+        const foam = h.occasion === "boat_wake", pressure = 1 + 0.42 * outside;
+        const facingX = Math.sin(h.yaw), facingZ = Math.cos(h.yaw);
+        const outward = side * pressure * (0.65 + 0.55 * rng.float());
+        const aft = foam ? -0.35 : 0.12;
+        const jetspeed = foam ? Math.min(2.3, 0.45 + 0.13 * travel) : speed * 0.9;
+        pool.vx[i] = (facingZ * outward + facingX * aft) * jetspeed;
+        pool.vz[i] = (-facingX * outward + facingZ * aft) * jetspeed;
+        if (foam) {
+          const fan = side * pressure * (0.2 + 0.32 * rng.float());
+          pool.heading[i] = Math.atan2(-facingZ - facingX * fan, -facingX + facingZ * fan);
+          pool.widthScale[i] = (0.22 + 0.22 * rng.float()) * pressure;
+          pool.size[i] *= Math.min(1.5, 0.75 + 0.045 * travel) * (1 + 0.15 * outside);
+          pool.end[i] *= 0.48 + 0.16 * rng.float();
+        } else {
+          pool.vy[i] *= pressure;
+          pool.size[i] *= 1 + .28 * outside;
+        }
+      }
       pool.effect[i] = answer.entry.effect;
       const picture = this.pictures[e.pictures[Math.floor(rng.float() * e.pictures.length)]!]!;
       pool.cell[i] = picture.cell;
       pool.flags[i] = picture.flat | (e.lit ? DETAIL_LIT : 0) | (e.face === "camera" ? DETAIL_PUFF : 0);
       pool.grey[i] = Math.max(1, Math.min(255, Math.round(picture.grey * 255)));
+      if (w.wash && h.occasion === "boat_wake" && e.face === "flat") {
+        pool.flags[i] = DETAIL_WAKE;
+        pool.grey[i] = Math.round(255 * rng.float());
+      }
       const shade = 1 + e.vary * (rng.float() * 2 - 1);
       pool.colourA[i] = this.paint(e, picture.regions[0]!, h, book, colour, shade);
       pool.colourB[i] = this.paint(e, picture.regions[1]!, h, book, colour, shade);
@@ -621,7 +659,7 @@ export class Details {
         if (pass === 1) {
           shows *= Math.min(1, Math.max(0, (d - 0.3) / EYE_FADE));
           if (shows <= 0) continue;
-          const area = (4 * half * half * e.aspect) / (Math.max(d, 0.5) ** 2 * 4 * t * t * cam.aspect);
+          const area = (4 * half * half * e.aspect * pool.widthScale[i]!) / (Math.max(d, 0.5) ** 2 * 4 * t * t * cam.aspect);
           fill += area * shows;
         }
         const n = cut + blended;
@@ -633,7 +671,7 @@ export class Details {
         out[o + DETAIL.middle] = x;
         out[o + DETAIL.middle + 1] = y;
         out[o + DETAIL.middle + 2] = z;
-        const width = half * e.aspect;
+        const width = half * e.aspect * pool.widthScale[i]!;
         const lying = pool.landed[i]! >= 0;
         if (e.face === "camera") {
           const a = pool.heading[i]! + e.turn * pool.age[i]!;

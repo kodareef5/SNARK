@@ -20,8 +20,8 @@ import { nearKeeps, swapKeeps } from "../../client/core/render/hand.ts";
 import { COARSE, groundNormal, groundSize, tilePicture, type GroundPicture } from "../../client/core/render/terrain.ts";
 import { eyeRadiance } from "../../client/core/render/tide-eye.ts";
 import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyopen.ts";
-import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
@@ -1207,7 +1207,8 @@ export class Rasterizer {
               continue;
             }
             if ((flags & (DETAIL_ROTOR | DETAIL_LAMP | DETAIL_POOL)) !== 0) {
-              if ((flags & DETAIL_POOL) !== 0) (flags & 7) === (DETAIL_WIRE & 7) ? wireOf(cy, shape) : poolOf(cx, cy, shape);
+              if (flags === DETAIL_WAKE) wakeFoam(cx, cy, grey, shape);
+              else if ((flags & DETAIL_POOL) !== 0) (flags & 7) === (DETAIL_WIRE & 7) ? wireOf(cy, shape) : poolOf(cx, cy, shape);
               else if ((flags & DETAIL_LAMP) !== 0) lampOf(cx, cy, shape);
               else rotorOf(cx, cy, grey, shape);
               [texel[0], texel[1], texel[2], texel[3]] = [shape[2]!, shape[1]!, 0, shape[0]!];
@@ -1235,7 +1236,7 @@ export class Rasterizer {
             if (p.lit) {
               const shade = srgbToLinear(texel[0]!);
               for (let c = 0; c < 3; c++) {
-                const dye = (srgbToLinear(mixed(a, c) / 255) * (1 - texel[1]!) + srgbToLinear(mixed(b, c) / 255) * texel[1]!) / ((flags & DETAIL_ROTOR) !== 0 ? 1 : grey);
+                const dye = (srgbToLinear(mixed(a, c) / 255) * (1 - texel[1]!) + srgbToLinear(mixed(b, c) / 255) * texel[1]!) / ((flags & DETAIL_ROTOR) !== 0 || flags === DETAIL_WAKE ? 1 : grey);
                 albedo[c] = shade * (dye * (1 - texel[2]!) + texel[2]!);
               }
               [eye[0], eye[1], eye[2]] = [vx, vy, vz];
