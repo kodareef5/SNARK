@@ -170,7 +170,9 @@ test("the controls page is the controls screen's own tables, and says how to get
 
 test("the settings the wiki lists are the rows marked public, and every command family is registered", () => {
   expect(publicSettings().map((s) => s.name)).toContain("TamingSpeedMultiplier");
-  expect(publicSettings().length).toBe(24);
+  // The suit at spawn is one a player may know: whether it comes to life dressed.
+  expect(publicSettings().find((s) => s.name === "bDisableDefaultMapItemSets")?.def).toBe("False");
+  expect(publicSettings().length).toBe(25);
   expect(commands().filter((c) => c.examples.length > 0).length).toBeGreaterThan(10);
 });
 

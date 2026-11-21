@@ -13,7 +13,7 @@ import { loadConfig } from "../../server/settings/config.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { CMD_RESPAWN, CMD_TRAVEL } from "../../shared/net/protocol.ts";
 import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
-import { Harness, testKey } from "./net.ts";
+import { Harness, asShipped, testKey } from "./net.ts";
 import { coreRegistry } from "./world.ts";
 
 /** The wall clock every server of a test reads. */
@@ -35,6 +35,8 @@ export interface ServerOptions {
   host?: HostOptions;
   reg?: Registry;
   maxClients?: number;
+  /** Its rules as the server ships them, with the suit at spawn and everyone's cheats (asShipped). */
+  shipped?: boolean;
 }
 
 /** The key a page at world `world` has for `name`: two servers are two origins, and a browser has a key for each. */
@@ -58,6 +60,7 @@ export class TestCluster {
     const log: string[] = [];
     const db = join(this.dir, `${folder}-${name}.db`);
     const { rules } = loadConfig({}, ["-clusterid=test", `-ClusterDirOverride=${join(this.dir, folder)}`, `?SessionName=${name}`, ...(opts.argv ?? [])]);
+    if (opts.shipped) asShipped(rules);
     const h = new Harness(opts.maxClients ? { maxClients: opts.maxClients } : {}, 1, 60, { dbPath: db, config: rules, log: (line) => log.push(line), ...opts.host }, opts.reg ?? this.reg);
     const cluster = h.host.cluster!;
     cluster.now = () => clock.ms;

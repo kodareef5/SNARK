@@ -19,6 +19,7 @@ import type { Persistence } from "../persist/persistence.ts";
 import { TRANSFER_IN, TRANSFER_OUT, type TransferRow, type WorldStore } from "../persist/store.ts";
 import { MAX_TEAM_WORLD, hashKey, type EntityRecord, type Records } from "../records.ts";
 import type { Rules } from "../settings/rules.ts";
+import { issueSuit } from "../suit.ts";
 import type { Tribes } from "../tribes.ts";
 import type { ServerWorld } from "../world.ts";
 import { ClusterFolder, LIVE_MS, type Announcement, type ParcelPlace } from "./folder.ts";
@@ -312,11 +313,12 @@ export class Cluster {
     if (to === this.world) return "you are on that server";
     const state = ctx.mayLeave(c, rec);
     if (state !== "") return state;
-    // What it carries first, as ARK's message has it, then where it goes.
+    // What it carries first, as ARK's message has it, then where it goes. The suit it was issued is not carried: it stays, and
+    // the server it goes to issues its own as it rises there (server/suit.ts).
     items.inv(rec);
     const recs = this.carried(rec);
     const held = new Map<number, number>();
-    for (const r of recs) items.held(r, held);
+    for (const r of recs) items.held(r, held, true);
     for (const item of held.keys()) {
       const def = reg.defs[item] as ItemDef | undefined;
       if (def?.travels === false) return `you are carrying ${def.label ?? reg.ids[item]}, which cannot be transferred: drop such items and try again`;
@@ -360,11 +362,14 @@ export class Cluster {
       teams: records.nextTeam,
     };
     // Its clock stops as it leaves, as any survivor's does out of the world, and it goes from where it stands.
+    const issued = items.burnIssued(rec);
     ctx.suspend(rec, true);
     persistence.capture(rec, c.ent);
     try {
       this.folder.seal(id, this.world, sealParcel(reg, head, recs));
     } catch (err) {
+      // It stays, so it is dressed again.
+      if (issued > 0) issueSuit(items, reg, rules, rec);
       ctx.suspend(rec, false);
       ctx.say(`${rec.name} could not leave for ${dest.name}: ${err instanceof Error ? err.message : String(err)}`);
       return "the cluster's folder could not be written, so you have not left";
@@ -529,6 +534,9 @@ export class Cluster {
       if (pidWorld(r.pid) === this.world && pidSeq(r.pid) >= records.nextSeq) records.nextSeq = pidSeq(r.pid) + 1;
     }
     if (persistence.survivors.get(head.name) !== rec.pid) persistence.bindSurvivor(head.name, rec.pid);
+    // One that never left wears again the suit it was issued, which stayed here as it went (server/suit.ts). Any other is
+    // dressed as it rises.
+    if (head.from === this.world) issueSuit(items, ctx.reg, ctx.rules, rec);
     ctx.tribes.arrived(rec, head.tribe?.team === rec.team ? head.tribe.name : "", head.tribe?.owner ?? false);
     this.note(head, TRANSFER_IN);
     this.away.delete(head.name);

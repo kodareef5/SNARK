@@ -58,8 +58,10 @@ while it runs. Every setting is listed in the
 [settings reference](../planning/reference/settings.md), and how a server is
 run in the [operator's guide](../planning/reference/operators.md).
 
-`--dev` enables the self-check report endpoint and cheats without a password, and
-reads `config/dev` when no other folder is named. It must not be used on a
+`--dev` enables the self-check report endpoint and `enablecheats` without a password, and
+reads `config/dev` when no other folder is named. Without it a server still gives every survivor cheats and the Creative
+entry as it enters, unless its files set `CreativeForAll` or `bShowCreativeMode` off (`creative.ts`), and dresses each in
+the Meridian set as it comes to life unless `bDisableDefaultMapItemSets` is set (`suit.ts`). It must not be used on a
 public server, and it takes a socket only for a browser that asked for this machine by
 `localhost`, an address, or the host of `--public-url` (`namesThisMachine`). `/admin/` is the admin page
 (`admin/routes.ts`, `client/admin`): the server's health from the loop's own timing, its survivors and a live map of them.
@@ -94,7 +96,7 @@ at a path of its own (`--public-url /miami`), with `front.ts` in front of them f
 start screen at `/` lists every world with how many play on it
 ([every world at one address](../planning/reference/operators.md#every-world-at-one-address)). On Windows,
 [deploy/windows](../deploy/windows/README.md) runs a cluster that way and keeps it running. An operator's cheats, which
-need `enablecheats` again after every arrival since an arrival is a new session: `travel [server]` lists the cluster's servers
+need `enablecheats` again after every arrival since an arrival is a new session (unless the server gives everyone cheats): `travel [server]` lists the cluster's servers
 or sends the survivor from where it stands, `cluster` lists the cluster and who is away, and `cluster audit` says whether every
 item of it is accounted for. Now and then, `bun run cluster-trip` plays a survivor there and back through the game's agent on
 two throwaway servers, or with `-- --url ws://localhost:8798/ws --to Tampa` on running ones.

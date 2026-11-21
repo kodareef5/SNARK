@@ -15,7 +15,7 @@ import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { ON_TOP } from "../../shared/world/snap.ts";
 import { STRUCT_NAME, STRUCT_PICKUP, STRUCT_TRAVEL } from "../../shared/world/upkeep.ts";
 import { builder } from "../fixtures/build.ts";
-import { Harness } from "../fixtures/net.ts";
+import { Harness, asShipped } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -230,6 +230,35 @@ test("she travels from the bed at home to the one at her outpost: all she carrie
   rec.out = true;
   expect(act(h, ada, outpost, STRUCT_TRAVEL)).toBe(RESULT_DENIED);
   rec.out = false;
+});
+
+test("she travels between beds in the Meridian set she was issued: the bag at the bed she left holds none of it, and she rises in a whole new one", () => {
+  const made = builder(["ada"], 40, 40, { config: asShipped() });
+  const { h, at } = made;
+  const ada = made.sessions[0]!;
+  const home = bedAt(made, ada, "piece_bed", at.x - 4, at.z + 6);
+  h.say(ada, `tp ${at.x + 6} ${at.z + 30}`);
+  const outpost = bedAt(made, ada, "piece_bed", at.x + 6, at.z + 34);
+  act(h, ada, outpost, STRUCT_NAME, "Outpost");
+  const items = h.host.items;
+  const rec = recOf(h, ada);
+  const suit = ["hat", "shirt", "gloves", "pants", "boots"].map((piece) => id(`meridian_${piece}`));
+  const inv = items.inv(rec);
+  expect([...inv.item.slice(inv.armor, inv.armor + 5)]).toEqual(suit);
+  // The helmet taken off, and the boots worn down.
+  expect(items.move(rec, inv.armor, rec, inv.free(), 0)).toBe(1);
+  items.wear(rec, inv.armor + 4, 100);
+  h.say(ada, "give stone 40");
+  expect(act(h, ada, home, STRUCT_TRAVEL)).toBe(RESULT_OK);
+  h.run(200);
+  const bags = [...h.host.records.byPid.values()].filter((r) => r.kind === id("bag") && r.inv && r.inv.used() > 0);
+  expect(bags.length).toBe(1);
+  expect([bags[0]!.inv!.total(id("stone")), suit.some((piece) => bags[0]!.inv!.item.includes(piece))]).toEqual([40, false]);
+  expect(rise(h, ada, "Outpost")).toBe(RESULT_OK);
+  const now = items.inv(rec);
+  expect([...now.item.slice(now.armor, now.armor + 5)]).toEqual(suit);
+  expect([...now.dur.slice(now.armor, now.armor + 5)]).toEqual(suit.map((piece) => items.maxDur(piece, 0)));
+  expect([now.used(), suit.map((piece) => items.total(piece)), items.audit()]).toEqual([5, [1, 1, 1, 1, 1], []]);
 });
 
 test("a bed destroyed, walled in by another tribe, or no longer hers because she was put out of the tribe while she chose is not risen at, and the list she is sent loses it", () => {
