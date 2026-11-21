@@ -14,7 +14,7 @@ import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import { isBoatVehicle, isWheelVehicle, type VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
-import { B_NECK, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
+import { B_NECK, B_PROP_L, B_PROP_R, B_UPPER_CHEST, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_FEET, SLOT_HANDS, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { RiderSoles, soleOffsets } from "../../../shared/anim/rider-soles.ts";
 import { RiderGrips } from "../../../shared/anim/rider-grips.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
@@ -305,6 +305,8 @@ export class Characters {
   /** Per content index. */
   private readonly worn: (Worn | null)[];
   private readonly held: (Held | null)[];
+  /** The meshes of a glider's two wings, -1 for one not there, or null where no glider has any. */
+  private wings: { right: number; left: number } | null;
   /** 1 for each content index that is a saddle. */
   private readonly saddle: Uint8Array;
   private readonly wornColor = new Uint8Array(6);
@@ -433,6 +435,13 @@ export class Characters {
       const mesh = d?.type === "item" ? human(bind.own(d.id, "held")) : -1;
       return mesh < 0 ? null : { mesh, bone: table.bone[mesh]! };
     });
+    // The wings of the first glider that has them, one for each hand.
+    this.wings = null;
+    for (const d of reg.defs) {
+      if (this.wings || d?.type !== "item" || !d.glide) continue;
+      const right = human(bind.own(d.id, "wing_r")), left = human(bind.own(d.id, "wing_l"));
+      if (right >= 0 || left >= 0) this.wings = { right, left };
+    }
     /** One piece of each armor set for each part. Its `worn` slot says where the set's mesh for a body is. */
     const piece = (set: string, part: string): string => reg.defs.find((d) => d?.type === "item" && d.wear?.set === set && d.wear.slot === part)?.id ?? "";
     const bodyOf = (d: SpeciesDef, sex: string): BodySet | null => {
@@ -1489,7 +1498,14 @@ export class Characters {
       const beard = sealed ? -1 : (set.beard[view[LOOK_BEARD]!] ?? -1);
       if (beard >= 0) this.queuePart(beard, tint, tintAt, -1, unseen || headless);
     }
-    const inHand = gear && !impaled && vehicleSeat?.weapons !== false ? this.held[gear[gearAt + GEAR_HELD]!] : null;
+    // Under an open glider each hand has a wing on its prop bone, and what the body held is put away
+    // (planning/workstreams/glider.md). An observer is not told which glider, and there is one kind.
+    const wings = st.glide && !st.grounded && !impaled && !seat && !vehicleSeat && !st.dead && !st.out ? this.wings : null;
+    if (wings) {
+      if (wings.right >= 0) this.queuePart(wings.right, tint, tintAt, B_PROP_R, unseen);
+      if (wings.left >= 0) this.queuePart(wings.left, tint, tintAt, B_PROP_L, unseen);
+    }
+    const inHand = gear && !wings && !impaled && vehicleSeat?.weapons !== false ? this.held[gear[gearAt + GEAR_HELD]!] : null;
     if (inHand) this.queuePart(inHand.mesh, tint, tintAt, inHand.bone, unseen);
     return true;
   }

@@ -151,6 +151,16 @@ export class Gait {
   glide = Number.NaN;
   dive = Number.NaN;
   roll = Number.NaN;
+  /**
+   * A survivor's glider (planning/workstreams/glider.md), eased as a flyer's shares are: how far its wings have spread
+   * since it was thrown open, 0 to 1, and its lean, -1 flared through 0 at its trim to 1 in a dive. NaN while it is not
+   * gliding, so the next one begins shut.
+   */
+  wingOpen = Number.NaN;
+  wingLean = Number.NaN;
+  /** Under a glider: how fast its way over the ground turns, in radians a second, + to its left, eased; and that way's heading as last drawn. */
+  wingTurn = 0;
+  wingHeading = Number.NaN;
 
   /**
    * Moves to the body's place at `tick` and returns the metres its feet covered, at the size it was made, or -1 when it

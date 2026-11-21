@@ -76,8 +76,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 36: a snapshot says the buttons its tick carried from an input that came after its own tick.
  * 37: a survivor's emote, its own word beside the pose and the cues in a view (AnimState.packEmote), and CMD_EMOTE.
  * 38: the owner's powered maneuvers, button edges, tap windows and recovery. CUE_JET selects the powered motion layout for observers.
+ * 39: the glider on the owner's body (the grade carried, open or not, and its keys as last sampled), behind one bit; under an
+ * open glider CUE_JET is set and the motion bits' mode field holds ANIM_GLIDE and the phase (planning/workstreams/glider.md).
  */
-export const PROTOCOL_VERSION = 38;
+export const PROTOCOL_VERSION = 39;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -721,6 +723,14 @@ export function writeBody(w: BitWriter, b: Body): void {
     w.bits(b.jetSprintTap, 4);
     w.bits(b.jetRecovery, 6);
   }
+  // The glider (protocol 39): a body that carries none pays the one bit.
+  const glider = b.glideGear !== 0 || b.glide !== 0 || b.glideKeys !== 0;
+  w.bool(glider);
+  if (glider) {
+    w.bits(b.glideGear, 2);
+    w.bits(b.glide, 1);
+    w.bits(b.glideKeys, 2);
+  }
   writeFlight(w, b);
   writeVehicle(w, b);
 }
@@ -760,6 +770,11 @@ export function readBody(r: BitReader, b: Body): void {
     b.jetSprintTap = r.bits(4);
     b.jetRecovery = r.bits(6);
   } else b.jetGear = b.jetSpent = b.jetThrust = b.jetKeys = b.jetJumpTap = b.jetSprintTap = b.jetRecovery = 0;
+  if (r.bool()) {
+    b.glideGear = r.bits(2);
+    b.glide = r.bits(1);
+    b.glideKeys = r.bits(2);
+  } else b.glideGear = b.glide = b.glideKeys = 0;
   readFlight(r, b);
   readVehicle(r, b);
 }

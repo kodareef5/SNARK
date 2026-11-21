@@ -90,6 +90,9 @@ export interface Registry {
   readonly nodeHits: Float32Array;
   /** The armor slot an item is worn in (0 head, 1 torso, 2 hands, 3 legs, 4 feet), or -1. */
   readonly wearSlot: Int8Array;
+  /** Per item: a glider's grade, 0 for anything else, and the ticks in the air that cost it one use (GlideFacet). */
+  readonly glide: Uint8Array;
+  readonly glideTicks: Uint32Array;
   /** Uses a tool, weapon or worn piece has at primitive quality. 0 for things that do not wear out. */
   readonly uses: Uint16Array;
   /** Timing of a weapon item, or of a species' bite. Null for everything else. Bare hands are `FISTS`. */
@@ -562,6 +565,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.decomposeHours !== undefined && !(d.decomposeHours > 0 && d.decomposeHours <= MAX_SPOIL_HOURS)) errors.push(`${d.id}: decomposeHours must be above 0 and at most ${MAX_SPOIL_HOURS}`);
       // Anything that wears out, holds rounds or takes an attachment cannot stack.
       if ((d.weapon || d.wear || d.tool) && d.stack !== 1 && d.weapon?.kind !== "thrown") errors.push(`${d.id}: a tool, weapon or worn piece must have stack 1`);
+      if (d.glide) {
+        if (!(Number.isInteger(d.glide.grade) && d.glide.grade >= 1 && d.glide.grade <= 3)) errors.push(`${d.id}: glide.grade must be 1, 2 or 3`);
+        positive(d, "glide.uses", d.glide.uses, 60000);
+        positive(d, "glide.seconds", d.glide.seconds, 3600);
+        // Its wear is the slot's durability, which one of a kind has.
+        if (d.stack !== 1 || d.weapon || d.wear || d.tool || d.use?.holds) errors.push(`${d.id}: a glider stacks to 1 and wears no other durability`);
+      }
       const w = d.weapon;
       if (w) {
         positive(d, "weapon.uses", w.uses, 60000);
@@ -698,6 +708,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const nodeHits = new Float32Array(n);
   const wearSlot = new Int8Array(n).fill(-1);
   const uses = new Uint16Array(n);
+  const glide = new Uint8Array(n);
+  const glideTicks = new Uint32Array(n);
   const weapon: (WeaponParams | null)[] = new Array(n).fill(null);
   const damage = new Float32Array(n);
   const damageType = new Uint8Array(n);
@@ -890,7 +902,11 @@ export function compileContent(all: readonly Def[]): CompileResult {
       spoilTicks[i] = d.spoilHours !== undefined ? Math.max(1, Math.round(d.spoilHours * GAME_HOUR_TICKS)) : 0;
       decomposeTicks[i] = d.decomposeHours !== undefined ? Math.max(1, Math.round(d.decomposeHours * GAME_HOUR_TICKS)) : 0;
       if (d.wear) wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
-      uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? 0;
+      uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? d.glide?.uses ?? 0;
+      if (d.glide) {
+        glide[i] = d.glide.grade;
+        glideTicks[i] = Math.max(1, Math.round(d.glide.seconds * TICK_RATE));
+      }
       armor[i] = d.wear?.armor ?? 0;
       if (d.weapon) {
         weapon[i] = weaponParams(d.weapon);
@@ -1033,7 +1049,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
   const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
-  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
+  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;

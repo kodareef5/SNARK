@@ -55,7 +55,7 @@ const body: Rule = (d, c) => {
 export const RULINGS: Readonly<Record<string, Rule>> = {
   "item/resource": entry, "item/consumable": entry, "item/weapon": entry, "item/ammo": entry, "item/attachment": entry,
   "item/armor": entry, "item/saddle": entry, "item/structure": entry, "item/vehicle": entry, "item/egg": entry,
-  "item/feces": entry, "item/shield": entry, "item/costume": entry, "item/skin": entry, "item/dye": entry, "item/artifact": entry,
+  "item/feces": entry, "item/glider": entry, "item/shield": entry, "item/costume": entry, "item/skin": entry, "item/dye": entry, "item/artifact": entry,
   // An engram is its item's page, and the engrams page.
   engram: (d) => ({ within: (d as Extract<Def, { type: "engram" }>).item }),
   levels: () => ({ within: "levels/" }),

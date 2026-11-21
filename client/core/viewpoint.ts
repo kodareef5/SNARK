@@ -58,6 +58,9 @@ export class CockpitLook {
 const BACK = 3.4;
 const SIDE = 0.55;
 const RISE = 0.25;
+/** Further back and higher under an open glider, and centred, so its wings are in the picture. */
+const GLIDE_BACK = 2.2;
+const GLIDE_RISE = 0.75;
 /** Metres from the eye the orbit sits before the wheel moves it: third person's. */
 export const ORBIT_BACK = BACK;
 /** Metres a chase camera's boom holds it back at rest where the caller gives no length. */
@@ -81,6 +84,8 @@ export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: 
 
 export class Viewpoint {
   thirdPerson = false;
+  /** 0 to 1, eased by the app: how far the own view is under an open glider, which third person stands back from to hold its wings. */
+  gliding = 0;
   private vehicleLook = false;
   private lastYaw = 0;
   private lastPitch = 0;
@@ -376,9 +381,9 @@ export class Viewpoint {
     const third = this.thirdPerson;
     out.yaw = yaw;
     out.pitch = pitch;
-    out.back = third ? BACK : 0;
-    out.side = third ? SIDE : 0;
-    out.rise = third ? RISE : 0;
+    out.back = third ? BACK + GLIDE_BACK * this.gliding : 0;
+    out.side = third ? SIDE * (1 - this.gliding) : 0;
+    out.rise = third ? RISE + GLIDE_RISE * this.gliding : 0;
     return out;
   }
 

@@ -494,6 +494,8 @@ export class GameServer {
   allows: ((c: Client, op: number) => boolean) | null = null;
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
+  /** A survivor's glider opened this tick, or folded (planning/workstreams/glider.md). */
+  onGlide: ((c: Client, opened: boolean) => void) | null = null;
   onMountLand: ((e: number, speed: number) => void) | null = null;
   /** A rising secondary input on the mounted body, after movement and its ordinary bite step. */
   onMountSecondary: ((e: number) => void) | null = null;
@@ -678,7 +680,8 @@ export class GameServer {
         }
         if (!driving) {
           // Enclosed cabins stow weapons while preserving the held inventory slot for exit.
-          const stowed = passenger && (ents.seatSlot[e] === IMPALE_SLOT || world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false);
+          // Both hands are on an open glider, which stows what they held as a cabin does.
+          const stowed = b.glide !== 0 || (passenger && (ents.seatSlot[e] === IMPALE_SLOT || world.reg.vehicle[ents.kind[parent]!]?.seats[ents.seatSlot[e]! - 1]?.weapons === false));
           if (stowed) { b.act = ACT_NONE; b.actTicks = 0; }
           // Hits are resolved later, once every body has moved.
           stepAction(b, stowed ? 0 : c.heldButtons, stowed ? 0 : c.pressed, stowed ? FISTS : world.reg.weapon[b.held] ?? FISTS);
@@ -702,6 +705,7 @@ export class GameServer {
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
         if (driving && (stepOut.tookOff || stepOut.setDown || stepOut.rolled)) this.onMountFlight?.(e);
+        if (!driving && (stepOut.glideOpened || stepOut.glideFolded)) this.onGlide?.(c, stepOut.glideOpened);
         if (stepOut.landSpeed > 0) {
           if (driving) this.onMountLand?.(e, stepOut.landSpeed);
           else this.onLand?.(c, stepOut.landSpeed);

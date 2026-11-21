@@ -6,7 +6,7 @@ import { chunkAt, chunkCount, type MapDims } from "../coords.ts";
 import { HANDLE_GEN_MASK, HANDLE_INDEX_MASK, NULL_HANDLE, handleGen, handleIndex, makeHandle } from "../ids.ts";
 import { AnimState, CUE_DEAD, CUE_JET } from "../anim/pose.ts";
 import { PI, TAU } from "../math/scalar.ts";
-import { MODE_WALK, STAMINA_UNITS, type Body } from "./character.ts";
+import { MODE_WALK, STAMINA_UNITS, glidePhase, type Body } from "./character.ts";
 
 const posed = new AnimState();
 
@@ -158,6 +158,10 @@ export class EntityStore {
   jetRecovery: Uint8Array;
   regenWait: Uint16Array;
   rollWait: Uint16Array;
+  /** The glider (Body.glideGear, glide, glideKeys): the grade carried, set by the server from the inventory, and what the step keeps. */
+  glideGear: Uint8Array;
+  glide: Uint8Array;
+  glideKeys: Uint8Array;
   creatureMode: Uint8Array;
   creatureCooldown: Uint16Array;
   creaturePrimaryCooldown: Uint16Array;
@@ -288,6 +292,9 @@ export class EntityStore {
     this.jetRecovery = new Uint8Array(cap);
     this.regenWait = new Uint16Array(cap);
     this.rollWait = new Uint16Array(cap);
+    this.glideGear = new Uint8Array(cap);
+    this.glide = new Uint8Array(cap);
+    this.glideKeys = new Uint8Array(cap);
     this.creatureMode = new Uint8Array(cap);
     this.creatureCooldown = new Uint16Array(cap);
     this.creaturePrimaryCooldown = new Uint16Array(cap);
@@ -369,6 +376,7 @@ export class EntityStore {
     this.jetKeys[i] = this.jetJumpTap[i] = this.jetSprintTap[i] = this.jetRecovery[i] = 0;
     this.regenWait[i] = 0;
     this.rollWait[i] = 0;
+    this.glideGear[i] = this.glide[i] = this.glideKeys[i] = 0;
     this.creatureMode[i] = 0;
     this.creatureCooldown[i] = 0;
     this.creaturePrimaryCooldown[i] = 0;
@@ -437,6 +445,9 @@ export class EntityStore {
     this.jetRecovery = wider(this.jetRecovery, cap);
     this.regenWait = wider(this.regenWait, cap);
     this.rollWait = wider(this.rollWait, cap);
+    this.glideGear = wider(this.glideGear, cap);
+    this.glide = wider(this.glide, cap);
+    this.glideKeys = wider(this.glideKeys, cap);
     this.creatureMode = wider(this.creatureMode, cap);
     this.creatureCooldown = wider(this.creatureCooldown, cap);
     this.creaturePrimaryCooldown = wider(this.creaturePrimaryCooldown, cap);
@@ -618,8 +629,10 @@ export class EntityStore {
     posed.setAction(this.act[i]!, this.hold[i]!, tick - this.actTicks[i]!);
     posed.setMotion(this.vx[i]!, this.vz[i]!, (this.yaw[i]! * TAU) / 65536, (this.pitch[i]! * (PI / 2)) / 16384, this.vy[i]!);
     posed.setJet(this.jetThrust[i]!, this.jetGear[i]!);
+    posed.setGlide(this.glide[i]! !== 0, glidePhase(this.vx[i]!, this.vy[i]!, this.vz[i]!));
     this.anim[i] = posed.pack();
-    if (!(this.cue[i]! & CUE_DEAD)) this.cue[i] = this.jetThrust[i] ? this.cue[i]! | CUE_JET : this.cue[i]! & ~CUE_JET;
+    // The one bit says its motion bits are laid out for the air: under thrust, or under an open glider.
+    if (!(this.cue[i]! & CUE_DEAD)) this.cue[i] = this.jetThrust[i] || this.glide[i] ? this.cue[i]! | CUE_JET : this.cue[i]! & ~CUE_JET;
   }
 
   loadBody(i: number, b: Body): void {
@@ -689,6 +702,9 @@ export class EntityStore {
     b.jetRecovery = this.jetRecovery[i]!;
     b.regenWait = this.regenWait[i]!;
     b.rollWait = this.rollWait[i]!;
+    b.glideGear = this.glideGear[i]!;
+    b.glide = this.glide[i]!;
+    b.glideKeys = this.glideKeys[i]!;
     b.creatureMode = this.creatureMode[i]!;
     b.creatureCooldown = this.creatureCooldown[i]!;
     b.creaturePrimaryCooldown = this.creaturePrimaryCooldown[i]!;
@@ -726,6 +742,8 @@ export class EntityStore {
     this.jetRecovery[i] = b.jetRecovery;
     this.regenWait[i] = b.regenWait;
     this.rollWait[i] = b.rollWait;
+    this.glide[i] = b.glide;
+    this.glideKeys[i] = b.glideKeys;
     this.creatureMode[i] = b.creatureMode;
     this.creatureCooldown[i] = b.creatureCooldown;
     this.creaturePrimaryCooldown[i] = b.creaturePrimaryCooldown;

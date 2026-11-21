@@ -5,6 +5,7 @@ import { quatAxis, quatCopy, quatMul, quatMulConj, quatNormalize, quatRotate } f
 import { TAU, detSin } from "../math/scalar.ts";
 import { Pose, type Clip } from "./clip.ts";
 import { emoteClips } from "./emote-clips.ts";
+import { glideClips } from "./glide-clips.ts";
 import {
   B_CHEST, B_FOOT_L, B_FOOT_R, B_HAND_L, B_HAND_R, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_ARM_R, B_LOWER_LEG_L, B_LOWER_LEG_R, B_NECK,
   B_SPINE, B_UPPER_ARM_L, B_UPPER_ARM_R, B_UPPER_CHEST, B_UPPER_LEG_L, B_UPPER_LEG_R, HUMAN, HUMAN_BONES,
@@ -240,5 +241,6 @@ export function authoredClips(): readonly Clip[] {
     clip("human/pistol_aimed", 1, true, pistolAimed),
     clip("human/pistol_lowered", 1, true, pistolLowered),
     ...emoteClips(),
+    ...glideClips(),
   ]);
 }

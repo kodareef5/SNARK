@@ -101,6 +101,7 @@ const ITEM = {
   spoilsInto: f("text", "SpoilingItem", { refs: { "": "item" } }),
   blueprint: f("switch", "whether it may be a blueprint (a crafted item may, unless false)"),
   use: f("facet", "UseItemAddCharacterStatusValues and the buffs a consumable gives", { refs: { "buffs[]": "buff" } }),
+  glide: f("facet", "none of its own: the Parachute's slow fall and the Glider Suit's glide, as one thing carried"),
   travels: f("switch", "bPreventUpload, inverted"),
 } satisfies Fields<ItemDef>;
 
@@ -412,6 +413,7 @@ row("item/structure", "item", ITEM, { parent: "item", ark: "PrimalItemStructure_
 row("item/vehicle", "item", ITEM, { parent: "item", ark: "a deployable vehicle assembly", shelf: "items/vehicles", must: ["stack", "deploys"], may: ANY_ITEM, slots: { preview: mesh("may", "{deploys}", "box"), ...ITEM_SLOTS }, doc: "A completed assembly placed as a vehicle on a clear supporting surface." });
 row("item/egg", "item", ITEM, { parent: "item/consumable", ark: "PrimalItemConsumable_Egg_", shelf: "items/eggs", must: ["stack"], may: [...ANY_ITEM, "eat", "spoilHours", "spoilsInto"], slots: { held: HELD, ...ITEM_SLOTS }, doc: "An egg in the hand, eaten or set down. A fertilised one stacks to 1, keeps its young and does not hatch while held." });
 row("item/feces", "item", ITEM, { parent: "item/resource", ark: "the feces items, small to massive", shelf: "items/feces", must: ["stack"], may: [...ANY_ITEM, "spoilHours", "spoilsInto", "fuel"], slots: ITEM_SLOTS, doc: "What a creature leaves when it defecates, a size for each kind of creature." });
+row("item/glider", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_Parachute, and the Glider Suit skin", shelf: "items/gliders", must: ["stack", "glide"], may: ANY_ITEM, slots: { held: HELD, wing_r: mesh("may", "{id}/wing_r", "none"), wing_l: mesh("may", "{id}/wing_l", "none"), ...ITEM_SLOTS }, doc: "Carried anywhere in the bag, and opened in the air to glide: a wing for each hand, and folded in the hand when chosen." });
 row("item/shield", "item", ITEM, { parent: "item/equipment", ark: "equipment type Shield", status: "stub", waits: "cosmetics", shelf: "items/shields", must: ["stack"], may: ANY_ITEM, slots: { held: HELD, ...ITEM_SLOTS }, doc: "Held in the other hand to block." });
 row("item/costume", "item", ITEM, { parent: "item/equipment", ark: "equipment types Costume and Trophy", status: "stub", waits: "cosmetics", shelf: "items/costumes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Worn for its look alone." });
 row("item/skin", "item", ITEM, { parent: "item", ark: "PrimalItemSkin_", status: "stub", waits: "cosmetics", shelf: "items/skins", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Changes the look of the item it is put on." });

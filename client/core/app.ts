@@ -21,7 +21,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { MountCameraPivot } from "./mount-camera.ts";
 import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
-import { MODE_FLYER, MODE_SWIM, stanceEye } from "../../shared/sim/character.ts";
+import { GLIDE_DIVE, JET_CUIRASS, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -99,6 +99,10 @@ const NAME_RANGE = 30;
 const VIEW_FLAG_PROP = 8;
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
+/** Radians the view opens by at a glider's dive speed. */
+const GLIDE_FOV = (6 * Math.PI) / 180;
+/** Ticks in the air before C stops being the crouch and becomes the glider's key, so a step off a kerb does not stand a crouched body up. */
+const GLIDER_KEY_TICKS = 6;
 /** Metres the orbit's camera is behind the eye before the body is drawn whole; nearer than the near plane its head is not seen. */
 const HEAD_CLEAR = .1;
 
@@ -700,7 +704,26 @@ export class App {
     c.heli(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "rotor");
     if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
     this.wingWas = c.wing;
+    // On foot and a fifth of a second into the air with a glider carried, C is the glider's (planning/workstreams/glider.md).
+    const own = s.own;
+    const falling = s.sessionState === SESSION_ALIVE && s.driving < 0 && !own.seat && own.mode === MODE_WALK && !own.grounded && own.glideGear !== 0;
+    if (!falling) this.airFrom = s.simTick;
+    c.glider(falling && (own.glide !== 0 || s.simTick - this.airFrom >= GLIDER_KEY_TICKS), s.simTick);
     return flyer;
+  }
+  /** The tick the predicted body was last on the ground, in water or in a seat. */
+  private airFrom = 0;
+  /** Whether the own glider was open at the last frame, and whether the view was stood back for it from the eye. */
+  private gliderOpen = false;
+  private gliderStoodBack = false;
+
+  /** What the glider's keys do now, for a survivor in the air that carries one: the cuirass's jet has Space, so there it is C. */
+  private gliderPrompt(): string {
+    const s = this.session, own = s.own;
+    if (s.driving >= 0 || own.seat || own.grounded || own.mode !== MODE_WALK || own.glideGear === 0) return "";
+    const key = (own.jetGear & JET_CUIRASS) !== 0 ? "C" : "Space";
+    if (own.glide !== 0) return `${key}  fold glider   Shift  dive   S  flare`;
+    return s.simTick - this.airFrom >= GLIDER_KEY_TICKS && own.vy < -2 && (own.mflags & MF_WINDED) === 0 ? `${key}  open glider` : "";
   }
 
   /** With `use`, as the use key meets body `i`; else as a name tag does. */
@@ -1250,6 +1273,17 @@ export class App {
     if (onFoot && !this.wasOnFoot) this.view.thirdPerson = this.ui.settings.thirdPerson;
     this.wasOnFoot = onFoot;
     // A server rule can forbid third person. A rider still sees its mount from behind.
+    // From the eye a glider's wings are overhead and out of sight, so the view stands back as one is thrown open, where the
+    // server allows it, and returns to the eye as it folds. V still chooses between them in the air.
+    const gliderOpen = alive && session.driving < 0 && session.own.glide !== 0;
+    if (gliderOpen && !this.gliderOpen && !this.view.thirdPerson && session.thirdPerson) {
+      this.view.thirdPerson = true;
+      this.gliderStoodBack = true;
+    } else if (!gliderOpen && this.gliderOpen && this.gliderStoodBack) {
+      this.view.thirdPerson = false;
+      this.gliderStoodBack = false;
+    }
+    this.gliderOpen = gliderOpen;
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.
     const third = this.view.thirdPerson || (alive && !!car && !rotor && !boat);
@@ -1285,6 +1319,10 @@ export class App {
     const zoom = sight === "scope" ? SCOPE_ZOOM : sight === "holo" ? HOLO_ZOOM : 0;
     let want = sighting ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
     if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
+    // Under a glider the view opens with its speed, a dive's most, and third person stands back to hold the wings.
+    const gliding = alive && session.driving < 0 && session.own.glide !== 0;
+    if (gliding) want += Math.min(GLIDE_FOV, (Math.hypot(session.own.vx, session.own.vy, session.own.vz) / GLIDE_DIVE) * GLIDE_FOV);
+    this.view.gliding += ((gliding ? 1 : 0) - this.view.gliding) * (1 - Math.exp(-Math.max(0, dt) / 280));
     hud.scope = sighting && sight === "scope";
     hud.holo = alive && sight === "holo" && !orbiting;
     hud.tint = hud.holo && sighting ? HOLO_TINT : 0;
@@ -1297,7 +1335,7 @@ export class App {
     if (alive && this.ownSeatEye(world, this.remote, session.tickClock, c.yaw, c.pitch, this.posedEye)) {
       this.sightAt.x = this.posedEye[0]!; this.sightAt.y = this.posedEye[1]!; this.sightAt.z = this.posedEye[2]!;
     }
-    this.fov += (want - this.fov) * (hud.vehicle ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / 70));
+    this.fov += (want - this.fov) * (hud.vehicle || gliding || this.view.gliding > 0.02 ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / 70));
     cam.fovY = this.fov;
     c.zoom = (this.fov / base) * settings.sensitivity;
     // The crosshair opens with the cone the next shot would leave within.
@@ -1327,6 +1365,7 @@ export class App {
     body.state.stance = session.own.stance;
     body.state.setMotion(session.own.vx, session.own.vz, c.yaw, c.pitch);
     body.state.setJet(session.own.jetThrust, session.own.jetGear);
+    body.state.setGlide(session.own.glide !== 0, glidePhase(session.own.vx, session.own.vy, session.own.vz));
     // The action comes from the prediction, so a swing shows the moment it is asked for. Arms full hold what is in them.
     body.state.setAction(session.own.act, this.holding >= 0 ? HOLD_CARRY : (this.reg.weapon[session.own.held] ?? FISTS).hold, session.simTick - session.own.actTicks);
     body.state.seed = bodySeed(body.id);
@@ -1576,7 +1615,7 @@ export class App {
     }
     emotes.has = (n) => this.scene!.characters.emoteKnown(n);
     if (emotes.open) this.scene!.characters.wantEmotes();
-    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built;
+    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.seatNotice.notice || emotes.notice || this.prompt(world, eyeNow) || whom || built || this.gliderPrompt();
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;

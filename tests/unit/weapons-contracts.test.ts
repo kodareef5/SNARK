@@ -27,7 +27,7 @@ test("protocol 13 is the weapons program's, and it took no command, own componen
   // stations wave's, for OWN_STATION's layout (tests/unit/stations-contracts.test.ts), and 18 the vehicles'
   // (tests/integration/vehicle-contracts.test.ts); 19 adds rotorcraft state and CMD_VEHICLE (32); 21 the compact chunk rows; 22 CMD_STATICS (33);
   // 24 S_MOTION's states told a part at a time; 25 adds S_CORPSE and CMD_CORPSE (34); 26 adds car recovery actions; 27 added crushed nodes and contact facts; 28 limits those facts to public motion; 29 adds ground creature prediction counters; 33 flight armor in the owner body; 34 the sundial's CMD_CLOCK (35); 35 a snapshot's margin against the tick due and the ticks given up; 36 the buttons a tick carried from a late input; 37 a survivor's emote and CMD_EMOTE (36); 38 the owner's powered maneuvers.
-  expect(P.PROTOCOL_VERSION).toBe(38);
+  expect(P.PROTOCOL_VERSION).toBe(39);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([36, 16, 7, 10]);
@@ -48,8 +48,8 @@ test("a body's bloom and kick travel with it, and every body today has none", ()
   w.bits(5, 3);
   P.writeBody(w, a);
   // 360 bits, the flyers' two counters (20 bits) after them, and the vehicles' two bits: no vehicle, no seat (380 without).
-  // Presence bits cover ground creature counters and Meridian flight state.
-  expect(w.pos).toBe(3 + 384);
+  // Presence bits cover ground creature counters, Meridian flight state and the glider.
+  expect(w.pos).toBe(3 + 385);
   const b = new Body();
   const r = new BitReader(w.bytes());
   r.bits(3);

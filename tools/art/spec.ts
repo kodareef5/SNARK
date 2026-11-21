@@ -358,6 +358,8 @@ export interface PieceSpec {
   readonly errors?: readonly number[];
   readonly triangles?: readonly number[];
   readonly hold?: "prop_r" | "prop_l";
+  /** With `hold`: a glider's wing for that hand, which spans as it will from its grip (see `pieces`). */
+  readonly wing?: boolean;
   readonly dropped?: "auto" | string;
   readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number; readonly shift?: readonly [number, number] };
   /**
@@ -388,6 +390,10 @@ export interface PiecesAsset {
    * An item's piece (planning/reference/items-plan.md) may also say, though nothing reads these until tasks A and B:
    * - `hold`: the piece is held, in the right or left hand, on that hand's prop bone of the human skeleton. Modelled
    *   with the grip at the origin, its length along +Z and its top along +Y, as tools/pack/weapons.ts draws the boxes.
+   * - `wing`, with `hold`: the piece is one wing of a glider, on that hand's prop bone while the glider is open
+   *   (planning/workstreams/glider.md). Modelled with its handle's grip at the origin and its axes the body's when the wing
+   *   lies flat (+X the body's left, +Y up, +Z ahead), as shared/anim/glide-clips.ts poses it: its root at the lashing
+   *   GLIDER_ROOT_IN toward the body's middle and GLIDER_ROOT_UP above, its tip out to its own side.
    * - `dropped`: the piece as it lies on the ground, `<id>/dropped`. "auto" lays the held piece on its broadest side;
    *   the name of another Blender object gives a lying piece of its own.
    * - `icon`: the view its inventory picture is drawn from, where the usual three-quarter view does not suit it.

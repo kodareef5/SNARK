@@ -1124,7 +1124,8 @@ export class ClientSession {
     }
     // The action step takes the same buttons as the server's, and those that went down since the tick before.
     const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
-    const armed = this.weaponsAllowed;
+    // Both hands are on an open glider, as the server has it (server/game.ts).
+    const armed = this.weaponsAllowed && this.own.glide === 0;
     if (!armed) { this.own.act = ACT_NONE; this.own.actTicks = 0; }
     const w = armed ? this.registry.weapon[this.own.held] ?? FISTS : FISTS;
     stepAction(this.own, armed ? buttons : 0, armed ? buttons & ~before : 0, w);
