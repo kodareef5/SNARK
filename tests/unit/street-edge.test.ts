@@ -44,8 +44,9 @@ artTest("each dock module is drawn where it is walked: its deck's top at its ori
     const p = mesh.lods[0]!.positions, lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
     for (let v = 0; v < p.length; v += 3) for (let k = 0; k < 3; k++) [lo[k], hi[k]] = [Math.min(lo[k]!, p[v + k]!), Math.max(hi[k]!, p[v + k]!)];
     expect([part, Math.abs(hi[0]! - width / 2) < 0.015, Math.abs(lo[0]! + width / 2) < 0.015, Math.abs(hi[2]! - DOCK.length / 2) < 0.015]).toEqual([part, true, true, true]);
-    // The deck's top: at the origin, or for the ramp a quarter metre falling through it, the cleats and rails over it.
-    let top = -Infinity; for (let v = 1; v < p.length; v += 3) if (Math.abs(p[v + 1]!) < 0.3 && Math.abs(p[v - 1]!) < width / 2 - 0.2) top = Math.max(top, p[v]!);
+    // The deck's top, at its boards' ends against the fascias' inner faces 5 cm in from its sides: at the origin, or for
+    // the ramp a quarter metre falling through it. The cleats and rails stand over it, off those faces.
+    let top = -Infinity; for (let v = 1; v < p.length; v += 3) if (Math.abs(p[v + 1]!) < 0.3 && Math.abs(Math.abs(p[v - 1]!) - (width / 2 - 0.05)) < 0.001) top = Math.max(top, p[v]!);
     const most = part === "ramp" ? DOCK.fall * 0.3 / DOCK.length : 0;
     expect([part, top > -0.01 && top < most + 0.01]).toEqual([part, true]);
     expect([part, lo[1]! < -DOCK.foot + 0.01]).toEqual([part, true]);
