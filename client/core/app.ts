@@ -30,7 +30,7 @@ import { Controls, LOOK_SPEED } from "./controls.ts";
 import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
-import { seatScratch, type VehicleRenderPose } from "./render/characters.ts";
+import { seatScratch } from "./render/characters.ts";
 import { SQUEEZE_MOST } from "./render/budget.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
@@ -45,7 +45,8 @@ import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
 import { SeatedAim } from "./seated-aim.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
-import { rayVehicle, vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
+import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
+import { lookAt, vehiclePrompt } from "./vehicle-prompt.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -161,7 +162,6 @@ export class App {
   /** Where a passenger sits, for its camera (Characters.seat), and the pose of the creature it sits on. */
   private readonly seatSpot = new Float64Array(12);
   private readonly seated = seatScratch();
-  private readonly rayPose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   private readonly mountState = new AnimState();
   readonly shots: Shots;
   /** Null until the world arrives. */
@@ -246,7 +246,6 @@ export class App {
   private eye = -1;
   private helicopterViewHost = -1;
   private readonly aim = [0, 0, 0];
-  private readonly seatAt = [0, 0, 0];
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
   /** The session's registry. It is content as written until the welcome, then as the server tuned it. */
@@ -683,12 +682,7 @@ export class App {
   }
 
   private lookHit(i: number, ox: number, oy: number, oz: number): number {
-    const r = this.remote, d = this.aim, kind = r.kind[i]!, hull = this.reg.vehicle[kind];
-    if (hull?.movement === "boat") return rayVehicle(hull, r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!, ox, oy, oz,
-      d[0]!, d[1]!, d[2]!, hull.spec.height, remoteVehiclePose(r, i, this.rayPose));
-    const size = this.sizeOf(i), radius = this.reg.bodyRadius[kind]! * size;
-    return rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, r.x[i]! - radius, r.y[i]!, r.z[i]! - radius,
-      r.x[i]! + radius, r.y[i]! + this.reg.bodyHeight[kind]! * size, r.z[i]! + radius);
+    return lookAt(this.reg, this.remote, i, ox, oy, oz, this.aim, this.sizeOf(i));
   }
 
   /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
@@ -877,29 +871,7 @@ export class App {
       if (r.seatSlot[hit] !== 0) for (let j = 0; j < r.count; j++) {
         if (r.id[j] === r.seat[hit]! - 1 && r.gen[j] === r.seatGen[hit]) { hit = j; break; }
       }
-      const car = this.reg.vehicle[r.kind[hit]!];
-      if (car) {
-        const frame = { ...remoteVehiclePose(r, hit), x: r.x[hit]!, y: r.y[hit]!, z: r.z[hit]!, yaw: r.yaw[hit]! };
-        if (car.movement === "boat") {
-          vehiclePoint(frame, car.seats[0]!.entry, this.seatAt);
-          if (Math.hypot(ox - this.seatAt[0]!, oz - this.seatAt[2]!) > 2) return "Board at the stern";
-          for (let slot = 1; slot <= car.seats.length; slot++) {
-            let occupied = false;
-            for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === slot) occupied = true;
-            if (!occupied) return car.seats[slot - 1]!.driver ? "E  take helm" : "E  board as passenger";
-          }
-          return "Boat full";
-        }
-        let slot = 0, near = Infinity;
-        for (let j = 0; j < car.seats.length; j++) {
-          vehiclePoint(frame, car.seats[j]!.entry, this.seatAt);
-          const d = Math.hypot(ox - this.seatAt[0]!, oz - this.seatAt[2]!);
-          if (d < near) { near = d; slot = j; }
-        }
-        let occupied = false;
-        for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === slot + 1) occupied = true;
-        return occupied ? car.seats[slot]!.driver ? "E  carjack driver" : "Passenger seat occupied" : car.seats[slot]!.driver ? "E  enter driver seat" : "E  enter passenger seat";
-      }
+      if (this.reg.vehicle[r.kind[hit]!]) return vehiclePrompt(this.reg, r, hit, ox, oz);
       // A saddled creature of the tribe, grown and awake, is ridden: its steering seat if it is free, else a passenger's.
       const seats = this.reg.saddleSeats[r.gear[hit * GEAR_COUNT + GEAR_WORN]!];
       if (seats && s.tribe.team !== 0 && r.team[hit] === s.tribe.team && r.grown[hit] === 0 && (r.cue[hit]! & CUE_OUT) === 0) {
