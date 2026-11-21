@@ -13,6 +13,7 @@ import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { EXHAUST_GLSL, POLISHED_SKY } from "./suit-finish.ts";
 import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../../content/street-finishes.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
+import { VEHICLE_SHADE_GLSL, VEHICLE_SHADE_UNIFORMS } from "./vehicle-shade.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { HAND_GLSL, HAND_VERTEX, SWAP_GLSL } from "./hand.ts";
@@ -405,7 +406,8 @@ ${layered ? "out vec3 vBox;\n" : ""}${dyed ? "flat out mat3 vDye, vDye2;\n" : ""
 }
 ${dyed ? DYE : ""}${ON_GROUND}void main() {
 
-  vWheel = vec4(0.0);
+  // A body's rest normal, which its own shade reads (vehicle-shade.ts); on a wheel, its way out from the hub.
+  vWheel = vec4(aNormal, 0.0);
   vWheel.w = uSkin > 0.5 && uSkin < 1.5 && aBone < 32u && (uWheelBones & (1u << aBone)) != 0u ? 1.0 : 0.0;
   vFinishSeed = uSkin > 0.5 ? finishSeed(vWheel.w > 0.5 ? iEntity ^ (aBone*2654435761u) : iEntity,vec3(0.0)) : finishSeed(0u,iPos+uOffset+uWorldEye);
   vec3 l = uCenter + aPos * uHalf;
@@ -655,7 +657,7 @@ in vec3 vWheelPoint;
 in vec4 vWheel;
 uniform float uStreetMaterial, uSpokeCrown;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -671,14 +673,17 @@ ${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2,
   vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
 ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n  if (cover == 0.0) discard;\n" : "  float cover = 1.0;\n"}  vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
-  float shade = sunShadow(vRel, sunward(normalize(gl_FrontFacing ? vNormal : -vNormal), uSheet));
-  float open = skyOpen(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal), uSkin > 0.5 ? 0.0 : 1.0);
+  vec3 face = normalize(gl_FrontFacing ? vNormal : -vNormal);
+  float shade = sunShadow(vRel, sunward(face, uSheet));
+  float open = skyOpen(vRel, face, overGround(vRel), uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, face, uSkin > 0.5 ? 0.0 : 1.0);
   vec3 albedo = ${layered ? `wounded(${albedo}, mro)` : albedo};
   // The fractional quarter of the material code carries the static vehicle's weather exposure.
   float age = fract(uStreetMaterial)*4.0;
   bool burntSheet = int(uStreetMaterial) == ${BURNT_SHEET};
   if (age > 0.0) weatherVehicle(albedo,mro,vWheelPoint,vFinishSeed,age,burntSheet);
   float coat = 0.0, chrome = 0.0;
+  // How much of the sky a wheeled body's own arches, floor and tyres leave it (vehicle-shade.ts).
+  float own = 1.0;
 
   float footprint = max(length(dFdx(vUv)),length(dFdy(vUv)));
   if (vWheel.w > 0.5) {
@@ -686,6 +691,10 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     float radial = length(vWheelPoint.yz);
     float outboard = vWheelPoint.x*(vWheel.w < 1.5 ? -1.0 : 1.0);
     float width = max(length(dFdx(vWheelPoint)),length(dFdy(vWheelPoint)));
+    float rubber = rubberShare(mro,radial);
+    // A bake of the tyre in place would turn with it: on rubber the shade under the arch is worked out instead.
+    own = tyreOpen(vWheel.y,outboard,rubber);
+    mro.r = mix(mro.r,1.0,rubber);
     chrome = wheelFinish(albedo,mro,${dyed ? "mask.b" : "0.0"},near,vWheelPoint,vFinishSeed,width,outboard);
     if (chrome > 0.0) {
       // A gently crowned face turns a flat spoke through a range of real reflection directions.
@@ -701,7 +710,9 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
       }
       n = normalize(n + chrome*crown);
     }
-  }
+  } else if (uWheelBones != 0u && uSkin > 0.5 && uSkin < 1.5) own = bodyOpen(vWheelPoint,gl_FrontFacing ? vWheel.xyz : -vWheel.xyz,-face.y);
+  // Where the art has its occlusion baked in, the darker of the two.
+  mro.r = min(mro.r,own);
   bool lens = int(uStreetMaterial) == ${LENS};
   bool armor = int(uStreetMaterial) == ${ENAMEL_ARMOR};
   float polished = lens ? 1.0 : armor ? polishMask(mro.g) : 0.0;
@@ -761,7 +772,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     mirror += chrome*fill*(0.12+1.15*exp2(-9.0*abs(ray.y-0.12)))*(0.40+2.20*visibility);
   }
   vec3 radiance = lit(albedo, mro * vec3(open, 1.0, 1.0), n, v, mirror, shade);
-  radiance = mix(radiance,mirror*open,coat);
+  radiance = mix(radiance,mirror*open*own,coat);
   if (specularLayer > 0.0) {
     radiance += specularLayer*shade*direct(fSun.xyz,fSunColor.rgb,vec3(0.065),1.0,coatA2,coatNormal,v,max(0.001,1.0-edge));
   }

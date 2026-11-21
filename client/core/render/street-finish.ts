@@ -126,6 +126,11 @@ export function wheelBoneMask(names?: readonly string[]): number {
   return (names?.reduce((bits, name, i) => i < 32 && name.startsWith("wheel_") ? bits | (1 << i) : bits, 0) ?? 0) >>> 0;
 }
 
+/** How much of a wheel joint's texel is tyre, by its authored metal and roughness and how far out from the hub it lies. */
+export function rubberShare(metal: number, rough: number, radial: number): number {
+  return clamp((0.30-metal)*5)*clamp((rough-0.45)*5)*clamp((radial-0.45)*9);
+}
+
 /** The bead and shoulder moulding in wheel-local radii. A metre of motion carries the pattern with the tire. */
 export function tireMould(x: number, y: number, z: number, footprint: number): number {
   const radius = Math.hypot(y,z), phase = Math.atan2(y,z);
@@ -159,6 +164,9 @@ export function wheelFinish(albedo: Float64Array, orm: Float64Array, wheelMask: 
 }
 
 export const WHEEL_FINISH_GLSL = `
+float rubberShare(vec3 mro, float radial) {
+  return clamp((0.30-mro.b)*5.0,0.0,1.0)*clamp((mro.g-0.45)*5.0,0.0,1.0)*clamp((radial-0.45)*9.0,0.0,1.0);
+}
 float wheelFinish(inout vec3 albedo, inout vec3 mro, float mask, float near, vec3 point, float seed, float width, float outboard) {
   float radial = length(point.yz);
   float outerMetal = clamp((outboard-0.16)*10.0,0.0,1.0)*clamp((0.83-radial)*12.0,0.0,1.0)*clamp((0.70-mro.g)*6.0,0.0,1.0);
