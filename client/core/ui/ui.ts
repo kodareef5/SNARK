@@ -363,7 +363,7 @@ export class Ui {
       if (monitor) monitor.reserve(f, hud, plan);
       else this.monitor?.off(hud);
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
-      monitor?.build(f, hud, controls, this.inspect, plan);
+      monitor?.build(f, hud, controls, this.inspect, plan, this.settings.muted);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.
       if (session) {

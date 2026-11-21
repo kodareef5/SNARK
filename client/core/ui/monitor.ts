@@ -62,6 +62,8 @@ const STICK_ROOM = 232;
 export const CARD_W = 340;
 const CARD_LEAST = 220;
 const CARD_ROWS = 12;
+/** The offer to unmute's row under the compass (ui/menu.ts). */
+const UNMUTE_ROW = 52;
 /** Room the card keeps from the canvas's right edge, for the minimap and its frame (ui/hud.ts MINIMAP_SIZE and its glass). */
 const CARD_RIGHT = 168;
 
@@ -135,6 +137,11 @@ export class Monitor {
   private belowMap = false;
   private y = 0;
   private readonly box: ChartBox = { x: 0, y: 0, w: 0, h: 0, column: 1 };
+  /** Whether H was held at the last build; the highest the card may stand, and where the strip ends. */
+  private inspected = false;
+  private cardAbove = 0;
+  /** What is looked at is said in the strip's last line, not on a card: by touch, where nothing is held, and in a window too narrow for the card beside the crosshair. */
+  private lined = false;
   /** The card's place beside the crosshair. */
   private readonly cardAt = { x: 0, y: 0, w: 0, h: 0 };
 
@@ -164,6 +171,7 @@ export class Monitor {
     // by touch to where the stick rests over the hotbar, it stands in the readout's place, then without its chart, then
     // without the line of what is looked at.
     this.belowMap = touch && f.width < NARROW;
+    this.lined = touch || f.width - f.right - MARGIN - CARD_RIGHT - (f.width / 2 + 24) < CARD_LEAST;
     if (this.belowMap) this.w = f.width - f.right - MARGIN - this.x;
     const top = touch ? plan.stackY : f.top + MARGIN, mapFoot = touch ? f.top + MARGIN + plan.map + 4 + SMALL_LINE + 6 : 0;
     const limit = Math.min(f.height / 2 - 8, touch ? f.height - f.bottom - STICK_ROOM : f.height);
@@ -171,7 +179,7 @@ export class Monitor {
       const s = SHAPES[shape]!;
       this.charted = (s & CHARTED) !== 0;
       this.alone = (s & ALONE) !== 0;
-      this.lookLine = touch && (s & LOOKED) !== 0;
+      this.lookLine = this.lined && (s & LOOKED) !== 0;
       this.h = PAD + (this.lookLine ? 3 : 2) * LINE + 2 + (this.charted ? CHART_GAP + STRIP_CHART_H + AXIS_H : 0);
       const under = top + (this.alone ? 0 : READOUT_H);
       this.y = this.belowMap ? Math.max(mapFoot, under + 6) : under;
@@ -203,9 +211,9 @@ export class Monitor {
       const flying = r.flying + (app.sounds?.library.flying ?? 0);
       this.queue = kit.fitText(`${flying} downloading · ${r.wanting()} asked · ${r.waiting > 0 ? bytesText(r.waiting) : "nothing"} waiting for the card`, inner, S_MENU_NOTE);
     }
-    if (inspect || touch) pickLook(app, kit, this.pick);
-    this.looked = touch ? kit.fitText(pickLine(r, this.pick), inner, S_MENU_NOTE) : "";
-    if (inspect && !touch) this.cardWords(f);
+    if (inspect || this.lined) pickLook(app, kit, this.pick);
+    this.looked = this.lined ? kit.fitText(pickLine(r, this.pick), inner, S_MENU_NOTE) : "";
+    if (inspect && !this.lined) this.cardWords(f);
     if (this.open) panelWords(this, nowMs, touch);
   }
 
@@ -223,11 +231,16 @@ export class Monitor {
   }
 
   /** The strip, where the HUD left room for it, and while H is held the card beside the crosshair. */
-  build(f: UiFrame, hud: HudModel, controls: boolean, inspect: boolean, plan: TouchPlan | null): void {
+  build(f: UiFrame, hud: HudModel, controls: boolean, inspect: boolean, plan: TouchPlan | null, muted = false): void {
     if (this.open) return;
     const touch = plan !== null;
-    this.refresh(f, this.app["nowMs"], inspect, touch);
+    // The card's words are made the frame H is pressed, not up to a tenth of a second later.
+    if (inspect && !this.inspected) this.refreshNow();
+    this.inspected = inspect;
     const x = this.x, y = this.belowMap ? this.y : hud.stripY;
+    // The card keeps under the compass and the offer to unmute under it.
+    this.cardAbove = Math.max(f.top + MARGIN, hud.compassBottom + 8 + (muted ? UNMUTE_ROW : 0));
+    this.refresh(f, this.app["nowMs"], inspect, touch);
     // A shade under the glass, as the menus' backdrop is, so that the words read over a bright sky.
     f.add(KEY_STRIP_SHADE, K_PANEL, x, y, this.w, this.h, S_MENU);
     this.kit.glass(f, KEY_STRIP, x, y, this.w, this.h, 0.9);
@@ -255,7 +268,7 @@ export class Monitor {
       b.label = "Open the resource monitor";
       b.interactive = true;
     }
-    if (inspect && !touch) this.buildCard(f);
+    if (inspect && !this.lined) this.buildCard(f);
   }
 
   /** A press of one of the monitor's controls; false for any other key. */
@@ -275,15 +288,16 @@ export class Monitor {
     buildPanel(this, f, plan !== null);
   }
 
-  /** The card's lines, fitted to its width, and its place: above the crosshair and to its right, clear of the prompt under it and of the minimap. */
+  /**
+   * The card's lines, fitted to its width, and its place: above the crosshair and to its right, clear of the prompt
+   * under it, the compass and the offer to unmute over it, and the minimap. It has as many rows as there is room for
+   * there, CARD_ROWS at most.
+   */
   private cardWords(f: UiFrame): void {
-    const at = this.cardAt, cx = f.width / 2, cy = f.height / 2, kit = this.kit;
-    const room = Math.min(CARD_W, f.width - f.right - MARGIN - CARD_RIGHT - (cx + 24));
-    // Where there is no room right of the crosshair (a narrow window), it stands across the canvas under the prompt.
-    const narrow = room < CARD_LEAST;
-    at.x = narrow ? f.left + MARGIN : cx + 24;
-    at.w = narrow ? f.width - f.left - f.right - MARGIN * 2 : room;
-    cardWords(this.app.scene?.assets.residency ?? null, this.pick, CARD_ROWS, this.card, this.under);
+    const at = this.cardAt, kit = this.kit, foot = f.height / 2 - 8;
+    at.x = f.width / 2 + 24;
+    at.w = Math.min(CARD_W, f.width - f.right - MARGIN - CARD_RIGHT - at.x);
+    cardWords(this.app.scene?.assets.residency ?? null, this.pick, Math.max(2, Math.min(CARD_ROWS, Math.floor((foot - this.cardAbove - PAD - 2) / LINE))), this.card, this.under);
     const inner = at.w - PAD * 2;
     let rows = 0;
     for (let i = 0; i < this.card.length; i++) {
@@ -292,7 +306,7 @@ export class Monitor {
       rows += this.under[i] === "" ? 1 : 2;
     }
     at.h = PAD + rows * LINE + 2;
-    at.y = narrow ? cy + 48 : Math.max(f.top + MARGIN, cy - 8 - at.h);
+    at.y = Math.max(this.cardAbove, foot - at.h);
   }
 
   /** The card, from its words. */

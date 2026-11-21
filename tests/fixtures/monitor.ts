@@ -10,7 +10,7 @@ import { BODY } from "../../client/core/ui/touch-art.ts";
 
 /** A stand-in for the app: what the monitor reads of it. */
 export function fakeApp(ring: FrameRing | null = null): App {
-  return { scene: null, frames: ring, sounds: null, nowMs: 0 } as unknown as App;
+  return { scene: null, frames: ring, sounds: null, nowMs: 0, session: { world: null } } as unknown as App;
 }
 
 /** The monitor's own nodes: its keys, its glass's, and its buttons' hairlines. */

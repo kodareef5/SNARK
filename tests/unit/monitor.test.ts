@@ -125,15 +125,19 @@ test("the strip stands under the readout at every window, pushes the compass, an
     const f = ui.frame, where = `${w}x${h}${muted ? " muted" : ""}${inspect ? " inspect" : ""}`;
     expect(f.width, where).toBe(w);
     stripFits(f, where);
-    const strip = glassBox(f, KEY_MONITOR)!, readout = f.find(KEY_READOUT + 2)!;
-    // Under the readout, its left edge on the readout's.
-    expect(strip.x, where).toBe(readout.x);
-    expect(strip.y, where).toBeGreaterThanOrEqual(readout.y + readout.h);
+    const strip = glassBox(f, KEY_MONITOR)!, readout = f.find(KEY_READOUT + 2);
+    // Under the readout, its left edge on the readout's; or, where the canvas is too short for both, in its place.
+    if (readout) {
+      expect(strip.x, where).toBe(readout.x);
+      expect(strip.y, where).toBeGreaterThanOrEqual(readout.y + readout.h);
+    } else expect([hud.stripAlone, strip.y, h < 480], where).toEqual([true, 12, true]);
     // The compass starts right of it, where it stands.
     for (const n of f.nodes.slice(0, f.count)) if (n.key >= KEY_COMPASS && n.key < KEY_COMPASS + 100) expect(n.x, `${where}: compass ${n.key}`).toBeGreaterThanOrEqual(strip.x + hud.stripW);
     if (muted) expect(f.find(KEY_UNMUTE), where).not.toBeNull();
-    // While H is held the card stands beside the crosshair, clear of the rest of the HUD and of the strip.
-    if (inspect) {
+    // While H is held the card stands beside the crosshair, clear of the rest of the HUD and of the strip; in a window
+    // too narrow for it, the strip says what is looked at in a line of its own.
+    if (inspect && w < 848) expect([glassBox(f, KEY_CARD), f.find(KEY_MONITOR + 8)?.text], where).toEqual([null, "Looking at nothing the ray meets"]);
+    else if (inspect) {
       const card = fitsClear(f, KEY_CARD, where);
       expect(card.x + card.w <= f.width / 2 - 2 || card.x >= f.width / 2 + 2 || card.y >= f.height / 2 + 40, `${where}: card over the crosshair`).toBe(true);
       expect(card.y + card.h <= strip.y || card.y >= strip.y + hud.stripH || card.x >= strip.x + hud.stripW, `${where}: card over the strip`).toBe(true);
