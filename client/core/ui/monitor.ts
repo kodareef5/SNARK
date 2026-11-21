@@ -172,7 +172,8 @@ export class Monitor {
     // without the line of what is looked at.
     this.belowMap = touch && f.width < NARROW;
     this.lined = touch || f.width - f.right - MARGIN - CARD_RIGHT - (f.width / 2 + 24) < CARD_LEAST;
-    if (this.belowMap) this.w = f.width - f.right - MARGIN - this.x;
+    // Across, its right edge on the minimap frame's, which stands 2 units past the picture (ui/hud.ts).
+    if (this.belowMap) this.w = f.width - f.right - MARGIN + 2 - this.x;
     const top = touch ? plan.stackY : f.top + MARGIN, mapFoot = touch ? f.top + MARGIN + plan.map + 4 + SMALL_LINE + 6 : 0;
     const limit = Math.min(f.height / 2 - 8, touch ? f.height - f.bottom - STICK_ROOM : f.height);
     for (let shape = 0; shape < SHAPES.length; shape++) {

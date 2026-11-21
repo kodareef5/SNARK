@@ -57,5 +57,13 @@ export function fitsClear(f: UiFrame, key: number, where: string, also: (n: UiNo
   return b;
 }
 
+/** Every node with a key from `from` to `to` (and the glass of those keys) stands inside the box: nothing of a panel spills past its glass. */
+export function within(f: UiFrame, box: Box, from: number, to: number, where: string): void {
+  for (const n of f.nodes.slice(0, f.count)) {
+    const own = (n.key >= from && n.key < to) || (n.key >= 2000000 + from * 16 && n.key < 2000000 + to * 16) || (n.key >= 90000 + from && n.key < 90000 + to);
+    if (own) expect(n.x >= box.x - 0.01 && n.y >= box.y - 0.01 && n.x + n.w <= box.x + box.w + 0.01 && n.y + n.h <= box.y + box.h + 0.01, `${where}: ${n.key} "${n.text || n.label}" at ${n.x},${n.y} ${n.w}x${n.h} past its glass`).toBe(true);
+  }
+}
+
 /** The strip's glass is the monitor's first. */
 export const stripFits = (f: UiFrame, where: string): Box => fitsClear(f, KEY_MONITOR, where);

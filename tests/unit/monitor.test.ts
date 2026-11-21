@@ -17,7 +17,7 @@ import * as nodes from "../../client/core/ui/nodes.ts";
 import * as style from "../../client/core/ui/style.ts";
 import * as panel from "../../client/core/ui/monitor-panel.ts";
 import * as hudKeys from "../../client/core/ui/hud.ts";
-import { fakeApp, fitsClear, glassBox, meets, stripFits } from "../fixtures/monitor.ts";
+import { fakeApp, fitsClear, glassBox, meets, stripFits, within } from "../fixtures/monitor.ts";
 import { KEY_CARD, KEY_STRIP_OPEN } from "../../client/core/ui/monitor.ts";
 import { CHART_SECONDS, ChartData, SERIES, chartBox, columnAt, scaleText } from "../../client/core/ui/monitor-chart.ts";
 import { KEY_CHART_PICK, KEY_CLOSE, KEY_COLUMN_BACK, KEY_FREEZE, KEY_PANEL, KEY_TAB } from "../../client/core/ui/monitor-panel.ts";
@@ -29,7 +29,7 @@ import * as texture from "../../shared/pack/texture.ts";
 
 test("the monitor's copies of the first frame's numbers are the numbers", () => {
   const copies: [number, number][] = [[mine.K_PANEL, nodes.K_PANEL], [mine.K_TEXT, nodes.K_TEXT], [mine.K_BAR, nodes.K_BAR], [mine.K_BUTTON, nodes.K_BUTTON], [mine.K_HOLD, nodes.K_HOLD]];
-  for (const name of ["S_TEXT", "S_LABEL", "S_DARK", "S_MENU", "S_MENU_NOTE", "S_HUD_HIT", "S_HUD_COUNT", "S_ICE", "S_MENU_HEADING", "S_WARNING", "S_KEY", "S_MENU_WARN", "S_UNMUTE"] as const) copies.push([mine[name], style[name]]);
+  for (const name of ["S_TEXT", "S_LABEL", "S_DARK", "S_MENU", "S_MENU_NOTE", "S_HUD_HIT", "S_HUD_COUNT", "S_ICE", "S_MENU_HEADING", "S_WARNING", "S_KEY", "S_MENU_WARN", "S_UNMUTE", "S_OXYGEN"] as const) copies.push([mine[name], style[name]]);
   copies.push([mine.LINE, nodes.lineHeight(style.S_MENU_NOTE)], [mine.LINE, nodes.lineHeight(style.S_TEXT)], [mine.SMALL_LINE, nodes.lineHeight(style.S_LABEL)], [mine.SMALL_LINE, nodes.lineHeight(style.S_HUD_COUNT)], [mine.HEADING_LINE, nodes.lineHeight(style.S_MENU_HEADING)]);
   for (const [copy, real] of copies) expect(copy).toBe(real);
   expect([panel.KEY_COMPASS, panel.KEY_MINIMAP_FRAME, panel.KEY_CLOCK, panel.KEY_MINIMAP_TOGGLE]).toEqual([KEY_COMPASS, hudKeys.KEY_MINIMAP_FRAME, hudKeys.KEY_CLOCK, hudKeys.KEY_MINIMAP_TOGGLE]);
@@ -232,7 +232,7 @@ test("the panel and its chart fit every window, each tab: words fit, controls ap
     ui.build(w / h, hud, null);
     const f = ui.frame, where = `${w}x${h}${muted ? " muted" : ""} tab ${tab}`;
     // A screen covers the middle of the HUD, as the inventory does: the crosshair, its cone and what shows under it.
-    fitsClear(f, KEY_PANEL, where, (n) => n.key >= 24 && n.key <= 35);
+    within(f, fitsClear(f, KEY_PANEL, where, (n) => n.key >= 24 && n.key <= 35), KEY_PANEL, KEY_PANEL + 600, where);
     const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive);
     for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) expect(meets(controls[i]!, controls[j]!), `${where}: ${controls[i]!.key} over ${controls[j]!.key}`).toBe(false);
   }

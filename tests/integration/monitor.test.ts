@@ -9,7 +9,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
 import * as layout from "../../client/core/ui/touch.ts";
-import { fitsClear, meets, stripFits } from "../fixtures/monitor.ts";
+import { fitsClear, meets, stripFits, within } from "../fixtures/monitor.ts";
 import { KEY_STRIP_OPEN } from "../../client/core/ui/monitor.ts";
 import { KEY_PANEL, KEY_TAB } from "../../client/core/ui/monitor-panel.ts";
 import { KEY_TOUCH_BUTTON, T_CLOSE, T_MAP } from "../../client/core/touch.ts";
@@ -73,7 +73,7 @@ test("by touch a tap on the strip opens the monitor as a page of its own, under 
       const close = f.find(KEY_TOUCH_BUTTON + T_CLOSE)!;
       expect(close, at).not.toBeNull();
       // The page and its words fit, and nothing else but the crosshair's band is under it.
-      fitsClear(f, KEY_PANEL, at, (n) => n.key >= 24 && n.key <= 35);
+      within(f, fitsClear(f, KEY_PANEL, at, (n) => n.key >= 24 && n.key <= 35), KEY_PANEL, KEY_PANEL + 600, at);
       const controls = f.nodes.slice(0, f.count).filter((n) => n.interactive);
       for (const n of controls) if (n.key >= 8000 && n.key < 9000) expect(Math.min(n.w, n.h), `${at}: ${n.key} "${n.label}"`).toBeGreaterThanOrEqual(44);
       for (let i = 0; i < controls.length; i++) for (let j = i + 1; j < controls.length; j++) expect(meets(controls[i]!, controls[j]!), `${at}: ${controls[i]!.key} over ${controls[j]!.key}`).toBe(false);
@@ -97,7 +97,8 @@ test("on a phone upright the strip stands across the canvas under the minimap an
     const f = app.ui.frame, box = stripFits(f, name), map = f.find(KEY_MINIMAP)!, clock = f.find(KEY_CLOCK)!;
     // Across the canvas between its margins, and under the minimap where its button is, at the top.
     expect(box.x, name).toBeCloseTo(f.left + 12, 5);
-    expect(box.x + box.w, name).toBeCloseTo(f.width - f.right - 12, 5);
+    // Its right edge on the minimap's frame's, which stands 2 units past the picture.
+    expect(box.x + box.w, name).toBeCloseTo(map.x + map.w + 2, 5);
     expect(map.y, name).toBeLessThan(f.top + 20);
     expect(box.y, name).toBeGreaterThanOrEqual(clock.y + clock.h);
     const button = f.find(KEY_TOUCH_BUTTON + T_MAP)!;

@@ -12,7 +12,7 @@ import { slotName } from "../assets/look.ts";
 import { AXIS_H, CHART_SECONDS, SERIES, SERIES_NAMES, SERIES_TINT, SLOW_TINT, buildAxis, buildChart, chartBox, columnAt, type ChartBox } from "./monitor-chart.ts";
 import type { MonitorKit } from "./monitor-kit.ts";
 import type { Monitor } from "./monitor.ts";
-import { K_BAR, K_PANEL, LINE, S_HUD_COUNT, S_ICE, S_LABEL, S_MENU, S_MENU_HEADING, S_MENU_NOTE, S_TEXT, S_UNMUTE, SMALL_LINE } from "./monitor-style.ts";
+import { HEADING_LINE, K_BAR, K_PANEL, LINE, S_HUD_COUNT, S_ICE, S_LABEL, S_MENU, S_MENU_HEADING, S_MENU_NOTE, S_OXYGEN, S_TEXT, S_UNMUTE, SMALL_LINE } from "./monitor-style.ts";
 import type { UiFrame } from "./nodes.ts";
 import type { TouchPlan } from "./touch.ts";
 
@@ -40,7 +40,14 @@ export const PANEL_W = 440;
 export const PANEL_FOOT = 96;
 const PAD = 24;
 /** The chart's well, on a desktop and by touch. */
-const CHART_H = 150, TOUCH_CHART_H = 120;
+const CHART_H = 150, TOUCH_CHART_H = 120, CHART_LEAST = 48;
+/**
+ * A field shorter than this is laid out close: its tabs stand in the title's place. Where it is wide as well (a phone on
+ * its side) the chart and the list under it stand side by side, and so do the Now tab's rates and its lines.
+ */
+const CLOSE_H = 430, SIDE_W = 600, SIDE_GAP = 20, TAB_LEAST = 80;
+/** A list narrower than this has each row on two lines: its name and size, then where it came from and its time. */
+const TWO_LINES = 380;
 /** A row of the Now tab and its parts; its meter is where a painted meter rail will stand, METER_MIN across at least, or none. */
 const ROW = 26, METER_H = 6, METER_MIN = 40, LABEL_W = 60, RATE_W = 74, TOTAL_W = 150;
 /** A row of a list, and the widths of its columns but the name's. */
@@ -67,6 +74,11 @@ export class PanelWords {
   /** The rows a page has room for, the field's inner width, and where the chart stands, as the panel was last laid out. */
   perPage = 8;
   inner = PANEL_W - PAD * 2;
+  /** Whether the field is laid out close, with its parts side by side; the list's width, and whether its rows take two lines. */
+  close = false;
+  side = false;
+  listW = PANEL_W - PAD * 2;
+  two = false;
   readonly box: ChartBox = { x: 0, y: 0, w: 0, h: 0, column: 1 };
 }
 
@@ -170,7 +182,7 @@ export function panelWords(m: Monitor, nowMs: number, touch: boolean): void {
   m.page = Math.max(0, Math.min(w.pages - 1, m.page));
 }
 
-export const nameWidth = (w: PanelWords): number => w.inner - SIZE_W - FROM_W - TIME_W - 12;
+export const nameWidth = (w: PanelWords): number => (w.two ? w.listW - SIZE_W - 8 : w.listW - SIZE_W - FROM_W - TIME_W - 12);
 
 export function row(w: PanelWords, name: string, bytes: number, from: string, time: string): void {
   w.name.push(name);
@@ -198,7 +210,8 @@ export function panelField(f: UiFrame, kit: MonitorKit, plan: TouchPlan | null, 
   // On a desktop left of the vitals' column, which stands at the right. By touch across the canvas, or where it is wide
   // left of the minimap, which the touch layer's Close stands over.
   const wide = f.width >= WIDE;
-  out.w = touch ? f.width - f.right - 12 - (wide ? plan.map + 8 : 0) - out.x : Math.min(PANEL_W, f.width - out.x - f.right - VITALS_W);
+  // Across a narrow canvas its right edge is on the minimap frame's, which stands 2 units past the picture.
+  out.w = touch ? f.width - f.right - 12 - (wide ? plan.map + 8 : -2) - out.x : Math.min(PANEL_W, f.width - out.x - f.right - VITALS_W);
   // By touch under the vitals, which stand at the top, and under the offer to unmute where it shows.
   out.y = touch ? (muted ? plan.stackY : plan.under) : f.top + 40;
   // Under what the HUD keeps at the top where the field would meet it: the compass and its degrees, the minimap, its
@@ -225,13 +238,22 @@ const WIDE = 640;
 /** The keys of what the HUD keeps at the top: ui/compass.ts's, and ui/hud.ts's minimap's frame, picture and clock, and its three buttons. */
 export const KEY_COMPASS = 6600, KEY_MINIMAP_FRAME = 10, KEY_CLOCK = 12, KEY_MINIMAP_TOGGLE = 5390;
 
-/** Lays the field out for this frame, and is true where its inner width changed, which its words are wrapped to. */
+/** Lays the field out for this frame, and is true where its widths changed, which its words are fitted to. */
 export function layPanel(m: Monitor, f: UiFrame, plan: TouchPlan | null, below: number, muted: boolean): boolean {
   panelField(f, m.kit, plan, below, muted, at);
-  const inner = at.w - PAD * 2, changed = inner !== m.words.inner;
-  m.words.inner = inner;
+  const w = m.words, inner = at.w - PAD * 2, close = at.h < CLOSE_H, side = close && inner >= SIDE_W;
+  const listW = side && m.tab === 1 ? inner - chartWidth(inner) - SIDE_GAP : inner;
+  const changed = inner !== w.inner || listW !== w.listW;
+  w.inner = inner;
+  w.close = close;
+  w.side = side;
+  w.listW = listW;
+  w.two = listW < TWO_LINES;
   return changed;
 }
+
+/** The chart's width in a field laid out side by side. */
+const chartWidth = (inner: number): number => Math.round(inner * 0.55);
 
 /** The panel, as `layPanel` laid it out. */
 export function buildPanel(m: Monitor, f: UiFrame, touch: boolean): void {
@@ -239,77 +261,102 @@ export function buildPanel(m: Monitor, f: UiFrame, touch: boolean): void {
   const x = at.x, y = at.y, inner = w.inner, left = x + PAD, right = x + at.w - PAD, button = touch ? FINGER : 36;
   f.add(KEY_PANEL + 5, K_PANEL, x, y, at.w, at.h, S_MENU);
   kit.glass(f, KEY_PANEL, x, y, at.w, at.h);
-  // By touch the touch layer's Close, over the page's top right, closes it.
+  // Freeze, and Close on a desktop; by touch the touch layer's Close, over the page's top right, closes it.
   const buttons = touch ? 80 : 56 + 8 + 80;
-  f.text(KEY_TITLE, left, y + 16 + (button - 33) / 2, inner - buttons - 8, S_MENU_HEADING, kit.fitText("Resource monitor", inner - buttons - 8, S_MENU_HEADING));
   if (!touch) kit.smallButton(f, KEY_CLOSE, right - 56, y + 16, 56, button, "Close", "Close the resource monitor");
   kit.smallButton(f, KEY_FREEZE, right - buttons, y + 16, 80, button, m.frozen ? "Resume" : "Freeze", m.frozen ? "Let the chart move again" : "Hold the chart still", m.frozen);
-  const tabY = y + 16 + button + 12, tabW = Math.min(132, inner / TABS.length), tabH = touch ? FINGER : 34;
+  // The title, and under it the tabs; laid out close, the tabs in the title's place where they have the room.
+  const beside = w.close && (inner - buttons - 8) / TABS.length >= TAB_LEAST;
+  if (!beside) f.text(KEY_TITLE, left, y + 16 + (button - HEADING_LINE) / 2, inner - buttons - 8, S_MENU_HEADING, kit.fitText("Resource monitor", inner - buttons - 8, S_MENU_HEADING));
+  const tabH = touch ? FINGER : 34, tabY = beside ? y + 16 + (button - tabH) / 2 : y + 16 + button + 12;
+  const tabW = Math.min(132, (beside ? inner - buttons - 8 : inner) / TABS.length);
   for (let i = 0; i < TABS.length; i++) kit.smallButton(f, KEY_TAB + i, left + i * tabW, tabY, tabW - 8, tabH, TABS[i]!, TABS[i]!, m.tab === i);
-  f.add(KEY_LINE, K_PANEL, left, tabY + tabH + 6, inner, 1, S_ICE).alpha = 0.18;
-  const top = tabY + tabH + 20, bottom = y + at.h - 16;
+  const line = Math.max(tabY + tabH, y + 16 + button) + 6;
+  f.add(KEY_LINE, K_PANEL, left, line, inner, 1, S_ICE).alpha = 0.18;
+  const top = line + 14, bottom = y + at.h - 16;
   if (m.tab === 0) buildNow(m, f, left, top, inner, bottom);
   else if (m.tab === 1) {
-    const ch = touch ? TOUCH_CHART_H : CHART_H;
-    chartBox(left, top, inner, ch, w.box);
+    // The chart takes what its legend, the caption and two rows of the list leave it, or beside them the height there
+    // is. On a field too short for all of that the list goes first, then the legend, then the caption and its ‹ ›: the
+    // chart can still be pressed.
+    const step = touch ? FINGER : 30, bw = touch ? FINGER : 32, chartW = w.side ? chartWidth(inner) : inner;
+    const room = bottom - top, legendH = SMALL_LINE + 8, captionH = step + 8, most = touch ? TOUCH_CHART_H : CHART_H;
+    const list = w.side ? 0 : captionH + 2 * LIST_ROW * (w.two ? 2 : 1) + (touch ? FINGER : 30);
+    const ch = Math.max(Math.min(CHART_LEAST, room - AXIS_H - 6), Math.min(most, room - AXIS_H - 6 - legendH - list));
+    const left2 = room - ch - AXIS_H - 6, legend = left2 >= legendH, caption = w.side || left2 >= legendH + captionH;
+    chartBox(left, top, chartW, ch, w.box);
     buildChart(f, kit, KEY_CHART, w.box, m.chart, m.column, true);
     buildAxis(f, KEY_AXIS, w.box, m.chart);
-    let ly = top + ch + AXIS_H + 6;
+    const ly = top + ch + AXIS_H + 6;
     // The legend: a swatch and a word for each series, and the slow frames' mark.
-    const each = inner / (SERIES + 1);
-    for (let s = 0; s <= SERIES; s++) {
+    const each = chartW / (SERIES + 1);
+    for (let s = 0; legend && s <= SERIES; s++) {
       const sx = left + s * each;
       const sw = f.add(KEY_LEGEND + s * 2, K_PANEL, sx, ly + (s === SERIES ? 7 : 4), 8, s === SERIES ? 3 : 8, S_ICE);
       sw.tint = s === SERIES ? SLOW_TINT : SERIES_TINT[s]!;
       f.text(KEY_LEGEND + s * 2 + 1, sx + 12, ly, each - 14, S_LABEL, kit.fitText(s === SERIES ? "over 50 ms" : SERIES_NAMES[s]!, each - 14, S_LABEL));
     }
-    ly += SMALL_LINE + 8;
-    const step = touch ? FINGER : 30, bw = touch ? FINGER : 32;
-    f.text(KEY_CAPTION, left, ly + (step - LINE) / 2, inner - bw * 2 - 12, S_TEXT, kit.fitText(w.caption, inner - bw * 2 - 12, S_TEXT));
-    kit.smallButton(f, KEY_COLUMN_BACK, right - bw * 2 - 4, ly, bw, step, "‹", "The second before");
-    kit.smallButton(f, KEY_COLUMN_ON, right - bw, ly, bw, step, "›", "The second after");
-    buildList(m, f, left, ly + step + 8, inner, bottom, touch);
+    if (!caption) return;
+    // The chosen second and what arrived in it: under the chart, or beside it.
+    const lx = w.side ? left + chartW + SIDE_GAP : left, lw = w.listW, cy = w.side ? top : ly + legendH;
+    f.text(KEY_CAPTION, lx, cy + (step - LINE) / 2, lw - bw * 2 - 12, S_TEXT, kit.fitText(w.caption, lw - bw * 2 - 12, S_TEXT));
+    kit.smallButton(f, KEY_COLUMN_BACK, lx + lw - bw * 2 - 4, cy, bw, step, "‹", "The second before");
+    kit.smallButton(f, KEY_COLUMN_ON, lx + lw - bw, cy, bw, step, "›", "The second after");
+    buildList(m, f, lx, cy + captionH, lw, bottom, touch);
   } else buildList(m, f, left, top, inner, bottom, touch);
 }
 
 function buildNow(m: Monitor, f: UiFrame, left: number, top: number, inner: number, bottom: number): void {
   const w = m.words, kit = m.kit;
-  const meter = inner - LABEL_W - RATE_W - TOTAL_W - 24;
+  // Laid out side by side, the rates take the left half and the lines the right.
+  const rowsW = w.side ? Math.round(inner / 2) - SIDE_GAP / 2 : inner;
+  const meter = rowsW - LABEL_W - RATE_W - TOTAL_W - 24;
   let y = top;
   for (let i = 0; i < 4; i++) {
     f.text(KEY_NOW + i * 4, left, y, LABEL_W, S_MENU_NOTE, RATE_NAMES[i]!);
     f.text(KEY_NOW + i * 4 + 1, left + LABEL_W, y, RATE_W, S_HUD_COUNT, w.rate[i]!);
-    if (meter >= METER_MIN) f.add(KEY_NOW + i * 4 + 2, K_BAR, left + LABEL_W + RATE_W + 12, y + (LINE - METER_H) / 2, meter, METER_H, S_ICE).value = w.share[i]!;
-    f.text(KEY_NOW + i * 4 + 3, left + inner - TOTAL_W, y, TOTAL_W, S_HUD_COUNT, kit.fitText(w.total[i]!, TOTAL_W, S_HUD_COUNT));
+    if (meter >= METER_MIN) f.add(KEY_NOW + i * 4 + 2, K_BAR, left + LABEL_W + RATE_W + 12, y + (LINE - METER_H) / 2, meter, METER_H, S_OXYGEN).value = w.share[i]!;
+    f.text(KEY_NOW + i * 4 + 3, left + rowsW - TOTAL_W, y, TOTAL_W, S_HUD_COUNT, kit.fitText(w.total[i]!, TOTAL_W, S_HUD_COUNT));
     y += ROW;
   }
-  y += 6;
+  const lx = w.side ? left + rowsW + SIDE_GAP : left, lw = w.side ? inner - rowsW - SIDE_GAP : inner;
+  y = w.side ? top : y + 6;
   for (let i = 0; i < w.lines.length && y + LINE <= bottom; i++) {
-    f.text(KEY_NOW + 20 + i, left, y, inner, S_MENU_NOTE, w.lines[i]!);
+    f.text(KEY_NOW + 20 + i, lx, y, lw, S_MENU_NOTE, kit.fitText(w.lines[i]!, lw, S_MENU_NOTE));
     y += LINE + 2;
   }
 }
 
-function buildList(m: Monitor, f: UiFrame, left: number, top: number, inner: number, bottom: number, touch: boolean): void {
-  const w = m.words, kit = m.kit, pageH = touch ? FINGER : 30;
-  w.perPage = Math.max(1, Math.floor((bottom - top - pageH - 4) / LIST_ROW));
+/** A list's rows, a page at a time, between `top` and `bottom`: on one line each, or where the list is narrow on two. */
+function buildList(m: Monitor, f: UiFrame, left: number, top: number, width: number, bottom: number, touch: boolean): void {
+  const w = m.words, kit = m.kit, pageH = touch ? FINGER : 30, rowH = w.two ? LIST_ROW * 2 : LIST_ROW;
+  // Where not even a row and the page's controls fit, there is no list.
+  if (bottom - top < rowH + pageH + 4) return;
+  // A list of more than one page keeps room at its foot for the page's controls.
+  const all = Math.floor((bottom - top) / rowH);
+  w.perPage = Math.max(1, w.name.length <= all ? all : Math.floor((bottom - top - pageH - 4) / rowH));
   const from = m.page * w.perPage, nameW = nameWidth(w);
   let y = top;
-  for (let i = from; i < w.name.length && i < from + w.perPage; i++) {
+  for (let i = from; i < w.name.length && i < from + w.perPage && y + LIST_ROW <= bottom; i++) {
     const k = KEY_ROWS + (i - from) * 4, head = w.size[i] === "";
-    f.text(k, left, y, head ? inner : nameW, head ? S_LABEL : S_MENU_NOTE, w.name[i]!).alpha = head ? 0.85 : 1;
-    if (!head) {
-      f.text(k + 1, left + nameW + 4, y, SIZE_W, S_HUD_COUNT, w.size[i]!);
-      f.text(k + 2, left + nameW + SIZE_W + 12, y, FROM_W, S_MENU_NOTE, kit.fitText(w.from[i]!, FROM_W, S_MENU_NOTE));
-      f.text(k + 3, left + inner - TIME_W, y, TIME_W, S_HUD_COUNT, w.time[i]!);
+    f.text(k, left, y, head ? width : nameW, head ? S_LABEL : S_MENU_NOTE, w.name[i]!).alpha = head ? 0.85 : 1;
+    if (head) {
+      y += LIST_ROW;
+      continue;
     }
-    y += LIST_ROW;
+    // Its size ends where its time does on two lines, or has a column of its own on one.
+    f.text(k + 1, w.two ? left + width - SIZE_W : left + nameW + 4, y, SIZE_W, S_HUD_COUNT, w.size[i]!);
+    // On two lines, where it came from and its time go under its name, set in a little.
+    const fy = w.two ? y + LIST_ROW : y, fx = w.two ? left + 12 : left + nameW + SIZE_W + 12, fw = w.two ? width - 12 - TIME_W - 8 : FROM_W;
+    f.text(k + 2, fx, fy, fw, S_MENU_NOTE, kit.fitText(w.from[i]!, fw, S_MENU_NOTE)).alpha = w.two ? 0.8 : 1;
+    f.text(k + 3, left + width - TIME_W, fy, TIME_W, S_HUD_COUNT, w.time[i]!);
+    y += rowH;
   }
   if (w.pages <= 1) return;
   const py = bottom - pageH, bw = touch ? FINGER : 32;
-  kit.smallButton(f, KEY_PAGE_BACK, left + inner - bw * 2 - 64, py, bw, pageH, "‹", "Page back");
-  f.text(KEY_PAGE_TEXT, left + inner - bw - 60, py + (pageH - SMALL_LINE) / 2, 56, S_HUD_COUNT, `${m.page + 1} / ${w.pages}`);
-  kit.smallButton(f, KEY_PAGE_ON, left + inner - bw, py, bw, pageH, "›", "Page on");
+  kit.smallButton(f, KEY_PAGE_BACK, left + width - bw * 2 - 64, py, bw, pageH, "‹", "Page back");
+  f.text(KEY_PAGE_TEXT, left + width - bw - 60, py + (pageH - SMALL_LINE) / 2, 56, S_HUD_COUNT, `${m.page + 1} / ${w.pages}`);
+  kit.smallButton(f, KEY_PAGE_ON, left + width - bw, py, bw, pageH, "›", "Page on");
 }
 
 /** A press of one of the panel's controls; false for any other key. */
