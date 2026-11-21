@@ -13,6 +13,8 @@
 //   /admin/terrain.rgba    a small relief map for the cluster dashboard
 //   /admin/content.json     the names the interface shows for the content's ids, where they are not the id's own words
 //   /admin/log/...          the survivor log's reads (log-routes.ts)
+//   /admin/cast.html        Cast's page (client/admin/cast.ts), /admin/cast.json what Cast is doing, POST /admin/cast
+//                           an admin's action on it (cast.ts)
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -23,6 +25,7 @@ import { paintRelief } from "../../shared/world/relief.ts";
 import type { Host } from "../host.ts";
 import { boardAsked } from "../sound-board.ts";
 import { basesOf, basesVersion } from "./bases.ts";
+import { castAct, castState } from "./cast.ts";
 import { adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
 import { LogRoutes } from "./log-routes.ts";
 import type { TickMeter } from "./meter.ts";
@@ -37,6 +40,9 @@ const FILES: Readonly<Record<string, [string, string]>> = {
   "/admin/index.html": ["index.html", "text/html; charset=utf-8"],
   "/admin/admin.js": ["admin.js", "text/javascript"],
   "/admin/admin.js.map": ["admin.js.map", "application/json"],
+  "/admin/cast.html": ["cast.html", "text/html; charset=utf-8"],
+  "/admin/cast.js": ["cast.js", "text/javascript"],
+  "/admin/cast.js.map": ["cast.js.map", "application/json"],
 };
 
 export interface AdminOptions {
@@ -150,6 +156,13 @@ export class AdminPages {
     if (at === "/admin/minutes.json") return new Response(this.minutes(Number(url.searchParams.get("from") ?? 0)), { headers: JSON_HEADERS });
     if (at === "/admin/ticks.json") return new Response(this.ticks.get(now), { headers: JSON_HEADERS });
     if (at === "/admin/content.json") return new Response(this.labels(), { headers: JSON_HEADERS });
+    if (at === "/admin/cast.json") return new Response(castState(this.o.host, now), { headers: JSON_HEADERS });
+    if (at === "/admin/cast" && req.method === "POST") {
+      return req.json().then((body: unknown) => {
+        const why = castAct(this.o.host, body);
+        return new Response(JSON.stringify({ ok: why === "", why }), { status: why === "" ? 200 : 400, headers: JSON_HEADERS });
+      }, () => new Response(JSON.stringify({ ok: false, why: "not JSON" }), { status: 400, headers: JSON_HEADERS }));
+    }
     if (at === "/admin/bases.bin") {
       const level = Number(url.searchParams.get("level") ?? 3);
       if (!(level >= 0 && level <= 3 && Number.isInteger(level))) return new Response("level is 0 to 3", { status: 400 });

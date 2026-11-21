@@ -205,8 +205,8 @@ export interface Host {
   readonly taming: Taming;
   readonly riding: Riding;
   readonly urban: Urban;
-  /** The city's background people (server/cast), when the host was asked for them. */
-  readonly cast: CastHost | null;
+  /** The city's background people (server/cast): always there, idle while CastEnabled is off. */
+  readonly cast: CastHost;
   readonly vehicles: VehicleService;
   readonly entangle: Entangle;
   readonly breeding: Breeding;
@@ -756,13 +756,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     hurt.harmed(victim, points);
   };
   const chat = new Chat({ game, records, rules, tribes, bus });
-  const castHost = opts.cast ? new CastHost({
+  // Cast is always there, doing nothing while CastEnabled is off, so the admin page can turn it on live.
+  const castHost = new CastHost({
     world, game, records, creatures, emotes, chat, items, urban, bus, refresh: (rec) => refreshBody(rec), seed: (opts.seed ?? 1) + 907,
     park: (id, x, z, yaw) => parkVehicle(id, x, z, 0, yaw, "cast"),
     places: (parsed?.content?.landmarks ?? []).map((l) => ({ name: l.name, kind: "landmark", x: l.x, z: l.z })),
-    ...(typeof opts.cast === "object" ? { settings: opts.cast } : {}),
+    rules,
+    ...(typeof opts.cast === "object" ? { settings: { enabled: true, ...opts.cast } } : opts.cast === true ? { settings: { enabled: true } } : {}),
     logDir: opts.dbPath ? join(dirname(resolve(opts.dbPath)), "cast") : null,
-  }) : null;
+  });
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
@@ -1060,6 +1062,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     carReturn.begin(persistence && !loaded!.fresh ? (persistence.store.meta("carReturn") as string | null) : null);
     persistence?.sidecar("carReturn", carReturn.saved);
   }
+  // Cast's people and planned stories are kept a minute at a time; its bodies never are (a start sweeps them).
+  castHost.cast.load(persistence && !loaded!.fresh ? (persistence.store.meta("cast") as string | null) : null);
+  persistence?.sidecar("cast", castHost.saved, 60 * TICK_RATE);
 
   // A name belongs to the first device key that takes a body under it.
   game.sameCreation=(name,key,request)=>{
@@ -1261,7 +1266,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     parts.mark(PART.contacts);
     impale.step();
     spawner?.step(tick);
-    castHost?.step();
+    castHost.step();
     parts.mark(PART.spawner);
     build.step();
     parts.mark(PART.build);

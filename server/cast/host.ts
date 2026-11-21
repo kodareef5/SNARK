@@ -17,6 +17,7 @@ import type { GameServer } from "../game.ts";
 import type { Items } from "../items.ts";
 import { placeFree } from "../place.ts";
 import type { Records } from "../records.ts";
+import type { Rules } from "../settings/rules.ts";
 import type { Urban } from "../urban.ts";
 import type { Bus } from "../events/bus.ts";
 import type { EntityRecord } from "../records.ts";
@@ -58,6 +59,8 @@ export interface CastHostContext {
   /** Named places on the map beside its spawn points (its landmarks). */
   places: readonly CastPlace[];
   seed: number;
+  /** The server's settings, read again every few seconds (live); `settings` are laid over them (tests). */
+  rules?: Rules | null;
   settings?: Partial<CastSettings>;
   /** The planner's model, when there is a key: an OpenRouter key (or a stand-in for tests). None keeps Cast on rules. */
   ask?: Ask | null;
@@ -82,7 +85,7 @@ export class CastHost {
     const kind = ctx.world.reg.index.get("core:civilian");
     if (kind === undefined) throw new Error("cast: the content has no core:civilian");
     this.kind = kind;
-    this.cast = new Cast(this.worldView(), CAST_CATALOGUE, ctx.seed, CAST_CAN, { ...DEFAULT_SETTINGS, ...ctx.settings });
+    this.cast = new Cast(this.worldView(), CAST_CATALOGUE, ctx.seed, CAST_CAN, this.settingsNow());
     this.stage = new CastStage(this.cast, this.bodyView(), ctx.seed ^ 0x2545f491);
     this.cast.stage = this.stage;
     ctx.chat.listeners.push((speaker, _channel, x, z, text) => {
@@ -93,8 +96,8 @@ export class CastHost {
       this.said.set(speaker, lines);
     });
     const settings = this.cast.settings;
-    const key = process.env.OPENROUTER_API_KEY ?? "";
-    this.gate = new ModelGate(ctx.ask !== undefined ? ctx.ask : key && settings.model ? openRouter(key, settings.model) : null, { callsPerHour: settings.callsPerHour, tokensPerHour: settings.callsPerHour * 6000 });
+    this.gate = new ModelGate(null, { callsPerHour: settings.callsPerHour, tokensPerHour: settings.callsPerHour * 6000 });
+    this.modelFor(settings);
     this.log = new DecisionLog(ctx.logDir ?? null);
     this.planner = new Planner(this.cast, this.gate, this.log, () => Date.now());
     this.planner.model = settings.model;
@@ -126,6 +129,8 @@ export class CastHost {
     let n = 0;
     for (const rec of [...records.byPid.values()]) {
       if (!rec.extra.has(COMP_CAST)) continue;
+      // What it wore and carried goes with it, through the ledger.
+      if (rec.inv) this.ctx.items.burnAll(rec);
       const e = records.entOf.get(rec.pid);
       if (e !== undefined) creatures.remove(e);
       records.delete(rec.pid);
@@ -134,8 +139,55 @@ export class CastHost {
     return n;
   }
 
+  /** Kept in the world's save beside its records, a minute at a time (server/persist: a sidecar). */
+  readonly saved = { dirty: false, serialize: (): string => this.cast.save() };
+
+  /** The settings now: the server's Cast rows, then what the host was given over them. */
+  settingsNow(): CastSettings {
+    const r = this.ctx.rules;
+    const fromRules: Partial<CastSettings> = r ? {
+      enabled: r.on("CastEnabled"), size: r.num("CastSize"), activity: r.num("CastActivity"), spikiness: r.num("CastSpikiness"),
+      maxBodies: r.num("CastMaxBodies"), maxPerPlayer: r.num("CastMaxPerPlayer"), crowdMax: r.num("CastCrowdMax"), hostility: r.num("CastHostility"),
+      hostileCooldown: r.num("CastHostileCooldown"), model: r.text("CastModel"), callsPerHour: r.num("CastCallsPerHour"), hourlyBatch: r.num("CastHourlyBatch"),
+    } : {};
+    return { ...DEFAULT_SETTINGS, ...fromRules, ...this.ctx.settings };
+  }
+
+  /** The planner's model for the settings: the host's stand-in, else OpenRouter with the setting's key or the
+   * environment's; none without a key or a model. */
+  private modelFor(s: CastSettings): void {
+    if (this.ctx.ask !== undefined) {
+      this.gate.ask = this.ctx.ask;
+      return;
+    }
+    const key = this.ctx.rules?.text("CastModelKey") || process.env.OPENROUTER_API_KEY || "";
+    const id = `${key ? key.slice(-6) : ""}:${s.model}`;
+    if (id === this.modelId) return;
+    this.modelId = id;
+    this.gate.ask = key && s.model ? openRouter(key, s.model) : null;
+  }
+  private modelId = "";
+
+  /** Settings changed live take hold within five seconds; everything stops at once when Cast is turned off. */
+  private retune(): void {
+    const s = this.settingsNow(), was = this.cast.settings.enabled;
+    this.cast.settings = s;
+    this.planner.model = s.model;
+    this.gate.budget = { callsPerHour: s.callsPerHour, tokensPerHour: s.callsPerHour * 6000 };
+    this.modelFor(s);
+    if (was && !s.enabled) for (const st of [...this.cast.stories.values()]) if (st.phase !== "planned") this.cast.finish(st, this.ctx.world.tick);
+  }
+
   step(): void {
-    if (!this.cast.settings.enabled) return;
+    if (this.ctx.world.tick % (5 * TICK_RATE) === 0) {
+      this.retune();
+      this.saved.dirty = true;
+    }
+    if (!this.cast.settings.enabled) {
+      // Turned off: the people still about walk off where no one sees, then nothing more happens.
+      if (this.stage.count) this.stage.step(this.livePlayers());
+      return;
+    }
     if (this.ctx.world.tick % (5 * TICK_RATE) === 0) this.homes();
     this.cast.step();
     this.stage.step(this.livePlayers());
@@ -256,6 +308,8 @@ export class CastHost {
         return rec.pid;
       },
       remove: (pid) => {
+        const rec = records.byPid.get(pid);
+        if (rec?.inv) items.burnAll(rec);
         const e = ent(pid);
         if (e >= 0) {
           if (emotes.playingOf(e)) emotes.request(e, EMOTE_STOP, 0);
@@ -314,6 +368,8 @@ export class CastHost {
         return rec.pid;
       },
       removeCar: (car) => {
+        const rec = records.byPid.get(car);
+        if (rec?.inv) items.burnAll(rec);
         const e = ent(car);
         if (e >= 0) creatures.remove(e);
         records.delete(car);

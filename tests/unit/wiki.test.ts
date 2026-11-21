@@ -174,7 +174,7 @@ test("the settings the wiki lists are the rows marked public, and every command 
   expect(publicSettings().find((s) => s.name === "bDisableDefaultMapItemSets")?.def).toBe("False");
   // And whether it comes with a pteranodon of its own.
   expect(publicSettings().find((s) => s.name === "StarterMount")?.def).toBe("True");
-  expect(publicSettings().length).toBe(26);
+  expect(publicSettings().length).toBe(29);
   expect(commands().filter((c) => c.examples.length > 0).length).toBeGreaterThan(10);
 });
 

@@ -5,7 +5,7 @@
 // story's choices and fill its slots before it begins, and nothing waits on it.
 
 import type { Capability, Catalogue, Scene, SceneTag, Step } from "../../shared/cast/catalogue.ts";
-import { DEFAULT_SETTINGS, type CastSettings, type Pace, type Part, type Story } from "../../shared/cast/state.ts";
+import { DEFAULT_SETTINGS, type CastSettings, type Character, type Pace, type Part, type Region, type Story } from "../../shared/cast/state.ts";
 import { Rng } from "../../shared/rng.ts";
 import { People } from "./people.ts";
 import { PACE_STORIES, Regions } from "./regions.ts";
@@ -363,6 +363,37 @@ export class Cast {
     }
   }
 
+  save(): string {
+    const data: CastSave = {
+      v: 1,
+      // An extra nobody met is a seed and is made again when wanted; the rest is kept.
+      people: [...this.people.byId.values()].filter((c) => c.tier === "featured" || c.facts.length || Object.keys(c.relations).length),
+      stories: [...this.stories.values()].filter((s) => s.phase === "planned"),
+      regions: [...this.regions.byIndex.entries()],
+      players: [...this.players.entries()].map(([n, p]) => [n, { hostileAt: p.hostileAt }]),
+      next: this.nextStory,
+    };
+    return JSON.stringify(data);
+  }
+
+  /** Restores a save; a world tick before it (a fresh world) moves its ticks so cooldowns and ages hold. */
+  load(text: string | null): void {
+    if (!text) return;
+    let data: CastSave;
+    try {
+      data = JSON.parse(text) as CastSave;
+    } catch {
+      return;
+    }
+    if (data.v !== 1) return;
+    for (const c of data.people) delete c.story;
+    this.people.load(data.people);
+    for (const s of data.stories) this.stories.set(s.id, s);
+    for (const [i, r] of data.regions) this.regions.byIndex.set(i, r);
+    for (const [n, p] of data.players) this.player(n).hostileAt = p.hostileAt;
+    this.nextStory = Math.max(this.nextStory, data.next);
+  }
+
   private forget(s: Story): void {
     for (const part of s.parts) {
       const c = this.people.byId.get(part.character);
@@ -370,6 +401,17 @@ export class Cast {
     }
     this.stories.delete(s.id);
   }
+}
+
+/** What of Cast is saved: its people, the stories still only planned (bodies are never saved: a start sweeps them, and a
+ * story under way ends), the regions' heat and cooldowns, players' hostile cooldowns, and its counters. */
+export interface CastSave {
+  v: 1;
+  people: Character[];
+  stories: Story[];
+  regions: [number, Region][];
+  players: [string, { hostileAt: number }][];
+  next: number;
 }
 
 /** Whether a choice's option makes a role attack the player (allowed only at hostility 2). */

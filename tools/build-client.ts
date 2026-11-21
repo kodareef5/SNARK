@@ -150,11 +150,12 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   console.log(`ui           ${ui.bytes} bytes transferred, ${ui.decodedBytes} RGBA bytes`);
   copyFileSync(join(root, "client/sound/sounds.html"), join(dist, "sounds.html"));
   // The world and cluster dashboards use the HUD’s face.
-  const admin = await Bun.build({ entrypoints: ["admin.ts", "cluster.ts"].map((name) => join(root, "client/admin", name)), outdir: join(dist, "admin"), naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
+  const admin = await Bun.build({ entrypoints: ["admin.ts", "cluster.ts", "cast.ts"].map((name) => join(root, "client/admin", name)), outdir: join(dist, "admin"), naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
   if (!admin.success) throw new Error(admin.logs.map(String).join("\n"));
   const face = (prefix: string): string => ui.font ? `@font-face { font-family: "Barlow Semi Condensed"; src: url("${prefix}${ui.font}") format("truetype"); font-display: swap; }` : "";
   writeFileSync(join(dist, "admin/index.html"), readFileSync(join(root, "client/admin/admin.html"), "utf8").replace("/* face */", face("../")));
   writeFileSync(join(dist, "admin/cluster.html"), readFileSync(join(root, "client/admin/cluster.html"), "utf8").replace("/* face */", face("/")));
+  writeFileSync(join(dist, "admin/cast.html"), readFileSync(join(root, "client/admin/cast.html"), "utf8").replace("/* face */", face("../")));
   // The music as it is played: each track's layers as Opus, music.json listing them, and the lab to hear them.
   const music = join(root, "assets/source/core/music");
   if (ART && existsSync(join(music, "music.json"))) {

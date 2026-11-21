@@ -47,7 +47,7 @@ const WIKI_MAX_LINES = 190;
  * The admin page's script in its files: polling, the map's and the timeline's canvases, the tables, panels and charts.
  * Its decisions are in client/core/admin. 600 held the live page; the timeline over the survivor log brought 330.
  */
-const ADMIN_MAX_LINES = 1100;
+const ADMIN_MAX_LINES = 1150;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {
