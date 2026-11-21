@@ -1,4 +1,4 @@
-// A playable map from a city's base layers: bun tools/mapworld/build.ts <name or folder> [--release]
+// A playable map from a city's base layers: bun tools/mapworld/build.ts <name or folder> [--release] [--out DIR]
 //
 // Reads the city's work folder (tools/maps/work.ts; tools/maps/city.ts runs this as its last stage), or a folder named by
 // a path (its last part the map's name): base/ (its VALUES.md says what each layer holds) and world/world.json (the sea, the
@@ -231,7 +231,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
     const fd = openSync(join(layers, "statics.json"), "w");
     let chunk = "[\n";
     statics.forEach((p, i) => {
-      chunk += `${i > 0 ? ",\n" : ""}  ${JSON.stringify(engine(p))}`;
+      chunk += `${i > 0 ? ",\n" : ""}  ${JSON.stringify(engine(p.bend ? { ...p, bend: Array.from(p.bend) } : p))}`;
       if (chunk.length > 1 << 20) { writeSync(fd, chunk); chunk = ""; }
     });
     writeSync(fd, `${chunk}\n]\n`);
@@ -247,7 +247,7 @@ export async function buildMap(named: string, release = false, output = join(ROO
   lap(`layers in ${layers}`);
 
   // The statics from memory as statics.json says them (readLayers), not read back from it.
-  let map = readLayers(layers, statics.map((p) => ({ kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw) })));
+  let map = readLayers(layers, statics.map((p) => ({ kind: p.kind, x: p.x - x0, y: p.y, z: p.z - z0, yaw: toYaw(p.yaw), ...(p.bend ? { bend: p.bend } : {}) })));
   map = { ...map, statics: MapStatics.of(map.dims, map.statics), ...(sited.length > 0 ? { content: { ...brought.content, landmarks: brought.content.landmarks.map(engine) } } : {}) };
   // The map holds the statics in columns now; the pieces as objects, 7 to 13 M of them, are let go for the rest of the
   // build, and only their count is kept for the numbers.

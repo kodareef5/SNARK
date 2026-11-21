@@ -27,8 +27,8 @@ export const MAX_WATER_TILES = 289;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
- * DRAW_ flags, a bit each of `drawFlags`, which holds 16, and every one is taken. A blended draw is see-through. It comes
- * after everything opaque, shows both faces and writes no depth.
+ * DRAW_ flags, a bit each of `drawFlags`, which holds 32. A blended draw is see-through. It comes after everything opaque,
+ * shows both faces and writes no depth.
  */
 export const DRAW_BLEND = 1;
 /**
@@ -133,6 +133,14 @@ export const DRAW_GROUND = 8192;
 export const DRAW_EMISSIVE = 16384;
 /** An elevated navigational landmark whose flat silhouette remains visible through the city's distance fade. */
 export const DRAW_SKYLINE = 32768;
+/**
+ * Bent along the street (render/bend.ts, shared/world/bends.ts): each instance's bend, its two attributes, is in the
+ * buffer BEND_BUFFERS past its instances', at the same place, and the draw's vertices are bent by it before it is turned.
+ */
+export const DRAW_BENT = 65536;
+/** A chunk's buffer of its bent pieces' bends, beside its instances' buffer `id`, is `id` + BEND_BUFFERS, a bend BEND_BYTES. */
+export const BEND_BUFFERS = 4 << 20;
+export { BEND_BYTES } from "../../../shared/world/bends.ts";
 export const SKYLINE_MAX_FOG = 0.56;
 /** Faces of four corners that 16-bit indices reach. */
 export const QUAD_FACES = 16384;
@@ -340,7 +348,7 @@ export const FRAME = {
   facade: 152,
   /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`). */
   edgesOff: 154,
-  /** Its fourth: 1 more on a frame drawn without the ground's wear on asphalt and sand (`?off=road`, world-surfaces.ts `roadWorn`), and 2 more without a walk's (`?off=walks`, `walkWorn`). */
+  /** Its fourth: 1 more on a frame drawn without the ground's wear on asphalt and sand (`?off=road`, world-surfaces.ts `roadWorn`), 2 more without a walk's (`?off=walks`, `walkWorn`), and 4 more without a bent kerb's (`?off=kerbs`, bend.ts `bentWear`). */
   roadOff: 155,
   /**
    * fGrade and fFinish, the frame's finish (post.ts): what light is multiplied by before the tone curve, red, green and
@@ -586,7 +594,7 @@ export class FramePacket {
   /** Camera-relative origin of the buffer's coordinates: x, y, z per draw. */
   readonly drawOffset = new Float32Array(MAX_DRAWS * 3);
   /** DRAW_ bits. Draws with DRAW_BLEND come last. */
-  readonly drawFlags = new Uint16Array(MAX_DRAWS);
+  readonly drawFlags = new Uint32Array(MAX_DRAWS);
   /** Optical finish and wheel data for textured draws. Flat draws use their declared fixture, or -1 for a packed vertex label. */
   readonly drawStreetMaterial = new Float32Array(MAX_DRAWS);
   readonly drawWheelBones = new Uint32Array(MAX_DRAWS);
@@ -667,7 +675,7 @@ export class FramePacket {
   readonly casterFirst = new Uint32Array(MAX_CASTERS);
   readonly casterInstances = new Uint32Array(MAX_CASTERS);
   readonly casterOffset = new Float32Array(MAX_CASTERS * 3);
-  readonly casterFlags = new Uint16Array(MAX_CASTERS);
+  readonly casterFlags = new Uint32Array(MAX_CASTERS);
   readonly casterMaterial = new Uint16Array(MAX_CASTERS);
   readonly casterFirstIndex = new Uint32Array(MAX_CASTERS);
   readonly casterIndexCount = new Uint32Array(MAX_CASTERS);

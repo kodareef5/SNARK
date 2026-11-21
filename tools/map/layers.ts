@@ -19,7 +19,8 @@ interface Place {
   /** Degrees from north, turning toward +x. */
   yaw?: number;
 }
-type Piece = Place & { kind: string; y: number };
+/** A bent piece has its bend's eight numbers (shared/world/bends.ts packBend). */
+type Piece = Place & { kind: string; y: number; bend?: number[] };
 type Node = Place & { kind: string };
 type Spawn = Place & { name: string };
 type Vehicle = Place & Omit<MapVehicle, "yaw">;
@@ -129,7 +130,7 @@ export function readLayers(folder: string, statics?: readonly MapStatic[]): MapD
     tint: (picture("tint", 8, nx, nz) as Uint8Array | null) ?? new Uint8Array(nx * nz),
     // The ground's class each two samples a side (MapData.ground), where the folder has one: every even sample's.
     ...((g) => (g ? { ground: g as Uint8Array } : {}))(picture("ground", 8, (nx + 1) >> 1, (nz + 1) >> 1)),
-    statics: statics ?? (json<Piece[]>("statics.json") ?? []).map((s): MapStatic => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toYaw(s.yaw) })),
+    statics: statics ?? (json<Piece[]>("statics.json") ?? []).map((s): MapStatic => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toYaw(s.yaw), ...(s.bend ? { bend: s.bend } : {}) })),
     nodes,
     spawns: need(json<Spawn[]>("spawns.json"), "spawns.json").map((s): MapSpawn => ({ name: s.name, x: s.x, z: s.z, yaw: toYaw(s.yaw) })),
     ...(regions ? { regions: regions.map((r): MapZone => ({ kind: "spawn", spawns: r.spawns, count: r.count, at: [r.x, r.z], ...(r.half ? { half: r.half } : { radius: r.radius ?? 0 }) })) } : {}),
@@ -159,7 +160,7 @@ export function writeLayers(map: MapData, folder: string): void {
   put("heights.png", writeGrey(nx, nz, map.heights.slice().reverse()));
   put("tint.png", writeGrey(nx, nz, map.tint.slice().reverse(), defaultPalette()));
   if (map.ground) put("ground.png", writeGrey((nx + 1) >> 1, (nz + 1) >> 1, map.ground.slice().reverse()));
-  if (map.statics.length > 0) put("statics.json", lines([...map.statics].map((s): Piece => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toDegrees(s.yaw) }))));
+  if (map.statics.length > 0) put("statics.json", lines([...map.statics].map((s): Piece => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toDegrees(s.yaw), ...(s.bend ? { bend: Array.from(s.bend) } : {}) }))));
   put("spawns.json", lines(map.spawns.map((s): Spawn => ({ name: s.name, x: s.x, z: s.z, yaw: toDegrees(s.yaw) }))));
   if (map.vehicles && map.vehicles.length > 0) put("vehicles.json", lines(map.vehicles.map((v): Vehicle => ({ ...v, yaw: toDegrees(v.yaw) }))));
   if (map.regions && map.regions.length > 0) put("regions.json", lines(map.regions.map((r): Region => ({ spawns: r.spawns!, count: r.count!, x: r.at[0], z: r.at[1], ...(r.half ? { half: [r.half[0], r.half[1]] } : { radius: r.radius! }) }))));

@@ -381,6 +381,11 @@ export interface StructureDef extends Named {
   /** Drawn near only: a street piece or a building's small kit, left out of the far city's lattice and mass levels. */
   readonly near?: true;
   /**
+   * Drawn bent along the street by its instance's bend (shared/world/bends.ts): a static of a pack's mesh, walked as
+   * nothing, which the collision pieces a map lays under it are walked as; its shape is the box of the piece as modelled.
+   */
+  readonly bent?: true;
+  /**
    * Paint on the ground: each vertex of its mesh is drawn its own height over the ground under it, wherever the frame holds
    * the ground's samples (packet.ts DRAW_GROUND), and it casts no shadow. It follows the ground alone, not what stands on it.
    */
