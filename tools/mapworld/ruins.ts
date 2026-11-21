@@ -8,17 +8,18 @@ import { accessPlanner, gradeApproaches, type Approach } from "./ruin-access.ts"
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
 import { joinFrontages } from "./ruin-frontage.ts";
-import { boxOf, extentOf, middleOf, obstacleIndex, obstructs } from "./ruin-obstacles.ts";
+import { boxOf, extentOf, middleOf, obstacleIndex, obstructs, type Box } from "./ruin-obstacles.ts";
 import { parkFreightTrailers } from "./freight.ts";
 import { carPicker, frameYaw, parkCars, roadIndex } from "./street-cars.ts";
-import { junctionAt } from "./street-graph.ts";
+import { junctionAt, streetGraph } from "./street-graph.ts";
+import { cornersOf, type Corner } from "./corners.ts";
 import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
 import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { wreckLook } from "../../content/vehicles/wrecks.ts";
 import { S } from "./ground.ts";
 import { compactWalls, reserveRoutes, frameOf, inRing, Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { assembly, layout } from "./ruin-layouts.ts";
-import { ruleFor, vocabulary, type Rule, type Vocabulary } from "./ruin-vocabulary.ts";
+import { ruleFor, vocabulary, type Rule, type Vocabulary, type Walks } from "./ruin-vocabulary.ts";
 import { binKey, hash3 } from "./raster.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 import { makeSigns, nearSign } from "./signs.ts";
@@ -298,7 +299,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   // The walks first, so the street's wrecks and furniture stand clear of them.
   // A walk is cut where a way in to a building crosses it, and nowhere else for the routes inside buildings.
   const ways = corridorIndex(records.flatMap((r) => r.approaches.map((a) => ({ a: [a.street.x, a.street.z] as const, b: [a.door.x, a.door.z] as const, width: 3, low: a.door.y - .5, high: a.door.y + 2.5 }))));
-  const walks = makeWalks(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (m) => m.pieces.some((p) => crosses(p, ways)), obstacles, roads, roadGround, entrances);
+  const walks = makeWalks(site, v, (m) => { if (!accept(m)) return false; for (const p of m.pieces) obstacles.add(p); return true; }, (box) => crosses(box, ways), obstacles, roads, roadGround, entrances);
   const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads, roadGround);
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
   const signs = makeSigns(site, accept);
@@ -476,11 +477,11 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
   return out;
 }
 
-/** Whether piece `p`'s box, seen from above, meets a corridor of `index` widened by its width. */
-function crosses(p: StaticPiece, index: ReturnType<typeof corridorIndex>): boolean {
-  const [w, , d] = extentOf(p.kind).size; const mid = middleOf(p);
-  const a = p.yaw * Math.PI / 180; const co = Math.cos(a); const si = Math.sin(a);
-  return index({ x: mid.x, z: mid.z, yaw: p.yaw, c: co, s: si, width: w, depth: d, rings: [] }).some((c) => {
+/** Whether a box, seen from above, meets a corridor of `index` widened by its width. */
+function crosses(box: Box, index: ReturnType<typeof corridorIndex>): boolean {
+  const [w, , d] = box.size; const mid = box;
+  const a = box.yaw * Math.PI / 180; const co = Math.cos(a); const si = Math.sin(a);
+  return index({ x: mid.x, z: mid.z, yaw: box.yaw, c: co, s: si, width: w, depth: d, rings: [] }).some((c) => {
     const local = (q: readonly number[]): number[] => [(q[0]! - mid.x) * co - (q[1]! - mid.z) * si, (q[0]! - mid.x) * si + (q[1]! - mid.z) * co];
     const [qa, qb] = [local(c.a), local(c.b)]; const half = [w / 2 + c.width / 2, d / 2 + c.width / 2];
     let enter = 0; let leave = 1;
@@ -496,14 +497,16 @@ function crosses(p: StaticPiece, index: ReturnType<typeof corridorIndex>): boole
 /**
  * A street's edges: along each road of the listed classes, on each side, an 8 m walk with its curb on the road's edge every
  * 8 m, where the ground beside the road is open and level and nothing of the city stands, clear of junctions; a gutter on
- * a run of them here and there. Where a way in to a building crosses (`way`) the curb is cut, and a run ends in a curb ramp
- * there and at a junction; elsewhere its curb stays full height. No walk, ramp or drain stands on the road ground graded
- * to a bridge's way on (`graded`), which is driven.
+ * a run of them here and there. Where a way in to a building (a box meeting it, `way`) or a crossing meets it the curb is
+ * cut, and a run ends in a curb ramp there and at a junction; elsewhere its curb stays full height. Where a corner turns
+ * on a curb return (corners.ts), the runs on its two kerbs begin at its ends, and a run between two returns leaves the
+ * metres it does not fill in a break of its own. No walk, ramp or drain stands on the road ground graded to a bridge's
+ * way on (`graded`), which is driven.
  */
-function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
+function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way: (box: Box) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>, graded: ReadonlySet<number>, entrances: readonly { x: number; z: number; dx: number; dz: number; width: number }[]): Record<string, number> {
   const rules = v.street.walks; const out: Record<string, number> = { placed: 0, cut: 0, blocked: 0, gutters: 0, ramps: 0, drains: 0, boxes: 0 };
   if (!rules) return out;
-  const { nx, x1, z1 } = site.ground.grid;
+  const { nx, x0, z0, x1, z1 } = site.ground.grid;
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
   // A city's sidewalks are where its walk network says (tools/mapdata/streets.py, painted SIDEWALK, 0.5 to 3 m from the
   // road's edge) and look like these slabs: left out, a walk was refused on nearly every painted sidewalk.
@@ -514,6 +517,24 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
     const along = (x - e.x) * e.dx + (z - e.z) * e.dz;
     return along > -24 && along < 12 && Math.abs((z - e.z) * e.dx - (x - e.x) * e.dz) < e.width / 2 + 1;
   });
+  const graph = streetGraph(site);
+  // The curb returns first (corners.ts), each where its corner's ground is level and open and nothing stands on its arc;
+  // where one stands, the straight walks on both its kerbs begin at its ends, by the way out of the junction each runs
+  // along and which side of that way the corner is on (the way it turns from, or the way it turns to).
+  const begins = new Map<string, { along: number; y: number }>();
+  const beginKey = (node: number, line: number, sense: number, from: boolean): string => `${node}|${line}|${sense}|${from ? "a" : "b"}`;
+  const senseOf = (n: { ways: readonly { line: number; dx: number; dz: number; sense: number }[] } | undefined, arm: { line: number; dx: number; dz: number }): number =>
+    n?.ways.find((w) => w.line === arm.line && w.dx * arm.dx + w.dz * arm.dz > 0.999)?.sense ?? 0;
+  const returnRules = rules.returns;
+  for (const corner of returnRules ? cornersOf(site, returnRules) : []) {
+    const p = corner.piece; if (!p || p.x < x0 || p.x >= x1 || p.z < z0 || p.z >= z1) continue;
+    const y = setReturn(site, corner, rules, open, (x, z) => graded.has(at(x, z)) || onWay(x, z), (box) => obstacles.hits(box, -0.1, rubble) || way(box), accept);
+    if (typeof y === "string") { out[`returnRefused_${y}`] = (out[`returnRefused_${y}`] ?? 0) + 1; continue; }
+    out.returns = (out.returns ?? 0) + 1;
+    const n = graph.nodeAt(corner.x, corner.z);
+    begins.set(beginKey(n?.key ?? 0, corner.a.line, senseOf(n, corner.a), true), { along: corner.alongA, y });
+    begins.set(beginKey(n?.key ?? 0, corner.b.line, senseOf(n, corner.b), false), { along: corner.alongB, y });
+  }
   for (const [index, s] of roads.segments.entries()) {
     if (!rules.classes.includes(s.mtfcc)) continue;
     const ex = s.bx - s.ax; const ez = s.bz - s.az; const length = Math.hypot(ex, ez);
@@ -523,45 +544,87 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
       const [nxw, nzw] = [-uz * side, ux * side];
       const yaw = Math.atan2(nxw, nzw) * 180 / Math.PI; const c = Math.cos(yaw * Math.PI / 180); const sn = Math.sin(yaw * Math.PI / 180);
       const curb = (d: number, out: number): [number, number] => [s.ax + ux * d + nxw * (s.half + out), s.az + uz * d + nzw * (s.half + out)];
-      // A walk meets its neighbours end to end, so it is tested against the city's pieces a little smaller, and not against
-      // the rubble along a wall's foot, which spills onto it; a ramp is not tested against the ways in it leads to, nor what
-      // stands on a walk just laid against anything.
-      const put = (shape: RuinShape, d: number, out: number, y: number, test: "all" | "pieces" | "none" = "all"): boolean | "way" => {
+      // A piece of the kit with its middle `d` along the road and `out` from the curb's face.
+      const make = (shape: RuinShape, d: number, out: number, y: number): Mason => {
         const mid = BREAK_AT[shape]!; const [x, z] = curb(d, out);
         // Its middle stands that far along its x, which runs with the road one way or the other, from where it is put.
         const m = new Mason({ x: x + c * mid[0]!, z: z - sn * mid[0]!, yaw, c, s: sn, width: 8, depth: 3, rings: [] }, y);
         m.put(shape, 0, mid[1]!, 0, "concrete");
-        if (test === "all" && way(m)) return "way";
+        return m;
+      };
+      // A walk meets its neighbours end to end, so it is tested against the city's pieces a little smaller, and not against
+      // the rubble along a wall's foot, which spills onto it; a ramp is not tested against the ways in it leads to, nor what
+      // stands on a walk just laid against anything.
+      const put = (shape: RuinShape, d: number, out: number, y: number, test: "all" | "pieces" | "none" = "all"): boolean | "way" => {
+        const m = make(shape, d, out, y);
+        if (test === "all" && way(boxOf(m.pieces[0]!))) return "way";
         return !(test !== "none" && obstacles.hits(boxOf(m.pieces[0]!), -0.1, rubble)) && accept(m);
       };
-      // Each slot of 8 m: walked, kept clear for a junction or a way in, or left bare.
-      const slots: ("walk" | "junction" | "way" | "bare")[] = []; const ground: number[] = [];
-      for (let d = 4; d + 4 <= length; d += 8) {
+      // Where a return stands at either end on this side, the run begins at its end there: along the road from its first
+      // point, or back from its last.
+      const nodeA = graph.nodeAt(s.ax, s.az), nodeB = graph.nodeAt(s.bx, s.bz);
+      const towardFirst = nxw * -uz + nzw * ux > 0;
+      const first = nodeA ? begins.get(beginKey(nodeA.key, s.line, 1, towardFirst)) : undefined;
+      const last = nodeB ? begins.get(beginKey(nodeB.key, s.line, -1, !towardFirst)) : undefined;
+      const from = first?.along, to = last === undefined ? undefined : length - last.along;
+      // Each slot of 8 m, by where it starts: walked, kept clear for a junction, a way in, a crossing or the run's seam, or
+      // left bare. A slot is judged before anything is laid in it; one that meets a return stands at the return's height
+      // where its ground is within the walks' `flat` of it, so the two meet flush.
+      type Slot = { start: number; y: number; gutter: boolean; state: "walk" | "junction" | "way" | "bare" | "blocked" | "seam" };
+      const judge = (start: number): Slot => {
+        const d = start + 4;
         const [fx, fz] = [s.ax + ux * d, s.az + uz * d];
-        const y = site.groundAt(...curb(d, 0.3)); ground.push(y);
-        if (junctionAt(site, fx, fz, s.half + rules.fromJunction)) { slots.push("junction"); continue; }
+        const below = site.groundAt(...curb(d, 0.3));
+        const meets = Math.abs(start - (from ?? -99)) < 0.01 ? first : Math.abs(start + 8 - (to ?? -99)) < 0.01 ? last : undefined;
+        const y = meets && Math.abs(meets.y - below) <= rules.flat ? meets.y : below;
+        const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
+        const slot: Slot = { start, y, gutter, state: "walk" };
+        // A junction a return turns is not kept clear: the run begins at the return.
+        if ((from === undefined || d > length / 2) && (to === undefined || d < length / 2) && junctionAt(site, fx, fz, s.half + rules.fromJunction)) return { ...slot, state: "junction" };
         // The road's raster runs a sample or so past its edge, so the curb's corners may stand on street.
         const corners = [-4, 4].flatMap((a) => [0.3, rules.width].map((b) => [...curb(d + a, b), b] as const));
-        if (y < 0.1 || corners.some(([x, z, b]) => !(open.has(site.ground.surface[at(x, z)]!) || b < 1 && site.ground.surface[at(x, z)] === S.STREET) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) { slots.push("bare"); continue; }
+        if (y < 0.1 || corners.some(([x, z, b]) => !(open.has(site.ground.surface[at(x, z)]!) || b < 1 && site.ground.surface[at(x, z)] === S.STREET) || site.ground.water[at(x, z)] || Math.abs(site.groundAt(x, z) - y) > rules.flat)) return { ...slot, state: "bare" };
         // Nor within a sample of the road ground graded to a bridge.
-        if ([-4, 0, 4].some((a) => [-1.5, 0.3, 1.5, rules.width + 1.5].some((b) => { const [x, z] = curb(d + a, b); return graded.has(at(x, z)) || onWay(x, z); }))) { slots.push("bare"); continue; }
-        const gutter = hash3(index, Math.floor(d / 32), v.seed + side) % rules.gutterEvery === 0;
-        const mid = BREAK_AT[gutter ? "zwalk8g" : "zwalk8"]!;
-        const laid = put(gutter ? "zwalk8g" : "zwalk8", d, mid[2]!, y);
-        if (laid === "way") { slots.push("way"); out.cut!++; continue; }
-        if (!laid) { slots.push("bare"); out.blocked!++; continue; }
-        slots.push("walk"); out.placed!++; if (gutter) out.gutters!++;
+        if ([-4, 0, 4].some((a) => [-1.5, 0.3, 1.5, rules.width + 1.5].some((b) => { const [x, z] = curb(d + a, b); return graded.has(at(x, z)) || onWay(x, z); }))) return { ...slot, state: "bare" };
+        // A crossing over this road meets its curb here: the curb is cut for it, as for a way in.
+        for (let a = -4; a <= 4; a++) if (graph.onCrossing(...curb(d + a, 0.3), 0)) return { ...slot, state: "way" };
+        const m = make(gutter ? "zwalk8g" : "zwalk8", d, BREAK_AT[gutter ? "zwalk8g" : "zwalk8"]![2]!, y);
+        if (way(boxOf(m.pieces[0]!))) return { ...slot, state: "way" };
+        return obstacles.hits(boxOf(m.pieces[0]!), -0.1, rubble) ? { ...slot, state: "blocked" } : slot;
+      };
+      const slots: Slot[] = [];
+      if (from === undefined && to === undefined) for (let start = 0; start + 8 <= length; start += 8) slots.push(judge(start));
+      else if (to === undefined) for (let start = from!; start + 8 <= length; start += 8) slots.push(judge(start));
+      else if (from === undefined) for (let start = to - 8; start >= 0; start -= 8) slots.unshift(judge(start));
+      else {
+        // Between two returns the run meets both: laid on from the first, the eight metres it does not fill are left where
+        // its first break is (a slot not walked), the slots past it laid on from there; with no break, its middle slot is
+        // cut, with a ramp down each side.
+        const count = Math.floor((to - from) / 8); const left = to - from - 8 * count;
+        for (let k = 0; k < count; k++) slots.push(judge(from + 8 * k));
+        if (left > 0.01 && count > 0) {
+          let seam = slots.findIndex((q) => q.state !== "walk");
+          if (seam < 0) { seam = Math.floor(count / 2); slots[seam]!.state = "seam"; }
+          for (let k = seam + 1; k < count; k++) slots[k] = judge(from + 8 * k + left);
+        }
+      }
+      for (const [k, slot] of slots.entries()) {
+        if (slot.state !== "walk") { if (slot.state === "way") out.cut!++; if (slot.state === "blocked") out.blocked!++; continue; }
+        const d = slot.start + 4; const y = slot.y;
+        const laid = put(slot.gutter ? "zwalk8g" : "zwalk8", d, BREAK_AT[slot.gutter ? "zwalk8g" : "zwalk8"]![2]!, y, "none");
+        if (!laid) { slot.state = "bare"; out.blocked!++; continue; }
+        out.placed!++; if (slot.gutter) out.gutters!++;
         // A storm drain where the gutter runs lowest, and now and then a utility box at the walk's back.
-        const before = ground[ground.length - 2] ?? Infinity;
+        const before = slots[k - 1]?.y ?? Infinity;
         const after = d + 12 <= length ? site.groundAt(...curb(d + 8, 0.3)) : Infinity;
-        if (gutter && y <= before && y <= after && put("zdrain", d, BREAK_AT.zdrain![2]!, y, "none")) out.drains!++;
+        if (slot.gutter && y <= before && y <= after && put("zdrain", d, BREAK_AT.zdrain![2]!, y, "none")) out.drains!++;
         if (hash3(index, Math.round(d), v.seed + 7 * side) % rules.boxEvery === 0 && put("zutility", d + 2, rules.width - 0.4, y, "none")) out.boxes!++;
       }
-      // A walk's run ends in a curb ramp down to the road at a junction or a way in.
-      const ends = (slot: string | undefined): boolean => slot === "junction" || slot === "way";
+      // A walk's run ends in a curb ramp down to the road at a junction, a way in, a crossing or a seam.
+      const ends = (slot: Slot | undefined): boolean => slot !== undefined && (slot.state === "junction" || slot.state === "way" || slot.state === "seam");
       for (let k = 0; k < slots.length; k++) {
-        if (slots[k] !== "walk") continue;
-        const d = 4 + k * 8; const y = ground[k]!;
+        if (slots[k]!.state !== "walk") continue;
+        const d = slots[k]!.start + 4; const y = slots[k]!.y;
         // The ramp rises toward the walk it leads onto; a piece's +x runs with the road on one side and against it on the other.
         const rising = (toward: number): RuinShape => (toward * side > 0 ? "zcurbramp" : "zcurbrampl");
         // A ramp stands on no graded way onto a bridge, nor out on the road it meets.
@@ -572,6 +635,46 @@ function makeWalks(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, way
     }
   }
   return out;
+}
+
+/**
+ * Sets a corner's planned return down (corners.ts), or says why not: its arc and ends on ground open or painted road
+ * (within a metre of its face), level within the walks' `flat` of the height it stands at, halfway between the highest
+ * and the lowest ground just behind its face, on no way onto a bridge (`onWay`), each stretch of its arc clear of the
+ * city's pieces and the ways in to doors (`blocked`), and the chunk's budget taking it. Set down, the road's height
+ * under it.
+ */
+function setReturn(site: Site, corner: Corner, rules: Walks, open: ReadonlySet<number>, onWay: (x: number, z: number) => boolean, blocked: (box: Box) => boolean, accept: (m: Mason) => boolean): string | number {
+  const p = corner.piece!; const radius = corner.radius;
+  const { nx, x1, z1 } = site.ground.grid;
+  const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
+  // A point of the arc, `back` metres behind its face, at angle phi from its end on a's kerb toward b's.
+  const turn = corner.ax * corner.bz - corner.az * corner.bx > 0 ? 1 : -1;
+  const arc = (phi: number, back: number): [number, number] => {
+    const c = Math.cos(phi), s = Math.sin(phi), r = radius - back;
+    return [corner.cx + r * (corner.ax * c - turn * corner.az * s), corner.cz + r * (corner.az * c + turn * corner.ax * s)];
+  };
+  const face = Array.from({ length: 7 }, (_, k) => site.groundAt(...arc((Math.PI / 2) * k / 6, 0.3)));
+  const y = (Math.min(...face) + Math.max(...face)) / 2;
+  if (y < 0.1) return "low";
+  const road = new Set<number>([S.STREET, S.HIGHWAY, S.CROSSWALK]);
+  for (let k = 0; k <= 6; k++) for (const back of [0.3, rules.width]) {
+    const [x, z] = arc((Math.PI / 2) * k / 6, back); const i = at(x, z);
+    const surface = site.ground.surface[i]!;
+    if (site.ground.water[i] || !(open.has(surface) || (back < 1 && road.has(surface)))) return "ground";
+    if (Math.abs(site.groundAt(x, z) - y) > rules.flat) return "slope";
+    if (onWay(x, z)) return "bridge";
+  }
+  // Six boxes, each round a fifteen degree stretch of the walk.
+  for (let k = 0; k < 6; k++) {
+    const phi = (Math.PI / 2) * (k + 0.5) / 6;
+    const [x, z] = arc(phi, rules.width / 2); const [x0, z0] = arc(phi - Math.PI / 24, 0); const [xb, zb] = arc(phi + Math.PI / 24, 0);
+    const along = Math.atan2(xb - x0, zb - z0) * 180 / Math.PI - 90;
+    if (blocked({ x, y: y + 0.075, z, yaw: along, size: [Math.hypot(xb - x0, zb - z0), 0.15, rules.width] })) return "piece";
+  }
+  const m = new Mason({ x: p.x, z: p.z, yaw: p.yaw, c: 1, s: 0, width: 0, depth: 0, rings: [] }, y);
+  m.pieces.push({ kind: p.kind, x: p.x, y: y + 0.075, z: p.z, yaw: p.yaw });
+  return accept(m) ? y : "budget";
 }
 
 /**

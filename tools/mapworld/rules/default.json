@@ -1616,7 +1616,8 @@
     }
   },
   "street": {
-    "walks": { "classes": ["S1200", "S1400"], "width": 2.4, "gutterEvery": 3, "flat": 0.12, "fromJunction": 4, "boxEvery": 23 },
+    "walks": { "classes": ["S1200", "S1400"], "width": 2.4, "gutterEvery": 3, "flat": 0.12, "fromJunction": 4, "boxEvery": 23,
+      "returns": { "classes": ["S1200", "S1400", "S1640", "S1730"], "walked": ["S1200", "S1400"], "radius": [[3.5, 4], [5, 6], [99, 8]], "least": 3, "angles": [30, 150], "within": 2.5 } },
     "spacing": 8,
     "chance": 0.2,
     "assemblies": [

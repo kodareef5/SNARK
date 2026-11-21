@@ -100,7 +100,7 @@ def edge(segments, bottom):
     return [foot] + [(cz + NOSE * math.cos(a), cy + NOSE * math.sin(a), math.cos(a), math.sin(a)) for a in (a0 + (a1 - a0) * i / segments for i in range(segments + 1))]
 
 
-def profile(nose, joints, pan, panelled=False, pan_face=True):
+def profile(nose, joints, pan, panelled=False, pan_face=True, foot=FOOT, pan_foot=PAN_FOOT):
     """The profile across the curb as runs (name, points), each run a smooth surface whose points are shared, each point
     (z, y, normal z, normal y, v), from the road's side over the top and down the back. `v` lays the strip across: the
     face and its edge read up the strip, the curb's top back down it, so the edge is one turn of the picture with no
@@ -112,9 +112,9 @@ def profile(nose, joints, pan, panelled=False, pan_face=True):
         inner = face_z(PAN_IN)
         fall = norm((PAN_OUT - PAN_IN, PAN + inner))
         if pan_face:
-            runs.append(("pan_face", [(-PAN, PAN_FOOT, -1, 0, 0.0), (-PAN, PAN_OUT, -1, 0, (PAN_OUT - PAN_FOOT) / STRIP)]))
+            runs.append(("pan_face", [(-PAN, pan_foot, -1, 0, 0.0), (-PAN, PAN_OUT, -1, 0, (PAN_OUT - pan_foot) / STRIP)]))
         runs.append(("pan", [(-PAN, PAN_OUT, fall[0], fall[1], 0.0), (inner, PAN_IN, fall[0], fall[1], 1.0)]))
-    pts = edge(nose, PAN_IN if pan else FOOT)
+    pts = edge(nose, PAN_IN if pan else foot)
     lengths = [0.0]
     for a, b in zip(pts, pts[1:]):
         lengths.append(lengths[-1] + math.dist(a[:2], b[:2]))
@@ -132,13 +132,13 @@ def profile(nose, joints, pan, panelled=False, pan_face=True):
             runs.append(("walk_joint", [(TOP, T - DEEP, -d, e, 0.0), (TOP + JOINT, T, -d, e, 0.08)]))
             runs.append(("walk", [(TOP + JOINT, T, 0, 1, 0.0), (W - JOINT, T, 0, 1, 1.0)]))
             runs.append(("back_edge", [(W - JOINT, T, d, e, 0.92), (W, T - DEEP, d, e, 1.0)]))
-        runs.append(("back", [(W, T - DEEP, 1, 0, 0.0), (W, FOOT, 1, 0, (T - DEEP - FOOT) / STRIP)]))
+        runs.append(("back", [(W, T - DEEP, 1, 0, 0.0), (W, foot, 1, 0, (T - DEEP - foot) / STRIP)]))
     else:
         runs.append(("top", [(z0, T, 0, 1, 0.995), (W, T, 0, 1, 0.0)]))
-        runs.append(("back", [(W, T, 1, 0, 0.0), (W, FOOT, 1, 0, (T - FOOT) / STRIP)]))
+        runs.append(("back", [(W, T, 1, 0, 0.0), (W, foot, 1, 0, (T - foot) / STRIP)]))
     # Its foot, under the ground, closes it.
     first = runs[0][1][0]
-    runs.append(("bottom", [(W, FOOT, 0, -1, 0.0), (first[0], first[1], 0, -1, 0.5)]))
+    runs.append(("bottom", [(W, foot, 0, -1, 0.0), (first[0], first[1], 0, -1, 0.5)]))
     return runs
 
 
@@ -239,33 +239,116 @@ def straight(name, mid, pan, level, x0=-4.0, x1=4.0, rise=0):
     return m.triangles()
 
 
+# A return's ramp at the middle of its arc, and its straight ends (content/curbs.ts CURB_RETURN keeps the same numbers):
+# the ramp at the road for RAMP_FLAT metres of the face either side of the middle, rising to the curb by RAMP_FLARE, its
+# foot at the pan's inner edge. It falls short of that by 3% so the curb's face keeps a sliver and no face is empty. Each
+# end runs on straight JOINT_END past the arc, 6 mm under the walk's top and its faces 4 mm in, for the straight walk's
+# end to lie over the middle of it.
+RAMP_FLAT, RAMP_FLARE = 0.8, 1.4
+RAMP_DEPTH = 0.97
+# A return is set at the middle of the ground under its face, which may stand up to the walks' 12 cm off it at an end
+# (tools/mapworld/ruins.ts setReturn): its faces go that far into the ground, and more.
+RETURN_FOOT = -0.15
+JOINT_END = 0.12
+SINK, SET_IN = 0.006, 0.004
+
+
+def ramp_share(radius, phi):
+    """How much of the ramp's fall is taken at angle `phi` round the arc, and how fast that changes a metre round the face."""
+    s = abs(phi - math.pi / 4) * radius
+    if s <= RAMP_FLAT:
+        return 1.0, 0.0
+    if s >= RAMP_FLAT + RAMP_FLARE:
+        return 0.0, 0.0
+    return (RAMP_FLAT + RAMP_FLARE - s) / RAMP_FLARE, -math.copysign(1.0, phi - math.pi / 4) / RAMP_FLARE
+
+
+def end_profile():
+    """The profile of a return's straight end: its edge square, its top one face, a joint's depth down, its faces set in."""
+    def moved(z, y):
+        # The top down a joint's depth, the pan half that; the face and the back in, the pan's outer edge where it was.
+        y2 = y - SINK if y >= T - 1e-6 else y - SINK / 2 if y > 0 else y
+        z2 = z if z < -PAN / 2 else z + SET_IN if z < W / 2 else z - SET_IN
+        return z2, y2
+
+    return [(name, [(*moved(z, y), nz, ny, v) for z, y, nz, ny, v in run]) for name, run in profile(0, False, True, foot=RETURN_FOOT, pan_foot=RETURN_FOOT + 0.02)]
+
+
 def corner(name, radius, segments, level):
-    """A curb return of `radius` at the curb's face, turning a quarter in `segments`, the walk the same width round it
-    and a gutter pan before it. Before centring, the corner the two kerbs would make is at the origin and the block at
-    +x and +z: one kerb comes in along x to (radius, 0), the road at -z, the other along z to (0, radius), the road at
-    -x, and the arc between them is centred on (radius, radius)."""
+    """A curb return of `radius` at the curb's face, turning a quarter in `segments` pieces, the walk the same width round
+    it and a gutter pan before it, a ramp down to the road at the middle of its arc and a straight end past each end of
+    it. Before centring, the corner the two kerbs would make is at the origin and the block at +x and +z: one kerb comes
+    in along x to (radius, 0), the road at -z, the other along z to (0, radius), the road at -x, and the arc between them
+    is centred on (radius, radius). The levels: the nose round in four, then two, then a chamfer, then square; the joints
+    tooled to the second, the straight ends to the third; the ramp and the pan on all but the last, which is the arc's
+    mass alone."""
     m = Solid()
     nose, joints = ((4, True), (2, True), (1, False), (0, False), (0, False))[level]
-    runs = profile(nose, joints, True, pan_face=level < 3)
-    # Its middle, as the content centres a piece on the box that holds it.
-    mid = ((radius - PAN) / 2, T / 2, (radius - PAN) / 2)
+    ramped = level < 4
+    runs = profile(nose, joints, ramped, pan_face=level < 3, foot=RETURN_FOOT, pan_foot=RETURN_FOOT + 0.02)
+    # Its middle, as the content's (content/curbs.ts returnMiddle): the box round it, pans and straight ends included.
+    mid = ((radius + JOINT_END - PAN) / 2, T / 2, (radius + JOINT_END - PAN) / 2)
+    # The arc's angles: evenly round it, and where the ramp's fall starts and ends, so every level has the ramp's shape.
+    phis = [(math.pi / 2) * i / segments for i in range(segments + 1)]
+    if ramped:
+        for s in (RAMP_FLAT, RAMP_FLAT + RAMP_FLARE):
+            for sign in (-1, 1):
+                at = math.pi / 4 + sign * s / radius
+                near = min(range(len(phis)), key=lambda k: abs(phis[k] - at))
+                if 0 < near < len(phis) - 1 and abs(phis[near] - at) < (math.pi / 2) / segments / 6:
+                    phis[near] = at
+                elif 0 < at < math.pi / 2:
+                    phis.append(at)
+        phis = sorted(phis)
 
-    def station(i):
-        phi = (math.pi / 2) * i / segments
+    def station(phi):
         out = (-math.sin(phi), -math.cos(phi))
+        along = (-math.cos(phi), math.sin(phi))
+        share, slope = ramp_share(radius, phi) if ramped else (0.0, 0.0)
+        share *= RAMP_DEPTH
+        slope *= RAMP_DEPTH
 
         def place(zy, n):
-            r = radius - zy[0]
-            return (radius + r * out[0] - mid[0], zy[1] - mid[1], radius + r * out[1] - mid[2]), (-n[0] * out[0], n[1], -n[0] * out[1])
+            z, y = zy
+            r = radius - z
+            # The ramp's fall: nothing at the walk's back and all of it at the face, carried down the curb's face.
+            keep = 1 - share * max(0.0, 1 - z / W)
+            y2 = PAN_IN + (y - PAN_IN) * keep if y > PAN_IN else y
+            normal = (-n[0] * out[0], n[1], -n[0] * out[1])
+            if (share > 0 or slope != 0) and n[1] > 0.7:
+                # The walk's top leans with the fall: toward the road across it, and along the arc in the flares.
+                rise = (y - PAN_IN) * share / W
+                run = -(y - PAN_IN) * max(0.0, 1 - z / W) * slope * radius / max(r, 0.1)
+                normal = norm((rise * out[0] - run * along[0], n[1], rise * out[1] - run * along[1]))
+            return (radius + r * out[0] - mid[0], y2 - mid[1], radius + r * out[1] - mid[2]), normal
 
         return place, radius * phi
 
-    stations = [station(i) for i in range(segments + 1)]
+    stations = [station(phi) for phi in phis]
     sweep(m, runs, stations, False)
     pts = outline(runs)
     first, last = stations[0][0], stations[-1][0]
     cap(m, pts, lambda zy: first(zy, (0, 0))[0], (1, 0, 0), False)
     cap(m, pts, lambda zy: last(zy, (0, 0))[0], (0, 0, 1), True)
+    if level < 3:
+        # Each straight end, a closed piece from just inside the arc's end on. Past 200 m, where the levels after this are
+        # drawn, the joint it leaves is under a pixel and smaller than the chord's error.
+        end = end_profile()
+        end_pts = outline(end)
+
+        def along_x(u):
+            return (lambda zy, n: ((u - mid[0], zy[1] - mid[1], zy[0] - mid[2]), (0, n[1], n[0]))), u
+
+        def along_z(u):
+            return (lambda zy, n: ((zy[0] - mid[0], zy[1] - mid[1], u - mid[2]), (n[0], n[1], 0))), u
+
+        near, far = radius - 0.002, radius + JOINT_END
+        sweep(m, end, [along_x(near), along_x(far)], True)
+        cap(m, end_pts, lambda zy: along_x(near)[0](zy, (0, 0))[0], (-1, 0, 0), True)
+        cap(m, end_pts, lambda zy: along_x(far)[0](zy, (0, 0))[0], (1, 0, 0), False)
+        sweep(m, end, [along_z(near), along_z(far)], False)
+        cap(m, end_pts, lambda zy: along_z(near)[0](zy, (0, 0))[0], (0, 0, -1), False)
+        cap(m, end_pts, lambda zy: along_z(far)[0](zy, (0, 0))[0], (0, 0, 1), True)
     m.build(name)
     return m.triangles()
 
@@ -283,5 +366,8 @@ for level in (0, 1):
         "zcurbrampl": straight("zcurbrampl" + suffix, WALK_MID, False, level, -0.9, 0.9, -1),
     }
     print(f"curb: level {level} {counts} triangles")
-# The return, 6 m at its face: 24, 16, 12, 6 and 3 pieces to the quarter, finest first.
-print(f"curb: curb_r6 {[corner('curb_r6' + ('' if k == 0 else f'_LOD{k}'), 6.0, n, k) for k, n in enumerate((24, 16, 12, 6, 3))]} triangles")
+# The returns, 4, 6 and 8 m at the face, each in five levels of so many pieces to the quarter, finest first: the finest
+# for an eye at the corner, the others where the survey's rule of a pixel's chord has them (asset.ts EDGE).
+RETURNS = {4: (20, 12, 8, 4, 2), 6: (24, 16, 12, 6, 3), 8: (28, 18, 12, 6, 3)}
+for radius, levels in RETURNS.items():
+    print(f"curb: curb_r{radius} {[corner(f'curb_r{radius}' + ('' if k == 0 else f'_LOD{k}'), float(radius), n, k) for k, n in enumerate(levels)]} triangles")
