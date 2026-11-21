@@ -151,6 +151,8 @@ export class Residency {
    * `stale` is bytes that came over the network for a request no longer waited on, which `fetched` leaves out. Of
    * `cached`, `memory` and `disk` are the bytes from each, where the port tells them apart.
    */
+  /** The resource monitor's record of requests (requests.ts), told of each as it is asked, taken in and sent to the card; null while the monitor is off. */
+  log: import("./requests.ts").RequestLog | null = null;
   readonly stats = { requests: 0, cancelled: 0, failed: 0, dead: 0, failNet: 0, failHash: 0, failRange: 0, lastStatus: 0, refused: 0, evicted: 0, wasted: 0, fetched: 0, cached: 0, memory: 0, disk: 0, stale: 0, uploaded: 0, used: 0, skipped: 0, shrunk: 0 };
 
   private readonly manifest: Manifest;
@@ -568,6 +570,7 @@ export class Residency {
         continue;
       }
       this.land(slot);
+      this.log?.came(slot, a, nowMs, slot >= this.clipBase);
       this.stats.fetched += a.fetched;
       this.stats.cached += a.cached;
       this.stats.memory += a.memory ?? 0;
@@ -1246,6 +1249,7 @@ export class Residency {
     if (this.asked(slot) > SMALL_PART) this.flyingLarge++;
     this.under.push(slot);
     this.stats.requests++;
+    this.log?.asked(this, slot, rider, goal, this.now);
   }
 
   /**
@@ -1258,6 +1262,7 @@ export class Residency {
     const bytes = Math.min(size - at, room);
     if (at === 0) this.ledger += size;
     this.upload(slot, this.data[slot]!.subarray(at, at + bytes), uploads, at, size);
+    this.log?.sent(slot, this.now, at + bytes >= size);
     this.given[slot] = at + bytes < size ? at + bytes : 0;
     if (at + bytes < size) return bytes;
     this.apart[slot < this.levels ? slot : slot - this.levels] = 0;
@@ -1336,6 +1341,7 @@ export class Residency {
     this.waiting -= at - this.gone[t]!;
     this.stats.uploaded += at - this.gone[t]!;
     this.gone[t] = at;
+    this.log?.sent(slot, this.now, at === whole);
     const had = this.has[t]!;
     // The copy drawn with is not let go in a frame that has sent rows of the new one.
     if (had >= 0) this.unlink(slot);

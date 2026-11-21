@@ -92,6 +92,8 @@ export interface AssetArrival {
   disk?: number;
   /** For a request that failed on the network, the HTTP status the server answered, or 0 for no answer. */
   status?: number;
+  /** The ms the port took over it, from the ask to its answer, where it says. */
+  took?: number;
 }
 
 /**

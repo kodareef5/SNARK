@@ -11,6 +11,8 @@ import { Governor, PHONE_MS, ladder, workMs } from "./governor.ts";
 import type { FrameRing } from "./assets/frames.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { VOLUME_MAX } from "./settings.ts";
+import { toggleMonitor } from "./settings.ts";
+import { MONITOR_KIT } from "./ui/monitor-kit.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -200,6 +202,7 @@ export class App {
   readonly governor = new Governor();
   /** What each frame took and what came in it, for the data utility's monitor (assets/frames.ts), once the shell has fetched it. */
   frames: FrameRing | null = null;
+  private monitorAsked = false;
   /**
    * Whether the card has linked every program a tier draws with, beginning those it has not (the shell's `ready`). A
    * tier chosen or stepped to is drawn once it has, and the one before until then; null draws it at once.
@@ -286,7 +289,7 @@ export class App {
     };
     // Within the press that chose it, which is when a browser lets a page open another.
     this.ui.openLink = (url) => this.page?.open?.(url);
-    this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
+    this.ui.local = (line) => (line === "monitor" ? toggleMonitor(this.ui.settings) : this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     // The Storage tab's page comes as its own file, which the first frame does not wait for, and draws with these (D906).
@@ -1088,6 +1091,11 @@ export class App {
     const hud = this.hud;
     const c = this.controls;
     this.nowMs = nowMs;
+    // The resource monitor is a file of its own, fetched once Diagnostics is first "monitor".
+    if (ui.settings.monitor && !this.monitorAsked) {
+      this.monitorAsked = true;
+      void import("./ui/monitor.ts").then((m) => (ui.monitor = new m.Monitor(this, MONITOR_KIT)), () => (this.monitorAsked = false));
+    }
     hud.vehicle = null;
     if (!this.facing && session.state === "active") {
       // Mouse movement while connecting is an offset from the arrival view, not a reason to face +Z.
