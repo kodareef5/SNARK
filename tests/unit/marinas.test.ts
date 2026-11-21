@@ -2,8 +2,9 @@
 // between them a size that fits, bow-in mostly, a share held for found vessels, each clear of the rest.
 
 import { expect, test } from "bun:test";
-import { DOCK, DOCK_KINDS, isMoored, mooredVessel } from "../../content/docks.ts";
+import { DOCK, DOCK_KINDS, isDock, isMoored, mooredVessel } from "../../content/docks.ts";
 import { BOARD_REACH } from "../../shared/sim/boat-boarding.ts";
+import { isBoatVehicle, type BoatSpec } from "../../shared/sim/vehicle.ts";
 import { marinaPaths } from "../../tools/boat/marinas.ts";
 import { HARBOURS, type Harbours } from "../../tools/boat/sites.ts";
 import { meets, type Box } from "../../tools/mapworld/ruin-obstacles.ts";
@@ -11,7 +12,11 @@ import { harbourGround, marinaHarbour, MARINA, pierPath, EDGE, QUAY } from "../f
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
-const specOf = (id: string) => reg.vehicle[reg.index.get(id)!]!.spec;
+const specOf = (id: string): BoatSpec => {
+  const def = reg.vehicle[reg.index.get(id)!]!;
+  if (!isBoatVehicle(def)) throw new Error(`${id} is not a vessel`);
+  return def.spec;
+};
 const hullOf = (vessel: string, x: number, z: number, yaw: number): Box => {
   const s = specOf(vessel);
   return { x, y: 0, z, yaw, size: [s.halfWidth * 2, 2, s.halfLength * 2] };
@@ -94,6 +99,32 @@ test("the same harbour lays out the same, and no chunk holds more moored boats o
     by.set(c, [...(by.get(c) ?? []), p.kind.startsWith("core:hulk_") ? p.kind : mooredVessel(p.kind)]);
   }
   for (const kinds of by.values()) { expect(kinds.length).toBeLessThanOrEqual(4); expect(new Set(kinds).size).toBeLessThanOrEqual(2); }
+});
+
+test("a bench where a dock comes ashore gives way to it; a run that cannot come ashore, nor be joined to the land, is taken up", () => {
+  const bench = { kind: "core:zzstreet_bench", x: EDGE - 4, y: QUAY, z: 256, yaw: 90 };
+  const a = marinaHarbour(reg, HARBOURS, undefined, undefined, [bench]).layout;
+  expect(a.cleared).toEqual([0]);
+  expect(a.runs.find((r) => r.id === "1")!.landed).toBe(true);
+  // A wall along the water's edge, 200 m of it, in its first 0.3 m of depth: no module comes ashore, and no walkway
+  // finds the land within 30 m.
+  const wall = Array.from({ length: 26 }, (_, i) => ({ kind: "core:zruin_wall8_concrete", x: EDGE + 1.7, y: QUAY + 1.4, z: 156 + i * 8, yaw: 90 }));
+  const b = marinaHarbour(reg, HARBOURS, undefined, undefined, wall).layout;
+  expect(b.runs).toEqual([]);
+  expect(b.pieces.filter((p) => isDock(p.kind))).toEqual([]);
+  expect(b.slips.filter((s) => s.how !== "anchored")).toEqual([]);
+});
+
+test("nothing of a marina stands in a bridge's swim lane: the walkway is broken there, and its part out of reach is taken up", () => {
+  const lane: Box = { x: EDGE + 50, y: -.75, z: 256, yaw: 0, size: [6, 3.5, 60] };
+  const { layout } = marinaHarbour(reg, HARBOURS, undefined, undefined, [], [lane]);
+  for (const p of layout.pieces) {
+    const vessel = isMoored(p.kind) ? mooredVessel(p.kind) : p.kind.replace("core:hulk_", "core:").replace(/_(damaged|sunk)$/, "");
+    const box: Box = isDock(p.kind) ? { x: p.x, y: p.y - DOCK.deck / 2, z: p.z, yaw: p.yaw, size: [DOCK.walk, DOCK.deck, DOCK.length] } : hullOf(vessel, p.x, p.z, p.yaw);
+    expect(meets(box, lane)).toBe(false);
+  }
+  // The walkway stops short of the lane: what lay beyond it reaches no land.
+  expect(Math.max(...layout.pieces.filter((p) => p.kind === DOCK_KINDS.walk).map((p) => p.x))).toBeLessThan(EDGE + 47);
 });
 
 test("a pier is a marina's dock when it lies near the marina's point over the water, and not when it is far, dry or built on", () => {
