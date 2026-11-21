@@ -361,7 +361,7 @@ export class Ui {
       // The resource monitor takes its room in the HUD's top-left column, and stands in it.
       const monitor = this.settings.monitor ? this.monitor : null;
       if (monitor) monitor.reserve(f, hud, plan);
-      else { hud.stripH = 0; hud.stripAlone = false; }
+      else this.monitor?.off(hud);
       buildHud(f, hud, this.settings, controls, this.inspect, plan);
       monitor?.build(f, hud, controls, this.inspect, plan);
       buildCombat(f, hud.combat);

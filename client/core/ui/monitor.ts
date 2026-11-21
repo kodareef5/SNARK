@@ -14,12 +14,13 @@
 import type { App } from "../app.ts";
 import type { FrameRing } from "../assets/frames.ts";
 import { emptyPick, pickLook } from "../assets/look.ts";
+import { RequestLog } from "../assets/requests.ts";
 import type { HudModel } from "../hud.ts";
 import { cardWords, pickLine } from "./monitor-card.ts";
 import { AXIS_H, ChartData, buildAxis, buildChart, chartBox, type ChartBox } from "./monitor-chart.ts";
 import type { MonitorKit } from "./monitor-kit.ts";
 import { PanelWords, buildPanel, layPanel, panelClick, panelWords } from "./monitor-panel.ts";
-import { K_BUTTON, LINE, S_HUD_COUNT, S_HUD_HIT, S_MENU_NOTE, S_TEXT } from "./monitor-style.ts";
+import { K_BUTTON, K_PANEL, LINE, S_HUD_HIT, S_MENU, S_MENU_NOTE, S_TEXT } from "./monitor-style.ts";
 import type { UiFrame } from "./nodes.ts";
 import type { TouchPlan } from "./touch.ts";
 
@@ -31,6 +32,7 @@ export const KEY_MONITOR = 8000;
 const KEY_STRIP = KEY_MONITOR;
 const KEY_STRIP_TEXT = KEY_MONITOR + 1;
 export const KEY_STRIP_OPEN = KEY_MONITOR + 20;
+const KEY_STRIP_SHADE = KEY_MONITOR + 21;
 export const KEY_CARD = KEY_MONITOR + 30;
 const KEY_STRIP_CHART = KEY_MONITOR + 700;
 
@@ -41,8 +43,9 @@ const MARGIN = 12;
 /** The strip's widest, as wide as the readout's lines may be, and what it keeps inside its glass. */
 export const STRIP_W = 400;
 const PAD = 10;
-/** Room before each rate for a painted icon (network, disk, card) once the monitor has its art; none yet. */
+/** Room before each rate for a painted icon (network, disk, card) once the monitor has its art; none yet. And the rates' labels' room: the widest, "Network", and a gap. */
 const ICON_W = 0;
+const RATE_LABEL_W = 50;
 /** The strip's chart well's height, and the gap over it. */
 export const STRIP_CHART_H = 30;
 const CHART_GAP = 4;
@@ -105,6 +108,8 @@ export class Monitor {
   readonly live = new ChartData();
   readonly still = new ChartData();
   readonly words = new PanelWords();
+  /** The record of requests, made when the monitor first refreshes and handed to the residency while it is on. */
+  log: RequestLog | null = null;
   /** What the crosshair is on, as last found. */
   readonly pick = emptyPick();
   /** When the words were last made, by the app's clock. */
@@ -171,6 +176,8 @@ export class Monitor {
     if (nowMs - this.madeAt < REFRESH_MS && nowMs >= this.madeAt) return;
     this.madeAt = nowMs;
     const app = this.app, r = app.scene?.assets.residency ?? null, ring = app.frames, kit = this.kit;
+    if (r && !this.log) this.log = new RequestLog(r["state"].length);
+    if (r) r.log = this.log;
     const s = this.sums;
     if (ring) {
       lastSecond(ring, s);
@@ -191,6 +198,14 @@ export class Monitor {
     if (this.open) panelWords(this, nowMs, touch);
   }
 
+  /** The monitor is off: the HUD leaves no room for it, and the residency tells it nothing, so that it costs nothing. */
+  off(hud: HudModel): void {
+    hud.stripH = 0;
+    hud.stripAlone = false;
+    const r = this.app.scene?.assets.residency;
+    if (r) r.log = null;
+  }
+
   /** Has the words made again at the next build, after a press changed what they show. */
   refreshNow(): void {
     this.madeAt = -Infinity;
@@ -202,14 +217,16 @@ export class Monitor {
     const touch = plan !== null;
     this.refresh(f, this.app["nowMs"], inspect, touch);
     const x = this.x, y = hud.stripY;
+    // A shade under the glass, as the menus' backdrop is, so that the words read over a bright sky.
+    f.add(KEY_STRIP_SHADE, K_PANEL, x, y, this.w, this.h, S_MENU);
     this.kit.glass(f, KEY_STRIP, x, y, this.w, this.h, 0.9);
-    // Three rates side by side, each its label and its value at the right of its third.
+    // Three rates side by side in thirds, each its label and then its value, which starts where the widest label ends.
     const inner = this.w - PAD * 2, third = inner / 3;
     let line = y + PAD / 2 + 1;
     for (let i = 0; i < 3; i++) {
       const cx = x + PAD + i * third;
-      f.text(KEY_STRIP_TEXT + i * 2, cx + ICON_W, line, third - ICON_W - 8, S_MENU_NOTE, RATE_LABELS[i]!);
-      f.text(KEY_STRIP_TEXT + i * 2 + 1, cx, line, third - 8, S_HUD_COUNT, this.rates[i]!);
+      f.text(KEY_STRIP_TEXT + i * 2, cx + ICON_W, line, RATE_LABEL_W, S_MENU_NOTE, RATE_LABELS[i]!);
+      f.text(KEY_STRIP_TEXT + i * 2 + 1, cx + ICON_W + RATE_LABEL_W, line, third - ICON_W - RATE_LABEL_W - 4, S_TEXT, this.rates[i]!);
     }
     line += LINE;
     f.text(KEY_STRIP_TEXT + 6, x + PAD, line, inner, S_MENU_NOTE, this.queue);
@@ -270,6 +287,7 @@ export class Monitor {
   /** The card, from its words. */
   private buildCard(f: UiFrame): void {
     const at = this.cardAt;
+    f.add(KEY_CARD + 29, K_PANEL, at.x, at.y, at.w, at.h, S_MENU);
     this.kit.glass(f, KEY_CARD, at.x, at.y, at.w, at.h, 0.92);
     let y = at.y + PAD / 2 + 1, k = KEY_CARD + 1;
     for (let i = 0; i < this.card.length; i++) {

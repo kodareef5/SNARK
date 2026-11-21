@@ -340,7 +340,7 @@ async function fetchRun(url: string, parts: readonly AssetPart[], signal: AbortS
  * opened and checked into the one answer before it is handed over.
  */
 async function answer(a: Ask): Promise<void> {
-  const stop = new AbortController();
+  const begun = performance.now(), stop = new AbortController();
   under.set(a.slot, stop);
   const n = a.parts.length;
   const at = new Array<number>(n + 1);
@@ -425,9 +425,9 @@ async function answer(a: Ask): Promise<void> {
   if (under.get(a.slot) !== stop) return;
   under.delete(a.slot);
   if (fail !== 0 && late) totals.timeouts++;
-  const read = cached - remembered;
-  if (fail !== 0) scope.postMessage({ slot: a.slot, generation: a.generation, data: null, fail, fetched, cached, memory: remembered, disk: read, status });
-  else scope.postMessage({ slot: a.slot, generation: a.generation, data, fail: 0, fetched, cached, memory: remembered, disk: read }, [data.buffer]);
+  const read = cached - remembered, took = performance.now() - begun;
+  if (fail !== 0) scope.postMessage({ slot: a.slot, generation: a.generation, data: null, fail, fetched, cached, memory: remembered, disk: read, status, took });
+  else scope.postMessage({ slot: a.slot, generation: a.generation, data, fail: 0, fetched, cached, memory: remembered, disk: read, took }, [data.buffer]);
 }
 
 scope.onmessage = (e) => {

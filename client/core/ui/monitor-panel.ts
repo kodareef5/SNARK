@@ -2,15 +2,17 @@
 // or by touch a page of its own, with three tabs. Now: the rates and what they come to this visit, what waits, the
 // frame's times and the disk. Chart: the last minute, a column a second, stacked network, disk and to-card bytes, a
 // mark under each column with a frame over 50 ms; a column chosen (by a press, or ‹ › from column to column) says what
-// its second held. Assets: what is downloading now. Freeze holds the chart still. Its words are made with the strip's,
+// its second held and what arrived in it, from the record of requests (assets/requests.ts), a page at a time. Assets:
+// what is downloading now, and what came most recently. Freeze holds the chart still; the record goes on behind it. Its words are made with the strip's,
 // ten times a second at most, and the panel is drawn from them.
 
 import { ARRIVED, LOADING } from "../assets/copied.ts";
+import { IS_ASKED, LOG_ROWS, requestFrom, requestName, requestTime } from "../assets/requests.ts";
 import { slotName } from "../assets/look.ts";
 import { AXIS_H, CHART_SECONDS, SERIES, SERIES_NAMES, SERIES_TINT, SLOW_TINT, buildAxis, buildChart, chartBox, columnAt, type ChartBox } from "./monitor-chart.ts";
 import type { MonitorKit } from "./monitor-kit.ts";
 import type { Monitor } from "./monitor.ts";
-import { K_BAR, K_PANEL, LINE, S_HUD_COUNT, S_ICE, S_LABEL, S_MENU_HEADING, S_MENU_NOTE, S_TEXT, S_UNMUTE, SMALL_LINE } from "./monitor-style.ts";
+import { K_BAR, K_PANEL, LINE, S_HUD_COUNT, S_ICE, S_LABEL, S_MENU, S_MENU_HEADING, S_MENU_NOTE, S_TEXT, S_UNMUTE, SMALL_LINE } from "./monitor-style.ts";
 import type { UiFrame } from "./nodes.ts";
 import type { TouchPlan } from "./touch.ts";
 
@@ -45,6 +47,8 @@ const ROW = 26, METER_H = 6, METER_MIN = 40, LABEL_W = 60, RATE_W = 74, TOTAL_W 
 const LIST_ROW = LINE + 2, SIZE_W = 64, FROM_W = 96, TIME_W = 52;
 /** A button a finger presses. */
 const FINGER = 44;
+/** The requests the Assets tab lists that came most recently. */
+const RECENT = 60;
 
 /** What the panel shows, made at the monitor's refresh. */
 export class PanelWords {
@@ -128,17 +132,38 @@ export function panelWords(m: Monitor, nowMs: number, touch: boolean): void {
       const back = CHART_SECONDS - 1 - col, slow = chart.slow[col]!, worst = Math.round(chart.worst[col]!);
       let bytes = 0;
       for (let k = 0; k < SERIES; k++) bytes += chart.bytes[col * SERIES + k]!;
-      w.caption = `${back === 0 ? "This second" : `${back} s ago`}: ${chart.second[col]! < 0 ? "not kept" : `${slow === 0 ? "no slow frame" : slow === 1 ? `one ${worst} ms frame` : `${slow} slow frames, the longest ${worst} ms`} · ${mb(bytes)}`}`;
+      const second = chart.second[col]!;
+      w.caption = `${back === 0 ? "This second" : `${back} s ago`}: ${second < 0 ? "not kept" : `${slow === 0 ? "no slow frame" : slow === 1 ? `one ${worst} ms frame` : `${slow} slow frames, the longest ${worst} ms`} · ${mb(bytes)}`}`;
+      // What arrived in that second, as the record of requests has it, the first first.
+      const log = m.log;
+      if (log && r && second >= 0) {
+        for (let back = Math.min(log.rows, LOG_ROWS) - 1; back >= 0; back--) {
+          const k = log.row(back);
+          if (Math.floor(log.arrivedAt[k]! / 1000) !== second) continue;
+          row(w, kit.fitText(requestName(r, log, k), nameWidth(w), S_MENU_NOTE), log.bytes[k]!, requestFrom(log, k), requestTime(log, k, nowMs));
+        }
+        if (w.name.length === 0) heading(w, "Nothing the record holds arrived in it");
+      }
     }
   } else if (m.tab === 2 && r) {
-    const under = r["under"];
+    // What is downloading now, the longest under way first, then what came most recently.
+    const under = r["under"], log = m.log;
     let flying = 0;
     for (const slot of under) if (r["state"][slot] === LOADING) flying++;
     heading(w, flying === 0 ? "Nothing downloading now" : `Downloading now: ${flying}`);
     for (const slot of under) {
       if (r["state"][slot] !== LOADING) continue;
-      const t = slot - r["texBase"];
-      row(w, kit.fitText(slotName(r, slot, slot >= r["texBase"] && slot < r["clipBase"] ? r["goal"][t]! : 0), nameWidth(w), S_MENU_NOTE), r["asked"](slot), "", "");
+      const t = slot - r["texBase"], k = log ? log.rowFor(slot) : -1;
+      row(w, kit.fitText(slotName(r, slot, slot >= r["texBase"] && slot < r["clipBase"] ? r["goal"][t]! : 0), nameWidth(w), S_MENU_NOTE), r["asked"](slot), "", k >= 0 ? `for ${seconds(nowMs - log!.askedAt[k]!)}` : "");
+    }
+    if (log) {
+      heading(w, "Came most recently");
+      for (let back = 0, n = 0; back < Math.min(log.rows, LOG_ROWS) && n < RECENT; back++) {
+        const k = log.row(back);
+        if (log.state[k] === IS_ASKED) continue;
+        row(w, kit.fitText(requestName(r, log, k), nameWidth(w), S_MENU_NOTE), log.bytes[k]!, requestFrom(log, k), requestTime(log, k, nowMs));
+        n++;
+      }
     }
   }
   w.pages = Math.max(1, Math.ceil(w.name.length / w.perPage));
@@ -212,6 +237,7 @@ export function layPanel(m: Monitor, f: UiFrame, plan: TouchPlan | null, below: 
 export function buildPanel(m: Monitor, f: UiFrame, touch: boolean): void {
   const kit = m.kit, w = m.words;
   const x = at.x, y = at.y, inner = w.inner, left = x + PAD, right = x + at.w - PAD, button = touch ? FINGER : 36;
+  f.add(KEY_PANEL + 5, K_PANEL, x, y, at.w, at.h, S_MENU);
   kit.glass(f, KEY_PANEL, x, y, at.w, at.h);
   // By touch the touch layer's Close, over the page's top right, closes it.
   const buttons = touch ? 80 : 56 + 8 + 80;

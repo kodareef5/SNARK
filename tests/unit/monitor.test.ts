@@ -84,7 +84,7 @@ test("Diagnostics has three values, off, numbers and monitor, saved; F3 and the 
 
 test("the strip's rates are the last second of the record of frames, and its words are made ten times a second", () => {
   const ring = new FrameRing(), stats = { fetched: 0, stale: 0, cached: 0, disk: 0, uploaded: 0 };
-  const r = { stats, spentOther: 0, flying: 3, flyingLarge: 0, waiting: 3.1 * 1048576, wanting: () => 14, ledger: 0, texLedger: 0, cardFull: false, shareShort: false, holdBack: false };
+  const r = { stats, spentOther: 0, flying: 3, flyingLarge: 0, waiting: 3.1 * 1048576, wanting: () => 14, ledger: 0, texLedger: 0, cardFull: false, shareShort: false, holdBack: false, state: new Uint8Array(8), log: null as unknown };
   // Two seconds of frames 20 ms apart, each bringing 20 KB over the network, 10 KB from the disk and 5 KB from memory, and sending 30 KB to the card.
   for (let t = 0; t <= 2000; t += 20) {
     stats.fetched += 20480; stats.cached += 15360; stats.disk += 10240; stats.uploaded += 30720;
@@ -100,6 +100,10 @@ test("the strip's rates are the last second of the record of frames, and its wor
   m.reserve(f, hud, null);
   m.refresh(f, 1000, false, false);
   expect([m.rates[0], m.rates[1], m.rates[2], m.queue]).toEqual(["1.0 MB/s", "500 KB/s", "1.5 MB/s", "4 downloading · 14 asked · 3.1 MB waiting for the card"]);
+  // The monitor hands the residency its record of requests while it is on, and takes it back when it is off.
+  expect(r.log).toBe(m.log);
+  m.off(hud);
+  expect([r.log, hud.stripH]).toEqual([null, 0]);
   r.flying = 0;
   m.refresh(f, 1050, false, false);
   expect(m.queue.startsWith("4 downloading")).toBe(true);

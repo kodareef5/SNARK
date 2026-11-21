@@ -34,7 +34,7 @@ function firstFrameFiles(): Set<string> {
 }
 
 /** The resource monitor's files, which the app fetches once it is first turned on. */
-const MONITOR_FILES = ["client/core/ui/monitor.ts", "client/core/ui/monitor-style.ts", "client/core/ui/monitor-card.ts", "client/core/ui/monitor-chart.ts", "client/core/ui/monitor-panel.ts", "client/core/assets/look.ts", "client/core/assets/inspect.ts", "client/core/assets/copied.ts"];
+const MONITOR_FILES = ["client/core/ui/monitor.ts", "client/core/ui/monitor-style.ts", "client/core/ui/monitor-card.ts", "client/core/ui/monitor-chart.ts", "client/core/ui/monitor-panel.ts", "client/core/assets/look.ts", "client/core/assets/requests.ts", "client/core/assets/inspect.ts", "client/core/assets/copied.ts"];
 
 test("code a page needs only after its first frame is not in the script the first frame waits for", () => {
   const files = [...firstFrameFiles()].map((f) => relative(ROOT, f));
