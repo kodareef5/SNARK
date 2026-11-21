@@ -24,6 +24,7 @@ import type { Host } from "../host.ts";
 import { boardAsked } from "../sound-board.ts";
 import { basesOf, basesVersion } from "./bases.ts";
 import { adminAsked, adminPath, refused, type AdminGate } from "./gate.ts";
+import { SupplyRoutes } from "./supply-routes.ts";
 import { LogRoutes } from "./log-routes.ts";
 import type { TickMeter } from "./meter.ts";
 import { BackupList, bodiesOf, statsOf } from "./stats.ts";
@@ -102,6 +103,8 @@ export class AdminPages {
   private readonly walls = new Map<number, number | null>();
   private content = "";
   private readonly log: LogRoutes;
+  /** The drop book's page: the one part of these pages that may change the world (supply-routes.ts). */
+  readonly supply: SupplyRoutes;
 
   constructor(o: AdminOptions) {
     this.o = o;
@@ -123,6 +126,7 @@ export class AdminPages {
     });
     this.version = new EverySecond(() => basesVersion(o.host.tactical.summaries));
     this.log = new LogRoutes(o.host, this.now);
+    this.supply = new SupplyRoutes(o.host, this.now);
   }
 
   /**
@@ -155,7 +159,7 @@ export class AdminPages {
       if (!(level >= 0 && level <= 3 && Number.isInteger(level))) return new Response("level is 0 to 3", { status: 400 });
       return new Response(this.basesAt(level, now), { headers: { ...FRESH, "content-type": "application/octet-stream" } });
     }
-    return this.log.answer(at, url) ?? new Response("not found", { status: 404 });
+    return this.log.answer(at, url) ?? this.supply.answer(req, at, url) ?? new Response("not found", { status: 404 });
   }
 
   private terrainImage(req: Request): Response {

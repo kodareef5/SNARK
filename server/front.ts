@@ -176,7 +176,10 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
       const url = new URL(req.url);
       const worldWrite = (req.method === "POST" || req.method === "OPTIONS") && /\/(survivors|directory|__play)$/.test(url.pathname);
       const shotWrite = req.method === "POST" && url.pathname === "/cluster/admin/scenes/api";
-      if (req.method !== "GET" && req.method !== "HEAD" && !worldWrite && !shotWrite)
+      // The drop book's page changes its world's book and calls test drops (server/admin/supply-routes.ts): its acts and no
+      // other path under a world's admin pages.
+      const dropWrite = req.method === "POST" && /\/admin\/supply\/[a-z]+$/.test(url.pathname);
+      if (req.method !== "GET" && req.method !== "HEAD" && !worldWrite && !shotWrite && !dropWrite)
         return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
       const to = frontRoute(worlds(), url.pathname);
       if (!to) return new Response("no world of this cluster is running", { status: 503, headers: { "retry-after": "10" } });
