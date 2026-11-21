@@ -56,7 +56,8 @@ export function weigh(dist: string): boolean {
   const music = join(dist, "assets/music");
   const rows: [string, number][] = [
     ["title script, style, font, catalogue and poster", titleBytes(["entry.js.br", "entry.css.br", "title/barlow.ttf", "title/maps.json", "title/red-tide.webp", "title/snark-emblem.webp"])],
-    ["game loading poster", titleBytes(["title/red-tide.webp", "title/red-tide-portrait.webp", "title/snark-emblem.webp"])],
+    // A page fetches one of the title's two stills: the wide one here, or on a tall screen the lighter tall one.
+    ["game loading poster", titleBytes(["title/red-tide.webp", "title/snark-emblem.webp"])],
     ["the page's script, Brotli", script.reduce((s, n) => s + size(n), 0)],
     ["the content, Brotli", fetched.filter((n) => n.includes("/content.")).reduce((s, n) => s + size(n), 0)],
     ["manifest, Brotli", size("assets/manifest.json.br")],
