@@ -29,6 +29,7 @@ tools/mapdata/.venv/bin/pip install -r tools/maps/requirements.txt
 | `places.json`, `compositions.json` | Named places and the shapes built on them. A place names its building by OpenStreetMap way (`osm_way`, a relation's id negative) or by a point in it (`at`, longitude and latitude), which the build finds again whatever the download or split does; one it cannot find stops the vocabulary stage |
 | `heights.json` | Reviewed building heights where the sources are wrong (Aria on the Bay is 163 m, not 8.4): each a `name`, a point in the building (`at`), what to `set` (`height_m`, `levels`, `height_from`), and its `reason` and `sources`. The labels stage sets them; one on no building stops it |
 | `world.json` | The districts as drawn (name, style, how tall, a ring of longitudes and latitudes) and the spawn points as placed. The world stage keeps them and proposes districts and spawn points only for the ground they leave, so a bigger cut grows round them |
+| `streets/*.jsonl` | The street overlay: one entry a line, a street's type or any field of its section for an OpenStreetMap way, a point, a line or an area in longitude and latitude, with its reason, over what the rules (`tools/mapworld/rules/streets.json`, and this city's `rules.json` `streets`) make of it. The build reads them alone, and stops on one that matches no street. How to write one, and the loop to check it: [streets](../../planning/workstreams/streets.md) |
 | `look/` | Cameras and routes for judging the city by eye |
 | `art/map.png` | The map screen's picture, once artist has painted it (below) |
 
@@ -57,7 +58,7 @@ again only when its inputs, its own code or a stage before it changed (`stages.j
 | ways | `tools/mapdata/ways.py` | bridges, piers, towers, stairs, lettered signs |
 | world | `tools/mapdata/world.py --accept` | `world/world.json`: districts round OpenStreetMap's places, spawn points, and what `city.json`'s `world` sets |
 | vocabulary | `tools/mapdata/vocabulary.py` | `ruins/vocabulary.json`: the rule tables, the city's own over them, budgets by its footprints |
-| build | `tools/mapworld/build.ts` | `var/maps/<city>.snmap` |
+| build | `tools/mapworld/build.ts` | `var/maps/<city>.snmap`, and in `reports/` what the streets were fitted and typed as (`streets.json`; `bun tools/maps/street.ts <city> <way, name or lon,lat>` reads it and draws the street) |
 
 The downloads are a build's: keep them on a machine that does map work and fetch them again elsewhere. A 16 km cut
 holds several gigabytes of them; `du -sh var/mapdata/*` says what each city keeps, and an old cut's folder can go.

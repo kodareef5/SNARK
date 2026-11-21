@@ -16,7 +16,7 @@ import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { ROOF_GLSL } from "./roof.ts";
 import { LIGHT, THROUGH } from "./surface.ts";
 import { FACADE_GLSL, ROOM_OPEN_LEAST } from "./facade.ts";
-import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
+import { GROUND_BAND, GROUND_GLSL, GROUND_SCALE, ROAD_GLSL, STREETS_GLSL, WORLD_GLSL, WORLD_SHARP } from "./world-surfaces.ts";
 import { WET_DARK, WET_GLSL, WET_ROUGH } from "./bank.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -309,7 +309,7 @@ uniform highp sampler2D uPalette;
 uniform vec4 uField;
 uniform vec2 uLast;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${ROAD_GLSL}${WET_GLSL}vec3 groundColour(int tint) {
+${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${AIR}${WORLD_GLSL.replace("WORLD_NORMAL", "rg")}${GROUND_GLSL}${STREETS_GLSL}${ROAD_GLSL}${WET_GLSL}vec3 groundColour(int tint) {
   vec3 c = texelFetch(uPalette, ivec2(tint, 0), 0).rgb;
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
@@ -317,16 +317,29 @@ void main() {
   vec3 dx = dFdx(vRel), dy = dFdy(vRel);
   vec3 geometric = normalize(cross(dx, dy));
   float footprint = max(length(dx.xz), length(dy.xz));
-  vec2 s = clamp(vAt + groundWander(vRel.xz + uWorldEye.xz, footprint) / uField.z, vec2(0.0), uLast);
+  vec2 world = vRel.xz + uWorldEye.xz;
+  // Near a street on the tiers that draw them, its edges come from its lines (STREETS_GLSL), straight at any angle, and
+  // the cover is looked up where the pixel is.
+  bool streets = false;
+#ifdef GROUND_STREETS
+  vec3 streetE;
+  uvec4 streetK;
+  streets = streetsAt(world, streetE, streetK);
+#endif
+  vec2 s = clamp(vAt + (streets ? vec2(0.0) : groundWander(world, footprint) / uField.z), vec2(0.0), uLast);
   ivec2 i = min(ivec2(s), ivec2(uLast) - 1);
   ivec4 tints = ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r);
   // A walk's edge is straight: where the sidewalk is one of the four, the cover is looked up where the pixel is.
-  if (groundWalks(tints)) {
+  if (!streets && groundWalks(tints)) {
     s = clamp(vAt, vec2(0.0), uLast);
     i = min(ivec2(s), ivec2(uLast) - 1);
     tints = ivec4(texelFetch(uTint, i, 0).r, texelFetch(uTint, i + ivec2(1, 0), 0).r, texelFetch(uTint, i + ivec2(0, 1), 0).r, texelFetch(uTint, i + 1, 0).r);
   }
-  int tint = groundCover(tints, s - vec2(i));
+  int tint = groundCover(tints, s - vec2(i)), streetOther = -1;
+  float streetShare = 0.0;
+#ifdef GROUND_STREETS
+  if (streets) streets = streetCover(tints, s - vec2(i), streetE, streetK, world, footprint, tint, streetOther, streetShare);
+#endif
   vec3 albedo = groundColour(tint);
   float asphalt = groundSurface(tint) == ${DRY_ASPHALT.surface} ? 1.0 : 0.0;
   vec3 n = normalize(vNormal), level = n;
@@ -337,10 +350,12 @@ void main() {
     groundWorn(albedo, orm, n, groundSurface(tint), vRel + uWorldEye, vAt, dx, dy);
     worldSharp = orm.y < ${f(WORLD_SHARP)};
 #endif
-    // Where it meets another finish, the higher of the two shows through the other, and a walk meets it on a line.
-    int other = groundMeet(tint, tints, s - vec2(i), share);
-    bool straight = other >= 0 && (groundSurface(tint) == GROUND_WALK || groundSurface(other) == GROUND_WALK);
-    if (straight) share = walkMeet(share, footprint);
+    // Where it meets another finish, the higher of the two shows through the other, and a walk meets it on a line; a
+    // street's band meets the next on its line.
+    int other = streets ? streetOther : groundMeet(tint, tints, s - vec2(i), share);
+    if (streets) share = streetShare;
+    bool straight = streets || (other >= 0 && (groundSurface(tint) == GROUND_WALK || groundSurface(other) == GROUND_WALK));
+    if (straight && !streets) share = walkMeet(share, footprint);
     if (share > 0.0) {
       vec3 albedo2 = groundColour(other), orm2, n2 = level;
       float h2 = worldSurface(albedo2, orm2, n2, geometric, groundSurface(other), vRel, dx, dy);

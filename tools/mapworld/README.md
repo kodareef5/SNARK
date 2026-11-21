@@ -62,13 +62,16 @@ corner (`Grid` in `base.ts`), so a map cut from another or widened grows the sam
 city where the two overlap, worked out with the same numbers; it turns places
 into the map's own metres as it writes the layers. Its reports stay in lattice
 metres, and the walks read them into the map's (`readReport`). A rectangle of a
-source can be cut out and built from its folder, the walks given `--source`:
+city's work folder can be cut out and built from its own folder, with `--out` so
+its map stays out of var/maps, the walks given `--source`:
 
 ```sh
-bun tools/mapworld/cut.ts miami var/cuts/miami-west 2080 2048 95 127   # its corner's column and row, chunks west and north
-bun tools/mapworld/build.ts var/cuts/miami-west
-bun tools/mapworld/walk.ts var/maps/miami-west.snmap
+bun tools/mapworld/cut.ts miami var/cuts/miami-west/miami 2080 2048 95 127   # its corner's column and row, chunks west and north
+bun tools/mapworld/build.ts var/cuts/miami-west/miami --out var/cuts/miami-west/out
+bun tools/mapworld/walk.ts var/cuts/miami-west/out/miami.snmap --source var/cuts/miami-west/miami
 ```
+
+`--no-streets` builds a map as before the streets' lines (planning/workstreams/streets.md), to compare.
 
 `world.ruins.report` chooses the report folder. `world.ruins.yardDistricts`
 chooses working container yards. `world.bridgeGapLayer` names the authored
@@ -81,9 +84,12 @@ these modules.
 and yaw for each box, given the pieces the layers before it set down: the ruins,
 then the street furniture (`street-furniture.ts`, planning/reference/maps.md).
 Where two streets meet, `corners.ts` rounds the corner by `street.walks.returns`
-(rules/README.md): the ground is painted round its arc before the surfaces are
-worked out, the walks set a curb return there and begin their runs at its ends,
-and the furniture stands behind it. The
+(rules/README.md): the walks set a curb return there and begin their runs at
+its ends, and the furniture stands behind it. Before the ground, the streets
+are fitted, typed by their rules (`rules/streets.json`) and the city's overlay,
+and carried in the map as lines (`streets/`, planning/workstreams/streets.md);
+the ground's street, verge and walk samples, round every corner's arc too, are
+painted from them before the surfaces are worked out. The
 site exposes footprints, district data, ground samples and plant clearing masks. The ground builder leaves the footprints bare when
 `world.heaps` is false. Resource nodes are placed after all static layers:
 whether each slot's node stands, and as what, is decided once on the finished

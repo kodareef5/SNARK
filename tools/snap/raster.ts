@@ -13,7 +13,9 @@ import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
-import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
+import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_BUFFER, FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
@@ -228,14 +230,27 @@ function risenTo(albedo: Float64Array | number[], orm: Float64Array | number[], 
  * The ground's wear, asphalt's and sand's (world-surfaces.ts roadWorn) where `road` and a walk's (walkWorn) where
  * `walks`, as much of it as the packed maps have risen to (glsl.ts groundWorn).
  */
-function wornGround(albedo: Float64Array, orm: Float64Array, normal: Float64Array, id: number, x: number, z: number, footprint: number, city: ArrayLike<number>, sample: WorldSample, road: boolean, walks: boolean): void {
+function wornGround(albedo: Float64Array, orm: Float64Array, normal: Float64Array, id: number, x: number, z: number, footprint: number, city: ArrayLike<number>, sample: WorldSample, road: boolean, walks: boolean, streets = false, along = false): void {
   risenFrom(albedo, orm, normal);
   if (road && roadsOf) roadFrameAt(roadsOf, x, z, roadAt);
-  if (road) roadWorn(albedo, orm, id, x, z, footprint, sample, roadsOf ? roadAt : null);
-  if (walks) walkWorn(albedo, orm, normal, id, x, z, footprint, city, sample);
+  // Where the streets draw the ground's edges (STREETS_GLSL): the gutter along the kerb's line; and near a street (`along`
+  // too) the walk's panels along it, a paved verge's in rows from the kerb.
+  const lined = (streets || along) && streetsOf !== null && streetsOf.at(x, z, streetE, streetK);
+  if (lined) {
+    alongOf(streetK[2]!, streetAlong);
+    streetPlace[0] = x * streetAlong[0]! + z * streetAlong[1]!;
+    streetPlace[1] = streets && (streetK[0]! & 7) === PAVED_VERGE && streetE[0]! >= 0 && streetE[1]! < 0 ? streetE[0]! : streetE[1]!;
+  }
+  if (road) roadWorn(albedo, orm, id, x, z, footprint, sample, roadsOf ? roadAt : null, !lined || !streets ? -1 : kerbOf(streetK[0]!) !== 1 ? Math.max(-streetE[0]!, 0) : -2);
+  if (walks) walkWorn(albedo, orm, normal, id, x, z, footprint, city, sample, lined ? streetPlace : null);
   risenTo(albedo, orm, normal, 1 - finishesEarly);
 }
 const wander = new Float64Array(2);
+/** The streets round the camera as the card holds them (client/core/render/streets.ts), for the frame drawn, or null. */
+let streetsOf: StreetPlanes | null = null;
+const streetE = new Float64Array(3), streetK = new Uint8Array(4), streetOut = new Float64Array(5), streetAlong = new Float64Array(2), streetPlace = new Float64Array(2);
+/** The camera's chunk and whether the frame draws the streets' edges at all (a tier that reads the finishes in full, and not "streets" off). */
+let streetEye = [0, 0], streetsDrawn = false;
 
 /**
  * The tint the lit tiers' ground takes at ground point (x, z) of a tile that reads picture `pic`, a pixel `footprint`
@@ -243,8 +258,27 @@ const wander = new Float64Array(2);
  * into `out` the other finish's tint it meets there and how much of it is wanted (`groundMeet`).
  */
 function groundPair(hf: Heightfield, pic: GroundPicture, x: number, z: number, footprint: number, desert: boolean, out: Float64Array): number {
-  groundWander(x, z, footprint, wander);
   const metres = hf.cell * pic.step, finish = (tint: number): number => surfaceIndex(tint, true, desert ? "las-vegas" : "default");
+  // Near a street, on the window's tiles round the camera, its edges from its lines (STREETS_GLSL), the cover looked up
+  // where the point is; a share of -1 - share says so to the shading (litFlat). Where one of the four samples is of a
+  // finish no band draws over, the cover is the samples' own, looked up where the point is, and a share of -10 - share
+  // says that a walk there lies along the street all the same.
+  const near = streetsDrawn && streetsOf !== null && pic.step === 1 && Math.max(Math.abs(Math.floor(x / 64) - streetEye[0]!), Math.abs(Math.floor(z / 64) - streetEye[1]!)) <= STREET_CHUNKS / 2 - 1 && streetsOf.at(x, z, streetE, streetK);
+  if (near) {
+    const s = Math.min(Math.max(x / metres - pic.i, 0), pic.lastI), t = Math.min(Math.max(z / metres - pic.j, 0), pic.lastJ);
+    const i = Math.min(Math.floor(s), pic.lastI - 1), j = Math.min(Math.floor(t), pic.lastJ - 1), at = (pic.j + j) * hf.nx + pic.i + i;
+    const a = hf.tint[at]!, b = hf.tint[at + 1]!, c = hf.tint[at + hf.nx]!, d = hf.tint[at + hf.nx + 1]!;
+    if (streetCover(a, b, c, d, s - i, t - j, streetE, streetK[0]!, footprint, finish, streetOut, x, z)) {
+      out[0] = streetOut[3]!;
+      out[1] = -1 - streetOut[4]!;
+      return streetOut[1]!;
+    }
+    const cover = groundCover(a, b, c, d, s - i, t - j);
+    groundMeet(cover, a, b, c, d, s - i, t - j, finish, out);
+    out[1] = -10 - out[1]!;
+    return cover;
+  }
+  groundWander(x, z, footprint, wander);
   const look = (wx: number, wz: number): number => {
     const s = Math.min(Math.max((x + wx) / metres - pic.i / pic.step, 0), pic.lastI);
     const t = Math.min(Math.max((z + wz) / metres - pic.j / pic.step, 0), pic.lastJ);
@@ -331,18 +365,23 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     // Asphalt's and sand's wear, as LIT_TERRAIN_FRAGMENT has it where the tier reads the finishes in full: it reads the
     // packed array's masks, so it comes up with them as the weathering does.
     const off = p.frame[FRAME.roadOff]! % 4, road = off % 2 < 0.5, walks = off < 1.5;
+    // A street's bands meet on their lines (groundPair said so by a share from -1 down), and near a street a walk lies
+    // along it (a share from -10 down) though its bands are not drawn there.
+    const nearStreet = ground && share <= -9.5, lined = ground && !nearStreet && share < 0;
+    if (nearStreet) share = -10 - share;
+    else if (lined) share = -1 - share;
     const worn = ground && !touch && (road || walks) && finishesEarly < 1;
-    if (worn) wornGround(albedo, worldOrm, normal, index, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks);
+    if (worn) wornGround(albedo, worldOrm, normal, index, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks, lined, nearStreet);
     // A walk meets another finish on a line (walkMeet), and elsewhere the higher of the two shows through.
     const second = other >= 0 ? surfaceIndex(other, true, city) : -1;
-    const straight = ground && other >= 0 && (index === GROUND_WALK || second === GROUND_WALK);
-    if (straight) share = walkMeet(share, footprint);
+    const straight = lined || (ground && other >= 0 && (index === GROUND_WALK || second === GROUND_WALK));
+    if (straight && !lined) share = walkMeet(share, footprint);
     if (other >= 0 && share > 0) {
       for (let c = 0; c < 3; c++) albedo2[c] = srgbToLinear(pal[other * 4 + c]! / 255);
       const h2 = worldSurface(albedo2, orm2, normal2, albedo2, second, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
       const b = straight ? share : higher(h, h2, share, GROUND_SCALE, GROUND_BAND);
       if (ground) asphalt += ((second === DRY_ASPHALT.surface ? 1 : 0) - asphalt) * b;
-      if (worn) wornGround(albedo2, orm2, normal2, second, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks);
+      if (worn) wornGround(albedo2, orm2, normal2, second, rx + p.camX, rz + p.camZ, footprint, p.surfaceCity, sample, road, walks, lined, nearStreet);
       for (let c = 0; c < 3; c++) {
         albedo[c] = albedo[c]! * (1 - b) + albedo2[c]! * b;
         worldOrm[c] = worldOrm[c]! * (1 - b) + orm2[c]! * b;
@@ -592,9 +631,12 @@ export class Rasterizer {
   private readonly deferredSurface: Uint8Array;
   private readonly deferredAt: Float64Array;
   private readonly deferredNormal: Float64Array;
-  /** On the ground, the other finish's tint where two meet, or -1, and how much of it is wanted. */
+  /** On the ground, the other finish's tint where two meet, or -1, and how much of it is wanted; less than 0 where a street's bands meet (groundPair). */
   private readonly deferredOther: Int16Array;
   private readonly deferredShare: Float32Array;
+  /** The streets the heightfield holds, and their planes as the card holds them. */
+  private streetsFrom: StreetSectors | null = null;
+  private streetPlanes: StreetPlanes | null = null;
   /** On a weathered static (world-surfaces.ts `weathered`), its weatherFrame and its instance's seed, or a seed of -1. */
   private readonly deferredOwn: Float32Array;
   /** The instance being drawn, where the flat program weathers it: its yaw's cosine and sine, its origin from the eye, and its seed, or -1. */
@@ -704,6 +746,12 @@ export class Rasterizer {
     }
     if (this.finishesMeant) finishesEarly = 2;
     roadsOf = this.hf.road;
+    // The streets' edges, as the card draws them round the camera on a tier that reads the finishes in full; the card
+    // holds every chunk of the region once the frames have filled it, which a picture's settled frame has.
+    if (this.hf.streets && this.streetsFrom !== this.hf.streets) this.streetPlanes = new StreetPlanes((this.streetsFrom = this.hf.streets));
+    streetsOf = this.hf.streets ? this.streetPlanes : null;
+    streetsDrawn = packet.lit && packet.tier.finish === "full" && packet.frame[FRAME.roadOff]! % 8 < 3.5;
+    streetEye = [Math.floor(packet.camX / 64), Math.floor(packet.camZ / 64)];
     const facades = Array.from(packet.facadeSlots, (t) => (t >= 0 ? this.textures.get(t) ?? null : undefined));
     this.facadeSample = packet.lit && facades.some((t) => t) && facades.every((t) => t !== null) ? (k, u, v, lod, out) => sample(facades[k]!, u, v, lod - (facades[k]!.pictures.length - 1), out) : null;
     if (packet.openWidth !== this.openWidth || packet.openHeight !== this.openHeight) {
@@ -1992,7 +2040,7 @@ export class Rasterizer {
             wounded(albedo, mro, layer, s.level, wearLate(s.wear, carried[12]!, carried[13]!, carried[14]!));
           }
           if (s.weather) weatherVehicle(albedo,mro,carried[15]!,carried[16]!,carried[17]!,s.seed,s.weather,s.label === BURNT_SHEET);
-          if (s.bend && p.lit && p.tier.finish === "full" && Math.floor(p.frame[FRAME.roadOff]! / 4) % 2 === 0) {
+          if (s.bend && p.lit && p.tier.finish === "full" && p.frame[FRAME.roadOff]! < 7.5) {
             // As SURFACE's BENT_WEAR: by where the pixel lies along the kerb, and how far that moves to the next pixel.
             const right = (r0 * poly[v0 + 15]! + r1 * poly[v1 + 15]! + r2 * poly[v2 + 15]!) / (r0 + r1 + r2) - carried[15]!;
             const down = (d0 * poly[v0 + 15]! + d1 * poly[v1 + 15]! + d2 * poly[v2 + 15]!) / (d0 + d1 + d2) - carried[15]!;

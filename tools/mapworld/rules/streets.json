@@ -1,0 +1,64 @@
+{
+  "_": "Street types and the rules that name them (tools/mapworld/streets/rules.ts, planning/workstreams/streets.md). A type is a name and a default section. The rules are read in order: the first whose `when` holds and which names a `type` gives the stretch its type; then every rule whose `when` holds and which has `set` changes its section's fields, side by side, in order. A city's rules.json `streets` lays its own over these: its types by name, its rules first, one with a shared rule's id in that rule's place. Widths are metres; a pair [least, most] is chosen between by the stretch's seed.",
+  "fields": {
+    "kerb": "raised, flush (no kerb: the asphalt meets its verge level) or worn (raised and broken down)",
+    "verge": "none, planted (a tidy strip of lawn), grass (rough grass), dirt, paved or gravel: between the kerb and the walk, or a median's side",
+    "vergeWidth": "metres from the kerb to the walk",
+    "walk": "none, walk (of walkWidth) or full (from the verge to the building line, at least the least of walkWidth and at most its most)",
+    "walkWidth": "metres",
+    "walkAt": "kerb (the verge's width as the section says) or drawn (the walk where the data draws one on that side, the verge between)",
+    "median": "none, planted, paved or barrier: the ground between a pair of one-way carriageways, from each kerb to the middle",
+    "parking": "none, one or both: kerbside parking lanes (reported; the carriageway is still the data's width)",
+    "wear": "0 to 1, how worn (reported; the lane wear still reads the road's class)"
+  },
+  "types": {
+    "highway": {
+      "about": "Motorways and trunk roads: no kerb, rough shoulders, no walk, a barrier between the carriageways.",
+      "section": { "kerb": "flush", "verge": "grass", "vergeWidth": [2, 4], "walk": "none", "median": "barrier", "parking": "none", "wear": 0.6 }
+    },
+    "boulevard": {
+      "about": "A pair of one-way carriageways with a planted median, walks at the kerb outside.",
+      "section": { "kerb": "raised", "verge": "none", "vergeWidth": 0, "walk": "walk", "walkWidth": [2.5, 3.5], "median": "planted", "parking": "none", "wear": 0.5 }
+    },
+    "downtown": {
+      "about": "A city centre's street: kerb, no verge, the walk from the kerb to the building line.",
+      "section": { "kerb": "raised", "verge": "none", "vergeWidth": 0, "walk": "full", "walkWidth": [3, 9], "median": "none", "parking": "one", "wear": 0.55 }
+    },
+    "main-street": {
+      "about": "A shopping street out of the centre: kerb, no verge, a wide walk.",
+      "section": { "kerb": "raised", "verge": "none", "vergeWidth": 0, "walk": "walk", "walkWidth": [3, 4], "median": "none", "parking": "both", "wear": 0.5 }
+    },
+    "residential-tidy": {
+      "about": "A kept street of houses: kerb, a planted verge, a walk behind it (where the data draws one, there).",
+      "section": { "kerb": "raised", "verge": "planted", "vergeWidth": [1, 2], "walk": "walk", "walkWidth": [1.4, 1.8], "walkAt": "drawn", "median": "planted", "parking": "both", "wear": 0.25 }
+    },
+    "residential-rough": {
+      "about": "A poor or neglected street of houses: a worn kerb, rough grass and dirt, a narrow walk.",
+      "section": { "kerb": "worn", "verge": "grass", "vergeWidth": [0.6, 1.4], "walk": "walk", "walkWidth": [1.1, 1.4], "walkAt": "drawn", "median": "planted", "parking": "both", "wear": 0.45 }
+    },
+    "alley": {
+      "about": "A service lane, an alley, a driveway: no kerb, its asphalt crumbling into what is beside it, no walk.",
+      "section": { "kerb": "flush", "verge": "none", "vergeWidth": 0, "walk": "none", "median": "none", "parking": "none", "wear": 0.35 }
+    },
+    "industrial": {
+      "about": "A street of works and yards: no kerb, a gravel verge, no walk.",
+      "section": { "kerb": "flush", "verge": "gravel", "vergeWidth": [2, 3], "walk": "none", "median": "paved", "parking": "one", "wear": 0.6 }
+    }
+  },
+  "rules": [
+    { "id": "highway by class", "when": { "class": ["motorway", "motorway_link", "trunk", "trunk_link", "S1100"] }, "type": "highway", "sure": 0.9 },
+    { "id": "alley by class", "when": { "class": ["service", "track", "living_street", "S1640", "S1730", "S1740", "S1780"] }, "type": "alley", "sure": 0.8 },
+    { "id": "industrial district", "when": { "style": ["industrial"] }, "type": "industrial", "sure": 0.7 },
+    { "id": "one-way pair", "when": { "pair": true }, "type": "boulevard", "sure": 0.75 },
+    { "id": "downtown core", "when": { "style": ["concrete"], "built": [0.4, 1] }, "type": "downtown", "sure": 0.7 },
+    { "id": "built-up main road", "when": { "class": ["primary", "primary_link", "secondary", "secondary_link", "S1200"], "built": [0.5, 1], "room": [0, 8] }, "type": "main-street", "sure": 0.6 },
+    { "id": "poor quarter", "when": { "style": ["terracotta", "mural"] }, "type": "residential-rough", "sure": 0.5 },
+    { "id": "open main road", "when": { "class": ["primary", "primary_link", "secondary", "secondary_link", "S1200"] }, "type": "residential-tidy", "sure": 0.4 },
+    { "id": "any other street", "when": {}, "type": "residential-tidy", "sure": 0.3 },
+    { "id": "no room for a verge", "when": { "type": ["residential-tidy", "residential-rough"], "room": [0, 3.5] }, "set": { "verge": "none", "vergeWidth": 0 } },
+    { "id": "no room for a walk", "when": { "type": ["residential-tidy", "residential-rough", "main-street"], "room": [0, 1.5] }, "set": { "walk": "none" } },
+    { "id": "pair's median side", "when": { "side": "inner" }, "set": { "walk": "none" } },
+    { "id": "walk tagged absent", "when": { "tagged": "none" }, "set": { "walk": "none" } },
+    { "id": "rough alley", "when": { "type": ["alley"], "style": ["terracotta", "mural", "industrial"] }, "set": { "verge": "dirt", "vergeWidth": [0.4, 0.9] } }
+  ]
+}

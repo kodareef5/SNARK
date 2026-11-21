@@ -2,7 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
-import { ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -298,6 +298,9 @@ export class GlRenderer {
     texture(UNIT.tint, gl.R8UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_BYTE, coarse.tint);
     this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
     texture(UNIT.road, gl.RGBA8UI, roadSamples(g.width[SOURCE_WINDOW]!), roadSamples(g.height[SOURCE_WINDOW]!), gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
+    // The streets round the camera (core/render/streets.ts): their distances filtered, their kinds read as they are.
+    texture(UNIT.streets, gl.RGBA8, STREET_SIDE, STREET_SIDE, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
+    texture(UNIT.streetKinds, gl.RGBA8UI, STREET_SIDE, STREET_SIDE, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
     // What stands overhead (roof.ts), filtered, on its unit alone: each map is put on it as it comes.
     texture(UNIT.roof, gl.RGBA8, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
     this.roadRows = new Uint8Array(roadSamples(g.width[SOURCE_WINDOW]!) * roadSamples(g.height[SOURCE_WINDOW]!) * ROAD_PLANES);
@@ -820,6 +823,11 @@ export class GlRenderer {
       f[1] = w[1]!;
       f[2] = w[2]!;
       f[3] = road.version;
+    }
+    // The streets' tiles of this frame, each into its place in the pictures round the camera.
+    for (let t = 0; t < p.streetTiles * 2; t++) {
+      gl.activeTexture(gl.TEXTURE0 + UNIT.streets + (t & 1));
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, p.streetAt[t & ~1]!, p.streetAt[(t & ~1) + 1]!, STREET_TILE_SIDE, STREET_TILE_SIDE, t & 1 ? gl.RGBA_INTEGER : gl.RGBA, gl.UNSIGNED_BYTE, t & 1 ? p.streetKinds : p.streetDist, (t >> 1) * STREET_TILE_BYTES);
     }
     // The facades' atlases on their units while the frame names them; none is read until each it names has come (facade.ts).
     for (let k = 0; k < p.facadeSlots.length; k++) {

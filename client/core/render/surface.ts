@@ -785,7 +785,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   bool burntSheet = int(uStreetMaterial) == ${BURNT_SHEET};
   if (age > 0.0) weatherVehicle(albedo,mro,vWheelPoint,vFinishSeed,age,burntSheet);
 #ifdef BENT_WEAR
-  if (uSkin < -2.5 && mod(floor(fFacade.w / 4.0), 2.0) < 0.5) bentWear(albedo, mro, vWheelPoint, face.y, vFinishSeed, vWheel.xy, fwidth(vWheelPoint.x));
+  if (uSkin < -2.5 && fFacade.w < 7.5) bentWear(albedo, mro, vWheelPoint, face.y, vFinishSeed, vWheel.xy, fwidth(vWheelPoint.x));
 #endif
   float coat = 0.0, chrome = 0.0;
   // How much of the sky a wheeled body's own arches, floor and tyres leave it (vehicle-shade.ts).
