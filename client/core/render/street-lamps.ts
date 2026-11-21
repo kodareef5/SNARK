@@ -14,15 +14,22 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
 import { CHUNK_SIZE } from "../../../shared/coords.ts";
 import type { Camera } from "./camera.ts";
-import { LAMP_FADE, LAMP_HOLD, LAMP_LONG, LAMP_OUT, LAMP_POOL, LAMP_REACH, LAMP_WIDE, lensWord } from "./lamp.ts";
-import { DETAIL, DETAIL_POOL, DETAIL_SHADED_POOL, type FramePacket } from "./packet.ts";
-import { lampsOn } from "./surface.ts";
+import { LAMP_FADE, LAMP_HOLD, LAMP_LONG, LAMP_OUT, LAMP_POOL, LAMP_REACH, LAMP_WIDE, lensWord, poolCasters } from "./lamp.ts";
+import { DETAIL, DETAIL_POOL, DETAIL_SHADED_POOL, FRAME, MAX_CONTACTS, type FramePacket } from "./packet.ts";
+import { LENS_FROM, LENS_TO, lampsOn } from "./surface.ts";
 import { VehicleCards } from "./vehicle-cards.ts";
 
 /** Lamps lit at once, nearest first, each two cards. */
 export const MAX_LIT_LAMPS = 48;
-/** Metres out to which a lamp's light is drawn, and from which it fades to nothing there. */
+/** Metres out to which a lamp's pool is drawn, and from which it fades to nothing there. */
 const REACH = 140, FADE_FROM = 100;
+/**
+ * The same for its glow, which stands for the lamp's light where its lens is too small to show it steadily (surface.ts
+ * LENS_FROM): as far as a street is seen down, and from there as small as GLOW_PIXELS of the scene's pixels across its
+ * radius, never smaller, so that the camera's least move or a step of the scene's share does not turn it on and off
+ * between pixels. Where the lens has given up its glow, the card shows FAR_GLOW_SHOWS of its colour, of 255, for it.
+ */
+const GLOW_REACH = 500, GLOW_FADE_FROM = 420, GLOW_PIXELS = 2, FAR_GLOW_SHOWS = 200;
 /**
  * Where a lamp's lens is in the lamp's own frame (its head over the road, +z), and the radius of its pool and its glow: a
  * cobra head at nearly 9 m lights the road about one and a half times its height each way.
@@ -41,6 +48,8 @@ const POOL_SHOWS = 210, GLOW_SHOWS = 110;
  */
 const ROAD_SEEN = 0.052;
 export const LIT_POOL_SHOWS = Math.round(255 * Math.min(1, ROAD_SEEN * LAMP_POOL));
+/** The farthest along the ground from under its lens such a card reaches: its middle out over the road, and its half length along it. */
+const LIT_POOL_REACH = LAMP_OUT + Math.max(LAMP_WIDE, LAMP_LONG);
 /** Metres such a card lies over the ground the heightfield gives under it, for the road's crown and the ground's grain. */
 const CARD_LIFT = 0.08;
 
@@ -87,10 +96,11 @@ export class StreetLamps extends VehicleCards {
    * has no lit lamp. With `lights`, where the tier lets a lamp light, the pool cards laid out as its light is, each on
    * the ground `hf` has under its middle out over the road, and the lamp that lights (`lens`, `way` and `shows`). With
    * `pools`, where the tier's shadows say so, each pool card takes the shadows of the bodies of the frame's contact list
-   * (lamp.ts `poolShade`), and holds where its lens is from its middle for that. The lamp that lights is the one nearest
-   * `focus`, the viewer's own body where it has one: in third person the camera stands metres behind it.
+   * that may stand in it (lamp.ts `poolShade`, `poolCasters`), and holds where its lens is from its middle for that. The lamp that lights is the one nearest
+   * `focus`, the viewer's own body where it has one: in third person the camera stands metres behind it. The scene is
+   * `rows` pixels high, for how small a glow far off may be, or 0 for no least size.
    */
-  build(p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number, now = 0, lights = false, hf: Heightfield | null = null, pools = false, focus: { readonly x: number; readonly z: number } = cam): void {
+  build(p: FramePacket, cam: Camera, structs: StructureStore, chunksX: number, chunksZ: number, now = 0, lights = false, hf: Heightfield | null = null, pools = false, focus: { readonly x: number; readonly z: number } = cam, rows = 0): void {
     this.begin();
     this.shows = 0;
     const step = this.last < 0 ? 0 : Math.min(0.1, Math.max(0, (now - this.last) / 1000));
@@ -102,19 +112,22 @@ export class StreetLamps extends VehicleCards {
       return;
     }
     const near = this.near; near.length = 0;
-    const c0 = Math.max(0, Math.floor((cam.x - REACH) / CHUNK_SIZE)), c1 = Math.min(chunksX - 1, Math.floor((cam.x + REACH) / CHUNK_SIZE));
-    const r0 = Math.max(0, Math.floor((cam.z - REACH) / CHUNK_SIZE)), r1 = Math.min(chunksZ - 1, Math.floor((cam.z + REACH) / CHUNK_SIZE));
+    const c0 = Math.max(0, Math.floor((cam.x - GLOW_REACH) / CHUNK_SIZE)), c1 = Math.min(chunksX - 1, Math.floor((cam.x + GLOW_REACH) / CHUNK_SIZE));
+    const r0 = Math.max(0, Math.floor((cam.z - GLOW_REACH) / CHUNK_SIZE)), r1 = Math.min(chunksZ - 1, Math.floor((cam.z + GLOW_REACH) / CHUNK_SIZE));
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
       const lamps = this.lampsOf(structs, r * chunksX + c);
       for (let i = 0; i < lamps.length; i += 4) {
         const d = Math.hypot(lamps[i]! - cam.x, lamps[i + 2]! - cam.z);
-        if (d < REACH) near.push(d, r * chunksX + c, i);
+        if (d < GLOW_REACH) near.push(d, r * chunksX + c, i);
       }
     }
     // The nearest first, as many as there is room for. Where more are near than that, they fade to nothing by the
-    // distance of the first left out, as they fade by REACH, so none is cut off as another comes nearer.
+    // distance of the first left out, as they fade by their reach, so none is cut off as another comes nearer.
     const all = Array.from({ length: near.length / 3 }, (_, k) => k).sort((a, b) => near[a * 3]! - near[b * 3]!);
-    const order = all.slice(0, MAX_LIT_LAMPS), edge = all.length > MAX_LIT_LAMPS ? near[all[MAX_LIT_LAMPS]! * 3]! : REACH;
+    const order = all.slice(0, MAX_LIT_LAMPS), edge = all.length > MAX_LIT_LAMPS ? near[all[MAX_LIT_LAMPS]! * 3]! : Infinity;
+    const poolEdge = Math.min(edge, REACH), glowEdge = Math.min(edge, GLOW_REACH);
+    // A scene pixel's height a metre off, for the glow's least size.
+    const pixel = rows > 0 ? (2 * Math.tan(cam.fovY / 2)) / rows : 0;
     /** Lamp k's lens over the road and the way its head faces: local +z is (sin yaw, cos yaw). */
     const lensOf = (k: number, out: Float64Array): void => {
       const lamps = this.chunks.get(near[k * 3 + 1]!)!.lamps, i = near[k * 3 + 2]!, yaw = lamps[i + 3]!;
@@ -131,7 +144,8 @@ export class StreetLamps extends VehicleCards {
     const rx = -cy, rz = sy, ux = -sy * sp, uy = cp, uz = -cy * sp;
     for (const k of order) {
       const d = near[k * 3]!, lamps = this.chunks.get(near[k * 3 + 1]!)!.lamps, i = near[k * 3 + 2]!;
-      const fade = on * Math.min(1, Math.max(0, (edge - d) / ((edge * (REACH - FADE_FROM)) / REACH)));
+      const fade = on * Math.min(1, Math.max(0, (poolEdge - d) / ((poolEdge * (REACH - FADE_FROM)) / REACH)));
+      const glowFade = on * Math.min(1, Math.max(0, (glowEdge - d) / ((glowEdge * (GLOW_REACH - GLOW_FADE_FROM)) / GLOW_REACH)));
       lensOf(k, at);
       // The lamp that lights shows as much less of its pool as its light shows.
       const lit = shared > 0 && this.same(at, this.held) ? shared : 0;
@@ -143,9 +157,15 @@ export class StreetLamps extends VehicleCards {
         const mx = at[0]! + wx * LAMP_OUT, mz = at[2]! + wz * LAMP_OUT, ax = (wx * LAMP_WIDE) / 2, az = (wz * LAMP_WIDE) / 2, bx = (wz * LAMP_LONG) / 2, bz = (-wx * LAMP_LONG) / 2;
         const my = (hf ? hf.heightAt(mx, mz) - cam.y : y) + CARD_LIFT;
         const ay = hf ? hf.heightAt(mx + ax, mz + az) - hf.heightAt(mx - ax, mz - az) : 0, by = hf ? hf.heightAt(mx + bx, mz + bz) - hf.heightAt(mx - bx, mz - bz) : 0;
-        this.card(mx - cam.x, my, mz - cam.z, 2 * ax, ay, 2 * az, 2 * bx, by, 2 * bz, POOL_COLOUR, Math.round(LIT_POOL_SHOWS * fade * (1 - lit)), shaded ? lensWord(lx - mx + cam.x, ly - my, lz - mz + cam.z) : -1);
-      } else this.card(lx, y + 0.04, lz, 0, 0, POOL, POOL, 0, 0, POOL_COLOUR, Math.round(POOL_SHOWS * fade * (1 - lit)), shaded ? lensWord(0, ly - y - 0.04, 0) : -1);
-      this.card(lx, ly - 0.25, lz, rx * GLOW, 0, rz * GLOW, ux * GLOW, uy * GLOW, uz * GLOW, GLOW_COLOUR, Math.round(GLOW_SHOWS * fade), -1);
+        const casters = shaded ? poolCasters(p.frame, FRAME.contact, MAX_CONTACTS, lx, lz, LIT_POOL_REACH) : 0;
+        this.card(mx - cam.x, my, mz - cam.z, 2 * ax, ay, 2 * az, 2 * bx, by, 2 * bz, POOL_COLOUR, Math.round(LIT_POOL_SHOWS * fade * (1 - lit)), casters ? lensWord(lx - mx + cam.x, ly - my, lz - mz + cam.z) : -1, casters);
+      } else {
+        const casters = shaded ? poolCasters(p.frame, FRAME.contact, MAX_CONTACTS, lx, lz, POOL) : 0;
+        this.card(lx, y + 0.04, lz, 0, 0, POOL, POOL, 0, 0, POOL_COLOUR, Math.round(POOL_SHOWS * fade * (1 - lit)), casters ? lensWord(0, ly - y - 0.04, 0) : -1, casters);
+      }
+      // The glow: as big as it is, or GLOW_PIXELS, and as the lens gives up its glow, the more of its colour shown for it.
+      const g = Math.max(GLOW, GLOW_PIXELS * pixel * Math.hypot(lx, ly, lz)), far = Math.min(1, Math.max(0, (d - LENS_FROM) / (LENS_TO - LENS_FROM)));
+      this.card(lx, ly - 0.25, lz, rx * g, 0, rz * g, ux * g, uy * g, uz * g, GLOW_COLOUR, Math.round((GLOW_SHOWS + (FAR_GLOW_SHOWS - GLOW_SHOWS) * eased(far)) * glowFade), -1, 0);
     }
     lens[0] = this.held[0]! - cam.x;
     lens[1] = this.held[1]! - cam.y;
@@ -200,12 +220,14 @@ export class StreetLamps extends VehicleCards {
 
   /**
    * A card at (x, y, z) from the camera with half axes across and along it, its face where across x along points; a
-   * shaded pool where `lens` is where its lens is from its middle (lamp.ts lensWord), else -1.
+   * shaded pool where `lens` is where its lens is from its middle (lamp.ts lensWord), else -1, and `casters` the bodies
+   * of the contact list that may stand in it, a bit each (lamp.ts poolCasters), held in its floor.
    */
-  private card(x: number, y: number, z: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number, colour: number, shows: number, lens: number): void {
+  private card(x: number, y: number, z: number, ax: number, ay: number, az: number, bx: number, by: number, bz: number, colour: number, shows: number, lens: number, casters: number): void {
     if (shows <= 0) return;
     const i = this.next(), card = this.cards;
     card[i] = x; card[i + 1] = y; card[i + 2] = z;
+    card[i + DETAIL.floor] = lens >= 0 ? casters : 0;
     card[i + DETAIL.across] = ax; card[i + DETAIL.across + 1] = ay; card[i + DETAIL.across + 2] = az;
     card[i + DETAIL.along] = bx; card[i + DETAIL.along + 1] = by; card[i + DETAIL.along + 2] = bz;
     this.words[i + DETAIL.colourA] = colour;

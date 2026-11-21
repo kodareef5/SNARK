@@ -1045,7 +1045,7 @@ export class Scene {
     // The street lamps' cards, and the one lamp that lights as a light where the tier lets it, the one by the viewer's own
     // body, before what casts is chosen.
     const shadows = p.tier.shadows;
-    this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true, this.world.hf, p.lit && shadows.pools === true, this.own ?? cam);
+    this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true, this.world.hf, p.lit && shadows.pools === true, this.own ?? cam, Math.round(this.canvasHeight * p.share));
     this.fit(cam);
     this.fitLamp(cam);
 

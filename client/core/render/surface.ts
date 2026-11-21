@@ -94,10 +94,28 @@ export function lampsOn(frame: Numbers): number {
   return t * t * (3 - 2 * t);
 }
 
-/** A wearable status LED dims in darkness, where the simulated eye can gain over 30,000 times. */
+/**
+ * A wearable status LED dims in darkness, where the simulated eye can gain over 30,000 times. A material that glows only
+ * by night, a working lamp's lens, is given negative, for the lit program to fade with its distance (`glowAt`).
+ */
 export function materialEmission(material: PackMaterial, night: number, exposure: number): number {
   const light = material.emissive * ((material.flags & MATERIAL_NIGHT) ? night : 1);
-  return (material.flags & MATERIAL_INDICATOR) ? light * Math.min(1, 2.8/Math.max(1, exposure)) : light;
+  const shown = (material.flags & MATERIAL_INDICATOR) ? light * Math.min(1, 2.8/Math.max(1, exposure)) : light;
+  return (material.flags & MATERIAL_NIGHT) && shown > 0 ? -shown : shown;
+}
+
+/**
+ * Metres from the camera over which a working lamp's lens gives up its glow to the lamp's glow card (street-lamps.ts):
+ * past them the lens is a pixel or two, which the camera's least move, or a step of the scene's share, turns on and off
+ * between pixels, where the card, held to a size on the screen, shows the lamp's light steadily.
+ */
+export const LENS_FROM = 120, LENS_TO = 160;
+
+/** The glow of a surface `distance` metres off, of an emission as materialEmission gives it: a lens's faded past LENS_FROM. The twin of the lit program's `glow`. */
+export function glowAt(emission: number, distance: number): number {
+  if (emission >= 0) return emission;
+  const t = Math.min(1, Math.max(0, (distance - LENS_FROM) / (LENS_TO - LENS_FROM)));
+  return -emission * (1 - t * t * (3 - 2 * t));
 }
 
 /**
@@ -867,7 +885,9 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   }
   // A pane's half shows the glass as lit, and the mirror by what the glass sends back over the half it covers.
   if (reflected >= 0.0) radiance = mix(radiance,mirror*open,min(1.0,2.0*reflected));
-  o = vec4(shown(radiance + through(albedo, mro, n, uSheet, shade) + albedo * uEmissive, vRel), cover);
+  // A working lamp's lens gives up its glow far off (glowAt), where its glow card shows it.
+  float glow = uEmissive >= 0.0 ? uEmissive : -uEmissive * (1.0 - smoothstep(${f(LENS_FROM)}, ${f(LENS_TO)}, length(vRel)));
+  o = vec4(shown(radiance + through(albedo, mro, n, uSheet, shade) + albedo * glow, vRel), cover);
 }`;
 }
 

@@ -6,16 +6,16 @@ import { expect, test } from "bun:test";
 import { forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DETAIL_LIT_FRAGMENT, DETAIL_VERTEX, poolOf } from "../../client/core/render/detailtext.ts";
-import { LAMP_BIT, LAMP_COLOUR, LAMP_CORNER, LAMP_FADE, LAMP_GROUND, LAMP_HOLD, LAMP_LONG, LAMP_NEAR, LAMP_OUT, LAMP_POOL, LAMP_RANGE, LAMP_REACH, LAMP_TAN, LAMP_WIDE, LampView, POOL_FROM, POOL_TO, lampFrame, lampLight, lampPool, lampReach, lampSees, lensOfWord, lensWord, poolShade } from "../../client/core/render/lamp.ts";
+import { LAMP_BIT, LAMP_COLOUR, LAMP_CORNER, LAMP_FADE, LAMP_GROUND, LAMP_HOLD, LAMP_LONG, LAMP_NEAR, LAMP_OUT, LAMP_POOL, LAMP_RANGE, LAMP_REACH, LAMP_TAN, LAMP_WIDE, LampView, POOL_FROM, POOL_TO, lampFrame, lampLight, lampPool, lampReach, lampSees, lensOfWord, lensWord, poolCasters, poolShade } from "../../client/core/render/lamp.ts";
 import { DETAIL, DETAIL_FLOATS, DETAIL_POOL, DETAIL_SHADED_POOL, FRAME, FRAME_FLOATS, FramePacket, LAMP_AT, MAX_CASCADES, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import "../../client/core/render/city-late.ts";
 import { shadowLayer, shadowLayers } from "../../client/core/render/shadowtext.ts";
 import { hourOfSun } from "../../client/core/render/sky.ts";
 import { LIT_POOL_SHOWS, MAX_LIT_LAMPS, StreetLamps } from "../../client/core/render/street-lamps.ts";
-import { lit } from "../../client/core/render/surface.ts";
+import { LENS_FROM, LENS_TO, glowAt, lit, materialEmission } from "../../client/core/render/surface.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
+import { MATERIAL_NIGHT, parsePack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
@@ -348,7 +348,7 @@ function contacts(boxes: readonly (readonly [number, number, number, number, num
 test("a body between the ground and a lamp's lens takes the pool's light there, softly at the shadow's edge, and fades as it leaves the contact list's reach", () => {
   // A survivor 1.8 m tall 3 m along x from under a lens 8.85 m up: its shadow reaches 0.77 m past its far side.
   const f = contacts([[0, 0.9, 0, 0, 0.3, 0.9, 0.3]]);
-  const shade = (x: number, z: number, frame = f, shift = 0): number => poolShade(frame, FRAME.contact, MAX_CONTACTS, x + shift, 0, z, -3 + shift, LAMP_GROUND, 0);
+  const shade = (x: number, z: number, frame = f, shift = 0, mask = 1): number => poolShade(frame, FRAME.contact, MAX_CONTACTS, mask, x + shift, 0, z, -3 + shift, LAMP_GROUND, 0);
   expect(shade(0.6, 0)).toBe(0);
   expect(shade(0, 0)).toBe(0);
   for (const [x, z] of [[1.2, 0], [0.6, 1], [-1, 0], [-3, 0], [0.6, -1]] as const) expect(shade(x, z)).toBe(1);
@@ -369,10 +369,17 @@ test("a body between the ground and a lamp's lens takes the pool's light there, 
   expect(shade(0.6, 0, far(POOL_TO + 1), POOL_TO + 1)).toBe(1);
   // A car turned a quarter round, long along x: its box, not its middle, throws the shadow.
   const car = contacts([[0, 0.7, 0, Math.PI / 2, 0.9, 0.7, -2.2]]);
-  expect(poolShade(car, FRAME.contact, MAX_CONTACTS, 2.5, 0, 0, -5, LAMP_GROUND, 0)).toBe(0);
-  expect(poolShade(car, FRAME.contact, MAX_CONTACTS, 0, 0, 1.6, -5, LAMP_GROUND, 0)).toBe(1);
-  // An empty list, nothing.
+  expect(poolShade(car, FRAME.contact, MAX_CONTACTS, 1, 2.5, 0, 0, -5, LAMP_GROUND, 0)).toBe(0);
+  expect(poolShade(car, FRAME.contact, MAX_CONTACTS, 1, 0, 0, 1.6, -5, LAMP_GROUND, 0)).toBe(1);
+  // An empty list, nothing; nor a body the card does not name.
   expect(shade(0.6, 0, new Float32Array(FRAME_FLOATS))).toBe(1);
+  expect(shade(0.6, 0, f, 0, 0)).toBe(1);
+  expect(shade(0.6, 0, f, 0, 2)).toBe(1);
+  // A card names the bodies that come within its pool's reach of its lens, along the ground, and no others.
+  const three = contacts([[0, 0.9, 0, 0, 0.3, 0.9, 0.3], [20, 0.9, 0, 0, 0.3, 0.9, 0.3], [-3, 0.7, 13.5, 0, 0.9, 0.7, 2.2]]);
+  expect(poolCasters(three, FRAME.contact, MAX_CONTACTS, -3, 0, 12)).toBe(0b101);
+  expect(poolCasters(three, FRAME.contact, MAX_CONTACTS, -3, 0, 10)).toBe(0b1);
+  expect(poolCasters(new Float32Array(FRAME_FLOATS), FRAME.contact, MAX_CONTACTS, 0, 0, 12)).toBe(0);
 });
 
 test("a pool card holds where its lens is from its middle within a few centimetres, and the lit shader reads it", () => {
@@ -384,8 +391,8 @@ test("a pool card holds where its lens is from its middle within a few centimetr
     expect(Math.abs(out[2]! - d[2])).toBeLessThan(0.02);
   }
   expect(DETAIL_VERTEX).toContain("vLens = iMiddle");
-  expect(DETAIL_LIT_FRAGMENT).toContain(`vFlags == ${DETAIL_SHADED_POOL}u ? poolShade(vRel, vLens)`);
-  expect(DETAIL_LIT_FRAGMENT).toContain("float poolShade(vec3 p, vec3 l)");
+  expect(DETAIL_LIT_FRAGMENT).toContain(`vFlags == ${DETAIL_SHADED_POOL}u ? poolShade(vRel, vLens, uint(vFloor + 0.5))`);
+  expect(DETAIL_LIT_FRAGMENT).toContain("float poolShade(vec3 p, vec3 l, uint mask)");
 });
 
 /** The street lamps' pool cards of a frame, lying on the ground: their flags, how much shows, and the lens each holds, camera-relative. */
@@ -393,7 +400,7 @@ function poolCards(p: FramePacket): { flags: number; shows: number; lens: number
   const out: { flags: number; shows: number; lens: number[] }[] = [];
   for (let d = 0; d < p.detailCount; d++) {
     const o = d * DETAIL_FLOATS, misc = p.detailWords[o + DETAIL.misc]!, flags = (misc >>> 8) & 255;
-    if ((flags !== DETAIL_POOL && flags !== DETAIL_SHADED_POOL) || Math.abs(p.details[o + DETAIL.across + 1]!) > 1 || Math.hypot(p.details[o + DETAIL.across]!, p.details[o + DETAIL.across + 2]!) < 1) continue;
+    if ((flags !== DETAIL_POOL && flags !== DETAIL_SHADED_POOL) || Math.abs(p.details[o + DETAIL.across + 1]!) > 1 || Math.abs(p.details[o + DETAIL.along + 1]!) > 1 || Math.hypot(p.details[o + DETAIL.across]!, p.details[o + DETAIL.across + 2]!) < 1) continue;
     const lens = [0, 0, 0];
     lensOfWord(p.detailWords[o + DETAIL.colourB]!, lens);
     out.push({ flags, shows: (misc >>> 16) & 255, lens: lens.map((v, k) => v + p.details[o + k]!) });
@@ -466,4 +473,41 @@ test("lamps past the list's room fade out by distance as the camera moves, none 
   // At 5 cm a frame, no card's strength steps by more than a few of 255, though the list changed.
   expect(changed).toBeGreaterThan(0);
   expect(most).toBeLessThan(8);
+});
+
+test("far off, a working lamp's lens gives up its glow to its glow card, which is never smaller than a couple of the scene's pixels", () => {
+  // The lens: its glow whole near, gone past LENS_TO; any other material's as it was.
+  const lens = { emissive: 0.000025, flags: MATERIAL_NIGHT } as PackMaterial;
+  const e = materialEmission(lens, 1, 50000);
+  expect(e).toBeLessThan(0);
+  expect(glowAt(e, 20)).toBeCloseTo(0.000025, 9);
+  expect(glowAt(e, (LENS_FROM + LENS_TO) / 2)).toBeCloseTo(0.0000125, 9);
+  expect(glowAt(e, LENS_TO + 1)).toBe(0);
+  expect(glowAt(0.5, 1000)).toBe(0.5);
+  expect(materialEmission(lens, 0, 50000)).toBe(0);
+  // The cards: lamps 100 m to 600 m along x from the camera, the scene 1,000 pixels high.
+  const reg = sceneRegistry();
+  const dims = { chunksX: 12, chunksZ: 4 };
+  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  for (const x of [110, 310, 460, 610]) structs.add(reg.index.get(LIT)!, x, 0, 128, 0, 0, 1);
+  const lamps = new StreetLamps(reg), cam = new Camera(), p = new FramePacket();
+  p.frame[FRAME.moon + 1] = 1;
+  [cam.x, cam.y, cam.z, cam.yaw] = [10, 1.7, 124, Math.PI / 2];
+  lamps.build(p, cam, structs, dims.chunksX, dims.chunksZ, 0, false, null, false, cam, 1000);
+  lamps.write(p);
+  const glows = new Map<number, { radius: number; shows: number }>();
+  for (let d = 0; d < p.detailCount; d++) {
+    const o = d * DETAIL_FLOATS, radius = Math.hypot(p.details[o + DETAIL.across]!, p.details[o + DETAIL.across + 1]!, p.details[o + DETAIL.across + 2]!);
+    if (radius < 5) glows.set(Math.round(p.details[o]! + cam.x), { radius, shows: (p.detailWords[o + DETAIL.misc]! >>> 16) & 255 });
+  }
+  const pixel = (2 * Math.tan(cam.fovY / 2)) / 1000;
+  expect([...glows.keys()].sort((a, b) => a - b)).toEqual([110, 310, 460]);
+  // Near, its own 0.6 m and seen through to its lens; far, held to two pixels, and shown for the lens.
+  expect(glows.get(110)!.radius).toBeCloseTo(0.6, 6);
+  expect(glows.get(110)!.shows).toBe(110);
+  for (const x of [310, 460]) expect(glows.get(x)!.radius / (pixel * Math.hypot(x - 10, 8.85 - 0.25 - 1.7, 128 + 2.9 - 124))).toBeGreaterThan(1.99);
+  expect(glows.get(310)!.shows).toBe(200);
+  // Fading by its reach's end, and gone past it; and the pools only near.
+  expect(glows.get(460)!.shows).toBeLessThan(200);
+  expect(poolCards(p).length).toBe(1);
 });

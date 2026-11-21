@@ -34,7 +34,7 @@ import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts"
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { wearLate } from "../../client/core/render/wear.ts";
-import { LAYER_LEVELS, NEUTRAL, bounce, bumped, direct, dyed, lampsOn, materialEmission, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, bounce, bumped, direct, dyed, glowAt, lampsOn, materialEmission, lit, regionDyes, shown, skinMode, skyFrom, skyLight, srgbToLinear, through, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
@@ -1284,7 +1284,7 @@ export class Rasterizer {
             // A shaded pool loses its light where a body of the contact list stands between it and the lens (lamp.ts).
             if (flags === DETAIL_SHADED_POOL) {
               lensOfWord(b, lens);
-              alpha *= poolShade(p.frame, FRAME.contact, MAX_CONTACTS, rx, ry, rz, f[o]! + lens[0]!, f[o + 1]! + lens[1]!, f[o + 2]! + lens[2]!);
+              alpha *= poolShade(p.frame, FRAME.contact, MAX_CONTACTS, Math.round(f[o + DETAIL.floor]!), rx, ry, rz, f[o]! + lens[0]!, f[o + 1]! + lens[1]!, f[o + 2]! + lens[2]!);
             }
             if (blend) {
               alpha *= shows * ((flags & DETAIL_PUFF) !== 0 ? Math.min(1, Math.max(0, (ry - f[o + DETAIL.floor]!) / (0.5 * half))) : 1);
@@ -2098,7 +2098,8 @@ export class Rasterizer {
           if (glass) for (let c = 0; c < 3; c++) light[c] = light[c]! + (mirrored[c]!*open - light[c]!)*Math.min(1, 2*glassBack);
           through(light, albedo, mro, normal, p.frame, s.sheet);
           bounce.fill(1);
-          if (s.emissive) for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * s.emissive;
+          const glow = glowAt(s.emissive, dist);
+          if (glow) for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * glow;
           shown(rgb, light, dist, p);
           for (let c = 0; c < 3; c++) {
             const channel = at * 4 + c, value = rgb[c]! * 255;

@@ -89,14 +89,32 @@ const step = (a: number, b: number, x: number): number => {
 const inBox = new Float64Array(3), toLens = new Float64Array(3), half = new Float64Array(3);
 
 /**
- * The share of a card lamp's pool left at camera-relative (x, y, z) by the frame's contact list, its lens at
- * camera-relative (lx, ly, lz): the twin of `poolShadeGlsl`.
+ * The bodies of the contact list (from `contact` in `frame`, `slots` of them) that may stand between a pool reaching
+ * `reach` metres along the ground round its lens, at camera-relative (lx, lz), and the lens, a bit each: those whose
+ * box comes within that of it. A pool card holds them (its floor, packet.ts DETAIL), and its fragment looks at those
+ * alone, which are seldom more than two or three; a card that holds none is a plain pool.
  */
-export function poolShade(frame: Numbers, contact: number, slots: number, x: number, y: number, z: number, lx: number, ly: number, lz: number): number {
+export function poolCasters(frame: Numbers, contact: number, slots: number, lx: number, lz: number, reach: number): number {
+  let mask = 0;
+  for (let k = 0; k < slots; k++) {
+    const o = contact + k * 8, across = frame[o + 4]!;
+    if (across <= 0) break;
+    const r = reach + Math.max(across, Math.abs(frame[o + 6]!));
+    if ((frame[o]! - lx) ** 2 + (frame[o + 2]! - lz) ** 2 < r * r) mask |= 1 << k;
+  }
+  return mask;
+}
+
+/**
+ * The share of a card lamp's pool left at camera-relative (x, y, z) by the bodies `mask` names of the frame's contact
+ * list, its lens at camera-relative (lx, ly, lz): the twin of `poolShadeGlsl`.
+ */
+export function poolShade(frame: Numbers, contact: number, slots: number, mask: number, x: number, y: number, z: number, lx: number, ly: number, lz: number): number {
   let keep = 1;
   const dx = lx - x, dy = ly - y, dz = lz - z, span = Math.hypot(dx, dy, dz);
-  for (let k = 0; k < slots; k++) {
+  for (let k = 0; k < slots && mask >> k !== 0; k++) {
     const o = contact + k * 8;
+    if (((mask >> k) & 1) === 0) continue;
     if (frame[o + 4]! <= 0) break;
     const c = frame[o + 3]!, s = frame[o + 7]!, ox = x - frame[o]!, oy = y - frame[o + 1]!, oz = z - frame[o + 2]!;
     inBox[0] = c * ox - s * oz; inBox[1] = oy; inBox[2] = s * ox + c * oz;
@@ -135,11 +153,12 @@ export function lensOfWord(word: number, out: Float64Array | number[]): void {
 const gl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
 /** `poolShade` in GLSL, after the frame block, `slots` the contact list's (packet.ts MAX_CONTACTS). */
-export const poolShadeGlsl = (slots: number): string => `float poolShade(vec3 p, vec3 l) {
+export const poolShadeGlsl = (slots: number): string => `float poolShade(vec3 p, vec3 l, uint mask) {
   float keep = 1.0;
   vec3 d = l - p;
   float span = length(d);
-  for (int k = 0; k < ${slots}; k++) {
+  for (int k = 0; k < ${slots} && (mask >> uint(k)) != 0u; k++) {
+    if (((mask >> uint(k)) & 1u) == 0u) continue;
     vec4 a = fContact[k * 2], b = fContact[k * 2 + 1];
     if (b.x <= 0.0) break;
     vec3 m = p - a.xyz;

@@ -221,7 +221,7 @@ void main() {
     vec3 s = pool ? pooled(vCorner) : lamp ? lampOf(vCorner) : rotorOf(vCorner, vGrey);
     t = vec4(s.z, s.y, 0.0, s.x);
   } else t = texture(uDetails, vUv);
-  float a = covers(t.a) * (vFlags == ${DETAIL_SHADED_POOL}u ? poolShade(vRel, vLens) : 1.0);
+  float a = covers(t.a) * (vFlags == ${DETAIL_SHADED_POOL}u ? poolShade(vRel, vLens, uint(vFloor + 0.5)) : 1.0);
   if (a < 0.004) discard;
   vec3 v = -normalize(vRel);
   vec3 n = facing(v);
