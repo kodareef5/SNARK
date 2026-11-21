@@ -39,6 +39,17 @@ export const LANTERN_BANKS = lantern.banks.map(({ first, pitch, count }) => {
   };
 });
 export const HULLS = { spar: [7, 12, 9], tip: [2.5, 8, 3], bearing: [4.2, 4.2, 4.4] } as const;
+/**
+ * Where each form's beam leaves it, by the form's place in EYE_FORMS: metres across from the deck's axis and over the
+ * keel tip, the top of the finial its model has there (the profiles' `emitter`). The Lantern's three beams leave its
+ * masts, each this far across and deep from the axis.
+ */
+export const EMITTERS = [
+  { x: profile.emitter[0]!, h: profile.emitter[1]! },
+  { x: sextant.emitter[0]!, h: sextant.emitter[1]! },
+  { x: 0, h: lantern.emitter },
+] as const;
+export const LANTERN_MASTS = lantern.corners.map(([x, z]) => [x! * 380, z! * 380] as const);
 
 export const EYE_COLLIDERS = new Set(Object.keys(HULLS).map(name => "core:zztide_eye_" + name));
 

@@ -175,7 +175,9 @@ export function shoreView(
   const turn = seconds * TURN / 180;
   const heading = a + Math.PI + turn - 0.32 * Math.sin(2 * turn);
   cast.eye.yaw = Math.round(heading * 65536 / TURN) & 65535;
-  scene.eyeSeconds = -40 + 15.5 + 2.2 * Math.sin(seconds * TURN / 92);
+  // The display is held at full power and its own clock only runs forward: nothing in the sky plays back.
+  scene.eyeSeconds = -40 + 20;
+  scene.eyeHold = seconds;
   // Keep the clock face at its directed screen size through the Rex shot’s wider 68-degree lens.
   scene.sextantScale = 3.35;
   scene.eyeIndexOffset = 0.72 * Math.sin(seconds * TURN / 64);

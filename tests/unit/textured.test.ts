@@ -2,7 +2,8 @@
 import { expect, test } from "bun:test";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_SIZED, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { StreetDraws } from "../../client/core/render/street-draws.ts";
-import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../content/street-finishes.ts";
+import { ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS, streetMaterial } from "../../content/street-finishes.ts";
+import { eyeGlint, writeEyeSky } from "../../client/core/render/tide-eye.ts";
 import { AMBIENT } from "../../client/core/render/shading.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { SKY_GLSL } from "../../client/core/render/sky.ts";
@@ -476,6 +477,58 @@ test("Meridian reflects a bright horizon in the lacquer and preserves the rough 
   const ground = ((H / 2 + 8)*W + W / 2)*4;
   expect(coat[reflectedHorizon]! - base[reflectedHorizon]!).toBeGreaterThan(12);
   expect(coat[reflectedHorizon]! - coat[ground]!).toBeGreaterThan(12);
+});
+
+test("an instrument's glaze takes the bright horizon, its brass takes it and stays gold, and its rough patina is left as it was", () => {
+  const id = "core:tide-eye/instrument";
+  const pack = packOf(squareMesh(id, 1, ["base", "mro"]));
+  const stage = facing(pack, 1, 1.2), finishes = new StreetDraws(pack.header, pack.header.rigs);
+  const draw = (rgb: readonly [number, number, number], rough: number, metal: number, finish: boolean) => {
+    stage.sun = [0, 1, 0];
+    stage.begin();
+    stage.textures(id + "/", { base: plain(rgb[0], rgb[1], rgb[2], 255), mro: plain(255, rough, metal, 255) });
+    stage.add(id, 0, { x: 0, y: 0, z: 0 });
+    finishes.write(stage.packet);
+    expect(stage.packet.drawStreetMaterial[0]).toBe(INSTRUMENT);
+    if (!finish) stage.packet.drawStreetMaterial[0] = 0;
+    return stage.render().slice();
+  };
+  const reflectedHorizon = ((H / 2 - 6)*W + W / 2)*4;
+  const ground = ((H / 2 + 8)*W + W / 2)*4;
+  const ivory = [226, 219, 198] as const, brass = [196, 158, 84] as const;
+  // Salt, rust and verdigris are too rough to be polished: the finish leaves them alone.
+  expect(apart(draw(ivory, 215, 0, true), draw(ivory, 215, 0, false))).toBe(0);
+  // The ceramic's glaze is a clear coat: it shows the horizon over the colour under it.
+  const glazed = draw(ivory, 80, 0, true), bare = draw(ivory, 80, 0, false);
+  expect(glazed[reflectedHorizon]! - bare[reflectedHorizon]!).toBeGreaterThan(8);
+  expect(glazed[reflectedHorizon]! - glazed[ground]!).toBeGreaterThan(8);
+  // Polished brass is brighter where it mirrors the horizon than without the finish, and is still gold there.
+  const polished = draw(brass, 60, 255, true), plainBrass = draw(brass, 60, 255, false);
+  expect(polished[reflectedHorizon]! - plainBrass[reflectedHorizon]!).toBeGreaterThan(8);
+  expect(polished[reflectedHorizon]! - polished[reflectedHorizon + 2]!).toBeGreaterThan(40);
+  expect(streetMaterial("core:tide-eye/livery")).toBe(INSTRUMENT);
+});
+
+test("an instrument's display shows in it in the site's colour, most from straight up, and in nothing away from the site", () => {
+  const site = { name: "Blue", color: "blue", x: 0, z: 0, y: 4, yaw: 0, radius: 70 } as const;
+  const frame = new Float32Array(FRAME_FLOATS), glint = new Float64Array(3), level = new Float64Array(3);
+  frame[FRAME.exposure] = 4;
+  writeEyeSky(frame, [site], 20, 0, 0, 0);
+  eyeGlint(frame, glint, 10, 20, 1);
+  eyeGlint(frame, level, 10, 20, 0);
+  expect(glint[2]!).toBeGreaterThan(glint[0]! * 5);
+  expect(glint[2]!).toBeGreaterThan(level[2]! * 2);
+  expect(level[2]!).toBeGreaterThan(0);
+  // In light before exposure: a frame exposed twice as much takes half of it.
+  const half = new Float64Array(3);
+  frame[FRAME.exposure] = 8;
+  eyeGlint(frame, half, 10, 20, 1);
+  expect(half[2]!).toBeCloseTo(glint[2]! / 2, 6);
+  const far = new Float64Array(3);
+  eyeGlint(frame, far, 700, 0, 1);
+  expect([...far]).toEqual([0, 0, 0]);
+  eyeGlint(new Float32Array(FRAME_FLOATS), far, 0, 0, 1);
+  expect([...far]).toEqual([0, 0, 0]);
 });
 
 test("a textured visor transmits its backing and leaves its depth and picking intact", () => {

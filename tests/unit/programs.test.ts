@@ -52,8 +52,8 @@ test("the frame block: each value inside its slot, a GLSL slot for every four fl
   expect([Number(FRAME_BLOCK.match(/highp vec4 fContact\[(\d+)\]/)![1]), FRAME.contact + MAX_CONTACTS * 8]).toEqual([MAX_CONTACTS * 2, FRAME.eyes]);
   expect(Math.max(...Object.values(FRAME))).toBeLessThan(FRAME_FLOATS);
 
-  expect(FRAME_BLOCK).toContain("highp vec4 fEyes[6]");
-  expect(FRAME.eyes + 6 * 4).toBe(FRAME.reflection);
+  expect(FRAME_BLOCK).toContain("highp vec4 fEyes[12]");
+  expect(FRAME.eyes + 12 * 4).toBe(FRAME.reflection);
   expect([FRAME.reflection + 4, FRAME.previousReflection + 4, FRAME.streetLook + 4, FRAME.tireContacts + 4*MAX_TIRE_CONTACTS]).toEqual([FRAME.previousReflection, FRAME.streetLook, FRAME.tireContacts, FRAME.exhaustPhase]);
   expect(FRAME.exhaustPhase + 4).toBe(WATER_BOUNDS);
   expect(WATER_MARKS + 8 * MAX_WATER_MARKS).toBe(WATER_PATHS);
