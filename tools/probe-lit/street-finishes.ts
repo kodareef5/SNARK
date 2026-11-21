@@ -1,5 +1,5 @@
 // Evaluate the actual production finish functions with identical inputs on the GPU and software paths.
-import { STREET_GLSL, WHEEL_FINISH_GLSL, fixtureFace, fixtureShader, tireMould, weatherVehicle, wheelFinish } from "../../client/core/render/street-finish.ts";
+import { STREET_GLSL, WHEEL_FINISH_GLSL, fixtureFace, fixtureShader, rubberShare, tireRelief, weatherVehicle, wheelFinish } from "../../client/core/render/street-finish.ts";
 import { VEHICLE_SHADE_GLSL, bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
 import { RawShot, type LitCheck } from "./shot.ts";
 
@@ -11,6 +11,8 @@ const inputs = [
   [0.85,0.20,1,0.36,0.40,0.17], [165/255,122/255,0,0.36,0.52,0],
   [0.65,0.48,0,0.03,0.52,0], [0.02,0.84,0,0.30,0.845,0],
   [0.04,0.79,0,-0.32,0.65,0.70], [0.12,0.31,0,0.28,0.15,0.10],
+  // Tread: on the worn middle, and on a groove's wall at the shoulder.
+  [0.02,0.86,0,0.05,0.97,0.21], [0.03,0.80,0,0.27,0.088,0.973],
 ];
 const cases = inputs.flatMap(([metal, rough, mask, x, y, z]) =>
   [0.12,0.72].flatMap(seed => [0,0.78,1].flatMap(age => [0.001,0.04].map(width =>
@@ -30,7 +32,7 @@ const vec = (values: readonly number[]) => `vec3(${values.map(num).join(",")})`;
 const colors = [11,41,82,86,102,140,214,83];
 const faces = [0,1,2,3,4].flatMap(kind => colors.flatMap(color => [-5.054,-3.754,0].map(z => ({kind,color,z}))));
 const key = "street-finish-pairs";
-const facesAt = cases.length * 2, shadesAt = facesAt + faces.length;
+const wheelPixels = cases.length * 3, facesAt = wheelPixels, shadesAt = facesAt + faces.length;
 const width = shadesAt + bodies.length + tyres.length;
 
 export const streetFinishCheck: LitCheck = {
@@ -38,7 +40,7 @@ export const streetFinishCheck: LitCheck = {
   shots: () => [],
   raws() {
     const branches = cases.map(({metal,rough,mask,x,y,z,seed,age,width}, i) =>
-      `if (at / 2 == ${i}) { mro = vec3(0.86,${num(rough)},${num(metal)}); p = vec3(${num(x)},${num(y)},${num(z)}); mask = ${num(mask)}; seed = ${num(seed)}; age = ${num(age)}; footprint = ${num(width)}; }`);
+      `if (at / 3 == ${i}) { mro = vec3(0.86,${num(rough)},${num(metal)}); p = vec3(${num(x)},${num(y)},${num(z)}); mask = ${num(mask)}; seed = ${num(seed)}; age = ${num(age)}; footprint = ${num(width)}; }`);
     const shades = [
       ...bodies.map((b, i) => `if (k == ${i}) own = bodyOpen(${vec(b.slice(0,3))},${vec(b.slice(3,6))},${num(b[6]!)});`),
       ...tyres.map(([up, out, rubber], i) => `if (k == ${bodies.length + i}) own = tyreOpen(${num(up!)},${num(out!)},${num(rubber!)});`),
@@ -60,10 +62,12 @@ void main() {
   vec3 base = vec3(0.18,0.2,0.22), mro = vec3(0.0), p = vec3(0.0);
   float seed = 0.0, age = 0.0, footprint = 0.0, mask = 0.0;
   ${branches.join("\n")}
-  if (at < ${2*cases.length}) {
+  if (at < ${wheelPixels}) {
     if (age > 0.0) weatherVehicle(base,mro,p,seed,age,age == 1.0);
-    float chrome = wheelFinish(base,mro,mask,1.0,p,seed,footprint,p.x);
-    color = vec4(at % 2 == 0 ? base : vec3(mro.gb,chrome),1.0);
+    float rubber = rubberShare(mro,length(p.yz));
+    vec3 relief = tireRelief(p,footprint);
+    float chrome = wheelFinish(base,mro,mask,rubber,1.0,p,seed,footprint,p.x);
+    color = vec4(at % 3 == 0 ? base : at % 3 == 1 ? vec3(mro.gb,chrome) : 0.5+0.25*relief,1.0);
   } else if (at < ${shadesAt}) {
     int sampleId = at - ${facesAt};
     const uint pigments[8] = uint[8](${colors.map(c => c+"u").join(",")});
@@ -83,12 +87,16 @@ void main() {
     const pixels = back.pixels(key,0)!;
     let peak = 0;
     const check = (i: number, value: number) => { peak = Math.max(peak,Math.abs(pixels[i]!-Math.round(255*Math.max(0,Math.min(1,value))))); };
+    const relief = new Float64Array(3);
     cases.forEach(({metal,rough,mask,x,y,z,seed,age,width}, i) => {
       const base = Float64Array.of(0.18,0.2,0.22), orm = Float64Array.of(0.86,rough,metal);
       if (age) weatherVehicle(base,orm,x,y,z,seed,age,age === 1);
-      const chrome = wheelFinish(base,orm,mask,1,tireMould(x,y,z,width),seed,y,z,width,x);
-      for (let c=0; c<3; c++) check(i*8+c,base[c]!);
-      [orm[1]!,orm[2]!,chrome].forEach((value,c) => check(i*8+4+c,value));
+      const rubber = rubberShare(orm[2]!,orm[1]!,Math.hypot(y,z));
+      tireRelief(relief,x,y,z,width);
+      const chrome = wheelFinish(base,orm,mask,rubber,1,x,y,z,seed,width,x);
+      for (let c=0; c<3; c++) check(i*12+c,base[c]!);
+      [orm[1]!,orm[2]!,chrome].forEach((value,c) => check(i*12+4+c,value));
+      for (let c=0; c<3; c++) check(i*12+8+c,0.5+0.25*relief[c]!);
     });
     faces.forEach(({kind,color,z}, i) => check((facesAt+i)*4,fixtureFace(kind,color,0.7,z)/8));
     bodies.forEach((b, i) => check((shadesAt+i)*4,bodyOpen(b[0]!,b[1]!,b[2]!,b[3]!,b[4]!,b[5]!,b[6]!,rest,wheels,center,half)));

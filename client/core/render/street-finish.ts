@@ -75,6 +75,10 @@ export class StreetMaterials {
 }
 
 const clamp = (x: number): number => Math.max(0, Math.min(1, x));
+const smoothstep = (a: number, b: number, x: number): number => {
+  const t = clamp((x - a) / (b - a));
+  return t * t * (3 - 2 * t);
+};
 export function finishSeed(id: number, x = 0, y = 0, z = 0): number {
   let h = id ^ Math.imul(Math.round(x * 4), 1597334677) ^ Math.imul(Math.round(y * 4), 3812015801) ^ Math.imul(Math.round(z * 4), 2798796415);
   h = Math.imul(h ^ (h >>> 16), 2246822519);
@@ -126,10 +130,8 @@ export function wheelBoneMask(names?: readonly string[]): number {
   return (names?.reduce((bits, name, i) => i < 32 && name.startsWith("wheel_") ? bits | (1 << i) : bits, 0) ?? 0) >>> 0;
 }
 
-/** How much of a wheel joint's texel is tyre, by its authored metal and roughness and how far out from the hub it lies. */
-export function rubberShare(metal: number, rough: number, radial: number): number {
-  return clamp((0.30-metal)*5)*clamp((rough-0.45)*5)*clamp((radial-0.45)*9);
-}
+/** How much of the shoulder `tireMould` last looked at is groove, which the tread's roughness reads. */
+let lastGroove = 0;
 
 /** The bead and shoulder moulding in wheel-local radii. A metre of motion carries the pattern with the tire. */
 export function tireMould(x: number, y: number, z: number, footprint: number): number {
@@ -137,21 +139,65 @@ export function tireMould(x: number, y: number, z: number, footprint: number): n
   const ridge = (r: number) => clamp(1 - Math.abs(radius-r)/0.012);
   const shoulder = clamp((radius-0.86)*14);
   const block = Math.cos(42*phase + 13*Math.abs(x));
+  const fine = clamp(1-45*footprint);
   const groove = clamp((block-0.32)*3) * shoulder;
   const ribs = ridge(0.77) + ridge(0.845) + 0.65*ridge(0.885);
-  return (0.25*ribs - 0.32*groove + 0.09*shoulder*(1-groove)) * clamp(1-45*footprint);
+  lastGroove = groove*fine;
+  return (0.25*ribs - 0.32*groove + 0.09*shoulder*(1-groove)) * fine;
 }
 
-export function wheelFinish(albedo: Float64Array, orm: Float64Array, wheelMask: number, near: number, mould: number, seed: number, y: number, z: number, footprint: number, outboard = 0): number {
+/** The mould's ribs stand this high and its grooves run this deep, in the wheel's radii: about 1 and 2 mm on the compact. */
+export const RIB_HEIGHT = 0.003, GROOVE_DEPTH = 0.0065;
+
+/**
+ * The slope of the mould's relief at a wheel-local point into `out`, along the wheel's own x, y and z, the relief's
+ * height and the point both in the wheel's radii. The ribs stand up from the sidewall and the shoulder's grooves sink
+ * into it; the normal is tilted down the slope, and the relief fades as the mould does with the pixel's footprint.
+ */
+export function tireRelief(out: Float64Array, x: number, y: number, z: number, footprint: number): void {
+  const radius = Math.hypot(y,z), phase = 42*Math.atan2(y,z) + 13*Math.abs(x);
+  const fine = clamp(1-45*footprint);
+  const slope = (r: number) => Math.abs(radius-r) < 0.012 ? -Math.sign(radius-r)/0.012 : 0;
+  const shoulder = clamp((radius-0.86)*14);
+  const block = (Math.cos(phase)-0.32)*3;
+  // Down the groove's wall as the angle turns, and across it as the axle's offset does.
+  const wall = block > 0 && block < 1 ? 3*Math.sin(phase)*shoulder*GROOVE_DEPTH*fine : 0;
+  const outward = RIB_HEIGHT*fine*(slope(0.77) + slope(0.845) + 0.65*slope(0.885)), turning = wall*42/Math.max(radius, 0.1);
+  out[0] = wall*13*Math.sign(x);
+  out[1] = (outward*y + turning*z)/Math.max(radius, 1e-6);
+  out[2] = (outward*z - turning*y)/Math.max(radius, 1e-6);
+}
+
+/** Rubber is two to four per cent: linear albedo at the authored shade of a 1.8% tyre. */
+export const RUBBER = [0.026, 0.026, 0.025] as const;
+
+/** How much of a wheel joint's texel is tyre, by its authored metal and roughness and how far out from the hub it lies. */
+export function rubberShare(metal: number, rough: number, radial: number): number {
+  return clamp((0.30-metal)*5)*clamp((rough-0.45)*5)*clamp((radial-0.45)*9);
+}
+
+/**
+ * A wheel joint's finish, as WHEEL_FINISH_GLSL has it: `rubber` is `rubberShare` faded with distance, `x`, `y` and `z`
+ * the wheel-local point in radii. Rubber takes its own colour, keeping the authored shade and the mould within it, and
+ * its own roughness: dressed sidewalls by the seed, a tread worn a little smoother down its middle, rougher shoulders
+ * and grooves, and never so smooth that it takes the rim's sharp reflection. Bright metal becomes plated.
+ */
+export function wheelFinish(albedo: Float64Array, orm: Float64Array, wheelMask: number, rubber: number, near: number, x: number, y: number, z: number, seed: number, footprint: number, outboard = 0): number {
   const metal = orm[2]!, rough = orm[1]!;
   const radial = Math.hypot(y, z);
   // A painted centre and an iron rotor can share a wheel joint with the rubber and the exposed rim.
-  const rubber = clamp((0.30-metal)*5)*clamp((rough-0.45)*5)*near*clamp((radial-0.45)*9);
   const outerMetal = clamp((outboard-0.16)*10)*clamp((0.83-radial)*12)*clamp((0.70-rough)*6);
   const chrome = clamp((metal-0.45)*3.4)*Math.max(clamp(wheelMask*1.8),clamp((0.35-rough)*6),outerMetal)*clamp((0.85-rough)*5)*near;
-  const tone = 1-rubber*(0.75-0.10*clamp((rough-0.24)*2)+0.08*(1-orm[0]!)-1.1*mould);
-  for (let c=0; c<3; c++) albedo[c]! *= tone;
-  orm[1]! += rubber*(Math.max(0,0.90-rough)-0.38*mould);
+  lastGroove = 0;
+  const mould = rubber > 0 && footprint < 0.023 ? tireMould(x, y, z, footprint) : 0;
+  const groove = lastGroove;
+  const luma = albedo[0]!*0.2126 + albedo[1]!*0.7152 + albedo[2]!*0.0722;
+  const shade = Math.min(Math.max(Math.sqrt(luma/0.018), 0.8), 1.25)*Math.min(Math.max(1+1.2*mould, 0.6), 1.2);
+  for (let c=0; c<3; c++) albedo[c]! += (RUBBER[c]!*shade-albedo[c]!)*rubber;
+  const tread = smoothstep(0.92, 0.97, radial), worn = tread*(1-smoothstep(0.12, 0.24, Math.abs(x)));
+  const dressed = 0.66+0.08*seed, face = dressed + (0.78-dressed)*tread;
+  const rubbed = face + (0.62-face)*worn;
+  orm[1]! += (Math.max(0.5, rubbed + (0.92-rubbed)*groove)-rough)*rubber;
   if (chrome > 0) {
     const wipe = Math.sin(19*z+7*y+9*seed);
     const grit = Math.sin(151*y)*Math.sin(123*z+13*seed)*clamp(1-70*footprint);
@@ -167,23 +213,37 @@ export const WHEEL_FINISH_GLSL = `
 float rubberShare(vec3 mro, float radial) {
   return clamp((0.30-mro.b)*5.0,0.0,1.0)*clamp((mro.g-0.45)*5.0,0.0,1.0)*clamp((radial-0.45)*9.0,0.0,1.0);
 }
-float wheelFinish(inout vec3 albedo, inout vec3 mro, float mask, float near, vec3 point, float seed, float width, float outboard) {
+vec3 tireRelief(vec3 point, float width) {
+  float radius = length(point.yz), phase = 42.0*atan(point.y,point.z)+13.0*abs(point.x);
+  float fine = clamp(1.0-45.0*width,0.0,1.0);
+  vec3 d = vec3(radius)-vec3(0.77,0.845,0.885);
+  vec3 slope = mix(vec3(0.0),-sign(d)/0.012,lessThan(abs(d),vec3(0.012)));
+  float shoulder = clamp((radius-0.86)*14.0,0.0,1.0);
+  float block = (cos(phase)-0.32)*3.0;
+  float wall = block > 0.0 && block < 1.0 ? 3.0*sin(phase)*shoulder*${GROOVE_DEPTH}*fine : 0.0;
+  float outward = ${RIB_HEIGHT}*fine*dot(slope,vec3(1.0,1.0,0.65)), turning = wall*42.0/max(radius,0.1);
+  return vec3(wall*13.0*sign(point.x),outward*point.y+turning*point.z,outward*point.z-turning*point.y)/vec3(1.0,max(radius,0.000001),max(radius,0.000001));
+}
+float wheelFinish(inout vec3 albedo, inout vec3 mro, float mask, float rubber, float near, vec3 point, float seed, float width, float outboard) {
   float radial = length(point.yz);
   float outerMetal = clamp((outboard-0.16)*10.0,0.0,1.0)*clamp((0.83-radial)*12.0,0.0,1.0)*clamp((0.70-mro.g)*6.0,0.0,1.0);
-  float rubber = clamp((0.30-mro.b)*5.0,0.0,1.0)*clamp((mro.g-0.45)*5.0,0.0,1.0)*near*clamp((radial-0.45)*9.0,0.0,1.0);
   float chrome = clamp((mro.b-0.45)*3.4,0.0,1.0)*max(outerMetal,max(clamp(mask*1.8,0.0,1.0),clamp((0.35-mro.g)*6.0,0.0,1.0)))*clamp((0.85-mro.g)*5.0,0.0,1.0)*near;
-  float dust = clamp((mro.g-0.24)*2.0,0.0,1.0);
-  float mould = 0.0;
+  float mould = 0.0, groove = 0.0;
   if (rubber > 0.0 && width < 0.023) {
     float r = radial;
     vec3 ribs = clamp(1.0-abs(vec3(r)-vec3(0.77,0.845,0.885))/0.012,0.0,1.0);
     float shoulder = clamp((r-0.86)*14.0,0.0,1.0);
     float angle = atan(point.y,point.z);
-    float groove = clamp((cos(42.0*angle+13.0*abs(point.x))-0.32)*3.0,0.0,1.0)*shoulder;
-    mould = (0.25*dot(ribs,vec3(1.0,1.0,0.65))-0.32*groove+0.09*shoulder*(1.0-groove))*clamp(1.0-45.0*width,0.0,1.0);
+    float fine = clamp(1.0-45.0*width,0.0,1.0);
+    groove = clamp((cos(42.0*angle+13.0*abs(point.x))-0.32)*3.0,0.0,1.0)*shoulder;
+    mould = (0.25*dot(ribs,vec3(1.0,1.0,0.65))-0.32*groove+0.09*shoulder*(1.0-groove))*fine;
+    groove *= fine;
   }
-  albedo *= 1.0-rubber*(0.75-0.10*dust+0.08*(1.0-mro.r)-1.1*mould);
-  mro.g += rubber*(max(0.0,0.90-mro.g)-0.38*mould);
+  float shade = clamp(sqrt(dot(albedo,vec3(0.2126,0.7152,0.0722))/0.018),0.8,1.25)*clamp(1.0+1.2*mould,0.6,1.2);
+  albedo = mix(albedo,vec3(${RUBBER.join(",")})*shade,rubber);
+  float tread = smoothstep(0.92,0.97,radial), worn = tread*(1.0-smoothstep(0.12,0.24,abs(point.x)));
+  float rubbed = mix(mix(0.66+0.08*seed,0.78,tread),0.62,worn);
+  mro.g = mix(mro.g,max(0.5,mix(rubbed,0.92,groove)),rubber);
   if (chrome > 0.0) {
     float wipe = sin(19.0*point.z + 7.0*point.y + 9.0*seed);
     float grit = sin(151.0*point.y)*sin(123.0*point.z+13.0*seed)*clamp(1.0-70.0*width,0.0,1.0);

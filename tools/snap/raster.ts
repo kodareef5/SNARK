@@ -6,7 +6,7 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { ENAMEL_ARMOR, EXHAUST, LENS } from "../../content/street-finishes.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
-import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireMould, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
+import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireRelief, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import { bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
@@ -161,6 +161,7 @@ const texel = TEXTURE_ROLES.map(() => new Float64Array(4));
 const albedo = new Float64Array(3);
 const worldOrm = new Float64Array(3);
 const normal = new Float64Array(3);
+const relief = new Float64Array(3);
 const eye = new Float64Array(3);
 const light = new Float64Array(3);
 const rgb = new Float64Array(3);
@@ -1876,8 +1877,20 @@ export class Rasterizer {
             const rubber = rubberShare(mro[2]!, mro[1]!, radial);
             own = tyreOpen(dy, outboard, rubber);
             mro[0]! += (1-mro[0]!)*rubber;
-            const mould = footprint < 0.023 && mro[2]! < 0.3 && mro[1]! > 0.45 ? tireMould(carried[15]!,carried[16]!,carried[17]!,footprint) : 0;
-            chrome = wheelFinish(albedo, mro, mask[2]!, near, mould, seed, carried[16]!, carried[17]!, footprint, outboard);
+            chrome = wheelFinish(albedo, mro, mask[2]!, rubber*near, near, carried[15]!, carried[16]!, carried[17]!, seed, footprint, outboard);
+            if (rubber*near > 0 && footprint < 0.023) {
+              // The relief's slope turned into the world, along the face, as SURFACE has it from its derivatives.
+              tireRelief(relief, carried[15]!, carried[16]!, carried[17]!, footprint);
+              const sx = (m[b]!*relief[0]! + m[b+1]!*relief[1]! + m[b+2]!*relief[2]!)/scale;
+              const sy = (m[b+4]!*relief[0]! + m[b+5]!*relief[1]! + m[b+6]!*relief[2]!)/scale;
+              const sz = (m[b+8]!*relief[0]! + m[b+9]!*relief[1]! + m[b+10]!*relief[2]!)/scale;
+              const across = (sx*nx + sy*ny + sz*nz)/(nx*nx + ny*ny + nz*nz), k = rubber*near;
+              normal[0]! -= k*(sx - nx*across);
+              normal[1]! -= k*(sy - ny*across);
+              normal[2]! -= k*(sz - nz*across);
+              const length = Math.hypot(normal[0]!, normal[1]!, normal[2]!);
+              for (let c=0; c<3; c++) normal[c]! /= length;
+            }
             if (chrome > 0) {
               const dot=normal[0]!*dx+normal[1]!*dy+normal[2]!*dz;
               let bend = 0;

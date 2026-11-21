@@ -690,12 +690,21 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
     float near = (1.0-smoothstep(8.0,24.0,length(vRel)))${layered ? "*(1.0-smoothstep(0.15,0.85,uLevel))" : ""};
     float radial = length(vWheelPoint.yz);
     float outboard = vWheelPoint.x*(vWheel.w < 1.5 ? -1.0 : 1.0);
-    float width = max(length(dFdx(vWheelPoint)),length(dFdy(vWheelPoint)));
+    vec3 acrossX = dFdx(vWheelPoint), acrossY = dFdy(vWheelPoint);
+    float width = max(length(acrossX),length(acrossY));
     float rubber = rubberShare(mro,radial);
     // A bake of the tyre in place would turn with it: on rubber the shade under the arch is worked out instead.
     own = tyreOpen(vWheel.y,outboard,rubber);
     mro.r = mix(mro.r,1.0,rubber);
-    chrome = wheelFinish(albedo,mro,${dyed ? "mask.b" : "0.0"},near,vWheelPoint,vFinishSeed,width,outboard);
+    rubber *= near;
+    chrome = wheelFinish(albedo,mro,${dyed ? "mask.b" : "0.0"},rubber,near,vWheelPoint,vFinishSeed,width,outboard);
+    if (rubber > 0.0 && width < 0.023) {
+      // The mould's ribs and grooves in the normal. The wheel-local point runs evenly across a triangle, so its change
+      // to the next pixel turns the relief's slope there into the world's, along the face.
+      vec3 slope = tireRelief(vWheelPoint,width), x = dFdx(vRel), y = dFdy(vRel), m = cross(x,y);
+      float metres = length(x)/max(length(acrossX),0.000001);
+      n = normalize(n-rubber*metres*(dot(slope,acrossX)*cross(y,m)+dot(slope,acrossY)*cross(m,x))/max(dot(m,m),1e-20));
+    }
     if (chrome > 0.0) {
       // A gently crowned face turns a flat spoke through a range of real reflection directions.
       vec3 crown = 0.88*(vWheel.xyz - n*dot(vWheel.xyz,n));
