@@ -428,7 +428,7 @@ if (import.meta.main) {
   // --no-streets builds it as before the streets' lines, to compare.
   const words = process.argv.slice(2), out = words.indexOf("--out");
   const output = out >= 0 ? resolve(words[out + 1] ?? "") : join(ROOT, "var/maps");
-  const named = words.filter((w, k) => !w.startsWith("--") && k !== out + 1)[0];
+  const named = words.filter((w, k) => !w.startsWith("--") && (out < 0 || k !== out + 1))[0];
   const { stats } = await buildMap(named ?? (() => { throw new Error("Map name required"); })(), words.includes("--release"), output, { streets: !words.includes("--no-streets") });
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }
