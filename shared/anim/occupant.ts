@@ -54,7 +54,7 @@ export function clipSeatEye(world: CollisionWorld, anchor: Float64Array, eye: Fl
 
 /** Preserves weapon/action pose on open passenger seats; world gaze is turned into the whole seat frame first. */
 export function occupantPose(anim: HumanAnim, st: AnimState, tick: number, out: Pose, vehicle: OccupantSeat | undefined,
-  saddle: Float64Array | null, offset: number, yaw: number, driver: boolean, profile: MountMotionProfile = motion): void {
+  saddle: Float64Array | null, offset: number, yaw: number, driver: boolean, profile: MountMotionProfile = motion, headTurn = 0): void {
   const role = vehicle?.role ?? (vehicle ? vehicle.driver ? "drive" : "passenger" : "ride");
   // Cabins and a personal watercraft's saddle hold the torso still; only the neck and head follow a look.
   const fixedTorso = role === "pilot" || role === "cabin" || role === "pwc", steers = vehicle?.driver ?? driver;
@@ -80,6 +80,10 @@ export function occupantPose(anim: HumanAnim, st: AnimState, tick: number, out: 
   humanPose(anim, state, tick, out);
   mountPose(profile, { role, tick: vehicle ? tick : 0, startTick: 0, durationTicks: 1,
     steering: vehicle?.steer, upper: !fixedTorso && !steers ? out : undefined }, out);
+  if (saddle && headTurn) {
+    quatAxis(turn, 0, 0, 1, 0, headTurn * .35); quatMul(out.rot, B_NECK * 4, turn, 0, out.rot, B_NECK * 4);
+    quatAxis(turn, 0, 0, 1, 0, headTurn * .65); quatMul(out.rot, B_HEAD * 4, turn, 0, out.rot, B_HEAD * 4);
+  }
   if (looks && aim !== undefined) {
     if (fixedTorso) {
       const tilt = Math.max(-.75, Math.min(.75, localPitch));

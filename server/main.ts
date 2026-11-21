@@ -26,7 +26,8 @@ import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
 import { clientAddress } from "./front.ts";
 import { boardOwners, soundBoard } from "./sound-board.ts";
-import { adminAsked, type AdminGate } from "./admin/gate.ts";
+import { TitleScenes } from "./admin/title-scenes.ts";
+import { adminAsked, refused as refuseAdmin, type AdminGate } from "./admin/gate.ts";
 import { TickMeter } from "./admin/meter.ts";
 import { PART, type TickParts } from "./admin/parts.ts";
 import { AdminPages, adminTerrain } from "./admin/routes.ts";
@@ -320,6 +321,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const access = new SurvivorAccess(host);
   const entryBuilt = existsSync(join(clientDir,"entry.js"));
   // Directories: the ones this world is listed in, and its own if it hosts one. Its title searches them all.
+  const titleScenes = new TitleScenes(
+    host.cluster ? join(host.cluster.folder.root, "title-scenes.sqlite") : opts.dbPath ? opts.dbPath + ".title-scenes.sqlite" : ":memory:",
+  );
   const listings = opts.directory ? new ServerDirectory(host.cluster ? join(host.cluster.folder.root,"directory.sqlite") : opts.dbPath ? opts.dbPath+".directory.sqlite" : ":memory:") : null;
   const directories = opts.directories ?? [];
   const directory = [...directories, ...(listings ? ["directory"] : [])].join(" ");
@@ -429,6 +433,21 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (answered) return answered;
       // The cluster shell uses public discovery. Every private request goes through the target world's own admin gate.
       const clusterPath = url.pathname;
+      if (clusterPath === "/cluster/title-poster.webp" || clusterPath === "/cluster/title-scene.json") {
+        if (req.method !== "GET") return new Response(null, { status: 405, headers: { Allow: "GET" } });
+        return clusterPath.endsWith(".webp") ? titleScenes.poster(url.searchParams.has("portrait")) : titleScenes.active();
+      }
+      if (clusterPath === "/cluster/admin/scenes/" || clusterPath === "/cluster/admin/scenes/api") {
+        const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
+        const gate = !opts.dev || namesThisMachine(req.headers.get("host"), named) ? board : { ...board, dev: false };
+        const denied = refuseAdmin(req, who, gate);
+        if (denied) return denied;
+        if (clusterPath.endsWith("/api")) {
+          if (!originAllowed(req.headers.get("origin"), req.headers.get("host"), "")) return entryReply({ error: "Open the studio on this cluster." }, 403);
+          return titleScenes.admin(req);
+        }
+        return serveFile(clientDir, req, "/admin/scene-studio.html");
+      }
       if (clusterPath === "/cluster/admin") return new Response(null, { status: 308, headers: { location: `/cluster/admin/${url.search}` } });
       if (clusterPath === "/cluster/admin/") return serveFile(clientDir, req, "/admin/cluster.html");
       if (clusterPath === "/cluster/admin/cluster.js" || clusterPath === "/cluster/admin/cluster.js.map") {
@@ -618,7 +637,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       return skipped;
     },
     stop() {
-      clearInterval(heartbeat); listings?.close();
+      clearInterval(heartbeat); listings?.close(); titleScenes.close();
       stopTicks();
       server.stop(true);
       host.shutdown();
