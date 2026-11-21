@@ -105,8 +105,8 @@ export const sceneSize = (width: number, height: number, share: number): [number
  */
 export function passExtent(w: number, h: number, roomW: number, roomH: number, from: number, to: number, out = new Float32Array(4)): Float32Array {
   const part = (n: number, k: number): number => Math.max(1, n >> levelShift(k)), k = to < 0 ? 1 : from;
-  [out[0], out[1]] = [part(w, from) / part(roomW, from), part(h, from) / part(roomH, from)];
-  [out[2], out[3]] = [(part(w, k) - 0.5) / part(roomW, k), (part(h, k) - 0.5) / part(roomH, k)];
+  out[0] = part(w, from) / part(roomW, from); out[1] = part(h, from) / part(roomH, from);
+  out[2] = (part(w, k) - 0.5) / part(roomW, k); out[3] = (part(h, k) - 0.5) / part(roomH, k);
   return out;
 }
 
