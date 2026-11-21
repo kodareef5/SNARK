@@ -14,6 +14,8 @@ import type { Items } from "../items.ts";
 import { placeFree } from "../place.ts";
 import type { Records } from "../records.ts";
 import type { Urban } from "../urban.ts";
+import type { Bus } from "../events/bus.ts";
+import type { EntityRecord } from "../records.ts";
 import { worldHour, type ServerWorld } from "../world.ts";
 import { GOAL_NONE, TEMPER_DEFENDS } from "../behavior.ts";
 import { CAST_CATALOGUE } from "../../content/cast/index.ts";
@@ -24,13 +26,16 @@ import { EMOTES, EMOTE_NUMBER } from "../../shared/anim/emotes.ts";
 import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
+import { W_GUN } from "../../shared/sim/weapon.ts";
 import { F_ALIVE, F_AWAKE } from "../../shared/sim/entities.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 
 /** The rec.extra component a Cast body carries: the id of the person it is (server/persist/codec.ts lists it). */
 export const COMP_CAST = 90;
 /** What the engine can do in this build: a scene needing more waits (driving and weapons come in their phases). */
-export const CAST_CAN: readonly Capability[] = ["walk", "emote", "speech", "queue", "drive"];
+export const CAST_CAN: readonly Capability[] = ["walk", "emote", "speech", "queue", "drive", "weapon"];
+/** Metres from a survivor's own building it counts as home, where no scene starts a fight with it. */
+const HOME_M = 60;
 
 export interface CastHostContext {
   world: ServerWorld;
@@ -41,6 +46,9 @@ export interface CastHostContext {
   chat: Chat;
   items: Items;
   urban: Urban;
+  bus: Bus;
+  /** Puts a record's held item and worn pieces on its body (the host's refreshBody). */
+  refresh: (rec: EntityRecord) => void;
   /** Parks a vehicle of a species at (x, z) facing yaw (radians), nobody's; its entity, or -1 (the host's own). */
   park: (id: string, x: number, z: number, yaw: number) => number;
   /** Named places on the map beside its spawn points (its landmarks). */
@@ -65,6 +73,24 @@ export class CastHost {
     this.stage = new CastStage(this.cast, this.bodyView(), ctx.seed ^ 0x2545f491);
     this.cast.stage = this.stage;
     ctx.chat.listeners.push((speaker, _channel, x, z, text) => this.stage.hear(speaker, x, z, text));
+    // A blow on one of Cast's people is an attack it answers; a shot that hits anywhere near is heard as one.
+    const nameOf = (pid: unknown) => (typeof pid === "number" && pid !== 0 ? ctx.records.byPid.get(pid)?.name || null : null);
+    ctx.bus.on("cast", "damaged", (e) => {
+      const d = e.data as { target: string; victim: number; byPid: number; item: string; type: string };
+      if (d.target !== "body") return;
+      const victim = ctx.records.byPid.get(d.victim);
+      const by = nameOf(d.byPid);
+      if (victim?.extra.has(COMP_CAST)) this.stage.attacked(d.victim, by, this.livePlayers());
+      if (d.item && ctx.world.reg.weapon[ctx.world.reg.index.get(d.item) ?? -1]?.kind === W_GUN) {
+        const at = ctx.records.entOf.get(d.victim);
+        if (at !== undefined) this.stage.gunshot(ctx.world.ents.x[at]!, ctx.world.ents.z[at]!, by, this.livePlayers());
+      }
+    });
+    // A survivor who has just risen is spared hostile scenes for a while.
+    ctx.bus.on("cast", "session.spawn", (e) => {
+      const name = nameOf((e.data as { pid: number }).pid);
+      if (name) this.cast.rose(name, ctx.world.tick);
+    });
     this.sweep();
   }
 
@@ -84,8 +110,28 @@ export class CastHost {
 
   step(): void {
     if (!this.cast.settings.enabled) return;
+    if (this.ctx.world.tick % (5 * TICK_RATE) === 0) this.homes();
     this.cast.step();
     this.stage.step(this.livePlayers());
+  }
+
+  /** Which survivors are home: near a building of their own or their tribe's. */
+  private homes(): void {
+    const { game, world, records } = this.ctx, { dims, structs } = world;
+    for (const c of game.clients) {
+      if (!c?.active || c.closed) continue;
+      const team = records.byPid.get(c.pid)?.team ?? 0;
+      let home = false;
+      const { x, z } = c.body;
+      for (let cz = Math.max(0, Math.floor((z - HOME_M) / CHUNK_SIZE)); !home && cz <= Math.min(dims.chunksZ - 1, Math.floor((z + HOME_M) / CHUNK_SIZE)); cz++) {
+        for (let cx = Math.max(0, Math.floor((x - HOME_M) / CHUNK_SIZE)); !home && cx <= Math.min(dims.chunksX - 1, Math.floor((x + HOME_M) / CHUNK_SIZE)); cx++) {
+          const t = structs.chunks[cz * dims.chunksX + cx];
+          if (!t || t.live === 0) continue;
+          for (let k = 0; k < t.high && !home; k++) if (t.kind[k] !== 0 && t.owner[k] !== 0 && (t.owner[k] === team || t.owner[k] === c.pid) && Math.hypot(t.x[k]! - x, t.z[k]! - z) < HOME_M) home = true;
+        }
+      }
+      this.cast.player(c.name).safe = home;
+    }
   }
 
   /** The survivors in the world now, where each looks and what emote it plays. */
@@ -140,14 +186,22 @@ export class CastHost {
         if (look?.colors && rec.genome) look.colors.forEach((col, i) => void (i < rec.genome!.colors.length && (rec.genome!.colors[i] = col)));
         // What it wears, in its gear slots; and what it carries.
         const inv = items.inv(rec);
+        /** Makes an item in its bag and moves it to `to`, a gear slot, if one is given. */
+        const put = (item: number, n: number, to: number) => {
+          if (items.mint(rec, item, n, 0, 0, -1, "cast") === 0 || to < 0) return;
+          for (let k = 0; k < inv.hotbar; k++) if (inv.item[k] === item) return void items.move(rec, k, rec, to, n);
+        };
         for (const w of look?.wear ?? []) {
           const item = reg.index.get(w), slot = item === undefined ? -1 : reg.wearSlot[item]!;
-          if (item !== undefined && slot >= 0 && inv.armor >= 0) items.mint(rec, item, 1, 0, 0, inv.armor + slot, "cast");
+          if (item !== undefined && slot >= 0 && inv.armor >= 0) put(item, 1, inv.armor + slot);
         }
+        // A weapon goes on its hotbar, ready to be drawn; the rest in its bag.
+        let bar = 0;
         for (const [id, n] of Object.entries(a.items ?? {})) {
           const item = reg.index.get(id);
-          if (item !== undefined) items.mint(rec, item, n, 0, 0, -1, "cast");
+          if (item !== undefined) put(item, n, reg.weapon[item] && inv.hotbar >= 0 && n === 1 ? inv.hotbar + bar++ : -1);
         }
+        this.ctx.refresh(rec);
         ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
         ents.yaw[e] = Math.round((yaw / (Math.PI * 2)) * 65536) & 0xffff;
         if (a.temper === "defends") mind.temperOf[e] = TEMPER_DEFENDS;
@@ -246,6 +300,33 @@ export class CastHost {
       drive: (car, moveX, moveZ, handbrake) => {
         const e = ent(car);
         if (e >= 0) this.ctx.urban.drive(e, moveX, moveZ, handbrake ? BTN_JUMP : 0);
+      },
+      hold: (pid, item) => {
+        const rec = records.byPid.get(pid), inv = rec?.inv;
+        if (!rec || !inv || inv.hotbar < 0) return;
+        const want = item === null ? -1 : reg.index.get(item) ?? -1;
+        let slot = -1;
+        for (let k = 0; want >= 0 && k < inv.cap - inv.hotbar && inv.hotbar + k < inv.armor; k++) if (inv.item[inv.hotbar + k] === want) slot = k;
+        rec.held = slot;
+        records.dirty.add(pid);
+        this.ctx.refresh(rec);
+      },
+      attack: (pid, target) => {
+        const e = ent(pid);
+        let prey = -1;
+        if ("pid" in target) prey = ent(target.pid);
+        else for (const c of this.ctx.game.clients) if (c?.active && c.name === target.player && c.ent >= 0) prey = c.ent;
+        if (e < 0 || prey < 0) return false;
+        mind.attack(e, prey);
+        return mind.targetOf(e) === prey;
+      },
+      calm: (pid) => {
+        const e = ent(pid);
+        if (e >= 0 && mind.targetOf(e) >= 0) mind.stay(e, 0);
+      },
+      fighting: (pid) => {
+        const e = ent(pid);
+        return e >= 0 && mind.targetOf(e) >= 0;
       },
     };
   }

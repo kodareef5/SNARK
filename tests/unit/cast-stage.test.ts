@@ -80,6 +80,14 @@ class FakeBodies implements CastBodies {
     return null;
   }
   drive() {}
+  hold() {}
+  attack() {
+    return false;
+  }
+  calm() {}
+  fighting() {
+    return false;
+  }
   /** Each body walks toward its goal a tick's worth at its pace. */
   move() {
     for (const b of this.at_.values()) {

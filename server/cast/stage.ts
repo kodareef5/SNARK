@@ -27,6 +27,10 @@ const REACT_GAP = 4, REACT_AGAIN = 25;
 /** Radians a player's look may be off a body and still be a stare, and the seconds it takes. */
 const STARE_RAD = 0.2, STARE_S = 2;
 const WAVES = new Set(["wave", "wave_big", "beckon", "salute", "thumbs_up"]);
+/** Seconds a fight lasts at most, and metres a player gets away to end it: a scene's fight breaks off, never hounds. */
+const FIGHT_MOST = 25, FIGHT_AWAY = 40;
+/** Metres a gunshot is heard within, and a cop comes from when called. */
+const GUNSHOT_M = 45, COP_M = 140;
 
 /** What the stage asks of the bodies in the world. The server's is server/cast/host.ts; a body is known by its pid. */
 export interface CastBodies {
@@ -56,6 +60,13 @@ export interface CastBodies {
   alight(pid: number): boolean;
   car(car: number): CarState | null;
   drive(car: number, moveX: number, moveZ: number, handbrake: boolean): void;
+  /** Takes an item it carries into its hand, or puts away what it holds (null). */
+  hold(pid: number, item: string | null): void;
+  /** Goes for a body (one of the stage's, by pid) or a survivor (by name), as a creature hunts. */
+  attack(pid: number, target: { pid: number } | { player: string }): boolean;
+  /** Stops a fight. */
+  calm(pid: number): void;
+  fighting(pid: number): boolean;
 }
 
 /** A player as the stage sees it: where it is, where it looks (radians, along (sin, cos)), the emote it plays. */
@@ -330,6 +341,7 @@ export class CastStage implements Stage {
     if (b.aside !== 0) {
       b.aside = 0;
       b.begun = false;
+      if (this.bodies.fighting(b.pid)) this.bodies.calm(b.pid);
     }
     const st = this.stepOf(b);
     if (!st || st.do === "leave") return this.leave(b, tick, players, st?.do === "leave" ? st.pace : undefined);
@@ -432,9 +444,80 @@ export class CastStage implements Stage {
       }
       case "drive":
         return this.driveTo(b, tick, players, this.target(b, st.to, players), true);
-      // Holding a weapon and attacking come with hostility; until then they are passed over.
+      case "hold":
+        if (!b.begun) {
+          this.bodies.hold(b.pid, st.item);
+          b.until = tick + Math.round(0.8 * this.world.rate);
+          b.begun = true;
+        }
+        if (tick >= b.until) this.advance(b, tick);
+        return;
+      case "attack":
+        return this.fight(b, tick, players, st.target);
       default:
         return this.advance(b, tick);
+    }
+  }
+
+  /**
+   * A scripted fight: goes for another role's body or the story's player (only at hostility 2, the scene having been
+   * cast for it), until the target is down or out of reach, or the fight has run its time; then the script goes on.
+   */
+  private fight(b: Body, tick: number, players: readonly StagePlayer[], t: Target): void {
+    const s = b.story!;
+    if (!b.begun) {
+      let target: { pid: number } | { player: string } | null = null;
+      if (t === "player") {
+        if (this.cast.settings.hostility >= 2) {
+          const at = this.bodies.at(b.pid);
+          let best: StagePlayer | null = null;
+          for (const p of players) if (s.for.includes(p.name) && at && (!best || Math.hypot(p.x - at.x, p.z - at.z) < Math.hypot(best.x - at.x, best.z - at.z))) best = p;
+          if (best) target = { player: best.name };
+        }
+      } else if (typeof t === "object" && "role" in t) {
+        const o = s.parts.find((p) => p.role === t.role && p.pid !== undefined && !p.gone);
+        if (o) target = { pid: o.pid! };
+      }
+      if (!target || !this.bodies.attack(b.pid, target)) return this.advance(b, tick);
+      s.history.push(`${b.c.name} went for ${"player" in target ? target.player : "a rival"}`);
+      s.importance = Math.min(1, s.importance + 0.3);
+      b.begun = true;
+      b.tx = tick;
+      return;
+    }
+    const at = this.bodies.at(b.pid);
+    const away = t === "player" && at && !players.some((p) => s.for.includes(p.name) && Math.hypot(p.x - at.x, p.z - at.z) < FIGHT_AWAY);
+    if (!this.bodies.fighting(b.pid) || away || tick - b.tx > FIGHT_MOST * this.world.rate) {
+      this.bodies.calm(b.pid);
+      this.advance(b, tick);
+    }
+  }
+
+  /** One of the stage's people was hurt, by a survivor (by name) or not: it reacts by its table. */
+  attacked(pid: number, by: string | null, players: readonly StagePlayer[]): void {
+    const b = this.byPid.get(pid);
+    if (!b || !b.story || !b.part) return;
+    const tick = this.world.tick();
+    const p = (by && players.find((q) => q.name === by)) || null;
+    if (p) {
+      this.cast.people.met(b.c, p.name, -0.6, `${p.name} attacked me`, tick);
+      this.cast.people.remember(b.c, `${p.name} attacked me`, tick, true);
+      if (!b.story.engaged.includes(p.name)) b.story.engaged.push(p.name);
+      b.story.importance = 1;
+      this.cast.engaged(b.story);
+    }
+    const at = this.bodies.at(pid);
+    if (at) this.respond(b, "attacked", p ?? { name: "", x: at.x, z: at.z }, tick, at, true);
+  }
+
+  /** A shot near: everyone of the stage within hearing reacts by its table. */
+  gunshot(x: number, z: number, by: string | null, players: readonly StagePlayer[]): void {
+    const tick = this.world.tick();
+    const p = (by && players.find((q) => q.name === by)) || { name: by ?? "", x, z };
+    for (const b of this.byPid.values()) {
+      if (!b.story || !b.part || this.bodies.fighting(b.pid)) continue;
+      const at = this.bodies.at(b.pid);
+      if (at && Math.hypot(at.x - x, at.z - z) < GUNSHOT_M) this.respond(b, "gunshot", p, tick, at, true);
     }
   }
 
@@ -684,7 +767,8 @@ export class CastStage implements Stage {
     }
   }
 
-  private respond(b: Body, on: Stimulus, p: StagePlayer, tick: number, at: { x: number; z: number }): void {
+  private respond(b: Body, on: Stimulus, p: StagePlayer, tick: number, at: { x: number; z: number }, urgent = false): void {
+    if (urgent) b.lastReact = -Infinity;
     const a = this.cast.people.archetype(b.c.archetype)!;
     const table = this.cat.reactions.find((t) => t.id === a.reactions);
     const row = table?.rows.find((r) => r.on === on && traitsFit(b.c, r.if) && (r.chance === undefined || this.rng.float() < r.chance));
@@ -736,17 +820,43 @@ export class CastStage implements Stage {
         this.bodies.emote(b.pid, "cower");
         aside(4);
         break;
-      case "flee":
       case "fight":
-      case "call_cop":
-        // Fighting and calling the police come with hostility; until then each runs from the trouble.
-        b.part!.step = this.cast.scenes.get(b.story!.scene)!.script[b.part!.role]!.length - 1;
-        b.begun = false;
-        b.out = false;
-        this.leave(b, tick, [p], "run");
+        // Fights back the one who did it, unless the server wants no fights at all; a fight breaks off as a scene's does.
+        if (this.cast.settings.hostility >= 1 && p.name && this.bodies.attack(b.pid, { player: p.name })) {
+          aside(FIGHT_MOST);
+          break;
+        }
+        this.run(b, tick, p);
+        break;
+      case "call_cop": {
+        // The nearest officer of the stage's comes for whoever did it; the caller runs.
+        let cop: Body | null = null, best = COP_M;
+        for (const o of this.byPid.values()) {
+          if (o === b || o.c.archetype !== "cast:cop") continue;
+          const oa = this.bodies.at(o.pid);
+          const d = oa ? Math.hypot(oa.x - at.x, oa.z - at.z) : Infinity;
+          if (d < best) (cop = o), (best = d);
+        }
+        if (cop && p.name && this.cast.settings.hostility >= 1 && this.bodies.attack(cop.pid, { player: p.name })) {
+          cop.aside = tick + Math.round(FIGHT_MOST * this.world.rate);
+          this.cast.people.remember(cop.c, `came when ${b.c.name} called about ${p.name}`, tick, true);
+        }
+        this.run(b, tick, p);
+        break;
+      }
+      case "flee":
+        this.run(b, tick, p);
         break;
     }
     if (line) this.speak(b, line);
+  }
+
+  /** Runs from trouble: straight to its script's end, leaving at a run. */
+  private run(b: Body, tick: number, p: StagePlayer): void {
+    b.part!.step = this.cast.scenes.get(b.story!.scene)!.script[b.part!.role]!.length - 1;
+    b.begun = false;
+    b.out = false;
+    this.leave(b, tick, [p], "run");
   }
 }
 

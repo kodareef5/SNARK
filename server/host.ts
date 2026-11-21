@@ -757,7 +757,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   const chat = new Chat({ game, records, rules, tribes, bus });
   const castHost = opts.cast ? new CastHost({
-    world, game, records, creatures, emotes, chat, items, urban, seed: (opts.seed ?? 1) + 907,
+    world, game, records, creatures, emotes, chat, items, urban, bus, refresh: (rec) => refreshBody(rec), seed: (opts.seed ?? 1) + 907,
     park: (id, x, z, yaw) => parkVehicle(id, x, z, 0, yaw, "cast"),
     places: (parsed?.content?.landmarks ?? []).map((l) => ({ name: l.name, kind: "landmark", x: l.x, z: l.z })),
     ...(typeof opts.cast === "object" ? { settings: opts.cast } : {}),
