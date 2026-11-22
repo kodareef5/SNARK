@@ -123,6 +123,24 @@ export class ToolHooks {
     this.marks = made.marks;
   }
 
+  /** The obelisks' clock a picture tool holds, in seconds, or null where it holds none. */
+  get eyeHeld(): number | null {
+    return this.artEyeTime;
+  }
+
+  /** Holds the obelisks' clock at `seconds` from the next frame, stopped: a film's frame (tools/mapworld/gpu-views.ts). */
+  holdEye(seconds: number): void {
+    this.artEyeTime = seconds;
+    this.playEye = false;
+    this.artEyeAt = null;
+  }
+
+  /** Holds the view at `yaw` and `pitch`, radians, until told another: a picture tool's turn (tools/snap/lamp-play.ts). */
+  holdLook(yaw: number, pitch: number): void {
+    this.held = [yaw, pitch];
+    this.releaseLook = false;
+  }
+
   /** The run's clock for the frame to come, `run`, `last` the page's clock at the frame before. */
   run(run: number, last: number): void {
     if (run >= 0 && this.runMs < 0) this.runFrom = last;

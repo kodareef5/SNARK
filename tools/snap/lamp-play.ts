@@ -230,7 +230,7 @@ try {
         yaw = Math.atan2(lx - ex, lz - ez);
         pitch = Math.atan2(ground(lx, lz) + 1 - ey, 400);
       }
-      await evaluate(`(() => { const a = snarkTrip.app; a.ui.settings.tier = ${JSON.stringify(tier)}; a.ui.settings.chosen = true; a.ui.settings.resolution = 0; a.view.thirdPerson = ${m.third === true}; a.held = [${yaw}, ${pitch}]; a.releaseLook = false; return true; })()`);
+      await evaluate(`(() => { const a = snarkTrip.app; a.ui.settings.tier = ${JSON.stringify(tier)}; a.ui.settings.chosen = true; a.ui.settings.resolution = 0; a.view.thirdPerson = ${m.third === true}; a.holdLook(${yaw}, ${pitch}); return true; })()`);
       // The first moment fetches the map and the art as well.
       for (let s = 0; s < (first ? 2 : 1) * seconds; s++) {
         await Bun.sleep(1000);
@@ -253,7 +253,7 @@ try {
         for (let k = 0; k < m.steps!; k++) {
           const [ex, ey, ez] = eyeAt(k), look = yaw + (((m.turn ?? 0) * Math.PI) / 180) * (k / Math.max(1, m.steps! - 1));
           place(ex, ey - 1.62, ez, !m.third);
-          if (m.turn) await evaluate(`(() => { snarkTrip.app.held = [${look}, ${pitch}]; return true; })()`);
+          if (m.turn) await evaluate(`(() => { snarkTrip.app.holdLook(${look}, ${pitch}); return true; })()`);
           let before: number[] | null = null;
           for (let w = 0; w < 40; w++) {
             const c = await evaluate("(() => { const c = snarkTrip.app.cam; return [c.x, c.y, c.z, c.yaw]; })()");

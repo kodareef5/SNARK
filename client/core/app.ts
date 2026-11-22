@@ -510,6 +510,11 @@ export class App {
   set fromEye(on: boolean) { if (on || this.tools) this.tooled().fromEye = on; }
   get off(): ReadonlySet<Effect> { return this.tools?.off ?? NO_EFFECTS; }
   set off(off: ReadonlySet<Effect>) { if (off.size > 0 || this.tools) this.tooled().off = off; }
+  /** The obelisks' clock a picture tool holds, null for none; and a film's frame holding it at `seconds` (tool-hooks.ts). */
+  get eyeHeld(): number | null { return this.tools?.eyeHeld ?? null; }
+  holdEye(seconds: number): void { this.tooled().holdEye(seconds); }
+  /** A picture tool's view held at `yaw` and `pitch` (tool-hooks.ts). */
+  holdLook(yaw: number, pitch: number): void { this.tooled().holdLook(yaw, pitch); }
 
   /**
    * After the frame is handed to WebGL: our code took `ours` ms of it, `uploadMs` of them handing the assets' bytes to
