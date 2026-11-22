@@ -7,6 +7,7 @@ import type { Camera } from "./camera.ts";
 import type { BodyShadows, CastFn, Characters } from "./characters.ts";
 import type { Hiding } from "./hide.ts";
 import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
+import type { Pass } from "./pass.ts";
 import { CAST_AT, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, LAMP_AT, MAX_CASCADES, MAX_CASTERS, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, type FramePacket } from "./packet.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowLayer } from "./shadowtext.ts";
@@ -62,6 +63,15 @@ export class Casting {
   readonly groundCasts: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => this.castsBy(minX, minY, minZ, maxX, maxY, maxZ, -1) & ~LAMP_BIT;
   /** The street lamp that lights this frame, seen from its lens (lamp.ts). */
   readonly lamp = new LampView();
+  /** The ground's casters, chosen once the far layers are up to date and counted once they have drawn: a row of the frame's list. */
+  readonly ground: Pass = {
+    update: (f) => {
+      if (this.on && !this.terrain.casters(f.cam, this.packet, f.view, this.groundCasts)) this.packet.casterDropped++;
+    },
+    draw: () => {
+      if (this.on) this.groundCast();
+    },
+  };
   readonly bodyShadows: BodyShadows = {
     body: (x, y, z, r) => {
       const lamp = this.lamp.sphere(x, y, z, r);

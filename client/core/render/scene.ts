@@ -817,7 +817,11 @@ export class Scene {
     return f;
   }
 
-  /** The frame's passes, in the order they update and draw in. */
+  /**
+   * The frame's passes. A pass's place here is its place in both walks: every `update` runs in this order before anything
+   * draws, then every `draw` in this order, so what is earlier is in the packet first and takes of the budget first. A
+   * new thing drawn is a file under passes/ and a line here. The rows written out here are the scene's own still.
+   */
   private rows(): Pass[] {
     const p = this.packet;
     return [
@@ -831,15 +835,12 @@ export class Scene {
       this.occlusion,
       this.nearStore.meshes,
       ...this.layers.rows,
-      {
-        update: (f) => { if (this.casting.on && !this.terrain.casters(f.cam, p, this.viewDistance, this.casting.groundCasts)) p.casterDropped++; },
-        draw: () => { if (this.casting.on) this.casting.groundCast(); },
-      },
+      this.casting.ground,
       this.looseEntities,
       { draw: (f) => this.bodies(f.cam, f.remote) },
       this.marks,
       this.looseEntities.rubble,
-      { draw: (f) => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, (event, pose) => this.showTreeFall(f.cam, event, pose)); } },
+      { draw: () => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, this.fallTree); } },
       this.placing,
       this.loose,
       { draw: (f) => this.showDetails(f.cam, f.remote) },
@@ -1150,6 +1151,9 @@ export class Scene {
       this.addRemote(remote, i, place, k, rigid, true);
     }
   }
+
+  /** A falling tree's draw, made once for `treeFalls.frame`. */
+  private readonly fallTree = (event: TreePresentationEvent, pose: Float64Array): void => this.showTreeFall(this.frame.cam, event, pose);
 
   private showTreeFall(cam: Camera, event: TreePresentationEvent, pose: Float64Array): void {
     const p = this.packet, mesh = this.meshOfForm[event.form]!;
