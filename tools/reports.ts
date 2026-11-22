@@ -111,8 +111,8 @@ export function perf(dir: string, id: number): Lines {
   const f = p.fields ?? [], col = (name: string): number => f.indexOf(name);
   const pick = ["at", "interval", "own", "build", "scene", "upload", "gpu", "draws", "triangles", "castTriangles", "uploads", "fetched", "longMs", "level", "squeeze"];
   if ((p.worst ?? []).length > 0) {
-    out.push("", "The worst frames (at is ms from the start; negative before it):", `  ${pick.map((n) => n.padStart(13)).join("")}`);
-    for (const row of p.worst!) out.push(`  ${pick.map((n) => String(col(n) >= 0 ? row[col(n)] : "").padStart(13)).join("")}`);
+    out.push("", "The worst frames (at is ms from the start; negative before it):", `  ${pick.map((n) => n.padStart(14)).join("")}`);
+    for (const row of p.worst!) out.push(`  ${pick.map((n) => String(col(n) >= 0 ? row[col(n)] : "").padStart(14)).join("")}`);
   }
   const sf = p.secondFields ?? [], sc = (name: string): number => sf.indexOf(name);
   const slow = (p.seconds ?? []).filter((r) => (r[sc("over33")] ?? 0) > 0 || (r[sc("worstMs")] ?? 0) > 50).sort((a, b) => (b[sc("worstMs")] ?? 0) - (a[sc("worstMs")] ?? 0)).slice(0, 12);
