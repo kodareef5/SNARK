@@ -274,6 +274,60 @@ export const MAX_CONTACTS = 12;
 export const MAX_WATER_MARKS = 12;
 export const MAX_TIRE_CONTACTS = 8;
 
+/** The supply drops' streaks in the sky a frame holds, and the vec4 lanes of their section (`drops`). */
+export const DROP_STREAKS = 4;
+export const DROP_LANES = DROP_STREAKS * 2 + 3;
+
+/** A section of the frame block: its name, the first of FRAME_BLOCK's members it holds, and its floats, whole vec4s. */
+export interface FrameSection {
+  readonly name: string;
+  readonly first: string;
+  readonly floats: number;
+}
+
+/**
+ * The frame block's sections, in the block's order, which is FRAME_BLOCK's. A section begins where the one before it
+ * ends, so a feature adds a row here and its members to FRAME_BLOCK, and no other offset is written. `lanes` is the
+ * part FRAME names lane by lane.
+ */
+export const FRAME_SECTIONS = [
+  { name: "lanes", first: "fSun", floats: 164 },
+  { name: "contact", first: "fContact", floats: MAX_CONTACTS * 8 },
+  { name: "eyes", first: "fEyes", floats: 48 },
+  { name: "reflection", first: "fReflection", floats: 4 },
+  { name: "previousReflection", first: "fPreviousReflection", floats: 4 },
+  { name: "streetLook", first: "fStreetLook", floats: 4 },
+  { name: "tireContacts", first: "fTireContacts", floats: MAX_TIRE_CONTACTS * 4 },
+  { name: "effects", first: "fEffects", floats: 4 },
+  { name: "waterBounds", first: "fWaterBounds", floats: 4 },
+  { name: "waterMarks", first: "fWaterMarks", floats: MAX_WATER_MARKS * 8 },
+  { name: "waterPaths", first: "fWaterPaths", floats: MAX_WATER_MARKS * 4 },
+  { name: "roof", first: "fRoof", floats: 4 },
+  { name: "cast", first: "fCast", floats: 4 },
+  { name: "lamp", first: "fLamp", floats: 28 },
+  { name: "glass", first: "fGlass", floats: 4 },
+  { name: "shore", first: "fShore", floats: 4 },
+  { name: "drops", first: "fDrops", floats: DROP_LANES * 4 },
+  { name: "optic", first: "fOptic", floats: 8 },
+] as const satisfies readonly FrameSection[];
+
+/** Where each section of `rows` begins, in floats, by its name, and where the last ends, `end`. */
+export function sectionStarts<const R extends readonly FrameSection[]>(rows: R): Readonly<Record<R[number]["name"] | "end", number>> {
+  const at: Record<string, number> = {};
+  let next = 0;
+  for (const row of rows) {
+    if (row.name in at || row.name === "end") throw new Error(`frame section ${row.name} is listed twice`);
+    if (row.floats % 4 !== 0) throw new Error(`frame section ${row.name} is not whole vec4s`);
+    at[row.name] = next;
+    next += row.floats;
+  }
+  at.end = next;
+  return at as Record<R[number]["name"] | "end", number>;
+}
+
+/** The sections' starts, read once here: every offset below is a number held in a const. */
+const SECTION = sectionStarts(FRAME_SECTIONS);
+
 /**
  * Where each value of the frame block (`FramePacket.frame`) is, in floats. The block is what every lit program reads,
  * one uniform block of vec4s that FRAME_BLOCK declares, each named after its slot there. Directions are in the world
@@ -385,69 +439,67 @@ export const FRAME = {
   sharpen: 162,
   levels: 163,
   /** fContact: the bodies whose contact takes the sky's light down, two slots each (contact.ts). */
-  contact: 164,
+  contact: SECTION.contact,
   /** Three camera-relative sky lenses follow the contact bodies, four vectors each (tide-eye.ts EYE_FLOATS): where the figure's centre is and its phase and kind; its tint and power; its clock, bloom, seed and storm; its beam's foot, its heading and how lit it is. */
-  eyes: 164 + MAX_CONTACTS * 8,
-  reflection: 212 + MAX_CONTACTS * 8,
-  previousReflection: 216 + MAX_CONTACTS * 8,
+  eyes: SECTION.eyes,
+  reflection: SECTION.reflection,
+  previousReflection: SECTION.previousReflection,
   /** Finish gloss offset, current capture layer, dry asphalt share, shadow fill reduction. */
-  streetLook: 220 + MAX_CONTACTS * 8,
+  streetLook: SECTION.streetLook,
   /** For each supported wheel, the ground normal X/Z, its camera-relative plane offset, and the global bone index plus one. */
-  tireContacts: 224 + MAX_CONTACTS * 8,
+  tireContacts: SECTION.tireContacts,
   /** fEffects.x: periodic exhaust phase in radians. */
-  exhaustPhase: 224 + MAX_CONTACTS * 8 + MAX_TIRE_CONTACTS * 4,
+  exhaustPhase: SECTION.effects,
 } as const;
-export const WATER_PHASE = FRAME.exhaustPhase + 1;
-export const WATER_MARK_COUNT = FRAME.exhaustPhase + 3;
-export const WATER_BOUNDS = FRAME.exhaustPhase + 4;
-export const WATER_MARKS = WATER_BOUNDS + 4;
+export const WATER_PHASE = SECTION.effects + 1;
+export const WATER_MARK_COUNT = SECTION.effects + 3;
+export const WATER_BOUNDS = SECTION.waterBounds;
+export const WATER_MARKS = SECTION.waterMarks;
 /** Per segment: duration, incoming and outgoing cross-track slopes, and wake family. */
-export const WATER_PATHS = WATER_MARKS + MAX_WATER_MARKS * 8;
+export const WATER_PATHS = SECTION.waterPaths;
 /**
  * fRoof: the map of what stands overhead round the camera (roof.ts), its corner camera-relative, x and z, its side in
  * metres, and 1 while it is on the card, else 0.
  */
-export const ROOF_AT = WATER_PATHS + 4 * MAX_WATER_MARKS;
+export const ROOF_AT = SECTION.roof;
 /**
  * fCast: the unit vector toward the light the shadow cascades are cast from this frame, and how strongly it casts, 0 to
  * 1 (sky.ts `castLight`): the true sun by day, when its strength is fSun.w, and the moon by night. One light owns the
  * cascades at a time, and whichever owns them takes their shade (surface.ts `keyShade`).
  */
-export const CAST_AT = ROOF_AT + 4;
+export const CAST_AT = SECTION.cast;
 /**
  * fLamp, fLampColor, fLampShadow and fLampWay: the street lamp that lights as a light this frame (lamp.ts), its lens
  * camera-relative and the range of its light (0 for no lamp), its light a metre off and the layer of the shadow array
  * its map is in (-1 for none), the matrix from camera-relative space to its map's clip space, and the way its head
  * faces out over the road along the ground, x and z.
  */
-export const LAMP_AT = CAST_AT + 4;
+export const LAMP_AT = SECTION.lamp;
 /**
  * fGlass: 1 where the frame's opaque pass has samples for a vehicle's glass to cover a share of (vehicle-glass.ts), 0
  * where it is drawn without, as a supersampled light target is.
  * fShore: 1 where the frame has a sea and the camera is out of the water, so the lit ground knows its height over the
  * sea from its own and is wet just over it (bank.ts shoreWet), else 0. Its other lanes are free.
  */
-export const GLASS_AT = LAMP_AT + 28;
-export const SHORE_AT = GLASS_AT + 4;
+export const GLASS_AT = SECTION.glass;
+export const SHORE_AT = SECTION.shore;
 /**
  * fDrops: the supply drops' casts in the sky (supply-sky.ts). Two lanes a streak, four streaks: the unit way to its
  * head from the eye and its strength, then the unit way to where its tail ends and its tier's colour as 0xRRGGBB. Then
  * a lane for each obelisk's place in fEyes: the way its cast's bolt runs from the knot along the ground (x and z, a
  * unit), how strongly it flashes, 0 to 1, and which strike it is.
  */
-export const DROPS_AT = SHORE_AT + 4;
-export const DROP_STREAKS = 4;
-export const DROP_LANES = DROP_STREAKS * 2 + 3;
+export const DROPS_AT = SECTION.drops;
 /**
  * fOptic and fPhosphor, what a visor does to the picture (D1080): fOptic's mode (OPTIC_NONE, OPTIC_NIGHT), the grain the
  * finish adds where it draws (0 for none), a seed that moves it each frame, and 0; fPhosphor the colour night vision
  * shows its grey in. All zero for none.
  */
-export const OPTIC_AT = DROPS_AT + DROP_LANES * 4;
+export const OPTIC_AT = SECTION.optic;
 export const OPTIC_NONE = 0;
 export const OPTIC_NIGHT = 1;
 export const OPTIC_HEAT = 2;
-export const FRAME_FLOATS = OPTIC_AT + 8;
+export const FRAME_FLOATS = SECTION.end;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
