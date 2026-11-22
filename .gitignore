@@ -36,12 +36,7 @@ artifacts/
 *.cpuprofile
 *.heapprofile
 
-# Local agent state is not project documentation
-AGENTS.md
-agents.md
-AGENT.md
-agent.md
-CLAUDE.md
+# Local agent state. AGENTS.md and CLAUDE.md at the root are tracked: they say how to work here.
 MEMORY.md
 memory.md
 .codex/
