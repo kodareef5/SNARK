@@ -8,7 +8,7 @@ import { CreatureContacts } from "./creature-combat.ts";
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import { withContent, type Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_EMOTE, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_THROW, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { Build } from "./build.ts";
@@ -74,6 +74,7 @@ import { Items } from "./items.ts";
 import { COMMAND_FAMILIES } from "./commands/families.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
 import { Persistence, type LoadReport } from "./persist/persistence.ts";
+import { Loose } from "./loose.ts";
 import { Projectiles } from "./projectiles.ts";
 import { Clouds } from "./clouds.ts";
 import type { ModuleDef } from "./api/module.ts";
@@ -224,6 +225,8 @@ export interface Host {
   readonly emotes: Emotes;
   readonly feces: Feces;
   readonly eggs: Eggs;
+  /** Things thrown from the hand, in flight (server/loose.ts). */
+  readonly loose: Loose;
   readonly balls: Balls;
   /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
   readonly mounts: Mounts;
@@ -848,6 +851,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
+  const loose = new Loose({ world, game, records, items, combat, death });
   // A sight's zero lifts its flying rounds (D1083).
   projectiles.zero = (c) => gaze.zeroOf(c);
   // Every shot and blast, hit or miss, is heard by Cast's people near it.
@@ -1296,6 +1300,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Combat resolves this tick's swings and shots now that every body has moved.
     combat.step();
     projectiles.step();
+    lane.enter();
+    loose.step();
+    lane.leave();
     clouds.step();
     parts.mark(PART.combat);
     creatures.step(tick);
@@ -1627,6 +1634,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     emotes,
     feces,
     eggs,
+    loose,
     balls,
     mounts,
     overhead,
@@ -1703,7 +1711,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CARRY, (c, r) => carry.command(c, r));
   game.handle(CMD_EMOTE, (c, r) => emotes.command(c, r));
-  game.handle(CMD_TAKE, (c, r) => eggs.take(c, r));
+  game.handle(CMD_TAKE, (c, r) => {
+    const which = r.u32();
+    if (r.overflow) return RESULT_INVALID;
+    const took = loose.take(c, which);
+    return took >= 0 ? took : eggs.take(c, which);
+  });
+  game.handle(CMD_THROW, (c) => loose.command(c));
   game.handle(CMD_TRAVEL, (c, r) => {
     const to = r.u16();
     const at = r.u32();

@@ -84,8 +84,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079); CMD_MARK, a
  * creature spotted for the tribe, and its mark (MARK_SPOT, D1082).
  * 43: an eleventh button, BTN_VISOR, a visor held up, which the server takes as the proof of its gaze (D1084).
+ * 44: CMD_THROW, the held thing thrown as a loose body, and CMD_TAKE taking up a bag of one stack (server/loose.ts).
  */
-export const PROTOCOL_VERSION = 43;
+export const PROTOCOL_VERSION = 44;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -376,7 +377,7 @@ export const CMD_CARRY = 27;
 export const CARRY_PICK_UP = 0;
 export const CARRY_DROP = 1;
 export const CARRY_THROW = 2;
-/** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
+/** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg, or (44) a bag of one stack. */
 export const CMD_TAKE = 28;
 /**
  * Protocol 12. Crafting at a station: item u16, count u8. Queued on the station the session has open, made from what lies in
@@ -442,6 +443,11 @@ export const GAZE_FARTHEST = 8000;
  * MARK_SPOT where it is for SPOT_TICKS, SPOTS_MOST a tribe, the oldest let go first. A survivor with no tribe is denied.
  */
 export const CMD_MARK = 38;
+/**
+ * Throws one of the held thing along the session's look (server/loose.ts): it flies as a loose body, strikes the first
+ * body it meets while fast, and comes to rest as a bag of one stack, which CMD_TAKE takes up. No arguments.
+ */
+export const CMD_THROW = 39;
 export const SPOT_TICKS = 1800;
 export const SPOTS_MOST = 8;
 export const VEHICLE_INSPECT = 0;

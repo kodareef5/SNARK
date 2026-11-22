@@ -33,7 +33,7 @@ import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { GLIDE_DIVE, JET_CUIRASS, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_GAZE, CMD_MARK, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
+import { CMD_GAZE, CMD_MARK, CMD_THROW, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
 import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
@@ -75,7 +75,8 @@ import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSessio
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import { youngScale } from "../../shared/sim/breeding.ts";
-import { waitWords } from "./ui/inventory.ts";
+import { itemLabel, waitWords } from "./ui/inventory.ts";
+import { BAG } from "./render/dropped.ts";
 import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
@@ -343,6 +344,7 @@ export class App {
     this.stream = stream;
     this.session = session;
     this.shown = reg;
+    this.bagKind = reg.index.get(BAG) ?? -1;
     this.pack = pack;
     this.seatedAim = new SeatedAim(reg, pack);
     session.shotOrigin = (out, tick, yaw, pitch) => {
@@ -437,6 +439,8 @@ export class App {
   private usePulse = 0;
   /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
   private eggAimed = -1;
+  /** The content index of a bag (client/core/render/dropped.ts), or -1. */
+  private readonly bagKind: number;
   /** The obelisk terminal under the crosshair within reach, or -1. */
   private terminalAimed = -1;
   private eggKept = false;
@@ -594,6 +598,11 @@ export class App {
         if (down && !repeat && i >= 0) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_LIGHTS); w.u32(makeHandle(this.session.driving, r.gen[i]!)); });
         return true;
       }
+    }
+    // Q on foot throws what is in hand along the look (server/loose.ts). Building and placing a car take Q first.
+    if (code === "KeyQ" && this.session.driving < 0 && this.ui.wantsPointerLock) {
+      if (down && !repeat) this.session.command(CMD_THROW, () => {});
+      return true;
     }
     // Elsewhere K is the orbit camera, where the view lets it (frame()).
     if (code === "KeyK") {
@@ -1177,6 +1186,12 @@ export class App {
         return seats.some((seat, k) => !seat.driver && !taken(k)) ? `E  ride ${name} as a passenger` : "Every seat is taken";
       }
       if ((r.flags[hit]! & VIEW_FLAG_PROP) !== 0) {
+        // A bag of one stack, as a thing thrown or let fall lies, is taken up whole (server/loose.ts); F still opens it.
+        const lying = r.kind[hit] === this.bagKind ? r.gear[hit * GEAR_COUNT + GEAR_HELD]! : 0;
+        if (lying !== 0) {
+          this.eggAimed = r.id[hit]!;
+          return `E  take ${itemLabel(this.reg, lying)}`;
+        }
         // On a prop, a nonzero grown tick marks a fertilised egg. An egg that is an item is taken up.
         const left = waitWords(Math.max(0, Math.ceil((r.grown[hit]! - s.serverTick) / TICK_RATE)));
         if (this.reg.propItem[r.kind[hit]!] !== 0) {

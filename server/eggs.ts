@@ -5,7 +5,6 @@
 // the genome is ever sent: an egg is seen by its kind, its name and when it will hatch.
 
 import { CHUNK_SIZE } from "../shared/coords.ts";
-import type { BitReader } from "../shared/net/codec.ts";
 import { RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_OK } from "../shared/net/protocol.ts";
 import { EGG_LIMIT, EGG_LIMIT_RANGE } from "../shared/sim/breeding.ts";
 import { stanceEye } from "../shared/sim/character.ts";
@@ -85,10 +84,8 @@ export class Eggs {
     return this.propOf[item] ?? 0;
   }
 
-  /** CMD_TAKE: an egg the session looks at, into its bag. */
-  take(c: Client, r: BitReader): number {
-    const which = r.u32();
-    if (r.overflow) return RESULT_INVALID;
+  /** CMD_TAKE: an egg the session looks at, at entity index `which`, into its bag. */
+  take(c: Client, which: number): number {
     const { world, records } = this.ctx;
     const ents = world.ents;
     const me = records.byPid.get(c.pid);
