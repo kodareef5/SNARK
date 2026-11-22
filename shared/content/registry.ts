@@ -96,6 +96,10 @@ export interface Registry {
   /** Radius and height of a species or prop. Zero otherwise. */
   readonly bodyRadius: Float32Array;
   readonly bodyHeight: Float32Array;
+  /** A species' body as others on foot meet it (SpeciesDef.footprint): back, front and radius. A circle of its radius where not given. */
+  readonly footBack: Float32Array;
+  readonly footFront: Float32Array;
+  readonly footRadius: Float32Array;
   /** 1 for box kinds that bodies pass through (bushes). */
   readonly soft: Uint8Array;
   readonly nodeHits: Float32Array;
@@ -817,6 +821,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const tamedMove: (MoveParams | null)[] = new Array(n).fill(null);
   const drag = new Float32Array(n);
   const mass = new Float32Array(n);
+  const footBack = new Float32Array(n);
+  const footFront = new Float32Array(n);
+  const footRadius = new Float32Array(n);
   const carriable = new Uint8Array(n);
   const feces = new Uint16Array(n);
   const eggChance = new Float32Array(n);
@@ -927,6 +934,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
         alarm[i] = d.alarm ?? 0;
         drag[i] = d.drag ?? 0;
         mass[i] = d.mass ?? 0;
+        footBack[i] = d.footprint?.back ?? -d.radius;
+        footFront[i] = d.footprint?.front ?? d.radius;
+        footRadius[i] = d.footprint?.radius ?? d.radius;
         if (d.carriable) carriable[i] = 1;
         eggChance[i] = d.eggChance ?? 0;
         takes[i] = Float32Array.from(DAMAGE_TYPES, (t) => d.takes?.[t] ?? 1);
@@ -1097,7 +1107,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
   const motion = defs.map((d) => (d?.type === "structure" && d.motion ? d.motion : null));
-  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, charge, charges, ballFull, ballEmpty, takeOnly, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
+  return { registry: { defs, ids, index, hash, motion, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, coreHash: hash, own: NONE, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, combat, vehicle, stack, weight, spoilTicks, charge, charges, ballFull, ballEmpty, takeOnly, bodyRadius, bodyHeight, footBack, footFront, footRadius, soft, nodeHits, wearSlot, glide, glideTicks, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;

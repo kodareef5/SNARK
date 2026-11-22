@@ -162,6 +162,7 @@ const SPECIES = {
   tamedSprintMul: f("number", "the tamed running speed"),
   drag: f("number", "drag weight"),
   mass: f("number", "mass"),
+  footprint: f("facet", "its body as others on foot meet it: back, front and radius along its facing"),
   carriable: f("switch", "picked up and thrown by a player"),
   feces: f("text", "the creature's feces item", { refs: { "": "item/feces" } }),
   eggChance: f("number", "the chance of an egg in place of feces"),
@@ -447,7 +448,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "blood", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "swimDepth", "swimEyeHeight", "stamina", "food", "slots", "keeps", "fists", "bite", "roar", "combat", "camera", "drops", "corpse", "takes", "zones", "killXp", "temper", "blood", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedWalkSpeed", "tamedSwimSpeed", "tamedSprintMul", "drag", "mass", "footprint", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },

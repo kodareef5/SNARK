@@ -133,6 +133,12 @@ export interface SpeciesDef extends Named {
   readonly roar?: { readonly range: number; readonly maxDrag: number; readonly cooldown: number; readonly immunity: number; readonly interrupt: number };
   /** Its sprintMul once tamed. Defaults to its sprintMul. */
   readonly tamedSprintMul?: number;
+  /**
+   * Its body as others on foot meet it (shared/sim/blockers.ts): along its facing from `back` to `front` metres from its
+   * origin, `radius` across, at full size; its height is its collision height. Measured from its rig's torso and legs,
+   * the head and tail left to the pose. Omitted, a circle of its radius.
+   */
+  readonly footprint?: { readonly back: number; readonly front: number; readonly radius: number };
   /** What it weighs to a creature that carries or drags it (the reference's drag weight), and its mass. */
   readonly drag?: number;
   readonly mass?: number;

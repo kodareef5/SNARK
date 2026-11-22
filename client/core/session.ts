@@ -1,3 +1,5 @@
+import { Blockers } from "../../shared/sim/blockers.ts";
+import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
 // It runs ahead of the server so input T arrives before tick T, and steers its tick clock to keep the reported margin small and positive.
@@ -619,6 +621,12 @@ export class ClientSession {
   /** The vehicles of the newest snapshot, as its view carries them, and the tick they were read at. */
   private readonly footVehicles = new FootVehicles();
   private footTick = -1;
+  /** The bodies the own body meets in its step, and the widest any reaches; -1 until measured. */
+  private readonly blockers = new Blockers();
+  private blockReach = -1;
+  /** Per tick stepped, the snapshot its input acknowledges, which its step meets the bodies in. */
+  private readonly blockAck = new Uint32Array(HISTORY);
+  private readonly blockAckTick = new Int32Array(HISTORY).fill(-1);
   /** Where each of those stood in that snapshot, and the metres a tick it went over the few before it. */
   private footFrom = new Float64Array(48);
   private footRate = new Float64Array(48);
@@ -1130,8 +1138,10 @@ export class ClientSession {
     else if (combat && this.driving >= 0 || this.own.seatSlot === 0) {
       const p = this.registry.tamedMove[this.own.kind] ?? this.move!;
       this.footBefore.copy(this.own);
+      this.world!.blockers = this.gatherBlockers(t, p);
       if (combat && this.driving >= 0) stepCreature(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, buttons & ~was, p, combat, TICK_DT, true, !pilot);
       else stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, p, TICK_DT);
+      this.world!.blockers = null;
       this.meetVehicles(t, p);
     } else {
       this.own.yaw = inp.yaw[i]!;
@@ -1225,6 +1235,43 @@ export class ClientSession {
       list.z[i] = this.footFrom[i * 3 + 2]! + this.footRate[i * 3 + 2]! * ahead;
     }
     this.feet!.meet(this.footBefore, this.own, p, list);
+  }
+
+  /**
+   * The bodies the own body meets stepping tick `t` (shared/sim/blockers.ts), as the snapshot it first stepped `t` with
+   * showed them: the snapshot its input for `t` acknowledges, which the server meets them in too (server/blocking.ts
+   * inView), so that walking into a body is predicted to the bit, still or moving, and a replay meets them as the first
+   * step did. Null where none is near.
+   */
+  private gatherBlockers(t: number, p: MoveParams): Blockers | null {
+    const k = t & (HISTORY - 1);
+    if (this.blockAckTick[k] !== t) {
+      this.blockAckTick[k] = t;
+      this.blockAck[k] = this.needFull ? 0 : this.latestSnapshot;
+    }
+    const v = this.views.find(this.blockAck[k]!) ?? this.drawn.find(this.latestSnapshot);
+    if (!v) return null;
+    const reg = this.registry, list = this.blockers;
+    list.clear();
+    if (this.blockReach < 0) {
+      let reach = 0;
+      for (let j = 0; j < reg.footRadius.length; j++) if (reg.footRadius[j]! > 0) reach = Math.max(reach, Math.abs(reg.footBack[j]!), Math.abs(reg.footFront[j]!), reg.footRadius[j]!);
+      this.blockReach = reach;
+    }
+    const own = this.driving >= 0 ? this.driving : handleIndex(this.ownHandle);
+    let team = 0;
+    for (let j = 0; j < v.count; j++) if (v.id[j] === own) { team = v.team[j]!; break; }
+    const x = this.own.x, z = this.own.z, far = this.blockReach + p.radius + 1;
+    for (let j = 0; j < v.count; j++) {
+      const id = v.id[j]!, kind = v.kind[j]!;
+      if (id === own || !(reg.footRadius[kind]! > 0) || reg.vehicle[kind] || (v.flags[j]! & (F_PROP >>> 1)) !== 0) continue;
+      if ((v.cue[j]! & (CUE_OUT | CUE_HELD | CUE_DEAD)) !== 0 || v.seat[j] !== 0 || v.grown[j] !== 0) continue;
+      if (team !== 0 && v.team[j] === team) continue;
+      const bx = dequantX(v.qx[j]!), bz = dequantX(v.qz[j]!);
+      if (Math.abs(bx - x) > far || Math.abs(bz - z) > far) continue;
+      list.add(reg, id, kind, bx, dequantY(v.qy[j]!), bz, (v.yaw[j]! * TAU) / 1024, (v.anim[j]! & 15) !== 0, this.own.kind, x, this.own.y, z, this.own.yaw);
+    }
+    return list.count > 0 ? list : null;
   }
 
   private sendInputs(newest: number, sampled: number): void {

@@ -1,6 +1,7 @@
 // One fixed step for one upright capsule. Server and client run this same code, and the same state and input give the same bits.
 // A position is committed only if capsuleFree accepts it, and a substep moves at most a radius sideways, so no input crosses a wall.
 
+import { BLOCK_SOFT_SPEED, blockOut, pushOut, turnFree } from "./blockers.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
@@ -595,6 +596,9 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     let turn = ((yaw - b.yaw + 32768) & 0xffff) - 32768;
     if (turn > rate) turn = rate;
     else if (turn < -rate) turn = -rate;
+    // A long body does not swing itself into a body standing still (shared/sim/blockers.ts).
+    const bodies = w.blockers;
+    if (bodies && bodies.count > 0 && b.mode === MODE_WALK && !turnFree(bodies, b.kind, b.x, b.y, b.z, b.yaw, (b.yaw + turn) & 0xffff, stanceHeight(p, b.stance))) turn = 0;
     b.yaw = (b.yaw + turn) & 0xffff;
   }
   yaw = b.yaw;
@@ -847,6 +851,13 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
           vy = 0;
         }
       }
+    }
+
+    // Bodies: pushed level out of any it walks into (shared/sim/blockers.ts), before the structures, which have the last say.
+    const bodies = w.blockers;
+    if (bodies && bodies.count > 0 && pushOut(bodies, b.kind, nx, ny, nz, b.yaw, height, (BLOCK_SOFT_SPEED * scale) / n)) {
+      nx = blockOut.x < r ? r : blockOut.x > maxX ? maxX : blockOut.x;
+      nz = blockOut.z < r ? r : blockOut.z > maxZ ? maxZ : blockOut.z;
     }
 
     // Structures: push out along the shortest exit, a few rounds.

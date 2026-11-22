@@ -2,6 +2,7 @@
 // parts are met in shared/world/convex.ts, and the ground as its triangles are drawn.
 // capsuleFree is the authority on legal space. Movement, spawning, mounting and teleporting must all end in a position it accepts.
 
+import type { Blockers } from "../sim/blockers.ts";
 import { sortU32 } from "../sort.ts";
 import { capsuleHull, hullPush } from "./convex.ts";
 import { frame, frameOf } from "./frame.ts";
@@ -16,6 +17,11 @@ export interface CollisionWorld {
   readonly structs: StructureStore;
   /** Resource nodes near a body, as boxes like structures (shared/world/nodes.ts). */
   readonly nodes?: StructureStore;
+  /**
+   * The bodies a walker stepping now meets (shared/sim/blockers.ts), set by its caller around its step and cleared after.
+   * Only a body walking meets them; the ragdolls and every other query pass through.
+   */
+  blockers?: Blockers | null;
 }
 
 /**

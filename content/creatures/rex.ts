@@ -21,6 +21,7 @@ export const REX: readonly Def[] = [
     mesh: "core:rex", skeleton: "rex", color, regions,
     // It stands 5.76 m to the top of its head. The bite reaches its snout, 6.0 m ahead of its hips.
     radius: 1.7, height: 5.6, eyeHeight: 4.9, mass: 8300, drag: 550,
+    footprint: { back: -2.4, front: 3.0, radius: 1.45 },
     walkSpeed: 2.8, sprintMul: 3, swimSpeed: 3, turn: 49, strafe: false, jumpSpeed: 0,
     fists: 62, bite: { harvest: "carrion", reach: 6.2, ticks: 23, lands: 10, stamina: 12 },
     roar: { range: 12, maxDrag: 200, cooldown: 8, immunity: 12, interrupt: 1 },

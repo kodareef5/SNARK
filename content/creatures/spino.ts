@@ -30,6 +30,7 @@ export const SPINO: readonly Def[] = [
     color: tone(0x728a79),
     regions: SPINO_REGIONS,
     radius: 1.3,
+    footprint: { back: -2.5, front: 3.9, radius: 0.95 },
     height: 5.19,
     eyeHeight: 3.43,
     mass: 6200,

@@ -1243,6 +1243,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
   const lane = game.lane;
+  game.blockBodies = () => [creatures.awake, creatures.awakeCount];
   game.onStep = (tick) => {
     creative.step(tick);
     gaze.step(tick);
