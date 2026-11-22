@@ -54,6 +54,8 @@ export class Emotes {
   played = 0;
   paired = 0;
   private readonly playing = new Map<number, Playing>();
+  /** The step's own list of what plays, walked while some are stopped: filled anew at each walk. */
+  private readonly walk: Playing[] = [];
   /** Bodies that are not survivors but may emote: Cast's people (server/cast/stage.ts), by entity index. */
   readonly people = new Set<number>();
   /** Invites by the body invited: from whom, which emote, until when. */
@@ -143,7 +145,11 @@ export class Emotes {
   step(): void {
     const world = this.ctx.world, ents = world.ents, tick = world.tick;
     for (const [to, i] of this.invites) if (i.until <= tick) this.invites.delete(to);
-    for (const p of [...this.playing.values()]) {
+    const playing = this.walk;
+    playing.length = 0;
+    for (const p of this.playing.values()) playing.push(p);
+    for (let k = 0, n = playing.length; k < n; k++) {
+      const p = playing[k]!;
       const e = p.e;
       const def = emoteOf(p.n)!;
       if (ents.gen[e] !== p.gen || !this.free(e, def, true) || tick > p.end) {
@@ -152,6 +158,7 @@ export class Emotes {
       }
       if (p.partner >= 0 && ents.yaw[e] !== p.yaw) ents.yaw[e] = p.yaw;
     }
+    playing.length = 0;
   }
 
   // --- Within -------------------------------------------------------------------------------------------------------

@@ -2,6 +2,9 @@
 // `vent` is (SpeciesDef.feces). A grown female whose species lays in place of feces (SpeciesDef.eggChance, the dodo's
 // 13%) now and then lays an unfertilised egg there instead, wild or tamed, unless EGG_LIMIT of them lie near. Only a
 // creature that is awake goes: one in stasis, with nobody near, does not, as in ARK.
+//
+// A creature is given its first time within a second of waking, on the tick a turn that goes round the entity store once a
+// second comes to its slot. The turn is a number and the creatures that woke are a list, so no slot is looked at for it.
 
 import { poseCreatureOn } from "../shared/anim/creature.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
@@ -16,6 +19,7 @@ import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { Rng } from "../shared/rng.ts";
 import { BAG_TICKS } from "./death.ts";
 import type { Eggs } from "./eggs.ts";
+import type { Signal } from "./signal.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -31,9 +35,13 @@ export interface FecesContext {
   readonly deadlines: DeadlineHeap;
   readonly rules: Rules;
   readonly eggs: Eggs;
+  /** Creatures' signal that a body woke (Creatures.onWake). */
+  readonly woke: Signal<[e: number]>;
   /** Puts a prop's body in the world at its record's position, and starts its time (Death.place). */
   place(rec: EntityRecord): void;
 }
+
+const ascending = (a: number, b: number): number => a - b;
 
 export class Feces {
   /** Counters: feces left, and eggs laid in place of feces. */
@@ -41,10 +49,14 @@ export class Feces {
   laid = 0;
   readonly ctx: FecesContext;
   private readonly rng: Rng;
-  /** Per pid of a creature that is awake, the tick it next goes. A creature not here is given a time when next seen awake. */
+  /** Per pid of a creature that is awake, the tick it next goes. A creature not here is given a time when its turn comes after it wakes. */
   private readonly next = new Map<number, number>();
-  /** The next entity index the scan for creatures with no time looks at. */
+  /** The entity slot the turn stands at: it passes a thirtieth of the store each tick. */
   private cursor = 0;
+  /** Slots of creatures that woke and whose turn has not come since, in no order. */
+  private readonly woken: number[] = [];
+  /** How far past the cursor each slot whose turn comes this tick is. */
+  private readonly turn: number[] = [];
   /** Per species, whether it defecates or lays in place of it. */
   private readonly goes: Uint8Array;
   private readonly heap: number;
@@ -60,6 +72,15 @@ export class Feces {
     const reg = ctx.world.reg;
     this.goes = Uint8Array.from(reg.defs, (d, i) => (d?.type === "species" && (reg.feces[i] !== 0 || reg.eggChance[i]! > 0) ? 1 : 0));
     this.heap = reg.index.get("core:feces") ?? 0;
+    // Whatever is awake already waits its turn as if it had just woken.
+    const ents = ctx.world.ents;
+    for (let e = 0; e < ents.cap; e++) if ((ents.flags[e]! & F_AWAKE) !== 0) this.woke(e);
+    ctx.woke.on((e) => this.woke(e));
+  }
+
+  /** Body `e` woke: if its species goes, it is given a time when the turn next comes to its slot. */
+  private woke(e: number): void {
+    if (this.goes[this.ctx.world.ents.kind[e]!] !== 0) this.woken.push(e);
   }
 
   /** A deadline of its kind came due. A stale one, or one for a creature that has since gone to sleep, does nothing. */
@@ -75,13 +96,31 @@ export class Feces {
     this.time(pid);
   }
 
-  /** Each tick, after breeding's: a thirtieth of the entity store is looked at, so each creature awake is given a time within a second. */
+  /**
+   * Each tick, after breeding's: the turn passes a thirtieth of the entity store, and each creature that woke since the
+   * turn last passed its slot is given a time as it does, in the order of their slots from where the turn stood.
+   */
   step(_tick: number): void {
     const ents = this.ctx.world.ents;
-    const n = Math.ceil(ents.cap / TICK_RATE);
-    for (let k = 0; k < n; k++) {
-      const e = this.cursor;
-      this.cursor = e + 1 >= ents.cap ? 0 : e + 1;
+    const cap = ents.cap;
+    const n = Math.ceil(cap / TICK_RATE);
+    const from = this.cursor;
+    this.cursor = (from + n) % cap;
+    const woken = this.woken;
+    if (woken.length === 0) return;
+    const turn = this.turn;
+    turn.length = 0;
+    for (let k = woken.length - 1; k >= 0; k--) {
+      const e = woken[k]!;
+      const past = e >= from ? e - from : e - from + cap;
+      if (past >= n) continue;
+      turn.push(past);
+      woken[k] = woken[woken.length - 1]!;
+      woken.length--;
+    }
+    turn.sort(ascending);
+    for (let k = 0; k < turn.length; k++) {
+      const e = (from + turn[k]!) % cap;
       if ((ents.flags[e]! & (F_ALIVE | F_AWAKE | F_PROP | F_PLAYER)) !== (F_ALIVE | F_AWAKE) || this.goes[ents.kind[e]!] === 0) continue;
       const pid = ents.pid[e]!;
       if (pid !== 0 && !this.next.has(pid)) this.time(pid);

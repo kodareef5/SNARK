@@ -9,13 +9,13 @@ import { occupantPose, occupantSeat, createOccupantSeat } from '../shared/anim/o
 import { AnimState, bodySeed } from '../shared/anim/pose.ts';
 import { fitSeatControls } from '../shared/anim/seat-controls.ts';
 import { boneToModel, Solved, solve } from '../shared/anim/skeleton.ts';
-import { CHUNK_SIZE, TICK_DT, TICK_RATE } from '../shared/coords.ts';
+import { CHUNK_SIZE, TICK_DT, TICK_RATE, chunkAt } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { quatRotate } from '../shared/math/quat.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
 import { BTN_JUMP, Body, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
-import { F_ALIVE, F_GROUNDED, F_PLAYER, F_PROP } from '../shared/sim/entities.ts';
+import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP } from '../shared/sim/entities.ts';
 import { stepVehicleBody, vehicleDoor, withVehicleDoor, vehicleStep } from '../shared/sim/vehicle-body.ts';
 import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import { isBoatVehicle, isRotorVehicle, isWheelVehicle, type BoatVehicleDefinition, type VehicleDefinition, type VehicleSeat, type VehicleState } from '../shared/sim/vehicle.ts';
@@ -29,7 +29,7 @@ import { carMeetsCapsule } from '../shared/world/vehicle.ts';
 import { vehiclePointVelocity } from '../shared/sim/vehicle-rigid.ts';
 import type { Connection } from '../shared/net/transport.ts';
 import type { Items } from './items.ts';
-import type { VehicleCollisionPair, VehicleCollisionParty, VehicleContacts } from './vehicle-contacts.ts';
+import { STILL, type VehicleCollisionPair, type VehicleCollisionParty, type VehicleContacts } from './vehicle-contacts.ts';
 import type { Creatures } from './creatures.ts';
 import type { Client, GameServer } from './game.ts';
 import { Occupancy, type OccupancyAction, type OccupancyApproval, type OccupancyEffect } from './occupancy.ts';
@@ -61,7 +61,19 @@ function boatRouteLength(def: BoatVehicleDefinition): number | undefined {
   return def.boarding ? Math.hypot(2 * def.spec.halfLength, def.spec.height, 2 * def.spec.halfWidth) : undefined;
 }
 
-interface HostSeat { entity: number; handle: number; definition: VehicleDefinition; last: Point & { vx: number; vy: number; vz: number }; beat?: RestingBeat }
+interface HostSeat {
+  pid: number; entity: number; handle: number; definition: VehicleDefinition; last: Point & { vx: number; vy: number; vz: number }; beat?: RestingBeat;
+  /** Its place among the vehicles in the order they were registered, which is the order the tick walks the active ones in. */
+  order: number;
+  /** Off the active list: at rest with nothing to do and nothing near, it is not looked at until something wakes it. */
+  asleep: boolean;
+  /** The tick it last had anything to do or was touched, and the tick of its last heartbeat that left it as it was. */
+  busyAt: number; beatAt: number;
+  /** The tick it was last driven, or stepped out of the pose it had: what stands asleep near it must then be awake to meet it. */
+  movedAt: number;
+  /** While asleep: the chunk it is counted in, and its token in History. */
+  chunk: number; epoch: number;
+}
 interface Scope { epoch: number; request: number; connection: Connection | null }
 export interface UrbanIncident { action: number; tick: number; offender: number; victim: number; vehicle: number }
 /** Seat tables are pruned as hosts disappear and actors go idle; these only bound a pathological world. */
@@ -83,6 +95,11 @@ const formOf = (movement: VehicleDefinition['movement']): { version: number; ext
   movement === 'rotor' ? { version: 5, extra: ROTOR_FIELDS } : movement === 'boat' ? { version: 9, extra: HULL_FIELDS } : { version: 8, extra: HULL_FIELDS };
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
 const REST_TICKS = 30;
+/** Ticks a vehicle has nothing to do before it sleeps: two heartbeats, and longer than History keeps. */
+const SLEEP_AFTER = 2 * REST_TICKS;
+/** Metres past the reach of the contact sweeps within which nothing may be awake round a sleeping vehicle. */
+const SLEEP_MARGIN = 16;
+const still = (n: number): boolean => Math.abs(n) < 1e-3;
 
 /** Metres a second a car goes at, at least, for a door standing open on it to strike, and how open the door must stand. */
 export const DOOR_STRIKE_SPEED = 3;
@@ -103,11 +120,35 @@ export class Urban {
   /** Diagnostics, not replicated gameplay state: vehicles nobody drives stepped, and of those heartbeats the ones answered by the last (server/vehicle-rest.ts). */
   stepped = 0;
   restingKept = 0;
+  /** Diagnostics: vehicles whose health was looked at before a step, and vehicles asleep now. */
+  observed = 0;
+  asleepCount = 0;
   /** Bounded live incident feed; production save components are a separate follow-up. */
   readonly incidents: UrbanIncident[] = [];
   private readonly ctx: UrbanContext;
   private readonly hosts = new Map<number, HostSeat>();
+  /**
+   * The vehicles the tick looks at, in the order they were registered. A vehicle sleeps, and leaves the list, once it has
+   * rested with nothing to do for SLEEP_AFTER ticks where no chunk near it is awake; it wakes, and is listed again in its
+   * place, when anything touches it (`touch`), moves it or moves near it, its health is settled, a chunk near it wakes,
+   * a piece or the ground near it changes, or its body leaves the world.
+   */
+  private readonly active: HostSeat[] = [];
+  /** Where the walk of `active` under way stands, moved as vehicles are listed and delisted during it; -1 when none is. */
+  private cursor = -1;
+  private orders = 0;
+  /** Per entity slot, 1 while the vehicle there sleeps. Per chunk, the vehicles asleep in it, and those asleep within `ring` chunks of it. */
+  private dozing: Uint8Array;
+  private readonly asleepIn: Uint16Array;
+  private readonly nearAsleep: Uint16Array;
+  /** Chunks round a sleeping vehicle that must be asleep: the contact sweeps' reach and a margin, in whole chunks. 0 until first asked. */
+  private ring = 0;
+  /** The tick vehicles were last captured for contacts, and the length of the ground's log of changes then. */
+  private capturedAt = -1;
+  private terrainSeen = 0;
   private readonly scopes = new Map<number, Scope>();
+  /** The step's own list of the actors it walks while it retires them: filled anew at each walk. */
+  private readonly walkPids: number[] = [];
   /** The entities sessions drive this tick. */
   private readonly drivers = new Set<number>();
   /** Drive intents of the world's people (Cast's drivers, server/cast/drive.ts): a vehicle's steer, throttle and buttons
@@ -156,6 +197,21 @@ export class Urban {
 
   constructor(ctx: UrbanContext) {
     this.ctx = ctx;
+    const ents = ctx.world.ents, chunks = ctx.world.dims.chunksX * ctx.world.dims.chunksZ;
+    this.dozing = new Uint8Array(ents.cap);
+    ents.onGrow.push((cap) => { const wide = new Uint8Array(cap); wide.set(this.dozing); this.dozing = wide; });
+    this.asleepIn = new Uint16Array(chunks);
+    this.nearAsleep = new Uint16Array(chunks);
+    this.terrainSeen = ctx.world.hf.changes.length;
+    // Before History's own listener, so a sleeping vehicle that is moved is tracked from where it stood.
+    ents.onPosition.unshift((e, fromX, fromY, fromZ) => this.moved(e, fromX, fromY, fromZ));
+    ctx.creatures.onChunkWake.on((chunk) => { if (this.nearAsleep[chunk] !== 0) this.stir(chunk); });
+    ctx.creatures.onRemove.on((e) => { if (this.dozing[e] !== 0) this.touchBody(e); });
+    // A body set down among sleepers is met by them as anything newly placed is.
+    ctx.creatures.onAdopt.on((e) => { if (this.asleepCount > 0 && this.nearAsleep[ents.chunk[e]!] !== 0) this.stir(ents.chunk[e]!); });
+    const shaped = (chunk: number): void => { if (this.nearAsleep[chunk] !== 0) this.stir(chunk); };
+    ctx.world.structs.onShape.push(shaped);
+    ctx.world.nodes?.onShape.push(shaped);
     this.seating = new Seating(ctx.world, ctx.records);
     for (const rig of ctx.rigs) if (rig.rest.length === HUMAN_BONES * 3) this.rests.set(rig.id, Float32Array.from(rig.rest));
     this.occupancy = new Occupancy({
@@ -194,7 +250,10 @@ export class Urban {
     if (known) this.evict(pid);
     if (this.hosts.size >= MAX_HOSTS) return false;
     this.occupancy.addHost(pid, handle, definition.seats);
-    this.hosts.set(pid, { entity: e, handle, definition, last: { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, vx: 0, vy: 0, vz: 0 } });
+    const host: HostSeat = { pid, entity: e, handle, definition, last: { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, vx: 0, vy: 0, vz: 0 },
+      order: ++this.orders, asleep: false, busyAt: world.tick, beatAt: -1, movedAt: world.tick, chunk: 0, epoch: 0 };
+    this.hosts.set(pid, host);
+    this.active.push(host);
     ents.loadBody(e, this.body);
     if (!this.body.vehicle) {
       this.body.vehicle = true;
@@ -324,8 +383,146 @@ export class Urban {
       const c = this.client(effect.actor);
       if (c) c.ownDirty = true;
     }
+    if (host) {
+      if (host.asleep) this.counted(host, -1);
+      else this.delist(host);
+    }
     this.hosts.delete(pid);
     this.impacts.delete(pid); this.hurtAt.delete(pid); this.health.delete(pid); this.pushes.delete(pid);
+  }
+
+  private enlist(host: HostSeat): void {
+    const a = this.active;
+    let lo = 0, hi = a.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (a[mid]!.order < host.order) lo = mid + 1; else hi = mid;
+    }
+    a.splice(lo, 0, host);
+    // One listed at or before where the walk stands has had its turn; one listed after gets it, as it did when every vehicle was walked.
+    if (lo <= this.cursor) this.cursor++;
+  }
+
+  private delist(host: HostSeat): void {
+    const a = this.active;
+    let lo = 0, hi = a.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (a[mid]!.order < host.order) lo = mid + 1; else hi = mid;
+    }
+    if (a[lo] !== host) return;
+    a.splice(lo, 1);
+    if (lo <= this.cursor) this.cursor--;
+  }
+
+  /** How many chunks out from a sleeping vehicle's own everything must be asleep. */
+  private reach(): number {
+    if (this.ring === 0) this.ring = Math.max(1, Math.ceil((2 * (this.contacts?.reach ?? 0) + SLEEP_MARGIN) / CHUNK_SIZE));
+    return this.ring;
+  }
+
+  /** Counts a vehicle into (`by` 1) or out of (-1) the sleepers of its chunk and of the chunks round it. */
+  private counted(host: HostSeat, by: number): void {
+    const { dims } = this.ctx.world, ring = this.reach(), cx = host.chunk % dims.chunksX, cz = (host.chunk - cx) / dims.chunksX;
+    this.dozing[host.entity] = by > 0 ? 1 : 0;
+    this.asleepCount += by;
+    this.asleepIn[host.chunk] = this.asleepIn[host.chunk]! + by;
+    for (let z = Math.max(0, cz - ring); z <= Math.min(dims.chunksZ - 1, cz + ring); z++) {
+      for (let x = Math.max(0, cx - ring); x <= Math.min(dims.chunksX - 1, cx + ring); x++) this.nearAsleep[z * dims.chunksX + x] = this.nearAsleep[z * dims.chunksX + x]! + by;
+    }
+  }
+
+  /** Whether a vehicle with nothing to do may sleep: its health is steady, nobody means to drive or push it, and no chunk near it is awake. */
+  private maySleep(host: HostSeat): boolean {
+    const { world, records, creatures } = this.ctx, ents = world.ents, e = host.entity, pid = host.pid, dims = world.dims;
+    if (!this.contacts || this.drivers.has(e) || this.npcDrive.has(e) || this.pushes.has(pid) || this.held.has(pid)) return false;
+    const vitals = records.byPid.get(pid)?.vitals, hp = vitals?.at(V_HEALTH, world.tick) ?? 0;
+    if (this.health.get(pid) !== hp || (vitals && vitals.at(V_HEALTH, world.tick + 1) !== hp)) return false;
+    const ring = this.reach(), chunk = ents.chunk[e]!, cx = chunk % dims.chunksX, cz = (chunk - cx) / dims.chunksX;
+    for (let z = Math.max(0, cz - ring); z <= Math.min(dims.chunksZ - 1, cz + ring); z++) {
+      for (let x = Math.max(0, cx - ring); x <= Math.min(dims.chunksX - 1, cx + ring); x++) if (creatures.isChunkAwake(z * dims.chunksX + x)) return false;
+    }
+    return true;
+  }
+
+  /** A vehicle that had nothing to do this tick: it sleeps once that has lasted, a heartbeat since has left it as it was, and it may. */
+  private rested(host: HostSeat): void {
+    const { world } = this.ctx;
+    if (host.beatAt <= host.busyAt || world.tick - host.busyAt < SLEEP_AFTER || !this.maySleep(host)) return;
+    // Its chunk went to sleep this tick and took its row: the next capture gives it one, and it sleeps after that.
+    if (!world.history.follows(host.entity)) return;
+    host.asleep = true;
+    host.chunk = world.ents.chunk[host.entity]!;
+    this.delist(host);
+    this.counted(host, 1);
+    host.epoch = world.history.suspend(host.entity);
+  }
+
+  /** Something concerns this vehicle now: it is busy this tick, and awake if it slept. */
+  private touch(host: HostSeat): void {
+    const { world } = this.ctx;
+    host.busyAt = world.tick;
+    if (!host.asleep) return;
+    host.asleep = false;
+    this.counted(host, -1);
+    this.enlist(host);
+    world.history.resume(host.entity, host.epoch);
+    // As it stood through every tick it slept, so this tick's contacts find it as they would have.
+    this.contacts?.seed(host.entity, this.capturedAt);
+  }
+
+  /** `touch` for the vehicle whose body is entity `e`, if it is one. */
+  private touchBody(e: number): void {
+    const host = this.hosts.get(this.ctx.world.ents.pid[e]!);
+    if (host && host.entity === e) this.touch(host);
+  }
+
+  /** For whoever is about to write the columns of the vehicle whose body is `e`: it wakes as it stands if it sleeps, and takes a heartbeat before it sleeps again. */
+  rouse(e: number): void {
+    this.touchBody(e);
+  }
+
+  /** Whether the vehicle whose body is `e` sleeps (server/vehicle-contacts.ts). */
+  asleep(e: number): boolean {
+    return this.dozing[e] !== 0;
+  }
+
+  /** Health of vehicle record `pid` was settled (Survival.onRated): it is looked at before the next step. */
+  rated(pid: number): void {
+    const host = this.hosts.get(pid);
+    if (host) this.touch(host);
+  }
+
+  /** Wakes every vehicle asleep within reach of chunk `chunk`. */
+  private stir(chunk: number): void {
+    const { world } = this.ctx, ents = world.ents, dims = world.dims, ring = this.reach(), cx = chunk % dims.chunksX, cz = (chunk - cx) / dims.chunksX;
+    for (let z = Math.max(0, cz - ring); z <= Math.min(dims.chunksZ - 1, cz + ring); z++) {
+      for (let x = Math.max(0, cx - ring); x <= Math.min(dims.chunksX - 1, cx + ring); x++) {
+        const k = z * dims.chunksX + x;
+        if (this.asleepIn[k] === 0) continue;
+        for (let e = ents.chunkHead[k]!; e >= 0; e = ents.next[e]!) if (this.dozing[e] !== 0) this.touchBody(e);
+      }
+    }
+  }
+
+  /** EntityStore.onPosition: a sleeping vehicle that is moved wakes as it stood, and a body that moves near sleeping ones wakes them. */
+  private moved(e: number, fromX: number, fromY: number, fromZ: number): void {
+    if (this.asleepCount === 0) return;
+    const { world } = this.ctx, ents = world.ents, x = ents.x[e]!, y = ents.y[e]!, z = ents.z[e]!;
+    if (x === fromX && y === fromY && z === fromZ) return;
+    if (this.dozing[e] !== 0) {
+      ents.x[e] = fromX; ents.y[e] = fromY; ents.z[e] = fromZ;
+      this.touchBody(e);
+      ents.x[e] = x; ents.y[e] = y; ents.z[e] = z;
+      return;
+    }
+    // A survivor keeps the chunks round it awake, a prop meets no vehicle, and an awake creature is in an awake chunk.
+    const flags = ents.flags[e]!, vehicle = world.reg.vehicle[ents.kind[e]!];
+    if ((flags & (F_PLAYER | F_PROP)) !== 0 || ((flags & F_AWAKE) !== 0 && !vehicle)) return;
+    // A vehicle at rest moved by a hair on its heartbeat keeps its pose as contacts go by it, and meets nothing.
+    if (vehicle && Math.abs(x - fromX) <= STILL && Math.abs(y - fromY) <= STILL && Math.abs(z - fromZ) <= STILL && this.resting(e)) return;
+    const chunk = chunkAt(world.dims, x, z);
+    if (this.nearAsleep[chunk] !== 0) this.stir(chunk);
   }
 
   private recover(e: number, base?: Point): void {
@@ -461,6 +658,7 @@ export class Urban {
   syncAfterContact(e: number): void {
     const { world } = this.ctx, ents = world.ents, host = this.hosts.get(ents.pid[e]!);
     if (!host || host.handle !== makeHandle(e, ents.gen[e]!)) return;
+    this.touch(host);
     this.note(host);
     for (const seat of host.definition.seats) {
       const pid = this.occupancy.occupant(ents.pid[e]!, seat.id), actor = this.entity(pid);
@@ -475,7 +673,8 @@ export class Urban {
     const { world } = this.ctx, ents = world.ents, def = world.reg.vehicle[ents.kind[e]!];
     if (!def) return;
     if (!(vehicleStep.impactSpeed > 0 || vehicleStep.landSpeed > 0 || vehicleStep.rotorHit || vehicleStep.propHit || vehicleStep.water)) return;
-    const pid = ents.pid[e]!, old = this.impacts.get(pid);
+    const pid = ents.pid[e]!, old = this.impacts.get(pid), host = this.hosts.get(pid);
+    if (host?.asleep) this.touch(host);
     this.impacts.set(pid, {
       speed: Math.max(old?.speed ?? 0, vehicleStep.impactSpeed), rotor: !!old?.rotor || vehicleStep.rotorHit, prop: !!old?.prop || vehicleStep.propHit,
       water: !!old?.water || vehicleStep.water, landing: Math.max(old?.landing ?? 0, vehicleStep.landSpeed),
@@ -485,7 +684,7 @@ export class Urban {
   /** Persist refueling/repair immediately with the ordinary vehicle component. */
   changed(e: number): void {
     const pid = this.ctx.world.ents.pid[e]!, host = this.hosts.get(pid);
-    if (host) { this.observeHealth(host); this.note(host); }
+    if (host) { this.touch(host); this.observeHealth(host); this.note(host); }
     this.save(e);
   }
 
@@ -498,6 +697,7 @@ export class Urban {
 
   /** A local recovery shove releases only the unoccupied car's parking brake for one second. */
   push(e: number, x: number, z: number): void {
+    this.touchBody(e);
     this.pushes.set(this.ctx.world.ents.pid[e]!, { until: this.ctx.world.tick + TICK_RATE, x, z });
   }
 
@@ -584,6 +784,7 @@ export class Urban {
 
   private observeHealth(host: HostSeat): void {
     const { world, records } = this.ctx, ents = world.ents, pid = ents.pid[host.entity]!, v = ents.vrow[host.entity]!;
+    this.observed++;
     const rec = records.byPid.get(pid), hp = rec?.vitals?.at(V_HEALTH, world.tick) ?? 0;
     const before = this.health.get(pid), maximum = rec?.vitals?.max[V_HEALTH] ?? 1;
     if (before !== undefined && hp < before) {
@@ -592,6 +793,7 @@ export class Urban {
       if (isRotorVehicle(host.definition)) ents.vehicleRotorCondition[v] = Math.fround(Math.max(0, ents.vehicleRotorCondition[v]! - lost * .2));
       else ents.vehicleHullCondition[v] = Math.fround(Math.max(0, ents.vehicleHullCondition[v]! - lost));
     }
+    if (before !== hp) host.busyAt = world.tick;
     this.health.set(pid, hp);
   }
 
@@ -752,6 +954,7 @@ export class Urban {
    * wheel; held for half a second, then the car stops.
    */
   drive(vehicle: number, moveX: number, moveZ: number, buttons: number): void {
+    if (this.dozing[vehicle] !== 0) this.touchBody(vehicle);
     this.npcDrive.set(vehicle, { x: moveX, z: moveZ, buttons, t: this.ctx.world.tick });
   }
 
@@ -771,11 +974,17 @@ export class Urban {
   beforeStep(): void {
     const { world, game } = this.ctx, ents = world.ents;
     this.applyCollisionPairs();
-    for (const [pid, host] of this.hosts) {
+    this.ground();
+    const active = this.active;
+    for (this.cursor = 0; this.cursor < active.length; this.cursor++) {
+      const host = active[this.cursor]!, pid = host.pid;
       // Destroyed, removed or recycled: nobody may stay seated in a slot that is no longer this car.
       if (this.entity(pid) !== host.entity || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) { this.evict(pid); continue; }
       this.observeHealth(host);
+      // One that left its pose last tick may be turning where it stands, beside sleepers: they are met awake.
+      if (this.asleepCount > 0 && host.movedAt >= world.tick - 1 && this.nearAsleep[ents.chunk[host.entity]!] !== 0) this.stir(ents.chunk[host.entity]!);
     }
+    this.cursor = -1;
     for (const [pid] of this.scopes) {
       const rec = this.ctx.records.byPid.get(pid), e = this.entity(pid);
       if (!rec || rec.dead || e < 0) {
@@ -800,7 +1009,11 @@ export class Urban {
     for (const effect of this.occupancy.step(world.tick)) this.apply(effect);
     // Scopes exist only while an actor is seated or has a pending action, so the table and the
     // per-tick work over it stay proportional to vehicle use, not to everyone who ever used one.
-    for (const pid of [...this.scopes.keys()]) {
+    const pids = this.walkPids;
+    pids.length = 0;
+    for (const pid of this.scopes.keys()) pids.push(pid);
+    for (let i = 0, n = pids.length; i < n; i++) {
+      const pid = pids[i]!;
       if (!this.occupancy.idle(pid)) continue;
       const e = this.entity(pid);
       if (e >= 0 && (ents.flags[e]! & F_PLAYER) === 0 && ents.driven[e] === 3) ents.driven[e] = 0;
@@ -817,7 +1030,19 @@ export class Urban {
       if (c.drive >= 0 && world.reg.vehicle[ents.kind[c.drive]!] && (!ready || c.drive !== host?.entity || c.driveGen !== ents.gen[c.drive])) game.release(c);
       if (ready && c.drive < 0 && host) game.take(c, host.entity);
     }
-    for (const host of this.hosts.values()) if (makeHandle(host.entity, ents.gen[host.entity]!) === host.handle) this.contacts?.capture(host.entity);
+    for (let i = 0; i < active.length; i++) {
+      const host = active[i]!;
+      if (makeHandle(host.entity, ents.gen[host.entity]!) === host.handle) this.contacts?.capture(host.entity);
+    }
+    this.capturedAt = world.tick;
+  }
+
+  /** The ground itself changed somewhere, which is rare and is not said where: every sleeper wakes to take its heartbeats again. */
+  private ground(): void {
+    const changes = this.ctx.world.hf.changes.length;
+    if (changes === this.terrainSeen) return;
+    this.terrainSeen = changes;
+    if (this.asleepCount > 0) for (const host of this.hosts.values()) if (host.asleep) this.touch(host);
   }
 
   /** After player bodies move, before combat/history. Unpiloted cars brake and creature AI
@@ -825,6 +1050,8 @@ export class Urban {
    */
   step(): void {
     const { world, game } = this.ctx, ents = world.ents;
+    // Asked again here, so ground changed by this tick's commands is under the heartbeats of this tick.
+    this.ground();
     // A scheduled civilian performing a seat action stays at its validated door.
     // Existing creature AI resumes if the action cancels or the occupant is displaced.
     for (const pid of this.scopes.keys()) {
@@ -856,7 +1083,9 @@ export class Urban {
       const cargoDoor = c.open ? this.hosts.get(c.open)?.definition.cargoDoor : undefined;
       if (cargoDoor !== undefined) this.opening.set(c.open, (this.opening.get(c.open) ?? 0) | (1 << cargoDoor));
     }
-    for (const [pid, host] of this.hosts) {
+    const active = this.active;
+    for (this.cursor = 0; this.cursor < active.length; this.cursor++) {
+      const host = active[this.cursor]!, pid = host.pid;
       const e = this.entity(pid);
       if (e !== host.entity || makeHandle(e, ents.gen[e]!) !== host.handle) continue;
       // A car nobody drives stops on its handbrake, and once at rest is looked at again only once a REST_TICKS, each on
@@ -868,8 +1097,12 @@ export class Urban {
       const resting = this.resting(e);
       // One of the world's people at the wheel drives it with keys as a player's (Cast); otherwise it rests on its brake.
       const npc = driven ? null : this.npcIntent(pid, e);
+      // Whether it has nothing to do this tick: at rest on its brake, and below with its doors shut and nobody in it.
+      let idle = !driven && !npc && resting && !pushed;
+      if (driven) host.movedAt = world.tick;
       if (!driven && (npc || !resting || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
+        const b = this.body, x = b.x, y = b.y, z = b.z, qx = b.vehicleQx, qy = b.vehicleQy, qz = b.vehicleQz, qw = b.vehicleQw, steering = b.steering;
         this.stepped++;
         const beat = resting && !pushed && !npc ? (host.beat ??= new RestingBeat()) : null;
         if (beat?.holds(world, this.body)) this.restingKept++;
@@ -879,20 +1112,31 @@ export class Urban {
           else (this.ctx.vehicleStep ?? stepVehicleBody)(world, this.body, 0, 0, isWheelVehicle(host.definition) && !pushed ? BTN_JUMP : 0, host.definition, TICK_DT, this.body.yaw, false);
           beat?.end(world, this.body);
         }
+        if (beat?.kept) host.beatAt = world.tick;
+        else idle = false;
         ents.storeBody(e, this.body);
+        // The pose contacts go by (VehicleContacts.posed): one at rest keeps it through a heartbeat's hair of movement.
+        const off = this.resting(e) ? STILL : 0;
+        if (Math.abs(b.x - x) > off || Math.abs(b.y - y) > off || Math.abs(b.z - z) > off || Math.abs(b.vehicleQx - qx) > off || Math.abs(b.vehicleQy - qy) > off ||
+          Math.abs(b.vehicleQz - qz) > off || Math.abs(b.vehicleQw - qw) > off || b.steering !== steering) host.movedAt = world.tick;
         this.impact(e);
         ents.pose(e, world.tick);
-      } else if (!driven && ents.vehicleDoors[ents.vrow[e]!] === 0 && !this.opening.has(pid) && !this.occupied(pid, host) && !this.impacts.has(pid)) continue;
+      } else if (!driven && ents.vehicleDoors[ents.vrow[e]!] === 0 && !this.opening.has(pid) && !this.occupied(pid, host) && !this.impacts.has(pid)) {
+        if (idle) this.rested(host);
+        else host.busyAt = world.tick;
+        continue;
+      }
+      if (ents.vehicleDoors[ents.vrow[e]!] !== 0 || this.opening.has(pid) || this.impacts.has(pid) || this.occupied(pid, host)) idle = false;
       if (!this.applyImpact(host)) continue;
       this.note(host);
       this.save(e);
       // A seat's door swings open while someone is getting in or out by it, and shut after.
       const opening = this.opening.get(pid) ?? 0;
       let doors = ents.vehicleDoors[ents.vrow[e]!]!;
-      host.definition.doors.forEach((door, d) => {
-        const was = vehicleDoor(doors, d);
+      for (let d = 0; d < host.definition.doors.length; d++) {
+        const door = host.definition.doors[d]!, was = vehicleDoor(doors, d);
         doors = withVehicleDoor(doors, d, (opening & (1 << d)) !== 0 ? Math.min(1, was + 1 / door.openTicks) : Math.max(0, was - 1 / door.closeTicks));
-      });
+      }
       ents.vehicleDoors[ents.vrow[e]!] = doors;
       if (doors !== 0) this.doorStrikes(pid, e, host.definition);
       for (let slot = 0; slot < host.definition.seats.length; slot++) {
@@ -903,7 +1147,10 @@ export class Urban {
         if ((ents.flags[ae]! & F_PLAYER) === 0) ents.driven[ae] = 3;
         this.pin(ae, e, seat.anchor, !!seat.driver);
       }
+      if (idle) this.rested(host);
+      else host.busyAt = world.tick;
     }
+    this.cursor = -1;
   }
 
   /**
@@ -979,7 +1226,14 @@ export class Urban {
   private readonly doorAt = [0, 0, 0];
 
   private entity(pid: number): number { return this.seating.entity(pid); }
-  private client(pid: number): Client | null { return this.ctx.game.clients.find(c => c?.pid === pid && c.ent >= 0) ?? null; }
+  private client(pid: number): Client | null {
+    const clients = this.ctx.game.clients;
+    for (let i = 0; i < clients.length; i++) {
+      const c = clients[i];
+      if (c && c.pid === pid && c.ent >= 0) return c;
+    }
+    return null;
+  }
   private scope(pid: number): Scope {
     const connection = this.client(pid)?.conn ?? null;
     let scope = this.scopes.get(pid);
@@ -996,7 +1250,9 @@ export class Urban {
   }
   private begin(actor: number, host: number, seat: string, kind: 'enter' | 'exit' | 'carjack'): number {
     const scope = this.scope(actor);
-    const ticks = this.hosts.get(host)?.definition.actionTicks ?? 1;
+    const seat0 = this.hosts.get(host);
+    if (seat0) this.touch(seat0);
+    const ticks = seat0?.definition.actionTicks ?? 1;
     const result = this.occupancy.begin({ actor, actorEpoch: scope.epoch, requestId: scope.request++, host, seat, kind }, this.ctx.world.tick, ticks);
     if (result.ok) return RESULT_OK;
     if (result.reason === 'too-far') return RESULT_FAR;
@@ -1293,6 +1549,7 @@ export class Urban {
       return;
     }
     const action = effect.action, host = this.hosts.get(action.host)!;
+    this.touch(host);
     const removed = action.kind === 'exit' ? action.actor : action.victim;
     if (removed) {
       const c = this.client(removed);
@@ -1360,7 +1617,7 @@ export class Urban {
    * lies still, its engine stopped, its wheel centred and no water to take in or bail, whose step would move nothing.
    */
   resting(e: number): boolean {
-    const ents = this.ctx.world.ents, v = ents.vrow[e]!, still = (n: number): boolean => Math.abs(n) < 1e-3;
+    const ents = this.ctx.world.ents, v = ents.vrow[e]!;
     const movement = this.ctx.world.reg.vehicle[ents.kind[e]!]?.movement;
     if (movement === 'boat') {
       return ents.vehicleEngineOn[v] === 0 && ents.vehicleRpm[v] === 0 && ents.steering[v] === 0 && ents.vehicleShiftTime[v] === 0 && ents.vehicleFlooding[v] === 0 && ents.vehicleHullCondition[v]! >= .5 &&

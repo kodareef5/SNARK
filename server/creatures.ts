@@ -22,6 +22,7 @@ import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../shared/
 import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
+import { Signal } from "./signal.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import { creatureSize, forgetYoungMove, youngMove } from "./young-move.ts";
@@ -45,6 +46,14 @@ function unridden(p: MoveParams | null): MoveParams | null {
 
 export class Creatures {
   bus: Bus = NO_BUS;
+  /** A body was put on the awake list: a creature, or a vehicle or other body its chunk's waking reached. */
+  readonly onWake = new Signal<[e: number]>();
+  /** A chunk that was asleep is held awake: its bodies have been woken. */
+  readonly onChunkWake = new Signal<[chunk: number]>();
+  /** A body is about to leave the world: it is still whole when this is told. */
+  readonly onRemove = new Signal<[e: number]>();
+  /** A body was made for a creature's record, new or loaded. */
+  readonly onAdopt = new Signal<[e: number, rec: EntityRecord]>();
   /** In chunks. */
   readonly wakeRadius: number;
   awakeCount = 0;
@@ -272,11 +281,13 @@ export class Creatures {
     if (rec.vitals) this.survival.restore(rec, true);
     else this.survival.init(rec);
     if (this.chunkRefs[ents.chunk[e]!]! > 0) this.wake(e);
+    this.onAdopt.emit(e, rec);
     return e;
   }
 
   /** The caller deletes its record. */
   remove(e: number): void {
+    this.onRemove.emit(e);
     // Its record goes with it, and may be dying: Survival is not told it left the water.
     this.wet[e] = 0;
     this.sleep(e);
@@ -589,6 +600,7 @@ export class Creatures {
     if (before === 0 && delta > 0) {
       woke?.push(chunk);
       for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.wake(e);
+      this.onChunkWake.emit(chunk);
     } else if (before === 1 && delta < 0) {
       for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.sleep(e);
     }
@@ -624,6 +636,7 @@ export class Creatures {
     this.awakeSlot[e] = this.awakeCount;
     this.awake[this.awakeCount++] = e;
     ents.flags[e] = flags | F_AWAKE;
+    this.onWake.emit(e);
     this.world.history.track(e);
     // One that wakes under water loses its breath from now.
     const p = this.world.reg.move[ents.kind[e]!];

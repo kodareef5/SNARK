@@ -653,6 +653,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   });
   containers.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
   game.players.onVehicleStep.on(e => urban.impact(e));
+  survival.onRated.on((rec) => { if (reg.vehicle[rec.kind]) urban.rated(rec.pid); });
   game.players.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
@@ -660,6 +661,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     struck: (body) => knockDown(body),
     parkingBrake: e => urban.parkingBrake(e),
     resting: e => urban.resting(e),
+    asleep: e => urban.asleep(e),
     boarding: (actor, vehicle) => urban.boarding(actor, vehicle),
     anchored: (e, opposing) => {
       const vehicle = records.byPid.get(world.ents.pid[e]!);
@@ -709,7 +711,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   combat.onBall.on((c, rec, slot) => balls.click(c, rec, slot));
   const mounts = new Mounts({ world, records, items, rules, balls, buffs, survival }, (opts.seed ?? 1) + 113);
   starter = mounts;
-  const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
+  const feces = new Feces({ world, records, items, deadlines, rules, eggs, woke: creatures.onWake, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
   game.players.onMountSecondary.on(e => roars.use(e));
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
@@ -721,7 +723,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (woke.length > 0) settled.bodies += settle(world, woke, relocated);
     woke.length = 0;
   } });
-  const hurt = new Hurt({ world, records, survival });
+  const hurt = new Hurt({ world, records, survival, deadlines });
+  creatures.onAdopt.on((_e, rec) => hurt.follow(rec));
   taming.bred = (rec) => breeding.subject(rec);
   containers.onRide = (c, e) => {
     if (impale.held(c.pid) || world.ents.seatSlot[e] === IMPALE_SLOT) return RESULT_BUSY;
@@ -1473,7 +1476,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const arms = carry.heldBy(rec.pid);
     if (rec.inv) items.inv(rec); // Settle spoilage before weighing the remaining stacks.
     const load = inventoryEffectiveWeight(reg, rec, items.table) + carried * reg.riderWeight[rec.kind]! + (arms >= 0 ? carry.load(rec) : 0);
-    if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[world.ents.vrow[e]!] = Math.fround(urban.payloadMass(e));
+    if (reg.vehicle[rec.kind]) {
+      const v = world.ents.vrow[e]!, mass = Math.fround(urban.payloadMass(e));
+      // A sleeping vehicle whose load changes, as when what it holds spoils, settles on its springs at its next heartbeat.
+      if (mass !== world.ents.vehiclePayloadMass[v]) urban.rouse(e);
+      world.ents.vehiclePayloadMass[v] = mass;
+    }
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
@@ -1623,7 +1631,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     feces,
     overhead,
     physics(corpses),
-    hurt,
     voice,
     mark(PART.world),
     { step: keepHouse },

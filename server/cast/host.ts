@@ -81,6 +81,7 @@ export class CastHost {
   private readonly said = new Map<string, { text: string; t: number }[]>();
   private readonly kind: number;
   private readonly players: StagePlayer[] = [];
+  private readonly pool: StagePlayer[] = [];
 
   constructor(ctx: CastHostContext) {
     this.ctx = ctx;
@@ -279,12 +280,20 @@ export class CastHost {
   /** The survivors in the world now, where each looks and what emote it plays. */
   private livePlayers(): StagePlayer[] {
     const { game, world, emotes } = this.ctx, ents = world.ents;
-    this.players.length = 0;
+    let count = 0;
     for (const c of game.clients) {
       if (!c?.active || c.closed || c.ent < 0 || (ents.flags[c.ent]! & F_ALIVE) === 0) continue;
       const n = emotes.playingOf(c.ent);
-      this.players.push({ name: c.name, x: c.body.x, z: c.body.z, yaw: (ents.yaw[c.ent]! / 65536) * Math.PI * 2, ...(n ? { emote: EMOTES[n - 1]!.id } : {}) });
+      // The same objects each tick: nothing keeps one past the call it was given to.
+      const p = (this.pool[count] ??= { name: "", x: 0, z: 0, yaw: 0, emote: undefined });
+      p.name = c.name;
+      p.x = c.body.x;
+      p.z = c.body.z;
+      p.yaw = (ents.yaw[c.ent]! / 65536) * Math.PI * 2;
+      p.emote = n ? EMOTES[n - 1]!.id : undefined;
+      this.players[count++] = p;
     }
+    this.players.length = count;
     return this.players;
   }
 

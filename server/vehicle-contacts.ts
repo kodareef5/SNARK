@@ -46,6 +46,8 @@ export interface VehicleContactsContext {
   anchored?(vehicle: number, opposing: EntityRecord): boolean;
   /** At rest: stepped only on its heartbeat, at under a millimetre a second (server/urban.ts). */
   resting?(vehicle: number): boolean;
+  /** Off the active list: it keeps its pose with no capture, until something wakes it (server/urban.ts). */
+  asleep?(vehicle: number): boolean;
   pair?(event: VehicleCollisionPair): void;
   /** A body other than a vehicle was struck by vehicle `vehicle` closing at `speed` m/s, hard enough to harm: it may be knocked down. */
   struck?(body: number, speed: number): void;
@@ -56,7 +58,7 @@ interface Touch { seen: number; hazardFirst: number; hazardSecond: number }
 interface Contact extends DynamicContact { entity: number; handle: number; pid: number; rotor: boolean; propeller: boolean; otherRotor: boolean; otherPropeller: boolean; hazardSpeed: number; mass: number }
 const MIN_HARM_SPEED = 2.5;
 /** How far a vehicle at rest may move on its heartbeat and still count as keeping its pose: a tenth of a millimetre. */
-const STILL = 1e-4;
+export const STILL = 1e-4;
 const REARM_TICKS = 15;
 const contact = (): Contact => ({ entity: -1, handle: 0, pid: 0, t: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, depth: 0, rotor: false, propeller: false, otherRotor: false, otherPropeller: false, hazardSpeed: 0, mass: 1 });
 
@@ -147,7 +149,25 @@ export class VehicleContacts {
     }
   }
 
-  /** Once per registered vehicle before any player/NPC movement in this tick. */
+  /** How far from a vehicle's path a body is looked for when nothing has moved far this tick. */
+  get reach(): number {
+    return this.restingPadding;
+  }
+
+  /**
+   * A vehicle that slept wakes: it is given the capture it would have had at tick `tick`, the last tick vehicles were
+   * captured, had it been captured every tick while it stood. Call it while the vehicle still stands as it slept.
+   */
+  seed(e: number, tick: number): void {
+    const { world } = this.ctx, ents = world.ents;
+    let frame = this.frames.get(e);
+    if (!frame) { frame = { body: new Body(), handle: 0, pid: 0, tick: 0, motionEpoch: 0, consumed: false, by: 0, byHandle: 0, settled: false }; this.frames.set(e, frame); }
+    ents.loadBody(e, frame.body);
+    frame.handle = makeHandle(e, ents.gen[e]!); frame.pid = ents.pid[e]!; frame.tick = tick; frame.motionEpoch = world.history.motionEpoch(e);
+    frame.consumed = false; frame.by = 0; frame.byHandle = 0; frame.settled = true;
+  }
+
+  /** Once per active vehicle before any player/NPC movement in this tick. */
   capture(e: number): void {
     const { world, records } = this.ctx, ents = world.ents;
     if (!world.reg.vehicle[ents.kind[e]!] || (ents.flags[e]! & F_ALIVE) === 0) return;
@@ -203,7 +223,7 @@ export class VehicleContacts {
         for (const target of this.candidates) {
           // Two vehicles nobody drives that kept their poses this tick cannot meet in it: whatever reaches either is
           // met from the side that moved.
-          if (still && this.still(target)) continue;
+          if (still && (this.still(target) || this.ctx.asleep?.(target))) continue;
           const handle = makeHandle(target, ents.gen[target]!);
           if (this.touches.get(Math.min(frame.handle, handle))?.get(Math.max(frame.handle, handle))?.seen === world.tick) continue;
           const hit = this.rigidContact(e, frame, target, def);

@@ -153,6 +153,8 @@ export class CastStage implements Stage {
   private readonly world: CastWorld;
   private readonly cat: Catalogue;
   private readonly byPid = new Map<number, Body>();
+  /** The step's own list of the bodies it walks while some leave: filled anew at each walk. */
+  private readonly stepping: Body[] = [];
   private readonly stories = new Set<Story>();
   private readonly queues = new Map<number, Queue>();
   private readonly synced = new Map<string, Set<string>>();
@@ -222,7 +224,11 @@ export class CastStage implements Stage {
   step(players: readonly StagePlayer[]): void {
     const tick = this.world.tick();
     for (const s of this.stories) this.bringIn(s, tick, players);
-    for (const b of [...this.byPid.values()]) {
+    const bodies = this.stepping;
+    bodies.length = 0;
+    for (const b of this.byPid.values()) bodies.push(b);
+    for (let k = 0, n = bodies.length; k < n; k++) {
+      const b = bodies[k]!;
       if ((b.pid + tick) % TURN !== 0) continue;
       if (!this.bodies.alive(b.pid)) {
         this.died(b, tick);
@@ -232,6 +238,7 @@ export class CastStage implements Stage {
       this.witness(b, tick);
       this.work(b, tick, players);
     }
+    bodies.length = 0;
     const old = tick - 5 * this.world.rate;
     while (this.heard.length && this.heard[0]!.t < old) this.heard.shift();
     while (this.incidents.length && this.incidents[0]!.t < tick - 3 * this.world.rate) this.incidents.shift();

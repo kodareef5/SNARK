@@ -1,9 +1,9 @@
-// A creature's hurt stage on a running server: set by a blow at once, by mending and by harm that is no blow within a
-// sweep, a quarter of its health wide whatever its health, and sent to whoever sees it, one who joins later too.
+// A creature's hurt stage on a running server: set at once by a blow, by mending and by harm that is no blow, and on the
+// tick its health crosses a quarter as it mends; a quarter of its health wide whatever its health, and sent to whoever sees
+// it, one who joins later too.
 
 import { expect, test } from "bun:test";
 import { RemoteSample } from "../../client/core/session.ts";
-import { SWEEP_TICKS } from "../../server/hurt.ts";
 import { AnimState, hurtStage } from "../../shared/anim/pose.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BTN_PRIMARY } from "../../shared/sim/character.ts";
@@ -65,14 +65,40 @@ test("a dodo's hurt stage follows its health down at each blow and back up as it
   expect(i).toBeGreaterThanOrEqual(0);
   expect(stageOf(sample.cue[i]!)).toBe(3);
 
-  // Mended to full, which is no blow, it is unhurt again within a sweep; harm that is no blow is found the same way.
+  // Mended to full, which is no blow, it is unhurt again at once; harm that is no blow is seen the same way.
   h.host.survival.add(rec, V_HEALTH, max);
-  h.run(((SWEEP_TICKS + 2) * 1000) / TICK_RATE);
   expect(stageOf(ents.cue[e]!)).toBe(0);
   h.host.survival.hurt(rec, max * 0.6, 0);
-  h.run(((SWEEP_TICKS + 2) * 1000) / TICK_RATE);
-  expect(stageOf(ents.cue[e]!)).toBe(hurtStage(health(), max));
   expect(stageOf(ents.cue[e]!)).toBe(2);
+  h.run(500);
   bo.sampleRemote(sample);
   expect(stageOf(sample.cue[sample.kind.subarray(0, sample.count).indexOf(dodo)]!)).toBe(2);
+
+  // Left to mend, its stage is the one for its health after every tick, and nothing looks at it but on the tick it changes.
+  h.host.survival.add(rec, V_HEALTH, max * 0.5 - health() - 0.05);
+  expect(stageOf(ents.cue[e]!)).toBe(2);
+  seen.length = 0;
+  const looked = h.host.hurt.checked;
+  h.run(3000);
+  expect(seen.length).toBeGreaterThan(60);
+  for (const [hp, stage] of seen) expect(stage).toBe(hurtStage(hp, max));
+  expect(seen[0]![1]).toBe(2);
+  expect(seen[seen.length - 1]![1]).toBe(1);
+  expect(h.host.hurt.checked - looked).toBeLessThanOrEqual(2);
+});
+
+test("a hurt creature far from every survivor, and a herd of whole ones, are not looked at while nothing changes", () => {
+  const { h, at } = camp({ place: clearing(), god: true });
+  const far: number[] = [];
+  for (let i = 0; i < 20; i++) far.push(h.host.spawnCreature("core:dodo", at.x + 6 + (i % 5) * 3, at.z + 6 + Math.floor(i / 5) * 3, 5));
+  const rec = h.host.records.byPid.get(h.world.ents.pid[far[0]!]!)!;
+  h.run(1000);
+  const looked = h.host.hurt.checked;
+  h.run(4000);
+  expect(h.host.hurt.checked - looked).toBe(0);
+  // Harm that is no blow is seen on its tick, and then once more at most: as its health mends past the quarter.
+  h.host.survival.hurt(rec, (rec.vitals!.max[V_HEALTH]! / 1e6) * 0.3, 0);
+  expect(stageOf(h.world.ents.cue[far[0]!]!)).toBe(1);
+  h.run(4000);
+  expect(h.host.hurt.checked - looked).toBeLessThanOrEqual(3);
 });

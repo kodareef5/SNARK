@@ -168,6 +168,11 @@ export class History {
     return this.entOf[r]!;
   }
 
+  /** Whether `e` has a row. */
+  follows(e: number): boolean {
+    return this.rowOf[e]! >= 0;
+  }
+
   /** Call when an entity begins to be stepped (a body is made, a creature wakes). Its whole past is filled with where it stands now. */
   track(e: number): void {
     if (this.rowOf[e]! >= 0) return;
@@ -198,9 +203,11 @@ export class History {
     this.rowOf[e] = -1;
     const last = --this.rows;
     if (r === last) return;
+    // Rows past the last in use stay at zero, so record() clears only the rows in use.
     // The last row moves into the gap.
     const moved = this.entOf[last]!;
     this.travelled[r] = this.travelled[last]!;
+    this.travelled[last] = 0;
     this.travelGen[r] = this.travelGen[last]!;
     this.entOf[r] = moved;
     this.rowOf[moved] = r;
@@ -214,13 +221,29 @@ export class History {
     this.gen.copyWithin(to, from, from + HISTORY_TICKS);
   }
 
+  /**
+   * Stops tracking a body that will stand as it is until `resume`: its present is its past meanwhile, as for any body
+   * without a row. Returns its motion token for `resume` to give back, since nothing moves it between.
+   */
+  suspend(e: number): number {
+    const epoch = this.motionEpochs.get(e) ?? 0;
+    this.untrack(e);
+    return epoch;
+  }
+
+  /** Tracks a suspended body again, as it stands, with the token `suspend` returned. */
+  resume(e: number, epoch: number): void {
+    this.track(e);
+    if (epoch !== 0 && !this.motionEpochs.has(e)) this.motionEpochs.set(e, epoch);
+  }
+
   /** Call once per tick, after everything has moved. */
   record(tick: number): void {
     const flags = this.ents.flags;
     const slot = tick & MASK;
     this.tickOf[slot] = tick;
     this.travel[slot] = this.currentDistance();
-    this.travelled.fill(0);
+    this.travelled.fill(0, 0, this.rows);
     this.currentTravel = 0;
     for (let r = this.rows - 1; r >= 0; r--) {
       const e = this.entOf[r]!;

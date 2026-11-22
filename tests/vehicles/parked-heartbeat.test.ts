@@ -12,9 +12,11 @@ import { Harness } from "../fixtures/net.ts";
 
 const FIELDS = Object.keys(new Body()) as (keyof Body)[];
 
-/** Four compact cars parked on flat ground, settled. */
+/** Four compact cars parked on flat ground, settled, and a survivor on the map, who keeps them awake: with nobody near they sleep, and take no heartbeat (vehicles-asleep.test.ts). */
 function lot() {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(4)) });
+  h.join("watcher");
+  h.run(400);
   const cars = [[40, 40, 0], [60, 40, 0.5], [40, 70, 1.5], [80, 90, 3]].map(([x, z, yaw]) => h.host.spawnVehicle("core:compact", x!, z!, 0, yaw!));
   expect(cars.every((e) => e >= 0)).toBe(true);
   const urban = h.host.urban;

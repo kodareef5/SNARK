@@ -37,6 +37,11 @@ export class RestingBeat {
   private readonly tables: (ChunkTable | null)[] = new Array(9).fill(null);
   private readonly tableShapes = new Float64Array(9);
 
+  /** Whether the last heartbeat, answered or stepped, left the body as it found it. */
+  get kept(): boolean {
+    return this.held;
+  }
+
   /** Whether a heartbeat from `b` would leave it as it is. If so, the step's report is set as that step sets it. */
   holds(world: ServerWorld, b: Body): boolean {
     if (!this.held || world.structs.shapes !== this.shapes || world.hf.changes.length !== this.terrain || !same(this.body, b)) return false;
