@@ -2,7 +2,10 @@
 // what it does in its turn. The app walks the list once a frame, after the session's turn, so a part's place in the list
 // is its place in the frame: it reads what the parts before it left in the frame's values (AppFrame) and leaves its own.
 
+import { AnimState } from "../../shared/anim/pose.ts";
+import { handleIndex } from "../../shared/ids.ts";
 import type { MoveParams } from "../../shared/sim/character.ts";
+import { FISTS } from "../../shared/sim/weapon.ts";
 import type { VehicleDefinition } from "../../shared/sim/vehicle.ts";
 import type { VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -18,7 +21,9 @@ import type { VoicePort } from "./voice/port.ts";
 import type { Camera } from "./render/camera.ts";
 import type { VehicleRenderPose } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
-import type { OwnBody, Scene } from "./render/scene.ts";
+import { bodySeed, type OwnBody, type Scene } from "./render/scene.ts";
+import type { SkyClock } from "./sky.ts";
+import type { Viewpoint } from "./viewpoint.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import type { Settings } from "./settings.ts";
 import type { Ui } from "./ui/ui.ts";
@@ -42,6 +47,9 @@ export class AppFrame implements HudFrame {
   readonly remote: RemoteSample;
   readonly pack: Pack;
   readonly palette: Uint8Array;
+  /** The hour the sky shows, and the view of the own body: its choice of the eye or behind, and where it puts the camera. */
+  readonly sky: SkyClock;
+  readonly view: Viewpoint;
   /** Casts the lasers' beams. */
   readonly lasers: Lasers;
   /** Poses a seated body's aim. The app makes another when the registry changes. */
@@ -88,9 +96,10 @@ export class AppFrame implements HudFrame {
   passengerVehicle = false;
   passengerCockpit = false;
   cockpitFrame: VehicleFrame | undefined = undefined;
-  /** A passenger is shown from behind its host; the view is from outside the body. */
+  /** A passenger is shown from behind its host; the view is from outside the body; the orbit camera places it. */
   chase = false;
   third = false;
+  orbiting = false;
   /** The driven vehicle's instruments, or null. */
   dash: VehicleTelemetry | null = null;
   /** Where the view looks: the look the input carries, turned by a shot's kick, a scope's sway and a hand's shake. */
@@ -116,7 +125,7 @@ export class AppFrame implements HudFrame {
   rivalry = false;
   steady = "";
 
-  constructor(session: ClientSession, controls: Controls, ui: Ui, hud: HudModel, cam: Camera, remote: RemoteSample, pack: Pack, lasers: Lasers, seatedAim: SeatedAim) {
+  constructor(session: ClientSession, controls: Controls, ui: Ui, hud: HudModel, cam: Camera, remote: RemoteSample, pack: Pack, sky: SkyClock, view: Viewpoint, lasers: Lasers, seatedAim: SeatedAim) {
     this.session = session;
     this.controls = controls;
     this.ui = ui;
@@ -125,6 +134,8 @@ export class AppFrame implements HudFrame {
     this.remote = remote;
     this.pack = pack;
     this.palette = pack.palette;
+    this.sky = sky;
+    this.view = view;
     this.lasers = lasers;
     this.seatedAim = seatedAim;
   }
@@ -136,5 +147,23 @@ export class AppFrame implements HudFrame {
 
   get settings(): Settings {
     return this.ui.settings;
+  }
+
+  private readonly seatState = new AnimState();
+
+  /**
+   * The eye of the own body where it sits in a seat it does not steer from, posed on its host as `remote` has it at `tick`
+   * and aimed along `yaw` and `pitch`, into `out`. False where it has no such seat.
+   */
+  seatEye(world: CollisionWorld, remote: RemoteSample, tick: number, yaw: number, pitch: number, out: Float64Array, clip = true, actionTick = this.session.simTick): boolean {
+    const s = this.session, b = s.own, st = this.seatState;
+    if (s.driving >= 0 || !b.seat || !b.seatSlot) return false;
+    st.mode = b.mode; st.grounded = b.grounded; st.stance = b.stance;
+    st.setMotion(b.vx, b.vz, yaw, pitch, b.vy);
+    st.setAction(b.act, (this.reg.weapon[b.held] ?? FISTS).hold, actionTick - b.actTicks);
+    st.seed = bodySeed(handleIndex(s.ownHandle));
+    if (!this.seatedAim.pose(remote, s.ownKind, b.seat, b.seatGen, b.seatSlot, st, yaw, tick)) return false;
+    this.seatedAim.eye(world, out, clip);
+    return true;
   }
 }
