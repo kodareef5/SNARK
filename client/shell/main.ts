@@ -276,7 +276,7 @@ async function boot(): Promise<void> {
     }
     if (progress?.frames === 45) loser?.restoreContext();
     const r = app.scene!.assets.residency;
-    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze }, app.scene!.assets.table.tris);
+    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent, card: { bytes: r.ledger, textures: r.texLedger }, squeeze: app.scene!.budget.squeeze, map: () => loader.progress() }, app.scene!.assets.table.tris);
     if (result) document.title = `SNARK ${result.frameMs.median} ms`;
     if (result) void fetch("__bench", { method: "POST", body: JSON.stringify(result) });
 
