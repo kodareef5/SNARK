@@ -176,6 +176,25 @@ artTest("take all takes all: twenty stacks and more leave a capsule at one press
   app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
   run(1500);
   expect([free(), s.open?.inventory.used(), app.ui.inventory.taking.busy, items.inv(b.box).used(), b.d.left, busy, items.audit()]).toEqual([0, b.held - 5, false, b.held - 5, 0, 0, []]);
+  // Room is made for all the rest, and she presses again; one more stack comes to the capsule as she does, which
+  // this press was not begun on. The press takes what it began on and is done, with the capsule still open.
+  const left = b.held - 5;
+  for (let k = 0; k < left; k++) expect(items.burn(me, mine.bag - 1 - k, mine.count[mine.bag - 1 - k]!, true)).toBe(true);
+  run(300);
+  expect(free()).toBe(left);
+  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
+  expect(items.mint(b.box, bow, 1)).toBe(1);
+  run(1500);
+  expect([free(), s.open?.inventory.used(), app.ui.inventory.taking.busy, busy]).toEqual([0, 1, false, 0]);
+  // She drops one of the stacks it took and presses once more. A press that is done holds no slot of the bag against
+  // the next: the last stack is hers, and the capsule, emptied, shuts and goes.
+  expect(items.burn(me, mine.bag - 1, mine.count[mine.bag - 1]!, true)).toBe(true);
+  run(300);
+  expect(free()).toBe(1);
+  app.ui.inventory.pointer(0, KEY_OPEN_TAKE_ALL, 0, s);
+  run(900);
+  expect([free(), s.open, app.ui.inventory.taking.busy, b.d.left > 0, busy]).toEqual([0, null, false, true, 0]);
+  expect(items.audit()).toEqual([]);
   h.host.shutdown();
 });
 

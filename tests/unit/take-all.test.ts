@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";
-import { TAKE_WAIT, TAKE_WINDOW, TakeAll } from "../../client/core/ui/take-all.ts";
+import { TAKE_PATIENCE, TAKE_WAIT, TAKE_WINDOW, TakeAll } from "../../client/core/ui/take-all.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { RESULT_BUSY, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -123,3 +123,41 @@ test("it stops when the bag is full, when the box shuts or is another, and when 
   for (let at = 0; at < again.sent.length; at++) (again.done(again.sent[at]!), t.result(again.sent[at]![0], RESULT_OK, 100), t.update(again.as));
   expect([again.sent.length, new Set(again.sent.map((m) => m[1])).size, again.sent.at(-1)![1], t.busy]).toEqual([11, 11, 41, false]);
 });
+
+test("a press after one that is done takes again: what the first took holds no slot of the bag against the second", () => {
+  // A bag of one slot: the box's one stack is taken.
+  const { s, as, own, other, sent, done } = session(1, 1);
+  const t = new TakeAll();
+  t.begin(as);
+  done(sent[0]!);
+  t.result(sent[0]![0], RESULT_OK, s.tickClock);
+  t.update(as);
+  expect([sent.length, t.busy, own.used(), other.used()]).toEqual([1, false, 1, 0]);
+  // She drops what she took, something more is put in the box that is still open, and she presses again.
+  [own.item[0], own.count[0], other.item[5], other.count[5]] = [0, 0, 7, 1];
+  t.begin(as);
+  expect([sent.length, sent.at(-1)!.slice(1), t.busy]).toEqual([2, [5, 0], true]);
+  done(sent[1]!);
+  t.result(sent[1]![0], RESULT_OK, s.tickClock);
+  expect([t.busy, own.used(), other.used()]).toEqual([false, 1, 0]);
+  // The same while the first is still at work: a slot whose move is not yet answered stays spoken for, and one whose
+  // stack has arrived and been dropped again is free.
+  const two = session(3, 2);
+  t.begin(two.as);
+  expect(two.sent.map((m) => m[2])).toEqual([0, 1]);
+  two.done(two.sent[0]!);
+  t.result(two.sent[0]![0], RESULT_OK, 100);
+  t.update(two.as);
+  expect(two.sent.length).toBe(2);
+  [two.own.item[0], two.own.count[0]] = [0, 0];
+  t.begin(two.as);
+  expect(two.sent.map((m) => [m[1], m[2]])).toEqual([[0, 0], [2, 1], [4, 0]]);
+  // An answer that never comes does not hold the rest back for ever: after a few seconds the move is let go.
+  const lost = session(10, 20);
+  t.begin(lost.as);
+  expect(lost.sent.length).toBe(TAKE_WINDOW);
+  lost.s.tickClock += TAKE_PATIENCE + 1;
+  t.update(lost.as);
+  expect([lost.sent.length > TAKE_WINDOW, t.busy]).toEqual([true, true]);
+});
+
