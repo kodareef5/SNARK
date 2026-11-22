@@ -193,3 +193,17 @@ test("a body that turns from a wall into a tribemate while pressed against is me
     expect(s.stats.corrections - before).toBe(0);
   } finally { h.host.shutdown(); }
 });
+
+test("a young body turning beside a survivor is not pushed or held: only a grown body has its species' stadium", () => {
+  const { h, c, a, creature, place } = yard();
+  try {
+    const e = creature("parasaur", 100, 104), rec = h.host.records.byPid.get(a.pid[e]!)!, mind = h.host.creatures.mind;
+    rec.span = 100000; rec.grown = h.world.tick + 95000; a.setYoung(e, rec.span, rec.grown);
+    // 1.9 m off and a sixth of a turn round: clear of a grown parasaur facing +Z, inside one turned to face it.
+    const [sx, sz] = [100 + 1.9 * Math.sin(Math.PI / 3), 104 + 1.9 * Math.cos(Math.PI / 3)];
+    place(c.ent, sx, sz); h.run(300);
+    const at = [a.x[e], a.z[e]];
+    mind.face(e, sx, sz); h.run(2000);
+    expect([a.x[e], a.z[e], a.yaw[e]]).toEqual([...at, mind.look[e]]);
+  } finally { h.host.shutdown(); }
+});

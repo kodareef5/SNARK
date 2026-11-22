@@ -591,7 +591,7 @@ function jetMode(b: Body, prior: number, buttons: number, ready: boolean, moving
 /** How deep in a wall the head of a body of `p` at (x, y, z) facing `yaw` (65536ths of a turn) is (MoveParams.headRadius, collide.ts wallDepth). */
 export function headDepth(w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number): number {
   const r = p.headRadius!, a = (yaw * TAU) / 65536, ahead = p.headAhead!;
-  return wallDepth(w, x + detSin(a) * ahead, y + p.headUp! - r, z + detCos(a) * ahead, r);
+  return wallDepth(w, x + detSin(a) * ahead, y + p.headUp! - r, z + detCos(a) * ahead, r, y + p.height);
 }
 
 /** Whether the head of a body of `p` at (x, y, z) facing `yaw` is clear of every wall. */

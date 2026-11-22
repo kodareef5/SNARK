@@ -108,3 +108,21 @@ test("a rex walking at a shallow angle to a wall never puts its head into it, fr
     expect(b.z).toBeGreaterThan(105);
   }
 });
+
+test("a parasaur walks under a beam its body clears though its crest does not, and stops at one its body does not clear", () => {
+  const p = reg.move[reg.index.get("core:parasaur")!]!;
+  // Its crest stands above its body: 3.45 m against 2.6 m.
+  expect(p.headUp! + p.headRadius!).toBeGreaterThan(p.height);
+  for (const under of [p.height + 0.15, p.height - 0.1]) {
+    const w = world();
+    // A row of wall pieces across +Z at 140, raised so that their underside is `under` metres up.
+    for (let k = -3; k <= 3; k++) w.structs.add(wall, 128 + k * 3, under + reg.halfY[wall]!, 140, 0, 0, 1);
+    const b = creature("parasaur", 128, 128);
+    for (let t = 0; t < 300; t++) stepBody(w, b, 0, 127, 0, 0, 0, p, TICK_DT);
+    if (under > p.height) expect(b.z).toBeGreaterThan(145);
+    else {
+      expect(headClear(w, p, b.x, b.y, b.z, b.yaw)).toBe(true);
+      expect(b.z + p.headAhead! + p.headRadius!).toBeLessThan(139.95);
+    }
+  }
+});
