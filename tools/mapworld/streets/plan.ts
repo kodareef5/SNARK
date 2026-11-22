@@ -7,7 +7,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../../../shared/coords.ts";
 import {
-  KERBS, STREET_ONE_WAY, STREET_PAIRED, StreetSectors, VERGES, WALKS, decodeStreets, encodeStreets, heldSide, kindsByte, sideReach,
+  KERBS, STREET_ONE_WAY, STREET_PAIRED, StreetSectors, VERGES, WALKS, decodeStreets, encodeStreets, heldSide, kerbOf, kindsByte, sideReach,
   type StreetCorner, type StreetSide, type Stretch,
 } from "../../../shared/world/streets.ts";
 import type { MapStreets } from "../../../shared/world/mapfile.ts";
@@ -15,6 +15,7 @@ import type { Base } from "../base.ts";
 import { planCorners, type ReturnRules } from "../corners.ts";
 import type { World } from "../ground.ts";
 import { streetGraph } from "../street-graph.ts";
+import { cornerWithDrops, dropsOf, withDrops, type HeldPart } from "./drops.ts";
 import { fitRuns, readRuns, type Run } from "./fit.ts";
 import { matchOverlay, readOverlay, sortedKey, type Applied } from "./overlay.ts";
 import { sideSection, streetRules, typeOf, widthOf, type Facts, type Rule, type Section, type StreetType } from "./rules.ts";
@@ -157,9 +158,9 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
 
   // The corners, round every junction of streets on the ground, as the walks' returns are worked out (corners.ts).
   const returns = vocab?.street?.walks?.returns;
-  const corners: (StreetCorner & { sx: number; sz: number })[] = [];
+  let corners: (StreetCorner & { sx: number; sz: number })[] = [];
+  const graph = streetGraph({ source, toLattice: (e, n) => [grid.east + grid.x0 - e, n - (grid.south - grid.z0)] });
   if (returns) {
-    const graph = streetGraph({ source, toLattice: (e, n) => [grid.east + grid.x0 - e, n - (grid.south - grid.z0)] });
     const classes = [...new Set(runs.map((r) => r.mtfcc))];
     // Each run's ends, by the node they stand at, so a corner's arm finds its stretch.
     const ends = new Map<string, { k: number; start: boolean }[]>();
@@ -181,12 +182,14 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
     }
   }
 
-  // Each sector's part: the stretches and corners whose reach meets its square.
+  // Each sector's part: the stretches and corners whose reach meets its square; made once to find where each kerb is let
+  // down (drops.ts), and again with its drops.
   const [frameX, frameZ] = base.info.frame;
   const chunksX = grid.sizeX / CHUNK_SIZE, chunksZ = grid.sizeZ / CHUNK_SIZE, span = SECTOR_CHUNKS * CHUNK_SIZE;
-  const parts: MapStreets[] = [];
-  const held = new StreetSectors();
+  let parts: MapStreets[] = [];
+  let held = new StreetSectors();
   let bytes = 0;
+  const heldParts: HeldPart[] = [];
   const reachOf = (s: Stretch): number => Math.max(s.sides[0].kerb + sideReach(s.sides[0]), s.sides[1].kerb + sideReach(s.sides[1]));
   const boxes = stretches.map((s) => {
     let lx = Infinity, lz = Infinity, hx = -Infinity, hz = -Infinity;
@@ -194,6 +197,11 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
     const r = reachOf(s) + 1;
     return [lx - r, lz - r, hx + r, hz + r] as const;
   });
+  const makeParts = (): void => {
+  parts = [];
+  held = new StreetSectors();
+  bytes = 0;
+  heldParts.length = 0;
   for (let col = Math.floor(frameX / SECTOR_CHUNKS); col * SECTOR_CHUNKS < frameX + chunksX; col++) {
     for (let row = Math.floor(frameZ / SECTOR_CHUNKS); row * SECTOR_CHUNKS < frameZ + chunksZ; row++) {
       const ox = col * SECTOR_CHUNKS - frameX, oz = row * SECTOR_CHUNKS - frameZ, x0 = ox * CHUNK_SIZE, z0 = oz * CHUNK_SIZE;
@@ -212,12 +220,25 @@ export function planStreets(source: string, base: Base, world: World, vocab: { s
       const encoded = encodeStreets(part);
       bytes += encoded.length;
       parts.push({ col, row, bytes: encoded });
-      held.put(col * 4096 + row, decodeStreets(encoded, x0, z0), Math.max(0, ox), Math.max(0, oz), Math.min(chunksX, ox + SECTOR_CHUNKS), Math.min(chunksZ, oz + SECTOR_CHUNKS));
+      const decoded = decodeStreets(encoded, x0, z0);
+      held.put(col * 4096 + row, decoded, Math.max(0, ox), Math.max(0, oz), Math.min(chunksX, ox + SECTOR_CHUNKS), Math.min(chunksZ, oz + SECTOR_CHUNKS));
+      heldParts.push({ part: decoded, stretches: order, corners: myCorners.map((c) => corners.indexOf(c)) });
     }
   }
+  };
+  makeParts();
+  // Where each kerb is let down flush: at the walk network's crossings, where a service road ends at a kerb, at a corner's ramp.
+  const flushStretches = new Set<number>();
+  stretches.forEach((s, k) => { if (kerbOf(s.sides[0].kinds) === 1 && kerbOf(s.sides[1].kinds) === 1) flushStretches.add(k); });
+  const crossings = graph.crossings.map((c) => ({ ...c, ax: c.ax - grid.x0, az: c.az - grid.z0, bx: c.bx - grid.x0, bz: c.bz - grid.z0 }));
+  const drops = dropsOf(held, heldParts, crossings, flushStretches, stretches);
+  stretches.forEach((s, k) => { stretches[k] = withDrops(s, k, drops.sides); });
+  corners = corners.map((c, k) => cornerWithDrops(c, k, drops.corners));
+  makeParts();
+  log(`streets: kerbs let down at ${drops.count.crossings} crossings, ${drops.count.drives} drives and ${drops.count.ramps} corners' ramps`);
   const overlayUse = entries.map((e) => ({ at: `${e.file}:${e.line}`, stretches: applied.reduce((n, a) => n + (a.some((x) => x.entry === e) ? 1 : 0), 0) }));
   const summary = {
-    stretches: runs.length, km: round(fits.reduce((n, f) => n + f.length, 0) / 1000, 1), corners: corners.length, parts: parts.length, bytes,
+    stretches: runs.length, km: round(fits.reduce((n, f) => n + f.length, 0) / 1000, 1), corners: corners.length, parts: parts.length, bytes, drops: drops.count,
     types: Object.fromEntries([...typeCount].sort((a, b) => b[1].km - a[1].km).map(([k, v]) => [k, { stretches: v.stretches, km: round(v.km, 1) }])),
     rules: Object.fromEntries([...ruleCount].sort((a, b) => b[1] - a[1])), sets: Object.fromEntries([...setCount].sort((a, b) => b[1] - a[1])), overlay: overlayUse,
   };

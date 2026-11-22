@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { mapHeightfield, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import {
-  CHUNK_SIDE, PLANE_BYTES, StreetPoint, StreetSectors, alongByte, chunkPlanes, chunkTag, decodeStreets, encodeStreets, heldSide, kerbLines, kindsByte,
+  CHUNK_SIDE, DROP_CROSSING, DROP_DRIVE, DROP_RAMP, PLANE_BYTES, StreetPoint, StreetSectors, alongByte, chunkPlanes, chunkTag, decodeStreets, encodeStreets, heldSide, kerbLines, kindsByte,
   planeMetres, streetAt, streetClass, type StreetsPart,
 } from "../../shared/world/streets.ts";
 import { GROUND_CLASS } from "../../shared/world/vehicle-surface.ts";
@@ -204,6 +204,49 @@ test("a stretch's kerb ends at the end of the corner's arc it comes into, the tw
   // The cross street's left kerb (x = 196) comes out of the arc's other end.
   const out = lines.find((l) => l.stretch === 1 && l.corner < 0 && Math.abs(l.xz[0]! - 196) < 1e-6)!;
   expect(out.xz[1]).toBeCloseTo(110, 9);
+});
+
+test("a kerb's drops come back from a part's bytes and with its kerb lines, and a corner into a flush street is let down whole", () => {
+  const flush = heldSide(3, 0, 0, kindsByte(0, 0, FLUSH)), cross = heldSide(4, 0, 2, kindsByte(0, WALK, RAISED));
+  // Along x with a crossing at 50 m on its left kerb; a drive (flush) meets it from the north at x = 200, a corner
+  // rounding its left kerb into the drive's; a cross street at x = 300 with a ramp on its corner.
+  const part: StreetsPart = {
+    x0: 0, z0: 0,
+    stretches: [
+      { type: 0, flags: 0, seed: 1, sides: [side, side], xz: Float64Array.of(0, 100, 400, 100), drops: [Float64Array.of(48, 52.25, DROP_CROSSING), null] },
+      { type: 0, flags: 0, seed: 2, sides: [flush, flush], xz: Float64Array.of(200, 100, 200, 160) },
+      { type: 0, flags: 0, seed: 3, sides: [cross, cross], xz: Float64Array.of(300, 100, 300, 300) },
+    ],
+    corners: [
+      { cx: 193, cz: 110, radius: 6, reach: Math.hypot(6, 6), ax: 0, az: -1, bx: 1, bz: 0, stretch: 0, side: 0 },
+      { cx: 290, cz: 110, radius: 6, reach: Math.hypot(6, 6), ax: 0, az: -1, bx: 1, bz: 0, stretch: 0, side: 0, drops: Float64Array.of(4, 5.5, DROP_RAMP) },
+    ],
+  };
+  const back = decodeStreets(encodeStreets(part), 0, 0);
+  expect(Array.from(back.stretches[0]!.drops![0]!)).toEqual([48, 52.25, DROP_CROSSING]);
+  expect(back.stretches[0]!.drops![1]).toBeNull();
+  expect(back.stretches[1]!.drops).toBeUndefined();
+  expect(Array.from(back.corners[1]!.drops!)).toEqual([4, 5.5, DROP_RAMP]);
+  // A part of the version before reads as one with no drops.
+  const old = encodeStreets({ ...part, stretches: part.stretches.map(({ drops: _, ...s }) => s), corners: part.corners.map(({ drops: _, ...c }) => c) });
+  const before = new Uint8Array(old.length - 3 * 2 - 2);
+  // Version 1's bytes: its version, and each kerb and corner without its count of drops.
+  let from = 0, to = 0;
+  const copy = (n: number): void => { before.set(old.subarray(from, from + n), to); from += n; to += n; };
+  copy(5);
+  before[0] = 1;
+  for (const s of part.stretches) { copy(14 + (s.xz.length / 2 - 1) * 4 + 8); from += 2; }
+  for (const _ of part.corners) { copy(23); from += 1; }
+  const v1 = decodeStreets(before, 0, 0);
+  expect(v1.stretches.length).toBe(3);
+  expect(v1.stretches[0]!.drops).toBeUndefined();
+  const lines = kerbLines(held(part), part);
+  // The street's left kerb has its crossing where its run holds it; the corner into the drive is let down its whole length.
+  const left = lines.find((l) => l.stretch === 0 && l.side === 0 && l.corner < 0 && l.stations[0]! < 50)!;
+  expect(Array.from(left.drops!)).toEqual([48, 52.25, DROP_CROSSING]);
+  const drive = lines.find((l) => l.corner === 0)!, ramp = lines.find((l) => l.corner === 1)!;
+  expect(Array.from(drive.drops!)).toEqual([0, drive.stations[drive.stations.length - 1]!, DROP_DRIVE]);
+  expect(Array.from(ramp.drops!)).toEqual([4, 5.5, DROP_RAMP]);
 });
 
 test("a road of two points across the map's edge has its kerbs, from the sector it crosses", () => {

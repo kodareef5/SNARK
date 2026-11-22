@@ -13,19 +13,27 @@
 // A part's places are from its square's corner, in the map's metres (x and z), so a part reads the same in any cut.
 //
 // The part, little-endian:
-//   u8 version 1, u16 stretches, u16 corners
+//   u8 version 2, u16 stretches, u16 corners
 //   each stretch: u8 type, u8 flags, u16 seed; for its left side and then its right (of its drawn way): u8 kerb, u8 verge
 //     and u8 walk in 1/8 m (the kerb from the centre line, the verge from the kerb, the walk from the verge's end) and
-//     u8 kinds (kindsByte); u16 points, the first i32 x and z in 1/16 m, the rest i16 steps from the one before.
+//     u8 kinds (kindsByte); u16 points, the first i32 x and z in 1/16 m, the rest i16 steps from the one before; then for
+//     its left side and its right, its drops.
 //   each corner: i32 x and z of its arc's centre in 1/16 m, u16 radius and u16 reach (centre to the kerbs' corner) in
 //     1/64 m, i16 x and z of the way from its centre to each end of its arc (a's then b's) in 1/16384, u16 the stretch
-//     whose section its walk takes and u8 that stretch's side.
+//     whose section its walk takes and u8 that stretch's side; then its drops.
+//   drops: where a kerb is let down flush with the road (kerbLines): u8 count, each u16 from and u16 to, stations along
+//     its kerb line in 1/4 m, and u8 its kind (DROP_CROSSING, DROP_DRIVE, DROP_RAMP).
+// A part of version 1 is version 2's with no drops.
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { GROUND_CLASS } from "./vehicle-surface.ts";
 
-export const STREETS_VERSION = 1;
+export const STREETS_VERSION = 2;
+/** Why a stretch of kerb is let down flush with the road (a drop): a crossing, a drive or a lot's way in, a corner's ramp. */
+export const DROP_CROSSING = 1, DROP_DRIVE = 2, DROP_RAMP = 3;
+/** Steps a metre of a drop's stations. */
+const DROP_STEP = 4;
 /** What lies between a kerb and its walk, or on a median's side; the order is a kinds byte's. */
 export const VERGES = ["none", "planted", "grass", "dirt", "paved", "gravel"] as const;
 export type Verge = (typeof VERGES)[number];
@@ -81,7 +89,7 @@ export interface Stretch {
   readonly seed: number;
   readonly sides: readonly [StreetSide, StreetSide];
   readonly xz: Float64Array;
-  /** Where each side's kerb is let down flush (kerbLines' drops): pairs of stations along its kerb line, or none. */
+  /** Where each side's kerb is let down flush (kerbLines' drops): from, to and kind, three a drop, by stations along its kerb line. */
   readonly drops?: readonly [Float64Array | null, Float64Array | null];
 }
 
@@ -102,7 +110,7 @@ export interface StreetCorner {
   readonly bz: number;
   readonly stretch: number;
   readonly side: number;
-  /** Where its kerb is let down flush: pairs of stations along its arc from its a end, or none. */
+  /** Where its kerb is let down flush: from, to and kind, three a drop, by stations along its arc from its a end. */
   readonly drops?: Float64Array | null;
 }
 
@@ -123,9 +131,10 @@ export function heldSide(kerb: number, verge: number, walk: number, kinds: numbe
 
 /** The bytes of a sector's streets, its places from (x0, z0). */
 export function encodeStreets(part: StreetsPart): Uint8Array {
+  const dropBytes = (d: Float64Array | null | undefined): number => 1 + (d ? (d.length / 3) * 5 : 0);
   let n = 5;
-  for (const s of part.stretches) n += 14 + (s.xz.length / 2 - 1) * 4 + 8;
-  n += part.corners.length * 23;
+  for (const s of part.stretches) n += 14 + (s.xz.length / 2 - 1) * 4 + 8 + dropBytes(s.drops?.[0]) + dropBytes(s.drops?.[1]);
+  for (const c of part.corners) n += 23 + dropBytes(c.drops);
   const bytes = new Uint8Array(n), v = new DataView(bytes.buffer);
   let at = 0;
   const u8 = (x: number): void => { bytes[at++] = x; };
@@ -135,6 +144,14 @@ export function encodeStreets(part: StreetsPart): Uint8Array {
     v.setInt16(at, x, true); at += 2;
   };
   const i32 = (x: number): void => { v.setInt32(at, x, true); at += 4; };
+  const drops = (d: Float64Array | null | undefined): void => {
+    const count = d ? d.length / 3 : 0;
+    if (count > 255) throw new Error(`streets: a kerb of ${count} drops`);
+    u8(count);
+    for (let k = 0; k < count; k++) {
+      u16(Math.max(0, Math.min(65535, Math.round(d![k * 3]! * DROP_STEP)))); u16(Math.max(0, Math.min(65535, Math.round(d![k * 3 + 1]! * DROP_STEP)))); u8(d![k * 3 + 2]!);
+    }
+  };
   u8(STREETS_VERSION);
   u16(part.stretches.length);
   u16(part.corners.length);
@@ -151,12 +168,14 @@ export function encodeStreets(part: StreetsPart): Uint8Array {
       i16(qx - px); i16(qz - pz);
       px = qx; pz = qz;
     }
+    drops(s.drops?.[0]); drops(s.drops?.[1]);
   }
   for (const c of part.corners) {
     i32(Math.round((c.cx - part.x0) * PLACE_STEP)); i32(Math.round((c.cz - part.z0) * PLACE_STEP));
     u16(Math.max(0, Math.min(65535, Math.round(c.radius * 64)))); u16(Math.max(0, Math.min(65535, Math.round(c.reach * 64))));
     for (const d of [c.ax, c.az, c.bx, c.bz]) i16(Math.round(d * 16384));
     u16(c.stretch); u8(c.side);
+    drops(c.drops);
   }
   if (at !== n) throw new Error("streets: a part's bytes are not as many as it holds");
   return bytes;
@@ -172,7 +191,15 @@ export function decodeStreets(bytes: Uint8Array, x0: number, z0: number): Street
   const i16 = (): number => { need(2); at += 2; return v.getInt16(at - 2, true); };
   const i32 = (): number => { need(4); at += 4; return v.getInt32(at - 4, true); };
   const version = u8();
-  if (version !== STREETS_VERSION) throw new Error(`streets: version ${version} is not one this build reads`);
+  if (version !== STREETS_VERSION && version !== 1) throw new Error(`streets: version ${version} is not one this build reads`);
+  const drops = (): Float64Array | null => {
+    if (version < 2) return null;
+    const count = u8();
+    if (count === 0) return null;
+    const d = new Float64Array(count * 3);
+    for (let k = 0; k < count; k++) { d[k * 3] = u16() / DROP_STEP; d[k * 3 + 1] = u16() / DROP_STEP; d[k * 3 + 2] = u8(); }
+    return d;
+  };
   const count = u16(), corners = u16();
   const stretches: Stretch[] = [];
   for (let k = 0; k < count; k++) {
@@ -188,7 +215,8 @@ export function decodeStreets(bytes: Uint8Array, x0: number, z0: number): Street
       px += i16(); pz += i16();
       xz[p * 2] = x0 + px / PLACE_STEP; xz[p * 2 + 1] = z0 + pz / PLACE_STEP;
     }
-    stretches.push({ type, flags, seed, sides, xz });
+    const left = drops(), right = drops();
+    stretches.push({ type, flags, seed, sides, xz, ...(left || right ? { drops: [left, right] as const } : {}) });
   }
   const out: StreetCorner[] = [];
   for (let k = 0; k < corners; k++) {
@@ -196,7 +224,8 @@ export function decodeStreets(bytes: Uint8Array, x0: number, z0: number): Street
     const ax = i16() / 16384, az = i16() / 16384, bx = i16() / 16384, bz = i16() / 16384;
     const stretch = u16(), side = u8();
     if (stretch >= count || side > 1) throw new Error("streets: a corner names a stretch the part does not hold");
-    out.push({ cx, cz, radius, reach, ax, az, bx, bz, stretch, side });
+    const d = drops();
+    out.push({ cx, cz, radius, reach, ax, az, bx, bz, stretch, side, ...(d ? { drops: d } : {}) });
   }
   if (at !== bytes.length) throw new Error("streets: a part runs on past what it holds");
   return { x0, z0, stretches, corners: out };
@@ -504,7 +533,7 @@ export interface KerbLine {
   readonly walk: number;
   readonly seed: number;
   readonly type: number;
-  /** Where it is let down flush with the road (a crossing, a drive, a corner's ramp): pairs of stations, or null. */
+  /** Where it is let down flush with the road (a crossing, a drive, a corner's ramp): from, to and kind, three a drop, by station, or null. */
   readonly drops: Float64Array | null;
 }
 
@@ -572,20 +601,34 @@ export function kerbLines(held: StreetSectors, part: StreetsPart): KerbLine[] {
     arcLine(c, pts, stations);
     const m = (stations.length >> 1) * 2;
     if (!mine(pts[m]!, pts[m + 1]!)) return;
-    lines(c.stretch, c.side, k, pts, stations, (q) => exposed(pts[q * 2]!, pts[q * 2 + 1]!, c, 0.12), from, s, c.drops ?? null);
+    lines(c.stretch, c.side, k, pts, stations, (q) => exposed(pts[q * 2]!, pts[q * 2 + 1]!, c, 0.12), from, s, cornerDrops(held, c, pts, stations));
   });
   return out;
 }
 
-/** The stretches of `drops` (station pairs) that lie between `a` and `b`, cut to them; null where none do. */
+/** The drops of `drops` (from, to and kind, three a drop) that lie between `a` and `b`, cut to them; null where none do. */
 function dropsWithin(drops: Float64Array | null, a: number, b: number): Float64Array | null {
   if (!drops) return null;
   const kept: number[] = [];
-  for (let k = 0; k + 1 < drops.length; k += 2) {
+  for (let k = 0; k + 2 < drops.length; k += 3) {
     const from = Math.max(a, drops[k]!), to = Math.min(b, drops[k + 1]!);
-    if (to > from) kept.push(from, to);
+    if (to > from) kept.push(from, to, drops[k + 2]!);
   }
   return kept.length > 0 ? Float64Array.from(kept) : null;
+}
+
+/**
+ * A corner's arc let down flush its whole length where one of the carriageways it joins has a flush kerb (an alley, a
+ * service road or a drive meeting the street): the drive's mouth, not a kerb rounding into it. Its stored drops otherwise.
+ */
+function cornerDrops(held: StreetSectors, c: StreetCorner, pts: readonly number[], stations: readonly number[]): Float64Array | null {
+  const p = new StreetPoint();
+  for (const e of [0, stations.length - 1]) {
+    // A little way out from the arc's end into the street, the carriageway that meets it there.
+    const x = pts[e * 2]!, z = pts[e * 2 + 1]!, dx = x - c.cx, dz = z - c.cz, l = Math.sqrt(dx * dx + dz * dz) || 1;
+    if (streetAt(held, x + (dx / l) * 0.3, z + (dz / l) * 0.3, p, c) && kerbOf(p.kinds) === 1) return Float64Array.of(0, stations[stations.length - 1]!, DROP_DRIVE);
+  }
+  return c.drops ?? null;
 }
 
 /** A corner's arc from its a end round to its b end, a point at most KERB_STEP apart, with how far along it each is. */
