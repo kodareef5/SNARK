@@ -8,6 +8,7 @@ import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
 import { BEND_SHORTS, HIT_PREFIX, MODEL_HALF, arcLength, bendVertex, curveAt, packBend, placeKerb, underPiece, unpackBend, wrapped, type BentPiece, type KerbLine, type Section } from "../../shared/world/bends.ts";
 import { MapStatics, bendOf, blankStatics, parseMap, readHead, readPart, setStatics, writeMap, type MapData, type MapStatic, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
+import { rowsOf as nearRows } from "../../client/core/mapload.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
@@ -175,6 +176,15 @@ test("a map holds its bent pieces' bends, by chunk and slot, read whole and read
   for (const [c, b] of back.bends) for (let k = 0; k < b.slot.length; k++) expect(bendOf(t.bends.get(c), b.slot[k]!)).toEqual(b.bend.subarray(k * 8, k * 8 + 8));
   // Every bent piece's chunk is where its chord's middle is.
   for (const [c] of back.bends) expect(c).toBeLessThan((map.dims.chunksX * map.dims.chunksZ * CHUNK_SIZE) / CHUNK_SIZE);
+  // The statics round the body a page hands over before the whole map's hold their chunks' bends: the near store draws
+  // a bent piece by them, and without them a whole city drew no kerb until every part had come.
+  const head = readHead(file), sectors = head.parts.filter((p) => p.kind === "statics");
+  const steps = nearRows(head, t, sectors);
+  let s = steps.next();
+  while (!s.done) s = steps.next();
+  const near = s.value, kept = [...t.bends.keys()].filter((c) => near.first[c + 1]! > near.first[c]!);
+  expect(kept.length).toBeGreaterThan(0);
+  for (const c of kept) expect(near.bends.get(c)).toBe(t.bends.get(c));
 });
 
 test("a map stores no collision piece of a bent one but makes them where it is read: the same boxes, read whole or a sector at a time", () => {

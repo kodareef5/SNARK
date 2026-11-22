@@ -395,7 +395,8 @@ interface ChunkBatch {
   inView: Uint8Array;
   /**
    * Per instance, its bend where its kind is bent (bend.ts), eight numbers each, which go up as the buffer BEND_BUFFERS past
-   * the instances'; null where none is. `unbent`: built before the map's bends were to hand, so built again once they are.
+   * the instances'; null where none is. `unbent`: built before its chunk's bends were to hand (in the statics round the
+   * body or the whole map's), so built again once they are.
    */
   bends: Int16Array | null;
   unbent: boolean;
@@ -2875,7 +2876,7 @@ export class Scene {
       let learnt = false;
       if (batch) for (const m of batch.unknown) learnt = this.assets.known(m) || learnt;
       const turned = batch !== undefined && batch.shape !== t.shape && !batch.sized && batch.placed === t.placed;
-      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) {
+      if (!batch || learnt || batch.mesh !== mesh || (batch.unbent && statics?.bends.has(chunk)) || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) {
         batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf, mesh, own?.mine ?? null);
         laid += t.high;
       }
@@ -3489,7 +3490,7 @@ export class Scene {
     const bends = bent > 0 ? new Int16Array(count * 8) : null, chunkBends = city?.bends.get(chunk);
     const b: ChunkBatch = {
       bends,
-      unbent: bent > 0 && !city,
+      unbent: bent > 0 && !chunkBends,
       shape: t.shape,
       placed: t.placed,
       unknown: ranges.filter((m, k) => k % 3 === 0 && !this.assets.known(m)),
