@@ -11,12 +11,13 @@
 import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
 import type { LootDef } from "../shared/content/defs.ts";
 import { hashString } from "../shared/hash.ts";
-import { S_SUPPLY, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { fitBytes } from "../shared/net/codec.ts";
+import { MAX_OPEN_NAME_BYTES, S_SUPPLY, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { rollLoot, type LootDrop } from "../shared/sim/loot.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
-import { ANNOUNCES, LEAVE_SECONDS, POSE_NAMES, SENDER_ZENITH, SUPPLY_MOST, newPose, quantise, supplyPose, supplyTimes, writeSupply, type SupplyList, type SupplyRow } from "../shared/sim/supply.ts";
+import { ANNOUNCES, LEAVE_SECONDS, POSE_NAMES, SENDER_ZENITH, SUPPLY_MOST, SUPPLY_NAME_BYTES, SUPPLY_ROWS, newPose, quantise, supplyName, supplyPose, supplyTimes, writeSupply, type SupplyList, type SupplyRow } from "../shared/sim/supply.ts";
 import { tableKey, type CircuitDoc, type SiteDoc, type SupplyBook } from "../shared/supply/book.ts";
 import { catalogOf, type Catalog } from "../shared/supply/catalog.ts";
 import { cellsOf, compileBook, rollTable, type Compiled } from "../shared/supply/compile.ts";
@@ -580,7 +581,7 @@ export class Supply {
     // ARK's override for the tier wins. A table the book no longer has gives nothing, and a drop of nothing does not land.
     const over = this.overrides.get(d.tierKey)?.[d.ringed ? "ringed" : "plain"];
     const rolled = over ? this.rollArk(over, rng) : table ? rollTable(table, d.ringed, rng, this.catalog, table.dormant) : [];
-    const box = records.create(this.capsule, `${d.ringed ? "Ringed " : ""}${d.tierName} ${d.clsName} drop`.slice(0, 60));
+    const box = records.create(this.capsule, fitBytes(supplyName(d.tierName, d.clsName, d.ringed), MAX_OPEN_NAME_BYTES));
     box.extra.set(SUPPLY_TAG, Uint8Array.of(d.id & 0xff, d.id >> 8));
     const mint = (list: typeof rolled): number => {
       let stacks = 0;
@@ -693,14 +694,27 @@ export class Supply {
     this.saved.dirty = true;
   }
 
-  /** The drops as a session is told of them, with what each tier and class among them shows. */
+  /**
+   * The drops as a session is told of them, with what each tier and class among them shows. A message carries
+   * SUPPLY_ROWS rows, which is every drop that is live and nearly as many again that are leaving; where there are more
+   * than that leaving (an admin clearing the map over and over), those longest gone are left out, whose going has been
+   * seen the longest. A live drop is never left out.
+   */
   list(): SupplyList {
+    let told: readonly Drop[] = this.drops;
+    if (told.length > SUPPLY_ROWS) {
+      const going = told.filter((d) => d.left > 0).sort((a, b) => b.left - a.left || b.id - a.id);
+      const kept = new Set(going.slice(0, Math.max(0, SUPPLY_ROWS - (told.length - going.length))));
+      told = told.filter((d) => d.left === 0 || kept.has(d)).slice(0, SUPPLY_ROWS);
+    }
     const list: SupplyList = { tiers: [], classes: [], rows: [] };
-    for (const d of this.drops) {
-      let tier = list.tiers.findIndex((t) => t.name === d.tierName && t.rgb === d.rgb && t.level === d.level && t.count === d.count);
-      if (tier < 0) tier = list.tiers.push({ name: d.tierName, rgb: d.rgb, level: d.level, count: d.count }) - 1;
-      let cls = list.classes.findIndex((k) => k.name === d.clsName && k.mark === d.mark);
-      if (cls < 0) cls = list.classes.push({ name: d.clsName, mark: d.mark }) - 1;
+    for (const d of told) {
+      // Names as the wire carries them, so that two a message would write alike are one line of its legend.
+      const [tierName, clsName] = [fitBytes(d.tierName, SUPPLY_NAME_BYTES), fitBytes(d.clsName, SUPPLY_NAME_BYTES)];
+      let tier = list.tiers.findIndex((t) => t.name === tierName && t.rgb === d.rgb && t.level === d.level && t.count === d.count);
+      if (tier < 0) tier = list.tiers.push({ name: tierName, rgb: d.rgb, level: d.level, count: d.count }) - 1;
+      let cls = list.classes.findIndex((k) => k.name === clsName && k.mark === d.mark);
+      if (cls < 0) cls = list.classes.push({ name: clsName, mark: d.mark }) - 1;
       d.tier = tier;
       d.cls = cls;
       list.rows.push(d);

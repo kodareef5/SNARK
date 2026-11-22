@@ -53,6 +53,7 @@ import {
   OWN_LOOK,
   OWN_MARKERS,
   OWN_OPEN,
+  MAX_OPEN_NAME_BYTES,
   OPEN_TAKE_ONLY,
   OWN_STATION,
   OWN_PROGRESSION,
@@ -1478,7 +1479,7 @@ export class ClientSession {
       if (!r.bool()) this.open = null;
       else {
         const cap = r.varint();
-        const name = r.string(64);
+        const name = r.string(MAX_OPEN_NAME_BYTES);
         const flags = r.u8();
         if (!r.overflow) this.open = { name, inventory: new Inventory(cap), takeOnly: (flags & OPEN_TAKE_ONLY) !== 0 };
       }

@@ -2,8 +2,10 @@
 
 import { expect, test } from "bun:test";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { starterBook } from "../../content/supply/starter.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
-import { BRAKE_HEIGHT, LEAVE_SECONDS, MARKS, POSE_BRAKING, POSE_COMING, POSE_FLYING, POSE_GONE, POSE_LANDED, POSE_LEAVING, SENDER_ZENITH, SUPPLY_MOST, newPose, readSupply, supplyPose, supplyTimes, writeSupply, type SupplyList, type SupplyRow } from "../../shared/sim/supply.ts";
+import { BRAKE_HEIGHT, LEAVE_SECONDS, MARKS, POSE_BRAKING, POSE_COMING, POSE_FLYING, POSE_GONE, POSE_LANDED, POSE_LEAVING, SENDER_ZENITH, SUPPLY_MOST, SUPPLY_NAME_BYTES, SUPPLY_ROWS, newPose, readSupply, supplyPose, supplyTimes, writeSupply, type SupplyList, type SupplyRow } from "../../shared/sim/supply.ts";
+import { NAME_CHARS, bookFaults } from "../../shared/supply/book.ts";
 import { CAST_PHASE, EYE_COLORS, EYE_KNOT, EYE_PERIOD, aperture, eyePhase, eyePower } from "../../shared/world/tide-eye.ts";
 
 const R = TICK_RATE;
@@ -128,8 +130,38 @@ test("the list of live drops goes over the wire whole and comes back the same, a
   const none = new BitWriter(16);
   writeSupply(none, { tiers: [], classes: [], rows: [] });
   expect(readSupply(new BitReader(none.bytes().slice()))).toEqual({ tiers: [], classes: [], rows: [] });
-  // The most a message carries.
+  // The most that are live at once.
   const full = new BitWriter(4096);
   writeSupply(full, { ...list, rows: Array.from({ length: SUPPLY_MOST }, (_, i) => row({ id: i + 1 })) });
   expect([readSupply(new BitReader(full.bytes().slice()))!.rows.length, full.bytes().length < 1300]).toEqual([SUPPLY_MOST, true]);
+});
+
+test("whatever a server may be told to send is a message a client reads: the most rows, each under its own tier and class, with names at their widest", () => {
+  // A message carries more rows than may be live, for the drops that are leaving while others are called in their place.
+  expect([SUPPLY_ROWS > SUPPLY_MOST, SUPPLY_NAME_BYTES, NAME_CHARS * 3]).toEqual([true, 72, 72]);
+  // Twenty-four characters of each width a character has in UTF-8: all fit, the widest exactly.
+  const widths = ["a".repeat(NAME_CHARS), "é".repeat(NAME_CHARS), "補".repeat(NAME_CHARS), "🎁".repeat(NAME_CHARS / 2)];
+  expect(widths.map((n) => [n.length, new TextEncoder().encode(n).length])).toEqual([[24, 24], [24, 48], [24, 72], [24, 48]]);
+  const most: SupplyList = {
+    tiers: Array.from({ length: SUPPLY_ROWS }, (_, i) => ({ name: widths[i % 4]!.slice(0, 22) + String(i).padStart(2, "0"), rgb: i * 4099, level: i, count: 1 + (i % 7) })),
+    classes: Array.from({ length: SUPPLY_ROWS }, (_, i) => ({ name: "補".repeat(22) + String(i).padStart(2, "0"), mark: i % 7 })),
+    rows: Array.from({ length: SUPPLY_ROWS }, (_, i) => ({ ...row({ id: i + 1, tier: i, cls: SUPPLY_ROWS - 1 - i, landed: true }), left: i % 2 === 0 ? 0 : row().land + 40 + i })),
+  };
+  // The server's writer is sixteen thousand bytes at the least (server/game.ts): the largest list is well inside it.
+  const w = new BitWriter(16384);
+  writeSupply(w, most);
+  expect([w.overflow, w.bytes().length < 12288, readSupply(new BitReader(w.bytes().slice()))]).toEqual([false, true, most]);
+  // What is past the limits is not written: a name is cut at a whole character, and a list at the rows a message carries.
+  const over = new BitWriter(16384);
+  writeSupply(over, { tiers: [{ name: "補".repeat(30), rgb: 1, level: 1, count: 1 }], classes: [{ name: "🎁".repeat(20) + "x", mark: 0 }], rows: Array.from({ length: SUPPLY_ROWS + 5 }, (_, i) => row({ id: i + 1 })) });
+  const back = readSupply(new BitReader(over.bytes().slice()))!;
+  expect([back.tiers[0]!.name, back.classes[0]!.name, back.rows.length, back.rows.at(-1)!.id]).toEqual(["補".repeat(24), "🎁".repeat(18), SUPPLY_ROWS, SUPPLY_ROWS]);
+  // The book takes no name the wire would cut, and says so at the name.
+  const b = starterBook();
+  b.tiers[0]!.name = "補".repeat(24);
+  b.classes[0]!.name = "🎁".repeat(12);
+  expect(bookFaults(b).filter((f) => !f.warn)).toEqual([]);
+  b.tiers[0]!.name = "補".repeat(25);
+  b.classes[0]!.name = "";
+  expect(bookFaults(b).filter((f) => !f.warn)).toEqual([{ path: "tiers.0.name", message: "a name of 1 to 24 characters" }, { path: "classes.0.name", message: "a name of 1 to 24 characters" }]);
 });

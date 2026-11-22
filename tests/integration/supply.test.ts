@@ -16,7 +16,7 @@ import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import { BTN_USE } from "../../shared/sim/character.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
-import { LEAVE_SECONDS, SENDER_ZENITH, SUPPLY_MOST, quantise, readSupply, writeSupply, type SupplyList } from "../../shared/sim/supply.ts";
+import { LEAVE_SECONDS, SENDER_ZENITH, SUPPLY_MOST, SUPPLY_ROWS, quantise, readSupply, writeSupply, type SupplyList } from "../../shared/sim/supply.ts";
 import type { SupplyBook } from "../../shared/supply/book.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { CAST_PHASE, EYE_KNOT, eyeKnot, eyePhase, type TideEyeSite } from "../../shared/world/tide-eye.ts";
@@ -63,7 +63,7 @@ const seconds = (h: Harness, ticks: number): void => h.run((ticks / TICK_RATE) *
 const until = (h: Harness, at: number, more = 6): void => seconds(h, Math.max(0, at - h.world.tick) + more);
 /** What a session should hold: the server's list as its message carries it. */
 const told = (h: Harness): SupplyList => {
-  const w = new BitWriter(4096);
+  const w = new BitWriter(16384);
   writeSupply(w, h.host.supply.list());
   return readSupply(new BitReader(w.bytes().slice()))!;
 };
@@ -303,6 +303,63 @@ test("the console brings a drop down, takes one away, and says what it cannot do
   expect(h.host.supply.call({ x: 40, z: 40, tier: "green", cls: "shelter", source: "test" })).toBe("32 drops are live already");
   h.run(200);
   expect([new Set(h.host.supply.drops.map((d) => d.id)).size, ada.supply.rows.length, ada.supply]).toEqual([SUPPLY_MOST, SUPPLY_MOST, told(h)]);
+  h.host.shutdown();
+});
+
+test("thirty-two drops live and others still going: every session holds them all, and the live ones whatever else there is no room for", () => {
+  const { h, ada } = world();
+  for (let i = 0; i < SUPPLY_MOST; i++) call(h, 20 + i * 12, 30, "green", "shelter");
+  h.say(ada, "supply land all 0");
+  h.run(400);
+  // One landed capsule is taken away and another called in its place: thirty-two live, and one going for twelve seconds.
+  const gone = h.host.supply.drops[0]!;
+  expect(h.say(ada, `supply cancel ${gone.id}`)).toEqual([`cancelled ${gone.id}`]);
+  const next = call(h, 40, 80, "green", "shelter");
+  h.run(300);
+  expect([h.host.supply.live(), h.host.supply.drops.length, ada.supply.rows.length, ada.supply.rows.some((r) => r.id === next.id)]).toEqual([32, 33, 33, true]);
+  expect(ada.supply).toEqual(told(h));
+  // The map cleared and filled again three times inside the twelve seconds: thirty-two are live and ninety-seven are
+  // going, which is more than a message carries. It has every live one and the thirty-one last to go.
+  for (let k = 0; k < 3; k++) {
+    h.say(ada, "supply land all 0");
+    h.run(300);
+    h.say(ada, "supply cancel all");
+    for (let i = 0; i < SUPPLY_MOST; i++) call(h, 20 + i * 12, 110 + k * 30, "green", "shelter");
+  }
+  h.run(300);
+  const { drops } = h.host.supply;
+  const live = drops.filter((d) => d.left === 0);
+  const going = drops.filter((d) => d.left > 0).sort((a, b) => b.left - a.left || b.id - a.id);
+  expect([live.length, going.length, ada.supply.rows.length]).toEqual([32, 97, SUPPLY_ROWS]);
+  expect(ada.supply.rows.map((r) => r.id).sort((a, b) => a - b)).toEqual([...live, ...going.slice(0, SUPPLY_ROWS - 32)].map((d) => d.id).sort((a, b) => a - b));
+  expect(ada.supply).toEqual(told(h));
+  // A session that joins now is told the same, and once the rest have gone the list is the live ones alone.
+  const bob = h.join("bob");
+  h.run(400);
+  expect(bob.supply).toEqual(ada.supply);
+  seconds(h, LEAVE_SECONDS * TICK_RATE + 10);
+  expect([h.host.supply.drops.length, ada.supply.rows.length, ada.supply.rows.every((r) => r.left === 0), bob.supply]).toEqual([32, 32, true, ada.supply]);
+  h.host.shutdown();
+});
+
+test("a tier and a class named in any script reach every session, and the capsule opens under its name: twenty-four characters at their widest", () => {
+  const { h, ada, pilot } = world();
+  // Twenty-four characters of three bytes each, and twelve of four: the most a name of the book's can take on the wire.
+  const [wide, pairs] = ["一二三四五六七八九十一二三四五六七八九十一二三四", "🎁".repeat(12)];
+  edit(h, (b) => {
+    b.tiers[0]!.name = wide;
+    b.classes.find((c) => c.key === "arms")!.name = pairs;
+  });
+  const d = call(h, 250, 253, "white", "arms", { ringed: true });
+  h.say(ada, `supply land ${d.id} 0`);
+  h.run(600);
+  expect([d.landed, ada.supply.rows.length, ada.supply.tiers[0]?.name, ada.supply.classes[0]?.name]).toEqual([true, 1, wide, pairs]);
+  expect(ada.supply).toEqual(told(h));
+  // She still reads the world about her, and the capsule opens.
+  h.say(ada, "addxp 200000");
+  h.run(300);
+  tapUse(h, pilot);
+  expect([d.opened, ada.open?.takeOnly, ada.open?.name.startsWith(`Ringed ${wide}`)]).toEqual([true, true, true]);
   h.host.shutdown();
 });
 

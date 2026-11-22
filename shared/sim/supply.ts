@@ -4,7 +4,7 @@
 // its ticks, with whole ticks stored and no trigonometry, so the server, a client far off and one that joins while it
 // is in the air agree.
 
-import type { BitReader, BitWriter } from "../net/codec.ts";
+import { fitBytes, type BitReader, type BitWriter } from "../net/codec.ts";
 import { nextCast, type EyeColor } from "../world/tide-eye.ts";
 
 /**
@@ -12,8 +12,22 @@ import { nextCast, type EyeColor } from "../world/tide-eye.ts";
  * by the shape on their tops. These seven read apart as silhouettes eight pixels high.
  */
 export const MARKS = ["bar", "saltire", "buckler", "hourglass", "cross", "cone_down", "cone_up"] as const;
-/** The most drops live on a map at once, and so the most rows a message carries. */
+/** The most drops live on a map at once: pending or landed, and somebody's to find. */
 export const SUPPLY_MOST = 32;
+const COUNT_BITS = 6;
+/**
+ * The most rows a message carries, which is more than may be live: a drop that is leaving is told for LEAVE_SECONDS
+ * more, so that its going is seen, while another may already have been called in its place. A message's counts are six
+ * bits, and so are a row's tier and class, since every row may have been called under its own.
+ */
+export const SUPPLY_ROWS = (1 << COUNT_BITS) - 1;
+/**
+ * Bytes of a tier's or a class's name on the wire: the twenty-four characters a book allows (shared/supply/book.ts
+ * NAME_CHARS), at the three bytes the widest of them takes. A book's check, the writer and the reader all go by it.
+ */
+export const SUPPLY_NAME_BYTES = 72;
+/** What a drop's capsule is called: on its record, in the prompt at it and over its open bag. */
+export const supplyName = (tier: string, cls: string, ringed: boolean): string => `${ringed ? "Ringed " : ""}${tier} ${cls} drop`;
 /** A drop sent by no obelisk: it comes straight down. */
 export const SENDER_ZENITH = 255;
 /** Metres over its landing at which a capsule lights its jets. */
@@ -240,29 +254,31 @@ const pos = (v: number): number => Math.max(0, Math.min((1 << POS_BITS) - 1, Mat
 const height = (v: number): number => Math.max(-(1 << (HEIGHT_BITS - 1)), Math.min((1 << (HEIGHT_BITS - 1)) - 1, Math.round(v * 32)));
 
 /**
- * The drops that are live, whole, after the message's type (S_SUPPLY): what each tier and class among them shows, then
- * a row a drop. A drop keeps the tier and class it was called with, so these are theirs and not the book's as it stands.
+ * The drops that are live or leaving, whole, after the message's type (S_SUPPLY): what each tier and class among them
+ * shows, then a row a drop. A drop keeps the tier and class it was called with, so these are theirs and not the book's
+ * as it stands. What is written here is what readSupply takes: a list of SUPPLY_ROWS rows at the most (the server
+ * chooses which, server/supply.ts list), and a name no longer than SUPPLY_NAME_BYTES, cut at a whole character.
  */
 export function writeSupply(w: BitWriter, list: SupplyList): void {
   // Reserved for the day a change is sent as a difference: 1 says the list that follows replaces the one held.
   w.bool(true);
-  w.bits(list.tiers.length, 5);
-  for (const t of list.tiers) {
-    w.string(t.name);
+  w.bits(Math.min(SUPPLY_ROWS, list.tiers.length), COUNT_BITS);
+  for (const t of list.tiers.slice(0, SUPPLY_ROWS)) {
+    w.string(fitBytes(t.name, SUPPLY_NAME_BYTES));
     w.bits(t.rgb & 0xffffff, 24);
     w.bits(Math.min(1023, t.level), 10);
     w.bits(Math.min(31, t.count), 5);
   }
-  w.bits(list.classes.length, 6);
-  for (const c of list.classes) {
-    w.string(c.name);
+  w.bits(Math.min(SUPPLY_ROWS, list.classes.length), COUNT_BITS);
+  for (const c of list.classes.slice(0, SUPPLY_ROWS)) {
+    w.string(fitBytes(c.name, SUPPLY_NAME_BYTES));
     w.u8(c.mark);
   }
-  w.bits(list.rows.length, 6);
-  for (const d of list.rows) {
+  w.bits(Math.min(SUPPLY_ROWS, list.rows.length), COUNT_BITS);
+  for (const d of list.rows.slice(0, SUPPLY_ROWS)) {
     w.u16(d.id);
-    w.bits(d.tier, 5);
-    w.bits(d.cls, 6);
+    w.bits(d.tier, COUNT_BITS);
+    w.bits(d.cls, COUNT_BITS);
     w.bool(d.ringed);
     w.bool(d.landed);
     w.bool(d.opened);
@@ -290,12 +306,12 @@ export function writeSupply(w: BitWriter, list: SupplyList): void {
 export function readSupply(r: BitReader): SupplyList | null {
   if (!r.bool()) return null;
   const list: SupplyList = { tiers: [], classes: [], rows: [] };
-  for (let n = r.bits(5); n > 0; n--) list.tiers.push({ name: r.string(64), rgb: r.bits(24), level: r.bits(10), count: r.bits(5) });
-  for (let n = r.bits(6); n > 0; n--) list.classes.push({ name: r.string(64), mark: r.u8() });
-  for (let n = r.bits(6); n > 0; n--) {
+  for (let n = r.bits(COUNT_BITS); n > 0; n--) list.tiers.push({ name: r.string(SUPPLY_NAME_BYTES), rgb: r.bits(24), level: r.bits(10), count: r.bits(5) });
+  for (let n = r.bits(COUNT_BITS); n > 0; n--) list.classes.push({ name: r.string(SUPPLY_NAME_BYTES), mark: r.u8() });
+  for (let n = r.bits(COUNT_BITS); n > 0; n--) {
     const id = r.u16();
-    const tier = r.bits(5);
-    const cls = r.bits(6);
+    const tier = r.bits(COUNT_BITS);
+    const cls = r.bits(COUNT_BITS);
     const ringed = r.bool();
     const landed = r.bool();
     const opened = r.bool();
@@ -315,7 +331,7 @@ export function readSupply(r: BitReader): SupplyList | null {
     const brake = r.varint();
     const end = land + r.varint();
     const left = r.bool() ? land + r.varint() : 0;
-    if (r.overflow || tier >= list.tiers.length || cls >= list.classes.length || brake < 1 || brake >= land - release || list.rows.length >= SUPPLY_MOST) return null;
+    if (r.overflow || tier >= list.tiers.length || cls >= list.classes.length || brake < 1 || brake >= land - release) return null;
     list.rows.push({ id, tier, cls, ringed, landed, opened, announce, sender, eye, look, ox, oy, oz, x, y, z, called, release, land, brake, end, left });
   }
   return r.overflow ? null : list;

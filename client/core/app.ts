@@ -1,3 +1,4 @@
+import { supplyName } from "../../shared/sim/supply.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 import { creatureHold } from "../../shared/sim/creature-actions.ts";
 // One whole client without a browser. The shell owns the renderer, socket and DOM, forwards events
@@ -1014,8 +1015,10 @@ export class App {
         // A supply drop's capsule opens at its tier's level: below it the prompt says the level, and no key.
         const drop = this.reg.takeOnly[r.kind[hit]!] === 1 ? s.supply.rows.find((d) => d.landed && d.left === 0 && Math.abs(d.x - r.x[hit]!) < 0.5 && Math.abs(d.z - r.z[hit]!) < 0.5) : undefined;
         const level = drop ? (s.supply.tiers[drop.tier]?.level ?? 0) : 0;
-        if (!s.open && s.progress.level < level) return `${r.name[hit]}  opens at level ${level}`;
-        return `E  ${s.open ? "close" : "open"} ${r.name[hit]}`;
+        // Its name is said whole from the list: an entity's own is cut at twenty-four characters (EntityStore.setLook).
+        const name = drop ? supplyName(s.supply.tiers[drop.tier]?.name ?? "", s.supply.classes[drop.cls]?.name ?? "", drop.ringed) : r.name[hit]!;
+        if (!s.open && s.progress.level < level) return `${name}  opens at level ${level}`;
+        return `E  ${s.open ? "close" : "open"} ${name}`;
       }
       if (r.team[hit] === 0 && r.grown[hit] !== 0) {
         const id = this.reg.ids[r.kind[hit]!] ?? "";

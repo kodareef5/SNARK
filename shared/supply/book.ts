@@ -5,7 +5,9 @@
 // the tools and the admin page read a book the same way.
 
 import type { LootCount } from "../content/defs.ts";
+import { fitBytes } from "../net/codec.ts";
 import { MOST_LOOT, POWER_MOST, POWER_STEPS } from "../sim/loot.ts";
+import { SUPPLY_NAME_BYTES } from "../sim/supply.ts";
 
 export const BOOK_FORMAT = 1;
 /** A key of a tier, class, set, table, circuit or site: what a path in a fault or a URL can carry unescaped. */
@@ -201,6 +203,14 @@ export interface BookFault {
   warn?: boolean;
 }
 
+/**
+ * Characters of a tier's or a class's name. Every session is told these names with a drop (shared/sim/supply.ts), in
+ * SUPPLY_NAME_BYTES at the most, which twenty-four characters of any script fit: a name the book takes is one the
+ * wire carries whole.
+ */
+export const NAME_CHARS = 24;
+const NAME_FAULT = `a name of 1 to ${NAME_CHARS} characters`;
+const named = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= NAME_CHARS && fitBytes(v, SUPPLY_NAME_BYTES) === v;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 
@@ -312,7 +322,7 @@ export function bookFaults(book: unknown): BookFault[] {
         if (tierKeys.has(t.key) || t.key.includes("/")) bad(`${path}.key`, "a tier's key is its own, with no /");
         tierKeys.add(t.key);
       }
-      if (typeof t.name !== "string" || t.name.length === 0 || t.name.length > 24) bad(`${path}.name`, "a name of 1 to 24 characters");
+      if (!named(t.name)) bad(`${path}.name`, NAME_FAULT);
       if (!(Number.isInteger(t.rgb) && t.rgb >= 0 && t.rgb <= 0xffffff)) bad(`${path}.rgb`, "a colour, 0xRRGGBB");
       if (!(Number.isInteger(t.level) && t.level >= 0 && t.level <= 1000)) bad(`${path}.level`, "a level from 0 to 1000");
       num(`${path}.target`, t.target, 1, 1e9, "a worth");
@@ -331,7 +341,7 @@ export function bookFaults(book: unknown): BookFault[] {
         if (classKeys.has(c.key) || c.key.includes("/")) bad(`${path}.key`, "a class's key is its own, with no /");
         classKeys.add(c.key);
       }
-      if (typeof c.name !== "string" || c.name.length === 0 || c.name.length > 24) bad(`${path}.name`, "a name of 1 to 24 characters");
+      if (!named(c.name)) bad(`${path}.name`, NAME_FAULT);
       if (!(Number.isInteger(c.mark) && c.mark >= 0 && c.mark <= 255)) bad(`${path}.mark`, "a top-mark, 0 to 255");
       setNamed(`${path}.fill`, c.fill);
       if (c.weights !== undefined) {

@@ -494,6 +494,11 @@ export const SLOT_ON = 2;
 export const OWN_OPEN = 4;
 /** The open box is only taken from (a supply drop's capsule): the client offers no way to put a stack in. */
 export const OPEN_TAKE_ONLY = 1;
+/**
+ * Bytes of the open box's name: the server cuts a longer one at a whole character and the client reads no more. It is
+ * a supply capsule's at its longest ("Ringed", a tier's and a class's name at SUPPLY_NAME_BYTES each, "drop").
+ */
+export const MAX_OPEN_NAME_BYTES = 160;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
 export const OWN_MARKERS = 5;
 /**
