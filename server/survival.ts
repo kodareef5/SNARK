@@ -16,6 +16,7 @@ import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { V_COUNT, V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER, Vitals } from "../shared/sim/vitals.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
+import { Signal } from "./signal.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
@@ -145,6 +146,8 @@ export class Survival {
   readonly gods = new Set<number>();
   /** Called when a body goes unconscious or comes round. */
   onOut: ((rec: EntityRecord, out: boolean) => void) | null = null;
+  /** A body's vitals and their rates were settled: after a blow, a meal, a buff, a deadline of its own. Its health moves at the rate it now has until the next. */
+  readonly onRated = new Signal<[rec: EntityRecord]>();
   /** Called when health crosses INJURED in either direction. */
   onInjured: ((rec: EntityRecord, injured: boolean) => void) | null = null;
   /** Temporary maximum-health factor. Changes preserve the current health fraction, never refill the body. */
@@ -186,6 +189,7 @@ export class Survival {
     for (let i = 0; i < V_COUNT; i++) v.value[i] = i === V_TORPOR ? 0 : v.max[i]!;
     rec.out = false;
     this.records.dirty.add(rec.pid);
+    this.onRated.emit(rec);
   }
 
   /** The maximum of each vital, or 0 for one the body does not have. A young body has a share of a grown one's health and food. */
@@ -363,6 +367,11 @@ export class Survival {
   }
 
   private update(rec: EntityRecord, cause = 0, killer = 0, impact?: CorpseImpact): void {
+    this.settle(rec, cause, killer, impact);
+    this.onRated.emit(rec);
+  }
+
+  private settle(rec: EntityRecord, cause: number, killer: number, impact?: CorpseImpact): void {
     const v = rec.vitals!;
     const tick = this.world.tick;
     v.rebase(tick);

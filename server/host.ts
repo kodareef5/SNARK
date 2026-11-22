@@ -717,7 +717,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (woke.length > 0) settled.bodies += settle(world, woke, relocated);
     woke.length = 0;
   } });
-  const hurt = new Hurt({ world, records, survival });
+  const hurt = new Hurt({ world, records, survival, deadlines });
+  creatures.onAdopt.on((_e, rec) => hurt.follow(rec));
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
     if (impale.held(c.pid) || world.ents.seatSlot[e] === IMPALE_SLOT) return RESULT_BUSY;
@@ -1616,7 +1617,6 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     feces,
     overhead,
     physics(corpses),
-    hurt,
     voice,
     mark(PART.world),
     { step: keepHouse },
