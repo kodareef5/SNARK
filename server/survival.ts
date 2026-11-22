@@ -8,7 +8,7 @@ import type { SpeciesDef } from "../shared/content/defs.ts";
 import { drainAt, torporAt } from "../shared/content/wild.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { JET_HELMET, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
+import { JET_HELMET, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MF_DOWN, STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { EntityStore } from "../shared/sim/entities.ts";
 import { STAT_NAMES, statValue, type Genome, type StatName } from "../shared/sim/genome.ts";
 import { GAME_HOUR_TICKS, MICRO } from "../shared/sim/lazy.ts";
@@ -93,8 +93,8 @@ export function refreshMods(reg: Registry, ents: EntityStore, e: number, g: Geno
   const max = Math.round(statOf(def, g, STAT_STAMINA, 100));
   ents.staminaMax[e] = max < 1 ? 1 : max > 65535 ? 65535 : max;
   if (ents.stamina[e]! > ents.staminaMax[e]! * STAMINA_UNITS) ents.stamina[e] = ents.staminaMax[e]! * STAMINA_UNITS;
-  // The server's flags are recomputed here. MF_WINDED belongs to the step and is kept.
-  ents.mflags[e] = (ents.mflags[e]! & MF_WINDED) | flags;
+  // The server's flags are recomputed here. MF_WINDED belongs to the step and MF_DOWN to a fall (server/falls.ts): both are kept.
+  ents.mflags[e] = (ents.mflags[e]! & (MF_WINDED | MF_DOWN)) | flags;
 }
 
 export const CAUSE_STARVED = 1;

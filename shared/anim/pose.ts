@@ -103,6 +103,8 @@ export const CUE_JET = 1 << (CUE_DECAY_SHIFT + 1);
 /** The mode field's value for a glider at trim; the two above it are its dive and its flare. The jet's modes end at 4. */
 export const ANIM_GLIDE = 5;
 export const CUE_MATING_SHIFT = 28;
+/** On a living survivor, the first mating bit: knocked off its feet, it lies as its ragdoll does (shared/anim/human-fall.ts). */
+export const CUE_DOWN = 1 << CUE_MATING_SHIFT;
 /**
  * A survivor's emote (protocol 37), its own word beside the pose and the cues: the emote's number in shared/anim/emotes.ts
  * (0 for none) in the low EMOTE_ID_BITS, the low 16 bits of its first tick, its role (EMOTE_SOLO, EMOTE_SYNCED: in step

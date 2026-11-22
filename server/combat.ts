@@ -1,6 +1,7 @@
 // Finds what a swing or shot lands on, on the server, from the body's own eye. A client never names what it hit.
 // What a hit does is resolveDamage (shared/sim/damage.ts) and nothing else. The attacker's events never say what the victim has left.
 
+import type { Solved } from "../shared/anim/skeleton.ts";
 import type { CorpseImpact } from "../shared/anim/corpse.ts";
 import { HUMAN } from "../shared/anim/human.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
@@ -233,6 +234,8 @@ export class Combat {
   readonly onStructureHurt = new Signal<[ref: number]>();
   /** The bodies of dead creatures, which a survivor's swing harvests. */
   corpses: Corpses | null = null;
+  /** The pose a survivor knocked down lies in, to be hit as it lies (server/falls.ts); null for one standing. The host sets it. */
+  downPose: (e: number) => Solved | null = () => null;
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
   private readonly inBlast = new Found(256);
   private readonly found: number[] = [];
@@ -944,7 +947,7 @@ export class Combat {
         st.seed = bodySeed(i);
         const seated = this.seated(i, past, tick);
         const zone = seated ? this.occupant.ray(rx, ry, rz, ux, uy, uz, reach, this.contactPadding)
-          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT);
+          : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach, this.contactPadding, past.seatSlot === IMPALE_SLOT, this.downPose(i));
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
           this.zone = zone;

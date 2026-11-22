@@ -19,6 +19,8 @@ const registry = made.registry;
 
 function camp(yaw: number, seat = 0) {
   const h = new Harness({}, 19, 60, { dev: true, clips: NO_CLIPS, rigs: [], map: writeMap(flatMap(4)) }, registry);
+  // The car is set down beside the survivor, which would knock it off its feet.
+  h.host.setSetting("Knockdowns", "false");
   const session = h.join("graded-door"); h.run(400);
   const c = h.client(session)!, ents = h.world.ents, move = h.reg.move[ents.kind[c.ent]!]!;
   h.world.structs.add(h.reg.index.get("door:slope")!, 64, 2.8, 64, 0, 0, 16000);

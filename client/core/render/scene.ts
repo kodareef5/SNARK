@@ -4,6 +4,7 @@ import { TreeFalls } from "../tree-fall.ts";
 import { EYE_FROM } from "../optics.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
+import { makeHandle } from "../../../shared/ids.ts";
 import { remoteVehiclePose } from "../vehicle-view.ts";
 // Structures are drawn per chunk and per mesh as instanced batches. A chunk's instance buffer is rebuilt only when a
 // piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn. Resource nodes are drawn
@@ -139,6 +140,8 @@ export interface OwnBody {
   /** The seated local pilot remains a remote body; hide only its head in cockpit view. */
   cockpitActor?: number;
   attachment?: { host: number; slot: number; generation: number };
+  /** Knocked down, lying as its ragdoll. */
+  down?: boolean;
 }
 
 /** Metres the far depth range of a frame with one begins at, through a sight: the lit tiers' split (tiers.ts). */
@@ -929,7 +932,7 @@ export class Scene {
         const lies = flying ? this.dropped.item(kind, remote.gear, i * GEAR_COUNT) : 0;
         ch.loose(p, lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!, x, y, z, Math.sin(remote.yaw[i]!) * level, Math.sin(pitch), Math.cos(remote.yaw[i]!) * level, 1);
       }
-      ch.corpses(p, cam, remote, this.world);
+      ch.corpses(p, cam, remote, this.world, own?.down ? makeHandle(own.id, own.generation ?? 0) : 0);
     }
     // Then the shots in the air, and the supply drops' shafts and capsules.
     this.shots?.draw(ch, p, cam, this.shotTick);
@@ -946,8 +949,8 @@ export class Scene {
       let wanted = 0;
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
-        // A dead creature's body is drawn where it lies, by ch.corpses.
-        if (!ch.has(kind) || remote.id[i] === this.skip || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
+        // A dead creature's body is drawn where it lies, by ch.corpses; a survivor's here, as its ragdoll lies.
+        if (!ch.has(kind) || remote.id[i] === this.skip || ((remote.cue[i]! & CUE_DEAD) !== 0 && !ch.lyingHuman(remote.id[i]!))) continue;
         let x = remote.x[i]! - cam.x;
         let y = remote.y[i]! - cam.y;
         let z = remote.z[i]! - cam.z;

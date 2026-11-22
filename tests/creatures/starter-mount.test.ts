@@ -255,11 +255,11 @@ test("it is never a second one: it waits in its ball through deaths, is called b
   expect(s.log.slice(-(s.logVersion - told)).some((l) => l.text === ISSUED_SADDLE)).toBe(true);
 
   // Killed, it leaves no body to harvest and no saddle, its killer gains nothing, and she rises with a new one.
-  const xp = boRec.xp;
+  const xp = boRec.xp, mount = p!.kind;
   h.host.survival.hurt(p!, 1e9, boRec.pid);
   h.run(300);
   expect([h.host.records.byPid.has(p!.pid), items.total(SADDLE), boRec.xp]).toEqual([false, 0, xp]);
-  expect([...h.host.records.byPid.values()].filter((r) => r.kind === id("corpse")).length).toBe(0);
+  expect([...h.host.records.byPid.values()].filter((r) => r.kind === id("corpse") && r.corpse?.species === mount).length).toBe(0);
   expect(starters(h, me)).toEqual([]);
   dieAndRise(h, s, send);
   const [next] = starters(h, me);

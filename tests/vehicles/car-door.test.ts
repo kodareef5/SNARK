@@ -1,11 +1,11 @@
 // A car door held open by the one who sits by it (VEHICLE_DOOR, server/urban.ts) strikes whoever it passes at speed: they
 // are hurt by the car's speed, thrown out the way the door stands and on with the car, everyone near is told of the blow
 // (EVENT_IMPACT), and the door is knocked shut. Parked, or with the door shut, nobody is struck.
+import { CUE_DOWN } from "../../shared/anim/pose.ts";
 import { expect, test } from "bun:test";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { IMPACT_VEHICLE } from "../../shared/net/protocol.ts";
 import { vehicleDoor } from "../../shared/sim/vehicle-body.ts";
-import { MF_ROOTED } from "../../shared/sim/character.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -56,7 +56,7 @@ test("a door held open on a passing car strikes, throws and hurts the walker, ev
   } finally { h.host.shutdown(); }
 });
 
-test("struck off their feet, a survivor flies as thrown with no hold on it (Knockdowns); with the rule off, they are thrown but keep their footing", () => {
+test("struck off their feet, a survivor falls as a ragdoll thrown by the door and gets up (Knockdowns); with the rule off, they keep their footing", () => {
   const far: number[] = [];
   for (const on of [true, false]) {
     const { h, a, c, car, driver, rec } = road();
@@ -65,18 +65,18 @@ test("struck off their feet, a survivor flies as thrown with no hold on it (Knoc
       h.host.urban.toggleDoor(a.pid[driver]!);
       h.run(500);
       const x = a.x[c.ent]!;
-      let stunned = false;
-      h.run(4000, () => {
+      let down = false;
+      h.run(6000, () => {
         if (a.z[car]! < 90) { a.vz[car] = 9; a.vx[car] = 0; }
-        if ((a.mflags[c.ent]! & MF_ROOTED) !== 0) stunned = true;
+        if ((a.cue[c.ent]! & CUE_DOWN) !== 0) down = true;
       });
       expect(h.host.urban.doorStruck).toBe(1);
-      expect(stunned).toBe(on);
+      expect([down, h.host.falls.stats.rose, h.host.falls.isDown(c.ent)]).toEqual([on, on ? 1 : 0, false]);
       expect(rec.buffs.length).toBe(0);
       far.push(a.x[c.ent]! - x);
     } finally { h.host.shutdown(); }
   }
-  // Knocked off their feet they fly farther than one who catches themself.
+  // Knocked off their feet they go farther than one who keeps them.
   expect(far[0]).toBeGreaterThan(far[1]! + 0.3);
 });
 

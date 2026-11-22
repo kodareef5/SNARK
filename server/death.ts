@@ -366,6 +366,8 @@ export class Death {
       c.sent[OWN_RESPAWN] = undefined;
       this.ctx.game.sendText(c, TEXT_NOTICE, `You ${CAUSE_NAMES[cause] ?? "died"}.`);
     }
+    // Its body lies where it fell (server/corpses.ts fell).
+    this.corpses?.raise(rec.pid);
   }
 
   /**
