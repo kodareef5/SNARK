@@ -11,10 +11,10 @@ import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../../tests/fixtures/map.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
 
-const WARM_S = 240, MEASURE_S = 60, CROWD = 200;
+const WARM_S = 240, MEASURE_S = 60, CROWD = 200, STAMPEDE_S = 20;
 const quantile = (v: number[], q: number) => v.slice().sort((a, b) => a - b)[Math.min(v.length - 1, Math.floor(v.length * q))]!;
 
-function run(withCast: boolean): { median: number; p99: number; down: number; bodies: number; entered: number } {
+function run(withCast: boolean): { median: number; p99: number; down: number; bodies: number; entered: number; emoting: number; moving: number; stampede: { median: number; p99: number; down: number } | null } {
   const h = new Harness({}, 3, 30, {
     cast: withCast ? { activity: 3, crowdMax: CROWD, maxBodies: CROWD + 60, maxPerPlayer: CROWD + 60, hostility: 0, model: "" } : { enabled: false },
     map: writeMap(flatMap(16)),
@@ -41,10 +41,36 @@ function run(withCast: boolean): { median: number; p99: number; down: number; bo
     times.push(performance.now() - t);
   };
   const before = h.server.clients.map((c) => (c ? (c.conn as LoopbackEnd).bytesSent : 0));
-  let bodies = 0;
-  h.run(MEASURE_S * 1000, () => (bodies = Math.max(bodies, cast.stage.count)));
+  let bodies = 0, emoting = 0, moving = 0, samples = 0;
+  h.run(MEASURE_S * 1000, () => {
+    bodies = Math.max(bodies, cast.stage.count);
+    // How many of Cast's bodies hold an emote, and how many move, on average: a crowd that lies about is the cheap one.
+    if (h.world.tick % 30 !== 0) return;
+    samples++;
+    for (const b of cast.stage.list()) {
+      const e = h.host.records.entOf.get(b.pid);
+      if (e === undefined) continue;
+      if (h.host.emotes.playingOf(e)) emoting++;
+      if (Math.hypot(h.world.ents.vx[e]!, h.world.ents.vz[e]!) > 0.3) moving++;
+    }
+  });
   const down = h.server.clients.map((c, i) => (c ? ((c.conn as LoopbackEnd).bytesSent - before[i]!) / MEASURE_S : 0)).filter((v) => v > 0);
-  const out = { median: quantile(times, 0.5), p99: quantile(times, 0.99), down: down.reduce((a, b) => a + b, 0) / Math.max(1, down.length), bodies, entered: cast.stage.counts.entered };
+  const calm = { median: quantile(times, 0.5), p99: quantile(times, 0.99) };
+  // Then the worst of it: a shot in the middle of the beach, and everyone runs. Measured over the stampede's first 20 s.
+  const stampede: number[] = [];
+  let runDown = 0;
+  if (withCast) {
+    const beach = cast.cast.stories.get("beach")!;
+    const sent = h.server.clients.map((c) => (c ? (c.conn as LoopbackEnd).bytesSent : 0));
+    times.length = 0;
+    cast.stage.incident(beach.x, beach.z, "gunshot", null);
+    h.run(STAMPEDE_S * 1000);
+    stampede.push(...times);
+    const d = h.server.clients.map((c, i) => (c ? ((c.conn as LoopbackEnd).bytesSent - sent[i]!) / STAMPEDE_S : 0)).filter((v) => v > 0);
+    runDown = d.reduce((a, b) => a + b, 0) / Math.max(1, d.length);
+  }
+  const out = { median: calm.median, p99: calm.p99, down: down.reduce((a, b) => a + b, 0) / Math.max(1, down.length), bodies, entered: cast.stage.counts.entered, emoting: emoting / Math.max(1, samples), moving: moving / Math.max(1, samples),
+    stampede: stampede.length ? { median: quantile(stampede, 0.5), p99: quantile(stampede, 0.99), down: runDown } : null };
   h.host.shutdown();
   return out;
 }
@@ -58,3 +84,10 @@ row("Tick, 99th", off.p99, on.p99, "ms");
 row("Sent to each survivor", off.down / 1024, on.down / 1024, "KB/s");
 row("Cast's bodies in the world, most", off.bodies, on.bodies, "");
 row("Cast's bodies brought in", off.entered, on.entered, "");
+row("Of them emoting, on average", off.emoting, on.emoting, "");
+row("Of them moving, on average", off.moving, on.moving, "");
+if (on.stampede) {
+  row("Stampede after a shot: tick, median", 0, on.stampede.median, "ms");
+  row("Stampede after a shot: tick, 99th", 0, on.stampede.p99, "ms");
+  row("Stampede after a shot: sent to each", 0, on.stampede.down / 1024, "KB/s");
+}

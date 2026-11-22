@@ -60,14 +60,16 @@ export class People {
     c.touched = tick;
   }
 
-  /** A featured person of one of the archetypes, free (in no story, alive), from the region or near it, oldest
-   * untouched first: so the city's regulars come round again. */
-  free(archetypes: readonly string[], region: number, near: (home: number) => boolean): Character | null {
-    let best: Character | null = null;
+  /** A featured person of one of the archetypes, free (in no story, alive, not in `not`), from the region or near it: one
+   * who knows any of `players` first, then the oldest untouched, so the city's regulars come round again. */
+  free(archetypes: readonly string[], region: number, near: (home: number) => boolean, not: ReadonlySet<string> = new Set(), players: readonly string[] = []): Character | null {
+    let best: Character | null = null, bestKnows = false;
     for (const c of this.byId.values()) {
-      if (c.tier !== "featured" || c.story || c.dead || !archetypes.includes(c.archetype)) continue;
+      if (c.tier !== "featured" || c.story || c.dead || not.has(c.id) || !archetypes.includes(c.archetype)) continue;
       if (c.home !== region && !near(c.home)) continue;
-      if (!best || c.touched < best.touched) best = c;
+      // One who knows a player near comes first: the jogger you waved at, the gang member who drew on you.
+      const knows = players.some((n) => c.relations[n]);
+      if (!best || (knows && !bestKnows) || (knows === bestKnows && c.touched < best.touched)) (best = c), (bestKnows = knows);
     }
     return best;
   }

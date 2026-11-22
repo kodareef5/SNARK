@@ -659,13 +659,19 @@ Miami and 3.36 on Los Angeles.
 ## Cast's people (2026-11-21, Linux, i9-13980HX x32)
 
 `bun tools/bench/cast.ts`: four survivors on flat ground, a beach crowd of Cast's people walked in from out of sight
-(240 s), then 60 s measured, against the same world with Cast off.
+(240 s), then 60 s measured, against the same world with Cast off; then a shot in the middle of the beach and the
+stampede's first 20 s.
 
 | Row | Cast off | Cast on | Budget |
 | --- | --- | --- | --- |
-| Tick, median; 99th | 0.03; 0.06 ms | 0.26; 0.31 ms | 8; 16 |
-| Sent to each survivor | 1.7 KB/s | 21.3 KB/s | 34 to 36 |
-| Cast's bodies in the world, most | 0 | 207 | 200 a crowd (CastCrowdMax) |
+| Tick, median; 99th | 0.05; 0.16 ms | 0.42; 0.79 ms | 8; 16 |
+| Sent to each survivor | 1.7 KB/s | 4.5 KB/s | 34 to 36 |
+| Cast's bodies in the world, most; lying or sitting; moving | 0 | 211; 187; 17 | 200 a crowd (CastCrowdMax) |
+| The stampede: tick median; 99th; sent to each | | 0.61; 1.18 ms; 32.3 KB/s | 8; 16; 34 to 36 |
+
+The first run of this bench (0.26 ms, 21.3 KB/s) flattered: a review found most of the crowd still moving, its walks
+cut short by a step limit too short for the walk in, and those standing wandering. With both mended the crowd lies
+about, and a crowd that all runs is now measured too: within the bandwidth budget, but near it.
 
 On Miami's built map (16.3 km a side) with one survivor at the spawn, Cast enabled at activity 1.5: a region's spots read
 in under a millisecond, 298 stories planned over three minutes, 15 bodies at once, and the tick at 0.80 ms median, 3.74

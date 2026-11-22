@@ -91,6 +91,8 @@ export interface Story {
   planned: number;
   /** What happened, a short line each, oldest first; kept short. */
   history: string[];
+  /** A story that must wake at this world tick whatever the pace (police coming to trouble). */
+  due?: number;
 }
 
 /** A place: what it is, how many it holds at once, and, for a queue, its line. */

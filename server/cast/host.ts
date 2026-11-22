@@ -7,7 +7,7 @@ import { Cast } from "./engine.ts";
 import type { PlayerView } from "./intent.ts";
 import { ModelGate, openRouter, type Ask } from "./model.ts";
 import { Planner } from "./planner.ts";
-import { CastStage, type CastBodies, type StagePlayer } from "./stage.ts";
+import { CastStage, type CastBodies, type IncidentKind, type StagePlayer } from "./stage.ts";
 import type { CastPlace, CastWorld } from "./world.ts";
 import type { Chat } from "../chat.ts";
 import type { Creatures } from "../creatures.ts";
@@ -29,9 +29,8 @@ import type { CastSettings, Character } from "../../shared/cast/state.ts";
 import { DEFAULT_SETTINGS } from "../../shared/cast/state.ts";
 import { EMOTES, EMOTE_NUMBER } from "../../shared/anim/emotes.ts";
 import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
-import { RESULT_OK } from "../../shared/net/protocol.ts";
+import { RESULT_OK, TEXT_LOCAL } from "../../shared/net/protocol.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
-import { W_GUN } from "../../shared/sim/weapon.ts";
 import { F_ALIVE, F_AWAKE } from "../../shared/sim/entities.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 
@@ -39,6 +38,8 @@ import { groundUnder } from "../../shared/world/collide.ts";
 export const COMP_CAST = 90;
 /** What the engine can do in this build: a scene needing more waits (driving and weapons come in their phases). */
 export const CAST_CAN: readonly Capability[] = ["walk", "emote", "speech", "queue", "drive", "weapon"];
+/** Seconds a survivor's local line is kept for the planner. */
+const SAID_KEPT_S = 120;
 /** Metres from a survivor's own building it counts as home, where no scene starts a fight with it. */
 const HOME_M = 60;
 
@@ -75,8 +76,8 @@ export class CastHost {
   readonly gate: ModelGate;
   readonly log: DecisionLog;
   private readonly ctx: CastHostContext;
-  /** Each survivor's last few lines, for the planner's read of what it is up to. */
-  private readonly said = new Map<string, string[]>();
+  /** Each survivor's last few lines said in local chat, with the tick, for the planner's read of what it is up to. */
+  private readonly said = new Map<string, { text: string; t: number }[]>();
   private readonly kind: number;
   private readonly players: StagePlayer[] = [];
 
@@ -88,10 +89,13 @@ export class CastHost {
     this.cast = new Cast(this.worldView(), CAST_CATALOGUE, ctx.seed, CAST_CAN, this.settingsNow());
     this.stage = new CastStage(this.cast, this.bodyView(), ctx.seed ^ 0x2545f491);
     this.cast.stage = this.stage;
-    ctx.chat.listeners.push((speaker, _channel, x, z, text) => {
+    // People hear what is said near them, as anyone standing there would: local chat only, never a tribe's or global, and
+    // nothing while Cast is off. A line is kept two minutes at most for the planner's read of the speaker.
+    ctx.chat.listeners.push((speaker, channel, x, z, text) => {
+      if (channel !== TEXT_LOCAL || !this.cast.settings.enabled) return;
       this.stage.hear(speaker, x, z, text);
-      const lines = this.said.get(speaker) ?? [];
-      lines.push(text);
+      const lines = (this.said.get(speaker) ?? []).filter((l) => ctx.world.tick - l.t < SAID_KEPT_S * TICK_RATE);
+      lines.push({ text, t: ctx.world.tick });
       if (lines.length > 3) lines.shift();
       this.said.set(speaker, lines);
     });
@@ -102,18 +106,24 @@ export class CastHost {
     this.planner = new Planner(this.cast, this.gate, this.log, () => Date.now());
     this.planner.model = settings.model;
     this.planner.views = () => this.views();
-    // A blow on one of Cast's people is an attack it answers; a shot that hits anywhere near is heard as one.
+    // A blow on one of Cast's people is an attack it answers. Any blow, shot, blast or death that a survivor or one of
+    // Cast's people is in is trouble to everyone near it (the creatures' own fights far from anyone are not).
     const nameOf = (pid: unknown) => (typeof pid === "number" && pid !== 0 ? ctx.records.byPid.get(pid)?.name || null : null);
+    const KIND: Record<string, IncidentKind> = { bullet: "gunshot", explosive: "explosion", pierce: "fight", melee: "fight", fire: "fight" };
     ctx.bus.on("cast", "damaged", (e) => {
-      const d = e.data as { target: string; victim: number; byPid: number; item: string; type: string };
-      if (d.target !== "body") return;
-      const victim = ctx.records.byPid.get(d.victim);
+      const d = e.data as { target: string; victim: number; byPid: number; type: string; killed: boolean };
+      if (d.target !== "body" || !this.cast.settings.enabled) return;
+      const victim = ctx.records.byPid.get(d.victim), attacker = d.byPid ? ctx.records.byPid.get(d.byPid) : undefined;
       const by = nameOf(d.byPid);
-      if (victim?.extra.has(COMP_CAST)) this.stage.attacked(d.victim, by, this.livePlayers());
-      if (d.item && ctx.world.reg.weapon[ctx.world.reg.index.get(d.item) ?? -1]?.kind === W_GUN) {
-        const at = ctx.records.entOf.get(d.victim);
-        if (at !== undefined) this.stage.gunshot(ctx.world.ents.x[at]!, ctx.world.ents.z[at]!, by, this.livePlayers());
-      }
+      const ours = (r: EntityRecord | undefined) => !!r && (r.extra.has(COMP_CAST) || r.keyHash !== null);
+      if (victim?.extra.has(COMP_CAST)) this.stage.attacked(d.victim, attacker?.keyHash !== null ? by : null, this.livePlayers());
+      if (!ours(victim) && !ours(attacker)) return;
+      const at = ctx.records.entOf.get(d.victim);
+      if (at === undefined) return;
+      const x = ctx.world.ents.x[at]!, z = ctx.world.ents.z[at]!;
+      const who = attacker?.keyHash !== null ? by : null;
+      this.stage.incident(x, z, KIND[d.type] ?? "fight", who);
+      if (d.killed) this.stage.incident(x, z, "death", who);
     });
     // A survivor who has just risen is spared hostile scenes for a while.
     ctx.bus.on("cast", "session.spawn", (e) => {
@@ -209,7 +219,7 @@ export class CastHost {
         carries[cls] = (carries[cls] ?? 0) + inv.count[k]!;
       }
       const e = c.drive >= 0 ? c.drive : c.ent;
-      out.push({ name: c.name, speed: Math.hypot(ents.vx[e]!, ents.vz[e]!), driving: c.drive >= 0, carries, said: this.said.get(c.name) ?? [] });
+      out.push({ name: c.name, speed: Math.hypot(ents.vx[e]!, ents.vz[e]!), driving: c.drive >= 0, carries, said: (this.said.get(c.name) ?? []).filter((l) => world.tick - l.t < SAID_KEPT_S * TICK_RATE).map((l) => l.text) });
     }
     return out;
   }
@@ -374,17 +384,17 @@ export class CastHost {
         if (e >= 0) creatures.remove(e);
         records.delete(car);
       },
-      door: (car) => {
+      door: (car, which = "driver") => {
         const e = ent(car), def = e >= 0 ? reg.vehicle[ents.kind[e]!] : undefined;
-        const seat = def?.seats.find((s) => s.driver);
+        const seat = def?.seats.find((s) => (which === "driver" ? s.driver : !s.driver));
         if (!seat) return null;
         const out = [0, 0, 0];
         this.ctx.urban.door(e, seat, reg.move[this.kind]!.radius, out);
         return { x: out[0]!, z: out[2]! };
       },
-      board: (pid, car) => {
+      board: (pid, car, which = "driver") => {
         const e = ent(pid), v = ent(car), def = v >= 0 ? reg.vehicle[ents.kind[v]!] : undefined;
-        const seat = def?.seats.find((s) => s.driver);
+        const seat = def?.seats.find((s) => (which === "driver" ? s.driver : !s.driver));
         return e >= 0 && !!seat && this.ctx.urban.seatNpc(e, v, seat.id) === RESULT_OK;
       },
       seated: (pid) => {

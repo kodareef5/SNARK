@@ -32,6 +32,13 @@ test("the catalogue has a working example of every kind the foundation promises"
   expect(live.some((s) => s.roles.some((r) => r.archetypes.includes("cast:cop")))).toBe(true);
   expect(live.some((s) => s.hostile)).toBe(true);
   expect(live.some((s) => s.needs.includes("drive"))).toBe(true);
+  // Violence is answered: some rows call the police, some watch from a way off, some freeze; police come only to trouble.
+  const rows = c.reactions.flatMap((t) => t.rows);
+  for (const r of ["call_cop", "watch", "cower", "flee"]) expect([r, rows.some((x) => x.do === r)]).toEqual([r, true]);
+  for (const on of ["fight", "gunshot", "danger"]) expect([on, c.reactions.every((t) => t.rows.some((x) => x.on === on))]).toEqual([on, true]);
+  expect(c.scenes.find((s) => s.id === "cast:police_response")!.weight).toBe(0);
+  // The pick-up's friend rides away in the car.
+  expect(c.scenes.find((s) => s.id === "cast:drive_to_meet")!.script.friend!.some((st) => st.do === "ride")).toBe(true);
   // Every look waits for its own art, and says what it should be.
   expect(c.looks.every((l) => l.placeholder && l.note)).toBe(true);
 });

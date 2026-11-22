@@ -157,8 +157,8 @@ export const SCENES: Scene[] = [
     roles: [{ role: "driver", archetypes: ["cast:pedestrian", "cast:worker"], count: [1, 1] }, { role: "friend", archetypes: FOLK, count: [1, 1] }],
     place: { tags: ["parking", "road"] },
     script: {
-      driver: [{ do: "drive", to: "place" }, { do: "sync", name: "met" }, { do: "say", line: "greet" }, { do: "wait", s: [3, 6] }, { do: "leave", pace: "drive" }],
-      friend: [{ do: "goto", to: "place" }, { do: "emote", emote: "check_wrist" }, { do: "sync", name: "met" }, { do: "emote", emote: "wave" }, { do: "leave" }],
+      driver: [{ do: "drive", to: "place", stay: true }, { do: "sync", name: "met" }, { do: "say", line: "greet" }, { do: "sync", name: "in" }, { do: "leave", pace: "drive" }],
+      friend: [{ do: "goto", to: "place" }, { do: "emote", emote: "check_wrist" }, { do: "sync", name: "met" }, { do: "emote", emote: "wave" }, { do: "ride", with: "driver" }, { do: "sync", name: "in" }, { do: "leave", pace: "drive" }],
     },
     tags: ["calm", "vehicle"], needs: ["walk", "drive", "speech"], weight: 2, cooldown: 300, most: 360, vehicles: ["core:compact", "core:fastback", "core:taxi"],
   },
@@ -170,6 +170,18 @@ export const SCENES: Scene[] = [
       b: [{ do: "drive", to: "place" }, { do: "sync", name: "bump" }, { do: "say", line: "apology", when: { mood: "sorry" } }, { do: "say", line: "angry", when: { mood: "argue" } }, { do: "emote", emote: "shrug" }, { do: "wait", s: [4, 10] }, { do: "leave", pace: "drive" }],
     },
     choices: { mood: ["sorry", "argue"] }, tags: ["comic", "vehicle"], needs: ["drive", "speech", "emote"], weight: 1.5, cooldown: 600, most: 240, vehicles: ["core:compact", "core:fastback", "core:panel_van"],
+  },
+  {
+    id: "cast:police_response", name: "Police response", about: "After shots or a fight, officers run to the scene, clear the area, go after whoever started it if they are still about, look round and leave. Started by trouble, never by chance.",
+    roles: [{ role: "cops", archetypes: ["cast:cop"], count: [2, 3] }], place: { tags: ["corner", "sidewalk", "plaza", "road", "parking", "beach", "park"] },
+    script: {
+      cops: [
+        { do: "goto", to: "place", pace: "run" }, { do: "say", line: "clear" },
+        { do: "hold", item: PISTOL, when: { mood: "pursue" } }, { do: "attack", target: "culprit", when: { mood: "pursue" } },
+        { do: "emote", emote: "watching_you", s: [4, 8] }, { do: "face", to: "player" }, { do: "say", line: "patrol" }, { do: "wait", s: [8, 16] }, { do: "leave" },
+      ],
+    },
+    choices: { mood: ["secure", "pursue"] }, tags: ["tense", "busy"], needs: ["walk", "speech"], weight: 0, cooldown: 120, most: 300,
   },
   {
     id: "cast:drive_by", name: "Drive-by", about: "A gang car slows past a rival corner or a player and its passenger opens fire. Waits on passengers that can aim from a seat.",
@@ -204,8 +216,19 @@ export const REACTIONS: ReactionTable[] = [
     id: "cast:folk",
     rows: [
       { on: "attacked", do: "flee", line: "attacked" },
+      // Shots: the bold and steady call it in, the timid freeze, everyone else runs.
+      { on: "gunshot", if: { bold: 0.75, calm: 0.6 }, do: "call_cop", line: "witness" },
+      { on: "gunshot", if: { bold: -0.25 }, do: "cower", line: "flee", chance: 0.6 },
       { on: "gunshot", do: "flee", line: "flee" },
-      { on: "danger", do: "flee", line: "flee" },
+      // A fight: some stop to watch from a safe way off, some call it in, most get clear.
+      { on: "fight", if: { bold: 0.65 }, do: "watch", line: "witness" },
+      { on: "fight", if: { bold: 0.45, calm: 0.5 }, do: "call_cop", line: "witness" },
+      { on: "fight", do: "flee", line: "flee", chance: 0.7 },
+      { on: "fight", do: "watch" },
+      // Others running and screaming, or a dinosaur on the hunt: run, or freeze.
+      { on: "danger", if: { bold: -0.2 }, do: "cower", chance: 0.3 },
+      { on: "danger", do: "flee", line: "flee", chance: 0.4 },
+      { on: "danger", do: "flee" },
       { on: "bumped", do: "say", line: "angry" },
       { on: "wave", if: { social: 0.4 }, do: "wave" },
       { on: "wave", do: "glance" },
@@ -221,7 +244,8 @@ export const REACTIONS: ReactionTable[] = [
     id: "cast:vendor",
     rows: [
       { on: "attacked", do: "flee", line: "attacked" },
-      { on: "gunshot", do: "cower" },
+      { on: "gunshot", do: "cower", line: "flee" },
+      { on: "fight", do: "call_cop", line: "witness" },
       { on: "danger", do: "flee", line: "flee" },
       { on: "talk", do: "say", line: "talk" },
       { on: "wave", do: "wave" },
@@ -236,6 +260,8 @@ export const REACTIONS: ReactionTable[] = [
     rows: [
       { on: "attacked", do: "fight", line: "warn" },
       { on: "gunshot", do: "fight", line: "warn" },
+      // A fight seen: an officer goes for whoever started it, or stands over it and clears the area.
+      { on: "fight", do: "fight", line: "clear" },
       { on: "danger", do: "fight" },
       { on: "talk", do: "say", line: "talk" },
       { on: "wave", do: "glance" },
@@ -251,6 +277,8 @@ export const REACTIONS: ReactionTable[] = [
       { on: "attacked", do: "fight", line: "angry" },
       { on: "gunshot", if: { bold: 0.7 }, do: "fight" },
       { on: "gunshot", do: "flee" },
+      { on: "fight", if: { bold: 0.6 }, do: "watch", line: "taunt" },
+      { on: "fight", do: "flee" },
       { on: "danger", do: "flee" },
       { on: "stare", if: { bold: 0.6 }, do: "say", line: "warn" },
       { on: "stare", do: "say", line: "talk" },

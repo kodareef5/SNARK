@@ -86,7 +86,7 @@ export interface Role {
 
 /** Where a step goes or looks: the scene's place, a free slot about it, another role (its first, or all of them), the
  * player the scene is for, or the way out (where no player is). */
-export type Target = "place" | "slot" | "player" | "out" | { role: string } | { spot: SpotTag };
+export type Target = "place" | "slot" | "player" | "culprit" | "out" | { role: string } | { spot: SpotTag };
 
 /** One step of a role's script. `when` makes it happen only for a planner's choice (`{ ending: "argue" }`). */
 export type Step = (
@@ -100,7 +100,10 @@ export type Step = (
   | { do: "queue" }
   /** Serve the place's queue for `s` seconds (a vendor). */
   | { do: "serve"; s: [number, number] }
-  | { do: "drive"; to: Target }
+  /** Drive there; out of the car at the end, unless it stays at the wheel (a pick-up). */
+  | { do: "drive"; to: Target; stay?: boolean }
+  /** Get into another role's car beside its driver, and go where it goes. */
+  | { do: "ride"; with: string }
   | { do: "attack"; target: Target }
   /** Wait here until every role has reached a sync of the same name (a flash mob's beat, a meeting's handshake). */
   | { do: "sync"; name: string }
@@ -138,12 +141,15 @@ export interface Scene {
 }
 
 /** What a person notices. */
-export type Stimulus = "near" | "stare" | "wave" | "talk" | "attacked" | "gunshot" | "danger" | "bumped";
-export const STIMULI: readonly Stimulus[] = ["near", "stare", "wave", "talk", "attacked", "gunshot", "danger", "bumped"];
+/** `fight`: violence seen near (a brawl, a body falling); `gunshot`: a shot heard; `danger`: a dinosaur hunting near, or
+ * the people about running and screaming. */
+export type Stimulus = "near" | "stare" | "wave" | "talk" | "attacked" | "gunshot" | "fight" | "danger" | "bumped";
+export const STIMULI: readonly Stimulus[] = ["near", "stare", "wave", "talk", "attacked", "gunshot", "fight", "danger", "bumped"];
 
 /** What a person does about it, at once and by rule. */
-export type Response = "ignore" | "glance" | "wave" | "step_aside" | "say" | "flee" | "cower" | "fight" | "call_cop";
-export const RESPONSES: readonly Response[] = ["ignore", "glance", "wave", "step_aside", "say", "flee", "cower", "fight", "call_cop"];
+/** `watch`: keeps back from the trouble, out of harm's way, and looks on (a phone out, a finger pointing). */
+export type Response = "ignore" | "glance" | "wave" | "step_aside" | "say" | "flee" | "cower" | "watch" | "fight" | "call_cop";
+export const RESPONSES: readonly Response[] = ["ignore", "glance", "wave", "step_aside", "say", "flee", "cower", "watch", "fight", "call_cop"];
 
 /** One row: a stimulus, optionally only for a trait over a threshold, a response and maybe a line. The first row that
  * matches (and passes its chance) answers. */
@@ -177,7 +183,7 @@ export interface Known {
 }
 
 const isTarget = (t: unknown): boolean =>
-  t === "place" || t === "slot" || t === "player" || t === "out" ||
+  t === "place" || t === "slot" || t === "player" || t === "culprit" || t === "out" ||
   (typeof t === "object" && t !== null && (typeof (t as { role?: unknown }).role === "string" || SPOT_TAGS.includes((t as { spot?: SpotTag }).spot!)));
 
 const range = (r: unknown, lo = 0): boolean => Array.isArray(r) && r.length === 2 && r.every((n) => typeof n === "number" && n >= lo) && r[0] <= r[1];
@@ -245,6 +251,7 @@ export function validateCatalogue(c: Catalogue, known: Known): string[] {
           case "hold": if (!known.items.has(st.item)) out.push(`${where}: ${st.item} is no item`); break;
           case "say": for (const a of r.archetypes) if (archetypes.has(a) && !lineOf(archetypes.get(a)!, s, st.line)) out.push(`${where}: ${a} has no lines for ${st.line}`); break;
           case "sync": syncs.set(st.name, (syncs.get(st.name) ?? 0) + 1); break;
+          case "ride": if (!roles.has(st.with) || st.with === r.role) out.push(`${where}: rides with role ${st.with}, which is not another role of the scene`); else if (!s.script[st.with]?.some((x) => x.do === "drive")) out.push(`${where}: role ${st.with} never drives`); break;
         }
         for (const t of [("to" in st ? st.to : undefined), ("target" in st ? st.target : undefined)]) if (t && typeof t === "object" && "role" in t && !roles.has(t.role)) out.push(`${where}: role ${t.role} is not in the scene`);
       }

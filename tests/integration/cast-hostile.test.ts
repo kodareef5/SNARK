@@ -45,6 +45,8 @@ test("a standoff: both gangs draw their pistols, trade words, and go for each ot
 test("at hostility 2 a standoff may turn on the player watching; at 1 the same ending finds no one to go for", () => {
   for (const [hostility, expectTurned] of [[2, true], [1, false]] as const) {
     const t = setup(hostility);
+    // Long since risen, so the spawn grace does not spare her.
+    t.cast.cast.player("Ana").rose = -Infinity;
     const s = t.story("cast:gang_standoff", { ending: "turn_on_player" });
     const ana = t.h.client(t.h.sessions[0]!)!.ent;
     let turned = false;

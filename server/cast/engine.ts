@@ -5,7 +5,7 @@
 // story's choices and fill its slots before it begins, and nothing waits on it.
 
 import type { Capability, Catalogue, Scene, SceneTag, Step } from "../../shared/cast/catalogue.ts";
-import { DEFAULT_SETTINGS, type CastSettings, type Character, type Pace, type Part, type Region, type Story } from "../../shared/cast/state.ts";
+import { DEFAULT_SETTINGS, type CastSettings, type Character, type Pace, type Part, type Region, type Spot, type Story } from "../../shared/cast/state.ts";
 import { Rng } from "../../shared/rng.ts";
 import { People } from "./people.ts";
 import { PACE_STORIES, Regions } from "./regions.ts";
@@ -23,6 +23,11 @@ export const WAKE_M = 300, AWAY_M = 600;
 const FILL_NEAR = 60, FILL_FAR = 220;
 /** Seconds a planned story waits for players before it is let go and planned again elsewhere. */
 const PLANNED_S = 3 * 3600;
+/** Metres about trouble where no new everyday scene starts, and seconds it stays so; the scene police come in. */
+const ALARM_M = 120, ALARM_S = 90;
+export const POLICE = "cast:police_response";
+/** Seconds police take to come, least and most, and metres and seconds within which one response covers new trouble. */
+const POLICE_DELAY: [number, number] = [20, 40], POLICE_M = 300, POLICE_S = 180;
 /** Seconds a player is spared hostile scenes after rising. */
 export const RISE_GRACE_S = 600;
 
@@ -45,6 +50,8 @@ export interface PlayerState {
 }
 
 export interface Stage {
+  /** Its bodies in the world now, walking off from stories already over among them. */
+  readonly count: number;
   /** A story wakes for players: its people should come in from where no one is. */
   enter(story: Story): void;
   /** A story is over or let go: any bodies still in it leave. */
@@ -64,6 +71,8 @@ export class Cast {
   /** What the engine can do now: a scene needing more is never cast. */
   readonly can: Set<Capability>;
   stage: Stage | null = null;
+  /** Trouble about the map: where, and the tick it is over. */
+  readonly alarms: { x: number; z: number; until: number }[] = [];
   /** Stories a player engaged with since the planner last looked: it takes them first (server/cast/planner.ts). */
   readonly wakes = new Set<string>();
   /** Counts for the admin page and tests. */
@@ -112,16 +121,37 @@ export class Cast {
     this.regions.warm(counts, dt, tick);
     this.regions.pace(tick, this.world.rate, this.settings.spikiness);
     this.regions.tidy(tick);
+    while (this.alarms.length && this.alarms[0]!.until <= tick) this.alarms.shift();
     this.runTimed(tick, players);
+    this.wakeDue(tick, players);
     this.plan(tick, players);
     for (const p of players) this.wakeFor(p, tick, players);
   }
 
-  /** Bodies stories have now, or are bringing in. */
+  /** Bodies in the world (the stage's, those walking off from stories already over among them) and those stories are
+   * still to bring in. */
   bodies(): number {
-    let n = 0;
-    for (const s of this.stories.values()) if (s.phase === "entering" || s.phase === "active" || s.phase === "leaving") for (const p of s.parts) if (!p.gone) n++;
+    let n = this.stage ? this.stage.count : 0;
+    for (const s of this.stories.values()) {
+      if (s.phase !== "entering" && s.phase !== "active" && s.phase !== "leaving") continue;
+      for (const p of s.parts) if (!p.gone && (!this.stage || p.pid === undefined)) n++;
+    }
     return n;
+  }
+
+  /** Bodies about a player: those of the stories that are its, in the world or still to come. */
+  bodiesFor(name: string): number {
+    let n = 0;
+    for (const s of this.stories.values()) {
+      if ((s.phase === "entering" || s.phase === "active" || s.phase === "leaving") && s.for.includes(name)) for (const p of s.parts) if (!p.gone) n++;
+    }
+    return n;
+  }
+
+  /** A player who must not be set on: just risen, or at home. Hostile scenes start for another never go for it. */
+  spared(name: string, tick: number): boolean {
+    const p = this.player(name);
+    return tick - p.rose < RISE_GRACE_S * this.world.rate || p.safe;
   }
 
   /** The woken stories that count as a player's: made for it and still near it. */
@@ -213,6 +243,7 @@ export class Cast {
           const d = Math.hypot(s.x - near.x, s.z - near.z);
           if (d < FILL_NEAR || d > FILL_FAR) continue;
         }
+        if (this.alarmed(s.x, s.z)) continue;
         found.push(i);
       }
     }
@@ -248,16 +279,14 @@ export class Cast {
     const want = Math.round(PACE_STORIES[r.pace] * this.settings.activity);
     const mine = this.storiesFor(p);
     if (mine.length >= want) return;
-    let bodies = 0;
-    for (const s of mine) for (const part of s.parts) if (!part.gone) bodies++;
-    if (bodies >= this.settings.maxPerPlayer || this.bodies() >= this.settings.maxBodies) return;
+    if (this.bodiesFor(p.name) >= this.settings.maxPerPlayer || this.bodies() >= this.settings.maxBodies) return;
     let best: Story | null = null, bestD = Infinity;
     const ps = this.player(p.name);
     for (const s of this.stories.values()) {
-      if (s.phase !== "planned") continue;
+      if (s.phase !== "planned" || s.due !== undefined) continue;
       const sc = this.scenes.get(s.scene)!;
       const d = Math.hypot(s.x - p.x, s.z - p.z);
-      if (d > WAKE_M || d >= bestD) continue;
+      if (d > WAKE_M || d >= bestD || this.alarmed(s.x, s.z)) continue;
       if ((ps.seen[sc.id] ?? -Infinity) + sc.cooldown * this.world.rate > tick) continue;
       if (sc.hostile && !this.hostileFor(p.name, tick)) continue;
       best = s;
@@ -281,10 +310,15 @@ export class Cast {
   /** A story wakes: its roles are cast, it is the players' near it, and the stage brings its people in. */
   wake(s: Story, tick: number, players: readonly CastPlayer[]): void {
     const sc = this.scenes.get(s.scene)!;
-    const room = Math.max(0, this.settings.maxBodies - this.bodies());
-    s.parts = this.castRoles(sc, s, tick, room);
-    if (!s.parts.length) return;
-    s.for = players.filter((p) => Math.hypot(p.x - s.x, p.z - s.z) < AWAY_M).map((p) => p.name);
+    const near = players.filter((p) => Math.hypot(p.x - s.x, p.z - s.z) < AWAY_M).map((p) => p.name);
+    // Room: within the server's bodies, and (but for a crowd, which keeps to its own cap) each player's near it.
+    let room = Math.max(0, this.settings.maxBodies - this.bodies());
+    // A crowd keeps to its own cap, and police coming to trouble to the server's alone.
+    if (!sc.tags.includes("crowd") && s.due === undefined) for (const name of near) room = Math.min(room, Math.max(0, this.settings.maxPerPlayer - this.bodiesFor(name)));
+    const parts = this.castRoles(sc, s, tick, room, near);
+    if (!parts.length) return;
+    s.parts = parts;
+    s.for = near;
     s.phase = "entering";
     s.since = tick;
     this.counts.woken++;
@@ -300,26 +334,43 @@ export class Cast {
     else s.phase = "active";
   }
 
-  /** Who plays each role: featured people free near the region first (regulars come back), else new people. A crowd's
-   * size follows activity and the region's heat, within the crowd and body caps. */
-  private castRoles(sc: Scene, s: Story, tick: number, room: number): Part[] {
+  /**
+   * Who plays each role, all of them or none: featured people free near the region first (regulars come back, those who
+   * know a player near before others; a featured one of an everyday kind, met once, comes back now and then), else new
+   * people. A crowd's size follows activity and the region's heat, within the crowd and body caps. Nobody is cast twice,
+   * and a cast that cannot be filled takes nobody and leaves no one new behind.
+   */
+  private castRoles(sc: Scene, s: Story, tick: number, room: number, players: readonly string[]): Part[] {
     const parts: Part[] = [];
+    const chosen = new Set<string>(), minted: string[] = [];
     const heat = this.regions.get(s.region, tick).heat;
+    const cols = this.spots.cols;
+    const near = (h: number) => Math.abs((h % cols) - (s.region % cols)) <= 2 && Math.abs(Math.floor(h / cols) - Math.floor(s.region / cols)) <= 2;
+    const undo = (): Part[] => {
+      for (const id of minted) this.people.byId.delete(id);
+      return [];
+    };
     for (const role of sc.roles) {
       const [lo, hi] = role.count;
       let n = lo + this.rng.int(hi - lo + 1);
       if (sc.tags.includes("crowd")) n = Math.round(lo + (hi - lo) * Math.min(1, (0.3 + heat * 0.25) * this.settings.activity * (0.6 + this.rng.float() * 0.4)));
       n = Math.min(n, sc.tags.includes("crowd") ? this.settings.crowdMax : n, room - parts.length);
-      if (n < lo) return [];
+      if (n < lo) return undo();
       for (let k = 0; k < n; k++) {
         const kind = role.archetypes[this.rng.int(role.archetypes.length)]!;
         const a = this.people.archetype(kind)!;
-        let c = a.tier === "featured" ? this.people.free(role.archetypes, s.region, (h) => Math.abs((h % this.spots.cols) - (s.region % this.spots.cols)) <= 2 && Math.abs(Math.floor(h / this.spots.cols) - Math.floor(s.region / this.spots.cols)) <= 2) : null;
-        c ??= this.people.mint(kind, s.region, this.rng.u32(), tick);
-        c.story = s.id;
+        // A featured kind always looks for its regulars; an everyday kind's featured ones (met by a player) half the time.
+        const look = a.tier === "featured" || this.rng.float() < 0.5;
+        let c = look ? this.people.free(role.archetypes, s.region, near, chosen, players) : null;
+        if (!c) {
+          c = this.people.mint(kind, s.region, this.rng.u32(), tick);
+          minted.push(c.id);
+        }
+        chosen.add(c.id);
         parts.push({ character: c.id, role: role.role, step: 0, since: tick });
       }
     }
+    for (const id of chosen) this.people.byId.get(id)!.story = s.id;
     return parts;
   }
 
@@ -344,6 +395,52 @@ export class Cast {
     }
   }
 
+  /** Whether trouble near a point is still fresh: the street there stays quiet a while. */
+  alarmed(x: number, z: number): boolean {
+    return this.alarms.some((a) => Math.hypot(a.x - x, a.z - z) < ALARM_M);
+  }
+
+  /** Trouble at a point: no new everyday scene starts near it for a while, and its region's pace falls to fading. */
+  alarm(x: number, z: number, tick: number): void {
+    const until = tick + ALARM_S * this.world.rate;
+    const near = this.alarms.find((a) => Math.hypot(a.x - x, a.z - z) < 20);
+    if (near) near.until = until;
+    else this.alarms.push({ x, z, until });
+    const r = this.regions.get(this.spots.regionAt(x, z), tick);
+    r.pace = "fade";
+    r.next = tick + 2 * ALARM_S * this.world.rate;
+  }
+
+  /**
+   * Police come to trouble: a response planned at the place, waking in 20 to 40 seconds, unless one is already coming
+   * or came near lately. It goes after whoever started it when there is a survivor to go for and the server allows
+   * fighting back; otherwise it secures the place. Returns the story, or null.
+   */
+  respond(x: number, z: number, culprit: string | null, tick: number): Story | null {
+    const sc = this.scenes.get(POLICE);
+    if (!sc || !sc.needs.every((n) => this.can.has(n))) return null;
+    for (const s of this.stories.values()) if (s.scene === POLICE && Math.hypot(s.x - x, s.z - z) < POLICE_M && tick - s.made < POLICE_S * this.world.rate) return null;
+    const spot = this.spots.add({ x, z, tags: ["plaza"], cap: 12 });
+    const pursue = !!culprit && this.settings.hostility >= 1;
+    const story: Story = {
+      id: `s${this.nextStory++}`, scene: POLICE, spot, x, z, region: this.spots.regionAt(x, z), phase: "planned", parts: [],
+      choices: { mood: pursue ? "pursue" : "secure" }, slots: culprit ? { culprit } : {}, for: [], engaged: [], importance: 0.8,
+      made: tick, since: tick, planned: -Infinity, history: [`called to trouble${culprit ? ` ${culprit} started` : ""}`],
+      due: tick + Math.round(this.rng.range(POLICE_DELAY[0], POLICE_DELAY[1]) * this.world.rate),
+    };
+    this.stories.set(story.id, story);
+    return story;
+  }
+
+  /** Stories due now wake whatever the pace, within the body caps; one that cannot in two minutes is let go. */
+  private wakeDue(tick: number, players: readonly CastPlayer[]): void {
+    for (const s of [...this.stories.values()]) {
+      if (s.phase !== "planned" || s.due === undefined || s.due > tick) continue;
+      this.wake(s, tick, players);
+      if (s.phase === "planned" && tick - s.due > 120 * this.world.rate) (this.forget(s), this.counts.letGo++);
+    }
+  }
+
   /** A player engaged with one of a story's people. */
   engaged(s: Story): void {
     this.wakes.add(s.id);
@@ -357,9 +454,10 @@ export class Cast {
     s.history.push(`ended at tick ${tick}`);
     this.counts.done++;
     this.stage?.end(s);
+    // Its people are free again, but for those whose bodies are still walking off: the stage frees them once gone.
     for (const part of s.parts) {
       const c = this.people.byId.get(part.character);
-      if (c && c.story === s.id) delete c.story;
+      if (c && c.story === s.id && (part.pid === undefined || part.gone || !this.stage)) delete c.story;
     }
   }
 
@@ -368,7 +466,8 @@ export class Cast {
       v: 1,
       // An extra nobody met is a seed and is made again when wanted; the rest is kept.
       people: [...this.people.byId.values()].filter((c) => c.tier === "featured" || c.facts.length || Object.keys(c.relations).length),
-      stories: [...this.stories.values()].filter((s) => s.phase === "planned"),
+      // A story keeps its place by where and what it is: a spot's number means nothing to the next run.
+      stories: [...this.stories.values()].filter((s) => s.phase === "planned").map((s) => ({ ...s, at: this.spots.all[s.spot] })),
       regions: [...this.regions.byIndex.entries()],
       players: [...this.players.entries()].map(([n, p]) => [n, { hostileAt: p.hostileAt }]),
       next: this.nextStory,
@@ -388,7 +487,15 @@ export class Cast {
     if (data.v !== 1) return;
     for (const c of data.people) delete c.story;
     this.people.load(data.people);
-    for (const s of data.stories) this.stories.set(s.id, s);
+    for (const saved of data.stories) {
+      const { at, ...s } = saved;
+      if (!at || !this.scenes.has(s.scene)) continue;
+      s.spot = this.spots.add(at);
+      // JSON has no -Infinity: a story the planner never looked at comes back as one it never looked at.
+      if (typeof s.planned !== "number") s.planned = -Infinity;
+      s.parts = [];
+      this.stories.set(s.id, s);
+    }
     for (const [i, r] of data.regions) this.regions.byIndex.set(i, r);
     for (const [n, p] of data.players) this.player(n).hostileAt = p.hostileAt;
     this.nextStory = Math.max(this.nextStory, data.next);
@@ -408,7 +515,7 @@ export class Cast {
 export interface CastSave {
   v: 1;
   people: Character[];
-  stories: Story[];
+  stories: (Story & { at?: Spot })[];
   regions: [number, Region][];
   players: [string, { hostileAt: number }][];
   next: number;

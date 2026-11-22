@@ -40,6 +40,8 @@ export const GOAL_NONE = 0;
 export const GOAL_STROLL = 1;
 export const GOAL_WALK = 2;
 export const GOAL_RUN = 3;
+/** Standing where it was told and staying there: no wandering while it waits, serves or emotes. */
+export const GOAL_STAY = 4;
 /** Metres from its goal a body counts as there. */
 export const GOAL_ARRIVE = 0.9;
 /** No temper of its own: its species'. */
@@ -1085,7 +1087,7 @@ export class Behavior {
   /** Now and then it walks a new way, or stands a while. It walks at its walking speed, as ARK's wild creatures wander. */
   /** Walks to its goal at its pace; there, it stands still facing the way it was told. */
   private seek(e: number, tick: number, turn: boolean, heading: boolean): void {
-    if (this.arrived(e)) {
+    if (this.goalPace[e] === GOAL_STAY || this.arrived(e)) {
       this.way[e] = WAY_STRAIGHT;
       this.move[e] = 0;
       this.buttons[e] = 0;

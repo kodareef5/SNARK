@@ -14,7 +14,7 @@ import type { Cast, Stage } from "./engine.ts";
 import type { CastPlayer, CastWorld } from "./world.ts";
 
 /** Paces, as the body systems take them (server/behavior.ts GOAL_), and metres a second a sleeping body is walked at. */
-export const PACE = { none: 0, stroll: 1, walk: 2, run: 3 } as const;
+export const PACE = { none: 0, stroll: 1, walk: 2, run: 3, stay: 4 } as const;
 const SPEED = [0, 1.3, 2.5, 5.5];
 /** Ticks between a body's turns: each body is looked at every third tick, a third of them each tick. */
 const TURN = 3;
@@ -29,8 +29,30 @@ const STARE_RAD = 0.2, STARE_S = 2;
 const WAVES = new Set(["wave", "wave_big", "beckon", "salute", "thumbs_up"]);
 /** Seconds a fight lasts at most, and metres a player gets away to end it: a scene's fight breaks off, never hounds. */
 const FIGHT_MOST = 25, FIGHT_AWAY = 40;
-/** Metres a gunshot is heard within, and a cop comes from when called. */
-const GUNSHOT_M = 45, COP_M = 140;
+/** Metres an officer of the stage's comes from when called. */
+const COP_M = 140;
+/** Trouble as people take it: how far off each kind is noticed, and as what. A runner's panic is trouble to those within
+ * a few strides of it, so a crowd stampedes. */
+export type IncidentKind = "fight" | "death" | "gunshot" | "explosion" | "panic";
+const REACH: Record<IncidentKind, number> = { fight: 25, death: 40, gunshot: 60, explosion: 90, panic: 12 };
+const SEEN_AS: Record<IncidentKind, Stimulus> = { fight: "fight", death: "fight", gunshot: "gunshot", explosion: "gunshot", panic: "danger" };
+/** Lines said about one incident at most, all told: a few cries, not a chorus. */
+const CRIES = 3;
+/** Metres people run from trouble before they head off out of sight, and stand back to watch it. */
+const FLEE_M = 35, WATCH_M = 18;
+
+interface Incident {
+  id: number;
+  x: number;
+  z: number;
+  kind: IncidentKind;
+  /** The survivor who caused it, if one did. */
+  by: string | null;
+  /** The story whose own fight it is: its people do not take fright at it. */
+  story: string | null;
+  t: number;
+  cries: number;
+}
 
 /** What the stage asks of the bodies in the world. The server's is server/cast/host.ts; a body is known by its pid. */
 export interface CastBodies {
@@ -52,10 +74,10 @@ export interface CastBodies {
   /** A vehicle of a species at (x, z) facing yaw, nobody's; its pid, or -1. */
   spawnCar(kind: string, x: number, z: number, yaw: number): number;
   removeCar(car: number): void;
-  /** Where its driver's door is. */
-  door(car: number): { x: number; z: number } | null;
-  /** Begins getting in at the wheel; false if it cannot. */
-  board(pid: number, car: number): boolean;
+  /** Where a seat's door is: the driver's unless the passenger's is asked for. */
+  door(car: number, seat?: "driver" | "passenger"): { x: number; z: number } | null;
+  /** Begins getting in at the wheel, or beside it; false if it cannot. */
+  board(pid: number, car: number, seat?: "driver" | "passenger"): boolean;
   seated(pid: number): boolean;
   alight(pid: number): boolean;
   car(car: number): CarState | null;
@@ -79,6 +101,8 @@ interface Body {
   pid: number;
   c: Character;
   story: Story | null;
+  /** The story it came in for, kept after it is let go, so its person is freed only once its body is gone. */
+  storyId: string | null;
   part: Part | null;
   /** The step's work was begun (its goal given, its emote asked for). */
   begun: boolean;
@@ -107,6 +131,17 @@ interface Body {
   lastZ: number;
   lastT: number;
   backUntil: number;
+  /** It rides in another's car, beside the driver. */
+  passenger: boolean;
+  /** Incidents it has taken in, and when it last made one (a fight it is in). */
+  noticed: Set<number>;
+  lastIncident: number;
+  /** Running from trouble: the first stretch away from it, before it heads out of sight; it screamed (once). */
+  fleeing: boolean;
+  screamed: boolean;
+  /** Cowering, then running from here; watching trouble from a way off, facing this. */
+  fleeAfter: { x: number; z: number } | null;
+  watching: { x: number; z: number } | null;
 }
 
 export class CastStage implements Stage {
@@ -119,10 +154,12 @@ export class CastStage implements Stage {
   private readonly queues = new Map<number, Queue>();
   private readonly synced = new Map<string, Set<string>>();
   private readonly heard: { speaker: string; x: number; z: number; text: string; t: number }[] = [];
+  private readonly incidents: Incident[] = [];
+  private nextIncident = 1;
   private readonly rng: Rng;
   /** Counts for the admin page and tests: bodies brought in, sent away, reactions, lines said; and every place a
    * body came into or left the world, with whether a player could see it (a test checks none could). */
-  readonly counts = { entered: 0, left: 0, reactions: 0, said: 0, slept: 0, cars: 0, arrived: 0 };
+  readonly counts = { entered: 0, left: 0, reactions: 0, said: 0, slept: 0, cars: 0, arrived: 0, incidents: 0, fled: 0, watched: 0, cowered: 0, calls: 0 };
   readonly log: { pid: number; what: "in" | "out"; x: number; z: number; seen: boolean; t: number }[] = [];
   /** Keep the log of comings and goings (tests); off in a server. */
   logging = false;
@@ -171,10 +208,12 @@ export class CastStage implements Stage {
         continue;
       }
       if (b.story && b.part) this.react(b, tick, players);
+      this.witness(b, tick);
       this.work(b, tick, players);
     }
     const old = tick - 5 * this.world.rate;
     while (this.heard.length && this.heard[0]!.t < old) this.heard.shift();
+    while (this.incidents.length && this.incidents[0]!.t < tick - 3 * this.world.rate) this.incidents.shift();
   }
 
   // --- Coming and going ---------------------------------------------------------------------------------------------
@@ -207,7 +246,17 @@ export class CastStage implements Stage {
       if (first.do === "drive") {
         const kinds = sc.vehicles?.length ? sc.vehicles : ["core:compact"];
         const yaw = Math.atan2(s.x - at.x, s.z - at.z);
-        car = this.bodies.spawnCar(kinds[this.rng.int(kinds.length)]!, at.x + k * 7 * Math.cos(yaw), at.z - k * 7 * Math.sin(yaw), yaw);
+        // Cars of one role side by side, each where no player can see it.
+        const side = s.parts.filter((q) => q.role === part.role).indexOf(part);
+        const cx = at.x + side * 7 * Math.cos(yaw), cz = at.z - side * 7 * Math.sin(yaw);
+        car = this.world.seen(cx, cz) ? -1 : this.bodies.spawnCar(kinds[this.rng.int(kinds.length)]!, cx, cz, yaw);
+        if (car >= 0) {
+          const d = this.bodies.door(car);
+          if (!d || this.world.seen(d.x, d.z)) {
+            this.bodies.removeCar(car);
+            car = -1;
+          }
+        }
         if (car < 0) {
           if (tick - s.since > STEP_MOST * this.world.rate) part.gone = true;
           continue;
@@ -216,9 +265,10 @@ export class CastStage implements Stage {
       }
       const door = car >= 0 ? this.bodies.door(car) : null;
       let x = door ? door.x : at.x + (k % 3) * 0.9, z = door ? door.z : at.z + (Math.floor(k / 3) % 3) * 0.9;
-      let pid = this.bodies.spawn(c, a, x, z, Math.atan2(s.x - x, s.z - z));
+      // Never where a player can see: that place, else a few metres about.
+      let pid = this.world.seen(x, z) ? -1 : this.bodies.spawn(c, a, x, z, Math.atan2(s.x - x, s.z - z));
       // No room just there (a bin, a parked car): a few metres about, still out of sight.
-      for (let tries = 0; pid < 0 && tries < 4; tries++) {
+      for (let tries = 0; pid < 0 && car < 0 && tries < 4; tries++) {
         const jx = at.x + this.rng.range(-6, 6), jz = at.z + this.rng.range(-6, 6);
         if (this.world.seen(jx, jz)) continue;
         x = jx;
@@ -235,7 +285,7 @@ export class CastStage implements Stage {
       part.since = tick;
       part.step = this.next(sc, s, part.role, -1);
       if (car >= 0) this.bodies.board(pid, car);
-      this.byPid.set(pid, { pid, c, story: s, part, begun: false, until: 0, tx: 0, tz: 0, outX: 0, outZ: 0, out: false, aside: 0, lastReact: -Infinity, reacted: new Map(), stareSince: new Map(), served: false, car, route: null, next: 0, boarding: car >= 0, lastX: x, lastZ: z, lastT: tick, backUntil: 0 });
+      this.byPid.set(pid, { pid, c, story: s, storyId: s.id, part, begun: false, until: 0, tx: 0, tz: 0, outX: 0, outZ: 0, out: false, aside: 0, lastReact: -Infinity, reacted: new Map(), stareSince: new Map(), served: false, car, route: null, next: 0, boarding: car >= 0, lastX: x, lastZ: z, lastT: tick, backUntil: 0, passenger: false, noticed: new Set(), lastIncident: -Infinity, fleeing: false, screamed: false, fleeAfter: null, watching: null });
       this.counts.entered++;
       if (this.logging) this.log.push({ pid, what: "in", x, z, seen: this.world.seen(x, z), t: tick });
     }
@@ -280,8 +330,13 @@ export class CastStage implements Stage {
     const at = this.bodies.at(b.pid);
     if (this.logging && at) this.log.push({ pid: b.pid, what: "out", x: at.x, z: at.z, seen: this.world.seen(at.x, at.z), t: tick });
     this.bodies.remove(b.pid);
-    if (b.car >= 0) this.bodies.removeCar(b.car);
     this.byPid.delete(b.pid);
+    if (b.car >= 0 && !b.passenger) {
+      // Its passengers go with its car.
+      for (const o of [...this.byPid.values()]) if (o.passenger && o.car === b.car) this.gone(o, tick);
+      this.bodies.removeCar(b.car);
+    }
+    if (b.c.story === b.storyId) delete b.c.story;
     for (const q of this.queues.values()) q.leave(b.c.id);
     if (b.part) {
       b.part.gone = true;
@@ -295,6 +350,7 @@ export class CastStage implements Stage {
     b.c.dead = true;
     this.cast.people.remember(b.c, `died at tick ${tick}`, tick, true);
     this.byPid.delete(b.pid);
+    if (b.c.story === b.storyId) delete b.c.story;
     for (const q of this.queues.values()) q.leave(b.c.id);
     if (b.part) {
       b.part.gone = true;
@@ -337,17 +393,38 @@ export class CastStage implements Stage {
   }
 
   private work(b: Body, tick: number, players: readonly StagePlayer[]): void {
-    if (b.aside > tick) return;
+    if (b.aside > tick) {
+      // Watching from a way off: there, it turns to the trouble and gets its phone out.
+      if (b.watching && this.there(b, 2) && !b.begun) {
+        this.stand(b);
+        this.bodies.face(b.pid, b.watching.x, b.watching.z);
+        this.bodies.emote(b.pid, this.rng.float() < 0.5 ? "phone" : "point");
+        b.begun = true;
+      }
+      return;
+    }
     if (b.aside !== 0) {
       b.aside = 0;
       b.begun = false;
       if (this.bodies.fighting(b.pid)) this.bodies.calm(b.pid);
+      // After the fright: one that cowered runs now; one that watched goes on its way out.
+      if (b.fleeAfter) {
+        const from = b.fleeAfter;
+        b.fleeAfter = null;
+        return this.run(b, tick, { name: "", x: from.x, z: from.z });
+      }
+      if (b.watching) {
+        b.watching = null;
+        this.bodies.stopEmote(b.pid);
+        if (b.part && b.story) b.part.step = this.cast.scenes.get(b.story.scene)!.script[b.part.role]!.length - 1;
+      }
     }
     const st = this.stepOf(b);
     if (!st || st.do === "leave") return this.leave(b, tick, players, st?.do === "leave" ? st.pace : undefined);
     const s = b.story!, part = b.part!;
     const age = (tick - part.since) / this.world.rate;
-    if (age > (st.do === "queue" ? QUEUE_MOST : st.do === "sync" ? SYNC_MOST : STEP_MOST)) return this.advance(b, tick);
+    // A walk is given as long as its distance needs at its pace, with time to spare; anything else its fixed most.
+    if (st.do === "goto" ? b.begun && tick > b.until : age > (st.do === "queue" ? QUEUE_MOST : st.do === "sync" ? SYNC_MOST : STEP_MOST)) return this.advance(b, tick);
     switch (st.do) {
       case "goto": {
         const live = typeof st.to === "object" && "role" in st.to || st.to === "player";
@@ -356,6 +433,11 @@ export class CastStage implements Stage {
           b.tx = t.x;
           b.tz = t.z;
           this.walk(b, PACE[st.pace ?? "walk"]);
+          if (!b.begun) {
+            const here = this.bodies.at(b.pid);
+            const d = here ? Math.hypot(t.x - here.x, t.z - here.z) : 0;
+            b.until = tick + Math.round(Math.max(STEP_MOST, (1.6 * d) / SPEED[PACE[st.pace ?? "walk"]]! + 30) * this.world.rate);
+          }
           b.begun = true;
         }
         if (this.there(b, live ? 2.5 : 1.2)) this.advance(b, tick);
@@ -414,13 +496,13 @@ export class CastStage implements Stage {
         return;
       }
       case "serve": {
-        const q = this.queueAt(s), spot = this.cast.spots.all[s.spot]!;
+        const q = this.queueAt(s), spot = this.cast.spots.all[s.spot];
         if (!b.begun) {
           this.hold(b, tick, this.rng.range(st.s[0], st.s[1]));
           b.tx = tick;
           b.begun = true;
         }
-        const every = (spot.queue?.serve ?? 8) * this.world.rate;
+        const every = (spot?.queue?.serve ?? 8) * this.world.rate;
         if (tick - b.tx >= every && q.length) {
           b.tx = tick;
           const head = q.serve();
@@ -443,7 +525,26 @@ export class CastStage implements Stage {
         return;
       }
       case "drive":
-        return this.driveTo(b, tick, players, this.target(b, st.to, players), true);
+        return this.driveTo(b, tick, players, this.target(b, st.to, players), st.stay ? "stay" : "alight");
+      case "ride": {
+        const drv = s.parts.find((p) => p.role === st.with && p.pid !== undefined);
+        const db = drv ? this.byPid.get(drv.pid!) : undefined;
+        if (!db || db.car < 0) return this.advance(b, tick);
+        if (!b.begun) {
+          b.car = db.car;
+          b.passenger = true;
+          b.begun = true;
+        }
+        if (this.bodies.seated(b.pid)) {
+          b.boarding = false;
+          return this.advance(b, tick);
+        }
+        if (b.boarding) return;
+        const door = this.bodies.door(b.car, "passenger"), at = this.bodies.at(b.pid);
+        if (door && at && Math.hypot(door.x - at.x, door.z - at.z) < 2.5) b.boarding = this.bodies.board(b.pid, b.car, "passenger");
+        else if (door) this.bodies.goTo(b.pid, door.x, door.z, PACE.walk);
+        return;
+      }
       case "hold":
         if (!b.begun) {
           this.bodies.hold(b.pid, st.item);
@@ -471,9 +572,14 @@ export class CastStage implements Stage {
         if (this.cast.settings.hostility >= 2) {
           const at = this.bodies.at(b.pid);
           let best: StagePlayer | null = null;
-          for (const p of players) if (s.for.includes(p.name) && at && (!best || Math.hypot(p.x - at.x, p.z - at.z) < Math.hypot(best.x - at.x, best.z - at.z))) best = p;
+          // Never one just risen or at home, whoever the scene was woken for.
+          for (const p of players) if (s.for.includes(p.name) && !this.cast.spared(p.name, tick) && at && (!best || Math.hypot(p.x - at.x, p.z - at.z) < Math.hypot(best.x - at.x, best.z - at.z))) best = p;
           if (best) target = { player: best.name };
         }
+      } else if (t === "culprit") {
+        // Whoever started the trouble a police response answers: it struck first, so no grace spares it.
+        const who = s.slots.culprit;
+        if (who && this.cast.settings.hostility >= 1 && players.some((p) => p.name === who)) target = { player: who };
       } else if (typeof t === "object" && "role" in t) {
         const o = s.parts.find((p) => p.role === t.role && p.pid !== undefined && !p.gone);
         if (o) target = { pid: o.pid! };
@@ -486,7 +592,12 @@ export class CastStage implements Stage {
       return;
     }
     const at = this.bodies.at(b.pid);
-    const away = t === "player" && at && !players.some((p) => s.for.includes(p.name) && Math.hypot(p.x - at.x, p.z - at.z) < FIGHT_AWAY);
+    // A fight is trouble to everyone near it, told again every few seconds while it goes on.
+    if (at && tick - b.lastIncident > 4 * this.world.rate) {
+      b.lastIncident = tick;
+      this.incident(at.x, at.z, "fight", null, s.id);
+    }
+    const away = (t === "player" || t === "culprit") && at && !players.some((p) => (s.for.includes(p.name) || p.name === s.slots.culprit) && Math.hypot(p.x - at.x, p.z - at.z) < FIGHT_AWAY);
     if (!this.bodies.fighting(b.pid) || away || tick - b.tx > FIGHT_MOST * this.world.rate) {
       this.bodies.calm(b.pid);
       this.advance(b, tick);
@@ -510,14 +621,39 @@ export class CastStage implements Stage {
     if (at) this.respond(b, "attacked", p ?? { name: "", x: at.x, z: at.z }, tick, at, true);
   }
 
-  /** A shot near: everyone of the stage within hearing reacts by its table. */
-  gunshot(x: number, z: number, by: string | null, players: readonly StagePlayer[]): void {
+  /**
+   * Trouble at a place: a fight, a death, a shot, a blast, or people running and screaming. Everyone of the stage near
+   * enough takes it in on its next turn and reacts by its table (runs, cowers, watches from a way off, calls the police,
+   * steps in); the street round it goes quiet for a while, and for shots, a death or a blast someone always calls the
+   * police, who come.
+   */
+  incident(x: number, z: number, kind: IncidentKind, by: string | null, story: string | null = null): void {
     const tick = this.world.tick();
-    const p = (by && players.find((q) => q.name === by)) || { name: by ?? "", x, z };
-    for (const b of this.byPid.values()) {
-      if (!b.story || !b.part || this.bodies.fighting(b.pid)) continue;
-      const at = this.bodies.at(b.pid);
-      if (at && Math.hypot(at.x - x, at.z - z) < GUNSHOT_M) this.respond(b, "gunshot", p, tick, at, true);
+    this.incidents.push({ id: this.nextIncident++, x, z, kind, by, story, t: tick, cries: 0 });
+    this.counts.incidents++;
+    if (kind === "panic") return;
+    this.cast.alarm(x, z, tick);
+    if (kind !== "fight") this.cast.respond(x, z, by, tick);
+  }
+
+  /** Takes in the trouble near it, the first it has not taken in yet. People in the fight, and its own story's, do not
+   * take fright at it; one already running only runs harder. */
+  private witness(b: Body, tick: number): void {
+    if (!this.incidents.length || this.bodies.fighting(b.pid)) return;
+    const at = this.bodies.at(b.pid);
+    if (!at) return;
+    for (const inc of this.incidents) {
+      if (b.noticed.has(inc.id)) continue;
+      b.noticed.add(inc.id);
+      if (inc.story !== null && inc.story === b.storyId) continue;
+      if (Math.hypot(at.x - inc.x, at.z - inc.z) > REACH[inc.kind]) continue;
+      if (!b.story || !b.part || b.fleeing || b.fleeAfter) {
+        // Already on its way out: it hurries.
+        if (!b.fleeing && !b.passenger && !this.bodies.seated(b.pid)) this.run(b, tick, { name: "", x: inc.x, z: inc.z });
+        return;
+      }
+      this.respond(b, SEEN_AS[inc.kind], { name: inc.by ?? "", x: inc.x, z: inc.z }, tick, at, true, inc);
+      return;
     }
   }
 
@@ -525,6 +661,27 @@ export class CastStage implements Stage {
   private leave(b: Body, tick: number, players: readonly StagePlayer[], pace?: string): void {
     const at = this.bodies.at(b.pid);
     if (!at) return this.gone(b, tick);
+    // A passenger goes where its car goes, and from the world with it once out of sight.
+    if (b.passenger) {
+      const car = this.bodies.seated(b.pid) ? this.bodies.car(b.car) : null;
+      if (car) {
+        if (!this.world.seen(car.x, car.z)) this.gone(b, tick);
+        return;
+      }
+      b.passenger = false;
+      b.car = -1;
+    }
+    if (!this.world.seen(at.x, at.z)) return this.gone(b, tick);
+    // Running from trouble: the first stretch straight away from it, then off out of sight like anyone.
+    if (b.fleeing) {
+      if (this.there(b, 3)) {
+        b.fleeing = false;
+        b.out = false;
+      } else {
+        this.carry(b, PACE.run);
+        return;
+      }
+    }
     // Out by car where it has one: back to it, in, and away; gone once the car is out of every player's sight.
     const car = b.car >= 0 ? this.bodies.car(b.car) : null;
     if (car) {
@@ -536,16 +693,15 @@ export class CastStage implements Stage {
         b.out = true;
         b.route = null;
       }
-      this.driveTo(b, tick, players, { x: b.tx, z: b.tz }, false);
+      this.driveTo(b, tick, players, { x: b.tx, z: b.tz }, "none");
       return;
     }
-    if (!this.world.seen(at.x, at.z)) return this.gone(b, tick);
     if (!b.out) {
       const out = this.hidden(at.x, at.z, players) ?? { x: at.x, z: at.z };
       b.tx = out.x;
       b.tz = out.z;
       b.out = true;
-      this.walk(b, pace === "run" ? PACE.run : pace === "stroll" ? PACE.stroll : PACE.walk);
+      this.walk(b, pace === "run" || b.screamed ? PACE.run : pace === "stroll" ? PACE.stroll : PACE.walk);
     }
     // Arrived and still seen (a player followed it): it goes on, further out.
     if (this.there(b, 2)) b.out = false;
@@ -557,7 +713,8 @@ export class CastStage implements Stage {
    * of the car at the end when `alight`. A car stuck (barely moved for two seconds) backs off a moment and finds its way
    * again. With no car it walks.
    */
-  private driveTo(b: Body, tick: number, players: readonly StagePlayer[], t: { x: number; z: number }, alight: boolean): void {
+  private driveTo(b: Body, tick: number, players: readonly StagePlayer[], t: { x: number; z: number }, then: "alight" | "stay" | "none"): void {
+    const alight = then === "alight";
     const car = b.car >= 0 ? this.bodies.car(b.car) : null;
     if (!car) {
       if (!b.begun) {
@@ -603,6 +760,13 @@ export class CastStage implements Stage {
     b.next = k.next;
     if (k.done) {
       this.bodies.drive(b.car, 0, 0, true);
+      if (then === "stay") {
+        // There, at the wheel: the script goes on from the car (a pick-up).
+        this.counts.arrived++;
+        b.route = null;
+        this.advance(b, tick);
+        return;
+      }
       if (!alight) return;
       this.counts.arrived++;
       if (this.bodies.alight(b.pid) || !this.bodies.seated(b.pid)) {
@@ -662,9 +826,10 @@ export class CastStage implements Stage {
     return !!at && Math.hypot(at.x - b.tx, at.z - b.tz) <= r;
   }
 
+  /** Stands where it is, and stays: no wandering off while it waits, serves or emotes. */
   private stand(b: Body): void {
     const at = this.bodies.at(b.pid);
-    if (at) this.bodies.goTo(b.pid, at.x, at.z, PACE.none);
+    if (at) this.bodies.goTo(b.pid, at.x, at.z, PACE.stay);
   }
 
   private hold(b: Body, tick: number, seconds: number): void {
@@ -676,8 +841,8 @@ export class CastStage implements Stage {
   private queueAt(s: Story): Queue {
     let q = this.queues.get(s.spot);
     if (!q) {
-      const spot = this.cast.spots.all[s.spot]!;
-      q = new Queue({ x: spot.x, z: spot.z, yaw: spot.queue?.yaw ?? 0, spacing: spot.queue?.spacing ?? 0.9 }, 24);
+      const spot = this.cast.spots.all[s.spot];
+      q = new Queue({ x: spot?.x ?? s.x, z: spot?.z ?? s.z, yaw: spot?.queue?.yaw ?? 0, spacing: spot?.queue?.spacing ?? 0.9 }, 24);
       this.queues.set(s.spot, q);
     }
     return q;
@@ -694,9 +859,9 @@ export class CastStage implements Stage {
       const r = 1.6 * Math.sqrt(k + 1);
       return { x: s.x + Math.sin(k * 2.39996) * r, z: s.z + Math.cos(k * 2.39996) * r };
     }
-    if (t === "player") {
+    if (t === "player" || t === "culprit") {
       let best: CastPlayer | null = null;
-      for (const p of players) if ((s.for.includes(p.name) || s.engaged.includes(p.name)) && (!best || Math.hypot(p.x - at.x, p.z - at.z) < Math.hypot(best.x - at.x, best.z - at.z))) best = p;
+      for (const p of players) if ((t === "culprit" ? p.name === s.slots.culprit : s.for.includes(p.name) || s.engaged.includes(p.name)) && (!best || Math.hypot(p.x - at.x, p.z - at.z) < Math.hypot(best.x - at.x, best.z - at.z))) best = p;
       if (!best) return { x: s.x, z: s.z };
       const d = Math.hypot(at.x - best.x, at.z - best.z) || 1;
       return { x: best.x + ((at.x - best.x) / d) * 2.5, z: best.z + ((at.z - best.z) / d) * 2.5 };
@@ -767,7 +932,7 @@ export class CastStage implements Stage {
     }
   }
 
-  private respond(b: Body, on: Stimulus, p: StagePlayer, tick: number, at: { x: number; z: number }, urgent = false): void {
+  private respond(b: Body, on: Stimulus, p: StagePlayer, tick: number, at: { x: number; z: number }, urgent = false, inc?: Incident): void {
     if (urgent) b.lastReact = -Infinity;
     const a = this.cast.people.archetype(b.c.archetype)!;
     const table = this.cat.reactions.find((t) => t.id === a.reactions);
@@ -784,10 +949,10 @@ export class CastStage implements Stage {
       s.importance = Math.min(1, s.importance + 0.1);
       this.cast.engaged(s);
     }
-    this.act(b, row.do, row.line, p, tick, at);
+    this.act(b, row.do, row.line, p, tick, at, inc);
   }
 
-  private act(b: Body, r: Response, line: string | undefined, p: StagePlayer, tick: number, at: { x: number; z: number }): void {
+  private act(b: Body, r: Response, line: string | undefined, p: StagePlayer, tick: number, at: { x: number; z: number }, inc?: Incident): void {
     const aside = (s: number) => (b.aside = tick + Math.round(s * this.world.rate));
     switch (r) {
       case "ignore":
@@ -816,20 +981,31 @@ export class CastStage implements Stage {
         break;
       }
       case "cower":
+        // Frozen a moment, then it runs (from trouble), or gets up and goes on.
         this.stand(b);
         this.bodies.emote(b.pid, "cower");
-        aside(4);
+        this.counts.cowered++;
+        if (inc) b.fleeAfter = { x: inc.x, z: inc.z };
+        aside(4 + this.rng.float() * 3);
+        break;
+      case "watch":
+        this.watch(b, tick, at, inc ? { x: inc.x, z: inc.z } : p, WATCH_M);
         break;
       case "fight":
-        // Fights back the one who did it, unless the server wants no fights at all; a fight breaks off as a scene's does.
+        // Goes for the survivor who did it, unless the server wants no fights at all; a fight breaks off as a scene's does.
         if (this.cast.settings.hostility >= 1 && p.name && this.bodies.attack(b.pid, { player: p.name })) {
           aside(FIGHT_MOST);
+          break;
+        }
+        // Trouble with nobody to go for (a brawl of the world's own): an officer stands over it and clears the area.
+        if (inc && b.c.archetype === "cast:cop") {
+          this.watch(b, tick, at, inc, 8);
           break;
         }
         this.run(b, tick, p);
         break;
       case "call_cop": {
-        // The nearest officer of the stage's comes for whoever did it; the caller runs.
+        // The nearest officer of the stage's comes for whoever did it, police are called to the place; the caller runs.
         let cop: Body | null = null, best = COP_M;
         for (const o of this.byPid.values()) {
           if (o === b || o.c.archetype !== "cast:cop") continue;
@@ -841,6 +1017,8 @@ export class CastStage implements Stage {
           cop.aside = tick + Math.round(FIGHT_MOST * this.world.rate);
           this.cast.people.remember(cop.c, `came when ${b.c.name} called about ${p.name}`, tick, true);
         }
+        this.counts.calls++;
+        this.cast.respond(p.x, p.z, p.name || null, tick);
         this.run(b, tick, p);
         break;
       }
@@ -848,15 +1026,57 @@ export class CastStage implements Stage {
         this.run(b, tick, p);
         break;
     }
+    // A few cries per incident, not a chorus.
+    if (line && inc) {
+      if (inc.cries >= CRIES) return;
+      inc.cries++;
+    }
     if (line) this.speak(b, line);
   }
 
-  /** Runs from trouble: straight to its script's end, leaving at a run. */
-  private run(b: Body, tick: number, p: StagePlayer): void {
-    b.part!.step = this.cast.scenes.get(b.story!.scene)!.script[b.part!.role]!.length - 1;
+  /** Runs from trouble: a stretch straight away from it, then out of sight; its story is over for it. Running from a
+   * fight, a shot or a blast, it screams, and those a few strides off take fright too. */
+  private run(b: Body, tick: number, from: StagePlayer): void {
+    if (b.part && b.story) b.part.step = this.cast.scenes.get(b.story.scene)!.script[b.part.role]!.length - 1;
+    const at = this.bodies.at(b.pid);
+    if (!at) return;
+    let dx = at.x - from.x, dz = at.z - from.z;
+    const d = Math.hypot(dx, dz);
+    if (d < 0.5) {
+      const a = this.rng.float() * Math.PI * 2;
+      dx = Math.sin(a);
+      dz = Math.cos(a);
+    } else {
+      dx /= d;
+      dz /= d;
+    }
+    b.tx = Math.min(this.world.sizeX - 4, Math.max(4, at.x + dx * FLEE_M));
+    b.tz = Math.min(this.world.sizeZ - 4, Math.max(4, at.z + dz * FLEE_M));
     b.begun = false;
-    b.out = false;
-    this.leave(b, tick, [p], "run");
+    b.out = true;
+    b.fleeing = true;
+    this.bodies.stopEmote(b.pid);
+    this.bodies.goTo(b.pid, b.tx, b.tz, PACE.run);
+    this.counts.fled++;
+    if (!b.screamed) {
+      b.screamed = true;
+      this.incident(at.x, at.z, "panic", null, null);
+    }
+  }
+
+  /** Keeps back from trouble and watches: to a place `keep` metres off it on its own side, then facing it, its phone out,
+   * for a while; then it goes on its way out. */
+  private watch(b: Body, tick: number, at: { x: number; z: number }, from: { x: number; z: number }, keep: number): void {
+    const dx = at.x - from.x, dz = at.z - from.z, d = Math.hypot(dx, dz) || 1;
+    const r = Math.max(keep, d);
+    b.tx = from.x + (dx / d) * r;
+    b.tz = from.z + (dz / d) * r;
+    b.watching = { x: from.x, z: from.z };
+    b.begun = false;
+    this.bodies.stopEmote(b.pid);
+    this.bodies.goTo(b.pid, b.tx, b.tz, PACE.walk);
+    b.aside = tick + Math.round((12 + this.rng.float() * 8) * this.world.rate);
+    this.counts.watched++;
   }
 }
 
@@ -875,5 +1095,5 @@ function angle(a: number): number {
 }
 
 function describe(r: Response): string {
-  return { ignore: "ignored them", glance: "looked over", wave: "waved back", step_aside: "stepped aside", say: "answered", flee: "ran", cower: "cowered", fight: "squared up", call_cop: "called the police" }[r];
+  return { ignore: "ignored them", watch: "watched from a way off", glance: "looked over", wave: "waved back", step_aside: "stepped aside", say: "answered", flee: "ran", cower: "cowered", fight: "squared up", call_cop: "called the police" }[r];
 }

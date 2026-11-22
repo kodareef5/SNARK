@@ -47,7 +47,7 @@ export class Planner {
   private lastMinute = -Infinity;
   private lastHour = -Infinity;
   /** Counts for the admin page and tests. */
-  readonly counts = { minutes: 0, hours: 0, applied: 0, dropped: 0 };
+  readonly counts = { minutes: 0, hours: 0, applied: 0, dropped: 0, failed: 0 };
 
   constructor(cast: Cast, gate: ModelGate, log: DecisionLog, now: () => number) {
     this.cast = cast;
@@ -64,12 +64,12 @@ export class Planner {
     if (since >= MINUTE_S || (this.cast.wakes.size && since >= WOKEN_S)) {
       if (!this.gate.ready(this.now())) return;
       this.lastMinute = tick;
-      void this.minute(tick);
+      this.minute(tick).catch(() => this.counts.failed++);
       return;
     }
     if ((tick - this.lastHour) / w.rate >= HOUR_S && this.gate.ready(this.now())) {
       this.lastHour = tick;
-      void this.hour(tick);
+      this.hour(tick).catch(() => this.counts.failed++);
     }
   }
 
@@ -106,12 +106,7 @@ export class Planner {
       stories: stories.map((s) => this.card(s)),
     });
     const reply = await this.gate.call(SYSTEM, user, 1500, this.now());
-    let parsed: { stories?: { id?: unknown; choices?: unknown; lines?: unknown; note?: unknown }[] } = {};
-    try {
-      parsed = reply ? JSON.parse(reply.text) : {};
-    } catch {
-      parsed = {};
-    }
+    const parsed = { stories: objects<{ id?: unknown; choices?: unknown; lines?: unknown; note?: unknown }>(field(reply?.text, "stories")) };
     const names = new Set(views.map((v) => v.name));
     for (const s of stories) {
       const got = parsed.stories?.find((x) => x.id === s.id);
@@ -186,12 +181,7 @@ export class Planner {
       const user = JSON.stringify({ people: batch.map((c) => ({ id: c.id, name: c.name, kind: this.cast.people.archetype(c.archetype)?.name, traits: c.traits, want: c.want, struggle: c.struggle, hope: c.hope, facts: c.facts.slice(-6).map((f) => f.text), knows: Object.fromEntries(Object.entries(c.relations).map(([n, r]) => [n, { stance: Math.round(r.stance * 100) / 100, notes: r.notes.slice(-2) }])) })) });
       const reply = await this.gate.call(KEEPER, user, 1200, this.now());
       if (!reply) return;
-      let parsed: { people?: { id?: unknown; want?: unknown; struggle?: unknown; hope?: unknown; fact?: unknown }[] } = {};
-      try {
-        parsed = JSON.parse(reply.text);
-      } catch {
-        continue;
-      }
+      const parsed = { people: objects<{ id?: unknown; want?: unknown; struggle?: unknown; hope?: unknown; fact?: unknown }>(field(reply.text, "people")) };
       for (const c of batch) {
         const got = parsed.people?.find((p) => p.id === c.id);
         if (!got) continue;
@@ -206,6 +196,22 @@ export class Planner {
       }
     }
   }
+}
+
+/** A field of a model's JSON answer, or undefined for an answer that is not JSON or not an object. */
+function field(text: string | undefined, key: string): unknown {
+  if (!text) return undefined;
+  try {
+    const j: unknown = JSON.parse(text);
+    return j && typeof j === "object" && !Array.isArray(j) ? (j as Record<string, unknown>)[key] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The objects of an array, and nothing for anything else: an answer of the wrong shape plans nothing. */
+function objects<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v.filter((o) => o !== null && typeof o === "object" && !Array.isArray(o)) as T[]) : [];
 }
 
 /** The line keys a scene's people may say: its say steps' and its archetypes' reaction lines. */

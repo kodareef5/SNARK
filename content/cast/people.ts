@@ -34,6 +34,7 @@ const FOLK = {
   search: ["Where did I put it...", "It was right here.", "Come on, come on..."],
   found: ["Found it!", "Yes! There you are.", "Finally."],
   lost: ["Which way is the beach?", "I think we're lost.", "This doesn't look like the map."],
+  witness: ["Oh my god!", "Somebody call the police!", "Are you seeing this?", "Hey! Stop!", "I'm calling 911!"],
   buy: ["One, please.", "Smells amazing.", "Keep the change."],
 };
 
@@ -72,7 +73,7 @@ export const ARCHETYPES: Archetype[] = [
   {
     id: "cast:cop", name: "Police officer", tier: "featured", species: "core:civilian", temper: "defends", looks: ["cast:police"],
     traits: { calm: [0.5, 0.9], bold: [0.6, 1] }, items: { "core:pistol": 1, "core:round_pistol": 12 }, names: "officers",
-    lines: { ...FOLK, patrol: ["Keep it moving, folks.", "Everything all right here?", "Stay out of trouble."], talk: ["Move along.", "You see anything, you call it in.", "Stay off the causeway at night."], warn: ["Drop it! Now!", "Police! Don't move!"] },
+    lines: { ...FOLK, patrol: ["Keep it moving, folks.", "Everything all right here?", "Stay out of trouble."], talk: ["Move along.", "You see anything, you call it in.", "Stay off the causeway at night."], warn: ["Drop it! Now!", "Police! Don't move!"], clear: ["Everybody back!", "Clear the area!", "Nobody move!", "Police! Step away!"] },
     reactions: "cast:cop", wants: ["a quiet shift", "a promotion"], struggles: ["too few officers", "the gangs", "the dinosaurs"], hopes: ["to make detective"],
   },
   {
