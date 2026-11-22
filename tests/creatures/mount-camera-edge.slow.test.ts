@@ -5,6 +5,6 @@ import { artTest } from "../fixtures/needs-art.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { throughRoof } from "../fixtures/roof-edge.ts";
 
-artTest("current raptor and parasaur rigs keep roof-edge continuity at both ceiling heights", () => {
+artTest("current raptor and parasaur rigs keep the roof edge at every rate and height", () => {
   for (const kind of ["raptor", "parasaur"]) for (const under of [2.75, 2.96]) for (const fps of [20, 30, 60, 120]) throughRoof(corePack(), kind, fps, under);
 });
