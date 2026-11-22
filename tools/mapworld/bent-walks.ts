@@ -465,12 +465,14 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
 
   /**
    * A shape of the walk kit `d` along piece `p`'s chord from its middle and `back` from the kerb's face, at the chord's
-   * height there. A box stands nowhere a way in to a building crosses the walk, as the kit's never did: its slab was cut there.
+   * height there. A box stands nowhere a way in to a building crosses the walk, as the kit's never did: its slab was cut
+   * there; nor over what the city set down under the walk's top, a building's floor at the building line, where the walk
+   * runs over it and the box would stand in the building's room (Tampa's one room route that failed, D1105).
    */
   function fixture(p: BentPiece, shape: "zdrain" | "zutility", d: number, back: number): boolean {
     const a = (p.yaw * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a), mid = BREAK_AT[shape]!;
     const [x, z] = [p.x + c * d + s * back, p.z - s * d + c * back];
-    if (shape === "zutility" && way({ x, y: p.y, z, yaw: p.yaw, size: [1, 1.3, 0.6] })) return false;
+    if (shape === "zutility" && (way({ x, y: p.y, z, yaw: p.yaw, size: [1, 1.3, 0.6] }) || obstacles.hits({ x, y: p.y + 0.075, z, yaw: p.yaw, size: [1, 0.3, 0.6] }, -0.05, passed))) return false;
     const m = new Mason({ x: x + c * mid[0]!, z: z - s * mid[0]!, yaw: p.yaw, c, s, width: 8, depth: 3, rings: [] }, p.y + (p.bend.rise * d) / p.bend.half);
     m.put(shape, 0, mid[1]!, 0, "concrete");
     return accept(m);
