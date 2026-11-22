@@ -20,7 +20,8 @@ export const deckCeiling = (bridge: Pick<BridgeRecord, "kind">, d: DeckPoint): n
 export interface Approach { street: { x: number; y: number; z: number }; door: { x: number; y: number; z: number }; core: { x: number; y: number; z: number }; ramp: number; }
 /**
  * Plans each door's approach from the street. `bridges` are dug down under their decks after every building is planned,
- * except on the samples `kept` (the road's own ground at their ends), so no approach is laid on ground they dig away.
+ * except on the samples `kept` (the road's own ground at their ends), so an approach is planned on the ground as they will
+ * leave it: one that starts beside a deck starts at the dug level, and no ramp is left standing over the hole.
  */
 export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[], bridges: readonly Pick<BridgeRecord, "kind" | "deck">[] = [], kept: ReadonlySet<number> = new Set()): ((m: Mason, owner: number) => Approach[]) & { reserve: (routes: Approach[]) => void } {
   const { surface, heaps } = site.ground; const { nx, nz, x1, z1 } = site.ground.grid;
@@ -46,6 +47,7 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
   };
   const solids = index(infrastructure);
   const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
+  const groundAt = (x: number, z: number): number => Math.min(site.groundAt(x, z), dug.get(at(x, z)) ?? Infinity);
   for (let row = 2; row < nz - 2; row += 4) for (let col = 2; col < nx - 2; col += 4) {
     // A door is reached from where people walk as well as from the street: the sidewalk, a walkway, a plaza.
     const i = row * nx + col; if (!APPROACHED.has(surface[i]!)) continue;
@@ -79,7 +81,7 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       // nearest it, so a door that has a way in keeps one.
       let shallowest = null as { street: { x: number; z: number }; ramp: number; depth: number } | null;
       const found = [4, 0].flatMap((margin) => nearest.map(({ p, len }) => ({ street: p, len, margin }))).find(({ street: p, len, margin }) => {
-        const groundY = site.groundAt(p.x, p.z); const y = streetLevel(groundY, m.base);
+        const groundY = groundAt(p.x, p.z); const y = streetLevel(groundY, m.base);
         if (len > 112 || len < 4 || y < .1 || Math.abs(y - m.base) / len > .12) return false;
         let boundary = len;
         // With no margin the squares beside are the square itself.
@@ -105,10 +107,10 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
           if (obstructed(x, z, level)) return false;
           for (const a of reserved.get(binKey(Math.floor(x / 32), Math.floor(z / 32))) ?? []) if (clashes(a, x, z, level)) return false;
           for (const a of out) if (clashes(a, x, z, level)) return false;
-          // A bridge's deck dug under it later would leave its ramp standing over the hole.
+          // A bridge's deck dug under it on its way would leave its ramp standing over the hole.
           const i = at(x, z);
           if ((dug.get(i) ?? Infinity) < level - .4) return false;
-          if (heaps.owner[i] !== owner) depth = Math.max(depth, Math.abs(site.groundAt(x, z) - level));
+          if (heaps.owner[i] !== owner) depth = Math.max(depth, Math.abs(groundAt(x, z) - level));
         }
         if (depth > APPROACH_DEPTH) {
           if (!shallowest || depth < shallowest.depth) shallowest = { street: p, ramp, depth };
@@ -119,7 +121,7 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       if (!found && shallowest) ramp = shallowest.ramp;
       const street = found?.street ?? shallowest?.street;
       if (!street) continue;
-      const groundY = site.groundAt(street.x, street.z);
+      const groundY = groundAt(street.x, street.z);
       const from = { ...street, y: streetLevel(groundY, m.base) }; const door = { x: entry.x, y: m.base, z: entry.z };
       out.push({ street: from, door, core: { x: entry.coreX, y: m.base, z: entry.coreZ }, ramp });
       const length = Math.hypot(from.x - door.x, from.z - door.z);

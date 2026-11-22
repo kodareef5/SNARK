@@ -601,11 +601,14 @@ test("a door's approach keeps to ground it need not cut deep, and off ground a b
   // Through the bank it would run 5 m under the ground, more than APPROACH_DEPTH: the street round it is taken.
   expect(5).toBeGreaterThan(APPROACH_DEPTH);
   expect(plan(true)).toMatchObject({ x: 108, z: 172 });
-  // A bridge's deck 3 m down beside the near street is dug out round it once the buildings are planned, so that street is
-  // not taken; where its ground is the road's own, which is not dug, it is.
-  const deck = [{ kind: "road_bridge", deck: [{ x: 132, y: 7, z: 174, yaw: 0, gap: false }] }];
-  expect(plan(false, deck)).toMatchObject({ x: 108, z: 172 });
+  // A bridge's deck a metre down beside the near street is dug out round it once the buildings are planned: the approach
+  // starts at the dug level, but where the ground is the road's own, which is not dug, at the ground's.
+  const beside = [{ kind: "road_bridge", deck: [{ x: 132, y: 9, z: 174, yaw: 0, gap: false }] }];
+  expect(plan(false, beside)).toMatchObject({ x: 132, y: 9, z: 172 });
   const road = new Set<number>();
   for (let dz = -2; dz <= 2; dz += 2) for (let dx = -2; dx <= 2; dx += 2) road.add(at(132 + dx, 174 + dz));
-  expect(plan(false, deck, road)).toMatchObject({ x: 132, z: 172 });
+  expect(plan(false, beside, road)).toMatchObject({ x: 132, y: 10, z: 172 });
+  // One 3 m down across the way would be dug out from under the approach: the street round it is taken.
+  const across = [{ kind: "road_bridge", deck: [{ x: 132, y: 7, z: 160, yaw: 0, gap: false }] }];
+  expect(plan(false, across)).toMatchObject({ x: 108, z: 172 });
 });
