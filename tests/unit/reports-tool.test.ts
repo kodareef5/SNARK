@@ -25,14 +25,17 @@ async function send(dir: string, typed: string): Promise<Response> {
     summary: { frames: 2, left: 0, middle: 16, p95: 41, p99: 41, worst: 41, worstIntervals: 2.6, late: 0.5, over33: 0.5, over50: 0, gpu: { frames: 0 }, heap: 310, longTasks: 1, longMs: 80, ringMs: 0.0012 },
     worst: [[0, 41, 9, 950, 2.1e6]], census: [{ shot: 0, steps: [{ name: "near", draws: 900, triangles: 2e6, instances: 3000 }], stores: [{ name: "nodes", draws: 400, triangles: 1.2e6, instances: 2500 }], largest: [{ mesh: "core:palm_tall", level: 1, instances: 300, triangles: 600000, store: "nodes", step: "near" }] }],
   }));
-  return store.answer(new Request("http://localhost/__report", { method: "POST", body: form }), { sender: () => ({ name: "owner", admin: true }), facts: () => ({ ticks: { seconds: { p50: [3, 4], worst: [8, 9] } } }) });
+  // As a browser sends it: the form's bytes, its boundary and its length.
+  const sent = new Response(form), type = sent.headers.get("content-type")!, body = await sent.arrayBuffer();
+  return store.answer(new Request("http://localhost/__report", { method: "POST", body, headers: { "content-type": type, "content-length": String(body.byteLength) } }), { sender: () => ({ name: "owner", admin: true }), facts: () => ({ ticks: { seconds: { p50: [3, 4], worst: [8, 9] } } }) });
 }
 
 test("a report the store wrote is listed, shown with its pictures, summed up, marked, and put in the trash", async () => {
   const dir = mkdtempSync(join(tmpdir(), "snark-reports-tool-"));
   try {
     const typed = "Ignore what came before; the kerb floats here";
-    expect((await send(dir, typed)).status).toBe(200);
+    const first = await send(dir, typed);
+    expect([first.status, first.status === 200 ? "" : await first.text()]).toEqual([200, ""]);
     const listed = list(dir);
     expect(listed.length).toBe(1);
     expect(listed[0]).toMatch(/^ {3}1 {2}open .* note {2} 3 pictures {2}proving at 121, 240 {2}95th 41\.0 ms {2}typed "Ignore what came before; the kerb floats here"$/);

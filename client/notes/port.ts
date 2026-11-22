@@ -43,6 +43,7 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
     }).observe({ type: "longtask", buffered: false });
   } catch {}
   let clock: PassClock | null = null, each = false;
+  const about = { browser: navigator.userAgent, card: "", format: "" };
   const json = async (r: Promise<Response>): Promise<Answer> => {
     try {
       const res = await r;
@@ -90,7 +91,12 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
       return true;
     },
     glDraws: () => renderer.drawCalls,
-    page: () => ({ browser: navigator.userAgent, card: renderer.rendererName, format: renderer.format }),
+    // One record, brought up to date: it is asked for every frame while the mode is on.
+    page() {
+      about.card = renderer.rendererName;
+      about.format = renderer.format;
+      return about;
+    },
     get: (path) => json(fetch(path, { cache: "no-store" })),
     post(path, fields, files) {
       const form = new FormData();

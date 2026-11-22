@@ -143,7 +143,10 @@ export class ReportStore {
   async answer(req: Request, server: ReportServer): Promise<Response> {
     if (req.method === "GET" || req.method === "HEAD") return new Response(null, { status: 204 });
     if (req.method !== "POST") return new Response("GET or POST", { status: 405 });
-    if (Number(req.headers.get("content-length") ?? 0) > REPORT_BYTES_MOST) return text(413, `a report is ${REPORT_BYTES_MOST / 1048576} MB at most`);
+    // The length comes first, so a body nobody may send is not read: a page's FormData always says it.
+    const length = Number(req.headers.get("content-length") ?? Number.NaN);
+    if (!(length > 0)) return text(411, "a report says its length");
+    if (length > REPORT_BYTES_MOST) return text(413, `a report is ${REPORT_BYTES_MOST / 1048576} MB at most`);
     let form: Form;
     try {
       form = await req.formData();
