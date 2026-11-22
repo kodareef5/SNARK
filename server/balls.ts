@@ -23,7 +23,7 @@ import type { Items } from "./items.ts";
 import { freeAt, freePlace } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Riding } from "./riding.ts";
-import { saved } from "./saved.ts";
+import { moved, saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Taming } from "./taming.ts";
@@ -403,4 +403,6 @@ saved({
     rec.stored = r.uint53();
     if (rec.stored === 0) from.refused = true;
   },
+  // A kept tame stays as long kept by the new clock.
+  rebase: (rec, delta) => void (rec.stored = moved(rec.stored, delta)),
 });

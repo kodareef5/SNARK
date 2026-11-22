@@ -687,4 +687,5 @@ saved({
     rec.saddle = saddle === 0 ? 0 : (from.toRuntime[saddle] ?? 0);
     rec.wander = r.bool();
   },
+  rebase: (rec) => void (rec.mealDue = 0),
 });

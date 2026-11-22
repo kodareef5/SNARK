@@ -6,7 +6,7 @@ import type { ItemDef } from "../shared/content/defs.ts";
 import type { Lane } from "../shared/sim/station.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, FireState, Records } from "./records.ts";
-import { saved } from "./saved.ts";
+import { moved, saved } from "./saved.ts";
 import type { ServerWorld } from "./world.ts";
 
 export class Fixtures {
@@ -150,5 +150,9 @@ saved({
       if (lanes.length > 0) fire.lanes = lanes;
       rec.fire = fire;
     }
+  },
+  rebase(rec, delta) {
+    rec.readyAt = moved(rec.readyAt, delta);
+    if (rec.fire) rec.fire.at = moved(rec.fire.at, delta);
   },
 });

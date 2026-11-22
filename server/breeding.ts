@@ -15,7 +15,7 @@ import type { Client, GameServer } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import { placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
-import { saved } from "./saved.ts";
+import { moved, saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
 import type { ServerWorld } from "./world.ts";
@@ -581,5 +581,12 @@ saved({
     rec.span = r.uint53();
     rec.grown = r.uint53();
     if (r.bool()) rec.egg = { species: from.toRuntime[r.varint()] ?? 0, span: r.uint53(), hatchAt: r.uint53(), carrier: r.uint53() };
+  },
+  rebase(rec, delta) {
+    rec.mateReadyAt = moved(rec.mateReadyAt, delta);
+    rec.grown = moved(rec.grown, delta);
+    // A fertilised egg held as an item keeps the time it has left, not a tick.
+    if (rec.egg && rec.egg.carrier !== rec.pid) rec.egg.hatchAt = moved(rec.egg.hatchAt, delta);
+    rec.growDue = 0;
   },
 });

@@ -9,7 +9,7 @@ import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { validLook } from "../../shared/anim/look.ts";
 import { EntityRecord } from "../records.ts";
-import { SAVED, saved, savedAs, type Coding } from "../saved.ts";
+import { SAVED, moved, saved, savedAs, type Coding } from "../saved.ts";
 
 /** The revision of a record's parts, in its first byte. Raise it whenever a part changes: a build reads only its own. */
 const RECORD_FORMAT = 7;
@@ -292,6 +292,11 @@ saved({
   read(rec, r) {
     for (let k = r.varint(); k > 0 && !r.overflow; k--) rec.markers.push({ kind: r.u8(), x: r.f32(), y: r.f32(), z: r.f32(), tick: r.uint53() });
   },
+  rebase(rec) {
+    // Death markers are places on the world it left, so they go.
+    rec.markers.length = 0;
+    rec.markersVersion++;
+  },
 });
 
 /** Dead flag, expiry tick, the hotbar slot in hand, and whether it flies. */
@@ -312,6 +317,7 @@ saved({
     rec.held = r.u8() - 1;
     rec.flying = r.bool();
   },
+  rebase: (rec, delta) => void (rec.expiresAt = moved(rec.expiresAt, delta)),
 });
 
 saved({
@@ -390,6 +396,15 @@ saved({
       if (holds) inv.setGear(slot, ammo, ammo === 0 ? 0 : loaded, attach);
     }
   },
+  rebase(rec, delta) {
+    const inv = rec.inv;
+    for (let s = 0; inv && s < inv.cap; s++) {
+      // A charge held full names no tick.
+      const at = inv.spoilAt[s]!;
+      if (inv.item[s] === 0 || at === 0 || at === 0xffffffff) continue;
+      inv.spoilAt[s] = Math.min(0xffffffff, moved(at, delta));
+    }
+  },
 });
 
 /** The slots of its inventory that stand for a record (Inventory.ref): each slot and that record's pid. */
@@ -451,6 +466,10 @@ saved({
     }
     rec.out = r.bool();
   },
+  rebase(rec, delta) {
+    if (rec.vitals) rec.vitals.tick = Math.max(0, rec.vitals.tick + delta);
+    rec.vitalsDue = 0;
+  },
 });
 
 saved({
@@ -508,32 +527,9 @@ const LOOK = saved({
 
 /**
  * Moves every world tick a record keeps by `delta`, for a record that left one world's clock for another's. What was due by the
- * old clock is due as far off by the new. A tick of 0 means none and stays 0. A fertilised egg held as an item keeps the time
- * it has left, not a tick, so it is left alone. Death markers are places on the world it left, so they go.
+ * old clock is due as far off by the new. Each component moves its own (Saved.rebase).
  */
 export function rebaseTicks(rec: EntityRecord, delta: number): void {
-  const move = (tick: number): number => (tick === 0 ? 0 : Math.max(1, tick + delta));
-  if (rec.vitals) rec.vitals.tick = Math.max(0, rec.vitals.tick + delta);
-  const inv = rec.inv;
-  for (let s = 0; inv && s < inv.cap; s++) {
-    const at = inv.spoilAt[s]!;
-    if (inv.item[s] === 0 || at === 0 || at === 0xffffffff) continue;
-    inv.spoilAt[s] = Math.min(0xffffffff, move(at));
-  }
-  for (const j of rec.jobs) j.doneAt = move(j.doneAt);
-  for (const b of rec.buffs) b.until = move(b.until);
-  rec.expiresAt = move(rec.expiresAt);
-  rec.mateReadyAt = move(rec.mateReadyAt);
-  rec.grown = move(rec.grown);
-  // A tame kept in a soul ball stays as long kept by the new clock.
-  rec.stored = move(rec.stored);
-  rec.readyAt = move(rec.readyAt);
-  if (rec.fire) rec.fire.at = move(rec.fire.at);
-  if (rec.egg && rec.egg.carrier !== rec.pid) rec.egg.hatchAt = move(rec.egg.hatchAt);
-  rec.markers.length = 0;
-  rec.markersVersion++;
-  // Worked out again from the rest.
-  rec.vitalsDue = 0;
-  rec.growDue = 0;
-  rec.mealDue = 0;
+  const rows = SAVED;
+  for (let i = 0; i < rows.length; i++) rows[i]!.rebase?.(rec, delta);
 }

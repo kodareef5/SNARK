@@ -15,7 +15,7 @@ import { statOf } from "./survival.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Job, Records } from "./records.ts";
-import { saved } from "./saved.ts";
+import { moved, saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
@@ -461,5 +461,8 @@ saved({
       }
     }
     for (const j of jobs) if (j.item !== 0) rec.jobs.push(j);
+  },
+  rebase(rec, delta) {
+    for (const j of rec.jobs) j.doneAt = moved(j.doneAt, delta);
   },
 });

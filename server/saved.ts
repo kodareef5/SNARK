@@ -1,7 +1,8 @@
 // What a feature saves on each record. Its own file declares the component with `saved({ ... })`, and the record codec
-// (server/persist/codec.ts) walks every one declared, to write a record and to read one. No list names them, so a new
-// one is no line in a shared file. A codec knows the components of the files that are loaded, which for a server is all
-// of them (server/host.ts); the bytes of one it does not know it keeps and writes back (EntityRecord.extra).
+// (server/persist/codec.ts) walks every one declared: to write a record, to read one, and to move one's ticks to
+// another clock. No list names them, so a new one is no line in a shared file. A codec knows the components of the
+// files that are loaded, which for a server is all of them (server/host.ts); the bytes of one it does not know it keeps
+// and writes back (EntityRecord.extra).
 
 import type { BitReader, BitWriter } from "../shared/net/codec.ts";
 import type { EntityRecord } from "./records.ts";
@@ -37,6 +38,16 @@ export interface Saved {
   has(rec: EntityRecord): boolean;
   write(rec: EntityRecord, w: BitWriter, to: Coding): void;
   read(rec: EntityRecord, r: BitReader, from: Coding): void;
+  /**
+   * For a record that leaves one world's clock for another's `delta` ticks on (rebaseTicks): moves each world tick it
+   * keeps with `moved`, and clears what is worked out from them. Called whether or not the record has any of it.
+   */
+  rebase?(rec: EntityRecord, delta: number): void;
+}
+
+/** A world tick on a clock `delta` ticks on: what was due is due as far off. A tick of 0 means none and stays 0. */
+export function moved(tick: number, delta: number): number {
+  return tick === 0 ? 0 : Math.max(1, tick + delta);
 }
 
 /** The order the components were written in when the codec was one chain, kept so that the bytes are the same. */

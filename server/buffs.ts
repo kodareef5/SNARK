@@ -6,7 +6,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { DAMAGE_TYPES } from "../shared/sim/damage.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { EntityRecord, Records } from "./records.ts";
-import { saved } from "./saved.ts";
+import { moved, saved } from "./saved.ts";
 import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -219,5 +219,8 @@ saved({
       if (on.buff !== 0) rec.buffs.push(on);
       else from.stale = true;
     }
+  },
+  rebase(rec, delta) {
+    for (const b of rec.buffs) b.until = moved(b.until, delta);
   },
 });
