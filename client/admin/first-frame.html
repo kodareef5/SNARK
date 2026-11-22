@@ -20,10 +20,11 @@
       header nav { margin-left: auto; display: flex; gap: 16px; font-size: 14px; }
       .glass { background: rgba(20, 36, 56, 0.78); border: 1px solid var(--edge); padding: 12px 14px; min-width: 0; }
       .wide { grid-column: 1 / -1; }
-      .bar { display: flex; height: 22px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--edge); margin: 8px 0; overflow: hidden; }
+      .bar { position: relative; display: flex; height: 22px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--edge); margin: 8px 0; overflow: hidden; }
+      .bar b.mark { position: absolute; top: -2px; bottom: -2px; width: 2px; margin-left: -1px; background: var(--bad); }
       .bar i { display: block; height: 100%; } .bar i.room { background: repeating-linear-gradient(135deg, rgba(143, 217, 196, 0.25) 0 6px, transparent 6px 12px); }
       i.key { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: baseline; }
-      table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text-align: left; padding: 3px 6px; border-bottom: 1px solid rgba(168, 204, 234, 0.08); overflow-wrap: anywhere; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; } td, th { text-align: left; padding: 3px 6px; border-bottom: 1px solid rgba(168, 204, 234, 0.08); overflow-wrap: break-word; }
       td:not(:first-child), th:not(:first-child) { text-align: right; white-space: nowrap; }
       th { color: var(--dim); font-weight: 400; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
       .dim { color: var(--dim); } .warn { color: var(--warn); } .bad { color: var(--bad); } .well { color: var(--well); }

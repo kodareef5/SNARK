@@ -33,10 +33,14 @@ export function changeHtml(now: number, was: number | undefined): string {
   return `<span class="${now > was ? "warn" : "well"}">${now > was ? "+" : "-"}${kb(Math.abs(now - was))}</span>`;
 }
 
-/** A bar of parts on `scale` bytes, each a coloured share with its name in its title, and the room left after them. */
-export function barHtml(parts: readonly Weight[], scale: number, room = 0): string {
+/**
+ * A bar of parts on `scale` bytes, each a coloured share with its name in its title, the room left after them, and where
+ * `mark`, the budget, falls on it when the parts go past it.
+ */
+export function barHtml(parts: readonly Weight[], scale: number, room = 0, mark = 0): string {
   const cells = parts.map((p, i) => `<i style="width:${((p.bytes / scale) * 100).toFixed(3)}%;background:${COLOURS[i % COLOURS.length]}" title="${esc(`${p.name}: ${kb(p.bytes)}`)}"></i>`);
   if (room > 0) cells.push(`<i class="room" style="width:${((room / scale) * 100).toFixed(3)}%" title="${esc(`room left: ${kb(room)}`)}"></i>`);
+  if (mark > 0 && mark < scale) cells.push(`<b class="mark" style="left:${((mark / scale) * 100).toFixed(3)}%" title="${esc(`the budget: ${kb(mark)}`)}"></b>`);
   return `<div class="bar">${cells.join("")}</div>`;
 }
 
@@ -52,10 +56,10 @@ export function firstFrameView(w: FirstFrameJson, map = ""): Record<string, stri
   const mapRows = w.maps.map((x) => `<tr><td>${esc(x.map)}</td><td>${kb(x.total)}</td><td class="${x.room < 0 ? "bad" : ""}">${x.room < 0 ? `${kb(-x.room)} over` : `${kb(x.room)} left`}</td><td>${changeHtml(x.total, p?.maps.find((y) => y.map === x.map)?.total)}</td></tr>`).join("");
   const script = w.parts[0]!, folders = w.folders.slice(0, 9), rest = w.folders.slice(9).reduce((n, f) => n + f.bytes, 0);
   const before = new Map((p?.modules ?? []).map((x) => [x.file, x.bytes]));
-  const moduleRows = w.modules.slice(0, 40).map((x) => `<tr><td>${esc(x.file)}</td><td>${kb(x.bytes)}</td><td class="dim">${kb(x.raw)}</td><td>${p ? changeHtml(x.bytes, before.get(x.file) ?? 0) : ""}</td></tr>`).join("");
+  const moduleRows = w.modules.slice(0, 40).map((x) => `<tr><td>${esc(x.file).replaceAll("/", "/<wbr>")}</td><td>${kb(x.bytes)}</td><td class="dim">${kb(x.raw)}</td><td>${p ? changeHtml(x.bytes, before.get(x.file) ?? 0) : ""}</td></tr>`).join("");
   return {
     summary,
-    bar: barHtml(parts, Math.max(w.budget, total), room),
+    bar: barHtml(parts, Math.max(w.budget, total), room, w.budget),
     parts: partRows,
     maps: mapRows,
     folders: barHtml([...folders.map((f) => ({ name: f.file, bytes: f.bytes })), ...(rest > 0 ? [{ name: "the rest", bytes: rest }] : [])], script.bytes) + `<p class="dim">${folders.map((f, i) => `<i class="key" style="background:${COLOURS[i % COLOURS.length]}"></i>${esc(f.file)} ${kb(f.bytes)}`).join(" &nbsp; ")}</p>`,

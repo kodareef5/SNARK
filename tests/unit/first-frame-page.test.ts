@@ -36,5 +36,7 @@ test("the page says the total, the room and the change, a map with its landmarks
   expect(miami.parts).toContain("landmark cruise");
   // Over the budget, the bar's scale is the total, and there is no room.
   expect(miami.bar).not.toContain('class="room"');
+  expect(miami.bar).toContain('class="mark"');
+  expect(core.bar).not.toContain('class="mark"');
   expect(firstFrameView(weighed({ previous: null })).summary).not.toContain("change is against");
 });
