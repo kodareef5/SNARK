@@ -197,7 +197,7 @@ export function fieldResult(recipe: WeatherRecipe, tile: number, x: number, y: n
   for (let c = 0; c < 5; c++) own[c] = stretch(common[c]! + (own[c]! - common[c]!) * mine, c);
   const dirty = smoothstep(0.5, 0.75, own[1]!), worn = 0.65 * (1 + dirty), gone = smoothstep(0.62, 0.7, own[3]! + 0.25 * dirty);
   const t = 1 - (0.88 * gone + 0.4 * worn * (1 - gone)), hold = own[4]!;
-  out[0] = ((1 + (own[0]! - 0.5) * 0.7) * (1 - 0.4 * dirty)) / 2;
+  out[0] = ((1 + (own[0]! - 0.5) * 0.4) * (1 - 0.3 * dirty)) / 2;
   out[1] = 0.35 * (0.4 + 0.6 * smoothstep(0.3, 0.8, own[2]!));
   out[2] = 0.6 * smoothstep(0.45, 0.8, own[2]!);
   out[3] = (smoothstep(t - 0.04, t, hold) + smoothstep(t, t + 0.02, hold)) / 2;
@@ -385,6 +385,6 @@ vec4 made(vec2 at) {
   float tone = stretch(a.x, 0), dirt = stretch(a.y, 1), patina = stretch(a.z, 2), hold = stretch(ha + (hb - ha) * mine, 4);
   float dirty = smoothstep(0.5, 0.75, dirt), worn = 0.65 * (1.0 + dirty), gone = smoothstep(0.62, 0.7, stretch(a.w, 3) + 0.25 * dirty);
   float t = 1.0 - (0.88 * gone + 0.4 * worn * (1.0 - gone));
-  return vec4((1.0 + (tone - 0.5) * 0.7) * (1.0 - 0.4 * dirty) * 0.5, 0.35 * (0.4 + 0.6 * smoothstep(0.3, 0.8, patina)), 0.6 * smoothstep(0.45, 0.8, patina), (smoothstep(t - 0.04, t, hold) + smoothstep(t, t + 0.02, hold)) * 0.5);
+  return vec4((1.0 + (tone - 0.5) * 0.4) * (1.0 - 0.3 * dirty) * 0.5, 0.35 * (0.4 + 0.6 * smoothstep(0.3, 0.8, patina)), 0.6 * smoothstep(0.45, 0.8, patina), (smoothstep(t - 0.04, t, hold) + smoothstep(t, t + 0.02, hold)) * 0.5);
 }
 `;
