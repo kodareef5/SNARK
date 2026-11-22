@@ -3,7 +3,7 @@
 // is decided in client/core/drops; this file fetches, draws and listens.
 
 import { esc } from "../core/admin/format.ts";
-import { addEntry, addSlot, changes, differs, ensureAt, moveAt, parseBook, read, setAt, type Kind, type Path } from "../core/drops/edit.ts";
+import { addEntry, addSlot, changes, differs, ensureAt, moveAt, parseBook, read, savedWords, setAt, type Kind, type Path } from "../core/drops/edit.ts";
 import { addCircuit, removeLoose, removeSite, takeOut } from "../core/drops/place.ts";
 import { arkHtml, liveHtml } from "./live.ts";
 import { $, S, TABS, ask, field, post, say, type ArkWire, type BookWire, type RevisionWire, type Tab } from "./state.ts";
@@ -187,13 +187,19 @@ function changed(): void {
   draw();
 }
 
+/** A save the server made, by whichever button: the book in force is read again, and what was made and what was not kept with it is said. */
+function saved(made: string, answer: Record<string, unknown>): Promise<void> {
+  const words = savedWords(made, answer);
+  return start(words.text, words.warn ? "warn" : "");
+}
+
 /** Saves the draft over `revision`, and reads the book in force again, or says why it was not saved. */
 async function save(what: "book" | "reset", revision: number): Promise<void> {
   const note = (document.getElementById("note") as HTMLInputElement | null)?.value ?? "";
   const { status, answer } = await post(what, { revision, book: S.draft, note });
   if (status === 200) {
     S.conflict = -1;
-    await start(`saved as revision ${String(answer.revision)}${answer.unkept ? `, but ${String(answer.unkept)}` : ""}`);
+    await saved(`saved as revision ${String(answer.revision)}`, answer);
   } else if (status === 409) {
     S.conflict = Number(answer.revision);
     say("not saved: another editor saved first", "warn");
@@ -247,7 +253,7 @@ async function act(at: HTMLElement): Promise<void> {
     const got = await post("restore", { revision: S.wire!.revision, to: Number(at.dataset.id) });
     if (got.status !== 200) return say(`not restored: ${String(got.answer.error ?? got.status)}`, "warn");
     S.revisions = null;
-    return start(`revision ${at.dataset.id} is revision ${String(got.answer.revision)} now`);
+    return saved(`revision ${at.dataset.id} is revision ${String(got.answer.revision)} now`, got.answer);
   } else if (what === "drop" || what === "landall" || what === "landone" || what === "cancel" || what === "relive") {
     // What is done to the world is done now, by the book in force: none of it is the draft's.
     const where = dropPlace();
@@ -326,7 +332,7 @@ document.addEventListener("change", (e) => {
   }
 });
 
-async function start(said = ""): Promise<void> {
+async function start(said = "", cls = ""): Promise<void> {
   say("reading the book…");
   const [wire, catalog] = await Promise.all([ask<BookWire>("book.json"), ask<CatalogWire>("catalog.json")]);
   S.wire = wire;
@@ -337,7 +343,7 @@ async function start(said = ""): Promise<void> {
   S.faults = [];
   S.revisions = null;
   S.l = load(S.draft, S.catalog, undefined, wire.settings.quality);
-  say(said);
+  say(said, cls);
   fromHash();
   draw();
 }

@@ -187,3 +187,14 @@ export function parseBook(text: string): { book: SupplyBook } | { error: string 
   for (const key of ["rules", "tiers", "classes", "sets", "tables"] as const) if (typeof b[key] !== "object" || b[key] === null) return { error: `a book has ${key}` };
   return { book: made as SupplyBook };
 }
+
+/**
+ * What the page says of a save the server has made, however it was asked for: a draft saved, the starter book put
+ * back, an old revision brought back. `made` is what was done ("saved as revision 5"), and what the server says it
+ * could not keep with the save (its history, server/supply/store.ts) follows it. Every way of saving says it through
+ * this, so that none of them leaves the warning out. `warn` is whether there is one.
+ */
+export function savedWords(made: string, answer: Readonly<Record<string, unknown>>): { text: string; warn: boolean } {
+  const unkept = typeof answer.unkept === "string" && answer.unkept !== "" ? answer.unkept : "";
+  return { text: unkept === "" ? made : `${made}, but ${unkept}`, warn: unkept !== "" };
+}

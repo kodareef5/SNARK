@@ -265,16 +265,20 @@ test("a save through the page is made or not made, never half: a history that ca
   mkdirSync(`${file}.history`);
   const saved = await post("book", { revision: 0, book: draft, note: "" });
   expect([saved.status, saved.answer.revision, String(saved.answer.unkept).startsWith("its history could not be written"), h.host.supplyBook.book.revision, onDisk(), (await get<{ revision: number }>("book.json")).revision]).toEqual([200, 1, true, 1, 1, 1]);
+  // The starter put back and a revision brought back are saves too, and say the same of what was not kept.
+  const back = await post("reset", { revision: 1 });
+  const again = await post("restore", { revision: 2, to: 1 });
+  expect([back.status, back.answer.revision, typeof back.answer.unkept, again.status, again.answer.revision, typeof again.answer.unkept, onDisk()]).toEqual([200, 2, "string", 200, 3, "string", 3]);
   // The book's own file cannot be written (a folder stands in the way of the one it is written beside): nothing changes.
   rmSync(`${file}.history`, { recursive: true });
   mkdirSync(`${file}.tmp`);
   draft.tiers[0]!.target = 300;
-  const failed = await post("book", { revision: 1, book: draft, note: "" });
-  expect([failed.status, String(failed.answer.error).startsWith("The book's file could not be written"), h.host.supplyBook.book.revision, h.host.supplyBook.book.tiers[0]!.target, onDisk()]).toEqual([500, true, 1, 250, 1]);
+  const failed = await post("book", { revision: 3, book: draft, note: "" });
+  expect([failed.status, String(failed.answer.error).startsWith("The book's file could not be written"), h.host.supplyBook.book.revision, h.host.supplyBook.book.tiers[0]!.target, onDisk()]).toEqual([500, true, 3, 250, 3]);
   // Put right, the same save is made, and the history has both.
   rmSync(`${file}.tmp`, { recursive: true });
-  expect((await post("book", { revision: 1, book: draft, note: "" })).answer).toEqual({ revision: 2 });
-  expect([onDisk(), (await get<{ revision: number }[]>("revisions.json")).map((r) => r.revision)]).toEqual([2, [1, 2]]);
+  expect((await post("book", { revision: 3, book: draft, note: "" })).answer).toEqual({ revision: 4 });
+  expect([onDisk(), (await get<{ revision: number }[]>("revisions.json")).map((r) => r.revision)]).toEqual([4, [1, 2, 3, 4]]);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
 });

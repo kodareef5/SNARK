@@ -1,7 +1,7 @@
 // What an edit on the drop book's admin page does to a book (client/core/drops/edit.ts).
 
 import { expect, test } from "bun:test";
-import { addEntry, addSet, addSlot, changes, differs, faultsAt, getAt, moveAt, parseBook, pathText, read, removeAt, setAt, show } from "../../client/core/drops/edit.ts";
+import { addEntry, addSet, addSlot, changes, differs, faultsAt, getAt, moveAt, parseBook, pathText, read, removeAt, savedWords, setAt, show } from "../../client/core/drops/edit.ts";
 import { starterBook } from "../../content/supply/starter.ts";
 import { bookFaults } from "../../shared/supply/book.ts";
 
@@ -74,3 +74,16 @@ test("a fault is found at its field and under it, and a file's text is a book or
   const back = parseBook(text);
   expect(["book" in back && !differs(back.book, starterBook()), parseBook("{not json"), parseBook("[1]"), parseBook('{"rules":{}}')]).toEqual([true, { error: expect.stringContaining("not JSON") }, { error: "a book is a JSON object" }, { error: "a book has tiers" }]);
 });
+
+test("a save the server made is said one way, by whichever button: what was made, and what it says was not kept with it", () => {
+  expect(savedWords("saved as revision 5", { revision: 5 })).toEqual({ text: "saved as revision 5", warn: false });
+  // The book is saved and its history was not: the same words whether a draft was saved or a revision brought back.
+  const unkept = "its history could not be written (EISDIR)";
+  expect([savedWords("saved as revision 5", { revision: 5, unkept }), savedWords("revision 2 is revision 6 now", { revision: 6, unkept })]).toEqual([
+    { text: "saved as revision 5, but its history could not be written (EISDIR)", warn: true },
+    { text: "revision 2 is revision 6 now, but its history could not be written (EISDIR)", warn: true },
+  ]);
+  // What is not words is no warning.
+  expect([savedWords("saved", { unkept: "" }).warn, savedWords("saved", { unkept: 1 }).warn]).toEqual([false, false]);
+});
+
