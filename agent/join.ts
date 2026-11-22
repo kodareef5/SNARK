@@ -7,7 +7,7 @@ import { defaultLook } from "../shared/anim/look.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { withContent } from "../shared/content/registry.ts";
 import { stampWire } from "../shared/net/protocol.ts";
-import { wireOf } from "../shared/net/wire.ts";
+import { WIRE_FOLDERS, wireOf } from "../shared/net/wire.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { CityStatics } from "../shared/world/city.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../shared/world/mapfile.ts";
@@ -18,8 +18,10 @@ import { connect } from "./socket.ts";
 
 export async function joinServer(url: string, name: string, key: Uint8Array, reg: Registry, ticket: Uint8Array | null = null): Promise<ClientSession> {
   // It says hello with the wire version of its own source, as a built page does with the one it was built from.
-  const shared = join(import.meta.dir, "../shared");
-  stampWire(wireOf(readdirSync(shared, { recursive: true }) as string[], (file) => readFileSync(join(shared, file), "utf8")));
+  const top = join(import.meta.dir, "..");
+  const names: string[] = [];
+  for (const folder of WIRE_FOLDERS) for (const name of readdirSync(join(top, folder), { recursive: true }) as string[]) names.push(`${folder}/${name}`);
+  stampWire(wireOf(names, (file) => readFileSync(join(top, file), "utf8")));
   const get = async (file: string): Promise<Response> => {
     const res = await fetch(fileUrl(url, file));
     if (!res.ok) throw new Error(`asked for ${file} and got ${res.status}`);

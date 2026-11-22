@@ -3,13 +3,19 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { wireOf } from "../shared/net/wire.ts";
+import { WIRE_FOLDERS, wireOf } from "../shared/net/wire.ts";
 
-/** The wire version of the checkout at `root`, or null where it has no shared/ folder. */
+/** Every file under the wire folders of the checkout at `root`, as paths from it. Throws where a folder is not there. */
+export function wireFiles(root: string): string[] {
+  const names: string[] = [];
+  for (const folder of WIRE_FOLDERS) for (const name of readdirSync(join(root, folder), { recursive: true }) as string[]) names.push(`${folder}/${name}`);
+  return names;
+}
+
+/** The wire version of the checkout at `root`, or null where it lacks one of the wire folders. */
 export function sourceWire(root: string = join(import.meta.dir, "..")): number | null {
-  const dir = join(root, "shared");
   try {
-    return wireOf(readdirSync(dir, { recursive: true }) as string[], (name) => readFileSync(join(dir, name), "utf8"));
+    return wireOf(wireFiles(root), (name) => readFileSync(join(root, name), "utf8"));
   } catch {
     return null;
   }
@@ -31,6 +37,6 @@ export function builtWire(clientDir: string): number | null {
  */
 export function serverWire(clientDir: string, root?: string): { wire: number; stale: boolean } {
   const own = sourceWire(root), built = builtWire(clientDir);
-  if (own === null && built === null) throw new Error(`no source under shared/ and no build.json in ${clientDir} to take the wire version from: bun run build`);
+  if (own === null && built === null) throw new Error(`no source to read and no build.json in ${clientDir} to take the wire version from: bun run build`);
   return { wire: own ?? built!, stale: own !== null && built !== null && built !== own };
 }
