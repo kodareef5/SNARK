@@ -8,29 +8,35 @@ test("deadlines run in tick order, ties in scheduling order, and may schedule mo
   const heap = new DeadlineHeap(2);
   const rng = new Rng(4);
   const expected: [number, number][] = [];
+  const got: [number, number][] = [];
+  const noted = heap.kind("noted", (a, _b, tick) => got.push([tick, a]));
   for (let i = 0; i < 500; i++) {
     const tick = rng.int(50);
-    heap.push(tick, 1, i, 0);
+    heap.push(tick, noted, i, 0);
     expected.push([tick, i]);
   }
   expected.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-  const got: [number, number][] = [];
-  expect(heap.run(24, (_k, a, _b, tick) => got.push([tick, a]))).toBe(expected.filter((e) => e[0] <= 24).length);
+  expect(heap.run(24)).toBe(expected.filter((e) => e[0] <= 24).length);
   expect(heap.nextTick).toBeGreaterThan(24);
-  heap.run(1000, (_k, a, _b, tick) => got.push([tick, a]));
+  heap.run(1000);
   expect(got).toEqual(expected);
   expect(heap.size).toBe(0);
 
   // Follow-ups a handler schedules for the same tick run in the same call. The limit argument bounds a storm.
   let chain = 0;
-  heap.push(5, 2, 0, 0);
-  const ran = heap.run(5, () => {
-    if (++chain < 10) heap.push(5, 2, 0, 0);
+  const again: number = heap.kind("again", () => {
+    if (++chain < 10) heap.push(5, again, 0, 0);
   });
+  heap.push(5, again, 0, 0);
+  const ran = heap.run(5);
   expect(ran).toBe(10);
-  for (let i = 0; i < 50; i++) heap.push(1, 3, 0, 0);
-  expect(heap.run(1, () => {}, 20)).toBe(20);
+  const idle = heap.kind("idle", () => {});
+  for (let i = 0; i < 50; i++) heap.push(1, idle, 0, 0);
+  expect(heap.run(1, 20)).toBe(20);
   expect(heap.size).toBe(30);
+  // A kind is asked for once, and only a kind that was asked for can be pushed.
+  expect(() => heap.kind("idle", () => {})).toThrow();
+  expect(() => heap.push(1, idle + 1, 0, 0)).toThrow();
 });
 
 test("a lazy quantity read once equals the same quantity stepped every tick", () => {

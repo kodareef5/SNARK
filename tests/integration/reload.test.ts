@@ -144,11 +144,7 @@ test("a charged throw leaves on release, its draw how long it was held", () => {
   const { h, pilot, rec, corrections } = setup(AUTO, "grenades", "grenade");
   const draws: number[] = [];
   const combat = h.host.combat;
-  const lob = combat.onThrow!;
-  combat.onThrow = (c, r, item, quality, draw) => {
-    draws.push(draw);
-    lob(c, r, item, quality, draw);
-  };
+  combat.onThrow.on((_c, _r, _item, _quality, draw) => void draws.push(draw));
   const before = corrections();
   const grenade = AUTO.index.get("core:grenade")!;
   const inv = h.host.items.inv(rec);

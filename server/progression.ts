@@ -19,7 +19,6 @@ import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
-export const DEADLINE_CRAFT = 4;
 const MAX_JOBS = 8;
 const STAT_CRAFTING = STAT_NAMES.indexOf("crafting");
 
@@ -59,6 +58,8 @@ export class Progression {
   private readonly survivor: number;
   /** Draws the crafted skill bonus of what a blueprint makes. */
   private readonly rng: Rng;
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(world: ServerWorld, records: Records, items: Items, deadlines: DeadlineHeap, seed = 113) {
     this.rng = new Rng(seed);
@@ -66,6 +67,7 @@ export class Progression {
     this.records = records;
     this.items = items;
     this.deadlines = deadlines;
+    this.deadline = deadlines.kind("craft", (a, stamp) => this.due(a, stamp));
     const reg = world.reg;
     this.levels = (reg.defs.find((d) => d?.type === "levels") as LevelsDef | undefined) ?? null;
     this.engramOf = new Uint16Array(reg.defs.length);
@@ -258,7 +260,7 @@ export class Progression {
     return job.by === undefined ? rec : (this.records.byPid.get(job.by) ?? null);
   }
 
-  /** A DEADLINE_CRAFT entry came due. */
+  /** A deadline of its kind came due. */
   due(pid: number, stamp: number): void {
     const rec = this.records.byPid.get(pid);
     if (!rec) return;
@@ -278,7 +280,7 @@ export class Progression {
     // With no room for the whole product, retry in a second.
     if (this.items.inv(rec).room(product, quality, this.items.table) < made) {
       job.doneAt = this.world.tick + TICK_RATE;
-      this.deadlines.push(job.doneAt, DEADLINE_CRAFT, pid, job.doneAt);
+      this.deadlines.push(job.doneAt, this.deadline, pid, job.doneAt);
       return;
     }
     const got = this.items.mint(rec, product, made, quality, tool ? Math.round(tool.uses * (QUALITY_MUL[quality] ?? 1)) : 0, -1, "craft");
@@ -332,7 +334,7 @@ export class Progression {
     const job = rec.jobs[0];
     if (!job) return;
     if (job.doneAt === 0) this.start(rec);
-    else this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
+    else this.deadlines.push(job.doneAt, this.deadline, rec.pid, job.doneAt);
   }
 
   /**
@@ -369,7 +371,7 @@ export class Progression {
       if (job.rest !== undefined) {
         job.doneAt = this.world.tick + Math.max(1, job.rest);
         delete job.rest;
-        this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
+        this.deadlines.push(job.doneAt, this.deadline, rec.pid, job.doneAt);
         rec.progVersion++;
         this.records.dirty.add(rec.pid);
         return;
@@ -379,7 +381,7 @@ export class Progression {
       if (craft && this.canStart(rec, craft, job.item, bp)) {
         for (const n of craft.needs) this.items.burnItem(rec, this.world.reg.index.get(n.item)!, bp >= 0 ? blueprintCost(n.count, bp) : n.count);
         job.doneAt = this.world.tick + Math.max(1, Math.round(craft.seconds * TICK_RATE));
-        this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
+        this.deadlines.push(job.doneAt, this.deadline, rec.pid, job.doneAt);
         rec.progVersion++;
         this.records.dirty.add(rec.pid);
         return;

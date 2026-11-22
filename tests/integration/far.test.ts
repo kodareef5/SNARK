@@ -112,7 +112,7 @@ test("far cells stop at the reach asked and at FarRadius, leave out boxes, beds 
 
   // A survivor out cold may still say how far it wants them, since its client asks only once.
   h.host.records.byPid.get(h.client(a)!.pid)!.out = true;
-  expect([h.server.allows!(h.client(a)!, CMD_FAR), h.server.allows!(h.client(a)!, CMD_MAP_ZOOM)]).toEqual([true, false]);
+  expect([h.server.allows.ask(h.client(a)!, CMD_FAR), h.server.allows.ask(h.client(a)!, CMD_MAP_ZOOM)]).toEqual([true, false]);
   h.host.records.byPid.get(h.client(a)!.pid)!.out = false;
 
   // At FarRadius 0 a new base is sent to nobody, and a newcomer is sent nothing at all.
