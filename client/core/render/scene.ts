@@ -48,7 +48,7 @@ import { nearestColour } from "../../../shared/pack/palette.ts";
 import type { RemoteSample } from "../session.ts";
 import type { CameraBody } from "../camera-body.ts";
 import { farPlane, type Camera } from "./camera.ts";
-import { Characters, riderFitScratch, seatScratch, type RiderFit, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
+import { Characters, riderFitScratch, seatScratch, type RiderFit, showMaterials, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { exhaustPhase } from "./suit-finish.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
@@ -66,7 +66,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
-import { BEND_BUFFERS, BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
+import { BEND_BUFFERS, BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
 import { recipeIndex } from "../../../content/texgen/finishes.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
@@ -74,14 +74,14 @@ import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } from "./atmosphere.ts";
 import { FarShadow } from "./farshadow.ts";
-import { Cascades, MAX_REACH, reach } from "./shadow.ts";
-import { shadowBytes, shadowLayer } from "./shadowtext.ts";
-import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
+import { Cascades} from "./shadow.ts";
+import { shadowBytes} from "./shadowtext.ts";
+import { LAMP_BIT, LampView} from "./lamp.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
 import { lightBytes, lightSamples, opticFrame, postFrame, sceneSize, type Optic } from "./post.ts";
-import { lampsOn, moonCasts, skyShown } from "./surface.ts";
+import { lampsOn, skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
-import { TerrainLod, type CastTest } from "./terrain.ts";
+import { TerrainLod} from "./terrain.ts";
 import { WaterTrails } from "./water-trails.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 import { bendOf, type MapLandmark, type MapStatics } from "../../../shared/world/mapfile.ts";
@@ -89,6 +89,7 @@ import { KERB_BACK } from "../../../shared/world/bends.ts";
 import { landmarkFars } from "../../../shared/pack/far.ts";
 import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } from "./motion.ts";
 import { Frame, walk, type Pass } from "./pass.ts";
+import { Casting } from "./casting.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 import type { Tier } from "../assets/tiers.ts";
 
@@ -187,13 +188,9 @@ const SETTLE = 2000;
 const HIDDEN = 0xffff;
 /** Whether a shaft of light `wide` in radius and `tall` high, its foot camera-relative, is in the view. */
 const shaftSeen = (cam: Camera, x: number, y: number, z: number, wide: number, tall: number): boolean => cam.boxVisible(x - wide, y, z - wide, x + wide, y + tall, z + wide);
-/** The one run of a level drawn flat: no material, and all its indices. */
-const FLAT: readonly number[] = [-1, 0, 0];
 const NEAR = 1 << PASS_NEAR;
 const FAR = 1 << PASS_FAR;
 const NO_SHOTS: readonly ShotEnd[] = [];
-/** What of a draw's flags a caster keeps: how its vertices are placed. */
-const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED;
 /** A body in the viewer's own body's seat or arms (Scene.mountOf). */
 const MOUNT_OWN = -2;
 
@@ -501,10 +498,6 @@ export class Scene {
    * mesh, a car whose glass cuts out or a bush (Scene.castable).
    */
   private readonly foliageOf: Uint16Array;
-  /** Per mesh, what `leafy` found and the frame it found it in (`castFrame`, counted by `fit`). */
-  private readonly leafyOf: Uint16Array;
-  private readonly leafyFrame: Int32Array;
-  private castFrame = 0;
   private readonly barkOf: Uint8Array;
   /** What a frame may spend, what it has, and the squeeze crowns near are drawn at (budget.ts). */
   readonly budget = new FrameBudget();
@@ -667,69 +660,11 @@ export class Scene {
   private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
   /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
   private readonly lakes: Lakes | null;
-  /** Sun shadows: the cascades fitted this frame, and past them the far map of the city's outline, with the far city, which makes the sky's openness too. */
-  readonly cascades = new Cascades();
   farShadow: FarShadow | null = null;
-  /**
-   * Whether anything casts this frame, how far the light the cascades are cast from climbs (its unit vector's y, as
-   * `sunAt`, which is the sun's by day and the moon's by night), whether that light is the sun, and frames fitted, for a
-   * cascade drawn every other frame.
-   */
-  private casting = false;
-  private sunY = 1;
-  private sunCasts = false;
-  private fitted = 0;
-  /** Whether the moon casts through the cascades by night where the tier's shadows say it may, which a bench turns off every other frame (`?ab=moon`). */
-  moonShadows = true;
-  /** The lowest a receiver in any cascade's sphere can be. A caster's shadow reaches as far as its top stands over this. */
-  private floor = 0;
-  /** Metres past where a caster's shadow falls that a lookup of it may reach (Scene.shadeHidden). */
-  private shadeSlack = 0;
-  /** Metres from the camera past which nothing casts into a cascade: as far as a cascade's cube reaches, and MAX_REACH on. */
-  private castRange = 0;
-  private readonly sunAt = new Float64Array(3);
-  private readonly pairs = new Uint8Array(MAX_CASCADES * 2);
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
   private readonly unseenFrom = new Uint16Array(MAX_VIEW);
   private readonly unseenAt = new Float64Array(MAX_VIEW * 4);
   private readonly unseenMount = new Int16Array(MAX_VIEW);
-  /** The camera of the frame being built. */
-  private camera: Camera | null = null;
-  /**
-   * The cascades something in a camera-relative box casts into: those it can shade, its shadow reaching as far along the
-   * light as its top stands over the floor, while that shadow can fall in view.
-   */
-  private readonly castBox: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => this.castsBy(minX, minY, minZ, maxX, maxY, maxZ, -1);
-  /** The same for the ground, which casts into the cascades alone: under the street lamp it is what receives. */
-  private readonly groundCasts: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => this.castsBy(minX, minY, minZ, maxX, maxY, maxZ, -1) & ~LAMP_BIT;
-  /** The street lamp that lights this frame, seen from its lens (lamp.ts). */
-  readonly lamp = new LampView();
-  private readonly bodyShadows: BodyShadows = {
-    body: (x, y, z, r) => {
-      const lamp = this.lamp.sphere(x, y, z, r);
-      if (this.cascades.count === 0 || Math.hypot(x, y, z) - r > this.castRange) return lamp;
-      const stretch = this.stretch(x - r, z - r, x + r, z + r, y + r);
-      return (this.inView(x - r, y - r, z - r, x + r, y + r, z + r, stretch) ? this.cascades.sphereMask(x, y, z, r, stretch) : 0) | lamp;
-    },
-    mesh: (mesh) => this.cascades.fits(this.radiusOfMesh[mesh]!),
-  };
-  /**
-   * The characters' casters: in each cascade the coarsest held level within what its filter blurs, but none finer than
-   * the held level nearest the one the view draws.
-   */
-  private readonly castBody: CastFn = (mesh, lod, first, count, flags, cascades, standIn) => {
-    const view = this.assets.heldLevel(mesh, lod);
-    if (view < 0) return;
-    const out = this.pairs;
-    const n = this.cascades.entries(cascades, this.assets.table.error[mesh]!, this.assets.held(mesh), out);
-    let left = cascades;
-    for (let e = 0; e < n; e++) {
-      if (out[e * 2]! <= view) continue;
-      this.cast(mesh, out[e * 2]!, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, out[e * 2 + 1]!);
-      left &= ~out[e * 2 + 1]!;
-    }
-    if (left !== 0) this.cast(mesh, view, TRANSIENT_BUFFER, first, count, standIn, 0, 0, flags, left);
-  };
   /** Linear RGB of the open sky and of deep water. */
   /** The pack's colours, four bytes each, which the map of what stands overhead takes the ground's colour from (roof.ts). */
   private readonly groundPalette: Uint8Array;
@@ -741,6 +676,24 @@ export class Scene {
   private readonly frame: Frame;
   /** The packet's writer: every draw of the frame goes through it (draws.ts). */
   readonly put: Draws;
+  /** Sun shadows: the cascades and the lamp's view fitted this frame, what casts into them, and the casters (casting.ts). */
+  readonly casting: Casting;
+  get cascades(): Cascades {
+    return this.casting.cascades;
+  }
+  get lamp(): LampView {
+    return this.casting.lamp;
+  }
+  get sunAt(): Float64Array {
+    return this.casting.sunAt;
+  }
+  /** Whether the moon casts through the cascades by night where the tier's shadows say it may, which a bench turns off every other frame (`?ab=moon`). */
+  get moonShadows(): boolean {
+    return this.casting.moonShadows;
+  }
+  set moonShadows(on: boolean) {
+    this.casting.moonShadows = on;
+  }
   readonly passes: readonly Pass[];
   private readonly hooks: Required<Pass>;
 
@@ -846,9 +799,8 @@ export class Scene {
     this.trunkTris = table.sections.map(() => []);
     this.leafTris = table.sections.map(() => []);
     this.foliageOf = new Uint16Array(table.sections.length);
-    this.leafyOf = new Uint16Array(table.sections.length);
-    this.leafyFrame = new Int32Array(table.sections.length).fill(-1);
     this.learn(table.sections.map((_, mesh) => mesh));
+    this.casting = new Casting(this.packet, this.assets, this.terrain, this.hiding, { materialFlags: this.materialFlags, bentFlags: this.bentFlags, trisOfMesh: this.trisOfMesh, radiusOfMesh: this.radiusOfMesh, foliageOf: this.foliageOf });
     this.put = new Draws(this.packet, this.assets, this.budget, { groundFlags: this.groundFlags, bentFlags: this.bentFlags, flatFlags: this.flatFlags, materialFlags: this.materialFlags, barkOf: this.barkOf, treeOf: this.treeOf, trisOfMesh: this.trisOfMesh });
     this.counts = new Uint32Array(table.count);
     this.cursor = new Uint32Array(table.count);
@@ -862,6 +814,7 @@ export class Scene {
     this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
     this.characters = new Characters(reg, pack, this.assets);
     this.streetLamps = new StreetLamps(reg);
+    this.casting.join(this.characters, this.streetLamps);
     this.streetWires = new StreetWires(reg);
     this.waterTrails = new WaterTrails(reg);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
@@ -902,7 +855,7 @@ export class Scene {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
     }
-    this.frame = new Frame(this.packet, world, this.assets, this.budget, this.put);
+    this.frame = new Frame(this.packet, world, this.assets, this.budget, this.put, this.casting);
     this.passes = this.rows();
     this.hooks = walk(this.passes);
   }
@@ -954,7 +907,7 @@ export class Scene {
     this.landmarks?.reset();
     this.lakes?.reset();
     this.blocks?.reset();
-    this.cascades.clear();
+    this.casting.cascades.clear();
     this.farShadow?.reset();
   }
 
@@ -1063,8 +1016,10 @@ export class Scene {
     // body, before what casts is chosen.
     const shadows = p.tier.shadows;
     this.streetLamps.build(p, cam, this.world.structs, this.world.dims.chunksX, this.world.dims.chunksZ, this.now, p.lit && shadows.cascades > 0 && shadows.lamp === true, this.world.hf, p.lit && shadows.pools === true, this.own ?? cam, Math.round(this.canvasHeight * p.share));
-    this.fit(cam);
-    this.fitLamp(cam);
+    this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(p.tier.shadows) : 0);
+    if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(...sceneSize(this.canvasWidth, this.canvasHeight, p.room), lightSamples(this.supersampled)) : 0);
+    this.casting.fit(cam);
+    this.casting.fitLamp(cam);
 
     // Under water, the sea's or a lake's where the camera is, the view is short and the fog is the water's colour, dimmed.
     // Out of it the air is measured from the sea, or from 0 over a map with none.
@@ -1088,7 +1043,7 @@ export class Scene {
     const focused = !Number.isNaN(this.focusX) && cam.zoom >= TERRAIN_FOCUS;
     this.terrain.centreX = focused ? this.focusX : NaN;
     this.terrain.centreZ = focused ? this.focusZ : NaN;
-    this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.groundCasts : undefined);
+    this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting.on ? this.casting.groundCasts : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
     const f = this.frame;
@@ -1160,7 +1115,7 @@ export class Scene {
       {
         update: (f) => {
           const cam = f.cam;
-          this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now, p.cascadeCount > 0 && this.sunCasts ? this.sunAt : null);
+          this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.casting.sunAt : null, this.now, p.cascadeCount > 0 && this.casting.sunCasts ? this.casting.sunAt : null);
         },
       },
       {
@@ -1182,8 +1137,8 @@ export class Scene {
         draw: (f) => void this.nodesFar?.draw(f.cam, this.drawFarNodes, f.hider),
       },
       {
-        update: (f) => { if (this.casting && !this.terrain.casters(f.cam, p, this.viewDistance, this.groundCasts)) p.casterDropped++; },
-        draw: () => { if (this.casting) this.groundCast(); },
+        update: (f) => { if (this.casting.on && !this.terrain.casters(f.cam, p, this.viewDistance, this.casting.groundCasts)) p.casterDropped++; },
+        draw: () => { if (this.casting.on) this.casting.groundCast(); },
       },
       { draw: (f) => { if (f.remote) this.entities(f.cam, f.remote); } },
       { draw: (f) => this.bodies(f.cam, f.remote) },
@@ -1197,7 +1152,7 @@ export class Scene {
         // The viewer's own body goes over everything else, water included.
         draw: () => {
           this.quadsOnCard();
-          this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
+          this.characters.flush(p, this.transient, true, this.drawBody, this.casting.on ? this.casting.castBody : null);
         },
       },
       {
@@ -1214,134 +1169,14 @@ export class Scene {
   }
 
   /**
-   * Fits the shadow cascades to the view, for the light they are cast from (sky.ts `castLight`: the sun, or by night the
-   * moon where the tier's shadows say it casts and `moonShadows` is on) while it casts at all, and finds the floor: the
-   * ground under each cascade's sphere, but no lower than the sphere reaches.
-   */
-  private fit(cam: Camera): void {
-    const p = this.packet;
-    const c = this.cascades;
-    const setup = p.tier.shadows;
-    this.castFrame++;
-    this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
-    if (!this.alternate) this.assets.residency.reserve("light target", p.tier.post ? lightBytes(...sceneSize(this.canvasWidth, this.canvasHeight, p.room), lightSamples(this.supersampled)) : 0);
-    this.casting = false;
-    this.characters.shadows = null;
-    this.sunCasts = false;
-    if (p.lit && moonCasts(p.frame) && !(setup.moon && this.moonShadows)) p.frame[CAST_AT + 3] = 0;
-    if (!p.lit || setup.cascades <= 0 || p.frame[CAST_AT + 3]! <= 0) {
-      c.clear();
-      return;
-    }
-    for (let k = 0; k < 3; k++) this.sunAt[k] = p.frame[CAST_AT + k]!;
-    this.sunCasts = !moonCasts(p.frame);
-    this.camera = cam;
-    c.fit(cam, this.sunAt[0]!, this.sunAt[1]!, this.sunAt[2]!, setup, this.fitted++);
-    p.cascadeCount = c.count;
-    p.cascadesDrawn = c.drawn;
-    c.write(p.cascades, p.spheres);
-    if (c.drawn === 0) return;
-    let floor = Infinity;
-    let range = 0;
-    for (let i = 0; i < c.count; i++) {
-      const x = c.sphere[i * 4]!, y = c.sphere[i * 4 + 1]!, z = c.sphere[i * 4 + 2]!, r = c.sphere[i * 4 + 3]!;
-      floor = Math.min(floor, Math.max(cam.y + y - r, this.terrain.lowest(cam.x + x - r, cam.z + z - r, cam.x + x + r, cam.z + z + r)));
-      // The cube is snapped less than a texel from the sphere's middle.
-      range = Math.max(range, Math.hypot(x, y, z) + (c.half[i]! + c.texel[i]!) * Math.sqrt(3));
-    }
-    this.floor = floor;
-    this.castRange = range + MAX_REACH;
-    let texel = 0;
-    for (let i = 0; i < c.count; i++) texel = Math.max(texel, c.texel[i]!);
-    // A cascade drawn every other frame is looked up a frame later from another place: no caster of it is left out.
-    this.shadeSlack = setup.everyOther ? Infinity : texel * (c.blur + 1);
-    this.sunY = this.sunAt[1]!;
-    this.casting = true;
-    this.characters.shadows = this.bodyShadows;
-  }
-
-  /**
-   * The street lamp that lights this frame (street-lamps.ts, lamp.ts), after the cascades are fitted: its view from the
-   * lens and its part of the frame block, its map's bit among the maps drawn, so that what stands in its view casts into
-   * it; and the matrices the shell draws the maps with, the cascades' and the lamp's. A lamp none of whose light can be
-   * seen (all of it falls within LAMP_ACROSS of its lens across and LAMP_RANGE under it) draws nothing: its card is out
-   * of sight with it.
-   */
-  private fitLamp(cam: Camera): void {
-    const p = this.packet, c = this.cascades, lamp = this.lamp, lamps = this.streetLamps, setup = p.tier.shadows;
-    const x = lamps.lens[0]!, y = lamps.lens[1]!, z = lamps.lens[2]!;
-    p.maps.set(p.cascades);
-    if (!p.lit || !setup.lamp || setup.cascades <= 0 || lamps.shows <= 0 || !cam.boxVisible(x - LAMP_ACROSS, y - LAMP_RANGE, z - LAMP_ACROSS, x + LAMP_ACROSS, y, z + LAMP_ACROSS)) {
-      lamp.off();
-      c.lampTexel = 0;
-      lampFrame(p.frame, null, lamps.way, 0, -1);
-      return;
-    }
-    lamp.set(x, y, z, setup.size);
-    lampFrame(p.frame, lamps.lens, lamps.way, lamps.shows, shadowLayer(MAX_CASCADES, setup.cascades));
-    p.frame.set(lamp.matrix, LAMP_AT + 8);
-    p.maps.set(lamp.matrix, MAX_CASCADES * 16);
-    c.lampTexel = lamp.texel;
-    c.drawn |= LAMP_BIT;
-    p.cascadesDrawn = c.drawn;
-    this.casting = true;
-    this.characters.shadows = this.bodyShadows;
-  }
-
-  /**
-   * How far along the light the shadow of a camera-relative box whose top is `top` can reach: as far as the top stands
-   * over the floor, or over the lowest ground where a shadow that long could fall, whichever is the shorter.
-   */
-  private stretch(minX: number, minZ: number, maxX: number, maxZ: number, top: number): number {
-    const p = this.packet;
-    const most = reach(top + p.camY - this.floor, this.sunY);
-    const sx = -this.sunAt[0]! * most, sz = -this.sunAt[2]! * most;
-    const low = this.terrain.lowest(p.camX + Math.min(minX, minX + sx), p.camZ + Math.min(minZ, minZ + sz), p.camX + Math.max(maxX, maxX + sx), p.camZ + Math.max(maxZ, maxZ + sz));
-    return low > this.floor ? reach(top + p.camY - low, this.sunY) : most;
-  }
-
-  /**
-   * As `castBox`, the box's shadow reaching `stretch` metres along the light, or as far as `stretch()` finds where that is
-   * under 0; and the lamp's map where the box stands in the lamp's view.
-   */
-  private castsBy(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, stretch: number): number {
-    const lamp = this.lamp.box(minX, minY, minZ, maxX, maxY, maxZ);
-    const dx = Math.max(minX, -maxX, 0), dy = Math.max(minY, -maxY, 0), dz = Math.max(minZ, -maxZ, 0);
-    if (this.cascades.count === 0 || dx * dx + dy * dy + dz * dz > this.castRange * this.castRange) return lamp;
-    if (stretch < 0) stretch = this.stretch(minX, minZ, maxX, maxZ, maxY);
-    return (this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0) | lamp;
-  }
-
-  /**
-   * Whether the shadow of a camera-relative box, swept `stretch` metres away from the sun, can fall in view: on what is
-   * in the view, and once the frame knows what hides what, on what is not wholly hidden.
-   */
-  private inView(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, stretch: number): boolean {
-    const sx = -this.sunAt[0]! * stretch, sy = -this.sunAt[1]! * stretch, sz = -this.sunAt[2]! * stretch;
-    const x0 = Math.min(minX, minX + sx), y0 = Math.min(minY, minY + sy), z0 = Math.min(minZ, minZ + sz);
-    const x1 = Math.max(maxX, maxX + sx), y1 = Math.max(maxY, maxY + sy), z1 = Math.max(maxZ, maxZ + sz);
-    return this.camera!.boxVisible(x0, y0, z0, x1, y1, z1) && !this.shadeHidden(x0, y0, z0, x1, y1, z1);
-  }
-
-  /**
-   * Whether the picture of what hides what hides all a caster's shadow can fall on, a camera-relative box swept from the
-   * sun as far as it reaches, and round that as far as a lookup reaches past where its shadow falls: the filter's taps and
-   * the half texel it is moved along a receiver's normal, in the coarsest cascade's texels.
-   */
-  private shadeHidden(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): boolean {
-    const e = this.shadeSlack;
-    return e < Infinity && this.hiding.hidesOver(x0 - e, y0 - e, z0 - e, x1 + e, y1 + e, z1 + e);
-  }
-
-  /**
    * Puts the meshes of a chunk in the caster list, each at the level `Cascades.entries` gives a cascade, and into each
    * cascade only the cells that cast into it (`cellCasts`): a run of neighbouring cells a caster, with a cell between
    * that does not when it weighs less than a draw. Runs alike in every way but their cascades are one caster, and a mesh
    * whose instances here weigh less than a draw is cast whole.
    */
   private castChunk(b: ChunkBatch, id: number, ox: number, oy: number, oz: number, casts: number, all: boolean): void {
-    const c = this.cascades;
-    const out = this.pairs;
+    const c = this.casting.cascades;
+    const out = this.casting.pairs;
     const cells = b.cells;
     const sized = b.sized;
     const flags = sized ? DRAW_SIZED : 0;
@@ -1364,11 +1199,11 @@ export class Scene {
       mask &= some;
       if (mask === 0) continue;
       const tris = this.trisOfMesh[mesh]!;
-      const n = c.entries(mask, this.assets.table.error[mesh]!, this.assets.held(mesh), out, scale, this.leafy(mesh));
+      const n = c.entries(mask, this.assets.table.error[mesh]!, this.assets.held(mesh), out, scale, this.casting.leafy(mesh));
       for (let e = 0; e < n; e++) {
         const level = out[e * 2]!, bits = out[e * 2 + 1]!;
         if ((every & bits) === bits || b.ranges[r + 2]! * tris[level]! <= RUN_TRIANGLES) {
-          for (let s = 0, m = this.spansOf(b, at0, 0, cells, all); s < m; s++) this.cast(mesh, level, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, bits);
+          for (let s = 0, m = this.spansOf(b, at0, 0, cells, all); s < m; s++) this.casting.cast(mesh, level, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, bits);
           continue;
         }
         // Each cascade's runs, five numbers each: first and end instance as if each cell's shell and interior lay
@@ -1402,71 +1237,10 @@ export class Scene {
             runs[k + 2]! |= runs[j + 2]!;
             runs[j + 2] = 0;
           }
-          for (let s = 0, m = this.spansOf(b, at0, runs[k + 3]!, runs[k + 4]!, all); s < m; s++) this.cast(mesh, level, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, runs[k + 2]!);
+          for (let s = 0, m = this.spansOf(b, at0, runs[k + 3]!, runs[k + 4]!, all); s < m; s++) this.casting.cast(mesh, level, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, runs[k + 2]!);
         }
       }
     }
-  }
-
-  /**
-   * A standing tree's levels (`foliageOf`) that cut its leaves out and can be cut out in a depth map now, a bit each,
-   * which a sharp enough map casts it at (shadow.ts LEAF_BLUR, D953); 0 for any other mesh, or while none can.
-   */
-  private leafy(mesh: number): number {
-    if (this.foliageOf[mesh] === 0) return 0;
-    // What is on the card does not change within a frame: found once a frame for each mesh.
-    if (this.leafyFrame[mesh] === this.castFrame) return this.leafyOf[mesh]!;
-    let ok = 0;
-    for (let l = 0, m = this.foliageOf[mesh]! & this.assets.held(mesh); m !== 0; l++, m >>>= 1) if ((m & 1) !== 0 && this.assets.heldCutouts(mesh, l)) ok |= 1 << l;
-    this.leafyFrame[mesh] = this.castFrame;
-    return (this.leafyOf[mesh] = ok);
-  }
-
-  /**
-   * Puts `count` instances of a held level into the caster list for `cascades`. A level with cut-out or two-sided
-   * sections is a caster for each section, cut out where the card holds what that reads; any other is its whole level.
-   */
-  private cast(mesh: number, level: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, cascades: number): void {
-    if (level < 0) return;
-    const runs = this.assets.table.sections[mesh]![level] ?? FLAT;
-    let split = false;
-    for (let k = 0; k < runs.length; k += 3) split ||= runs[k]! >= 0 && (this.materialFlags[runs[k]!]! & (DRAW_CUTOUT | DRAW_TWO_SIDED)) !== 0;
-    const cutouts = split && this.assets.heldCutouts(mesh, level);
-    this.assets.keep(mesh, level, cutouts);
-    const slot = this.assets.residency.slot(mesh, level);
-    flags = (flags & CAST_FLAGS) | this.bentFlags[mesh]!;
-    if (!split) return this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags, 0, 0, 0, cascades);
-    for (let k = 0; k < runs.length; k += 3) {
-      const m = this.materialFlags[runs[k]!]! & (cutouts ? DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT : DRAW_TEXTURED | DRAW_TWO_SIDED);
-      this.caster(mesh, level, slot, buffer, first, count, ox, oy, oz, flags | m, runs[k]!, runs[k + 1]!, runs[k + 2]!, cascades);
-    }
-  }
-
-  private caster(mesh: number, level: number, slot: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, material: number, firstIndex: number, indexCount: number, cascades: number): void {
-    const p = this.packet;
-    const n = p.casterCount;
-    if (n === MAX_CASTERS) {
-      p.casterDropped++;
-      return;
-    }
-    p.casterMesh[n] = mesh;
-    p.casterLod[n] = level;
-    p.casterSlot[n] = slot;
-    p.casterBuffer[n] = buffer;
-    p.casterFirst[n] = first;
-    p.casterInstances[n] = count;
-    p.casterOffset[n * 3] = ox;
-    p.casterOffset[n * 3 + 1] = oy;
-    p.casterOffset[n * 3 + 2] = oz;
-    p.casterFlags[n] = flags;
-    p.casterMaterial[n] = material;
-    p.casterFirstIndex[n] = firstIndex;
-    p.casterIndexCount[n] = indexCount;
-    p.casterCascades[n] = cascades;
-    p.casterCount = n + 1;
-    const maps = this.maps(cascades);
-    p.castDraws += maps;
-    p.castTriangles += ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? indexCount / 3 : this.trisOfMesh[mesh]![level]!) * count * maps;
   }
 
   /**
@@ -1549,9 +1323,9 @@ export class Scene {
         p.triangles -= TILE_QUADS * TILE_QUADS * 2;
       }
       if (p.tilePass[t]! < TILE_CASTS) continue;
-      const s = this.stretch(x0, z0, x0 + size, z0 + size, high[t]!);
-      const sx = -this.sunAt[0]! * s, sy = -this.sunAt[1]! * s, sz = -this.sunAt[2]! * s;
-      if (this.shadeHidden(Math.min(x0, x0 + sx), Math.min(skirt, skirt + sy), Math.min(z0, z0 + sz), Math.max(x0 + size, x0 + size + sx), Math.max(high[t]!, high[t]! + sy), Math.max(z0 + size, z0 + size + sz))) p.tilePass[t] = p.tilePass[t]! & (NEAR | FAR);
+      const s = this.casting.stretch(x0, z0, x0 + size, z0 + size, high[t]!);
+      const sx = -this.casting.sunAt[0]! * s, sy = -this.casting.sunAt[1]! * s, sz = -this.casting.sunAt[2]! * s;
+      if (this.casting.shadeHidden(Math.min(x0, x0 + sx), Math.min(skirt, skirt + sy), Math.min(z0, z0 + sz), Math.max(x0 + size, x0 + size + sx), Math.max(high[t]!, high[t]! + sy), Math.max(z0 + size, z0 + size + sz))) p.tilePass[t] = p.tilePass[t]! & (NEAR | FAR);
     }
     // A tile neither drawn nor cast leaves the list.
     let tiles = 0;
@@ -1588,39 +1362,16 @@ export class Scene {
     let at = 0, next = 0;
     for (let k = 0; k < casts.length; k += 8) {
       const e0 = casts[k]!, e1 = casts[k + 1]!;
-      for (; next < e0; next++) this.moveCaster(next, at++);
-      if (!this.shadeHidden(casts[k + 2]!, casts[k + 3]!, casts[k + 4]!, casts[k + 5]!, casts[k + 6]!, casts[k + 7]!)) for (; next < e1; next++) this.moveCaster(next, at++);
+      for (; next < e0; next++) this.casting.moveCaster(next, at++);
+      if (!this.casting.shadeHidden(casts[k + 2]!, casts[k + 3]!, casts[k + 4]!, casts[k + 5]!, casts[k + 6]!, casts[k + 7]!)) for (; next < e1; next++) this.casting.moveCaster(next, at++);
       for (; next < e1; next++) {
-        const maps = this.maps(p.casterCascades[next]!);
+        const maps = this.casting.maps(p.casterCascades[next]!);
         p.castDraws -= maps;
         p.castTriangles -= ((p.casterFlags[next]! & (DRAW_TEXTURED | DRAW_RANGED)) !== 0 ? p.casterIndexCount[next]! / 3 : tris[p.casterMesh[next]!]![p.casterLod[next]!]!) * p.casterInstances[next]! * maps;
       }
     }
-    for (; next < p.casterCount; next++) this.moveCaster(next, at++);
+    for (; next < p.casterCount; next++) this.casting.moveCaster(next, at++);
     p.casterCount = at;
-  }
-
-  /** The cascades of a caster's bits, counted. */
-  private maps(cascades: number): number {
-    return (cascades & 1) + ((cascades >> 1) & 1) + ((cascades >> 2) & 1) + ((cascades >> 3) & 1) + ((cascades >> 4) & 1);
-  }
-
-  /** Moves caster `from` of the frame to `to`, an earlier one or the same. */
-  private moveCaster(from: number, to: number): void {
-    if (from === to) return;
-    const p = this.packet;
-    p.casterMesh[to] = p.casterMesh[from]!;
-    p.casterLod[to] = p.casterLod[from]!;
-    p.casterSlot[to] = p.casterSlot[from]!;
-    p.casterBuffer[to] = p.casterBuffer[from]!;
-    p.casterFirst[to] = p.casterFirst[from]!;
-    p.casterInstances[to] = p.casterInstances[from]!;
-    p.casterOffset.copyWithin(to * 3, from * 3, from * 3 + 3);
-    p.casterFlags[to] = p.casterFlags[from]!;
-    p.casterMaterial[to] = p.casterMaterial[from]!;
-    p.casterFirstIndex[to] = p.casterFirstIndex[from]!;
-    p.casterIndexCount[to] = p.casterIndexCount[from]!;
-    p.casterCascades[to] = p.casterCascades[from]!;
   }
 
   /**
@@ -1715,19 +1466,6 @@ export class Scene {
 
   /** Where the camera was when `nearPiece` last looked, and how far the nearest piece was then. */
   private readonly clearAt = Float64Array.of(NaN, NaN, NaN, 0);
-
-  /** Counts what the ground casts: its tiles into each cascade, a draw for each pair of tiles it reads from a cascade casts from. */
-  private groundCast(): void {
-    const p = this.packet;
-    let draws = 0;
-    for (let t = 0; t < p.tileCount; t++) {
-      const casts = (p.tilePass[t]! / TILE_CASTS) & 15;
-      if (casts === 0) continue;
-      p.castTriangles += ((casts & 1) + ((casts >> 1) & 1) + ((casts >> 2) & 1) + (casts >> 3)) * TILE_QUADS * TILE_QUADS * 2;
-      draws |= casts << (p.tileSource[t * 4 + 3]! * 4);
-    }
-    for (; draws !== 0; draws &= draws - 1) p.castDraws++;
-  }
 
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
@@ -1999,7 +1737,7 @@ export class Scene {
         const top = y + (r > 2.2 ? r : 2.2);
         if (!cam.boxVisible(x - r, y - 0.3, z - r, x + r, top, z + r) || this.hiding.hidesOver(x - r, y - 0.3, z - r, x + r, top, z + r)) {
           // Out of view, a body whose shadow may fall in it is posed after those in view, while bones are left.
-          if (this.casting && this.bodyShadows.body(x, y, z, r) !== 0) {
+          if (this.casting.on && this.casting.bodyShadows.body(x, y, z, r) !== 0) {
             this.unseenFrom[unseen] = i;
             this.unseenMount[unseen] = mount;
             this.unseenAt[unseen * 4] = x;
@@ -2054,7 +1792,7 @@ export class Scene {
     }
     if (remote && unseen > 0) this.poseUnseen(remote, unseen);
     const from = p.drawCount;
-    ch.flush(p, this.transient, false, this.drawBody, this.casting ? this.castBody : null);
+    ch.flush(p, this.transient, false, this.drawBody, this.casting.on ? this.casting.castBody : null);
     if (cam.split > 0) this.bodyPasses(cam, from);
   }
 
@@ -2593,7 +2331,7 @@ export class Scene {
         const seen = cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
         // A see-through part, a rig of wires drawn wider and fainter than they are, casts nothing: no cascade holds a wire's
         // shadow whole, and the sun's own breadth all but washes it out a few metres down.
-        const casts = this.casting && !through ? this.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.cascades.fits(r) : 0;
+        const casts = this.casting.on && !through ? this.casting.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.casting.cascades.fits(r) : 0;
         if (!seen && casts === 0) continue;
         if (p.boneCount >= bones || p.transientCount === p.transientIds.length || (seen && p.drawCount + this.put.doubled >= draws)) {
           p.dropped++;
@@ -2617,7 +2355,7 @@ export class Scene {
           for (let k = d; k < p.drawCount; k++) p.drawFade[k] = reach;
           p.frame[FRAME.fade] = tier.fade;
         }
-        if (casts !== 0) this.castBody(mesh, level, first, 1, DRAW_SKINNED, casts, 0);
+        if (casts !== 0) this.casting.castBody(mesh, level, first, 1, DRAW_SKINNED, casts, 0);
       }
     }
   }
@@ -2799,7 +2537,7 @@ export class Scene {
       // Nodes past the tier's hand-over band are the far store's to draw (farnodes.ts).
       const seen = cam.boxVisible(ax, ay, az, bx, by, bz) && dist <= this.viewDistance && dist <= this.structureDistance && (sizeOf === null || dist < band);
       // A chunk out of view may still cast into it.
-      const casts = this.casting ? this.castBox(ax, ay, az, bx, by, bz) : 0;
+      const casts = this.casting.on ? this.casting.castBox(ax, ay, az, bx, by, bz) : 0;
       if (!seen && casts === 0) continue;
       if (!batch.uploaded) {
         p.uploads.push({ buffer: id, data: batch.data, slots: batch.slots });
@@ -2830,7 +2568,7 @@ export class Scene {
       // What casts into the lamp's map is not left out for where its shadow from the sun would fall.
       if (p.casterCount === castFrom || (casts & LAMP_BIT) !== 0) continue;
       // What the chunk's casters shade lies in its box swept from the sun as far as its shadow reaches.
-      const sx = -this.sunAt[0]! * this.zoneStretch, sy = -this.sunAt[1]! * this.zoneStretch, sz = -this.sunAt[2]! * this.zoneStretch;
+      const sx = -this.casting.sunAt[0]! * this.zoneStretch, sy = -this.casting.sunAt[1]! * this.zoneStretch, sz = -this.casting.sunAt[2]! * this.zoneStretch;
       this.chunkCasts.push(castFrom, p.casterCount, Math.min(ax, ax + sx), Math.min(ay, ay + sy), Math.min(az, az + sz), Math.max(bx, bx + sx), Math.max(by, by + sy), Math.max(bz, bz + sz));
     }
     near?.end(p, this.assets.residency, statics!, this.city!, world.hf, this.chunkCells, laid);
@@ -2853,13 +2591,13 @@ export class Scene {
   private zones(cam: Camera, b: ChunkBatch, seen: boolean, casts: number): void {
     const z = b.zone;
     this.wholeView = seen && cam.boxInside(b.minX - cam.x, b.minY - cam.y, b.minZ - cam.z, b.maxX - cam.x, b.maxY - cam.y, b.maxZ - cam.z);
-    const stretch = (this.zoneStretch = casts !== 0 ? this.stretch(b.minX - cam.x, b.minZ - cam.z, b.maxX - cam.x, b.maxZ - cam.z, b.maxY - cam.y) : 0);
+    const stretch = (this.zoneStretch = casts !== 0 ? this.casting.stretch(b.minX - cam.x, b.minZ - cam.z, b.maxX - cam.x, b.maxZ - cam.z, b.maxY - cam.y) : 0);
     for (let c = 0, k = 0; c < b.cells; c++, k += 6) {
       const ax = z[k]! - cam.x, ay = z[k + 1]! - cam.y, az = z[k + 2]! - cam.z;
       const bx = z[k + 3]! - cam.x, by = z[k + 4]! - cam.y, bz = z[k + 5]! - cam.z;
       const held = ax <= bx;
       this.cellSeen[c] = !seen || !held ? 0 : this.wholeView || cam.boxInside(ax, ay, az, bx, by, bz) ? 2 : cam.boxVisible(ax, ay, az, bx, by, bz) ? 1 : 0;
-      this.cellCasts[c] = casts !== 0 && held ? casts & this.castsBy(ax, ay, az, bx, by, bz, stretch) : 0;
+      this.cellCasts[c] = casts !== 0 && held ? casts & this.casting.castsBy(ax, ay, az, bx, by, bz, stretch) : 0;
     }
   }
 
@@ -3147,7 +2885,7 @@ export class Scene {
         runs[k + 2]! |= runs[j + 2]!;
         runs[j + 2] = 0;
       }
-      this.caster(this.near!.mesh, 0, m.slot, id, b.meshAt, 1, ox, oy, oz, DRAW_RANGED, 0, runs[k]! * 6, (runs[k + 1]! - runs[k]!) * 6, runs[k + 2]!);
+      this.casting.caster(this.near!.mesh, 0, m.slot, id, b.meshAt, 1, ox, oy, oz, DRAW_RANGED, 0, runs[k]! * 6, (runs[k + 1]! - runs[k]!) * 6, runs[k + 2]!);
     }
   }
 
