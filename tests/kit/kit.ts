@@ -1,11 +1,9 @@
-// The front door for a test of the game: a real server in a named place, survivors joined to it as clients, and the
-// actions a player has. Recipes are in tests/COOKBOOK.md. What is here asks the server as a client or its console would;
-// what it cannot do, the fixtures it stands on can (tests/fixtures/README.md).
+// The front door for a test: a real server in a named place, real clients, and a player's actions. Recipes: tests/COOKBOOK.md.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ClientSession } from "../../client/core/session.ts";
+import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import type { HostOptions } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { rowOf } from "../../server/settings/catalog.ts";
@@ -15,7 +13,7 @@ import type { LevelsDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import type { LinkOptions } from "../../shared/net/loopback.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_OPEN, RESULT_OK } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_CLOSE, CMD_FEED, CMD_MOVE, CMD_OPEN } from "../../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import type { Harness, Pilot } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -159,7 +157,7 @@ export function put(h: Harness, s: ClientSession, at: Spot): void {
 /** Joins a survivor and waits until it stands in the world, then gives it what was asked for through the console. */
 export function survivor(h: Harness, name: string, o: SurvivorOptions = {}): ClientSession {
   if (o.screen && !(h instanceof ScreenHarness)) throw new Error("a screen needs a harness made by camp()");
-  const s = o.screen ? (h as ScreenHarness).open(name, o.link) : h.join(name, o.link);
+  const s = o.screen && h instanceof ScreenHarness ? h.open(name, o.link) : h.join(name, o.link);
   h.run(500);
   if (!until(h, () => s.state === "active" && s.inventory !== null, 10)) throw new Error(`${name} did not join: ${s.state} ${s.closeText}`);
   if (o.cheats === false) return s;
@@ -198,6 +196,15 @@ export function pos(h: Harness, of: number | ClientSession): { x: number; y: num
   const e = typeof of === "number" ? of : h.ent(of);
   const ents = h.world.ents;
   return { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]! };
+}
+
+const view = new RemoteSample();
+
+/** Where a client draws an entity it has in view, which is what its player sees. Null if it is not in its view. */
+export function seen(s: ClientSession, e: number): { x: number; y: number; z: number } | null {
+  s.sampleRemote(view);
+  const i = view.id.subarray(0, view.count).indexOf(e);
+  return i < 0 ? null : { x: view.x[i]!, y: view.y[i]!, z: view.z[i]! };
 }
 
 /** The keys and look a survivor's client sends each frame. */
@@ -283,10 +290,7 @@ export function creature(h: Harness, species: string, at: Spot, level = 1): Body
   return { e, rec: h.host.records.byPid.get(h.world.ents.pid[e]!)! };
 }
 
-/**
- * A creature a survivor with cheats owns, 3 m in front of it or at a spot in its sight: forced tame at the console, and
- * with `saddled` its saddle put on through its inventory, for which it must be within reach.
- */
+/** A creature the survivor owns, 3 m ahead or at a spot in sight: `forcetame`, and a saddle put on through its inventory, from within reach. */
 export function tame(h: Harness, s: ClientSession, species: string, o: { at?: Spot; level?: number; saddled?: boolean } = {}): Body {
   const me = pos(h, s);
   const yaw = pilot(h, s).yaw;
@@ -313,10 +317,7 @@ export function ride(h: Harness, s: ClientSession, e: number): void {
   if (!until(h, () => s.driving === e || h.world.ents.seat[h.ent(s)] === e + 1, 3)) throw new Error(`${s.name} did not get on: result ${code}`);
 }
 
-/**
- * A vehicle a survivor's tribe owns, parked 6 m in front of it or at a spot. With `drive` the survivor is put at its
- * driver's door and gets in with the use key.
- */
+/** A vehicle of the survivor's tribe, parked 6 m ahead or at a spot. With `drive` the survivor gets in at its wheel. */
 export function vehicle(h: Harness, s: ClientSession, kind: string, o: { at?: Spot; yaw?: number; drive?: boolean } = {}): Body {
   const me = pos(h, s);
   const yaw = o.yaw ?? pilot(h, s).yaw;
@@ -347,5 +348,3 @@ export function find(h: Harness, kind: string): Body {
   }
   throw new Error(`the world has no ${kind}`);
 }
-
-export { RESULT_OK };
