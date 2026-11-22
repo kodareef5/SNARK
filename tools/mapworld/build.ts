@@ -14,7 +14,7 @@ import { SECTOR_CHUNKS, chunkCount, framed } from "../../shared/coords.ts";
 import { MapStatics, mapHeightfield, mapNodes, mapTops, parseMap, resolveNodes, writeMap } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
-import { readLayers, toYaw, waterLayer } from "../map/layers.ts";
+import { readLayers, toYaw, waterLayer, writeAttached, writeNodeLayers } from "../map/layers.ts";
 import { partsTable, wireBytes, writeMapFile } from "../map/pack.ts";
 import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
@@ -310,6 +310,10 @@ export async function buildMap(named: string, release = false, output = join(ROO
   map = { ...map, road: roadFrame(streetGraph(site), nx, nz, x0, z0) };
   lap(`the roads' frame on ${map.road!.across.reduce((n, v) => n + (v > 0 ? 1 : 0), 0)} of its 4 m samples`);
   if (streets && streets.parts.length > 0) map = { ...map, streets: streets.parts };
+  // What the map has that its layers did not when they were read: its streets' parts, its roads' frame, its landmarks
+  // and, where they grew, its nodes, so the folder of layers builds this map (tools/map.ts build).
+  writeAttached(map, layers);
+  if (growth) writeNodeLayers(map, layers);
   const bytes = writeMap(map);
   // The file is the map from here on (the numbers below read it back): the map as built is let go first.
   map = undefined as unknown as typeof map;

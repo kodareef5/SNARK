@@ -21,6 +21,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { SETTLE_MS } from "../../client/core/bench-run.ts";
 import { startServer } from "../../server/main.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";
 import { offsetForHour } from "../../shared/sim/clock.ts";
@@ -194,7 +195,7 @@ async function run(tier: string, page: string[], name: string, only: string | un
       if (s.look) look = s.look;
       const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${tier}&sync=1${s.look ? "&still=1&look=pass" : ""}${page.map((p) => `&${p}`).join("")}`;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), 180000))));
+      const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), SETTLE_MS + 120000))));
       rmSync(join(profile, "DevToolsActivePort"), { force: true });
       const browser = Bun.spawn([chrome, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", `--window-size=${width},${height}`, `--force-device-scale-factor=${scale ?? 1}`, "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
       const devt = await devtools(profile);

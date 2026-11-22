@@ -369,6 +369,24 @@ test("a bent walk's grain is laid across by the concrete strip's own rows, as th
   expect(STRIP_METRES).toBe(s.tiles);
 });
 
+test("a piece across the stations' wrap is laid along it straight: its stations run on past 600 m, and what reads them wraps them", async () => {
+  const { BEND_GLSL, BENT_WEAR_GLSL, bentWear } = await import("../../client/core/render/bend.ts");
+  // A 10 m straight from station 595: its texture along and its wear's station went 595 to 5 across its triangles, so
+  // they ran back over the whole 600 m in its 10 m.
+  const [p] = placeKerb({ x: [0, 10], z: [0, 0], y: [1, 1] }, 1, SECTION, 595);
+  const out = new Float64Array(11), at = (u: number): number => (bendVertex(out, p!.bend, (u - 0.5) * 2 * MODEL_HALF, 0, 0, 0, 1, 0, 1, 0, 0), out[9]!);
+  expect([at(0), at(0.5), at(1)].map((s) => Number(s.toFixed(3)))).toEqual([595, 600, 605]);
+  // The wear reads a station wrapped: the same 600 m on.
+  for (const s of [3.25, 5, 299.9]) {
+    const a = [0.5, 0.5, 0.5], b = [0.5, 0.5, 0.5], ma = [0.5, 0, 1], mb = [0.5, 0, 1];
+    bentWear(a, ma, s, 1, 0.15, 1, 77 + 256 * 60, 1.5, 3, 0.01);
+    bentWear(b, mb, s + 600, 1, 0.15, 1, 77 + 256 * 60, 1.5, 3, 0.01);
+    expect([b, mb]).toEqual([a, ma]);
+  }
+  // The vertex text leaves the station as it is, and the fragment's wear wraps it.
+  expect([BEND_GLSL.includes("gBent = vec3(s, z, l.y)"), BENT_WEAR_GLSL.includes("along = mod(at.x, 600.0)")]).toEqual([true, true]);
+});
+
 test("a straight runs to 32 m where its line rises evenly, and past 16 m no further where it does not", () => {
   const x = Array.from({ length: 31 }, (_, k) => k), z = x.map(() => 0);
   expect(placeKerb({ x, z, y: x.map((k) => 1 + k * 0.01) }, 1, SECTION).length).toBe(1);

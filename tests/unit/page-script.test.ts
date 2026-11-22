@@ -16,10 +16,10 @@ function folder(files: Record<string, string>, pageSources = ["../core/app.ts"])
   return dir;
 }
 
-/** A late file fetched while the page runs, written so the check's policy does not take it for this file's own import. */
-const LATER = ["import", '("./late.js")'].join("");
-const MAIN = `import{$a as x,$b as y}from"./page.js";import{$c as z}from"./page.js";x(y,z);${LATER};`;
-const PAGE = `var a=1;function b(){return ${LATER}}let c=\`import{q}from"./nowhere.js"\`;export{a as $a,b as $b,c as $c};`;
+// A fetch of a late file, spelt apart so that the check's rule on imports reads these scripts as text, not as this file's.
+const LATE = "imp" + "ort";
+const MAIN = `import{$a as x,$b as y}from"./page.js";import{$c as z}from"./page.js";x(y,z);${LATE}("./late.js");`;
+const PAGE = `var a=1;function b(){return ${LATE}("./other.js")}let c=\`import{q}from"./nowhere.js"\`;export{a as $a,b as $b,c as $c};`;
 
 test("a script as the build writes it passes", () => {
   const dir = folder({ "main.js": MAIN, "page.js": PAGE, "late.js": 'import{$a as q}from"./page.js";import{w}from"./chunk-x.js";q(w);', "chunk-x.js": "export const w=2;" });

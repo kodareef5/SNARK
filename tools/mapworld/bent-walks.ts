@@ -27,14 +27,15 @@
 
 import { BREAK_AT } from "../../content/ruins.ts";
 import { SINK_LENGTH, bentJoin, bentKind, HIT_PREFIX, KERB_BACK, packBend, placeKerb, underPiece, wrapped, type BentKerb, type BentPiece, type Section } from "../../shared/world/bends.ts";
-import { DROP_CROSSING, DROP_RAMP, kerbLines, kerbOf, walkOf, type KerbLine as StreetKerb } from "../../shared/world/streets.ts";
+import { DROP_CROSSING, DROP_RAMP, kerbLines, kerbOf, walkOf, type KerbLine as StreetKerb, type StreetSectors, type StreetsPart } from "../../shared/world/streets.ts";
 import { S } from "./ground.ts";
 import { binKey, hash3 } from "./raster.ts";
 import { Mason } from "./ruin-geometry.ts";
 import type { Box } from "./ruin-obstacles.ts";
 import type { Vocabulary } from "./ruin-vocabulary.ts";
 import type { roadIndex } from "./street-cars.ts";
-import { streetRules, type StreetType, type Rule } from "./streets/rules.ts";
+import { PlannedStreets } from "./streets/plan.ts";
+import { streetRules, type StreetRules, type StreetType, type Rule } from "./streets/rules.ts";
 import type { Site, StaticPiece } from "./statics.ts";
 
 /** The street types whose kerbs are not laid as pieces (`without`; highway and alley where it is not given). */
@@ -97,24 +98,17 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     const i = at(x, z);
     return !site.ground.water[i] && !graded.has(i) && !onWay(x, z) && site.ground.surface[i] !== S.DEEP;
   };
-  // The street rules' types by the index a stretch holds (streets/plan.ts), and each one's wear.
+  // The street rules' types by the index a stretch holds (streets/plan.ts), and those laid without bent kerbs.
   const street = streetRules((v as { streets?: { types?: Record<string, StreetType>; rules?: Rule[] } }).streets ?? null);
-  const types = Object.keys(street.types);
   const without = new Set(bent.without ?? ["highway", "alley"]);
 
   // Every kerb line of every part, as runs on open ground in the lattice's metres.
   const runs: Run[] = [];
   for (const part of held.parts()) for (const k of kerbLines(held, part)) {
-    const type = types[k.type] ?? "";
-    if (without.has(type)) continue;
+    const section = kerbSection(k, part, held, street, without);
+    if (!section) continue;
     out.lines!++;
-    const kerb = kerbOf(k.kinds) === 2 ? "worn" : "raised";
-    const alone = walkOf(k.kinds) === 0 || k.verge >= VERGE_LEAST;
-    if (alone) out.alone!++;
-    // A corner's walk lies inside its arc: no wider than its radius less a little, or it folds over itself round the
-    // arc's centre (a downtown walk of 8.5 m round a corner of 4 m).
-    const most = k.corner >= 0 ? Math.max(KERB_BACK + 0.6, part.corners[k.corner]!.radius - CORNER_INSIDE) : Infinity;
-    const section: Section = { kerb, walk: alone ? 0 : Math.min(most, k.verge + k.walk), panel: PANEL[kerb], seed: k.seed & 255, wear: street.types[type]?.section.wear ?? 0.4 };
+    if (section.walk === 0) out.alone!++;
     const side = walkSide(k, part.corners), n = k.stations.length;
     const kerbAlone: Section = { ...section, walk: 0 };
     // Each point's state, then judged over the line.
@@ -471,12 +465,14 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
 
   /**
    * A shape of the walk kit `d` along piece `p`'s chord from its middle and `back` from the kerb's face, at the chord's
-   * height there. A box stands nowhere a way in to a building crosses the walk, as the kit's never did: its slab was cut there.
+   * height there. A box stands nowhere a way in to a building crosses the walk, as the kit's never did: its slab was cut
+   * there; nor over what the city set down under the walk's top, a building's floor at the building line, where the walk
+   * runs over it and the box would stand in the building's room (Tampa's one room route that failed, D1105).
    */
   function fixture(p: BentPiece, shape: "zdrain" | "zutility", d: number, back: number): boolean {
     const a = (p.yaw * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a), mid = BREAK_AT[shape]!;
     const [x, z] = [p.x + c * d + s * back, p.z - s * d + c * back];
-    if (shape === "zutility" && way({ x, y: p.y, z, yaw: p.yaw, size: [1, 1.3, 0.6] })) return false;
+    if (shape === "zutility" && (way({ x, y: p.y, z, yaw: p.yaw, size: [1, 1.3, 0.6] }) || obstacles.hits({ x, y: p.y + 0.075, z, yaw: p.yaw, size: [1, 0.3, 0.6] }, -0.05, passed))) return false;
     const m = new Mason({ x: x + c * mid[0]!, z: z - s * mid[0]!, yaw: p.yaw, c, s, width: 8, depth: 3, rings: [] }, p.y + (p.bend.rise * d) / p.bend.half);
     m.put(shape, 0, mid[1]!, 0, "concrete");
     return accept(m);
@@ -572,6 +568,28 @@ export function judged(state: Uint8Array, stations: Float64Array): number {
   island(WALKED, ALONE);
   island(ALONE, UNLEVEL);
   return filled;
+}
+
+/**
+ * The section a kerb line of `part` is laid with, or null where it is left to the ground: a line of a type in `without`,
+ * but where an overlay entry set its side's kerb. Its kerb the side's, raised or worn; its walk from the kerb's face to the
+ * walk's far edge (0 for a kerb alone: no walk, or a verge between of VERGE_LEAST or more, or of any width an overlay
+ * entry set); its seed its stretch's; its
+ * wear its side's as the street plan worked it out (its type's, the rules' and the overlay's; streets/plan.ts
+ * PlannedStreets), or its type's where the streets were not planned in this build.
+ */
+export function kerbSection(k: StreetKerb, part: StreetsPart, held: StreetSectors, street: StreetRules, without: ReadonlySet<string>): Section | null {
+  const type = Object.keys(street.types)[k.type] ?? "";
+  const planned = held instanceof PlannedStreets ? held.side(part, k.stretch, k.side) : null;
+  if (without.has(type) && !planned?.kerb) return null;
+  const kerb = kerbOf(k.kinds) === 2 ? "worn" : "raised";
+  // A verge narrower than VERGE_LEAST is paved over as walk, as the walk kit did, but one an overlay entry asked for.
+  const alone = walkOf(k.kinds) === 0 || k.verge >= VERGE_LEAST || (k.verge > 0 && planned?.verge === true);
+  // A corner's walk lies inside its arc: no wider than its radius less a little, or it folds over itself round the
+  // arc's centre (a downtown walk of 8.5 m round a corner of 4 m).
+  const most = k.corner >= 0 ? Math.max(KERB_BACK + 0.6, part.corners[k.corner]!.radius - CORNER_INSIDE) : Infinity;
+  const wear = planned && Number.isFinite(planned.wear) ? planned.wear : street.types[type]?.section.wear ?? 0.4;
+  return { kerb, walk: alone ? 0 : Math.min(most, k.verge + k.walk), panel: PANEL[kerb], seed: k.seed & 255, wear };
 }
 
 /** A stretch of a run by station: laid as its kerb, flared down to flush, flush, flared up, or cut (a kerb alone's crossing). */

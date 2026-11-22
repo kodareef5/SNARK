@@ -1143,7 +1143,7 @@ function topsPart(tops: MapTops, dims: FramedDims, sq: Square): Uint8Array | nul
  * The map's statics by sector, each sector's in the map's order, the table of content ids they name, and each chunk's count.
  * No collision piece of a bent piece is stored, but each one's place is counted in its chunk and its kind named: a reader
  * makes them from the bends (madeOn). One that stands in another sector than its bent piece is stored in its own, after
- * that sector's other pieces.
+ * that sector's other pieces, in the order of their pieces' sectors.
  */
 function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedDims, sectors: readonly Square[]): { ids: Map<string, number>; parts: (Uint8Array | null)[]; chunks: Uint16Array } {
   const ids = new Map<string, number>();
@@ -1159,7 +1159,7 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
   // The kinds in the order of their ids, so a piece added or taken away renumbers no other kind; the collision pieces
   // made counted where they stand, and those that stand in another sector kept to be stored there.
   const names = new Set<string>();
-  const away: { kind: string; ux: number; uy: number; uz: number; yaw: number }[] = [];
+  const away: { kind: string; ux: number; uy: number; uz: number; yaw: number; home: number }[] = [];
   let n = 0;
   eachStatic(statics, (kind, x, y, z, turn, bend) => {
     if (kind.startsWith(HIT_PREFIX)) return;
@@ -1172,9 +1172,12 @@ function sectorStatics(statics: MapStatics | readonly MapStatic[], dims: FramedD
     madeOn(dims, kind, ux, uy, uz, turn, Int16Array.from(bend), (k, hx, hy, hz, yaw, c) => {
       names.add(k);
       if (sectorOf(c) === home) tally(c);
-      else away.push({ kind: k, ux: hx, uy: hy, uz: hz, yaw });
+      else away.push({ kind: k, ux: hx, uy: hy, uz: hz, yaw, home });
     });
   });
+  // Stored in the order of their pieces' sectors, and in each in the map's order, as the file lists its pieces: so a list
+  // in any order whose sectors keep theirs (a map unpacked into its layers and built again) writes the same bytes.
+  away.sort((a, b) => a.home - b.home);
   for (const kind of [...names].sort()) ids.set(kind, ids.size);
   n += away.length;
   const [id, yaw, sector] = [new Uint16Array(n), new Uint16Array(n), new Uint32Array(n)];

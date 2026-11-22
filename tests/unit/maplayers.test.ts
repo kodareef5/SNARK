@@ -3,13 +3,18 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { withContent } from "../../shared/content/registry.ts";
+import { BEND_SHORTS, packBend, placeKerb } from "../../shared/world/bends.ts";
+import { mapHeightfield, mapNodes, mapTops, parseMap, readHead, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import type { NodeSpot } from "../../shared/world/nodes.ts";
-import { describe } from "../../tools/map.ts";
+import { roadSamples } from "../../shared/world/roadframe.ts";
+import { encodeStreets, heldSide, kindsByte } from "../../shared/world/streets.ts";
+import { describe, made } from "../../tools/map.ts";
 import { readLayers, writeLayers } from "../../tools/map/layers.ts";
 import { readGrey, writeGrey } from "../../tools/map/png.ts";
 import { lakesMap } from "../fixtures/lakes.ts";
-import { busyMap } from "../fixtures/map.ts";
+import { busyMap, flatMap } from "../fixtures/map.ts";
+import { FRAME_MIDDLE } from "../../shared/coords.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-layers-"));
@@ -44,6 +49,47 @@ test("a map unpacked into a folder of layers and built from it again is the same
   writeLayers(parseMap(out), join(dir, "out"));
   expect(writeMap(readLayers(join(dir, "out")))).toEqual(out);
   expect(describe(out)[6]).toBe("30 node slots a chunk, by zones of 16 m: 1 core:palm x1, bare x2; 2 core:fig x1, core:fern x2; 92 slots taken out");
+});
+
+test("a map's streets, roads' frame, landmarks and bent pieces unpacked and built again are the same parts: what a city's build adds after its layers", () => {
+  const busy = busyMap();
+  // A street along x with its kerbs, a sector's part; the frame's planes every 4 m; a landmark of its own definition; a
+  // raised kerb of bent pieces, whose collision is made where the map is read.
+  const side = heldSide(4, 1.5, 2, kindsByte(1, 1, 0));
+  const part = encodeStreets({ x0: 0, z0: 0, stretches: [{ type: 3, flags: 0, seed: 77, sides: [side, side], xz: Float64Array.of(10, 100, 120, 100) }], corners: [] });
+  const cells = roadSamples(2 * 32 + 1) * roadSamples(3 * 32 + 1), plane = (k: number): Uint8Array => Uint8Array.from({ length: cells }, (_, i) => (i * k + 1) & 255);
+  const content = { landmarks: [{ name: "hut", x: 60, y: 35, z: 90, yaw: 12345 }], defs: [{ type: "structure", class: "static", id: "hut:wall", mesh: "box", color: 5, half: [2, 2, 0.2], hp: 50 }] as never[] };
+  const kerb = placeKerb({ x: [20, 60], z: [104, 104], y: [31.5, 31.5] }, 1, { kerb: "raised", walk: 2, panel: 1.5, seed: 3, wear: 0.4 }).map((p) => {
+    const bend = new Int16Array(BEND_SHORTS);
+    packBend(bend, 0, p.bend);
+    return { kind: p.kind, x: p.x, y: p.y, z: p.z, yaw: Math.round((p.yaw / 360) * 65536) & 0xffff, bend };
+  });
+  const map = { ...busy, statics: [...busy.statics, ...kerb], streets: [{ col: 128, row: 128, bytes: part }], road: { across: plane(3), along: plane(5), half: plane(7), lanes: plane(11) }, content };
+  const file = writeMap({ ...map, tops: mapTops(map, withContent(coreRegistry(), content.defs)) });
+  const folder = join(dir, "attached");
+  // As tools/map.ts unpack and build do.
+  writeLayers(parseMap(file, true, true), folder);
+  const again = writeMap(made(readLayers(folder)));
+  expect(readHead(again).parts.map((p) => `${p.kind} ${p.hash}`)).toEqual(readHead(file).parts.map((p) => `${p.kind} ${p.hash}`));
+  expect(readHead(file).parts.filter((p) => p.kind === "streets" || p.kind === "road").length).toBeGreaterThan(1);
+  expect(again).toEqual(file);
+  // Kerbs round the corner of four sectors, listed round their arcs as a build lays them: the collision pieces that stand
+  // in another sector than their bent piece are stored there in the order of their pieces' sectors, as the file lists
+  // its pieces, so a list whose sectors keep their own order (the folder of layers, sector by sector) writes the same bytes.
+  const ring = (r: number): MapStatic[] => {
+    const at = (k: number): [number, number] => [128 + r * Math.cos((k * Math.PI) / 24), 128 + r * Math.sin((k * Math.PI) / 24)];
+    return placeKerb({ x: Array.from({ length: 49 }, (_, k) => at(k)[0]), z: Array.from({ length: 49 }, (_, k) => at(k)[1]), y: Array.from({ length: 49 }, () => 1) }, 1, { kerb: "raised", walk: 3, panel: 1.5, seed: 77, wear: 0.4 }).map((p) => {
+      const bend = new Int16Array(BEND_SHORTS);
+      packBend(bend, 0, p.bend);
+      return { kind: p.kind, x: p.x, y: p.y + 32, z: p.z, yaw: Math.round((p.yaw / 360) * 65536) & 0xffff, bend };
+    });
+  };
+  const corner = (statics: MapStatic[]) => writeMap(flatMap(4, { dims: { chunksX: 4, chunksZ: 4, frameX: FRAME_MIDDLE - 2, frameZ: FRAME_MIDDLE - 2 }, statics }));
+  const rings = [...ring(30), ...ring(20)], sectorOf = (s: MapStatic): number => (s.z >= 128 ? 2 : 0) + (s.x >= 128 ? 1 : 0);
+  const cornered = corner(rings);
+  expect(corner([...rings].sort((a, b) => sectorOf(b) - sectorOf(a)))).toEqual(cornered);
+  writeLayers(parseMap(cornered), join(dir, "cornered"));
+  expect(writeMap(readLayers(join(dir, "cornered")))).toEqual(cornered);
 });
 
 test("a map's water unpacked into its picture of squares and its list of bodies builds the same file again", () => {
