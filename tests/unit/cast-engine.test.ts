@@ -124,7 +124,7 @@ test("hostile scenes spare a player just risen, wait out its cooldown, never com
     city.people = [{ name: "Ana", x: 5 * BLOCK + 64, z: 6 * BLOCK + 64 }];
     if (rose) c.rose("Ana", 0);
     const woken: Story[] = [];
-    c.stage = { count: 0, enter: (s) => void woken.push(s), end: () => {} } satisfies Stage;
+    c.stage = { count: 0, near: () => 0, has: () => false, people: () => [], enter: (s) => void woken.push(s), end: () => {} } satisfies Stage;
     city.run(RISE_GRACE_S - 30, () => c.step());
     const early = woken.filter((s) => s.scene === "cast:gang_standoff").length;
     city.run(3 * 3600, () => {

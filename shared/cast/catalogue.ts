@@ -100,8 +100,8 @@ export type Step = (
   | { do: "queue" }
   /** Serve the place's queue for `s` seconds (a vendor). */
   | { do: "serve"; s: [number, number] }
-  /** Drive there; out of the car at the end, unless it stays at the wheel (a pick-up). */
-  | { do: "drive"; to: Target; stay?: boolean }
+  /** Drive there; out of the car at the end, unless it stays at the wheel (a pick-up); `fast` as police to a call. */
+  | { do: "drive"; to: Target; stay?: boolean; fast?: boolean }
   /** Get into another role's car beside its driver, and go where it goes. */
   | { do: "ride"; with: string }
   | { do: "attack"; target: Target }

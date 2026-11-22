@@ -172,16 +172,17 @@ export const SCENES: Scene[] = [
     choices: { mood: ["sorry", "argue"] }, tags: ["comic", "vehicle"], needs: ["drive", "speech", "emote"], weight: 1.5, cooldown: 600, most: 240, vehicles: ["core:compact", "core:fastback", "core:panel_van"],
   },
   {
-    id: "cast:police_response", name: "Police response", about: "After shots or a fight, officers run to the scene, clear the area, go after whoever started it if they are still about, look round and leave. Started by trouble, never by chance.",
-    roles: [{ role: "cops", archetypes: ["cast:cop"], count: [2, 3] }], place: { tags: ["corner", "sidewalk", "plaza", "road", "parking", "beach", "park"] },
+    id: "cast:police_response", name: "Police response", about: "After shots, a blast, a death or a call, two patrol cars come fast to the scene; the officers get out, clear the area, go after whoever started it if they are still about, look round and drive off. Started by trouble, never by chance.",
+    roles: [{ role: "cops", archetypes: ["cast:cop"], count: [2, 2] }], place: { tags: ["corner", "sidewalk", "plaza", "road", "parking", "beach", "park"] },
     script: {
       cops: [
-        { do: "goto", to: "place", pace: "run" }, { do: "say", line: "clear" },
+        { do: "drive", to: "place", fast: true }, { do: "say", line: "clear" },
         { do: "hold", item: PISTOL, when: { mood: "pursue" } }, { do: "attack", target: "culprit", when: { mood: "pursue" } },
-        { do: "emote", emote: "watching_you", s: [4, 8] }, { do: "face", to: "player" }, { do: "say", line: "patrol" }, { do: "wait", s: [8, 16] }, { do: "leave" },
+        { do: "emote", emote: "watching_you", s: [4, 8] }, { do: "face", to: "player" }, { do: "say", line: "patrol" }, { do: "wait", s: [8, 16] }, { do: "leave", pace: "drive" },
       ],
     },
-    choices: { mood: ["secure", "pursue"] }, tags: ["tense", "busy"], needs: ["walk", "speech"], weight: 0, cooldown: 120, most: 300,
+    choices: { mood: ["secure", "pursue"] }, tags: ["tense", "busy", "vehicle"], needs: ["walk", "speech", "drive"], weight: 0, cooldown: 120, most: 300,
+    vehicles: ["core:patrol_sedan", "core:patrol_jeep"],
   },
   {
     id: "cast:drive_by", name: "Drive-by", about: "A gang car slows past a rival corner or a player and its passenger opens fire. Waits on passengers that can aim from a seat.",

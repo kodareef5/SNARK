@@ -31,7 +31,8 @@ import { EMOTES, EMOTE_NUMBER } from "../../shared/anim/emotes.ts";
 import { CHUNK_SIZE, TICK_RATE } from "../../shared/coords.ts";
 import { RESULT_OK, TEXT_LOCAL } from "../../shared/net/protocol.ts";
 import { BTN_JUMP } from "../../shared/sim/character.ts";
-import { F_ALIVE, F_AWAKE } from "../../shared/sim/entities.ts";
+import { F_ALIVE, F_AWAKE, GEAR_HELD } from "../../shared/sim/entities.ts";
+import { W_GUN } from "../../shared/sim/weapon.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
 
 /** The rec.extra component a Cast body carries: the id of the person it is (server/persist/codec.ts lists it). */
@@ -109,7 +110,8 @@ export class CastHost {
     // A blow on one of Cast's people is an attack it answers. Any blow, shot, blast or death that a survivor or one of
     // Cast's people is in is trouble to everyone near it (the creatures' own fights far from anyone are not).
     const nameOf = (pid: unknown) => (typeof pid === "number" && pid !== 0 ? ctx.records.byPid.get(pid)?.name || null : null);
-    const KIND: Record<string, IncidentKind> = { bullet: "gunshot", explosive: "explosion", pierce: "fight", melee: "fight", fire: "fight" };
+    // Shots and blasts come from what is heard (heard(), every one, hit or miss); a blow, an arrow or fire from the hurt.
+    const KIND: Record<string, IncidentKind> = { pierce: "fight", melee: "fight", fire: "fight" };
     ctx.bus.on("cast", "damaged", (e) => {
       const d = e.data as { target: string; victim: number; byPid: number; type: string; killed: boolean };
       if (d.target !== "body" || !this.cast.settings.enabled) return;
@@ -122,7 +124,8 @@ export class CastHost {
       if (at === undefined) return;
       const x = ctx.world.ents.x[at]!, z = ctx.world.ents.z[at]!;
       const who = attacker?.keyHash !== null ? by : null;
-      this.stage.incident(x, z, KIND[d.type] ?? "fight", who);
+      const kind = KIND[d.type];
+      if (kind) this.stage.incident(x, z, kind, who);
       if (d.killed) this.stage.incident(x, z, "death", who);
     });
     // A survivor who has just risen is spared hostile scenes for a while.
@@ -147,6 +150,20 @@ export class CastHost {
       n++;
     }
     return n;
+  }
+
+  /**
+   * A shot or a blast, hit or miss: a gun's shot is a gunshot to everyone within hearing, a silenced one or a bow's only
+   * trouble to those who see it close, a blast an explosion.
+   */
+  heard(kind: "shot" | "blast", x: number, z: number, by: string | null, silenced: boolean): void {
+    if (!this.cast.settings.enabled) return;
+    if (kind === "blast") return this.stage.incident(x, z, "explosion", by);
+    const { game, world } = this.ctx;
+    const c = by ? game.clients.find((q) => q?.active && q.name === by) : undefined;
+    const held = c && c.ent >= 0 ? world.ents.gears.get(c.ent)?.[GEAR_HELD] ?? 0 : 0;
+    const gun = world.reg.weapon[held]?.kind === W_GUN;
+    this.stage.incident(x, z, gun && !silenced ? "gunshot" : "fight", by);
   }
 
   /** Kept in the world's save beside its records, a minute at a time (server/persist: a sidecar). */
@@ -192,6 +209,7 @@ export class CastHost {
     if (this.ctx.world.tick % (5 * TICK_RATE) === 0) {
       this.retune();
       this.saved.dirty = true;
+      this.forgetSaid();
     }
     if (!this.cast.settings.enabled) {
       // Turned off: the people still about walk off where no one sees, then nothing more happens.
@@ -222,6 +240,21 @@ export class CastHost {
       out.push({ name: c.name, speed: Math.hypot(ents.vx[e]!, ents.vz[e]!), driving: c.drive >= 0, carries, said: (this.said.get(c.name) ?? []).filter((l) => world.tick - l.t < SAID_KEPT_S * TICK_RATE).map((l) => l.text) });
     }
     return out;
+  }
+
+  /** Lines older than two minutes are forgotten, and a speaker with none left is forgotten too. */
+  private forgetSaid(): void {
+    const old = this.ctx.world.tick - SAID_KEPT_S * TICK_RATE;
+    for (const [speaker, lines] of this.said) {
+      const kept = lines.filter((l) => l.t >= old);
+      if (kept.length) this.said.set(speaker, kept);
+      else this.said.delete(speaker);
+    }
+  }
+
+  /** How many survivors' lines Cast holds now (for a test of its forgetting). */
+  get remembered(): number {
+    return this.said.size;
   }
 
   /** Which survivors are home: near a building of their own or their tribe's. */

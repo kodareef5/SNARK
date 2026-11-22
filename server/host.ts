@@ -829,6 +829,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
+  // Every shot and blast, hit or miss, is heard by Cast's people near it.
+  projectiles.heard.push((kind, x, z, by, silenced) => castHost.heard(kind, x, z, by, silenced));
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
   combat.onThrow = (c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality));

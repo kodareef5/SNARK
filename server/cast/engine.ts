@@ -27,7 +27,7 @@ const PLANNED_S = 3 * 3600;
 const ALARM_M = 120, ALARM_S = 90;
 export const POLICE = "cast:police_response";
 /** Seconds police take to come, least and most, and metres and seconds within which one response covers new trouble. */
-const POLICE_DELAY: [number, number] = [20, 40], POLICE_M = 300, POLICE_S = 180;
+const POLICE_DELAY: [number, number] = [8, 15], POLICE_M = 300, POLICE_S = 180;
 /** Seconds a player is spared hostile scenes after rising. */
 export const RISE_GRACE_S = 600;
 
@@ -52,6 +52,11 @@ export interface PlayerState {
 export interface Stage {
   /** Its bodies in the world now, walking off from stories already over among them. */
   readonly count: number;
+  /** Its bodies within `r` metres of a point. */
+  near(x: number, z: number, r: number): number;
+  /** Whether a person has a body in the world now; and every person who has. */
+  has(character: string): boolean;
+  people(): Iterable<string>;
   /** A story wakes for players: its people should come in from where no one is. */
   enter(story: Story): void;
   /** A story is over or let go: any bodies still in it leave. */
@@ -121,7 +126,8 @@ export class Cast {
     this.regions.warm(counts, dt, tick);
     this.regions.pace(tick, this.world.rate, this.settings.spikiness);
     this.regions.tidy(tick);
-    while (this.alarms.length && this.alarms[0]!.until <= tick) this.alarms.shift();
+    // Every alarm whose time is up goes, wherever it is in the list (one renewed in place is later than those after it).
+    for (let i = this.alarms.length - 1; i >= 0; i--) if (this.alarms[i]!.until <= tick) this.alarms.splice(i, 1);
     this.runTimed(tick, players);
     this.wakeDue(tick, players);
     this.plan(tick, players);
@@ -139,11 +145,14 @@ export class Cast {
     return n;
   }
 
-  /** Bodies about a player: those of the stories that are its, in the world or still to come. */
+  /** Bodies about a player: the stage's within its reach (those walking off from stories already over among them), and
+   * those its stories are still to bring in. */
   bodiesFor(name: string): number {
-    let n = 0;
+    const p = this.world.players().find((q) => q.name === name);
+    let n = this.stage && p ? this.stage.near(p.x, p.z, AWAY_M) : 0;
     for (const s of this.stories.values()) {
-      if ((s.phase === "entering" || s.phase === "active" || s.phase === "leaving") && s.for.includes(name)) for (const p of s.parts) if (!p.gone) n++;
+      if ((s.phase !== "entering" && s.phase !== "active" && s.phase !== "leaving") || !s.for.includes(name)) continue;
+      for (const part of s.parts) if (!part.gone && (!this.stage || part.pid === undefined)) n++;
     }
     return n;
   }
@@ -343,6 +352,8 @@ export class Cast {
   private castRoles(sc: Scene, s: Story, tick: number, room: number, players: readonly string[]): Part[] {
     const parts: Part[] = [];
     const chosen = new Set<string>(), minted: string[] = [];
+    // Nobody already in the world in another body, nor cast twice here (chosen ones join it as they are cast).
+    const busy = new Set<string>(this.stage ? this.stage.people() : []);
     const heat = this.regions.get(s.region, tick).heat;
     const cols = this.spots.cols;
     const near = (h: number) => Math.abs((h % cols) - (s.region % cols)) <= 2 && Math.abs(Math.floor(h / cols) - Math.floor(s.region / cols)) <= 2;
@@ -361,12 +372,13 @@ export class Cast {
         const a = this.people.archetype(kind)!;
         // A featured kind always looks for its regulars; an everyday kind's featured ones (met by a player) half the time.
         const look = a.tier === "featured" || this.rng.float() < 0.5;
-        let c = look ? this.people.free(role.archetypes, s.region, near, chosen, players) : null;
+        let c = look ? this.people.free(role.archetypes, s.region, near, busy, players) : null;
         if (!c) {
           c = this.people.mint(kind, s.region, this.rng.u32(), tick);
           minted.push(c.id);
         }
         chosen.add(c.id);
+        busy.add(c.id);
         parts.push({ character: c.id, role: role.role, step: 0, since: tick });
       }
     }
@@ -397,7 +409,8 @@ export class Cast {
 
   /** Whether trouble near a point is still fresh: the street there stays quiet a while. */
   alarmed(x: number, z: number): boolean {
-    return this.alarms.some((a) => Math.hypot(a.x - x, a.z - z) < ALARM_M);
+    const tick = this.world.tick();
+    return this.alarms.some((a) => a.until > tick && Math.hypot(a.x - x, a.z - z) < ALARM_M);
   }
 
   /** Trouble at a point: no new everyday scene starts near it for a while, and its region's pace falls to fading. */
@@ -412,7 +425,8 @@ export class Cast {
   }
 
   /**
-   * Police come to trouble: a response planned at the place, waking in 20 to 40 seconds, unless one is already coming
+   * Police come to trouble: a response planned at the place, dispatched in 8 to 15 seconds (they drive in from out of
+   * sight, so they are at the scene some 30 seconds later on open ground), unless one is already coming
    * or came near lately. It goes after whoever started it when there is a survivor to go for and the server allows
    * fighting back; otherwise it secures the place. Returns the story, or null.
    */
@@ -457,7 +471,7 @@ export class Cast {
     // Its people are free again, but for those whose bodies are still walking off: the stage frees them once gone.
     for (const part of s.parts) {
       const c = this.people.byId.get(part.character);
-      if (c && c.story === s.id && (part.pid === undefined || part.gone || !this.stage)) delete c.story;
+      if (c && c.story === s.id && !(this.stage && this.stage.has(c.id))) delete c.story;
     }
   }
 
@@ -502,9 +516,10 @@ export class Cast {
   }
 
   private forget(s: Story): void {
+    // A person whose body is still walking off stays its story's until the stage lets it go.
     for (const part of s.parts) {
       const c = this.people.byId.get(part.character);
-      if (c && c.story === s.id) delete c.story;
+      if (c && c.story === s.id && !(this.stage && this.stage.has(c.id))) delete c.story;
     }
     this.stories.delete(s.id);
   }

@@ -84,7 +84,8 @@ export class Planner {
       const sc = this.cast.scenes.get(s.scene);
       return !!sc && (Object.keys(sc.choices ?? {}).length > 0 || lineKeys(sc).length > 0);
     };
-    const add = (s: Story | undefined) => s && open(s) && !picked.includes(s) && s.phase !== "done" && picked.length < STORIES_PER_CALL && picked.push(s);
+    // A story the server made for a reason of its own (police to trouble, `due`) is the server's to decide, not the model's.
+    const add = (s: Story | undefined) => s && open(s) && s.due === undefined && !picked.includes(s) && s.phase !== "done" && picked.length < STORIES_PER_CALL && picked.push(s);
     for (const id of this.cast.wakes) add(this.cast.stories.get(id));
     for (const s of this.cast.stories.values()) if (s.phase === "planned" && s.planned === -Infinity && near(s, 450)) add(s);
     for (const s of this.cast.stories.values()) if ((s.phase === "entering" || s.phase === "active") && near(s, 400) && s.planned === -Infinity) add(s);
