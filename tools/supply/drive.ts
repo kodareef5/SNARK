@@ -1,10 +1,10 @@
 // The drop book's admin page driven as an admin drives it (bun tools/supply/page.ts --drive): the real page in headless
-// Chrome against a development world, each act made with the page's own controls and judged by what the server then
-// holds. The page's logic has unit tests (client/core/drops) and its requests have integration tests; this is the
+// Chrome against a development world that keeps its book in a file, each act made with the page's own controls and
+// judged by what the server then holds. The page's logic has unit tests (client/core/drops) and its requests have integration tests; this is the
 // wiring between them, which is DOM code and has no other proof: a tick that reads the wrong value or a button bound
 // to the wrong act is found only by pressing it.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { toPixel, toWorld } from "../../client/core/drops/place.ts";
@@ -19,8 +19,11 @@ import { CHROME_FLAGS } from "../chrome.ts";
 /** The page's map is this many pixels a side at its first zoom (client/drops/world.ts side). */
 const MAP_SIDE = 860;
 
-/** Drives the page at `url`, served by `host`'s world. Returns what went wrong, a line each: none if all is well. */
-export async function drive(chrome: string, url: string, host: Host): Promise<string[]> {
+/**
+ * Drives the page at `url`, served by `host`'s world, whose drop book is the file `bookFile`. Returns what went wrong,
+ * a line each: none if all is well.
+ */
+export async function drive(chrome: string, url: string, host: Host, bookFile: string): Promise<string[]> {
   const faults: string[] = [];
   const store = host.supplyBook;
   const world = { sizeX: host.world.hf.sizeX, sizeZ: host.world.hf.sizeZ };
@@ -31,10 +34,11 @@ export async function drive(chrome: string, url: string, host: Host): Promise<st
     if (g !== w) faults.push(`${what}: ${g}, not ${w}`);
   };
 
-  // A book to drive: two circuits with sites of their own and one they share, in a world that doubles quality.
+  // A book to drive: two circuits with sites of their own and one they share, a site no circuit names (as a book read
+  // from a file may have), in a world that doubles quality.
   const first = structuredClone(store.book) as SupplyBook;
   const at = (fx: number, fz: number): { x: number; z: number } => ({ x: Math.round(world.sizeX * fx), z: Math.round(world.sizeZ * fz) });
-  first.sites = [{ key: "a/001", ...at(0.3, 0.3) }, { key: "a/002", ...at(0.4, 0.3) }, { key: "a/003", ...at(0.5, 0.4) }, { key: "b/001", ...at(0.6, 0.6) }];
+  first.sites = [{ key: "a/001", ...at(0.3, 0.3) }, { key: "a/002", ...at(0.4, 0.3) }, { key: "a/003", ...at(0.5, 0.4) }, { key: "b/001", ...at(0.6, 0.6) }, { key: "stray/001", ...at(0.7, 0.2) }];
   const circuit = (key: string, sites: string[]) => ({ key, name: key, on: true, sites, maxLive: 3, firstDelay: [120, 300] as [number, number], interval: [300, 600] as [number, number], tierWeights: { white: 1, blue: 1 } });
   first.circuits = [circuit("a", ["a/001", "a/002", "a/003"]), circuit("b", ["b/001", "a/003"])];
   const made = store.save(first, store.book.revision, "drive", "two circuits to drive the page with");
@@ -111,12 +115,22 @@ export async function drive(chrome: string, url: string, host: Host): Promise<st
     check("the book in force has circuit a off", [store.book.circuits[0]!.key, store.book.circuits[0]!.on, "on" in store.book.circuits[0]!], ["a", false, true]);
     check("and the page shows it so after reading the book again", await run(`${q(on)}.checked`), false);
 
-    // A circuit taken out: it goes with the sites it alone names, and the one it shares stays.
+    // A circuit taken out: it goes with the sites it alone names. The one it shares stays, and so does the one no
+    // circuit ever named, which was never its to take.
     console.log("a circuit taken out");
     await click(`button[data-do="del"][data-at='["circuits",0]']`);
     await save();
     check("the book in force has circuit b alone", store.book.circuits.map((c) => c.key), ["b"]);
-    check("and its sites alone", store.book.sites.map((s) => s.key).sort(), ["a/003", "b/001"]);
+    check("its own sites are gone, and no others", store.book.sites.map((s) => s.key).sort(), ["a/003", "b/001", "stray/001"]);
+
+    // The site no circuit names is told of on the map, and taken out by its own button.
+    console.log("a site no circuit names");
+    if (await tab("map", "canvas#map")) {
+      check("the map says there is one", await run(`${q("#main .warn")}?.textContent ?? ""`), "1 site no circuit names");
+      await click('[data-do="unloose"]');
+      await save();
+      check("the book in force has it no more", store.book.sites.map((s) => s.key).sort(), ["a/003", "b/001"]);
+    }
 
     // A site dragged on the map: where it is let go is where the saved book has it.
     console.log("a site dragged on the map");
@@ -176,6 +190,27 @@ export async function drive(chrome: string, url: string, host: Host): Promise<st
         check("blue arms has the book's slots for a plain drop and ARK's for a ringed one", [slots.length, slots.at(-1)!.name, slots.slice(0, -1).every((s) => s.ringed === 0)], [before + 1, "ARK's ringed crate", true]);
         check("and a circuit still calls every class of blue", cellsOf(compileBook(store.book, catalog), store.book.circuits[0]!).filter((c) => c.table.key.startsWith("blue/")).length, store.book.classes.length);
       }
+    }
+    // A revision brought back, and then a draft saved, while the book's history cannot be written: the book is saved
+    // and in force, and the page says what was not kept, by either button.
+    console.log("a revision brought back while its history cannot be written");
+    if (await tab("live", '[data-do="restore"][data-id="1"]')) {
+      const history = `${bookFile}.history`;
+      rmSync(history, { force: true });
+      mkdirSync(history);
+      const next = store.book.revision + 1;
+      await click('[data-do="restore"][data-id="1"]');
+      const warned = `document.getElementById("said").textContent.includes("but its history could not be written")`;
+      await until(`document.getElementById("said").textContent.startsWith("revision 1 is revision ${next} now") && ${warned}`, `"revision 1 is revision ${next} now, but its history could not be written" (the page says "${await saidText()}")`);
+      check("it is said as a warning", await run(`document.getElementById("said").className`), "warn");
+      check("and the book in force is revision 1's again", [store.book.revision, store.book.circuits.map((c) => c.key)], [next, ["a", "b"]]);
+      if (await tab("circuits", on)) {
+        await click(on);
+        await click('[data-do="save"]');
+        await until(`document.getElementById("said").textContent.startsWith("saved as revision ${next + 1}") && ${warned}`, `"saved as revision ${next + 1}, but its history could not be written" (the page says "${await saidText()}")`);
+        check("a draft saved then says the same", [store.book.revision, store.book.circuits[0]!.on], [next + 1, false]);
+      }
+      rmSync(history, { recursive: true, force: true });
     }
     check("the page raised no error", errors, []);
     ws.close();
