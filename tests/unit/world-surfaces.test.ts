@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FIELD_LAYER, FORMWORK_LAYER, WEATHER_BAYS, WEATHER_GROUND } from "../../client/core/texgen/layers.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, bayStamp, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_SEEN, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, bayStamp, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
@@ -352,7 +352,7 @@ test("a wall on a plane cell's edge, or a millimetre either side of a whole metr
   const at = (x: number, z: number, nx: number, nz: number): number[] => {
     albedo.fill(0.5);
     orm.set([1, 0.8, 0]);
-    weathered(albedo, orm, plaster, x, 6, z, nx, 0, nz, 6, 0.8, 10, 0.004, city, masks, 1, masks);
+    weathered(albedo, orm, plaster, x, 6, z, nx, 0, nz, 6, 0.8, 0.004, city, masks, 1, masks);
     return [...albedo];
   };
   const out = new Float64Array(6);
@@ -400,26 +400,29 @@ test("a bay's choices are bits of one hash: every stamp about as often as the ne
   }
 });
 
-test("a wall weathers by the layers it is given, each with a tap and a mix: the field's tone on every face near or far, the stamp's light more under open sky, its stain rust up the wall and growth at the foot, its runoff in the finish's own colour, its damp smoothing the foot; plaster let go to concrete; sun bleaching facing the sun and a green film facing away; formwork on concrete up close; nothing while they are being made", () => {
+test("a wall weathers by the layers it is given, each with a tap and a mix: the field's tone on every face however wide its pixel, the stamp's light more under open sky, its stain rust up the wall and growth at the foot, its runoff in the finish's own colour, its damp smoothing the foot; plaster let go to concrete; sun bleaching facing the sun and a green film facing away; formwork on concrete up close; nothing while they are being made", () => {
   const city = new Float32Array(12); citySurface(city, "core:miami");
   const id = (name: string): number => (SURFACE_NAMES as readonly string[]).indexOf(name);
   // The layers as nothing: half light (none), no cover.
   const bay = [0.5, 0, 0, 0], field = [0.5, 0, 0, 0], form = [0, 0, 0, 0];
   const sample: WorldSample = (role, layer, _u, _v, _spread, out) => out.set(role === 3 ? (layer < FIELD_LAYER ? bay : layer === FORMWORK_LAYER ? form : field) : [0.05, 0.05, 0.05, 1]);
-  const at = (finish: string, o: { ny?: number; nz?: number; over?: number; open?: number; dist?: number; ready?: number; footprint?: number } = {}): number[] => {
+  const at = (finish: string, o: { ny?: number; nz?: number; over?: number; open?: number; ready?: number; footprint?: number } = {}): number[] => {
     const albedo = Float64Array.of(0.5, 0.5, 0.5), orm = Float64Array.of(1, 0.8, 0);
     const ny = o.ny ?? 0, nz = o.nz ?? (ny ? 0 : 1);
-    weathered(albedo, orm, id(finish), 10.7, 3, 30.2, 0, ny, nz, o.over ?? 3, o.open ?? 1, o.dist ?? 10, o.footprint ?? 0.01, city, sample, o.ready ?? 1, sample);
+    weathered(albedo, orm, id(finish), 10.7, 3, 30.2, 0, ny, nz, o.over ?? 3, o.open ?? 1, o.footprint ?? 0.01, city, sample, o.ready ?? 1, sample);
     return [...albedo, orm[1]!];
   };
   const none = [0.5, 0.5, 0.5, 0.8];
   for (const finish of ["concrete", "plaster", "brick", "steel"]) expect(at(finish)).toEqual(none);
-  // The field's tone lightens a wall near or far and a roof, but nothing else reaches a roof or a far wall.
+  // The field's tone lightens a wall seen near or far and a roof, but nothing else reaches a roof or a wall whose pixel is twice WEATHER_SEEN.
   field[0] = 0.6;
-  for (const o of [{}, { ny: 1 }, { dist: WEATHER_GONE + 1 }]) expect(at("concrete", o)[0]!).toBeGreaterThan(0.5);
+  for (const o of [{}, { ny: 1 }, { footprint: 2 * WEATHER_SEEN }]) expect(at("concrete", o)[0]!).toBeGreaterThan(0.5);
   field[0] = 0.5;
   bay.splice(0, 4, 0.3, 1, 1, 1);
-  for (const o of [{ ny: 1 }, { dist: WEATHER_GONE + 1 }]) expect(at("concrete", o)).toEqual(none);
+  for (const o of [{ ny: 1 }, { footprint: 2 * WEATHER_SEEN }]) expect(at("concrete", o)).toEqual(none);
+  // It fades as the pixel grows past WEATHER_SEEN, as the finishes go to their means.
+  expect(at("concrete", { footprint: WEATHER_SEEN })).not.toEqual(none);
+  expect(Math.abs(at("concrete", { footprint: 1.5 * WEATHER_SEEN })[0]! - 0.5)).toBeLessThan(Math.abs(at("concrete")[0]! - 0.5));
   // The stamp's light darkens more under the open sky; its damp smooths the finish.
   bay.splice(0, 4, 0.3, 0, 0, 1);
   const open = at("concrete"), shut = at("concrete", { open: 0 });

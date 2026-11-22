@@ -96,7 +96,7 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
       // A static at `at`, unturned, is weathered as the flat program weathers it, in the open sky the probes stand in.
       if (plane.at && p.tier.finish === "full") {
         const over = overGround(hf, COARSE, p.frame, p.camY, point[0]! - p.camX, point[1]! - p.camY, point[2]! - p.camZ);
-        weathered(albedo, orm, finish, point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, over, 1, distance, footprint, p.surfaceCity, surfaces.sample, 1, weatherTwin(texgenSide(p.tier, p.tier.finishes)));
+        weathered(albedo, orm, finish, point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, over, 1, footprint, p.surfaceCity, surfaces.sample, 1, weatherTwin(texgenSide(p.tier, p.tier.finishes)));
       }
       const twice = 2 * normal.reduce((sum, c, k) => sum + c * v[k]!, 0);
       const reflected = normal.map((c, k) => twice * c - v[k]!);

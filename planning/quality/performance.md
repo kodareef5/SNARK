@@ -505,7 +505,7 @@ What in the scene reads time to change what is drawn, and whose clock it follows
 | Bodies' poses and particles (dust, bursts) | `details.ts`, characters | the server's ticks; a bench city has no creature and nothing struck |
 | What is made in a budget of the page's ms a frame: the near city's meshes, the far city's, the far shadow's sweep, the roofs' map | `citymake.ts`, `farcity.ts`, `farshadow.ts`, `roofmap.ts` | the page's: done before the run is still; any of it in the turn lands on another frame |
 | What the network brings: a level or a texture a turned view asks for | `assets/residency.ts` | the network's |
-| The world's surfaces coming up and the walls' weathering coming up | `world-surfaces.ts` WORLD_RISE, `texgen/plan.ts` WEATHER_RISE | frames already: the same at any rate |
+| The world's surfaces coming up and the walls' weathering coming up | `world-surfaces.ts` WORLD_RISE, `texgen/engine.ts` TEXGEN_RISE | frames already: the same at any rate |
 | Levels of detail and their margins, the crowns in the way counted again | `scene.ts`, `cover.ts` | none: by distance, size on screen and the eye's moving a metre |
 | A sight's focus, a building or vehicle ghost | `app.ts` gaze, `build.ts`, `vehicle-placement.ts` | the page's: a player's alone |
 

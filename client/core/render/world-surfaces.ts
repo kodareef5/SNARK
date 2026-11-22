@@ -415,9 +415,11 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   return maps.mro[3]! * f.height + f.lift;
 }
 
-/** Metres from the eye over which the walls' weathering fades out, well before the far city's boxes take over. */
-export const WEATHER_NEAR = 150;
-export const WEATHER_GONE = 250;
+/**
+ * A pixel's footprint, metres, from which the walls' weathering fades out, gone at twice it, as the finishes go to their
+ * means by theirs (WORLD_FAR): from about 115 to 230 m on 1,080 lines, and from 205 to 410 m on 1,924.
+ */
+export const WEATHER_SEEN = 0.15;
 /**
  * Metres of a box's rounded arris, about which its outer edges turn, wear and chip, and a hand's width over each floor
  * line, an inside corner, within which dirt darkens a wall.
@@ -519,17 +521,17 @@ function stamped(masks: WorldSample, bay: number, storey: number, key: number, u
 
 /**
  * Weathers finish `index`'s light and ORM as worldSurface left them, at world point (x, y, z) of a static whose face's
- * normal is (nx, ny, nz), `over` metres over the ground and with `open` of the sky's light there (skyopen.ts), `dist`
- * metres from the eye, a pixel `footprint` metres wide, from the layers the card makes (client/core/texgen/weather.ts),
+ * normal is (nx, ny, nz), `over` metres over the ground and with `open` of the sky's light there (skyopen.ts), a pixel
+ * `footprint` metres wide, from the layers the card makes (client/core/texgen/weather.ts),
  * read by `masks`, which have come `ready` of the way up (0 to 1). Each layer holds what is applied, so each is read with
  * a tap and mixed in, as much as the finish's SURFACE_WEATHERING says: on every static face the field's tone and dirt,
- * from one of its two tiles in each 16 m by 8 m of a wall (or of the ground's plan on a roof) by a hash; on a wall within
- * WEATHER_GONE of the eye, a patina bleaching it where it faces the sun or a green film where it faces away, the
+ * from one of its two tiles in each 16 m by 8 m of a wall (or of the ground's plan on a roof) by a hash; on a wall seen
+ * finer than WEATHER_SEEN a pixel, a patina bleaching it where it faces the sun or a green film where it faces away, the
  * plaster's losses to the concrete under it, a stamp in each bay of each storey by its key (wallFrame), and on concrete
  * near the eye the formwork's joints.
  */
 export function weathered(albedo: Out, orm: Out, index: number, x: number, y: number, z: number, nx: number, ny: number, nz: number, over: number, open: number,
-  dist: number, footprint: number, city: Numbers, sample: WorldSample, ready: number, masks: WorldSample): void {
+  footprint: number, city: Numbers, sample: WorldSample, ready: number, masks: WorldSample): void {
   const w = weatherings[index]!;
   wallFrame(x, z, nx, ny, nz, frame);
   const along = frame[0]!, share = frame[3]!, side = frame[4]!, wall = frame[5] === 1, key = share < 1 ? frame[1]! : frame[2]!;
@@ -538,7 +540,7 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   masks(3, FIELD_LAYER, fa / WEATHER_FIELD - cx, (tile + fo / WEATHER_FIELD_UP - cy) / 2, Math.log2(Math.max(footprint / WEATHER_FIELD, 1e-9)), field);
   const tone = 1 + (2 * field[0]! - 1) * w.value * ready;
   for (let c = 0; c < 3; c++) albedo[c]! *= tone;
-  const fade = (1 - smooth(WEATHER_NEAR, WEATHER_GONE, dist)) * ready;
+  const fade = (1 - smooth(WEATHER_SEEN, 2 * WEATHER_SEEN, footprint)) * ready;
   if (!wall || fade <= 0) return;
   const sunward = nx * SUN_FACE[0] + nz * SUN_FACE[1], climate = clamp(city[6]! * 2.5 + 0.2);
   const bleach = sunward > 0 ? field[1]! * w.bleach * smooth(0, 0.85, sunward) * smooth(0.35, 0.9, open) * fade : 0;
@@ -1175,7 +1177,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   float tile = float(weatherHash(int(cell.x), int(cell.y), wall ? side : 4) & 1u);
   vec4 fm = textureGrad(uTexgen, vec3(f.x / ${fl(WEATHER_FIELD)} - cell.x, (tile + f.y / ${fl(WEATHER_FIELD_UP)} - cell.y) * 0.5, ${fl(FIELD_LAYER)}), vec2(footprint / ${fl(WEATHER_FIELD)}, 0.0), vec2(0.0, footprint / ${fl(WEATHER_FIELD)}));
   albedo *= 1.0 + (2.0 * fm.r - 1.0) * WV[id] * uTexgenReady;
-  float fade = (1.0 - smoothstep(${fl(WEATHER_NEAR)}, ${fl(WEATHER_GONE)}, length(rel))) * uTexgenReady;
+  float fade = (1.0 - smoothstep(${fl(WEATHER_SEEN)}, ${fl(2 * WEATHER_SEEN)}, footprint)) * uTexgenReady;
   if (!wall || fade <= 0.0) return;
   vec4 x = WX[id], y = WY[id];
   float sunward = dot(face.xz, vec2(${SUN_FACE.map(fl).join(", ")})), climate = clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0);
