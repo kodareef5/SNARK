@@ -204,13 +204,16 @@ export interface BookFault {
 }
 
 /**
- * Characters of a tier's or a class's name. Every session is told these names with a drop (shared/sim/supply.ts), in
- * SUPPLY_NAME_BYTES at the most, which twenty-four characters of any script fit: a name the book takes is one the
- * wire carries whole.
+ * Characters of a tier's or a class's name, counted as a reader counts them in any script: by code point, so that a
+ * character outside the first plane (many Chinese ones, an emoji) is one and not the two units a string holds it in.
+ * A mark that joins the letter before it is still counted for itself. Every session is told these names with a drop
+ * (shared/sim/supply.ts) in SUPPLY_NAME_BYTES at the most, which twenty-four characters always fit, a character
+ * being four bytes at the most: a name the book takes is one the wire carries whole. Half of a pair is no character,
+ * and a name with one is refused.
  */
 export const NAME_CHARS = 24;
 const NAME_FAULT = `a name of 1 to ${NAME_CHARS} characters`;
-const named = (v: unknown): v is string => typeof v === "string" && v.length > 0 && v.length <= NAME_CHARS && fitBytes(v, SUPPLY_NAME_BYTES) === v;
+const named = (v: unknown): v is string => typeof v === "string" && v.length > 0 && !/\p{Cs}/u.test(v) && [...v].length <= NAME_CHARS && fitBytes(v, SUPPLY_NAME_BYTES) === v;
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 

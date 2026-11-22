@@ -138,30 +138,41 @@ test("the list of live drops goes over the wire whole and comes back the same, a
 
 test("whatever a server may be told to send is a message a client reads: the most rows, each under its own tier and class, with names at their widest", () => {
   // A message carries more rows than may be live, for the drops that are leaving while others are called in their place.
-  expect([SUPPLY_ROWS > SUPPLY_MOST, SUPPLY_NAME_BYTES, NAME_CHARS * 3]).toEqual([true, 72, 72]);
-  // Twenty-four characters of each width a character has in UTF-8: all fit, the widest exactly.
-  const widths = ["a".repeat(NAME_CHARS), "é".repeat(NAME_CHARS), "補".repeat(NAME_CHARS), "🎁".repeat(NAME_CHARS / 2)];
-  expect(widths.map((n) => [n.length, new TextEncoder().encode(n).length])).toEqual([[24, 24], [24, 48], [24, 72], [24, 48]]);
+  expect([SUPPLY_ROWS > SUPPLY_MOST, SUPPLY_NAME_BYTES, NAME_CHARS * 4]).toEqual([true, 96, 96]);
+  // Twenty-four characters of each width a character has in UTF-8: all fit, the widest exactly. The widest are
+  // outside the first plane (a Chinese character, an emoji), each of which a string holds as two units.
+  const widths = ["a".repeat(NAME_CHARS), "é".repeat(NAME_CHARS), "補".repeat(NAME_CHARS), "𠮷".repeat(NAME_CHARS)];
+  expect(widths.map((n) => [[...n].length, n.length, new TextEncoder().encode(n).length])).toEqual([[24, 24, 24], [24, 24, 48], [24, 24, 72], [24, 48, 96]]);
   const most: SupplyList = {
-    tiers: Array.from({ length: SUPPLY_ROWS }, (_, i) => ({ name: widths[i % 4]!.slice(0, 22) + String(i).padStart(2, "0"), rgb: i * 4099, level: i, count: 1 + (i % 7) })),
-    classes: Array.from({ length: SUPPLY_ROWS }, (_, i) => ({ name: "補".repeat(22) + String(i).padStart(2, "0"), mark: i % 7 })),
+    tiers: Array.from({ length: SUPPLY_ROWS }, (_, i) => ({ name: [...widths[i % 4]!].slice(0, 22).join("") + String(i).padStart(2, "0"), rgb: i * 4099, level: i, count: 1 + (i % 7) })),
+    classes: Array.from({ length: SUPPLY_ROWS }, (_, i) => ({ name: "🎁".repeat(22) + String(i).padStart(2, "0"), mark: i % 7 })),
     rows: Array.from({ length: SUPPLY_ROWS }, (_, i) => ({ ...row({ id: i + 1, tier: i, cls: SUPPLY_ROWS - 1 - i, landed: true }), left: i % 2 === 0 ? 0 : row().land + 40 + i })),
   };
-  // The server's writer is sixteen thousand bytes at the least (server/game.ts): the largest list is well inside it.
-  const w = new BitWriter(16384);
-  writeSupply(w, most);
-  expect([w.overflow, w.bytes().length < 12288, readSupply(new BitReader(w.bytes().slice()))]).toEqual([false, true, most]);
+  // The server's writer is sixteen thousand bytes at the least (server/game.ts): the largest list there can be, every
+  // name of both legends at its widest, is inside it.
+  const widest: SupplyList = { ...most, tiers: most.tiers.map((t, i) => ({ ...t, name: "𠮷".repeat(22) + String(i).padStart(2, "0") })) };
+  for (const list of [most, widest]) {
+    const w = new BitWriter(16384);
+    writeSupply(w, list);
+    expect([w.overflow, w.bytes().length < 15360, readSupply(new BitReader(w.bytes().slice()))]).toEqual([false, true, list]);
+  }
   // What is past the limits is not written: a name is cut at a whole character, and a list at the rows a message carries.
   const over = new BitWriter(16384);
-  writeSupply(over, { tiers: [{ name: "補".repeat(30), rgb: 1, level: 1, count: 1 }], classes: [{ name: "🎁".repeat(20) + "x", mark: 0 }], rows: Array.from({ length: SUPPLY_ROWS + 5 }, (_, i) => row({ id: i + 1 })) });
+  writeSupply(over, { tiers: [{ name: "補".repeat(40), rgb: 1, level: 1, count: 1 }], classes: [{ name: "🎁".repeat(30) + "x", mark: 0 }], rows: Array.from({ length: SUPPLY_ROWS + 5 }, (_, i) => row({ id: i + 1 })) });
   const back = readSupply(new BitReader(over.bytes().slice()))!;
-  expect([back.tiers[0]!.name, back.classes[0]!.name, back.rows.length, back.rows.at(-1)!.id]).toEqual(["補".repeat(24), "🎁".repeat(18), SUPPLY_ROWS, SUPPLY_ROWS]);
+  expect([back.tiers[0]!.name, back.classes[0]!.name, back.rows.length, back.rows.at(-1)!.id]).toEqual(["補".repeat(32), "🎁".repeat(24), SUPPLY_ROWS, SUPPLY_ROWS]);
   // The book takes no name the wire would cut, and says so at the name.
   const b = starterBook();
-  b.tiers[0]!.name = "補".repeat(24);
-  b.classes[0]!.name = "🎁".repeat(12);
-  expect(bookFaults(b).filter((f) => !f.warn)).toEqual([]);
-  b.tiers[0]!.name = "補".repeat(25);
-  b.classes[0]!.name = "";
-  expect(bookFaults(b).filter((f) => !f.warn)).toEqual([{ path: "tiers.0.name", message: "a name of 1 to 24 characters" }, { path: "classes.0.name", message: "a name of 1 to 24 characters" }]);
+  // Twenty-four characters are twenty-four whatever their script: 𠮷 and an emoji are one each, though a string
+  // holds each as two units and the wire in four bytes.
+  const faultsOf = (tier: string, cls: string): string[] => {
+    [b.tiers[0]!.name, b.classes[0]!.name] = [tier, cls];
+    return bookFaults(b).filter((f) => !f.warn).map((f) => `${f.path}: ${f.message}`);
+  };
+  expect([faultsOf("補".repeat(24), "🎁".repeat(24)), faultsOf("𠮷".repeat(24), "é".repeat(24))]).toEqual([[], []]);
+  const fault = (path: string): string => `${path}: a name of 1 to 24 characters`;
+  expect(faultsOf("補".repeat(25), "")).toEqual([fault("tiers.0.name"), fault("classes.0.name")]);
+  expect(faultsOf("𠮷".repeat(25), "a".repeat(25))).toEqual([fault("tiers.0.name"), fault("classes.0.name")]);
+  // Half of a pair is no character: a name cut through one is refused, where it would have gone out as bytes no reader makes a letter of.
+  expect(faultsOf("𠮷".slice(0, 1), `ab${"🎁".slice(1)}`)).toEqual([fault("tiers.0.name"), fault("classes.0.name")]);
 });

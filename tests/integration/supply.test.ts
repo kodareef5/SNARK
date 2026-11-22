@@ -344,8 +344,9 @@ test("thirty-two drops live and others still going: every session holds them all
 
 test("a tier and a class named in any script reach every session, and the capsule opens under its name: twenty-four characters at their widest", () => {
   const { h, ada, pilot } = world();
-  // Twenty-four characters of three bytes each, and twelve of four: the most a name of the book's can take on the wire.
-  const [wide, pairs] = ["一二三四五六七八九十一二三四五六七八九十一二三四", "🎁".repeat(12)];
+  // Twenty-four characters of four bytes each, a Chinese character outside the first plane and an emoji: the most a
+  // name of the book's can take on the wire, and the capsule's name with both in it the most an open box's can.
+  const [wide, pairs] = ["𠮷".repeat(24), "🎁".repeat(24)];
   edit(h, (b) => {
     b.tiers[0]!.name = wide;
     b.classes.find((c) => c.key === "arms")!.name = pairs;
@@ -359,7 +360,12 @@ test("a tier and a class named in any script reach every session, and the capsul
   h.say(ada, "addxp 200000");
   h.run(300);
   tapUse(h, pilot);
-  expect([d.opened, ada.open?.takeOnly, ada.open?.name.startsWith(`Ringed ${wide}`)]).toEqual([true, true, true]);
+  expect([d.opened, ada.open?.takeOnly, ada.open?.name]).toEqual([true, true, `Ringed ${wide} ${pairs} drop`]);
+  // The name that began this, as a review met it: twenty-two characters of three bytes.
+  edit(h, (b) => void (b.tiers[1]!.name = "一二三四五六七八九十一二三四五六七八九十一二"));
+  call(h, 200, 200, "green", "shelter");
+  h.run(300);
+  expect([ada.supply.rows.length, ada.supply.tiers[1]?.name, ada.supply]).toEqual([2, "一二三四五六七八九十一二三四五六七八九十一二", told(h)]);
   h.host.shutdown();
 });
 

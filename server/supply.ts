@@ -274,8 +274,10 @@ export class Supply {
       z,
       tierKey: tierDoc.key,
       clsKey: clsDoc.key,
-      tierName: tierDoc.name.slice(0, 40),
-      clsName: clsDoc.name.slice(0, 40),
+      // The book's names are within the wire's limit already (shared/supply/book.ts named): this is that limit again,
+      // not another, for a book that was not checked.
+      tierName: fitBytes(tierDoc.name, SUPPLY_NAME_BYTES),
+      clsName: fitBytes(clsDoc.name, SUPPLY_NAME_BYTES),
       rgb: tierDoc.rgb,
       level: tierDoc.level,
       count: t + 1,

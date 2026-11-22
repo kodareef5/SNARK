@@ -23,9 +23,10 @@ const COUNT_BITS = 6;
 export const SUPPLY_ROWS = (1 << COUNT_BITS) - 1;
 /**
  * Bytes of a tier's or a class's name on the wire: the twenty-four characters a book allows (shared/supply/book.ts
- * NAME_CHARS), at the three bytes the widest of them takes. A book's check, the writer and the reader all go by it.
+ * NAME_CHARS), at the four bytes the widest character takes in UTF-8. A book's check, the writer and the reader all
+ * go by it.
  */
-export const SUPPLY_NAME_BYTES = 72;
+export const SUPPLY_NAME_BYTES = 96;
 /** What a drop's capsule is called: on its record, in the prompt at it and over its open bag. */
 export const supplyName = (tier: string, cls: string, ringed: boolean): string => `${ringed ? "Ringed " : ""}${tier} ${cls} drop`;
 /** A drop sent by no obelisk: it comes straight down. */
