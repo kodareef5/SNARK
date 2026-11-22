@@ -36,10 +36,12 @@ import { nodeKey, streetGraph, type Marked, type Segment } from "./street-graph.
 import { cornersOf, filletIndex, returnIndex, type Corner } from "./corners.ts";
 import { CURB_RETURN, isCurbReturn } from "../../content/curbs.ts";
 import { StreetPoint, streetAt } from "../../shared/world/streets.ts";
+import { HIT_PREFIX } from "../../shared/world/bends.ts";
 
 /**
  * How far behind a kerb's face, by the streets' lines, a piece's foot stands at least: past the kerb's top, so none stands
- * on the kerb or in its gutter. A piece set in the road on purpose (`road` under none) is left to the lanes' own rule.
+ * on the kerb or in its gutter; one set nearer is moved back. A piece set in the road on purpose (`road` under none) is
+ * left to the lanes' own rule.
  */
 const KERB_CLEAR = 0.45;
 
@@ -154,8 +156,13 @@ const footprint = (b: Box): [number, number][] => {
 /** Ground no piece of these stands on: water, a building's floor and walls, heaps, containers and decks. */
 const BARRED = new Set<number>([S.CHANNEL, S.DEEP, S.FLAT, S.SHALLOW, S.POOL, S.HEAP, S.SPILL, S.WALL, S.FLOOR, S.DECK, S.CONTAINER]);
 
-/** A walk's slab, with or without its gutter (not its ramps, drains or boxes), or a bent kerb's collision box (bent-walks.ts). */
-const isWalk = (p: StaticPiece): boolean => /^core:(zruin_zwalk8g?_|zzzzzbendhit_box_)/.test(p.kind);
+/**
+ * A walk's slab, with or without its gutter (not its ramps, drains or boxes), or a bent kerb's collision box or its flush
+ * kerb's ramp, whose walk behind its apron is at the walk's height (bent-walks.ts).
+ */
+const isWalk = (p: StaticPiece): boolean => /^core:(zruin_zwalk8g?_|zzzzzbendhit_(box|ramp)_)/.test(p.kind);
+/** What a piece stands on rather than keeps clear of: a walk, a curb return, or a bent kerb's collision, the slope at a walk's end among them. */
+const underfoot = (p: StaticPiece): boolean => isWalk(p) || isCurbReturn(p.kind) || p.kind.startsWith(HIT_PREFIX);
 
 /** A way kept clear besides the site's reserved routes: its points and its width. */
 export type Reserved = Site["growthRoutes"][number];
@@ -192,7 +199,7 @@ export function routeCheck(reserved: readonly Reserved[], margin: number): (b: B
   };
 }
 
-export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules: Furniture, maxChunk: number, uses: ReadonlyMap<number, string> = new Map(), reserved: readonly Reserved[] = [], rounded: readonly Corner[] = []): { pieces: StaticPiece[]; summary: FurnitureSummary } {
+export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules: Furniture, maxChunk: number, uses: ReadonlyMap<number, string> = new Map(), reserved: readonly Reserved[] = [], rounded: readonly Corner[] = [], ramped: readonly Corner[] = rounded): { pieces: StaticPiece[]; summary: FurnitureSummary } {
   const { ground } = site; const { nx, nz, x0, z0, x1, z1 } = ground.grid; const chunksX = ground.grid.sizeX / 64;
   const sample = (x: number, z: number): number => Math.max(0, Math.min(nz - 1, Math.round((z1 - z) / 2))) * nx + Math.max(0, Math.min(nx - 1, Math.round((x1 - x) / 2)));
   const { clear } = rules; const seed = rules.seed;
@@ -225,6 +232,10 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
   }
   // The curb returns at the corners (corners.ts), which a piece stands on as on a walk, and the rounded corners' road.
   const returnAt = returnIndex(placed); const fillet = filletIndex(rounded);
+  // Where bent kerbs round the corners no return is set down, but a piece keeps off where its ramp would fall, as a post
+  // keeps off a corner's curb ramp: by the returns the walk kit would set down (`ramped`, rampedCorners). Without it a
+  // stop sign stood at the corner itself, where the street's name sign goes.
+  const rampAt = placed.some((p) => isCurbReturn(p.kind)) ? returnAt : returnIndex(ramped.flatMap((c) => (c.piece ? [{ ...c.piece, y: 0 }] : [])));
   /** The top of a walk at (x, z), or -Infinity where none is. */
   const walkTop = (x: number, z: number): number => {
     let top = returnAt(x, z)?.top ?? -Infinity;
@@ -263,10 +274,25 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
       foot = worldBox(shape.foot, x, 0, z, yaw); corners = footprint(foot);
       if (corners.some(([px, pz]) => fillet(px, pz))) return refuse(rule, "lane");
     }
-    if (corners.some(([px, pz]) => (returnAt(px, pz)?.drop ?? 0) > 0.03)) return refuse(rule, "crossing");
+    if (corners.some(([px, pz]) => (rampAt(px, pz)?.drop ?? 0) > 0.03)) return refuse(rule, "crossing");
     if (corners.some(([px, pz]) => Math.min(px - x0, pz - z0, x1 - px, z1 - pz) < clear.edge)) return refuse(rule, "edge");
     if (corners.some(([px, pz]) => inLane(px, pz, road))) return refuse(rule, "lane");
-    if (road >= 0 && site.ground.streets && corners.some(([px, pz]) => streetAt(site.ground.streets!, px - x0, pz - z0, kerbPoint) && kerbPoint.d > -1 && kerbPoint.d < KERB_CLEAR)) return refuse(rule, "kerb");
+    if (road >= 0 && site.ground.streets) {
+      // A foot nearer a kerb's face than KERB_CLEAR, by the streets' lines, is moved back from it onto the walk, where the
+      // graph's edge it was set from lies off the kerb the street is drawn with.
+      const held = site.ground.streets, kerbNear = (px: number, pz: number): boolean => streetAt(held, px - x0, pz - z0, kerbPoint) && kerbPoint.d > -1 && kerbPoint.d < KERB_CLEAR;
+      let least = KERB_CLEAR, at = corners[0]!, nx = 0, nz = 0;
+      for (const c of corners) if (kerbNear(c[0], c[1]) && kerbPoint.d < least) {
+        least = kerbPoint.d; at = c; nx = -kerbPoint.alongZ; nz = kerbPoint.alongX;
+      }
+      if (least < KERB_CLEAR) {
+        // Away from the road: the way the distance to the kerb's face grows.
+        if (streetAt(held, at[0] + nx * 0.1 - x0, at[1] + nz * 0.1 - z0, kerbPoint) && kerbPoint.d < least) { nx = -nx; nz = -nz; }
+        x += nx * (KERB_CLEAR + 0.02 - least); z += nz * (KERB_CLEAR + 0.02 - least);
+        foot = worldBox(shape.foot, x, 0, z, yaw); corners = footprint(foot);
+        if (corners.some(([px, pz]) => kerbNear(px, pz))) return refuse(rule, "kerb");
+      }
+    }
     if (corners.some(([px, pz]) => graph.onCrossing(px, pz, clear.crossing))) return refuse(rule, "crossing");
     // On a walk wherever it touches one, on the lowest ground under it elsewhere.
     const tops = corners.map(([px, pz]) => walkTop(px, pz)); const walk = Math.max(...tops);
@@ -275,7 +301,7 @@ export function placeFurniture(site: Site, placed: readonly StaticPiece[], rules
     if (Math.max(...heights) - Math.min(...heights) > clear.rise) return refuse(rule, "slope");
     const y = walk > -Infinity ? Math.max(walk, Math.min(...heights)) : Math.min(...heights);
     const boxes = shape.parts.map((q) => worldBox(q, x, y, z, yaw));
-    if (boxes.some((b) => obstacles.hits(b, clear.piece, (p) => isWalk(p) || isCurbReturn(p.kind)))) return refuse(rule, "piece");
+    if (boxes.some((b) => obstacles.hits(b, clear.piece, underfoot))) return refuse(rule, "piece");
     if (onRoute({ ...foot, y: y + foot.size[1] / 2 })) return refuse(rule, "route");
     const near = new Set<Box>();
     for (const b of boxes) for (let bz = Math.floor((b.z - 12) / 16); bz <= Math.floor((b.z + 12) / 16); bz++) for (let bx = Math.floor((b.x - 12) / 16); bx <= Math.floor((b.x + 12) / 16); bx++) for (const o of mine.get(binKey(bx, bz)) ?? []) near.add(o);
@@ -989,14 +1015,45 @@ function readUses(source: string): Map<number, string> {
   return new Map(facts.rows.map((row) => [Number(row[id]), String(row[use] ?? "")]));
 }
 
+/** Ground the walk kit sets a curb return down on (ruins.ts makeWalks), besides painted road within a metre of its face. */
+const RETURN_GROUND = new Set<number>([S.OPEN, S.GREEN, S.CANOPY, S.YARD, S.DESERT, S.SIDEWALK]);
+
+/**
+ * The corners whose planned return the walk kit would set down by its ground (ruins.ts setReturn): its arc on open
+ * ground or on painted road within a metre of its face, level within the walks' `flat` of the height halfway between
+ * the highest and lowest ground just behind its face. Not its pieces or the chunk's budget, which the kit's walks met too.
+ */
+export function rampedCorners(site: Site, rounded: readonly Corner[], walks: { width: number; flat: number }): Corner[] {
+  const { nx, x1, z1 } = site.ground.grid;
+  const at = (x: number, z: number): number => Math.round((z1 - z) / 2) * nx + Math.round((x1 - x) / 2);
+  const road = new Set<number>([S.STREET, S.HIGHWAY, S.CROSSWALK]);
+  return rounded.filter((c) => {
+    if (!c.piece) return false;
+    const turn = c.ax * c.bz - c.az * c.bx > 0 ? 1 : -1;
+    const arc = (phi: number, back: number): [number, number] => {
+      const co = Math.cos(phi), si = Math.sin(phi), r = c.radius - back;
+      return [c.cx + r * (c.ax * co - turn * c.az * si), c.cz + r * (c.az * co + turn * c.ax * si)];
+    };
+    const face = Array.from({ length: 7 }, (_, k) => site.groundAt(...arc((Math.PI / 2) * k / 6, 0.3)));
+    const y = (Math.min(...face) + Math.max(...face)) / 2;
+    if (y < 0.1) return false;
+    for (let k = 0; k <= 6; k++) for (const back of [0.3, walks.width]) {
+      const [x, z] = arc((Math.PI / 2) * k / 6, back), i = at(x, z), surface = site.ground.surface[i]!;
+      if (site.ground.water?.[i] || !(RETURN_GROUND.has(surface) || (back < 1 && road.has(surface)))) return false;
+      if (Math.abs(site.groundAt(x, z) - y) > walks.flat) return false;
+    }
+    return true;
+  });
+}
+
 export function makeFurniture(site: Site, placed: readonly StaticPiece[]): StaticPiece[] {
   if (site.world.heaps !== false) return [];
   const v = vocabulary(site.source) as ReturnType<typeof vocabulary> & { furniture?: Furniture };
   if (!v.furniture) return [];
   // Room is left in each chunk for the obelisks and the harbours' wrecks, which come after.
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
-  const returns = v.street.walks?.returns;
-  const { pieces, summary } = placeFurniture(site, placed, v.furniture, v.budgets.maxChunk - 8, readUses(site.source), bridgeWays(folder), returns ? cornersOf(site, returns) : []);
+  const walks = v.street.walks, rounded = walks?.returns ? cornersOf(site, walks.returns) : [];
+  const { pieces, summary } = placeFurniture(site, placed, v.furniture, v.budgets.maxChunk - 8, readUses(site.source), bridgeWays(folder), rounded, walks?.bent ? rampedCorners(site, rounded, walks) : rounded);
   writeFileSync(join(folder, "furniture.json"), `${JSON.stringify({ pieces: pieces.length, ...summary }, null, 2)}\n`);
   console.log(`furniture: ${pieces.length} pieces, ${Object.entries(summary.byRule).map(([r, n]) => `${n} ${r}`).join(", ")}`);
   return pieces;
