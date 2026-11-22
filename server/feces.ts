@@ -21,7 +21,6 @@ import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
-export const DEADLINE_FECES = 11;
 /** Places in the entity store that feces may not take. The same as a dropped bag (server/death.ts). */
 const STORE_RESERVE = 256;
 
@@ -51,16 +50,19 @@ export class Feces {
   private readonly heap: number;
   private readonly st = new AnimState();
   private readonly vent = [0, 0, 0];
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(ctx: FecesContext, seed: number) {
     this.ctx = ctx;
+    this.deadline = ctx.deadlines.kind("feces", (a, stamp) => this.due(a, stamp));
     this.rng = new Rng(seed);
     const reg = ctx.world.reg;
     this.goes = Uint8Array.from(reg.defs, (d, i) => (d?.type === "species" && (reg.feces[i] !== 0 || reg.eggChance[i]! > 0) ? 1 : 0));
     this.heap = reg.index.get("core:feces") ?? 0;
   }
 
-  /** A DEADLINE_FECES entry came due. A stale one, or one for a creature that has since gone to sleep, does nothing. */
+  /** A deadline of its kind came due. A stale one, or one for a creature that has since gone to sleep, does nothing. */
   due(pid: number, stamp: number): void {
     if (this.next.get(pid) !== stamp) return;
     this.next.delete(pid);
@@ -161,6 +163,6 @@ export class Feces {
   private time(pid: number): void {
     const at = this.ctx.world.tick + Math.max(1, Math.round(fecesWait(this.rng.float()) * TICK_RATE));
     this.next.set(pid, at);
-    this.ctx.deadlines.push(at, DEADLINE_FECES, pid, at);
+    this.ctx.deadlines.push(at, this.deadline, pid, at);
   }
 }

@@ -9,7 +9,6 @@ import type { EntityRecord, Records } from "./records.ts";
 import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
 
-export const DEADLINE_BUFF = 5;
 /** Instances one record may carry. One more drops the oldest. */
 export const MAX_BUFFS = 16;
 
@@ -36,12 +35,15 @@ export class Buffs {
   private readonly deadlines: DeadlineHeap;
   /** Pids in survival.gods because of a buff, not put there directly. */
   private readonly immune = new Set<number>();
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(world: ServerWorld, records: Records, survival: Survival, deadlines: DeadlineHeap) {
     this.world = world;
     this.records = records;
     this.survival = survival;
     this.deadlines = deadlines;
+    this.deadline = deadlines.kind("buff", (a, stamp) => this.due(a, stamp));
   }
 
   private def(buff: number): BuffDef | null {
@@ -69,7 +71,7 @@ export class Buffs {
       if (on.length >= MAX_BUFFS) on.shift();
       on.push({ buff, until, by, torpor, health });
     }
-    if (until > 0) this.deadlines.push(until, DEADLINE_BUFF, rec.pid, until);
+    if (until > 0) this.deadlines.push(until, this.deadline, rec.pid, until);
     this.apply(rec);
     return true;
   }
@@ -104,11 +106,11 @@ export class Buffs {
     // A tame kept in a soul ball has its buffs as they stood, and none ends while it is kept (server/balls.ts).
     if (rec.stored !== 0) return;
     if (rec.buffs.length === 0 && !unrated) return;
-    for (const b of rec.buffs) if (b.until > 0) this.deadlines.push(b.until, DEADLINE_BUFF, rec.pid, b.until);
+    for (const b of rec.buffs) if (b.until > 0) this.deadlines.push(b.until, this.deadline, rec.pid, b.until);
     this.apply(rec);
   }
 
-  /** A DEADLINE_BUFF entry came due. */
+  /** A deadline of its kind came due. */
   due(pid: number, _stamp: number): void {
     const rec = this.records.byPid.get(pid);
     if (!rec || rec.stored !== 0) return;

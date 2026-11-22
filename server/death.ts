@@ -22,7 +22,6 @@ import type { ServerWorld } from "./world.ts";
 import type { Rules } from "./settings/rules.ts";
 import { event, type Bus } from "./events/bus.ts";
 
-export const DEADLINE_DESPAWN = 2;
 /** Journal op: survivor pid, cause, cache pid (0 if it carried nothing). */
 export const OP_DEATH = 3;
 export const CACHE_TICKS = 15 * 60 * TICK_RATE;
@@ -94,9 +93,12 @@ export class Death {
   /** Per lying bag's pid, the inventory, and its version, that its gear was last set from (show). */
   private readonly shown = new Map<number, { inv: Inventory | null; version: number }>();
   private readonly gear = new Uint16Array(GEAR_COUNT);
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(ctx: DeathContext) {
     this.ctx = ctx;
+    this.deadline = ctx.deadlines.kind("despawn", (a, stamp) => this.despawn(a, stamp));
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
     this.cache = reg.index.get("core:cache")!;
@@ -160,7 +162,7 @@ export class Death {
   /** Starts a lying container's time again, so that what was just put in it lies as long as anything else. */
   private renew(rec: EntityRecord): void {
     rec.expiresAt = this.ctx.world.tick + this.lifetime(rec.kind);
-    this.ctx.deadlines.push(rec.expiresAt, DEADLINE_DESPAWN, rec.pid, rec.expiresAt);
+    this.ctx.deadlines.push(rec.expiresAt, this.deadline, rec.pid, rec.expiresAt);
     this.ctx.records.dirty.add(rec.pid);
   }
 
@@ -477,7 +479,7 @@ export class Death {
       const is = bag ? bagIs : cacheIs;
       if (was === is || !(was > 0)) continue;
       rec.expiresAt = tick + leftAtPeriod(rec.expiresAt - tick, was, is);
-      deadlines.push(rec.expiresAt, DEADLINE_DESPAWN, rec.pid, rec.expiresAt);
+      deadlines.push(rec.expiresAt, this.deadline, rec.pid, rec.expiresAt);
       records.dirty.add(rec.pid);
     }
     this.corpses?.retime(cacheWas, cacheIs);
@@ -492,7 +494,7 @@ export class Death {
     }
     const ents = world.ents;
     // Its time runs whether or not it gets a body, or a record made with the store full would never go.
-    if (cache.expiresAt > 0) deadlines.push(cache.expiresAt, DEADLINE_DESPAWN, cache.pid, cache.expiresAt);
+    if (cache.expiresAt > 0) deadlines.push(cache.expiresAt, this.deadline, cache.pid, cache.expiresAt);
     let e = ents.create(cache.kind, cache.x, cache.y, cache.z, F_PROP);
     // The store is full. What the dead leave matters more than a bag someone dropped.
     if (e < 0 && this.evict()) e = ents.create(cache.kind, cache.x, cache.y, cache.z, F_PROP);
