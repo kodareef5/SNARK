@@ -20,7 +20,6 @@ import type { Lists } from "./settings/lists.ts";
 import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
 
-export const DEADLINE_BREED = 8;
 /** In ticks. Pairs are sought and rechecked this often. */
 export const PAIR_TICKS = TICK_RATE;
 /** In EVENT_TAMED, marks a creature claimed as young, not tamed. */
@@ -81,9 +80,12 @@ export class Breeding {
   private readonly females: number[] = [];
   private readonly males: number[] = [];
   private readonly seen = new Set<number>();
+  /** Its kind in the deadline heap. */
+  readonly deadline: number;
 
   constructor(ctx: BreedingContext, seed: number) {
     this.ctx = ctx;
+    this.deadline = ctx.deadlines.kind("breed", (a, stamp) => this.due(a, stamp));
     this.rng = new Rng(seed);
   }
 
@@ -97,7 +99,7 @@ export class Breeding {
         if (e !== undefined) world.ents.setYoung(e, rec.egg.span, rec.egg.hatchAt);
         const at = rec.egg.hatchAt > world.tick ? rec.egg.hatchAt : world.tick + 1;
         rec.egg.hatchAt = at;
-        deadlines.push(at, DEADLINE_BREED, rec.pid, at);
+        deadlines.push(at, this.deadline, rec.pid, at);
       } else if (rec.grown !== 0 && rec.stored === 0) this.next(rec);
     }
   }
@@ -188,7 +190,7 @@ export class Breeding {
       const span = Math.max(1, Math.ceil(MATE_TICKS / speed(this.ctx.rules.num("MatingSpeedMultiplier"))));
       const due = tick + span;
       this.pairs.set(pid, { male: ents.pid[best]!, span, due });
-      deadlines.push(due, DEADLINE_BREED, pid, due);
+      deadlines.push(due, this.deadline, pid, due);
       seen.add(pid);
       this.begun++;
     }
@@ -203,7 +205,7 @@ export class Breeding {
     }
   }
 
-  /** A DEADLINE_BREED entry came due: an egg hatches, a young creature grows one step, or a pair finishes. */
+  /** A deadline of its kind came due: an egg hatches, a young creature grows one step, or a pair finishes. */
   due(pid: number, stamp: number): void {
     const { world, records } = this.ctx;
     const rec = records.byPid.get(pid);
@@ -267,7 +269,7 @@ export class Breeding {
       }
       egg.yaw = this.rng.int(65536);
       if (eggKind !== 0) this.put(egg);
-      deadlines.push(hatchAt, DEADLINE_BREED, egg.pid, hatchAt);
+      deadlines.push(hatchAt, this.deadline, egg.pid, hatchAt);
       this.laid++;
     }
     mother.mateReadyAt = tick + Math.round(mateWait(this.rng.float()) * TICK_RATE * rules.num("MatingIntervalMultiplier"));
@@ -306,7 +308,7 @@ export class Breeding {
     records.dirty.add(egg.pid);
     const e = records.entOf.get(egg.pid);
     if (e !== undefined) world.ents.setYoung(e, info.span, info.hatchAt);
-    deadlines.push(info.hatchAt, DEADLINE_BREED, egg.pid, info.hatchAt);
+    deadlines.push(info.hatchAt, this.deadline, egg.pid, info.hatchAt);
   }
 
   /** The young creature enters the world unclaimed. */
@@ -344,7 +346,7 @@ export class Breeding {
       records.delete(rec.pid);
       info.hatchAt = tick + PAIR_TICKS;
       records.dirty.add(egg.pid);
-      deadlines.push(info.hatchAt, DEADLINE_BREED, egg.pid, info.hatchAt);
+      deadlines.push(info.hatchAt, this.deadline, egg.pid, info.hatchAt);
       return;
     }
     persistence?.attach(rec, e);
@@ -360,7 +362,7 @@ export class Breeding {
     const at = stepTick(rec.span, rec.grown, growthStep(rec.span, rec.grown, tick) + 1);
     const due = at > tick ? at : tick + 1;
     rec.growDue = due;
-    this.ctx.deadlines.push(due, DEADLINE_BREED, rec.pid, due);
+    this.ctx.deadlines.push(due, this.deadline, rec.pid, due);
   }
 
   /** One of a hundred growth steps. It can hold and carry more, and hungers a little less. The last step makes it grown. */
@@ -407,7 +409,7 @@ export class Breeding {
         if (hatch === speed(was.hatch) || egg.hatchAt <= tick || !fertile(rec)) continue;
         egg.span = Math.max(1, Math.round((egg.span * speed(was.hatch)) / hatch));
         egg.hatchAt = tick + leftAtSpeed(egg.hatchAt - tick, speed(was.hatch), hatch);
-        deadlines.push(egg.hatchAt, DEADLINE_BREED, rec.pid, egg.hatchAt);
+        deadlines.push(egg.hatchAt, this.deadline, rec.pid, egg.hatchAt);
         const e = records.entOf.get(rec.pid);
         if (e !== undefined) world.ents.setYoung(e, egg.span, egg.hatchAt);
         records.dirty.add(rec.pid);
@@ -438,7 +440,7 @@ export class Breeding {
         if (pair.due <= tick) continue;
         pair.span = Math.max(1, Math.round((pair.span * speed(was.mating)) / mating));
         pair.due = tick + leftAtSpeed(pair.due - tick, speed(was.mating), mating);
-        deadlines.push(pair.due, DEADLINE_BREED, pid, pair.due);
+        deadlines.push(pair.due, this.deadline, pid, pair.due);
       }
     }
   }

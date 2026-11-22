@@ -8,17 +8,18 @@
 // The map is tools/test-areas.json: old path to new, under tests/. A file it does not hold goes to the area that holds
 // the most files with its first word (vehicle-jump.test.ts to vehicles); one with no such kin needs `file=area`, as in
 // `--move ufo.test.ts=world`. Where the area already has a file of that name, the one from tests/integration is
-// renamed `<name>-play`. Delete this tool and its map once no branch from before the move is left to merge.
+// renamed `<name>-play`. Merge such a branch with `git -c merge.directoryRenames=false merge`, or git guesses an area
+// for each new file and calls it a conflict. Delete this tool and its map once no such branch is left to merge.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const MAP = join(ROOT, "tools/test-areas.json");
 const OLD = ["unit", "integration"];
-const NOT_AREAS = new Set([...OLD, "fixtures", "performance"]);
-/** Text the rewrite leaves as it is: a frozen archive, the reference pages, and the map. */
-const KEPT = (file: string): boolean => file === "planning/decisions.md" || file.startsWith("planning/reference/") || file === "tools/test-areas.json";
+const NOT_AREAS = new Set([...OLD, "fixtures", "performance", "kit"]);
+/** Text the rewrite leaves as it is: a frozen archive, the reference pages, the map, and this tool's own test. */
+const KEPT = (file: string): boolean => file === "planning/decisions.md" || file.startsWith("planning/reference/") || file === "tools/test-areas.json" || file === "tests/tools/test-area.test.ts";
 
 /** Old path to new, both under tests/. */
 export type Moved = Record<string, string>;
@@ -105,6 +106,8 @@ if (import.meta.main) {
     }
     const sorted = Object.entries(moved).sort(([a], [b]) => (a < b ? -1 : 1));
     writeFileSync(MAP, `{\n${sorted.map(([from, to]) => `  ${JSON.stringify(from)}: ${JSON.stringify(to)}`).join(",\n")}\n}\n`);
+    // Left empty, a folder is not in git and would only be in the way.
+    for (const dir of OLD) if (existsSync(join(ROOT, "tests", dir)) && readdirSync(join(ROOT, "tests", dir)).length === 0) rmdirSync(join(ROOT, "tests", dir));
     console.log(`moved ${moves.length}`);
   }
 

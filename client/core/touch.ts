@@ -48,6 +48,11 @@ const TAPS: Readonly<Record<number, string>> = {
 /** What a button holds down while a finger is on it. The same key means what the body's state makes of it: R reloads on foot and yaws a helicopter. */
 const HELD: Readonly<Record<number, string>> = { [T_JUMP]: "Space", [T_RELOAD]: "KeyR", [T_USE]: "KeyE", [T_MELEE]: "KeyG", [T_SNAP]: "KeyQ", [T_DOWN]: "ControlLeft", [T_ROLL]: "KeyC", [T_HOLD]: "KeyX", [T_MIC]: "KeyB" };
 
+/** The key a button stands for, held or tapped; undefined for one that is no key's (the attack, the aim, the pages). */
+export function touchKey(button: number): string | undefined {
+  return HELD[button] ?? TAPS[button];
+}
+
 export class TouchPlay {
   /** The finger on each zone, as the shell numbers it plus one; 0 for none. */
   private moveFinger = 0;

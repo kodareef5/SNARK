@@ -1,5 +1,7 @@
 # Tests
 
+To write a test, start from the [cookbook](COOKBOOK.md): fifteen recipes on the kit in [kit](kit/kit.ts).
+
 Tests live by area, one folder each, flat inside it. A test of one module and a
 test of a whole server with clients sit side by side; where both had one name,
 the second is `<name>-play.test.ts`. A slow test is named `*.slow.test.ts` and
@@ -41,11 +43,14 @@ spine of the game. Where the art is not installed, a test that needs it is
 skipped ([needs-art.ts](fixtures/needs-art.ts)) and the check fails as not a
 gate; `bun run check -- --no-art` passes and counts them.
 
-[fixtures](fixtures/README.md) holds small worlds, the multiplayer harness and
-the crash child. [performance](performance/README.md) holds notes on
+[kit](kit/kit.ts) holds the test kit, its own tests and the cookbook's recipes
+(`bun run check -- tests/kit` runs them). [fixtures](fixtures/README.md) holds
+small worlds, the multiplayer harness and the crash child. [performance](performance/README.md) holds notes on
 `bun run bench`. Tests may import any zone except `client/shell`. Temporary
 databases go in the system's temporary folder and are removed afterward.
 
 A branch from before the move may still add files to `tests/unit` or
-`tests/integration`. `bun tools/test-area.ts --move --paths` moves them to
-their areas and rewrites the old paths named in text.
+`tests/integration`. Merge it with `git -c merge.directoryRenames=false merge`,
+or git guesses an area for each new file and calls it a conflict. Then
+`bun tools/test-area.ts --move --paths` moves them to their areas and rewrites
+the old paths named in text.

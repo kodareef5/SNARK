@@ -36,8 +36,6 @@ import type { ServerWorld } from "./world.ts";
  */
 export type SwapListener = (rec: EntityRecord, t: number, from: number, to: number) => void;
 
-export const DEADLINE_FIRE = 6;
-
 /** A recipe a fire makes by itself: what one unit needs (content indices and counts), the ticks it takes, and how many it makes. */
 interface Refined {
   item: number;
@@ -118,6 +116,8 @@ export class Stations {
   /** The record `hearth` works on while tend() runs, else null. */
   private rec: EntityRecord | null = null;
   private readonly hearth: Hearth;
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(world: ServerWorld, records: Records, items: Items, fixtures: Fixtures, deadlines: DeadlineHeap) {
     this.world = world;
@@ -125,6 +125,7 @@ export class Stations {
     this.items = items;
     this.fixtures = fixtures;
     this.deadlines = deadlines;
+    this.deadline = deadlines.kind("fire", (a, stamp) => this.due(a, stamp));
     const reg = world.reg;
     this.fuelTicks = reg.fuelTicks;
     this.stationFuel = reg.stationFuel;
@@ -263,7 +264,7 @@ export class Stations {
     }
     if (due === fire.due) return;
     fire.due = due;
-    this.deadlines.push(due, DEADLINE_FIRE, rec.pid, due);
+    this.deadlines.push(due, this.deadline, rec.pid, due);
   }
 
   /** Advances a burning fire to now. If its fuel ran out on the way, it is out as of that tick. */
@@ -351,7 +352,7 @@ export class Stations {
     return false;
   }
 
-  /** A DEADLINE_FIRE entry came due. */
+  /** A deadline of its kind came due. */
   due(pid: number, stamp: number): void {
     const rec = this.records.byPid.get(pid);
     if (!rec?.fire || rec.fire.due !== stamp) return;

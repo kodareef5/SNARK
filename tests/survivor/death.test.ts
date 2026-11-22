@@ -20,17 +20,13 @@ import { V_FOOD, V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
+import { camp, id, proving } from "../kit/kit.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-death-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-function setup(host = {}, name = "ada") {
-  const h = new Harness({}, 1, 60, { dev: true, ...host });
-  const s = h.join(name);
-  h.run(500);
-  expect(h.say(s, "enablecheats")).toEqual(["cheats enabled"]);
-  const rec = h.host.records.byPid.get(h.client(s)!.pid)!;
-  const id = (item: string) => h.reg.index.get(item)!;
+function setup(host = {}) {
+  const { h, ada: s, me: rec } = camp({ place: proving(), host });
   return { h, s, rec, id, pilot: h.pilots[0]!, ents: h.world.ents, items: h.host.items, sv: h.host.survival };
 }
 

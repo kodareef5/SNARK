@@ -327,11 +327,13 @@ export interface CityPart {
    * A vertex stores these six bits above its corner (cornerByte).
    */
   readonly edges: Uint8Array;
+  /** Per face, the material made from a recipe its kind wears (content/texgen/finishes.ts, from 1), or 0: its label's bits 2 to 6. */
+  readonly made: Uint8Array;
   readonly faces: number;
   readonly box: readonly number[];
 }
 
-export const EMPTY_PART: CityPart = { pos: new Float32Array(0), color: new Uint8Array(0), edges: new Uint8Array(0), faces: 0, box: [0, 0, 0, 0, 0, 0] };
+export const EMPTY_PART: CityPart = { pos: new Float32Array(0), color: new Uint8Array(0), edges: new Uint8Array(0), made: new Uint8Array(0), faces: 0, box: [0, 0, 0, 0, 0, 0] };
 
 /** The byte a static's vertex carries where a body's has its bone: its corner `k` of four round a face, across and up, and the face's outer borders (CityPart `edges`). */
 export const cornerByte = (k: number, edges: number): number => [0, 1, 3, 2][k]! | (edges << 2);
@@ -347,6 +349,7 @@ class Out {
   pos = new Float32Array(12 * 1024);
   color = new Uint8Array(1024);
   edges = new Uint8Array(1024);
+  made = new Uint8Array(1024);
   faces = 0;
   readonly box = new Float64Array(6);
   x0 = 0;
@@ -372,9 +375,14 @@ class Out {
       const grown = new Uint8Array(this.edges.length * 2);
       grown.set(this.edges);
       this.edges = grown;
+      const made = new Uint8Array(this.made.length * 2);
+      made.set(this.made);
+      this.made = made;
     }
-    // The internal merge key keeps the palette in its low byte and the material label above it.
-    this.edges[f] = edges | ((col >>> 8) << 4);
+    // The internal merge key keeps the palette in its low byte and the label above it: two bits of a street fixture's
+    // material, then five of a material made from a recipe, so that faces of two never merge.
+    this.edges[f] = edges | (((col >>> 8) & 3) << 4);
+    this.made[f] = (col >>> 10) & 31;
     const p = this.pos;
     const b = this.box;
     for (let k = 0; k < 4; k++) {
@@ -413,7 +421,7 @@ class Out {
 
   part(): CityPart {
     if (this.faces === 0) return EMPTY_PART;
-    return { pos: this.pos.slice(0, this.faces * 12), color: this.color.slice(0, this.faces), edges: this.edges.slice(0, this.faces), faces: this.faces, box: Array.from(this.box) };
+    return { pos: this.pos.slice(0, this.faces * 12), color: this.color.slice(0, this.faces), edges: this.edges.slice(0, this.faces), made: this.made.slice(0, this.faces), faces: this.faces, box: Array.from(this.box) };
   }
 }
 
@@ -922,7 +930,8 @@ function frameBox(nb: number, fx: number, fy: number, fz: number, hx: number, hy
  * longer than `least` metres are left out. Sloped parts are kept whole, and left out only for being as short. Faces held by
  * another box or part or under the ground go, the neighbouring chunks' pieces holding faces as they stand. A gap below 0
  * merges nothing. With nothing left out pieces are as the near store draws them (a flight's treads), else as walked.
- * Optional two-bit labels by content kind distinguish otherwise identical colours during merging.
+ * Optional labels by content kind distinguish otherwise identical colours during merging: two bits of a street fixture's
+ * material, and above them five of a material made from a recipe (CityPart `made`).
  */
 export function mergedPart(city: CityStatics, chunk: number, hf: Ground, gone: (chunk: number) => Gone, gap: number, least: number, labels?: Uint8Array): CityPart {
   if (city.in(chunk) === 0) return EMPTY_PART;

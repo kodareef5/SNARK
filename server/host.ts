@@ -17,7 +17,7 @@ import { Fixtures } from "./fixtures.ts";
 import { Beds, type Place } from "./beds.ts";
 import { CastHost } from "./cast/host.ts";
 import type { CastSettings } from "../shared/cast/state.ts";
-import { DEADLINE_TAME, Taming } from "./taming.ts";
+import { Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Urban } from "./urban.ts";
 import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type VehicleStart } from "./vehicle-service.ts";
@@ -29,10 +29,10 @@ import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
 import { Entangle } from "./entangle.ts";
-import { Breeding, DEADLINE_BREED } from "./breeding.ts";
+import { Breeding } from "./breeding.ts";
 import { Emotes } from "./emote.ts";
 import { Carry } from "./carry.ts";
-import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
+import { Corpses } from "./corpses.ts";
 import { CorpseReplication } from "./corpse-motion.ts";
 import { CMD_CLOCK, CMD_CORPSE } from "../shared/net/protocol.ts";
 import { Creative } from "./creative.ts";
@@ -41,7 +41,7 @@ import { Balls } from "./balls.ts";
 import { Mounts } from "./mount.ts";
 import { Eggs } from "./eggs.ts";
 import { MountedRoars } from "./creature-roar.ts";
-import { DEADLINE_FECES, Feces } from "./feces.ts";
+import { Feces } from "./feces.ts";
 import { Hurt } from "./hurt.ts";
 import { Overhead } from "./overhead.ts";
 import { Gaze } from "./gaze.ts";
@@ -50,7 +50,7 @@ import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { CorpseImpact } from "../shared/anim/corpse.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
-import { DEADLINE_FIRE, Stations } from "./stations.ts";
+import { Stations } from "./stations.ts";
 import { wirePower } from "./power.ts";
 import { wirePreserve } from "./preserve.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -59,18 +59,19 @@ import { Tribes } from "./tribes.ts";
 import { Voice } from "./voice.ts";
 import { Console, OP_ADMIN } from "./console.ts";
 import { DeadlineHeap } from "../shared/sim/schedule.ts";
-import { Buffs, DEADLINE_BUFF } from "./buffs.ts";
+import { Buffs } from "./buffs.ts";
 import { Combat, type Source } from "./combat.ts";
 import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { Creatures } from "./creatures.ts";
-import { DEADLINE_DESPAWN, Death, OP_DEATH } from "./death.ts";
-import { DEADLINE_NODE, Harvest } from "./harvest.ts";
+import { Death, OP_DEATH } from "./death.ts";
+import { Harvest } from "./harvest.ts";
 import { VehicleTrees } from "./vehicle-trees.ts";
-import { DEADLINE_CRAFT, Progression } from "./progression.ts";
+import { Progression } from "./progression.ts";
 import { JET_BOOTS, JET_CUIRASS, JET_HELMET, stanceEye } from "../shared/sim/character.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
 import { ACT_EQUIP, ACT_NONE, FISTS, HOLD_CARRY } from "../shared/sim/weapon.ts";
 import { GameServer, type Client, type GameOptions } from "./game.ts";
+import { walk, type System } from "./system.ts";
 import { Items } from "./items.ts";
 import { COMMAND_FAMILIES } from "./commands/families.ts";
 import { addOwnCommands, syncOwn, type OwnContext } from "./own.ts";
@@ -92,17 +93,17 @@ import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/conf
 import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
 import { deriveRegistry } from "../shared/content/tuning.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
-import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
+import { CAUSE_WORDS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
 import { settle, settleNear } from "./place.ts";
-import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
+import { Spawner, wildStep } from "./spawner.ts";
 import { PART } from "./admin/parts.ts";
-import { CarReturn, DEADLINE_CAR } from "./car-return.ts";
+import { CarReturn } from "./car-return.ts";
 import { withSites } from "../content/supply/sites.ts";
 import { starterBook } from "../content/supply/starter.ts";
 import { catalogOf } from "../shared/supply/catalog.ts";
 import { SETTING as ARK_CRATES, arkCrates } from "./supply/ark.ts";
-import { DEADLINE_SUPPLY, Supply } from "./supply.ts";
+import { Supply } from "./supply.ts";
 import { BookStore } from "./supply/store.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap, type MapFile } from "../shared/world/mapfile.ts";
@@ -435,7 +436,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const survivor = reg.index.get("core:survivor")!;
   const survivorMove = reg.move[survivor]!;
   const names = new Map<string, number>();
-  // One heap for every deadline. onStep dispatches the entries by kind.
+  // One heap for every deadline. A system asks it for a kind of its own, and is given the entries of that kind as they come due.
   const deadlines = new DeadlineHeap();
   const survival = new Survival(world, records, deadlines);
   survival.rules = rules;
@@ -615,9 +616,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       creatures.claimed(e);
     }
   } }, (opts.seed ?? 1) + 71);
-  // Its tribe may open a tamed creature while it is awake. Closing it reschedules its meal, because its food may have changed.
-  death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
-  death.onShut = (rec) => taming.meal(rec);
+  // Closing a creature reschedules its meal, because its food may have changed.
+  death.onShut.on((rec) => taming.meal(rec));
   // A hit's buff goes through entangling, which reads the bola's fields (weapons-plan.md, M6); a bola'd body is not mounted.
   const entangle = new Entangle({ world, game, records, buffs });
   combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
@@ -642,12 +642,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
     discard: e => { const pid = world.ents.pid[e]!; persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid); },
   });
-  death.canOpen = (c, rec) => {
+  // Its tribe may open a tamed creature while it is awake, and whoever may use a vehicle may open it.
+  death.canOpen.on((c, rec) => {
     const actor = records.byPid.get(c.pid);
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
-  };
+  });
   death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
-  game.onVehicleStep = e => urban.impact(e);
+  game.onVehicleStep.on(e => urban.impact(e));
   game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
@@ -700,17 +701,13 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
   });
   // What a slot stood for goes with its item: an egg's young (server/eggs.ts), or a soul ball's tame.
-  const eggGone = items.onRefGone;
-  items.onRefGone = (ref) => {
-    eggGone?.(ref);
-    balls.gone(ref);
-  };
-  combat.onBall = (c, rec, slot) => balls.click(c, rec, slot);
+  items.onRefGone.on((ref) => balls.gone(ref));
+  combat.onBall.on((c, rec, slot) => balls.click(c, rec, slot));
   const mounts = new Mounts({ world, records, items, rules, balls, buffs, survival }, (opts.seed ?? 1) + 113);
   starter = mounts;
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
-  game.onMountSecondary = e => roars.use(e);
+  game.onMountSecondary.on(e => roars.use(e));
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
   // A sight's cone widens its session's view and holds what it is on awake (server/gaze.ts, D1079).
   // A look through a sight tells what it is on as far as the sight's gaze reaches (D1082).
@@ -768,7 +765,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       if (e !== undefined) combat.creatureContact(by, e, attack, mode, [world.ents.x[e]!, world.ents.y[e]! + reg.bodyHeight[victim.kind]! * .5, world.ents.z[e]!], ZONE_TORSO, 1, true, points);
     },
   });
-  combat.onCreatureHit = (by, target, attack, mode) => {
+  combat.onCreatureHit.on((by, target, attack, mode) => {
     const victim = records.byPid.get(world.ents.pid[target]!);
     const slow = mode?.slow ?? attack.slow;
     if (victim && slow) creatureTraits.applySlow(victim, slow.multiplier, slow.seconds);
@@ -779,16 +776,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       const force = impulse * Math.min(1, (reg.drag[by.kind]! || 50) / Math.max(1, reg.drag[ents.kind[target]!]! || 50));
       if (distance > .001) { ents.vx[target] = Math.fround(ents.vx[target]! + dx / distance * force); ents.vz[target] = Math.fround(ents.vz[target]! + dz / distance * force); }
     }
-  };
+  });
   const creatureContacts = new CreatureContacts({ world, records, harvest,
     test: (target, from, to, radius) => combat.creatureTest(target, from, to, radius),
     hit: (by, target, attack, mode, point, zone, power) => combat.creatureContact(by, target, attack, mode, point, zone, power),
     structure: (by, ref, attack, mode, point, power) => combat.creatureStructure(by, ref, attack, mode, point, power),
   });
-  combat.onHarm = (victim, points) => {
-    taming.harmed(victim, points);
-    hurt.harmed(victim, points);
-  };
+  combat.onHarm.on((victim, points) => taming.harmed(victim, points));
+  combat.onHarm.on((victim, points) => hurt.harmed(victim, points));
   const chat = new Chat({ game, records, rules, tribes, bus });
   // Cast is always there, doing nothing while CastEnabled is off, so the admin page can turn it on live.
   const castHost = new CastHost({
@@ -847,7 +842,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   persistence?.sidecar("decay", build.decay, DECAY_SAVE_TICKS);
-  combat.onStructureHurt = (ref) => build.hurt(ref);
+  combat.onStructureHurt.on((ref) => build.hurt(ref));
   const voice = new Voice({ game, muted: (listener, speaker) => chat.muted(listener.name, speaker.name), everywhere: () => rules.on("globalVoiceChat") }, (out) => void crypto.getRandomValues(out));
   /** Lingering bodies are not counted. */
   const sessionOf = (pid: number) => game.clients.find((c) => c?.active && !c.closed && c.pid === pid) ?? null;
@@ -868,9 +863,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   projectiles.zero = (c) => gaze.zeroOf(c);
   // Every shot and blast, hit or miss, is heard by Cast's people near it.
   projectiles.heard.push((kind, x, z, by, silenced) => castHost.heard(kind, x, z, by, silenced));
-  combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
+  combat.onFire.on((c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw));
   // A thrown thing with an ammo facet of its own flies and hits (the bola); any other is lobbed and goes off on its fuse.
-  combat.onThrow = (c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality));
+  combat.onThrow.on((c, rec, item, quality, draw) => (reg.ammoSpeed[item]! > 0 ? projectiles.fling(c, rec, item, quality, draw) : projectiles.lob(c, rec, item, quality)));
   const clouds = new Clouds({ world, records, buffs, rules });
   projectiles.onCloud = (item, x, y, z, by) => clouds.make(item, x, y, z, by);
   // The killer is credited before death.die, which may delete the record.
@@ -926,7 +921,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   buffs.onChange = (rec) => refreshBody(rec);
   const use = new Use({ world, game, records, items, survival, buffs });
   // E with nothing else to use picks a bush, else drinks the water the survivor stands in.
-  death.onUse = (c) => void (harvest?.pick(c) || use.drink(c));
+  death.onUse.on((c) => void (harvest?.pick(c) || use.drink(c)));
   if (harvest) {
     if (persistence) {
       if (!loaded!.fresh) for (const row of persistence.store.loadBlobs(harvest.tag)) harvest.decode(row.chunk, row.data);
@@ -1143,7 +1138,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return rec && cluster?.arriving.has(rec.pid) ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, dead: true, team: rec.team } : (rec ?? null);
   };
   game.needsLook = (name) => !recordOf(name)?.look;
-  game.onBody = (c) => {
+  game.onBody.on((c) => {
     let rec = recordOf(c.name);
     const first = !rec;
     if (!rec) {
@@ -1190,8 +1185,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     bus.after(SESSION_SPAWN, { pid: rec.pid, first, why: first ? "made" : c.entered ? "respawned" : "returned" });
     // A session that was in the creator has its survivor only now.
     if (c.entered) joined(c);
-  };
-  game.onBodyGone = (c) => {
+  });
+  game.onBodyGone.on((c) => {
     impale.release(c.pid);
     carry.release(c.pid);
     // Seats are not saved: a survivor in a car or on a creature is saved standing beside it.
@@ -1214,9 +1209,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       }
       records.entOf.delete(c.pid);
     }
-  };
+  });
   const creative = new Creative(world, game, rules, bus, persistence);
-  game.onEnter = (c) => {
+  game.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     creative.enter(c);
@@ -1233,16 +1228,16 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const name = rules.text("SessionName");
     if (name !== "") game.sendText(c, TEXT_MOTD, name);
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
-  };
-  game.onPresence = (c) => {
+  });
+  game.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
     else activity.login(c.pid);
     bus.after(SESSION_PRESENCE, { pid: c.pid, connected: !c.closed });
     tribes.version++;
     // The voice socket belonged to the old connection.
     voice.revoke(c);
-  };
-  game.onExit = (c) => {
+  });
+  game.onExit.on((c) => {
     activity.leave(c.pid);
     survivorLog.leave(c, c.left);
     bus.after(SESSION_LEAVE, { pid: c.pid, why: c.left });
@@ -1250,8 +1245,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     voice.revoke(c);
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
-  };
-  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); game.blocking.survivorsPass = !rules.on("SurvivorsBlock"); };
+  });
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
   const lane = game.lane;
@@ -1279,9 +1273,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
   };
   game.blockBodies = () => [creatures.awake, creatures.awakeCount];
-  game.onStep = (tick) => {
-    creative.step(tick);
-    gaze.step(tick);
+  // The host's own work in the tick. Each is a row of `systems` below, which says when it runs.
+  /** A session whose focus left its chunk wakes what is round the new one. */
+  const followFocus = (): void => {
     for (const c of game.clients) {
       if (!c?.active) continue;
       const was = focus.get(c.id)!;
@@ -1289,7 +1283,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       focus.set(c.id, c.chunk);
       moved(was, c.chunk);
     }
-    parts.mark(PART.focus);
+  };
+  /** Whether each survivor's head is under water, a seated one's where its seat puts it. */
+  const markSubmerged = (): void => {
     for (const c of game.clients) {
       if (!c?.active || c.ent < 0) continue;
       const rec = records.byPid.get(c.pid);
@@ -1300,73 +1296,15 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
           : world.ents.y[c.ent]! + stanceEye(survivorMove, world.ents.stance[c.ent]!) < world.hf.waterAt(world.ents.x[c.ent]!, world.ents.z[c.ent]!));
       }
     }
-    deadlines.run(tick, (kind, pid, stamp) => {
-      if (kind === DEADLINE_VITALS) survival.due(pid, stamp);
-      else if (kind === DEADLINE_DESPAWN) death.despawn(pid, stamp);
-      else if (kind === DEADLINE_CRAFT) progression.due(pid, stamp);
-      else if (kind === DEADLINE_NODE) harvest?.due(pid, stamp);
-      else if (kind === DEADLINE_BUFF) buffs.due(pid, stamp);
-      else if (kind === DEADLINE_FIRE) stations.due(pid, stamp);
-      else if (kind === DEADLINE_TAME) taming.due(pid, stamp);
-      else if (kind === DEADLINE_BREED) breeding.due(pid, stamp);
-      else if (kind === DEADLINE_SPAWN) {
-        parts.mark(PART.deadlines);
-        spawner?.due(pid, stamp);
-        parts.mark(PART.spawner);
-      }
-      else if (kind === DEADLINE_CORPSE) corpses.due(pid, stamp);
-      else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
-      else if (kind === DEADLINE_CAR) carReturn?.due(pid, stamp);
-      else if (kind === DEADLINE_SUPPLY) supply.due(pid, stamp);
-    });
-    refreshInventories();
-    parts.mark(PART.deadlines);
-    // Struggling, and the grace after a bola, once the buffs that came due have ended.
-    entangle.step(tick);
-    creatureTraits.step(creatures.awake, creatures.awakeCount);
-    death.step();
-    supply.step();
-    parts.mark(PART.life);
-    // Riders move with their mounts before combat aims at either.
-    urban.step();
-    riding.step();
-    carry.step(tick);
-    emotes.step();
-    parts.mark(PART.riders);
-    // Combat resolves this tick's swings and shots now that every body has moved.
-    combat.step();
-    projectiles.step();
-    lane.enter();
-    loose.step();
-    lane.leave();
-    clouds.step();
-    parts.mark(PART.combat);
-    creatures.step(tick);
-    parts.mark(PART.creatures);
-    lane.enter();
+  };
+  const contacts = (): void => {
     creatureContacts.step(creatures.awake, creatures.awakeCount);
     for (const e of urban.contacts!.step()) {
       urban.syncAfterContact(e);
       riding.syncAfterContact(e);
     }
-    lane.leave();
-    parts.mark(PART.contacts);
-    impale.step();
-    spawner?.step(tick);
-    castHost.step();
-    parts.mark(PART.spawner);
-    build.step();
-    parts.mark(PART.build);
-    taming.step();
-    breeding.step(tick);
-    feces.step(tick);
-    overhead.step(tick);
-    lane.enter();
-    corpses.step(tick);
-    lane.leave();
-    hurt.step(tick);
-    voice.step(tick);
-    parts.mark(PART.world);
+  };
+  const keepHouse = (tick: number): void => {
     // A full entity store is logged when it first refuses, and then at most once a minute.
     if (world.ents.refused !== refusedTold && tick >= refusedNext) {
       say(`the world has no place for more bodies (${world.ents.refused - refusedTold} refused): it holds ${world.ents.count} of the ${world.ents.max} that MaxEntities allows, with ${world.ents.reserve} kept for survivors`);
@@ -1393,7 +1331,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       settingsAt.version = rules.version;
       settingsAt.dirty = true;
     }
-    // What happened this tick is told to modules before it is committed.
+  };
+  /** What happened this tick is told to modules before it is committed. */
+  const tellModules = (tick: number): void => {
     if (!started) bus.after(SERVER_START, { tick, map: world.mapId, fresh: loaded ? loaded.fresh : true });
     started = true;
     if (bus.n[SERVER_TICK] !== 0) bus.after(SERVER_TICK, { tick });
@@ -1404,13 +1344,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
       if (settingsToldAt >= 0) bus.after(SERVER_SETTINGS, { names: "", source: "" });
       settingsToldAt = rules.version;
     }
-    cluster?.step(tick);
+  };
+  const announceBackup = (tick: number): void => {
     if (persistence && opts.backups && tick % liveEvery === 0) bus.after(SERVER_SAVE, { tick, folder: `${persistence.store.path}.backups` });
-    modules.step(tick);
-    bus.flush();
-    refreshInventories();
-    survivorLog.step(tick);
-    parts.mark(PART.modules);
+  };
+  const save = (tick: number): void => {
     if (persistence && opts.backups && tick % liveEvery === 0) persistence.keeper.backup();
     if (persistence && !persistence.tryCommit(commitEvery)) {
       const late = tick - persistence.failing!.since;
@@ -1447,11 +1385,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   // An unconscious survivor can talk, use the console and the sundial, shut what it had open and say how far off it is sent bases. Its client
   // can make it do nothing else.
-  game.allows = (c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out;
-  game.onLand = (c, speed) => {
+  game.allows.on((c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out);
+  game.onLand.on((c, speed) => {
     const rec = records.byPid.get(c.pid);
     if (rec && !(world.ents.jetGear[c.ent]! & JET_BOOTS)) survival.landed(rec, speed);
-  };
+  });
   // A glider wears as it is flown and is charged as it folds, never in the air: one use for each of its `seconds` it was
   // open, and at least one a flight (GlideFacet). The one charged is the one refreshBody says it flies.
   const glidingSince = new Map<number, number>();
@@ -1465,7 +1403,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     return best;
   }
-  game.onGlide = (c, opened) => {
+  game.onGlide.on((c, opened) => {
     if (opened) {
       glidingSince.set(c.pid, world.tick);
       return;
@@ -1479,7 +1417,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const used = Math.max(1, Math.ceil((world.tick - since) / reg.glideTicks[item]!));
     const def = reg.defs[item];
     if (items.wear(rec, slot, used) === 0) notice(c.pid, `Your ${(def?.type === "item" && def.label) || "glider"} has come apart.`);
-  };
+  });
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, tribes, voice,
     use,
@@ -1504,16 +1442,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     drop: (rec, slot, n) => eggs.put(rec, slot, n) ?? death.drop(rec, slot, n),
   };
   const tactical = new Tactical(world, game, records, rules);
-  game.onReplicate = (c) => {
-    motion.sync(c);
-    syncOwn(own, c);
-    harvest?.sync(c);
-    tactical.sync(c);
-    supply.sync(c);
-  };
   game.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
   const corpseReplication = new CorpseReplication(game, corpses);
-  game.onSnapshot = (c, view) => corpseReplication.sync(c, view);
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
@@ -1637,6 +1567,81 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
     opts.modules ?? [],
   );
+  const mark = (part: number): System => ({ step: () => parts.mark(part) });
+  /** Physics: its time is the lane's (server/lane.ts). */
+  const physics = (s: System): System => ({ step: (tick) => { lane.enter(); s.step!(tick); lane.leave(); } });
+  // The tick. Each hook walks this list from the top, so a row's place here is its place in every hook it has: a new
+  // system is a row where its work belongs. The simulation is the same on every run only while the order is.
+  const systems: System[] = [
+    { beforeStep: refreshInventories },
+    creative,
+    gaze,
+    { step: followFocus },
+    mark(PART.focus),
+    { step: markSubmerged },
+    { step: (tick) => void deadlines.run(tick) },
+    { step: refreshInventories },
+    mark(PART.deadlines),
+    // Struggling, and the grace after a bola, once the buffs that came due have ended.
+    entangle,
+    { step: () => creatureTraits.step(creatures.awake, creatures.awakeCount) },
+    death,
+    supply,
+    mark(PART.life),
+    // Riders move with their mounts before combat aims at either.
+    urban,
+    riding,
+    { beforeStep: () => void (game.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
+    carry,
+    emotes,
+    mark(PART.riders),
+    // Combat resolves this tick's swings and shots now that every body has moved.
+    combat,
+    projectiles,
+    physics(loose),
+    clouds,
+    mark(PART.combat),
+    creatures,
+    mark(PART.creatures),
+    physics({ step: contacts }),
+    mark(PART.contacts),
+    impale,
+    ...(spawner ? [spawner] : []),
+    castHost,
+    mark(PART.spawner),
+    build,
+    mark(PART.build),
+    taming,
+    breeding,
+    feces,
+    overhead,
+    physics(corpses),
+    hurt,
+    voice,
+    mark(PART.world),
+    { step: keepHouse },
+    { step: tellModules },
+    ...(cluster ? [cluster] : []),
+    { step: announceBackup },
+    modules,
+    { step: () => bus.flush() },
+    { step: refreshInventories },
+    survivorLog,
+    mark(PART.modules),
+    { step: save },
+    // Each session's feeds, just before its snapshot, and what follows the view it was sent.
+    { replicate: (c) => motion.sync(c) },
+    { replicate: (c) => syncOwn(own, c) },
+    ...(harvest ? [{ replicate: (c: Client) => harvest.sync(c) }] : []),
+    { replicate: (c) => tactical.sync(c) },
+    { replicate: (c) => supply.sync(c) },
+    { snapshot: (c, view) => corpseReplication.sync(c, view) },
+  ];
+  const tick = walk(systems);
+  game.onBeforeStep = tick.beforeStep;
+  game.onStep = tick.step;
+  game.onReplicate = tick.replicate;
+  game.onSnapshot = tick.snapshot;
   const host: Host = {
     world,
     mapFile,

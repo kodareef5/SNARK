@@ -1,6 +1,6 @@
 // Native wheel chassis contract. Authority and prediction use the same fixed-tick solver.
 // Occupancy grants control; this module does not grant ownership or spend inventory items.
-import { clamp, detCos, detSin } from "../math/scalar.ts";
+import { clamp, detCos, detSin, len3 } from "../math/scalar.ts";
 import { validateSeats, type Seat } from "./seats.ts";
 import { validateThrusterSpec, type ThrusterNozzle, type VehicleThrusterSpec } from "./vehicle-thrusters.ts";
 import { DEFAULT_DRIVETRAIN, validateDrivetrainSpec, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "./vehicle-drivetrain.ts";
@@ -330,7 +330,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   if (isWheelVehicle(d) && d.emergencyLights !== undefined && (!Array.isArray(d.emergencyLights) || d.emergencyLights.length < 1 || d.emergencyLights.length > 16 || !d.emergencyLights.every(lamp =>
     lamp && vec(lamp.at) && (lamp.width === undefined || Number.isFinite(lamp.width) && lamp.width > 0 && lamp.width <= 2) && (lamp.color === "red" || lamp.color === "blue") && (lamp.facing === undefined || lamp.facing === "front" || lamp.facing === "rear")))) throw new Error("invalid emergency lamp layout");
   if (isWheelVehicle(d) && d.nozzles !== undefined && (!d.spec.thrusters || !Array.isArray(d.nozzles) || d.nozzles.length < 1 || d.nozzles.length > 16 || !d.nozzles.every(n =>
-    n && typeof n.name === "string" && n.name.length > 0 && vec(n.at) && vec(n.dir) && Math.abs(Math.hypot(...n.dir) - 1) < .01))) throw new Error("invalid thruster nozzles");
+    n && typeof n.name === "string" && n.name.length > 0 && vec(n.at) && vec(n.dir) && Math.abs(len3(n.dir[0]!, n.dir[1]!, n.dir[2]!) - 1) < .01))) throw new Error("invalid thruster nozzles");
   const bone = (n: unknown): boolean => typeof n === "string" && n.length > 0 && n.length <= 64;
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
   if (!Array.isArray(d.wheels) || d.wheels.length > 16 || !d.wheels.every((w) => bone(w.bone))) throw new Error("invalid vehicle wheels");

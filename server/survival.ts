@@ -96,8 +96,6 @@ export function refreshMods(reg: Registry, ents: EntityStore, e: number, g: Geno
   ents.mflags[e] = (ents.mflags[e]! & MF_WINDED) | flags;
 }
 
-export const DEADLINE_VITALS = 1;
-
 export const CAUSE_STARVED = 1;
 export const CAUSE_THIRST = 2;
 export const CAUSE_DROWNED = 3;
@@ -163,12 +161,15 @@ export class Survival {
   private readonly survivor: number;
   private readonly submerged = new Set<number>();
   private readonly suspended = new Set<number>();
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
-  /** `deadlines` is the world's one heap. Its runner must pass DEADLINE_VITALS entries to `due`. */
+  /** `deadlines` is the world's one heap. */
   constructor(world: ServerWorld, records: Records, deadlines: DeadlineHeap) {
     this.world = world;
     this.records = records;
     this.deadlines = deadlines;
+    this.deadline = deadlines.kind("vitals", (a, stamp) => this.due(a, stamp));
     this.survivor = world.reg.index.get("core:survivor") ?? 0;
   }
 
@@ -275,7 +276,7 @@ export class Survival {
     const due = at === Infinity ? 0 : at;
     if (due === rec.vitalsDue) return;
     rec.vitalsDue = due;
-    if (due !== 0) this.deadlines.push(due, DEADLINE_VITALS, rec.pid, due);
+    if (due !== 0) this.deadlines.push(due, this.deadline, rec.pid, due);
   }
 
   /** In points. */
@@ -353,7 +354,7 @@ export class Survival {
     this.injured.delete(pid);
   }
 
-  /** A DEADLINE_VITALS entry came due. It is stale if the record is gone or its deadline has moved since it was scheduled. */
+  /** A deadline of its kind came due. It is stale if the record is gone or its deadline has moved since it was scheduled. */
   due(pid: number, stamp: number): void {
     const rec = this.records.byPid.get(pid);
     if (!rec?.vitals || rec.vitalsDue !== stamp) return;

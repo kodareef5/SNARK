@@ -3,7 +3,7 @@
 // middle, where its two variants meet; a frame's share follows the card's time; a new side begins again.
 import { expect, test } from "bun:test";
 import { WEATHER_COARSE, WEATHER_RISE, WeatherPlan } from "../../client/core/texgen/plan.ts";
-import { WEATHER_BAYS, WEATHER_LAYERS } from "../../client/core/texgen/weather.ts";
+import { MADE_FIRST, MADE_LAYERS, WEATHER_BAYS } from "../../client/core/texgen/weather.ts";
 
 /** Frames until the pass at the plan's level is whole, each frame's draws checked; the level it made whole. */
 function pass(p: WeatherPlan, rows: Map<number, number>): number {
@@ -17,7 +17,7 @@ function pass(p: WeatherPlan, rows: Map<number, number>): number {
         // A bay's draw keeps to its half, and says which.
         expect(half).toBe(row >= p.wide / 2 ? 1 : 0);
         expect(row < p.wide / 2 ? row + n <= p.wide / 2 : true).toBe(true);
-      } else expect(half).toBe(-1);
+      } else expect(half).toBe(layer < MADE_FIRST ? -1 : 2 + ((layer - MADE_FIRST) & 1));
     }
     if (p.whole >= 0) return p.whole;
   }
@@ -31,7 +31,7 @@ test("the coarse pass comes first and the weathering rises from it; the whole si
   expect([p.level, p.ready]).toEqual([WEATHER_COARSE, 0]);
   const coarse = new Map<number, number>();
   expect(pass(p, coarse)).toBe(WEATHER_COARSE);
-  for (let l = 0; l < WEATHER_LAYERS; l++) expect(coarse.get(l)).toBe(512 >> WEATHER_COARSE);
+  for (let l = 0; l < MADE_LAYERS; l++) expect(coarse.get(l)).toBe(512 >> WEATHER_COARSE);
   expect(p.level).toBe(0);
   expect(pass(p, new Map())).toBe(0);
   for (let f = 0; f < WEATHER_RISE; f++) expect(p.frame()).toBe(false);
@@ -41,10 +41,10 @@ test("the coarse pass comes first and the weathering rises from it; the whole si
 test("a frame draws its share of pixels, which the card's time sizes; a new side begins again, and none stops", () => {
   const p = new WeatherPlan();
   p.ask(1024);
-  // A fast card: the whole coarse pass, 8 layers of 128 by 128, in one frame.
+  // A fast card: the whole coarse pass, every layer at 128 by 128, in one frame.
   p.measured(1, 1 << 16, 1);
   p.frame();
-  expect([p.drawn, p.whole]).toEqual([WEATHER_LAYERS * 128 * 128, WEATHER_COARSE]);
+  expect([p.drawn, p.whole]).toEqual([MADE_LAYERS * 128 * 128, WEATHER_COARSE]);
   // A slow one: the least share, 8 rows of the whole side.
   p.measured(1e9, 1 << 16, 1);
   p.frame();

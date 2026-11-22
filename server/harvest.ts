@@ -26,7 +26,6 @@ import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
 import { TreeClearance } from "./tree-clearance.ts";
 
-export const DEADLINE_NODE = 3;
 /** The chunk blobs that hold used-up nodes. */
 export const TAG_NODES = 2;
 /** Metres from the eye, for picking with the use key. */
@@ -87,6 +86,8 @@ export class Harvest {
   private readonly per: number;
   private readonly found = new Found();
   private readonly clearance: TreeClearance;
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(world: ServerWorld, game: GameServer, records: Records, items: Items, progression: Progression, deadlines: DeadlineHeap, seed: number) {
     this.world = world; this.clearance = new TreeClearance(world);
@@ -95,6 +96,7 @@ export class Harvest {
     this.items = items;
     this.progression = progression;
     this.deadlines = deadlines;
+    this.deadline = deadlines.kind("node", (a, stamp) => this.due(a, stamp));
     this.field = world.nodeField!;
     this.per = this.field.source.perChunk;
     // Send an explicit initial empty state too: an observer can then distinguish its first witnessed
@@ -269,10 +271,10 @@ export class Harvest {
     this.dirty.add(chunk);
     this.field.set(chunk, index, false, crushed);
     this.version[chunk] = this.version[chunk]! + 1;
-    this.deadlines.push(respawnAt, DEADLINE_NODE, k, respawnAt);
+    this.deadlines.push(respawnAt, this.deadline, k, respawnAt);
   }
 
-  /** A DEADLINE_NODE entry came due. */
+  /** A deadline of its kind came due. */
   due(key: number, stamp: number): void {
     const t = this.touched.get(key);
     if (!t || t.respawnAt !== stamp) return;
@@ -281,7 +283,7 @@ export class Harvest {
     this.field.source.at(chunk, index, this.spot);
     if ((!t.crushed && this.held(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!)) || this.clearance.blocked(this.spot, t.crushed)) {
       t.respawnAt = this.world.tick + RETRY_TICKS;
-      this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
+      this.deadlines.push(t.respawnAt, this.deadline, key, t.respawnAt);
       this.dirty.add(chunk);
       return;
     }
@@ -360,7 +362,7 @@ export class Harvest {
     for (const [key, t] of this.touched) {
       if (t.respawnAt <= tick) continue;
       t.respawnAt = tick + leftAtPeriod(t.respawnAt - tick, was, is);
-      this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
+      this.deadlines.push(t.respawnAt, this.deadline, key, t.respawnAt);
       this.dirty.add(Math.floor(key / 256));
     }
   }
@@ -377,7 +379,7 @@ export class Harvest {
       this.touched.set(this.key(chunk, index), { hits, respawnAt, crushed });
       if (respawnAt > 0) {
         this.version[chunk] = this.version[chunk]! + 1;
-        this.deadlines.push(respawnAt, DEADLINE_NODE, this.key(chunk, index), respawnAt);
+        this.deadlines.push(respawnAt, this.deadline, this.key(chunk, index), respawnAt);
       }
     }
   }

@@ -2,6 +2,8 @@
 // turning them, and the wheel moves it nearer or further. It is the client's alone: the look the input carries stays
 // where the body faced, so the server never learns of it.
 
+import { G_WORLD, type KeyRow } from "./key-row.ts";
+import { T_ORBIT } from "./touch.ts";
 import { CHASE_DOWN, CHASE_UP, EASE_MS } from "./viewpoint.ts";
 
 /** The nearest and furthest the orbit sits, as shares of its view's own distance, and the share one wheel notch moves it. */
@@ -119,3 +121,15 @@ export class Orbit {
 }
 
 function angle(n: number): number { return Math.atan2(Math.sin(n), Math.cos(n)); }
+
+// K is the orbit camera, where the view lets it (App.frame). A patrol vehicle's driver has K first, for its lights (keys.ts).
+export const ORBIT_KEYS: readonly KeyRow[] = [{
+  name: "orbit",
+  keys: ["KeyK"],
+  touch: { KeyK: T_ORBIT },
+  guide: [{ code: "KeyK", group: G_WORLD, title: "Orbit camera / patrol lights", detail: "On foot, riding or as a passenger, swing the camera round you or your mount without turning; the wheel moves it nearer or further, and K again returns to your view. In a patrol vehicle’s driver’s seat, cycle the lights: off, patrol, response and pursuit. Other drivers already turn the chase camera with the mouse." }],
+  press(c, _code, down, repeat) {
+    if (down && !repeat) c.orbit.set(!c.orbit.on && c.orbitFree);
+    return true;
+  },
+}];

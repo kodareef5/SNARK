@@ -34,9 +34,7 @@ export function paddock(): MapData {
 
 function welcome(host: Host): void {
   const { world, records } = host;
-  const previous = host.game.onBody;
-  host.game.onBody = client => {
-    previous?.(client);
+  host.game.onBody.on(client => {
     const owner = records.byPid.get(client.pid);
     if (!owner?.team) return;
     for (const animal of animals) {
@@ -71,7 +69,7 @@ function welcome(host: Host): void {
         break;
       }
     }
-  };
+  });
 }
 
 if (import.meta.main) {

@@ -36,8 +36,6 @@ import { siteFault, type FitOptions } from "./supply/ground.ts";
 import type { BookStore } from "./supply/store.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** One of the two the item program kept (tests/combat/weapons-contracts.test.ts). Its first number is a drop's id. */
-export const DEADLINE_SUPPLY = 12;
 /** The key in a capsule record's `extra` under which it carries the id of the drop it is: two bytes, low first. */
 export const SUPPLY_TAG = 0x647270;
 /** Added to the world's seed for the drops' rolls, as each system that rolls takes a number of its own. */
@@ -164,14 +162,17 @@ export class Supply {
   private readonly scaled = new WeakMap<LootDef, { quality: number; def: LootDef }>();
   private readonly catalog: Catalog;
   private readonly pose = newPose();
+  /** Its kind in the deadline heap. An entry's first number is a drop's id. */
+  private readonly deadline: number;
 
   constructor(ctx: SupplyContext) {
     this.ctx = ctx;
+    this.deadline = ctx.deadlines.kind("supply", (a, stamp) => this.due(a, stamp));
     this.capsule = ctx.world.reg.index.get("core:supply_capsule") ?? -1;
     this.catalog = catalogOf(ctx.world.reg);
-    ctx.death.gate = (c, box) => this.gate(c, box);
-    ctx.death.onOpened = (c, box) => this.opened(c, box);
-    ctx.death.onRemoved = (box) => this.removed(box);
+    ctx.death.gate.on((c, box) => this.gate(c, box));
+    ctx.death.onOpened.on((c, box) => this.opened(c, box));
+    ctx.death.onRemoved.on((box) => this.removed(box));
   }
 
   /** The book in force, compiled against the game's items: again whenever the book or the quality setting changes. */
@@ -290,13 +291,13 @@ export class Supply {
     };
     this.drops.push(d);
     this.calls++;
-    this.ctx.deadlines.push(d.land, DEADLINE_SUPPLY, d.id, d.land);
+    this.ctx.deadlines.push(d.land, this.deadline, d.id, d.land);
     this.changed();
     if (rules.announce === "chat") this.tell(d);
     return d;
   }
 
-  /** A DEADLINE_SUPPLY came due: a pending drop lands, and one that left is forgotten. A stamp that is no longer its tick is stale. */
+  /** A deadline of its kind came due: a pending drop lands, and one that left is forgotten. A stamp that is no longer its tick is stale. */
   due(id: number, stamp: number): void {
     if (id >= CIRCUIT_BASE) {
       const key = this.order[id - CIRCUIT_BASE];
@@ -382,7 +383,7 @@ export class Supply {
     let at = this.order.indexOf(key);
     if (at < 0) at = this.order.push(key) - 1;
     st.stamp = ++this.stamps;
-    this.ctx.deadlines.push(Math.max(st.due, this.ctx.world.tick + 1), DEADLINE_SUPPLY, CIRCUIT_BASE + at, st.stamp);
+    this.ctx.deadlines.push(Math.max(st.due, this.ctx.world.tick + 1), this.deadline, CIRCUIT_BASE + at, st.stamp);
   }
 
   /**
@@ -542,7 +543,7 @@ export class Supply {
     d.release = Math.max(0, land - flight);
     d.brake = Math.max(1, Math.min(d.brake, land - d.release - 1));
     d.called = Math.min(d.called, d.release);
-    this.ctx.deadlines.push(d.land, DEADLINE_SUPPLY, d.id, d.land);
+    this.ctx.deadlines.push(d.land, this.deadline, d.id, d.land);
     this.changed();
     return "";
   }
@@ -675,7 +676,7 @@ export class Supply {
     this.leaving.delete(d.id);
     d.left = Math.max(tick, d.land + 1);
     d.pid = 0;
-    this.ctx.deadlines.push(d.left + LEAVE_SECONDS * TICK_RATE, DEADLINE_SUPPLY, d.id, d.left + LEAVE_SECONDS * TICK_RATE);
+    this.ctx.deadlines.push(d.left + LEAVE_SECONDS * TICK_RATE, this.deadline, d.id, d.left + LEAVE_SECONDS * TICK_RATE);
     this.ctx.bus.after(GONE, { id: d.id, tier: d.tierKey, class: d.clsKey, why, landed: 1, opened: d.opened ? 1 : 0 });
     this.note(`drop ${d.id} gone: ${why}`);
     this.changed();
@@ -769,7 +770,7 @@ export class Supply {
       }
       this.drops.push(d);
       // One whose tick came while the server was stopped lands on its first tick.
-      if (!d.landed) deadlines.push(Math.max(d.land, world.tick + 1), DEADLINE_SUPPLY, d.id, d.land);
+      if (!d.landed) deadlines.push(Math.max(d.land, world.tick + 1), this.deadline, d.id, d.land);
     }
     for (const rec of [...records.byPid.values()]) {
       if (rec.kind !== this.capsule) continue;

@@ -83,8 +83,8 @@ test("the capsule is a prop of its own class, with 60 slots, that is only ever t
 test("used, it opens and says it is take-only; a stack comes out onto an empty slot or its like, and it goes when it is emptied", () => {
   const { h, ada, me, pilot, box } = field();
   const seen: string[] = [];
-  h.host.death.onOpened = (c, b) => void seen.push(`opened ${b.pid === box.pid} by ${c.pid === me.pid}`);
-  h.host.death.onRemoved = (b) => void seen.push(`removed ${b.pid === box.pid} holding ${h.host.items.inv(b).used()}`);
+  h.host.death.onOpened.on((c, b) => void seen.push(`opened ${b.pid === box.pid} by ${c.pid === me.pid}`));
+  h.host.death.onRemoved.on((b) => void seen.push(`removed ${b.pid === box.pid} holding ${h.host.items.inv(b).used()}`));
   tapUse(h, pilot);
   expect([h.client(ada)!.open, ada.open?.name, ada.open?.takeOnly, ada.open?.inventory.cap]).toEqual([box.pid, "Blue Arms drop", true, 60]);
   expect(holds(h, box)).toEqual(["arrow_stone x20", "bow x1", "stone x30"]);
@@ -152,7 +152,7 @@ test("nothing goes in: not a stack put in, not one swapped in, not one given, wh
 test("the gate is asked at every use: one it refuses does not open, is told why, and is shut out of a box it had open", () => {
   const { h, ada, me, pilot, box } = field();
   let level = 25;
-  h.host.death.gate = (c, b) => (b.kind === CAPSULE && h.host.progression.level(h.host.records.byPid.get(c.pid)!) < level ? `You must be level ${level} to open this.` : "");
+  h.host.death.gate.on((c, b) => (b.kind === CAPSULE && h.host.progression.level(h.host.records.byPid.get(c.pid)!) < level ? `You must be level ${level} to open this.` : ""));
   expect(h.host.progression.level(me)).toBeLessThan(25);
   let from = ada.logVersion;
   tapUse(h, pilot);
@@ -168,7 +168,7 @@ test("the gate is asked at every use: one it refuses does not open, is told why,
   expect([h.client(ada)!.open, holds(h, box)]).toEqual([0, ["arrow_stone x20", "bow x1", "stone x30"]]);
   // A bag or a cache is nobody's to gate here.
   from = ada.logVersion;
-  h.host.death.gate = (_c, b) => (b.kind === CAPSULE ? "no" : "");
+  h.host.death.gate.on((_c, b) => (b.kind === CAPSULE ? "no" : ""));
   h.host.items.mint(me, id("wood"), 4);
   h.run(100);
   let code = -1;
@@ -209,7 +209,7 @@ test("two survivors at one capsule: the first to take a stack has it, and the ot
 test("left alone past its time it is removed, what it held burned through the ledger, and the hook hears of it", () => {
   const { h, box } = field(300);
   let heard = 0;
-  h.host.death.onRemoved = (b) => void (b.pid === box.pid && heard++);
+  h.host.death.onRemoved.on((b) => void (b.pid === box.pid && heard++));
   h.run(9000);
   expect(h.host.records.byPid.has(box.pid)).toBe(true);
   h.run(2000);

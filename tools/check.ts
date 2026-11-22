@@ -166,7 +166,6 @@ function checkPolicy(): void {
 
     if (/\.(spec|e2e)\.ts$/.test(rel)) fail(`${rel}: spec/e2e files are not used here`);
     if (/^tests\/(unit|integration)\//.test(rel)) fail(`${rel}: tests live by area (tests/README.md); move it with: bun tools/test-area.ts --move --paths`);
-    else if (zone.dir === "tests" && rel.endsWith(".test.ts") && !/^tests\/[^/]+\/[^/]+$/.test(rel)) fail(`${rel}: a test file sits in its area's folder, tests/<area>/, and no deeper`);
     if (zone.dir === "tests" && rel !== "tests/fixtures/preload.ts" && OWN_TIMEOUT.test(src)) {
       fail(`${rel}: a test sets its own time limit; every test has the one in tests/fixtures/load.ts`);
     }

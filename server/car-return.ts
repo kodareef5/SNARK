@@ -15,8 +15,6 @@ import { basedNear } from "./supply/ground.ts";
 import { foundVehicle, VEHICLE_ORIGIN, type VehicleStart } from "./vehicle-service.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** 12 and 13 are kept for the item program and 14 for W5 (tests/combat/weapons-contracts.test.ts). */
-export const DEADLINE_CAR = 15;
 /** Seconds between a place's checks. */
 export const CAR_CHECK_SECONDS = 600;
 /** Metres. A car this near its place is still there: one shoved aside has not gone. */
@@ -67,10 +65,13 @@ export class CarReturn {
   private readonly ctx: CarReturnContext;
   private readonly checkTicks = CAR_CHECK_SECONDS * TICK_RATE;
   private stamps = 0;
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   /** The map's parked vehicles: those on wheels and the vessels the content has are places one comes back to. */
   constructor(ctx: CarReturnContext, placements: readonly MapVehicle[]) {
     this.ctx = ctx;
+    this.deadline = ctx.deadlines.kind("car", (a, stamp) => this.due(a, stamp));
     const reg = ctx.world.reg;
     for (const at of placements) {
       const kind = reg.index.get(at.kind), def = kind === undefined ? undefined : reg.vehicle[kind];
@@ -97,7 +98,7 @@ export class CarReturn {
     this.places.forEach((_, i) => this.schedule(i, tick + 1 + Math.floor((i * this.checkTicks) / n)));
   }
 
-  /** A DEADLINE_CAR came due for place `i`. */
+  /** A deadline of its kind came due for place `i`. */
   due(i: number, stamp: number): void {
     const p = this.places[i];
     if (!p || p.due !== stamp) return;
@@ -180,6 +181,6 @@ export class CarReturn {
   private schedule(i: number, tick: number): void {
     const p = this.places[i]!;
     p.due = ++this.stamps;
-    this.ctx.deadlines.push(tick, DEADLINE_CAR, i, p.due);
+    this.ctx.deadlines.push(tick, this.deadline, i, p.due);
   }
 }

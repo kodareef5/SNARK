@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
-import { DEADLINE_BREED, fertile, held } from "../../server/breeding.ts";
+import { fertile, held } from "../../server/breeding.ts";
 import { createHost } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -70,7 +70,7 @@ function laidFertile(h: Harness, x: number, z: number, genome: Genome, ticks: nu
   egg.egg = { species: id("dodo"), span: ticks, hatchAt, carrier: 0 };
   h.host.death.place(egg);
   h.world.ents.setYoung(h.host.records.entOf.get(egg.pid)!, ticks, hatchAt);
-  h.host.deadlines.push(hatchAt, DEADLINE_BREED, egg.pid, hatchAt);
+  h.host.deadlines.push(hatchAt, h.host.breeding.deadline, egg.pid, hatchAt);
   return egg;
 }
 

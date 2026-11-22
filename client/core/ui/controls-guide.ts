@@ -1,33 +1,38 @@
 // Descriptions of implemented actions, with explicit context. These do not promise ARK's absent radial menus.
+// A key that has a row in the key table is described on its row (keys.ts). Written here are the rest: the keys that
+// move the body and its held buttons (controls.ts), the mouse, the interface's own keys (ui/ui.ts), and the pad.
+import { KEY_ROWS } from "../keys.ts";
 export const CONTROL_GROUPS=["Move","Combat","World","Build","Flight","Menus"] as const;
 export interface Binding { title: string; detail: string; group: number }
 const b=(group:number,title:string,detail=""):Binding=>({group,title,detail});
 const KEYS: Readonly<Record<string,Binding>>={
-  KeyK:b(2,"Orbit camera / patrol lights","On foot, riding or as a passenger, swing the camera round you or your mount without turning; the wheel moves it nearer or further, and K again returns to your view. In a patrol vehicle’s driver’s seat, cycle the lights: off, patrol, response and pursuit. Other drivers already turn the chase camera with the mouse."),
   KeyW:b(0,"Forward"),KeyA:b(0,"Strafe left"),KeyS:b(0,"Back","Under a glider, flare: it slows to a stop and sinks more gently."),KeyD:b(0,"Strafe right"),ShiftLeft:b(0,"Sprint","Hold while moving. Sprint stands up from crouch. With Meridian greaves and a cuirass, double-tap Sprint while steering in the air to dash. Under a glider, hold to dive. At the wheel of a thruster car (the Zephyr), boost: its tail nozzles fire, and fire again once its cooldown has run."),
   Space:b(0,"Jump","From crouch or prone, press to stand. With a Meridian cuirass, hold to climb, add Sprint for level flight, or double-tap Jump to burst upward. Carrying a glider and out of the cuirass, press in the air to throw it open, and again to fold it."),KeyC:b(0,"Crouch / glider","Press again to stand. Carrying a glider, press in the air to throw it open, and again to fold it."),KeyX:b(0,"Prone","Press again to stand."),
   Mouse0:b(1,"Attack","Hold to use the equipped weapon. While building, place the preview. With a soul ball in hand, click one of your tribe's creatures to keep it in the ball, and click again to let it out where you look. A survivor comes to life with one in its first hotbar slot (key 1) that holds a saddled pteranodon of its own, unless the server gives none."),Mouse2:b(1,"Aim / alternate attack"),MouseMove:b(0,"Look","Move the mouse to aim and steer the camera."),
   KeyR:b(1,"Reload"),KeyG:b(1,"Melee / lower bow","Airborne with Meridian gloves, cuirass and an empty hand, press for a lunging punch."),KeyN:b(0,"Movement modifier","Used by movement and mount abilities."),
-  KeyE:b(2,"Use / ride","Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions."),KeyF:b(2,"Creature inventory","Opens the owned creature you are riding or looking at."),
   KeyI:b(2,"Inventory"),KeyP:b(2,"Character","Stats, engrams and crafting."),KeyM:b(2,"Map"),KeyL:b(2,"Minimap","Toggle visibility."),KeyH:b(2,"Inspect HUD","Hold for values, the heading in degrees and minimap controls. Release to return to play."),
-  Minus:b(2,"Zoom out","Zoom the open map, or the minimap during play."),Equal:b(2,"Zoom in","Zoom the open map, or the minimap during play."),
-  KeyV:b(2,"View","Switch third / first person when the server allows it. You start in third."),KeyO:b(2,"Settings"),Escape:b(5,"Back / menu","Close one layer at a time."),Tab:b(2,"Console"),Slash:b(2,"Command"),Backquote:b(2,"Console"),Enter:b(2,"Chat"),KeyB:b(2,"Voice","Hold to talk, or use the toggle preference in Audio."),
-  KeyT:b(2,"Follow: one","Whistle to the creature you are looking at."),KeyY:b(2,"Stay: one","Whistle to the creature you are looking at."),KeyJ:b(2,"Follow: all"),KeyU:b(2,"Stay: all"),
-  Period:b(2,"Attack this target","Orders tribe creatures that can hear you."),BracketRight:b(2,"Attack my target"),
-  KeyQ:b(3,"Next snap point / thruster flip","Tap to cycle snaps. Hold to toggle free placement. At the wheel of a thruster car (the Zephyr), on or just off the ground, flip: hold W for a front flip, S for a back flip, A or D for a barrel roll, or nothing for a kickflip; its nozzles catch it on its wheels. G flips too."),
+  KeyO:b(2,"Settings"),Escape:b(5,"Back / menu","Close one layer at a time."),Tab:b(2,"Console"),Slash:b(2,"Command"),Backquote:b(2,"Console"),Enter:b(2,"Chat"),
   KeyZ:b(2,"Emotes","Gestures, dances and moves for two: 1-9 plays one, the arrows turn the pages. A move for two goes to whoever you look at, and begins when they answer with it back."),
-  ArrowUp:b(2,"Pan map up"),ArrowDown:b(2,"Pan map down"),ArrowLeft:b(2,"Pan map left"),ArrowRight:b(2,"Pan map right"),
 };
-const BUILD: Readonly<Record<string,Binding>>={KeyQ:b(3,"Next snap point","Tap to cycle snaps. Hold to toggle free placement."),KeyE:b(3,"Rotate","Rotate the active building preview."),KeyR:b(3,"Next variant","Cycle the active building piece variants."),ArrowUp:b(3,"Raise preview"),ArrowDown:b(3,"Lower preview"),Mouse0:b(3,"Place")};
 const FLIGHT: Readonly<Record<string,Binding>>={Space:b(4,"Take off / land","A press toggles the flying mount's wing state."),KeyC:b(4,"Roll","Hold while riding a flyer."),KeyX:b(4,"Brake","Hold while riding a flyer."),KeyN:b(4,"Flight modifier"),ShiftLeft:b(4,"Fast flight","Hold while moving."),KeyE:b(4,"Dismount")};
 const MENUS: Readonly<Record<string,Binding>>={Tab:b(5,"Next control","Shift + Tab moves backward."),Enter:b(5,"Select"),Space:b(5,"Select"),ArrowUp:b(5,"Previous control"),ArrowDown:b(5,"Next control"),ArrowLeft:b(5,"Decrease / previous"),ArrowRight:b(5,"Increase / next"),Escape:b(5,"Back","Close one layer at a time.")};
-const HOTBAR=Array.from({length:10},(_,i)=>b(2,`Hotbar ${i}`,"Select this slot; press again to put it away."));
+/** What the key rows say of each key (keys.ts KEY_ROWS), by tab then code: the first row that has words for a key gives them. */
+let rowWords: Map<string, Binding>[] | null = null;
+function fromRows(code:string,sheet:number):Binding|undefined {
+  if(!rowWords) {
+    rowWords=CONTROL_GROUPS.map(()=>new Map());
+    for(const row of KEY_ROWS)for(const w of row.guide??[]) {
+      const at=rowWords[w.sheet??0]!;
+      if(!at.has(w.code))at.set(w.code,b(w.group,w.title,w.detail));
+    }
+  }
+  return rowWords[sheet]!.get(code);
+}
+/** The words for `code` on tab `group`: a row's where a row has the key, else those written here. */
 export function keyBinding(code:string,group:number):Binding|undefined {
-  if(group===3 && BUILD[code])return BUILD[code];
-  if(group===4 && FLIGHT[code])return FLIGHT[code];
-  if(group===5)return MENUS[code];
-  if(/^Digit[0-9]$/.test(code))return HOTBAR[Number(code.slice(-1))];
-  return KEYS[code];
+  if(group===3 || group===4) { const own=fromRows(code,group)??(group===4?FLIGHT[code]:undefined); if(own)return own; }
+  if(group===5)return fromRows(code,5)??MENUS[code];
+  return fromRows(code,0)??KEYS[code];
 }
 const PAD_MENU:Readonly<Record<number,Binding>>={0:b(5,"Select / drag","Hold to pick up an inventory stack; release over its destination."),1:b(5,"Back"),9:b(5,"Menu / back"),12:b(5,"Previous control"),13:b(5,"Next control"),14:b(5,"Decrease / previous"),15:b(5,"Increase / next"),10:b(5,"Navigate","Left stick: move focus. Horizontal movement adjusts the focused slider.")};
 const PAD_DEFAULT:Readonly<Record<number,Binding>>={0:b(0,"Jump"),1:b(2,"Inventory","Hold LB / L1 first for the orbit camera."),2:b(1,"Reload","Tap to reload. Hold to open the owned creature's inventory."),3:b(2,"Use / ride","Tap to interact, or to get in or out of a seat or saddle. Hold on a structure to open its actions."),

@@ -10,9 +10,9 @@ import { BOX_OPEN, BOX_SELF, CMD_FEED, CMD_MOVE, CMD_USE, RESULT_OK } from "../.
 import { BTN_PRIMARY, BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { V_FOOD, V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { SWING_TICKS } from "../../shared/sim/weapon.ts";
-import { flatGround } from "../fixtures/arena.ts";
 import { nodesOf, standFacing, takeInHand } from "../fixtures/gather.ts";
-import { Harness, type Pilot } from "../fixtures/net.ts";
+import type { Harness, Pilot } from "../fixtures/net.ts";
+import * as kit from "../kit/kit.ts";
 
 const TICK_MS = 1000 / 30;
 /** A dodo's yaw side on to a survivor looking north. */
@@ -20,18 +20,9 @@ const SIDE_ON = 16384;
 
 /** Ada, a new survivor of level 1, on level ground with cheats on. */
 function camp() {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const ada = h.join("ada");
-  h.run(500);
-  h.say(ada, "enablecheats");
-  const g = flatGround(h, 40, 30);
-  h.say(ada, `tp ${(g.x + 20).toFixed(3)} ${(g.z + 6).toFixed(3)}`);
-  const pilot = h.pilots[0]!;
-  pilot.yaw = 0;
+  const { h, ada, me } = kit.camp({ place: kit.clearing() });
   h.run(300);
-  const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
-  const id = (name: string): number => h.reg.index.get(`core:${name}`)!;
-  return { h, ada, pilot, me, id };
+  return { h, ada, pilot: h.pilots[0]!, me, id: kit.id };
 }
 
 /** Stands the dodo `far` metres north of Ada, side on and still, and aims `high` metres above the middle of its body. */
