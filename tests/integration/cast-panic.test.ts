@@ -1,4 +1,4 @@
-// Bystanders and crowds when things turn violent (D1026): people near trouble run from it, freeze, watch from a way off
+// Bystanders and crowds when things turn violent (D1059): people near trouble run from it, freeze, watch from a way off
 // or call it in by their tables; a runner's panic spreads to those a few strides off, so a crowd scatters; the street
 // goes quiet; and police come, going after whoever started it when a survivor did.
 
