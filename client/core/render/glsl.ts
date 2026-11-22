@@ -65,6 +65,7 @@ precision highp int;
 in vec3 vRel;
 flat in vec3 vColor;
 flat in int vSurface;
+flat in int vMade;
 #ifdef STREET_FINISH
 flat in int vFixture;
 #endif
@@ -86,6 +87,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   vec3 albedo = vColor;
   vec3 orm = vec3(1.0, 1.0, 0.0);
   float painted = 0.0;
+  worldMade = vMade;
   if (uSolid < 1.5 && uWorldReady > 0.5) painted = worldSurface(albedo, orm, n, geometric, vSurface, vRel, dx, dy);
   float over = overGround(vRel);
   float open = skyOpen(vRel, geometric, over, uSkin > 0.5 ? 0.0 : 1.0) * contact(vRel, geometric, uSkin > 0.5 ? 0.0 : 1.0) * roofOpen(vRel, geometric, over);

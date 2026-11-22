@@ -5,16 +5,22 @@
 //   bun run check -- --slow      the same as the first, then the slow tier (`*.slow.test.ts`); CI runs it on main
 //   bun run slow                 the slow tier alone
 //   --workers=N or SNARK_CHECK_WORKERS=N caps the test workers; `taskset -c ...` pins the whole check to cores.
+//   --no-art                     lets the tests that need the art be skipped where it is not installed
+//
+// Art that is missing or stale is installed first, from what the machine already holds (tools/release/media.py). A run
+// that still skipped tests for it is not a gate and fails. The tests' whole output is kept in .cache/check/last.log
+// (last-slow.log for the slow tier) and the failing tests in .cache/check/last-failures.txt, one to a line.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { availableParallelism, cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
-import { ART } from "./art/source.ts";
+import { artInstalled, artState } from "./art/installed.ts";
 import { footprint } from "./memory.ts";
 import { dynamicLoads, IMPORT, madeArrays, stripComments } from "./policy.ts";
 import { affectedTests, changedFiles } from "./check-changed.ts";
 import { baselineFile, compare, history, machineKey, remember, RUNS_NEEDED } from "./check-baseline.ts";
+import { failuresOf, verdict, writeWhole } from "./check-report.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
@@ -250,9 +256,9 @@ const SEED_TIMES = join(ROOT, "tools/test-times.json");
 const args = process.argv.slice(2);
 const WORKERS_ARG = /^--workers=([1-9]\d*)$/;
 const CHANGED_ARG = /^--changed(?:=(.+))?$/;
-const FLAGS = new Set(["--slow", "--slow-only", "--strict"]);
+const FLAGS = new Set(["--slow", "--slow-only", "--strict", "--no-art"]);
 if (args.some((a) => !FLAGS.has(a) && !WORKERS_ARG.test(a) && !CHANGED_ARG.test(a)) || !/^([1-9]\d*)?$/.test(process.env.SNARK_CHECK_WORKERS ?? "")) {
-  console.error("usage: bun run check -- [--changed[=<ref>]] [--slow | --slow-only] [--strict] [--workers=N]   (or SNARK_CHECK_WORKERS=N)");
+  console.error("usage: bun run check -- [--changed[=<ref>]] [--slow | --slow-only] [--strict] [--no-art] [--workers=N]   (or SNARK_CHECK_WORKERS=N)");
   process.exit(2);
 }
 const slowOnly = args.includes("--slow-only");
@@ -266,6 +272,24 @@ const strict = args.includes("--strict");
  * check too, on six cores and leaves the rest quiet for benchmarks; a cap on workers alone does not.
  */
 const maxWorkers = Number(args.map((a) => WORKERS_ARG.exec(a)?.[1]).find(Boolean) ?? (process.env.SNARK_CHECK_WORKERS || availableParallelism()));
+
+const noArt = args.includes("--no-art");
+/** Installs art that is missing or stale from what this machine already holds, and says so. It downloads nothing. */
+function installArt(): void {
+  const stale = artState().missing.length;
+  if (stale === 0) return;
+  let said = "not installed: python3 was not found";
+  try {
+    const r = Bun.spawnSync(["python3", join(ROOT, "tools/release/media.py"), "art", "--offline"], { stdout: "pipe", stderr: "pipe" });
+    said = r.exitCode === 0 ? `installed ${stale} archives from this machine's shared store` : `not installed. ${r.stderr.toString().trim().split("\n").pop()}`;
+  } catch {
+    // Then the art stays as it is.
+  }
+  console.log(`art          ${said}`);
+}
+if (!noArt) installArt();
+// Asked here and not taken from tools/art/source.ts, which the tools loaded below read once as they load.
+const ART = artInstalled();
 
 /** Each test file's milliseconds in the tier's last passing run, as `bun test --timings` reads them. */
 const timesOf = (tier: Tier): string => join(ROOT, `.cache/${tier === "fast" ? "test-times" : "slow-test-times"}.json`);
@@ -282,6 +306,9 @@ function keepTimes(file: string, junit: string): void {
 const testFiles = walk(join(ROOT, "tests")).filter((f) => f.endsWith(".test.ts"));
 /** Tests passed, and those skipped in the files that mark tests as needing the art (tests/fixtures/needs-art.ts). */
 const tally = { passed: 0, unart: 0 };
+/** The output each tier's tests left, and every failing test, for whoever reads the run afterwards. */
+const logs: string[] = [];
+const failures: string[] = [];
 const needsArt = new Set(ART ? [] : testFiles.filter((f) => readFileSync(f, "utf8").includes("fixtures/needs-art.ts")).map(repoPath));
 
 /** With --changed, the fast test files the change reaches; undefined for the whole fast tier. */
@@ -397,6 +424,12 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   clearInterval(watching);
   clearInterval(weighing);
   stopped.forEach(fail);
+  const junit = existsSync(report) ? readFileSync(report, "utf8") : "";
+  const log = `.cache/check/last${tier === "slow" ? "-slow" : ""}.log`;
+  writeWhole(join(ROOT, log), r.out);
+  logs.push(log);
+  failures.push(...failuresOf(junit, r.out), ...stopped.map((s) => s.replace(": ", "\t(stopped)\t")));
+  for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
   const gb = (bytes: number): string => `${(bytes / 1e9).toFixed(1)} GB`;
   const heaviest = held.files.filter(([file]) => file).slice(0, 3);
   const weighed = `${gb(held.most)} at most in the workers together${heaviest.length > 0 ? `\n  the heaviest workers then ran ${heaviest.map(([file, bytes]) => `${file} (${gb(bytes)})`).join(", ")}` : ""}`;
@@ -405,7 +438,6 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
     fail(`${tier} tests failed:\n${r.out.trim()}`);
     return;
   }
-  const junit = readFileSync(report, "utf8");
   // A run of some files says nothing of the rest: their times and CPU-seconds stay as the last whole run left them.
   if (!some) {
     keepTimes(times, junit);
@@ -414,7 +446,6 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   }
   const counts = r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim());
   tally.passed += parseInt(counts.find((c) => c.endsWith(" pass")) ?? "0");
-  for (const m of junit.matchAll(/<testsuite name="([^"]+)" file="\1"[^>]*? skipped="(\d+)"/g)) if (needsArt.has(m[1]!)) tally.unart += Number(m[2]);
   console.log(`  ${counts.join(", ")}, ${r.cpu.toFixed(0)} CPU-seconds, ${weighed}`);
   if (tier === "fast" && !some) weighAgainstBaseline(r.cpu, fileCpu(watch), workers);
 }
@@ -470,10 +501,11 @@ try {
 }
 
 const seconds = (performance.now() - t0) / 1000;
-// In the repository every test runs. In the code as shown outside, those that need the art are skipped, and said to be.
-const unart = ART ? "" : `\n${tally.passed.toLocaleString("en-US")} tests passed. ${tally.unart.toLocaleString("en-US")} were skipped: they need the art or the planning documents, which are not in this repository.`;
-if (problems.length > 0) {
-  console.error(`\nFAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n") + unart);
+writeWhole(join(ROOT, ".cache/check/last-failures.txt"), failures.map((line) => line + "\n").join(""));
+const end = verdict({ problems, art: ART, noArt, ...tally, ok: `OK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores` });
+const kept = `${logs.map((log) => `\ntests' output: ${log}`).join("")}\nfailing tests: .cache/check/last-failures.txt (${failures.length})`;
+if (!end.pass) {
+  console.error(end.text + kept);
   process.exit(1);
 }
-console.log(`\nOK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores${unart}`);
+console.log(end.text + kept);

@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { WEATHER_RECIPE } from "../../content/texgen/weather.ts";
-import { WEATHER_BAYS, WEATHER_GEN_VERTEX, WEATHER_LAYERS, bayFeatures, baySeed, fieldLut, fieldSeed, weatherFragment, weatherPixels } from "../../client/core/texgen/weather.ts";
+import { MADE_FIRST, MADE_LAYERS, WEATHER_BAYS, WEATHER_GEN_VERTEX, bayFeatures, baySeed, fieldLut, fieldSeed, weatherFragment, weatherPixels } from "../../client/core/texgen/weather.ts";
 import { encodePng } from "../snap/png.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
 
@@ -21,10 +21,12 @@ const side = Number(values.side);
 const chrome = findChrome();
 if (!chrome) throw new Error("no Chrome: set CHROME");
 
-const jobs = Array.from({ length: WEATHER_LAYERS }, (_, l) => {
+const jobs = Array.from({ length: MADE_LAYERS }, (_, l) => {
+  // A made material's layer: 2 its base colour, 3 its relief, of recipe `finish`.
+  if (l >= MADE_FIRST) return { seed: 0, field: 2 + ((l - MADE_FIRST) & 1), finish: ((l - MADE_FIRST) >> 1) + 1, lut: [], bays: [] };
   const field = l >= WEATHER_BAYS, seed = field ? fieldSeed(WEATHER_RECIPE, l - WEATHER_BAYS) : 0;
   const bays = field ? [] : [0, 1].map((half) => [...bayFeatures(WEATHER_RECIPE, baySeed(WEATHER_RECIPE, l, half))]);
-  return { seed, field: field ? 1 : 0, lut: field ? [...fieldLut(seed)] : [], bays };
+  return { seed, field: field ? 1 : 0, finish: 0, lut: field ? [...fieldLut(seed)] : [], bays };
 });
 const page = `<!doctype html><canvas id=c></canvas><script>
 const gl = document.getElementById("c").getContext("webgl2");
@@ -48,8 +50,9 @@ const out = [], times = [];
 for (const j of jobs) {
   gl.uniform1i(gl.getUniformLocation(p, "uSeed"), j.seed);
   gl.uniform1i(gl.getUniformLocation(p, "uField"), j.field);
+  gl.uniform1i(gl.getUniformLocation(p, "uFinish"), j.finish);
   gl.uniform1f(gl.getUniformLocation(p, "uSide"), side);
-  if (j.field) gl.uniform4fv(gl.getUniformLocation(p, "uLut"), new Float32Array(j.lut));
+  if (j.field === 1) gl.uniform4fv(gl.getUniformLocation(p, "uLut"), new Float32Array(j.lut));
   gl.finish(); const t0 = performance.now();
   if (j.field) gl.drawArrays(gl.TRIANGLES, 0, 3);
   else for (const half of [0, 1]) { gl.uniform4fv(gl.getUniformLocation(p, "uBay"), new Float32Array(j.bays[half])); gl.viewport(0, half * side / 2, side, side / 2); gl.drawArrays(gl.TRIANGLES, 0, 3); }
@@ -89,7 +92,7 @@ try {
   if (!done) throw new Error("the page did not draw the masks");
   console.log(`card: ${done.renderer}; layers ${side} a side; ms a layer: ${done.times.map((t) => t.toFixed(1)).join(", ")}`);
   let worst = 0;
-  for (let l = 0; l < WEATHER_LAYERS; l++) {
+  for (let l = 0; l < MADE_LAYERS; l++) {
     const card = Uint8Array.from(atob(done.out[l]!), (c) => c.charCodeAt(0)), twin = weatherPixels(l, side);
     let most = 0, over = 0;
     const diff = new Uint8Array(card.length);
@@ -100,7 +103,7 @@ try {
       diff[i] = (i & 3) === 3 ? 255 : Math.min(255, d * 16);
     }
     worst = Math.max(worst, over / card.length);
-    console.log(`layer ${l} (${l < WEATHER_BAYS ? "bay" : "field"}): largest difference ${most}, ${((100 * over) / card.length).toFixed(3)}% of bytes over 2`);
+    console.log(`layer ${l} (${l < WEATHER_BAYS ? "bay" : l < MADE_FIRST ? "field" : (l - MADE_FIRST) & 1 ? "made relief" : "made base"}): largest difference ${most}, ${((100 * over) / card.length).toFixed(3)}% of bytes over 2`);
     if (values.out) {
       mkdirSync(values.out, { recursive: true });
       for (const [name, data] of [["card", card], ["twin", twin], ["diff", diff]] as const) writeFileSync(join(values.out, `layer${l}-${name}.png`), encodePng(side, side, data));

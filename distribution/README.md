@@ -17,10 +17,14 @@ Built clients and built maps are not published. Both must match one exact commit
 
 Run `bun run media list` to see what this commit pins and what is installed here.
 
-- `bun run media art` installs every art archive beside the tracked recipes. `bun run media art core-creatures-dodo` installs one, and `bun run media art core-sfx` installs every archive whose name starts that way. Once every archive is in place the installer writes `assets/.art-installed`, and `bun run build` builds the painted game. Until then a build uses generated geometry and the built-in HUD. Blender is only needed to convert art again.
+- `bun run media art` installs every art archive beside the tracked recipes. `bun run media art core-creatures-dodo` installs one, and `bun run media art core-sfx` installs every archive whose name starts that way. Once every archive the manifest pins is installed, `bun run build` builds the painted game. Until then a build uses generated geometry and the built-in HUD. Blender is only needed to convert art again.
 - `bun run media kit CITY` restores one city's prepared cut to `var/mapdata/CITY`. `bun tools/maps/city.ts CITY` then makes `var/maps/CITY.snmap`. Stages whose code has changed since the kit was packed run again; the ones after the downloads need only the Python environment in [the map pipeline's notes](../tools/maps/README.md).
 
-Downloads are kept under `var/downloads` and checked before unpacking, so an interrupted run can be repeated. A later run fetches only archives that are missing or changed. A file you have edited is left alone and stops the installation, unless the installer itself put it there or you pass `--force`.
+Downloads are kept under `~/.cache/snark` (or `SNARK_CACHE`) and checked before unpacking, so an interrupted run can be repeated. A later run fetches only archives that are missing or changed. Each art archive is unpacked there once, and every checkout on the machine hard-links its files from that copy, so a second checkout downloads nothing and takes no more disk. A file you have edited is left alone and stops the installation, unless the installer itself put it there or you pass `--force`.
+
+The linked files are read-only, because writing into one would change it in every checkout. A tool that writes a new file and renames it over the old one changes this checkout alone, as `bun run art` does. Do not `chmod` one: `bun run media art NAME --copy` gives this checkout writable copies of an asset it will rebuild.
+
+`bun run check` installs missing or newly pinned art itself when the machine already holds the archives, and downloads nothing. A run that skipped tests for missing art fails with `NOT A GATE`. Where the art is not installed at all, `bun run check -- --no-art` lets those tests skip and says how many did.
 
 To host the game, build the client and the wiki (`bun run build`, `bun run wiki`), build a map for each city, and start a server for each as [the server's notes](../server/README.md) describe.
 

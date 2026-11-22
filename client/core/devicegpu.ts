@@ -1091,6 +1091,8 @@ void main() {}`);
     if (vertex && text.fragment.includes("flat in int vFixture;")) vertex = vertex.replace("void main() {", "flat out int vFixture;\nvoid main() {\n  vFixture = 0;");
     if (vertex && text.fragment.includes("flat in float vFinishSeed;")) vertex = vertex.replace("void main() {", "flat out float vFinishSeed;\nout vec3 vWheelPoint;\nout vec4 vWheel;\nvoid main() {\n  vWheelPoint = vec3(0.0); vWheel = vec4(0.0); vFinishSeed = 0.0;");
     if (vertex && text.fragment.includes("flat in int vSurface;")) vertex = vertex.replace("void main() {", `flat out int vSurface;\nvoid main() {\n  vSurface = ${WALL_FINISH};`);
+    // Nor a material made from a recipe (world-surfaces.ts worldVertex): the probe's walls wear their painted finish.
+    if (vertex && text.fragment.includes("flat in int vMade;")) vertex = vertex.replace("void main() {", "flat out int vMade;\nvoid main() {\n  vMade = 0;");
     // A flat mesh's fragment reads a landmark's finish (glsl.ts finishVertex): none, a surface that is fully rough.
     if (vertex && text.fragment.includes("flat in vec4 vFinish;")) vertex = vertex.replace("void main() {", "flat out vec4 vFinish;\nflat out float vShare;\nvoid main() {\n  vFinish = vec4(1.0, 1.0, 0.0, 0.0);\n  vShare = 1.0;");
     // A near static's fragment weathers its wall by its own frame (world-surfaces.ts ownVertex): the wall's place, one instance, no edges known.
