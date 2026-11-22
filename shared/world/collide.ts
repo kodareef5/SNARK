@@ -540,6 +540,22 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
   return true;
 }
 
+/**
+ * Whether the capsule is clear of every structure and resource node, the ground not asked: what a creature's head is
+ * held clear of (shared/sim/character.ts), which may dip below a rise ahead as it climbs.
+ */
+export function builtFree(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number): boolean {
+  const top = y + (h > 2 * r ? h : 2 * r) + PAD;
+  const n = w.structs.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
+  for (let i = 0; i < n; i++) if (capsuleBox(w.structs, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
+  const nodes = w.nodes;
+  if (nodes) {
+    const m = nodes.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
+    for (let i = 0; i < m; i++) if (capsuleBox(nodes, found.refs[i]!, x, y, z, r, h, SKIN)) return false;
+  }
+  return true;
+}
+
 /** True when no structure or node reaches the capsule's footprint between the heights `low` and `high`. */
 export function nothingBuilt(w: CollisionWorld, x: number, z: number, r: number, low: number, high: number): boolean {
   if (w.structs.query(x - r, z - r, x + r, z + r, found, low - PAD, high + PAD) > 0) return false;

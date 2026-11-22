@@ -1239,7 +1239,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
-  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); };
+  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); game.blocking.survivorsPass = !rules.on("SurvivorsBlock"); };
   const seatedHead = new Float64Array(3);
   const parts = game.parts;
   const lane = game.lane;

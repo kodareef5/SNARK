@@ -8,7 +8,7 @@
 
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../shared/anim/pose.ts";
 import { dequantX, dequantY, quantX, quantY, type SentView } from "../shared/net/view.ts";
-import { Blockers } from "../shared/sim/blockers.ts";
+import { Blockers, blocksSession, pairing } from "../shared/sim/blockers.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { BodyGrid } from "./bodies.ts";
 import type { ServerWorld } from "./world.ts";
@@ -28,6 +28,8 @@ export class BodyBlocking {
   private readonly world: ServerWorld;
   private readonly grid: BodyGrid;
   readonly list = new Blockers();
+  /** SurvivorsBlock is off: survivors pass through one another. The host sets it from the rules each tick. */
+  survivorsPass = false;
   /** The widest a body reaches from where it stands, so a search padded by it finds every one that may touch. */
   private readonly reach: number;
   /** 1 for a survivor's kind: a body a client predicts. */
@@ -66,7 +68,7 @@ export class BodyBlocking {
    * creature nobody drives (`creature`) meets every survivor and ridden mount as solid whatever it weighs: what a client
    * predicts is never pushed by what the server alone steps.
    */
-  around(e: number, x: number, y: number, z: number, r: number, team: number, creature = false): Blockers | null {
+  around(e: number, x: number, y: number, z: number, r: number, team: number, creature = false, skip = -1): Blockers | null {
     const world = this.world, ents = world.ents, grid = this.grid, list = this.list;
     list.clear();
     const far = this.reach + r + 1;
@@ -75,11 +77,14 @@ export class BodyBlocking {
     const found = grid.found;
     for (let k = 0; k < n; k++) {
       const j = found[k]!;
-      if (j === e || !blocks(world, j, team)) continue;
+      if (j === e || j === skip || !blocks(world, j, team) || pairing(ents.emote[e]!, ents.emote[j]!)) continue;
       const bx = dequantX(quantX(ents.x[j]!)), bz = dequantX(quantX(ents.z[j]!));
       if (Math.abs(bx - x) > far || Math.abs(bz - z) > far) continue;
+      const moving = (ents.anim[j]! & 15) !== 0;
+      if (!creature && !blocksSession(world.reg, ents.kind[j]!, moving)) continue;
+      if (!creature && this.survivorsPass && this.survivor[ents.kind[j]!] === 1 && this.survivor[ents.kind[e]!] === 1) continue;
       const always = creature && (ents.driven[j] !== 0 || this.survivor[ents.kind[j]!] === 1);
-      list.add(world.reg, j, ents.kind[j]!, bx, dequantY(quantY(ents.y[j]!)), bz, ((ents.yaw[j]! >>> 6) * TAU) / 1024, (ents.anim[j]! & 15) !== 0, ents.kind[e]!, x, y, z, ents.yaw[e]!, always);
+      list.add(world.reg, j, ents.kind[j]!, bx, dequantY(quantY(ents.y[j]!)), bz, ((ents.yaw[j]! >>> 6) * TAU) / 1024, moving, ents.kind[e]!, x, y, z, ents.yaw[e]!, always);
     }
     return this.done();
   }
@@ -98,6 +103,8 @@ export class BodyBlocking {
       if (id === e || !(reg.footRadius[kind]! > 0) || reg.vehicle[kind] || (view.flags[j]! & (F_PROP >>> 1)) !== 0) continue;
       if ((view.cue[j]! & (CUE_OUT | CUE_HELD | CUE_DEAD)) !== 0 || ents.gen[id] !== view.gen[j]) continue;
       if (ents.seat[id] !== 0 || ents.grown[id] !== 0 || (team !== 0 && ents.team[id] === team)) continue;
+      if (!blocksSession(reg, kind, (view.anim[j]! & 15) !== 0)) continue;
+      if (this.survivorsPass && this.survivor[kind] === 1 && this.survivor[ents.kind[e]!] === 1) continue;
       const bx = dequantX(view.qx[j]!), bz = dequantX(view.qz[j]!);
       if (Math.abs(bx - x) > far || Math.abs(bz - z) > far) continue;
       list.add(reg, id, kind, bx, dequantY(view.qy[j]!), bz, (view.yaw[j]! * TAU) / 1024, (view.anim[j]! & 15) !== 0, ents.kind[e]!, x, y, z, ents.yaw[e]!);

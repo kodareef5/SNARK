@@ -5,7 +5,7 @@ import { BLOCK_SOFT_SPEED, blockOut, pushOut, turnFree } from "./blockers.ts";
 import { TICK_RATE, WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
-import { SKIN, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
+import { SKIN, builtFree, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../world/ray.ts";
 import { Found } from "../world/structures.ts";
 
@@ -204,6 +204,14 @@ export interface MoveParams {
   readonly staminaWalk: number;
   /** In 1/65536 turns per tick. 0 means it faces the look at once, as a survivor does. */
   readonly turnRate: number;
+  /**
+   * A head held clear of walls (SpeciesDef.footprint.head): a sphere this far ahead of the origin along the facing and
+   * this high, of this radius. The body neither walks nor turns it into a structure. Omitted for a body whose head is
+   * within its capsule.
+   */
+  readonly headAhead?: number;
+  readonly headUp?: number;
+  readonly headRadius?: number;
   /** False for a body that moves only the way it faces. */
   readonly strafe: boolean;
   // A creature's own flight (MODE_FLYER), from SpeciesDef.fly. For a body that does not fly, `flies` is false and every
@@ -566,6 +574,12 @@ function jetMode(b: Body, prior: number, buttons: number, ready: boolean, moving
  * `moveX` (strafe right) and `moveZ` (forward) are -127 to 127. `yaw` and `pitch` are in 1/65536 turns, and pitch 16384 is
  * straight up. These are the quantized values sent on the wire.
  */
+/** Whether a body of `p` at (x, y, z) facing `yaw` (65536ths of a turn) has its head clear of every wall (MoveParams.headRadius). */
+export function headClear(w: CollisionWorld, p: MoveParams, x: number, y: number, z: number, yaw: number): boolean {
+  const r = p.headRadius!, a = (yaw * TAU) / 65536, ahead = p.headAhead!;
+  return builtFree(w, x + detSin(a) * ahead, y + p.headUp! - r, z + detCos(a) * ahead, r, 2 * r);
+}
+
 export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   stepOut.landSpeed = 0;
   const priorThrust = b.jetThrust;
@@ -596,9 +610,10 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     let turn = ((yaw - b.yaw + 32768) & 0xffff) - 32768;
     if (turn > rate) turn = rate;
     else if (turn < -rate) turn = -rate;
-    // A long body does not swing itself into a body standing still (shared/sim/blockers.ts).
+    // A long body does not swing itself into a body standing still (shared/sim/blockers.ts), nor its head into a wall.
     const bodies = w.blockers;
     if (bodies && bodies.count > 0 && b.mode === MODE_WALK && !turnFree(bodies, b.kind, b.x, b.y, b.z, b.yaw, (b.yaw + turn) & 0xffff, stanceHeight(p, b.stance))) turn = 0;
+    if (turn !== 0 && p.headRadius && b.mode === MODE_WALK && !headClear(w, p, b.x, b.y, b.z, (b.yaw + turn) & 0xffff) && headClear(w, p, b.x, b.y, b.z, b.yaw)) turn = 0;
     b.yaw = (b.yaw + turn) & 0xffff;
   }
   yaw = b.yaw;
@@ -1000,6 +1015,18 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     h = groundUnder(hf, nx, nz, r);
     if (ny < h && h - ny <= p.stepUp) {
       ny = h;
+      clear = false;
+    }
+
+    // A head held clear of walls: a step that would put it into one keeps what of the step does not, as along a wall, or
+    // none of it. A head already in one (turned there by something else) is let back out.
+    if (p.headRadius && !headClear(w, p, nx, ny, nz, b.yaw) && headClear(w, p, x, y, z, b.yaw)) {
+      if (headClear(w, p, nx, ny, z, b.yaw)) nz = z;
+      else if (headClear(w, p, x, ny, nz, b.yaw)) nx = x;
+      else {
+        nx = x;
+        nz = z;
+      }
       clear = false;
     }
 

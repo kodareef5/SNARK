@@ -375,7 +375,8 @@ export class Creatures {
       const z0 = b.z;
       const previousAct = b.act;
       // It meets the bodies about it (server/blocking.ts), and gives way to every one a client predicts.
-      world.blockers = this.blocking.around(e, b.x, b.y, b.z, p.radius, ents.team[e]!, true);
+      // What it hunts or fights it presses into, as its reach is counted from its middle.
+      world.blockers = this.blocking.around(e, b.x, b.y, b.z, p.radius, ents.team[e]!, true, mind.targetOf(e));
       if (combat) stepCreature(world, b, 0, move, input.yaw, input.pitch, buttons, pressed, p, combat, TICK_DT, false);
       else stepBody(world, b, 0, move, input.yaw, input.pitch, buttons, p, TICK_DT);
       world.blockers = null;

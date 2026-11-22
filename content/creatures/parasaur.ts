@@ -22,7 +22,7 @@ export const PARASAUR: readonly Def[] = [
     color: PARASAUR_DYES[0]!,
     regions: [...REGIONS, null, null],
     radius: 1.1,
-    footprint: { back: -1.5, front: 1.6, radius: 0.7 },
+    footprint: { back: -1.5, front: 1.6, radius: 0.7, head: { ahead: 2.7, up: 2.9, radius: 0.55 } },
     height: 2.6,
     // Chosen physical kilograms for contact response, independent of inventory capacity.
     mass: 900,

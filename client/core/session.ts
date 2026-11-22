@@ -1,4 +1,4 @@
-import { Blockers } from "../../shared/sim/blockers.ts";
+import { Blockers, blocksSession, survivorKind } from "../../shared/sim/blockers.ts";
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { IMPALE_SLOT } from "../../shared/sim/seats.ts";
 // One client's connection, with no DOM, clock or socket. The shell or a test supplies a Connection and calls update().
@@ -39,6 +39,7 @@ import {
   OWN_RULES,
   RULE_CORPSE_LOCATOR,
   RULE_CREATIVE,
+  RULE_SURVIVORS_PASS,
   RULE_CROSSHAIR,
   RULE_DAMAGE_NUMBERS,
   RULE_GLOBAL_CHAT,
@@ -623,6 +624,8 @@ export class ClientSession {
   private footTick = -1;
   /** The bodies the own body meets in its step, and the widest any reaches; -1 until measured. */
   private readonly blockers = new Blockers();
+  /** SurvivorsBlock is off on this server: survivors pass through one another (server/blocking.ts). */
+  survivorsPass = false;
   private blockReach = -1;
   /** Per tick stepped, the snapshot its input acknowledges, which its step meets the bodies in. */
   private readonly blockAck = new Uint32Array(HISTORY);
@@ -1258,15 +1261,15 @@ export class ClientSession {
       for (let j = 0; j < reg.footRadius.length; j++) if (reg.footRadius[j]! > 0) reach = Math.max(reach, Math.abs(reg.footBack[j]!), Math.abs(reg.footFront[j]!), reg.footRadius[j]!);
       this.blockReach = reach;
     }
-    const own = this.driving >= 0 ? this.driving : handleIndex(this.ownHandle);
-    let team = 0;
-    for (let j = 0; j < v.count; j++) if (v.id[j] === own) { team = v.team[j]!; break; }
+    // The own body is not in its view: its team is the survivor's, which the server meets bodies by too.
+    const own = this.driving >= 0 ? this.driving : handleIndex(this.ownHandle), team = this.tribe.team;
     const x = this.own.x, z = this.own.z, far = this.blockReach + p.radius + 1;
     for (let j = 0; j < v.count; j++) {
       const id = v.id[j]!, kind = v.kind[j]!;
       if (id === own || !(reg.footRadius[kind]! > 0) || reg.vehicle[kind] || (v.flags[j]! & (F_PROP >>> 1)) !== 0) continue;
       if ((v.cue[j]! & (CUE_OUT | CUE_HELD | CUE_DEAD)) !== 0 || v.seat[j] !== 0 || v.grown[j] !== 0) continue;
-      if (team !== 0 && v.team[j] === team) continue;
+      if ((team !== 0 && v.team[j] === team) || !blocksSession(reg, kind, (v.anim[j]! & 15) !== 0)) continue;
+      if (this.survivorsPass && survivorKind(reg, kind) && survivorKind(reg, this.own.kind)) continue;
       const bx = dequantX(v.qx[j]!), bz = dequantX(v.qz[j]!);
       if (Math.abs(bx - x) > far || Math.abs(bz - z) > far) continue;
       list.add(reg, id, kind, bx, dequantY(v.qy[j]!), bz, (v.yaw[j]! * TAU) / 1024, (v.anim[j]! & 15) !== 0, this.own.kind, x, this.own.y, z, this.own.yaw);
@@ -1577,6 +1580,7 @@ export class ClientSession {
       this.mapLocation = (flags & RULE_MAP_LOCATION) !== 0;
       this.corpseLocator = (flags & RULE_CORPSE_LOCATOR) !== 0;
       this.creative = (flags & RULE_CREATIVE) !== 0;
+      this.survivorsPass = (flags & RULE_SURVIVORS_PASS) !== 0;
     } else if (component === OWN_VOICE) {
       const slot = r.u16();
       const token = new Uint8Array(TOKEN_BYTES);

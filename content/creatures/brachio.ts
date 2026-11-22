@@ -31,7 +31,7 @@ export const BRACHIO: readonly Def[] = [
     regions: BRACHIO_REGIONS,
     // The travel cylinder surrounds the four planted feet, centred between the forefeet and hindfeet.
     radius: 2.15,
-    footprint: { back: -3.0, front: 2.6, radius: 1.5 },
+    footprint: { back: -3.0, front: 2.6, radius: 1.5, head: { ahead: 3.9, up: 11.3, radius: 0.55 } },
     height: 11.97,
     eyeHeight: 11.7,
     swimDepth: 3.3,

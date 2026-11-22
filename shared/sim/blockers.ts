@@ -12,6 +12,7 @@
 // rules on both sides, from what the snapshot carries.
 
 import { detCos, detSin } from "../math/scalar.ts";
+import { EMOTE_LEAD, EMOTE_ROLE_SHIFT } from "../anim/pose.ts";
 import type { Registry } from "../content/registry.ts";
 
 /** Metres a second at which a moving body pushes a walker out of it. */
@@ -20,11 +21,31 @@ export const BLOCK_SOFT_SPEED = 2.5;
 export const BLOCK_MOST = 8;
 /** Of a walker's radius, the most a standing body pushes it in one substep: a body found deep inside one comes out over a few. */
 const HARD_SHARE = 0.45;
-/** Metres a walker must be inside a body at the start of its step for it to push only softly. */
+/** Metres a walker must be inside a body at the start of its step for that body to be no wall to it. */
 const INSIDE_SKIN = 0.05;
 /** A body lighter than this share of the walker does not stop it: a survivor walks through a dodo, and a rex through a survivor. */
 export const BLOCK_LIGHT = 0.75;
 const TAU = Math.PI * 2;
+
+/** Whether two bodies' emote words (AnimState.packEmote) both play a side of a pair: partners stand closer than bodies may. */
+export function pairing(a: number, b: number): boolean {
+  return ((a >>> EMOTE_ROLE_SHIFT) & 3) >= EMOTE_LEAD && ((b >>> EMOTE_ROLE_SHIFT) & 3) >= EMOTE_LEAD;
+}
+
+/** Whether `kind` is a survivor's: a body some client predicts. */
+export function survivorKind(reg: Registry, kind: number): boolean {
+  const d = reg.defs[kind];
+  return d?.type === "species" && d.class === "survivor";
+}
+
+/**
+ * Whether a body of `kind`, moving or not, blocks a survivor or the mount a session rides: a survivor always, a creature
+ * only standing still. A creature that moves gives way to the survivor itself (server/blocking.ts), and one that presses
+ * on what it hunts does not shove it.
+ */
+export function blocksSession(reg: Registry, kind: number, moving: boolean): boolean {
+  return !moving || survivorKind(reg, kind);
+}
 
 /** Kilograms, for which bodies stop which: its species' mass, or for one with none (a survivor) about 80 kg by its build. */
 export function blockMass(reg: Registry, kind: number): number {
@@ -104,7 +125,7 @@ export class Blockers {
   readonly r = new Float64Array(BLOCK_MOST);
   readonly y0 = new Float64Array(BLOCK_MOST);
   readonly y1 = new Float64Array(BLOCK_MOST);
-  /** 1 for a body that moves, or that the walker began its step inside, which pushes softly. */
+  /** 1 for a body that moves, which pushes softly. */
   readonly soft = new Uint8Array(BLOCK_MOST);
   /** How far each is from the walker it is gathered for, to keep the nearest. */
   private readonly far = new Float64Array(BLOCK_MOST);
@@ -116,8 +137,8 @@ export class Blockers {
   /**
    * Adds body `id` of `kind` standing at (x, y, z) facing `yaw` radians (+Z at 0, +X at a quarter turn), moving or not,
    * for a walker of kind `walker` standing at (wx, wy, wz) facing `wyaw` (Body.yaw, 65536ths of a turn). A body lighter
-   * than BLOCK_LIGHT of the walker is not added unless `always`. One the walker already stands in pushes softly, so
-   * whatever put it there it walks out. Past BLOCK_MOST the farthest goes. Entries are kept in ascending id, so that both
+   * than BLOCK_LIGHT of the walker is not added unless `always`, nor one the walker already stands in, so that whatever
+   * put it there it walks out. Past BLOCK_MOST the farthest goes. Entries are kept in ascending id, so that both
    * ends push in one order.
    */
   add(reg: Registry, id: number, kind: number, x: number, y: number, z: number, yaw: number, moving: boolean, walker: number, wx: number, wy: number, wz: number, wyaw: number, always = false): void {
@@ -150,7 +171,13 @@ export class Blockers {
     this.y1[at] = y + reg.bodyHeight[kind]!;
     this.far[at] = far;
     this.count = n + 1;
-    this.soft[at] = moving || depth(this, at, reg, walker, wx, wy, wz, (wyaw * TAU) / 65536, reg.bodyHeight[walker]!) > INSIDE_SKIN ? 1 : 0;
+    // One the walker already stands in is no wall to it: it is let walk out, and is not shoved, as one teleported or set
+    // down among others is not.
+    if (depth(this, at, reg, walker, wx, wy, wz, (wyaw * TAU) / 65536, reg.bodyHeight[walker]!) > INSIDE_SKIN) {
+      this.remove(at);
+      return;
+    }
+    this.soft[at] = moving ? 1 : 0;
   }
 
   private move(from: number, to: number): void {

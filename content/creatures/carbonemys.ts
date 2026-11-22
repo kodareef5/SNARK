@@ -17,7 +17,7 @@ export const CARBONEMYS: readonly Def[] = [
     type: "species", class: "creature", id: "core:carbonemys", tag: "carbonemys", aliases: ["Turtle_Character_BP_C"],
     mesh: "core:carbonemys", skeleton: "carbonemys", color, regions,
     radius: .88, height: 1.78, eyeHeight: 1.19, mass: 800, drag: 250,
-    footprint: { back: -1.2, front: 1.3, radius: 1.1 },
+    footprint: { back: -1.2, front: 1.3, radius: 1.1, head: { ahead: 2.1, up: 1.1, radius: 0.4 } },
     walkSpeed: 1.05, sprintMul: 2, swimSpeed: 3.2, turn: 62, strafe: false, jumpSpeed: 0,
     fists: 13, bite: { harvest: "berries", reach: 2.7, ticks: 24, lands: 12, stamina: 6 },
     temper: "defends", alarm: 12, leash: 30, defendsEgg: true,

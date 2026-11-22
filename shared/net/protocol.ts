@@ -566,6 +566,8 @@ export const RULE_MAP_LOCATION = 32;
 export const RULE_CORPSE_LOCATOR = 64;
 /** Protocol 34. The server shows creative mode (bShowCreativeMode): the game's menu has a Creative entry. */
 export const RULE_CREATIVE = 128;
+/** Protocol 44: survivors pass through one another (SurvivorsBlock off, server/blocking.ts). */
+export const RULE_SURVIVORS_PASS = 256;
 /**
  * team varint, tribe name string (empty for a survivor alone, and then rank and members are absent), rank u8, members (count
  * u8, then per member: name string, online 1 bit, owner 1 bit). Then a pending invitation: tribe name string (empty for

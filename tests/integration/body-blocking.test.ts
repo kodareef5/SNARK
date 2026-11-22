@@ -154,3 +154,20 @@ test("survivors block survivors, but tribemates pass through each other, and a d
     expect(a.z[c.ent]!).toBeGreaterThan(106);
   } finally { h.host.shutdown(); }
 });
+
+test("with SurvivorsBlock off, survivors of different tribes pass through one another, predicted with no correction", () => {
+  const { h, s, c, a, place } = yard(100);
+  try {
+    h.host.setSetting("SurvivorsBlock", "false");
+    const b = h.join("bo");
+    h.run(1600);
+    place(h.client(b)!.ent, 100, 103);
+    h.run(500);
+    expect(s.survivorsPass).toBe(true);
+    const before = s.stats.corrections;
+    h.pilots[0]!.moveZ = 127;
+    h.run(3000);
+    expect(a.z[c.ent]!).toBeGreaterThan(106);
+    expect(s.stats.corrections - before).toBe(0);
+  } finally { h.host.shutdown(); }
+});

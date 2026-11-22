@@ -727,7 +727,9 @@ export class GameServer {
           // The bodies about it as the snapshot its client stepped this tick with showed them, where it says which.
           const ack = c.inputs.has(T) ? c.inputAcks[T & c.inputs.mask]! : 0;
           const seen = ack !== 0 ? c.views.find(ack) : null;
-          world.blockers = seen ? this.blocking.inView(e, seen, b.x, b.y, b.z, moving.radius, ents.team[e]!) : this.blocking.around(e, b.x, b.y, b.z, moving.radius, ents.team[e]!);
+          // Its tribe is the survivor's, riding or not, as its client knows it (OWN_TRIBE).
+          const team = c.ent >= 0 ? ents.team[c.ent]! : ents.team[e]!;
+          world.blockers = seen ? this.blocking.inView(e, seen, b.x, b.y, b.z, moving.radius, team) : this.blocking.around(e, b.x, b.y, b.z, moving.radius, team);
           if (combat && driving) stepCreature(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, c.pressed, world.reg.tamedMove[b.kind]!, combat, TICK_DT, true, c.closed || T - c.inputAt > INPUT_HOLD_TICKS);
           else stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
           world.blockers = null;

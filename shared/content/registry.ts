@@ -1217,6 +1217,7 @@ function moveParams(d: SpeciesDef): MoveParams {
     // Whole units per tick, so both sides turn the same.
     turnRate: d.turn === undefined ? 0 : turnUnits(d.turn),
     strafe: d.strafe !== false,
+    ...(d.footprint?.head ? { headAhead: d.footprint.head.ahead, headUp: d.footprint.head.up, headRadius: d.footprint.head.radius } : {}),
     ...flight(d.fly),
   };
 }

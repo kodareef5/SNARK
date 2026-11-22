@@ -10,7 +10,7 @@ export const RAPTOR: readonly Def[] = [
     skeleton: "dino",
     color: 5,
     radius: 0.6,
-    footprint: { back: -0.55, front: 0.85, radius: 0.45 },
+    footprint: { back: -0.55, front: 0.85, radius: 0.45, head: { ahead: 1.15, up: 1.4, radius: 0.25 } },
     height: 1.5,
     // Chosen physical kilograms, close to the former capsule-derived 150 kg fallback.
     mass: 150,
