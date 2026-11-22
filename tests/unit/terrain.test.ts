@@ -7,6 +7,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import { zoomed } from "../../client/core/optics.ts";
 import { FramePacket, PASS_FAR, PASS_NEAR, SOURCE_MAP, SOURCE_WINDOW, TILE_QUADS } from "../../client/core/render/packet.ts";
 import { COARSE, TerrainLod, WINDOW, WINDOW_MOVE, coarseGround, groundNormal, groundSize, groundTint, tileMesh, tilePicture, type GroundBudget } from "../../client/core/render/terrain.ts";
 import { groundCover, groundWander } from "../../client/core/render/world-surfaces.ts";
@@ -333,4 +334,27 @@ test("a tile's mesh is its ground, then skirts that hang from the ground's borde
     if (!fits) odd.push(k);
   }
   expect(odd).toEqual([]);
+});
+
+test("through a sight the ground in view is chosen as if it stood the zoom's times nearer, finer where the window has it, and what casts as it was", () => {
+  const hf = rough(32);
+  const lod = new TerrainLod(hf);
+  const cam = camera(1024, 300, hf);
+  cam.pitch = -0.02;
+  const narrow = zoomed(cam.fovY, 6);
+  cam.fovY = narrow;
+  cam.update();
+  // The finest stride a tile has in view, and how many tiles; the window comes first, in whatever frames it takes.
+  const finest = (p: FramePacket): number => Math.min(...Array.from({ length: p.tileCount }, (_, n) => p.tiles[n * 4 + 3]!));
+  const tilesAt = (p: FramePacket, from: number): number => Array.from({ length: p.tileCount }, (_, n) => n).filter((n) => Math.hypot(p.tiles[n * 4]!, p.tiles[n * 4 + 1]! - from) < 400).length;
+  for (let f = 0; f < 40; f++) frame(lod, cam, allowance(64 << 20));
+  const plain = frame(lod, cam, allowance(64 << 20));
+  cam.zoom = 6;
+  for (let f = 0; f < 40; f++) frame(lod, cam, allowance(64 << 20));
+  const zoomedIn = frame(lod, cam, allowance(64 << 20));
+  expect(zoomedIn.tileCount).toBeGreaterThan(plain.tileCount);
+  expect(finest(zoomedIn)).toBeLessThanOrEqual(finest(plain));
+  // 600 m ahead, in the window round the camera: more and finer tiles.
+  expect(tilesAt(zoomedIn, 600)).toBeGreaterThan(tilesAt(plain, 600));
+  expect(placed(hf, zoomedIn)).toBe(true);
 });
