@@ -1,5 +1,5 @@
-import { CROWN_ORIGIN, DECK_RADIUS, EYE_DYE, KEEL, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
-import { aperture, eyePhase, eyePower, shutterOpening, writeEyeSky } from "./tide-eye.ts";
+import type { TideEyeSite } from "../../../shared/world/tide-eye.ts";
+import { writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
 import { EYE_FROM } from "../optics.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
@@ -62,7 +62,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
-import { BEND_BUFFERS, BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
+import { BEND_BUFFERS, BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
 import { recipeIndex } from "../../../content/texgen/finishes.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
@@ -70,14 +70,14 @@ import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } from "./atmosphere.ts";
 import { FarShadow } from "./farshadow.ts";
-import { Cascades} from "./shadow.ts";
-import { shadowBytes} from "./shadowtext.ts";
-import { LAMP_BIT, LampView} from "./lamp.ts";
+import { Cascades } from "./shadow.ts";
+import { shadowBytes } from "./shadowtext.ts";
+import { LAMP_BIT, LampView } from "./lamp.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
 import { lightBytes, lightSamples, opticFrame, postFrame, sceneSize, type Optic } from "./post.ts";
 import { lampsOn, skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
-import { TerrainLod} from "./terrain.ts";
+import { TerrainLod } from "./terrain.ts";
 import { WaterTrails } from "./water-trails.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 import { bendOf, type MapLandmark, type MapStatics } from "../../../shared/world/mapfile.ts";
@@ -87,6 +87,7 @@ import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } fro
 import { Frame, walk, type Pass } from "./pass.ts";
 import { Casting } from "./casting.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
+import { TideEyes } from "./passes/tide-eyes.ts";
 import { CUTOUTS, Draws, NEAR_BUCKETS, type Cutouts } from "./draws.ts";
 import type { Tier } from "../assets/tiers.ts";
 
@@ -390,17 +391,6 @@ export class Scene {
   now = 0;
   /** Damage numbers (damage-numbers.ts): struck by Feedback, drawn as detail cards over everything else. */
   readonly damage = new DamageNumbers();
-  /** Seconds on the shared server clock, independent of the local frame clock. */
-  eyeSeconds = 0;
-  /** Additional instrument rotation for a directed scene, in radians. */
-  eyeIndexOffset = 0;
-  /** Directed shots can enlarge the sextant above its fixed keel. Map views use the authored dimensions. */
-  sextantScale = 1;
-  /** A directed scene's display held at full power on a clock of its own: seconds that only run forward (tide-eye.ts writeEyeSky). */
-  eyeHold: number | null = null;
-  private readonly eyeMesh: { crown: number; deck: number; iris: number; glow: number; light: number; deckLight: number };
-  private readonly lanternMesh: { frame: number; shutter: number; lip: number; light: number; masts: number };
-  private readonly sextantMesh: { frame: number; needle: number; indexLight: number; keelLight: number };
   /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
   plainSky = false;
   /** Loose meshes to draw: the stress scene's. */
@@ -659,6 +649,16 @@ export class Scene {
   readonly put: Draws;
   /** Sun shadows: the cascades and the lamp's view fitted this frame, what casts into them, and the casters (casting.ts). */
   readonly casting: Casting;
+  /** The tide eyes (passes/tide-eyes.ts), whose clock and directed poses the app sets here. */
+  private readonly eyes: TideEyes;
+  get eyeSeconds(): number { return this.eyes.seconds; }
+  set eyeSeconds(s: number) { this.eyes.seconds = s; }
+  get eyeIndexOffset(): number { return this.eyes.indexOffset; }
+  set eyeIndexOffset(a: number) { this.eyes.indexOffset = a; }
+  get sextantScale(): number { return this.eyes.sextantScale; }
+  set sextantScale(s: number) { this.eyes.sextantScale = s; }
+  get eyeHold(): number | null { return this.eyes.hold; }
+  set eyeHold(s: number | null) { this.eyes.hold = s; }
   /** The supply drops live on the map (passes/supply-drops.ts), and the kind of the server's prop its model stands in for, or -1. */
   private readonly supplyDrops: SupplyDrops;
   private readonly capsuleKind: number;
@@ -693,10 +693,6 @@ export class Scene {
     // The renderer holds the sky table on every tier.
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
-    const eye = (part: string) => table.find("core:tide_eye/" + part);
-    this.eyeMesh = { crown: eye("crown"), deck: eye("deck"), iris: eye("iris"), glow: eye("glow"), light: eye("crown_light"), deckLight: eye("deck_light") };
-    this.lanternMesh = { frame: eye("lantern"), shutter: eye("shutter"), lip: eye("shutter_light"), light: eye("well_light"), masts: eye("mast_light") };
-    this.sextantMesh = { frame: eye("sextant"), needle: eye("needle"), indexLight: eye("index_light"), keelLight: eye("keel_light") };
     this.motionReg = reg.motion.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -803,6 +799,7 @@ export class Scene {
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
+    this.eyes = new TideEyes(this.assets);
     this.supplyDrops = new SupplyDrops(reg, this.assets, pack.palette, this.details);
     this.capsuleKind = this.supplyDrops.kind;
     this.characters.thrusterPlumes.pictures(pack.header.details);
@@ -1069,7 +1066,7 @@ export class Scene {
         },
       },
       // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
-      { draw: (f) => { if (this.world.tideEyes) this.showTideEyes(f.cam, this.world.tideEyes); } },
+      this.eyes,
       this.supplyDrops,
       { draw: (f) => { if (this.world.motion && this.motionReg) this.showMotion(f.cam, this.world.motion); } },
       {
@@ -1932,111 +1929,6 @@ export class Scene {
       p.transientIds[at] = 0;
     }
     p.transientCount = total;
-  }
-
-  private showTideEyes(cam: Camera, sites: readonly TideEyeSite[]): void {
-    const p = this.packet;
-    for (const site of sites) {
-      const x = site.x - cam.x, y = site.y - cam.y, z = site.z - cam.z;
-      const yaw = site.yaw * Math.PI / 32768, cs = Math.cos(yaw), sn = Math.sin(yaw);
-      const phase = eyePhase(this.eyeSeconds, site), open = aperture(phase);
-      const dye = site.form === "lantern" && site.color === "green" ? 51 : EYE_DYE[site.color];
-      const draw = (mesh: number, h: number, r: number, scale: number, motion?: {
-        roll?: number; hinge?: number; glow?: boolean; shutter?: { depth: number; width: number }; tilt?: number;
-      }) => {
-        if (mesh < 0) return;
-        const { roll = 0, hinge = -1, glow = false, shutter } = motion ?? {};
-        const depth = shutter?.depth ?? 0;
-        const radial = hinge < 0 ? 0 : 33 * Math.cos(hinge);
-        const cx = x + radial * cs + depth * sn;
-        const cy = y + h + (hinge < 0 ? 0 : 33 * Math.sin(hinge));
-        const cz = z - radial * sn + depth * cs;
-        if (!cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r)) return;
-        if (p.transientCount >= p.transientIds.length || p.drawCount + this.put.doubled >= MAX_DRAWS) return;
-        const articulated = hinge >= 0 || roll !== 0 || shutter !== undefined || scale > 255 / SIZE_UNITS;
-        if (articulated && p.boneCount >= Math.min(p.tier.bones, MAX_BONES)) return;
-        const first = p.transientCount++;
-        const distance = Math.max(1, Math.hypot(cx, cy, cz) - r);
-        const errors = this.assets.table.error[mesh]!;
-        const skyline = distance >= 2100 && (mesh === this.eyeMesh.crown || mesh === this.eyeMesh.iris || mesh === this.sextantMesh.frame || mesh === this.sextantMesh.needle || mesh === this.lanternMesh.frame || mesh === this.lanternMesh.shutter);
-        const level = skyline && scale === 1 ? Math.max(0, errors.length - 1) : this.assets.choose(errors, distance / Math.max(0.03, scale), -1);
-        if (skyline) this.assets.want(mesh, level, distance);
-        else this.assets.wantTextured(mesh, level, distance);
-        let flags = DRAW_PLAIN | (glow ? DRAW_EMISSIVE : 0) | (skyline ? DRAW_SKYLINE : 0);
-        if (articulated) {
-          const bone = p.boneCount++;
-          const pose = p.bones, row = bone * BONE_FLOATS;
-          if (shutter) {
-            // Turn about the spanwise axle, then turn the whole tower to its map heading.
-            const pitch = motion?.tilt ?? 0, c = Math.cos(pitch), s = Math.sin(pitch);
-            pose[row] = cs * shutter.width; pose[row + 1] = sn * s; pose[row + 2] = sn * c;
-            pose[row + 4] = 0; pose[row + 5] = c; pose[row + 6] = -s;
-            pose[row + 8] = -sn * shutter.width; pose[row + 9] = cs * s; pose[row + 10] = cs * c;
-          } else {
-            const a = Math.cos(roll) * scale, b = Math.sin(roll) * scale;
-            const depthScale = hinge >= 0 ? 1 : scale;
-            pose[row] = cs * a; pose[row + 1] = -cs * b; pose[row + 2] = sn * depthScale;
-            pose[row + 4] = b; pose[row + 5] = a; pose[row + 6] = 0;
-            pose[row + 8] = -sn * a; pose[row + 9] = sn * b; pose[row + 10] = cs * depthScale;
-          }
-          pose[row + 3] = cx; pose[row + 7] = cy; pose[row + 11] = cz;
-          this.transient.setSkinned(first, bone, dye);
-          flags |= DRAW_SKINNED;
-        } else {
-          this.transient.set(first, cx, cy, cz, site.yaw, dye);
-          if (scale !== 1) {
-            this.transient.size(first, Math.round(scale * SIZE_UNITS));
-            flags |= DRAW_SIZED;
-          }
-        }
-        p.transientIds[first] = 0;
-        const passes = cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
-        this.put.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, passes);
-      };
-      draw(this.eyeMesh.deck, 0, site.radius + 1, site.radius / DECK_RADIUS);
-      if (open > 0) draw(this.eyeMesh.deckLight, 0, site.radius + 1, site.radius / DECK_RADIUS, { glow: true });
-      if (site.form === "lantern") {
-        draw(this.lanternMesh.frame, CROWN_ORIGIN, 235, 1);
-        if (open > 0) draw(this.lanternMesh.masts, CROWN_ORIGIN, 240, 1, { glow: true });
-        for (let i = 0; i < LANTERN_BANKS.length; i++) {
-          const bank = LANTERN_BANKS[i]!, opened = shutterOpening(phase, i);
-          for (let j = 0; j < bank.slats.length; j++) {
-            const shutter = bank.slats[j]!, reach = 52 * shutter.width + 15, tilt = -1.34 * opened;
-            draw(this.lanternMesh.shutter, shutter.h, reach, 1, { shutter, tilt });
-            if (opened > 0.05 && j % 2 === 0) draw(this.lanternMesh.lip, shutter.h, reach, 1, { shutter, tilt, glow: true });
-          }
-          if (opened > 0.10) {
-            const size = (bank.radius + 4) / 10 * opened;
-            draw(this.lanternMesh.light, bank.well, 12 * size, size, { glow: true });
-          }
-        }
-        continue;
-      }
-      if (site.form === "sextant") {
-        // The index is authored hanging down. After lifting it sweeps the bow and locks on the upper mark.
-        const angle = this.eyeIndexOffset - open * (1.82 + 0.13 * eyePower(phase) * Math.sin((phase - 9) * 0.64));
-        const scale = this.sextantScale, origin = KEEL + (CROWN_ORIGIN - KEEL) * scale;
-        const pivot = KEEL + (SEXTANT_PIVOT - KEEL) * scale;
-        draw(this.sextantMesh.frame, origin, 221 * scale, scale);
-        draw(this.sextantMesh.needle, pivot, 157 * scale, scale, { roll: angle });
-        if (open > 0) {
-          draw(this.sextantMesh.keelLight, origin, 202 * scale, scale, { glow: true });
-          draw(this.sextantMesh.indexLight, pivot, 157 * scale, scale, { roll: angle, glow: true });
-        }
-        continue;
-      }
-      draw(this.eyeMesh.crown, CROWN_ORIGIN, 211, 1);
-      if (open < 0.998) {
-        for (let i = 0; i < 12; i++) {
-          const bearing = i * Math.PI / 6;
-          draw(this.eyeMesh.iris, LENS_HEIGHT, 36, 1 - 0.94 * open, { roll: bearing + open * 0.88, hinge: bearing });
-        }
-      }
-      if (open > 0) {
-        draw(this.eyeMesh.glow, LENS_HEIGHT, 46, 1, { roll: phase * 0.045 + eyePower(phase) * 0.7, glow: true });
-        draw(this.eyeMesh.light, CROWN_ORIGIN, 216, 1, { glow: true });
-      }
-    }
   }
 
   private showGhost(cam: Camera): void {
