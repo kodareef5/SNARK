@@ -198,9 +198,11 @@ export class History {
     this.rowOf[e] = -1;
     const last = --this.rows;
     if (r === last) return;
+    // Rows past the last in use stay at zero, so record() clears only the rows in use.
     // The last row moves into the gap.
     const moved = this.entOf[last]!;
     this.travelled[r] = this.travelled[last]!;
+    this.travelled[last] = 0;
     this.travelGen[r] = this.travelGen[last]!;
     this.entOf[r] = moved;
     this.rowOf[moved] = r;
@@ -220,7 +222,7 @@ export class History {
     const slot = tick & MASK;
     this.tickOf[slot] = tick;
     this.travel[slot] = this.currentDistance();
-    this.travelled.fill(0);
+    this.travelled.fill(0, 0, this.rows);
     this.currentTravel = 0;
     for (let r = this.rows - 1; r >= 0; r--) {
       const e = this.entOf[r]!;
