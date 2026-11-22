@@ -47,6 +47,11 @@ export const BTN_CROUCH = 128;
 export const BTN_PRONE = 256;
 /** Toggles the held item's attachment. */
 export const BTN_MOD = 512;
+/**
+ * A helmet's visor held up (client/core/visor.ts): the step makes nothing of it, and the server takes it as the proof a
+ * visor's gaze needs (server/gaze.ts, D1084), as a sight's is the secondary held.
+ */
+export const BTN_VISOR = 1024;
 
 /** A lower stance is a shorter capsule, a lower eye and a slower walk. */
 export const STANCE_STAND = 0;

@@ -49,7 +49,7 @@ import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
 import { Falling } from "./rubble.ts";
-import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
+import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_VISOR } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
@@ -1322,7 +1322,8 @@ export class App {
     const flyer = this.flyerKeys();
     this.refreshCockpitLook();
     // A glass raised takes the primary for its range: the hand holding it does not strike.
-    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, (this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons) & (this.glass.up ? ~BTN_PRIMARY : ~0));
+    // A visor held up is told the server as a button: the proof its gaze needs (D1084).
+    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, ((this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons) & (this.glass.up ? ~BTN_PRIMARY : ~0)) | (this.visor.held ? BTN_VISOR : 0));
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();

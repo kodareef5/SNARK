@@ -1,15 +1,19 @@
-// What a survivor looks at through a sight (D1079). A session looking through one says how many times it magnifies and how
-// far off what the middle of its view is on (CMD_GAZE). The server holds the zoom to what the survivor holds or wears that
-// magnifies, and while the gaze lasts adds the chunks along its look, past its own, to its view, those nearest what it is on
-// first (GameServer.cone), and holds the creatures round what it is on awake, as a body nearby would, so that what is seen
-// far off lives. Each session's cone is its own: two survivors side by side looking two ways see two different things.
+// What a survivor looks at through a sight (D1079, D1084). A session looking through one says how many times it magnifies
+// (CMD_GAZE). The server believes none of it but the zoom, and that only within what the sight raised now gives: a held
+// glass or a weapon's scope with the secondary held, or a worn visor with BTN_VISOR held. Until it sees the sight raised the
+// cone is empty, and a claim it never sees raised ends. It finds for itself what the look is on, along the survivor's own
+// look from its own eye, and adds the chunks of the cone to the view, past the survivor's own square, those nearest what it
+// is on first and only those the ground does not hide (GameServer.cone); and holds the creatures round what it is on awake,
+// as a body nearby would, so that what is seen far off lives. Each session's cone is its own.
 
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
 import { CMD_GAZE, CMD_MARK, GAZE_FARTHEST, GAZE_REACH, GAZE_TICKS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SPOT_TICKS } from "../shared/net/protocol.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
+import { BTN_SECONDARY, BTN_VISOR, stanceEye } from "../shared/sim/character.ts";
+import { HIT_NONE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { CUE_SCOPED } from "../shared/anim/pose.ts";
-import type { ItemDef } from "../shared/content/defs.ts";
+import type { ItemDef, OpticFacet } from "../shared/content/defs.ts";
 import { ARMOR_SLOTS } from "../shared/sim/items.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
@@ -27,6 +31,13 @@ export const WAKE_SIDE = 3;
 export const WAKE_MOST = 64;
 /** The farthest a zero may be dialled, metres. */
 export const ZERO_MOST = 2000;
+/** Ticks a claimed gaze may go unseen raised before it ends: an input lagging its command. */
+const RAISE_GRACE = 45;
+/** Metres over the ground a far creature's head may stand, which the line of sight to a chunk aims at, and that line's step. */
+const OVER_GROUND = 5;
+const SIGHT_STEP = 24;
+/** The most chunks of a cone tested against the ground in a finding. */
+const TESTED_MOST = 160;
 /** Ticks between a cone's chunks found again as its survivor turns. */
 const REFRESH = 6;
 
@@ -43,8 +54,13 @@ export interface GazeContext {
 
 /** One session's gaze. */
 class Look {
+  /** The zoom claimed, and the zoom held to the sight raised (0 while none is). */
+  claim = 0;
   zoom = 0;
+  /** Metres to what the look is on, as the server finds it (0 for nothing within reach). */
   focus = 0;
+  /** The last tick the sight was seen raised; one not seen raised for RAISE_GRACE ends. */
+  raisedAt = -1;
   /** The zero dialled, metres (D1083). */
   zero = 0;
   /** The tick it ends without another CMD_GAZE, and the tick its chunks were last found. */
@@ -64,6 +80,7 @@ export class Gaze {
   /** Chunks held awake by every cone together. */
   private woken = 0;
   private readonly found: { chunk: number; score: number }[] = [];
+  private readonly dir = [0, 0, 0];
 
   constructor(ctx: GazeContext) {
     this.ctx = ctx;
@@ -76,7 +93,32 @@ export class Gaze {
     };
   }
 
-  /** How many times the most that `c`'s survivor holds or wears magnifies: the held item, its attachment, its armour. 0 for none. */
+  /**
+   * The optic `c`'s survivor has raised now, or null: a held glass's or the held weapon's own, or the attachment fitted to
+   * it, with the secondary held; or a worn helmet's that is not worn out, with BTN_VISOR held.
+   */
+  sightOf(c: Client): OpticFacet | null {
+    const { records, items, world } = this.ctx;
+    const rec = records.byPid.get(c.pid);
+    if (!rec || c.ent < 0 || c.drive >= 0) return null;
+    const inv = items.inv(rec);
+    const defs = world.reg.defs;
+    const optic = (item: number): OpticFacet | null => (item !== 0 ? ((defs[item] as ItemDef | null)?.optic ?? null) : null);
+    const slot = inv.hotbar >= 0 && rec.held >= 0 ? inv.hotbar + rec.held : -1;
+    if ((c.heldButtons & BTN_SECONDARY) !== 0 && slot >= 0) {
+      const raised = optic(inv.item[slot]!) ?? optic(inv.attach[slot]!);
+      if (raised) return raised;
+    }
+    if ((c.heldButtons & BTN_VISOR) !== 0 && inv.armor >= 0) {
+      for (let k = 0; k < ARMOR_SLOTS; k++) {
+        const at = inv.armor + k, worn = optic(inv.item[at]!);
+        if (worn && (inv.dur[at]! > 0 || !(world.reg.uses[inv.item[at]!]! > 0))) return worn;
+      }
+    }
+    return null;
+  }
+
+  /** How many times the most that `c`'s survivor holds or wears magnifies, raised or not: what a claim may be held to. 0 for none. */
   most(c: Client): number {
     const { records, items, world } = this.ctx;
     const rec = records.byPid.get(c.pid);
@@ -93,7 +135,6 @@ export class Gaze {
       of(inv.item[slot]!);
       of(inv.attach[slot]!);
     }
-    // Worn, where it is not worn out: a helmet's visor.
     if (inv.armor >= 0) for (let k = 0; k < ARMOR_SLOTS; k++) if (inv.dur[inv.armor + k]! > 0 || !(world.reg.uses[inv.item[inv.armor + k]!]! > 0)) of(inv.item[inv.armor + k]!);
     return best;
   }
@@ -104,6 +145,7 @@ export class Gaze {
     const focus = r.u16();
     const zero = r.u16();
     if (r.overflow) return RESULT_INVALID;
+    void focus;
     if (zoom <= 1) {
       this.end(c);
       return RESULT_OK;
@@ -115,10 +157,10 @@ export class Gaze {
     }
     let look = this.looks.get(c);
     if (!look) this.looks.set(c, (look = new Look()));
-    look.zoom = Math.min(zoom, most);
-    look.focus = Math.min(focus, this.reach(look.zoom));
+    // The zoom claimed, held to the sight raised as `step` finds it; what the look is on the server finds for itself.
+    look.claim = Math.min(zoom, most);
+    if (look.raisedAt < 0) look.raisedAt = this.ctx.world.tick;
     look.zero = Math.min(zero, ZERO_MOST);
-    this.glint(c, true);
     look.until = this.ctx.world.tick + GAZE_TICKS;
     look.at = -1;
     return RESULT_OK;
@@ -182,12 +224,19 @@ export class Gaze {
         continue;
       }
       if (look.at >= 0 && tick - look.at < REFRESH) continue;
-      const most = this.most(c);
-      if (most <= 1) {
-        this.end(c);
+      const sight = this.sightOf(c);
+      if (!sight) {
+        // Not raised: nothing is shown, and a claim not raised for long ends.
+        look.at = tick;
+        look.zoom = 0;
+        this.clear(look);
+        this.glint(c, false);
+        if (tick - look.raisedAt > RAISE_GRACE) this.end(c);
         continue;
       }
-      look.zoom = Math.min(look.zoom, most);
+      look.raisedAt = tick;
+      look.zoom = Math.min(sight.max ?? sight.min, Math.max(sight.min, look.claim));
+      this.glint(c, true);
       this.aim(c, look, tick);
     }
   }
@@ -204,14 +253,19 @@ export class Gaze {
     return this.looks.size;
   }
 
-  /** Ends `c`'s gaze: its cone goes from its view and the creatures it held awake may sleep. */
-  end(c: Client): void {
-    const look = this.looks.get(c);
-    if (!look) return;
+  /** Empties `look`'s cone and lets go of what it held awake. */
+  private clear(look: Look): void {
     for (let k = 0; k < look.count; k++) this.coned[look.chunks[k]!]!--;
     look.count = 0;
     for (const chunk of look.waking) this.release(chunk);
     look.waking.length = 0;
+  }
+
+  /** Ends `c`'s gaze: its cone goes from its view and the creatures it held awake may sleep. */
+  end(c: Client): void {
+    const look = this.looks.get(c);
+    if (!look) return;
+    this.clear(look);
     this.looks.delete(c);
     this.glint(c, false);
   }
@@ -229,6 +283,10 @@ export class Gaze {
     const dx = Math.sin(yaw), dz = Math.cos(yaw);
     const ex = ents.x[e]!, ez = ents.z[e]!;
     const reach = this.reach(look.zoom), slope = WIDEST / look.zoom;
+    // What the look is on, found here along the survivor's own look from its own eye: nothing the session says.
+    const ey = ents.y[e]! + stanceEye(world.reg.move[ents.kind[e]!]!, ents.stance[e]!), d = this.dir;
+    lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
+    look.focus = castWorld(world, ex, ey, ez, d[0]!, d[1]!, d[2]!, reach) === HIT_NONE ? 0 : rayHit.t;
     const focus = look.focus * Math.cos(pitch);
     const own = game.opts.entityRadius, ocx = chunkCx(dims, c.chunk), ocz = chunkCz(dims, c.chunk);
     // The box the cone lies in: a narrow one's ends and sides, a wide one's square.
@@ -257,8 +315,13 @@ export class Gaze {
     }
     found.sort((a, b) => a.score - b.score || a.chunk - b.chunk);
     for (let k = 0; k < look.count; k++) this.coned[look.chunks[k]!]!--;
-    look.count = Math.min(CONE_CHUNKS, found.length);
-    for (let k = 0; k < look.count; k++) this.coned[(look.chunks[k] = found[k]!.chunk)]!++;
+    // Only what the ground leaves in sight: a chunk behind a hill is not sent, however the session looks.
+    let n = 0;
+    for (let k = 0; k < found.length && k < TESTED_MOST && n < CONE_CHUNKS; k++) {
+      const chunk = found[k]!.chunk;
+      if (this.sighted(ex, ey, ez, chunk)) this.coned[(look.chunks[n++] = chunk)]!++;
+    }
+    look.count = n;
     // What it is on, and the chunks round it, past its own square, are held awake while it looks.
     const want: number[] = [];
     if (focus > 0) {
@@ -283,6 +346,22 @@ export class Gaze {
       this.woken++;
       this.ctx.wake(chunk, 1);
     }
+  }
+
+  /**
+   * Whether the ground leaves a line from the eye (ex, ey, ez) to OVER_GROUND over the middle of `chunk` open: a head standing
+   * there could be seen. Sampled each SIGHT_STEP metres short of its end.
+   */
+  sighted(ex: number, ey: number, ez: number, chunk: number): boolean {
+    const { hf, dims } = this.ctx.world;
+    const tx = (chunkCx(dims, chunk) + 0.5) * CHUNK_SIZE, tz = (chunkCz(dims, chunk) + 0.5) * CHUNK_SIZE;
+    const ty = hf.heightAt(tx, tz) + OVER_GROUND;
+    const far = Math.hypot(tx - ex, tz - ez);
+    for (let t = SIGHT_STEP; t < far - SIGHT_STEP; t += SIGHT_STEP) {
+      const a = t / far;
+      if (hf.heightAt(ex + (tx - ex) * a, ez + (tz - ez) * a) > ey + (ty - ey) * a) return false;
+    }
+    return true;
   }
 
   private release(chunk: number): void {

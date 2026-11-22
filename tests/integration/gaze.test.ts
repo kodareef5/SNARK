@@ -8,6 +8,7 @@ import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, TICK_RATE, chunkAt } from "../../shared/coords.ts";
 import { CMD_GAZE, GAZE_TICKS } from "../../shared/net/protocol.ts";
+import { BTN_SECONDARY, stanceEye } from "../../shared/sim/character.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -67,12 +68,24 @@ test("two survivors side by side looking two ways through their glasses each see
   };
   // Unaimed, nobody's view reaches them.
   for (const s of [ada, bob, cat]) expect(seen(s).filter((e) => e === north || e === south)).toEqual([]);
+  // A claim with the sight not raised shows nothing, and ends once it has gone unraised a while (D1084).
+  gaze(ada, 8, OFF);
+  h.run(500);
+  expect([h.host.gaze.count, seen(ada).includes(north)]).toEqual([1, false]);
+  h.run(2000);
+  expect(h.host.gaze.count).toBe(0);
+  // Raised now, each looking a little down at its own creature, as one aiming at it does.
+  for (const p of [pa, pb, pc]) {
+    p.buttons |= BTN_SECONDARY;
+    p.pitch = -Math.atan2(stanceEye(h.reg.move[h.reg.index.get("core:survivor")!]!, 0), OFF);
+  }
   // Each looks through its glass at its own creature, Cat through nothing: the server holds Cat's claim to what it has.
+  // What each says it is on goes unheard: the server finds it along the survivor's own look.
   const looking = (ms: number): void => {
     for (let t = 0; t < ms; t += 1000) {
-      gaze(ada, 8, OFF);
-      gaze(bob, 8, OFF);
-      gaze(cat, 8, OFF);
+      gaze(ada, 8, 50);
+      gaze(bob, 8, 50);
+      gaze(cat, 8, 50);
       h.run(1000);
     }
   };
@@ -93,6 +106,12 @@ test("two survivors side by side looking two ways through their glasses each see
   ada.sampleRemote(r);
   const k = [...r.id.subarray(0, r.count)].indexOf(north);
   expect(Math.hypot(r.x[k]! - ents.x[north]!, r.z[k]! - ents.z[north]!)).toBeLessThan(3);
+  // A ridge 60 m high raised between Ada and her creature hides it: the cone sends nothing the ground hides.
+  const hf = h.world.hf, saved = hf.heights.slice();
+  for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) if (Math.abs(j * hf.cell - (MID + 500)) < 20) hf.heights[j * hf.nx + i] = Math.round((60 - hf.minY) / hf.stepY);
+  looking(2000);
+  expect([seen(ada).includes(north), seen(bob).includes(south)]).toEqual([false, true]);
+  hf.heights.set(saved);
   // Lowered, the gazes last GAZE_TICKS and go: the creatures leave the views and sleep.
   gaze(ada, 0, 0);
   h.run(((GAZE_TICKS + TICK_RATE) * 1000) / TICK_RATE);
