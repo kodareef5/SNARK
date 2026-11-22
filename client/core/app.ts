@@ -9,8 +9,6 @@ import { chunkAt } from "../../shared/coords.ts";
 import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticMost, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
 import { Visor } from "./visor.ts";
 import { Glass, MARKED_MS } from "./glass.ts";
-import { MARK_SPOT } from "../../shared/world/tactical.ts";
-import { CUE_DEAD, CUE_SCOPED } from "../../shared/anim/pose.ts";
 import type { OpticFacet } from "../../shared/content/defs.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
@@ -43,7 +41,8 @@ import type { Pack } from "../../shared/pack/pack.ts";
 import { Controls, LOOK_SPEED } from "./controls.ts";
 import { pressKey } from "./key-row.ts";
 import { KEY_ROWS } from "./keys.ts";
-import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
+import { HudModel, VehicleTelemetry, fillHud, fillOverhead } from "./hud.ts";
+import { HudFill, type HudFrame } from "./hud/widget.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
 import { seatScratch } from "./render/characters.ts";
@@ -111,8 +110,7 @@ const REACH = 3.5;
 const STRUCT_HOLD_MS = 350;
 /** Metres. */
 const NAME_RANGE = 30;
-/** Bits of the replicated entity flags. */
-const VIEW_FLAG_PLAYER = 4;
+/** A bit of the replicated entity flags. */
 const VIEW_FLAG_PROP = 8;
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
@@ -146,11 +144,6 @@ const FOCUS_MS = 250;
 const SIGHT_STEP = 1.25;
 const ZERO_STEP = 50;
 const ZERO_MOST = 1000;
-/** A glint shows within this of straight at the viewer, radians, and past this many metres. */
-const GLINT_HALF = 0.12;
-const GLINT_NEAR = 20;
-/** Metres over the ground a spotted creature's mark is drawn. */
-const SPOT_RISE = 3;
 /** Milliseconds the eye takes to settle most of the way to where it is off a scope's axis. */
 const EYE_EASE_MS = 120;
 /** Metres a holo-scope's crosshair finds what it is on, and its colours (Holo-Scope Attachment). */
@@ -185,6 +178,9 @@ export class App {
   private playEye = false;
   private artEyeAt: number | null = null;
   readonly hud = new HudModel();
+  /** What the HUD's widgets fill from (hud/widget.ts): made once, set each frame. */
+  private readonly hudFill = new HudFill();
+  private hudFrame: HudFrame | null = null;
   /** The hour the sky shows: the server's, swept when it is set, or the one in an admin's hand on the sundial. */
   readonly sky = new SkyClock();
   /** The dash's readings of the vehicle driven. */
@@ -1771,47 +1767,19 @@ export class App {
     const packet = this.scene.build(cam, this.remote);
     session.requestCorpseMotions(this.scene.characters.corpseCheckpointRequests);
     packetWithout(packet, off);
-    hud.minimapVisible = this.ui.settings.minimap && !this.ui.menu;
-    if (hud.chart && this.ui.settings.minimapZoom >= 0) hud.chart.miniZoom = this.ui.settings.minimapZoom;
-    updateHud(hud, session, this.remote, this.fps, this.unit, nowMs);
-    hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
+    // The HUD: each widget fills its slice of the model from the session and this frame (hud/widgets.ts). The sight's
+    // fields were set above, with the camera; hit marks, marks over creatures, laser dots and the voice have fills of their own.
+    const fill = this.hudFill;
+    const view = (this.hudFrame ??= { settings: this.ui.settings, scene: this.scene, cam, world, reg: this.reg, palette: this.pack.palette, menu: false, alive: false, inCar: false, rivalry: false, steady: "" });
+    view.settings = this.ui.settings; view.scene = this.scene; view.cam = cam; view.world = world; view.reg = this.reg;
+    view.menu = this.ui.menu; view.alive = alive; view.inCar = alive && !!car; view.rivalry = riding && body.state.rivalry && !body.state.out;
+    view.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
+    fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = view;
+    fillHud(hud, fill);
     this.feedback.absorb(session, this.reg, nowMs, this.scene.damage);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.hitMarkers);
     fillOverhead(hud.overhead, session, this.remote, cam, this.scene.characters, alive && !hud.out ? eyeNow : -1, c.yaw, c.pitch, this.lookReach);
-    // Another survivor's glass glints to one it faces (CUE_SCOPED, D1083): brighter the straighter it looks.
-    const r = this.remote, spot = this.spot;
-    hud.glintCount = 0;
-    for (let i = 0; i < r.count && hud.glintCount < 4; i++) {
-      if ((r.cue[i]! & CUE_SCOPED) === 0 || (r.flags[i]! & VIEW_FLAG_PLAYER) === 0 || (r.cue[i]! & CUE_DEAD) !== 0) continue;
-      const dx = cam.x - r.x[i]!, dz = cam.z - r.z[i]!, far = Math.hypot(dx, dz);
-      let off = Math.abs(Math.atan2(dx, dz) - r.yaw[i]!) % TAU;
-      if (off > PI) off = TAU - off;
-      if (far < GLINT_NEAR || off > GLINT_HALF) continue;
-      const y = r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * 0.9;
-      if (!cam.project(r.x[i]!, y, r.z[i]!, spot) || spot[0]! < 0 || spot[0]! > 1 || spot[1]! < 0 || spot[1]! > 1) continue;
-      const ey = y - cam.y, d = Math.hypot(dx, ey, dz);
-      if (castWorld(world, cam.x, cam.y, cam.z, -dx / d, ey / d, -dz / d, d - 0.5) !== HIT_NONE) continue;
-      const g = (hud.glints[hud.glintCount++] ??= { u: 0, v: 0, alpha: 0 });
-      g.u = spot[0]!;
-      g.v = spot[1]!;
-      g.alpha = 1 - off / GLINT_HALF;
-    }
-    // What the tribe spotted, where it stands on the screen (D1082).
-    const marks = session.tactical.marks;
-    hud.spotCount = 0;
-    for (let i = 0; i < marks.count && hud.spotCount < 8; i++) {
-      if (marks.kind[i] !== MARK_SPOT) continue;
-      const x = marks.x[i]!, z = marks.z[i]!;
-      if (!cam.project(x, world.hf.heightAt(x, z) + SPOT_RISE, z, spot) || spot[0]! < 0 || spot[0]! > 1 || spot[1]! < 0 || spot[1]! > 1) continue;
-      const out = (hud.spots[hud.spotCount++] ??= { u: 0, v: 0 });
-      out.u = spot[0]!;
-      out.v = spot[1]!;
-    }
     this.fillSights(world, alive);
-    fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
-    fillAction(hud, alive ? session : null, this.reg);
-    fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette, riding && body.state.rivalry && !body.state.out);
-    if (alive && car) hud.ammo = "";
     this.listen(hud);
     const vol = this.ui.settings;
     if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);

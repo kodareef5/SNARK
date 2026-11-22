@@ -1,155 +1,45 @@
 // HUD view model as plain data. A place is told as its latitude and longitude and drawn at its share of the map's picture
-// (shared/world/coords.ts).
+// (shared/world/coords.ts). The model is one object, and each widget of the HUD owns a slice of its fields (hud/widgets.ts).
 
-import { boostCooling, flipCooling, thrustAxis, thrustBoostLeft } from "../../shared/sim/vehicle-thrusters.ts";
 import { CUE_DEAD, CUE_MATING_SHIFT } from "../../shared/anim/pose.ts";
-import { TICK_RATE } from "../../shared/coords.ts";
-import type { ItemDef } from "../../shared/content/defs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { MAX_VIEW } from "../../shared/net/view.ts";
 import { STAGES, growthStep, maturity, stageOf, youngScale } from "../../shared/sim/breeding.ts";
 import { sortU32 } from "../../shared/sort.ts";
-import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
-import { CHOOSE_DIED, CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
-import { JET_CUIRASS, MF_OUT, STAMINA_UNITS, type Body } from "../../shared/sim/character.ts";
-import type { BoatSpec, HelicopterSpec, VehicleSpec } from "../../shared/sim/vehicle.ts";
-import { DEFAULT_DRIVETRAIN } from "../../shared/sim/vehicle-drivetrain.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Camera } from "./render/camera.ts";
-import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_RELOAD } from "../../shared/sim/weapon.ts";
-import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
-import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../../shared/sim/vitals.ts";
-import { latLonText, latOf, lonOf, mapU, mapV } from "../../shared/world/coords.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { MARK_MATE, MARK_OTHER, MARK_SPOT, MARK_TAME, MAX_MARKS, PLAYERS_OFF, type Marks } from "../../shared/world/tactical.ts";
 import { CombatModel } from "./feedback.ts";
+import type { ActionModel } from "./hud/action.ts";
+import type { BuffsModel } from "./hud/buffs.ts";
+import type { CompassModel } from "./hud/compass.ts";
+import type { CrosshairModel } from "./hud/crosshair.ts";
+import type { DotsModel } from "./hud/dots.ts";
+import type { HotbarModel } from "./hud/hotbar.ts";
+import type { JetModel } from "./hud/jet.ts";
+import type { MarksModel } from "./hud/marks.ts";
+import type { MinimapModel } from "./hud/minimap.ts";
+import type { PromptModel } from "./hud/prompt.ts";
+import { formatReadout, type ReadoutModel } from "./hud/readout.ts";
+import type { SightModel } from "./hud/sight.ts";
+import type { StateModel } from "./hud/state.ts";
+import type { VehicleModel } from "./hud/vehicle.ts";
+import type { VitalsModel } from "./hud/vitals.ts";
+import type { VoiceModel } from "./hud/voice.ts";
+import { HudFill } from "./hud/widget.ts";
+import { HUD_WIDGETS } from "./hud/widgets.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
-import { paintRelief, type Chart } from "./tactical.ts";
-import { Compass } from "./ui/compass.ts";
+import { paintRelief } from "./tactical.ts";
 
-/** One of the reader's tribe is a mate and one of its creatures a tame. A player is a survivor of another tribe, and a creature is not the tribe's. */
-export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature" | "drop" | "dropPip" | "spotted";
-
-export interface Marker {
-  /** A "drop" is a supply drop the server's drop book tells of on the map, and a "dropPip" one it tells of on the compass alone. */
-  kind: MarkerKind;
-  /** 0xRRGGBB of its own, or none for its kind's: a drop's is its tier's. */
-  tint?: number;
-  /** Where on the map's picture, 0..1 east and south from its north-west corner (mapU, mapV). */
-  u: number;
-  v: number;
-}
-
-/** The most markers a map shows. The model lists the most important first, and what is past this is left out. */
-export const MAX_MARKERS = 256;
-/** The minimap's side, in units of the interface. */
-export const MINIMAP_SIZE = 160;
-/** Metres. A mark this near a body of its kind in view is that body, which is drawn from the view. */
-const SAME_BODY = 16;
-
-export interface Vital {
-  id: string;
-  label: string;
-  /** 0..1. */
-  fraction: number;
-}
-
-/** label is the first letters of the item's name. number is a count, or the rounds loaded. */
-export interface HotbarCell {
-  label: string;
-  /** 0xRRGGBB, or -1 for an empty slot. */
-  tint: number;
-  number: string;
-  /** The item's content id, which its picture is found by (ui/hud.ts). */
-  id?: string;
-}
-
-export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array): void {
-  const first = inv ? inv.hotbar : -1;
-  m.held = held;
-  if (first < 0) {
-    m.hotbar.length = 0;
-    return;
-  }
-  for (let i = 0; i < HOTBAR_SLOTS; i++) {
-    const cell = (m.hotbar[i] ??= { label: "", tint: -1, number: "" });
-    const item = inv!.item[first + i]!;
-    const def = item === 0 ? null : (reg.defs[item] as ItemDef | null);
-    if (!def) {
-      cell.label = "";
-      cell.tint = -1;
-      cell.number = "";
-      cell.id = "";
-      continue;
-    }
-    cell.id = def.id;
-    const name = def.label ?? def.id.slice(def.id.indexOf(":") + 1);
-    const c = (def.color ?? 15) * 4;
-    cell.label = name.slice(0, 4);
-    cell.tint = (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!;
-    cell.number = inv!.count[first + i]! > 1 ? String(inv!.count[first + i]) : def.weapon?.ammo ? String(inv!.loaded[first + i]) : "";
-  }
-}
-
-export function fillBuffs(m: HudModel, session: ClientSession | null, reg: Registry, palette: Uint8Array, rivalry = false): void {
-  m.buffs.length = 0;
-  if (!session) return;
-  if (rivalry && session.driving >= 0) m.buffs.push({ label: "Rivalry · large predator nearby", tint: 0x824a34, seconds: -1 });
-  for (const b of session.buffs) {
-    const def = reg.defs[b.buff];
-    if (def?.type !== "buff") continue;
-    const c = def.color * 4;
-    m.buffs.push({ label: def.label, tint: (palette[c]! << 16) | (palette[c + 1]! << 8) | palette[c + 2]!, seconds: b.until === 0 ? -1 : Math.max(0, Math.ceil((b.until - session.serverTick) / TICK_RATE)) });
-  }
-}
-
-/** Values of HudModel.actionKind. */
-export const ACTION_NONE = 0;
-export const ACTION_DRAW = 1;
-export const ACTION_RELOAD = 2;
-
-export function fillAction(m: HudModel, session: ClientSession | null, reg: Registry): void {
-  m.actionKind = ACTION_NONE;
-  m.actionFraction = 0;
-  m.ammo = "";
-  if (!session || !session.weaponsAllowed) return;
-  const b = session.own;
-  const creature = session.driving >= 0 ? reg.combat[b.kind] : null;
-  if (creature) {
-    const charge = creature.charge, impale = creature.secondary?.impale;
-    if (b.act === ACT_DRAW && charge) {
-      m.actionKind = ACTION_DRAW; m.actionFraction = Math.min(1, b.actTicks / charge.windup);
-      m.ammo = "Charging · release RMB to run";
-    } else if (b.act === ACT_HOLD && charge) {
-      m.actionKind = ACTION_DRAW; m.actionFraction = Math.max(0, 1 - b.actTicks / charge.duration);
-      m.ammo = "Charging · LMB to stop";
-    } else if (b.act === ACT_HOLD && impale) {
-      m.actionKind = ACTION_DRAW; m.actionFraction = Math.max(0, 1 - b.actTicks / (impale.seconds * TICK_RATE));
-      m.ammo = "Impaling · RMB to release";
-    } else if (b.act === ACT_EQUIP) {
-      m.actionKind = ACTION_RELOAD; m.actionFraction = b.actTicks / (creature.switchTicks ?? 1);
-      m.ammo = "Changing plates";
-    } else if (b.act === ACT_COOL || b.creatureCooldown > 0) m.ammo = b.creatureCooldown > 0 ? `Recovering · ${Math.ceil(b.creatureCooldown / TICK_RATE)} s` : "Recovering";
-    else if (creature.modes) m.ammo = `${creature.modes[b.creatureMode]?.name ?? creature.modes[0]!.name} · R change plates`;
-    return;
-  }
-  const w = reg.weapon[b.held];
-  if (!w || w.clip === 0) return;
-  if (b.act === ACT_DRAW || b.act === ACT_HOLD) {
-    m.actionKind = ACTION_DRAW;
-    m.actionFraction = b.act === ACT_HOLD || w.drawTicks === 0 ? 1 : b.actTicks / w.drawTicks;
-  } else if (b.act === ACT_RELOAD) {
-    m.actionKind = ACTION_RELOAD;
-    m.actionFraction = w.reloadTicks === 0 ? 1 : b.actTicks / w.reloadTicks;
-  }
-  const inv = session.inventory;
-  const slot = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.hotbar + session.held : -1;
-  const kind = slot >= 0 ? inv!.ammo[slot]! : 0;
-  const def = kind !== 0 ? (reg.defs[kind] as ItemDef | null) : null;
-  m.ammo = def ? `${def.label ?? def.id.slice(def.id.indexOf(":") + 1)}  ${b.rounds} / ${inv!.total(kind)}` : "not loaded";
-}
+export { ACTION_DRAW, ACTION_NONE, ACTION_RELOAD, fillAction } from "./hud/action.ts";
+export { fillBuffs } from "./hud/buffs.ts";
+export { fillHotbar, type HotbarCell } from "./hud/hotbar.ts";
+export { MAX_MARKERS, MINIMAP_SIZE, type Marker, type MarkerKind } from "./hud/minimap.ts";
+export { headingOf } from "./hud/state.ts";
+export { VehicleTelemetry } from "./hud/vehicle.ts";
+export type { Vital } from "./hud/vitals.ts";
 
 /** Metres from the eye that a look reaches, as on the server (server/overhead.ts LOOK_RANGE), and from the camera to a heart shown. Chosen. */
 export const OVER_RANGE = 30;
@@ -206,419 +96,52 @@ export interface Heads {
   overhead(id: number, out: number[]): boolean;
 }
 
-/** What the dash shows, read from the predicted mechanical state. */
-export class VehicleTelemetry {
-  active = false;
-  rotor = false;
-  boat = false;
-  flooding = 0;
-  hullCondition = 1;
-  precision = false;
-  capsized = false;
-  direct = false;
-  recovery = false;
-  altitude = 0;
-  vertical = 0;
-  collective = 0;
-  engineCondition = 1;
-  rotorCondition = 1;
-  engineOn = false;
-  id = -1;
-  speed = 0;
-  brake = 0;
-  handbrake = false;
-  lightMode = -1;
-  grounded = true;
-  fuel = 0;
-  gear = 1;
-  rpm = 0;
-  redline = DEFAULT_DRIVETRAIN.redlineRpm;
-  /** A thruster car's: how ready each move is, 0 just used to 1 ready, -1 where its cooldown is none; and what fired. */
-  thrusters = false;
-  boostReady = -1;
-  flipReady = -1;
-  boosting = false;
-  bursting = false;
-
-  stop(): void { this.active = false; this.id = -1; this.rpm = 0; }
-
-  update(id: number, body: Body, throttle: number, handbrake: boolean, spec: VehicleSpec, _dt: number): void {
-    this.active = true; this.id = id; this.rotor = false; this.boat = false;
-    this.engineCondition = body.vehicleEngineCondition; this.engineOn = body.vehicleEngineOn;
-    this.hullCondition = body.vehicleHullCondition; this.flooding = body.vehicleFlooding;
-    const forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw), pedal = Math.max(-1, Math.min(1, throttle));
-    this.speed = Math.hypot(body.vx, body.vz);
-    this.handbrake = handbrake;
-    this.brake = handbrake ? 1 : forward * pedal < -.2 ? Math.abs(pedal) : 0;
-    this.grounded = body.grounded;
-    this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
-    this.gear = body.vehicleGear;
-    this.rpm = body.vehicleRpm;
-    this.redline = (spec.drivetrain ?? DEFAULT_DRIVETRAIN).redlineRpm;
-    const t = spec.thrusters;
-    this.thrusters = t !== undefined;
-    this.boostReady = t && t.boostCooldownTicks > 0 ? (thrustBoostLeft(body.vehicleThrust) > 0 ? 0 : 1 - boostCooling(body.vehicleThrustCool) / t.boostCooldownTicks) : -1;
-    this.flipReady = t && t.flipCooldownTicks > 0 ? 1 - flipCooling(body.vehicleThrustCool) / t.flipCooldownTicks : -1;
-    this.boosting = t !== undefined && thrustBoostLeft(body.vehicleThrust) > 0;
-    this.bursting = t !== undefined && thrustAxis(body.vehicleThrust) !== 0;
-  }
-  updateBoat(id: number, body: Body, spec: BoatSpec, precision: boolean): void {
-    this.active = true; this.boat = true; this.rotor = false; this.id = id; this.precision = precision;
-    this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy; this.thrusters = this.boosting = this.bursting = false;
-    this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
-    this.gear = body.vehicleGear; this.rpm = body.vehicleRpm; this.redline = spec.maxRpm;
-    this.engineOn = body.vehicleEngineOn; this.engineCondition = body.vehicleEngineCondition;
-    this.hullCondition = body.vehicleHullCondition; this.flooding = body.vehicleFlooding;
-    this.capsized = 1 - 2 * (body.vehicleQx * body.vehicleQx + body.vehicleQz * body.vehicleQz) < .15;
-    this.grounded = body.grounded; this.handbrake = false; this.brake = 0;
-  }
-  updateRotor(id: number, body: Body, spec: HelicopterSpec, altitude: number, direct: boolean, recovery: boolean): void {
-    this.active = true; this.rotor = true; this.boat = false; this.id = id; this.direct = direct; this.recovery = recovery;
-    this.thrusters = this.boosting = this.bursting = false;
-    this.speed = Math.hypot(body.vx, body.vz); this.vertical = body.vy; this.altitude = Math.max(0, altitude);
-    this.grounded = body.grounded; this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
-    this.rpm = body.vehicleRotorRpm; this.redline = spec.rotorRpm; this.collective = body.vehicleCollective;
-    this.engineCondition = body.vehicleEngineCondition; this.rotorCondition = body.vehicleRotorCondition; this.engineOn = body.vehicleEngineOn;
-    this.gear = 0; this.handbrake = false; this.brake = 0;
-  }
-
-}
+/**
+ * Every widget's slice of the model, on one object: `hud.prompt` is the prompt widget's field. A widget added to the
+ * list has its fields here once the model is made; to have them typed here too, add its model to this line.
+ */
+export interface HudModel extends ActionModel, BuffsModel, CompassModel, CrosshairModel, DotsModel, HotbarModel, JetModel, MarksModel, MinimapModel, PromptModel, ReadoutModel, SightModel, StateModel, VehicleModel, VitalsModel, VoiceModel {}
 
 export class HudModel {
-  jetGear = 0;
-  jetSpent = 0;
-  jetThrust = 0;
-  jetGrounded = false;
-  vehicle: VehicleTelemetry | null = null;
-  /** The microphone's state, or why it is off. "" for nothing. */
-  voice = "";
-  readonly talkers: string[] = [];
-  /** 0 to 1, for the settings screen. */
-  micLevel = 0;
-  lat = 0;
-  lon = 0;
-  x = 0;
-  y = 0;
-  z = 0;
-  /** Degrees clockwise from north. */
-  heading = 0;
-  compass = "N";
-  /** The compass at the top of the screen and the arrow on the maps: the heading as shown, on its spring. */
-  readonly dial = new Compass();
-  /** The map's size in metres, east to west and north to south, for bearings between places on it. */
-  mapSizeX = 1;
-  mapSizeZ = 1;
-  speed = 0;
-  pingMs = 0;
-  fps = 0;
-  /** What the governor has done, after the frame rate, or "" (client/core/governor.ts). */
-  steady = "";
-  corrections = 0;
-  nearby = 0;
-  /** Stamina comes from the predicted body, the others from vitals evaluated at the server's tick. */
-  readonly vitals: Vital[] = [
-    { id: "health", label: "Health", fraction: 1 },
-    { id: "stamina", label: "Stamina", fraction: 1 },
-    { id: "food", label: "Food", fraction: 1 },
-    { id: "water", label: "Water", fraction: 1 },
-    { id: "oxygen", label: "Oxygen", fraction: 1 },
-    { id: "torpor", label: "Torpor", fraction: 0 },
-  ];
-  /** tint is 0xRRGGBB. seconds is -1 for no end. */
-  readonly buffs: { label: string; tint: number; seconds: number }[] = [];
-  /** The body is unconscious. */
-  out = false;
-  /** The most important first: the reader, mates, tames, deaths, other survivors, then creatures in view. */
-  readonly markers: Marker[] = [];
-  /** How many more the last update had than a map shows. They were the least important. */
-  unmarked = 0;
-  private readonly pool: Marker[] = [];
-  /** The map's pictures and where they look. Null until the app has the world, and then both screens show the whole map. */
-  chart: Chart | null = null;
-  minimapVisible = true;
-  /** The map screen or the choice of where to rise covers the HUD: no compass. */
-  bare = false;
-  /** Where the compass ends at the top of the screen, for what stands under it; 0 while it is not shown. */
-  compassBottom = 0;
-  /** Screen pixels to a unit of the interface, so the map's pictures are made at the size they are shown. */
-  scale = 1;
-  /** Counts updates. `mapSeen` is the update during which the map screen was last built. */
-  frames = 0;
-  mapSeen = -2;
-  /** The map screen's picture on the canvas, and the place last pointed at on it as shares of the map's picture, or -1. */
-  readonly mapBox = { x: 0, y: 0, size: 1 };
-  pointedU = -1;
-  pointedV = -1;
-  /** The tick at which the server was last told the zoom, the marks last compared with the view, and which of them are bodies in view. */
-  zoomAsked = -1000;
-  private marksSeen = -1;
-  private readonly inView = new Uint8Array(MAX_MARKS);
-  /** Lines at the top left, rewritten a few times a second. */
-  readonly readout: string[] = ["", "", ""];
-  /**
-   * The room the resource monitor's strip takes under them (ui/monitor.ts), 0 high while it is off, and its top, which
-   * the HUD sets. `stripAlone` has it stand in their place, where the canvas is too short for both.
-   */
-  stripW = 0;
-  stripH = 0;
-  stripY = 0;
-  stripAlone = false;
-  /** On a narrow canvas the strip stands across under the minimap, out of the column: where it ends, or 0. */
-  stripFoot = 0;
-  /** Time of day, "06:30". */
-  clock = "";
-  /** Hours since midnight as the sky shows them (client/core/sky.ts), set by the app each frame. */
-  hour = 12;
-  /** Device pixels to a CSS pixel, for a picture painted at the size it is shown. */
-  dpr = 1;
-  /** Connection state, or "". */
-  status = "";
-  /** A word across the top such as "SPECTATING" or "DEAD", or "". */
-  banner = "";
-  crosshair = true;
-  /** The orbit camera is in use: the middle of the screen is not where the body aims, so no crosshair is drawn there. */
-  orbit = false;
-  /** The view is from behind a body on foot: a shot goes along the eye's line, not through the middle of the screen, so no crosshair is drawn. */
-  behind = false;
-  /**
-   * The held weapon's cone about the crosshair, as a share of half the view's height (the tangent of the cone over that of
-   * half the field of view), or -1 for nothing held that has one.
-   */
-  cone = -1;
-  /**
-   * Looking through a scope: its reticle in place of the crosshair (Scope Attachment: "based on the German Post design").
-   * The view of a holo-scope fitted: its crosshair shows even unaimed and even where the rules hide the crosshair
-   * (`holo`), coloured by what it is on (`crossTint`, 0xRRGGBB, or -1 for the crosshair's own colour), and aimed through it
-   * the view takes a green night tint of opacity `tint` (Holo-Scope Attachment).
-   */
-  scope = false;
-  /**
-   * The scope's window (D1077): the share of the screen's height it spans (optics.ts windowShare), its shape
-   * (optics.ts SHAPE_), and how far the eye is off its axis in shares of its radius (x right, y down), which casts its
-   * shadow across the lens.
-   */
-  sightShare = 1;
-  sightShape = 0;
-  sightOffX = 0;
-  sightOffY = 0;
-  /**
-   * A scope whose reticle is marked in milliradians (D1083): the view's vertical field (radians), which spaces its marks
-   * so they grow with the zoom, its zoom, and its zero (metres, 0 for none).
-   */
-  /**
-   * How many times the sight looked through magnifies now, and the least and most it may (0 for no sight): the
-   * magnification ladder beside its window (ui/hud.ts buildMagnify, D1086).
-   */
-  magnify = 0;
-  magnifyMin = 0;
-  magnifyMax = 0;
-  sightMil = false;
-  sightFov = 1;
-  sightZoom = 0;
-  sightZero = 0;
-  /**
-   * A helmet's visor up (client/core/visor.ts, D1080): its window is the sight's (above), and it shows its zoom, its view
-   * (render/packet.ts OPTIC_), whether its picture is made larger past its glass, and how far off its middle is on.
-   */
-  visor = false;
-  /**
-   * A glass raised (client/core/glass.ts, D1082): its zoom, its range (metres, 0 for none, -1 while it lases) and bearing
-   * (degrees), and whether a mark was just made.
-   */
-  glass = false;
-  /** A sight that zooms is raised, a glass is held, and a worn helmet's visor may be raised (for the touch buttons). */
-  zooming = false;
-  glassHeld = false;
-  visorReady = false;
-  glassZoom = 0;
-  glassRange = 0;
-  glassBearing = 0;
-  glassMarked = false;
-  /** Where on the screen other survivors' glasses glint at the viewer, and how brightly (CUE_SCOPED, D1083). */
-  readonly glints: { u: number; v: number; alpha: number }[] = [];
-  glintCount = 0;
-  /** Where on the screen the creatures the tribe spotted stand (MARK_SPOT), 0 to 1 with y down, as many as `spotCount`. */
-  readonly spots: { u: number; v: number }[] = [];
-  spotCount = 0;
-  visorZoom = 0;
-  visorMode = 0;
-  visorDigital = false;
-  visorRange = 0;
-  holo = false;
-  crossTint = -1;
-  tint = 0;
-  /** Laser dots on the screen (client/core/render/laser.ts), as fractions of it. Only the first `dotCount` are current. */
-  readonly dots: { u: number; v: number; alpha: number }[] = [];
-  dotCount = 0;
-  prompt = "";
-  /** Empty for a body that has no hotbar. `held` is the slot in hand, or -1. */
-  readonly hotbar: HotbarCell[] = [];
-  held = -1;
-  /** The bar under the crosshair: an ACTION_ kind, and how far along it is, 0 to 1. */
-  actionKind = ACTION_NONE;
-  actionFraction = 0;
-  /** The loaded ammunition, the rounds in the weapon, and those carried. "" for a weapon that takes none. */
-  ammo = "";
+  /** Hit marks and marks over creatures have models and builds of their own (feedback.ts, ui/tame.ts). */
   readonly combat = new CombatModel();
   readonly overhead = new OverheadModel();
-  private readoutAge = 0;
 
-  /** Adds a marker at (x, z), unless the map has all it shows. */
-  mark(kind: MarkerKind, hf: Heightfield, x: number, z: number, tint = -1): void {
-    const n = this.markers.length;
-    if (n >= MAX_MARKERS) {
-      this.unmarked++;
-      return;
-    }
-    const m = (this.pool[n] ??= { kind, u: 0, v: 0, tint: -1 });
-    m.kind = kind;
-    m.tint = tint;
-    m.u = mapU(hf, x);
-    m.v = mapV(hf, z);
-    this.markers.push(m);
-  }
-
-  /**
-   * Whether mark `i` is a body the view holds, which is then drawn from the view, where it moves every frame. The marks
-   * carry no names, so a mark is taken for a body of its kind standing within SAME_BODY of it. Worked out once for each
-   * message of marks.
-   */
-  seenInView(marks: Marks, i: number, remote: RemoteSample, team: number): boolean {
-    if (marks.version !== this.marksSeen) {
-      this.marksSeen = marks.version;
-      for (let k = 0; k < marks.count; k++) {
-        const kind = marks.kind[k]!;
-        let found = 0;
-        for (let j = 0; j < remote.count && found === 0; j++) {
-          const player = (remote.flags[j]! & VIEW_FLAG_PLAYER) !== 0;
-          const mine = team !== 0 && remote.team[j] === team;
-          if ((remote.flags[j]! & VIEW_FLAG_PROP) !== 0 || (kind === MARK_MATE ? !player || !mine : kind === MARK_TAME ? player || !mine : !player || mine)) continue;
-          const dx = remote.x[j]! - marks.x[k]!;
-          const dz = remote.z[j]! - marks.z[k]!;
-          if (dx * dx + dz * dz < SAME_BODY * SAME_BODY) found = 1;
-        }
-        this.inView[k] = found;
+  constructor() {
+    const fields = this as unknown as Record<string, unknown>;
+    for (const widget of HUD_WIDGETS) {
+      const slice = widget.make?.() as Record<string, unknown> | undefined;
+      for (const name in slice) {
+        if (name in fields) throw new Error(`two HUD widgets have a field named ${name}: ${widget.name} is the second`);
+        fields[name] = slice[name];
       }
     }
-    return this.inView[i] === 1;
   }
 
   formatReadout(): void {
-    this.readout[0] = `${latLonText(this.lat, this.lon)}  ${this.compass} ${this.heading.toFixed(0)}`;
-    this.readout[1] = `x ${this.x.toFixed(1)}  y ${this.y.toFixed(1)}  z ${this.z.toFixed(1)}  ${this.speed.toFixed(1)} m/s`;
-    this.readout[2] = `${this.fps.toFixed(0)} fps${this.steady}  ${this.pingMs.toFixed(0)} ms  ${this.corrections} corrections  ${this.nearby} nearby`;
-  }
-
-  /** True once every `every` calls. */
-  readoutDue(every: number): boolean {
-    if (this.readoutAge++ % every !== 0) return false;
-    return true;
+    formatReadout(this);
   }
 }
 
-const COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-/** Bits of the replicated entity flags. */
 const VIEW_FLAG_PLAYER = 4;
 const VIEW_FLAG_PROP = 8;
 
-export function headingOf(yaw: number): number {
-  const deg = (-yaw * 180) / Math.PI;
-  return ((deg % 360) + 360) % 360;
+/** Runs every widget's fill, in the list's order. Nothing is filled before the world has come. */
+export function fillHud(model: HudModel, c: HudFill): void {
+  if (!c.session.world) return;
+  for (let i = 0; i < HUD_WIDGETS.length; i++) HUD_WIDGETS[i]!.fill?.(model, c);
 }
 
-/** Marks the bodies in view that are survivors or not, and the reader's tribe's or not. */
-function markView(model: HudModel, hf: Heightfield, remote: RemoteSample, team: number, player: boolean, mine: boolean, kind: MarkerKind): void {
-  for (let i = 0; i < remote.count; i++) {
-    const f = remote.flags[i]!;
-    if ((f & VIEW_FLAG_PROP) === 0 && ((f & VIEW_FLAG_PLAYER) !== 0) === player && (team !== 0 && remote.team[i] === team) === mine) model.mark(kind, hf, remote.x[i]!, remote.z[i]!);
-  }
-}
+const alone = new HudFill();
 
-/** Marks the server's marks of one kind, but for the reader's own and those that are bodies in view. */
-function markFar(model: HudModel, hf: Heightfield, marks: Marks, remote: RemoteSample, team: number, from: number, kind: MarkerKind): void {
-  for (let i = 0; i < marks.count; i++) if (marks.kind[i] === from && i !== marks.self && !model.seenInView(marks, i, remote, team)) model.mark(kind, hf, marks.x[i]!, marks.z[i]!);
-}
-
-/** Fills the model's markers, the most important first. Friends in view come from the view, and those beyond it from the server's marks. */
-function fillMarkers(model: HudModel, session: ClientSession, remote: RemoteSample): void {
-  const hf = session.world!.hf;
-  const team = session.tribe.team;
-  const marks = session.tactical.marks;
-  model.markers.length = 0;
-  model.unmarked = 0;
-  // A server rule can hide the reader's own position.
-  if (session.mapLocation) model.mark("self", hf, session.own.x, session.own.z);
-  markView(model, hf, remote, team, true, true, "mate");
-  markFar(model, hf, marks, remote, team, MARK_MATE, "mate");
-  markView(model, hf, remote, team, false, true, "tame");
-  markFar(model, hf, marks, remote, team, MARK_TAME, "tame");
-  // What the tribe spotted through a glass (D1082), in view or not.
-  for (let i = 0; i < marks.count; i++) if (marks.kind[i] === MARK_SPOT) model.mark("spotted", hf, marks.x[i]!, marks.z[i]!);
-  for (const m of session.markers) model.mark("death", hf, m.x, m.z);
-  // Supply drops, where the server's drop book tells of them: on the compass, or on the compass and the map.
-  for (const d of session.supply.rows) if (d.left === 0 && d.announce > 0) model.mark(d.announce > 1 ? "drop" : "dropPip", hf, d.x, d.z, session.supply.tiers[d.tier]?.rgb ?? -1);
-  // Beds and spawn points, while one is being chosen.
-  if (session.sessionState === SESSION_DEAD) for (const p of session.respawnPoints) model.mark("spawn", hf, p.x, p.z);
-  // Survivors of other tribes: those the server marks, and those in view if its rule lets them show.
-  markFar(model, hf, marks, remote, team, MARK_OTHER, "player");
-  if (marks.players !== PLAYERS_OFF) markView(model, hf, remote, team, true, false, "player");
-  markView(model, hf, remote, team, false, false, "creature");
-}
-
-/** `scale` is screen pixels to a unit of the interface. */
+/** Fills the model from a session alone, as a test or a tool does. `scale` is screen pixels to a unit of the interface. */
 export function updateHud(model: HudModel, session: ClientSession, remote: RemoteSample, fps: number, scale = 1, nowMs?: number): void {
-  const world = session.world;
-  if (!world) return;
-  const b = session.own;
-  model.jetGear = session.sessionState === SESSION_ALIVE && session.driving < 0 && !b.seat && (b.jetGear & JET_CUIRASS) ? b.jetGear : 0;
-  model.jetSpent = b.jetSpent;
-  model.jetThrust = b.jetThrust;
-  model.jetGrounded = b.grounded;
-  model.frames++;
-  model.scale = scale;
-  model.x = b.x;
-  model.y = b.y;
-  model.z = b.z;
-  model.lon = lonOf(world.hf.dims, b.x);
-  model.lat = latOf(world.hf.dims, b.z);
-  model.heading = headingOf(session.ownYaw);
-  model.compass = COMPASS[Math.round(model.heading / 45) % 8]!;
-  // Without a time the compass shows the heading as it is.
-  if (nowMs === undefined) model.dial.set(model.heading);
-  else model.dial.step(model.heading, nowMs);
-  model.mapSizeX = world.hf.sizeX;
-  model.mapSizeZ = world.hf.sizeZ;
-  model.speed = Math.hypot(b.vx, b.vz);
-  model.pingMs = Math.max(0, (session.stats.rttTicks * 1000) / TICK_RATE);
-  model.fps = fps;
-  model.corrections = session.stats.corrections;
-  model.nearby = remote.count;
-  fillMarkers(model, session, remote);
-  const chart = model.chart;
-  if (chart) {
-    chart.tiles.step();
-    if (model.minimapVisible) chart.drawMini(session.tactical, session.tribe.team, mapU(world.hf, b.x), mapV(world.hf, b.z), Math.max(64, Math.min(512, Math.round(MINIMAP_SIZE * scale))), session.mapLocation);
-    // The server sends structure cells at the size that suits the finest zoom on show. Its marks say which zoom it holds, so a
-    // request that was lost or refused is made again.
-    const want = Math.max(model.minimapVisible ? chart.mini.view.zoom : 0, model.mapSeen === model.frames - 1 ? chart.fullZoom : 0);
-    if (want !== session.tactical.marks.zoom && session.simTick - model.zoomAsked >= 45 && session.command(CMD_MAP_ZOOM, (w) => w.bits(want, 2)) !== 0) model.zoomAsked = session.simTick;
-  }
-  model.vitals[1]!.fraction = b.staminaMax > 0 ? b.stamina / (b.staminaMax * STAMINA_UNITS) : 0;
-  if (session.hasVitals) {
-    const v = session.vitals;
-    const tick = session.serverTick;
-    const fraction = (i: number): number => (v.max[i]! > 0 ? v.at(i, tick) / v.max[i]! : 1);
-    model.vitals[0]!.fraction = fraction(V_HEALTH);
-    model.vitals[2]!.fraction = fraction(V_FOOD);
-    model.vitals[3]!.fraction = fraction(V_WATER);
-    model.vitals[4]!.fraction = fraction(V_OXYGEN);
-    model.vitals[5]!.fraction = v.max[V_TORPOR]! > 0 ? v.at(V_TORPOR, tick) / v.max[V_TORPOR]! : 0;
-  }
-  model.out = session.sessionState === SESSION_ALIVE && (b.mflags & MF_OUT) !== 0;
-  model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset, session.clock));
-  model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? (session.choosing === CHOOSE_DIED ? "DEAD" : "") : model.out ? "UNCONSCIOUS" : "";
-  model.crosshair = model.banner === "" && session.crosshair;
-  if (model.readoutDue(6)) model.formatReadout();
+  alone.session = session;
+  alone.remote = remote;
+  alone.fps = fps;
+  alone.scale = scale;
+  alone.nowMs = nowMs;
+  fillHud(model, alone);
 }
 
 const over = { at: [0, 0, 0], screen: [0, 0, 0], dir: [0, 0, 0], keys: new Uint32Array(MAX_VIEW) };

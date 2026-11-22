@@ -87,7 +87,7 @@ test("the body's buttons are the last row, so no row after it is shadowed", () =
   expect(KEY_ROWS[KEY_ROWS.length - 1]!.name).toBe("body");
 });
 
-test("E turns a piece being placed before it takes up what lies there or uses anything", () => {
+test("E turns a piece being placed before it takes or uses anything", () => {
   const { app, press } = playing();
   app.builder.active = true;
   app.eggAimed = 7;
@@ -97,7 +97,7 @@ test("E turns a piece being placed before it takes up what lies there or uses an
   expect(app.ui.travel.open).toBe(false);
 });
 
-test("E takes up what lies there before a terminal, a terminal before the use key, and the use key before the body", () => {
+test("E takes what lies there, then opens a terminal, then uses, then is the body's", () => {
   const { app, press } = playing();
   app.eggAimed = 7;
   app.terminalAimed = 3;
@@ -115,7 +115,7 @@ test("E takes up what lies there before a terminal, a terminal before the use ke
   expect(press("KeyE")).toBe("body");
 });
 
-test("N marks through a raised glass before it works a visor, and works a visor before it is the body's modifier", () => {
+test("N marks through a glass, then works a visor, then is the body's modifier", () => {
   const { app, press } = playing();
   const optic = { min: 2, max: 8 } as OpticFacet;
   app.visorOptic = optic;
@@ -131,7 +131,7 @@ test("N marks through a raised glass before it works a visor, and works a visor 
   expect(press("KeyN")).toBe("body");
 });
 
-test("the arrows zoom a raised sight before they lift a piece being placed, and lift it before they move the map", () => {
+test("the arrows zoom a sight, then lift a piece being placed, then move the map", () => {
   const { app, press } = playing();
   app.builder.active = true;
   app.visorOptic = { min: 2, max: 8 } as OpticFacet;
@@ -147,7 +147,7 @@ test("the arrows zoom a raised sight before they lift a piece being placed, and 
   expect(press("ArrowUp")).toBe("chart");
 });
 
-test("Q is the builder's while a piece is placed, and otherwise throws without keeping the key from the body", () => {
+test("Q is the builder's while a piece is placed, and else throws and goes on", () => {
   const { app, press } = playing();
   app.builder.active = true;
   expect(press("KeyQ")).toBe("build");
@@ -173,7 +173,7 @@ test("X does not lay down a body whose arms are full", () => {
   expect(app.controls.buttons & BTN_PRONE).toBe(BTN_PRONE);
 });
 
-test("a screen that has the keyboard gets every key, and the page is told to type it", () => {
+test("a screen that has the keyboard gets every key, and the page types it", () => {
   const { app, press } = playing();
   app.key("Enter", true);
   app.key("Enter", false);
