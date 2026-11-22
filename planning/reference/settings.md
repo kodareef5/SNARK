@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 551 of them: 185 take effect,
+is listed here, 553 of them: 187 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -67,6 +67,8 @@ may change a setting without a restart.
 | `PvEAllowStructuresAtSupplyDrops` | False | On a PvE server, building within 30 m of a place the drop book lands drops at. | yes |
 | `AllowCrateSpawnsOnTopOfStructures` | False | Supply drops may land on what a tribe built, and near it: a floor there counts as ground, and the drop book's distance from a base is not asked. | yes |
 | `serverPVE` | False | Survivors, their tames and what they build cannot be harmed by other tribes. What is built decays when its tribe stays away. | yes |
+| `Knockdowns` | True | A hard blow from a car or a car's door knocks a survivor off their feet for a moment: thrown, with no hold on where they go. Off, they are thrown as far but keep their footing. *Ours. ARK has no key.* | yes |
+| `SurvivorsBlock` | True | Survivors cannot walk through one another, as they cannot through creatures. Members of one tribe always pass through each other. Off, survivors of different tribes pass through one another too. *Ours. ARK has no key.* | yes; clients are told |
 | `AllowThirdPersonPlayer` | True | The body may be looked at from outside: over the shoulder (V) and in the orbit camera (K). | yes; clients are told |
 | `ServerCrosshair` | True | A crosshair is shown. | yes; clients are told |
 | `ShowMapPlayerLocation` | True | The map shows where its reader is. | yes; clients are told |

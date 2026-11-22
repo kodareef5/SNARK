@@ -18,7 +18,7 @@
 // --repack --levels also makes a creature's coarser levels afresh from its finest, with its pictures where it has them.
 // Building the game needs none of this: the packs are committed.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import { findAssets, type Asset } from "./art/assets.ts";
@@ -30,6 +30,12 @@ import { SOURCE } from "./art/source.ts";
 import { encodePng } from "./snap/png.ts";
 
 const VALUED = ["source", "out", "keep"];
+
+/** Written beside the pack and renamed over it: an installed pack is a link to the copy every checkout shares. */
+function writePack(file: string, bytes: Uint8Array): void {
+  writeFileSync(`${file}.${process.pid}.tmp`, bytes);
+  renameSync(`${file}.${process.pid}.tmp`, file);
+}
 
 /** Returns the number of assets with faults. `say` takes what it has to tell. */
 export async function main(args: readonly string[], say: (line: string) => void = console.log): Promise<number> {
@@ -60,7 +66,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
     }
     if (has("repack")) {
       const again = repack(new Uint8Array(readFileSync(asset.file)), has("levels"), asset);
-      writeFileSync(asset.file, again);
+      writePack(asset.file, again);
       say(`${asset.id}: ${asset.file}, ${again.length} bytes`);
       continue;
     }
@@ -88,7 +94,7 @@ export async function main(args: readonly string[], say: (line: string) => void 
       }
       // What conversion refuses is never written, so a pack that is committed has passed it.
       if (faults.length === 0) {
-        writeFileSync(asset.file, file);
+        writePack(asset.file, file);
         say(`  ${relative(process.cwd(), asset.file)}, ${file.length} bytes, ${((performance.now() - t0) / 1000).toFixed(1)} s`);
       } else say(`  not written: ${relative(process.cwd(), asset.file)} is as it was`);
     } else file = new Uint8Array(readFileSync(asset.file));
