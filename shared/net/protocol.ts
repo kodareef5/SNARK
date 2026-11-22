@@ -58,7 +58,7 @@ import { BTN_CROUCH, BTN_PRONE, Body, buttonCount } from "../sim/character.ts";
 
 declare const __WIRE__: number;
 /**
- * A hash of the source under shared/ (shared/net/wire.ts). A hello of another is refused before the rest of it is read.
+ * A hash of the source that lays out the wire (shared/net/wire.ts). A hello of another is refused before the rest of it is read.
  * A build gives it to the page; a server or an agent run from source reads its own and calls stampWire. A process that
  * never does holds 0, which is the same on both sides where a client and a server share the process, as in a test.
  */

@@ -116,9 +116,29 @@ test.skipIf(!can)("an offline run takes a newly pinned archive, but not over a f
 
   expect(media(edited, "art", "--offline").said).toContain("Existing file differs");
   expect(readFileSync(join(edited, FILE), "utf8")).toBe("rebuilt");
-  // Asked by hand, the installer replaces what an older archive of the asset left.
-  expect(media(edited, "art").status).toBe(0);
+  // Asked by hand it is the same: an edit is replaced only with --force.
+  expect(media(edited, "art").said).toContain("Existing file differs");
+  expect(readFileSync(join(edited, FILE), "utf8")).toBe("rebuilt");
+  expect(media(edited, "art", "--force").status).toBe(0);
   expect(readFileSync(join(edited, FILE), "utf8")).toBe("the pack, painted again");
+});
+
+test.skipIf(!can)("a newer pin replaces an untouched writable copy, and keeps an edited one", () => {
+  const old = archive("core-copy", { [FILE]: "the pack" });
+  const untouched = checkout([old]);
+  const edited = checkout([old]);
+  for (const root of [untouched, edited]) expect(media(root, "art", "core-copy", "--copy").status).toBe(0);
+  writeFileSync(join(edited, FILE), "my paint");
+
+  const next = archive("core-copy", { [FILE]: "the pack, painted again" });
+  for (const root of [untouched, edited]) pin(root, [next]);
+  expect(media(untouched, "art").status).toBe(0);
+  expect(readFileSync(join(untouched, FILE), "utf8")).toBe("the pack, painted again");
+
+  const refused = media(edited, "art");
+  expect(refused.status).not.toBe(0);
+  expect(refused.said).toContain("Existing file differs");
+  expect(readFileSync(join(edited, FILE), "utf8")).toBe("my paint");
 });
 
 test.skipIf(!can)("an offline run downloads nothing: it names the command that would", () => {
