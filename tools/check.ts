@@ -296,6 +296,15 @@ async function checkTypes(): Promise<void> {
   });
 }
 
+/**
+ * The page's script built as the build builds it, no art, and held to its shape (tools/page-script.ts): the first frame
+ * waits for main.js and page.js alone, and every late file takes what it shares with them from page.js.
+ */
+async function checkScript(): Promise<void> {
+  const r = await run([process.execPath, join(ROOT, "tools/page-script.ts"), "--check"], true);
+  if (!r.ok) fail(`the page's script is not as the first frame's budget needs it:\n${r.out.trim()}`);
+}
+
 /** The core pack, built here once for the test files instead of once in each of a hundred (tests/fixtures/pack.ts). */
 async function sharedPack(dir: string): Promise<Record<string, string>> {
   try {
@@ -525,10 +534,11 @@ try {
   if (testFiles.length > 0) await step("pack", async () => void (env = await sharedPack(dir)));
   if (!slowOnly) {
     const types = step("types", checkTypes);
+    const script = step("script", checkScript);
     const tests = step("tests", () => checkTests("fast", dir, env));
-    // The type check and the tests have started in processes of their own; the policy runs here beside them.
+    // The type check, the script's build and the tests have started in processes of their own; the policy runs here beside them.
     await step("policy", checkPolicy);
-    await Promise.all([types, tests]);
+    await Promise.all([types, script, tests]);
   }
   if (slowOnly || args.includes("--slow")) await step("slow tests", () => checkTests("slow", dir, env));
 } finally {
