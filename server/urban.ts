@@ -477,6 +477,11 @@ export class Urban {
     if (host && host.entity === e) this.touch(host);
   }
 
+  /** For whoever is about to write the columns of the vehicle whose body is `e`: it wakes as it stands if it sleeps, and takes a heartbeat before it sleeps again. */
+  rouse(e: number): void {
+    this.touchBody(e);
+  }
+
   /** Whether the vehicle whose body is `e` sleeps (server/vehicle-contacts.ts). */
   asleep(e: number): boolean {
     return this.dozing[e] !== 0;

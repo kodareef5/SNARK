@@ -1470,7 +1470,12 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const arms = carry.heldBy(rec.pid);
     if (rec.inv) items.inv(rec); // Settle spoilage before weighing the remaining stacks.
     const load = inventoryEffectiveWeight(reg, rec, items.table) + carried * reg.riderWeight[rec.kind]! + (arms >= 0 ? carry.load(rec) : 0);
-    if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[world.ents.vrow[e]!] = Math.fround(urban.payloadMass(e));
+    if (reg.vehicle[rec.kind]) {
+      const v = world.ents.vrow[e]!, mass = Math.fround(urban.payloadMass(e));
+      // A sleeping vehicle whose load changes, as when what it holds spoils, settles on its springs at its next heartbeat.
+      if (mass !== world.ents.vehiclePayloadMass[v]) urban.rouse(e);
+      world.ents.vehiclePayloadMass[v] = mass;
+    }
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
