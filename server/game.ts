@@ -281,6 +281,9 @@ export class Client {
   heldZ = 0;
   heldYaw = 0;
   heldPitch = 0;
+  /** The aimed look past its units, in 256ths (InputBuffer.fineYaw), for a shot. */
+  heldFineYaw = 0;
+  heldFinePitch = 0;
   heldButtons = 0;
   /** The tick its last input was for. Past INPUT_HOLD_TICKS without another, the body stops; a vehicle driven, VEHICLE_HOLD_TICKS. */
   inputAt = 0;
@@ -645,6 +648,8 @@ export class GameServer {
         c.heldZ = inputs.moveZ[i]!;
         c.heldYaw = inputs.yaw[i]!;
         c.heldPitch = inputs.pitch[i]!;
+        c.heldFineYaw = inputs.fineYaw[i]!;
+        c.heldFinePitch = inputs.finePitch[i]!;
         c.heldButtons = inputs.buttons[i]!;
         c.inputAt = T;
       } else {

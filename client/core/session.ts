@@ -109,7 +109,7 @@ import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, POS_UNITS, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { BTN_JUMP, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SECONDARY, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { quatNlerp } from "../../shared/math/quat.ts";
 import { unpackBoatHullCondition, unpackBoatFlooding, interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
@@ -810,6 +810,10 @@ export class ClientSession {
     const qz = Math.round(clamp1(moveZ) * 127);
     const qyaw = Math.round((yaw / TAU) * YAW_UNITS) & 0xffff;
     const qpitch = Math.round((pitch / (PI / 2)) * PITCH_LIMIT);
+    // Aimed, the look past its units goes too, in 256ths, for the shot (D1083): through a sight one unit is pixels wide.
+    const aimed = (buttons & BTN_SECONDARY) !== 0;
+    const fineYaw = aimed ? Math.round(((yaw / TAU) * YAW_UNITS - Math.round((yaw / TAU) * YAW_UNITS)) * 256) : 0;
+    const finePitch = aimed ? Math.round(((pitch / (PI / 2)) * PITCH_LIMIT - qpitch) * 256) : 0;
     this.ownYaw = yaw;
     this.ownPitch = pitch;
 
@@ -825,7 +829,7 @@ export class ClientSession {
     while (this.simTick < target && steps < MAX_STEPS_PER_UPDATE) {
       const t = ++this.simTick;
       steps++;
-      this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons);
+      this.inputs.set(t, qx, qz, qyaw, qpitch, this.tapped | buttons, fineYaw, finePitch);
       this.letGo[t & (HISTORY - 1)] = 0;
       this.tapped = 0;
       this.ownPrev.copy(this.own);
@@ -1153,7 +1157,8 @@ export class ClientSession {
       const slot = inv && inv.hotbar >= 0 && this.held >= 0 ? inv.hotbar + this.held : -1;
       const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
       // It leaves where the server will send it: the look with its kick, sway and cone, from the same body and seed.
-      aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]!, inp.pitch[i]!, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
+      // With the aimed look's 256ths, as the server takes the shot (D1083).
+      aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]! + inp.fineYaw[i]! / 256, inp.pitch[i]! + inp.finePitch[i]! / 256, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
       if (ammo !== 0 && this.fired.length < 16) {
         const eye = this.shotEye;
         eye[0] = this.own.x; eye[1] = this.own.y + stanceEye(this.move!, this.own.stance); eye[2] = this.own.z;

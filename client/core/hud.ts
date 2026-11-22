@@ -388,6 +388,14 @@ export class HudModel {
   sightOffX = 0;
   sightOffY = 0;
   /**
+   * A scope whose reticle is marked in milliradians (D1083): the view's vertical field (radians), which spaces its marks
+   * so they grow with the zoom, its zoom, and its zero (metres, 0 for none).
+   */
+  sightMil = false;
+  sightFov = 1;
+  sightZoom = 0;
+  sightZero = 0;
+  /**
    * A helmet's visor up (client/core/visor.ts, D1080): its window is the sight's (above), and it shows its zoom, its view
    * (render/packet.ts OPTIC_), whether its picture is made larger past its glass, and how far off its middle is on.
    */
@@ -401,6 +409,9 @@ export class HudModel {
   glassRange = 0;
   glassBearing = 0;
   glassMarked = false;
+  /** Where on the screen other survivors' glasses glint at the viewer, and how brightly (CUE_SCOPED, D1083). */
+  readonly glints: { u: number; v: number; alpha: number }[] = [];
+  glintCount = 0;
   /** Where on the screen the creatures the tribe spotted stand (MARK_SPOT), 0 to 1 with y down, as many as `spotCount`. */
   readonly spots: { u: number; v: number }[] = [];
   spotCount = 0;

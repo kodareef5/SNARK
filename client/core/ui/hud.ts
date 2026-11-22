@@ -43,6 +43,11 @@ export const KEY_SIGHT_SHADE = 5100;
 export const KEY_VISOR = 5110;
 /** A glass's readouts (D1082). */
 export const KEY_GLASS = 5140;
+/** A milliradian reticle's lines, marks and words (D1083). */
+export const KEY_MIL = 5300;
+/** A milliradian, in radians, and the most marks an arm of the reticle has. */
+const MIL = 0.001;
+const MIL_MARKS = 20;
 /** The visor's ink: its frame, its marks and its words. */
 const VISOR_INK = 0x7fe6d4;
 const SPOT_INK = 0xff6a3d;
@@ -81,6 +86,9 @@ export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mat
 export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a, spotted: SPOT_INK };
 /** A spotted creature's mark over it in the view (D1082), and its ink. */
 export const KEY_SPOT = 5200;
+/** Another survivor's glass glinting at the viewer (D1083). */
+export const KEY_GLINT = 5230;
+const GLINT_INK = 0xfff6d8;
 const SPOT_SIDE = 9;
 
 export const HOTBAR_CELL = 52;
@@ -128,7 +136,8 @@ function buildReticle(f: UiFrame, W: number, H: number, m: HudModel): void {
     const across = bw / words.length, y = Math.min(H - 20, y0 + bh + 6);
     for (let i = 0; i < words.length; i++) if (words[i] !== "") f.text(KEY_GLASS + i, x0 + across * i, y, across, S_VISOR, words[i]!).tint = i === 3 ? SPOT_INK : VISOR_INK;
   }
-  if (!twin) {
+  if (!twin && m.sightMil) buildMils(f, H, cx, cy, r, m);
+  else if (!twin) {
     f.add(k++, K_PANEL, x0, cy - post / 2, cx - gap - x0, post, S_DARK).alpha = 0.95;
     f.add(k++, K_PANEL, cx + gap, cy - post / 2, x0 + bw - cx - gap, post, S_DARK).alpha = 0.95;
     f.add(k++, K_PANEL, cx - post / 2, cy, post, y0 + bh - cy, S_DARK).alpha = 0.95;
@@ -141,6 +150,31 @@ function buildReticle(f: UiFrame, W: number, H: number, m: HudModel): void {
   // The strips of the lens's box that the shadow's box moved off, which lie outside the shadow's hole.
   if (Math.abs(ox) >= 0.5) f.add(KEY_SIGHT_SHADE + 1, K_PANEL, ox > 0 ? x0 : x0 + bw + ox, y0, Math.abs(ox), bh, S_DARK).alpha = shade;
   if (Math.abs(oy) >= 0.5) f.add(KEY_SIGHT_SHADE + 2, K_PANEL, x0, oy > 0 ? y0 : y0 + bh + oy, bw, Math.abs(oy), S_DARK).alpha = shade;
+}
+
+/**
+ * A scope's reticle in milliradians, in the first focal plane (D1083): fine lines across the lens and a mark each
+ * milliradian along them (each five where they would crowd, each ten where those would), longer each fifth, spaced by the
+ * view's field, so they grow with the zoom and a thing's size in them gives its range at any zoom (metres = size × 1000 /
+ * marks). Under the lens, the zoom and the zero.
+ */
+function buildMils(f: UiFrame, H: number, cx: number, cy: number, r: number, m: HudModel): void {
+  const perMil = (H / (2 * Math.tan(m.sightFov / 2))) * MIL;
+  const step = perMil >= 6 ? 1 : perMil * 5 >= 6 ? 5 : 10;
+  let k = KEY_MIL;
+  f.add(k++, K_PANEL, cx - r, cy - 0.5, 2 * r, 1, S_DARK).alpha = 0.9;
+  f.add(k++, K_PANEL, cx - 0.5, cy - r, 1, 2 * r, S_DARK).alpha = 0.9;
+  for (let n = step, marks = 0; n * perMil < r * 0.92 && marks < MIL_MARKS; n += step, marks++) {
+    const at = n * perMil, long = n % 5 === 0 ? 5 : 3;
+    for (const [sx, sy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      if (sx !== 0) f.add(k++, K_PANEL, cx + sx * at - 0.75, cy - long, 1.5, long * 2, S_DARK).alpha = 0.9;
+      else f.add(k++, K_PANEL, cx - long, cy + sy * at - 0.75, long * 2, 1.5, S_DARK).alpha = 0.9;
+    }
+  }
+  const zoom = m.sightZoom >= 10 ? m.sightZoom.toFixed(0) : m.sightZoom.toFixed(1);
+  const y = Math.min(H - 20, cy + r + 6);
+  f.text(KEY_MIL + 99, cx - r, y, r, S_VISOR, `${zoom}x`).tint = VISOR_INK;
+  f.text(KEY_MIL + 98, cx, y, r, S_VISOR, m.sightZero > 0 ? `ZERO ${m.sightZero} m` : "ZERO ---").tint = VISOR_INK;
 }
 
 /**
@@ -266,6 +300,13 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   }
   if (m.scope && m.banner === "") buildReticle(f, W, H, m);
   if (m.visor && m.banner === "") buildVisor(f, W, H, m);
+  // Another's glass glinting at the viewer.
+  for (let i = 0; i < m.glintCount && i < 4; i++) {
+    const g = m.glints[i]!, side = 4 + 8 * g.alpha;
+    const n = f.add(KEY_GLINT + i, K_PANEL, g.u * W - side / 2, g.v * H - side / 2, side, side, S_CROSS);
+    n.tint = GLINT_INK;
+    n.alpha = 0.35 + 0.65 * g.alpha;
+  }
   // What the tribe spotted, over it where it stands in view.
   for (let i = 0; i < m.spotCount && i < 8; i++) {
     const s = m.spots[i]!;

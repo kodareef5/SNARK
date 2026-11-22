@@ -5,10 +5,11 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import { Icons } from "./assets/icons.ts";
-import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
+import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticMost, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
 import { Visor } from "./visor.ts";
 import { Glass, MARKED_MS } from "./glass.ts";
 import { MARK_SPOT } from "../../shared/world/tactical.ts";
+import { CUE_DEAD, CUE_SCOPED } from "../../shared/anim/pose.ts";
 import type { OpticFacet } from "../../shared/content/defs.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
@@ -105,7 +106,8 @@ const REACH = 3.5;
 const STRUCT_HOLD_MS = 350;
 /** Metres. */
 const NAME_RANGE = 30;
-/** A bit of the replicated entity flags. */
+/** Bits of the replicated entity flags. */
+const VIEW_FLAG_PLAYER = 4;
 const VIEW_FLAG_PROP = 8;
 /** What hands round a creature cannot do, so a body holding one neither sends nor predicts them (server/carry.ts). */
 const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
@@ -127,6 +129,13 @@ const AIM_FOV = 0.79;
 const HOLO_TINT = 0.22;
 /** Milliseconds between CMD_GAZEs while a sight's zoom holds: well inside GAZE_TICKS, after which the server lets it go. */
 const GAZE_RESEND_MS = 1000;
+/** A zooming sight's step of the wheel, and a zero's, metres, as far as ZERO_MOST. */
+const SIGHT_STEP = 1.25;
+const ZERO_STEP = 50;
+const ZERO_MOST = 1000;
+/** A glint shows within this of straight at the viewer, radians, and past this many metres. */
+const GLINT_HALF = 0.12;
+const GLINT_NEAR = 20;
 /** Metres over the ground a spotted creature's mark is drawn. */
 const SPOT_RISE = 3;
 /** Milliseconds the eye takes to settle most of the way to where it is off a scope's axis. */
@@ -197,6 +206,14 @@ export class App {
   private glassOptic: OpticFacet | null = null;
   private glassPressed = false;
   private readonly shook = new Float64Array(2);
+  /**
+   * A sight that zooms (the sniper's, D1083) while aimed through, its zoom, and its zero in metres (0 for none), dialled
+   * with Alt and the wheel; and the zero the server was last told of.
+   */
+  private sightOptic: OpticFacet | null = null;
+  sightZoom = 0;
+  sightZero = 0;
+  private zeroSent = 0;
   /** How far the look reaches what it tells of a creature this frame (fillOverhead): through a sight, its gaze's. */
   private lookReach = 30;
   private visorOptic: OpticFacet | null = null;
@@ -642,6 +659,12 @@ export class App {
   wheel(deltaY: number, mode = 0): boolean {
     if (!this.ui.wantsPointerLock) return false;
     const notches = mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100;
+    // A sight that zooms takes the wheel: its zoom, or with Alt its zero (D1083).
+    if (this.sightOptic) {
+      if (this.alt) this.sightZero = Math.min(ZERO_MOST, Math.max(0, this.sightZero - Math.sign(notches) * ZERO_STEP));
+      else this.sightZoom = Math.min(opticMost(this.sightOptic), Math.max(this.sightOptic.min, this.sightZoom * SIGHT_STEP ** -notches));
+      return true;
+    }
     // A glass raised, or a visor up, takes the wheel for its zoom.
     if (this.glass.up && this.glassOptic) {
       this.glass.wheel(this.glassOptic, notches);
@@ -915,7 +938,7 @@ export class App {
    */
   private gaze(nowMs: number, world: CollisionWorld, zoom: number, yaw: number, pitch: number): void {
     if (zoom === 0 && this.gazeSent === 0) return;
-    const moved = zoom === 0 || this.gazeSent === 0 || Math.abs(zoom - this.gazeSent) > 0.1 * Math.max(zoom, this.gazeSent);
+    const moved = zoom === 0 || this.gazeSent === 0 || Math.abs(zoom - this.gazeSent) > 0.1 * Math.max(zoom, this.gazeSent) || this.zeroSent !== this.sightZero;
     if (!moved && nowMs - this.gazeAt < GAZE_RESEND_MS) return;
     let focus = 0;
     if (zoom > 0) {
@@ -925,9 +948,10 @@ export class App {
       if (castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE) focus = rayHit.t;
     }
     this.visor.range = focus;
-    this.session.command(CMD_GAZE, (w) => (w.u16(Math.min(65535, Math.round(zoom * 16))), w.u16(Math.min(65535, Math.round(focus)))));
+    this.session.command(CMD_GAZE, (w) => (w.u16(Math.min(65535, Math.round(zoom * 16))), w.u16(Math.min(65535, Math.round(focus))), w.u16(zoom > 0 ? this.sightZero : 0)));
     this.gazeSent = zoom;
     this.gazeAt = nowMs;
+    this.zeroSent = this.sightZero;
   }
 
   /** The worn helmet's optic where the helmet is not worn out (its visor), or null. */
@@ -1462,7 +1486,12 @@ export class App {
     const settings = this.ui.settings;
     const base = (settings.fov * Math.PI) / 180;
     const fitted = gun && session.driving < 0 ? attachmentOf(this.reg, session.inventory, held) : null;
-    const sight = fitted?.attachment ?? "";
+    // A weapon's own scope (the fabricated sniper rifle's, D1083), or the one fitted to it.
+    const ownOptic = gun && session.driving < 0 ? (this.reg.defs[session.own.held] as ItemDef | null)?.optic : undefined;
+    const sightOptic = ownOptic ?? fitted?.optic;
+    const sight = ownOptic ? "scope" : (fitted?.attachment ?? "");
+    this.sightOptic = sighting && sightOptic && opticMost(sightOptic) > sightOptic.min ? sightOptic : null;
+    if (this.sightOptic) this.sightZoom = Math.min(opticMost(this.sightOptic), Math.max(this.sightOptic.min, this.sightZoom || this.sightOptic.min));
     // A held glass, raised with the secondary on foot (glass.ts, D1082).
     const heldDef = alive && session.driving < 0 && !passenger ? (this.reg.defs[session.own.held] as ItemDef | null) : null;
     this.glassOptic = heldDef?.class === "instrument" ? (heldDef.optic ?? null) : null;
@@ -1470,7 +1499,7 @@ export class App {
     this.glass.raise(glassUp);
     // A helmet's visor, held up, on foot, the helmet working and no sight aimed through (visor.ts, D1080).
     const visorUp = this.visor.step((this.visorOptic = this.wornOptic(session.inventory)), alive && session.driving < 0 && !passenger && !sighting && !glassUp && !orbiting && hud.banner === "");
-    const zoom = glassUp ? this.glass.zoom(this.glassOptic!) : visorUp ? this.visor.zoom : fitted?.optic ? opticZoom(fitted.optic) : 0;
+    const zoom = glassUp ? this.glass.zoom(this.glassOptic!) : visorUp ? this.visor.zoom : this.sightOptic ? this.sightZoom : sightOptic ? opticZoom(sightOptic) : 0;
     let want = glassUp || visorUp ? zoomed(base, zoom) : sighting ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
     this.view.atEye = ((sighting && forcesEye(zoom)) || visorUp || glassUp) && !passenger;
     if (glassUp) {
@@ -1492,7 +1521,11 @@ export class App {
     hud.scope = (sighting && sight === "scope") || glassUp;
     // The scope's window spans less of the screen the more it magnifies; the eye off its axis, as the body moves, a shot
     // kicks or the sway leads, casts its shadow across the lens. Outside the window nothing is drawn (D1077).
-    const optic = glassUp ? this.glassOptic! : visorUp ? this.visorOptic! : fitted?.optic;
+    const optic = glassUp ? this.glassOptic! : visorUp ? this.visorOptic! : sightOptic;
+    hud.sightMil = hud.scope && optic?.reticle === "mil";
+    hud.sightFov = this.fov;
+    hud.sightZoom = zoom;
+    hud.sightZero = hud.sightMil ? this.sightZero : 0;
     hud.sightShare = optic ? windowShare(optic, zoom) : 1;
     hud.sightShape = shapeOf(optic);
     hud.visor = visorUp;
@@ -1771,8 +1804,26 @@ export class App {
     this.feedback.absorb(session, this.reg, nowMs, this.scene.damage);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.hitMarkers);
     fillOverhead(hud.overhead, session, this.remote, cam, this.scene.characters, alive && !hud.out ? eyeNow : -1, c.yaw, c.pitch, this.lookReach);
+    // Another survivor's glass glints to one it faces (CUE_SCOPED, D1083): brighter the straighter it looks.
+    const r = this.remote, spot = this.spot;
+    hud.glintCount = 0;
+    for (let i = 0; i < r.count && hud.glintCount < 4; i++) {
+      if ((r.cue[i]! & CUE_SCOPED) === 0 || (r.flags[i]! & VIEW_FLAG_PLAYER) === 0 || (r.cue[i]! & CUE_DEAD) !== 0) continue;
+      const dx = cam.x - r.x[i]!, dz = cam.z - r.z[i]!, far = Math.hypot(dx, dz);
+      let off = Math.abs(Math.atan2(dx, dz) - r.yaw[i]!) % TAU;
+      if (off > PI) off = TAU - off;
+      if (far < GLINT_NEAR || off > GLINT_HALF) continue;
+      const y = r.y[i]! + this.reg.bodyHeight[r.kind[i]!]! * 0.9;
+      if (!cam.project(r.x[i]!, y, r.z[i]!, spot) || spot[0]! < 0 || spot[0]! > 1 || spot[1]! < 0 || spot[1]! > 1) continue;
+      const ey = y - cam.y, d = Math.hypot(dx, ey, dz);
+      if (castWorld(world, cam.x, cam.y, cam.z, -dx / d, ey / d, -dz / d, d - 0.5) !== HIT_NONE) continue;
+      const g = (hud.glints[hud.glintCount++] ??= { u: 0, v: 0, alpha: 0 });
+      g.u = spot[0]!;
+      g.v = spot[1]!;
+      g.alpha = 1 - off / GLINT_HALF;
+    }
     // What the tribe spotted, where it stands on the screen (D1082).
-    const marks = session.tactical.marks, spot = this.spot;
+    const marks = session.tactical.marks;
     hud.spotCount = 0;
     for (let i = 0; i < marks.count && hud.spotCount < 8; i++) {
       if (marks.kind[i] !== MARK_SPOT) continue;

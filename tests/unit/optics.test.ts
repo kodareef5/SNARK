@@ -10,9 +10,13 @@ import { FRAME, FramePacket, HEAT_COLD, HEAT_HOT, HEAT_WARM, HEAT_WORLD, OPTIC_A
 import { PHOSPHOR, opticFrame, postFrame, type Optic } from "../../client/core/render/post.ts";
 import { graded, heatOfShown, ironbow, shown } from "../../client/core/render/surface.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { KEY_CROSS, KEY_GLASS, KEY_SPOT, KEY_VISOR, MARKER_TINT } from "../../client/core/ui/hud.ts";
+import { KEY_CROSS, KEY_GLASS, KEY_MIL, KEY_SPOT, KEY_VISOR, MARKER_TINT } from "../../client/core/ui/hud.ts";
 import { Glass, SHAKE } from "../../client/core/glass.ts";
-import { STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../shared/sim/character.ts";
+import { BTN_SECONDARY, BTN_SPRINT, Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../shared/sim/character.ts";
+import { BREATH_STEADY, aimShot, holdsBreath, scopeFitted, shotAim, sway, swayOut, zeroUnits } from "../../shared/sim/aim.ts";
+import { Inventory } from "../../shared/sim/items.ts";
+import { InputBuffer, readInputs, writeInputs } from "../../shared/net/protocol.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -332,4 +336,70 @@ test("a glass's lenses show its zoom, its range or that it lases, the bearing an
   expect(words()).toEqual(["16x", "812 m", "009", "MARKED"]);
   expect(f.find(KEY_SPOT)!.x).toBeCloseTo(f.width / 4 - 4.5, 6);
   expect(MARKER_TINT.spotted).toBeGreaterThan(0);
+});
+
+test("the sniper's sight: a zero lifts the shot by its exact angle, breath held steadies the sway, the rifle's own scope counts as one, and an aimed look's 256ths cross the wire", () => {
+  const reg = compileContent(CORE_CONTENT).registry!;
+  const rifle = reg.index.get("core:rifle_sniper")!, w = reg.weapon[rifle]!, move = reg.move[reg.index.get("core:survivor")!]!;
+  const b = new Body();
+  aimShot(b, BTN_SECONDARY, w, move, 100, 50, false, 7, 30);
+  const flat = shotAim.pitch;
+  const zero = zeroUnits(500, 850, 9.81);
+  expect(zero).toBeCloseTo(((9.81 * 500) / (2 * 850 * 850)) * (65536 / (2 * Math.PI)), 9);
+  aimShot(b, BTN_SECONDARY, w, move, 100, 50, false, 7, 30, zero);
+  expect(shotAim.pitch - flat).toBeCloseTo(zero, 9);
+  expect([zeroUnits(0, 850, 9.81), zeroUnits(500, 0, 9.81)]).toEqual([0, 0]);
+  // Breath: aimed with the sprint key, standing still; not moving and not unaimed.
+  expect([holdsBreath(b, BTN_SECONDARY | BTN_SPRINT), holdsBreath(b, BTN_SPRINT), holdsBreath(b, BTN_SECONDARY)]).toEqual([true, false, false]);
+  b.vx = 2;
+  expect(holdsBreath(b, BTN_SECONDARY | BTN_SPRINT)).toBe(false);
+  sway(w, STANCE_STAND, 7, 40);
+  const loose = Math.hypot(swayOut.yaw, swayOut.pitch);
+  sway(w, STANCE_STAND, 7, 40, true);
+  expect(Math.hypot(swayOut.yaw, swayOut.pitch)).toBeCloseTo(loose * BREATH_STEADY, 9);
+  // Its own scope: in hand, nothing fitted, it is scoped.
+  const inv = new Inventory(60, 40);
+  inv.set(inv.hotbar, rifle, 1, 0, 70, 0);
+  expect(scopeFitted(reg, inv, inv.hotbar)).toBe(true);
+  inv.set(inv.hotbar, reg.index.get("core:rifle")!, 1, 0, 70, 0);
+  expect(scopeFitted(reg, inv, inv.hotbar)).toBe(false);
+  // The fine look crosses the wire and only where it is.
+  const out = new InputBuffer(64), back = new InputBuffer(64);
+  out.set(10, 0, 0, 1000, -20, BTN_SECONDARY, 77, -40);
+  out.set(11, 0, 0, 1000, -20, BTN_SECONDARY, 77, -40);
+  out.set(12, 0, 0, 1001, -20, 0);
+  const wr = new BitWriter(256);
+  writeInputs(wr, out, 0, 12, 3);
+  const r = new BitReader();
+  r.reset(wr.bytes());
+  r.bits(4);
+  r.u32();
+  r.u8();
+  expect(readInputs(r, back, 0)).toBe(12);
+  expect([back.fineYaw[10 & back.mask], back.finePitch[11 & back.mask], back.fineYaw[12 & back.mask]]).toEqual([77, -40, 0]);
+});
+
+test("a milliradian reticle's marks are a milliradian apart at the view's field, so they spread as the scope zooms, and say its zoom and zero", () => {
+  const f = new UiFrame();
+  const m = new HudModel();
+  m.scope = m.sightMil = true;
+  const gap = (fov: number): number => {
+    m.sightFov = fov;
+    f.begin(16 / 9);
+    buildHud(f, m);
+    // The first two marks right of the middle, on the horizontal line.
+    const marks = f.nodes.slice(0, f.count).filter((n) => n.key > KEY_MIL + 1 && n.key < KEY_MIL + 90 && n.w < 3 && n.x > f.width / 2).map((n) => n.x).sort((a, b) => a - b);
+    return marks[1]! - marks[0]!;
+  };
+  const base = (70 * Math.PI) / 180;
+  // At 20 and 40 times each milliradian is marked; under that, each fifth.
+  const at20 = gap(zoomed(base, 20)), at40 = gap(zoomed(base, 40));
+  expect(at40 / at20).toBeCloseTo(2, 2);
+  expect(gap(zoomed(base, 10))).toBeCloseTo(5 * (f.height / (2 * Math.tan(zoomed(base, 10) / 2))) * 0.001, 3);
+  expect(at40).toBeCloseTo((f.height / (2 * Math.tan(zoomed(base, 40) / 2))) * 0.001, 3);
+  m.sightZoom = 24;
+  m.sightZero = 300;
+  f.begin(16 / 9);
+  buildHud(f, m);
+  expect([f.find(KEY_MIL + 99)!.text, f.find(KEY_MIL + 98)!.text]).toEqual(["24x", "ZERO 300 m"]);
 });

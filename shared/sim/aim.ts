@@ -16,7 +16,7 @@ import type { Registry } from "../content/registry.ts";
 import { YAW_UNITS } from "../coords.ts";
 import { PI, TAU, detCos, detSin, len3 } from "../math/scalar.ts";
 import { lookDirection } from "../world/ray.ts";
-import { BTN_SECONDARY, MODE_WALK, type Body, type MoveParams } from "./character.ts";
+import { BTN_SECONDARY, BTN_SPRINT, MODE_WALK, type Body, type MoveParams } from "./character.ts";
 import type { Inventory } from "./items.ts";
 import { actionOut, type WeaponParams } from "./weapon.ts";
 
@@ -135,6 +135,25 @@ export function shotKick(b: Body, w: WeaponParams, fired: boolean): number {
   return k * KICK_UNIT;
 }
 
+/** The share of its sway a sight keeps while its shooter holds its breath (D1083). */
+export const BREATH_STEADY = 0.2;
+/** Squared metres a second a body may move and still hold its breath. */
+const BREATH_STILL = 0.04;
+
+/** Whether `b`, aimed (the secondary held), holds its breath: the sprint key held, standing still (D1083). */
+export function holdsBreath(b: Body, buttons: number): boolean {
+  return (buttons & (BTN_SPRINT | BTN_SECONDARY)) === (BTN_SPRINT | BTN_SECONDARY) && b.vx * b.vx + b.vz * b.vz < BREATH_STILL;
+}
+
+/**
+ * Pitch units a shot leaves above its look so that a round of `speed` metres a second falling at `gravity` crosses the look
+ * again `zero` metres off (D1083): half of gravity times the distance over the speed squared, as an angle. 0 for no zero.
+ */
+export function zeroUnits(zero: number, speed: number, gravity: number): number {
+  if (!(zero > 0 && speed > 0 && gravity > 0)) return 0;
+  return ((gravity * zero) / (2 * speed * speed)) * (YAW_UNITS / TAU);
+}
+
 /** The sway's offset in yaw and pitch units, from the last call of `sway`. */
 export const swayOut = { yaw: 0, pitch: 0 };
 
@@ -142,8 +161,8 @@ export const swayOut = { yaw: 0, pitch: 0 };
  * A scoped, aimed long gun's wander at tick `t` (fractional for the camera), into swayOut: none for a weapon that does not
  * sway. Its phase is the shooter's own, from its handle, so two snipers do not sway together.
  */
-export function sway(w: WeaponParams, stance: number, handle: number, t: number): void {
-  const a = (w.coneSway ?? 0) * (STANCE_SWAY[stance] ?? 1) * UNITS_PER_DEGREE;
+export function sway(w: WeaponParams, stance: number, handle: number, t: number, steady = false): void {
+  const a = (w.coneSway ?? 0) * (STANCE_SWAY[stance] ?? 1) * UNITS_PER_DEGREE * (steady ? BREATH_STEADY : 1);
   if (!(a > 0)) {
     swayOut.yaw = swayOut.pitch = 0;
     return;
@@ -161,6 +180,8 @@ export function sway(w: WeaponParams, stance: number, handle: number, t: number)
  */
 export function scopeFitted(reg: Registry, inv: Inventory | null, slot: number): boolean {
   if (!inv || slot < 0) return false;
+  // A weapon with a scope of its own (the fabricated sniper rifle, D1083).
+  if ((reg.defs[inv.item[slot]!] as ItemDef | null)?.optic) return true;
   const fitted = inv.attach[slot]!;
   const kind = fitted !== 0 ? (reg.defs[fitted] as ItemDef | null)?.attachment : undefined;
   return kind === "scope" || kind === "holo";
@@ -173,13 +194,14 @@ export const shotAim = { yaw: 0, pitch: 0, cone: 0 };
  * The aim of a shot of `w` that left on `tick` from `b` (stepped on that tick), looking along `yaw` and `pitch` (wire
  * units), with `buttons` held: the look plus the kick, plus the sway when `scoped` and aimed, and the cone. Into shotAim.
  */
-export function aimShot(b: Body, buttons: number, w: WeaponParams, p: MoveParams, yaw: number, pitch: number, scoped: boolean, handle: number, tick: number): void {
+export function aimShot(b: Body, buttons: number, w: WeaponParams, p: MoveParams, yaw: number, pitch: number, scoped: boolean, handle: number, tick: number, zero = 0): void {
   const out = shotAim;
   out.cone = shotCone(b, buttons, w, p, true);
   let y = yaw;
-  let e = pitch + shotKick(b, w, true);
+  // A zero lifts the shot, not the look: the reticle stays on the look (D1083).
+  let e = pitch + shotKick(b, w, true) + zero;
   if (scoped && (buttons & BTN_SECONDARY) !== 0) {
-    sway(w, b.stance, handle, tick);
+    sway(w, b.stance, handle, tick, holdsBreath(b, buttons));
     y += swayOut.yaw;
     e += swayOut.pitch;
   }

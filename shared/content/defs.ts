@@ -608,6 +608,8 @@ export interface OpticFacet {
   readonly window?: readonly [number, number];
   /** One round lens, two merged side by side, or a visor's wide window. Round where it gives none. */
   readonly shape?: "round" | "twin" | "visor";
+  /** A scope's reticle: the German post (the default), or lines marked in milliradians that grow with the zoom (D1083). */
+  readonly reticle?: "post" | "mil";
 }
 
 /** How an item is made. ARK keeps this on the item too. */

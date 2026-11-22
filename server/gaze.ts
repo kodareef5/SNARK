@@ -8,6 +8,7 @@ import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
 import { CMD_GAZE, CMD_MARK, GAZE_FARTHEST, GAZE_REACH, GAZE_TICKS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SPOT_TICKS } from "../shared/net/protocol.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
+import { CUE_SCOPED } from "../shared/anim/pose.ts";
 import type { ItemDef } from "../shared/content/defs.ts";
 import { ARMOR_SLOTS } from "../shared/sim/items.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -24,6 +25,8 @@ export const CONE_CHUNKS = 48;
 /** Chunks a side held awake round what a sight is on, and the most a server holds so for all its sessions. */
 export const WAKE_SIDE = 3;
 export const WAKE_MOST = 64;
+/** The farthest a zero may be dialled, metres. */
+export const ZERO_MOST = 2000;
 /** Ticks between a cone's chunks found again as its survivor turns. */
 const REFRESH = 6;
 
@@ -42,6 +45,8 @@ export interface GazeContext {
 class Look {
   zoom = 0;
   focus = 0;
+  /** The zero dialled, metres (D1083). */
+  zero = 0;
   /** The tick it ends without another CMD_GAZE, and the tick its chunks were last found. */
   until = 0;
   at = -1;
@@ -97,6 +102,7 @@ export class Gaze {
   private command(c: Client, r: BitReader): number {
     const zoom = r.u16() / 16;
     const focus = r.u16();
+    const zero = r.u16();
     if (r.overflow) return RESULT_INVALID;
     if (zoom <= 1) {
       this.end(c);
@@ -111,9 +117,26 @@ export class Gaze {
     if (!look) this.looks.set(c, (look = new Look()));
     look.zoom = Math.min(zoom, most);
     look.focus = Math.min(focus, this.reach(look.zoom));
+    look.zero = Math.min(zero, ZERO_MOST);
+    this.glint(c, true);
     look.until = this.ctx.world.tick + GAZE_TICKS;
     look.at = -1;
     return RESULT_OK;
+  }
+
+  /** The zero `c` dialled for its sight, metres, or 0 with no gaze (server/projectiles.ts zero). */
+  zeroOf(c: Client): number {
+    return this.looks.get(c)?.zero ?? 0;
+  }
+
+  /** Sets or clears `c`'s body's glint (CUE_SCOPED), which its view tells those it faces. */
+  private glint(c: Client, on: boolean): void {
+    const { world } = this.ctx, ents = world.ents, e = c.ent;
+    if (e < 0) return;
+    const word = on ? (ents.cue[e]! | CUE_SCOPED) >>> 0 : (ents.cue[e]! & ~CUE_SCOPED) >>> 0;
+    if (word === ents.cue[e]) return;
+    ents.cue[e] = word;
+    world.history.cued(e);
   }
 
   /** How far `c`'s look reaches what it tells of a creature (server/overhead.ts): its gaze's reach, or 0 with none. */
@@ -190,6 +213,7 @@ export class Gaze {
     for (const chunk of look.waking) this.release(chunk);
     look.waking.length = 0;
     this.looks.delete(c);
+    this.glint(c, false);
   }
 
   /**

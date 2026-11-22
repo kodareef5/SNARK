@@ -423,8 +423,9 @@ export const CMD_CLOCK = 35;
  */
 export const CMD_EMOTE = 36;
 /**
- * Looking through a sight (D1079): how many times it magnifies, in sixteenths u16 (0 or 16 and under for none), and how far
- * off, in metres, what the middle of the view is on u16 (0 for nothing found). The server holds the zoom to what the
+ * Looking through a sight (D1079): how many times it magnifies, in sixteenths u16 (0 or 16 and under for none), how far
+ * off, in metres, what the middle of the view is on u16 (0 for nothing found), and the zero dialled, metres u16 (0 for
+ * none, D1083), which lifts a flying round to cross the look there. The server holds the zoom to what the
  * survivor holds or wears that magnifies, and while it lasts adds the chunks along the survivor's look to its view and
  * wakes the creatures round what it is on. A session sends it as its zoom changes and once a second while it looks;
  * GAZE_TICKS after the last, the cone is gone.
@@ -697,6 +698,9 @@ export class InputBuffer {
   readonly yaw: Uint16Array;
   readonly pitch: Int16Array;
   readonly buttons: Uint16Array;
+  /** While aimed, the look's yaw and pitch past their units, in 256ths of one, for the shot alone (D1083). */
+  readonly fineYaw: Int8Array;
+  readonly finePitch: Int8Array;
   /**
    * Server only. The world tick the client says it was drawing when it sampled this input: its newest snapshot minus how far
    * behind that it draws. Unchecked, so its user must bound it.
@@ -712,6 +716,8 @@ export class InputBuffer {
     this.yaw = new Uint16Array(size);
     this.pitch = new Int16Array(size);
     this.buttons = new Uint16Array(size);
+    this.fineYaw = new Int8Array(size);
+    this.finePitch = new Int8Array(size);
     this.view = new Float64Array(size);
   }
 
@@ -720,8 +726,10 @@ export class InputBuffer {
   }
 
   /** Clamps every field to its legal range. */
-  set(tick: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
+  set(tick: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, fineYaw = 0, finePitch = 0): void {
     const i = tick & this.mask;
+    this.fineYaw[i] = fineYaw < -127 ? -127 : fineYaw > 127 ? 127 : fineYaw;
+    this.finePitch[i] = finePitch < -127 ? -127 : finePitch > 127 ? 127 : finePitch;
     this.tick[i] = tick;
     this.moveX[i] = moveX < -127 ? -127 : moveX > 127 ? 127 : moveX;
     this.moveZ[i] = moveZ < -127 ? -127 : moveZ > 127 ? 127 : moveZ;
@@ -881,7 +889,9 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
         inputs.moveZ[i] === inputs.moveZ[prev] &&
         inputs.yaw[i] === inputs.yaw[prev] &&
         inputs.pitch[i] === inputs.pitch[prev] &&
-        inputs.buttons[i] === inputs.buttons[prev];
+        inputs.buttons[i] === inputs.buttons[prev] &&
+        inputs.fineYaw[i] === inputs.fineYaw[prev] &&
+        inputs.finePitch[i] === inputs.finePitch[prev];
       w.bool(same);
       if (same) continue;
     }
@@ -890,6 +900,13 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
     w.u16(inputs.yaw[i]!);
     w.sbits(inputs.pitch[i]!, 16);
     w.bits(inputs.buttons[i]!, BUTTON_BITS);
+    // An aimed look's 256ths of a unit, where it has any (protocol 42, D1083).
+    const fine = inputs.fineYaw[i] !== 0 || inputs.finePitch[i] !== 0;
+    w.bool(fine);
+    if (fine) {
+      w.sbits(inputs.fineYaw[i]!, 8);
+      w.sbits(inputs.finePitch[i]!, 8);
+    }
     prev = i;
   }
 }
@@ -907,6 +924,8 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
   let yaw = 0;
   let pitch = 0;
   let buttons = 0;
+  let fineYaw = 0;
+  let finePitch = 0;
   for (let k = 0; k < count; k++) {
     if (k === 0 || !r.bool()) {
       moveX = r.sbits(8);
@@ -914,10 +933,13 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
       yaw = r.u16();
       pitch = r.sbits(16);
       buttons = r.bits(BUTTON_BITS);
+      const fine = r.bool();
+      fineYaw = fine ? r.sbits(8) : 0;
+      finePitch = fine ? r.sbits(8) : 0;
     }
     const tick = newest - k;
     if (tick > serverTick && tick < serverTick + INPUT_WINDOW && !inputs.has(tick)) {
-      inputs.set(tick, moveX, moveZ, yaw, pitch, buttons);
+      inputs.set(tick, moveX, moveZ, yaw, pitch, buttons, fineYaw, finePitch);
       // `ack - behind` is when the newest input was sampled. Each older input was sampled one tick earlier.
       inputs.view[tick & inputs.mask] = ack - behind - k;
       // Preserve the packet acknowledgement separately from the interpolated view. Redundant

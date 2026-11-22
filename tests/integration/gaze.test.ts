@@ -59,7 +59,7 @@ test("two survivors side by side looking two ways through their glasses each see
   const ents = h.world.ents;
   const chunkOf = (e: number): number => chunkAt(h.world.dims, ents.x[e]!, ents.z[e]!);
   expect([h.host.creatures.isChunkAwake(chunkOf(north)), h.host.creatures.isChunkAwake(chunkOf(south))]).toEqual([false, false]);
-  const gaze = (s: ClientSession, zoom: number, focus: number): void => void s.command(CMD_GAZE, (w) => (w.u16(zoom * 16), w.u16(focus)));
+  const gaze = (s: ClientSession, zoom: number, focus: number): void => void s.command(CMD_GAZE, (w) => (w.u16(zoom * 16), w.u16(focus), w.u16(0)));
   const seen = (s: ClientSession): number[] => {
     const r = new RemoteSample();
     s.sampleRemote(r);
