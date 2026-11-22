@@ -15,6 +15,8 @@ import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
+import { texgenSide } from "../../client/core/texgen/layers.ts";
+import { weatherTwin } from "../../client/core/texgen/weather.ts";
 import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
@@ -407,7 +409,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const risen = 1 - finishesEarly;
     if (weather && weather[3]! >= 0 && !ground && !touch && risen > 0) {
       risenFrom(albedo, worldOrm, normal);
-      weathered(albedo, worldOrm, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, over, open, dist, footprint, p.surfaceCity, sample);
+      weathered(albedo, worldOrm, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, over, open, dist, footprint, p.surfaceCity, sample, 1, weatherTwin(texgenSide(p.tier, p.tier.finishes)));
       risenTo(albedo, worldOrm, null, risen);
       if (edge && edge[0]! >= 0) {
         risenFrom(albedo, worldOrm, normal);

@@ -198,15 +198,15 @@ test("the weathering's two jobs at 512 on a card with no timer: its first pass c
     shell(t.frame(512, high, false), held);
     if (up < 0 && t.ready > 0) up = frames;
   }
-  expect([t.orders.layers, t.first]).toEqual([8, [0, 6]]);
+  expect([t.orders.layers, t.first]).toEqual([9, [0, 6, 8]]);
   expect(up).toBeLessThanOrEqual(6);
   expect(frames).toBeLessThan(100);
 });
 
 test("a job it was not made for: a tiling noise layer, drawn as its twin says, its program the engine's", () => {
-  const grain = grainJob(77);
+  const grain = grainJob(77, [8, 8, 4, 2], 4);
   const text = jobFragment(grain);
-  expect(text).toContain("uniform vec4 uJob[3];");
+  expect(text).toContain("uniform vec4 uJob[4];");
   expect(text).toContain("vec4 made(vec2 at)");
   const px = jobPixels(grain, 0, 32);
   // It tiles: across its wrap its values change about as much as within it.
@@ -219,4 +219,11 @@ test("a job it was not made for: a tiling noise layer, drawn as its twin says, i
   // Beside the weathering's two jobs it takes the layer after theirs and draws as they do.
   const t = new Texgen([job(6, 2), job(2, 1, 4), grain]);
   expect([t.first[2], t.orders.layers, t.orders.programs.length]).toEqual([8, 9, 3]);
+  // A channel of fewer cells is smoother.
+  let rough = 0, smooth = 0;
+  for (let i = 0; i < 31; i++) for (let y = 0; y < 32; y++) {
+    rough += Math.abs(px[(y * 32 + i) * 4]! - px[(y * 32 + i + 1) * 4]!);
+    smooth += Math.abs(px[(y * 32 + i) * 4 + 3]! - px[(y * 32 + i + 1) * 4 + 3]!);
+  }
+  expect(smooth).toBeLessThan(rough / 2);
 });

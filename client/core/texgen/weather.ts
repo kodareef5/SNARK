@@ -7,8 +7,10 @@
 
 import { WEATHER_LUTS, WEATHER_RECIPE, type WeatherRecipe } from "../../../content/texgen/weather.ts";
 import { sample, type Texture } from "../render/cpu-texture.ts";
+import type { WorldSample } from "../render/world-surfaces.ts";
 import { jobPixels, type Job } from "./engine.ts";
-import { TEXGEN_LAYERS, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_PAD, WEATHER_STOREY } from "./layers.ts";
+import { grainJob } from "./grain.ts";
+import { TEXGEN_LAYERS, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_NOISE, WEATHER_NOISE_CELLS, WEATHER_PAD, WEATHER_STOREY } from "./layers.ts";
 import { cells, fbm, hash3, hash32, line, smoothstep, tiled } from "./noise.ts";
 
 export { WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_PAD, WEATHER_STOREY } from "./layers.ts";
@@ -186,7 +188,7 @@ export function fieldLut(seed: number): Float32Array {
 
 /** Layer `layer` of the masks, `side` pixels a side, as RGBA8, row 0 first, as the card makes it. */
 export function weatherPixels(layer: number, side: number, recipe: WeatherRecipe = WEATHER_RECIPE): Uint8Array {
-  return layer < WEATHER_BAYS ? jobPixels(bayJob(recipe), layer, side) : jobPixels(fieldJob(recipe), layer - WEATHER_BAYS, side);
+  return layer < WEATHER_BAYS ? jobPixels(bayJob(recipe), layer, side) : layer < WEATHER_NOISE ? jobPixels(fieldJob(recipe), layer - WEATHER_BAYS, side) : jobPixels(noiseJob(recipe), 0, side);
 }
 
 /**
@@ -221,6 +223,13 @@ export function mipmapped(pixels: Uint8Array, side: number): Texture {
 /** Reads layer `layer` of the masks `side` pixels a side at (u, v), as `sample` reads a texture: the twin of the card's read. */
 export function weatherRead(layer: number, side: number, u: number, v: number, spread: number, out: Float64Array): void {
   sample(weatherTexture(layer, side), u, v, spread, out);
+}
+const twins = new Map<number, WorldSample>();
+/** The masks' twin at `side` a side, as `weathered` is given it: the side the tier's card makes them at (texgenSide). */
+export function weatherTwin(side: number): WorldSample {
+  let t = twins.get(side);
+  if (!t) twins.set(side, (t = (_role, layer, u, v, spread, out) => weatherRead(layer, side, u, v, spread, out)));
+  return t;
 }
 
 const fl = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
@@ -267,7 +276,10 @@ export function fieldJob(recipe: WeatherRecipe = WEATHER_RECIPE): Job {
 }
 
 /** The weathering's jobs, in the order their layers lie in the array. */
-export const weatherJobs = (recipe: WeatherRecipe = WEATHER_RECIPE): Job[] => [bayJob(recipe), fieldJob(recipe)];
+export const weatherJobs = (recipe: WeatherRecipe = WEATHER_RECIPE): Job[] => [bayJob(recipe), fieldJob(recipe), noiseJob(recipe)];
+
+/** The slow noises a wall's read takes from the array in place of hashing for them (layers.ts WEATHER_NOISE_CELLS). */
+export const noiseJob = (recipe: WeatherRecipe = WEATHER_RECIPE): Job => grainJob(recipe.seed * 64 + 5000, WEATHER_NOISE_CELLS);
 
 function bayGlsl(recipe: WeatherRecipe): string {
   const { tracks: TRACKS, threads: THREADS, drips: DRIPS, rusts: RUSTS, atThreads: AT_THREADS, atDrips: AT_DRIPS, atRust: AT_RUST, atSplash: AT_SPLASH } = bayLayout(recipe);

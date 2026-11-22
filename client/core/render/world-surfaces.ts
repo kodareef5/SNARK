@@ -4,7 +4,8 @@ import { fixtureShader } from "./street-finish.ts";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, MASK_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
 import { hash3, hash32 } from "../texgen/noise.ts";
-import { WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_LAYERS, WEATHER_PAD, WEATHER_STOREY, WEATHER_TWIN_SIDE, weatherRead } from "../texgen/weather.ts";
+import { WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_LAYERS, WEATHER_PAD, WEATHER_STOREY, WEATHER_TWIN_SIDE, weatherRead } from "../texgen/weather.ts";
+import { WEATHER_FIELD_WARP, WEATHER_NOISE, WEATHER_NOISE_TEXEL, WEATHER_NOISE_TILE } from "../texgen/layers.ts";
 import { ROAD_ACROSS, ROAD_ALONG, ROAD_CELL, ROAD_HALF, ROAD_ONE_WAY, ROAD_PLANES, ROAD_STEP, ROAD_WEAR_SHIFT, ROAD_WRAP, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
@@ -248,19 +249,6 @@ export function surfaceNoise(x: number, y: number): number {
   const a = fx * fx * (3 - 2 * fx), b = fy * fy * (3 - 2 * fy);
   return (surfaceHash(ix, iy) * (1 - a) + surfaceHash(ix + 1, iy) * a) * (1 - b) + (surfaceHash(ix, iy + 1) * (1 - a) + surfaceHash(ix + 1, iy + 1) * a) * b;
 }
-/** surfaceNoise along row `row` of its cells alone: the same values, from two hashes in place of four. */
-export function surfaceLine(x: number, row: number): number {
-  const ix = Math.floor(x), f = fract(x), a = f * f * (3 - 2 * f);
-  return surfaceHash(ix, row) * (1 - a) + surfaceHash(ix + 1, row) * a;
-}
-/** Two value noises from one lattice of cells, the high and the low twelve bits of each corner's hash: into `out`. */
-export function surfaceNoise2(x: number, y: number, out: Float64Array): void {
-  const ix = Math.floor(x), iy = Math.floor(y), fx = fract(x), fy = fract(y), a = fx * fx * (3 - 2 * fx), b = fy * fy * (3 - 2 * fy);
-  const h00 = surfaceHash(ix, iy) * 4096, h10 = surfaceHash(ix + 1, iy) * 4096, h01 = surfaceHash(ix, iy + 1) * 4096, h11 = surfaceHash(ix + 1, iy + 1) * 4096;
-  const two = (p: number, q: number, r: number, s: number): number => (p * (1 - a) + q * a) * (1 - b) + (r * (1 - a) + s * a) * b;
-  out[0] = two(Math.floor(h00), Math.floor(h10), Math.floor(h01), Math.floor(h11)) / 4096;
-  out[1] = two(fract(h00), fract(h10), fract(h01), fract(h11));
-}
 /**
  * The share of `b` where `t` of it is wanted and the higher of heights `a` and `b` shows through the other within
  * `band`: 0 at t 0 and 1 at t 1 while the two are less than `scale` apart.
@@ -493,12 +481,10 @@ const TONE_BLEND = 0.25;
 const STAMP_TAPS = 4;
 /** A pixel's footprint, metres, at which the formwork's joints and tie holes, a centimetre wide, are gone; they fade from half of it. */
 const JOINTS_GONE = 0.08;
-const slow = new Float64Array(2);
-/** The second field read's scale against the first, which no whole number of either's tiles meets. */
-const FIELD_TWO = 0.731;
+const slow = new Float64Array(4);
 /** What a field reads as while the masks are being made: damp at its middle, nothing let go, no patina and no salt. */
 const FIELD_NONE = [0.5, 0, 0, 0] as const;
-const bay = new Float64Array(6), field = new Float64Array(4), field2 = new Float64Array(4);
+const bay = new Float64Array(6), field = new Float64Array(4);
 /** What rust bled from a fixing leaves, as a multiplier of the wall's light; the green of a film of algae; salt's white. */
 const RUST = [0.81, 0.43, 0.24] as const, ALGAE = [0.62, 0.72, 0.5] as const, SALT = [0.72, 0.71, 0.68] as const, GROWTH = [0.55, 0.7, 0.42] as const;
 
@@ -541,8 +527,10 @@ export function bayStamp(bay: number, storey: number, key: number, out: Float64A
 
 /** A wall's tone, 0 to 1, from bay to bay along it, keyed `key`, eased into the next bay's within TONE_BLEND of a bay's side. */
 export function bayTone(along: number, key: number): number {
-  const edge = Math.floor(along / WEATHER_BAY + 0.5), t = smooth(-TONE_BLEND, TONE_BLEND, along - edge * WEATHER_BAY), a = hash3(edge - 1, key, 977);
-  return a + (hash3(edge, key, 977) - a) * t;
+  const edge = Math.floor(along / WEATHER_BAY + 0.5), t = smooth(-TONE_BLEND, TONE_BLEND, along - edge * WEATHER_BAY);
+  if (t >= 1) return hash3(edge, key, 977);
+  const a = hash3(edge - 1, key, 977);
+  return t <= 0 ? a : a + (hash3(edge, key, 977) - a) * t;
 }
 
 const choice = new Float64Array(5), other = new Float64Array(6);
@@ -590,7 +578,9 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   const bayAt = Math.floor(along / WEATHER_BAY), storey = Math.floor(over / WEATHER_STOREY);
   // A wall's bays each take their own tone; a roof's tone moves only with the noise.
   const column = !wall ? 0.5 : both ? bayTone(along, key) + (bayTone(along, frame[2]!) - bayTone(along, key)) * share : bayTone(along, key);
-  const value = 1 + w.value * ((surfaceNoise(x / 7 + y / 5, z / 7 - y / 4) - 0.5) * 0.7 + (column - 0.5) * 0.3);
+  masks(3, WEATHER_NOISE, (wall ? along + side * 17.3 : x) / WEATHER_NOISE_TILE, (wall ? over : z) / WEATHER_NOISE_TILE, Math.log2(WEATHER_NOISE_TEXEL / WEATHER_NOISE_TILE), slow);
+  for (let c = 0; c < 4; c++) slow[c] = 0.5 + (slow[c]! - 0.5) * ready;
+  const value = 1 + w.value * ((slow[0]! - 0.5) * 0.7 + (column - 0.5) * 0.3);
   for (let c = 0; c < 3; c++) albedo[c]! *= value;
   const fade = 1 - smooth(WEATHER_NEAR, WEATHER_GONE, dist);
   if (!wall || fade <= 0) return;
@@ -601,22 +591,20 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
     stamped(masks, bayAt, storey, frame[2]!, u, down, spread, other);
     for (let c = 0; c < 6; c++) bay[c] = bay[c]! + (other[c]! - bay[c]!) * share;
   }
-  const o = side * 5.3, f0 = WEATHER_BAYS + (side & 1), f1 = WEATHER_BAYS + ((side & 1) ^ (WEATHER_FIELDS > 1 ? 1 : 0));
-  masks(3, f0, (along + o) / WEATHER_FIELD, -over / WEATHER_FIELD, Math.log2(Math.max(footprint / WEATHER_FIELD, 1e-9)), field);
-  masks(3, f1, (along * FIELD_TWO + 3.7 + o) / WEATHER_FIELD, (-over * FIELD_TWO + 1.3) / WEATHER_FIELD, Math.log2(Math.max((footprint * FIELD_TWO) / WEATHER_FIELD, 1e-9)), field2);
-  const blend = smooth(0.3, 0.7, surfaceNoise(x / 9 + z / 9, y / 6));
+  // One read of a field, moved by the slow noises so that its tile never shows.
+  const fu = (along + side * 5.3) / WEATHER_FIELD + (slow[1]! - 0.5) * 2 * WEATHER_FIELD_WARP, fv = -over / WEATHER_FIELD + (slow[2]! - 0.5) * 2 * WEATHER_FIELD_WARP;
+  masks(3, WEATHER_BAYS + (side & 1), fu, fv, Math.log2(Math.max(footprint / WEATHER_FIELD, 1e-9)), field);
   for (let c = 0; c < 4; c++) {
     bay[c] = bay[c]! * ready;
-    field[c] = FIELD_NONE[c]! + (field[c]! + (field2[c]! - field[c]!) * blend - FIELD_NONE[c]!) * ready;
+    field[c] = FIELD_NONE[c]! + (field[c]! - FIELD_NONE[c]!) * ready;
   }
   const damp = field[0]!, hold = field[1]!, patina = field[2]!, salt = field[3]!;
   // Buildings are much dirtier than their neighbours where a 31 m noise is high; a bay's leaks are its own.
-  surfaceNoise2(x / 31 + 11.3, z / 31 + 5.7, slow);
-  const dirty = smooth(0.5, 0.75, slow[0]!);
-  const wet = (0.55 + 0.9 * slow[1]!) * (1 + dirty), leak = (0.3 + 0.7 * bay[4]!) * wet, worn = 0.65 * wet;
+  const dirty = smooth(0.5, 0.75, slow[1]!);
+  const wet = (0.55 + 0.9 * slow[2]!) * (1 + dirty), leak = (0.3 + 0.7 * bay[4]!) * wet, worn = 0.65 * wet;
   if (w.peel > 0) {
     // Whole patches of plaster gone, metres across where a wall is dirty, and flakes elsewhere as its leaks loosen it.
-    const gone = smooth(0.62, 0.7, surfaceNoise(along / 6, over / 5 + side * 17) + 0.25 * dirty);
+    const gone = smooth(0.62, 0.7, slow[3]! + 0.25 * dirty);
     const t = 1 - (0.88 * gone + w.peel * worn * 0.4 * (1 - gone)) * fade, lost = smooth(t, t + 0.02, hold), rim = smooth(t - 0.04, t, hold) - lost;
     const chalk = 0.3 * w.peel * fade * smooth(0.2, 0.8, damp), grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3;
     const metres = finishMetres(CONCRETE, city);
@@ -630,7 +618,7 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   const runs = bay[0]! * w.runs * leak * (0.7 + 0.3 * open) * fade, left = LEFT[w.left], wash = (0.12 * w.runs * worn + 0.4 * dirty) * fade;
   // Under every slab line the wall is darker, fading down the storey, which a street sees from far off.
   const below = (over - storey * WEATHER_STOREY) / WEATHER_STOREY, band = below * below * below * 0.35 * w.runs * (0.6 + 0.4 * worn) * (0.7 + 0.3 * open) * fade;
-  const edge = (0.35 + 0.65 * surfaceLine(along / 9, side * 13)) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1 - smooth(edge - 0.06, edge, over)) * w.damp * fade;
+  const edge = (0.35 + 0.65 * slow[3]!) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1 - smooth(edge - 0.06, edge, over)) * w.damp * fade;
   const growth = (1 - smooth(0.1, 0.45 * (0.6 + damp), over)) * foot * clamp(city[6]! * 2.5 + 0.2);
   const joints = w.joints > 0 && footprint < JOINTS_GONE ? formwork(along, over, footprint) * w.joints * fade * (1 - smooth(JOINTS_GONE / 2, JOINTS_GONE, footprint)) : 0;
   const floor = over - storey * WEATHER_STOREY, dirt = (1 - smooth(0, EDGE_DIRT, floor)) * fade;
@@ -639,10 +627,10 @@ export function weathered(albedo: Out, orm: Out, index: number, x: number, y: nu
   const splash = storey === 0 ? bay[3]! * w.splash * fade * (1 - smooth(0.8, 1.2, over)) : 0;
   // The sun bleaches a wall facing it under an open sky, in a patina's patches; facing away in the shade it greens.
   const sunward = nx * SUN_FACE[0] + nz * SUN_FACE[1];
-  const bleach = w.bleach * smooth(0, 0.85, sunward) * smooth(0.35, 0.9, open) * (0.4 + 0.6 * smooth(0.3, 0.8, patina)) * fade;
-  const algae = w.algae * clamp(city[6]! * 2.5 + 0.2) * smooth(0, 0.8, 0.2 - sunward) * (1 - 0.6 * open) * smooth(0.45, 0.8, patina + 0.4 * bay[0]!) * fade;
+  const bleach = sunward > 0 ? w.bleach * smooth(0, 0.85, sunward) * smooth(0.35, 0.9, open) * (0.4 + 0.6 * smooth(0.3, 0.8, patina)) * fade : 0;
+  const algae = sunward < 0.2 ? w.algae * clamp(city[6]! * 2.5 + 0.2) * smooth(0, 0.8, 0.2 - sunward) * (1 - 0.6 * open) * smooth(0.45, 0.8, patina + 0.4 * bay[0]!) * fade : 0;
   // Salt blooms out of a wall at its damp foot, up to a little over the tide line, and under its runs.
-  const salted = w.salt * smooth(0.7, 0.92, salt) * Math.min(1, 1 - smooth(edge * 0.7, edge + 0.25, over) + 0.5 * bay[0]!) * fade;
+  const salted = salt > 0.7 ? w.salt * smooth(0.7, 0.92, salt) * Math.min(1, 1 - smooth(edge * 0.7, edge + 0.25, over) + 0.5 * bay[0]!) * fade : 0;
   const grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3;
   for (let c = 0; c < 3; c++) {
     let a = albedo[c]!;
@@ -1222,19 +1210,6 @@ const vec3 WL[${N}] = vec3[${N}](${weatherings.map((w) => `vec3(${LEFT[w.left].m
 ${vectors("WY", weatherings.map((w) => [w.drips, w.splash, w.bleach, w.algae]))}const float WZ[${N}] = float[${N}](${weatherings.map((w) => fl(w.salt)).join(",")});
 uniform highp sampler2DArray uWeather;
 uniform float uWeatherReady;
-float surfaceLine(float x, int row) {
-  int i = int(floor(x));
-  float f = fract(x);
-  return mix(surfaceHash(ivec2(i, row)), surfaceHash(ivec2(i + 1, row)), f * f * (3.0 - 2.0 * f));
-}
-vec2 surfaceNoise2(vec2 p) {
-  ivec2 i = ivec2(floor(p));
-  vec2 f = fract(p);
-  f = f * f * (3.0 - 2.0 * f);
-  vec4 h = vec4(surfaceHash(i), surfaceHash(i + ivec2(1, 0)), surfaceHash(i + ivec2(0, 1)), surfaceHash(i + ivec2(1, 1))) * 4096.0;
-  vec4 hi = floor(h) / 4096.0, lo = h - floor(h);
-  return vec2(mix(mix(hi.x, hi.y, f.x), mix(hi.z, hi.w, f.x), f.y), mix(mix(lo.x, lo.y, f.x), mix(lo.z, lo.w, f.x), f.y));
-}
 uint weatherHash(int a, int b, int c) {
   uint h = uint(a) * 1597334677u ^ uint(b) * 3812015801u ^ uint(c) * 2654435761u;
   h = (h ^ (h >> 16u)) * 2246822519u;
@@ -1257,7 +1232,8 @@ bool wallFrame(vec3 p, vec3 n, out float along, out ivec2 keys, out float share,
 }
 float bayTone(float along, int key) {
   float edge = floor(along / ${fl(WEATHER_BAY)} + 0.5);
-  return mix(weatherUnit(int(edge) - 1, key, 977), weatherUnit(int(edge), key, 977), smoothstep(${fl(-TONE_BLEND)}, ${fl(TONE_BLEND)}, along - edge * ${fl(WEATHER_BAY)}));
+  float t = smoothstep(${fl(-TONE_BLEND)}, ${fl(TONE_BLEND)}, along - edge * ${fl(WEATHER_BAY)});
+  return t >= 1.0 ? weatherUnit(int(edge), key, 977) : t <= 0.0 ? weatherUnit(int(edge) - 1, key, 977) : mix(weatherUnit(int(edge) - 1, key, 977), weatherUnit(int(edge), key, 977), t);
 }
 vec4 stamped(int bay, int storey, int key, float u, float down, vec2 gx, vec2 gy, out vec2 leakRust) {
   uint h = weatherHash(bay, storey, key);
@@ -1292,7 +1268,9 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   bool wall = wallFrame(p, face, along, keys, share, side), both = share > 0.0 && share < 1.0;
   int bay = int(floor(along / ${fl(WEATHER_BAY)})), storey = int(floor(over / ${fl(WEATHER_STOREY)})), key = share < 1.0 ? keys.x : keys.y;
   float column = !wall ? 0.5 : both ? mix(bayTone(along, keys.x), bayTone(along, keys.y), share) : bayTone(along, key);
-  albedo *= 1.0 + WV[id] * ((surfaceNoise(vec2(p.x / 7.0 + p.y / 5.0, p.z / 7.0 - p.y / 4.0)) - 0.5) * 0.7 + (column - 0.5) * 0.3);
+  vec2 sq = (wall ? vec2(along + float(side) * 17.3, over) : p.xz) / ${fl(WEATHER_NOISE_TILE)};
+  vec4 slow = mix(vec4(0.5), textureGrad(uWeather, vec3(sq, ${fl(WEATHER_NOISE)}), vec2(${fl(WEATHER_NOISE_TEXEL / WEATHER_NOISE_TILE)}, 0.0), vec2(0.0, ${fl(WEATHER_NOISE_TEXEL / WEATHER_NOISE_TILE)})), uWeatherReady);
+  albedo *= 1.0 + WV[id] * ((slow.r - 0.5) * 0.7 + (column - 0.5) * 0.3);
   float fade = 1.0 - smoothstep(${fl(WEATHER_NEAR)}, ${fl(WEATHER_GONE)}, length(rel));
   if (!wall || fade <= 0.0) return;
   float ax = side < 2 ? dpx.z : dpx.x, ay = side < 2 ? dpy.z : dpy.x, footprint = max(length(vec2(ax, ox)), length(vec2(ay, oy)));
@@ -1305,20 +1283,15 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
     lr = mix(lr, lr2, share);
   }
   bm *= uWeatherReady;
-  float o = float(side) * 5.3;
-  int f0 = ${WEATHER_BAYS} + (side & 1), f1 = ${WEATHER_BAYS} + ((side & 1) ^ ${WEATHER_FIELDS > 1 ? 1 : 0});
-  vec4 m0 = textureGrad(uWeather, vec3((along + o) / ${fl(WEATHER_FIELD)}, -over / ${fl(WEATHER_FIELD)}, float(f0)), vec2(footprint / ${fl(WEATHER_FIELD)}, 0.0), vec2(0.0, footprint / ${fl(WEATHER_FIELD)}));
-  vec4 m1 = textureGrad(uWeather, vec3((along * ${fl(FIELD_TWO)} + 3.7 + o) / ${fl(WEATHER_FIELD)}, (-over * ${fl(FIELD_TWO)} + 1.3) / ${fl(WEATHER_FIELD)}, float(f1)), vec2(footprint * ${fl(FIELD_TWO / WEATHER_FIELD)}, 0.0), vec2(0.0, footprint * ${fl(FIELD_TWO / WEATHER_FIELD)}));
-  vec4 none = vec4(${FIELD_NONE.map(fl).join(", ")});
-  vec4 fm = mix(none, mix(m0, m1, smoothstep(0.3, 0.7, surfaceNoise(vec2(p.x / 9.0 + p.z / 9.0, p.y / 6.0)))), uWeatherReady);
+  vec2 fq = vec2((along + float(side) * 5.3) / ${fl(WEATHER_FIELD)}, -over / ${fl(WEATHER_FIELD)}) + (slow.gb - 0.5) * ${fl(2 * WEATHER_FIELD_WARP)};
+  vec4 fm = mix(vec4(${FIELD_NONE.map(fl).join(", ")}), textureGrad(uWeather, vec3(fq, float(${WEATHER_BAYS} + (side & 1))), vec2(footprint / ${fl(WEATHER_FIELD)}, 0.0), vec2(0.0, footprint / ${fl(WEATHER_FIELD)})), uWeatherReady);
   float damp = fm.r, hold = fm.g, patina = fm.b, salt = fm.a;
   // Buildings are much dirtier than their neighbours where a 31 m noise is high; a bay's leaks are its own.
-  vec2 slow = surfaceNoise2(vec2(p.x / 31.0 + 11.3, p.z / 31.0 + 5.7));
-  float dirty = smoothstep(0.5, 0.75, slow.x);
-  float wet = (0.55 + 0.9 * slow.y) * (1.0 + dirty), leak = (0.3 + 0.7 * lr.x) * wet, worn = 0.65 * wet;
+  float dirty = smoothstep(0.5, 0.75, slow.g);
+  float wet = (0.55 + 0.9 * slow.b) * (1.0 + dirty), leak = (0.3 + 0.7 * lr.x) * wet, worn = 0.65 * wet;
   vec4 x = WX[id], y = WY[id];
   if (x.z > 0.0) {
-    float gone = smoothstep(0.62, 0.7, surfaceNoise(vec2(along / 6.0, over / 5.0 + float(side) * 17.0)) + 0.25 * dirty);
+    float gone = smoothstep(0.62, 0.7, slow.a + 0.25 * dirty);
     float t = 1.0 - (0.88 * gone + x.z * worn * 0.4 * (1.0 - gone)) * fade, lost = smoothstep(t, t + 0.02, hold), rim = smoothstep(t - 0.04, t, hold) - lost;
     float chalk = 0.3 * x.z * fade * smoothstep(0.2, 0.8, damp), grey = (albedo.r + albedo.g + albedo.b) / 3.0;
     vec3 bare = vec3(0.0);
@@ -1335,7 +1308,7 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   float runs = bm.r * x.x * leak * (0.7 + 0.3 * open) * fade, wash = (0.12 * x.x * worn + 0.4 * dirty) * fade;
   float below = (over - float(storey) * ${fl(WEATHER_STOREY)}) / ${fl(WEATHER_STOREY)};
   float band = below * below * below * 0.35 * x.x * (0.6 + 0.4 * worn) * (0.7 + 0.3 * open) * fade;
-  float edge = (0.35 + 0.65 * surfaceLine(along / 9.0, side * 13)) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1.0 - smoothstep(edge - 0.06, edge, over)) * x.y * fade;
+  float edge = (0.35 + 0.65 * slow.a) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1.0 - smoothstep(edge - 0.06, edge, over)) * x.y * fade;
   float growth = (1.0 - smoothstep(0.1, 0.45 * (0.6 + damp), over)) * foot * clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0);
   float joints = x.w > 0.0 && footprint < ${fl(JOINTS_GONE)} ? formwork(along, over, footprint) * x.w * fade * (1.0 - smoothstep(${fl(JOINTS_GONE / 2)}, ${fl(JOINTS_GONE)}, footprint)) : 0.0;
   float dirt = (1.0 - smoothstep(0.0, ${fl(EDGE_DIRT)}, over - float(storey) * ${fl(WEATHER_STOREY)})) * fade;
@@ -1344,9 +1317,9 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
   float splash = storey == 0 ? bm.a * y.y * fade * (1.0 - smoothstep(0.8, 1.2, over)) : 0.0;
   // The sun bleaches a wall facing it under an open sky, in a patina's patches; facing away in the shade it greens.
   float sunward = dot(face.xz, vec2(${SUN_FACE.map(fl).join(", ")}));
-  float bleach = y.z * smoothstep(0.0, 0.85, sunward) * smoothstep(0.35, 0.9, open) * (0.4 + 0.6 * smoothstep(0.3, 0.8, patina)) * fade;
-  float algae = y.w * clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0) * smoothstep(0.0, 0.8, 0.2 - sunward) * (1.0 - 0.6 * open) * smoothstep(0.45, 0.8, patina + 0.4 * bm.r) * fade;
-  float salted = WZ[id] * smoothstep(0.7, 0.92, salt) * min(1.0, 1.0 - smoothstep(edge * 0.7, edge + 0.25, over) + 0.5 * bm.r) * fade;
+  float bleach = sunward > 0.0 ? y.z * smoothstep(0.0, 0.85, sunward) * smoothstep(0.35, 0.9, open) * (0.4 + 0.6 * smoothstep(0.3, 0.8, patina)) * fade : 0.0;
+  float algae = sunward < 0.2 ? y.w * clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0) * smoothstep(0.0, 0.8, 0.2 - sunward) * (1.0 - 0.6 * open) * smoothstep(0.45, 0.8, patina + 0.4 * bm.r) * fade : 0.0;
+  float salted = salt > 0.7 ? WZ[id] * smoothstep(0.7, 0.92, salt) * min(1.0, 1.0 - smoothstep(edge * 0.7, edge + 0.25, over) + 0.5 * bm.r) * fade : 0.0;
   float grey = (albedo.r + albedo.g + albedo.b) / 3.0;
   albedo += (vec3(grey * 1.15) + albedo * 0.08 - albedo) * 0.35 * bleach;
   albedo *= (1.0 + (WL[id] - 1.0) * runs) * (1.0 + (WL[id] - 1.0) * drips * 0.8) * (1.0 - 0.5 * foot) * (1.0 - 0.4 * joints) * (1.0 - 0.3 * dirt) * (1.0 - wash) * (1.0 - band) * (1.0 - 0.32 * splash);

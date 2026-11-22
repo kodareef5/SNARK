@@ -13,7 +13,6 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { jobPixels } from "../../client/core/texgen/engine.ts";
-import { grainJob } from "../../client/core/texgen/grain.ts";
 import { weatherJobs } from "../../client/core/texgen/weather.ts";
 import { encodePng } from "../snap/png.ts";
 import { CHROME_FLAGS, findChrome } from "../chrome.ts";
@@ -28,11 +27,10 @@ const entry = join(work, "entry.ts");
 const taking = (names: string, file: string): string => ["import", `{ ${names} }`, "from", JSON.stringify(join(root, file))].join(" ") + ";";
 writeFileSync(entry, `${taking("made", "client/shell/texgen.ts")}
 ${taking("Texgen", "client/core/texgen/engine.ts")}
-${taking("grainJob", "client/core/texgen/grain.ts")}
 ${taking("weatherJobs", "client/core/texgen/weather.ts")}
 ${taking("tierOf", "client/core/assets/tiers.ts")}
 const gl = (document.getElementById("c") as HTMLCanvasElement).getContext("webgl2")!;
-const engine = new Texgen([...weatherJobs(), grainJob(77)], gl), gen = made(gl, 0), tier = tierOf("high");
+const engine = new Texgen(weatherJobs(), gl), gen = made(gl, 0), tier = tierOf("high");
 const programs = engine.orders.programs.map((p) => {
   const g = gl.createProgram()!;
   for (const [type, text] of [[gl.VERTEX_SHADER, p.vertex], [gl.FRAGMENT_SHADER, p.fragment]] as const) {
@@ -103,7 +101,7 @@ try {
   if (!done) throw new Error("the page made nothing");
   if (done.error) throw new Error(done.error);
   console.log(`card: ${done.renderer}; ${side} a side; its programs' first draws ${done.warm.toFixed(1)} ms; made in ${done.frames} frames, ${done.ms.toFixed(0)} ms by the page's clock with every frame waited for, the slowest frame ${done.slowest.toFixed(1)} ms`);
-  const jobs = [...weatherJobs(), grainJob(77)];
+  const jobs = weatherJobs();
   let worst = 0;
   for (let l = 0; l < done.out.length; l++) {
     const j = done.first.findLastIndex((f) => f <= l), job = jobs[j]!, card = Uint8Array.from(atob(done.out[l]!), (c) => c.charCodeAt(0)), twin = jobPixels(job, l - done.first[j]!, side);

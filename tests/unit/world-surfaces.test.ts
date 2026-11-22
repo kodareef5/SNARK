@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, SURFACE_FINISHES, SURFACE_NAMES, SURFACE_WEATHERING, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { WEATHER_BAYS } from "../../client/core/texgen/weather.ts";
-import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, bayStamp, bayTone, formwork, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceLine, surfaceNoise, surfaceNoise2, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { WEATHER_NOISE } from "../../client/core/texgen/layers.ts";
+import { EDGE_ROUND, GROUND_GRAIN, GROUND_WANDER, WEATHER_GONE, WORLD_BASE, WORLD_FAR, WORLD_MRO, WORLD_EASE, WORLD_GLSL, WORLD_NEAR, WORLD_RISE, ROAD_GLSL, WorldFinishes, finishMetres, edgeOf, edged, roadFrameAt, roadWorn, walkMeet, walkWorn, ROAD_FRAME, ownVertex, staticPlace, staticSeed, wallFrame, weatherFrame, weathered, bayStamp, bayTone, formwork, citySurface, groundCover, groundMeet, groundWander, higher, secondShare, surfaceHash, surfaceNoise, worldPhase, worldSharp, worldSurface, worldVertex, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { TIERS, forTouch, tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME, FramePacket } from "../../client/core/render/packet.ts";
 import { NEAR_GLASS, NEAR_WALL } from "../../client/core/render/finish-near.ts";
@@ -28,17 +29,6 @@ test("macro fields are continuous across negative and positive cell boundaries a
     expect(surfaceHash(edge, 43)).toBeWithin(0, 1);
   }
   expect(surfaceNoise(0.1, 0.7)).not.toBe(surfaceNoise(8.1, 0.7));
-  // Along one row of cells the noise is two hashes' worth; two noises from one lattice are each from 0 to 1 and unalike.
-  const two = new Float64Array(2);
-  let same = 0;
-  for (let k = 0; k < 400; k++) {
-    const x = -50 + k * 0.37, row = (k % 9) - 4;
-    expect(surfaceLine(x, row)).toBeCloseTo(surfaceNoise(x, row), 12);
-    surfaceNoise2(x, k * 0.21, two);
-    for (const v of two) expect(v).toBeWithin(0, 1);
-    if (Math.abs(two[0]! - two[1]!) < 0.02) same++;
-  }
-  expect(same).toBeLessThan(40);
 });
 
 test("every finish reads its own layer, has bounded reflectance and unit normals near and far, on the ground and on walls", () => {
@@ -422,8 +412,9 @@ test("a bay's choices are bits of one hash each: every stamp mirrored about half
 test("a wall weathers by the masks it is given: runoff more under open sky, a damp foot near the ground, paint let go to concrete on plaster alone, salt on brick, splash at the ground storey's foot, sun bleaching facing the sun and a green film facing away; nothing of the masks while they are being made; all gone far off; a roof keeps only its value from bay to bay", () => {
   const city = new Float32Array(12); citySurface(city, "core:miami");
   const id = (name: string): number => (SURFACE_NAMES as readonly string[]).indexOf(name);
-  const bay = [1, 0, 0, 0], field = [0.5, 0, 0, 0];
-  const sample: WorldSample = (role, layer, _u, _v, _spread, out) => out.set(role === 3 ? (layer < WEATHER_BAYS ? bay : field) : [0.05, 0.05, 0.05, 1]);
+  // The masks, the fields and the slow noises, these at their middles.
+  const bay = [1, 0, 0, 0], field = [0.5, 0, 0, 0], slow = [0.5, 0.5, 0.5, 0.5];
+  const sample: WorldSample = (role, layer, _u, _v, _spread, out) => out.set(role === 3 ? (layer < WEATHER_BAYS ? bay : layer === WEATHER_NOISE ? slow : field) : [0.05, 0.05, 0.05, 1]);
   const at = (finish: string, o: { ny?: number; nx?: number; nz?: number; x?: number; over?: number; open?: number; dist?: number; ready?: number } = {}): number[] => {
     const albedo = Float64Array.of(0.5, 0.5, 0.5), orm = Float64Array.of(1, 0.8, 0);
     const ny = o.ny ?? 0, nz = o.nz ?? (ny ? 0 : 1);

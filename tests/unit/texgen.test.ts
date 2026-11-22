@@ -4,8 +4,9 @@
 import { expect, test } from "bun:test";
 import { WEATHER_LUTS, WEATHER_RECIPE } from "../../content/texgen/weather.ts";
 import { hash3, tiled, cells } from "../../client/core/texgen/noise.ts";
-import { WEATHER_BAYS, WEATHER_LAYERS, WEATHER_PAD, bayFeatures, bayLayout, bayTexel, baySeed, equalize, fieldLut, fieldSeed, mipmapped, weatherJobs, weatherPixels, weatherTexture } from "../../client/core/texgen/weather.ts";
+import { WEATHER_BAYS, WEATHER_FIELDS, WEATHER_LAYERS, WEATHER_PAD, bayFeatures, bayLayout, bayTexel, baySeed, equalize, fieldLut, fieldSeed, mipmapped, weatherJobs, weatherPixels, weatherTexture } from "../../client/core/texgen/weather.ts";
 import { jobFragment, jobPixels } from "../../client/core/texgen/engine.ts";
+import { WEATHER_NOISE } from "../../client/core/texgen/layers.ts";
 import { sample } from "../../client/core/render/cpu-texture.ts";
 
 const SIDE = 128;
@@ -122,7 +123,7 @@ test("a field tiles: across its wrap its values change as much as within it", ()
 });
 
 test("a field's values are spread evenly by its table: a threshold takes about its share", () => {
-  for (let l = WEATHER_BAYS; l < WEATHER_LAYERS; l++) {
+  for (let l = WEATHER_BAYS; l < WEATHER_NOISE; l++) {
     const lut = fieldLut(fieldSeed(WEATHER_RECIPE, l - WEATHER_BAYS));
     for (let c = 0; c < 4; c++) {
       for (let k = 0; k < 32; k++) expect(lut[(k + 1) * 4 + c]!).toBeGreaterThanOrEqual(lut[k * 4 + c]!);
@@ -144,8 +145,9 @@ test("the rasterizer's texture of a layer has every level, each the mean of the 
 });
 
 test("the card's programs draw what the TypeScript draws: the same loops, ranges and seeds, as the engine's jobs", () => {
-  const [bays, fields] = weatherJobs(), bay = jobFragment(bays!), field = jobFragment(fields!);
-  expect([bays!.layers, fields!.layers, bays!.bands, fields!.bands, bays!.pad, fields!.pad]).toEqual([WEATHER_BAYS, WEATHER_LAYERS - WEATHER_BAYS, 2, 1, WEATHER_PAD, 0]);
+  const [bays, fields, noise] = weatherJobs(), bay = jobFragment(bays!), field = jobFragment(fields!);
+  expect([bays!.layers, fields!.layers, noise!.layers, bays!.bands, fields!.bands, bays!.pad, fields!.pad]).toEqual([WEATHER_BAYS, WEATHER_FIELDS, 1, 2, 1, WEATHER_PAD, 0]);
+  expect(WEATHER_BAYS + WEATHER_FIELDS + noise!.layers).toBe(WEATHER_LAYERS);
   for (const name of ["vec4 bayTexel(", `uJob[${2 + bayLayout(WEATHER_RECIPE).rows}]`, `i < ${WEATHER_RECIPE.runs.heads[1] * WEATHER_RECIPE.runs.trails[1]}`, `i < ${WEATHER_RECIPE.runs.threads[1]}`]) expect(bay).toContain(name);
   for (const name of ["vec4 fieldRaw(", "float equalize(", "uJob[36]", "uJob[3 + k][c]"]) expect(field).toContain(name);
   for (const text of [bay, field]) {
@@ -157,7 +159,7 @@ test("the card's programs draw what the TypeScript draws: the same loops, ranges
 });
 
 test("the fields' pinned tables are their recipe's: each channel's 33 shares as fieldLut finds them", () => {
-  for (let f = 0; f < WEATHER_LAYERS - WEATHER_BAYS; f++) {
+  for (let f = 0; f < WEATHER_FIELDS; f++) {
     const lut = fieldLut(fieldSeed(WEATHER_RECIPE, f));
     // Should this fail, the recipe's seed or its fields changed: pin fieldLut's rows again.
     expect(WEATHER_LUTS[f]!.length).toBe(lut.length);
