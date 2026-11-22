@@ -5,7 +5,7 @@
 import { FEATURES, type Feature } from "../features.ts";
 import { f, icon, mesh, stub, type ClassRow, type Field, type Fields, type Slot, type Status } from "./kind.ts";
 import { KINDS } from "./kinds.ts";
-import type { Def, EngramDef, GameDef, ItemDef, LevelsDef, LootDef, MapDef, MaterialDef, NodeDef, PropDef, RenameDef, ShapeDef, SpawnsDef, SpeciesDef, StructureDef } from "./defs.ts";
+import type { Def, ItemDef, NodeDef, PropDef, SpeciesDef, StructureDef } from "./defs.ts";
 
 
 export type { ClassRow, Field, Slot, Status } from "./kind.ts";
@@ -195,67 +195,6 @@ const PROP = {
   fertile: f("text", "the egg item a fertilised egg is", { refs: { "": "item/egg" } }),
 } satisfies Fields<PropDef>;
 
-const ENGRAM = {
-  label: f("text"),
-  level: f("number", "RequiredCharacterLevel"),
-  cost: f("number", "RequiredEngramPoints"),
-  item: f("text", "BluePrintEntry", { refs: { "": "item" } }),
-  hidden: f("switch", "EngramHidden"),
-  auto: f("number", "EngramEntryAutoUnlocks"),
-  requires: stub("polish", "list", "EngramRequirementSets", { refs: { "[]": "engram" } }),
-  group: stub("maps", "text", "EngramGroup"),
-  from: stub("bosses", "text", "a boss's unlock", { refs: { "": "species/creature" } }),
-} satisfies Fields<EngramDef>;
-
-const LEVELS = {
-  xp: f("list", "LevelExperienceRampOverrides"),
-  engramPoints: f("list", "OverridePlayerLevelEngramPoints"),
-  most: f("number", "OverrideMaxExperiencePointsPlayer"),
-  tame: f("facet", "the tames' ramp"),
-} satisfies Fields<LevelsDef>;
-
-const MATERIAL = {
-  takes: f("facet", "the structure settings' damage by type"),
-  decayDays: f("number", "DecayDestructionPeriodMultiplier"),
-} satisfies Fields<MaterialDef>;
-
-const SHAPE = {
-  role: f("text", "the snap type"),
-  boxes: f("list"),
-  hulls: f("list"),
-  look: f("facet"),
-  doorway: f("switch"),
-} satisfies Fields<ShapeDef>;
-
-const LOOT = {
-  sets: f("facet", "MinItemSets, MaxItemSets"),
-  from: f("list", "ItemSets", { refs: { "[].entries[].items[]": "item" }, open: true }),
-} satisfies Fields<LootDef>;
-
-const SPAWNS = {
-  entries: f("list", "NPCSpawnEntries", { refs: { "[].group[]": "species/creature" }, open: true }),
-  limits: f("list", "NPCSpawnLimits", { refs: { "[].species": "species/creature" } }),
-} satisfies Fields<SpawnsDef>;
-
-const MAP = {
-  label: stub("maps", "text"),
-  seaLevel: f("number"),
-  game: stub("maps", "text", "the game data a level names", { refs: { "": "game" } }),
-  zones: f("list", "zone managers and crate volumes", { refs: { "[].spawns": "spawns", "[].crate": "prop/crate" } }),
-} satisfies Fields<MapDef>;
-
-const GAME = {
-  survivor: f("text", "", { refs: { "": "species/survivor" } }),
-  cache: f("text", "", { refs: { "": "prop/container" } }),
-  bag: f("text", "", { refs: { "": "prop/container" } }),
-  levels: f("text", "", { refs: { "": "levels" } }),
-  buffs: f("list", "AdditionalDefaultBuffs", { refs: { "[]": "buff" }, open: true }),
-} satisfies Fields<GameDef>;
-
-const RENAME = {
-  to: f("list", "a reference redirect"),
-} satisfies Fields<RenameDef>;
-
 /** The fields of a type whose kind has a file of its own (kinds.ts). */
 const fieldsOf = (type: string): Readonly<Record<string, Field>> => KINDS.find((k) => k.type === type && k.fields)!.fields!;
 const rowsOf = (type: string): readonly ClassRow[] => KINDS.find((k) => k.type === type && k.rows)!.rows!;
@@ -267,17 +206,17 @@ export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>
   structure: STRUCTURE,
   node: NODE,
   prop: PROP,
-  engram: ENGRAM,
-  levels: LEVELS,
+  engram: fieldsOf("engram"),
+  levels: fieldsOf("levels"),
   buff: fieldsOf("buff"),
-  material: MATERIAL,
-  shape: SHAPE,
+  material: fieldsOf("material"),
+  shape: fieldsOf("shape"),
   damage: fieldsOf("damage"),
-  loot: LOOT,
-  spawns: SPAWNS,
-  map: MAP,
-  game: GAME,
-  rename: RENAME,
+  loot: fieldsOf("loot"),
+  spawns: fieldsOf("spawns"),
+  map: fieldsOf("map"),
+  game: fieldsOf("game"),
+  rename: fieldsOf("rename"),
 };
 
 const ITEM_SLOTS = { icon, dropped: mesh("may", "{id}/dropped", "core:bag") };
@@ -348,8 +287,8 @@ row("item/dye", "item", ITEM, { parent: "item", ark: "PrimalItemDye_", status: "
 row("item/instrument", "item", ITEM, { parent: "item", ark: "PrimalItem_WeaponSpyglass, _WeaponCompass, _WeaponGPS, _WeaponMagnifyingGlass, PrimalItemRadio", status: "partial", waits: "instruments", shelf: "items/instruments", must: ["stack"], may: [...ANY_ITEM, "optic"], slots: { held: HELD, ...ITEM_SLOTS }, doc: "Held to look through or to read. Blocked out: it is made, carried and dropped, and does nothing in the hand yet." });
 row("item/artifact", "item", ITEM, { parent: "item", ark: "PrimalItemArtifact_", status: "stub", waits: "bosses", shelf: "items/artifacts", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Found once in its place and spent to call a boss." });
 
-row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "item"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: ["{item}/icon", "swatch"] } }, doc: "Learned with points at a level, for good. Its one item can then be made." });
-row("levels", "levels", LEVELS, { ark: "the level ramp of the game data", shelf: "rules", must: ["xp", "engramPoints"], may: ["most", "tame"], doc: "The experience each level takes and the engram points it gives." });
+rows.push(...rowsOf("engram"));
+rows.push(...rowsOf("levels"));
 
 const BODY = ["mesh", "color", "radius", "height", "eyeHeight", "walkSpeed", "sprintMul", "jumpSpeed"] as const;
 const HUMAN_SLOTS = {
@@ -398,8 +337,8 @@ row("structure/station", "structure", STRUCTURE, { parent: "structure/container"
 row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." });
 row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "vehicleSurface", "opens", "motion", "under", "recipe", "near", "paint", "coarse", "colors", "bent"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." });
 row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
-row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls", "look"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
-row("material", "material", MATERIAL, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited." });
+rows.push(...rowsOf("shape"));
+rows.push(...rowsOf("material"));
 
 row("node", "node", NODE, { ark: "a foliage type and its harvest component", shelf: "nodes", must: ["mesh", "color", "half", "hits", "respawnHours", "yields", "xp"], may: ["top", "soft", "material", "variants", "size", "depleted", "footing", "sea", "apart"], slots: { mesh: mesh("must", "{mesh}", "box"), depleted: { ...mesh("may", "{depleted.mesh}", "hidden"), when: "depleted" } }, doc: "A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place." });
 
@@ -415,12 +354,12 @@ row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", shelf: "p
 rows.push(...rowsOf("buff"));
 
 rows.push(...rowsOf("damage"));
-row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "partial", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts, qualities and blueprint chances. A seeded roll draws from it (shared/sim/loot.ts) and the console's loot mints one; what opens a crate or leaves a body waits for map zones." });
-row("spawns", "spawns", SPAWNS, { ark: "NPCSpawnEntriesContainer", shelf: "spawns", must: ["entries"], may: ["limits"], doc: "Which creatures live in a place, in what share and in what groups. A map's spawn zones name these." });
-row("map", "map", MAP, { ark: "a level and the game data it names", status: "partial", waits: "maps", shelf: "maps", may: ["label", "seaLevel", "game", "zones"], doc: "A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put." });
-row("game", "game", GAME, { ark: "PrimalGameData", status: "stub", waits: "polish", shelf: "game", must: ["survivor", "cache", "bag"], may: ["levels", "buffs"], doc: "What a game names once: the survivor's species, the death cache, the dropped bag, the standing buffs." });
+rows.push(...rowsOf("loot"));
+rows.push(...rowsOf("spawns"));
+rows.push(...rowsOf("map"));
+rows.push(...rowsOf("game"));
 
-row("rename", "rename", RENAME, { ark: "a redirect for a class that was renamed", shelf: "renames", must: ["to"], doc: "An id that is no longer defined, and what it is called now. Saves and settings that use it still read." });
+rows.push(...rowsOf("rename"));
 
 export const CLASSES: readonly ClassRow[] = rows;
 const BY_ID = new Map(CLASSES.map((r) => [r.id, r]));

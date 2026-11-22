@@ -4,14 +4,31 @@
 // each class must and may declare.
 
 import type { Named } from "./kind.ts";
+import type { MaterialDef } from "./kinds/materials.ts";
+import type { ShapeBox, ShapeDef } from "./kinds/shapes.ts";
+import type { LootDef } from "./kinds/loot.ts";
+import type { SpawnsDef } from "./kinds/spawns.ts";
+import type { MapDef } from "./kinds/maps.ts";
+import type { GameDef } from "./kinds/game.ts";
+import type { RenameDef } from "./kinds/renames.ts";
+import type { LevelsDef } from "./kinds/levels.ts";
+import type { EngramDef } from "./kinds/engrams.ts";
 import type { BuffDef } from "./kinds/buffs.ts";
 import type { DamageDef, DamageType } from "./kinds/damage.ts";
 import type { Seat } from "../sim/seats.ts";
 import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
-import type { Feature } from "../features.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
-import { hullPoint, type HullDef } from "../world/convex.ts";
 
+export type { MaterialDef } from "./kinds/materials.ts";
+export type { PieceRole, ShapeBox, ShapeDef, ShapeLook } from "./kinds/shapes.ts";
+export { PIECE_ROLES, shapeHalf } from "./kinds/shapes.ts";
+export type { LootCount, LootDef, LootEntry, LootSet } from "./kinds/loot.ts";
+export type { SpawnsDef } from "./kinds/spawns.ts";
+export type { MapDef, MapZone } from "./kinds/maps.ts";
+export type { GameDef } from "./kinds/game.ts";
+export type { RenameDef } from "./kinds/renames.ts";
+export type { LevelsDef } from "./kinds/levels.ts";
+export type { EngramDef } from "./kinds/engrams.ts";
 export type { BuffDef } from "./kinds/buffs.ts";
 export type { DamageDef, DamageType } from "./kinds/damage.ts";
 
@@ -309,44 +326,6 @@ export interface FlyFacet {
   readonly roll: { readonly burst: number; readonly every: number; readonly damage?: number };
 }
 
-/** `at` is the centre, measured from the piece's origin. `half` is the half extents. Both are in metres. */
-export interface ShapeBox {
-  readonly at: readonly [number, number, number];
-  readonly half: readonly [number, number, number];
-  /** In a look only: a palette colour of its own in place of its piece's, such as a pane's or a rail's. */
-  readonly color?: number;
-}
-
-/** The role decides what a piece may join and what may join it. */
-export type PieceRole = "foundation" | "wall" | "ceiling" | "pillar" | "door" | "stairs" | "thing";
-/** A "thing" joins nothing. It is set down on the ground or a floor and stands on what is under it. */
-export const PIECE_ROLES: readonly PieceRole[] = ["foundation", "wall", "ceiling", "pillar", "door", "stairs", "thing"];
-
-/** The form of a built piece, shared by every material. Bodies walk on its boxes and convex parts, and rays stop at them. */
-export interface ShapeDef extends Named {
-  readonly type: "shape";
-  readonly id: string;
-  readonly role: PieceRole;
-  readonly boxes: readonly ShapeBox[];
-  /**
-   * Convex parts besides the boxes, for a ramp, a sloped roof or a triangle: each the hull of its corners, in metres from the
-   * piece's origin along its first axis, up and along its second. A shape with parts may have no boxes.
-   */
-  readonly hulls?: readonly HullDef[];
-  /**
-   * What is drawn in place of the boxes and parts, where that is not what bodies and rays meet: a flight of stairs walked as
-   * a ramp and drawn as treads. Far off, past the nearest level, the boxes and parts are drawn.
-   */
-  readonly look?: ShapeLook;
-  /** A door may be set in it. */
-  readonly doorway?: boolean;
-}
-
-export interface ShapeLook {
-  readonly boxes?: readonly ShapeBox[];
-  readonly hulls?: readonly HullDef[];
-}
-
 /**
  * Where a moving part stands from its static's origin, in the static's frame: offset in metres, then a turn as a unit
  * quaternion (x, y, z, w), then a scale along the part's own axes. A turn or a scale left out is none. A part `away` at
@@ -472,15 +451,6 @@ export interface StructureDef extends Named {
   readonly powered?: boolean;
   /** It is not lit while its foot is below the map's sea level (M8). */
   readonly dry?: boolean;
-}
-
-/** Multiplier on each type of damage a structure of this material takes. A type not given does no damage. */
-export interface MaterialDef extends Named {
-  readonly type: "material";
-  readonly id: string;
-  readonly takes: { readonly [T in DamageType]?: number };
-  /** Days a structure of it may go unvisited by its owners before anyone may demolish it. Omitted, never. */
-  readonly decayDays?: number;
 }
 
 export interface ItemDef extends Named {
@@ -853,40 +823,6 @@ export interface NodeDef extends Named {
   readonly apart?: number;
 }
 
-export interface EngramDef extends Named {
-  readonly type: "engram";
-  readonly id: string;
-  readonly label: string;
-  /** Level needed to learn it, and what it costs in engram points. */
-  readonly level: number;
-  readonly cost: number;
-  /** The item it unlocks the making of. One engram, one item, as in ARK. */
-  readonly item: string;
-  /** It is not offered, so nobody can learn it. A survivor that already knows it keeps it. */
-  readonly hidden?: boolean;
-  /** A survivor that reaches this level learns it automatically and for free. */
-  readonly auto?: number;
-  // Stubs, read by nothing yet.
-  /** Engrams that must be known first. */
-  readonly requires?: readonly string[];
-  /** The set of maps that offer it. */
-  readonly group?: string;
-  /** The boss whose defeat gives it, in place of points. */
-  readonly from?: string;
-}
-
-/** Experience needed to reach each level (index 0 is level 1), and the engram points gained on reaching it. */
-export interface LevelsDef extends Named {
-  readonly type: "levels";
-  readonly id: string;
-  readonly xp: readonly number[];
-  readonly engramPoints: readonly number[];
-  /** The most experience a survivor may have. Defaults to what the last level takes. */
-  readonly most?: number;
-  /** A separate table and cap for tamed creatures. Omitted, they use the survivors'. */
-  readonly tame?: { readonly xp: readonly number[]; readonly most?: number };
-}
-
 /** An entity that stands in the world but does not move or live, such as an item cache. Its record can hold an inventory. */
 export interface PropDef extends Named {
   readonly type: "prop";
@@ -908,159 +844,7 @@ export interface PropDef extends Named {
   readonly fertile?: string;
 }
 
-export interface LootEntry {
-  /** One of these is drawn, by `weights` if given. */
-  readonly items: readonly string[];
-  readonly weights?: readonly number[];
-  readonly weight?: number;
-  readonly min: number;
-  readonly max: number;
-  /**
-   * Lowest and highest quality as ARK's item rating (MinQuality, MaxQuality): the tier is the highest whose threshold the
-   * rating drawn reaches (QUALITY_RATING, shared/sim/items.ts). Omitted, primitive.
-   */
-  readonly quality?: readonly [number, number];
-  /** Chance, 0 to 1, that it comes as a single blueprint, for an item that may be one (ChanceToBeBlueprintOverride). */
-  readonly blueprint?: number;
-  /** It always comes as a blueprint, where the item may be one (bForceBlueprint). */
-  readonly forceBlueprint?: boolean;
-  /** Chance, 0 to 1, that it gives anything once it is drawn. Omitted, it always does. */
-  readonly chance?: number;
-}
-
-/**
- * How many are drawn of a loot table's sets, or of a set's entries: from `min` to `max`. `power` skews the count as ARK's
- * NumItemSetsPower and NumItemsPower do: the count is min + floor(u^power * (max - min + 1)) for u drawn evenly, so a
- * power above 1 leans to the least and one below 1 to the most. It is a multiple of 1/16 from 1/16 to 16, so that it is
- * worked out with square roots and products alone and every engine gets the same count (shared/sim/loot.ts). `replace`
- * lets one be drawn more than once (bSetsRandomWithoutReplacement and bItemsRandomWithoutReplacement off).
- */
-export interface LootCount {
-  readonly min: number;
-  readonly max: number;
-  readonly power?: number;
-  readonly replace?: boolean;
-}
-
-/**
- * Sets of items to draw from: what a crate holds, what a body leaves (shared/sim/loot.ts rolls one, and the console's `loot`
- * mints a roll). Nothing in the world opens one yet: crates and fishing wait for map zones.
- */
-export interface LootDef extends Named {
-  readonly type: "loot";
-  readonly id: string;
-  /** How many of the sets are drawn. One, where not given. */
-  readonly sets?: LootCount;
-  readonly from: readonly LootSet[];
-}
-
-/** One set of a loot table: its weight among the sets, how many of its entries are drawn, and the entries. */
-export interface LootSet extends LootCount {
-  readonly weight?: number;
-  readonly entries: readonly LootEntry[];
-}
-
-/** Which creatures live in a place, in what share and in what groups. A spawn zone of a map names one. */
-export interface SpawnsDef extends Named {
-  readonly type: "spawns";
-  readonly id: string;
-  /**
-   * What a region adds when it holds too few: one entry, drawn by weight, and its group of creatures. Each of the group comes
-   * with its chance, 1 where not given, and stands at its offset from the place found, in metres along x and z.
-   */
-  readonly entries: readonly {
-    readonly name?: string;
-    readonly weight: number;
-    readonly group: readonly string[];
-    readonly chances?: readonly number[];
-    readonly offsets?: readonly (readonly [number, number])[];
-    /** The feature it waits for: kept with its numbers, and left out of the table until its package takes this away. */
-    readonly waits?: Feature;
-  }[];
-  /** The most of a region's creatures that may be of one species, as a share from 0 to 1 of the number it holds. `waits` as an entry's. */
-  readonly limits?: readonly { readonly species: string; readonly share: number; readonly waits?: Feature }[];
-}
-
-/** A place on a map where something spawns or drops. */
-export interface MapZone {
-  readonly kind: "spawn" | "crate" | "biome";
-  /** Centre x and z, in metres. */
-  readonly at: readonly [number, number];
-  /** A circle of this radius, in metres. */
-  readonly radius?: number;
-  /** In place of `radius`: a box of this half width and half depth. */
-  readonly half?: readonly [number, number];
-  /** For a spawn zone: the `spawns` it is stocked from, and how many creatures it holds at a DinoCountMultiplier of 1. */
-  readonly spawns?: string;
-  readonly count?: number;
-  readonly crate?: string;
-}
-
-/**
- * A world. Its ground is the map file that carries its id (shared/world/mapfile.ts), and a server is started with that file.
- * A spawn zone that names spawns is kept stocked from them (server/spawner.ts).
- */
-export interface MapDef extends Named {
-  readonly type: "map";
-  readonly id: string;
-  readonly label?: string;
-  /** Its sea level, which must be what its file holds. Its size is its file's. */
-  readonly seaLevel?: number;
-  readonly game?: string;
-  readonly zones?: readonly MapZone[];
-}
-
-/** What a game names once. A stub: these are found by id in code today. */
-export interface GameDef extends Named {
-  readonly type: "game";
-  readonly id: string;
-  readonly survivor: string;
-  /** What the dead leave, and what a dropped stack lies in. */
-  readonly cache: string;
-  readonly bag: string;
-  readonly levels?: string;
-  /** Buffs every survivor always has. */
-  readonly buffs?: readonly string[];
-}
-
-/**
- * An id that used to name something, and what it is called now. A save, a ledger or a settings file that still uses the old
- * id is read as if it used the new ones. It is not content: it has no index, and the registry keeps it apart as a redirect.
- */
-export interface RenameDef {
-  readonly type: "rename";
-  /** The id that is no longer defined. */
-  readonly id: string;
-  /** What it is now. More than one where a thing was split, as an engram for a whole set into one for each piece. */
-  readonly to: readonly string[];
-}
-
 /** Everything but a rename, which is not content. */
 export type Content = Exclude<Def, RenameDef>;
 
 export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
-
-/** Half extents of the box, centred on a shape's origin, that holds all of its boxes and convex parts, and what is drawn of it. */
-export function shapeHalf(boxes: readonly ShapeBox[], hulls: readonly HullDef[] = [], look?: ShapeLook): [number, number, number] {
-  const out: [number, number, number] = [0, 0, 0];
-  holdBoxes(out, boxes);
-  if (look?.boxes) holdBoxes(out, look.boxes);
-  holdHulls(out, hulls);
-  if (look?.hulls) holdHulls(out, look.hulls);
-  return out;
-}
-
-function holdBoxes(out: [number, number, number], boxes: readonly ShapeBox[]): void {
-  for (const b of boxes) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
-}
-
-const corner: [number, number, number] = [0, 0, 0];
-
-function holdHulls(out: [number, number, number], hulls: readonly HullDef[]): void {
-  for (const h of hulls) {
-    for (const c of h.corners) {
-      const p = hullPoint(c, h.sixty === true, corner);
-      for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(p[a]!));
-    }
-  }
-}

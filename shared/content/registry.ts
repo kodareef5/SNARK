@@ -7,29 +7,26 @@ import { validateSeats, type Seat } from "../sim/seats.ts";
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
 import { CHUNK_SIZE, TICK_RATE } from "../coords.ts";
-import { FEATURES } from "../features.ts";
 import { hashString } from "../hash.ts";
 import { FLIGHT_TICKS_MAX, STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
 import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
 import { ZONE_COUNT, ZONE_TAIL } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
-import { lootFaults } from "../sim/loot.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
-import { hullFault, hullTable, type HullDef } from "../world/convex.ts";
+import { hullTable, type HullDef } from "../world/convex.ts";
 import { REGION_BASE } from "../pack/palette.ts";
 import type { PartTable } from "../world/structures.ts";
 import { defFaults, refFaults } from "./classes.ts";
+import { MAX_SHAPE_BOXES, MAX_STRUCTURE_HALF } from "./kinds/shapes.ts";
 import { creatureCombatFaults } from "./creature-combat.ts";
 import type { Checking, Kind, Making } from "./kind.ts";
 import { KINDS } from "./kinds.ts";
 import { PIECE_ROLES, shapeHalf, type Content, type Def, type NodeShape, type PartPlacement, type RenameDef, type SpeciesDef, type StructureDef, type MotionFacet, type WeaponFacet, type CreatureCombatFacet } from "./defs.ts";
 
+export { MAX_LOOK_PARTS, MAX_SHAPE_BOXES, MAX_STRUCTURE_HALF } from "./kinds/shapes.ts";
+export { MAX_LEVELS } from "./kinds/levels.ts";
 export const MISSING = 0;
-export const MAX_STRUCTURE_HALF = 16;
-export const MAX_SHAPE_BOXES = 16;
-/** What a shape's look may draw: a flight's treads. */
-export const MAX_LOOK_PARTS = 64;
 /** The most a node kind may be drawn at, as a multiple of its modelled size, and the most variants it may have. */
 export const MOST_NODE_SIZE = 3.9;
 export const MAX_NODE_VARIANTS = 64;
@@ -359,7 +356,6 @@ export const MAX_SPOIL_HOURS = 1e6;
 export const USE_AT_ONCE: readonly string[] = ["health", "stamina", "oxygen", "food", "water", "torpidity"];
 export const USE_OVER_TIME: readonly string[] = ["health", "torpidity"];
 export const MAX_NODE_HITS = 10000;
-export const MAX_LEVELS = 10000;
 /** Stamina per second of sprinting, per second of rest, and per jump, where a species does not say. */
 export const STAMINA_DEFAULT = { sprint: 5, regen: 8, jump: 6 };
 /** Palette colours every region of a wild creature draws from evenly, where its species has no colour set. */
@@ -525,36 +521,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.depleted) shaped("its depleted form", d.depleted);
       if (d.footing !== undefined && !(d.footing.reach > 0 && d.footing.reach <= MAX_STRUCTURE_HALF && d.footing.fall >= 0 && d.footing.fall <= MAX_NODE_HEIGHT)) errors.push(`${d.id}: footing reaches more than 0 and at most ${MAX_STRUCTURE_HALF} m, and allows a fall of 0 to ${MAX_NODE_HEIGHT} m`);
       if (d.size !== undefined && !(d.size.length === 2 && d.size[0] >= 0.25 && d.size[1] >= d.size[0] && d.size[1] <= MOST_NODE_SIZE)) errors.push(`${d.id}: size is [least, most], from 0.25 to ${MOST_NODE_SIZE}`);
-    } else if (d.type === "engram") {
-      positive(d, "level", d.level, 1000);
-      if (!(d.cost >= 0)) errors.push(`${d.id}: cost must not be negative`);
-      if (d.auto !== undefined && !(d.auto >= 0 && d.auto <= 1000)) errors.push(`${d.id}: auto must be a level from 0 to 1000`);
-    } else if (d.type === "levels") {
-      for (const [name, xp] of [["xp", d.xp], ["tame.xp", d.tame?.xp]] as const) {
-        if (xp !== undefined && (xp.length < 2 || xp.length > MAX_LEVELS || xp[0] !== 0 || xp.some((v, i) => i > 0 && !(v > xp[i - 1]!)))) errors.push(`${d.id}: ${name} must start at 0 and rise, for at most ${MAX_LEVELS} levels`);
-      }
-      if (d.engramPoints.length !== d.xp.length) errors.push(`${d.id}: engramPoints must have one entry per level`);
-      if ((d.most !== undefined && !(d.most > 0)) || (d.tame?.most !== undefined && !(d.tame.most > 0))) errors.push(`${d.id}: the most experience must be above 0`);
-    } else if (d.type === "spawns") {
-      for (const e of d.entries) {
-        const n = Array.isArray(e.group) ? e.group.length : 0;
-        if (!(e.weight >= 0) || n === 0) errors.push(`${d.id}: an entry needs a weight of at least 0 and a group of at least one`);
-        if (e.chances !== undefined && (!Array.isArray(e.chances) || e.chances.length !== n || e.chances.some((c) => !(c >= 0 && c <= 1)))) errors.push(`${d.id}: an entry's chances are one for each of its group, each from 0 to 1`);
-        if (e.offsets !== undefined && (!Array.isArray(e.offsets) || e.offsets.length !== n || e.offsets.some((o) => !(Math.abs(o[0]) <= 64 && Math.abs(o[1]) <= 64)))) errors.push(`${d.id}: an entry's offsets are one for each of its group, each within 64 m`);
-      }
-      for (const l of d.limits ?? []) if (!(l.share >= 0 && l.share <= 1)) errors.push(`${d.id}: the limit of ${l.species} must be a share from 0 to 1`);
-      for (const w of [...d.entries, ...(d.limits ?? [])]) if (w.waits !== undefined && !(w.waits in FEATURES)) errors.push(`${d.id}: "${w.waits}" is not a feature an entry or limit may wait for`);
-    } else if (d.type === "map") {
-      for (const z of d.zones ?? []) {
-        if (z.count !== undefined && !(Number.isInteger(z.count) && z.count >= 0 && z.count <= 65535)) errors.push(`${d.id}: a zone holds a whole number of creatures from 0 to 65,535`);
-        if ((z.spawns === undefined) !== (z.count === undefined)) errors.push(`${d.id}: a zone that names spawns says how many it holds, and only such a zone does`);
-      }
-    } else if (d.type === "loot") {
-      errors.push(...lootFaults(d));
-    } else if (d.type === "material") {
-      for (const [type, v] of Object.entries(d.takes)) {
-        if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
-      }
     } else if (d.type === "structure") {
       if (d.under !== undefined && !(Number.isInteger(d.under) && d.under > 0 && d.under < REGION_BASE)) errors.push(`${d.id}: under must be a fixed palette colour`);
       if (d.near !== undefined && d.near !== true) errors.push(`${d.id}: near is true or left out`);
@@ -578,25 +544,6 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (Array.isArray(d.burns) && new Set(d.burns.map((b) => b?.item)).size !== d.burns.length) errors.push(`${d.id}: burns names each fuel once`);
       }
       if (d.keeps !== undefined) positive(d, "keeps", d.keeps, 1000);
-    } else if (d.type === "shape") {
-      if (!PIECE_ROLES.includes(d.role)) errors.push(`${d.id}: role must be one of ${PIECE_ROLES.join(", ")}`);
-      const parts = d.boxes.length + (d.hulls?.length ?? 0);
-      if (parts < 1 || parts > MAX_SHAPE_BOXES) errors.push(`${d.id}: a shape has 1 to ${MAX_SHAPE_BOXES} boxes and convex parts`);
-      const drawn = (d.look?.boxes?.length ?? 0) + (d.look?.hulls?.length ?? 0);
-      if (d.look !== undefined && (drawn < 1 || drawn > MAX_LOOK_PARTS)) errors.push(`${d.id}: a look has 1 to ${MAX_LOOK_PARTS} boxes and convex parts`);
-      if (d.boxes.some((b) => b.color !== undefined)) errors.push(`${d.id}: only a look's boxes have colours of their own`);
-      for (const b of d.look?.boxes ?? []) if (b.color !== undefined && !(Number.isInteger(b.color) && b.color > 0 && b.color < REGION_BASE)) errors.push(`${d.id}: a box's colour is a fixed palette colour`);
-      for (const b of [...d.boxes, ...(d.look?.boxes ?? [])]) {
-        for (let a = 0; a < 3; a++) {
-          positive(d, `a box's half[${a}]`, b.half[a]!, MAX_STRUCTURE_HALF);
-          if (!(Math.abs(b.at[a]!) + b.half[a]! <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: a box reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
-        }
-      }
-      for (const h of [...(d.hulls ?? []), ...(d.look?.hulls ?? [])]) {
-        const fault = hullFault(h);
-        if (fault !== "") errors.push(`${d.id}: ${fault}`);
-        if (shapeHalf([], [h]).some((v) => !(v <= MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a convex part reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
-      }
     } else if (d.type === "item") {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
       if (d.deploys !== undefined && (d.stack !== 1 || d.places !== undefined || d.weapon !== undefined || d.eat !== undefined)) errors.push(`${d.id}: a vehicle assembly stacks to 1 and has no other use`);
@@ -727,23 +674,15 @@ export function compileContent(all: readonly Def[]): CompileResult {
   // What a definition names must exist and be of the class its field asks for (shared/content/classes.ts).
   errors.push(...refFaults(input));
   const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
-  const crafted = new Set(input.flatMap((d) => (d.type === "item" && d.craft ? [d.id] : [])));
   // A station's recipes take from its slots and put the product there, so a station something is made at must have some.
   const stationSlots = new Map(input.flatMap((d) => (d.type === "structure" && d.class === "station" ? [[d.id, d.slots ?? 0] as const] : [])));
   for (const d of input) if (d.type === "item" && d.craft?.at !== undefined && stationSlots.get(d.craft.at) === 0) errors.push(`${d.id}: it is made at "${d.craft.at}", which has no slots to make it from`);
   errors.push(...stationFaults(input));
   for (const k of KINDS as readonly Kind<Content>[]) k.survey?.(cx);
   const noAmmo = new Set(input.flatMap((d) => (d.type === "item" && !d.ammo ? [d.id] : [])));
-  const taught = new Map<string, string>();
   const young = new Map<string, string>();
   for (const d of input) {
     for (const among of AMONG.get(d.type) ?? NO_HOOKS) among(d, cx);
-    if (d.type === "engram" && typeof d.item === "string") {
-      if (!crafted.has(d.item)) errors.push(`${d.id}: "${d.item}" cannot be made, so there is nothing to learn`);
-      const other = taught.get(d.item);
-      if (other !== undefined) errors.push(`${d.id}: ${other} already unlocks "${d.item}"`);
-      taught.set(d.item, d.id);
-    }
     if (d.type === "species" && d.breeds && !(d.breeds.incubate > 0 && d.breeds.mature > 0)) errors.push(`${d.id}: breeds needs incubate and mature above 0`);
     if (d.type === "structure" && d.shape !== undefined) {
       const shape = shapes.get(d.shape);
