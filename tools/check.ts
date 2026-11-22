@@ -19,7 +19,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { availableParallelism, cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
-import { artInstalled, artState } from "./art/installed.ts";
+import { artInstalled, artState, unreleasedHere } from "./art/installed.ts";
 import { footprint } from "./memory.ts";
 import { dynamicLoads, IMPORT, madeArrays, stripComments } from "./policy.ts";
 import { baselineFile, compare, history, machineKey, remember, RUNS_NEEDED } from "./check-baseline.ts";
@@ -581,9 +581,12 @@ const seconds = (performance.now() - t0) / 1000;
 writeWhole(join(ROOT, ".cache/check/last-failures.txt"), failures.map((line) => line + "\n").join(""));
 const end = verdict({ problems, art: ART, noArt, ...tally, ok: `OK in ${seconds.toFixed(2)}s, at load ${loadavg()[0]!.toFixed(0)} on ${cpus().length} cores` });
 const kept = `${logs.map((log) => `\ntests' output: ${log}`).join("")}\nfailing tests: .cache/check/last-failures.txt (${failures.length})`;
+// Art built here and put in no release: this checkout's tests of it pass and nobody else's can.
+const homemade = noArt ? [] : unreleasedHere();
+const unpublished = homemade.length > 0 ? `\nWARNING ${homemade.length === 1 ? "one asset's art is" : `${homemade.length} assets' art is`} in no release, so its tests fail in any other checkout: ${homemade.join(", ")}. Publish its archive.` : "";
 const notGate = picked ? `\nNot the gate: ${picked.length} of ${testFiles.filter((f) => !SLOW_TEST.test(f)).length} fast test files ran. To land, run the whole check once: bun run check` : "";
 if (!end.pass) {
-  console.error(end.text + kept + notGate);
+  console.error(end.text + kept + unpublished + notGate);
   process.exit(1);
 }
-console.log(end.text + kept + notGate);
+console.log(end.text + kept + unpublished + notGate);

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { missingArt } from "../../tools/art/installed.ts";
+import { missingArt, unreleased } from "../../tools/art/installed.ts";
 import { failuresOf, verdict } from "../../tools/check-report.ts";
 
 test("art is installed when every pinned archive is recorded with the pinned digest, each on its own", () => {
@@ -80,4 +80,9 @@ test("each failing test is one line: its file, its name and the first line of it
   expect(failuresOf(JUNIT.replace(/<failure[^]*?<\/failure>|<failure[^>]*\/>/g, ""), "")).toEqual([]);
   // A run that left no report still names the file that would not load.
   expect(failuresOf("", OUT)).toEqual(["tests/net/b.test.ts\t(outside a test)\tcannot load"]);
+});
+
+test("an asset folder no archive carries is named, and one under a wider archive is not", () => {
+  const pinned = [{ name: "core-vehicles-bus", sha256: "aa" }, { name: "core-items-weapons", sha256: "bb" }];
+  expect(unreleased(["core/vehicles/bus", "core/items/weapons/bows", "core/vehicles/zephyr"], pinned)).toEqual(["core/vehicles/zephyr"]);
 });

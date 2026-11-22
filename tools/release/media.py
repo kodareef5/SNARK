@@ -119,7 +119,8 @@ def unpack(item):
 
 def install_archive(item, replace, copy, before):
     """Link the archive's files beside the tracked recipes. A file that differs is replaced only where it is still
-    the link this installer made to `before`, the folder of the archive installed until now."""
+    what this installer left: its link to `before`, the folder of the archive installed until now, or a copy of that
+    file nobody has edited. An edited file stops the run unless `replace` (--force) is given."""
     folder = home(item["name"], item["sha256"])
     for file in sorted(folder.rglob("*")):
         if file.is_dir():
@@ -135,7 +136,8 @@ def install_archive(item, replace, copy, before):
             if plain and os.path.samefile(target, file):
                 if not copy:
                     continue
-            elif not replace and not (plain and before and (before / path).is_file() and os.path.samefile(target, before / path)):
+            elif not replace and not (plain and before and (before / path).is_file()
+                                      and (os.path.samefile(target, before / path) or sha256(target) == sha256(before / path))):
                 if not plain or sha256(target) != sha256(file):
                     raise SystemExit(f"Existing file differs: {target}. Move it aside, or pass --force to replace it.")
                 if copy:
@@ -158,8 +160,8 @@ def install_art(names, force, offline=False, copy=False):
     for item in todo:
         unpack(item)
         was = state.get(item["name"])
-        # An offline run is the check's own: of an older archive's files it replaces only its untouched links.
-        install_archive(item, force or (not offline and was not in (None, item["sha256"])), copy, was and home(item["name"], was))
+        # A newer pin replaces only what the last install left untouched, by hand or from the check. An edit needs --force.
+        install_archive(item, force, copy, was and home(item["name"], was))
         state[item["name"]] = item["sha256"]
         part = INSTALLED.with_name(f"{INSTALLED.name}.{os.getpid()}.part")
         part.write_text(json.dumps(state, indent=1, sort_keys=True) + "\n")
