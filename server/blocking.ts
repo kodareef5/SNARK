@@ -9,15 +9,18 @@
 
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../shared/anim/pose.ts";
 import { dequantX, dequantY, quantX, quantY, type SentView } from "../shared/net/view.ts";
-import { Blockers, blocksSession, pairing } from "../shared/sim/blockers.ts";
+import { BLOCK_LIGHT, BLOCK_MOST, Blockers, blockMass, blocksSession, pairing } from "../shared/sim/blockers.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { BodyGrid } from "./bodies.ts";
+import { TICK_DT } from "../shared/coords.ts";
 import type { ServerWorld } from "./world.ts";
 
 const TAU = Math.PI * 2;
 /** Appearances kept a body, newest first, and bodies kept before the record starts again. */
 const LOOKS_KEPT = 4;
 const LOOKS_MOST = 65536;
+/** Metres: the side of a cell of the grid bodies are found in. */
+const BLOCK_CELL = 1;
 
 /** Whether body `j` blocks a walker of team `team`, as the snapshot shows it: the client's rule too. */
 export function blocks(world: ServerWorld, j: number, team: number): boolean {
@@ -36,6 +39,10 @@ export class BodyBlocking {
   survivorsPass = false;
   /** The widest a body reaches from where it stands, so a search padded by it finds every one that may touch. */
   private readonly reach: number;
+  /** For each kind, the most its stadium reaches from where it stands; 0 for one that never blocks. */
+  private readonly reachOf: Float64Array;
+  /** For each kind, metres it may cover in a tick: twice its sprint, for levels and buffs. */
+  private readonly strideOf: Float64Array;
   /** 1 for a survivor's kind: a body a client predicts. */
   private readonly survivor: Uint8Array;
   /** Diagnostics: walkers that met a body, and bodies met. */
@@ -43,12 +50,20 @@ export class BodyBlocking {
 
   constructor(world: ServerWorld) {
     this.world = world;
-    this.grid = new BodyGrid(world.dims);
+    // Cells a metre across: in a pack, a walker reads little more than the cells its own stadium and its neighbours' reach.
+    this.grid = new BodyGrid(world.dims, BLOCK_CELL);
     const reg = world.reg;
     let reach = 0;
+    this.reachOf = new Float64Array(reg.footRadius.length);
+    this.strideOf = Float64Array.from(reg.move, (m) => (m ? 2 * m.walkSpeed * m.sprintMul * TICK_DT + 0.05 : 1));
     for (let k = 0; k < reg.footRadius.length; k++) {
       const r = reg.footRadius[k]!;
-      if (r > 0) reach = Math.max(reach, Math.abs(reg.footBack[k]!), Math.abs(reg.footFront[k]!), r);
+      if (!(r > 0)) continue;
+      reach = Math.max(reach, Math.abs(reg.footBack[k]!), Math.abs(reg.footFront[k]!), r);
+      // The segment's ends as stadium() makes them, and the radius about them.
+      let s0 = reg.footBack[k]! + r, s1 = reg.footFront[k]! - r;
+      if (s0 > s1) s0 = s1 = (s0 + s1) / 2;
+      if (!reg.vehicle[k]) this.reachOf[k] = Math.max(Math.abs(s0), Math.abs(s1)) + r;
     }
     this.reach = reach;
     this.survivor = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.class === "survivor" ? 1 : 0));
@@ -64,8 +79,9 @@ export class BodyBlocking {
       for (let k = 0; k < counts[l]!; k++) {
         const j = list[k]!;
         if (j < 0 || (ents.flags[j]! & F_ALIVE) === 0) continue;
-        grid.add(j, ents.x[j]!, ents.z[j]!);
         this.remember(j);
+        const reach = this.reachOf[ents.kind[j]!]!;
+        if (reach > 0) grid.add(j, ents.x[j]!, ents.z[j]!, reach + this.strideOf[ents.kind[j]!]!);
       }
     }
   }
@@ -102,6 +118,9 @@ export class BodyBlocking {
     }
   }
   private readonly looks = new Map<number, Float64Array>();
+  /** `around`'s bodies that may touch, nearest first, and the square of each one's distance. */
+  private near = new Int32Array(64);
+  private nearFar = new Float64Array(64);
   private readonly shown = new Float64Array(3);
 
   /**
@@ -113,20 +132,46 @@ export class BodyBlocking {
     const world = this.world, ents = world.ents, grid = this.grid, list = this.list;
     list.clear();
     if (creature && ents.grown[e] !== 0) return null;
-    const far = this.reach + r + 1;
-    const n = grid.near(x, z, far);
+    // A body is met where the two stadiums, each as far as it reaches, come within a stride of the walker's. They were put
+    // in the grid where they stood at the start of the tick, each with room for its own stride since.
+    const own = Math.max(r, this.reachOf[ents.kind[e]!]!) + this.strideOf[ents.kind[e]!]!;
+    const n = grid.touching(x, z, own);
     if (n === 0) return null;
-    const found = grid.found;
+    const found = grid.found, reachOf = this.reachOf;
+    // Those that may touch. The list keeps the nearest BLOCK_MOST (ties by id), so they are offered nearest first and the
+    // rest are passed over before their shapes are made.
+    if (this.near.length < n) {
+      this.near = new Int32Array(n * 2);
+      this.nearFar = new Float64Array(n * 2);
+    }
+    const near = this.near, nearFar = this.nearFar, light = blockMass(world.reg, ents.kind[e]!) * BLOCK_LIGHT;
+    let m = 0;
     for (let k = 0; k < n; k++) {
       const j = found[k]!;
+      // Measured where it is, unrounded: the snapshot's rounding is a few millimetres, well inside the walker's stride.
+      const dx = ents.x[j]! - x, dz = ents.z[j]! - z, reach = own + reachOf[ents.kind[j]!]!;
+      const far = dx * dx + dz * dz;
+      if (far > reach * reach) continue;
       if (j === e || j === skip || !blocks(world, j, team) || pairing(ents.emote[e]!, ents.emote[j]!)) continue;
-      const bx = dequantX(quantX(ents.x[j]!)), bz = dequantX(quantX(ents.z[j]!));
-      if (Math.abs(bx - x) > far || Math.abs(bz - z) > far) continue;
       const moving = (ents.anim[j]! & 15) !== 0;
       if (!creature && !blocksSession(world.reg, ents.kind[j]!, moving)) continue;
       if (!creature && this.survivorsPass && this.survivor[ents.kind[j]!] === 1 && this.survivor[ents.kind[e]!] === 1) continue;
       const always = creature && (ents.driven[j] !== 0 || this.survivor[ents.kind[j]!] === 1);
-      list.add(world.reg, j, ents.kind[j]!, bx, dequantY(quantY(ents.y[j]!)), bz, ((ents.yaw[j]! >>> 6) * TAU) / 1024, moving, ents.kind[e]!, x, y, z, ents.yaw[e]!, always);
+      if (!always && blockMass(world.reg, ents.kind[j]!) < light) continue;
+      near[m] = j;
+      nearFar[m++] = far;
+    }
+    // The nearest left each time, until the list is full. One the walker stands in takes no place: in a pack set down
+    // tangled every neighbour may be one, so no more than twice the list's room are offered.
+    const offers = Math.min(m, 2 * BLOCK_MOST);
+    for (let k = 0; k < offers && list.count < BLOCK_MOST; k++) {
+      let best = k;
+      for (let i = k + 1; i < m; i++) if (nearFar[i]! < nearFar[best]! || (nearFar[i] === nearFar[best] && near[i]! < near[best]!)) best = i;
+      const j = near[best]!;
+      near[best] = near[k]!;
+      nearFar[best] = nearFar[k]!;
+      const always = creature && (ents.driven[j] !== 0 || this.survivor[ents.kind[j]!] === 1);
+      list.add(world.reg, j, ents.kind[j]!, dequantX(quantX(ents.x[j]!)), dequantY(quantY(ents.y[j]!)), dequantX(quantX(ents.z[j]!)), ((ents.yaw[j]! >>> 6) * TAU) / 1024, (ents.anim[j]! & 15) !== 0, ents.kind[e]!, x, y, z, ents.yaw[e]!, always);
     }
     return this.done();
   }
