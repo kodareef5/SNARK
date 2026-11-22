@@ -1,4 +1,6 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
 import { CHUNK_SIZE, FRAME_MIDDLE, TICK_DT } from "../../shared/coords.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
@@ -338,7 +340,8 @@ test("a walk let down to the ground at its end: its top falls to the road along 
 
 test("a bent walk's grain is laid across by the concrete strip's own rows, as the street atlas lays them out", async () => {
   const { CONCRETE_ROWS, CONCRETE_METRES, STRIP_METRES } = await import("../../client/core/render/bend.ts");
-  const layout = (await import("../../assets/source/core/props/street/layout.json")).default as { street: { side: number; tiles: number; gutter: number; strips: string[]; strip: number } };
+  // The street atlas's layout, read where it lies (it is in git, outside every zone).
+  const layout = JSON.parse(readFileSync(join(import.meta.dir, "../../assets/source/core/props/street/layout.json"), "utf8")) as { street: { side: number; tiles: number; gutter: number; strips: string[]; strip: number } };
   const s = layout.street, k = s.strips.indexOf("concrete");
   expect([...CONCRETE_ROWS]).toEqual([(k * s.strip + s.gutter) / s.side, ((k + 1) * s.strip - s.gutter) / s.side]);
   // As many rows a metre across as along.
