@@ -5,7 +5,7 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 553 of them: 187 take effect,
+is listed here, 559 of them: 193 take effect,
 177 wait for a feature that is not built yet, and 189 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
@@ -145,6 +145,12 @@ the admin's settings page may change a setting without a restart.
 | `FoundCarReturnDays` | 3 | Days of the game's clock after a place where the map parks a car has lost its car, destroyed or driven off, before another is parked there, owned by nobody, its condition and fuel rolled again. One comes only while no survivor is near enough to see it come, nothing a tribe built stands within 60 m, and no body stands where it would. 0 brings none back. *Ours. ARK has no cars. A place is looked at every ten minutes.* | yes |
 | `ThrusterBoostCooldown` | 4 | Seconds after a thruster car's boost ends before it may boost again (the Zephyr; Shift at the wheel). 0 is none: held, the boost runs on. *Ours. ARK has no cars.* | yes |
 | `ThrusterFlipCooldown` | 3 | Seconds from a thruster car's flip before it may flip again (Q at the wheel, with a direction held or none). 0 is none. *Ours.* | yes |
+| `SurfaceGripAsphalt` | 7 | Grip a wheel finds on asphalt: streets, highways, lots, and road pieces of asphalt. Higher holds the road; lower slides and spins. Each car's own tyres multiply it. *Ours. ARK has no cars.* | yes |
+| `SurfaceGripPaving` | 6.5 | Grip a wheel finds on paving: sidewalks, plazas, decks and floors. *Ours. ARK has no cars.* | yes |
+| `SurfaceGripGround` | 5.5 | Grip a wheel finds on plain ground, and on whatever is built that names no surface of its own. *Ours. ARK has no cars.* | yes |
+| `SurfaceGripGravel` | 3.5 | Grip a wheel finds on gravel: walkways, yards, desert, and road pieces of gravel. *Ours. ARK has no cars.* | yes |
+| `SurfaceGripSand` | 2.6 | Grip a wheel finds on sand: beaches and dunes. *Ours. ARK has no cars.* | yes |
+| `SurfaceGripMud` | 1.8 | Grip a wheel finds on mud: marsh, pools, fords, and road pieces of mud. *Ours. ARK has no cars.* | yes |
 | `FoundBoatReturnDays` | 3 | Days of the game's clock after a berth where the map moors a vessel has lost it, sunk or sailed off, before another of its kind is moored there, owned by nobody, its condition and fuel rolled again. One comes as a car does, and only while the berth still has water enough under its keel. 0 brings none back. *Ours. ARK's rafts and boats are only built. Its own setting, so the yachts can be made rarer than the cars.* | yes |
 
 ### Game.ini `[/script/shootergame.shootergamemode]`

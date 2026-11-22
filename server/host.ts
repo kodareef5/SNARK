@@ -94,6 +94,7 @@ import { Lists } from "./settings/lists.ts";
 import { LIVE_FILE, applyLive, emptyReport, formatReport } from "./settings/config.ts";
 import { difficultyOf, tuningOf, wildLevel } from "./settings/tune.ts";
 import { deriveRegistry, tuningText, type Tuning } from "../shared/content/tuning.ts";
+import { withSurfaces } from "../shared/world/structures.ts";
 import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import { CAUSE_WORDS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
@@ -1049,6 +1050,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     items.table = reg;
     stations.retable();
     world.nodeField?.retable(reg);
+    // A wheel's ray reads each road piece's surface, and the ground's grips, from the parts.
+    world.structs.parts = withSurfaces(world.structs.parts, reg.parts);
     progression.rebuild();
     supply.retable();
     urban.retable();

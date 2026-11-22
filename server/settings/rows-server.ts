@@ -1,7 +1,9 @@
 // The catalogue rows for GameUserSettings.ini and the command line. Names, defaults and meanings are ARK's, from its server
 // configuration reference (planning/reference/round5-settings.md). Where the reference gives no default, the row's note says so.
 
+import { GRIP_MOST } from "../../shared/content/tuning.ts";
 import { FAR_RADIUS } from "../../shared/world/tactical.ts";
+import { ASPHALT, GRAVEL, MUD, OFFROAD, PAVING, SAND } from "../../shared/world/vehicle-surface.ts";
 import { Sheet, live, none, plan, type Row } from "./row.ts";
 
 export const SERVER_ROWS: Row[] = [];
@@ -300,10 +302,18 @@ new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
   .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }))
   .i("FarRadius", FAR_RADIUS, "Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none.", live({ live: true, max: 16384, note: "Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published." }));
 
+/** A surface's grip: a car on it takes the new value at once, and its driver's page with it. */
+const grip = live({ live: true, public: true, min: 0.1, max: GRIP_MOST, note: "Ours. ARK has no cars." });
 new Sheet(SERVER_ROWS, "snark", "Vehicles")
   .f("FoundCarReturnDays", 3, "Days of the game's clock after a place where the map parks a car has lost its car, destroyed or driven off, before another is parked there, owned by nobody, its condition and fuel rolled again. One comes only while no survivor is near enough to see it come, nothing a tribe built stands within 60 m, and no body stands where it would. 0 brings none back.", live({ live: true, max: 365, note: "Ours. ARK has no cars. A place is looked at every ten minutes." }))
   .f("ThrusterBoostCooldown", 4, "Seconds after a thruster car's boost ends before it may boost again (the Zephyr; Shift at the wheel). 0 is none: held, the boost runs on.", live({ live: true, public: true, min: 0, max: 600, note: "Ours. ARK has no cars." }))
   .f("ThrusterFlipCooldown", 3, "Seconds from a thruster car's flip before it may flip again (Q at the wheel, with a direction held or none). 0 is none.", live({ live: true, public: true, min: 0, max: 600, note: "Ours." }))
+  .f("SurfaceGripAsphalt", ASPHALT.grip, "Grip a wheel finds on asphalt: streets, highways, lots, and road pieces of asphalt. Higher holds the road; lower slides and spins. Each car's own tyres multiply it.", grip)
+  .f("SurfaceGripPaving", PAVING.grip, "Grip a wheel finds on paving: sidewalks, plazas, decks and floors.", grip)
+  .f("SurfaceGripGround", OFFROAD.grip, "Grip a wheel finds on plain ground, and on whatever is built that names no surface of its own.", grip)
+  .f("SurfaceGripGravel", GRAVEL.grip, "Grip a wheel finds on gravel: walkways, yards, desert, and road pieces of gravel.", grip)
+  .f("SurfaceGripSand", SAND.grip, "Grip a wheel finds on sand: beaches and dunes.", grip)
+  .f("SurfaceGripMud", MUD.grip, "Grip a wheel finds on mud: marsh, pools, fords, and road pieces of mud.", grip)
   .f("FoundBoatReturnDays", 3, "Days of the game's clock after a berth where the map moors a vessel has lost it, sunk or sailed off, before another of its kind is moored there, owned by nobody, its condition and fuel rolled again. One comes as a car does, and only while the berth still has water enough under its keel. 0 brings none back.", live({ live: true, max: 365, note: "Ours. ARK's rafts and boats are only built. Its own setting, so the yachts can be made rarer than the cars." }));
 
 const c = new Sheet(SERVER_ROWS, "cli", "Command line");

@@ -134,7 +134,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TideEyeSite } from "../../shared/world/tide-eye.ts";
 import { staticKinds, type MapLandmark, type MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
-import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
+import { GONE_TAKEN, StructureStore, withSurfaces } from "../../shared/world/structures.ts";
 import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
@@ -1550,6 +1550,8 @@ export class ClientSession {
     this.move = reg.move[this.ownKind] ?? this.move;
     this.nodeField?.retable(reg);
     this.vehicleContacts?.retable(reg);
+    // A wheel's ray reads each road piece's surface, and the ground's grips, from the parts.
+    if (this.world) this.world.structs.parts = withSurfaces(this.world.structs.parts, reg.parts);
     // The foot contacts are made again from the content in force.
     this.feetWorld = null;
   }
