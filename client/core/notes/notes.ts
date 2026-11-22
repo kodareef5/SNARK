@@ -6,6 +6,8 @@
 // F8 again sends it as one upload; if that fails the note is kept and F8 tries again. Esc twice discards it, and it ends
 // by itself at NOTE_MS_MOST. `/perf [seconds]` keeps the same record over that time with a picture at each end.
 //
+// `/budget` shows the frame's budget live (budget.ts), with or without the mode armed, and every picture keeps what it said.
+//
 // None of this is in the script the first frame waits for: it takes what it needs of that script from the kit the app
 // hands it (notes-kit.ts, D915), and the browser's part from the shell's port (client/notes/port.ts).
 
@@ -15,11 +17,12 @@ import type { FramePacket } from "../render/packet.ts";
 import type { UiFrame } from "../ui/nodes.ts";
 import { K_BAR, K_PANEL, S_HUD_HIT, S_ICE, S_OXYGEN } from "../ui/monitor-style.ts";
 import { BEFORE_MS, NOTE_MS_MOST, PERF_SECONDS, PERF_SECONDS_MOST, REPORT_VERSION, SHOT_EVERY_MS, SHOT_WIDE_MOST, THUMB_WIDE, TEXT_CHARS_MOST, TEXT_LINES_MOST, clockText, type Report, type ReportBuild, type ReportKind, type ReportShot } from "../../../shared/report.ts";
+import { BudgetPanel, PASS_NAMES } from "./budget.ts";
 import { census, type Census } from "./census.ts";
 import { TEXT_NOTICE } from "./copies.ts";
 import { aimOf, pageOf, placeOf, settingsOf, skyOf, survivorOf, viewOf } from "./place.ts";
 import type { NotePort, Picture } from "./port.ts";
-import { FLAG_AFTER_SHOT, FLAG_SHOT, FRAME_FIELDS, PerfRing, SECOND_FIELDS } from "./ring.ts";
+import { C, CELLS, FLAG_AFTER_SHOT, FLAG_SHOT, FRAME_FIELDS, PerfRing, SECOND_FIELDS } from "./ring.ts";
 import { FrameSampler, type FrameExtra } from "./sample.ts";
 
 /** The note's keys in the interface, clear of every other screen's. */
@@ -42,7 +45,7 @@ interface Open {
   next: number;
   shots: ReportShot[];
   pictures: Promise<Picture>[];
-  census: Census[];
+  census: (Census & Record<string, unknown>)[];
   text: { at: number; line: string }[];
   /** The place, view, aim, sky, page and the rest, as they were at its first picture. */
   head: Partial<Report>;
@@ -67,13 +70,26 @@ export class Notes {
   costMs = 0;
   costFrames = 0;
   private readonly sampler = new FrameSampler();
-  private readonly extra: FrameExtra = { gpu: -1, glDraws: 0, longMs: 0, longTasks: 0, shotMs: 0, flags: 0, heap: 0 };
+  private readonly extra: FrameExtra = { build: 0, scene: 0, gpu: -1, glDraws: 0, longMs: 0, longTasks: 0, shotMs: 0, flags: 0, heap: 0 };
+  /** The frame's budget, while `/budget` has it on; and what the GPU's passes took in the latest frame timed. */
+  panel: BudgetPanel | null = null;
+  private readonly passMs = new Float64Array(PASS_NAMES.length);
+  private gpuMode = 0;
+  private apple = false;
+  /** The scene whose build is timed (timeScene), and what its last build took. */
+  private timed: { build: (...args: never[]) => unknown } | null = null;
+  private sceneMs = 0;
+  /** A picture's widest: SHOT_WIDE_MOST, unless a tool asks for less. */
+  wide = SHOT_WIDE_MOST;
+  private panelSpent = 0;
   private readonly long = new Float64Array(2);
   private heapIn = 0;
   /** What the chat was last told of the mode, so it is told each change once. */
   private told = "";
   private wantShot = false;
   private afterShot = false;
+  /** Pictures copied and not yet encoded: the frames meanwhile are a picture's too, and flagged so. */
+  private making = 0;
   private flashAt = -Infinity;
   private escAt = -Infinity;
   private nowMs = 0;
@@ -144,13 +160,51 @@ export class Notes {
       }
     }
     this.hud(this.app.ui.frame, nowMs);
+    const panel = this.app.ui.settings.budget ? this.panel : null, p = this.app.scene?.packet;
+    if (panel && p && this.port) {
+      const t0 = this.port.now();
+      panel.build(this.app.ui.frame, this.app, this.kit, p, nowMs, this.gpuMode, this.apple, this.panelSpent);
+      this.panelSpent = this.port.now() - t0;
+    }
   }
 
-  /** After each frame is drawn, while armed: a picture where one is due, then the frame's row of the record. */
-  drawn(p: FramePacket, ours: number, width: number, height: number, upload: number): void {
-    if (!this.armed) return;
-    const t0 = this.port!.now(), port = this.port!, e = this.extra, o = this.open;
-    e.flags = this.afterShot ? FLAG_AFTER_SHOT : 0;
+  /**
+   * Times the scene's build while the record or the panel runs, by its own method wrapped on the scene, and lets it go
+   * when neither does: off, nothing is wrapped and nothing is timed.
+   */
+  private timeScene(on: boolean): void {
+    const scene = this.app.scene as unknown as { build: (...args: never[]) => unknown } | null, port = this.port;
+    if (this.timed && (!on || this.timed !== scene)) {
+      delete (this.timed as { build?: unknown }).build;
+      this.timed = null;
+    }
+    if (!on || !scene || !port || this.timed) return;
+    const build = Object.getPrototypeOf(scene).build as (...args: never[]) => unknown;
+    scene.build = (...args: never[]): unknown => {
+      const t0 = port.now();
+      try {
+        return build.apply(scene, args);
+      } finally {
+        this.sceneMs = port.now() - t0;
+      }
+    };
+    this.timed = scene;
+  }
+
+  /**
+   * After each frame is drawn, while armed or the panel is on: a picture where one is due, then the frame's row of the
+   * record and the panel's. `build` is the ms the app's frame took of `ours`.
+   */
+  drawn(p: FramePacket, ours: number, width: number, height: number, upload: number, build = 0): void {
+    const port = this.port, armed = this.armed, panel = this.app.ui.settings.budget && port ? (this.panel ??= new BudgetPanel()) : null;
+    if (!port || (!armed && !panel)) {
+      if (this.timed) this.timeScene(false);
+      if (this.gpuMode !== 0 && port) port.gpu((this.gpuMode = 0), this.passMs);
+      return;
+    }
+    const t0 = port.now(), e = this.extra, o = this.open;
+    this.timeScene(true);
+    e.flags = this.afterShot || this.making > 0 ? FLAG_AFTER_SHOT : 0;
     this.afterShot = false;
     e.shotMs = 0;
     if (this.wantShot && o && o.state === "taking") {
@@ -162,23 +216,38 @@ export class Notes {
     port.longTasks(this.long);
     e.longTasks = this.long[0]!;
     e.longMs = this.long[1]!;
-    e.gpu = port.gpu(o !== null && o.state === "taking");
+    // The card by pass while the panel shows it, but on an Apple GPU, where a query between passes ends Metal's render
+    // pass, whole; whole too while a note is taken. The record keeps the sum.
+    this.apple = /apple/i.test(port.page().card);
+    this.gpuMode = panel ? (this.apple ? 1 : 2) : o !== null && o.state === "taking" ? 1 : 0;
+    const came = port.gpu(this.gpuMode, this.passMs);
+    let gpu = 0;
+    for (let i = 0; i < this.passMs.length; i++) gpu += this.passMs[i]!;
+    e.gpu = came ? gpu : -1;
+    e.build = build;
+    e.scene = this.sceneMs;
     e.glDraws = port.glDraws();
+    if (panel) {
+      panel.frame(build, this.sceneMs, ours - build - upload, upload);
+      if (came) panel.passes(this.passMs, this.gpuMode);
+    }
+    if (!armed) return;
     if (this.heapIn-- <= 0) {
       e.heap = port.heap();
       this.heapIn = HEAP_EVERY;
     }
     this.sampler.sample(this.ring, this.app, p, ours, upload, e);
-    this.costMs += this.port!.now() - t0 - e.shotMs;
+    this.costMs += port.now() - t0 - e.shotMs;
     this.costFrames++;
   }
 
   /** Copies the canvas, notes the picture's pose and counts the frame's draws. Returns the ms it took on this thread. */
   private take(o: Open, p: FramePacket, width: number, height: number): number {
     const t0 = this.port!.now(), app = this.app, n = o.shots.length, first = n === 0;
-    const { picture } = this.port!.shot(SHOT_WIDE_MOST, first ? THUMB_WIDE : 0);
+    const { picture } = this.port!.shot(this.wide, first ? THUMB_WIDE : 0);
     o.pictures.push(picture);
-    picture.catch(() => {});
+    this.making++;
+    void picture.then(() => void this.making--, () => void this.making--);
     const cam = app.cam, own = app.session.own, r2 = (v: number): number => Math.round(v * 100) / 100;
     this.canvas[0] = width;
     this.canvas[1] = height;
@@ -188,7 +257,7 @@ export class Notes {
         settings: settingsOf(app), survivor: survivorOf(app),
       };
     }
-    o.census.push(census(p, n, app.scene?.assets.table.tris ?? [], (mesh) => app.scene?.assets.manifest.meshes[mesh]?.id ?? String(mesh)));
+    o.census.push({ ...census(p, n, app.scene?.assets.table.tris ?? [], (mesh) => app.scene?.assets.manifest.meshes[mesh]?.id ?? String(mesh)), ...this.breakdown() });
     this.flashAt = this.nowMs;
     const ms = this.port!.now() - t0;
     o.shots.push({
@@ -198,8 +267,35 @@ export class Notes {
     return ms;
   }
 
-  /** F8: why the mode cannot, or starts a note, or saves the one open, or tries again to send it. */
+  /**
+   * Where the frame went as the panel says it, at a picture: the processor's stages over the last frames, the card's
+   * passes where they were timed, and the budget the scene squeezes to.
+   */
+  private breakdown(): Record<string, unknown> {
+    const ring = this.ring, sums = [0, 0, 0, 0];
+    let n = 0;
+    for (let back = 0; back < 30; back++) {
+      const k = ring.row(back);
+      if (k < 0) break;
+      const base = k * CELLS, own = ring.cells[base + C.own]!, build = ring.cells[base + C.build]!, scene = ring.cells[base + C.scene]!, upload = ring.cells[base + C.upload]!;
+      sums[0]! += Math.max(0, build - scene);
+      sums[1]! += scene;
+      sums[2]! += Math.max(0, own - build - upload);
+      sums[3]! += upload;
+      n++;
+    }
+    const r2 = (v: number): number => Math.round((v / Math.max(1, n)) * 100) / 100;
+    const b = this.app.scene?.budget, g = this.app.governor;
+    return {
+      cpu: { frame: r2(sums[0]!), scene: r2(sums[1]!), draw: r2(sums[2]!), uploads: r2(sums[3]!) },
+      gpu: this.panel && this.gpuMode === 2 ? this.panel.passTimes() : this.panel && this.gpuMode === 1 ? [{ name: "the whole frame", ms: this.panel.passTimes()[0]?.ms ?? 0 }] : [],
+      budget: b ? { triangles: b.triangles, draws: b.draws, squeeze: Math.round(b.squeeze * 100) / 100, least: Math.round(b.least * 100) / 100, crowns: b.last.crowns, ambient: b.last.ambient, level: g.level } : {},
+    };
+  }
+
+  /** F8: why the mode cannot, or starts a note, or saves the one open, or tries again to send it. Off, F8 is the browser's. */
   key(down: boolean, repeat: boolean): boolean {
+    if (!this.app.ui.settings.notes) return false;
     if (down && !repeat) this.press();
     return true;
   }
@@ -236,7 +332,6 @@ export class Notes {
     this.open = null;
     this.wantShot = false;
     this.escAt = -Infinity;
-    this.port?.gpu(false);
     this.say(`${o.kind === "perf" ? "Performance record" : "Note"} ${why}: nothing was sent.`);
   }
 
@@ -267,25 +362,25 @@ export class Notes {
     if (!o || !port || o.state === "saving") return;
     o.state = "saving";
     this.wantShot = false;
-    port.gpu(false);
     const end = this.nowMs;
     const fail = (why: string): void => {
       [o.state, o.why] = ["failed", why];
       this.say(`Report not saved: ${why}. F8 tries again; Esc twice discards it.`);
     };
-    let pictures: Picture[];
-    try {
-      pictures = await Promise.all(o.pictures);
-    } catch (err) {
-      return fail(`a picture was not made (${err instanceof Error ? err.message : String(err)})`);
+    // A picture the browser could not make is left out, with its pose and count, and the note goes with the rest.
+    const settled = await Promise.allSettled(o.pictures), made = settled.flatMap((r, n) => (r.status === "fulfilled" ? [n] : []));
+    if (made.length === 0) {
+      const why = settled.find((r): r is PromiseRejectedResult => r.status === "rejected")?.reason;
+      return fail(made.length === settled.length ? "it has no picture yet" : `no picture was made (${why instanceof Error ? why.message : String(why)})`);
     }
-    if (pictures.length === 0) return fail("it has no picture yet");
+    const pictures = made.map((n) => (settled[n] as PromiseFulfilledResult<Picture>).value);
+    const census = made.flatMap((n, k) => o.census.filter((c) => c.shot === n).map((c) => ({ ...c, shot: k })));
     const from = o.began - BEFORE_MS, summary = this.ring.summary(o.began, end);
     const perf = {
       version: REPORT_VERSION, start: Math.round(o.began), fields: FRAME_FIELDS, frames: this.ring.frames(from, end, o.began), secondFields: SECOND_FIELDS, seconds: this.ring.secondRows(o.began),
-      summary: { ...summary, ringMs: this.costFrames > 0 ? Math.round((this.costMs / this.costFrames) * 10000) / 10000 : 0 }, worst: this.ring.worst(o.began, end, 20), census: o.census,
+      summary: { ...summary, ringMs: this.costFrames > 0 ? Math.round((this.costMs / this.costFrames) * 10000) / 10000 : 0 }, worst: this.ring.worst(o.began, end, 20), census, sound: {},
     };
-    const shots = o.shots.map((s, n) => ({ ...s, w: pictures[n]!.w, h: pictures[n]!.h }));
+    const shots = made.map((n, k) => ({ ...o.shots[n]!, w: pictures[k]!.w, h: pictures[k]!.h }));
     const s = app.session;
     const report: Report = { version: REPORT_VERSION, kind: o.kind, began: o.wall, ms: Math.round(end - o.began), ...o.head, map: { id: s.world?.mapId ?? "" }, build: this.build, shots, text: o.text, voice: { segments: [] } };
     const token = `${s.voice.slot}:${Array.from(s.voice.token, (b) => b.toString(16).padStart(2, "0")).join("")}`;

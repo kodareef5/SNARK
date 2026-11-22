@@ -39,7 +39,7 @@ function firstFrameFiles(): Set<string> {
 const MONITOR_FILES = ["client/core/ui/monitor.ts", "client/core/ui/monitor-style.ts", "client/core/ui/monitor-card.ts", "client/core/ui/monitor-chart.ts", "client/core/ui/monitor-panel.ts", "client/core/assets/look.ts", "client/core/assets/requests.ts", "client/core/assets/inspect.ts", "client/core/assets/copied.ts"];
 
 /** Bug report mode's files, which the app fetches once the mode is first on (D1091), and the shell's part of it. */
-const NOTES_FILES = ["client/core/notes/notes.ts", "client/core/notes/ring.ts", "client/core/notes/sample.ts", "client/core/notes/place.ts", "client/core/notes/census.ts", "client/core/notes/copies.ts", "shared/report.ts", "shared/listing.ts", "client/notes/port.ts"];
+const NOTES_FILES = ["client/core/notes/notes.ts", "client/core/notes/budget.ts", "client/core/notes/ring.ts", "client/core/notes/sample.ts", "client/core/notes/place.ts", "client/core/notes/census.ts", "client/core/notes/copies.ts", "shared/report.ts", "shared/listing.ts", "client/notes/port.ts"];
 
 test("code a page needs only after its first frame is not in the script the first frame waits for", () => {
   const files = [...firstFrameFiles()].map((f) => relative(ROOT, f));

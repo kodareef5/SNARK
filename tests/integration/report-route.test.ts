@@ -58,6 +58,7 @@ test("a world that keeps notes takes one from an admin's session through the fro
   for (const [f, file] of files.entries()) if (file.role !== "mesh") writeFileSync(join(dir, "assets", manifest.files[f]!.name), file.bytes);
   writeFileSync(join(dir, "assets/manifest.json"), JSON.stringify(manifest));
   writeFileSync(join(dir, "build.json"), JSON.stringify({ commit: "c0ffee", clean: true, at: "2026-11-22T00:00:00Z" }));
+  writeFileSync(join(dir, "first-frame.json"), JSON.stringify({ total: 1080 }));
   const log = console.log;
   console.log = () => {};
   const config = loadConfig({}, ["-clusterid=notes", `-ClusterDirOverride=${saves}`, "?SessionName=Miami?CreativeForAll=False"]).rules;
@@ -71,6 +72,8 @@ test("a world that keeps notes takes one from an admin's session through the fro
     expect(frontPasses("POST", "/miami/__report")).toBe(true);
     for (let k = 0; k < 200 && (await fetch(at, { headers: tunnel })).status === 503; k++) await Bun.sleep(50);
     expect((await fetch(at, { headers: tunnel })).status).toBe(204);
+    // The build's weighing of the first frame is the admin pages' to show (server/admin/routes.ts).
+    expect(await (await fetch(`http://127.0.0.1:${world.port}/miami/admin/first-frame.json`)).json()).toEqual({ total: 1080 });
     const none = await fetch(`http://127.0.0.1:${plain.port}/__report`);
     expect([none.status, (await none.text()).includes("--reports")]).toEqual([404, true]);
 

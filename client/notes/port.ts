@@ -42,7 +42,8 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
       }
     }).observe({ type: "longtask", buffered: false });
   } catch {}
-  let clock: PassClock | null = null;
+  let clock: PassClock | null = null, each = false;
+  const about = { browser: navigator.userAgent, card: "", format: "" };
   const json = async (r: Promise<Response>): Promise<Answer> => {
     try {
       const res = await r;
@@ -57,8 +58,8 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
       const t0 = performance.now();
       const scale = Math.min(1, wide / canvas.width), w = Math.round(canvas.width * scale), h = Math.round(canvas.height * scale);
       const n = ++id;
-      // The bitmap is the canvas as it is now; the worker scales and encodes it.
-      const bitmap = createImageBitmap(canvas);
+      // The bitmap is the canvas as it is now, made at the picture's size; the worker encodes it.
+      const bitmap = scale < 1 ? createImageBitmap(canvas, { resizeWidth: w, resizeHeight: h, resizeQuality: "medium" }) : createImageBitmap(canvas);
       const picture = bitmap.then((b) => new Promise<Picture>((done, fail) => {
         waiting.set(n, (e) => (e.jpeg ? done({ jpeg: e.jpeg, w, h, thumb: e.thumb }) : fail(new Error(e.why))));
         encoder().postMessage({ id: n, bitmap: b, w, h, thumb: thumb > 0 ? [thumb, Math.round((h * thumb) / w)] : null, quality: QUALITY }, [b]);
@@ -72,18 +73,30 @@ export function notePort(canvas: HTMLCanvasElement, renderer: NoteRenderer, Cloc
       out[1] = long[1]!;
       long[0] = long[1] = 0;
     },
-    gpu(on) {
-      // A bench page's clock is its own.
-      if (on && !clock && !renderer.passes) renderer.passes = clock = new Clock(renderer.gl, false);
-      if (!on && clock) {
+    gpu(mode, out) {
+      // Off, or timed otherwise than asked: the clock goes. A bench page's clock is its own.
+      if (clock && (mode === 0 || each !== (mode === 2))) {
         if (renderer.passes === clock) renderer.passes = null;
         clock = null;
       }
+      if (mode > 0 && !clock && !renderer.passes) {
+        each = mode === 2;
+        renderer.passes = clock = new Clock(renderer.gl, each);
+      }
       const times = clock ? clock.take() : null;
-      return times && times.length > 0 ? times[times.length - 1]![0]! : -1;
+      if (!times || times.length === 0) return false;
+      const last = times[times.length - 1]!;
+      out.fill(0);
+      for (let i = 0; i < last.length && i < out.length; i++) out[i] = last[i]!;
+      return true;
     },
     glDraws: () => renderer.drawCalls,
-    page: () => ({ browser: navigator.userAgent, card: renderer.rendererName, format: renderer.format }),
+    // One record, brought up to date: it is asked for every frame while the mode is on.
+    page() {
+      about.card = renderer.rendererName;
+      about.format = renderer.format;
+      return about;
+    },
     get: (path) => json(fetch(path, { cache: "no-store" })),
     post(path, fields, files) {
       const form = new FormData();

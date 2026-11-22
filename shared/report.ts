@@ -107,6 +107,11 @@ const CENSUS: Shape = {
     steps: { list: COUNT, most: 8 },
     stores: { list: COUNT, most: 16 },
     largest: { list: { fields: { mesh: WORD, level: I, instances: I, triangles: I, store: WORD, step: WORD } }, most: 20 },
+    // Where the frame went as the budget's panel says it (client/core/notes/budget.ts): the processor's stages in ms over
+    // the last frames, the card's passes where timer queries gave them, and the budget the scene squeezes to.
+    cpu: { fields: { frame: N, scene: N, draw: N, uploads: N } },
+    gpu: { list: { fields: { name: WORD, ms: N } }, most: 12 },
+    budget: { fields: { triangles: I, draws: I, squeeze: N, least: N, crowns: I, ambient: I, level: I } },
   },
 };
 /** A performance record (perf.json): frames and seconds as rows under their fields' names, a summary, the worst frames, a census at each picture. */
@@ -127,6 +132,9 @@ export const PERF_SHAPE: Shape = {
     },
     worst: { list: { list: N, most: 64 }, most: 20 },
     census: { list: CENSUS, most: SHOTS_MOST },
+    // The sound engine's mix (planning/workstreams/sound-engine.md), a place kept for it and written empty until it is
+    // built: voices playing and virtual, each bus's level, and the audio thread's load.
+    sound: { fields: { voices: I, virtual: I, load: N, buses: { list: { fields: { name: WORD, level: N } }, most: 16 } } },
   },
 };
 
