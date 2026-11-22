@@ -58,16 +58,15 @@ import { CrownCover, coverDistance, type CoverLooks, type CoverRule } from "./co
 import { FarNodes, farLevelOf, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { HIDE_PIXELS, Hiding, OCCLUDER } from "./hide.ts";
-import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
-import { BEND_BUFFERS, BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
+import { BEND_BUFFERS, BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
 import { recipeIndex } from "../../../content/texgen/finishes.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
-import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
+import { UNDERWATER_DIM, UNDERWATER_VIEW } from "./shading.ts";
 import { FADE_FROM, FADE_SHARE, SKY_ASKED, SKY_MATERIAL, VIEW_FADE, airFrame } from "./atmosphere.ts";
 import { FarShadow } from "./farshadow.ts";
 import { Cascades } from "./shadow.ts";
@@ -78,8 +77,6 @@ import { lightBytes, lightSamples, opticFrame, postFrame, sceneSize, type Optic 
 import { lampsOn, skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
-import { WaterTrails } from "./water-trails.ts";
-import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 import { bendOf, type MapLandmark } from "../../../shared/world/mapfile.ts";
 import { KERB_BACK } from "../../../shared/world/bends.ts";
 import { landmarkFars } from "../../../shared/pack/far.ts";
@@ -88,6 +85,7 @@ import { Frame, walk, type Pass } from "./pass.ts";
 import { Casting } from "./casting.ts";
 import { SupplyDrops } from "./passes/supply-drops.ts";
 import { TideEyes } from "./passes/tide-eyes.ts";
+import { Water } from "./passes/water.ts";
 import { MovingStatics } from "./passes/moving-statics.ts";
 import { Beams } from "./passes/beams.ts";
 import { Ghost } from "./passes/ghost.ts";
@@ -166,7 +164,6 @@ const TERRAIN_FOCUS = 8;
 /** Metres up and down a chunk's column is taken to reach, to ask whether a sight's window sees it. */
 const CHUNK_COLUMN = 1000;
 const MISSING_MESH = "core:missing";
-const WATER_MESH = "core:water";
 /** A draw costs about what drawing this many more triangles does. Neighbouring cells share a draw when that saves more. */
 const RUN_TRIANGLES = 4096;
 /** A cell of trees drawn this long ago or less is still on screen, so a change of its level is swapped, not taken at once. */
@@ -525,14 +522,12 @@ export class Scene {
   private readonly transient: InstanceWriter;
   private readonly transientF32: Float32Array;
   private readonly transientU16: Uint16Array;
-  private readonly waterMesh: number;
   /** The materials whose pictures the dome and the sea draw, or -1 where the pack has none. */
   private readonly skyMaterial: number;
   private readonly finishes: WorldFinishes;
   /** How near the eye each finish, wall, front and glass comes, which sizes what the finishes and the facades ask for. */
   readonly finishNear: FinishNear;
   private readonly facades: FacadeAtlases;
-  private readonly waterMaterial: number;
   readonly characters: Characters;
   private readonly vehicleSeats: (VehicleSeatPose | undefined)[] = new Array(MAX_VIEW);
   /** What vehicleSeats points into, a pose a slot, and the own body's seat. */
@@ -544,7 +539,6 @@ export class Scene {
   private readonly vehiclePose: VehicleRenderPose = { pitch: 0, roll: 0, steering: 0, wheelAngle: 0 };
   /** Small details: feathers knocked loose, dust thrown up. */
   readonly details: Details;
-  private readonly waterTrails: WaterTrails;
   /** Smoke and gas: each prop/cloud drawn as puffs over its reach, with the details (clouds.ts). */
   readonly clouds: Clouds;
   /** A bag of one stack, drawn as its item lying (dropped.ts). */
@@ -611,8 +605,6 @@ export class Scene {
   private readonly floatingKinds: Uint8Array;
   private readonly farMesh: number;
   private readonly farBounds: { center: readonly number[]; half: readonly number[] } | undefined;
-  /** Water on its own surfaces apart from the sea, and the sea round those whose beds go under it (lakes.ts), given the far mesh. */
-  private readonly lakes: Lakes | null;
   farShadow: FarShadow | null = null;
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
   private readonly unseenFrom = new Uint16Array(MAX_VIEW);
@@ -641,6 +633,8 @@ export class Scene {
   set sextantScale(s: number) { this.eyes.sextantScale = s; }
   get eyeHold(): number | null { return this.eyes.hold; }
   set eyeHold(s: number | null) { this.eyes.hold = s; }
+  /** The sea and the lakes (passes/water.ts). */
+  private readonly waters: Water;
   /** The map's moving statics' parts (passes/moving-statics.ts). */
   private readonly movingStatics: MovingStatics;
   /** Beams over places to mark, the piece about to be built, and loose meshes, each a pass, which the app sets through these. */
@@ -786,10 +780,10 @@ export class Scene {
     this.streetLamps = new StreetLamps(reg);
     this.casting.join(this.characters, this.streetLamps);
     this.streetWires = new StreetWires(reg);
-    this.waterTrails = new WaterTrails(reg);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind), (id, kind, tick) => this.characters.drawnGait(id, kind, tick), (id, kind, tick) => this.characters.drawnPose(id, kind, tick));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.clouds = new Clouds(reg, pack.header.details, pack.palette);
+    this.waters = new Water(world, reg, this.assets, this.packet, this.put, this.terrain);
     this.eyes = new TideEyes(this.assets);
     this.movingStatics = new MovingStatics(reg, this.assets, this.flatFlags, this.landmarkKinds);
     this.marks = new Beams(this.assets);
@@ -819,14 +813,11 @@ export class Scene {
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last, known: (mesh) => this.assets.known(mesh) };
     if (world.farNodes) world.farNodes.hidden = ref => this.hiddenNodes.has(ref);
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
-    this.lakes = world.hf.water && far >= 0 ? new Lakes(world.hf, world.hf.water, far) : null;
-    this.waterMesh = table.find(WATER_MESH);
     this.finishes = new WorldFinishes(table.materials, this.assets.manifest.textures ?? []);
     this.finishNear = new FinishNear(reg, surfaceCity(world.mapId ?? "default") === "las-vegas");
     this.facades = new FacadeAtlases(table.materials, world.mapId ?? "default");
     citySurface(this.packet.surfaceCity, world.mapId ?? "default");
     this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
-    this.waterMaterial = table.materials.findIndex((m) => m.id === WATER_MATERIAL);
     for (let k = 0; k < 3; k++) {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
@@ -881,7 +872,7 @@ export class Scene {
     this.city?.reset();
     this.near?.reset();
     this.landmarks?.reset();
-    this.lakes?.reset();
+    this.waters.reset();
     this.blocks?.reset();
     this.casting.cascades.clear();
     this.farShadow?.reset();
@@ -1026,6 +1017,7 @@ export class Scene {
     f.cam = cam;
     f.viewHeight = this.viewHeight;
     f.lift = this.lift;
+    f.plainSky = this.plainSky;
     f.remote = remote;
     f.own = this.own;
     f.tier = this.assets.tier;
@@ -1045,21 +1037,7 @@ export class Scene {
   private rows(): Pass[] {
     const p = this.packet;
     return [
-      // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
-      // See-through draws go as made, and the sea is made first of them, so that a yacht's wires show over it.
-      {
-        draw: (f) => {
-          const cam = f.cam, sea = this.world.hf.seaLevel;
-          const lit = p.lit && !this.plainSky && !f.under;
-          let waves = sea > -Infinity && this.waterMesh >= 0 && this.water(cam, sea, lit);
-          if (this.lakes) waves = this.showLakes(cam, lit) || waves;
-          if (waves) {
-            seaFrame(p.frame, this.world.hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000, cam.y);
-            this.waterTrails.frame(p.frame, this.world.hf, cam, this.own, f.remote, this.now / 1000, f.tier.waterMarks);
-            if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
-          }
-        },
-      },
+      this.waters,
       // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
       this.eyes,
       this.supplyDrops,
@@ -1926,95 +1904,6 @@ export class Scene {
     }
     p.transientCount = total;
   }
-
-  /**
-   * Tiles of one flat mesh over the map, drawn last because they are see-through, but for those the lakes draw. With
-   * `lit` the sea runs on past the map to the end of the view, and is drawn with its waves and its depth (water.ts);
-   * seen from under water, or in a plain sky, it is as it always was. Whether it drew with its waves.
-   */
-  private water(cam: Camera, sea: number, lit: boolean): boolean {
-    const p = this.packet;
-    const hf = this.world.hf;
-    const first = p.transientCount;
-    let n = 0;
-    const half = WATER_TILE / 2;
-    const r = Math.ceil(this.viewDistance / WATER_TILE);
-    const cx = Math.floor(cam.x / WATER_TILE), cz = Math.floor(cam.z / WATER_TILE);
-    const ix0 = lit ? cx - r : 0, iz0 = lit ? cz - r : 0;
-    const ix1 = lit ? cx + r : Math.ceil(hf.sizeX / WATER_TILE) - 1, iz1 = lit ? cz + r : Math.ceil(hf.sizeZ / WATER_TILE) - 1;
-    // The box round every tile drawn, for its depth ranges.
-    let x0 = Infinity;
-    let z0 = Infinity;
-    let x1 = -Infinity;
-    let z1 = -Infinity;
-    for (let tz = iz0; tz <= iz1; tz++) {
-      for (let tx = ix0; tx <= ix1; tx++) {
-        const x = tx * WATER_TILE + half - cam.x;
-        const z = tz * WATER_TILE + half - cam.z;
-        const y = sea - cam.y;
-        if (this.lakes?.holed(tx, tz) || !cam.boxVisible(x - half, y - 0.1, z - half, x + half, y + 0.1, z + half)) continue;
-        if (n === MAX_WATER_TILES) {
-          p.dropped++;
-          continue;
-        }
-        this.transient.set(first + n, x, y, z, 0, WATER_COLOR);
-        p.transientIds[first + n] = 0;
-        n++;
-        x0 = Math.min(x0, x - half);
-        z0 = Math.min(z0, z - half);
-        x1 = Math.max(x1, x + half);
-        z1 = Math.max(z1, z + half);
-      }
-    }
-    if (n === 0) return false;
-    const d = p.drawCount;
-    this.put.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, lit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
-    p.transientCount = first + n;
-    if (!lit || p.drawCount === d) return false;
-    p.drawMaterial[d] = this.waterMaterial;
-    return true;
-  }
-
-  /** The lakes' tiles to the end of the view, each a draw as the sea's is. Whether any drew with its waves. */
-  private showLakes(cam: Camera, lit: boolean): boolean {
-    this.lakes!.update(this.packet, this.assets.residency, cam.x, cam.z, this.viewDistance);
-    this.lakesLit = lit;
-    this.lakesWaved = false;
-    this.lakes!.draw(cam, this.viewDistance, this.drawLake);
-    return this.lakesWaved;
-  }
-
-  /** Whether the lakes are drawn with their waves this frame, and whether any was. */
-  private lakesLit = false;
-  private lakesWaved = false;
-
-  /** A lake tile, a draw as the sea's is. */
-  private readonly drawLake = (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number): void => {
-    const p = this.packet;
-    const d = p.drawCount;
-    const copies = passes === (NEAR | FAR) ? 2 : 1;
-    if (d + this.put.doubled + copies > MAX_DRAWS) {
-      p.dropped++;
-      return;
-    }
-    this.put.nearOf[d] = 0;
-    p.drawMesh[d] = this.lakes!.mesh;
-    p.drawLod[d] = 0;
-    p.drawSlot[d] = slot;
-    p.drawBuffer[d] = LAKE_BUFFER;
-    p.drawFirst[d] = 0;
-    p.drawInstances[d] = 1;
-    p.drawFlags[d] = this.lakesLit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND;
-    p.drawOffset[d * 3] = ox;
-    p.drawOffset[d * 3 + 1] = oy;
-    p.drawOffset[d * 3 + 2] = oz;
-    p.drawMaterial[d] = this.waterMaterial;
-    this.put.passOf[d] = passes;
-    p.drawCount = d + 1;
-    this.put.doubled += copies - 1;
-    p.triangles += triangles * copies;
-    this.lakesWaved ||= this.lakesLit;
-  };
 
   /**
    * Chunk `c` of the store uses instance buffer `base + c`. A slot's kind is drawn as `meshOf` and `colorOf` say, and at the

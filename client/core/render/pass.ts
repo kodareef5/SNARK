@@ -36,6 +36,8 @@ export class Frame {
   viewHeight = 720;
   /** The camera's height over the ground under it. */
   lift = 0;
+  /** Whether the dome is drawn as the table alone and nothing is hazed (Scene.plainSky). */
+  plainSky = false;
   /** Whether the eye is under water. */
   under = false;
   /** What hides what, from the pass that finds it on: undefined before it, and on a frame that hides nothing. */
