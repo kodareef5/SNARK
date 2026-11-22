@@ -35,6 +35,7 @@ import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { groundUnder, restingAt, type CollisionWorld } from "../shared/world/collide.ts";
 import { rayBox } from "../shared/world/ray.ts";
 import { helicopterWorld } from "../shared/world/helicopter.ts";
+import type { Containers } from "./containers.ts";
 import type { Death } from "./death.ts";
 import { event } from "./events/bus.ts";
 import type { GameServer } from "./game.ts";
@@ -86,6 +87,7 @@ export interface CorpsesContext {
   readonly lists?: Lists;
   readonly progression?: Progression;
   readonly death?: Death;
+  readonly containers?: Containers;
 }
 
 /** One body. Its place, facing and size are as the wire carries them. */
@@ -800,11 +802,11 @@ export class Corpses {
    * held with it, through the ledger, as a cache does.
    */
   remove(b: Body, usedUp: boolean): void {
-    const { world, records, items, game, death } = this.ctx;
+    const { world, records, items, game, death, containers } = this.ctx;
     const rec = b.rec;
     for (const c of game.clients) {
       if (c?.open !== rec.pid) continue;
-      if (death) death.close(c);
+      if (containers) containers.close(c);
       else c.open = 0;
     }
     // Its entity goes first, so the cache has its place in a full store.

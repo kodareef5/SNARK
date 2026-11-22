@@ -251,7 +251,7 @@ export function addAdminCommands(con: Console): void {
           game.release(c);
           return "back in your own body";
         }
-        const e = ctx.host.death.target(c, 8);
+        const e = ctx.host.containers.target(c, 8);
         if (e < 0 || !game.take(c, e)) return "nothing in front of you that can be driven";
         return `driving ${ctx.host.world.reg.ids[ctx.host.world.ents.kind[e]!]}`;
       },
@@ -296,7 +296,7 @@ export function addAdminCommands(con: Console): void {
         const c = ctx.client;
         if (!c || c.ent < 0) return needsBody;
         const ents = ctx.host.world.ents;
-        const hit = ctx.host.death.target(c, 60);
+        const hit = ctx.host.containers.target(c, 60);
         const rec = hit >= 0 ? ctx.host.records.byPid.get(ents.pid[hit]!) : undefined;
         if (!rec || !rec.vitals) return "nothing alive there";
         const what = rec.name || ctx.host.world.reg.ids[rec.kind]!;

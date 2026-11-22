@@ -24,7 +24,7 @@ import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import { HIT_NONE, castWorld, lookDirection } from "../shared/world/ray.ts";
 import { STANCE_AGGRESSIVE, STANCE_PASSIVE } from "./behavior.ts";
 import type { Creatures } from "./creatures.ts";
-import { REACH } from "./death.ts";
+import { REACH } from "./containers.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";

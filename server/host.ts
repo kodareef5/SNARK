@@ -63,6 +63,7 @@ import { Buffs } from "./buffs.ts";
 import { Combat, type Source } from "./combat.ts";
 import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { Creatures } from "./creatures.ts";
+import { Containers } from "./containers.ts";
 import { Death, OP_DEATH } from "./death.ts";
 import { Harvest } from "./harvest.ts";
 import { VehicleTrees } from "./vehicle-trees.ts";
@@ -202,6 +203,7 @@ export interface Host {
   readonly items: Items;
   readonly survival: Survival;
   readonly death: Death;
+  readonly containers: Containers;
   readonly combat: Combat;
   readonly buffs: Buffs;
   readonly rules: Rules;
@@ -543,7 +545,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return e;
   };
   const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0, start: VehicleStart = {}): number => parkVehicle(id, x, z, ownerTeam, yaw, "admin", start);
-  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus });
+  const containers = new Containers({ world, game, records, items });
+  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus, containers });
+  containers.emptied = (box) => death.remove(box);
   const progression = new Progression(world, records, items, deadlines);
   progression.rules = rules;
   progression.bus = bus;
@@ -566,7 +570,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     settingsAt = at;
   }
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest, bus, rigs: opts.rigs }, (opts.seed ?? 1) + 53);
-  death.eye = (e, out) => { combat.eye(e, out); };
+  containers.eye = (e, out) => { combat.eye(e, out); };
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   tribes.rules = rules;
@@ -607,7 +611,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
     loaded!.fresh,
   );
-  const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
+  const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => containers.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);
     // A new tame stays where it woke until ordered otherwise.
@@ -617,7 +621,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
   } }, (opts.seed ?? 1) + 71);
   // Closing a creature reschedules its meal, because its food may have changed.
-  death.onShut.on((rec) => taming.meal(rec));
+  containers.onShut.on((rec) => taming.meal(rec));
   // A hit's buff goes through entangling, which reads the bola's fields (weapons-plan.md, M6); a bola'd body is not mounted.
   const entangle = new Entangle({ world, game, records, buffs });
   combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
@@ -643,11 +647,11 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     discard: e => { const pid = world.ents.pid[e]!; persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid); },
   });
   // Its tribe may open a tamed creature while it is awake, and whoever may use a vehicle may open it.
-  death.canOpen.on((c, rec) => {
+  containers.canOpen.on((c, rec) => {
     const actor = records.byPid.get(c.pid);
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   });
-  death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
+  containers.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
   game.onVehicleStep.on(e => urban.impact(e));
   game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
@@ -664,17 +668,17 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
   });
   // The use button gets off a mount, and sets down what is in the arms.
-  death.riding = (c) => impale.held(c.pid) || urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
-  death.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c, true) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
+  containers.riding = (c) => impale.held(c.pid) || urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
+  containers.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c, true) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
-  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
-  death.corpses = combat.corpses = corpses;
+  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death, containers }, (opts.seed ?? 1) + 103);
+  death.corpses = containers.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const emotes = new Emotes({ world, game });
   const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
   const balls = new Balls({
-    world, game, records, items, rules, creatures, survival, buffs, taming, breeding, tribes, riding, carry, death,
+    world, game, records, items, rules, creatures, survival, buffs, taming, breeding, tribes, riding, carry, death, containers,
     detach: (rec, e) => {
       const ents = world.ents;
       rec.x = ents.x[e]!;
@@ -719,7 +723,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   } });
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
-  death.onRide = (c, e) => {
+  containers.onRide = (c, e) => {
     if (impale.held(c.pid) || world.ents.seatSlot[e] === IMPALE_SLOT) return RESULT_BUSY;
     if (carry.holding(c) < 0) {
       const vehicle = urban.mount(c, e);
@@ -838,8 +842,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   persistence?.sidecar("beds", beds.saved);
   const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, motion: (ref) => motion.throw(ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   build.onPlaced = (by, ref) => beds.placed(by, ref);
-  death.onUseBuilt = (c, ref) => build.use(c, ref);
-  death.keepsBuilt = (c, ref) => build.keeps(c, ref);
+  containers.onUseBuilt = (c, ref) => build.use(c, ref);
+  containers.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   persistence?.sidecar("decay", build.decay, DECAY_SAVE_TICKS);
   combat.onStructureHurt.on((ref) => build.hurt(ref));
@@ -921,7 +925,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   buffs.onChange = (rec) => refreshBody(rec);
   const use = new Use({ world, game, records, items, survival, buffs });
   // E with nothing else to use picks a bush, else drinks the water the survivor stands in.
-  death.onUse.on((c) => void (harvest?.pick(c) || use.drink(c)));
+  containers.onUse.on((c) => void (harvest?.pick(c) || use.drink(c)));
   if (harvest) {
     if (persistence) {
       if (!loaded!.fresh) for (const row of persistence.store.loadBlobs(harvest.tag)) harvest.decode(row.chunk, row.data);
@@ -1100,7 +1104,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // drops that are live are the save's, written in the commit that writes their capsules.
   // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
   const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
-  const supply = new Supply({ world, game, records, items, death, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
+  const supply = new Supply({ world, game, records, items, death, containers, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
   {
     // ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects.
     const loot = catalogOf(reg);
@@ -1421,8 +1425,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, voice,
     use,
-    openOf: (c) => death.openOf(c),
-    closeOpen: (c) => death.close(c),
+    openOf: (c) => containers.openOf(c),
+    closeOpen: (c) => containers.close(c),
     beds,
     subject: (rec) => taming.subject(rec),
     refresh: (rec) => refreshBody(rec),
@@ -1587,6 +1591,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Struggling, and the grace after a bola, once the buffs that came due have ended.
     entangle,
     { step: () => creatureTraits.step(creatures.awake, creatures.awakeCount) },
+    containers,
     death,
     supply,
     mark(PART.life),
@@ -1654,6 +1659,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     items,
     survival,
     death,
+    containers,
     combat,
     buffs,
     rules,

@@ -18,9 +18,9 @@ test("interaction targeting follows an inverted car's hull and ignores its forme
     ents.vehicleQz[v] = 1; ents.vehicleRoll[v] = Math.PI;
     ents.stance[c.ent] = STANCE_CROUCH; c.heldYaw = 16384; c.heldPitch = 0;
     ents.setPosition(c.ent, 60.2, 0, 64);
-    expect(h.host.death.target(c, 3.5)).toBe(car);
+    expect(h.host.containers.target(c, 3.5)).toBe(car);
     // The same ray raised one chassis height meets only the obsolete upright proxy.
     ents.setPosition(c.ent, 60.2, height, 64);
-    expect(h.host.death.target(c, 3.5)).toBe(-1);
+    expect(h.host.containers.target(c, 3.5)).toBe(-1);
   } finally { h.host.shutdown(); }
 });

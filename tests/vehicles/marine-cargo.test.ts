@@ -45,7 +45,7 @@ test("F services unclaimed flagship cargo at the dock and in passenger seats, wi
 
     // A wall built after opening must immediately prevent further inventory moves.
     const wall = h.world.structs.add(h.reg.index.get("core:wall_wood")!, x, 1.65, z + .63, 0, actor.team, 1000);
-    expect(h.host.death.openOf(c)).toBeNull();
+    expect(h.host.containers.openOf(c)).toBeNull();
     expect(h.host.vehicles.inspect(c, handle)).toBe(RESULT_OBSTRUCTED);
     h.world.structs.remove(wall);
     expect(h.host.setSetting("serverPVE", "True")).toBe("");
