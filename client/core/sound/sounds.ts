@@ -126,6 +126,8 @@ interface Looping {
 
 export class Sounds {
   readonly packet = new SoundPacket();
+  /** Each bus's volume this frame, in bus order. */
+  private readonly busLevels = [0, 0, 0, 0];
   readonly library: SoundLibrary;
   readonly mixer = new Mixer();
   readonly resolver: Resolver;
@@ -264,12 +266,12 @@ export class Sounds {
     this.yaw = ear.yaw;
     this.pitch = ear.pitch;
     earAxes(ear.yaw, ear.pitch, p.ear);
-    p.mixed = p.volume !== volumes.master || p.buses[0] !== volumes.effects || p.buses[1] !== volumes.ambience || p.buses[2] !== volumes.music || p.buses[3] !== volumes.interface;
-    p.volume = volumes.master;
-    p.buses[0] = volumes.effects;
-    p.buses[1] = volumes.ambience;
-    p.buses[2] = volumes.music;
-    p.buses[3] = volumes.interface;
+    const buses = this.busLevels;
+    buses[0] = volumes.effects;
+    buses[1] = volumes.ambience;
+    buses[2] = volumes.music;
+    buses[3] = volumes.interface;
+    p.mix(volumes.master, buses);
     // What was heard since the last frame (the interface hears between frames) is kept until it is played below.
     for (const l of this.loops.values()) l.target = 0;
     this.creatures.update(remote, hf, ear.x, ear.y, ear.z, this.emit, this.want, corpses);
@@ -355,12 +357,16 @@ export class Sounds {
     }
   }
 
-  /** Stops every voice and every loop at once: the world is gone, as when the session closes. */
+  /**
+   * Stops every voice and every loop at once: the world is gone, as when the session closes. The volume falls silent with
+   * them, so the world's sounds rise from silence when it comes back.
+   */
   hush(sink: SoundSink): void {
     if (this.loops.size === 0 && this.mixer.playing === 0) return;
     const p = this.packet;
     p.clear();
     this.mixer.silence(p);
+    p.fallSilent();
     this.loops.clear();
     this.pending.length = 0;
     sink.apply(p);

@@ -4,7 +4,7 @@
 // (tools/page-script.ts, D1106), and the check's "script" step and the build's weighing hold the script to that shape.
 
 import { expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 
 const CLIENT = join(import.meta.dir, "../../client");
@@ -41,6 +41,12 @@ const MONITOR_FILES = ["client/core/ui/monitor.ts", "client/core/ui/monitor-styl
 /** Bug report mode's files, which the app fetches once the mode is first on (D1091), and the shell's part of it. */
 const NOTES_FILES = ["client/core/notes/notes.ts", "client/core/notes/ring.ts", "client/core/notes/sample.ts", "client/core/notes/place.ts", "client/core/notes/census.ts", "client/core/notes/copies.ts", "shared/report.ts", "shared/listing.ts", "client/notes/port.ts"];
 
+/**
+ * The world's sounds' code (D1107): every file of client/core/sound but what the shell's device and the asset port use
+ * (ease.ts, packet.ts, split.ts), and the cues.
+ */
+const SOUND_FILES = ["client/core/sound-late.ts", "shared/sound/cues.ts", ...readdirSync(join(CLIENT, "core/sound")).filter((f) => f.endsWith(".ts") && !["ease.ts", "packet.ts", "split.ts"].includes(f)).map((f) => `client/core/sound/${f}`)];
+
 test("code a page needs only after its first frame is not in the script the first frame waits for", () => {
   const files = [...firstFrameFiles()].map((f) => relative(ROOT, f));
   // The walk does reach the page's game.
@@ -61,7 +67,9 @@ test("code a page needs only after its first frame is not in the script the firs
     "client/core/assets/keeping.ts",
     ...MONITOR_FILES,
     ...NOTES_FILES,
+    ...SOUND_FILES,
   ];
+  expect(SOUND_FILES).toContain("client/core/sound/sounds.ts");
   for (const file of late) expect(files.includes(file), file).toBe(false);
   // The resource monitor's files and bug report mode's import nothing the first frame holds: what they use of it comes to
   // them in a kit (client/core/ui/monitor-kit.ts, client/core/notes-kit.ts). They were written so when such an import cut
@@ -70,5 +78,5 @@ test("code a page needs only after its first frame is not in the script the firs
   // The shell fetches them itself, and the app the Storage tab's page and the resource monitor.
   const fetchedBy = (file: string): string[] => [...readFileSync(join(CLIENT, file), "utf8").matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]!);
   expect(fetchedBy("shell/main.ts")).toEqual(expect.arrayContaining(["../core/ui/touch.ts", "../core/render/city-late.ts", "../core/selfcheck-tools.ts", "../core/bench-run.ts", "../core/assets/frames.ts", "../notes/port.ts"]));
-  expect(fetchedBy("core/app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./ui/monitor.ts", "./notes/notes.ts"]));
+  expect(fetchedBy("core/app.ts")).toEqual(expect.arrayContaining(["./ui/storage.ts", "./ui/monitor.ts", "./notes/notes.ts", "./sound-late.ts"]));
 });

@@ -3,6 +3,8 @@
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
+// The sounds' code, which a page fetches after its first frame (D1107), here from the start.
+import "../../client/core/sound-late.ts";
 import type { SoundPacket, SoundSink } from "../../client/core/sound/packet.ts";
 import { START_FIELDS } from "../../client/core/sound/packet.ts";
 import { LOOP } from "../../client/core/sound/mixer.ts";

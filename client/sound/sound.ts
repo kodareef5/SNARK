@@ -4,10 +4,12 @@
 // no panner. Each goes to its bus's gain: effects and ambience through a compressor that keeps many sounds at once
 // from clipping, music and the interface around it, so a fight never squeezes a click. The page's voices share the
 // same audio context. While the page is hidden the context is suspended, unless voice chat shares it: then only the
-// world's sounds fall silent.
+// world's sounds fall silent. The volume over everything and each bus's start silent and move only through `ease`,
+// over the seconds the packet gives, so the world's sound never snaps on.
 
 import type { MusicPlan } from "../core/sound/music.ts";
-import { BUSES, MOVE_FIELDS, START_FIELDS, type SoundPacket, type SoundSink } from "../core/sound/packet.ts";
+import { ease } from "../core/sound/ease.ts";
+import { BUSES, HIDE_SECONDS, MOVE_FIELDS, SHOW_SECONDS, START_FIELDS, type SoundPacket, type SoundSink } from "../core/sound/packet.ts";
 
 /** Flags of a start (client/core/sound/mixer.ts). */
 const FLAT = 1;
@@ -57,9 +59,9 @@ export class SoundIo implements SoundSink {
     squeeze.ratio.value = 8;
     squeeze.attack.value = 0.003;
     squeeze.release.value = 0.15;
-    this.bus = ctx.createGain();
+    this.bus = new GainNode(ctx, { gain: 0 });
     this.bus.connect(ctx.destination);
-    for (let b = 0; b < BUSES; b++) this.buses.push(new GainNode(ctx));
+    for (let b = 0; b < BUSES; b++) this.buses.push(new GainNode(ctx, { gain: 0 }));
     // Effects and ambience share the compressor; music and the interface pass round it.
     this.buses[0]!.connect(squeeze);
     this.buses[1]!.connect(squeeze);
@@ -69,10 +71,15 @@ export class SoundIo implements SoundSink {
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", () => {
         this.synced = false;
-        if (document.hidden && !this.voiced) void ctx.suspend();
-        // The next frame's packet brings the volume back.
-        else if (document.hidden) this.bus!.gain.setTargetAtTime(0, ctx.currentTime, GLIDE);
-        else if (this.resumed) void ctx.resume();
+        // Hidden, the world's sounds fall silent and then the context is suspended, unless voice chat shares it. Shown,
+        // the context runs again and they come back up.
+        if (document.hidden) {
+          ease(this.bus!.gain, 0, HIDE_SECONDS, ctx.currentTime);
+          if (!this.voiced) setTimeout(() => void (document.hidden && ctx.suspend()), HIDE_SECONDS * 1000);
+        } else {
+          if (this.resumed) void ctx.resume();
+          ease(this.bus!.gain, this.volume, SHOW_SECONDS, ctx.currentTime);
+        }
       });
     }
     return ctx;
@@ -106,8 +113,11 @@ export class SoundIo implements SoundSink {
 
   /** Whether the viewer has touched the page, so the context may play when it is shown again. */
   private resumed = false;
-  /** Whether the device holds the volumes and the ear the last packet gave; a packet sets them only when they change. */
+  /** Whether the device holds the ear the last packet gave, and the volumes; a packet sets them only when they change. */
   private synced = false;
+  private mixed = false;
+  /** The volume over everything the last packet gave, which a tab shown again comes back up to. */
+  private volume = 0;
 
   get running(): boolean {
     return this.ctx?.state === "running";
@@ -125,9 +135,10 @@ export class SoundIo implements SoundSink {
     for (const b of p.unloads) this.buffers.delete(b);
     const all = !this.synced;
     this.synced = true;
-    if (p.mixed || all) {
-      this.bus!.gain.setTargetAtTime(p.volume, now, GLIDE);
-      for (let b = 0; b < BUSES; b++) this.buses[b]!.gain.setTargetAtTime(p.buses[b]!, now, GLIDE);
+    if (p.mixed || !this.mixed) {
+      this.mixed = true;
+      ease(this.bus!.gain, (this.volume = p.volume), p.volumeSeconds, now);
+      for (let b = 0; b < BUSES; b++) ease(this.buses[b]!.gain, p.buses[b]!, p.busSeconds[b]!, now);
     }
     if (p.music) this.music(ctx, p.music, now);
     if (p.turned || all) this.turn(ctx.listener, p.ear, now);
