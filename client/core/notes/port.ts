@@ -29,12 +29,19 @@ export interface NotePort {
   heap(): number;
   /** Long tasks the browser reported since the last call: how many in `out[0]` and their ms in `out[1]`. */
   longTasks(out: Float64Array): void;
-  /** Times the GPU while `on`; the ms of the latest frame whose time came back since the last call, -1 for none. */
-  gpu(on: boolean): number;
+  /**
+   * Times the GPU: `mode` 0 not, 1 the whole frame, 2 each pass (client/core/passes.ts PASSES). Fills `out` with the ms
+   * of the latest frame whose times came back since the last call, the whole in `out[0]` or a pass each, and returns
+   * whether one came.
+   */
+  gpu(mode: number, out: Float64Array): boolean;
   /** GL calls the shell made for the latest frame. */
   glDraws(): number;
-  /** The browser, the card and the textures' format. */
-  page(): { browser: string; card: string; format: string };
+  /**
+   * The browser, the card, the textures' format, and the display as a number that changes where the page moves to
+   * another screen (its size and pixel ratio), 0 where the browser does not say.
+   */
+  page(): { browser: string; card: string; format: string; display: number };
   get(path: string): Promise<Answer>;
   /** One multipart POST: text fields, then pictures' bytes by field name, each as a JPEG. */
   post(path: string, fields: readonly (readonly [string, string])[], files: readonly (readonly [string, unknown])[]): Promise<Answer>;

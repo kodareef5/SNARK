@@ -42,6 +42,7 @@ import { MODE_GHOST } from "../../shared/sim/character.ts";
 import { offsetForHour } from "../../shared/sim/clock.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
+import { SETTLE_MS } from "../../client/core/bench-run.ts";
 import { PASSES, type Effect } from "../../client/core/passes.ts";
 import { startServer } from "../../server/main.ts";
 import { resolveNodes, writeMap } from "../../shared/world/mapfile.ts";
@@ -339,7 +340,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
       for (const r of mine) {
         const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}${r.view && LOOKS[r.view] ? `&still&look=${r.view}` : ""}`;
         let timer: ReturnType<typeof setTimeout> | undefined;
-        const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), 150000 * (r.cpu ?? 1)))));
+        const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), (SETTLE_MS + 120000) * (r.cpu ?? 1)))));
         const pixels = r.view ? [`--window-size=${(r.window ?? [1920, 1080]).join(",")}`, `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
         // The world's own hour for every other run.
@@ -450,6 +451,30 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
   }
 }
 
+/**
+ * Each run timed on the page's clock against its twin timed by query: the same view, so the same scene, which their draws
+ * and triangles over the turn hold to within AGREE. A pair that is not was measured on two scenes (a run began while the
+ * map still came: 710 draws and 2.40 M triangles on the clock against 580 and 1.79 M by query); each pair's line, and the
+ * names of those that do not agree.
+ */
+export function agreement(reports: Map<string, Record<string, any>[]>): { lines: string[]; apart: string[] } {
+  const lines: string[] = [], apart: string[] = [];
+  for (const [name, clocked] of reports) {
+    if (!name.includes(", on the page's clock")) continue;
+    const queried = reports.get(name.replace(", on the page's clock", ""));
+    if (!queried || !clocked[0]?.turn || !queried[0]?.turn) continue;
+    const of = (list: Record<string, any>[], k: string): number => median(list.map((r) => r.turn[k] as number));
+    const draws = [of(queried, "draws"), of(clocked, "draws")], triangles = [of(queried, "triangles"), of(clocked, "triangles")];
+    const off = Math.max(Math.abs(draws[1]! - draws[0]!) / draws[0]!, Math.abs(triangles[1]! - triangles[0]!) / triangles[0]!);
+    if (!(off <= AGREE)) apart.push(name);
+    const waited = (list: Record<string, any>[]): string => list.map((r) => (r.waited ? `${r.waited.gaveUp ? "gave up waiting" : `the map whole at ${(r.waited.mapMs / 1000).toFixed(1)} s`}` : "not waited for")).join(", ");
+    lines.push(`${name.replace(", on the page's clock", "")}: by query ${draws[0]} draws, ${(triangles[0]! / 1e6).toFixed(2)} M triangles (${waited(queried)}); on the page's clock ${draws[1]}, ${(triangles[1]! / 1e6).toFixed(2)} M (${waited(clocked)}); ${(off * 100).toFixed(2)}% apart${off <= AGREE ? "" : `, more than ${AGREE * 100}%: not the same scene`}`);
+  }
+  return { lines, apart };
+}
+/** How far apart a run on the page's clock and its twin by query may draw: a share of the draws and of the triangles. */
+const AGREE = 0.01;
+
 /** The plan's runs, less the city's where there is no built map, which `say` is told. */
 function runnable(say: (line: string) => void): Run[] {
   if (existsSync(CITY_MAP)) return plan();
@@ -461,7 +486,11 @@ export async function benchGpu(section: Section, record: Row, times = 1): Promis
   if (!CHROME) return void section("GPU by pass: skipped, no Chrome (set CHROME)");
   const runs = runnable(section);
   section(`GPU by pass: ${runs.length} runs of the game's page, ${times} each, load ${loadavg()[0]!.toFixed(1)}`);
-  rows(section, record, await measure(runs, times, () => {}));
+  const reports = await measure(runs, times, () => {});
+  rows(section, record, reports);
+  const agreed = agreement(reports);
+  if (agreed.lines.length > 0) section(`The page's clock against the query, each pair's draws and triangles over the turn:\n${agreed.lines.join("\n")}`);
+  if (agreed.apart.length > 0) throw new Error(`GPU by pass: ${agreed.apart.length} runs on the page's clock drew another scene than their twins by query: ${agreed.apart.join("; ")}`);
 }
 
 if (import.meta.main) {
@@ -483,5 +512,12 @@ ${t}`), print, reports);
     const one = new Map([...reports].map(([name, list]) => [name, list.slice(k, k + 1)]));
     console.log(`\nrun ${k + 1}`);
     rows((t) => console.log(`\n${t}`), (name, value, unit) => console.log(`  ${name.padEnd(64)} ${value.toFixed(3).padStart(9)} ${unit}`), one);
+  }
+  // The runs on the page's clock and their twins by query drew the same scene, or the bench says it measured two.
+  const agreed = agreement(reports);
+  if (agreed.lines.length > 0) console.log(`\nthe page's clock against the query, over the turn\n${agreed.lines.map((l) => `  ${l}`).join("\n")}`);
+  if (agreed.apart.length > 0) {
+    console.error(`\n${agreed.apart.length} runs on the page's clock drew another scene than their twins by query: ${agreed.apart.join("; ")}`);
+    process.exit(1);
   }
 }

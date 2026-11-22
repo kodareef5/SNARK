@@ -188,7 +188,9 @@ test("in the whole client: a survivor 1.2 km off comes through the sniper's scop
   const at40 = finest();
   expect(at4).toBeLessThan(Infinity);
   expect(at40).toBeLessThanOrEqual(at4);
-  expect(at40).toBe(0);
+  // The finest level a pack states for a body this large on the screen: a stand-in pack's finest, the painted survivor's
+  // second, whose stated error is under a pixel there.
+  expect(at40).toBeLessThanOrEqual(1);
   // A ridge between them hides him: the server sends no survivor the ground hides, however a page looks (D1088).
   const hf = h.world.hf;
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) if (Math.abs(j * hf.cell - (MID - 200)) < 16) hf.heights[j * hf.nx + i] = Math.round((40 - hf.minY) / hf.stepY);

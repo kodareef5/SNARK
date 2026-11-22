@@ -15,6 +15,7 @@ import { brotliCompressSync, constants } from "node:zlib";
 import { checkoutBuild } from "../server/reports.ts";
 import { FIRST_FRAME_BUDGET, firstFrame, mapLandmarks } from "./sizes.ts";
 import { ART, SOURCE } from "./art/source.ts";
+import { pageNoteBytes, scriptNoteBytes } from "./script-notes.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 export const FIRST_FRAME_FILE = "first-frame.json";
@@ -37,6 +38,11 @@ export interface FirstFrameWeighing {
   /** The page's script by module and by folder, largest first, in estimated Brotli bytes and minified bytes. */
   modules: ModuleWeight[];
   folders: ModuleWeight[];
+  /**
+   * Bytes of comment and blank text in what the first frame fetches as text, the page and its scripts, before they are
+   * compressed (tools/script-notes.ts): 0 or near it, as the build takes it out.
+   */
+  notes?: number;
   previous: Omit<FirstFrameWeighing, "previous" | "modules" | "folders"> & { modules: ModuleWeight[] } | null;
 }
 
@@ -154,8 +160,10 @@ export function weighFirstFrame(dist: string, quick: boolean): FirstFrameWeighin
   const modules = scriptModules(dist, script.map((f) => f.replace(/\.br$/, "")), scriptBytes);
   const own = checkoutBuild(ROOT);
   const last = existsSync(join(dist, FIRST_FRAME_FILE)) ? (JSON.parse(readFileSync(join(dist, FIRST_FRAME_FILE), "utf8")) as FirstFrameWeighing) : null;
-  const previous = last ? { version: last.version, at: last.at, commit: last.commit, clean: last.clean, quick: last.quick, budget: last.budget, total: last.total, room: last.room, parts: last.parts, maps: last.maps, modules: last.modules.slice(0, 200) } : null;
-  return { version: 1, at: new Date().toISOString(), commit: own.commit ?? "unknown", clean: own.clean ?? null, quick, budget: FIRST_FRAME_BUDGET, total: first, room: FIRST_FRAME_BUDGET - first, parts, maps, modules, folders: byFolder(modules), previous };
+  const previous = last ? { version: last.version, at: last.at, commit: last.commit, clean: last.clean, quick: last.quick, budget: last.budget, total: last.total, room: last.room, parts: last.parts, maps: last.maps, modules: last.modules.slice(0, 200), ...(last.notes === undefined ? {} : { notes: last.notes }) } : null;
+  const text = (f: string): string => readFileSync(join(dist, f), "utf8");
+  const notes = pageNoteBytes(text("index.html")) + [...script.map((f) => f.replace(/\.br$/, "")), "assets-worker.js"].reduce((n, f) => n + scriptNoteBytes(text(f)), 0);
+  return { version: 1, at: new Date().toISOString(), commit: own.commit ?? "unknown", clean: own.clean ?? null, quick, budget: FIRST_FRAME_BUDGET, total: first, room: FIRST_FRAME_BUDGET - first, parts, maps, modules, folders: byFolder(modules), notes, previous };
 }
 
 /** Writes first-frame.json beside the client. */
@@ -173,6 +181,7 @@ export function firstFrameLines(w: FirstFrameWeighing, most = 30): string[] {
   const p = w.previous, out: string[] = [];
   out.push(`First frame of the build at ${w.at.slice(0, 16).replace("T", " ")} (${w.commit.slice(0, 10)}${w.clean === false ? " with changes" : ""}${w.quick ? ", a quick build: its Brotli runs about a tenth over a real build's" : ""}): ${kb(w.total)} of ${kb(w.budget)}, ${kb(w.room)} left${change(w.total, p?.total)}${p ? ` against the build at ${p.at.slice(0, 16).replace("T", " ")}` : ""}`);
   for (const part of w.parts) out.push(`  ${part.name.padEnd(40)} ${kb(part.bytes).padStart(10)}  ${((part.bytes / w.budget) * 100).toFixed(1).padStart(5)}%${change(part.bytes, p?.parts.find((x) => x.name === part.name)?.bytes)}`);
+  if (w.notes !== undefined) out.push(`  ${"comment and blank text shipped".padEnd(40)} ${`${w.notes} bytes`.padStart(10)}  before compression, in the page and its scripts${p?.notes === undefined ? "" : p.notes === w.notes ? "  same" : `  ${w.notes > p.notes ? "+" : "-"}${Math.abs(w.notes - p.notes)} bytes`}`);
   for (const m of w.maps) out.push(`  map ${m.map.padEnd(36)} ${kb(m.total).padStart(10)}  ${kb(m.room)} left${m.landmarks.length > 0 ? ` (landmarks ${m.landmarks.map((l) => `${l.name} ${kb(l.bytes)}`).join(", ")})` : ""}${change(m.total, p?.maps.find((x) => x.map === m.map)?.total)}`);
   out.push("", `The script's ${kb(w.parts[0]!.bytes)} by folder (estimated Brotli, minified):`);
   for (const f of w.folders.slice(0, 15)) out.push(`  ${f.file.padEnd(48)} ${kb(f.bytes).padStart(10)} ${kb(f.raw).padStart(10)}`);

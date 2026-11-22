@@ -13,7 +13,8 @@ export const SECOND_SLOTS = 900;
 
 /**
  * A frame's numbers after `at`, its start on the page's clock in ms. Times are ms. From the data utility's row of the
- * frame: interval, own (our code's), upload (handing the assets' bytes to the card), fetched, cached and uploaded bytes,
+ * frame: interval, own (our code's), upload (handing the assets' bytes to the card); then the app's frame of it (build)
+ * and the scene's build within that (scene), which the mode times while it is on; fetched, cached and uploaded bytes,
  * requests under way, bytes waiting for the card, the card's ledger in MB. From the frame: its draws, triangles, the sun's
  * maps' triangles and draws, cascades made and drawn, ground tiles, street tiles, uploads, draws skipped and dropped, and
  * the GL calls the shell made. From the scene: the squeeze, crowns and ambient details given, the governor's level, the
@@ -21,7 +22,7 @@ export const SECOND_SLOTS = 900;
  * corrections this frame. Then the browser's long tasks reported this frame, a picture's own cost, and FLAG_ bits.
  */
 export const CELL_FIELDS = [
-  "interval", "own", "upload", "gpu", "fetched", "cached", "uploaded", "requests", "waiting", "cardMB",
+  "interval", "own", "upload", "build", "scene", "gpu", "fetched", "cached", "uploaded", "requests", "waiting", "cardMB",
   "draws", "triangles", "castTriangles", "castDraws", "cascades", "cascadesDrawn", "tiles", "streetTiles", "uploads", "skipped", "dropped", "glDraws",
   "squeeze", "crowns", "ambient", "level", "share", "world0", "world1", "world2",
   "rttMs", "margin", "bytesIn", "snapshots", "corrections",
@@ -38,13 +39,11 @@ export const FLAG_SHOT = 1;
 export const FLAG_AFTER_SHOT = 2;
 export const FLAG_GPU = 4;
 /**
- * A frame is late where it took more than this many times the interval the page is shown at, which the ring takes as the
- * middle of its frames (a summary's) or the least of the last seconds' means (a second's row). On a 60 Hz display a frame
- * on time reads 16.6 to 16.8 ms, and a late one 20 ms or more.
+ * A frame is late where it took more than this many times the display's interval, the target the data utility finds
+ * (assets/frames.ts RefreshTarget): the fastest the page has kept up, never what the frames now come at, so a game held
+ * at half rate reads late. On a 60 Hz display a frame on time reads 16.6 to 16.8 ms, and a late one 20 ms or more.
  */
 export const LATE = 1.25;
-/** Seconds whose means the display's interval is the least of. */
-const RECENT = 8;
 
 /** Running totals the sampler keeps up to date, which a second's row holds the change of: the residency's and the stores'. */
 export const TOTAL_FIELDS = ["requests", "failed", "evicted", "cityMade", "blocksMade", "nearMade"] as const;
@@ -52,11 +51,11 @@ export const T = Object.fromEntries(TOTAL_FIELDS.map((f, i) => [f, i])) as { rea
 
 /**
  * A second's row: the second on the page's clock, its frames, their mean and worst interval, its late frames and those
- * over 33.4 and 50 ms, the display's interval as the ring then took it, the GPU's mean where timed, the survivor's place at its end, the heap in MB, long tasks and their ms, and the
+ * over 33.4 and 50 ms, the display's interval they were judged against, the GPU's mean where timed, the survivor's place at its end, the heap in MB, long tasks and their ms, and the
  * change of each TOTAL_FIELDS over it.
  */
-export const SECOND_FIELDS: readonly string[] = ["second", "frames", "meanMs", "worstMs", "late", "over33", "over50", "displayMs", "gpuMs", "x", "y", "z", "heapMB", "longTasks", "longMs", ...TOTAL_FIELDS];
-const S_SECOND = 0, S_FRAMES = 1, S_SUM = 2, S_WORST = 3, S_LATE = 4, S_OVER33 = 5, S_OVER50 = 6, S_DISPLAY = 7, S_GPU = 8, S_X = 9, S_Y = 10, S_Z = 11, S_HEAP = 12, S_LONG = 13, S_LONG_MS = 14, S_TOTALS = 15;
+export const SECOND_FIELDS: readonly string[] = ["second", "frames", "meanMs", "worstMs", "late", "over33", "over50", "targetMs", "gpuMs", "x", "y", "z", "heapMB", "longTasks", "longMs", ...TOTAL_FIELDS];
+const S_SECOND = 0, S_FRAMES = 1, S_SUM = 2, S_WORST = 3, S_LATE = 4, S_OVER33 = 5, S_OVER50 = 6, S_TARGET = 7, S_GPU = 8, S_X = 9, S_Y = 10, S_Z = 11, S_HEAP = 12, S_LONG = 13, S_LONG_MS = 14, S_TOTALS = 15;
 /** Plus the frames the GPU was timed in, which the mean is of; not exported. */
 const SCOLS = SECOND_FIELDS.length + 1, S_GPU_FRAMES = SCOLS - 1;
 
@@ -75,9 +74,8 @@ export class PerfRing {
   second = -1;
   readonly seconds = new Float64Array(SECOND_SLOTS * SCOLS);
   private readonly began = new Float64Array(TOTAL_FIELDS.length);
-  /** The interval the page is shown at, in ms, as the least of the last seconds' means; and those means. */
-  display = 16.7;
-  private readonly means = new Float64Array(RECENT).fill(Infinity);
+  /** The display's interval in ms, as the data utility's target has it for the frame about to be recorded (sample.ts). */
+  target = 1000 / 60;
 
   /** The row of the frame `back` frames before the latest, or -1 where it is not kept. */
   row(back: number): number {
@@ -100,14 +98,6 @@ export class PerfRing {
         this.seconds[r + S_SECOND] = t;
       }
       for (let i = 0; i < this.totals.length; i++) this.began[i] = this.totals[i]!;
-      // The second just ended, if it was whole, says what the display's interval is.
-      if (this.second >= 0) {
-        const last = (this.second % SECOND_SLOTS) * SCOLS, n = this.seconds[last + S_FRAMES]!;
-        if (n >= 10) this.means[this.second % RECENT] = this.seconds[last + S_SUM]! / n;
-        let least = Infinity;
-        for (let i = 0; i < RECENT; i++) if (this.means[i]! < least) least = this.means[i]!;
-        if (least < Infinity) this.display = least;
-      }
       this.second = second;
     }
     const r = (this.second % SECOND_SLOTS) * SCOLS, q = this.seconds, interval = s[C.interval]!;
@@ -116,8 +106,8 @@ export class PerfRing {
     if (interval > q[r + S_WORST]!) q[r + S_WORST] = interval;
     if (interval > 50) q[r + S_OVER50]!++;
     if (interval > 33.4) q[r + S_OVER33]!++;
-    if (interval > LATE * this.display) q[r + S_LATE]!++;
-    q[r + S_DISPLAY] = this.display;
+    if (interval > LATE * this.target) q[r + S_LATE]!++;
+    q[r + S_TARGET] = this.target;
     if (s[C.gpu]! >= 0 && (s[C.flags]! & FLAG_GPU) !== 0) {
       q[r + S_GPU]! += s[C.gpu]!;
       q[r + S_GPU_FRAMES]!++;
@@ -163,9 +153,10 @@ export class PerfRing {
   }
 
   /**
-   * The frames from `from` to `to` summed up: their intervals at the middle, which is the display's interval, the 95th and
-   * 99th, the worst and how many display intervals it took, the share late (LATE) and over 33.4 and 50 ms, leaving out the frames a picture was taken after and the next, which a picture slows; the
-   * GPU's times where they were taken; long tasks. The heap is the latest.
+   * The frames from `from` to `to` summed up: the display's interval as the target last had it, their intervals at the
+   * middle (what the game ran at), the 95th and 99th, the worst and how many display intervals it took, the share late
+   * against the display (LATE) and over 33.4 and 50 ms, leaving out the frames a picture was taken after and the next,
+   * which a picture slows; the GPU's times where they were taken; long tasks. The heap is the latest.
    */
   summary(from: number, to: number): PerfSummary {
     const times: number[] = [], gpu: number[] = [];
@@ -188,10 +179,10 @@ export class PerfRing {
     gpu.sort((a, b) => a - b);
     const at = (list: number[], q: number): number => (list.length === 0 ? 0 : round(list[Math.min(list.length - 1, Math.floor(list.length * q))]!));
     const over = (ms: number): number => (times.length === 0 ? 0 : Math.round((times.filter((t) => t > ms).length / times.length) * 10000) / 10000);
-    const middle = at(times, 0.5), worst = round(times.at(-1) ?? 0);
+    const target = this.target, worst = times.at(-1) ?? 0;
     return {
-      frames: times.length, left, middle, p95: at(times, 0.95), p99: at(times, 0.99), worst, worstIntervals: middle > 0 ? Math.round((worst / middle) * 10) / 10 : 0,
-      late: over(LATE * middle), over33: over(33.4), over50: over(50),
+      frames: times.length, left, target: round(target), middle: at(times, 0.5), p95: at(times, 0.95), p99: at(times, 0.99), worst: round(worst), worstIntervals: Math.round((worst / target) * 10) / 10,
+      late: over(LATE * target), over33: over(33.4), over50: over(50),
       gpu: { frames: gpu.length, middle: at(gpu, 0.5), p95: at(gpu, 0.95), worst: round(gpu.at(-1) ?? 0) },
       heap: round(this.heap), longTasks, longMs: round(longMs),
     };

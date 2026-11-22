@@ -304,6 +304,18 @@ class Asker {
   }
 }
 
+/** How much of a map a page has (MapLoader.progress), for a bench that waits for all of it (bench-run.ts). */
+export interface MapProgress {
+  /** Parts not yet come of those asked for after the first frame, the tops among them, and of how many. */
+  readonly left: number;
+  readonly parts: number;
+  /** Whether the statics round the body and the whole map's have been handed over, each to its last step. */
+  readonly near: boolean;
+  readonly whole: boolean;
+  /** Road and streets parts within ROAD_REACH of the body not yet held. */
+  readonly roads: number;
+}
+
 /** The page's map as its parts come, each checked against the hash its head names. */
 export class MapLoader {
   readonly staged: StagedMap;
@@ -327,6 +339,8 @@ export class MapLoader {
   private near = CITY_NEAR;
   private held: () => boolean = () => false;
   private handed = false;
+  /** Hand-overs taken to their last step: round the body, and whole. */
+  private readonly done = { near: false, whole: false };
   private where: () => Place | null = () => null;
 
   private constructor(asker: Asker, opts: LoaderOptions, at: (p: MapPart) => string, staged: StagedMap) {
@@ -449,6 +463,7 @@ export class MapLoader {
         if (!whole && this.handed) return;
         this.arrived?.(statics, whole);
         if (this.arriving) await stepped(this.arriving(statics, whole), this.pause);
+        this.done[whole ? "whole" : "near"] = true;
       })
       .catch((e: unknown) => this.asker.say(why(e)));
   }
@@ -517,8 +532,17 @@ export class MapLoader {
     return 0;
   }
 
-  /** The road and streets parts held or asked for. */
+  /** The road and streets parts held or asked for, and of them those held. */
   private readonly roads = new Set<MapPart>();
+  private readonly roadsHeld = new Set<MapPart>();
+
+  /** How much of the map has come, and been handed over: what a bench waits for before it measures (bench-run.ts). */
+  progress(): MapProgress {
+    const head = this.staged.head;
+    let roads = 0;
+    for (const p of head.parts) if ((p.kind === "road" || p.kind === "streets") && !this.roadsHeld.has(p) && this.off(p) <= ROAD_REACH) roads++;
+    return { left: this.left.length + this.under, parts: this.waited.length + head.parts.filter((p) => p.kind === "tops").length, near: this.done.near, whole: this.done.whole, roads };
+  }
 
   /**
    * For as long as the page lives, the roads' frame and the streets' lines of the sectors round the body, a look every
@@ -549,6 +573,7 @@ export class MapLoader {
       const hold = (piece: MapPiece): void => {
         if (piece.kind === "road") holdRoad(hf.road!, piece as RoadPiece);
         else holdStreets(hf.streets!, piece as StreetsPiece);
+        this.roadsHeld.add(p);
       };
       if (off <= ROAD_REACH && !this.roads.has(p)) {
         this.roads.add(p);
@@ -556,7 +581,10 @@ export class MapLoader {
           (got) => ("wait" in got ? this.roads.delete(p) : this.roads.has(p) && hold(got.value as MapPiece)),
           () => this.roads.delete(p),
         );
-      } else if (off > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE && this.roads.delete(p)) (p.kind === "road" ? hf.road : hf.streets)?.drop(p.col * 4096 + p.row);
+      } else if (off > ROAD_REACH + SECTOR_CHUNKS * CHUNK_SIZE && this.roads.delete(p)) {
+        this.roadsHeld.delete(p);
+        (p.kind === "road" ? hf.road : hf.streets)?.drop(p.col * 4096 + p.row);
+      }
     }
   }
 }

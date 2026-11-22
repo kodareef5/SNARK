@@ -143,7 +143,10 @@ export class ReportStore {
   async answer(req: Request, server: ReportServer): Promise<Response> {
     if (req.method === "GET" || req.method === "HEAD") return new Response(null, { status: 204 });
     if (req.method !== "POST") return new Response("GET or POST", { status: 405 });
-    if (Number(req.headers.get("content-length") ?? 0) > REPORT_BYTES_MOST) return text(413, `a report is ${REPORT_BYTES_MOST / 1048576} MB at most`);
+    // The length comes first, so a body nobody may send is not read: a page's FormData always says it.
+    const length = Number(req.headers.get("content-length") ?? Number.NaN);
+    if (!(length > 0)) return text(411, "a report says its length");
+    if (length > REPORT_BYTES_MOST) return text(413, `a report is ${REPORT_BYTES_MOST / 1048576} MB at most`);
     let form: Form;
     try {
       form = await req.formData();
@@ -286,6 +289,8 @@ function heading(yaw: number | undefined): string {
 
 const share = (v: number | undefined): string => (v === undefined ? "?" : `${(v * 100).toFixed(1)}%`);
 const quoted = (s: string | undefined): string => JSON.stringify(s ?? "");
+/** Frames a second at an interval of `ms`, whole: "?" for none. */
+export const rateOf = (ms: number | undefined): string => (ms !== undefined && ms > 0 ? String(Math.round(1000 / ms)) : "?");
 
 /**
  * report.md: one screen an agent reads first. The owner's typed lines are quoted as JSON strings under a line that says
@@ -330,7 +335,10 @@ export function reportText(r: KeptReport, summary: PerfSummary | null, facts: Re
   const g = r.page;
   if (g) say(`- Page: ${g.card ? quoted(g.card) : "a card unnamed"}, canvas ${g.canvas?.join("×") ?? "?"} at ${g.dpr ?? "?"} device pixels a point, tier ${g.tier ?? "?"}, governor level ${g.governor?.level ?? "?"}${g.governor?.name ? ` (${g.governor.name})` : ""}, scene share ${share(g.share)}, textures ${g.format ?? "?"}.`);
   if (summary) {
-    say(`- Frames: ${summary.frames ?? 0} timed${summary.left ? ` (${summary.left} beside a picture left out)` : ""}; middle ${fixed(summary.middle, 1)} ms, 95th ${fixed(summary.p95, 1)}, 99th ${fixed(summary.p99, 1)}, worst ${fixed(summary.worst, 1)}; late frames (past 1.25 of the middle, the display's interval) ${share(summary.late)}, the worst ${summary.worstIntervals ?? "?"} intervals; over 33 ms ${share(summary.over33)}, over 50 ${share(summary.over50)}.`);
+    const timed = `${summary.frames ?? 0} timed${summary.left ? ` (${summary.left} beside a picture left out)` : ""}`;
+    // A report from before the display's interval was kept apart judged its frames against their own middle.
+    if (summary.target === undefined) say(`- Frames: ${timed}; middle ${fixed(summary.middle, 1)} ms, 95th ${fixed(summary.p95, 1)}, 99th ${fixed(summary.p99, 1)}, worst ${fixed(summary.worst, 1)}; late frames (past 1.25 of the middle, the display's interval) ${share(summary.late)}, the worst ${summary.worstIntervals ?? "?"} intervals; over 33 ms ${share(summary.over33)}, over 50 ${share(summary.over50)}.`);
+    else say(`- Frames: ${timed}. The display shows a frame every ${fixed(summary.target, 1)} ms (${rateOf(summary.target)} Hz, the fastest the page kept up) and the game drew ${rateOf(summary.middle)} a second of them: middle ${fixed(summary.middle, 1)} ms, 95th ${fixed(summary.p95, 1)}, 99th ${fixed(summary.p99, 1)}, worst ${fixed(summary.worst, 1)}. Late, past 1.25 display intervals: ${share(summary.late)}; the worst took ${summary.worstIntervals ?? "?"} display intervals. Over 33 ms ${share(summary.over33)}, over 50 ${share(summary.over50)}.`);
     const gpu = summary.gpu, apple = /apple/i.test(g?.card ?? "");
     const caution = apple ? "; on an Apple GPU through ANGLE a timer query reads long and counts the work beside the frame's too (client/core/passes.ts), so the frame times above, on the page's clock, are the ones to trust" : "; the frame times above, on the page's clock, are the ones to trust";
     say(`- GPU: ${gpu && (gpu.frames ?? 0) > 0 ? `timer queries over ${gpu.frames} frames, middle ${fixed(gpu.middle, 1)} ms, 95th ${fixed(gpu.p95, 1)}, worst ${fixed(gpu.worst, 1)}${caution}` : "not timed (this browser has no timer queries)"}.`);

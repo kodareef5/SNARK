@@ -172,7 +172,8 @@ export function sinkWeight(ly: number, lz: number): number {
  * A vertex of a bent piece, modelled at (lx, ly, lz) with its normal and its tangent, laid along its bend as the vertex
  * texts lay it (client/core/render/bend.ts BEND_GLSL), in the piece's own frame, which its static's turn and place then
  * take to the world as any piece's: into `out` its point, its normal and its tangent (each of length 1), then how far
- * along its kerb line it is and how far across from the kerb's face.
+ * along its kerb line it is (its piece's start's station, within STATION_WRAP, and on along it, not wrapped, so it is
+ * laid across a triangle straight; what reads it wraps it) and how far across from the kerb's face.
  */
 export function bendVertex(out: Float64Array | number[], b: Bend, lx: number, ly: number, lz: number, nx: number, ny: number, nz: number, tx: number, ty: number, tz: number): void {
   const u = lx / (2 * MODEL_HALF) + 0.5;
@@ -201,7 +202,7 @@ export function bendVertex(out: Float64Array | number[], b: Bend, lx: number, ly
   out[6] = t0 / tl;
   out[7] = t1 / tl;
   out[8] = t2 / tl;
-  out[9] = wrapped(station);
+  out[9] = station;
   out[10] = z;
 }
 

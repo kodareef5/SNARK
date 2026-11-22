@@ -107,6 +107,11 @@ const CENSUS: Shape = {
     steps: { list: COUNT, most: 8 },
     stores: { list: COUNT, most: 16 },
     largest: { list: { fields: { mesh: WORD, level: I, instances: I, triangles: I, store: WORD, step: WORD } }, most: 20 },
+    // Where the frame went as the budget's panel says it (client/core/notes/budget.ts): the processor's stages in ms over
+    // the last frames, the card's passes where timer queries gave them, and the budget the scene squeezes to.
+    cpu: { fields: { frame: N, scene: N, draw: N, uploads: N } },
+    gpu: { list: { fields: { name: WORD, ms: N } }, most: 12 },
+    budget: { fields: { triangles: I, draws: I, squeeze: N, least: N, crowns: I, ambient: I, level: I } },
   },
 };
 /** A performance record (perf.json): frames and seconds as rows under their fields' names, a summary, the worst frames, a census at each picture. */
@@ -121,12 +126,15 @@ export const PERF_SHAPE: Shape = {
     seconds: { list: { list: N, most: 64 }, most: SECOND_ROWS_MOST },
     summary: {
       fields: {
-        frames: I, left: I, middle: N, p95: N, p99: N, worst: N, worstIntervals: N, late: N, over33: N, over50: N,
+        frames: I, left: I, target: N, middle: N, p95: N, p99: N, worst: N, worstIntervals: N, late: N, over33: N, over50: N,
         gpu: { fields: { frames: I, middle: N, p95: N, worst: N } }, heap: N, longTasks: I, longMs: N, ringMs: N,
       },
     },
     worst: { list: { list: N, most: 64 }, most: 20 },
     census: { list: CENSUS, most: SHOTS_MOST },
+    // The sound engine's mix (planning/workstreams/sound-engine.md), a place kept for it and written empty until it is
+    // built: voices playing and virtual, each bus's level, and the audio thread's load.
+    sound: { fields: { voices: I, virtual: I, load: N, buses: { list: { fields: { name: WORD, level: N } }, most: 16 } } },
   },
 };
 
@@ -187,12 +195,15 @@ export interface ReportShot { at?: number; w?: number; h?: number; place?: Point
 export interface ReportBuild { commit?: string; clean?: boolean; at?: string }
 
 /**
- * The summary of a performance record (PERF_SHAPE's). Frame times are ms, the middle the interval the page is shown at;
- * `late` is the share of frames past 1.25 of it, `over33` and `over50` those past 33.4 and 50 ms.
+ * The summary of a performance record (PERF_SHAPE's). Frame times are ms. `target` is the display's interval, the
+ * fastest the page kept up (client/core/assets/frames.ts RefreshTarget), and `middle` what the game ran at; `late` is the
+ * share of frames past 1.25 of the target, `worstIntervals` the worst in targets, `over33` and `over50` the share past
+ * 33.4 and 50 ms. A report from before the target judged its frames against the middle and has no `target`.
  */
 export interface PerfSummary {
   frames?: number;
   left?: number;
+  target?: number;
   middle?: number;
   p95?: number;
   p99?: number;

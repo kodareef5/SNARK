@@ -77,6 +77,8 @@ export class Settings {
   numbersBefore = false;
   /** Bug report mode (notes/notes.ts): `/notes` in chat or `notes` in the console turns it on and off, and it is kept. */
   notes = false;
+  /** The frame's budget, live (notes/budget.ts): `/budget` turns it on and off, and it is kept. */
+  budget = false;
   vitalLabels = false;
   minimapZoom = -1;
   padGlyphs = 0;
@@ -115,7 +117,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "monitor", "notes", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "monitor", "notes", "budget", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["zoomSensitivity", .5, 1.5], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
@@ -204,4 +206,11 @@ export function toggleNotes(s: Settings): string {
   s.notes = !s.notes;
   s.changed();
   return s.notes ? "bug report mode on: asking the server whether this session may take notes" : "bug report mode off";
+}
+
+/** `/budget` in chat and `budget` in the console: the frame's budget panel on or off. */
+export function toggleBudget(s: Settings): string {
+  s.budget = !s.budget;
+  s.changed();
+  return s.budget ? "frame budget on: the panel under the minimap" : "frame budget off";
 }

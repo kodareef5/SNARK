@@ -1,6 +1,6 @@
 // What the performance record (notes/ring.ts) takes of each frame, read after it is drawn from what the page already
-// keeps: the data utility's row of the frame (assets/frames.ts), the frame's packet, the scene's budget, the governor and
-// the session's counters. It reads the app's private fields by name, as the inspectors do (D900), and makes nothing.
+// keeps: the data utility's row of the frame and its display's interval (assets/frames.ts), the frame's packet, the
+// scene's budget, the governor and the session's counters. It reads the app's private fields by name, as the inspectors do (D900), and makes nothing.
 
 import type { App } from "../app.ts";
 import type { FramePacket } from "../render/packet.ts";
@@ -9,6 +9,9 @@ import { C, FLAG_GPU, T, type PerfRing } from "./ring.ts";
 
 /** What the shell and the note know of a frame that the app does not: the GPU's time (-1 for none), the GL calls, long tasks and a picture's cost. */
 export interface FrameExtra {
+  /** The app's frame (App.frame) and the scene's build within it, in ms. */
+  build: number;
+  scene: number;
   gpu: number;
   glDraws: number;
   longMs: number;
@@ -33,6 +36,8 @@ export class FrameSampler {
     s[C.interval] = app["interval"];
     s[C.own] = ours;
     s[C.upload] = upload;
+    s[C.build] = extra.build;
+    s[C.scene] = extra.scene;
     s[C.gpu] = extra.gpu;
     s[C.fetched] = k >= 0 ? f!.fetched[k]! : 0;
     s[C.cached] = k >= 0 ? f!.cached[k]! : 0;
@@ -78,6 +83,7 @@ export class FrameSampler {
     ring.place[2] = own.z;
     ring.heap = extra.heap;
     ring.longTasks += extra.longTasks;
+    if (f) ring.target = f.target.ms;
     const r = scene ? scene.assets.residency.stats : null, t = ring.totals;
     if (r) {
       t[T.requests] = r.requests;

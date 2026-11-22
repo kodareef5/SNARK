@@ -16,7 +16,7 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { checkoutBuild, reportIds, streetTypeNames, type KeptReport, type ReportState } from "../server/reports.ts";
+import { checkoutBuild, rateOf, reportIds, streetTypeNames, type KeptReport, type ReportState } from "../server/reports.ts";
 import { reportFolder, type PerfSummary } from "../shared/report.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -97,7 +97,7 @@ interface Perf {
   seconds?: number[][];
   summary?: PerfSummary;
   worst?: number[][];
-  census?: { shot: number; steps?: { name: string; draws: number; triangles: number }[]; stores?: { name: string; draws: number; triangles: number; instances: number }[]; largest?: { mesh: string; level: number; instances: number; triangles: number; store: string }[] }[];
+  census?: { shot: number; steps?: { name: string; draws: number; triangles: number }[]; stores?: { name: string; draws: number; triangles: number; instances: number }[]; largest?: { mesh: string; level: number; instances: number; triangles: number; store: string }[]; cpu?: Record<string, number>; gpu?: { name: string; ms: number }[]; budget?: { triangles?: number; draws?: number; squeeze?: number; least?: number; level?: number } }[];
 }
 
 export function perf(dir: string, id: number): Lines {
@@ -106,13 +106,16 @@ export function perf(dir: string, id: number): Lines {
   if (!folder || !p) return [`report ${id} in ${dir} has no performance record`];
   const s = p.summary ?? {}, out: Lines = [];
   const share = (v: number | undefined): string => `${((v ?? 0) * 100).toFixed(1)}%`;
-  out.push(`Report ${id}: ${s.frames ?? 0} frames timed${s.left ? `, ${s.left} beside a picture left out` : ""}. Middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 of the middle), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
+  const timed = `Report ${id}: ${s.frames ?? 0} frames timed${s.left ? `, ${s.left} beside a picture left out` : ""}.`;
+  // A record from before the display's interval was kept apart judged its frames against their own middle.
+  if (s.target === undefined) out.push(`${timed} Middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 of the middle), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
+  else out.push(`${timed} The display ${rateOf(s.target)} Hz (${ms(s.target)}, the fastest the page kept up), the game ${rateOf(s.middle)} fps of ${rateOf(s.target)}: middle ${ms(s.middle)}, 95th ${ms(s.p95)}, 99th ${ms(s.p99)}, worst ${ms(s.worst)}; late ${share(s.late)} (past 1.25 display intervals), the worst ${s.worstIntervals ?? "?"} display intervals; over 33 ms ${share(s.over33)}, over 50 ${share(s.over50)}.`);
   out.push(`GPU: ${s.gpu?.frames ? `${s.gpu.frames} frames, middle ${ms(s.gpu.middle)}, 95th ${ms(s.gpu.p95)}, worst ${ms(s.gpu.worst)}` : "not timed"}. Heap ${s.heap?.toFixed(0) ?? "?"} MB. ${s.longTasks ?? 0} long tasks, ${s.longMs?.toFixed(0) ?? 0} ms. The record cost ${s.ringMs !== undefined ? `${(s.ringMs * 1000).toFixed(1)} µs` : "?"} a frame.`);
   const f = p.fields ?? [], col = (name: string): number => f.indexOf(name);
-  const pick = ["at", "interval", "own", "upload", "gpu", "draws", "triangles", "castTriangles", "uploads", "fetched", "longMs", "level", "squeeze"];
+  const pick = ["at", "interval", "own", "build", "scene", "upload", "gpu", "draws", "triangles", "castTriangles", "uploads", "fetched", "longMs", "level", "squeeze"];
   if ((p.worst ?? []).length > 0) {
-    out.push("", "The worst frames (at is ms from the start; negative before it):", `  ${pick.map((n) => n.padStart(13)).join("")}`);
-    for (const row of p.worst!) out.push(`  ${pick.map((n) => String(col(n) >= 0 ? row[col(n)] : "").padStart(13)).join("")}`);
+    out.push("", "The worst frames (at is ms from the start; negative before it):", `  ${pick.map((n) => n.padStart(14)).join("")}`);
+    for (const row of p.worst!) out.push(`  ${pick.map((n) => String(col(n) >= 0 ? row[col(n)] : "").padStart(14)).join("")}`);
   }
   const sf = p.secondFields ?? [], sc = (name: string): number => sf.indexOf(name);
   const slow = (p.seconds ?? []).filter((r) => (r[sc("over33")] ?? 0) > 0 || (r[sc("worstMs")] ?? 0) > 50).sort((a, b) => (b[sc("worstMs")] ?? 0) - (a[sc("worstMs")] ?? 0)).slice(0, 12);
@@ -123,6 +126,8 @@ export function perf(dir: string, id: number): Lines {
   for (const c of p.census ?? []) {
     out.push("", `Picture ${c.shot + 1}'s frame: ${(c.stores ?? []).map((x) => `${x.name} ${x.draws} draws ${(x.triangles / 1000).toFixed(0)}k`).join("; ")}`);
     out.push(`  by step: ${(c.steps ?? []).map((x) => `${x.name} ${x.draws} draws ${(x.triangles / 1000).toFixed(0)}k`).join("; ")}`);
+    if (c.cpu) out.push(`  the processor: ${Object.entries(c.cpu).map(([k, v]) => `${k} ${v} ms`).join(", ")}${c.gpu?.length ? `; the card: ${c.gpu.filter((g) => g.ms > 0).map((g) => `${g.name} ${g.ms} ms`).join(", ")}` : ""}`);
+    if (c.budget?.triangles) out.push(`  the budget: ${c.budget.triangles} triangles and ${c.budget.draws} draws allowed, squeeze ${c.budget.squeeze} (least ${c.budget.least}), governor level ${c.budget.level}`);
     for (const l of (c.largest ?? []).slice(0, 5)) out.push(`  ${String(l.triangles).padStart(9)} triangles  ${l.mesh} level ${l.level}, ${l.instances} instances (${l.store})`);
   }
   return out;

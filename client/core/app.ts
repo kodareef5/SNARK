@@ -20,7 +20,7 @@ import type { FrameRing } from "./assets/frames.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, sceneWithout, tierWithout, type Effect } from "./passes.ts";
 import { RESOLUTIONS, sceneShare } from "./render/post.ts";
 import { VOLUME_MAX } from "./settings.ts";
-import { toggleMonitor, toggleNotes } from "./settings.ts";
+import { toggleBudget, toggleMonitor, toggleNotes } from "./settings.ts";
 import { MONITOR_KIT } from "./ui/monitor-kit.ts";
 import { NOTES_KIT } from "./notes-kit.ts";
 import type { NotePort } from "./notes/port.ts";
@@ -80,13 +80,11 @@ import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
 import type { SoundSink } from "./sound/packet.ts";
-import { Sounds } from "./sound/sounds.ts";
+import type { Sounds } from "./sound/sounds.ts";
 import type { SoundDecoder } from "./sound/library.ts";
 import type { MusicTrack } from "./sound/music.ts";
-import { hearSession, soundView } from "./sound/view.ts";
 import { SkyClock } from "./sky.ts";
-import { cueKey } from "../../shared/sound/cues.ts";
-import { soundCommand } from "./sound/command.ts";
+import type { SoundCode } from "./sound-late.ts";
 import { SplitPort } from "./sound/split.ts";
 
 /** Indexed by MODE_*. */
@@ -273,6 +271,9 @@ export class App {
   /** The textures the card makes (texgen/engine.ts), once their file has come: how far they have come up, which the shell draws them by. */
   texgen: import("./texgen/engine.ts").Texgen | null = null;
   private monitorAsked = false;
+  /** The world's sounds' code (sound-late.ts), which comes after the first frame, as the sounds' rows do (D1107). */
+  static late: SoundCode | null = null;
+  private soundAsked = false;
   /**
    * Bug report mode (notes/notes.ts), fetched once Settings.notes is first on, as the monitor is; null until then. And
    * what fetches the browser's part of it, which the shell sets (client/notes/port.ts).
@@ -372,7 +373,7 @@ export class App {
     };
     // Within the press that chose it, which is when a browser lets a page open another.
     this.ui.openLink = (url) => this.page?.open?.(url);
-    this.ui.local = (line) => (line === "monitor" ? toggleMonitor(this.ui.settings) : this.notesWord(line) ?? (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null));
+    this.ui.local = (line) => (line === "monitor" ? toggleMonitor(this.ui.settings) : this.notesWord(line) ?? (this.sounds ? App.late!.soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null));
     this.ui.chat.local = (line) => this.notesWord(line);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
@@ -1277,12 +1278,12 @@ export class App {
 
   /**
    * After the frame is handed to WebGL: our code took `ours` ms of it, `uploadMs` of them handing the assets' bytes to
-   * the card, on a canvas of `width` by `height` device pixels.
+   * the card and `buildMs` in frame(), on a canvas of `width` by `height` device pixels.
    */
-  drawn(packet: FramePacket, ours: number, width = 0, height = 0, uploadMs = 0): void {
+  drawn(packet: FramePacket, ours: number, width = 0, height = 0, uploadMs = 0, buildMs = 0): void {
     this.frames?.record(this.nowMs, this.interval, ours, uploadMs, this.scene?.assets.residency ?? null, this.sounds?.library ?? null);
     // A note's picture is the canvas as just drawn, and its record takes the row above (notes/notes.ts).
-    this.notes?.drawn(packet, ours, width, height, uploadMs);
+    this.notes?.drawn(packet, ours, width, height, uploadMs, buildMs);
     const budget = this.scene?.budget;
     const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
     const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
@@ -1345,6 +1346,7 @@ export class App {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
     this.interval = this.last < 0 ? 0 : dt;
     this.last = nowMs;
+    this.frames?.target.frame(this.interval);
     this.fps += (1000 / Math.max(dt, 1) - this.fps) * 0.05;
     const aspect = width / Math.max(height, 1);
     // The interface's canvas for this window: shorter for a short one, with the screen's edges kept clear.
@@ -1369,8 +1371,8 @@ export class App {
       this.monitorAsked = true;
       void import("./ui/monitor.ts").then((m) => (ui.monitor = new m.Monitor(this, MONITOR_KIT)), () => (this.monitorAsked = false));
     }
-    // Bug report mode likewise, once Settings.notes is first on (D1091).
-    if (ui.settings.notes && !this.notesAsked) {
+    // Bug report mode likewise, once Settings.notes or the budget's panel is first on (D1091, D1095).
+    if ((ui.settings.notes || ui.settings.budget) && !this.notesAsked) {
       this.notesAsked = true;
       void import("./notes/notes.ts").then((m) => (this.notes = new m.Notes(this, NOTES_KIT)), () => (this.notesAsked = false));
     }
@@ -1441,11 +1443,16 @@ export class App {
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
-    // The sound library starts once the sounds' rows have come.
-    if (this.split && !this.sounds && this.stream!.manifest.sounds) {
-      this.sounds = new Sounds(this.stream!.manifest, this.split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
-      hearSession(session, this.sounds);
-      this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
+    // The sound library starts once the sounds' rows and its code have come; the code is asked for once there is a device.
+    if (this.split && !App.late && !this.soundAsked) {
+      this.soundAsked = true;
+      void import("./sound-late.ts").catch(() => (this.soundAsked = false));
+    }
+    const code = App.late;
+    if (this.split && code && !this.sounds && this.stream!.manifest.sounds) {
+      this.sounds = new code.Sounds(this.stream!.manifest, this.split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
+      code.hearSession(session, this.sounds);
+      this.ui.hear = (key) => this.sounds?.hearUi(code.cueKey(key));
     }
     for (const event of session.predictedTrees?.present() ?? []) {
       this.scene.hideNode(event.ref, event.action === "break");
@@ -1935,7 +1942,7 @@ export class App {
     const vol = this.ui.settings;
     if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);
     if (this.sounds) this.sounds.assetsIdle = this.scene.assets.residency.flying === 0 && this.scene.assets.residency.waiting === 0;
-    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.muted ? 0 : vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session, this.sky), this.scene.characters.fallen);
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.muted ? 0 : vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, App.late!.soundView(session, this.sky), this.scene.characters.fallen);
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder, v = this.vehiclePlacement;
@@ -1991,6 +1998,7 @@ export class App {
   /** The console's and chat's words of bug report mode: `notes` turns it on and off, `perf [seconds]` keeps a record. Null for any other line. */
   private notesWord(line: string): string | null {
     if (line === "notes") return toggleNotes(this.ui.settings);
+    if (line === "budget") return toggleBudget(this.ui.settings);
     if (!/^perf(\s|$)/.test(line)) return null;
     return this.notes ? this.notes.perf(line) : "a performance record is kept in bug report mode: /notes turns it on";
   }

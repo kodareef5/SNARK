@@ -15,6 +15,8 @@
 //   /admin/log/...          the survivor log's reads (log-routes.ts)
 //   /admin/cast.html        Cast's page (client/admin/cast.ts), /admin/cast.json what Cast is doing, POST /admin/cast
 //                           an admin's action on it (cast.ts)
+//   /admin/first-frame.html what the client's first frame downloads (client/admin/first-frame.ts), and
+//                           /admin/first-frame.json the build's weighing of it, beside the client (tools/first-frame.ts)
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -49,6 +51,11 @@ const FILES: Readonly<Record<string, [string, string]>> = {
   "/admin/cast.html": ["cast.html", "text/html; charset=utf-8"],
   "/admin/cast.js": ["cast.js", "text/javascript"],
   "/admin/cast.js.map": ["cast.js.map", "application/json"],
+  "/admin/first-frame.html": ["first-frame.html", "text/html; charset=utf-8"],
+  "/admin/first-frame.js": ["first-frame.js", "text/javascript"],
+  "/admin/first-frame.js.map": ["first-frame.js.map", "application/json"],
+  // The build writes it beside the client, a folder up from the admin pages.
+  "/admin/first-frame.json": ["../first-frame.json", "application/json"],
 };
 
 export interface AdminOptions {
