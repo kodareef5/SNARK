@@ -23,7 +23,6 @@
 //     whose section its walk takes and u8 that stretch's side; then its drops.
 //   drops: where a kerb is let down flush with the road (kerbLines): u8 count, each u16 from and u16 to, stations along
 //     its kerb line in 1/4 m, and u8 its kind (DROP_CROSSING, DROP_DRIVE, DROP_RAMP).
-// A part of version 1 is version 2's with no drops.
 
 import { CHUNK_SIZE, SECTOR_CHUNKS } from "../coords.ts";
 import { PI, TAU, detAtan2, detCos, detSin, len3 } from "../math/scalar.ts";
@@ -191,9 +190,8 @@ export function decodeStreets(bytes: Uint8Array, x0: number, z0: number): Street
   const i16 = (): number => { need(2); at += 2; return v.getInt16(at - 2, true); };
   const i32 = (): number => { need(4); at += 4; return v.getInt32(at - 4, true); };
   const version = u8();
-  if (version !== STREETS_VERSION && version !== 1) throw new Error(`streets: version ${version} is not one this build reads`);
+  if (version !== STREETS_VERSION) throw new Error(`streets: version ${version} is not one this build reads`);
   const drops = (): Float64Array | null => {
-    if (version < 2) return null;
     const count = u8();
     if (count === 0) return null;
     const d = new Float64Array(count * 3);
