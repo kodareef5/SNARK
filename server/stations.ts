@@ -3,7 +3,7 @@
 // the row's kind.
 //
 // Crafting at a station is a job on the station's record (Progression.craftAt): its ingredients come from the station's
-// slots and its product lands there. A session that has a station open is told its queue (sendStation).
+// slots and its product lands there. A session that has a station open is told its queue (tellStation).
 //
 // A station that names its own fuel (StructureDef.burns, Registry.stationFuel) burns only that, at its own times; any other
 // burns every item's own fuel. Whatever must happen when a station is lit or goes out registers on onSwap.
@@ -362,15 +362,18 @@ export class Stations {
   }
 }
 
-/** What each session was last told of its open station: the station's record id, its progVersion, its out tick and its lanes. */
-const told = new WeakMap<Client, string>();
-
 /**
- * Tells the session the station it has open (OWN_STATION) when the station, its queue, the tick its fire is due to go out or
- * what its fire makes by itself changed: the station's kind and ref, that tick (0 when it does not burn), its lanes, then its
- * jobs. Kind 0 once, with ref and tick 0 and no lanes or jobs, when what it has open is no longer a station.
+ * Registers what a session is told of the station it has open (OWN_STATION). It is sent when the station, its queue, the
+ * tick its fire is due to go out or what its fire makes by itself changed: the station's kind and ref, that tick (0 when it
+ * does not burn), its lanes, then its jobs. Kind 0 once, with ref and tick 0 and no lanes or jobs, when what it has open is
+ * no longer a station. It follows the open box's slots.
  */
-export function sendStation(game: GameServer, c: Client, open: EntityRecord | null): void {
+export function tellStation(game: GameServer, records: Records): void {
+  game.own.group(OWN_STATION, (c) => sendStation(game, c, c.open === 0 ? null : (records.byPid.get(c.open) ?? null)));
+}
+
+/** `open` is the box the session has open: the open box's kinds, sent before this one, have closed one it may not have open. */
+function sendStation(game: GameServer, c: Client, open: EntityRecord | null): void {
   const def = open ? game.world.reg.defs[open.kind] : null;
   const station = open && open.at >= 0 && def?.type === "structure" && def.class === "station" ? open : null;
   const fire = station?.fire ?? null;
@@ -378,9 +381,10 @@ export function sendStation(game: GameServer, c: Client, open: EntityRecord | nu
   // The tick each lane's unit is done, worked out from the fire as it was last advanced; 0 says it waits, for what it needs
   // or for room.
   const ends = lanes.map((l) => laneEnd(game.world.reg, station!, l));
+  // What the session was last told: the station's record id, its progVersion, its out tick and its lanes.
   const now = station ? `${station.pid}:${station.progVersion}:${fire ? fire.out : 0}:${lanes.map((l, k) => `${l.item}/${ends[k]}`).join(",")}` : "";
-  if (now === (told.get(c) ?? "")) return;
-  told.set(c, now);
+  if (now === ((c.sent[OWN_STATION] as string | undefined) ?? "")) return;
+  c.sent[OWN_STATION] = now;
   const w = game.beginOwn(OWN_STATION);
   w.u16(station ? station.kind : 0);
   w.u32(station ? station.at : 0);

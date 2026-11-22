@@ -4,10 +4,14 @@
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 import type { Rules } from "./settings/rules.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { MAX_TRIBE_NAME } from "../shared/net/protocol.ts";
+import { MAX_TRIBE_NAME, OWN_TRIBE } from "../shared/net/protocol.ts";
 import { NAME_UNCLEAR, meant } from "./names.ts";
+import type { GameServer } from "./game.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
+
+/** The count is one byte on the wire. A larger tribe sends only its first members. */
+const MAX_MEMBERS_SENT = 255;
 
 /** 1 is reserved for an admin rank. */
 export const RANK_MEMBER = 0;
@@ -71,6 +75,39 @@ export class Tribes {
     this.world = world;
     this.records = records;
     this.survivor = world.reg.index.get("core:survivor") ?? 0;
+  }
+
+  /**
+   * Registers what a session is told of its tribe and of an invitation to one (OWN_TRIBE). It is sent whenever any tribe
+   * changes, a session comes or goes, or the invitation it was shown expires. `online` says whether a member is connected.
+   */
+  tell(game: GameServer, online: (pid: number) => boolean): void {
+    game.own.group(OWN_TRIBE, (c, rec) => {
+      // The version it was sent, and the tick the invitation it was shown expires, or 0.
+      const sent = (c.sent[OWN_TRIBE] ??= { version: -1, until: 0 }) as { version: number; until: number };
+      if (this.version === sent.version && (sent.until === 0 || this.world.tick < sent.until)) return;
+      const invite = this.inviteOf(rec);
+      const tribe = this.of(rec);
+      const w = game.beginOwn(OWN_TRIBE);
+      w.varint(rec.team);
+      w.string(tribe ? tribe.name : "");
+      if (tribe) {
+        w.u8(rec.rank);
+        const n = Math.min(tribe.members.length, MAX_MEMBERS_SENT);
+        w.u8(n);
+        for (let i = 0; i < n; i++) {
+          const pid = tribe.members[i]!;
+          w.string(this.records.byPid.get(pid)?.name ?? "");
+          w.bool(online(pid));
+          w.bool(pid === tribe.owner);
+        }
+      }
+      w.string(invite ? invite.tribe.name : "");
+      if (invite) w.string(invite.by);
+      game.endOwn(c);
+      sent.version = this.version;
+      sent.until = invite ? invite.until : 0;
+    });
   }
 
   /** Returns a REL_ value. */

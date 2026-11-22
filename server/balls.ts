@@ -6,10 +6,11 @@
 // A survivor's starter mount has an issued ball of its own, which keeps only that tame (server/mount.ts).
 
 import { rebaseTicks } from "./persist/codec.ts";
-import { EVENT_BALL, S_EVENT } from "../shared/net/protocol.ts";
+import { EVENT_BALL, OWN_KEPT, S_EVENT } from "../shared/net/protocol.ts";
 import { KEEP_REACH, LOOSE_REACH } from "../shared/sim/balls.ts";
 import { STAMINA_UNITS, stanceEye } from "../shared/sim/character.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
+import type { Inventory } from "../shared/sim/items.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { HIT_NONE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
@@ -51,6 +52,29 @@ const CARGO = "What it carried lies in a bag where it stood.";
 const NOT_A_BALL = "That is not a soul ball to do that with.";
 const ONLY_ITS_OWN = "This soul ball was issued with your pteranodon, and keeps only that one.";
 const ITS_OWN_BALL = "It goes only into the soul ball it was issued with.";
+
+/**
+ * Sends the tames kept in the soul balls of `inv` (OWN_KEPT), whole, if it holds one or `told` says the session was last
+ * told of one. Returns whether it holds one now. Call after the box's slots are sent.
+ */
+export function sendKept(game: GameServer, records: Records, c: Client, box: number, inv: Inventory, told: boolean): boolean {
+  const reg = game.world.reg;
+  const slots: number[] = [];
+  for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0 && reg.ballEmpty[inv.item[s]!] !== 0 && records.byPid.get(inv.refOf(s))?.stored) slots.push(s);
+  if (slots.length === 0 && !told) return false;
+  const w = game.beginOwn(OWN_KEPT);
+  w.bits(box, 1);
+  w.varint(slots.length);
+  for (const s of slots) {
+    const tame = records.byPid.get(inv.refOf(s))!;
+    w.varint(s);
+    w.u16(tame.kind);
+    w.u16(tame.genome ? tame.genome.level : 1);
+    w.string(tame.name);
+  }
+  game.endOwn(c);
+  return slots.length > 0;
+}
 
 export interface BallsContext {
   readonly world: ServerWorld;

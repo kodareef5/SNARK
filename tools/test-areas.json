@@ -184,6 +184,7 @@
   "integration/notes.test.ts": "ui/notes-play.test.ts",
   "integration/orbit-camera.test.ts": "ui/orbit-camera.test.ts",
   "integration/overhead.test.ts": "ui/overhead-play.test.ts",
+  "integration/ownstate.test.ts": "net/ownstate.test.ts",
   "integration/pairing.test.ts": "server/pairing.test.ts",
   "integration/parked-heartbeat.test.ts": "vehicles/parked-heartbeat.test.ts",
   "integration/passenger-origin.test.ts": "vehicles/passenger-origin.test.ts",

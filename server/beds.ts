@@ -4,7 +4,7 @@
 
 import type { ItemDef, StructureDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { CHOOSE_DIED, CHOOSE_TRAVEL, MAX_NAME_BYTES, RESULT_DENIED, RESULT_INVALID, RESULT_OBSTRUCTED, RESULT_OK, RESULT_STALE, RESULT_WAIT, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CHOOSE_DIED, CHOOSE_TRAVEL, MAX_NAME_BYTES, OWN_RESPAWN, OWN_SLOTS, RESULT_DENIED, RESULT_INVALID, RESULT_OBSTRUCTED, RESULT_OK, RESULT_STALE, RESULT_WAIT, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { HIT_STRUCTURE, castWorld, rayHit } from "../shared/world/ray.ts";
 import { GONE_TAKEN } from "../shared/world/structures.ts";
 import { STRUCT_NAME, STRUCT_TRAVEL } from "../shared/world/upkeep.ts";
@@ -156,7 +156,7 @@ export class Beds {
   /** The survivor of `c` rises at the place its list `list` has at `index`. Returns a RESULT code. */
   choose(c: Client, index: number, list: number): number {
     const listed = c.respawnAt[index];
-    if (list !== c.placesList || c.sentPlaces < 0) return RESULT_STALE;
+    if (list !== c.placesList || c.sent[OWN_RESPAWN] === undefined) return RESULT_STALE;
     if (!listed) return RESULT_INVALID;
     const { world, records, fixtures, bus } = this.ctx;
     const rec = records.byPid.get(c.pid);
@@ -259,9 +259,9 @@ export class Beds {
     records.dirty.add(rec.pid);
     game.kill(c);
     // Its inventory is a new one now, so the whole of it is sent again, as after a death.
-    c.sentInv = -1;
+    c.sent[OWN_SLOTS] = undefined;
     c.why = CHOOSE_TRAVEL;
-    c.sentPlaces = -1;
+    c.sent[OWN_RESPAWN] = undefined;
     this.saved.dirty = true;
     this.changes++;
     return RESULT_OK;
