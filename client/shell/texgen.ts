@@ -25,7 +25,7 @@ export class WeatherMasks {
   }
 
   /** A frame's work toward masks `side` wide, in `targetMs` of the card's time; true where it drew, so the caller binds again. */
-  step(side: number, targetMs: number, anisotropy: (target: number) => void): boolean {
+  step(side: number, targetMs: number, anisotropy: (target: number) => void, timed: boolean): boolean {
     const gl = this.gl, p = this.plan;
     if (p.ask(side)) {
       gl.deleteTexture(this.texture);
@@ -49,7 +49,7 @@ export class WeatherMasks {
     gl.useProgram(this.program);
     gl.bindVertexArray(this.vao);
     // TIME_ELAPSED_EXT.
-    const timing = this.timer !== null && this.query === null;
+    const timing = timed && this.timer !== null && this.query === null;
     if (timing) gl.beginQuery(0x88bf, (this.query = gl.createQuery()));
     for (let k = 0; k < p.count; k++) {
       const layer = p.draws[k * 4]!, row = p.draws[k * 4 + 1]!, rows = p.draws[k * 4 + 2]!, half = p.draws[k * 4 + 3]!;

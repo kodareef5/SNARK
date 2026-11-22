@@ -368,7 +368,7 @@ export const FRAME = {
   nearToZ: 39,
   /** fFacade: the height in the world of the city's flood line (facade.ts FACADE_FLOOD), and 1 where every facade atlas the tier reads has come. */
   facade: 152,
-  /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`). */
+  /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`), 2 more without their weathering (`?off=weather`, `weathered`). */
   edgesOff: 154,
   /** Its fourth: 1 more on a frame drawn without the ground's wear on asphalt and sand (`?off=road`, world-surfaces.ts `roadWorn`), 2 more without a walk's (`?off=walks`, `walkWorn`), and 4 more without a bent kerb's (`?off=kerbs`, bend.ts `bentWear`). */
   roadOff: 155,

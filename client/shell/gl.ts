@@ -8,7 +8,7 @@ import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
 import { WeatherMasks } from "./texgen.ts";
-import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
+import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_MAKING, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift } from "../core/render/post.ts";
@@ -758,9 +758,11 @@ export class GlRenderer {
       if (this.weather.texture) (gl.activeTexture(gl.TEXTURE0 + UNIT.weather), gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.weather.texture), this.anisotropy(gl.TEXTURE_2D_ARRAY));
     }
     // The weathering masks are made before anything of the frame is drawn, in a share of the card's time a frame: a
-    // millisecond where the finishes are a thousand pixels wide or more, half that below.
+    // millisecond where the finishes are a thousand pixels wide or more, half that below. A clock timing the frame times
+    // them as its first pass, and they are not timed apart.
     this.set(false, false, false);
-    if (this.weather.step(p.weatherSide, p.tier.finishes >= 1024 ? 1 : 0.5, this.anisotropyOf)) {
+    this.passes?.mark(PASS_MAKING);
+    if (this.weather.step(p.weatherSide, p.tier.finishes >= 1024 ? 1 : 0.5, this.anisotropyOf, !this.passes?.on)) {
       this.current = null;
       this.vao = this.weather.vao;
     }

@@ -93,7 +93,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   // The weathering and the edges read the packed maps, so they come up with them (uWorldReady 2 is the base colours alone).
   float risen = 2.0 - uWorldReady;
 #ifdef WORLD_WEATHER
-  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0) {
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0 && fFacade.z < 1.5) {
     vec3 a0 = albedo, o0 = orm;
     weathered(albedo, orm, vSurface, over, open, vRel, geometric, dx, dy);
     albedo = mix(a0, albedo, risen);
@@ -101,7 +101,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
   }
 #endif
 #if defined(WORLD_EDGES) || defined(WORLD_EDGE_LINE)
-  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0 && fFacade.z < 0.5) {
+  if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0 && mod(fFacade.z, 2.0) < 0.5) {
     vec3 a0 = albedo, o0 = orm, n0 = n;
     edged(albedo, orm, n, vSurface, vFace, vEdges, painted, vRel, dx, dy);
     albedo = mix(a0, albedo, risen);

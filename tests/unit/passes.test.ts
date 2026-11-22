@@ -131,4 +131,9 @@ test("effects off from the address: those in the tier, one copy a tier, and thos
   expect([p.frame[FRAME.eyes - 1], p.frame[FRAME.eyes]]).toEqual([0, 1]);
   packetWithout(p, effectsOff("edges"));
   expect(p.frame[FRAME.edgesOff]).toBe(1);
+  // The walls' weathering is the lane's second bit, so a run can turn either off alone.
+  packetWithout(p, effectsOff("weather"));
+  expect(p.frame[FRAME.edgesOff]).toBe(2);
+  packetWithout(p, effectsOff("edges,weather"));
+  expect(p.frame[FRAME.edgesOff]).toBe(3);
 });

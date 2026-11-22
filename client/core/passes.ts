@@ -12,9 +12,12 @@ import { HAND_NEAR } from "./render/hand.ts";
 import { DRAW_WATER, FRAME, ROOF_AT, type FramePacket } from "./render/packet.ts";
 import { withoutGlass } from "./render/vehicle-glass.ts";
 
-/** A frame's passes in the order the shell draws them. The dome is drawn at the start of the far see-through step; the finish (render/post.ts) last, where a frame has one. */
-export const PASSES = ["uploads", "casters", "near", "far", "dome", "far see-through", "near see-through", "body", "finish"] as const;
-export const [PASS_UPLOADS, PASS_CASTERS, PASS_NEAR, PASS_FAR, PASS_DOME, PASS_FAR_SEE, PASS_NEAR_SEE, PASS_BODY, PASS_FINISH] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+/**
+ * A frame's passes in the order the shell draws them: first the textures the card makes (texgen), the dome at the start
+ * of the far see-through step, and the finish (render/post.ts) last, where a frame has one.
+ */
+export const PASSES = ["making", "uploads", "casters", "near", "far", "dome", "far see-through", "near see-through", "body", "finish"] as const;
+export const [PASS_MAKING, PASS_UPLOADS, PASS_CASTERS, PASS_NEAR, PASS_FAR, PASS_DOME, PASS_FAR_SEE, PASS_NEAR_SEE, PASS_BODY, PASS_FINISH] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 /** The pass each of the frame's steps (packet.ts STEP_) begins. */
 export const PASS_OF_STEP: readonly number[] = [PASS_NEAR, PASS_FAR, PASS_FAR_SEE, PASS_NEAR_SEE, PASS_BODY];
 
@@ -148,9 +151,10 @@ export const BENCH_TURN_MS = 15000;
  * "glass" draws a vehicle's panes solid, as they were before they were seen through (render/vehicle-glass.ts).
  * "pools" draws the lamps' pool cards with no body's shadow in them (render/lamp.ts `poolShade`). "streets" draws the
  * ground's street and walk edges from its 2 m samples, stepped, as before they were drawn from the streets' lines
- * (render/streets.ts). "kerbs" draws the bent kerbs with none of their wear (render/bend.ts `bentWear`).
+ * (render/streets.ts). "kerbs" draws the bent kerbs with none of their wear (render/bend.ts `bentWear`). "weather" draws
+ * the walls with none of their weathering (world-surfaces.ts `weathered`), its masks made as ever.
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers", "light", "bloom", "contact", "facades", "hide", "order", "edges", "lamps", "wires", "road", "walks", "nearmesh", "reflections", "roofs", "bounce", "moon", "lamp", "glass", "pools", "streets", "kerbs", "weather"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -194,7 +198,7 @@ export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("roofs")) p.frame[ROOF_AT + 3] = 0;
   if (off.has("bounce")) p.frame[ROOF_AT + 3] = Math.min(1, p.frame[ROOF_AT + 3]!);
   if (off.has("facades")) p.frame[FRAME.facade + 1] = 0;
-  if (off.has("edges")) p.frame[FRAME.edgesOff] = 1;
+  p.frame[FRAME.edgesOff] = (off.has("edges") ? 1 : 0) + (off.has("weather") ? 2 : 0);
   p.frame[FRAME.roadOff] = (off.has("road") ? 1 : 0) + (off.has("walks") ? 2 : 0) + (off.has("streets") ? 4 : 0) + (off.has("kerbs") ? 8 : 0);
   for (let d = 0; d < p.drawCount; d++) {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
