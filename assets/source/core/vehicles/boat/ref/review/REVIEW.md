@@ -35,7 +35,7 @@ bun assets/source/core/vehicles/boat/tex/look.ts --asset core:boat_police --summ
 bun assets/source/core/vehicles/boat/tex/look.ts --asset core:boat_wreck --summary --out artifacts/boat-accepted/wreck
 bun assets/source/core/vehicles/boat/ref/occupied.ts --out artifacts/boat-accepted/occupied
 bun assets/source/core/vehicles/boat/ref/fit.ts --bounds --controls --write
-bun test tests/unit/boat-art.test.ts tests/unit/mount-controls.test.ts
+bun test tests/vehicles/boat-art.test.ts tests/creatures/mount-controls.test.ts
 ```
 
 The focused native art and helm gate passes 11 tests with 7,404 assertions. The all-livery border regression was first observed failing the mismatched rescue stripe, then passed after the correction.

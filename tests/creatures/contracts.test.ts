@@ -63,7 +63,7 @@ test("the new columns change nothing for content that does not use them", () => 
     const dragged = d.type === "species" && d.vehicle ? [0, 0, d.vehicle.spec.mass ?? 1100, 0, 0] : ({ "core:trilobite": [12, 30, 30, 1, 0], "core:brachio": [0, 1100, 26000, 0, 0], "core:carbonemys": [12, 250, 800, 0, 0], "core:rex": [0, 550, 8300, 0, 0], "core:pteranodon": [15, 149, 190, 0, 0], "core:trike": [22, 300, 6000, 0, 0], "core:spino": [0, 550, 6200, 0, 0], "core:stego": [15, 250, 5000, 0, 0], "core:raptor": [0, 0, 150, 0, 0], "core:parasaur": [0, 0, 900, 0, 0], "core:grazer": [0, 0, 220, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
-    // The blocked-out metal pick and electric prod have theirs (tests/unit/blockouts.test.ts).
+    // The blocked-out metal pick and electric prod have theirs (tests/items/blockouts.test.ts).
     if (!["core:survivor", "core:club", "core:pick", "core:pick_metal", "core:prod"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
     // Prime meat (content/corpses.ts) is what the young give in place of raw meat.
     if (d.id !== "core:meat") expect(reg.youngItem[i]).toBe(0);

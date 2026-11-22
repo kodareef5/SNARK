@@ -33,7 +33,7 @@ bun "$species/form-review.ts" "$species" var/carbonemys/after
 python3 "$species/ref/compare.py" var/carbonemys/before var/carbonemys/after var/carbonemys/form-comparison.png
 bun "$species/review.ts" var/carbonemys/views-delivery
 bun "$species/shell-review.ts" var/carbonemys/shell-review
-bun test tests/unit/gait.test.ts
+bun test tests/creatures/gait.test.ts
 ```
 
 [Pack, view, comparison and reference digests](native.json)

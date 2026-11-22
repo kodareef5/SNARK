@@ -1,7 +1,7 @@
 // A supply drop from its call to its going (server/supply.ts): called, cast from the nearest obelisk at its ignition,
 // landed as a capsule holding its table's roll, opened at its tier's level, emptied, gone; what every session is told
 // of it wherever it stands and whenever it joined; and what a stop, a kill and a module do to it. The capsule as a
-// container is in tests/integration/supply-capsule.test.ts.
+// container is in tests/items/supply-capsule.test.ts.
 
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";

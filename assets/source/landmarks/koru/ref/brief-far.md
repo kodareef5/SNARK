@@ -61,7 +61,7 @@ yacht now on medium, now on high, and an all-textured reference, at 150 to 1,500
 
 ## What must hold
 - What is walked does not change: collision, routes, doors, the sail control, and the tests that walk it
-  (`tests/unit/koru-walk.test.ts`, `tests/integration/koru.test.ts`). If you change the layout's cells or what the map
+  (`tests/world/koru-walk.test.ts`, `tests/world/koru.test.ts`). If you change the layout's cells or what the map
   carries for it, Miami must be built again in your worktree (`bun tools/mapworld/build.ts miami`, about three minutes;
   restore `assets/source/maps/miami/reports/ruins5/growth.json` afterwards, which the build rewrites).
 - What a player waits for before the first frame on Miami is about 980 KB at Brotli of 1,024 with both landmarks

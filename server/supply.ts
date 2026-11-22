@@ -36,7 +36,7 @@ import { siteFault, type FitOptions } from "./supply/ground.ts";
 import type { BookStore } from "./supply/store.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** One of the two the item program kept (tests/unit/weapons-contracts.test.ts). Its first number is a drop's id. */
+/** One of the two the item program kept (tests/combat/weapons-contracts.test.ts). Its first number is a drop's id. */
 export const DEADLINE_SUPPLY = 12;
 /** The key in a capsule record's `extra` under which it carries the id of the drop it is: two bytes, low first. */
 export const SUPPLY_TAG = 0x647270;

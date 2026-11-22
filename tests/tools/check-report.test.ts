@@ -34,50 +34,50 @@ test("a failed check says both what failed and that tests were skipped", () => {
 
 const JUNIT = `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="bun test" tests="5" assertions="2" failures="3" skipped="1" time="5.01">
-  <testsuite name="tests/unit/a.test.ts" file="tests/unit/a.test.ts" tests="4" assertions="2" failures="2" skipped="1" time="0.001" hostname="h">
-    <testcase name="one passes" classname="" time="0.000019" file="tests/unit/a.test.ts" line="2" assertions="1" />
-    <testsuite name="group &lt;x&gt; &amp; &quot;q&quot;" file="tests/unit/a.test.ts" line="3" tests="2" assertions="1" failures="2" skipped="0" time="0" hostname="h">
-      <testcase name="two fails" classname="group &lt;x&gt; &amp; &quot;q&quot;" time="0.000148" file="tests/unit/a.test.ts" line="4" assertions="1">
+  <testsuite name="tests/net/a.test.ts" file="tests/net/a.test.ts" tests="4" assertions="2" failures="2" skipped="1" time="0.001" hostname="h">
+    <testcase name="one passes" classname="" time="0.000019" file="tests/net/a.test.ts" line="2" assertions="1" />
+    <testsuite name="group &lt;x&gt; &amp; &quot;q&quot;" file="tests/net/a.test.ts" line="3" tests="2" assertions="1" failures="2" skipped="0" time="0" hostname="h">
+      <testcase name="two fails" classname="group &lt;x&gt; &amp; &quot;q&quot;" time="0.000148" file="tests/net/a.test.ts" line="4" assertions="1">
         <failure type="AssertionError" message="expect(received).toBe(expected)&#10;&#10;Expected: 3&#10;Received: 2&#10;">AssertionError: expect(received).toBe(expected)&#10;&#10;Expected: 3&#10;      at a.test.ts:4:43&#10;</failure>
       </testcase>
     </testsuite>
-    <testcase name="skipped" classname="" time="0" file="tests/unit/a.test.ts" line="7" assertions="0">
+    <testcase name="skipped" classname="" time="0" file="tests/net/a.test.ts" line="7" assertions="0">
       <skipped />
     </testcase>
   </testsuite>
-  <testsuite name="tests/unit/c.test.ts" file="tests/unit/c.test.ts" tests="1" assertions="0" failures="1" skipped="0" time="5.002" hostname="h">
-    <testcase name="times out" classname="" time="5.001694" file="tests/unit/c.test.ts" line="2" assertions="0">
+  <testsuite name="tests/net/c.test.ts" file="tests/net/c.test.ts" tests="1" assertions="0" failures="1" skipped="0" time="5.002" hostname="h">
+    <testcase name="times out" classname="" time="5.001694" file="tests/net/c.test.ts" line="2" assertions="0">
       <failure type="TimeoutError" message="test timed out" />
     </testcase>
   </testsuite>
 </testsuites>`;
 
 const OUT = `
-tests/unit/a.test.ts:
+tests/net/a.test.ts:
 4 |   test("two fails", () => { expect(1 + 1).toBe(3); });
 error: expect(received).toBe(expected)
 (fail) group <x> & "q" > two fails [0.15ms]
 
-tests/unit/b.test.ts:
+tests/net/b.test.ts:
 
 # Unhandled error between tests
 -------------------------------
 2 | throw new Error("cannot load");
 error: cannot load
-      at /repo/tests/unit/b.test.ts:2:11
+      at /repo/tests/net/b.test.ts:2:11
 -------------------------------
 
-tests/unit/c.test.ts:
+tests/net/c.test.ts:
 (fail) times out [5001.69ms]
 `;
 
 test("each failing test is one line: its file, its name and the first line of its error", () => {
   expect(failuresOf(JUNIT, OUT)).toEqual([
-    'tests/unit/a.test.ts\tgroup <x> & "q" > two fails\texpect(received).toBe(expected)',
-    "tests/unit/c.test.ts\ttimes out\ttest timed out",
-    "tests/unit/b.test.ts\t(outside a test)\tcannot load",
+    'tests/net/a.test.ts\tgroup <x> & "q" > two fails\texpect(received).toBe(expected)',
+    "tests/net/c.test.ts\ttimes out\ttest timed out",
+    "tests/net/b.test.ts\t(outside a test)\tcannot load",
   ]);
   expect(failuresOf(JUNIT.replace(/<failure[^]*?<\/failure>|<failure[^>]*\/>/g, ""), "")).toEqual([]);
   // A run that left no report still names the file that would not load.
-  expect(failuresOf("", OUT)).toEqual(["tests/unit/b.test.ts\t(outside a test)\tcannot load"]);
+  expect(failuresOf("", OUT)).toEqual(["tests/net/b.test.ts\t(outside a test)\tcannot load"]);
 });

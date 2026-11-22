@@ -1,6 +1,6 @@
 # The compact's numbers and the curves of its body, in the engine's frame: metres, +Y up, +Z forward, +X the driver's
 # side (the car's left). model.py builds the meshes from them and turns them into Blender's frame at the end. The rig's
-# numbers are content/vehicles/compact-art.ts's, checked against the built pack by tests/unit/vehicle-asset.test.ts.
+# numbers are content/vehicles/compact-art.ts's, checked against the built pack by tests/vehicles/vehicle-asset.test.ts.
 
 import math
 

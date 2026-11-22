@@ -1,5 +1,5 @@
 // Numbers and words bug report mode's files take from the code the first frame waits for, as copies: they import no
-// value of it, or the build would cut that script into more pieces (D915). tests/unit/notes.test.ts holds each to its
+// value of it, or the build would cut that script into more pieces (D915). tests/ui/notes.test.ts holds each to its
 // original. What they need of its code comes to them in the kit (notes-kit.ts).
 
 /** shared/coords.ts: ticks a second, metres a chunk, chunks a sector. */

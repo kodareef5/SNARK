@@ -1,5 +1,5 @@
 // The knock-out kit in a running world: a new survivor knocks out a level 1 dodo with fists, a wooden club or a slingshot,
-// and narcoberries are picked, eaten and fed. The counts are the wiki's (ark.wiki.gg, 2026-11-15); see tests/unit/knockout.test.ts.
+// and narcoberries are picked, eaten and fed. The counts are the wiki's (ark.wiki.gg, 2026-11-15); see tests/combat/knockout.test.ts.
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";

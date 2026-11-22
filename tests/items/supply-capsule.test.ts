@@ -1,6 +1,6 @@
 // A supply drop's capsule as a container (planning/workstreams/supply.md): opened by looking at it and using it, only
 // ever taken from, gated by a rule of the game's own, gone when it is emptied or its time is up, and what a modified
-// client cannot do with one. The drops that land them are in tests/integration/supply.test.ts.
+// client cannot do with one. The drops that land them are in tests/items/supply.test.ts.
 
 import { expect, test } from "bun:test";
 import type { ClientSession } from "../../client/core/session.ts";

@@ -10,7 +10,7 @@
 //
 // Balance (shared/supply/worth.ts): a tier's target doubles from 200. A kit is about 42% of it, the prize 38%, the echo
 // 7%, the staples 13%. One line of each kit is its ballast, which `bun run supply -- fit` scales to bring the table to
-// its target (FIT, content/supply/fit.ts); tests/unit/supply-starter.test.ts holds every table to it.
+// its target (FIT, content/supply/fit.ts); tests/items/supply-starter.test.ts holds every table to it.
 
 import { BOOK_FORMAT, tableKey, type ClassDoc, type EntryDoc, type FutureDoc, type SetDoc, type SupplyBook, type TableDoc, type TierDoc } from "../../shared/supply/book.ts";
 import { FIT } from "./fit.ts";

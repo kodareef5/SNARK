@@ -82,7 +82,7 @@ test("the building set: every piece in every material it is made in, with the re
 });
 
 test("each piece is drawn as its boxes", () => {
-  // The content's grey boxes alone: a tier's art takes their place in the core pack, which tests/unit/art.test.ts proves.
+  // The content's grey boxes alone: a tier's art takes their place in the core pack, which tests/assets/art.test.ts proves.
   const pack = parsePack(buildPack(grayboxMeshes(CORE_CONTENT), defaultPalette()));
   const tris = (id: string): number => pack.header.meshes[pack.meshIndex.get(id)!]!.lods[0]!.indexCount / 3;
   expect([tris("core:wall_wood"), tris("core:doorframe_wood"), tris("core:windowframe_stone"), tris("core:stairs_metal")]).toEqual([12, 36, 48, 120]);

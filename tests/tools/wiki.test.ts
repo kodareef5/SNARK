@@ -52,7 +52,7 @@ test("the wiki is of what a player meets: no scenery, no target, no creature wit
 
 test("a creature's page has its stats by level, the wiki's taming table, its drops and the line that spawns one", () => {
   const dodo = byId("core:dodo");
-  // tests/unit/dodo.test.ts holds the same numbers to ARK's wiki.
+  // tests/creatures/dodo.test.ts holds the same numbers to ARK's wiki.
   expect(dodo.tables.find((t) => t.title === "Taming")!.rows).toEqual([
     ["1", "30", "1 min 40 s", "6 in 48 s", "0", "0"],
     ["30", "82", "2 min 45 s", "15 in 2 min", "0", "0"],

@@ -1,4 +1,4 @@
-// The device probe's page on the harness, for tests/integration/device*.test.ts: a browser and a phone's GPU made of
+// The device probe's page on the harness, for tests/tools/device*.test.ts: a browser and a phone's GPU made of
 // numbers, a whole client the probe watches, and a run of virtual time until the probe says it is done.
 
 import { App } from "../../client/core/app.ts";

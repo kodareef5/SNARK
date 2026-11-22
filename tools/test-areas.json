@@ -342,7 +342,6 @@
   "unit/character.test.ts": "survivor/character.test.ts",
   "unit/chat-commands.test.ts": "ui/chat-commands.test.ts",
   "unit/check-baseline.test.ts": "tools/check-baseline.test.ts",
-  "unit/check-changed.test.ts": "tools/check-changed.test.ts",
   "unit/check-report.test.ts": "tools/check-report.test.ts",
   "unit/cityblocks.test.ts": "render/cityblocks.test.ts",
   "unit/codec.test.ts": "net/codec.test.ts",

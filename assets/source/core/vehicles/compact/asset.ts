@@ -1,5 +1,5 @@
 // The compact: an original two-door coupe, the first of the vehicles. Its measured contract (bones, pivots, sockets,
-// the closed envelope) is content/vehicles/compact-art.ts, described in ref/DESIGN.md; tests/unit/vehicle-asset.test.ts holds the built
+// the closed envelope) is content/vehicles/compact-art.ts, described in ref/DESIGN.md; tests/vehicles/vehicle-asset.test.ts holds the built
 // pack to it. `bun run art -- core:compact` builds it.
 
 import { COMPACT_ART as COMPACT } from "../../../../../content/vehicles/compact-art.ts";

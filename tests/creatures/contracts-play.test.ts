@@ -30,7 +30,7 @@ test("a wild creature is not picked up from out of reach nor ordered, a creature
   ada.command(CMD_ORDER, (w) => (w.u32(e), w.u8(ORDER_WANDER)));
   ada.command(CMD_ORDER, (w) => (w.u32(e), w.u8(ORDER_ATTACK), w.u32(e)));
   h.run(400);
-  // Carrying and the orders are built (tests/integration/carry.test.ts, orders.test.ts): a wild dodo four metres off is out of reach, and nobody's to order.
+  // Carrying and the orders are built (tests/creatures/carry.test.ts, orders.test.ts): a wild dodo four metres off is out of reach, and nobody's to order.
   expect(codes).toEqual([RESULT_FAR, RESULT_INVALID, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NOT_YOURS]);
   expect([h.host.corpses, h.host.carry, h.host.feces, h.host.eggs, h.host.overhead, h.host.hurt].every((m) => m !== undefined)).toBe(true);
 
@@ -68,7 +68,7 @@ test("the grab codes are refused until their package builds them, a wild flyer i
   ada.command(CMD_ORDER, (w) => (w.u32(e), w.u8(ORDER_LAND)));
   ada.command(CMD_ORDER, (w) => (w.u32(ORDER_ALL), w.u8(ORDER_LAND)));
   h.run(1500);
-  // Landing is built (tests/integration/flyers.test.ts): a whistle with nothing of hers in earshot lands nothing.
+  // Landing is built (tests/creatures/flyers.test.ts): a whistle with nothing of hers in earshot lands nothing.
   expect(codes).toEqual([RESULT_INVALID, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK]);
   const ents = h.world.ents;
   expect([ents.mode[e], (ents.flags[e]! & F_GROUNDED) !== 0]).toEqual([MODE_WALK, true]);

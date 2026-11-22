@@ -247,7 +247,7 @@ test("an arrow that misses stands where it landed about half the time, is seen b
 
 /**
  * The core content with every weapon's cone and kick taken off, so a test of the rewind or the lead is not one of the cone
- * as well (that is tests/integration/accuracy.test.ts).
+ * as well (that is tests/combat/accuracy.test.ts).
  */
 const steady = compileContent(CORE_CONTENT.map((d): Def => (d.type === "item" && (d as ItemDef).weapon?.spread ? { ...(d as ItemDef), weapon: { ...(d as ItemDef).weapon!, spread: undefined, recoil: undefined } } : d))).registry!;
 

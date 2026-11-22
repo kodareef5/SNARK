@@ -1,7 +1,7 @@
 // The performance record of bug report mode (planning/workstreams/bug-notes.md): about forty numbers for each of the last
 // FRAME_SLOTS frames, about a minute, and a row for each of the last SECOND_SLOTS seconds with where the survivor was, so
 // a slow second maps to a place. The sampler (notes/sample.ts) fills `sample`, `place`, `totals` and `heap` after each
-// frame is drawn and `record` writes them in place: nothing is made a frame, as tests/unit/notes.test.ts holds. A frame's
+// frame is drawn and `record` writes them in place: nothing is made a frame, as tests/ui/notes.test.ts holds. A frame's
 // place among these rows is its place among the data utility's (assets/frames.ts FrameRing): both write a row after the
 // same draw, so `row(back)` names the same frame in each. Only a page in bug report mode keeps it.
 

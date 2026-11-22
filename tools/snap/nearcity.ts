@@ -5,7 +5,7 @@
 //
 //   bun tools/snap/nearcity.ts <out folder> [--tier high] [--size 960x540]
 //
-// tests/unit/nearcity.slow.test.ts holds the shots to what it counts.
+// tests/render/nearcity.slow.test.ts holds the shots to what it counts.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

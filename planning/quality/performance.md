@@ -254,7 +254,7 @@ held whole and the far city drawing the rest, at noon (`bun tools/bench/census.t
 var/maps/miami.snmap`, C): the near city's draws, its draws into the sun's maps (a
 caster once a cascade), and the far city's draws and triangles. Medium with the touch
 rule is at the iPhone's 390 by 669, the others at 1,920 by 1,080; trees and rocks are
-left out. `tests/unit/census.slow.test.ts` pins the first three views on a slice of
+left out. `tests/render/census.slow.test.ts` pins the first three views on a slice of
 these statics with grey boxes for meshes, whose near columns are the built map's.
 
 | View | Low poly | Medium, touch | Medium | High | Ultra |

@@ -256,7 +256,7 @@ function centred(id: string, walked: { boxes?: ShapeBox[]; hulls?: HullDef[] }, 
 /**
  * The street's edge, 8 m along a road (x along it, z away from it, the curb's face at 0, the ground at 0): a 2.4 m walk at
  * curb height, 0.15 m, its curb's 0.3 m top pale, and with a gutter, a dark strip 0.45 m wide on the road's edge. A body
- * steps up it and a wheel rolls over it (tests/unit/vehicle-chassis-course.test.ts crosses such a kerb); the gutter is
+ * steps up it and a wheel rolls over it (tests/vehicles/vehicle-chassis-course.test.ts crosses such a kerb); the gutter is
  * drawn only.
  */
 function street(): Record<"zwalk8" | "zwalk8g" | "zcurbramp" | "zcurbrampl" | "zdrain" | "zutility", ShapeDef> {

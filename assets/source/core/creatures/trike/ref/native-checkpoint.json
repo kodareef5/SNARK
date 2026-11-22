@@ -625,10 +625,10 @@
     "content_types": "pass",
     "support_regression": {
       "test_files": [
-        "tests/unit/ragdoll.test.ts",
-        "tests/unit/trike.test.ts",
-        "tests/unit/stego.test.ts",
-        "tests/integration/dinosaur-native.test.ts"
+        "tests/creatures/ragdoll.test.ts",
+        "tests/creatures/trike.test.ts",
+        "tests/creatures/stego.test.ts",
+        "tests/creatures/dinosaur-native.test.ts"
       ],
       "tests": 52,
       "assertions": 8635,

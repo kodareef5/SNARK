@@ -321,7 +321,7 @@ function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], f
     const where = `${mesh.id} level ${l}`;
     if (l > 0 && stated?.[l - 1] !== undefined) {
       facts.measured = surfaceError(mesh.lods[0]!, lod);
-      // What the grid finds is what trying every triangle finds. tests/unit/error.test.ts tries every pack's levels but
+      // What the grid finds is what trying every triangle finds. tests/assets/error.test.ts tries every pack's levels but
       // these, which are many and slow.
       const finer = mesh.lods[l - 1]!;
       if (finer.indices.length / 3 <= SLOW_MOST && surfaceError(finer, lod) !== slowSurfaceError(finer, lod)) faults.push(`${where}: its distance from level ${l - 1} found through the grid is not what trying every triangle gives (tools/pack/error.ts)`);

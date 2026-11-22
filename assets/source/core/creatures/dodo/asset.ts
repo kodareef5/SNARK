@@ -136,7 +136,7 @@ export default {
   // The death clip has it down on its side by frame 27 and still from 30, so it goes limp at 27, as it comes to rest,
   // and the ragdoll lays it on whatever ground is there. The body and the head are its bodies, as the sample dinosaurs'
   // are without their neck: the neck, wings, legs and tail stay as the clip left them against the body. Measured on
-  // tests/unit/ragdoll.test.ts's slope and floor from 64 yaws: like this it sleeps within 1.2 seconds on the slope, nine
+  // tests/creatures/ragdoll.test.ts's slope and floor from 64 yaws: like this it sleeps within 1.2 seconds on the slope, nine
   // in ten within 0.9, and within 1 on the floor. With the neck or the tail as a body too it sleeps within 2.3; with the
   // legs it can shiver past 10.
   ragdoll: {

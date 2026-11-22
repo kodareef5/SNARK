@@ -15,7 +15,7 @@ import { Harness } from "../fixtures/net.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
-// What is blocked out is made at stations too: tests/unit/blockouts.test.ts holds where and of what.
+// What is blocked out is made at stations too: tests/items/blockouts.test.ts holds where and of what.
 const BLOCKED = new Set(BLOCKED_OUT);
 
 const reg = coreRegistry();
@@ -101,7 +101,7 @@ test("each of the mortar's moved recipes is refused in the hand and made at the 
 });
 
 // The smithy's: the guns and their rounds, the grenade, the tranquilizer dart, the scope and the silencer (DEV136, removed); chitin
-// and flak armor; the metal building pieces. Its own numbers are S2's (tests/integration/fabricator.test.ts).
+// and flak armor; the metal building pieces. Its own numbers are S2's (tests/items/fabricator.test.ts).
 const SMITHY: Readonly<Record<string, Made>> = {
   // Crossbow, Simple Pistol, Longneck Rifle, Shotgun: no page gives a crafting time (DEV135).
   crossbow: ["smithy", "7 ingot, 10 wood, 35 fiber", 10, 36, 1, 25, 12],
@@ -156,7 +156,7 @@ test("each of the smithy's moved recipes is refused in the hand and made at the 
   makesEach("smithy", Object.keys(SMITHY));
 });
 
-// The fabricator's (DEV136, removed). Its own numbers are S2's (tests/integration/fabricator.test.ts).
+// The fabricator's (DEV136, removed). Its own numbers are S2's (tests/items/fabricator.test.ts).
 const FABRICATOR: Readonly<Record<string, Made>> = {
   // Shocking Tranquilizer Dart: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart; bio toxin does not exist (DEV139).
   dart_shock: ["fabricator", "6 narcotic, 4 ingot, 4 gunpowder", 1, 0.2, 1, 96, 30],
@@ -173,7 +173,7 @@ test("the fabricator makes the shock dart, the flashlight and laser, the poison 
   for (const name of Object.keys(FABRICATOR)) expect([name, made(name)]).toEqual([name, FABRICATOR[name]!]);
   // What it makes, lit or out, includes these, S2's materials and SNARK's original vehicle assemblies.
   const makes = recipes;
-  // The soul ball and its vault are ARK's Cryopod and Cryofridge, whose numbers tests/integration/balls.test.ts holds.
+  // The soul ball and its vault are ARK's Cryopod and Cryofridge, whose numbers tests/creatures/balls.test.ts holds.
   const expected = [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly", "boat_assembly", "soul_ball", "piece_soul_vault",
     ...["hat", "shirt", "gloves", "pants", "boots"].map(piece => `meridian_${piece}`)].sort();
   expect([makes("fabricator"), makes("fabricator_lit")]).toEqual([expected, expected]);

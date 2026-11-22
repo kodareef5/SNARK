@@ -15,7 +15,7 @@ import { basedNear } from "./supply/ground.ts";
 import { foundVehicle, VEHICLE_ORIGIN, type VehicleStart } from "./vehicle-service.ts";
 import type { ServerWorld } from "./world.ts";
 
-/** 12 and 13 are kept for the item program and 14 for W5 (tests/unit/weapons-contracts.test.ts). */
+/** 12 and 13 are kept for the item program and 14 for W5 (tests/combat/weapons-contracts.test.ts). */
 export const DEADLINE_CAR = 15;
 /** Seconds between a place's checks. */
 export const CAR_CHECK_SECONDS = 600;

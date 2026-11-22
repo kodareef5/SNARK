@@ -1,5 +1,5 @@
 // Flyers for tests and benches: a coast with a city on it, a flock of wild pteranodons, and a watch over them every tick
-// (tests/integration/flyers.test.ts, tools/bench/flyers.ts).
+// (tests/creatures/flyers.test.ts, tools/bench/flyers.ts).
 
 import { openSky } from "../../server/behavior.ts";
 import type { HostOptions } from "../../server/host.ts";

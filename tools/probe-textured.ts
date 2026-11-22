@@ -119,7 +119,7 @@ function bcCards(): Card[] {
   const cards: Card[] = [];
   const bc7 = (pictures: Uint8Array[]): Uint8Array[] => pictures.map((p, k) => decodeBc7(p, 1 << k, 1 << k));
   for (let mode = 0; mode < 8; mode++) {
-    // The 64-pixel picture holds the blocks tests/unit/bc.test.ts pins the decoding of.
+    // The 64-pixel picture holds the blocks tests/assets/bc.test.ts pins the decoding of.
     const pictures = sizes(256).map((size) => randomBc7(mode, blocksOf(size), size === 64 ? 100 + mode : 200 + mode * 16 + Math.log2(size)));
     const kinds = pictures.flatMap((p) => Array.from({ length: p.length / 16 }, (_, b) => `mode ${bc7Mode(p, b * 16)}`));
     cards.push({ name: `BC7 mode ${mode}, random bits`, role: "mro", pictures, want: bc7(pictures), slack: 0, kinds, block: 4 });

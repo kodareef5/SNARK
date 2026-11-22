@@ -25,7 +25,7 @@ import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
-// What is blocked out is made at stations too: tests/unit/blockouts.test.ts holds where and of what.
+// What is blocked out is made at stations too: tests/items/blockouts.test.ts holds where and of what.
 const BLOCKED = new Set(BLOCKED_OUT);
 
 const reg = compileContent(CORE_CONTENT).registry!;
@@ -34,8 +34,8 @@ const id = (r: Registry, name: string): number => r.index.get(name.includes(":")
 test("the fields: a station's own fuel is built, the forge's (S1) are built, and the rest are stubs that wait for stations, each its project's", () => {
   expect(FIELDS.structure.burns.waits).toBeUndefined();
   // S1 built cooks, dry, burnsInto and craft.fired (the refining forge); S2 `powered` (server/power.ts,
-  // tests/integration/fabricator.test.ts); S3 `keeps` on structures and `cooks: false` too (server/preserve.ts, the hearth;
-  // tests/integration/preserving.test.ts).
+  // tests/items/fabricator.test.ts); S3 `keeps` on structures and `cooks: false` too (server/preserve.ts, the hearth;
+  // tests/items/preserving.test.ts).
   expect([FIELDS.structure.cooks.waits, FIELDS.structure.keeps.waits, FIELDS.structure.powered.waits, FIELDS.structure.dry.waits]).toEqual([undefined, undefined, undefined, undefined]);
   expect([FIELDS.item.burnsInto.waits, FIELDS.item.craft.stubs]).toEqual([undefined, undefined]);
   for (const f of ["burns", "cooks", "keeps", "powered", "dry"]) expect([f, classRow("structure/station")!.may.includes(f)]).toEqual([f, true]);
@@ -56,7 +56,7 @@ test("the eight resources are plain items at their pages' weights and stacks, an
   const yielded = new Set(CORE_CONTENT.flatMap((d) => (d.type === "node" ? d.yields.map((y) => y.item) : [])));
   expect([plain.filter((n) => reg.recipeOf[id(reg, n)] !== null), plain.filter((n) => yielded.has(`core:${n}`))]).toEqual([["gasoline", "polymer", "electronics"], ["oil", "crystal", "obsidian", "silica_pearls"]]);
   const paste = CORE_CONTENT.find((d) => d.id === "core:paste" && d.type === "item") as ItemDef;
-  // S0 moved it unchanged; S6 made it at the mortar and pestle at ARK's numbers (tests/unit/ark-stations.test.ts).
+  // S0 moved it unchanged; S6 made it at the mortar and pestle at ARK's numbers (tests/items/ark-stations.test.ts).
   expect(paste).toMatchObject({ class: "resource", stack: 100, weight: 0.01, label: "cementing paste", color: 15, craft: { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 1, xp: 4.8, at: "core:mortar" } });
   expect(RESOURCES.filter((d) => d.id === "core:paste" || d.id === "core:engram-paste").map((d) => d.type).sort()).toEqual(["engram", "item"]);
   expect(BUILDING_CONTENT.some((d) => d.id.includes("paste"))).toBe(false);
@@ -89,10 +89,10 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   // Its lit kind keeps 10 times as long, Registry.keeps with it; out, it keeps as the hand does.
   expect(bin.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.structKeeps[k], reg.keeps[k], reg.powered[k], reg.dry[k]])).toEqual([[bin[0], 0, 1, 1, 0, 0], [bin[0], 0, 10, 10, 0, 0]]);
   // S1's forge: it burns every item's own fuel, is not powered, is dry and does not cook; the ingot and gasoline are fired
-  // at it, and wood leaves charcoal. Since S6 the preserving bin makes both jerkies (tests/unit/ark-stations.test.ts).
+  // at it, and wood leaves charcoal. Since S6 the preserving bin makes both jerkies (tests/items/ark-stations.test.ts).
   expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([byIndex([...both, ...bin, ...vault]), byIndex([...both, ...vault])]);
   expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"], ["core:jerky", "core:preserving_bin"], ["core:jerky_prime", "core:preserving_bin"]], [["core:wood", "core:charcoal"]]]);
-  // Sparkpowder is made at the mortar, as before, and since S6 the narcotic, cementing paste and gunpowder (tests/unit/ark-stations.test.ts).
+  // Sparkpowder is made at the mortar, as before, and since S6 the narcotic, cementing paste and gunpowder (tests/items/ark-stations.test.ts).
   expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]!).filter((n) => !BLOCKED.has(n)).sort()]).toEqual([id(reg, "mortar"), ["core:gunpowder", "core:narcotic", "core:paste", "core:sparkpowder"]]);
 });
 

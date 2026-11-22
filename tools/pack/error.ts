@@ -206,7 +206,7 @@ export const SLOW_MOST = 800;
 
 /**
  * surfaceError as it was first written: every point against every triangle. What the grid must give exactly, tried by
- * tests/unit/error.test.ts and, on node packs, by `bun run art -- <id> --check`.
+ * tests/assets/error.test.ts and, on node packs, by `bun run art -- <id> --check`.
  */
 export function slowSurfaceError(fine: SourceLod, coarse: SourceLod): number {
   const distances = (from: SourceLod, to: SourceLod): Float64Array => {

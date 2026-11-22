@@ -6,7 +6,7 @@
 // friction and rolling resistance.
 // The server lays it as every client does, to judge blows on a body as it is drawn (shared/anim/corpse.ts), so it uses
 // only exactly rounded arithmetic and shared/math/scalar.ts's trigonometry: tools/simhash.ts's creature hash lays each
-// rig's, and JavaScriptCore and V8 must agree on it (tests/integration/determinism.test.ts).
+// rig's, and JavaScriptCore and V8 must agree on it (tests/server/determinism.test.ts).
 
 import { chunkAt, mapSizeX, mapSizeZ } from "../coords.ts";
 import { detAtan2, detCos, detSin, len3 } from "../math/scalar.ts";

@@ -357,7 +357,7 @@ test("catalogue: every setting of ARK's the research found is in it as taking ef
   const waited = new Set<string>([...CATALOG.filter((r) => r.status === "planned").map((r) => r.waits), ...CLASSES.map((r) => r.waits), ...EVENTS.map((r) => r.waits)]);
   expect(Object.keys(FEATURES).filter((f) => !waited.has(f))).toEqual([]);
   // Every live setting's name appears in some test file.
-  const tests = ["integration", "unit"].flatMap((d) => readdirSync(resolve(import.meta.dir, "..", d)).filter((f) => f.endsWith(".ts")).map((f) => readFileSync(resolve(import.meta.dir, "..", d, f), "utf8"))).join("\n");
+  const tests = [...new Bun.Glob("*/*.test.ts").scanSync(resolve(import.meta.dir, ".."))].map((f) => readFileSync(resolve(import.meta.dir, "..", f), "utf8")).join("\n");
   expect(CATALOG.filter((r) => r.status === "live" && !tests.includes(r.name)).map((r) => r.name)).toEqual([]);
   // The reference page names every setting, with a leading - for a flag. That the page is this is settings.test.ts's.
   const page = settingsPage();

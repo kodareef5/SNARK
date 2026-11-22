@@ -1,5 +1,5 @@
 // Colours the game holds or will hold, each a name and an sRGB colour: what the palette's natural tones were fitted
-// to (the first six groups), and what tests/unit/palette.test.ts holds the palette to.
+// to (the first six groups), and what tests/assets/palette.test.ts holds the palette to.
 
 type Targets = readonly (readonly [string, string])[];
 

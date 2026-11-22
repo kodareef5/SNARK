@@ -93,7 +93,7 @@ artTest("the pack carries bodies cut into slots, each vertex on one bone, and th
   }
   // A rig is the skeleton's bones at that body's rest positions, close to the skeleton's own.
   for (const rig of pack.header.rigs) {
-    // A creature's rig is a whole skeleton of its own. See tests/unit/creature.test.ts.
+    // A creature's rig is a whole skeleton of its own. See tests/creatures/creature.test.ts.
     if (rig.names) continue;
     expect(rig.skeleton).toBe("human");
     expect(rig.rest.length).toBe(HUMAN.bones * 3);

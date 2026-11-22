@@ -1,6 +1,6 @@
 // What of the game the wiki has. Every class of definition (shared/content/classes.ts) is ruled on here: a definition has
 // an entry of its own, is shown within another page, or is left out for a reason this table gives once. A class nobody
-// has ruled on, or a definition ruled to have an entry that has none, fails tests/unit/wiki.test.ts.
+// has ruled on, or a definition ruled to have an entry that has none, fails tests/tools/wiki.test.ts.
 
 import type { Def, StructureDef } from "../../shared/content/defs.ts";
 import { CLASSES, classOf } from "../../shared/content/classes.ts";

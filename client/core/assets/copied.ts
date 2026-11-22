@@ -1,7 +1,7 @@
 // What the data utility's files fetched after the first frame (inspect.ts, look.ts, requests.ts and the monitor's) take
 // of the residency's and the textures' code, as copies: a file fetched later that imported a value from the script the
 // first frame waits for would have the build cut that script into more pieces, each costing it bytes (D915).
-// tests/unit/monitor.test.ts holds each copy to its original.
+// tests/ui/monitor.test.ts holds each copy to its original.
 
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 

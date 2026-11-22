@@ -280,7 +280,7 @@ test("what a full frame leaves out is counted: draws past 4,096 and beams past s
   const view = provingView(160, 90);
   const { scene, cam, hf } = view;
   cam.yaw = 0;
-  // In one depth range a draw is one place in the frame. One in both ranges takes two (tests/unit/depth.test.ts).
+  // In one depth range a draw is one place in the frame. One in both ranges takes two (tests/render/depth.test.ts).
   scene.assets.tier = { ...scene.assets.tier, split: 0 };
   const usual = scene.build(cam, null);
   const draws = usual.drawCount;

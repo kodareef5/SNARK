@@ -41,7 +41,7 @@ Type `Ana: Scout, come here` into the mock world's terminal to talk to the chara
 ## Test it
 
 ```sh
-bun test tests/unit/grunt*.test.ts                             # the protocol, the mock world, the runtime and skills
+bun test tests/agents/grunt*.test.ts                             # the protocol, the mock world, the runtime and skills
 bun tools/grunt/measure.ts grunt/scenarios/chop-raptor.json harvest '{"kind":"tree"}'   # one skill, rules only
 bun tools/grunt/play.ts grunt/scenarios/chop-grove.json --show                          # the Director playing it
 ```

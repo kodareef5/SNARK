@@ -8,7 +8,7 @@
 //
 // It imports nothing the first frame's script holds but types: the bundler would split that script into more files to
 // share it, which cost the first frame 3 KB (D906). The app hands it the three functions it draws with (StorageKit), and
-// it keeps its own copy of the few numbers it uses, which tests/unit/storage-page.test.ts holds equal to the real ones.
+// it keeps its own copy of the few numbers it uses, which tests/ui/storage-page.test.ts holds equal to the real ones.
 
 import type { Settings } from "../settings.ts";
 import type { SoundLibrary } from "../sound/library.ts";

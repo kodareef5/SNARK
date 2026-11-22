@@ -54,8 +54,8 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
   const ids = (defs: readonly Def[]): string[] => defs.filter((d) => d.type === "item").map((d) => d.id.slice(5));
   expect(ids(WEAPONS)).toEqual(["bow", "crossbow", "rifle", "pistol", "shotgun", "flare_gun"]);
   expect(ids(AMMO)).toEqual(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "round_shotgun", "dart_tranq", "dart_shock", "scope", "silencer", "flashlight", "laser"]);
-  // W4 added the bola, with its two buffs and its engram (tests/integration/bola.test.ts); W5 the smoke and poison grenades,
-  // the poison's buff and their engrams (tests/integration/clouds.test.ts).
+  // W4 added the bola, with its two buffs and its engram (tests/combat/bola.test.ts); W5 the smoke and poison grenades,
+  // the poison's buff and their engrams (tests/combat/clouds.test.ts).
   expect(ids(EXPLOSIVES)).toEqual(["grenade", "bola", "grenade_smoke", "grenade_poison"]);
   expect(EXPLOSIVES.filter((d) => d.type === "buff").map((d) => d.id)).toEqual(["core:entangled", "core:entangle_spent", "core:poisoned"]);
   const all = new Set(CORE_CONTENT.map((d) => `${d.type} ${d.id}`));
@@ -67,21 +67,21 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
   // Each moved item brought its engram (W3 added the shotgun's and its shell's, W5 the two grenades', W6 the flare gun's), and is made as before.
   expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(22);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
-  // W8 brought its numbers to the wiki's since (tests/unit/ark-weapons.test.ts).
+  // W8 brought its numbers to the wiki's since (tests/combat/ark-weapons.test.ts).
   expect(pistol).toMatchObject({ weight: 5, weapon: { clip: 6, reload: 3.33, interval: 1 / 2.1, uses: 300 }, craft: { seconds: 12, xp: 100.8, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
 });
 
 test("the weapon and ammo facets' stubs wait, as the plan has them", () => {
   // W2 built auto, reloadEach and melee (M4), and W1 spread and recoil (M1, M2): their pins are in the test below,
-  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts; W3 pellets and falloff (M3), pinned in tests/integration/pellets.test.ts; W5 the cloud and its class (M7), in tests/integration/clouds.test.ts.
+  // tests/combat/weapon.test.ts and tests/combat/aim.test.ts; W3 pellets and falloff (M3), pinned in tests/combat/pellets.test.ts; W5 the cloud and its class (M7), in tests/combat/clouds.test.ts.
   // W6 built structures, blast, pierce and light (M8, M12, the flare): their pins are below and in
-  // tests/integration/explosive-rounds.test.ts. No stub is left in either facet.
+  // tests/combat/explosive-rounds.test.ts. No stub is left in either facet.
   expect([FIELDS.item.weapon!.stubs, FIELDS.item.ammo!.stubs]).toEqual([undefined, undefined]);
-  // W4 built the bola's buff fields (M6): their pins are in tests/integration/bola.test.ts.
+  // W4 built the bola's buff fields (M6): their pins are in tests/combat/bola.test.ts.
   expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual([undefined, undefined, undefined]);
   expect(classRow("prop/cloud")).toMatchObject({ status: "built", parent: "prop" });
   expect(CLASSES.filter((r) => r.id === "prop/cloud").length).toBe(1);
-  // The holo-scope is an attachment kind no item is yet: W7 built its view (tests/integration/attachments.test.ts), and its
+  // The holo-scope is an attachment kind no item is yet: W7 built its view (tests/combat/attachments.test.ts), and its
   // item waits for the fabricator's wave.
   expect(defFaults({ type: "item", class: "attachment", id: "test:holo", stack: 1, attachment: "holo" })).toEqual([]);
   expect(CORE_CONTENT.some((d) => d.type === "item" && d.attachment === "holo")).toBe(false);
@@ -95,7 +95,7 @@ test("every weapon and round today compiles as it did: no stub in its timings, a
   const blows = new Set(["core:bow", "core:crossbow", "core:rifle", "core:pistol", "core:shotgun"]);
   // W3's: only the shotgun's shell is shot, and falls off.
   const shot = new Set(["core:round_shotgun"]);
-  // What is blocked out has numbers of its own, held by tests/unit/blockouts.test.ts.
+  // What is blocked out has numbers of its own, held by tests/items/blockouts.test.ts.
   const blocked = new Set(BLOCKED_OUT);
   for (let i = 1; i < reg.defs.length; i++) {
     if (blocked.has(reg.ids[i]!)) continue;

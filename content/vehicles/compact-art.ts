@@ -1,7 +1,7 @@
 /**
  * The compact's measured contract, which the simulation and seats depend on: metres, +Y up, +Z forward, +X the driver's
  * side (the car's left), origin on the ground. rig.py and shape.py build the rig on these numbers, asset.ts takes the
- * sockets from them, and tests/unit/vehicle-asset.test.ts holds the built pack and the content's numbers (compact.ts) to them. ref/DESIGN.md says what each is.
+ * sockets from them, and tests/vehicles/vehicle-asset.test.ts holds the built pack and the content's numbers (compact.ts) to them. ref/DESIGN.md says what each is.
  */
 export const COMPACT_ART = {
   id: "core:compact",

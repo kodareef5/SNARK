@@ -80,6 +80,9 @@ if (import.meta.main) {
       if (!to || !areas.has(to.split("/")[0]!)) {
         console.log(`tests/${from}  ->  ? ${area ? `"${area}" is not an area` : "no file shares its first word"}: give ${name}=<area> (${[...areas].sort().join(", ")})`);
         unplaced++;
+      } else if (fresh(to)) {
+        console.log(`tests/${from}  ->  ? tests/${to} is there already: give this one another name first`);
+        unplaced++;
       } else {
         console.log(`tests/${from}  ->  tests/${to}`);
         moves.push([from, to]);
@@ -90,7 +93,7 @@ if (import.meta.main) {
 
   if (flags.includes("--move")) {
     if (unplaced > 0) {
-      console.error(`${unplaced} with no area: nothing was moved`);
+      console.error(`${unplaced} not placed: nothing was moved`);
       process.exit(1);
     }
     for (const [from, to] of moves) {

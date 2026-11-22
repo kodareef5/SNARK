@@ -82,7 +82,7 @@ test("the smithy and the fabricator are ARK's at 1x, and the fabricator's gasoli
   expect(core.defs[id(core, "piece_fabricator")]).toMatchObject({ stack: 1, weight: 4, craft: { needs: [{ item: "core:ingot", count: 35 }, { item: "core:paste", count: 20 }, { item: "core:sparkpowder", count: 50 }, { item: "core:crystal", count: 15 }, { item: "core:oil", count: 10 }], xp: 132 } });
   expect(core.defs[id(core, "engram-piece_fabricator")]).toMatchObject({ level: 48, cost: 24, requires: ["core:engram-piece_smithy"] });
   // What each makes: the smithy the fabricator, and since S6 the 27 recipes moved to it; the fabricator polymer and
-  // electronics, lit or out, and since S6 the five moved to it (tests/unit/ark-stations.test.ts).
+  // electronics, lit or out, and since S6 the five moved to it (tests/items/ark-stations.test.ts).
   const made = [id(core, "polymer"), id(core, "electronics")].sort((a, b) => a - b);
   expect([stationRecipes(core, id(core, "smithy")).includes(id(core, "piece_fabricator")), made.every((k) => stationRecipes(core, out).includes(k) && stationRecipes(core, lit).includes(k))]).toEqual([true, true]);
   expect(core.defs[id(core, "polymer")]).toMatchObject({ craft: { needs: [{ item: "core:obsidian", count: 2 }, { item: "core:paste", count: 2 }], seconds: 2, xp: 2.24 } });

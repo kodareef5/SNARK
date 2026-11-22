@@ -1,5 +1,5 @@
 // The reference's taming formulas, with its numbers per species in content. server/taming.ts keeps the state and calls these.
-// Checked against the reference's table in tests/unit/taming.test.ts.
+// Checked against the reference's table in tests/creatures/taming.test.ts.
 
 /** Per species. Affinity needed is a0 + a1 * level. `k` scales what each piece of food costs effectiveness. */
 export interface TameParams {

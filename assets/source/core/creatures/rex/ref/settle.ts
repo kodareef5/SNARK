@@ -1,4 +1,4 @@
-// How a fallen Rex settles: drops it from the death clip's limp frame onto a slope, as tests/unit/ragdoll.test.ts does,
+// How a fallen Rex settles: drops it from the death clip's limp frame onto a slope, as tests/creatures/ragdoll.test.ts does,
 // and prints how long it takes to fall asleep at each of that test's six headings. Given a heading, it prints instead
 // how far each body moved in each quarter second, to find what keeps moving.
 //   bun assets/source/core/creatures/rex/ref/settle.ts [slope, 0.35] [heading in radians]

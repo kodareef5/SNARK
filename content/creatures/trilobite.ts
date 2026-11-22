@@ -4,7 +4,7 @@ import type { Def } from "../../shared/content/defs.ts";
  * The trilobite, blocked out (planning/workstreams/supply.md, "Blocked out"): a box on the shores, and the game's first
  * source of chitin, which paste, metal pieces, the fabricator, polymer and both vehicles all come back to. It has no
  * model: a grey box 60 cm across and as tall, as the grazer is a box (a body no taller than the half metre every
- * body steps up does not ride a steep slab: tests/unit/slopes.test.ts).
+ * body steps up does not ride a steep slab: tests/build/slopes.test.ts).
  *
  * ark.wiki.gg, Trilobite and Spawn entries, 2026-11-21: 160 health, 100 stamina, 450 food, 150 weight and 50 torpidity
  * at level 1, each wild level a fifth, a tenth, a tenth, a fiftieth and 6% more as the dodo's are; no attack ("cannot

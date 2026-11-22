@@ -19,7 +19,7 @@ import { builder } from "../fixtures/build.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
-// What is blocked out is made at stations too: tests/unit/blockouts.test.ts holds where and of what.
+// What is blocked out is made at stations too: tests/items/blockouts.test.ts holds where and of what.
 const BLOCKED = new Set(BLOCKED_OUT);
 
 const reg = coreRegistry();
@@ -194,7 +194,7 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
 
   // The client lists what the mortar makes, from content: the item names it in craft.at. Since S6, the narcotic, gunpowder and
-  // cementing paste too (tests/unit/ark-stations.test.ts).
+  // cementing paste too (tests/items/ark-stations.test.ts).
   expect(stationRecipes(reg, id("mortar")).filter((k) => !BLOCKED.has(reg.ids[k]!)).sort((a, b) => a - b)).toEqual([spark, id("narcotic"), id("paste"), id("gunpowder")].sort((a, b) => a - b));
   expect([reg.craftAt[spark], reg.craftAt[id("pick")]]).toEqual([id("mortar"), 0]);
   // With nothing open, or a box that is no station open, nothing is made at one.

@@ -39,7 +39,7 @@ test("the bow and crossbow weigh 8, and the crossbow reloads in 2.61 s; the bow'
 
 test("the bow takes 10 s and gives 20 experience; the crossbow 36, both from the same wood and fiber at their levels (Bow, Crossbow)", () => {
   expect([made("bow"), engram("bow")]).toEqual([{ needs: "15 wood, 50 fiber", seconds: 10, xp: 20, count: 1, at: "hand" }, [10, 11]]);
-  // Made at the smithy, as ARK makes it (stations S6, tests/unit/ark-stations.test.ts); the page gives no crafting time (DEV135).
+  // Made at the smithy, as ARK makes it (stations S6, tests/items/ark-stations.test.ts); the page gives no crafting time (DEV135).
   expect([made("crossbow"), engram("crossbow")]).toEqual([{ needs: "7 ingot, 10 wood, 35 fiber", seconds: 10, xp: 36, count: 1, at: "core:smithy" }, [25, 12]]);
 });
 

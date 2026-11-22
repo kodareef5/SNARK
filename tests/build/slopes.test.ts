@@ -258,7 +258,7 @@ test("up and down a ramp along the wall beside it, pressed into the wall and acr
     for (const speed of SPEEDS) {
       if (p.walkSpeed * (speed.move / 127) < 0.3) continue;
       // Straight up beside the wall from just past the ramp's foot, and into it at 20 degrees, and back down. The step at the
-      // foot is a box's step, and tests/unit/step.test.ts walks those.
+      // foot is a box's step, and tests/survivor/step.test.ts walks those.
       for (const turn of [0, 20]) {
         const up = walk(w, p, bodyAt(w, p, x, 61.3, turn), turn, speed, (b) => b.z > 66.4 - p.radius);
         const down = walk(w, p, bodyAt(w, p, up.b.x, up.b.z, 180 - turn), 180 - turn, speed, (b) => b.z < 61.3);

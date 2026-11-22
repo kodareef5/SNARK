@@ -52,7 +52,7 @@ test("today's ranged weapons have a cone and a kick, chosen (DEV128 to DEV130), 
   expect(aim("shotgun")).toEqual([5, 3.75, 3, 0, 0, 0, 6, 8]);
   for (let i = 1; i < reg.defs.length; i++) {
     const w = reg.weapon[i];
-    // The blocked-out bow and guns take their kind's cone and kick (tests/unit/blockouts.test.ts).
+    // The blocked-out bow and guns take their kind's cone and kick (tests/items/blockouts.test.ts).
     if (!w || ["core:bow", "core:crossbow", "core:rifle", "core:pistol", "core:shotgun", "core:bow_compound", "core:pistol_fabricated", "core:shotgun_pump", "core:rifle_assault", "core:rifle_sniper", "core:rocket_launcher"].includes(reg.ids[i]!)) continue;
     expect([reg.ids[i], w.coneHip, w.recoilKick]).toEqual([reg.ids[i], undefined, undefined]);
   }
@@ -285,7 +285,7 @@ test("the rays and the aim are the same bits on every engine: pinned hashes of a
   expect(got.bloomMost).toBeGreaterThan(BLOOM_SHOT);
   expect([got.rays, got.fight]).toEqual([RAYS_HASH, FIGHT_HASH]);
   if (nodeMajor < 24) return;
-  // Node is a development tool here, used only as a second JavaScript engine (as tests/integration/determinism.test.ts).
+  // Node is a development tool here, used only as a second JavaScript engine (as tests/server/determinism.test.ts).
   const script = [
     'import { hash32, shotDir, aimShot, shotAim, stepAim } from "./shared/sim/aim.ts";',
     'import { stepAction, actionOut } from "./shared/sim/weapon.ts";',

@@ -216,7 +216,7 @@ function windows(): { name: string; w: number; h: number; insets: number[]; touc
   const out: { name: string; w: number; h: number; insets: number[]; touch: boolean }[] = [];
   for (const aspect of [9 / 16, 4 / 3, 16 / 9, 21 / 9, 32 / 9]) out.push({ name: `aspect ${aspect.toFixed(2)}`, w: Math.max(405, Math.round(720 * aspect)), h: 720, insets: [0, 0, 0, 0], touch: false });
   for (const [w, h] of [[1056, 488], [834, 469], [710, 400], [1280, 576]] as const) out.push({ name: `short ${w}x${h}`, w, h, insets: [0, 0, 0, 0], touch: true });
-  // The touch windows of tests/integration/touch.test.ts, in CSS pixels with their screens' edges.
+  // The touch windows of tests/ui/touch-play.test.ts, in CSS pixels with their screens' edges.
   for (const [name, w, h, edges] of [["phone on its side", 844, 390, [47, 0, 47, 21]], ["small phone on its side", 667, 375, [0, 0, 0, 0]], ["smallest phone on its side", 568, 320, [0, 0, 0, 0]], ["phone upright", 390, 844, [0, 47, 0, 34]], ["small phone upright", 375, 667, [0, 20, 0, 0]], ["tall narrow phone upright", 360, 800, [0, 32, 0, 24]], ["smallest phone upright", 320, 568, [0, 20, 0, 0]], ["tablet", 1024, 768, [0, 24, 0, 20]], ["tablet upright", 768, 1024, [0, 24, 0, 20]]] as const) {
     const units = canvasHeight(w, h), unit = h / units;
     out.push({ name, w: Math.max(405, Math.round(units * w / h)), h: units, insets: edges.map((e) => e / unit), touch: true });

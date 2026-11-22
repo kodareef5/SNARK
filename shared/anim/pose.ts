@@ -433,7 +433,7 @@ const NO_GAITS: readonly GaitClip[] = [];
 
 /**
  * Metres one turn of each clip carries the body, measured from the clips: how fast the planted foot goes back
- * (tests/unit/gait.test.ts). Each plays alone at its stride over its length, the walk at 0.9 m/s, the jog at 5.9 and the
+ * (tests/creatures/gait.test.ts). Each plays alone at its stride over its length, the walk at 0.9 m/s, the jog at 5.9 and the
  * sprint at 8.9, and they blend in step between.
  */
 const WALK_STRIDE = 1.2;

@@ -166,9 +166,9 @@ bodies as contacts, so a fallen Rex rests on them. `bun tools/rex/contact.ts cor
 - The lying clips touch the ground to within 1 mm.
 - Fallen from death on level ground, the deepest skin point is 2.2 cm under; 5.5 cm on a 12% slope and 11.9 cm on a
   35% slope (claws and the side of the skull). Without the contacts the thigh sank 38 cm.
-- Every fall settles within 2.9 seconds. `ref/settle.ts` times it at the six headings tests/unit/ragdoll.test.ts uses.
+- Every fall settles within 2.9 seconds. `ref/settle.ts` times it at the six headings tests/creatures/ragdoll.test.ts uses.
 
-On a single 4 by 6 m ramp piece this 12 m animal slid off it and took 3.7 s to settle. tests/unit/ragdoll.test.ts now
+On a single 4 by 6 m ramp piece this 12 m animal slid off it and took 3.7 s to settle. tests/creatures/ragdoll.test.ts now
 builds the ramp and floor from as many pieces as each animal needs to lie on them, and gives large animals 4.5 s:
 on a ramp that holds it, the Rex settles within 3.1 s. Rolling it onto its side less (80 degrees instead of 92) made
 it slower on slopes, so it lies fully on its side.

@@ -481,7 +481,7 @@ test("a hostile client that can do everything a survivor can sends near-valid co
     try {
       run = fuzz(seed);
     } catch (err) {
-      throw new Error(`seed ${seed} threw; SNARK_FUZZ_SEED=${seed} bun test tests/integration/hostile.slow.test.ts runs it alone\n${err instanceof Error ? err.stack : String(err)}`);
+      throw new Error(`seed ${seed} threw; SNARK_FUZZ_SEED=${seed} bun test tests/net/hostile.slow.test.ts runs it alone\n${err instanceof Error ? err.stack : String(err)}`);
     }
     const said = `seed ${seed} (SNARK_FUZZ_SEED=${seed} runs it alone); the last commands sent:\n${run.sent.map((x) => `  op ${x.op} ${x.bytes}`).join("\n")}`;
     expect([run.faults, run.audit], said).toEqual([[], []]);

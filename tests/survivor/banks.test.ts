@@ -1,4 +1,4 @@
-// Bodies on ground too steep to stand on, as on a sloped piece's face (tests/unit/slopes.test.ts): a wall to walk into from any
+// Bodies on ground too steep to stand on, as on a sloped piece's face (tests/build/slopes.test.ts): a wall to walk into from any
 // side, a slide to stand on, held only where it has no way down, and a body in a crease of two banks or of a bank and a slab
 // banks no speed to land with. On ground it can stand on, nothing moves.
 

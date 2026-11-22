@@ -105,8 +105,8 @@ artTest("the content hangs together: every engram can be reached, every thing th
   const points = levels.type === "levels" ? levels.engramPoints.reduce((a, b) => a + b, 0) : 0;
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
   // A soul ball is held and swung as a thrown weapon is, and harms nothing (content/items/balls.ts): the full one is never
-  // made, an empty one becomes it. tests/integration/balls.test.ts holds them; here, that their meshes follow a hand.
-  // What is blocked out is a plain box in the hand (tests/unit/blockouts.test.ts).
+  // made, an empty one becomes it. tests/creatures/balls.test.ts holds them; here, that their meshes follow a hand.
+  // What is blocked out is a plain box in the hand (tests/items/blockouts.test.ts).
   const blocked = new Set(BLOCKED_OUT);
   const weapons = items.filter((d) => d.weapon && !d.ball && !blocked.has(d.id));
   const balls = items.filter((d) => d.ball);

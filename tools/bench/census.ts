@@ -5,7 +5,7 @@
 // holds the 7 by 7 chunks round the camera's whole, as a client's does once the server has sent them (server/game.ts
 // structRadius), and the far city draws the rest from the map's statics, its blocks from the map's tops. Trees, rocks
 // and bushes are left out, and so is a landmark's content, as tools/bench/city.ts leaves it.
-// tests/unit/census.slow.test.ts pins the views the Miami slice holds whole (tests/fixtures/cityslice.ts), drawn with the
+// tests/render/census.slow.test.ts pins the views the Miami slice holds whole (tests/fixtures/cityslice.ts), drawn with the
 // grey boxes.
 //
 //   bun tools/bench/census.ts [file.snmap]         each view on a built map (var/maps/miami.snmap), with the core pack

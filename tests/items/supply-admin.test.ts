@@ -1,5 +1,5 @@
 // The drop book's admin page's requests against a running world (server/admin/supply-routes.ts): a table changed
-// through them drops differently in the world, drops already called included, and each act is in the page's log. The statuses through the front are held by tests/integration/site.test.ts.
+// through them drops differently in the world, drops already called included, and each act is in the page's log. The statuses through the front are held by tests/server/site.test.ts.
 
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";

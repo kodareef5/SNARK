@@ -113,7 +113,7 @@ test("difficulty: what the server says outright, or its offset on the map's own;
     for (const r of h.host.records.byPid.values()) if (r.genome) out.push(r.genome.level);
     return out.sort((a, b) => a - b);
   };
-  // At the default difficulty of 5, levels are multiples of 5 from 5 to 150, most of them low (tests/unit/spawner.test.ts).
+  // At the default difficulty of 5, levels are multiples of 5 from 5 to 150, most of them low (tests/creatures/spawner.test.ts).
   const wild = herd([]);
   expect([wild.length, wild.every((l) => l % 5 === 0 && l >= 5 && l <= 150), wild[0]! <= 25, wild[59]! > 60, new Set(wild).size > 12]).toEqual([60, true, true, true, true]);
   const easy = herd(["OverrideOfficialDifficulty=1"]);

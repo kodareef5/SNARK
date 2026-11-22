@@ -132,7 +132,7 @@ export default {
   flat: 5,
   // clips_life.py: LIMP. Both death clips go limp at 24. The body, the head and the two upper arms, so the wings splay as
   // it falls (ref/FUNCTIONS.md, section 20); the neck, and each wing past its upper arm, stay as the clip left them. Each
-  // upper arm carries its whole wing's weight. Measured on tests/unit/ragdoll.test.ts's slope, floor and ramp from 32 yaws,
+  // upper arm carries its whole wing's weight. Measured on tests/creatures/ragdoll.test.ts's slope, floor and ramp from 32 yaws,
   // from either death clip: it sleeps within 1.2 to 1.7 s, no joint more than 0.8 degrees past its limit. With the neck
   // as a body too (clips_life.py's proposal) a few yaws in 32 were still moving after 3 s; with light upper arms the wings
   // rest up to 4.7 degrees past their limits.
