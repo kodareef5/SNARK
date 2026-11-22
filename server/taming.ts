@@ -27,8 +27,6 @@ import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
 import { HIT_NONE, castWorld } from "../shared/world/ray.ts";
 
-export const DEADLINE_TAME = 7;
-
 const TAME_ALLOW = event("tame.allow");
 const TAME_DONE = event("tame.done");
 const CREATURE_ORDER = event("creature.order");
@@ -115,9 +113,12 @@ export class Taming {
   /** What each session had open at the last step, by its place in the server's list. */
   private readonly shown: number[] = [];
   private readonly drugged: number;
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(ctx: TamingContext, seed: number) {
     this.ctx = ctx;
+    this.deadline = ctx.deadlines.kind("tame", (a, stamp) => this.due(a, stamp));
     this.rng = new Rng(seed);
     this.drugged = ctx.world.reg.index.get("core:drugged") ?? 0;
   }
@@ -157,7 +158,7 @@ export class Taming {
     const due = at > world.tick ? at : world.tick + 1;
     if (due === rec.mealDue) return;
     rec.mealDue = due;
-    deadlines.push(due, DEADLINE_TAME, rec.pid, due);
+    deadlines.push(due, this.deadline, rec.pid, due);
   }
 
   private wild(rec: EntityRecord): boolean {
@@ -261,10 +262,10 @@ export class Taming {
     const due = at > world.tick ? at : world.tick + 1;
     if (due === tame.due) return;
     tame.due = due;
-    deadlines.push(due, DEADLINE_TAME, rec.pid, due);
+    deadlines.push(due, this.deadline, rec.pid, due);
   }
 
-  /** A DEADLINE_TAME entry came due, for an owned creature's meal or a bite of a tame. */
+  /** A deadline of its kind came due, for an owned creature's meal or a bite of a tame. */
   due(pid: number, stamp: number): void {
     const { world, records, items, survival, rules } = this.ctx;
     const rec = records.byPid.get(pid);

@@ -65,6 +65,7 @@ import {
 } from "../shared/net/protocol.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { PassengerView } from "./passenger-view.ts";
+import { Signal, Veto } from "./signal.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { ContactSnapshot, writeContacts } from "../shared/net/contact.ts";
 import { BTN_JUMP, BTN_SECONDARY, Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
@@ -491,15 +492,15 @@ export class GameServer {
   /** Why this name cannot join here now because its survivor is on another server, or "". Called before `authorize`. */
   away: ((name: string, key: Uint8Array) => string) | null = null;
   /** A session became active (it has a body or a spectator's focus). */
-  onEnter: ((c: Client) => void) | null = null;
+  readonly onEnter = new Signal<[c: Client]>();
   /** Called before the session's body, if any, is removed. */
-  onExit: ((c: Client) => void) | null = null;
+  readonly onExit = new Signal<[c: Client]>();
   /** The connection dropped while the body lingers, or a reconnect took the body over. */
-  onPresence: ((c: Client) => void) | null = null;
+  readonly onPresence = new Signal<[c: Client]>();
   /** An entity was created for the session: at login, on respawn, or when it stops spectating. */
-  onBody: ((c: Client) => void) | null = null;
+  readonly onBody = new Signal<[c: Client]>();
   /** The session's entity is about to be destroyed. */
-  onBodyGone: ((c: Client) => void) | null = null;
+  readonly onBodyGone = new Signal<[c: Client]>();
   /** Called once per tick before bodies move, to apply changes queued outside the step. */
   onBeforeStep: (() => void) | null = null;
   /** Called once per tick after bodies move and commands run, before replication. */
@@ -517,19 +518,19 @@ export class GameServer {
    * are added to its view after those round it, which come first under its cap (D1079).
    */
   cone: ((c: Client) => { readonly chunks: Int32Array; readonly count: number; readonly players?: readonly number[] } | null) | null = null;
-  /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
-  allows: ((c: Client, op: number) => boolean) | null = null;
+  /** Whether the session may run command `op` now: any listener may refuse. A refused command answers RESULT_DENIED and its handler is not called. */
+  readonly allows = new Veto<[c: Client, op: number]>(true);
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
-  onLand: ((c: Client, speed: number) => void) | null = null;
+  readonly onLand = new Signal<[c: Client, speed: number]>();
   /** A survivor's glider opened this tick, or folded (planning/workstreams/glider.md). */
-  onGlide: ((c: Client, opened: boolean) => void) | null = null;
-  onMountLand: ((e: number, speed: number) => void) | null = null;
+  readonly onGlide = new Signal<[c: Client, opened: boolean]>();
+  readonly onMountLand = new Signal<[e: number, speed: number]>();
   /** A rising secondary input on the mounted body, after movement and its ordinary bite step. */
-  onMountSecondary: ((e: number) => void) | null = null;
+  readonly onMountSecondary = new Signal<[e: number]>();
   /** A driven flyer `e` took off, set down from flight or began a barrel roll this tick, as stepOut still says. */
-  onMountFlight: ((e: number) => void) | null = null;
+  readonly onMountFlight = new Signal<[e: number]>();
   /** Vehicle report is still current; authoritative damage consumes it immediately after the body is stored. */
-  onVehicleStep: ((e: number) => void) | null = null;
+  readonly onVehicleStep = new Signal<[e: number]>();
   /** The host adds resource contacts around this same shared vehicle step. */
   vehicleStep: typeof stepVehicleBody = stepVehicleBody;
   /** Where each tick's time went, part by part (server/admin/parts.ts). The host marks the parts of its step in it. */
@@ -764,15 +765,15 @@ export class GameServer {
         }
         ents.storeBody(e, b);
         if (combat) ents.hold[e] = creatureHold(b);
-        if (driving && !vehicle && (c.pressed & BTN_SECONDARY) !== 0 && b.act === ACT_NONE) this.onMountSecondary?.(e);
-        if (vehicle) this.onVehicleStep?.(e);
+        if (driving && !vehicle && (c.pressed & BTN_SECONDARY) !== 0 && b.act === ACT_NONE) this.onMountSecondary.emit(e);
+        if (vehicle) this.onVehicleStep.emit(e);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
-        if (driving && (stepOut.tookOff || stepOut.setDown || stepOut.rolled)) this.onMountFlight?.(e);
-        if (!driving && (stepOut.glideOpened || stepOut.glideFolded)) this.onGlide?.(c, stepOut.glideOpened);
+        if (driving && (stepOut.tookOff || stepOut.setDown || stepOut.rolled)) this.onMountFlight.emit(e);
+        if (!driving && (stepOut.glideOpened || stepOut.glideFolded)) this.onGlide.emit(c, stepOut.glideOpened);
         if (stepOut.landSpeed > 0) {
-          if (driving) this.onMountLand?.(e, stepOut.landSpeed);
-          else this.onLand?.(c, stepOut.landSpeed);
+          if (driving) this.onMountLand.emit(e, stepOut.landSpeed);
+          else this.onLand.emit(c, stepOut.landSpeed);
         }
       } else {
         b.kind = c.kind;
@@ -1066,7 +1067,7 @@ export class GameServer {
     c.heldYaw = yaw;
     ents.loadBody(e, c.body);
     c.chunk = ents.chunk[e]!;
-    this.onBody?.(c);
+    this.onBody.emit(c);
     return true;
   }
 
@@ -1075,7 +1076,7 @@ export class GameServer {
     this.release(c);
     if (c.ent < 0) return;
     const ents = this.world.ents;
-    this.onBodyGone?.(c);
+    this.onBodyGone.emit(c);
     ents.loadBody(c.ent, c.body);
     this.world.history.untrack(c.ent);
     ents.destroy(c.ent);
@@ -1132,7 +1133,7 @@ export class GameServer {
       c.closed = true;
       c.lingerUntil = this.world.tick + this.opts.lingerTicks;
       c.queue.length = 0;
-      this.onPresence?.(c);
+      this.onPresence.emit(c);
       return;
     }
     this.finalize(c);
@@ -1141,7 +1142,7 @@ export class GameServer {
   private finalize(c: Client): void {
     if (this.clients[c.id] !== c) return;
     if (c.active) {
-      this.onExit?.(c);
+      this.onExit.emit(c);
       this.dropBody(c);
     }
     c.active = false;
@@ -1222,7 +1223,7 @@ export class GameServer {
       let code: number;
       try {
         // What a session is shown is its own to ask in any state, so that is answered here.
-        code = op === CMD_VIEW ? this.askView(c, r) : op === CMD_STATICS ? this.takeStatics(c) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
+        code = op === CMD_VIEW ? this.askView(c, r) : op === CMD_STATICS ? this.takeStatics(c) : !handler ? RESULT_INVALID : !this.allows.ask(c, op) ? RESULT_DENIED : handler(c, r);
       } catch (err) {
         this.stats.faults++;
         this.refusals.refuse(refusedAs(c.key, c.conn.address), this.world.tick, this.world.tick + FAULT_REFUSED_TICKS);
@@ -1348,7 +1349,7 @@ export class GameServer {
       other.statics = (flags & HELLO_STATICS) !== 0 && world.statics !== null;
       this.bind(other, conn);
       this.welcome(other);
-      this.onPresence?.(other);
+      this.onPresence.emit(other);
       return true;
     }
 
@@ -1401,7 +1402,7 @@ export class GameServer {
     }
     c.active = true;
     c.activeAt = this.world.tick;
-    this.onEnter?.(c);
+    this.onEnter.emit(c);
     this.welcome(c);
     return true;
   }

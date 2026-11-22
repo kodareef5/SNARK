@@ -9,6 +9,7 @@ import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
+import { Signal } from "./signal.ts";
 
 /** For a record whose kind declares no slots (a cache, a test fixture). */
 const DEFAULT_SLOTS = 40;
@@ -36,7 +37,7 @@ export class Items {
   private readonly spoiled = (item: number, n: number, ref: number, at: number): void => {
     this.burned[item] = this.burned[item]! + n;
     this.dirty = true;
-    if (ref !== 0) this.onRefGone?.(ref);
+    if (ref !== 0) this.onRefGone.emit(ref);
     if (this.reg.spoilsInto[item] !== 0) this.turned.push(item, n, at);
   };
   /**
@@ -45,7 +46,7 @@ export class Items {
    */
   private readonly turned: number[] = [];
   /** A one of a kind (Inventory.ref) was burned, eaten or spoiled, so the record it stood for goes too (server/eggs.ts). */
-  onRefGone: ((ref: number) => void) | null = null;
+  readonly onRefGone = new Signal<[ref: number]>();
 
   /** An inventory changed. The host queues derived body updates, so transfers finish before any refresh. */
   onChange: ((rec: EntityRecord) => void) | null = null;
@@ -371,7 +372,7 @@ export class Items {
     this.burned[item] = this.burned[item]! + n;
     this.dirty = true;
     this.changed(rec);
-    if (ref !== 0) this.onRefGone?.(ref);
+    if (ref !== 0) this.onRefGone.emit(ref);
     return true;
   }
 

@@ -13,6 +13,7 @@ import { ROLE_CEILING, ROLE_FOUNDATION } from "../shared/world/snap.ts";
 import type { Buffs } from "./buffs.ts";
 import { openSky } from "./behavior.ts";
 import type { Creatures } from "./creatures.ts";
+import { PART } from "./admin/parts.ts";
 import type { GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { Persistence } from "./persist/persistence.ts";
@@ -22,8 +23,6 @@ import type { Entry, SpawnTable } from "./settings/spawns.ts";
 import { difficultyOf, wildLevel } from "./settings/tune.ts";
 import type { Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
-
-export const DEADLINE_SPAWN = 9;
 
 /** Seconds between a region's checks. While it holds fewer than it should, each check adds one group. */
 export const CHECK_SECONDS = 45;
@@ -123,9 +122,18 @@ export class Spawner {
   /** Per chunk, the x and z of each of a tribe's foundations and ceilings, as of the chunk's version then. */
   private readonly cores: (Float32Array | null)[] = [];
   private readonly coresAt: number[] = [];
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(ctx: SpawnerContext, seed: number) {
     this.ctx = ctx;
+    // A region's check is timed as the spawner's part of the tick, not as the deadlines'.
+    const parts = ctx.game.parts;
+    this.deadline = ctx.deadlines.kind("spawn", (i, stamp) => {
+      parts.mark(PART.deadlines);
+      this.due(i, stamp);
+      parts.mark(PART.spawner);
+    });
     this.rng = new Rng(seed);
     const reg = ctx.world.reg;
     this.creature = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.class === "creature" ? 1 : 0));
@@ -254,7 +262,7 @@ export class Spawner {
     return n;
   }
 
-  /** A DEADLINE_SPAWN came due for region `i`: its check. Over the tick's budget, it is checked next tick. */
+  /** A deadline of its kind came due for region `i`: its check. Over the tick's budget, it is checked next tick. */
   due(i: number, stamp: number): void {
     const r = this.regions[i];
     if (!r || r.due !== stamp) return;
@@ -268,7 +276,7 @@ export class Spawner {
   private schedule(i: number, tick: number): void {
     const r = this.regions[i]!;
     r.due = ++this.stamps;
-    this.ctx.deadlines.push(tick, DEADLINE_SPAWN, i, r.due);
+    this.ctx.deadlines.push(tick, this.deadline, i, r.due);
   }
 
   private adopt(rec: EntityRecord, over: readonly (readonly number[])[], made: ReadonlySet<number>): void {
