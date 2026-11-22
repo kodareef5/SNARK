@@ -216,7 +216,7 @@ async function act(at: HTMLElement): Promise<void> {
   else if (what === "up" || what === "down") moveAt(d, path, what === "up" ? -1 : 1);
   else if (what === "discard") [S.draft, S.conflict] = [structuredClone(S.wire!.book), -1];
   else if (what === "unsite") [, S.map.site] = [removeSite(d, S.map.site), ""];
-  else if (what === "unloose") say(`${removeLoose(d)} sites taken out: not saved yet`);
+  else if (what === "unloose") say(`${removeLoose(d)} taken out that no circuit named: not saved yet`);
   else if (what === "circuit") {
     if (!addCircuit(d, $<HTMLInputElement>("newCircuit").value.trim())) return say("a circuit's key is small letters, digits, _ and -, and not one taken", "warn");
   } else if (what === "found") {

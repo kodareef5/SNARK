@@ -68,9 +68,16 @@ test("a circuit is switched off by its tick and the book still saves; taken out,
   // What the page's button does at a circuit's place: the circuit and the sites it alone named.
   takeOut(b, ["circuits", 0]);
   expect([b.circuits.map((c) => c.key), b.sites.length, b.sites.some((s) => s.key === shared), bookFaults(b)]).toEqual([["inland", "deep"], many - shore + 1, true, []]);
-  // Every site left is some circuit's: none is kept that the map would not show.
-  const named = new Set(b.circuits.flatMap((c) => c.sites));
-  expect(b.sites.every((s) => named.has(s.key))).toBe(true);
+  // It left none of its own behind: every site of this book is still some circuit's.
+  expect(looseSites(b)).toEqual([]);
+  // A site no circuit names, as a book read from a file may have, is not a circuit's to take: taking a circuit out
+  // leaves it, for the map to show and its own button to take out.
+  const c = withSites(starterBook(), "core:miami");
+  c.sites.push({ key: "stray/9", x: 50, z: 50 });
+  const [all, deep] = [c.sites.length, c.circuits.find((k) => k.key === "deep")!.sites.length];
+  takeOut(c, ["circuits", 0]);
+  removeCircuit(c, "deep");
+  expect([c.circuits.map((k) => k.key), c.sites.length, looseSites(c).map((k) => k.key), bookFaults(c)]).toEqual([["inland"], all - shore - deep, ["stray/9"], []]);
   // A book read from a file may have sites no circuit names: they are told apart and taken out together.
   b.sites.push({ key: "stray/1", x: 10, z: 10 }, { key: "stray/2", x: 20, z: 20 });
   expect([looseSites(b).map((s) => s.key), removeLoose(b), looseSites(b), b.sites.length]).toEqual([["stray/1", "stray/2"], 2, [], many - shore + 1]);

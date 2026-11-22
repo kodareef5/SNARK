@@ -73,14 +73,17 @@ export function addCircuit(book: SupplyBook, key: string): boolean {
 }
 
 /**
- * Takes a circuit away, and its sites with it: those it alone names. A site another circuit names too stays for that
- * one, and none is left that no circuit names, which the map would not show and nothing would land at.
+ * Takes a circuit away, and its sites with it: those it names and no other circuit does. A site another circuit names
+ * too stays for that one. A site this circuit never named is not its to take, whoever names it or nobody: one that
+ * no circuit names (a book read from a file may have them) stays, for the map to show and looseSites to take out.
  */
 export function removeCircuit(book: SupplyBook, key: string): void {
-  if (!book.circuits.some((k) => k.key === key)) return;
-  book.circuits = book.circuits.filter((k) => k.key !== key);
-  const named = new Set(book.circuits.flatMap((k) => k.sites));
-  book.sites = book.sites.filter((s) => named.has(s.key));
+  const gone = book.circuits.find((k) => k.key === key);
+  if (!gone) return;
+  book.circuits = book.circuits.filter((k) => k !== gone);
+  const kept = new Set(book.circuits.flatMap((k) => k.sites));
+  const its = new Set(gone.sites.filter((s) => !kept.has(s)));
+  book.sites = book.sites.filter((s) => !its.has(s.key));
 }
 
 /**
