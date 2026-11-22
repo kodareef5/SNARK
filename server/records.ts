@@ -57,11 +57,11 @@ export class Part<S> {
   }
 }
 
-let parts = 0;
+let declared = 0;
 
 /** Declares a feature's state. `make` gives a record's own, as it is before the feature has set any of it. */
 export function part<S>(make: () => S): Part<S> {
-  return new Part(parts++, make);
+  return new Part(declared++, make);
 }
 
 export class EntityRecord {

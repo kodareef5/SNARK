@@ -11,7 +11,7 @@ import { validLook } from "../../shared/anim/look.ts";
 import { EntityRecord } from "../records.ts";
 import { SAVED, moved, saved, savedAs, type Coding } from "../saved.ts";
 
-/** The revision of a record's parts, in its first byte. Raise it whenever a part changes: a build reads only its own. */
+/** The revision of a record's components, in its first byte. Raise it whenever one changes: a build reads only its own. */
 const RECORD_FORMAT = 8;
 // A record is a list of components, each a number and a length-prefixed blob. A build that does not know a
 // component keeps its bytes and writes them back, so a save survives a server that lacks a content pack.
@@ -19,7 +19,7 @@ const RECORD_FORMAT = 8;
 // of this file, and a feature's own in the feature's file. Other parts of the server keep bytes of their own in
 // rec.extra under numbers chosen by hand, apart from these: 83 a survivor's activity (server/survivor-activity.ts), 90
 // the Cast person a body is (server/cast/host.ts).
-/** The most bytes of one part that a save holds. */
+/** The most bytes of one component that a save holds. */
 const MAX_PART = 1 << 20;
 const NO_BYTES = new Uint8Array(0);
 /** How an operator goes on from a save that uses content the build lacks. */
@@ -94,10 +94,10 @@ export class RecordCodec implements Coding {
   /** What is read, and what to do about missing content: the start and end of the error that stops a read. */
   private readonly subject: string;
   private readonly without: string;
-  /** A record, and the part of it being written. Both grow when a record needs it (encode). */
+  /** A record, and the component of it being written. Both grow when a record needs it (encode). */
   private w = new BitWriter(65536);
   private c = new BitWriter(32768);
-  /** A part of the record being written did not fit in `c`. */
+  /** A component of the record being written did not fit in `c`. */
   private cut = false;
   /** Which declared components the record being written has, by place in SAVED. */
   private has = new Uint8Array(64);
