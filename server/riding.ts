@@ -338,7 +338,12 @@ export class Riding {
   }
 
   private client(pid: number): Client | null {
-    return this.ctx.game.clients.find((c) => c?.pid === pid && c.ent >= 0) ?? null;
+    const clients = this.ctx.game.clients;
+    for (let i = 0; i < clients.length; i++) {
+      const c = clients[i];
+      if (c && c.pid === pid && c.ent >= 0) return c;
+    }
+    return null;
   }
 
   private scope(pid: number): Scope {

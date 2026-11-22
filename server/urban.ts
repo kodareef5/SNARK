@@ -1215,7 +1215,14 @@ export class Urban {
   private readonly doorAt = [0, 0, 0];
 
   private entity(pid: number): number { return this.seating.entity(pid); }
-  private client(pid: number): Client | null { return this.ctx.game.clients.find(c => c?.pid === pid && c.ent >= 0) ?? null; }
+  private client(pid: number): Client | null {
+    const clients = this.ctx.game.clients;
+    for (let i = 0; i < clients.length; i++) {
+      const c = clients[i];
+      if (c && c.pid === pid && c.ent >= 0) return c;
+    }
+    return null;
+  }
   private scope(pid: number): Scope {
     const connection = this.client(pid)?.conn ?? null;
     let scope = this.scopes.get(pid);
