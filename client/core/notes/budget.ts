@@ -142,7 +142,7 @@ export class BudgetPanel {
       const whole = BudgetPanel.mean(this.gpu, this.gpuRows, PASS_NAMES.length)[0]!;
       bars.push({
         label: `Card ${whole.toFixed(1)} ms, the whole frame`, parts: [{ name: "the whole frame", value: whole }], full: Math.max(display, whole), mark: display, legend: "by pass: not measured on an Apple GPU, where a query",
-        note: "between passes ends Metal's render pass. Its reading is long: trust the page's clock",
+        note: "between passes ends Metal's render pass; it reads long",
       });
     } else if (timed === 2 && this.gpuRows > 0) {
       const gpu = BudgetPanel.mean(this.gpu, this.gpuRows, PASS_NAMES.length), gpuSum = gpu.reduce((a, b) => a + b, 0);
@@ -184,17 +184,23 @@ export class BudgetPanel {
     this.costFrames++;
     if (nowMs - this.madeAt >= REFRESH_MS) this.refresh(app, p, nowMs, timed, apple);
     // As wide as the screen leaves it on a narrow one, a phone held upright.
-    const pw = Math.min(W, f.width - f.left - f.right - 24), inner = pw - PAD * 2, x = f.width - f.right - 12 - pw;
+    const pw = Math.min(W, f.width - f.left - f.right - 24), inner = pw - PAD * 2;
+    let x = f.width - f.right - 12 - pw;
     const barRow = SMALL_LINE + BAR_H + 4 + SMALL_LINE + 2;
     const h = PAD * 2 + LINE + STRIP_H + 4 + SMALL_LINE + 6 + this.bars.reduce((n, b) => n + barRow + (b.note ? SMALL_LINE : 0), 0) + this.lines.length * SMALL_LINE;
-    // Under the lowest of the HUD's pieces in the right column's top half.
+    const theirs = (n: { key: number; w: number }): boolean => !(n.key >= KEY_BUDGET && n.key < KEY_BUDGET + 400) && !(n.key >= 2000000 + KEY_BUDGET * 16 && n.key < 2000000 + KEY_BUDGET * 16 + 9) && n.w < f.width / 2;
+    // Under the lowest of the HUD's pieces in the right column's top half: the minimap, its clock, a dash, the jet's gauge.
     let below = f.top + 12 + (app.ui.settings.minimap ? MINIMAP + 24 : 0);
     for (let i = 0; i < f.count; i++) {
       const n = f.nodes[i]!;
-      if (n.key >= KEY_BUDGET && n.key < KEY_BUDGET + 300) continue;
-      if (n.w < f.width / 2 && n.x + n.w > x && n.x < x + pw && n.y < f.height / 2 && n.y + n.h + 8 > below) below = n.y + n.h + 8;
+      if (theirs(n) && n.x + n.w > x && n.x < x + pw && n.y < f.height / 2 && n.y + n.h + 8 > below) below = n.y + n.h + 8;
     }
     const y = Math.max(f.top + 12, Math.min(below, f.height - f.bottom - 12 - h));
+    // Left of what stands in its lower half at the screen's edge: the vitals' column.
+    for (let i = 0; i < f.count; i++) {
+      const n = f.nodes[i]!;
+      if (theirs(n) && n.y >= f.height / 2 && n.x + n.w > x && n.x < x + pw && n.y < y + h && n.y + n.h > y) x = Math.max(f.left + 12, Math.min(x, n.x - 8 - pw));
+    }
     kit.glass(f, KEY_BUDGET, x, y, pw, h);
     let at = y + PAD;
     f.text(KEY_BUDGET + 1, x + PAD, at, inner, S_TEXT, "FRAME BUDGET");

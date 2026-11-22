@@ -13,7 +13,7 @@ import { KEY_MENU_NOTE } from "../../client/core/ui/menu.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { Harness } from "../fixtures/net.ts";
-import { glassBox } from "../fixtures/monitor.ts";
+import { glassBox, meets } from "../fixtures/monitor.ts";
 
 const pack = parsePack(corePackBytes());
 
@@ -241,6 +241,13 @@ test("`/budget` shows the frame's budget without the mode armed, costs nothing o
   expect(texts().some((t) => t.startsWith("near 3.0 · casters 1.5"))).toBe(true);
   expect(texts().some((t) => /^Triangles .* of /.test(t))).toBe(true);
   expect(texts().some((t) => t.includes("this panel") && t.includes("ms a frame"))).toBe(true);
+  // It stands clear of the rest of the HUD: under the minimap and what is below it, left of the vitals.
+  const mine = (k: number): boolean => (k >= 9700 && k < 10100) || (k >= 2000000 + 9700 * 16 && k < 2000000 + 9700 * 16 + 9);
+  for (const size of [[1280, 720], [1920, 1080], [2560, 1080]] as const) {
+    h.run(50, (now) => void app.frame(now, size[0], size[1]));
+    const panelBox = glassBox(app.ui.frame, 9700)!, under = app.ui.frame.nodes.slice(0, app.ui.frame.count).filter((n) => !mine(n.key) && n.w < app.ui.frame.width / 2 && meets(n, panelBox));
+    expect(under.map((n) => `${n.key} ${n.text}`), `${size[0]}×${size[1]}`).toEqual([]);
+  }
   // On a phone held upright the panel is as wide as the screen leaves it.
   h.run(50, (now) => void app.frame(now, 390, 844));
   const box = glassBox(app.ui.frame, 9700), f = app.ui.frame;
