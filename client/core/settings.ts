@@ -75,6 +75,8 @@ export class Settings {
   monitor = true;
   /** Whether the readout was on before F3 turned the monitor on, so that F3 again leaves it as it was. Not saved. */
   numbersBefore = false;
+  /** Bug report mode (notes/notes.ts): `/notes` in chat or `notes` in the console turns it on and off, and it is kept. */
+  notes = false;
   vitalLabels = false;
   minimapZoom = -1;
   padGlyphs = 0;
@@ -113,7 +115,7 @@ export class Settings {
   }
 }
 
-const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "monitor", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
+const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "monitor", "notes", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
 const SAVED_NUMBERS = [["sensitivity", .2, 3], ["zoomSensitivity", .5, 1.5], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
@@ -195,4 +197,11 @@ export function toggleMonitor(s: Settings): string {
   s.diagnostics = s.monitor || s.numbersBefore;
   s.changed();
   return `resource monitor ${s.monitor ? "on" : "off"}`;
+}
+
+/** `/notes` in chat and `notes` in the console: bug report mode on or off. Returns what the console says. */
+export function toggleNotes(s: Settings): string {
+  s.notes = !s.notes;
+  s.changed();
+  return s.notes ? "bug report mode on: asking the server whether this session may take notes" : "bug report mode off";
 }

@@ -2,7 +2,7 @@
 // A probe that fails in the browser but passes here points at the shell: a shader, a buffer layout, a missing upload.
 
 import { surfaceIndex } from "../../content/surfaces.ts";
-import { staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "./render/world-surfaces.ts";
+import { weathered, worldSharp, worldSurface, type WorldSample } from "./render/world-surfaces.ts";
 import { overGround } from "./render/skyopen.ts";
 import { COARSE } from "./render/terrain.ts";
 import { B_CHEST, HUMAN } from "../../shared/anim/human.ts";
@@ -93,10 +93,8 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
       worldSurface(albedo, orm, normal, albedo, finish, point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, footprint, p.surfaceCity, surfaces.sample, p.tier.finish === "light");
       // A static at `at`, unturned, is weathered as the flat program weathers it, in the open sky the probes stand in.
       if (plane.at && p.tier.finish === "full") {
-        const frame = new Float64Array(3), at = plane.at;
-        weatherFrame(point[0]! - at[0]!, point[1]! - at[1]!, point[2]! - at[2]!, n[0]!, n[1]!, n[2]!, frame);
         const over = overGround(hf, COARSE, p.frame, p.camY, point[0]! - p.camX, point[1]! - p.camY, point[2]! - p.camZ);
-        weathered(albedo, orm, finish, frame[0]!, frame[2]!, staticSeed(staticPlace(at[0]!, at[2]!)), over, 1, point[0]!, point[1]!, point[2]!, Math.abs(n[0]!) > Math.abs(n[2]!), distance, footprint, p.surfaceCity, surfaces.sample);
+        weathered(albedo, orm, finish, point[0]!, point[1]!, point[2]!, n[0]!, n[1]!, n[2]!, over, 1, distance, footprint, p.surfaceCity, surfaces.sample);
       }
       const twice = 2 * normal.reduce((sum, c, k) => sum + c * v[k]!, 0);
       const reflected = normal.map((c, k) => twice * c - v[k]!);

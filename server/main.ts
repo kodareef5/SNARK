@@ -3,7 +3,7 @@ import { ServerDirectory, listingAddress } from "./directory.ts";
 import { ABOUT_MAX, discordOf, plain, tagsOf } from "../shared/listing.ts";
 import type { Server, ServerWebSocket } from "bun";
 import { SurvivorAccess, entryReply } from "./survivor-access.ts";
-// bun server/main.ts [--dev] [--client-dir folder] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--reports folder] [--client-dir folder] [--config dir] [--port 8787] [--host address] [--public-url https://name.example | /path] [--map file.snmap] [--db var/world.db] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -19,7 +19,7 @@ import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { parsePack } from "../shared/pack/pack.ts";
 import { allClips } from "../shared/pack/clips.ts";
@@ -30,13 +30,15 @@ import { boardOwners, soundBoard } from "./sound-board.ts";
 import { TitleScenes } from "./admin/title-scenes.ts";
 import { adminAsked, refused as refuseAdmin, type AdminGate } from "./admin/gate.ts";
 import { TickMeter } from "./admin/meter.ts";
-import { PART, type TickParts } from "./admin/parts.ts";
+import { PART, measure, partsText, type TickParts } from "./admin/parts.ts";
 import { AdminPages, adminTerrain } from "./admin/routes.ts";
-import { gaugesOf } from "./admin/stats.ts";
+import { bodiesOf, gaugesOf } from "./admin/stats.ts";
 import { CUES } from "../shared/sound/cues.ts";
 import { partHash, partsFolder, readHead, type MapFile } from "../shared/world/mapfile.ts";
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
 import { PlayLog, REPORT_BYTES_MAX } from "./playlog.ts";
+import { ReportStore } from "./reports.ts";
+import type { Client } from "./game.ts";
 import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
 
 export interface ServerOptions {
@@ -93,6 +95,11 @@ export interface ServerOptions {
    * and each run writes its reports in a file of its own there. Without it, or without `dev`, no page keeps one.
    */
   play?: string;
+  /**
+   * The folder bug reports are kept in (server/reports.ts), one for the checkout whatever the world. Run from the command
+   * line, a development server keeps them in var/reports; any other keeps none unless started with --reports <folder>.
+   */
+  reports?: string;
 }
 
 export interface RunningServer {
@@ -137,7 +144,7 @@ function readAt(fd: number, at: number, length: number): Uint8Array<ArrayBuffer>
 }
 
 /** The map's routes (mapRoutes), and how to let go of the file they hold. */
-export type MapRoute = ((path: string, req: Request) => Response | Promise<Response> | null) & { readonly link: string; close(): void };
+export type MapRoute = ((path: string, req: Request) => Response | Promise<Response> | null) & { readonly link: string; readonly version: number; close(): void };
 
 /**
  * Answers a client's requests for the map. `/map.json` names the map and its head, and `/map/<name>` is the head or a part
@@ -191,7 +198,7 @@ export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, ha
       if (!onDisk) return cut(name, req);
       return serveFile(folder, req, `/${name}`).then((res) => (res.status === 404 ? cut(name, req) : res));
     },
-    { link: `<map/${head.name}>; rel=preload; as=fetch; crossorigin`, close },
+    { link: `<map/${head.name}>; rel=preload; as=fetch; crossorigin`, version: head.version, close },
   );
 }
 
@@ -330,6 +337,26 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const playFile = opts.dev && opts.play ? join(opts.play, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.jsonl`) : "";
   const play = playFile ? new PlayLog(host.game, (line) => (mkdirSync(opts.play!, { recursive: true }), appendFileSync(playFile, line + "\n"))) : null;
   const admin = new AdminPages({ host, meter, dir: join(clientDir, "admin"), terrain, start: { tick: host.world.tick, wall: meter.startedAt } });
+  const checkout = resolve(import.meta.dir, "..");
+  const notes = opts.reports ? new ReportStore({ dir: opts.reports, root: checkout, clientDir, map: { id: host.world.mapId, city: mapLabel(registry, host.world.mapId), ...(opts.map ? { file: relative(checkout, resolve(opts.map)) } : {}), version: mapRoute.version, hash: host.world.mapHash } }) : null;
+  /** What a bug report is told of this server: the session a token names, and the server's state for its server.json. */
+  const reportServer = {
+    sender: (slot: number, token: Uint8Array): Client | null => host.voice.sessionOf(slot, token),
+    facts: (sender: unknown): Record<string, unknown> => {
+      const c = sender as Client, conn = c.conn as Connection & { bytesSent?: number; skipped?: number; buffered?: number };
+      const since = Date.now() - 120_000, e = c.ent, ents = host.world.ents;
+      return {
+        at: new Date().toISOString(),
+        world: { name: host.rules.text("SessionName") || mapLabel(registry, host.world.mapId), map: host.world.mapId, hash: host.world.mapHash, tick: host.world.tick, dev: opts.dev ?? false, startedAt: new Date(meter.startedAt).toISOString(), online: host.game.playerCount },
+        ticks: { rate: TICK_RATE, ran: meter.ticks, dropped: meter.dropped, seconds: meter.secondColumns() },
+        long: host.game.parts.recent().filter((t) => t.at >= since).slice(-64).map((t) => ({ ...t, whose: measure(host.game.parts.limit, t).whose, text: partsText(t) })),
+        bodies: bodiesOf(host),
+        memory: process.memoryUsage(),
+        connection: { sent: conn.bytesSent ?? 0, skipped: conn.skipped ?? 0, waiting: conn.buffered ?? 0 },
+        survivor: e >= 0 ? { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, tick: host.world.tick } : null,
+      };
+    },
+  };
   if (opts.probeScene) {
     const ents = host.world.ents;
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
@@ -492,6 +519,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         const why = play.report(await req.text());
         return why === "" ? new Response(null, { status: 204 }) : new Response(why, { status: 422 });
       }
+      // Not for this machine alone either, and taken from an admin's session only (server/reports.ts).
+      if (path === "/__report") return notes ? notes.answer(req, reportServer) : new Response("This server keeps no notes: a development server keeps them, and any other only when started with --reports <folder>.", { status: 404 });
       if (path === "/__bench" && req.method === "POST" && opts.dev && local) {
         const result = await req.json();
         console.log(`frame times from a browser:\n${JSON.stringify(result, null, 2)}`);
@@ -668,6 +697,7 @@ if (import.meta.main) {
     publicUrl: value("--public-url"),
     dev,
     play: resolve(import.meta.dir, "../var/play"),
+    reports: value("--reports") ?? (dev ? resolve(import.meta.dir, "../var/reports") : undefined),
     config: rules,
     ...(live ? { live } : {}),
     map: value("--map"),

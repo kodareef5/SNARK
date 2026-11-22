@@ -286,16 +286,25 @@ export class Voice {
     }
   }
 
+  /**
+   * The live session at speaker slot `slot` whose token is `token`, or null. A voice socket's first packet proves its
+   * session so, and a bug report its sender (server/reports.ts).
+   */
+  sessionOf(slot: number, token: Uint8Array): Client | null {
+    const c = this.ctx.game.clients[slot];
+    const own = c ? this.tokens.get(c) : undefined;
+    if (!c || !own || !c.active || c.closed || token.length < TOKEN_BYTES) return null;
+    // Constant-time, so timing does not leak where the tokens differ.
+    let diff = 0;
+    for (let i = 0; i < TOKEN_BYTES; i++) diff |= own[i]! ^ token[i]!;
+    return diff === 0 ? c : null;
+  }
+
   private auth(peer: VoicePeer, data: Uint8Array): boolean {
     if (data.length !== AUTH_BYTES || data[0] !== VOICE_AUTH) return false;
     const slot = data[1]! | (data[2]! << 8);
-    const c = this.ctx.game.clients[slot];
-    const token = c ? this.tokens.get(c) : undefined;
-    if (!c || !token || !c.active || c.closed) return false;
-    // Constant-time, so timing does not leak where the tokens differ.
-    let diff = 0;
-    for (let i = 0; i < TOKEN_BYTES; i++) diff |= token[i]! ^ data[3 + i]!;
-    if (diff !== 0) return false;
+    const c = this.sessionOf(slot, data.subarray(3));
+    if (!c) return false;
     // One voice socket per session. A new one replaces the old.
     const old = this.bySlot[slot];
     if (old && old !== peer) this.close(old);
