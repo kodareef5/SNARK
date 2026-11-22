@@ -15,10 +15,11 @@ import type { LevelsDef } from "./kinds/levels.ts";
 import type { EngramDef } from "./kinds/engrams.ts";
 import type { NodeDef } from "./kinds/nodes.ts";
 import type { PropDef } from "./kinds/props.ts";
+import type { StructureDef } from "./kinds/structures.ts";
 import type { BuffDef } from "./kinds/buffs.ts";
 import type { DamageDef, DamageType } from "./kinds/damage.ts";
 import type { Seat } from "../sim/seats.ts";
-import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
+import type { VehicleDefinition } from "../sim/vehicle.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
 
 export type { MaterialDef } from "./kinds/materials.ts";
@@ -33,6 +34,7 @@ export type { LevelsDef } from "./kinds/levels.ts";
 export type { EngramDef } from "./kinds/engrams.ts";
 export type { NodeDef, NodeShape, NodeVariant } from "./kinds/nodes.ts";
 export type { PropDef } from "./kinds/props.ts";
+export type { MotionFacet, PartPlacement, StructureDef } from "./kinds/structures.ts";
 export type { BuffDef } from "./kinds/buffs.ts";
 export type { DamageDef, DamageType } from "./kinds/damage.ts";
 
@@ -328,133 +330,6 @@ export interface FlyFacet {
    * to each body it passes, at 100% melee, 0 where not given.
    */
   readonly roll: { readonly burst: number; readonly every: number; readonly damage?: number };
-}
-
-/**
- * Where a moving part stands from its static's origin, in the static's frame: offset in metres, then a turn as a unit
- * quaternion (x, y, z, w), then a scale along the part's own axes. A turn or a scale left out is none. A part `away` at
- * one end is put away there and not drawn while it rests there: a headsail rolled on its stay, which a roll stands for.
- */
-export interface PartPlacement {
-  readonly at: readonly [number, number, number];
-  readonly turn?: readonly [number, number, number, number];
-  readonly scale?: readonly [number, number, number];
-  readonly away?: true;
-}
-
-/**
- * Using the static moves its parts from one placement to the other over `seconds`, and back if used again, from where they
- * stand: a door with a travel time. Each part is a mesh of the pack, drawn as one piece and walked by nothing. A new
- * world has each at `from`. `say` is what using it does toward each state, the second and then the first, which the
- * prompt shows.
- */
-export interface MotionFacet {
-  readonly seconds: number;
-  readonly parts: readonly { readonly mesh: string; readonly from: PartPlacement; readonly to: PartPlacement }[];
-  readonly say: readonly [string, string];
-}
-
-export interface StructureDef extends Named {
-  /** A static whose parts move between two placements when it is used. */
-  readonly motion?: MotionFacet;
-  /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
-  readonly vehicleSurface?: VehicleSurface;
-  readonly type: "structure";
-  readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
-  readonly id: string;
-  /**
-   * "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. A mesh of
-   * the pack with a shape is drawn at the shape's origin and walked as its boxes, so its origin may be on the ground under it.
-   * "none" for a static drawn as nothing: a landmark's collision, which its cells draw.
-   */
-  readonly mesh: string;
-  readonly color: number;
-  /** A fixed palette colour for its faces that look down, drawn as its form (shared/world/city.ts): a slab's darker soffit. */
-  readonly under?: number;
-  /**
-   * A material made from a recipe by the page (content/texgen/finishes.ts) that its faces wear, drawn as its form, in
-   * place of its colour's painted finish: its colour dyes it and its painted finish weathers it. Its name in the recipes.
-   */
-  readonly recipe?: string;
-  /** Drawn near only: a street piece or a building's small kit, left out of the far city's lattice and mass levels. */
-  readonly near?: true;
-  /**
-   * Drawn bent along the street by its instance's bend (shared/world/bends.ts): a static of a pack's mesh, walked as
-   * nothing, which the collision pieces a map lays under it are walked as; its shape is the box of the piece as modelled.
-   */
-  readonly bent?: true;
-  /**
-   * Paint on the ground: each vertex of its mesh is drawn its own height over the ground under it, wherever the frame holds
-   * the ground's samples (packet.ts DRAW_GROUND), and it casts no shadow. It follows the ground alone, not what stands on it.
-   */
-  readonly paint?: true;
-  /**
-   * Its mesh's levels are chosen as if it stood this many times as far off (1 to 16; client/core/render/scene.ts): for
-   * scenery of many alike that a heavy mesh draws, a marina's moored hulls, finest only close by.
-   */
-  readonly coarse?: number;
-  /**
-   * Fixed palette colours of its mesh's colour regions after the first, which `color` gives: up to five, as a moored hull
-   * takes its vessel's stripe and upholstery. Without it those regions draw as the missing colour.
-   */
-  readonly colors?: readonly number[];
-  /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
-  readonly half: readonly [number, number, number];
-  /** A shape id, if it is more than one box or not centred on its origin. `half` must equal the box that holds the shape. */
-  readonly shape?: string;
-  readonly hp: number;
-  /** A material id. The material says what each type of damage does to it. Omitted, nothing harms it. */
-  readonly material?: string;
-  /** Stacks it holds. */
-  readonly slots?: number;
-  /** Using it turns it into this other structure in the same place. A door and its open form name each other. */
-  readonly opens?: string;
-  /** Only its tribe may use it until the tribe unlocks it. Omitted, anyone may. */
-  readonly locked?: boolean;
-  /** When it loses its support it drops whole onto the ground under it instead of breaking. */
-  readonly falls?: boolean;
-  /** Days it lasts unvisited, in place of its material's. */
-  readonly decayDays?: number;
-  /** A fire. Lighting it turns it into this other structure in the same place, and putting that one out turns it back. */
-  readonly lights?: string;
-  /** The burning one of such a pair. */
-  readonly lit?: boolean;
-  /** Its tribe may respawn at it. */
-  readonly bed?: boolean;
-  /** A bed's seconds, after a survivor rises at it, before anyone may again. */
-  readonly wait?: number;
-  /** A sleeping bag: only the survivor who set it down may rise at it, and it is gone once one has. */
-  readonly once?: boolean;
-  /** It is set only on a foundation or a ceiling, never on open ground. */
-  readonly floor?: boolean;
-  /** Where a survivor rises from a bed, from its middle and turned with it. On top of it unless given. */
-  readonly rise?: readonly [number, number, number];
-  // A station's fuel, fire and power (planning/reference/stations-plan.md). Both kinds of a lit pair say the same.
-  /**
-   * The only fuel this station burns, and the seconds one piece lasts in it (the fabricator's gasoline, the preserving bin's
-   * sparkpowder). Omitted, it burns every item by the item's own `fuel`, as a campfire does.
-   */
-  readonly burns?: readonly { readonly item: string; readonly seconds: number }[];
-  /** False for a fire that does not cook what has `cooks` (M1), as the forge and the preserving bin do not. Omitted, it cooks. */
-  readonly cooks?: boolean;
-  /**
-   * How many times as long things keep in it, as a species' `keeps` (M6): a feeding trough's 4 always, a preserving bin's
-   * 10 on its lit kind only. A station whose two kinds keep differently has every spoil clock rescaled at the tick it swaps
-   * (server/preserve.ts).
-   */
-  readonly keeps?: number;
-  /**
-   * It holds a charge full while this is its kind (ItemDef.charge): a soul vault's lit kind only, so a full soul ball in
-   * it loses nothing while it burns, and runs down from full from the tick it goes out (Items.rekeep).
-   */
-  readonly charges?: boolean;
-  /**
-   * Its jobs run only while it burns (M5): no job is taken while it is out, and a unit under way when it goes out waits with
-   * its ticks left (Job.rest) until it is lit again. Both kinds of a lit pair say it.
-   */
-  readonly powered?: boolean;
-  /** It is not lit while its foot is below the map's sea level (M8). */
-  readonly dry?: boolean;
 }
 
 export interface ItemDef extends Named {

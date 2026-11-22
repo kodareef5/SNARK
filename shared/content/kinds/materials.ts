@@ -1,6 +1,7 @@
 // Materials: what each type of damage does to what is built of one, and how long that lasts unvisited.
 
 import { DAMAGE_TYPES } from "../../sim/damage.ts";
+import type { Content } from "../defs.ts";
 import { f, row, type Fields, type Kind, type Named } from "../kind.ts";
 import type { DamageType } from "./damage.ts";
 
@@ -12,6 +13,9 @@ export interface MaterialDef extends Named {
   /** Days a structure of it may go unvisited by its owners before anyone may demolish it. Omitted, never. */
   readonly decayDays?: number;
 }
+
+/** Every material by its id. */
+export const materialsById = (input: readonly Content[]): Map<string, MaterialDef> => new Map(input.flatMap((d) => (d.type === "material" ? [[d.id, d] as const] : [])));
 
 const FIELDS = {
   takes: f("facet", "the structure settings' damage by type"),

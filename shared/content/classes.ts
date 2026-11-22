@@ -5,7 +5,7 @@
 import { FEATURES, type Feature } from "../features.ts";
 import { f, icon, mesh, stub, type ClassRow, type Field, type Fields, type Slot, type Status } from "./kind.ts";
 import { KINDS } from "./kinds.ts";
-import type { Def, ItemDef, SpeciesDef, StructureDef } from "./defs.ts";
+import type { Def, ItemDef, SpeciesDef } from "./defs.ts";
 
 
 export type { ClassRow, Field, Slot, Status } from "./kind.ts";
@@ -125,45 +125,6 @@ const SPECIES = {
   boss: stub("bosses", "switch", "bIsBossDino"),
 } satisfies Fields<SpeciesDef>;
 
-const STRUCTURE = {
-  motion: f("facet", "a door's swing, with a travel time"),
-  vehicleSurface: f("facet"),
-  mesh: f("text"),
-  color: f("number"),
-  under: f("number", "the colour of its faces that look down"),
-  recipe: f("text", "a material made from a recipe its faces wear, which its colour dyes"),
-  near: f("switch", "drawn near only, left out of the far city's lattice and mass"),
-  paint: f("switch", "paint on the ground: each vertex drawn its own height over the ground under it, casting no shadow"),
-  bent: f("switch", "drawn bent along the street by its instance's bend, walked as nothing: a bent kerb"),
-  coarse: f("number", "its mesh's levels chosen as if it stood this many times as far off, 1 to 16: scenery of many alike"),
-  colors: f("list", "the colours of its mesh's regions after the first, as a moored hull its vessel's"),
-  half: f("vec3"),
-  shape: f("text", "SnapPoints", { refs: { "": "shape" } }),
-  hp: f("number", "Health"),
-  material: f("text", "StructureSettingsClass", { refs: { "": "material" } }),
-  slots: f("number", "an inventory component"),
-  opens: f("text", "", { refs: { "": "structure" } }),
-  locked: f("switch"),
-  falls: f("switch"),
-  decayDays: f("number", "DecayDestructionPeriod"),
-  lights: f("text", "", { refs: { "": "structure" } }),
-  lit: f("switch"),
-  bed: f("switch"),
-  wait: f("number"),
-  once: f("switch"),
-  floor: f("switch"),
-  rise: f("vec3"),
-  // The stations wave's (planning/reference/stations-plan.md, S0). `burns` is read (Registry.stationFuel), `powered`
-  // (Progression, server/power.ts, S2), `cooks` (the hearth, S1 and S3), `keeps` (server/preserve.ts, S3) and `dry`
-  // (S1); the rest are stubs, each read once its project builds it.
-  burns: f("list", "the fuel a station takes and how long each piece burns in it", { refs: { "[].item": "item" } }),
-  cooks: f("switch", "whether a lit station cooks raw meat, as a campfire does and a forge does not"),
-  keeps: f("number", "GetSpoilingTimeMultiplier of its inventory"),
-  charges: f("switch", "a powered cryofridge holding its cryopods' charge"),
-  powered: f("switch", "bRequiresPower: its crafting runs only while it is on"),
-  dry: f("switch", "not lit, or not working, under water"),
-} satisfies Fields<StructureDef>;
-
 /** The fields of a type whose kind has a file of its own (kinds.ts). */
 const fieldsOf = (type: string): Readonly<Record<string, Field>> => KINDS.find((k) => k.type === type && k.fields)!.fields!;
 const rowsOf = (type: string): readonly ClassRow[] => KINDS.find((k) => k.type === type && k.rows)!.rows!;
@@ -172,7 +133,7 @@ const rowsOf = (type: string): readonly ClassRow[] => KINDS.find((k) => k.type =
 export const FIELDS: Readonly<Record<Def["type"], Readonly<Record<string, Field>>>> = {
   item: ITEM,
   species: SPECIES,
-  structure: STRUCTURE,
+  structure: fieldsOf("structure"),
   node: fieldsOf("node"),
   prop: fieldsOf("prop"),
   engram: fieldsOf("engram"),
@@ -297,15 +258,7 @@ row("species/civilian", "species", SPECIES, { parent: "species", ark: "a humanoi
 row("species/vehicle", "species", SPECIES, { parent: "species", ark: "a mechanical mount", shelf: "vehicles", must: [...BODY, "vehicle", "stats"], may: ["skeleton", "slots", "keeps", "still", "takes", "mass", "fists", "stamina", "swimSpeed", "strafe", "drag", "carriable", "regions", "corpse", "drops"], slots: { wreck: { ...mesh("may", "{vehicle.wreck}", "none"), when: "vehicle" }, body: mesh("must", "{mesh}", "box"), rig: { asset: "rig", need: "must", from: "{mesh}", fallback: ["rigid"] }, icon }, doc: "A vehicle with a movement controller, inventory, ownership and named seats." });
 row("species/target", "species", SPECIES, { parent: "species", ark: "none, ours", shelf: "targets", must: [...BODY, "skeleton", "still"], may: ["stats", "equips", "slots", "zones", "takes", "torporDrain", "crouch", "prone", "stamina", "fists", "food", "drops", "killXp"], slots: HUMAN_SLOTS, doc: "A human-shaped body that stands where it is put, to be practised on. A creature that must stand still is a creature that says so." });
 
-const BUILT = ["mesh", "color", "half", "hp"] as const;
-const STRUCTURE_SLOTS = { mesh: mesh("must", "{mesh}", "{id}", "shape"), destroyed: mesh("may", "{id}/destroyed", "none"), preview: mesh("may", "{id}/preview", "#mesh") };
-row("structure", "structure", STRUCTURE, { abstract: true, ark: "APrimalStructure", shelf: "structures", doc: "Anything built or standing in the world that is not alive." });
-row("structure/piece", "structure", STRUCTURE, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls", "vehicleSurface"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." });
-row("structure/container", "structure", STRUCTURE, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." });
-row("structure/station", "structure", STRUCTURE, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "charges", "powered", "dry"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." });
-row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." });
-row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "vehicleSurface", "opens", "motion", "under", "recipe", "near", "paint", "coarse", "colors", "bent"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. A ruin's piece may say the darker colour its faces looking down are drawn in, and a material made from a recipe its faces wear in place of its colour's painted finish, and a street piece or a building's small kit that it is drawn near only, and road paint that it is drawn on the ground, and scenery of many alike that its mesh's levels are chosen coarser and the colours of its mesh's other regions. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it, or bent along the street by its instance's bend and walked as nothing (a bent kerb). A pair that opens each other is a public door. One with a motion moves its parts between two placements when used, as sails are set and struck." });
-row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
+rows.push(...rowsOf("structure"));
 rows.push(...rowsOf("shape"));
 rows.push(...rowsOf("material"));
 

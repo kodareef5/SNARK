@@ -2,6 +2,7 @@
 
 import { REGION_BASE } from "../../pack/palette.ts";
 import { hullFault, hullPoint, type HullDef } from "../../world/convex.ts";
+import type { Content } from "../defs.ts";
 import { f, row, type Fields, type Kind, type Named } from "../kind.ts";
 
 /** The furthest a structure, a node or any box of one may reach from its origin along an axis, in metres. */
@@ -72,6 +73,9 @@ function holdHulls(out: [number, number, number], hulls: readonly HullDef[]): vo
     }
   }
 }
+
+/** Every shape by its id. */
+export const shapesById = (input: readonly Content[]): Map<string, ShapeDef> => new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
 
 const FIELDS = {
   role: f("text", "the snap type"),
