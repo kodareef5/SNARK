@@ -37,6 +37,7 @@ When the kit is not enough, it stands on `tests/fixtures` ([README](fixtures/REA
 | `screen(h, s)` | A survivor joined with `screen: true` runs the whole app: `.app`, `.packet` |
 | `shown(view, KEY_...)` `node(view, KEY_...)` `fits(view, KEY_...)` `drawn(view, mesh)` | The interface's text and nodes, whether one is inside the window, how many of a mesh the frame draws |
 | `tap(h, view, "KeyI")` `resize(h, view, w, h)` `WINDOWS` | A key; a window size; four shapes to lay out at |
+| `direct(w, h, insets, { finger, monitor })` `PHONES` `nodes(frame)` | An interface built from its models, with no server: set `.ui` and `.hud`, then `.build()`; nine touch windows; a frame's nodes to compare |
 | `pilot(h, s)` | The keys and look a client sends: `moveZ = 1` holds forward |
 
 A helper throws, with the server's own words, when the server refuses what it asked. No recipe
