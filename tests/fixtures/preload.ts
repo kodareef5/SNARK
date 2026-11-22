@@ -1,8 +1,9 @@
-// Loaded before each test file (bunfig.toml): what the last file left collected, the hang limit its tests share, and
-// under the check, what the worker is running and what the file cost.
+// Loaded before each test file under the check, and once by a plain `bun test` (bunfig.toml): what the last file left
+// collected, the hang limit every test has, and under the check, what the worker is running and what the file cost.
 
 import { afterAll, beforeEach, setDefaultTimeout } from "bun:test";
-import { appendFileSync, rmSync, writeFileSync } from "node:fs";
+import { plugin } from "bun";
+import { appendFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { TEST_WATCH, hungAfter } from "./load.ts";
 
@@ -15,6 +16,21 @@ const limit = hungAfter(Bun.main);
 setDefaultTimeout(limit);
 
 const dir = process.env[TEST_WATCH];
+// A plain `bun test` of several files runs them in one process and loads this once: the files after the first would have
+// Bun's own five seconds. So the limit is set again as each test file is read, which is handed on as it is. The check
+// runs each file apart (--parallel), and this file before each.
+if (!dir) {
+  plugin({
+    name: "hang-limit",
+    setup(build) {
+      build.onLoad({ filter: /\.test\.ts$/ }, (args) => {
+        setDefaultTimeout(hungAfter(args.path));
+        return { contents: readFileSync(args.path, "utf8"), loader: "ts" };
+      });
+    },
+  });
+}
+
 if (dir) {
   // The file, its test now running (0 while it loads), when that began and its limit. A test that never yields to its
   // own timeout, such as a loop with no end, is stopped by the check from this.
