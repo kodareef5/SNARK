@@ -44,6 +44,7 @@ import { MountedRoars } from "./creature-roar.ts";
 import { DEADLINE_FECES, Feces } from "./feces.ts";
 import { Hurt } from "./hurt.ts";
 import { Overhead } from "./overhead.ts";
+import { Gaze } from "./gaze.ts";
 import { growthStep, youngShare } from "../shared/sim/breeding.ts";
 import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
@@ -227,6 +228,7 @@ export interface Host {
   /** Each survivor's starter pteranodon in its issued soul ball (server/mount.ts). */
   readonly mounts: Mounts;
   readonly overhead: Overhead;
+  readonly gaze: Gaze;
   readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
   readonly spawner: Spawner | null;
@@ -695,6 +697,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const roars = new MountedRoars({ world, records, creatures, feces });
   game.onMountSecondary = e => roars.use(e);
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
+  // A sight's cone widens its session's view and holds what it is on awake (server/gaze.ts, D1079).
+  // A look through a sight tells what it is on as far as the sight's gaze reaches (D1082).
+  overhead.reach = (c) => gaze.lookReach(c);
+  const gaze = new Gaze({ world, records, items, game, spot: (team, e, until) => tactical.spot(team, e, until), wake: (chunk, delta) => {
+    creatures.watch(chunk, delta, woke);
+    if (woke.length > 0) settled.bodies += settle(world, woke, relocated);
+    woke.length = 0;
+  } });
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
@@ -838,6 +848,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   tribes.onTeam = (rec) => refreshBody(rec);
   tribes.onNotice = (pid, text) => notice(pid, text);
   const projectiles = new Projectiles({ world, game, records, items, combat, bus }, (opts.seed ?? 1) + 97);
+  // A sight's zero lifts its flying rounds (D1083).
+  projectiles.zero = (c) => gaze.zeroOf(c);
   // Every shot and blast, hit or miss, is heard by Cast's people near it.
   projectiles.heard.push((kind, x, z, by, silenced) => castHost.heard(kind, x, z, by, silenced));
   combat.onFire = (c, rec, weapon, quality, ammo, draw) => projectiles.launch(c, rec, weapon, quality, ammo, draw);
@@ -1228,6 +1240,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const parts = game.parts;
   game.onStep = (tick) => {
     creative.step(tick);
+    gaze.step(tick);
     for (const c of game.clients) {
       if (!c?.active) continue;
       const was = focus.get(c.id)!;
@@ -1612,6 +1625,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     balls,
     mounts,
     overhead,
+    gaze,
     hurt,
     spawner,
     carReturn,

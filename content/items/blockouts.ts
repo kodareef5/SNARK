@@ -56,7 +56,8 @@ const MATTER: Def[] = [
   { type: "item", class: "ammo", id: id("round_advanced_rifle"), label: "advanced rifle bullet", stack: 100, weight: 0.1, color: 6, ammo: { damage: 47, type: "bullet" } },
   ...made("round_advanced_rifle", "Advanced rifle bullet", 58, 8, 2, 1, [["ingot", 1], ["gunpowder", 9]], "fabricator", ["round_rifle"]),
   // Advanced Sniper Bullet: weight 0.2; 2 ingots and 12 gunpowder make 2; level 83, 16 points. The sniper rifle's 165.
-  { type: "item", class: "ammo", id: id("round_advanced_sniper"), label: "advanced sniper bullet", stack: 100, weight: 0.2, color: 6, ammo: { damage: 165, type: "bullet" } },
+  // It flies, at a sniper round's 850 m/s, and drops (D1083); ARK's page gives no speed.
+  { type: "item", class: "ammo", id: id("round_advanced_sniper"), label: "advanced sniper bullet", stack: 100, weight: 0.2, color: 6, ammo: { damage: 165, type: "bullet", speed: 850, gravity: 9.81 } },
   ...made("round_advanced_sniper", "Advanced sniper bullet", 83, 16, 2, 1, [["ingot", 2], ["gunpowder", 12]], "fabricator", ["round_rifle"]),
   // Metal Arrow, the compound bow's alone: weight 0.4, damage 130 (175.5 from the compound bow, which is 1.35 times an
   // arrow); 3 thatch, 3 fiber, 3 ingots, 1 cementing paste and 1 polymer at the fabricator; level 79, 35 points, after the
@@ -139,8 +140,10 @@ const ARMS: Def[] = [
   ...made("rifle_assault", "Assault rifle", 58, 24, 1, 5, [["polymer", 60], ["ingot", 35], ["paste", 50]], "fabricator", ["rifle"]),
   // Fabricated Sniper Rifle: weight 25; 165 a shot, 3.3 shots a second, 8 in the magazine, 4.24 s to reload; durability
   // 70 at 1 a shot, 70 shots; 115 polymer, 80 ingots and 110 paste at the fabricator in 15 s; level 83, 36 points, after
-  // the longneck. Its own scope is not built: it takes the scope attachment in its place. Its aim is the longneck's.
-  { type: "item", class: "weapon", id: id("rifle_sniper"), label: "fabricated sniper rifle", stack: 1, weight: 25, color: 11, weapon: { kind: "gun", ammo: [id("round_advanced_sniper")], power: 1, clip: 8, reload: 4.24, interval: 1 / 3.3, uses: 70, fits: ATTACHMENTS, melee: BLOW, mesh: BOX, hold: "rifle", ...RIFLE_AIM } },
+  // the longneck. Its aim is the longneck's. "A built-in scope" (Fabricated Sniper Rifle): ours zooms 4 to 40 times on the
+  // wheel, its window tightening, with a reticle in milliradians and a zero dialled with Alt and the wheel (D1083, DEV205);
+  // it takes the silencer, flashlight and laser, as ARK's does, and no scope.
+  { type: "item", class: "weapon", id: id("rifle_sniper"), label: "fabricated sniper rifle", stack: 1, weight: 25, color: 11, optic: { min: 4, max: 40, window: [0.96, 0.5], reticle: "mil" }, weapon: { kind: "gun", ammo: [id("round_advanced_sniper")], power: 1, clip: 8, reload: 4.24, interval: 1 / 3.3, uses: 70, fits: [id("silencer"), id("flashlight"), id("laser")], melee: BLOW, mesh: BOX, hold: "rifle", ...RIFLE_AIM } },
   ...made("rifle_sniper", "Fabricated sniper rifle", 83, 36, 1, 15, [["polymer", 115], ["ingot", 80], ["paste", 110]], "fabricator", ["rifle"]),
   // Rocket Launcher: weight 20; a rocket every 4 s, and it "fires up to 20 rockets before breaking"; 80 polymer, 50
   // ingots and 60 paste at the fabricator in 15 s; level 87, 32 points, after the longneck. Against what is built a
@@ -154,7 +157,10 @@ const ARMS: Def[] = [
 
 const INSTRUMENTS: Def[] = [
   // Spyglass: weight 0.5; 5 wood, 10 hide, 10 fiber and 2 crystal in the hand in 5 s; level 7, 2 points.
-  { type: "item", class: "instrument", id: id("spyglass"), stack: 1, weight: 0.5, color: 3 },
+  // Raised with the secondary button, a pair of glasses (D1082, DEV212): steps of 2 to 30 times on the wheel, two merged
+  // lenses, what it is on told as the floating HUD of ARK's is ("Using spyglass now shows Floating HUD of Dinos", 181.0),
+  // ranged with the primary and marked for the tribe with N.
+  { type: "item", class: "instrument", id: id("spyglass"), stack: 1, weight: 0.5, color: 3, optic: { min: 2, max: 30, steps: [2, 4, 8, 16, 30], window: [0.82, 0.52], shape: "twin" } },
   ...made("spyglass", "Spyglass", 7, 2, 1, 5, [["wood", 5], ["hide", 10], ["fiber", 10], ["crystal", 2]], undefined),
   // Compass: weight 0.5; 5 metal as it is mined, 5 flint and 30 fiber in the hand; level 8, 5 points.
   { type: "item", class: "instrument", id: id("compass"), stack: 1, weight: 0.5, color: 2 },

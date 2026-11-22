@@ -2,7 +2,7 @@
 // the dome draws from them, and the strike its sender's knot makes as it leaves.
 
 import { expect, test } from "bun:test";
-import { DROPS_AT, DROP_LANES, DROP_STREAKS, FRAME_BLOCK, FRAME_FLOATS } from "../../client/core/render/packet.ts";
+import { DROPS_AT, DROP_LANES, DROP_STREAKS, FRAME_BLOCK, FRAME_FLOATS, OPTIC_AT } from "../../client/core/render/packet.ts";
 import { CAST_FALL, CAST_FLICKER, CAST_STRIKE, DROP_SKY_GLSL, STREAK_PAST, STREAK_PIXELS, STREAK_WIDTH, TRAIL_SECONDS, castFlash, dropStreaks, eyeSlot, writeDropSky } from "../../client/core/render/supply-sky.ts";
 import { alongBone } from "../../client/core/render/supply.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -29,8 +29,8 @@ const light = (frame: Float32Array, d: readonly number[], px = 0.001): number[] 
 };
 const unit = (v: number[]): number[] => v.map((c) => c / Math.hypot(...v));
 
-test("the frame has eleven lanes for the casts after everything else, and the programs' block declares them", () => {
-  expect([DROP_STREAKS, DROP_LANES, FRAME_FLOATS - DROPS_AT, FRAME_BLOCK.includes(`highp vec4 fDrops[${DROP_LANES}];`), DROP_SKY_GLSL.includes(`k < ${DROP_STREAKS}`)]).toEqual([4, 11, 44, true, true]);
+test("the frame has eleven lanes for the casts after everything else but a visor's optic, and the programs' block declares them", () => {
+  expect([DROP_STREAKS, DROP_LANES, OPTIC_AT - DROPS_AT, FRAME_BLOCK.includes(`highp vec4 fDrops[${DROP_LANES}];`), DROP_SKY_GLSL.includes(`k < ${DROP_STREAKS}`)]).toEqual([4, 11, 44, true, true]);
   for (const v of [STREAK_WIDTH, STREAK_PIXELS]) expect(DROP_SKY_GLSL).toContain(String(v));
 });
 

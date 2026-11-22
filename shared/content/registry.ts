@@ -314,6 +314,8 @@ const MELEE_REACH = 2.6;
 const MAX_ACT_TICKS = 250;
 /** The longest one piece of fuel may burn or one item take to cook. Thirty days. */
 export const MAX_BURN_SECONDS = 30 * 86400;
+/** The most an optic may magnify (OpticFacet): the Meridian visor's digital zoom is the far end (D1076). */
+export const MAX_ZOOM = 2000;
 /** The longest an item may keep before it spoils, in game hours. The spoil clock holds this with room to spare. */
 export const MAX_SPOIL_HOURS = 1e6;
 /** The stats a use may change at once, and the ones it may change over time, which buffs carry (server/use.ts). */
@@ -573,6 +575,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
         try {
           validateSeats(d.saddle.seats, 0, "saddle");
         } catch (e) { errors.push(`${d.id}: ${(e as Error).message}`); }
+      }
+      if (d.optic) {
+        // At least 1x, at most MAX_ZOOM; a zooming one's steps rise inside its range.
+        const { min, max = min, steps = [] } = d.optic;
+        if (!(min >= 1 && max >= min && max <= MAX_ZOOM)) errors.push(`${d.id}: optic must magnify from at least 1 to at most ${MAX_ZOOM}, min first`);
+        if (steps.some((z, k) => !(z >= min && z <= max && (k === 0 || z > steps[k - 1]!)))) errors.push(`${d.id}: optic.steps must rise from optic.min to optic.max`);
+        if (d.optic.window && !d.optic.window.every((w) => w > 0 && w <= 1)) errors.push(`${d.id}: optic.window must be two shares of the screen's height, above 0 and at most 1`);
       }
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
       if (d.cooks !== undefined) positive(d, "cooks.seconds", d.cooks.seconds, MAX_BURN_SECONDS);

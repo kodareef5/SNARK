@@ -601,5 +601,7 @@ void main() {
   if (fHaze.w <= 0.) c = c * optics.a + optics.rgb;
   // A supply drop's cast crossing the sky, over the clouds: it is light, and nothing of the sky hides it.
   c += dropStreaks(d, length(fwidth(d)));
+  // In a visor's heat view the sky is the coldest there is (D1081).
+  if (fOptic.x > 1.5) c = vec3(0.0);
   o = vec4(display(c) + (hash(uvec3(gl_FragCoord.xy, 3u)) - 0.5) * SHOWN_STEP * min(fHaze.w, 1.0), 1.0);
 }`;

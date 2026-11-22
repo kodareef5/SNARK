@@ -138,6 +138,15 @@ export const DRAW_SKYLINE = 32768;
  * buffer BEND_BUFFERS past its instances', at the same place, and the draw's vertices are bent by it before it is turned.
  */
 export const DRAW_BENT = 65536;
+/**
+ * Two bits from DRAW_HEAT_SHIFT: how hot a body a draw is in a visor's heat view (D1081), 0 where the world's own heat is
+ * shown, 1 a cold-blooded creature's, 2 a warm one's, 3 hot. The shell gives the code to `uHeat`.
+ */
+export const DRAW_HEAT_SHIFT = 17;
+export const HEAT_WORLD = 0;
+export const HEAT_COLD = 1;
+export const HEAT_WARM = 2;
+export const HEAT_HOT = 3;
 /** A chunk's buffer of its bent pieces' bends, beside its instances' buffer `id`, is `id` + BEND_BUFFERS, a bend BEND_BYTES. */
 export const BEND_BUFFERS = 4 << 20;
 export { BEND_BYTES } from "../../../shared/world/bends.ts";
@@ -429,7 +438,16 @@ export const SHORE_AT = GLASS_AT + 4;
 export const DROPS_AT = SHORE_AT + 4;
 export const DROP_STREAKS = 4;
 export const DROP_LANES = DROP_STREAKS * 2 + 3;
-export const FRAME_FLOATS = DROPS_AT + DROP_LANES * 4;
+/**
+ * fOptic and fPhosphor, what a visor does to the picture (D1080): fOptic's mode (OPTIC_NONE, OPTIC_NIGHT), the grain the
+ * finish adds where it draws (0 for none), a seed that moves it each frame, and 0; fPhosphor the colour night vision
+ * shows its grey in. All zero for none.
+ */
+export const OPTIC_AT = DROPS_AT + DROP_LANES * 4;
+export const OPTIC_NONE = 0;
+export const OPTIC_NIGHT = 1;
+export const OPTIC_HEAT = 2;
+export const FRAME_FLOATS = OPTIC_AT + 8;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea, fSwell;
@@ -446,6 +464,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fLampWay, fGlass;
   highp vec4 fShore;
   highp vec4 fDrops[${4 * 2 + 3}];
+  highp vec4 fOptic, fPhosphor;
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
@@ -580,6 +599,11 @@ export class FramePacket {
    */
   room = 1;
   share = 1;
+  /**
+   * A sight's window (Camera.window), as shares of the scene drawn (x0, y0, x1, y1, y up), outside which the shell's
+   * scissor shades nothing; all zero for the whole view (D1077).
+   */
+  readonly window = new Float32Array(4);
   /**
    * Whether the frame is drawn with the page's other effects off (`?ab=`, passes.ts), every other frame for a before
    * and after: the shell keeps what the frames between need, and the card's reservations stand as they set them.

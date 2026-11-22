@@ -400,6 +400,8 @@ export function readFar(r: BitReader, out: FarCells): number {
 export const MARK_MATE = 0;
 export const MARK_TAME = 1;
 export const MARK_OTHER = 2;
+/** A creature the tribe spotted through a glass or a visor (CMD_MARK, D1082), where it is now. */
+export const MARK_SPOT = 3;
 /** A message's count is one byte. */
 export const MAX_MARKS = 255;
 /** Whether survivors of other tribes are marked: never, while in view, or anywhere. */

@@ -86,6 +86,8 @@ export interface SpeciesDef extends Named {
   readonly still?: boolean;
   /** "flees" (the default) runs from what hurts it, "defends" attacks what hurts it, and "hunts" attacks any survivor it sees. */
   readonly temper?: "flees" | "defends" | "hunts";
+  /** How it shows in a visor's heat view (D1081): "warm" (the default) or "cold", a cold-blooded thing barely there. */
+  readonly blood?: "warm" | "cold";
   /** How far off it notices what it hunts, in metres. Defaults to 20. */
   readonly sight?: number;
   /** How far from where a hunt began it follows before it gives up, in metres. Defaults to 60. */
@@ -515,6 +517,8 @@ export interface ItemDef extends Named {
    * (FLAG_ON), the laser drawing a dot where the weapon points and the light waiting for local lights (D436).
    */
   readonly attachment?: "scope" | "silencer" | "light" | "laser" | "holo";
+  /** A sight, glass or visor looked through: how many times it magnifies the view (OpticFacet, D1076). */
+  readonly optic?: OpticFacet;
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
   readonly places?: readonly string[];
   /** A completed vehicle assembly. Deployment consumes one only after the named vehicle fits on a supporting surface. */
@@ -586,6 +590,26 @@ export interface GlideFacet {
   readonly grade: number;
   readonly uses: number;
   readonly seconds: number;
+}
+
+/**
+ * What looking through an item does to the view (client/core/optics.ts): the view narrows on the tangent of its half,
+ * `min` times at first, as far as `max` for one that zooms. A fixed sight gives `min` alone. `steps`, inside the two in
+ * order, are the magnifications one that clicks stops at; one with none zooms smoothly.
+ */
+export interface OpticFacet {
+  readonly min: number;
+  readonly max?: number;
+  readonly steps?: readonly number[];
+  /**
+   * The share of the screen's height its window spans at its least zoom and at its most, tightening between them; the
+   * rest is masked and not drawn (D1077). A whole height, [1, 1], where it gives none.
+   */
+  readonly window?: readonly [number, number];
+  /** One round lens, two merged side by side, or a visor's wide window. Round where it gives none. */
+  readonly shape?: "round" | "twin" | "visor";
+  /** A scope's reticle: the German post (the default), or lines marked in milliradians that grow with the zoom (D1083). */
+  readonly reticle?: "post" | "mil";
 }
 
 /** How an item is made. ARK keeps this on the item too. */

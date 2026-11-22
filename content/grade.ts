@@ -17,8 +17,9 @@ export interface GradeKey {
 // eased: noon brighter by most of a stop with its darks kept deep, the hour before sunset darker, more coloured and
 // toward gold, night less blue, less coloured and lifted.
 export const GRADE: readonly GradeKey[] = [
-  // Night: the dark lifted so a doorway and a creature read, colour held back, the moon's blue eased.
-  { sun: -18, gain: [0.8, 0.98, 1.02], saturation: 0.8, gamma: 0.84 },
+  // Night: darker than it was (D1080), so a visor's night vision, a light and the moon matter; the dark lifted a little
+  // still, colour held back, the moon's blue eased. It was gain [0.8, 0.98, 1.02] at a gamma of 0.84.
+  { sun: -18, gain: [0.6, 0.74, 0.78], saturation: 0.75, gamma: 0.94 },
   // Dusk and dawn, the sun just down.
   { sun: -5, gain: [0.8, 0.92, 0.98], saturation: 0.9, gamma: 0.92 },
   // The sun on the horizon and the hour before sunset: gold, more coloured, the darks deep and long.

@@ -35,7 +35,7 @@ export const AMMO: readonly Def[] = [
   // each weighs 0.1. What each does is W7's (planning/reference/weapons-plan.md, M10; ItemDef.attachment): the scope zooms
   // "about 3x"; the flashlight and laser are switched with N, and the flashlight spends its weapon's durability, a use a
   // minute (DEV145).
-  { type: "item", class: "attachment", id: id("scope"), stack: 1, weight: 0.1, color: 11, attachment: "scope" },
+  { type: "item", class: "attachment", id: id("scope"), stack: 1, weight: 0.1, color: 11, attachment: "scope", optic: { min: 3 } },
   { type: "item", class: "attachment", id: id("silencer"), stack: 1, weight: 0.1, color: 11, attachment: "silencer" },
   { type: "item", class: "attachment", id: id("flashlight"), stack: 1, weight: 0.1, color: 6, attachment: "light" },
   { type: "item", class: "attachment", id: id("laser"), stack: 1, weight: 0.1, color: 8, attachment: "laser" },

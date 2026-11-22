@@ -1,6 +1,7 @@
 import { CROWN_ORIGIN, DECK_RADIUS, EYE_DYE, KEEL, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
 import { aperture, eyePhase, eyePower, shutterOpening, writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
+import { EYE_FROM } from "../optics.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
 import { remoteVehiclePose } from "../vehicle-view.ts";
@@ -66,6 +67,7 @@ import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { MESH_SLOT, NearCity, type NearMesh } from "./nearcity.ts";
 import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
+import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
 import { BEND_BUFFERS, BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
 import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
@@ -77,7 +79,7 @@ import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes, shadowLayer } from "./shadowtext.ts";
 import { LAMP_ACROSS, LAMP_BIT, LAMP_RANGE, LampView, lampFrame } from "./lamp.ts";
 import { ParkedContacts, contactFrame } from "./contact.ts";
-import { lightBytes, lightSamples, postFrame, sceneSize } from "./post.ts";
+import { lightBytes, lightSamples, opticFrame, postFrame, sceneSize, type Optic } from "./post.ts";
 import { lampsOn, moonCasts, skyShown } from "./surface.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
@@ -152,6 +154,8 @@ export const NODE_BUFFERS = 1 << 20;
  */
 export const CHUNK_CELLS = 4;
 
+/** Metres the far depth range of a frame with one begins at, through a sight: the lit tiers' split (tiers.ts). */
+const WINDOW_SPLIT = 384;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
@@ -460,6 +464,8 @@ export class Scene {
   structureDistance = Infinity;
   /** Hour of the day, 0..24. It sets the sun's position and the brightness. */
   hour = 12;
+  /** What a visor does to the picture this frame (post.ts opticFrame, D1080), which the app sets. */
+  readonly optic: Optic = { mode: 0, gain: 1, grain: 0 };
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
   viewHeight = 720;
   /** The canvas in its own pixels, which the light target takes and bloom's levels are counted from, and whether it draws more than the screen's own (post.ts). */
@@ -1055,7 +1061,9 @@ export class Scene {
     this.chunkCasts.length = 0;
     this.later.length = 0;
     this.nearAt = 0;
-    cam.split = p.split = this.assets.tier.split;
+    // Low poly's one depth range resolves about 2 m at 3 km, which a sight magnifies into the picture: through one, it
+    // splits as the lit tiers do (D1077).
+    cam.split = p.split = this.assets.tier.split > 0 ? this.assets.tier.split : cam.zoom > EYE_FROM ? WINDOW_SPLIT : 0;
     this.lift = Math.max(0, cam.y - this.world.hf.heightAt(cam.x, cam.z));
     cam.far = farPlane(this.viewDistance);
     cam.update();
@@ -1067,6 +1075,8 @@ export class Scene {
     p.lit = p.tier.lit;
     p.room = p.tier.post ? this.share : 1; p.share = p.tier.post ? this.share * (p.tier.post.scale ?? 1) : 1;
     p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
+    const win = cam.window, windowed = cam.windowed;
+    for (let k = 0; k < 4; k++) p.window[k] = windowed ? win[k]! * 0.5 + 0.5 : 0;
     p.farViewProj.set(cam.ranges[PASS_FAR]);
     p.nearViewProj.set(cam.nearViewProj);
     p.camX = cam.x;
@@ -1081,10 +1091,13 @@ export class Scene {
     if (p.tier.lit) this.finishNear.update(cam.x, cam.y, cam.z, this.world.hf, this.world.structs, scale, finishTaps(p.tier));
     this.finishes.frame(p, this.assets.residency, p.tier, near, scale);
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
+    this.characters.heatView = false;
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky, this.fadeFrom);
       postFrame(p.frame, p.tier, this.hour, Math.round(this.canvasHeight * p.room), p.share);
+      opticFrame(p.frame, p.tier, this.optic, Math.floor(this.now / 16));
+      this.characters.heatView = p.frame[OPTIC_AT] === OPTIC_HEAT;
       p.lightSamples = lightSamples(this.supersampled);
       // A vehicle's glass covers a share of a pixel's samples where the frame has them: a canvas is drawn antialiased, a
       // light target with samples unless it is supersampled (vehicle-glass.ts).

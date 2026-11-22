@@ -1,19 +1,24 @@
 // Draws an interface frame over a picture with the browser binder's rectangles and colours, and a bitmap font in place of a real one.
 
 import { K_BAR, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, glyphAdvance, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
-import { STYLES } from "../../client/core/ui/style.ts";
+import { LENS_ROUND, LENS_TWIN, STYLES } from "../../client/core/ui/style.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./font.ts";
 
 /** `color` is RGBA, `width` by `height`. */
 export function drawUi(color: Uint8ClampedArray, width: number, height: number, f: UiFrame): void {
   const scale = height / f.height;
-  const rect = (x: number, y: number, w: number, h: number, r: number, g: number, b: number, a: number): void => {
+  // `lens` (style.ts Style.lens) leaves its holes undrawn: a round one as tall as the box in its middle, or two merged, as
+  // the browser's mask does (client/shell/ui.ts).
+  const rect = (x: number, y: number, w: number, h: number, r: number, g: number, b: number, a: number, lens = 0): void => {
     const x0 = Math.max(0, Math.round(x * scale));
     const y0 = Math.max(0, Math.round(y * scale));
     const x1 = Math.min(width, Math.round((x + w) * scale));
     const y1 = Math.min(height, Math.round((y + h) * scale));
+    const rad = (h * scale) / 2, cy = (y + h / 2) * scale;
+    const holes = lens === LENS_TWIN ? [x * scale + rad, (x + w) * scale - rad] : lens === LENS_ROUND ? [(x + w / 2) * scale] : [];
     for (let py = y0; py < y1; py++) {
       for (let px = x0; px < x1; px++) {
+        if (holes.some((hx) => Math.hypot(px + 0.5 - hx, py + 0.5 - cy) < rad)) continue;
         const o = (py * width + px) * 4;
         color[o] = color[o]! + (r - color[o]!) * a;
         color[o + 1] = color[o + 1]! + (g - color[o + 1]!) * a;
@@ -70,7 +75,7 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
       continue;
     }
     if (n.tint >= 0) rect(n.x, n.y, n.w, n.h, n.tint >> 16, (n.tint >> 8) & 255, n.tint & 255, n.alpha);
-    else if (fa > 0) rect(n.x, n.y, n.w, n.h, st.fill >>> 24, (st.fill >>> 16) & 255, (st.fill >>> 8) & 255, fa * n.alpha);
+    else if (fa > 0) rect(n.x, n.y, n.w, n.h, st.fill >>> 24, (st.fill >>> 16) & 255, (st.fill >>> 8) & 255, fa * n.alpha, st.lens);
     if (n.kind === K_BAR) {
       rect(n.x, n.y, n.w * Math.max(0, Math.min(1, n.value)), n.h, ir, ig, ib, n.alpha);
       continue;

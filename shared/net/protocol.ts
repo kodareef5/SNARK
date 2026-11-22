@@ -81,8 +81,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 40: the tames kept in a box's soul balls (OWN_KEPT), and a tame going into or coming out of one (EVENT_BALL).
  * 41: supply drops (planning/workstreams/supply.md): OWN_OPEN says what kind of box is open (OPEN_TAKE_ONLY), and S_SUPPLY
  * tells every session the drops that are live.
+ * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079); CMD_MARK, a
+ * creature spotted for the tribe, and its mark (MARK_SPOT, D1082).
  */
-export const PROTOCOL_VERSION = 41;
+export const PROTOCOL_VERSION = 42;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -420,6 +422,27 @@ export const CMD_CLOCK = 35;
  * carrying, acting), FAR beyond reach of the one aimed at.
  */
 export const CMD_EMOTE = 36;
+/**
+ * Looking through a sight (D1079): how many times it magnifies, in sixteenths u16 (0 or 16 and under for none), how far
+ * off, in metres, what the middle of the view is on u16 (0 for nothing found), and the zero dialled, metres u16 (0 for
+ * none, D1083), which lifts a flying round to cross the look there. The server holds the zoom to what the
+ * survivor holds or wears that magnifies, and while it lasts adds the chunks along the survivor's look to its view and
+ * wakes the creatures round what it is on. A session sends it as its zoom changes and once a second while it looks;
+ * GAZE_TICKS after the last, the cone is gone.
+ */
+export const CMD_GAZE = 37;
+export const GAZE_TICKS = 90;
+/** Metres a gaze's cone reaches for each time its sight magnifies, and at most: the map's width. */
+export const GAZE_REACH = 200;
+export const GAZE_FARTHEST = 8000;
+/**
+ * Marks for the tribe the creature the session looks at through a glass or a visor (D1082), its entity index u32 and
+ * generation u16: it must be in the session's view or its cone, alive, and no survivor. Its tribe's marks hold it as
+ * MARK_SPOT where it is for SPOT_TICKS, SPOTS_MOST a tribe, the oldest let go first. A survivor with no tribe is denied.
+ */
+export const CMD_MARK = 38;
+export const SPOT_TICKS = 1800;
+export const SPOTS_MOST = 8;
 export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;
@@ -675,6 +698,9 @@ export class InputBuffer {
   readonly yaw: Uint16Array;
   readonly pitch: Int16Array;
   readonly buttons: Uint16Array;
+  /** While aimed, the look's yaw and pitch past their units, in 256ths of one, for the shot alone (D1083). */
+  readonly fineYaw: Int8Array;
+  readonly finePitch: Int8Array;
   /**
    * Server only. The world tick the client says it was drawing when it sampled this input: its newest snapshot minus how far
    * behind that it draws. Unchecked, so its user must bound it.
@@ -690,6 +716,8 @@ export class InputBuffer {
     this.yaw = new Uint16Array(size);
     this.pitch = new Int16Array(size);
     this.buttons = new Uint16Array(size);
+    this.fineYaw = new Int8Array(size);
+    this.finePitch = new Int8Array(size);
     this.view = new Float64Array(size);
   }
 
@@ -698,8 +726,10 @@ export class InputBuffer {
   }
 
   /** Clamps every field to its legal range. */
-  set(tick: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
+  set(tick: number, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, fineYaw = 0, finePitch = 0): void {
     const i = tick & this.mask;
+    this.fineYaw[i] = fineYaw < -127 ? -127 : fineYaw > 127 ? 127 : fineYaw;
+    this.finePitch[i] = finePitch < -127 ? -127 : finePitch > 127 ? 127 : finePitch;
     this.tick[i] = tick;
     this.moveX[i] = moveX < -127 ? -127 : moveX > 127 ? 127 : moveX;
     this.moveZ[i] = moveZ < -127 ? -127 : moveZ > 127 ? 127 : moveZ;
@@ -859,7 +889,9 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
         inputs.moveZ[i] === inputs.moveZ[prev] &&
         inputs.yaw[i] === inputs.yaw[prev] &&
         inputs.pitch[i] === inputs.pitch[prev] &&
-        inputs.buttons[i] === inputs.buttons[prev];
+        inputs.buttons[i] === inputs.buttons[prev] &&
+        inputs.fineYaw[i] === inputs.fineYaw[prev] &&
+        inputs.finePitch[i] === inputs.finePitch[prev];
       w.bool(same);
       if (same) continue;
     }
@@ -868,6 +900,13 @@ export function writeInputs(w: BitWriter, inputs: InputBuffer, ack: number, newe
     w.u16(inputs.yaw[i]!);
     w.sbits(inputs.pitch[i]!, 16);
     w.bits(inputs.buttons[i]!, BUTTON_BITS);
+    // An aimed look's 256ths of a unit, where it has any (protocol 42, D1083).
+    const fine = inputs.fineYaw[i] !== 0 || inputs.finePitch[i] !== 0;
+    w.bool(fine);
+    if (fine) {
+      w.sbits(inputs.fineYaw[i]!, 8);
+      w.sbits(inputs.finePitch[i]!, 8);
+    }
     prev = i;
   }
 }
@@ -885,6 +924,8 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
   let yaw = 0;
   let pitch = 0;
   let buttons = 0;
+  let fineYaw = 0;
+  let finePitch = 0;
   for (let k = 0; k < count; k++) {
     if (k === 0 || !r.bool()) {
       moveX = r.sbits(8);
@@ -892,10 +933,13 @@ export function readInputs(r: BitReader, inputs: InputBuffer, serverTick: number
       yaw = r.u16();
       pitch = r.sbits(16);
       buttons = r.bits(BUTTON_BITS);
+      const fine = r.bool();
+      fineYaw = fine ? r.sbits(8) : 0;
+      finePitch = fine ? r.sbits(8) : 0;
     }
     const tick = newest - k;
     if (tick > serverTick && tick < serverTick + INPUT_WINDOW && !inputs.has(tick)) {
-      inputs.set(tick, moveX, moveZ, yaw, pitch, buttons);
+      inputs.set(tick, moveX, moveZ, yaw, pitch, buttons, fineYaw, finePitch);
       // `ack - behind` is when the newest input was sampled. Each older input was sampled one tick earlier.
       inputs.view[tick & inputs.mask] = ack - behind - k;
       // Preserve the packet acknowledgement separately from the interpolated view. Redundant

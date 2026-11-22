@@ -42,6 +42,11 @@ export class Settings {
   damageNumbers = true;
   /** A multiple of the default. */
   sensitivity = 1;
+  /**
+   * "Zoom sensitivity": through a sight the look slows on the tangent of the view's half (optics.ts lookScale), so a point
+   * on screen moves as far under the mouse at any zoom; this weighs the narrowed part of it, 1 for none.
+   */
+  zoomSensitivity = 1;
   /** Vertical, in degrees. */
   fov = 70;
   /** A multiple of the default. */
@@ -109,12 +114,14 @@ export class Settings {
 }
 
 const SAVED_FLAGS = ["minimap", "compass", "thirdPerson", "diagnostics", "monitor", "vitalLabels", "damageNumbers", "toggleTalk", "steady", "muted", "keepAll", "keepPaused"] as const;
-const SAVED_NUMBERS = [["sensitivity", .2, 3], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
+const SAVED_NUMBERS = [["sensitivity", .2, 3], ["zoomSensitivity", .5, 1.5], ["fov", 50, 100], ["voiceVolume", 0, 2], ["masterVolume", 0, 2], ["soundVolume", 0, 2], ["ambienceVolume", 0, 2], ["musicVolume", 0, 2], ["interfaceVolume", 0, 2], ["minimapZoom", -1, 3], ["padGlyphs", 0, 1], ["finishGloss", 0.5, 2], ["roadFinish", 0, 2], ["resolution", 0, RESOLUTIONS.length - 1]] as const;
 
 export const VOLUME_MAX = 2;
 
 export const SENSITIVITY_MIN = 0.2;
 export const SENSITIVITY_MAX = 3;
+export const ZOOM_SENSITIVITY_MIN = 0.5;
+export const ZOOM_SENSITIVITY_MAX = 1.5;
 export const FOV_MIN = 50;
 export const FOV_MAX = 100;
 /** With a snapshot every tick they are 18, 33 and 66 KB a second. */
@@ -129,7 +136,7 @@ export interface SettingRow {
 
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
-type NumericSetting = "masterVolume" | "soundVolume" | "ambienceVolume" | "musicVolume" | "interfaceVolume" | "voiceVolume" | "sensitivity" | "fov" | "finishGloss";
+type NumericSetting = "masterVolume" | "soundVolume" | "ambienceVolume" | "musicVolume" | "interfaceVolume" | "voiceVolume" | "sensitivity" | "zoomSensitivity" | "fov" | "finishGloss";
 function range(label: string, key: NumericSetting, min: number, max: number, step: number): SettingRow {
   const set = (s: Settings, value: number): void => { if (Number.isFinite(value)) s[key] = Number(clamp(min+Math.round((value-min)/step)*step,min,max).toFixed(4)); };
   return { label, value: s => key === "fov" ? `${s[key]} degrees` : `${Math.round(s[key]*100)}%`, step: (s,by)=>set(s,s[key]+by*step), range: { min,max,step,get:s=>s[key],set } };
@@ -177,6 +184,8 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Road finish", value: s => ROAD_FINISHES[s.roadFinish]!, step: (s, by) => void (s.roadFinish = clamp(s.roadFinish + by, 0, 2)) },
   { label: "Compass", value: (s) => s.compass ? "on" : "off", step: (s) => void (s.compass = !s.compass) },
   { label: "Render resolution", value: (s) => RESOLUTIONS[s.resolution]!.label + (s.resolution === 0 && s.autoShare < 1 ? `, ${Math.round(s.autoShare * 100)}%` : ""), step: (s, by) => void (s.resolution = clamp(s.resolution + by, 0, RESOLUTIONS.length - 1)) },
+  // Shown in the Input group (ui/settings.ts SETTING_GROUPS) after the mouse's own.
+  range("Zoom sensitivity","zoomSensitivity",ZOOM_SENSITIVITY_MIN,ZOOM_SENSITIVITY_MAX,.05),
 ];
 
 /** F3 and the console's `monitor`: Diagnostics to "monitor", or back to what it was before. Returns what the console says. */

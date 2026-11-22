@@ -4,6 +4,7 @@
 import { K_BAR, K_BUTTON, K_DIAL, K_HOLD, K_IMAGE, K_INPUT, K_SECRET, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
 import { bindTextInput, type UiEvents } from "../core/ui/events.ts";
 import { STYLES } from "../core/ui/style.ts";
+const LENS = ["none", "radial-gradient(closest-side,#0000 99%,#000 100%)", "radial-gradient(circle closest-side at 28.4% 50%,#0000 99%,#000 100%),radial-gradient(circle closest-side at 71.6% 50%,#0000 99%,#000 100%)"];
 
 interface Bound {
   el: HTMLElement;
@@ -105,6 +106,8 @@ export class UiView {
         b.src = "";
         const st = STYLES[n.style]!;
         s.background = n.tint >= 0 ? rgb(n.tint) : (st.fill & 255) === 0 ? "none" : rgba(st.fill);
+        // A sight's lens: the fill only outside its round hole, or its two (style.ts Style.lens).
+        s.maskImage = LENS[st.lens ?? 0]!; s.maskComposite = "intersect";
         s.color = rgb(st.ink);
         s.fontSize = `${this.coarse && (n.kind === K_INPUT || n.kind === K_SECRET) ? Math.max(16, st.font * scale) : st.font * scale}px`;
         s.fontFamily = st.sans ? "Hud, Arial, sans-serif" : "ui-monospace, Menlo, Consolas, monospace";
