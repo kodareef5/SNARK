@@ -244,7 +244,7 @@ function hashCanonical(v: unknown, h: number, inList = false): number {
   if (Array.isArray(v)) {
     let numbers = true;
     for (let i = 0; i < v.length && numbers; i++) numbers = typeof v[i] === "number";
-    // JSON writes a list of numbers as canonical does.
+    // A list of numbers is written as JSON writes it.
     if (numbers) return hashString(JSON.stringify(v), h);
     h = hashString("[", h);
     for (let i = 0; i < v.length; i++) h = hashCanonical(v[i], i > 0 ? hashString(",", h) : h, true);
@@ -263,7 +263,7 @@ function hashCanonical(v: unknown, h: number, inList = false): number {
     }
     return hashString("}", h);
   }
-  // What JSON does not write, such as undefined, canonical leaves out of a list and writes as "undefined" in a field.
+  // What JSON does not write, such as undefined, is left out of a list and written as "undefined" in a field.
   const s = JSON.stringify(v);
   return s !== undefined ? hashString(s, h) : inList ? h : hashString("undefined", h);
 }
