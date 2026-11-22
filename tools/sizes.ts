@@ -1,9 +1,13 @@
 // What `bun run build` wrote, weighed. Two kinds of row. What every player waits for before the first frame has a
 // budget, with room in it, and raising it is a decision. What is streamed when wanted (pages, meshes, textures, sounds,
 // clips, music) grows with the catalogue and is shown, not held: an asset is held to its own budget by the art check.
+//
+//   bun tools/sizes.ts [client folder]                 the rows of a built client (client/dist), as the build prints them
+//   bun tools/sizes.ts --first-frame [client folder]   what its first frame waits for, part by part and the page's
+//                                                      script by module, beside the last build's (tools/first-frame.ts)
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { SURFACE_PREFIX } from "../content/surfaces.ts";
 import { parseManifest, readPages, storedStep, type Manifest } from "../shared/pack/manifest.ts";
@@ -233,4 +237,13 @@ export function weighWiki(dist: string): boolean {
     console.log(`  ${name.padEnd(52)} ${`${(value / KB).toFixed(0)} KB`.padStart(10)}  ${pass ? "ok" : "MISS"} (budget ${(WIKI_BUDGETS[name]! / KB).toFixed(0)} KB)  ${what.replace(/^wiki\/|index\.html$/g, "")}`);
   }
   return ok;
+}
+
+if (import.meta.main) {
+  const dist = resolve(process.argv.slice(2).find((a) => !a.startsWith("--")) ?? join(import.meta.dir, "../client/dist"));
+  if (process.argv.includes("--first-frame")) {
+    const { FIRST_FRAME_FILE, firstFrameLines, weighFirstFrame } = await import("./first-frame.ts");
+    const kept = join(dist, FIRST_FRAME_FILE);
+    console.log(firstFrameLines(existsSync(kept) ? JSON.parse(readFileSync(kept, "utf8")) : weighFirstFrame(dist, false)).join("\n"));
+  } else if (!weigh(dist)) process.exitCode = 1;
 }

@@ -43,6 +43,7 @@ import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/str
 import { mapLandmarks, weigh, weighLandmarks } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
 import { checkoutBuild } from "../server/reports.ts";
+import { writeFirstFrame } from "./first-frame.ts";
 
 /** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
 function stressCards(): TextureSource[] {
@@ -266,6 +267,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   await buildEntry(dist);
   // The commit the client was built from and whether the tree had changes, which a bug report names (server/reports.ts).
   writeFileSync(join(dist, "build.json"), JSON.stringify({ ...checkoutBuild(root), at: new Date().toISOString() }) + "\n");
+  // What the first frame waits for, part by part and the script by module, beside the last build's (tools/first-frame.ts).
+  writeFirstFrame(dist, opts.quick ?? false);
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: packBytes + landmarks };
 }
 
