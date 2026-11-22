@@ -90,6 +90,8 @@ import { bendOf, type MapLandmark, type MapStatics } from "../../../shared/world
 import { KERB_BACK } from "../../../shared/world/bends.ts";
 import { landmarkFars } from "../../../shared/pack/far.ts";
 import { PART_FLOATS, movingOf, poseMoving, type MotionSource, type Moving } from "./motion.ts";
+import { Frame, walk, type Pass } from "./pass.ts";
+import type { Tier } from "../assets/tiers.ts";
 
 export interface RenderWorld {
   /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
@@ -845,6 +847,10 @@ export class Scene {
   private readonly deepColor = new Float32Array(3);
   /** The nearest and farthest depth the clouds' puffs reach this frame. */
   private readonly cloudRange = [0, 0];
+  /** What the passes read of the frame, filled by `begin`; the passes in the frame's order; and their hooks, each a walk of them. */
+  private readonly frame: Frame;
+  readonly passes: readonly Pass[];
+  private readonly hooks: Required<Pass>;
 
   /** With `stream`, `pack` is the boot pack and other levels are asked of the port as they are wanted. */
   /** `opts.farPalms`: the far store draws palms as their frond level, not their solid, for a bench's comparison (farLevelOf). */
@@ -1005,6 +1011,9 @@ export class Scene {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
     }
+    this.frame = new Frame(this.packet, world, this.assets, this.budget);
+    this.passes = this.rows();
+    this.hooks = walk(this.passes);
   }
 
   /** Works out what the scene keeps of the materials, and of each mesh given, whose row is here. */
@@ -1070,7 +1079,26 @@ export class Scene {
     return this.characters.prepareCameraBody(own.kind, own.id, own.generation ?? 0, own.x, own.y, own.z, own.yaw, own.state, own.tick);
   }
 
+  /**
+   * A frame: its values are set and the ground chosen (`begin`), each pass brings what it holds up to date and then each
+   * draws, in the order of `passes`; the draws are put in the order of their steps, and the frame is closed.
+   */
   build(cam: Camera, remote: RemoteSample | null, focus?: readonly number[], loadTime = this.now): FramePacket {
+    const f = this.begin(cam, remote, focus, loadTime);
+    this.hooks.update(f);
+    this.hooks.draw(f);
+    this.order();
+    const p = this.packet;
+    this.streetDraws.write(p);
+    markJoins(p);
+    // The frame's count, from which the next frame's crowns near take their squeeze.
+    this.budget.end(this.now, p.triangles, p.drawCount);
+    this.assets.end(p, loadTime);
+    return p;
+  }
+
+  /** Starts the packet and sets what every pass reads: the camera's ranges, the tier, the light, the cascades, the air and the ground in view. */
+  private begin(cam: Camera, remote: RemoteSample | null, focus: readonly number[] | undefined, loadTime: number): Frame {
     const p = this.packet;
     p.beginFrame();
     for (const chunk of this.hiddenChanged) { const batch = this.batches.get(NODE_BUFFERS + chunk); if (batch) batch.shape = -1; }
@@ -1174,72 +1202,126 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.groundCasts : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
-    const tier = this.assets.tier;
-    // The map's statics handed over again: the far city is made of them, taking over what it can of the one before.
-    if (this.city && this.world.city !== this.citySource) this.startCity(this.city);
-    if (this.city ?? this.startCity()) this.farCity(cam);
-    this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now, p.cascadeCount > 0 && this.sunCasts ? this.sunAt : null);
-    p.frame[FRAME.fade] = tier.fade;
-    this.far?.update(p, this.assets.residency, cam.x, cam.z, tier.reach.bases);
-    // A tier that draws no far city draws none of its blocks either.
-    const blocksView = tier.reach.city > 0 && tier.city.levels.length > 0 ? this.viewDistance : 0;
-    this.makeBlocks();
-    this.blocks?.update(p, this.assets.residency, cam, blocksView, this.city ? this.citySource!.statics : null, this.city);
-    this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier, cam.zoom > 1 ? this.focusX : NaN, this.focusZ);
-    if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.groundCasts)) p.casterDropped++;
-    // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
-    // See-through draws go as made, and the sea is made first of them, so that a yacht's wires show over it.
-    const lit = p.lit && !this.plainSky && !under;
-    let waves = sea > -Infinity && this.waterMesh >= 0 && this.water(cam, sea, lit);
-    if (this.lakes) waves = this.showLakes(cam, lit) || waves;
-    if (waves) {
-      seaFrame(p.frame, this.world.hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000, cam.y);
-      this.waterTrails.frame(p.frame, this.world.hf, cam, this.own, remote, this.now / 1000, tier.waterMarks);
-      if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
-    }
-    // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
-    if (this.world.tideEyes) this.showTideEyes(cam, this.world.tideEyes);
-    if (this.supply?.list && this.capsuleKind >= 0) this.showSupply(cam, this.supply);
-    if (this.world.motion && this.motionReg) this.showMotion(cam, this.world.motion);
-    this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
-    if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
-    if (this.instanceBytes !== this.instancesReserved) this.assets.residency.reserve(INSTANCES, (this.instancesReserved = this.instanceBytes));
-    // What the near store's meshes and the ground hide, of what is drawn so far and from here on: the meshes themselves first.
-    if (this.hide) this.hideDrawn(cam);
-    for (let k = 0; k < this.later.length; k += 5) {
-      const id = this.later[k]!;
-      this.meshRuns(this.batches.get(id)!, id, this.later[k + 1]!, this.later[k + 2]!, this.later[k + 3]!, this.later[k + 4]!);
-    }
-    const hider = this.hiding.on ? this.hiding : undefined;
-    this.city?.draw(cam, this.alongGround(tier.reach.city), this.drawCity, hider);
-    this.far?.draw(cam, tier.reach.bases, tier.fade, this.drawFar, hider);
-    this.blocks?.draw(cam, blocksView, this.shown, this.drawCity, hider);
-    this.nodesFar?.draw(cam, this.drawFarNodes, hider);
-    if (this.casting) this.groundCast();
-    if (remote) this.entities(cam, remote);
-    this.bodies(cam, remote);
-    if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(cam);
-    if (this.falling && this.falling.count > 0) this.showFalling(cam, this.falling);
-    if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, (event, pose) => this.showTreeFall(cam, event, pose));
-    if (this.ghost.kind !== 0) this.showGhost(cam);
-    if (this.things.length > 0) this.showThings(cam);
-    this.showDetails(cam, remote);
-    this.quadsOnCard();
-    // The viewer's own body goes over everything else, water included.
-    this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
-    p.frame[FRAME.exhaustPhase] = exhaustPhase(this.now);
-    p.frame[FRAME.streetLook] = this.finishGloss - 1;
-    p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
-    p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;
-    this.street.frame(p, cam, this.world, remote, this.hiddenNodes, this.now, this.own);
-    this.assets.residency.reserve("street environment", streetTextureBytes(p.tier.reflectionHz));
-    this.order();
-    this.streetDraws.write(p);
-    markJoins(p);
-    // The frame's count, from which the next frame's crowns near take their squeeze.
-    this.budget.end(this.now, p.triangles, p.drawCount);
-    this.assets.end(p, loadTime);
-    return p;
+    const f = this.frame;
+    f.cam = cam;
+    f.remote = remote;
+    f.own = this.own;
+    f.tier = this.assets.tier;
+    f.now = this.now;
+    f.view = this.viewDistance;
+    f.under = under;
+    f.hider = undefined;
+    return f;
+  }
+
+  /** The city's blocks' reach: a tier that draws no far city draws none of its blocks either. */
+  private blocksView(tier: Tier): number {
+    return tier.reach.city > 0 && tier.city.levels.length > 0 ? this.viewDistance : 0;
+  }
+
+  /** The frame's passes, in the order they update and draw in. */
+  private rows(): Pass[] {
+    const p = this.packet;
+    return [
+      // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
+      // See-through draws go as made, and the sea is made first of them, so that a yacht's wires show over it.
+      {
+        draw: (f) => {
+          const cam = f.cam, sea = this.world.hf.seaLevel;
+          const lit = p.lit && !this.plainSky && !f.under;
+          let waves = sea > -Infinity && this.waterMesh >= 0 && this.water(cam, sea, lit);
+          if (this.lakes) waves = this.showLakes(cam, lit) || waves;
+          if (waves) {
+            seaFrame(p.frame, this.world.hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000, cam.y);
+            this.waterTrails.frame(p.frame, this.world.hf, cam, this.own, f.remote, this.now / 1000, f.tier.waterMarks);
+            if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
+          }
+        },
+      },
+      // Before the statics, so a full frame leaves out pieces of a chunk rather than a yacht's sails.
+      { draw: (f) => { if (this.world.tideEyes) this.showTideEyes(f.cam, this.world.tideEyes); } },
+      { draw: (f) => { if (this.supply?.list && this.capsuleKind >= 0) this.showSupply(f.cam, this.supply); } },
+      { draw: (f) => { if (this.world.motion && this.motionReg) this.showMotion(f.cam, this.world.motion); } },
+      {
+        draw: (f) => {
+          this.structures(f.cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
+          if (this.world.nodes) this.structures(f.cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
+          if (this.instanceBytes !== this.instancesReserved) this.assets.residency.reserve(INSTANCES, (this.instancesReserved = this.instanceBytes));
+        },
+      },
+      // What the near store's meshes and the ground hide, of what is drawn so far and from here on: the meshes themselves first.
+      { draw: (f) => { if (this.hide) this.hideDrawn(f.cam); } },
+      {
+        draw: (f) => {
+          for (let k = 0; k < this.later.length; k += 5) {
+            const id = this.later[k]!;
+            this.meshRuns(this.batches.get(id)!, id, this.later[k + 1]!, this.later[k + 2]!, this.later[k + 3]!, this.later[k + 4]!);
+          }
+          f.hider = this.hiding.on ? this.hiding : undefined;
+        },
+      },
+      {
+        // The map's statics handed over again: the far city is made of them, taking over what it can of the one before.
+        update: (f) => {
+          if (this.city && this.world.city !== this.citySource) this.startCity(this.city);
+          if (this.city ?? this.startCity()) this.farCity(f.cam);
+        },
+        draw: (f) => void this.city?.draw(f.cam, this.alongGround(f.tier.reach.city), this.drawCity, f.hider),
+      },
+      {
+        update: (f) => {
+          const cam = f.cam;
+          this.farShadow?.update(p, this.assets.residency, cam.x, cam.y, cam.z, p.cascadeCount > 0 ? this.sunAt : null, this.now, p.cascadeCount > 0 && this.sunCasts ? this.sunAt : null);
+        },
+      },
+      {
+        update: (f) => {
+          p.frame[FRAME.fade] = f.tier.fade;
+          this.far?.update(p, this.assets.residency, f.cam.x, f.cam.z, f.tier.reach.bases);
+        },
+        draw: (f) => void this.far?.draw(f.cam, f.tier.reach.bases, f.tier.fade, this.drawFar, f.hider),
+      },
+      {
+        update: (f) => {
+          this.makeBlocks();
+          this.blocks?.update(p, this.assets.residency, f.cam, this.blocksView(f.tier), this.city ? this.citySource!.statics : null, this.city);
+        },
+        draw: (f) => void this.blocks?.draw(f.cam, this.blocksView(f.tier), this.shown, this.drawCity, f.hider),
+      },
+      {
+        update: (f) => void this.nodesFar?.update(p, this.assets.residency, f.cam.x, f.cam.z, f.tier, f.cam.zoom > 1 ? this.focusX : NaN, this.focusZ),
+        draw: (f) => void this.nodesFar?.draw(f.cam, this.drawFarNodes, f.hider),
+      },
+      {
+        update: (f) => { if (this.casting && !this.terrain.casters(f.cam, p, this.viewDistance, this.groundCasts)) p.casterDropped++; },
+        draw: () => { if (this.casting) this.groundCast(); },
+      },
+      { draw: (f) => { if (f.remote) this.entities(f.cam, f.remote); } },
+      { draw: (f) => this.bodies(f.cam, f.remote) },
+      { draw: (f) => { if (this.beams.length > 0 && this.beamMesh >= 0) this.markBeams(f.cam); } },
+      { draw: (f) => { if (this.falling && this.falling.count > 0) this.showFalling(f.cam, this.falling); } },
+      { draw: (f) => { if (this.treeFalls.count > 0) this.treeFalls.frame(this.now, (event, pose) => this.showTreeFall(f.cam, event, pose)); } },
+      { draw: (f) => { if (this.ghost.kind !== 0) this.showGhost(f.cam); } },
+      { draw: (f) => { if (this.things.length > 0) this.showThings(f.cam); } },
+      { draw: (f) => this.showDetails(f.cam, f.remote) },
+      {
+        // The viewer's own body goes over everything else, water included.
+        draw: () => {
+          this.quadsOnCard();
+          this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
+        },
+      },
+      {
+        draw: (f) => {
+          p.frame[FRAME.exhaustPhase] = exhaustPhase(this.now);
+          p.frame[FRAME.streetLook] = this.finishGloss - 1;
+          p.frame[FRAME.streetLook + 2] = this.roadFinish > 0 ? 1 : 0;
+          p.frame[FRAME.streetLook + 3] = this.roadFinish === 2 ? 1 : 0;
+          this.street.frame(p, f.cam, this.world, f.remote, this.hiddenNodes, this.now, this.own);
+          this.assets.residency.reserve("street environment", streetTextureBytes(p.tier.reflectionHz));
+        },
+      },
+    ];
   }
 
   /**
