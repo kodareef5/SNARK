@@ -10,7 +10,9 @@ import { FRAME, FramePacket, HEAT_COLD, HEAT_HOT, HEAT_WARM, HEAT_WORLD, OPTIC_A
 import { PHOSPHOR, opticFrame, postFrame, type Optic } from "../../client/core/render/post.ts";
 import { graded, heatOfShown, ironbow, shown } from "../../client/core/render/surface.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { KEY_CROSS, KEY_VISOR } from "../../client/core/ui/hud.ts";
+import { KEY_CROSS, KEY_GLASS, KEY_SPOT, KEY_VISOR, MARKER_TINT } from "../../client/core/ui/hud.ts";
+import { Glass, SHAKE } from "../../client/core/glass.ts";
+import { STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../../shared/sim/character.ts";
 import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -275,4 +277,59 @@ test("the heat view: its palette runs from black through red to white as the hea
   expect(seen(HEAT_WARM, 50)).toBe(seen(HEAT_WARM, 0));
   const v = new Visor();
   expect([v.mode, (v.cycle(), v.mode), (v.cycle(), v.mode), (v.cycle(), v.mode)]).toEqual([OPTIC_NONE, OPTIC_NIGHT, OPTIC_HEAT, OPTIC_NONE]);
+});
+
+test("a glass clicks between its steps on the wheel, ranges what it is on after a second's lasing, forgets it lowered, and shakes less crouched and least lying down", () => {
+  const optic = { min: 2, max: 30, steps: [2, 4, 8, 16, 30] };
+  const g = new Glass();
+  expect(g.zoom(optic)).toBe(2);
+  g.wheel(optic, -1);
+  g.wheel(optic, -3);
+  expect(g.zoom(optic)).toBe(8);
+  for (let k = 0; k < 9; k++) g.wheel(optic, -1);
+  expect(g.zoom(optic)).toBe(30);
+  g.wheel(optic, 1);
+  expect(g.zoom(optic)).toBe(16);
+  g.raise(true);
+  g.lase(1000);
+  expect([g.ranged(1500, () => 1234, 45), g.lasing]).toEqual([false, 1000]);
+  expect([g.ranged(2000, () => 1234, 45), g.range, g.bearing, g.lasing]).toEqual([true, 1234, 45, -1]);
+  g.raise(false);
+  expect(g.range).toBe(0);
+  const most = (stance: number): number => {
+    let m = 0;
+    const out = [0, 0];
+    for (let t = 0; t < 20000; t += 37) {
+      g.shake(t, stance, out);
+      m = Math.max(m, Math.hypot(out[0]!, out[1]!));
+    }
+    return m;
+  };
+  expect(most(STANCE_STAND)).toBeLessThanOrEqual(SHAKE * Math.SQRT2);
+  expect(most(STANCE_CROUCH)).toBeLessThan(most(STANCE_STAND) * 0.5);
+  expect(most(STANCE_PRONE)).toBeLessThan(most(STANCE_CROUCH) * 0.3);
+});
+
+test("a glass's lenses show its zoom, its range or that it lases, the bearing and a mark just made; a spotted creature is marked over it and on the map", () => {
+  const f = new UiFrame();
+  const m = new HudModel();
+  m.scope = m.glass = true;
+  m.sightShape = SHAPE_TWIN;
+  m.sightShare = 0.6;
+  m.glassZoom = 16;
+  m.glassRange = -1;
+  f.begin(16 / 9);
+  buildHud(f, m);
+  const words = (): string[] => f.nodes.slice(0, f.count).filter((n) => n.key >= KEY_GLASS && n.key < KEY_GLASS + 4).map((n) => n.text);
+  expect(words()).toEqual(["16x", "LASING"]);
+  m.glassRange = 812.4;
+  m.glassBearing = 9;
+  m.glassMarked = true;
+  m.spots[0] = { u: 0.25, v: 0.5 };
+  m.spotCount = 1;
+  f.begin(16 / 9);
+  buildHud(f, m);
+  expect(words()).toEqual(["16x", "812 m", "009", "MARKED"]);
+  expect(f.find(KEY_SPOT)!.x).toBeCloseTo(f.width / 4 - 4.5, 6);
+  expect(MARKER_TINT.spotted).toBeGreaterThan(0);
 });

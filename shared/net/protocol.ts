@@ -81,7 +81,8 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 40: the tames kept in a box's soul balls (OWN_KEPT), and a tame going into or coming out of one (EVENT_BALL).
  * 41: supply drops (planning/workstreams/supply.md): OWN_OPEN says what kind of box is open (OPEN_TAKE_ONLY), and S_SUPPLY
  * tells every session the drops that are live.
- * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079).
+ * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079); CMD_MARK, a
+ * creature spotted for the tribe, and its mark (MARK_SPOT, D1082).
  */
 export const PROTOCOL_VERSION = 42;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
@@ -433,6 +434,14 @@ export const GAZE_TICKS = 90;
 /** Metres a gaze's cone reaches for each time its sight magnifies, and at most: the map's width. */
 export const GAZE_REACH = 200;
 export const GAZE_FARTHEST = 8000;
+/**
+ * Marks for the tribe the creature the session looks at through a glass or a visor (D1082), its entity index u32 and
+ * generation u16: it must be in the session's view or its cone, alive, and no survivor. Its tribe's marks hold it as
+ * MARK_SPOT where it is for SPOT_TICKS, SPOTS_MOST a tribe, the oldest let go first. A survivor with no tribe is denied.
+ */
+export const CMD_MARK = 38;
+export const SPOT_TICKS = 1800;
+export const SPOTS_MOST = 8;
 export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;

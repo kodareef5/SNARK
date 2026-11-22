@@ -7,6 +7,8 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 import { Icons } from "./assets/icons.ts";
 import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
 import { Visor } from "./visor.ts";
+import { Glass, MARKED_MS } from "./glass.ts";
+import { MARK_SPOT } from "../../shared/world/tactical.ts";
 import type { OpticFacet } from "../../shared/content/defs.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
@@ -27,7 +29,7 @@ import { motionProgress, motionTicks } from "../../shared/sim/motion.ts";
 import { isWheelVehicle } from "../../shared/sim/vehicle.ts";
 import { GLIDE_DIVE, JET_CUIRASS, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, glidePhase, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CMD_GAZE, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
+import { CMD_GAZE, CMD_MARK, GAZE_FARTHEST, GAZE_REACH } from "../../shared/net/protocol.ts";
 import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, VEHICLE_LIGHTS, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_LOCKED, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
@@ -125,6 +127,8 @@ const AIM_FOV = 0.79;
 const HOLO_TINT = 0.22;
 /** Milliseconds between CMD_GAZEs while a sight's zoom holds: well inside GAZE_TICKS, after which the server lets it go. */
 const GAZE_RESEND_MS = 1000;
+/** Metres over the ground a spotted creature's mark is drawn. */
+const SPOT_RISE = 3;
 /** Milliseconds the eye takes to settle most of the way to where it is off a scope's axis. */
 const EYE_EASE_MS = 120;
 /** Metres a holo-scope's crosshair finds what it is on, and its colours (Holo-Scope Attachment). */
@@ -188,6 +192,13 @@ export class App {
   private readonly windowAt = new Float64Array(4);
   /** The Meridian helmet's visor (visor.ts, D1080). */
   readonly visor = new Visor();
+  /** A held glass, the spyglass (glass.ts, D1082), and its optic while one is held; whether its primary was down. */
+  readonly glass = new Glass();
+  private glassOptic: OpticFacet | null = null;
+  private glassPressed = false;
+  private readonly shook = new Float64Array(2);
+  /** How far the look reaches what it tells of a creature this frame (fillOverhead): through a sight, its gaze's. */
+  private lookReach = 30;
   private visorOptic: OpticFacet | null = null;
   /** The zoom the server was last told of (App.gaze), and when. */
   private gazeSent = 0;
@@ -463,6 +474,15 @@ export class App {
     }
     if (this.ui.inspect && (code === "Minus" || code === "Equal")) { if (down && !repeat) this.zoomMini(code === "Equal" ? 1 : -1); return true; }
     if (this.ui.captureKeyboard) return false;
+    // With a glass raised, N marks what the look is on for the tribe (D1082).
+    if (code === "KeyN" && this.glass.up) {
+      const o = this.hud.overhead;
+      if (down && !repeat && o.lookedId >= 0) {
+        this.session.command(CMD_MARK, (w) => (w.u32(o.lookedId), w.u16(o.lookedGen)));
+        this.glass.markedAt = this.nowMs;
+      }
+      return true;
+    }
     // With a visor up, N turns its view, not what the held weapon has fitted.
     if (code === "KeyN" && this.visor.up) {
       if (down && !repeat) this.visor.cycle();
@@ -622,7 +642,11 @@ export class App {
   wheel(deltaY: number, mode = 0): boolean {
     if (!this.ui.wantsPointerLock) return false;
     const notches = mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100;
-    // A visor up takes the wheel for its zoom.
+    // A glass raised, or a visor up, takes the wheel for its zoom.
+    if (this.glass.up && this.glassOptic) {
+      this.glass.wheel(this.glassOptic, notches);
+      return true;
+    }
     if (this.visor.up && this.visorOptic) {
       this.visor.wheel(this.visorOptic, notches);
       return true;
@@ -1273,7 +1297,8 @@ export class App {
     this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
     this.refreshCockpitLook();
-    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons);
+    // A glass raised takes the primary for its range: the hand holding it does not strike.
+    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, (this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons) & (this.glass.up ? ~BTN_PRIMARY : ~0));
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
@@ -1438,21 +1463,36 @@ export class App {
     const base = (settings.fov * Math.PI) / 180;
     const fitted = gun && session.driving < 0 ? attachmentOf(this.reg, session.inventory, held) : null;
     const sight = fitted?.attachment ?? "";
+    // A held glass, raised with the secondary on foot (glass.ts, D1082).
+    const heldDef = alive && session.driving < 0 && !passenger ? (this.reg.defs[session.own.held] as ItemDef | null) : null;
+    this.glassOptic = heldDef?.class === "instrument" ? (heldDef.optic ?? null) : null;
+    const glassUp = this.glassOptic !== null && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && !orbiting && hud.banner === "";
+    this.glass.raise(glassUp);
     // A helmet's visor, held up, on foot, the helmet working and no sight aimed through (visor.ts, D1080).
-    const visorUp = this.visor.step((this.visorOptic = this.wornOptic(session.inventory)), alive && session.driving < 0 && !passenger && !sighting && !orbiting && hud.banner === "");
-    const zoom = visorUp ? this.visor.zoom : fitted?.optic ? opticZoom(fitted.optic) : 0;
-    let want = visorUp ? zoomed(base, zoom) : sighting ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
-    this.view.atEye = ((sighting && forcesEye(zoom)) || visorUp) && !passenger;
+    const visorUp = this.visor.step((this.visorOptic = this.wornOptic(session.inventory)), alive && session.driving < 0 && !passenger && !sighting && !glassUp && !orbiting && hud.banner === "");
+    const zoom = glassUp ? this.glass.zoom(this.glassOptic!) : visorUp ? this.visor.zoom : fitted?.optic ? opticZoom(fitted.optic) : 0;
+    let want = glassUp || visorUp ? zoomed(base, zoom) : sighting ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
+    this.view.atEye = ((sighting && forcesEye(zoom)) || visorUp || glassUp) && !passenger;
+    if (glassUp) {
+      // The hand shakes it, less crouched, least lying down; the view turns with it, the look sent does not.
+      this.glass.shake(nowMs, session.own.stance, this.shook);
+      lookYaw += this.shook[0]!;
+      lookPitch += this.shook[1]!;
+      const press = (c.buttons & BTN_PRIMARY) !== 0;
+      if (press && !this.glassPressed) this.glass.lase(nowMs);
+      this.glassPressed = press;
+    } else this.glassPressed = false;
     hud.behind = alive && third && !this.view.atEye && session.driving < 0 && !passenger;
     if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
     // Under a glider the view opens with its speed, a dive's most, and third person stands back to hold the wings.
     const gliding = alive && session.driving < 0 && session.own.glide !== 0;
     if (gliding) want += Math.min(GLIDE_FOV, (Math.hypot(session.own.vx, session.own.vy, session.own.vz) / GLIDE_DIVE) * GLIDE_FOV);
     this.view.gliding += ((gliding ? 1 : 0) - this.view.gliding) * (1 - Math.exp(-Math.max(0, dt) / 280));
-    hud.scope = sighting && sight === "scope";
+    // A glass's lenses are drawn as a scope's are (ui/hud.ts buildReticle), two and no posts.
+    hud.scope = (sighting && sight === "scope") || glassUp;
     // The scope's window spans less of the screen the more it magnifies; the eye off its axis, as the body moves, a shot
     // kicks or the sway leads, casts its shadow across the lens. Outside the window nothing is drawn (D1077).
-    const optic = visorUp ? this.visorOptic! : fitted?.optic;
+    const optic = glassUp ? this.glassOptic! : visorUp ? this.visorOptic! : fitted?.optic;
     hud.sightShare = optic ? windowShare(optic, zoom) : 1;
     hud.sightShape = shapeOf(optic);
     hud.visor = visorUp;
@@ -1489,7 +1529,20 @@ export class App {
     cam.fovY = this.fov;
     cam.zoom = magnification(base, this.fov);
     // Through a sight the server is told how far it magnifies and what it is on, so its cone widens the view (D1079).
-    this.gaze(nowMs, world, (sighting || visorUp) && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
+    this.gaze(nowMs, world, (sighting || visorUp || glassUp) && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
+    this.lookReach = (sighting || visorUp || glassUp) && zoom > 1 ? Math.max(30, Math.min(GAZE_FARTHEST, GAZE_REACH * zoom)) : 30;
+    hud.glass = glassUp;
+    hud.glassZoom = zoom;
+    if (glassUp) {
+      const eyeAt = this.sightAt, d = this.aim;
+      this.glass.ranged(nowMs, () => {
+        lookDirection((lookYaw / TAU) * 65536, (lookPitch / (PI / 2)) * 16384, d);
+        return castWorld(world, eyeAt.x, eyeAt.y, eyeAt.z, d[0]!, d[1]!, d[2]!, GAZE_FARTHEST) !== HIT_NONE ? rayHit.t : 0;
+      }, hud.heading);
+    }
+    hud.glassRange = this.glass.lasing >= 0 ? -1 : this.glass.range;
+    hud.glassBearing = this.glass.bearing;
+    hud.glassMarked = nowMs - this.glass.markedAt < MARKED_MS;
     c.zoom = lookScale(base, this.fov, settings.sensitivity, settings.zoomSensitivity);
     // The crosshair opens with the cone the next shot would leave within.
     hud.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;
@@ -1717,7 +1770,18 @@ export class App {
     hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     this.feedback.absorb(session, this.reg, nowMs, this.scene.damage);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.hitMarkers);
-    fillOverhead(hud.overhead, session, this.remote, cam, this.scene.characters, alive && !hud.out ? eyeNow : -1, c.yaw, c.pitch);
+    fillOverhead(hud.overhead, session, this.remote, cam, this.scene.characters, alive && !hud.out ? eyeNow : -1, c.yaw, c.pitch, this.lookReach);
+    // What the tribe spotted, where it stands on the screen (D1082).
+    const marks = session.tactical.marks, spot = this.spot;
+    hud.spotCount = 0;
+    for (let i = 0; i < marks.count && hud.spotCount < 8; i++) {
+      if (marks.kind[i] !== MARK_SPOT) continue;
+      const x = marks.x[i]!, z = marks.z[i]!;
+      if (!cam.project(x, world.hf.heightAt(x, z) + SPOT_RISE, z, spot) || spot[0]! < 0 || spot[0]! > 1 || spot[1]! < 0 || spot[1]! > 1) continue;
+      const out = (hud.spots[hud.spotCount++] ??= { u: 0, v: 0 });
+      out.u = spot[0]!;
+      out.v = spot[1]!;
+    }
     this.fillSights(world, alive);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);

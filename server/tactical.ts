@@ -4,6 +4,7 @@
 // owner, which are sent within FarRadius for drawing on the horizon and never reach the map. What each client holds is kept
 // here by client id.
 
+import { SPOTS_MOST } from "../shared/net/protocol.ts";
 import { CHUNK_SIZE, TICK_RATE, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitWriter } from "../shared/net/codec.ts";
@@ -11,7 +12,7 @@ import { CMD_FAR, CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_FAR, S_MARKS, S_TAC
 import { CH_UNRELIABLE, type Connection } from "../shared/net/transport.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import type { MapExtent } from "../shared/world/coords.ts";
-import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, pieceShapes, writeCells, writeFar, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
+import { MARK_MATE, MARK_OTHER, MARK_SPOT, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, pieceShapes, writeCells, writeFar, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -136,6 +137,24 @@ export class Tactical {
   private ringFor = -1;
   /** Entity indices of each tribe's creatures, as of `tamesAt`. */
   private readonly tames = new Map<number, number[]>();
+  /** The creatures each tribe spotted (CMD_MARK, D1082), with their generations and the ticks their marks go. */
+  private readonly spots = new Map<number, { e: number; gen: number; until: number }[]>();
+
+  /** Marks creature `e` for `team` until tick `until`: again if it is marked, else in place of the oldest past SPOTS_MOST. */
+  spot(team: number, e: number, until: number): void {
+    const list = this.spots.get(team) ?? [];
+    this.spots.set(team, list);
+    const gen = this.world.ents.gen[e]!;
+    const at = list.findIndex((s) => s.e === e && s.gen === gen);
+    if (at >= 0) list.splice(at, 1);
+    list.push({ e, gen, until });
+    if (list.length > SPOTS_MOST) list.shift();
+  }
+
+  /** What `team` has spotted and holds marked now, for tests. */
+  spotted(team: number): number[] {
+    return (this.spots.get(team) ?? []).map((s) => s.e);
+  }
   private tamesAt = -TAMES_EVERY;
   private readonly marksOf = new Map<number, TeamMarks>();
   private readonly spare: TeamMarks[] = [];
@@ -479,6 +498,13 @@ export class Tactical {
         if (ents.team[e] === team && (ents.flags[e]! & (F_ALIVE | F_PLAYER | F_PROP)) === F_ALIVE) m.add(MARK_TAME, ents.x[e]!, ents.z[e]!, ents.yaw[e]!);
       }
       if (everyone) for (const c of clients) if (c?.active && c.ent >= 0 && this.teamOf[c.id] !== team) m.add(MARK_OTHER, ents.x[c.ent]!, ents.z[c.ent]!, ents.yaw[c.ent]!);
+      // What it spotted, where it is now, while it lives and its mark lasts.
+      const spots = this.spots.get(team);
+      for (let k = spots ? spots.length - 1 : -1; k >= 0; k--) {
+        const s = spots![k]!;
+        if (this.world.tick >= s.until || ents.gen[s.e] !== s.gen || (ents.flags[s.e]! & (F_ALIVE | F_PROP)) !== F_ALIVE) spots!.splice(k, 1);
+        else m.add(MARK_SPOT, ents.x[s.e]!, ents.z[s.e]!, ents.yaw[s.e]!);
+      }
       if (m.n > MAX_MARKS) continue;
       const w = m.w;
       w.reset();

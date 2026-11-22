@@ -22,14 +22,14 @@ import { formatHour, hourOfDay } from "../../shared/sim/clock.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_TORPOR, V_WATER } from "../../shared/sim/vitals.ts";
 import { latLonText, latOf, lonOf, mapU, mapV } from "../../shared/world/coords.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
-import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_OFF, type Marks } from "../../shared/world/tactical.ts";
+import { MARK_MATE, MARK_OTHER, MARK_SPOT, MARK_TAME, MAX_MARKS, PLAYERS_OFF, type Marks } from "../../shared/world/tactical.ts";
 import { CombatModel } from "./feedback.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 import { paintRelief, type Chart } from "./tactical.ts";
 import { Compass } from "./ui/compass.ts";
 
 /** One of the reader's tribe is a mate and one of its creatures a tame. A player is a survivor of another tribe, and a creature is not the tribe's. */
-export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature" | "drop" | "dropPip";
+export type MarkerKind = "self" | "mate" | "tame" | "death" | "spawn" | "player" | "creature" | "drop" | "dropPip" | "spotted";
 
 export interface Marker {
   /** A "drop" is a supply drop the server's drop book tells of on the map, and a "dropPip" one it tells of on the compass alone. */
@@ -170,6 +170,11 @@ export const OWNER_OTHER = 2;
 
 /** Marks over creatures, from the view and from what the server says of the one looked at. Places are fractions of the screen. */
 export class OverheadModel {
+  /** The entity looked at, its index and generation, or -1: what N marks through a sight (D1082). */
+  lookedId = -1;
+  lookedGen = 0;
+  /** Metres to it. */
+  lookedFar = 0;
   /** A creature is looked at, and its mark stands at (u, v). `heart` is the heart drawn over it, or -1. */
   look = false;
   u = 0;
@@ -387,6 +392,18 @@ export class HudModel {
    * (render/packet.ts OPTIC_), whether its picture is made larger past its glass, and how far off its middle is on.
    */
   visor = false;
+  /**
+   * A glass raised (client/core/glass.ts, D1082): its zoom, its range (metres, 0 for none, -1 while it lases) and bearing
+   * (degrees), and whether a mark was just made.
+   */
+  glass = false;
+  glassZoom = 0;
+  glassRange = 0;
+  glassBearing = 0;
+  glassMarked = false;
+  /** Where on the screen the creatures the tribe spotted stand (MARK_SPOT), 0 to 1 with y down, as many as `spotCount`. */
+  readonly spots: { u: number; v: number }[] = [];
+  spotCount = 0;
   visorZoom = 0;
   visorMode = 0;
   visorDigital = false;
@@ -499,6 +516,8 @@ function fillMarkers(model: HudModel, session: ClientSession, remote: RemoteSamp
   markFar(model, hf, marks, remote, team, MARK_MATE, "mate");
   markView(model, hf, remote, team, false, true, "tame");
   markFar(model, hf, marks, remote, team, MARK_TAME, "tame");
+  // What the tribe spotted through a glass (D1082), in view or not.
+  for (let i = 0; i < marks.count; i++) if (marks.kind[i] === MARK_SPOT) model.mark("spotted", hf, marks.x[i]!, marks.z[i]!);
   for (const m of session.markers) model.mark("death", hf, m.x, m.z);
   // Supply drops, where the server's drop book tells of them: on the compass, or on the compass and the map.
   for (const d of session.supply.rows) if (d.left === 0 && d.announce > 0) model.mark(d.announce > 1 ? "drop" : "dropPip", hf, d.x, d.z, session.supply.tiers[d.tier]?.rgb ?? -1);
@@ -626,8 +645,9 @@ function describe(m: OverheadModel, session: ClientSession, remote: RemoteSample
  * it stops at the world and at the first body. A heart shows over each creature of a mating pair in range, unless the
  * world is between it and the camera, with its progress only over the viewer's own tribe's.
  */
-export function fillOverhead(m: OverheadModel, session: ClientSession, remote: RemoteSample, cam: Camera, heads: Heads, eye: number, yaw: number, pitch: number): void {
+export function fillOverhead(m: OverheadModel, session: ClientSession, remote: RemoteSample, cam: Camera, heads: Heads, eye: number, yaw: number, pitch: number, reach = OVER_RANGE): void {
   m.look = false;
+  m.lookedId = -1;
   m.heart = -1;
   m.heartCount = 0;
   m.dropped = 0;
@@ -645,7 +665,8 @@ export function fillOverhead(m: OverheadModel, session: ClientSession, remote: R
     const ox = session.own.x;
     const oy = session.own.y + eye;
     const oz = session.own.z;
-    let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, OVER_RANGE) === HIT_NONE ? OVER_RANGE : rayHit.t;
+    // Through a sight a look reaches as far as its gaze, as the server's does (server/overhead.ts, D1082).
+    let best = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach) === HIT_NONE ? reach : rayHit.t;
     for (let i = 0; i < remote.count; i++) {
       if ((remote.flags[i]! & VIEW_FLAG_PROP) !== 0 || remote.id[i] === own || remote.id[i] === session.driving) continue;
       const kind = remote.kind[i]!;
@@ -659,6 +680,9 @@ export function fillOverhead(m: OverheadModel, session: ClientSession, remote: R
     }
     if (looked >= 0 && ((remote.flags[looked]! & VIEW_FLAG_PLAYER) !== 0 || (remote.cue[looked]! & CUE_DEAD) !== 0)) looked = -1;
     if (looked >= 0) {
+      m.lookedId = remote.id[looked]!;
+      m.lookedGen = remote.gen[looked]!;
+      m.lookedFar = best;
       describe(m, session, remote, looked);
       headOf(reg, remote, looked, heads, at);
       const front = cam.project(at[0]!, at[1]!, at[2]!, screen);

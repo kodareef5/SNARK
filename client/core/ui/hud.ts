@@ -41,8 +41,11 @@ export const KEY_SIGHT = 5000;
 export const KEY_SIGHT_SHADE = 5100;
 /** A visor's frame and readouts (D1080). */
 export const KEY_VISOR = 5110;
+/** A glass's readouts (D1082). */
+export const KEY_GLASS = 5140;
 /** The visor's ink: its frame, its marks and its words. */
 const VISOR_INK = 0x7fe6d4;
+const SPOT_INK = 0xff6a3d;
 export const KEY_DOT = 5010;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
@@ -73,9 +76,12 @@ export const IMAGE_MAP = 2;
 
 export { MINIMAP_SIZE };
 const MARGIN = 12;
-export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH, drop: S_MARK_SELF, dropPip: S_MARK_SELF };
+export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH, drop: S_MARK_SELF, dropPip: S_MARK_SELF, spotted: S_MARK_CREATURE };
 /** Colours of the kinds that have no style of their own. */
-export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a };
+export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a, spotted: SPOT_INK };
+/** A spotted creature's mark over it in the view (D1082), and its ink. */
+export const KEY_SPOT = 5200;
+const SPOT_SIDE = 9;
 
 export const HOTBAR_CELL = 52;
 /** From one vital to the next in their row by touch: an icon and the room a finger's press of it takes. */
@@ -115,7 +121,13 @@ function buildReticle(f: UiFrame, W: number, H: number, m: HudModel): void {
     f.add(k++, K_PANEL, Math.max(0, x0), y0 + bh, Math.min(W, bw), H - y0 - bh, S_DARK);
   }
   f.add(k++, K_PANEL, x0, y0, bw, bh, lens);
-  // Twin lenses are a glass's, not a gun's: no posts.
+  // Twin lenses are a glass's, not a gun's: no posts, and under them its zoom, range, bearing and a mark just made.
+  if (twin && m.glass) {
+    const range = m.glassRange < 0 ? "LASING" : m.glassRange > 0 ? `${Math.round(m.glassRange).toLocaleString("en-US")} m` : "---";
+    const words = [`${m.glassZoom}x`, range, m.glassRange > 0 ? Math.round(m.glassBearing).toString().padStart(3, "0") : "", m.glassMarked ? "MARKED" : ""];
+    const across = bw / words.length, y = Math.min(H - 20, y0 + bh + 6);
+    for (let i = 0; i < words.length; i++) if (words[i] !== "") f.text(KEY_GLASS + i, x0 + across * i, y, across, S_VISOR, words[i]!).tint = i === 3 ? SPOT_INK : VISOR_INK;
+  }
   if (!twin) {
     f.add(k++, K_PANEL, x0, cy - post / 2, cx - gap - x0, post, S_DARK).alpha = 0.95;
     f.add(k++, K_PANEL, cx + gap, cy - post / 2, x0 + bw - cx - gap, post, S_DARK).alpha = 0.95;
@@ -254,6 +266,13 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   }
   if (m.scope && m.banner === "") buildReticle(f, W, H, m);
   if (m.visor && m.banner === "") buildVisor(f, W, H, m);
+  // What the tribe spotted, over it where it stands in view.
+  for (let i = 0; i < m.spotCount && i < 8; i++) {
+    const s = m.spots[i]!;
+    const n = f.add(KEY_SPOT + i, K_PANEL, s.u * W - SPOT_SIDE / 2, s.v * H - SPOT_SIDE / 2, SPOT_SIDE, SPOT_SIDE, S_CROSS);
+    n.tint = SPOT_INK;
+    n.alpha = 0.9;
+  }
   // The readout, and under it the resource monitor's strip (ui/monitor.ts), which on a canvas too short for both stands
   // in its place; the voice's lines under them.
   // On a narrow canvas the readout keeps left of the minimap, which keeps its place at the top, and the strip stands across under both.

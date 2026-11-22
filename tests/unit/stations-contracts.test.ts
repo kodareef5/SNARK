@@ -37,13 +37,13 @@ const id = (r: Registry, name: string): number => r.index.get(name.includes(":")
 test("protocol 17 and record format 7 are the stations wave's, and it took no command, own component, event, saved component or deadline", () => {
   // 16 is the flyers', and 18, after this wave's 17, the vehicles' (tests/integration/vehicle-contracts.test.ts).
   expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([42, 16]);
-  // 19 adds rotorcraft state and CMD_VEHICLE (32), 22 CMD_STATICS (33), 25 CMD_CORPSE (34), 34 CMD_CLOCK (35), 35 the ticks given up in a snapshot, 36 a late input's buttons carried, 37 a survivor's emote and CMD_EMOTE (36), 42 a sight's CMD_GAZE (37).
+  // 19 adds rotorcraft state and CMD_VEHICLE (32), 22 CMD_STATICS (33), 25 CMD_CORPSE (34), 34 CMD_CLOCK (35), 35 the ticks given up in a snapshot, 36 a late input's buttons carried, 37 a survivor's emote and CMD_EMOTE (36), 42 a sight's CMD_GAZE (37) and CMD_MARK (38).
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   // 40 is the soul balls': OWN_KEPT (17), EVENT_BALL (8), and the saved mark of a tame kept in one (COMP_STORED, 25), which a
   // record not kept does not write (tests/integration/balls.test.ts, tests/unit/creature-save.test.ts). 26 is the starter
   // mount's mark (COMP_ISSUED), which only a starter writes, in the same protocol (tests/integration/starter-mount.test.ts).
-  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([37, 17, 8, 10]);
+  expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([38, 17, 8, 10]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
   expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 26]);
   // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found

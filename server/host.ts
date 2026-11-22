@@ -698,7 +698,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   game.onMountSecondary = e => roars.use(e);
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
   // A sight's cone widens its session's view and holds what it is on awake (server/gaze.ts, D1079).
-  const gaze = new Gaze({ world, records, items, game, wake: (chunk, delta) => {
+  // A look through a sight tells what it is on as far as the sight's gaze reaches (D1082).
+  overhead.reach = (c) => gaze.lookReach(c);
+  const gaze = new Gaze({ world, records, items, game, spot: (team, e, until) => tactical.spot(team, e, until), wake: (chunk, delta) => {
     creatures.watch(chunk, delta, woke);
     if (woke.length > 0) settled.bodies += settle(world, woke, relocated);
     woke.length = 0;

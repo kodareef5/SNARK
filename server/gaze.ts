@@ -6,7 +6,8 @@
 
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { CMD_GAZE, GAZE_FARTHEST, GAZE_REACH, GAZE_TICKS, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../shared/net/protocol.ts";
+import { CMD_GAZE, CMD_MARK, GAZE_FARTHEST, GAZE_REACH, GAZE_TICKS, RESULT_DENIED, RESULT_INVALID, RESULT_OK, SPOT_TICKS } from "../shared/net/protocol.ts";
+import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import type { ItemDef } from "../shared/content/defs.ts";
 import { ARMOR_SLOTS } from "../shared/sim/items.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -33,6 +34,8 @@ export interface GazeContext {
   readonly game: GameServer;
   /** Holds `chunk`'s creatures awake (1) or lets them go (-1), as a body round them does (Creatures.watch). */
   wake(chunk: number, delta: number): void;
+  /** Marks creature `e` for tribe `team` until tick `until` (Tactical.spot). */
+  spot(team: number, e: number, until: number): void;
 }
 
 /** One session's gaze. */
@@ -61,6 +64,7 @@ export class Gaze {
     this.ctx = ctx;
     this.coned = new Uint16Array(ctx.world.dims.chunksX * ctx.world.dims.chunksZ);
     ctx.game.handle(CMD_GAZE, (c, r) => this.command(c, r));
+    ctx.game.handle(CMD_MARK, (c, r) => this.mark(c, r));
     ctx.game.cone = (c) => {
       const look = this.looks.get(c);
       return look && look.count > 0 ? look : null;
@@ -109,6 +113,36 @@ export class Gaze {
     look.focus = Math.min(focus, this.reach(look.zoom));
     look.until = this.ctx.world.tick + GAZE_TICKS;
     look.at = -1;
+    return RESULT_OK;
+  }
+
+  /** How far `c`'s look reaches what it tells of a creature (server/overhead.ts): its gaze's reach, or 0 with none. */
+  lookReach(c: Client): number {
+    const look = this.looks.get(c);
+    return look ? this.reach(look.zoom) : 0;
+  }
+
+  /** Whether creature `e` stands where `c` may see it: round it, or in its gaze's cone. */
+  inView(c: Client, e: number): boolean {
+    const dims = this.ctx.world.dims, ents = this.ctx.world.ents;
+    const chunk = chunkAt(dims, ents.x[e]!, ents.z[e]!), r = this.ctx.game.opts.entityRadius;
+    if (Math.abs(chunkCx(dims, chunk) - chunkCx(dims, c.chunk)) <= r && Math.abs(chunkCz(dims, chunk) - chunkCz(dims, c.chunk)) <= r) return true;
+    const look = this.looks.get(c);
+    for (let k = 0; look && k < look.count; k++) if (look.chunks[k] === chunk) return true;
+    return false;
+  }
+
+  /** CMD_MARK: the creature looked at through a sight, marked for the tribe (D1082). */
+  private mark(c: Client, r: BitReader): number {
+    const e = r.u32();
+    const gen = r.u16();
+    if (r.overflow) return RESULT_INVALID;
+    const { world, records } = this.ctx;
+    const ents = world.ents;
+    const team = records.byPid.get(c.pid)?.team ?? 0;
+    if (c.ent < 0 || team === 0 || !this.looks.has(c)) return RESULT_DENIED;
+    if (e >= ents.gen.length || ents.gen[e] !== gen || (ents.flags[e]! & (F_ALIVE | F_PROP | F_PLAYER)) !== F_ALIVE || !this.inView(c, e)) return RESULT_INVALID;
+    this.ctx.spot(team, e, world.tick + SPOT_TICKS);
     return RESULT_OK;
   }
 
@@ -193,7 +227,8 @@ export class Gaze {
         const along = vx * dx + vz * dz;
         if (along <= -SLACK || along > reach + SLACK) continue;
         if (Math.abs(vx * dz - vz * dx) > Math.max(0, along) * slope + SLACK) continue;
-        found.push({ chunk: j * dims.chunksX + i, score: focus > 0 ? Math.abs(along - focus) : along });
+        // Nearest the point it is on first, both ways; with none, nearest the eye.
+        found.push({ chunk: j * dims.chunksX + i, score: focus > 0 ? Math.hypot(along - focus, vx * dz - vz * dx) : along });
       }
     }
     found.sort((a, b) => a.score - b.score || a.chunk - b.chunk);

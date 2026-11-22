@@ -46,7 +46,7 @@ share a `tag`.
 | `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 | `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 | `item/dye` | PrimalItemDye_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
-| `item/instrument` | PrimalItem_WeaponSpyglass, _WeaponCompass, _WeaponGPS, _WeaponMagnifyingGlass, PrimalItemRadio | partial: instruments | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 5 |
+| `item/instrument` | PrimalItem_WeaponSpyglass, _WeaponCompass, _WeaponGPS, _WeaponMagnifyingGlass, PrimalItemRadio | partial: instruments | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `optic` | 5 |
 | `item/artifact` | PrimalItemArtifact_ | stub: bosses | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 
 - **`item`** on shelf `items`. Anything that is carried.

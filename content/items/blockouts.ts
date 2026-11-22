@@ -154,7 +154,10 @@ const ARMS: Def[] = [
 
 const INSTRUMENTS: Def[] = [
   // Spyglass: weight 0.5; 5 wood, 10 hide, 10 fiber and 2 crystal in the hand in 5 s; level 7, 2 points.
-  { type: "item", class: "instrument", id: id("spyglass"), stack: 1, weight: 0.5, color: 3 },
+  // Raised with the secondary button, a pair of glasses (D1082, DEV212): steps of 2 to 30 times on the wheel, two merged
+  // lenses, what it is on told as the floating HUD of ARK's is ("Using spyglass now shows Floating HUD of Dinos", 181.0),
+  // ranged with the primary and marked for the tribe with N.
+  { type: "item", class: "instrument", id: id("spyglass"), stack: 1, weight: 0.5, color: 3, optic: { min: 2, max: 30, steps: [2, 4, 8, 16, 30], window: [0.82, 0.52], shape: "twin" } },
   ...made("spyglass", "Spyglass", 7, 2, 1, 5, [["wood", 5], ["hide", 10], ["fiber", 10], ["crystal", 2]], undefined),
   // Compass: weight 0.5; 5 metal as it is mined, 5 flint and 30 fiber in the hand; level 8, 5 points.
   { type: "item", class: "instrument", id: id("compass"), stack: 1, weight: 0.5, color: 2 },
