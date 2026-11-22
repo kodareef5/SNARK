@@ -2,47 +2,85 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
-import { moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_HEAT_SHIFT, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import {
+  moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS,
+  DRAW_RANGED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP,
+  SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows,
+  quadIndices, stepOf, type TextureUpload,
+} from "../core/render/packet.ts";
 import { MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
-import { PROGRAM, PROGRAMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
+import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, drawProgram, tierPrograms, type ProgramText } from "../core/render/programs.ts";
+import {
+  AT_DRAW, AT_FRAME, AT_TILES, Drawn, SEND_1F, SEND_1I, SEND_2F, SEND_3F, SEND_3FV, SEND_FLOATS, SHELL_UNIFORMS, type UniformRow,
+} from "../core/render/uniforms.ts";
 import { WeatherMasks } from "./texgen.ts";
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
-import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
-import { BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift } from "../core/render/post.ts";
+import {
+  BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift,
+} from "../core/render/post.ts";
 import { POLYGON_OFFSET, shadowLayer, shadowLayers } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
-import { LAYER_LEVELS, NEUTRAL, lampsOn, materialEmission, skinMode } from "../core/render/surface.ts";
+import { NEUTRAL, lampsOn } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseArea, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import type { Tier } from "../core/assets/tiers.ts";
 import type { Manifest, ManifestMesh } from "../../shared/pack/manifest.ts";
 import { finishTable, type FinishTable } from "../../shared/pack/finish.ts";
-import { CELL, mipOffset } from "../../shared/pack/details.ts";
-import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
+import { mipOffset } from "../../shared/pack/details.ts";
+import {
+  INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial,
+} from "../../shared/pack/pack.ts";
 import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { ROAD_PLANES, ROAD_STEP, roadSamples } from "../../shared/world/roadframe.ts";
+
+/** A row a program's texts declare (uniforms.ts): where it is, and where `held` keeps what it was last sent, or sent for. */
+interface Held {
+  row: UniformRow;
+  at: WebGLUniformLocation;
+  slot: number;
+}
 
 interface Program {
   program: WebGLProgram;
   /** Its texts until its link is checked, the first time it is drawn with, and null after. */
   text: ProgramText | null;
-  /**
-   * Where each of U's uniforms is, found when its link is checked, and what each holds: a number as it was set, and
-   * for a vector what it was set from (a mesh, a material, a frame or a view).
-   */
+  /** Its rows (programs.ts UNIFORMS), and from when its link is checked those its texts declare, by when each is set. */
+  rows: readonly UniformRow[];
+  frame: Held[];
+  draw: Held[];
+  tiles: Held[];
+  held: Float64Array;
+  /** Where each of the shell's own uniforms is (U), and what each holds as it was set. */
   at: (WebGLUniformLocation | null)[];
   last: Float64Array;
+  /** The step or cascade, and the frame, whose uniforms it holds. */
+  view: number;
+  serial: number;
   /** The bounds uCenter and uHalf were set from: a level's own or its mesh's. */
   bounds: object | null;
 }
 
-/** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers follow its place in `last`, and uEffect's four end it. */
-const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, heat: 46, weatherReady: 47 } as const;
+/**
+ * The uniforms the shell sets by code (uniforms.ts SHELL_UNIFORMS), by their place in a program's `at` and `last`.
+ * uOffset's three numbers end `last`.
+ */
+const own = (name: (typeof SHELL_UNIFORMS)[number]): number => SHELL_UNIFORMS.indexOf(name);
+const U = {
+  viewProj: own("uViewProj"),
+  from: own("uFrom"),
+  worldReady: own("uWorldReady"),
+  weatherReady: own("uWeatherReady"),
+  pass: own("uPass"),
+  extent: own("uExtent"),
+  center: own("uCenter"),
+  half: own("uHalf"),
+  offset: own("uOffset"),
+} as const;
+const NO_FLOATS = new Float64Array(0);
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -103,7 +141,16 @@ export class GlRenderer {
    * What the light target is made of, `w` by `h`: the scene's framebuffer, multisampled, then its resolved copy's and
    * each bloom level's, with their textures; `drawn`, its corner the frame's scene fills; a pass's read (passExtent).
    */
-  private post = { size: "", w: 0, h: 0, drawn: [0, 0] as [number, number], extent: new Float32Array(4), fbs: [] as WebGLFramebuffer[], tex: [] as WebGLTexture[], bufs: [] as WebGLRenderbuffer[] };
+  private post = {
+    size: "",
+    w: 0,
+    h: 0,
+    drawn: [0, 0] as [number, number],
+    extent: new Float32Array(4),
+    fbs: [] as WebGLFramebuffer[],
+    tex: [] as WebGLTexture[],
+    bufs: [] as WebGLRenderbuffer[],
+  };
   /** The sun's shadow maps: a 16-bit depth layer a cascade and the far map's after them, a target on each cascade's, and their side. */
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The sky's openness (skyopen.ts) on its unit, and its cells across times 65536 and down. */
@@ -139,7 +186,10 @@ export class GlRenderer {
   /** The vertex array and the array buffer bound. */
   private vao: WebGLVertexArrayObject | null = null;
   private arrayBuffer: WebGLBuffer | null = null;
-  /** Where the browser draws many runs of indices in one call; and for a call, each run's indices, then their first bytes, then their instances, RUNS apart. */
+  /**
+   * Where the browser draws many runs of indices in one call; and for a call, each run's indices, then their first
+   * bytes, then their instances, RUNS apart.
+   */
   private multi: WEBGL_multi_draw | null = null;
   private readonly runs = new Int32Array(RUNS * 3);
   /** The levels the card holds, by slot. A frame packet says which to take on and which to let go. */
@@ -158,10 +208,13 @@ export class GlRenderer {
   /** The walls' weathering masks, made on the card (texgen.ts). */
   private weather!: WeatherMasks;
   private readonly anisotropyOf = (target: number): void => this.anisotropy(target);
-  /** How much a material that glows only by night glows in this frame (surface.ts `lampsOn`). */
-  private night = 0;
-  private exposure = 1;
-  /** The world finishes' maps by role, each an array of a layer a finish, its side and the finest level drawn; and each world texture's role * 32 + layer. */
+  /** What the rows of a program's uniforms read (uniforms.ts): the frame, and the draw being drawn; and where a row's floats are put. */
+  private readonly drawn: Drawn;
+  private readonly scratch = new Float64Array(4);
+  /**
+   * The world finishes' maps by role, each an array of a layer a finish, its side and the finest level drawn; and each
+   * world texture's role * 32 + layer.
+   */
   private world: (WebGLTexture | null)[] = [];
   private worldSide = [0, 0, 0];
   private worldBase = [-1, -1, -1];
@@ -193,7 +246,6 @@ export class GlRenderer {
   private readonly streetRevisions = [-1, -1];
   private streetWidth = 0;
   private readonly noReflection = new Float32Array(1);
-  private readonly wheelCenters: Float32Array[];
   private tileVao!: WebGLVertexArrayObject;
   /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
   private detailAtlas: WebGLTexture | null = null;
@@ -211,7 +263,10 @@ export class GlRenderer {
   /** The terrain's pictures (terrain.ts), and the two copies of the window's pair, heights then tints. */
   private readonly ground: GroundSize;
   private windows: WebGLTexture[] = [];
-  /** The roads' frame of the window drawn (Heightfield `road`), every second sample; what it holds (the window, its corner and the frame's version); and the rows it is copied through. */
+  /**
+   * The roads' frame of the window drawn (Heightfield `road`), every second sample; what it holds (the window, its
+   * corner and the frame's version); and the rows it is copied through.
+   */
   private readonly roadFor = Int32Array.of(-1, 0, 0, -1);
   private roadRows = new Uint8Array(0);
   /** The heightfield's changes the whole map's pair on the card holds. */
@@ -239,14 +294,15 @@ export class GlRenderer {
     // drawn. A world material that is neither, such as an older pack's painted weathering, has no layer and is not held.
     for (const m of this.materials) {
       if (!m.id.startsWith(SURFACE_PREFIX)) continue;
-      const mask = (MASK_MATERIALS as readonly string[]).indexOf(m.id), finish = (SURFACE_NAMES as readonly string[]).indexOf(m.id.slice(SURFACE_PREFIX.length));
+      const mask = (MASK_MATERIALS as readonly string[]).indexOf(m.id);
+      const finish = (SURFACE_NAMES as readonly string[]).indexOf(m.id.slice(SURFACE_PREFIX.length));
       const layer = mask >= 0 ? MASK_LAYER + mask : finish;
       if (layer >= 0) [m.base, m.normal, m.mro].forEach((t, r) => (mask < 0 || r === 2) && this.worldLayer.set(t, r * 32 + layer));
     }
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.meshes = manifest.meshes;
-    this.wheelCenters = (pack.header.rigs ?? []).map(rig => Float32Array.from(rig.rest.slice(0,96)));
     this.finish = finishTable(pack.palette, manifest);
+    this.drawn = new Drawn(pack, hf, this.ground, this.materials, this.meshes, this.finish.row);
     this.forced = forced;
     this.init();
   }
@@ -257,11 +313,18 @@ export class GlRenderer {
     const info = gl.getExtension("WEBGL_debug_renderer_info");
     this.rendererName = String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
     const has = (...names: string[]): boolean => names.every((n) => gl.getExtension(n) !== null);
-    this.formats = [...(has("EXT_texture_compression_bptc", "EXT_texture_compression_rgtc") ? ["bc" as const] : []), ...(has("WEBGL_compressed_texture_astc") ? ["astc" as const] : []), "rgba"];
+    this.formats = [
+      ...(has("EXT_texture_compression_bptc", "EXT_texture_compression_rgtc") ? ["bc" as const] : []),
+      ...(has("WEBGL_compressed_texture_astc") ? ["astc" as const] : []),
+      "rgba",
+    ];
     this.format = this.formats.find((f) => f === this.forced) ?? this.formats[0]!;
     this.shadowLookup = comparedLookup(gl);
     this.mostAnisotropy = gl.getExtension("EXT_texture_filter_anisotropic") ? (gl.getParameter(0x84ff) as number) : 0;
-    const most = (f: number): number => (gl.getExtension("EXT_color_buffer_float") ? ((gl.getInternalformatParameter(gl.RENDERBUFFER, f, gl.SAMPLES) as Int32Array | null)?.[0] ?? 0) : 0);
+    const most = (f: number): number => {
+      if (!gl.getExtension("EXT_color_buffer_float")) return 0;
+      return (gl.getInternalformatParameter(gl.RENDERBUFFER, f, gl.SAMPLES) as Int32Array | null)?.[0] ?? 0;
+    };
     this.light = LIGHT_FORMATS.find((f) => most(f) > 0) ?? 0;
     this.samples = this.light && Math.min(LIGHT_SAMPLES, most(this.light));
     this.post = { size: "", w: 0, h: 0, drawn: [0, 0], extent: this.post.extent, fbs: [], tex: [], bufs: [] };
@@ -291,7 +354,16 @@ export class GlRenderer {
     // Nor any material made from a recipe where a level has none (render/nearcity.ts).
     gl.vertexAttribI4ui(15, 0, 0, 0, 0);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    const texture = (unit: number, internal: number, w: number, h: number, format: number, type: number, data: ArrayBufferView | null, filter: number = gl.NEAREST): WebGLTexture => {
+    const texture = (
+      unit: number,
+      internal: number,
+      w: number,
+      h: number,
+      format: number,
+      type: number,
+      data: ArrayBufferView | null,
+      filter: number = gl.NEAREST,
+    ): WebGLTexture => {
       const t = gl.createTexture()!;
       gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, t);
@@ -305,8 +377,11 @@ export class GlRenderer {
     texture(UNIT.palette, gl.RGBA8, 256, this.finish.height, gl.RGBA, gl.UNSIGNED_BYTE, this.finish.pixels);
     texture(UNIT.heights, gl.R16UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_SHORT, coarse.heights);
     texture(UNIT.tint, gl.R8UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_BYTE, coarse.tint);
-    this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
-    texture(UNIT.road, gl.RGBA8UI, roadSamples(g.width[SOURCE_WINDOW]!), roadSamples(g.height[SOURCE_WINDOW]!), gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
+    const ww = g.width[SOURCE_WINDOW]!, wh = g.height[SOURCE_WINDOW]!;
+    this.windows = [0, 1, 0, 1].map((k) => {
+      return texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, ww, wh, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null);
+    });
+    texture(UNIT.road, gl.RGBA8UI, roadSamples(ww), roadSamples(wh), gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
     // The streets round the camera (core/render/streets.ts): their distances filtered, their kinds read as they are.
     texture(UNIT.streets, gl.RGBA8, STREET_SIDE, STREET_SIDE, gl.RGBA, gl.UNSIGNED_BYTE, null, gl.LINEAR);
     texture(UNIT.streetKinds, gl.RGBA8UI, STREET_SIDE, STREET_SIDE, gl.RGBA_INTEGER, gl.UNSIGNED_BYTE, null);
@@ -320,7 +395,14 @@ export class GlRenderer {
     gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
     gl.bindTexture(gl.TEXTURE_3D, gl.createTexture());
     gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SLICES, 0, gl.RGBA, gl.UNSIGNED_BYTE, theSky().table);
-    for (const p of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_3D, p[0], p[1]);
+    const table = [
+      [gl.TEXTURE_MIN_FILTER, gl.LINEAR],
+      [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+      [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
+      [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
+      [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE],
+    ] as const;
+    for (const p of table) gl.texParameteri(gl.TEXTURE_3D, p[0], p[1]);
 
     // A lost context took every level with it. Core sends them again.
     this.levels.clear();
@@ -363,8 +445,18 @@ export class GlRenderer {
       gl.activeTexture(gl.TEXTURE0 + UNIT.details);
       gl.bindTexture(gl.TEXTURE_2D, (this.detailAtlas = gl.createTexture()));
       const atlas = detailsAtlas(this.pack);
-      for (let level = 0, side = d.atlas.side; side >= 1; level++, side >>= 1) gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas.subarray(mipOffset(d.atlas.side, level), mipOffset(d.atlas.side, level + 1)));
-      for (const p of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_MAX_LOD, MOST_LOD]] as const) gl.texParameterf(gl.TEXTURE_2D, p[0], p[1]);
+      for (let level = 0, side = d.atlas.side; side >= 1; level++, side >>= 1) {
+        const picture = atlas.subarray(mipOffset(d.atlas.side, level), mipOffset(d.atlas.side, level + 1));
+        gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, picture);
+      }
+      const read = [
+        [gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR],
+        [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+        [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
+        [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
+        [gl.TEXTURE_MAX_LOD, MOST_LOD],
+      ] as const;
+      for (const p of read) gl.texParameterf(gl.TEXTURE_2D, p[0], p[1]);
       gl.bindTexture(gl.TEXTURE_2D, null);
     }
     gl.enable(gl.DEPTH_TEST);
@@ -376,8 +468,8 @@ export class GlRenderer {
     const blend = (p.drawFlags[d]! & DRAW_BLEND) !== 0;
     const prog = this.use(PROGRAM.details, p);
     this.set(blend, false, !blend);
-    this.uniform(prog, U.blend, blend ? 1 : 0);
-    this.uniform(prog, U.cells, (this.pack.header.details?.atlas.side ?? CELL) / CELL);
+    this.drawn.flags = p.drawFlags[d]!;
+    this.give(prog, prog.draw);
     gl.activeTexture(gl.TEXTURE0 + UNIT.details);
     gl.bindTexture(gl.TEXTURE_2D, this.detailAtlas);
     this.vertexArray(this.detailVao);
@@ -401,7 +493,20 @@ export class GlRenderer {
     const at = u.at ?? 0, end = at + u.data.length, from = Math.max(at, vertices);
     let lod = this.levels.get(u.slot);
     if (at === 0) {
-      lod = { vao: gl.createVertexArray()!, buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!], indexCount: u.indexCount, type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, indexBytes: u.indexBytes, bounds: u.bounds ?? null, surface: null, skin: false, buffer: null, entityIds: false, first: 0, bent: false };
+      lod = {
+        vao: gl.createVertexArray()!,
+        buffers: u.quads ? [gl.createBuffer()!] : [gl.createBuffer()!, gl.createBuffer()!],
+        indexCount: u.indexCount,
+        type: u.indexBytes === 4 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT,
+        indexBytes: u.indexBytes,
+        bounds: u.bounds ?? null,
+        surface: null,
+        skin: false,
+        buffer: null,
+        entityIds: false,
+        first: 0,
+        bent: false,
+      };
       this.levels.set(u.slot, lod);
       this.vertexArray(lod.vao);
       this.array(lod.buffers[0]!);
@@ -508,7 +613,8 @@ export class GlRenderer {
     else return;
     // The picture `size` across is as many halvings below the top as `size` is below `top`.
     const level = Math.clz32(u.size) - Math.clz32(u.top);
-    if (u.format === "rgba") gl.texSubImage2D(gl.TEXTURE_2D, level, 0, u.row, u.size, u.rows, u.role === "normal" ? gl.RG : gl.RGBA, gl.UNSIGNED_BYTE, u.data);
+    const pixels = u.role === "normal" ? gl.RG : gl.RGBA;
+    if (u.format === "rgba") gl.texSubImage2D(gl.TEXTURE_2D, level, 0, u.row, u.size, u.rows, pixels, gl.UNSIGNED_BYTE, u.data);
     else gl.compressedTexSubImage2D(gl.TEXTURE_2D, level, 0, u.row, u.size, u.rows, internal, u.data);
     if (!u.last) return;
     gl.deleteTexture(this.textures.get(u.slot) ?? null);
@@ -528,12 +634,14 @@ export class GlRenderer {
     gl.activeTexture(gl.TEXTURE0 + UNIT.maps + role);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.world[role] ?? (this.world[role] = gl.createTexture()));
     if (this.worldBase[role] === -2) {
-      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), internal, side, side, role === 2 ? MASK_LAYER + MASK_MATERIALS.length : SURFACE_NAMES.length);
+      const layers = role === 2 ? MASK_LAYER + MASK_MATERIALS.length : SURFACE_NAMES.length;
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 32 - Math.clz32(side), internal, side, side, layers);
       gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       this.anisotropy(gl.TEXTURE_2D_ARRAY);
       this.worldBase[role] = -1;
     }
-    if (u.format === "rgba") gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, level, 0, u.row, layer, u.size, u.rows, 1, u.role === "normal" ? gl.RG : gl.RGBA, gl.UNSIGNED_BYTE, u.data);
+    const pixels = u.role === "normal" ? gl.RG : gl.RGBA;
+    if (u.format === "rgba") gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, level, 0, u.row, layer, u.size, u.rows, 1, pixels, gl.UNSIGNED_BYTE, u.data);
     else gl.compressedTexSubImage3D(gl.TEXTURE_2D_ARRAY, level, 0, u.row, layer, u.size, u.rows, 1, internal, u.data);
   }
 
@@ -549,7 +657,7 @@ export class GlRenderer {
   private program(n: number, light = this.light > 0, tier = this.warmed!): Program {
     const text = Object.values(PROGRAMS)[n]!(tier, this.format, this.shadowLookup === "hard", light);
     const key = n + text.defines + text.vertex + text.fragment;
-    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!;
+    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text, n)).get(key)!;
     return light === this.light > 0 && tier === this.warmed ? (this.made[n] = made) : made;
   }
 
@@ -561,7 +669,12 @@ export class GlRenderer {
    */
   ready(tier: Tier): boolean {
     if (!this.parallel) return true;
-    const progs = this.asked.get(tier) ?? this.asked.set(tier, tierPrograms(tier).flatMap((n) => (drawsLight(tier, this.light) ? [true, false] : [this.light > 0]).map((light) => this.program(n, light, tier)))).get(tier)!;
+    let progs = this.asked.get(tier);
+    if (!progs) {
+      const lights = drawsLight(tier, this.light) ? [true, false] : [this.light > 0];
+      progs = tierPrograms(tier).flatMap((n) => lights.map((light) => this.program(n, light, tier)));
+      this.asked.set(tier, progs);
+    }
     return progs.every((prog) => !prog.text || this.gl.getProgramParameter(prog.program, COMPLETION_STATUS));
   }
 
@@ -575,7 +688,74 @@ export class GlRenderer {
     if (buffer !== this.arrayBuffer) this.gl.bindBuffer(this.gl.ARRAY_BUFFER, (this.arrayBuffer = buffer));
   }
 
-  /** Sets float uniform `k` of `prog`, the program in use, unless it has none or holds `v` already. */
+  /**
+   * Sets each of `rows` of `prog`, the program in use, from what `drawn` says, unless the program holds it already: a
+   * number that is the one last sent, and floats or an array last sent for the same key (uniforms.ts). It makes nothing.
+   */
+  private give(prog: Program, rows: readonly Held[]): void {
+    const gl = this.gl, c = this.drawn, last = prog.held, out = this.scratch;
+    for (let i = 0; i < rows.length; i++) {
+      const h = rows[i]!, row = h.row, k = h.slot, send = row.send;
+      if (row.value !== null) {
+        const v = row.value(c);
+        if (last[k] === v) continue;
+        last[k] = v;
+        if (send === SEND_1F) gl.uniform1f(h.at, v);
+        else if (send === SEND_1I) gl.uniform1i(h.at, v);
+        else gl.uniform1ui(h.at, v);
+        continue;
+      }
+      if (row.key !== null) {
+        const key = row.key(c);
+        if (last[k] === key) continue;
+        if (row.array !== null) {
+          const a = row.array(c) as Float32List | null;
+          if (a === null) continue;
+          last[k] = key;
+          if (send === SEND_3FV) gl.uniform3fv(h.at, a);
+          else gl.uniform4fv(h.at, a);
+          continue;
+        }
+        last[k] = key;
+        row.fill!(c, out);
+      } else {
+        row.fill!(c, out);
+        let same = true;
+        for (let j = 0; j < SEND_FLOATS[send]!; j++) {
+          if (last[k + j] !== out[j]) same = false;
+          last[k + j] = out[j]!;
+        }
+        if (same) continue;
+      }
+      if (send === SEND_2F) gl.uniform2f(h.at, out[0]!, out[1]!);
+      else if (send === SEND_3F) gl.uniform3f(h.at, out[0]!, out[1]!, out[2]!);
+      else gl.uniform4f(h.at, out[0]!, out[1]!, out[2]!, out[3]!);
+    }
+  }
+
+  /**
+   * Finds the place of each of a linked program's rows that its texts declare, once, and sorts them by when they are
+   * set; a row that starts with a number is given it. A row of one number, or with a key, keeps one number in `held`.
+   */
+  private find(prog: Program): void {
+    const gl = this.gl;
+    const starts: Held[] = [];
+    let slots = 0;
+    for (const row of prog.rows) {
+      const at = gl.getUniformLocation(prog.program, row.name);
+      if (at === null) continue;
+      const held = { row, at, slot: slots };
+      slots += row.fill !== null && row.key === null ? SEND_FLOATS[row.send]! : 1;
+      if (row.start !== null) starts.push(held);
+      if (row.at === AT_FRAME) prog.frame.push(held);
+      else if (row.at === AT_DRAW) prog.draw.push(held);
+      else if (row.at === AT_TILES) prog.tiles.push(held);
+    }
+    prog.held = new Float64Array(slots).fill(NaN);
+    for (const h of starts) gl.uniform1f(h.at, (prog.held[h.slot] = h.row.start!));
+  }
+
+  /** Sets float uniform `k` of the shell's own of `prog`, the program in use, unless it has none or holds `v` already. */
   private uniform(prog: Program, k: number, v: number): void {
     if (prog.last[k] === v || prog.at[k] === null) return;
     prog.last[k] = v;
@@ -612,13 +792,16 @@ export class GlRenderer {
   private use(n: number, p: FramePacket): Program {
     const gl = this.gl;
     const prog = this.made[n] ?? this.program(n);
-    const at = prog.at, last = prog.last;
+    const at = prog.at;
     if (prog.text) {
-      if (!gl.getProgramParameter(prog.program, gl.LINK_STATUS)) throw new Error("program: " + gl.getProgramInfoLog(prog.program) + gl.getAttachedShaders(prog.program)!.map((s) => gl.getShaderInfoLog(s)).join(""));
+      if (!gl.getProgramParameter(prog.program, gl.LINK_STATUS)) {
+        const shaders = gl.getAttachedShaders(prog.program)!.map((s) => gl.getShaderInfoLog(s)).join("");
+        throw new Error("program: " + gl.getProgramInfoLog(prog.program) + shaders);
+      }
       gl.useProgram((this.current = prog).program);
       for (const s in prog.text.samplers) gl.uniform1i(gl.getUniformLocation(prog.program, s), prog.text.samplers[s]!);
-      for (const name of Object.keys(U) as (keyof typeof U)[]) at[U[name]] = gl.getUniformLocation(prog.program, "u" + name[0]!.toUpperCase() + name.slice(1));
-      this.uniform(prog, U.alpha, 1);
+      for (let k = 0; k < SHELL_UNIFORMS.length; k++) at[k] = gl.getUniformLocation(prog.program, SHELL_UNIFORMS[k]!);
+      this.find(prog);
       const block = gl.getUniformBlockIndex(prog.program, "Frame");
       if (block !== gl.INVALID_INDEX) gl.uniformBlockBinding(prog.program, block, 0);
       prog.text = null;
@@ -628,62 +811,14 @@ export class GlRenderer {
       this.uniform(prog, U.worldReady, this.worldReady);
       this.uniform(prog, U.weatherReady, this.weather.plan.ready);
     }
-    if (last[U.viewProj] === this.view) return prog;
-    last[U.viewProj] = this.view;
+    if (prog.view === this.view) return prog;
+    prog.view = this.view;
     gl.uniformMatrix4fv(at[U.viewProj]!, false, this.matrix, this.matrixAt, 16);
     this.uniform(prog, U.from, this.from);
-    if (last[U.sun] === this.serial) return prog;
-    last[U.sun] = this.serial;
-    if (at[U.sun]) gl.uniform3fv(at[U.sun], p.sun);
-    if (at[U.sky]) gl.uniform3fv(at[U.sky], drawsLight(p.tier, this.light) ? p.sky : p.skyShown);
-    if (at[U.fog]) gl.uniform2f(at[U.fog], p.fogStart, p.fogEnd);
-    // Checker parity repeats every 16 m, so a small remainder keeps float precision.
-    if (at[U.camMod]) gl.uniform3f(at[U.camMod], p.camX % 16, p.camY % 16, p.camZ % 16);
-    this.uniform(prog, U.light, p.light);
-    if (at[U.worldEye]) gl.uniform3f(at[U.worldEye], p.camX, p.camY, p.camZ);
-    if (at[U.worldPhase]) gl.uniform3fv(at[U.worldPhase], p.worldPhase);
-    if (at[U.worldLeast]) gl.uniform3fv(at[U.worldLeast], p.worldLeast);
-    if (at[U.field]) gl.uniform4f(at[U.field], this.hf.minY, this.hf.stepY, this.ground.cell[SOURCE_MAP]!, p.camY);
-    if (at[U.surfaceCity]) gl.uniform4fv(at[U.surfaceCity], p.surfaceCity);
-    if (at[U.cascades] && last[U.cascades] !== p.cascadeCount) gl.uniform1i(at[U.cascades], (last[U.cascades] = p.cascadeCount));
+    if (prog.serial === this.serial) return prog;
+    prog.serial = this.serial;
+    this.give(prog, prog.frame);
     return prog;
-  }
-
-  /**
-   * Material `m` of a textured draw or caster of `mesh`: its tint, grey and cutoff, what the mesh's texture coordinates
-   * span, and the first `roles` of its maps; and for a draw with a layer at `level`, the level and its wear story.
-   */
-  private material(prog: Program, m: number, mesh: number, cutout: boolean, level: number, roles: number, wear = 0): void {
-    const gl = this.gl;
-    const mat = this.materials[m]!;
-    const at = prog.at, last = prog.last;
-    if (last[U.tint] !== m && at[U.tint]) {
-      last[U.tint] = m;
-      gl.uniform3f(at[U.tint]!, mat.tint[0], mat.tint[1], mat.tint[2]);
-    }
-    this.uniform(prog, U.grey, mat.grey);
-    this.uniform(prog, U.cutoff, cutout ? mat.cutoff : 0);
-    this.uniform(prog, U.sheet, mat.sheet ?? 0);
-    this.uniform(prog, U.emissive, materialEmission(mat, this.night, this.exposure));
-    if (last[U.uv] !== mesh) {
-      last[U.uv] = mesh;
-      gl.uniform4fv(at[U.uv]!, this.meshes[mesh]!.uv ?? WHOLE_UV);
-    }
-    if (level > 0) this.uniform(prog, U.level, level / LAYER_LEVELS);
-    if (level > 0) this.uniform(prog, U.wear, wear);
-    this.maps(mat, roles);
-  }
-
-  private streetFinish(prog: Program, p: FramePacket, d: number): void {
-    const gl = this.gl, at = prog.at, last = prog.last;
-    const wheels = p.drawWheelBones[d]!, rig = this.meshes[p.drawMesh[d]!]!.rig ?? -1;
-    this.uniform(prog, U.streetMaterial, p.drawStreetMaterial[d]!);
-    this.uniform(prog, U.optics, p.drawOptics[d]!);
-    if (wheels && at[U.wheelCenters] && last[U.wheelCenters] !== rig) {
-      gl.uniform3fv(at[U.wheelCenters]!, this.wheelCenters[rig]!);
-      last[U.wheelCenters] = rig;
-    }
-    if (at[U.wheelBones] && last[U.wheelBones] !== wheels) gl.uniform1ui(at[U.wheelBones]!, last[U.wheelBones] = wheels);
   }
 
   /**
@@ -699,7 +834,8 @@ export class GlRenderer {
       this.neutral = TEXTURE_ROLES.map((role) => {
         const t = gl.createTexture()!;
         gl.bindTexture(gl.TEXTURE_2D, t);
-        gl.texImage2D(gl.TEXTURE_2D, 0, role === "base" || role === "layer" ? gl.SRGB8_ALPHA8 : gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, Uint8Array.from(NEUTRAL[role]));
+        const internal = role === "base" || role === "layer" ? gl.SRGB8_ALPHA8 : gl.RGBA8;
+        gl.texImage2D(gl.TEXTURE_2D, 0, internal, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, Uint8Array.from(NEUTRAL[role]));
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         return t;
       });
@@ -756,6 +892,10 @@ export class GlRenderer {
     this.streetEnvironment(p);
     this.drawCalls = 0;
     this.serial++;
+    const c = this.drawn;
+    c.p = p;
+    c.serial = this.serial;
+    c.lightTarget = drawsLight(p.tier, this.light);
     this.failed.length = this.failedTextures.length = 0;
     if (p.tier !== this.warmed) {
       this.made = this.programs.get(p.tier) ?? [];
@@ -763,8 +903,18 @@ export class GlRenderer {
       for (const n of tierPrograms(p.tier)) if (!this.made[n]) this.program(n);
       // The governor's step to no light target draws the same tier with these, which a step should not wait to link.
       if (drawsLight(p.tier, this.light)) for (const n of tierPrograms(p.tier)) this.program(n, false);
-      this.world.forEach((t, r) => t && (gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r), gl.bindTexture(gl.TEXTURE_2D_ARRAY, t), this.anisotropy(gl.TEXTURE_2D_ARRAY)));
-      if (this.weather.texture) (gl.activeTexture(gl.TEXTURE0 + UNIT.weather), gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.weather.texture), this.anisotropy(gl.TEXTURE_2D_ARRAY));
+      for (let r = 0; r < this.world.length; r++) {
+        const t = this.world[r];
+        if (!t) continue;
+        gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
+        this.anisotropy(gl.TEXTURE_2D_ARRAY);
+      }
+      if (this.weather.texture) {
+        gl.activeTexture(gl.TEXTURE0 + UNIT.weather);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.weather.texture);
+        this.anisotropy(gl.TEXTURE_2D_ARRAY);
+      }
     }
     // The weathering masks are made before anything of the frame is drawn, in a share of the card's time a frame: a
     // millisecond where the finishes are a thousand pixels wide or more, half that below.
@@ -834,7 +984,8 @@ export class GlRenderer {
       gl.activeTexture(gl.TEXTURE0 + UNIT.windowHeights + k);
       if (copy >= 0) {
         gl.bindTexture(gl.TEXTURE_2D, this.windows[copy * 2 + k]!);
-        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, row, this.ground.width[SOURCE_WINDOW]!, rows, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, k ? this.hf.tint : this.hf.heights, (j + row) * this.hf.nx + i);
+        const type = k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, from = k ? this.hf.tint : this.hf.heights;
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, row, this.ground.width[SOURCE_WINDOW]!, rows, gl.RED_INTEGER, type, from, (j + row) * this.hf.nx + i);
       }
       gl.bindTexture(gl.TEXTURE_2D, this.windows[drawn * 2 + k] ?? null);
     }
@@ -854,7 +1005,9 @@ export class GlRenderer {
     // The streets' tiles of this frame, each into its place in the pictures round the camera.
     for (let t = 0; t < p.streetTiles * 2; t++) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.streets + (t & 1));
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, p.streetAt[t & ~1]!, p.streetAt[(t & ~1) + 1]!, STREET_TILE_SIDE, STREET_TILE_SIDE, t & 1 ? gl.RGBA_INTEGER : gl.RGBA, gl.UNSIGNED_BYTE, t & 1 ? p.streetKinds : p.streetDist, (t >> 1) * STREET_TILE_BYTES);
+      const x = p.streetAt[t & ~1]!, y = p.streetAt[(t & ~1) + 1]!;
+      const format = t & 1 ? gl.RGBA_INTEGER : gl.RGBA, from = t & 1 ? p.streetKinds : p.streetDist;
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, STREET_TILE_SIDE, STREET_TILE_SIDE, format, gl.UNSIGNED_BYTE, from, (t >> 1) * STREET_TILE_BYTES);
     }
     // The facades' atlases on their units while the frame names them; none is read until each it names has come (facade.ts).
     for (let k = 0; k < p.facadeSlots.length; k++) {
@@ -866,8 +1019,8 @@ export class GlRenderer {
     gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
     gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
     if (p.street && !this.streetTexture) gl.bufferSubData(gl.UNIFORM_BUFFER, (FRAME.reflection + 3) * 4, this.noReflection);
-    this.night = lampsOn(p.frame);
-    this.exposure = p.frame[FRAME.exposure]!;
+    c.night = lampsOn(p.frame);
+    c.exposure = p.frame[FRAME.exposure]!;
 
     // Resource changes first, in order.
     for (const u of p.uploads) {
@@ -905,14 +1058,28 @@ export class GlRenderer {
       gl.deleteTexture(this.open.texture);
       gl.bindTexture(gl.TEXTURE_2D, (this.open = { texture: open > 0 ? gl.createTexture() : null, size: open }).texture);
       if (open > 0) gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, p.openWidth, p.openHeight);
-      for (const q of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) if (open > 0) gl.texParameteri(gl.TEXTURE_2D, q[0], q[1]);
+      const read = [
+        [gl.TEXTURE_MIN_FILTER, gl.LINEAR],
+        [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
+        [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
+      ] as const;
+      for (const q of read) if (open > 0) gl.texParameteri(gl.TEXTURE_2D, q[0], q[1]);
     }
     if (p.openRows > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, p.openRow, p.openWidth, p.openRows, gl.RGBA, gl.UNSIGNED_BYTE, p.openMap);
     // What stands overhead and the ground's colour (roof.ts) on its unit, one layer over the other, each map whole.
-    if (p.roofMap.length > 0) { gl.activeTexture(gl.TEXTURE0 + UNIT.roof); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, p.roofSide, p.roofMap.length / (4 * p.roofSide), 0, gl.RGBA, gl.UNSIGNED_BYTE, p.roofMap); }
+    if (p.roofMap.length > 0) {
+      gl.activeTexture(gl.TEXTURE0 + UNIT.roof);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, p.roofSide, p.roofMap.length / (4 * p.roofSide), 0, gl.RGBA, gl.UNSIGNED_BYTE, p.roofMap);
+    }
     gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
-    if (boneRows(p.tier.bones) !== this.boneRows) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONES_PER_ROW * 3, (this.boneRows = boneRows(p.tier.bones)), 0, gl.RGBA, gl.FLOAT, null);
-    if (p.boneCount > 0) gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, Math.ceil(p.boneCount / BONES_PER_ROW), gl.RGBA, gl.FLOAT, p.bones);
+    if (boneRows(p.tier.bones) !== this.boneRows) {
+      this.boneRows = boneRows(p.tier.bones);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, BONES_PER_ROW * 3, this.boneRows, 0, gl.RGBA, gl.FLOAT, null);
+    }
+    if (p.boneCount > 0) {
+      const rows = Math.ceil(p.boneCount / BONES_PER_ROW);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, BONES_PER_ROW * 3, rows, gl.RGBA, gl.FLOAT, p.bones);
+    }
 
     this.bound.length = 0;
     this.mapped = null;
@@ -943,7 +1110,10 @@ export class GlRenderer {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     // A sight's window: nothing outside it is shaded (packet.ts window, D1077).
     const win = p.window, dw = this.post.drawn[0], dh = this.post.drawn[1];
-    if (win[2]! > 0) { gl.enable(gl.SCISSOR_TEST); gl.scissor(Math.floor(win[0]! * dw), Math.floor(win[1]! * dh), Math.ceil((win[2]! - win[0]!) * dw), Math.ceil((win[3]! - win[1]!) * dh)); }
+    if (win[2]! > 0) {
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(Math.floor(win[0]! * dw), Math.floor(win[1]! * dh), Math.ceil((win[2]! - win[0]!) * dw), Math.ceil((win[3]! - win[1]!) * dh));
+    }
     let step = -1;
     for (let d = 0; d < p.drawCount; d++) {
       const s = stepOf(p, d);
@@ -962,28 +1132,23 @@ export class GlRenderer {
       const blend = (flags & DRAW_BLEND) !== 0;
       const m = p.drawMaterial[d]!;
       const layer = p.drawLayer[d]!;
-      const prog = this.use(drawProgram(p, d, this.materials[m]), p);
+      c.d = d;
+      c.flags = flags;
+      c.mesh = p.drawMesh[d]!;
+      c.m = m;
+      c.material = this.materials[m];
+      c.skinned = lod.skin;
+      const prog = this.use(drawProgram(p, d, c.material), p);
       this.set(blend, (textured || !blend) && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
-      this.uniform(prog, U.skin, skinMode(flags, textured && lod.skin));
-      this.uniform(prog, U.fade, p.drawFade[d]!);
-      this.uniform(prog, U.hand, p.drawHand[d]!);
-      this.uniform(prog, U.swap, p.drawSwap[d]!);
-      const fx = p.drawEffect, e = d * 4;
-      if (prog.at[U.effect] && moved(prog.last, U.effect, fx, e, 4)) gl.uniform4f(prog.at[U.effect]!, fx[e]!, fx[e + 1]!, fx[e + 2]!, fx[e + 3]!);
-      this.uniform(prog, U.heat, (flags >>> DRAW_HEAT_SHIFT) & 3);
-      if (textured) {
-        this.streetFinish(prog, p, d);
-        this.material(prog, m, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length, p.drawWear[d]!);
-      }
-      else if ((flags & DRAW_WATER) !== 0) this.maps(this.materials[m], MAP_ROLES.length);
-      else {
-        this.uniform(prog, U.fixture, p.drawFixture[d]!);
-        this.uniform(prog, U.solid, (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 + this.finish.row[p.drawMesh[d]!]! : 1);
-        this.uniform(prog, U.alpha, blend && this.finish.row[p.drawMesh[d]!] === 0 ? WATER_ALPHA : 1);
-      }
-      this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d, (flags & DRAW_BENT) !== 0 ? this.buffers.get(p.drawBuffer[d]! + BEND_BUFFERS) : undefined);
-      if (textured || (flags & DRAW_RANGED) !== 0) d = this.ranges(lod, p.drawFirstIndex, p.drawIndexCount, p.drawInstances[d]!, p.drawJoined, null, 0, d, p.drawCount);
-      else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
+      this.give(prog, prog.draw);
+      // A material's maps, and with a layer its layer; the sea's waves are a material's.
+      if (textured) this.maps(c.material, layer > 0 ? TEXTURE_ROLES.length : MAP_ROLES.length);
+      else if ((flags & DRAW_WATER) !== 0) this.maps(c.material, MAP_ROLES.length);
+      const bends = (flags & DRAW_BENT) !== 0 ? this.buffers.get(p.drawBuffer[d]! + BEND_BUFFERS) : undefined;
+      this.bind(prog, lod, buffer, p.drawMesh[d]!, p.drawFirst[d]!, p.drawOffset, d, bends);
+      if (textured || (flags & DRAW_RANGED) !== 0) {
+        d = this.ranges(lod, p.drawFirstIndex, p.drawIndexCount, p.drawInstances[d]!, p.drawJoined, null, 0, d, p.drawCount);
+      } else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
       this.drawCalls++;
     }
     // The terrain and the dome are drawn when there is no draw after them.
@@ -1008,7 +1173,17 @@ export class GlRenderer {
    * Draws run `d` of `lod`'s indices, `first` and `count` of them, and where the browser draws many in a call the runs
    * after it that `joined` marks, those in cascade `bit` of `cascades` if it is given, in the same call. The last it drew.
    */
-  private ranges(lod: MeshLod, first: Uint32Array, count: Uint32Array, instances: number, joined: Uint8Array, cascades: Uint8Array | null, bit: number, d: number, end: number): number {
+  private ranges(
+    lod: MeshLod,
+    first: Uint32Array,
+    count: Uint32Array,
+    instances: number,
+    joined: Uint8Array,
+    cascades: Uint8Array | null,
+    bit: number,
+    d: number,
+    end: number,
+  ): number {
     const gl = this.gl, runs = this.runs;
     let last = d, n = 0;
     if (this.multi && d + 1 < end && joined[d + 1] === 1) {
@@ -1033,7 +1208,16 @@ export class GlRenderer {
    * Binds a level and the instances from `first` of `buffer` for a program, with the offset at `offsets[i * 3]`, and of a
    * bent draw its bends from the same place of `bends`, as far as they are not bound so.
    */
-  private bind(prog: Program, lod: MeshLod, buffer: WebGLBuffer, mesh: number, first: number, offsets: Float32Array, i: number, bends?: WebGLBuffer): void {
+  private bind(
+    prog: Program,
+    lod: MeshLod,
+    buffer: WebGLBuffer,
+    mesh: number,
+    first: number,
+    offsets: Float32Array,
+    i: number,
+    bends?: WebGLBuffer,
+  ): void {
     const gl = this.gl;
     const u = prog.at, last = prog.last, info = lod.bounds ?? this.meshes[mesh]!;
     if (prog.bounds !== info && u[U.center]) {
@@ -1063,7 +1247,16 @@ export class GlRenderer {
       gl.vertexAttribIPointer(12, 1, gl.UNSIGNED_INT, 4, first * 4);
     } else gl.disableVertexAttribArray(12);
     // A level's draws are all bent or none are; one bound bent and then not leaves the stream off.
-    for (let a = 13; a < 15 && (bends || lod.bent); a++) if (!bends) gl.disableVertexAttribArray(a); else { this.array(bends); gl.enableVertexAttribArray(a); gl.vertexAttribDivisor(a, 1); gl.vertexAttribPointer(a, 4, gl.SHORT, false, BEND_BYTES, first * BEND_BYTES + (a - 13) * 8); }
+    for (let a = 13; a < 15 && (bends || lod.bent); a++) {
+      if (!bends) {
+        gl.disableVertexAttribArray(a);
+        continue;
+      }
+      this.array(bends);
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribDivisor(a, 1);
+      gl.vertexAttribPointer(a, 4, gl.SHORT, false, BEND_BYTES, first * BEND_BYTES + (a - 13) * 8);
+    }
     lod.bent = bends !== undefined;
   }
 
@@ -1087,7 +1280,15 @@ export class GlRenderer {
       if (cascades > 0) {
         gl.texStorage3D(gl.TEXTURE_2D_ARRAY, 1, gl.DEPTH_COMPONENT16, size, size, layers);
         const filter = this.shadowLookup === "hard" ? gl.NEAREST : gl.LINEAR;
-        for (const p of [[gl.TEXTURE_MIN_FILTER, filter], [gl.TEXTURE_MAG_FILTER, filter], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE], [gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL]] as const) gl.texParameteri(gl.TEXTURE_2D_ARRAY, p[0], p[1]);
+        const read = [
+          [gl.TEXTURE_MIN_FILTER, filter],
+          [gl.TEXTURE_MAG_FILTER, filter],
+          [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
+          [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
+          [gl.TEXTURE_COMPARE_MODE, gl.COMPARE_REF_TO_TEXTURE],
+          [gl.TEXTURE_COMPARE_FUNC, gl.LEQUAL],
+        ] as const;
+        for (const q of read) gl.texParameteri(gl.TEXTURE_2D_ARRAY, q[0], q[1]);
       }
       for (let k = 0; k < layers; k++) {
         const target = gl.createFramebuffer()!;
@@ -1098,7 +1299,9 @@ export class GlRenderer {
     }
     // Rows of the far shadow's map (farshadow.ts), in the layer after the cascades'.
     gl.activeTexture(gl.TEXTURE0 + UNIT.shadow);
-    if (p.farRows > 0) gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, p.farRow, cascades, size, p.farRows, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, p.farMap);
+    if (p.farRows > 0) {
+      gl.texSubImage3D(gl.TEXTURE_2D_ARRAY, 0, 0, p.farRow, cascades, size, p.farRows, 1, gl.DEPTH_COMPONENT, gl.UNSIGNED_SHORT, p.farMap);
+    }
     gl.viewport(0, 0, size, size);
     gl.polygonOffset(POLYGON_OFFSET[0], POLYGON_OFFSET[1]);
     gl.cullFace(gl.FRONT);
@@ -1116,14 +1319,24 @@ export class GlRenderer {
         if (!lod || !buffer) continue;
         const flags = p.casterFlags[e]!;
         const cutout = (flags & DRAW_CUTOUT) !== 0, both = (flags & DRAW_TWO_SIDED) !== 0;
+        const c = this.drawn;
+        c.d = e;
+        c.flags = flags;
+        c.mesh = p.casterMesh[e]!;
+        c.m = p.casterMaterial[e]!;
+        c.material = this.materials[c.m];
+        c.skinned = lod.skin;
         const prog = this.use(cutout ? PROGRAM.depthCutout : PROGRAM.depth, p);
         this.set(false, !both, false, both);
-        this.uniform(prog, U.skin, skinMode(flags, lod.skin));
+        this.give(prog, prog.draw);
         // The cut-out caster's program reads the base colour alone.
-        if (cutout) this.material(prog, p.casterMaterial[e]!, p.casterMesh[e]!, true, 0, 1);
-        this.bind(prog, lod, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e, (flags & DRAW_BENT) !== 0 ? this.buffers.get(p.casterBuffer[e]! + BEND_BUFFERS) : undefined);
-        if ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0) e = this.ranges(lod, p.casterFirstIndex, p.casterIndexCount, p.casterInstances[e]!, p.casterJoined, p.casterCascades, 1 << k, e, p.casterCount);
-        else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.casterInstances[e]!);
+        if (cutout) this.maps(c.material, 1);
+        const bends = (flags & DRAW_BENT) !== 0 ? this.buffers.get(p.casterBuffer[e]! + BEND_BUFFERS) : undefined;
+        this.bind(prog, lod, buffer, p.casterMesh[e]!, p.casterFirst[e]!, p.casterOffset, e, bends);
+        if ((flags & (DRAW_TEXTURED | DRAW_RANGED)) !== 0) {
+          const instances = p.casterInstances[e]!;
+          e = this.ranges(lod, p.casterFirstIndex, p.casterIndexCount, instances, p.casterJoined, p.casterCascades, 1 << k, e, p.casterCount);
+        } else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.casterInstances[e]!);
         this.drawCalls++;
       }
     }
@@ -1155,7 +1368,13 @@ export class GlRenderer {
       gl.activeTexture(gl.TEXTURE0 + UNIT.details);
       gl.bindTexture(gl.TEXTURE_2D, t.tex[k] = gl.createTexture()!);
       gl.texStorage2D(gl.TEXTURE_2D, 1, k > 0 ? BLOOM_FORMAT : this.light, Math.max(1, w >> levelShift(k)), Math.max(1, h >> levelShift(k)));
-      for (const p of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, p[0], p[1]);
+      const read = [
+        [gl.TEXTURE_MIN_FILTER, gl.LINEAR],
+        [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+        [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE],
+        [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE],
+      ] as const;
+      for (const p of read) gl.texParameteri(gl.TEXTURE_2D, p[0], p[1]);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t.tex[k]!, 0);
     }
     t.fbs[0] ??= t.fbs[1]!;
@@ -1184,7 +1403,10 @@ export class GlRenderer {
     gl.enable(gl.DEPTH_TEST);
   }
 
-  /** A pass of the finish with program `n`, from level `from` (0 the scene) into level `to`'s corner the scene fills, or into the whole canvas for -1. */
+  /**
+   * A pass of the finish with program `n`, from level `from` (0 the scene) into level `to`'s corner the scene fills, or
+   * into the whole canvas for -1.
+   */
   private pass(p: FramePacket, n: number, from: number, to: number): void {
     const gl = this.gl, t = this.post, [w, h] = this.post.drawn, cw = gl.drawingBufferWidth, ch = gl.drawingBufferHeight;
     const prog = this.use(n, p);
@@ -1192,7 +1414,8 @@ export class GlRenderer {
     gl.viewport(0, 0, to < 0 ? cw : Math.max(1, w >> levelShift(to)), to < 0 ? ch : Math.max(1, h >> levelShift(to)));
     gl.activeTexture(gl.TEXTURE0 + UNIT.details);
     gl.bindTexture(gl.TEXTURE_2D, t.tex[from]!);
-    gl.uniform4f(prog.at[U.pass]!, 1 / Math.max(1, t.w >> tapShift(from, to)), 1 / Math.max(1, t.h >> tapShift(from, to)), from === 0 ? 1 : 0, w < cw || h < ch ? 1 : 0);
+    const tw = Math.max(1, t.w >> tapShift(from, to)), th = Math.max(1, t.h >> tapShift(from, to));
+    gl.uniform4f(prog.at[U.pass]!, 1 / tw, 1 / th, from === 0 ? 1 : 0, w < cw || h < ch ? 1 : 0);
     gl.uniform4fv(prog.at[U.extent]!, passExtent(w, h, t.w, t.h, from, to, this.post.extent));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.drawCalls++;
@@ -1242,7 +1465,7 @@ export class GlRenderer {
    */
   private tiles(p: FramePacket, bit: number, map: number, window: number): void {
     const gl = this.gl;
-    const data = this.tileData, g = this.ground;
+    const data = this.tileData;
     for (let source = SOURCE_MAP; source <= SOURCE_WINDOW; source++) {
       let n = 0;
       for (let t = 0; t < p.tileCount; t++) {
@@ -1257,12 +1480,7 @@ export class GlRenderer {
       }
       if (n === 0) continue;
       const prog = this.use(source === SOURCE_MAP ? map : window, p);
-      this.uniform(prog, U.solid, 0);
-      if (prog.last[U.field] !== this.serial) {
-        prog.last[U.field] = this.serial;
-        gl.uniform4f(prog.at[U.field]!, this.hf.minY, this.hf.stepY, g.cell[source]!, p.camY);
-        gl.uniform2f(prog.at[U.last]!, g.width[source]! - 1, g.height[source]! - 1);
-      }
+      this.give(prog, prog.tiles);
       this.set(false, true, false);
       this.vertexArray(this.tileVao);
       this.array(this.tileBuffer);
@@ -1287,7 +1505,7 @@ export class GlRenderer {
   }
 
   /** Compiles and links the texts as given, with the defines after their first line, the #version line, asking nothing of either until `use`. */
-  private link(text: ProgramText): Program {
+  private link(text: ProgramText, n: number): Program {
     const gl = this.gl;
     const program = gl.createProgram()!;
     for (const type of [gl.VERTEX_SHADER, gl.FRAGMENT_SHADER]) {
@@ -1297,6 +1515,7 @@ export class GlRenderer {
       gl.attachShader(program, shader);
     }
     gl.linkProgram(program);
-    return { program, text, at: [], last: new Float64Array(U.weatherReady + 1).fill(NaN), bounds: null };
+    const last = new Float64Array(SHELL_UNIFORMS.length + 2).fill(NaN);
+    return { program, text, rows: UNIFORMS[n]!, frame: [], draw: [], tiles: [], held: NO_FLOATS, at: [], last, view: -1, serial: -1, bounds: null };
   }
 }
