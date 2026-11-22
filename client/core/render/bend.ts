@@ -70,7 +70,7 @@ export const BENT_GRAIN = `vec2 uv = vUv;
 export function bentWear(albedo: Float64Array | number[], mro: Float64Array | number[], along: number, across: number, up: number, faceUp: number, code: number, panel: number, walk: number, spread: number, tactile = false): void {
   const seed = code % 256, wear = Math.floor(code / 256) / 127;
   // A crossing's ramp: its apron's dimpled pad, a faded yellow, its domes fading out where a pixel spans them.
-  if (tactile && faceUp > 0.8 && across > 0.12 && across < apronOf(walk)) {
+  if (tactile && faceUp > 0.8 && across > 0.12 && across < Math.min(apronOf(walk), PAD_DEEP)) {
     const gx = fract(along / DOME) - 0.5, gy = fract(across / DOME) - 0.5;
     const dome = (1 - smooth(0.18, 0.3, Math.sqrt(gx * gx + gy * gy))) * (1 - smooth(0.01, 0.03, spread));
     for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! + (PAD[c]! * (0.85 + 0.25 * dome) - albedo[c]!) * 0.7;
@@ -109,8 +109,11 @@ export function bentWear(albedo: Float64Array | number[], mro: Float64Array | nu
 }
 
 const WARM = [0.03, 0, -0.05], GRASS = [0.09, 0.13, 0.04], CHIP = [0.22, 0.24, 0.28], PAD = [0.62, 0.5, 0.2];
-/** A crossing's pad's domes' spacing, and where a flush kerb's apron ends across a walk of `walk` (bends.ts across). */
-const DOME = 0.06;
+/**
+ * A crossing's pad's domes' spacing and how far across it reaches at most (its apron is stretched with the walk: 2.5 m on a
+ * walk of 8.5 m, where a pad is the ramp's foot), and where a flush kerb's apron ends across a walk of `walk` (bends.ts across).
+ */
+const DOME = 0.06, PAD_DEEP = 0.75;
 const apronOf = (walk: number): number => KERB_BACK + ((FLUSH_APRON - KERB_BACK) * (walk - KERB_BACK)) / (MODEL_WALK - KERB_BACK);
 const smooth = (a: number, b: number, x: number): number => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
@@ -150,7 +153,7 @@ float bentNoise(vec2 p, float period) {
 }
 void bentWear(inout vec3 albedo, inout vec3 mro, vec3 at, float faceUp, float code, vec3 look, float spread) {
   float seed = mod(code, 256.0), wear = floor(code / 256.0) / 127.0, along = at.x, across = at.y, up = at.z;
-  if (look.z > 0.5 && faceUp > 0.8 && across > 0.12 && across < ${f(KERB_BACK)} + ${f(FLUSH_APRON - KERB_BACK)} * (look.y - ${f(KERB_BACK)}) / ${f(MODEL_WALK - KERB_BACK)}) {
+  if (look.z > 0.5 && faceUp > 0.8 && across > 0.12 && across < min(${f(PAD_DEEP)}, ${f(KERB_BACK)} + ${f(FLUSH_APRON - KERB_BACK)} * (look.y - ${f(KERB_BACK)}) / ${f(MODEL_WALK - KERB_BACK)})) {
     vec2 g = fract(vec2(along, across) / ${f(DOME)}) - 0.5;
     float dome = (1.0 - smoothstep(0.18, 0.3, length(g))) * (1.0 - smoothstep(0.01, 0.03, spread));
     albedo = mix(albedo, vec3(0.62, 0.5, 0.2) * (0.85 + 0.25 * dome), 0.7);
