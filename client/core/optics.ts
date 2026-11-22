@@ -2,6 +2,7 @@
 // slows to match, how the view eases between the two, and when it must be seen from the eye. Pure numbers, so the app,
 // the HUD and the tests share them.
 
+import type { KeyRow } from "./key-row.ts";
 import type { OpticFacet } from "../../shared/content/defs.ts";
 
 /** The vertical field of view that magnifies `base` (radians) `zoom` times: the tangent of its half is the zoom's share. */
@@ -97,3 +98,14 @@ export function eyeOff(pace: number, kick: number, sx: number, sy: number, out: 
 
 /** The size in pixels on a screen `height` pixels tall of something `size` metres across `distance` metres off in a view of `fov` vertical radians. */
 export const screenPixels = (size: number, distance: number, fov: number, height: number): number => (size / (2 * distance * Math.tan(fov / 2))) * height;
+
+// A raised sight that zooms takes the arrows up and down, as the wheel (and a finger's zoom buttons, which send them).
+export const SIGHT_KEYS: readonly KeyRow[] = [{
+  name: "sight zoom",
+  keys: ["ArrowUp", "ArrowDown"],
+  when: (c) => c.zooming && !c.ui.map,
+  press(c, code, down) {
+    if (down) c.zoomBy(code === "ArrowUp" ? -1 : 1);
+    return true;
+  },
+}];

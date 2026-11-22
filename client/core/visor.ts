@@ -4,6 +4,7 @@
 // Night vision amplifies the light by more the darker the hour, so by day it does not white out, as ARK's Tek helmet's
 // does not; its grain is heavier in the dark, and a picture made larger past the glass is grainier the further it goes.
 
+import type { KeyRow } from "./key-row.ts";
 import type { OpticFacet } from "../../shared/content/defs.ts";
 import { opticMost } from "./optics.ts";
 import { OPTIC_HEAT, OPTIC_NIGHT, OPTIC_NONE } from "./render/packet.ts";
@@ -67,3 +68,25 @@ export class Visor {
     out.grain = (night ? NIGHT_GRAIN : heat ? HEAT_GRAIN : 0) + DIGITAL_GRAIN * past;
   }
 }
+
+// With a helmet's visor to raise, N held VISOR_HOLD_MS raises it or lowers it again, as ARK's Tek helmet takes a long
+// press, for a mouse with no middle button (which holds it up); a tap turns its view while it is up, and is what the
+// held weapon has fitted otherwise, sent as it is let go (D1089). The app's frame times the hold and sends the tap.
+export const VISOR_KEYS: readonly KeyRow[] = [{
+  name: "visor",
+  keys: ["KeyN"],
+  when: (c) => c.ui.wantsPointerLock && (c.visorOptic !== null || c.visor.held),
+  press(c, _code, down, repeat) {
+    if (down && !repeat) {
+      c.nDownAt = c.nowMs;
+      c.nLong = false;
+    } else if (!down && c.nDownAt >= 0) {
+      if (!c.nLong) {
+        if (c.visor.up) c.visor.cycle();
+        else c.nPulse = 2;
+      }
+      c.nDownAt = -1;
+    }
+    return true;
+  },
+}];
