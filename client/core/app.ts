@@ -1544,6 +1544,10 @@ export class App {
     hud.sightMil = hud.scope && optic?.reticle === "mil";
     hud.sightFov = this.fov;
     hud.sightZoom = zoom;
+    // The magnification ladder: any sight raised that magnifies, its zoom now within its least and most.
+    hud.magnify = (hud.scope || visorUp) && optic && zoom > 1 ? zoom : 0;
+    hud.magnifyMin = optic ? optic.min : 0;
+    hud.magnifyMax = optic ? opticMost(optic) : 0;
     hud.sightZero = hud.sightMil ? this.sightZero : 0;
     session.sightZero = sighting && hud.sightMil ? this.sightZero : 0;
     hud.sightShare = optic ? windowShare(optic, zoom) : 1;

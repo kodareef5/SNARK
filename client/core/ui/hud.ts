@@ -10,8 +10,8 @@ import { TAPE_HEIGHT, buildCompass, tapeLayout } from "./compass.ts";
 import type { TouchPlan } from "./touch.ts";
 import { MAX_DOTS } from "../render/laser.ts";
 import { K_BAR, K_BUTTON, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_LENS, S_LENS_TWIN, S_VISOR } from "./style.ts";
-import { SHAPE_TWIN, TWIN_WIDE, VISOR_WIDE } from "../optics.ts";
+import { S_LENS, S_LENS_TWIN, S_MAGNIFY, S_SPOT_WORD, S_VISOR, S_VISOR_LEFT } from "./style.ts";
+import { SHAPE_TWIN, SHAPE_VISOR, TWIN_WIDE, VISOR_WIDE } from "../optics.ts";
 import { S_BUFF, S_DARK, S_BANNER, S_CROSS, S_FRAME, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT_TEXT, S_STAMINA, S_TEXT } from "./style.ts";
 import { S_HUD_COUNT, S_HUD_HIT, S_HUD_KEY, S_ICE, S_KEY_SMALL, S_MENU_FOCUS, S_MENU_MAIN, S_MENU_NOTE, S_WARNING } from "./style.ts";
 
@@ -41,6 +41,11 @@ export const KEY_SIGHT = 5000;
 export const KEY_SIGHT_SHADE = 5100;
 /** A visor's frame and readouts (D1080). */
 export const KEY_VISOR = 5110;
+/** The magnification ladder's nodes (D1086), its gap from the window, width and most height. */
+export const KEY_MAGNIFY = 5440;
+const MAG_GAP = 16;
+const MAG_WIDE = 70;
+const MAG_TALL = 220;
 /** A glass's readouts (D1082). */
 export const KEY_GLASS = 5140;
 /** A milliradian reticle's lines, marks and words (D1083). */
@@ -132,9 +137,9 @@ function buildReticle(f: UiFrame, W: number, H: number, m: HudModel): void {
   // Twin lenses are a glass's, not a gun's: no posts, and under them its zoom, range, bearing and a mark just made.
   if (twin && m.glass) {
     const range = m.glassRange < 0 ? "LASING" : m.glassRange > 0 ? `${Math.round(m.glassRange).toLocaleString("en-US")} m` : "---";
-    const words = [`${m.glassZoom}x`, range, m.glassRange > 0 ? Math.round(m.glassBearing).toString().padStart(3, "0") : "", m.glassMarked ? "MARKED" : ""];
+    const words = ["", range, m.glassRange > 0 ? Math.round(m.glassBearing).toString().padStart(3, "0") : "", m.glassMarked ? "MARKED" : ""];
     const across = bw / words.length, y = Math.min(H - 20, y0 + bh + 6);
-    for (let i = 0; i < words.length; i++) if (words[i] !== "") f.text(KEY_GLASS + i, x0 + across * i, y, across, S_VISOR, words[i]!).tint = i === 3 ? SPOT_INK : VISOR_INK;
+    for (let i = 0; i < words.length; i++) if (words[i] !== "") f.text(KEY_GLASS + i, x0 + across * i, y, across, i === 3 ? S_SPOT_WORD : S_VISOR, words[i]!);
   }
   if (!twin && m.sightMil) buildMils(f, H, cx, cy, r, m);
   else if (!twin) {
@@ -171,10 +176,51 @@ function buildMils(f: UiFrame, H: number, cx: number, cy: number, r: number, m: 
       else f.add(k++, K_PANEL, cx - long, cy + sy * at - 0.75, long * 2, 1.5, S_DARK).alpha = 0.9;
     }
   }
-  const zoom = m.sightZoom >= 10 ? m.sightZoom.toFixed(0) : m.sightZoom.toFixed(1);
   const y = Math.min(H - 20, cy + r + 6);
-  f.text(KEY_MIL + 99, cx - r, y, r, S_VISOR, `${zoom}x`).tint = VISOR_INK;
-  f.text(KEY_MIL + 98, cx, y, r, S_VISOR, m.sightZero > 0 ? `ZERO ${m.sightZero} m` : "ZERO ---").tint = VISOR_INK;
+  f.text(KEY_MIL + 98, cx - r / 2, y, r, S_VISOR, m.sightZero > 0 ? `ZERO ${m.sightZero} m` : "ZERO ---");
+}
+
+/** The right edge of a sight's window, and its half height, in the frame's units (optics.ts windowBox, as the HUD draws it). */
+function windowRight(W: number, H: number, m: HudModel): { right: number; half: number } {
+  const half = (m.sightShare * H) / 2;
+  const wide = m.sightShape === SHAPE_TWIN ? half * TWIN_WIDE : m.sightShape === SHAPE_VISOR ? Math.min(W / 2, half * VISOR_WIDE) : half;
+  return { right: W / 2 + wide, half };
+}
+
+/** "N.Nx" under ten, "Nx" from ten. */
+const times = (z: number): string => `${z >= 10 ? z.toFixed(0) : z.toFixed(1)}x`;
+
+/**
+ * The magnification ladder (D1086), beside a sight's window: its zoom now in words, and for one that zooms a ladder from
+ * its least at the foot to its most at the head, spaced on the logarithm, a rung at each 1, 2 and 5 of a power of ten and
+ * at its ends, the zoom now marked on it. Outside the window where there is room, else just inside it.
+ */
+function buildMagnify(f: UiFrame, W: number, H: number, m: HudModel): void {
+  const { right, half } = windowRight(W, H, m);
+  const lo = m.magnifyMin, hi = Math.max(m.magnifyMax, lo);
+  const x = right + MAG_GAP + MAG_WIDE <= W - 8 ? right + MAG_GAP : right - MAG_GAP - MAG_WIDE;
+  const tall = Math.min(MAG_TALL, half * 1.2), top = H / 2 - tall / 2;
+  const at = (z: number): number => (hi > lo ? top + tall * (1 - Math.log(z / lo) / Math.log(hi / lo)) : H / 2);
+  let k = KEY_MAGNIFY;
+  const ink = (nx: number, ny: number, nw: number, nh: number, alpha = 0.85): void => {
+    const n = f.add(k++, K_PANEL, nx, ny, nw, nh, S_CROSS);
+    n.tint = VISOR_INK;
+    n.alpha = alpha;
+  };
+  if (hi > lo) {
+    ink(x, top, 1.5, tall, 0.5);
+    const rungs = [lo, hi];
+    for (let p = 1; p <= hi; p *= 10) for (const s of [1, 2, 5]) if (s * p > lo * 1.08 && s * p < hi / 1.08) rungs.push(s * p);
+    for (const z of rungs) {
+      if (k >= KEY_MAGNIFY + 30) break;
+      const y = at(z), major = z === lo || z === hi || String(z).startsWith("1");
+      ink(x, y - 0.75, major ? 9 : 5, 1.5, 0.6);
+      if (major && Math.abs(y - at(Math.min(hi, Math.max(lo, m.magnify)))) > 22) f.text(k++, x + 12, y - 7, MAG_WIDE - 12, S_VISOR_LEFT, times(z)).alpha = 0.55;
+    }
+  }
+  const y = at(Math.min(hi, Math.max(lo, m.magnify)));
+  ink(x - 4, y - 1.5, 14, 3, 1);
+  f.text(KEY_MAGNIFY + 39, x + 13, y - 12, MAG_WIDE, S_MAGNIFY, times(m.magnify));
 }
 
 /**
@@ -202,11 +248,10 @@ function buildVisor(f: UiFrame, W: number, H: number, m: HudModel): void {
   }
   ink(W / 2 - 7, H / 2 - 0.5, 14, 1);
   ink(W / 2 - 0.5, H / 2 - 7, 1, 14);
-  const zoom = m.visorZoom >= 10 ? m.visorZoom.toFixed(0) : m.visorZoom.toFixed(1);
   const range = m.visorRange > 0 ? `${Math.round(m.visorRange).toLocaleString("en-US")} m` : "---";
-  const words = [`${zoom}x${m.visorDigital ? " DIGITAL" : ""}`, m.visorMode === 1 ? "NIGHT" : m.visorMode === 2 ? "HEAT" : "PLAIN", `${Math.round(m.heading).toString().padStart(3, "0")}`, range];
+  const words = [m.visorDigital ? "DIGITAL" : "OPTICAL", m.visorMode === 1 ? "NIGHT" : m.visorMode === 2 ? "HEAT" : "PLAIN", `${Math.round(m.heading).toString().padStart(3, "0")}`, range];
   const across = (x1 - x0) / words.length, y = Math.min(H - 20, y1 + 6);
-  for (let i = 0; i < words.length; i++) f.text(k++, x0 + across * i, y, across, S_VISOR, words[i]!).tint = VISOR_INK;
+  for (let i = 0; i < words.length; i++) f.text(k++, x0 + across * i, y, across, S_VISOR, words[i]!);
 }
 
 /**
@@ -300,6 +345,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   }
   if (m.scope && m.banner === "") buildReticle(f, W, H, m);
   if (m.visor && m.banner === "") buildVisor(f, W, H, m);
+  if (m.magnify > 0 && m.banner === "" && (m.scope || m.visor)) buildMagnify(f, W, H, m);
   // Another's glass glinting at the viewer.
   for (let i = 0; i < m.glintCount && i < 4; i++) {
     const g = m.glints[i]!, side = 4 + 8 * g.alpha;
