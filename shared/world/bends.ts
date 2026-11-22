@@ -9,10 +9,13 @@
 //
 // The map's build lays the pieces (placeKerb, from a kerb line with stations and a section) and, under them, collision
 // pieces of plain boxes and ramps drawn as nothing (underPiece, content/bends.ts), which servers, vehicles and the walk
-// proofs meet as they meet any static: a bent kind itself is walked as nothing (StructureDef.bent).
+// proofs meet as they meet any static: a bent kind itself is walked as nothing (StructureDef.bent). A map does not store
+// the collision pieces: each reader makes them from the bends as a part is read (madeHits, mapfile.ts), the same to the
+// bit on a server and a page.
 //
 // Only + - * / Math.floor Math.sqrt Math.abs and the det functions are used here, so a build is the same everywhere.
 
+import { STRUCT_UNITS, YAW_UNITS } from "../coords.ts";
 import { PI, TAU, clamp, detAtan2, detCos, detSin } from "../math/scalar.ts";
 
 /** A bend's bytes on the card and in a map: eight 16-bit numbers (packBend). */
@@ -414,11 +417,35 @@ export interface HitPiece { readonly kind: string; readonly x: number; readonly 
  * curve on chords short enough that each misses the curve by no more than 2 cm at the face, so a wheel meets the kerb within that of where it is drawn. None reaches past the piece's ends.
  */
 export function underPiece(p: BentPiece): HitPiece[] {
-  const b = p.bend, phi = b.turn1 - b.turn0, length = arcLength(b.half, phi);
+  const out: HitPiece[] = [];
+  hitsUnder(p.x, p.y, p.z, p.yaw, p.bend, p.kerb === "flush", (kind, x, y, z, yaw) => out.push({ kind, x, y, z, yaw }));
+  return out;
+}
+
+/** The start of every collision piece's kind (hitKind): a map holds none of them, but makes them from its bends (madeHits). */
+export const HIT_PREFIX = "core:zzzzzbendhit_";
+/** Whether a bent kind is walked as a flush kerb's ramp: a flush kerb, or a flare to or from one (bent-walks.ts join). */
+export const walkedFlush = (kind: string): boolean => kind.includes("_flush");
+
+/**
+ * The collision pieces under a bent piece as a map holds it, on the file's lattice: its middle in 1/512 m, its turn in
+ * 1/65,536 turns, its bend's eight numbers (packBend) and whether it is walked flush. Each comes to `each` as its kind and
+ * its middle and turn on the same lattice. A map stores none of them: a server, a page, the walk proofs and the map's
+ * writer all make them here from the same numbers (mapfile.ts), so every one of them holds the same boxes to the bit.
+ */
+export function madeHits(ux: number, uy: number, uz: number, yaw: number, bend: ArrayLike<number>, flush: boolean, each: (kind: string, ux: number, uy: number, uz: number, yaw: number) => void): void {
+  hitsUnder(ux / STRUCT_UNITS, uy / STRUCT_UNITS, uz / STRUCT_UNITS, (yaw * 360) / YAW_UNITS, unpackBend(bend), flush, (kind, x, y, z, turn) =>
+    each(kind, round(x * STRUCT_UNITS), round(y * STRUCT_UNITS), round(z * STRUCT_UNITS), round((turn * YAW_UNITS) / 360) & 0xffff));
+}
+
+/** underPiece's work, each piece to `each` as its kind, its middle and its turn in degrees. */
+function hitsUnder(px: number, py: number, pz: number, pyaw: number, b: Bend, flush: boolean, each: (kind: string, x: number, y: number, z: number, yaw: number) => void): void {
+  const phi = b.turn1 - b.turn0, length = arcLength(b.half, phi);
   // Bands across, as few as the widest box allows, each as wide as the walk needs, rounded up, the first at the face and
   // the last at the walk's back.
   const most = HIT_WIDTHS[HIT_WIDTHS.length - 1], bands = Math.max(1, Math.ceil(b.walk / most - 1e-6));
   const width = bands === 1 ? hitWidth(b.walk) : HIT_WIDTHS.find((w) => w >= b.walk / bands - 1e-6) ?? most;
+  const widthAt = (HIT_WIDTHS as readonly number[]).indexOf(width);
   const across = (j: number): number => (bands === 1 ? width / 2 : width / 2 + ((b.walk - width) * j) / (bands - 1));
   // Chords of the curve, each missing it by under 2 cm.
   const radius = Math.abs(phi) > 1e-4 ? length / Math.abs(phi) : Infinity;
@@ -426,28 +453,31 @@ export function underPiece(p: BentPiece): HitPiece[] {
   const chords = Math.max(1, Math.ceil(length / longest - 1e-9));
   // A box is level along its length: on a slope none is so long that its ends stand more than 4 cm off the walk.
   const grade = Math.abs((2 * b.rise) / Math.max(length, 1e-6)), level = grade > 1e-4 ? (2 * SLOPE_MISS) / grade : Infinity;
-  const a = (p.yaw * PI) / 180, cs = detCos(a), sn = detSin(a);
-  const out: HitPiece[] = [];
-  const pa = [0, 0, 0, 0], pb = [0, 0, 0, 0];
+  const a = (pyaw * PI) / 180, cs = detCos(a), sn = detSin(a);
+  const pa = hitA, pb = hitB;
   for (let k = 0; k < chords; k++) {
     curveAt(pa, b.half, b.turn0, b.turn1, k / chords);
     curveAt(pb, b.half, b.turn0, b.turn1, (k + 1) / chords);
     const ex = pb[0]! - pa[0]!, ez = pb[1]! - pa[1]!, chord = Math.sqrt(ex * ex + ez * ez);
     const ux = ex / chord, uz = ez / chord;
     // The longest length that fits the chord, and as many as cover it.
-    let size: number = HIT_LENGTHS[0];
-    for (const l of HIT_LENGTHS) if (l <= chord + 1e-6 && l <= level + 1e-6) size = l;
+    let sizeAt = 0;
+    for (let i = 0; i < HIT_LENGTHS.length; i++) if (HIT_LENGTHS[i]! <= chord + 1e-6 && HIT_LENGTHS[i]! <= level + 1e-6) sizeAt = i;
+    const size: number = HIT_LENGTHS[sizeAt]!;
     const count = Math.max(1, Math.ceil(chord / size - 1e-6));
     for (let q = 0; q < count; q++) for (let j = 0; j < bands; j++) {
       const along = count === 1 ? chord / 2 : size / 2 + ((chord - size) * q) / (count - 1);
       // In the piece's frame: along the chord, then across to the middle of the box's width.
       const lx = pa[0]! + ux * along - uz * across(j), lz = pa[1]! + uz * along + ux * across(j);
       const t = (k + along / chord) / chords;
-      const y = p.y + b.rise * (2 * t - 1) + KERB_HEIGHT / 2;
+      const y = py + b.rise * (2 * t - 1) + KERB_HEIGHT / 2;
       // The world: x along (cs, -sn), z across (sn, cs).
-      const yaw = p.yaw + (detAtan2(-uz, ux) * 180) / PI;
-      out.push({ kind: hitKind(p.kerb === "flush" && j === 0, width, size), x: p.x + cs * lx + sn * lz, y, z: p.z - sn * lx + cs * lz, yaw: ((yaw % 360) + 360) % 360 });
+      const yaw = pyaw + (detAtan2(-uz, ux) * 180) / PI;
+      each(kinds[(flush && j === 0 ? 1 : 0) * KINDS_RAMP + widthAt * HIT_LENGTHS.length + sizeAt]!, px + cs * lx + sn * lz, y, pz - sn * lx + cs * lz, ((yaw % 360) + 360) % 360);
     }
   }
-  return out;
 }
+const hitA = [0, 0, 0, 0], hitB = [0, 0, 0, 0];
+/** Every collision piece's kind, boxes then ramps, by width then length, as hitKind names them: made once, not a piece at a time. */
+const KINDS_RAMP = HIT_WIDTHS.length * HIT_LENGTHS.length;
+const kinds: readonly string[] = [false, true].flatMap((ramp) => HIT_WIDTHS.flatMap((w) => HIT_LENGTHS.map((l) => hitKind(ramp, w, l))));

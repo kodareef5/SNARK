@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
-import { CHUNK_SIZE, TICK_DT } from "../../shared/coords.ts";
+import { CHUNK_SIZE, FRAME_MIDDLE, TICK_DT } from "../../shared/coords.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
 import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
-import { BEND_SHORTS, MODEL_HALF, arcLength, bendVertex, curveAt, packBend, placeKerb, underPiece, unpackBend, wrapped, type BentPiece, type KerbLine, type Section } from "../../shared/world/bends.ts";
-import { bendOf, blankStatics, parseMap, readHead, readPart, setStatics, writeMap, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { BEND_SHORTS, HIT_PREFIX, MODEL_HALF, arcLength, bendVertex, curveAt, packBend, placeKerb, underPiece, unpackBend, wrapped, type BentPiece, type KerbLine, type Section } from "../../shared/world/bends.ts";
+import { MapStatics, bendOf, blankStatics, parseMap, readHead, readPart, setStatics, writeMap, type MapData, type MapStatic, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
@@ -132,34 +132,75 @@ test("the collision pieces under a bent piece lie within it, along its curve, at
   expect(reg.index.has(p!.kind)).toBe(true);
 });
 
-test("a map holds its bent pieces' bends, by chunk and slot, read whole and read in parts", () => {
-  const map = flatMap(4);
-  const line = arc(128, 128, 30, 0, Math.PI, 2);
-  const pieces = placeKerb(line, 1, SECTION);
-  const bends = pieces.map((p) => {
-    const b = new Int16Array(BEND_SHORTS);
-    packBend(b, 0, p.bend);
-    return b;
-  });
-  const statics = [
+/** A flat map of 4 by 4 chunks whose middle is a corner of four sectors, with an arc of raised kerb round it and a rock either side. */
+function bentMap(): { map: MapData; statics: MapStatic[] } {
+  const map = flatMap(4, { dims: { chunksX: 4, chunksZ: 4, frameX: FRAME_MIDDLE - 2, frameZ: FRAME_MIDDLE - 2 } });
+  const pieces = placeKerb(arc(128, 128, 30, 0, Math.PI, 2), 1, SECTION);
+  const statics: MapStatic[] = [
     { kind: "core:rock", x: 10, y: 33, z: 10, yaw: 0 },
-    ...pieces.map((p, i) => ({ kind: p.kind, x: p.x, y: p.y + 32, z: p.z, yaw: Math.round((p.yaw / 360) * 65536) & 0xffff, bend: bends[i]! })),
+    ...pieces.map((p) => {
+      const b = new Int16Array(BEND_SHORTS);
+      packBend(b, 0, p.bend);
+      return { kind: p.kind, x: p.x, y: p.y + 32, z: p.z, yaw: Math.round((p.yaw / 360) * 65536) & 0xffff, bend: b };
+    }),
     { kind: "core:rock", x: 200, y: 33, z: 200, yaw: 0 },
   ];
-  const file = writeMap({ ...map, statics });
-  const back = parseMap(file).statics;
-  expect([...back].map((s) => (s.bend ? Array.from(s.bend) : null))).toEqual(statics.map((s) => ("bend" in s && s.bend ? Array.from(s.bend) : null)));
-  // Read a sector at a time, as a page does, the chunks hold the same bends.
+  return { map, statics };
+}
+
+/** A sector's statics read alone, one at a time, into a table laid out from the head, as a page reads them. */
+function readInParts(file: Uint8Array): MapStatics {
   const head = readHead(file);
   const t = blankStatics(head, false);
-  for (const part of head.parts.filter((p) => p.kind === "statics")) {
-    const piece = readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece;
-    [...setStatics(head, t, piece)];
-  }
+  for (const part of head.parts.filter((p) => p.kind === "statics")) [...setStatics(head, t, readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece)];
+  return t;
+}
+
+/** Every row of a table, chunk by chunk and slot by slot, as text. */
+const rowsOf = (t: MapStatics): string[] => Array.from({ length: t.kind.length }, (_, r) => `${t.kinds[t.kind[r]!]} ${t.x[r]} ${t.y[r]} ${t.z[r]} ${t.yaw[r]}`);
+
+test("a map holds its bent pieces' bends, by chunk and slot, read whole and read in parts", () => {
+  const { map, statics } = bentMap();
+  const file = writeMap({ ...map, statics });
+  const back = parseMap(file).statics;
+  // A map lists its pieces sector by sector.
+  const bends = (list: Iterable<MapStatic>): string[] => [...list].filter((s) => !s.kind.startsWith(HIT_PREFIX)).map((s) => `${s.kind} ${s.bend ? Array.from(s.bend) : null}`).sort();
+  expect(bends(back)).toEqual(bends(statics));
+  // Read a sector at a time, as a page does, the chunks hold the same bends.
+  const t = readInParts(file);
   expect([...t.bends.keys()].sort()).toEqual([...back.bends.keys()].sort());
   for (const [c, b] of back.bends) for (let k = 0; k < b.slot.length; k++) expect(bendOf(t.bends.get(c), b.slot[k]!)).toEqual(b.bend.subarray(k * 8, k * 8 + 8));
   // Every bent piece's chunk is where its chord's middle is.
   for (const [c] of back.bends) expect(c).toBeLessThan((map.dims.chunksX * map.dims.chunksZ * CHUNK_SIZE) / CHUNK_SIZE);
+});
+
+test("a map stores no collision piece of a bent one but makes them where it is read: the same boxes, read whole or a sector at a time", () => {
+  const { map, statics } = bentMap();
+  // As the build lays them, the collision pieces in the list (bent-walks.ts), from the pieces' own places.
+  const listed = statics.flatMap((s) => [s, ...(s.bend ? underPiece({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: (s.yaw * 360) / 65536, bend: unpackBend(s.bend), kerb: "raised" }).map((h) => ({ kind: h.kind, x: h.x, y: h.y, z: h.z, yaw: Math.round((h.yaw / 360) * 65536) & 0xffff })) : [])]);
+  const file = writeMap({ ...map, statics: listed });
+  // The list's collision pieces are not what the file holds: it is the same with them or without them.
+  expect(writeMap({ ...map, statics })).toEqual(file);
+  const whole = parseMap(file).statics, parts = readInParts(file);
+  // The arc crosses the corner of four sectors: some of its pieces' boxes stand in another sector than the piece, which
+  // that sector stores; the rest are made as each sector is read.
+  const hits = [...whole].filter((s) => s.kind.startsWith(HIT_PREFIX));
+  expect(hits.length).toBe(listed.length - statics.length);
+  // The same rows in every chunk's slots, to the bit, read whole as a server does and a sector at a time as a page does,
+  // and the same as a table made from the list (MapStatics.of, as the build's).
+  expect(rowsOf(parts)).toEqual(rowsOf(whole));
+  const of = MapStatics.of(map.dims, listed);
+  const sorted = (t: MapStatics): string[] => {
+    const out: string[] = [];
+    for (let c = 0; c + 1 < t.first.length; c++) out.push(...rowsOf(t).slice(t.first[c]!, t.first[c + 1]!).sort());
+    return out;
+  };
+  expect(sorted(of)).toEqual(sorted(whole));
+  // Each made box within a few millimetres of where the build laid it from the pieces' own places, off the lattice.
+  const near = (h: MapStatic): number => Math.min(...listed.filter((l) => l.kind === h.kind).map((l) => Math.hypot(l.x - h.x, l.y - h.y, l.z - h.z)));
+  expect(Math.max(...hits.map(near))).toBeLessThan(0.004);
+  const reg = coreRegistry();
+  for (const h of hits) expect(reg.index.has(h.kind)).toBe(true);
 });
 
 /** A kerb's face along z = 100 from x = 70 to 94, round a 6 m arc about (94, 106) to (100, 106), then up x = 100 to z = 130, its walk inside the corner. */
