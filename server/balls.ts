@@ -23,11 +23,24 @@ import type { Items } from "./items.ts";
 import { freeAt, freePlace } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Riding } from "./riding.ts";
+import { saved } from "./saved.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Taming } from "./taming.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
+
+/** The tick a tame was kept (EntityRecord.stored). Only a kept one has it. */
+saved({
+  name: "stored",
+  id: 25,
+  has: (rec) => rec.stored !== 0,
+  write: (rec, w) => w.uint53(rec.stored),
+  read(rec, r, from) {
+    rec.stored = r.uint53();
+    if (rec.stored === 0) from.refused = true;
+  },
+});
 
 export { KEEP_REACH, LOOSE_REACH };
 /** Metres from where the survivor looked that a loosed tame may be set, where its body does not fit there. */

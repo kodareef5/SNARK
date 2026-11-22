@@ -10,6 +10,7 @@ import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { validLook } from "../../shared/anim/look.ts";
 import type { Lane } from "../../shared/sim/station.ts";
 import { EntityRecord, type FireState, type Job } from "../records.ts";
+import { SAVED, savedAs, type Coding } from "../saved.ts";
 
 /** The revision of a record's parts, in its first byte. Raise it whenever a part changes: a build reads only its own. */
 const RECORD_FORMAT = 7;
@@ -47,14 +48,13 @@ const COMP_CORPSE = 21;
 /** Persistent ground creature mode; unknown builds preserve this component. */
 const COMP_CREATURE_MODE = 23;
 const COMP_JET_SPENT = 24;
-/** The tick a tame was kept in a soul ball (EntityRecord.stored). Only a kept one has it. */
-const COMP_STORED = 25;
-/** The survivor a starter mount was issued to (EntityRecord.issuedTo). Only a starter has it. */
-const COMP_ISSUED = 26;
+// Components a feature declares in its own file (server/saved.ts) are not listed here: 25 a kept tame's mark
+// (server/balls.ts), 26 a starter mount's (server/mount.ts).
 // Components kept in rec.extra by other parts of the server, numbered apart from these: 83 a survivor's activity
 // (server/survivor-activity.ts), 90 the Cast person a body is (server/cast/host.ts).
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
+const NO_BYTES = new Uint8Array(0);
 /** How an operator goes on from a save that uses content the build lacks. */
 export const WITHOUT = "start with the content it was made with, or with --allow-missing-content to go on without what is made of it, which is then dropped for good";
 
@@ -101,9 +101,15 @@ export function idMap(reg: Registry, table: Iterable<[string, number]>, high: nu
  * Writes and reads records against one table of content ids. `toSaved` maps this build's indices to the table's, and `ids` the
  * table's back. What a read leaves out because its content is gone is counted in `dropped`, as a save's load reports it.
  */
-export class RecordCodec {
+export class RecordCodec implements Coding {
   readonly toSaved: Uint16Array;
   readonly toRuntime: Uint16Array;
+  readonly split: Map<number, readonly number[]>;
+  /** What the component being read tells of the record being read (Coding). */
+  blob: Uint8Array = NO_BYTES;
+  refused = false;
+  stale = false;
+  readonly refs: number[] = [];
   /**
    * What reading left out because its content is gone and the reader chose to go on. `count` is how many things of each
    * missing id. `burn` is what went with them and still has content, by item, for the ledger to burn: what a record of a
@@ -117,7 +123,6 @@ export class RecordCodec {
    */
   readonly unrated = new Set<number>();
   private readonly lost: Map<number, string>;
-  private readonly split: Map<number, readonly number[]>;
   private readonly allowMissing: boolean;
   /** What is read, and what to do about missing content: the start and end of the error that stops a read. */
   private readonly subject: string;
@@ -127,6 +132,8 @@ export class RecordCodec {
   private c = new BitWriter(32768);
   /** A part of the record being written did not fit in `c`. */
   private cut = false;
+  /** Which declared components the record being written has, by place in SAVED. */
+  private has = new Uint8Array(64);
   private readonly r = new BitReader();
   private readonly cr = new BitReader();
 
@@ -175,9 +182,22 @@ export class RecordCodec {
     const hasTame = !!rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander;
     let refs = 0;
     for (let slot = 0; inv?.ref && slot < inv.cap; slot++) if (inv.item[slot] !== 0 && inv.ref[slot] !== 0) refs++;
-    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (hasTame ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + (rec.creatureMode !== 0 ? 1 : 0) + (rec.jetSpent > 0 ? 1 : 0) + (rec.stored !== 0 ? 1 : 0) + (rec.issuedTo !== 0 ? 1 : 0) + rec.extra.size);
-    if (rec.stored !== 0) { c.reset(); c.uint53(rec.stored); this.part(COMP_STORED); }
-    if (rec.issuedTo !== 0) { c.reset(); c.uint53(rec.issuedTo); this.part(COMP_ISSUED); }
+    const rows = SAVED;
+    if (this.has.length < rows.length) this.has = new Uint8Array(rows.length * 2);
+    const has = this.has;
+    let declared = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const yes = rows[i]!.has(rec);
+      has[i] = yes ? 1 : 0;
+      if (yes) declared++;
+    }
+    w.varint(declared + (refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (hasTame ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + (rec.creatureMode !== 0 ? 1 : 0) + (rec.jetSpent > 0 ? 1 : 0) + rec.extra.size);
+    for (let i = 0; i < rows.length; i++) {
+      if (has[i] === 0) continue;
+      c.reset();
+      rows[i]!.write(rec, c, this);
+      this.part(rows[i]!.id);
+    }
     if (rec.jetSpent > 0) { c.reset(); c.u16(rec.jetSpent); this.part(COMP_JET_SPENT); }
     if (rec.creatureMode !== 0) { c.reset(); c.u8(rec.creatureMode); this.part(COMP_CREATURE_MODE); }
     if (rec.buffs.length > 0) {
@@ -413,11 +433,17 @@ export class RecordCodec {
     const c = this.cr;
     /** Slot and pid pairs, put on the inventory once every part is read. */
     const refs: number[] = [];
+    this.refused = false;
     for (let n = r.varint(); n > 0 && !r.overflow; n--) {
       const component = r.varint();
       const blob = r.blob(MAX_PART);
       c.reset(blob);
-      if (component === COMP_SLOTS3) {
+      const declared = savedAs(component);
+      if (declared) {
+        this.blob = blob;
+        declared.read(rec, c, this);
+        if (this.refused) return null;
+      } else if (component === COMP_SLOTS3) {
         const cap = c.varint();
         const inv = (rec.inv = new Inventory(cap, c.varint()));
         for (let k = c.varint(); k > 0 && !c.overflow; k--) {
@@ -514,12 +540,6 @@ export class RecordCodec {
       } else if (component === COMP_CREATURE_MODE) {
         rec.creatureMode = c.u8();
         if (rec.creatureMode > 2) return null;
-      } else if (component === COMP_STORED) {
-        rec.stored = c.uint53();
-        if (rec.stored === 0) return null;
-      } else if (component === COMP_ISSUED) {
-        rec.issuedTo = c.uint53();
-        if (rec.issuedTo === 0) return null;
       } else if (component === COMP_STATE) {
         rec.dead = c.bool();
         rec.expiresAt = c.uint53();
@@ -606,12 +626,12 @@ export class RecordCodec {
   }
 
   /** Counts `n` of `item` as gone with something that was left out. */
-  private burn(item: number, n: number): void {
+  burn(item: number, n: number): void {
     this.dropped.burn.set(item, (this.dropped.burn.get(item) ?? 0) + n);
   }
 
   /** An item whose content is gone stops the read unless missing content is allowed. Then the `n` of it that record `pid` held are left out. */
-  private item(saved: number, pid: number, n: number): number {
+  item(saved: number, pid: number, n: number): number {
     const item = this.toRuntime[saved] ?? 0;
     if (item !== 0) return item;
     if (!this.allowMissing) throw new Error(`${this.subject} uses content this build does not have: ${this.lost.get(saved) ?? "an item"}, held by record ${pid}: ${this.without}`);
