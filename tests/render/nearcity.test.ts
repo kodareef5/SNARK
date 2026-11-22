@@ -1,24 +1,18 @@
-// The near city as a mesh a chunk (client/core/render/nearcity.ts) on the Miami slice: one owner a piece wherever the
-// camera goes, a static shot away gone the frame it goes, and a border crossed within a frame's making. The same picture
-// as the instances is in nearcity.slow.test.ts.
+// The near city as a mesh a chunk (client/core/render/nearcity.ts) on a small city of frames: one owner a piece wherever
+// the camera goes, a static shot away gone the frame it goes, and a border crossed within a frame's making. The same on
+// the Miami slice, and the same picture as the instances, are in nearcity.slow.test.ts.
 
 import { expect, test } from "bun:test";
-import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FarStore } from "../../client/core/farcells.ts";
-import { Camera } from "../../client/core/render/camera.ts";
 import { FRAME_PIECES, LAID_SHARE, MESH_SLOT, NearCity, NearMaking, pieceWeight } from "../../client/core/render/nearcity.ts";
 import { FIXTURE_IRON, FIXTURE_PAINT, SIGN_ENAMEL, fixtureFace, fixtureKind } from "../../client/core/render/street-finish.ts";
 import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
-import { DRAW_CUTOUT, DRAW_RANGED, DRAW_TEXTURED, MAX_CASTERS, MAX_DRAWS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
-import { NODE_BUFFERS, Scene } from "../../client/core/render/scene.ts";
-import "../../client/core/render/city-late.ts";
+import { DRAW_RANGED, DRAW_TEXTURED } from "../../client/core/render/packet.ts";
+import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { CityStatics } from "../../shared/world/city.ts";
-import { mapHeightfield } from "../../shared/world/mapfile.ts";
-import { StructureStore } from "../../shared/world/structures.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
-import { miamiSlice } from "../fixtures/cityslice.ts";
 import { farPack } from "../fixtures/farworld.ts";
+import { alike, nearClient, smallCity } from "../fixtures/nearclient.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 test("a batched cabinet, drain and sign retain their finishes and their concrete supports", () => {
@@ -46,92 +40,10 @@ test("a batched cabinet, drain and sign retain their finishes and their concrete
   expect(finishes).toEqual([new Set([0]), new Set([0, FIXTURE_PAINT]), new Set([0, FIXTURE_IRON]), new Set([SIGN_ENAMEL])]);
 });
 
-/** Chunks either side of the camera's that a client holds whole (server/game.ts structRadius). */
-const RADIUS = 3;
-
-/** The slice as a client on high holds it: the window round the camera's chunk whole, its statics put as a client puts the map's. */
-function client() {
-  const slice = miamiSlice();
-  const reg = coreRegistry();
-  const pack = farPack();
-  const dims = slice.map.dims;
-  const hf = mapHeightfield(slice.map);
-  const city = new CityStatics(dims, slice.map.statics, reg);
-  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-  const held = new Uint8Array(dims.chunksX * dims.chunksZ);
-  const complete = (c: number): boolean => held[c] === 1;
-  const scene = new Scene({ mapId: slice.map.id, dims, hf, structs, far: { cells: new FarStore(), complete }, city: { statics: city, complete } }, reg, pack);
-  scene.assets.tier = tierOf("high");
-  scene.viewHeight = 540;
-  scene.city!.makeMs = Infinity;
-  const cam = new Camera();
-  cam.aspect = 16 / 9;
-  // What the card holds: each chunk's instances as last sent, and the levels of meshes on it.
-  const slots = new Map<number, Uint16Array>();
-  const onCard = new Set<number>();
-  let now = 0;
-  return {
-    dims, hf, city, structs, scene, cam,
-    /** Holds the chunks round (x, z) whole and lets go of the rest, as the server sends and drops them. */
-    follow(x: number, z: number): void {
-      const [cx, cz] = [Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE)];
-      for (const c of [...structs.held]) {
-        if (Math.abs(chunkCx(dims, c) - cx) <= RADIUS && Math.abs(chunkCz(dims, c) - cz) <= RADIUS) continue;
-        structs.dropChunk(c);
-        held[c] = 0;
-      }
-      for (let j = Math.max(0, cz - RADIUS); j <= Math.min(dims.chunksZ - 1, cz + RADIUS); j++) {
-        for (let i = Math.max(0, cx - RADIUS); i <= Math.min(dims.chunksX - 1, cx + RADIUS); i++) {
-          const c = j * dims.chunksX + i;
-          if (held[c] === 1) continue;
-          held[c] = 1;
-          for (let s = city.first[c]!; s < city.first[c + 1]!; s++) structs.put(c, s - city.first[c]!, city.kind[s]!, city.x[s]!, city.y[s]!, city.z[s]!, city.yaw[s]!, 0, reg.maxHp[city.kind[s]!]!, 1);
-          structs.setVersion(c, 1);
-        }
-      }
-    },
-    frame(): FramePacket {
-      scene.now = now += 1000 / 60;
-      const p = scene.build(cam, null);
-      for (const u of p.uploads) slots.set(u.buffer, u.slots);
-      for (const id of p.drops) slots.delete(id);
-      for (const s of p.assetDrops) onCard.delete(s);
-      for (const u of p.assetUploads) onCard.add(u.slot);
-      return p;
-    },
-    /** Where a frame breaks the rule of one owner a piece: a standing piece of a chunk it draws near that is in neither its instances nor its mesh, or in both; a mesh drawn that is not its chunk's or not on the card; a chunk drawn both near and far. */
-    owners(p: FramePacket): string[] {
-      const out: string[] = [];
-      const drawn = new Set<number>();
-      const ranged = (buffer: number, slot: number, flags: number): void => {
-        if (buffer === TRANSIENT_BUFFER || buffer >= NODE_BUFFERS) return;
-        drawn.add(buffer);
-        if ((flags & DRAW_RANGED) === 0) return;
-        if (slot !== scene.near!.chunk(buffer)?.mesh?.slot || !onCard.has(slot) || !slots.get(buffer)?.includes(MESH_SLOT)) out.push(`chunk ${buffer} draws a mesh not its own`);
-      };
-      for (let d = 0; d < p.drawCount; d++) ranged(p.drawBuffer[d]!, p.drawSlot[d]!, p.drawFlags[d]!);
-      for (let e = 0; e < p.casterCount; e++) ranged(p.casterBuffer[e]!, p.casterSlot[e]!, p.casterFlags[e]!);
-      for (const c of drawn) {
-        if (scene.city!.isFar(c)) out.push(`chunk ${c} is drawn near and far`);
-        const t = structs.chunks[c]!, given = slots.get(c)!, mine = scene.near!.chunk(c)?.mine;
-        const meshed = given.includes(MESH_SLOT);
-        const count = new Uint8Array(t.high);
-        for (const s of given) if (s !== MESH_SLOT) count[s]!++;
-        for (let s = 0; s < t.high; s++) {
-          if (t.kind[s] === 0) continue;
-          const n = count[s]! + (meshed && mine?.[s] === 1 ? 1 : 0);
-          if (n !== 1) out.push(`chunk ${c} slot ${s} has ${n} owners`);
-        }
-      }
-      return out;
-    },
-  };
-}
-
-test("walking and flying across chunk borders through the slice, each standing piece has one owner at every frame: its chunk's instances or its chunk's mesh", () => {
-  const w = client();
+test("across chunk borders each standing piece has one owner every frame", () => {
+  const w = nearClient(smallCity());
   const { cam, hf } = w;
-  // On foot round the slice's middle, then over it at 150 m, a frame every 3 m: the window follows, chunks come and go
+  // On foot round the city's middle, then over it at 150 m, a frame every 3 m: the window follows, chunks come and go
   // and their meshes are made a frame's pieces at a time, so some are drawn as instances and some as meshes.
   const legs: [number, number, number][] = [[200, 200, 1.7], [380, 200, 1.7], [380, 380, 1.7], [200, 380, 1.7], [200, 200, 150], [400, 400, 150]];
   let [x, z] = [legs[0]![0], legs[0]![1]];
@@ -158,10 +70,10 @@ test("walking and flying across chunk borders through the slice, each standing p
   expect(w.scene.near!.stats.waiting).toBe(0);
 });
 
-test("a static shot away is gone from the picture the frame it goes, its chunk and those whose faces it may hold drawn as instances, and they are meshes again within a second", () => {
-  const w = client();
+test("a static shot away is gone that frame, its chunk a mesh again in a second", () => {
+  const w = nearClient(smallCity());
   const { cam, city, dims, structs, scene } = w;
-  // The tallest piece of the slice's busiest chunk, seen from 20 m over its top.
+  // The tallest piece of chunk (1, 3), seen from 20 m over its top.
   const chunk = 3 * dims.chunksX + 1;
   let top = -Infinity, slot = -1;
   for (let s = 0; s < city.in(chunk); s++) {
@@ -174,7 +86,8 @@ test("a static shot away is gone from the picture the frame it goes, its chunk a
   scene.near!.pieces = Infinity;
   const raster = new Rasterizer(64, 36, farPack(), w.hf);
   for (let f = 0; f < 10; f++) raster.render(w.frame());
-  scene.near!.pieces = FRAME_PIECES;
+  // A sixteenth of a frame's pieces, so that these small chunks take frames to make, as downtown's do at the whole.
+  scene.near!.pieces = FRAME_PIECES / 16;
   let p = w.frame();
   raster.render(p);
   // The pixel at the middle of the picture shows the piece's top, from its chunk's mesh.
@@ -211,12 +124,11 @@ test("a static shot away is gone from the picture the frame it goes, its chunk a
   expect(frames).toBeLessThan(600);
 });
 
-test("crossing a chunk border at the slice's densest place makes no more in a frame than a frame's pieces, what it lays out as instances counted at its share", () => {
-  const w = client();
+test("a border crossed makes no more in a frame than a frame's pieces", () => {
+  const w = nearClient(smallCity());
   const { cam, hf, scene } = w;
-  // The window round the slice's chunk (3, 3) holds its most statics; the walk goes east from its middle over the border
-  // into (4, 3), which brings a column of seven chunks. The 16 km map's slice holds 27,978 pieces, its window round (3, 3)
-  // 19,557, made in 300 frames.
+  // The walk goes east from the middle of chunk (3, 3) over the border into (4, 3), which brings a column of seven chunks:
+  // more pieces than a frame makes. The slice's densest place is crossed in nearcity.slow.test.ts.
   let x = 3.5 * CHUNK_SIZE;
   const z = 3.5 * CHUNK_SIZE;
   [cam.x, cam.z, cam.y, cam.yaw] = [x, z, hf.heightAt(x, z) + 1.7, Math.PI / 2];
@@ -243,20 +155,8 @@ test("crossing a chunk border at the slice's densest place makes no more in a fr
   expect(over).toEqual([]);
 });
 
-/** Whether rows `a` and `b` agree in every column of the packet named for `kind` but their runs of indices, the marks, a caster's cascades, and the material a row does not read. */
-function alike(p: FramePacket, kind: "draw" | "caster", a: number, b: number): boolean {
-  const flags = kind === "draw" ? p.drawFlags : p.casterFlags;
-  const unread = kind === "draw" ? (flags[a]! & DRAW_TEXTURED) === 0 : (flags[a]! & DRAW_CUTOUT) === 0;
-  for (const [name, column] of Object.entries(p)) {
-    if (!name.startsWith(kind) || !ArrayBuffer.isView(column) || /FirstIndex|IndexCount|Joined|Cascades/.test(name) || (unread && name.endsWith("Material"))) continue;
-    const values = column as unknown as ArrayLike<number>, width = values.length / (kind === "draw" ? MAX_DRAWS : MAX_CASTERS);
-    for (let k = 0; k < width; k++) if (values[a * width + k] !== values[b * width + k]) return false;
-  }
-  return true;
-}
-
-test("on foot and over the slice, a draw or caster is marked as the one before it exactly where it differs from it only in its run of indices", () => {
-  const w = client();
+test("a draw or caster is marked as the one before it only where it repeats it", () => {
+  const w = nearClient(smallCity());
   const { cam, hf } = w;
   let joined = 0, cast = 0;
   const wrong: string[] = [];
@@ -277,10 +177,7 @@ test("on foot and over the slice, a draw or caster is marked as the one before i
     }
   }
   expect(wrong.slice(0, 5)).toEqual([]);
-  // A chunk's mesh casts a run of its cells into each cascade, and a view that leaves out cells within a chunk draws it
-  // in runs: here 9 draws and 23 casters could go in the call before them (7 and 25 on the slice before the ruins' broken
-  // tops, rubble and growth, 8 and 24 after them until what the near meshes hide was left out, render/hide.ts, 5 and 23
-  // until the street's furniture stood on its walks and tall buildings had tops, 7 and 23 on the 8 km map's slice, and 8
-  // and 23 before a shop's front had its frame, sill and drip, content/ruins.ts SHOP_FRAME).
-  expect([joined, cast]).toEqual([9, 23]);
+  // Some were marked: a chunk's mesh casts a run of its cells into each cascade. The slice's counts are in the slow file.
+  expect(joined).toBeGreaterThan(0);
+  expect(cast).toBeGreaterThan(0);
 });

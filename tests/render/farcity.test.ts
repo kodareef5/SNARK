@@ -883,7 +883,7 @@ test("each sloped kind alone and turned shows its faces at every level: as drawn
   }
 });
 
-test("a ramp against a deck, a slab leaning on a floor and rubble against a wall drop no face that shows and keep none that is held", () => {
+test("a ramp on a deck, a leaning slab and heaped rubble drop only held faces", () => {
   const reg = farRegistry();
   const yaw = 5000;
   const scene = slopes(160, 160, 0, yaw);
@@ -916,28 +916,30 @@ test("a ramp against a deck, a slab leaning on a floor and rubble against a wall
       }
     }
   }
-  // Every group, from three sides and 150 m off, on its ground: the box level far is the same picture as the near store's.
-  const w = cityWorld({ chunks: 8, statics: scene.all, width: 640, height: 360 });
+});
+
+test("sloped pieces drawn far are the near store's picture, from one side", () => {
+  // The three sides at twice the size are in farcity.slow.test.ts; this is one, small, so a broken far level shows here.
+  const scene = slopes(160, 160, 0, 5000);
+  const w = cityWorld({ chunks: 8, statics: scene.all });
   const chunks = [...new Set(scene.all.map((s) => w.chunkOf(s.x, s.z)))];
   w.cam.fovY = (14 * Math.PI) / 180;
-  for (const view of [0.4, 2.3, 4.4]) {
-    w.look(160, 2, 160, 150, view, 25);
-    w.frame(true);
-    w.frame(true);
-    // The sky's openness and what stands overhead all on the card, so that the light is the same in both pictures.
-    while (!w.scene.farShadow!.whole) w.frame(true);
-    const drawnFar = w.covered().far;
-    const colours = w.raster.color.slice();
-    expect(sum(drawnFar)).toBeGreaterThan(5000);
-    for (const c of chunks) w.rows(c);
-    w.frame(true);
-    const { far, near } = w.covered();
-    expect(sum(far)).toBe(0);
-    let differ = 0;
-    for (let i = 0; i < near.length; i++) if (Math.max(...[0, 1, 2].map((k) => Math.abs(w.raster.color[i * 4 + k]! - colours[i * 4 + k]!))) > 6) differ++;
-    expect(differ / sum(drawnFar)).toBeLessThan(0.01);
-    for (const c of chunks) w.drop(c);
-  }
+  w.look(160, 2, 160, 150, 0.4, 25);
+  w.frame(true);
+  w.frame(true);
+  // The sky's openness and what stands overhead all on the card, so that the light is the same in both pictures.
+  while (!w.scene.farShadow!.whole) w.frame(true);
+  const drawnFar = w.covered().far;
+  const colours = w.raster.color.slice();
+  // The share of the picture the slow test asks for, at a quarter of its pixels.
+  expect(sum(drawnFar)).toBeGreaterThan(1250);
+  for (const c of chunks) w.rows(c);
+  w.frame(true);
+  const { far, near } = w.covered();
+  expect(sum(far)).toBe(0);
+  let differ = 0;
+  for (let i = 0; i < near.length; i++) if (Math.max(...[0, 1, 2].map((k) => Math.abs(w.raster.color[i * 4 + k]! - colours[i * 4 + k]!))) > 6) differ++;
+  expect(differ / sum(drawnFar)).toBeLessThan(0.01);
 });
 
 test("the mass of a leaning slab is the cells it crosses, not its box's, and its faces are coloured as boxes' are", () => {

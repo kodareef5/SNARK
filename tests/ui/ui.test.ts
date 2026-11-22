@@ -3,6 +3,7 @@ import { Controls, LOOK_SPEED } from "../../client/core/controls.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { Chart } from "../../client/core/tactical.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
+import { IMAGE_ARROW, arrowSheet } from "../../client/core/ui/arrow.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
 import { bindTextInput } from "../../client/core/ui/events.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_SELF_ARROW, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
@@ -33,6 +34,14 @@ import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_P
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
 
 const chartWorld = flatWorld(8);
+
+// The sheet of arrows is painted once here: every interface a test makes would paint its own, the same picture.
+const arrows = arrowSheet();
+function newUi(): Ui {
+  const ui = new Ui();
+  ui.frame.images[IMAGE_ARROW] = arrows;
+  return ui;
+}
 
 /** A HUD with the widest numbers it can show, and the map's pictures for its markers to be put on. */
 function fullHud(): HudModel {
@@ -110,7 +119,7 @@ function overlaps(f: UiFrame, a: number, b: number): boolean {
 test("every screen fits every window shape: nothing off the canvas, no clipped text, no stacked controls", () => {
   for (const [name, aspect] of ASPECTS) {
     for (const [consoleOpen, chatOpen] of [[false, false], [true, false], [false, true]] as const) {
-      const ui = new Ui();
+      const ui = newUi();
       ui.registry = reg;
       ui.console.open = consoleOpen;
       ui.inventory.open = true;
@@ -199,7 +208,7 @@ test("every screen fits every window shape: nothing off the canvas, no clipped t
 });
 
 test("the HUD hides the crosshair and shows a banner only when the model says so", () => {
-  const ui = new Ui();
+  const ui = newUi();
   const m = new HudModel();
   ui.build(16 / 9, m, null);
   expect(ui.frame.find(KEY_CROSS)).not.toBeNull();
@@ -250,7 +259,7 @@ test("the console edits a line, sends it once, and browses history without losin
 
 test("the console keeps accepting edits and commands as output and HUD rows change without reopening", () => {
   for (const [, aspect] of ASPECTS) {
-    const ui = new Ui();
+    const ui = newUi();
     const hud = new HudModel();
     const sent: string[] = [];
     ui.local = (line) => { sent.push(line); return "answer to " + line; };
@@ -298,7 +307,7 @@ test("the console keeps accepting edits and commands as output and HUD rows chan
 });
 
 test("console keys: one press toggles once, the open console owns the keyboard, and paging stays in range", () => {
-  const ui = new Ui();
+  const ui = newUi();
   ui.build(16 / 9, new HudModel(), null);
   expect(ui.wantsPointerLock).toBe(true);
   expect(ui.key("KeyW", true, false, null)).toBe(false);
@@ -470,7 +479,7 @@ test("the inventory screen turns clicks into commands and never changes anything
   inv.set(0, stone, 80, 0, 0, 0);
   inv.set(5, berry, 9, 0, 0, 5000);
   const { session, sent } = fakeSession(inv);
-  const ui = new Ui();
+  const ui = newUi();
   ui.registry = reg;
   const key = (slot: number) => KEY_INV_SLOT + slot * 3;
   const decode = (bytes: Uint8Array): number[] => {
@@ -546,7 +555,7 @@ test("the choosing and map screens fit every window shape, and a place picked in
         own: { x: 256, y: 0, z: 256 },
         serverTick: 1000,
       });
-      const ui = new Ui();
+      const ui = newUi();
       ui.registry = reg;
       if (!dead) expect(ui.key("KeyM", true, false, session)).toBe(true);
       ui.build(aspect, fullHud(), session);
@@ -611,7 +620,7 @@ test("with more places to rise at than fit the window, the list is paged, and ev
     const { session, sent } = fakeSession(new Inventory(40));
     const places = Array.from({ length: 43 }, (_, i) => ({ kind: i < 3 ? 0 : 1, name: i < 3 ? `spawn ${i}` : `bed ${i}`, x: i, z: i, readyAt: i === 20 ? 6000 : 0 }));
     Object.assign(session, { sessionState: SESSION_DEAD, choosing: CHOOSE_DIED, placesList: 3, respawnPoints: places, markers: [], world: flatWorld(2), own: { x: 1, y: 0, z: 1 } });
-    const ui = new Ui();
+    const ui = newUi();
     ui.registry = reg;
     const f = ui.frame;
     const chosen: number[] = [];
@@ -666,7 +675,7 @@ test("the character screen fits every window shape on every tab and page, and it
       // Level 20 with every engram learned but two, so the lists are as long as they get.
       progress: { xp: 99999, level: 20, statPoints: 19, engramPoints: 250, engrams: engrams.filter((e) => e !== engram("core:engram-waterskin") && e !== engram("core:engram-rifle")), jobs: [{ item: reg.index.get("core:hatchet")!, left: 3, doneAt: 5 }], version: 1 },
     });
-    const ui = new Ui();
+    const ui = newUi();
     ui.registry = reg;
     expect(ui.key("KeyP", true, false, session)).toBe(true);
     expect(ui.wantsPointerLock).toBe(false);
@@ -782,7 +791,7 @@ test("with hundreds of engrams and things to make, each button of the character 
   const { session, sent } = fakeSession(new Inventory(40));
   const progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [], version: 1 };
   Object.assign(session, { sessionState: SESSION_ALIVE, ownKind: big.index.get("core:survivor")!, progress });
-  const ui = new Ui();
+  const ui = newUi();
   ui.registry = big;
   ui.key("KeyP", true, false, session);
   const f = ui.frame;
@@ -819,7 +828,7 @@ test("with hundreds of engrams and things to make, each button of the character 
 });
 
 test("the chat box: a key for each channel, Tab to change it, Enter to say the line, and the keyboard while it is open", () => {
-  const ui = new Ui();
+  const ui = newUi();
   const { session, said } = fakeSession(new Inventory(40));
   const hud = new HudModel();
   ui.build(16 / 9, hud, session);
@@ -898,7 +907,7 @@ test("the chat box: a key for each channel, Tab to change it, Enter to say the l
 });
 
 test("what is said goes to the chat box and what the console printed stays in the console; lines show for a while, then fade", () => {
-  const ui = new Ui();
+  const ui = newUi();
   const { session } = fakeSession(new Inventory(40));
   const s = session as unknown as { log: { channel: number; text: string }[]; logVersion: number; serverTick: number };
   const tell = (channel: number, text: string): void => {
@@ -963,7 +972,7 @@ test("the list of what can be done to a piece fits every window shape, whatever 
     for (const ref of refs) {
       const { session, sent } = fakeSession(new Inventory(40));
       Object.assign(session, { sessionState: SESSION_ALIVE, world });
-      const ui = new Ui();
+      const ui = newUi();
       ui.registry = reg;
       ui.structure.begin(ref);
       ui.build(aspect, fullHud(), session);
@@ -997,7 +1006,7 @@ test("the list of what can be done to a piece fits every window shape, whatever 
   }
   const { session } = fakeSession(new Inventory(40));
   Object.assign(session, { sessionState: SESSION_ALIVE, world });
-  const ui = new Ui();
+  const ui = newUi();
   ui.registry = reg;
   ui.structure.begin(refs[0]!);
   world.structs.remove(refs[0]!);
@@ -1016,7 +1025,7 @@ test("what can be used can be locked and given a PIN from the list; the PIN pane
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(new Inventory(40));
     Object.assign(session, { sessionState: SESSION_ALIVE, world });
-    const ui = new Ui();
+    const ui = newUi();
     ui.registry = reg;
     const menu = ui.structure;
     const fits = (): void => {
@@ -1094,7 +1103,7 @@ test("a container with more slots than there is room for is turned through a pag
     vault.set(0, stone, 5, 0, 0, 0);
     vault.set(349, berry, 7, 0, 0, 0);
     Object.assign(session, { open: { name: "vault", inventory: vault }, sessionState: SESSION_ALIVE });
-    const ui = new Ui();
+    const ui = newUi();
     ui.registry = reg;
     ui.build(aspect, fullHud(), session);
     const f = ui.frame;
@@ -1151,7 +1160,7 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
     inside.set(3, stone, 1, 0, 0, 0);
     inside.set(4, saddle, 1, 0, 0, 0);
     Object.assign(session, { sessionState: SESSION_ALIVE, open: { name: "", inventory: inside }, subject: { taming: true, owned: false, level: 30, progress: 0.4, te: 0.946, torpor: 0.61, food: 0.9 } });
-    const ui = new Ui();
+    const ui = newUi();
     ui.registry = reg;
     ui.build(aspect, fullHud(), session);
     const f = ui.frame;
@@ -1202,7 +1211,7 @@ test("a creature looked into says how its taming goes; one just tamed is asked a
 
 test("a tame's name is cut to the 24 bytes the server takes, whatever the script, with no letter cut in two", () => {
   const { session, sent } = fakeSession(new Inventory(40));
-  const ui = new Ui();
+  const ui = newUi();
   ui.registry = reg;
   const cases = [
     ["a name of thirty letters, no less", "a name of thirty letters"],
@@ -1229,7 +1238,7 @@ test("a creature of one's own, looked into, is told to follow or stay, to change
     const { session, sent } = fakeSession(fullInventory());
     const subject = { taming: false, owned: true, level: 12, progress: 0, te: 0.8, torpor: 0, food: 0.7, id: 77, points: 2, stance: 1, following: false, ...GROWN_ONE };
     Object.assign(session, { sessionState: SESSION_ALIVE, open: { name: "Blue", inventory: new Inventory(20) }, subject });
-    const ui = new Ui();
+    const ui = newUi();
     ui.registry = reg;
     ui.build(aspect, fullHud(), session);
     const f = ui.frame;
@@ -1266,7 +1275,7 @@ test("one that breeds says its sex and how its mating goes, and has a button for
     const { session, sent } = fakeSession(fullInventory());
     const subject = { taming: false, owned: true, level: 12, progress: 0, te: 0.8, torpor: 0, food: 0.7, id: 77, points: 0, stance: 1, following: false, saddled: true, breeds: true, mating: false, female: true, stage: 3, maturity: 1, mate: 0, wait: 0 };
     Object.assign(session, { sessionState: SESSION_ALIVE, open: { name: "Blue", inventory: new Inventory(20) }, subject });
-    const ui = new Ui();
+    const ui = newUi();
     ui.registry = reg;
     ui.build(aspect, fullHud(), session);
     const f = ui.frame;
@@ -1312,7 +1321,7 @@ test("a bed's list names it and travels from it: the name is typed in a field th
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(new Inventory(40));
     Object.assign(session, { sessionState: SESSION_ALIVE, world });
-    const ui = new Ui();
+    const ui = newUi();
     ui.registry = reg;
     ui.structure.begin(bed);
     ui.build(aspect, fullHud(), session);
