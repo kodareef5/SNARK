@@ -54,6 +54,8 @@ const STEEPEST = 0.125;
 const VERGE_LEAST = 0.5;
 /** A stretch of a line failing a level test for under FILL metres between two that pass is laid on; one passing for under ISLAND between two that fail is not. */
 const FILL = 3, ISLAND = 2;
+/** How far short of a corner's centre its walk ends at most. */
+const CORNER_INSIDE = 0.3;
 /** What stands on a walk this far or more behind the kerb's face is cut round; what stands nearer stands on the walk. */
 const CUT_ROUND = 1;
 /** The least walk a piece is cut down to round what stands on it, from the kerb's face, and how far short of it it stops. */
@@ -105,7 +107,10 @@ export function makeBentWalks(site: Site, v: Vocabulary, accept: (m: Mason) => b
     const kerb = kerbOf(k.kinds) === 2 ? "worn" : "raised";
     const alone = walkOf(k.kinds) === 0 || k.verge >= VERGE_LEAST;
     if (alone) out.alone!++;
-    const section: Section = { kerb, walk: alone ? 0 : k.verge + k.walk, panel: PANEL[kerb], seed: k.seed & 255, wear: street.types[type]?.section.wear ?? 0.4 };
+    // A corner's walk lies inside its arc: no wider than its radius less a little, or it folds over itself round the
+    // arc's centre (a downtown walk of 8.5 m round a corner of 4 m).
+    const most = k.corner >= 0 ? Math.max(KERB_BACK + 0.6, part.corners[k.corner]!.radius - CORNER_INSIDE) : Infinity;
+    const section: Section = { kerb, walk: alone ? 0 : Math.min(most, k.verge + k.walk), panel: PANEL[kerb], seed: k.seed & 255, wear: street.types[type]?.section.wear ?? 0.4 };
     const side = walkSide(k, part.corners), n = k.stations.length;
     const kerbAlone: Section = { ...section, walk: 0 };
     // Each point's state, then judged over the line.
