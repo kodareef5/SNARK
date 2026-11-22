@@ -6,9 +6,12 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { holds, sideSection, streetRules, typeOf } from "../../tools/mapworld/streets/rules.ts";
-import { conflictRecord, conflictText, matchOverlay, overlayConflicts, readOverlay, sidesFacing, sortOverlay } from "../../tools/mapworld/streets/overlay.ts";
-import type { Run } from "../../tools/mapworld/streets/fit.ts";
+import { StreetSectors, heldSide, kerbLines, kindsByte, type StreetsPart } from "../../shared/world/streets.ts";
+import { kerbSection } from "../../tools/mapworld/bent-walks.ts";
+import { holds, sideSection, streetRules, typeOf, type Section } from "../../tools/mapworld/streets/rules.ts";
+import { conflictRecord, conflictText, matchOverlay, overlayConflicts, readOverlay, sidesFacing, sortOverlay, type Applied, type OverlayEntry } from "../../tools/mapworld/streets/overlay.ts";
+import type { Run, SideFit } from "../../tools/mapworld/streets/fit.ts";
+import { ASKED_KERB, ASKED_VERGE, PlannedStreets, planSide } from "../../tools/mapworld/streets/plan.ts";
 
 test("a stretch's type is the first rule's that holds, and its section its type's with each set that holds laid over it", () => {
   const r = streetRules();
@@ -193,4 +196,75 @@ test("a side faces a compass point by its way out, x being west", () => {
   expect(sidesFacing(r, "s")).toEqual([0]);
   expect(sidesFacing(r, "n")).toEqual([1]);
   expect(sidesFacing(r, "e")).toEqual([]);
+});
+
+/** A side's fit: no building line, the data drawing no walk, unless given. */
+const fitSide = (o: Partial<SideFit> = {}): SideFit => ({ room: Infinity, built: 0, green: 0, drawn: null, drawnShare: 0, tagged: null, inner: false, ...o });
+/** An overlay entry of downtown.jsonl's line `line` setting `set` on both sides. */
+const entry = (set: Section, line = 2): Applied => ({ entry: { file: "downtown.jsonl", line, key: "way", way: 82541900, set, priority: 0, reason: "a test's", text: JSON.stringify(set) } as OverlayEntry, sides: [0, 1] });
+/** Side `side` of a stretch of `type` as the build lays it, with `over` over it. */
+const laid = (type: string, sf: SideFit, over: Applied[], side = 0, median = 0) => planSide(streetRules(), type, {}, sf, over, side, 1234, 4, median);
+
+test("a value an overlay entry sets is final: the verge a drawn walk would give and the building line do not work it out again", () => {
+  // Northwest South River Drive: a 1.5 m verge asked of a residential-tidy street, whose walk is where the data draws
+  // it. The verge was worked out again from the drawn walk afterward, 2.5 m on one side and 0.875 m on the other.
+  const over = [entry({ vergeWidth: 1.5 })];
+  const near = laid("residential-tidy", fitSide({ drawn: 1.6 }), over), far = laid("residential-tidy", fitSide({ drawn: 3.6 }), over, 1);
+  expect([near.verge, far.verge]).toEqual([1.5, 1.5]);
+  for (const s of [near, far]) expect(s.asked).toEqual({ vergeWidth: { asked: 1.5, at: "downtown.jsonl:2", effect: 1.5 } });
+  // Without the entry the drawn walk still sets it, as before.
+  expect(laid("residential-tidy", fitSide({ drawn: 3.6 }), [], 1).verge).toBe(2.75);
+  // Its other side has 3 m to the building line, where a rule takes the verge away (no room for a verge): the width asked
+  // for brings it back, of its type's kind. So does a walk's width a rule took away (a walk tagged absent).
+  const tight = laid("residential-tidy", fitSide({ room: 3, drawn: 1.6 }), over);
+  expect([tight.section.verge, tight.verge, tight.asked.vergeWidth!.by]).toEqual(["planted", 1.5, undefined]);
+  expect(laid("residential-tidy", fitSide({ tagged: "none" }), [entry({ walkWidth: 2 })]).walk).toBe(2);
+  // A walk's width asked for stands though the building line is nearer; one worked out gives way to it.
+  expect(laid("main-street", fitSide({ room: 2 }), [entry({ walkWidth: 3 })]).walk).toBe(3);
+  expect(laid("main-street", fitSide({ room: 2 }), []).walk).toBe(2);
+  // A kerb asked for, its wear, a pair's median side's verge.
+  const worn = laid("residential-tidy", fitSide(), [entry({ kerb: "worn", wear: 0.9 })]);
+  expect([worn.section.kerb, worn.section.wear, worn.asked.kerb!.effect, worn.asked.wear!.effect]).toEqual(["worn", 0.9, "worn", 0.9]);
+  const inner = laid("boulevard", fitSide({ inner: true }), [entry({ verge: "gravel", vergeWidth: 2 })], 0, 10);
+  expect([inner.section.verge, inner.verge]).toEqual(["gravel", 2]);
+});
+
+test("where what is in effect is not what an entry asked, the report says so and why", () => {
+  // A walk asked for where the building line leaves no room past the verge asked for.
+  const tight = laid("residential-tidy", fitSide({ room: 0.9 }), [entry({ verge: "planted", vergeWidth: 1.5, walk: "walk" })]);
+  expect(tight.asked.walk).toEqual({ asked: "walk", at: "downtown.jsonl:2", effect: "none", by: "a walk under 0.6 m is none (0 m: the building line 0.9 m out)" });
+  expect(tight.asked.vergeWidth!.by).toBeUndefined();
+  // A verge's width asked of a type with no verge; a median asked of a side that faces no pair; a walk where the data
+  // draws it, on a side where it draws none; a width a part holds in eighths of a metre.
+  const none = laid("downtown", fitSide({ room: 20 }), [entry({ vergeWidth: 1.2, median: "planted", walkAt: "drawn" })]);
+  expect(none.asked.vergeWidth).toEqual({ asked: 1.2, at: "downtown.jsonl:2", effect: 0, by: 'no verge: verge "none" by type downtown' });
+  expect(none.asked.median).toEqual({ asked: "planted", at: "downtown.jsonl:2", effect: "none", by: "not a pair's median side" });
+  expect(none.asked.walkAt).toEqual({ asked: "drawn", at: "downtown.jsonl:2", effect: "kerb", by: "the data draws no walk on this side" });
+  expect(laid("residential-tidy", fitSide(), [entry({ vergeWidth: 1.3 })]).asked.vergeWidth).toEqual({ asked: 1.3, at: "downtown.jsonl:2", effect: 1.25, by: "held in eighths of a metre" });
+  // Two widths asked for are as asked by the one between them the seed chose.
+  expect(laid("residential-tidy", fitSide(), [entry({ vergeWidth: [1, 2] })]).asked.vergeWidth!.by).toBeUndefined();
+  // A walk's width asked of a type with no walk is no walk's, and where it comes from is named.
+  expect(laid("alley", fitSide(), [entry({ walkWidth: 2 })]).asked.walkWidth).toEqual({ asked: 2, at: "downtown.jsonl:2", effect: 0, by: 'no walk: walk "none" by type alley' });
+});
+
+test("the kerbs are laid with the wear their side's section has, a kerb an entry set even on a type laid without them, and a narrow verge an entry set not paved over", () => {
+  const types = Object.keys(streetRules().types), raised = heldSide(4, 0, 2, kindsByte(0, 1, 0));
+  const part = (type: string, side = raised): StreetsPart => ({ x0: 0, z0: 0, stretches: [{ type: types.indexOf(type), flags: 0, seed: 7, sides: [side, side], xz: Float64Array.of(0, 100, 400, 100) }], corners: [] });
+  const lines = (p: StreetsPart, wear: number, asked: number) => {
+    const held = new PlannedStreets();
+    held.put(0, p, 0, 0, 16, 16);
+    held.keep(p, Float64Array.of(wear, wear), Uint8Array.of(asked, asked));
+    return kerbLines(held, p).map((k) => kerbSection(k, p, held, streetRules(), new Set(["highway", "alley"])));
+  };
+  // A planted verge of 0.4 m: paved over by the kerb's walk, as the walk kit did, unless an entry asked for it.
+  const narrow = part("residential-tidy", heldSide(4, 0.375, 2, kindsByte(1, 1, 0)));
+  expect([lines(narrow, 0.25, 0)[0]!.walk, lines(narrow, 0.25, ASKED_VERGE)[0]!.walk]).toEqual([2.375, 0]);
+  // The type's wear was what the placing read, whatever the rules and the overlay set.
+  expect(lines(part("residential-tidy"), 0.9, 0).map((s) => s?.wear)).toEqual([0.9, 0.9]);
+  const plain = new StreetSectors(), p = part("residential-tidy");
+  plain.put(0, p, 0, 0, 16, 16);
+  expect(kerbLines(plain, p).map((k) => kerbSection(k, p, plain, streetRules(), new Set())?.wear)).toEqual([0.25, 0.25]);
+  // An alley is laid without bent kerbs, but where an entry set its kerb.
+  expect(lines(part("alley"), 0.35, 0)).toEqual([null, null]);
+  expect(lines(part("alley"), 0.35, ASKED_KERB).map((s) => s?.kerb)).toEqual(["raised", "raised"]);
 });

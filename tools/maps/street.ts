@@ -88,6 +88,14 @@ else if (point) {
 if (found.length === 0) throw new Error(`no stretch of ${query} in ${reportFile}`);
 for (const r of found.slice(0, 12)) console.log(JSON.stringify(r, null, 1));
 if (found.length > 12) console.log(`... and ${found.length - 12} more stretches`);
+// Each field an overlay entry set on a side: what it asked for, what is in effect, and why where they differ.
+type Asked = { asked: unknown; at: string; effect: unknown; by?: string };
+for (const r of found.slice(0, 12)) {
+  const section = r.section as Record<"left" | "right", { overlay?: Record<string, Asked> } | undefined>;
+  for (const side of ["left", "right"] as const) {
+    for (const [field, a] of Object.entries(section[side]?.overlay ?? {})) console.log(`${r.id} ${side} ${field}: asked ${JSON.stringify(a.asked)} by ${a.at}, in effect ${JSON.stringify(a.effect)}${a.by ? `, not as asked: ${a.by}` : ""}`);
+  }
+}
 
 // Its plan.
 const mapFile = option("map") ?? (city ? join(ROOT, "var/maps", `${city}.snmap`) : null);
