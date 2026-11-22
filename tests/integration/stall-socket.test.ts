@@ -5,7 +5,9 @@
 import { expect, test } from "bun:test";
 import { ClientSession } from "../../client/core/session.ts";
 import { connect } from "../../agent/socket.ts";
+import { sourceWire } from "../../server/wire.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
+import { stampWire } from "../../shared/net/protocol.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import type { StallRow } from "../fixtures/stall-server.ts";
 import { noteInputs } from "../fixtures/stall.ts";
@@ -26,6 +28,8 @@ test("after ticks of 100 to 700 ms on a real socket, no page's clock jumps, no i
   const sent = new Set<number>();
   const send = conn.send.bind(conn);
   conn.send = (channel, data) => (noteInputs(data, sent), send(channel, data));
+  // The server in its worker speaks its source's version, so the page here says the same.
+  stampWire(sourceWire()!);
   const s = new ClientSession(conn, {
     name: "walker", key: testKey("walker"), spectate: false, registry: coreRegistry(), clipHash: ready.clip, look: defaultLook(),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null), nodes: (h, reg) => mapNodes(map, h, reg), statics: map.statics,

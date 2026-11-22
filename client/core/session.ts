@@ -1687,7 +1687,7 @@ export class ClientSession {
 
   private welcome(r: BitReader): void {
     this.motions.clear(); this.corpseMotions.clear(); this.corpseRetryAt = -TICK_RATE;
-    const version = r.u16();
+    const version = r.u32();
     const tick = r.u32();
     this.ownHandle = r.u32();
     this.ownKind = r.u16();

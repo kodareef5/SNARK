@@ -1,5 +1,6 @@
 import type { ClientSession } from "../../client/core/session.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../../shared/net/protocol.ts";
+import { BTN_PRIMARY } from "../../shared/sim/character.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import type { NodeSpot } from "../../shared/world/nodes.ts";
 import type { Harness, Pilot } from "./net.ts";
@@ -49,9 +50,9 @@ export function standFacing(h: Harness, s: ClientSession, pilot: Pilot, at: { x:
 
 /** Holds the primary button for exactly `n` swings. The first lands at once and the rest are `swingTicks` apart. */
 export function swing(h: Harness, pilot: Pilot, n: number, swingTicks: number): void {
-  pilot.buttons |= 4;
+  pilot.buttons |= BTN_PRIMARY;
   h.run(((swingTicks * n - 5) * 1000) / 30);
-  pilot.buttons &= ~4;
+  pilot.buttons &= ~BTN_PRIMARY;
   h.run(700);
 }
 

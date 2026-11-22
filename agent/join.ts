@@ -6,13 +6,20 @@ import { fetchMapFile } from "../client/core/fetched.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { withContent } from "../shared/content/registry.ts";
+import { stampWire } from "../shared/net/protocol.ts";
+import { wireOf } from "../shared/net/wire.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { CityStatics } from "../shared/world/city.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../shared/world/mapfile.ts";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { fileUrl } from "./main.ts";
 import { connect } from "./socket.ts";
 
 export async function joinServer(url: string, name: string, key: Uint8Array, reg: Registry, ticket: Uint8Array | null = null): Promise<ClientSession> {
+  // It says hello with the wire version of its own source, as a built page does with the one it was built from.
+  const shared = join(import.meta.dir, "../shared");
+  stampWire(wireOf(readdirSync(shared, { recursive: true }) as string[], (file) => readFileSync(join(shared, file), "utf8")));
   const get = async (file: string): Promise<Response> => {
     const res = await fetch(fileUrl(url, file));
     if (!res.ok) throw new Error(`asked for ${file} and got ${res.status}`);

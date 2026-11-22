@@ -45,6 +45,7 @@ import { buildUiAssets } from "./ui/assets.ts";
 import { buildPageScript, preloaded } from "./page-script.ts";
 import { finishScript, pageWithoutNotes, withoutNotes } from "./script-notes.ts";
 import { checkoutBuild } from "../server/reports.ts";
+import { sourceWire } from "../server/wire.ts";
 import { writeFirstFrame } from "./first-frame.ts";
 
 /** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
@@ -146,7 +147,9 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const bent = new Set(BENT_SECTIONS.map((d) => d.id));
   const content = new TextEncoder().encode(JSON.stringify(CORE_CONTENT.filter((d) => !bent.has(d.id)))), contentName = `assets/content.${partHash(content)}.json`;
   writeFileSync(join(dist, contentName), content);
-  const define = { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName) };
+  // The page says hello with the wire version of the source it is built from (shared/net/wire.ts), and build.json keeps it.
+  const wire = sourceWire(root)!;
+  const define = { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __TOUCH_ATLAS_URL__: JSON.stringify(ui.touch), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName), __WIRE__: String(wire) };
   // The page's script is main.js and page.js, and each file it fetches later takes what it shares with them from
   // page.js (tools/page-script.ts). Workers and worklets run in their own threads, so each is bundled as a separate file.
   const workers = await Bun.build({ entrypoints: ["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/notes/shot-worker.ts"].map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked", define });
@@ -260,7 +263,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
   await buildEntry(dist);
   // The commit the client was built from and whether the tree had changes, which a bug report names (server/reports.ts).
-  writeFileSync(join(dist, "build.json"), JSON.stringify({ ...checkoutBuild(root), at: new Date().toISOString() }) + "\n");
+  writeFileSync(join(dist, "build.json"), JSON.stringify({ ...checkoutBuild(root), at: new Date().toISOString(), wire }) + "\n");
   // What the first frame waits for, part by part and the script by module, beside the last build's (tools/first-frame.ts).
   writeFirstFrame(dist, opts.quick ?? false);
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: packBytes + landmarks };

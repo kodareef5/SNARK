@@ -19,7 +19,7 @@ import { ISSUED_SADDLE } from "../../server/taming.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { CMD_DROP, CMD_ORDER, CMD_RESPAWN, ORDER_MATE, ORDER_UNSADDLE, RESULT_DENIED, RESULT_OK, TEXT_NOTICE } from "../../shared/net/protocol.ts";
-import { BTN_JUMP, BTN_SPRINT, BTN_USE, MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, BTN_USE, MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { CHARGED, FLAG_ISSUED } from "../../shared/sim/items.ts";
 import { TestCluster, beat, keyAt, rec, rise, travel } from "../fixtures/cluster.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -69,9 +69,9 @@ const starters = (h: Harness, me: EntityRecord): EntityRecord[] => [...h.host.re
 
 /** One click: the button down long enough for the throw's strike, and let go. */
 function click(h: Harness, pilot: Pilot): void {
-  pilot.buttons |= 4;
+  pilot.buttons |= BTN_PRIMARY;
   h.run(300);
-  pilot.buttons &= ~4;
+  pilot.buttons &= ~BTN_PRIMARY;
   h.run(400);
 }
 

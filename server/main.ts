@@ -10,6 +10,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG, type Connection } from "../shared/net/transport.ts";
+import { stampWire } from "../shared/net/protocol.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
@@ -38,6 +39,7 @@ import { partHash, partsFolder, readHead, type MapFile } from "../shared/world/m
 import { mapLabel, type Destination } from "./cluster/cluster.ts";
 import { PlayLog, REPORT_BYTES_MAX } from "./playlog.ts";
 import { ReportStore } from "./reports.ts";
+import { serverWire } from "./wire.ts";
 import type { Client } from "./game.ts";
 import { comingSoonPage, htmlResponse, linkOf, pathOf, placeOf, startPage, worldAddress, type SiteLinks, type SiteWorld } from "./site.ts";
 
@@ -298,6 +300,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const manifestFile = join(clientDir, "assets/manifest.json");
   if (!existsSync(manifestFile)) throw new Error(`${manifestFile} is missing: build the client first (bun run build)`);
   const manifest = parseManifest(readFileSync(manifestFile, "utf8"));
+  const { wire, stale } = serverWire(clientDir);
+  stampWire(wire);
+  if (stale) console.log(`client: ${clientDir} was built from other source than this server runs, so its page is refused: bun run build`);
   const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(clientDir, "assets", manifest.files[file]!.name)));
   const pack = parsePack(served(manifest.boot));
   const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
