@@ -5,6 +5,7 @@
 //
 // What blocks: a grown body of a species, standing in the world, not held, sitting, knocked out or dead, and not of the
 // walker's own tribe (tribemates and their tames pass through one another). A body that moves pushes softly.
+// A young body neither blocks nor is blocked: the stadium is a grown body's, far past where a hatchling stands.
 
 import { CUE_DEAD, CUE_HELD, CUE_OUT } from "../shared/anim/pose.ts";
 import { dequantX, dequantY, quantX, quantY, type SentView } from "../shared/net/view.ts";
@@ -111,6 +112,7 @@ export class BodyBlocking {
   around(e: number, x: number, y: number, z: number, r: number, team: number, creature = false, skip = -1): Blockers | null {
     const world = this.world, ents = world.ents, grid = this.grid, list = this.list;
     list.clear();
+    if (creature && ents.grown[e] !== 0) return null;
     const far = this.reach + r + 1;
     const n = grid.near(x, z, far);
     if (n === 0) return null;

@@ -2,7 +2,6 @@
 // Usage: bun tests/fixtures/crash-child.ts <db path> <seed>
 
 import { writeSync } from "node:fs";
-import { DEADLINE_BREED } from "../../server/breeding.ts";
 import { createHost } from "../../server/host.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
@@ -115,7 +114,7 @@ function eggLoop(dbPath: string, seed: number): never {
         const span = 300 + rng.int(2000);
         egg.egg = { species: dodo, span, hatchAt: host.world.tick + span, carrier: 0 };
         host.death.place(egg);
-        host.deadlines.push(egg.egg.hatchAt, DEADLINE_BREED, egg.pid, egg.egg.hatchAt);
+        host.deadlines.push(egg.egg.hatchAt, host.breeding.deadline, egg.pid, egg.egg.hatchAt);
         note(OP_LAID);
       } else if (k === 2) {
         const lying = [...records.byPid.values()].filter((r) => r.kind === prop && r.egg !== null && records.entOf.has(r.pid));

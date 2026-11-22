@@ -48,6 +48,7 @@ import type { ServerWorld } from "./world.ts";
 import { creatureSize } from "./young-move.ts";
 import type { EventData } from "./api/module.ts";
 import { event, type Bus } from "./events/bus.ts";
+import { Signal } from "./signal.ts";
 
 const CHUNK_METRES = 64;
 /** Metres. A swing also casts rays this far off its aim, to each side and above and below. */
@@ -173,7 +174,7 @@ export class Combat {
   private biting = false;
   private contactPadding = 0;
   /** After a successful creature contact, for its slow, impulse and temporary attachment. */
-  onCreatureHit: ((by: EntityRecord, target: number, attack: CreatureAttackDef, mode: CreatureModeDef | undefined) => void) | null = null;
+  readonly onCreatureHit = new Signal<[by: EntityRecord, target: number, attack: CreatureAttackDef, mode: CreatureModeDef | undefined]>();
   damageModifier: ((rec: EntityRecord) => number) | null = null;
   resistanceModifier: ((rec: EntityRecord) => number) | null = null;
   private readonly human: Uint8Array;
@@ -213,11 +214,11 @@ export class Combat {
   private aimedBone = -1;
   private readonly ray = new Float64Array(3);
   /** A shot left `c`'s weapon. `draw` is 0 to 1. */
-  onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
+  readonly onFire = new Signal<[c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number]>();
   /** A thrown item left `c`'s hand. `draw` is how long a charged throw was held, 0 to 1, and 1 for any other. */
-  onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number, draw: number) => void) | null = null;
+  readonly onThrow = new Signal<[c: Client, rec: EntityRecord, item: number, quality: number, draw: number]>();
   /** The strike of a click with the soul ball in `slot` of `rec` in hand. */
-  onBall: ((c: Client, rec: EntityRecord, slot: number) => void) | null = null;
+  readonly onBall = new Signal<[c: Client, rec: EntityRecord, slot: number]>();
   /** Gives a hit's buff, reading its bola fields (server/entangle.ts). Unset, the buff is given as it is. `by` is a pid or 0. */
   entangle: ((victim: EntityRecord, buff: number, by: number) => void) | null = null;
   /** Hits landed on structures. `lastStructure` holds the last one, and its `left` is 0 if the structure is gone. */
@@ -225,9 +226,9 @@ export class Combat {
   /** The rider of a mount, or null. A rider also gets half the XP its mount earns by a kill. */
   riderOf: ((mount: EntityRecord) => EntityRecord | null) | null = null;
   /** `points` is the health taken. Not called for a blow that kills. */
-  onHarm: ((victim: EntityRecord, points: number) => void) | null = null;
+  readonly onHarm = new Signal<[victim: EntityRecord, points: number]>();
   /** Called for a structure that was harmed and still stands. */
-  onStructureHurt: ((ref: number) => void) | null = null;
+  readonly onStructureHurt = new Signal<[ref: number]>();
   /** The bodies of dead creatures, which a survivor's swing harvests. */
   corpses: Corpses | null = null;
   readonly lastStructure = { ref: 0, damage: 0, left: 0 };
@@ -422,7 +423,7 @@ export class Combat {
     src.x = ents.x[e]!; src.z = ents.z[e]!;
     const hits = this.hits;
     this.land(src, target, zone, point[0], point[1], point[2], 0, undefined, !ongoing);
-    if (!ongoing && this.hits > hits && this.last.damage > 0 && !this.last.killed) this.onCreatureHit?.(by, target, attack, mode);
+    if (!ongoing && this.hits > hits && this.last.damage > 0 && !this.last.killed) this.onCreatureHit.emit(by, target, attack, mode);
   }
 
   creatureStructure(by: EntityRecord, ref: number, attack: CreatureAttackDef, mode: CreatureModeDef | undefined, point: readonly [number, number, number], power: number): void {
@@ -534,7 +535,7 @@ export class Combat {
     const inv = items.inv(rec);
     // A soul ball's click keeps or looses a tame, and the ball stays in the hand (server/balls.ts).
     if (slot >= 0 && (world.reg.ballFull[inv.item[slot]!] !== 0 || world.reg.ballEmpty[inv.item[slot]!] !== 0)) {
-      this.onBall?.(c, rec, slot);
+      this.onBall.emit(c, rec, slot);
       return;
     }
     if (slot >= 0 && world.reg.weapon[inv.item[slot]!]?.kind === W_THROWN) {
@@ -548,7 +549,7 @@ export class Combat {
     }
     const weapon = inv.item[slot]!;
     if (world.reg.uses[weapon]! > 0) items.wear(rec, slot, 1);
-    this.onFire?.(c, rec, weapon, inv.quality[slot]!, inv.ammo[slot]!, c.drawn);
+    this.onFire.emit(c, rec, weapon, inv.quality[slot]!, inv.ammo[slot]!, c.drawn);
   }
 
   private throwIt(c: Client, rec: EntityRecord, slot: number): void {
@@ -557,7 +558,7 @@ export class Combat {
     const item = inv.item[slot]!;
     const quality = inv.quality[slot]!;
     if (!items.burn(rec, slot, 1)) return;
-    this.onThrow?.(c, rec, item, quality, c.drawn);
+    this.onThrow.emit(c, rec, item, quality, c.drawn);
   }
 
   /**
@@ -1124,7 +1125,7 @@ export class Combat {
     if (bus.n[DAMAGED] !== 0) {
       bus.after(DAMAGED, { target: "body", victim: victim.pid, kind: reg.ids[vkind]!, team: victim.team, byPid: by ? by.pid : 0, byTeam: by ? by.team : 0, item: item !== 0 ? reg.ids[item]! : "", type: TYPE_WORDS[hit.type]!, zone, taken, blocked: harm.blocked, killed, left: killed ? 0 : survival.value(victim, V_HEALTH) });
     }
-    if (taken > 0 && !killed) this.onHarm?.(victim, taken);
+    if (taken > 0 && !killed) this.onHarm.emit(victim, taken);
     this.hits++;
     const last = this.last;
     last.by = by ? by.pid : 0;
@@ -1263,7 +1264,7 @@ export class Combat {
     if (bus.n[DAMAGED] !== 0) {
       bus.after(DAMAGED, { target: "structure", victim: ref, kind, team: owner, byPid: src.by ? src.by.pid : 0, byTeam: src.by ? src.by.team : 0, item: src.item !== 0 ? world.reg.ids[src.item]! : "", type: TYPE_WORDS[src.type]!, zone: ZONE_NONE, taken: left === 0 ? before : harm.health, blocked: 0, killed: left === 0, left });
     }
-    if (left > 0) this.onStructureHurt?.(ref);
+    if (left > 0) this.onStructureHurt.emit(ref);
     const done = left === 0 ? before : harm.health;
     this.structureHits++;
     this.lastStructure.ref = ref;

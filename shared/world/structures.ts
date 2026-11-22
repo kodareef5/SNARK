@@ -237,7 +237,7 @@ export class StructureStore {
   /** Kinds that bodies pass through. Rays and drawing still see them. */
   private readonly soft: Uint8Array | null;
   /** Per kind, in metres from a structure's origin: the bottom and top of its boxes, and how far they reach sideways at any yaw. */
-  private readonly low: Float32Array;
+  readonly low: Float32Array;
   private readonly high: Float32Array;
   readonly spread: Float32Array;
   /** Per kind, metres its footprint is widened by, for convex parts on a 60 degree vector, whose corners round a little out. */

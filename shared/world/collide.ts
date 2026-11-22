@@ -548,15 +548,16 @@ const WALL_TALL = 1.2;
  * least WALL_TALL high, the deepest of them. Floors, ceilings, roofs and steps (too
  * low), ramps (convex parts), the ground and resource nodes are not asked: what a creature's head is held clear of
  * (shared/sim/character.ts), which may dip toward a ramp it climbs and pass under a roof it clips, as ARK's mounts do
- * (D777). Leaves the deepest wall's level way out in `wallOut`.
+ * (D777). Nor is a piece whose underside is at `over` or higher, the top of the body the head is on: a beam that body
+ * walks under is overhead to it as a roof is. Leaves the deepest wall's level way out in `wallOut`.
  */
-export function wallDepth(w: CollisionWorld, x: number, y: number, z: number, r: number): number {
+export function wallDepth(w: CollisionWorld, x: number, y: number, z: number, r: number, over = Infinity): number {
   const structs = w.structs;
   const n = structs.query(x - r, z - r, x + r, z + r, found, y - PAD, y + 2 * r + PAD);
   let deepest = 0;
   for (let i = 0; i < n; i++) {
-    const ref = found.refs[i]!, kind = structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 0xffff]!;
-    if (2 * structs.halfY[kind]! < WALL_TALL) continue;
+    const ref = found.refs[i]!, t = structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 0xffff, kind = t.kind[slot]!;
+    if (2 * structs.halfY[kind]! < WALL_TALL || t.y[slot]! + structs.low[kind]! >= over) continue;
     // Every way in counts, the top of a wall as its face: a contact that turns from the one to the other as a head moves
     // must not jump from nothing to deep.
     if (!capsuleBox(structs, ref, x, y, z, r, 2 * r, SKIN) || push.hull || push.depth <= deepest) continue;

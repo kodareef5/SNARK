@@ -45,7 +45,6 @@ import type { Lists } from "./settings/lists.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
-export const DEADLINE_CORPSE = 10;
 /** Ticks a body lies at 1x. ARK publishes none: fifteen minutes, as a cache lies (D244). */
 export const CORPSE_TICKS = 15 * 60 * TICK_RATE;
 /** A drop a tool favours is picked this many times as often: 60 rolls in 100 of two drops alike, as ARK's hatchet and pick. */
@@ -170,9 +169,12 @@ export class Corpses {
   private readonly rng: Rng;
   private readonly corpse: number;
   private reach = PAD;
+  /** Its kind in the deadline heap. */
+  private readonly deadline: number;
 
   constructor(ctx: CorpsesContext, seed: number) {
     this.ctx = ctx;
+    this.deadline = ctx.deadlines.kind("corpse", (a, stamp) => this.due(a, stamp));
     this.seed = seed;
     this.rng = new Rng(seed);
     this.corpse = ctx.world.reg.index.get("core:corpse") ?? 0;
@@ -541,10 +543,10 @@ export class Corpses {
       if (at > tick && at < next) next = at;
     }
     b.next = Math.max(next, tick + 1);
-    this.ctx.deadlines.push(b.next, DEADLINE_CORPSE, b.rec.pid, b.next);
+    this.ctx.deadlines.push(b.next, this.deadline, b.rec.pid, b.next);
   }
 
-  /** A DEADLINE_CORPSE entry came due. */
+  /** A deadline of its kind came due. */
   due(pid: number, stamp: number): void {
     const b = this.bodies.get(pid);
     if (!b || b.next !== stamp) return;

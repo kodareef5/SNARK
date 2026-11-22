@@ -126,6 +126,9 @@ function writeVehicle(w: BitWriter, b: Body): void {
     const marine = b.vehicleHullCondition !== 1 || b.vehicleFlooding !== 0;
     w.bool(marine);
     if (marine) { w.f32(b.vehicleHullCondition); w.f32(b.vehicleFlooding); }
+    const thrust = b.vehicleThrust !== 0 || b.vehicleThrustCool !== 0;
+    w.bool(thrust);
+    if (thrust) { w.u32(b.vehicleThrust); w.u32(b.vehicleThrustCool); }
     // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
   }
   // A seat costs a body one bit when it has none: the entity it sits on, the seat's place in it from 1, and the entity's generation.
@@ -165,6 +168,9 @@ function readVehicle(r: BitReader, b: Body): void {
   const marine = b.vehicle && r.bool();
   b.vehicleHullCondition = marine ? r.f32() : 1;
   b.vehicleFlooding = marine ? r.f32() : 0;
+  const thrust = b.vehicle && r.bool();
+  b.vehicleThrust = thrust ? r.u32() : 0;
+  b.vehicleThrustCool = thrust ? r.u32() : 0;
   b.seat = r.bool() ? r.varint() + 1 : 0;
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;
   b.seatGen = b.seat !== 0 ? r.bits(12) : 0;

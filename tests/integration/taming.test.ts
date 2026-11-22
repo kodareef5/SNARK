@@ -220,7 +220,7 @@ test("a narcotic keeps it under, one after another; harm costs how well it is do
   expect(taming.bites).toBe(1);
   const well = ada.subject!.te;
   expect(Math.round(well * 1000) / 10).toBe(98.5);
-  h.host.combat.onHarm!(rec, (rec.vitals!.max[V_HEALTH]! / 1e6) * 0.2);
+  h.host.combat.onHarm.emit(rec, (rec.vitals!.max[V_HEALTH]! / 1e6) * 0.2);
   h.run(500);
   expect(ada.subject!.te).toBeCloseTo(well * 0.8, 2);
   expect(ada.subject!.progress).toBeCloseTo(200 / 3000, 2);
