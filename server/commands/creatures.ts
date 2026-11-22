@@ -16,7 +16,7 @@ export function addCreatureCommands(con: Console): void {
         const host = ctx.host;
         const me = c ? host.records.byPid.get(c.pid) : undefined;
         if (!c || c.ent < 0 || !me) return needsBody;
-        const hit = host.death.target(c, 30);
+        const hit = host.containers.target(c, 30);
         const rec = hit >= 0 ? host.records.byPid.get(host.world.ents.pid[hit]!) : undefined;
         if (!rec || rec.keyHash !== null || rec.egg !== null || !rec.vitals || host.world.reg.defs[rec.kind]?.type !== "species") return "no creature there";
         if (rec.team === me.team) return "it is yours already";
@@ -74,7 +74,7 @@ export function addCreatureCommands(con: Console): void {
         }
         const c = ctx.client;
         if (!c || c.ent < 0) return needsBody;
-        const hit = host.death.target(c, 8);
+        const hit = host.containers.target(c, 8);
         const rec = hit >= 0 ? host.records.byPid.get(host.world.ents.pid[hit]!) : undefined;
         return rec && host.breeding.hatchNow(rec) ? "hatched" : "no egg there";
       },
@@ -99,7 +99,7 @@ export function addCreatureCommands(con: Console): void {
         const c = ctx.client;
         const host = ctx.host;
         if (!c || c.ent < 0) return needsBody;
-        const hit = host.death.target(c, 30);
+        const hit = host.containers.target(c, 30);
         const rec = hit >= 0 ? host.records.byPid.get(host.world.ents.pid[hit]!) : undefined;
         return rec && host.breeding.growNow(rec) ? "grown" : "nothing young there";
       },

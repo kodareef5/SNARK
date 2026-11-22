@@ -55,8 +55,8 @@ export function benchFar(host: Host, run: Run, section: (title: string) => void,
   feed.listFar = timed(list);
   feed.sendFar = timed(send);
   const bytes = new Float64Array(game.clients.length);
-  const spend = game.spendChunkWindow.bind(game);
-  game.spendChunkWindow = (c, n) => {
+  const spend = game.replication.spendChunkWindow.bind(game.replication);
+  game.replication.spendChunkWindow = (c, n) => {
     const ok = spend(c, n);
     if (ok) bytes[c.id] = bytes[c.id]! + n;
     return ok;
@@ -115,7 +115,7 @@ export function benchFar(host: Host, run: Run, section: (title: string) => void,
   host.setSetting("FarRadius", String(FAR_RADIUS));
   feed.listFar = list;
   feed.sendFar = send;
-  game.spendChunkWindow = spend;
+  game.replication.spendChunkWindow = spend;
   benchFarJoins(section, record);
   benchFarBlocks(section, record);
   benchFarNodes(section, record);
@@ -558,7 +558,7 @@ else if (import.meta.main) {
   }
   const host = createHost(reg, { world, game: { maxClients: 128 } });
   const net = new LoopbackNet(7);
-  host.game.listen(net);
+  host.game.sessions.listen(net);
   const places = new Map<string, { x: number; y: number; z: number; yaw: number }>();
   for (let i = 0; i < 100; i++) {
     const [bx, bz] = centers[i < 40 ? 0 : 1 + Math.floor((i - 40) / 2)]!;
@@ -566,7 +566,7 @@ else if (import.meta.main) {
     const [x, z] = [bx + 26 + rng.range(0, spread), bz + rng.range(-spread, spread)];
     places.set(`bot${i}`, { x, y: hf.heightAt(x, z), z, yaw: 0 });
   }
-  host.game.savedPosition = (name) => places.get(name) ?? null;
+  host.game.sessions.savedPosition = (name) => places.get(name) ?? null;
   const bots = Array.from({ length: 100 }, (_, i) => new Bot(net, `bot${i}`, reg.baseHash, i + 1));
   let now = 0;
   const run: Run = (ticks, times) => {

@@ -437,7 +437,7 @@ export class Tactical {
         h.farOlder = FAR_BYTES;
         continue;
       }
-      if ((tick > 0 && tick + bytes > FAR_TICK_BYTES) || !this.game.spendChunkWindow(c, bytes)) return;
+      if ((tick > 0 && tick + bytes > FAR_TICK_BYTES) || !this.game.replication.spendChunkWindow(c, bytes)) return;
       this.game.endOwn(c);
       h.farSent[chunk] = s.farVersion;
       tick += bytes;

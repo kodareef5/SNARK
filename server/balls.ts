@@ -18,6 +18,7 @@ import type { Breeding } from "./breeding.ts";
 import type { Buffs } from "./buffs.ts";
 import type { Carry } from "./carry.ts";
 import type { Creatures } from "./creatures.ts";
+import type { Containers } from "./containers.ts";
 import type { Death } from "./death.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
@@ -94,6 +95,7 @@ export interface BallsContext {
   readonly riding: Riding;
   readonly carry: Carry;
   readonly death: Death;
+  readonly containers: Containers;
   /** The record takes its body's place and facing, and is parted from it (Persistence.detach, or the same without a save). */
   detach(rec: EntityRecord, e: number): void;
   /** The record is told its new body (Persistence.attach). */
@@ -169,7 +171,7 @@ export class Balls {
 
   /** The empty ball in `slot` of `me` takes in the tame `me` looks at. */
   private keep(c: Client, me: EntityRecord, slot: number): void {
-    const why = this.keepIn(me, slot, this.ctx.death.target(c, KEEP_REACH));
+    const why = this.keepIn(me, slot, this.ctx.containers.target(c, KEEP_REACH));
     if (why !== "") this.ctx.notice(me.pid, why);
   }
 
@@ -199,13 +201,13 @@ export class Balls {
    * and true is returned then. Its saddle is on its record, and goes with it. The caller names it in a ball, or deletes it.
    */
   stow(rec: EntityRecord, e: number): boolean {
-    const { world, game, survival, breeding, death } = this.ctx;
+    const { world, game, survival, breeding, death, containers } = this.ctx;
     const ents = world.ents;
     const x = ents.x[e]!;
     const y = ents.y[e]!;
     const z = ents.z[e]!;
     this.ctx.release(rec);
-    for (const other of game.clients) if (other?.active && other.open === rec.pid) death.close(other);
+    for (const other of game.clients) if (other?.active && other.open === rec.pid) containers.close(other);
     const cargo = death.dropAll(rec, x, y, z) !== null;
     // Its time stops here: every clock it has is as of this tick, and nothing of it is due while it is kept.
     const tick = Math.max(1, world.tick);

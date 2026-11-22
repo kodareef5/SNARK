@@ -53,7 +53,7 @@ export function benchBrawlPhysics(section: Section, record: Row): void {
     items.move(rec, inv.item.lastIndexOf(pistol), rec, inv.hotbar, 1);
     rec.held = 0;
   };
-  const before = sessions[0]!.stats.corrections, met = server.blocking.stats.met, walkers = server.blocking.stats.walkers;
+  const before = sessions[0]!.stats.corrections, met = server.players.blocking.stats.met, walkers = server.players.blocking.stats.walkers;
   let frame = 0;
   h.run(SECONDS * 1000, () => {
     frame++;
@@ -75,8 +75,8 @@ export function benchBrawlPhysics(section: Section, record: Row): void {
   record("whole tick, median", at(ticks, 0.5), "ms", 8);
   record("whole tick, 99th percentile", at(ticks, 0.99), "ms", 16);
   record("lane: ticks in which the work that can wait gave way", lane.yielded, "");
-  record("bodies met a walker a tick", (server.blocking.stats.met - met) / ticks.length, "");
-  record("walkers that met a body a tick", (server.blocking.stats.walkers - walkers) / ticks.length, "");
+  record("bodies met a walker a tick", (server.players.blocking.stats.met - met) / ticks.length, "");
+  record("walkers that met a body a tick", (server.players.blocking.stats.walkers - walkers) / ticks.length, "");
   record("things thrown", h.host.loose.stats.thrown, "");
   record("things thrown laid to rest", h.host.loose.stats.rested, "");
   record("things thrown that struck a body", h.host.loose.stats.struck, "");

@@ -401,7 +401,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (ctx.game.bus.before(SESSION_CREATE, { name: c.name }) !== "") return RESULT_DENIED;
     const spawn = r.remainingBits >= 8 ? r.u8() : undefined;
     if (spawn !== undefined && !ctx.world.spawns[spawn]) return RESULT_INVALID;
-    return ctx.game.create(c, look, spawn) ? RESULT_OK : RESULT_FULL;
+    return ctx.game.sessions.create(c, look, spawn) ? RESULT_OK : RESULT_FULL;
   });
   ctx.game.handle(CMD_CLOSE, (c: Client) => {
     ctx.closeOpen(c);

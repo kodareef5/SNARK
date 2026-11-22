@@ -141,7 +141,7 @@ export class Harness {
     this.hf = mapHeightfield(this.map);
     this.server = this.host.game;
     this.net = new LoopbackNet(seed);
-    this.server.listen(this.net);
+    this.server.sessions.listen(this.net);
     this.clientFrameMs = 1000 / clientFps;
   }
 

@@ -93,7 +93,7 @@ for (const species of ["trike", "stego"]) {
       pilot.yaw = Math.atan2(dx, dz);
       pilot.pitch = Math.atan2(at.y - (feet.y[me]! + 1.62), Math.hypot(dx, dz));
       h.run(200);
-      expect(h.host.death.target(h.client(player)!, 3.5)).toBe(body.e);
+      expect(h.host.containers.target(h.client(player)!, 3.5)).toBe(body.e);
       pilot.buttons = BTN_USE; h.run(100); pilot.buttons = 0; h.run(300);
       expect(h.client(player)!.open).toBe(body.rec.pid);
       expect(player.open?.name).toBe(body.rec.name);

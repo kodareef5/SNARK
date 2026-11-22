@@ -71,11 +71,11 @@ for (const [name, link] of LINKS) {
       put(walker.ent, 100, 100);
       const e = car(100, 104);
       h.run(1500);
-      const z = a.z[e]!, contacts = h.host.urban.contacts!.contacts, met = h.server.feet.met, kept = h.host.urban.restingKept;
+      const z = a.z[e]!, contacts = h.host.urban.contacts!.contacts, met = h.server.players.feet.met, kept = h.host.urban.restingKept;
       h.pilots[0]!.moveZ = 1;
       const w = watch(h, s, 5000);
       say(`${name}, into a parked car`, w);
-      expect(h.server.feet.met - met).toBeGreaterThan(100);
+      expect(h.server.players.feet.met - met).toBeGreaterThan(100);
       // The car's heartbeats while it is pressed are answered from the last (server/vehicle-rest.ts), and it still stops the walker.
       expect(h.host.urban.restingKept - kept).toBeGreaterThan(0);
       expect(w.corrections - w.line).toBe(0);
@@ -99,11 +99,11 @@ for (const [name, link] of LINKS) {
         const e = h.host.spawnVehicle(kind, 100, 103, 0, 0);
         expect(e).toBeGreaterThanOrEqual(0);
         h.run(4000);
-        const met = h.server.feet.met;
+        const met = h.server.players.feet.met;
         h.pilots[0]!.moveZ = 1;
         const w = watch(h, s, 5000);
         say(`${name}, into ${sea > 0 ? "a floating" : "a parked"} ${kind}`, w);
-        expect(h.server.feet.met - met).toBeGreaterThan(30);
+        expect(h.server.players.feet.met - met).toBeGreaterThan(30);
         expect(w.corrections - w.line).toBe(0);
       } finally { h.host.shutdown(); }
     }
@@ -116,11 +116,11 @@ for (const [name, link] of LINKS) {
         if (between) { put(walker.ent, 101.2, 98); car(100, 104); car(102.4, 104); }
         else { put(walker.ent, 101.6, 100); for (const z of [104, 110, 116, 122]) car(100, z); }
         h.run(1500);
-        const met = h.server.feet.met;
+        const met = h.server.players.feet.met;
         h.pilots[0]!.moveZ = 1; h.pilots[0]!.moveX = between ? 0 : .3;
         const w = watch(h, s, 5000);
         say(`${name}, ${between ? "between two" : "along a row"}`, w);
-        expect(h.server.feet.met - met).toBeGreaterThan(between ? 100 : 20);
+        expect(h.server.players.feet.met - met).toBeGreaterThan(between ? 100 : 20);
         expect(w.corrections - w.line).toBe(0);
       } finally { h.host.shutdown(); }
     }
@@ -135,7 +135,7 @@ for (const [name, link] of LINKS) {
       car(100.2, 104);
       h.run(2000);
       expect(s.world!.structs.query(95, 93, 100, 112, new Found())).toBe(6);
-      const met = h.server.feet.met;
+      const met = h.server.players.feet.met;
       let low = Infinity, high = -Infinity;
       h.pilots[0]!.moveZ = .5;
       const w = watch(h, s, 6000, age => {
@@ -143,7 +143,7 @@ for (const [name, link] of LINKS) {
         low = Math.min(low, a.y[walker.ent]!); high = Math.max(high, a.y[walker.ent]!);
       });
       say(`${name}, off and onto a kerb beside one`, w);
-      expect(h.server.feet.met - met).toBeGreaterThan(5);
+      expect(h.server.players.feet.met - met).toBeGreaterThan(5);
       expect(low).toBeLessThan(.01); expect(high).toBeGreaterThan(.14);
       expect(w.corrections - w.line).toBe(0);
     } finally { h.host.shutdown(); }

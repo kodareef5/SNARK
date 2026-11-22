@@ -9,7 +9,10 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `admin/` | The admin pages' gate (`gate.ts`), the loop's own timing (`meter.ts`), and `/admin/` (`routes.ts`): the server's stats (`stats.ts`), its survivors (`survivors.ts`), the tribes' bases (`bases.ts`) and the survivor log's reads (`log-routes.ts`), as `shared/admin.ts` and `shared/survivor-log.ts` shape them |
 | `site.ts`, `front.ts` | Worlds at paths of one host: the site around them (the start screen, `links.json`, the source link's page), and the program that sends each path to its world |
 | `host.ts` | Assembles world, records, every system below, persistence, and the game loop |
-| `game.ts` | Connections, input buffering and validation, the body each session drives, snapshots by class, structure sync |
+| `game.ts` | The tick, what a session remembers (`Client`), and the messages any system may send one. It owns the three below |
+| `sessions.ts` | Connections: the hello and its checks, the welcome, bodies made and taken away, spectators, lingering |
+| `players.ts` | Input buffering and validation, the body each session drives, its action and aim, commands and their handlers |
+| `replication.ts` | What each session is sent: interest and the view, snapshots by class, structure sync |
 | `world.ts` | The world container, made from a map file; the proving ground as one |
 | `records.ts` | Cold records: name, inventory, vitals, genome, team, and what each system keeps on one |
 | `own.ts` | What only a survivor's own client is told, and the commands that act on its own things |
@@ -17,7 +20,8 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `survival.ts` | Vitals as rates and deadlines; what stats do to a body |
 | `progression.ts` | Experience, levels, engrams, crafting jobs |
 | `harvest.ts` | Gathering from resource nodes |
-| `death.ts` | Death, caches, markers, the use button, coming back |
+| `death.ts` | Death, caches and bags and their time, markers, coming back |
+| `containers.ts` | What a session has open and who may open what; the use button and the ray it acts along |
 | `beds.ts` | Where a survivor without a body may rise and why it chooses (it died, arrived, travels from a bed): the list, the waits, sleeping bags, travel between beds, names |
 | `combat.ts`, `projectiles.ts`, `history.ts` | Blows, the one damage function's caller, shots in flight, and where bodies were for lag compensation |
 | `buffs.ts` | What acts on a body for a time |

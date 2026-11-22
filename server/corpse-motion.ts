@@ -40,7 +40,7 @@ export class CorpseReplication {
       const motion = this.corpses.motion(e);
       if (!motion) continue;
       const bytes = motion.data.length + 16;
-      if (bytes > left || !this.game.spendChunkWindow(c, bytes)) { this.stats.deferred++; continue; }
+      if (bytes > left || !this.game.replication.spendChunkWindow(c, bytes)) { this.stats.deferred++; continue; }
       const writer = this.game.begin(S_CORPSE);
       writeCorpseMotion(writer, id, motion);
       const sent = writer.bytes().length;

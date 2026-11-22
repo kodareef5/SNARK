@@ -156,7 +156,7 @@ function jumpiness(series: readonly number[], still: boolean): number {
   return sum / n / mean;
 }
 world.dayOffset = offsetForHour(world.tick, hour, world.clock);
-game.markAllOwn();
+game.replication.markAllOwn();
 
 const profile = join(work, "profile");
 const port = 9300 + Math.floor(Math.random() * 500);

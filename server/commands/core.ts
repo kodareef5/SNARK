@@ -93,14 +93,14 @@ export function addCoreCommands(con: Console): void {
         if (c.admin) return "cheats are already enabled";
         const password = ctx.host.adminPassword;
         if (password === null && !ctx.host.dev) return "cheats are disabled on this server";
-        const guesses = ctx.host.game.cheatGuesses;
+        const guesses = ctx.host.game.sessions.cheatGuesses;
         const who = c.conn.address ?? c.name;
         const tick = ctx.host.world.tick;
         const wait = guesses.wait(who, tick);
         if (wait > 0) return `too many wrong passwords: wait ${Math.ceil(wait / TICK_RATE)} s`;
         if (password !== null && !sameSecret(args[0] ?? "", password)) {
           guesses.wrong(who, tick);
-          if (++c.cheatAttempts >= CHEAT_GUESSES) ctx.host.game.reject(c, REJECT_DENIED);
+          if (++c.cheatAttempts >= CHEAT_GUESSES) ctx.host.game.sessions.reject(c, REJECT_DENIED);
           return WRONG_PASSWORD;
         }
         guesses.right(who);
@@ -120,7 +120,7 @@ export function addCoreCommands(con: Console): void {
         const rule = ctx.host.game.opts.spectators;
         if (rule === "off" || (rule === "admin" && !c.admin)) return "denied: spectating is not allowed for you";
         if (c.state === SESSION_DEAD) return "you are dead";
-        ctx.host.game.setSpectating(c, true);
+        ctx.host.game.sessions.setSpectating(c, true);
         return "spectating; stopspectating returns you to your body";
       },
     },
@@ -133,7 +133,7 @@ export function addCoreCommands(con: Console): void {
         const c = ctx.client;
         if (!c) return needsSession;
         if (c.state !== SESSION_SPECTATING) return "you are not spectating";
-        return ctx.host.game.setSpectating(c, false) ? "back in your body" : "no room for a body right now";
+        return ctx.host.game.sessions.setSpectating(c, false) ? "back in your body" : "no room for a body right now";
       },
     },
     {
@@ -149,7 +149,7 @@ export function addCoreCommands(con: Console): void {
         if (!(hour >= 0 && hour < 24) || !(minute >= 0 && minute < 60) || parts.length > 2) return "usage: settime <hour[:minute]>, for example settime 6:30";
         const w = ctx.host.world;
         w.dayOffset = offsetForHour(w.tick, hour + minute / 60, w.clock);
-        ctx.host.game.markAllOwn();
+        ctx.host.game.replication.markAllOwn();
         return `time is ${formatHour(hourOfDay(w.tick, w.dayOffset, w.clock))}`;
       },
     },
@@ -228,7 +228,7 @@ export function addCoreCommands(con: Console): void {
       run(ctx, args) {
         const target = ctx.host.game.clients.find((c) => c?.active && !c.closed && c.name === args[0]);
         if (!target) return `nobody named "${args[0] ?? ""}" is connected`;
-        ctx.host.game.reject(target, REJECT_KICKED);
+        ctx.host.game.sessions.reject(target, REJECT_KICKED);
         return `kicked ${target.name}`;
       },
     },

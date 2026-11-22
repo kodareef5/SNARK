@@ -63,6 +63,7 @@ import { Buffs } from "./buffs.ts";
 import { Combat, type Source } from "./combat.ts";
 import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { Creatures } from "./creatures.ts";
+import { Containers } from "./containers.ts";
 import { Death, OP_DEATH } from "./death.ts";
 import { Harvest } from "./harvest.ts";
 import { VehicleTrees } from "./vehicle-trees.ts";
@@ -202,6 +203,7 @@ export interface Host {
   readonly items: Items;
   readonly survival: Survival;
   readonly death: Death;
+  readonly containers: Containers;
   readonly combat: Combat;
   readonly buffs: Buffs;
   readonly rules: Rules;
@@ -462,8 +464,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const wrong = items.audit();
     if (wrong.length > 0 && !opts.allowLedgerMismatch) throw new Error("the item ledger does not balance:\n" + wrong.join("\n"));
     persistence.sidecar("ledger", items);
-    if (!loaded!.fresh) game.refusals.restore(persistence.store.meta("refused") as string | null);
-    persistence.sidecar("refused", game.refusals);
+    if (!loaded!.fresh) game.sessions.refusals.restore(persistence.store.meta("refused") as string | null);
+    persistence.sidecar("refused", game.sessions.refusals);
     persistence.open = (path) => new WorldStore(path, reg, storeOptions);
   }
   const creatures = new Creatures(world, game, records, survival, opts.seed ?? 1, opts.wakeRadius ?? 3);
@@ -543,7 +545,9 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return e;
   };
   const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0, start: VehicleStart = {}): number => parkVehicle(id, x, z, ownerTeam, yaw, "admin", start);
-  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus });
+  const containers = new Containers({ world, game, records, items });
+  const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus, containers });
+  containers.emptied = (box) => death.remove(box);
   const progression = new Progression(world, records, items, deadlines);
   progression.rules = rules;
   progression.bus = bus;
@@ -566,7 +570,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     settingsAt = at;
   }
   const combat = new Combat({ world, game, records, items, survival, progression, creatures, buffs, rules, lists, harvest, bus, rigs: opts.rigs }, (opts.seed ?? 1) + 53);
-  death.eye = (e, out) => { combat.eye(e, out); };
+  containers.eye = (e, out) => { combat.eye(e, out); };
   creatures.onStrike = (e) => combat.bite(e);
   const tribes = new Tribes(world, records);
   tribes.rules = rules;
@@ -607,7 +611,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
     loaded!.fresh,
   );
-  const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
+  const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => containers.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);
     // A new tame stays where it woke until ordered otherwise.
@@ -617,7 +621,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
   } }, (opts.seed ?? 1) + 71);
   // Closing a creature reschedules its meal, because its food may have changed.
-  death.onShut.on((rec) => taming.meal(rec));
+  containers.onShut.on((rec) => taming.meal(rec));
   // A hit's buff goes through entangling, which reads the bola's fields (weapons-plan.md, M6); a bola'd body is not mounted.
   const entangle = new Entangle({ world, game, records, buffs });
   combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
@@ -635,21 +639,21 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
   };
   const trees = harvest ? new VehicleTrees(world, harvest) : null;
-  if (trees) game.vehicleStep = trees.step;
-  const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
+  if (trees) game.players.vehicleStep = trees.step;
+  const urban = new Urban({ world, game, records, items, creatures, vehicleStep: game.players.vehicleStep, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by), collisionDamage: (rec, points, by) => combat.vehicleHurt(rec, points, by) });
   const vehicles = new VehicleService({ world, game, records, items, survival, urban,
     may: (actor, vehicle) => urbanMay(actor, vehicle, null),
     spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
     discard: e => { const pid = world.ents.pid[e]!; persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid); },
   });
   // Its tribe may open a tamed creature while it is awake, and whoever may use a vehicle may open it.
-  death.canOpen.on((c, rec) => {
+  containers.canOpen.on((c, rec) => {
     const actor = records.byPid.get(c.pid);
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   });
-  death.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
-  game.onVehicleStep.on(e => urban.impact(e));
-  game.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
+  containers.keepsBoatCargo = (c, e) => vehicles.keepsBoatCargo(c, e);
+  game.players.onVehicleStep.on(e => urban.impact(e));
+  game.players.feet.boarding = (actor, vehicle) => urban.boarding(actor, vehicle);
   urban.contacts = new VehicleContacts({
     world, records, combat, driverOf: e => urban.riderOf(e), pair: pair => urban.collisionPair(pair),
     // A car that strikes a survivor hard knocks them off their feet (Knockdowns), as a door does.
@@ -664,17 +668,17 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     },
   });
   // The use button gets off a mount, and sets down what is in the arms.
-  death.riding = (c) => impale.held(c.pid) || urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
-  death.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c, true) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
+  containers.riding = (c) => impale.held(c.pid) || urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
+  containers.offMount = (c) => (impale.held(c.pid) ? undefined : urban.riding(c) ? urban.dismount(c, true) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
-  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
-  death.corpses = combat.corpses = corpses;
+  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death, containers }, (opts.seed ?? 1) + 103);
+  death.corpses = containers.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures, tribes, refresh: (rec) => refreshBody(rec) });
   const emotes = new Emotes({ world, game });
   const eggs = new Eggs({ world, game, records, items, rules, deadlines, creatures, breeding, place: (rec) => death.place(rec) });
   const balls = new Balls({
-    world, game, records, items, rules, creatures, survival, buffs, taming, breeding, tribes, riding, carry, death,
+    world, game, records, items, rules, creatures, survival, buffs, taming, breeding, tribes, riding, carry, death, containers,
     detach: (rec, e) => {
       const ents = world.ents;
       rec.x = ents.x[e]!;
@@ -707,7 +711,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   starter = mounts;
   const feces = new Feces({ world, records, items, deadlines, rules, eggs, place: (rec) => death.place(rec) }, (opts.seed ?? 1) + 107);
   const roars = new MountedRoars({ world, records, creatures, feces });
-  game.onMountSecondary.on(e => roars.use(e));
+  game.players.onMountSecondary.on(e => roars.use(e));
   const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
   // A sight's cone widens its session's view and holds what it is on awake (server/gaze.ts, D1079).
   // A look through a sight tells what it is on as far as the sight's gaze reaches (D1082).
@@ -719,7 +723,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   } });
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
-  death.onRide = (c, e) => {
+  containers.onRide = (c, e) => {
     if (impale.held(c.pid) || world.ents.seatSlot[e] === IMPALE_SLOT) return RESULT_BUSY;
     if (carry.holding(c) < 0) {
       const vehicle = urban.mount(c, e);
@@ -812,7 +816,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     const rec = records.byPid.get(c.pid);
     if (!rec) return RESULT_INVALID;
     rec.dead = false;
-    if (!game.revive(c, p.x, p.z, p.yaw, at)) {
+    if (!game.sessions.revive(c, p.x, p.z, p.yaw, at)) {
       rec.dead = true;
       return RESULT_INVALID;
     }
@@ -838,8 +842,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   persistence?.sidecar("beds", beds.saved);
   const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, motion: (ref) => motion.throw(ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   build.onPlaced = (by, ref) => beds.placed(by, ref);
-  death.onUseBuilt = (c, ref) => build.use(c, ref);
-  death.keepsBuilt = (c, ref) => build.keeps(c, ref);
+  containers.onUseBuilt = (c, ref) => build.use(c, ref);
+  containers.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
   persistence?.sidecar("decay", build.decay, DECAY_SAVE_TICKS);
   combat.onStructureHurt.on((ref) => build.hurt(ref));
@@ -921,7 +925,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   buffs.onChange = (rec) => refreshBody(rec);
   const use = new Use({ world, game, records, items, survival, buffs });
   // E with nothing else to use picks a bush, else drinks the water the survivor stands in.
-  death.onUse.on((c) => void (harvest?.pick(c) || use.drink(c)));
+  containers.onUse.on((c) => void (harvest?.pick(c) || use.drink(c)));
   if (harvest) {
     if (persistence) {
       if (!loaded!.fresh) for (const row of persistence.store.loadBlobs(harvest.tag)) harvest.decode(row.chunk, row.data);
@@ -1100,7 +1104,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   // drops that are live are the save's, written in the commit that writes their capsules.
   // The starter book comes with the map's own sites and circuits (content/supply/sites.ts).
   const supplyBook = new BookStore(opts.dbPath ? `${opts.dbPath}.supply.json` : null, world.mapId, () => withSites(starterBook(), world.mapId), say);
-  const supply = new Supply({ world, game, records, items, death, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
+  const supply = new Supply({ world, game, records, items, death, containers, progression, deadlines, bus, book: supplyBook, seed: opts.seed ?? 1, rules, say });
   {
     // ARK's own override of what a crate holds wins over the book, tier by tier, as an ARK operator expects.
     const loot = catalogOf(reg);
@@ -1116,29 +1120,29 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   persistence?.sidecar("cast", castHost.saved, 60 * TICK_RATE);
 
   // A name belongs to the first device key that takes a body under it.
-  game.sameCreation=(name,key,request)=>{
+  game.sessions.sameCreation=(name,key,request)=>{
     const rec=recordOf(name), prior=rec?.extra.get(CREATE_REQUEST);
     return !!rec && !!prior && ownsSurvivor(rec,key) && prior.length===request.length && request.every((b,i)=>prior[i]===b);
   };
-  game.owns = (name, key) => { const rec = recordOf(name); return !!rec && ownsSurvivor(rec, key); };
-  game.authorize = (name, key) => {
+  game.sessions.owns = (name, key) => { const rec = recordOf(name); return !!rec && ownsSurvivor(rec, key); };
+  game.sessions.authorize = (name, key) => {
     // Nobody joins a world that has not saved for a minute.
     if (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS) return false;
     const rec = recordOf(name);
     return !rec || !rec.keyHash || ownsSurvivor(rec,key);
   };
   if (cluster) {
-    game.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
-    game.nameAway = name => cluster.away.has(name);
-    game.away = (name, key) => cluster.awayCheck(name, key);
+    game.sessions.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
+    game.sessions.nameAway = name => cluster.away.has(name);
+    game.sessions.away = (name, key) => cluster.awayCheck(name, key);
   }
   // A survivor that came from another server and has not risen joins as one that died does: with no body, choosing where.
-  game.savedPosition = (name) => {
+  game.sessions.savedPosition = (name) => {
     const rec = recordOf(name);
     return rec && cluster?.arriving.has(rec.pid) ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, dead: true, team: rec.team } : (rec ?? null);
   };
-  game.needsLook = (name) => !recordOf(name)?.look;
-  game.onBody.on((c) => {
+  game.sessions.needsLook = (name) => !recordOf(name)?.look;
+  game.sessions.onBody.on((c) => {
     let rec = recordOf(c.name);
     const first = !rec;
     if (!rec) {
@@ -1186,7 +1190,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // A session that was in the creator has its survivor only now.
     if (c.entered) joined(c);
   });
-  game.onBodyGone.on((c) => {
+  game.sessions.onBodyGone.on((c) => {
     impale.release(c.pid);
     carry.release(c.pid);
     // Seats are not saved: a survivor in a car or on a creature is saved standing beside it.
@@ -1211,7 +1215,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
   });
   const creative = new Creative(world, game, rules, bus, persistence);
-  game.onEnter.on((c) => {
+  game.sessions.onEnter.on((c) => {
     // A survivor that joins dead gets no onBody call, so its pid is set here.
     if (c.pid === 0) c.pid = recordOf(c.name)?.pid ?? 0;
     creative.enter(c);
@@ -1229,7 +1233,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     if (name !== "") game.sendText(c, TEXT_MOTD, name);
     for (const line of rules.text("Message").split("\\n")) if (line.trim() !== "") game.sendText(c, TEXT_MOTD, line.trim());
   });
-  game.onPresence.on((c) => {
+  game.sessions.onPresence.on((c) => {
     if (c.closed) activity.leave(c.pid);
     else activity.login(c.pid);
     bus.after(SESSION_PRESENCE, { pid: c.pid, connected: !c.closed });
@@ -1237,7 +1241,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // The voice socket belonged to the old connection.
     voice.revoke(c);
   });
-  game.onExit.on((c) => {
+  game.sessions.onExit.on((c) => {
     activity.leave(c.pid);
     survivorLog.leave(c, c.left);
     bus.after(SESSION_LEAVE, { pid: c.pid, why: c.left });
@@ -1272,7 +1276,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     knockDown(body);
     combat.land(doorBlow, body, ZONE_NONE, ents.x[body]!, ents.y[body]! + 1, ents.z[body]!, 0, impact);
   };
-  game.blockBodies = () => [creatures.awake, creatures.awakeCount];
+  game.players.blockBodies = () => [creatures.awake, creatures.awakeCount];
   // The host's own work in the tick. Each is a row of `systems` below, which says when it runs.
   /** A session whose focus left its chunk wakes what is round the new one. */
   const followFocus = (): void => {
@@ -1314,7 +1318,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // The idle kick runs only with ARK's -EnableIdlePlayerKick.
     if (tick % TICK_RATE === 0 && rules.flag("EnableIdlePlayerKick") === true) {
       const most = Math.round(rules.num("KickIdlePlayersPeriod") * TICK_RATE);
-      for (const c of game.clients) if (c?.active && !c.closed && tick - c.activeAt > most) game.reject(c, REJECT_KICKED);
+      for (const c of game.clients) if (c?.active && !c.closed && tick - c.activeAt > most) game.sessions.reject(c, REJECT_KICKED);
     }
     // The report is logged only when the live file changed a rule.
     if (opts.live && tick % liveEvery === 0 && rules.flag("UseDynamicConfig") === true) {
@@ -1371,7 +1375,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   }
   // A command that threw may have left the world half done. Its ledger is what a save is checked by as it loads, so while that
   // balances the world goes on; else the server stops as at any other throw, saving nothing but the refusal.
-  game.onFault = (c, op, command, err) => {
+  game.players.onFault = (c, op, command, err) => {
     say(`a command of ${c.name} (survivor ${c.pid}) threw at tick ${world.tick}; it is put out, and its device and machine refused for 10 minutes. Op ${op}, the message ${Buffer.from(command).toString("hex")}:\n${err instanceof Error ? err.stack : String(err)}`);
     const wrong = items.audit();
     if (wrong.length === 0) return true;
@@ -1385,8 +1389,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   };
   // An unconscious survivor can talk, use the console and the sundial, shut what it had open and say how far off it is sent bases. Its client
   // can make it do nothing else.
-  game.allows.on((c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out);
-  game.onLand.on((c, speed) => {
+  game.players.allows.on((c, op) => op === CMD_TEXT || op === CMD_CLOCK || op === CMD_CHAT || op === CMD_CLOSE || op === CMD_FAR || !records.byPid.get(c.pid)?.out);
+  game.players.onLand.on((c, speed) => {
     const rec = records.byPid.get(c.pid);
     if (rec && !(world.ents.jetGear[c.ent]! & JET_BOOTS)) survival.landed(rec, speed);
   });
@@ -1403,7 +1407,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     }
     return best;
   }
-  game.onGlide.on((c, opened) => {
+  game.players.onGlide.on((c, opened) => {
     if (opened) {
       glidingSince.set(c.pid, world.tick);
       return;
@@ -1421,8 +1425,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, voice,
     use,
-    openOf: (c) => death.openOf(c),
-    closeOpen: (c) => death.close(c),
+    openOf: (c) => containers.openOf(c),
+    closeOpen: (c) => containers.close(c),
     beds,
     subject: (rec) => taming.subject(rec),
     refresh: (rec) => refreshBody(rec),
@@ -1441,7 +1445,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     drop: (rec, slot, n) => eggs.put(rec, slot, n) ?? death.drop(rec, slot, n),
   };
   const tactical = new Tactical(world, game, records, rules);
-  game.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
+  game.replication.contactProxies = (c, out) => { if (c.drive >= 0) urban.contacts?.proxies(c.drive, out); };
   const corpseReplication = new CorpseReplication(game, corpses);
   game.handle(CMD_CORPSE, (c, r) => corpseReplication.request(c, r));
   progression.onChange = (rec) => refreshBody(rec);
@@ -1587,13 +1591,14 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     // Struggling, and the grace after a bola, once the buffs that came due have ended.
     entangle,
     { step: () => creatureTraits.step(creatures.awake, creatures.awakeCount) },
+    containers,
     death,
     supply,
     mark(PART.life),
     // Riders move with their mounts before combat aims at either.
     urban,
     riding,
-    { beforeStep: () => void (game.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
+    { beforeStep: () => void (game.players.blocking.survivorsPass = !rules.on("SurvivorsBlock")) },
     carry,
     emotes,
     mark(PART.riders),
@@ -1642,8 +1647,8 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
   const tick = walk(systems);
   game.onBeforeStep = tick.beforeStep;
   game.onStep = tick.step;
-  game.onReplicate = tick.replicate;
-  game.onSnapshot = tick.snapshot;
+  game.replication.onReplicate = tick.replicate;
+  game.replication.onSnapshot = tick.snapshot;
   const host: Host = {
     world,
     mapFile,
@@ -1654,6 +1659,7 @@ function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]
     items,
     survival,
     death,
+    containers,
     combat,
     buffs,
     rules,

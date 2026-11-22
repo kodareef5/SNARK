@@ -148,7 +148,7 @@ test("a female and a male of one tribe, both told they may, have an egg after ha
   // From the side of the egg away from the mother, so the look hits the egg and not her.
   const [ax, az] = [egg.x - ents.x[f.e]!, egg.z - ents.z[f.e]!];
   h.say(ada, `tp ${(egg.x + (ax / off) * 1.5).toFixed(3)} ${(egg.z + (az / off) * 1.5).toFixed(3)}`);
-  expect([press(h, ada, ee, 0.5), h.host.death.target(h.client(ada)!, 3.5)]).toEqual([-1, ee]);
+  expect([press(h, ada, ee, 0.5), h.host.containers.target(h.client(ada)!, 3.5)]).toEqual([-1, ee]);
   h.run(1000);
   expect([ada.open, h.client(ada)!.open, h.host.records.byPid.has(egg.pid), h.host.records.entOf.get(egg.pid)]).toEqual([null, 0, true, ee]);
   expect(h.host.items.audit()).toEqual([]);

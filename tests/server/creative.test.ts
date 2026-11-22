@@ -266,7 +266,7 @@ test("a drag of the dial is one entry in the journal, reaches everyone while it 
       }
     };
     walk(join(root, "server"));
-    expect(readers.sort()).toEqual(["server/commands/core.ts", "server/creative.ts", "server/game.ts", "server/host.ts", "server/persist/persistence.ts", "server/world.ts"]);
+    expect(readers.sort()).toEqual(["server/commands/core.ts", "server/creative.ts", "server/host.ts", "server/persist/persistence.ts", "server/replication.ts", "server/sessions.ts", "server/world.ts"]);
     h.host.shutdown();
 
     const store = new WorldStore(db, h.reg);
@@ -306,7 +306,7 @@ test("a server as it comes gives a stranger cheats and the Creative entry as it 
   expect(h.say(s, "enablecheats")).toEqual(["cheats are already enabled"]);
   expect(h.host.exec("who")).toBe("stranger  alive  admin");
   // The admin pages are not the role's: with no password they open only on a development server, as before.
-  const gate: AdminGate = { dev: h.host.dev, password: h.host.adminPassword, guesses: h.host.game.cheatGuesses, tick: () => h.world.tick };
+  const gate: AdminGate = { dev: h.host.dev, password: h.host.adminPassword, guesses: h.host.game.sessions.cheatGuesses, tick: () => h.world.tick };
   expect(refused(new Request("http://play.example/admin/"), "203.0.113.9", gate)?.status).toBe(404);
 
   // A host that wants a strict server says so in its files: without CreativeForAll the entry asks for the password, and

@@ -169,7 +169,7 @@ test("a closed connection is reported on the interface", () => {
   const h = new Harness();
   const app = client(h, "ada");
   h.run(300, (now) => app.frame(now, 1280, 720));
-  h.server.reject(h.client(app.session)!, 7);
+  h.server.sessions.reject(h.client(app.session)!, 7);
   let packet: unknown = 1;
   h.run(300, (now) => (packet = app.frame(now, 1280, 720)));
   expect(packet).toBeNull();

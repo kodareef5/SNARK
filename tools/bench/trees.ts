@@ -186,7 +186,7 @@ async function run(tier: string, page: string[], name: string, only: string | un
     for (const s of placesOf(server).filter((s) => !only || s.name.includes(only))) {
       const w = server.host.world, hf = w.hf;
       w.dayOffset = offsetForHour(w.tick, s.hour, w.clock);
-      server.host.game.markAllOwn();
+      server.host.game.replication.markAllOwn();
       const at = (t: number): [number, number, number] => {
         const [x, z] = s.path ? s.path(t) : [s.x, s.z];
         return [x, Math.max(hf.heightAt(x, z), Number.isFinite(hf.seaLevel) ? hf.seaLevel : -Infinity) + s.up, z];

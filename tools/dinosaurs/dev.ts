@@ -80,7 +80,7 @@ export function seedDinosaurPreview(host: Host, owner: EntityRecord, species: re
 export function installDinosaurPreview(host: Host, species: readonly string[] = REVIEW_SPECIES): void {
   if (!host.dev) throw new Error("Dinosaur review is development-only");
   if (!species.some(id => host.world.reg.index.has(id))) throw new Error("No requested dinosaur is registered in this branch");
-  host.game.onBody.on(client => {
+  host.game.sessions.onBody.on(client => {
     const owner = host.records.byPid.get(client.pid);
     if (owner) seedDinosaurPreview(host, owner, species);
   });

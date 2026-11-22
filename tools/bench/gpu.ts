@@ -333,7 +333,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         // The world's own hour for every other run.
         const w = server.host.world;
         w.dayOffset = r.hour !== undefined ? offsetForHour(w.tick, r.hour, w.clock) : day;
-        server.host.game.markAllOwn();
+        server.host.game.replication.markAllOwn();
         rmSync(join(profile, "DevToolsActivePort"), { force: true });
         const browser = Bun.spawn([CHROME!, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
         const page = await devtools(profile);

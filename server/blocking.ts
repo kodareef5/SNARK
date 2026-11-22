@@ -1,6 +1,6 @@
 // The server's side of bodies blocking one another (shared/sim/blockers.ts). Once a tick, before anything steps, every
 // body that may block is put in a grid where it stands, which is where this tick's snapshots will carry it. A walker
-// stepping then meets the nearest of them, each rounded as the snapshot rounds it (GameServer.viewAround), so that a
+// stepping then meets the nearest of them, each rounded as the snapshot rounds it (Replication.viewAround), so that a
 // client predicting its own walk meets them in the same places (client/core/session.ts).
 //
 // What blocks: a grown body of a species, standing in the world, not held, sitting, knocked out or dead, and not of the

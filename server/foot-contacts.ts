@@ -1,5 +1,5 @@
 // The server's side of a body on foot meeting vehicles (shared/sim/foot-contact.ts): each vehicle round it as this
-// tick's snapshots will carry it, rounded as `GameServer.viewAround` rounds it. It reads the vehicle as it stands, so it
+// tick's snapshots will carry it, rounded as `Replication.viewAround` rounds it. It reads the vehicle as it stands, so it
 // holds whether or not the vehicle was stepped this tick.
 import { CHUNK_SIZE } from "../shared/coords.ts";
 import { dequantX, dequantY, quantX, quantY } from "../shared/net/view.ts";

@@ -23,6 +23,7 @@ import { catalogOf, type Catalog } from "../shared/supply/catalog.ts";
 import { cellsOf, compileBook, rollTable, type Compiled } from "../shared/supply/compile.ts";
 import { HIT_NONE, castWorld, rayHit } from "../shared/world/ray.ts";
 import { EYE_KNOT, eyeKnot } from "../shared/world/tide-eye.ts";
+import type { Containers } from "./containers.ts";
 import type { Death } from "./death.ts";
 import { event, type Bus } from "./events/bus.ts";
 import type { Connection } from "../shared/net/transport.ts";
@@ -113,6 +114,7 @@ export interface SupplyContext {
   records: Records;
   items: Items;
   death: Death;
+  containers: Containers;
   progression: Progression;
   deadlines: DeadlineHeap;
   bus: Bus;
@@ -170,9 +172,9 @@ export class Supply {
     this.deadline = ctx.deadlines.kind("supply", (a, stamp) => this.due(a, stamp));
     this.capsule = ctx.world.reg.index.get("core:supply_capsule") ?? -1;
     this.catalog = catalogOf(ctx.world.reg);
-    ctx.death.gate.on((c, box) => this.gate(c, box));
-    ctx.death.onOpened.on((c, box) => this.opened(c, box));
-    ctx.death.onRemoved.on((box) => this.removed(box));
+    ctx.containers.gate.on((c, box) => this.gate(c, box));
+    ctx.containers.onOpened.on((c, box) => this.opened(c, box));
+    ctx.containers.onRemoved.on((box) => this.removed(box));
   }
 
   /** The book in force, compiled against the game's items: again whenever the book or the quality setting changes. */

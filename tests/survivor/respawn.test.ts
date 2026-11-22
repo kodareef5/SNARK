@@ -71,7 +71,7 @@ test("on a slope a body comes into the world on its lower sphere: where it was a
   /** Kills the survivor and brings it back on the ground at the slope. Returns where it stands. */
   const revive = (s: typeof ada): [number, number, number] => {
     h.say(s, "suicide");
-    expect(h.server.revive(h.client(s)!, SLOPE.x, SLOPE.z, 0)).toBe(true);
+    expect(h.server.sessions.revive(h.client(s)!, SLOPE.x, SLOPE.z, 0)).toBe(true);
     const e = h.client(s)!.ent;
     return [ents.x[e]!, ents.y[e]!, ents.z[e]!];
   };
@@ -118,7 +118,7 @@ test("a body brought back on ground too steep to stand on, or moved out of a pie
   const stands = (x: number, z: number): boolean => (groundUnder(h.world.hf, x, z, p.radius), groundStands(p.slopeCos));
   expect(stands(sx, sz)).toBe(false);
   h.say(ada, "suicide");
-  expect(h.server.revive(h.client(ada)!, sx, sz, 0)).toBe(true);
+  expect(h.server.sessions.revive(h.client(ada)!, sx, sz, 0)).toBe(true);
   const e = h.client(ada)!.ent;
   expect([stands(ents.x[e]!, ents.z[e]!), Math.hypot(ents.x[e]! - sx, ents.z[e]! - sz) < 6]).toEqual([true, true]);
   expect(Math.abs(ents.y[e]! - groundUnder(h.world.hf, ents.x[e]!, ents.z[e]!, p.radius))).toBeLessThan(0.001);

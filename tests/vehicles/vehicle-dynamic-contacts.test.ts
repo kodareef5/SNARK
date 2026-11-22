@@ -66,7 +66,7 @@ test("protected players walking into a driven car cannot pin its tangent travel 
       if (mode === "friendly") { records[1]!.team = records[0]!.team; ents.setTeam(clients[1]!.ent, records[0]!.team); }
       const car = s.carFor(0, 64, 52); s.putActor(1, 90, 52); s.settle(); s.place(car, 64, 52, 0, 0);
       s.putActor(1, mode === "clear" ? 90 : 65.6, 52);
-      const carPid = ents.pid[car]!, hp = s.health(carPid), actorHP = s.health(clients[1]!.pid), start = ents.z[car]!, met = h.server.feet.met;
+      const carPid = ents.pid[car]!, hp = s.health(carPid), actorHP = s.health(clients[1]!.pid), start = ents.z[car]!, met = h.server.players.feet.met;
       let worstOverlap = 0, frozen = 0;
       for (let i = 0; i < 90; i++) {
         const z = ents.z[car]!; s.input(0, 127); s.input(1, mode === "clear" ? 0 : 127, 49152, BTN_SPRINT); h.server.tick();
@@ -77,7 +77,7 @@ test("protected players walking into a driven car cannot pin its tangent travel 
       expect(worstOverlap).toBeLessThan(.01); expect(frozen).toBe(0);
       expect(s.health(carPid)).toBe(hp); expect(s.health(clients[1]!.pid)).toBe(actorHP);
       // The walker meets the car in its own step (shared/sim/foot-contact.ts), as the page predicting it does.
-      if (mode !== "clear") expect(h.server.feet.met - met).toBeGreaterThan(5);
+      if (mode !== "clear") expect(h.server.players.feet.met - met).toBeGreaterThan(5);
     } finally { h.host.shutdown(); }
   }
   expect(distances[0]!).toBeGreaterThan(20);
@@ -117,11 +117,11 @@ test("a protected ridden raptor cannot drive a parked car through repeated contr
     s.putActor(1, 65.5, 71); expect(h.host.riding.mount(clients[1]!, dino)).toBe(RESULT_OK);
     for (let i = 0; i < 40; i++) { s.input(0); s.input(1, 0, 32768); h.server.tick(); }
     expect(clients[1]!.drive).toBe(dino);
-    const z = ents.z[car]!, dz = ents.z[dino]!, hp = s.health(carPid), met = h.server.feet.met; let peak = 0;
+    const z = ents.z[car]!, dz = ents.z[dino]!, hp = s.health(carPid), met = h.server.players.feet.met; let peak = 0;
     for (let i = 0; i < 150; i++) {
       s.input(0); s.input(1, 127, 32768, BTN_SPRINT); h.server.tick(); peak = Math.max(peak, Math.abs(ents.vz[car]!));
     }
-    expect(h.server.feet.met - met).toBeGreaterThan(30); expect(s.events.length).toBe(0); expect(dz - ents.z[dino]!).toBeGreaterThan(2);
+    expect(h.server.players.feet.met - met).toBeGreaterThan(30); expect(s.events.length).toBe(0); expect(dz - ents.z[dino]!).toBeGreaterThan(2);
     expect(Math.abs(ents.z[car]! - z)).toBeLessThan(.05); expect(peak).toBeLessThan(.1); expect(s.health(carPid)).toBe(hp);
     expect(ents.seat[clients[1]!.ent]).toBe(dino + 1); expect(Math.abs(ents.z[clients[1]!.ent]! - ents.z[dino]!)).toBeLessThan(2);
   } finally { h.host.shutdown(); }
