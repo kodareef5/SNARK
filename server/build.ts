@@ -398,22 +398,26 @@ export class Build {
 
   /** Call once a tick. */
   step(): void {
-    const { world, game, records } = this.ctx;
+    const { world } = this.ctx;
     if (this.collapse.busy) {
       const before = this.collapse.fallen;
       this.collapse.step(COLLAPSE_WORK, world.tick);
       this.fallen += this.collapse.fallen - before;
       if (this.landing.length > 0) this.land();
     } else if (this.claims.length > 0) this.claims.length = 0;
-    this.decay.step(world.tick, (visit) => {
-      for (const c of game.clients) {
-        // The lingering body of a session that has gone visits nothing.
-        if (!c?.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE) continue;
-        const rec = records.byPid.get(c.pid);
-        if (rec) visit(rec.team, c.chunk);
-      }
-    });
+    this.decay.step(world.tick, this.visitors);
   }
+
+  /** Tells decay which tribe stands in which chunk: every survivor in the world. Made once, not at each step. */
+  private readonly visitors = (visit: (team: number, chunk: number) => void): void => {
+    const { game, records } = this.ctx;
+    for (const c of game.clients) {
+      // The lingering body of a session that has gone visits nothing.
+      if (!c?.active || c.closed || c.ent < 0 || c.state !== SESSION_ALIVE) continue;
+      const rec = records.byPid.get(c.pid);
+      if (rec) visit(rec.team, c.chunk);
+    }
+  };
 
   /** Runs a STRUCT_ action on a built piece. Returns a RESULT code. */
   act(c: Client, r: BitReader): number {

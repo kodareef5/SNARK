@@ -108,6 +108,8 @@ export class Urban {
   private readonly ctx: UrbanContext;
   private readonly hosts = new Map<number, HostSeat>();
   private readonly scopes = new Map<number, Scope>();
+  /** The step's own list of the actors it walks while it retires them: filled anew at each walk. */
+  private readonly walkPids: number[] = [];
   /** The entities sessions drive this tick. */
   private readonly drivers = new Set<number>();
   /** Drive intents of the world's people (Cast's drivers, server/cast/drive.ts): a vehicle's steer, throttle and buttons
@@ -800,7 +802,11 @@ export class Urban {
     for (const effect of this.occupancy.step(world.tick)) this.apply(effect);
     // Scopes exist only while an actor is seated or has a pending action, so the table and the
     // per-tick work over it stay proportional to vehicle use, not to everyone who ever used one.
-    for (const pid of [...this.scopes.keys()]) {
+    const pids = this.walkPids;
+    pids.length = 0;
+    for (const pid of this.scopes.keys()) pids.push(pid);
+    for (let i = 0, n = pids.length; i < n; i++) {
+      const pid = pids[i]!;
       if (!this.occupancy.idle(pid)) continue;
       const e = this.entity(pid);
       if (e >= 0 && (ents.flags[e]! & F_PLAYER) === 0 && ents.driven[e] === 3) ents.driven[e] = 0;

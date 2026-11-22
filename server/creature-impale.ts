@@ -44,6 +44,8 @@ const TRAIL = 8;
 export class CreatureImpale {
   readonly ctx: CreatureImpaleContext;
   private readonly attackers = new Map<number, Hold>();
+  /** The step's own list of the holds it walks while it ends some: filled anew at each walk. */
+  private readonly walk: Hold[] = [];
   private readonly victims = new Map<number, Hold>();
   private readonly state = new AnimState();
   private readonly point = new Float64Array(3);
@@ -159,7 +161,11 @@ export class CreatureImpale {
 
   step(): void {
     const { world } = this.ctx, ents = world.ents;
-    for (const hold of [...this.attackers.values()]) {
+    const holds = this.walk;
+    holds.length = 0;
+    for (const hold of this.attackers.values()) holds.push(hold);
+    for (let k = 0, n = holds.length; k < n; k++) {
+      const hold = holds[k]!;
       const { by, victim, attack } = hold, e = by.entity, target = victim.entity;
       if (!this.live(by) || !this.live(victim) || ents.act[e] !== ACT_HOLD || ents.mode[e] !== MODE_WALK || (ents.flags[e]! & F_GROUNDED) === 0 || (ents.mflags[e]! & (MF_OUT | MF_ROOTED)) !== 0
         || ents.seat[target] !== e + 1 || ents.seatGen[target] !== by.generation || ents.seatSlot[target] !== IMPALE_SLOT
@@ -174,6 +180,7 @@ export class CreatureImpale {
       if (damage > 0) this.ctx.damage(by.rec, victim.rec, attack, hold.mode, damage);
       if (this.attackers.get(by.rec.pid) === hold && (!this.live(by) || !this.live(victim))) this.end(hold);
     }
+    holds.length = 0;
   }
 
   /** Release either endpoint. Lifecycle owners call before disconnect, dismount, input loss, unload or transfer. */

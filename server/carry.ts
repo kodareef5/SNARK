@@ -81,6 +81,8 @@ export class Carry {
   /** By the creature's entity index, and by its carrier's session. */
   private readonly holds = new Map<number, Hold>();
   private readonly of = new Map<Client, Hold>();
+  /** The step's own list of the holds it walks while it ends some: filled anew at each walk. */
+  private readonly walk: Hold[] = [];
   /** Bodies thrown and not yet come down, by entity index, with their generation. */
   private readonly flying = new Map<number, number>();
   /** The point between the palms, standing and crouched, from the clips the server poses survivors with. */
@@ -240,7 +242,11 @@ export class Carry {
       }
     }
     if (this.holds.size === 0) return;
-    for (const hold of [...this.holds.values()]) {
+    const holds = this.walk;
+    holds.length = 0;
+    for (const hold of this.holds.values()) holds.push(hold);
+    for (let i = 0, n = holds.length; i < n; i++) {
+      const hold = holds[i]!;
       if (!this.whole(hold)) {
         this.forget(hold);
         continue;
@@ -262,6 +268,7 @@ export class Carry {
       this.pin(hold, tick);
       this.peck(hold, tick);
     }
+    holds.length = 0;
   }
 
   /** The creature is still the one picked up, and alive. */

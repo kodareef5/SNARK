@@ -573,7 +573,7 @@ export class Corpses {
   }
 
   step(tick: number): void {
-    for (const pid of [...this.laid.keys()]) this.raise(pid);
+    if (this.laid.size > 0) for (const pid of [...this.laid.keys()]) this.raise(pid);
     const world = this.ctx.world;
     for (const b of this.loaded) {
       if (this.bodies.get(b.rec.pid) !== b || this.held(b)) continue;

@@ -78,6 +78,9 @@ export class Riding {
   private readonly hosts = new Map<number, Host>();
   /** By the record id of whoever sits in a seat or is getting on or off one. */
   private readonly scopes = new Map<number, Scope>();
+  /** The step's own lists of what it walks while it changes the tables: filled anew at each walk. */
+  private readonly walkPids: number[] = [];
+  private readonly walkHosts: Host[] = [];
   private epochs = 0;
   /** The stance the landing of the exit being committed was found for. */
   private landed = { action: 0, stance: 0 };
@@ -208,7 +211,11 @@ export class Riding {
   beforeStep(): void {
     const { world, records } = this.ctx;
     for (const [pid, host] of this.hosts) if (this.live(pid, host) < 0) this.evict(pid);
-    for (const pid of [...this.scopes.keys()]) {
+    const pids = this.walkPids;
+    pids.length = 0;
+    for (const pid of this.scopes.keys()) pids.push(pid);
+    for (let i = 0, n = pids.length; i < n; i++) {
+      const pid = pids[i]!;
       const rec = records.byPid.get(pid);
       if (!rec || rec.dead || this.seating.entity(pid) < 0) {
         for (const effect of this.occupancy.invalidateActor(pid, world.tick)) this.apply(effect);
@@ -223,7 +230,10 @@ export class Riding {
     for (const effect of this.occupancy.step(world.tick)) this.apply(effect);
     // Scopes and hosts are kept only while someone sits or is getting on or off, so the work here follows riding, not
     // everyone who ever rode.
-    for (const pid of [...this.scopes.keys()]) {
+    pids.length = 0;
+    for (const pid of this.scopes.keys()) pids.push(pid);
+    for (let i = 0, n = pids.length; i < n; i++) {
+      const pid = pids[i]!;
       if (!this.occupancy.idle(pid)) continue;
       this.occupancy.retireActor(pid, world.tick);
       this.scopes.delete(pid);
@@ -239,7 +249,14 @@ export class Riding {
     if (this.hosts.size === 0) return;
     const { world, records, tribes } = this.ctx;
     const ents = world.ents;
-    for (const [pid, host] of [...this.hosts]) {
+    const pids = this.walkPids, hosts = this.walkHosts;
+    pids.length = hosts.length = 0;
+    for (const [pid, host] of this.hosts) {
+      pids.push(pid);
+      hosts.push(host);
+    }
+    for (let i = 0, n = pids.length; i < n; i++) {
+      const pid = pids[i]!, host = hosts[i]!;
       const e = this.live(pid, host), rec = records.byPid.get(pid);
       if (e < 0 || !rec || rec.saddle !== host.saddle) {
         this.evict(pid);
@@ -260,6 +277,7 @@ export class Riding {
         else this.pin(actor, host, seat);
       }
     }
+    hosts.length = 0;
   }
 
   /** After a contact moves a surviving mount. Preserve the earlier pre-combat pin and all occupancy claim timing. */
