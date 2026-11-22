@@ -37,8 +37,11 @@ export interface NotePort {
   gpu(mode: number, out: Float64Array): boolean;
   /** GL calls the shell made for the latest frame. */
   glDraws(): number;
-  /** The browser, the card and the textures' format. */
-  page(): { browser: string; card: string; format: string };
+  /**
+   * The browser, the card, the textures' format, and the display as a number that changes where the page moves to
+   * another screen (its size and pixel ratio), 0 where the browser does not say.
+   */
+  page(): { browser: string; card: string; format: string; display: number };
   get(path: string): Promise<Answer>;
   /** One multipart POST: text fields, then pictures' bytes by field name, each as a JPEG. */
   post(path: string, fields: readonly (readonly [string, string])[], files: readonly (readonly [string, unknown])[]): Promise<Answer>;

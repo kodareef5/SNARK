@@ -1,19 +1,13 @@
 /**
- * The walls' weathering, as a recipe the page makes its masks from (client/core/texgen/weather.ts), in place of painted
- * pictures: a seed and the ranges each feature is drawn from, in metres. Its layers are square and as wide as the tier's
- * finishes allow. A bay's layer is one 8 m bay by two storeys, two bays' worth of variants, one above the other: below
- * each slab line the runoff of rain, narrow drips from sills, rust bled from fixings, and the dirt splashed up at a
- * wall's foot. A field's layer is 16 m by 16 m of what does not keep to a bay: rising damp, the plaster's hold on the
- * wall, a broad patina, and salt. Every range is [least, most]; counts are whole and both ends may be drawn.
- *
- * A new look is a new seed or a new range here: a few hundred bytes, made on the card as the page loads.
+ * The walls' weathering as a recipe the card makes its masks from (client/core/texgen/weather.ts): a seed and the ranges
+ * each feature is drawn from, in metres. A bay's layer is one 8 m bay by two storeys, two stamps one above the other:
+ * below each slab line the runoff of rain, narrow drips from sills, rust bled from fixings, and the dirt splashed up at a
+ * wall's foot. What does not keep to a bay, its tone, dirt, patina and where its plaster lets go, is in the field's
+ * tiles, made from the seed alone. Every range is [least, most]; counts are whole and both ends may be drawn.
  */
 export interface WeatherRecipe {
   version: number;
   seed: number;
-  /** Layers of bays, each two variants, and of fields. */
-  bays: number;
-  fields: number;
   /** Runoff below a slab's edge: heads along the bay, each a main track and up to two more, then fine threads. */
   runs: {
     heads: readonly [number, number];
@@ -40,10 +34,8 @@ export interface WeatherRecipe {
 }
 
 export const WEATHER_RECIPE: WeatherRecipe = {
-  version: 1,
+  version: 3,
   seed: 1729,
-  bays: 6,
-  fields: 2,
   runs: {
     heads: [3, 7],
     margin: 0.35,

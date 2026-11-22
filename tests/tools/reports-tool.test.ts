@@ -13,7 +13,7 @@ import { jpegHead } from "../fixtures/jpeg.ts";
 const ROOT = join(import.meta.dir, "../..");
 
 /** A report sent to a store in `dir` as a page sends it, from an admin's session. */
-async function send(dir: string, typed: string): Promise<Response> {
+async function send(dir: string, typed: string, summary: Record<string, unknown> = {}): Promise<Response> {
   const store = new ReportStore({ dir, root: ROOT, clientDir: dir, map: { id: "proving" } });
   const form = new FormData();
   form.set("token", "1:0011223344556677");
@@ -22,7 +22,7 @@ async function send(dir: string, typed: string): Promise<Response> {
   form.set("perf", JSON.stringify({
     version: 1, fields: ["at", "interval", "own", "draws", "triangles"], frames: [[-10, 16, 4, 900, 2e6], [0, 41, 9, 950, 2.1e6]],
     secondFields: ["second", "frames", "meanMs", "worstMs", "late", "over33", "over50", "gpuMs", "x", "y", "z", "heapMB"], seconds: [[0, 58, 17, 61, 3, 2, 1, -1, 120.5, 3, 240.25, 310]],
-    summary: { frames: 2, left: 0, middle: 16, p95: 41, p99: 41, worst: 41, worstIntervals: 2.6, late: 0.5, over33: 0.5, over50: 0, gpu: { frames: 0 }, heap: 310, longTasks: 1, longMs: 80, ringMs: 0.0012 },
+    summary: { frames: 2, left: 0, middle: 16, p95: 41, p99: 41, worst: 41, worstIntervals: 2.6, late: 0.5, over33: 0.5, over50: 0, gpu: { frames: 0 }, heap: 310, longTasks: 1, longMs: 80, ringMs: 0.0012, ...summary },
     worst: [[0, 41, 9, 950, 2.1e6]], census: [{ shot: 0, steps: [{ name: "near", draws: 900, triangles: 2e6, instances: 3000 }], stores: [{ name: "nodes", draws: 400, triangles: 1.2e6, instances: 2500 }], largest: [{ mesh: "core:palm_tall", level: 1, instances: 300, triangles: 600000, store: "nodes", step: "near" }] }],
   }));
   // As a browser sends it: the form's bytes, its boundary and its length.
@@ -61,7 +61,9 @@ test("a report the store wrote is listed, shown with its pictures, summed up, ma
     expect(list(dir)).toEqual([`no reports in ${dir}`]);
     expect(show(dir, 1)).toEqual([`no report 1 in ${dir}`]);
     // The next takes the next number: a number once given is never given again, even after its folder went to the trash.
-    expect(((await (await send(dir, "again")).json()) as { id: number }).id).toBe(2);
+    // A record that knows the display's interval says the game's rate against it.
+    expect(((await (await send(dir, "again", { target: 16.67, middle: 33.33, worstIntervals: 2.5 })).json()) as { id: number }).id).toBe(2);
+    expect(perf(dir, 2)[0]).toBe("Report 2: 2 frames timed. The display 60 Hz (16.7 ms, the fastest the page kept up), the game 30 fps of 60: middle 33.3 ms, 95th 41.0 ms, 99th 41.0 ms, worst 41.0 ms; late 50.0% (past 1.25 display intervals), the worst 2.5 display intervals; over 33 ms 50.0%, over 50 0.0%.");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

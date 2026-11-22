@@ -3,10 +3,8 @@ import { fixtureShader } from "./street-finish.ts";
 // projection, integer hash, noises, blends and weather fields. There is no animation clock here.
 import { MASK_MATERIALS, REPAIRS_LAYER, ROAD_LAYER, ROAD_LOOK, SURFACE_CITIES, SURFACE_FINISHES, SURFACE_GROUPS, SURFACE_NAMES, SURFACE_WEATHERING, WALK_LOOK, MASK_LAYER, surfaceIndex, surfaceMaterial } from "../../../content/surfaces.ts";
 import { TERRAIN_CELL } from "../../../shared/world/heightfield.ts";
-import { hash3 } from "../texgen/noise.ts";
-import { FINISH_RECIPES, roofOf, type FinishRecipe } from "../../../content/texgen/finishes.ts";
-import { REGION_BASE } from "../../../shared/pack/palette.ts";
-import { MADE_FIRST, MADE_LAYERS, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELDS, WEATHER_STOREY, WEATHER_TWIN_SIDE, weatherRead } from "../texgen/weather.ts";
+import { hash32 } from "../texgen/hash.ts";
+import { FIELD_LAYER, FORMWORK, FORMWORK_LAYER, GROWTH_TOP, WEATHER_BAY, WEATHER_BAYS, WEATHER_FIELD, WEATHER_FIELD_UP, WEATHER_GROUND, WEATHER_PAD, WEATHER_STOREY, texgenSide } from "../texgen/layers.ts";
 import { ROAD_ACROSS, ROAD_ALONG, ROAD_CELL, ROAD_HALF, ROAD_ONE_WAY, ROAD_PLANES, ROAD_STEP, ROAD_WEAR_SHIFT, ROAD_WRAP, type RoadSectors } from "../../../shared/world/roadframe.ts";
 import type { PackMaterial, PackTexture } from "../../../shared/pack/pack.ts";
 import { STEP0_SIZE, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
@@ -115,14 +113,6 @@ export function heldWidening(dx: readonly number[], dy: readonly number[], least
   const a = Math.hypot(dx[0]!, dx[1]!), b = Math.hypot(dy[0]!, dy[1]!), major = Math.max(a, b, 1e-9), minor = Math.max(Math.abs(dx[0]! * dy[1]! - dx[1]! * dy[0]!) / major, 1e-9);
   return least > 0 ? Math.max(1, 2 ** least * Math.max(Math.min(2 ** Math.ceil(Math.log2(major / Math.max(Math.min(a, b), 1e-9))), taps) / major, 1 / minor)) : 1;
 }
-/**
- * The side of the weathering masks' layers on a tier whose finishes the card keeps `side` wide (0 for none), where it
- * reads them in full: 512, a texel 1.6 cm of a bay's 8 m, finer than a track of runoff, 10.7 MiB with every level; on
- * ultra 1,024, whose finest threads are sharper, 42.7 MiB. None elsewhere.
- */
-export const weatherSide = (tier: Tier, side: number): number => (side > 0 && tier.finish === "full" ? (tier.finishes >= 2048 ? 1024 : 512) : 0);
-/** Bytes the masks hold on the card with layers `side` wide, every level of each. */
-export const weatherBytes = (side: number): number => Math.round((side * side * 4 * MADE_LAYERS * 4) / 3);
 /** Metres nearer than which a surface is wanted as if it were this near. */
 const NEAREST = 0.25;
 
@@ -147,6 +137,9 @@ export class WorldFinishes {
   /** Frames since every map has come, up to WORLD_RISE; and whether a frame has been drawn without them since the finishes were asked for, which the rise is for. */
   private risen = 0;
   private drawnEarly = false;
+  /** The side the tier has the card make its textures at, which the card's budget holds from the first, and the side it makes them at, from the frame every map had come. */
+  wanted = 0;
+  private making = 0;
   /** Per layer and role as `worldLeast` lays them out, the finest level the card reads, counted from the array's widest. */
   private readonly read = new Float32Array(WORLD_LAYERS * 3);
 
@@ -224,7 +217,9 @@ export class WorldFinishes {
     p.worldEarly = 1 - this.risen / WORLD_RISE;
     // Where their base colours cannot come at all (a picture made with no network), the finishes are not drawn early.
     p.worldComing = side > 0 && this.textures[0]!.every((t) => residency.canHave(t));
-    p.weatherSide = weatherSide(tier, side);
+    // The card makes its textures once the finishes have come, and goes on at that side while it is the one wanted.
+    const want = (this.wanted = texgenSide(tier, side));
+    p.texgenSide = this.making = want > 0 && (full || this.making === want) ? want : 0;
     worldPhase(p.worldPhase, p.camX, p.camY, p.camZ, p.surfaceCity);
     p.frame[FRAME.edgesOff] = 0;
     p.frame[FRAME.roadOff] = 0;
@@ -298,36 +293,6 @@ function relief(id: number, u: number, v: number, spread: number, view: Numbers,
   met[1] = v + av * along;
 }
 const maps = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Float64Array(2), patch: 0 };
-const madeOut = { base: new Float64Array(4), mro: new Float64Array(4), lean: new Float64Array(2) };
-const madeRead = new Float64Array(4), madeRelief = new Float64Array(4);
-
-/**
- * Material `k` made from a recipe at world point (u, v) metres across and down its face, a pixel `footprint` metres wide,
- * in place of a painted finish whose base colour's mean is `painted`: its base colour, its light about that mean, its packed map as a painted finish's (occlusion from its height, roughness, no metal, height) and its
- * lean, its second copy moved by whole modules over the second copies' patches, its means far off. Into `madeOut`.
- */
-function madeMaps(k: number, painted: readonly number[], u: number, v: number, footprint: number, masks: WorldSample): void {
-  const r = FINISH_RECIPES[k - 1]!, m = r.metres, qu = u / m, qv = v / m, spread = Math.log2(Math.max(footprint / m, 1e-9));
-  const layer = MADE_FIRST + (k - 1) * 2, shift = madeShift(r), second = secondShare(qu, qv);
-  masks(3, layer, qu, qv, spread, madeOut.base);
-  masks(3, layer + 1, qu, qv, spread, madeRelief);
-  if (second > 0) {
-    masks(3, layer, qu + shift[0], qv + shift[1], spread, madeRead);
-    for (let c = 0; c < 4; c++) madeOut.base[c] = madeOut.base[c]! + (madeRead[c]! - madeOut.base[c]!) * second;
-    masks(3, layer + 1, qu + shift[0], qv + shift[1], spread, madeRead);
-    for (let c = 0; c < 4; c++) madeRelief[c] = madeRelief[c]! + (madeRead[c]! - madeRelief[c]!) * second;
-  }
-  // Its light about the painted finish's mean, which it is far off, so that it sits in the light as the painted one did.
-  const far = clamp((spread - WORLD_FAR) / WORLD_FAR_BAND);
-  for (let c = 0; c < 3; c++) madeOut.base[c] = (madeOut.base[c]! * painted[c]!) / r.light * (1 - far) + painted[c]! * far;
-  madeOut.base[3] = madeOut.base[3]! + (r.dye - madeOut.base[3]!) * far;
-  madeOut.mro[0] = 0.7 + 0.3 * madeRelief[3]!;
-  madeOut.mro[1] = madeRelief[2]!;
-  madeOut.mro[2] = 0;
-  madeOut.mro[3] = madeRelief[3]!;
-  madeOut.lean[0] = (madeRelief[0]! - 0.5) * 2 * (1 - far);
-  madeOut.lean[1] = (madeRelief[1]! - 0.5) * 2 * (1 - far);
-}
 
 /**
  * A finish's maps at tile point (u, v), its second copy shown over the first where secondShare says, the higher
@@ -406,12 +371,10 @@ function finishMaps(id: number, u: number, v: number, spread: number, sample: Wo
  * takes; `smooth`, where given, is the normal the light falls on and the bump turns (the ground's, from its heights),
  * and otherwise the face's is. `early` is the frame's (FramePacket `worldEarly`): 1 while only the base colours have
  * come, read as the far path reads them, and 2 before any has, the finish its means. `eye`, where given, is the way to the eye, and the finish is read where that ray meets
- * its painted height (assets/tiers.ts `relief`). `made` is the material made from a recipe the face wears (vMade), or
- * 0, which comes up from the painted finish as `ready` (the made array's, from 0 to 1) does, read from `masks`.
+ * its painted height (assets/tiers.ts `relief`).
  */
 export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Numbers, index: number, x: number, y: number, z: number,
-  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null, early = 0,
-  made = 0, ready = 1, masks: WorldSample = twinMasks): number {
+  nx: number, ny: number, nz: number, footprint: number, city: Numbers, sample: WorldSample, light = false, smooth: Numbers | null = null, eye: Numbers | null = null, early = 0): number {
   const f = finishes[index]!;
   const axis = Math.abs(ny) >= Math.max(Math.abs(nx), Math.abs(nz)) ? 1 : Math.abs(nx) > Math.abs(nz) ? 0 : 2;
   const metres = finishMetres(index, city);
@@ -426,14 +389,6 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
     if (tangent[2] > 0.1) depth = (f.height / 1000 / metres) * clamp(2 - 2 ** spread * RELIEF_TEXELS);
   }
   finishMaps(index, u, v, spread, sample, light, tangent, depth, early);
-  if (made > 0 && ready > 0 && !light) {
-    madeMaps(axis === 1 && ny > 0 ? roofOf(made) : made, f.base, (axis === 0 ? z : x), axis === 1 ? z : -y, footprint, masks);
-    for (let c = 0; c < 4; c++) {
-      maps.base[c] = maps.base[c]! + (madeOut.base[c]! - maps.base[c]!) * ready;
-      maps.mro[c] = maps.mro[c]! + (madeOut.mro[c]! - maps.mro[c]!) * ready;
-    }
-    for (let c = 0; c < 2; c++) maps.lean[c] = maps.lean[c]! + (madeOut.lean[c]! - maps.lean[c]!) * ready;
-  }
   const macro = surfaceNoise(x / 37 + y / 53, z / 37);
   const stain = light ? 0 : 0.75 * surfaceNoise(x / 8 + z / 19, y / 17 + z / 11) + 0.25 * surfaceNoise(x / 2.9 + z / 7.3, y / 4.1 + z / 3.7);
   const weather = f.weather * city[4]!;
@@ -460,9 +415,11 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
   return maps.mro[3]! * f.height + f.lift;
 }
 
-/** Metres from the eye over which the walls' weathering fades out, well before the far city's boxes take over. */
-export const WEATHER_NEAR = 150;
-export const WEATHER_GONE = 250;
+/**
+ * A pixel's footprint, metres, from which the walls' weathering fades out, gone at twice it, as the finishes go to their
+ * means by theirs (WORLD_FAR): from about 90 to 185 m on 1,080 lines, and from 165 to 330 m on 1,924.
+ */
+export const WEATHER_SEEN = 0.12;
 /**
  * Metres of a box's rounded arris, about which its outer edges turn, wear and chip, and a hand's width over each floor
  * line, an inside corner, within which dirt darkens a wall.
@@ -483,150 +440,122 @@ const smooth = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 const bare = new Float64Array(4);
-/** A static instance's place in quarter metres, from its origin's world x and z, which the vertex text gives as vPlace: storeys stacked on one bay share it. */
+/** A static instance's place in quarter metres, from its origin's world x and z: storeys stacked on one bay share it. */
 export const staticPlace = (x: number, z: number): [number, number] => [Math.floor(x * 4 + 0.5), Math.floor(z * 4 + 0.5)];
-/** The seed of a static at a place (staticPlace), from 0 to 1. */
-export const staticSeed = (place: readonly number[]): number => surfaceHash(place[0]!, place[1]!);
-
-/**
- * Where a static's weathering is read on a wall, from the point in its instance's own frame (`own`, metres, as the
- * vertex text gives it in vOwn) and its face's normal in that frame: metres along the wall, the way a reader facing the
- * face reads, and metres up. Into `out`, with 1 in its third place on a wall and 0 on a face that looks up or down.
- */
-export function weatherFrame(ox: number, oy: number, oz: number, nx: number, ny: number, nz: number, out: Float64Array | Float32Array): void {
-  const facesZ = Math.abs(nz) >= Math.abs(nx);
-  out[0] = facesZ ? ox * (nz < 0 ? -1 : 1) : oz * (nx < 0 ? 1 : -1);
-  out[1] = oy;
-  out[2] = Math.abs(ny) < 0.5 ? 1 : 0;
-}
 
 /** The way the afternoon sun comes from, on the ground (x west, z north): south and a little west. A wall facing it bleaches. */
 export const SUN_FACE = [0.42, -0.91] as const;
-/** Metres of a wall's plane over which its bays share a key: two walls closer than this are one to the weathering. */
-const PLANE_CELL = 2;
-/** The second field read's scale against the first, which no whole number of either's tiles meets. */
-const FIELD_TWO = 0.731;
-/** What a field reads as while the masks are being made: damp at its middle, nothing let go, no patina and no salt. */
-const FIELD_NONE = [0.5, 0, 0, 0] as const;
-const bay = new Float64Array(4), field = new Float64Array(4), field2 = new Float64Array(4);
-/** What rust bled from a fixing leaves, as a multiplier of the wall's light; the green of a film of algae; salt's white. */
-const RUST = [0.81, 0.43, 0.24] as const, ALGAE = [0.62, 0.72, 0.5] as const, SALT = [0.72, 0.71, 0.68] as const, GROWTH = [0.55, 0.7, 0.42] as const;
+/**
+ * Metres of a wall's plane over which its bays share a key: two walls closer than this are one to the weathering. The
+ * cells' edges lie an eighth of a metre off the quarter metres walls are often on, and a bay within PLANE_BLEND of one
+ * takes a share of both keys, so a wall on an edge never flickers between them as the float's last bits move.
+ */
+const PLANE_CELL = 2, PLANE_EDGE = 0.125, PLANE_BLEND = 0.1;
+/**
+ * The most taps along a pixel's footprint a read of a bay's stamp takes: its narrow way is widened to half its long, so
+ * a wall seen at a slant reads two taps and not the tier's sixteen. The field, metres across, and the concrete under lost
+ * plaster are read in one, as their twin reads every layer.
+ */
+const STAMP_TAPS = 2;
+/** A pixel's footprint, metres, at which the formwork's joints, a centimetre wide, are gone; they fade from half of it. */
+const JOINTS_GONE = 0.05;
+/** What rust bled from a fixing, growth at a wall's foot and a green film leave, as multipliers of its light. */
+const RUST = [0.81, 0.43, 0.24] as const, GROWTH = [0.55, 0.7, 0.42] as const, ALGAE = [0.62, 0.72, 0.5] as const;
+/** The bay's own cell's choices: its stamp's layer and band and whether it is mirrored (bayStamp). */
+const choice = new Float64Array(3);
+const stamp = new Float64Array(4), other = new Float64Array(4), field = new Float64Array(4), joints = new Float64Array(4), frame = new Float64Array(6);
 
 /**
  * Where a wall's weathering is read, from its world point and its face's normal, the same on either side of a chunk's
  * edge and on an instance as on a chunk's mesh: metres along it, measured along world z where the face looks more along
- * x and along x where it looks along z; and the key of its bay in that frame, from its plane where the bay's middle
- * lies, so that a wall a little off the axes keeps its bays' keys along it. Into `out`: along, the key, the side it
- * faces (0 and 1 along x, 2 and 3 along z) and 1 where the face is a wall, 0 where it looks up or down. A face that
- * looks up or down reads along x with no key of its own, as its normal says nothing steady of x and z.
+ * x and along x where it looks along z; and the keys of its bay in that frame, from its plane where the bay's middle
+ * lies, so that a wall a little off the axes keeps its bays' keys along it. Into `out`: along; the keys of the plane
+ * cells either side of the nearest cell edge and the second's share (PLANE_BLEND); the side it faces (0 and 1 along x,
+ * 2 and 3 along z); and 1 where the face is a wall, 0 where it looks up or down. A face that looks up or down reads
+ * along x with no key of its own, as its normal says nothing steady of x and z.
  */
 export function wallFrame(x: number, z: number, nx: number, ny: number, nz: number, out: Float64Array): void {
   const wall = Math.abs(ny) < 0.5, facesX = wall && Math.abs(nx) > Math.abs(nz);
   const along = facesX ? z : x, plane = facesX ? x : z, slope = !wall ? 0 : facesX ? -nz / nx : -nx / nz;
   const side = facesX ? (nx > 0 ? 0 : 1) : nz > 0 ? 2 : 3;
   const centre = (Math.floor(along / WEATHER_BAY) + 0.5) * WEATHER_BAY;
+  const cell = (plane + (centre - along) * slope - PLANE_EDGE) / PLANE_CELL, edge = Math.floor(cell + 0.5);
   out[0] = along;
-  out[1] = wall ? Math.floor((plane + (centre - along) * slope) / PLANE_CELL) * 4 + side : 0;
-  out[2] = side;
-  out[3] = wall ? 1 : 0;
+  out[1] = wall ? (edge - 1) * 4 + side : 0;
+  out[2] = wall ? edge * 4 + side : 0;
+  out[3] = wall ? smooth(-PLANE_BLEND, PLANE_BLEND, (cell - edge) * PLANE_CELL) : 0;
+  out[4] = side;
+  out[5] = wall ? 1 : 0;
 }
-const frame = new Float64Array(4);
-/** The weathering masks as the page makes them, read at the twin's side (texgen/weather.ts). */
-const twinMasks: WorldSample = (_role, layer, u, v, spread, out) => weatherRead(layer, WEATHER_TWIN_SIDE, u, v, spread, out);
-/** How much of a pixel `footprint` metres wide, `d` metres from a line's middle, the line `half` metres either side of it covers. */
-const coveredLine = (d: number, half: number, footprint: number): number => {
-  const f = Math.max(footprint, 1e-4);
-  return clamp((half - d) / f + 0.5) * clamp((2 * half) / f);
-};
-/** The formwork of a concrete wall, by its 2 m panels along the wall and up each storey: their joints and their tie holes. */
-export function formwork(along: number, over: number, footprint: number): number {
-  const panel = Math.floor(along / 2 + 0.5), storey = Math.floor(over / WEATHER_STOREY), s = over - storey * WEATHER_STOREY;
-  const across = Math.abs(along - panel * 2 + (surfaceNoise(over / 0.7, panel * 3.1) - 0.5) * 0.008);
-  const lift = Math.floor(s / 2 + 0.5), up = Math.abs(s - lift * 2 + (surfaceNoise(along / 0.7, storey * 5.3 + lift) - 0.5) * 0.008);
-  const half = 0.0045 + 0.003 * surfaceNoise(along / 0.3 + over / 0.5, storey * 1.7);
-  const a = along - Math.floor(along / 2) * 2, b = s - Math.floor(s / 2) * 2;
-  const ha = a - (0.38 + 0.62 * clamp(Math.round((a - 0.38) / 0.62), 0, 2)), hb = b - (0.38 + 0.62 * clamp(Math.round((b - 0.38) / 0.62), 0, 2));
-  return Math.max(coveredLine(across, half, footprint), coveredLine(up, half, footprint), coveredLine(Math.sqrt(ha * ha + hb * hb), 0.0125, footprint) * 0.8);
+
+/**
+ * A storey of a bay's stamp, keyed `key`, from bits of one integer hash of its cell: one of the layers of its storey's
+ * stamps (the ground storey has its own), the half of it its place's parity picks so that the bays beside it along and
+ * up the wall never take the same stamp, and whether it is mirrored. Into `out`.
+ */
+export function bayStamp(bay: number, storey: number, key: number, out: Float64Array | number[]): void {
+  const h = hash32(bay, storey, key);
+  out[0] = storey === 0 ? WEATHER_BAYS + (((h & 0xffff) * WEATHER_GROUND) >>> 16) : ((h & 0xffff) * WEATHER_BAYS) >>> 16;
+  out[1] = (bay + storey) & 1;
+  out[2] = (h >>> 16) & 1;
+}
+
+/** A storey of a bay's stamp at (u, down) of it, keyed `key`, read by `masks`: into `out`. */
+function stamped(masks: WorldSample, bay: number, storey: number, key: number, u: number, down: number, spread: number, out: Float64Array): void {
+  bayStamp(bay, storey, key, choice);
+  masks(3, choice[0]!, choice[2] ? 1 - u : u, (choice[1]! + WEATHER_PAD + down * (1 - 2 * WEATHER_PAD)) / 2, spread, out);
 }
 
 /**
  * Weathers finish `index`'s light and ORM as worldSurface left them, at world point (x, y, z) of a static whose face's
- * normal is (nx, ny, nz), `over` metres over the ground and with `open` of the sky's light there (skyopen.ts), `dist`
- * metres from the eye, a pixel `footprint` metres wide. Every static face's value moves from bay to bay and across 5 to
- * 30 m; on a wall, within WEATHER_GONE of the eye, the masks the page makes (client/core/texgen/weather.ts), read by
- * `masks` with a layer of that array (their twin, unless a caller gives its own), put a variant of runoff, drips, rust and splash in each bay of each
- * storey by its key (wallFrame), and damp, the plaster's hold, a patina and salt over the wall from two reads of the
- * fields that never line up. `ready` is how far the masks have come, from 0 to 1. Each effect is as much as the
- * finish's SURFACE_WEATHERING says.
+ * normal is (nx, ny, nz), `over` metres over the ground and with `open` of the sky's light there (skyopen.ts), a pixel
+ * `footprint` metres wide, from the layers the card makes (client/core/texgen/weather.ts),
+ * read by `masks`, which have come `ready` of the way up (0 to 1). Each layer holds what is applied, so each is read with
+ * a tap and mixed in, as much as the finish's SURFACE_WEATHERING says: on every static face the field's tone and dirt,
+ * from one of its two tiles in each 16 m by 8 m of a wall (or of the ground's plan on a roof) by a hash; on a wall seen
+ * finer than WEATHER_SEEN a pixel, a patina bleaching it where it faces the sun or a green film where it faces away, the
+ * plaster's losses to the concrete under it, a stamp in each bay of each storey by its key (wallFrame), and on concrete
+ * near the eye the formwork's joints.
  */
 export function weathered(albedo: Out, orm: Out, index: number, x: number, y: number, z: number, nx: number, ny: number, nz: number, over: number, open: number,
-  dist: number, footprint: number, city: Numbers, sample: WorldSample, ready = 1, masks: WorldSample = twinMasks): void {
+  footprint: number, city: Numbers, sample: WorldSample, ready: number, masks: WorldSample): void {
   const w = weatherings[index]!;
   wallFrame(x, z, nx, ny, nz, frame);
-  const along = frame[0]!, key = frame[1]!, side = frame[2]!;
-  const bayAt = Math.floor(along / WEATHER_BAY), storey = Math.floor(over / WEATHER_STOREY);
-  // A wall's bays each take their own tone; a roof's tone moves only with the noise.
-  const bh = hash3(bayAt, storey, key), column = frame[3] ? hash3(bayAt, key, 977) : 0.5;
-  const value = 1 + w.value * ((surfaceNoise(x / 7 + y / 5, z / 7 - y / 4) - 0.5) * 0.7 + (column - 0.5) * 0.3);
-  for (let c = 0; c < 3; c++) albedo[c]! *= value;
-  const fade = 1 - smooth(WEATHER_NEAR, WEATHER_GONE, dist);
-  if (frame[3] === 0 || fade <= 0) return;
-  // The bay's variant, one of two a layer, its runoff from the slab line at the top of the storey to the floor.
-  const variant = Math.min(Math.floor(bh * WEATHER_BAYS * 2), WEATHER_BAYS * 2 - 1), mirror = fract(bh * 7.31) < 0.5;
-  const u = along / WEATHER_BAY - bayAt, down = 1 - (over / WEATHER_STOREY - storey);
-  masks(3, variant >> 1, mirror ? 1 - u : u, (down + (variant & 1)) / 2, Math.log2(Math.max(footprint / WEATHER_BAY, 1e-9)), bay);
-  const o = side * 5.3, f0 = WEATHER_BAYS + (side & 1), f1 = WEATHER_BAYS + ((side & 1) ^ (WEATHER_FIELDS > 1 ? 1 : 0));
-  masks(3, f0, (along + o) / WEATHER_FIELD, -over / WEATHER_FIELD, Math.log2(Math.max(footprint / WEATHER_FIELD, 1e-9)), field);
-  masks(3, f1, (along * FIELD_TWO + 3.7 + o) / WEATHER_FIELD, (-over * FIELD_TWO + 1.3) / WEATHER_FIELD, Math.log2(Math.max((footprint * FIELD_TWO) / WEATHER_FIELD, 1e-9)), field2);
-  const blend = smooth(0.3, 0.7, surfaceNoise(x / 9 + z / 9, y / 6));
-  for (let c = 0; c < 4; c++) {
-    bay[c] = bay[c]! * ready;
-    field[c] = FIELD_NONE[c]! + (field[c]! + (field2[c]! - field[c]!) * blend - FIELD_NONE[c]!) * ready;
-  }
-  const damp = field[0]!, hold = field[1]!, patina = field[2]!, salt = field[3]!;
-  // Buildings are much dirtier than their neighbours where a 31 m noise is high; a bay's leaks are its own.
-  const dirty = smooth(0.5, 0.75, surfaceNoise(x / 31 + 11.3, z / 31 + 5.7));
-  const wet = (0.55 + 0.9 * surfaceNoise(x / 41 + 3.1, z / 41 + 7.7)) * (1 + dirty), leak = (0.3 + 0.7 * fract(bh * 3.13)) * wet, worn = 0.65 * wet;
+  const along = frame[0]!, share = frame[3]!, side = frame[4]!, wall = frame[5] === 1, key = share < 1 ? frame[1]! : frame[2]!;
+  const fa = wall ? along + side * 5.3 : x, fo = wall ? over : z, cx = Math.floor(fa / WEATHER_FIELD), cy = Math.floor(fo / WEATHER_FIELD_UP);
+  const tile = hash32(cx, cy, wall ? side : 4) & 1;
+  masks(3, FIELD_LAYER, fa / WEATHER_FIELD - cx, (tile + fo / WEATHER_FIELD_UP - cy) / 2, Math.log2(Math.max(footprint / WEATHER_FIELD, 1e-9)), field);
+  const tone = 1 + (2 * field[0]! - 1) * w.value * ready;
+  for (let c = 0; c < 3; c++) albedo[c]! *= tone;
+  const fade = (1 - smooth(WEATHER_SEEN, 2 * WEATHER_SEEN, footprint)) * ready;
+  if (!wall || fade <= 0) return;
+  const sunward = nx * SUN_FACE[0] + nz * SUN_FACE[1], climate = clamp(city[6]! * 2.5 + 0.2);
+  const bleach = sunward > 0 ? field[1]! * w.bleach * smooth(0, 0.85, sunward) * smooth(0.35, 0.9, open) * fade : 0;
+  const algae = sunward < 0.2 ? field[2]! * w.algae * climate * smooth(0, 0.8, 0.2 - sunward) * (1 - 0.6 * open) * fade : 0;
+  const grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3;
+  for (let c = 0; c < 3; c++) albedo[c] = (albedo[c]! + (grey * 1.15 + albedo[c]! * 0.08 - albedo[c]!) * bleach) * (1 + (ALGAE[c]! - 1) * algae);
   if (w.peel > 0) {
-    // Whole patches of plaster gone, metres across where a wall is dirty, and flakes elsewhere as its leaks loosen it.
-    const gone = smooth(0.62, 0.7, surfaceNoise(along / 6, over / 5 + side * 17) + 0.25 * dirty);
-    const t = 1 - (0.88 * gone + w.peel * worn * 0.4 * (1 - gone)) * fade, lost = smooth(t, t + 0.02, hold), rim = smooth(t - 0.04, t, hold) - lost;
-    const chalk = 0.3 * w.peel * fade * smooth(0.2, 0.8, damp), grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3;
+    // The plaster's losses and the rim about each, as the field packs them.
+    const l2 = 2 * field[3]!, lost = clamp(l2 - 1) * w.peel * fade, rim = (Math.min(l2, 1) - clamp(l2 - 1)) * w.peel * fade;
     const metres = finishMetres(CONCRETE, city);
     // The concrete is projected as worldSurface projects a wall: along z where the face looks along x.
     if (lost > 0) sample(0, CONCRETE, (side < 2 ? z : x) / metres, -y / metres, Math.log2(Math.max(footprint / metres, 1e-9)), bare);
-    for (let c = 0; c < 3; c++) {
-      const faded = albedo[c]! + (grey * 1.1 - albedo[c]!) * chalk;
-      albedo[c] = (faded * (1 - lost) + bare[c]! * city[c]! * 0.85 * lost) * (1 - 0.3 * rim);
-    }
+    for (let c = 0; c < 3; c++) albedo[c] = albedo[c]! * (1 - 0.3 * rim) * (1 - lost) + bare[c]! * city[c]! * 0.85 * lost;
   }
-  const runs = bay[0]! * w.runs * leak * (0.7 + 0.3 * open) * fade, left = LEFT[w.left], wash = (0.12 * w.runs * worn + 0.4 * dirty) * fade;
-  // Under every slab line the wall is darker, fading down the storey, which a street sees from far off.
-  const below = (over - storey * WEATHER_STOREY) / WEATHER_STOREY, band = below * below * below * 0.35 * w.runs * (0.6 + 0.4 * worn) * (0.7 + 0.3 * open) * fade;
-  const edge = (0.35 + 0.65 * surfaceNoise(along / 9, side * 13)) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1 - smooth(edge - 0.06, edge, over)) * w.damp * fade;
-  const growth = (1 - smooth(0.1, 0.45 * (0.6 + damp), over)) * foot * clamp(city[6]! * 2.5 + 0.2);
-  const joints = w.joints > 0 ? formwork(along, over, footprint) * w.joints * fade : 0;
-  const floor = over - storey * WEATHER_STOREY, dirt = (1 - smooth(0, EDGE_DIRT, floor)) * fade;
-  const drips = bay[1]! * w.drips * (0.6 + 0.4 * leak) * fade;
-  const rust = bay[2]! * w.drips * (fract(bh * 13.7) < 0.6 ? 1 : 0) * fade;
-  const splash = storey === 0 ? bay[3]! * w.splash * fade * (1 - smooth(0.8, 1.2, over)) : 0;
-  // The sun bleaches a wall facing it under an open sky, in a patina's patches; facing away in the shade it greens.
-  const sunward = nx * SUN_FACE[0] + nz * SUN_FACE[1];
-  const bleach = w.bleach * smooth(0, 0.85, sunward) * smooth(0.35, 0.9, open) * (0.4 + 0.6 * smooth(0.3, 0.8, patina)) * fade;
-  const algae = w.algae * clamp(city[6]! * 2.5 + 0.2) * smooth(0, 0.8, 0.2 - sunward) * (1 - 0.6 * open) * smooth(0.45, 0.8, patina + 0.4 * bay[0]!) * fade;
-  // Salt blooms out of a wall at its damp foot, up to a little over the tide line, and under its runs.
-  const salted = w.salt * smooth(0.7, 0.92, salt) * Math.min(1, 1 - smooth(edge * 0.7, edge + 0.25, over) + 0.5 * bay[0]!) * fade;
-  const grey = (albedo[0]! + albedo[1]! + albedo[2]!) / 3;
-  for (let c = 0; c < 3; c++) {
-    let a = albedo[c]!;
-    a += (grey * 1.15 + a * 0.08 - a) * 0.35 * bleach;
-    a *= (1 + (left[c]! - 1) * runs) * (1 + (left[c]! - 1) * drips * 0.8) * (1 - 0.5 * foot) * (1 - 0.4 * joints) * (1 - 0.3 * dirt) * (1 - wash) * (1 - band) * (1 - 0.32 * splash);
-    a += (a * RUST[c]! - a) * rust * 0.8;
-    a *= 1 - growth + growth * GROWTH[c]!;
-    a *= 1 + (ALGAE[c]! - 1) * 0.6 * algae;
-    albedo[c] = a + (SALT[c]! - a) * 0.3 * salted;
+  const bayAt = Math.floor(along / WEATHER_BAY), storey = Math.floor(over / WEATHER_STOREY);
+  const u = along / WEATHER_BAY - bayAt, down = 1 - (over / WEATHER_STOREY - storey), spread = Math.log2(Math.max(footprint / WEATHER_BAY, 1e-9));
+  stamped(masks, bayAt, storey, key, u, down, spread, stamp);
+  if (share > 0 && share < 1) {
+    stamped(masks, bayAt, storey, frame[2]!, u, down, spread, other);
+    for (let c = 0; c < 4; c++) stamp[c] = stamp[c]! + (other[c]! - stamp[c]!) * share;
   }
-  orm[1] = Math.min(1, orm[1]! * (1 - 0.3 * foot) + 0.08 * splash);
+  const sky = (0.7 + 0.3 * open) * fade, low = over < GROWTH_TOP, stain = low ? GROWTH : RUST, left = LEFT[w.left];
+  const light = 1 + (2 * stamp[0]! - 1) * w.runs * sky, stained = stamp[1]! * (low ? w.damp * climate : w.drips) * fade, runs = stamp[2]! * w.runs * sky;
+  const formed = w.joints > 0 && footprint < JOINTS_GONE;
+  if (formed) masks(3, FORMWORK_LAYER, along / FORMWORK, over / FORMWORK, Math.log2(Math.max(footprint / FORMWORK, 1e-9)), joints);
+  const jointed = formed ? 1 - 0.4 * joints[0]! * w.joints * fade * (1 - smooth(JOINTS_GONE / 2, JOINTS_GONE, footprint)) : 1;
+  for (let c = 0; c < 3; c++) albedo[c]! *= light * (1 + (stain[c]! - 1) * stained) * (1 + (left[c]! - 1) * runs) * jointed;
+  orm[1]! *= 1 - 0.3 * stamp[3]! * w.damp * fade;
 }
 
 /**
@@ -981,55 +910,33 @@ export function walkWorn(albedo: Out, orm: Out, normal: Out, id: number, x: numb
 }
 
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
-/** Materials made from recipes. */
-const R = FINISH_RECIPES.length;
-/**
- * How far, in its tiles, a made material's second copy is moved: by whole modules of a laid or ribbed one, so its joints
- * and ribs meet themselves; any way for a grain that has none.
- */
-export function madeShift(r: FinishRecipe): [number, number] {
-  return r.name === "block" ? [0.875, 0.625] : r.name === "corrugated" ? [0.3, 0.37] : r.name === "seam" ? [0.5, 0.41] : [0.37, 0.71];
-}
 const vectors = (name: string, rows: readonly (readonly number[])[]): string => {
   const t = `vec${rows[0]!.length}`;
   return `const ${t} ${name}[${N}] = ${t}[${N}](${rows.map((a) => `${t}(${a.map(fl).join(",")})`).join(",")});\n`;
 };
-/** The byte a piece drawn as an instance puts in its fifth region where its sixth is the material made from a recipe it wears: no colour of the palette's. */
-export const MADE_MARK = 255;
-/**
- * Adds a material index to FLAT's mesh vertex texts, and gives the colour as light, keeping the low-poly texts
- * byte-for-byte; and vMade, the material made from a recipe the vertex wears (content/texgen/finishes.ts, from 1), or 0:
- * a near chunk's from its stream of them (attribute 15, render/nearcity.ts), an instance's from its last two regions.
- */
+/** Adds a material index to FLAT's mesh vertex texts, and gives the colour as light, keeping the low-poly texts byte-for-byte. */
 export function worldVertex(vertex: string): string {
   const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, false));
-  const lookup = `#ifdef STREET_FINISH\nuniform float uFixture;\nflat out int vFixture;\n${fixtureShader()}\n#endif\nflat out int vSurface;\nlayout(location=15) in uint aMade;\nflat out int vMade;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
+  const lookup = `#ifdef STREET_FINISH\nuniform float uFixture;\nflat out int vFixture;\n${fixtureShader()}\n#endif\nflat out int vSurface;\nconst int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
   const light = "  vColor = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));\n";
-  // An instance's material from its regions, where the text has regions; a near chunk's from its stream.
-  const regions = vertex.includes("in uint aColor;") && vertex.includes("in uvec2 iRegB;");
-  const made = regions ? `aMade > 0u ? int(aMade) : aColor >= ${REGION_BASE}u && iRegB.x == ${MADE_MARK}u ? int(iRegB.y) : 0;` : "int(aMade);";
-  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  vFixture = fixtureFace(fixture,i,l);\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n  vMade = ${made}\n${light}  vRel = p;`);
+  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `#ifdef STREET_FINISH\n  int fixture = uFixture < 0.0 ? int(aBone >> 6u) : int(uFixture);\n  vFixture = fixtureFace(fixture,i,l);\n#endif\n  vSurface = SURFACE_IDS[int(i)];\n${light}  vRel = p;`);
 }
 
 /**
- * A static's own frame, for its walls' weathering and edges and for whatever else is drawn on a wall. Adds to FLAT's
+ * A static's own frame, for its walls' edges and for whatever else is drawn on a wall. Adds to FLAT's
  * mesh vertex text, after worldVertex, on the lit tiers that read the finishes in full (programs.ts, WORLD_WEATHER):
  *
  * - vOwn (vec3, metres): the vertex in its instance's own frame, its mesh's position sized; x and z turn with the
  *   instance's yaw, y is up from its origin. A near chunk mesh's frame is the chunk's (shared/world/city.ts).
- * - vPlace (flat vec2, quarter metres): the instance's origin in the world, x and z, rounded (staticPlace). Its seed,
- *   from 0 to 1, is surfaceHash(ivec2(vPlace)) (staticSeed): storeys stacked on one bay share it, neighbours do not;
- *   a near chunk's statics share their chunk's.
+ * - vPlace (flat vec2, quarter metres): the instance's origin in the world, x and z, rounded (staticPlace), which the
+ *   facades take their parts from: storeys stacked on one bay share it, neighbours do not.
  * - vFace (vec2, 0 to 1): across and up the face, from its corners, where the mesh says them (aBone, a body's bone
  *   byte, which a static keeps for this: bits 0 and 1 its corner, shared/world/city.ts cornerByte); 0 where it does not.
  * - vEdges (flat uint, bits): which of the face's borders are outer edges, u at 0, u at 1, v at 0, v at 1 (bits 2 to 5
  *   of aBone); 0 where none or unknown.
  *
- * A fragment reads its wall with staticWall (GLSL, after WORLD_GLSL) or weatherFrame (TypeScript): the face's normal in
- * the own frame from vOwn's steps between pixels; metres along the wall, the way a reader facing it reads (vOwn.x or
- * vOwn.z); metres over the ground (skyopen.ts overGround); the storey, of WEATHER_STOREY (4 m) from the ground; the bay,
- * of WEATHER_BAY (8 m) along; and the seed. A face's size and its nearest outer border come from vFace's and vRel's
- * steps between pixels (edgeOf).
+ * A face's size and its nearest outer border come from vFace's and vRel's steps between pixels (edgeOf); its weathering
+ * from its world point and normal (wallFrame).
  */
 export function ownVertex(vertex: string): string {
   if (!vertex.includes("out vec3 vRel;") || !vertex.includes("  vRel = p;")) throw new Error("ownVertex: not a flat mesh vertex text");
@@ -1168,41 +1075,6 @@ void finishMaps(int id, vec2 q, vec2 dx, vec2 dy, vec3 view, float depth, out ve
 }
 // Whether the finish is smooth enough to mirror the sky as a picture (worldSharp's twin), set by worldSurface.
 bool worldSharp = false;
-// The material made from a recipe the pixel wears (vMade), set before worldSurface, or 0.
-int worldMade = 0;
-#ifdef WORLD_WEATHER
-uniform highp sampler2DArray uWeather;
-uniform float uWeatherReady;
-const float MADE_METRES[${R + 1}] = float[${R + 1}](1.0, ${FINISH_RECIPES.map((r) => fl(r.metres)).join(", ")});
-const vec4 MADE_MEAN[${R + 1}] = vec4[${R + 1}](vec4(0.5), ${FINISH_RECIPES.map((r) => `vec4(${fl(r.light)}, ${fl(r.light)}, ${fl(r.light)}, ${fl(r.dye)})`).join(", ")});
-const vec2 MADE_SHIFT[${R + 1}] = vec2[${R + 1}](vec2(0.0), ${FINISH_RECIPES.map((r) => `vec2(${madeShift(r).map(fl).join(", ")})`).join(", ")});
-const int MADE_ROOF[${R + 1}] = int[${R + 1}](0, ${FINISH_RECIPES.map((_, k) => roofOf(k + 1)).join(", ")});
-// madeMaps's twin: a material made from a recipe at the pixel rel from the eye on a face projected along axis, its
-// second copy moved by whole modules over the patches the painted finishes' second copies show in, its light about
-// the mean of painted finish id's, which it is far off.
-void madeMaps(int k, int id, int axis, vec3 rel, vec3 dpx, vec3 dpy, out vec4 b, out vec4 r, out vec2 bump) {
-  float m = MADE_METRES[k];
-  vec3 ph = fract(uWorldEye / m);
-  vec2 q = axis == 1 ? rel.xz / m + ph.xz : axis == 0 ? vec2(rel.z / m + ph.z, -rel.y / m - ph.y) : vec2(rel.x / m + ph.x, -rel.y / m - ph.y);
-  vec2 dx = (axis == 1 ? dpx.xz : axis == 0 ? vec2(dpx.z, -dpx.y) : vec2(dpx.x, -dpx.y)) / m;
-  vec2 dy = (axis == 1 ? dpy.xz : axis == 0 ? vec2(dpy.z, -dpy.y) : vec2(dpy.x, -dpy.y)) / m;
-  float layer = float(${MADE_FIRST} + (k - 1) * 2);
-  float second = clamp((surfaceNoise(q * ${fl(WORLD_PATCH)} + vec2(5.3, 1.7)) - 0.35) / 0.3, 0.0, 1.0);
-  second = second * second * (3.0 - 2.0 * second);
-  b = textureGrad(uWeather, vec3(q, layer), dx, dy);
-  vec4 rr = textureGrad(uWeather, vec3(q, layer + 1.0), dx, dy);
-  if (second > 0.0) {
-    vec2 q2 = q + MADE_SHIFT[k];
-    b = mix(b, textureGrad(uWeather, vec3(q2, layer), dx, dy), second);
-    rr = mix(rr, textureGrad(uWeather, vec3(q2, layer + 1.0), dx, dy), second);
-  }
-  // Far off it is its means, as a painted finish is.
-  float far = clamp((log2(max(length(dx), length(dy))) - ${fl(WORLD_FAR)}) / ${fl(WORLD_FAR_BAND)}, 0.0, 1.0);
-  b = mix(vec4(b.rgb * WB[id].rgb / MADE_MEAN[k].x, b.a), vec4(WB[id].rgb, MADE_MEAN[k].w), far);
-  r = vec4(0.7 + 0.3 * rr.a, rr.b, 0.0, rr.a);
-  bump = (rr.rg - 0.5) * 2.0 * (1.0 - far);
-}
-#endif
 // Returns the height in millimetres with the finish's lift.
 float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int id, vec3 rel, vec3 dpx, vec3 dpy) {
   vec4 f = WF[id], tint = WT[id], w = WW[id];
@@ -1222,18 +1094,6 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
   if (view.z > 0.1) depth = WM[id].z * 0.001 / metres * clamp(2.0 - max(length(dx), length(dy)) * ${fl(RELIEF_TEXELS)}, 0.0, 1.0);
 #endif
   finishMaps(id, q, dx, dy, view, depth, base, mro, bump, tone);
-#ifdef WORLD_WEATHER
-  // A material made from a recipe comes up from the painted finish as its layers are made.
-  if (worldMade > 0 && uWeatherReady > 0.0) {
-    vec4 mb, mr;
-    vec2 mbump;
-    // A face that looks up is a flat roof, which wears its recipe's roof.
-    madeMaps(axis == 1 && face.y > 0.0 ? MADE_ROOF[worldMade] : worldMade, id, axis, rel, dpx, dpy, mb, mr, mbump);
-    base = mix(base, mb, uWeatherReady);
-    mro = mix(mro, mr, uWeatherReady);
-    bump = mix(bump, mbump, uWeatherReady);
-  }
-#endif
   vec3 p = rel + uWorldEye;
   float macro = surfaceNoise(vec2(p.x/37.0+p.y/53.0,p.z/37.0));
 #ifdef WORLD_LIGHT
@@ -1257,73 +1117,56 @@ float worldSurface(inout vec3 albedo, out vec3 orm, inout vec3 n, vec3 face, int
 #ifdef WORLD_WEATHER
 ${vectors("WX", weatherings.map((w) => [w.runs, w.damp, w.peel, w.joints]))}const float WV[${N}] = float[${N}](${weatherings.map((w) => fl(w.value)).join(",")});
 const vec3 WL[${N}] = vec3[${N}](${weatherings.map((w) => `vec3(${LEFT[w.left].map(fl).join(",")})`).join(",")});
-${vectors("WY", weatherings.map((w) => [w.drips, w.splash, w.bleach, w.algae]))}const float WZ[${N}] = float[${N}](${weatherings.map((w) => fl(w.salt)).join(",")});
-// hash3's twin (client/core/texgen/noise.ts).
-float weatherHash(int a, int b, int c) {
+${vectors("WY", weatherings.map((w) => [w.drips, w.splash, w.bleach, w.algae]))}uniform highp sampler2DArray uTexgen;
+uniform float uTexgenReady;
+uint weatherHash(int a, int b, int c) {
   uint h = uint(a) * 1597334677u ^ uint(b) * 3812015801u ^ uint(c) * 2654435761u;
   h = (h ^ (h >> 16u)) * 2246822519u;
   h = (h ^ (h >> 13u)) * 3266489917u;
-  return float((h ^ (h >> 16u)) >> 8u) / 16777216.0;
+  return h ^ (h >> 16u);
 }
-// wallFrame's twin: along, the bay's key and the side, from the world point p and the face's normal n.
-bool wallFrame(vec3 p, vec3 n, out float along, out int key, out int side) {
+bool wallFrame(vec3 p, vec3 n, out float along, out ivec2 keys, out float share, out int side) {
   bool wall = abs(n.y) < 0.5, facesX = wall && abs(n.x) > abs(n.z);
   along = facesX ? p.z : p.x;
   float plane = facesX ? p.x : p.z, slope = !wall ? 0.0 : facesX ? -n.z / n.x : -n.x / n.z;
   side = facesX ? (n.x > 0.0 ? 0 : 1) : (n.z > 0.0 ? 2 : 3);
   float centre = (floor(along / ${fl(WEATHER_BAY)}) + 0.5) * ${fl(WEATHER_BAY)};
-  key = wall ? int(floor((plane + (centre - along) * slope) / ${fl(PLANE_CELL)})) * 4 + side : 0;
+  float cell = (plane + (centre - along) * slope - ${fl(PLANE_EDGE)}) / ${fl(PLANE_CELL)}, edge = floor(cell + 0.5);
+  keys = wall ? ivec2(int(edge) * 4 - 4 + side, int(edge) * 4 + side) : ivec2(0);
+  share = wall ? smoothstep(${fl(-PLANE_BLEND)}, ${fl(PLANE_BLEND)}, (cell - edge) * ${fl(PLANE_CELL)}) : 0.0;
   return wall;
 }
-float coveredLine(float d, float hw, float f) {
-  f = max(f, 1e-4);
-  return clamp((hw - d) / f + 0.5, 0.0, 1.0) * clamp(2.0 * hw / f, 0.0, 1.0);
+vec4 stamped(int bay, int storey, int key, float u, float down, vec2 gx, vec2 gy) {
+  uint h = weatherHash(bay, storey, key);
+  float flip = ((h >> 16u) & 1u) == 1u ? -1.0 : 1.0;
+  float layer = float(storey == 0 ? ${WEATHER_BAYS}u + (((h & 65535u) * ${WEATHER_GROUND}u) >> 16u) : ((h & 65535u) * ${WEATHER_BAYS}u) >> 16u);
+  vec2 q = vec2(flip < 0.0 ? 1.0 - u : u, (float((bay + storey) & 1) + ${fl(WEATHER_PAD)} + down * ${fl(1 - 2 * WEATHER_PAD)}) * 0.5);
+  float lx = length(gx), ly = length(gy), least = max(lx, ly) / ${fl(STAMP_TAPS)};
+  return textureGrad(uTexgen, vec3(q, layer), vec2(gx.x * flip, gx.y) * max(1.0, least / max(lx, 1e-12)), vec2(gy.x * flip, gy.y) * max(1.0, least / max(ly, 1e-12)));
 }
-// formwork's twin.
-float formwork(float along, float over, float footprint) {
-  float panel = floor(along / 2.0 + 0.5), storey = floor(over / ${fl(WEATHER_STOREY)}), s = over - storey * ${fl(WEATHER_STOREY)};
-  float across = abs(along - panel * 2.0 + (surfaceNoise(vec2(over / 0.7, panel * 3.1)) - 0.5) * 0.008);
-  float lift = floor(s / 2.0 + 0.5), up = abs(s - lift * 2.0 + (surfaceNoise(vec2(along / 0.7, storey * 5.3 + lift)) - 0.5) * 0.008);
-  float hw = 0.0045 + 0.003 * surfaceNoise(vec2(along / 0.3 + over / 0.5, storey * 1.7));
-  float a = along - floor(along / 2.0) * 2.0, b = s - floor(s / 2.0) * 2.0;
-  float ha = a - (0.38 + 0.62 * clamp(floor((a - 0.38) / 0.62 + 0.5), 0.0, 2.0)), hb = b - (0.38 + 0.62 * clamp(floor((b - 0.38) / 0.62 + 0.5), 0.0, 2.0));
-  return max(max(coveredLine(across, hw, footprint), coveredLine(up, hw, footprint)), coveredLine(sqrt(ha * ha + hb * hb), 0.0125, footprint) * 0.8);
-}
-// weathered's twin, on a static at the pixel rel from the eye, over metres over the ground with open of the sky's
-// light; face, dpx and dpy are LIT's.
 void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open, vec3 rel, vec3 face, vec3 dpx, vec3 dpy) {
   float ox = dFdx(over), oy = dFdy(over);
   vec3 p = rel + uWorldEye;
-  float along;
-  int key, side;
-  bool wall = wallFrame(p, face, along, key, side);
-  int bay = int(floor(along / ${fl(WEATHER_BAY)})), storey = int(floor(over / ${fl(WEATHER_STOREY)}));
-  float bh = weatherHash(bay, storey, key), column = wall ? weatherHash(bay, key, 977) : 0.5;
-  albedo *= 1.0 + WV[id] * ((surfaceNoise(vec2(p.x / 7.0 + p.y / 5.0, p.z / 7.0 - p.y / 4.0)) - 0.5) * 0.7 + (column - 0.5) * 0.3);
-  float fade = 1.0 - smoothstep(${fl(WEATHER_NEAR)}, ${fl(WEATHER_GONE)}, length(rel));
-  if (!wall || fade <= 0.0) return;
+  float along, share;
+  ivec2 keys;
+  int side;
+  bool wall = wallFrame(p, face, along, keys, share, side);
   float ax = side < 2 ? dpx.z : dpx.x, ay = side < 2 ? dpy.z : dpy.x;
-  // The bay's variant, one of two a layer, its runoff from the slab line at the top of the storey to the floor.
-  int variant = min(int(bh * ${fl(WEATHER_BAYS * 2)}), ${WEATHER_BAYS * 2 - 1});
-  float flip = fract(bh * 7.31) < 0.5 ? -1.0 : 1.0;
-  float u = along / ${fl(WEATHER_BAY)} - float(bay), down = 1.0 - (over / ${fl(WEATHER_STOREY)} - float(storey));
-  vec2 q = vec2(flip < 0.0 ? 1.0 - u : u, (down + float(variant & 1)) * 0.5);
-  vec4 bm = textureGrad(uWeather, vec3(q, float(variant >> 1)), vec2(ax * flip, -ox) / ${fl(WEATHER_BAY)}, vec2(ay * flip, -oy) / ${fl(WEATHER_BAY)}) * uWeatherReady;
-  float o = float(side) * 5.3;
-  int f0 = ${WEATHER_BAYS} + (side & 1), f1 = ${WEATHER_BAYS} + ((side & 1) ^ ${WEATHER_FIELDS > 1 ? 1 : 0});
-  vec4 m0 = textureGrad(uWeather, vec3((along + o) / ${fl(WEATHER_FIELD)}, -over / ${fl(WEATHER_FIELD)}, float(f0)), vec2(ax, -ox) / ${fl(WEATHER_FIELD)}, vec2(ay, -oy) / ${fl(WEATHER_FIELD)});
-  vec4 m1 = textureGrad(uWeather, vec3((along * ${fl(FIELD_TWO)} + 3.7 + o) / ${fl(WEATHER_FIELD)}, (-over * ${fl(FIELD_TWO)} + 1.3) / ${fl(WEATHER_FIELD)}, float(f1)), vec2(ax, -ox) * ${fl(FIELD_TWO / WEATHER_FIELD)}, vec2(ay, -oy) * ${fl(FIELD_TWO / WEATHER_FIELD)});
-  vec4 none = vec4(${FIELD_NONE.map(fl).join(", ")});
-  vec4 fm = mix(none, mix(m0, m1, smoothstep(0.3, 0.7, surfaceNoise(vec2(p.x / 9.0 + p.z / 9.0, p.y / 6.0)))), uWeatherReady);
-  float damp = fm.r, hold = fm.g, patina = fm.b, salt = fm.a;
-  // Buildings are much dirtier than their neighbours where a 31 m noise is high; a bay's leaks are its own.
-  float dirty = smoothstep(0.5, 0.75, surfaceNoise(vec2(p.x / 31.0 + 11.3, p.z / 31.0 + 5.7)));
-  float wet = (0.55 + 0.9 * surfaceNoise(vec2(p.x / 41.0 + 3.1, p.z / 41.0 + 7.7))) * (1.0 + dirty), leak = (0.3 + 0.7 * fract(bh * 3.13)) * wet, worn = 0.65 * wet;
+  vec2 f = wall ? vec2(along + float(side) * 5.3, over) : p.xz;
+  float footprint = wall ? max(length(vec2(ax, ox)), length(vec2(ay, oy))) : max(length(dpx.xz), length(dpy.xz));
+  vec2 cell = floor(f / vec2(${fl(WEATHER_FIELD)}, ${fl(WEATHER_FIELD_UP)}));
+  float tile = float(weatherHash(int(cell.x), int(cell.y), wall ? side : 4) & 1u);
+  vec4 fm = textureGrad(uTexgen, vec3(f.x / ${fl(WEATHER_FIELD)} - cell.x, (tile + f.y / ${fl(WEATHER_FIELD_UP)} - cell.y) * 0.5, ${fl(FIELD_LAYER)}), vec2(footprint / ${fl(WEATHER_FIELD)}, 0.0), vec2(0.0, footprint / ${fl(WEATHER_FIELD)}));
+  albedo *= 1.0 + (2.0 * fm.r - 1.0) * WV[id] * uTexgenReady;
+  float fade = (1.0 - smoothstep(${fl(WEATHER_SEEN)}, ${fl(2 * WEATHER_SEEN)}, footprint)) * uTexgenReady;
+  if (!wall || fade <= 0.0) return;
   vec4 x = WX[id], y = WY[id];
+  float sunward = dot(face.xz, vec2(${SUN_FACE.map(fl).join(", ")})), climate = clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0);
+  float bleach = sunward > 0.0 ? fm.g * y.z * smoothstep(0.0, 0.85, sunward) * smoothstep(0.35, 0.9, open) * fade : 0.0;
+  float algae = sunward < 0.2 ? fm.b * y.w * climate * smoothstep(0.0, 0.8, 0.2 - sunward) * (1.0 - 0.6 * open) * fade : 0.0;
+  albedo = (albedo + (vec3(dot(albedo, vec3(1.0 / 3.0)) * 1.15) + albedo * 0.08 - albedo) * bleach) * (1.0 + (vec3(${ALGAE.map(fl).join(", ")}) - 1.0) * algae);
   if (x.z > 0.0) {
-    float gone = smoothstep(0.62, 0.7, surfaceNoise(vec2(along / 6.0, over / 5.0 + float(side) * 17.0)) + 0.25 * dirty);
-    float t = 1.0 - (0.88 * gone + x.z * worn * 0.4 * (1.0 - gone)) * fade, lost = smoothstep(t, t + 0.02, hold), rim = smoothstep(t - 0.04, t, hold) - lost;
-    float chalk = 0.3 * x.z * fade * smoothstep(0.2, 0.8, damp), grey = (albedo.r + albedo.g + albedo.b) / 3.0;
+    float l2 = 2.0 * fm.a, lost = clamp(l2 - 1.0, 0.0, 1.0) * x.z * fade, rim = (min(l2, 1.0) - clamp(l2 - 1.0, 0.0, 1.0)) * x.z * fade;
     vec3 bare = vec3(0.0);
     if (lost > 0.0) {
       float mc = WF[${CONCRETE}].x * uSurfaceCity[0].w;
@@ -1331,34 +1174,21 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
       bool facesX = side < 2;
       vec2 qc = facesX ? vec2(rel.z / mc + ph.z, -rel.y / mc - ph.y) : vec2(rel.x / mc + ph.x, -rel.y / mc - ph.y);
       vec2 cx = (facesX ? vec2(dpx.z, -dpx.y) : vec2(dpx.x, -dpx.y)) / mc, cy = (facesX ? vec2(dpy.z, -dpy.y) : vec2(dpy.x, -dpy.y)) / mc;
-      bare = worldBase(qc, ${CONCRETE}, cx, cy).rgb;
+      float cl = max(length(cx), length(cy));
+      bare = worldBase(qc, ${CONCRETE}, vec2(cl, 0.0), vec2(0.0, cl)).rgb;
     }
-    albedo = (mix(albedo, vec3(grey * 1.1), chalk) * (1.0 - lost) + bare * uSurfaceCity[0].rgb * 0.85 * lost) * (1.0 - 0.3 * rim);
+    albedo = albedo * (1.0 - 0.3 * rim) * (1.0 - lost) + bare * uSurfaceCity[0].rgb * 0.85 * lost;
   }
-  float runs = bm.r * x.x * leak * (0.7 + 0.3 * open) * fade, wash = (0.12 * x.x * worn + 0.4 * dirty) * fade;
-  float below = (over - float(storey) * ${fl(WEATHER_STOREY)}) / ${fl(WEATHER_STOREY)};
-  float band = below * below * below * 0.35 * x.x * (0.6 + 0.4 * worn) * (0.7 + 0.3 * open) * fade;
-  float edge = (0.35 + 0.65 * surfaceNoise(vec2(along / 9.0, float(side) * 13.0))) * (0.55 + 0.9 * damp) * (1.3 + 0.6 * dirty), foot = (1.0 - smoothstep(edge - 0.06, edge, over)) * x.y * fade;
-  float growth = (1.0 - smoothstep(0.1, 0.45 * (0.6 + damp), over)) * foot * clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0);
-  float footprint = max(length(vec2(ax, ox)), length(vec2(ay, oy)));
-  float joints = x.w > 0.0 ? formwork(along, over, footprint) * x.w * fade : 0.0;
-  float dirt = (1.0 - smoothstep(0.0, ${fl(EDGE_DIRT)}, over - float(storey) * ${fl(WEATHER_STOREY)})) * fade;
-  float drips = bm.g * y.x * (0.6 + 0.4 * leak) * fade;
-  float rust = bm.b * y.x * (fract(bh * 13.7) < 0.6 ? 1.0 : 0.0) * fade;
-  float splash = storey == 0 ? bm.a * y.y * fade * (1.0 - smoothstep(0.8, 1.2, over)) : 0.0;
-  // The sun bleaches a wall facing it under an open sky, in a patina's patches; facing away in the shade it greens.
-  float sunward = dot(face.xz, vec2(${SUN_FACE.map(fl).join(", ")}));
-  float bleach = y.z * smoothstep(0.0, 0.85, sunward) * smoothstep(0.35, 0.9, open) * (0.4 + 0.6 * smoothstep(0.3, 0.8, patina)) * fade;
-  float algae = y.w * clamp(uSurfaceCity[1].z * 2.5 + 0.2, 0.0, 1.0) * smoothstep(0.0, 0.8, 0.2 - sunward) * (1.0 - 0.6 * open) * smoothstep(0.45, 0.8, patina + 0.4 * bm.r) * fade;
-  float salted = WZ[id] * smoothstep(0.7, 0.92, salt) * min(1.0, 1.0 - smoothstep(edge * 0.7, edge + 0.25, over) + 0.5 * bm.r) * fade;
-  float grey = (albedo.r + albedo.g + albedo.b) / 3.0;
-  albedo += (vec3(grey * 1.15) + albedo * 0.08 - albedo) * 0.35 * bleach;
-  albedo *= (1.0 + (WL[id] - 1.0) * runs) * (1.0 + (WL[id] - 1.0) * drips * 0.8) * (1.0 - 0.5 * foot) * (1.0 - 0.4 * joints) * (1.0 - 0.3 * dirt) * (1.0 - wash) * (1.0 - band) * (1.0 - 0.32 * splash);
-  albedo += (albedo * vec3(${RUST.map(fl).join(", ")}) - albedo) * rust * 0.8;
-  albedo *= mix(vec3(1.0), vec3(${GROWTH.map(fl).join(", ")}), growth);
-  albedo *= 1.0 + (vec3(${ALGAE.map(fl).join(", ")}) - 1.0) * 0.6 * algae;
-  albedo += (vec3(${SALT.map(fl).join(", ")}) - albedo) * 0.3 * salted;
-  orm.y = min(1.0, orm.y * (1.0 - 0.3 * foot) + 0.08 * splash);
+  int bay = int(floor(along / ${fl(WEATHER_BAY)})), storey = int(floor(over / ${fl(WEATHER_STOREY)}));
+  float u = along / ${fl(WEATHER_BAY)} - float(bay), down = 1.0 - (over / ${fl(WEATHER_STOREY)} - float(storey));
+  vec2 gx = vec2(ax, -ox * ${fl(1 - 2 * WEATHER_PAD)}) / ${fl(WEATHER_BAY)}, gy = vec2(ay, -oy * ${fl(1 - 2 * WEATHER_PAD)}) / ${fl(WEATHER_BAY)};
+  vec4 bm = stamped(bay, storey, share < 1.0 ? keys.x : keys.y, u, down, gx, gy);
+  if (share > 0.0 && share < 1.0) bm = mix(bm, stamped(bay, storey, keys.y, u, down, gx, gy), share);
+  float sky = (0.7 + 0.3 * open) * fade;
+  bool low = over < ${fl(GROWTH_TOP)};
+  albedo *= (1.0 + (2.0 * bm.r - 1.0) * x.x * sky) * (1.0 + ((low ? vec3(${GROWTH.map(fl).join(", ")}) : vec3(${RUST.map(fl).join(", ")})) - 1.0) * bm.g * (low ? x.y * climate : y.x) * fade) * (1.0 + (WL[id] - 1.0) * bm.b * x.x * sky);
+  if (x.w > 0.0 && footprint < ${fl(JOINTS_GONE)}) albedo *= 1.0 - 0.4 * x.w * fade * (1.0 - smoothstep(${fl(JOINTS_GONE / 2)}, ${fl(JOINTS_GONE)}, footprint)) * textureGrad(uTexgen, vec3(along / ${fl(FORMWORK)}, over / ${fl(FORMWORK)}, ${fl(FORMWORK_LAYER)}), vec2(ax, ox) / ${fl(FORMWORK)}, vec2(ay, oy) / ${fl(FORMWORK)}).r;
+  orm.y *= 1.0 - 0.3 * bm.a * x.y * fade;
   worldSharp = orm.y < ${fl(WORLD_SHARP)};
 }
 #endif

@@ -148,6 +148,8 @@ async function boot(): Promise<void> {
   app.plainSky = selfcheck; app.fromEye = measured || params.has("look") || params.has("trip");
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
   if (app.ui.settings.touchFirst) app.ui.inputDevice = 2;
+  // The textures the card makes come as a file of their own, which the first frame does not wait for; a touch-first device makes none.
+  if (!app.ui.settings.touchFirst) void import("../core/texgen/late.ts").then((m) => renderer.makeWith((app.texgen = m.texgen(renderer.gl))), () => {});
   // What the screen's own edges take (a notch, a home bar), which the page's padding measures: the interface keeps clear of them.
   const edges = (): void => { const s = getComputedStyle(document.body); [s.paddingLeft, s.paddingTop, s.paddingRight, s.paddingBottom].forEach((side, i) => (app.insets[i] = parseFloat(side) || 0)); };
   edges();
@@ -232,7 +234,7 @@ async function boot(): Promise<void> {
     app.gamepads(document.hasFocus() ? navigator.getGamepads?.() ?? [] : [], now);
     if (app.ui.touch && !app.ui.layer && !layering) { layering = true; void import("../core/ui/touch.ts").then((m) => (app.ui.layer = m), () => (layering = false)); }
     if (!app.ui.wantsPointerLock && document.pointerLockElement) document.exitPointerLock();
-    if (bench && !params.has("still")) app.autopilot(bench.since(now));
+    if (bench) app.autopilot(params.has("still") ? -1 : bench.since(now), bench.clock(now));
     drivingCheck?.step(app, now);
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);

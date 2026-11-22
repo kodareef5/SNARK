@@ -229,7 +229,8 @@ export function tileRows(source: number): readonly UniformRow[] {
 
 /**
  * The uniforms a shell sets by code, because their values are its own and no packet's: the step's or cascade's
- * view-projection and where its see-through draws start; whether the finishes' maps and the weathering masks are on the
- * card; a finish pass's taps and extent, from the canvas's size; and the bounds and offset of the level it binds.
+ * view-projection and where its see-through draws start; whether the finishes' maps are on the card, and how far the
+ * textures it makes have come up; a finish pass's taps and extent, from the canvas's size; and the bounds and offset of
+ * the level it binds.
  */
-export const SHELL_UNIFORMS = ["uViewProj", "uFrom", "uWorldReady", "uWeatherReady", "uPass", "uExtent", "uCenter", "uHalf", "uOffset"] as const;
+export const SHELL_UNIFORMS = ["uViewProj", "uFrom", "uWorldReady", "uTexgenReady", "uPass", "uExtent", "uCenter", "uHalf", "uOffset"] as const;

@@ -2,6 +2,7 @@
 // bench page fetches this file, so a player's first frame does not wait for it (D873).
 
 import type { MapProgress } from "./mapload.ts";
+import { storeOf } from "./notes/census.ts";
 import { BENCH_FRAMES, PASSES } from "./passes.ts";
 import { DRAW_PULLED, DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "./render/packet.ts";
 import { NODE_BUFFERS } from "./render/scene.ts";
@@ -73,10 +74,14 @@ export class BenchRun {
   private readonly other: boolean[] = [];
   /** Each measured frame's counts, for their medians over the turn. */
   private readonly counts: Record<"triangles" | "draws" | "castTriangles" | "castDraws" | "nearNodes" | "farNodes", number[]> = { triangles: [], draws: [], castTriangles: [], castDraws: [], nearNodes: [], farNodes: [] };
+  /** Each measured frame's draws by the store that made them (notes/census.ts storeOf), for where two runs differ. */
+  private readonly byStore: Map<string, number>[] = [];
   private first = -1;
   private draws = -1;
   private triangles = -1;
   private started = -1;
+  /** Frames drawn since the run said the scene was still, its report sent or not. */
+  private stepped = 0;
   private previous = -1;
   private still = 0;
   private done = false;
@@ -97,10 +102,23 @@ export class BenchRun {
   }
 
   /**
+   * The run's clock (D1122): ms since the frame the run said the scene was still, a sixtieth of a second for each frame
+   * drawn since, whatever the frames took; -1 before. Everything timed in the scene follows it from that frame on
+   * (App.autopilot): a tree cell's swap of levels, the frame budget's squeeze, a lamp's fade, the tide's eyes, so two
+   * runs at other frame rates draw each of their frames at the same point of each. By the page's clock a run whose frames
+   * came later was further through each cross-fade at each frame: downtown's street drew 1.5 to 2.3% more triangles in
+   * one run than its twin, all of them near trees.
+   */
+  clock(_now: number): number {
+    return this.started < 0 ? -1 : ((this.stepped + 1) * 1000) / 60;
+  }
+
+  /**
    * Each drawn frame, at `now`, our code's `ours` ms of it, and the frames `gpu` timed. Returns the report once, when it
    * is whole: what the renderer drew in the last frame comes from `drawn`.
    */
   frame(now: number, ours: number, gpu: readonly number[][], p: FramePacket, quiet: boolean, drawn: Drawn, tris: readonly (readonly number[])[] = []): ({ frameMs: Record<"median" | "p95" | "p99" | "worst", number> } & Record<string, unknown>) | null {
+    if (this.started >= 0) this.stepped++;
     if (this.done) return null;
     if (this.first < 0) this.first = now;
     // Still: the whole map come and handed over (the far city made of it, its tops, the road and streets parts round the
@@ -129,6 +147,12 @@ export class BenchRun {
     c.castDraws.push(p.castDraws);
     c.nearNodes.push(nodes.near);
     c.farNodes.push(nodes.far);
+    const stores = new Map<string, number>();
+    for (let d = 0; d < p.drawCount; d++) {
+      const name = storeOf(p.drawBuffer[d]!);
+      stores.set(name, (stores.get(name) ?? 0) + 1);
+    }
+    this.byStore.push(stores);
     this.previous = now;
     if (this.intervals.length < BENCH_FRAMES) return null;
     this.done = true;
@@ -152,6 +176,11 @@ export class BenchRun {
       // The medians over the measured frames: what the frame drew, what the sun's maps took apart from it, and the trees',
       // rocks' and bushes' triangles by store.
       turn: Object.fromEntries(Object.entries(this.counts).map(([k, list]) => [k, at(list, 0.5)])),
+      // And the draws by store, their medians and their sums over the turn.
+      turnStores: Object.fromEntries([...new Set(this.byStore.flatMap((s) => [...s.keys()]))].map((name) => {
+        const list = this.byStore.map((s) => s.get(name) ?? 0);
+        return [name, { median: at(list, 0.5), sum: list.reduce((a, b) => a + b, 0) }];
+      })),
       ...shown,
       tier: p.tier,
       // The share of the canvas a side the last frame's scene was drawn at (render/post.ts sceneShare).

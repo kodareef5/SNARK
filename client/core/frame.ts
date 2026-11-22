@@ -62,6 +62,8 @@ export class AppFrame implements HudFrame {
   /** The frame's time, the milliseconds since the last (16 for the first), and the window in pixels. */
   nowMs = 0;
   dt = 16;
+  /** The time what is drawn is timed by: the frame's, or in a measurement run the run's clock (tool-hooks.ts). */
+  sceneMs = 0;
   width = 0;
   height = 0;
   aspect = 1;

@@ -137,7 +137,7 @@ export class App {
   get orbit(): Orbit { return this.director.orbit; }
   get orbitFree(): boolean { return this.director.orbitFree; }
   get wasOnFoot(): boolean { return this.director.wasOnFoot; }
-  private get eye(): number { return this.director.eye; }
+  protected get eye(): number { return this.director.eye; }
   protected get body(): OwnBody { return this.director.own; }
   scene: Scene | null = null;
   /** Show the asset library's state on the status line. */
@@ -154,6 +154,8 @@ export class App {
   readonly governor = new Governor();
   /** What each frame took and what came in it, for the data utility's monitor (assets/frames.ts), once the shell has fetched it. */
   frames: FrameRing | null = null;
+  /** The textures the card makes (texgen/engine.ts), once their file has come: how far they have come up, which the shell draws them by. */
+  texgen: import("./texgen/engine.ts").Texgen | null = null;
   private monitorAsked = false;
   /** The world's sounds' code (sound-late.ts), which comes after the first frame, as the sounds' rows do (D1107). */
   static late: SoundCode | null = null;
@@ -258,7 +260,7 @@ export class App {
       field.source.at(chunk, index, nodeSpot);
       if (Math.hypot(nodeSpot.x - session.own.x, nodeSpot.y - session.own.y, nodeSpot.z - session.own.z) > 64) return;
       const form = priorForm || nodeSpot.form;
-      this.scene.treeFalls.add({ action: "break", ref, kind: nodeSpot.kind, form, x: nodeSpot.x, y: nodeSpot.y, z: nodeSpot.z, yaw: nodeSpot.yaw, dx: nodeSpot.x - session.own.x, dz: nodeSpot.z - session.own.z, tick: session.serverTick }, this.nowMs);
+      this.scene.treeFalls.add({ action: "break", ref, kind: nodeSpot.kind, form, x: nodeSpot.x, y: nodeSpot.y, z: nodeSpot.z, yaw: nodeSpot.yaw, dx: nodeSpot.x - session.own.x, dz: nodeSpot.z - session.own.z, tick: session.serverTick }, this.scene.now);
       this.scene.details.nodeBreak(nodeSpot.kind, chunk * 256 + index, nodeSpot.x, nodeSpot.y, nodeSpot.z,
         session.renderClock - session.remoteDelay, field.forms.size[form]! / 64);
     };
@@ -314,7 +316,7 @@ export class App {
   /** What a press of the use key now would get into or out of: the seat the session is in, or what the prompt is on. */
   seatPress(): Ridden | null { return this.prompts.seatPress(this.session, this.remote); }
   /** The look as the prompts last cast it, and how far along it body `i` is met: the monitor's and the notes' (assets/look.ts). */
-  private get aim(): readonly number[] { return this.prompts.aim; }
+  protected get aim(): readonly number[] { return this.prompts.aim; }
   protected lookHit(i: number, ox: number, oy: number, oz: number, use = false): number { return this.prompts.lookHit(this.f, i, ox, oy, oz, use); }
 
   voice: VoicePort | null = null;
@@ -406,8 +408,12 @@ export class App {
     if (!this.ui.settings.toggleTalk) this.talk(false);
   }
 
-  /** A measurement run's steering, `ms` into its measured frames (tool-hooks.ts). */
-  autopilot(ms: number): void {
+  /**
+   * A measurement run's steering, `ms` into its measured frames, the view held below 0; and the run's clock `run`, which
+   * the scene's timers follow from the frame before it begins, in place of the page's (tool-hooks.ts).
+   */
+  autopilot(ms: number, run = -1): void {
+    if (run >= 0 || this.tools) this.tooled().run(run, this.last);
     autopilot(this.controls, ms);
   }
 
@@ -616,8 +622,10 @@ export class App {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
     this.interval = this.last < 0 ? 0 : dt;
     this.last = nowMs;
+    this.frames?.target.frame(this.interval);
     this.fps += (1000 / Math.max(dt, 1) - this.fps) * 0.05;
     f.nowMs = nowMs;
+    f.sceneMs = this.tools ? this.tools.sceneMs(nowMs) : nowMs;
     f.dt = dt;
     f.width = width;
     f.height = height;
@@ -703,7 +711,7 @@ export class App {
 
   /** With a world: the scene made for it once, the sounds once their code has come, and the others sampled for the frame. */
   private arrive(f: AppFrame, world: NonNullable<ClientSession["world"]>): void {
-    const session = this.session, hud = this.hud, nowMs = f.nowMs;
+    const session = this.session, hud = this.hud;
     if (this.shown !== session.registry) {
       this.shown = session.registry;
       f.seatedAim = new SeatedAim(this.shown, this.pack);
@@ -738,7 +746,7 @@ export class App {
     const trees = session.predictedTrees;
     if (trees) for (const event of trees.present()) {
       scene.hideNode(event.ref, event.action === "break");
-      scene.treeFalls.add(event, nowMs);
+      scene.treeFalls.add(event, f.sceneMs);
       if (event.action === "break") {
         const size = session.nodeField!.forms.size[event.form]! / 64;
         scene.details.nodeBreak(event.kind, event.ref, event.x, event.y, event.z, session.renderClock - session.remoteDelay, size);
@@ -752,12 +760,12 @@ export class App {
 
   /** What the session brought this frame is handed to what draws it, and the scene is told the time. */
   private absorb(f: AppFrame): void {
-    const session = this.session, hud = this.hud, cam = this.cam, world = f.world, scene = f.scene, nowMs = f.nowMs;
+    const session = this.session, hud = this.hud, cam = this.cam, world = f.world, scene = f.scene, sceneMs = f.sceneMs;
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
     this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
     this.tamedHeard = session.tamed.length;
-    this.shots.absorb(session, world, nowMs);
-    this.shots.step(world, this.remote, session.tickClock, nowMs);
+    this.shots.absorb(session, world, sceneMs);
+    this.shots.step(world, this.remote, session.tickClock, sceneMs);
     scene.shotTick = session.tickClock;
     // Blows that landed on bodies near: each is drawn snapping back where it was struck (render/impact-springs.ts).
     if (session.impacts.length > 0) {
@@ -770,15 +778,15 @@ export class App {
     }
     this.supply.list = session.supply;
     this.supply.tick = session.tickClock;
-    this.falling!.absorb(session.rubble, nowMs, cam.x, cam.y, cam.z);
-    this.falling!.step(nowMs);
+    this.falling!.absorb(session.rubble, sceneMs, cam.x, cam.y, cam.z);
+    this.falling!.step(sceneMs);
     const beams = scene.beams;
     beams.length = 0;
     if (session.corpseLocator) for (const m of session.markers) if (m.kind === MARKER_DEATH) beams.push(m.x, m.y, m.z);
     hud.dpr = this.dpr;
     scene.hour = this.hud.hour = this.sky.step(session.serverTick, session.dayOffset, session.clock, this.interval, this.ui.creativeScreen.sundial.held, session.creative);
     scene.viewHeight = f.height;
-    scene.now = nowMs;
+    scene.now = sceneMs;
     scene.eyeSeconds = session.renderClock / TICK_RATE;
   }
 
@@ -826,8 +834,8 @@ export class App {
     f.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     fill.session = session; fill.remote = this.remote; fill.fps = this.fps; fill.scale = this.unit; fill.nowMs = nowMs; fill.frame = f;
     fillHud(hud, fill);
-    this.feedback.absorb(session, this.reg, nowMs, f.scene.damage);
-    this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.hitMarkers);
+    this.feedback.absorb(session, this.reg, f.sceneMs, f.scene.damage);
+    this.feedback.fill(hud.combat, cam, c.yaw, alive, f.sceneMs, session.hitMarkers);
     fillOverhead(hud.overhead, session, this.remote, cam, f.scene.characters, alive && !hud.out ? f.eyeNow : -1, c.yaw, c.pitch, f.lookReach);
   }
 

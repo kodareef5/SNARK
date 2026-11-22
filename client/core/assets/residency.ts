@@ -39,8 +39,6 @@ export interface AssetUpload {
   indexBytes: 2 | 4;
   /** Its indices are those every level of quads shares (packet.ts quadIndices), and `data` holds its vertices alone. */
   quads?: boolean;
-  /** Beside a whole level of quads: a byte a vertex, the material made from a recipe it wears (attribute 15; render/nearcity.ts). */
-  made?: Uint8Array;
   /** The bounds its vertices are stored within, where they are not its mesh's. */
   bounds?: { readonly center: readonly number[]; readonly half: readonly number[] };
   of?: number;

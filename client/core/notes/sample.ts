@@ -1,6 +1,6 @@
 // What the performance record (notes/ring.ts) takes of each frame, read after it is drawn from what the page already
-// keeps: the data utility's row of the frame (assets/frames.ts), the frame's packet, the scene's budget, the governor and
-// the session's counters. It reads the app's private fields by name, as the inspectors do (D900), and makes nothing.
+// keeps: the data utility's row of the frame and its display's interval (assets/frames.ts), the frame's packet, the
+// scene's budget, the governor and the session's counters. It reads the app's private fields by name, as the inspectors do (D900), and makes nothing.
 
 import type { App } from "../app.ts";
 import type { FramePacket } from "../render/packet.ts";
@@ -83,6 +83,7 @@ export class FrameSampler {
     ring.place[2] = own.z;
     ring.heap = extra.heap;
     ring.longTasks += extra.longTasks;
+    if (f) ring.target = f.target.ms;
     const r = scene ? scene.assets.residency.stats : null, t = ring.totals;
     if (r) {
       t[T.requests] = r.requests;

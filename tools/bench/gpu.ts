@@ -23,7 +23,10 @@
 // (render/roof.ts) on the street on high at one and two and on ultra at two, and vehicles' glass seen through
 // (render/vehicle-glass.ts) on the street and over the busy lamp's parked cars. A city row's GL draws and triangles are of the frame its run
 // ends on, and their medians over the turn's frames; the view turns by the frames measured, not the time they took, so
-// each run of a row ends on the same view whatever its frame rate. Chrome is found as tools/probe.ts finds it, or named by CHROME;
+// each run of a row ends on the same view whatever its frame rate, and what the scene times (a tree cell's swap of
+// levels, the budget's squeeze, a lamp's fade) follows the run's clock, a sixtieth of a second a frame (bench-run.ts
+// clock). Each run is held at its row's hour, or the hour the scene's server began at, so the sun stands still through
+// it. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
 // process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words|another's]...` runs these alone (a row's whole name ended
 // with "$" runs that row alone), each `runs` times (3), and prints each row's range.
@@ -39,7 +42,7 @@ import { fileURLToPath } from "node:url";
 import { WOOD, basePieces, crowdScene } from "../../client/core/devicescene.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT } from "../../shared/anim/pose.ts";
 import { MODE_GHOST } from "../../shared/sim/character.ts";
-import { offsetForHour } from "../../shared/sim/clock.ts";
+import { hourOfDay, offsetForHour } from "../../shared/sim/clock.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { SETTLE_MS } from "../../client/core/bench-run.ts";
@@ -57,7 +60,7 @@ type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 type Scene = "base" | "wood" | "flock" | "city";
-type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front" | "marina";
+type View = "street" | "air" | "lamp" | "lamp-cars" | "lamp-front" | "marina" | "wall" | "canyon";
 /** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off or the far layers. On the city, where and at how many device pixels to one, and how many times slower the page's processor is made. */
 interface Run {
   scene: Scene;
@@ -100,7 +103,13 @@ const CITY_PLACES: Record<View, Place> = {
   // On a marina's walkway among its moored boats (tools/boat/marinas.ts), where CITY_MARINA puts it on the map benched:
   // "east,north,y", metres from its centre and the dock's deck. Only then are its rows run.
   marina: ((at) => ({ name: "marina", east: at[0] ?? 0, north: at[1] ?? 0, y: at[2] ?? 0.7 }))((process.env.CITY_MARINA ?? "").split(",").map(Number)),
+  // On East Flagler Street's south walk facing the Flagler Building's shops across the street, and in its middle looking
+  // west down it, the walls either side at a slant: the views held still, which near trees do not move in.
+  wall: { name: "wall", east: 974, north: -3000, up: 0 },
+  canyon: { name: "canyon", east: 889, north: -3008, up: 0 },
 };
+/** Where a held view faces, yaw and pitch in degrees (yaw 0 north, -90 west), which the page is told as a look's orders. */
+const LOOKS: Partial<Record<View, readonly [number, number]>> = { wall: [0, 8], canyon: [-88, 2] };
 
 export function plan(): Run[] {
   const runs: Run[] = [];
@@ -145,6 +154,10 @@ export function plan(): Run[] {
   for (const tier of ["medium", "high"]) for (const clock of [false, true]) runs.push({ scene: "city", view: "street", tier, scale: 2, window: [1800, 1049], ...(clock ? { clock } : {}) });
   // The bent kerbs' wear (render/bend.ts bentWear), on the canvases of 1,920 by 1,080 and 3,600 by 1,924.
   for (const [tier, scale] of [["medium", 1], ["high", 1], ["high", 2], ["medium", 2]] as const) runs.push({ scene: "city", view: "street", tier, scale, ...(scale === 2 ? { window: [1800, 1049] as [number, number] } : {}), ab: "kerbs" });
+  // The walls' weathering read (world-surfaces.ts weathered), its layers long made by the time a run measures: on the
+  // street turning, before a close wall and down a street at a slant, held, on high at 3,600 by 1,924 and medium at 1,920
+  // by 1,080.
+  for (const ab of ["weather"] as Effect[]) for (const view of ["street", "wall", "canyon"] as const) for (const [tier, scale] of [["medium", 1], ["high", 2]] as const) runs.push({ scene: "city", view, tier, scale, ...(scale === 2 ? { window: [1800, 1049] as [number, number] } : {}), ab });
   // What stands overhead (render/roof.ts) off every other frame, at the laptop canvas's pixels too.
   for (const [tier, scale] of [["high", 1], ["high", 2], ["ultra", 2]] as const) for (const ab of ["roofs", "bounce"] as const) runs.push({ scene: "city", view: "street", tier, scale, ab });
   for (const cpu of [4, 6]) runs.push({ scene: "city", view: "street", tier: "high", scale: 1, cpu });
@@ -260,6 +273,27 @@ function holdAt(server: ReturnType<typeof startServer>, p: Place): ReturnType<ty
   }, 100);
 }
 
+/** How far the world's hour may move before a run's hold sets it back: 36 s of the day, the sun a sixth of a degree. */
+const HOUR_HELD = 0.01;
+
+/**
+ * Holds `server`'s world at `hour` through a run (D1122): the sun stands where it stood however long the run's map takes
+ * to come, so two runs of a row, a minute or two apart, draw it in one place. Left to the server's clock, the day moves an
+ * hour in a little over two minutes.
+ */
+function holdHour(server: ReturnType<typeof startServer>, hour: number): ReturnType<typeof setInterval> {
+  const w = server.host.world;
+  const set = (): void => {
+    w.dayOffset = offsetForHour(w.tick, hour, w.clock);
+    server.host.game.replication.markAllOwn();
+  };
+  set();
+  return setInterval(() => {
+    const off = (((hourOfDay(w.tick, w.dayOffset, w.clock) - hour) % 24) + 36) % 24 - 12;
+    if (Math.abs(off) > HOUR_HELD) set();
+  }, 100);
+}
+
 /** Dodos round the spawn point, in two rings so that some fill the view whichever way it turns. */
 export const FLOCK = 40;
 
@@ -298,7 +332,11 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     const mine = runs.filter((r) => r.scene === scene);
     if (mine.length === 0) continue;
     let got: (report: Record<string, any>) => void = () => {};
-    const routes = (req: Request, url: URL): Response | Promise<Response> | null => (url.pathname === "/__bench" && req.method === "POST" ? req.json().then((r) => (got(r as Record<string, any>), new Response("ok"))) : null);
+    const routes = (req: Request, url: URL): Response | Promise<Response> | null => {
+      const held = LOOKS[url.searchParams.get("view") as View];
+      if (url.pathname === "/__look" && held) return Response.json({ look: held.map((d) => (d * Math.PI) / 180) });
+      return url.pathname === "/__bench" && req.method === "POST" ? req.json().then((r) => (got(r as Record<string, any>), new Response("ok"))) : null;
+    };
     const mapDir = scene === "wood" ? mkdtempSync(join(tmpdir(), "snark-gpu-map-")) : "";
     if (mapDir) {
       const hills = benchHills();
@@ -322,18 +360,16 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     if (scene === "flock") flock(server);
     // One profile a scene: the asset cache is warm after the first run, and the page joins as the same survivor.
     const profile = mkdtempSync(join(tmpdir(), "snark-gpu-"));
-    const day = server.host.world.dayOffset;
+    // A run with no hour of its own is held at the hour the scene's server began at.
+    const day = hourOfDay(server.host.world.tick, server.host.world.dayOffset, server.host.world.clock);
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
-        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}`;
+        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off === "far" ? FAR.join(",") : r.off}` : ""}${r.ab ? `&sync=1&ab=${r.ab}` : ""}${r.clock ? "&sync=1" : ""}${r.view && LOOKS[r.view] ? `&still&look=${r.view}` : ""}`;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), (timer = setTimeout(() => done(null), (SETTLE_MS + 120000) * (r.cpu ?? 1)))));
         const pixels = r.view ? [`--window-size=${(r.window ?? [1920, 1080]).join(",")}`, `--force-device-scale-factor=${r.scale}`] : ["--window-size=390,669", "--force-device-scale-factor=3"];
         const hold = r.view ? holdAt(server, CITY_PLACES[r.view]) : null;
-        // The world's own hour for every other run.
-        const w = server.host.world;
-        w.dayOffset = r.hour !== undefined ? offsetForHour(w.tick, r.hour, w.clock) : day;
-        server.host.game.replication.markAllOwn();
+        const held = holdHour(server, r.hour ?? day);
         rmSync(join(profile, "DevToolsActivePort"), { force: true });
         const browser = Bun.spawn([CHROME!, "--headless=new", ...CHROME_FLAGS, "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", ...pixels, "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdout: "ignore", stderr: "ignore" });
         const page = await devtools(profile);
@@ -353,6 +389,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         }
         page.close();
         if (hold) clearInterval(hold);
+        clearInterval(held);
         browser.kill();
         await browser.exited;
         const ab = result?.alternate ? `${result.alternate.own} ms on the page's clock with it, ${result.alternate.other} without, a frame without it ${result.alternate.less} ms against those either side` : `${result?.gpuMs?.frame?.median ?? "untimed"} ms ${r.clock ? "on the page's clock" : "on the GPU"}`;
@@ -455,7 +492,19 @@ export function agreement(reports: Map<string, Record<string, any>[]>): { lines:
     const off = Math.max(Math.abs(draws[1]! - draws[0]!) / draws[0]!, Math.abs(triangles[1]! - triangles[0]!) / triangles[0]!);
     if (!(off <= AGREE)) apart.push(name);
     const waited = (list: Record<string, any>[]): string => list.map((r) => (r.waited ? `${r.waited.gaveUp ? "gave up waiting" : `the map whole at ${(r.waited.mapMs / 1000).toFixed(1)} s`}` : "not waited for")).join(", ");
-    lines.push(`${name.replace(", on the page's clock", "")}: by query ${draws[0]} draws, ${(triangles[0]! / 1e6).toFixed(2)} M triangles (${waited(queried)}); on the page's clock ${draws[1]}, ${(triangles[1]! / 1e6).toFixed(2)} M (${waited(clocked)}); ${(off * 100).toFixed(2)}% apart${off <= AGREE ? "" : `, more than ${AGREE * 100}%: not the same scene`}`);
+    const nodes = (list: Record<string, any>[]): string => `near trees, rocks and bushes ${of(list, "nearNodes")}, far ${of(list, "farNodes")}`;
+    lines.push(`${name.replace(", on the page's clock", "")}: by query ${draws[0]} draws, ${(triangles[0]! / 1e6).toFixed(2)} M triangles, ${nodes(queried)} (${waited(queried)}); on the page's clock ${draws[1]}, ${(triangles[1]! / 1e6).toFixed(2)} M, ${nodes(clocked)} (${waited(clocked)}); ${(off * 100).toFixed(2)}% apart${off <= AGREE ? "" : `, more than ${AGREE * 100}%: not the same scene`}`);
+  }
+  // A row run more than once: how far its runs drew apart, which says what the pair's own spread is.
+  for (const [name, list] of reports) {
+    if (list.length < 2 || !list.every((r) => r.turn)) continue;
+    const spread = (k: string): string => {
+      const v = list.map((r) => r.turn[k] as number), most = Math.max(...v), least = Math.min(...v);
+      return `${k} ${v.join(" and ")} (${least > 0 ? (((most - least) / least) * 100).toFixed(2) : "?"}%)`;
+    };
+    // The stores whose draws over the turn were not the same in every run, by their sums over its frames.
+    const stores = [...new Set(list.flatMap((r) => Object.keys(r.turnStores ?? {})))].map((s) => [s, list.map((r) => r.turnStores?.[s]?.sum ?? 0)] as const).filter(([, v]) => v.some((x) => x !== v[0]));
+    lines.push(`${name}, its ${list.length} runs: ${["draws", "triangles", "nearNodes", "farNodes"].map(spread).join(", ")}${stores.length > 0 ? `; draws over the turn not alike: ${stores.map(([s, v]) => `${s} ${v.join(" and ")}`).join(", ")}` : ""}`);
   }
   return { lines, apart };
 }

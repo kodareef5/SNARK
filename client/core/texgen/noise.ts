@@ -1,15 +1,11 @@
 // The noises the page makes its pictures from (texgen), twice: in TypeScript for the rasterizer, the tests and the tools,
-// and in GLSL for the card. Both take the same integer hash of whole numbers, so a seed draws the same picture on
-// either, to the float's last bits. Tiling noises take a period in cells along each axis, so a picture made from them
-// wraps without a seam.
+// and in GLSL for the card. Both take the same integer hash of whole numbers (hash.ts), so a seed draws the same
+// picture on either, within a step of 255 where the card's 32-bit floats put an edge on the other side of a texel's
+// middle. Tiling noises take a period in cells along each axis, so a picture made from them wraps without a seam.
 
-/** A number from 0 to 1 from three whole numbers. */
-export function hash3(a: number, b: number, c: number): number {
-  let h = (Math.imul(a, 1597334677) ^ Math.imul(b, 3812015801) ^ Math.imul(c, 2654435761)) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 2246822519) >>> 0;
-  h = Math.imul(h ^ (h >>> 13), 3266489917) >>> 0;
-  return ((h ^ (h >>> 16)) >>> 8) / 16777216;
-}
+import { hash3 } from "./hash.ts";
+
+export { hash3, hash32 } from "./hash.ts";
 
 /** `i` brought into 0 to `n`. */
 const wrap = (i: number, n: number): number => ((i % n) + n) % n;
@@ -71,7 +67,7 @@ export const smoothstep = (a: number, b: number, x: number): number => {
   return t * t * (3 - 2 * t);
 };
 
-/** The same, for the card. */
+/** The same, for the card. `%` of a negative is undefined there, so whole periods are added first: i is never under -64 of them. */
 export const NOISE_GLSL = `
 float hash3(int a, int b, int c) {
   uint h = uint(a) * 1597334677u ^ uint(b) * 3812015801u ^ uint(c) * 2654435761u;
@@ -79,7 +75,6 @@ float hash3(int a, int b, int c) {
   h = (h ^ (h >> 13u)) * 3266489917u;
   return float((h ^ (h >> 16u)) >> 8u) / 16777216.0;
 }
-// % of a negative is undefined on the card, so whole periods are added first: i is never under -64 of them.
 int wrapi(int i, int n) { return (i + n * 64) % n; }
 float ease(float t) { return t * t * t * (t * (t * 6.0 - 15.0) + 10.0); }
 float line(float t, int seed) {

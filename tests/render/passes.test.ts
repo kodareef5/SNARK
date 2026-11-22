@@ -113,6 +113,33 @@ test("a bench run measures once the scene is still, turns its view from then, an
   expect([report!.gpuMs, (report!.gpuFrames as number[]).length, report!.renderer, report!.alternate]).toEqual([{ frame: { median: 5, p95: 5 } }, BENCH_FRAMES, "a card", null]);
 });
 
+test("a bench run's clock begins at the frame the scene is still and steps a sixtieth of a second a frame however long the frames took", () => {
+  const drawn = { drawCalls: 10, canvas: [100, 100], renderer: "a card", userAgent: "a browser", card: { bytes: 1024, textures: 512 }, squeeze: 0 };
+  /** A run whose frames take `ms(f)`: the scene's clock at each frame, and at which frames the view turned. */
+  const runAt = (ms: (f: number) => number): { scene: number[]; wall: number[] } => {
+    const run = new BenchRun(), p = new FramePacket(), scene: number[] = [], wall: number[] = [];
+    let now = 1000;
+    for (let f = 0; f < 60 + BENCH_FRAMES + 40; f++, now += ms(f)) {
+      // The shell asks for the clock before the frame is built, and tells the run of the frame once it is drawn.
+      scene.push(run.clock(now));
+      wall.push(now);
+      run.frame(now, 1, [], p, true, drawn);
+    }
+    return { scene, wall };
+  };
+  // The 60th frame drawn alike after the first is the one the run says the scene is still at.
+  const STILL_AT = 60, step = 1000 / 60;
+  const steady = runAt(() => step), halting = runAt((f) => (f % 3 === 0 ? 50 : 33.3));
+  for (const r of [steady, halting]) {
+    // None up to it; from the next frame a sixtieth of a second a frame on from it, after the run's report too.
+    for (let f = 0; f <= STILL_AT; f++) expect(r.scene[f]).toBe(-1);
+    for (let f = STILL_AT + 1; f < r.scene.length; f++) expect(r.scene[f]).toBeCloseTo((f - STILL_AT) * step, 6);
+  }
+  // The halting run's frames took more than twice as long on the page's clock; on the run's they did not.
+  expect(halting.wall.at(-1)! - halting.wall[STILL_AT]!).toBeGreaterThan(2 * (steady.wall.at(-1)! - steady.wall[STILL_AT]!));
+  for (const f of [61, 200, 900, 999]) expect(halting.scene[f]).toBe(steady.scene[f]!);
+});
+
 test("a bench run waits for the whole map before the still frames it starts after, and says what it waited for", () => {
   // The map's parts come over the first 200 frames, the whole map's statics are handed over at the 150th and the road
   // parts round the body held at the 180th; the scene is still and nothing else is on its way all the while.
@@ -152,4 +179,9 @@ test("effects off from the address: those in the tier, one copy a tier, and thos
   expect([p.frame[FRAME.eyes - 1], p.frame[FRAME.eyes]]).toEqual([0, 1]);
   packetWithout(p, effectsOff("edges"));
   expect(p.frame[FRAME.edgesOff]).toBe(1);
+  // The walls' weathering is the lane's second bit, so a run can turn either off alone.
+  packetWithout(p, effectsOff("weather"));
+  expect(p.frame[FRAME.edgesOff]).toBe(2);
+  packetWithout(p, effectsOff("edges,weather"));
+  expect(p.frame[FRAME.edgesOff]).toBe(3);
 });

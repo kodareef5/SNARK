@@ -59,8 +59,8 @@ import { Hiding } from "./hide.ts";
 import { NearCity } from "./nearcity.ts";
 import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
 import { BONE_FLOATS, GLASS_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_GROUND, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_DRAWS, MAX_TILES, PASS_FAR, PASS_NEAR, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
-import { MADE_MARK, WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
-import { recipeIndex } from "../../../content/texgen/finishes.ts";
+import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
+import { texgenBytes } from "../texgen/layers.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW } from "./shading.ts";
@@ -526,12 +526,6 @@ export class Scene {
       // A static whose levels are chosen farther off than it stands: every static of its mesh is (StructureDef.coarse).
       if (mesh >= 0 && d.type === "structure" && d.coarse) this.reachOfStatic[mesh] = Math.min(this.reachOfStatic[mesh]!, 1 / d.coarse);
       if (d.type === "structure" && d.colors) this.regionsOfKind.set(d.colors, k * 5);
-      // A piece of a material made from a recipe, drawn as an instance, says it in its last two regions: MADE_MARK, which
-      // is no colour, then the recipe's number (world-surfaces.ts worldVertex). Such a piece's mesh has no regions of its own.
-      if (d.type === "structure" && d.recipe && !d.colors) {
-        this.regionsOfKind[k * 5 + 3] = MADE_MARK;
-        this.regionsOfKind[k * 5 + 4] = recipeIndex(d.recipe);
-      }
       if (mesh >= 0 && d.type === "structure" && d.mesh !== "shape") {
         const of = reg.defs[reg.index.get(d.mesh) ?? 0];
         if (of?.type === "species" && of.vehicle) vehicleMeshes.add(mesh);
@@ -740,8 +734,8 @@ export class Scene {
     const near = this.finishNear.metres, scale = this.assets.scale;
     if (p.tier.lit) this.finishNear.update(cam.x, cam.y, cam.z, this.world.hf, this.world.structs, scale, finishTaps(p.tier));
     this.finishes.frame(p, this.assets.residency, p.tier, near, scale);
-    // The walls' weathering masks are made on the card, not fetched (texgen/weather.ts), so their bytes are held apart.
-    this.assets.residency.reserve("weather masks", weatherBytes(p.weatherSide));
+    // The textures the card makes are not fetched (texgen/layers.ts), so their bytes are held apart.
+    this.assets.residency.reserve("made textures", texgenBytes(this.finishes.wanted));
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
     this.characters.heatView = false;
     if (p.tier.lit) {

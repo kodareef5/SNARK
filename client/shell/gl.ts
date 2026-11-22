@@ -15,8 +15,9 @@ import { PROGRAM, PROGRAMS, UNIFORMS, UNIT, drawProgram, tierPrograms, type Prog
 import {
   AT_DRAW, AT_FRAME, AT_TILES, Drawn, SEND_1F, SEND_1I, SEND_2F, SEND_3F, SEND_3FV, SEND_FLOATS, SHELL_UNIFORMS, type UniformRow,
 } from "../core/render/uniforms.ts";
-import { WeatherMasks } from "./texgen.ts";
-import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
+import { made, type Made } from "./texgen.ts";
+import type { Orders, Texgen } from "../core/texgen/engine.ts";
+import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_FINISH, PASS_MAKING, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import {
   BLOOM_FORMAT, LIGHT_FORMATS, LIGHT_SAMPLES, bloomLevels, drawsLight, levelShift, passExtent, sceneSize, tapShift,
@@ -73,7 +74,7 @@ const U = {
   viewProj: own("uViewProj"),
   from: own("uFrom"),
   worldReady: own("uWorldReady"),
-  weatherReady: own("uWeatherReady"),
+  texgenReady: own("uTexgenReady"),
   pass: own("uPass"),
   extent: own("uExtent"),
   center: own("uCenter"),
@@ -81,6 +82,7 @@ const U = {
   offset: own("uOffset"),
 } as const;
 const NO_FLOATS = new Float64Array(0);
+const NO_ROWS: readonly UniformRow[] = [];
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -205,9 +207,10 @@ export class GlRenderer {
   private mappedRoles = 0;
   /** 1 once every world finish's maps are on the card, this frame. */
   private worldReady = 0;
-  /** The walls' weathering masks, made on the card (texgen.ts). */
-  private weather!: WeatherMasks;
-  private readonly anisotropyOf = (target: number): void => this.anisotropy(target);
+  /** The textures the card makes (texgen.ts) and their engine, once `makeWith` has its programs ready. */
+  private gen!: Made;
+  private texgen: Texgen | null = null;
+  private readonly anisotropyOf = (target: number): void => void (this.warmed && this.anisotropy(target));
   /** What the rows of a program's uniforms read (uniforms.ts): the frame, and the draw being drawn; and where a row's floats are put. */
   private readonly drawn: Drawn;
   private readonly scratch = new Float64Array(4);
@@ -334,7 +337,7 @@ export class GlRenderer {
     this.linked.clear();
     this.neutral = [];
     this.world = [null, null, null];
-    this.weather = new WeatherMasks(gl, UNIT.weather);
+    this.gen = made(gl, UNIT.texgen);
     this.worldSide = [0, 0, 0];
     this.current = this.warmed = this.mapped = this.vao = this.arrayBuffer = null;
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
@@ -351,8 +354,6 @@ export class GlRenderer {
     gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
     // A level without skin entries leaves the SURFACE program's four bones at this, which must be whole numbers.
     gl.vertexAttribI4ui(10, 0, 0, 0, 0);
-    // Nor any material made from a recipe where a level has none (render/nearcity.ts).
-    gl.vertexAttribI4ui(15, 0, 0, 0, 0);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     const texture = (
       unit: number,
@@ -527,13 +528,6 @@ export class GlRenderer {
         gl.enableVertexAttribArray(a);
         gl.vertexAttribDivisor(a, 1);
       }
-      // A near chunk's material made from a recipe, a byte a vertex beside its vertices (render/nearcity.ts).
-      if (u.made) {
-        this.array(lod.buffers[lod.buffers.push(gl.createBuffer()!) - 1]!);
-        gl.bufferData(gl.ARRAY_BUFFER, u.made, gl.STATIC_DRAW);
-        gl.enableVertexAttribArray(15);
-        gl.vertexAttribIPointer(15, 1, gl.UNSIGNED_BYTE, 1, 0);
-      }
     } else if (!lod) return;
     this.vertexArray(lod.vao);
     if (at < indexBytes) gl.bufferSubData(gl.ELEMENT_ARRAY_BUFFER, at, u.data, 0, Math.min(end, indexBytes) - at);
@@ -657,7 +651,7 @@ export class GlRenderer {
   private program(n: number, light = this.light > 0, tier = this.warmed!): Program {
     const text = Object.values(PROGRAMS)[n]!(tier, this.format, this.shadowLookup === "hard", light);
     const key = n + text.defines + text.vertex + text.fragment;
-    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text, n)).get(key)!;
+    const made = this.linked.get(key) ?? this.linked.set(key, this.link(text, UNIFORMS[n]!)).get(key)!;
     return light === this.light > 0 && tier === this.warmed ? (this.made[n] = made) : made;
   }
 
@@ -676,6 +670,25 @@ export class GlRenderer {
       this.asked.set(tier, progs);
     }
     return progs.every((prog) => !prog.text || this.gl.getProgramParameter(prog.program, COMPLETION_STATUS));
+  }
+
+  /** Job `k`'s program of the textures the card makes, once linked; none while it links, and none for good where it failed. */
+  private readonly job = (k: number, o: Orders = this.texgen!.orders): WebGLProgram | null => {
+    const gl = this.gl, text = o.programs[k]!;
+    const prog = this.linked.get(text.fragment) ?? this.linked.set(text.fragment, this.link(text, NO_ROWS)).get(text.fragment)!;
+    if (prog.text && this.parallel && !gl.getProgramParameter(prog.program, COMPLETION_STATUS)) return null;
+    if (prog.text && !gl.getProgramParameter(prog.program, gl.LINK_STATUS)) return (o.broken = true), this.errors++, null;
+    prog.text = null;
+    return prog.program;
+  };
+
+  /** Makes textures on the card with `engine` once each of its programs has linked and drawn a pixel, between frames, with the state the making draws in. */
+  async makeWith(engine: Texgen): Promise<void> {
+    const o = engine.warm();
+    while (!o.broken && (this.set(false, false, false), this.gen.draw(o, (k) => this.job(k, o), this.anisotropyOf), o.drawn < o.count)) await new Promise((go) => setTimeout(go, 16));
+    this.current = null;
+    this.vao = this.gen.vao;
+    this.texgen = engine;
   }
 
   /** Binds a vertex array unless it is bound. */
@@ -809,7 +822,7 @@ export class GlRenderer {
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
     if (p.lit) {
       this.uniform(prog, U.worldReady, this.worldReady);
-      this.uniform(prog, U.weatherReady, this.weather.plan.ready);
+      this.uniform(prog, U.texgenReady, this.texgen?.ready ?? 0);
     }
     if (prog.view === this.view) return prog;
     prog.view = this.view;
@@ -910,18 +923,19 @@ export class GlRenderer {
         gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
         this.anisotropy(gl.TEXTURE_2D_ARRAY);
       }
-      if (this.weather.texture) {
-        gl.activeTexture(gl.TEXTURE0 + UNIT.weather);
-        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.weather.texture);
+      if (this.gen.texture) {
+        gl.activeTexture(gl.TEXTURE0 + UNIT.texgen);
+        gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.gen.texture);
         this.anisotropy(gl.TEXTURE_2D_ARRAY);
       }
     }
-    // The weathering masks are made before anything of the frame is drawn, in a share of the card's time a frame: a
-    // millisecond where the finishes are a thousand pixels wide or more, half that below.
+    // What the card makes is drawn before anything of the frame; a clock timing the frame times it as its first pass,
+    // and it is not timed apart.
     this.set(false, false, false);
-    if (this.weather.step(p.weatherSide, p.tier.finishes >= 1024 ? 1 : 0.5, this.anisotropyOf)) {
+    this.passes?.mark(PASS_MAKING);
+    if (this.texgen && this.gen.draw(this.texgen.frame(p.texgenSide, p.tier, !this.passes?.on), this.job, this.anisotropyOf)) {
       this.current = null;
-      this.vao = this.weather.vao;
+      this.vao = this.gen.vao;
     }
     for (let r = 0; r < 3; r++) if (p.worldSide[r] !== this.worldSide[r]) {
       gl.deleteTexture(this.world[r] ?? null);
@@ -1505,7 +1519,7 @@ export class GlRenderer {
   }
 
   /** Compiles and links the texts as given, with the defines after their first line, the #version line, asking nothing of either until `use`. */
-  private link(text: ProgramText, n: number): Program {
+  private link(text: ProgramText, rows: readonly UniformRow[]): Program {
     const gl = this.gl;
     const program = gl.createProgram()!;
     for (const type of [gl.VERTEX_SHADER, gl.FRAGMENT_SHADER]) {
@@ -1516,6 +1530,6 @@ export class GlRenderer {
     }
     gl.linkProgram(program);
     const last = new Float64Array(SHELL_UNIFORMS.length + 2).fill(NaN);
-    return { program, text, rows: UNIFORMS[n]!, frame: [], draw: [], tiles: [], held: NO_FLOATS, at: [], last, view: -1, serial: -1, bounds: null };
+    return { program, text, rows, frame: [], draw: [], tiles: [], held: NO_FLOATS, at: [], last, view: -1, serial: -1, bounds: null };
   }
 }

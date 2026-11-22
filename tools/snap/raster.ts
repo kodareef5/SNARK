@@ -15,7 +15,9 @@ import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { DRY_ASPHALT, MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
-import { MADE_MARK, GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { texgenSide } from "../../client/core/texgen/layers.ts";
+import { weatherTwin } from "../../client/core/texgen/weather.ts";
+import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
 import { PAVED_VERGE, kerbOf, type StreetSectors } from "../../shared/world/streets.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
@@ -66,8 +68,6 @@ interface DecodedLod {
   indices: Uint32Array;
   /** Read from the pack, where the level is drawn with materials. A manifest's rasterizer has it from an upload of its own. */
   surface?: DecodedSurface;
-  /** A near chunk's material made from a recipe, a byte a vertex (AssetUpload `made`), where any face wears one. */
-  made?: Uint8Array;
 }
 
 /** What a level drawn with materials has for each vertex besides, and on a body the skin entries. */
@@ -310,7 +310,7 @@ const NOTHING = [0, 0, 0];
  * A landmark's draw names its row of `finish` (shared/pack/finish.ts): a colour it states is lit as that finish, as LIT_MESH_FRAGMENT has it.
  * `open` is the share of the sky's light the sky's openness leaves it (skyopen.ts), which its sheet's light from behind keeps.
  */
-function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null, roomOpen: RoomOpen | null = null, fixture = 0, made = 0): void {
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, sample: WorldSample | null = null, ground = false, footprint = 0, look?: (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]) => void, smooth: Float64Array | null = null, finish?: FinishTable, row = 0, open = 1, other = -1, share = 0, weather: ArrayLike<number> | null = null, over = 0, edge: ArrayLike<number> | null = null, facade: ArrayLike<number> | null = null, facadeSample: FacadeSample | null = null, roomOpen: RoomOpen | null = null, fixture = 0): void {
   const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
   for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear(pal[colorIndex * 4 + c]! / 255);
   // Where no facade's part is drawn, a window is its bay's mean (facade.ts facadeFarVertex).
@@ -365,8 +365,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
   } else if (sample) {
     const city = p.surfaceCity[7] ? "las-vegas" : "default", touch = p.tier.finish === "light", index = surfaceIndex(colorIndex, ground, city);
     let asphalt = ground && index === DRY_ASPHALT.surface ? 1 : 0;
-    // A material made from a recipe is drawn where the tier weathers, which makes its layers (world-surfaces.ts weatherSide).
-    const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly, ground || !weather ? 0 : made);
+    const h = worldSurface(albedo, worldOrm, normal, albedo, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, footprint, p.surfaceCity, sample, touch, smooth, p.tier.relief ? eye : null, finishesEarly);
     // Asphalt's and sand's wear, as LIT_TERRAIN_FRAGMENT has it where the tier reads the finishes in full: it reads the
     // packed array's masks, so it comes up with them as the weathering does.
     const off = p.frame[FRAME.roadOff]! % 4, road = off % 2 < 0.5, walks = off < 1.5;
@@ -410,7 +409,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const risen = 1 - finishesEarly;
     if (weather && weather[3]! >= 0 && !ground && !touch && risen > 0) {
       risenFrom(albedo, worldOrm, normal);
-      weathered(albedo, worldOrm, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, over, open, dist, footprint, p.surfaceCity, sample);
+      weathered(albedo, worldOrm, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, over, open, footprint, p.surfaceCity, sample, 1, weatherTwin(texgenSide(p.tier, p.tier.finishes)));
       risenTo(albedo, worldOrm, null, risen);
       if (edge && edge[0]! >= 0) {
         risenFrom(albedo, worldOrm, normal);
@@ -575,8 +574,6 @@ export class Rasterizer {
   private plain = false;
   /** What `pickBone` and `pickDraw` get for the triangle being drawn. */
   private bone = 0;
-  /** The material made from a recipe the triangle being drawn wears (world-surfaces.ts worldVertex vMade), or 0. */
-  private made = 0;
   private drawing = -1;
   /** For a draw that fades out (`drawFade`): where it is gone, and the share of that it fades over. 0 for any other. */
   private fade = 0;
@@ -636,8 +633,6 @@ export class Rasterizer {
   private readonly deferredShade: Float64Array;
   /** Bit 0 marks a body for sky openness. Bits 1–2 retain the visible face's fixture finish until shading. */
   private readonly deferredSurface: Uint8Array;
-  /** Per pixel, the material made from a recipe it wears, or 0. */
-  private readonly deferredMade: Uint8Array;
   private readonly deferredAt: Float64Array;
   private readonly deferredNormal: Float64Array;
   /** On the ground, the other finish's tint where two meet, or -1, and how much of it is wanted; less than 0 where a street's bands meet (groundPair). */
@@ -646,13 +641,13 @@ export class Rasterizer {
   /** The streets the heightfield holds, and their planes as the card holds them. */
   private streetsFrom: StreetSectors | null = null;
   private streetPlanes: StreetPlanes | null = null;
-  /** On a weathered static (world-surfaces.ts `weathered`), its weatherFrame and its instance's seed, or a seed of -1. */
+  /** On a static the flat program weathers (world-surfaces.ts `weathered`), 1 in its fourth place; -1 elsewhere. */
   private readonly deferredOwn: Float32Array;
-  /** The instance being drawn, where the flat program weathers it: its yaw's cosine and sine, its origin from the eye, and its seed, or -1. */
+  /** The instance being drawn, where the flat program weathers it: its yaw's cosine and sine, its origin from the eye, and whether it is weathered. */
   private ownC = 1;
   private ownS = 0;
   private readonly ownAt = new Float64Array(3);
-  private ownSeed = -1;
+  private onStatic = false;
   /** On a weathered static's triangle that knows its face's borders: which are outer, a corner's place and its corner of the face, and the face's way across and up per unit of vFace. */
   private edgeFlags = 0;
   /** Whether the draw is the far program's (programs.ts drawProgram), whose windows are their bay's mean. */
@@ -693,7 +688,6 @@ export class Rasterizer {
     this.deferred = new Uint16Array(width * height);
     this.deferredShade = new Float64Array(width * height);
     this.deferredSurface = new Uint8Array(width * height);
-    this.deferredMade = new Uint8Array(width * height);
     this.deferredAt = new Float64Array(width * height * 6);
     this.deferredNormal = new Float64Array(width * height * 3);
     this.deferredOther = new Int16Array(width * height);
@@ -806,7 +800,6 @@ export class Rasterizer {
     this.plain = false;
     this.finishRow = 0;
     this.bone = 0;
-    this.made = 0;
     let step = -1;
     for (let d = 0; d < packet.drawCount; d++) {
       const s = stepOf(packet, d);
@@ -836,7 +829,7 @@ export class Rasterizer {
       const open = this.opened(s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, ground, (this.deferredSurface[at]! & 1) === 0);
       const own = this.deferredOwn.subarray(at * 4, at * 4 + 4), edge = this.deferredEdge.subarray(at * 4, at * 4 + 4);
       const over = own[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, s[g6]!, s[g6 + 1]!, s[g6 + 2]!) : 0;
-      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen, this.deferredSurface[at]! >>> 1, this.deferredMade[at]!);
+      litFlat(p, this.pack.palette, (this.deferred[at]! & 511) - 1, 1, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!, (this.deferred[at]! & 1024) === 0 && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, (this.deferred[at]! & 512) === 0, this.deferredShade[at]!, this.look, ground ? smoothed : null, this.finish, this.deferred[at]! >> DEFERRED_FINISH, open, ground ? this.deferredOther[at]! : -1, this.deferredShare[at]!, own, over, edge, ground ? null : this.deferredFacade.subarray(at * FACADE_FLOATS, at * FACADE_FLOATS + FACADE_FLOATS), this.facadeSample, this.roomOpen, this.deferredSurface[at]! >>> 1);
       bounce.fill(1);
       for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
       this.deferred[at] = 0;
@@ -875,8 +868,8 @@ export class Rasterizer {
    * the pixel's static has no face known or is not weathered.
    */
   private facadeAt(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, colour: number, footprint: number, out: Float32Array): void {
-    out[0] = this.ownSeed < 0 && this.farProgram ? FACADE_FAR : -1;
-    if (!this.faceKnown || this.ownSeed < 0 || Math.abs(ny) > 0.5) return;
+    out[0] = !this.onStatic && this.farProgram ? FACADE_FAR : -1;
+    if (!this.faceKnown || !this.onStatic || Math.abs(ny) > 0.5) return;
     let pu = this.edgeU, pv = this.edgeV;
     const dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
     let a = pu[0]! * pu[0]! + pu[1]! * pu[1]! + pu[2]! * pu[2]!, c = pv[0]! * pv[0]! + pv[1]! * pv[1]! + pv[2]! * pv[2]!;
@@ -912,11 +905,11 @@ export class Rasterizer {
     out.set([facadeKind(FACADE_COLOURS[colour] ?? 0, w, h, ny), u * w, v * h, w, h, edges, oc * ox - os * oz, cy - this.ownAt[1]!, os * ox + oc * oz, (oc * pu[0]! - os * pu[2]!) * su / w, (os * pu[0]! + oc * pu[2]!) * su / w, place[0], place[1], footprint, this.packet.camY]);
   }
 
-  /** Into `out`, the weatherFrame and seed of a point of the instance being drawn with that face's normal, or a seed of -1 where it is not weathered. */
+  /** Into `out`'s fourth place, 1 where the instance being drawn is weathered and -1 where not; and the pixel's nearest outer edge. */
   private owned(rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, out: Float32Array): void {
-    out[3] = this.ownSeed;
+    out[3] = this.onStatic ? 1 : -1;
     edgeNow[0] = -1;
-    if (this.ownSeed < 0) return;
+    if (!this.onStatic) return;
     if (this.edgeFlags !== 0) {
       // The pixel's corner of its face from its place, as the face's way across and up give it.
       const pu = this.edgeU, pv = this.edgeV, dx = rx - this.edgeAt[0]!, dy = ry - this.edgeAt[1]!, dz = rz - this.edgeAt[2]!;
@@ -924,8 +917,6 @@ export class Rasterizer {
       const e = pu[0]! * dx + pu[1]! * dy + pu[2]! * dz, f = pv[0]! * dx + pv[1]! * dy + pv[2]! * dz, det = a * c - b * b;
       if (det > 0) edgeOf(this.edgeAt[3]! + (c * e - b * f) / det, this.edgeAt[4]! + (a * f - b * e) / det, this.edgeFlags, pu, pv, edgeNow);
     }
-    const c = this.ownC, s = this.ownS, dx = rx - this.ownAt[0]!, dz = rz - this.ownAt[2]!;
-    weatherFrame(c * dx - s * dz, ry - this.ownAt[1]!, s * dx + c * dz, c * nx - s * nz, ny, s * nx + c * nz, out);
   }
 
   /**
@@ -1146,7 +1137,7 @@ export class Rasterizer {
 
   private draw(p: FramePacket, d: number): void {
     this.drawing = d;
-    this.ownSeed = -1;
+    this.onStatic = false;
     this.farProgram = p.drawFade[d] !== 0 || p.drawHand[d] !== 0;
     [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
     this.swap = p.drawSwap[d]!;
@@ -1210,7 +1201,7 @@ export class Rasterizer {
         if (weathers) {
           [this.ownC, this.ownS] = [c, s];
           this.ownAt.set([ix, iy, iz]);
-          this.ownSeed = staticSeed(staticPlace(ix + p.camX, iz + p.camZ));
+          this.onStatic = true;
         }
         const k = sized ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
         const bend = this.bendOf(p.drawFlags[d]!, p.drawBuffer[d]!, inst), b = this.bentFlat;
@@ -1235,11 +1226,9 @@ export class Rasterizer {
       for (let t = from; t < end; t += 3) {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
-        // The material made from a recipe the vertex wears, as worldVertex has it: a near chunk's stream, or an instance's last two regions.
-        this.made = lod.made ? lod.made[last]! : color >= REGION_BASE && data[at + 18] === MADE_MARK ? data[at + 19]! : 0;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
-        this.edgeFlags = this.ownSeed >= 0 ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
+        this.edgeFlags = this.onStatic ? this.faceOf(out, lod.indices[t]!, lod.indices[t + 1]!, last, lod.bones) : 0;
         const fixture = fixtureFace(packedFixture ? lod.bones[last]! >>> 6 : meshFixture, color, lod.positions[last*3+1]!, lod.positions[last*3+2]!);
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0, fixture);
       }
@@ -1524,7 +1513,7 @@ export class Rasterizer {
     const indices = u.quads ? Uint32Array.from(quadIndices(u.indexCount, 4).subarray(0, u.indexCount)) : new Uint32Array(u.indexCount);
     for (let i = 0; !u.quads && i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
     const verts = u.data.subarray(u.quads ? 0 : (u.indexCount * u.indexBytes + 3) & ~3);
-    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices, ...(u.made ? { made: u.made } : {}) };
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, u.bounds ?? (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
   }
 
   /**
@@ -1867,7 +1856,6 @@ export class Rasterizer {
             this.deferredFacade.set(facadeNow, at * FACADE_FLOATS);
             this.deferred[at] = (tint + 1) | (solid ? 512 : 0) | (this.plain ? 1024 : 0) | (ground ? DEFERRED_GROUND : 0) | (this.finishRow << DEFERRED_FINISH);
             this.deferredSurface[at] = (fixture << 1) | (this.bone > 0 ? 1 : 0);
-            this.deferredMade[at] = this.made;
             this.deferredShade[at] = footprint;
             s[g6] = rx;
             s[g6 + 1] = ry;
@@ -1899,7 +1887,7 @@ export class Rasterizer {
             this.owned(rx, ry, rz, nx, ny, nz, ownNow);
             const over = ownNow[3]! >= 0 ? overGround(this.hf, COARSE, p.frame, p.camY, rx, ry, rz) : 0;
             this.facadeAt(rx, ry, rz, nx, ny, nz, colorIndex, footprint, facadeNow);
-            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen, fixture, this.made);
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz, !this.plain && (this.worldMaps || this.finishesMeant) ? this.worldSample : null, !solid, footprint, this.look, null, this.finish, this.finishRow, this.opened(rx, ry, rz, nx, ny, nz, false, this.bone === 0), -1, 0, ownNow, over, edgeNow, facadeNow, this.facadeSample, this.roomOpen, fixture);
             bounce.fill(1);
             cr = rgb[0]! * 255;
             cg = rgb[1]! * 255;

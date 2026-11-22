@@ -9,7 +9,8 @@
 // `/budget` shows the frame's budget live (budget.ts), with or without the mode armed, and every picture keeps what it said.
 //
 // None of this is in the script the first frame waits for: it takes what it needs of that script from the kit the app
-// hands it (notes-kit.ts, D915), and the browser's part from the shell's port (client/notes/port.ts).
+// hands it (notes-kit.ts, D915), but for the pass clock's list of passes, which it imports so it is never a copy (D1121),
+// and the browser's part from the shell's port (client/notes/port.ts).
 
 import type { App } from "../app.ts";
 import type { NotesKit } from "../notes-kit.ts";
@@ -17,7 +18,8 @@ import type { FramePacket } from "../render/packet.ts";
 import type { UiFrame } from "../ui/nodes.ts";
 import { K_BAR, K_PANEL, S_HUD_HIT, S_ICE, S_OXYGEN } from "../ui/monitor-style.ts";
 import { BEFORE_MS, NOTE_MS_MOST, PERF_SECONDS, PERF_SECONDS_MOST, REPORT_VERSION, SHOT_EVERY_MS, SHOT_WIDE_MOST, THUMB_WIDE, TEXT_CHARS_MOST, TEXT_LINES_MOST, clockText, type Report, type ReportBuild, type ReportKind, type ReportShot } from "../../../shared/report.ts";
-import { BudgetPanel, PASS_NAMES } from "./budget.ts";
+import { PASSES } from "../passes.ts";
+import { BudgetPanel } from "./budget.ts";
 import { census, type Census } from "./census.ts";
 import { TEXT_NOTICE } from "./copies.ts";
 import { aimOf, pageOf, placeOf, settingsOf, skyOf, survivorOf, viewOf } from "./place.ts";
@@ -73,9 +75,11 @@ export class Notes {
   private readonly extra: FrameExtra = { build: 0, scene: 0, gpu: -1, glDraws: 0, longMs: 0, longTasks: 0, shotMs: 0, flags: 0, heap: 0 };
   /** The frame's budget, while `/budget` has it on; and what the GPU's passes took in the latest frame timed. */
   panel: BudgetPanel | null = null;
-  private readonly passMs = new Float64Array(PASS_NAMES.length);
+  private readonly passMs = new Float64Array(PASSES.length);
   private gpuMode = 0;
   private apple = false;
+  /** The display the page was last on (NotePort.page), 0 before it is known. */
+  private display = 0;
   /** The scene whose build is timed (timeScene), and what its last build took. */
   private timed: { build: (...args: never[]) => unknown } | null = null;
   private sceneMs = 0;
@@ -216,9 +220,13 @@ export class Notes {
     port.longTasks(this.long);
     e.longTasks = this.long[0]!;
     e.longMs = this.long[1]!;
+    // A page moved to another screen learns that display's interval again (assets/frames.ts RefreshTarget).
+    const page = port.page();
+    if (page.display !== this.display && this.display !== 0) this.app.frames?.target.reset();
+    this.display = page.display;
     // The card by pass while the panel shows it, but on an Apple GPU, where a query between passes ends Metal's render
     // pass, whole; whole too while a note is taken. The record keeps the sum.
-    this.apple = /apple/i.test(port.page().card);
+    this.apple = /apple/i.test(page.card);
     this.gpuMode = panel ? (this.apple ? 1 : 2) : o !== null && o.state === "taking" ? 1 : 0;
     const came = port.gpu(this.gpuMode, this.passMs);
     let gpu = 0;

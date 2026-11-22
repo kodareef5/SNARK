@@ -422,7 +422,7 @@ export const FRAME = {
   nearToZ: 39,
   /** fFacade: the height in the world of the city's flood line (facade.ts FACADE_FLOOD), and 1 where every facade atlas the tier reads has come. */
   facade: 152,
-  /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`). */
+  /** fFacade's third lane: 1 on a frame drawn without the walls' worn edges (`?off=edges`, world-surfaces.ts `edged`), 2 more without their weathering (`?off=weather`, `weathered`). */
   edgesOff: 154,
   /** Its fourth: 1 more on a frame drawn without the ground's wear on asphalt and sand (`?off=road`, world-surfaces.ts `roadWorn`), 2 more without a walk's (`?off=walks`, `walkWorn`), and 4 more without a bent kerb's (`?off=kerbs`, bend.ts `bentWear`). */
   roadOff: 155,
@@ -586,8 +586,8 @@ export class FramePacket {
   /** Whether the finishes' base colours can come, which they are drawn as their means until they do; false where nothing can bring them. */
   worldComing = false;
   readonly worldPhase = new Float32Array(SURFACE_NAMES.length * 3);
-  /** The side of the layers of the walls' weathering masks the card makes and keeps (texgen/weather.ts), 0 where the tier does not weather. */
-  weatherSide = 0;
+  /** The side of the layers of the textures the card makes and keeps (texgen/layers.ts texgenSide), 0 where the tier makes none. */
+  texgenSide = 0;
   /** The textures the facades read, by their index in the manifest, -1 for none: the elements' base colour, normal and packed map, the rooms', the marks' (facade.ts FacadeAtlases). */
   readonly facadeSlots = new Int32Array(5).fill(-1);
   /** Linear 0..1 RGB. */

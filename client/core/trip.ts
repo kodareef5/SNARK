@@ -32,7 +32,7 @@ const FINE = ((WINDOW - 1) / 2) * TERRAIN_CELL;
  * no look for how near the finishes come under way (render/finish-near.ts), and pieces drawn with their materials; `far`, the
  * far city drawn in the view; `blocks`, the city's blocks drawn in the view (render/cityblocks.ts); `colour`, the world's finishes drawn with their base colours, where before those come they
  * are drawn as their means (client/shell/gl.ts worldReady), or none to draw; `soft`, no texture shown without its first
- * step; `handed`, the whole map's statics handed
+ * step; `making`, the card making its textures (texgen); `weathered`, the walls' weathering come up from their first pass; `handed`, the whole map's statics handed
  * to the session, a piece in every chunk its head counts any in; `predicting`, the body predicted; `exact`, the ground the fine terrain draws all the map's own; `jump`, the body
  * moved more than JUMP metres in a frame. Each, but `frame` and `jump`, again with a minus when it went.
  */
@@ -85,6 +85,8 @@ export class TripProbe {
     this.set("blocks", (scene.blocks?.stats.draws ?? 0) > 0);
     this.set("colour", p.worldSide[0] === 0 || p.worldLevel[0]! >= 0);
     this.set("soft", r.bare() === 0);
+    this.set("making", p.texgenSide > 0);
+    this.set("weathered", (this.app.texgen?.ready ?? 0) > 0);
     if (world.city !== this.city) {
       const city = (this.city = world.city);
       this.allOf = !!city && this.counts.every((n, c) => n === 0 || city.statics.in(c) > 0);

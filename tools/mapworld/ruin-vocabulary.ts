@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { MADE_FINISHES, MADE_SHARE, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import type { RuinFinish, RuinShape } from "../../content/ruins.ts";
 import type { Footprint } from "./statics.ts";
 import type { Cars } from "./street-cars.ts";
 import type { ReturnRules } from "./corners.ts";
@@ -146,12 +146,6 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { w
     if (choice.finish) finish = choice.finish;
     if (choice.collapse) collapse = choice.collapse[Math.floor(rand3(f.building.id, v.seed, 91) * choice.collapse.length)]!;
     matched.push(choice.id);
-  }
-  // Some buildings of a painted finish wear one the page makes from a recipe in its colour (content/ruins.ts MADE_FINISHES).
-  const made = MADE_FINISHES[finish as RuinFinish];
-  if (made && rand3(f.building.id, v.seed, 77) < MADE_SHARE) {
-    finish = made[Math.floor(rand3(f.building.id, v.seed, 78) * made.length)]!;
-    matched.push(`made: ${finish}`);
   }
   // A shop's storeys are rounded, not cut short: a 7 m frontage is a shop with rooms above.
   if (v.forms?.[formName]?.facade?.ground === "zstore") height = Math.min(v.budgets.maxHeight, Math.max(4, Math.round(facts.height * retain / 4) * 4));

@@ -32,10 +32,11 @@ export interface ToolOrders {
 
 /**
  * Steers for a measurement run, `ms` into its measured frames: the body stands and the view turns once round in
- * BENCH_TURN_MS, a little up and down, so that every run of a scene sees the same views. Call it each frame instead
- * of forwarding input.
+ * BENCH_TURN_MS, a little up and down, so that every run of a scene sees the same views; below 0 the view is held
+ * (`?still`). Call it each frame instead of forwarding input.
  */
 export function autopilot(controls: Controls, ms: number): void {
+  if (ms < 0) return;
   controls.yaw = (ms / BENCH_TURN_MS) * TAU;
   controls.pitch = Math.sin(ms / 2300) * 0.2 - 0.05;
 }
@@ -72,6 +73,9 @@ export class ToolHooks {
   private artEyeTime: number | null = null;
   private playEye = false;
   private artEyeAt: number | null = null;
+  /** A measurement run's clock (bench-run.ts BenchRun.clock): ms since its scene was still, -1 before or outside a run; and the page's clock then. */
+  private runMs = -1;
+  private runFrom = 0;
   private readonly supply: SupplyView;
 
   /** `supply` is the drops' view, whose clock a picture tool holds with the obelisks'. */
@@ -119,6 +123,17 @@ export class ToolHooks {
     this.marks = made.marks;
   }
 
+  /** The run's clock for the frame to come, `run`, `last` the page's clock at the frame before. */
+  run(run: number, last: number): void {
+    if (run >= 0 && this.runMs < 0) this.runFrom = last;
+    this.runMs = run;
+  }
+
+  /** What is drawn at the page's `nowMs` is timed by the run's clock in a run, so each run is at one point of every fade at each frame. */
+  sceneMs(nowMs: number): number {
+    return this.runMs >= 0 ? this.runFrom + this.runMs : nowMs;
+  }
+
   /** `tier` with this frame's effects off. */
   tier(tier: Tier): Tier {
     return tierWithout(tier, this.offNow);
@@ -151,6 +166,9 @@ export class ToolHooks {
       scene.eyeSeconds = this.artEyeTime + (this.artEyeAt === null ? 0 : (f.nowMs - this.artEyeAt) / 1000);
       // A picture tool that holds the obelisks' clock holds the drops' with it: a cast leaves by that clock.
       this.supply.tick = scene.eyeSeconds * TICK_RATE;
+    } else if (this.runMs >= 0) {
+      // The tide's eyes open and shut on the server's ticks; in a run, from the run's still frame, so every run sees each eye alike.
+      scene.eyeSeconds = this.runMs / 1000;
     }
     const alternate = this.other !== null && (++this.drawnFrames & 1) === 0, off = (this.offNow = alternate ? this.other! : this.off);
     scene.alternate = alternate;

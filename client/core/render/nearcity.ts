@@ -17,7 +17,6 @@ import type { ChunkTable } from "../../../shared/world/structures.ts";
 import { KindPlates, chunkOccluders } from "./hide.ts";
 import { LAKE_SLOTS, LAKE_SLOT_SPAN } from "./lakes.ts";
 import { fixtureKind } from "./street-finish.ts";
-import { recipeIndex } from "../../../content/texgen/finishes.ts";
 import { quadBytes, type FramePacket } from "./packet.ts";
 
 /** Strips of a chunk along z, 4 m wide, that bands are made of: a band is 1, 2, 4, 8 or 16 of them in a row. */
@@ -47,8 +46,6 @@ const BURIED = 0.05;
 export interface NearMade {
   /** Four vertices a face, drawn with the quads' indices (packet.ts quadIndices). */
   readonly data: Uint8Array;
-  /** A byte a vertex beside them, the material made from a recipe it wears (from 1), where any face wears one; else null. */
-  readonly made: Uint8Array | null;
   readonly faces: number;
   readonly indexBytes: 2 | 4;
   /** What the vertices are stored within: x and z from the chunk's corner, y in the world. */
@@ -152,14 +149,12 @@ export class NearMaking {
     let faces = 0;
     for (const part of this.parts) faces += part.faces;
     // Every band's faces in one list, then each axis's box.
-    const pos = new Float32Array(faces * 12), colour = new Uint8Array(faces), edges = new Uint8Array(faces), made = new Uint8Array(faces);
-    let n = 0, anyMade = false;
+    const pos = new Float32Array(faces * 12), colour = new Uint8Array(faces), edges = new Uint8Array(faces);
+    let n = 0;
     for (const part of this.parts) {
       pos.set(part.pos.subarray(0, part.faces * 12), n * 12);
       colour.set(part.color.subarray(0, part.faces), n);
       edges.set(part.edges.subarray(0, part.faces), n);
-      made.set(part.made.subarray(0, part.faces), n);
-      for (let f = 0; f < part.faces && !anyMade; f++) anyMade = part.made[f]! > 0;
       n += part.faces;
     }
     const box = boxOf(pos, faces * 4);
@@ -178,9 +173,8 @@ export class NearMaking {
     const cellFirst = cellsOf(pos, faces, this.side, cellOf);
     const cellBox = new Float32Array(cells * 6);
     for (let c = 0; c < cells; c++) cellBox.fill(Infinity, c * 6, c * 6 + 3).fill(-Infinity, c * 6 + 3, c * 6 + 6);
-    const stream = anyMade ? new Uint8Array(faces * 4) : null;
-    const data = store(pos, colour, edges, made, stream, faces, cellOf, cellFirst, center, step, cellBox);
-    return { data, made: stream, faces, indexBytes: quadBytes(faces), bounds: { center, half }, cellFirst, cellBox };
+    const data = store(pos, colour, edges, faces, cellOf, cellFirst, center, step, cellBox);
+    return { data, faces, indexBytes: quadBytes(faces), bounds: { center, half }, cellFirst, cellBox };
   }
 }
 
@@ -216,10 +210,9 @@ function cellsOf(pos: Float32Array, faces: number, side: number, cellOf: Uint8Ar
 
 /**
  * Faces `pos` of `colour`, stored on the lattice of `step` from `center` in the order of their cells `cellOf`, which begin
- * at `cellFirst`, each cell's box of what is stored grown in `cellBox`; and where `stream` is given, each vertex's
- * material made from a recipe (`made` a face) into it, in the same order. Its own function, short, for the compiler's sake.
+ * at `cellFirst`, each cell's box of what is stored grown in `cellBox`. Its own function, short, for the compiler's sake.
  */
-function store(pos: Float32Array, colour: Uint8Array, edges: Uint8Array, made: Uint8Array, stream: Uint8Array | null, faces: number, cellOf: Uint8Array, cellFirst: Uint32Array, center: readonly number[], step: readonly number[], cellBox: Float32Array): Uint8Array {
+function store(pos: Float32Array, colour: Uint8Array, edges: Uint8Array, faces: number, cellOf: Uint8Array, cellFirst: Uint32Array, center: readonly number[], step: readonly number[], cellBox: Float32Array): Uint8Array {
   const data = new Uint8Array(faces * 4 * VERTEX_BYTES);
   const view = new DataView(data.buffer);
   const at = cellFirst.slice(0, cellFirst.length - 1);
@@ -234,7 +227,6 @@ function store(pos: Float32Array, colour: Uint8Array, edges: Uint8Array, made: U
       view.setInt16(o + 4, qz, true);
       data[o + 6] = colour[f]!;
       data[o + 7] = cornerByte(e, edges[f]!);
-      if (stream) stream[to * 4 + e] = made[f]!;
       // The box of what is stored, which is what is drawn.
       const x = c0 + qx * s0, y = c1 + qy * s1, z = c2 + qz * s2;
       if (x < cellBox[b]!) cellBox[b] = x;
@@ -301,7 +293,7 @@ export interface Standing {
 }
 
 /** A chunk's mesh on the card, and what it was made from. */
-export interface NearMesh extends Omit<NearMade, "data" | "made"> {
+export interface NearMesh extends Omit<NearMade, "data"> {
   /** Its slot, or -1 for one with no faces, which is never on the card; and its bytes there. */
   readonly slot: number;
   readonly bytes: number;
@@ -358,11 +350,10 @@ export class NearCity {
   /** `flat(k)` says whether kind k's mesh is drawn flat in its colour, with no material. */
   constructor(reg: Registry, mesh: number, landmark: Uint8Array, flat: (kind: number) => boolean) {
     this.mesh = mesh;
-    // A street fixture's material in two bits, and above them a material made from a recipe (shared/world/city.ts mergedPart).
-    this.labels = Uint8Array.from(reg.defs, (d) => (d ? fixtureKind(d.id) | (d.type === "structure" ? recipeIndex(d.recipe) << 2 : 0) : 0));
+    this.labels = Uint8Array.from(reg.defs, d => d ? fixtureKind(d.id) : 0);
     const turns = new Set<number>();
     for (let k = 1; k < reg.defs.length; k++) for (const other of [reg.opens[k]!, reg.lights[k]!]) if (other !== 0) turns.add(k).add(other);
-    this.kinds = Uint8Array.from(reg.defs, (d, k) => (d?.type === "structure" && d.class === "static" && (d.mesh === "box" || d.mesh === "shape") && !turns.has(k) && reg.motion[k] === null && landmark[k] !== 1 && reg.halfX[k]! > 0 && (d ? fixtureKind(d.id) : 0) <= 3 && flat(k) ? 1 : 0));
+    this.kinds = Uint8Array.from(reg.defs, (d, k) => (d?.type === "structure" && d.class === "static" && (d.mesh === "box" || d.mesh === "shape") && !turns.has(k) && reg.motion[k] === null && landmark[k] !== 1 && reg.halfX[k]! > 0 && this.labels[k]! <= 3 && flat(k) ? 1 : 0));
   }
 
   /** Chunk `chunk` as followed here, while it is drawn near. */
@@ -454,15 +445,14 @@ export class NearCity {
       if (done.faces > 0) {
         slot = NEAR_SLOTS + this.next;
         this.next = (this.next + 1) % NEAR_SLOT_SPAN;
-        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: done.data, indexCount: done.faces * 6, indexBytes: done.indexBytes, quads: true, bounds: done.bounds, ...(done.made ? { made: done.made } : {}) });
-        budget.spend(done.data.length + (done.made?.length ?? 0));
+        p.assetUploads.push({ slot, mesh: this.mesh, level: 0, data: done.data, indexCount: done.faces * 6, indexBytes: done.indexBytes, quads: true, bounds: done.bounds });
+        budget.spend(done.data.length);
       }
       if (this.plates?.city !== city) this.plates = new KindPlates(city);
       const step = done.bounds.half.map((h) => h / 32767);
       const occluders = chunkOccluders(city, mk.m.chunk, c.mine, this.plates, { x0: chunkCx(city.dims, mk.m.chunk) * CHUNK_SIZE, z0: chunkCz(city.dims, mk.m.chunk) * CHUNK_SIZE, center: done.bounds.center, step });
-      const kept = done.data.length + (done.made?.length ?? 0);
-      c.mesh = { faces: done.faces, indexBytes: done.indexBytes, bounds: done.bounds, cellFirst: done.cellFirst, cellBox: done.cellBox, slot, bytes: kept, version: mk.version, around: mk.around, side, occluders };
-      bytes += kept;
+      c.mesh = { faces: done.faces, indexBytes: done.indexBytes, bounds: done.bounds, cellFirst: done.cellFirst, cellBox: done.cellBox, slot, bytes: done.data.length, version: mk.version, around: mk.around, side, occluders };
+      bytes += done.data.length;
       stats.taken++;
       stats.waiting--;
     }

@@ -444,28 +444,7 @@ export const RUIN_FINISHES = {
   rust: { color: 179, under: 178, material: "core:mat_metal", hp: 8000 },
   blue: { color: 5, under: 87, material: "core:mat_metal", hp: 9000 },
   fracture: { color: 102, under: 97, material: "core:mat_stone", hp: 12000 },
-  // Finishes the page makes from recipes (content/texgen/finishes.ts), each in the colour of a painted one, which dyes it
-  // and whose weathering it keeps: dash stucco and painted block in the plaster's rose and mint, render in limestone,
-  // block in concrete's grey, and corrugated sheet in the metals'.
-  rosestucco: { color: 81, under: 111, material: "core:mat_stone", hp: 10000, recipe: "stucco" },
-  mintstucco: { color: 75, under: 142, material: "core:mat_stone", hp: 10000, recipe: "stucco" },
-  roseblock: { color: 81, under: 111, material: "core:mat_stone", hp: 11000, recipe: "block" },
-  mintblock: { color: 75, under: 142, material: "core:mat_stone", hp: 11000, recipe: "block" },
-  limerender: { color: 10, under: 101, material: "core:mat_stone", hp: 12000, recipe: "render" },
-  greyblock: { color: 100, under: 97, material: "core:mat_stone", hp: 14000, recipe: "block" },
-  steelsheet: { color: 89, under: 87, material: "core:mat_metal", hp: 12000, recipe: "corrugated" },
-  bluesheet: { color: 5, under: 87, material: "core:mat_metal", hp: 9000, recipe: "corrugated" },
-  rustsheet: { color: 179, under: 178, material: "core:mat_metal", hp: 7000, recipe: "corrugated" },
 } as const;
-/**
- * The finishes made from recipes that a building of a painted finish may wear in its place, by its id (ruin-vocabulary.ts
- * `ruleFor`): MADE_SHARE of them do, each of the list alike.
- */
-export const MADE_FINISHES: Partial<Record<keyof typeof RUIN_FINISHES, readonly (keyof typeof RUIN_FINISHES)[]>> = {
-  rose: ["rosestucco", "roseblock"], mint: ["mintstucco", "mintblock"], limestone: ["limerender"], concrete: ["greyblock"],
-  steel: ["steelsheet"], blue: ["bluesheet"], rust: ["rustsheet"],
-};
-export const MADE_SHARE = 0.55;
 
 export type RuinShape = keyof typeof RUIN_SHAPES;
 export type RuinFinish = keyof typeof RUIN_FINISHES;
