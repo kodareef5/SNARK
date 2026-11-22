@@ -257,6 +257,8 @@ export const bentJoin = (from: BentKerb, to: BentKerb): string => `core:zzzzzben
 /** Segments along a curved piece, and the most a piece of each runs. */
 export const CURVE_SEGMENTS = 8;
 const STRAIGHT_MOST = 32, CURVE_MOST = 8, LEAST = 0.4;
+/** A straight runs this far whatever the line's heights do, and on to STRAIGHT_MOST where they rise evenly (evenRise). */
+const STRAIGHT_EVEN = 16;
 /**
  * The most a straight piece's end may stand turned from its chord, as a mitre to the next, how far its chord or a curve
  * may miss the line, and how far a straight's even rise may miss the heights of the line's points along it.
@@ -312,7 +314,7 @@ export function placeKerb(line: KerbLine, side: 1 | -1, section: Section, from =
     // A curve where the line bends, and where a straight would run on only a little way and a curve twice as far: a
     // gentle bend is then one curve of eight segments, not straights of a metre or so.
     let straight = straightFits(px, pz, frame(i), frame(j), i, j) ? j : i;
-    if (straight > i) while (straight + 1 < n && st[straight + 1]! - st[i]! <= STRAIGHT_MOST && straightFits(px, pz, frame(i), frame(straight + 1), i, straight + 1) && evenRise(py, st, i, straight + 1)) straight++;
+    if (straight > i) while (straight + 1 < n && st[straight + 1]! - st[i]! <= STRAIGHT_MOST && straightFits(px, pz, frame(i), frame(straight + 1), i, straight + 1) && (st[straight + 1]! - st[i]! <= STRAIGHT_EVEN || evenRise(py, st, i, straight + 1))) straight++;
     let curve = j;
     while (curve + 1 < n && st[curve + 1]! - st[i]! <= CURVE_MOST && curveFits(px, pz, frame(i), frame(curve + 1), i, curve + 1)) curve++;
     const curved = straight === i || st[curve]! - st[i]! > 2 * (st[straight]! - st[i]!);

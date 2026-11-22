@@ -345,3 +345,13 @@ test("a bent walk's grain is laid across by the concrete strip's own rows, as th
   expect((CONCRETE_ROWS[1] - CONCRETE_ROWS[0]) * s.side / CONCRETE_METRES).toBe(s.side / STRIP_METRES);
   expect(STRIP_METRES).toBe(s.tiles);
 });
+
+test("a straight runs to 32 m where its line rises evenly, and past 16 m no further where it does not", () => {
+  const x = Array.from({ length: 31 }, (_, k) => k), z = x.map(() => 0);
+  expect(placeKerb({ x, z, y: x.map((k) => 1 + k * 0.01) }, 1, SECTION).length).toBe(1);
+  // A hump of 6 cm at 24 m: a straight to 16 m whatever, then on only where it keeps to an even rise.
+  const humped = placeKerb({ x, z, y: x.map((k) => 1 + (k === 24 ? 0.06 : 0)) }, 1, SECTION);
+  expect(humped.length).toBeGreaterThan(1);
+  expect(humped[0]!.bend.half * 2).toBeGreaterThanOrEqual(16);
+  expect(humped.every((p) => p.kind.endsWith("_s"))).toBe(true);
+});
