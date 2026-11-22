@@ -568,10 +568,10 @@ export class GlRenderer {
     return prog.program;
   };
 
-  /** Makes textures on the card with `engine` once each of its programs has linked and drawn a pixel, which the page waits for while the world loads. */
+  /** Makes textures on the card with `engine` once each of its programs has linked and drawn a pixel, between frames, with the state the making draws in. */
   async makeWith(engine: Texgen): Promise<void> {
     const o = engine.warm();
-    while (!o.broken && (this.gen.draw(o, (k) => this.job(k, o), this.anisotropyOf), o.drawn < o.count)) await new Promise((go) => setTimeout(go, 16));
+    while (!o.broken && (this.set(false, false, false), this.gen.draw(o, (k) => this.job(k, o), this.anisotropyOf), o.drawn < o.count)) await new Promise((go) => setTimeout(go, 16));
     this.current = null;
     this.vao = this.gen.vao;
     this.texgen = engine;

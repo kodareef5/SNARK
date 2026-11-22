@@ -270,6 +270,8 @@ export class App {
   readonly governor = new Governor();
   /** What each frame took and what came in it, for the data utility's monitor (assets/frames.ts), once the shell has fetched it. */
   frames: FrameRing | null = null;
+  /** The textures the card makes (texgen/engine.ts), once their file has come: how far they have come up, which the shell draws them by. */
+  texgen: import("./texgen/engine.ts").Texgen | null = null;
   private monitorAsked = false;
   /**
    * Bug report mode (notes/notes.ts), fetched once Settings.notes is first on, as the monitor is; null until then. And

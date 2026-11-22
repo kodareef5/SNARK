@@ -148,8 +148,8 @@ async function boot(): Promise<void> {
   app.plainSky = selfcheck; app.fromEye = measured || params.has("look") || params.has("trip");
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
   if (app.ui.settings.touchFirst) app.ui.inputDevice = 2;
-  // The textures the card makes come as a file of their own, their programs made ready while the world loads; a touch-first device makes none.
-  const making = app.ui.settings.touchFirst ? null : import("../core/texgen/late.ts").then((m) => renderer.makeWith(m.texgen(renderer.gl)), () => {});
+  // The textures the card makes come as a file of their own, which the first frame does not wait for; a touch-first device makes none.
+  if (!app.ui.settings.touchFirst) void import("../core/texgen/late.ts").then((m) => renderer.makeWith((app.texgen = m.texgen(renderer.gl))), () => {});
   // What the screen's own edges take (a notch, a home bar), which the page's padding measures: the interface keeps clear of them.
   const edges = (): void => { const s = getComputedStyle(document.body); [s.paddingLeft, s.paddingTop, s.paddingRight, s.paddingBottom].forEach((side, i) => (app.insets[i] = parseFloat(side) || 0)); };
   edges();
@@ -303,7 +303,6 @@ async function boot(): Promise<void> {
   await session.welcomed;
   if(launch && session.state==="closed"){showEntryProblem();return;}
   await loader.follow(() => session.place, { say: (line) => app.ui.console.print(line), arriving: (statics, whole) => session.staticsSteps(statics, whole), held: () => session.behind });
-  await making;
   // The interface takes the page's line from here.
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button, finger) => app.pointer(kind, key, x, y, button, finger), typing: () => app.ui.typing });
   requestAnimationFrame(frame);
