@@ -48,10 +48,15 @@ export function reportIds(dir: string): number[] {
   return existsSync(dir) ? readdirSync(dir).filter((n) => NUMBERED.test(n)).map(Number).sort((a, b) => a - b) : [];
 }
 
-/** Takes the next id in `dir` by making its folder, so two servers of one checkout never take the same one. */
+/**
+ * Takes the next id in `dir` by making its folder, so two servers of one checkout never take the same one. A number in
+ * the trash (tools/reports.ts delete) is not given again: "report 14" means one report.
+ */
 export function takeId(dir: string): number {
   mkdirSync(dir, { recursive: true });
-  let id = (reportIds(dir).at(-1) ?? 0) + 1;
+  const trash = join(dir, ".trash");
+  const trashed = existsSync(trash) ? readdirSync(trash).map((n) => parseInt(n, 10)).filter((n) => n > 0) : [];
+  let id = Math.max(reportIds(dir).at(-1) ?? 0, ...trashed) + 1;
   for (let tries = 0; tries < 1000; tries++, id++) {
     try {
       mkdirSync(join(dir, reportFolder(id)));
@@ -206,6 +211,8 @@ export class ReportStore {
       client: { page: report.build ?? {}, served: this.servedBuild() },
       files: [...Array.from({ length: shots }, (_, n) => shotFile(n)), ...(thumb ? ["thumb.jpg"] : []), ...(perf ? ["perf.json"] : []), "server.json", "state.json"],
       ...report,
+      // The world's map as this server runs it.
+      map: { ...report.map, id: this.mapId },
       version: REPORT_VERSION,
       // Phase 2 keeps the recording here (voice.webm) as the record, and its text beside it once a reader makes one.
       voice: { file: null, text: null, segments: report.voice?.segments ?? [] },
