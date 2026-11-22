@@ -112,13 +112,13 @@ export class PerfRing {
     this.longTasks = 0;
   }
 
-  /** The frames held that began from `from` to `to` (ms, the page's clock), oldest first, as rows of FRAME_FIELDS. */
-  frames(from: number, to: number): number[][] {
+  /** The frames held that began from `from` to `to` (ms, the page's clock), oldest first, as rows of FRAME_FIELDS, `at` from `origin`. */
+  frames(from: number, to: number, origin = from): number[][] {
     const out: number[][] = [];
     for (let back = Math.min(this.rows, FRAME_SLOTS) - 1; back >= 0; back--) {
       const k = this.row(back), at = this.at[k]!;
       if (at < from || at > to) continue;
-      const row = [round(at - from)];
+      const row = [round(at - origin)];
       for (let c = 0; c < CELLS; c++) row.push(round(this.cells[k * CELLS + c]!));
       out.push(row);
     }

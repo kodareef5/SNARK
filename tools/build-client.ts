@@ -159,7 +159,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     for (const o of result.outputs) if (o.path.endsWith(".js")) writeFileSync(o.path, withoutNotes(readFileSync(o.path, "utf8")));
     return result.outputs;
   };
-  const scripts = [...(await bundle(["client/shell/main.ts"], true)), ...(await bundle(["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts"], false))].filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1));
+  const scripts = [...(await bundle(["client/shell/main.ts"], true)), ...(await bundle(["client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts", "client/city/city-worker.ts", "client/notes/shot-worker.ts"], false))].filter((o) => o.path.endsWith(".js")).map((o) => o.path.slice(dist.length + 1));
   // The pieces main.js imports before it runs, which the page asks for beside it.
   const pieces = [...readFileSync(join(dist, "main.js"), "utf8").matchAll(/\bimport\s*(?:\{[^}]*\}\s*from\s*)?"\.\/([^"]+\.js)"/g)].map((m) => m[1]!);
   console.log(`ui           ${ui.bytes} bytes transferred, ${ui.decodedBytes} RGBA bytes`);

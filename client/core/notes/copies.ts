@@ -6,6 +6,9 @@
 export const TICK_RATE = 30;
 export const CHUNK_SIZE = 64;
 export const SECTOR_CHUNKS = 16;
+/** shared/net/protocol.ts: the chat's channel for the game's own notices, and a session with a body. */
+export const TEXT_NOTICE = 1;
+export const SESSION_ALIVE = 0;
 /** render/packet.ts FRAME.sun: where the sun's way is in a frame's numbers. */
 export const FRAME_SUN = 0;
 /** shared/world/streets.ts: a side's kinds, and a stretch's flags. */

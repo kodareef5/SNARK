@@ -12,7 +12,7 @@ import { buildHud, chatBand, hotbarCell, hotbarLeft, hotbarTop, stripRoom } from
 import type { TouchPlay } from "../touch.ts";
 import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
 import { CONTROL_GROUPS } from "./controls-guide.ts";
-import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE, menuLink, unmuteButton } from "./menu.ts";
+import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_CREATIVE, KEY_MENU_LEAVE, KEY_MENU_NOTE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, KEY_UNMUTE, menuLink, unmuteButton } from "./menu.ts";
 import { CreativeScreen, KEY_CREATIVE_PASSWORD } from "./creative.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { CANVAS_HEIGHT, K_SLIDER, UiFrame } from "./nodes.ts";
@@ -103,6 +103,10 @@ export class Ui {
   palette: Uint8Array | null = null;
   /** A console line this client answers itself, without the server: the answer, or null for a line to send. */
   local: ((line: string) => string | null) | null = null;
+  /** Bug report mode's menu row ("" for none), what the row does, and what Esc does first while a note is open (notes/notes.ts). */
+  noteRow = "";
+  takeNote: (() => void) | null = null;
+  escape: (() => boolean) | null = null;
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
@@ -117,6 +121,11 @@ export class Ui {
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
     return !this.menu && !this.inspect && !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open && !this.emotes.open && !this.monitorOpen;
+  }
+
+  /** Escape where no screen takes it: an open note's first (notes/notes.ts), else the menu. */
+  escaped(): void {
+    if (!this.escape?.()) this.openMenu();
   }
 
   openMenu(): void {
@@ -237,7 +246,7 @@ export class Ui {
         return true;
       }
       if (code === "Escape") {
-        if (down && !repeat) this.openMenu();
+        if (down && !repeat) this.escaped();
         return true;
       }
       return false;
@@ -287,6 +296,7 @@ export class Ui {
         if(this.frame.find(key)?.interactive)this.focusTo(key);
         if (key === KEY_MENU_RESUME) { if (session?.state === "closed") this.reconnectRequested = true; else this.menu = false; }
         else if (key === KEY_MENU_CREATIVE && session?.creative) { this.creative = true; this.focusTo(this.creativeScreen.first(session)); }
+        else if (key === KEY_MENU_NOTE && this.noteRow) { this.menu = false; this.takeNote?.(); }
         else if (key === KEY_MENU_SETTINGS) { this.options = true; this.focusTo(KEY_MENU_BACK); }
         else if (key === KEY_MENU_CONTROLS) { this.help = true; this.helpDevice = this.inputDevice; this.focusTo(KEY_MENU_BACK); }
         else if (key === KEY_MENU_BACK) { this.focusTo(this.creative ? KEY_MENU_CREATIVE : KEY_MENU_RESUME); this.options = this.help = this.creative = false; }
@@ -402,7 +412,7 @@ export class Ui {
           this.creativeScreen.build(f, session, hud, this.menuFocus);
           // The password's field gives way to the tools once the server has given the role.
           if (!f.find(this.menuFocus)?.interactive && !this.focusNext) this.focusTo(this.creativeScreen.first(session));
-        } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false);
+        } else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links, session?.creative ?? false, this.noteRow);
       } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) this.choosing.build(f, session, hud);
       else if (this.map && session) buildMap(f, session, hud);
