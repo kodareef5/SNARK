@@ -370,6 +370,15 @@ export class HudModel {
    * the view takes a green night tint of opacity `tint` (Holo-Scope Attachment).
    */
   scope = false;
+  /**
+   * The scope's window (D1030): the share of the screen's height it spans (optics.ts windowShare), its shape
+   * (optics.ts SHAPE_), and how far the eye is off its axis in shares of its radius (x right, y down), which casts its
+   * shadow across the lens.
+   */
+  sightShare = 1;
+  sightShape = 0;
+  sightOffX = 0;
+  sightOffY = 0;
   holo = false;
   crossTint = -1;
   tint = 0;

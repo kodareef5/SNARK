@@ -579,6 +579,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         const { min, max = min, steps = [] } = d.optic;
         if (!(min >= 1 && max >= min && max <= MAX_ZOOM)) errors.push(`${d.id}: optic must magnify from at least 1 to at most ${MAX_ZOOM}, min first`);
         if (steps.some((z, k) => !(z >= min && z <= max && (k === 0 || z > steps[k - 1]!)))) errors.push(`${d.id}: optic.steps must rise from optic.min to optic.max`);
+        if (d.optic.window && !d.optic.window.every((w) => w > 0 && w <= 1)) errors.push(`${d.id}: optic.window must be two shares of the screen's height, above 0 and at most 1`);
       }
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
       if (d.cooks !== undefined) positive(d, "cooks.seconds", d.cooks.seconds, MAX_BURN_SECONDS);

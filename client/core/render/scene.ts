@@ -1,6 +1,7 @@
 import { CROWN_ORIGIN, DECK_RADIUS, EYE_DYE, KEEL, LANTERN_BANKS, LENS_HEIGHT, SEXTANT_PIVOT, type TideEyeSite } from "../../../shared/world/tide-eye.ts";
 import { aperture, eyePhase, eyePower, shutterOpening, writeEyeSky } from "./tide-eye.ts";
 import { TreeFalls } from "../tree-fall.ts";
+import { EYE_FROM } from "../optics.ts";
 import type { TreePresentationEvent } from "../vehicle-trees.ts";
 import { IMPALE_SLOT, MAX_SEATS } from "../../../shared/sim/seats.ts";
 import { remoteVehiclePose } from "../vehicle-view.ts";
@@ -146,6 +147,8 @@ export const NODE_BUFFERS = 1 << 20;
  */
 export const CHUNK_CELLS = 4;
 
+/** Metres the far depth range of a frame with one begins at, through a sight: the lit tiers' split (tiers.ts). */
+const WINDOW_SPLIT = 384;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
@@ -1029,7 +1032,9 @@ export class Scene {
     this.chunkCasts.length = 0;
     this.later.length = 0;
     this.nearAt = 0;
-    cam.split = p.split = this.assets.tier.split;
+    // Low poly's one depth range resolves about 2 m at 3 km, which a sight magnifies into the picture: through one, it
+    // splits as the lit tiers do (D1030).
+    cam.split = p.split = this.assets.tier.split > 0 ? this.assets.tier.split : cam.zoom > EYE_FROM ? WINDOW_SPLIT : 0;
     this.lift = Math.max(0, cam.y - this.world.hf.heightAt(cam.x, cam.z));
     cam.far = farPlane(this.viewDistance);
     cam.update();
@@ -1041,6 +1046,8 @@ export class Scene {
     p.lit = p.tier.lit;
     p.room = p.tier.post ? this.share : 1; p.share = p.tier.post ? this.share * (p.tier.post.scale ?? 1) : 1;
     p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
+    const win = cam.window, windowed = cam.windowed;
+    for (let k = 0; k < 4; k++) p.window[k] = windowed ? win[k]! * 0.5 + 0.5 : 0;
     p.farViewProj.set(cam.ranges[PASS_FAR]);
     p.nearViewProj.set(cam.nearViewProj);
     p.camX = cam.x;

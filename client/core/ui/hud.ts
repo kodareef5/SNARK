@@ -10,6 +10,8 @@ import { TAPE_HEIGHT, buildCompass, tapeLayout } from "./compass.ts";
 import type { TouchPlan } from "./touch.ts";
 import { MAX_DOTS } from "../render/laser.ts";
 import { K_BAR, K_BUTTON, K_IMAGE, K_PANEL, fitText, lineHeight, type UiFrame } from "./nodes.ts";
+import { S_LENS, S_LENS_TWIN } from "./style.ts";
+import { SHAPE_TWIN, TWIN_WIDE } from "../optics.ts";
 import { S_BUFF, S_DARK, S_BANNER, S_CROSS, S_FRAME, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT_TEXT, S_STAMINA, S_TEXT } from "./style.ts";
 import { S_HUD_COUNT, S_HUD_HIT, S_HUD_KEY, S_ICE, S_KEY_SMALL, S_MENU_FOCUS, S_MENU_MAIN, S_MENU_NOTE, S_WARNING } from "./style.ts";
 
@@ -35,6 +37,8 @@ export const KEY_CONE = 24;
 /** A holo-scope's tint over the view; a scope's reticle (eight panels); one mark per laser dot, MAX_DOTS at most. */
 export const KEY_TINT = 38;
 export const KEY_SIGHT = 5000;
+/** The scope's shadow across its lens: the lens again where the eye is, and the two strips that move clears (D1030). */
+export const KEY_SIGHT_SHADE = 5100;
 export const KEY_DOT = 5010;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
@@ -81,32 +85,46 @@ const LASER_RED = 0xff2a22;
 const DOT = 4;
 
 /**
- * A scope's reticle, the German post (Scope Attachment): the view masked to a square tube, thick posts in from the left,
- * the right and the bottom that stop short of the middle, and a fine line across between the side posts. Eight panels.
+ * A scope's reticle, the German post (Scope Attachment): the view masked to its window (D1030), round or two merged
+ * lenses, spanning `m.sightShare` of the height; thick posts in from the left, the right and the bottom that stop short
+ * of the middle, and a fine line across between the side posts. Where the eye is off the axis the lens is masked again
+ * from where the eye is, softer, casting the scope's shadow across it.
  */
-function buildReticle(f: UiFrame, W: number, H: number): void {
-  const side = Math.min(W, H);
-  const x0 = (W - side) / 2;
-  const y0 = (H - side) / 2;
-  const cx = W / 2;
-  const cy = H / 2;
-  const gap = side * 0.06;
-  const post = Math.max(3, Math.round(side * 0.012));
+function buildReticle(f: UiFrame, W: number, H: number, m: HudModel): void {
+  const r = (m.sightShare * H) / 2;
+  const twin = m.sightShape === SHAPE_TWIN;
+  const bw = twin ? 2 * r * TWIN_WIDE : 2 * r, bh = 2 * r;
+  const cx = W / 2, cy = H / 2;
+  const x0 = cx - bw / 2, y0 = cy - r;
+  const gap = r * 0.12;
+  const post = Math.max(3, Math.round(r * 0.024));
   const fine = 1;
+  const lens = twin ? S_LENS_TWIN : S_LENS;
   let k = KEY_SIGHT;
-  // The mask outside the tube, on whichever sides there is room.
+  // Outside the lens nothing is drawn (the scene's scissor), so the mask there is whole.
   if (x0 > 0) {
-    f.add(k++, K_PANEL, 0, 0, x0, H, S_DARK).alpha = 0.96;
-    f.add(k++, K_PANEL, W - x0, 0, x0, H, S_DARK).alpha = 0.96;
+    f.add(k++, K_PANEL, 0, 0, x0, H, S_DARK);
+    f.add(k++, K_PANEL, x0 + bw, 0, W - x0 - bw, H, S_DARK);
   }
   if (y0 > 0) {
-    f.add(k++, K_PANEL, x0, 0, side, y0, S_DARK).alpha = 0.96;
-    f.add(k++, K_PANEL, x0, H - y0, side, y0, S_DARK).alpha = 0.96;
+    f.add(k++, K_PANEL, Math.max(0, x0), 0, Math.min(W, bw), y0, S_DARK);
+    f.add(k++, K_PANEL, Math.max(0, x0), y0 + bh, Math.min(W, bw), H - y0 - bh, S_DARK);
   }
-  f.add(k++, K_PANEL, x0, cy - post / 2, cx - gap - x0, post, S_DARK).alpha = 0.95;
-  f.add(k++, K_PANEL, cx + gap, cy - post / 2, x0 + side - cx - gap, post, S_DARK).alpha = 0.95;
-  f.add(k++, K_PANEL, cx - post / 2, cy, post, y0 + side - cy, S_DARK).alpha = 0.95;
-  f.add(k++, K_PANEL, cx - gap, cy - fine / 2, gap * 2, fine, S_DARK).alpha = 0.9;
+  f.add(k++, K_PANEL, x0, y0, bw, bh, lens);
+  // Twin lenses are a glass's, not a gun's: no posts.
+  if (!twin) {
+    f.add(k++, K_PANEL, x0, cy - post / 2, cx - gap - x0, post, S_DARK).alpha = 0.95;
+    f.add(k++, K_PANEL, cx + gap, cy - post / 2, x0 + bw - cx - gap, post, S_DARK).alpha = 0.95;
+    f.add(k++, K_PANEL, cx - post / 2, cy, post, y0 + bh - cy, S_DARK).alpha = 0.95;
+    f.add(k++, K_PANEL, cx - gap, cy - fine / 2, gap * 2, fine, S_DARK).alpha = 0.9;
+  }
+  const ox = m.sightOffX * r, oy = m.sightOffY * r;
+  if (Math.abs(ox) + Math.abs(oy) < 0.5) return;
+  const shade = 0.8;
+  f.add(KEY_SIGHT_SHADE, K_PANEL, x0 + ox, y0 + oy, bw, bh, lens).alpha = shade;
+  // The strips of the lens's box that the shadow's box moved off, which lie outside the shadow's hole.
+  if (Math.abs(ox) >= 0.5) f.add(KEY_SIGHT_SHADE + 1, K_PANEL, ox > 0 ? x0 : x0 + bw + ox, y0, Math.abs(ox), bh, S_DARK).alpha = shade;
+  if (Math.abs(oy) >= 0.5) f.add(KEY_SIGHT_SHADE + 2, K_PANEL, x0, oy > 0 ? y0 : y0 + bh + oy, bw, Math.abs(oy), S_DARK).alpha = shade;
 }
 
 /**
@@ -198,7 +216,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     n.tint = LASER_RED;
     n.alpha = d.alpha;
   }
-  if (m.scope && m.banner === "") buildReticle(f, W, H);
+  if (m.scope && m.banner === "") buildReticle(f, W, H, m);
   // The readout, and under it the resource monitor's strip (ui/monitor.ts), which on a canvas too short for both stands
   // in its place; the voice's lines under them.
   // On a narrow canvas the readout keeps left of the minimap, which keeps its place at the top, and the strip stands across under both.

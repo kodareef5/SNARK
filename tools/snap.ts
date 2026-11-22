@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot).
+// Scene flags: --poses N, --glide, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot (--share SHARE)); --zoom N magnifies the view N times.
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
 // with its landmarks; --moved 1 draws their moving statics at their second state (a yacht's sails set).
@@ -9,6 +9,7 @@
 // --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 // --hud MODE draws the HUD or one of its screens in the whole client (tools/snap/hud.ts).
 
+import { zoomed } from "../client/core/optics.ts";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { App } from "../client/core/app.ts";
@@ -1489,6 +1490,10 @@ if (import.meta.main) {
   }
   const view = provingView(w, h, undefined, undefined, mapFile);
   await setup(view);
+  // --zoom N: the view magnified N times, as through a sight (client/core/optics.ts); with --ui --sight scope its lens
+  // spans --share of the height (D1030). The rasterizer draws the whole view, which the lens masks.
+  const zoom = Number(arg("zoom") ?? 1);
+  if (zoom > 1) [view.cam.fovY, view.cam.zoom] = [zoomed(view.cam.fovY, zoom), zoom];
   const t0 = performance.now();
   const packet = view.render();
   const ms = performance.now() - t0;
@@ -1514,7 +1519,7 @@ if (import.meta.main) {
     // --sight scope|holo|dot: a scope's reticle, a holo-scope's tint and red crosshair, or a laser's dot below the middle
     // (weapons-plan.md, M10). The view is not zoomed.
     const sight = arg("sight");
-    if (sight === "scope") hud.scope = true;
+    if (sight === "scope") [hud.scope, hud.sightShare] = [true, Number(arg("share") ?? 1)];
     else if (sight === "holo") [hud.holo, hud.tint, hud.crossTint] = [true, 0.22, 0xff3a30];
     else if (sight === "dot") {
       hud.dots[0] = { u: 0.5, v: 0.58, alpha: 1 };

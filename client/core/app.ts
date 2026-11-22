@@ -4,7 +4,7 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import { Icons } from "./assets/icons.ts";
-import { easeFov, forcesEye, FOV_EASE_MS, lookScale, opticZoom, zoomed } from "./optics.ts";
+import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { canvasRatio, forTouch, ownRatio, tierOf, type Tier } from "./assets/tiers.ts";
@@ -118,6 +118,8 @@ const AIM_FOV = 0.79;
  * green, "similar to a nightvision mode", this much.
  */
 const HOLO_TINT = 0.22;
+/** Milliseconds the eye takes to settle most of the way to where it is off a scope's axis. */
+const EYE_EASE_MS = 120;
 /** Metres a holo-scope's crosshair finds what it is on, and its colours (Holo-Scope Attachment). */
 const HOLO_REACH = 300;
 const HOLO_FRIEND = 0x48e05a;
@@ -173,6 +175,9 @@ export class App {
   falling: Falling | null = null;
   /** Eased toward what the held weapon and the aim button ask for. */
   private fov = BASE_FOV;
+  /** Scratch for the eye's offset off a sight's axis and the sight's window (optics.ts eyeOff, windowBox). */
+  private readonly eyeAt = new Float64Array(2);
+  private readonly windowAt = new Float64Array(4);
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   /** The orbit camera on K, and whether the last frame's view lets it start. */
@@ -1376,6 +1381,24 @@ export class App {
     if (gliding) want += Math.min(GLIDE_FOV, (Math.hypot(session.own.vx, session.own.vy, session.own.vz) / GLIDE_DIVE) * GLIDE_FOV);
     this.view.gliding += ((gliding ? 1 : 0) - this.view.gliding) * (1 - Math.exp(-Math.max(0, dt) / 280));
     hud.scope = sighting && sight === "scope";
+    // The scope's window spans less of the screen the more it magnifies; the eye off its axis, as the body moves, a shot
+    // kicks or the sway leads, casts its shadow across the lens. Outside the window nothing is drawn (D1030).
+    const optic = fitted?.optic;
+    hud.sightShare = optic ? windowShare(optic, zoom) : 1;
+    hud.sightShape = shapeOf(optic);
+    if (hud.scope && gun) {
+      const pace = Math.hypot(session.own.vx, session.own.vz) / Math.max(1, move?.walkSpeed ?? 1);
+      const kick = gun.recoilKick ? (session.own.kick * KICK_UNIT * UNIT_RADIANS) / ((gun.recoilKick * PI) / 180) : 0;
+      eyeOff(pace, kick, swayOut.yaw, -swayOut.pitch, this.eyeAt);
+      const ease = 1 - Math.exp(-Math.max(0, dt) / EYE_EASE_MS);
+      hud.sightOffX += (this.eyeAt[0]! - hud.sightOffX) * ease;
+      hud.sightOffY += (this.eyeAt[1]! - hud.sightOffY) * ease;
+    } else hud.sightOffX = hud.sightOffY = 0;
+    const win = cam.window;
+    if (hud.scope && hud.banner === "") {
+      windowBox(hud.sightShape, hud.sightShare, aspect, this.windowAt);
+      win[0] = this.windowAt[0]! * 2 - 1; win[1] = 1 - this.windowAt[3]! * 2; win[2] = this.windowAt[2]! * 2 - 1; win[3] = 1 - this.windowAt[1]! * 2;
+    } else { win[0] = win[1] = -1; win[2] = win[3] = 1; }
     hud.holo = alive && sight === "holo" && !orbiting;
     hud.tint = hud.holo && sighting ? HOLO_TINT : 0;
     this.sightAt.yaw = lookYaw;
@@ -1389,6 +1412,7 @@ export class App {
     }
     this.fov = easeFov(this.fov, want, hud.vehicle || gliding || this.view.gliding > 0.02 ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / FOV_EASE_MS));
     cam.fovY = this.fov;
+    cam.zoom = magnification(base, this.fov);
     c.zoom = lookScale(base, this.fov, settings.sensitivity, settings.zoomSensitivity);
     // The crosshair opens with the cone the next shot would leave within.
     hud.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;

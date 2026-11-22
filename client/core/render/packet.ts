@@ -558,6 +558,11 @@ export class FramePacket {
   room = 1;
   share = 1;
   /**
+   * A sight's window (Camera.window), as shares of the scene drawn (x0, y0, x1, y1, y up), outside which the shell's
+   * scissor shades nothing; all zero for the whole view (D1030).
+   */
+  readonly window = new Float32Array(4);
+  /**
    * Whether the frame is drawn with the page's other effects off (`?ab=`, passes.ts), every other frame for a before
    * and after: the shell keeps what the frames between need, and the card's reservations stand as they set them.
    */

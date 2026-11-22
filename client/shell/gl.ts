@@ -914,6 +914,9 @@ export class GlRenderer {
     const sky = finish ? p.sky : p.skyShown;
     gl.clearColor(sky[0]!, sky[1]!, sky[2]!, this.transparentStage ? 0 : 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // A sight's window: nothing outside it is shaded (packet.ts window, D1030).
+    const win = p.window, dw = this.post.drawn[0], dh = this.post.drawn[1];
+    if (win[2]! > 0) { gl.enable(gl.SCISSOR_TEST); gl.scissor(Math.floor(win[0]! * dw), Math.floor(win[1]! * dh), Math.ceil((win[2]! - win[0]!) * dw), Math.ceil((win[3]! - win[1]!) * dh)); }
     let step = -1;
     for (let d = 0; d < p.drawCount; d++) {
       const s = stepOf(p, d);
@@ -955,6 +958,7 @@ export class GlRenderer {
     }
     // The terrain and the dome are drawn when there is no draw after them.
     while (step < STEP_FAR_SEE) this.step(p, ++step);
+    gl.disable(gl.SCISSOR_TEST);
     if (finish) this.toCanvas(p);
     // Every draw ends in the state the next begins from, as the mirror of it says, whatever another user of the context
     // (the device page) puts back between. The next frame's clear writes depth.

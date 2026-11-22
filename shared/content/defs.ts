@@ -599,6 +599,13 @@ export interface OpticFacet {
   readonly min: number;
   readonly max?: number;
   readonly steps?: readonly number[];
+  /**
+   * The share of the screen's height its window spans at its least zoom and at its most, tightening between them; the
+   * rest is masked and not drawn (D1030). A whole height, [1, 1], where it gives none.
+   */
+  readonly window?: readonly [number, number];
+  /** One round lens, or two merged side by side. Round where it gives none. */
+  readonly shape?: "round" | "twin";
 }
 
 /** How an item is made. ARK keeps this on the item too. */

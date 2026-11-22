@@ -13,7 +13,16 @@ export interface Style {
   readonly shadow: boolean;
   /** Interface text uses the local face; console output and text entry retain monospace. */
   readonly sans?: boolean;
+  /**
+   * A sight's lens (D1030): the fill is drawn only outside a round hole as tall as the box and centred in it (LENS_ROUND),
+   * or outside two merged side by side, each as tall as the box with its middle half the box's height in from its side
+   * (LENS_TWIN, a box optics.ts TWIN_WIDE times as wide as tall).
+   */
+  readonly lens?: number;
 }
+
+export const LENS_ROUND = 1;
+export const LENS_TWIN = 2;
 
 /** Advance of one character and height of one line, as multiples of the font size. */
 export const CHAR_ADVANCE = 0.6;
@@ -101,6 +110,9 @@ export const S_UNMUTE = 66;
 /** The compass's letters and degrees, pale ice over the world; N in the warm accent. */
 export const S_COMPASS = 67;
 export const S_COMPASS_NORTH = 68;
+/** The black about a sight's round window, and about binoculars' two (Style.lens). */
+export const S_LENS = 69;
+export const S_LENS_TWIN = 70;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -172,4 +184,6 @@ export const STYLES: readonly Style[] = [
   /* S_UNMUTE */ style(0, 0xecfaff, 20, 1, true),
   /* S_COMPASS */ style(0, 0xc9e7f3, 11, 1, true),
   /* S_COMPASS_NORTH */ style(0, 0xf2a477, 12, 1, true),
+  /* S_LENS */ { ...style(0x000000ff, 0xffffff), lens: LENS_ROUND },
+  /* S_LENS_TWIN */ { ...style(0x000000ff, 0xffffff), lens: LENS_TWIN },
 ];

@@ -432,6 +432,29 @@ test("in the whole client: N with a laser fitted draws its dot in the middle of 
   expect(app.hud.scope).toBe(false);
   expect(app.controls.zoom).toBeCloseTo(app.ui.settings.sensitivity, 3);
 
+  // Aimed, only the scope's window is drawn: the packet's window is the lens's box, a square as tall as the view, and the
+  // projection is the whole view's (D1030). Lowered, the whole view again.
+  app.controls.mouseButton(2, true);
+  run(1500);
+  let packet = app.frame(h.now, 1280, 720)!;
+  expect(Array.from(packet.window, (v) => +v.toFixed(4))).toEqual([+(0.5 - 360 / 1280).toFixed(4), 0, +(0.5 + 360 / 1280).toFixed(4), 1]);
+  expect(app.cam.windowed).toBe(true);
+  app.controls.mouseButton(2, false);
+  run(800);
+  packet = app.frame(h.now, 1280, 720)!;
+  expect([...packet.window]).toEqual([0, 0, 0, 0]);
+  // Low poly's one depth range splits as the lit tiers' does while magnified, and not otherwise.
+  app.ui.settings.tier = "lowpoly";
+  run(400);
+  expect(app.frame(h.now, 1280, 720)!.split).toBe(0);
+  app.controls.mouseButton(2, true);
+  run(1500);
+  expect(app.frame(h.now, 1280, 720)!.split).toBe(384);
+  app.controls.mouseButton(2, false);
+  run(800);
+  app.ui.settings.tier = "medium";
+  run(400);
+
   // Seen from behind, the scope is still looked through from the eye, and the view goes back behind as it is lowered.
   app.view.thirdPerson = true;
   run(400);
