@@ -117,14 +117,17 @@ export interface ReportStoreOptions {
   root: string;
   /** The built client, whose build.json (tools/build-client.ts) names its commit. */
   clientDir: string;
-  mapId: string;
+  /** The world's map: its id, its city's name where it is a city's, its file from the checkout, its version and its hash. */
+  map: ReportMap;
 }
+
+export interface ReportMap { id: string; city?: string; file?: string; version?: number; hash?: number }
 
 export class ReportStore {
   readonly dir: string;
   private readonly root: string;
   private readonly clientDir: string;
-  private readonly mapId: string;
+  private readonly map: ReportMap;
   /** The server's own build and the street types' names, read once when first wanted. */
   private own: ReportBuild | null = null;
   private names: string[] | null = null;
@@ -133,7 +136,7 @@ export class ReportStore {
     this.dir = resolve(opts.dir);
     this.root = opts.root;
     this.clientDir = opts.clientDir;
-    this.mapId = opts.mapId;
+    this.map = opts.map;
   }
 
   /** The route `__report`: GET says whether this server keeps notes, POST takes one. */
@@ -212,7 +215,7 @@ export class ReportStore {
       files: [...Array.from({ length: shots }, (_, n) => shotFile(n)), ...(thumb ? ["thumb.jpg"] : []), ...(perf ? ["perf.json"] : []), "server.json", "state.json"],
       ...report,
       // The world's map as this server runs it.
-      map: { ...report.map, id: this.mapId },
+      map: this.map,
       version: REPORT_VERSION,
       // Phase 2 keeps the recording here (voice.webm) as the record, and its text beside it once a reader makes one.
       voice: { file: null, text: null, segments: report.voice?.segments ?? [] },
@@ -234,14 +237,15 @@ export class ReportStore {
   }
 
   private streetNames(): string[] {
-    return (this.names ??= streetTypeNames(this.root, this.mapId));
+    return (this.names ??= streetTypeNames(this.root, this.map.id));
   }
 }
 
 const text = (status: number, why: string): Response => new Response(why, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 
 /** report.json's whole shape: the server's facts, then the page's report, then the way back. */
-export type KeptReport = Omit<Report, "voice"> & {
+export type KeptReport = Omit<Report, "voice" | "map"> & {
+  map: ReportMap;
   id: number;
   at: string;
   who: string;
@@ -296,7 +300,9 @@ export function reportText(r: KeptReport, summary: PerfSummary | null, facts: Re
   say();
   const sv = r.server, page = r.client.page, served = r.client.served;
   const build = (b: ReportBuild): string => `${(b.commit ?? "unknown").slice(0, 10)}${b.clean === false ? " with changes" : b.clean ? " clean" : ""}`;
-  say(`By ${quoted(r.who)} on map ${r.map?.id ?? "?"}. Server ${build(sv)}; page's client ${build(page)}${served.commit && served.commit !== page.commit ? ` (the server now serves ${build(served)})` : ""}. ${shots} ${shots === 1 ? "picture" : "pictures"} over ${clockText(r.ms ?? 0)}.`);
+  const m = r.map, about = [m.file, m.version === undefined ? "" : `version ${m.version}`, m.hash === undefined ? "" : `hash ${(m.hash >>> 0).toString(16).padStart(8, "0")}`].filter(Boolean).join(", ");
+  const map = m.city ? `${m.city} (map ${m.id}${about ? `, ${about}` : ""})` : `map ${m.id}${about ? ` (${about})` : ""}`;
+  say(`By ${quoted(r.who)} on ${map}. Server ${build(sv)}; page's client ${build(page)}${served.commit && served.commit !== page.commit ? ` (the server now serves ${build(served)})` : ""}. ${shots} ${shots === 1 ? "picture" : "pictures"} over ${clockText(r.ms ?? 0)}.`);
   say();
   say("## Where");
   const p = r.place, v = r.view, a = r.aim;
@@ -324,9 +330,11 @@ export function reportText(r: KeptReport, summary: PerfSummary | null, facts: Re
   const g = r.page;
   if (g) say(`- Page: ${g.card ? quoted(g.card) : "a card unnamed"}, canvas ${g.canvas?.join("×") ?? "?"} at ${g.dpr ?? "?"} device pixels a point, tier ${g.tier ?? "?"}, governor level ${g.governor?.level ?? "?"}${g.governor?.name ? ` (${g.governor.name})` : ""}, scene share ${share(g.share)}, textures ${g.format ?? "?"}.`);
   if (summary) {
-    say(`- Frames: ${summary.frames ?? 0} timed${summary.left ? ` (${summary.left} beside a picture left out)` : ""}; middle ${fixed(summary.middle, 1)} ms, 95th ${fixed(summary.p95, 1)}, 99th ${fixed(summary.p99, 1)}, worst ${fixed(summary.worst, 1)}; over 16.7 ms ${share(summary.over16)}, over 33 ${share(summary.over33)}, over 50 ${share(summary.over50)}.`);
-    const gpu = summary.gpu;
-    say(`- GPU: ${gpu && (gpu.frames ?? 0) > 0 ? `${gpu.frames} frames timed, middle ${fixed(gpu.middle, 1)} ms, 95th ${fixed(gpu.p95, 1)}, worst ${fixed(gpu.worst, 1)}` : "not timed (this browser has no timer queries)"}; heap ${fixed(summary.heap, 0)} MB; ${summary.longTasks ?? 0} long tasks, ${fixed(summary.longMs, 0)} ms.`);
+    say(`- Frames: ${summary.frames ?? 0} timed${summary.left ? ` (${summary.left} beside a picture left out)` : ""}; middle ${fixed(summary.middle, 1)} ms, 95th ${fixed(summary.p95, 1)}, 99th ${fixed(summary.p99, 1)}, worst ${fixed(summary.worst, 1)}; late frames (past 1.25 of the middle, the display's interval) ${share(summary.late)}, the worst ${summary.worstIntervals ?? "?"} intervals; over 33 ms ${share(summary.over33)}, over 50 ${share(summary.over50)}.`);
+    const gpu = summary.gpu, apple = /apple/i.test(g?.card ?? "");
+    const caution = apple ? "; on an Apple GPU through ANGLE a timer query reads long and counts the work beside the frame's too (client/core/passes.ts), so the frame times above, on the page's clock, are the ones to trust" : "; the frame times above, on the page's clock, are the ones to trust";
+    say(`- GPU: ${gpu && (gpu.frames ?? 0) > 0 ? `timer queries over ${gpu.frames} frames, middle ${fixed(gpu.middle, 1)} ms, 95th ${fixed(gpu.p95, 1)}, worst ${fixed(gpu.worst, 1)}${caution}` : "not timed (this browser has no timer queries)"}.`);
+    say(`- Heap ${fixed(summary.heap, 0)} MB; ${summary.longTasks ?? 0} long tasks, ${fixed(summary.longMs, 0)} ms.`);
   }
   const ticks = facts.ticks as { seconds?: { p50?: number[]; worst?: number[] } } | undefined;
   const p50 = ticks?.seconds?.p50 ?? [], worst = ticks?.seconds?.worst ?? [];

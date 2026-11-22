@@ -121,7 +121,7 @@ export const PERF_SHAPE: Shape = {
     seconds: { list: { list: N, most: 64 }, most: SECOND_ROWS_MOST },
     summary: {
       fields: {
-        frames: I, left: I, middle: N, p95: N, p99: N, worst: N, over16: N, over33: N, over50: N,
+        frames: I, left: I, middle: N, p95: N, p99: N, worst: N, worstIntervals: N, late: N, over33: N, over50: N,
         gpu: { fields: { frames: I, middle: N, p95: N, worst: N } }, heap: N, longTasks: I, longMs: N, ringMs: N,
       },
     },
@@ -186,7 +186,10 @@ export interface Report {
 export interface ReportShot { at?: number; w?: number; h?: number; place?: Point; camera?: Point; yaw?: number; pitch?: number; hour?: number; frameMs?: number; draws?: number; triangles?: number; shotMs?: number }
 export interface ReportBuild { commit?: string; clean?: boolean; at?: string }
 
-/** The summary of a performance record (PERF_SHAPE's). Frame times are ms; `over16` and the rest are shares of the frames. */
+/**
+ * The summary of a performance record (PERF_SHAPE's). Frame times are ms, the middle the interval the page is shown at;
+ * `late` is the share of frames past 1.25 of it, `over33` and `over50` those past 33.4 and 50 ms.
+ */
 export interface PerfSummary {
   frames?: number;
   left?: number;
@@ -194,7 +197,8 @@ export interface PerfSummary {
   p95?: number;
   p99?: number;
   worst?: number;
-  over16?: number;
+  worstIntervals?: number;
+  late?: number;
   over33?: number;
   over50?: number;
   gpu?: { frames?: number; middle?: number; p95?: number; worst?: number };

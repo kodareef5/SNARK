@@ -19,7 +19,7 @@ import { restoreBackup } from "./persist/backup.ts";
 import { stopOnSignals } from "./signals.ts";
 import type { VoicePeer } from "./voice.ts";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { parsePack } from "../shared/pack/pack.ts";
 import { allClips } from "../shared/pack/clips.ts";
@@ -144,7 +144,7 @@ function readAt(fd: number, at: number, length: number): Uint8Array<ArrayBuffer>
 }
 
 /** The map's routes (mapRoutes), and how to let go of the file they hold. */
-export type MapRoute = ((path: string, req: Request) => Response | Promise<Response> | null) & { readonly link: string; close(): void };
+export type MapRoute = ((path: string, req: Request) => Response | Promise<Response> | null) & { readonly link: string; readonly version: number; close(): void };
 
 /**
  * Answers a client's requests for the map. `/map.json` names the map and its head, and `/map/<name>` is the head or a part
@@ -198,7 +198,7 @@ export function mapRoutes(file: Uint8Array<ArrayBuffer> | string, id: string, ha
       if (!onDisk) return cut(name, req);
       return serveFile(folder, req, `/${name}`).then((res) => (res.status === 404 ? cut(name, req) : res));
     },
-    { link: `<map/${head.name}>; rel=preload; as=fetch; crossorigin`, close },
+    { link: `<map/${head.name}>; rel=preload; as=fetch; crossorigin`, version: head.version, close },
   );
 }
 
@@ -337,7 +337,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const playFile = opts.dev && opts.play ? join(opts.play, `${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.jsonl`) : "";
   const play = playFile ? new PlayLog(host.game, (line) => (mkdirSync(opts.play!, { recursive: true }), appendFileSync(playFile, line + "\n"))) : null;
   const admin = new AdminPages({ host, meter, dir: join(clientDir, "admin"), terrain, start: { tick: host.world.tick, wall: meter.startedAt } });
-  const notes = opts.reports ? new ReportStore({ dir: opts.reports, root: resolve(import.meta.dir, ".."), clientDir, mapId: host.world.mapId }) : null;
+  const checkout = resolve(import.meta.dir, "..");
+  const notes = opts.reports ? new ReportStore({ dir: opts.reports, root: checkout, clientDir, map: { id: host.world.mapId, city: mapLabel(registry, host.world.mapId), ...(opts.map ? { file: relative(checkout, resolve(opts.map)) } : {}), version: mapRoute.version, hash: host.world.mapHash } }) : null;
   /** What a bug report is told of this server: the session a token names, and the server's state for its server.json. */
   const reportServer = {
     sender: (slot: number, token: Uint8Array): Client | null => host.voice.sessionOf(slot, token),
