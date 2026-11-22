@@ -159,7 +159,7 @@ export class GlRenderer {
   /** The textures the card makes (texgen.ts) and their engine, once `makeWith` has its programs ready. */
   private gen!: Made;
   private texgen: Texgen | null = null;
-  private readonly anisotropyOf = (target: number): void => this.anisotropy(target);
+  private readonly anisotropyOf = (target: number): void => void (this.warmed && this.anisotropy(target));
   /** How much a material that glows only by night glows in this frame (surface.ts `lampsOn`). */
   private night = 0;
   private exposure = 1;

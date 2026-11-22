@@ -452,10 +452,11 @@ export const SUN_FACE = [0.42, -0.91] as const;
  */
 const PLANE_CELL = 2, PLANE_EDGE = 0.125, PLANE_BLEND = 0.1;
 /**
- * The most taps along a pixel's footprint a read of a bay's stamp takes: its narrow way is widened to a quarter of its
- * long, so a wall seen at a slant reads four taps and not the tier's sixteen. The field, metres across, is read in one.
+ * The most taps along a pixel's footprint a read of a bay's stamp takes: its narrow way is widened to half its long, so
+ * a wall seen at a slant reads two taps and not the tier's sixteen. The field, metres across, and the concrete under lost
+ * plaster are read in one, as their twin reads every layer.
  */
-const STAMP_TAPS = 4;
+const STAMP_TAPS = 2;
 /** A pixel's footprint, metres, at which the formwork's joints, a centimetre wide, are gone; they fade from half of it. */
 const JOINTS_GONE = 0.08;
 /** What rust bled from a fixing, growth at a wall's foot and a green film leave, as multipliers of its light. */
@@ -1173,7 +1174,8 @@ void weathered(inout vec3 albedo, inout vec3 orm, int id, float over, float open
       bool facesX = side < 2;
       vec2 qc = facesX ? vec2(rel.z / mc + ph.z, -rel.y / mc - ph.y) : vec2(rel.x / mc + ph.x, -rel.y / mc - ph.y);
       vec2 cx = (facesX ? vec2(dpx.z, -dpx.y) : vec2(dpx.x, -dpx.y)) / mc, cy = (facesX ? vec2(dpy.z, -dpy.y) : vec2(dpy.x, -dpy.y)) / mc;
-      bare = worldBase(qc, ${CONCRETE}, cx, cy).rgb;
+      float cl = max(length(cx), length(cy));
+      bare = worldBase(qc, ${CONCRETE}, vec2(cl, 0.0), vec2(0.0, cl)).rgb;
     }
     albedo = albedo * (1.0 - 0.3 * rim) * (1.0 - lost) + bare * uSurfaceCity[0].rgb * 0.85 * lost;
   }
