@@ -75,9 +75,14 @@ export class BenchRun {
   private still = 0;
   private done = false;
 
-  /** ms since the measured frames began, 0 before: the autopilot's clock. */
-  since(now: number): number {
-    return this.started < 0 ? 0 : now - this.started;
+  /**
+   * The autopilot's clock: a sixtieth of a second for each frame measured so far, 0 before. By frames, not by the time
+   * they took, so that every run sees the same view at each of its frames whatever its frame rate: by the time, a run at
+   * 30 frames a second turned twice as far as one at 60 before its frames were done, and ended on another view, whose
+   * draws and triangles were what it said it drew (659 in one run of a street and 2,152 in another).
+   */
+  since(_now: number): number {
+    return this.started < 0 ? 0 : (this.intervals.length * 1000) / 60;
   }
 
   /**

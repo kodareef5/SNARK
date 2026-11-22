@@ -22,7 +22,8 @@
 // wires between the poles (render/street-wires.ts) by day, and what stands overhead and the light from the ground
 // (render/roof.ts) on the street on high at one and two and on ultra at two, and vehicles' glass seen through
 // (render/vehicle-glass.ts) on the street and over the busy lamp's parked cars. A city row's GL draws and triangles are of the frame its run
-// ends on. Chrome is found as tools/probe.ts finds it, or named by CHROME;
+// ends on, and their medians over the turn's frames; the view turns by the frames measured, not the time they took, so
+// each run of a row ends on the same view whatever its frame rate. Chrome is found as tools/probe.ts finds it, or named by CHROME;
 // without it every row is skipped, and without the map the city's. The page is a client built for the bench in a
 // process of its own (buildClientApart), or the built client CLIENT_DIR names. `bun tools/bench/gpu.ts [runs] [a row's first words|another's]...` runs these alone (a row's whole name ended
 // with "$" runs that row alone), each `runs` times (3), and prints each row's range.
@@ -354,7 +355,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
         browser.kill();
         await browser.exited;
         const ab = result?.alternate ? `${result.alternate.own} ms on the page's clock with it, ${result.alternate.other} without, a frame without it ${result.alternate.less} ms against those either side` : `${result?.gpuMs?.frame?.median ?? "untimed"} ms ${r.clock ? "on the page's clock" : "on the GPU"}`;
-        say(`${nameOf(r)}: ${result ? `${ab}, ${result.frameMs.median} ms a frame, ${result.buildAndSubmitMs.median} ms ours, ${result.drawCalls} GL draws, ${result.triangles} triangles${result.calls ? `, a frame ${JSON.stringify(result.calls)}` : ""}` : "no report"} (load ${loadavg()[0]!.toFixed(1)})`);
+        say(`${nameOf(r)}: ${result ? `${ab}, ${result.frameMs.median} ms a frame, ${result.buildAndSubmitMs.median} ms ours, ${result.drawCalls} GL draws, ${result.triangles} triangles${result.turn ? ` (over the turn ${result.turn.draws} and ${result.turn.triangles})` : ""}${result.calls ? `, a frame ${JSON.stringify(result.calls)}` : ""}` : "no report"} (load ${loadavg()[0]!.toFixed(1)})`);
         if (result) out.set(nameOf(r), [...(out.get(nameOf(r)) ?? []), result]);
       }
     }
@@ -405,6 +406,8 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
         const clocked = reports.get(`${key}, on the page's clock`);
         if (clocked) record("the frame on the page's clock, waiting for the card, median", gpu(clocked), "ms");
         record("GL draws, triangles", draws, `draws, ${(median(all.map((r) => r.triangles)) / 1e6).toFixed(2)} M triangles`);
+        // The medians over the turn's frames, which every run of the row sees alike (bench-run.ts since).
+        if (all[0]!.turn) record("over the turn, median GL draws, triangles", median(all.map((r) => r.turn.draws)), `draws, ${(median(all.map((r) => r.turn.triangles)) / 1e6).toFixed(2)} M triangles`);
         record("our code's time a frame, median", median(all.map((r) => r.buildAndSubmitMs.median)), "ms");
         const counted = all.at(-1)!.calls as Record<"calls" | "again" | "draws", Record<string, number>> | undefined;
         const sum = (o: Record<string, number>): number => Object.values(o).reduce((a, b) => a + b, 0);
