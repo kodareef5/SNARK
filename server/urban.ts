@@ -969,11 +969,7 @@ export class Urban {
   beforeStep(): void {
     const { world, game } = this.ctx, ents = world.ents;
     this.applyCollisionPairs();
-    // The ground itself changed somewhere, which is rare and is not said where: every sleeper takes its heartbeat again.
-    if (world.hf.changes.length !== this.terrainSeen) {
-      this.terrainSeen = world.hf.changes.length;
-      if (this.asleepCount > 0) for (const host of this.hosts.values()) if (host.asleep) this.touch(host);
-    }
+    this.ground();
     const active = this.active;
     for (this.cursor = 0; this.cursor < active.length; this.cursor++) {
       const host = active[this.cursor]!, pid = host.pid;
@@ -1036,11 +1032,21 @@ export class Urban {
     this.capturedAt = world.tick;
   }
 
+  /** The ground itself changed somewhere, which is rare and is not said where: every sleeper wakes to take its heartbeats again. */
+  private ground(): void {
+    const changes = this.ctx.world.hf.changes.length;
+    if (changes === this.terrainSeen) return;
+    this.terrainSeen = changes;
+    if (this.asleepCount > 0) for (const host of this.hosts.values()) if (host.asleep) this.touch(host);
+  }
+
   /** After player bodies move, before combat/history. Unpiloted cars brake and creature AI
    * is suppressed while vehicle/seat authority owns those real entities.
    */
   step(): void {
     const { world, game } = this.ctx, ents = world.ents;
+    // Asked again here, so ground changed by this tick's commands is under the heartbeats of this tick.
+    this.ground();
     // A scheduled civilian performing a seat action stays at its validated door.
     // Existing creature AI resumes if the action cancels or the occupant is displaced.
     for (const pid of this.scopes.keys()) {
