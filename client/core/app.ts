@@ -599,11 +599,9 @@ export class App {
         return true;
       }
     }
-    // Q on foot throws what is in hand along the look (server/loose.ts). Building and placing a car take Q first.
-    if (code === "KeyQ" && this.session.driving < 0 && this.ui.wantsPointerLock) {
-      if (down && !repeat) this.session.command(CMD_THROW, () => {});
-      return true;
-    }
+    // Q on foot throws what is in hand along the look (server/loose.ts). Building and placing a car take Q first. The key
+    // is not kept: nothing else on foot is bound to it.
+    if (code === "KeyQ" && down && !repeat && this.session.driving < 0 && this.ui.wantsPointerLock) this.session.command(CMD_THROW, () => {});
     // Elsewhere K is the orbit camera, where the view lets it (frame()).
     if (code === "KeyK") {
       if (down && !repeat) this.orbit.set(!this.orbit.on && this.orbitFree);

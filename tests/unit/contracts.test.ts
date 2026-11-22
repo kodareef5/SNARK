@@ -67,7 +67,8 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   // (tests/integration/glider.test.ts), 40 the soul balls' kept tames and flash (tests/integration/balls.test.ts).
   // 41 the supply drops': what kind of box is open, and the drops that are live (tests/integration/supply-capsule.test.ts).
   // 42 a sight's gaze, CMD_GAZE (tests/integration/gaze.test.ts), and a glass's mark, CMD_MARK (tests/integration/glass.test.ts); 43 an eleventh button, BTN_VISOR (tests/integration/gaze.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.CMD_EMOTE, P.CMD_GAZE, P.CMD_MARK, P.PROTOCOL_VERSION]).toEqual([27, 28, 36, 37, 38, 43]);
+  // 44 a thing thrown from the hand, CMD_THROW, and CMD_TAKE of a bag of one stack (tests/integration/loose.test.ts).
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.CMD_EMOTE, P.CMD_GAZE, P.CMD_MARK, P.CMD_THROW, P.PROTOCOL_VERSION]).toEqual([27, 28, 36, 37, 38, 39, 44]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
