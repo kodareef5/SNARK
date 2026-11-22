@@ -500,6 +500,11 @@ export class App {
       }
       return true;
     }
+    // G raises a worn helmet's visor and lowers it again, for a mouse with no middle button (which holds it up; D1080).
+    if (code === "KeyG" && this.ui.wantsPointerLock && (this.visorOptic !== null || this.visor.held)) {
+      if (down && !repeat) this.visor.held = !this.visor.held;
+      return true;
+    }
     // With a visor up, N turns its view, not what the held weapon has fitted.
     if (code === "KeyN" && this.visor.up) {
       if (down && !repeat) this.visor.cycle();
