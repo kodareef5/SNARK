@@ -1,5 +1,7 @@
 // What a page's first frame waits for is held to a byte budget (D636). Code that is only needed later is fetched later
-// (D871, D873). This follows every value import from the page's entry and checks none of that code is reached.
+// (D871, D873). This follows every value import from the page's entry and checks none of that code is reached. A late
+// file may import what it needs of the first frame's modules: the build has it take that from page.js's exports
+// (tools/page-script.ts, D1106), and the check's "script" step and the build's weighing hold the script to that shape.
 
 import { expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
@@ -61,8 +63,9 @@ test("code a page needs only after its first frame is not in the script the firs
     ...NOTES_FILES,
   ];
   for (const file of late) expect(files.includes(file), file).toBe(false);
-  // The resource monitor's files and bug report mode's import nothing the first frame holds, which would cut its script
-  // into more pieces: what they use of it comes to them in a kit (client/core/ui/monitor-kit.ts, client/core/notes-kit.ts).
+  // The resource monitor's files and bug report mode's import nothing the first frame holds: what they use of it comes to
+  // them in a kit (client/core/ui/monitor-kit.ts, client/core/notes-kit.ts). They were written so when such an import cut
+  // the first frame's script into more pieces; since D1106 it costs only a name page.js exports, and they keep their kits.
   for (const file of [...MONITOR_FILES, ...NOTES_FILES]) for (const dep of valueImports(join(ROOT, file))) expect(files.includes(relative(ROOT, dep)), `${file} imports ${relative(ROOT, dep)}`).toBe(false);
   // The shell fetches them itself, and the app the Storage tab's page and the resource monitor.
   const fetchedBy = (file: string): string[] => [...readFileSync(join(CLIENT, file), "utf8").matchAll(/\bimport\(\s*"([^"]+)"\s*\)/g)].map((m) => m[1]!);

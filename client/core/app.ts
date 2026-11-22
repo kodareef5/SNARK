@@ -5,6 +5,7 @@ import { creatureHold } from "../../shared/sim/creature-actions.ts";
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import { Icons } from "./assets/icons.ts";
+import { chunkAt } from "../../shared/coords.ts";
 import { easeFov, eyeOff, forcesEye, FOV_EASE_MS, lookScale, magnification, opticMost, opticZoom, shapeOf, windowBox, windowShare, zoomed } from "./optics.ts";
 import { Visor } from "./visor.ts";
 import { Glass, MARKED_MS } from "./glass.ts";
@@ -51,9 +52,9 @@ import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { SupplyView } from "./supply.ts";
 import { Falling } from "./rubble.ts";
-import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
+import { BTN_SPRINT, BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_VISOR } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
-import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
+import { KICK_UNIT, breathShare, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
@@ -131,6 +132,12 @@ const AIM_FOV = 0.79;
 const HOLO_TINT = 0.22;
 /** Milliseconds between CMD_GAZEs while a sight's zoom holds: well inside GAZE_TICKS, after which the server lets it go. */
 const GAZE_RESEND_MS = 1000;
+/** Milliseconds N is held to raise or lower a helmet's visor. */
+const VISOR_HOLD_MS = 400;
+/** The zoom from which the near trees round what a sight is on are held (D1090). */
+const NODE_FOCUS = 4;
+/** Milliseconds between finds of what a sight is on. */
+const FOCUS_MS = 250;
 /** A zooming sight's step of the wheel, and a zero's, metres, as far as ZERO_MOST. */
 const SIGHT_STEP = 1.25;
 const ZERO_STEP = 50;
@@ -222,6 +229,12 @@ export class App {
   /** The zoom the server was last told of (App.gaze), and when. */
   private gazeSent = 0;
   private gazeAt = -Infinity;
+  /** When N went down with a visor to raise (-1 when it is up), whether it has been held long, and a tap's press to send. */
+  private nDownAt = -1;
+  private nLong = false;
+  private nPulse = 0;
+  /** When what the sight is on was last found (App.gaze). */
+  private focusAt = -Infinity;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
   /** The orbit camera on K, and whether the last frame's view lets it start. */
@@ -345,6 +358,8 @@ export class App {
       get inspecting() { return app.ui.inspect; },
       get flying() { return app.controls.onFlyer; },
       get patrol() { return app.session.driving >= 0 && app.vehicleTelemetry.lightMode >= 0; },
+      get zooming() { return app.zooming; },
+      zoom: (notches, alt) => void this.zoomBy(notches, alt),
       adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
       move: (x, z) => this.controls.padMove(x, z), look: (x, y) => this.look(x,y), used: () => { this.ui.inputDevice = 1; },
@@ -503,6 +518,11 @@ export class App {
     }
     if (this.ui.inspect && (code === "Minus" || code === "Equal")) { if (down && !repeat) this.zoomMini(code === "Equal" ? 1 : -1); return true; }
     if (this.ui.captureKeyboard) return false;
+    // A raised sight that zooms takes the arrows up and down, as the wheel (and a finger's zoom buttons, which send them).
+    if ((code === "ArrowUp" || code === "ArrowDown") && this.zooming && !this.ui.map) {
+      if (down) this.zoomBy(code === "ArrowUp" ? -1 : 1);
+      return true;
+    }
     // With a glass raised, N marks what the look is on for the tribe (D1082).
     if (code === "KeyN" && this.glass.up) {
       const o = this.hud.overhead;
@@ -512,14 +532,20 @@ export class App {
       }
       return true;
     }
-    // G raises a worn helmet's visor and lowers it again, for a mouse with no middle button (which holds it up; D1080).
-    if (code === "KeyG" && this.ui.wantsPointerLock && (this.visorOptic !== null || this.visor.held)) {
-      if (down && !repeat) this.visor.held = !this.visor.held;
-      return true;
-    }
-    // With a visor up, N turns its view, not what the held weapon has fitted.
-    if (code === "KeyN" && this.visor.up) {
-      if (down && !repeat) this.visor.cycle();
+    // With a helmet's visor to raise, N held VISOR_HOLD_MS raises it or lowers it again, as ARK's Tek helmet takes a long
+    // press, for a mouse with no middle button (which holds it up); a tap turns its view while it is up, and is what the
+    // held weapon has fitted otherwise, sent as it is let go (D1089).
+    if (code === "KeyN" && this.ui.wantsPointerLock && (this.visorOptic !== null || this.visor.held)) {
+      if (down && !repeat) {
+        this.nDownAt = this.nowMs;
+        this.nLong = false;
+      } else if (!down && this.nDownAt >= 0) {
+        if (!this.nLong) {
+          if (this.visor.up) this.visor.cycle();
+          else this.nPulse = 2;
+        }
+        this.nDownAt = -1;
+      }
       return true;
     }
     if (this.builder.key(code, down, repeat, this.nowMs, this.reg)) return true;
@@ -672,13 +698,23 @@ export class App {
     else this.controls.look(dx, dy);
   }
 
+  /** Whether a raised sight takes zoom steps: a scope that zooms, a glass, a visor. */
+  get zooming(): boolean {
+    return this.sightOptic !== null || (this.glass.up && this.glassOptic !== null) || (this.visor.up && this.visorOptic !== null);
+  }
+
   /** The mouse wheel's `deltaY` in pixels, lines or pages (`mode` 0, 1 or 2), as a browser gives it. True when it was used. */
   wheel(deltaY: number, mode = 0): boolean {
     if (!this.ui.wantsPointerLock) return false;
     const notches = mode === 1 ? deltaY / 3 : mode === 2 ? deltaY : deltaY / 100;
+    return this.zoomBy(notches) || this.orbit.wheel(notches);
+  }
+
+  /** `notches` of zoom to the raised sight, down (positive) to widen: the wheel's, a pad's d-pad's, a finger's. True when one took them. */
+  zoomBy(notches: number, alt = this.alt): boolean {
     // A sight that zooms takes the wheel: its zoom, or with Alt its zero (D1083).
     if (this.sightOptic) {
-      if (this.alt) this.sightZero = Math.min(ZERO_MOST, Math.max(0, this.sightZero - Math.sign(notches) * ZERO_STEP));
+      if (alt) this.sightZero = Math.min(ZERO_MOST, Math.max(0, this.sightZero - Math.sign(notches) * ZERO_STEP));
       else this.sightZoom = Math.min(opticMost(this.sightOptic), Math.max(this.sightOptic.min, this.sightZoom * SIGHT_STEP ** -notches));
       return true;
     }
@@ -691,7 +727,7 @@ export class App {
       this.visor.wheel(this.visorOptic, notches);
       return true;
     }
-    return this.orbit.wheel(notches);
+    return false;
   }
 
   /** `out` as a chase camera shows a look of `yaw` and `pitch` on a boom of `boom` metres. */
@@ -954,17 +990,32 @@ export class App {
    * lasts, with how far off what the middle of the view is on (0 for nothing within the cone's reach); once more as it ends.
    */
   private gaze(nowMs: number, world: CollisionWorld, zoom: number, yaw: number, pitch: number): void {
-    if (zoom === 0 && this.gazeSent === 0) return;
-    const moved = zoom === 0 || this.gazeSent === 0 || Math.abs(zoom - this.gazeSent) > 0.1 * Math.max(zoom, this.gazeSent) || this.zeroSent !== this.sightZero;
-    if (!moved && nowMs - this.gazeAt < GAZE_RESEND_MS) return;
-    let focus = 0;
-    if (zoom > 0) {
+    // What the middle of the view is on, found each FOCUS_MS while a sight magnifies: its range, and the point the scene
+    // brings its fine ground and far trees to (D1087).
+    if (zoom > 0 && nowMs - this.focusAt >= FOCUS_MS) {
       const d = this.aim, eye = this.sightAt;
       lookDirection((yaw / TAU) * 65536, (pitch / (PI / 2)) * 16384, d);
       const reach = Math.min(GAZE_FARTHEST, GAZE_REACH * zoom);
-      if (castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE) focus = rayHit.t;
+      const t = castWorld(world, eye.x, eye.y, eye.z, d[0]!, d[1]!, d[2]!, reach) !== HIT_NONE ? rayHit.t : 0;
+      this.focusAt = nowMs;
+      this.visor.range = t;
+      if (this.scene) {
+        this.scene.focusX = t > 0 ? eye.x + d[0]! * t : NaN;
+        this.scene.focusZ = t > 0 ? eye.z + d[2]! * t : NaN;
+      }
+      // Its near trees, from NODE_FOCUS times (D1090).
+      const dims = this.session.world?.dims;
+      this.session.focusNodes(dims && t > 0 && zoom >= NODE_FOCUS ? chunkAt(dims, eye.x + d[0]! * t, eye.z + d[2]! * t) : -1);
+    } else if (zoom === 0) {
+      this.focusAt = -Infinity;
+      if (this.scene) this.scene.focusX = this.scene.focusZ = NaN;
+      this.session.focusNodes(-1);
     }
-    this.visor.range = focus;
+    if (zoom === 0 && this.gazeSent === 0) return;
+    const moved = zoom === 0 || this.gazeSent === 0 || Math.abs(zoom - this.gazeSent) > 0.1 * Math.max(zoom, this.gazeSent) || this.zeroSent !== this.sightZero;
+    if (!moved && nowMs - this.gazeAt < GAZE_RESEND_MS) return;
+    // The server finds what the look is on for itself (D1084): the range sent is the page's, for its own word.
+    const focus = zoom > 0 ? this.visor.range : 0;
     this.session.command(CMD_GAZE, (w) => (w.u16(Math.min(65535, Math.round(zoom * 16))), w.u16(Math.min(65535, Math.round(focus))), w.u16(zoom > 0 ? this.sightZero : 0)));
     this.gazeSent = zoom;
     this.gazeAt = nowMs;
@@ -1342,11 +1393,18 @@ export class App {
     }
     if (this.ui.menu || this.ui.inspect) this.blur();
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
+    // N held long raises or lowers the visor; a tap's press goes as it is let go (App.key).
+    if (this.nDownAt >= 0 && !this.nLong && nowMs - this.nDownAt >= VISOR_HOLD_MS) {
+      this.nLong = true;
+      this.visor.held = !this.visor.held;
+    }
+    if (this.nPulse > 0) c.key("KeyN", --this.nPulse > 0);
     this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
     this.refreshCockpitLook();
     // A glass raised takes the primary for its range: the hand holding it does not strike.
-    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, (this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons) & (this.glass.up ? ~BTN_PRIMARY : ~0));
+    // A visor held up is told the server as a button: the proof its gaze needs (D1084).
+    if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, ((this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons) & (this.glass.up ? ~BTN_PRIMARY : ~0)) | (this.visor.held ? BTN_VISOR : 0));
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
@@ -1497,7 +1555,8 @@ export class App {
     if (gun && session.driving < 0) {
       lookPitch += (session.ownPrev.kick + (session.own.kick - session.ownPrev.kick) * a) * KICK_UNIT * UNIT_RADIANS;
       if (scoped) {
-        sway(gun, session.own.stance, session.ownHandle, session.tickClock);
+        // The breath held or the body winded as the shot will have it (D1085).
+        sway(gun, session.own.stance, session.ownHandle, session.tickClock, breathShare(session.own, c.buttons));
         lookYaw += swayOut.yaw * UNIT_RADIANS;
         lookPitch += swayOut.pitch * UNIT_RADIANS;
       }
@@ -1549,7 +1608,12 @@ export class App {
     hud.sightMil = hud.scope && optic?.reticle === "mil";
     hud.sightFov = this.fov;
     hud.sightZoom = zoom;
+    // The magnification ladder: any sight raised that magnifies, its zoom now within its least and most.
+    hud.magnify = (hud.scope || visorUp) && optic && zoom > 1 ? zoom : 0;
+    hud.magnifyMin = optic ? optic.min : 0;
+    hud.magnifyMax = optic ? opticMost(optic) : 0;
     hud.sightZero = hud.sightMil ? this.sightZero : 0;
+    session.sightZero = sighting && hud.sightMil ? this.sightZero : 0;
     hud.sightShare = optic ? windowShare(optic, zoom) : 1;
     hud.sightShape = shapeOf(optic);
     hud.visor = visorUp;
@@ -1589,6 +1653,9 @@ export class App {
     this.gaze(nowMs, world, (sighting || visorUp || glassUp) && zoom > 1 ? zoom : 0, lookYaw, lookPitch);
     this.lookReach = (sighting || visorUp || glassUp) && zoom > 1 ? Math.max(30, Math.min(GAZE_FARTHEST, GAZE_REACH * zoom)) : 30;
     hud.glass = glassUp;
+    hud.zooming = this.zooming;
+    hud.glassHeld = this.glassOptic !== null;
+    hud.visorReady = this.visorOptic !== null && alive && session.driving < 0;
     hud.glassZoom = zoom;
     if (glassUp) {
       const eyeAt = this.sightAt, d = this.aim;

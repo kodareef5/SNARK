@@ -34,9 +34,11 @@ const WORKER_HEAP_RAM = 500_000_000;
  * shadow, filtering and map loader (D748); 5 time the assets' uploads and fetch the data utility's record of frames
  * (D899); 6 make the streets' two pictures round the camera and put each frame's tiles of them on the card (D1000); 3
  * point attributes 13 and 14 at a bent draw's stream of bends, beside its instances (D1006); 5 hold a sight's scissor to
- * its window and mask its lens (D1077); the last 1 gives a draw's heat to a visor's heat view (D1081).
+ * its window and mask its lens (D1077); 1 gives a draw's heat to a visor's heat view (D1081); the last 105 make the
+ * walls' weathering masks on the card as their plan in client/core/texgen says: the array, its program, its draws, the
+ * card's timer and an older pack's painted mask left unheld (D1111).
  */
-const SHELL_MAX_LINES = 1620;
+const SHELL_MAX_LINES = 1725;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
@@ -296,6 +298,15 @@ async function checkTypes(): Promise<void> {
   });
 }
 
+/**
+ * The page's script built as the build builds it, no art, and held to its shape (tools/page-script.ts): the first frame
+ * waits for main.js and page.js alone, and every late file takes what it shares with them from page.js.
+ */
+async function checkScript(): Promise<void> {
+  const r = await run([process.execPath, join(ROOT, "tools/page-script.ts"), "--check"], true);
+  if (!r.ok) fail(`the page's script is not as the first frame's budget needs it:\n${r.out.trim()}`);
+}
+
 /** The core pack, built here once for the test files instead of once in each of a hundred (tests/fixtures/pack.ts). */
 async function sharedPack(dir: string): Promise<Record<string, string>> {
   try {
@@ -525,10 +536,11 @@ try {
   if (testFiles.length > 0) await step("pack", async () => void (env = await sharedPack(dir)));
   if (!slowOnly) {
     const types = step("types", checkTypes);
+    const script = step("script", checkScript);
     const tests = step("tests", () => checkTests("fast", dir, env));
-    // The type check and the tests have started in processes of their own; the policy runs here beside them.
+    // The type check, the script's build and the tests have started in processes of their own; the policy runs here beside them.
     await step("policy", checkPolicy);
-    await Promise.all([types, tests]);
+    await Promise.all([types, script, tests]);
   }
   if (slowOnly || args.includes("--slow")) await step("slow tests", () => checkTests("slow", dir, env));
 } finally {

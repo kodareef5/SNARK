@@ -95,7 +95,7 @@ ${LIGHT}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${AIR}${WOR
 #ifdef WORLD_WEATHER
   if (uSolid < 1.5 && uSkin < 0.5 && uWorldReady > 0.5 && risen > 0.0) {
     vec3 a0 = albedo, o0 = orm;
-    weathered(albedo, orm, vSurface, vOwn, vPlace, over, open, vRel, geometric, dx, dy);
+    weathered(albedo, orm, vSurface, over, open, vRel, geometric, dx, dy);
     albedo = mix(a0, albedo, risen);
     orm = mix(o0, orm, risen);
   }

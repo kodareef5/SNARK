@@ -438,12 +438,20 @@ export class TerrainLod {
    * from the frame its last rows go. The first is filled whole: until a window is in, nothing finer than the whole map's
    * pair is drawn.
    */
+  /**
+   * Where the fine window is centred: on the camera, or through a sight that magnifies far on what it is on (D1087), where
+   * the ground round the body cannot be seen. NaN for the camera.
+   */
+  centreX = NaN;
+  centreZ = NaN;
+
   private follow(cam: Camera, p: FramePacket, budget?: GroundBudget): void {
     const hf = this.hf;
     const w = this.size.width[SOURCE_WINDOW]!, h = this.size.height[SOURCE_WINDOW]!;
     const corner = (at: number, n: number, side: number): number => Math.max(0, Math.min(n - side, Math.round((at / hf.cell - (side - 1) / 2) / SNAP) * SNAP));
-    let i = corner(cam.x, hf.nx, w), j = corner(cam.z, hf.nz, h);
-    const off = Math.max(Math.abs(cam.x / hf.cell - this.drawnI - (w - 1) / 2), Math.abs(cam.z / hf.cell - this.drawnJ - (h - 1) / 2)) * hf.cell;
+    const cx = Number.isNaN(this.centreX) ? cam.x : this.centreX, cz = Number.isNaN(this.centreZ) ? cam.z : this.centreZ;
+    let i = corner(cx, hf.nx, w), j = corner(cz, hf.nz, h);
+    const off = Math.max(Math.abs(cx / hf.cell - this.drawnI - (w - 1) / 2), Math.abs(cz / hf.cell - this.drawnJ - (h - 1) / 2)) * hf.cell;
     const moved = this.drawn < 0 || (off >= WINDOW_MOVE && (i !== this.drawnI || j !== this.drawnJ));
     // A window filling holds the samples as they are, and a stale one with the camera still is filled again where it is.
     if (this.fill >= 0) this.stale = false;

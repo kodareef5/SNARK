@@ -69,7 +69,7 @@ import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { WEAR_KEY } from "./wear.ts";
 import { OPTIC_AT, OPTIC_HEAT } from "./packet.ts";
 import { BEND_BUFFERS, BONE_FLOATS, CAST_AT, GLASS_AT, LAMP_AT, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_GROUND, DRAW_SKYLINE, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, markJoins, texturedFlags, quadIndexCount, SHORE_AT } from "./packet.ts";
-import { WorldFinishes, citySurface, finishTaps, surfaceCity } from "./world-surfaces.ts";
+import { WorldFinishes, citySurface, finishTaps, surfaceCity, weatherBytes } from "./world-surfaces.ts";
 import { FinishNear, NEAR_FRONT, NEAR_GLASS, NEAR_WALL } from "./finish-near.ts";
 import { FacadeAtlases } from "./facade.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
@@ -156,6 +156,10 @@ export const CHUNK_CELLS = 4;
 
 /** Metres the far depth range of a frame with one begins at, through a sight: the lit tiers' split (tiers.ts). */
 const WINDOW_SPLIT = 384;
+/** The zoom from which a sight's focus has the terrain's fine window, the ground round the body unseen (D1087). */
+const TERRAIN_FOCUS = 8;
+/** Metres up and down a chunk's column is taken to reach, to ask whether a sight's window sees it. */
+const CHUNK_COLUMN = 1000;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
@@ -464,6 +468,14 @@ export class Scene {
   structureDistance = Infinity;
   /** Hour of the day, 0..24. It sets the sun's position and the brightness. */
   hour = 12;
+  /**
+   * Where a sight that magnifies is on, x and z (NaN for none), which the app sets: the far trees round it come as if near,
+   * and from TERRAIN_FOCUS times the fine ground is round it (D1087).
+   */
+  focusX = NaN;
+  focusZ = NaN;
+  /** The near trees' hand-over band's scale this frame: a sight's zoom, else 1 (D1090). */
+  private handScale = 1;
   /** What a visor does to the picture this frame (post.ts opticFrame, D1080), which the app sets. */
   readonly optic: Optic = { mode: 0, gain: 1, grain: 0 };
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
@@ -1085,11 +1097,18 @@ export class Scene {
     // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
     p.light = flatLight(this.hour, p.sun);
     p.alternate = this.alternate;
-    [p.frame[FRAME.handFrom], p.frame[FRAME.handTo]] = this.assets.tier.nodes.band;
+    // Through a sight the near trees hand over to the far its zoom times as far, so those round what it is on are drawn
+    // near (D1090); out of its window none is drawn at all.
+    this.handScale = cam.zoom > 1 ? cam.zoom : 1;
+    p.frame[FRAME.handFrom] = this.assets.tier.nodes.band[0] * this.handScale;
+    p.frame[FRAME.handTo] = this.assets.tier.nodes.band[1] * this.handScale;
+    if (this.nodesFar) this.nodesFar.handScale = this.handScale;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
     const near = this.finishNear.metres, scale = this.assets.scale;
     if (p.tier.lit) this.finishNear.update(cam.x, cam.y, cam.z, this.world.hf, this.world.structs, scale, finishTaps(p.tier));
     this.finishes.frame(p, this.assets.residency, p.tier, near, scale);
+    // The walls' weathering masks are made on the card, not fetched (texgen/weather.ts), so their bytes are held apart.
+    this.assets.residency.reserve("weather masks", weatherBytes(p.weatherSide));
     this.facades.frame(p, this.assets.residency, p.tier, near[NEAR_WALL]!, near[NEAR_FRONT]!, near[NEAR_GLASS]!, scale);
     this.characters.heatView = false;
     if (p.tier.lit) {
@@ -1138,6 +1157,9 @@ export class Scene {
     }
     skyShown(p);
 
+    const focused = !Number.isNaN(this.focusX) && cam.zoom >= TERRAIN_FOCUS;
+    this.terrain.centreX = focused ? this.focusX : NaN;
+    this.terrain.centreZ = focused ? this.focusZ : NaN;
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.groundCasts : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
@@ -1152,7 +1174,7 @@ export class Scene {
     const blocksView = tier.reach.city > 0 && tier.city.levels.length > 0 ? this.viewDistance : 0;
     this.makeBlocks();
     this.blocks?.update(p, this.assets.residency, cam, blocksView, this.city ? this.citySource!.statics : null, this.city);
-    this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier);
+    this.nodesFar?.update(p, this.assets.residency, cam.x, cam.z, tier, cam.zoom > 1 ? this.focusX : NaN, this.focusZ);
     if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.groundCasts)) p.casterDropped++;
     // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
     // See-through draws go as made, and the sea is made first of them, so that a yacht's wires show over it.
@@ -1953,6 +1975,8 @@ export class Scene {
     const p = this.packet;
     const tier = this.assets.tier;
     p.frame[FRAME.fade] = tier.fade;
+    // Through a sight its tiles in the window reach as far as the view ends (D1088).
+    this.city!.view = this.viewDistance;
     this.city!.update(p, this.assets.residency, cam, tier.city.levels, this.alongGround(tier.reach.city), tier.fade, this.world.structs, this.world.far?.cells ?? null);
     // A landmark is drawn to the end of the view, as the city's blocks leave its cells to it.
     this.landmarks?.draw(p, cam, this.assets, this.viewDistance, tier.fade, this.drawLandmark);
@@ -2849,7 +2873,7 @@ export class Scene {
     const p = this.packet;
     const world = this.world;
     const chunks = store.chunks;
-    const band = this.assets.tier.nodes.band[1];
+    const band = this.assets.tier.nodes.band[1] * this.handScale;
     // The node field's crowns, for how many stand in the way of each cell of trees.
     if (sizeOf && this.assets.tier.nodes.cover) this.cover.update(store, this.coverLooks);
     // How far the near plane's corners are from the camera: a room that near may be cut into and seen.
@@ -2880,7 +2904,10 @@ export class Scene {
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       if (base === 0 && p.tier.reflectionHz) this.street.indexChunk(t,x0,z0,cam);
-      const own = near ? near.of(chunk, t, statics!, this.city!, this.chunkCells, Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z), p) : null;
+      // Its near mesh is made nearest first, a chunk in a sight's window as if its zoom times nearer (D1087).
+      const across = Math.hypot(x0 + CHUNK_SIZE / 2 - cam.x, z0 + CHUNK_SIZE / 2 - cam.z);
+      const sooner = cam.zoom > 1 && cam.boxVisible(x0 - cam.x, -CHUNK_COLUMN - cam.y, z0 - cam.z, x0 + CHUNK_SIZE - cam.x, CHUNK_COLUMN - cam.y, z0 + CHUNK_SIZE - cam.z) ? cam.zoom : 1;
+      const own = near ? near.of(chunk, t, statics!, this.city!, this.chunkCells, across / sooner, p) : null;
       const mesh = own?.mesh ?? null;
       let batch = this.batches.get(id);
       // A piece that took another kind in place is moved in place; a chunk whose doors have stood a while other than its
@@ -2983,7 +3010,7 @@ export class Scene {
   private ranges(cam: Camera, b: ChunkBatch, id: number, dist: number, ox: number, oy: number, oz: number, passes: number, all: boolean): void {
     const sized = b.sized;
     const band = this.assets.tier.nodes.band;
-    const from = sized ? band[0] : Infinity, to = sized ? band[1] : Infinity;
+    const from = sized ? band[0] * this.handScale : Infinity, to = sized ? band[1] * this.handScale : Infinity;
     const cells = b.cells;
     const spans = this.spans;
     const box = b.cellBox;

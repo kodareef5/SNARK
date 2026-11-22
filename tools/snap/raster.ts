@@ -13,7 +13,7 @@ import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wh
 import { bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
 import type { RoadSectors } from "../../shared/world/roadframe.ts";
 import { decodeTexture, sample, type Texture } from "../../client/core/render/cpu-texture.ts";
-import { DRY_ASPHALT, MASK_MATERIALS, SURFACE_NAMES, WEATHER_LAYER, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
+import { DRY_ASPHALT, MASK_LAYER, MASK_MATERIALS, SURFACE_NAMES, surfaceIndex, surfaceMaterial } from "../../content/surfaces.ts";
 import { FACADE_COLOURS, FACADE_TIERS, KIND, ROOM_OPEN_LEAST, ROOM_OUT, facadeFarColour, facadeKind, facadeMarks, facadeOut, facadeSurface, type FacadeSample, type FacadeTier } from "../../client/core/render/facade.ts";
 import { GROUND_BAND, GROUND_SCALE, GROUND_WALK, ROAD_FRAME, alongOf, edgeOf, edged, groundCover, groundMeet, groundWander, higher, roadFrameAt, roadWorn, streetCover, walkMeet, walkWorn, staticPlace, staticSeed, weatherFrame, weathered, worldSharp, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { STREET_CHUNKS, StreetPlanes } from "../../client/core/render/streets.ts";
@@ -407,7 +407,7 @@ function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: num
     const risen = 1 - finishesEarly;
     if (weather && weather[3]! >= 0 && !ground && !touch && risen > 0) {
       risenFrom(albedo, worldOrm, normal);
-      weathered(albedo, worldOrm, index, weather[0]!, weather[2]!, weather[3]!, over, open, rx + p.camX, ry + p.camY, rz + p.camZ, Math.abs(nx) > Math.abs(nz), dist, footprint, p.surfaceCity, sample);
+      weathered(albedo, worldOrm, index, rx + p.camX, ry + p.camY, rz + p.camZ, nx, ny, nz, over, open, dist, footprint, p.surfaceCity, sample);
       risenTo(albedo, worldOrm, null, risen);
       if (edge && edge[0]! >= 0) {
         risenFrom(albedo, worldOrm, normal);
@@ -609,7 +609,7 @@ export class Rasterizer {
   private readonly worldFinest = new Float64Array(WORLD_LAYERS * 3).fill(-Infinity);
   private readonly worldSample: WorldSample = (role, layer, u, v, spread, out) => {
     const at = Math.max(spread, this.worldFinest[layer * 3 + role]!);
-    if (layer >= WEATHER_LAYER) return this.maskMaps[layer - WEATHER_LAYER] ? sample(this.maskMaps[layer - WEATHER_LAYER]!, u, v, at, out) : void out.fill(0);
+    if (layer >= MASK_LAYER) return this.maskMaps[layer - MASK_LAYER] ? sample(this.maskMaps[layer - MASK_LAYER]!, u, v, at, out) : void out.fill(0);
     sample(this.worldMaps![layer]![role]!, u, v, at, out);
   };
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();

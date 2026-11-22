@@ -11,7 +11,7 @@ import { ThreadedCityMaker, cityJob, cityKinds, cityThreads, makeLevel, type Cit
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import { zoomed } from "../../client/core/optics.ts";
 import { doSweep, type SweepJob, type SweepMade } from "../../client/core/render/farshadow.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
 import { PICK_STRUCTURE } from "../../tools/snap/raster.ts";
 import type { ShapeBox, ShapeDef } from "../../shared/content/defs.ts";
@@ -510,6 +510,70 @@ test("through a sight the tiles in its window are made at the levels their dista
   }
   expect(after).toEqual({ made: 0, dropped: scoped.made });
   expect(cityIndices(w.frame())).toBe(plain.indices);
+});
+
+test("through a sight a chunk held whole far off in its window has its near mesh made before one near the body; without, the near one first", () => {
+  const made = (zoom: number): number[] => {
+    // A tower 400 m off to the side and one 1,500 m ahead, both held whole as the server sends them.
+    // Big enough that each takes frames of the near city's making.
+    const statics = [...building(...mid(26, 23), 0, 30, 6, 0), ...building(...mid(20, 43), 0, 30, 6, 0)];
+    const w = cityWorld({ chunks: 64, statics, width: 320, height: 180 });
+    w.scene.assets.tier = tierOf("medium");
+    const near = w.chunkOf(...mid(26, 23)), far = w.chunkOf(...mid(20, 43));
+    w.rows(near);
+    w.rows(far);
+    w.look(20.5 * CHUNK_SIZE, 10, 43.5 * CHUNK_SIZE, 1500 - 64, 0, 6);
+    w.cam.fovY = zoomed(w.cam.fovY, zoom);
+    w.cam.zoom = zoom;
+    if (zoom > 1) w.cam.window.set([-0.3, -0.3, 0.3, 0.3]);
+    const order: number[] = [];
+    for (let f = 0; f < 400 && order.length < 2; f++) {
+      w.frame();
+      for (const c of [near, far]) if (!order.includes(c) && w.scene.near!.chunk(c)?.mesh) order.push(c);
+    }
+    return order.map((c) => (c === near ? 0 : 1));
+  };
+  expect(made(16)[0]).toBe(1);
+  expect(made(1)[0]).toBe(0);
+});
+
+test("through a sight a tile past the tier's reach in its window is made and drawn, and kept a while once the sight is lowered", () => {
+  // A row of towers 3.4 km ahead, past medium's 2.5 km of far city.
+  const statics: MapStatic[] = [];
+  for (let k = 0; k < 4; k++) statics.push(...building(...mid(20 + k, 60), 0, 8, 3, k * 1700));
+  const w = cityWorld({ chunks: 64, statics, width: 320, height: 180 });
+  w.scene.assets.tier = tierOf("medium");
+  w.look(21.5 * CHUNK_SIZE, 20, 60.5 * CHUNK_SIZE, 3400, 0, 6);
+  const indices = (p: FramePacket): number => cityDraws(p).reduce((n, d) => n + p.drawIndexCount[d]!, 0);
+  for (let f = 0; f < 60; f++) w.frame();
+  expect(indices(w.frame())).toBe(0);
+  const base = w.cam.fovY;
+  w.cam.fovY = zoomed(base, 16);
+  w.cam.zoom = 16;
+  w.cam.window.set([-0.4, -0.4, 0.4, 0.4]);
+  let drawn = 0;
+  for (let f = 0; f < 600 && drawn === 0; f++) drawn = indices(w.frame());
+  expect(drawn).toBeGreaterThan(0);
+  // Lowered: kept a while, then let go.
+  w.cam.fovY = base;
+  w.cam.zoom = 1;
+  w.cam.window.set([-1, -1, 1, 1]);
+  for (let f = 0; f < 30; f++) w.frame();
+  expect(indices(w.frame())).toBeGreaterThan(0);
+  for (let f = 0; f < 240; f++) w.frame();
+  expect(indices(w.frame())).toBe(0);
+});
+
+test("through a sight the near trees' hand-over band is its zoom times the tier's, and the tier's at one times", () => {
+  const w = cityWorld({ chunks: 16, statics: [], width: 160, height: 90 });
+  w.scene.assets.tier = tierOf("medium");
+  w.look(8 * CHUNK_SIZE, 0, 8 * CHUNK_SIZE, 100, 0, 6);
+  const band = tierOf("medium").nodes.band;
+  let p = w.frame();
+  expect([p.frame[FRAME.handFrom], p.frame[FRAME.handTo]]).toEqual([band[0], band[1]]);
+  w.cam.zoom = 8;
+  p = w.frame();
+  expect([p.frame[FRAME.handFrom], p.frame[FRAME.handTo]]).toEqual([band[0] * 8, band[1] * 8]);
 });
 
 test("levels made on threads are each asked of the one with the fewest in hand, three ahead a thread, and are the levels the page makes", async () => {

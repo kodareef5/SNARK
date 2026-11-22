@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { HudModel } from "../../client/core/hud.ts";
 import { KEY_UNMUTE } from "../../client/core/ui/menu.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
-import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, LONG_MS, LOOK_GAIN, STICK_DEAD, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_COUNT, T_JUMP, T_STANCE, T_USE, TouchPlay, type TouchTarget } from "../../client/core/touch.ts";
+import { KEY_TOUCH_BUTTON, KEY_ZONE_LOOK, KEY_ZONE_MOVE, LONG_MS, LOOK_GAIN, STICK_DEAD, STICK_REACH, T_AIM, T_ATTACK, T_BAG, T_COUNT, T_JUMP, T_LOWER, T_RAISE, T_STANCE, T_USE, TouchPlay, type TouchTarget } from "../../client/core/touch.ts";
 import { CANVAS_HEIGHT, MIN_HEIGHT, MIN_WIDTH, SCALE_FLOOR, UiFrame, canvasHeight } from "../../client/core/ui/nodes.ts";
 import { usePrompt } from "../../client/core/ui/touch.ts";
 import { BODY, ICON, ICON_COLUMNS, ICON_Y, I_PRONE, PART, PILL_BODY, PILL_CAP, PILL_H, PILL_W, PILL_Y, P_RING, P_ROUND, P_SQUARE_LIT, TOUCH_HEIGHT, TOUCH_WIDTH, touchPixels } from "../../client/core/ui/touch-art.ts";
@@ -197,4 +197,27 @@ test("the stand-in sheet has every part in its cell, a hollow ring, and room for
   }
   expect(ICON_Y + (Math.floor(I_PRONE / ICON_COLUMNS) + 1) * ICON).toBeLessThanOrEqual(TOUCH_HEIGHT);
   expect(ICON_COLUMNS * ICON).toBeLessThanOrEqual(TOUCH_WIDTH);
+});
+
+test("with no weapon to aim and a helmet's visor, the aim toggle holds the visor up, as the middle button; a glass held is aimed; a raised sight that zooms has zoom buttons, the arrows", async () => {
+  const { touchControls } = await import("../../client/core/ui/touch.ts");
+  const p = new TouchPlay(), f = new UiFrame(), m = new HudModel();
+  const shown = (): Map<number, string> => {
+    f.begin(16 / 9);
+    touchControls(f, p, m, "foot", 0, f.height, 0);
+    const out = new Map<number, string>();
+    for (const n of f.nodes.slice(0, f.count)) if (n.key >= KEY_TOUCH_BUTTON && n.key < KEY_TOUCH_BUTTON + T_COUNT) out.set(n.key - KEY_TOUCH_BUTTON, n.label || n.text);
+    return out;
+  };
+  expect(shown().has(T_AIM)).toBe(false);
+  m.visorReady = true;
+  expect(shown().get(T_AIM)).toBe("Visor");
+  const t = target();
+  for (let k = 0; k < 2; k++) { p.pointer(0, KEY_TOUCH_BUTTON + T_AIM, 0, 0, 1, 0, t, 1); p.pointer(1, KEY_TOUCH_BUTTON + T_AIM, 0, 0, 1, 0, t, 1); }
+  expect(t.log).toEqual(["m1+", "m1-"]);
+  m.glassHeld = true;
+  expect(shown().get(T_AIM)).toBe("Aim");
+  m.zooming = true;
+  const z = shown();
+  expect([z.get(T_RAISE), z.get(T_LOWER)]).toEqual(["Zoom in", "Zoom out"]);
 });
