@@ -38,6 +38,8 @@ export class Frame {
   lift = 0;
   /** Whether the dome is drawn as the table alone and nothing is hazed (Scene.plainSky). */
   plainSky = false;
+  /** The near trees' hand-over band's scale: a sight's zoom, else 1. */
+  handScale = 1;
   /** Whether the eye is under water. */
   under = false;
   /** What hides what, from the pass that finds it on: undefined before it, and on a frame that hides nothing. */
