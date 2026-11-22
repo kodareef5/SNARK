@@ -6526,6 +6526,7 @@ assets/source/core/vehicles/veloce_abandoned/tex/coachwork_base.png
 assets/source/core/vehicles/veloce_abandoned/tex/coachwork_mask.png
 assets/source/core/vehicles/veloce_abandoned/tex/coachwork_packed.png
 assets/source/core/vehicles/veloce_abandoned/veloce_abandoned.snpk
+assets/source/core/vehicles/zephyr/zephyr.snpk
 assets/source/core/water/long.png
 assets/source/core/water/pictures/beach-dawn-to-afternoon.jpg
 assets/source/core/water/pictures/beach-golden-to-night.jpg
