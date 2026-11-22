@@ -194,7 +194,9 @@ test("every field that is not a stub is read by some code", () => {
     }
   };
   for (const folder of ["shared", "server", "client/core", "tools/pack"]) walk(join(import.meta.dir, "../..", folder));
-  const code = files.map((path) => readFileSync(path, "utf8")).join("\n");
+  // A kind's file declares its fields beside the code that reads them: its comments and class rows are not a reading.
+  const declared = /^\s*(\/\/|\/\*|\*|row\()/;
+  const code = files.map((path) => (path.includes("content/kinds/") ? readFileSync(path, "utf8").split("\n").filter((l) => !declared.test(l)).join("\n") : readFileSync(path, "utf8"))).join("\n");
   const unread: string[] = [];
   for (const [type, fields] of Object.entries(FIELDS)) {
     for (const [name, field] of Object.entries(fields)) {
