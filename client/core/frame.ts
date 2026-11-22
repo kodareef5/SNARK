@@ -85,10 +85,8 @@ export class AppFrame implements HudFrame {
   bx = 0;
   by = 0;
   bz = 0;
-  /** The vehicle the predicted body is, if it is one, whether it is a helicopter or a boat, its pose and its heading. */
+  /** The vehicle the predicted body is, if it is one, its pose and its heading. */
   car: VehicleDefinition | null | undefined = null;
-  rotor = false;
-  boat = false;
   vehiclePose: VehicleRenderPose | undefined = undefined;
   carYaw = 0;
   /** It sits in a seat it does not steer from: on a vehicle, on one with a cabin to look round from, and that host's frame. */
