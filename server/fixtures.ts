@@ -107,7 +107,6 @@ export class Fixtures {
 /** The ref of the structure it belongs to, whether it is locked, its PIN plus one, a bed's wait, and a fire's state. */
 saved({
   name: "fixture",
-  id: 14,
   has: (rec) => rec.at >= 0,
   write(rec, w, to) {
     w.u32(rec.at);

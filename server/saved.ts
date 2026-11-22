@@ -30,10 +30,11 @@ export interface Coding {
 }
 
 export interface Saved {
-  /** What the component is called. No two share a name. */
+  /**
+   * What a save knows the component by: the number it is saved under is made from this (savedId). No two share a name,
+   * and under another name it is another component, which does not read what this one wrote.
+   */
   readonly name: string;
-  /** The number it is saved under. */
-  readonly id: number;
   /** Whether the record has any of it to save. One that has none costs no bytes. */
   has(rec: EntityRecord): boolean;
   write(rec: EntityRecord, w: BitWriter, to: Coding): void;
@@ -42,7 +43,7 @@ export interface Saved {
    * For a record that leaves one world's clock for another's `delta` ticks on (rebaseTicks): moves each world tick it
    * keeps with `moved`, and clears what is worked out from them. Called whether or not the record has any of it.
    */
-  rebase?(rec: EntityRecord, delta: number): void;
+  rebase?: ((rec: EntityRecord, delta: number) => void) | undefined;
 }
 
 /** A world tick on a clock `delta` ticks on: what was due is due as far off. A tick of 0 means none and stays 0. */
@@ -50,26 +51,46 @@ export function moved(tick: number, delta: number): number {
   return tick === 0 ? 0 : Math.max(1, tick + delta);
 }
 
-/** The order the components were written in when the codec was one chain, kept so that the bytes are the same. */
-const ORDER: readonly number[] = [25, 26, 24, 23, 19, 18, 15, 14, 4, 5, 9, 13, 22, 20, 21, 17, 3, 6, 10];
+/** A component as declared, with the number it is saved under. */
+export interface SavedRow extends Saved {
+  readonly id: number;
+}
 
-const rows: Saved[] = [];
-const byId = new Map<number, Saved>();
+/** Below this are the numbers that code keeping its own bytes in EntityRecord.extra chose by hand. */
+const FIRST_ID = 128;
+/** A number under this is three bytes in a save, and the three-letter tags others keep in EntityRecord.extra are above it. */
+const END_ID = 1 << 21;
 
-/** Every component declared, in the order a record is written in. */
-export const SAVED: readonly Saved[] = rows;
+/**
+ * The number a component of this name is saved under: a hash of the name, so it is the same on every run and every
+ * branch, and two features that each add one take no line from a shared list. Two names that hash alike are refused
+ * as the second is declared.
+ */
+export function savedId(name: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < name.length; i++) hash = Math.imul(hash ^ name.charCodeAt(i), 0x01000193);
+  return FIRST_ID + ((hash >>> 0) % (END_ID - FIRST_ID));
+}
+
+const rows: SavedRow[] = [];
+const byId = new Map<number, SavedRow>();
+
+/** Every component declared, by rising number: the order a record is written in. */
+export const SAVED: readonly SavedRow[] = rows;
 
 /** Declares a component. Call it once, as the feature's file loads. */
-export function saved(row: Saved): Saved {
-  const other = byId.get(row.id) ?? rows.find((r) => r.name === row.name);
-  if (other) throw new Error(`saved components "${other.name}" and "${row.name}" are both number ${other.id}: give one another name`);
+export function saved(part: Saved): SavedRow {
+  // Every row has one shape, which keeps the codec's walk over them cheap.
+  const row: SavedRow = { name: part.name, id: savedId(part.name), has: part.has, write: part.write, read: part.read, rebase: part.rebase };
+  const other = byId.get(row.id);
+  if (other) throw new Error(other.name === row.name ? `two saved components are called "${row.name}"` : `saved components "${other.name}" and "${row.name}" are both number ${row.id}: give the new one another name`);
   byId.set(row.id, row);
   rows.push(row);
-  rows.sort((a, b) => ORDER.indexOf(a.id) - ORDER.indexOf(b.id));
+  rows.sort((a, b) => a.id - b.id);
   return row;
 }
 
 /** The component saved under a number, where one is declared. */
-export function savedAs(id: number): Saved | undefined {
+export function savedAs(id: number): SavedRow | undefined {
   return byId.get(id);
 }

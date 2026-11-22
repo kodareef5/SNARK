@@ -397,7 +397,6 @@ export class Progression {
 /** Experience, learned engrams, crafting jobs. */
 saved({
   name: "progression",
-  id: 4,
   has: (rec) => rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0,
   write(rec, w, to) {
     const jobs = rec.jobs;

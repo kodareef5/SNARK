@@ -842,7 +842,6 @@ function rests(w: CollisionWorld, x: number, y: number, z: number, p: MoveParams
 /** A creature's body (EntityRecord.corpse). A build without bodies has no core:corpse either, so it never passes over one. */
 saved({
   name: "corpse",
-  id: 21,
   has: (rec) => rec.corpse !== null,
   write(rec, w, to) {
     const b = rec.corpse!;

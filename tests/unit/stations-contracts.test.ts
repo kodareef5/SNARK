@@ -267,7 +267,7 @@ test("a fire's piece and lanes and a job's paused unit are saved and loaded, and
   rec.jobs.push({ item: spark, left: 3, doneAt: 4000, by: 99, rest: 120 }, { item: spear, left: 1, doneAt: 0 });
   rec.xp = 5;
   const bytes = codec.encode(rec).slice();
-  expect(bytes[0]).toBe(7);
+  expect(bytes[0]).toBe(8);
   const row = { pid: 77, kind: rec.kind, x: 0, y: 0, z: 0, yaw: 0, data: bytes };
   const back = codec.decode(row)!;
   expect([back.fire, back.jobs]).toEqual([{ at: 1000, fuel: 300, cook: 12, due: 0, out: 0, piece: wood, lanes: [{ item: ingot, ticks: 450 }, { item: spark, ticks: 3 }] }, [{ item: spark, left: 3, doneAt: 4000, by: 99, rest: 120 }, { item: spear, left: 1, doneAt: 0 }]]);

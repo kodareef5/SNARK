@@ -560,7 +560,6 @@ export class Breeding {
  */
 saved({
   name: "breeding",
-  id: 18,
   has: (rec) => rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null,
   write(rec, w, to) {
     w.bool(rec.mating);

@@ -663,7 +663,6 @@ export class Taming {
 /** How well a tamed creature was tamed and, for one being tamed, what it has been given so far and for whom; then its orders and its saddle. */
 saved({
   name: "tame",
-  id: 15,
   has: (rec) => rec.tame !== null || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander,
   write(rec, w, to) {
     w.f32(rec.te);

@@ -162,7 +162,6 @@ function place(inv: Inventory): number {
 /** The survivor a starter was issued to (EntityRecord.issuedTo). Only a starter has it. */
 saved({
   name: "issued",
-  id: 26,
   has: (rec) => rec.issuedTo !== 0,
   write: (rec, w) => w.uint53(rec.issuedTo),
   read(rec, r, from) {

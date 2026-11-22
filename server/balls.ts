@@ -396,7 +396,6 @@ export class Balls {
 /** The tick a tame was kept (EntityRecord.stored). Only a kept one has it. */
 saved({
   name: "stored",
-  id: 25,
   has: (rec) => rec.stored !== 0,
   write: (rec, w) => w.uint53(rec.stored),
   read(rec, r, from) {

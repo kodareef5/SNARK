@@ -12,12 +12,13 @@ import { EntityRecord } from "../records.ts";
 import { SAVED, moved, saved, savedAs, type Coding } from "../saved.ts";
 
 /** The revision of a record's parts, in its first byte. Raise it whenever a part changes: a build reads only its own. */
-const RECORD_FORMAT = 7;
-// A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
+const RECORD_FORMAT = 8;
+// A record is a list of components, each a number and a length-prefixed blob. A build that does not know a
 // component keeps its bytes and writes them back, so a save survives a server that lacks a content pack.
-// Each is declared with `saved` (server/saved.ts): those every record may have at the end of this file, and a feature's
-// own in the feature's file. Components kept in rec.extra by other parts of the server are numbered apart from these:
-// 83 a survivor's activity (server/survivor-activity.ts), 90 the Cast person a body is (server/cast/host.ts).
+// Each is declared with `saved` (server/saved.ts) and numbered from its name: those every record may have at the end
+// of this file, and a feature's own in the feature's file. Other parts of the server keep bytes of their own in
+// rec.extra under numbers chosen by hand, apart from these: 83 a survivor's activity (server/survivor-activity.ts), 90
+// the Cast person a body is (server/cast/host.ts).
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
 const NO_BYTES = new Uint8Array(0);
@@ -253,7 +254,6 @@ function readBytes(r: BitReader, into: Uint8Array): void {
 
 saved({
   name: "jet",
-  id: 24,
   has: (rec) => rec.jetSpent > 0,
   write: (rec, w) => w.u16(rec.jetSpent),
   read(rec, r) {
@@ -266,7 +266,6 @@ saved({
 /** A ground creature's plate mode. Its attacks are never saved. */
 saved({
   name: "creature mode",
-  id: 23,
   has: (rec) => rec.creatureMode !== 0,
   write: (rec, w) => w.u8(rec.creatureMode),
   read(rec, r, from) {
@@ -277,7 +276,6 @@ saved({
 
 saved({
   name: "markers",
-  id: 5,
   has: (rec) => rec.markers.length > 0,
   write(rec, w) {
     w.varint(rec.markers.length);
@@ -302,7 +300,6 @@ saved({
 /** Dead flag, expiry tick, the hotbar slot in hand, and whether it flies. */
 saved({
   name: "state",
-  id: 9,
   has: (rec) => rec.dead || rec.expiresAt !== 0 || rec.held >= 0 || rec.flying,
   write(rec, w) {
     w.bool(rec.dead);
@@ -322,7 +319,6 @@ saved({
 
 saved({
   name: "team",
-  id: 13,
   has: (rec) => rec.team !== 0,
   write(rec, w) {
     w.varint(rec.team);
@@ -337,7 +333,6 @@ saved({
 /** The inventory's size and bag, then each slot with what a weapon holds and its flags (FLAG_ bits, shared/sim/items.ts). */
 saved({
   name: "slots",
-  id: 22,
   has(rec) {
     const inv = rec.inv;
     if (inv) for (let slot = 0; slot < inv.cap; slot++) if (inv.item[slot] !== 0) return true;
@@ -410,7 +405,6 @@ saved({
 /** The slots of its inventory that stand for a record (Inventory.ref): each slot and that record's pid. */
 saved({
   name: "refs",
-  id: 20,
   has(rec) {
     const inv = rec.inv;
     if (inv?.ref) for (let slot = 0; slot < inv.cap; slot++) if (inv.item[slot] !== 0 && inv.ref[slot] !== 0) return true;
@@ -436,7 +430,6 @@ saved({
 /** The vitals with 53-bit values and tick, and whether the body is unconscious. */
 saved({
   name: "vitals",
-  id: 17,
   has: (rec) => rec.vitals !== null,
   write(rec, w) {
     // Maxima come from stats and are not saved.
@@ -474,7 +467,6 @@ saved({
 
 saved({
   name: "genome",
-  id: 3,
   has: (rec) => rec.genome !== null,
   write(rec, w) {
     const g = rec.genome!;
@@ -506,7 +498,6 @@ saved({
 /** The hash of the device key that owns a survivor. */
 saved({
   name: "identity",
-  id: 6,
   has: (rec) => rec.keyHash !== null,
   write: (rec, w) => writeBytes(w, rec.keyHash!),
   read: (rec, _r, from) => void (rec.keyHash = from.blob.slice()),
@@ -515,7 +506,6 @@ saved({
 /** The bytes of shared/anim/look.ts. */
 const LOOK = saved({
   name: "look",
-  id: 10,
   has: (rec) => rec.look !== null,
   write: (rec, w) => writeBytes(w, rec.look!),
   read(rec, _r, from) {

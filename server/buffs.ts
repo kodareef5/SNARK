@@ -192,7 +192,6 @@ export class Buffs {
 /** Each buff's content, the tick it ends, who gave it and the torpor a second it adds, then, if any adds health, the health a second each adds. */
 saved({
   name: "buffs",
-  id: 19,
   has: (rec) => rec.buffs.length > 0,
   write(rec, w, to) {
     const buffs = rec.buffs;
