@@ -11,6 +11,7 @@ import type { MapVehicle } from "../shared/world/mapfile.ts";
 import type { GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
+import { basedNear } from "./supply/ground.ts";
 import { foundVehicle, VEHICLE_ORIGIN, type VehicleStart } from "./vehicle-service.ts";
 import type { ServerWorld } from "./world.ts";
 
@@ -148,15 +149,7 @@ export class CarReturn {
 
   /** Whether anything a tribe built stands within BASE_RANGE. */
   based(p: Place): boolean {
-    const { dims, structs } = this.ctx.world, { x, z } = p.at;
-    for (let cz = Math.max(0, Math.floor((z - BASE_RANGE) / CHUNK_SIZE)); cz <= Math.min(dims.chunksZ - 1, Math.floor((z + BASE_RANGE) / CHUNK_SIZE)); cz++) {
-      for (let cx = Math.max(0, Math.floor((x - BASE_RANGE) / CHUNK_SIZE)); cx <= Math.min(dims.chunksX - 1, Math.floor((x + BASE_RANGE) / CHUNK_SIZE)); cx++) {
-        const t = structs.chunks[cz * dims.chunksX + cx];
-        if (!t || t.live === 0) continue;
-        for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && t.owner[s] !== 0 && Math.hypot(t.x[s]! - x, t.z[s]! - z) < BASE_RANGE) return true;
-      }
-    }
-    return false;
+    return basedNear(this.ctx.world, p.at.x, p.at.z, BASE_RANGE);
   }
 
   /** Whether any body, living or not, stands in the car's room: its envelope, the door room its seats need and a margin. */

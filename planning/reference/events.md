@@ -10,7 +10,7 @@ marked "may change". An **after** event says what has happened, in values, and
 is delivered once a tick, before the commit. The module contract is in
 `server/api/module.ts`.
 
-There are 82 events: 66 raised today, 0 with a place in the code and not
+There are 86 events: 70 raised today, 0 with a place in the code and not
 raised yet, and 16 that wait for a feature.
 
 The ARK column says what a plugin for ARK's unofficial server API hooks for the
@@ -201,6 +201,20 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 - **`craft.start`.** A crafting job is about to be queued.
 - **`craft.done`.** Something was made.
 - **`harvest`.** A node gave something.
+
+## 
+
+| Event | Phase | Tells | May change | ARK | Raised in | Standing |
+| --- | --- | --- | --- | --- | --- | --- |
+| `supply.call` | before | `x`, `z`, `tier`, `class`, `ringed`, `source`, `circuit`, `site` | `tier`, `class`, `ringed` | the supply crate's spawn | `server/supply.ts` | wired |
+| `supply.landed` | after | `id`, `pid`, `x`, `y`, `z`, `tier`, `class`, `ringed`, `stacks`, `source` |  |  | `server/supply.ts` | wired |
+| `supply.opened` | after | `id`, `pid`, `byPid`, `tier`, `class`, `first` |  | the supply crate's inventory access | `server/supply.ts` | wired |
+| `supply.gone` | after | `id`, `tier`, `class`, `why`, `landed`, `opened` |  | the supply crate's destruction | `server/supply.ts` | wired |
+
+- **`supply.call`.** A supply drop is about to be called at a place, by a circuit of the drop book, the console, the admin page or a module. `tier` and `class` are the book's keys. `ringed` is 1, 0, or -1 for the book's chance to decide.
+- **`supply.landed`.** A supply drop's capsule has landed, holding `stacks` stacks. `pid` is the capsule's record. Each stack was asked of `item.gain` with the reason "supply".
+- **`supply.opened`.** A survivor opened a supply drop's capsule. `first` is 1 for the first to open it.
+- **`supply.gone`.** A supply drop is over. `why` is "emptied", "expired", "cancelled", "removed", or "empty" for one that had nothing to hold and never landed.
 
 ## Tribes
 

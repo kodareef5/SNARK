@@ -569,8 +569,12 @@ async function stepped<T>(steps: Generator<void, T>, pause: () => Promise<void>)
   }
 }
 
-/** Of `table`, the map's statics as its head lays them out, the rows of `sectors` alone, a table of their own, a slice of rows a step. */
-function* rowsOf(head: MapHead, table: MapStatics, sectors: readonly MapPart[]): Generator<void, MapStatics> {
+/**
+ * Of `table`, the map's statics as its head lays them out, the rows of `sectors` alone, a table of their own, a slice of
+ * rows a step, with their chunks' bends: the near store draws a bent piece by them, and without them no kerb round the
+ * body was drawn until the whole map's statics came.
+ */
+export function* rowsOf(head: MapHead, table: MapStatics, sectors: readonly MapPart[]): Generator<void, MapStatics> {
   const { dims, counts } = head;
   const kept = new Uint8Array(counts.length);
   for (const p of sectors) {
@@ -583,6 +587,8 @@ function* rowsOf(head: MapHead, table: MapStatics, sectors: readonly MapPart[]):
     const from = table.first[c]!, to = table.first[c + 1]!, at = out.first[c]!;
     if (kept[c] === 0 || to === from) continue;
     for (const k of ["kind", "yaw", "x", "y", "z"] as const) out[k].set(table[k].subarray(from, to), at);
+    const bends = table.bends.get(c);
+    if (bends) out.bends.set(c, bends);
     if ((since += to - from) >= COPY_SLICE) {
       since = 0;
       yield;

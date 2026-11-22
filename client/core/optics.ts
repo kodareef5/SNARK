@@ -1,4 +1,4 @@
-// What a sight, glass or visor does to the view (an item's optic facet, D1029): how far it narrows the view, how the look
+// What a sight, glass or visor does to the view (an item's optic facet, D1076): how far it narrows the view, how the look
 // slows to match, how the view eases between the two, and when it must be seen from the eye. Pure numbers, so the app,
 // the HUD and the tests share them.
 

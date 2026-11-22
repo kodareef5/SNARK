@@ -150,9 +150,10 @@ export const BALL_TAMES = 6;
 /**
  * The "balls" mode. Survivors with no session hold soul balls and own raptors: they keep them, loose them, pass full balls
  * to each other and now and then destroy one, which loses its tame. Time passes, in ticks and in jumps. Each step is
- * committed and acknowledged. A tame is named for its number, so that the test can say which are left.
+ * committed and acknowledged. A tame is named for its number, so that the test can say which are left. Given a round
+ * (`stop`), it kills itself just after that round's commit, before its ack: a moment of the test's that can be named again.
  */
-function ballLoop(dbPath: string, seed: number): never {
+function ballLoop(dbPath: string, seed: number, stop = 0): never {
   const reg = coreRegistry();
   const host = createHost(reg, { dbPath });
   const p = host.persistence!;
@@ -194,11 +195,20 @@ function ballLoop(dbPath: string, seed: number): never {
     for (let s = 0; s < inv.cap; s++) if (inv.item[s] === item) out.push(s);
     return out;
   };
+  // Nothing harms a tame here, so that one is lost only with its ball: rival tribes' raptors stand side by side, one
+  // loosed twice in five minutes is sick and out cold, and one out cold soon starves, as nobody feeds it. Being a god
+  // does not change a body's rates until something rates it again, and rates are saved. A tame rated as starving while
+  // it was no god (by the test's loads between kills, or loosed in the round it was kept, as keeping takes it out of the
+  // gods) starved to death as a god. So each tame in the world is rated again as a god after the steps, before time passes.
+  const spare = (): void => {
+    for (const r of records.byPid.values()) {
+      if (r.kind !== raptor) continue;
+      host.survival.gods.add(r.pid);
+      if (records.entOf.has(r.pid)) host.survival.touch(r);
+    }
+  };
   writeSync(1, "ready\n");
-  for (;;) {
-    // Nothing harms a tame here, so that one is lost only with its ball: rival tribes' raptors stand side by side, and
-    // one loosed twice in five minutes is sick.
-    for (const r of records.byPid.values()) if (r.kind === raptor) host.survival.gods.add(r.pid);
+  for (let round = 1; ; round++) {
     for (let n = 1 + rng.int(4); n > 0; n--) {
       const me = holders[rng.int(holders.length)]!;
       const k = rng.int(10);
@@ -228,19 +238,78 @@ function ballLoop(dbPath: string, seed: number): never {
         }
       }
     }
+    spare();
     for (let t = 1 + rng.int(20); t > 0; t--) host.game.tick();
-    // Now and then a jump of up to two minutes, which a kept tame does not feel. No longer: nobody here eats.
+    // Now and then a jump of up to two minutes, which a kept tame does not feel. No longer: nobody here is fed.
     if (rng.int(6) === 0) host.world.tick += 1 + rng.int(3600);
+    p.commit();
+    if (round === stop) process.kill(process.pid, "SIGKILL");
+    writeSync(1, `acked ${p.durableSeq + p.commits}\n`);
+  }
+}
+
+export const SUPPLY_TAKERS = 3;
+
+/**
+ * The "supply" mode. Drops are called a few seconds out, brought down, taken from, cancelled and left to run out of
+ * time, the world stepping between, with each step committed and acknowledged.
+ */
+function supplyLoop(dbPath: string, seed: number): never {
+  const reg = coreRegistry();
+  const host = createHost(reg, { dbPath, log: () => {} });
+  const p = host.persistence!;
+  const { records, items, supply } = host;
+  const rng = new Rng(seed);
+  const [cx, cz] = host.world.zones[0]!.at;
+  const capsule = reg.index.get("core:supply_capsule")!;
+  if (host.loaded!.fresh) {
+    for (let i = 0; i < SUPPLY_TAKERS; i++) {
+      const rec = records.create(reg.index.get("core:survivor")!, `taker${i}`);
+      p.bindSurvivor(rec.name, rec.pid);
+    }
+    p.commit();
+  }
+  const takers = [...p.survivors.values()].map((pid) => records.byPid.get(pid)!);
+  const book = host.supplyBook.book;
+  writeSync(1, "ready\n");
+  for (;;) {
+    for (let n = 1 + rng.int(4); n > 0; n--) {
+      const k = rng.int(10);
+      const live = supply.drops.filter((d) => d.left === 0);
+      if (k < 4) {
+        // Called a moment out, so that kills fall on drops pending, landing and landed.
+        const tier = book.tiers[rng.int(book.tiers.length)]!.key;
+        const cls = book.classes[rng.int(book.classes.length)]!.key;
+        supply.call({ x: cx + rng.range(-40, 40), z: cz + rng.range(-40, 40), tier, cls, source: "test", notice: rng.range(0, 4), ringed: rng.int(4) === 0 });
+      } else if (k < 7) {
+        // A taker takes some of what a landed one holds, or all of it.
+        const boxes = [...records.byPid.values()].filter((r) => r.kind === capsule);
+        const box = boxes[rng.int(Math.max(1, boxes.length))];
+        const me = takers[rng.int(takers.length)]!;
+        if (box) {
+          const inv = items.inv(box);
+          const all = rng.int(3) === 0;
+          for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0 && (all || rng.int(2) === 0)) items.move(box, s, me, items.inv(me).free(), 0);
+          // What the takers hold is burned now and then, so that they always have room.
+          if (items.inv(me).used() > 30) items.burnAll(me);
+        }
+      } else if (k === 7 && live.length > 0) supply.cancel(live[rng.int(live.length)]!);
+      else if (k === 8 && live.length > 0) supply.hurry(live[rng.int(live.length)]!, rng.range(0, 1));
+    }
+    for (let t = 1 + rng.int(40); t > 0; t--) host.game.tick();
+    // Now and then a jump past a landed capsule's time.
+    if (rng.int(12) === 0) host.world.tick += 20 * 60 * 30;
     p.commit();
     writeSync(1, `acked ${p.durableSeq + p.commits}\n`);
   }
 }
 
 if (import.meta.main) {
-  const [dbPath, seed, mode] = process.argv.slice(2);
+  const [dbPath, seed, mode, stop] = process.argv.slice(2);
+  if (mode === "supply") supplyLoop(dbPath!, Number(seed));
   if (mode === "death") deathLoop(dbPath!, Number(seed));
   if (mode === "eggs") eggLoop(dbPath!, Number(seed));
-  if (mode === "balls") ballLoop(dbPath!, Number(seed));
+  if (mode === "balls") ballLoop(dbPath!, Number(seed), Number(stop ?? 0));
   const reg = coreRegistry();
   const host = createHost(reg, { dbPath: dbPath! });
   const p = host.persistence!;

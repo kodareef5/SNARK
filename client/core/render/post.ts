@@ -144,7 +144,7 @@ export function postFrame(frame: Float32Array, tier: Tier, hour: number, height:
   frame[FRAME.levels] = bloomLevels(height, tier.post.bloom);
 }
 
-/** What a visor does to the picture (D1033): its mode (packet.ts OPTIC_), how many times night vision amplifies the light, and the grain the finish adds. */
+/** What a visor does to the picture (D1080): its mode (packet.ts OPTIC_), how many times night vision amplifies the light, and the grain the finish adds. */
 export interface Optic {
   mode: number;
   gain: number;

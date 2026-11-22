@@ -5,7 +5,9 @@ import { deflectTire, tireShadow } from "../../client/core/render/tire-contact.t
 
 import { paneOptics } from "../../client/core/render/windscreens.ts";
 import { glassAt, glassCovers, glassReflected, opticsGlass } from "../../client/core/render/vehicle-glass.ts";
-import { CHANNEL, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
+import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../content/street-finishes.ts";
+import { dropGlow, dropLight } from "../../client/core/render/supply-light.ts";
+import { dropStreaks } from "../../client/core/render/supply-sky.ts";
 import { exhaustLight, polishedSky, polishMask } from "../../client/core/render/suit-finish.ts";
 import { visor, weatherVehicle, BURNT_SHEET, PAINT, coatWear, glossRoughness, wheelFinish, rubberShare, tireRelief, finishSeed, fixtureFace, receiver, streetMirror, worldReceiver } from "../../client/core/render/street-finish.ts";
 import { bodyOpen, tyreOpen } from "../../client/core/render/vehicle-shade.ts";
@@ -30,7 +32,7 @@ import { OPEN_BYTES, overGround, skyOpen } from "../../client/core/render/skyope
 import { roofBounce, roofOpen } from "../../client/core/render/roof.ts";
 import { lampSees, lensOfWord, poolShade } from "../../client/core/render/lamp.ts";
 import { MOST_LOD, detailKeeps, lampOf, poolOf, rotorOf, shapeOf, wakeFoam, wireOf } from "../../client/core/render/detailtext.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
+import { DROPS_AT, DROP_STREAKS, ATLAS_REGION, ATLAS_WIDTH, BEND_BUFFERS, BONE_FLOATS, DRAW_BENT, DRAW_HEAT_SHIFT, GLASS_AT, DETAIL, DETAIL_FLOATS, DETAIL_DIGITS, DETAIL_GLASS, DETAIL_TIRE, DETAIL_LAMP, DETAIL_LIT, DETAIL_POOL, DETAIL_PUFF, DETAIL_ROTOR, DETAIL_WAKE, DETAIL_WIRE, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_EMISSIVE, DRAW_SKYLINE, SKYLINE_MAX_FOG, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, WORLD_LAYERS, quadIndices, stepOf, type TextureUpload, SHORE_AT, DETAIL_SHADED_POOL, MAX_CONTACTS } from "../../client/core/render/packet.ts";
 import { HALF_HEIGHT, OUTLINE_RGB, digitsOf, halfWidth } from "../../client/core/render/digits.ts";
 import { WET_DARK, WET_ROUGH, shoreWet } from "../../client/core/render/bank.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
@@ -793,7 +795,7 @@ export class Rasterizer {
       const s = stepOf(packet, d);
       while (step < s) this.step(packet, ++step);
       if (this.groundLeft && d >= packet.groundAt[step]!) this.step(packet, step, true);
-      // In a visor's heat view a body shows as hot as its kind (D1034); the ground and the rest by their light.
+      // In a visor's heat view a body shows as hot as its kind (D1081); the ground and the rest by their light.
       heatOfShown((packet.drawFlags[d]! >>> DRAW_HEAT_SHIFT) & 3);
       this.draw(packet, d);
       heatOfShown(0);
@@ -810,7 +812,7 @@ export class Rasterizer {
       if (this.deferred[at] === 0) continue;
       const g6 = at * 6;
       const ground = (this.deferred[at]! & DEFERRED_GROUND) !== 0;
-      // Shown as hot as the draw that left the pixel says, in a visor's heat view (D1034).
+      // Shown as hot as the draw that left the pixel says, in a visor's heat view (D1081).
       const drew = this.pickDraw[at]!;
       heatOfShown(!ground && drew >= 0 ? (p.drawFlags[drew]! >>> DRAW_HEAT_SHIFT) & 3 : 0);
       if (ground) smoothed.set(this.deferredNormal.subarray(at * 3, at * 3 + 3));
@@ -964,6 +966,8 @@ export class Rasterizer {
     const lights = p.lit ? cloudLights(p.frame, this.skyTable, this.sun) : null;
     const storm: StormLit | undefined = lights ? { way: lights.way, relief: lights.relief, lit: (o, thick, relief, d, behind) => cloudLit(o, thick, STORM_DEPTH, relief, 0, d, behind, lights) } : undefined;
     const px = (2 * Math.hypot(inv[1]!, inv[4]!, inv[7]!)) / (this.height * Math.hypot(inv[2]!, inv[5]!, inv[8]!));
+    let streaked = false;
+    for (let k = 0; k < DROP_STREAKS; k++) if (p.frame[DROPS_AT + k * 8 + 3]! > 0) streaked = true;
     for (let at = 0; at < this.width * this.height; at++) {
       if (this.depth[at] !== Infinity) continue;
       const o = at * 4;
@@ -984,10 +988,19 @@ export class Rasterizer {
               const transmission = eyeRadiance(p.frame, reflected, albedo2, eyeBehind, undefined, storm, px);
               for (let i = 0; i < 3; i++) mirrored[i] = mirrored[i]! * transmission + albedo2[i]! / exposure;
             }
+            // A supply drop's cast crossing the sky (supply-sky.ts), as the dome adds it.
+            if (streaked && exposure > 0) {
+              dropStreaks(p.frame, reflected[0]!, reflected[1]!, reflected[2]!, px, energy);
+              for (let i = 0; i < 3; i++) mirrored[i]! += energy[i]! / exposure;
+            }
             shown(rgb, mirrored, 0, p);
           } else {
             albedo2.fill(0);
             const transmission = eyeRadiance(p.frame, reflected, albedo2, p.sky, 2, undefined, px);
+            if (streaked) {
+              dropStreaks(p.frame, reflected[0]!, reflected[1]!, reflected[2]!, px, energy);
+              for (let i = 0; i < 3; i++) albedo2[i]! += energy[i]!;
+            }
             for (let i = 0; i < 3; i++) rgb[i] = 1 - (1 - p.sky[i]! * transmission) * Math.exp(-albedo2[i]!);
           }
           for (let i = 0; i < 3; i++) this.domeColor[o + i] = rgb[i]! * 255;
@@ -1813,7 +1826,10 @@ export class Rasterizer {
             this.deferred[at] = 0;
             // An instrument's light, energy along the instrument, as the signal program shows it with no light target.
             const facing = Math.abs(nx * rx + ny * ry + nz * rz) / Math.max(dist, 1e-6);
-            if (p.frame[FRAME.eyes + 3]! > 0) eyeEnergy(p.frame, rx, ry, rz, NaN, 0.85 * Math.sqrt(Math.max(0, 1 - facing * facing)), footprint || dist * 0.0015, energy);
+            const fx = p.drawEffect, o = this.drawing * 4;
+            // A supply drop's lights drawn flat are its own, which the draw's effect says.
+            if (fx[o + 1]! > 0) dropLight(energy, 0, Math.sqrt(Math.max(0, 1 - facing * facing)), fx[o]!, fx[o + 1]!, fx[o + 2]!, fx[o + 3]!);
+            else if (p.frame[FRAME.eyes + 3]! > 0) eyeEnergy(p.frame, rx, ry, rz, NaN, 0.85 * Math.sqrt(Math.max(0, 1 - facing * facing)), footprint || dist * 0.0015, energy);
             else for (let k = 0; k < 3; k++) energy[k] = (pal[colorIndex * 4 + k]! / 255) ** 2;
             for (let k = 0; k < 3; k++) this.color[at * 4 + k] = 255 * (1 - Math.exp(-energy[k]!));
             continue;
@@ -1987,6 +2003,36 @@ export class Rasterizer {
             this.fragments++;
             continue;
           }
+          if (s.label === DROP_GLOW) {
+            // A supply drop's light with no surface (supply-light.ts dropGlow), blended over what is behind it.
+            const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!);
+            const n = Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!);
+            const facing = Math.abs(carried[0]! * carriedNormal[0]! + carried[1]! * carriedNormal[1]! + carried[2]! * carriedNormal[2]!) / Math.max(1e-10, dist * n);
+            const fx = p.drawEffect, o = this.drawing * 4;
+            const alpha = dropGlow(energy, Math.floor(8 * v), u, facing, fx[o]!, fx[o + 1]!, fx[o + 2]!, fx[o + 3]!);
+            for (let c = 0; c < 3; c++) {
+              const channel = at * 4 + c;
+              this.color[channel] = this.color[channel]! * (1 - alpha) + 255 * (1 - Math.exp(-energy[c]!)) * alpha;
+            }
+            this.fragments++;
+            continue;
+          }
+          if (s.label === DROP_LIGHT) {
+            // Its capsule's lit strip (dropLight), a surface: by which row of the strip it is and where across it.
+            this.fragments++;
+            this.depth[at] = z;
+            this.deferred[at] = 0;
+            this.pickKind[at] = pickKind;
+            this.pickId[at] = pickId;
+            this.pickBone[at] = bone;
+            this.pickDraw[at] = this.drawing;
+            this.cover[at] = 1;
+            const row = 8 * v, band = Math.floor(row);
+            const fx = p.drawEffect, o = this.drawing * 4;
+            dropLight(energy, band, 2 * Math.max(0, Math.min(1, (row - band - 0.04) / 0.92)) - 1, fx[o]!, fx[o + 1]!, fx[o + 2]!, fx[o + 3]!);
+            for (let c = 0; c < 3; c++) this.color[at * 4 + c] = 255 * (1 - Math.exp(-energy[c]!));
+            continue;
+          }
           if (s.label === CHANNEL) {
             // An instrument's own light by where its strip says it is, as SURFACE draws it with no light target.
             this.fragments++;
@@ -2052,7 +2098,7 @@ export class Rasterizer {
             const right = (r0 * poly[v0 + 15]! + r1 * poly[v1 + 15]! + r2 * poly[v2 + 15]!) / (r0 + r1 + r2) - carried[15]!;
             const down = (d0 * poly[v0 + 15]! + d1 * poly[v1 + 15]! + d2 * poly[v2 + 15]!) / (d0 + d1 + d2) - carried[15]!;
             const up = carriedNormal[1]! / (Math.hypot(carriedNormal[0]!, carriedNormal[1]!, carriedNormal[2]!) || 1);
-            bentWear(albedo, mro, carried[15]!, carried[16]!, carried[17]!, back ? -up : up, s.seed, s.bend.panel, s.bend.walk, Math.abs(right) + Math.abs(down));
+            bentWear(albedo, mro, carried[15]!, carried[16]!, carried[17]!, back ? -up : up, s.seed, s.bend.panel, s.bend.walk, Math.abs(right) + Math.abs(down), s.bend.tactile ?? false);
           }
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
           let coat = 0, chrome = 0, own = 1;

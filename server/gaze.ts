@@ -1,4 +1,4 @@
-// What a survivor looks at through a sight (D1032). A session looking through one says how many times it magnifies and how
+// What a survivor looks at through a sight (D1079). A session looking through one says how many times it magnifies and how
 // far off what the middle of its view is on (CMD_GAZE). The server holds the zoom to what the survivor holds or wears that
 // magnifies, and while the gaze lasts adds the chunks along its look, past its own, to its view, those nearest what it is on
 // first (GameServer.cone), and holds the creatures round what it is on awake, as a body nearby would, so that what is seen

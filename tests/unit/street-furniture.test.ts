@@ -9,6 +9,7 @@ import { meets, type Box } from "../../tools/mapworld/ruin-obstacles.ts";
 import type { Site, StaticPiece } from "../../tools/mapworld/statics.ts";
 import { placeFurniture, type Furniture } from "../../tools/mapworld/street-furniture.ts";
 import { junctionAt } from "../../tools/mapworld/street-graph.ts";
+import { cornersOf } from "../../tools/mapworld/corners.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 import { artTest } from "../fixtures/needs-art.ts";
@@ -175,6 +176,40 @@ test("where the ruins laid a walk, a piece stands on the walk's top, not in it o
   const posts = walked.filter((p) => onWalk(p) && /zzstreet_(lamp|lamp_leaning|lamp_fallen|pole|pole_leaning|hydrant|meter|stop|speed|street_name|signal|evacuation)$/.test(p.kind));
   expect(posts.length).toBeGreaterThan(10);
   for (const p of posts) expect([p.kind, p.y]).toEqual([p.kind, GROUND + 0.15]);
+});
+
+test("on bent kerbs a piece stands on their collision as on a walk: its boxes, its flush kerb's ramps and the slopes at a walk's end", () => {
+  // The avenue at x 500 given bent kerbs' collision along each side: a walk's box 2.5 m deep in 8 m lengths, every
+  // third a flush kerb's ramp and every fifth a walk's end let down.
+  const hits: StaticPiece[] = [];
+  let k = 0;
+  for (let z = 124; z <= 876; z += 8) for (const side of [1, -1]) {
+    if (Math.abs(z - 500) < 16 || [100, 200, 300, 400, 600, 700, 800, 900].some((c) => Math.abs(z - c) < 12)) continue;
+    const kind = k % 5 === 4 ? "core:zzzzzbendhit_slope_250_150" : k % 3 === 2 ? "core:zzzzzbendhit_ramp_250_800" : "core:zzzzzbendhit_box_250_800";
+    k++;
+    hits.push({ kind, x: 500 + side * (7 + 1.25), y: GROUND + 0.075, z, yaw: side > 0 ? 90 : 270 });
+  }
+  const onHits = (p: StaticPiece): boolean => Math.abs(Math.abs(p.x - 500) - 8.25) < 1.25 && Math.abs(p.z - 500) > 20;
+  const lamps = (ps: StaticPiece[]): number => ps.filter((p) => p.kind.startsWith(streetKind("lamp")) && onHits(p)).length;
+  const bare = place(fixture(GRID)).pieces, laid = place(fixture(GRID), hits).pieces;
+  expect(lamps(laid)).toBeGreaterThan(0);
+  expect(lamps(laid)).toBeGreaterThanOrEqual(lamps(bare) * 0.9);
+  // A post on a box or a ramp stands at the walk's height.
+  const boxed = laid.filter((p) => onHits(p) && /zzstreet_(lamp|pole|hydrant)$/.test(p.kind) && hits.some((h) => !h.kind.includes("slope") && Math.abs(h.z - p.z) <= 3.9 && Math.sign(h.x - 500) === Math.sign(p.x - 500)));
+  expect(boxed.length).toBeGreaterThan(5);
+  for (const p of boxed) expect(p.y).toBeCloseTo(GROUND + 0.15, 6);
+});
+
+test("where bent kerbs round a corner, a stop sign keeps off where its planned curb return's ramp would fall, as off a return set down", () => {
+  const returns = (JSON.parse(readFileSync(join(import.meta.dir, "../../tools/mapworld/rules/default.json"), "utf8")) as { street: { walks: { returns: Parameters<typeof cornersOf>[1] } } }).street.walks.returns;
+  const site = fixture(GRID);
+  const rounded = cornersOf(site, returns);
+  const set: StaticPiece[] = rounded.flatMap((c) => (c.piece ? [{ ...c.piece, y: GROUND + 0.075 }] : []));
+  expect(set.length).toBeGreaterThan(20);
+  const stops = (ps: StaticPiece[]): string[] => ps.filter((p) => p.kind.startsWith(streetKind("stop"))).map((p) => `${p.x.toFixed(2)},${p.z.toFixed(2)}`).sort();
+  const planned = stops(placeFurniture(site, [], RULES, 2000, new Map(), [], rounded).pieces);
+  expect(planned).toEqual(stops(placeFurniture(site, set, RULES, 2000, new Map(), [], rounded).pieces));
+  expect(planned).not.toEqual(stops(place(site).pieces));
 });
 
 test("a stop sign whose place a walk's curb ramp takes stands further back along its street, not out in the road", () => {

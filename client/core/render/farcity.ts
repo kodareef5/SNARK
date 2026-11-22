@@ -61,7 +61,7 @@ const clock = (): number => (globalThis as { performance?: { now(): number } }).
 const HYSTERESIS = 1.08;
 /**
  * Updates a tile looked at through a sight keeps the levels its distance over the zoom asked for, after the sight is
- * lowered or turned off it: one raised again within it makes nothing (D1031).
+ * lowered or turned off it: one raised again within it makes nothing (D1078).
  */
 const ZOOM_LINGER = 180;
 /** The most levels a tier has, and the most forms a city is drawn in (a bit each in a tile's `wants`). */
@@ -349,7 +349,7 @@ export class FarCity {
         continue;
       }
       if (off > reach) continue;
-      // Through a sight a tile in its window wants the levels its distance over the zoom asks for (Camera.zoom, D1031),
+      // Through a sight a tile in its window wants the levels its distance over the zoom asks for (Camera.zoom, D1078),
       // its own as well, so the view is whole the moment the sight is lowered; and keeps them for ZOOM_LINGER.
       const tb = tile.box;
       const z = cam.zoom > 1 && cam.boxVisible(tb[0]! - cam.x, tb[1]! - cam.y, tb[2]! - cam.z, tb[3]! - cam.x, tb[4]! - cam.y, tb[5]! - cam.z) ? cam.zoom : 1;
@@ -604,7 +604,7 @@ export class FarCity {
    */
   private needed(tile: Tile, cam: Camera, off: number, share: number, zoom = 1, keep = true): number {
     const levels = this.levels;
-    // Through a sight `zoom` times, a tile is chosen for as if it stood that many times nearer (D1031).
+    // Through a sight `zoom` times, a tile is chosen for as if it stood that many times nearer (D1078).
     const at = off / zoom;
     let l = levels.length - 1;
     for (let k = 0; k < levels.length - 1; k++) {

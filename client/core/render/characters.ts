@@ -109,6 +109,12 @@ function rivalryColor(palette: Uint8Array, base: number): number {
 }
 
 /** The meshes on one rig: one sex of a species, or the whole of a species modelled without sexes. */
+/** How hot a body of `kind` shows in a visor's heat view (packet.ts HEAT_, D1081): a vehicle as the world does, a cold-blooded kind cold, the rest warm. */
+export function kindHeat(reg: Registry, kind: number): number {
+  const d = reg.defs[kind] as SpeciesDef | null;
+  return reg.vehicle[kind] ? HEAT_WORLD : d?.blood === "cold" ? HEAT_COLD : HEAT_WARM;
+}
+
 interface Creature {
   /** What it plays on its rig. */
   anim: CreatureAnim;
@@ -520,7 +526,7 @@ export class Characters {
       });
       const wreck = bind.own(d.id, "wreck");
       const flatColors = d.class === "creature" && d.regions ? Uint8Array.from(d.regions, (r) => r?.colors[0]?.[0] ?? 0) : null;
-      return { flatColors, heat: reg.vehicle[i] ? HEAT_WORLD : (d as SpeciesDef).blood === "cold" ? HEAT_COLD : HEAT_WARM, wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
+      return { flatColors, heat: kindHeat(reg, i), wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0, reg.combat[i]), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), wear: storiesOf(reg.vehicle[i] ?? null), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -1614,9 +1620,10 @@ export class Characters {
    * Queues a rigid mesh that has its own position and direction, such as an arrow in the air. Its origin goes to (x, y, z)
    * relative to the camera and its +Z along the unit direction (dx, dy, dz), stretched `length` times along it and `wide`
    * times across. It is drawn through the bone path with one bone, which gives it a tilt and a size as well as a facing.
+   * `region0` is the palette colour of its first colour region, for a mesh that has one.
    * False when the frame has no room left, and then it is counted dropped.
    */
-  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1): boolean {
+  loose(p: FramePacket, mesh: number, x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, wide = 1, region0 = 0): boolean {
     const first = this.room(p, 1, 1);
     if (first < 0) return false;
     // Right is level and square to the direction. Up is the direction crossed with right, so the basis keeps its handedness.
@@ -1653,6 +1660,7 @@ export class Characters {
     this.firstBone[n] = first;
     this.region0[n] = 0;
     this.colors.fill(0, n * 6, n * 6 + 6);
+    this.colors[n * 6] = region0;
     this.id[n] = 0;
     this.near[n] = SEEN;
     this.mask[n] = 0;

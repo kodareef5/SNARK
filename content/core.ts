@@ -81,8 +81,8 @@ const GEAR: Def[] = [
     return [
       { type: "item", class: "armor", id: item, label, stack: 1, color: 93, weight: [4, 6, 3, 6, 3][i]!,
         wear: { slot: piece.slot, set: "meridian", armor: 180, uses: 300, colors: [93, 82, 41], ...(piece.slot === "head" ? { sealed: true } : {}), ...(piece.slot === "torso" ? { vents: "vents" } : piece.slot === "feet" ? { vents: "boot_jets" } : {}) },
-        // The helmet's visor (D1033): its glass to 25 times, and past it a picture made larger as far as 1,000, its window
-        // a slit at the most. ARK's Tek helmet zooms and has night vision; the heat view is ours (DEV195).
+        // The helmet's visor (D1080): its glass to 25 times, and past it a picture made larger as far as 1,000, its window
+        // a slit at the most. ARK's Tek helmet zooms and has night vision; the heat view is ours (DEV211).
         ...(piece.slot === "head" ? { optic: { min: 2, max: 1000, window: [0.86, 0.22], shape: "visor" } as const } : {}),
         craft: { at: id("fabricator"), seconds: 5, xp: 0, needs: [
           { item: id(`flak_${piece.name}`), count: 1 }, { item: id("crystal"), count: 2 }, { item: id("electronics"), count: 1 },
@@ -283,7 +283,7 @@ const NODES: NodeDef[] = [
   // a hit, times the pick's 3, a quarter of the ore it gives.
   { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }, { item: "core:obsidian", min: 0, max: 1, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
   // Berry bushes, their berries red. How many narcoberries each picking gives is chosen, as the wiki gives no figure.
-  plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }, { item: "core:narcoberry", min: 0, max: 2 }], [0.8, 1.2], BUSHES),
+  plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }, { item: "core:narcoberry", min: 0, max: 2 }, { item: "core:stimberry", min: 0, max: 2 }], [0.8, 1.2], BUSHES),
   // Saw palmetto bears a few berries. A fern bears none.
   plant("palmetto", 17, 4, [0.7, 0.5, 0.7], [{ item: "core:fiber", min: 3, max: 6 }, { item: "core:berry", min: 1, max: 3 }, { item: "core:narcoberry", min: 0, max: 1 }], [0.75, 1.25], PALMETTOS),
   plant("fern", 7, 3, [0.45, 0.35, 0.45], [{ item: "core:fiber", min: 3, max: 6 }], [0.75, 1.3], FERNS),
@@ -446,6 +446,10 @@ const ALL: readonly Def[] = [
   { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // Holds items dropped on the ground.
   { type: "prop", class: "container", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
+  // A supply drop's capsule where it landed (planning/workstreams/supply.md): what a survivor looks at and opens. The
+  // client draws the capsule, its shaft and its landing from the list of drops it is sent, and passes this over. Its 60
+  // slots are CAPSULE_SLOTS of shared/supply/book.ts, which the starter book's fullest roll fits with room.
+  { type: "prop", class: "crate", id: "core:supply_capsule", mesh: "box", color: 10, radius: 0.7, height: 2.2, slots: 60 },
   // A flame arrow's burn: "approximately 22 damage per second to players" for 8 seconds (ark.wiki.gg, Flame Arrow,
   // 2026-11-15), as fire, so a body takes its own share of it. ARK's grows with the creature's size (DEV28).
   { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -22, damage: "fire" },

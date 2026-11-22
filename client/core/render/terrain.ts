@@ -387,7 +387,7 @@ export class TerrainLod {
       const i0 = Math.round((tx * size) / hf.cell);
       const j0 = Math.round((tz * size) / hf.cell);
       // Children finer than the whole map's pair read the window, so a node outside it is drawn as it is. Through a sight
-      // the view's tiles are chosen as if they stood its zoom times nearer (Camera.zoom, D1031); what casts is not.
+      // the view's tiles are chosen as if they stood its zoom times nearer (Camera.zoom, D1078); what casts is not.
       if (level > 0 && dist < size * this.detail * (shadows ? 1 : cam.zoom)) {
         if (stride >= 2 * COARSE || this.inside(i0, j0, stride * TILE_QUADS)) {
           for (let k = 0; k < 4; k++) {

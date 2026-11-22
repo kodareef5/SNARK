@@ -739,30 +739,41 @@ test("a load puts right a full ball that names no kept tame, and a kept tame no 
   h.host.shutdown();
 });
 
-async function runUntilKilled(db: string, seed: number, minAcks: number): Promise<void> {
-  const proc = Bun.spawn(["bun", join(import.meta.dir, "../fixtures/crash-child.ts"), db, String(seed), "balls"], { stdout: "pipe", stderr: "inherit" });
+/**
+ * Runs the crash child's "balls" mode on `db` until it is killed: by this process once it has read more than `minAcks`
+ * acks, or by the child itself just after round `round`'s commit where that is given. Returns the last ack read, which
+ * says when.
+ */
+async function runUntilKilled(db: string, seed: number, minAcks: number, round = 0): Promise<string> {
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../fixtures/crash-child.ts"), db, String(seed), "balls", String(round)], { stdout: "pipe", stderr: "inherit" });
   const decoder = new TextDecoder();
   let text = "";
   let killed = false;
   for await (const chunk of proc.stdout) {
     text += decoder.decode(chunk);
-    if (!killed && text.split("acked").length > minAcks) {
+    if (!killed && round === 0 && text.split("acked").length > minAcks) {
       proc.kill(9);
       killed = true;
     }
   }
   await proc.exited;
+  return text.trimEnd().split("\n").at(-1) ?? "";
 }
 
-test("a tame is neither lost nor doubled by a process killed at any moment: kept, loosed, passed on in its ball, and lost with a ball destroyed", async () => {
-  const db = join(dir, "killed.db");
+/**
+ * Kills the crash child's "balls" mode once for each run, [seed, acks] or [seed, 0, round], all on the one save `db`, and
+ * checks what each load finds. Returns how often each kind of step was committed, each counted once, and the names of
+ * the tames that stood in the world with no food left at some load.
+ */
+async function killedRuns(db: string, runs: readonly (readonly [number, number, number?])[]): Promise<{ ops: Map<number, number>; hungry: Set<string> }> {
   const ops = new Map<number, number>();
-  let broken = 0;
-  for (const [seed, minAcks] of [[31, 50], [32, 80], [33, 40], [34, 65]] as const) {
-    await runUntilKilled(db, seed, minAcks);
+  const hungry = new Set<string>();
+  let seen = 0;
+  for (const [seed, minAcks, round] of runs) {
+    const killed = await runUntilKilled(db, seed, minAcks, round);
     // Loading audits the ledger and checks each ball against each kept tame: there must be nothing to put right.
     const host = createHost(reg, { dbPath: db });
-    expect([host.items.audit(), host.balls.mended, host.eggs.mended]).toEqual([[], 0, 0]);
+    expect([seed, killed, host.items.audit(), host.balls.mended, host.eggs.mended]).toEqual([seed, killed, [], 0, 0]);
     // What a full ball names, and how often.
     const named = new Map<number, number>();
     let balls = 0;
@@ -787,15 +798,32 @@ test("a tame is neither lost nor doubled by a process killed at any moment: kept
     }
     // No ball names what is not a kept tame.
     for (const ref of named.keys()) expect(tames.some((t) => t.pid === ref && t.stored !== 0)).toBe(true);
-    for (const j of host.persistence!.store.journal()) ops.set(j.op, (ops.get(j.op) ?? 0) + 1);
-    // Tames are lost only with a ball destroyed: each name is there once, or was in a ball that was.
-    expect(new Set(tames.map((t) => t.name)).size).toBe(tames.length);
-    broken = BALL_TAMES - tames.length;
-    expect(broken).toBeGreaterThanOrEqual(0);
+    // The save holds every step committed since it was made. Each is counted once, from the entries no load saw before.
+    for (const j of host.persistence!.store.journal(seen)) ops.set(j.op, (ops.get(j.op) ?? 0) + 1);
+    seen = host.persistence!.store.lastJournalSeq();
+    // Tames are lost only with a ball destroyed, one with each: each name is there once, and as many are gone as balls
+    // were destroyed. None died in the world, where nothing harms one: its body would lie there with its name.
+    const bodies = [...host.records.byPid.values()].filter((r) => r.corpse !== null && r.name.startsWith("tame")).map((r) => r.name);
+    expect([seed, killed, new Set(tames.map((t) => t.name)).size, BALL_TAMES - tames.length, bodies]).toEqual([seed, killed, tames.length, ops.get(OP_BREAK) ?? 0, []]);
+    for (const t of tames) if (host.records.entOf.has(t.pid) && host.survival.value(t, V_FOOD) === 0) hungry.add(t.name);
     host.shutdown();
   }
-  // Each kind of step was taken, the common ones many times; and no more tames are gone than balls were destroyed.
+  return { ops, hungry };
+}
+
+test("a tame is neither lost nor doubled by a process killed at any moment: kept, loosed, passed on in its ball, and lost with a ball destroyed", async () => {
+  const { ops } = await killedRuns(join(dir, "killed.db"), [[31, 50], [32, 80], [33, 40], [34, 65]]);
+  // Each kind of step was taken, the common ones many times.
   for (const op of [OP_KEEP, OP_LOOSE]) expect([op, (ops.get(op) ?? 0) > 10]).toEqual([op, true]);
   expect((ops.get(OP_PASS) ?? 0) > 0).toBe(true);
-  expect(broken).toBeLessThanOrEqual(ops.get(OP_BREAK) ?? 0);
+});
+
+test("killed at the rounds where three tames once starved, a tame is still gone only with a ball destroyed", async () => {
+  // Killed just after these rounds, the play left five tames with no food, most of them out cold. They were gods, but
+  // were rated as starving: by this test's loads, which know no gods, and by a keep and a loose in one round, as keeping
+  // takes a tame out of the gods. Three starved to death in the last run, and were counted as lost with no ball
+  // destroyed. The play rates each tame again as a god before time passes now (tests/fixtures/crash-child.ts).
+  const { hungry } = await killedRuns(join(dir, "hungry.db"), [[31, 0, 88], [32, 0, 86], [33, 0, 44], [34, 0, 76]]);
+  // The rounds still leave tames with nothing to eat, or this would prove nothing.
+  expect(hungry.size).toBeGreaterThanOrEqual(3);
 });

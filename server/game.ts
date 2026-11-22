@@ -228,7 +228,7 @@ interface Pending {
 }
 
 /** One survivor's session, made when its hello is accepted. It outlives its connection by lingerTicks, and a reconnect with the same name and key takes it over. */
-/** The most entities a session's sight's cone adds to its view (D1032). */
+/** The most entities a session's sight's cone adds to its view (D1079). */
 export const CONE_ENTITIES = 192;
 
 export class Client {
@@ -502,7 +502,7 @@ export class GameServer {
   viewFor: ((c: Client, cur: SentView) => SentView) | null = null;
   /**
    * The chunks past its own a session looks into through a sight (server/gaze.ts), best first, or null: their entities
-   * are added to its view after those round it, which come first under its cap (D1032).
+   * are added to its view after those round it, which come first under its cap (D1079).
    */
   cone: ((c: Client) => { readonly chunks: Int32Array; readonly count: number } | null) | null = null;
   /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */

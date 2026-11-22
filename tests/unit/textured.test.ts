@@ -146,7 +146,8 @@ test("the SURFACE program's text is written from the same numbers", () => {
   const text = surfaceFragment("bc", AIR);
   for (const n of [DIELECTRIC, SMOOTHEST, KNEE]) expect(text.split(String(n)).length).toBeGreaterThan(1);
   // A normal's x and y are in red and green, but in the astc variant in the colours and alpha.
-  expect([text.includes("texture(uNormal, vUv).rg;"), surfaceFragment("rgba", AIR) === text, surfaceFragment("astc", AIR).includes("texture(uNormal, vUv).ra;")]).toEqual([true, true, true]);
+  // Sampled at `uv`, a bent walk's top's across by where it lies (bend.ts BENT_GRAIN), else the vertex's.
+  expect([text.includes("texture(uNormal, uv).rg;"), surfaceFragment("rgba", AIR) === text, surfaceFragment("astc", AIR).includes("texture(uNormal, uv).ra;")]).toEqual([true, true, true]);
   // Smooth surfaces mirror the sky table.
   expect(text.includes(SKY_GLSL)).toBe(true);
   for (const part of [text, SURFACE_VERTEX, SKY_VERTEX, SKY_FRAGMENT]) {

@@ -4,6 +4,7 @@
 // buffer. The pictures are laid out in PNG sheets (shared/pack/icons.ts) that a build lists in its manifest. A picture is
 // kept under .cache/icons by everything it is drawn from, so a build draws only what changed.
 
+import { BLOCKOUT_MESH } from "./blockout.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -88,7 +89,8 @@ export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) 
     // An assembly shows the vehicle it will deploy, using the same authored preview/body slots as placement.
     const deployed = mesh === "" && d.class === "vehicle" ? vehicles.get(d.deploys ?? "") : undefined;
     if (deployed) mesh = own(d.id, "preview") || own(deployed.id, "body");
-    if (icon === "" || mesh === "") continue;
+    // A thing blocked out is held as a plain box, which is no picture of it: it keeps its swatch.
+    if (icon === "" || mesh === "" || mesh === BLOCKOUT_MESH) continue;
     out.push({ icon, owner: d.id, mesh, colors: deployed ? Array.from({ length: 6 }, (_, i) => deployed.regions?.[i]?.colors[0]?.[0] ?? 0) : [colors, 0, 0, 0, 0, 0] });
   }
   return out;

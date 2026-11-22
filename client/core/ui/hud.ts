@@ -37,9 +37,9 @@ export const KEY_CONE = 24;
 /** A holo-scope's tint over the view; a scope's reticle (eight panels); one mark per laser dot, MAX_DOTS at most. */
 export const KEY_TINT = 38;
 export const KEY_SIGHT = 5000;
-/** The scope's shadow across its lens: the lens again where the eye is, and the two strips that move clears (D1030). */
+/** The scope's shadow across its lens: the lens again where the eye is, and the two strips that move clears (D1077). */
 export const KEY_SIGHT_SHADE = 5100;
-/** A visor's frame and readouts (D1033). */
+/** A visor's frame and readouts (D1080). */
 export const KEY_VISOR = 5110;
 /** The visor's ink: its frame, its marks and its words. */
 const VISOR_INK = 0x7fe6d4;
@@ -73,7 +73,7 @@ export const IMAGE_MAP = 2;
 
 export { MINIMAP_SIZE };
 const MARGIN = 12;
-export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH };
+export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mate: S_MARK_SELF, tame: S_MARK_SELF, player: S_MARK_PLAYER, creature: S_MARK_CREATURE, spawn: S_MARK_SPAWN, death: S_MARK_DEATH, drop: S_MARK_SELF, dropPip: S_MARK_SELF };
 /** Colours of the kinds that have no style of their own. */
 export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a };
 
@@ -89,7 +89,7 @@ const LASER_RED = 0xff2a22;
 const DOT = 4;
 
 /**
- * A scope's reticle, the German post (Scope Attachment): the view masked to its window (D1030), round or two merged
+ * A scope's reticle, the German post (Scope Attachment): the view masked to its window (D1077), round or two merged
  * lenses, spanning `m.sightShare` of the height; thick posts in from the left, the right and the bottom that stop short
  * of the middle, and a fine line across between the side posts. Where the eye is off the axis the lens is masked again
  * from where the eye is, softer, casting the scope's shadow across it.
@@ -132,7 +132,7 @@ function buildReticle(f: UiFrame, W: number, H: number, m: HudModel): void {
 }
 
 /**
- * A helmet's visor (D1033): the view masked to its window, a wide box that narrows to a slit as it zooms; corner marks, a
+ * A helmet's visor (D1080): the view masked to its window, a wide box that narrows to a slit as it zooms; corner marks, a
  * small cross in its middle, and under the window its zoom (and DIGITAL past its glass), its view, its heading and how
  * far off its middle is on.
  */
@@ -301,7 +301,9 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
         placeArrow(f.add(KEY_SELF_ARROW, K_IMAGE, x - side / 2, y - side / 2, side, side, S_FRAME), m.dial.heading);
         continue;
       }
-      f.add(KEY_MARKER + shown++, K_PANEL, x - 2, y - 2, 4, 4, MARKER_STYLE[k.kind]).tint = MARKER_TINT[k.kind] ?? -1;
+      // A drop told of on the compass alone is not on the map, the small one either.
+      if (k.kind === "dropPip") continue;
+      f.add(KEY_MARKER + shown++, K_PANEL, x - 2, y - 2, 4, 4, MARKER_STYLE[k.kind]).tint = (k.tint ?? -1) >= 0 ? k.tint! : (MARKER_TINT[k.kind] ?? -1);
     }
     if (inspect || options.diagnostics) f.text(KEY_CLOCK, mapX, mapTop + MAP + 4, MAP, S_LABEL, m.clock);
     if (mapTools) for (let i = 0; i < 2; i++) {

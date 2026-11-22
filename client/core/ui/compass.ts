@@ -83,6 +83,9 @@ const PIP: Partial<Record<MarkerKind, { style: number; tint: number }>> = {
   tame: { style: S_MARK_SELF, tint: 0xe8d24a },
   death: { style: S_MARK_DEATH, tint: -1 },
   spawn: { style: S_MARK_SPAWN, tint: -1 },
+  // A supply drop's pip is its tier's colour, which the marker carries.
+  drop: { style: S_MARK_SELF, tint: 0xffffff },
+  dropPip: { style: S_MARK_SELF, tint: 0xffffff },
 };
 
 /** Bearing in degrees clockwise from north from the map place (u0, v0) to (u, v), on a map `sizeX` by `sizeZ` metres. */
@@ -158,7 +161,7 @@ export function buildCompass(f: UiFrame, m: HudModel, at: TapeLayout, degrees: b
       const behind = Math.abs(d) > at.span;
       const x = at.x + Math.max(-at.span, Math.min(at.span, d)) * scale;
       const p = f.add(KEY_PIP + pips++, K_PANEL, x - 2, at.y + TAPE_HEIGHT + 2, 4, 4, look.style);
-      p.tint = look.tint;
+      p.tint = (mk.tint ?? -1) >= 0 ? mk.tint! : look.tint;
       p.alpha = behind ? 0.45 : 0.95;
     }
   }

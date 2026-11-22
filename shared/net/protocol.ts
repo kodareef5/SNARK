@@ -79,9 +79,11 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 39: the glider on the owner's body (the grade carried, open or not, and its keys as last sampled), behind one bit; under an
  * open glider CUE_JET is set and the motion bits' mode field holds ANIM_GLIDE and the phase (planning/workstreams/glider.md).
  * 40: the tames kept in a box's soul balls (OWN_KEPT), and a tame going into or coming out of one (EVENT_BALL).
- * 41: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1032).
+ * 41: supply drops (planning/workstreams/supply.md): OWN_OPEN says what kind of box is open (OPEN_TAKE_ONLY), and S_SUPPLY
+ * tells every session the drops that are live.
+ * 42: CMD_GAZE, a sight's zoom and what it is on, which widens the session's view along its look (D1079).
  */
-export const PROTOCOL_VERSION = 41;
+export const PROTOCOL_VERSION = 42;
 /** Bits the owner body's spent reserve travels in: JET_CAPACITY (shared/sim/character.ts) must fit, which a test holds. */
 export const JET_SPENT_BITS = 9;
 
@@ -234,6 +236,12 @@ export const S_TRAVEL = 14;
 export const S_MOTION = 15;
 /** Protocol 25. Sparse, generation-qualified corpse motion checkpoint; shared/net/corpse.ts defines its bounded payload. */
 export const S_CORPSE = 16;
+/**
+ * Protocol 41. The supply drops that are live on the map, whole, to every session after its welcome and again whenever
+ * one is called, lands, is first opened or goes: what each tier and class among them shows, then a row a drop
+ * (shared/sim/supply.ts writeSupply). A session works out where each is from its ticks, so nothing more is sent as it flies.
+ */
+export const S_SUPPLY = 17;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -414,7 +422,7 @@ export const CMD_CLOCK = 35;
  */
 export const CMD_EMOTE = 36;
 /**
- * Looking through a sight (D1032): how many times it magnifies, in sixteenths u16 (0 or 16 and under for none), and how far
+ * Looking through a sight (D1079): how many times it magnifies, in sixteenths u16 (0 or 16 and under for none), and how far
  * off, in metres, what the middle of the view is on u16 (0 for nothing found). The server holds the zoom to what the
  * survivor holds or wears that magnifies, and while it lasts adds the chunks along the survivor's look to its view and
  * wakes the creatures round what it is on. A session sends it as its zoom changes and once a second while it looks;
@@ -492,8 +500,18 @@ export const SLOT_BLUEPRINT = 1;
  */
 export const SLOT_ON = 2;
 
-/** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
+/**
+ * open 1 bit, and if open: capacity varint, name string, and since protocol 41 flags u8 (OPEN_ bits). Its slots follow as
+ * OWN_SLOTS for the open box.
+ */
 export const OWN_OPEN = 4;
+/** The open box is only taken from (a supply drop's capsule): the client offers no way to put a stack in. */
+export const OPEN_TAKE_ONLY = 1;
+/**
+ * Bytes of the open box's name: the server cuts a longer one at a whole character and the client reads no more. It is
+ * a supply capsule's at its longest ("Ringed", a tier's and a class's name at SUPPLY_NAME_BYTES each, "drop").
+ */
+export const MAX_OPEN_NAME_BYTES = 208;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
 export const OWN_MARKERS = 5;
 /**

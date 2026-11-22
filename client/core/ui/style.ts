@@ -14,7 +14,7 @@ export interface Style {
   /** Interface text uses the local face; console output and text entry retain monospace. */
   readonly sans?: boolean;
   /**
-   * A sight's lens (D1030): the fill is drawn only outside a round hole as tall as the box and centred in it (LENS_ROUND),
+   * A sight's lens (D1077): the fill is drawn only outside a round hole as tall as the box and centred in it (LENS_ROUND),
    * or outside two merged side by side, each as tall as the box with its middle half the box's height in from its side
    * (LENS_TWIN, a box optics.ts TWIN_WIDE times as wide as tall).
    */

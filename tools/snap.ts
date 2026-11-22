@@ -1491,7 +1491,7 @@ if (import.meta.main) {
   const view = provingView(w, h, undefined, undefined, mapFile);
   await setup(view);
   // --zoom N: the view magnified N times, as through a sight (client/core/optics.ts); with --ui --sight scope its lens
-  // spans --share of the height (D1030). The rasterizer draws the whole view, which the lens masks.
+  // spans --share of the height (D1077). The rasterizer draws the whole view, which the lens masks.
   const zoom = Number(arg("zoom") ?? 1);
   if (zoom > 1) [view.cam.fovY, view.cam.zoom] = [zoomed(view.cam.fovY, zoom), zoom];
   const t0 = performance.now();
@@ -1574,7 +1574,7 @@ if (import.meta.main) {
         const needs = view.reg.recipeOf[item]!;
         for (let k = 0; k + 1 < needs.length && free < slots.cap; k += 2) if (slots.total(needs[k]!) === 0) slots.set(free++, needs[k]!, Math.min(view.reg.stack[needs[k]!]!, needs[k + 1]! * 3), 0, 0, 0);
       }
-      session.open = { name: stationId.slice(stationId.indexOf(":") + 1).replace(/_/g, " "), inventory: slots };
+      session.open = { name: stationId.slice(stationId.indexOf(":") + 1).replace(/_/g, " "), inventory: slots, takeOnly: false };
       session.station = { kind, ref: 0, out: view.reg.burning[kind] === 1 ? session.serverTick + 900 * TICK_RATE : 0, lanes: [], jobs: [] };
       session.progress.engrams.push(...view.reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : [])));
       session.progress.level = 100;

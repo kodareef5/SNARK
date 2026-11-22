@@ -43,7 +43,7 @@ export class Camera {
   /** How many times the view magnifies the player's own (optics.ts magnification), which a sight narrows it to. */
   zoom = 1;
   /**
-   * The part of the view drawn, in its clip space (x0, y0, x1, y1, y up): all of it, or a sight's window (D1030). The
+   * The part of the view drawn, in its clip space (x0, y0, x1, y1, y up): all of it, or a sight's window (D1077). The
    * projection is the whole view's, so what is drawn is magnified alike; only what lies outside the window is left out,
    * by the frustum's sides, and the shell's scissor keeps its pixels from being shaded.
    */

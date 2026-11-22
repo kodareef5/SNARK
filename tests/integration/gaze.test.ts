@@ -1,4 +1,4 @@
-// A sight's gaze (server/gaze.ts, D1032): each session's cone widens its own view along its look, and what it is on lives.
+// A sight's gaze (server/gaze.ts, D1079): each session's cone widens its own view along its look, and what it is on lives.
 
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -79,7 +79,7 @@ test("two survivors side by side looking two ways through their glasses each see
   const from = { n: [ents.x[north]!, ents.z[north]!], s: [ents.x[south]!, ents.z[south]!] };
   looking(20000);
   expect(h.host.gaze.count).toBe(2);
-  // What a cone holds is seen, so nothing may come or go there unseen (the cast's seen(), D1032); to the side it is not.
+  // What a cone holds is seen, so nothing may come or go there unseen (the cast's seen(), D1079); to the side it is not.
   expect([h.host.gaze.seen(MID, MID + OFF), h.host.gaze.seen(MID, MID - OFF), h.host.gaze.seen(MID + OFF, MID)]).toEqual([true, true, false]);
   expect([h.host.creatures.isChunkAwake(chunkOf(north)), h.host.creatures.isChunkAwake(chunkOf(south))]).toEqual([true, true]);
   expect([seen(ada).includes(north), seen(ada).includes(south)]).toEqual([true, false]);

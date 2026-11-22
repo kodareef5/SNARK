@@ -307,7 +307,7 @@ test("through a scope a long rifle sways less prone than standing, and a pistol 
 });
 
 test("the scope magnifies three times and the holo-scope 1.25; the HUD shows the scope's reticle for the crosshair, and the holo-scope's tint and coloured crosshair", () => {
-  // Each sight's zoom is its item's optic facet (D1029).
+  // Each sight's zoom is its item's optic facet (D1076).
   const scopeZoom = (reg.defs[id("scope")] as ItemDef).optic!.min;
   const holoReg = withHolo();
   const holoZoom = (holoReg.defs[holoReg.index.get("core:test_holo")!] as ItemDef).optic!.min;
@@ -425,7 +425,7 @@ test("in the whole client: N with a laser fitted draws its dot in the middle of 
   const base = (app.ui.settings.fov * Math.PI) / 180;
   expect(app.hud.scope).toBe(true);
   expect(app.cam.fovY).toBeCloseTo(zoomed(base, 3), 3);
-  // The server is told, and widens the view along the look (D1032).
+  // The server is told, and widens the view along the look (D1079).
   expect(h.host.gaze.count).toBe(1);
   // The mouse slows on the tangent of the view's half: a third as far a pixel at three times (optics.ts lookScale).
   expect(app.controls.zoom).toBeCloseTo(app.ui.settings.sensitivity / 3, 3);
@@ -436,7 +436,7 @@ test("in the whole client: N with a laser fitted draws its dot in the middle of 
   expect(h.host.gaze.count).toBe(0);
 
   // Aimed, only the scope's window is drawn: the packet's window is the lens's box, a square as tall as the view, and the
-  // projection is the whole view's (D1030). Lowered, the whole view again.
+  // projection is the whole view's (D1077). Lowered, the whole view again.
   app.controls.mouseButton(2, true);
   run(1500);
   let packet = app.frame(h.now, 1280, 720)!;

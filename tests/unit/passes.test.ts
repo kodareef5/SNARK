@@ -102,7 +102,8 @@ test("a bench run measures once the scene is still, turns its view from then, an
   let now = 0;
   let report: ReturnType<BenchRun["frame"]> = null;
   for (let f = 0; f < 60 + BENCH_FRAMES + 10; f++, now += 16.7) {
-    expect(run.since(now)).toBeCloseTo(f <= 60 ? 0 : now - 60 * 16.7, 6);
+    // The view's clock: a sixtieth of a second for each frame measured before this one, whatever the frames took.
+    expect(run.since(now)).toBeCloseTo(f <= 61 ? 0 : (Math.min(f - 61, BENCH_FRAMES) * 1000) / 60, 6);
     const got = run.frame(now, 1, f > 60 ? [[5]] : [], p, f >= 1, drawn);
     if (got) [report, now] = [got, now];
   }

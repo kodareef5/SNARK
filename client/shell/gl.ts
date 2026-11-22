@@ -2,7 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { captureWidth, type StreetImage } from "../core/render/street-finish.ts";
-import { ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_HEAT_SHIFT, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { moved, ATLAS_ROWS, ATLAS_WIDTH, BEND_BUFFERS, BEND_BYTES, BONES_PER_ROW, DETAIL_FLOATS, DRAW_BENT, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_HEAT_SHIFT, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FRAME_FLOATS, FramePacket, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STREET_SIDE, STREET_TILE_BYTES, STREET_TILE_SIDE, TILE_CASTS, TRANSIENT_BUFFER, boneRows, quadIndices, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { MASK_MATERIALS, SURFACE_NAMES, SURFACE_PREFIX, WEATHER_LAYER } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
@@ -39,9 +39,9 @@ interface Program {
   bounds: object | null;
 }
 
-/** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers end `last`. */
+/** The uniforms the executor sets, by their place in a program's `at` and `last`. uOffset's three numbers follow its place in `last`, and uEffect's four end it. */
 const WHOLE_UV = [0, 0, 1, 1];
-const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, heat: 42 } as const;
+const U = { skin: 0, fade: 1, hand: 2, solid: 3, alpha: 4, grey: 5, cutoff: 6, level: 7, worldReady: 8, blend: 9, cells: 10, from: 11, light: 12, cascades: 13, viewProj: 14, sun: 15, sky: 16, fog: 17, camMod: 18, worldEye: 19, surfaceCity: 20, field: 21, last: 22, tint: 23, uv: 24, sheet: 25, center: 26, half: 27, wear: 28, worldPhase: 29, pass: 30, emissive: 31, offset: 32, worldLeast: 33, streetMaterial: 35, fixture: 36, wheelBones: 37, wheelCenters: 38, optics: 39, swap: 40, extent: 41, effect: 42, heat: 46 } as const;
 
 interface MeshLod {
   vao: WebGLVertexArrayObject;
@@ -914,7 +914,7 @@ export class GlRenderer {
     const sky = finish ? p.sky : p.skyShown;
     gl.clearColor(sky[0]!, sky[1]!, sky[2]!, this.transparentStage ? 0 : 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    // A sight's window: nothing outside it is shaded (packet.ts window, D1030).
+    // A sight's window: nothing outside it is shaded (packet.ts window, D1077).
     const win = p.window, dw = this.post.drawn[0], dh = this.post.drawn[1];
     if (win[2]! > 0) { gl.enable(gl.SCISSOR_TEST); gl.scissor(Math.floor(win[0]! * dw), Math.floor(win[1]! * dh), Math.ceil((win[2]! - win[0]!) * dw), Math.ceil((win[3]! - win[1]!) * dh)); }
     let step = -1;
@@ -941,6 +941,8 @@ export class GlRenderer {
       this.uniform(prog, U.fade, p.drawFade[d]!);
       this.uniform(prog, U.hand, p.drawHand[d]!);
       this.uniform(prog, U.swap, p.drawSwap[d]!);
+      const fx = p.drawEffect, e = d * 4;
+      if (prog.at[U.effect] && moved(prog.last, U.effect, fx, e, 4)) gl.uniform4f(prog.at[U.effect]!, fx[e]!, fx[e + 1]!, fx[e + 2]!, fx[e + 3]!);
       this.uniform(prog, U.heat, (flags >>> DRAW_HEAT_SHIFT) & 3);
       if (textured) {
         this.streetFinish(prog, p, d);
@@ -1012,13 +1014,8 @@ export class GlRenderer {
       gl.uniform3f(u[U.center]!, info.center[0], info.center[1], info.center[2]);
       gl.uniform3f(u[U.half]!, info.half[0], info.half[1], info.half[2]);
     }
-    const x = offsets[i * 3]!, y = offsets[i * 3 + 1]!, z = offsets[i * 3 + 2]!;
-    if (last[U.offset] !== x || last[U.offset + 1] !== y || last[U.offset + 2] !== z) {
-      last[U.offset] = x;
-      last[U.offset + 1] = y;
-      last[U.offset + 2] = z;
-      gl.uniform3f(u[U.offset]!, x, y, z);
-    }
+    const o = i * 3;
+    if (moved(last, U.offset, offsets, o, 3)) gl.uniform3f(u[U.offset]!, offsets[o]!, offsets[o + 1]!, offsets[o + 2]!);
     this.vertexArray(lod.vao);
     const entityIds = !!lod.surface && buffer === this.transient && this.warmed?.lit === true;
     if (lod.buffer === buffer && lod.first === first && lod.entityIds === entityIds) return;

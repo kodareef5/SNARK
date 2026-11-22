@@ -1,6 +1,7 @@
 // The stations wave's contracts (planning/reference/stations-plan.md, S0): the numbers it took, OWN_STATION's layout, the
 // save's new fields, the stubs later projects build on, and the two built with no content using them, a station's own
 // fuel and a lit station counted as the station it is out. A project that builds one moves its pin here in the same change.
+import { BLOCKED_OUT } from "../../content/items/blockouts.ts";
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -26,14 +27,17 @@ import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
+// What is blocked out is made at stations too: tests/unit/blockouts.test.ts holds where and of what.
+const BLOCKED = new Set(BLOCKED_OUT);
+
 const reg = compileContent(CORE_CONTENT).registry!;
 const root = join(import.meta.dir, "../..");
 const id = (r: Registry, name: string): number => r.index.get(name.includes(":") ? name : `core:${name}`)!;
 
 test("protocol 17 and record format 7 are the stations wave's, and it took no command, own component, event, saved component or deadline", () => {
   // 16 is the flyers', and 18, after this wave's 17, the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([41, 16]);
-  // 19 adds rotorcraft state and CMD_VEHICLE (32), 22 CMD_STATICS (33), 25 CMD_CORPSE (34), 34 CMD_CLOCK (35), 35 the ticks given up in a snapshot, 36 a late input's buttons carried, 37 a survivor's emote and CMD_EMOTE (36), 41 a sight's CMD_GAZE (37).
+  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([42, 16]);
+  // 19 adds rotorcraft state and CMD_VEHICLE (32), 22 CMD_STATICS (33), 25 CMD_CORPSE (34), 34 CMD_CLOCK (35), 35 the ticks given up in a snapshot, 36 a late input's buttons carried, 37 a survivor's emote and CMD_EMOTE (36), 42 a sight's CMD_GAZE (37).
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   // 40 is the soul balls': OWN_KEPT (17), EVENT_BALL (8), and the saved mark of a tame kept in one (COMP_STORED, 25), which a
@@ -42,9 +46,10 @@ test("protocol 17 and record format 7 are the stations wave's, and it took no co
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([37, 17, 8, 10]);
   const store = readFileSync(join(root, "server/persist/codec.ts"), "utf8");
   expect([/const RECORD_FORMAT = (\d+);/.exec(store)?.[1], Math.max(...[...store.matchAll(/const COMP_\w+ = (\d+);/g)].map((m) => Number(m[1])))]).toEqual(["7", 26]);
-  // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found cars' return.
+  // A lane ends on the fire's own deadline, a powered job on the craft deadline: no deadline of its own. 15 is the found
+  // cars' return and 12 the supply drops'.
   const deadlines = readdirSync(join(root, "server")).filter((f) => f.endsWith(".ts")).flatMap((f) => [...readFileSync(join(root, "server", f), "utf8").matchAll(/export const DEADLINE_\w+ = (\d+);/g)].map((m) => Number(m[1])));
-  expect([deadlines.sort((a, b) => a - b), DEADLINE_FIRE, DEADLINE_CRAFT]).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 15], 6, 4]);
+  expect([deadlines.sort((a, b) => a - b), DEADLINE_FIRE, DEADLINE_CRAFT]).toEqual([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15], 6, 4]);
 });
 
 test("the fields: a station's own fuel is built, the forge's (S1) are built, and the rest are stubs that wait for stations, each its project's", () => {
@@ -109,7 +114,7 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([byIndex([...both, ...bin, ...vault]), byIndex([...both, ...vault])]);
   expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"], ["core:jerky", "core:preserving_bin"], ["core:jerky_prime", "core:preserving_bin"]], [["core:wood", "core:charcoal"]]]);
   // Sparkpowder is made at the mortar, as before, and since S6 the narcotic, cementing paste and gunpowder (tests/unit/ark-stations.test.ts).
-  expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]).sort()]).toEqual([id(reg, "mortar"), ["core:gunpowder", "core:narcotic", "core:paste", "core:sparkpowder"]]);
+  expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]!).filter((n) => !BLOCKED.has(n)).sort()]).toEqual([id(reg, "mortar"), ["core:gunpowder", "core:narcotic", "core:paste", "core:sparkpowder"]]);
 });
 
 /** A test station that lights, named by its unlit and lit ids, burning only sparkpowder 2 s a piece, and a loaf made at it. */

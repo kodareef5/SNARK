@@ -1,6 +1,6 @@
-// The Meridian helmet's visor (D1033): held up with the middle button, it magnifies by its glass to VISOR_GLASS times and
+// The Meridian helmet's visor (D1080): held up with the middle button, it magnifies by its glass to VISOR_GLASS times and
 // past that makes the picture larger, as far as its optic's most; the wheel steps the zoom and N its view: plain, night
-// or heat (D1034), in which a body shows as hot as its kind is, the world cold but where the sun has lit it, through no air.
+// or heat (D1081), in which a body shows as hot as its kind is, the world cold but where the sun has lit it, through no air.
 // Night vision amplifies the light by more the darker the hour, so by day it does not white out, as ARK's Tek helmet's
 // does not; its grain is heavier in the dark, and a picture made larger past the glass is grainier the further it goes.
 

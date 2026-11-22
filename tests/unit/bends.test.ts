@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
-import { CHUNK_SIZE, TICK_DT } from "../../shared/coords.ts";
+import { CHUNK_SIZE, FRAME_MIDDLE, TICK_DT } from "../../shared/coords.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
 import { createVehicle, stepVehicle } from "../../shared/sim/vehicle.ts";
-import { BEND_SHORTS, MODEL_HALF, arcLength, bendVertex, curveAt, packBend, placeKerb, underPiece, unpackBend, wrapped, type BentPiece, type KerbLine, type Section } from "../../shared/world/bends.ts";
-import { bendOf, blankStatics, parseMap, readHead, readPart, setStatics, writeMap, type StaticsPiece } from "../../shared/world/mapfile.ts";
+import { BEND_SHORTS, HIT_PREFIX, MODEL_HALF, arcLength, bendVertex, curveAt, packBend, placeKerb, underPiece, unpackBend, wrapped, type BentPiece, type KerbLine, type Section } from "../../shared/world/bends.ts";
+import { MapStatics, bendOf, blankStatics, parseMap, readHead, readPart, setStatics, writeMap, type MapData, type MapStatic, type StaticsPiece } from "../../shared/world/mapfile.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
+import { rowsOf as nearRows } from "../../client/core/mapload.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
@@ -50,7 +53,8 @@ test("a straight kerb is a few long pieces end to end on its line, each a straig
   const a = (44 * Math.PI) / 180, x: number[] = [], z: number[] = [];
   for (let d = 0; d <= 50; d += 2) [x[x.length], z[z.length]] = [100 + d * Math.cos(a), 200 + d * Math.sin(a)];
   const pieces = placeKerb({ x, z, y: x.map(() => 2) }, 1, SECTION);
-  expect(pieces.length).toBe(4);
+  // Up to 32 m a straight, where the line runs straight and rises evenly.
+  expect(pieces.length).toBe(2);
   expect(pieces.every((p) => p.kind === "core:zzzzzbend_raised_s")).toBe(true);
   for (let k = 0; k < pieces.length; k++) {
     const [sx, , sz] = faceAt(pieces[k]!, 0), [ex, , ez] = faceAt(pieces[k]!, 1);
@@ -132,34 +136,84 @@ test("the collision pieces under a bent piece lie within it, along its curve, at
   expect(reg.index.has(p!.kind)).toBe(true);
 });
 
-test("a map holds its bent pieces' bends, by chunk and slot, read whole and read in parts", () => {
-  const map = flatMap(4);
-  const line = arc(128, 128, 30, 0, Math.PI, 2);
-  const pieces = placeKerb(line, 1, SECTION);
-  const bends = pieces.map((p) => {
-    const b = new Int16Array(BEND_SHORTS);
-    packBend(b, 0, p.bend);
-    return b;
-  });
-  const statics = [
+/** A flat map of 4 by 4 chunks whose middle is a corner of four sectors, with an arc of raised kerb round it and a rock either side. */
+function bentMap(): { map: MapData; statics: MapStatic[] } {
+  const map = flatMap(4, { dims: { chunksX: 4, chunksZ: 4, frameX: FRAME_MIDDLE - 2, frameZ: FRAME_MIDDLE - 2 } });
+  const pieces = placeKerb(arc(128, 128, 30, 0, Math.PI, 2), 1, SECTION);
+  const statics: MapStatic[] = [
     { kind: "core:rock", x: 10, y: 33, z: 10, yaw: 0 },
-    ...pieces.map((p, i) => ({ kind: p.kind, x: p.x, y: p.y + 32, z: p.z, yaw: Math.round((p.yaw / 360) * 65536) & 0xffff, bend: bends[i]! })),
+    ...pieces.map((p) => {
+      const b = new Int16Array(BEND_SHORTS);
+      packBend(b, 0, p.bend);
+      return { kind: p.kind, x: p.x, y: p.y + 32, z: p.z, yaw: Math.round((p.yaw / 360) * 65536) & 0xffff, bend: b };
+    }),
     { kind: "core:rock", x: 200, y: 33, z: 200, yaw: 0 },
   ];
-  const file = writeMap({ ...map, statics });
-  const back = parseMap(file).statics;
-  expect([...back].map((s) => (s.bend ? Array.from(s.bend) : null))).toEqual(statics.map((s) => ("bend" in s && s.bend ? Array.from(s.bend) : null)));
-  // Read a sector at a time, as a page does, the chunks hold the same bends.
+  return { map, statics };
+}
+
+/** A sector's statics read alone, one at a time, into a table laid out from the head, as a page reads them. */
+function readInParts(file: Uint8Array): MapStatics {
   const head = readHead(file);
   const t = blankStatics(head, false);
-  for (const part of head.parts.filter((p) => p.kind === "statics")) {
-    const piece = readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece;
-    [...setStatics(head, t, piece)];
-  }
+  for (const part of head.parts.filter((p) => p.kind === "statics")) [...setStatics(head, t, readPart(head, part, file.subarray(part.at, part.at + part.length)) as StaticsPiece)];
+  return t;
+}
+
+/** Every row of a table, chunk by chunk and slot by slot, as text. */
+const rowsOf = (t: MapStatics): string[] => Array.from({ length: t.kind.length }, (_, r) => `${t.kinds[t.kind[r]!]} ${t.x[r]} ${t.y[r]} ${t.z[r]} ${t.yaw[r]}`);
+
+test("a map holds its bent pieces' bends, by chunk and slot, read whole and read in parts", () => {
+  const { map, statics } = bentMap();
+  const file = writeMap({ ...map, statics });
+  const back = parseMap(file).statics;
+  // A map lists its pieces sector by sector.
+  const bends = (list: Iterable<MapStatic>): string[] => [...list].filter((s) => !s.kind.startsWith(HIT_PREFIX)).map((s) => `${s.kind} ${s.bend ? Array.from(s.bend) : null}`).sort();
+  expect(bends(back)).toEqual(bends(statics));
+  // Read a sector at a time, as a page does, the chunks hold the same bends.
+  const t = readInParts(file);
   expect([...t.bends.keys()].sort()).toEqual([...back.bends.keys()].sort());
   for (const [c, b] of back.bends) for (let k = 0; k < b.slot.length; k++) expect(bendOf(t.bends.get(c), b.slot[k]!)).toEqual(b.bend.subarray(k * 8, k * 8 + 8));
   // Every bent piece's chunk is where its chord's middle is.
   for (const [c] of back.bends) expect(c).toBeLessThan((map.dims.chunksX * map.dims.chunksZ * CHUNK_SIZE) / CHUNK_SIZE);
+  // The statics round the body a page hands over before the whole map's hold their chunks' bends: the near store draws
+  // a bent piece by them, and without them a whole city drew no kerb until every part had come.
+  const head = readHead(file), sectors = head.parts.filter((p) => p.kind === "statics");
+  const steps = nearRows(head, t, sectors);
+  let s = steps.next();
+  while (!s.done) s = steps.next();
+  const near = s.value, kept = [...t.bends.keys()].filter((c) => near.first[c + 1]! > near.first[c]!);
+  expect(kept.length).toBeGreaterThan(0);
+  for (const c of kept) expect(near.bends.get(c)).toBe(t.bends.get(c));
+});
+
+test("a map stores no collision piece of a bent one but makes them where it is read: the same boxes, read whole or a sector at a time", () => {
+  const { map, statics } = bentMap();
+  // As the build lays them, the collision pieces in the list (bent-walks.ts), from the pieces' own places.
+  const listed = statics.flatMap((s) => [s, ...(s.bend ? underPiece({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: (s.yaw * 360) / 65536, bend: unpackBend(s.bend), kerb: "raised" }).map((h) => ({ kind: h.kind, x: h.x, y: h.y, z: h.z, yaw: Math.round((h.yaw / 360) * 65536) & 0xffff })) : [])]);
+  const file = writeMap({ ...map, statics: listed });
+  // The list's collision pieces are not what the file holds: it is the same with them or without them.
+  expect(writeMap({ ...map, statics })).toEqual(file);
+  const whole = parseMap(file).statics, parts = readInParts(file);
+  // The arc crosses the corner of four sectors: some of its pieces' boxes stand in another sector than the piece, which
+  // that sector stores; the rest are made as each sector is read.
+  const hits = [...whole].filter((s) => s.kind.startsWith(HIT_PREFIX));
+  expect(hits.length).toBe(listed.length - statics.length);
+  // The same rows in every chunk's slots, to the bit, read whole as a server does and a sector at a time as a page does,
+  // and the same as a table made from the list (MapStatics.of, as the build's).
+  expect(rowsOf(parts)).toEqual(rowsOf(whole));
+  const of = MapStatics.of(map.dims, listed);
+  const sorted = (t: MapStatics): string[] => {
+    const out: string[] = [];
+    for (let c = 0; c + 1 < t.first.length; c++) out.push(...rowsOf(t).slice(t.first[c]!, t.first[c + 1]!).sort());
+    return out;
+  };
+  expect(sorted(of)).toEqual(sorted(whole));
+  // Each made box within a few millimetres of where the build laid it from the pieces' own places, off the lattice.
+  const near = (h: MapStatic): number => Math.min(...listed.filter((l) => l.kind === h.kind).map((l) => Math.hypot(l.x - h.x, l.y - h.y, l.z - h.z)));
+  expect(Math.max(...hits.map(near))).toBeLessThan(0.004);
+  const reg = coreRegistry();
+  for (const h of hits) expect(reg.index.has(h.kind)).toBe(true);
 });
 
 /** A kerb's face along z = 100 from x = 70 to 94, round a 6 m arc about (94, 106) to (100, 106), then up x = 100 to z = 130, its walk inside the corner. */
@@ -250,5 +304,76 @@ test("a body steps up a bent kerb and walks round its curved walk on top of it, 
       mounted ||= over(car);
     }
     expect([x, z, mounted]).toEqual([x, z, true]);
+  }
+});
+
+test("a walk let down to the ground at its end: its top falls to the road along the piece, the kerb stands, and its collision is a slope", () => {
+  const out = new Int16Array(BEND_SHORTS);
+  for (const sink of [1, -1, 0] as const) for (const tactile of [true, false]) {
+    packBend(out, 0, { half: 0.75, turn0: 0, turn1: 0, station: 12, rise: 0, panel: 1.5, walk: 3.25, seed: 9, wear: 0.3, sink, tactile });
+    const b = unpackBend(out);
+    expect([b.sink, b.tactile, b.walk, b.panel]).toEqual([sink, tactile, 3.25, 1.5]);
+  }
+  const [p] = placeKerb({ x: [0, 1.5], z: [0, 0], y: [1, 1] }, 1, SECTION);
+  const down: BentPiece = { ...p!, bend: { ...p!.bend, sink: 1 } };
+  const at = (b: BentPiece, u: number, z: number, y: number): number => {
+    const o = new Float64Array(11);
+    bendVertex(o, b.bend, (u - 0.5) * 2 * MODEL_HALF, y, z, 0, 1, 0, 1, 0, 0);
+    return o[1]!;
+  };
+  // The walk's top, 0.15 m over the road, at its start and down on the road at its end (each with the walk's sag of a
+  // few millimetres); the kerb's top stays.
+  expect(at(down, 0, 1, 0.15)).toBeCloseTo(0.15, 2);
+  expect(at(down, 1, 1, 0.15)).toBeCloseTo(0, 2);
+  expect(at(down, 1, 0.1, 0.15)).toBeCloseTo(0.15, 6);
+  // Nothing under the road moves but by the sag.
+  expect(at(down, 1, 1, -0.06)).toBeCloseTo(-0.06, 2);
+  // Its collision: the kerb's box 0.3 m wide, and behind it a slope as long as the piece, falling toward its end.
+  const hits = underPiece(down);
+  expect(hits.map((h) => h.kind).sort()).toEqual(["core:zzzzzbendhit_box_30_100", "core:zzzzzbendhit_box_30_100", "core:zzzzzbendhit_slope_275_150"].sort());
+  const reg = coreRegistry();
+  for (const h of hits) expect(reg.index.has(h.kind)).toBe(true);
+  // A survivor walks down it from the walk to the road and does not step off a ledge.
+  const w = flatWorld(4);
+  for (const h of underPiece({ ...down, x: 100.75, z: 100, y: 0 })) w.structs.add(w.kind(h.kind), h.x, h.y, h.z, Math.round((h.yaw / 360) * 65536) & 0xffff, 0, 1);
+  const body = new Body(), params = w.reg.move[w.kind("core:survivor")]!;
+  [body.x, body.z, body.y, body.grounded] = [99.5, 101.8, 0.15, true];
+  let worst = 0, last = body.y;
+  for (let tick = 0; tick < 200 && body.x < 103; tick++) {
+    stepBody(w, body, 0, 90, 16384, 0, 0, params, TICK_DT);
+    worst = Math.max(worst, last - body.y);
+    last = body.y;
+  }
+  expect(body.x).toBeGreaterThan(102.5);
+  expect(body.y).toBeLessThan(0.03);
+});
+
+test("a bent walk's grain is laid across by the concrete strip's own rows, as the street atlas lays them out", async () => {
+  const { CONCRETE_ROWS, CONCRETE_METRES, STRIP_METRES } = await import("../../client/core/render/bend.ts");
+  // The street atlas's layout, read where it lies (it is in git, outside every zone).
+  const layout = JSON.parse(readFileSync(join(import.meta.dir, "../../assets/source/core/props/street/layout.json"), "utf8")) as { street: { side: number; tiles: number; gutter: number; strips: string[]; strip: number } };
+  const s = layout.street, k = s.strips.indexOf("concrete");
+  expect([...CONCRETE_ROWS]).toEqual([(k * s.strip + s.gutter) / s.side, ((k + 1) * s.strip - s.gutter) / s.side]);
+  // As many rows a metre across as along.
+  expect((CONCRETE_ROWS[1] - CONCRETE_ROWS[0]) * s.side / CONCRETE_METRES).toBe(s.side / STRIP_METRES);
+  expect(STRIP_METRES).toBe(s.tiles);
+});
+
+test("a straight runs to 32 m where its line rises evenly, and past 16 m no further where it does not", () => {
+  const x = Array.from({ length: 31 }, (_, k) => k), z = x.map(() => 0);
+  expect(placeKerb({ x, z, y: x.map((k) => 1 + k * 0.01) }, 1, SECTION).length).toBe(1);
+  // A hump of 6 cm at 24 m: a straight to 16 m whatever, then on only where it keeps to an even rise.
+  const humped = placeKerb({ x, z, y: x.map((k) => 1 + (k === 24 ? 0.06 : 0)) }, 1, SECTION);
+  expect(humped.length).toBeGreaterThan(1);
+  expect(humped[0]!.bend.half * 2).toBeGreaterThanOrEqual(16);
+  expect(humped.every((p) => p.kind.endsWith("_s"))).toBe(true);
+  // A way in graded 40 cm below the street across 6 m of it: the kerb goes down into it and up again, straights all, and
+  // no point of the line is more than 5 cm off its piece's rise, where one straight bridged it in the air.
+  const dip = (k: number): number => 1 - (k >= 8 && k <= 13 ? 0.4 : k === 7 || k === 14 ? 0.2 : 0);
+  const graded = placeKerb({ x: x.slice(0, 22), z: z.slice(0, 22), y: x.slice(0, 22).map(dip) }, 1, SECTION);
+  expect(graded.every((p) => p.kind.endsWith("_s"))).toBe(true);
+  for (let k = 0; k < 22; k++) {
+    const p = graded.find((q) => Math.abs(q.x - k) <= q.bend.half + 1e-9)!;
+    expect(Math.abs(p.y + (p.bend.rise * (k - p.x)) / p.bend.half - dip(k))).toBeLessThan(0.05 + 1e-9);
   }
 });

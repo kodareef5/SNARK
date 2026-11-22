@@ -53,6 +53,8 @@ import {
   OWN_LOOK,
   OWN_MARKERS,
   OWN_OPEN,
+  MAX_OPEN_NAME_BYTES,
+  OPEN_TAKE_ONLY,
   OWN_STATION,
   OWN_PROGRESSION,
   OWN_RESPAWN,
@@ -89,6 +91,7 @@ import {
   S_TEXT,
   S_TRAVEL,
   S_MOTION,
+  S_SUPPLY,
   S_WELCOME,
   REJECT_TRAVEL,
   TICKET_BYTES,
@@ -101,6 +104,7 @@ import {
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { readMotions, type MotionState } from "../../shared/sim/motion.ts";
+import { readSupply, type SupplyList } from "../../shared/sim/supply.ts";
 import type { MotionSource } from "./render/motion.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
@@ -402,6 +406,9 @@ export class ClientSession {
   /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
   travelled: { ticket: Uint8Array; world: number } | null = null;
 
+  /** The supply drops live on the map as the server last told them (S_SUPPLY), whole, and a count raised each time it does. */
+  supply: SupplyList = { tiers: [], classes: [], rows: [] };
+  supplyVersion = 0;
   /** Every moving static's state as the server last told it (S_MOTION), by ref: all after a welcome, then each as it is thrown. */
   readonly motions = new Map<number, MotionState>();
   /** Sparse exact launch/resume state, keyed by generation-qualified entity handle. Kept across packet/snapshot ordering. */
@@ -493,7 +500,7 @@ export class ClientSession {
   /** What the server tells of the creature the survivor looks at (OWN_OVERHEAD), or null. Shares are 0 to 1, or -1 where it tells nothing. */
   looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
-  open: { name: string; inventory: Inventory } | null = null;
+  open: { name: string; inventory: Inventory; takeOnly: boolean } | null = null;
   /** The tames kept in the soul balls of the own inventory and of the open box, by slot (OWN_KEPT). */
   readonly kept: [Map<number, Kept>, Map<number, Kept>] = [new Map(), new Map()];
   /**
@@ -1266,6 +1273,13 @@ export class ClientSession {
       const told = readMotions(r);
       if (told) for (const [ref, s] of told) this.motions.set(ref, s);
     }
+    else if (type === S_SUPPLY) {
+      const told = readSupply(r);
+      if (told) {
+        this.supply = told;
+        this.supplyVersion++;
+      }
+    }
     else if (type === S_CORPSE) {
       const motion = readCorpseMotion(r);
       if (motion && newerCorpseMotion(motion, this.corpseMotions.get(motion.id))) {
@@ -1465,8 +1479,9 @@ export class ClientSession {
       if (!r.bool()) this.open = null;
       else {
         const cap = r.varint();
-        const name = r.string(64);
-        if (!r.overflow) this.open = { name, inventory: new Inventory(cap) };
+        const name = r.string(MAX_OPEN_NAME_BYTES);
+        const flags = r.u8();
+        if (!r.overflow) this.open = { name, inventory: new Inventory(cap), takeOnly: (flags & OPEN_TAKE_ONLY) !== 0 };
       }
     } else if (component === OWN_MARKERS) {
       const count = r.u8();

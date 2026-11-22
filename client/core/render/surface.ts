@@ -11,7 +11,8 @@ export { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { MATERIAL_INDICATOR, MATERIAL_NIGHT, type PackMaterial } from "../../../shared/pack/pack.ts";
 import { linearToSrgb, srgbToLinear } from "./color-space.ts";
 import { EXHAUST_GLSL, POLISHED_SKY } from "./suit-finish.ts";
-import { CHANNEL, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street-finishes.ts";
+import { CHANNEL, DROP_GLOW, DROP_LIGHT, ENAMEL_ARMOR, EXHAUST, INSTRUMENT, LENS } from "../../../content/street-finishes.ts";
+import { DROP_GLSL } from "./supply-light.ts";
 import { CHANNEL_DIM, CHANNEL_STRIP, EYE_ENERGY_GLSL, EYE_GLINT_GLSL, EYE_STRIKE_GLSL } from "./tide-eye.ts";
 import { BURNT_SHEET, visor, SEED_GLSL, STREET_GLSL, WHEEL_FINISH_GLSL } from "./street-finish.ts";
 import { VEHICLE_SHADE_GLSL, VEHICLE_SHADE_UNIFORMS } from "./vehicle-shade.ts";
@@ -26,7 +27,7 @@ import { SHADOW_GLSL } from "./shadowtext.ts";
 import { OVER_GROUND_GLSL, SKY_OPEN_GLSL } from "./skyopen.ts";
 import { BOUNCE_SUN, ROOF_GLSL } from "./roof.ts";
 import { WEAR_GLSL, wearAlpha } from "./wear.ts";
-import { BENT_WEAR_GLSL, BEND_GLSL, STRIP_METRES } from "./bend.ts";
+import { BENT_GRAIN, BENT_WEAR_GLSL, BEND_GLSL, STRIP_METRES } from "./bend.ts";
 
 /** What a surface that is not metal reflects head on. */
 export const DIELECTRIC = 0.04;
@@ -78,7 +79,7 @@ const DARKEN = 0.3;
 const WET = 0.32;
 const LUMA = [0.2126, 0.7152, 0.0722] as const;
 /**
- * A visor's heat view (D1034): a body's heat is HEAT_BODY and HEAT_STEP for each step of its kind's code (cold-blooded 1,
+ * A visor's heat view (D1081): a body's heat is HEAT_BODY and HEAT_STEP for each step of its kind's code (cold-blooded 1,
  * warm 2, hot 3); the world's is HEAT_WORLD, and HEAT_SOAK more the more it is lit, at most.
  */
 export const HEAT_BODY = 0.12;
@@ -344,7 +345,7 @@ export function untone(out: Out, t: Numbers): void {
 
 /**
  * The grade after the tone curve (content/grade.ts), from the frame block's finish: each colour kept `saturation` as far
- * from its grey, then raised to `gamma`; through night vision, that grey in its phosphor's colour (D1033). The twin of
+ * from its grey, then raised to `gamma`; through night vision, that grey in its phosphor's colour (D1080). The twin of
  * the GLSL `graded`.
  */
 export function graded(out: Out, frame: Numbers): void {
@@ -381,7 +382,7 @@ export function heatOfShown(code: number): void {
 
 export function shown(out: Out, light: Numbers, dist: number, p: FramePacket): void {
   const f = p.frame, exposure = f[FRAME.exposure]!, post = p.tier.post !== null, grading = f[FRAME.gamma]! > 0;
-  // A visor's heat view (D1034), the twin of the GLSL heatShown: through no air, a body by its kind, the world by its light.
+  // A visor's heat view (D1081), the twin of the GLSL heatShown: through no air, a body by its kind, the world by its light.
   if (f[OPTIC_AT]! > 1.5) {
     const l = (light[0]! * LUMA[0] + light[1]! * LUMA[1] + light[2]! * LUMA[2]) * exposure;
     const h = shownHeat > 0 ? HEAT_BODY + HEAT_STEP * shownHeat : HEAT_WORLD + (HEAT_SOAK * l) / (1 + l);
@@ -552,7 +553,7 @@ ${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
   if (uSkin < -2.5) {
     if (abs(aNormal.x) < 0.5) vUv.x = gBent.x / ${f(STRIP_METRES)};
     vWheelPoint = gBent;
-    vWheel = vec4(iBendB.yz * 0.001, 0.0, 0.0);
+    vWheel = vec4(gLook, 0.0);
     vFinishSeed = iBendB.w;
   }
 ${layered ? "  vBox = aPos;\n" : ""}  gl_Position = ${drops ? "handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : " : ""}uViewProj * vec4(p, 1.0);
@@ -593,7 +594,7 @@ export const SURFACE_VERTEX = surfaceVertex(SURFACE_ANY);
 
 /** `graded` as GLSL, after the frame block. */
 /**
- * The heat view's palette (D1034), "ironbow": from black at the coldest through violet, red and orange to yellow and white
+ * The heat view's palette (D1081), "ironbow": from black at the coldest through violet, red and orange to yellow and white
  * at the hottest. The twin of the GLSL `ironbow`.
  */
 export function ironbow(t: number, out: Out): void {
@@ -711,7 +712,7 @@ const float SHOWN_STEP = ${f(1 / 255)};
 #endif
 vec3 hazed(vec3 light, vec3 rel);
 uniform float uHeat;
-// What a visor's heat view shows (D1034), through no air: a body's own heat by its kind (uHeat, packet.ts DRAW_HEAT_SHIFT);
+// What a visor's heat view shows (D1081), through no air: a body's own heat by its kind (uHeat, packet.ts DRAW_HEAT_SHIFT);
 // else the world's, cold, warmer the more the sun or a lamp lights it. As light, so the grade and the finish take it as
 // they take light, and the palette is the grade's (graded).
 vec3 heatShown(vec3 light) {
@@ -799,9 +800,10 @@ uniform float uCutoff, uSheet, uSkin, uEmissive;
 flat in float vFinishSeed;
 in vec3 vWheelPoint;
 in vec4 vWheel;
-uniform float uStreetMaterial, uOptics;
+uniform float uStreetMaterial, uOptics, uFrom;
+uniform vec4 uEffect;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}vec3 bumped(vec2 b) {
+${LIGHT}${THROUGH}${drops ? HAND_GLSL + SWAP_GLSL + VEHICLE_GLASS_GLSL : ""}${SHADOW_GLSL}${SKY_OPEN_GLSL}${ROOF_GLSL}${OVER_GROUND_GLSL}${air}${STREET_GLSL}${POLISHED_SKY}${EYE_GLINT_GLSL}${EYE_STRIKE_GLSL}${EYE_ENERGY_GLSL}${EXHAUST_GLSL}${DROP_GLSL}${WHEEL_FINISH_GLSL}${VEHICLE_SHADE_UNIFORMS}${VEHICLE_SHADE_GLSL}${dyed ? DYED : ""}${layered ? WEAR_GLSL + WOUNDED : ""}${BENT_WEAR_GLSL}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
@@ -826,9 +828,34 @@ ${drops ? "  if (handDrops() || swapDrops()) discard;\n" : ""}  if (int(uStreetM
     o = vec4(shown(gas.rgb,vRel),gas.a);
     return;
   }
-  vec4 base = texture(uBase, vUv);
-${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2, vUv).rgb;\n" : ""}  vec3 mro = texture(uMro, vUv).rgb;
-  vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
+  if (int(uStreetMaterial) == ${DROP_LIGHT}) {
+    // A supply capsule's lit strip (supply-light.ts dropLight): its row says which, and where the point is across it.
+    float row = 8.0*vUv.y, band = floor(row);
+    vec3 e = dropLight(band, 2.0*clamp((row-band-0.04)/0.92,0.0,1.0)-1.0, uEffect);
+#ifdef LIGHT_TARGET
+    o = vec4(e,1.0);
+#else
+    o = vec4(1.0-exp(-e),1.0);
+#endif
+    return;
+  }
+  if (int(uStreetMaterial) == ${DROP_GLOW}) {
+    // Its light with no surface: a tube seen by how its side faces the eye, blended over what is behind it. Across
+    // the two depth ranges it is drawn in each, and in the far one what the near one drew adds nothing (glsl.ts
+    // SEE_THROUGH_SPLIT, without the drop: this program never drops a fragment).
+    vec4 g = dropGlow(floor(8.0*vUv.y), vUv.x, abs(dot(normalize(vNormal), normalize(vRel))), uEffect);
+    float depth = 1.0/gl_FragCoord.w;
+    if (depth + 0.5*fwidth(depth) < uFrom) g = vec4(0.0);
+#ifdef LIGHT_TARGET
+    o = vec4(g.rgb, g.a);
+#else
+    o = vec4(1.0-exp(-g.rgb), g.a);
+#endif
+    return;
+  }
+  ${BENT_GRAIN}  vec4 base = texture(uBase, uv);
+${dyed ? "  vec3 mask = texture(uMask, uv).rgb;\n  vec3 mask2 = texture(uMask2, uv).rgb;\n" : ""}  vec3 mro = texture(uMro, uv).rgb;
+  vec2 bump = texture(uNormal, uv).${format === "astc" ? "ra" : "rg"};
   vec3 v = -normalize(vRel);
 ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n" + GLASS_COVER + "  if (cover == 0.0) discard;\n" : "  float cover = 1.0, reflected = -1.0;\n"}
   vec3 n = bumped(bump);
@@ -843,7 +870,7 @@ ${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth
   bool burntSheet = int(uStreetMaterial) == ${BURNT_SHEET};
   if (age > 0.0) weatherVehicle(albedo,mro,vWheelPoint,vFinishSeed,age,burntSheet);
 #ifdef BENT_WEAR
-  if (uSkin < -2.5 && fFacade.w < 7.5) bentWear(albedo, mro, vWheelPoint, face.y, vFinishSeed, vWheel.xy, fwidth(vWheelPoint.x));
+  if (uSkin < -2.5 && fFacade.w < 7.5) bentWear(albedo, mro, vWheelPoint, face.y, vFinishSeed, vWheel.xyz, fwidth(vWheelPoint.x));
 #endif
   float coat = 0.0, chrome = 0.0;
   // How much of the sky a wheeled body's own arches, floor and tyres leave it (vehicle-shade.ts).

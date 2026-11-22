@@ -1,7 +1,11 @@
 // What the page fetches whole as it starts: a failure names the request and what the server answered.
 
 import { expect, test } from "bun:test";
-import { fetchBytes, fetchJson, fetchMapFile, fetchSounds, fetchText, nextTask, type Get } from "../../client/core/fetched.ts";
+import { fetchBytes, fetchContent, fetchJson, fetchMapFile, fetchSounds, fetchText, nextTask, type Get } from "../../client/core/fetched.ts";
+import { BENT_SECTIONS } from "../../content/bends.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import { withoutNotes } from "../../tools/build-client.ts";
 import { MANIFEST_VERSION, type Manifest } from "../../shared/pack/manifest.ts";
 import { partsOf, readHead, writeMap } from "../../shared/world/mapfile.ts";
 import { wideMap } from "../fixtures/map.ts";
@@ -22,6 +26,22 @@ test("a file the server does not have is named with its status, not left to a JS
   await expect(fetchBytes(gone, "assets/core.boot.0123456789abcdef.snpk")).rejects.toThrow("assets/core.boot.0123456789abcdef.snpk: the server answered 404");
   await expect(fetchJson(get, "broken.json")).rejects.toThrow('broken.json: the server answered 200 with what is not JSON: "not found"');
   await expect(fetchJson(() => Promise.reject(new TypeError("Load failed")), "map.json")).rejects.toThrow("map.json: no answer (Load failed)");
+});
+
+test("the content file leaves out the bent sections, which the page makes: its registry is the server's to the hash", async () => {
+  const bent = new Set(BENT_SECTIONS.map((d) => d.id));
+  const file = JSON.stringify(CORE_CONTENT.filter((d) => !bent.has(d.id)));
+  expect(file.includes("zzzzzbend")).toBe(false);
+  const page = await fetchContent(server({ "assets/content.json": file }), "assets/content.json");
+  const own = compileContent(CORE_CONTENT).registry!;
+  expect(page.hash).toBe(own.hash);
+  expect(page.ids).toEqual(own.ids);
+});
+
+test("a script is sent without the lines of its shaders' notes, each line still there", () => {
+  const js = "const a=`void main() {\n  // The light, as the sun sees it.\n  x = 1.0; // kept\n  // kept: ${b}\n}`;\n// between statements\nlet c=1;";
+  expect(withoutNotes(js)).toBe("const a=`void main() {\n\n  x = 1.0; // kept\n  // kept: ${b}\n}`;\n\nlet c=1;");
+  expect(withoutNotes(js).split("\n").length).toBe(js.split("\n").length);
 });
 
 test("a sounds' rows file that fails says why, and leaves the manifest without sounds", async () => {

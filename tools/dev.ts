@@ -26,7 +26,7 @@ console.log(`SNARK dev: http://localhost:${server.port}   (self-check: http://lo
 if (!hostname) console.log("  this machine only; --host 0.0.0.0 lets others on the network in, and they need no password to cheat");
 
 let pending: ReturnType<typeof setTimeout> | undefined;
-for (const dir of ["client/core", "client/shell", "client/voice", "client/assets", "client/sound", "client/admin", "shared", "content"]) {
+for (const dir of ["client/core", "client/shell", "client/voice", "client/assets", "client/sound", "client/admin", "client/drops", "shared", "content"]) {
   watch(resolve(root, dir), { recursive: true }, () => {
     clearTimeout(pending);
     pending = setTimeout(() => {

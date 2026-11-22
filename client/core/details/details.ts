@@ -166,6 +166,18 @@ export class Details {
       due: tick, index: id, origin: { x, y: y + .65, z, floor: y } });
   }
 
+  /**
+   * Dust thrown up from the ground at a place: a supply capsule's jets as it comes down on them, its touchdown, and
+   * its going (render/scene.ts showSupply). The trees' authored dust, on the ordinary budgets; `size` scales the puffs
+   * and `least` to `most` is how many.
+   */
+  groundDust(id: number, x: number, y: number, z: number, tick: number, size: number, least: number, most: number): void {
+    if (this.treeDust < 0 || this.waiting.length >= MOST_WAITING) return;
+    const effect = this.effects[this.treeDust]!;
+    const h: Happening = { occasion: "struck", id, kind: 0, tick, x, y, z, yaw: 0, size, anim: 0, cue: 0, grounded: true, colours: this.nodeColours, fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null };
+    this.waiting.push({ h, answer: { effect, delay: 0, entry: { effect: this.treeDust, from: "ground", at: "now", count: [least, most] } }, due: tick, index: id, origin: { x, y: y + 0.25, z, floor: y } });
+  }
+
   /** What a species of `kind` answers, as it plays `anim`. */
   private bookOf(kind: number, anim: CreatureAnim): Book {
     const sheet = this.sheets[kind]!;

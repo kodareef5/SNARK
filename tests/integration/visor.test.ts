@@ -1,9 +1,10 @@
-// The Meridian helmet's visor in the whole client (client/core/visor.ts, D1033).
+// The Meridian helmet's visor in the whole client (client/core/visor.ts, D1080).
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { zoomed } from "../../client/core/optics.ts";
-import { DRAW_HEAT_SHIFT, DRAW_SKINNED, HEAT_COLD, HEAT_WARM, OPTIC_AT, OPTIC_HEAT, OPTIC_NIGHT } from "../../client/core/render/packet.ts";
+import { DRAW_HEAT_SHIFT, DRAW_SKINNED, HEAT_COLD, HEAT_HOT, HEAT_WARM, HEAT_WORLD, OPTIC_AT, OPTIC_HEAT, OPTIC_NIGHT } from "../../client/core/render/packet.ts";
+import { kindHeat } from "../../client/core/render/characters.ts";
 import { VISOR_FIRST } from "../../client/core/visor.ts";
 import { Harness, asShipped } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -50,19 +51,16 @@ test("in the whole client: the issued helmet's visor held up zooms from the eye,
   expect([...packet.window, packet.frame[OPTIC_AT]]).toEqual([0, 0, 0, 0, 0]);
 });
 
-test("in the whole client: through the visor's heat view another survivor's draws are warm and a turtle's cold; out of it no draw says how hot it is", () => {
+test("in the whole client: through the visor's heat view the survivors' draws say they are warm; out of it no draw says how hot it is; a turtle is cold-blooded, a dodo warm, a car as the world", () => {
   const h = new Harness({}, 1, 60, { dev: true, config: asShipped() });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
   h.join("bob");
   app.ui.settings.thirdPerson = false;
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
   run(1500);
-  const s = app.session;
-  const turtle = h.host.spawnCreature("core:carbonemys", s.own.x, s.own.z + 8, 5);
-  expect(turtle).toBeGreaterThanOrEqual(0);
   app.controls.yaw = 0;
   app.controls.pitch = -0.1;
-  run(1500);
+  run(500);
   const heats = (): number[] => {
     const p = app.frame(h.now, 1280, 720)!;
     const out = [0, 0, 0, 0];
@@ -76,9 +74,11 @@ test("in the whole client: through the visor's heat view another survivor's draw
   run(1500);
   expect(app.frame(h.now, 1280, 720)!.frame[OPTIC_AT]).toBe(OPTIC_HEAT);
   const seen = heats();
-  expect(seen[HEAT_COLD]).toBeGreaterThan(0);
-  expect(seen[HEAT_WARM]).toBeGreaterThan(0);
+  expect([seen[HEAT_WARM]! > 0, seen[HEAT_COLD], seen[HEAT_HOT]]).toEqual([true, 0, 0]);
   app.visor.held = false;
   run(1500);
   expect(heats().slice(1)).toEqual([0, 0, 0]);
+  // The kinds the test pack has no rigs for, by their content.
+  const at = (name: string): number => h.reg.index.get(name)!;
+  expect([kindHeat(h.reg, at("core:carbonemys")), kindHeat(h.reg, at("core:dodo")), kindHeat(h.reg, at("core:survivor")), kindHeat(h.reg, at("core:compact"))]).toEqual([HEAT_COLD, HEAT_WARM, HEAT_WARM, HEAT_WORLD]);
 });

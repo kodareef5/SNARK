@@ -1,6 +1,7 @@
 // What the page fetches whole as it starts. A request that fails says which it was and what the server answered, not
 // a parser's complaint about the answer.
 
+import { BENT_SECTIONS } from "../../content/bends.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent, withContent, type Registry } from "../../shared/content/registry.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
@@ -110,9 +111,12 @@ export function nextTask(channel: TaskChannel, scheduler = (globalThis as { sche
     });
 }
 
-/** The content, a file of its own beside the script, compiled. */
+/**
+ * The content, a file of its own beside the script, compiled. The bent sections' definitions follow from a few numbers
+ * the page holds anyway (content/bends.ts), so the page makes them and the file leaves them out (tools/build-client.ts).
+ */
 export async function fetchContent(get: Get, url: string): Promise<Registry> {
-  const { registry, errors } = compileContent((await fetchJson(get, url)) as Def[]);
+  const { registry, errors } = compileContent([...((await fetchJson(get, url)) as Def[]), ...BENT_SECTIONS]);
   if (!registry) throw new Error(`${url}: ${errors.join("; ")}`);
   return registry;
 }

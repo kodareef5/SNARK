@@ -277,6 +277,12 @@ export class Creatures {
     this.world.ents.destroy(e);
   }
 
+  /** Wakes `e` if it is now in an awake chunk: one put there by something other than its own steps (Cast's stage walks a
+   * sleeping body in from where no player is). */
+  settle(e: number): void {
+    if (this.chunkRefs[this.world.ents.chunk[e]!]! > 0) this.wake(e);
+  }
+
   isChunkAwake(chunk: number): boolean {
     return this.chunkRefs[chunk]! > 0;
   }
@@ -559,7 +565,7 @@ export class Creatures {
   }
 
   /**
-   * One chunk held awake (`delta` 1) or let go (-1): round a body, or looked at through a sight (server/gaze.ts, D1032).
+   * One chunk held awake (`delta` 1) or let go (-1): round a body, or looked at through a sight (server/gaze.ts, D1079).
    * Its creatures wake as the first hold comes and sleep as the last goes. Each chunk that wakes is added to `woke`.
    */
   watch(chunk: number, delta: number, woke?: number[]): void {
