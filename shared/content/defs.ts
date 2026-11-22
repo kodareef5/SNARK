@@ -387,6 +387,11 @@ export interface StructureDef extends Named {
   readonly color: number;
   /** A fixed palette colour for its faces that look down, drawn as its form (shared/world/city.ts): a slab's darker soffit. */
   readonly under?: number;
+  /**
+   * A material made from a recipe by the page (content/texgen/finishes.ts) that its faces wear, drawn as its form, in
+   * place of its colour's painted finish: its colour dyes it and its painted finish weathers it. Its name in the recipes.
+   */
+  readonly recipe?: string;
   /** Drawn near only: a street piece or a building's small kit, left out of the far city's lattice and mass levels. */
   readonly near?: true;
   /**
