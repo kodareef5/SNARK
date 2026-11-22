@@ -16,6 +16,8 @@ const samples = [
   { id: "berlinetta", roof: [.3, 1.30, -.2], metal: [.68, 1.20, -.55], window: [.5, 1.07, 0], front: [.3, 1.02, .55] },
   { id: "panel_van", roof: [.3, 2.5, -.6], metal: [.97, 1.7, -.6], window: [.6, 1.65, .8], front: [.4, 1.6, 1.1] },
   { id: "caravan", roof: [.3, 1.82, -.6], metal: [.79, 1.75, -.65], window: [.6, 1.38, .7], front: [.4, 1.4, 1] },
+  // The zephyr's smoked canopy is its roof and its flank above the side glass.
+  { id: "zephyr", roof: [.3, 1.15, -.2], metal: [.57, 1.065, -.2], window: [.5, .95, 0], front: [.3, .95, .55] },
 ] as const;
 
 test("each enclosed road cabin blocks its roof/side metal but keeps glass apertures through full chassis rotation", () => {
@@ -70,7 +72,7 @@ artTest("new fleet cover lies on the current rendered skin and the tested side w
   for (const sample of samples) {
     const species = ROAD_FLEET.find(s => s.id === `core:${sample.id}`)!, lod = meshes.find(m => m.id === species.id)!.lods[0]!;
     let worst = 0;
-    // Compact is the unchanged policy control; only the five newly published panel sets are measured here.
+    // Compact is the unchanged policy control; only the newly published panel sets are measured here.
     for (const panel of sample.id === "compact" ? [] : species.vehicle!.shotPanels!) {
       const center = [0, 1, 2].map(axis => panel.reduce((sum, point) => sum + point[axis]!, 0) / 4);
       const u = [0, 1, 2].map(axis => panel[1][axis]! - panel[0][axis]!), v = [0, 1, 2].map(axis => panel[2][axis]! - panel[0][axis]!);

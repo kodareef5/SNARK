@@ -146,6 +146,7 @@ test("a flip replayed through the body from any tick of it is the same, and its 
 
 test("the server's cooldowns reach the car's spec in ticks, 0 as none, and leave every other species as it was", () => {
   const tuned = applyTuning(CORE_CONTENT, { thrusters: { boost: 0, flip: 1.5 } });
+  expect(CORE_CONTENT.filter((d) => d.type === "species" && d.vehicle && isWheelVehicle(d.vehicle) && d.vehicle.spec.thrusters).map((d) => d.id)).toEqual(["core:zephyr"]);
   for (let i = 0; i < CORE_CONTENT.length; i++) {
     const d = CORE_CONTENT[i]!, t = tuned[i]!;
     if (d.type !== "species" || !d.vehicle || !isWheelVehicle(d.vehicle) || !d.vehicle.spec.thrusters) { expect(t).toBe(d); continue; }

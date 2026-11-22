@@ -14,6 +14,7 @@ for (const part of [
   "berlinetta/coachwork", "bus/livery", "compact/body", "compact_abandoned/body",
   "fastback/enamel", "monster_truck/livery", "muscle_car/livery", "patrol_jeep/patrol", "patrol_sedan/cruiser",
   "road_van/coach", "semi/livery", "tanker/livery", "tanker_wrecks/livery", "taxi/livery", "veloce/coachwork",
+  "zephyr/coachwork",
 ]) materials.set("core:" + part, PAINT);
 // The fleet's abandoned statics (assets/source/core/vehicles/<vehicle>_abandoned): the live vehicles' atlases, weathered.
 for (const part of [

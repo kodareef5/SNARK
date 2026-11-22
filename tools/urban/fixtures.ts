@@ -1,5 +1,5 @@
 // Native development fixtures; no renderer, asset build or alternate world.
-import { ROAD_FLEET } from "../../content/vehicles/road-fleet.ts";
+import { ROAD_FLEET, SPAWN_ONLY } from "../../content/vehicles/road-fleet.ts";
 import { VEHICLE_ORIGIN, vehiclePlaceFree } from "../../server/vehicle-service.ts";
 import type { Host } from "../../server/host.ts";
 import { PROVING_ID } from "../../shared/world/proving.ts";
@@ -43,7 +43,7 @@ export function seedRoadFleet(host: Host): number {
   let added = 0;
   for (const [i, model] of ROAD_FLEET.entries()) {
     const origin = `fleet/${model.id}`;
-    if (placed.has(origin)) continue;
+    if (placed.has(origin) || SPAWN_ONLY.has(model.id)) continue;
     const definition = world.reg.vehicle[world.reg.index.get(model.id)!]!;
     // Keep the original six bays stable in existing saves. The patrol pair park in front. The tanker, longer than a car,
     // keeps the bay east of the six where it was first parked.

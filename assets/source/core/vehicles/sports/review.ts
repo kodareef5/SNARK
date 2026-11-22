@@ -1,7 +1,8 @@
-// Re-render the production skin, front-hinged doors and driver view from both checked-in SNPKs.
+// Re-render the production skin, front-hinged doors and driver view from each checked-in sports SNPK.
+// Name cars to render only those: bun assets/source/core/vehicles/sports/review.ts zephyr
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { VELOCE_ART, BERLINETTA_ART } from "../../../../../content/vehicles/sports-art.ts";
+import { VELOCE_ART, BERLINETTA_ART, ZEPHYR_ART } from "../../../../../content/vehicles/sports-art.ts";
 import { buildRig } from "../../../../../shared/anim/rigs.ts";
 import { solve } from "../../../../../shared/anim/skeleton.ts";
 import { quatAxis } from "../../../../../shared/math/quat.ts";
@@ -21,14 +22,20 @@ const shots = [
   { name: "doors", around: 75, above: 24, open: 1.1, radius: 1.67 },
 ];
 
-for (const art of [VELOCE_ART, BERLINETTA_ART]) {
+const only = process.argv.slice(2);
+const cars = [VELOCE_ART, BERLINETTA_ART, ZEPHYR_ART].filter(art => only.length === 0 || only.includes(art.id.split(":")[1]!));
+const paints: Record<string, readonly number[]> = {
+  "core:veloce": [47, 84, 91, 0, 0, 0], "core:berlinetta": [46, 97, 91, 0, 0, 0], "core:zephyr": [34, 97, 91, 0, 0, 0],
+};
+
+for (const art of cars) {
   const asset = assets.find(a => a.id === art.id)!;
   const pack = parsePack(new Uint8Array(readFileSync(asset.file)));
   const mesh = pack.meshIndex.get(asset.id)!;
   const rig = buildRig(pack.header.rigs[pack.header.meshes[mesh]!.rig!]!, pack.clips)!;
   const materials = materialsOf(asset);
   const textures = (pack.header.textures ?? []).map(t => rgbaOf(materials.find(m => t.id === `${m.id}/${t.role}`)!, t.role, t.top, null));
-  const colors = art.id === "core:veloce" ? [47, 84, 91, 0, 0, 0] : [46, 97, 91, 0, 0, 0];
+  const colors = [...paints[art.id]!];
   const folder = join(asset.dir, "ref", "review");
   mkdirSync(folder, { recursive: true });
 

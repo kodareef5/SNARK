@@ -8,7 +8,8 @@ import { COMPACT, COMPACT_SPECIES, COMPACT_VEHICLE } from "./compact.ts";
 import { PATROL_JEEP_ART } from "./patrol-jeep-art.ts";
 import { PATROL_SEDAN_ART } from "./patrol-sedan-art.ts";
 import { FASTBACK_ART } from "./fastback-art.ts";
-import { BERLINETTA_ART, VELOCE_ART } from "./sports-art.ts";
+import { BERLINETTA_ART, VELOCE_ART, ZEPHYR_ART, ZEPHYR_NOZZLES } from "./sports-art.ts";
+import { ZEPHYR_THRUSTERS } from "../../shared/sim/vehicle-thrusters.ts";
 import { CARAVAN_ART, PANEL_VAN_ART } from "./van-art.ts";
 
 // Each enclosed body supplies its own metal cabin panels; the compact dimensions do not fit the fleet.
@@ -68,6 +69,7 @@ interface Trim {
   readonly cargoDoor?: number;
   readonly shotPanels?: WheelVehicleDefinition["shotPanels"];
   readonly emergencyLights?: readonly EmergencyLamp[];
+  readonly nozzles?: WheelVehicleDefinition["nozzles"];
 }
 
 function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["frame"]>, tuning: VehicleSpec, trim: Trim): SpeciesDef {
@@ -88,6 +90,7 @@ function roadCar(art: RoadModel, frame: NonNullable<WheelVehicleDefinition["fram
     doors: [...COMPACT_VEHICLE.doors, ...(trim.extraDoors ?? [])],
     ...(trim.shotPanels ? { shotPanels: trim.shotPanels } : {}),
     ...(trim.emergencyLights ? { emergencyLights: trim.emergencyLights } : {}),
+    ...(trim.nozzles ? { nozzles: trim.nozzles } : {}),
     ...(trim.cargoDoor !== undefined ? { cargoDoor: trim.cargoDoor } : {}),
   };
   return {
@@ -173,5 +176,13 @@ const patrolJeep = patrolCar(PATROL_JEEP_ART, "off_road", {
   { at: jeepLamps.grille_red, width: .14, color: "red", facing: "front" }, { at: jeepLamps.grille_blue, width: .14, color: "blue", facing: "front" },
 ]);
 
+// The flying car: rear-biased like the berlinetta and heavier for its air tanks. It is spawned by an admin
+// (`spawn core:zephyr`) and parks nowhere: no city weight, no wreck and no bay on the test-drive lot.
+const zephyr = roadCar(ZEPHYR_ART, "sports_car", {
+  ...sports, mass: 1700, frontDriveShare: 0, rearGrip: 2.22, downforce: 1.9, steerSpeed: 31, maxForward: 63, thrusters: ZEPHYR_THRUSTERS,
+}, { aliases: ["zephyr", "flying_car"], paints: [34, 230, 232, 90, 29], health: 860, slots: 12, payload: 180, beltline: .79, nozzles: ZEPHYR_NOZZLES });
+
 export const ROAD_FLEET = [COMPACT_SPECIES, fastback, veloce, berlinetta, panelVan, caravan, patrolSedan, patrolJeep, TANKER, BUS.species, SEMI.species,
-  streetCar("monster_truck").species, streetCar("muscle_car").species, streetCar("taxi").species] as const;
+  streetCar("monster_truck").species, streetCar("muscle_car").species, streetCar("taxi").species, zephyr] as const;
+/** The fleet bodies that are only ever spawned by hand, never parked by a fixture or a city. */
+export const SPAWN_ONLY: ReadonlySet<string> = new Set([zephyr.id]);

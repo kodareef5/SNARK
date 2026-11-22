@@ -1,7 +1,7 @@
-import { VELOCE_ART, BERLINETTA_ART } from "../../../../../content/vehicles/sports-art.ts";
+import { VELOCE_ART, BERLINETTA_ART, ZEPHYR_ART } from "../../../../../content/vehicles/sports-art.ts";
 import type { CreatureAsset } from "../../../../../tools/art/spec.ts";
 
-export function sportsAsset(art: typeof VELOCE_ART | typeof BERLINETTA_ART, paint: number): CreatureAsset {
+export function sportsAsset(art: typeof VELOCE_ART | typeof BERLINETTA_ART | typeof ZEPHYR_ART, paint: number): CreatureAsset {
   // Retain enough of the Berlinetta on the penultimate level for its measured error to stay below the last level.
   const penultimate = art.id === "core:berlinetta" ? 1550 : 1200;
   return {
