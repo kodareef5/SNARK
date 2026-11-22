@@ -155,9 +155,8 @@ export class GlRenderer {
   private mappedRoles = 0;
   /** 1 once every world finish's maps are on the card, this frame. */
   private worldReady = 0;
-  /** The walls' weathering masks, made on the card (texgen.ts), and the share of a frame's card time they may take while made. */
+  /** The walls' weathering masks, made on the card (texgen.ts). */
   private weather!: WeatherMasks;
-  private weatherMs = 0.5;
   private readonly anisotropyOf = (target: number): void => this.anisotropy(target);
   /** How much a material that glows only by night glows in this frame (surface.ts `lampsOn`). */
   private night = 0;
@@ -272,7 +271,7 @@ export class GlRenderer {
     this.linked.clear();
     this.neutral = [];
     this.world = [null, null, null];
-    this.weather = new WeatherMasks(gl, UNIT.weather, () => this.weatherMs);
+    this.weather = new WeatherMasks(gl, UNIT.weather);
     this.worldSide = [0, 0, 0];
     this.current = this.warmed = this.mapped = this.vao = this.arrayBuffer = null;
     // Where the browser can, programs compile and link away from the page, which asks after one only to draw with it.
@@ -618,7 +617,7 @@ export class GlRenderer {
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
     if (p.lit) {
       this.uniform(prog, U.worldReady, this.worldReady);
-      this.uniform(prog, U.weatherReady, this.weather.ready);
+      this.uniform(prog, U.weatherReady, this.weather.plan.ready);
     }
     if (last[U.viewProj] === this.view) return prog;
     last[U.viewProj] = this.view;
@@ -758,11 +757,10 @@ export class GlRenderer {
       this.world.forEach((t, r) => t && (gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r), gl.bindTexture(gl.TEXTURE_2D_ARRAY, t), this.anisotropy(gl.TEXTURE_2D_ARRAY)));
       if (this.weather.texture) (gl.activeTexture(gl.TEXTURE0 + UNIT.weather), gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.weather.texture), this.anisotropy(gl.TEXTURE_2D_ARRAY));
     }
-    // The weathering masks are made before anything of the frame is drawn, a share of the card's time a frame: a
+    // The weathering masks are made before anything of the frame is drawn, in a share of the card's time a frame: a
     // millisecond where the finishes are a thousand pixels wide or more, half that below.
-    this.weatherMs = p.tier.finishes >= 1024 ? 1 : 0.5;
     this.set(false, false, false);
-    if (this.weather.step(p.weatherSide, this.anisotropyOf)) {
+    if (this.weather.step(p.weatherSide, p.tier.finishes >= 1024 ? 1 : 0.5, this.anisotropyOf)) {
       this.current = null;
       this.vao = this.weather.vao;
     }
